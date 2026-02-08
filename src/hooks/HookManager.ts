@@ -6,6 +6,7 @@
 
 import { nanoid } from 'nanoid';
 import type { PermissionMode } from '../types/common.js';
+import { HookEvent } from '../types/constants.js';
 import { DEFAULT_HOOK_CONFIG, mergeHookConfig, parseEnvConfig } from './HookConfig.js';
 import { HookExecutionGuard } from './HookExecutionGuard.js';
 import { HookExecutor } from './HookExecutor.js';
@@ -15,7 +16,6 @@ import {
   type CompactionInput,
   type Hook,
   type HookConfig,
-  HookEvent,
   type HookExecutionContext,
   type MatchContext,
   type NotificationHookResult,

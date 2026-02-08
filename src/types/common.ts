@@ -1,4 +1,8 @@
-export type MessageRole = 'user' | 'assistant' | 'system' | 'tool';
+import type { MessageRole as MessageRoleType } from './constants.js';
+import { MessageRole as MessageRoleValue } from './constants.js';
+
+export const MessageRole = MessageRoleValue;
+export type MessageRole = MessageRoleType;
 
 type JsonPrimitive = string | number | boolean | null;
 export type JsonValue = JsonPrimitive | JsonObject | JsonValue[];
@@ -53,9 +57,7 @@ export type ProviderType =
   | 'azure-openai'
   | 'gemini'
   | 'deepseek'
-  | 'openai-compatible'
-  | 'copilot'
-  | 'antigravity';
+  | 'openai-compatible';
 
 export interface ModelConfig {
   id: string;
@@ -92,14 +94,11 @@ export interface McpServerConfig {
   };
 }
 
-export enum PermissionMode {
-  DEFAULT = 'default',
-  AUTO_EDIT = 'autoEdit',
-  YOLO = 'yolo',
-  BYPASSALL = 'bypassAll',
-  PLAN = 'plan',
-  SPEC = 'spec',
-}
+import type { PermissionMode as PermissionModeType } from './constants.js';
+import { PermissionMode as PermissionModeValue } from './constants.js';
+
+export const PermissionMode = PermissionModeValue;
+export type PermissionMode = PermissionModeType;
 
 export interface PermissionsConfig {
   allow?: string[];

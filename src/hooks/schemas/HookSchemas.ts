@@ -5,9 +5,9 @@
  */
 
 import { z } from 'zod';
+import { HookEvent } from '../../types/constants.js';
 import {
   DecisionBehavior,
-  HookEvent,
   HookType,
   PermissionDecision,
 } from '../types/HookTypes.js';

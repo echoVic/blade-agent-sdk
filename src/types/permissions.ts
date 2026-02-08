@@ -1,7 +1,5 @@
 import type { ToolKind } from '../tools/types/ToolTypes.js';
 
-export type PermissionBehavior = 'allow' | 'deny' | 'ask';
-
 export interface PermissionRuleValue {
   toolName: string;
   ruleContent?: string;

@@ -5,59 +5,7 @@
  */
 
 import type { PermissionMode } from '../../types/common.js';
-
-// ============================================================================
-// Hook Events
-// ============================================================================
-
-/**
- * Hook 事件类型
- * 与 Claude Code 对齐的完整事件列表
- */
-export enum HookEvent {
-  // ========== 工具执行类 ==========
-  /** 工具执行前 (可阻止或修改输入) */
-  PreToolUse = 'PreToolUse',
-
-  /** 工具执行后 (可添加上下文或修改输出) */
-  PostToolUse = 'PostToolUse',
-
-  /** 工具执行失败后 */
-  PostToolUseFailure = 'PostToolUseFailure',
-
-  /** 权限请求时 (可自动批准/拒绝) */
-  PermissionRequest = 'PermissionRequest',
-
-  // ========== 会话生命周期类 ==========
-  /** 用户提交提示词时 (可注入上下文) */
-  UserPromptSubmit = 'UserPromptSubmit',
-
-  /** 会话启动时 */
-  SessionStart = 'SessionStart',
-
-  /** 会话结束时 */
-  SessionEnd = 'SessionEnd',
-
-  // ========== 控制流类 ==========
-  /** Agent 停止响应时 (可阻止停止) */
-  Stop = 'Stop',
-
-  /** 子 Agent (Task) 启动时 */
-  SubagentStart = 'SubagentStart',
-
-  /** 子 Agent (Task) 停止响应时 */
-  SubagentStop = 'SubagentStop',
-
-  /** 任务完成时 (可阻止完成) */
-  TaskCompleted = 'TaskCompleted',
-
-  // ========== 其他 ==========
-  /** 通知事件 */
-  Notification = 'Notification',
-
-  /** 上下文压缩时 */
-  Compaction = 'Compaction',
-}
+import { HookEvent } from '../../types/constants.js';
 
 // ============================================================================
 // Hook Input

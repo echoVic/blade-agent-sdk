@@ -1,17 +1,10 @@
 import type { Message } from '../services/ChatServiceInterface.js';
 import type { ToolDefinition, ToolExecutionContext, ToolResult } from '../tools/types/index.js';
-import type { McpServerConfig, PermissionMode } from '../types/common.js';
+import type { McpServerConfig, PermissionMode, ProviderType, TokenUsage } from '../types/common.js';
+import type { HookEvent } from '../types/constants.js';
 import type { CanUseTool } from '../types/permissions.js';
 
-export type { ToolDefinition, ToolExecutionContext, ToolResult };
-
-export type ProviderType =
-  | 'openai-compatible'
-  | 'anthropic'
-  | 'gemini'
-  | 'azure-openai'
-  | 'antigravity'
-  | 'copilot';
+export type { ProviderType, TokenUsage, ToolDefinition, ToolExecutionContext, ToolResult };
 
 export interface ProviderConfig {
   type: ProviderType;
@@ -21,12 +14,6 @@ export interface ProviderConfig {
   organization?: string;
   apiVersion?: string;
   projectId?: string;
-}
-
-export interface TokenUsage {
-  inputTokens: number;
-  outputTokens: number;
-  totalTokens: number;
 }
 
 export interface ToolCallRecord {
@@ -57,21 +44,6 @@ export type StreamMessage =
   | { type: 'result'; subtype: 'success' | 'error'; content?: string; error?: string; sessionId: string }
   | { type: 'error'; message: string; code?: string; sessionId: string };
 
-export type HookEvent =
-  | 'PreToolUse'
-  | 'PostToolUse'
-  | 'PostToolUseFailure'
-  | 'PermissionRequest'
-  | 'UserPromptSubmit'
-  | 'SessionStart'
-  | 'SessionEnd'
-  | 'Stop'
-  | 'SubagentStart'
-  | 'SubagentStop'
-  | 'TaskCompleted'
-  | 'Notification'
-  | 'Compaction';
-
 export interface HookInput {
   event: HookEvent;
   toolName?: string;
@@ -91,28 +63,7 @@ export interface HookOutput {
 
 export type HookCallback = (input: HookInput) => Promise<HookOutput>;
 
-export interface ConfirmationRequest {
-  toolName: string;
-  toolInput: unknown;
-  description: string;
-  risk: 'low' | 'medium' | 'high';
-}
 
-export interface ConfirmationResponse {
-  approved: boolean;
-  reason?: string;
-  remember?: boolean;
-}
-
-export type ConfirmationHandler = (
-  request: ConfirmationRequest
-) => Promise<ConfirmationResponse>;
-
-export interface InteractionHandlers {
-  onConfirmation?: ConfirmationHandler;
-  onInput?: (prompt: string) => Promise<string>;
-  onSelect?: (options: string[], prompt: string) => Promise<string>;
-}
 
 export interface SubagentInfo {
   parentSessionId: string;
@@ -149,9 +100,6 @@ export interface SessionOptions {
 
   hooks?: Partial<Record<HookEvent, HookCallback[]>>;
 
-  /** @deprecated Use canUseTool instead */
-  handlers?: InteractionHandlers;
-
   cwd?: string;
   env?: Record<string, string>;
 }
@@ -180,12 +128,20 @@ export interface ModelInfo {
 
 export interface McpServerStatus {
   name: string;
-  status: 'connected' | 'disconnected' | 'error';
+  status: 'connected' | 'disconnected' | 'connecting' | 'error';
   toolCount: number;
+  tools?: string[];
+  connectedAt?: Date;
   error?: string;
 }
 
-export interface ISession {
+export interface McpToolInfo {
+  name: string;
+  description: string;
+  serverName: string;
+}
+
+export interface ISession extends AsyncDisposable {
   readonly sessionId: string;
   readonly messages: Message[];
 
@@ -202,7 +158,10 @@ export interface ISession {
 
   supportedCommands(): Promise<SlashCommand[]>;
   supportedModels(): Promise<ModelInfo[]>;
-  mcpServerStatus(): Promise<McpServerStatus[]>;
 
-  [Symbol.asyncDispose](): Promise<void>;
+  mcpServerStatus(): Promise<McpServerStatus[]>;
+  mcpConnect(serverName: string): Promise<void>;
+  mcpDisconnect(serverName: string): Promise<void>;
+  mcpReconnect(serverName: string): Promise<void>;
+  mcpListTools(): Promise<McpToolInfo[]>;
 }

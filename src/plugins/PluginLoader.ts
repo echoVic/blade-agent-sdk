@@ -15,7 +15,7 @@ import { logger } from '../logging/Logger.js';
 import { loadSkillMetadata } from '../skills/SkillLoader.js';
 import type { McpServerConfig } from '../types/common.js';
 import { getMcpNamespacedName, getNamespacedName } from './namespacing.js';
-import type { CustomCommandConfig } from './types.js';
+import type { CustomCommandConfig } from '../commands/types.js';
 import { parsePluginManifest } from './PluginManifest.js';
 import { validateMcpConfig } from './schemas.js';
 import type {

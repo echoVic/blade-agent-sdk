@@ -4,14 +4,12 @@
  */
 
 import type {
-    ChatCompletionChunk,
-    ChatCompletionMessageToolCall,
+  ChatCompletionChunk,
+  ChatCompletionMessageToolCall,
 } from 'openai/resources/chat';
 import { createLogger, LogCategory } from '../logging/Logger.js';
 import type { JsonValue, MessageRole, ProviderType } from '../types/common.js';
-import { AntigravityChatService } from './AntigravityChatService.js';
 import { resolveBuiltinApiKey } from './BuiltinKeyService.js';
-import { CopilotChatService } from './CopilotChatService.js';
 import { VercelAIChatService } from './VercelAIChatService.js';
 
 const logger = createLogger(LogCategory.SERVICE);
@@ -218,14 +216,5 @@ export async function createChatServiceAsync(
 }
 
 function createChatServiceInternal(config: ChatConfig): IChatService {
-  switch (config.provider) {
-    case 'antigravity':
-      return new AntigravityChatService(config);
-
-    case 'copilot':
-      return new CopilotChatService(config);
-
-    default:
-      return new VercelAIChatService(config);
-  }
+  return new VercelAIChatService(config);
 }

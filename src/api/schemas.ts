@@ -1,7 +1,13 @@
+/**
+ * API Zod Schemas
+ *
+ * 这些 schema 用于 API 层的请求/响应验证。
+ * 类型从 Zod schema 推断，与 types/constants.ts 中的类型等价。
+ */
 import { z } from 'zod';
 
 export const PermissionModeSchema = z.enum(['default', 'autoEdit', 'yolo', 'plan', 'spec']);
-export type PermissionMode = z.infer<typeof PermissionModeSchema>;
+export type ApiPermissionMode = z.infer<typeof PermissionModeSchema>;
 
 export const PermissionModeEnum = {
   DEFAULT: 'default',
@@ -12,7 +18,7 @@ export const PermissionModeEnum = {
 } as const;
 
 export const MessageRoleSchema = z.enum(['user', 'assistant', 'system', 'tool']);
-export type MessageRole = z.infer<typeof MessageRoleSchema>;
+export type ApiMessageRole = z.infer<typeof MessageRoleSchema>;
 
 export const MessageSchema = z.object({
   id: z.string(),

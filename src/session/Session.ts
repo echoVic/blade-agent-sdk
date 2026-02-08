@@ -6,6 +6,8 @@ import { Agent } from '../agent/Agent.js';
 import type { ChatContext, LoopResult } from '../agent/types.js';
 import { CommandRegistry } from '../commands/CommandRegistry.js';
 import { createLogger, LogCategory } from '../logging/Logger.js';
+import { McpRegistry } from '../mcp/McpRegistry.js';
+import { McpConnectionStatus } from '../mcp/types.js';
 import type { Message } from '../services/ChatServiceInterface.js';
 import {
   type BladeConfig,
@@ -17,6 +19,7 @@ import {
 import type {
   ISession,
   McpServerStatus,
+  McpToolInfo,
   ModelInfo,
   PromptResult,
   ProviderConfig,
@@ -68,6 +71,7 @@ class Session implements ISession {
       permissionMode: this.permissionMode,
       systemPrompt: this.options.systemPrompt,
       maxTurns: this.maxTurns,
+      canUseTool: this.options.canUseTool,
     });
 
     this.initialized = true;
@@ -243,8 +247,6 @@ class Session implements ISession {
       anthropic: 'anthropic',
       gemini: 'gemini',
       'azure-openai': 'azure-openai',
-      antigravity: 'antigravity',
-      copilot: 'copilot',
     };
     return mapping[type] || 'openai-compatible';
   }
@@ -255,8 +257,6 @@ class Session implements ISession {
       anthropic: 'https://api.anthropic.com',
       gemini: 'https://generativelanguage.googleapis.com',
       'azure-openai': '',
-      antigravity: '',
-      copilot: '',
     };
     return urls[type] || '';
   }
@@ -283,7 +283,7 @@ class Session implements ISession {
     this.pendingSendOptions = null;
 
     const toolCalls: ToolCallRecord[] = [];
-    let totalUsage: TokenUsage = { inputTokens: 0, outputTokens: 0, totalTokens: 0 };
+    let totalUsage: TokenUsage = { inputTokens: 0, outputTokens: 0, totalTokens: 0, maxContextTokens: 0 };
 
     this.abortController = new AbortController();
     const signal = sendOptions?.signal
@@ -374,6 +374,7 @@ class Session implements ISession {
               inputTokens: value.usage.inputTokens,
               outputTokens: value.usage.outputTokens,
               totalTokens: value.usage.totalTokens,
+              maxContextTokens: value.usage.maxContextTokens,
             };
             break;
           default:
@@ -463,20 +464,80 @@ class Session implements ISession {
   }
 
   async mcpServerStatus(): Promise<McpServerStatus[]> {
-    if (!this.agent) return [];
-
-    const mcpServers = this.options.mcpServers || {};
+    const registry = McpRegistry.getInstance();
+    const allServers = registry.getAllServers();
     const statuses: McpServerStatus[] = [];
 
-    for (const [name] of Object.entries(mcpServers)) {
+    for (const [name, serverInfo] of allServers) {
+      const statusMap: Record<McpConnectionStatus, McpServerStatus['status']> = {
+        [McpConnectionStatus.CONNECTED]: 'connected',
+        [McpConnectionStatus.DISCONNECTED]: 'disconnected',
+        [McpConnectionStatus.CONNECTING]: 'connecting',
+        [McpConnectionStatus.ERROR]: 'error',
+      };
+
       statuses.push({
         name,
-        status: 'connected',
-        toolCount: 0,
+        status: statusMap[serverInfo.status],
+        toolCount: serverInfo.tools.length,
+        tools: serverInfo.tools.map((t: { name: string }) => t.name),
+        connectedAt: serverInfo.connectedAt,
+        error: serverInfo.lastError?.message,
       });
     }
 
     return statuses;
+  }
+
+  async mcpConnect(serverName: string): Promise<void> {
+    await this.ensureInitialized();
+
+    const registry = McpRegistry.getInstance();
+    const serverInfo = registry.getServerStatus(serverName);
+
+    if (!serverInfo) {
+      const config = this.options.mcpServers?.[serverName];
+      if (!config) {
+        throw new Error(`MCP server "${serverName}" not found in configuration`);
+      }
+      await registry.registerServer(serverName, config);
+    } else {
+      await registry.connectServer(serverName);
+    }
+
+    logger.debug(`[Session] Connected to MCP server: ${serverName}`);
+  }
+
+  async mcpDisconnect(serverName: string): Promise<void> {
+    const registry = McpRegistry.getInstance();
+    await registry.disconnectServer(serverName);
+    logger.debug(`[Session] Disconnected from MCP server: ${serverName}`);
+  }
+
+  async mcpReconnect(serverName: string): Promise<void> {
+    const registry = McpRegistry.getInstance();
+    await registry.reconnectServer(serverName);
+    logger.debug(`[Session] Reconnected to MCP server: ${serverName}`);
+  }
+
+  async mcpListTools(): Promise<McpToolInfo[]> {
+    const registry = McpRegistry.getInstance();
+    const allServers = registry.getAllServers();
+    const tools: McpToolInfo[] = [];
+
+    for (const [serverName, serverInfo] of allServers) {
+      if (serverInfo.status === McpConnectionStatus.CONNECTED) {
+        for (const tool of serverInfo.tools) {
+          tools.push({
+            name: tool.name,
+            description: tool.description,
+            serverName,
+          });
+        }
+      }
+    }
+
+    return tools;
   }
 
   async [Symbol.asyncDispose](): Promise<void> {
@@ -538,7 +599,7 @@ export async function prompt(
   await session.initialize();
 
   const toolCalls: ToolCallRecord[] = [];
-  let totalUsage: TokenUsage = { inputTokens: 0, outputTokens: 0, totalTokens: 0 };
+  let totalUsage: TokenUsage = { inputTokens: 0, outputTokens: 0, totalTokens: 0, maxContextTokens: 0 };
   let turnsCount = 0;
   let result = '';
   let errorMessage: string | null = null;

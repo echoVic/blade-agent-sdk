@@ -8,6 +8,7 @@ import type { TodoItem } from '../tools/builtin/todo/types.js';
 import type { ConfirmationHandler } from '../tools/types/ExecutionTypes.js';
 import type { ToolResult } from '../tools/types/ToolTypes.js';
 import type { PermissionMode, PermissionsConfig } from '../types/common.js';
+import type { CanUseTool } from '../types/permissions.js';
 
 /**
  * 用户消息内容类型
@@ -58,6 +59,9 @@ export interface AgentOptions {
   maxTurns?: number; // 最大对话轮次 (-1=无限制, 0=禁用对话, N>0=限制轮次)
   toolWhitelist?: string[]; // 工具白名单（仅允许指定工具）
   modelId?: string;
+
+  // 权限控制
+  canUseTool?: CanUseTool;
 
   // MCP 配置
   mcpConfig?: string[]; // CLI 参数：MCP 配置文件路径或 JSON 字符串数组

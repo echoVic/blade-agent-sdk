@@ -6,20 +6,28 @@ export { CompactionService } from './context/CompactionService.js';
 export { ContextManager } from './context/ContextManager.js';
 export { HookManager } from './hooks/HookManager.js';
 export * from './logging/Logger.js';
-export { McpRegistry } from './mcp/McpRegistry.js';
-export * from './mcp/types.js';
+export {
+    HealthMonitor,
+    HealthStatus,
+    McpClient,
+    McpConnectionStatus, ErrorType as McpErrorType, McpRegistry
+} from './mcp/index.js';
+export type {
+    HealthCheckConfig,
+    McpServerInfo,
+    McpToolCallResponse,
+    McpToolDefinition
+} from './mcp/index.js';
 export * from './services/ChatServiceInterface.js';
 export { createSession, prompt, resumeSession } from './session/index.js';
 export type {
     AgentDefinition,
-    ConfirmationRequest,
     HookCallback,
-    HookEvent,
     HookInput,
     HookOutput,
-    InteractionHandlers,
     ISession,
     McpServerStatus,
+    McpToolInfo,
     ModelInfo,
     PromptResult,
     ResumeOptions,
@@ -43,10 +51,22 @@ export { ExecutionPipeline } from './tools/execution/ExecutionPipeline.js';
 export { ToolRegistry } from './tools/registry/ToolRegistry.js';
 export * from './tools/types/index.js';
 export * from './types/common.js';
+export {
+    DecisionBehavior,
+    HookEvent,
+    HookExitCode,
+    HookType,
+    MessageRole,
+    PermissionBehavior,
+    PermissionDecision,
+    PermissionMode,
+    StreamMessageType,
+    ToolErrorType,
+    ToolKind
+} from './types/constants.js';
 export type {
     CanUseTool,
     CanUseToolOptions,
-    PermissionBehavior,
     PermissionResult,
     PermissionRuleValue,
     PermissionUpdate

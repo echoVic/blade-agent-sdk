@@ -130,6 +130,7 @@ export class Agent {
       permissionConfig: permissions,
       permissionMode,
       maxHistorySize: 1000,
+      canUseTool: this.runtimeOptions.canUseTool,
     });
   }
 

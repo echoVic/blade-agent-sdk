@@ -6,20 +6,10 @@
  */
 
 import type { SubagentConfig } from '../agent/subagents/types.js';
+import type { CustomCommandConfig } from '../commands/types.js';
 import type { HookConfig } from '../hooks/types/HookTypes.js';
 import type { SkillMetadata } from '../skills/types.js';
 import type { McpServerConfig } from '../types/common.js';
-
-/**
- * Configuration for a custom command from frontmatter
- */
-export interface CustomCommandConfig {
-  description?: string;
-  allowedTools?: string[];
-  argumentHint?: string;
-  model?: string;
-  disableModelInvocation?: boolean;
-}
 
 /**
  * Plugin author information
