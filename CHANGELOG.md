@@ -2,6 +2,10 @@
 
 本文件记录 @blade-ai/agent-sdk 的所有重要变更。
 
+## [0.1.2] - 2026-02-08
+
+- 25eacfe refactor(agent): 重构事件处理机制，使用统一的事件流接口
+- e8c7ebf test: 添加多个测试文件包括HookConfig、TokenCounter、路径安全、Matcher、工具创建和输出解析
 ## [0.1.1] - 2026-02-08
 
 - 3121d6c feat(hooks): 新增 SubagentStart 和 TaskCompleted 钩子事件
