@@ -4,11 +4,11 @@
  */
 
 import type {
-  ChatCompletionChunk,
-  ChatCompletionMessageToolCall,
+    ChatCompletionChunk,
+    ChatCompletionMessageToolCall,
 } from 'openai/resources/chat';
 import { createLogger, LogCategory } from '../logging/Logger.js';
-import type { JsonValue, MessageRole, ProviderType } from '../types/common.js';
+import type { JsonValue, MessageRole, OutputFormat, ProviderType } from '../types/common.js';
 import { resolveBuiltinApiKey } from './BuiltinKeyService.js';
 import { VercelAIChatService } from './VercelAIChatService.js';
 
@@ -96,6 +96,7 @@ export interface ChatConfig {
   supportsThinking?: boolean; // 是否支持 thinking 模式（DeepSeek Reasoner 等）
   customHeaders?: Record<string, string>; // Provider 特定的自定义 HTTP Headers
   providerId?: string; // models.dev 中的 Provider ID（用于获取特定配置）
+  outputFormat?: OutputFormat; // 结构化输出格式（JSON Schema）
 }
 
 /**

@@ -7,7 +7,7 @@ import type { ContentPart, Message } from '../services/ChatServiceInterface.js';
 import type { TodoItem } from '../tools/builtin/todo/types.js';
 import type { ConfirmationHandler } from '../tools/types/ExecutionTypes.js';
 import type { ToolResult } from '../tools/types/ToolTypes.js';
-import type { PermissionMode, PermissionsConfig } from '../types/common.js';
+import type { OutputFormat, PermissionMode, PermissionsConfig } from '../types/common.js';
 import type { CanUseTool } from '../types/permissions.js';
 
 /**
@@ -66,6 +66,9 @@ export interface AgentOptions {
   // MCP 配置
   mcpConfig?: string[]; // CLI 参数：MCP 配置文件路径或 JSON 字符串数组
   strictMcpConfig?: boolean; // CLI 参数：严格模式，仅使用 --mcp-config 指定的配置
+
+  // 结构化输出
+  outputFormat?: OutputFormat; // JSON Schema 结构化输出格式
 }
 
 export interface AgentTask {

@@ -10,26 +10,26 @@ import { McpRegistry } from '../mcp/McpRegistry.js';
 import { McpConnectionStatus } from '../mcp/types.js';
 import type { Message } from '../services/ChatServiceInterface.js';
 import {
-  type BladeConfig,
-  type MessageRole,
-  type ModelConfig,
-  PermissionMode,
-  type ProviderType,
+    type BladeConfig,
+    type MessageRole,
+    type ModelConfig,
+    PermissionMode,
+    type ProviderType,
 } from '../types/common.js';
 import type {
-  ISession,
-  McpServerStatus,
-  McpToolInfo,
-  ModelInfo,
-  PromptResult,
-  ProviderConfig,
-  SendOptions,
-  SessionOptions,
-  SlashCommand,
-  StreamMessage,
-  StreamOptions,
-  TokenUsage,
-  ToolCallRecord
+    ISession,
+    McpServerStatus,
+    McpToolInfo,
+    ModelInfo,
+    PromptResult,
+    ProviderConfig,
+    SendOptions,
+    SessionOptions,
+    SlashCommand,
+    StreamMessage,
+    StreamOptions,
+    TokenUsage,
+    ToolCallRecord
 } from './types.js';
 
 const logger = createLogger(LogCategory.AGENT);
@@ -72,6 +72,7 @@ class Session implements ISession {
       systemPrompt: this.options.systemPrompt,
       maxTurns: this.maxTurns,
       canUseTool: this.options.canUseTool,
+      outputFormat: this.options.outputFormat,
     });
 
     this.initialized = true;

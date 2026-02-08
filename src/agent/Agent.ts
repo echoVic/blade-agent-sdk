@@ -170,6 +170,7 @@ export class Agent {
       temperature: modelConfig.temperature ?? this.config.temperature,
       maxContextTokens: this.currentModelMaxContextTokens,
       supportsThinking,
+      outputFormat: this.runtimeOptions.outputFormat,
     });
 
     const contextManager = this.executionEngine?.getContextManager();

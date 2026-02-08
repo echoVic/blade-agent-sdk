@@ -3,7 +3,8 @@ import { createAzure } from '@ai-sdk/azure';
 import { createDeepSeek } from '@ai-sdk/deepseek';
 import { createGoogleGenerativeAI } from '@ai-sdk/google';
 import { createOpenAICompatible } from '@ai-sdk/openai-compatible';
-import { generateText, jsonSchema, type LanguageModel, streamText } from 'ai';
+import { generateText, jsonSchema, type LanguageModel, Output, streamText } from 'ai';
+import type { OutputFormat } from '../types/common.js';
 import type { ChatCompletionMessageToolCall } from 'openai/resources/chat';
 import { createLogger, LogCategory } from '../logging/Logger.js';
 import type {
@@ -291,6 +292,17 @@ export class VercelAIChatService implements IChatService {
     }));
   }
 
+  private convertOutputFormat(outputFormat?: OutputFormat) {
+    if (!outputFormat || outputFormat.type !== 'json_schema') {
+      return undefined;
+    }
+
+    const { json_schema } = outputFormat;
+    return Output.object({
+      schema: jsonSchema(json_schema.schema as Parameters<typeof jsonSchema>[0]),
+    });
+  }
+
   private convertUsage(
     usage?: {
       promptTokens?: number;
@@ -335,6 +347,7 @@ export class VercelAIChatService implements IChatService {
     const filteredMessages = filterOrphanToolMessages(messages);
     const coreMessages = this.convertMessages(filteredMessages);
     const coreTools = this.convertTools(tools);
+    const experimentalOutput = this.convertOutputFormat(this.config.outputFormat);
 
     try {
       const result = await generateText({
@@ -344,6 +357,7 @@ export class VercelAIChatService implements IChatService {
         maxOutputTokens: this.config.maxOutputTokens,
         temperature: this.config.temperature ?? 0,
         abortSignal: signal,
+        experimental_output: experimentalOutput,
       });
 
       const duration = Date.now() - startTime;
@@ -387,6 +401,7 @@ export class VercelAIChatService implements IChatService {
     const filteredMessages = filterOrphanToolMessages(messages);
     const coreMessages = this.convertMessages(filteredMessages);
     const coreTools = this.convertTools(tools);
+    const experimentalOutput = this.convertOutputFormat(this.config.outputFormat);
 
     try {
       const result = streamText({
@@ -396,6 +411,7 @@ export class VercelAIChatService implements IChatService {
         maxOutputTokens: this.config.maxOutputTokens,
         temperature: this.config.temperature ?? 0,
         abortSignal: signal,
+        experimental_output: experimentalOutput,
       });
 
       logger.debug('📥 [VercelAIChatService] Stream started');

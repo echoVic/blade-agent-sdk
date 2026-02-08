@@ -46,6 +46,7 @@ export * from './skills/types.js';
 export { SpecManager } from './spec/SpecManager.js';
 export * from './spec/types.js';
 export { getBuiltinTools } from './tools/builtin/index.js';
+export { askUserQuestionTool } from './tools/builtin/system/askUserQuestion.js';
 export { createTool, defineTool, toolFromDefinition } from './tools/core/createTool.js';
 export { ExecutionPipeline } from './tools/execution/ExecutionPipeline.js';
 export { ToolRegistry } from './tools/registry/ToolRegistry.js';

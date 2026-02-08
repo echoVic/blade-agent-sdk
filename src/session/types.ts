@@ -1,6 +1,6 @@
 import type { Message } from '../services/ChatServiceInterface.js';
 import type { ToolDefinition, ToolExecutionContext, ToolResult } from '../tools/types/index.js';
-import type { McpServerConfig, PermissionMode, ProviderType, TokenUsage } from '../types/common.js';
+import type { McpServerConfig, OutputFormat, PermissionMode, ProviderType, TokenUsage } from '../types/common.js';
 import type { HookEvent } from '../types/constants.js';
 import type { CanUseTool } from '../types/permissions.js';
 
@@ -102,6 +102,8 @@ export interface SessionOptions {
 
   cwd?: string;
   env?: Record<string, string>;
+
+  outputFormat?: OutputFormat;
 }
 
 export interface SendOptions {

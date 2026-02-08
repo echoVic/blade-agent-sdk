@@ -122,3 +122,38 @@ export interface RuntimeConfig extends BladeConfig {
   projectRoot: string;
   globalConfigDir: string;
 }
+
+export interface JsonSchemaProperty {
+  type: 'string' | 'number' | 'integer' | 'boolean' | 'array' | 'object' | 'null';
+  description?: string;
+  enum?: (string | number | boolean | null)[];
+  items?: JsonSchemaProperty;
+  properties?: Record<string, JsonSchemaProperty>;
+  required?: string[];
+  additionalProperties?: boolean | JsonSchemaProperty;
+  default?: unknown;
+  minimum?: number;
+  maximum?: number;
+  minLength?: number;
+  maxLength?: number;
+  pattern?: string;
+  format?: string;
+}
+
+export interface JsonSchema {
+  type: 'object';
+  properties: Record<string, JsonSchemaProperty>;
+  required?: string[];
+  additionalProperties?: boolean;
+  description?: string;
+}
+
+export interface OutputFormat {
+  type: 'json_schema';
+  json_schema: {
+    name: string;
+    description?: string;
+    schema: JsonSchema;
+    strict?: boolean;
+  };
+}
