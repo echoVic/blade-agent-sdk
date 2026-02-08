@@ -3,11 +3,10 @@ import { getSessionFilePath } from '@/context/storage/pathUtils.js';
 import { nanoid } from 'nanoid';
 import type { ChatCompletionMessageToolCall } from 'openai/resources/chat';
 import { Agent } from '../agent/Agent.js';
-import type { ChatContext, LoopOptions } from '../agent/types.js';
+import type { ChatContext, LoopResult } from '../agent/types.js';
 import { CommandRegistry } from '../commands/CommandRegistry.js';
 import { createLogger, LogCategory } from '../logging/Logger.js';
 import type { Message } from '../services/ChatServiceInterface.js';
-import type { ToolResult } from '../tools/types/index.js';
 import {
   type BladeConfig,
   type MessageRole,
@@ -291,17 +290,6 @@ class Session implements ISession {
       ? this.combineSignals(sendOptions.signal, this.abortController.signal)
       : this.abortController.signal;
 
-    const contentQueue: StreamMessage[] = [];
-    let queueResolve: (() => void) | null = null;
-
-    const enqueue = (msg: StreamMessage) => {
-      contentQueue.push(msg);
-      if (queueResolve) {
-        queueResolve();
-        queueResolve = null;
-      }
-    };
-
     const context: ChatContext = {
       messages: this._messages,
       userId: 'sdk-user',
@@ -311,104 +299,113 @@ class Session implements ISession {
       permissionMode: this.permissionMode,
     };
 
-    const loopOptions: LoopOptions = {
+    const stream = this.agent!.streamChat(message, context, {
       maxTurns: sendOptions?.maxTurns ?? this.maxTurns,
       signal,
-      stream: true,
-      onTurnStart: (data) => {
-        enqueue({ type: 'turn_start', turn: data.turn, sessionId: this.sessionId });
-      },
-      onContentDelta: (delta) => {
-        enqueue({ type: 'content', delta, sessionId: this.sessionId });
-      },
-      onThinkingDelta: options?.includeThinking
-        ? (delta) => {
-            enqueue({ type: 'thinking', delta, sessionId: this.sessionId });
-          }
-        : undefined,
-      onToolStart: (toolCall: ChatCompletionMessageToolCall) => {
-        if (toolCall.type !== 'function') return;
-        const input = this.safeParseJson(toolCall.function.arguments);
-        toolCalls.push({
-          id: toolCall.id,
-          name: toolCall.function.name,
-          input,
-          output: null,
-          duration: 0,
-        });
-        enqueue({
-          type: 'tool_use',
-          id: toolCall.id,
-          name: toolCall.function.name,
-          input,
-          sessionId: this.sessionId,
-        });
-      },
-      onToolResult: async (toolCall: ChatCompletionMessageToolCall, toolResult: ToolResult) => {
-        if (toolCall.type !== 'function') return;
-        const record = toolCalls.find((tc) => tc.id === toolCall.id);
-        if (record) {
-          record.output = toolResult.llmContent;
-          record.isError = !toolResult.success;
-        }
-        enqueue({
-          type: 'tool_result',
-          id: toolCall.id,
-          name: toolCall.function.name,
-          output: toolResult.llmContent,
-          isError: !toolResult.success,
-          sessionId: this.sessionId,
-        });
-      },
-      onTokenUsage: (usage) => {
-        totalUsage = {
-          inputTokens: usage.inputTokens,
-          outputTokens: usage.outputTokens,
-          totalTokens: usage.totalTokens,
-        };
-      },
-    };
-
-    let done = false;
-
-    const chatPromise = this.agent!.chat(message, context, loopOptions)
-      .then((result) => {
-        enqueue({ type: 'usage', usage: totalUsage, sessionId: this.sessionId });
-        this._messages = context.messages;
-        enqueue({
-          type: 'result',
-          subtype: 'success',
-          content: result,
-          sessionId: this.sessionId,
-        });
-      })
-      .catch((error) => {
-        const chatError = error instanceof Error ? error : new Error(String(error));
-        enqueue({
-          type: 'error',
-          message: chatError.message,
-          sessionId: this.sessionId,
-        });
-      })
-      .finally(() => {
-        done = true;
-        if (queueResolve) queueResolve();
-      });
+    });
 
     try {
-      while (!done || contentQueue.length > 0) {
-        if (contentQueue.length === 0 && !done) {
-          await new Promise<void>((resolve) => {
-            queueResolve = resolve;
-          });
-        }
+      let loopResult: LoopResult | undefined;
 
-        while (contentQueue.length > 0) {
-          yield contentQueue.shift()!;
+      while (true) {
+        const { value, done } = await stream.next();
+        if (done) {
+          loopResult = value;
+          break;
+        }
+        switch (value.type) {
+          case 'turn_start':
+            yield { type: 'turn_start', turn: value.turn, sessionId: this.sessionId };
+            break;
+          case 'content_delta':
+            yield { type: 'content', delta: value.delta, sessionId: this.sessionId };
+            break;
+          case 'thinking_delta':
+            if (options?.includeThinking) {
+              yield { type: 'thinking', delta: value.delta, sessionId: this.sessionId };
+            }
+            break;
+          case 'content':
+            yield { type: 'content', delta: value.content, sessionId: this.sessionId };
+            break;
+          case 'thinking':
+            if (options?.includeThinking) {
+              yield { type: 'thinking', delta: value.content, sessionId: this.sessionId };
+            }
+            break;
+          case 'tool_start': {
+            if (value.toolCall.type !== 'function') break;
+            const input = this.safeParseJson(value.toolCall.function.arguments);
+            toolCalls.push({
+              id: value.toolCall.id,
+              name: value.toolCall.function.name,
+              input,
+              output: null,
+              duration: 0,
+            });
+            yield {
+              type: 'tool_use',
+              id: value.toolCall.id,
+              name: value.toolCall.function.name,
+              input,
+              sessionId: this.sessionId,
+            };
+            break;
+          }
+          case 'tool_result': {
+            if (value.toolCall.type !== 'function') break;
+            const record = toolCalls.find((tc) => tc.id === value.toolCall.id);
+            if (record) {
+              record.output = value.result.llmContent;
+              record.isError = !value.result.success;
+            }
+            yield {
+              type: 'tool_result',
+              id: value.toolCall.id,
+              name: value.toolCall.function.name,
+              output: value.result.llmContent,
+              isError: !value.result.success,
+              sessionId: this.sessionId,
+            };
+            break;
+          }
+          case 'token_usage':
+            totalUsage = {
+              inputTokens: value.usage.inputTokens,
+              outputTokens: value.usage.outputTokens,
+              totalTokens: value.usage.totalTokens,
+            };
+            break;
+          default:
+            break;
         }
       }
 
-      await chatPromise;
+      if (!loopResult) {
+        throw new Error('Stream ended without result');
+      }
+
+      const isAborted = loopResult.error?.type === 'aborted';
+      const shouldExit = loopResult.metadata?.shouldExitLoop;
+
+      if (!loopResult.success && !isAborted && !shouldExit) {
+        const messageText =
+          loopResult.error?.message || 'Unknown error';
+        yield { type: 'error', message: messageText, sessionId: this.sessionId };
+        return;
+      }
+
+      yield { type: 'usage', usage: totalUsage, sessionId: this.sessionId };
+      this._messages = context.messages;
+      yield {
+        type: 'result',
+        subtype: 'success',
+        content: loopResult.finalMessage || '',
+        sessionId: this.sessionId,
+      };
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      yield { type: 'error', message: errorMessage, sessionId: this.sessionId };
     } finally {
       this.abortController = null;
     }

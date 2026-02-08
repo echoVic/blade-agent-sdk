@@ -21,6 +21,7 @@ import { streamDebug } from '../logging/StreamDebugLogger.js';
 import { McpRegistry } from '../mcp/McpRegistry.js';
 import { buildSystemPrompt, createPlanModeReminder } from '../prompts/index.js';
 import {
+  type ChatResponse,
   createChatServiceAsync,
   type IChatService,
   type Message
@@ -47,6 +48,7 @@ import { ExecutionEngine } from './ExecutionEngine.js';
 import { StreamResponseHandler } from './StreamResponseHandler.js';
 import { subagentRegistry } from './subagents/SubagentRegistry.js';
 import type {
+  AgentEvent,
   AgentOptions,
   AgentResponse,
   AgentTask,
@@ -385,6 +387,102 @@ IMPORTANT: Execute according to the approved plan above. Follow the steps exactl
     return response.content;
   }
 
+  public streamChat(
+    message: UserMessageContent,
+    context?: ChatContext,
+    options?: LoopOptions
+  ): AsyncGenerator<AgentEvent, LoopResult> {
+    if (!this.isInitialized) {
+      throw new Error('Agent未初始化');
+    }
+
+    const run = async () => {
+      const enhancedMessage = this.attachmentHandler
+        ? await this.attachmentHandler.processAtMentionsForContent(message)
+        : message;
+
+      if (!context) {
+        throw new Error('Context is required for streaming');
+      }
+
+      const loopOptions: LoopOptions = {
+        signal: context.signal,
+        ...options,
+      };
+
+      if (context.permissionMode === 'plan') {
+        const planStream = this.runPlanLoopStream(enhancedMessage, context, loopOptions);
+        let planResult: LoopResult | undefined;
+        
+        const events: AgentEvent[] = [];
+        while (true) {
+          const { value, done } = await planStream.next();
+          if (done) {
+            planResult = value;
+            break;
+          }
+          events.push(value);
+        }
+
+        if (planResult?.metadata?.targetMode) {
+          const targetMode = planResult.metadata.targetMode as PermissionMode;
+          const planContent = planResult.metadata.planContent as string | undefined;
+
+          const newContext: ChatContext = {
+            ...context,
+            permissionMode: targetMode,
+          };
+
+          let messageWithPlan: UserMessageContent = enhancedMessage;
+          if (planContent) {
+            const planSuffix = `
+
+<approved-plan>
+${planContent}
+</approved-plan>
+
+IMPORTANT: Execute according to the approved plan above. Follow the steps exactly as specified.`;
+
+            if (typeof enhancedMessage === 'string') {
+              messageWithPlan = enhancedMessage + planSuffix;
+            } else {
+              messageWithPlan = [...enhancedMessage, { type: 'text', text: planSuffix }];
+            }
+          }
+
+          return {
+            events,
+            continuation: this.runLoopStream(messageWithPlan, newContext, loopOptions),
+          };
+        }
+
+        return { events, result: planResult };
+      }
+
+      return { continuation: this.runLoopStream(enhancedMessage, context, loopOptions) };
+    };
+
+    const generator = run();
+
+    const wrapper = async function* (): AsyncGenerator<AgentEvent, LoopResult> {
+      const outcome = await generator;
+      
+      if ('events' in outcome && outcome.events) {
+        for (const event of outcome.events) {
+          yield event;
+        }
+      }
+
+      if ('continuation' in outcome && outcome.continuation) {
+        return yield* outcome.continuation;
+      }
+
+      return outcome.result!;
+    };
+
+    return wrapper();
+  }
+
   /**
    * 运行 Plan 模式循环 - 专门处理 Plan 模式的逻辑
    * Plan 模式特点：只读调研、系统化研究方法论、最终输出实现计划
@@ -439,6 +537,49 @@ IMPORTANT: Execute according to the approved plan above. Follow the steps exactl
     return this.executeLoop(messageWithReminder, context, options, systemPrompt);
   }
 
+  private async *runPlanLoopStream(
+    message: UserMessageContent,
+    context: ChatContext,
+    options?: LoopOptions
+  ): AsyncGenerator<AgentEvent, LoopResult> {
+    const { prompt: systemPrompt } = await buildSystemPrompt({
+      projectPath: process.cwd(),
+      mode: PermissionMode.PLAN,
+      includeEnvironment: true,
+      language: this.config.language,
+    });
+
+    let messageWithReminder: UserMessageContent;
+    if (typeof message === 'string') {
+      messageWithReminder = createPlanModeReminder(message);
+    } else {
+      const textParts = message.filter((p) => p.type === 'text');
+      if (textParts.length > 0) {
+        const firstTextPart = textParts[0] as { type: 'text'; text: string };
+        messageWithReminder = message.map((p) =>
+          p === firstTextPart
+            ? {
+                type: 'text' as const,
+                text: createPlanModeReminder(firstTextPart.text),
+              }
+            : p
+        );
+      } else {
+        messageWithReminder = [
+          { type: 'text', text: createPlanModeReminder('') },
+          ...message,
+        ];
+      }
+    }
+
+    return yield* this.executeLoopStream(
+      messageWithReminder,
+      context,
+      options,
+      systemPrompt
+    );
+  }
+
   /**
    * 普通模式入口 - 准备普通模式配置后调用通用循环
    * 无状态设计：systemPrompt 从 context 传入，或按需动态构建
@@ -462,6 +603,21 @@ IMPORTANT: Execute according to the approved plan above. Follow the steps exactl
     return this.executeLoop(message, context, options, systemPrompt);
   }
 
+  private async *runLoopStream(
+    message: UserMessageContent,
+    context: ChatContext,
+    options?: LoopOptions
+  ): AsyncGenerator<AgentEvent, LoopResult> {
+    const basePrompt =
+      context.systemPrompt ?? (await this.buildSystemPromptOnDemand());
+    const envContext = getEnvironmentContext();
+    const systemPrompt = basePrompt
+      ? `${envContext}\n\n---\n\n${basePrompt}`
+      : envContext;
+
+    return yield* this.executeLoopStream(message, context, options, systemPrompt);
+  }
+
   /**
    * 按需构建系统提示词（用于未传入 context.systemPrompt 的场景）
    */
@@ -480,21 +636,32 @@ IMPORTANT: Execute according to the approved plan above. Follow the steps exactl
     return result.prompt;
   }
 
-  /**
-   * 核心执行循环 - 所有模式共享的通用循环逻辑
-   * 持续执行 LLM → 工具 → 结果注入 直到任务完成或达到限制
-   *
-   * @param message - 用户消息（可能已被 Plan 模式注入 system-reminder）
-   * @param context - 聊天上下文（包含 permissionMode，用于决定工具暴露策略）
-   * @param options - 循环选项
-   * @param systemPrompt - 系统提示词（Plan 模式和普通模式使用不同的提示词）
-   */
   private async executeLoop(
     message: UserMessageContent,
     context: ChatContext,
     options?: LoopOptions,
     systemPrompt?: string
   ): Promise<LoopResult> {
+    const stream = this.executeLoopStream(message, context, options, systemPrompt);
+    let result: LoopResult | undefined;
+
+    while (true) {
+      const { value, done } = await stream.next();
+      if (done) {
+        result = value;
+        break;
+      }
+    }
+
+    return result!;
+  }
+
+  private async *executeLoopStream(
+    message: UserMessageContent,
+    context: ChatContext,
+    options?: LoopOptions,
+    systemPrompt?: string
+  ): AsyncGenerator<AgentEvent, LoopResult> {
     if (!this.isInitialized) {
       throw new Error('Agent未初始化');
     }
@@ -642,20 +809,24 @@ IMPORTANT: Execute according to the approved plan above. Follow the steps exactl
         }
 
         // === 2. 每轮循环前检查并压缩上下文 ===
-        // 📊 记录压缩前的状态，用于判断是否需要重建 messages
         const preCompactLength = context.messages.length;
 
-        // 传递实际要发送给 LLM 的 messages 数组（包含 system prompt）
-        // checkAndCompactInLoop 返回是否发生了压缩
-        // 🆕 传入上一轮 LLM 返回的真实 prompt tokens（比估算更准确）
-        const didCompact = this.compactionHandler
-          ? await this.compactionHandler.checkAndCompactInLoop(
-              context,
-              turnsCount,
-              lastPromptTokens, // 首轮为 undefined，使用估算；后续轮次使用真实值
-              options?.onCompacting
-            )
-          : false;
+        let didCompact = false;
+        if (this.compactionHandler) {
+          const compactionStream = this.compactionHandler.checkAndCompactInLoop(
+            context,
+            turnsCount,
+            lastPromptTokens
+          );
+          while (true) {
+            const { value, done } = await compactionStream.next();
+            if (done) {
+              didCompact = value;
+              break;
+            }
+            yield value;
+          }
+        }
 
         // 🔧 关键修复：如果发生了压缩，必须重建 messages 数组
         // 即使长度相同但内容不同的压缩场景也能正确处理
@@ -702,8 +873,7 @@ IMPORTANT: Execute according to the approved plan above. Follow the steps exactl
           };
         }
 
-        // 触发轮次开始事件 (供 UI 显示进度)
-        options?.onTurnStart?.({ turn: turnsCount, maxTurns });
+        yield { type: 'turn_start', turn: turnsCount, maxTurns };
 
         // 🔍 调试：打印发送给 LLM 的消息
         logger.debug('\n========== 发送给 LLM ==========');
@@ -729,15 +899,31 @@ IMPORTANT: Execute according to the approved plan above. Follow the steps exactl
         logger.debug('可用工具数量:', tools.length);
         logger.debug('================================\n');
 
-        // 3. 调用 ChatService（流式或非流式）
-        // 默认启用流式，除非显式设置 stream: false
-        const isStreamEnabled = options?.stream !== false;
-        const turnResult = isStreamEnabled && this.streamHandler
-          ? await this.streamHandler.processStreamResponse(messages, tools, options)
-          : await this.chatService.chat(messages, tools, options?.signal);
+        // 3. 调用 ChatService（流式）
+        let turnResult: ChatResponse;
+        if (this.streamHandler) {
+          const stream = this.streamHandler.streamResponse(
+            messages,
+            tools,
+            options?.signal
+          );
+          while (true) {
+            const { value, done } = await stream.next();
+            if (done) {
+              turnResult = value;
+              break;
+            }
+            if (value.type === 'content_delta') {
+              yield { type: 'content_delta', delta: value.delta };
+            } else {
+              yield { type: 'thinking_delta', delta: value.delta };
+            }
+          }
+        } else {
+          turnResult = await this.chatService.chat(messages, tools, options?.signal);
+        }
 
         streamDebug('executeLoop', 'after processStreamResponse/chat', {
-          isStreamEnabled,
           turnResultContentLen: turnResult.content?.length ?? 0,
           turnResultToolCallsLen: turnResult.toolCalls?.length ?? 0,
           hasReasoningContent: !!turnResult.reasoningContent,
@@ -754,15 +940,15 @@ IMPORTANT: Execute according to the approved plan above. Follow the steps exactl
             `[Agent] LLM usage: prompt=${lastPromptTokens}, completion=${turnResult.usage.completionTokens}, total=${turnResult.usage.totalTokens}`
           );
 
-          // 通知 UI 更新 token 使用量
-          if (options?.onTokenUsage) {
-            options.onTokenUsage({
+          yield {
+            type: 'token_usage',
+            usage: {
               inputTokens: turnResult.usage.promptTokens ?? 0,
               outputTokens: turnResult.usage.completionTokens ?? 0,
               totalTokens,
               maxContextTokens: this.currentModelMaxContextTokens,
-            });
-          }
+            },
+          };
         }
 
         // 检查 abort 信号（LLM 调用后）
@@ -792,34 +978,12 @@ IMPORTANT: Execute according to the approved plan above. Follow the steps exactl
         // 流式模式下，增量已通过 onThinkingDelta 发送，这里发送完整内容用于兼容
         // 非流式模式下，这是唯一的通知途径
         // 注意：检查 abort 状态，避免取消后仍然触发回调
-        if (
-          turnResult.reasoningContent &&
-          options?.onThinking &&
-          !options.signal?.aborted
-        ) {
-          options.onThinking(turnResult.reasoningContent);
+        if (turnResult.reasoningContent && !options?.signal?.aborted) {
+          yield { type: 'thinking', content: turnResult.reasoningContent };
         }
 
-        // 🆕 如果 LLM 返回了 content，通知 UI
-        // 流式模式下：增量已通过 onContentDelta 发送，调用 onStreamEnd 标记结束
-        // 非流式模式下：调用 onContent 发送完整内容
-        // 注意：检查 abort 状态，避免取消后仍然触发回调
-        if (
-          turnResult.content &&
-          turnResult.content.trim() &&
-          !options?.signal?.aborted
-        ) {
-          if (isStreamEnabled) {
-            streamDebug('executeLoop', 'calling onStreamEnd (stream mode)', {
-              contentLen: turnResult.content.length,
-            });
-            options?.onStreamEnd?.();
-          } else if (options?.onContent) {
-            streamDebug('executeLoop', 'calling onContent (non-stream mode)', {
-              contentLen: turnResult.content.length,
-            });
-            options.onContent(turnResult.content);
-          }
+        if (turnResult.content && turnResult.content.trim() && !options?.signal?.aborted) {
+          yield { type: 'stream_end' };
         }
 
         // 4. 检查是否需要工具调用（任务完成条件）
@@ -995,19 +1159,16 @@ IMPORTANT: Execute according to the approved plan above. Follow the steps exactl
           (tc) => tc.type === 'function'
         );
 
-        // 触发所有工具开始回调（并行执行前）
-        if (options?.onToolStart && !options.signal?.aborted) {
-          for (const toolCall of functionCalls) {
-            const toolDef = this.executionPipeline
-              .getRegistry()
-              .get(toolCall.function.name);
-            const toolKind = toolDef?.kind as
-              | 'readonly'
-              | 'write'
-              | 'execute'
-              | undefined;
-            options.onToolStart(toolCall, toolKind);
-          }
+        for (const toolCall of functionCalls) {
+          const toolDef = this.executionPipeline
+            .getRegistry()
+            .get(toolCall.function.name);
+          const toolKind = toolDef?.kind as
+            | 'readonly'
+            | 'write'
+            | 'execute'
+            | undefined;
+          yield { type: 'tool_start', toolCall, toolKind };
         }
 
         // 定义单个工具执行的 Promise
@@ -1149,25 +1310,7 @@ IMPORTANT: Execute according to the approved plan above. Follow the steps exactl
             };
           }
 
-          // 调用 onToolResult 回调
-          if (options?.onToolResult && !options.signal?.aborted) {
-            logger.debug('[Agent] Calling onToolResult:', {
-              toolName: toolCall.function.name,
-              hasCallback: true,
-              resultSuccess: result.success,
-              resultKeys: Object.keys(result),
-              hasMetadata: !!result.metadata,
-              metadataKeys: result.metadata ? Object.keys(result.metadata) : [],
-              hasSummary: !!result.metadata?.summary,
-              summary: result.metadata?.summary,
-            });
-            try {
-              await options.onToolResult(toolCall, result);
-              logger.debug('[Agent] onToolResult callback completed successfully');
-            } catch (err) {
-              logger.error('[Agent] onToolResult callback error:', err);
-            }
-          }
+          yield { type: 'tool_result', toolCall, result };
 
           // === 保存工具结果到 JSONL (tool_result) ===
           try {
@@ -1228,7 +1371,7 @@ IMPORTANT: Execute according to the approved plan above. Follow the steps exactl
               ? content
               : ((content as Record<string, unknown>).todos as unknown[]) || [];
             const typedTodos = todos as TodoItem[];
-            options?.onTodoUpdate?.(typedTodos);
+            yield { type: 'todo_update', todos: typedTodos };
           }
 
           // 如果是 Skill 工具，设置执行上下文

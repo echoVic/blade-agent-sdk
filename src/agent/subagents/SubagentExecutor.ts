@@ -59,17 +59,6 @@ export class SubagentExecutor {
           permissionMode: context.permissionMode,
           systemPrompt,
           subagentInfo,
-        },
-        {
-          onToolStart: context.onToolStart,
-          onToolResult: context.onToolResult
-            ? async (toolCall, result) => {
-                context.onToolResult?.(toolCall, result);
-              }
-            : undefined,
-          onContentDelta: context.onContentDelta,
-          onThinkingDelta: context.onThinkingDelta,
-          onStreamEnd: context.onStreamEnd,
         }
       );
 

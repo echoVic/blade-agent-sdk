@@ -6,20 +6,21 @@ import type {
   Message,
   StreamToolCall,
 } from '../services/ChatServiceInterface.js';
-import type { LoopOptions } from './types.js';
 
 const logger = createLogger(LogCategory.AGENT);
 
 export class StreamResponseHandler {
   constructor(private getChatService: () => IChatService) {}
 
-  async processStreamResponse(
+  async *streamResponse(
     messages: Message[],
     tools: Array<{ name: string; description: string; parameters: unknown }>,
-    options?: LoopOptions
-  ): Promise<ChatResponse> {
+    signal?: AbortSignal
+  ): AsyncGenerator<
+    { type: 'content_delta'; delta: string } | { type: 'thinking_delta'; delta: string },
+    ChatResponse
+  > {
     const chatService = this.getChatService();
-    
     let fullContent = '';
     let fullReasoningContent = '';
     let streamUsage: ChatResponse['usage'];
@@ -29,32 +30,23 @@ export class StreamResponseHandler {
     >();
 
     try {
-      const stream = chatService.streamChat(messages, tools, options?.signal);
-
+      const stream = chatService.streamChat(messages, tools, signal);
       let chunkCount = 0;
+
       for await (const chunk of stream) {
         chunkCount++;
-        if (options?.signal?.aborted) {
+        if (signal?.aborted) {
           break;
         }
 
         if (chunk.content) {
-          const chunkLen = chunk.content.length;
           fullContent += chunk.content;
-          streamDebug('processStreamResponse', 'onContentDelta BEFORE', {
-            chunkLen,
-            accumulatedLen: fullContent.length,
-          });
-          options?.onContentDelta?.(chunk.content);
-          streamDebug('processStreamResponse', 'onContentDelta AFTER', {
-            chunkLen,
-            accumulatedLen: fullContent.length,
-          });
+          yield { type: 'content_delta', delta: chunk.content };
         }
 
         if (chunk.reasoningContent) {
           fullReasoningContent += chunk.reasoningContent;
-          options?.onThinkingDelta?.(chunk.reasoningContent);
+          yield { type: 'thinking_delta', delta: chunk.reasoningContent };
         }
 
         if (chunk.usage) {
@@ -78,20 +70,14 @@ export class StreamResponseHandler {
         }
       }
 
-      streamDebug('processStreamResponse', 'stream ended', {
-        fullContentLen: fullContent.length,
-        fullReasoningContentLen: fullReasoningContent.length,
-        toolCallAccumulatorSize: toolCallAccumulator.size,
-      });
-
       if (
         chunkCount === 0 &&
-        !options?.signal?.aborted &&
+        !signal?.aborted &&
         fullContent.length === 0 &&
         toolCallAccumulator.size === 0
       ) {
         logger.warn('[Agent] 流式响应返回0个chunk，回退到非流式模式');
-        return chatService.chat(messages, tools, options?.signal);
+        return chatService.chat(messages, tools, signal);
       }
 
       return {
@@ -103,7 +89,7 @@ export class StreamResponseHandler {
     } catch (error) {
       if (this.isStreamingNotSupportedError(error)) {
         logger.warn('[Agent] 流式请求失败，降级到非流式模式');
-        return chatService.chat(messages, tools, options?.signal);
+        return chatService.chat(messages, tools, signal);
       }
       throw error;
     }

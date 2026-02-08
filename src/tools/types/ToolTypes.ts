@@ -397,22 +397,44 @@ export interface ToolInvocation<TParams = unknown, TResult = ToolResult> {
 }
 
 /**
- * 工具描述格式
+ * 工具描述格式（结构化）
  */
 export interface ToolDescription {
-  /** 简短描述 (1行) */
   short: string;
-  /** 详细说明 (可选) */
   long?: string;
-  /** 使用说明列表 */
   usageNotes?: string[];
-  /** 使用示例 */
   examples?: Array<{
     description: string;
     params: Record<string, unknown>;
   }>;
-  /** 重要提示 */
   important?: string[];
+}
+
+/**
+ * 统一的工具定义接口
+ * 
+ * 支持两种使用方式：
+ * 1. 简单模式：直接传入 name, description, parameters, execute
+ * 2. 完整模式：使用 createTool + Zod Schema
+ */
+export interface ToolDefinition<TParams = Record<string, unknown>> {
+  name: string;
+  displayName?: string;
+  description: string | ToolDescription;
+  parameters: unknown;
+  kind?: ToolKind;
+  execute: (params: TParams, context: ToolExecutionContext) => Promise<ToolResult>;
+}
+
+/**
+ * 工具执行上下文（统一版本）
+ */
+export interface ToolExecutionContext {
+  sessionId?: string;
+  workspaceRoot?: string;
+  signal?: AbortSignal;
+  userId?: string;
+  permissionMode?: PermissionMode;
 }
 
 /**

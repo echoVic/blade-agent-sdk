@@ -30,15 +30,15 @@ export type {
     StreamOptions,
     SubagentInfo,
     ToolCallRecord,
-    ToolContext,
-    ToolDefinition
+    ToolDefinition,
+    ToolExecutionContext
 } from './session/index.js';
 export { discoverSkills, injectSkillsMetadata } from './skills/index.js';
 export * from './skills/types.js';
 export { SpecManager } from './spec/SpecManager.js';
 export * from './spec/types.js';
 export { getBuiltinTools } from './tools/builtin/index.js';
-export { createTool } from './tools/core/createTool.js';
+export { createTool, defineTool, toolFromDefinition } from './tools/core/createTool.js';
 export { ExecutionPipeline } from './tools/execution/ExecutionPipeline.js';
 export { ToolRegistry } from './tools/registry/ToolRegistry.js';
 export * from './tools/types/index.js';

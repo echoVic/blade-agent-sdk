@@ -6,18 +6,19 @@ import type { ChatContext } from './types.js';
 
 const logger = createLogger(LogCategory.AGENT);
 
+export type CompactionEvent = { type: 'compacting'; isCompacting: boolean };
+
 export class CompactionHandler {
   constructor(
     private getChatService: () => IChatService,
     private getContextManager: () => ContextManager | undefined
   ) {}
 
-  async checkAndCompactInLoop(
+  async *checkAndCompactInLoop(
     context: ChatContext,
     currentTurn: number,
-    actualPromptTokens?: number,
-    onCompacting?: (isCompacting: boolean) => void
-  ): Promise<boolean> {
+    actualPromptTokens?: number
+  ): AsyncGenerator<CompactionEvent, boolean> {
     if (actualPromptTokens === undefined) {
       logger.debug(`[Agent] [轮次 ${currentTurn}] 压缩检查: 跳过（无历史 usage 数据）`);
       return false;
@@ -51,7 +52,7 @@ export class CompactionHandler {
         : `[Agent] [轮次 ${currentTurn}] 触发循环内自动压缩`;
     logger.debug(compactLogPrefix);
 
-    onCompacting?.(true);
+    yield { type: 'compacting', isCompacting: true };
 
     try {
       const result = await CompactionService.compact(context.messages, {
@@ -97,11 +98,11 @@ export class CompactionHandler {
         logger.warn(`[Agent] [轮次 ${currentTurn}] 保存压缩数据失败:`, saveError);
       }
 
-      onCompacting?.(false);
+      yield { type: 'compacting', isCompacting: false };
 
       return true;
     } catch (error) {
-      onCompacting?.(false);
+      yield { type: 'compacting', isCompacting: false };
 
       logger.error(`[Agent] [轮次 ${currentTurn}] 压缩失败，继续执行`, error);
       return false;

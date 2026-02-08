@@ -1,7 +1,9 @@
 import type { Message } from '../services/ChatServiceInterface.js';
-import type { ToolResult } from '../tools/types/index.js';
+import type { ToolDefinition, ToolExecutionContext, ToolResult } from '../tools/types/index.js';
 import type { McpServerConfig, PermissionMode } from '../types/common.js';
 import type { CanUseTool } from '../types/permissions.js';
+
+export type { ToolDefinition, ToolExecutionContext, ToolResult };
 
 export type ProviderType =
   | 'openai-compatible'
@@ -126,18 +128,7 @@ export interface AgentDefinition {
   model?: string;
 }
 
-export interface ToolDefinition {
-  name: string;
-  description: string;
-  parameters: unknown;
-  execute: (input: unknown, context: ToolContext) => Promise<ToolResult>;
-}
 
-export interface ToolContext {
-  sessionId: string;
-  workspaceRoot: string;
-  signal?: AbortSignal;
-}
 
 export interface SessionOptions {
   provider: ProviderConfig;
