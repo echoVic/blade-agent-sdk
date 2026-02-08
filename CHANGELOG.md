@@ -2,6 +2,9 @@
 
 本文件记录 @blade-ai/agent-sdk 的所有重要变更。
 
+## [0.1.3] - 2026-02-08
+
+- 19c017b refactor(mcp): 重构MCP模块并移除废弃的Copilot和Antigravity服务
 ## [0.1.2] - 2026-02-08
 
 - 25eacfe refactor(agent): 重构事件处理机制，使用统一的事件流接口
