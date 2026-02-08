@@ -19,6 +19,7 @@ import {
   type ProviderType,
 } from '../types/common.js';
 import type {
+  ForkSessionOptions,
   ISession,
   McpServerStatus,
   McpToolInfo,
@@ -605,6 +606,46 @@ class Session implements ISession {
     }
     return getCheckpointService().getStatistics();
   }
+
+  async fork(options?: ForkSessionOptions): Promise<ISession> {
+    await this.ensureInitialized();
+
+    const messageId = options?.messageId;
+    let messagesToCopy = [...this._messages];
+
+    if (messageId) {
+      const messageIndex = this.findMessageIndexByUuid(messageId);
+      if (messageIndex === -1) {
+        throw new Error(`Message with ID "${messageId}" not found in session history`);
+      }
+      messagesToCopy = this._messages.slice(0, messageIndex + 1);
+    }
+
+    const forkedSession = new Session(this.options);
+    await forkedSession.initialize();
+
+    forkedSession._messages = messagesToCopy.map((msg) => ({ ...msg }));
+
+    if (options?.copyCheckpoints && this.options.enableFileCheckpointing) {
+      logger.debug(`[Session] Checkpoint copying is not yet implemented for forked sessions`);
+    }
+
+    logger.debug(
+      `[Session] Forked session ${this.sessionId} -> ${forkedSession.sessionId} with ${messagesToCopy.length} messages`
+    );
+
+    return forkedSession;
+  }
+
+  private findMessageIndexByUuid(messageId: string): number {
+    for (let i = 0; i < this._messages.length; i++) {
+      const msg = this._messages[i];
+      if ((msg as Message & { uuid?: string }).uuid === messageId) {
+        return i;
+      }
+    }
+    return this._messages.length > 0 ? this._messages.length - 1 : -1;
+  }
 }
 
 export async function createSession(options: SessionOptions): Promise<ISession> {
@@ -621,6 +662,29 @@ export async function resumeSession(options: ResumeOptions): Promise<ISession> {
   await session.loadHistory();
   logger.debug(`[Session] Resumed session: ${sessionId} with ${session.messages.length} messages`);
   return session;
+}
+
+export interface ForkOptions extends ResumeOptions {
+  messageId?: string;
+  copyCheckpoints?: boolean;
+}
+
+export async function forkSession(options: ForkOptions): Promise<ISession> {
+  const { sessionId, messageId, copyCheckpoints, ...sessionOptions } = options;
+
+  const sourceSession = new Session(sessionOptions, sessionId);
+  await sourceSession.initialize();
+  await sourceSession.loadHistory();
+
+  const forkedSession = await sourceSession.fork({ messageId, copyCheckpoints });
+
+  sourceSession.close();
+
+  logger.debug(
+    `[Session] Forked session ${sessionId} -> ${forkedSession.sessionId} with ${forkedSession.messages.length} messages`
+  );
+
+  return forkedSession;
 }
 
 export async function prompt(

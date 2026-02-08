@@ -57,9 +57,12 @@ export type {
 export { getSandboxExecutor, getSandboxService, SandboxExecutor, SandboxService } from './sandbox/index.js';
 export type { SandboxCapabilities, SandboxCheckResult, SandboxExecutionContext, SandboxExecutionOptions } from './sandbox/index.js';
 export * from './services/ChatServiceInterface.js';
-export { createSession, prompt, resumeSession } from './session/index.js';
+export { createSession, forkSession, prompt, resumeSession } from './session/index.js';
 export type {
     AgentDefinition,
+    ForkOptions,
+    ForkSessionOptions,
+    ForkSessionResult,
     HookCallback,
     HookInput,
     HookOutput,

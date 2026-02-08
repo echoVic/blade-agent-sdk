@@ -147,6 +147,18 @@ export interface McpToolInfo {
   serverName: string;
 }
 
+export interface ForkSessionOptions {
+  messageId?: string;
+  copyCheckpoints?: boolean;
+}
+
+export interface ForkSessionResult {
+  sessionId: string;
+  parentSessionId: string;
+  messageCount: number;
+  forkedAt?: string;
+}
+
 export interface ISession extends AsyncDisposable {
   readonly sessionId: string;
   readonly messages: Message[];
@@ -170,4 +182,6 @@ export interface ISession extends AsyncDisposable {
   mcpDisconnect(serverName: string): Promise<void>;
   mcpReconnect(serverName: string): Promise<void>;
   mcpListTools(): Promise<McpToolInfo[]>;
+
+  fork(options?: ForkSessionOptions): Promise<ISession>;
 }
