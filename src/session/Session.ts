@@ -4,6 +4,7 @@ import { nanoid } from 'nanoid';
 import type { ChatCompletionMessageToolCall } from 'openai/resources/chat';
 import { Agent } from '../agent/Agent.js';
 import type { ChatContext, LoopResult } from '../agent/types.js';
+import { getCheckpointService, type RewindResult } from '../checkpoint/index.js';
 import { CommandRegistry } from '../commands/CommandRegistry.js';
 import { createLogger, LogCategory } from '../logging/Logger.js';
 import { McpRegistry } from '../mcp/McpRegistry.js';
@@ -11,26 +12,26 @@ import { McpConnectionStatus } from '../mcp/types.js';
 import { getSandboxService } from '../sandbox/SandboxService.js';
 import type { Message } from '../services/ChatServiceInterface.js';
 import {
-    type BladeConfig,
-    type MessageRole,
-    type ModelConfig,
-    PermissionMode,
-    type ProviderType,
+  type BladeConfig,
+  type MessageRole,
+  type ModelConfig,
+  PermissionMode,
+  type ProviderType,
 } from '../types/common.js';
 import type {
-    ISession,
-    McpServerStatus,
-    McpToolInfo,
-    ModelInfo,
-    PromptResult,
-    ProviderConfig,
-    SendOptions,
-    SessionOptions,
-    SlashCommand,
-    StreamMessage,
-    StreamOptions,
-    TokenUsage,
-    ToolCallRecord
+  ISession,
+  McpServerStatus,
+  McpToolInfo,
+  ModelInfo,
+  PromptResult,
+  ProviderConfig,
+  SendOptions,
+  SessionOptions,
+  SlashCommand,
+  StreamMessage,
+  StreamOptions,
+  TokenUsage,
+  ToolCallRecord
 } from './types.js';
 
 const logger = createLogger(LogCategory.AGENT);
@@ -70,6 +71,10 @@ class Session implements ISession {
 
     if (this.options.sandbox) {
       getSandboxService().configure(this.options.sandbox);
+    }
+
+    if (this.options.enableFileCheckpointing) {
+      getCheckpointService().configure({ enabled: true });
     }
 
     this.agent = await Agent.create(config, {
@@ -578,6 +583,27 @@ class Session implements ISession {
     } catch {
       return str;
     }
+  }
+
+  async rewindFiles(userMessageUuid: string): Promise<RewindResult> {
+    if (!this.options.enableFileCheckpointing) {
+      return {
+        success: false,
+        restoredFiles: [],
+        deletedFiles: [],
+        errors: [{ filePath: '', error: 'File checkpointing is not enabled' }],
+      };
+    }
+
+    const checkpointService = getCheckpointService();
+    return checkpointService.rewindFiles(userMessageUuid);
+  }
+
+  getCheckpointStatistics(): { checkpointCount: number; trackedFileCount: number; pendingChangeCount: number } | null {
+    if (!this.options.enableFileCheckpointing) {
+      return null;
+    }
+    return getCheckpointService().getStatistics();
   }
 }
 

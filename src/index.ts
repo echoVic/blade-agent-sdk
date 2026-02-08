@@ -1,5 +1,14 @@
 export { Agent } from './agent/Agent.js';
 export * from './agent/types.js';
+export { CheckpointService, getCheckpointService } from './checkpoint/index.js';
+export type {
+    CheckpointConfig,
+    FileChange,
+    FileSnapshot,
+    MessageCheckpoint,
+    RewindError,
+    RewindResult
+} from './checkpoint/index.js';
 export { CommandExecutor, CommandLoader, CommandParser, CommandRegistry } from './commands/index.js';
 export * from './commands/types.js';
 export { CompactionService } from './context/CompactionService.js';
@@ -18,6 +27,33 @@ export type {
     McpToolCallResponse,
     McpToolDefinition
 } from './mcp/index.js';
+export {
+    clearAllPluginResources,
+    getMcpNamespacedName,
+    getNamespacedName,
+    getPluginInstaller,
+    getPluginRegistry,
+    integrateAllPlugins,
+    isValidPluginDir,
+    parsePluginManifest,
+    PluginInstaller,
+    PluginIntegrator,
+    PluginLoader,
+    PluginRegistry
+} from './plugins/index.js';
+export type {
+    LoadedPlugin,
+    ManifestSource,
+    PluginAgent,
+    PluginAuthor,
+    PluginCommand,
+    PluginDiscoveryError,
+    PluginDiscoveryResult,
+    PluginManifest,
+    PluginSkill,
+    PluginSource,
+    PluginStatus
+} from './plugins/index.js';
 export { getSandboxExecutor, getSandboxService, SandboxExecutor, SandboxService } from './sandbox/index.js';
 export type { SandboxCapabilities, SandboxCheckResult, SandboxExecutionContext, SandboxExecutionOptions } from './sandbox/index.js';
 export * from './services/ChatServiceInterface.js';

@@ -44,7 +44,7 @@ interface IntegrationResult {
  * Coordinates the integration of plugin resources into the various
  * Blade Code subsystems.
  */
-class PluginIntegrator {
+export class PluginIntegrator {
   private hookManager: HookManager;
   private mcpRegistry: McpRegistry;
 

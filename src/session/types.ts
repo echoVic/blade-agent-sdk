@@ -106,6 +106,8 @@ export interface SessionOptions {
   outputFormat?: OutputFormat;
 
   sandbox?: SandboxSettings;
+
+  enableFileCheckpointing?: boolean;
 }
 
 export interface SendOptions {
