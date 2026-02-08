@@ -18,6 +18,8 @@ export type {
     McpToolCallResponse,
     McpToolDefinition
 } from './mcp/index.js';
+export { getSandboxExecutor, getSandboxService, SandboxExecutor, SandboxService } from './sandbox/index.js';
+export type { SandboxCapabilities, SandboxCheckResult, SandboxExecutionContext, SandboxExecutionOptions } from './sandbox/index.js';
 export * from './services/ChatServiceInterface.js';
 export { createSession, prompt, resumeSession } from './session/index.js';
 export type {
@@ -47,6 +49,7 @@ export { SpecManager } from './spec/SpecManager.js';
 export * from './spec/types.js';
 export { getBuiltinTools } from './tools/builtin/index.js';
 export { listMcpResourcesTool, readMcpResourceTool } from './tools/builtin/mcp/index.js';
+export { notebookEditTool } from './tools/builtin/notebook/index.js';
 export { askUserQuestionTool } from './tools/builtin/system/askUserQuestion.js';
 export { createTool, defineTool, toolFromDefinition } from './tools/core/createTool.js';
 export { ExecutionPipeline } from './tools/execution/ExecutionPipeline.js';

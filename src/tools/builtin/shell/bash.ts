@@ -2,6 +2,7 @@ import { spawn } from 'child_process';
 import { randomUUID } from 'crypto';
 import { z } from 'zod';
 import { getTerminalService, isAcpMode } from '../../../acp/AcpServiceContext.js';
+import { getSandboxService } from '../../../sandbox/SandboxService.js';
 import { createTool } from '../../core/createTool.js';
 import type {
   BashBackgroundMetadata,
@@ -163,10 +164,43 @@ Before executing commands:
     const signal = context.signal ?? new AbortController().signal;
 
     try {
-      updateOutput?.(`Executing Bash command: ${command}`);
+      const sandboxService = getSandboxService();
+      const sandboxCheck = sandboxService.checkCommand({ command });
+
+      if (!sandboxCheck.allowed) {
+        if (sandboxCheck.requiresPermission) {
+          return {
+            success: false,
+            llmContent: `Command requires permission: ${sandboxCheck.reason}`,
+            displayContent: '⚠️ Command requires user permission',
+            error: {
+              type: ToolErrorType.PERMISSION_DENIED,
+              message: sandboxCheck.reason || 'Permission required',
+            },
+          };
+        }
+        return {
+          success: false,
+          llmContent: `Command blocked by sandbox: ${sandboxCheck.reason}`,
+          displayContent: '🔒 Command blocked by sandbox',
+          error: {
+            type: ToolErrorType.PERMISSION_DENIED,
+            message: sandboxCheck.reason || 'Blocked by sandbox',
+          },
+        };
+      }
+
+      const workDir = cwd || process.cwd();
+      const effectiveCommand = sandboxService.wrapCommandForSandbox(command, workDir);
+
+      if (sandboxService.isEnabled() && effectiveCommand !== command) {
+        updateOutput?.(`🔒 Executing in sandbox: ${command}`);
+      } else {
+        updateOutput?.(`Executing Bash command: ${command}`);
+      }
 
       if (run_in_background) {
-        return executeInBackground(command, cwd, env);
+        return executeInBackground(effectiveCommand, cwd, env);
       }
 
       // 检查是否在 ACP 模式下运行
@@ -174,9 +208,9 @@ Before executing commands:
       if (useAcp) {
         // ACP 模式：通过 IDE 终端执行命令
         updateOutput?.('通过 IDE 终端执行命令...');
-        return executeWithAcpTerminal(command, cwd, env, timeout, signal, updateOutput);
+        return executeWithAcpTerminal(effectiveCommand, cwd, env, timeout, signal, updateOutput);
       } else {
-        return executeWithTimeout(command, cwd, env, timeout, signal, updateOutput);
+        return executeWithTimeout(effectiveCommand, cwd, env, timeout, signal, updateOutput);
       }
     } catch (error: unknown) {
       const err = error as Error;

@@ -7,7 +7,7 @@ import type { ContentPart, Message } from '../services/ChatServiceInterface.js';
 import type { TodoItem } from '../tools/builtin/todo/types.js';
 import type { ConfirmationHandler } from '../tools/types/ExecutionTypes.js';
 import type { ToolResult } from '../tools/types/ToolTypes.js';
-import type { OutputFormat, PermissionMode, PermissionsConfig } from '../types/common.js';
+import type { OutputFormat, PermissionMode, PermissionsConfig, SandboxSettings } from '../types/common.js';
 import type { CanUseTool } from '../types/permissions.js';
 
 /**
@@ -69,6 +69,9 @@ export interface AgentOptions {
 
   // 结构化输出
   outputFormat?: OutputFormat; // JSON Schema 结构化输出格式
+
+  // 沙箱配置
+  sandbox?: SandboxSettings; // 命令执行沙箱设置
 }
 
 export interface AgentTask {

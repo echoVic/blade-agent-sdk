@@ -8,6 +8,7 @@ import { CommandRegistry } from '../commands/CommandRegistry.js';
 import { createLogger, LogCategory } from '../logging/Logger.js';
 import { McpRegistry } from '../mcp/McpRegistry.js';
 import { McpConnectionStatus } from '../mcp/types.js';
+import { getSandboxService } from '../sandbox/SandboxService.js';
 import type { Message } from '../services/ChatServiceInterface.js';
 import {
     type BladeConfig,
@@ -67,12 +68,17 @@ class Session implements ISession {
 
     const config = this.buildBladeConfig();
 
+    if (this.options.sandbox) {
+      getSandboxService().configure(this.options.sandbox);
+    }
+
     this.agent = await Agent.create(config, {
       permissionMode: this.permissionMode,
       systemPrompt: this.options.systemPrompt,
       maxTurns: this.maxTurns,
       canUseTool: this.options.canUseTool,
       outputFormat: this.options.outputFormat,
+      sandbox: this.options.sandbox,
     });
 
     this.initialized = true;
