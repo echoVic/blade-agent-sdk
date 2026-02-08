@@ -43,4 +43,12 @@ export { ExecutionPipeline } from './tools/execution/ExecutionPipeline.js';
 export { ToolRegistry } from './tools/registry/ToolRegistry.js';
 export * from './tools/types/index.js';
 export * from './types/common.js';
+export type {
+    CanUseTool,
+    CanUseToolOptions,
+    PermissionBehavior,
+    PermissionResult,
+    PermissionRuleValue,
+    PermissionUpdate
+} from './types/permissions.js';
 

@@ -1,6 +1,7 @@
 import { EventEmitter } from 'events';
 import type { PermissionsConfig } from '../../types/common.js';
 import { PermissionMode } from '../../types/common.js';
+import type { CanUseTool } from '../../types/permissions.js';
 
 type PermissionConfig = PermissionsConfig & { ask?: string[] };
 import { HookManager } from '../../hooks/HookManager.js';
@@ -50,7 +51,6 @@ export class ExecutionPipeline extends EventEmitter {
     };
     const permissionMode = config.permissionMode ?? PermissionMode.DEFAULT;
 
-    // 初始化7个执行阶段
     const permissionStage = new PermissionStage(
       permissionConfig,
       this.sessionApprovals,
@@ -58,16 +58,17 @@ export class ExecutionPipeline extends EventEmitter {
     );
 
     this.stages = [
-      new DiscoveryStage(this.registry), // 工具发现
-      permissionStage, // 权限检查（含 Zod 验证和默认值处理）
-      new HookStage(), // Hook 检查（PreToolUse hooks）
+      new DiscoveryStage(this.registry),
+      permissionStage,
+      new HookStage(),
       new ConfirmationStage(
         this.sessionApprovals,
-        permissionStage.getPermissionChecker()
-      ), // 用户确认
-      new ExecutionStage(), // 实际执行
-      new PostToolUseHookStage(), // PostToolUse hooks
-      new FormattingStage(), // 结果格式化
+        permissionStage.getPermissionChecker(),
+        config.canUseTool
+      ),
+      new ExecutionStage(),
+      new PostToolUseHookStage(),
+      new FormattingStage(),
     ];
   }
 
@@ -437,6 +438,7 @@ export interface ExecutionPipelineConfig {
   customStages?: PipelineStage[];
   permissionConfig?: PermissionConfig;
   permissionMode?: PermissionMode;
+  canUseTool?: CanUseTool;
 }
 
 /**

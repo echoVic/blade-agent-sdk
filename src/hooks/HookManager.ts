@@ -34,10 +34,14 @@ import {
   type SessionStartInput,
   type StopHookResult,
   type StopInput,
+  type SubagentStartHookResult,
+  type SubagentStartInput,
   type SubagentStopHookResult,
   type SubagentStopInput,
+  type TaskCompletedHookResult,
+  type TaskCompletedInput,
   type UserPromptSubmitHookResult,
-  type UserPromptSubmitInput,
+  type UserPromptSubmitInput
 } from './types/HookTypes.js';
 
 /**
@@ -384,6 +388,68 @@ export class HookManager {
   }
 
   /**
+   * 执行 SubagentStart Hooks
+   */
+  async executeSubagentStartHooks(
+    agentType: string,
+    context: {
+      projectDir: string;
+      sessionId: string;
+      permissionMode: PermissionMode;
+      taskDescription?: string;
+      parentAgentId?: string;
+      abortSignal?: AbortSignal;
+    }
+  ): Promise<SubagentStartHookResult> {
+    if (!this.isEnabled()) {
+      return { proceed: true };
+    }
+
+    const hookInput: SubagentStartInput = {
+      hook_event_name: HookEvent.SubagentStart,
+      hook_execution_id: nanoid(),
+      timestamp: new Date().toISOString(),
+      project_dir: context.projectDir,
+      session_id: context.sessionId,
+      permission_mode: context.permissionMode,
+      agent_type: agentType,
+      task_description: context.taskDescription,
+      parent_agent_id: context.parentAgentId,
+    };
+
+    const hooks = this.getMatchingHooks(HookEvent.SubagentStart, {
+      toolName: agentType,
+    });
+
+    if (hooks.length === 0) {
+      return { proceed: true };
+    }
+
+    const execContext: HookExecutionContext = {
+      projectDir: context.projectDir,
+      sessionId: context.sessionId,
+      permissionMode: context.permissionMode,
+      config: this.config,
+      abortSignal: context.abortSignal,
+    };
+
+    try {
+      const results = await this.executor.executeSubagentStartHooks(
+        hooks,
+        hookInput,
+        execContext
+      );
+      return results;
+    } catch (err) {
+      console.error('[HookManager] Error executing SubagentStart hooks:', err);
+      return {
+        proceed: true,
+        warning: `Hook execution failed: ${err instanceof Error ? err.message : String(err)}`,
+      };
+    }
+  }
+
+  /**
    * 执行 SubagentStop Hooks
    */
   async executeSubagentStopHooks(
@@ -451,6 +517,68 @@ export class HookManager {
   }
 
   /**
+   * 执行 TaskCompleted Hooks
+   */
+  async executeTaskCompletedHooks(
+    taskId: string,
+    context: {
+      projectDir: string;
+      sessionId: string;
+      permissionMode: PermissionMode;
+      taskDescription: string;
+      resultSummary?: string;
+      success: boolean;
+      abortSignal?: AbortSignal;
+    }
+  ): Promise<TaskCompletedHookResult> {
+    if (!this.isEnabled()) {
+      return { allowCompletion: true };
+    }
+
+    const hookInput: TaskCompletedInput = {
+      hook_event_name: HookEvent.TaskCompleted,
+      hook_execution_id: nanoid(),
+      timestamp: new Date().toISOString(),
+      project_dir: context.projectDir,
+      session_id: context.sessionId,
+      permission_mode: context.permissionMode,
+      task_id: taskId,
+      task_description: context.taskDescription,
+      result_summary: context.resultSummary,
+      success: context.success,
+    };
+
+    const hooks = this.getMatchingHooks(HookEvent.TaskCompleted, {});
+
+    if (hooks.length === 0) {
+      return { allowCompletion: true };
+    }
+
+    const execContext: HookExecutionContext = {
+      projectDir: context.projectDir,
+      sessionId: context.sessionId,
+      permissionMode: context.permissionMode,
+      config: this.config,
+      abortSignal: context.abortSignal,
+    };
+
+    try {
+      const results = await this.executor.executeTaskCompletedHooks(
+        hooks,
+        hookInput,
+        execContext
+      );
+      return results;
+    } catch (err) {
+      console.error('[HookManager] Error executing TaskCompleted hooks:', err);
+      return {
+        allowCompletion: true,
+        warning: `Hook execution failed: ${err instanceof Error ? err.message : String(err)}`,
+      };
+    }
+  }
+
+  /**
    * 执行 PermissionRequest Hooks
    */
   async executePermissionRequestHooks(
@@ -468,7 +596,6 @@ export class HookManager {
       return { decision: 'ask' };
     }
 
-    // 构建 Hook 输入
     const hookInput: PermissionRequestInput = {
       hook_event_name: HookEvent.PermissionRequest,
       hook_execution_id: nanoid(),
@@ -481,7 +608,6 @@ export class HookManager {
       permission_mode: context.permissionMode,
     };
 
-    // 获取匹配的 hooks
     const hooks = this.getMatchingHooks(HookEvent.PermissionRequest, {
       toolName,
       filePath: this.extractFilePath(toolInput),
@@ -492,7 +618,6 @@ export class HookManager {
       return { decision: 'ask' };
     }
 
-    // 构建执行上下文
     const execContext: HookExecutionContext = {
       projectDir: context.projectDir,
       sessionId: context.sessionId,

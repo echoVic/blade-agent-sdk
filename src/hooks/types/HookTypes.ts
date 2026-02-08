@@ -42,8 +42,14 @@ export enum HookEvent {
   /** Agent 停止响应时 (可阻止停止) */
   Stop = 'Stop',
 
+  /** 子 Agent (Task) 启动时 */
+  SubagentStart = 'SubagentStart',
+
   /** 子 Agent (Task) 停止响应时 */
   SubagentStop = 'SubagentStop',
+
+  /** 任务完成时 (可阻止完成) */
+  TaskCompleted = 'TaskCompleted',
 
   // ========== 其他 ==========
   /** 通知事件 */
@@ -224,6 +230,22 @@ export interface SessionEndInput extends HookInputBase {
 }
 
 /**
+ * SubagentStart 输入
+ */
+export interface SubagentStartInput extends HookInputBase {
+  hook_event_name: HookEvent.SubagentStart;
+
+  /** 子 Agent 类型 (如 Bash, Explore, Plan 或自定义 agent 名称) */
+  agent_type: string;
+
+  /** 任务描述 */
+  task_description?: string;
+
+  /** 父 Agent ID */
+  parent_agent_id?: string;
+}
+
+/**
  * SubagentStop 输入
  */
 export interface SubagentStopInput extends HookInputBase {
@@ -243,6 +265,25 @@ export interface SubagentStopInput extends HookInputBase {
 
   /** 错误信息 */
   error?: string;
+}
+
+/**
+ * TaskCompleted 输入
+ */
+export interface TaskCompletedInput extends HookInputBase {
+  hook_event_name: HookEvent.TaskCompleted;
+
+  /** 任务 ID */
+  task_id: string;
+
+  /** 任务描述 */
+  task_description: string;
+
+  /** 任务结果摘要 */
+  result_summary?: string;
+
+  /** 是否成功 */
+  success: boolean;
 }
 
 /**
@@ -296,7 +337,9 @@ export type HookInput =
   | SessionStartInput
   | SessionEndInput
   | StopInput
+  | SubagentStartInput
   | SubagentStopInput
+  | TaskCompletedInput
   | NotificationInput
   | CompactionInput;
 
@@ -370,6 +413,16 @@ interface StopOutput {
 }
 
 /**
+ * SubagentStart 特定输出
+ */
+interface SubagentStartOutput {
+  hookEventName?: 'SubagentStart';
+
+  /** 额外上下文注入给子 agent */
+  additionalContext?: string;
+}
+
+/**
  * SubagentStop 特定输出
  */
 interface SubagentStopOutput {
@@ -383,6 +436,19 @@ interface SubagentStopOutput {
 
   /** 额外上下文 */
   additionalContext?: string;
+}
+
+/**
+ * TaskCompleted 特定输出
+ */
+interface TaskCompletedOutput {
+  hookEventName?: 'TaskCompleted';
+
+  /** 阻止任务完成 */
+  blockCompletion?: boolean;
+
+  /** 阻止原因 (会反馈给 Claude) */
+  blockReason?: string;
 }
 
 /**
@@ -441,7 +507,9 @@ export type HookSpecificOutput =
   | PreToolUseOutput
   | PostToolUseOutput
   | StopOutput
+  | SubagentStartOutput
   | SubagentStopOutput
+  | TaskCompletedOutput
   | PermissionRequestOutput
   | UserPromptSubmitOutput
   | SessionStartOutput
@@ -587,8 +655,14 @@ export interface HookConfig {
   /** Stop Hooks */
   Stop?: HookMatcher[];
 
+  /** SubagentStart Hooks */
+  SubagentStart?: HookMatcher[];
+
   /** SubagentStop Hooks */
   SubagentStop?: HookMatcher[];
+
+  /** TaskCompleted Hooks */
+  TaskCompleted?: HookMatcher[];
 
   // ========== 其他 ==========
   /** Notification Hooks */
@@ -717,6 +791,20 @@ export interface StopHookResult {
 }
 
 /**
+ * SubagentStart Hook 执行结果
+ */
+export interface SubagentStartHookResult {
+  /** 是否继续启动 */
+  proceed: boolean;
+
+  /** 额外上下文注入给子 agent */
+  additionalContext?: string;
+
+  /** 警告信息 */
+  warning?: string;
+}
+
+/**
  * SubagentStop Hook 执行结果
  */
 export interface SubagentStopHookResult {
@@ -728,6 +816,20 @@ export interface SubagentStopHookResult {
 
   /** 额外上下文 */
   additionalContext?: string;
+
+  /** 警告信息 */
+  warning?: string;
+}
+
+/**
+ * TaskCompleted Hook 执行结果
+ */
+export interface TaskCompletedHookResult {
+  /** 是否允许完成 */
+  allowCompletion: boolean;
+
+  /** 阻止原因 (会反馈给 Claude) */
+  blockReason?: string;
 
   /** 警告信息 */
   warning?: string;

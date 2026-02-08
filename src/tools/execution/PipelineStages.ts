@@ -1,6 +1,11 @@
 import type { PermissionsConfig } from '../../types/common.js';
 import { PermissionMode } from '../../types/common.js';
-import { HookManager } from '../../hooks/HookManager.js';
+import type {
+  CanUseTool,
+  PermissionResult as CanUseToolResult,
+  PermissionUpdate,
+} from '../../types/permissions.js';
+import type { Tool, ToolInvocation } from '../types/ToolTypes.js';
 import { createLogger, LogCategory } from '../../logging/Logger.js';
 
 type PermissionConfig = PermissionsConfig & { ask?: string[] };
@@ -358,111 +363,143 @@ export class PermissionStage implements PipelineStage {
 
 /**
  * 用户确认阶段
- * 负责请求用户确认（如果需要）
+ * 使用 canUseTool 函数进行权限决策
  *
  * 确认触发条件:
  * - PermissionStage 标记 needsConfirmation = true (权限规则要求)
+ * - 或者提供了 canUseTool 函数
  */
 export class ConfirmationStage implements PipelineStage {
   readonly name = 'confirmation';
-  private permissionChecker: PermissionChecker;
 
   constructor(
     private readonly sessionApprovals: Set<string>,
-    permissionChecker: PermissionChecker
-  ) {
-    this.permissionChecker = permissionChecker;
-  }
+    private readonly permissionChecker: PermissionChecker,
+    private readonly canUseTool?: CanUseTool
+  ) {}
 
   async process(execution: ToolExecution): Promise<void> {
-    const {
-      tool,
-      invocation,
-      needsConfirmation,
-      confirmationReason,
-      permissionCheckResult,
-    } = execution._internal;
+    const { tool, invocation, needsConfirmation } = execution._internal;
 
     if (!tool || !invocation) {
       execution.abort('Pre-confirmation stage failed; cannot request user approval');
       return;
     }
 
-    // 如果权限系统不要求确认，直接通过
+    const affectedPaths = invocation.getAffectedPaths() || [];
+
+    if (this.canUseTool) {
+      const result = await this.canUseTool(tool.name, execution.params, {
+        signal: execution.context.signal || new AbortController().signal,
+        toolKind: tool.kind,
+        affectedPaths,
+      });
+
+      await this.handleCanUseToolResult(result, execution);
+      return;
+    }
+
     if (!needsConfirmation) {
       return;
     }
 
+    await this.handleLegacyConfirmation(execution, tool, invocation, affectedPaths);
+  }
+
+  private async handleCanUseToolResult(
+    result: CanUseToolResult,
+    execution: ToolExecution
+  ): Promise<void> {
+    const { tool, invocation } = execution._internal;
+
+    switch (result.behavior) {
+      case 'allow':
+        if (result.updatedInput) {
+          Object.assign(execution.params, result.updatedInput);
+          if (tool && invocation) {
+            execution._internal.invocation = tool.build(execution.params);
+          }
+        }
+        if (result.updatedPermissions) {
+          this.applyPermissionUpdates(result.updatedPermissions);
+        }
+        logger.debug(`canUseTool allowed: ${execution.toolName}`);
+        break;
+
+      case 'deny':
+        execution.abort(result.message, { shouldExitLoop: result.interrupt });
+        break;
+
+      case 'ask':
+        execution._internal.needsConfirmation = true;
+        if (tool && invocation) {
+          await this.handleLegacyConfirmation(
+            execution,
+            tool,
+            invocation,
+            invocation.getAffectedPaths() || []
+          );
+        }
+        break;
+    }
+  }
+
+  private applyPermissionUpdates(updates: PermissionUpdate[]): void {
+    for (const update of updates) {
+      switch (update.type) {
+        case 'addRules':
+          for (const rule of update.rules) {
+            const ruleStr = rule.ruleContent
+              ? `${rule.toolName}:${rule.ruleContent}`
+              : rule.toolName;
+            if (update.behavior === 'allow') {
+              this.sessionApprovals.add(ruleStr);
+            }
+            logger.debug(`Permission rule added: ${ruleStr} -> ${update.behavior}`);
+          }
+          break;
+
+        case 'removeRules':
+          for (const rule of update.rules) {
+            const ruleStr = rule.ruleContent
+              ? `${rule.toolName}:${rule.ruleContent}`
+              : rule.toolName;
+            this.sessionApprovals.delete(ruleStr);
+            logger.debug(`Permission rule removed: ${ruleStr}`);
+          }
+          break;
+      }
+    }
+  }
+
+  private async handleLegacyConfirmation(
+    execution: ToolExecution,
+    tool: Tool<unknown>,
+    invocation: ToolInvocation<unknown>,
+    affectedPaths: string[]
+  ): Promise<void> {
+    const { confirmationReason, permissionCheckResult } = execution._internal;
+
     try {
-      // 使用工具的 extractSignatureContent 生成具体的签名（如果有）
       const signature = tool.extractSignatureContent
         ? tool.extractSignatureContent(execution.params)
         : tool.name;
 
-      // ========== PermissionRequest Hook ==========
-      // 在显示用户确认之前，允许 hook 自动批准或拒绝
-      const hookManager = HookManager.getInstance();
-      if (hookManager.isEnabled()) {
-        const hookResult = await hookManager.executePermissionRequestHooks(
-          tool.name,
-          execution.context.sessionId || 'unknown',
-          execution.params,
-          {
-            projectDir: process.cwd(),
-            sessionId: execution.context.sessionId || 'unknown',
-            permissionMode: execution.context.permissionMode || PermissionMode.DEFAULT,
-          }
-        );
-
-        // 根据 hook 决策处理
-        switch (hookResult.decision) {
-          case 'approve':
-            // Hook 自动批准，跳过用户确认
-            logger.debug(`PermissionRequest hook 自动批准: ${tool.name}`);
-            return;
-
-          case 'deny':
-            // Hook 拒绝执行
-            execution.abort(
-              hookResult.reason || `PermissionRequest hook denied: ${tool.name}`,
-              { shouldExitLoop: true }
-            );
-            return;
-
-          case 'ask':
-          default:
-            // 继续显示用户确认
-            break;
-        }
-      }
-
-      // 从权限检查结果构建确认详情
       const confirmationDetails = {
         title: `权限确认: ${signature}`,
         message: confirmationReason || '此操作需要用户确认',
-        kind: tool.kind, // 工具类型，用于 ACP 权限模式判断
+        kind: tool.kind,
         details: this.generatePreviewForTool(tool.name, execution.params),
-        risks: this.extractRisksFromPermissionCheck(
-          tool,
-          execution.params,
-          permissionCheckResult
-        ),
-        affectedFiles: invocation.getAffectedPaths() || [],
+        risks: this.extractRisksFromPermissionCheck(tool, execution.params, permissionCheckResult),
+        affectedFiles: affectedPaths,
       };
 
       logger.warn(`工具 "${tool.name}" 需要用户确认: ${confirmationDetails.title}`);
-      logger.warn(`详情: ${confirmationDetails.message}`);
 
-      if (confirmationDetails.risks && confirmationDetails.risks.length > 0) {
-        logger.warn(`风险: ${confirmationDetails.risks.join(', ')}`);
-      }
-
-      // 如果提供了 confirmationHandler,使用它来请求用户确认
       const confirmationHandler = execution.context.confirmationHandler;
       if (confirmationHandler) {
         logger.info(`[ConfirmationStage] Requesting confirmation for ${tool.name}`);
-        const response =
-          await confirmationHandler.requestConfirmation(confirmationDetails);
+        const response = await confirmationHandler.requestConfirmation(confirmationDetails);
         logger.info(`[ConfirmationStage] Confirmation response: approved=${response.approved}`);
 
         if (!response.approved) {
@@ -472,54 +509,19 @@ export class ConfirmationStage implements PipelineStage {
           );
           return;
         }
-        logger.info(`[ConfirmationStage] User approved, continuing to execution stage`);
 
         const scope = response.scope || 'once';
         if (scope === 'session' && execution._internal.permissionSignature) {
-          const signature = execution._internal.permissionSignature;
-          this.sessionApprovals.add(signature);
-
-          // 构造 descriptor 用于模式抽象
-          const descriptor: ToolInvocationDescriptor = {
-            toolName: tool.name,
-            params: execution.params,
-            affectedPaths: invocation.getAffectedPaths() || [],
-            tool, // 传递工具实例，用于 abstractPermissionRule
-          };
-
-          await this.persistSessionApproval(signature, descriptor);
+          this.sessionApprovals.add(execution._internal.permissionSignature);
         }
       } else {
-        // 如果没有提供 confirmationHandler,则自动通过确认（用于非交互式环境）
-        logger.warn(
-          '⚠️ No ConfirmationHandler; auto-approving tool execution (non-interactive environment only)'
-        );
+        logger.warn('⚠️ No ConfirmationHandler; auto-approving tool execution');
       }
     } catch (error) {
       execution.abort(`User confirmation failed: ${(error as Error).message}`);
     }
   }
 
-  private async persistSessionApproval(
-    _signature: string,
-    descriptor: ToolInvocationDescriptor
-  ): Promise<void> {
-    try {
-      const pattern = PermissionChecker.abstractPattern(descriptor);
-      logger.debug(`保存权限规则到会话: "${pattern}"`);
-    } catch (error) {
-      logger.warn(
-        `Failed to persist permission rule: ${
-          error instanceof Error ? error.message : 'Unknown error'
-        }`
-      );
-    }
-  }
-
-  /**
-   * 为工具生成预览内容
-   * 用于在确认提示中显示操作详情
-   */
   private generatePreviewForTool(
     toolName: string,
     params: Record<string, unknown>
@@ -528,18 +530,12 @@ export class ConfirmationStage implements PipelineStage {
       case 'Edit': {
         const oldString = params.old_string as string;
         const newString = params.new_string as string;
+        if (!oldString && !newString) return undefined;
 
-        if (!oldString && !newString) {
-          return undefined;
-        }
-
-        // 限制预览长度
         const maxLines = 20;
         const truncate = (text: string): string => {
           const lines = text.split('\n');
-          if (lines.length <= maxLines) {
-            return text;
-          }
+          if (lines.length <= maxLines) return text;
           return `${lines.slice(0, maxLines).join('\n')}\n... (还有 ${lines.length - maxLines} 行)`;
         };
 
@@ -549,15 +545,12 @@ export class ConfirmationStage implements PipelineStage {
       case 'Write': {
         const content = params.content as string;
         const encoding = (params.encoding as string) || 'utf8';
-
         if (encoding !== 'utf8' || !content) {
           return `将写入 ${encoding === 'base64' ? 'Base64 编码' : encoding === 'binary' ? '二进制' : ''} 内容`;
         }
 
-        // 限制预览长度
         const maxLines = 30;
         const lines = content.split('\n');
-
         if (lines.length <= maxLines) {
           return `**文件内容预览:**\n\`\`\`\n${content}\n\`\`\``;
         }
@@ -566,20 +559,11 @@ export class ConfirmationStage implements PipelineStage {
         return `**文件内容预览 (前 ${maxLines} 行):**\n\`\`\`\n${preview}\n\`\`\`\n\n... (还有 ${lines.length - maxLines} 行)`;
       }
 
-      case 'Bash':
-      case 'Shell':
-        // Bash 命令已在标题中显示（通过 extractSignatureContent）
-        // 不需要在"操作详情"中重复显示
-        return undefined;
-
       default:
         return undefined;
     }
   }
 
-  /**
-   * 从权限检查结果提取风险信息和改进建议
-   */
   private extractRisksFromPermissionCheck(
     tool: { name: string },
     params: Record<string, unknown>,
@@ -587,44 +571,28 @@ export class ConfirmationStage implements PipelineStage {
   ): string[] {
     const risks: string[] = [];
 
-    // 添加权限检查的原因作为风险
     if (permissionCheckResult?.reason) {
       risks.push(permissionCheckResult.reason);
     }
 
-    // 根据工具类型添加特定风险和改进建议
     if (tool.name === 'Bash') {
       const command = (params.command as string) || '';
       const mainCommand = command.trim().split(/\s+/)[0];
 
-      // ⚠️ 检测使用了专用工具应该替代的命令
-      if (mainCommand === 'cat' || mainCommand === 'head' || mainCommand === 'tail') {
-        risks.push(
-          `💡 建议使用 Read 工具代替 ${mainCommand} 命令（性能更好，支持大文件分页）`
-        );
-      } else if (mainCommand === 'grep' || mainCommand === 'rg') {
-        risks.push(
-          '💡 建议使用 Grep 工具代替 grep/rg 命令（支持更强大的过滤和上下文）'
-        );
+      if (['cat', 'head', 'tail'].includes(mainCommand)) {
+        risks.push(`💡 建议使用 Read 工具代替 ${mainCommand} 命令`);
+      } else if (['grep', 'rg'].includes(mainCommand)) {
+        risks.push('💡 建议使用 Grep 工具代替 grep/rg 命令');
       } else if (mainCommand === 'find') {
-        risks.push('💡 建议使用 Glob 工具代替 find 命令（更快，支持 glob 模式）');
-      } else if (mainCommand === 'sed' || mainCommand === 'awk') {
-        risks.push(
-          `💡 建议使用 Edit 工具代替 ${mainCommand} 命令（更安全，支持预览和回滚）`
-        );
+        risks.push('💡 建议使用 Glob 工具代替 find 命令');
+      } else if (['sed', 'awk'].includes(mainCommand)) {
+        risks.push(`💡 建议使用 Edit 工具代替 ${mainCommand} 命令`);
       }
 
-      // ⚠️ 危险命令警告
-      if (command.includes('rm')) {
-        risks.push('⚠️ 此命令可能删除文件');
-      }
-      if (command.includes('sudo')) {
-        risks.push('⚠️ 此命令需要管理员权限');
-      }
-      if (command.includes('git push')) {
-        risks.push('⚠️ 此命令将推送代码到远程仓库');
-      }
-    } else if (tool.name === 'Write' || tool.name === 'Edit') {
+      if (command.includes('rm')) risks.push('⚠️ 此命令可能删除文件');
+      if (command.includes('sudo')) risks.push('⚠️ 此命令需要管理员权限');
+      if (command.includes('git push')) risks.push('⚠️ 此命令将推送代码到远程仓库');
+    } else if (['Write', 'Edit'].includes(tool.name)) {
       risks.push('此操作将修改文件内容');
     } else if (tool.name === 'Delete') {
       risks.push('此操作将永久删除文件');

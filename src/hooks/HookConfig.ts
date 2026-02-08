@@ -27,7 +27,9 @@ export const DEFAULT_HOOK_CONFIG: Required<HookConfig> = {
   SessionEnd: [],
   // 控制流类
   Stop: [],
+  SubagentStart: [],
   SubagentStop: [],
+  TaskCompleted: [],
   // 其他
   Notification: [],
   Compaction: [],
@@ -54,7 +56,9 @@ export function mergeHookConfig(
     SessionEnd: override.SessionEnd ?? base.SessionEnd,
     // 控制流类
     Stop: override.Stop ?? base.Stop,
+    SubagentStart: override.SubagentStart ?? base.SubagentStart,
     SubagentStop: override.SubagentStop ?? base.SubagentStop,
+    TaskCompleted: override.TaskCompleted ?? base.TaskCompleted,
     // 其他
     Notification: override.Notification ?? base.Notification,
     Compaction: override.Compaction ?? base.Compaction,

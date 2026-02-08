@@ -1,6 +1,7 @@
 import type { Message } from '../services/ChatServiceInterface.js';
 import type { ToolResult } from '../tools/types/index.js';
 import type { McpServerConfig, PermissionMode } from '../types/common.js';
+import type { CanUseTool } from '../types/permissions.js';
 
 export type ProviderType =
   | 'openai-compatible'
@@ -63,7 +64,9 @@ export type HookEvent =
   | 'SessionStart'
   | 'SessionEnd'
   | 'Stop'
+  | 'SubagentStart'
   | 'SubagentStop'
+  | 'TaskCompleted'
   | 'Notification'
   | 'Compaction';
 
@@ -146,6 +149,7 @@ export interface SessionOptions {
   tools?: ToolDefinition[];
 
   permissionMode?: PermissionMode;
+  canUseTool?: CanUseTool;
 
   systemPrompt?: string;
   maxTurns?: number;
@@ -154,6 +158,7 @@ export interface SessionOptions {
 
   hooks?: Partial<Record<HookEvent, HookCallback[]>>;
 
+  /** @deprecated Use canUseTool instead */
   handlers?: InteractionHandlers;
 
   cwd?: string;

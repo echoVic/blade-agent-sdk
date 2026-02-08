@@ -96,6 +96,13 @@ const SessionEndInputSchema = HookInputBaseSchema.extend({
   ]),
 });
 
+const SubagentStartInputSchema = HookInputBaseSchema.extend({
+  hook_event_name: z.literal(HookEvent.SubagentStart),
+  agent_type: z.string(),
+  task_description: z.string().optional(),
+  parent_agent_id: z.string().optional(),
+});
+
 const SubagentStopInputSchema = HookInputBaseSchema.extend({
   hook_event_name: z.literal(HookEvent.SubagentStop),
   agent_type: z.string(),
@@ -103,6 +110,14 @@ const SubagentStopInputSchema = HookInputBaseSchema.extend({
   success: z.boolean(),
   result_summary: z.string().optional(),
   error: z.string().optional(),
+});
+
+const TaskCompletedInputSchema = HookInputBaseSchema.extend({
+  hook_event_name: z.literal(HookEvent.TaskCompleted),
+  task_id: z.string(),
+  task_description: z.string(),
+  result_summary: z.string().optional(),
+  success: z.boolean(),
 });
 
 const NotificationInputSchema = HookInputBaseSchema.extend({
@@ -136,7 +151,9 @@ const _HookInputSchema = z.discriminatedUnion('hook_event_name', [
   UserPromptSubmitInputSchema,
   SessionStartInputSchema,
   SessionEndInputSchema,
+  SubagentStartInputSchema,
   SubagentStopInputSchema,
+  TaskCompletedInputSchema,
   NotificationInputSchema,
   CompactionInputSchema,
 ]);
@@ -164,11 +181,22 @@ const StopOutputSchema = z.object({
   continueReason: z.string().optional(),
 });
 
+const SubagentStartOutputSchema = z.object({
+  hookEventName: z.literal('SubagentStart'),
+  additionalContext: z.string().optional(),
+});
+
 const SubagentStopOutputSchema = z.object({
   hookEventName: z.literal('SubagentStop'),
   continue: z.boolean().optional(),
   continueReason: z.string().optional(),
   additionalContext: z.string().optional(),
+});
+
+const TaskCompletedOutputSchema = z.object({
+  hookEventName: z.literal('TaskCompleted'),
+  blockCompletion: z.boolean().optional(),
+  blockReason: z.string().optional(),
 });
 
 const PermissionRequestOutputSchema = z.object({
@@ -206,7 +234,9 @@ const HookOutputSchema = z.object({
       PreToolUseOutputSchema,
       PostToolUseOutputSchema,
       StopOutputSchema,
+      SubagentStartOutputSchema,
       SubagentStopOutputSchema,
+      TaskCompletedOutputSchema,
       PermissionRequestOutputSchema,
       UserPromptSubmitOutputSchema,
       SessionStartOutputSchema,
@@ -267,7 +297,9 @@ const _HookConfigSchema = z.object({
   SessionEnd: z.array(HookMatcherSchema).optional(),
   // 控制流类
   Stop: z.array(HookMatcherSchema).optional(),
+  SubagentStart: z.array(HookMatcherSchema).optional(),
   SubagentStop: z.array(HookMatcherSchema).optional(),
+  TaskCompleted: z.array(HookMatcherSchema).optional(),
   // 其他
   Notification: z.array(HookMatcherSchema).optional(),
   Compaction: z.array(HookMatcherSchema).optional(),

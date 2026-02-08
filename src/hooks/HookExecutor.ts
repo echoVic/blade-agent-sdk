@@ -22,8 +22,10 @@ import {
   type SessionEndHookResult,
   type SessionStartHookResult,
   type StopHookResult,
+  type SubagentStartHookResult,
   type SubagentStopHookResult,
-  type UserPromptSubmitHookResult,
+  type TaskCompletedHookResult,
+  type UserPromptSubmitHookResult
 } from './types/HookTypes.js';
 
 /**
@@ -253,6 +255,56 @@ export class HookExecutor {
   }
 
   /**
+   * 执行 SubagentStart Hooks (串行)
+   */
+  async executeSubagentStartHooks(
+    hooks: Hook[],
+    input: HookInput,
+    context: HookExecutionContext
+  ): Promise<SubagentStartHookResult> {
+    if (hooks.length === 0) {
+      return { proceed: true };
+    }
+
+    const warnings: string[] = [];
+    const additionalContexts: string[] = [];
+
+    for (const hook of hooks) {
+      try {
+        const result = await this.executeHook(hook, input, context);
+
+        if (!result.success) {
+          if (result.blocking) {
+            return {
+              proceed: false,
+              warning: result.error,
+            };
+          }
+          if (result.warning) {
+            warnings.push(result.warning);
+          }
+          continue;
+        }
+
+        const specific = result.output?.hookSpecificOutput;
+        if (specific && 'additionalContext' in specific && specific.additionalContext) {
+          additionalContexts.push(specific.additionalContext);
+        }
+      } catch (err) {
+        const errorMsg = err instanceof Error ? err.message : String(err);
+        warnings.push(`Hook failed: ${errorMsg}`);
+      }
+    }
+
+    return {
+      proceed: true,
+      additionalContext:
+        additionalContexts.length > 0 ? additionalContexts.join('\n\n') : undefined,
+      warning: warnings.length > 0 ? warnings.join('\n') : undefined,
+    };
+  }
+
+  /**
    * 执行 SubagentStop Hooks (串行)
    */
   async executeSubagentStopHooks(
@@ -301,6 +353,60 @@ export class HookExecutor {
       shouldStop: true,
       additionalContext:
         additionalContexts.length > 0 ? additionalContexts.join('\n\n') : undefined,
+      warning: warnings.length > 0 ? warnings.join('\n') : undefined,
+    };
+  }
+
+  /**
+   * 执行 TaskCompleted Hooks (串行)
+   *
+   * Exit code 2 阻止任务完成
+   */
+  async executeTaskCompletedHooks(
+    hooks: Hook[],
+    input: HookInput,
+    context: HookExecutionContext
+  ): Promise<TaskCompletedHookResult> {
+    if (hooks.length === 0) {
+      return { allowCompletion: true };
+    }
+
+    const warnings: string[] = [];
+
+    for (const hook of hooks) {
+      try {
+        const result = await this.executeHook(hook, input, context);
+
+        if (!result.success) {
+          if (result.blocking) {
+            return {
+              allowCompletion: false,
+              blockReason: result.error,
+              warning: warnings.length > 0 ? warnings.join('\n') : undefined,
+            };
+          }
+          if (result.warning) {
+            warnings.push(result.warning);
+          }
+          continue;
+        }
+
+        const specific = result.output?.hookSpecificOutput;
+        if (specific && 'blockCompletion' in specific && specific.blockCompletion) {
+          return {
+            allowCompletion: false,
+            blockReason: specific.blockReason,
+            warning: warnings.length > 0 ? warnings.join('\n') : undefined,
+          };
+        }
+      } catch (err) {
+        const errorMsg = err instanceof Error ? err.message : String(err);
+        warnings.push(`Hook failed: ${errorMsg}`);
+      }
+    }
+
+    return {
+      allowCompletion: true,
       warning: warnings.length > 0 ? warnings.join('\n') : undefined,
     };
   }
