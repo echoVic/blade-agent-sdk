@@ -2,6 +2,14 @@
 
 本文件记录 @blade-ai/agent-sdk 的所有重要变更。
 
+## [0.1.4] - 2026-02-08
+
+- e65fad4 feat(session): 添加会话分叉功能
+- 8e55094 feat(文件检查点): 实现文件变更追踪和回滚功能
+- 81d5cd1 feat(沙箱): 添加沙箱执行功能和安全检查
+- 922d33c feat(mcp): 添加 MCP 资源管理工具
+- 7102e51 feat(agent): 添加结构化输出格式支持
+- fbf2437 feat(发布脚本): 为发布流程添加详细的步骤日志输出
 ## [0.1.3] - 2026-02-08
 
 - 19c017b refactor(mcp): 重构MCP模块并移除废弃的Copilot和Antigravity服务
