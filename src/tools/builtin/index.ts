@@ -22,6 +22,8 @@ import { specTools } from './spec/index.js';
 import { askUserQuestionTool, skillTool } from './system/index.js';
 // 任务管理工具
 import { taskOutputTool, taskTool } from './task/index.js';
+// MCP 资源工具
+import { listMcpResourcesTool, readMcpResourceTool } from './mcp/index.js';
 // Todo 工具
 import { createTodoWriteTool } from './todo/index.js';
 // 网络工具
@@ -83,6 +85,10 @@ export async function getBuiltinTools(opts?: {
     // System: AskUserQuestion, Skill
     askUserQuestionTool,
     skillTool,
+
+    // MCP 资源: ListMcpResources, ReadMcpResource
+    listMcpResourcesTool,
+    readMcpResourceTool,
   ] as Tool[];
 
   // 添加 MCP 协议工具
