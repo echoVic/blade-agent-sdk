@@ -135,8 +135,8 @@ export class OutputTruncator {
   }
 
   static truncate(output: string, command: string): TruncationResult {
-    const { config, summaryTemplate } = this.getConfigForCommand(command);
-    return this.truncateWithConfig(output, config, summaryTemplate);
+    const { config, summaryTemplate } = OutputTruncator.getConfigForCommand(command);
+    return OutputTruncator.truncateWithConfig(output, config, summaryTemplate);
   }
 
   static truncateWithConfig(
@@ -194,8 +194,8 @@ export class OutputTruncator {
     stderr: string,
     command: string
   ): { stdout: string; stderr: string; truncationInfo?: string } {
-    const stdoutResult = this.truncate(stdout, command);
-    const stderrResult = this.truncate(stderr, command);
+    const stdoutResult = OutputTruncator.truncate(stdout, command);
+    const stderrResult = OutputTruncator.truncate(stderr, command);
 
     let truncationInfo: string | undefined;
 
@@ -222,7 +222,7 @@ export class OutputTruncator {
   }
 
   static shouldTruncate(output: string, command: string): boolean {
-    const { config } = this.getConfigForCommand(command);
+    const { config } = OutputTruncator.getConfigForCommand(command);
     const lines = output.split('\n').length;
     return lines > config.maxLines || output.length > config.maxChars;
   }

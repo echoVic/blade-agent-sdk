@@ -1,4 +1,4 @@
-import { CompressedContext, ContextData, ContextMessage, ToolCall } from '../types.js';
+import type { CompressedContext, ContextData, ContextMessage, ToolCall } from '../types.js';
 
 /**
  * 上下文压缩器 - 智能压缩上下文以节省 token 使用

@@ -1,4 +1,4 @@
-import { z } from 'zod';
+import type { z } from 'zod';
 import type { Tool, ToolConfig, ToolInvocation, ToolResult } from '../types/index.js';
 import { isReadOnlyKind } from '../types/ToolTypes.js';
 import { parseWithZod } from '../validation/errorFormatter.js';

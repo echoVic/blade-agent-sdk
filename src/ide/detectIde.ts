@@ -27,11 +27,11 @@ export class IdeDetector {
     const vscodeIpc = process.env.VSCODE_IPC_HOOK;
 
     if (termProgram === 'vscode' || vscodeTerminal || vscodeIpc) {
-      return await this.detectVsCode();
+      return await IdeDetector.detectVsCode();
     }
 
     // 尝试检测其他 IDE
-    const vsCode = await this.detectVsCode();
+    const vsCode = await IdeDetector.detectVsCode();
     if (vsCode) return vsCode;
 
     return null;

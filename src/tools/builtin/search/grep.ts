@@ -117,7 +117,6 @@ function getRipgrepPath(): string | null {
   // 注意：这里使用同步的 require 是安全的，因为它是可选依赖
   // 如果不存在，catch 块会捕获错误
   try {
-    // @ts-ignore - 可选依赖可能不存在
     const vsRipgrep = require('@vscode/ripgrep');
     if (vsRipgrep?.rgPath && existsSync(vsRipgrep.rgPath)) {
       return vsRipgrep.rgPath;
@@ -405,8 +404,6 @@ async function executeFallbackGrep(
 
       processedFiles++;
     } catch (_error) {
-      // 忽略无法读取的文件
-      continue;
     }
   }
 

@@ -235,12 +235,12 @@ export class SensitiveFileDetector {
    * 检查文件是否敏感
    */
   static check(filePath: string): SensitiveFileCheckResult {
-    const normalizedPath = this.normalizePath(filePath);
+    const normalizedPath = SensitiveFileDetector.normalizePath(filePath);
     const fileName = path.basename(normalizedPath);
 
     // 1. 检查文件名模式
-    for (const pattern of this.SENSITIVE_PATTERNS) {
-      if (this.matchPattern(fileName, pattern.pattern)) {
+    for (const pattern of SensitiveFileDetector.SENSITIVE_PATTERNS) {
+      if (SensitiveFileDetector.matchPattern(fileName, pattern.pattern)) {
         return {
           isSensitive: true,
           level: pattern.level,
@@ -254,8 +254,8 @@ export class SensitiveFileDetector {
     }
 
     // 2. 检查路径模式
-    for (const pathPattern of this.SENSITIVE_PATHS) {
-      if (this.matchPattern(normalizedPath, pathPattern.path)) {
+    for (const pathPattern of SensitiveFileDetector.SENSITIVE_PATHS) {
+      if (SensitiveFileDetector.matchPattern(normalizedPath, pathPattern.path)) {
         return {
           isSensitive: true,
           level: pathPattern.level,
@@ -281,7 +281,7 @@ export class SensitiveFileDetector {
     const results = new Map<string, SensitiveFileCheckResult>();
 
     for (const filePath of filePaths) {
-      results.set(filePath, this.check(filePath));
+      results.set(filePath, SensitiveFileDetector.check(filePath));
     }
 
     return results;
@@ -305,7 +305,7 @@ export class SensitiveFileDetector {
     return filePaths
       .map((filePath) => ({
         path: filePath,
-        result: this.check(filePath),
+        result: SensitiveFileDetector.check(filePath),
       }))
       .filter(
         ({ result }) =>
@@ -345,13 +345,13 @@ export class SensitiveFileDetector {
    * 获取所有敏感文件模式（用于文档/调试）
    */
   static getSensitivePatterns(): SensitivePattern[] {
-    return [...this.SENSITIVE_PATTERNS];
+    return [...SensitiveFileDetector.SENSITIVE_PATTERNS];
   }
 
   /**
    * 获取所有敏感路径模式（用于文档/调试）
    */
   static getSensitivePaths(): typeof SensitiveFileDetector.SENSITIVE_PATHS {
-    return [...this.SENSITIVE_PATHS];
+    return [...SensitiveFileDetector.SENSITIVE_PATHS];
   }
 }

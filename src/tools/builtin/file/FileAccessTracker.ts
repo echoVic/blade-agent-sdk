@@ -1,6 +1,6 @@
 import { promises as fs } from 'node:fs';
 import { createLogger, LogCategory } from '../../../logging/Logger.js';
-import { NodeError } from '../../types/index.js';
+import type { NodeError } from '../../types/index.js';
 
 // 创建 FileAccessTracker 专用 Logger
 const logger = createLogger(LogCategory.TOOL);

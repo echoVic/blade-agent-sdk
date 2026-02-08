@@ -145,11 +145,11 @@ export class CompactionService {
       console.log('[CompactionService] 成功读取文件:', fileContents.length);
 
       // 2. 生成总结
-      const summary = await this.generateSummary(messages, fileContents, options);
+      const summary = await CompactionService.generateSummary(messages, fileContents, options);
       console.log('[CompactionService] 生成总结，长度:', summary.length);
 
       // 3. 计算保留范围并过滤孤儿 tool 消息
-      const retainCount = Math.ceil(messages.length * this.RETAIN_PERCENT);
+      const retainCount = Math.ceil(messages.length * CompactionService.RETAIN_PERCENT);
       const candidateMessages = messages.slice(-retainCount);
 
       // 收集保留消息中所有 tool_call 的 ID
@@ -175,14 +175,14 @@ export class CompactionService {
 
       // 4. 创建压缩消息
       const boundaryMessageId = nanoid();
-      const boundaryMessage = this.createBoundaryMessage(
+      const boundaryMessage = CompactionService.createBoundaryMessage(
         boundaryMessageId,
         options.trigger,
         preTokens
       );
 
       const summaryMessageId = nanoid();
-      const summaryMessage = this.createSummaryMessage(summaryMessageId, summary);
+      const summaryMessage = CompactionService.createSummaryMessage(summaryMessageId, summary);
 
       // 5. 构建新消息列表（用于发送给 LLM）
       const compactedMessages = [summaryMessage, ...retainedMessages];
@@ -209,7 +209,7 @@ export class CompactionService {
       };
     } catch (error) {
       console.error('[CompactionService] 压缩失败，使用降级策略', error);
-      return this.fallbackCompact(messages, options, preTokens, error);
+      return CompactionService.fallbackCompact(messages, options, preTokens, error);
     }
   }
 
@@ -226,7 +226,7 @@ export class CompactionService {
     fileContents: FileContent[],
     options: CompactionOptions
   ): Promise<string> {
-    const prompt = this.buildCompactionPrompt(messages, fileContents);
+    const prompt = CompactionService.buildCompactionPrompt(messages, fileContents);
 
     console.log('[CompactionService] 使用压缩模型:', options.modelName);
 
@@ -402,7 +402,7 @@ Please provide your summary following the structure specified above, with both <
     preTokens: number,
     error: unknown
   ): CompactionResult {
-    const retainCount = Math.ceil(messages.length * this.FALLBACK_RETAIN_PERCENT);
+    const retainCount = Math.ceil(messages.length * CompactionService.FALLBACK_RETAIN_PERCENT);
     const candidateMessages = messages.slice(-retainCount);
 
     // 收集保留消息中所有 tool_call 的 ID
@@ -424,7 +424,7 @@ Please provide your summary following the structure specified above, with both <
     });
 
     const boundaryMessageId = nanoid();
-    const boundaryMessage = this.createBoundaryMessage(
+    const boundaryMessage = CompactionService.createBoundaryMessage(
       boundaryMessageId,
       options.trigger,
       preTokens
@@ -432,7 +432,7 @@ Please provide your summary following the structure specified above, with both <
 
     const errorMsg = error instanceof Error ? error.message : String(error);
     const summaryMessageId = nanoid();
-    const summaryMessage = this.createSummaryMessage(
+    const summaryMessage = CompactionService.createSummaryMessage(
       summaryMessageId,
       `[Automatic compaction failed; using fallback]\n\nAn error occurred during compaction. Retained the latest ${retainCount} messages (~30%).\n\nError: ${errorMsg}\n\nThe conversation can continue, but consider retrying compaction later with /compact.`
     );

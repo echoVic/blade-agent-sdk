@@ -140,13 +140,13 @@ export class PathSecurity {
    */
   static async validatePath(inputPath: string, workspaceRoot: string): Promise<string> {
     // 1. 路径遍历检查
-    this.checkTraversal(inputPath);
+    PathSecurity.checkTraversal(inputPath);
 
     // 2. 归一化并检查边界
-    const absolutePath = this.normalize(inputPath, workspaceRoot);
+    const absolutePath = PathSecurity.normalize(inputPath, workspaceRoot);
 
     // 3. 受限路径检查
-    this.checkRestricted(absolutePath);
+    PathSecurity.checkRestricted(absolutePath);
 
     // 4. 检查文件/目录是否存在
     try {

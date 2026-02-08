@@ -25,7 +25,7 @@ export class TokenCounter {
    * @returns token 总数
    */
   static countTokens(messages: Message[], modelName: string): number {
-    const encoding = this.getEncoding(modelName);
+    const encoding = TokenCounter.getEncoding(modelName);
     let totalTokens = 0;
 
     for (const msg of messages) {
@@ -49,7 +49,7 @@ export class TokenCounter {
 
       // 工具调用
       if (msg.tool_calls && Array.isArray(msg.tool_calls)) {
-        totalTokens += this.countToolCallTokens(msg.tool_calls, encoding);
+        totalTokens += TokenCounter.countToolCallTokens(msg.tool_calls, encoding);
       }
 
       // Name 字段
@@ -86,7 +86,7 @@ export class TokenCounter {
     maxTokens: number,
     thresholdPercent: number = 0.8
   ): boolean {
-    const currentTokens = this.countTokens(messages, modelName);
+    const currentTokens = TokenCounter.countTokens(messages, modelName);
     const threshold = Math.floor(maxTokens * thresholdPercent);
 
     return currentTokens >= threshold;
@@ -99,26 +99,26 @@ export class TokenCounter {
    * @returns encoding 实例
    */
   private static getEncoding(modelName: string): Encoding {
-    if (!this.encodingCache.has(modelName)) {
+    if (!TokenCounter.encodingCache.has(modelName)) {
       try {
         // 尝试获取模型的 encoding
         const encoding = encodingForModel(
           modelName as Parameters<typeof encodingForModel>[0]
         ) as unknown as Encoding;
-        this.encodingCache.set(modelName, encoding);
+        TokenCounter.encodingCache.set(modelName, encoding);
       } catch {
         // 如果模型不支持，使用 cl100k_base（GPT-4 的 encoding）
         try {
           const encoding = encodingForModel(
             'gpt-4' as Parameters<typeof encodingForModel>[0]
           ) as unknown as Encoding;
-          this.encodingCache.set(modelName, encoding);
+          TokenCounter.encodingCache.set(modelName, encoding);
         } catch {
           // 最后的降级方案：使用粗略估算
           console.warn(
             `[TokenCounter] 无法为模型 ${modelName} 获取 encoding，使用粗略估算`
           );
-          this.encodingCache.set(modelName, {
+          TokenCounter.encodingCache.set(modelName, {
             encode: (text: string) => {
               // 粗略估算：1 token ≈ 4 字符
               return new Array(Math.ceil(text.length / 4));
@@ -128,7 +128,7 @@ export class TokenCounter {
       }
     }
 
-    return this.encodingCache.get(modelName)!;
+    return TokenCounter.encodingCache.get(modelName)!;
   }
 
   /**
@@ -172,7 +172,7 @@ export class TokenCounter {
    * （用于释放内存）
    */
   static clearCache(): void {
-    this.encodingCache.clear();
+    TokenCounter.encodingCache.clear();
   }
 
   /**

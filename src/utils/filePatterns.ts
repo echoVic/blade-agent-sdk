@@ -274,7 +274,7 @@ export class FileFilter {
 
   shouldIgnore(path: string): boolean {
     const normalized = path.replace(/\\/g, '/');
-    let matched: boolean | undefined = undefined;
+    let matched: boolean | undefined ;
     for (const rule of this.orderedRules) {
       if (rule.matcher(normalized)) {
         matched = rule.type === 'ignore';

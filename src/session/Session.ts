@@ -10,7 +10,7 @@ import type { Message } from '../services/ChatServiceInterface.js';
 import type { ToolResult } from '../tools/types/index.js';
 import {
   type BladeConfig,
-  MessageRole,
+  type MessageRole,
   type ModelConfig,
   PermissionMode,
   type ProviderType,

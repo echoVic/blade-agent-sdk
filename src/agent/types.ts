@@ -3,7 +3,7 @@
  */
 
 import type { ChatCompletionMessageToolCall } from 'openai/resources/chat';
-import { PermissionMode, type PermissionsConfig } from '../types/common.js';
+import type { PermissionMode, PermissionsConfig } from '../types/common.js';
 import type { ContentPart, Message } from '../services/ChatServiceInterface.js';
 import type { TodoItem } from '../tools/builtin/todo/types.js';
 import type { ConfirmationHandler } from '../tools/types/ExecutionTypes.js';

@@ -7,7 +7,7 @@ import { CacheStore } from './storage/CacheStore.js';
 import { MemoryStore } from './storage/MemoryStore.js';
 import { PersistentStore } from './storage/PersistentStore.js';
 import { getBladeStorageRoot } from './storage/pathUtils.js';
-import {
+import type {
   CompressedContext,
   ContextData,
   ContextManagerOptions,

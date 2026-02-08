@@ -241,7 +241,7 @@ export class McpClient extends EventEmitter {
 
         // 如果还有重试机会，等待后重试
         if (attempt < maxRetries) {
-          const delay = initialDelay * Math.pow(2, attempt - 1); // 指数退避
+          const delay = initialDelay * 2 ** (attempt - 1); // 指数退避
           console.warn(
             `[McpClient] 连接失败（${attempt}/${maxRetries}），${delay}ms 后重试...`
           );
@@ -348,7 +348,7 @@ export class McpClient extends EventEmitter {
     }
 
     // 指数退避：1s, 2s, 4s, 8s, 16s（最大30s）
-    const delay = Math.min(1000 * Math.pow(2, this.reconnectAttempts), 30000);
+    const delay = Math.min(1000 * 2 ** this.reconnectAttempts, 30000);
     this.reconnectAttempts++;
 
     console.log(

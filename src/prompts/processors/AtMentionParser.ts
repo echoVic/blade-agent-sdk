@@ -47,22 +47,22 @@ export class AtMentionParser {
     let match: RegExpExecArray | null;
 
     // 重置正则状态（避免多次调用时状态残留）
-    this.PATTERN.lastIndex = 0;
+    AtMentionParser.PATTERN.lastIndex = 0;
 
-    while ((match = this.PATTERN.exec(input)) !== null) {
+    while ((match = AtMentionParser.PATTERN.exec(input)) !== null) {
       const raw = match[0];
       // match[1] 是引号内容，match[2] 是裸路径
       let path = match[1] || match[2];
 
       // 解析行号后缀
-      const lineRange = this.parseLineRange(path);
+      const lineRange = AtMentionParser.parseLineRange(path);
       if (lineRange) {
         // 移除行号后缀，保留纯路径
-        path = path.replace(this.LINE_RANGE_PATTERN, '');
+        path = path.replace(AtMentionParser.LINE_RANGE_PATTERN, '');
       }
 
       // 检测是否为 glob 模式
-      const isGlob = this.GLOB_PATTERN.test(path);
+      const isGlob = AtMentionParser.GLOB_PATTERN.test(path);
 
       mentions.push({
         raw,
@@ -91,7 +91,7 @@ export class AtMentionParser {
    * ```
    */
   private static parseLineRange(path: string): LineRange | undefined {
-    const match = path.match(this.LINE_RANGE_PATTERN);
+    const match = path.match(AtMentionParser.LINE_RANGE_PATTERN);
     if (!match) return undefined;
 
     const start = parseInt(match[1], 10);
@@ -146,7 +146,7 @@ export class AtMentionParser {
    * ```
    */
   static removeAtMentions(input: string): string {
-    this.PATTERN.lastIndex = 0;
-    return input.replace(this.PATTERN, '');
+    AtMentionParser.PATTERN.lastIndex = 0;
+    return input.replace(AtMentionParser.PATTERN, '');
   }
 }

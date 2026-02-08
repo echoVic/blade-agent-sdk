@@ -138,7 +138,7 @@ async function fetchWithRetry(
       // 如果还有重试机会
       if (attempt < RETRY_CONFIG.maxRetries - 1) {
         const delay = Math.min(
-          RETRY_CONFIG.baseDelay * Math.pow(2, attempt),
+          RETRY_CONFIG.baseDelay * 2 ** attempt,
           RETRY_CONFIG.maxDelay
         );
         updateOutput?.(

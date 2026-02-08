@@ -1,5 +1,5 @@
 import type { JsonValue } from '../../types/common.js';
-import { ContextData, ContextMessage, ToolCall, WorkspaceContext } from '../types.js';
+import type { ContextData, ContextMessage, ToolCall, WorkspaceContext } from '../types.js';
 
 /**
  * 内存存储实现 - 用于当前会话的快速数据访问

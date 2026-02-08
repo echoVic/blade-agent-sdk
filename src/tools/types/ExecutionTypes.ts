@@ -1,6 +1,6 @@
 import type { BladeConfig, PermissionMode } from '../../types/common.js';
 import type { Tool, ToolInvocation, ToolResult } from './ToolTypes.js';
-import { ToolErrorType, ToolKind } from './ToolTypes.js';
+import { ToolErrorType, type ToolKind } from './ToolTypes.js';
 
 interface QuestionOption {
   label: string;

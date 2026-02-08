@@ -24,15 +24,15 @@ export class IdeInstaller {
     const ides: InstalledIde[] = [];
 
     // 检测 VS Code
-    const vsCode = await this.checkVsCode();
+    const vsCode = await IdeInstaller.checkVsCode();
     if (vsCode) ides.push(vsCode);
 
     // 检测 VS Code Insiders
-    const vsCodeInsiders = await this.checkVsCodeInsiders();
+    const vsCodeInsiders = await IdeInstaller.checkVsCodeInsiders();
     if (vsCodeInsiders) ides.push(vsCodeInsiders);
 
     // 检测 Cursor
-    const cursor = await this.checkCursor();
+    const cursor = await IdeInstaller.checkCursor();
     if (cursor) ides.push(cursor);
 
     return ides;
@@ -44,11 +44,11 @@ export class IdeInstaller {
   static async isIdeInstalled(ideId: string): Promise<boolean> {
     switch (ideId) {
       case 'vscode':
-        return (await this.checkVsCode()) !== null;
+        return (await IdeInstaller.checkVsCode()) !== null;
       case 'vscode-insiders':
-        return (await this.checkVsCodeInsiders()) !== null;
+        return (await IdeInstaller.checkVsCodeInsiders()) !== null;
       case 'cursor':
-        return (await this.checkCursor()) !== null;
+        return (await IdeInstaller.checkCursor()) !== null;
       default:
         return false;
     }

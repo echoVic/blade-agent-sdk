@@ -131,7 +131,7 @@ async function fetchLatestVersion(): Promise<string | null> {
       return null;
     }
 
-    const data = await response.json();
+    const data = (await response.json()) as { version?: string };
     return data.version || null;
   } catch {
     return null;

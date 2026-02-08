@@ -1,5 +1,5 @@
 import { isPlainObject } from 'lodash-es';
-import { ZodError, ZodIssue, z } from 'zod';
+import type { ZodError, ZodIssue, z } from 'zod';
 import { ToolErrorType } from '../types/index.js';
 
 type ZodIssueExtra = ZodIssue & {

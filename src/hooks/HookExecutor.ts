@@ -172,7 +172,7 @@ export class HookExecutor {
 
     // 合并结果
     const additionalContexts: string[] = [];
-    let modifiedOutput: unknown = undefined;
+    let modifiedOutput: unknown ;
     const warnings: string[] = [];
 
     for (const result of results) {

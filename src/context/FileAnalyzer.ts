@@ -67,22 +67,22 @@ export class FileAnalyzer {
               .filter((p) => p.type === 'text')
               .map((p) => (p as { text: string }).text)
               .join('\n');
-      const contentFiles = this.extractFilePathsFromContent(textContent);
+      const contentFiles = FileAnalyzer.extractFilePathsFromContent(textContent);
       contentFiles.forEach((path) => {
-        this.updateFileReference(fileMap, path, index, false);
+        FileAnalyzer.updateFileReference(fileMap, path, index, false);
       });
 
       // 从工具调用中提取文件路径
       if (msg.tool_calls && Array.isArray(msg.tool_calls)) {
         msg.tool_calls.forEach((call) => {
-          const toolFiles = this.extractFilePathsFromToolCall(call);
+          const toolFiles = FileAnalyzer.extractFilePathsFromToolCall(call);
           // 检查工具调用类型，确保有 function 属性
           const functionName =
             call.type === 'function' && 'function' in call ? call.function?.name : '';
           const wasModified = ['Write', 'Edit'].includes(functionName || '');
 
           toolFiles.forEach((path) => {
-            this.updateFileReference(fileMap, path, index, wasModified);
+            FileAnalyzer.updateFileReference(fileMap, path, index, wasModified);
           });
         });
       }
@@ -105,7 +105,7 @@ export class FileAnalyzer {
     });
 
     // 返回前 N 个文件
-    return sortedFiles.slice(0, this.MAX_FILES);
+    return sortedFiles.slice(0, FileAnalyzer.MAX_FILES);
   }
 
   /**
@@ -127,12 +127,12 @@ export class FileAnalyzer {
         let truncated = false;
         let includedLines = totalLines;
 
-        if (totalLines > this.MAX_LINES_PER_FILE) {
+        if (totalLines > FileAnalyzer.MAX_LINES_PER_FILE) {
           // 截断文件
-          finalContent = lines.slice(0, this.MAX_LINES_PER_FILE).join('\n');
-          finalContent += `\n\n... (truncated ${totalLines - this.MAX_LINES_PER_FILE} lines)`;
+          finalContent = lines.slice(0, FileAnalyzer.MAX_LINES_PER_FILE).join('\n');
+          finalContent += `\n\n... (truncated ${totalLines - FileAnalyzer.MAX_LINES_PER_FILE} lines)`;
           truncated = true;
-          includedLines = this.MAX_LINES_PER_FILE;
+          includedLines = FileAnalyzer.MAX_LINES_PER_FILE;
         }
 
         results.push({
@@ -167,12 +167,12 @@ export class FileAnalyzer {
     for (const match of matches) {
       const block = match[1];
       // 查找类似 src/xxx/yyy.ts 的路径
-      const pathMatches = this.extractPathsFromText(block);
+      const pathMatches = FileAnalyzer.extractPathsFromText(block);
       pathMatches.forEach((p) => paths.add(p));
     }
 
     // 提取普通文本中的文件路径
-    const inlineMatches = this.extractPathsFromText(content);
+    const inlineMatches = FileAnalyzer.extractPathsFromText(content);
     inlineMatches.forEach((p) => paths.add(p));
 
     return Array.from(paths);
@@ -207,7 +207,7 @@ export class FileAnalyzer {
         path = path.replace(/[,.;:!?"'()[\]<>]$/g, ''); // 移除英文标点
 
         // 验证路径（避免误匹配）
-        if (this.isValidFilePath(path)) {
+        if (FileAnalyzer.isValidFilePath(path)) {
           paths.push(path);
         }
       }
