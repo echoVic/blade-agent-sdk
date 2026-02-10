@@ -66,7 +66,8 @@ export interface ModelConfig {
   model: string;
   apiKey?: string;
   baseUrl?: string;
-  maxTokens?: number;
+  maxContextTokens?: number;
+  maxOutputTokens?: number;
   temperature?: number;
   headers?: Record<string, string>;
   thinkingEnabled?: boolean;
@@ -75,7 +76,7 @@ export interface ModelConfig {
 }
 
 export interface McpServerConfig {
-  command: string;
+  command?: string;
   args?: string[];
   env?: Record<string, string>;
   disabled?: boolean;
@@ -109,6 +110,7 @@ export interface BladeConfig {
   models: ModelConfig[];
   currentModelId?: string;
   mcpServers?: Record<string, McpServerConfig>;
+  inProcessMcpServerNames?: string[];
   permissions?: PermissionsConfig;
   theme?: string;
   language?: string;

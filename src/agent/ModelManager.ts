@@ -60,7 +60,7 @@ export class ModelManager {
       logger.debug(`🧠 Thinking 模式已启用，启用 reasoning_content 支持`);
     }
 
-    const maxContextTokens = modelConfig.maxTokens ?? 128000;
+    const maxContextTokens = modelConfig.maxContextTokens ?? 128000;
     this.currentModelMaxContextTokens = maxContextTokens;
 
     this.chatService = await createChatServiceAsync({

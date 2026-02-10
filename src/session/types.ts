@@ -3,6 +3,7 @@ import type { ToolDefinition, ToolExecutionContext, ToolResult } from '../tools/
 import type { McpServerConfig, OutputFormat, PermissionMode, ProviderType, SandboxSettings, TokenUsage } from '../types/common.js';
 import type { HookEvent } from '../types/constants.js';
 import type { CanUseTool } from '../types/permissions.js';
+import type { SdkMcpServerHandle } from '../mcp/SdkMcpServer.js';
 
 export type { ProviderType, TokenUsage, ToolDefinition, ToolExecutionContext, ToolResult };
 
@@ -87,7 +88,7 @@ export interface SessionOptions {
 
   allowedTools?: string[];
   disallowedTools?: string[];
-  mcpServers?: Record<string, McpServerConfig>;
+  mcpServers?: Record<string, McpServerConfig | SdkMcpServerHandle>;
   tools?: ToolDefinition[];
 
   permissionMode?: PermissionMode;
@@ -129,7 +130,7 @@ export interface ModelInfo {
   id: string;
   name: string;
   provider: string;
-  maxTokens?: number;
+  maxContextTokens?: number;
 }
 
 export interface McpServerStatus {

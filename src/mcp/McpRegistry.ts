@@ -3,6 +3,7 @@ import type { McpServerConfig } from '../types/common.js';
 import type { Tool } from '../tools/types/index.js';
 import { createMcpTool } from './createMcpTool.js';
 import { McpClient } from './McpClient.js';
+import type { SdkMcpServerHandle } from './SdkMcpServer.js';
 import { McpConnectionStatus, type McpToolDefinition } from './types.js';
 
 /**
@@ -15,6 +16,7 @@ export interface McpServerInfo {
   connectedAt?: Date;
   lastError?: Error;
   tools: McpToolDefinition[];
+  inProcessHandle?: SdkMcpServerHandle;
 }
 
 /**
@@ -70,6 +72,55 @@ export class McpRegistry extends EventEmitter {
   }
 
   /**
+   * 注册 In-Process MCP 服务器（通过 SdkMcpServerHandle）
+   *
+   * 行为：
+   * - 如果同名服务器不存在 → 正常注册并连接
+   * - 如果同名服务器存在且是同一个 handle → 确保已连接（如果断开则重连）
+   * - 如果同名服务器存在但是不同的 handle → 抛出错误
+   */
+  async registerInProcessServer(name: string, handle: SdkMcpServerHandle): Promise<void> {
+    const existing = this.servers.get(name);
+    if (existing) {
+      if (existing.inProcessHandle === handle) {
+        if (existing.status === McpConnectionStatus.CONNECTING) {
+          await this.waitForServerConnected(name);
+        } else if (existing.status !== McpConnectionStatus.CONNECTED) {
+          await this.connectServer(name);
+        }
+        return;
+      }
+      throw new Error(
+        `MCP server "${name}" is already registered with a different handle. ` +
+        `In-process servers cannot be replaced while other sessions may be using them.`
+      );
+    }
+
+    const config: McpServerConfig = {
+      command: '',
+    };
+
+    const client = new McpClient(config, name, undefined, handle);
+    const serverInfo: McpServerInfo = {
+      config,
+      client,
+      status: McpConnectionStatus.DISCONNECTED,
+      tools: [],
+      inProcessHandle: handle,
+    };
+
+    this.setupClientEventHandlers(client, serverInfo, name);
+    this.servers.set(name, serverInfo);
+    this.emit('serverRegistered', name, serverInfo);
+
+    try {
+      await this.connectServer(name);
+    } catch (error) {
+      console.warn(`In-process MCP服务器 "${name}" 连接失败:`, error);
+    }
+  }
+
+  /**
    * 注销MCP服务器
    */
   async unregisterServer(name: string): Promise<void> {
@@ -98,6 +149,10 @@ export class McpRegistry extends EventEmitter {
     }
 
     if (serverInfo.status === McpConnectionStatus.CONNECTED) {
+      return;
+    }
+    if (serverInfo.status === McpConnectionStatus.CONNECTING) {
+      await this.waitForServerConnected(name);
       return;
     }
 
@@ -164,11 +219,24 @@ export class McpRegistry extends EventEmitter {
    * - 有冲突: serverName__toolName
    */
   async getAvailableTools(): Promise<Tool[]> {
+    return this.getAvailableToolsByServerNames(
+      Array.from(this.servers.keys())
+    );
+  }
+
+  /**
+   * 获取指定服务器的可用工具（包含冲突处理）
+   */
+  async getAvailableToolsByServerNames(serverNames: string[]): Promise<Tool[]> {
     const tools: Tool[] = [];
     const nameConflicts = new Map<string, number>();
+    const targetNames = new Set(serverNames);
 
     // 第一遍：检测冲突
-    for (const [_serverName, serverInfo] of this.servers) {
+    for (const [serverName, serverInfo] of this.servers) {
+      if (!targetNames.has(serverName)) {
+        continue;
+      }
       if (serverInfo.status === McpConnectionStatus.CONNECTED) {
         for (const mcpTool of serverInfo.tools) {
           const count = nameConflicts.get(mcpTool.name) || 0;
@@ -179,6 +247,9 @@ export class McpRegistry extends EventEmitter {
 
     // 第二遍：创建工具（冲突时添加前缀）
     for (const [serverName, serverInfo] of this.servers) {
+      if (!targetNames.has(serverName)) {
+        continue;
+      }
       if (serverInfo.status === McpConnectionStatus.CONNECTED) {
         for (const mcpTool of serverInfo.tools) {
           const hasConflict = (nameConflicts.get(mcpTool.name) || 0) > 1;
@@ -193,6 +264,69 @@ export class McpRegistry extends EventEmitter {
     }
 
     return tools;
+  }
+
+  private async waitForServerConnected(name: string, timeoutMs = 10000): Promise<void> {
+    const current = this.servers.get(name);
+    if (!current) {
+      throw new Error(`MCP服务器 "${name}" 未注册`);
+    }
+    if (current.status === McpConnectionStatus.CONNECTED) {
+      return;
+    }
+    if (current.status === McpConnectionStatus.ERROR) {
+      throw current.lastError || new Error(`MCP服务器 "${name}" 连接失败`);
+    }
+
+    await new Promise<void>((resolve, reject) => {
+      const onStatusChanged = (
+        serverName: string,
+        newStatus: McpConnectionStatus
+      ) => {
+        if (serverName !== name) {
+          return;
+        }
+        if (newStatus === McpConnectionStatus.CONNECTED) {
+          cleanup();
+          resolve();
+          return;
+        }
+        if (
+          newStatus === McpConnectionStatus.ERROR ||
+          newStatus === McpConnectionStatus.DISCONNECTED
+        ) {
+          cleanup();
+          const latest = this.servers.get(name);
+          reject(latest?.lastError || new Error(`MCP服务器 "${name}" 连接失败`));
+        }
+      };
+
+      const cleanup = () => {
+        clearTimeout(timer);
+        this.off('serverStatusChanged', onStatusChanged);
+      };
+
+      const timer = setTimeout(() => {
+        cleanup();
+        reject(new Error(`等待MCP服务器 "${name}" 连接超时`));
+      }, timeoutMs);
+
+      this.on('serverStatusChanged', onStatusChanged);
+
+      // Handle status changes that happened before listener registration.
+      const latestStatus = this.servers.get(name)?.status;
+      if (latestStatus === McpConnectionStatus.CONNECTED) {
+        cleanup();
+        resolve();
+      } else if (
+        latestStatus === McpConnectionStatus.ERROR ||
+        latestStatus === McpConnectionStatus.DISCONNECTED
+      ) {
+        cleanup();
+        const latest = this.servers.get(name);
+        reject(latest?.lastError || new Error(`MCP服务器 "${name}" 连接失败`));
+      }
+    });
   }
 
   /**

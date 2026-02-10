@@ -13,11 +13,13 @@ import { getSandboxService } from '../sandbox/SandboxService.js';
 import type { Message } from '../services/ChatServiceInterface.js';
 import {
   type BladeConfig,
+  type McpServerConfig,
   type MessageRole,
   type ModelConfig,
   PermissionMode,
   type ProviderType,
 } from '../types/common.js';
+import type { SdkMcpServerHandle } from '../mcp/SdkMcpServer.js';
 import type {
   ForkSessionOptions,
   ISession,
@@ -36,6 +38,12 @@ import type {
 } from './types.js';
 
 const logger = createLogger(LogCategory.AGENT);
+
+function isSdkMcpServerHandle(
+  config: McpServerConfig | SdkMcpServerHandle
+): config is SdkMcpServerHandle {
+  return 'createClientTransport' in config && 'server' in config;
+}
 
 export interface ResumeOptions extends SessionOptions {
   sessionId: string;
@@ -78,6 +86,8 @@ class Session implements ISession {
       getCheckpointService().configure({ enabled: true });
     }
 
+    await this.registerInProcessMcpServers();
+
     this.agent = await Agent.create(config, {
       permissionMode: this.permissionMode,
       systemPrompt: this.options.systemPrompt,
@@ -90,6 +100,19 @@ class Session implements ISession {
     this.initialized = true;
 
     logger.debug(`[Session] Initialized session ${this.sessionId}`);
+  }
+
+  private async registerInProcessMcpServers(): Promise<void> {
+    if (!this.options.mcpServers) return;
+
+    const registry = McpRegistry.getInstance();
+
+    for (const [name, config] of Object.entries(this.options.mcpServers)) {
+      if (isSdkMcpServerHandle(config)) {
+        await registry.registerInProcessServer(name, config);
+        logger.debug(`[Session] Registered in-process MCP server: ${name}`);
+      }
+    }
   }
 
   async loadHistory(): Promise<void> {
@@ -228,11 +251,28 @@ class Session implements ISession {
   private buildBladeConfig(): BladeConfig {
     const modelConfig = this.buildModelConfig();
 
+    let mcpServers: Record<string, McpServerConfig> | undefined;
+    let inProcessMcpServerNames: string[] | undefined;
+    if (this.options.mcpServers) {
+      const filtered: Record<string, McpServerConfig> = {};
+      const inProcessNames: string[] = [];
+      for (const [name, config] of Object.entries(this.options.mcpServers)) {
+        if (isSdkMcpServerHandle(config)) {
+          inProcessNames.push(name);
+        } else {
+          filtered[name] = config;
+        }
+      }
+      mcpServers = Object.keys(filtered).length > 0 ? filtered : undefined;
+      inProcessMcpServerNames = inProcessNames.length > 0 ? inProcessNames : undefined;
+    }
+
     return {
       models: [modelConfig],
       currentModelId: modelConfig.id,
       temperature: 0.7,
-      mcpServers: this.options.mcpServers,
+      mcpServers,
+      inProcessMcpServerNames,
       permissions: {
         allow: [],
         deny: [],
@@ -250,7 +290,7 @@ class Session implements ISession {
       model: this.options.model,
       apiKey: provider.apiKey || '',
       baseUrl: provider.baseUrl || this.getDefaultBaseUrl(provider.type),
-      maxTokens: 128000,
+      maxContextTokens: 128000,
     };
   }
 
@@ -513,7 +553,11 @@ class Session implements ISession {
       if (!config) {
         throw new Error(`MCP server "${serverName}" not found in configuration`);
       }
-      await registry.registerServer(serverName, config);
+      if (isSdkMcpServerHandle(config)) {
+        await registry.registerInProcessServer(serverName, config);
+      } else {
+        await registry.registerServer(serverName, config);
+      }
     } else {
       await registry.connectServer(serverName);
     }

@@ -19,13 +19,17 @@ export {
     HealthMonitor,
     HealthStatus,
     McpClient,
-    McpConnectionStatus, ErrorType as McpErrorType, McpRegistry
+    McpConnectionStatus, ErrorType as McpErrorType, McpRegistry,
+    tool, createSdkMcpServer
 } from './mcp/index.js';
 export type {
     HealthCheckConfig,
     McpServerInfo,
     McpToolCallResponse,
-    McpToolDefinition
+    McpToolDefinition,
+    SdkTool,
+    SdkMcpServerHandle,
+    ToolResponse as McpToolResponse
 } from './mcp/index.js';
 export {
     clearAllPluginResources,

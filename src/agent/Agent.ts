@@ -159,7 +159,7 @@ export class Agent {
       this.log(`🧠 Thinking 模式已启用，启用 reasoning_content 支持`);
     }
 
-    const maxContextTokens = modelConfig.maxTokens ?? 128000;
+    const maxContextTokens = modelConfig.maxContextTokens ?? 128000;
     this.currentModelMaxContextTokens = maxContextTokens;
 
     this.chatService = await createChatServiceAsync({
@@ -1850,8 +1850,12 @@ IMPORTANT: Execute according to the approved plan above. Follow the steps exactl
   private async registerMcpTools(): Promise<void> {
     try {
       const mcpServers: Record<string, McpServerConfig> = this.config.mcpServers || {};
+      const targetServerNames = new Set<string>(Object.keys(mcpServers));
+      for (const name of this.config.inProcessMcpServerNames || []) {
+        targetServerNames.add(name);
+      }
 
-      if (Object.keys(mcpServers).length === 0) {
+      if (targetServerNames.size === 0) {
         logger.debug('📦 No MCP servers configured');
         return;
       }
@@ -1872,12 +1876,16 @@ IMPORTANT: Execute according to the approved plan above. Follow the steps exactl
         }
       }
 
-      const mcpTools = await registry.getAvailableTools();
+      const mcpTools = await registry.getAvailableToolsByServerNames(
+        Array.from(targetServerNames)
+      );
 
       if (mcpTools.length > 0) {
         this.executionPipeline.getRegistry().registerAll(mcpTools);
         logger.debug(`✅ Registered ${mcpTools.length} MCP tools`);
         logger.debug(`[MCP Tools] ${mcpTools.map((t) => t.name).join(', ')}`);
+      } else {
+        logger.debug('📦 No MCP tools available');
       }
     } catch (error) {
       logger.warn('Failed to register MCP tools:', error);

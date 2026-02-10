@@ -10,6 +10,7 @@ import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js'
 import type { Transport } from '@modelcontextprotocol/sdk/shared/transport.js';
 import { EventEmitter } from 'events';
 import type { McpServerConfig } from '../types/common.js';
+import type { SdkMcpServerHandle } from './SdkMcpServer.js';
 import { getPackageName, getVersion } from '../utils/packageInfo.js';
 import { OAuthProvider } from './auth/index.js';
 import { type HealthCheckConfig, HealthMonitor } from './HealthMonitor.js';
@@ -142,13 +143,18 @@ export class McpClient extends EventEmitter {
   // 健康监控
   private healthMonitor: HealthMonitor | null = null;
 
+  // In-process MCP server handle (if type is 'in-process')
+  private inProcessHandle: SdkMcpServerHandle | null = null;
+
   constructor(
     private config: McpServerConfig,
     serverName?: string,
-    healthCheckConfig?: HealthCheckConfig
+    healthCheckConfig?: HealthCheckConfig,
+    inProcessHandle?: SdkMcpServerHandle
   ) {
     super();
     this.serverName = serverName || 'default';
+    this.inProcessHandle = inProcessHandle || null;
 
     // 如果启用了 OAuth，初始化 provider
     if (config.oauth?.enabled) {
@@ -486,6 +492,12 @@ export class McpClient extends EventEmitter {
           `OAuth 认证失败: ${error instanceof Error ? error.message : String(error)}`
         );
       }
+    }
+
+    // In-process transport (from SdkMcpServer)
+    // Each call creates a new transport pair, enabling reconnection
+    if (this.inProcessHandle) {
+      return this.inProcessHandle.createClientTransport();
     }
 
     if (type === 'stdio') {
