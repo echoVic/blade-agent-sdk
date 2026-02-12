@@ -2,6 +2,9 @@
 
 本文件记录 @blade-ai/agent-sdk 的所有重要变更。
 
+## [0.1.7] - 2026-02-12
+
+- 6b9f68c feat: export modelDetection utilities (detectThinkingSupport, getThinkingConfig, isThinkingModel)
 ## [0.1.6] - 2026-02-12
 
 - d3708fe chore: update bun.lock
