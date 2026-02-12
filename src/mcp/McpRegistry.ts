@@ -159,6 +159,7 @@ export class McpRegistry extends EventEmitter {
     try {
       serverInfo.status = McpConnectionStatus.CONNECTING;
       await serverInfo.client.connect();
+      serverInfo.status = McpConnectionStatus.CONNECTED;
       serverInfo.connectedAt = new Date();
       serverInfo.lastError = undefined;
       serverInfo.tools = serverInfo.client.availableTools;
@@ -201,6 +202,7 @@ export class McpRegistry extends EventEmitter {
     try {
       serverInfo.status = McpConnectionStatus.CONNECTING;
       await serverInfo.client.connect();
+      serverInfo.status = McpConnectionStatus.CONNECTED;
       serverInfo.connectedAt = new Date();
       serverInfo.lastError = undefined;
       serverInfo.tools = serverInfo.client.availableTools;
