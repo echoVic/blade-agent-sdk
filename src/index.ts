@@ -99,6 +99,7 @@ export { ExecutionPipeline } from './tools/execution/ExecutionPipeline.js';
 export { ToolRegistry } from './tools/registry/ToolRegistry.js';
 export * from './tools/types/index.js';
 export * from './types/common.js';
+export { detectThinkingSupport, getThinkingConfig, isThinkingModel } from './utils/modelDetection.js';
 export {
     DecisionBehavior,
     HookEvent,
