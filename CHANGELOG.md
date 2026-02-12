@@ -2,6 +2,13 @@
 
 本文件记录 @blade-ai/agent-sdk 的所有重要变更。
 
+## [0.1.6] - 2026-02-12
+
+- d3708fe chore: update bun.lock
+- d3754d3 fix: connectServer/reconnectServer 成功后显式设置 CONNECTED 状态
+- 3acf9f2 feat(mcp): 添加对进程内MCP服务器的支持
+- 8e01a9f test: 添加多个测试文件覆盖核心功能模块
+- bf48a2f docs: 添加文档文件并更新README
 ## [0.1.5] - 2026-02-08
 
 - 无相关变更
