@@ -2,6 +2,13 @@
 
 本文件记录 @blade-ai/agent-sdk 的所有重要变更。
 
+## [0.1.8] - 2026-02-18
+
+- 7e41a2d test: add unit tests for SkillLoader, ToolRegistry, ContextCompressor
+- 318be66 test: add AgentLoop unit tests (20 cases)
+- c345a5e refactor: remove dead executeLoopStream + clean unused imports
+- d6d659d refactor: wire executeWithAgentLoop into Agent.ts (P0 step 2)
+- d4b909b refactor: extract AgentLoop + standardize AgentEvent types (P0)
 ## [0.1.7] - 2026-02-12
 
 - 6b9f68c feat: export modelDetection utilities (detectThinkingSupport, getThinkingConfig, isThinkingModel)
