@@ -28,6 +28,9 @@ import {
 } from '../services/ChatServiceInterface.js';
 import { discoverSkills, injectSkillsMetadata } from '../skills/index.js';
 import { getBuiltinTools } from '../tools/builtin/index.js';
+import { agentLoop } from './AgentLoop.js';
+import type { AgentLoopConfig } from './AgentLoop.js';
+import type { AgentLoopEvent } from './AgentEvent.js';
 import type { TodoItem } from '../tools/builtin/todo/types.js';
 import { ExecutionPipeline } from '../tools/execution/ExecutionPipeline.js';
 import { ToolRegistry } from '../tools/registry/ToolRegistry.js';
@@ -574,7 +577,7 @@ IMPORTANT: Execute according to the approved plan above. Follow the steps exactl
       }
     }
 
-    return yield* this.executeLoopStream(
+    return yield* this.executeWithAgentLoop(
       messageWithReminder,
       context,
       options,
@@ -617,7 +620,7 @@ IMPORTANT: Execute according to the approved plan above. Follow the steps exactl
       ? `${envContext}\n\n---\n\n${basePrompt}`
       : envContext;
 
-    return yield* this.executeLoopStream(message, context, options, systemPrompt);
+    return yield* this.executeWithAgentLoop(message, context, options, systemPrompt);
   }
 
   /**
@@ -644,7 +647,7 @@ IMPORTANT: Execute according to the approved plan above. Follow the steps exactl
     options?: LoopOptions,
     systemPrompt?: string
   ): Promise<LoopResult> {
-    const stream = this.executeLoopStream(message, context, options, systemPrompt);
+    const stream = this.executeWithAgentLoop(message, context, options, systemPrompt);
     let result: LoopResult | undefined;
 
     while (true) {
@@ -656,6 +659,344 @@ IMPORTANT: Execute according to the approved plan above. Follow the steps exactl
     }
 
     return result!;
+  }
+
+  /**
+   * 使用新的 AgentLoop 执行循环（P0 重构）
+   *
+   * 准备工作（工具获取、消息构建）在此方法中完成，
+   * 核心循环委托给 agentLoop，副作用通过 hooks 注入。
+   */
+  private async *executeWithAgentLoop(
+    message: UserMessageContent,
+    context: ChatContext,
+    options?: LoopOptions,
+    systemPrompt?: string
+  ): AsyncGenerator<AgentEvent, LoopResult> {
+    if (!this.isInitialized) {
+      throw new Error('Agent未初始化');
+    }
+
+    // 1. 获取可用工具定义
+    const registry = this.executionPipeline.getRegistry();
+    const permissionMode = context.permissionMode as PermissionMode | undefined;
+    let rawTools = registry.getFunctionDeclarationsByMode(permissionMode);
+    rawTools = injectSkillsMetadata(rawTools);
+    const tools = this.applySkillToolRestrictions(rawTools);
+
+    // 2. 构建消息历史
+    const needsSystemPrompt =
+      context.messages.length === 0 ||
+      !context.messages.some((msg) => msg.role === 'system');
+
+    const messages: Message[] = [];
+
+    if (needsSystemPrompt && systemPrompt) {
+      messages.push({
+        role: 'system',
+        content: [
+          {
+            type: 'text',
+            text: systemPrompt,
+            providerOptions: {
+              anthropic: { cacheControl: { type: 'ephemeral' } },
+            },
+          },
+        ],
+      });
+    }
+
+    messages.push(...context.messages, { role: 'user', content: message });
+
+    // 3. 保存用户消息到 JSONL
+    let lastMessageUuid: string | null = null;
+    try {
+      const contextMgr = this.executionEngine?.getContextManager();
+      const textContent =
+        typeof message === 'string'
+          ? message
+          : message
+              .filter((p) => p.type === 'text')
+              .map((p) => (p as { text: string }).text)
+              .join('\n');
+      if (contextMgr && context.sessionId && textContent.trim() !== '') {
+        lastMessageUuid = await contextMgr.saveMessage(
+          context.sessionId, 'user', textContent, null, undefined, context.subagentInfo
+        );
+      }
+    } catch (error) {
+      logger.warn('[Agent] 保存用户消息失败:', error);
+    }
+
+    // 4. 计算 maxTurns
+    const SAFETY_LIMIT = 100;
+    const isYoloMode = context.permissionMode === PermissionMode.YOLO;
+    const configuredMaxTurns =
+      this.runtimeOptions.maxTurns ?? options?.maxTurns ?? this.config.maxTurns ?? -1;
+
+    if (configuredMaxTurns === 0) {
+      return {
+        success: false,
+        error: { type: 'chat_disabled', message: '对话功能已被禁用 (maxTurns=0)' },
+        metadata: { turnsCount: 0, toolCallsCount: 0, duration: 0 },
+      };
+    }
+
+    const maxTurns = configuredMaxTurns === -1
+      ? SAFETY_LIMIT
+      : Math.min(configuredMaxTurns, SAFETY_LIMIT);
+
+    // 5. 构建 AgentLoop hooks
+    const self = this;
+    const loopConfig: AgentLoopConfig = {
+      chatService: this.chatService,
+      streamHandler: this.streamHandler,
+      executionPipeline: this.executionPipeline,
+      tools,
+      messages,
+      maxTurns,
+      isYoloMode,
+      signal: options?.signal,
+      permissionMode,
+      maxContextTokens: this.currentModelMaxContextTokens,
+      executionContext: {
+        sessionId: context.sessionId,
+        userId: context.userId || 'default',
+        workspaceRoot: context.workspaceRoot || process.cwd(),
+        confirmationHandler: context.confirmationHandler,
+      },
+
+      // === Hooks: 副作用注入 ===
+
+      async *onBeforeTurn(ctx) {
+        if (!self.compactionHandler) return false;
+        const compactionStream = self.compactionHandler.checkAndCompactInLoop(
+          context, ctx.turn, ctx.lastPromptTokens
+        );
+        let didCompact = false;
+        while (true) {
+          const { value, done } = await compactionStream.next();
+          if (done) { didCompact = value; break; }
+          yield value as AgentLoopEvent;
+        }
+        return didCompact;
+      },
+
+      async onAssistantMessage(ctx) {
+        try {
+          const contextMgr = self.executionEngine?.getContextManager();
+          if (contextMgr && context.sessionId && ctx.content.trim() !== '') {
+            lastMessageUuid = await contextMgr.saveMessage(
+              context.sessionId, 'assistant', ctx.content,
+              lastMessageUuid, undefined, context.subagentInfo
+            );
+          }
+        } catch (error) {
+          logger.warn('[Agent] 保存助手消息失败:', error);
+        }
+      },
+
+      async onBeforeToolExec(ctx) {
+        try {
+          const contextMgr = self.executionEngine?.getContextManager();
+          if (contextMgr && context.sessionId) {
+            return await contextMgr.saveToolUse(
+              context.sessionId, ctx.toolCall.function.name,
+              ctx.params as Record<string, unknown> & import('../types/common.js').JsonValue, lastMessageUuid, context.subagentInfo
+            );
+          }
+        } catch (error) {
+          logger.warn('[Agent] 保存工具调用失败:', error);
+        }
+        return null;
+      },
+
+      async onAfterToolExec(ctx) {
+        const { toolCall, result, toolUseUuid } = ctx;
+
+        // 保存工具结果到 JSONL
+        try {
+          const contextMgr = self.executionEngine?.getContextManager();
+          if (contextMgr && context.sessionId) {
+            const metadata = result.metadata && typeof result.metadata === 'object'
+              ? (result.metadata as Record<string, unknown>) : undefined;
+            const isSubagentStatus = (v: unknown): v is 'running' | 'completed' | 'failed' | 'cancelled' =>
+              v === 'running' || v === 'completed' || v === 'failed' || v === 'cancelled';
+            const subagentStatus = isSubagentStatus(metadata?.subagentStatus)
+              ? metadata.subagentStatus : 'completed';
+            const subagentRef = metadata && typeof metadata.subagentSessionId === 'string'
+              ? {
+                  subagentSessionId: metadata.subagentSessionId,
+                  subagentType: typeof metadata.subagentType === 'string'
+                    ? metadata.subagentType : toolCall.function.name,
+                  subagentStatus,
+                  subagentSummary: typeof metadata.subagentSummary === 'string'
+                    ? metadata.subagentSummary : undefined,
+                }
+              : undefined;
+            lastMessageUuid = await contextMgr.saveToolResult(
+              context.sessionId, toolCall.id, toolCall.function.name,
+              result.success ? toJsonValue(result.llmContent) : null,
+              toolUseUuid, result.success ? undefined : result.error?.message,
+              context.subagentInfo, subagentRef
+            );
+          }
+        } catch (err) {
+          logger.warn('[Agent] 保存工具结果失败:', err);
+        }
+
+        // Skill 激活
+        if (toolCall.function.name === 'Skill' && result.success && result.metadata) {
+          const metadata = result.metadata as Record<string, unknown>;
+          if (metadata.skillName) {
+            self.activeSkillContext = {
+              skillName: metadata.skillName as string,
+              allowedTools: metadata.allowedTools as string[] | undefined,
+              basePath: (metadata.basePath as string) || '',
+            };
+          }
+        }
+
+        // 模型切换
+        const modelId = result.metadata?.modelId?.trim()
+          || result.metadata?.model?.trim() || undefined;
+        if (modelId) {
+          await self.switchModelIfNeeded(modelId);
+        }
+      },
+
+      async onComplete(ctx) {
+        try {
+          const contextMgr = self.executionEngine?.getContextManager();
+          if (contextMgr && context.sessionId && ctx.content.trim() !== '') {
+            lastMessageUuid = await contextMgr.saveMessage(
+              context.sessionId, 'assistant', ctx.content,
+              lastMessageUuid, undefined, context.subagentInfo
+            );
+          }
+        } catch (error) {
+          logger.warn('[Agent] 保存助手消息失败:', error);
+        }
+      },
+
+      async onStopCheck(ctx) {
+        try {
+          const hookManager = HookManager.getInstance();
+          const stopResult = await hookManager.executeStopHooks({
+            projectDir: process.cwd(),
+            sessionId: context.sessionId,
+            permissionMode: context.permissionMode as PermissionMode,
+            reason: ctx.content,
+            abortSignal: options?.signal,
+          });
+          return {
+            shouldStop: stopResult.shouldStop,
+            continueReason: stopResult.continueReason,
+            warning: stopResult.warning,
+          };
+        } catch {
+          return { shouldStop: true };
+        }
+      },
+
+      onTurnLimitReached: options?.onTurnLimitReached,
+
+      async onTurnLimitCompact(ctx) {
+        try {
+          const chatConfig = self.chatService.getConfig();
+          const compactResult = await CompactionService.compact(
+            context.messages,
+            {
+              trigger: 'auto',
+              modelName: chatConfig.model,
+              maxContextTokens: chatConfig.maxContextTokens ?? 128000,
+              apiKey: chatConfig.apiKey,
+              baseURL: chatConfig.baseUrl,
+            }
+          );
+          context.messages = compactResult.compactedMessages;
+          const continueMessage: Message = {
+            role: 'user',
+            content: 'This session is being continued from a previous conversation. '
+              + 'The conversation is summarized above.\n\n'
+              + 'Please continue the conversation from where we left it off without asking the user any further questions. '
+              + 'Continue with the last task that you were asked to work on.',
+          };
+          context.messages.push(continueMessage);
+
+          // 保存压缩数据到 JSONL
+          try {
+            const contextMgr = self.executionEngine?.getContextManager();
+            if (contextMgr && context.sessionId) {
+              await contextMgr.saveCompaction(
+                context.sessionId, compactResult.summary,
+                { trigger: 'auto', preTokens: compactResult.preTokens,
+                  postTokens: compactResult.postTokens, filesIncluded: compactResult.filesIncluded },
+                null
+              );
+            }
+          } catch (saveError) {
+            logger.warn('[Agent] 保存压缩数据失败:', saveError);
+          }
+
+          return {
+            success: true,
+            compactedMessages: compactResult.compactedMessages,
+            continueMessage,
+          };
+        } catch (compactError) {
+          logger.error('[Agent] 压缩失败，使用降级策略:', compactError);
+          // 降级：保留最近 80 条
+          const recentMessages = context.messages.slice(-80);
+          context.messages = recentMessages;
+          return { success: true, compactedMessages: recentMessages };
+        }
+      },
+    };
+
+    // 6. 运行 AgentLoop
+    try {
+      const loop = agentLoop(loopConfig);
+      let result: LoopResult | undefined;
+
+      while (true) {
+        const { value, done } = await loop.next();
+        if (done) {
+          result = value;
+          break;
+        }
+        // 转发事件（AgentLoopEvent 兼容 AgentEvent）
+        yield value as AgentEvent;
+      }
+
+      if (!result) {
+        throw new Error('AgentLoop ended without result');
+      }
+
+      // 更新 context.messages
+      context.messages = messages.filter((m) => m.role !== 'system');
+
+      return result;
+    } catch (error) {
+      if (error instanceof Error &&
+        (error.name === 'AbortError' || error.message.includes('aborted'))) {
+        return {
+          success: false,
+          error: { type: 'aborted', message: '任务已被用户中止' },
+          metadata: { turnsCount: 0, toolCallsCount: 0, duration: Date.now() - Date.now() },
+        };
+      }
+      logger.error('AgentLoop error:', error);
+      return {
+        success: false,
+        error: {
+          type: 'api_error',
+          message: `处理消息时发生错误: ${error instanceof Error ? error.message : '未知错误'}`,
+          details: error,
+        },
+        metadata: { turnsCount: 0, toolCallsCount: 0, duration: 0 },
+      };
+    }
   }
 
   private async *executeLoopStream(
