@@ -10,6 +10,11 @@ import type { ToolResult } from '../tools/types/ToolTypes.js';
 import type { OutputFormat, PermissionMode, PermissionsConfig, SandboxSettings } from '../types/common.js';
 import type { CanUseTool } from '../types/permissions.js';
 
+// Re-export AgentLoopEvent 作为 AgentEvent 的别名（向后兼容）
+export type { AgentLoopEvent } from './AgentEvent.js';
+export type { AgentLoopConfig } from './AgentLoop.js';
+export { agentLoop } from './AgentLoop.js';
+
 /**
  * 用户消息内容类型
  * 支持纯文本或多模态内容（文本 + 图片）
