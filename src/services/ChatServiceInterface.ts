@@ -3,14 +3,37 @@
  * 定义统一的聊天服务接口，支持多种 API 提供商
  */
 
-import type {
-    ChatCompletionChunk,
-    ChatCompletionMessageToolCall,
-} from 'openai/resources/chat';
 import { createLogger, LogCategory } from '../logging/Logger.js';
 import type { JsonValue, MessageRole, OutputFormat, ProviderType } from '../types/common.js';
 import { resolveBuiltinApiKey } from './BuiltinKeyService.js';
 import { VercelAIChatService } from './VercelAIChatService.js';
+
+/**
+ * 工具调用（完整版，LLM 返回的最终结果）
+ * 替代 openai 的 ChatCompletionMessageToolCall
+ */
+export interface ToolCall {
+  id: string;
+  type: 'function';
+  function: {
+    name: string;
+    arguments: string;
+  };
+}
+
+/**
+ * 流式 delta 中的工具调用（字段可选，逐步拼装）
+ * 替代 openai 的 ChatCompletionChunk.Choice.Delta.ToolCall
+ */
+export interface StreamDeltaToolCall {
+  index: number;
+  id?: string;
+  type?: 'function';
+  function?: {
+    name?: string;
+    arguments?: string;
+  };
+}
 
 const logger = createLogger(LogCategory.SERVICE);
 
@@ -75,7 +98,7 @@ export type Message = {
   reasoningContent?: string; // Thinking 模型的推理过程（如 DeepSeek Reasoner）
   tool_call_id?: string; // tool 角色必需
   name?: string; // 工具名称
-  tool_calls?: ChatCompletionMessageToolCall[]; // assistant 返回工具调用时需要
+  tool_calls?: ToolCall[]; // assistant 返回工具调用时需要
   metadata?: JsonValue;
 };
 
@@ -114,18 +137,16 @@ export interface UsageInfo {
 export interface ChatResponse {
   content: string;
   reasoningContent?: string; // Thinking 模型的推理过程（如 DeepSeek R1）
-  toolCalls?: ChatCompletionMessageToolCall[];
+  toolCalls?: ToolCall[];
   usage?: UsageInfo;
 }
 
 /**
  * 流式 tool_calls 的统一类型：
- * - OpenAI/Azure 流式 delta 期间的 tool call（id 等字段可能是可选的）
+ * - 流式 delta 期间的 tool call（id 等字段可能是可选的）
  * - 以及收敛后的完整 tool call
  */
-export type StreamToolCall =
-  | ChatCompletionMessageToolCall
-  | ChatCompletionChunk.Choice.Delta.ToolCall;
+export type StreamToolCall = ToolCall | StreamDeltaToolCall;
 
 /**
  * 流式响应块

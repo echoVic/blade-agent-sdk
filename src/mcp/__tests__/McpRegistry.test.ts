@@ -19,8 +19,7 @@ describe('McpRegistry', () => {
   let registry: McpRegistry;
 
   beforeEach(() => {
-    (McpRegistry as unknown as { instance: McpRegistry | null }).instance = null;
-    registry = McpRegistry.getInstance();
+    registry = new McpRegistry();
     mockConnect.mockClear();
     mockDisconnect.mockClear();
     mockOn.mockClear();
@@ -30,11 +29,11 @@ describe('McpRegistry', () => {
     await registry.disconnectAll();
   });
 
-  describe('getInstance', () => {
-    it('should return the same instance', () => {
-      const instance1 = McpRegistry.getInstance();
-      const instance2 = McpRegistry.getInstance();
-      expect(instance1).toBe(instance2);
+  describe('constructor', () => {
+    it('should create independent instances', () => {
+      const instance1 = new McpRegistry();
+      const instance2 = new McpRegistry();
+      expect(instance1).not.toBe(instance2);
     });
   });
 

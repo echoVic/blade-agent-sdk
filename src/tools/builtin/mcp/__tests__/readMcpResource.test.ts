@@ -1,15 +1,13 @@
 import { describe, it, expect, beforeEach, afterEach, mock } from 'bun:test';
-import { readMcpResourceTool } from '../readMcpResource.js';
+import { createReadMcpResourceTool } from '../readMcpResource.js';
 
 const mockGetAllServers = mock(() => new Map());
 
-mock.module('../../../../mcp/McpRegistry.js', () => ({
-  McpRegistry: {
-    getInstance: () => ({
-      getAllServers: mockGetAllServers,
-    }),
-  },
-}));
+const mockRegistry = {
+  getAllServers: mockGetAllServers,
+} as any;
+
+const readMcpResourceTool = createReadMcpResourceTool(mockRegistry);
 
 describe('readMcpResourceTool', () => {
   beforeEach(() => {

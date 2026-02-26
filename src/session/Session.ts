@@ -1,7 +1,6 @@
 import { JSONLStore } from '@/context/storage/JSONLStore.js';
 import { getSessionFilePath } from '@/context/storage/pathUtils.js';
 import { nanoid } from 'nanoid';
-import type { ChatCompletionMessageToolCall } from 'openai/resources/chat';
 import { Agent } from '../agent/Agent.js';
 import type { ChatContext, LoopResult } from '../agent/types.js';
 import { getCheckpointService, type RewindResult } from '../checkpoint/index.js';
@@ -10,7 +9,7 @@ import { createLogger, LogCategory } from '../logging/Logger.js';
 import { McpRegistry } from '../mcp/McpRegistry.js';
 import { McpConnectionStatus } from '../mcp/types.js';
 import { getSandboxService } from '../sandbox/SandboxService.js';
-import type { Message } from '../services/ChatServiceInterface.js';
+import type { Message, ToolCall } from '../services/ChatServiceInterface.js';
 import {
   type BladeConfig,
   type McpServerConfig,
@@ -58,6 +57,7 @@ class Session implements ISession {
   private maxTurns: number;
   private permissionMode: PermissionMode;
   private initialized = false;
+  private mcpRegistry: McpRegistry;
 
   private pendingMessage: string | null = null;
   private pendingSendOptions: SendOptions | null = null;
@@ -67,6 +67,7 @@ class Session implements ISession {
     this.options = options;
     this.maxTurns = options.maxTurns ?? 200;
     this.permissionMode = options.permissionMode ?? PermissionMode.DEFAULT;
+    this.mcpRegistry = new McpRegistry();
   }
 
   get messages(): Message[] {
@@ -105,7 +106,7 @@ class Session implements ISession {
   private async registerInProcessMcpServers(): Promise<void> {
     if (!this.options.mcpServers) return;
 
-    const registry = McpRegistry.getInstance();
+    const registry = this.mcpRegistry;
 
     for (const [name, config] of Object.entries(this.options.mcpServers)) {
       if (isSdkMcpServerHandle(config)) {
@@ -130,7 +131,7 @@ class Session implements ISession {
       interface MessageData {
         role: MessageRole;
         content: string;
-        toolCalls: ChatCompletionMessageToolCall[];
+        toolCalls: ToolCall[];
         toolCallId?: string;
         name?: string;
       }
@@ -178,7 +179,7 @@ class Session implements ISession {
                 toolName: string;
                 input: unknown;
               };
-              const toolCall: ChatCompletionMessageToolCall = {
+              const toolCall: ToolCall = {
                 id: payload.toolCallId,
                 type: 'function',
                 function: {
@@ -517,7 +518,7 @@ class Session implements ISession {
   }
 
   async mcpServerStatus(): Promise<McpServerStatus[]> {
-    const registry = McpRegistry.getInstance();
+    const registry = this.mcpRegistry;
     const allServers = registry.getAllServers();
     const statuses: McpServerStatus[] = [];
 
@@ -545,7 +546,7 @@ class Session implements ISession {
   async mcpConnect(serverName: string): Promise<void> {
     await this.ensureInitialized();
 
-    const registry = McpRegistry.getInstance();
+    const registry = this.mcpRegistry;
     const serverInfo = registry.getServerStatus(serverName);
 
     if (!serverInfo) {
@@ -566,19 +567,19 @@ class Session implements ISession {
   }
 
   async mcpDisconnect(serverName: string): Promise<void> {
-    const registry = McpRegistry.getInstance();
+    const registry = this.mcpRegistry;
     await registry.disconnectServer(serverName);
     logger.debug(`[Session] Disconnected from MCP server: ${serverName}`);
   }
 
   async mcpReconnect(serverName: string): Promise<void> {
-    const registry = McpRegistry.getInstance();
+    const registry = this.mcpRegistry;
     await registry.reconnectServer(serverName);
     logger.debug(`[Session] Reconnected to MCP server: ${serverName}`);
   }
 
   async mcpListTools(): Promise<McpToolInfo[]> {
-    const registry = McpRegistry.getInstance();
+    const registry = this.mcpRegistry;
     const allServers = registry.getAllServers();
     const tools: McpToolInfo[] = [];
 

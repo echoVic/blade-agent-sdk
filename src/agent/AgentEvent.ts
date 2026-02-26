@@ -8,7 +8,7 @@
  *   agent_start → (turn_start → [content/thinking/tool events] → turn_end)* → agent_end
  */
 
-import type { ChatCompletionMessageToolCall } from 'openai/resources/chat';
+import type { ToolCall } from '../services/ChatServiceInterface.js';
 import type { TodoItem } from '../tools/builtin/todo/types.js';
 import type { ToolResult } from '../tools/types/ToolTypes.js';
 
@@ -85,14 +85,14 @@ export interface ThinkingEvent {
 /** 工具开始执行 */
 export interface ToolStartEvent {
   type: 'tool_start';
-  toolCall: ChatCompletionMessageToolCall;
+  toolCall: ToolCall;
   toolKind?: 'readonly' | 'write' | 'execute';
 }
 
 /** 工具执行结束 */
 export interface ToolResultEvent {
   type: 'tool_result';
-  toolCall: ChatCompletionMessageToolCall;
+  toolCall: ToolCall;
   result: ToolResult;
 }
 

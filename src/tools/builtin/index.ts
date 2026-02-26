@@ -23,15 +23,14 @@ import { askUserQuestionTool, skillTool } from './system/index.js';
 // 任务管理工具
 import { taskOutputTool, taskTool } from './task/index.js';
 // MCP 资源工具
-import { listMcpResourcesTool, readMcpResourceTool } from './mcp/index.js';
+import { createListMcpResourcesTool, createReadMcpResourceTool } from './mcp/index.js';
 // Todo 工具
 import { createTodoWriteTool } from './todo/index.js';
 // 网络工具
 import { webFetchTool, webSearchTool } from './web/index.js';
 
-async function getMcpTools(): Promise<Tool[]> {
+async function getMcpTools(mcpRegistry: McpRegistry): Promise<Tool[]> {
   try {
-    const mcpRegistry = McpRegistry.getInstance();
     return await mcpRegistry.getAvailableTools();
   } catch (error) {
     console.warn('MCP协议工具加载失败:', error);
@@ -45,6 +44,7 @@ async function getMcpTools(): Promise<Tool[]> {
 export async function getBuiltinTools(opts?: {
   sessionId?: string;
   configDir?: string;
+  mcpRegistry?: McpRegistry;
 }): Promise<Tool[]> {
   const sessionId = opts?.sessionId || `session_${Date.now()}`;
   const configDir = opts?.configDir || path.join(os.homedir(), '.blade');
@@ -87,12 +87,11 @@ export async function getBuiltinTools(opts?: {
     skillTool,
 
     // MCP 资源: ListMcpResources, ReadMcpResource
-    listMcpResourcesTool,
-    readMcpResourceTool,
+    ...(opts?.mcpRegistry ? [createListMcpResourcesTool(opts.mcpRegistry), createReadMcpResourceTool(opts.mcpRegistry)] : []),
   ] as Tool[];
 
   // 添加 MCP 协议工具
-  const mcpTools = await getMcpTools();
+  const mcpTools = opts?.mcpRegistry ? await getMcpTools(opts.mcpRegistry) : [];
 
   return [...builtinTools, ...mcpTools];
 }

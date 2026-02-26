@@ -1,11 +1,6 @@
-import { createAnthropic } from '@ai-sdk/anthropic';
-import { createAzure } from '@ai-sdk/azure';
-import { createDeepSeek } from '@ai-sdk/deepseek';
-import { createGoogleGenerativeAI } from '@ai-sdk/google';
 import { createOpenAICompatible } from '@ai-sdk/openai-compatible';
 import { generateText, jsonSchema, type LanguageModel, Output, streamText } from 'ai';
 import type { OutputFormat } from '../types/common.js';
-import type { ChatCompletionMessageToolCall } from 'openai/resources/chat';
 import { createLogger, LogCategory } from '../logging/Logger.js';
 import type {
   ChatConfig,
@@ -14,6 +9,7 @@ import type {
   IChatService,
   Message,
   StreamChunk,
+  ToolCall,
   UsageInfo,
 } from './ChatServiceInterface.js';
 
@@ -74,12 +70,17 @@ function safeJsonParse(str: string, fallback: unknown = {}): unknown {
 }
 
 export class VercelAIChatService implements IChatService {
-  private model: LanguageModel;
+  private model!: LanguageModel;
   private config: ChatConfig;
+  private initialized: Promise<void>;
 
   constructor(config: ChatConfig) {
     this.config = config;
-    this.model = this.createModel(config);
+    this.initialized = this.initModel(config);
+  }
+
+  private async initModel(config: ChatConfig): Promise<void> {
+    this.model = await this.createModel(config);
     logger.debug('🚀 [VercelAIChatService] Initialized', {
       provider: config.provider,
       model: config.model,
@@ -87,11 +88,12 @@ export class VercelAIChatService implements IChatService {
     });
   }
 
-  private createModel(config: ChatConfig): LanguageModel {
+  private async createModel(config: ChatConfig): Promise<LanguageModel> {
     const { provider, apiKey, baseUrl, model, customHeaders, providerId, apiVersion } = config;
 
     switch (provider) {
       case 'anthropic': {
+        const { createAnthropic } = await import('@ai-sdk/anthropic');
         const anthropic = createAnthropic({
           apiKey,
           baseURL: baseUrl || undefined,
@@ -110,6 +112,7 @@ export class VercelAIChatService implements IChatService {
           });
           return compatible(model);
         }
+        const { createGoogleGenerativeAI } = await import('@ai-sdk/google');
         const google = createGoogleGenerativeAI({
           apiKey,
           baseURL: baseUrl || undefined,
@@ -120,6 +123,7 @@ export class VercelAIChatService implements IChatService {
       case 'azure-openai': {
         const resourceName = this.extractAzureResourceName(baseUrl);
         if (resourceName) {
+          const { createAzure } = await import('@ai-sdk/azure');
           const azure = createAzure({
             apiKey,
             resourceName,
@@ -145,6 +149,7 @@ export class VercelAIChatService implements IChatService {
 
       default: {
         if (providerId === 'deepseek') {
+          const { createDeepSeek } = await import('@ai-sdk/deepseek');
           const deepseek = createDeepSeek({
             apiKey,
             baseURL: baseUrl || undefined,
@@ -281,7 +286,7 @@ export class VercelAIChatService implements IChatService {
 
   private convertToolCalls(
     toolCalls: Array<{ toolCallId: string; toolName: string; args?: unknown; input?: unknown }>
-  ): ChatCompletionMessageToolCall[] {
+  ): ToolCall[] {
     return toolCalls.map((tc) => ({
       id: tc.toolCallId,
       type: 'function' as const,
@@ -341,6 +346,7 @@ export class VercelAIChatService implements IChatService {
     tools?: Array<{ name: string; description: string; parameters: unknown }>,
     signal?: AbortSignal
   ): Promise<ChatResponse> {
+    await this.initialized;
     const startTime = Date.now();
     logger.debug('🚀 [VercelAIChatService] Starting chat request');
 
@@ -395,6 +401,7 @@ export class VercelAIChatService implements IChatService {
     tools?: Array<{ name: string; description: string; parameters: unknown }>,
     signal?: AbortSignal
   ): AsyncGenerator<StreamChunk, void, unknown> {
+    await this.initialized;
     const startTime = Date.now();
     logger.debug('🚀 [VercelAIChatService] Starting stream request');
 
@@ -471,7 +478,7 @@ export class VercelAIChatService implements IChatService {
   updateConfig(newConfig: Partial<ChatConfig>): void {
     logger.debug('🔄 [VercelAIChatService] Updating configuration');
     this.config = { ...this.config, ...newConfig };
-    this.model = this.createModel(this.config);
+    this.initialized = this.initModel(this.config);
     logger.debug('✅ [VercelAIChatService] Configuration updated');
   }
 }

@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { McpRegistry } from '../../../mcp/McpRegistry.js';
+import type { McpRegistry } from '../../../mcp/McpRegistry.js';
 import { createTool } from '../../core/createTool.js';
 import { ToolErrorType, ToolKind } from '../../types/ToolTypes.js';
 
@@ -20,29 +20,29 @@ interface McpResource {
   serverName: string;
 }
 
-export const listMcpResourcesTool = createTool({
-  name: 'ListMcpResources',
-  displayName: 'List MCP Resources',
-  kind: ToolKind.ReadOnly,
-  description: {
-    short: 'List resources available from connected MCP servers',
-    long: `Lists all resources provided by connected MCP (Model Context Protocol) servers.
+export function createListMcpResourcesTool(registry: McpRegistry) {
+  return createTool({
+    name: 'ListMcpResources',
+    displayName: 'List MCP Resources',
+    kind: ToolKind.ReadOnly,
+    description: {
+      short: 'List resources available from connected MCP servers',
+      long: `Lists all resources provided by connected MCP (Model Context Protocol) servers.
 Resources can include files, database records, API endpoints, or any other data sources
 that MCP servers expose for reading.
 
 Use this tool to discover what resources are available before using ReadMcpResource to
 access their contents.`,
-    usageNotes: [
-      'List all resources: ListMcpResources({})',
-      'List resources from specific server: ListMcpResources({ serverName: "my-server" })',
-    ],
-  },
-  schema: ListMcpResourcesParamsSchema,
+      usageNotes: [
+        'List all resources: ListMcpResources({})',
+        'List resources from specific server: ListMcpResources({ serverName: "my-server" })',
+      ],
+    },
+    schema: ListMcpResourcesParamsSchema,
 
-  async execute(params: ListMcpResourcesParams) {
-    try {
-      const registry = McpRegistry.getInstance();
-      const servers = registry.getAllServers();
+    async execute(params: ListMcpResourcesParams) {
+      try {
+        const servers = registry.getAllServers();
 
       if (servers.size === 0) {
         return {
@@ -135,4 +135,5 @@ access their contents.`,
       };
     }
   },
-});
+  });
+}

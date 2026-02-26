@@ -5,8 +5,7 @@
 
 import { readFile } from 'node:fs/promises';
 import { basename } from 'node:path';
-import type { ChatCompletionMessageToolCall } from 'openai/resources/chat';
-import type { Message } from '../services/ChatServiceInterface.js';
+import type { Message, ToolCall } from '../services/ChatServiceInterface.js';
 
 /**
  * 文件引用信息
@@ -223,7 +222,7 @@ export class FileAnalyzer {
    * @returns 文件路径列表
    */
   private static extractFilePathsFromToolCall(
-    toolCall: ChatCompletionMessageToolCall
+    toolCall: ToolCall
   ): string[] {
     const paths: string[] = [];
 

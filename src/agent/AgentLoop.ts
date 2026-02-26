@@ -8,9 +8,8 @@
  * 4. 与现有 AgentEvent / LoopResult 类型兼容
  */
 
-import type { ChatCompletionMessageToolCall } from 'openai/resources/chat';
 import { createLogger, LogCategory } from '../logging/Logger.js';
-import type { ChatResponse, IChatService, Message } from '../services/ChatServiceInterface.js';
+import type { ChatResponse, IChatService, Message, ToolCall } from '../services/ChatServiceInterface.js';
 import type { ToolResult } from '../tools/types/index.js';
 import { ToolErrorType } from '../tools/types/index.js';
 import type { ExecutionPipeline } from '../tools/execution/ExecutionPipeline.js';
@@ -24,7 +23,7 @@ import type { LoopResult, TurnLimitResponse } from './types.js';
 type LlmToolDef = { name: string; description: string; parameters: unknown };
 
 /** 仅 function 类型的 tool call（过滤后的窄类型） */
-type FunctionToolCall = ChatCompletionMessageToolCall & { type: 'function'; function: { name: string; arguments: string } };
+type FunctionToolCall = ToolCall & { type: 'function'; function: { name: string; arguments: string } };
 
 const logger = createLogger(LogCategory.AGENT);
 
@@ -94,7 +93,7 @@ export interface AgentLoopConfig {
   onAssistantMessage?: (ctx: {
     content: string;
     reasoningContent?: string;
-    toolCalls?: ChatCompletionMessageToolCall[];
+    toolCalls?: ToolCall[];
     turn: number;
   }) => Promise<void>;
 

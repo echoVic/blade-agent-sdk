@@ -4,8 +4,7 @@
  */
 
 import { encodingForModel } from 'js-tiktoken';
-import type { ChatCompletionMessageToolCall } from 'openai/resources/chat';
-import type { Message } from '../services/ChatServiceInterface.js';
+import type { Message, ToolCall } from '../services/ChatServiceInterface.js';
 
 interface Encoding {
   encode: (text: string) => number[];
@@ -139,7 +138,7 @@ export class TokenCounter {
    * @returns token 数量
    */
   private static countToolCallTokens(
-    toolCalls: ChatCompletionMessageToolCall[],
+    toolCalls: ToolCall[],
     encoding: Encoding
   ): number {
     let tokens = 0;

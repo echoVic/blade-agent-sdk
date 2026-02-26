@@ -2,8 +2,7 @@
  * Agent核心类型定义
  */
 
-import type { ChatCompletionMessageToolCall } from 'openai/resources/chat';
-import type { ContentPart, Message } from '../services/ChatServiceInterface.js';
+import type { ContentPart, Message, ToolCall } from '../services/ChatServiceInterface.js';
 import type { TodoItem } from '../tools/builtin/todo/types.js';
 import type { ConfirmationHandler } from '../tools/types/ExecutionTypes.js';
 import type { ToolResult } from '../tools/types/ToolTypes.js';
@@ -111,12 +110,12 @@ export type AgentEvent =
   | { type: 'thinking'; content: string }
   | {
       type: 'tool_start';
-      toolCall: ChatCompletionMessageToolCall;
+      toolCall: ToolCall;
       toolKind?: 'readonly' | 'write' | 'execute';
     }
   | {
       type: 'tool_result';
-      toolCall: ChatCompletionMessageToolCall;
+      toolCall: ToolCall;
       result: ToolResult;
     }
   | {

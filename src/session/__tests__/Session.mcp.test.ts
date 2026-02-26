@@ -20,8 +20,7 @@ describe('Session MCP Methods', () => {
   let registry: McpRegistry;
 
   beforeEach(() => {
-    (McpRegistry as unknown as { instance: McpRegistry | null }).instance = null;
-    registry = McpRegistry.getInstance();
+    registry = new McpRegistry();
     mockConnect.mockClear();
     mockDisconnect.mockClear();
     mockOn.mockClear();

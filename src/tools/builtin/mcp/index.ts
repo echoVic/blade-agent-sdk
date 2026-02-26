@@ -1,3 +1,3 @@
-export { listMcpResourcesTool } from './listMcpResources.js';
-export { readMcpResourceTool } from './readMcpResource.js';
+export { createListMcpResourcesTool } from './listMcpResources.js';
+export { createReadMcpResourceTool } from './readMcpResource.js';
 

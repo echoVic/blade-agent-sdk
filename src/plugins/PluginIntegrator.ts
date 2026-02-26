@@ -48,9 +48,9 @@ export class PluginIntegrator {
   private hookManager: HookManager;
   private mcpRegistry: McpRegistry;
 
-  constructor() {
+  constructor(mcpRegistry: McpRegistry) {
     this.hookManager = HookManager.getInstance();
-    this.mcpRegistry = McpRegistry.getInstance();
+    this.mcpRegistry = mcpRegistry;
   }
 
   /**
@@ -291,15 +291,15 @@ export class PluginIntegrator {
 /**
  * Convenience function to integrate all plugins
  */
-export async function integrateAllPlugins(): Promise<IntegrationResult> {
-  const integrator = new PluginIntegrator();
+export async function integrateAllPlugins(mcpRegistry: McpRegistry): Promise<IntegrationResult> {
+  const integrator = new PluginIntegrator(mcpRegistry);
   return integrator.integrateAll();
 }
 
 /**
  * Convenience function to clear all plugin resources
  */
-export function clearAllPluginResources(): void {
-  const integrator = new PluginIntegrator();
+export function clearAllPluginResources(mcpRegistry: McpRegistry): void {
+  const integrator = new PluginIntegrator(mcpRegistry);
   integrator.clearAllPluginResources();
 }

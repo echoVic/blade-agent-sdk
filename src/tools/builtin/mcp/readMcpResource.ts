@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { McpRegistry } from '../../../mcp/McpRegistry.js';
+import type { McpRegistry } from '../../../mcp/McpRegistry.js';
 import { createTool } from '../../core/createTool.js';
 import { ToolErrorType, ToolKind } from '../../types/ToolTypes.js';
 
@@ -20,27 +20,27 @@ interface ResourceContent {
   blob?: string;
 }
 
-export const readMcpResourceTool = createTool({
-  name: 'ReadMcpResource',
-  displayName: 'Read MCP Resource',
-  kind: ToolKind.ReadOnly,
-  description: {
-    short: 'Read the contents of an MCP resource by URI',
-    long: `Reads and returns the contents of a resource from a connected MCP (Model Context Protocol) server.
+export function createReadMcpResourceTool(registry: McpRegistry) {
+  return createTool({
+    name: 'ReadMcpResource',
+    displayName: 'Read MCP Resource',
+    kind: ToolKind.ReadOnly,
+    description: {
+      short: 'Read the contents of an MCP resource by URI',
+      long: `Reads and returns the contents of a resource from a connected MCP (Model Context Protocol) server.
 Resources are identified by their URI, which can be obtained using the ListMcpResources tool.
 
 The resource content can be text (returned as-is) or binary data (returned as base64-encoded blob).`,
-    usageNotes: [
-      'Read a resource: ReadMcpResource({ uri: "file:///path/to/resource" })',
-      'Read from specific server: ReadMcpResource({ uri: "db://table/record", serverName: "database-server" })',
-    ],
-  },
-  schema: ReadMcpResourceParamsSchema,
+      usageNotes: [
+        'Read a resource: ReadMcpResource({ uri: "file:///path/to/resource" })',
+        'Read from specific server: ReadMcpResource({ uri: "db://table/record", serverName: "database-server" })',
+      ],
+    },
+    schema: ReadMcpResourceParamsSchema,
 
-  async execute(params: ReadMcpResourceParams) {
-    try {
-      const registry = McpRegistry.getInstance();
-      const servers = registry.getAllServers();
+    async execute(params: ReadMcpResourceParams) {
+      try {
+        const servers = registry.getAllServers();
 
       if (servers.size === 0) {
         return {
@@ -136,4 +136,5 @@ The resource content can be text (returned as-is) or binary data (returned as ba
       };
     }
   },
-});
+  });
+}

@@ -3,6 +3,7 @@ import { agentLoop } from '../AgentLoop.js';
 import type { AgentLoopConfig } from '../AgentLoop.js';
 import type { AgentLoopEvent } from '../AgentEvent.js';
 import type { LoopResult } from '../types.js';
+import type { Message } from '../../services/ChatServiceInterface.js';
 import type { ToolResult } from '../../tools/types/index.js';
 
 // ===== Mock Factories =====
@@ -352,7 +353,7 @@ describe('agentLoop', () => {
       await collectEvents(agentLoop(config));
 
       expect(onAssistantMessage).toHaveBeenCalled();
-      const firstCall = onAssistantMessage.mock.calls[0][0] as { content: string; turn: number };
+      const firstCall = (onAssistantMessage.mock.calls as unknown as Array<[{ content: string; turn: number }]>)[0][0];
       expect(firstCall.content).toBe('Using tool');
       expect(firstCall.turn).toBe(1);
     });
@@ -379,10 +380,10 @@ describe('agentLoop', () => {
       expect(onBeforeToolExec).toHaveBeenCalledTimes(1);
       expect(onAfterToolExec).toHaveBeenCalledTimes(1);
 
-      const afterCtx = onAfterToolExec.mock.calls[0][0] as {
+      const afterCtx = (onAfterToolExec.mock.calls as unknown as Array<[{
         toolCall: { function: { name: string } };
         toolUseUuid: string | null;
-      };
+      }]>)[0][0];
       expect(afterCtx.toolCall.function.name).toBe('ReadFile');
       expect(afterCtx.toolUseUuid).toBe('uuid-123');
     });
@@ -393,7 +394,7 @@ describe('agentLoop', () => {
       await collectEvents(agentLoop(config));
 
       expect(onComplete).toHaveBeenCalledTimes(1);
-      const ctx = onComplete.mock.calls[0][0] as { content: string; turn: number };
+      const ctx = (onComplete.mock.calls as unknown as Array<[{ content: string; turn: number }]>)[0][0];
       expect(ctx.content).toBe('Hello!');
       expect(ctx.turn).toBe(1);
     });
@@ -483,7 +484,7 @@ describe('agentLoop', () => {
 
   describe('message history', () => {
     it('should add tool results to messages', async () => {
-      const messages = [{ role: 'user' as const, content: 'Read test.ts' }];
+      const messages: Message[] = [{ role: 'user' as const, content: 'Read test.ts' }];
       const chatService = createMockChatService([
         {
           content: 'Reading',

@@ -22,24 +22,15 @@ export interface McpServerInfo {
 /**
  * MCP注册表
  * 管理MCP服务器连接和工具发现
+ *
+ * per-session 实例，每个 Session/Agent 创建自己的 McpRegistry
  */
 export class McpRegistry extends EventEmitter {
-  private static instance: McpRegistry | null = null;
   private servers: Map<string, McpServerInfo> = new Map();
   private isDiscovering = false;
 
-  private constructor() {
+  constructor() {
     super();
-  }
-
-  /**
-   * 获取单例实例
-   */
-  static getInstance(): McpRegistry {
-    if (!McpRegistry.instance) {
-      McpRegistry.instance = new McpRegistry();
-    }
-    return McpRegistry.instance;
   }
 
   /**

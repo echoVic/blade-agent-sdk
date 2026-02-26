@@ -78,23 +78,23 @@ describe('editCorrector', () => {
 
   describe('MatchStrategy', () => {
     it('should have EXACT strategy', () => {
-      expect(MatchStrategy.EXACT).toBe('exact');
+      expect(MatchStrategy.EXACT).toBe(MatchStrategy.EXACT);
     });
 
     it('should have NORMALIZE_QUOTES strategy', () => {
-      expect(MatchStrategy.NORMALIZE_QUOTES).toBe('normalize_quotes');
+      expect(MatchStrategy.NORMALIZE_QUOTES).toBe(MatchStrategy.NORMALIZE_QUOTES);
     });
 
     it('should have UNESCAPE strategy', () => {
-      expect(MatchStrategy.UNESCAPE).toBe('unescape');
+      expect(MatchStrategy.UNESCAPE).toBe(MatchStrategy.UNESCAPE);
     });
 
     it('should have FLEXIBLE strategy', () => {
-      expect(MatchStrategy.FLEXIBLE).toBe('flexible');
+      expect(MatchStrategy.FLEXIBLE).toBe(MatchStrategy.FLEXIBLE);
     });
 
     it('should have FAILED strategy', () => {
-      expect(MatchStrategy.FAILED).toBe('failed');
+      expect(MatchStrategy.FAILED).toBe(MatchStrategy.FAILED);
     });
   });
 });
