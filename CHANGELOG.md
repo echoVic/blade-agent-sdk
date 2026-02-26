@@ -2,6 +2,9 @@
 
 本文件记录 @blade-ai/agent-sdk 的所有重要变更。
 
+## [0.1.9] - 2026-02-26
+
+- 6e092f1 refactor: remove openai dep, split Agent.ts, McpRegistry per-instance, provider lazy import
 ## [0.1.8] - 2026-02-18
 
 - 7e41a2d test: add unit tests for SkillLoader, ToolRegistry, ContextCompressor
