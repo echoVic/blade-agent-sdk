@@ -2,10 +2,10 @@ import { basename, extname } from 'path';
 import { z } from 'zod';
 import { isAcpMode } from '../../../acp/AcpServiceContext.js';
 import { getFileSystemService } from '../../../services/FileSystemService.js';
+import { getErrorMessage, getErrorName } from '../../../utils/errorUtils.js';
 import { createTool } from '../../core/createTool.js';
 import type {
   ExecutionContext,
-  NodeError,
   ReadMetadata,
   ToolResult,
 } from '../../types/index.js';
@@ -234,8 +234,7 @@ export const readTool = createTool({
         metadata,
       };
     } catch (error) {
-      const nodeError = error as NodeError;
-      if (nodeError.name === 'AbortError') {
+      if (getErrorName(error) === 'AbortError') {
         return {
           success: false,
           llmContent: 'File read aborted',
@@ -249,12 +248,12 @@ export const readTool = createTool({
 
       return {
         success: false,
-        llmContent: `File read failed: ${nodeError.message}`,
-        displayContent: `❌ 读取文件失败: ${nodeError.message}`,
+        llmContent: `File read failed: ${getErrorMessage(error)}`,
+        displayContent: `❌ 读取文件失败: ${getErrorMessage(error)}`,
         error: {
           type: ToolErrorType.EXECUTION_ERROR,
-          message: nodeError.message,
-          details: nodeError,
+          message: getErrorMessage(error),
+          details: error,
         },
       };
     }

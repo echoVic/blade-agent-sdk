@@ -20,6 +20,7 @@ import type {
 } from '../../../agent/subagents/types.js';
 import { PermissionMode } from '../../../types/common.js';
 import { HookManager } from '../../../hooks/HookManager.js';
+import { getErrorMessage } from '../../../utils/errorUtils.js';
 import { createTool } from '../../core/createTool.js';
 import type { ExecutionContext, ToolResult } from '../../types/index.js';
 import { ToolErrorType, ToolKind } from '../../types/index.js';
@@ -287,8 +288,7 @@ export const taskTool = createTool({
         const stopResult = await hookManager.executeSubagentStopHooks(subagent_type, {
           projectDir: process.cwd(),
           sessionId: context.sessionId || 'unknown',
-          permissionMode:
-            (context.permissionMode as PermissionMode) || PermissionMode.DEFAULT,
+          permissionMode: context.permissionMode ?? PermissionMode.DEFAULT,
           taskDescription: description,
           success: result.success,
           resultSummary: result.message.slice(0, 500),
@@ -375,16 +375,17 @@ export const taskTool = createTool({
         };
       }
     } catch (error) {
-      const err = error as Error;
-      const errorMessage = extractUserFriendlyError(err);
+      const errorMessage = extractUserFriendlyError(
+        error instanceof Error ? error : new Error(getErrorMessage(error))
+      );
 
       return {
         success: false,
-        llmContent: `Subagent execution error: ${err.message}`,
+        llmContent: `Subagent execution error: ${getErrorMessage(error)}`,
         displayContent: `❌ Subagent 执行异常\n\n${errorMessage}`,
         error: {
           type: ToolErrorType.EXECUTION_ERROR,
-          message: err.message,
+          message: getErrorMessage(error),
           details: error,
         },
       };

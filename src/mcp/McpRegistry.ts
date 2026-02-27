@@ -1,6 +1,7 @@
 import { EventEmitter } from 'events';
 import type { McpServerConfig } from '../types/common.js';
 import type { Tool } from '../tools/types/index.js';
+import { toError } from '../utils/errorUtils.js';
 import { createMcpTool } from './createMcpTool.js';
 import { McpClient } from './McpClient.js';
 import type { SdkMcpServerHandle } from './SdkMcpServer.js';
@@ -155,7 +156,7 @@ export class McpRegistry extends EventEmitter {
       serverInfo.lastError = undefined;
       serverInfo.tools = serverInfo.client.availableTools;
     } catch (error) {
-      serverInfo.lastError = error as Error;
+      serverInfo.lastError = toError(error);
       serverInfo.status = McpConnectionStatus.ERROR;
       throw error;
     }
@@ -198,7 +199,7 @@ export class McpRegistry extends EventEmitter {
       serverInfo.lastError = undefined;
       serverInfo.tools = serverInfo.client.availableTools;
     } catch (error) {
-      serverInfo.lastError = error as Error;
+      serverInfo.lastError = toError(error);
       serverInfo.status = McpConnectionStatus.ERROR;
       throw error;
     }

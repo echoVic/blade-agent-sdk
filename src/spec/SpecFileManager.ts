@@ -4,10 +4,11 @@
  * 负责 Spec 相关文件的读写、目录结构管理
  */
 
+import { nanoid } from 'nanoid';
 import { promises as fs } from 'node:fs';
 import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { nanoid } from 'nanoid';
+import { getErrorCode } from '../utils/errorUtils.js';
 import {
   PHASE_PRIMARY_FILE,
   SPEC_DIRS,
@@ -119,7 +120,7 @@ export class SpecFileManager {
     try {
       return await fs.readFile(filePath, 'utf-8');
     } catch (error) {
-      if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
+      if (getErrorCode(error) === 'ENOENT') {
         return null;
       }
       throw error;

@@ -5,14 +5,23 @@
  */
 
 import { safeParseHookOutput } from './schemas/HookSchemas.js';
-import type {
-  Hook,
-  HookConfig,
-  HookExecutionResult,
+import {
+  type Hook,
+  type HookConfig,
+  type HookExecutionResult,
   HookExitCode,
-  HookOutput,
-  ProcessResult,
+  type HookOutput,
+  type ProcessResult,
 } from './types/HookTypes.js';
+
+const VALID_EXIT_CODES = new Set(Object.values(HookExitCode).filter((v): v is number => typeof v === 'number'));
+
+function toHookExitCode(code: number): HookExitCode {
+  if (VALID_EXIT_CODES.has(code)) {
+    return code;
+  }
+  return code >= 2 ? HookExitCode.BLOCKING_ERROR : HookExitCode.NON_BLOCKING_ERROR;
+}
 
 /**
  * 输出解析器
@@ -166,7 +175,7 @@ export class OutputParser {
     hook: Hook,
     config?: Pick<HookConfig, 'timeoutBehavior' | 'failureBehavior'>
   ): HookExecutionResult {
-    const exitCode = result.exitCode as HookExitCode;
+    const exitCode = toHookExitCode(result.exitCode);
 
     switch (exitCode) {
       case 0: // SUCCESS

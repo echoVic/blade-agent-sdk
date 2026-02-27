@@ -2,11 +2,10 @@ import { CompactionService } from '../context/CompactionService.js';
 import type { ContextManager } from '../context/ContextManager.js';
 import { createLogger, LogCategory } from '../logging/Logger.js';
 import type { IChatService, Message } from '../services/ChatServiceInterface.js';
+import type { CompactingEvent } from './AgentEvent.js';
 import type { ChatContext } from './types.js';
 
 const logger = createLogger(LogCategory.AGENT);
-
-export type CompactionEvent = { type: 'compacting'; isCompacting: boolean };
 
 export class CompactionHandler {
   constructor(
@@ -18,7 +17,7 @@ export class CompactionHandler {
     context: ChatContext,
     currentTurn: number,
     actualPromptTokens?: number
-  ): AsyncGenerator<CompactionEvent, boolean> {
+  ): AsyncGenerator<CompactingEvent, boolean> {
     if (actualPromptTokens === undefined) {
       logger.debug(`[Agent] [轮次 ${currentTurn}] 压缩检查: 跳过（无历史 usage 数据）`);
       return false;

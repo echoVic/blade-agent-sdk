@@ -186,12 +186,12 @@ export function generateToolDetail(
     }
 
     case 'Grep': {
+      if (!Array.isArray(result.llmContent) || !result.llmContent.length) return null;
       const matches = result.llmContent as Array<{
         file_path: string;
         line_number?: number;
         content?: string;
       }>;
-      if (!Array.isArray(matches) || !matches.length) return null;
       const maxShow = 5;
       const lines = matches.slice(0, maxShow).map((m) => {
         const fileName = basename(m.file_path);

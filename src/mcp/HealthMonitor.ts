@@ -4,6 +4,7 @@
  */
 
 import { EventEmitter } from 'events';
+import { getErrorMessage } from '../utils/errorUtils.js';
 import type { McpClient } from './McpClient.js';
 import { McpConnectionStatus } from './types.js';
 
@@ -142,20 +143,17 @@ export class HealthMonitor extends EventEmitter {
       }
     } catch (error) {
       this.consecutiveFailures++;
-      const err = error as Error;
 
       console.warn(
         `[HealthMonitor] 健康检查失败（${this.consecutiveFailures}/${this.config.failureThreshold}）:`,
-        err.message
+        getErrorMessage(error)
       );
 
-      // 判断状态
       let status: HealthStatus;
       if (this.consecutiveFailures >= this.config.failureThreshold) {
         status = HealthStatus.UNHEALTHY;
-        this.emit('unhealthy', this.consecutiveFailures, err);
+        this.emit('unhealthy', this.consecutiveFailures, error);
 
-        // 触发重连
         console.log('[HealthMonitor] 达到失败阈值，触发重连...');
         this.triggerReconnection().catch((reconnectError) => {
           console.error('[HealthMonitor] 重连失败:', reconnectError);
@@ -170,7 +168,7 @@ export class HealthMonitor extends EventEmitter {
         status,
         timestamp: Date.now(),
         consecutiveFailures: this.consecutiveFailures,
-        lastError: err,
+        lastError: error instanceof Error ? error : new Error(getErrorMessage(error)),
       };
 
       this.emit('healthCheck', result);

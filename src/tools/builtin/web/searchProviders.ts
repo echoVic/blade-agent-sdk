@@ -5,6 +5,7 @@
  * 当前支持：Exa (MCP)、DuckDuckGo、SearXNG（多实例）
  */
 
+import { getErrorName } from '../../../utils/errorUtils.js';
 import type { WebSearchResult } from './webSearch.js';
 
 /**
@@ -46,6 +47,11 @@ interface DuckDuckGoTopic extends DuckDuckGoResult {
 interface DuckDuckGoResponse {
   Results?: DuckDuckGoResult[];
   RelatedTopics?: DuckDuckGoTopic[];
+}
+
+function isDuckDuckGoResponse(data: unknown): data is DuckDuckGoResponse {
+  if (!data || typeof data !== 'object') return false;
+  return true;
 }
 
 function decodeHtmlEntities(value: string): string {
@@ -128,7 +134,8 @@ function flattenTopics(topics: DuckDuckGoTopic[]): WebSearchResult[] {
 }
 
 function transformDuckDuckGoResponse(data: unknown): WebSearchResult[] {
-  const response = data as DuckDuckGoResponse;
+  if (!isDuckDuckGoResponse(data)) return [];
+  const response = data;
 
   const directResults = (response.Results ?? [])
     .map((entry) => mapDuckDuckGoResult(entry))
@@ -174,8 +181,14 @@ interface SearXNGResponse {
   results?: SearXNGResult[];
 }
 
+function isSearXNGResponse(data: unknown): data is SearXNGResponse {
+  if (!data || typeof data !== 'object') return false;
+  return true;
+}
+
 function transformSearXNGResponse(data: unknown): WebSearchResult[] {
-  const response = data as SearXNGResponse;
+  if (!isSearXNGResponse(data)) return [];
+  const response = data;
   const results: WebSearchResult[] = [];
 
   for (const item of response.results ?? []) {
@@ -410,7 +423,7 @@ function createExaProvider(): SearchProvider {
       } catch (error) {
         clearTimeout(timeoutId);
 
-        if ((error as Error).name === 'AbortError') {
+        if (getErrorName(error) === 'AbortError') {
           throw new Error('MCP request timed out');
         }
 

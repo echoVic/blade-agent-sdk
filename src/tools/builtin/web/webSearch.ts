@@ -1,5 +1,6 @@
 import { type Dispatcher, ProxyAgent, fetch as undiciFetch } from 'undici';
 import { z } from 'zod';
+import { getErrorMessage, getErrorName } from '../../../utils/errorUtils.js';
 import { createTool } from '../../core/createTool.js';
 import type {
   ExecutionContext,
@@ -100,8 +101,7 @@ async function fetchWithTimeout(
     });
     return response as unknown as Response;
   } catch (error) {
-    const err = error as Error;
-    if (err.name === 'AbortError') {
+    if (getErrorName(error) === 'AbortError') {
       throw new Error('搜索请求超时或被中止');
     }
     throw error;
@@ -128,7 +128,7 @@ async function fetchWithRetry(
     try {
       return await fetchWithTimeout(url, options, timeout, signal, dispatcher);
     } catch (error) {
-      lastError = error as Error;
+      lastError = error instanceof Error ? error : new Error(getErrorMessage(error));
 
       // 如果是用户中止，立即抛出
       if (signal?.aborted) {
@@ -190,8 +190,7 @@ async function searchWithProvider(
 
       return { results, providerName: provider.name };
     } catch (error) {
-      const err = error as Error;
-      throw new Error(`SDK search failed: ${err.message}`);
+      throw new Error(`SDK search failed: ${getErrorMessage(error)}`);
     }
   }
 
@@ -274,8 +273,7 @@ async function searchWithFallback(
         updateOutput
       );
     } catch (error) {
-      const err = error as Error;
-      const errorMsg = `${provider.name}: ${err.message}`;
+      const errorMsg = `${provider.name}: ${getErrorMessage(error)}`;
       errors.push(errorMsg);
       updateOutput?.(`⚠️ ${errorMsg}`);
 
@@ -495,14 +493,13 @@ IMPORTANT - Use the correct year in search queries:
         metadata,
       };
     } catch (error) {
-      const err = error as Error;
       return {
         success: false,
-        llmContent: `WebSearch call failed: ${err.message}`,
-        displayContent: `❌ WebSearch 调用失败: ${err.message}`,
+        llmContent: `WebSearch call failed: ${getErrorMessage(error)}`,
+        displayContent: `❌ WebSearch 调用失败: ${getErrorMessage(error)}`,
         error: {
           type: ToolErrorType.EXECUTION_ERROR,
-          message: err.message,
+          message: getErrorMessage(error),
           details: {
             query,
             allowedDomains,

@@ -1,5 +1,6 @@
 import { EventEmitter } from 'events';
 import { PermissionMode } from '../../types/common.js';
+import { getErrorMessage } from '../../utils/errorUtils.js';
 import type { FunctionDeclaration, Tool } from '../types/index.js';
 
 /**
@@ -44,7 +45,7 @@ export class ToolRegistry extends EventEmitter {
       try {
         this.register(tool);
       } catch (error) {
-        errors.push(`${tool.name}: ${(error as Error).message}`);
+        errors.push(`${tool.name}: ${getErrorMessage(error)}`);
       }
     }
 

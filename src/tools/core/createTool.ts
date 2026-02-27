@@ -1,5 +1,5 @@
 import type { z } from 'zod';
-import type { Tool, ToolConfig, ToolDefinition, ToolExecutionContext, ToolInvocation, ToolResult } from '../types/index.js';
+import type { ExecutionContext, Tool, ToolConfig, ToolDefinition, ToolInvocation, ToolResult } from '../types/index.js';
 import { isReadOnlyKind, ToolKind } from '../types/ToolTypes.js';
 import { parseWithZod } from '../validation/errorFormatter.js';
 import { zodToFunctionSchema } from '../validation/zodToJson.js';
@@ -174,12 +174,12 @@ export function toolFromDefinition<TParams = Record<string, unknown>>(
       return new UnifiedToolInvocation<TParams>(
         definition.name,
         params,
-        async (p, ctx) => definition.execute(p, ctx as ToolExecutionContext)
+        (p, ctx) => definition.execute(p, ctx)
       );
     },
 
     async execute(params: TParams, signal?: AbortSignal): Promise<ToolResult> {
-      const context: ToolExecutionContext = { signal };
+      const context: ExecutionContext = { signal };
       return definition.execute(params, context);
     },
   };

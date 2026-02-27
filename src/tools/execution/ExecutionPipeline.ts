@@ -1,12 +1,10 @@
 import { EventEmitter } from 'events';
-import type { PermissionsConfig } from '../../types/common.js';
-import { PermissionMode } from '../../types/common.js';
-import type { CanUseTool } from '../../types/permissions.js';
-
-type PermissionConfig = PermissionsConfig & { ask?: string[] };
 import { HookManager } from '../../hooks/HookManager.js';
 import { HookStage } from '../../hooks/HookStage.js';
 import { PostToolUseHookStage } from '../../hooks/PostToolUseHookStage.js';
+import { PermissionMode, type PermissionsConfig } from '../../types/common.js';
+import type { CanUseTool } from '../../types/permissions.js';
+import { getErrorMessage, getErrorName } from '../../utils/errorUtils.js';
 import type { ToolRegistry } from '../registry/ToolRegistry.js';
 import { ToolExecution as ToolExecutionImpl } from '../types/ExecutionTypes.js';
 import type {
@@ -24,6 +22,8 @@ import {
   FormattingStage,
   PermissionStage,
 } from './PipelineStages.js';
+
+
 
 /**
  * 7阶段执行管道
@@ -43,8 +43,7 @@ export class ExecutionPipeline extends EventEmitter {
 
     this.maxHistorySize = config.maxHistorySize || 1000;
 
-    // 使用提供的权限配置或默认配置
-    const permissionConfig: PermissionConfig = config.permissionConfig || {
+    const permissionConfig: PermissionsConfig = config.permissionConfig || {
       allow: [],
       ask: [],
       deny: [],
@@ -178,35 +177,32 @@ export class ExecutionPipeline extends EventEmitter {
       return result;
     } catch (error) {
       const endTime = Date.now();
+      const errorMsg = getErrorMessage(error);
       const isTimeout =
-        (error as Error).message?.includes('timeout') ||
-        (error as Error).name === 'TimeoutError';
+        errorMsg.includes('timeout') ||
+        getErrorName(error) === 'TimeoutError';
 
-      // 构建错误结果
       let errorResult: ToolResult = {
         success: false,
-        llmContent: `Tool execution failed: ${(error as Error).message}`,
-        displayContent: `错误: ${(error as Error).message}`,
+        llmContent: `Tool execution failed: ${errorMsg}`,
+        displayContent: `错误: ${errorMsg}`,
         error: {
           type: ToolErrorType.EXECUTION_ERROR,
-          message: (error as Error).message,
+          message: errorMsg,
         },
       };
 
-      // 执行 PostToolUseFailure Hook
       try {
         const hookManager = HookManager.getInstance();
         const hookResult = await hookManager.executePostToolUseFailureHooks(
           execution.toolName,
           `tool_use_${executionId}`,
           execution.params,
-          (error as Error).message,
+          errorMsg,
           {
             projectDir: process.cwd(),
             sessionId: execution.context.sessionId || 'unknown',
-            permissionMode:
-              (execution.context.permissionMode as PermissionMode) ||
-              PermissionMode.DEFAULT,
+            permissionMode: execution.context.permissionMode ?? PermissionMode.DEFAULT,
             isInterrupt: false,
             isTimeout,
             abortSignal: execution.context.signal,
@@ -436,7 +432,7 @@ export interface ExecutionPipelineConfig {
   maxHistorySize?: number;
   enableMetrics?: boolean;
   customStages?: PipelineStage[];
-  permissionConfig?: PermissionConfig;
+  permissionConfig?: PermissionsConfig;
   permissionMode?: PermissionMode;
   canUseTool?: CanUseTool;
 }

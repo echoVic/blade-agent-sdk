@@ -83,8 +83,7 @@ export type {
     StreamOptions,
     SubagentInfo,
     ToolCallRecord,
-    ToolDefinition,
-    ToolExecutionContext
+    ToolDefinition
 } from './session/index.js';
 export { discoverSkills, injectSkillsMetadata } from './skills/index.js';
 export * from './skills/types.js';

@@ -9,6 +9,7 @@ import { SpecManager } from '../../../spec/SpecManager.js';
 import {
   PHASE_DISPLAY_NAMES,
   PHASE_TRANSITIONS,
+  SPEC_PHASES,
   type SpecPhase,
 } from '../../../spec/types.js';
 import { createTool } from '../../core/createTool.js';
@@ -83,9 +84,7 @@ export const transitionSpecPhaseTool = createTool({
   kind: ToolKind.Write,
 
   schema: z.object({
-    targetPhase: z
-      .enum(['requirements', 'design', 'tasks', 'implementation', 'done'])
-      .describe('The phase to transition to'),
+    targetPhase: z.enum(SPEC_PHASES).describe('The phase to transition to'),
   }),
 
   description: {
@@ -140,9 +139,8 @@ TransitionSpecPhase({ targetPhase: "design" })
       };
     }
 
-    // Check if transition is allowed
     const allowedTransitions = PHASE_TRANSITIONS[currentSpec.phase];
-    if (!allowedTransitions.includes(targetPhase as SpecPhase)) {
+    if (!allowedTransitions.includes(targetPhase)) {
       return {
         success: false,
         llmContent:
@@ -214,7 +212,7 @@ TransitionSpecPhase({ targetPhase: "design" })
     }
 
     try {
-      const result = await specManager.transitionPhase(targetPhase as SpecPhase);
+      const result = await specManager.transitionPhase(targetPhase);
 
       if (!result.success) {
         return {
@@ -229,13 +227,13 @@ TransitionSpecPhase({ targetPhase: "design" })
       }
 
       const fromDisplay = PHASE_DISPLAY_NAMES[currentSpec.phase];
-      const toDisplay = PHASE_DISPLAY_NAMES[targetPhase as SpecPhase];
+      const toDisplay = PHASE_DISPLAY_NAMES[targetPhase];
 
       return {
         success: true,
         llmContent:
           `✅ Transitioned from "${fromDisplay}" to "${toDisplay}"\n\n` +
-          getPhaseInstructions(targetPhase as SpecPhase),
+          getPhaseInstructions(targetPhase),
         displayContent: `✅ Phase: ${fromDisplay} → ${toDisplay}`,
         metadata: {
           fromPhase: currentSpec.phase,

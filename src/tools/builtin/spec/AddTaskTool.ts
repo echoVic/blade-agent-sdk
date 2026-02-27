@@ -6,7 +6,7 @@
 
 import { z } from 'zod';
 import { SpecManager } from '../../../spec/SpecManager.js';
-import type { TaskComplexity } from '../../../spec/types.js';
+import { TASK_COMPLEXITIES } from '../../../spec/types.js';
 import { createTool } from '../../core/createTool.js';
 import type { ToolResult } from '../../types/ToolTypes.js';
 import { ToolErrorType, ToolKind } from '../../types/ToolTypes.js';
@@ -23,7 +23,7 @@ export const addTaskTool = createTool({
       .min(1)
       .describe('Detailed description of what needs to be done'),
     complexity: z
-      .enum(['low', 'medium', 'high'])
+      .enum(TASK_COMPLEXITIES)
       .optional()
       .default('medium')
       .describe('Estimated complexity of the task'),
@@ -100,9 +100,8 @@ AddTask({
       };
     }
 
-    // Add the task
     const result = await specManager.addTask(title, description, {
-      complexity: complexity as TaskComplexity,
+      complexity,
       affectedFiles,
       dependencies,
     });

@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { getErrorMessage } from '../../../utils/errorUtils.js';
 import { createTool } from '../../core/createTool.js';
 import type { ExecutionContext, ToolResult } from '../../types/index.js';
 import { ToolErrorType, ToolKind } from '../../types/index.js';
@@ -120,14 +121,13 @@ When in doubt, use this tool. Being proactive with task management demonstrates 
           metadata: { stats },
         };
       } catch (error) {
-        const err = error as Error;
         return {
           success: false,
-          llmContent: `Update failed: ${err.message}`,
-          displayContent: `❌ 更新 TODO 列表失败: ${err.message}`,
+          llmContent: `Update failed: ${getErrorMessage(error)}`,
+          displayContent: `❌ 更新 TODO 列表失败: ${getErrorMessage(error)}`,
           error: {
             type: ToolErrorType.EXECUTION_ERROR,
-            message: err.message,
+            message: getErrorMessage(error),
             details: error,
           },
         };

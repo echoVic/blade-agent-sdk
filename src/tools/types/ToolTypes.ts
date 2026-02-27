@@ -423,18 +423,7 @@ export interface ToolDefinition<TParams = Record<string, unknown>> {
   description: string | ToolDescription;
   parameters: unknown;
   kind?: ToolKind;
-  execute: (params: TParams, context: ToolExecutionContext) => Promise<ToolResult>;
-}
-
-/**
- * 工具执行上下文（统一版本）
- */
-export interface ToolExecutionContext {
-  sessionId?: string;
-  workspaceRoot?: string;
-  signal?: AbortSignal;
-  userId?: string;
-  permissionMode?: PermissionMode;
+  execute: (params: TParams, context: ExecutionContext) => Promise<ToolResult>;
 }
 
 /**

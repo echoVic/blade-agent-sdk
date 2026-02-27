@@ -118,7 +118,7 @@ export class LoopRunner {
   ): AsyncGenerator<AgentEvent, LoopResult> {
     // 1. 获取可用工具定义
     const registry = this.executionPipeline.getRegistry();
-    const permissionMode = context.permissionMode as PermissionMode | undefined;
+    const permissionMode = context.permissionMode;
     let rawTools = registry.getFunctionDeclarationsByMode(permissionMode);
     rawTools = injectSkillsMetadata(rawTools);
     const tools = this.applySkillToolRestrictions(rawTools);
@@ -348,7 +348,7 @@ export class LoopRunner {
         while (true) {
           const { value, done } = await compactionStream.next();
           if (done) { didCompact = value; break; }
-          yield value as AgentEvent;
+          yield value;
         }
         return didCompact;
       },
@@ -391,8 +391,7 @@ export class LoopRunner {
         try {
           const contextMgr = self.modelManager.getExecutionEngine()?.getContextManager();
           if (contextMgr && context.sessionId) {
-            const metadata = result.metadata && typeof result.metadata === 'object'
-              ? (result.metadata as Record<string, unknown>) : undefined;
+            const metadata = result.metadata;
             const isSubagentStatus = (v: unknown): v is 'running' | 'completed' | 'failed' | 'cancelled' =>
               v === 'running' || v === 'completed' || v === 'failed' || v === 'cancelled';
             const subagentStatus = isSubagentStatus(metadata?.subagentStatus)
@@ -421,12 +420,12 @@ export class LoopRunner {
 
         // Skill 激活
         if (toolCall.function.name === 'Skill' && result.success && result.metadata) {
-          const md = result.metadata as Record<string, unknown>;
-          if (md.skillName) {
+          const md = result.metadata;
+          if (md.skillName && typeof md.skillName === 'string') {
             self.activeSkillContext = {
-              skillName: md.skillName as string,
-              allowedTools: md.allowedTools as string[] | undefined,
-              basePath: (md.basePath as string) || '',
+              skillName: md.skillName,
+              allowedTools: Array.isArray(md.allowedTools) ? md.allowedTools as string[] : undefined,
+              basePath: typeof md.basePath === 'string' ? md.basePath : '',
             };
           }
         }
@@ -460,7 +459,7 @@ export class LoopRunner {
           const stopResult = await hookManager.executeStopHooks({
             projectDir: process.cwd(),
             sessionId: context.sessionId,
-            permissionMode: context.permissionMode as PermissionMode,
+            permissionMode: context.permissionMode ?? PermissionMode.DEFAULT,
             reason: ctx.content,
             abortSignal: options?.signal,
           });

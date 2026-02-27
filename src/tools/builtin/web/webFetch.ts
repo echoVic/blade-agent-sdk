@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { getErrorMessage, getErrorName } from '../../../utils/errorUtils.js';
 import { createTool } from '../../core/createTool.js';
 import type {
   ExecutionContext,
@@ -7,23 +8,6 @@ import type {
 } from '../../types/index.js';
 import { ToolErrorType, ToolKind } from '../../types/index.js';
 import { ToolSchemas } from '../../validation/zodSchemas.js';
-import { isPlainObject } from 'lodash-es';
-
-function getErrorName(error: unknown): string | undefined {
-  if (!isPlainObject(error)) return undefined;
-  const obj = error as Record<string, unknown>;
-  return typeof obj.name === 'string' ? obj.name : undefined;
-}
-
-function getErrorMessage(error: unknown): string {
-  if (error instanceof Error) return error.message;
-  if (typeof error === 'string') return error;
-  if (isPlainObject(error)) {
-    const obj = error as Record<string, unknown>;
-    if (typeof obj.message === 'string') return obj.message;
-  }
-  return String(error);
-}
 
 /**
  * Web response result shape

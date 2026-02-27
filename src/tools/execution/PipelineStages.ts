@@ -1,3 +1,4 @@
+import { createLogger, LogCategory } from '../../logging/Logger.js';
 import type { PermissionsConfig } from '../../types/common.js';
 import { PermissionMode } from '../../types/common.js';
 import type {
@@ -5,10 +6,13 @@ import type {
   PermissionResult as CanUseToolResult,
   PermissionUpdate,
 } from '../../types/permissions.js';
+import { getErrorMessage } from '../../utils/errorUtils.js';
 import type { Tool, ToolInvocation } from '../types/ToolTypes.js';
-import { createLogger, LogCategory } from '../../logging/Logger.js';
 
-type PermissionConfig = PermissionsConfig & { ask?: string[] };
+function getString(params: Record<string, unknown>, key: string, defaultValue = ''): string {
+  const value = params[key];
+  return typeof value === 'string' ? value : defaultValue;
+}
 
 enum PermissionResult {
   ALLOW = 'allow',
@@ -30,7 +34,7 @@ interface ToolInvocationDescriptor {
 }
 
 class PermissionChecker {
-  constructor(private config: PermissionConfig) {}
+  constructor(private config: PermissionsConfig) {}
 
   static buildSignature(descriptor: ToolInvocationDescriptor): string {
     if (descriptor.tool?.extractSignatureContent) {
@@ -76,6 +80,7 @@ class PermissionChecker {
     return signature === rule;
   }
 }
+
 import type { ToolRegistry } from '../registry/ToolRegistry.js';
 import type { PipelineStage, ToolExecution } from '../types/index.js';
 import { isReadOnlyKind, ToolKind } from '../types/index.js';
@@ -123,7 +128,7 @@ export class PermissionStage implements PipelineStage {
   private readonly defaultPermissionMode: PermissionMode;
 
   constructor(
-    permissionConfig: PermissionConfig,
+    permissionConfig: PermissionsConfig,
     sessionApprovals: Set<string>,
     permissionMode: PermissionMode
   ) {
@@ -280,7 +285,7 @@ export class PermissionStage implements PipelineStage {
       execution._internal.invocation = invocation;
       execution._internal.permissionCheckResult = checkResult;
     } catch (error) {
-      execution.abort(`Permission check failed: ${(error as Error).message}`);
+      execution.abort(`Permission check failed: ${getErrorMessage(error)}`);
     }
   }
 
@@ -518,7 +523,7 @@ export class ConfirmationStage implements PipelineStage {
         logger.warn('⚠️ No ConfirmationHandler; auto-approving tool execution');
       }
     } catch (error) {
-      execution.abort(`User confirmation failed: ${(error as Error).message}`);
+      execution.abort(`User confirmation failed: ${getErrorMessage(error)}`);
     }
   }
 
@@ -528,8 +533,8 @@ export class ConfirmationStage implements PipelineStage {
   ): string | undefined {
     switch (toolName) {
       case 'Edit': {
-        const oldString = params.old_string as string;
-        const newString = params.new_string as string;
+        const oldString = getString(params, 'old_string');
+        const newString = getString(params, 'new_string');
         if (!oldString && !newString) return undefined;
 
         const maxLines = 20;
@@ -543,8 +548,8 @@ export class ConfirmationStage implements PipelineStage {
       }
 
       case 'Write': {
-        const content = params.content as string;
-        const encoding = (params.encoding as string) || 'utf8';
+        const content = getString(params, 'content');
+        const encoding = getString(params, 'encoding', 'utf8');
         if (encoding !== 'utf8' || !content) {
           return `将写入 ${encoding === 'base64' ? 'Base64 编码' : encoding === 'binary' ? '二进制' : ''} 内容`;
         }
@@ -576,7 +581,7 @@ export class ConfirmationStage implements PipelineStage {
     }
 
     if (tool.name === 'Bash') {
-      const command = (params.command as string) || '';
+      const command = getString(params, 'command');
       const mainCommand = command.trim().split(/\s+/)[0];
 
       if (['cat', 'head', 'tail'].includes(mainCommand)) {
@@ -627,7 +632,7 @@ export class ExecutionStage implements PipelineStage {
 
       execution.setResult(result);
     } catch (error) {
-      execution.abort(`Tool execution failed: ${(error as Error).message}`);
+      execution.abort(`Tool execution failed: ${getErrorMessage(error)}`);
     }
   }
 }
@@ -663,7 +668,7 @@ export class FormattingStage implements PipelineStage {
 
       execution.setResult(result);
     } catch (error) {
-      execution.abort(`Result formatting failed: ${(error as Error).message}`);
+      execution.abort(`Result formatting failed: ${getErrorMessage(error)}`);
     }
   }
 }

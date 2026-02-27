@@ -2,6 +2,7 @@ import type { JSONSchema7 } from 'json-schema';
 import { z } from 'zod';
 import { createTool } from '../tools/core/createTool.js';
 import { ToolErrorType, ToolKind } from '../tools/types/index.js';
+import { getErrorMessage } from '../utils/errorUtils.js';
 import type { McpClient } from './McpClient.js';
 import type { McpToolDefinition } from './types.js';
 
@@ -23,8 +24,7 @@ export function createMcpTool(
       `[createMcpTool] Schema 转换失败，使用降级 schema: ${toolDef.name}`,
       error
     );
-    // 降级：使用 z.any() 接受任意参数
-    zodSchema = z.any();
+    zodSchema = z.record(z.string(), z.unknown());
   }
 
   // 2. 决定工具名称
@@ -94,11 +94,11 @@ export function createMcpTool(
       } catch (error) {
         return {
           success: false,
-          llmContent: `MCP tool execution failed: ${(error as Error).message}`,
-          displayContent: `❌ ${(error as Error).message}`,
+          llmContent: `MCP tool execution failed: ${getErrorMessage(error)}`,
+          displayContent: `❌ ${getErrorMessage(error)}`,
           error: {
             type: ToolErrorType.EXECUTION_ERROR,
-            message: (error as Error).message,
+            message: getErrorMessage(error),
           },
         };
       }
@@ -143,7 +143,7 @@ function convertJsonSchemaToZod(jsonSchema: JSONSchema7): z.ZodSchema {
     ) {
       return z.array(convertJsonSchemaToZod(jsonSchema.items as JSONSchema7));
     }
-    return z.array(z.any());
+    return z.array(z.unknown());
   }
 
   // 处理 string 类型
@@ -209,6 +209,5 @@ function convertJsonSchemaToZod(jsonSchema: JSONSchema7): z.ZodSchema {
     }
   }
 
-  // 默认返回 any
-  return z.any();
+  return z.unknown();
 }

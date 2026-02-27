@@ -20,6 +20,8 @@ type ConfigSource =
   | 'blade-project'
   | 'plugin';
 
+type FileConfigSource = Exclude<ConfigSource, 'plugin'>;
+
 /**
  * Subagent 注册表
  *
@@ -90,7 +92,7 @@ export class SubagentRegistry {
    * @param dirPath - 配置文件目录
    * @param source - 配置来源（用于调试和优先级追踪）
    */
-  loadFromDirectory(dirPath: string, source?: ConfigSource): void {
+  loadFromDirectory(dirPath: string, source?: FileConfigSource): void {
     if (!fs.existsSync(dirPath)) {
       return;
     }
@@ -119,7 +121,7 @@ export class SubagentRegistry {
    * - permissionMode 支持权限模式
    * - skills 支持自动加载的 skills
    */
-  private parseConfigFile(filePath: string, source?: ConfigSource): SubagentConfig {
+  private parseConfigFile(filePath: string, source?: FileConfigSource): SubagentConfig {
     const content = fs.readFileSync(filePath, 'utf-8');
 
     // 解析 YAML frontmatter（支持 \r\n 和 \n）
@@ -160,8 +162,7 @@ export class SubagentRegistry {
       model: frontmatter.model || 'inherit', // 默认继承父 Agent 模型
       permissionMode,
       skills,
-      // ConfigSource 包含 'plugin' 用于分组，但 parseConfigFile 不会使用 'plugin'
-      source: source as Exclude<ConfigSource, 'plugin'>,
+      source,
     };
   }
 

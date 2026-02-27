@@ -11,28 +11,20 @@
  *
  * Four-phase workflow: Requirements → Design → Tasks → Implementation
  */
-export type SpecPhase =
-  | 'init' // Initialize: create proposal skeleton
-  | 'requirements' // Requirements phase: generate requirements doc using EARS format
-  | 'design' // Design phase: create technical architecture (Mermaid diagrams, API contracts, etc.)
-  | 'tasks' // Task breakdown: split into executable atomic tasks
-  | 'implementation' // Implementation phase: complete tasks one by one
-  | 'done'; // Done: archive changes
+export const SPEC_PHASES = ['init', 'requirements', 'design', 'tasks', 'implementation', 'done'] as const;
+export type SpecPhase = (typeof SPEC_PHASES)[number];
 
 /**
  * Task Status
  */
-export type TaskStatus =
-  | 'pending'
-  | 'in_progress'
-  | 'completed'
-  | 'blocked'
-  | 'skipped';
+export const TASK_STATUSES = ['pending', 'in_progress', 'completed', 'blocked', 'skipped'] as const;
+export type TaskStatus = (typeof TASK_STATUSES)[number];
 
 /**
  * Task Complexity
  */
-export type TaskComplexity = 'low' | 'medium' | 'high';
+export const TASK_COMPLEXITIES = ['low', 'medium', 'high'] as const;
+export type TaskComplexity = (typeof TASK_COMPLEXITIES)[number];
 
 /**
  * Spec Task Definition

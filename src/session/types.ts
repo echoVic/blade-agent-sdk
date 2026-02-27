@@ -1,11 +1,11 @@
 import type { Message } from '../services/ChatServiceInterface.js';
-import type { ToolDefinition, ToolExecutionContext, ToolResult } from '../tools/types/index.js';
+import type { ExecutionContext, ToolDefinition, ToolResult } from '../tools/types/index.js';
 import type { McpServerConfig, OutputFormat, PermissionMode, ProviderType, SandboxSettings, TokenUsage } from '../types/common.js';
 import type { HookEvent } from '../types/constants.js';
 import type { CanUseTool } from '../types/permissions.js';
 import type { SdkMcpServerHandle } from '../mcp/SdkMcpServer.js';
 
-export type { ProviderType, TokenUsage, ToolDefinition, ToolExecutionContext, ToolResult };
+export type { ExecutionContext, ProviderType, TokenUsage, ToolDefinition, ToolResult };
 
 export interface ProviderConfig {
   type: ProviderType;

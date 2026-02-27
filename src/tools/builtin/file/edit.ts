@@ -3,12 +3,12 @@ import { z } from 'zod';
 import { isAcpMode } from '../../../acp/AcpServiceContext.js';
 import { getCheckpointService } from '../../../checkpoint/index.js';
 import { getFileSystemService } from '../../../services/FileSystemService.js';
+import { getErrorCode, getErrorMessage, getErrorName } from '../../../utils/errorUtils.js';
 import { createTool } from '../../core/createTool.js';
 import type {
   EditErrorMetadata,
   EditMetadata,
   ExecutionContext,
-  NodeError,
   ToolResult,
 } from '../../types/index.js';
 import { ToolErrorType, ToolKind } from '../../types/index.js';
@@ -85,8 +85,7 @@ export const editTool = createTool({
         }
         content = await fsService.readTextFile(file_path);
       } catch (error) {
-        const nodeError = error as NodeError;
-        if (nodeError.code === 'ENOENT' || nodeError.message?.includes('not found')) {
+        if (getErrorCode(error) === 'ENOENT' || getErrorMessage(error)?.includes('not found')) {
           return {
             success: false,
             llmContent: `File not found: ${file_path}`,
@@ -381,8 +380,7 @@ export const editTool = createTool({
         metadata,
       };
     } catch (error) {
-      const nodeError = error as NodeError;
-      if (nodeError.name === 'AbortError') {
+      if (getErrorName(error) === 'AbortError') {
         return {
           success: false,
           llmContent: 'File edit aborted',
@@ -396,12 +394,12 @@ export const editTool = createTool({
 
       return {
         success: false,
-        llmContent: `File edit failed: ${nodeError.message}`,
-        displayContent: `❌ 编辑文件失败: ${nodeError.message}`,
+        llmContent: `File edit failed: ${getErrorMessage(error)}`,
+        displayContent: `❌ 编辑文件失败: ${getErrorMessage(error)}`,
         error: {
           type: ToolErrorType.EXECUTION_ERROR,
-          message: nodeError.message,
-          details: nodeError,
+          message: getErrorMessage(error),
+          details: error,
         },
       };
     }

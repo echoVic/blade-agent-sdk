@@ -685,7 +685,7 @@ class Session implements ISession {
   private findMessageIndexByUuid(messageId: string): number {
     for (let i = 0; i < this._messages.length; i++) {
       const msg = this._messages[i];
-      if ((msg as Message & { uuid?: string }).uuid === messageId) {
+      if (msg.id === messageId) {
         return i;
       }
     }

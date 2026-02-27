@@ -1,10 +1,10 @@
-import { describe, expect, it, mock, beforeEach } from 'bun:test';
-import { agentLoop } from '../AgentLoop.js';
-import type { AgentLoopConfig } from '../AgentLoop.js';
-import type { AgentEvent } from '../AgentEvent.js';
-import type { LoopResult } from '../types.js';
+import { describe, expect, it, mock } from 'bun:test';
 import type { Message } from '../../services/ChatServiceInterface.js';
 import type { ToolResult } from '../../tools/types/index.js';
+import type { AgentEvent } from '../AgentEvent.js';
+import type { AgentLoopConfig } from '../AgentLoop.js';
+import { agentLoop } from '../AgentLoop.js';
+import type { LoopResult } from '../types.js';
 
 // ===== Mock Factories =====
 
@@ -503,7 +503,7 @@ describe('agentLoop', () => {
       // Messages should contain: user, assistant (with tool_calls), tool result
       const toolMsg = messages.find((m) => m.role === 'tool');
       expect(toolMsg).toBeDefined();
-      expect((toolMsg as any).name).toBe('ReadFile');
+      expect((toolMsg as Message & { name?: string }).name).toBe('ReadFile');
     });
   });
 });

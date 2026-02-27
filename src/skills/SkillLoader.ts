@@ -8,6 +8,7 @@
 import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
 import { parse as parseYaml } from 'yaml';
+import { getErrorCode } from '../utils/errorUtils.js';
 import type { SkillContent, SkillMetadata, SkillParseResult } from './types.js';
 
 /** YAML 前置数据的分隔符 */
@@ -196,7 +197,7 @@ export async function loadSkillMetadata(
     const content = await fs.readFile(filePath, 'utf-8');
     return parseSkillContent(content, filePath, source);
   } catch (e) {
-    if ((e as NodeJS.ErrnoException).code === 'ENOENT') {
+    if (getErrorCode(e) === 'ENOENT') {
       return {
         success: false,
         error: `File not found: ${filePath}`,

@@ -5,14 +5,21 @@ import { stat } from 'node:fs/promises';
 import type { Readable } from 'node:stream';
 import { join, resolve } from 'path';
 import { z } from 'zod';
+import { getErrorCode, getErrorMessage, getErrorName } from '../../../utils/errorUtils.js';
+
+function getEntryStats(entry: Entry): Stats | undefined {
+  const stats = entry.stats;
+  if (!stats || typeof stats !== 'object') return undefined;
+  if (typeof (stats as Stats).isDirectory !== 'function') return undefined;
+  return stats as Stats;
+}
 
 import { FileFilter } from '../../../utils/filePatterns.js';
 import { createTool } from '../../core/createTool.js';
 import type {
   ExecutionContext,
   GlobMetadata,
-  NodeError,
-  ToolResult,
+  ToolResult
 } from '../../types/index.js';
 import { ToolErrorType, ToolKind } from '../../types/index.js';
 import { ToolSchemas } from '../../validation/zodSchemas.js';
@@ -106,8 +113,7 @@ export const globTool = createTool({
           };
         }
       } catch (error) {
-        const nodeError = error as NodeError;
-        if (nodeError.code === 'ENOENT') {
+        if (getErrorCode(error) === 'ENOENT') {
           return {
             success: false,
             llmContent: `Search path does not exist: ${searchPath}`,
@@ -188,8 +194,7 @@ export const globTool = createTool({
         },
       };
     } catch (error) {
-      const err = error as Error;
-      if (err.name === 'AbortError') {
+      if (getErrorName(error) === 'AbortError') {
         return {
           success: false,
           llmContent: 'File search aborted',
@@ -203,12 +208,12 @@ export const globTool = createTool({
 
       return {
         success: false,
-        llmContent: `Search failed: ${err.message}`,
-        displayContent: `❌ 搜索失败: ${err.message}`,
+        llmContent: `Search failed: ${getErrorMessage(error)}`,
+        displayContent: `❌ 搜索失败: ${getErrorMessage(error)}`,
         error: {
           type: ToolErrorType.EXECUTION_ERROR,
-          message: err.message,
-          details: err,
+          message: getErrorMessage(error),
+          details: error,
         },
       };
     }
@@ -318,16 +323,12 @@ async function performGlobSearch(
         // FileFilter 内部使用 collectIgnoreGlobs 返回的 negates
         if (fileFilter.shouldIgnore(rel)) return;
 
-        const isDir = entry.stats ? (entry.stats as Stats).isDirectory() : false;
+        const stats = getEntryStats(entry);
+        const isDir = stats?.isDirectory() ?? false;
         if (isDir && fileFilter.shouldIgnoreDirectory(rel)) return;
 
-        const size =
-          entry.stats && (entry.stats as Stats).isFile()
-            ? (entry.stats as Stats).size
-            : undefined;
-        const modified = entry.stats
-          ? (entry.stats as Stats).mtime.toISOString()
-          : undefined;
+        const size = stats?.isFile() ? stats.size : undefined;
+        const modified = stats?.mtime.toISOString();
 
         matches.push({
           path: abs,

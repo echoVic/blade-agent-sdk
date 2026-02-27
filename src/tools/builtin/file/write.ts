@@ -4,10 +4,10 @@ import { z } from 'zod';
 import { isAcpMode } from '../../../acp/AcpServiceContext.js';
 import { getCheckpointService } from '../../../checkpoint/index.js';
 import { getFileSystemService } from '../../../services/FileSystemService.js';
+import { isNodeError, getErrorCode, getErrorMessage, getErrorName } from '../../../utils/errorUtils.js';
 import { createTool } from '../../core/createTool.js';
 import type {
   ExecutionContext,
-  NodeError,
   ToolResult,
   WriteMetadata,
 } from '../../types/index.js';
@@ -73,8 +73,7 @@ export const writeTool = createTool({
         try {
           await fsService.mkdir(dir, { recursive: true, mode: 0o755 });
         } catch (error) {
-          const nodeError = error as NodeError;
-          if (nodeError.code !== 'EEXIST') {
+          if (getErrorCode(error) !== 'EEXIST') {
             throw error;
           }
         }
@@ -267,8 +266,7 @@ export const writeTool = createTool({
         metadata,
       };
     } catch (error) {
-      const nodeError = error as NodeError;
-      if (nodeError.name === 'AbortError') {
+      if (getErrorName(error) === 'AbortError') {
         return {
           success: false,
           llmContent: 'File write aborted',
@@ -282,12 +280,12 @@ export const writeTool = createTool({
 
       return {
         success: false,
-        llmContent: `File write failed: ${nodeError.message}`,
-        displayContent: `❌ 写入文件失败: ${nodeError.message}`,
+        llmContent: `File write failed: ${getErrorMessage(error)}`,
+        displayContent: `❌ 写入文件失败: ${getErrorMessage(error)}`,
         error: {
           type: ToolErrorType.EXECUTION_ERROR,
-          message: nodeError.message,
-          details: nodeError,
+          message: getErrorMessage(error),
+          details: error,
         },
       };
     }

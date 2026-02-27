@@ -6,6 +6,7 @@
 import { promises as fs } from 'fs';
 import os from 'os';
 import path from 'path';
+import { getErrorCode } from '../../utils/errorUtils.js';
 import type { OAuthCredentials, OAuthToken } from './types.js';
 
 /**
@@ -46,8 +47,7 @@ export class OAuthTokenStorage {
         credentialsMap.set(cred.serverName, cred);
       }
     } catch (error) {
-      // 文件不存在时返回空 Map
-      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') {
+      if (getErrorCode(error) !== 'ENOENT') {
         console.warn('[OAuthTokenStorage] 加载令牌失败:', error);
       }
     }

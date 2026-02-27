@@ -456,29 +456,13 @@ export class PluginLoader {
   static getPluginDirs(workspaceRoot: string): PluginSearchDir[] {
     const home = homedir();
 
+    const userSource: PluginSource = 'user';
+    const projectSource: PluginSource = 'project';
     return [
-      // User-level (lower priority)
-      {
-        path: path.join(home, '.claude', 'plugins'),
-        source: 'user' as PluginSource,
-        type: 'claude' as const,
-      },
-      {
-        path: path.join(home, '.blade', 'plugins'),
-        source: 'user' as PluginSource,
-        type: 'blade' as const,
-      },
-      // Project-level (higher priority)
-      {
-        path: path.join(workspaceRoot, '.claude', 'plugins'),
-        source: 'project' as PluginSource,
-        type: 'claude' as const,
-      },
-      {
-        path: path.join(workspaceRoot, '.blade', 'plugins'),
-        source: 'project' as PluginSource,
-        type: 'blade' as const,
-      },
+      { path: path.join(home, '.claude', 'plugins'), source: userSource, type: 'claude' as const },
+      { path: path.join(home, '.blade', 'plugins'), source: userSource, type: 'blade' as const },
+      { path: path.join(workspaceRoot, '.claude', 'plugins'), source: projectSource, type: 'claude' as const },
+      { path: path.join(workspaceRoot, '.blade', 'plugins'), source: projectSource, type: 'blade' as const },
     ];
   }
 

@@ -5,6 +5,12 @@ import * as path from 'node:path';
 import { createInterface } from 'node:readline';
 import type { SessionEvent } from '../types.js';
 
+function isSessionEvent(data: unknown): data is SessionEvent {
+  if (!data || typeof data !== 'object') return false;
+  const obj = data as Record<string, unknown>;
+  return typeof obj.id === 'string' && typeof obj.type === 'string' && typeof obj.timestamp === 'string';
+}
+
 /**
  * JSONL 存储类 - 处理 JSONL 格式的读写
  */
@@ -72,7 +78,12 @@ export class JSONLStore {
       const entries: SessionEvent[] = [];
       for (const line of lines) {
         try {
-          entries.push(JSON.parse(line) as SessionEvent);
+          const parsed: unknown = JSON.parse(line);
+          if (isSessionEvent(parsed)) {
+            entries.push(parsed);
+          } else {
+            console.warn(`[JSONLStore] 无效的 SessionEvent 格式: ${line}`);
+          }
         } catch (parseError) {
           console.warn(`[JSONLStore] 解析 JSON 行失败: ${line}`, parseError);
         }
@@ -109,8 +120,10 @@ export class JSONLStore {
         if (trimmed.length === 0) return;
 
         try {
-          const entry = JSON.parse(trimmed) as SessionEvent;
-          await callback(entry);
+          const parsed: unknown = JSON.parse(trimmed);
+          if (isSessionEvent(parsed)) {
+            await callback(parsed);
+          }
         } catch (error) {
           console.warn(`[JSONLStore] 解析 JSON 行失败: ${trimmed}`, error);
         }

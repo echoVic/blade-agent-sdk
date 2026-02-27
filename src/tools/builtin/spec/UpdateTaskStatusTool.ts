@@ -6,7 +6,7 @@
 
 import { z } from 'zod';
 import { SpecManager } from '../../../spec/SpecManager.js';
-import type { TaskStatus } from '../../../spec/types.js';
+import { TASK_STATUSES, type TaskStatus } from '../../../spec/types.js';
 import { createTool } from '../../core/createTool.js';
 import type { ToolResult } from '../../types/ToolTypes.js';
 import { ToolErrorType, ToolKind } from '../../types/ToolTypes.js';
@@ -26,9 +26,7 @@ export const updateTaskStatusTool = createTool({
 
   schema: z.object({
     taskId: z.string().min(1).describe('The ID of the task to update'),
-    status: z
-      .enum(['pending', 'in_progress', 'completed', 'blocked', 'skipped'])
-      .describe('The new status for the task'),
+    status: z.enum(TASK_STATUSES).describe('The new status for the task'),
     notes: z
       .string()
       .optional()
@@ -109,7 +107,7 @@ UpdateTaskStatus({
     }
 
     // Update the status
-    const result = await specManager.updateTaskStatus(taskId, status as TaskStatus);
+    const result = await specManager.updateTaskStatus(taskId, status);
 
     if (!result.success) {
       return {
@@ -139,11 +137,11 @@ UpdateTaskStatus({
       llmContent:
         `✅ Updated task "${task.title}"\n\n` +
         `📋 Task ID: ${taskId}\n` +
-        `📊 Status: ${STATUS_DISPLAY[status as TaskStatus]}\n` +
+        `📊 Status: ${STATUS_DISPLAY[status]}\n` +
         (notes ? `📝 Notes: ${notes}\n` : '') +
         `\n📈 Progress: ${progress.completed}/${progress.total} tasks (${progress.percentage}%)` +
         nextTaskInfo,
-      displayContent: `✅ ${task.title}: ${STATUS_DISPLAY[status as TaskStatus]}`,
+      displayContent: `✅ ${task.title}: ${STATUS_DISPLAY[status]}`,
       metadata: {
         taskId,
         title: task.title,

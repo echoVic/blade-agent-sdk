@@ -1,4 +1,4 @@
-import type { ContextMessage, CompressedContext } from '../types.js';
+import type { CompressedContext, ContextMessage } from '../types.js';
 
 export interface CacheItem<T> {
   data: T;
@@ -16,8 +16,7 @@ export class CacheStore {
   private readonly maxSize: number;
   private readonly defaultTTL: number;
 
-  constructor(maxSize: number = 100, defaultTTL: number = 5 * 60 * 1000) {
-    // 默认5分钟TTL
+  constructor(maxSize = 100, defaultTTL = 5 * 60 * 1000) {
     this.maxSize = maxSize;
     this.defaultTTL = defaultTTL;
   }
@@ -45,27 +44,21 @@ export class CacheStore {
 
   /**
    * 获取缓存项
+   * 注意：调用者需要确保类型 T 与存储时的类型一致
    */
   get<T>(key: string): T | null {
-    const item = this.cache.get(key) as CacheItem<T> | undefined;
-
-    if (!item) {
-      return null;
-    }
+    const item = this.cache.get(key);
+    if (!item) return null;
 
     const now = Date.now();
-
-    // 检查是否过期
     if (now - item.timestamp > item.ttl) {
       this.cache.delete(key);
       return null;
     }
 
-    // 更新访问统计
     item.accessCount++;
     item.lastAccess = now;
-
-    return item.data;
+    return item.data as T;
   }
 
   /**
@@ -228,7 +221,9 @@ export class CacheStore {
       }
     }
 
-    expiredKeys.forEach((key) => this.cache.delete(key));
+    for (const key of expiredKeys) {
+      this.cache.delete(key);
+    }
   }
 
   /**

@@ -4,12 +4,12 @@
  */
 
 import { nanoid } from 'nanoid';
-import { PermissionMode } from '../types/common.js';
 import { HookManager } from '../hooks/HookManager.js';
 import {
   createChatServiceAsync,
   type Message,
 } from '../services/ChatServiceInterface.js';
+import { PermissionMode } from '../types/common.js';
 import { FileAnalyzer, type FileContent } from './FileAnalyzer.js';
 import { TokenCounter } from './TokenCounter.js';
 
@@ -115,8 +115,8 @@ export class CompactionService {
           postTokens: preTokens,
           filesIncluded: [],
           compactedMessages: messages,
-          boundaryMessage: { role: 'system', content: '' } as Message,
-          summaryMessage: { role: 'user', content: '' } as Message,
+          boundaryMessage: { role: 'system', content: '' },
+          summaryMessage: { role: 'user', content: '' },
           error: hookResult.blockReason || 'Compaction blocked by hook',
         };
       }
@@ -355,7 +355,6 @@ Please provide your summary following the structure specified above, with both <
       id: nanoid(),
       role: 'system',
       content: 'Conversation compacted',
-      // 使用 metadata 存储额外信息
       metadata: {
         type: 'system',
         subtype: 'compact_boundary',
@@ -365,7 +364,7 @@ Please provide your summary following the structure specified above, with both <
           preTokens,
         },
       },
-    } as Message;
+    };
   }
 
   /**
@@ -384,7 +383,7 @@ Please provide your summary following the structure specified above, with both <
         parentId,
         isCompactSummary: true,
       },
-    } as Message;
+    };
   }
 
   /**

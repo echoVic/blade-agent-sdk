@@ -1,8 +1,8 @@
 import { randomUUID } from 'crypto';
 import * as fs from 'fs/promises';
 import * as path from 'path';
+import { getErrorCode } from '../../../utils/errorUtils.js';
 import type { TodoItem, TodoStatus, ValidationResult } from './types.js';
-import type { NodeError } from '../../types/index.js';
 
 /**
  * TODO 任务管理器
@@ -63,14 +63,13 @@ export class TodoManager {
     const now = new Date().toISOString();
 
     const processed: TodoItem[] = newTodos.map((todo) => {
-      const todoWithId = todo as Partial<TodoItem>;
       const existing = this.todos.find(
-        (t) => t.id === todoWithId.id || t.content === todo.content
+        (t) => t.id === todo.id || t.content === todo.content
       );
 
       return {
         ...todo,
-        id: todoWithId.id || existing?.id || randomUUID(),
+        id: todo.id || existing?.id || randomUUID(),
         priority: todo.priority || existing?.priority || 'medium',
         createdAt: existing?.createdAt || now,
         startedAt:
@@ -81,7 +80,7 @@ export class TodoManager {
           todo.status === 'completed' && !existing?.completedAt
             ? now
             : existing?.completedAt,
-      } as TodoItem;
+      };
     });
 
     const validation = this.validate(processed);
@@ -141,8 +140,7 @@ export class TodoManager {
       const data = await fs.readFile(this.filePath, 'utf-8');
       this.todos = JSON.parse(data);
     } catch (error) {
-      const nodeError = error as NodeError;
-      if (nodeError.code === 'ENOENT') {
+      if (getErrorCode(error) === 'ENOENT') {
         this.todos = [];
       } else {
         console.warn('加载 TODO 列表失败:', error);

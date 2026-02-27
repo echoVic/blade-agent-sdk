@@ -2,13 +2,22 @@ import { describe, expect, it, mock } from 'bun:test';
 import { LoopRunner } from '../LoopRunner.js';
 import type { ModelManager } from '../ModelManager.js';
 import type { BladeConfig } from '../../types/common.js';
-import type { AgentOptions, ChatContext, LoopResult } from '../types.js';
+import type { AgentOptions, ChatContext } from '../types.js';
 import type { ExecutionPipeline } from '../../tools/execution/ExecutionPipeline.js';
 
 // ===== Mock Factories =====
 
-function createMockModelManager(overrides: Partial<Record<string, unknown>> = {}) {
-  const mockContextMgr = {
+type MockContextMgr = {
+  saveMessage: ReturnType<typeof mock>;
+  saveToolUse: ReturnType<typeof mock>;
+  saveToolResult: ReturnType<typeof mock>;
+  saveCompaction: ReturnType<typeof mock>;
+};
+
+type MockModelManager = ModelManager & { _contextMgr: MockContextMgr };
+
+function createMockModelManager(overrides: Partial<Record<string, unknown>> = {}): MockModelManager {
+  const mockContextMgr: MockContextMgr = {
     saveMessage: mock(async () => 'uuid-1'),
     saveToolUse: mock(async () => 'uuid-2'),
     saveToolResult: mock(async () => 'uuid-3'),
@@ -37,10 +46,10 @@ function createMockModelManager(overrides: Partial<Record<string, unknown>> = {}
     getMaxContextTokens: () => 128000,
     switchModelIfNeeded: mock(async () => {}),
     _contextMgr: mockContextMgr,
-  } as unknown as ModelManager & { _contextMgr: typeof mockContextMgr };
+  } as unknown as MockModelManager;
 }
 
-function createMockPipeline() {
+function createMockPipeline(): ExecutionPipeline {
   return {
     getRegistry: () => ({
       getAll: () => [],
@@ -79,7 +88,7 @@ describe('LoopRunner', () => {
     it('should complete a simple chat without tools', async () => {
       const mm = createMockModelManager();
       const pipeline = createMockPipeline();
-      const runner = new LoopRunner(baseConfig, baseOptions, mm as any, pipeline);
+      const runner = new LoopRunner(baseConfig, baseOptions, mm, pipeline);
 
       const context = createContext();
       const result = await runner.runLoop('Hello', context);
@@ -93,7 +102,7 @@ describe('LoopRunner', () => {
     it('should save user message to JSONL', async () => {
       const mm = createMockModelManager();
       const pipeline = createMockPipeline();
-      const runner = new LoopRunner(baseConfig, baseOptions, mm as any, pipeline);
+      const runner = new LoopRunner(baseConfig, baseOptions, mm, pipeline);
 
       const context = createContext({ sessionId: 'sess-1' });
       await runner.runLoop('Test message', context);
@@ -105,7 +114,7 @@ describe('LoopRunner', () => {
       const mm = createMockModelManager();
       const pipeline = createMockPipeline();
       const config = { ...baseConfig, maxTurns: 0 } as unknown as BladeConfig;
-      const runner = new LoopRunner(config, baseOptions, mm as any, pipeline);
+      const runner = new LoopRunner(config, baseOptions, mm, pipeline);
 
       const context = createContext();
       const result = await runner.runLoop('Hello', context);
@@ -120,7 +129,7 @@ describe('LoopRunner', () => {
 
       const mm = createMockModelManager();
       const pipeline = createMockPipeline();
-      const runner = new LoopRunner(baseConfig, baseOptions, mm as any, pipeline);
+      const runner = new LoopRunner(baseConfig, baseOptions, mm, pipeline);
 
       const context = createContext();
       const result = await runner.runLoop('Hello', context, { signal: controller.signal });
@@ -132,12 +141,11 @@ describe('LoopRunner', () => {
     it('should update context.messages after loop', async () => {
       const mm = createMockModelManager();
       const pipeline = createMockPipeline();
-      const runner = new LoopRunner(baseConfig, baseOptions, mm as any, pipeline);
+      const runner = new LoopRunner(baseConfig, baseOptions, mm, pipeline);
 
       const context = createContext({ messages: [] });
       await runner.runLoop('Hello', context);
 
-      // context.messages should be updated (system messages filtered out)
       expect(context.messages.length).toBeGreaterThan(0);
       expect(context.messages.every(m => m.role !== 'system')).toBe(true);
     });
@@ -147,7 +155,7 @@ describe('LoopRunner', () => {
     it('should start with no skill context', () => {
       const mm = createMockModelManager();
       const pipeline = createMockPipeline();
-      const runner = new LoopRunner(baseConfig, baseOptions, mm as any, pipeline);
+      const runner = new LoopRunner(baseConfig, baseOptions, mm, pipeline);
 
       expect(runner.skillContext).toBeUndefined();
     });
@@ -155,7 +163,7 @@ describe('LoopRunner', () => {
     it('should set and clear skill context', () => {
       const mm = createMockModelManager();
       const pipeline = createMockPipeline();
-      const runner = new LoopRunner(baseConfig, baseOptions, mm as any, pipeline);
+      const runner = new LoopRunner(baseConfig, baseOptions, mm, pipeline);
 
       runner.setSkillContext({
         skillName: 'test-skill',
@@ -173,7 +181,7 @@ describe('LoopRunner', () => {
     it('should return a non-empty prompt', async () => {
       const mm = createMockModelManager();
       const pipeline = createMockPipeline();
-      const runner = new LoopRunner(baseConfig, baseOptions, mm as any, pipeline);
+      const runner = new LoopRunner(baseConfig, baseOptions, mm, pipeline);
 
       const prompt = await runner.buildSystemPromptOnDemand();
       expect(typeof prompt).toBe('string');

@@ -3,12 +3,12 @@ import { randomUUID } from 'crypto';
 import { z } from 'zod';
 import { getTerminalService, isAcpMode } from '../../../acp/AcpServiceContext.js';
 import { getSandboxService } from '../../../sandbox/SandboxService.js';
+import { getErrorMessage, getErrorName } from '../../../utils/errorUtils.js';
 import { createTool } from '../../core/createTool.js';
 import type {
   BashBackgroundMetadata,
   BashForegroundMetadata,
   ExecutionContext,
-  NodeError,
   ToolResult,
 } from '../../types/index.js';
 import { ToolErrorType, ToolKind } from '../../types/index.js';
@@ -213,8 +213,7 @@ Before executing commands:
         return executeWithTimeout(effectiveCommand, cwd, env, timeout, signal, updateOutput);
       }
     } catch (error: unknown) {
-      const err = error as Error;
-      if (err.name === 'AbortError') {
+      if (getErrorName(error) === 'AbortError') {
         return {
           success: false,
           llmContent: 'Command execution aborted',
@@ -228,12 +227,12 @@ Before executing commands:
 
       return {
         success: false,
-        llmContent: `Command execution failed: ${err.message}`,
-        displayContent: `❌ 命令执行失败: ${err.message}`,
+        llmContent: `Command execution failed: ${getErrorMessage(error)}`,
+        displayContent: `❌ 命令执行失败: ${getErrorMessage(error)}`,
         error: {
           type: ToolErrorType.EXECUTION_ERROR,
-          message: err.message,
-          details: err,
+          message: getErrorMessage(error),
+          details: error,
         },
       };
     }
@@ -469,22 +468,21 @@ async function executeWithAcpTerminal(
       metadata,
     };
   } catch (error) {
-    const nodeError = error as NodeError;
     const executionTime = Date.now() - startTime;
 
     return {
       success: false,
-      llmContent: `Command execution failed: ${nodeError.message}`,
-      displayContent: `❌ 命令执行失败: ${nodeError.message}`,
+      llmContent: `Command execution failed: ${getErrorMessage(error)}`,
+      displayContent: `❌ 命令执行失败: ${getErrorMessage(error)}`,
       error: {
         type: ToolErrorType.EXECUTION_ERROR,
-        message: nodeError.message,
-        details: nodeError,
+        message: getErrorMessage(error),
+        details: error,
       },
       metadata: {
         command,
         execution_time: executionTime,
-        error: nodeError.message,
+        error: getErrorMessage(error),
       },
     };
   }

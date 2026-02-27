@@ -1,5 +1,6 @@
 import { describe, expect, it, mock } from 'bun:test';
 import { PlanExecutor } from '../PlanExecutor.js';
+import type { AgentEvent } from '../AgentEvent.js';
 import type { LoopResult, ChatContext, UserMessageContent } from '../types.js';
 
 // ===== Helpers =====
@@ -103,14 +104,20 @@ describe('PlanExecutor', () => {
       const pe = new PlanExecutor();
       const context = createContext();
 
-      async function* mockStreamExecutor(): AsyncGenerator<any, LoopResult> {
+      async function* mockStreamExecutor(): AsyncGenerator<AgentEvent, LoopResult> {
         yield { type: 'agent_start' };
-        yield { type: 'turn_start', turn: 1 };
+        yield { type: 'turn_start', turn: 1, maxTurns: 10 };
         return successResult();
       }
 
-      const executeStream = mock((..._args: unknown[]) => mockStreamExecutor());
-      const stream = pe.runPlanLoopStream('test', context, undefined, executeStream as any);
+      type StreamExecutor = (
+        msg: UserMessageContent,
+        ctx: ChatContext,
+        opts?: unknown,
+        systemPrompt?: string
+      ) => AsyncGenerator<AgentEvent, LoopResult>;
+      const executeStream = mock((..._args: unknown[]) => mockStreamExecutor()) as unknown as StreamExecutor;
+      const stream = pe.runPlanLoopStream('test', context, undefined, executeStream);
 
       const events: unknown[] = [];
       let result: LoopResult | undefined;

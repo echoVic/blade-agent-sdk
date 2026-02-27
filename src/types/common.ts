@@ -103,6 +103,7 @@ export type PermissionMode = PermissionModeType;
 
 export interface PermissionsConfig {
   allow?: string[];
+  ask?: string[];
   deny?: string[];
 }
 

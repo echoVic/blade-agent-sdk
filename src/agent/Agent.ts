@@ -276,10 +276,10 @@ export class Agent {
     if (!this.isInitialized) throw new Error('Agent未初始化');
 
     const chatContext: ChatContext = {
-      messages: context.messages as Message[],
-      userId: (context.userId as string) || 'subagent',
-      sessionId: (context.sessionId as string) || `subagent_${Date.now()}`,
-      workspaceRoot: (context.workspaceRoot as string) || process.cwd(),
+      messages: context.messages,
+      userId: context.userId || 'subagent',
+      sessionId: context.sessionId || `subagent_${Date.now()}`,
+      workspaceRoot: context.workspaceRoot || process.cwd(),
       signal: context.signal,
       confirmationHandler: context.confirmationHandler,
       permissionMode: context.permissionMode,

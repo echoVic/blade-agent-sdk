@@ -10,14 +10,15 @@ import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js'
 import type { Transport } from '@modelcontextprotocol/sdk/shared/transport.js';
 import { EventEmitter } from 'events';
 import type { McpServerConfig } from '../types/common.js';
-import type { SdkMcpServerHandle } from './SdkMcpServer.js';
+import { toError } from '../utils/errorUtils.js';
 import { getPackageName, getVersion } from '../utils/packageInfo.js';
 import { OAuthProvider } from './auth/index.js';
 import { type HealthCheckConfig, HealthMonitor } from './HealthMonitor.js';
+import type { SdkMcpServerHandle } from './SdkMcpServer.js';
 import {
-  McpConnectionStatus,
-  type McpToolCallResponse,
-  type McpToolDefinition,
+    McpConnectionStatus,
+    type McpToolCallResponse,
+    type McpToolDefinition,
 } from './types.js';
 
 /**
@@ -236,7 +237,7 @@ export class McpClient extends EventEmitter {
         this.reconnectAttempts = 0; // 重置重连计数
         return; // 成功连接
       } catch (error) {
-        lastError = error as Error;
+        lastError = toError(error);
         const classified = classifyError(error);
 
         // 如果是永久性错误，不重试

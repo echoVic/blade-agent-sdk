@@ -4,6 +4,7 @@ import { readdir, readFile } from 'fs/promises';
 import { join, relative } from 'path';
 import picomatch from 'picomatch';
 import { z } from 'zod';
+import { getErrorMessage, getErrorName } from '../../../utils/errorUtils.js';
 import { DEFAULT_EXCLUDE_DIRS } from '../../../utils/filePatterns.js';
 import { createTool } from '../../core/createTool.js';
 import type {
@@ -922,8 +923,7 @@ export const grepTool = createTool({
         metadata,
       };
     } catch (error) {
-      const err = error as Error;
-      if (err.name === 'AbortError') {
+      if (getErrorName(error) === 'AbortError') {
         return {
           success: false,
           llmContent: 'Search aborted',
@@ -937,12 +937,12 @@ export const grepTool = createTool({
 
       return {
         success: false,
-        llmContent: `Search failed: ${err.message}`,
-        displayContent: `❌ 搜索失败: ${err.message}`,
+        llmContent: `Search failed: ${getErrorMessage(error)}`,
+        displayContent: `❌ 搜索失败: ${getErrorMessage(error)}`,
         error: {
           type: ToolErrorType.EXECUTION_ERROR,
-          message: err.message,
-          details: err,
+          message: getErrorMessage(error),
+          details: error,
         },
       };
     }
