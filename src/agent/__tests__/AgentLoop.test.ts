@@ -1,7 +1,7 @@
 import { describe, expect, it, mock, beforeEach } from 'bun:test';
 import { agentLoop } from '../AgentLoop.js';
 import type { AgentLoopConfig } from '../AgentLoop.js';
-import type { AgentLoopEvent } from '../AgentEvent.js';
+import type { AgentEvent } from '../AgentEvent.js';
 import type { LoopResult } from '../types.js';
 import type { Message } from '../../services/ChatServiceInterface.js';
 import type { ToolResult } from '../../tools/types/index.js';
@@ -72,9 +72,9 @@ function baseConfig(overrides: Partial<AgentLoopConfig> = {}): AgentLoopConfig {
 }
 
 async function collectEvents(
-  gen: AsyncGenerator<AgentLoopEvent, LoopResult>
-): Promise<{ events: AgentLoopEvent[]; result: LoopResult }> {
-  const events: AgentLoopEvent[] = [];
+  gen: AsyncGenerator<AgentEvent, LoopResult>
+): Promise<{ events: AgentEvent[]; result: LoopResult }> {
+  const events: AgentEvent[] = [];
   while (true) {
     const { value, done } = await gen.next();
     if (done) return { events, result: value };

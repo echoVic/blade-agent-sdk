@@ -4,7 +4,7 @@
  * 设计原则（参考 pi-mono agent-loop.ts）：
  * 1. 只负责核心循环：调用 LLM → 检查 tool calls → 执行工具 → 继续或退出
  * 2. 所有副作用（JSONL 保存、调试日志、模型切换）通过 hooks 注入
- * 3. 使用 AsyncGenerator<AgentLoopEvent, LoopResult> 统一输出
+ * 3. 使用 AsyncGenerator<AgentEvent, LoopResult> 统一输出
  * 4. 与现有 AgentEvent / LoopResult 类型兼容
  */
 
@@ -16,7 +16,7 @@ import type { ExecutionPipeline } from '../tools/execution/ExecutionPipeline.js'
 import type { ConfirmationHandler } from '../tools/types/ExecutionTypes.js';
 import type { PermissionMode } from '../types/common.js';
 import type { StreamResponseHandler } from './StreamResponseHandler.js';
-import type { AgentLoopEvent, TokenUsageInfo } from './AgentEvent.js';
+import type { AgentEvent, TokenUsageInfo } from './AgentEvent.js';
 import type { LoopResult, TurnLimitResponse } from './types.js';
 
 /** LLM 工具定义（chat service 接受的格式） */
@@ -84,7 +84,7 @@ export interface AgentLoopConfig {
     turn: number;
     messages: Message[];
     lastPromptTokens?: number;
-  }) => AsyncGenerator<AgentLoopEvent, boolean>;
+  }) => AsyncGenerator<AgentEvent, boolean>;
 
   /**
    * LLM 响应后、工具执行前调用
@@ -185,7 +185,7 @@ function countRecentRetries(messages: Message[]): number {
  */
 export async function* agentLoop(
   config: AgentLoopConfig
-): AsyncGenerator<AgentLoopEvent, LoopResult> {
+): AsyncGenerator<AgentEvent, LoopResult> {
   const {
     chatService,
     streamHandler,

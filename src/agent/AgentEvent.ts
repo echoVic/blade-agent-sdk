@@ -1,7 +1,6 @@
 /**
  * AgentEvent — 标准化 Agent 事件类型
  *
- * 参考 pi-mono 的事件流设计，覆盖完整的 agent 生命周期。
  * 所有消费者（CLI、Web UI、SDK）通过同一个事件流获取状态。
  *
  * 生命周期：
@@ -125,11 +124,14 @@ export interface ErrorEvent {
 // ===== 联合类型 =====
 
 /**
- * 所有 Agent 事件的联合类型
+ * 所有 Agent 事件的联合类型（单一事实来源）
  *
- * 向后兼容：包含所有原有事件类型 + 新增的 agent_start/agent_end/turn_end
+ * 生命周期事件：agent_start/agent_end/turn_start/turn_end
+ * 内容流事件：content_delta/thinking_delta/stream_end/content/thinking
+ * 工具事件：tool_start/tool_result
+ * 状态事件：token_usage/compacting/todo_update/error
  */
-export type AgentLoopEvent =
+export type AgentEvent =
   | AgentStartEvent
   | AgentEndEvent
   | TurnStartEvent

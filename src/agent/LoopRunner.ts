@@ -8,28 +8,26 @@
  */
 
 import { CompactionService } from '../context/CompactionService.js';
-import type { ContextManager } from '../context/ContextManager.js';
 import { HookManager } from '../hooks/HookManager.js';
 import { createLogger, LogCategory } from '../logging/Logger.js';
 import { buildSystemPrompt } from '../prompts/index.js';
-import type { IChatService, Message } from '../services/ChatServiceInterface.js';
+import type { Message } from '../services/ChatServiceInterface.js';
 import { injectSkillsMetadata } from '../skills/index.js';
-import type { FunctionDeclaration } from '../tools/types/index.js';
 import type { ExecutionPipeline } from '../tools/execution/ExecutionPipeline.js';
+import type { FunctionDeclaration } from '../tools/types/index.js';
 import {
   type BladeConfig,
   type JsonValue,
   PermissionMode,
 } from '../types/common.js';
 import { getEnvironmentContext } from '../utils/environment.js';
-import { agentLoop } from './AgentLoop.js';
+import type { AgentEvent } from './AgentEvent.js';
 import type { AgentLoopConfig } from './AgentLoop.js';
-import type { AgentLoopEvent } from './AgentEvent.js';
+import { agentLoop } from './AgentLoop.js';
 import type { CompactionHandler } from './CompactionHandler.js';
 import type { ModelManager } from './ModelManager.js';
 import type { StreamResponseHandler } from './StreamResponseHandler.js';
 import type {
-  AgentEvent,
   AgentOptions,
   ChatContext,
   LoopOptions,
@@ -205,7 +203,7 @@ export class LoopRunner {
           result = value;
           break;
         }
-        yield value as AgentEvent;
+        yield value;
       }
 
       if (!result) {
@@ -350,7 +348,7 @@ export class LoopRunner {
         while (true) {
           const { value, done } = await compactionStream.next();
           if (done) { didCompact = value; break; }
-          yield value as AgentLoopEvent;
+          yield value as AgentEvent;
         }
         return didCompact;
       },

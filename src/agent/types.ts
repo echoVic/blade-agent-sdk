@@ -2,17 +2,14 @@
  * Agent核心类型定义
  */
 
-import type { ContentPart, Message, ToolCall } from '../services/ChatServiceInterface.js';
-import type { TodoItem } from '../tools/builtin/todo/types.js';
+import type { ContentPart, Message } from '../services/ChatServiceInterface.js';
 import type { ConfirmationHandler } from '../tools/types/ExecutionTypes.js';
-import type { ToolResult } from '../tools/types/ToolTypes.js';
 import type { OutputFormat, PermissionMode, PermissionsConfig, SandboxSettings } from '../types/common.js';
 import type { CanUseTool } from '../types/permissions.js';
 
-// Re-export AgentLoopEvent 作为 AgentEvent 的别名（向后兼容）
-export type { AgentLoopEvent } from './AgentEvent.js';
-export type { AgentLoopConfig } from './AgentLoop.js';
+export type { AgentEvent } from './AgentEvent.js';
 export { agentLoop } from './AgentLoop.js';
+export type { AgentLoopConfig } from './AgentLoop.js';
 
 /**
  * 用户消息内容类型
@@ -100,36 +97,6 @@ export interface LoopOptions {
   signal?: AbortSignal;
   onTurnLimitReached?: (data: { turnsCount: number }) => Promise<TurnLimitResponse>;
 }
-
-export type AgentEvent =
-  | { type: 'turn_start'; turn: number; maxTurns: number }
-  | { type: 'content_delta'; delta: string }
-  | { type: 'thinking_delta'; delta: string }
-  | { type: 'stream_end' }
-  | { type: 'content'; content: string }
-  | { type: 'thinking'; content: string }
-  | {
-      type: 'tool_start';
-      toolCall: ToolCall;
-      toolKind?: 'readonly' | 'write' | 'execute';
-    }
-  | {
-      type: 'tool_result';
-      toolCall: ToolCall;
-      result: ToolResult;
-    }
-  | {
-      type: 'token_usage';
-      usage: {
-        inputTokens: number;
-        outputTokens: number;
-        totalTokens: number;
-        maxContextTokens: number;
-      };
-    }
-  | { type: 'compacting'; isCompacting: boolean }
-  | { type: 'todo_update'; todos: TodoItem[] }
-  | { type: 'error'; message: string };
 
 /**
  * 轮次限制响应
