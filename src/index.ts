@@ -75,6 +75,7 @@ export type {
     McpToolInfo,
     ModelInfo,
     PromptResult,
+    ProviderConfig,
     ResumeOptions,
     SendOptions,
     SessionOptions,
