@@ -1,7 +1,4 @@
-import { dirname } from "node:path";
-import { fileURLToPath } from "node:url";
-
-const __dirname = dirname(fileURLToPath(import.meta.url));
+import { spawn } from "node:child_process";
 
 const packageJson = await Bun.file(new URL("../package.json", import.meta.url)).json();
 
@@ -28,4 +25,23 @@ if (!result.success) {
   process.exit(1);
 }
 
+console.log("✓ JavaScript build completed!");
+
+console.log("Generating type declarations...");
+
+const tsc = spawn("bun", ["x", "tsc", "-p", "tsconfig.build.json"], {
+  stdio: "inherit",
+  shell: true
+});
+
+const exitCode = await new Promise<number>((resolve) => {
+  tsc.on("close", (code) => resolve(code ?? 0));
+});
+
+if (exitCode !== 0) {
+  console.error("✗ Type declaration generation failed!");
+  process.exit(exitCode);
+}
+
+console.log("✓ Type declarations generated!");
 console.log("✓ Build completed!");
