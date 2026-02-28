@@ -23,6 +23,7 @@ const releaseType =
 const packageJson = JSON.parse(readFileSync(packageJsonPath, 'utf8'));
 const currentVersion = packageJson.version;
 const tagPrefix = process.env.RELEASE_TAG_PREFIX || 'v';
+const npmRegistry = 'https://registry.npmjs.org/';
 
 function exec(command, options = {}) {
   if (isDryRun && !options.allowInDryRun) {
@@ -130,7 +131,7 @@ function incrementVersion(version, type) {
 }
 
 async function checkNpmVersion() {
-  const npmInfo = exec(`npm view ${packageJson.name} version`, {
+  const npmInfo = exec(`npm view ${packageJson.name} version --registry ${npmRegistry}`, {
     allowFailure: true,
     allowInDryRun: true,
   });
@@ -250,8 +251,8 @@ function commitAndTag(newVersion) {
 
 function publishToNpm() {
   console.log(chalk.blue('\n📋 步骤 8: 发布到 NPM'));
-  console.log(chalk.gray('  执行: npm publish --access public'));
-  exec('npm publish --access public');
+  console.log(chalk.gray(`  执行: npm publish --access public --registry ${npmRegistry}`));
+  exec(`npm publish --access public --registry ${npmRegistry}`);
   console.log(chalk.green('  ✓ 已发布到 NPM'));
 }
 
