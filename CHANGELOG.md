@@ -2,6 +2,10 @@
 
 本文件记录 @blade-ai/agent-sdk 的所有重要变更。
 
+## [0.1.10] - 2026-02-28
+
+- 67a4890 feat: 添加错误处理工具函数并重构错误处理逻辑
+- 381387f refactor(agent): 统一使用 AgentEvent 类型替代 AgentLoopEvent
 ## [0.1.9] - 2026-02-26
 
 - 6e092f1 refactor: remove openai dep, split Agent.ts, McpRegistry per-instance, provider lazy import
