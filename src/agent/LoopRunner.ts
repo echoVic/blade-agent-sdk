@@ -25,6 +25,7 @@ import type { AgentEvent } from './AgentEvent.js';
 import type { AgentLoopConfig } from './AgentLoop.js';
 import { agentLoop } from './AgentLoop.js';
 import type { CompactionHandler } from './CompactionHandler.js';
+import { AGENT_TURN_SAFETY_LIMIT } from './constants.js';
 import type { ModelManager } from './ModelManager.js';
 import type { StreamResponseHandler } from './StreamResponseHandler.js';
 import type {
@@ -168,7 +169,6 @@ export class LoopRunner {
     }
 
     // 4. 计算 maxTurns
-    const SAFETY_LIMIT = 100;
     const isYoloMode = context.permissionMode === PermissionMode.YOLO;
     const configuredMaxTurns =
       this.runtimeOptions.maxTurns ?? options?.maxTurns ?? this.config.maxTurns ?? -1;
@@ -182,8 +182,8 @@ export class LoopRunner {
     }
 
     const maxTurns = configuredMaxTurns === -1
-      ? SAFETY_LIMIT
-      : Math.min(configuredMaxTurns, SAFETY_LIMIT);
+      ? AGENT_TURN_SAFETY_LIMIT
+      : Math.min(configuredMaxTurns, AGENT_TURN_SAFETY_LIMIT);
 
     // 5. 构建 AgentLoop hooks + config
     const loopConfig = this.buildLoopConfig(

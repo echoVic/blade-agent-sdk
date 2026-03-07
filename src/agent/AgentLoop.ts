@@ -10,13 +10,14 @@
 
 import { createLogger, LogCategory } from '../logging/Logger.js';
 import type { ChatResponse, IChatService, Message, ToolCall } from '../services/ChatServiceInterface.js';
-import type { ToolResult } from '../tools/types/index.js';
-import { ToolErrorType } from '../tools/types/index.js';
 import type { ExecutionPipeline } from '../tools/execution/ExecutionPipeline.js';
 import type { ConfirmationHandler } from '../tools/types/ExecutionTypes.js';
+import type { ToolResult } from '../tools/types/index.js';
+import { ToolErrorType } from '../tools/types/index.js';
 import type { PermissionMode } from '../types/common.js';
-import type { StreamResponseHandler } from './StreamResponseHandler.js';
 import type { AgentEvent, TokenUsageInfo } from './AgentEvent.js';
+import { AGENT_TURN_SAFETY_LIMIT } from './constants.js';
+import type { StreamResponseHandler } from './StreamResponseHandler.js';
 import type { LoopResult, TurnLimitResponse } from './types.js';
 
 /** LLM 工具定义（chat service 接受的格式） */
@@ -200,8 +201,7 @@ export async function* agentLoop(
     executionContext,
   } = config;
 
-  const SAFETY_LIMIT = 100;
-  const effectiveMaxTurns = isYoloMode ? SAFETY_LIMIT : maxTurns;
+  const effectiveMaxTurns = isYoloMode ? AGENT_TURN_SAFETY_LIMIT : maxTurns;
 
   const startTime = Date.now();
   let turnsCount = 0;
