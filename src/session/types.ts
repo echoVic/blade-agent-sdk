@@ -1,9 +1,9 @@
+import type { SdkMcpServerHandle } from '../mcp/SdkMcpServer.js';
 import type { Message } from '../services/ChatServiceInterface.js';
 import type { ExecutionContext, ToolDefinition, ToolResult } from '../tools/types/index.js';
 import type { McpServerConfig, OutputFormat, PermissionMode, ProviderType, SandboxSettings, TokenUsage } from '../types/common.js';
-import type { HookEvent } from '../types/constants.js';
+import { HookEvent } from '../types/constants.js';
 import type { CanUseTool } from '../types/permissions.js';
-import type { SdkMcpServerHandle } from '../mcp/SdkMcpServer.js';
 
 export type { ExecutionContext, ProviderType, TokenUsage, ToolDefinition, ToolResult };
 
@@ -64,6 +64,16 @@ export interface HookOutput {
 
 export type HookCallback = (input: HookInput) => Promise<HookOutput>;
 
+export type SessionHookEvent =
+  | HookEvent.PreToolUse
+  | HookEvent.PostToolUse
+  | HookEvent.PostToolUseFailure
+  | HookEvent.PermissionRequest
+  | HookEvent.UserPromptSubmit
+  | HookEvent.SessionStart
+  | HookEvent.SessionEnd
+  | HookEvent.TaskCompleted;
+
 
 
 export interface SubagentInfo {
@@ -99,7 +109,7 @@ export interface SessionOptions {
   agents?: Record<string, AgentDefinition>;
   subagent?: SubagentInfo;
 
-  hooks?: Partial<Record<HookEvent, HookCallback[]>>;
+  hooks?: Partial<Record<SessionHookEvent, HookCallback[]>>;
 
   cwd?: string;
   env?: Record<string, string>;

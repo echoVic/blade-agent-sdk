@@ -1,23 +1,28 @@
 import * as os from 'os';
 import * as path from 'path';
+import type { AgentRuntimeDeps } from '../agent/Agent.js';
+import { getCheckpointService } from '../checkpoint/index.js';
 import { ContextManager } from '../context/ContextManager.js';
-import type { HookCallback, McpServerStatus, McpToolInfo, SessionOptions } from './types.js';
 import { HookManager } from '../hooks/HookManager.js';
 import { createLogger, LogCategory } from '../logging/Logger.js';
 import { McpRegistry } from '../mcp/McpRegistry.js';
 import type { SdkMcpServerHandle } from '../mcp/SdkMcpServer.js';
 import { McpConnectionStatus } from '../mcp/types.js';
-import { getCheckpointService } from '../checkpoint/index.js';
 import { getSandboxService } from '../sandbox/SandboxService.js';
 import { getBuiltinTools } from '../tools/builtin/index.js';
-import { ExecutionPipeline } from '../tools/execution/ExecutionPipeline.js';
-import { ToolRegistry } from '../tools/registry/ToolRegistry.js';
 import { toolFromDefinition } from '../tools/core/createTool.js';
+import {
+  ExecutionPipeline,
+  type ExecutionPipelineHookResult,
+  type ExecutionPipelineHooks,
+} from '../tools/execution/ExecutionPipeline.js';
+import { ToolRegistry } from '../tools/registry/ToolRegistry.js';
 import type { Tool } from '../tools/types/index.js';
-import type { AgentRuntimeDeps } from '../agent/Agent.js';
 import type { BladeConfig, McpServerConfig, PermissionsConfig } from '../types/common.js';
 import { PermissionMode } from '../types/common.js';
-import type { HookEvent } from '../types/constants.js';
+import { HookEvent } from '../types/constants.js';
+import type { CanUseTool, PermissionResult } from '../types/permissions.js';
+import type { HookCallback, HookInput, HookOutput, McpServerStatus, McpToolInfo, SessionOptions } from './types.js';
 
 const logger = createLogger(LogCategory.AGENT);
 
@@ -95,6 +100,10 @@ export class SessionRuntime {
     this.initialized = true;
   }
 
+  async ensureSessionCreated(): Promise<void> {
+    await this.contextManager.createSession(undefined, {}, { sessionId: this.sessionId });
+  }
+
   async close(): Promise<void> {
     await this.mcpRegistry.disconnectAll();
   }
@@ -157,7 +166,8 @@ export class SessionRuntime {
       permissionConfig,
       permissionMode: this.permissionMode,
       maxHistorySize: 1000,
-      canUseTool: this.options.canUseTool,
+      canUseTool: this.createCanUseTool(),
+      hooks: this.createExecutionPipelineHooks(),
     });
   }
 
@@ -239,15 +249,15 @@ export class SessionRuntime {
     }
   }
 
-  private registerTools(tools: Tool<any>[]): void {
+  private registerTools<TParams>(tools: Tool<TParams>[]): void {
     const filteredTools = this.filterTools(tools);
     if (filteredTools.length === 0) {
       return;
     }
-    this.toolRegistry.registerAll(filteredTools);
+    this.toolRegistry.registerAll(filteredTools as Tool[]);
   }
 
-  private filterTools(tools: Tool<any>[]): Tool<any>[] {
+  private filterTools<TParams>(tools: Tool<TParams>[]): Tool<TParams>[] {
     const allowedTools = this.options.allowedTools;
     const disallowedTools = new Set(this.options.disallowedTools || []);
 
@@ -257,5 +267,141 @@ export class SessionRuntime {
       }
       return !disallowedTools.has(tool.name);
     });
+  }
+
+  private createCanUseTool(): CanUseTool | undefined {
+    const permissionHooks = this.hookCallbacks[HookEvent.PermissionRequest];
+    const baseCanUseTool = this.options.canUseTool;
+
+    if ((!permissionHooks || permissionHooks.length === 0) && !baseCanUseTool) {
+      return undefined;
+    }
+
+    return async (toolName, input, options) => {
+      if (permissionHooks && permissionHooks.length > 0) {
+        for (const hook of permissionHooks) {
+          const result = await this.executeHook(hook, HookEvent.PermissionRequest, {
+            toolName,
+            toolInput: input,
+            affectedPaths: options.affectedPaths,
+            toolKind: options.toolKind,
+          });
+
+          if (result.modifiedInput && this.isRecord(result.modifiedInput)) {
+            Object.assign(input, result.modifiedInput);
+          }
+
+          if (result.action === 'abort' || result.action === 'skip') {
+            return {
+              behavior: 'deny',
+              message: result.reason || `Tool "${toolName}" was blocked by hook`,
+              interrupt: result.action === 'abort',
+            } satisfies PermissionResult;
+          }
+        }
+      }
+
+      if (baseCanUseTool) {
+        return baseCanUseTool(toolName, input, options);
+      }
+
+      return { behavior: 'ask' } satisfies PermissionResult;
+    };
+  }
+
+  private createExecutionPipelineHooks(): ExecutionPipelineHooks | undefined {
+    const hasPreToolHooks = (this.hookCallbacks[HookEvent.PreToolUse]?.length || 0) > 0;
+    const hasPostToolHooks = (this.hookCallbacks[HookEvent.PostToolUse]?.length || 0) > 0;
+    const hasPostToolFailureHooks =
+      (this.hookCallbacks[HookEvent.PostToolUseFailure]?.length || 0) > 0;
+
+    if (!hasPreToolHooks && !hasPostToolHooks && !hasPostToolFailureHooks) {
+      return undefined;
+    }
+
+    return {
+      beforeExecute: async ({ toolName, params }) => {
+        const hooks = this.hookCallbacks[HookEvent.PreToolUse];
+        if (!hooks || hooks.length === 0) {
+          return undefined;
+        }
+
+        let nextParams: Record<string, unknown> = params;
+        for (const hook of hooks) {
+          const result = await this.executeHook(hook, HookEvent.PreToolUse, {
+            toolName,
+            toolInput: nextParams,
+          });
+
+          if (result.action === 'abort' || result.action === 'skip') {
+            return {
+              action: result.action,
+              reason: result.reason,
+            } satisfies ExecutionPipelineHookResult;
+          }
+
+          if (result.modifiedInput && this.isRecord(result.modifiedInput)) {
+            nextParams = { ...nextParams, ...result.modifiedInput };
+          }
+        }
+
+        if (nextParams !== params) {
+          return { modifiedInput: nextParams } satisfies ExecutionPipelineHookResult;
+        }
+        return undefined;
+      },
+      afterExecute: async ({ toolName, params, result }) => {
+        const event = result.success ? HookEvent.PostToolUse : HookEvent.PostToolUseFailure;
+        const hooks = this.hookCallbacks[event];
+        if (!hooks || hooks.length === 0) {
+          return undefined;
+        }
+
+        let nextOutput: unknown = result.llmContent;
+        for (const hook of hooks) {
+          const hookResult = await this.executeHook(hook, event, {
+            toolName,
+            toolInput: params,
+            toolOutput: nextOutput,
+            error: result.success
+              ? undefined
+              : new Error(result.error?.message || `Tool "${toolName}" failed`),
+          });
+
+          if (hookResult.action === 'abort' || hookResult.action === 'skip') {
+            return {
+              action: hookResult.action,
+              reason: hookResult.reason,
+            } satisfies ExecutionPipelineHookResult;
+          }
+
+          if (hookResult.modifiedOutput !== undefined) {
+            nextOutput = hookResult.modifiedOutput;
+          }
+        }
+
+        if (nextOutput !== result.llmContent) {
+          return { modifiedOutput: nextOutput } satisfies ExecutionPipelineHookResult;
+        }
+        return undefined;
+      },
+    };
+  }
+
+  private async executeHook(
+    hook: HookCallback,
+    event: HookEvent,
+    payload: Record<string, unknown>,
+  ): Promise<HookOutput> {
+    const input: HookInput = {
+      event,
+      sessionId: this.sessionId,
+      ...payload,
+    };
+    return hook(input);
+  }
+
+  private isRecord(value: unknown): value is Record<string, unknown> {
+    return typeof value === 'object' && value !== null && !Array.isArray(value);
   }
 }

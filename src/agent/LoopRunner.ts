@@ -151,7 +151,7 @@ export class LoopRunner {
     // 3. 保存用户消息到 JSONL
     let lastMessageUuid: string | null = null;
     try {
-      const contextMgr = this.modelManager.getExecutionEngine()?.getContextManager();
+      const contextMgr = this.modelManager.getContextManager();
       const textContent =
         typeof message === 'string'
           ? message
@@ -355,7 +355,7 @@ export class LoopRunner {
 
       async onAssistantMessage(ctx) {
         try {
-          const contextMgr = self.modelManager.getExecutionEngine()?.getContextManager();
+          const contextMgr = self.modelManager.getContextManager();
           if (contextMgr && context.sessionId && ctx.content.trim() !== '') {
             const uuid = await contextMgr.saveMessage(
               context.sessionId, 'assistant', ctx.content,
@@ -370,7 +370,7 @@ export class LoopRunner {
 
       async onBeforeToolExec(ctx) {
         try {
-          const contextMgr = self.modelManager.getExecutionEngine()?.getContextManager();
+          const contextMgr = self.modelManager.getContextManager();
           if (contextMgr && context.sessionId) {
             return await contextMgr.saveToolUse(
               context.sessionId, ctx.toolCall.function.name,
@@ -389,7 +389,7 @@ export class LoopRunner {
 
         // 保存工具结果到 JSONL
         try {
-          const contextMgr = self.modelManager.getExecutionEngine()?.getContextManager();
+          const contextMgr = self.modelManager.getContextManager();
           if (contextMgr && context.sessionId) {
             const metadata = result.metadata;
             const isSubagentStatus = (v: unknown): v is 'running' | 'completed' | 'failed' | 'cancelled' =>
@@ -440,7 +440,7 @@ export class LoopRunner {
 
       async onComplete(ctx) {
         try {
-          const contextMgr = self.modelManager.getExecutionEngine()?.getContextManager();
+          const contextMgr = self.modelManager.getContextManager();
           if (contextMgr && context.sessionId && ctx.content.trim() !== '') {
             const uuid = await contextMgr.saveMessage(
               context.sessionId, 'assistant', ctx.content,
@@ -499,7 +499,7 @@ export class LoopRunner {
           context.messages.push(continueMessage);
 
           try {
-            const contextMgr = self.modelManager.getExecutionEngine()?.getContextManager();
+            const contextMgr = self.modelManager.getContextManager();
             if (contextMgr && context.sessionId) {
               await contextMgr.saveCompaction(
                 context.sessionId, compactResult.summary,

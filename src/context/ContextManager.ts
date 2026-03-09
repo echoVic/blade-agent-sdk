@@ -1,5 +1,7 @@
 import * as crypto from 'crypto';
 import { nanoid } from 'nanoid';
+import type { Message } from '../services/ChatServiceInterface.js';
+import { JsonlSessionStore, type SessionState, type SessionStore, type SessionSummary } from '../session/SessionStore.js';
 import type { JsonObject, JsonValue } from '../types/common.js';
 import { ContextCompressor } from './processors/ContextCompressor.js';
 import { ContextFilter } from './processors/ContextFilter.js';
@@ -20,12 +22,25 @@ import type {
 
 type SessionConfiguration = JsonObject & { sessionId?: string };
 
+function isJsonObject(value: unknown): value is JsonObject {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function isUsageMetadata(
+  value: unknown,
+): value is { input_tokens: number; output_tokens: number } {
+  return isJsonObject(value)
+    && typeof value.input_tokens === 'number'
+    && typeof value.output_tokens === 'number';
+}
+
 /**
  * 上下文管理器 - 统一管理所有上下文相关操作
  */
 export class ContextManager {
   private readonly memory: MemoryStore;
   private readonly persistent: PersistentStore;
+  private readonly sessionStore: SessionStore;
   private readonly cache: CacheStore;
   private readonly compressor: ContextCompressor;
   private readonly filter: ContextFilter;
@@ -63,6 +78,7 @@ export class ContextManager {
     // 初始化存储层
     this.memory = new MemoryStore(this.options.storage.maxMemorySize);
     this.persistent = new PersistentStore(this.projectPath, 100);
+    this.sessionStore = new JsonlSessionStore(this.projectPath);
     this.cache = new CacheStore(
       this.options.storage.cacheSize,
       5 * 60 * 1000 // 5分钟默认TTL
@@ -138,9 +154,9 @@ export class ContextManager {
       },
     };
 
-    // 存储到内存和持久化存储
+    // 初始化内存并写入首个 session_created 事件
     this.memory.setContext(contextData);
-    await this.persistent.saveContext(sessionId, contextData);
+    await this.persistent.createSession(sessionId);
 
     this.currentSessionId = sessionId;
 
@@ -157,36 +173,12 @@ export class ContextManager {
       let contextData = this.memory.getContext();
 
       if (!contextData || contextData.layers.session.sessionId !== sessionId) {
-        // 从持久化存储加载
-        const [session, conversation] = await Promise.all([
-          this.persistent.loadSession(sessionId),
-          this.persistent.loadConversation(sessionId),
-        ]);
-
-        if (!session || !conversation) {
+        const state = await this.sessionStore.loadState(sessionId);
+        if (!state) {
           return false;
         }
 
-        // 重建完整的上下文数据
-        contextData = {
-          layers: {
-            system: await this.createSystemContext(),
-            session,
-            conversation,
-            tool: {
-              recentCalls: [],
-              toolStates: {},
-              dependencies: {},
-            },
-            workspace: await this.createWorkspaceContext(),
-          },
-          metadata: {
-            totalTokens: 0,
-            priority: 1,
-            lastUpdated: Date.now(),
-          },
-        };
-
+        contextData = await this.buildContextDataFromState(state);
         this.memory.setContext(contextData);
       }
 
@@ -211,8 +203,21 @@ export class ContextManager {
       throw new Error('没有活动会话');
     }
 
+    const messageId = await this.persistent.saveMessage(
+      this.currentSessionId,
+      role,
+      content,
+      null,
+      metadata
+        ? {
+            model: typeof metadata.model === 'string' ? metadata.model : undefined,
+            usage: isUsageMetadata(metadata.usage) ? metadata.usage : undefined,
+          }
+        : undefined,
+    );
+
     const message: ContextMessage = {
-      id: this.generateMessageId(),
+      id: messageId,
       role,
       content,
       timestamp: Date.now(),
@@ -227,8 +232,6 @@ export class ContextManager {
       await this.compressCurrentContext();
     }
 
-    // 异步保存到持久化存储
-    this.saveCurrentSessionAsync();
   }
 
   /**
@@ -239,15 +242,31 @@ export class ContextManager {
       throw new Error('没有活动会话');
     }
 
+    if (toolCall.status === 'pending') {
+      const toolUseId = await this.persistent.saveToolUse(
+        this.currentSessionId,
+        toolCall.name,
+        toolCall.input,
+        null,
+      );
+      toolCall = { ...toolCall, id: toolUseId };
+    } else {
+      await this.persistent.saveToolResult(
+        this.currentSessionId,
+        toolCall.id,
+        toolCall.name,
+        toolCall.output ?? null,
+        toolCall.id,
+        toolCall.error,
+      );
+    }
+
     this.memory.addToolCall(toolCall);
 
     // 缓存成功的工具调用结果
     if (toolCall.status === 'success' && toolCall.output) {
       this.cache.cacheToolResult(toolCall.name, toolCall.input, toolCall.output);
     }
-
-    // 异步保存
-    this.saveCurrentSessionAsync();
   }
 
   /**
@@ -426,9 +445,9 @@ export class ContextManager {
       summary: string;
       lastActivity: number;
       relevanceScore: number;
-    }>
+      }>
   > {
-    const sessions = await this.persistent.listSessions();
+    const sessions = await this.sessionStore.listSessions();
     const results: Array<{
       sessionId: string;
       summary: string;
@@ -437,13 +456,15 @@ export class ContextManager {
     }> = [];
 
     for (const sessionId of sessions) {
-      const summary = await this.persistent.getSessionSummary(sessionId);
+      const summary = await this.sessionStore.getSessionSummary(sessionId);
       if (summary) {
-        const relevanceScore = this.calculateRelevance(query, summary.topics);
+        const relevanceScore = this.calculateSummaryRelevance(query, summary);
         if (relevanceScore > 0) {
           results.push({
             sessionId,
-            summary: `${summary.messageCount}条消息，主题：${summary.topics.join('、')}`,
+            summary: summary.summaryText
+              ? `${summary.messageCount}条消息，摘要：${summary.summaryText}`
+              : `${summary.messageCount}条消息`,
             lastActivity: summary.lastActivity,
             relevanceScore,
           });
@@ -507,11 +528,6 @@ export class ContextManager {
     return nanoid();
   }
 
-  private generateMessageId(): string {
-    // 使用 nanoid 生成消息 ID
-    return nanoid();
-  }
-
   private async createSystemContext(): Promise<SystemContext> {
     return {
       role: 'AI助手',
@@ -523,7 +539,7 @@ export class ContextManager {
 
   private async createWorkspaceContext(): Promise<WorkspaceContext> {
     try {
-      const cwd = process.cwd();
+      const cwd = this.projectPath;
       return {
         projectPath: cwd,
         currentFiles: [],
@@ -560,19 +576,7 @@ export class ContextManager {
   }
 
   private async saveCurrentSession(): Promise<void> {
-    if (!this.currentSessionId) return;
-
-    const contextData = this.memory.getContext();
-    if (contextData) {
-      await this.persistent.saveContext(this.currentSessionId, contextData);
-    }
-  }
-
-  private saveCurrentSessionAsync(): void {
-    // 异步保存，不阻塞主流程
-    this.saveCurrentSession().catch((error) => {
-      console.warn('异步保存会话失败:', error);
-    });
+    return Promise.resolve();
   }
 
   private hashContext(contextData: ContextData): string {
@@ -602,5 +606,83 @@ export class ContextManager {
     }
 
     return score;
+  }
+
+  private calculateSummaryRelevance(query: string, summary: SessionSummary): number {
+    const topicsScore = this.calculateRelevance(query, summary.topics);
+    if (topicsScore > 0) {
+      return topicsScore;
+    }
+
+    if (!summary.summaryText) {
+      return 0;
+    }
+
+    return this.calculateRelevance(query, [summary.summaryText]);
+  }
+
+  private async buildContextDataFromState(state: SessionState): Promise<ContextData> {
+    return {
+      layers: {
+        system: await this.createSystemContext(),
+        session: {
+          sessionId: state.sessionId,
+          userId: undefined,
+          preferences: {},
+          configuration: {},
+          startTime: state.createdAt,
+        },
+        conversation: {
+          messages: state.timeline.map((entry) => this.toContextMessage(entry.message, entry.createdAt)),
+          summary: state.summary,
+          topics: [],
+          lastActivity: state.lastActivity,
+        },
+        tool: {
+          recentCalls: state.toolCalls.map((toolCall) => ({
+            id: toolCall.id,
+            name: toolCall.name,
+            input: toolCall.input,
+            output: toolCall.output,
+            timestamp: toolCall.timestamp,
+            status: toolCall.status,
+            error: toolCall.error,
+          })),
+          toolStates: {},
+          dependencies: {},
+        },
+        workspace: await this.createWorkspaceContext(),
+      },
+      metadata: {
+        totalTokens: 0,
+        priority: 1,
+        lastUpdated: state.lastActivity,
+      },
+    };
+  }
+
+  private toContextMessage(message: Message, createdAt: number): ContextMessage {
+    return {
+      id: message.id ?? nanoid(),
+      role: message.role,
+      content: this.stringifyMessageContent(message.content),
+      timestamp: createdAt,
+      metadata: isJsonObject(message.metadata) ? message.metadata : undefined,
+    };
+  }
+
+  private stringifyMessageContent(content: Message['content']): string {
+    if (typeof content === 'string') {
+      return content;
+    }
+
+    return content
+      .map((part) => {
+        if (part.type === 'text') {
+          return part.text;
+        }
+        return part.image_url.url;
+      })
+      .join('\n');
   }
 }

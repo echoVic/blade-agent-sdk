@@ -1,6 +1,7 @@
 import { nanoid } from 'nanoid';
 import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
+import { JsonlSessionStore } from '../../session/SessionStore.js';
 import type { JsonValue, MessageRole } from '../../types/common.js';
 import type {
   ContextData,
@@ -107,6 +108,17 @@ export class PersistentStore {
     } catch (error) {
       console.warn('[PersistentStore] 无法创建持久化存储目录:', error);
     }
+  }
+
+  async createSession(
+    sessionId: string,
+    subagentInfo?: {
+      parentSessionId: string;
+      subagentType: string;
+      isSidechain: boolean;
+    },
+  ): Promise<void> {
+    await this.ensureSessionCreated(sessionId, subagentInfo);
   }
 
   /**
@@ -373,6 +385,7 @@ export class PersistentStore {
    */
   async saveContext(sessionId: string, contextData: ContextData): Promise<void> {
     try {
+      await this.createSession(sessionId);
       const { conversation } = contextData.layers;
       for (const msg of conversation.messages) {
         await this.saveMessage(sessionId, msg.role, msg.content, null);
@@ -403,82 +416,49 @@ export class PersistentStore {
    * 加载会话上下文（从 JSONL 重建）
    */
   async loadSession(sessionId: string): Promise<SessionContext | null> {
-    try {
-      const filePath = getSessionFilePath(this.projectPath, sessionId);
-      const store = new JSONLStore(filePath);
-
-      const entries = await store.readAll();
-      if (entries.length === 0) return null;
-      const firstEntry = entries.find((entry) => entry.type === 'session_created');
-
-      return {
-        sessionId,
-        userId: undefined,
-        preferences: {},
-        configuration: {},
-        startTime: new Date(firstEntry?.timestamp ?? entries[0].timestamp).getTime(),
-      };
-    } catch {
+    const state = await this.getSessionStore().loadState(sessionId);
+    if (!state) {
       return null;
     }
+
+    return {
+      sessionId,
+      userId: undefined,
+      preferences: {},
+      configuration: {},
+      startTime: state.createdAt,
+    };
   }
 
   /**
    * 加载对话上下文（从 JSONL 重建）
    */
   async loadConversation(sessionId: string): Promise<ConversationContext | null> {
-    try {
-      const filePath = getSessionFilePath(this.projectPath, sessionId);
-      const store = new JSONLStore(filePath);
-
-      const entries = await store.readAll();
-      if (entries.length === 0) return null;
-      const messageMap = new Map<string, { id: string; role: MessageRole; content: string; timestamp: number }>();
-      for (const entry of entries) {
-        if (entry.type === 'message_created') {
-          messageMap.set(entry.data.messageId, {
-            id: entry.data.messageId,
-            role: entry.data.role,
-            content: '',
-            timestamp: new Date(entry.timestamp).getTime(),
-          });
-        }
-        if (entry.type === 'part_created' && entry.data.partType === 'text') {
-          const message = messageMap.get(entry.data.messageId);
-          if (message) {
-            const payload = entry.data.payload as { text?: string };
-            message.content = payload.text ?? '';
-          }
-        }
-      }
-      const messages = Array.from(messageMap.values());
-      const lastEntry = entries[entries.length - 1];
-      const lastActivity = new Date(lastEntry.timestamp).getTime();
-
-      return {
-        messages,
-        topics: [],
-        lastActivity,
-      };
-    } catch {
+    const state = await this.getSessionStore().loadState(sessionId);
+    if (!state) {
       return null;
     }
+
+    return {
+      messages: state.timeline.map((entry) => ({
+        id: entry.id,
+        role: entry.message.role,
+        content: typeof entry.message.content === 'string'
+          ? entry.message.content
+          : JSON.stringify(entry.message.content),
+        timestamp: entry.createdAt,
+      })),
+      summary: state.summary,
+      topics: [],
+      lastActivity: state.lastActivity,
+    };
   }
 
   /**
    * 获取所有会话列表
    */
   async listSessions(): Promise<string[]> {
-    try {
-      const storagePath = getProjectStoragePath(this.projectPath);
-      const files = await fs.readdir(storagePath);
-      return files
-        .filter((file) => file.endsWith('.jsonl'))
-        .map((file) => file.replace('.jsonl', ''))
-        .sort();
-    } catch {
-      return [];
-    }
+    return this.getSessionStore().listSessions();
   }
 
   /**
@@ -490,30 +470,17 @@ export class PersistentStore {
     messageCount: number;
     topics: string[];
   } | null> {
-    try {
-      const filePath = getSessionFilePath(this.projectPath, sessionId);
-      const store = new JSONLStore(filePath);
-
-      const stats = await store.getStats();
-      if (!stats.exists) return null;
-
-      const entries = await store.readAll();
-      if (entries.length === 0) return null;
-
-      const lastEntry = entries[entries.length - 1];
-      const messageCount = entries.filter(
-        (entry) => entry.type === 'message_created' && ['user', 'assistant'].includes(entry.data.role)
-      ).length;
-
-      return {
-        sessionId,
-        lastActivity: new Date(lastEntry.timestamp).getTime(),
-        messageCount,
-        topics: [],
-      };
-    } catch {
+    const summary = await this.getSessionStore().getSessionSummary(sessionId);
+    if (!summary) {
       return null;
     }
+
+    return {
+      sessionId: summary.sessionId,
+      lastActivity: summary.lastActivity,
+      messageCount: summary.messageCount,
+      topics: summary.topics,
+    };
   }
 
   /**
@@ -633,5 +600,9 @@ export class PersistentStore {
    */
   static async listAllProjects(): Promise<string[]> {
     return listProjectDirectories();
+  }
+
+  private getSessionStore(): JsonlSessionStore {
+    return new JsonlSessionStore(this.projectPath);
   }
 }

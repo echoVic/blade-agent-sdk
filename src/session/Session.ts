@@ -12,7 +12,7 @@ import {
   type ProviderType,
 } from '../types/common.js';
 import { HookEvent } from '../types/constants.js';
-import { JsonlSessionStore, type SessionStore } from './SessionStore.js';
+import { JsonlSessionStore, type SessionSnapshot, type SessionStore } from './SessionStore.js';
 import { SessionRuntime } from './SessionRuntime.js';
 import type {
   ForkSessionOptions,
@@ -82,6 +82,9 @@ class Session implements ISession {
       this.workspaceRoot,
     );
     await this.runtime.initialize();
+    if (!this.isResumeSession) {
+      await this.runtime.ensureSessionCreated();
+    }
 
     this.agent = await Agent.create(config, {
       permissionMode: this.permissionMode,
@@ -103,7 +106,8 @@ class Session implements ISession {
 
   async loadHistory(): Promise<void> {
     try {
-      this._messages = await this.store.loadMessages(this.sessionId);
+      const state = await this.store.loadState(this.sessionId);
+      this._messages = state?.messages ?? [];
       if (this._messages.length === 0) {
         logger.debug(`[Session] No history found for session ${this.sessionId}`);
         return;
@@ -465,40 +469,23 @@ class Session implements ISession {
 
   async fork(options?: ForkSessionOptions): Promise<ISession> {
     await this.ensureInitialized();
-
-    const messageId = options?.messageId;
-    let messagesToCopy = [...this._messages];
-
-    if (messageId) {
-      const messageIndex = this.findMessageIndexByUuid(messageId);
-      if (messageIndex === -1) {
-        throw new Error(`Message with ID "${messageId}" not found in session history`);
-      }
-      messagesToCopy = this._messages.slice(0, messageIndex + 1);
-    }
+    const snapshot = await this.store.forkState(this.sessionId, {
+      messageId: options?.messageId,
+    });
 
     const forkedSession = new Session(this.options);
     await forkedSession.initialize();
-    forkedSession._messages = messagesToCopy.map((msg) => ({ ...msg }));
+    forkedSession._messages = this.cloneSnapshotMessages(snapshot);
 
     if (options?.copyCheckpoints && this.options.enableFileCheckpointing) {
       logger.debug('[Session] Checkpoint copying is not yet implemented for forked sessions');
     }
 
     logger.debug(
-      `[Session] Forked session ${this.sessionId} -> ${forkedSession.sessionId} with ${messagesToCopy.length} messages`,
+      `[Session] Forked session ${this.sessionId} -> ${forkedSession.sessionId} with ${forkedSession._messages.length} messages`,
     );
 
     return forkedSession;
-  }
-
-  private findMessageIndexByUuid(messageId: string): number {
-    for (let i = 0; i < this._messages.length; i++) {
-      if (this._messages[i]?.id === messageId) {
-        return i;
-      }
-    }
-    return this._messages.length > 0 ? this._messages.length - 1 : -1;
   }
 
   private async applyUserPromptHooks(message: string): Promise<string> {
@@ -551,6 +538,24 @@ class Session implements ISession {
       ...payload,
     };
     return hook(input);
+  }
+
+  private cloneSnapshotMessages(snapshot: SessionSnapshot | null): Message[] {
+    if (!snapshot) {
+      return [];
+    }
+
+    return snapshot.messages.map((message) => ({
+      ...message,
+      tool_calls: message.tool_calls?.map((toolCall) => ({
+        id: toolCall.id,
+        type: toolCall.type,
+        function: {
+          name: toolCall.function.name,
+          arguments: toolCall.function.arguments,
+        },
+      })),
+    }));
   }
 }
 

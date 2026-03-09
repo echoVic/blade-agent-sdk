@@ -23,9 +23,6 @@ function createMockModelManager(overrides: Partial<Record<string, unknown>> = {}
     saveToolResult: mock(async () => 'uuid-3'),
     saveCompaction: mock(async () => {}),
   };
-  const mockExecutionEngine = {
-    getContextManager: () => mockContextMgr,
-  };
   return {
     getChatService: () => ({
       chat: mock(async () => ({
@@ -42,7 +39,7 @@ function createMockModelManager(overrides: Partial<Record<string, unknown>> = {}
       }),
       updateConfig: mock(() => {}),
     }),
-    getExecutionEngine: () => mockExecutionEngine,
+    getContextManager: () => mockContextMgr,
     getMaxContextTokens: () => 128000,
     switchModelIfNeeded: mock(async () => {}),
     _contextMgr: mockContextMgr,

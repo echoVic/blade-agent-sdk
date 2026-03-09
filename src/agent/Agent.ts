@@ -42,8 +42,6 @@ import { subagentRegistry } from './subagents/SubagentRegistry.js';
 import type {
   AgentEvent,
   AgentOptions,
-  AgentResponse,
-  AgentTask,
   ChatContext,
   LoopOptions,
   LoopResult,
@@ -64,7 +62,6 @@ export class Agent {
   private config: BladeConfig;
   private runtimeOptions: AgentOptions;
   private isInitialized = false;
-  private activeTask?: AgentTask;
   private executionPipeline: ExecutionPipeline;
   private readonly workspaceRoot: string;
   private readonly runtimeManaged: boolean;
@@ -157,7 +154,7 @@ export class Agent {
       );
       const compactionHandler = new CompactionHandler(
         () => this.modelManager.getChatService(),
-        () => this.modelManager.getExecutionEngine()?.getContextManager()
+        () => this.modelManager.getContextManager()
       );
 
       // 7. 组装 LoopRunner
@@ -184,7 +181,7 @@ export class Agent {
 
   public async chat(
     message: UserMessageContent,
-    context?: ChatContext,
+    context: ChatContext,
     options?: LoopOptions,
   ): Promise<string> {
     if (!this.isInitialized) throw new Error('Agent未初始化');
@@ -193,47 +190,33 @@ export class Agent {
       ? await this.attachmentHandler.processAtMentionsForContent(message)
       : message;
 
-    if (context) {
-      const loopOptions: LoopOptions = { signal: context.signal, ...options };
+    const loopOptions: LoopOptions = { signal: context.signal, ...options };
 
-      let result: LoopResult;
-      if (context.permissionMode === 'plan') {
-        result = await this.planExecutor.runPlanLoop(
-          enhancedMessage, context, loopOptions,
-          (msg, ctx, opts, sp) => this.loopRunner.executeLoop(msg, ctx, opts, sp),
-        );
-      } else {
-        result = await this.loopRunner.runLoop(enhancedMessage, context, loopOptions);
-      }
-
-      if (!result.success) {
-        if (result.error?.type === 'aborted' || result.metadata?.shouldExitLoop) return '';
-        throw new Error(result.error?.message || '执行失败');
-      }
-
-      if (result.metadata?.targetMode && context.permissionMode === 'plan') {
-        return this.executePlanApproval(enhancedMessage, context, loopOptions, result);
-      }
-
-      return result.finalMessage || '';
+    let result: LoopResult;
+    if (context.permissionMode === 'plan') {
+      result = await this.planExecutor.runPlanLoop(
+        enhancedMessage, context, loopOptions,
+        (msg, ctx, opts, sp) => this.loopRunner.executeLoop(msg, ctx, opts, sp),
+      );
+    } else {
+      result = await this.loopRunner.runLoop(enhancedMessage, context, loopOptions);
     }
 
-    // 简单流程
-    const textPrompt = typeof enhancedMessage === 'string'
-      ? enhancedMessage
-      : enhancedMessage
-          .filter((p) => p.type === 'text')
-          .map((p) => (p as { text: string }).text)
-          .join('\n');
+    if (!result.success) {
+      if (result.error?.type === 'aborted' || result.metadata?.shouldExitLoop) return '';
+      throw new Error(result.error?.message || '执行失败');
+    }
 
-    const task: AgentTask = { id: this.generateTaskId(), type: 'simple', prompt: textPrompt };
-    const response = await this.executeTask(task);
-    return response.content;
+    if (result.metadata?.targetMode && context.permissionMode === 'plan') {
+      return this.executePlanApproval(enhancedMessage, context, loopOptions, result);
+    }
+
+    return result.finalMessage || '';
   }
 
   public streamChat(
     message: UserMessageContent,
-    context?: ChatContext,
+    context: ChatContext,
     options?: LoopOptions,
   ): AsyncGenerator<AgentEvent, LoopResult> {
     if (!this.isInitialized) throw new Error('Agent未初始化');
@@ -243,8 +226,6 @@ export class Agent {
       const enhancedMessage = self.attachmentHandler
         ? await self.attachmentHandler.processAtMentionsForContent(message)
         : message;
-
-      if (!context) throw new Error('Context is required for streaming');
 
       const loopOptions: LoopOptions = { signal: context.signal, ...options };
 
@@ -323,30 +304,11 @@ export class Agent {
     return response.content;
   }
 
-  // ===== 任务执行 =====
-
-  public async executeTask(task: AgentTask): Promise<AgentResponse> {
-    if (!this.isInitialized) throw new Error('Agent未初始化');
-    this.activeTask = task;
-    try {
-      this.log(`开始执行任务: ${task.id}`);
-      const response = await this.modelManager.getExecutionEngine().executeTask(task);
-      this.activeTask = undefined;
-      this.log(`任务执行完成: ${task.id}`);
-      return response;
-    } catch (error) {
-      this.activeTask = undefined;
-      this.error(`任务执行失败: ${task.id}`, error);
-      throw error;
-    }
-  }
-
   // ===== Getters =====
 
-  public getActiveTask(): AgentTask | undefined { return this.activeTask; }
   public getChatService(): IChatService { return this.modelManager.getChatService(); }
   public getContextManager(): ContextManager | undefined {
-    return this.modelManager.getExecutionEngine()?.getContextManager();
+    return this.modelManager.getContextManager();
   }
   public getAvailableTools(): Tool[] {
     return this.executionPipeline ? this.executionPipeline.getRegistry().getAll() : [];
@@ -358,10 +320,9 @@ export class Agent {
   public getStats(): Record<string, unknown> {
     return {
       initialized: this.isInitialized,
-      activeTask: this.activeTask?.id,
       components: {
         chatService: this.modelManager.getChatService() ? 'ready' : 'not_loaded',
-        executionEngine: this.modelManager.getExecutionEngine() ? 'ready' : 'not_loaded',
+        contextManager: this.modelManager.getContextManager() ? 'ready' : 'not_loaded',
       },
     };
   }
@@ -548,10 +509,6 @@ export class Agent {
     } catch (error) {
       logger.warn('Failed to discover skills:', error);
     }
-  }
-
-  private generateTaskId(): string {
-    return `task_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
   }
 
   private log(message: string, data?: unknown): void {

@@ -4,6 +4,7 @@
  * 从 Agent.ts 拆分，职责单一：管理模型生命周期
  */
 
+import { ContextManager } from '../context/ContextManager.js';
 import { createLogger, LogCategory } from '../logging/Logger.js';
 import {
   createChatServiceAsync,
@@ -15,18 +16,14 @@ import type {
   OutputFormat,
 } from '../types/common.js';
 import { isThinkingModel } from '../utils/modelDetection.js';
-import type { ContextManager } from '../context/ContextManager.js';
-import { ExecutionEngine } from './ExecutionEngine.js';
 
 const logger = createLogger(LogCategory.AGENT);
 
 export class ModelManager {
   private chatService!: IChatService;
-  private executionEngine!: ExecutionEngine;
   private currentModelId?: string;
   private currentModelMaxContextTokens!: number;
-  private readonly contextManager?: ContextManager;
-  private readonly projectPath?: string;
+  private readonly contextManager: ContextManager;
 
   constructor(
     private config: BladeConfig,
@@ -34,8 +31,7 @@ export class ModelManager {
     contextManager?: ContextManager,
     projectPath?: string,
   ) {
-    this.contextManager = contextManager;
-    this.projectPath = projectPath;
+    this.contextManager = contextManager || new ContextManager({ projectPath });
   }
 
   // ===== Getters =====
@@ -44,8 +40,8 @@ export class ModelManager {
     return this.chatService;
   }
 
-  getExecutionEngine(): ExecutionEngine {
-    return this.executionEngine;
+  getContextManager(): ContextManager {
+    return this.contextManager;
   }
 
   getCurrentModelId(): string | undefined {
@@ -99,13 +95,6 @@ export class ModelManager {
       outputFormat: this.outputFormat,
     });
 
-    const contextManager =
-      this.executionEngine?.getContextManager() || this.contextManager;
-    this.executionEngine = new ExecutionEngine(
-      this.chatService,
-      contextManager,
-      this.projectPath,
-    );
     this.currentModelId = modelConfig.id;
     this.config.currentModelId = modelConfig.id;
   }

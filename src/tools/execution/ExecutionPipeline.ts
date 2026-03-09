@@ -34,6 +34,7 @@ export class ExecutionPipeline extends EventEmitter {
   private executionHistory: ExecutionHistoryEntry[] = [];
   private readonly maxHistorySize: number;
   private readonly sessionApprovals = new Set<string>();
+  private readonly hooks?: ExecutionPipelineHooks;
 
   constructor(
     private registry: ToolRegistry,
@@ -42,6 +43,7 @@ export class ExecutionPipeline extends EventEmitter {
     super();
 
     this.maxHistorySize = config.maxHistorySize || 1000;
+    this.hooks = config.hooks;
 
     const permissionConfig: PermissionsConfig = config.permissionConfig || {
       allow: [],
@@ -81,9 +83,22 @@ export class ExecutionPipeline extends EventEmitter {
   ): Promise<ToolResult> {
     const startTime = Date.now();
     const executionId = this.generateExecutionId();
+    const nextParams = { ...params };
+
+    if (this.hooks?.beforeExecute) {
+      const hookResult = await this.hooks.beforeExecute({
+        toolName,
+        params: nextParams,
+        context,
+      });
+      const earlyResult = this.applyBeforeHookResult(toolName, nextParams, hookResult);
+      if (earlyResult) {
+        return earlyResult;
+      }
+    }
 
     // 创建执行实例
-    const execution = new ToolExecutionImpl(toolName, params, {
+    const execution = new ToolExecutionImpl(toolName, nextParams, {
       ...context,
       sessionId: context.sessionId || executionId,
     });
@@ -105,13 +120,15 @@ export class ExecutionPipeline extends EventEmitter {
     // 如果需要文件锁，使用 FileLockManager
     if (needsFileLock && filePath) {
       const lockManager = FileLockManager.getInstance();
-      return lockManager.acquireLock(filePath, () =>
+      const result = await lockManager.acquireLock(filePath, () =>
         this.executeWithPipeline(execution, executionId, startTime)
       );
+      return this.applyAfterExecuteHooks(toolName, nextParams, context, result);
     }
 
     // 否则直接执行
-    return this.executeWithPipeline(execution, executionId, startTime);
+    const result = await this.executeWithPipeline(execution, executionId, startTime);
+    return this.applyAfterExecuteHooks(toolName, nextParams, context, result);
   }
 
   /**
@@ -423,6 +440,99 @@ export class ExecutionPipeline extends EventEmitter {
       this.executionHistory = this.executionHistory.slice(-this.maxHistorySize);
     }
   }
+
+  private applyBeforeHookResult(
+    toolName: string,
+    params: Record<string, unknown>,
+    hookResult: ExecutionPipelineHookResult | void,
+  ): ToolResult | null {
+    if (!hookResult) {
+      return null;
+    }
+
+    if (hookResult.modifiedInput) {
+      Object.assign(params, hookResult.modifiedInput);
+    }
+
+    if (hookResult.action === 'abort') {
+      return this.createHookFailureResult(
+        hookResult.reason || `Tool "${toolName}" was aborted by hook`,
+      );
+    }
+
+    if (hookResult.action === 'skip') {
+      const message = hookResult.reason || `Tool "${toolName}" was skipped by hook`;
+      return {
+        success: true,
+        llmContent: message,
+        displayContent: message,
+      };
+    }
+
+    return null;
+  }
+
+  private async applyAfterExecuteHooks(
+    toolName: string,
+    params: Record<string, unknown>,
+    context: ExecutionContext,
+    result: ToolResult,
+  ): Promise<ToolResult> {
+    if (!this.hooks?.afterExecute) {
+      return result;
+    }
+
+    const hookResult = await this.hooks.afterExecute({
+      toolName,
+      params,
+      context,
+      result,
+    });
+
+    if (!hookResult) {
+      return result;
+    }
+
+    if (hookResult.action === 'abort') {
+      return this.createHookFailureResult(
+        hookResult.reason || `Tool "${toolName}" post-execution hook aborted`,
+      );
+    }
+
+    if (hookResult.modifiedOutput === undefined) {
+      return result;
+    }
+
+    const nextOutput = this.stringifyHookOutput(hookResult.modifiedOutput);
+    return {
+      ...result,
+      llmContent: nextOutput,
+      displayContent: nextOutput,
+    };
+  }
+
+  private createHookFailureResult(message: string): ToolResult {
+    return {
+      success: false,
+      llmContent: `Tool execution failed: ${message}`,
+      displayContent: `错误: ${message}`,
+      error: {
+        type: ToolErrorType.EXECUTION_ERROR,
+        message,
+      },
+    };
+  }
+
+  private stringifyHookOutput(output: unknown): string {
+    if (typeof output === 'string') {
+      return output;
+    }
+    try {
+      return JSON.stringify(output);
+    } catch {
+      return String(output);
+    }
+  }
 }
 
 /**
@@ -435,6 +545,33 @@ export interface ExecutionPipelineConfig {
   permissionConfig?: PermissionsConfig;
   permissionMode?: PermissionMode;
   canUseTool?: CanUseTool;
+  hooks?: ExecutionPipelineHooks;
+}
+
+export interface ExecutionPipelineHookContext {
+  toolName: string;
+  params: Record<string, unknown>;
+  context: ExecutionContext;
+}
+
+export interface ExecutionPipelineAfterHookContext extends ExecutionPipelineHookContext {
+  result: ToolResult;
+}
+
+export interface ExecutionPipelineHookResult {
+  action?: 'continue' | 'skip' | 'abort';
+  modifiedInput?: Record<string, unknown>;
+  modifiedOutput?: unknown;
+  reason?: string;
+}
+
+export interface ExecutionPipelineHooks {
+  beforeExecute?: (
+    context: ExecutionPipelineHookContext,
+  ) => Promise<ExecutionPipelineHookResult | void>;
+  afterExecute?: (
+    context: ExecutionPipelineAfterHookContext,
+  ) => Promise<ExecutionPipelineHookResult | void>;
 }
 
 /**

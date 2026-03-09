@@ -75,20 +75,6 @@ export interface AgentOptions {
   sandbox?: SandboxSettings; // 命令执行沙箱设置
 }
 
-export interface AgentTask {
-  id: string;
-  type: 'simple';
-  prompt: string;
-  context?: Record<string, unknown>;
-  metadata?: Record<string, unknown>;
-}
-
-export interface AgentResponse {
-  taskId: string;
-  content: string;
-  metadata?: Record<string, unknown>;
-}
-
 // ===== Agentic Loop Types =====
 
 export interface LoopOptions {
