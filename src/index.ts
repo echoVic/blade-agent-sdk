@@ -1,14 +1,5 @@
 export { Agent } from './agent/Agent.js';
 export * from './agent/types.js';
-export { CheckpointService, getCheckpointService } from './checkpoint/index.js';
-export type {
-    CheckpointConfig,
-    FileChange,
-    FileSnapshot,
-    MessageCheckpoint,
-    RewindError,
-    RewindResult
-} from './checkpoint/index.js';
 export { CompactionService } from './context/CompactionService.js';
 export { ContextManager } from './context/ContextManager.js';
 export { HookManager } from './hooks/HookManager.js';

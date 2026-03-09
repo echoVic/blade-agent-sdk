@@ -2,7 +2,6 @@ import { promises as fs } from 'fs';
 import { basename, dirname, extname } from 'path';
 import { z } from 'zod';
 import { isAcpMode } from '../../../acp/AcpServiceContext.js';
-import { getCheckpointService } from '../../../checkpoint/index.js';
 import { getFileSystemService } from '../../../services/FileSystemService.js';
 import { isNodeError, getErrorCode, getErrorMessage, getErrorName } from '../../../utils/errorUtils.js';
 import { createTool } from '../../core/createTool.js';
@@ -150,10 +149,6 @@ export const writeTool = createTool({
         }
       }
 
-      // 文件检查点：捕获写入前的状态
-      const checkpointService = getCheckpointService();
-      checkpointService.captureBeforeWrite(file_path);
-
       if (typeof signal.throwIfAborted === 'function') {
         signal.throwIfAborted();
       }
@@ -200,9 +195,6 @@ export const writeTool = createTool({
         const tracker = FileAccessTracker.getInstance();
         await tracker.recordFileEdit(file_path, sessionId, 'write');
       }
-
-      // 文件检查点：追踪文件变更
-      checkpointService.trackFileChange(file_path, fileExists ? 'modify' : 'create');
 
       if (typeof signal.throwIfAborted === 'function') {
         signal.throwIfAborted();

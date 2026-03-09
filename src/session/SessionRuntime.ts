@@ -1,7 +1,6 @@
 import * as os from 'os';
 import * as path from 'path';
 import type { AgentRuntimeDeps } from '../agent/Agent.js';
-import { getCheckpointService } from '../checkpoint/index.js';
 import { ContextManager } from '../context/ContextManager.js';
 import { HookManager } from '../hooks/HookManager.js';
 import type { InternalLogger } from '../logging/Logger.js';
@@ -94,10 +93,6 @@ export class SessionRuntime {
     if (this.options.sandbox) {
       getSandboxExecutor(this.rootLogger);
       getSandboxService().configure(this.options.sandbox);
-    }
-
-    if (this.options.enableFileCheckpointing) {
-      getCheckpointService(this.rootLogger).configure({ enabled: true });
     }
 
     await this.contextManager.initialize();

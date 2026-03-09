@@ -1,7 +1,6 @@
 import { nanoid } from 'nanoid';
 import { Agent } from '../agent/Agent.js';
 import type { ChatContext, LoopResult } from '../agent/types.js';
-import { getCheckpointService, type RewindResult } from '../checkpoint/index.js';
 import { createRootLogger, type InternalLogger, LogCategory } from '../logging/Logger.js';
 import type { Message } from '../services/ChatServiceInterface.js';
 import {
@@ -450,27 +449,6 @@ class Session implements ISession {
     }
   }
 
-  async rewindFiles(userMessageUuid: string): Promise<RewindResult> {
-    if (!this.options.enableFileCheckpointing) {
-      return {
-        success: false,
-        restoredFiles: [],
-        deletedFiles: [],
-        errors: [{ filePath: '', error: 'File checkpointing is not enabled' }],
-      };
-    }
-
-    const checkpointService = getCheckpointService(this.rootLogger);
-    return checkpointService.rewindFiles(userMessageUuid);
-  }
-
-  getCheckpointStatistics(): { checkpointCount: number; trackedFileCount: number; pendingChangeCount: number } | null {
-    if (!this.options.enableFileCheckpointing) {
-      return null;
-    }
-    return getCheckpointService(this.rootLogger).getStatistics();
-  }
-
   async fork(options?: ForkSessionOptions): Promise<ISession> {
     await this.ensureInitialized();
     const snapshot = await this.store.forkState(this.sessionId, {
@@ -480,10 +458,6 @@ class Session implements ISession {
     const forkedSession = new Session(this.options);
     await forkedSession.initialize();
     forkedSession._messages = this.cloneSnapshotMessages(snapshot);
-
-    if (options?.copyCheckpoints && this.options.enableFileCheckpointing) {
-      this.logger.debug('[Session] Checkpoint copying is not yet implemented for forked sessions');
-    }
 
     this.logger.debug(
       `[Session] Forked session ${this.sessionId} -> ${forkedSession.sessionId} with ${forkedSession._messages.length} messages`,
@@ -579,17 +553,16 @@ export async function resumeSession(options: ResumeOptions): Promise<ISession> {
 
 export interface ForkOptions extends ResumeOptions {
   messageId?: string;
-  copyCheckpoints?: boolean;
 }
 
 export async function forkSession(options: ForkOptions): Promise<ISession> {
-  const { sessionId, messageId, copyCheckpoints, ...sessionOptions } = options;
+  const { sessionId, messageId, ...sessionOptions } = options;
 
   const sourceSession = new Session(sessionOptions, sessionId, true);
   await sourceSession.initialize();
   await sourceSession.loadHistory();
 
-  const forkedSession = await sourceSession.fork({ messageId, copyCheckpoints });
+  const forkedSession = await sourceSession.fork({ messageId });
 
   sourceSession.close();
 

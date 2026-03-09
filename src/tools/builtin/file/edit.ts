@@ -1,7 +1,6 @@
 import { basename, extname } from 'path';
 import { z } from 'zod';
 import { isAcpMode } from '../../../acp/AcpServiceContext.js';
-import { getCheckpointService } from '../../../checkpoint/index.js';
 import { getFileSystemService } from '../../../services/FileSystemService.js';
 import { getErrorCode, getErrorMessage, getErrorName } from '../../../utils/errorUtils.js';
 import { createTool } from '../../core/createTool.js';
@@ -307,18 +306,11 @@ export const editTool = createTool({
         signal.throwIfAborted();
       }
 
-      // 文件检查点：捕获编辑前的状态
-      const checkpointService = getCheckpointService();
-      checkpointService.captureBeforeWrite(file_path);
-
       // 写入文件（统一使用 FileSystemService）
       if (useAcp) {
         updateOutput?.('通过 IDE 写入文件...');
       }
       await fsService.writeTextFile(file_path, newContent);
-
-      // 文件检查点：追踪文件变更
-      checkpointService.trackFileChange(file_path, 'modify');
 
       // 🔴 更新文件访问记录（记录编辑操作）
       if (sessionId) {

@@ -120,7 +120,6 @@ export interface SessionOptions {
 
   sandbox?: SandboxSettings;
 
-  enableFileCheckpointing?: boolean;
 }
 
 export interface SendOptions {
@@ -156,7 +155,6 @@ export interface McpToolInfo {
 
 export interface ForkSessionOptions {
   messageId?: string;
-  copyCheckpoints?: boolean;
 }
 
 export interface ForkSessionResult {
