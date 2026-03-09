@@ -2,6 +2,21 @@
 
 本文件记录 @blade-ai/agent-sdk 的所有重要变更。
 
+## [0.1.14] - 2026-03-09
+
+- 248bc0d ci: 固定Bun版本为1.2.22并清理依赖项
+- 053498f refactor: 清理废弃模板和文档，优化导出结构
+- 9b5cee9 refactor: 移除文件检查点功能及相关代码
+- 88e7b25 refactor(Session): 添加初始化检查和方法封装
+- 60d6d6e feat: 重构日志系统以支持依赖注入和隔离
+- 886cab9 refactor: 移除插件系统和命令系统相关代码
+- f515655 refactor: 移除 Spec 模式相关代码和功能
+- 0fda735 fix: 修复类型断言和测试中的类型错误
+- 951dcb2 feat(mcp): 增强 JSON Schema 到 Zod 的转换功能
+- 4763724 refactor(agent): 重构代理循环逻辑并提取决策模块
+- 7fc2f0e refactor(agent): 移除 ExecutionEngine 并重构上下文管理
+- 7a86ef9 refactor(session): unify runtime ownership
+- 455f3cc refactor: extract AGENT_TURN_SAFETY_LIMIT constant to reduce duplication
 ## [0.1.13] - 2026-02-28
 
 - cc76545 feat: 添加 ProviderConfig 类型导出
