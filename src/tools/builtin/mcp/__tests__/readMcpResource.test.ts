@@ -1,11 +1,12 @@
 import { describe, it, expect, beforeEach, afterEach, mock } from 'bun:test';
 import { createReadMcpResourceTool } from '../readMcpResource.js';
+import type { McpRegistry } from '../../../../mcp/McpRegistry.js';
 
 const mockGetAllServers = mock(() => new Map());
 
 const mockRegistry = {
   getAllServers: mockGetAllServers,
-} as any;
+} as Pick<McpRegistry, 'getAllServers'> as McpRegistry;
 
 const readMcpResourceTool = createReadMcpResourceTool(mockRegistry);
 

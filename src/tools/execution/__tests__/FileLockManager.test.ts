@@ -375,8 +375,8 @@ describe('FileLockManager', () => {
           throw new Error('op2 error');
         });
         r2 = 'should not reach';
-      } catch (e: any) {
-        r2 = e.message;
+      } catch (error: unknown) {
+        r2 = error instanceof Error ? error.message : String(error);
       }
 
       const r3 = await manager.acquireLock('/tmp/file.ts', async () => {

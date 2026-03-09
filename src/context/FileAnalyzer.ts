@@ -167,12 +167,16 @@ export class FileAnalyzer {
       const block = match[1];
       // 查找类似 src/xxx/yyy.ts 的路径
       const pathMatches = FileAnalyzer.extractPathsFromText(block);
-      pathMatches.forEach((p) => paths.add(p));
+      for (const matchedPath of pathMatches) {
+        paths.add(matchedPath);
+      }
     }
 
     // 提取普通文本中的文件路径
     const inlineMatches = FileAnalyzer.extractPathsFromText(content);
-    inlineMatches.forEach((p) => paths.add(p));
+    for (const matchedPath of inlineMatches) {
+      paths.add(matchedPath);
+    }
 
     return Array.from(paths);
   }

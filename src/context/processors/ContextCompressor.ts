@@ -144,20 +144,28 @@ export class ContextCompressor {
       if (message.role === 'user') {
         // 用户的问题和请求
         const questions = this.extractQuestions(message.content);
-        questions.forEach((q) => keyPoints.add(`用户问题：${q}`));
+        for (const question of questions) {
+          keyPoints.add(`用户问题：${question}`);
+        }
 
         const requests = this.extractRequests(message.content);
-        requests.forEach((r) => keyPoints.add(`用户请求：${r}`));
+        for (const request of requests) {
+          keyPoints.add(`用户请求：${request}`);
+        }
       } else if (message.role === 'assistant') {
         // 助手的重要建议和解决方案
         const solutions = this.extractSolutions(message.content);
-        solutions.forEach((s) => keyPoints.add(`解决方案：${s}`));
+        for (const solution of solutions) {
+          keyPoints.add(`解决方案：${solution}`);
+        }
       }
     }
 
     // 从工具调用中提取关键点
     const toolUsage = this.summarizeToolUsage(toolCalls);
-    toolUsage.forEach((usage) => keyPoints.add(`工具使用：${usage}`));
+    for (const usage of toolUsage) {
+      keyPoints.add(`工具使用：${usage}`);
+    }
 
     return Array.from(keyPoints).slice(0, this.keyPointsLimit);
   }

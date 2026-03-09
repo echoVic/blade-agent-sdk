@@ -289,7 +289,9 @@ export class ContextFilter {
     // 从过滤后的消息中提取新主题
     for (const message of messages) {
       const extractedTopics = this.extractTopicsFromMessage(message);
-      extractedTopics.forEach((topic) => topics.add(topic));
+      for (const topic of extractedTopics) {
+        topics.add(topic);
+      }
     }
 
     return Array.from(topics).slice(0, 10); // 最多保留10个主题

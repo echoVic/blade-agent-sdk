@@ -111,7 +111,7 @@ describe('createTool', () => {
 
     it('should throw on invalid params', () => {
       expect(() => {
-        echoTool.build({ message: 123 } as any);
+        echoTool.build({ message: 123 } as unknown as z.infer<typeof testSchema>);
       }).toThrow();
     });
   });

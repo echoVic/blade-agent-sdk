@@ -11,6 +11,7 @@ import { homedir } from 'node:os';
 import * as path from 'node:path';
 import { logger } from '../logging/Logger.js';
 import { isValidPluginDir, parsePluginManifest } from './PluginManifest.js';
+import type { ParseManifestResult } from './PluginManifest.js';
 import type { PluginManifest } from './types.js';
 
 /**
@@ -122,7 +123,7 @@ export class PluginInstaller {
       }
 
       // Parse and return the manifest
-      let manifestResult;
+      let manifestResult: ParseManifestResult | null;
       try {
         manifestResult = await parsePluginManifest(pluginPath);
       } catch (parseError) {
@@ -264,7 +265,7 @@ export class PluginInstaller {
       }
 
       // Re-parse the manifest
-      let manifestResult;
+      let manifestResult: ParseManifestResult | null;
       try {
         manifestResult = await parsePluginManifest(pluginPath);
       } catch (parseError) {

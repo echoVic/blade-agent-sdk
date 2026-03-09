@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from 'bun:test';
-import type { Message } from '../../services/ChatServiceInterface.js';
+import type { ContentPart, Message } from '../../services/ChatServiceInterface.js';
 import { TokenCounter } from '../TokenCounter.js';
 
 describe('TokenCounter', () => {
@@ -58,7 +58,7 @@ describe('TokenCounter', () => {
           role: 'user',
           content: [
             { type: 'text', text: 'What is in this image?' },
-          ] as any,
+          ] as ContentPart[],
         },
       ];
 

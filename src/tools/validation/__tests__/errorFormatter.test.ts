@@ -2,6 +2,14 @@ import { describe, expect, it } from 'bun:test';
 import { z } from 'zod';
 import { parseWithZod } from '../errorFormatter.js';
 
+function expectValidationError(error: unknown) {
+  return error as {
+    name: string;
+    message: string;
+    issues: unknown[];
+  };
+}
+
 describe('errorFormatter', () => {
   describe('parseWithZod', () => {
     const schema = z.object({
@@ -60,27 +68,30 @@ describe('errorFormatter', () => {
       try {
         parseWithZod(schema, { name: 123, age: 'not-a-number' });
         expect(true).toBe(false); // should not reach here
-      } catch (error: any) {
-        expect(error.name).toBe('ToolValidationError');
-        expect(error.issues).toBeDefined();
-        expect(error.issues.length).toBeGreaterThanOrEqual(2);
+      } catch (error: unknown) {
+        const validationError = expectValidationError(error);
+        expect(validationError.name).toBe('ToolValidationError');
+        expect(validationError.issues).toBeDefined();
+        expect(validationError.issues.length).toBeGreaterThanOrEqual(2);
       }
     });
 
     it('should format single error message correctly', () => {
       try {
         parseWithZod(schema, { name: 'Alice', age: 'not-a-number' });
-      } catch (error: any) {
-        expect(error.message).toContain('参数验证失败');
+      } catch (error: unknown) {
+        const validationError = expectValidationError(error);
+        expect(validationError.message).toContain('参数验证失败');
       }
     });
 
     it('should format multiple errors message correctly', () => {
       try {
         parseWithZod(schema, { name: 123, age: 'not-a-number' });
-      } catch (error: any) {
-        expect(error.message).toContain('参数验证失败');
-        expect(error.message).toContain('2 个错误');
+      } catch (error: unknown) {
+        const validationError = expectValidationError(error);
+        expect(validationError.message).toContain('参数验证失败');
+        expect(validationError.message).toContain('2 个错误');
       }
     });
 

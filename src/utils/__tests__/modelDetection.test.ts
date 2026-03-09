@@ -1,5 +1,16 @@
 import { describe, expect, it } from 'bun:test';
+import type { ModelConfig } from '../../types/common.js';
 import { detectThinkingSupport, getThinkingConfig, isThinkingModel } from '../modelDetection.js';
+
+function createModelConfig(overrides: Partial<ModelConfig>): ModelConfig {
+  return {
+    id: 'test-model',
+    name: 'Test Model',
+    provider: 'openai',
+    model: 'gpt-4',
+    ...overrides,
+  };
+}
 
 describe('modelDetection', () => {
   describe('detectThinkingSupport', () => {
@@ -54,52 +65,52 @@ describe('modelDetection', () => {
 
   describe('getThinkingConfig', () => {
     it('should use explicit user config when supportsThinking is set', () => {
-      const config = getThinkingConfig({
+      const config = getThinkingConfig(createModelConfig({
         model: 'gpt-4',
         supportsThinking: true,
         thinkingBudget: 5000,
-      } as any);
+      }));
       expect(config.supportsThinking).toBe(true);
       expect(config.thinkingBudget).toBe(5000);
     });
 
     it('should use explicit false config', () => {
-      const config = getThinkingConfig({
+      const config = getThinkingConfig(createModelConfig({
         model: 'deepseek-r1',
         supportsThinking: false,
-      } as any);
+      }));
       expect(config.supportsThinking).toBe(false);
     });
 
     it('should auto-detect thinking support when not explicitly set', () => {
-      const config = getThinkingConfig({
+      const config = getThinkingConfig(createModelConfig({
         model: 'deepseek-r1',
-      } as any);
+      }));
       expect(config.supportsThinking).toBe(true);
       expect(config.thinkingBudget).toBeUndefined();
     });
 
     it('should auto-detect non-thinking model', () => {
-      const config = getThinkingConfig({
+      const config = getThinkingConfig(createModelConfig({
         model: 'gpt-4-turbo',
-      } as any);
+      }));
       expect(config.supportsThinking).toBe(false);
     });
   });
 
   describe('isThinkingModel', () => {
     it('should return true for thinking models', () => {
-      expect(isThinkingModel({ model: 'deepseek-r1' } as any)).toBe(true);
-      expect(isThinkingModel({ model: 'o1-preview' } as any)).toBe(true);
+      expect(isThinkingModel(createModelConfig({ model: 'deepseek-r1' }))).toBe(true);
+      expect(isThinkingModel(createModelConfig({ model: 'o1-preview' }))).toBe(true);
     });
 
     it('should return false for non-thinking models', () => {
-      expect(isThinkingModel({ model: 'gpt-4' } as any)).toBe(false);
-      expect(isThinkingModel({ model: 'claude-3-sonnet' } as any)).toBe(false);
+      expect(isThinkingModel(createModelConfig({ model: 'gpt-4' }))).toBe(false);
+      expect(isThinkingModel(createModelConfig({ model: 'claude-3-sonnet' }))).toBe(false);
     });
 
     it('should respect explicit config', () => {
-      expect(isThinkingModel({ model: 'gpt-4', supportsThinking: true } as any)).toBe(true);
+      expect(isThinkingModel(createModelConfig({ model: 'gpt-4', supportsThinking: true }))).toBe(true);
     });
   });
 });

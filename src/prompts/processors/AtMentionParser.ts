@@ -49,7 +49,12 @@ export class AtMentionParser {
     // 重置正则状态（避免多次调用时状态残留）
     AtMentionParser.PATTERN.lastIndex = 0;
 
-    while ((match = AtMentionParser.PATTERN.exec(input)) !== null) {
+    while (true) {
+      match = AtMentionParser.PATTERN.exec(input);
+      if (match === null) {
+        break;
+      }
+
       const raw = match[0];
       // match[1] 是引号内容，match[2] 是裸路径
       let path = match[1] || match[2];

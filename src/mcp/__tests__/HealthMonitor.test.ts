@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test';
 import { HealthMonitor, HealthStatus, type HealthCheckConfig } from '../HealthMonitor.js';
+import type { McpClient } from '../McpClient.js';
 import { McpConnectionStatus } from '../types.js';
 
 const createMockClient = (status: McpConnectionStatus = McpConnectionStatus.CONNECTED) => ({
@@ -8,6 +9,10 @@ const createMockClient = (status: McpConnectionStatus = McpConnectionStatus.CONN
   on: mock(() => {}),
   emit: mock(() => {}),
 });
+
+function createMonitor(client: ReturnType<typeof createMockClient>, config: HealthCheckConfig) {
+  return new HealthMonitor(client as unknown as McpClient, config);
+}
 
 describe('HealthMonitor', () => {
   let monitor: HealthMonitor;
@@ -26,7 +31,7 @@ describe('HealthMonitor', () => {
   describe('constructor', () => {
     it('should create with default config', () => {
       const config: HealthCheckConfig = { enabled: true };
-      monitor = new HealthMonitor(mockClient as any, config);
+      monitor = createMonitor(mockClient, config);
 
       expect(monitor).toBeDefined();
     });
@@ -38,7 +43,7 @@ describe('HealthMonitor', () => {
         timeout: 2000,
         failureThreshold: 5,
       };
-      monitor = new HealthMonitor(mockClient as any, config);
+      monitor = createMonitor(mockClient, config);
 
       expect(monitor).toBeDefined();
     });
@@ -47,7 +52,7 @@ describe('HealthMonitor', () => {
   describe('start', () => {
     it('should start health monitoring when enabled', () => {
       const config: HealthCheckConfig = { enabled: true, interval: 60000 };
-      monitor = new HealthMonitor(mockClient as any, config);
+      monitor = createMonitor(mockClient, config);
 
       monitor.start();
       monitor.stop();
@@ -57,7 +62,7 @@ describe('HealthMonitor', () => {
 
     it('should not start if not enabled', () => {
       const config: HealthCheckConfig = { enabled: false, interval: 60000 };
-      monitor = new HealthMonitor(mockClient as any, config);
+      monitor = createMonitor(mockClient, config);
 
       monitor.start();
 
@@ -68,7 +73,7 @@ describe('HealthMonitor', () => {
   describe('stop', () => {
     it('should stop health monitoring', () => {
       const config: HealthCheckConfig = { enabled: true, interval: 60000 };
-      monitor = new HealthMonitor(mockClient as any, config);
+      monitor = createMonitor(mockClient, config);
 
       monitor.start();
       monitor.stop();
@@ -78,7 +83,7 @@ describe('HealthMonitor', () => {
 
     it('should not throw if not running', () => {
       const config: HealthCheckConfig = { enabled: true };
-      monitor = new HealthMonitor(mockClient as any, config);
+      monitor = createMonitor(mockClient, config);
 
       expect(() => monitor.stop()).not.toThrow();
     });
@@ -87,7 +92,7 @@ describe('HealthMonitor', () => {
   describe('getLastResult', () => {
     it('should return result with initial status', () => {
       const config: HealthCheckConfig = { enabled: true };
-      monitor = new HealthMonitor(mockClient as any, config);
+      monitor = createMonitor(mockClient, config);
 
       const result = monitor.getLastResult();
       expect(result.status).toBe(HealthStatus.HEALTHY);

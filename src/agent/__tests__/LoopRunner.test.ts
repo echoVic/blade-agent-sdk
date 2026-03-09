@@ -14,7 +14,10 @@ type MockContextMgr = {
   saveCompaction: ReturnType<typeof mock>;
 };
 
-type MockModelManager = ModelManager & { _contextMgr: MockContextMgr };
+type MockModelManager = ModelManager & {
+  _chat: ReturnType<typeof mock>;
+  _contextMgr: MockContextMgr;
+};
 
 function createMockModelManager(overrides: Partial<Record<string, unknown>> = {}): MockModelManager {
   const mockContextMgr: MockContextMgr = {
@@ -23,13 +26,14 @@ function createMockModelManager(overrides: Partial<Record<string, unknown>> = {}
     saveToolResult: mock(async () => 'uuid-3'),
     saveCompaction: mock(async () => {}),
   };
+  const chatMock = mock(async () => ({
+    content: overrides.chatContent ?? 'Hello!',
+    toolCalls: [],
+    usage: { promptTokens: 100, completionTokens: 50, totalTokens: 150 },
+  }));
   return {
     getChatService: () => ({
-      chat: mock(async () => ({
-        content: overrides.chatContent ?? 'Hello!',
-        toolCalls: [],
-        usage: { promptTokens: 100, completionTokens: 50, totalTokens: 150 },
-      })),
+      chat: chatMock,
       streamChat: mock(async function* () {}),
       getConfig: () => ({
         model: 'test-model',
@@ -42,6 +46,7 @@ function createMockModelManager(overrides: Partial<Record<string, unknown>> = {}
     getContextManager: () => mockContextMgr,
     getMaxContextTokens: () => 128000,
     switchModelIfNeeded: mock(async () => {}),
+    _chat: chatMock,
     _contextMgr: mockContextMgr,
   } as unknown as MockModelManager;
 }
@@ -82,7 +87,7 @@ const baseOptions: AgentOptions = {};
 
 describe('LoopRunner', () => {
   describe('runLoop', () => {
-    it('should complete a simple chat without tools', async () => {
+    it('should complete a single-turn agent response when no tool calls are returned', async () => {
       const mm = createMockModelManager();
       const pipeline = createMockPipeline();
       const runner = new LoopRunner(baseConfig, baseOptions, mm, pipeline);
@@ -94,9 +99,10 @@ describe('LoopRunner', () => {
       expect(result.finalMessage).toBe('Hello!');
       expect(result.metadata?.turnsCount).toBe(1);
       expect(result.metadata?.toolCallsCount).toBe(0);
+      expect(mm._chat).toHaveBeenCalledTimes(1);
     });
 
-    it('should save user message to JSONL', async () => {
+    it('should persist the user message through the context store facade', async () => {
       const mm = createMockModelManager();
       const pipeline = createMockPipeline();
       const runner = new LoopRunner(baseConfig, baseOptions, mm, pipeline);
