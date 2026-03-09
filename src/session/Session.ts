@@ -2,7 +2,6 @@ import { nanoid } from 'nanoid';
 import { Agent } from '../agent/Agent.js';
 import type { ChatContext, LoopResult } from '../agent/types.js';
 import { getCheckpointService, type RewindResult } from '../checkpoint/index.js';
-import { CommandRegistry } from '../commands/CommandRegistry.js';
 import { createLogger, LogCategory } from '../logging/Logger.js';
 import type { Message } from '../services/ChatServiceInterface.js';
 import {
@@ -26,7 +25,6 @@ import type {
   ProviderConfig,
   SendOptions,
   SessionOptions,
-  SlashCommand,
   StreamMessage,
   StreamOptions,
   TokenUsage,
@@ -360,19 +358,6 @@ class Session implements ISession {
 
   setMaxTurns(maxTurns: number): void {
     this.maxTurns = maxTurns;
-  }
-
-  async supportedCommands(): Promise<SlashCommand[]> {
-    const registry = CommandRegistry.getInstance();
-    if (!registry.isInitialized()) {
-      await registry.initialize(this.workspaceRoot);
-    }
-
-    return registry.getAllCommands().map((cmd) => ({
-      name: cmd.name,
-      description: cmd.config.description || '',
-      usage: cmd.config.argumentHint,
-    }));
   }
 
   async supportedModels(): Promise<ModelInfo[]> {

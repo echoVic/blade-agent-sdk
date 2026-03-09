@@ -14,7 +14,7 @@ export interface NodeError extends Error {
  *
  * - ReadOnly: 只读操作，无副作用（Read, Glob, Grep, WebFetch, WebSearch, TaskOutput, TodoWrite, Plan 工具等）
  * - Write: 文件写入操作（Edit, Write, NotebookEdit）
- * - Execute: 命令执行，可能有副作用（Bash, KillShell, Task, Skill, SlashCommand）
+ * - Execute: 命令执行，可能有副作用（Bash, KillShell, Task, Skill）
  */
 export enum ToolKind {
   ReadOnly = 'readonly',

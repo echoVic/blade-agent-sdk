@@ -9,8 +9,6 @@ export type {
     RewindError,
     RewindResult
 } from './checkpoint/index.js';
-export { CommandExecutor, CommandLoader, CommandParser, CommandRegistry } from './commands/index.js';
-export * from './commands/types.js';
 export { CompactionService } from './context/CompactionService.js';
 export { ContextManager } from './context/ContextManager.js';
 export { HookManager } from './hooks/HookManager.js';
@@ -31,33 +29,6 @@ export type {
     SdkMcpServerHandle,
     ToolResponse as McpToolResponse
 } from './mcp/index.js';
-export {
-    clearAllPluginResources,
-    getMcpNamespacedName,
-    getNamespacedName,
-    getPluginInstaller,
-    getPluginRegistry,
-    integrateAllPlugins,
-    isValidPluginDir,
-    parsePluginManifest,
-    PluginInstaller,
-    PluginIntegrator,
-    PluginLoader,
-    PluginRegistry
-} from './plugins/index.js';
-export type {
-    LoadedPlugin,
-    ManifestSource,
-    PluginAgent,
-    PluginAuthor,
-    PluginCommand,
-    PluginDiscoveryError,
-    PluginDiscoveryResult,
-    PluginManifest,
-    PluginSkill,
-    PluginSource,
-    PluginStatus
-} from './plugins/index.js';
 export { getSandboxExecutor, getSandboxService, SandboxExecutor, SandboxService } from './sandbox/index.js';
 export type { SandboxCapabilities, SandboxCheckResult, SandboxExecutionContext, SandboxExecutionOptions } from './sandbox/index.js';
 export * from './services/ChatServiceInterface.js';
@@ -79,7 +50,6 @@ export type {
     ResumeOptions,
     SendOptions,
     SessionOptions,
-    SlashCommand,
     StreamMessage,
     StreamOptions,
     SubagentInfo,

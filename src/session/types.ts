@@ -130,12 +130,6 @@ export interface StreamOptions {
   includeThinking?: boolean;
 }
 
-export interface SlashCommand {
-  name: string;
-  description: string;
-  usage?: string;
-}
-
 export interface ModelInfo {
   id: string;
   name: string;
@@ -185,7 +179,6 @@ export interface ISession extends AsyncDisposable {
   setModel(model: string): Promise<void>;
   setMaxTurns(maxTurns: number): void;
 
-  supportedCommands(): Promise<SlashCommand[]>;
   supportedModels(): Promise<ModelInfo[]>;
 
   mcpServerStatus(): Promise<McpServerStatus[]>;

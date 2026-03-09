@@ -8,7 +8,6 @@
 import * as fs from 'node:fs/promises';
 import { homedir } from 'node:os';
 import * as path from 'node:path';
-import type { PluginSkill } from '../plugins/types.js';
 import {
   getSkillCreatorContent,
   skillCreatorMetadata,
@@ -44,8 +43,6 @@ let instance: SkillRegistry | null = null;
  */
 export class SkillRegistry {
   private skills: Map<string, SkillMetadata> = new Map();
-  /** Plugin skills stored with namespaced names */
-  private pluginSkills: Map<string, PluginSkill> = new Map();
   private config: Required<SkillRegistryConfig>;
   private initialized = false;
 
@@ -321,84 +318,8 @@ export class SkillRegistry {
    */
   async refresh(): Promise<SkillDiscoveryResult> {
     this.skills.clear();
-    this.pluginSkills.clear();
     this.initialized = false;
     return this.initialize();
-  }
-
-  // ============================================================
-  // Plugin Skill Methods
-  // ============================================================
-
-  /**
-   * 注册插件技能
-   *
-   * Plugin skills are stored with their namespaced names (e.g., "plugin:skill")
-   * to prevent conflicts with other plugins or standalone skills.
-   *
-   * @param skill - Plugin skill to register
-   */
-  registerPluginSkill(skill: PluginSkill): void {
-    this.pluginSkills.set(skill.namespacedName, skill);
-    // Also register in the main skills map for unified access
-    this.skills.set(skill.namespacedName, skill.metadata);
-  }
-
-  /**
-   * 查找插件技能
-   *
-   * Supports both:
-   * - Full namespaced name: "plugin:skill"
-   * - Short name if unique: "skill"
-   *
-   * @param name - Skill name to find
-   * @returns Plugin skill or undefined
-   */
-  findPluginSkill(name: string): PluginSkill | undefined {
-    // Try exact namespaced match first
-    const exact = this.pluginSkills.get(name);
-    if (exact) return exact;
-
-    // Try short name match (if unique)
-    const matches: PluginSkill[] = [];
-    for (const skill of this.pluginSkills.values()) {
-      if (skill.originalName === name) {
-        matches.push(skill);
-      }
-    }
-
-    // Only return if exactly one match
-    if (matches.length === 1) {
-      return matches[0];
-    }
-
-    return undefined;
-  }
-
-  /**
-   * 获取所有插件技能
-   */
-  getAllPluginSkills(): PluginSkill[] {
-    return Array.from(this.pluginSkills.values());
-  }
-
-  /**
-   * 清除所有插件技能
-   * Called when refreshing plugins
-   */
-  clearPluginSkills(): void {
-    // Remove from main skills map
-    for (const skill of this.pluginSkills.values()) {
-      this.skills.delete(skill.namespacedName);
-    }
-    this.pluginSkills.clear();
-  }
-
-  /**
-   * 获取插件技能数量
-   */
-  getPluginSkillCount(): number {
-    return this.pluginSkills.size;
   }
 }
 
