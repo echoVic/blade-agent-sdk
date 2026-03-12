@@ -2,6 +2,9 @@
 
 本文件记录 @blade-ai/agent-sdk 的所有重要变更。
 
+## [0.1.16] - 2026-03-12
+
+- c17e79b feat: 重构运行时上下文管理，引入ContextSnapshot机制
 ## [0.1.15] - 2026-03-09
 
 - 14ea476 test(SessionOpenAIConfig): 简化测试用例并移除不必要的模拟
