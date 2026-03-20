@@ -2,6 +2,9 @@
 
 本文件记录 @blade-ai/agent-sdk 的所有重要变更。
 
+## [0.1.19] - 2026-03-20
+
+- dbc37a3 fix: pass registry to bun publish
 ## [0.1.18] - 2026-03-20
 
 - 55242a6 fix: stabilize concurrent session logger routing
