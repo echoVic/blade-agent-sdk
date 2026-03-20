@@ -15,7 +15,12 @@ import {
   type ProviderType,
 } from '../types/common.js';
 import { HookEvent } from '../types/constants.js';
-import { JsonlSessionStore, type SessionSnapshot, type SessionStore } from './SessionStore.js';
+import {
+  JsonlSessionStore,
+  NoopSessionStore,
+  type SessionSnapshot,
+  type SessionStore,
+} from './SessionStore.js';
 import { SessionRuntime } from './SessionRuntime.js';
 import type {
   ForkSessionOptions,
@@ -47,6 +52,7 @@ class Session implements ISession {
   private _messages: Message[] = [];
   private readonly options: SessionOptions;
   private readonly store: SessionStore;
+  private readonly persistenceEnabled: boolean;
   private readonly isResumeSession: boolean;
   private readonly rootLogger: InternalLogger;
   private readonly logger: InternalLogger;
@@ -65,7 +71,10 @@ class Session implements ISession {
     this.maxTurns = options.maxTurns ?? 200;
     this.permissionMode = options.permissionMode ?? PermissionMode.DEFAULT;
     this.defaultContext = options.defaultContext ?? {};
-    this.store = new JsonlSessionStore(options.storagePath);
+    this.persistenceEnabled = options.persistSession ?? true;
+    this.store = this.persistenceEnabled
+      ? new JsonlSessionStore(options.storagePath)
+      : new NoopSessionStore();
     this.isResumeSession = isResume;
     this.rootLogger = createRootLogger(options.logger, this.sessionId);
     this.logger = this.rootLogger.child(LogCategory.AGENT);
@@ -491,9 +500,11 @@ class Session implements ISession {
 
   async fork(options?: ForkSessionOptions): Promise<ISession> {
     await this.ensureInitialized();
-    const snapshot = await this.store.forkState(this.sessionId, {
-      messageId: options?.messageId,
-    });
+    const snapshot = this.persistenceEnabled
+      ? await this.store.forkState(this.sessionId, {
+        messageId: options?.messageId,
+      })
+      : this.createSnapshotFromMessages(options?.messageId);
 
     const forkedSession = new Session({
       ...this.options,
@@ -578,6 +589,27 @@ class Session implements ISession {
       })),
     }));
   }
+
+  private createSnapshotFromMessages(messageId?: string): SessionSnapshot {
+    let messages = [...this._messages];
+
+    if (messageId) {
+      const endIndex = messages.findIndex((message) => message.id === messageId);
+      if (endIndex === -1) {
+        throw new Error(`Message with ID "${messageId}" not found in session history`);
+      }
+      messages = messages.slice(0, endIndex + 1);
+    }
+
+    return {
+      sessionId: this.sessionId,
+      messages,
+      messageIds: messages
+        .map((message) => message.id)
+        .filter((id): id is string => typeof id === 'string'),
+      lastActivity: Date.now(),
+    };
+  }
 }
 
 export async function createSession(options: SessionOptions): Promise<ISession> {
@@ -587,6 +619,9 @@ export async function createSession(options: SessionOptions): Promise<ISession> 
 }
 
 export async function resumeSession(options: ResumeOptions): Promise<ISession> {
+  if (options.persistSession === false) {
+    throw new Error('resumeSession() requires session persistence. Remove persistSession: false or use createSession().');
+  }
   const { sessionId, ...sessionOptions } = options;
   const session = new Session(sessionOptions, sessionId, true);
   await session.initialize();
@@ -599,6 +634,9 @@ export interface ForkOptions extends ResumeOptions {
 }
 
 export async function forkSession(options: ForkOptions): Promise<ISession> {
+  if (options.persistSession === false) {
+    throw new Error('forkSession() requires session persistence. Remove persistSession: false and call session.fork() on a live session instead.');
+  }
   const { sessionId, messageId, ...sessionOptions } = options;
 
   const sourceSession = new Session(sessionOptions, sessionId, true);

@@ -73,6 +73,31 @@ export interface SessionStore {
   getSessionSummary(sessionId: string): Promise<SessionSummary | null>;
 }
 
+export class NoopSessionStore implements SessionStore {
+  async loadState(_sessionId: string): Promise<SessionState | null> {
+    return null;
+  }
+
+  async loadMessages(_sessionId: string): Promise<Message[]> {
+    return [];
+  }
+
+  async forkState(
+    _sessionId: string,
+    _options?: { messageId?: string },
+  ): Promise<SessionSnapshot | null> {
+    return null;
+  }
+
+  async listSessions(): Promise<string[]> {
+    return [];
+  }
+
+  async getSessionSummary(_sessionId: string): Promise<SessionSummary | null> {
+    return null;
+  }
+}
+
 interface MessageRecord {
   id: string;
   parentMessageId?: string;

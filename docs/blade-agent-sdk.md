@@ -83,6 +83,12 @@ session.close();
 - 连接、断开和查询 MCP server
 - 基于持久化历史恢复或分叉
 
+Session 默认是“可持久化”的，但不强制要求本地落盘：
+
+- 默认情况下，SDK 会把会话历史写入本地存储，适合 CLI / IDE / 本地服务
+- 如果传入 `persistSession: false`，则会切换到仅内存模式，适合 Web / Serverless
+- 仅内存模式下仍然支持当前实例内的多轮对话，但不支持 `resumeSession()` 这类依赖磁盘历史的 API
+
 相关文档见 [Session](./session.md)。
 
 ## 工具系统

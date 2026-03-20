@@ -1,13 +1,19 @@
 import * as crypto from 'crypto';
 import { nanoid } from 'nanoid';
 import type { Message } from '../services/ChatServiceInterface.js';
-import { JsonlSessionStore, type SessionState, type SessionStore, type SessionSummary } from '../session/SessionStore.js';
+import {
+  JsonlSessionStore,
+  NoopSessionStore,
+  type SessionState,
+  type SessionStore,
+  type SessionSummary,
+} from '../session/SessionStore.js';
 import type { JsonObject, JsonValue } from '../types/common.js';
 import { ContextCompressor } from './processors/ContextCompressor.js';
 import { ContextFilter } from './processors/ContextFilter.js';
 import { CacheStore } from './storage/CacheStore.js';
 import { MemoryStore } from './storage/MemoryStore.js';
-import { PersistentStore } from './storage/PersistentStore.js';
+import { NoopPersistentStore, PersistentStore } from './storage/PersistentStore.js';
 import { getBladeStorageRoot } from './storage/pathUtils.js';
 import type {
   CompressedContext,
@@ -39,7 +45,7 @@ function isUsageMetadata(
  */
 export class ContextManager {
   private readonly memory: MemoryStore;
-  private readonly persistent: PersistentStore;
+  private readonly persistent: PersistentStore | NoopPersistentStore;
   private readonly sessionStore: SessionStore;
   private readonly cache: CacheStore;
   private readonly compressor: ContextCompressor;
@@ -51,14 +57,16 @@ export class ContextManager {
   private initialized = false;
 
   constructor(options: Partial<ContextManagerOptions> = {}) {
+    const persistenceEnabled = options.storage?.persistenceEnabled ?? true;
     // 默认使用 ~/.blade/ 作为存储根目录
     const defaultPersistentPath =
-      options.storage?.persistentPath || getBladeStorageRoot();
+      persistenceEnabled ? (options.storage?.persistentPath || getBladeStorageRoot()) : undefined;
 
     this.options = {
       storage: {
         maxMemorySize: 1000,
         persistentPath: defaultPersistentPath,
+        persistenceEnabled,
         cacheSize: 100,
         compressionEnabled: true,
         ...options.storage,
@@ -77,13 +85,17 @@ export class ContextManager {
 
     // 初始化存储层
     this.memory = new MemoryStore(this.options.storage.maxMemorySize);
-    this.persistent = new PersistentStore(
-      this.options.storage.persistentPath,
-      100,
-      '0.0.10',
-      this.projectPath,
-    );
-    this.sessionStore = new JsonlSessionStore(this.options.storage.persistentPath);
+    this.persistent = persistenceEnabled
+      ? new PersistentStore(
+        this.options.storage.persistentPath,
+        100,
+        '0.0.10',
+        this.projectPath,
+      )
+      : new NoopPersistentStore();
+    this.sessionStore = persistenceEnabled
+      ? new JsonlSessionStore(this.options.storage.persistentPath)
+      : new NoopSessionStore();
     this.cache = new CacheStore(
       this.options.storage.cacheSize,
       5 * 60 * 1000 // 5分钟默认TTL
@@ -101,6 +113,12 @@ export class ContextManager {
     if (this.initialized) return;
 
     try {
+      if (!this.options.storage.persistenceEnabled) {
+        this.initialized = true;
+        console.log('上下文管理器初始化完成');
+        return;
+      }
+
       await this.persistent.initialize();
 
       // 检查存储健康状态

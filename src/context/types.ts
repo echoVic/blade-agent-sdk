@@ -100,6 +100,7 @@ export interface CompressedContext {
 export interface ContextStorageOptions {
   maxMemorySize: number;
   persistentPath?: string;
+  persistenceEnabled?: boolean;
   cacheSize: number;
   compressionEnabled: boolean;
 }

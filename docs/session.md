@@ -55,9 +55,61 @@ const options: SessionOptions = {
 | `cwd` | `string` | 工作目录 |
 | `env` | `Record<string, string>` | 传递给工具执行的环境变量 |
 | `logger` | `AgentLogger` | 结构化日志接入 |
+| `persistSession` | `boolean` | 是否启用磁盘会话持久化，默认 `true` |
 | `outputFormat` | `OutputFormat` | JSON Schema 结构化输出 |
 | `sandbox` | `SandboxSettings` | 命令执行沙箱配置 |
 | `agents` | `Record<string, AgentDefinition>` | 命名子代理定义 |
+
+如果你在 Web / Serverless 场景下不希望 SDK 写入 `~/.blade/sessions`，可以关闭持久化：
+
+```ts
+const session = await createSession({
+  provider: { type: 'openai-compatible', apiKey: process.env.API_KEY },
+  model: 'gpt-4o-mini',
+  persistSession: false,
+});
+```
+
+说明：
+
+- `persistSession: false` 时，不会写入磁盘 session 文件
+- 此时 `resumeSession()` 和 `forkSession({ sessionId })` 不可用
+- 如果只是想在当前进程里复制会话上下文，仍可使用 `session.fork()`
+
+## 持久化模式
+
+Blade Agent SDK 默认启用磁盘持久化。这种模式适合 CLI、IDE、本地桌面应用，或者需要恢复历史会话的服务端进程。
+
+默认行为：
+
+- session 历史会写入本地存储
+- 可以通过 `resumeSession()` 恢复已有会话
+- 可以通过 `forkSession({ sessionId })` 从历史会话分叉
+
+如果你传入了 `storagePath`，session 会写到该路径下的 `sessions/` 目录；否则默认使用 `~/.blade/sessions`。
+
+## 无状态模式
+
+对 Web API、Serverless、浏览器中转层这类场景，更常见的诉求是“当前请求里能跑，但不要依赖本地文件系统”。这时推荐显式关闭持久化：
+
+```ts
+const session = await createSession({
+  provider: { type: 'openai-compatible', apiKey: process.env.API_KEY },
+  model: 'gpt-4o-mini',
+  persistSession: false,
+});
+```
+
+这一模式下：
+
+- session 只保存在当前进程内存中
+- 同一个 `session` 实例仍然支持多轮 `send()` / `stream()`
+- SDK 不会创建或写入 `~/.blade/sessions`
+- `resumeSession()` 不可用，因为没有可恢复的磁盘历史
+- `forkSession({ sessionId })` 不可用，因为它依赖已持久化的 session
+- `session.fork()` 仍然可用，因为它只复制当前实例内存中的消息
+
+如果你的 Web 应用需要跨请求恢复对话，建议由你的业务层自行保存消息历史，再在新请求中重新构造会话上下文，而不是依赖本地 session 文件。
 
 ## send / stream
 
@@ -145,6 +197,11 @@ const forked = await forkSession({
 ```ts
 const forked = await session.fork({ messageId: 'msg-123' });
 ```
+
+注意：
+
+- `resumeSession()` 和 `forkSession()` 面向“已持久化到磁盘的会话”
+- `session.fork()` 面向“当前进程里还活着的会话实例”
 
 ## Session 方法
 

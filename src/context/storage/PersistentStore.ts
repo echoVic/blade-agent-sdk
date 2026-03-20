@@ -610,3 +610,155 @@ export class PersistentStore {
     return new JsonlSessionStore(this.storageRoot);
   }
 }
+
+export class NoopPersistentStore {
+  async initialize(): Promise<void> {
+    return Promise.resolve();
+  }
+
+  async createSession(
+    _sessionId: string,
+    _subagentInfo?: {
+      parentSessionId: string;
+      subagentType: string;
+      isSidechain: boolean;
+    },
+  ): Promise<void> {
+    return Promise.resolve();
+  }
+
+  async saveMessage(
+    _sessionId: string,
+    _messageRole: MessageRole,
+    _content: string,
+    _parentUuid: string | null = null,
+    _metadata?: {
+      model?: string;
+      usage?: { input_tokens: number; output_tokens: number };
+    },
+    _subagentInfo?: {
+      parentSessionId: string;
+      subagentType: string;
+      isSidechain: boolean;
+    },
+  ): Promise<string> {
+    return nanoid();
+  }
+
+  async saveToolUse(
+    _sessionId: string,
+    _toolName: string,
+    _toolInput: JsonValue,
+    _parentUuid: string | null = null,
+    _subagentInfo?: {
+      parentSessionId: string;
+      subagentType: string;
+      isSidechain: boolean;
+    },
+  ): Promise<string> {
+    return nanoid();
+  }
+
+  async saveToolResult(
+    _sessionId: string,
+    toolId: string,
+    _toolName: string,
+    _toolOutput: JsonValue,
+    _parentUuid: string | null = null,
+    _error?: string,
+    _subagentInfo?: {
+      parentSessionId: string;
+      subagentType: string;
+      isSidechain: boolean;
+    },
+    _subagentRef?: {
+      subagentSessionId: string;
+      subagentType: string;
+      subagentStatus: 'running' | 'completed' | 'failed' | 'cancelled';
+      subagentSummary?: string;
+    },
+  ): Promise<string> {
+    return toolId;
+  }
+
+  async saveCompaction(
+    _sessionId: string,
+    _summary: string,
+    _metadata: {
+      trigger: 'auto' | 'manual';
+      preTokens: number;
+      postTokens?: number;
+      filesIncluded?: string[];
+    },
+    _parentUuid: string | null = null,
+  ): Promise<string> {
+    return nanoid();
+  }
+
+  async saveContext(_sessionId: string, _contextData: ContextData): Promise<void> {
+    return Promise.resolve();
+  }
+
+  async saveSession(_sessionId: string, _sessionContext: SessionContext): Promise<void> {
+    return Promise.resolve();
+  }
+
+  async saveConversation(
+    _sessionId: string,
+    _conversation: ConversationContext,
+  ): Promise<void> {
+    return Promise.resolve();
+  }
+
+  async loadSession(_sessionId: string): Promise<SessionContext | null> {
+    return null;
+  }
+
+  async loadConversation(_sessionId: string): Promise<ConversationContext | null> {
+    return null;
+  }
+
+  async listSessions(): Promise<string[]> {
+    return [];
+  }
+
+  async getSessionSummary(_sessionId: string): Promise<{
+    sessionId: string;
+    lastActivity: number;
+    messageCount: number;
+    topics: string[];
+  } | null> {
+    return null;
+  }
+
+  async deleteSession(_sessionId: string): Promise<void> {
+    return Promise.resolve();
+  }
+
+  async cleanupOldSessions(): Promise<void> {
+    return Promise.resolve();
+  }
+
+  async getStorageStats(): Promise<{
+    totalSessions: number;
+    totalSize: number;
+    projectPath?: string;
+  }> {
+    return {
+      totalSessions: 0,
+      totalSize: 0,
+    };
+  }
+
+  async checkStorageHealth(): Promise<{
+    isAvailable: boolean;
+    canWrite: boolean;
+    error?: string;
+  }> {
+    return {
+      isAvailable: false,
+      canWrite: false,
+      error: 'Session persistence is disabled',
+    };
+  }
+}

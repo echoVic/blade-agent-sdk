@@ -116,6 +116,7 @@ export interface SessionOptions {
   defaultContext?: RuntimeContext;
   logger?: AgentLogger;
   storagePath?: string;
+  persistSession?: boolean;
 
   outputFormat?: OutputFormat;
 

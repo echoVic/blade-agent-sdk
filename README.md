@@ -99,6 +99,35 @@ console.log(result.toolCalls);
 console.log(result.usage);
 ```
 
+### Web / Serverless 场景
+
+如果你在 Web API、Serverless Function 或其他不希望写本地磁盘的环境中使用 SDK，可以关闭 session 持久化：
+
+```ts
+import { createSession } from '@blade-ai/agent-sdk';
+
+const session = await createSession({
+  provider: { type: 'openai-compatible', apiKey: process.env.API_KEY },
+  model: 'gpt-4o-mini',
+  persistSession: false,
+});
+
+await session.send('帮我总结这段代码的职责');
+
+for await (const event of session.stream()) {
+  if (event.type === 'content') {
+    process.stdout.write(event.delta);
+  }
+}
+```
+
+这种模式下：
+
+- SDK 不会写入 `~/.blade/sessions`
+- 当前进程内的多轮对话仍然可用
+- `resumeSession()` 和 `forkSession({ sessionId })` 不可用
+- 如果只是复制当前内存中的上下文，可以继续使用 `session.fork()`
+
 ### 恢复与分叉
 
 ```ts
@@ -154,6 +183,19 @@ const options: SessionOptions = {
 - `outputFormat`：JSON Schema 结构化输出
 - `agents`：命名子代理定义
 - `logger`：结构化日志回调
+- `persistSession`：是否启用磁盘会话持久化，默认 `true`
+
+如果是 Web 场景，不希望 SDK 写入 `~/.blade/sessions`，可以显式关闭：
+
+```ts
+const session = await createSession({
+  provider: { type: 'openai-compatible', apiKey: process.env.API_KEY },
+  model: 'gpt-4o-mini',
+  persistSession: false,
+});
+```
+
+关闭后仍可正常对话，但 `resumeSession()` 和基于 `sessionId` 的 `forkSession()` 不可用；如需在当前进程内复制上下文，可调用实例方法 `session.fork()`。
 
 ## Hooks
 

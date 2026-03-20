@@ -67,6 +67,7 @@ export class SessionRuntime {
       storage: {
         maxMemorySize: 1000,
         persistentPath: options.storagePath,
+        persistenceEnabled: options.persistSession ?? true,
         cacheSize: 100,
         compressionEnabled: true,
       },

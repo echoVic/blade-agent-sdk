@@ -1,5 +1,5 @@
 import { describe, expect, it, mock } from 'bun:test';
-import { mkdtempSync } from 'node:fs';
+import { existsSync, mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { PersistentStore } from '../../context/storage/PersistentStore.js';
@@ -136,5 +136,38 @@ describe('Session persistence', () => {
 
     sessionA.close();
     sessionB.close();
+  });
+
+  it('should allow disabling disk-backed session persistence', async () => {
+    const workspaceRoot = createWorkspaceRoot();
+
+    const session = await createSession({
+      ...createOptions(workspaceRoot),
+      persistSession: false,
+    });
+
+    expect(existsSync(join(workspaceRoot, 'sessions'))).toBe(false);
+
+    const forked = await session.fork();
+    expect(forked.messages).toEqual([]);
+
+    forked.close();
+    session.close();
+  });
+
+  it('should reject resume and sessionId-based fork when persistence is disabled', async () => {
+    const workspaceRoot = createWorkspaceRoot();
+
+    await expect(resumeSession({
+      sessionId: 'session-disabled',
+      ...createOptions(workspaceRoot),
+      persistSession: false,
+    })).rejects.toThrow(/requires session persistence/i);
+
+    await expect(forkSession({
+      sessionId: 'session-disabled',
+      ...createOptions(workspaceRoot),
+      persistSession: false,
+    })).rejects.toThrow(/requires session persistence/i);
   });
 });
