@@ -2,6 +2,11 @@
 
 本文件记录 @blade-ai/agent-sdk 的所有重要变更。
 
+## [0.1.18] - 2026-03-20
+
+- 55242a6 fix: stabilize concurrent session logger routing
+- 8e8f57c chore: switch repo workflow to bun
+- a1d1de3 feat(session): 支持禁用会话持久化模式
 ## [0.1.17] - 2026-03-12
 
 - f3eb08c fix: 移除对 process.cwd() 的隐式依赖，增强文件系统访问安全性
