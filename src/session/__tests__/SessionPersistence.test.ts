@@ -1,4 +1,5 @@
-import { describe, expect, it, mock } from 'bun:test';
+import { describe, expect, it } from 'bun:test';
+import type { LogEntry } from '../../types/logging.js';
 import { existsSync, mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -91,48 +92,56 @@ describe('Session persistence', () => {
 
   it('should forward internal logs through the injected logger interface', async () => {
     const workspaceRoot = createWorkspaceRoot();
-    const log = mock(() => {});
+    const entries: LogEntry[] = [];
 
     const session = await createSession({
       ...createOptions(workspaceRoot),
-      logger: { log },
+      logger: {
+        log: (entry) => {
+          entries.push(entry);
+        },
+      },
     });
 
-    expect(log).toHaveBeenCalled();
-    const calls = log.mock.calls as unknown[][];
-    const firstCall = calls[0];
-    expect(firstCall).toBeDefined();
-    const entry = firstCall[0] as {
-      category: string;
-      sessionId?: string;
-    };
-    expect(entry.category).toBe('Agent');
-    expect(entry.sessionId).toBe(session.sessionId);
+    expect(entries.length).toBeGreaterThan(0);
+    const entry = entries[0];
+    expect(entry).toBeDefined();
+    expect(entry?.category).toBe('Agent');
+    expect(entry?.sessionId).toBe(session.sessionId);
 
     session.close();
   });
 
   it('should isolate logger routing between concurrent sessions', async () => {
     const workspaceRoot = createWorkspaceRoot();
-    const logA = mock(() => {});
-    const logB = mock(() => {});
+    const entriesA: LogEntry[] = [];
+    const entriesB: LogEntry[] = [];
 
     const sessionA = await createSession({
       ...createOptions(workspaceRoot),
-      logger: { log: logA },
+      logger: {
+        log: (entry) => {
+          entriesA.push(entry);
+        },
+      },
     });
     const sessionB = await createSession({
       ...createOptions(workspaceRoot),
-      logger: { log: logB },
+      logger: {
+        log: (entry) => {
+          entriesB.push(entry);
+        },
+      },
     });
 
-    logA.mockClear();
-    logB.mockClear();
+    entriesA.length = 0;
+    entriesB.length = 0;
 
     await sessionA.setModel('gpt-4.1');
 
-    expect(logA).toHaveBeenCalled();
-    expect(logB).not.toHaveBeenCalled();
+    expect(entriesA.length).toBeGreaterThan(0);
+    expect(entriesB).toHaveLength(0);
+    expect(entriesA.every((entry) => entry.sessionId === sessionA.sessionId)).toBe(true);
 
     sessionA.close();
     sessionB.close();

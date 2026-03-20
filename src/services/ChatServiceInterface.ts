@@ -235,9 +235,11 @@ export async function createChatServiceAsync(
     }
   }
 
-  return createChatServiceInternal(resolvedConfig, logger);
+  return await createChatServiceInternal(resolvedConfig, logger);
 }
 
-function createChatServiceInternal(config: ChatConfig, logger: InternalLogger): IChatService {
-  return new VercelAIChatService(config, logger);
+async function createChatServiceInternal(config: ChatConfig, logger: InternalLogger): Promise<IChatService> {
+  const service = new VercelAIChatService(config, logger);
+  await service.ready();
+  return service;
 }

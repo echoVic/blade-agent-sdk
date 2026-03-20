@@ -407,6 +407,7 @@ class Session implements ISession {
     await this.ensureInitialized();
     await this.getAgent().setModel(model);
     this.options.model = model;
+    this.logger.debug(`[Session] Updated model to ${model}`);
   }
 
   setMaxTurns(maxTurns: number): void {

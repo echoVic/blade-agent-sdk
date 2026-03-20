@@ -88,6 +88,10 @@ export class VercelAIChatService implements IChatService {
     this.initialized = this.initModel(config);
   }
 
+  async ready(): Promise<void> {
+    await this.initialized;
+  }
+
   private async initModel(config: ChatConfig): Promise<void> {
     this.model = await this.createModel(config);
     this.logger.debug('🚀 [VercelAIChatService] Initialized', {
