@@ -7,7 +7,6 @@
 
 import { exec } from 'node:child_process';
 import * as fs from 'node:fs/promises';
-import { homedir } from 'node:os';
 import * as path from 'node:path';
 import { promisify } from 'node:util';
 import { type InternalLogger, LogCategory, NOOP_LOGGER } from '../logging/Logger.js';
@@ -31,8 +30,8 @@ export class SkillInstaller {
   private skillsDir: string;
   private readonly logger: InternalLogger;
 
-  constructor(skillsDir?: string, logger: InternalLogger = NOOP_LOGGER) {
-    this.skillsDir = skillsDir || path.join(homedir(), '.blade', 'skills');
+  constructor(skillsDir: string, logger: InternalLogger = NOOP_LOGGER) {
+    this.skillsDir = skillsDir;
     this.logger = logger.child(LogCategory.GENERAL);
   }
 
@@ -338,7 +337,7 @@ export class SkillInstaller {
  */
 let installerInstance: SkillInstaller | null = null;
 
-export function getSkillInstaller(skillsDir?: string, logger?: InternalLogger): SkillInstaller {
+export function getSkillInstaller(skillsDir: string, logger?: InternalLogger): SkillInstaller {
   if (!installerInstance) {
     installerInstance = new SkillInstaller(skillsDir, logger);
   }

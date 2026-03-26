@@ -6,27 +6,26 @@ import type { TodoItem, TodoStatus, ValidationResult } from './types.js';
 
 /**
  * TODO 任务管理器
- * 负责管理会话级别的 TODO 列表，支持持久化存储和状态验证
+ * 负责管理会话级别的 TODO 列表，支持持久化存储和状态验证。
+ * configDir 未提供时降级为纯内存模式（不读写磁盘）。
  */
 export class TodoManager {
   private static instances = new Map<string, TodoManager>();
   private todos: TodoItem[] = [];
-  private filePath: string;
+  private filePath: string | undefined;
   private loaded = false;
 
-  private constructor(sessionId: string, configDir: string) {
-    this.filePath = path.join(
-      configDir,
-      'todos',
-      `${sessionId}-agent-${sessionId}.json`
-    );
+  private constructor(sessionId: string, configDir?: string) {
+    this.filePath = configDir
+      ? path.join(configDir, 'todos', `${sessionId}-agent-${sessionId}.json`)
+      : undefined;
   }
 
   /**
    * 获取 TodoManager 实例（单例模式，按会话隔离）
    */
-  static getInstance(sessionId: string, configDir: string): TodoManager {
-    const key = `${sessionId}-${configDir}`;
+  static getInstance(sessionId: string, configDir?: string): TodoManager {
+    const key = `${sessionId}-${configDir ?? ''}`;
     if (!TodoManager.instances.has(key)) {
       TodoManager.instances.set(key, new TodoManager(sessionId, configDir));
     }
@@ -133,9 +132,10 @@ export class TodoManager {
   }
 
   /**
-   * 从文件加载 TODO 列表
+   * 从文件加载 TODO 列表（无路径时跳过）
    */
   private async loadTodos(): Promise<void> {
+    if (!this.filePath) return;
     try {
       const data = await fs.readFile(this.filePath, 'utf-8');
       this.todos = JSON.parse(data);
@@ -150,9 +150,10 @@ export class TodoManager {
   }
 
   /**
-   * 保存 TODO 列表到文件
+   * 保存 TODO 列表到文件（无路径时跳过）
    */
   private async saveTodos(): Promise<void> {
+    if (!this.filePath) return;
     try {
       await fs.mkdir(path.dirname(this.filePath), { recursive: true, mode: 0o755 });
       await fs.writeFile(this.filePath, JSON.stringify(this.todos, null, 2), 'utf-8');

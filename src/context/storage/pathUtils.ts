@@ -1,5 +1,4 @@
 import { execSync } from 'node:child_process';
-import * as os from 'node:os';
 import * as path from 'node:path';
 
 /**
@@ -17,9 +16,7 @@ import * as path from 'node:path';
  * // 返回: 'C_-Users-HP-project'
  */
 function escapeProjectPath(absPath: string): string {
-  // 确保路径是绝对路径
   const normalized = path.resolve(absPath);
-  // 将所有 / 和 \ 替换为 -，将 : 替换为 _ (Windows 驱动器符号)
   return normalized.replace(/[/\\]/g, '-').replace(/:/g, '_');
 }
 
@@ -33,41 +30,36 @@ function escapeProjectPath(absPath: string): string {
  * // 返回: 'C:/Users/HP/project' (使用正斜杠，Node.js 在 Windows 上也支持)
  */
 export function unescapeProjectPath(escapedPath: string): string {
-  // 先将 _ 还原为 : (Windows 驱动器符号)
   let result = escapedPath.replace(/_/g, ':');
-
-  // 如果以 - 开头（Unix 绝对路径），移除开头的 - 并添加 /
   if (result.startsWith('-')) {
     result = '/' + result.slice(1);
   }
-
-  // 将所有 - 替换为 / (Node.js 在 Windows 上也支持正斜杠)
   return result.replace(/-/g, '/');
 }
 
 /**
  * 获取项目的存储路径
  *
+ * @param storageRoot SDK 数据存储根目录（由调用方提供，如 ~/.blade）
  * @param projectPath 项目绝对路径
- * @returns ~/.blade/projects/{escaped-path}/
+ * @returns {storageRoot}/projects/{escaped-path}/
  */
-export function getProjectStoragePath(projectPath: string): string {
-  const homeDir = os.homedir();
+export function getProjectStoragePath(storageRoot: string, projectPath: string): string {
   const escaped = escapeProjectPath(projectPath);
-  return path.join(homeDir, '.blade', 'projects', escaped);
+  return path.join(storageRoot, 'projects', escaped);
 }
 
 /**
  * 获取全局会话存储目录
  *
- * @param storageRoot 根存储目录，默认 ~/.blade
+ * @param storageRoot SDK 数据存储根目录
  * @returns {storageRoot}/sessions/
  */
-export function getSessionStoragePath(storageRoot: string = getBladeStorageRoot()): string {
+export function getSessionStoragePath(storageRoot: string): string {
   return path.join(storageRoot, 'sessions');
 }
 
-export function normalizeSessionStorageRoot(storageRoot: string = getBladeStorageRoot()): string {
+export function normalizeSessionStorageRoot(storageRoot: string): string {
   return path.basename(storageRoot) === 'sessions'
     ? storageRoot
     : getSessionStoragePath(storageRoot);
@@ -76,12 +68,13 @@ export function normalizeSessionStorageRoot(storageRoot: string = getBladeStorag
 /**
  * 获取项目的会话文件路径
  *
+ * @param storageRoot SDK 数据存储根目录
  * @param projectPath 项目绝对路径
  * @param sessionId 会话 ID
- * @returns ~/.blade/projects/{escaped-path}/{sessionId}.jsonl
+ * @returns {storageRoot}/projects/{escaped-path}/{sessionId}.jsonl
  */
-export function getSessionFilePath(projectPath: string, sessionId: string): string {
-  return path.join(getProjectStoragePath(projectPath), `${sessionId}.jsonl`);
+export function getSessionFilePath(storageRoot: string, projectPath: string, sessionId: string): string {
+  return path.join(getProjectStoragePath(storageRoot, projectPath), `${sessionId}.jsonl`);
 }
 
 /**
@@ -119,21 +112,15 @@ export function detectGitBranch(projectPath?: string): string | undefined {
 }
 
 /**
- * 获取 Blade 根存储目录
- * @returns ~/.blade/
- */
-export function getBladeStorageRoot(): string {
-  return path.join(os.homedir(), '.blade');
-}
-
-/**
  * 获取所有项目目录列表
+ *
+ * @param storageRoot SDK 数据存储根目录
  * @returns 项目目录名称数组
  */
-export async function listProjectDirectories(): Promise<string[]> {
+export async function listProjectDirectories(storageRoot: string): Promise<string[]> {
   const { readdir } = await import('node:fs/promises');
   try {
-    const projectsDir = path.join(getBladeStorageRoot(), 'projects');
+    const projectsDir = path.join(storageRoot, 'projects');
     const entries = await readdir(projectsDir, { withFileTypes: true });
     return entries.filter((entry) => entry.isDirectory()).map((entry) => entry.name);
   } catch {

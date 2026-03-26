@@ -11,8 +11,6 @@
  * 实际逻辑委托给：ModelManager, PlanExecutor, LoopRunner
  */
 
-import * as os from 'os';
-import * as path from 'path';
 import type { ContextManager } from '../context/ContextManager.js';
 import {
   type InternalLogger,
@@ -95,7 +93,7 @@ export class Agent {
     this.defaultContext = deps.defaultContext ?? {};
     this.runtimeManaged = deps.runtimeManaged ?? false;
     this.runtimeMcpRegistry =
-      deps.mcpRegistry || (!this.runtimeManaged ? new McpRegistry() : undefined);
+      deps.mcpRegistry || (!this.runtimeManaged ? new McpRegistry(config.storageRoot) : undefined);
     this.modelManager = new ModelManager(
       config,
       runtimeOptions.outputFormat,
@@ -442,7 +440,7 @@ export class Agent {
   private async registerBuiltinTools(): Promise<void> {
     const builtinTools = await getBuiltinTools({
       sessionId: 'default',
-      configDir: path.join(os.homedir(), '.blade'),
+      configDir: this.config.storageRoot,
       mcpRegistry: this.runtimeMcpRegistry,
       includeMcpProtocolTools: false,
     });

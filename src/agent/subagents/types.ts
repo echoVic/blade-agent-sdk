@@ -95,10 +95,8 @@ export interface SubagentConfig {
   /** 配置来源（用于调试和优先级） */
   source?:
     | 'builtin'
-    | 'claude-code-user'
-    | 'claude-code-project'
-    | 'blade-user'
-    | 'blade-project'
+    | 'user'
+    | 'project'
     | `plugin:${string}`;
 }
 

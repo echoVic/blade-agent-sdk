@@ -2,7 +2,6 @@ import * as fs from 'node:fs/promises';
 import { JSONLStore } from '@/context/storage/JSONLStore.js';
 import {
   getSessionFilePathFromStorageRoot,
-  getSessionStoragePath,
   normalizeSessionStorageRoot,
 } from '@/context/storage/pathUtils.js';
 import type { PartInfo, SessionEvent, SessionInfo } from '../context/types.js';
@@ -211,7 +210,7 @@ function getToolCallState(
 export class JsonlSessionStore implements SessionStore {
   private readonly storageRoot: string;
 
-  constructor(storageRoot: string = getSessionStoragePath()) {
+  constructor(storageRoot: string) {
     this.storageRoot = normalizeSessionStorageRoot(storageRoot);
   }
 

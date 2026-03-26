@@ -1,11 +1,11 @@
 import { describe, expect, it } from 'bun:test';
-import * as path from 'node:path';
 import {
   unescapeProjectPath,
   getProjectStoragePath,
   getSessionFilePath,
-  getBladeStorageRoot,
 } from '../pathUtils.js';
+
+const STORAGE_ROOT = '/tmp/test-storage';
 
 describe('pathUtils', () => {
   describe('unescapeProjectPath', () => {
@@ -26,41 +26,30 @@ describe('pathUtils', () => {
   });
 
   describe('getProjectStoragePath', () => {
-    it('should return path under ~/.blade/projects/', () => {
-      const result = getProjectStoragePath('/Users/john/project');
-      expect(result).toContain('.blade');
+    it('should return path under storageRoot/projects/', () => {
+      const result = getProjectStoragePath(STORAGE_ROOT, '/Users/john/project');
       expect(result).toContain('projects');
+      expect(result.startsWith(STORAGE_ROOT)).toBe(true);
     });
 
     it('should return consistent path for same input', () => {
-      const result1 = getProjectStoragePath('/Users/john/project');
-      const result2 = getProjectStoragePath('/Users/john/project');
+      const result1 = getProjectStoragePath(STORAGE_ROOT, '/Users/john/project');
+      const result2 = getProjectStoragePath(STORAGE_ROOT, '/Users/john/project');
       expect(result1).toBe(result2);
     });
   });
 
   describe('getSessionFilePath', () => {
     it('should return .jsonl file path', () => {
-      const result = getSessionFilePath('/Users/john/project', 'session-123');
+      const result = getSessionFilePath(STORAGE_ROOT, '/Users/john/project', 'session-123');
       expect(result).toContain('session-123.jsonl');
     });
 
     it('should be under project storage path', () => {
       const projectPath = '/Users/john/project';
-      const storagePath = getProjectStoragePath(projectPath);
-      const sessionPath = getSessionFilePath(projectPath, 'session-123');
+      const storagePath = getProjectStoragePath(STORAGE_ROOT, projectPath);
+      const sessionPath = getSessionFilePath(STORAGE_ROOT, projectPath, 'session-123');
       expect(sessionPath.startsWith(storagePath)).toBe(true);
-    });
-  });
-
-  describe('getBladeStorageRoot', () => {
-    it('should return path ending with .blade', () => {
-      const result = getBladeStorageRoot();
-      expect(result).toContain('.blade');
-    });
-
-    it('should return consistent path', () => {
-      expect(getBladeStorageRoot()).toBe(getBladeStorageRoot());
     });
   });
 });

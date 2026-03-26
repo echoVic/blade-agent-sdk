@@ -72,7 +72,7 @@ class Session implements ISession {
     this.permissionMode = options.permissionMode ?? PermissionMode.DEFAULT;
     this.defaultContext = options.defaultContext ?? {};
     this.persistenceEnabled = options.persistSession ?? true;
-    this.store = this.persistenceEnabled
+    this.store = (this.persistenceEnabled && options.storagePath)
       ? new JsonlSessionStore(options.storagePath)
       : new NoopSessionStore();
     this.isResumeSession = isResume;

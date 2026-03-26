@@ -14,7 +14,6 @@ import { ContextFilter } from './processors/ContextFilter.js';
 import { CacheStore } from './storage/CacheStore.js';
 import { MemoryStore } from './storage/MemoryStore.js';
 import { NoopPersistentStore, PersistentStore } from './storage/PersistentStore.js';
-import { getBladeStorageRoot } from './storage/pathUtils.js';
 import type {
   CompressedContext,
   ContextData,
@@ -58,9 +57,9 @@ export class ContextManager {
 
   constructor(options: Partial<ContextManagerOptions> = {}) {
     const persistenceEnabled = options.storage?.persistenceEnabled ?? true;
-    // 默认使用 ~/.blade/ 作为存储根目录
+    // 持久化路径必须由调用方显式提供；未提供时禁用持久化
     const defaultPersistentPath =
-      persistenceEnabled ? (options.storage?.persistentPath || getBladeStorageRoot()) : undefined;
+      persistenceEnabled ? options.storage?.persistentPath : undefined;
 
     this.options = {
       storage: {
@@ -85,16 +84,18 @@ export class ContextManager {
 
     // 初始化存储层
     this.memory = new MemoryStore(this.options.storage.maxMemorySize);
-    this.persistent = persistenceEnabled
+    const persistentPath = this.options.storage.persistentPath;
+    const actualPersistence = persistenceEnabled && !!persistentPath;
+    this.persistent = actualPersistence
       ? new PersistentStore(
-        this.options.storage.persistentPath,
+        persistentPath!,
         100,
         '0.0.10',
         this.projectPath,
       )
       : new NoopPersistentStore();
-    this.sessionStore = persistenceEnabled
-      ? new JsonlSessionStore(this.options.storage.persistentPath)
+    this.sessionStore = actualPersistence
+      ? new JsonlSessionStore(persistentPath!)
       : new NoopSessionStore();
     this.cache = new CacheStore(
       this.options.storage.cacheSize,

@@ -10,7 +10,7 @@ import { TodoItemSchema } from './types.js';
 /**
  * Create TodoWrite tool
  */
-export function createTodoWriteTool(opts: { sessionId: string; configDir: string }) {
+export function createTodoWriteTool(opts: { sessionId: string; configDir?: string }) {
   const { sessionId, configDir } = opts;
 
   return createTool({

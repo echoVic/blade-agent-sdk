@@ -8,7 +8,6 @@
  */
 
 import fs from 'node:fs';
-import os from 'node:os';
 import path from 'node:path';
 import { type InternalLogger, LogCategory, NOOP_LOGGER } from '../../logging/Logger.js';
 import type { Message } from '../../services/ChatServiceInterface.js';
@@ -70,19 +69,22 @@ export interface AgentSession {
 /**
  * Agent 会话存储管理器
  *
- * 存储位置: ~/.blade/agents/sessions/{agent_id}.json
+ * 存储位置: {storageRoot}/agents/sessions/{agent_id}.json
+ * storageRoot 通过 configure() 注入，未配置时降级为内存模式。
  */
 export class AgentSessionStore {
   private static instance: AgentSessionStore | null = null;
   private logger: InternalLogger = NOOP_LOGGER.child(LogCategory.AGENT);
-  private sessionsDir: string;
+  private sessionsDir: string | undefined;
 
   // 内存缓存（避免频繁读取文件）
   private cache = new Map<string, AgentSession>();
 
-  private constructor() {
-    this.sessionsDir = path.join(os.homedir(), '.blade', 'agents', 'sessions');
-    this.ensureDirectory();
+  private constructor(storageRoot?: string) {
+    if (storageRoot) {
+      this.sessionsDir = path.join(storageRoot, 'agents', 'sessions');
+      this.ensureDirectory();
+    }
   }
 
   static getInstance(logger?: InternalLogger): AgentSessionStore {
@@ -95,6 +97,27 @@ export class AgentSessionStore {
     return AgentSessionStore.instance;
   }
 
+  /**
+   * 配置持久化存储根目录（在首次 getInstance() 之前调用）
+   */
+  static configure(storageRoot: string): void {
+    if (AgentSessionStore.instance) {
+      // 实例已创建，更新 sessionsDir
+      AgentSessionStore.instance.sessionsDir = path.join(storageRoot, 'agents', 'sessions');
+      AgentSessionStore.instance.ensureDirectory();
+    } else {
+      // 预先配置，下次 getInstance() 时使用
+      AgentSessionStore.instance = new AgentSessionStore(storageRoot);
+    }
+  }
+
+  /**
+   * 重置单例（用于测试）
+   */
+  static resetInstance(): void {
+    AgentSessionStore.instance = null;
+  }
+
   setLogger(logger: InternalLogger): void {
     this.logger = logger.child(LogCategory.AGENT);
   }
@@ -103,6 +126,7 @@ export class AgentSessionStore {
    * 确保存储目录存在
    */
   private ensureDirectory(): void {
+    if (!this.sessionsDir) return;
     if (!fs.existsSync(this.sessionsDir)) {
       fs.mkdirSync(this.sessionsDir, { recursive: true, mode: 0o755 });
     }
@@ -111,7 +135,8 @@ export class AgentSessionStore {
   /**
    * 获取会话文件路径
    */
-  private getSessionPath(agentId: string): string {
+  private getSessionPath(agentId: string): string | undefined {
+    if (!this.sessionsDir) return undefined;
     // 安全处理 ID，避免路径遍历
     const safeId = agentId.replace(/[^a-zA-Z0-9_-]/g, '_');
     return path.join(this.sessionsDir, `${safeId}.json`);
@@ -121,14 +146,15 @@ export class AgentSessionStore {
    * 保存会话
    */
   saveSession(session: AgentSession): void {
+    // 更新缓存
+    this.cache.set(session.id, session);
+
+    const filePath = this.getSessionPath(session.id);
+    if (!filePath) return;
+
     try {
-      const filePath = this.getSessionPath(session.id);
       const data = JSON.stringify(session, null, 2);
       fs.writeFileSync(filePath, data, 'utf-8');
-
-      // 更新缓存
-      this.cache.set(session.id, session);
-
       this.logger.debug(`Session saved: ${session.id}`);
     } catch (error) {
       this.logger.warn(`Failed to save session ${session.id}:`, error);
@@ -144,8 +170,10 @@ export class AgentSessionStore {
       return this.cache.get(agentId);
     }
 
+    const filePath = this.getSessionPath(agentId);
+    if (!filePath) return undefined;
+
     try {
-      const filePath = this.getSessionPath(agentId);
       if (!fs.existsSync(filePath)) {
         return undefined;
       }
@@ -221,7 +249,7 @@ export class AgentSessionStore {
   deleteSession(agentId: string): boolean {
     try {
       const filePath = this.getSessionPath(agentId);
-      if (fs.existsSync(filePath)) {
+      if (filePath && fs.existsSync(filePath)) {
         fs.unlinkSync(filePath);
       }
       this.cache.delete(agentId);
@@ -236,6 +264,11 @@ export class AgentSessionStore {
    * 列出所有会话
    */
   listSessions(): AgentSession[] {
+    // 内存模式：返回缓存中的所有会话
+    if (!this.sessionsDir) {
+      return Array.from(this.cache.values()).sort((a, b) => b.lastActiveAt - a.lastActiveAt);
+    }
+
     try {
       const files = fs.readdirSync(this.sessionsDir);
       const sessions: AgentSession[] = [];

@@ -29,9 +29,11 @@ export interface McpServerInfo {
 export class McpRegistry extends EventEmitter {
   private servers: Map<string, McpServerInfo> = new Map();
   private isDiscovering = false;
+  private readonly storageRoot?: string;
 
-  constructor() {
+  constructor(storageRoot?: string) {
     super();
+    this.storageRoot = storageRoot;
   }
 
   /**
@@ -42,7 +44,7 @@ export class McpRegistry extends EventEmitter {
       throw new Error(`MCP服务器 "${name}" 已经注册`);
     }
 
-    const client = new McpClient(config, name, config.healthCheck);
+    const client = new McpClient(config, name, config.healthCheck, undefined, this.storageRoot);
     const serverInfo: McpServerInfo = {
       config,
       client,
@@ -92,7 +94,7 @@ export class McpRegistry extends EventEmitter {
       command: '',
     };
 
-    const client = new McpClient(config, name, undefined, handle);
+    const client = new McpClient(config, name, undefined, handle, this.storageRoot);
     const serverInfo: McpServerInfo = {
       config,
       client,

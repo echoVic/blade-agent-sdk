@@ -6,7 +6,6 @@
  */
 
 import * as fs from 'node:fs/promises';
-import { homedir } from 'node:os';
 import * as path from 'node:path';
 import {
   getSkillCreatorContent,
@@ -22,17 +21,13 @@ import type {
 } from './types.js';
 
 type ResolvedSkillRegistryConfig =
-  Omit<Required<SkillRegistryConfig>, 'cwd'> & { cwd?: string };
+  Omit<SkillRegistryConfig, 'cwd'> & { cwd?: string };
 
 /**
- * 默认配置
+ * 默认配置（无默认路径 — 调用方通过 storageRoot 或显式路径配置）
  */
 const DEFAULT_CONFIG: ResolvedSkillRegistryConfig = {
-  userSkillsDir: path.join(homedir(), '.blade', 'skills'),
-  projectSkillsDir: '.blade/skills',
-  // Claude Code 兼容路径
-  claudeUserSkillsDir: path.join(homedir(), '.claude', 'skills'),
-  claudeProjectSkillsDir: '.claude/skills',
+  projectSkillsDir: 'skills',
 };
 
 /**
@@ -94,43 +89,31 @@ export class SkillRegistry {
     const discoveredSkills: SkillMetadata[] = [];
 
     // 0. 确保默认 Skills 已安装（首次启动时从 GitHub 下载）
-    try {
-      const installer = getSkillInstaller(this.config.userSkillsDir);
-      await installer.ensureDefaultSkillsInstalled();
-    } catch (error) {
-      // 下载失败不阻塞启动，内置版本作为 fallback
-      errors.push({
-        path: 'SkillInstaller',
-        error: `Failed to install default skills: ${error instanceof Error ? error.message : 'Unknown error'}`,
-      });
+    if (this.config.userSkillsDir) {
+      try {
+        const installer = getSkillInstaller(this.config.userSkillsDir);
+        await installer.ensureDefaultSkillsInstalled();
+      } catch (error) {
+        // 下载失败不阻塞启动，内置版本作为 fallback
+        errors.push({
+          path: 'SkillInstaller',
+          error: `Failed to install default skills: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        });
+      }
     }
 
     // 1. 加载内置 Skills（优先级最低，可被覆盖）
     this.loadBuiltinSkills();
 
-    // 2. 扫描 Claude Code 用户级 skills（~/.claude/skills/）
-    const claudeUserResult = await this.scanDirectory(
-      this.config.claudeUserSkillsDir,
-      'user'
-    );
-    discoveredSkills.push(...claudeUserResult.skills);
-    errors.push(...claudeUserResult.errors);
+    // 2. 扫描用户级 skills
+    if (this.config.userSkillsDir) {
+      const userResult = await this.scanDirectory(this.config.userSkillsDir, 'user');
+      discoveredSkills.push(...userResult.skills);
+      errors.push(...userResult.errors);
+    }
 
-    // 3. 扫描 Blade 用户级 skills（~/.blade/skills/）
-    const userResult = await this.scanDirectory(this.config.userSkillsDir, 'user');
-    discoveredSkills.push(...userResult.skills);
-    errors.push(...userResult.errors);
-
-    // 4. 扫描 Claude Code 项目级 skills（.claude/skills/）
-    if (this.config.cwd) {
-      const claudeProjectDir = path.isAbsolute(this.config.claudeProjectSkillsDir)
-        ? this.config.claudeProjectSkillsDir
-        : path.join(this.config.cwd, this.config.claudeProjectSkillsDir);
-      const claudeProjectResult = await this.scanDirectory(claudeProjectDir, 'project');
-      discoveredSkills.push(...claudeProjectResult.skills);
-      errors.push(...claudeProjectResult.errors);
-
-      // 5. 扫描 Blade 项目级 skills（.blade/skills/）- 优先级最高
+    // 3. 扫描项目级 skills（优先级最高）
+    if (this.config.cwd && this.config.projectSkillsDir) {
       const projectDir = path.isAbsolute(this.config.projectSkillsDir)
         ? this.config.projectSkillsDir
         : path.join(this.config.cwd, this.config.projectSkillsDir);

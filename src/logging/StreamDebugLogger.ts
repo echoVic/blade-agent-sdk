@@ -6,19 +6,26 @@
  */
 
 import { appendFileSync, mkdirSync, writeFileSync } from 'node:fs';
-import os from 'node:os';
 import path from 'node:path';
 
-const LOG_FILE = path.join(os.homedir(), '.blade', 'logs', 'stream-debug.log');
-
+let logFile: string | undefined;
 let initialized = false;
 
+/**
+ * 配置调试日志文件路径
+ * 不调用此方法时，streamDebug 为 no-op
+ */
+export function configureStreamDebug(filePath: string): void {
+  logFile = filePath;
+  initialized = false; // 重置，下次写入时重新初始化
+}
+
 function ensureLogFile(): void {
-  if (initialized) return;
-  const logDir = path.dirname(LOG_FILE);
+  if (initialized || !logFile) return;
+  const logDir = path.dirname(logFile);
   mkdirSync(logDir, { recursive: true, mode: 0o755 });
   writeFileSync(
-    LOG_FILE,
+    logFile,
     `=== Stream Debug Log Started: ${new Date().toISOString()} ===\n`
   );
   initialized = true;
@@ -29,11 +36,10 @@ export function streamDebug(
   message: string,
   data?: Record<string, unknown>
 ): void {
+  if (!logFile) return;
   ensureLogFile();
   const timestamp = new Date().toISOString();
   const dataStr = data ? ` | ${JSON.stringify(data)}` : '';
   const line = `[${timestamp}] [${source}] ${message}${dataStr}\n`;
-  appendFileSync(LOG_FILE, line);
+  appendFileSync(logFile, line);
 }
-
-

@@ -4,7 +4,6 @@
  */
 
 import { promises as fs } from 'fs';
-import os from 'os';
 import path from 'path';
 import { getErrorCode } from '../../utils/errorUtils.js';
 import type { OAuthCredentials, OAuthToken } from './types.js';
@@ -15,9 +14,7 @@ import type { OAuthCredentials, OAuthToken } from './types.js';
 export class OAuthTokenStorage {
   private readonly tokenFilePath: string;
 
-  constructor() {
-    const homeDir = os.homedir();
-    const configDir = path.join(homeDir, '.blade');
+  constructor(configDir: string) {
     this.tokenFilePath = path.join(configDir, 'mcp-oauth-tokens.json');
   }
 

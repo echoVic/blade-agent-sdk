@@ -1,5 +1,3 @@
-import * as os from 'os';
-import * as path from 'path';
 import type { AgentRuntimeDeps } from '../agent/Agent.js';
 import { ContextManager } from '../context/ContextManager.js';
 import { HookManager } from '../hooks/HookManager.js';
@@ -44,7 +42,7 @@ function getToolDescription(tool: Tool): string {
 }
 
 export class SessionRuntime {
-  private readonly mcpRegistry = new McpRegistry();
+  private readonly mcpRegistry: McpRegistry;
   private readonly toolRegistry = new ToolRegistry();
   private readonly contextManager: ContextManager;
   private readonly executionPipeline: ExecutionPipeline;
@@ -63,6 +61,7 @@ export class SessionRuntime {
   ) {
     this.rootLogger = logger;
     this.logger = logger.child(LogCategory.AGENT);
+    this.mcpRegistry = new McpRegistry(bladeConfig.storageRoot);
     this.contextManager = new ContextManager({
       storage: {
         maxMemorySize: 1000,
@@ -211,7 +210,7 @@ export class SessionRuntime {
   private async registerBuiltinTools(): Promise<void> {
     const builtinTools = await getBuiltinTools({
       sessionId: this.sessionId,
-      configDir: path.join(os.homedir(), '.blade'),
+      configDir: this.bladeConfig.storageRoot,
       mcpRegistry: this.mcpRegistry,
       includeMcpProtocolTools: false,
     });

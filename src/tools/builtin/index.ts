@@ -2,8 +2,6 @@
  * 内置工具模块
  */
 
-import * as os from 'os';
-import * as path from 'path';
 import { McpRegistry } from '../../mcp/McpRegistry.js';
 import type { Tool } from '../types/index.js';
 // 文件操作工具
@@ -46,7 +44,7 @@ export async function getBuiltinTools(opts?: {
   includeMcpProtocolTools?: boolean;
 }): Promise<Tool[]> {
   const sessionId = opts?.sessionId || `session_${Date.now()}`;
-  const configDir = opts?.configDir || path.join(os.homedir(), '.blade');
+  const configDir = opts?.configDir;
 
   const builtinTools: Tool<unknown>[] = [
     readTool,

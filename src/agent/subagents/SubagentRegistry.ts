@@ -1,5 +1,4 @@
 import fs from 'node:fs';
-import os from 'node:os';
 import path from 'node:path';
 import yaml from 'yaml';
 import { type InternalLogger, LogCategory, NOOP_LOGGER } from '../../logging/Logger.js';
@@ -8,14 +7,12 @@ import type { SubagentConfig, SubagentFrontmatter } from './types.js';
 import { mapClaudeCodePermissionMode } from './types.js';
 
 /**
- * 配置来源类型（不包含动态的 plugin:xxx 格式）
+ * 配置来源类型
  */
 type ConfigSource =
   | 'builtin'
-  | 'claude-code-user'
-  | 'claude-code-project'
-  | 'blade-user'
-  | 'blade-project'
+  | 'user'
+  | 'project'
   | 'plugin';
 
 type FileConfigSource = Exclude<ConfigSource, 'plugin'>;
@@ -207,37 +204,30 @@ export class SubagentRegistry {
    *
    * 按优先级加载（后加载的会覆盖前面的）：
    * 1. 内置配置（builtinAgents.ts）
-   * 2. Claude Code 用户级配置（~/.claude/agents/）
-   * 3. Claude Code 项目级配置（.claude/agents/）
-   * 4. Blade 用户级配置（~/.blade/agents/）
-   * 5. Blade 项目级配置（.blade/agents/）
+   * 2. 用户级配置（{storageRoot}/agents/）
+   * 3. 项目级配置（{projectDir}/agents/ 或 {projectDir}/.agents/）
    *
-   * 这样 Blade 配置可以覆盖 Claude Code 配置，实现自定义扩展
-   *
+   * @param projectDir 项目目录（用于加载项目级配置）
+   * @param storageRoot SDK 数据存储根目录（用于加载用户级配置）
    * @returns 加载的 subagent 数量
    */
-  loadFromStandardLocations(projectDir: string | undefined = this.projectDir): number {
+  loadFromStandardLocations(
+    projectDir: string | undefined = this.projectDir,
+    storageRoot?: string
+  ): number {
     // 1. 加载内置配置
     this.loadBuiltinAgents();
 
-    // 2. 加载 Claude Code 用户级配置（可覆盖内置）
-    const claudeCodeUserAgentsDir = path.join(os.homedir(), '.claude', 'agents');
-    this.loadFromDirectory(claudeCodeUserAgentsDir, 'claude-code-user');
-
-    // 3. 加载 Claude Code 项目级配置（可覆盖用户级）
-    if (projectDir) {
-      const claudeCodeProjectAgentsDir = path.join(projectDir, '.claude', 'agents');
-      this.loadFromDirectory(claudeCodeProjectAgentsDir, 'claude-code-project');
+    // 2. 加载用户级配置（可覆盖内置）
+    if (storageRoot) {
+      const userAgentsDir = path.join(storageRoot, 'agents');
+      this.loadFromDirectory(userAgentsDir, 'user');
     }
 
-    // 4. 加载 Blade 用户级配置（可覆盖 Claude Code）
-    const bladeUserAgentsDir = path.join(os.homedir(), '.blade', 'agents');
-    this.loadFromDirectory(bladeUserAgentsDir, 'blade-user');
-
-    // 5. 加载 Blade 项目级配置（可覆盖所有）
+    // 3. 加载项目级配置（可覆盖用户级）
     if (projectDir) {
-      const bladeProjectAgentsDir = path.join(projectDir, '.blade', 'agents');
-      this.loadFromDirectory(bladeProjectAgentsDir, 'blade-project');
+      const projectAgentsDir = path.join(projectDir, 'agents');
+      this.loadFromDirectory(projectAgentsDir, 'project');
     }
 
     const count = this.getAllNames().length;
@@ -275,10 +265,8 @@ export class SubagentRegistry {
   getSubagentsBySource(): Record<ConfigSource, SubagentConfig[]> {
     const result: Record<ConfigSource, SubagentConfig[]> = {
       builtin: [],
-      'claude-code-user': [],
-      'claude-code-project': [],
-      'blade-user': [],
-      'blade-project': [],
+      user: [],
+      project: [],
       plugin: [],
     };
 
@@ -288,7 +276,11 @@ export class SubagentRegistry {
       const category: ConfigSource = source.startsWith('plugin:')
         ? 'plugin'
         : (source as ConfigSource);
-      result[category].push(config);
+      if (category in result) {
+        result[category].push(config);
+      } else {
+        result.builtin.push(config);
+      }
     }
 
     return result;
@@ -308,34 +300,6 @@ export class SubagentRegistry {
     for (const name of toDelete) {
       this.subagents.delete(name);
     }
-  }
-
-  /**
-   * 获取 Claude Code 配置目录路径
-   * 用于 UI 展示
-   */
-  static getClaudeCodeAgentsDir(
-    type: 'user' | 'project',
-    projectDir?: string,
-  ): string | undefined {
-    if (type === 'user') {
-      return path.join(os.homedir(), '.claude', 'agents');
-    }
-    return projectDir ? path.join(projectDir, '.claude', 'agents') : undefined;
-  }
-
-  /**
-   * 获取 Blade 配置目录路径
-   * 用于 UI 展示
-   */
-  static getBladeAgentsDir(
-    type: 'user' | 'project',
-    projectDir?: string,
-  ): string | undefined {
-    if (type === 'user') {
-      return path.join(os.homedir(), '.blade', 'agents');
-    }
-    return projectDir ? path.join(projectDir, '.blade', 'agents') : undefined;
   }
 }
 

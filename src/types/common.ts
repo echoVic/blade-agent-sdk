@@ -124,6 +124,12 @@ export interface BladeConfig {
    * 对应 Claude Agent SDK 的 plansDirectory 配置项。
    */
   plansDirectory?: string;
+  /**
+   * SDK 数据存储根目录（会话历史、skills、agents、snapshots、OAuth tokens 等）。
+   * 不配置时各存储功能优雅降级（跳过持久化）。
+   * 上层应用自行指定，例如 path.join(os.homedir(), '.blade')。
+   */
+  storageRoot?: string;
 }
 
 export interface RuntimeConfig extends BladeConfig {

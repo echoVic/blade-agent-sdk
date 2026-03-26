@@ -97,17 +97,11 @@ export interface SkillParseResult {
  * Skill 注册表配置
  */
 export interface SkillRegistryConfig {
-  /** Blade 用户级 skills 目录，默认 ~/.blade/skills */
+  /** 用户级 skills 目录（如 path.join(storageRoot, 'skills')） */
   userSkillsDir?: string;
 
-  /** Blade 项目级 skills 目录，默认 .blade/skills */
+  /** 项目级 skills 目录（相对于 cwd 或绝对路径） */
   projectSkillsDir?: string;
-
-  /** Claude Code 用户级 skills 目录，默认 ~/.claude/skills */
-  claudeUserSkillsDir?: string;
-
-  /** Claude Code 项目级 skills 目录，默认 .claude/skills */
-  claudeProjectSkillsDir?: string;
 
   /** 当前工作目录 */
   cwd?: string;

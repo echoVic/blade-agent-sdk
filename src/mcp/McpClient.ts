@@ -13,6 +13,7 @@ import type { McpServerConfig } from '../types/common.js';
 import { toError } from '../utils/errorUtils.js';
 import { getPackageName, getVersion } from '../utils/packageInfo.js';
 import { OAuthProvider } from './auth/index.js';
+import { OAuthTokenStorage } from './auth/OAuthTokenStorage.js';
 import { type HealthCheckConfig, HealthMonitor } from './HealthMonitor.js';
 import type { SdkMcpServerHandle } from './SdkMcpServer.js';
 import {
@@ -151,7 +152,8 @@ export class McpClient extends EventEmitter {
     private config: McpServerConfig,
     serverName?: string,
     healthCheckConfig?: HealthCheckConfig,
-    inProcessHandle?: SdkMcpServerHandle
+    inProcessHandle?: SdkMcpServerHandle,
+    storageRoot?: string
   ) {
     super();
     this.serverName = serverName || 'default';
@@ -159,7 +161,11 @@ export class McpClient extends EventEmitter {
 
     // 如果启用了 OAuth，初始化 provider
     if (config.oauth?.enabled) {
-      this.oauthProvider = new OAuthProvider();
+      if (storageRoot) {
+        this.oauthProvider = new OAuthProvider(new OAuthTokenStorage(storageRoot));
+      } else {
+        console.warn(`[McpClient] OAuth is enabled for "${serverName}" but storageRoot is not configured — OAuth will be skipped`);
+      }
     }
 
     // 如果启用了健康监控，初始化 monitor

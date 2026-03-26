@@ -16,14 +16,13 @@ import { JSONLStore } from './JSONLStore.js';
 import {
   detectGitBranch,
   getSessionFilePathFromStorageRoot,
-  getSessionStoragePath,
   listProjectDirectories,
-  normalizeSessionStorageRoot,
+  normalizeSessionStorageRoot
 } from './pathUtils.js';
 
 /**
  * 持久化存储实现 - JSONL 格式
- * 存储路径: ~/.blade/projects/{escaped-path}/{sessionId}.jsonl
+ * 存储路径: {storageRoot}/projects/{escaped-path}/{sessionId}.jsonl
  */
 export class PersistentStore {
   private readonly storageRoot: string;
@@ -32,7 +31,7 @@ export class PersistentStore {
   private readonly version: string;
 
   constructor(
-    storageRoot: string = getSessionStoragePath(),
+    storageRoot: string,
     maxSessions: number = 100,
     version: string = '0.0.10',
     projectPath?: string,
@@ -602,8 +601,8 @@ export class PersistentStore {
   /**
    * 获取所有项目列表
    */
-  static async listAllProjects(): Promise<string[]> {
-    return listProjectDirectories();
+  async listAllProjects(): Promise<string[]> {
+    return listProjectDirectories(this.storageRoot);
   }
 
   private getSessionStore(): JsonlSessionStore {

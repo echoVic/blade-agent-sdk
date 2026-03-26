@@ -29,7 +29,7 @@ interface PKCEParams {
 export class OAuthProvider {
   private readonly tokenStorage: OAuthTokenStorage;
 
-  constructor(tokenStorage: OAuthTokenStorage = new OAuthTokenStorage()) {
+  constructor(tokenStorage: OAuthTokenStorage) {
     this.tokenStorage = tokenStorage;
   }
 
