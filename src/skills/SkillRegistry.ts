@@ -11,7 +11,6 @@ import {
   getSkillCreatorContent,
   skillCreatorMetadata,
 } from './builtin/skill-creator.js';
-import { getSkillInstaller } from './SkillInstaller.js';
 import { hasSkillFile, loadSkillContent, loadSkillMetadata } from './SkillLoader.js';
 import type {
   SkillContent,
@@ -69,13 +68,8 @@ export class SkillRegistry {
    *
    * 优先级（后加载的覆盖先加载的）：
    * 1. 内置 Skills（builtin）- 作为 fallback，会被外部同名 Skill 覆盖
-   * 2. Claude Code 用户级 Skills（~/.claude/skills/）
-   * 3. Blade 用户级 Skills（~/.blade/skills/）
-   * 4. Claude Code 项目级 Skills（.claude/skills/）
-   * 5. Blade 项目级 Skills（.blade/skills/）- 优先级最高
-   *
-   * 注意：首次启动时，SkillInstaller 会自动下载官方 skill-creator 到
-   * ~/.blade/skills/，因此内置版本仅作为离线 fallback。
+   * 2. 用户级 Skills（userSkillsDir）
+   * 3. 项目级 Skills（projectSkillsDir）- 优先级最高
    */
   async initialize(): Promise<SkillDiscoveryResult> {
     if (this.initialized) {
@@ -87,20 +81,6 @@ export class SkillRegistry {
 
     const errors: SkillDiscoveryResult['errors'] = [];
     const discoveredSkills: SkillMetadata[] = [];
-
-    // 0. 确保默认 Skills 已安装（首次启动时从 GitHub 下载）
-    if (this.config.userSkillsDir) {
-      try {
-        const installer = getSkillInstaller(this.config.userSkillsDir);
-        await installer.ensureDefaultSkillsInstalled();
-      } catch (error) {
-        // 下载失败不阻塞启动，内置版本作为 fallback
-        errors.push({
-          path: 'SkillInstaller',
-          error: `Failed to install default skills: ${error instanceof Error ? error.message : 'Unknown error'}`,
-        });
-      }
-    }
 
     // 1. 加载内置 Skills（优先级最低，可被覆盖）
     this.loadBuiltinSkills();
