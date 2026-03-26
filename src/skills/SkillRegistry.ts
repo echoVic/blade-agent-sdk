@@ -7,10 +7,6 @@
 
 import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
-import {
-  getSkillCreatorContent,
-  skillCreatorMetadata,
-} from './builtin/skill-creator.js';
 import { hasSkillFile, loadSkillContent, loadSkillMetadata } from './SkillLoader.js';
 import type {
   SkillContent,
@@ -82,17 +78,14 @@ export class SkillRegistry {
     const errors: SkillDiscoveryResult['errors'] = [];
     const discoveredSkills: SkillMetadata[] = [];
 
-    // 1. 加载内置 Skills（优先级最低，可被覆盖）
-    this.loadBuiltinSkills();
-
-    // 2. 扫描用户级 skills
+    // 1. 扫描用户级 skills
     if (this.config.userSkillsDir) {
       const userResult = await this.scanDirectory(this.config.userSkillsDir, 'user');
       discoveredSkills.push(...userResult.skills);
       errors.push(...userResult.errors);
     }
 
-    // 3. 扫描项目级 skills（优先级最高）
+    // 2. 扫描项目级 skills（优先级最高）
     if (this.config.cwd && this.config.projectSkillsDir) {
       const projectDir = path.isAbsolute(this.config.projectSkillsDir)
         ? this.config.projectSkillsDir
@@ -113,14 +106,6 @@ export class SkillRegistry {
       skills: Array.from(this.skills.values()),
       errors,
     };
-  }
-
-  /**
-   * 加载内置 Skills
-   */
-  private loadBuiltinSkills(): void {
-    // 注册 skill-creator
-    this.skills.set(skillCreatorMetadata.name, skillCreatorMetadata);
   }
 
   /**
@@ -201,26 +186,7 @@ export class SkillRegistry {
   async loadContent(name: string): Promise<SkillContent | null> {
     const metadata = this.skills.get(name);
     if (!metadata) return null;
-
-    // 内置 Skill 直接返回内容
-    if (metadata.source === 'builtin') {
-      return this.loadBuiltinContent(name);
-    }
-
-    // 文件系统 Skill 从文件加载
     return loadSkillContent(metadata);
-  }
-
-  /**
-   * 加载内置 Skill 的完整内容
-   */
-  private loadBuiltinContent(name: string): SkillContent | null {
-    switch (name) {
-      case 'skill-creator':
-        return getSkillCreatorContent();
-      default:
-        return null;
-    }
   }
 
   /**

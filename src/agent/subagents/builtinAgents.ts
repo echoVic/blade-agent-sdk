@@ -8,7 +8,7 @@
 import type { SubagentConfig } from './types.js';
 
 /**
- * 内置 Subagent 列表（4 个核心 agent）
+ * 内置 Subagent 列表（3 个核心 agent）
  *
  */
 export const builtinAgents: SubagentConfig[] = [
@@ -98,12 +98,6 @@ You are a software architect specializing in implementation planning.
 - [Potential issue and mitigation]
 
 Be thorough but concise. Focus on actionable steps.`,
-  },
-  {
-    name: 'statusline-setup',
-    description:
-      "Use this agent to configure the user's Claude Code status line setting.",
-    tools: ['Read', 'Edit'],
   },
 ];
 
