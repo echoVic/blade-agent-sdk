@@ -274,6 +274,95 @@ export interface CompactionInput extends HookInputBase {
 }
 
 /**
+ * StopFailure 输入
+ */
+export interface StopFailureInput extends HookInputBase {
+  hook_event_name: HookEvent.StopFailure;
+  reason: string;
+  error?: string;
+  tool_name?: string;
+}
+
+/**
+ * PreCompact 输入
+ */
+export interface PreCompactInput extends HookInputBase {
+  hook_event_name: HookEvent.PreCompact;
+  trigger: 'manual' | 'auto';
+  messages_before: number;
+  tokens_before: number;
+}
+
+/**
+ * PostCompact 输入
+ */
+export interface PostCompactInput extends HookInputBase {
+  hook_event_name: HookEvent.PostCompact;
+  trigger: 'manual' | 'auto';
+  messages_before: number;
+  messages_after: number;
+  tokens_before: number;
+  tokens_after: number;
+  summary?: string;
+}
+
+/**
+ * Elicitation 输入
+ */
+export interface ElicitationInput extends HookInputBase {
+  hook_event_name: HookEvent.Elicitation;
+  server_name: string;
+  resource_uri?: string;
+  message?: string;
+}
+
+/**
+ * ElicitationResult 输入
+ */
+export interface ElicitationResultInput extends HookInputBase {
+  hook_event_name: HookEvent.ElicitationResult;
+  server_name: string;
+  response?: string;
+  was_cancelled: boolean;
+}
+
+/**
+ * ConfigChange 输入
+ */
+export interface ConfigChangeInput extends HookInputBase {
+  hook_event_name: HookEvent.ConfigChange;
+  changed_keys: string[];
+  source: 'file' | 'command' | 'environment';
+}
+
+/**
+ * CwdChanged 输入
+ */
+export interface CwdChangedInput extends HookInputBase {
+  hook_event_name: HookEvent.CwdChanged;
+  old_cwd: string;
+  new_cwd: string;
+}
+
+/**
+ * FileChanged 输入
+ */
+export interface FileChangedInput extends HookInputBase {
+  hook_event_name: HookEvent.FileChanged;
+  file_path: string;
+  change_type: 'created' | 'modified' | 'deleted';
+}
+
+/**
+ * InstructionsLoaded 输入
+ */
+export interface InstructionsLoadedInput extends HookInputBase {
+  hook_event_name: HookEvent.InstructionsLoaded;
+  source: string;
+  instructions_length: number;
+}
+
+/**
  * Hook 输入联合类型
  */
 export type HookInput =
@@ -289,7 +378,16 @@ export type HookInput =
   | SubagentStopInput
   | TaskCompletedInput
   | NotificationInput
-  | CompactionInput;
+  | CompactionInput
+  | StopFailureInput
+  | PreCompactInput
+  | PostCompactInput
+  | ElicitationInput
+  | ElicitationResultInput
+  | ConfigChangeInput
+  | CwdChangedInput
+  | FileChangedInput
+  | InstructionsLoadedInput;
 
 // ============================================================================
 // Hook Output
@@ -449,6 +547,82 @@ interface CompactionOutput {
 }
 
 /**
+ * StopFailure 特定输出
+ */
+interface StopFailureOutput {
+  hookEventName?: 'StopFailure';
+  shouldRetry?: boolean;
+  retryReason?: string;
+}
+
+/**
+ * PreCompact 特定输出
+ */
+interface PreCompactOutput {
+  hookEventName?: 'PreCompact';
+  blockCompaction?: boolean;
+  blockReason?: string;
+}
+
+/**
+ * PostCompact 特定输出
+ */
+interface PostCompactOutput {
+  hookEventName?: 'PostCompact';
+  additionalContext?: string;
+}
+
+/**
+ * Elicitation 特定输出
+ */
+interface ElicitationOutput {
+  hookEventName?: 'Elicitation';
+  proceed?: boolean;
+  response?: string;
+}
+
+/**
+ * ElicitationResult 特定输出
+ */
+interface ElicitationResultOutput {
+  hookEventName?: 'ElicitationResult';
+  proceed?: boolean;
+}
+
+/**
+ * ConfigChange 特定输出
+ */
+interface ConfigChangeOutput {
+  hookEventName?: 'ConfigChange';
+  proceed?: boolean;
+}
+
+/**
+ * CwdChanged 特定输出
+ */
+interface CwdChangedOutput {
+  hookEventName?: 'CwdChanged';
+  proceed?: boolean;
+}
+
+/**
+ * FileChanged 特定输出
+ */
+interface FileChangedOutput {
+  hookEventName?: 'FileChanged';
+  action?: 'reload' | 'ignore';
+}
+
+/**
+ * InstructionsLoaded 特定输出
+ */
+interface InstructionsLoadedOutput {
+  hookEventName?: 'InstructionsLoaded';
+  proceed?: boolean;
+  modified_instructions?: string;
+}
+
+/**
  * Hook 特定输出联合类型
  */
 export type HookSpecificOutput =
@@ -461,7 +635,16 @@ export type HookSpecificOutput =
   | PermissionRequestOutput
   | UserPromptSubmitOutput
   | SessionStartOutput
-  | CompactionOutput;
+  | CompactionOutput
+  | StopFailureOutput
+  | PreCompactOutput
+  | PostCompactOutput
+  | ElicitationOutput
+  | ElicitationResultOutput
+  | ConfigChangeOutput
+  | CwdChangedOutput
+  | FileChangedOutput
+  | InstructionsLoadedOutput;
 
 /**
  * Hook 输出结构
@@ -618,6 +801,39 @@ export interface HookConfig {
 
   /** Compaction Hooks */
   Compaction?: HookMatcher[];
+
+  // ========== 控制流扩展 ==========
+  /** StopFailure Hooks */
+  StopFailure?: HookMatcher[];
+
+  // ========== 压缩生命周期 ==========
+  /** PreCompact Hooks */
+  PreCompact?: HookMatcher[];
+
+  /** PostCompact Hooks */
+  PostCompact?: HookMatcher[];
+
+  // ========== MCP 交互 ==========
+  /** Elicitation Hooks */
+  Elicitation?: HookMatcher[];
+
+  /** ElicitationResult Hooks */
+  ElicitationResult?: HookMatcher[];
+
+  // ========== 配置 ==========
+  /** ConfigChange Hooks */
+  ConfigChange?: HookMatcher[];
+
+  // ========== 环境 ==========
+  /** CwdChanged Hooks */
+  CwdChanged?: HookMatcher[];
+
+  /** FileChanged Hooks */
+  FileChanged?: HookMatcher[];
+
+  // ========== 指令 ==========
+  /** InstructionsLoaded Hooks */
+  InstructionsLoaded?: HookMatcher[];
 }
 
 // ============================================================================
@@ -873,6 +1089,82 @@ export interface CompactionHookResult {
   blockReason?: string;
 
   /** 警告信息 */
+  warning?: string;
+}
+
+/**
+ * StopFailure Hook 执行结果
+ */
+export interface StopFailureHookResult {
+  shouldRetry: boolean;
+  retryReason?: string;
+  warning?: string;
+}
+
+/**
+ * PreCompact Hook 执行结果
+ */
+export interface PreCompactHookResult {
+  blockCompaction: boolean;
+  blockReason?: string;
+  warning?: string;
+}
+
+/**
+ * PostCompact Hook 执行结果
+ */
+export interface PostCompactHookResult {
+  additionalContext?: string;
+  warning?: string;
+}
+
+/**
+ * Elicitation Hook 执行结果
+ */
+export interface ElicitationHookResult {
+  proceed: boolean;
+  response?: string;
+  warning?: string;
+}
+
+/**
+ * ElicitationResult Hook 执行结果
+ */
+export interface ElicitationResultHookResult {
+  proceed: boolean;
+  warning?: string;
+}
+
+/**
+ * ConfigChange Hook 执行结果
+ */
+export interface ConfigChangeHookResult {
+  proceed: boolean;
+  warning?: string;
+}
+
+/**
+ * CwdChanged Hook 执行结果
+ */
+export interface CwdChangedHookResult {
+  proceed: boolean;
+  warning?: string;
+}
+
+/**
+ * FileChanged Hook 执行结果
+ */
+export interface FileChangedHookResult {
+  action: 'reload' | 'ignore';
+  warning?: string;
+}
+
+/**
+ * InstructionsLoaded Hook 执行结果
+ */
+export interface InstructionsLoadedHookResult {
+  proceed: boolean;
+  modified_instructions?: string;
   warning?: string;
 }
 

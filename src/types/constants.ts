@@ -32,6 +32,21 @@ export enum HookEvent {
   TaskCompleted = 'TaskCompleted',
   Notification = 'Notification',
   Compaction = 'Compaction',
+  // 控制流扩展
+  StopFailure = 'StopFailure',
+  // 压缩生命周期
+  PreCompact = 'PreCompact',
+  PostCompact = 'PostCompact',
+  // MCP 交互
+  Elicitation = 'Elicitation',
+  ElicitationResult = 'ElicitationResult',
+  // 配置
+  ConfigChange = 'ConfigChange',
+  // 环境
+  CwdChanged = 'CwdChanged',
+  FileChanged = 'FileChanged',
+  // 指令
+  InstructionsLoaded = 'InstructionsLoaded',
 }
 
 export const MessageRole = {

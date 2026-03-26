@@ -33,6 +33,21 @@ export const DEFAULT_HOOK_CONFIG: Required<HookConfig> = {
   // 其他
   Notification: [],
   Compaction: [],
+  // 控制流扩展
+  StopFailure: [],
+  // 压缩生命周期
+  PreCompact: [],
+  PostCompact: [],
+  // MCP 交互
+  Elicitation: [],
+  ElicitationResult: [],
+  // 配置
+  ConfigChange: [],
+  // 环境
+  CwdChanged: [],
+  FileChanged: [],
+  // 指令
+  InstructionsLoaded: [],
 };
 
 /**
@@ -62,6 +77,21 @@ export function mergeHookConfig(
     // 其他
     Notification: override.Notification ?? base.Notification,
     Compaction: override.Compaction ?? base.Compaction,
+    // 控制流扩展
+    StopFailure: override.StopFailure ?? base.StopFailure,
+    // 压缩生命周期
+    PreCompact: override.PreCompact ?? base.PreCompact,
+    PostCompact: override.PostCompact ?? base.PostCompact,
+    // MCP 交互
+    Elicitation: override.Elicitation ?? base.Elicitation,
+    ElicitationResult: override.ElicitationResult ?? base.ElicitationResult,
+    // 配置
+    ConfigChange: override.ConfigChange ?? base.ConfigChange,
+    // 环境
+    CwdChanged: override.CwdChanged ?? base.CwdChanged,
+    FileChanged: override.FileChanged ?? base.FileChanged,
+    // 指令
+    InstructionsLoaded: override.InstructionsLoaded ?? base.InstructionsLoaded,
   };
 }
 

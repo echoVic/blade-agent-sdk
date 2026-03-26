@@ -5,8 +5,7 @@
  */
 
 import { nanoid } from 'nanoid';
-import type { PermissionMode } from '../types/common.js';
-import { HookEvent } from '../types/constants.js';
+import { HookEvent, PermissionMode } from '../types/constants.js';
 import { DEFAULT_HOOK_CONFIG, mergeHookConfig, parseEnvConfig } from './HookConfig.js';
 import { HookExecutionGuard } from './HookExecutionGuard.js';
 import { HookExecutor } from './HookExecutor.js';
@@ -14,24 +13,42 @@ import { Matcher } from './Matcher.js';
 import {
   type CompactionHookResult,
   type CompactionInput,
+  type ConfigChangeHookResult,
+  type ConfigChangeInput,
+  type CwdChangedHookResult,
+  type CwdChangedInput,
+  type ElicitationHookResult,
+  type ElicitationInput,
+  type ElicitationResultHookResult,
+  type ElicitationResultInput,
+  type FileChangedHookResult,
+  type FileChangedInput,
   type Hook,
   type HookConfig,
   type HookExecutionContext,
+  type InstructionsLoadedHookResult,
+  type InstructionsLoadedInput,
   type MatchContext,
   type NotificationHookResult,
   type NotificationInput,
   type PermissionRequestHookResult,
   type PermissionRequestInput,
+  type PostCompactHookResult,
+  type PostCompactInput,
   type PostToolHookResult,
   type PostToolUseFailureHookResult,
   type PostToolUseFailureInput,
   type PostToolUseInput,
+  type PreCompactHookResult,
+  type PreCompactInput,
   type PreToolHookResult,
   type PreToolUseInput,
   type SessionEndHookResult,
   type SessionEndInput,
   type SessionStartHookResult,
   type SessionStartInput,
+  type StopFailureHookResult,
+  type StopFailureInput,
   type StopHookResult,
   type StopInput,
   type SubagentStartHookResult,
@@ -138,7 +155,20 @@ export class HookManager {
       const settings = JSON.parse(content);
 
       if (settings.hooks) {
+        const oldConfig = { ...this.config };
         this.loadConfig(settings.hooks);
+
+        // 触发 ConfigChange hook
+        const changedKeys = Object.keys(settings.hooks);
+        if (changedKeys.length > 0) {
+          // 异步触发，不阻塞 reloadConfig
+          void this.executeConfigChangeHooks(
+            { changed_keys: changedKeys, source: 'file' },
+            '',
+            '',
+            PermissionMode.DEFAULT,
+          ).catch(() => {});
+        }
       }
     } catch {
       // 文件不存在或读取失败，保持当前配置
@@ -1013,6 +1043,517 @@ export class HookManager {
       console.error('[HookManager] Error executing Compaction hooks:', err);
       return {
         blockCompaction: false,
+        warning: `Hook execution failed: ${err instanceof Error ? err.message : String(err)}`,
+      };
+    }
+  }
+
+  /**
+   * 执行 StopFailure Hooks
+   */
+  async executeStopFailureHooks(
+    params: { reason: string; error?: string; tool_name?: string },
+    projectDir: string,
+    sessionId: string,
+    permissionMode: PermissionMode,
+    signal?: AbortSignal
+  ): Promise<StopFailureHookResult> {
+    if (!this.isEnabled()) {
+      return { shouldRetry: false };
+    }
+
+    const hookInput: StopFailureInput = {
+      hook_event_name: HookEvent.StopFailure,
+      hook_execution_id: nanoid(),
+      timestamp: new Date().toISOString(),
+      project_dir: projectDir,
+      session_id: sessionId,
+      permission_mode: permissionMode,
+      reason: params.reason,
+      error: params.error,
+      tool_name: params.tool_name,
+    };
+
+    const hooks = this.getMatchingHooks(HookEvent.StopFailure, {});
+
+    if (hooks.length === 0) {
+      return { shouldRetry: false };
+    }
+
+    const execContext: HookExecutionContext = {
+      projectDir,
+      sessionId,
+      permissionMode,
+      config: this.config,
+      abortSignal: signal,
+    };
+
+    try {
+      const results = await this.executor.executeStopFailureHooks(
+        hooks,
+        hookInput,
+        execContext
+      );
+      return results;
+    } catch (err) {
+      console.error('[HookManager] Error executing StopFailure hooks:', err);
+      return {
+        shouldRetry: false,
+        warning: `Hook execution failed: ${err instanceof Error ? err.message : String(err)}`,
+      };
+    }
+  }
+
+  /**
+   * 执行 PreCompact Hooks
+   */
+  async executePreCompactHooks(
+    params: { trigger: 'manual' | 'auto'; messages_before: number; tokens_before: number },
+    projectDir: string,
+    sessionId: string,
+    permissionMode: PermissionMode,
+    signal?: AbortSignal
+  ): Promise<PreCompactHookResult> {
+    if (!this.isEnabled()) {
+      return { blockCompaction: false };
+    }
+
+    const hookInput: PreCompactInput = {
+      hook_event_name: HookEvent.PreCompact,
+      hook_execution_id: nanoid(),
+      timestamp: new Date().toISOString(),
+      project_dir: projectDir,
+      session_id: sessionId,
+      permission_mode: permissionMode,
+      trigger: params.trigger,
+      messages_before: params.messages_before,
+      tokens_before: params.tokens_before,
+    };
+
+    const hooks = this.getMatchingHooks(HookEvent.PreCompact, {});
+
+    if (hooks.length === 0) {
+      return { blockCompaction: false };
+    }
+
+    const execContext: HookExecutionContext = {
+      projectDir,
+      sessionId,
+      permissionMode,
+      config: this.config,
+      abortSignal: signal,
+    };
+
+    try {
+      const results = await this.executor.executePreCompactHooks(
+        hooks,
+        hookInput,
+        execContext
+      );
+      return results;
+    } catch (err) {
+      console.error('[HookManager] Error executing PreCompact hooks:', err);
+      return {
+        blockCompaction: false,
+        warning: `Hook execution failed: ${err instanceof Error ? err.message : String(err)}`,
+      };
+    }
+  }
+
+  /**
+   * 执行 PostCompact Hooks
+   */
+  async executePostCompactHooks(
+    params: {
+      trigger: 'manual' | 'auto';
+      messages_before: number;
+      messages_after: number;
+      tokens_before: number;
+      tokens_after: number;
+      summary?: string;
+    },
+    projectDir: string,
+    sessionId: string,
+    permissionMode: PermissionMode,
+    signal?: AbortSignal
+  ): Promise<PostCompactHookResult> {
+    if (!this.isEnabled()) {
+      return {};
+    }
+
+    const hookInput: PostCompactInput = {
+      hook_event_name: HookEvent.PostCompact,
+      hook_execution_id: nanoid(),
+      timestamp: new Date().toISOString(),
+      project_dir: projectDir,
+      session_id: sessionId,
+      permission_mode: permissionMode,
+      trigger: params.trigger,
+      messages_before: params.messages_before,
+      messages_after: params.messages_after,
+      tokens_before: params.tokens_before,
+      tokens_after: params.tokens_after,
+      summary: params.summary,
+    };
+
+    const hooks = this.getMatchingHooks(HookEvent.PostCompact, {});
+
+    if (hooks.length === 0) {
+      return {};
+    }
+
+    const execContext: HookExecutionContext = {
+      projectDir,
+      sessionId,
+      permissionMode,
+      config: this.config,
+      abortSignal: signal,
+    };
+
+    try {
+      const results = await this.executor.executePostCompactHooks(
+        hooks,
+        hookInput,
+        execContext
+      );
+      return results;
+    } catch (err) {
+      console.error('[HookManager] Error executing PostCompact hooks:', err);
+      return {
+        warning: `Hook execution failed: ${err instanceof Error ? err.message : String(err)}`,
+      };
+    }
+  }
+
+  /**
+   * 执行 Elicitation Hooks
+   */
+  async executeElicitationHooks(
+    params: { server_name: string; resource_uri?: string; message?: string },
+    projectDir: string,
+    sessionId: string,
+    permissionMode: PermissionMode,
+    signal?: AbortSignal
+  ): Promise<ElicitationHookResult> {
+    if (!this.isEnabled()) {
+      return { proceed: true };
+    }
+
+    const hookInput: ElicitationInput = {
+      hook_event_name: HookEvent.Elicitation,
+      hook_execution_id: nanoid(),
+      timestamp: new Date().toISOString(),
+      project_dir: projectDir,
+      session_id: sessionId,
+      permission_mode: permissionMode,
+      server_name: params.server_name,
+      resource_uri: params.resource_uri,
+      message: params.message,
+    };
+
+    const hooks = this.getMatchingHooks(HookEvent.Elicitation, {});
+
+    if (hooks.length === 0) {
+      return { proceed: true };
+    }
+
+    const execContext: HookExecutionContext = {
+      projectDir,
+      sessionId,
+      permissionMode,
+      config: this.config,
+      abortSignal: signal,
+    };
+
+    try {
+      const results = await this.executor.executeElicitationHooks(
+        hooks,
+        hookInput,
+        execContext
+      );
+      return results;
+    } catch (err) {
+      console.error('[HookManager] Error executing Elicitation hooks:', err);
+      return {
+        proceed: true,
+        warning: `Hook execution failed: ${err instanceof Error ? err.message : String(err)}`,
+      };
+    }
+  }
+
+  /**
+   * 执行 ElicitationResult Hooks
+   */
+  async executeElicitationResultHooks(
+    params: { server_name: string; response?: string; was_cancelled: boolean },
+    projectDir: string,
+    sessionId: string,
+    permissionMode: PermissionMode,
+    signal?: AbortSignal
+  ): Promise<ElicitationResultHookResult> {
+    if (!this.isEnabled()) {
+      return { proceed: true };
+    }
+
+    const hookInput: ElicitationResultInput = {
+      hook_event_name: HookEvent.ElicitationResult,
+      hook_execution_id: nanoid(),
+      timestamp: new Date().toISOString(),
+      project_dir: projectDir,
+      session_id: sessionId,
+      permission_mode: permissionMode,
+      server_name: params.server_name,
+      response: params.response,
+      was_cancelled: params.was_cancelled,
+    };
+
+    const hooks = this.getMatchingHooks(HookEvent.ElicitationResult, {});
+
+    if (hooks.length === 0) {
+      return { proceed: true };
+    }
+
+    const execContext: HookExecutionContext = {
+      projectDir,
+      sessionId,
+      permissionMode,
+      config: this.config,
+      abortSignal: signal,
+    };
+
+    try {
+      const results = await this.executor.executeElicitationResultHooks(
+        hooks,
+        hookInput,
+        execContext
+      );
+      return results;
+    } catch (err) {
+      console.error('[HookManager] Error executing ElicitationResult hooks:', err);
+      return {
+        proceed: true,
+        warning: `Hook execution failed: ${err instanceof Error ? err.message : String(err)}`,
+      };
+    }
+  }
+
+  /**
+   * 执行 ConfigChange Hooks
+   */
+  async executeConfigChangeHooks(
+    params: { changed_keys: string[]; source: 'file' | 'command' | 'environment' },
+    projectDir: string,
+    sessionId: string,
+    permissionMode: PermissionMode,
+    signal?: AbortSignal
+  ): Promise<ConfigChangeHookResult> {
+    if (!this.isEnabled()) {
+      return { proceed: true };
+    }
+
+    const hookInput: ConfigChangeInput = {
+      hook_event_name: HookEvent.ConfigChange,
+      hook_execution_id: nanoid(),
+      timestamp: new Date().toISOString(),
+      project_dir: projectDir,
+      session_id: sessionId,
+      permission_mode: permissionMode,
+      changed_keys: params.changed_keys,
+      source: params.source,
+    };
+
+    const hooks = this.getMatchingHooks(HookEvent.ConfigChange, {});
+
+    if (hooks.length === 0) {
+      return { proceed: true };
+    }
+
+    const execContext: HookExecutionContext = {
+      projectDir,
+      sessionId,
+      permissionMode,
+      config: this.config,
+      abortSignal: signal,
+    };
+
+    try {
+      const results = await this.executor.executeConfigChangeHooks(
+        hooks,
+        hookInput,
+        execContext
+      );
+      return results;
+    } catch (err) {
+      console.error('[HookManager] Error executing ConfigChange hooks:', err);
+      return {
+        proceed: true,
+        warning: `Hook execution failed: ${err instanceof Error ? err.message : String(err)}`,
+      };
+    }
+  }
+
+  /**
+   * 执行 CwdChanged Hooks
+   */
+  async executeCwdChangedHooks(
+    params: { old_cwd: string; new_cwd: string },
+    projectDir: string,
+    sessionId: string,
+    permissionMode: PermissionMode,
+    signal?: AbortSignal
+  ): Promise<CwdChangedHookResult> {
+    if (!this.isEnabled()) {
+      return { proceed: true };
+    }
+
+    const hookInput: CwdChangedInput = {
+      hook_event_name: HookEvent.CwdChanged,
+      hook_execution_id: nanoid(),
+      timestamp: new Date().toISOString(),
+      project_dir: projectDir,
+      session_id: sessionId,
+      permission_mode: permissionMode,
+      old_cwd: params.old_cwd,
+      new_cwd: params.new_cwd,
+    };
+
+    const hooks = this.getMatchingHooks(HookEvent.CwdChanged, {});
+
+    if (hooks.length === 0) {
+      return { proceed: true };
+    }
+
+    const execContext: HookExecutionContext = {
+      projectDir,
+      sessionId,
+      permissionMode,
+      config: this.config,
+      abortSignal: signal,
+    };
+
+    try {
+      const results = await this.executor.executeCwdChangedHooks(
+        hooks,
+        hookInput,
+        execContext
+      );
+      return results;
+    } catch (err) {
+      console.error('[HookManager] Error executing CwdChanged hooks:', err);
+      return {
+        proceed: true,
+        warning: `Hook execution failed: ${err instanceof Error ? err.message : String(err)}`,
+      };
+    }
+  }
+
+  /**
+   * 执行 FileChanged Hooks
+   */
+  async executeFileChangedHooks(
+    params: { file_path: string; change_type: 'created' | 'modified' | 'deleted' },
+    projectDir: string,
+    sessionId: string,
+    permissionMode: PermissionMode,
+    signal?: AbortSignal
+  ): Promise<FileChangedHookResult> {
+    if (!this.isEnabled()) {
+      return { action: 'reload' };
+    }
+
+    const hookInput: FileChangedInput = {
+      hook_event_name: HookEvent.FileChanged,
+      hook_execution_id: nanoid(),
+      timestamp: new Date().toISOString(),
+      project_dir: projectDir,
+      session_id: sessionId,
+      permission_mode: permissionMode,
+      file_path: params.file_path,
+      change_type: params.change_type,
+    };
+
+    const hooks = this.getMatchingHooks(HookEvent.FileChanged, {
+      filePath: params.file_path,
+    });
+
+    if (hooks.length === 0) {
+      return { action: 'reload' };
+    }
+
+    const execContext: HookExecutionContext = {
+      projectDir,
+      sessionId,
+      permissionMode,
+      config: this.config,
+      abortSignal: signal,
+    };
+
+    try {
+      const results = await this.executor.executeFileChangedHooks(
+        hooks,
+        hookInput,
+        execContext
+      );
+      return results;
+    } catch (err) {
+      console.error('[HookManager] Error executing FileChanged hooks:', err);
+      return {
+        action: 'reload',
+        warning: `Hook execution failed: ${err instanceof Error ? err.message : String(err)}`,
+      };
+    }
+  }
+
+  /**
+   * 执行 InstructionsLoaded Hooks
+   */
+  async executeInstructionsLoadedHooks(
+    params: { source: string; instructions_length: number },
+    projectDir: string,
+    sessionId: string,
+    permissionMode: PermissionMode,
+    signal?: AbortSignal
+  ): Promise<InstructionsLoadedHookResult> {
+    if (!this.isEnabled()) {
+      return { proceed: true };
+    }
+
+    const hookInput: InstructionsLoadedInput = {
+      hook_event_name: HookEvent.InstructionsLoaded,
+      hook_execution_id: nanoid(),
+      timestamp: new Date().toISOString(),
+      project_dir: projectDir,
+      session_id: sessionId,
+      permission_mode: permissionMode,
+      source: params.source,
+      instructions_length: params.instructions_length,
+    };
+
+    const hooks = this.getMatchingHooks(HookEvent.InstructionsLoaded, {});
+
+    if (hooks.length === 0) {
+      return { proceed: true };
+    }
+
+    const execContext: HookExecutionContext = {
+      projectDir,
+      sessionId,
+      permissionMode,
+      config: this.config,
+      abortSignal: signal,
+    };
+
+    try {
+      const results = await this.executor.executeInstructionsLoadedHooks(
+        hooks,
+        hookInput,
+        execContext
+      );
+      return results;
+    } catch (err) {
+      console.error('[HookManager] Error executing InstructionsLoaded hooks:', err);
+      return {
+        proceed: true,
         warning: `Hook execution failed: ${err instanceof Error ? err.message : String(err)}`,
       };
     }

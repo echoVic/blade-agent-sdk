@@ -142,6 +142,70 @@ const CompactionInputSchema = HookInputBaseSchema.extend({
   tokens_before: z.number(),
 });
 
+// ---------- New hook input schemas ----------
+
+const StopFailureInputSchema = HookInputBaseSchema.extend({
+  hook_event_name: z.literal(HookEvent.StopFailure),
+  reason: z.string(),
+  error: z.string().optional(),
+  tool_name: z.string().optional(),
+});
+
+const PreCompactInputSchema = HookInputBaseSchema.extend({
+  hook_event_name: z.literal(HookEvent.PreCompact),
+  trigger: z.enum(['manual', 'auto']),
+  messages_before: z.number(),
+  tokens_before: z.number(),
+});
+
+const PostCompactInputSchema = HookInputBaseSchema.extend({
+  hook_event_name: z.literal(HookEvent.PostCompact),
+  trigger: z.enum(['manual', 'auto']),
+  messages_before: z.number(),
+  messages_after: z.number(),
+  tokens_before: z.number(),
+  tokens_after: z.number(),
+  summary: z.string().optional(),
+});
+
+const ElicitationInputSchema = HookInputBaseSchema.extend({
+  hook_event_name: z.literal(HookEvent.Elicitation),
+  server_name: z.string(),
+  resource_uri: z.string().optional(),
+  message: z.string().optional(),
+});
+
+const ElicitationResultInputSchema = HookInputBaseSchema.extend({
+  hook_event_name: z.literal(HookEvent.ElicitationResult),
+  server_name: z.string(),
+  response: z.string().optional(),
+  was_cancelled: z.boolean(),
+});
+
+const ConfigChangeInputSchema = HookInputBaseSchema.extend({
+  hook_event_name: z.literal(HookEvent.ConfigChange),
+  changed_keys: z.array(z.string()),
+  source: z.enum(['file', 'command', 'environment']),
+});
+
+const CwdChangedInputSchema = HookInputBaseSchema.extend({
+  hook_event_name: z.literal(HookEvent.CwdChanged),
+  old_cwd: z.string(),
+  new_cwd: z.string(),
+});
+
+const FileChangedInputSchema = HookInputBaseSchema.extend({
+  hook_event_name: z.literal(HookEvent.FileChanged),
+  file_path: z.string(),
+  change_type: z.enum(['created', 'modified', 'deleted']),
+});
+
+const InstructionsLoadedInputSchema = HookInputBaseSchema.extend({
+  hook_event_name: z.literal(HookEvent.InstructionsLoaded),
+  source: z.string(),
+  instructions_length: z.number(),
+});
+
 const _HookInputSchema = z.discriminatedUnion('hook_event_name', [
   PreToolUseInputSchema,
   PostToolUseInputSchema,
@@ -156,6 +220,16 @@ const _HookInputSchema = z.discriminatedUnion('hook_event_name', [
   TaskCompletedInputSchema,
   NotificationInputSchema,
   CompactionInputSchema,
+  // New hooks
+  StopFailureInputSchema,
+  PreCompactInputSchema,
+  PostCompactInputSchema,
+  ElicitationInputSchema,
+  ElicitationResultInputSchema,
+  ConfigChangeInputSchema,
+  CwdChangedInputSchema,
+  FileChangedInputSchema,
+  InstructionsLoadedInputSchema,
 ]);
 
 // ============================================================================
@@ -222,6 +296,57 @@ const CompactionOutputSchema = z.object({
   blockReason: z.string().optional(),
 });
 
+// ---------- New hook output schemas ----------
+
+const StopFailureOutputSchema = z.object({
+  hookEventName: z.literal('StopFailure'),
+  shouldRetry: z.boolean().optional(),
+  retryReason: z.string().optional(),
+});
+
+const PreCompactOutputSchema = z.object({
+  hookEventName: z.literal('PreCompact'),
+  blockCompaction: z.boolean().optional(),
+  blockReason: z.string().optional(),
+});
+
+const PostCompactOutputSchema = z.object({
+  hookEventName: z.literal('PostCompact'),
+  additionalContext: z.string().optional(),
+});
+
+const ElicitationOutputSchema = z.object({
+  hookEventName: z.literal('Elicitation'),
+  proceed: z.boolean().optional(),
+  response: z.string().optional(),
+});
+
+const ElicitationResultOutputSchema = z.object({
+  hookEventName: z.literal('ElicitationResult'),
+  proceed: z.boolean().optional(),
+});
+
+const ConfigChangeOutputSchema = z.object({
+  hookEventName: z.literal('ConfigChange'),
+  proceed: z.boolean().optional(),
+});
+
+const CwdChangedOutputSchema = z.object({
+  hookEventName: z.literal('CwdChanged'),
+  proceed: z.boolean().optional(),
+});
+
+const FileChangedOutputSchema = z.object({
+  hookEventName: z.literal('FileChanged'),
+  action: z.enum(['reload', 'ignore']).optional(),
+});
+
+const InstructionsLoadedOutputSchema = z.object({
+  hookEventName: z.literal('InstructionsLoaded'),
+  proceed: z.boolean().optional(),
+  modified_instructions: z.string().optional(),
+});
+
 const HookOutputSchema = z.object({
   decision: z
     .object({
@@ -241,6 +366,16 @@ const HookOutputSchema = z.object({
       UserPromptSubmitOutputSchema,
       SessionStartOutputSchema,
       CompactionOutputSchema,
+      // New hooks
+      StopFailureOutputSchema,
+      PreCompactOutputSchema,
+      PostCompactOutputSchema,
+      ElicitationOutputSchema,
+      ElicitationResultOutputSchema,
+      ConfigChangeOutputSchema,
+      CwdChangedOutputSchema,
+      FileChangedOutputSchema,
+      InstructionsLoadedOutputSchema,
     ])
     .optional(),
   suppressOutput: z.boolean().optional(),
@@ -303,6 +438,21 @@ const _HookConfigSchema = z.object({
   // 其他
   Notification: z.array(HookMatcherSchema).optional(),
   Compaction: z.array(HookMatcherSchema).optional(),
+  // 控制流扩展
+  StopFailure: z.array(HookMatcherSchema).optional(),
+  // 压缩生命周期
+  PreCompact: z.array(HookMatcherSchema).optional(),
+  PostCompact: z.array(HookMatcherSchema).optional(),
+  // MCP 交互
+  Elicitation: z.array(HookMatcherSchema).optional(),
+  ElicitationResult: z.array(HookMatcherSchema).optional(),
+  // 配置
+  ConfigChange: z.array(HookMatcherSchema).optional(),
+  // 环境
+  CwdChanged: z.array(HookMatcherSchema).optional(),
+  FileChanged: z.array(HookMatcherSchema).optional(),
+  // 指令
+  InstructionsLoaded: z.array(HookMatcherSchema).optional(),
 });
 
 // ============================================================================

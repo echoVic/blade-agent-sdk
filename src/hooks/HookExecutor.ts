@@ -9,18 +9,27 @@ import { SecureProcessExecutor } from './SecureProcessExecutor.js';
 import {
   type CommandHook,
   type CompactionHookResult,
+  type ConfigChangeHookResult,
+  type CwdChangedHookResult,
+  type ElicitationHookResult,
+  type ElicitationResultHookResult,
+  type FileChangedHookResult,
   type Hook,
   type HookExecutionContext,
   type HookExecutionResult,
   type HookInput,
   HookType,
+  type InstructionsLoadedHookResult,
   type NotificationHookResult,
   type PermissionRequestHookResult,
+  type PostCompactHookResult,
   type PostToolHookResult,
   type PostToolUseFailureHookResult,
+  type PreCompactHookResult,
   type PreToolHookResult,
   type SessionEndHookResult,
   type SessionStartHookResult,
+  type StopFailureHookResult,
   type StopHookResult,
   type SubagentStartHookResult,
   type SubagentStopHookResult,
@@ -746,6 +755,396 @@ export class HookExecutor {
 
     return {
       blockCompaction: false,
+      warning: warnings.length > 0 ? warnings.join('\n') : undefined,
+    };
+  }
+
+  /**
+   * 执行 StopFailure Hooks (串行)
+   *
+   * 任何一个 hook 返回 shouldRetry: true 就立即返回
+   */
+  async executeStopFailureHooks(
+    hooks: Hook[],
+    input: HookInput,
+    context: HookExecutionContext
+  ): Promise<StopFailureHookResult> {
+    if (hooks.length === 0) {
+      return { shouldRetry: false };
+    }
+
+    const warnings: string[] = [];
+
+    for (const hook of hooks) {
+      try {
+        const result = await this.executeHook(hook, input, context);
+
+        if (!result.success) {
+          if (result.warning) {
+            warnings.push(result.warning);
+          }
+          continue;
+        }
+
+        const specific = result.output?.hookSpecificOutput;
+        if (specific && 'shouldRetry' in specific && specific.shouldRetry) {
+          return {
+            shouldRetry: true,
+            retryReason: specific.retryReason,
+            warning: warnings.length > 0 ? warnings.join('\n') : undefined,
+          };
+        }
+      } catch (err) {
+        const errorMsg = err instanceof Error ? err.message : String(err);
+        warnings.push(`Hook failed: ${errorMsg}`);
+      }
+    }
+
+    return {
+      shouldRetry: false,
+      warning: warnings.length > 0 ? warnings.join('\n') : undefined,
+    };
+  }
+
+  /**
+   * 执行 PreCompact Hooks (串行)
+   *
+   * 任何一个 hook 返回 blockCompaction: true 就立即返回
+   */
+  async executePreCompactHooks(
+    hooks: Hook[],
+    input: HookInput,
+    context: HookExecutionContext
+  ): Promise<PreCompactHookResult> {
+    if (hooks.length === 0) {
+      return { blockCompaction: false };
+    }
+
+    const warnings: string[] = [];
+
+    for (const hook of hooks) {
+      try {
+        const result = await this.executeHook(hook, input, context);
+
+        if (!result.success) {
+          if (result.warning) {
+            warnings.push(result.warning);
+          }
+          continue;
+        }
+
+        const specific = result.output?.hookSpecificOutput;
+        if (specific && 'blockCompaction' in specific && specific.blockCompaction) {
+          return {
+            blockCompaction: true,
+            blockReason: specific.blockReason,
+            warning: warnings.length > 0 ? warnings.join('\n') : undefined,
+          };
+        }
+      } catch (err) {
+        const errorMsg = err instanceof Error ? err.message : String(err);
+        warnings.push(`Hook failed: ${errorMsg}`);
+      }
+    }
+
+    return {
+      blockCompaction: false,
+      warning: warnings.length > 0 ? warnings.join('\n') : undefined,
+    };
+  }
+
+  /**
+   * 执行 Elicitation Hooks (串行)
+   *
+   * 任何一个 hook 返回 proceed: false 就立即返回
+   */
+  async executeElicitationHooks(
+    hooks: Hook[],
+    input: HookInput,
+    context: HookExecutionContext
+  ): Promise<ElicitationHookResult> {
+    if (hooks.length === 0) {
+      return { proceed: true };
+    }
+
+    const warnings: string[] = [];
+
+    for (const hook of hooks) {
+      try {
+        const result = await this.executeHook(hook, input, context);
+
+        if (!result.success) {
+          if (result.warning) {
+            warnings.push(result.warning);
+          }
+          continue;
+        }
+
+        const specific = result.output?.hookSpecificOutput;
+        if (specific && 'proceed' in specific && specific.proceed === false) {
+          return {
+            proceed: false,
+            response: specific && 'response' in specific ? (specific as { response?: string }).response : undefined,
+            warning: warnings.length > 0 ? warnings.join('\n') : undefined,
+          };
+        }
+      } catch (err) {
+        const errorMsg = err instanceof Error ? err.message : String(err);
+        warnings.push(`Hook failed: ${errorMsg}`);
+      }
+    }
+
+    return {
+      proceed: true,
+      warning: warnings.length > 0 ? warnings.join('\n') : undefined,
+    };
+  }
+
+  /**
+   * 执行 ElicitationResult Hooks (串行，不阻塞)
+   */
+  async executeElicitationResultHooks(
+    hooks: Hook[],
+    input: HookInput,
+    context: HookExecutionContext
+  ): Promise<ElicitationResultHookResult> {
+    if (hooks.length === 0) {
+      return { proceed: true };
+    }
+
+    const warnings: string[] = [];
+
+    for (const hook of hooks) {
+      try {
+        const result = await this.executeHook(hook, input, context);
+
+        if (!result.success) {
+          if (result.warning) {
+            warnings.push(result.warning);
+          }
+          continue;
+        }
+      } catch (err) {
+        const errorMsg = err instanceof Error ? err.message : String(err);
+        warnings.push(`Hook failed: ${errorMsg}`);
+      }
+    }
+
+    return {
+      proceed: true,
+      warning: warnings.length > 0 ? warnings.join('\n') : undefined,
+    };
+  }
+
+  /**
+   * 执行 CwdChanged Hooks (串行)
+   *
+   * 任何一个 hook 返回 proceed: false 就立即返回
+   */
+  async executeCwdChangedHooks(
+    hooks: Hook[],
+    input: HookInput,
+    context: HookExecutionContext
+  ): Promise<CwdChangedHookResult> {
+    if (hooks.length === 0) {
+      return { proceed: true };
+    }
+
+    const warnings: string[] = [];
+
+    for (const hook of hooks) {
+      try {
+        const result = await this.executeHook(hook, input, context);
+
+        if (!result.success) {
+          if (result.warning) {
+            warnings.push(result.warning);
+          }
+          continue;
+        }
+
+        const specific = result.output?.hookSpecificOutput;
+        if (specific && 'proceed' in specific && specific.proceed === false) {
+          return {
+            proceed: false,
+            warning: warnings.length > 0 ? warnings.join('\n') : undefined,
+          };
+        }
+      } catch (err) {
+        const errorMsg = err instanceof Error ? err.message : String(err);
+        warnings.push(`Hook failed: ${errorMsg}`);
+      }
+    }
+
+    return {
+      proceed: true,
+      warning: warnings.length > 0 ? warnings.join('\n') : undefined,
+    };
+  }
+
+  /**
+   * 执行 FileChanged Hooks (串行)
+   *
+   * 检查 action 字段，最后一个非默认值生效
+   */
+  async executeFileChangedHooks(
+    hooks: Hook[],
+    input: HookInput,
+    context: HookExecutionContext
+  ): Promise<FileChangedHookResult> {
+    if (hooks.length === 0) {
+      return { action: 'reload' };
+    }
+
+    const warnings: string[] = [];
+    let action: 'reload' | 'ignore' = 'reload';
+
+    for (const hook of hooks) {
+      try {
+        const result = await this.executeHook(hook, input, context);
+
+        if (!result.success) {
+          if (result.warning) {
+            warnings.push(result.warning);
+          }
+          continue;
+        }
+
+        const specific = result.output?.hookSpecificOutput;
+        if (specific && 'action' in specific && specific.action) {
+          action = specific.action as 'reload' | 'ignore';
+        }
+      } catch (err) {
+        const errorMsg = err instanceof Error ? err.message : String(err);
+        warnings.push(`Hook failed: ${errorMsg}`);
+      }
+    }
+
+    return {
+      action,
+      warning: warnings.length > 0 ? warnings.join('\n') : undefined,
+    };
+  }
+
+  /**
+   * 执行 InstructionsLoaded Hooks (串行)
+   *
+   * 累积 modified_instructions（最后一个生效）
+   */
+  async executeInstructionsLoadedHooks(
+    hooks: Hook[],
+    input: HookInput,
+    context: HookExecutionContext
+  ): Promise<InstructionsLoadedHookResult> {
+    if (hooks.length === 0) {
+      return { proceed: true };
+    }
+
+    const warnings: string[] = [];
+    let modified_instructions: string | undefined;
+
+    for (const hook of hooks) {
+      try {
+        const result = await this.executeHook(hook, input, context);
+
+        if (!result.success) {
+          if (result.warning) {
+            warnings.push(result.warning);
+          }
+          continue;
+        }
+
+        const specific = result.output?.hookSpecificOutput;
+        if (specific && 'modified_instructions' in specific && specific.modified_instructions) {
+          modified_instructions = specific.modified_instructions;
+        }
+      } catch (err) {
+        const errorMsg = err instanceof Error ? err.message : String(err);
+        warnings.push(`Hook failed: ${errorMsg}`);
+      }
+    }
+
+    return {
+      proceed: true,
+      modified_instructions,
+      warning: warnings.length > 0 ? warnings.join('\n') : undefined,
+    };
+  }
+
+  /**
+   * 执行 PostCompact Hooks (并行)
+   *
+   * 收集 additionalContext
+   */
+  async executePostCompactHooks(
+    hooks: Hook[],
+    input: HookInput,
+    context: HookExecutionContext
+  ): Promise<PostCompactHookResult> {
+    if (hooks.length === 0) {
+      return {};
+    }
+
+    const warnings: string[] = [];
+    const additionalContexts: string[] = [];
+
+    const maxConcurrent = context.config.maxConcurrentHooks || 5;
+    const results = await this.executeHooksConcurrently(
+      hooks,
+      input,
+      context,
+      maxConcurrent
+    );
+
+    for (const result of results) {
+      if (!result.success && result.warning) {
+        warnings.push(result.warning);
+        continue;
+      }
+
+      const specific = result.output?.hookSpecificOutput;
+      if (specific && 'additionalContext' in specific && specific.additionalContext) {
+        additionalContexts.push(specific.additionalContext);
+      }
+    }
+
+    return {
+      additionalContext:
+        additionalContexts.length > 0 ? additionalContexts.join('\n\n') : undefined,
+      warning: warnings.length > 0 ? warnings.join('\n') : undefined,
+    };
+  }
+
+  /**
+   * 执行 ConfigChange Hooks (并行，不阻塞)
+   */
+  async executeConfigChangeHooks(
+    hooks: Hook[],
+    input: HookInput,
+    context: HookExecutionContext
+  ): Promise<ConfigChangeHookResult> {
+    if (hooks.length === 0) {
+      return { proceed: true };
+    }
+
+    const warnings: string[] = [];
+
+    const maxConcurrent = context.config.maxConcurrentHooks || 5;
+    const results = await this.executeHooksConcurrently(
+      hooks,
+      input,
+      context,
+      maxConcurrent
+    );
+
+    for (const result of results) {
+      if (!result.success && result.warning) {
+        warnings.push(result.warning);
+      }
+    }
+
+    return {
+      proceed: true,
       warning: warnings.length > 0 ? warnings.join('\n') : undefined,
     };
   }

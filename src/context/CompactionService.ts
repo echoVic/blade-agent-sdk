@@ -98,11 +98,45 @@ export class CompactionService {
       : 'estimated';
     console.log(`[CompactionService] preTokens source: ${tokenSource}`);
 
-    // 执行 Compaction Hook（压缩前）
+    // 执行 PreCompact Hook（压缩前）— 新版 hook，与旧版 Compaction 并存
     // Hook 可以阻止压缩
     if (options.projectDir) {
       try {
       const hookManager = HookManager.getInstance();
+
+      // 优先使用 PreCompact hook，同时保留旧版 Compaction hook 兼容
+      const preCompactResult = await hookManager.executePreCompactHooks(
+        {
+          trigger: options.trigger,
+          messages_before: messages.length,
+          tokens_before: preTokens,
+        },
+        options.projectDir,
+        options.sessionId || 'unknown',
+        options.permissionMode || PermissionMode.DEFAULT,
+      );
+
+      if (preCompactResult.blockCompaction) {
+        console.log(
+          `[CompactionService] PreCompact hook 阻止压缩: ${preCompactResult.blockReason || '(无原因)'}`
+        );
+        return {
+          success: false,
+          summary: '',
+          preTokens,
+          postTokens: preTokens,
+          filesIncluded: [],
+          compactedMessages: messages,
+          boundaryMessage: { role: 'system', content: '' },
+          summaryMessage: { role: 'user', content: '' },
+          error: preCompactResult.blockReason || 'Compaction blocked by PreCompact hook',
+        };
+      }
+      if (preCompactResult.warning) {
+        console.warn(`[CompactionService] PreCompact hook warning: ${preCompactResult.warning}`);
+      }
+
+      // 旧版 Compaction hook（向后兼容）
       const hookResult = await hookManager.executeCompactionHooks(options.trigger, {
         projectDir: options.projectDir,
         sessionId: options.sessionId || 'unknown',
@@ -205,6 +239,31 @@ export class CompactionService {
         postTokens,
         `(-${((1 - postTokens / preTokens) * 100).toFixed(1)}%)`
       );
+
+      // 执行 PostCompact Hook（压缩后）
+      if (options.projectDir) {
+        try {
+          const postHookManager = HookManager.getInstance();
+          const postHookResult = await postHookManager.executePostCompactHooks(
+            {
+              trigger: options.trigger,
+              messages_before: messages.length,
+              messages_after: compactedMessages.length,
+              tokens_before: preTokens,
+              tokens_after: postTokens,
+              summary,
+            },
+            options.projectDir,
+            options.sessionId || 'unknown',
+            options.permissionMode || PermissionMode.DEFAULT,
+          );
+          if (postHookResult.warning) {
+            console.warn(`[CompactionService] PostCompact hook warning: ${postHookResult.warning}`);
+          }
+        } catch (hookError) {
+          console.warn('[CompactionService] PostCompact hook execution failed:', hookError);
+        }
+      }
 
       return {
         success: true,
