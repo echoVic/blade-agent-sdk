@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { getSkillRegistry } from '../../../skills/index.js';
 import { createTool } from '../../core/createTool.js';
+import { getEffectiveProjectDir } from '../../types/ExecutionTypes.js';
 import type { ToolResult } from '../../types/ToolTypes.js';
 import { ToolErrorType, ToolKind } from '../../types/ToolTypes.js';
 
@@ -49,7 +50,7 @@ Important:
 `,
   },
 
-  async execute(params, _context): Promise<ToolResult> {
+  async execute(params, context): Promise<ToolResult> {
     const { skill } = params;
 
     // 获取 SkillRegistry
@@ -73,8 +74,9 @@ Important:
       };
     }
 
-    // 加载完整的 Skill 内容
-    const content = await registry.loadContent(skill);
+    // 加载完整的 Skill 内容，传入 cwd 以支持内联命令替换（!`command` 语法）
+    const cwd = getEffectiveProjectDir(context);
+    const content = await registry.loadContent(skill, { cwd });
     if (!content) {
       return {
         success: false,
@@ -91,7 +93,8 @@ Important:
     const skillInstructions = buildSkillInstructions(
       content.metadata.name,
       content.instructions,
-      content.metadata.basePath
+      content.metadata.basePath,
+      content.scripts
     );
     const requestedModelId =
       typeof content.metadata.model === 'string' &&
@@ -125,15 +128,21 @@ Important:
 function buildSkillInstructions(
   name: string,
   instructions: string,
-  basePath: string
+  basePath: string,
+  scripts?: string[]
 ): string {
+  const scriptSection =
+    scripts && scripts.length > 0
+      ? `\n**Available Scripts** (invoke via Bash tool with \`${basePath}/\` prefix):\n${scripts.map((s) => `- ${s}`).join('\n')}\n`
+      : '';
+
   return `# Skill: ${name}
 
 You are now operating in the "${name}" skill mode. Follow the instructions below to complete the task.
 
 **Skill Base Path:** ${basePath}
 (You can reference scripts, templates, and references relative to this path)
-
+${scriptSection}
 ---
 
 ${instructions}

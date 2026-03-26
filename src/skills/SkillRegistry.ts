@@ -63,9 +63,8 @@ export class SkillRegistry {
    * 初始化注册表，扫描所有 skills 目录
    *
    * 优先级（后加载的覆盖先加载的）：
-   * 1. 内置 Skills（builtin）- 作为 fallback，会被外部同名 Skill 覆盖
-   * 2. 用户级 Skills（userSkillsDir）
-   * 3. 项目级 Skills（projectSkillsDir）- 优先级最高
+   * 1. 用户级 Skills（userSkillsDir）
+   * 2. 项目级 Skills（projectSkillsDir）- 优先级最高
    */
   async initialize(): Promise<SkillDiscoveryResult> {
     if (this.initialized) {
@@ -182,11 +181,17 @@ export class SkillRegistry {
 
   /**
    * 加载 skill 的完整内容（懒加载）
+   *
+   * @param name    Skill 名称
+   * @param options 可选：内联命令执行选项（cwd、allowlist、logger 等）
    */
-  async loadContent(name: string): Promise<SkillContent | null> {
+  async loadContent(
+    name: string,
+    options?: Parameters<typeof loadSkillContent>[1]
+  ): Promise<SkillContent | null> {
     const metadata = this.skills.get(name);
     if (!metadata) return null;
-    return loadSkillContent(metadata);
+    return loadSkillContent(metadata, options);
   }
 
   /**

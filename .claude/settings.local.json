@@ -30,7 +30,9 @@
       "WebFetch(domain:opencode.ai)",
       "WebFetch(domain:bibek-poudel.medium.com)",
       "Bash(find /Users/bytedance/Documents/GitHub/blade-agent-sdk/src/skills -type f -name *.ts)",
-      "Bash(find /Users/bytedance/Documents/GitHub/blade-agent-sdk/src/tools/builtin/system -type f -name *.ts)"
+      "Bash(find /Users/bytedance/Documents/GitHub/blade-agent-sdk/src/tools/builtin/system -type f -name *.ts)",
+      "Bash(bun test:*)",
+      "Bash(grep -r \"InstructionsLoaded\\\\|ConfigChange\\\\|CwdChanged\\\\|FileChanged\\\\|TeammateIdle\\\\|StopFailure\\\\|Elicitation\" src --include=*.ts)"
     ]
   }
 }

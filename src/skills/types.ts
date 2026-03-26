@@ -57,6 +57,23 @@ export interface SkillMetadata {
    */
   whenToUse?: string;
 
+  /**
+   * 许可证，如 "Apache-2.0"、"MIT"、"Proprietary"
+   */
+  license?: string;
+
+  /**
+   * 环境兼容性说明（≤500 字符）
+   * 如 "Requires git, python3 and network access"
+   */
+  compatibility?: string;
+
+  /**
+   * 任意元数据键值对
+   * 如 { author: "my-org", version: "1.2", tags: ["code-review"] }
+   */
+  metadata?: Record<string, unknown>;
+
   /** SKILL.md 文件完整路径 */
   path: string;
 
@@ -71,11 +88,13 @@ export interface SkillMetadata {
  * Skill 完整内容（懒加载）
  */
 export interface SkillContent {
-  /** 元数据 */
   metadata: SkillMetadata;
 
   /** SKILL.md 正文内容（去除 YAML 前置数据后的 Markdown） */
   instructions: string;
+
+  /** scripts/ 目录下发现的可执行脚本（相对于 basePath 的路径） */
+  scripts?: string[];
 }
 
 
