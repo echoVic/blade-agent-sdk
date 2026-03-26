@@ -118,6 +118,12 @@ export interface BladeConfig {
   debug?: boolean | string;
   temperature?: number;
   maxTurns?: number;
+  /**
+   * Plan 文件的保存目录。
+   * 不配置时 ExitPlanMode 工具不会将计划写入磁盘。
+   * 对应 Claude Agent SDK 的 plansDirectory 配置项。
+   */
+  plansDirectory?: string;
 }
 
 export interface RuntimeConfig extends BladeConfig {

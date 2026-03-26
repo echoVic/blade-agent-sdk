@@ -262,7 +262,7 @@ export class LoopRunner {
 
     const result = await buildSystemPrompt({
       projectPath,
-      replaceDefault: replacePrompt,
+      basePrompt: replacePrompt,
       append: appendPrompt,
       includeEnvironment: false,
       language: this.config.language,

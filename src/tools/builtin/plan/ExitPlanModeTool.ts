@@ -1,5 +1,4 @@
 import { promises as fs } from 'node:fs';
-import { homedir } from 'node:os';
 import * as path from 'node:path';
 import { z } from 'zod';
 import { createTool } from '../../core/createTool.js';
@@ -65,12 +64,12 @@ Before using this tool, ensure your plan is clear and unambiguous. If there are 
     // 使用参数中的 plan 内容
     const planContent = params.plan || '';
 
-    // 可选：将 plan 保存到文件以便后续查看
-    if (planContent && context.sessionId) {
+    // 可选：将 plan 保存到文件以便后续查看（需配置 bladeConfig.plansDirectory）
+    const plansDirectory = context.bladeConfig?.plansDirectory;
+    if (planContent && context.sessionId && plansDirectory) {
       try {
-        const planDir = path.join(homedir(), '.blade', 'plans');
-        await fs.mkdir(planDir, { recursive: true, mode: 0o755 });
-        const planPath = path.join(planDir, `plan_${context.sessionId}.md`);
+        await fs.mkdir(plansDirectory, { recursive: true, mode: 0o755 });
+        const planPath = path.join(plansDirectory, `plan_${context.sessionId}.md`);
         await fs.writeFile(planPath, planContent, 'utf-8');
       } catch (error) {
         // 保存失败不影响功能，只是记录日志

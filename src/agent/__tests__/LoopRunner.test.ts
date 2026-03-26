@@ -188,5 +188,23 @@ describe('LoopRunner', () => {
       const prompt = await runner.buildSystemPromptOnDemand();
       expect(typeof prompt).toBe('string');
     });
+
+    it('should compose the runtime base prompt and appended prompt', async () => {
+      const mm = createMockModelManager();
+      const pipeline = createMockPipeline();
+      const runner = new LoopRunner(
+        baseConfig,
+        {
+          systemPrompt: 'BASE PROMPT',
+          appendSystemPrompt: 'APPEND PROMPT',
+        },
+        mm,
+        pipeline,
+      );
+
+      const prompt = await runner.buildSystemPromptOnDemand();
+
+      expect(prompt).toBe('BASE PROMPT\n\n---\n\nAPPEND PROMPT');
+    });
   });
 });

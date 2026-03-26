@@ -4,5 +4,6 @@
  */
 
 export { buildSystemPrompt } from './builder.js';
+export type { BuildSystemPromptOptions, BuildSystemPromptResult } from './builder.js';
 
-export { createPlanModeReminder } from './default.js';
+export { createPlanModeReminder, PLAN_MODE_SYSTEM_PROMPT } from './default.js';

@@ -8,7 +8,22 @@
       "WebFetch(domain:hyperskill.org)",
       "WebFetch(domain:readmedium.com)",
       "mcp__ide__getDiagnostics",
-      "Bash(grep -rn \"CLAUDE\\\\|claude\\\\|git\\\\|skill\\\\|command\\\\|bash\\\\|file\\\\|path\\\\|cwd\\\\|workspace\" src/prompts/ src/skills/ src/commands/ --include=\"*.ts\" -l 2>/dev/null | head -20)"
+      "Bash(grep -rn \"CLAUDE\\\\|claude\\\\|git\\\\|skill\\\\|command\\\\|bash\\\\|file\\\\|path\\\\|cwd\\\\|workspace\" src/prompts/ src/skills/ src/commands/ --include=\"*.ts\" -l 2>/dev/null | head -20)",
+      "Bash(bun run:*)",
+      "WebFetch(domain:docs.anthropic.com)",
+      "WebFetch(domain:www.npmjs.com)",
+      "WebFetch(domain:github.com)",
+      "WebFetch(domain:docs.claude.com)",
+      "Bash(npm show:*)",
+      "Read(//private/tmp/**)",
+      "Bash(npm pack:*)",
+      "Bash(ls *.tgz)",
+      "Bash(сd /tmр)",
+      "Bash(tаr -tzf аnthrорiс-аi-сlаudе-аgеnt-sdk-0.2.84.tgz)",
+      "Bash(hеаd -60)",
+      "Bash(tar -tzf anthropic-ai-claude-agent-sdk-0.2.84.tgz)",
+      "Bash(tаr -xf /tmр/аnthrорiс-аi-сlаudе-аgеnt-sdk-0.2.84.tgz -С /tmр расkаgе/аgеntSdkTуреs.d.ts расkаgе/sdk.d.ts расkаgе/sdk-tооls.d.ts)",
+      "Bash(grер -i \"рlаn\\\\|ЕntеrРlаn\\\\|ЕxitРlаn\" /tmр/расkаgе/аgеntSdkTуреs.d.ts /tmр/расkаgе/sdk.d.ts /tmр/расkаgе/sdk-tооls.d.ts)"
     ]
   }
 }

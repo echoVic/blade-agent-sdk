@@ -423,7 +423,7 @@ export class Agent {
       const projectPath = getContextCwd(this.defaultContext);
       const result = await buildSystemPrompt({
         projectPath,
-        replaceDefault: this.runtimeOptions.systemPrompt,
+        basePrompt: this.runtimeOptions.systemPrompt,
         append: this.runtimeOptions.appendSystemPrompt,
         includeEnvironment: false,
         language: this.config.language,
