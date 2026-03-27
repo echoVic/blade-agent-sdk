@@ -2,6 +2,12 @@
 
 本文件记录 @blade-ai/agent-sdk 的所有重要变更。
 
+## [0.2.3] - 2026-03-27
+
+- 96bc8db refactor(权限模式): 移除 BYPASSALL 权限模式及相关文档
+- 01c0e99 ci: 重新生成 bun.lock 使用公网 registry，去除所有内网依赖
+- fd994f3 ci: 修复 CI registry 配置，使用公网 npm registry
+- e91fde0 docs: 搭建 VitePress 文档站点并更新全部用户文档
 ## [0.2.2] - 2026-03-27
 
 - f0fc8e6 refactor: 消除所有纯静态类以满足 biome noStaticOnlyClass 规则
