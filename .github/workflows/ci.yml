@@ -24,8 +24,12 @@ jobs:
         with:
           bun-version: 1.2.22
 
+      - name: Configure public registry
+        run: |
+          echo "registry=https://registry.npmjs.org/" > .npmrc
+
       - name: Install dependencies
-        run: bun install --frozen-lockfile
+        run: bun install
 
       - name: Lint
         run: bun run lint

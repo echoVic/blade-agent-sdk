@@ -25,6 +25,8 @@ jobs:
         with:
           fetch-depth: 0
       - uses: oven-sh/setup-bun@v2
+      - name: Configure public registry
+        run: echo "registry=https://registry.npmjs.org/" > .npmrc
       - run: bun install
       - run: bun run docs:build
       - uses: actions/configure-pages@v4
