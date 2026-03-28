@@ -371,3 +371,7 @@ const logger: AgentLogger = {
 - [Hooks](./docs/hooks.md)
 - [MCP](./docs/mcp.md)
 - [Sandbox](./docs/sandbox.md)
+
+## 社区
+
+- [linux.do](https://linux.do/)
