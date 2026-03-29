@@ -3,14 +3,17 @@
 import chalk from 'chalk';
 import { execSync } from 'child_process';
 import { existsSync, readFileSync, writeFileSync } from 'fs';
+import { tmpdir } from 'os';
 import { dirname, join, relative } from 'path';
 import { fileURLToPath } from 'url';
+import { buildCommandFailureMessage, getPublishEnv } from './release-utils.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 const packageDir = join(__dirname, '..');
 const packageJsonPath = join(packageDir, 'package.json');
 const changelogPath = join(packageDir, 'CHANGELOG.md');
+const publishCacheDir = join(tmpdir(), 'blade-agent-sdk-npm-cache');
 
 const args = process.argv.slice(2);
 const isDryRun = args.includes('--dry-run');
@@ -247,7 +250,9 @@ function commitAndTag(newVersion) {
 function publishToNpm() {
   console.log(chalk.blue('\n📋 步骤 8: 发布到 NPM'));
   console.log(chalk.gray(`  执行: pnpm publish --access public --registry ${npmRegistry} --no-git-checks`));
-  exec(`pnpm publish --access public --registry ${npmRegistry} --no-git-checks`);
+  exec(`pnpm publish --access public --registry ${npmRegistry} --no-git-checks`, {
+    env: getPublishEnv(publishCacheDir),
+  });
   console.log(chalk.green('  ✓ 已发布到 NPM'));
 }
 
@@ -280,7 +285,8 @@ async function main() {
     const duration = ((Date.now() - startTime) / 1000).toFixed(1);
     console.log(chalk.green(`\n✅ 已发布 ${packageJson.name}@${newVersion} (耗时 ${duration}s)`));
   } catch (error) {
-    console.log(chalk.red('\n❌ 发布失败:'), error.message);
+    console.log(chalk.red('\n❌ 发布失败:'));
+    console.log(buildCommandFailureMessage('release', error));
     process.exit(1);
   }
 }
