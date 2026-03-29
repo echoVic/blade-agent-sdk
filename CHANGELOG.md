@@ -2,6 +2,11 @@
 
 本文件记录 @blade-ai/agent-sdk 的所有重要变更。
 
+## [0.2.4] - 2026-03-29
+
+- c7d6778 build: migrate from bun to pnpm and vitest
+- bea6b62 docs: refresh README overview
+- 4db7cd2 docs: add linux.do link to README
 ## [0.2.3] - 2026-03-27
 
 - 96bc8db refactor(权限模式): 移除 BYPASSALL 权限模式及相关文档
