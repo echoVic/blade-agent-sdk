@@ -2,6 +2,9 @@
 
 本文件记录 @blade-ai/agent-sdk 的所有重要变更。
 
+## [0.2.6] - 2026-03-29
+
+- 0805124 refactor(scripts): 重构发布工具函数以支持通过.npmrc文件进行认证
 ## [0.2.5] - 2026-03-29
 
 - b38bd52 fix: harden release publish flow
