@@ -2,6 +2,9 @@
 
 本文件记录 @blade-ai/agent-sdk 的所有重要变更。
 
+## [0.2.5] - 2026-03-29
+
+- b38bd52 fix: harden release publish flow
 ## [0.2.4] - 2026-03-29
 
 - c7d6778 build: migrate from bun to pnpm and vitest
