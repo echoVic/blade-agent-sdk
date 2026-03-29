@@ -1,4 +1,4 @@
-import { describe, expect, it, mock } from 'bun:test';
+import { describe, expect, it, vi, type Mock } from 'vitest';
 import { LoopRunner } from '../LoopRunner.js';
 import type { ModelManager } from '../ModelManager.js';
 import type { BladeConfig } from '../../types/common.js';
@@ -8,25 +8,25 @@ import type { ExecutionPipeline } from '../../tools/execution/ExecutionPipeline.
 // ===== Mock Factories =====
 
 type MockContextMgr = {
-  saveMessage: ReturnType<typeof mock>;
-  saveToolUse: ReturnType<typeof mock>;
-  saveToolResult: ReturnType<typeof mock>;
-  saveCompaction: ReturnType<typeof mock>;
+  saveMessage: Mock;
+  saveToolUse: Mock;
+  saveToolResult: Mock;
+  saveCompaction: Mock;
 };
 
 type MockModelManager = ModelManager & {
-  _chat: ReturnType<typeof mock>;
+  _chat: Mock;
   _contextMgr: MockContextMgr;
 };
 
 function createMockModelManager(overrides: Partial<Record<string, unknown>> = {}): MockModelManager {
   const mockContextMgr: MockContextMgr = {
-    saveMessage: mock(async () => 'uuid-1'),
-    saveToolUse: mock(async () => 'uuid-2'),
-    saveToolResult: mock(async () => 'uuid-3'),
-    saveCompaction: mock(async () => {}),
+    saveMessage: vi.fn(async () => 'uuid-1'),
+    saveToolUse: vi.fn(async () => 'uuid-2'),
+    saveToolResult: vi.fn(async () => 'uuid-3'),
+    saveCompaction: vi.fn(async () => {}),
   };
-  const chatMock = mock(async () => ({
+  const chatMock = vi.fn(async () => ({
     content: overrides.chatContent ?? 'Hello!',
     toolCalls: [],
     usage: { promptTokens: 100, completionTokens: 50, totalTokens: 150 },
@@ -34,18 +34,18 @@ function createMockModelManager(overrides: Partial<Record<string, unknown>> = {}
   return {
     getChatService: () => ({
       chat: chatMock,
-      streamChat: mock(async function* () {}),
+      streamChat: vi.fn(async function* () {}),
       getConfig: () => ({
         model: 'test-model',
         maxContextTokens: 128000,
         apiKey: 'test-key',
         baseUrl: 'https://test.com',
       }),
-      updateConfig: mock(() => {}),
+      updateConfig: vi.fn(() => {}),
     }),
     getContextManager: () => mockContextMgr,
     getMaxContextTokens: () => 128000,
-    switchModelIfNeeded: mock(async () => {}),
+    switchModelIfNeeded: vi.fn(async () => {}),
     _chat: chatMock,
     _contextMgr: mockContextMgr,
   } as unknown as MockModelManager;
@@ -58,7 +58,7 @@ function createMockPipeline(): ExecutionPipeline {
       getFunctionDeclarationsByMode: () => [],
       get: (name: string) => ({ kind: 'execute', name }),
     }),
-    execute: mock(async (toolName: string) => ({
+    execute: vi.fn(async (toolName: string) => ({
       success: true,
       llmContent: `Result of ${toolName}`,
       displayContent: `Result of ${toolName}`,

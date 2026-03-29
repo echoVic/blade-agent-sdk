@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, mock } from 'bun:test';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { constants as fsConstants } from 'node:fs';
 import { access, mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -41,7 +41,7 @@ async function executeWithContext(
 describe('ExitPlanMode Tool', () => {
   it('writes the plan file to bladeConfig.plansDirectory before requesting approval', async () => {
     const plansDirectory = await createTempDir('blade-plans-');
-    const requestConfirmation = mock(async () => ({
+    const requestConfirmation = vi.fn(async () => ({
       approved: true,
       targetMode: PermissionMode.DEFAULT,
     }));

@@ -1,10 +1,10 @@
-import { describe, expect, it, mock } from 'bun:test';
+import { describe, expect, it, vi } from 'vitest';
 import { createContextSnapshot } from '../../../runtime/index.js';
 import { executeToolCalls } from '../executeToolCalls.js';
 
 describe('executeToolCalls', () => {
   it('should forward the turn-scoped context snapshot into tool execution', async () => {
-    const execute = mock(async () => ({
+    const execute = vi.fn(async () => ({
       success: true,
       llmContent: 'ok',
       displayContent: 'ok',

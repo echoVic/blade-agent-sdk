@@ -353,7 +353,8 @@ const session = await createSession({
     ],
     [HookEvent.SessionEnd]: [
       async () => {
-        await Bun.write('audit.json', JSON.stringify(auditLog, null, 2));
+        const { writeFileSync } = await import('node:fs');
+        writeFileSync('audit.json', JSON.stringify(auditLog, null, 2));
         return { action: 'continue' };
       },
     ],

@@ -1,8 +1,8 @@
-import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createListMcpResourcesTool } from '../listMcpResources.js';
 import type { McpRegistry } from '../../../../mcp/McpRegistry.js';
 
-const mockGetAllServers = mock(() => new Map());
+const mockGetAllServers = vi.fn(() => new Map());
 
 const mockRegistry = {
   getAllServers: mockGetAllServers,
@@ -42,7 +42,7 @@ describe('listMcpResourcesTool', () => {
 
     it('should return no resources message when servers have no resources', async () => {
       const mockClient = {
-        listResources: mock(() => Promise.resolve([])),
+        listResources: vi.fn(() => Promise.resolve([])),
       };
       mockGetAllServers.mockReturnValue(new Map([['test-server', { client: mockClient }]]));
 
@@ -54,7 +54,7 @@ describe('listMcpResourcesTool', () => {
 
     it('should list resources from all servers', async () => {
       const mockClient = {
-        listResources: mock(() =>
+        listResources: vi.fn(() =>
           Promise.resolve([
             { uri: 'file:///test.txt', name: 'Test File', description: 'A test file' },
             { uri: 'db://users/1', name: 'User 1', mimeType: 'application/json' },
@@ -74,10 +74,10 @@ describe('listMcpResourcesTool', () => {
 
     it('should filter by serverName when provided', async () => {
       const mockClient1 = {
-        listResources: mock(() => Promise.resolve([{ uri: 'file:///test1.txt', name: 'Test 1' }])),
+        listResources: vi.fn(() => Promise.resolve([{ uri: 'file:///test1.txt', name: 'Test 1' }])),
       };
       const mockClient2 = {
-        listResources: mock(() => Promise.resolve([{ uri: 'file:///test2.txt', name: 'Test 2' }])),
+        listResources: vi.fn(() => Promise.resolve([{ uri: 'file:///test2.txt', name: 'Test 2' }])),
       };
       mockGetAllServers.mockReturnValue(
         new Map([
@@ -104,7 +104,7 @@ describe('listMcpResourcesTool', () => {
 
     it('should handle errors from individual servers', async () => {
       const mockClient = {
-        listResources: mock(() => Promise.reject(new Error('Connection failed'))),
+        listResources: vi.fn(() => Promise.reject(new Error('Connection failed'))),
       };
       mockGetAllServers.mockReturnValue(new Map([['failing-server', { client: mockClient }]]));
 

@@ -20,10 +20,10 @@
 ```bash
 npm install @blade-ai/agent-sdk
 # 或
-bun add @blade-ai/agent-sdk
+pnpm add @blade-ai/agent-sdk
 ```
 
-已发布包面向 npm 分发；这个仓库本身使用 `bun` 进行依赖安装、构建、测试、发布和文档开发。
+已发布包面向 npm 分发；这个仓库本身使用 `pnpm` 进行依赖安装、构建、测试、发布和文档开发。
 
 ## 快速开始
 
@@ -90,12 +90,12 @@ README 只保留概览。详细用法请直接看文档：
 ## 仓库开发
 
 ```bash
-bun install
-bun run build
-bun test
-bun run type-check
-bun run lint
-bun run docs:dev
+pnpm install
+pnpm run build
+pnpm test
+pnpm run type-check
+pnpm run lint
+pnpm run docs:dev
 ```
 
 更多贡献约定见 [CONTRIBUTING.md](./CONTRIBUTING.md)。

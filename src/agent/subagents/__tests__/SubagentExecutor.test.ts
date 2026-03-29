@@ -1,7 +1,7 @@
-import { describe, expect, it, mock } from 'bun:test';
+import { describe, expect, it, vi } from 'vitest';
 import { createContextSnapshot } from '../../../runtime/index.js';
 
-const runAgenticLoop = mock(async () => ({
+const runAgenticLoop = vi.fn(async () => ({
   success: true,
   finalMessage: 'done',
   metadata: {
@@ -10,12 +10,12 @@ const runAgenticLoop = mock(async () => ({
   },
 }));
 
-const createAgent = mock(async (_config, _options, deps) => ({
+const createAgent = vi.fn(async (_config, _options, deps) => ({
   runAgenticLoop,
   deps,
 }));
 
-mock.module('../../Agent.js', () => ({
+vi.mock('../../Agent.js', () => ({
   Agent: {
     create: createAgent,
   },

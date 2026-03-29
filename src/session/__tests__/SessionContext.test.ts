@@ -1,11 +1,11 @@
-import { describe, expect, it, mock } from 'bun:test';
+import { describe, expect, it, vi } from 'vitest';
 import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 const capturedContexts: unknown[] = [];
 
-const createAgent = mock(async () => ({
+const createAgent = vi.fn(async () => ({
   async *streamChat(_message: string, context: unknown) {
     capturedContexts.push(context);
     yield { type: 'turn_start', turn: 1 };
@@ -22,7 +22,7 @@ const createAgent = mock(async () => ({
   async setModel() {},
 }));
 
-mock.module('../../agent/Agent.js', () => ({
+vi.mock('../../agent/Agent.js', () => ({
   Agent: {
     create: createAgent,
   },

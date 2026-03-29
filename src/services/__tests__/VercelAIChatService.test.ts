@@ -1,16 +1,16 @@
-import { beforeEach, describe, expect, it, mock } from 'bun:test';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { NOOP_LOGGER } from '../../logging/Logger.js';
 
-const mockOpenAIModelFactory = mock((model: string) => ({ provider: 'openai', model }));
-const mockCreateOpenAI = mock((_options?: Record<string, unknown>) => mockOpenAIModelFactory);
-const mockCompatibleModelFactory = mock((model: string) => ({ provider: 'compatible', model }));
-const mockCreateOpenAICompatible = mock((_options?: Record<string, unknown>) => mockCompatibleModelFactory);
+const mockOpenAIModelFactory = vi.fn((model: string) => ({ provider: 'openai', model }));
+const mockCreateOpenAI = vi.fn((_options?: Record<string, unknown>) => mockOpenAIModelFactory);
+const mockCompatibleModelFactory = vi.fn((model: string) => ({ provider: 'compatible', model }));
+const mockCreateOpenAICompatible = vi.fn((_options?: Record<string, unknown>) => mockCompatibleModelFactory);
 
-mock.module('@ai-sdk/openai', () => ({
+vi.mock('@ai-sdk/openai', () => ({
   createOpenAI: mockCreateOpenAI,
 }));
 
-mock.module('@ai-sdk/openai-compatible', () => ({
+vi.mock('@ai-sdk/openai-compatible', () => ({
   createOpenAICompatible: mockCreateOpenAICompatible,
 }));
 

@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -9,11 +9,11 @@ import { PermissionMode } from '../../types/common.js';
 import { HookEvent } from '../../types/constants.js';
 import type { SessionOptions } from '../types.js';
 
-const mockConnect = mock(() => Promise.resolve());
-const mockDisconnect = mock(() => Promise.resolve());
-const mockOn = mock(() => {});
+const mockConnect = vi.fn(() => Promise.resolve());
+const mockDisconnect = vi.fn(() => Promise.resolve());
+const mockOn = vi.fn(() => {});
 
-mock.module('../../mcp/McpClient.js', () => ({
+vi.mock('../../mcp/McpClient.js', () => ({
   McpClient: class MockMcpClient {
     availableTools = [
       {
@@ -154,7 +154,7 @@ describe('SessionRuntime', () => {
   });
 
   it('should apply session hook callbacks to tool execution', async () => {
-    const execute = mock(async (params: { value?: string }) => ({
+    const execute = vi.fn(async (params: { value?: string }) => ({
       success: true,
       llmContent: params.value || 'missing',
       displayContent: params.value || 'missing',
@@ -214,11 +214,11 @@ describe('SessionRuntime', () => {
   });
 
   it('should let permission hooks modify input before canUseTool runs', async () => {
-    const canUseTool = mock(async (_toolName: string, input: Record<string, unknown>) => ({
+    const canUseTool = vi.fn(async (_toolName: string, input: Record<string, unknown>) => ({
       behavior: 'allow' as const,
       updatedInput: input,
     }));
-    const execute = mock(async (params: { value?: string }) => ({
+    const execute = vi.fn(async (params: { value?: string }) => ({
       success: true,
       llmContent: params.value || 'missing',
       displayContent: params.value || 'missing',

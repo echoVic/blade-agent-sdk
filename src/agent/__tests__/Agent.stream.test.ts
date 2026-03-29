@@ -1,14 +1,14 @@
-import { describe, expect, it, mock, beforeEach } from 'bun:test';
+import { describe, expect, it, vi, beforeEach } from 'vitest';
 import type { AgentEvent, ChatContext, LoopResult } from '../types.js';
 import { PermissionMode } from '../../types/common.js';
 
 const createMockChatService = () => ({
-  chat: mock(() => Promise.resolve({
+  chat: vi.fn(() => Promise.resolve({
     content: 'Test response',
     toolCalls: [],
     usage: { promptTokens: 100, completionTokens: 50 },
   })),
-  streamChat: mock(async function* () {
+  streamChat: vi.fn(async function* () {
     yield { content: 'Hello ' };
     yield { content: 'World' };
     yield { finishReason: 'stop' };
@@ -239,7 +239,7 @@ describe('Agent.streamChat', () => {
     it('should handle errors gracefully', async () => {
       const errorChatService = {
         ...chatService,
-        streamChat: mock(async function* () {
+        streamChat: vi.fn(async function* () {
           yield { content: 'Start' };
           throw new Error('Stream error');
         }),

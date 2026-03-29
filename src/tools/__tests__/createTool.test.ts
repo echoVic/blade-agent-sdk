@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'bun:test';
+import { describe, expect, it } from 'vitest';
 import { z } from 'zod';
 import { createTool } from '../core/createTool.js';
 import { ToolKind } from '../types/ToolTypes.js';

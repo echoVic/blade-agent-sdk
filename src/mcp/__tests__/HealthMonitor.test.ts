@@ -1,13 +1,13 @@
-import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { HealthMonitor, HealthStatus, type HealthCheckConfig } from '../HealthMonitor.js';
 import type { McpClient } from '../McpClient.js';
 import { McpConnectionStatus } from '../types.js';
 
 const createMockClient = (status: McpConnectionStatus = McpConnectionStatus.CONNECTED) => ({
   connectionStatus: status,
-  callTool: mock(() => Promise.resolve({ content: [] })),
-  on: mock(() => {}),
-  emit: mock(() => {}),
+  callTool: vi.fn(() => Promise.resolve({ content: [] })),
+  on: vi.fn(() => {}),
+  emit: vi.fn(() => {}),
 });
 
 function createMonitor(client: ReturnType<typeof createMockClient>, config: HealthCheckConfig) {

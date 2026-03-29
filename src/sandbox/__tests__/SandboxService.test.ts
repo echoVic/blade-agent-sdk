@@ -1,12 +1,12 @@
-import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { SandboxService, getSandboxService } from '../SandboxService.js';
 
 const mockSandboxExecutor = {
-  configure: mock(() => {}),
-  canUseSandbox: mock(() => false),
-  buildExecutionOptions: mock(() => ({ workDir: '/test' })),
-  wrapCommand: mock((cmd: string) => cmd),
-  getCapabilities: mock(() => ({
+  configure: vi.fn(() => {}),
+  canUseSandbox: vi.fn(() => false),
+  buildExecutionOptions: vi.fn(() => ({ workDir: '/test' })),
+  wrapCommand: vi.fn((cmd: string) => cmd),
+  getCapabilities: vi.fn(() => ({
     available: false,
     type: 'none' as const,
     features: {
@@ -17,7 +17,7 @@ const mockSandboxExecutor = {
   })),
 };
 
-mock.module('../SandboxExecutor.js', () => ({
+vi.mock('../SandboxExecutor.js', () => ({
   getSandboxExecutor: () => mockSandboxExecutor,
 }));
 

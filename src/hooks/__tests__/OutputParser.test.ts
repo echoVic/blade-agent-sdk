@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'bun:test';
+import { describe, expect, it } from 'vitest';
 import { OutputParser } from '../OutputParser.js';
 import type { CommandHook, HookConfig, ProcessResult } from '../types/HookTypes.js';
 import { HookType } from '../types/HookTypes.js';

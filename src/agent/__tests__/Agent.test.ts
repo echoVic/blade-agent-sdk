@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'bun:test';
+import { describe, expect, it } from 'vitest';
 import { Agent } from '../Agent.js';
 import type { BladeConfig } from '../../types/common.js';
 import type { InternalLogger } from '../../logging/Logger.js';

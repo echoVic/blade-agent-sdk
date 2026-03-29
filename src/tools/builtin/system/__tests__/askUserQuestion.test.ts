@@ -1,4 +1,4 @@
-import { describe, expect, it, mock } from 'bun:test';
+import { describe, expect, it, vi } from 'vitest';
 import type { ExecutionContext } from '../../../types/ExecutionTypes.js';
 import { askUserQuestionTool } from '../askUserQuestion.js';
 
@@ -60,7 +60,7 @@ describe('AskUserQuestion Tool', () => {
 
     it('should return cancelled when user cancels', async () => {
       const mockHandler = {
-        requestConfirmation: mock(() => Promise.resolve({ approved: false })),
+        requestConfirmation: vi.fn(() => Promise.resolve({ approved: false })),
       };
       const context = createMockContext(mockHandler);
 
@@ -88,7 +88,7 @@ describe('AskUserQuestion Tool', () => {
 
     it('should return answers when user provides them', async () => {
       const mockHandler = {
-        requestConfirmation: mock(() =>
+        requestConfirmation: vi.fn(() =>
           Promise.resolve({
             approved: true,
             answers: { Framework: 'React' },
@@ -121,7 +121,7 @@ describe('AskUserQuestion Tool', () => {
 
     it('should handle multi-select answers', async () => {
       const mockHandler = {
-        requestConfirmation: mock(() =>
+        requestConfirmation: vi.fn(() =>
           Promise.resolve({
             approved: true,
             answers: { Features: ['TypeScript', 'ESLint'] },
@@ -154,7 +154,7 @@ describe('AskUserQuestion Tool', () => {
 
     it('should handle ACP mode (approved but no answers)', async () => {
       const mockHandler = {
-        requestConfirmation: mock(() =>
+        requestConfirmation: vi.fn(() =>
           Promise.resolve({
             approved: true,
             answers: {},
@@ -187,7 +187,7 @@ describe('AskUserQuestion Tool', () => {
 
     it('should handle confirmation handler errors', async () => {
       const mockHandler = {
-        requestConfirmation: mock(() => Promise.reject(new Error('Handler failed'))),
+        requestConfirmation: vi.fn(() => Promise.reject(new Error('Handler failed'))),
       };
       const context = createMockContext(mockHandler);
 
@@ -215,7 +215,7 @@ describe('AskUserQuestion Tool', () => {
 
     it('should pass correct confirmation request', async () => {
       const mockHandler = {
-        requestConfirmation: mock(() =>
+        requestConfirmation: vi.fn(() =>
           Promise.resolve({
             approved: true,
             answers: { Framework: 'React' },

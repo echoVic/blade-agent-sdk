@@ -1,4 +1,4 @@
-#!/usr/bin/env bun
+#!/usr/bin/env node
 
 import chalk from 'chalk';
 import { execSync } from 'child_process';
@@ -46,7 +46,7 @@ function exec(command, options = {}) {
 function findRepoRoot(startDir) {
   let dir = startDir;
   while (dir && dir !== dirname(dir)) {
-    if (existsSync(join(dir, 'bun.lock')) && existsSync(join(dir, 'package.json'))) {
+    if (existsSync(join(dir, 'pnpm-lock.yaml')) && existsSync(join(dir, 'package.json'))) {
       return dir;
     }
     dir = dirname(dir);
@@ -57,7 +57,7 @@ function findRepoRoot(startDir) {
 const repoRoot = findRepoRoot(packageDir);
 const packageJsonRelPath = relative(repoRoot, packageJsonPath);
 const changelogRelPath = relative(repoRoot, changelogPath);
-const packageManager = 'bun';
+const packageManager = 'pnpm';
 
 console.log(chalk.blue('🚀 agent-sdk 发布脚本'));
 console.log(chalk.gray(`当前版本: ${currentVersion}`));
@@ -246,8 +246,8 @@ function commitAndTag(newVersion) {
 
 function publishToNpm() {
   console.log(chalk.blue('\n📋 步骤 8: 发布到 NPM'));
-  console.log(chalk.gray(`  执行: bun publish --access public --registry ${npmRegistry}`));
-  exec(`bun publish --access public --registry ${npmRegistry}`);
+  console.log(chalk.gray(`  执行: pnpm publish --access public --registry ${npmRegistry} --no-git-checks`));
+  exec(`pnpm publish --access public --registry ${npmRegistry} --no-git-checks`);
   console.log(chalk.green('  ✓ 已发布到 NPM'));
 }
 

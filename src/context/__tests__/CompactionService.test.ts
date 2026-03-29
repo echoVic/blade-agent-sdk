@@ -1,17 +1,17 @@
-import { beforeEach, describe, expect, it, mock } from 'bun:test';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Message } from '../../services/ChatServiceInterface.js';
 
-const mockCreateChatServiceAsync = mock(async (_config: Record<string, unknown>) => ({
+const mockCreateChatServiceAsync = vi.fn(async (_config: Record<string, unknown>) => ({
   chat: async () => ({
     content: '<summary>ok</summary>',
   }),
 }));
 
-mock.module('../../services/ChatServiceInterface.js', () => ({
+vi.mock('../../services/ChatServiceInterface.js', () => ({
   createChatServiceAsync: mockCreateChatServiceAsync,
 }));
 
-mock.module('../FileAnalyzer.js', () => ({
+vi.mock('../FileAnalyzer.js', () => ({
   FileAnalyzer: {
     analyzeFiles: () => [],
     readFilesContent: async () => [],

@@ -1,4 +1,4 @@
-import { describe, expect, it, mock } from 'bun:test';
+import { describe, expect, it, vi } from 'vitest';
 import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -6,7 +6,7 @@ import type { Message } from '../../services/ChatServiceInterface.js';
 
 let turnCounter = 0;
 
-const createAgent = mock(async () => ({
+const createAgent = vi.fn(async () => ({
   async *streamChat(message: string, context: { messages: Message[] }) {
     turnCounter += 1;
     const turnId = turnCounter;
@@ -38,7 +38,7 @@ const createAgent = mock(async () => ({
   async setModel() {},
 }));
 
-mock.module('../../agent/Agent.js', () => ({
+vi.mock('../../agent/Agent.js', () => ({
   Agent: {
     create: createAgent,
   },

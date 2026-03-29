@@ -1,12 +1,12 @@
-import { describe, it, expect, beforeEach, afterEach, mock, spyOn } from 'bun:test';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { McpRegistry } from '../McpRegistry.js';
 import { McpConnectionStatus } from '../types.js';
 
-const mockConnect = mock(() => Promise.resolve());
-const mockDisconnect = mock(() => Promise.resolve());
-const mockOn = mock(() => {});
+const mockConnect = vi.fn(() => Promise.resolve());
+const mockDisconnect = vi.fn(() => Promise.resolve());
+const mockOn = vi.fn(() => {});
 
-mock.module('../McpClient.js', () => ({
+vi.mock('../McpClient.js', () => ({
   McpClient: class MockMcpClient {
     availableTools = [];
     connect = mockConnect;
@@ -58,7 +58,7 @@ describe('McpRegistry', () => {
 
     it('should emit serverRegistered event', async () => {
       const config = { command: 'test-server' };
-      const eventHandler = mock(() => {});
+      const eventHandler = vi.fn(() => {});
       registry.on('serverRegistered', eventHandler);
 
       await registry.registerServer('test', config);
@@ -82,7 +82,7 @@ describe('McpRegistry', () => {
       const config = { command: 'test-server' };
       await registry.registerServer('test', config);
 
-      const eventHandler = mock(() => {});
+      const eventHandler = vi.fn(() => {});
       registry.on('serverUnregistered', eventHandler);
 
       await registry.unregisterServer('test');

@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'bun:test';
+import { describe, expect, it } from 'vitest';
 import { DEFAULT_HOOK_CONFIG, mergeHookConfig } from '../HookConfig.js';
 import type { HookConfig } from '../types/HookTypes.js';
 import { HookType } from '../types/HookTypes.js';

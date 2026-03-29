@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'bun:test';
+import { describe, expect, it } from 'vitest';
 import { createContextSnapshot } from '../../../runtime/index.js';
 import { globTool } from '../search/glob.js';
 import { grepTool } from '../search/grep.js';

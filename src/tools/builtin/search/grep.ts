@@ -1,7 +1,12 @@
 import { execSync, spawn } from 'child_process';
 import { existsSync } from 'fs';
 import { readdir, readFile } from 'fs/promises';
+import { createRequire } from 'module';
 import { join, relative } from 'path';
+
+// ESM-safe require for optional CJS packages (e.g. @vscode/ripgrep).
+// Bare `require()` is undefined in Node ESM; createRequire provides it.
+const _require = createRequire(import.meta.url);
 import picomatch from 'picomatch';
 import { z } from 'zod';
 import { hasFilesystemCapability } from '../../../runtime/index.js';
@@ -113,7 +118,7 @@ function getRipgrepPath(): string | null {
   // 注意：这里使用同步的 require 是安全的，因为它是可选依赖
   // 如果不存在，catch 块会捕获错误
   try {
-    const vsRipgrep = require('@vscode/ripgrep');
+    const vsRipgrep = _require('@vscode/ripgrep');
     if (vsRipgrep?.rgPath && existsSync(vsRipgrep.rgPath)) {
       return vsRipgrep.rgPath;
     }

@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from 'bun:test';
+import { afterEach, describe, expect, it } from 'vitest';
 import type { ContentPart, Message } from '../../services/ChatServiceInterface.js';
 import { TokenCounter } from '../TokenCounter.js';
 

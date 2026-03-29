@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'bun:test';
+import { describe, expect, it } from 'vitest';
 import type { ModelConfig } from '../../types/common.js';
 import { detectThinkingSupport, getThinkingConfig, isThinkingModel } from '../modelDetection.js';
 

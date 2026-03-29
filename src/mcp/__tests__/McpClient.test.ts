@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'bun:test';
+import { describe, expect, it } from 'vitest';
 import type { McpServerConfig } from '../../types/common.js';
 import { ErrorType, McpClient } from '../McpClient.js';
 

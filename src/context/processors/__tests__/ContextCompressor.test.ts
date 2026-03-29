@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'bun:test';
+import { describe, expect, it } from 'vitest';
 import { ContextCompressor } from '../ContextCompressor.js';
 import type { ContextData, ContextMessage, ToolCall } from '../../types.js';
 

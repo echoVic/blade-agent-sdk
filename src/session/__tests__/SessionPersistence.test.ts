@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'bun:test';
+import { describe, expect, it } from 'vitest';
 import type { LogEntry } from '../../types/logging.js';
 import { existsSync, mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';

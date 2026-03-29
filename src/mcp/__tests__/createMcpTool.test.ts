@@ -1,10 +1,10 @@
-import { describe, expect, it, mock } from 'bun:test';
+import { describe, expect, it, vi } from 'vitest';
 import type { JSONSchema7 } from 'json-schema';
 import { z } from 'zod';
 import { createMcpTool } from '../createMcpTool.js';
 
 const mockClient = {
-  callTool: mock(async () => ({ content: [{ type: 'text', text: 'ok' }], isError: false })),
+  callTool: vi.fn(async () => ({ content: [{ type: 'text', text: 'ok' }], isError: false })),
 };
 
 function buildTool(schema: JSONSchema7) {
@@ -87,7 +87,7 @@ describe('createMcpTool', () => {
   });
 
   it('should fall back to record schema when encountering unsupported refs', () => {
-    const warn = mock(() => {});
+    const warn = vi.fn(() => {});
     const originalWarn = console.warn;
     console.warn = warn;
 

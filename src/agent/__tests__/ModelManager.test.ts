@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'bun:test';
+import { describe, expect, it } from 'vitest';
 import { ModelManager } from '../ModelManager.js';
 import type { BladeConfig, ModelConfig } from '../../types/common.js';
 

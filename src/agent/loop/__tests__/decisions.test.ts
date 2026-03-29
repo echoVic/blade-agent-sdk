@@ -1,4 +1,4 @@
-import { describe, expect, it, mock } from 'bun:test';
+import { describe, expect, it, vi } from 'vitest';
 import type { Message } from '../../../services/ChatServiceInterface.js';
 import { decideNoToolTurn, RETRY_PROMPT } from '../decideNoToolTurn.js';
 import { decideTurnLimit } from '../decideTurnLimit.js';
@@ -29,7 +29,7 @@ describe('agent loop decisions', () => {
     });
 
     it('should continue with reminder when stop hook asks to continue', async () => {
-      const onStopCheck = mock(async () => ({
+      const onStopCheck = vi.fn(async () => ({
         shouldStop: false,
         continueReason: 'Keep going',
       }));
@@ -43,7 +43,7 @@ describe('agent loop decisions', () => {
     });
 
     it('should finish when stop hook asks to stop', async () => {
-      const onStopCheck = mock(async () => ({ shouldStop: true }));
+      const onStopCheck = vi.fn(async () => ({ shouldStop: true }));
 
       const decision = await decideNoToolTurn('Done', [], 1, onStopCheck);
 

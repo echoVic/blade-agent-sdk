@@ -1,4 +1,4 @@
-import { describe, expect, it, mock } from 'bun:test';
+import { describe, expect, it, vi } from 'vitest';
 import { PlanExecutor } from '../PlanExecutor.js';
 import type { AgentEvent } from '../AgentEvent.js';
 import type { LoopResult, ChatContext, UserMessageContent } from '../types.js';
@@ -65,7 +65,7 @@ describe('PlanExecutor', () => {
     it('should call executeLoop with plan system prompt and reminder', async () => {
       const pe = new PlanExecutor('zh');
       const context = createContext();
-      const executeLoop = mock(async () => successResult());
+      const executeLoop = vi.fn(async () => successResult());
 
       const result = await pe.runPlanLoop('do something', context, undefined, executeLoop);
 
@@ -89,7 +89,7 @@ describe('PlanExecutor', () => {
       const context = createContext();
       const controller = new AbortController();
       const loopOptions = { signal: controller.signal };
-      const executeLoop = mock(async () => successResult());
+      const executeLoop = vi.fn(async () => successResult());
 
       await pe.runPlanLoop('test', context, loopOptions, executeLoop);
 
@@ -115,7 +115,7 @@ describe('PlanExecutor', () => {
         opts?: unknown,
         systemPrompt?: string
       ) => AsyncGenerator<AgentEvent, LoopResult>;
-      const executeStream = mock((..._args: unknown[]) => mockStreamExecutor()) as unknown as StreamExecutor;
+      const executeStream = vi.fn((..._args: unknown[]) => mockStreamExecutor()) as unknown as StreamExecutor;
       const stream = pe.runPlanLoopStream('test', context, undefined, executeStream);
 
       const events: unknown[] = [];

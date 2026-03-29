@@ -1,8 +1,8 @@
-import { describe, it, expect, beforeEach, afterEach, mock } from 'bun:test';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { createReadMcpResourceTool } from '../readMcpResource.js';
 import type { McpRegistry } from '../../../../mcp/McpRegistry.js';
 
-const mockGetAllServers = mock(() => new Map());
+const mockGetAllServers = vi.fn(() => new Map());
 
 const mockRegistry = {
   getAllServers: mockGetAllServers,
@@ -41,7 +41,7 @@ describe('readMcpResourceTool', () => {
 
     it('should read text resource successfully', async () => {
       const mockClient = {
-        readResource: mock(() =>
+        readResource: vi.fn(() =>
           Promise.resolve({
             uri: 'file:///test.txt',
             text: 'Hello, World!',
@@ -61,7 +61,7 @@ describe('readMcpResourceTool', () => {
 
     it('should read blob resource successfully', async () => {
       const mockClient = {
-        readResource: mock(() =>
+        readResource: vi.fn(() =>
           Promise.resolve({
             uri: 'file:///image.png',
             blob: 'base64encodeddata',
@@ -80,10 +80,10 @@ describe('readMcpResourceTool', () => {
 
     it('should filter by serverName when provided', async () => {
       const mockClient1 = {
-        readResource: mock(() => Promise.resolve({ uri: 'test', text: 'from server1' })),
+        readResource: vi.fn(() => Promise.resolve({ uri: 'test', text: 'from server1' })),
       };
       const mockClient2 = {
-        readResource: mock(() => Promise.resolve({ uri: 'test', text: 'from server2' })),
+        readResource: vi.fn(() => Promise.resolve({ uri: 'test', text: 'from server2' })),
       };
       mockGetAllServers.mockReturnValue(
         new Map([
@@ -104,7 +104,7 @@ describe('readMcpResourceTool', () => {
 
     it('should return error when resource not found', async () => {
       const mockClient = {
-        readResource: mock(() => Promise.reject(new Error('Resource not found'))),
+        readResource: vi.fn(() => Promise.reject(new Error('Resource not found'))),
       };
       mockGetAllServers.mockReturnValue(new Map([['test-server', { client: mockClient }]]));
 
@@ -116,7 +116,7 @@ describe('readMcpResourceTool', () => {
 
     it('should return error with serverName when specified server has no resource', async () => {
       const mockClient = {
-        readResource: mock(() => Promise.reject(new Error('Resource not found'))),
+        readResource: vi.fn(() => Promise.reject(new Error('Resource not found'))),
       };
       mockGetAllServers.mockReturnValue(new Map([['my-server', { client: mockClient }]]));
 
@@ -140,10 +140,10 @@ describe('readMcpResourceTool', () => {
 
     it('should try next server on error', async () => {
       const mockClient1 = {
-        readResource: mock(() => Promise.reject(new Error('Connection failed'))),
+        readResource: vi.fn(() => Promise.reject(new Error('Connection failed'))),
       };
       const mockClient2 = {
-        readResource: mock(() => Promise.resolve({ uri: 'test', text: 'success' })),
+        readResource: vi.fn(() => Promise.resolve({ uri: 'test', text: 'success' })),
       };
       mockGetAllServers.mockReturnValue(
         new Map([
@@ -171,7 +171,7 @@ describe('readMcpResourceTool', () => {
 
     it('should handle resource with neither text nor blob', async () => {
       const mockClient = {
-        readResource: mock(() =>
+        readResource: vi.fn(() =>
           Promise.resolve({
             uri: 'file:///test.txt',
             mimeType: 'application/octet-stream',

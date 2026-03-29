@@ -2,7 +2,7 @@
 
 Thank you for your interest in contributing to Blade Agent SDK! This document provides guidelines and standards for contributing to this project.
 
-The published package is distributed through npm, but this repository uses `bun` for local dependency installation, testing, build, and release automation.
+The published package is distributed through npm, but this repository uses `pnpm` for local dependency installation, testing, build, and release automation.
 
 ## Code Standards
 
@@ -54,13 +54,13 @@ const name = user?.profile?.name ?? 'Anonymous';
 Run linting before submitting:
 
 ```bash
-bun run lint
+pnpm run lint
 ```
 
 Fix auto-fixable issues:
 
 ```bash
-bun run lint:fix
+pnpm run lint:fix
 ```
 
 ### Type Checking
@@ -68,7 +68,7 @@ bun run lint:fix
 Ensure your code passes type checking:
 
 ```bash
-bun run type-check
+pnpm run type-check
 ```
 
 ## Development Workflow
@@ -78,7 +78,7 @@ bun run type-check
 ```bash
 git clone https://github.com/YOUR_USERNAME/blade-agent-sdk.git
 cd blade-agent-sdk
-bun install
+pnpm install
 ```
 
 ### 2. Create a Branch
@@ -96,14 +96,14 @@ git checkout -b feature/your-feature-name
 ### 4. Test Your Changes
 
 ```bash
-bun test
+pnpm test
 ```
 
 ### 5. Verify Code Quality
 
 ```bash
-bun run type-check
-bun run lint
+pnpm run type-check
+pnpm run lint
 ```
 
 ### 6. Commit and Push
@@ -126,9 +126,9 @@ Open a PR against the `main` branch with:
 
 Before submitting a PR, ensure:
 
-- [ ] Code compiles without errors (`bun run type-check`)
-- [ ] All tests pass (`bun test`)
-- [ ] Linting passes (`bun run lint`)
+- [ ] Code compiles without errors (`pnpm run type-check`)
+- [ ] All tests pass (`pnpm test`)
+- [ ] Linting passes (`pnpm run lint`)
 - [ ] No `any` types introduced
 - [ ] New features have tests
 - [ ] Documentation updated if needed

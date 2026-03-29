@@ -9,7 +9,7 @@
 ```bash
 npm install @blade-ai/agent-sdk
 # 或
-bun add @blade-ai/agent-sdk
+pnpm add @blade-ai/agent-sdk
 ```
 
 ## 最小示例：流式对话

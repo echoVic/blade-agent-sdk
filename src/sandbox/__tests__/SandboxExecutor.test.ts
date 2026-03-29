@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach, mock } from 'bun:test';
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { SandboxExecutor, getSandboxExecutor } from '../SandboxExecutor.js';
 
 describe('SandboxExecutor', () => {

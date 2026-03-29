@@ -1,4 +1,4 @@
-import { describe, expect, it, mock } from 'bun:test';
+import { describe, expect, it, vi, type Mock } from 'vitest';
 import type { Message } from '../../services/ChatServiceInterface.js';
 import type { ToolResult } from '../../tools/types/index.js';
 import type { AgentEvent } from '../AgentEvent.js';
@@ -13,7 +13,7 @@ function createMockExecutionPipeline(results?: Record<string, ToolResult>) {
     getRegistry: () => ({
       get: (name: string) => ({ kind: 'execute', name }),
     }),
-    execute: mock(async (toolName: string, _params: unknown, _ctx: unknown) => {
+    execute: vi.fn(async (toolName: string, _params: unknown, _ctx: unknown) => {
       if (results?.[toolName]) return results[toolName];
       return {
         success: true,
@@ -36,7 +36,7 @@ function createMockChatService(responses: Array<{
 }>) {
   let callIndex = 0;
   return {
-    chat: mock(async () => {
+    chat: vi.fn(async () => {
       const resp = responses[callIndex] || responses[responses.length - 1];
       callIndex++;
       return {
@@ -180,7 +180,7 @@ describe('agentLoop', () => {
       });
 
       const pipeline = createMockExecutionPipeline();
-      (pipeline.execute as ReturnType<typeof mock>).mockImplementation(async (toolName: string) => {
+      (pipeline.execute as Mock).mockImplementation(async (toolName: string) => {
         executeCount++;
         if (toolName === 'ReadA') {
           await firstExecutionGate;
@@ -218,7 +218,7 @@ describe('agentLoop', () => {
 
     it('should handle tool execution failure gracefully', async () => {
       const pipeline = createMockExecutionPipeline();
-      (pipeline.execute as ReturnType<typeof mock>).mockImplementation(async () => {
+      (pipeline.execute as Mock).mockImplementation(async () => {
         throw new Error('Permission denied');
       });
 
@@ -295,7 +295,7 @@ describe('agentLoop', () => {
       ]);
 
       const pipeline = createMockExecutionPipeline();
-      (pipeline.execute as ReturnType<typeof mock>).mockImplementation(async () => {
+      (pipeline.execute as Mock).mockImplementation(async () => {
         // Abort during tool execution
         controller.abort();
         return { success: true, llmContent: 'ok', displayContent: 'ok' } as ToolResult;
@@ -318,7 +318,7 @@ describe('agentLoop', () => {
       // Create a chat service that always returns tool calls
       let callCount = 0;
       const chatService = {
-        chat: mock(async () => {
+        chat: vi.fn(async () => {
           callCount++;
           return {
             content: `Turn ${callCount}`,
@@ -343,7 +343,7 @@ describe('agentLoop', () => {
     it('should continue when onTurnLimitReached returns continue', async () => {
       let callCount = 0;
       const chatService = {
-        chat: mock(async () => {
+        chat: vi.fn(async () => {
           callCount++;
           if (callCount <= 2) {
             return {
@@ -379,7 +379,7 @@ describe('agentLoop', () => {
 
   describe('hooks', () => {
     it('should call onAssistantMessage hook', async () => {
-      const onAssistantMessage = mock(async () => {});
+      const onAssistantMessage = vi.fn(async () => {});
       const chatService = createMockChatService([
         {
           content: 'Using tool',
@@ -402,8 +402,8 @@ describe('agentLoop', () => {
     });
 
     it('should call onBeforeToolExec and onAfterToolExec hooks', async () => {
-      const onBeforeToolExec = mock(async () => 'uuid-123');
-      const onAfterToolExec = mock(async () => {});
+      const onBeforeToolExec = vi.fn(async () => 'uuid-123');
+      const onAfterToolExec = vi.fn(async () => {});
 
       const chatService = createMockChatService([
         {
@@ -432,7 +432,7 @@ describe('agentLoop', () => {
     });
 
     it('should call onComplete hook on normal finish', async () => {
-      const onComplete = mock(async () => {});
+      const onComplete = vi.fn(async () => {});
       const config = baseConfig({ onComplete });
       await collectEvents(agentLoop(config));
 
@@ -444,7 +444,7 @@ describe('agentLoop', () => {
 
     it('should call onStopCheck hook and continue if shouldStop=false', async () => {
       let stopCheckCount = 0;
-      const onStopCheck = mock(async () => {
+      const onStopCheck = vi.fn(async () => {
         stopCheckCount++;
         if (stopCheckCount === 1) {
           return { shouldStop: false, continueReason: 'Keep going' };

@@ -21,7 +21,7 @@
     "resolveJsonModule": true,
     "declaration": true,
     "declarationMap": true,
-    "types": ["bun-types"],
+    "types": ["node"],
     "baseUrl": ".",
     "paths": {
       "@/*": ["./src/*"]

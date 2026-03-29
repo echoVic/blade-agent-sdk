@@ -1,11 +1,11 @@
-import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { McpRegistry } from '../../mcp/McpRegistry.js';
 
-const mockConnect = mock(() => Promise.resolve());
-const mockDisconnect = mock(() => Promise.resolve());
-const mockOn = mock(() => {});
+const mockConnect = vi.fn(() => Promise.resolve());
+const mockDisconnect = vi.fn(() => Promise.resolve());
+const mockOn = vi.fn(() => {});
 
-mock.module('../../mcp/McpClient.js', () => ({
+vi.mock('../../mcp/McpClient.js', () => ({
   McpClient: class MockMcpClient {
     availableTools = [
       { name: 'test_tool', description: 'A test tool' },

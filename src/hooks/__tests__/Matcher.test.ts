@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'bun:test';
+import { describe, expect, it } from 'vitest';
 import { Matcher } from '../Matcher.js';
 import type { MatchContext, MatcherConfig } from '../types/HookTypes.js';
 

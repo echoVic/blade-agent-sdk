@@ -1,4 +1,4 @@
-import { describe, expect, it, beforeEach } from 'bun:test';
+import { describe, expect, it, beforeEach } from 'vitest';
 import { ToolRegistry } from '../ToolRegistry.js';
 import type { Tool, FunctionDeclaration } from '../../types/index.js';
 import { PermissionMode } from '../../../types/common.js';

@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'bun:test';
+import { describe, expect, it } from 'vitest';
 import type { JSONSchema7, JSONSchema7Definition } from 'json-schema';
 import { z } from 'zod';
 import { zodToFunctionSchema } from '../zodToJson.js';

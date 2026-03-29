@@ -1,15 +1,15 @@
-import { describe, expect, it, mock } from 'bun:test';
+import { describe, expect, it, vi } from 'vitest';
 import type { ChatConfig } from '../../services/ChatServiceInterface.js';
 import type { BladeConfig, ModelConfig } from '../../types/common.js';
 
-const mockCreateChatServiceAsync = mock(async (config: ChatConfig) => ({
-  chat: mock(async () => ({ content: 'ok' })),
-  streamChat: mock(async function* () {}),
+const mockCreateChatServiceAsync = vi.fn(async (config: ChatConfig) => ({
+  chat: vi.fn(async () => ({ content: 'ok' })),
+  streamChat: vi.fn(async function* () {}),
   getConfig: () => config,
-  updateConfig: mock(() => {}),
+  updateConfig: vi.fn(() => {}),
 }));
 
-mock.module('../../services/ChatServiceInterface.js', () => ({
+vi.mock('../../services/ChatServiceInterface.js', () => ({
   createChatServiceAsync: mockCreateChatServiceAsync,
 }));
 
