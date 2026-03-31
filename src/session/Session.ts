@@ -1,13 +1,14 @@
 import { nanoid } from 'nanoid';
 import { Agent } from '../agent/Agent.js';
-import type { ChatContext, LoopResult } from '../agent/types.js';
+import type { ChatContext, LoopResult, UserMessageContent } from '../agent/types.js';
 import { createRootLogger, type InternalLogger, LogCategory } from '../logging/Logger.js';
 import {
   createContextSnapshot,
   type ContextSnapshot,
   type RuntimeContext,
 } from '../runtime/index.js';
-import type { Message } from '../services/ChatServiceInterface.js';
+import type { ContentPart, Message } from '../services/ChatServiceInterface.js';
+import { cloneContentPart, cloneMessage } from '../services/messageUtils.js';
 import {
   type BladeConfig,
   type ModelConfig,
@@ -61,7 +62,7 @@ class Session implements ISession {
   private defaultContext: RuntimeContext;
   private initialized = false;
 
-  private pendingMessage: string | null = null;
+  private pendingMessage: UserMessageContent | null = null;
   private pendingSendOptions: SendOptions | null = null;
   private pendingContextSnapshot: ContextSnapshot | null = null;
 
@@ -202,7 +203,7 @@ class Session implements ISession {
     return urls[type] || '';
   }
 
-  async send(message: string, options?: SendOptions): Promise<void> {
+  async send(message: UserMessageContent, options?: SendOptions): Promise<void> {
     await this.ensureInitialized();
 
     if (this.pendingMessage !== null) {
@@ -359,9 +360,12 @@ class Session implements ISession {
 
       yield { type: 'usage', usage: totalUsage, sessionId: this.sessionId };
       this._messages = context.messages;
+      const imageCount = this.getImageCount(message);
       await this.runHookCallbacks(HookEvent.TaskCompleted, {
         taskId: this.sessionId,
-        taskDescription: message,
+        taskDescription: this.getTextContent(message),
+        hasImages: imageCount > 0,
+        imageCount,
         resultSummary: loopResult.finalMessage || '',
         success: loopResult.success,
       });
@@ -521,7 +525,7 @@ class Session implements ISession {
     return forkedSession;
   }
 
-  private async applyUserPromptHooks(message: string): Promise<string> {
+  private async applyUserPromptHooks(message: UserMessageContent): Promise<UserMessageContent> {
     const hooks = this.runtime?.getHookCallbacks()[HookEvent.UserPromptSubmit];
     if (!hooks || hooks.length === 0) {
       return message;
@@ -529,14 +533,17 @@ class Session implements ISession {
 
     let nextMessage = message;
     for (const hook of hooks) {
+      const imageCount = this.getImageCount(nextMessage);
       const result = await this.executeHook(hook, HookEvent.UserPromptSubmit, {
-        userPrompt: nextMessage,
+        userPrompt: this.getTextContent(nextMessage),
+        hasImages: imageCount > 0,
+        imageCount,
       });
       if (result.action === 'abort') {
         throw new Error(result.reason || 'Prompt submission aborted by hook');
       }
       if (typeof result.modifiedInput === 'string') {
-        nextMessage = result.modifiedInput;
+        nextMessage = this.replaceTextContent(nextMessage, result.modifiedInput);
       }
     }
 
@@ -578,21 +585,11 @@ class Session implements ISession {
       return [];
     }
 
-    return snapshot.messages.map((message) => ({
-      ...message,
-      tool_calls: message.tool_calls?.map((toolCall) => ({
-        id: toolCall.id,
-        type: toolCall.type,
-        function: {
-          name: toolCall.function.name,
-          arguments: toolCall.function.arguments,
-        },
-      })),
-    }));
+    return snapshot.messages.map(cloneMessage);
   }
 
   private createSnapshotFromMessages(messageId?: string): SessionSnapshot {
-    let messages = [...this._messages];
+    let messages = this._messages.map(cloneMessage);
 
     if (messageId) {
       const endIndex = messages.findIndex((message) => message.id === messageId);
@@ -610,6 +607,44 @@ class Session implements ISession {
         .filter((id): id is string => typeof id === 'string'),
       lastActivity: Date.now(),
     };
+  }
+
+  private getTextContent(message: UserMessageContent): string {
+    if (typeof message === 'string') {
+      return message;
+    }
+
+    return message
+      .filter((part): part is Extract<ContentPart, { type: 'text' }> => part.type === 'text')
+      .map((part) => part.text)
+      .join('\n');
+  }
+
+  private getImageCount(message: UserMessageContent): number {
+    if (typeof message === 'string') {
+      return 0;
+    }
+
+    return message.filter((part) => part.type === 'image_url').length;
+  }
+
+  private replaceTextContent(
+    message: UserMessageContent,
+    nextText: string,
+  ): UserMessageContent {
+    if (typeof message === 'string') {
+      return nextText;
+    }
+
+    // Keep the return type as ContentPart[] to stay consistent with the input type.
+    const imageParts = message
+      .filter((part): part is Extract<ContentPart, { type: 'image_url' }> => part.type === 'image_url')
+      .map(cloneContentPart);
+
+    return [
+      ...(nextText === '' ? [] : [{ type: 'text', text: nextText } satisfies ContentPart]),
+      ...imageParts,
+    ];
   }
 }
 
@@ -652,7 +687,7 @@ export async function forkSession(options: ForkOptions): Promise<ISession> {
 }
 
 export async function prompt(
-  message: string,
+  message: UserMessageContent,
   options: SessionOptions,
 ): Promise<PromptResult> {
   const startTime = Date.now();

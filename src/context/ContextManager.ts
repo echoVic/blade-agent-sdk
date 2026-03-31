@@ -220,7 +220,7 @@ export class ContextManager {
    */
   async addMessage(
     role: ContextMessage['role'],
-    content: string,
+    content: Message['content'],
     metadata?: JsonObject
   ): Promise<void> {
     if (!this.currentSessionId) {
@@ -243,7 +243,7 @@ export class ContextManager {
     const message: ContextMessage = {
       id: messageId,
       role,
-      content,
+      content: this.stringifyMessageContent(content),
       timestamp: Date.now(),
       metadata,
     };
@@ -299,7 +299,7 @@ export class ContextManager {
   async saveMessage(
     sessionId: string,
     role: 'user' | 'assistant' | 'system',
-    content: string,
+    content: Message['content'],
     parentUuid: string | null = null,
     metadata?: {
       model?: string;
@@ -705,7 +705,7 @@ export class ContextManager {
         if (part.type === 'text') {
           return part.text;
         }
-        return part.image_url.url;
+        return '[image]';
       })
       .join('\n');
   }

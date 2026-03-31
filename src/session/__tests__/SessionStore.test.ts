@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { PersistentStore } from '../../context/storage/PersistentStore.js';
 import { JsonlSessionStore } from '../SessionStore.js';
+import type { ContentPart } from '../../services/ChatServiceInterface.js';
 
 function createWorkspaceRoot(): string {
   return mkdtempSync(join(tmpdir(), 'session-store-test-'));
@@ -116,5 +117,26 @@ describe('JsonlSessionStore', () => {
     expect(summary).not.toBeNull();
     expect(summary!.messageCount).toBe(1);
     expect(summary!.summaryText).toBe('Searchable summary');
+  });
+
+  it('should reconstruct multimodal user messages preserving image parts', async () => {
+    const workspaceRoot = createWorkspaceRoot();
+    const persistentStore = new PersistentStore(workspaceRoot);
+    const sessionStore = new JsonlSessionStore(workspaceRoot);
+
+    const sessionId = 'session-multimodal';
+    const content: ContentPart[] = [
+      { type: 'text', text: 'describe this image' },
+      { type: 'image_url', image_url: { url: 'data:image/png;base64,abc' } },
+    ];
+
+    await persistentStore.saveMessage(sessionId, 'user', content);
+
+    const state = await sessionStore.loadState(sessionId);
+
+    expect(state).not.toBeNull();
+    expect(state!.messages).toHaveLength(1);
+    expect(state!.messages[0]?.role).toBe('user');
+    expect(state!.messages[0]?.content).toEqual(content);
   });
 });

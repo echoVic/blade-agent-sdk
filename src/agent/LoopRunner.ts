@@ -49,6 +49,14 @@ function syncContextMessages(context: ChatContext, messages: Message[]): void {
   context.messages = messages.filter((message) => message.role !== 'system');
 }
 
+function hasPersistableUserContent(message: UserMessageContent): boolean {
+  if (typeof message === 'string') {
+    return message.trim() !== '';
+  }
+
+  return message.some((part) => part.type === 'image_url' || part.text.trim() !== '');
+}
+
 /**
  * Skill 执行上下文
  */
@@ -159,16 +167,9 @@ export class LoopRunner {
     let lastMessageUuid: string | null = null;
     try {
       const contextMgr = this.modelManager.getContextManager();
-      const textContent =
-        typeof message === 'string'
-          ? message
-          : message
-              .filter((p) => p.type === 'text')
-              .map((p) => (p as { text: string }).text)
-              .join('\n');
-      if (contextMgr && context.sessionId && textContent.trim() !== '') {
+      if (contextMgr && context.sessionId && hasPersistableUserContent(message)) {
         lastMessageUuid = await contextMgr.saveMessage(
-          context.sessionId, 'user', textContent, null, undefined, context.subagentInfo
+          context.sessionId, 'user', message, null, undefined, context.subagentInfo
         );
       }
     } catch (error) {

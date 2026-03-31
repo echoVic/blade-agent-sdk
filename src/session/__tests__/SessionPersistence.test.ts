@@ -4,6 +4,7 @@ import { existsSync, mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { PersistentStore } from '../../context/storage/PersistentStore.js';
+import type { ContentPart } from '../../services/ChatServiceInterface.js';
 import { createSession, forkSession, resumeSession } from '../Session.js';
 
 function createWorkspaceRoot(): string {
@@ -178,5 +179,28 @@ describe('Session persistence', () => {
       ...createOptions(workspaceRoot),
       persistSession: false,
     })).rejects.toThrow(/requires session persistence/i);
+  });
+
+  it('should resume multimodal user messages with image parts intact', async () => {
+    const workspaceRoot = createWorkspaceRoot();
+    const persistentStore = new PersistentStore(workspaceRoot);
+
+    const sessionId = 'session-multimodal';
+    const content: ContentPart[] = [
+      { type: 'image_url', image_url: { url: 'data:image/png;base64,resume' } },
+    ];
+
+    await persistentStore.saveMessage(sessionId, 'user', content);
+
+    const session = await resumeSession({
+      sessionId,
+      ...createOptions(workspaceRoot),
+    });
+
+    expect(session.messages).toHaveLength(1);
+    expect(session.messages[0]?.role).toBe('user');
+    expect(session.messages[0]?.content).toEqual(content);
+
+    session.close();
   });
 });

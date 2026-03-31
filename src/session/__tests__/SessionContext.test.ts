@@ -2,11 +2,15 @@ import { describe, expect, it, vi } from 'vitest';
 import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import type { ContentPart } from '../../services/ChatServiceInterface.js';
+import { HookEvent } from '../../types/constants.js';
 
 const capturedContexts: unknown[] = [];
+const capturedMessages: unknown[] = [];
 
 const createAgent = vi.fn(async () => ({
-  async *streamChat(_message: string, context: unknown) {
+  async *streamChat(message: unknown, context: unknown) {
+    capturedMessages.push(message);
     capturedContexts.push(context);
     yield { type: 'turn_start', turn: 1 };
     return {
@@ -33,6 +37,7 @@ const { createSession } = await import('../Session.js');
 describe('Session runtime context', () => {
   it('should let turn-scoped context override the session default context', async () => {
     capturedContexts.length = 0;
+    capturedMessages.length = 0;
     const storagePath = mkdtempSync(join(tmpdir(), 'session-context-test-'));
     const session = await createSession({
       provider: { type: 'openai-compatible', apiKey: 'test-key' },
@@ -124,6 +129,42 @@ describe('Session runtime context', () => {
     expect(forked.getDefaultContext()).toEqual(session.getDefaultContext());
 
     forked.close();
+    session.close();
+  });
+
+  it('should preserve image parts when UserPromptSubmit hooks rewrite multimodal text', async () => {
+    capturedContexts.length = 0;
+    capturedMessages.length = 0;
+    const storagePath = mkdtempSync(join(tmpdir(), 'session-context-hook-'));
+    const session = await createSession({
+      provider: { type: 'openai-compatible', apiKey: 'test-key' },
+      model: 'gpt-4o-mini',
+      storagePath,
+      hooks: {
+        [HookEvent.UserPromptSubmit]: [
+          async () => ({
+            action: 'continue',
+            modifiedInput: 'updated prompt',
+          }),
+        ],
+      },
+    });
+
+    await session.send([
+      { type: 'text', text: 'original prompt' },
+      { type: 'image_url', image_url: { url: 'data:image/png;base64,hook' } },
+    ] satisfies ContentPart[]);
+
+    for await (const _event of session.stream()) {
+      // Drain the stream to completion.
+    }
+
+    expect(capturedMessages).toHaveLength(1);
+    expect(capturedMessages[0]).toEqual([
+      { type: 'text', text: 'updated prompt' },
+      { type: 'image_url', image_url: { url: 'data:image/png;base64,hook' } },
+    ]);
+
     session.close();
   });
 });

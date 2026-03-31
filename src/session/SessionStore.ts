@@ -5,7 +5,8 @@ import {
   normalizeSessionStorageRoot,
 } from '@/context/storage/pathUtils.js';
 import type { PartInfo, SessionEvent, SessionInfo } from '../context/types.js';
-import type { Message, ToolCall } from '../services/ChatServiceInterface.js';
+import type { ContentPart, Message, ToolCall } from '../services/ChatServiceInterface.js';
+import { cloneJsonValue, cloneMessage } from '../services/messageUtils.js';
 import type { JsonValue, MessageRole } from '../types/common.js';
 
 interface SessionTimelineEntry {
@@ -108,56 +109,46 @@ function toTimestamp(value: string | undefined, fallback: string): number {
   return new Date(value ?? fallback).getTime();
 }
 
-function cloneJsonValue<T extends JsonValue | undefined>(value: T): T {
-  if (value === undefined) {
-    return value;
-  }
-  return JSON.parse(JSON.stringify(value)) as T;
-}
-
-function cloneToolCall(toolCall: ToolCall): ToolCall {
-  return {
-    id: toolCall.id,
-    type: toolCall.type,
-    function: {
-      name: toolCall.function.name,
-      arguments: toolCall.function.arguments,
-    },
-  };
-}
-
-function cloneContent(content: Message['content']): Message['content'] {
-  if (typeof content === 'string') {
-    return content;
+/**
+ * Collapse a ContentPart[] down to `Message['content']`.
+ * Single text-only part is returned as a plain string for backward compat.
+ *
+ * NOTE: no cloning — this operates on the internal builder state.
+ * The final export to `SessionState` is protected by `cloneMessage`.
+ */
+function toMessageContent(parts: ContentPart[]): Message['content'] {
+  if (parts.length === 1 && parts[0]?.type === 'text') {
+    return parts[0].text;
   }
 
-  return content.map((part) => {
-    if (part.type === 'text') {
-      return {
-        type: 'text',
-        text: part.text,
-        providerOptions: part.providerOptions
-          ? cloneJsonValue(part.providerOptions as JsonValue) as typeof part.providerOptions
-          : undefined,
-      };
-    }
-
-    return {
-      type: 'image_url',
-      image_url: {
-        url: part.image_url.url,
-      },
-    };
-  });
+  return [...parts];
 }
 
-function cloneMessage(message: Message): Message {
-  return {
-    ...message,
-    content: cloneContent(message.content),
-    tool_calls: message.tool_calls?.map(cloneToolCall),
-    metadata: cloneJsonValue(message.metadata),
-  };
+/**
+ * Insert or replace a content part in the per-message part list.
+ *
+ * No cloning is performed — the `content` argument is always a freshly
+ * constructed object literal at every call site, and the returned array
+ * is only used to fill the mutable builder record.  The boundary clone
+ * happens later in `cloneMessage` when the record is exported.
+ */
+function upsertContentPart(
+  contentParts: Map<string, Array<{ partId: string; content: ContentPart }>>,
+  messageId: string,
+  partId: string,
+  content: ContentPart,
+): ContentPart[] {
+  const existing = contentParts.get(messageId) ?? [];
+  const index = existing.findIndex((part) => part.partId === partId);
+
+  if (index === -1) {
+    existing.push({ partId, content });
+  } else {
+    existing[index] = { partId, content };
+  }
+
+  contentParts.set(messageId, existing);
+  return existing.map((part) => part.content);
 }
 
 function stringifyContent(value: unknown): string {
@@ -221,6 +212,7 @@ export class JsonlSessionStore implements SessionStore {
     }
 
     const messageRecords = new Map<string, MessageRecord>();
+    const contentParts = new Map<string, Array<{ partId: string; content: ContentPart }>>();
     const orderedMessageIds: string[] = [];
     const summaryMessageIds = new Set<string>();
     const toolCalls = new Map<string, SessionToolCallState>();
@@ -316,6 +308,7 @@ export class JsonlSessionStore implements SessionStore {
       this.applyPartToMessage({
         part: data,
         record,
+        contentParts,
         toolCalls,
         subagentRefs,
         summaryMessageIds,
@@ -325,6 +318,8 @@ export class JsonlSessionStore implements SessionStore {
       });
     }
 
+    // Build the timeline directly from the mutable builder records (no clone).
+    // `messages` is cloned from the same records so the two arrays are independent.
     const timeline = orderedMessageIds
       .map((messageId) => messageRecords.get(messageId))
       .filter((record): record is MessageRecord => record !== undefined)
@@ -332,7 +327,7 @@ export class JsonlSessionStore implements SessionStore {
         id: record.id,
         parentMessageId: record.parentMessageId,
         createdAt: record.createdAt,
-        message: cloneMessage(record.message),
+        message: record.message,
       }));
 
     const messageIds = timeline.map((entry) => entry.id);
@@ -349,10 +344,10 @@ export class JsonlSessionStore implements SessionStore {
       messageIds,
       summary: snapshotSummary,
       summaryMessageIds: Array.from(summaryMessageIds),
+      // input/output already cloned when written into the map (applyPartToMessage),
+      // so a shallow spread is sufficient here.
       toolCalls: Array.from(toolCalls.values()).map((toolCall) => ({
         ...toolCall,
-        input: cloneJsonValue(toolCall.input),
-        output: cloneJsonValue(toolCall.output),
       })),
       subagentRefs: subagentRefs.map((ref) => ({ ...ref })),
     };
@@ -439,6 +434,7 @@ export class JsonlSessionStore implements SessionStore {
   private applyPartToMessage(params: {
     part: PartInfo;
     record: MessageRecord;
+    contentParts: Map<string, Array<{ partId: string; content: ContentPart }>>;
     toolCalls: Map<string, SessionToolCallState>;
     subagentRefs: SessionSubagentRef[];
     summaryMessageIds: Set<string>;
@@ -447,6 +443,7 @@ export class JsonlSessionStore implements SessionStore {
     const {
       part,
       record,
+      contentParts,
       toolCalls,
       subagentRefs,
       summaryMessageIds,
@@ -456,7 +453,33 @@ export class JsonlSessionStore implements SessionStore {
     switch (part.partType) {
       case 'text': {
         const payload = isRecord(part.payload) ? part.payload : {};
-        record.message.content = typeof payload.text === 'string' ? payload.text : '';
+        const providerOptions = isRecord(payload.providerOptions)
+          ? payload.providerOptions as Extract<ContentPart, { type: 'text' }>['providerOptions']
+          : undefined;
+        const nextParts = upsertContentPart(contentParts, record.id, part.partId, {
+          type: 'text',
+          text: typeof payload.text === 'string' ? payload.text : '',
+          ...(providerOptions ? { providerOptions } : {}),
+        });
+        record.message.content = toMessageContent(nextParts);
+        break;
+      }
+      case 'image': {
+        const payload = isRecord(part.payload) ? part.payload : {};
+        // `dataUrl` is the canonical field written by PersistentStore; `url` is
+        // accepted as a legacy / external-source fallback.
+        const url = typeof payload.dataUrl === 'string'
+          ? payload.dataUrl
+          : typeof payload.url === 'string'
+            ? payload.url
+            : '';
+        const nextParts = upsertContentPart(contentParts, record.id, part.partId, {
+          type: 'image_url',
+          image_url: {
+            url,
+          },
+        });
+        record.message.content = toMessageContent(nextParts);
         break;
       }
       case 'tool_call': {
@@ -526,7 +549,7 @@ export class JsonlSessionStore implements SessionStore {
         record.message.role = 'system';
         record.message.content = text;
         if (payload.metadata !== undefined) {
-          record.message.metadata = cloneJsonValue(payload.metadata as JsonValue);
+          record.message.metadata = payload.metadata as JsonValue;
         }
         summaryMessageIds.add(record.id);
         onSummary(text);

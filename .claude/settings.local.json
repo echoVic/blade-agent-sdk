@@ -32,7 +32,9 @@
       "Bash(find /Users/bytedance/Documents/GitHub/blade-agent-sdk/src/skills -type f -name *.ts)",
       "Bash(find /Users/bytedance/Documents/GitHub/blade-agent-sdk/src/tools/builtin/system -type f -name *.ts)",
       "Bash(bun test:*)",
-      "Bash(grep -r \"InstructionsLoaded\\\\|ConfigChange\\\\|CwdChanged\\\\|FileChanged\\\\|TeammateIdle\\\\|StopFailure\\\\|Elicitation\" src --include=*.ts)"
+      "Bash(grep -r \"InstructionsLoaded\\\\|ConfigChange\\\\|CwdChanged\\\\|FileChanged\\\\|TeammateIdle\\\\|StopFailure\\\\|Elicitation\" src --include=*.ts)",
+      "Bash(npx tsc:*)",
+      "Bash(npx vitest:*)"
     ]
   }
 }

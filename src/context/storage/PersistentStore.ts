@@ -2,6 +2,7 @@ import { nanoid } from 'nanoid';
 import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
 import { JsonlSessionStore } from '../../session/SessionStore.js';
+import type { ContentPart } from '../../services/ChatServiceInterface.js';
 import type { JsonValue, MessageRole } from '../../types/common.js';
 import type {
   ContextData,
@@ -19,6 +20,34 @@ import {
   listProjectDirectories,
   normalizeSessionStorageRoot
 } from './pathUtils.js';
+
+function extractMimeType(url: string): string | undefined {
+  // data: URLs — extract the declared MIME type
+  const dataMatch = /^data:([^;,]+)[;,]/.exec(url);
+  if (dataMatch) {
+    return dataMatch[1];
+  }
+
+  // Remote URLs — attempt to infer MIME type from file extension
+  const extMatch = /\.(\w+)(?:[?#]|$)/.exec(url);
+  if (extMatch) {
+    const ext = extMatch[1]!.toLowerCase();
+    const mimeMap: Record<string, string> = {
+      png: 'image/png',
+      jpg: 'image/jpeg',
+      jpeg: 'image/jpeg',
+      gif: 'image/gif',
+      webp: 'image/webp',
+      svg: 'image/svg+xml',
+      bmp: 'image/bmp',
+    };
+    if (mimeMap[ext]) {
+      return mimeMap[ext];
+    }
+  }
+
+  return undefined;
+}
 
 /**
  * 持久化存储实现 - JSONL 格式
@@ -130,7 +159,7 @@ export class PersistentStore {
   async saveMessage(
     sessionId: string,
     messageRole: MessageRole,
-    content: string,
+    content: string | ContentPart[],
     parentUuid: string | null = null,
     metadata?: {
       model?: string;
@@ -157,15 +186,8 @@ export class PersistentStore {
         usage: metadata?.usage,
       };
       const messageEntry = this.createEvent('message_created', sessionId, messageInfo);
-      const partInfo: PartInfo = {
-        partId: nanoid(),
-        messageId,
-        partType: 'text',
-        payload: { text: content },
-        createdAt: now,
-      };
-      const partEntry = this.createEvent('part_created', sessionId, partInfo);
-      await store.appendBatch([messageEntry, partEntry]);
+      const partEntries = this.buildPartEntries(sessionId, messageId, content, now);
+      await store.appendBatch([messageEntry, ...partEntries]);
       return messageId;
     } catch (error) {
       console.error(`[PersistentStore] 保存消息失败 (session: ${sessionId}):`, error);
@@ -605,6 +627,54 @@ export class PersistentStore {
     return listProjectDirectories(this.storageRoot);
   }
 
+  private buildPartEntries(
+    sessionId: string,
+    messageId: string,
+    content: string | ContentPart[],
+    createdAt: string,
+  ): SessionEvent[] {
+    if (typeof content === 'string') {
+      return [
+        this.createEvent('part_created', sessionId, {
+          partId: nanoid(),
+          messageId,
+          partType: 'text',
+          payload: { text: content },
+          createdAt,
+        } satisfies PartInfo),
+      ];
+    }
+
+    return content.map((part) => {
+      if (part.type === 'text') {
+        return this.createEvent('part_created', sessionId, {
+          partId: nanoid(),
+          messageId,
+          partType: 'text',
+          payload: {
+            text: part.text,
+            ...(part.providerOptions
+              ? { providerOptions: part.providerOptions as JsonValue }
+              : {}),
+          },
+          createdAt,
+        } satisfies PartInfo);
+      }
+
+      const mimeType = extractMimeType(part.image_url.url);
+      return this.createEvent('part_created', sessionId, {
+        partId: nanoid(),
+        messageId,
+        partType: 'image',
+        payload: {
+          ...(mimeType !== undefined ? { mimeType } : {}),
+          dataUrl: part.image_url.url,
+        },
+        createdAt,
+      } satisfies PartInfo);
+    });
+  }
+
   private getSessionStore(): JsonlSessionStore {
     return new JsonlSessionStore(this.storageRoot);
   }
@@ -629,7 +699,7 @@ export class NoopPersistentStore {
   async saveMessage(
     _sessionId: string,
     _messageRole: MessageRole,
-    _content: string,
+    _content: string | ContentPart[],
     _parentUuid: string | null = null,
     _metadata?: {
       model?: string;

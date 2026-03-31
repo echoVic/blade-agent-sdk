@@ -1,3 +1,4 @@
+import type { UserMessageContent } from '../agent/types.js';
 import type { SdkMcpServerHandle } from '../mcp/SdkMcpServer.js';
 import type { ContextSnapshot, RuntimeContext } from '../runtime/index.js';
 import type { Message } from '../services/ChatServiceInterface.js';
@@ -171,7 +172,7 @@ export interface ISession extends AsyncDisposable {
   readonly sessionId: string;
   readonly messages: Message[];
 
-  send(message: string, options?: SendOptions): Promise<void>;
+  send(message: UserMessageContent, options?: SendOptions): Promise<void>;
 
   stream(options?: StreamOptions): AsyncGenerator<StreamMessage>;
 
