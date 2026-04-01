@@ -45,6 +45,11 @@ import { ModelManager } from './ModelManager.js';
 import { PlanExecutor } from './PlanExecutor.js';
 import { StreamResponseHandler } from './StreamResponseHandler.js';
 import { subagentRegistry } from './subagents/SubagentRegistry.js';
+import {
+  TokenBudget,
+  type TokenBudgetConfig,
+  type TokenBudgetSnapshot,
+} from './TokenBudget.js';
 import type {
   AgentEvent,
   AgentOptions,
@@ -74,6 +79,7 @@ export class Agent {
   private readonly logger: InternalLogger;
   private readonly rootLogger: InternalLogger;
   private lastPreparedSkillCwd?: string;
+  private tokenBudget?: TokenBudget;
 
   // 子模块
   private modelManager: ModelManager;
@@ -102,6 +108,7 @@ export class Agent {
       this.rootLogger,
     );
     this.planExecutor = new PlanExecutor(config.language, this.rootLogger);
+    this.tokenBudget = this.createTokenBudget(runtimeOptions.tokenBudget);
   }
 
   // ===== 静态工厂 =====
@@ -170,6 +177,7 @@ export class Agent {
         this.rootLogger,
         streamHandler,
         compactionHandler,
+        this.tokenBudget,
       );
 
       this.isInitialized = true;
@@ -320,6 +328,10 @@ export class Agent {
     return this.executionPipeline.getRegistry();
   }
 
+  public getTokenBudgetSnapshot(): TokenBudgetSnapshot | undefined {
+    return this.tokenBudget?.getSnapshot();
+  }
+
   public getStats(): Record<string, unknown> {
     return {
       initialized: this.isInitialized,
@@ -386,6 +398,14 @@ export class Agent {
       maxHistorySize: 1000,
       canUseTool: this.runtimeOptions.canUseTool,
     });
+  }
+
+  private createTokenBudget(config?: TokenBudgetConfig): TokenBudget | undefined {
+    if (config === undefined) {
+      return undefined;
+    }
+
+    return new TokenBudget(config);
   }
 
   private async executePlanApproval(

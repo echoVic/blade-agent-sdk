@@ -28,6 +28,7 @@ import type { CompactionHandler } from './CompactionHandler.js';
 import { AGENT_TURN_SAFETY_LIMIT } from './constants.js';
 import type { ModelManager } from './ModelManager.js';
 import type { StreamResponseHandler } from './StreamResponseHandler.js';
+import type { TokenBudget } from './TokenBudget.js';
 import type {
   AgentOptions,
   ChatContext,
@@ -79,6 +80,7 @@ export class LoopRunner {
     logger?: InternalLogger,
     private streamHandler?: StreamResponseHandler,
     private compactionHandler?: CompactionHandler,
+    private tokenBudget?: TokenBudget,
   ) {
     this.logger = (logger ?? NOOP_LOGGER).child(LogCategory.AGENT);
   }
@@ -343,6 +345,7 @@ export class LoopRunner {
       signal: options?.signal,
       permissionMode,
       maxContextTokens: this.modelManager.getMaxContextTokens(),
+      tokenBudget: this.tokenBudget,
       executionContext: {
         sessionId: context.sessionId,
         userId: context.userId || 'default',
@@ -365,6 +368,19 @@ export class LoopRunner {
         }
         return didCompact;
       },
+
+      onReactiveCompact: self.compactionHandler
+        ? async function* () {
+            const compactStream = self.compactionHandler!.reactiveCompact(context);
+            let result = false;
+            while (true) {
+              const { value, done } = await compactStream.next();
+              if (done) { result = value; break; }
+              yield value;
+            }
+            return result;
+          }
+        : undefined,
 
       async onAssistantMessage(ctx) {
         try {

@@ -5,7 +5,17 @@
 
 import { type InternalLogger, LogCategory, NOOP_LOGGER } from '../logging/Logger.js';
 import type { JsonValue, MessageRole, OutputFormat, ProviderType } from '../types/common.js';
+import type { RetryConfig, RetryEvent } from './RetryPolicy.js';
 import { VercelAIChatService } from './VercelAIChatService.js';
+
+export type {
+  RetryConfig,
+  RetryEvent,
+  QuerySource,
+  CannotRetryError,
+  FallbackTriggeredError,
+  ContextOverflowData,
+} from './RetryPolicy.js';
 
 /**
  * 工具调用（完整版，LLM 返回的最终结果）
@@ -112,6 +122,7 @@ export interface ChatConfig {
   customHeaders?: Record<string, string>; // Provider 特定的自定义 HTTP Headers
   providerId?: string; // models.dev 中的 Provider ID（用于获取特定配置）
   outputFormat?: OutputFormat; // 结构化输出格式（JSON Schema）
+  retry?: Partial<RetryConfig>;
 }
 
 /**
@@ -181,6 +192,21 @@ export interface IChatService {
     }>,
     signal?: AbortSignal
   ): AsyncGenerator<StreamChunk, void, unknown>;
+
+  /**
+   * Non-streaming chat with retry event visibility (optional).
+   * Implementations that support retry events should implement this.
+   * yield: RetryEvent, return: ChatResponse
+   */
+  chatWithRetryEvents?(
+    messages: Message[],
+    tools?: Array<{
+      name: string;
+      description: string;
+      parameters: unknown;
+    }>,
+    signal?: AbortSignal
+  ): AsyncGenerator<RetryEvent, ChatResponse>;
 
   /**
    * 获取当前配置

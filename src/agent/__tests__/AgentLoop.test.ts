@@ -35,16 +35,20 @@ function createMockChatService(responses: Array<{
   usage?: { promptTokens?: number; completionTokens?: number; totalTokens?: number };
 }>) {
   let callIndex = 0;
+  const chatFn = vi.fn(async () => {
+    const resp = responses[callIndex] || responses[responses.length - 1];
+    callIndex++;
+    return {
+      content: resp.content,
+      toolCalls: resp.toolCalls || [],
+      reasoningContent: resp.reasoningContent,
+      usage: resp.usage || { promptTokens: 100, completionTokens: 50, totalTokens: 150 },
+    };
+  });
   return {
-    chat: vi.fn(async () => {
-      const resp = responses[callIndex] || responses[responses.length - 1];
-      callIndex++;
-      return {
-        content: resp.content,
-        toolCalls: resp.toolCalls || [],
-        reasoningContent: resp.reasoningContent,
-        usage: resp.usage || { promptTokens: 100, completionTokens: 50, totalTokens: 150 },
-      };
+    chat: chatFn,
+    chatWithRetryEvents: vi.fn(async function* (...args: Parameters<typeof chatFn>) {
+      return await chatFn(...args);
     }),
     getConfig: () => ({
       model: 'test-model',
@@ -179,8 +183,12 @@ describe('agentLoop', () => {
         releaseFirstExecution = resolve;
       });
 
-      const pipeline = createMockExecutionPipeline();
-      (pipeline.execute as Mock).mockImplementation(async (toolName: string) => {
+      // Use readonly kind so planToolExecution picks parallel mode
+      const pipeline = {
+        getRegistry: () => ({
+          get: (_name: string) => ({ kind: 'readonly', name: _name }),
+        }),
+        execute: vi.fn(async (toolName: string) => {
         executeCount++;
         if (toolName === 'ReadA') {
           await firstExecutionGate;
@@ -190,7 +198,8 @@ describe('agentLoop', () => {
           llmContent: `Result of ${toolName}`,
           displayContent: `Result of ${toolName}`,
         } as ToolResult;
-      });
+      }),
+      } as unknown as AgentLoopConfig['executionPipeline'];
 
       const chatService = createMockChatService([
         {
@@ -208,7 +217,8 @@ describe('agentLoop', () => {
         executionPipeline: pipeline,
       })));
 
-      await new Promise<void>((resolve) => setTimeout(resolve, 0));
+      // Allow enough microtask ticks for the async generator + tool execution to start
+      await new Promise<void>((resolve) => setTimeout(resolve, 10));
       expect(executeCount).toBe(2);
       releaseFirstExecution();
 

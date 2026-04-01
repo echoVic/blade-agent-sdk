@@ -50,7 +50,27 @@ export async function executeToolCalls(
     return results;
   }
 
-  return Promise.all(plan.calls.map((toolCall) => executeToolCall(toolCall, input)));
+  if (plan.mode === 'mixed') {
+    const groups = plan.groups ?? plan.calls.map((toolCall) => [toolCall]);
+    const results: ToolExecutionOutcome[] = [];
+
+    for (const group of groups) {
+      const groupResults = await executeWithConcurrency(
+        group,
+        5,
+        (toolCall) => executeToolCall(toolCall, input),
+      );
+      results.push(...groupResults);
+    }
+
+    return results;
+  }
+
+  return executeWithConcurrency(
+    plan.calls,
+    5,
+    (toolCall) => executeToolCall(toolCall, input),
+  );
 }
 
 async function executeToolCall(
@@ -121,4 +141,25 @@ async function repairToolCallParams(
       // Let the validation layer handle malformed todos payloads.
     }
   }
+}
+
+async function executeWithConcurrency(
+  calls: FunctionToolCall[],
+  maxConcurrency: number,
+  executor: (toolCall: FunctionToolCall) => Promise<ToolExecutionOutcome>,
+): Promise<ToolExecutionOutcome[]> {
+  const results = new Array<ToolExecutionOutcome>(calls.length);
+  let nextIndex = 0;
+
+  const workerCount = Math.min(maxConcurrency, calls.length);
+  const workers = Array.from({ length: workerCount }, async () => {
+    while (nextIndex < calls.length) {
+      const currentIndex = nextIndex;
+      nextIndex += 1;
+      results[currentIndex] = await executor(calls[currentIndex]);
+    }
+  });
+
+  await Promise.all(workers);
+  return results;
 }

@@ -10,6 +10,7 @@
 import type { InternalLogger } from '../logging/Logger.js';
 import type { ContextSnapshot } from '../runtime/index.js';
 import type { ChatResponse, IChatService, Message, ToolCall } from '../services/ChatServiceInterface.js';
+import { FallbackTriggeredError } from '../services/RetryPolicy.js';
 import type { ExecutionPipeline } from '../tools/execution/ExecutionPipeline.js';
 import type { ConfirmationHandler } from '../tools/types/ExecutionTypes.js';
 import type { ToolResult } from '../tools/types/index.js';
@@ -22,6 +23,7 @@ import { executeToolCalls } from './loop/executeToolCalls.js';
 import { planToolExecution } from './loop/planToolExecution.js';
 import type { FunctionToolCall } from './loop/types.js';
 import type { StreamResponseHandler } from './StreamResponseHandler.js';
+import type { TokenBudget } from './TokenBudget.js';
 import type { LoopResult, TurnLimitResponse } from './types.js';
 
 /** LLM 工具定义（chat service 接受的格式） */
@@ -67,6 +69,9 @@ export interface AgentLoopConfig {
 
   /** 当前模型最大上下文 token 数 */
   maxContextTokens: number;
+
+  /** Token 预算 */
+  tokenBudget?: TokenBudget;
 
   /** 工具执行上下文 */
   executionContext: {
@@ -143,6 +148,13 @@ export interface AgentLoopConfig {
   }) => Promise<{ shouldStop: boolean; continueReason?: string; warning?: string }>;
 
   /**
+   * 反应式压缩：当 LLM 返回 context-length 错误时调用
+   */
+  onReactiveCompact?: (ctx: {
+    messages: Message[];
+  }) => AsyncGenerator<AgentEvent, boolean>;
+
+  /**
    * 轮次上限后的 compaction 处理
    */
   onTurnLimitCompact?: (ctx: {
@@ -177,6 +189,7 @@ export async function* agentLoop(
     signal,
     permissionMode,
     maxContextTokens,
+    tokenBudget,
     executionContext,
   } = config;
 
@@ -223,24 +236,69 @@ export async function* agentLoop(
       return buildAbortResult(turnsCount - 1, allToolResults.length, startTime);
     }
 
-    // 4. 调用 LLM
+    // 4. 调用 LLM（带 context-length 错误的反应式压缩）
     let turnResult: ChatResponse;
-    if (streamHandler) {
-      const stream = streamHandler.streamResponse(messages, tools, signal);
-      while (true) {
-        const { value, done } = await stream.next();
-        if (done) {
-          turnResult = value;
-          break;
+    try {
+      if (streamHandler) {
+        const stream = streamHandler.streamResponse(messages, tools, signal);
+        while (true) {
+          const { value, done } = await stream.next();
+          if (done) {
+            turnResult = value;
+            break;
+          }
+          if (value.type === 'content_delta') {
+            yield { type: 'content_delta', delta: value.delta };
+          } else {
+            yield { type: 'thinking_delta', delta: value.delta };
+          }
         }
-        if (value.type === 'content_delta') {
-          yield { type: 'content_delta', delta: value.delta };
-        } else {
-          yield { type: 'thinking_delta', delta: value.delta };
+      } else if (typeof chatService.chatWithRetryEvents === 'function') {
+        // 使用 chatWithRetryEvents 以便 yield 重试事件
+        const retryGen = chatService.chatWithRetryEvents(messages, tools, signal);
+        while (true) {
+          const { value, done } = await retryGen.next();
+          if (done) {
+            turnResult = value;
+            break;
+          }
+          // RetryEvent → AgentEvent (api_retry)
+          yield {
+            type: 'api_retry',
+            attempt: value.attempt,
+            maxRetries: value.maxRetries,
+            delayMs: value.delayMs,
+            error: value.error,
+          };
         }
+      } else {
+        turnResult = await chatService.chat(messages, tools, signal);
       }
-    } else {
-      turnResult = await chatService.chat(messages, tools, signal);
+    } catch (llmError) {
+      // 模型 fallback 处理
+      if (llmError instanceof FallbackTriggeredError) {
+        yield {
+          type: 'model_fallback',
+          originalModel: llmError.originalModel,
+          fallbackModel: llmError.fallbackModel,
+        };
+        // 让上层处理模型切换
+        throw llmError;
+      }
+
+      if (isContextLengthError(llmError) && config.onReactiveCompact) {
+        const compactStream = config.onReactiveCompact({ messages });
+        while (true) {
+          const { value, done } = await compactStream.next();
+          if (done) break;
+          yield value;
+        }
+        // Retry this turn
+        turnsCount--;
+        yield { type: 'turn_end', turn: turnsCount + 1, hasToolCalls: false };
+        continue;
+      }
+      throw llmError;
     }
 
     // 5. Token usage
@@ -257,6 +315,32 @@ export async function* agentLoop(
         maxContextTokens,
       };
       yield { type: 'token_usage', usage };
+    }
+
+    if (tokenBudget && turnResult.usage) {
+      tokenBudget.record(turnResult.usage);
+
+      if (tokenBudget.isWarning()) {
+        yield { type: 'budget_warning', snapshot: tokenBudget.getSnapshot() };
+      }
+
+      if (tokenBudget.isExhausted()) {
+        yield { type: 'agent_end' };
+        return {
+          success: false,
+          error: {
+            type: 'budget_exhausted',
+            message: 'Token budget exhausted',
+          },
+          metadata: {
+            turnsCount,
+            toolCallsCount: allToolResults.length,
+            duration: Date.now() - startTime,
+            tokensUsed: totalTokens,
+            tokenBudgetSnapshot: tokenBudget.getSnapshot(),
+          },
+        };
+      }
     }
 
     // 检查 abort（LLM 调用后）
@@ -303,6 +387,7 @@ export async function* agentLoop(
           toolCallsCount: allToolResults.length,
           duration: Date.now() - startTime,
           tokensUsed: totalTokens,
+          tokenBudgetSnapshot: tokenBudget?.getSnapshot(),
         },
       };
     }
@@ -476,4 +561,15 @@ function applyCompactionDecision(
   if (continueMessage) {
     messages.push(continueMessage);
   }
+}
+
+function isContextLengthError(error: unknown): boolean {
+  if (!(error instanceof Error)) return false;
+  const msg = error.message.toLowerCase();
+  return msg.includes('context_length_exceeded')
+    || msg.includes('maximum context length')
+    || msg.includes('too many tokens')
+    || msg.includes('request too large')
+    || msg.includes('context window')
+    || (msg.includes('413') && msg.includes('payload'));
 }

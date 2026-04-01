@@ -10,6 +10,7 @@
 import type { ToolCall } from '../services/ChatServiceInterface.js';
 import type { TodoItem } from '../tools/builtin/todo/types.js';
 import type { ToolResult } from '../tools/types/ToolTypes.js';
+import type { TokenBudgetSnapshot } from './TokenBudget.js';
 
 // ===== Token 使用信息 =====
 
@@ -103,6 +104,12 @@ export interface TokenUsageEvent {
   usage: TokenUsageInfo;
 }
 
+/** Token 预算预警 */
+export interface BudgetWarningEvent {
+  type: 'budget_warning';
+  snapshot: TokenBudgetSnapshot;
+}
+
 /** 上下文压缩状态 */
 export interface CompactingEvent {
   type: 'compacting';
@@ -113,6 +120,25 @@ export interface CompactingEvent {
 export interface TodoUpdateEvent {
   type: 'todo_update';
   todos: TodoItem[];
+}
+
+/** API 重试事件 */
+export interface ApiRetryEvent {
+  type: 'api_retry';
+  attempt: number;
+  maxRetries: number;
+  delayMs: number;
+  error: {
+    status?: number;
+    message: string;
+  };
+}
+
+/** 模型 fallback 事件 */
+export interface ModelFallbackEvent {
+  type: 'model_fallback';
+  originalModel: string;
+  fallbackModel: string;
 }
 
 /** 错误事件 */
@@ -144,6 +170,9 @@ export type AgentEvent =
   | ToolStartEvent
   | ToolResultEvent
   | TokenUsageEvent
+  | BudgetWarningEvent
   | CompactingEvent
   | TodoUpdateEvent
+  | ApiRetryEvent
+  | ModelFallbackEvent
   | ErrorEvent;

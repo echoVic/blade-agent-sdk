@@ -7,6 +7,7 @@ import type { ContentPart, Message } from '../services/ChatServiceInterface.js';
 import type { ConfirmationHandler } from '../tools/types/ExecutionTypes.js';
 import type { OutputFormat, PermissionMode, PermissionsConfig, SandboxSettings } from '../types/common.js';
 import type { CanUseTool } from '../types/permissions.js';
+import type { TokenBudgetConfig, TokenBudgetSnapshot } from './TokenBudget.js';
 
 export type { AgentEvent } from './AgentEvent.js';
 export { agentLoop } from './AgentLoop.js';
@@ -75,6 +76,9 @@ export interface AgentOptions {
   // 沙箱配置
   sandbox?: SandboxSettings; // 命令执行沙箱设置
 
+  // Token 预算
+  tokenBudget?: TokenBudgetConfig;
+
 }
 
 // ===== Agentic Loop Types =====
@@ -104,7 +108,8 @@ export interface LoopResult {
       | 'api_error'
       | 'loop_detected'
       | 'aborted'
-      | 'chat_disabled';
+      | 'chat_disabled'
+      | 'budget_exhausted';
     message: string;
     details?: unknown;
   };
@@ -119,5 +124,6 @@ export interface LoopResult {
     shouldExitLoop?: boolean; // ExitPlanMode 或用户拒绝时设置此标记以退出循环
     targetMode?: PermissionMode; // Plan 模式批准后的目标权限模式
     planContent?: string; // Plan 模式批准后的方案内容
+    tokenBudgetSnapshot?: TokenBudgetSnapshot;
   };
 }

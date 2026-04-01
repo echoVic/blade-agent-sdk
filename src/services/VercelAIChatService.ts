@@ -7,6 +7,13 @@ import { createOpenAICompatible } from '@ai-sdk/openai-compatible';
 import { generateText, jsonSchema, type LanguageModel, Output, streamText } from 'ai';
 import { type InternalLogger, LogCategory, NOOP_LOGGER } from '../logging/Logger.js';
 import type { OutputFormat } from '../types/common.js';
+import {
+  type RetryConfig,
+  type RetryEvent,
+  type RetryContext,
+  DEFAULT_RETRY_CONFIG,
+  withRetry,
+} from './RetryPolicy.js';
 import type {
   ChatConfig,
   ChatResponse,
@@ -76,15 +83,36 @@ function safeJsonParse(
   }
 }
 
+/**
+ * 消费 withRetry AsyncGenerator，收集 RetryEvent 并返回结果
+ */
+async function consumeRetryGenerator<T>(
+  gen: AsyncGenerator<RetryEvent, T>,
+  logger: InternalLogger,
+): Promise<T> {
+  while (true) {
+    const { value, done } = await gen.next();
+    if (done) return value;
+    // RetryEvent — log it
+    const event = value as RetryEvent;
+    logger.warn(
+      `🔄 [RetryPolicy] Attempt ${event.attempt}/${event.maxRetries}, ` +
+      `delay ${event.delayMs}ms, error: ${event.error.status ?? 'unknown'} ${event.error.message}`,
+    );
+  }
+}
+
 export class VercelAIChatService implements IChatService {
   private model!: LanguageModel;
   private config: ChatConfig;
   private initialized: Promise<void>;
   private readonly logger: InternalLogger;
+  private retryConfig: RetryConfig;
 
   constructor(config: ChatConfig, logger: InternalLogger = NOOP_LOGGER) {
     this.config = config;
     this.logger = logger.child(LogCategory.CHAT);
+    this.retryConfig = { ...DEFAULT_RETRY_CONFIG, ...config.retry, currentModel: config.model };
     this.initialized = this.initModel(config);
   }
 
@@ -211,9 +239,7 @@ export class VercelAIChatService implements IChatService {
 
     for (const msg of messages) {
       if (msg.role === 'system') {
-        // 处理 system 消息的 providerOptions（用于 Anthropic Prompt Caching）
         if (Array.isArray(msg.content)) {
-          // 多部分内容：提取 providerOptions
           const textPart = msg.content.find((p) => p.type === 'text') as
             | { type: 'text'; text: string; providerOptions?: AIProviderOptions }
             | undefined;
@@ -234,7 +260,6 @@ export class VercelAIChatService implements IChatService {
           const parts = msg.content.map((part) => {
             if (part.type === 'text') {
               const textPart: AITextPart = { type: 'text', text: part.text };
-              // 传递 providerOptions（用于 Anthropic Prompt Caching）
               if (part.providerOptions) {
                 textPart.providerOptions = part.providerOptions as AIProviderOptions;
               }
@@ -347,7 +372,6 @@ export class VercelAIChatService implements IChatService {
       completionTokens: completion,
       totalTokens: usage.totalTokens ?? prompt + completion,
     };
-    // 添加 Anthropic 缓存统计（如果有）
     if (providerMetadata?.anthropic) {
       if (providerMetadata.anthropic.cacheCreationInputTokens !== undefined) {
         result.cacheCreationInputTokens = providerMetadata.anthropic.cacheCreationInputTokens;
@@ -359,6 +383,48 @@ export class VercelAIChatService implements IChatService {
     return result;
   }
 
+  private prepareRequest(
+    messages: Message[],
+    tools?: Array<{ name: string; description: string; parameters: unknown }>,
+  ) {
+    const filteredMessages = filterOrphanToolMessages(messages);
+    const coreMessages = this.convertMessages(filteredMessages);
+    const coreTools = this.convertTools(tools);
+    const experimentalOutput = this.convertOutputFormat(this.config.outputFormat);
+    return { coreMessages, coreTools, experimentalOutput };
+  }
+
+  private buildChatResponse(result: {
+    text: string;
+    toolCalls?: Array<{ toolCallId: string; toolName: string; args?: unknown }>;
+    reasoning?: Array<{ text: string }>;
+    usage?: { promptTokens?: number; completionTokens?: number; totalTokens?: number };
+    providerMetadata?: {
+      anthropic?: { cacheCreationInputTokens?: number; cacheReadInputTokens?: number };
+    };
+  }): ChatResponse {
+    const toolCalls =
+      result.toolCalls && result.toolCalls.length > 0
+        ? this.convertToolCalls(result.toolCalls as Array<{ toolCallId: string; toolName: string; args?: unknown }>)
+        : undefined;
+
+    const reasoningText = Array.isArray(result.reasoning)
+      ? result.reasoning.map((r) => r.text).join('')
+      : undefined;
+
+    return {
+      content: result.text,
+      reasoningContent: reasoningText,
+      toolCalls,
+      usage: this.convertUsage(
+        result.usage as { promptTokens?: number; completionTokens?: number; totalTokens?: number },
+        result.providerMetadata as {
+          anthropic?: { cacheCreationInputTokens?: number; cacheReadInputTokens?: number };
+        }
+      ),
+    };
+  }
+
   async chat(
     messages: Message[],
     tools?: Array<{ name: string; description: string; parameters: unknown }>,
@@ -368,45 +434,80 @@ export class VercelAIChatService implements IChatService {
     const startTime = Date.now();
     this.logger.debug('🚀 [VercelAIChatService] Starting chat request');
 
-    const filteredMessages = filterOrphanToolMessages(messages);
-    const coreMessages = this.convertMessages(filteredMessages);
-    const coreTools = this.convertTools(tools);
-    const experimentalOutput = this.convertOutputFormat(this.config.outputFormat);
+    const { coreMessages, coreTools, experimentalOutput } = this.prepareRequest(messages, tools);
 
     try {
-      const result = await generateText({
-        model: this.model,
-        messages: coreMessages as never,
-        tools: coreTools as never,
-        maxOutputTokens: this.config.maxOutputTokens,
-        temperature: this.config.temperature ?? 0,
-        abortSignal: signal,
-        experimental_output: experimentalOutput,
-      });
+      const gen = withRetry(
+        (ctx: RetryContext) =>
+          generateText({
+            model: this.model,
+            messages: coreMessages as never,
+            tools: coreTools as never,
+            maxOutputTokens: ctx.maxTokensOverride ?? this.config.maxOutputTokens,
+            temperature: this.config.temperature ?? 0,
+            abortSignal: signal,
+            experimental_output: experimentalOutput,
+          }),
+        this.retryConfig,
+        signal,
+      );
+
+      const result = await consumeRetryGenerator(gen, this.logger);
 
       const duration = Date.now() - startTime;
       this.logger.debug('📥 [VercelAIChatService] Response received in', duration, 'ms');
 
-      const toolCalls =
-        result.toolCalls && result.toolCalls.length > 0
-          ? this.convertToolCalls(result.toolCalls as Array<{ toolCallId: string; toolName: string; args?: unknown }>)
-          : undefined;
+      return this.buildChatResponse(result);
+    } catch (error) {
+      const duration = Date.now() - startTime;
+      this.logger.error('❌ [VercelAIChatService] Chat failed after', duration, 'ms');
+      throw error;
+    }
+  }
 
-      const reasoningText = Array.isArray(result.reasoning)
-        ? result.reasoning.map((r) => r.text).join('')
-        : undefined;
+  /**
+   * chat 的 AsyncGenerator 版本 — 暴露 retry 事件
+   *
+   * yield: RetryEvent（重试过程中的事件）
+   * return: ChatResponse
+   */
+  async *chatWithRetryEvents(
+    messages: Message[],
+    tools?: Array<{ name: string; description: string; parameters: unknown }>,
+    signal?: AbortSignal
+  ): AsyncGenerator<RetryEvent, ChatResponse> {
+    await this.initialized;
+    const startTime = Date.now();
+    this.logger.debug('🚀 [VercelAIChatService] Starting chat request (with retry events)');
 
-      return {
-        content: result.text,
-        reasoningContent: reasoningText,
-        toolCalls,
-        usage: this.convertUsage(
-          result.usage as { promptTokens?: number; completionTokens?: number; totalTokens?: number },
-          result.providerMetadata as {
-            anthropic?: { cacheCreationInputTokens?: number; cacheReadInputTokens?: number };
-          }
-        ),
-      };
+    const { coreMessages, coreTools, experimentalOutput } = this.prepareRequest(messages, tools);
+
+    try {
+      const gen = withRetry(
+        (ctx: RetryContext) =>
+          generateText({
+            model: this.model,
+            messages: coreMessages as never,
+            tools: coreTools as never,
+            maxOutputTokens: ctx.maxTokensOverride ?? this.config.maxOutputTokens,
+            temperature: this.config.temperature ?? 0,
+            abortSignal: signal,
+            experimental_output: experimentalOutput,
+          }),
+        this.retryConfig,
+        signal,
+      );
+
+      // Forward all retry events to caller, then return the result
+      while (true) {
+        const { value, done } = await gen.next();
+        if (done) {
+          const duration = Date.now() - startTime;
+          this.logger.debug('📥 [VercelAIChatService] Response received in', duration, 'ms');
+          return this.buildChatResponse(value);
+        }
+        yield value;
+      }
     } catch (error) {
       const duration = Date.now() - startTime;
       this.logger.error('❌ [VercelAIChatService] Chat failed after', duration, 'ms');
@@ -423,21 +524,27 @@ export class VercelAIChatService implements IChatService {
     const startTime = Date.now();
     this.logger.debug('🚀 [VercelAIChatService] Starting stream request');
 
-    const filteredMessages = filterOrphanToolMessages(messages);
-    const coreMessages = this.convertMessages(filteredMessages);
-    const coreTools = this.convertTools(tools);
-    const experimentalOutput = this.convertOutputFormat(this.config.outputFormat);
+    const { coreMessages, coreTools, experimentalOutput } = this.prepareRequest(messages, tools);
 
     try {
-      const result = streamText({
-        model: this.model,
-        messages: coreMessages as never,
-        tools: coreTools as never,
-        maxOutputTokens: this.config.maxOutputTokens,
-        temperature: this.config.temperature ?? 0,
-        abortSignal: signal,
-        experimental_output: experimentalOutput,
-      });
+      const gen = withRetry(
+        (ctx: RetryContext) =>
+          Promise.resolve(
+            streamText({
+              model: this.model,
+              messages: coreMessages as never,
+              tools: coreTools as never,
+              maxOutputTokens: ctx.maxTokensOverride ?? this.config.maxOutputTokens,
+              temperature: this.config.temperature ?? 0,
+              abortSignal: signal,
+              experimental_output: experimentalOutput,
+            }),
+          ),
+        this.retryConfig,
+        signal,
+      );
+
+      const result = await consumeRetryGenerator(gen, this.logger);
 
       this.logger.debug('📥 [VercelAIChatService] Stream started');
 
@@ -496,6 +603,7 @@ export class VercelAIChatService implements IChatService {
   updateConfig(newConfig: Partial<ChatConfig>): void {
     this.logger.debug('🔄 [VercelAIChatService] Updating configuration');
     this.config = { ...this.config, ...newConfig };
+    this.retryConfig = { ...DEFAULT_RETRY_CONFIG, ...this.config.retry };
     this.initialized = this.initModel(this.config);
     this.logger.debug('✅ [VercelAIChatService] Configuration updated');
   }
