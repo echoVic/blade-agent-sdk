@@ -56,5 +56,8 @@ describe('FileSystemMemoryStore', () => {
 
     expect(await store.get('Delete Me')).toBeUndefined();
     expect(await store.list()).toEqual([]);
+
+    const index = await readFile(join(root, 'MEMORY.md'), 'utf8');
+    expect(index.trim()).toBe('');
   });
 });

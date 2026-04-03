@@ -8,7 +8,7 @@ import type { MemoryStore } from './MemoryStore.js';
 const INDEX_FILE = 'MEMORY.md';
 const MAX_INDEX_LINES = 200;
 
-export type MemoryIndexEntry = {
+type MemoryIndexEntry = {
   title: string;
   filePath: string;
   hook: string;
