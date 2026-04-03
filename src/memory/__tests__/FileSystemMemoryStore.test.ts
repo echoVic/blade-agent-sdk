@@ -22,7 +22,7 @@ describe('FileSystemMemoryStore', () => {
     const store = new FileSystemMemoryStore(root);
 
     await store.save({
-      name: 'Repo Context',
+      name: 'repo-context',
       description: 'SDK boundaries',
       type: 'project',
       body: 'Keep memory opt-in.',
@@ -31,14 +31,14 @@ describe('FileSystemMemoryStore', () => {
     const records = await store.list();
     expect(records).toEqual([
       expect.objectContaining({
-        name: 'Repo Context',
+        name: 'repo-context',
         description: 'SDK boundaries',
         type: 'project',
       }),
     ]);
 
     const index = await readFile(join(root, 'MEMORY.md'), 'utf8');
-    expect(index).toContain('[Repo Context](repo-context.md)');
+    expect(index).toContain('[repo-context](repo-context.md)');
   });
 
   it('deletes persisted records and removes them from the index', async () => {
@@ -46,18 +46,35 @@ describe('FileSystemMemoryStore', () => {
     const store = new FileSystemMemoryStore(root);
 
     await store.save({
-      name: 'Delete Me',
+      name: 'delete-me',
       description: 'temporary memory',
       type: 'feedback',
       body: 'remove this entry',
     });
 
-    await store.delete('Delete Me');
+    await store.delete('delete-me');
 
-    expect(await store.get('Delete Me')).toBeUndefined();
+    expect(await store.get('delete-me')).toBeUndefined();
     expect(await store.list()).toEqual([]);
 
     const index = await readFile(join(root, 'MEMORY.md'), 'utf8');
     expect(index.trim()).toBe('');
+  });
+
+  it('rejects non-slug names before writing files', async () => {
+    const root = await createTempDir();
+    const store = new FileSystemMemoryStore(root);
+
+    await expect(
+      store.save({
+        name: 'Invalid Name',
+        description: 'should fail',
+        type: 'feedback',
+        body: 'no slugs allowed',
+      })
+    ).rejects.toThrow(/slug/);
+
+    await expect(store.list()).resolves.toEqual([]);
+    await expect(readFile(join(root, 'MEMORY.md'), 'utf8')).rejects.toThrow();
   });
 });

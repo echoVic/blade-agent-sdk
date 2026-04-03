@@ -6,7 +6,7 @@ import type { Memory, MemoryInput } from './MemoryTypes.js';
 import type { MemoryStore } from './MemoryStore.js';
 
 const INDEX_FILE = 'MEMORY.md';
-const MAX_INDEX_LINES = 200;
+const SLUG_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 
 type MemoryIndexEntry = {
   title: string;
@@ -18,6 +18,7 @@ export class FileSystemMemoryStore implements MemoryStore {
   constructor(private readonly dir = path.join(os.homedir(), '.blade', 'memory')) {}
 
   async save(memory: MemoryInput): Promise<Memory> {
+    this.ensureSlug(memory.name);
     const filename = this.nameToFilename(memory.name);
     const contentPath = path.join(this.dir, filename);
 
@@ -52,6 +53,7 @@ export class FileSystemMemoryStore implements MemoryStore {
   }
 
   async get(name: string): Promise<Memory | undefined> {
+    this.ensureSlug(name);
     const contentPath = path.join(this.dir, this.nameToFilename(name));
 
     try {
@@ -88,6 +90,7 @@ export class FileSystemMemoryStore implements MemoryStore {
   }
 
   async delete(name: string): Promise<void> {
+    this.ensureSlug(name);
     const filename = this.nameToFilename(name);
 
     try {
@@ -118,17 +121,19 @@ export class FileSystemMemoryStore implements MemoryStore {
   private async writeIndex(entries: MemoryIndexEntry[]): Promise<void> {
     await mkdir(this.dir, { recursive: true });
     const lines = entries
-      .slice(0, MAX_INDEX_LINES)
       .map((entry) => `- [${entry.title}](${entry.filePath}) — ${entry.hook}`);
     await writeFile(path.join(this.dir, INDEX_FILE), `${lines.join('\n')}\n`, 'utf8');
   }
 
   private nameToFilename(name: string): string {
-    return (
-      name
-        .toLowerCase()
-        .replace(/[^a-z0-9]+/g, '-')
-        .replace(/^-+|-+$/g, '') + '.md'
-    );
+    return `${name}.md`;
+  }
+
+  private ensureSlug(name: string): asserts name is string {
+    if (!SLUG_PATTERN.test(name)) {
+      throw new Error(
+        `Memory name "${name}" must be a lowercase slug (a-z0-9 and hyphen) without spaces`
+      );
+    }
   }
 }
