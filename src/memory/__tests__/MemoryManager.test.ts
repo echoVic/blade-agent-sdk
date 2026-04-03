@@ -35,17 +35,17 @@ describe('MemoryManager', () => {
     const manager = new MemoryManager(store);
 
     await manager.save({
-      name: 'project-context',
-      description: 'Repository conventions',
-      type: 'project',
-      body: 'Use session scoped subagents and opt-in memory tools.',
-    });
-
-    await manager.save({
       name: 'user-preferences',
       description: 'Product boundaries',
       type: 'user',
       body: 'Do not make storage or reviewer decisions inside the SDK.',
+    });
+
+    await manager.save({
+      name: 'project-context',
+      description: 'Repository conventions',
+      type: 'project',
+      body: 'Use session scoped subagents and opt-in memory tools.',
     });
 
     const results = await manager.search('reviewer');
@@ -60,6 +60,35 @@ describe('MemoryManager', () => {
       '- [project-context](project-context) — Repository conventions\n' +
       '- [user-preferences](user-preferences) — Product boundaries'
     );
+  });
+
+  it('renders placeholder when the store has no memories', async () => {
+    const store = new FakeMemoryStore();
+    const manager = new MemoryManager(store);
+
+    expect(await manager.readIndexContent()).toBe('(no memories saved)');
+  });
+
+  it('performs case-insensitive search with deterministic ordering', async () => {
+    const store = new FakeMemoryStore();
+    const manager = new MemoryManager(store);
+
+    await manager.save({
+      name: 'beta-note',
+      description: 'Beta entry',
+      type: 'feedback',
+      body: 'Case-insensitive search test.',
+    });
+
+    await manager.save({
+      name: 'alpha-note',
+      description: 'Alpha entry',
+      type: 'feedback',
+      body: 'Another case-insensitive SEARCH test.',
+    });
+
+    const results = await manager.search('NOTE');
+    expect(results.map((memory) => memory.name)).toEqual(['alpha-note', 'beta-note']);
   });
 
   it('deletes records through the injected store', async () => {

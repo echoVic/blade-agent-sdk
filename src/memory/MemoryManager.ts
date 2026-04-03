@@ -12,8 +12,13 @@ export class MemoryManager {
     return this.store.get(name);
   }
 
+  private sortMemories(memories: Memory[]): Memory[] {
+    return [...memories].sort((a, b) => a.name.localeCompare(b.name));
+  }
+
   async list(): Promise<Memory[]> {
-    return this.store.list();
+    const memories = await this.store.list();
+    return this.sortMemories(memories);
   }
 
   async delete(name: string): Promise<void> {
