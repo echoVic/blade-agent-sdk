@@ -147,6 +147,13 @@ export interface ErrorEvent {
   message: string;
 }
 
+/** 恢复事件 */
+export interface RecoveryEvent {
+  type: 'recovery';
+  phase: 'started' | 'retrying' | 'failed';
+  reason: 'context_overflow' | 'reactive_compact' | 'recovery_exhausted';
+}
+
 // ===== 联合类型 =====
 
 /**
@@ -175,4 +182,5 @@ export type AgentEvent =
   | TodoUpdateEvent
   | ApiRetryEvent
   | ModelFallbackEvent
+  | RecoveryEvent
   | ErrorEvent;

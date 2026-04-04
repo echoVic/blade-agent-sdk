@@ -26,6 +26,7 @@ import { StreamingToolExecutor } from './StreamingToolExecutor.js';
 import type { StreamResponseHandler } from './StreamResponseHandler.js';
 import type { TokenBudget } from './TokenBudget.js';
 import type { LoopResult, TurnLimitResponse } from './types.js';
+import { isOverflowRecoverable } from './recovery/isOverflowRecoverable.js';
 
 /** LLM 工具定义（chat service 接受的格式） */
 type LlmToolDef = { name: string; description: string; parameters: unknown };
@@ -201,6 +202,7 @@ export async function* agentLoop(
   const allToolResults: ToolResult[] = [];
   let totalTokens = 0;
   let lastPromptTokens: number | undefined;
+  let recoveryAttemptedTurn: number | null = null;
 
   yield { type: 'agent_start' };
 
@@ -379,17 +381,36 @@ export async function* agentLoop(
         throw llmError;
       }
 
-      if (isContextLengthError(llmError) && config.onReactiveCompact) {
+      if (
+        isOverflowRecoverable(llmError)
+        && config.onReactiveCompact
+        && recoveryAttemptedTurn !== turnsCount
+      ) {
+        recoveryAttemptedTurn = turnsCount;
+        yield { type: 'recovery', phase: 'started', reason: 'context_overflow' };
         const compactStream = config.onReactiveCompact({ messages });
+        let recovered = false;
         while (true) {
           const { value, done } = await compactStream.next();
-          if (done) break;
+          if (done) {
+            recovered = value;
+            break;
+          }
           yield value;
         }
+        if (!recovered) {
+          yield { type: 'recovery', phase: 'failed', reason: 'reactive_compact' };
+          throw llmError;
+        }
+        yield { type: 'recovery', phase: 'retrying', reason: 'reactive_compact' };
         // Retry this turn
         turnsCount--;
         yield { type: 'turn_end', turn: turnsCount + 1, hasToolCalls: false };
         continue;
+      }
+
+      if (isOverflowRecoverable(llmError) && recoveryAttemptedTurn === turnsCount) {
+        yield { type: 'recovery', phase: 'failed', reason: 'recovery_exhausted' };
       }
       throw llmError;
     }
@@ -397,6 +418,8 @@ export async function* agentLoop(
     if (!turnResult) {
       throw new Error('Agent loop completed without a chat response');
     }
+
+    recoveryAttemptedTurn = null;
 
     // 5. Token usage
     if (turnResult.usage) {
@@ -690,15 +713,4 @@ function applyCompactionDecision(
   if (continueMessage) {
     messages.push(continueMessage);
   }
-}
-
-function isContextLengthError(error: unknown): boolean {
-  if (!(error instanceof Error)) return false;
-  const msg = error.message.toLowerCase();
-  return msg.includes('context_length_exceeded')
-    || msg.includes('maximum context length')
-    || msg.includes('too many tokens')
-    || msg.includes('request too large')
-    || msg.includes('context window')
-    || (msg.includes('413') && msg.includes('payload'));
 }

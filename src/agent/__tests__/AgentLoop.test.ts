@@ -1,5 +1,6 @@
 import { describe, expect, it, vi, type Mock } from 'vitest';
 import type { Message } from '../../services/ChatServiceInterface.js';
+import { CannotRetryError } from '../../services/RetryPolicy.js';
 import type { ToolResult } from '../../tools/types/index.js';
 import type { AgentEvent } from '../AgentEvent.js';
 import type { AgentLoopConfig } from '../AgentLoop.js';
@@ -320,6 +321,127 @@ describe('agentLoop', () => {
 
       expect(result.success).toBe(false);
       expect(result.error?.type).toBe('aborted');
+    });
+  });
+
+  describe('recoverable overflow recovery', () => {
+    it('retries the turn after a context length error and reactive compaction succeeds', async () => {
+      const contextError = new Error('maximum context length exceeded');
+      const chatFn = vi.fn()
+        .mockRejectedValueOnce(contextError)
+        .mockResolvedValueOnce({
+          content: 'Recovered answer',
+          toolCalls: [],
+          usage: { promptTokens: 100, completionTokens: 50, totalTokens: 150 },
+        });
+      const onReactiveCompact = vi.fn(async function* () {
+        return true;
+      });
+
+      const chatService = {
+        chat: chatFn,
+        chatWithRetryEvents: vi.fn(async function* (...args: Parameters<typeof chatFn>) {
+          return await chatFn(...args);
+        }),
+        getConfig: () => ({ model: 'test-model', maxContextTokens: 128000 }),
+      } as unknown as AgentLoopConfig['chatService'];
+
+      const { events, result } = await collectEvents(agentLoop(baseConfig({
+        chatService,
+        onReactiveCompact,
+      })));
+
+      expect(result.success).toBe(true);
+      expect(result.finalMessage).toBe('Recovered answer');
+      expect(chatFn).toHaveBeenCalledTimes(2);
+      expect(onReactiveCompact).toHaveBeenCalledTimes(1);
+      expect(events.some((event) => event.type === 'turn_end' && event.turn === 1)).toBe(true);
+    });
+
+    it('retries the turn after a CannotRetryError wrapping overflow and reactive compaction succeeds', async () => {
+      const overflowError = new Error(
+        'input length and `max_tokens` exceed context limit: 199000 + 20000 > 200000',
+      );
+      const wrappedError = new CannotRetryError(overflowError, { maxTokensOverride: 3000 });
+      const chatFn = vi.fn()
+        .mockRejectedValueOnce(wrappedError)
+        .mockResolvedValueOnce({
+          content: 'Recovered from wrapped overflow',
+          toolCalls: [],
+          usage: { promptTokens: 100, completionTokens: 50, totalTokens: 150 },
+        });
+      const onReactiveCompact = vi.fn(async function* () {
+        return true;
+      });
+
+      const chatService = {
+        chat: chatFn,
+        chatWithRetryEvents: vi.fn(async function* (...args: Parameters<typeof chatFn>) {
+          return await chatFn(...args);
+        }),
+        getConfig: () => ({ model: 'test-model', maxContextTokens: 128000 }),
+      } as unknown as AgentLoopConfig['chatService'];
+
+      const { result } = await collectEvents(agentLoop(baseConfig({
+        chatService,
+        onReactiveCompact,
+      })));
+
+      expect(result.success).toBe(true);
+      expect(result.finalMessage).toBe('Recovered from wrapped overflow');
+      expect(chatFn).toHaveBeenCalledTimes(2);
+      expect(onReactiveCompact).toHaveBeenCalledTimes(1);
+    });
+
+    it('surfaces the error after a second overflow on the same turn', async () => {
+      const overflowError = new Error('maximum context length exceeded');
+      const chatFn = vi.fn()
+        .mockRejectedValueOnce(overflowError)
+        .mockRejectedValueOnce(overflowError)
+        .mockResolvedValueOnce({
+          content: 'Should not reach a third attempt',
+          toolCalls: [],
+          usage: { promptTokens: 100, completionTokens: 50, totalTokens: 150 },
+        });
+      const onReactiveCompact = vi.fn(async function* () {
+        return true;
+      });
+
+      const chatService = {
+        chat: chatFn,
+        chatWithRetryEvents: vi.fn(async function* (...args: Parameters<typeof chatFn>) {
+          return await chatFn(...args);
+        }),
+        getConfig: () => ({ model: 'test-model', maxContextTokens: 128000 }),
+      } as unknown as AgentLoopConfig['chatService'];
+
+      await expect(collectEvents(agentLoop(baseConfig({
+        chatService,
+        onReactiveCompact,
+      })))).rejects.toThrow('maximum context length exceeded');
+      expect(chatFn).toHaveBeenCalledTimes(2);
+      expect(onReactiveCompact).toHaveBeenCalledTimes(1);
+    });
+
+    it('does not trigger reactive compaction for unrelated errors', async () => {
+      const chatFn = vi.fn().mockRejectedValue(new Error('Permission denied'));
+      const onReactiveCompact = vi.fn(async function* () {
+        return true;
+      });
+
+      const chatService = {
+        chat: chatFn,
+        chatWithRetryEvents: vi.fn(async function* (...args: Parameters<typeof chatFn>) {
+          return await chatFn(...args);
+        }),
+        getConfig: () => ({ model: 'test-model', maxContextTokens: 128000 }),
+      } as unknown as AgentLoopConfig['chatService'];
+
+      await expect(collectEvents(agentLoop(baseConfig({
+        chatService,
+        onReactiveCompact,
+      })))).rejects.toThrow('Permission denied');
+      expect(onReactiveCompact).not.toHaveBeenCalled();
     });
   });
 
