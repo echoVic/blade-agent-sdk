@@ -167,4 +167,32 @@ describe('Session runtime context', () => {
 
     session.close();
   });
+
+  it('fails with a controlled runtime error instead of a non-null assertion crash', async () => {
+    const storagePath = mkdtempSync(join(tmpdir(), 'session-context-runtime-'));
+    const session = await createSession({
+      provider: { type: 'openai-compatible', apiKey: 'test-key' },
+      model: 'gpt-4o-mini',
+      storagePath,
+    });
+
+    await session.send('hello');
+
+    const brokenSession = session as unknown as {
+      runtime: null;
+      initialized: boolean;
+      stream: typeof session.stream;
+      close: typeof session.close;
+    };
+    brokenSession.runtime = null;
+    brokenSession.initialized = true;
+
+    await expect(async () => {
+      for await (const _event of brokenSession.stream()) {
+        // Drain stream.
+      }
+    }).rejects.toThrow('Session runtime is not initialized');
+
+    session.close();
+  });
 });

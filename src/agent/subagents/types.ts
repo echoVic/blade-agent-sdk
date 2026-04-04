@@ -101,6 +101,9 @@ export interface SubagentConfig {
 
   /** 配置来源（用于调试和优先级） */
   source?: SubagentSource;
+
+  /** 运行时上下文裁剪 */
+  omitEnvironment?: boolean;
 }
 
 export interface SubagentContext {
@@ -110,6 +113,7 @@ export interface SubagentContext {
   permissionMode?: PermissionMode;
   subagentSessionId?: string;
   snapshot?: ContextSnapshot;
+  omitEnvironment?: boolean;
 }
 
 /**

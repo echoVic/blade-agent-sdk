@@ -11,6 +11,11 @@
  *
  * 完全对齐 Claude Code Skills 规范
  */
+export interface SkillRuntimeEffects {
+  allowedTools?: string[];
+  modelId?: string;
+}
+
 export interface SkillMetadata {
   /** 唯一标识，小写+数字+连字符，≤64字符 */
   name: string;
@@ -56,6 +61,9 @@ export interface SkillMetadata {
    * 补充 description，帮助 AI 判断何时使用
    */
   whenToUse?: string;
+
+  /** 显式供 runtime 消费的执行效果 */
+  runtimeEffects?: SkillRuntimeEffects;
 
   /**
    * 许可证，如 "Apache-2.0"、"MIT"、"Proprietary"

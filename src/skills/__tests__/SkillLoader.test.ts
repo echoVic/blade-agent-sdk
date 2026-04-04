@@ -145,6 +145,10 @@ describe('SkillLoader', () => {
       expect(result.content!.metadata.name).toBe('test-skill');
       expect(result.content!.metadata.description).toBe('A test skill for unit testing');
       expect(result.content!.metadata.allowedTools).toEqual(['Read', 'Grep']);
+      expect(result.content!.metadata.runtimeEffects).toEqual({
+        allowedTools: ['Read', 'Grep'],
+        modelId: undefined,
+      });
       expect(result.content!.metadata.version).toBe('1.0.0');
       expect(result.content!.metadata.source).toBe('project');
       expect(result.content!.metadata.path).toBe(filePath);
@@ -178,6 +182,10 @@ describe('SkillLoader', () => {
       expect(meta.argumentHint).toBe('<file_path>');
       expect(meta.model).toBe('gpt-4');
       expect(meta.whenToUse).toBe('When the user asks about files');
+      expect(meta.runtimeEffects).toEqual({
+        allowedTools: undefined,
+        modelId: 'gpt-4',
+      });
     });
 
     it('should parse string boolean values (yes/no)', async () => {

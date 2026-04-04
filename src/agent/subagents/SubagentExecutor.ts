@@ -74,6 +74,7 @@ export class SubagentExecutor {
           permissionMode: context.permissionMode,
           systemPrompt,
           subagentInfo,
+          omitEnvironment: context.omitEnvironment ?? this.config.omitEnvironment,
         }
       );
 

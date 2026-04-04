@@ -12,6 +12,9 @@ export class ToolRegistry extends EventEmitter {
   private mcpTools = new Map<string, Tool>();
   private categories = new Map<string, Set<string>>();
   private tags = new Map<string, Set<string>>();
+  private sortedAllToolsCache?: Tool[];
+  private sortedBuiltinToolsCache?: Tool[];
+  private sortedMcpToolsCache?: Tool[];
 
   constructor() {
     super();
@@ -27,6 +30,7 @@ export class ToolRegistry extends EventEmitter {
 
     this.tools.set(tool.name, tool);
     this.updateIndexes(tool);
+    this.invalidateSortedToolCaches();
 
     this.emit('toolRegistered', {
       type: 'builtin',
@@ -62,6 +66,7 @@ export class ToolRegistry extends EventEmitter {
     if (builtinTool) {
       this.tools.delete(name);
       this.removeFromIndexes(builtinTool);
+      this.invalidateSortedToolCaches();
 
       this.emit('toolUnregistered', {
         type: 'builtin',
@@ -79,6 +84,7 @@ export class ToolRegistry extends EventEmitter {
 
     this.mcpTools.delete(name);
     this.removeFromIndexes(mcpTool);
+    this.invalidateSortedToolCaches();
     this.emit('toolUnregistered', {
       type: 'mcp',
       toolName: name,
@@ -105,21 +111,33 @@ export class ToolRegistry extends EventEmitter {
    * 获取所有工具
    */
   getAll(): Tool[] {
-    return [...Array.from(this.tools.values()), ...Array.from(this.mcpTools.values())];
+    if (!this.sortedAllToolsCache) {
+      this.sortedAllToolsCache = this.getSortedTools([
+        ...Array.from(this.tools.values()),
+        ...Array.from(this.mcpTools.values()),
+      ]);
+    }
+    return [...this.sortedAllToolsCache];
   }
 
   /**
    * 获取内置工具
    */
   getBuiltinTools(): Tool[] {
-    return Array.from(this.tools.values());
+    if (!this.sortedBuiltinToolsCache) {
+      this.sortedBuiltinToolsCache = this.getSortedTools(Array.from(this.tools.values()));
+    }
+    return [...this.sortedBuiltinToolsCache];
   }
 
   /**
    * 获取MCP工具
    */
   getMcpTools(): Tool[] {
-    return Array.from(this.mcpTools.values());
+    if (!this.sortedMcpToolsCache) {
+      this.sortedMcpToolsCache = this.getSortedTools(Array.from(this.mcpTools.values()));
+    }
+    return [...this.sortedMcpToolsCache];
   }
 
   /**
@@ -259,12 +277,30 @@ export class ToolRegistry extends EventEmitter {
 
     this.mcpTools.set(tool.name, tool);
     this.updateIndexes(tool);
+    this.invalidateSortedToolCaches();
 
     this.emit('toolRegistered', {
       type: 'mcp',
       tool,
       timestamp: Date.now(),
     });
+  }
+
+  private getSortedTools(tools: Tool[]): Tool[] {
+    return [...tools].sort((left, right) => {
+      const leftIsMcp = this.mcpTools.has(left.name);
+      const rightIsMcp = this.mcpTools.has(right.name);
+      if (leftIsMcp !== rightIsMcp) {
+        return leftIsMcp ? 1 : -1;
+      }
+      return left.name.localeCompare(right.name);
+    });
+  }
+
+  private invalidateSortedToolCaches(): void {
+    this.sortedAllToolsCache = undefined;
+    this.sortedBuiltinToolsCache = undefined;
+    this.sortedMcpToolsCache = undefined;
   }
 
   /**
@@ -278,6 +314,7 @@ export class ToolRegistry extends EventEmitter {
       if (tool.tags.includes(serverName) || name.startsWith(legacyPrefix)) {
         this.mcpTools.delete(name);
         this.removeFromIndexes(tool);
+        this.invalidateSortedToolCaches();
         removedCount++;
 
         this.emit('toolUnregistered', {

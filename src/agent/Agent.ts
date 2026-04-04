@@ -12,6 +12,7 @@
  */
 
 import type { ContextManager } from '../context/ContextManager.js';
+import type { HookRuntime } from '../hooks/HookRuntime.js';
 import {
   type InternalLogger,
   LogCategory,
@@ -44,6 +45,7 @@ import { LoopRunner } from './LoopRunner.js';
 import { ModelManager } from './ModelManager.js';
 import { PlanExecutor } from './PlanExecutor.js';
 import { StreamResponseHandler } from './StreamResponseHandler.js';
+import { BackgroundAgentManager } from './subagents/BackgroundAgentManager.js';
 import { SubagentRegistry } from './subagents/SubagentRegistry.js';
 import {
   TokenBudget,
@@ -65,6 +67,8 @@ export interface AgentRuntimeDeps {
   defaultContext?: RuntimeContext;
   mcpRegistry?: McpRegistry;
   subagentRegistry?: SubagentRegistry;
+  backgroundAgentManager?: BackgroundAgentManager;
+  hookRuntime?: HookRuntime;
   runtimeManaged?: boolean;
   logger?: InternalLogger;
 }
@@ -78,6 +82,8 @@ export class Agent {
   private readonly runtimeManaged: boolean;
   private readonly runtimeMcpRegistry?: McpRegistry;
   private readonly subagentRegistry: SubagentRegistry;
+  private readonly backgroundAgentManager: BackgroundAgentManager;
+  private readonly hookRuntime?: HookRuntime;
   private readonly logger: InternalLogger;
   private readonly rootLogger: InternalLogger;
   private lastPreparedSkillCwd?: string;
@@ -104,6 +110,9 @@ export class Agent {
       deps.mcpRegistry || (!this.runtimeManaged ? new McpRegistry(config.storageRoot) : undefined);
     this.subagentRegistry =
       deps.subagentRegistry ?? new SubagentRegistry(this.rootLogger, getContextCwd(this.defaultContext));
+    this.backgroundAgentManager =
+      deps.backgroundAgentManager ?? BackgroundAgentManager.getInstance(this.rootLogger);
+    this.hookRuntime = deps.hookRuntime;
     this.modelManager = new ModelManager(
       config,
       runtimeOptions.outputFormat,
@@ -182,6 +191,7 @@ export class Agent {
         streamHandler,
         compactionHandler,
         this.tokenBudget,
+        this.hookRuntime,
       );
 
       this.isInitialized = true;
@@ -210,11 +220,15 @@ export class Agent {
     let result: LoopResult;
     if (context.permissionMode === 'plan') {
       result = await this.planExecutor.runPlanLoop(
-        enhancedMessage, context, loopOptions,
+        enhancedMessage, this.withBackgroundAgentManager(context), loopOptions,
         (msg, ctx, opts, sp) => this.loopRunner.executeLoop(msg, ctx, opts, sp),
       );
     } else {
-      result = await this.loopRunner.runLoop(enhancedMessage, context, loopOptions);
+      result = await this.loopRunner.runLoop(
+        enhancedMessage,
+        this.withBackgroundAgentManager(context),
+        loopOptions,
+      );
     }
 
     if (!result.success) {
@@ -237,13 +251,14 @@ export class Agent {
     if (!this.isInitialized) throw new Error('Agent未初始化');
 
     const run = async () => {
-      const enhancedMessage = await this.prepareMessageForContext(message, context);
+      const contextWithBackgroundManager = this.withBackgroundAgentManager(context);
+      const enhancedMessage = await this.prepareMessageForContext(message, contextWithBackgroundManager);
 
-      const loopOptions: LoopOptions = { signal: context.signal, ...options };
+      const loopOptions: LoopOptions = { signal: contextWithBackgroundManager.signal, ...options };
 
-      if (context.permissionMode === 'plan') {
+      if (contextWithBackgroundManager.permissionMode === 'plan') {
         const planStream = this.planExecutor.runPlanLoopStream(
-          enhancedMessage, context, loopOptions,
+          enhancedMessage, contextWithBackgroundManager, loopOptions,
           (msg, ctx, opts, sp) => this.loopRunner.executeWithAgentLoop(msg, ctx, opts, sp),
         );
         let planResult: LoopResult | undefined;
@@ -260,7 +275,10 @@ export class Agent {
         if (planResult?.metadata?.targetMode) {
           const targetMode = planResult.metadata.targetMode as PermissionMode;
           const planContent = planResult.metadata.planContent as string | undefined;
-          const newContext: ChatContext = { ...context, permissionMode: targetMode };
+          const newContext: ChatContext = {
+            ...contextWithBackgroundManager,
+            permissionMode: targetMode,
+          };
           const messageWithPlan = this.injectPlanContent(enhancedMessage, planContent);
           return {
             events,
@@ -270,7 +288,13 @@ export class Agent {
         return { events, result: planResult };
       }
 
-      return { continuation: this.loopRunner.runLoopStream(enhancedMessage, context, loopOptions) };
+      return {
+        continuation: this.loopRunner.runLoopStream(
+          enhancedMessage,
+          contextWithBackgroundManager,
+          loopOptions,
+        ),
+      };
     };
 
     const generator = run();
@@ -304,6 +328,7 @@ export class Agent {
       permissionMode: context.permissionMode,
       systemPrompt: context.systemPrompt,
       subagentInfo: context.subagentInfo,
+      backgroundAgentManager: context.backgroundAgentManager ?? this.backgroundAgentManager,
     };
 
     return await this.loopRunner.runLoop(message, chatContext, options);
@@ -402,6 +427,17 @@ export class Agent {
       maxHistorySize: 1000,
       canUseTool: this.runtimeOptions.canUseTool,
     });
+  }
+
+  private withBackgroundAgentManager(context: ChatContext): ChatContext {
+    if (context.backgroundAgentManager) {
+      return context;
+    }
+
+    return {
+      ...context,
+      backgroundAgentManager: this.backgroundAgentManager,
+    };
   }
 
   private createTokenBudget(config?: TokenBudgetConfig): TokenBudget | undefined {

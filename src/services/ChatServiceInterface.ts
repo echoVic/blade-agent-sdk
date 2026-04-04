@@ -5,7 +5,7 @@
 
 import { type InternalLogger, LogCategory, NOOP_LOGGER } from '../logging/Logger.js';
 import type { JsonValue, MessageRole, OutputFormat, ProviderType } from '../types/common.js';
-import type { RetryConfig, RetryEvent } from './RetryPolicy.js';
+import type { QuerySource, RetryConfig, RetryEvent } from './RetryPolicy.js';
 import { VercelAIChatService } from './VercelAIChatService.js';
 
 export type {
@@ -144,6 +144,12 @@ export interface ChatResponse {
   usage?: UsageInfo;
 }
 
+export interface SideQueryOptions {
+  maxOutputTokens?: number;
+  temperature?: number;
+  querySource?: QuerySource;
+}
+
 /**
  * 流式 tool_calls 的统一类型：
  * - 流式 delta 期间的 tool call（id 等字段可能是可选的）
@@ -178,6 +184,16 @@ export interface IChatService {
       parameters: unknown;
     }>,
     signal?: AbortSignal
+  ): Promise<ChatResponse>;
+
+  /**
+   * 旁路查询，不进入主对话历史。
+   * 适用于 compaction、总结、review 等辅助推理。
+   */
+  sideQuery(
+    messages: Message[],
+    signal?: AbortSignal,
+    options?: SideQueryOptions
   ): Promise<ChatResponse>;
 
   /**

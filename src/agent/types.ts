@@ -5,6 +5,7 @@
 import type { ContextSnapshot } from '../runtime/index.js';
 import type { ContentPart, Message } from '../services/ChatServiceInterface.js';
 import type { ConfirmationHandler } from '../tools/types/ExecutionTypes.js';
+import type { BackgroundAgentManager } from './subagents/BackgroundAgentManager.js';
 import type { OutputFormat, PermissionMode, PermissionsConfig, SandboxSettings } from '../types/common.js';
 import type { CanUseTool } from '../types/permissions.js';
 import type { TokenBudgetConfig, TokenBudgetSnapshot } from './TokenBudget.js';
@@ -47,6 +48,8 @@ export interface ChatContext {
   permissionMode?: PermissionMode; // 当前权限模式（用于 Plan 模式判断）
   systemPrompt?: string; // 动态传入的系统提示词（无状态设计）
   subagentInfo?: SubagentInfoForContext; // 子代理信息（用于 JSONL 写入）
+  omitEnvironment?: boolean;
+  backgroundAgentManager?: BackgroundAgentManager;
 }
 
 /**

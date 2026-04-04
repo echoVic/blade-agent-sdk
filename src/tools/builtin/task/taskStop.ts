@@ -17,6 +17,21 @@ export function createTaskStopTool({ sessionId }: { sessionId: string }) {
       taskId: z.string().describe('The ID of the background task to stop'),
     }),
     execute: async ({ taskId }, context) => {
+      const agentManager = context.backgroundAgentManager;
+      if (agentManager?.getAgent(taskId)) {
+        const stopped = agentManager.killAgent(taskId);
+        const latestSession = agentManager.getAgent(taskId);
+        return {
+          success: true,
+          llmContent: latestSession ?? { taskId, status: stopped ? 'cancelled' : 'completed' },
+          displayContent: `Background agent #${taskId} stopped`,
+          metadata: {
+            task: latestSession,
+            stoppedBackgroundAgent: true,
+          },
+        };
+      }
+
       const sid = context?.sessionId ?? sessionId;
       const store = TaskStore.getInstance(sid);
       const task = await store.get(taskId);

@@ -8,7 +8,7 @@
  */
 
 import { CompactionService } from '../context/CompactionService.js';
-import { HookManager } from '../hooks/HookManager.js';
+import type { HookRuntime } from '../hooks/HookRuntime.js';
 import { type InternalLogger, LogCategory, NOOP_LOGGER } from '../logging/Logger.js';
 import { buildSystemPrompt } from '../prompts/index.js';
 import type { Message } from '../services/ChatServiceInterface.js';
@@ -27,6 +27,8 @@ import { agentLoop } from './AgentLoop.js';
 import type { CompactionHandler } from './CompactionHandler.js';
 import { AGENT_TURN_SAFETY_LIMIT } from './constants.js';
 import type { ModelManager } from './ModelManager.js';
+import { LoopState } from './state/LoopState.js';
+import type { LoopSkillState } from './state/TurnState.js';
 import type { StreamResponseHandler } from './StreamResponseHandler.js';
 import type { TokenBudget } from './TokenBudget.js';
 import type {
@@ -58,17 +60,8 @@ function hasPersistableUserContent(message: UserMessageContent): boolean {
   return message.some((part) => part.type === 'image_url' || part.text.trim() !== '');
 }
 
-/**
- * Skill 执行上下文
- */
-interface SkillExecutionContext {
-  skillName: string;
-  allowedTools?: string[];
-  basePath: string;
-}
-
 export class LoopRunner {
-  private activeSkillContext?: SkillExecutionContext;
+  private runtimeSkillState?: LoopSkillState;
   private readonly logger: InternalLogger;
 
   constructor(
@@ -81,6 +74,7 @@ export class LoopRunner {
     private streamHandler?: StreamResponseHandler,
     private compactionHandler?: CompactionHandler,
     private tokenBudget?: TokenBudget,
+    private hookRuntime?: HookRuntime,
   ) {
     this.logger = (logger ?? NOOP_LOGGER).child(LogCategory.AGENT);
   }
@@ -125,7 +119,11 @@ export class LoopRunner {
       }
     }
 
-    return result!;
+    if (!result) {
+      throw new Error('LoopRunner.executeLoop ended without a result');
+    }
+
+    return result;
   }
 
   async *executeWithAgentLoop(
@@ -134,14 +132,7 @@ export class LoopRunner {
     options?: LoopOptions,
     systemPrompt?: string,
   ): AsyncGenerator<AgentEvent, LoopResult> {
-    // 1. 获取可用工具定义
-    const registry = this.executionPipeline.getRegistry();
-    const permissionMode = context.permissionMode;
-    let rawTools = registry.getFunctionDeclarationsByMode(permissionMode);
-    rawTools = injectSkillsMetadata(rawTools);
-    const tools = this.applySkillToolRestrictions(rawTools);
-
-    // 2. 构建消息历史
+    // 1. 构建消息历史
     const needsSystemPrompt =
       context.messages.length === 0 ||
       !context.messages.some((msg) => msg.role === 'system');
@@ -164,8 +155,10 @@ export class LoopRunner {
     }
 
     messages.push(...context.messages, { role: 'user', content: message });
+    const permissionMode = context.permissionMode;
+    const loopState = this.createLoopState(context, messages, permissionMode);
 
-    // 3. 保存用户消息到 JSONL
+    // 2. 保存用户消息到 JSONL
     let lastMessageUuid: string | null = null;
     try {
       const contextMgr = this.modelManager.getContextManager();
@@ -178,7 +171,7 @@ export class LoopRunner {
       this.logger.warn('[LoopRunner] 保存用户消息失败:', error);
     }
 
-    // 4. 计算 maxTurns
+    // 3. 计算 maxTurns
     const isYoloMode = context.permissionMode === PermissionMode.YOLO;
     const configuredMaxTurns =
       this.runtimeOptions.maxTurns ?? options?.maxTurns ?? this.config.maxTurns ?? -1;
@@ -195,14 +188,14 @@ export class LoopRunner {
       ? AGENT_TURN_SAFETY_LIMIT
       : Math.min(configuredMaxTurns, AGENT_TURN_SAFETY_LIMIT);
 
-    // 5. 构建 AgentLoop hooks + config
+    // 4. 构建 AgentLoop hooks + config
     const loopConfig = this.buildLoopConfig(
-      context, options, messages, tools, maxTurns, isYoloMode, permissionMode,
+      context, options, loopState, maxTurns, isYoloMode,
       () => lastMessageUuid,
       (uuid: string | null) => { lastMessageUuid = uuid; },
     );
 
-    // 6. 运行 AgentLoop
+    // 5. 运行 AgentLoop
     try {
       const loop = agentLoop(loopConfig);
       let result: LoopResult | undefined;
@@ -220,7 +213,7 @@ export class LoopRunner {
         throw new Error('AgentLoop ended without result');
       }
 
-      syncContextMessages(context, messages);
+      syncContextMessages(context, loopState.messages);
       return result;
     } catch (error) {
       if (error instanceof Error &&
@@ -250,6 +243,9 @@ export class LoopRunner {
     const basePrompt =
       context.systemPrompt ?? (await this.buildSystemPromptOnDemand(context));
     const envContext = getEnvironmentContext(context.snapshot?.cwd ?? this.defaultProjectPath);
+    if (context.omitEnvironment) {
+      return basePrompt;
+    }
     return basePrompt
       ? `${envContext}\n\n---\n\n${basePrompt}`
       : envContext;
@@ -276,29 +272,29 @@ export class LoopRunner {
 
   // ===== Skill 工具限制 =====
 
-  get skillContext(): SkillExecutionContext | undefined {
-    return this.activeSkillContext;
+  get skillContext(): LoopSkillState | undefined {
+    return this.runtimeSkillState;
   }
 
-  setSkillContext(ctx: SkillExecutionContext | undefined): void {
-    this.activeSkillContext = ctx;
+  setSkillContext(ctx: LoopSkillState | undefined): void {
+    this.runtimeSkillState = ctx;
   }
 
   clearSkillContext(): void {
-    if (this.activeSkillContext) {
-      this.logger.debug(`🎯 Skill "${this.activeSkillContext.skillName}" deactivated`);
-      this.activeSkillContext = undefined;
+    if (this.runtimeSkillState) {
+      this.logger.debug(`🎯 Skill "${this.runtimeSkillState.skillName}" deactivated`);
+      this.runtimeSkillState = undefined;
     }
   }
 
   private applySkillToolRestrictions(
     tools: FunctionDeclaration[]
   ): FunctionDeclaration[] {
-    if (!this.activeSkillContext?.allowedTools) {
+    if (!this.runtimeSkillState?.allowedTools) {
       return tools;
     }
 
-    const allowedTools = this.activeSkillContext.allowedTools;
+    const allowedTools = this.runtimeSkillState.allowedTools;
     this.logger.debug(`🔒 Applying Skill tool restrictions: ${allowedTools.join(', ')}`);
 
     const filteredTools = tools.filter((tool) => {
@@ -317,41 +313,57 @@ export class LoopRunner {
     return filteredTools;
   }
 
-  // ===== AgentLoopConfig 构建 =====
-
-  private buildLoopConfig(
+  private createLoopState(
     context: ChatContext,
-    options: LoopOptions | undefined,
     messages: Message[],
-    tools: FunctionDeclaration[],
-    maxTurns: number,
-    isYoloMode: boolean,
     permissionMode: PermissionMode | undefined,
-    getLastUuid: () => string | null,
-    setLastUuid: (uuid: string | null) => void,
-  ): AgentLoopConfig {
-    const self = this;
-    const chatService = this.modelManager.getChatService();
+  ): LoopState {
+    const registry = this.executionPipeline.getRegistry();
 
-    return {
-      chatService,
-      streamHandler: this.streamHandler,
-      executionPipeline: this.executionPipeline,
-      logger: this.logger,
-      tools,
+    return new LoopState({
       messages,
-      maxTurns,
-      isYoloMode,
-      signal: options?.signal,
       permissionMode,
-      maxContextTokens: this.modelManager.getMaxContextTokens(),
-      tokenBudget: this.tokenBudget,
       executionContext: {
         sessionId: context.sessionId,
         userId: context.userId || 'default',
         contextSnapshot: context.snapshot,
         confirmationHandler: context.confirmationHandler,
+        backgroundAgentManager: context.backgroundAgentManager,
       },
+      initialActiveSkill: this.runtimeSkillState,
+      resolveTools: () => {
+        let rawTools = registry.getFunctionDeclarationsByMode(permissionMode);
+        rawTools = injectSkillsMetadata(rawTools);
+        return this.applySkillToolRestrictions(rawTools);
+      },
+      resolveChatService: () => this.modelManager.getChatService(),
+      resolveMaxContextTokens: () => this.modelManager.getMaxContextTokens(),
+    });
+  }
+
+  // ===== AgentLoopConfig 构建 =====
+
+  private buildLoopConfig(
+    context: ChatContext,
+    options: LoopOptions | undefined,
+    loopState: LoopState,
+    maxTurns: number,
+    isYoloMode: boolean,
+    getLastUuid: () => string | null,
+    setLastUuid: (uuid: string | null) => void,
+  ): AgentLoopConfig {
+    const self = this;
+
+    return {
+      streamHandler: this.streamHandler,
+      executionPipeline: this.executionPipeline,
+      logger: this.logger,
+      messages: loopState.messages,
+      maxTurns,
+      isYoloMode,
+      signal: options?.signal,
+      tokenBudget: this.tokenBudget,
+      prepareTurnState: (turn) => loopState.buildTurnState(turn),
 
       // === Hooks ===
 
@@ -371,7 +383,10 @@ export class LoopRunner {
 
       onReactiveCompact: self.compactionHandler
         ? async function* () {
-            const compactStream = self.compactionHandler!.reactiveCompact(context);
+            const compactStream = self.compactionHandler?.reactiveCompact(context);
+            if (!compactStream) {
+              return false;
+            }
             let result = false;
             while (true) {
               const { value, done } = await compactStream.next();
@@ -381,6 +396,25 @@ export class LoopRunner {
             return result;
           }
         : undefined,
+
+      onRecoveryStateChange(recovery) {
+        if (recovery.phase === 'started') {
+          loopState.startRecovery(recovery.reason ?? 'recovery_started');
+          return;
+        }
+
+        if (recovery.phase === 'retrying') {
+          loopState.markRecoveryRetry(recovery.reason ?? 'recovery_retry');
+          return;
+        }
+
+        if (recovery.phase === 'failed') {
+          loopState.failRecovery(recovery.reason ?? 'recovery_failed');
+          return;
+        }
+
+        loopState.resetRecovery();
+      },
 
       async onAssistantMessage(ctx) {
         try {
@@ -451,11 +485,19 @@ export class LoopRunner {
         if (toolCall.function.name === 'Skill' && result.success && result.metadata) {
           const md = result.metadata;
           if (md.skillName && typeof md.skillName === 'string') {
-            self.activeSkillContext = {
+            const runtimeEffects = (md.runtimeEffects && typeof md.runtimeEffects === 'object')
+              ? md.runtimeEffects as { allowedTools?: string[] }
+              : undefined;
+            const nextSkillContext = {
               skillName: md.skillName,
-              allowedTools: Array.isArray(md.allowedTools) ? md.allowedTools as string[] : undefined,
+              allowedTools: Array.isArray(runtimeEffects?.allowedTools)
+                ? runtimeEffects.allowedTools
+                : Array.isArray(md.allowedTools) ? md.allowedTools as string[] : undefined,
               basePath: typeof md.basePath === 'string' ? md.basePath : '',
             };
+            self.runtimeSkillState = nextSkillContext;
+            loopState.setActiveSkill(nextSkillContext);
+            loopState.setTransitionReason('skill_activated');
           }
         }
 
@@ -464,6 +506,7 @@ export class LoopRunner {
           || result.metadata?.model?.trim() || undefined;
         if (modelId) {
           await self.modelManager.switchModelIfNeeded(modelId);
+          loopState.setTransitionReason('model_switched');
         }
       },
 
@@ -484,15 +527,10 @@ export class LoopRunner {
 
       async onStopCheck(ctx) {
         try {
-          const projectDir = context.snapshot?.cwd ?? self.defaultProjectPath;
-          if (!projectDir) {
+          if (!self.hookRuntime) {
             return { shouldStop: true };
           }
-          const hookManager = HookManager.getInstance();
-          const stopResult = await hookManager.executeStopHooks({
-            projectDir,
-            sessionId: context.sessionId,
-            permissionMode: context.permissionMode ?? PermissionMode.DEFAULT,
+          const stopResult = await self.hookRuntime.executeStopCheck({
             reason: ctx.content,
             abortSignal: options?.signal,
           });
@@ -510,7 +548,7 @@ export class LoopRunner {
 
       async onTurnLimitCompact(_ctx) {
         try {
-          const cs = chatService.getConfig();
+          const cs = loopState.getChatService().getConfig();
           const compactResult = await CompactionService.compact(
             context.messages,
             {

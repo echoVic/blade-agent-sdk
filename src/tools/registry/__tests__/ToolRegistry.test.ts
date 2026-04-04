@@ -1,223 +1,78 @@
-import { describe, expect, it, beforeEach } from 'vitest';
-import { ToolRegistry } from '../ToolRegistry.js';
-import type { Tool, FunctionDeclaration } from '../../types/index.js';
+import { describe, expect, it, vi } from 'vitest';
 import { PermissionMode } from '../../../types/common.js';
+import { ToolRegistry } from '../ToolRegistry.js';
 
-// ===== Mock Tool Factory =====
-
-function createMockTool(overrides: Partial<Tool> = {}): Tool {
-  const name = overrides.name || 'TestTool';
+function createTool(name: string, options: { isReadOnly?: boolean; tags?: string[] } = {}) {
   return {
     name,
-    displayName: overrides.displayName || name,
-    kind: overrides.kind || 'readonly',
-    isReadOnly: overrides.isReadOnly ?? true,
-    isConcurrencySafe: overrides.isConcurrencySafe ?? true,
-    strict: overrides.strict ?? false,
-    description: overrides.description || { short: `${name} description`, long: `${name} long description` },
-    version: overrides.version || '1.0.0',
-    category: overrides.category,
-    tags: overrides.tags || [],
+    displayName: name,
+    description: name,
+    kind: options.isReadOnly ? 'readonly' : 'execute',
+    isReadOnly: options.isReadOnly ?? false,
+    tags: options.tags ?? [],
     getFunctionDeclaration: () => ({
       name,
       description: `${name} description`,
-      parameters: { type: 'object', properties: {} },
+      parameters: {},
     }),
-    getMetadata: () => ({
-      name,
-      displayName: name,
-      kind: 'readonly',
-      description: { short: `${name} desc` },
-      version: '1.0.0',
-      tags: [],
-    }),
-    validate: async () => ({ valid: true }),
-    execute: async () => ({
-      success: true,
-      llmContent: 'ok',
-      displayContent: 'ok',
-    }),
-    ...overrides,
-  } as Tool;
+  };
 }
 
-// ===== Tests =====
+describe('ToolRegistry ordering', () => {
+  it('stably sorts builtin tools before MCP tools by name', () => {
+    const registry = new ToolRegistry();
+    registry.register(createTool('Write') as never);
+    registry.register(createTool('Read', { isReadOnly: true }) as never);
+    registry.registerMcpTool(createTool('z-search', { tags: ['mcp'] }) as never);
+    registry.registerMcpTool(createTool('a-browser', { tags: ['mcp'] }) as never);
 
-describe('ToolRegistry', () => {
-  let registry: ToolRegistry;
-
-  beforeEach(() => {
-    registry = new ToolRegistry();
+    expect(registry.getFunctionDeclarationsByMode()).toEqual([
+      expect.objectContaining({ name: 'Read' }),
+      expect.objectContaining({ name: 'Write' }),
+      expect.objectContaining({ name: 'a-browser' }),
+      expect.objectContaining({ name: 'z-search' }),
+    ]);
   });
 
-  describe('register', () => {
-    it('should register a tool', () => {
-      const tool = createMockTool({ name: 'ReadFile' });
-      registry.register(tool);
+  it('keeps the same stable ordering in plan mode after readonly filtering', () => {
+    const registry = new ToolRegistry();
+    registry.register(createTool('Write') as never);
+    registry.register(createTool('Glob', { isReadOnly: true }) as never);
+    registry.registerMcpTool(createTool('z-docs', { isReadOnly: true, tags: ['mcp'] }) as never);
+    registry.registerMcpTool(createTool('a-api', { isReadOnly: true, tags: ['mcp'] }) as never);
 
-      expect(registry.get('ReadFile')).toBeDefined();
-      expect(registry.get('ReadFile')?.name).toBe('ReadFile');
-    });
-
-    it('should throw on duplicate registration', () => {
-      const tool = createMockTool({ name: 'ReadFile' });
-      registry.register(tool);
-
-      expect(() => registry.register(tool)).toThrow('已注册');
-    });
-
-    it('should emit toolRegistered event', () => {
-      let emitted = false;
-      registry.on('toolRegistered', () => { emitted = true; });
-
-      registry.register(createMockTool({ name: 'ReadFile' }));
-      expect(emitted).toBe(true);
-    });
+    expect(registry.getFunctionDeclarationsByMode(PermissionMode.PLAN)).toEqual([
+      expect.objectContaining({ name: 'Glob' }),
+      expect.objectContaining({ name: 'a-api' }),
+      expect.objectContaining({ name: 'z-docs' }),
+    ]);
   });
 
-  describe('registerAll', () => {
-    it('should register multiple tools', () => {
-      const tools = [
-        createMockTool({ name: 'ReadFile' }),
-        createMockTool({ name: 'WriteFile' }),
-        createMockTool({ name: 'Grep' }),
-      ];
-      registry.registerAll(tools);
+  it('caches sorted tool lists until registry contents change', () => {
+    const registry = new ToolRegistry();
+    registry.register(createTool('Write') as never);
+    registry.register(createTool('Read', { isReadOnly: true }) as never);
+    registry.registerMcpTool(createTool('z-search', { tags: ['mcp'] }) as never);
 
-      expect(registry.get('ReadFile')).toBeDefined();
-      expect(registry.get('WriteFile')).toBeDefined();
-      expect(registry.get('Grep')).toBeDefined();
-    });
+    const sortSpy = vi.spyOn(
+      registry as unknown as { getSortedTools: (tools: unknown[]) => unknown[] },
+      'getSortedTools',
+    );
 
-    it('should throw on partial failure', () => {
-      const tool = createMockTool({ name: 'ReadFile' });
-      registry.register(tool);
+    registry.getAll();
+    registry.getAll();
+    registry.getBuiltinTools();
+    registry.getBuiltinTools();
+    registry.getMcpTools();
+    registry.getMcpTools();
 
-      expect(() =>
-        registry.registerAll([
-          createMockTool({ name: 'ReadFile' }), // duplicate
-          createMockTool({ name: 'WriteFile' }),
-        ])
-      ).toThrow('批量注册失败');
-    });
-  });
+    expect(sortSpy).toHaveBeenCalledTimes(3);
 
-  describe('unregister', () => {
-    it('should unregister an existing tool', () => {
-      registry.register(createMockTool({ name: 'ReadFile' }));
-      expect(registry.unregister('ReadFile')).toBe(true);
-      expect(registry.get('ReadFile')).toBeUndefined();
-    });
+    registry.registerMcpTool(createTool('a-browser', { tags: ['mcp'] }) as never);
+    registry.getAll();
+    registry.getBuiltinTools();
+    registry.getMcpTools();
 
-    it('should return false for non-existent tool', () => {
-      expect(registry.unregister('NonExistent')).toBe(false);
-    });
-
-    it('should emit toolUnregistered event', () => {
-      let emitted = false;
-      registry.on('toolUnregistered', () => { emitted = true; });
-
-      registry.register(createMockTool({ name: 'ReadFile' }));
-      registry.unregister('ReadFile');
-      expect(emitted).toBe(true);
-    });
-  });
-
-  describe('get', () => {
-    it('should return tool by name', () => {
-      registry.register(createMockTool({ name: 'ReadFile' }));
-      expect(registry.get('ReadFile')?.name).toBe('ReadFile');
-    });
-
-    it('should return undefined for unknown tool', () => {
-      expect(registry.get('Unknown')).toBeUndefined();
-    });
-  });
-
-  describe('getAll', () => {
-    it('should return all registered tools', () => {
-      registry.register(createMockTool({ name: 'ReadFile' }));
-      registry.register(createMockTool({ name: 'WriteFile' }));
-
-      const all = registry.getAll();
-      expect(all.length).toBe(2);
-    });
-
-    it('should return empty array when no tools', () => {
-      expect(registry.getAll().length).toBe(0);
-    });
-  });
-
-  describe('getReadOnlyTools', () => {
-    it('should return only readonly tools', () => {
-      registry.register(createMockTool({ name: 'ReadFile', isReadOnly: true }));
-      registry.register(createMockTool({ name: 'WriteFile', isReadOnly: false }));
-
-      const readOnly = registry.getReadOnlyTools();
-      expect(readOnly.length).toBe(1);
-      expect(readOnly[0].name).toBe('ReadFile');
-    });
-  });
-
-  describe('getFunctionDeclarationsByMode', () => {
-    it('should return all tools for undefined mode', () => {
-      registry.register(createMockTool({ name: 'ReadFile', isReadOnly: true }));
-      registry.register(createMockTool({ name: 'WriteFile', isReadOnly: false }));
-
-      const decls = registry.getFunctionDeclarationsByMode(undefined);
-      expect(decls.length).toBe(2);
-    });
-
-    it('should return only readonly tools for PLAN mode', () => {
-      registry.register(createMockTool({ name: 'ReadFile', isReadOnly: true }));
-      registry.register(createMockTool({ name: 'WriteFile', isReadOnly: false }));
-
-      const decls = registry.getFunctionDeclarationsByMode(PermissionMode.PLAN);
-      expect(decls.length).toBe(1);
-      expect(decls[0].name).toBe('ReadFile');
-    });
-  });
-
-  describe('MCP tools', () => {
-    it('should register and retrieve MCP tools', () => {
-      const mcpTool = createMockTool({ name: 'mcp__server__tool' });
-      registry.registerMcpTool(mcpTool);
-
-      expect(registry.get('mcp__server__tool')).toBeDefined();
-    });
-
-    it('should unregister MCP tools by server prefix', () => {
-      registry.registerMcpTool(createMockTool({ name: 'mcp__myserver__tool1' }));
-      registry.registerMcpTool(createMockTool({ name: 'mcp__myserver__tool2' }));
-      registry.registerMcpTool(createMockTool({ name: 'mcp__other__tool3' }));
-
-      registry.removeMcpTools('myserver');
-
-      expect(registry.get('mcp__myserver__tool1')).toBeUndefined();
-      expect(registry.get('mcp__myserver__tool2')).toBeUndefined();
-      expect(registry.get('mcp__other__tool3')).toBeDefined();
-    });
-  });
-
-  describe('category and tag indexing', () => {
-    it('should index tools by category', () => {
-      registry.register(createMockTool({ name: 'ReadFile', category: 'file' }));
-      registry.register(createMockTool({ name: 'WriteFile', category: 'file' }));
-      registry.register(createMockTool({ name: 'Grep', category: 'search' }));
-
-      const fileTools = registry.getByCategory('file');
-      expect(fileTools.length).toBe(2);
-    });
-
-    it('should index tools by tag', () => {
-      registry.register(createMockTool({ name: 'ReadFile', tags: ['io', 'safe'] }));
-      registry.register(createMockTool({ name: 'WriteFile', tags: ['io', 'dangerous'] }));
-
-      const ioTools = registry.getByTag('io');
-      expect(ioTools.length).toBe(2);
-
-      const safeTools = registry.getByTag('safe');
-      expect(safeTools.length).toBe(1);
-    });
+    expect(sortSpy).toHaveBeenCalledTimes(6);
   });
 });

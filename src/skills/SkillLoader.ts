@@ -152,6 +152,10 @@ function validateMetadata(
       disableModelInvocation: parseBoolean(frontmatter['disable-model-invocation']),
       model,
       whenToUse: frontmatter.when_to_use?.trim(),
+      runtimeEffects: {
+        allowedTools: parseAllowedTools(frontmatter['allowed-tools']),
+        modelId: model && model !== 'inherit' ? model : undefined,
+      },
       license: frontmatter.license,
       compatibility: frontmatter.compatibility,
       metadata: frontmatter.metadata,

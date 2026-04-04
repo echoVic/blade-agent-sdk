@@ -151,6 +151,217 @@ describe('LoopRunner', () => {
       expect(context.messages.length).toBeGreaterThan(0);
       expect(context.messages.every(m => m.role !== 'system')).toBe(true);
     });
+
+    it('omits environment context when requested by the chat context', async () => {
+      const mm = createMockModelManager();
+      const pipeline = createMockPipeline();
+      const runner = new LoopRunner(
+        baseConfig,
+        { systemPrompt: 'BASE PROMPT' },
+        mm,
+        pipeline,
+      );
+
+      const context = createContext({ omitEnvironment: true });
+      await runner.runLoop('Hello', context);
+
+      const firstCall = mm._chat.mock.calls[0];
+      const messages = firstCall?.[0] as Array<{ role: string; content: unknown }>;
+      const systemMessage = messages.find((message) => message.role === 'system');
+      expect(systemMessage?.content).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            text: 'BASE PROMPT',
+          }),
+        ]),
+      );
+    });
+
+    it('refreshes available tools on the next turn after Skill activation', async () => {
+      const chatCalls: Array<unknown[] | undefined> = [];
+      const chatFn = vi.fn(async (_messages, tools) => {
+        chatCalls.push(tools);
+        if (chatCalls.length === 1) {
+          return {
+            content: 'Activating skill',
+            toolCalls: [{
+              id: 'skill-call',
+              type: 'function' as const,
+              function: { name: 'Skill', arguments: '{}' },
+            }],
+            usage: { promptTokens: 100, completionTokens: 50, totalTokens: 150 },
+          };
+        }
+        return {
+          content: 'Done',
+          toolCalls: [],
+          usage: { promptTokens: 100, completionTokens: 50, totalTokens: 150 },
+        };
+      });
+
+      const mm = {
+        getChatService: () => ({
+          chat: chatFn,
+          chatWithRetryEvents: vi.fn(async function* (...args: Parameters<typeof chatFn>) {
+            return await chatFn(...args);
+          }),
+          streamChat: vi.fn(async function* () {}),
+          getConfig: () => ({
+            model: 'test-model',
+            maxContextTokens: 128000,
+            apiKey: 'test-key',
+            baseUrl: 'https://test.com',
+          }),
+          updateConfig: vi.fn(() => {}),
+        }),
+        getContextManager: () => ({
+          saveMessage: vi.fn(async () => 'uuid-1'),
+          saveToolUse: vi.fn(async () => 'uuid-2'),
+          saveToolResult: vi.fn(async () => 'uuid-3'),
+          saveCompaction: vi.fn(async () => {}),
+        }),
+        getMaxContextTokens: () => 128000,
+        switchModelIfNeeded: vi.fn(async () => {}),
+      } as unknown as MockModelManager;
+
+      const pipeline = {
+        getRegistry: () => ({
+          getAll: () => [],
+          getFunctionDeclarationsByMode: () => [
+            { name: 'Read', description: 'Read files', parameters: {} },
+            { name: 'Write', description: 'Write files', parameters: {} },
+            { name: 'Skill', description: 'Load a skill', parameters: {} },
+          ],
+          get: (name: string) => ({ kind: 'execute', name }),
+        }),
+        execute: vi.fn(async (toolName: string) => {
+          if (toolName === 'Skill') {
+            return {
+              success: true,
+              llmContent: 'Skill activated',
+              displayContent: 'Skill activated',
+              metadata: {
+                skillName: 'reader',
+                basePath: '/tmp/reader',
+                runtimeEffects: {
+                  allowedTools: ['Read'],
+                },
+              },
+            };
+          }
+          return {
+            success: true,
+            llmContent: `Result of ${toolName}`,
+            displayContent: `Result of ${toolName}`,
+          };
+        }),
+      } as unknown as ExecutionPipeline;
+
+      const runner = new LoopRunner(baseConfig, baseOptions, mm, pipeline);
+      const context = createContext();
+      const result = await runner.runLoop('Hello', context);
+
+      expect(result.success).toBe(true);
+      expect(runner.skillContext).toEqual({
+        skillName: 'reader',
+        allowedTools: ['Read'],
+        basePath: '/tmp/reader',
+      });
+      expect(chatFn).toHaveBeenCalledTimes(2);
+      expect(chatCalls[0]).toEqual(expect.arrayContaining([
+        expect.objectContaining({ name: 'Read' }),
+        expect.objectContaining({ name: 'Write' }),
+        expect.objectContaining({ name: 'Skill' }),
+      ]));
+      expect(chatCalls[1]).toEqual([
+        expect.objectContaining({ name: 'Read' }),
+      ]);
+    });
+
+    it('refreshes the chat service on the next turn after model switch', async () => {
+      const firstChat = vi.fn(async () => ({
+        content: 'Switching model',
+        toolCalls: [{
+          id: 'model-call',
+          type: 'function' as const,
+          function: { name: 'ModelSwitch', arguments: '{}' },
+        }],
+        usage: { promptTokens: 100, completionTokens: 50, totalTokens: 150 },
+      }));
+      const secondChat = vi.fn(async () => ({
+        content: 'Now on the new model',
+        toolCalls: [],
+        usage: { promptTokens: 100, completionTokens: 50, totalTokens: 150 },
+      }));
+
+      let currentChatService = {
+        chat: firstChat,
+        chatWithRetryEvents: vi.fn(async function* (...args: Parameters<typeof firstChat>) {
+          return await firstChat(...args);
+        }),
+        streamChat: vi.fn(async function* () {}),
+        getConfig: () => ({
+          model: 'model-a',
+          maxContextTokens: 128000,
+          apiKey: 'test-key',
+          baseUrl: 'https://test.com',
+        }),
+        updateConfig: vi.fn(() => {}),
+      };
+
+      const mm = {
+        getChatService: () => currentChatService,
+        getContextManager: () => ({
+          saveMessage: vi.fn(async () => 'uuid-1'),
+          saveToolUse: vi.fn(async () => 'uuid-2'),
+          saveToolResult: vi.fn(async () => 'uuid-3'),
+          saveCompaction: vi.fn(async () => {}),
+        }),
+        getMaxContextTokens: () => 128000,
+        switchModelIfNeeded: vi.fn(async (modelId: string) => {
+          if (modelId === 'model-b') {
+            currentChatService = {
+              chat: secondChat,
+              chatWithRetryEvents: vi.fn(async function* (...args: Parameters<typeof secondChat>) {
+                return await secondChat(...args);
+              }),
+              streamChat: vi.fn(async function* () {}),
+              getConfig: () => ({
+                model: 'model-b',
+                maxContextTokens: 256000,
+                apiKey: 'test-key',
+                baseUrl: 'https://test.com',
+              }),
+              updateConfig: vi.fn(() => {}),
+            };
+          }
+        }),
+      } as unknown as MockModelManager;
+
+      const pipeline = {
+        getRegistry: () => ({
+          getAll: () => [],
+          getFunctionDeclarationsByMode: () => [
+            { name: 'ModelSwitch', description: 'Switch model', parameters: {} },
+          ],
+          get: (name: string) => ({ kind: 'execute', name }),
+        }),
+        execute: vi.fn(async () => ({
+          success: true,
+          llmContent: 'Model switched',
+          displayContent: 'Model switched',
+          metadata: { modelId: 'model-b' },
+        })),
+      } as unknown as ExecutionPipeline;
+
+      const runner = new LoopRunner(baseConfig, baseOptions, mm, pipeline);
+      const context = createContext();
+      const result = await runner.runLoop('Hello', context);
+
+      expect(result.success).toBe(true);
+      expect(firstChat).toHaveBeenCalledTimes(1);
+      expect(secondChat).toHaveBeenCalledTimes(1);
+    });
   });
 
   describe('skill context', () => {

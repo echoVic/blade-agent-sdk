@@ -33,8 +33,11 @@ interface BackgroundAgentRuntime {
   /** 执行 Promise */
   promise: Promise<SubagentResult>;
 
-  /** 用于取消执行的 AbortController */
-  abortController: AbortController;
+  /** 终止整个后台 agent 生命周期 */
+  lifecycleController: AbortController;
+
+  /** 仅终止当前执行中的工作 */
+  workController: AbortController;
 
   /** 开始时间 */
   startTime: number;
@@ -157,8 +160,18 @@ export class BackgroundAgentManager {
     // 创建输出文件路径
     const outputFile = join(tmpdir(), `blade-agent-${id}.output`);
 
-    // 创建 AbortController 用于取消
-    const abortController = new AbortController();
+    // 拆分生命周期取消和当前工作取消
+    const lifecycleController = new AbortController();
+    const workController = new AbortController();
+    lifecycleController.signal.addEventListener(
+      'abort',
+      () => {
+        if (!workController.signal.aborted) {
+          workController.abort(lifecycleController.signal.reason);
+        }
+      },
+      { once: true },
+    );
 
     // 创建会话记录
     const session: AgentSession = {
@@ -186,7 +199,8 @@ export class BackgroundAgentManager {
       prompt,
       parentSessionId,
       permissionMode,
-      abortController.signal,
+      lifecycleController.signal,
+      workController.signal,
       existingMessages,
       snapshot,
     );
@@ -195,7 +209,8 @@ export class BackgroundAgentManager {
     this.runningAgents.set(id, {
       id,
       promise,
-      abortController,
+      lifecycleController,
+      workController,
       startTime,
     });
 
@@ -219,14 +234,15 @@ export class BackgroundAgentManager {
     prompt: string,
     parentSessionId: string | undefined,
     permissionMode: PermissionMode | undefined,
-    signal: AbortSignal,
+    lifecycleSignal: AbortSignal,
+    workSignal: AbortSignal,
     existingMessages?: Message[],
     snapshot?: ContextSnapshot,
   ): Promise<SubagentResult> {
     const startTime = Date.now();
 
     try {
-      if (signal.aborted) {
+      if (lifecycleSignal.aborted || workSignal.aborted) {
         throw new Error('Agent execution was cancelled');
       }
 
@@ -263,7 +279,7 @@ export class BackgroundAgentManager {
       };
 
       const loopResult = await agent.runAgenticLoop(prompt, context, {
-        signal,
+        signal: workSignal,
       });
 
       this.sessionStore.updateSession(agentId, {
@@ -447,7 +463,7 @@ export class BackgroundAgentManager {
     }
 
     // 发送取消信号
-    runtime.abortController.abort();
+    runtime.lifecycleController.abort();
 
     // 更新状态
     this.sessionStore.updateSession(agentId, { status: 'cancelled' });

@@ -77,4 +77,39 @@ describe('SubagentExecutor', () => {
       }),
     );
   });
+
+  it('passes configured context omissions into the child agent context', async () => {
+    const executor = new SubagentExecutor(
+      {
+        name: 'Explore',
+        description: 'Explore subagent',
+        omitEnvironment: true,
+      },
+      {
+        models: [
+          {
+            id: 'default',
+            name: 'gpt-4o-mini',
+            provider: 'openai-compatible',
+            model: 'gpt-4o-mini',
+            apiKey: 'test-key',
+            baseUrl: 'https://example.com',
+          },
+        ],
+        currentModelId: 'default',
+      },
+    );
+
+    await executor.execute({
+      prompt: 'inspect',
+      parentSessionId: 'parent-session',
+    });
+
+    expect(runAgenticLoop).toHaveBeenCalledWith(
+      'inspect',
+      expect.objectContaining({
+        omitEnvironment: true,
+      }),
+    );
+  });
 });

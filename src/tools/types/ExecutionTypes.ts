@@ -1,5 +1,6 @@
 import type { ContextSnapshot } from '../../runtime/index.js';
 import type { BladeConfig, PermissionMode } from '../../types/common.js';
+import type { BackgroundAgentManager } from '../../agent/subagents/BackgroundAgentManager.js';
 import type { Tool, ToolInvocation, ToolResult } from './ToolTypes.js';
 import { ToolErrorType, type ToolKind } from './ToolTypes.js';
 
@@ -72,6 +73,7 @@ export interface ExecutionContext {
   confirmationHandler?: ConfirmationHandler;
   permissionMode?: PermissionMode;
   bladeConfig?: BladeConfig;
+  backgroundAgentManager?: BackgroundAgentManager;
 }
 
 export function getEffectiveProjectDir(context: ExecutionContext): string | undefined {

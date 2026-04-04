@@ -8,14 +8,13 @@ import {
   type RuntimeContext,
 } from '../runtime/index.js';
 import type { ContentPart, Message } from '../services/ChatServiceInterface.js';
-import { cloneContentPart, cloneMessage } from '../services/messageUtils.js';
+import { cloneMessage } from '../services/messageUtils.js';
 import {
   type BladeConfig,
   type ModelConfig,
   PermissionMode,
   type ProviderType,
 } from '../types/common.js';
-import { HookEvent } from '../types/constants.js';
 import {
   JsonlSessionStore,
   NoopSessionStore,
@@ -25,8 +24,6 @@ import {
 import { SessionRuntime } from './SessionRuntime.js';
 import type {
   ForkSessionOptions,
-  HookCallback,
-  HookInput,
   ISession,
   McpServerStatus,
   McpToolInfo,
@@ -120,7 +117,7 @@ class Session implements ISession {
     }, this.runtime.getAgentRuntimeDeps());
 
     this.initialized = true;
-    await this.runHookCallbacks(HookEvent.SessionStart, {
+    await this.runtime.getHookRuntime().runSessionStart({
       isResume: this.isResumeSession,
       resumeSessionId: this.isResumeSession ? this.sessionId : undefined,
     });
@@ -222,6 +219,7 @@ class Session implements ISession {
 
   async *stream(options?: StreamOptions): AsyncGenerator<StreamMessage> {
     await this.ensureInitialized();
+    const runtime = this.getRuntime();
 
     if (this.pendingMessage === null) {
       throw new Error('No pending message. Call send() before stream().');
@@ -234,7 +232,7 @@ class Session implements ISession {
     this.pendingSendOptions = null;
     this.pendingContextSnapshot = null;
 
-    message = await this.applyUserPromptHooks(message);
+    message = await runtime.getHookRuntime().applyUserPromptSubmit(message);
 
     const toolCalls: ToolCallRecord[] = [];
     let totalUsage: TokenUsage = {
@@ -251,7 +249,7 @@ class Session implements ISession {
 
     const snapshot = pendingSnapshot
       ?? createContextSnapshot(this.sessionId, nanoid(), this.defaultContext, sendOptions?.context);
-    this.getRuntime().prepareTurn(snapshot);
+    runtime.prepareTurn(snapshot);
 
     const context: ChatContext = {
       messages: this._messages,
@@ -260,6 +258,7 @@ class Session implements ISession {
       snapshot,
       signal,
       permissionMode: this.permissionMode,
+      backgroundAgentManager: runtime.getBackgroundAgentManager(),
     };
 
     const stream = this.getAgent().streamChat(message, context, {
@@ -361,7 +360,7 @@ class Session implements ISession {
       yield { type: 'usage', usage: totalUsage, sessionId: this.sessionId };
       this._messages = context.messages;
       const imageCount = this.getImageCount(message);
-      await this.runHookCallbacks(HookEvent.TaskCompleted, {
+      await runtime.getHookRuntime().runTaskCompleted({
         taskId: this.sessionId,
         taskDescription: this.getTextContent(message),
         hasImages: imageCount > 0,
@@ -390,7 +389,7 @@ class Session implements ISession {
     this.pendingMessage = null;
     this.pendingSendOptions = null;
     this.pendingContextSnapshot = null;
-    void this.runHookCallbacks(HookEvent.SessionEnd, { reason: 'other' });
+    void this.runtime?.getHookRuntime().runSessionEnd({ reason: 'other' });
     void this.runtime?.close();
     this.runtime = null;
     this.logger.debug(`[Session] Closed session ${this.sessionId}`);
@@ -525,61 +524,6 @@ class Session implements ISession {
     return forkedSession;
   }
 
-  private async applyUserPromptHooks(message: UserMessageContent): Promise<UserMessageContent> {
-    const hooks = this.runtime?.getHookCallbacks()[HookEvent.UserPromptSubmit];
-    if (!hooks || hooks.length === 0) {
-      return message;
-    }
-
-    let nextMessage = message;
-    for (const hook of hooks) {
-      const imageCount = this.getImageCount(nextMessage);
-      const result = await this.executeHook(hook, HookEvent.UserPromptSubmit, {
-        userPrompt: this.getTextContent(nextMessage),
-        hasImages: imageCount > 0,
-        imageCount,
-      });
-      if (result.action === 'abort') {
-        throw new Error(result.reason || 'Prompt submission aborted by hook');
-      }
-      if (typeof result.modifiedInput === 'string') {
-        nextMessage = this.replaceTextContent(nextMessage, result.modifiedInput);
-      }
-    }
-
-    return nextMessage;
-  }
-
-  private async runHookCallbacks(
-    event: HookEvent,
-    payload: Record<string, unknown>,
-  ): Promise<void> {
-    const hooks = this.runtime?.getHookCallbacks()[event];
-    if (!hooks || hooks.length === 0) {
-      return;
-    }
-
-    for (const hook of hooks) {
-      const result = await this.executeHook(hook, event, payload);
-      if (result.action === 'abort') {
-        throw new Error(result.reason || `Hook ${event} aborted`);
-      }
-    }
-  }
-
-  private async executeHook(
-    hook: HookCallback,
-    event: HookEvent,
-    payload: Record<string, unknown>,
-  ) {
-    const input: HookInput = {
-      event,
-      sessionId: this.sessionId,
-      ...payload,
-    };
-    return hook(input);
-  }
-
   private cloneSnapshotMessages(snapshot: SessionSnapshot | null): Message[] {
     if (!snapshot) {
       return [];
@@ -626,25 +570,6 @@ class Session implements ISession {
     }
 
     return message.filter((part) => part.type === 'image_url').length;
-  }
-
-  private replaceTextContent(
-    message: UserMessageContent,
-    nextText: string,
-  ): UserMessageContent {
-    if (typeof message === 'string') {
-      return nextText;
-    }
-
-    // Keep the return type as ContentPart[] to stay consistent with the input type.
-    const imageParts = message
-      .filter((part): part is Extract<ContentPart, { type: 'image_url' }> => part.type === 'image_url')
-      .map(cloneContentPart);
-
-    return [
-      ...(nextText === '' ? [] : [{ type: 'text', text: nextText } satisfies ContentPart]),
-      ...imageParts,
-    ];
   }
 }
 

@@ -8,11 +8,9 @@
  */
 
 import type { InternalLogger } from '../logging/Logger.js';
-import type { ContextSnapshot } from '../runtime/index.js';
-import type { ChatResponse, IChatService, Message, ToolCall } from '../services/ChatServiceInterface.js';
+import type { ChatResponse, Message, ToolCall } from '../services/ChatServiceInterface.js';
 import { FallbackTriggeredError } from '../services/RetryPolicy.js';
 import type { ExecutionPipeline } from '../tools/execution/ExecutionPipeline.js';
-import type { ConfirmationHandler } from '../tools/types/ExecutionTypes.js';
 import type { ToolResult } from '../tools/types/index.js';
 import type { PermissionMode } from '../types/common.js';
 import type { AgentEvent, TokenUsageInfo } from './AgentEvent.js';
@@ -24,12 +22,10 @@ import { planToolExecution } from './loop/planToolExecution.js';
 import type { FunctionToolCall } from './loop/types.js';
 import { StreamingToolExecutor } from './StreamingToolExecutor.js';
 import type { StreamResponseHandler } from './StreamResponseHandler.js';
+import type { TurnState } from './state/TurnState.js';
 import type { TokenBudget } from './TokenBudget.js';
 import type { LoopResult, TurnLimitResponse } from './types.js';
 import { isOverflowRecoverable } from './recovery/isOverflowRecoverable.js';
-
-/** LLM 工具定义（chat service 接受的格式） */
-type LlmToolDef = { name: string; description: string; parameters: unknown };
 
 // ===== Loop 配置 =====
 
@@ -39,9 +35,6 @@ type LlmToolDef = { name: string; description: string; parameters: unknown };
  * Agent.ts 负责组装这个 config，AgentLoop 只消费它。
  */
 export interface AgentLoopConfig {
-  /** LLM 服务 */
-  chatService: IChatService;
-
   /** 流式响应处理器（可选，无则使用非流式） */
   streamHandler?: StreamResponseHandler;
 
@@ -50,9 +43,6 @@ export interface AgentLoopConfig {
 
   /** 内部日志器 */
   logger?: InternalLogger;
-
-  /** 可用工具定义（已经过权限过滤和 Skill 限制，LLM 格式） */
-  tools: LlmToolDef[];
 
   /** 初始消息列表（包含 system prompt + 历史 + 当前用户消息） */
   messages: Message[];
@@ -66,22 +56,11 @@ export interface AgentLoopConfig {
   /** 中断信号 */
   signal?: AbortSignal;
 
-  /** 权限模式 */
-  permissionMode?: PermissionMode;
-
-  /** 当前模型最大上下文 token 数 */
-  maxContextTokens: number;
-
   /** Token 预算 */
   tokenBudget?: TokenBudget;
 
-  /** 工具执行上下文 */
-  executionContext: {
-    sessionId: string;
-    userId: string;
-    contextSnapshot?: ContextSnapshot;
-    confirmationHandler?: ConfirmationHandler;
-  };
+  /** 显式的 turn state 解析器 */
+  prepareTurnState: (turn: number) => TurnState;
 
   // ===== Hooks（副作用注入） =====
 
@@ -157,6 +136,16 @@ export interface AgentLoopConfig {
   }) => AsyncGenerator<AgentEvent, boolean>;
 
   /**
+   * 恢复状态变更
+   */
+  onRecoveryStateChange?: (ctx: {
+    turn: number;
+    phase: 'started' | 'retrying' | 'failed' | 'reset';
+    reason?: string;
+    attempt: number;
+  }) => void;
+
+  /**
    * 轮次上限后的 compaction 处理
    */
   onTurnLimitCompact?: (ctx: {
@@ -181,18 +170,13 @@ export async function* agentLoop(
   config: AgentLoopConfig
 ): AsyncGenerator<AgentEvent, LoopResult> {
   const {
-    chatService,
     streamHandler,
     executionPipeline,
-    tools,
     messages,
     maxTurns,
     isYoloMode,
     signal,
-    permissionMode,
-    maxContextTokens,
     tokenBudget,
-    executionContext,
   } = config;
 
   const effectiveMaxTurns = isYoloMode ? AGENT_TURN_SAFETY_LIMIT : maxTurns;
@@ -203,6 +187,7 @@ export async function* agentLoop(
   let totalTokens = 0;
   let lastPromptTokens: number | undefined;
   let recoveryAttemptedTurn: number | null = null;
+  let recoveryAttempt = 0;
 
   yield { type: 'agent_start' };
 
@@ -239,6 +224,13 @@ export async function* agentLoop(
       return buildAbortResult(turnsCount - 1, allToolResults.length, startTime);
     }
 
+    const turnState = config.prepareTurnState(turnsCount);
+    const turnChatService = turnState.chatService;
+    const turnTools = turnState.tools;
+    const turnMaxContextTokens = turnState.maxContextTokens;
+    const turnPermissionMode = turnState.permissionMode;
+    const turnExecutionContext = turnState.executionContext;
+
     // 4. 调用 LLM（带 context-length 错误的反应式压缩）
     let turnResult: ChatResponse | undefined;
     let streamingExecutionResults:
@@ -249,10 +241,10 @@ export async function* agentLoop(
         }>
       | undefined;
     try {
-      if (streamHandler && tools.length > 0) {
+      if (streamHandler && turnTools.length > 0) {
         const streamingExecutor = new StreamingToolExecutor(
           streamHandler,
-          () => chatService,
+          () => turnChatService,
           config.logger,
         );
         const pendingEvents: AgentEvent[] = [];
@@ -272,11 +264,11 @@ export async function* agentLoop(
         };
 
         const executionPromise = streamingExecutor
-          .collectAndExecute(messages, tools, signal, {
+          .collectAndExecute(messages, turnTools, signal, {
             executionPipeline,
-            executionContext,
+            executionContext: turnExecutionContext,
             logger: config.logger,
-            permissionMode: config.permissionMode,
+            permissionMode: turnPermissionMode,
             hooks: {
               onBeforeToolExec: config.onBeforeToolExec,
             },
@@ -325,7 +317,11 @@ export async function* agentLoop(
           }
 
           while (pendingEvents.length > 0) {
-            yield pendingEvents.shift()!;
+            const event = pendingEvents.shift();
+            if (!event) {
+              break;
+            }
+            yield event;
           }
         }
 
@@ -335,7 +331,7 @@ export async function* agentLoop(
           throw executionError;
         }
       } else if (streamHandler) {
-        const stream = streamHandler.streamResponse(messages, tools, signal);
+        const stream = streamHandler.streamResponse(messages, turnTools, signal);
         while (true) {
           const { value, done } = await stream.next();
           if (done) {
@@ -348,9 +344,9 @@ export async function* agentLoop(
             yield { type: 'thinking_delta', delta: value.delta };
           }
         }
-      } else if (typeof chatService.chatWithRetryEvents === 'function') {
+      } else if (typeof turnChatService.chatWithRetryEvents === 'function') {
         // 使用 chatWithRetryEvents 以便 yield 重试事件
-        const retryGen = chatService.chatWithRetryEvents(messages, tools, signal);
+        const retryGen = turnChatService.chatWithRetryEvents(messages, turnTools, signal);
         while (true) {
           const { value, done } = await retryGen.next();
           if (done) {
@@ -367,7 +363,7 @@ export async function* agentLoop(
           };
         }
       } else {
-        turnResult = await chatService.chat(messages, tools, signal);
+        turnResult = await turnChatService.chat(messages, turnTools, signal);
       }
     } catch (llmError) {
       // 模型 fallback 处理
@@ -387,6 +383,13 @@ export async function* agentLoop(
         && recoveryAttemptedTurn !== turnsCount
       ) {
         recoveryAttemptedTurn = turnsCount;
+        recoveryAttempt += 1;
+        config.onRecoveryStateChange?.({
+          turn: turnsCount,
+          phase: 'started',
+          reason: 'context_overflow',
+          attempt: recoveryAttempt,
+        });
         yield { type: 'recovery', phase: 'started', reason: 'context_overflow' };
         const compactStream = config.onReactiveCompact({ messages });
         let recovered = false;
@@ -399,9 +402,21 @@ export async function* agentLoop(
           yield value;
         }
         if (!recovered) {
+          config.onRecoveryStateChange?.({
+            turn: turnsCount,
+            phase: 'failed',
+            reason: 'reactive_compact_failed',
+            attempt: recoveryAttempt,
+          });
           yield { type: 'recovery', phase: 'failed', reason: 'reactive_compact' };
           throw llmError;
         }
+        config.onRecoveryStateChange?.({
+          turn: turnsCount,
+          phase: 'retrying',
+          reason: 'reactive_compact_retry',
+          attempt: recoveryAttempt,
+        });
         yield { type: 'recovery', phase: 'retrying', reason: 'reactive_compact' };
         // Retry this turn
         turnsCount--;
@@ -410,6 +425,12 @@ export async function* agentLoop(
       }
 
       if (isOverflowRecoverable(llmError) && recoveryAttemptedTurn === turnsCount) {
+        config.onRecoveryStateChange?.({
+          turn: turnsCount,
+          phase: 'failed',
+          reason: 'recovery_exhausted',
+          attempt: recoveryAttempt,
+        });
         yield { type: 'recovery', phase: 'failed', reason: 'recovery_exhausted' };
       }
       throw llmError;
@@ -420,6 +441,14 @@ export async function* agentLoop(
     }
 
     recoveryAttemptedTurn = null;
+    if (recoveryAttempt > 0) {
+      config.onRecoveryStateChange?.({
+        turn: turnsCount,
+        phase: 'reset',
+        attempt: 0,
+      });
+      recoveryAttempt = 0;
+    }
 
     // 5. Token usage
     if (turnResult.usage) {
@@ -432,7 +461,7 @@ export async function* agentLoop(
         inputTokens: turnResult.usage.promptTokens ?? 0,
         outputTokens: turnResult.usage.completionTokens ?? 0,
         totalTokens,
-        maxContextTokens,
+        maxContextTokens: turnMaxContextTokens,
       };
       yield { type: 'token_usage', usage };
     }
@@ -560,7 +589,7 @@ export async function* agentLoop(
       const executionPlan = planToolExecution(
         functionCalls,
         executionPipeline.getRegistry(),
-        permissionMode,
+        turnPermissionMode,
       );
 
       // 发射 tool_start 事件
@@ -579,9 +608,9 @@ export async function* agentLoop(
       executionResults = await executeToolCalls({
         plan: executionPlan,
         executionPipeline,
-        executionContext,
+        executionContext: turnExecutionContext,
         logger: config.logger,
-        permissionMode: config.permissionMode,
+        permissionMode: turnPermissionMode,
         signal,
         hooks: {
           onBeforeToolExec: config.onBeforeToolExec,

@@ -4,6 +4,7 @@ import type { ToolResult } from '../../tools/types/index.js';
 import type { AgentEvent } from '../AgentEvent.js';
 import type { AgentLoopConfig } from '../AgentLoop.js';
 import { agentLoop } from '../AgentLoop.js';
+import type { TurnState } from '../state/TurnState.js';
 import type { LoopResult } from '../types.js';
 
 function deferred<T>() {
@@ -16,8 +17,29 @@ function deferred<T>() {
   return { promise, resolve, reject };
 }
 
-function baseConfig(overrides: Partial<AgentLoopConfig> = {}): AgentLoopConfig {
-  return {
+type BaseConfigOverrides = Partial<Omit<AgentLoopConfig, 'prepareTurnState'>> & {
+  prepareTurnState?: AgentLoopConfig['prepareTurnState'];
+  turnState?: Partial<Omit<TurnState, 'turn' | 'messages'>>;
+};
+
+function baseConfig(overrides: BaseConfigOverrides = {}): AgentLoopConfig {
+  const {
+    prepareTurnState,
+    turnState,
+    messages = [{ role: 'user', content: 'Hi' }] as Message[],
+    executionPipeline = {
+      getRegistry: () => ({
+        get: (name: string) => ({ kind: 'execute', name }),
+      }),
+      execute: vi.fn(),
+    } as unknown as AgentLoopConfig['executionPipeline'],
+    maxTurns = 5,
+    isYoloMode = false,
+    ...rest
+  } = overrides;
+
+  const defaultTurnState: Omit<TurnState, 'turn' | 'messages'> = {
+    tools: [{ name: 'ReadFile', description: 'read', parameters: {} }],
     chatService: {
       chat: vi.fn(),
       streamChat: vi.fn(),
@@ -25,23 +47,27 @@ function baseConfig(overrides: Partial<AgentLoopConfig> = {}): AgentLoopConfig {
         model: 'test-model',
         maxContextTokens: 128000,
       }),
-    } as unknown as AgentLoopConfig['chatService'],
-    executionPipeline: {
-      getRegistry: () => ({
-        get: (name: string) => ({ kind: 'execute', name }),
-      }),
-      execute: vi.fn(),
-    } as unknown as AgentLoopConfig['executionPipeline'],
-    tools: [{ name: 'ReadFile', description: 'read', parameters: {} }],
-    messages: [{ role: 'user', content: 'Hi' }] as Message[],
-    maxTurns: 5,
-    isYoloMode: false,
+    } as unknown as TurnState['chatService'],
     maxContextTokens: 128000,
+    permissionMode: undefined,
     executionContext: {
       sessionId: 'session-1',
       userId: 'user-1',
     },
-    ...overrides,
+  };
+
+  return {
+    executionPipeline,
+    messages,
+    maxTurns,
+    isYoloMode,
+    prepareTurnState: prepareTurnState ?? ((turn) => ({
+      turn,
+      messages,
+      ...defaultTurnState,
+      ...turnState,
+    })),
+    ...rest,
   };
 }
 
@@ -78,6 +104,7 @@ describe('agentLoop streaming integration', () => {
     });
     const execute = vi.fn(async () => toolGate.promise);
     const streamResponse = vi.fn(async function* () {
+      yield* [] as never[];
       throw new Error('streamResponse should not be used when tools are present');
     });
     const onAfterToolExec = vi.fn();
@@ -85,14 +112,6 @@ describe('agentLoop streaming integration', () => {
     const loopPromise = collectEvents(
       agentLoop(
         baseConfig({
-          chatService: {
-            chat: vi.fn(),
-            streamChat,
-            getConfig: () => ({
-              model: 'test-model',
-              maxContextTokens: 128000,
-            }),
-          } as unknown as AgentLoopConfig['chatService'],
           streamHandler: {
             streamResponse,
           } as never,
@@ -103,6 +122,16 @@ describe('agentLoop streaming integration', () => {
             execute,
           } as unknown as AgentLoopConfig['executionPipeline'],
           onAfterToolExec,
+          turnState: {
+            chatService: {
+              chat: vi.fn(),
+              streamChat,
+              getConfig: () => ({
+                model: 'test-model',
+                maxContextTokens: 128000,
+              }),
+            } as unknown as TurnState['chatService'],
+          },
         }),
       ),
     );
@@ -166,20 +195,22 @@ describe('agentLoop streaming integration', () => {
     const { result } = await collectEvents(
       agentLoop(
         baseConfig({
-          chatService: {
-            chat,
-            streamChat,
-            getConfig: () => ({
-              model: 'test-model',
-              maxContextTokens: 128000,
-            }),
-          } as unknown as AgentLoopConfig['chatService'],
           executionPipeline: {
             getRegistry: () => ({
               get: (name: string) => ({ kind: 'execute', name }),
             }),
             execute,
           } as unknown as AgentLoopConfig['executionPipeline'],
+          turnState: {
+            chatService: {
+              chat,
+              streamChat,
+              getConfig: () => ({
+                model: 'test-model',
+                maxContextTokens: 128000,
+              }),
+            } as unknown as TurnState['chatService'],
+          },
         }),
       ),
     );

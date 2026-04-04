@@ -1,9 +1,21 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { NOOP_LOGGER } from '../../../logging/Logger.js';
 import { createContextSnapshot } from '../../../runtime/index.js';
+import type { ChatContext, LoopOptions } from '../../types.js';
 import { AgentSessionStore } from '../AgentSessionStore.js';
 
-const runAgenticLoop = vi.fn(async () => ({
+const runAgenticLoop = vi.fn<
+  (message: string, context: ChatContext, options?: LoopOptions) => Promise<{
+    success: boolean;
+    finalMessage?: string;
+    error?: { message?: string };
+    metadata?: {
+      toolCallsCount?: number;
+      tokensUsed?: number;
+      duration?: number;
+    };
+  }>
+>(async () => ({
   success: true,
   finalMessage: 'done',
   metadata: {
@@ -118,5 +130,88 @@ describe('BackgroundAgentManager', () => {
     expect(manager.getAgent(agentId)?.description).toBe('Updated description');
 
     await manager.waitForCompletion(agentId, 1000);
+  });
+
+  it('maintains separate lifecycle and work controllers for a running agent', async () => {
+    runAgenticLoop.mockImplementationOnce(
+      async (
+        _message: string,
+        _context: ChatContext,
+        options?: LoopOptions,
+      ) =>
+        await new Promise((resolve) => {
+          options?.signal?.addEventListener(
+            'abort',
+            () =>
+              resolve({
+                success: false,
+                error: { message: 'aborted' },
+                metadata: { duration: 0 },
+              }),
+            { once: true },
+          );
+        }),
+    );
+
+    const manager = BackgroundAgentManager.getInstance(NOOP_LOGGER);
+    const agentId = manager.startBackgroundAgent({
+      config: subagentConfig,
+      bladeConfig,
+      description: 'Long running task',
+      prompt: 'inspect',
+    });
+
+    const runtime = (manager as unknown as {
+      runningAgents: Map<string, {
+        lifecycleController: AbortController;
+        workController: AbortController;
+      }>;
+    }).runningAgents.get(agentId);
+
+    expect(runtime).toBeDefined();
+    expect(runtime?.lifecycleController).toBeInstanceOf(AbortController);
+    expect(runtime?.workController).toBeInstanceOf(AbortController);
+    expect(runtime?.lifecycleController).not.toBe(runtime?.workController);
+
+    manager.killAgent(agentId);
+
+    expect(runtime?.lifecycleController.signal.aborted).toBe(true);
+    expect(runtime?.workController.signal.aborted).toBe(true);
+    await manager.waitForCompletion(agentId, 1000);
+  });
+
+  it('preserves cancelled status after killing a running agent', async () => {
+    runAgenticLoop.mockImplementationOnce(
+      async (
+        _message: string,
+        _context: ChatContext,
+        options?: LoopOptions,
+      ) =>
+        await new Promise((resolve) => {
+          options?.signal?.addEventListener(
+            'abort',
+            () =>
+              resolve({
+                success: false,
+                error: { message: 'aborted' },
+                metadata: { duration: 0 },
+              }),
+            { once: true },
+          );
+        }),
+    );
+
+    const manager = BackgroundAgentManager.getInstance(NOOP_LOGGER);
+    const agentId = manager.startBackgroundAgent({
+      config: subagentConfig,
+      bladeConfig,
+      description: 'Long running task',
+      prompt: 'inspect',
+    });
+
+    expect(manager.killAgent(agentId)).toBe(true);
+
+    const session = await manager.waitForCompletion(agentId, 1000);
+    expect(session?.status).toBe('cancelled');
   });
 });

@@ -97,11 +97,7 @@ Important:
       content.scripts
     );
     const requestedModelId =
-      typeof content.metadata.model === 'string' &&
-      content.metadata.model !== 'inherit' &&
-      content.metadata.model.trim() !== ''
-        ? content.metadata.model
-        : undefined;
+      content.metadata.runtimeEffects?.modelId;
 
     // 返回双消息
     return {
@@ -114,6 +110,7 @@ Important:
         skillName: skill,
         basePath: content.metadata.basePath,
         version: content.metadata.version,
+        runtimeEffects: content.metadata.runtimeEffects,
         // allowed-tools: 限制 Skill 执行期间可用的工具
         allowedTools: content.metadata.allowedTools,
         modelId: requestedModelId,
