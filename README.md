@@ -9,11 +9,11 @@
 - Session-first：`createSession()`、`resumeSession()`、`forkSession()`、`prompt()`
 - 流式 Agent 交互：`send()` + `stream()`，支持内容、thinking、tool use、tool result、usage、result 等事件
 - 多模型支持：`openai`、`anthropic`、`azure-openai`、`gemini`、`deepseek`、`openai-compatible`
-- 工具系统：内置 17 个标准工具，支持 `defineTool()`、`createTool()`、MCP 协议工具与 MCP 资源工具
+- 工具系统：内置 18 个标准工具，支持 `defineTool()`、`createTool()`、MCP 协议工具与 MCP 资源工具
 - MCP：支持 `stdio`、`sse`、`http` 传输，也支持进程内 `createSdkMcpServer()`
 - 协作能力：支持子 Agent、`Task` / `TaskOutput` 工具，以及用户级和项目级 Skills
 - 安全与治理：`permissionMode`、`canUseTool`、Hooks、沙箱配置可组合使用
-- 工程能力：运行时 Context、结构化输出、日志接口、会话持久化与分叉
+- 工程能力：运行时 Context、结构化输出、日志接口、会话持久化与分叉、自动上下文压缩
 
 ## 安装
 

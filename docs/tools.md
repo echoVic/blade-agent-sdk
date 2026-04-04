@@ -111,7 +111,7 @@ const tools = await getBuiltinTools({
 
 ## 内置工具列表
 
-SDK 内置 17 个标准工具，连接 MCP 后额外提供 2 个资源工具：
+SDK 内置 18 个标准工具，连接 MCP 后额外提供 2 个资源工具：
 
 | 分类 | 工具名 | Kind | 说明 |
 |------|--------|------|------|
@@ -127,6 +127,7 @@ SDK 内置 17 个标准工具，连接 MCP 后额外提供 2 个资源工具：
 | | WebSearch | readonly | 搜索互联网 |
 | **任务** | Task | execute | 创建子任务（子 Agent） |
 | | TaskOutput | readonly | 获取子任务输出 |
+| | TaskStop | execute | 停止后台任务或后台 Agent |
 | **系统** | AskUserQuestion | readonly | 向用户提问 |
 | | Skill | execute | 调用 Skill 脚本 |
 | **计划** | EnterPlanMode | readonly | 进入计划模式 |
@@ -137,6 +138,10 @@ SDK 内置 17 个标准工具，连接 MCP 后额外提供 2 个资源工具：
 
 ::: tip
 `Task` 使用当前 session 的 `SubagentRegistry`。`MemoryRead` / `MemoryWrite` 属于 opt-in 工具，不在默认列表中。
+:::
+
+::: info 工具排序
+SDK 发送给 LLM 的工具列表按以下规则排序：**内置工具在前，MCP 工具在后**，每组内按名称字母序排列。这意味着内置工具在 LLM 的上下文中优先级更高。
 :::
 
 ## 工具筛选

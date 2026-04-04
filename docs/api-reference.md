@@ -30,6 +30,8 @@
 | `MemoryManager` | memory | memory 编排层 |
 | `SubagentRegistry` | subagents | 注册和发现子 Agent |
 | `SubagentExecutor` | subagents | 执行单个子 Agent |
+| `BashClassifier` | hooks | Bash 命令分类器（安全评估） |
+| `DenialTracker` | tools | 权限拒绝记录追踪器 |
 
 ## 常量 / 枚举
 
@@ -70,6 +72,9 @@
 | `Memory` | Memory 记录类型 |
 | `MemoryInput` | Memory 写入输入类型 |
 | `MemoryStore` | Memory 后端抽象接口 |
+| `BashClassification` | Bash 命令分类结果 |
+| `BashCommandCategory` | Bash 命令分类类别 |
+| `DenialRecord` | 权限拒绝记录 |
 
 ### Provider
 
@@ -121,7 +126,7 @@
 | `SandboxSettings` | 沙箱配置 |
 | `AgentDefinition` | 子 Agent 定义 |
 | `SubagentInfo` | 子 Agent 信息 |
-| `SubagentConfig` | 子 Agent 配置 |
+| `SubagentConfig` | 子 Agent 配置（含 `contextOmissions` 字段） |
 | `SubagentContext` | 子 Agent 执行上下文 |
 | `SubagentResult` | 子 Agent 执行结果 |
 | `SubagentSource` | 子 Agent 来源类型 |

@@ -787,6 +787,40 @@ await session.send('分析 shared-libs 中的依赖问题', {
 - `metadata`：浅合并，轮次级覆盖同名键
   :::
 
+## 上下文自动压缩
+
+SDK 自动管理上下文窗口大小。当对话历史的 token 数接近模型上限时，会按优先级依次触发多层压缩策略，无需手动干预。
+
+### 压缩层级
+
+| 层级 | 名称 | 触发条件 | 行为 |
+|------|------|----------|------|
+| **Tier 0** | Microcompact | token 用量 ≥ 60% | 将旧的大型工具输出替换为摘要预览，保留最近 N 条完整工具结果 |
+| **Tier 1** | Soft compaction | token 用量 ≥ 80%（Microcompact 不足时） | 截断所有过长的工具输出到指定长度 |
+| **Tier 2** | LLM 压缩 | token 用量 ≥ 80%（Soft 不足时） | 调用 LLM 生成对话历史摘要，替换旧消息 |
+| **Tier 3** | 紧急截断 | token 用量 ≥ 95% | 仅保留系统消息和最近的消息，丢弃中间历史 |
+
+### Microcompact 策略
+
+Microcompact 是最轻量的压缩方式，不调用 LLM，只替换旧的大型工具输出：
+
+- 保留最近 N 条工具消息的完整内容（默认保留最近 1-2 条）
+- 超过指定长度的旧工具输出被替换为预览摘要
+- 预览包含：原始长度、tool_call_id、内容前 160 字符
+
+这种策略在不丢失对话语义的前提下，通常可以回收大量 token，特别适合包含大量文件读取和搜索结果的长对话。
+
+### 上下文溢出恢复
+
+当 LLM 调用因上下文超限报错时，SDK 会自动触发恢复流程（Reactive Compaction）：
+
+1. 检测到 `maximum context length exceeded` 类型错误
+2. 依次执行 Microcompact → Soft compaction → LLM 压缩
+3. 压缩成功后自动重试当前轮次
+4. 如果压缩后仍然超限，抛出原始错误
+
+整个恢复过程对上层透明，SDK 会通过 `recovery` 事件通知状态变化（`started` → `retrying` → 成功，或 `started` → `failed`）。
+
 ### 动态更新上下文
 
 ```ts
