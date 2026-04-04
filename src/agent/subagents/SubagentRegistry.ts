@@ -3,7 +3,7 @@ import path from 'node:path';
 import yaml from 'yaml';
 import { type InternalLogger, LogCategory, NOOP_LOGGER } from '../../logging/Logger.js';
 import { builtinAgents } from './builtinAgents.js';
-import type { SubagentConfig, SubagentFrontmatter } from './types.js';
+import type { SubagentConfig, SubagentFrontmatter, SubagentSource } from './types.js';
 import { mapClaudeCodePermissionMode } from './types.js';
 
 /**
@@ -13,9 +13,10 @@ type ConfigSource =
   | 'builtin'
   | 'user'
   | 'project'
+  | 'session'
   | 'plugin';
 
-type FileConfigSource = Exclude<ConfigSource, 'plugin'>;
+type FileConfigSource = Exclude<ConfigSource, 'plugin' | 'session'>;
 
 /**
  * Subagent 注册表
@@ -47,8 +48,8 @@ export class SubagentRegistry {
    * 注册一个 subagent
    * @param config - 子代理配置
    */
-  register(config: SubagentConfig): void {
-    if (this.subagents.has(config.name)) {
+  register(config: SubagentConfig, options?: { override?: boolean }): void {
+    if (!options?.override && this.subagents.has(config.name)) {
       throw new Error(`Subagent '${config.name}' already registered`);
     }
     this.subagents.set(config.name, config);
@@ -114,8 +115,7 @@ export class SubagentRegistry {
       const filePath = path.join(dirPath, file);
       try {
         const config = this.parseConfigFile(filePath, source);
-        // 使用 set 允许覆盖（用户/项目配置覆盖内置）
-        this.subagents.set(config.name, config);
+        this.register(config, { override: true });
       } catch (error) {
         this.logger.warn(`Failed to load subagent config from ${filePath}:`, error);
       }
@@ -205,7 +205,7 @@ export class SubagentRegistry {
    * 按优先级加载（后加载的会覆盖前面的）：
    * 1. 内置配置（builtinAgents.ts）
    * 2. 用户级配置（{storageRoot}/agents/）
-   * 3. 项目级配置（{projectDir}/agents/ 或 {projectDir}/.agents/）
+   * 3. 项目级配置（{projectDir}/agents/）
    *
    * @param projectDir 项目目录（用于加载项目级配置）
    * @param storageRoot SDK 数据存储根目录（用于加载用户级配置）
@@ -241,12 +241,11 @@ export class SubagentRegistry {
    */
   loadBuiltinAgents(): void {
     for (const agent of builtinAgents) {
-      // 使用 set 而非 register，允许被后续配置覆盖
-      this.subagents.set(agent.name, {
+      this.register({
         ...agent,
         model: agent.model || 'inherit', // 默认继承父 Agent 模型
         source: 'builtin',
-      });
+      }, { override: true });
     }
     this.logger.debug(`Loaded ${builtinAgents.length} builtin subagents`);
   }
@@ -267,11 +266,12 @@ export class SubagentRegistry {
       builtin: [],
       user: [],
       project: [],
+      session: [],
       plugin: [],
     };
 
     for (const config of this.subagents.values()) {
-      const source = config.source || 'builtin';
+      const source: SubagentSource = config.source || 'builtin';
       // Map plugin:xxx sources to 'plugin' category
       const category: ConfigSource = source.startsWith('plugin:')
         ? 'plugin'

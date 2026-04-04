@@ -8,11 +8,15 @@
  */
 
 import { nanoid } from 'nanoid';
+import { writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { type InternalLogger, LogCategory, NOOP_LOGGER } from '../../logging/Logger.js';
 import type { ContextSnapshot } from '../../runtime/index.js';
 import type { Message } from '../../services/ChatServiceInterface.js';
 import type { BladeConfig, PermissionMode } from '../../types/common.js';
 import { Agent } from '../Agent.js';
+import type { SubagentRegistry } from './SubagentRegistry.js';
 import {
   type AgentSession,
   AgentSessionStore,
@@ -45,6 +49,9 @@ export interface StartBackgroundAgentOptions {
 
   /** BladeConfig 配置 */
   bladeConfig: BladeConfig;
+
+  /** 当前会话生效的 subagent 注册表 */
+  subagentRegistry?: SubagentRegistry;
 
   /** 任务描述 */
   description: string;
@@ -134,6 +141,7 @@ export class BackgroundAgentManager {
     const {
       config,
       bladeConfig,
+      subagentRegistry,
       description,
       prompt,
       parentSessionId,
@@ -145,6 +153,9 @@ export class BackgroundAgentManager {
 
     // 生成或使用已有的 agent ID
     const id = agentId || nanoid();
+
+    // 创建输出文件路径
+    const outputFile = join(tmpdir(), `blade-agent-${id}.output`);
 
     // 创建 AbortController 用于取消
     const abortController = new AbortController();
@@ -160,6 +171,7 @@ export class BackgroundAgentManager {
       createdAt: Date.now(),
       lastActiveAt: Date.now(),
       parentSessionId,
+      outputFile,
     };
 
     // 保存会话
@@ -170,6 +182,7 @@ export class BackgroundAgentManager {
       id,
       config,
       bladeConfig,
+      subagentRegistry,
       prompt,
       parentSessionId,
       permissionMode,
@@ -202,6 +215,7 @@ export class BackgroundAgentManager {
     agentId: string,
     config: SubagentConfig,
     bladeConfig: BladeConfig,
+    subagentRegistry: SubagentRegistry | undefined,
     prompt: string,
     parentSessionId: string | undefined,
     permissionMode: PermissionMode | undefined,
@@ -223,6 +237,14 @@ export class BackgroundAgentManager {
         systemPrompt,
         toolWhitelist: config.tools,
         modelId,
+      }, {
+        subagentRegistry,
+        // Background subagents should inherit the parent runtime context when a
+        // snapshot exists. Without a snapshot, default to an empty context so
+        // out-of-band background work does not gain implicit host access.
+        defaultContext: snapshot
+          ? snapshot.context
+          : {},
       });
 
       const context = {
@@ -234,7 +256,9 @@ export class BackgroundAgentManager {
         subagentInfo: {
           parentSessionId: parentSessionId || '',
           subagentType: config.name,
-          isSidechain: false,
+          // Background agents run in a separate session tree; mark as sidechain
+          // so their messages are not written into the parent session's store.
+          isSidechain: true,
         },
       };
 
@@ -275,6 +299,13 @@ export class BackgroundAgentManager {
         },
         result.stats
       );
+
+      // Write output to file for streaming access
+      const session = this.sessionStore.loadSession(agentId);
+      if (session?.outputFile) {
+        const output = JSON.stringify({ status: result.success ? 'completed' : 'failed', result }, null, 2);
+        await writeFile(session.outputFile, output, 'utf-8').catch(() => {/* ignore write errors */});
+      }
 
       this.logger.info(`Background agent completed: ${agentId} (success=${result.success})`);
       return result;
@@ -370,7 +401,9 @@ export class BackgroundAgentManager {
     config: SubagentConfig,
     bladeConfig: BladeConfig,
     parentSessionId?: string,
-    permissionMode?: PermissionMode
+    permissionMode?: PermissionMode,
+    subagentRegistry?: SubagentRegistry,
+    description?: string,
   ): string | undefined {
     const session = this.sessionStore.loadSession(agentId);
 
@@ -387,7 +420,8 @@ export class BackgroundAgentManager {
     return this.startBackgroundAgent({
       config,
       bladeConfig,
-      description: session.description,
+      subagentRegistry,
+      description: description ?? session.description,
       prompt: newPrompt,
       parentSessionId: parentSessionId || session.parentSessionId,
       permissionMode,

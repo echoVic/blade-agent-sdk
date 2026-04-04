@@ -1,4 +1,6 @@
+import { basename, dirname } from 'node:path';
 import type { AgentRuntimeDeps } from '../agent/Agent.js';
+import { SubagentRegistry } from '../agent/subagents/SubagentRegistry.js';
 import { ContextManager } from '../context/ContextManager.js';
 import { HookManager } from '../hooks/HookManager.js';
 import type { InternalLogger } from '../logging/Logger.js';
@@ -27,7 +29,15 @@ import type { ContextSnapshot, RuntimeContext } from '../runtime/index.js';
 import {
   getContextCwd,
 } from '../runtime/index.js';
-import type { HookCallback, HookInput, HookOutput, McpServerStatus, McpToolInfo, SessionOptions } from './types.js';
+import type {
+  AgentDefinition,
+  HookCallback,
+  HookInput,
+  HookOutput,
+  McpServerStatus,
+  McpToolInfo,
+  SessionOptions,
+} from './types.js';
 
 function isSdkMcpServerHandle(
   config: McpServerConfig | SdkMcpServerHandle
@@ -41,8 +51,31 @@ function getToolDescription(tool: Tool): string {
     : tool.description.short;
 }
 
+function resolveStorageRoot(storagePath?: string): string | undefined {
+  if (!storagePath) {
+    return undefined;
+  }
+
+  return basename(storagePath) === 'sessions'
+    ? dirname(storagePath)
+    : storagePath;
+}
+
+function toSubagentConfig(name: string, definition: AgentDefinition) {
+  return {
+    name: definition.name || name,
+    description: definition.description,
+    systemPrompt: definition.systemPrompt,
+    tools: definition.allowedTools,
+    model: definition.model ?? 'inherit',
+    source: 'session' as const,
+  };
+}
+
 export class SessionRuntime {
+  private readonly storageRoot?: string;
   private readonly mcpRegistry: McpRegistry;
+  private readonly subagentRegistry: SubagentRegistry;
   private readonly toolRegistry = new ToolRegistry();
   private readonly contextManager: ContextManager;
   private readonly executionPipeline: ExecutionPipeline;
@@ -61,7 +94,9 @@ export class SessionRuntime {
   ) {
     this.rootLogger = logger;
     this.logger = logger.child(LogCategory.AGENT);
-    this.mcpRegistry = new McpRegistry(bladeConfig.storageRoot);
+    this.storageRoot = bladeConfig.storageRoot ?? resolveStorageRoot(options.storagePath);
+    this.mcpRegistry = new McpRegistry(this.storageRoot);
+    this.subagentRegistry = new SubagentRegistry(this.rootLogger, getContextCwd(defaultContext));
     this.contextManager = new ContextManager({
       storage: {
         maxMemorySize: 1000,
@@ -82,6 +117,7 @@ export class SessionRuntime {
       contextManager: this.contextManager,
       defaultContext: this.defaultContext,
       mcpRegistry: this.mcpRegistry,
+      subagentRegistry: this.subagentRegistry,
       runtimeManaged: true,
       logger: this.rootLogger,
     };
@@ -107,6 +143,7 @@ export class SessionRuntime {
       getSandboxService().configure(this.options.sandbox);
     }
 
+    this.initializeSubagents();
     await this.contextManager.initialize();
     FileAccessTracker.getInstance(this.rootLogger);
     FileLockManager.getInstance(this.rootLogger);
@@ -210,11 +247,25 @@ export class SessionRuntime {
   private async registerBuiltinTools(): Promise<void> {
     const builtinTools = await getBuiltinTools({
       sessionId: this.sessionId,
-      configDir: this.bladeConfig.storageRoot,
+      configDir: this.storageRoot,
       mcpRegistry: this.mcpRegistry,
       includeMcpProtocolTools: false,
+      subagentRegistry: this.subagentRegistry,
     });
     this.registerTools(builtinTools);
+  }
+
+  private initializeSubagents(): void {
+    this.subagentRegistry.setLogger(this.rootLogger);
+    this.subagentRegistry.setProjectDir(getContextCwd(this.defaultContext));
+    this.subagentRegistry.loadFromStandardLocations(
+      getContextCwd(this.defaultContext),
+      this.storageRoot,
+    );
+
+    for (const [name, definition] of Object.entries(this.options.agents ?? {})) {
+      this.subagentRegistry.register(toSubagentConfig(name, definition), { override: true });
+    }
   }
 
   private registerCustomTools(): void {

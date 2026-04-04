@@ -239,6 +239,7 @@ async function handleAgentOutput(
       : undefined,
     result: session.result,
     stats: session.stats,
+    output_file: session.outputFile,
   };
 
   const subagentStatus =

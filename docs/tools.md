@@ -88,7 +88,25 @@ function getBuiltinTools(opts?: {
   configDir?: string;
   mcpRegistry?: McpRegistry;
   includeMcpProtocolTools?: boolean;
+  memoryManager?: MemoryManager;
+  subagentRegistry?: SubagentRegistry;
 }): Promise<Tool[]>
+```
+
+`MemoryRead` 和 `MemoryWrite` 默认不会注册。只有在显式传入 `memoryManager` 时才会加入内置工具集合。
+
+```ts
+import {
+  FileSystemMemoryStore,
+  MemoryManager,
+  SubagentRegistry,
+  getBuiltinTools,
+} from '@blade-ai/agent-sdk';
+
+const tools = await getBuiltinTools({
+  memoryManager: new MemoryManager(new FileSystemMemoryStore('/tmp/blade-memory')),
+  subagentRegistry: new SubagentRegistry(),
+});
 ```
 
 ## 内置工具列表
@@ -116,6 +134,10 @@ SDK 内置 17 个标准工具，连接 MCP 后额外提供 2 个资源工具：
 | **待办** | TodoWrite | readonly | 管理待办事项 |
 | **MCP** | ListMcpResources | readonly | 列出 MCP 资源（需连接 MCP） |
 | | ReadMcpResource | readonly | 读取 MCP 资源（需连接 MCP） |
+
+::: tip
+`Task` 使用当前 session 的 `SubagentRegistry`。`MemoryRead` / `MemoryWrite` 属于 opt-in 工具，不在默认列表中。
+:::
 
 ## 工具筛选
 

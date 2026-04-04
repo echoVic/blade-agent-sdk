@@ -44,7 +44,7 @@ import { LoopRunner } from './LoopRunner.js';
 import { ModelManager } from './ModelManager.js';
 import { PlanExecutor } from './PlanExecutor.js';
 import { StreamResponseHandler } from './StreamResponseHandler.js';
-import { subagentRegistry } from './subagents/SubagentRegistry.js';
+import { SubagentRegistry } from './subagents/SubagentRegistry.js';
 import {
   TokenBudget,
   type TokenBudgetConfig,
@@ -64,6 +64,7 @@ export interface AgentRuntimeDeps {
   contextManager?: ContextManager;
   defaultContext?: RuntimeContext;
   mcpRegistry?: McpRegistry;
+  subagentRegistry?: SubagentRegistry;
   runtimeManaged?: boolean;
   logger?: InternalLogger;
 }
@@ -76,6 +77,7 @@ export class Agent {
   private readonly defaultContext: RuntimeContext;
   private readonly runtimeManaged: boolean;
   private readonly runtimeMcpRegistry?: McpRegistry;
+  private readonly subagentRegistry: SubagentRegistry;
   private readonly logger: InternalLogger;
   private readonly rootLogger: InternalLogger;
   private lastPreparedSkillCwd?: string;
@@ -100,6 +102,8 @@ export class Agent {
     this.runtimeManaged = deps.runtimeManaged ?? false;
     this.runtimeMcpRegistry =
       deps.mcpRegistry || (!this.runtimeManaged ? new McpRegistry(config.storageRoot) : undefined);
+    this.subagentRegistry =
+      deps.subagentRegistry ?? new SubagentRegistry(this.rootLogger, getContextCwd(this.defaultContext));
     this.modelManager = new ModelManager(
       config,
       runtimeOptions.outputFormat,
@@ -463,6 +467,7 @@ export class Agent {
       configDir: this.config.storageRoot,
       mcpRegistry: this.runtimeMcpRegistry,
       includeMcpProtocolTools: false,
+      subagentRegistry: this.subagentRegistry,
     });
     if (builtinTools.length === 0) {
       this.logger.debug('📦 No builtin tools available');
@@ -503,16 +508,19 @@ export class Agent {
   }
 
   private async loadSubagents(): Promise<void> {
-    subagentRegistry.setLogger(this.rootLogger);
-    subagentRegistry.setProjectDir(getContextCwd(this.defaultContext));
-    if (subagentRegistry.getAllNames().length > 0) {
-      this.logger.debug(`📦 Subagents already loaded: ${subagentRegistry.getAllNames().join(', ')}`);
+    this.subagentRegistry.setLogger(this.rootLogger);
+    this.subagentRegistry.setProjectDir(getContextCwd(this.defaultContext));
+    if (this.subagentRegistry.getAllNames().length > 0) {
+      this.logger.debug(`📦 Subagents already loaded: ${this.subagentRegistry.getAllNames().join(', ')}`);
       return;
     }
     try {
-      const loadedCount = subagentRegistry.loadFromStandardLocations();
+      const loadedCount = this.subagentRegistry.loadFromStandardLocations(
+        getContextCwd(this.defaultContext),
+        this.config.storageRoot,
+      );
       if (loadedCount > 0) {
-        this.logger.debug(`✅ Loaded ${loadedCount} subagents: ${subagentRegistry.getAllNames().join(', ')}`);
+        this.logger.debug(`✅ Loaded ${loadedCount} subagents: ${this.subagentRegistry.getAllNames().join(', ')}`);
       } else {
         this.logger.debug('📦 No subagents configured');
       }

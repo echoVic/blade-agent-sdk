@@ -1025,6 +1025,12 @@ interface AgentDefinition {
 }
 ```
 
+`SessionOptions.agents` 会在当前 session 初始化时注册到专属的 `SubagentRegistry`：
+
+- 不同 session 之间不会共享这些 agent
+- 加载顺序是 builtin → 用户/项目文件配置 → `SessionOptions.agents`
+- 如果名称冲突，当前 session 里的显式 `agents` 定义优先级最高
+
 ### 自定义子代理
 
 ```ts
@@ -1038,9 +1044,9 @@ const session = await createSession({
       allowedTools: ['Read', 'Glob', 'Grep', 'WebSearch'],
       model: 'claude-sonnet-4-20250514',
     },
-    reviewer: {
-      name: 'reviewer',
-      description: '代码审查专家，负责分析代码质量、发现潜在问题',
+    verification: {
+      name: 'verification',
+      description: '代码审查专家，负责分析正确性、风险和缺失测试',
       systemPrompt: `你是一个资深代码审查员。审查时关注：
 1. 类型安全
 2. 错误处理
@@ -1078,7 +1084,7 @@ const session = await createSession({
 ```
 
 ::: tip
-用户定义的子代理会与内置子代理并存。如果名称冲突，用户定义的将覆盖内置的。
+用户定义的子代理会与内置子代理并存。如果名称冲突，当前 session 的定义将覆盖内置或文件配置的同名 agent。
 :::
 
 ## 结构化输出
@@ -1577,4 +1583,3 @@ export type {
 // 常量枚举
 export { PermissionMode, HookEvent, StreamMessageType, ToolKind };
 ```
-

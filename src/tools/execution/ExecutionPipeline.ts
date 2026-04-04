@@ -1,4 +1,4 @@
-import { EventEmitter } from 'events';
+import { EventEmitter } from 'node:events';
 import { HookManager } from '../../hooks/HookManager.js';
 import { HookStage } from '../../hooks/HookStage.js';
 import { PostToolUseHookStage } from '../../hooks/PostToolUseHookStage.js';
@@ -24,6 +24,7 @@ import {
   FormattingStage,
   PermissionStage,
 } from './PipelineStages.js';
+import { DenialTracker } from './DenialTracker.js';
 
 
 
@@ -35,7 +36,10 @@ export class ExecutionPipeline extends EventEmitter {
   private stages: PipelineStage[];
   private executionHistory: ExecutionHistoryEntry[] = [];
   private readonly maxHistorySize: number;
+  private readonly maxConcurrency: number;
+  private readonly toolTimeoutMs: number | undefined;
   private readonly sessionApprovals = new Set<string>();
+  private readonly denialTracker = new DenialTracker();
   private readonly hooks?: ExecutionPipelineHooks;
   private readonly logger: InternalLogger;
 
@@ -46,6 +50,8 @@ export class ExecutionPipeline extends EventEmitter {
     super();
 
     this.maxHistorySize = config.maxHistorySize || 1000;
+    this.maxConcurrency = config.maxConcurrency ?? 10;
+    this.toolTimeoutMs = config.toolTimeoutMs;
     this.hooks = config.hooks;
     this.logger = (config.logger ?? NOOP_LOGGER).child(LogCategory.EXECUTION);
 
@@ -72,6 +78,7 @@ export class ExecutionPipeline extends EventEmitter {
         permissionStage.getPermissionChecker(),
         config.canUseTool,
         this.logger,
+        this.denialTracker,
       ),
       new ExecutionStage(),
       new PostToolUseHookStage(),
@@ -123,17 +130,17 @@ export class ExecutionPipeline extends EventEmitter {
     const filePath =
       needsFileLock && params.file_path ? String(params.file_path) : null;
 
-    // 如果需要文件锁，使用 FileLockManager
-    if (needsFileLock && filePath) {
-      const lockManager = FileLockManager.getInstance(this.logger);
-      const result = await lockManager.acquireLock(filePath, () =>
-        this.executeWithPipeline(execution, executionId, startTime)
-      );
-      return this.applyAfterExecuteHooks(toolName, nextParams, context, result);
-    }
+    const runPipeline = (): Promise<ToolResult> => {
+      if (needsFileLock && filePath) {
+        const lockManager = FileLockManager.getInstance(this.logger);
+        return lockManager.acquireLock(filePath, () =>
+          this.executeWithPipeline(execution, executionId, startTime)
+        );
+      }
+      return this.executeWithPipeline(execution, executionId, startTime);
+    };
 
-    // 否则直接执行
-    const result = await this.executeWithPipeline(execution, executionId, startTime);
+    const result = await this.withTimeout(toolName, runPipeline);
     return this.applyAfterExecuteHooks(toolName, nextParams, context, result);
   }
 
@@ -291,11 +298,47 @@ export class ExecutionPipeline extends EventEmitter {
       context: ExecutionContext;
     }>
   ): Promise<ToolResult[]> {
-    const promises = requests.map((request) =>
-      this.execute(request.toolName, request.params, request.context)
-    );
+    return this.executeTools(requests);
+  }
 
-    return Promise.all(promises);
+  /**
+   * 按工具并发安全策略执行工具
+   */
+  async executeTools(
+    requests: Array<{
+      toolName: string;
+      params: Record<string, unknown>;
+      context: ExecutionContext;
+    }>,
+    maxConcurrency: number = this.maxConcurrency
+  ): Promise<ToolResult[]> {
+    const results = new Array<ToolResult>(requests.length);
+    const batches = this.partitionToolCalls(requests);
+
+    for (const batch of batches) {
+      if (batch.mode === 'parallel') {
+        const batchResults = await this.executeWithConcurrency(
+          batch.requests,
+          maxConcurrency,
+          async (request) => this.execute(request.toolName, request.params, request.context)
+        );
+
+        for (let i = 0; i < batch.requests.length; i++) {
+          results[batch.requests[i].index] = batchResults[i];
+        }
+        continue;
+      }
+
+      for (const request of batch.requests) {
+        results[request.index] = await this.execute(
+          request.toolName,
+          request.params,
+          request.context
+        );
+      }
+    }
+
+    return results;
   }
 
   /**
@@ -307,26 +350,9 @@ export class ExecutionPipeline extends EventEmitter {
       params: Record<string, unknown>;
       context: ExecutionContext;
     }>,
-    maxConcurrency: number = 5
+    maxConcurrency: number = this.maxConcurrency
   ): Promise<ToolResult[]> {
-    const results: ToolResult[] = [];
-    const executing: Promise<ToolResult>[] = [];
-
-    for (let i = 0; i < requests.length; i++) {
-      const request = requests[i];
-      const promise = this.execute(request.toolName, request.params, request.context);
-
-      executing.push(promise);
-
-      // 控制并发数量
-      if (executing.length >= maxConcurrency || i === requests.length - 1) {
-        const batchResults = await Promise.all(executing);
-        results.push(...batchResults);
-        executing.length = 0; // 清空数组
-      }
-    }
-
-    return results;
+    return this.executeTools(requests, maxConcurrency);
   }
 
   /**
@@ -335,6 +361,11 @@ export class ExecutionPipeline extends EventEmitter {
   getExecutionHistory(limit?: number): ExecutionHistoryEntry[] {
     const history = [...this.executionHistory];
     return limit ? history.slice(-limit) : history;
+  }
+
+  /** Get the denial tracker for this pipeline session. */
+  getDenialTracker(): DenialTracker {
+    return this.denialTracker;
   }
 
   /**
@@ -384,7 +415,7 @@ export class ExecutionPipeline extends EventEmitter {
   /**
    * 添加自定义阶段
    */
-  addStage(stage: PipelineStage, position: number = -1): void {
+  addStage(stage: PipelineStage, position = -1): void {
     if (position === -1) {
       // 插入到执行阶段之前
       const executionIndex = this.stages.findIndex((s) => s.name === 'execution');
@@ -455,7 +486,7 @@ export class ExecutionPipeline extends EventEmitter {
   private applyBeforeHookResult(
     toolName: string,
     params: Record<string, unknown>,
-    hookResult: ExecutionPipelineHookResult | void,
+    hookResult: ExecutionPipelineHookResult | undefined,
   ): ToolResult | null {
     if (!hookResult) {
       return null;
@@ -544,6 +575,102 @@ export class ExecutionPipeline extends EventEmitter {
       return String(output);
     }
   }
+
+  private partitionToolCalls(
+    requests: Array<{
+      toolName: string;
+      params: Record<string, unknown>;
+      context: ExecutionContext;
+    }>
+  ): PartitionedToolCallBatch[] {
+    const batches: PartitionedToolCallBatch[] = [];
+    let currentBatch: PartitionedToolCallBatch | null = null;
+
+    for (const [index, request] of requests.entries()) {
+      const mode = this.canExecuteInParallel(request.toolName) ? 'parallel' : 'serial';
+      const indexedRequest: IndexedToolCallRequest = { ...request, index };
+
+      if (!currentBatch || currentBatch.mode !== mode) {
+        currentBatch = { mode, requests: [indexedRequest] };
+        batches.push(currentBatch);
+        continue;
+      }
+
+      currentBatch.requests.push(indexedRequest);
+    }
+
+    return batches;
+  }
+
+  private canExecuteInParallel(toolName: string): boolean {
+    const tool = this.registry.get(toolName);
+    return tool?.kind === 'readonly' && tool.isConcurrencySafe;
+  }
+
+  /**
+   * Wraps a pipeline execution with an optional per-tool timeout.
+   * When toolTimeoutMs is set and the tool exceeds it, the promise is rejected
+   * with a TIMEOUT error result rather than throwing.
+   */
+  private async withTimeout(toolName: string, run: () => Promise<ToolResult>): Promise<ToolResult> {
+    if (!this.toolTimeoutMs) {
+      return run();
+    }
+    const timeoutMs = this.toolTimeoutMs;
+    return new Promise<ToolResult>((resolve, reject) => {
+      const timer = setTimeout(() => {
+        resolve({
+          success: false,
+          llmContent: `Tool "${toolName}" timed out after ${timeoutMs}ms`,
+          displayContent: `⏱ Tool "${toolName}" timed out after ${timeoutMs}ms`,
+          error: {
+            type: ToolErrorType.EXECUTION_ERROR,
+            message: `Tool execution timeout after ${timeoutMs}ms`,
+          },
+        });
+      }, timeoutMs);
+      run().then(
+        (result) => { clearTimeout(timer); resolve(result); },
+        (err) => { clearTimeout(timer); reject(err); },
+      );
+    });
+  }
+
+  private async executeWithConcurrency<TRequest, TResult>(    requests: TRequest[],
+    maxConcurrency: number,
+    executor: (request: TRequest) => Promise<TResult>,
+  ): Promise<TResult[]> {
+    if (requests.length === 0) {
+      return [];
+    }
+
+    const results = new Array<TResult>(requests.length);
+    const workerCount = Math.min(Math.max(maxConcurrency, 1), requests.length);
+    let nextIndex = 0;
+
+    const workers = Array.from({ length: workerCount }, async () => {
+      while (nextIndex < requests.length) {
+        const currentIndex = nextIndex;
+        nextIndex += 1;
+        results[currentIndex] = await executor(requests[currentIndex]);
+      }
+    });
+
+    await Promise.all(workers);
+    return results;
+  }
+}
+
+interface IndexedToolCallRequest {
+  toolName: string;
+  params: Record<string, unknown>;
+  context: ExecutionContext;
+  index: number;
+}
+
+interface PartitionedToolCallBatch {
+  mode: 'parallel' | 'serial';
+  requests: IndexedToolCallRequest[];
 }
 
 /**
@@ -558,6 +685,13 @@ export interface ExecutionPipelineConfig {
   canUseTool?: CanUseTool;
   hooks?: ExecutionPipelineHooks;
   logger?: InternalLogger;
+  maxConcurrency?: number;
+  /**
+   * Per-tool execution timeout in milliseconds.
+   * When a tool exceeds this limit it is aborted and returns a TIMEOUT error.
+   * Defaults to no timeout (undefined).
+   */
+  toolTimeoutMs?: number;
 }
 
 export interface ExecutionPipelineHookContext {
@@ -580,10 +714,10 @@ export interface ExecutionPipelineHookResult {
 export interface ExecutionPipelineHooks {
   beforeExecute?: (
     context: ExecutionPipelineHookContext,
-  ) => Promise<ExecutionPipelineHookResult | void>;
+  ) => Promise<ExecutionPipelineHookResult | undefined>;
   afterExecute?: (
     context: ExecutionPipelineAfterHookContext,
-  ) => Promise<ExecutionPipelineHookResult | void>;
+  ) => Promise<ExecutionPipelineHookResult | undefined>;
 }
 
 /**

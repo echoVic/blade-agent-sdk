@@ -88,6 +88,7 @@ import {
   SensitiveFileDetector,
   SensitivityLevel,
 } from '../validation/SensitiveFileDetector.js';
+import { DenialTracker } from './DenialTracker.js';
 
 /**
  * 工具发现阶段
@@ -381,6 +382,7 @@ export class ConfirmationStage implements PipelineStage {
     private readonly permissionChecker: PermissionChecker,
     private readonly canUseTool?: CanUseTool,
     private readonly logger: InternalLogger = NOOP_LOGGER.child(LogCategory.EXECUTION),
+    private readonly denialTracker?: DenialTracker,
   ) {}
 
   async process(execution: ToolExecution): Promise<void> {
@@ -432,6 +434,13 @@ export class ConfirmationStage implements PipelineStage {
         break;
 
       case 'deny':
+        if (this.denialTracker && execution._internal.permissionSignature) {
+          this.denialTracker.record(
+            execution._internal.permissionSignature,
+            execution.toolName,
+            result.message || 'Denied by canUseTool'
+          );
+        }
         execution.abort(result.message, { shouldExitLoop: result.interrupt });
         break;
 
@@ -508,8 +517,16 @@ export class ConfirmationStage implements PipelineStage {
         this.logger.info(`[ConfirmationStage] Confirmation response: approved=${response.approved}`);
 
         if (!response.approved) {
+          const reason = response.reason || 'User rejected';
+          if (this.denialTracker && execution._internal.permissionSignature) {
+            this.denialTracker.record(
+              execution._internal.permissionSignature,
+              tool.name,
+              reason
+            );
+          }
           execution.abort(
-            `User rejected execution: ${response.reason || 'No reason provided'}`,
+            `User rejected execution: ${reason}`,
             { shouldExitLoop: true }
           );
           return;

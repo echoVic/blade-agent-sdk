@@ -64,6 +64,9 @@ export interface AgentSession {
 
   /** 父会话 ID（可选） */
   parentSessionId?: string;
+
+  /** 输出文件路径（后台 agent 完成后写入结果） */
+  outputFile?: string;
 }
 
 /**

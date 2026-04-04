@@ -12,14 +12,14 @@
 import { nanoid } from 'nanoid';
 import { z } from 'zod';
 import { BackgroundAgentManager } from '../../../agent/subagents/BackgroundAgentManager.js';
+import type { SubagentRegistry } from '../../../agent/subagents/SubagentRegistry.js';
 import { SubagentExecutor } from '../../../agent/subagents/SubagentExecutor.js';
-import { subagentRegistry } from '../../../agent/subagents/SubagentRegistry.js';
 import type {
   SubagentContext,
   SubagentResult,
 } from '../../../agent/subagents/types.js';
-import { PermissionMode } from '../../../types/common.js';
 import { HookManager } from '../../../hooks/HookManager.js';
+import { PermissionMode } from '../../../types/common.js';
 import { getErrorMessage } from '../../../utils/errorUtils.js';
 import { createTool } from '../../core/createTool.js';
 import type { ExecutionContext, ToolResult } from '../../types/index.js';
@@ -31,9 +31,7 @@ import { ToolErrorType, ToolKind } from '../../types/index.js';
 function extractUserFriendlyError(error: Error): string {
   const message = error.message || 'Unknown error';
 
-  // 检查是否是 API 限流错误
   if (message.includes('Too Many Requests') || message.includes('429')) {
-    // 尝试从错误链中提取更详细的信息
     const cause = (error as { cause?: { responseBody?: string } }).cause;
     if (cause?.responseBody) {
       try {
@@ -48,39 +46,27 @@ function extractUserFriendlyError(error: Error): string {
     return 'API 请求过于频繁，请稍后重试';
   }
 
-  // 检查是否是网络错误
   if (message.includes('ECONNREFUSED') || message.includes('ETIMEDOUT')) {
     return '网络连接失败，请检查网络设置';
   }
 
-  // 检查是否是认证错误
   if (message.includes('401') || message.includes('Unauthorized')) {
     return 'API 认证失败，请检查 API Key 配置';
   }
 
-  // 返回简化的错误信息（不包含堆栈）
   return message.split('\n')[0];
 }
 
-/**
- * 验证 subagent 类型是否有效（运行时验证）
- * 不能使用 z.enum() 因为它在模块加载时调用，此时 registry 还未初始化
- */
-function isValidSubagentType(type: string): boolean {
-  const types = subagentRegistry.getAllNames();
-  return types.includes(type);
+function isValidSubagentType(type: string, registry: SubagentRegistry): boolean {
+  return registry.getAllNames().includes(type);
 }
 
-function getAvailableSubagentTypesMessage(): string {
-  const types = subagentRegistry.getAllNames();
+function getAvailableSubagentTypesMessage(registry: SubagentRegistry): string {
+  const types = registry.getAllNames();
   return types.length > 0 ? types.join(', ') : 'none (registry not initialized)';
 }
 
-/**
- * 动态生成 Task 工具的完整描述
- * 必须是函数形式，因为 subagentRegistry 在模块加载时可能还未初始化
- */
-function getTaskDescription(): string {
+function getTaskDescription(registry: SubagentRegistry): string {
   return `
 ## Task
 
@@ -88,7 +74,7 @@ Launch a new agent to handle complex, multi-step tasks autonomously.
 
 The Task tool launches specialized agents (subprocesses) that autonomously handle complex tasks. Each agent type has specific capabilities and tools available to it.
 
-${subagentRegistry.getDescriptionsForPrompt()}
+${registry.getDescriptionsForPrompt()}
 
 When using the Task tool, you must specify a subagent_type parameter to select which agent type to use.
 
@@ -123,239 +109,224 @@ Usage notes:
  * - 模型从 subagent 描述中选择合适的类型
  * - 每个 subagent 有独立的系统提示和工具配置
  */
-export const taskTool = createTool({
-  name: 'Task',
-  displayName: 'Subagent Scheduler',
-  kind: ToolKind.ReadOnly, // Plan 模式下允许：子 Agent 的工具使用受各自模式限制
-  isReadOnly: true,
-
-  // Zod Schema 定义
-  // 注意：使用 z.string() + refine 而非 z.enum()，因为 enum 在模块加载时求值，
-  // 此时 subagentRegistry 还未初始化，会导致只接受默认值
-  schema: z.object({
-    subagent_type: z
-      .string()
-      .refine(isValidSubagentType, (val) => ({
-        message: `Invalid subagent type: "${val}". Available: ${getAvailableSubagentTypesMessage()}`,
-      }))
-      .describe('Subagent type to use (e.g., "Explore", "Plan")'),
-    description: z
-      .string()
-      .min(3)
-      .max(100)
-      .describe('Short task description (3-5 words)'),
-    prompt: z.string().min(10).describe('Detailed task instructions'),
-    run_in_background: z
-      .boolean()
-      .default(false)
-      .describe(
-        'Set to true to run this agent in the background. Use TaskOutput to read the output later.'
-      ),
-    resume: z
-      .string()
-      .optional()
-      .describe(
-        'Optional agent ID to resume from. If provided, the agent will continue from the previous execution transcript.'
-      ),
-    subagent_session_id: z
-      .string()
-      .optional()
-      .describe('Internal subagent session id for tracking'),
-  }),
-
-  // 工具描述
-  description: {
-    short: 'Launch a new agent to handle complex, multi-step tasks autonomously',
-    // 使用 getter 动态生成描述，确保 subagentRegistry 已初始化
-    get long() {
-      return getTaskDescription();
+export function createTaskTool({ registry }: { registry: SubagentRegistry }) {
+  return createTool({
+    name: 'Task',
+    displayName: 'Subagent Scheduler',
+    kind: ToolKind.ReadOnly,
+    isReadOnly: true,
+    schema: z.object({
+      subagent_type: z
+        .string()
+        .refine((type) => isValidSubagentType(type, registry), (val) => ({
+          message: `Invalid subagent type: "${val}". Available: ${getAvailableSubagentTypesMessage(registry)}`,
+        }))
+        .describe('Subagent type to use (e.g., "Explore", "Plan")'),
+      description: z
+        .string()
+        .min(3)
+        .max(100)
+        .describe('Short task description (3-5 words)'),
+      prompt: z.string().min(10).describe('Detailed task instructions'),
+      run_in_background: z
+        .boolean()
+        .default(false)
+        .describe(
+          'Set to true to run this agent in the background. Use TaskOutput to read the output later.'
+        ),
+      resume: z
+        .string()
+        .optional()
+        .describe(
+          'Optional agent ID to resume from. If provided, the agent will continue from the previous execution transcript.'
+        ),
+      subagent_session_id: z
+        .string()
+        .optional()
+        .describe('Internal subagent session id for tracking'),
+    }),
+    description: {
+      short: 'Launch a new agent to handle complex, multi-step tasks autonomously',
+      get long() {
+        return getTaskDescription(registry);
+      },
+      usageNotes: [
+        'subagent_type is required - choose from available agent types',
+        'description should be 3-5 words (e.g., "Explore error handling")',
+        'prompt should contain a highly detailed task description and specify exactly what information to return',
+        'Launch multiple agents concurrently when possible for better performance',
+      ],
+      examples: [
+        {
+          description: 'Explore codebase for API endpoints',
+          params: {
+            subagent_type: 'Explore',
+            description: 'Find API endpoints',
+            prompt:
+              'Search the codebase for all API endpoint definitions. Look for route handlers, REST endpoints, and GraphQL resolvers. Return a structured list with file paths, endpoint URLs, HTTP methods, and descriptions.',
+          },
+        },
+        {
+          description: 'Plan authentication feature',
+          params: {
+            subagent_type: 'Plan',
+            description: 'Plan user auth',
+            prompt:
+              'Create a detailed implementation plan for adding user authentication to this project. Analyze the existing architecture, then provide step-by-step instructions including: 1) Database schema changes 2) API routes to create 3) Frontend components needed 4) Security considerations 5) Testing strategy. Be specific about file names and code locations.',
+          },
+        },
+      ],
     },
-    usageNotes: [
-      'subagent_type is required - choose from available agent types',
-      'description should be 3-5 words (e.g., "Explore error handling")',
-      'prompt should contain a highly detailed task description and specify exactly what information to return',
-      'Launch multiple agents concurrently when possible for better performance',
-    ],
-    examples: [
-      {
-        description: 'Explore codebase for API endpoints',
-        params: {
-          subagent_type: 'Explore',
-          description: 'Find API endpoints',
-          prompt:
-            'Search the codebase for all API endpoint definitions. Look for route handlers, REST endpoints, and GraphQL resolvers. Return a structured list with file paths, endpoint URLs, HTTP methods, and descriptions.',
-        },
-      },
-      {
-        description: 'Plan authentication feature',
-        params: {
-          subagent_type: 'Plan',
-          description: 'Plan user auth',
-          prompt:
-            'Create a detailed implementation plan for adding user authentication to this project. Analyze the existing architecture, then provide step-by-step instructions including: 1) Database schema changes 2) API routes to create 3) Frontend components needed 4) Security considerations 5) Testing strategy. Be specific about file names and code locations.',
-        },
-      },
-    ],
-  },
-
-  // 执行函数
-  async execute(params, context: ExecutionContext): Promise<ToolResult> {
-    const {
-      subagent_type,
-      description,
-      prompt,
-      run_in_background = false,
-      resume,
-      subagent_session_id,
-    } = params;
-    const { updateOutput } = context;
-    const subagentSessionId =
-      typeof subagent_session_id === 'string' && subagent_session_id.length > 0
-        ? subagent_session_id
-        : typeof resume === 'string' && resume.length > 0
-          ? resume
-          : nanoid();
-
-    try {
-      // 1. 获取 subagent 配置
-      const registeredNames = subagentRegistry.getAllNames();
-
-      const subagentConfig = subagentRegistry.getSubagent(subagent_type);
-      if (!subagentConfig) {
-        return {
-          success: false,
-          llmContent: `Unknown subagent type: ${subagent_type}. Available types: ${registeredNames.join(', ') || 'none'}`,
-          displayContent: `❌ 未知的 subagent 类型: ${subagent_type}\n\n可用类型: ${registeredNames.join(', ') || '无'}`,
-          error: {
-            type: ToolErrorType.EXECUTION_ERROR,
-            message: `Unknown subagent type: ${subagent_type}`,
-          },
-        };
-      }
-
-      // 2. 处理 resume 模式
-      if (resume) {
-        return handleResume(resume, prompt, subagentConfig, description, context);
-      }
-
-      // 3. 处理后台执行模式
-      if (run_in_background) {
-        return handleBackgroundExecution(
-          subagentConfig,
-          description,
-          prompt,
-          context,
-          subagentSessionId
-        );
-      }
-
-      // 4. 同步执行模式（原有逻辑）
-      updateOutput?.(`🚀 启动 ${subagent_type} subagent: ${description}`);
-
-      // 创建执行器
-      if (!context.bladeConfig) {
-        return {
-          success: false,
-          llmContent: 'BladeConfig is required for subagent execution',
-          displayContent: '❌ 缺少 BladeConfig 配置',
-          error: {
-            type: ToolErrorType.EXECUTION_ERROR,
-            message: 'BladeConfig is required',
-          },
-        };
-      }
-      const executor = new SubagentExecutor(subagentConfig, context.bladeConfig);
-
-      // 构建执行上下文
-      const subagentContext: SubagentContext = {
+    async execute(params, context: ExecutionContext): Promise<ToolResult> {
+      const {
+        subagent_type,
+        description,
         prompt,
-        parentSessionId: context.sessionId,
-        permissionMode: context.permissionMode,
-        subagentSessionId,
-        snapshot: context.contextSnapshot,
-      };
+        run_in_background = false,
+        resume,
+        subagent_session_id,
+      } = params;
+      const { updateOutput } = context;
+      const subagentSessionId =
+        typeof subagent_session_id === 'string' && subagent_session_id.length > 0
+          ? subagent_session_id
+          : typeof resume === 'string' && resume.length > 0
+            ? resume
+            : nanoid();
 
-      updateOutput?.(`⚙️  执行任务中...`);
-
-      // 4. 执行 subagent
-      const startTime = Date.now();
-      let result: SubagentResult = await executor.execute(subagentContext);
-      let duration = Date.now() - startTime;
-
-      // 5. 执行 SubagentStop Hook
-      // Hook 可以阻止 subagent 停止并请求继续执行
       try {
-        const projectDir = context.contextSnapshot?.cwd;
-        if (!projectDir) {
-          return buildTaskResult(result, subagent_type, description, duration, subagentSessionId);
-        }
-        const hookManager = HookManager.getInstance();
-        const stopResult = await hookManager.executeSubagentStopHooks(subagent_type, {
-          projectDir,
-          sessionId: context.sessionId || 'unknown',
-          permissionMode: context.permissionMode ?? PermissionMode.DEFAULT,
-          taskDescription: description,
-          success: result.success,
-          resultSummary: result.message.slice(0, 500),
-          error: result.error,
-        });
-
-        // 如果 hook 返回 shouldStop: false，继续执行
-        if (!stopResult.shouldStop && stopResult.continueReason) {
-          console.log(
-            `[Task] SubagentStop hook 阻止停止，继续执行: ${stopResult.continueReason}`
-          );
-
-          // 使用 continueReason 作为新的 prompt 继续执行
-          const continueContext: SubagentContext = {
-            prompt: stopResult.continueReason,
-            parentSessionId: context.sessionId,
-            permissionMode: context.permissionMode,
-            subagentSessionId,
-            snapshot: context.contextSnapshot,
+        const registeredNames = registry.getAllNames();
+        const subagentConfig = registry.getSubagent(subagent_type);
+        if (!subagentConfig) {
+          return {
+            success: false,
+            llmContent: `Unknown subagent type: ${subagent_type}. Available types: ${registeredNames.join(', ') || 'none'}`,
+            displayContent: `❌ 未知的 subagent 类型: ${subagent_type}\n\n可用类型: ${registeredNames.join(', ') || '无'}`,
+            error: {
+              type: ToolErrorType.EXECUTION_ERROR,
+              message: `Unknown subagent type: ${subagent_type}`,
+            },
           };
-
-          const continueStartTime = Date.now();
-          result = await executor.execute(continueContext);
-          duration += Date.now() - continueStartTime;
         }
 
-        // 如果有警告，记录日志
-        if (stopResult.warning) {
-          console.warn(`[Task] SubagentStop hook warning: ${stopResult.warning}`);
+        if (resume) {
+          return handleResume(
+            resume,
+            prompt,
+            subagentConfig,
+            description,
+            context,
+            registry,
+          );
         }
-      } catch (hookError) {
-        // Hook 执行失败不应阻止正常返回
-        console.warn('[Task] SubagentStop hook execution failed:', hookError);
+
+        if (run_in_background) {
+          return handleBackgroundExecution(
+            subagentConfig,
+            description,
+            prompt,
+            context,
+            subagentSessionId,
+            registry,
+          );
+        }
+
+        updateOutput?.(`🚀 启动 ${subagent_type} subagent: ${description}`);
+
+        if (!context.bladeConfig) {
+          return {
+            success: false,
+            llmContent: 'BladeConfig is required for subagent execution',
+            displayContent: '❌ 缺少 BladeConfig 配置',
+            error: {
+              type: ToolErrorType.EXECUTION_ERROR,
+              message: 'BladeConfig is required',
+            },
+          };
+        }
+
+        const executor = new SubagentExecutor(subagentConfig, context.bladeConfig, registry);
+        const subagentContext: SubagentContext = {
+          prompt,
+          parentSessionId: context.sessionId,
+          permissionMode: context.permissionMode,
+          subagentSessionId,
+          snapshot: context.contextSnapshot,
+        };
+
+        updateOutput?.('⚙️  执行任务中...');
+
+        const startTime = Date.now();
+        let result: SubagentResult = await executor.execute(subagentContext);
+        let duration = Date.now() - startTime;
+
+        try {
+          const projectDir = context.contextSnapshot?.cwd;
+          if (!projectDir) {
+            return buildTaskResult(result, subagent_type, description, duration, subagentSessionId);
+          }
+
+          const hookManager = HookManager.getInstance();
+          const stopResult = await hookManager.executeSubagentStopHooks(subagent_type, {
+            projectDir,
+            sessionId: context.sessionId || 'unknown',
+            permissionMode: context.permissionMode ?? PermissionMode.DEFAULT,
+            taskDescription: description,
+            success: result.success,
+            resultSummary: result.message.slice(0, 500),
+            error: result.error,
+          });
+
+          if (!stopResult.shouldStop && stopResult.continueReason) {
+            console.log(
+              `[Task] SubagentStop hook 阻止停止，继续执行: ${stopResult.continueReason}`
+            );
+
+            const continueContext: SubagentContext = {
+              prompt: stopResult.continueReason,
+              parentSessionId: context.sessionId,
+              permissionMode: context.permissionMode,
+              subagentSessionId,
+              snapshot: context.contextSnapshot,
+            };
+
+            const continueStartTime = Date.now();
+            result = await executor.execute(continueContext);
+            duration += Date.now() - continueStartTime;
+          }
+
+          if (stopResult.warning) {
+            console.warn(`[Task] SubagentStop hook warning: ${stopResult.warning}`);
+          }
+        } catch (hookError) {
+          console.warn('[Task] SubagentStop hook execution failed:', hookError);
+        }
+
+        return buildTaskResult(result, subagent_type, description, duration, subagentSessionId);
+      } catch (error) {
+        const errorMessage = extractUserFriendlyError(
+          error instanceof Error ? error : new Error(getErrorMessage(error))
+        );
+
+        return {
+          success: false,
+          llmContent: `Subagent execution error: ${getErrorMessage(error)}`,
+          displayContent: `❌ Subagent 执行异常\n\n${errorMessage}`,
+          error: {
+            type: ToolErrorType.EXECUTION_ERROR,
+            message: getErrorMessage(error),
+            details: error,
+          },
+        };
       }
-
-      // 6. 返回结果
-      return buildTaskResult(result, subagent_type, description, duration, subagentSessionId);
-    } catch (error) {
-      const errorMessage = extractUserFriendlyError(
-        error instanceof Error ? error : new Error(getErrorMessage(error))
-      );
-
-      return {
-        success: false,
-        llmContent: `Subagent execution error: ${getErrorMessage(error)}`,
-        displayContent: `❌ Subagent 执行异常\n\n${errorMessage}`,
-        error: {
-          type: ToolErrorType.EXECUTION_ERROR,
-          message: getErrorMessage(error),
-          details: error,
-        },
-      };
-    }
-  },
-
-  version: '4.0.0',
-  category: 'Subagent',
-  tags: ['task', 'subagent', 'delegation', 'explore', 'plan'],
-
-  extractSignatureContent: (params) => `${params.subagent_type}:${params.description}`,
-  abstractPermissionRule: () => '',
-});
+    },
+    version: '4.0.0',
+    category: 'Subagent',
+    tags: ['task', 'subagent', 'delegation', 'explore', 'plan'],
+    extractSignatureContent: (params) => `${params.subagent_type}:${params.description}`,
+    abstractPermissionRule: () => '',
+  });
+}
 
 function buildTaskResult(
   result: SubagentResult,
@@ -417,9 +388,6 @@ function buildTaskResult(
   };
 }
 
-/**
- * 处理后台执行模式
- */
 function handleBackgroundExecution(
   subagentConfig: {
     name: string;
@@ -430,7 +398,8 @@ function handleBackgroundExecution(
   description: string,
   prompt: string,
   context: ExecutionContext,
-  subagentSessionId: string
+  subagentSessionId: string,
+  registry: SubagentRegistry,
 ): ToolResult {
   if (!context.bladeConfig) {
     return {
@@ -449,6 +418,7 @@ function handleBackgroundExecution(
   const agentId = manager.startBackgroundAgent({
     config: subagentConfig,
     bladeConfig: context.bladeConfig,
+    subagentRegistry: registry,
     description,
     prompt,
     parentSessionId: context.sessionId,
@@ -482,9 +452,6 @@ function handleBackgroundExecution(
   };
 }
 
-/**
- * 处理 resume 模式
- */
 function handleResume(
   agentId: string,
   prompt: string,
@@ -495,7 +462,8 @@ function handleResume(
     tools?: string[];
   },
   description: string,
-  context: ExecutionContext
+  context: ExecutionContext,
+  registry: SubagentRegistry,
 ): ToolResult {
   if (!context.bladeConfig) {
     return {
@@ -510,7 +478,6 @@ function handleResume(
   }
 
   const manager = BackgroundAgentManager.getInstance();
-
   const session = manager.getAgent(agentId);
   if (!session) {
     return {
@@ -542,7 +509,9 @@ function handleResume(
     subagentConfig,
     context.bladeConfig,
     context.sessionId,
-    context.permissionMode
+    context.permissionMode,
+    registry,
+    description,
   );
 
   if (!newAgentId) {

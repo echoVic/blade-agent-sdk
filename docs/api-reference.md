@@ -14,11 +14,22 @@
 | `createTool` | tools | 创建工具（Zod 模式） |
 | `toolFromDefinition` | tools | 转换 ToolDefinition → Tool |
 | `getBuiltinTools` | tools | 获取内置工具 |
+| `createMemoryReadTool` | tools | 创建 opt-in MemoryRead 工具 |
+| `createMemoryWriteTool` | tools | 创建 opt-in MemoryWrite 工具 |
 | `tool` | mcp | 定义 MCP 工具 |
 | `createSdkMcpServer` | mcp | 创建进程内 MCP Server |
 | `createContextSnapshot` | runtime | 创建上下文快照 |
 | `mergeContext` | runtime | 合并上下文 |
 | `hasFilesystemCapability` | runtime | 检查文件系统能力 |
+
+## 类 / 运行时对象
+
+| 名称 | 来源 | 说明 |
+|------|------|------|
+| `FileSystemMemoryStore` | memory | 文件系统 memory 适配器 |
+| `MemoryManager` | memory | memory 编排层 |
+| `SubagentRegistry` | subagents | 注册和发现子 Agent |
+| `SubagentExecutor` | subagents | 执行单个子 Agent |
 
 ## 常量 / 枚举
 
@@ -56,6 +67,9 @@
 | `ToolResult` | 工具执行结果 |
 | `ExecutionContext` | 工具执行上下文 |
 | `ToolCallRecord` | 工具调用记录 |
+| `Memory` | Memory 记录类型 |
+| `MemoryInput` | Memory 写入输入类型 |
+| `MemoryStore` | Memory 后端抽象接口 |
 
 ### Provider
 
@@ -107,6 +121,10 @@
 | `SandboxSettings` | 沙箱配置 |
 | `AgentDefinition` | 子 Agent 定义 |
 | `SubagentInfo` | 子 Agent 信息 |
+| `SubagentConfig` | 子 Agent 配置 |
+| `SubagentContext` | 子 Agent 执行上下文 |
+| `SubagentResult` | 子 Agent 执行结果 |
+| `SubagentSource` | 子 Agent 来源类型 |
 | `AgentLogger` | 日志接口 |
 | `LogEntry` | 日志条目 |
 | `LogLevelName` | 日志级别 |

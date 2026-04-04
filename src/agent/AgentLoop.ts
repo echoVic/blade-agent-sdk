@@ -324,6 +324,28 @@ export async function* agentLoop(
         yield { type: 'budget_warning', snapshot: tokenBudget.getSnapshot() };
       }
 
+      if (tokenBudget.isApproachingLimit()) {
+        yield { type: 'budget_warning', snapshot: tokenBudget.getSnapshot() };
+      }
+
+      if (tokenBudget.isDiminishingReturns()) {
+        yield { type: 'agent_end' };
+        return {
+          success: false,
+          error: {
+            type: 'budget_exhausted',
+            message: 'Stopped due to diminishing returns: consecutive turns produced very few tokens',
+          },
+          metadata: {
+            turnsCount,
+            toolCallsCount: allToolResults.length,
+            duration: Date.now() - startTime,
+            tokensUsed: totalTokens,
+            tokenBudgetSnapshot: tokenBudget.getSnapshot(),
+          },
+        };
+      }
+
       if (tokenBudget.isExhausted()) {
         yield { type: 'agent_end' };
         return {

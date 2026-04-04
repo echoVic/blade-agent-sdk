@@ -14,6 +14,7 @@ import type {
 import { ToolErrorType, ToolKind } from '../../types/index.js';
 import { ToolSchemas } from '../../validation/zodSchemas.js';
 import { BackgroundShellManager } from './BackgroundShellManager.js';
+import { BashClassifier } from '../../../hooks/BashClassifier.js';
 import { OutputTruncator } from './OutputTruncator.js';
 
 /**
@@ -283,34 +284,31 @@ Before executing commands:
    */
   abstractPermissionRule: (params) => {
     const command = params.command.trim();
+    const classification = BashClassifier.classify(command);
     const parts = command.split(/\s+/);
 
     if (parts.length === 1) {
-      // 单词命令: ls → ls
-      return parts[0];
+      // 单词命令: ls → readonly:ls
+      return `${classification.category}:${parts[0]}`;
     }
 
     // 检查是否是 run/exec/test 子命令模式
     const runLikeSubcommands = ['run', 'exec', 'test', 'start', 'build', 'dev'];
     if (runLikeSubcommands.includes(parts[1])) {
       if (parts.length === 2) {
-        // npm run → npm run
-        return `${parts[0]} ${parts[1]}`;
+        return `${classification.category}:${parts[0]} ${parts[1]}`;
       }
-      // bun test foo.ts → bun test *
-      // bun run build → bun run build (但 npm run build:dev → npm run build:dev 也可接受)
-      // 统一使用通配符，更宽松
-      return `${parts[0]} ${parts[1]} *`;
+      return `${classification.category}:${parts[0]} ${parts[1]} *`;
     }
 
     if (parts.length === 2) {
-      // git status → git status
-      return `${parts[0]} ${parts[1]}`;
+      // git status → write:git status
+      return `${classification.category}:${parts[0]} ${parts[1]}`;
     }
 
     // 有额外参数的命令：保留前2个词 + 通配符
     // node script.js arg → node script.js *
-    return `${parts[0]} ${parts[1]} *`;
+    return `${classification.category}:${parts[0]} ${parts[1]} *`;
   },
 });
 
