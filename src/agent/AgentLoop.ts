@@ -22,6 +22,7 @@ import { decideTurnLimit } from './loop/decideTurnLimit.js';
 import { executeToolCalls } from './loop/executeToolCalls.js';
 import { planToolExecution } from './loop/planToolExecution.js';
 import type { FunctionToolCall } from './loop/types.js';
+import { StreamingToolExecutor } from './StreamingToolExecutor.js';
 import type { StreamResponseHandler } from './StreamResponseHandler.js';
 import type { TokenBudget } from './TokenBudget.js';
 import type { LoopResult, TurnLimitResponse } from './types.js';
@@ -237,9 +238,101 @@ export async function* agentLoop(
     }
 
     // 4. 调用 LLM（带 context-length 错误的反应式压缩）
-    let turnResult: ChatResponse;
+    let turnResult: ChatResponse | undefined;
+    let streamingExecutionResults:
+      | Array<{
+          toolCall: FunctionToolCall;
+          result: ToolResult;
+          toolUseUuid: string | null;
+        }>
+      | undefined;
     try {
-      if (streamHandler) {
+      if (streamHandler && tools.length > 0) {
+        const streamingExecutor = new StreamingToolExecutor(
+          streamHandler,
+          () => chatService,
+          config.logger,
+        );
+        const pendingEvents: AgentEvent[] = [];
+        let waitForEventsResolve: (() => void) | null = null;
+        let executionDone = false;
+        let executionError: unknown;
+
+        const flushWaiter = () => {
+          const resolve = waitForEventsResolve;
+          waitForEventsResolve = null;
+          resolve?.();
+        };
+
+        const enqueueEvent = (event: AgentEvent) => {
+          pendingEvents.push(event);
+          flushWaiter();
+        };
+
+        const executionPromise = streamingExecutor
+          .collectAndExecute(messages, tools, signal, {
+            executionPipeline,
+            executionContext,
+            logger: config.logger,
+            permissionMode: config.permissionMode,
+            hooks: {
+              onBeforeToolExec: config.onBeforeToolExec,
+            },
+            onAfterToolExec: config.onAfterToolExec,
+            onContentDelta: (delta) => {
+              enqueueEvent({ type: 'content_delta', delta });
+            },
+            onThinkingDelta: (delta) => {
+              enqueueEvent({ type: 'thinking_delta', delta });
+            },
+            onStreamEnd: () => {
+              if (!signal?.aborted) {
+                enqueueEvent({ type: 'stream_end' });
+              }
+            },
+            onToolReady: (toolCall) => {
+              const toolDef = executionPipeline.getRegistry().get(toolCall.function.name);
+              const toolKind = toolDef?.kind as 'readonly' | 'write' | 'execute' | undefined;
+              enqueueEvent({ type: 'tool_start', toolCall, toolKind });
+            },
+            onToolComplete: (toolCall, result) => {
+              enqueueEvent({ type: 'tool_result', toolCall, result });
+            },
+          })
+          .then(({ chatResponse, executionResults }) => {
+            turnResult = chatResponse;
+            streamingExecutionResults = executionResults;
+          })
+          .catch((error: unknown) => {
+            executionError = error;
+          })
+          .finally(() => {
+            executionDone = true;
+            flushWaiter();
+          });
+
+        while (!executionDone || pendingEvents.length > 0) {
+          if (pendingEvents.length === 0) {
+            await new Promise<void>((resolve) => {
+              waitForEventsResolve = resolve;
+              if (pendingEvents.length > 0 || executionDone) {
+                flushWaiter();
+              }
+            });
+            continue;
+          }
+
+          while (pendingEvents.length > 0) {
+            yield pendingEvents.shift()!;
+          }
+        }
+
+        await executionPromise;
+
+        if (executionError) {
+          throw executionError;
+        }
+      } else if (streamHandler) {
         const stream = streamHandler.streamResponse(messages, tools, signal);
         while (true) {
           const { value, done } = await stream.next();
@@ -299,6 +392,10 @@ export async function* agentLoop(
         continue;
       }
       throw llmError;
+    }
+
+    if (!turnResult) {
+      throw new Error('Agent loop completed without a chat response');
     }
 
     // 5. Token usage
@@ -377,7 +474,7 @@ export async function* agentLoop(
     }
 
     // 7. 文本内容
-    if (turnResult.content?.trim() && !signal?.aborted) {
+    if (turnResult.content?.trim() && !signal?.aborted && !streamingExecutionResults) {
       yield { type: 'stream_end' };
     }
 
@@ -431,39 +528,43 @@ export async function* agentLoop(
     });
 
     // 10. 执行工具
-    const functionCalls = turnResult.toolCalls.filter(
-      (tc): tc is FunctionToolCall => tc.type === 'function'
-    );
-    const executionPlan = planToolExecution(
-      functionCalls,
-      executionPipeline.getRegistry(),
-      permissionMode,
-    );
+    let executionResults = streamingExecutionResults;
 
-    // 发射 tool_start 事件
-    for (const toolCall of executionPlan.calls) {
-      const toolDef = executionPipeline.getRegistry().get(toolCall.function.name);
-      const toolKind = toolDef?.kind as 'readonly' | 'write' | 'execute' | undefined;
-      yield { type: 'tool_start', toolCall, toolKind };
+    if (!executionResults) {
+      const functionCalls = turnResult.toolCalls.filter(
+        (tc): tc is FunctionToolCall => tc.type === 'function'
+      );
+      const executionPlan = planToolExecution(
+        functionCalls,
+        executionPipeline.getRegistry(),
+        permissionMode,
+      );
+
+      // 发射 tool_start 事件
+      for (const toolCall of executionPlan.calls) {
+        const toolDef = executionPipeline.getRegistry().get(toolCall.function.name);
+        const toolKind = toolDef?.kind as 'readonly' | 'write' | 'execute' | undefined;
+        yield { type: 'tool_start', toolCall, toolKind };
+      }
+
+      // 检查 abort
+      if (signal?.aborted) {
+        yield { type: 'agent_end' };
+        return buildAbortResult(turnsCount, allToolResults.length, startTime);
+      }
+
+      executionResults = await executeToolCalls({
+        plan: executionPlan,
+        executionPipeline,
+        executionContext,
+        logger: config.logger,
+        permissionMode: config.permissionMode,
+        signal,
+        hooks: {
+          onBeforeToolExec: config.onBeforeToolExec,
+        },
+      });
     }
-
-    // 检查 abort
-    if (signal?.aborted) {
-      yield { type: 'agent_end' };
-      return buildAbortResult(turnsCount, allToolResults.length, startTime);
-    }
-
-    const executionResults = await executeToolCalls({
-      plan: executionPlan,
-      executionPipeline,
-      executionContext,
-      logger: config.logger,
-      permissionMode: config.permissionMode,
-      signal,
-      hooks: {
-        onBeforeToolExec: config.onBeforeToolExec,
-      },
-    });
 
     // 处理结果
     for (const { toolCall, result, toolUseUuid } of executionResults) {
@@ -473,7 +574,9 @@ export async function* agentLoop(
       if (result.metadata?.shouldExitLoop) {
         const finalMessage =
           typeof result.llmContent === 'string' ? result.llmContent : '循环已退出';
-        yield { type: 'tool_result', toolCall, result };
+        if (!streamingExecutionResults) {
+          yield { type: 'tool_result', toolCall, result };
+        }
         yield { type: 'turn_end', turn: turnsCount, hasToolCalls: true };
         yield { type: 'agent_end' };
         return {
@@ -489,10 +592,14 @@ export async function* agentLoop(
         };
       }
 
-      yield { type: 'tool_result', toolCall, result };
+      if (!streamingExecutionResults) {
+        yield { type: 'tool_result', toolCall, result };
+      }
 
       // After-tool hook（JSONL 保存、模型切换等）
-      await config.onAfterToolExec?.({ toolCall, result, toolUseUuid });
+      if (!streamingExecutionResults) {
+        await config.onAfterToolExec?.({ toolCall, result, toolUseUuid });
+      }
 
       // 添加工具结果到消息历史
       let toolResultContent = result.success

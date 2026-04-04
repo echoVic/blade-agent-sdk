@@ -6,7 +6,14 @@ import type { ToolResult } from '../../tools/types/index.js';
 import { ToolErrorType } from '../../tools/types/index.js';
 import type { PermissionMode } from '../../types/common.js';
 import type { ToolExecutionPlan } from './planToolExecution.js';
+import { repairToolCallParams } from './repairToolCallParams.js';
 import type { FunctionToolCall } from './types.js';
+
+export interface ToolExecutionOutcome {
+  toolCall: FunctionToolCall;
+  result: ToolResult;
+  toolUseUuid: string | null;
+}
 
 interface ToolExecutionContext {
   sessionId: string;
@@ -20,6 +27,7 @@ interface ToolExecutionHooks {
     toolCall: FunctionToolCall;
     params: Record<string, unknown>;
   }) => Promise<string | null>;
+  onAfterToolExec?: (ctx: ToolExecutionOutcome) => void | Promise<void>;
 }
 
 interface ExecuteToolCallsInput {
@@ -30,12 +38,6 @@ interface ExecuteToolCallsInput {
   permissionMode?: PermissionMode;
   signal?: AbortSignal;
   hooks?: ToolExecutionHooks;
-}
-
-export interface ToolExecutionOutcome {
-  toolCall: FunctionToolCall;
-  result: ToolResult;
-  toolUseUuid: string | null;
 }
 
 export async function executeToolCalls(
@@ -78,6 +80,8 @@ async function executeToolCall(
   input: ExecuteToolCallsInput,
 ): Promise<ToolExecutionOutcome> {
   const logger = input.logger ?? NOOP_LOGGER.child(LogCategory.AGENT);
+  let outcome: ToolExecutionOutcome;
+
   try {
     const params = JSON.parse(toolCall.function.arguments) as Record<string, unknown>;
     await repairToolCallParams(toolCall, params);
@@ -100,10 +104,10 @@ async function executeToolCall(
       },
     );
 
-    return { toolCall, result, toolUseUuid };
+    outcome = { toolCall, result, toolUseUuid };
   } catch (error) {
     logger.error(`Tool execution failed for ${toolCall.function.name}:`, error);
-    return {
+    outcome = {
       toolCall,
       result: {
         success: false,
@@ -117,30 +121,9 @@ async function executeToolCall(
       toolUseUuid: null,
     };
   }
-}
 
-async function repairToolCallParams(
-  toolCall: FunctionToolCall,
-  params: Record<string, unknown>,
-): Promise<void> {
-  if (
-    toolCall.function.name === 'Task'
-    && (typeof params.subagent_session_id !== 'string' || params.subagent_session_id.length === 0)
-  ) {
-    const { nanoid } = await import('nanoid');
-    params.subagent_session_id =
-      typeof params.resume === 'string' && params.resume.length > 0
-        ? params.resume
-        : nanoid();
-  }
-
-  if (typeof params.todos === 'string') {
-    try {
-      params.todos = JSON.parse(params.todos) as unknown;
-    } catch {
-      // Let the validation layer handle malformed todos payloads.
-    }
-  }
+  await input.hooks?.onAfterToolExec?.(outcome);
+  return outcome;
 }
 
 async function executeWithConcurrency(
