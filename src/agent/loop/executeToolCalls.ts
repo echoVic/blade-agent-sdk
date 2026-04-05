@@ -19,6 +19,7 @@ interface ToolExecutionContext {
   sessionId: string;
   userId: string;
   contextSnapshot?: ContextSnapshot;
+  skillActivationPaths?: string[];
   confirmationHandler?: ConfirmationHandler;
 }
 
@@ -98,6 +99,7 @@ async function executeToolCall(
         sessionId: input.executionContext.sessionId,
         userId: input.executionContext.userId,
         contextSnapshot: input.executionContext.contextSnapshot,
+        skillActivationPaths: input.executionContext.skillActivationPaths,
         signal: input.signal,
         confirmationHandler: input.executionContext.confirmationHandler,
         permissionMode: input.permissionMode,

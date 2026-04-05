@@ -7,8 +7,11 @@
 
 import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
+import { filterSkillsByActivation } from './activation.js';
+import { defaultSkillSource, type SkillSource, type SkillSourceConfig } from './types.js';
 import { hasSkillFile, loadSkillContent, loadSkillMetadata } from './SkillLoader.js';
 import type {
+  SkillActivationContext,
   SkillContent,
   SkillDiscoveryResult,
   SkillMetadata,
@@ -18,21 +21,18 @@ import type {
 type ResolvedSkillRegistryConfig =
   Omit<SkillRegistryConfig, 'cwd'> & { cwd?: string };
 
-/**
- * 默认配置（无默认路径 — 调用方通过 storageRoot 或显式路径配置）
- */
+interface RegisteredSource {
+  descriptor: SkillSource;
+  directory: string;
+}
+
 const DEFAULT_CONFIG: ResolvedSkillRegistryConfig = {
   projectSkillsDir: 'skills',
+  additionalSources: [],
 };
 
-/**
- * SkillRegistry 单例
- */
 let instance: SkillRegistry | null = null;
 
-/**
- * Skill 注册表
- */
 export class SkillRegistry {
   private skills: Map<string, SkillMetadata> = new Map();
   private config: ResolvedSkillRegistryConfig;
@@ -42,9 +42,6 @@ export class SkillRegistry {
     this.config = { ...DEFAULT_CONFIG, ...config };
   }
 
-  /**
-   * 获取单例实例
-   */
   static getInstance(config?: SkillRegistryConfig): SkillRegistry {
     if (!instance) {
       instance = new SkillRegistry(config);
@@ -52,20 +49,10 @@ export class SkillRegistry {
     return instance;
   }
 
-  /**
-   * 重置单例（用于测试）
-   */
   static resetInstance(): void {
     instance = null;
   }
 
-  /**
-   * 初始化注册表，扫描所有 skills 目录
-   *
-   * 优先级（后加载的覆盖先加载的）：
-   * 1. 用户级 Skills（userSkillsDir）
-   * 2. 项目级 Skills（projectSkillsDir）- 优先级最高
-   */
   async initialize(): Promise<SkillDiscoveryResult> {
     if (this.initialized) {
       return {
@@ -75,28 +62,33 @@ export class SkillRegistry {
     }
 
     const errors: SkillDiscoveryResult['errors'] = [];
-    const discoveredSkills: SkillMetadata[] = [];
+    const byCanonicalPath = new Map<string, SkillMetadata>();
 
-    // 1. 扫描用户级 skills
-    if (this.config.userSkillsDir) {
-      const userResult = await this.scanDirectory(this.config.userSkillsDir, 'user');
-      discoveredSkills.push(...userResult.skills);
-      errors.push(...userResult.errors);
+    for (const source of this.resolveSources()) {
+      const result = await this.scanDirectory(source);
+      errors.push(...result.errors);
+
+      for (const skill of result.skills) {
+        const canonicalPath = await this.resolveCanonicalPath(skill.path);
+        if (!canonicalPath) {
+          continue;
+        }
+
+        const existing = byCanonicalPath.get(canonicalPath);
+        if (!existing || skill.source.precedence >= existing.source.precedence) {
+          byCanonicalPath.set(canonicalPath, skill);
+        }
+      }
     }
 
-    // 2. 扫描项目级 skills（优先级最高）
-    if (this.config.cwd && this.config.projectSkillsDir) {
-      const projectDir = path.isAbsolute(this.config.projectSkillsDir)
-        ? this.config.projectSkillsDir
-        : path.join(this.config.cwd, this.config.projectSkillsDir);
-      const projectResult = await this.scanDirectory(projectDir, 'project');
-      discoveredSkills.push(...projectResult.skills);
-      errors.push(...projectResult.errors);
-    }
+    const discoveredCandidates = Array.from(byCanonicalPath.values());
+    discoveredCandidates.sort((left, right) => left.source.precedence - right.source.precedence);
 
-    // 注册所有发现的 skills（后发现的覆盖先发现的）
-    for (const skill of discoveredSkills) {
-      this.skills.set(skill.name, skill);
+    for (const skill of discoveredCandidates) {
+      const existing = this.skills.get(skill.name);
+      if (!existing || skill.source.precedence >= existing.source.precedence) {
+        this.skills.set(skill.name, skill);
+      }
     }
 
     this.initialized = true;
@@ -107,38 +99,78 @@ export class SkillRegistry {
     };
   }
 
-  /**
-   * 扫描指定目录下的所有 skills
-   */
-  private async scanDirectory(
-    dirPath: string,
-    source: 'user' | 'project'
-  ): Promise<SkillDiscoveryResult> {
+  private resolveSources(): RegisteredSource[] {
+    const sources: RegisteredSource[] = [];
+
+    if (this.config.userSkillsDir) {
+      sources.push({
+        descriptor: defaultSkillSource('user', this.config.userSkillsDir),
+        directory: this.config.userSkillsDir,
+      });
+    }
+
+    if (this.config.cwd && this.config.projectSkillsDir) {
+      const projectDir = path.isAbsolute(this.config.projectSkillsDir)
+        ? this.config.projectSkillsDir
+        : path.join(this.config.cwd, this.config.projectSkillsDir);
+      sources.push({
+        descriptor: defaultSkillSource('project', projectDir),
+        directory: projectDir,
+      });
+    }
+
+    for (const source of this.config.additionalSources ?? []) {
+      sources.push(this.toRegisteredSource(source));
+    }
+
+    return sources.sort((left, right) => left.descriptor.precedence - right.descriptor.precedence);
+  }
+
+  private toRegisteredSource(source: SkillSourceConfig): RegisteredSource {
+    return {
+      descriptor: defaultSkillSource(source.kind, source.directory, {
+        precedence: source.precedence,
+        trustLevel: source.trustLevel,
+        shellPolicy: source.shellPolicy,
+        hookPolicy: source.hookPolicy,
+        sourceId: source.sourceId ?? source.kind,
+      }),
+      directory: source.directory,
+    };
+  }
+
+  private async resolveCanonicalPath(filePath: string): Promise<string | null> {
+    try {
+      return await fs.realpath(filePath);
+    } catch {
+      return null;
+    }
+  }
+
+  private async scanDirectory(source: RegisteredSource): Promise<SkillDiscoveryResult> {
     const skills: SkillMetadata[] = [];
     const errors: SkillDiscoveryResult['errors'] = [];
 
     try {
-      // 检查目录是否存在
-      await fs.access(dirPath);
+      await fs.access(source.directory);
     } catch {
-      // 目录不存在，静默返回空结果
       return { skills, errors };
     }
 
     try {
-      const entries = await fs.readdir(dirPath, { withFileTypes: true });
+      const entries = await fs.readdir(source.directory, { withFileTypes: true });
 
       for (const entry of entries) {
         if (!entry.isDirectory()) continue;
 
-        const skillDir = path.join(dirPath, entry.name);
+        const skillDir = path.join(source.directory, entry.name);
         const skillFile = path.join(skillDir, 'SKILL.md');
-
-        // 检查是否存在 SKILL.md
         if (!(await hasSkillFile(skillDir))) continue;
 
-        // 加载元数据
-        const result = await loadSkillMetadata(skillFile, source);
+        const result = await loadSkillMetadata(skillFile, {
+          ...source.descriptor,
+          rootDir: source.directory,
+        });
         if (result.success && result.content) {
           skills.push(result.content.metadata);
         } else {
@@ -150,7 +182,7 @@ export class SkillRegistry {
       }
     } catch (e) {
       errors.push({
-        path: dirPath,
+        path: source.directory,
         error: `Failed to scan directory: ${e instanceof Error ? e.message : String(e)}`,
       });
     }
@@ -158,102 +190,66 @@ export class SkillRegistry {
     return { skills, errors };
   }
 
-  /**
-   * 获取所有已注册的 skills 元数据
-   */
   getAll(): SkillMetadata[] {
     return Array.from(this.skills.values());
   }
 
-  /**
-   * 根据名称获取 skill 元数据
-   */
   get(name: string): SkillMetadata | undefined {
     return this.skills.get(name);
   }
 
-  /**
-   * 检查 skill 是否存在
-   */
   has(name: string): boolean {
     return this.skills.has(name);
   }
 
-  /**
-   * 加载 skill 的完整内容（懒加载）
-   *
-   * @param name    Skill 名称
-   * @param options 可选：内联命令执行选项（cwd、allowlist、logger 等）
-   */
   async loadContent(
     name: string,
-    options?: Parameters<typeof loadSkillContent>[1]
+    options?: Parameters<typeof loadSkillContent>[1],
   ): Promise<SkillContent | null> {
     const metadata = this.skills.get(name);
     if (!metadata) return null;
     return loadSkillContent(metadata, options);
   }
 
-  /**
-   * 获取可被 AI 自动调用的 Skills（Model-invoked）
-   * 排除设置了 disable-model-invocation: true 的 Skills
-   */
-  getModelInvocableSkills(): SkillMetadata[] {
-    return Array.from(this.skills.values()).filter(
-      (skill) => !skill.disableModelInvocation
+  getModelInvocableSkills(context?: SkillActivationContext): SkillMetadata[] {
+    const modelInvocableSkills = Array.from(this.skills.values()).filter(
+      (skill) => !skill.disableModelInvocation,
     );
+    return filterSkillsByActivation(modelInvocableSkills, context);
   }
 
-  /**
-   * 获取可通过 /skill-name 命令调用的 Skills（User-invoked）
-   * 仅包含设置了 user-invocable: true 的 Skills
-   */
-  getUserInvocableSkills(): SkillMetadata[] {
-    return Array.from(this.skills.values()).filter(
-      (skill) => skill.userInvocable === true
+  getUserInvocableSkills(context?: SkillActivationContext): SkillMetadata[] {
+    const userInvocableSkills = Array.from(this.skills.values()).filter(
+      (skill) => skill.userInvocable === true,
     );
+    return filterSkillsByActivation(userInvocableSkills, context);
   }
 
-  /**
-   * 生成 <available_skills> 列表内容
-   * 格式：每个 skill 一行 `- name [argument-hint]: description`
-   * 仅包含可被 AI 自动调用的 Skills
-   */
-  generateAvailableSkillsList(): string {
-    const modelInvocableSkills = this.getModelInvocableSkills();
+  generateAvailableSkillsList(context?: SkillActivationContext): string {
+    const modelInvocableSkills = this.getModelInvocableSkills(context);
     if (modelInvocableSkills.length === 0) {
       return '';
     }
 
     const lines: string[] = [];
     for (const skill of modelInvocableSkills) {
-      // 截断过长的描述，保持列表简洁
       const desc =
         skill.description.length > 100
           ? `${skill.description.substring(0, 97)}...`
           : skill.description;
-
-      // 如果有 argument-hint，添加到名称后面
       const nameWithHint = skill.argumentHint
         ? `${skill.name} ${skill.argumentHint}`
         : skill.name;
-
       lines.push(`- ${nameWithHint}: ${desc}`);
     }
 
     return lines.join('\n');
   }
 
-  /**
-   * 获取 skills 数量
-   */
   get size(): number {
     return this.skills.size;
   }
 
-  /**
-   * 重新扫描并刷新注册表
-   */
   async refresh(): Promise<SkillDiscoveryResult> {
     this.skills.clear();
     this.initialized = false;
@@ -261,18 +257,12 @@ export class SkillRegistry {
   }
 }
 
-/**
- * 获取 SkillRegistry 单例
- */
 export function getSkillRegistry(config?: SkillRegistryConfig): SkillRegistry {
   return SkillRegistry.getInstance(config);
 }
 
-/**
- * 初始化并获取所有 skills
- */
 export async function discoverSkills(
-  config?: SkillRegistryConfig
+  config?: SkillRegistryConfig,
 ): Promise<SkillDiscoveryResult> {
   const registry = getSkillRegistry(config);
   return registry.initialize();

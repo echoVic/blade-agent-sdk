@@ -14,6 +14,7 @@
  */
 
 import { getSkillRegistry } from '../skills/index.js';
+import type { SkillActivationContext } from '../skills/types.js';
 import { PermissionMode } from '../types/common.js';
 import { getEnvironmentContext } from '../utils/environment.js';
 import { PLAN_MODE_SYSTEM_PROMPT } from './default.js';
@@ -55,6 +56,11 @@ export interface BuildSystemPromptOptions {
    * AI 回复语言（如 'zh-CN', 'en-US'）
    */
   language?: string;
+
+  /**
+   * Skills 激活上下文，用于过滤带 conditions 的 skill 可见性。
+   */
+  skillActivationContext?: SkillActivationContext;
 
   /**
    * 覆盖 Plan 模式的 system prompt（不提供时使用 SDK 内置的 PLAN_MODE_SYSTEM_PROMPT）
@@ -114,6 +120,7 @@ export async function buildSystemPrompt(
     includeEnvironment = true,
     language,
     planModePrompt,
+    skillActivationContext,
   } = options;
 
   const parts: string[] = [];
@@ -150,7 +157,7 @@ export async function buildSystemPrompt(
   let prompt = parts.join('\n\n---\n\n');
 
   // 注入 Skills 元数据到 <available_skills> 占位符
-  prompt = injectSkillsToPrompt(prompt);
+  prompt = injectSkillsToPrompt(prompt, skillActivationContext);
 
   // 注入语言指令
   prompt = injectLanguageInstruction(prompt, language);
@@ -161,9 +168,12 @@ export async function buildSystemPrompt(
 /**
  * 注入 Skills 列表到系统提示的 <available_skills> 占位符
  */
-function injectSkillsToPrompt(prompt: string): string {
+function injectSkillsToPrompt(
+  prompt: string,
+  activationContext?: SkillActivationContext,
+): string {
   const registry = getSkillRegistry();
-  const skillsList = registry.generateAvailableSkillsList();
+  const skillsList = registry.generateAvailableSkillsList(activationContext);
 
   // 如果没有 skills，保持占位符为空（但保留标签结构）
   if (!skillsList) {
@@ -199,4 +209,3 @@ function injectLanguageInstruction(prompt: string, language?: string): string {
   
   return prompt.replace('{{LANGUAGE_INSTRUCTION}}', instruction);
 }
-

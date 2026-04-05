@@ -11,9 +11,12 @@ export type LlmToolDefinition = {
 };
 
 export interface LoopSkillState {
+  skillId: string;
   skillName: string;
   allowedTools?: string[];
+  deniedTools?: string[];
   basePath: string;
+  scope?: 'turn' | 'session';
 }
 
 export interface LoopRecoveryState {
@@ -26,6 +29,7 @@ export interface LoopExecutionContext {
   sessionId: string;
   userId: string;
   contextSnapshot?: ContextSnapshot;
+  skillActivationPaths?: string[];
   confirmationHandler?: ConfirmationHandler;
   backgroundAgentManager?: BackgroundAgentManager;
 }

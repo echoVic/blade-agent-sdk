@@ -1,4 +1,6 @@
+import { nanoid } from 'nanoid';
 import type { UserMessageContent } from '../agent/types.js';
+import type { RuntimeHookRegistration } from '../runtime/index.js';
 import type {
   ExecutionPipelineHookResult,
   ExecutionPipelineHooks,
@@ -38,15 +40,64 @@ function buildHookInput(
 
 export class HookRuntime {
   private readonly bus: HookBus;
+  private readonly callbacks: Partial<Record<HookEvent, HookCallback[]>>;
   private readonly hookManager: HookManager;
+  private readonly runtimeHookRegistrations = new Map<string, {
+    event: HookEvent;
+    callback: HookCallback;
+  }>();
 
   constructor(private readonly options: HookRuntimeOptions) {
-    this.bus = new HookBus(options.callbacks);
+    this.callbacks = Object.fromEntries(
+      Object.entries(options.callbacks ?? {}).map(([event, callbacks]) => [
+        event,
+        [...(callbacks ?? [])],
+      ]),
+    ) as Partial<Record<HookEvent, HookCallback[]>>;
+    this.bus = new HookBus(this.callbacks);
     this.hookManager = options.hookManager ?? HookManager.getInstance();
   }
 
   getCallbacks(): Partial<Record<HookEvent, HookCallback[]>> {
-    return this.options.callbacks ?? {};
+    return this.callbacks;
+  }
+
+  registerRuntimeHooks(hooks: RuntimeHookRegistration[]): string[] {
+    const registrationIds: string[] = [];
+
+    for (const hook of hooks) {
+      const registrationId = `runtime-hook-${nanoid()}`;
+      const callback = this.createRuntimeHookCallback(registrationId, hook);
+      if (!callback) {
+        continue;
+      }
+
+      const bucket = this.callbacks[hook.event] ?? [];
+      bucket.push(callback);
+      this.callbacks[hook.event] = bucket;
+      this.runtimeHookRegistrations.set(registrationId, {
+        event: hook.event,
+        callback,
+      });
+      registrationIds.push(registrationId);
+    }
+
+    return registrationIds;
+  }
+
+  unregisterRuntimeHooks(registrationIds: string[]): void {
+    for (const registrationId of registrationIds) {
+      const registration = this.runtimeHookRegistrations.get(registrationId);
+      if (!registration) {
+        continue;
+      }
+
+      const bucket = this.callbacks[registration.event];
+      if (bucket) {
+        this.callbacks[registration.event] = bucket.filter((hook) => hook !== registration.callback);
+      }
+      this.runtimeHookRegistrations.delete(registrationId);
+    }
   }
 
   createExecutionPipelineHooks(): ExecutionPipelineHooks | undefined {
@@ -436,5 +487,32 @@ export class HookRuntime {
       hasImages: imageCount > 0,
       imageCount,
     };
+  }
+
+  private createRuntimeHookCallback(
+    registrationId: string,
+    hook: RuntimeHookRegistration,
+  ): HookCallback | undefined {
+    if (hook.event === HookEvent.UserPromptSubmit && hook.type === 'append_prompt' && hook.value) {
+      return async (input) => {
+        const basePrompt = typeof input.userPrompt === 'string'
+          ? input.userPrompt
+          : '';
+        const modifiedInput = basePrompt.trim() === ''
+          ? hook.value
+          : `${basePrompt}\n\n${hook.value}`;
+
+        if (hook.once) {
+          this.unregisterRuntimeHooks([registrationId]);
+        }
+
+        return {
+          action: 'continue',
+          modifiedInput,
+        };
+      };
+    }
+
+    return undefined;
   }
 }

@@ -32,8 +32,11 @@ export function microcompact(
       ? [index]
       : [],
   );
+  const preservedTailCount = Math.max(0, preserveRecentToolMessages);
   const preservedToolIndexes = new Set(
-    toolIndexes.slice(-preserveRecentToolMessages),
+    preservedTailCount === 0
+      ? []
+      : toolIndexes.slice(-preservedTailCount),
   );
   const skippedNonStringToolMessages = messages.filter(
     (message) => message.role === 'tool' && typeof message.content !== 'string',

@@ -67,6 +67,7 @@ export interface ExecutionContext {
   sessionId?: string;
   messageId?: string;
   contextSnapshot?: ContextSnapshot;
+  skillActivationPaths?: string[];
   signal?: AbortSignal;
   onProgress?: (message: string) => void;
   updateOutput?: (output: string) => void;

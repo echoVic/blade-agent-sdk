@@ -21,6 +21,7 @@ interface ToolExecutionContext {
   sessionId: string;
   userId: string;
   contextSnapshot?: ContextSnapshot;
+  skillActivationPaths?: string[];
   confirmationHandler?: ConfirmationHandler;
 }
 

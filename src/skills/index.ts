@@ -29,3 +29,9 @@
 
 export { injectSkillsMetadata } from './injectSkillsMetadata.js';
 export { discoverSkills, getSkillRegistry } from './SkillRegistry.js';
+export {
+  collectSkillActivationPaths,
+  filterSkillsByActivation,
+  isSkillAvailableInContext,
+} from './activation.js';
+export type { SkillActivationContext } from './types.js';

@@ -1,19 +1,79 @@
+import { HookEvent } from '../types/constants.js';
+
 /**
  * Skills 系统类型定义
  *
- * Skills 是动态 Prompt 扩展机制，允许 AI 根据用户请求自动调用专业能力。
- * 基于文件系统的简单架构（SKILL.md + 可选脚本/模板）。
+ * Skills 不再只是 prompt 片段，而是可发现、可编译、可执行的运行时能力包。
  */
 
-/**
- * Skill 元数据（从 SKILL.md YAML 前置数据解析）
- * 用于 Progressive Disclosure - 仅加载元数据到系统提示，节省 token
- *
- * 完全对齐 Claude Code Skills 规范
- */
+export type SkillSourceKind =
+  | 'managed'
+  | 'user'
+  | 'project'
+  | 'bundled'
+  | 'plugin'
+  | 'mcp';
+
+export type SkillTrustLevel = 'trusted' | 'workspace' | 'remote';
+
+export type SkillShellPolicy = 'inherit' | 'allow' | 'deny';
+
+export type SkillHookPolicy = 'inherit' | 'allow' | 'deny';
+
+export type SkillActivationScope = 'turn' | 'session';
+
+export interface SkillSource {
+  kind: SkillSourceKind;
+  trustLevel: SkillTrustLevel;
+  sourceId: string;
+  rootDir?: string;
+  precedence: number;
+  shellPolicy: SkillShellPolicy;
+  hookPolicy: SkillHookPolicy;
+}
+
 export interface SkillRuntimeEffects {
   allowedTools?: string[];
+  deniedTools?: string[];
   modelId?: string;
+  effort?: number | string;
+  systemPromptAppend?: string;
+  environment?: Record<string, string>;
+  activeScope?: SkillActivationScope;
+}
+
+export interface SkillActivationConditions {
+  paths?: string[];
+}
+
+export interface SkillActivationContext {
+  cwd?: string;
+  referencedPaths?: string[];
+  args?: string;
+}
+
+export interface SkillHookSpec {
+  event: HookEvent;
+  type: string;
+  value?: string;
+  tools?: string[];
+  once?: boolean;
+}
+
+export interface SkillShellConfig {
+  enabled: boolean;
+  allowlist?: string[] | 'all';
+}
+
+export interface SkillAssetEntry {
+  name: string;
+  path: string;
+}
+
+export interface SkillAssetManifest {
+  scripts: SkillAssetEntry[];
+  references: SkillAssetEntry[];
+  templates: SkillAssetEntry[];
 }
 
 export interface SkillMetadata {
@@ -26,60 +86,43 @@ export interface SkillMetadata {
   /** 工具访问限制，如 ['Read', 'Grep', 'Bash(git:*)'] */
   allowedTools?: string[];
 
+  /** 工具访问黑名单 */
+  disallowedTools?: string[];
+
   /** 版本号 */
   version?: string;
 
-  /**
-   * 参数提示，如 '<file_path>' 或 '<query>'
-   * 显示在 available_skills 列表中：`- skill-name <file_path>: description`
-   */
+  /** 参数提示，如 '<file_path>' 或 '<query>' */
   argumentHint?: string;
 
-  /**
-   * 是否支持用户通过 /skill-name 命令调用
-   * 默认 false（仅 AI 可调用）
-   */
+  /** 是否支持用户通过 /skill-name 命令调用 */
   userInvocable?: boolean;
 
-  /**
-   * 是否禁止 AI 自动调用
-   * 为 true 时不会出现在 <available_skills> 列表，但仍可通过 /skill-name 调用
-   * 默认 false
-   */
+  /** 是否禁止 AI 自动调用 */
   disableModelInvocation?: boolean;
 
-  /**
-   * 指定执行模型
-   * - undefined: 使用当前模型
-   * - 'inherit': 显式继承当前模型
-   * - 具体模型名: 切换到指定模型执行
-   */
+  /** 指定执行模型 */
   model?: string;
 
-  /**
-   * 额外的触发条件描述
-   * 补充 description，帮助 AI 判断何时使用
-   */
+  /** 额外的触发条件描述 */
   whenToUse?: string;
 
   /** 显式供 runtime 消费的执行效果 */
   runtimeEffects?: SkillRuntimeEffects;
 
-  /**
-   * 许可证，如 "Apache-2.0"、"MIT"、"Proprietary"
-   */
+  /** 条件激活规则 */
+  conditions?: SkillActivationConditions;
+
+  /** shell 策略 */
+  shell?: SkillShellConfig;
+
+  /** 许可证 */
   license?: string;
 
-  /**
-   * 环境兼容性说明（≤500 字符）
-   * 如 "Requires git, python3 and network access"
-   */
+  /** 环境兼容性说明 */
   compatibility?: string;
 
-  /**
-   * 任意元数据键值对
-   * 如 { author: "my-org", version: "1.2", tags: ["code-review"] }
-   */
+  /** 任意元数据键值对 */
   metadata?: Record<string, unknown>;
 
   /** SKILL.md 文件完整路径 */
@@ -88,8 +131,8 @@ export interface SkillMetadata {
   /** Skill 目录路径（用于引用 scripts/templates/references） */
   basePath: string;
 
-  /** 来源：user（~/.blade/skills）、project（.blade/skills）或 builtin（内置） */
-  source: 'user' | 'project' | 'builtin';
+  /** 来源信息 */
+  source: SkillSource;
 }
 
 /**
@@ -101,23 +144,33 @@ export interface SkillContent {
   /** SKILL.md 正文内容（去除 YAML 前置数据后的 Markdown） */
   instructions: string;
 
-  /** scripts/ 目录下发现的可执行脚本（相对于 basePath 的路径） */
-  scripts?: string[];
-}
+  /** 编译后的 skill-level hooks，供 runtime activation 消费 */
+  hooks?: SkillHookSpec[];
 
+  /** legacy 兼容：scripts/ 目录下发现的可执行脚本 */
+  scripts?: string[];
+
+  /** 完整资产清单 */
+  assets: SkillAssetManifest;
+}
 
 /**
  * SKILL.md 解析结果
  */
 export interface SkillParseResult {
-  /** 是否解析成功 */
   success: boolean;
-
-  /** 解析后的内容 */
   content?: SkillContent;
-
-  /** 错误信息 */
   error?: string;
+}
+
+export interface SkillSourceConfig {
+  kind: SkillSourceKind;
+  directory: string;
+  precedence?: number;
+  trustLevel?: SkillTrustLevel;
+  shellPolicy?: SkillShellPolicy;
+  hookPolicy?: SkillHookPolicy;
+  sourceId?: string;
 }
 
 /**
@@ -132,18 +185,83 @@ export interface SkillRegistryConfig {
 
   /** 当前工作目录 */
   cwd?: string;
+
+  /** 额外的 source（bundled/plugin/mcp 等） */
+  additionalSources?: SkillSourceConfig[];
 }
 
 /**
  * Skill 发现结果
  */
 export interface SkillDiscoveryResult {
-  /** 发现的 skills 列表 */
   skills: SkillMetadata[];
-
-  /** 发现过程中的错误（不阻止其他 skills 加载） */
   errors: Array<{
     path: string;
     error: string;
   }>;
+}
+
+export function defaultSkillSource(
+  kind: SkillSourceKind,
+  rootDir?: string,
+  overrides: Partial<Omit<SkillSource, 'kind'>> = {},
+): SkillSource {
+  const defaults: Record<SkillSourceKind, Omit<SkillSource, 'kind'>> = {
+    managed: {
+      trustLevel: 'trusted',
+      sourceId: 'managed',
+      rootDir,
+      precedence: 500,
+      shellPolicy: 'allow',
+      hookPolicy: 'allow',
+    },
+    user: {
+      trustLevel: 'trusted',
+      sourceId: 'user',
+      rootDir,
+      precedence: 200,
+      shellPolicy: 'allow',
+      hookPolicy: 'allow',
+    },
+    project: {
+      trustLevel: 'workspace',
+      sourceId: 'project',
+      rootDir,
+      precedence: 300,
+      shellPolicy: 'inherit',
+      hookPolicy: 'inherit',
+    },
+    bundled: {
+      trustLevel: 'trusted',
+      sourceId: 'bundled',
+      rootDir,
+      precedence: 100,
+      shellPolicy: 'allow',
+      hookPolicy: 'allow',
+    },
+    plugin: {
+      trustLevel: 'workspace',
+      sourceId: 'plugin',
+      rootDir,
+      precedence: 150,
+      shellPolicy: 'inherit',
+      hookPolicy: 'inherit',
+    },
+    mcp: {
+      trustLevel: 'remote',
+      sourceId: 'mcp',
+      rootDir,
+      precedence: 50,
+      shellPolicy: 'deny',
+      hookPolicy: 'deny',
+    },
+  };
+
+  return {
+    kind,
+    ...defaults[kind],
+    ...overrides,
+    rootDir: overrides.rootDir ?? rootDir ?? defaults[kind].rootDir,
+    sourceId: overrides.sourceId ?? defaults[kind].sourceId,
+  };
 }

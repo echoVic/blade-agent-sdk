@@ -1,3 +1,4 @@
+import type { ContextSnapshot } from '../../runtime/index.js';
 import type { IChatService, Message } from '../../services/ChatServiceInterface.js';
 import type { PermissionMode } from '../../types/common.js';
 import type {
@@ -12,6 +13,7 @@ interface LoopStateOptions {
   messages: Message[];
   permissionMode?: PermissionMode;
   executionContext: LoopExecutionContext;
+  baseContextSnapshot?: ContextSnapshot;
   resolveTools: () => LlmToolDefinition[];
   resolveChatService: () => IChatService;
   resolveMaxContextTokens: () => number;
@@ -22,6 +24,7 @@ export class LoopState {
   messages: Message[];
   readonly permissionMode?: PermissionMode;
   readonly executionContext: LoopExecutionContext;
+  private readonly baseContextSnapshot?: ContextSnapshot;
 
   private readonly resolveToolsFn: () => LlmToolDefinition[];
   private readonly resolveChatServiceFn: () => IChatService;
@@ -37,6 +40,7 @@ export class LoopState {
     this.messages = options.messages;
     this.permissionMode = options.permissionMode;
     this.executionContext = options.executionContext;
+    this.baseContextSnapshot = options.baseContextSnapshot;
     this.resolveToolsFn = options.resolveTools;
     this.resolveChatServiceFn = options.resolveChatService;
     this.resolveMaxContextTokensFn = options.resolveMaxContextTokens;
@@ -68,6 +72,14 @@ export class LoopState {
 
   getMaxContextTokens(): number {
     return this.resolveMaxContextTokensFn();
+  }
+
+  getBaseContextSnapshot(): ContextSnapshot | undefined {
+    return this.baseContextSnapshot;
+  }
+
+  setContextSnapshot(snapshot: ContextSnapshot | undefined): void {
+    this.executionContext.contextSnapshot = snapshot;
   }
 
   getActiveSkill(): LoopSkillState | undefined {

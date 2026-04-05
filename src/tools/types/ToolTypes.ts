@@ -1,5 +1,6 @@
 import type { JSONSchema7 } from 'json-schema';
 import type { PermissionMode } from '../../types/common.js';
+import type { RuntimePatch } from '../../runtime/index.js';
 import type { ExecutionContext } from './ExecutionTypes.js';
 
 /**
@@ -346,6 +347,7 @@ interface TypedToolResult<TMetadata extends ToolResultMetadata = ToolResultMetad
   displayContent: string;
   error?: ToolError;
   metadata?: TMetadata;
+  runtimePatch?: RuntimePatch;
 }
 
 /**

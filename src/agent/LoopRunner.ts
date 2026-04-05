@@ -8,11 +8,13 @@
  */
 
 import { CompactionService } from '../context/CompactionService.js';
+import { analyzeFiles } from '../context/FileAnalyzer.js';
 import type { HookRuntime } from '../hooks/HookRuntime.js';
 import { type InternalLogger, LogCategory, NOOP_LOGGER } from '../logging/Logger.js';
 import { buildSystemPrompt } from '../prompts/index.js';
+import { createContextSnapshot, type ContextSnapshot, type RuntimePatch } from '../runtime/index.js';
 import type { Message } from '../services/ChatServiceInterface.js';
-import { injectSkillsMetadata } from '../skills/index.js';
+import { injectSkillsMetadata, type SkillActivationContext } from '../skills/index.js';
 import type { ExecutionPipeline } from '../tools/execution/ExecutionPipeline.js';
 import type { FunctionDeclaration } from '../tools/types/index.js';
 import {
@@ -62,6 +64,20 @@ function hasPersistableUserContent(message: UserMessageContent): boolean {
 
 export class LoopRunner {
   private runtimeSkillState?: LoopSkillState;
+  private runtimeToolPolicy?: {
+    allow?: string[];
+    deny?: string[];
+    scope: 'turn' | 'session';
+  };
+  private runtimeSystemPromptAppend?: {
+    value: string;
+    scope: 'turn' | 'session';
+  };
+  private runtimeEnvironmentOverlay?: {
+    values: Record<string, string>;
+    scope: 'turn' | 'session';
+  };
+  private runtimeHookRegistrations: Array<{ registrationId: string; scope: 'turn' | 'session' }> = [];
   private readonly logger: InternalLogger;
 
   constructor(
@@ -234,14 +250,17 @@ export class LoopRunner {
         },
         metadata: { turnsCount: 0, toolCallsCount: 0, duration: 0 },
       };
+    } finally {
+      this.clearTurnScopedRuntimeState();
     }
   }
 
   // ===== SystemPrompt =====
 
   private async buildNormalSystemPrompt(context: ChatContext): Promise<string> {
-    const basePrompt =
-      context.systemPrompt ?? (await this.buildSystemPromptOnDemand(context));
+    const basePrompt = context.systemPrompt
+      ? this.appendRuntimeSystemPrompt(context.systemPrompt)
+      : await this.buildSystemPromptOnDemand(context);
     const envContext = getEnvironmentContext(context.snapshot?.cwd ?? this.defaultProjectPath);
     if (context.omitEnvironment) {
       return basePrompt;
@@ -253,11 +272,15 @@ export class LoopRunner {
 
   async buildSystemPromptOnDemand(context?: ChatContext): Promise<string> {
     const replacePrompt = this.runtimeOptions.systemPrompt;
-    const appendPrompt = this.runtimeOptions.appendSystemPrompt;
+    const appendPrompt = this.getEffectiveSystemPromptAppend();
     // Undefined projectPath is intentional for context-free turns: it disables
     // filesystem-derived prompt sources such as BLADE.md instead of falling
     // back to an implicit process cwd.
     const projectPath = context?.snapshot?.cwd ?? this.defaultProjectPath;
+    const skillActivationContext = this.createSkillActivationContext(
+      projectPath,
+      context?.messages ?? [],
+    );
 
     const result = await buildSystemPrompt({
       projectPath,
@@ -265,6 +288,7 @@ export class LoopRunner {
       append: appendPrompt,
       includeEnvironment: false,
       language: this.config.language,
+      skillActivationContext,
     });
 
     return result.prompt;
@@ -278,6 +302,13 @@ export class LoopRunner {
 
   setSkillContext(ctx: LoopSkillState | undefined): void {
     this.runtimeSkillState = ctx;
+    this.runtimeToolPolicy = ctx
+      ? {
+          allow: ctx.allowedTools,
+          deny: ctx.deniedTools,
+          scope: ctx.scope ?? 'session',
+        }
+      : undefined;
   }
 
   clearSkillContext(): void {
@@ -285,19 +316,29 @@ export class LoopRunner {
       this.logger.debug(`🎯 Skill "${this.runtimeSkillState.skillName}" deactivated`);
       this.runtimeSkillState = undefined;
     }
+    this.runtimeToolPolicy = undefined;
   }
 
   private applySkillToolRestrictions(
     tools: FunctionDeclaration[]
   ): FunctionDeclaration[] {
-    if (!this.runtimeSkillState?.allowedTools) {
+    const allowedTools = this.runtimeToolPolicy?.allow ?? this.runtimeSkillState?.allowedTools;
+    const deniedTools = new Set(this.runtimeToolPolicy?.deny ?? this.runtimeSkillState?.deniedTools ?? []);
+    if (!allowedTools && deniedTools.size === 0) {
       return tools;
     }
 
-    const allowedTools = this.runtimeSkillState.allowedTools;
-    this.logger.debug(`🔒 Applying Skill tool restrictions: ${allowedTools.join(', ')}`);
+    if (allowedTools) {
+      this.logger.debug(`🔒 Applying Skill tool restrictions: ${allowedTools.join(', ')}`);
+    }
 
     const filteredTools = tools.filter((tool) => {
+      if (deniedTools.has(tool.name)) {
+        return false;
+      }
+      if (!allowedTools) {
+        return true;
+      }
       return allowedTools.some((allowed) => {
         if (allowed === tool.name) return true;
         const match = allowed.match(/^(\w+)\(.*\)$/);
@@ -313,32 +354,300 @@ export class LoopRunner {
     return filteredTools;
   }
 
+  private deriveRuntimePatch(
+    toolName: string,
+    result: { success: boolean; metadata?: Record<string, unknown>; runtimePatch?: RuntimePatch },
+  ): RuntimePatch | undefined {
+    if (!result.success) {
+      return undefined;
+    }
+
+    if (result.runtimePatch) {
+      return result.runtimePatch;
+    }
+
+    if (toolName !== 'Skill') {
+      return undefined;
+    }
+
+    const metadata = result.metadata;
+    if (!metadata) {
+      return undefined;
+    }
+
+    const runtimeEffects = metadata.runtimeEffects && typeof metadata.runtimeEffects === 'object'
+      ? metadata.runtimeEffects as {
+          allowedTools?: string[];
+          deniedTools?: string[];
+          modelId?: string;
+          activeScope?: 'turn' | 'session';
+        }
+      : undefined;
+
+    const modelId = typeof metadata.modelId === 'string'
+      ? metadata.modelId
+      : typeof metadata.model === 'string'
+        ? metadata.model
+        : runtimeEffects?.modelId;
+
+    const allow = Array.isArray(runtimeEffects?.allowedTools)
+      ? runtimeEffects.allowedTools
+      : Array.isArray(metadata.allowedTools)
+        ? metadata.allowedTools as string[]
+        : undefined;
+    const deny = Array.isArray(runtimeEffects?.deniedTools)
+      ? runtimeEffects.deniedTools
+      : undefined;
+
+    if (!metadata.skillName && !modelId && !allow && !deny) {
+      return undefined;
+    }
+
+    return {
+      scope: runtimeEffects?.activeScope ?? 'session',
+      source: metadata.skillName ? 'skill' : 'tool',
+      skill: typeof metadata.skillName === 'string'
+        ? {
+            id: typeof metadata.skillId === 'string' ? metadata.skillId : metadata.skillName,
+            name: metadata.skillName,
+            basePath: typeof metadata.basePath === 'string' ? metadata.basePath : '',
+          }
+        : undefined,
+      toolPolicy: allow || deny ? { allow, deny } : undefined,
+      modelOverride: modelId ? { modelId } : undefined,
+    };
+  }
+
+  private applyRuntimePatch(patch: RuntimePatch, loopState: LoopState): void {
+    if (patch.toolPolicy) {
+      this.runtimeToolPolicy = {
+        allow: patch.toolPolicy.allow,
+        deny: patch.toolPolicy.deny,
+        scope: patch.scope,
+      };
+    } else if (patch.skill) {
+      this.runtimeToolPolicy = undefined;
+    }
+
+    this.applyRuntimePromptOverlay(patch);
+    this.applyRuntimeEnvironmentOverlay(patch);
+    loopState.setContextSnapshot(
+      this.buildRuntimeContextSnapshot(
+        loopState.executionContext.sessionId,
+        loopState.getBaseContextSnapshot(),
+      ),
+    );
+
+    if (patch.hooks && patch.hooks.length > 0 && this.hookRuntime) {
+      const registrationIds = this.hookRuntime.registerRuntimeHooks(patch.hooks);
+      this.runtimeHookRegistrations.push(
+        ...registrationIds.map((registrationId) => ({
+          registrationId,
+          scope: patch.scope,
+        })),
+      );
+    }
+
+    if (patch.skill) {
+      const nextSkillContext: LoopSkillState = {
+        skillId: patch.skill.id,
+        skillName: patch.skill.name,
+        allowedTools: patch.toolPolicy?.allow,
+        deniedTools: patch.toolPolicy?.deny,
+        basePath: patch.skill.basePath,
+        scope: patch.scope,
+      };
+      this.runtimeSkillState = nextSkillContext;
+      loopState.setActiveSkill(nextSkillContext);
+      loopState.setTransitionReason('skill_activated');
+    }
+  }
+
+  private clearTurnScopedRuntimeState(): void {
+    if (this.runtimeToolPolicy?.scope === 'turn') {
+      this.runtimeToolPolicy = undefined;
+    }
+    if (this.runtimeSkillState?.scope === 'turn') {
+      this.runtimeSkillState = undefined;
+    }
+    if (this.runtimeSystemPromptAppend?.scope === 'turn') {
+      this.runtimeSystemPromptAppend = undefined;
+    }
+    if (this.runtimeEnvironmentOverlay?.scope === 'turn') {
+      this.runtimeEnvironmentOverlay = undefined;
+    }
+    if (this.hookRuntime && this.runtimeHookRegistrations.length > 0) {
+      const turnScopedRegistrations = this.runtimeHookRegistrations
+        .filter((registration) => registration.scope === 'turn')
+        .map((registration) => registration.registrationId);
+      if (turnScopedRegistrations.length > 0) {
+        this.hookRuntime.unregisterRuntimeHooks(turnScopedRegistrations);
+        this.runtimeHookRegistrations = this.runtimeHookRegistrations
+          .filter((registration) => registration.scope !== 'turn');
+      }
+    }
+  }
+
   private createLoopState(
     context: ChatContext,
     messages: Message[],
     permissionMode: PermissionMode | undefined,
   ): LoopState {
     const registry = this.executionPipeline.getRegistry();
+    const effectiveSnapshot = this.buildRuntimeContextSnapshot(
+      context.sessionId,
+      context.snapshot,
+    );
+    const initialActivationCwd = effectiveSnapshot?.cwd ?? this.defaultProjectPath;
+    const initialSkillActivationContext = this.createSkillActivationContext(
+      initialActivationCwd,
+      messages,
+    );
+    let cachedSkillActivationContext = initialSkillActivationContext;
+    let cachedSkillActivationMessageCount = messages.length;
+    let cachedSkillActivationCwd = initialActivationCwd;
+    let loopState: LoopState;
 
-    return new LoopState({
+    const resolveSkillActivationContext = (): SkillActivationContext => {
+      const cwd = loopState.executionContext.contextSnapshot?.cwd ?? this.defaultProjectPath;
+      const currentMessageCount = loopState.messages.length;
+      if (
+        cachedSkillActivationContext
+        && cachedSkillActivationMessageCount === currentMessageCount
+        && cachedSkillActivationCwd === cwd
+      ) {
+        return cachedSkillActivationContext;
+      }
+
+      cachedSkillActivationContext = this.createSkillActivationContext(
+        cwd,
+        loopState.messages,
+      );
+      cachedSkillActivationMessageCount = currentMessageCount;
+      cachedSkillActivationCwd = cwd;
+      return cachedSkillActivationContext;
+    };
+
+    loopState = new LoopState({
       messages,
       permissionMode,
       executionContext: {
         sessionId: context.sessionId,
         userId: context.userId || 'default',
-        contextSnapshot: context.snapshot,
+        contextSnapshot: effectiveSnapshot,
+        skillActivationPaths: initialSkillActivationContext.referencedPaths,
         confirmationHandler: context.confirmationHandler,
         backgroundAgentManager: context.backgroundAgentManager,
       },
+      baseContextSnapshot: context.snapshot,
       initialActiveSkill: this.runtimeSkillState,
       resolveTools: () => {
+        const skillActivationContext = resolveSkillActivationContext();
+        loopState.executionContext.skillActivationPaths = skillActivationContext.referencedPaths;
         let rawTools = registry.getFunctionDeclarationsByMode(permissionMode);
-        rawTools = injectSkillsMetadata(rawTools);
+        rawTools = injectSkillsMetadata(
+          rawTools,
+          skillActivationContext,
+        );
         return this.applySkillToolRestrictions(rawTools);
       },
       resolveChatService: () => this.modelManager.getChatService(),
       resolveMaxContextTokens: () => this.modelManager.getMaxContextTokens(),
     });
+    return loopState;
+  }
+
+  private getEffectiveSystemPromptAppend(): string | undefined {
+    const segments = [
+      this.runtimeOptions.appendSystemPrompt?.trim(),
+      this.runtimeSystemPromptAppend?.value?.trim(),
+    ].filter((segment): segment is string => Boolean(segment));
+
+    if (segments.length === 0) {
+      return undefined;
+    }
+
+    return segments.join('\n\n---\n\n');
+  }
+
+  private appendRuntimeSystemPrompt(prompt: string): string {
+    const runtimeAppend = this.runtimeSystemPromptAppend?.value?.trim();
+    if (!runtimeAppend) {
+      return prompt;
+    }
+
+    return prompt.trim()
+      ? `${prompt}\n\n---\n\n${runtimeAppend}`
+      : runtimeAppend;
+  }
+
+  private createSkillActivationContext(
+    cwd: string | undefined,
+    messages: Message[],
+  ): SkillActivationContext {
+    return {
+      cwd,
+      referencedPaths: analyzeFiles(messages).map((reference) => reference.path),
+    };
+  }
+
+  private buildRuntimeContextSnapshot(
+    sessionId: string,
+    snapshot?: ContextSnapshot,
+  ): ContextSnapshot | undefined {
+    if (!this.runtimeEnvironmentOverlay) {
+      return snapshot;
+    }
+
+    if (!snapshot) {
+      return createContextSnapshot(sessionId, 'runtime-overlay', {
+        environment: this.runtimeEnvironmentOverlay.values,
+      });
+    }
+
+    return createContextSnapshot(
+      snapshot.sessionId,
+      snapshot.turnId,
+      snapshot.context,
+      { environment: this.runtimeEnvironmentOverlay.values },
+    );
+  }
+
+  private applyRuntimePromptOverlay(patch: RuntimePatch): void {
+    const value = patch.systemPromptAppend?.trim();
+    if (value) {
+      this.runtimeSystemPromptAppend = {
+        value,
+        scope: patch.scope,
+      };
+      return;
+    }
+
+    if (patch.skill) {
+      this.runtimeSystemPromptAppend = undefined;
+    }
+  }
+
+  private applyRuntimeEnvironmentOverlay(patch: RuntimePatch): void {
+    const nextEnvironment = patch.environment
+      ? Object.fromEntries(
+          Object.entries(patch.environment)
+            .filter(([, value]) => typeof value === 'string')
+            .map(([key, value]) => [key, value.trim()]),
+        )
+      : undefined;
+
+    if (nextEnvironment && Object.keys(nextEnvironment).length > 0) {
+      this.runtimeEnvironmentOverlay = {
+        values: nextEnvironment,
+        scope: patch.scope,
+      };
+      return;
+    }
+
+    if (patch.skill) {
+      this.runtimeEnvironmentOverlay = undefined;
+    }
   }
 
   // ===== AgentLoopConfig 构建 =====
@@ -481,29 +790,16 @@ export class LoopRunner {
           self.logger.warn('[LoopRunner] 保存工具结果失败:', err);
         }
 
-        // Skill 激活
-        if (toolCall.function.name === 'Skill' && result.success && result.metadata) {
-          const md = result.metadata;
-          if (md.skillName && typeof md.skillName === 'string') {
-            const runtimeEffects = (md.runtimeEffects && typeof md.runtimeEffects === 'object')
-              ? md.runtimeEffects as { allowedTools?: string[] }
-              : undefined;
-            const nextSkillContext = {
-              skillName: md.skillName,
-              allowedTools: Array.isArray(runtimeEffects?.allowedTools)
-                ? runtimeEffects.allowedTools
-                : Array.isArray(md.allowedTools) ? md.allowedTools as string[] : undefined,
-              basePath: typeof md.basePath === 'string' ? md.basePath : '',
-            };
-            self.runtimeSkillState = nextSkillContext;
-            loopState.setActiveSkill(nextSkillContext);
-            loopState.setTransitionReason('skill_activated');
-          }
+        const runtimePatch = self.deriveRuntimePatch(toolCall.function.name, {
+          success: result.success,
+          metadata: result.metadata,
+          runtimePatch: result.runtimePatch,
+        });
+        if (runtimePatch) {
+          self.applyRuntimePatch(runtimePatch, loopState);
         }
 
-        // 模型切换
-        const modelId = result.metadata?.modelId?.trim()
-          || result.metadata?.model?.trim() || undefined;
+        const modelId = runtimePatch?.modelOverride?.modelId?.trim() || undefined;
         if (modelId) {
           await self.modelManager.switchModelIfNeeded(modelId);
           loopState.setTransitionReason('model_switched');

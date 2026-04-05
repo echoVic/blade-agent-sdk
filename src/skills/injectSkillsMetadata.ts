@@ -7,6 +7,7 @@
 
 import type { FunctionDeclaration } from '../tools/types/index.js';
 import { getSkillRegistry } from './SkillRegistry.js';
+import type { SkillActivationContext } from './types.js';
 
 /** Skill 工具名称 */
 const SKILL_TOOL_NAME = 'Skill';
@@ -24,10 +25,11 @@ const AVAILABLE_SKILLS_REGEX = /<available_skills>\s*<\/available_skills>/;
  * @returns 注入后的工具函数声明列表（新数组，不修改原数组）
  */
 export function injectSkillsMetadata(
-  tools: FunctionDeclaration[]
+  tools: FunctionDeclaration[],
+  activationContext?: SkillActivationContext,
 ): FunctionDeclaration[] {
   const registry = getSkillRegistry();
-  const skillsList = registry.generateAvailableSkillsList();
+  const skillsList = registry.generateAvailableSkillsList(activationContext);
 
   // 如果没有发现任何 skills，返回原数组
   if (!skillsList) {
