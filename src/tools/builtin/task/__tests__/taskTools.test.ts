@@ -73,19 +73,18 @@ async function executeWithContext<TParams>(
   });
 }
 
+let manager: InstanceType<typeof BackgroundAgentManager>;
+
 describe('task tools', () => {
   beforeEach(() => {
     createAgent.mockClear();
     runAgenticLoop.mockReset();
-    AgentSessionStore.resetInstance();
-    BackgroundAgentManager.getInstance(NOOP_LOGGER).setLogger(NOOP_LOGGER);
+    const store = AgentSessionStore.create();
+    manager = BackgroundAgentManager.create(NOOP_LOGGER, store);
   });
 
   afterEach(() => {
-    const manager = BackgroundAgentManager.getInstance(NOOP_LOGGER);
     manager.killAll();
-    AgentSessionStore.resetInstance();
-    manager.setLogger(NOOP_LOGGER);
   });
 
   it('registers all task management tools in builtin tools', async () => {
@@ -229,7 +228,6 @@ describe('task tools', () => {
         }),
     );
 
-    const manager = BackgroundAgentManager.getInstance(NOOP_LOGGER);
     const agentId = manager.startBackgroundAgent({
       config: subagentConfig,
       bladeConfig,
@@ -265,7 +263,6 @@ describe('task tools', () => {
   });
 
   it('uses the background agent manager provided by execution context', async () => {
-    const getInstanceSpy = vi.spyOn(BackgroundAgentManager, 'getInstance');
     const stopTool = createTaskStopTool({ sessionId: `factory-${Date.now()}` });
     const fakeManager = {
       getAgent: vi.fn(() => ({ id: 'agent-1', status: 'running' })),
@@ -284,6 +281,5 @@ describe('task tools', () => {
     expect(stopped.success).toBe(true);
     expect(fakeManager.getAgent).toHaveBeenCalledWith('agent-1');
     expect(fakeManager.killAgent).toHaveBeenCalledWith('agent-1');
-    expect(getInstanceSpy).not.toHaveBeenCalled();
   });
 });

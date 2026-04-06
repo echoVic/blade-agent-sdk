@@ -6,11 +6,8 @@ import { tmpdir } from 'node:os';
 import { AgentSessionStore, type AgentSession } from '../AgentSessionStore.js';
 
 const tempDirs: string[] = [];
-const originalHome = process.env.HOME;
 
 afterEach(async () => {
-  process.env.HOME = originalHome;
-  AgentSessionStore.resetInstance();
   await Promise.all(tempDirs.splice(0).map((dir) => rm(dir, { recursive: true, force: true })));
 });
 
@@ -45,9 +42,8 @@ function createSession(id: string): AgentSession {
 describe('AgentSessionStore', () => {
   it('keeps sessions in memory when storageRoot is not configured', async () => {
     const fakeHome = await createTempDir('blade-agent-home-');
-    process.env.HOME = fakeHome;
 
-    const store = AgentSessionStore.getInstance();
+    const store = AgentSessionStore.create();
     store.saveSession(createSession('agent-memory'));
 
     expect(store.loadSession('agent-memory')?.id).toBe('agent-memory');
@@ -57,9 +53,8 @@ describe('AgentSessionStore', () => {
 
   it('persists sessions under the configured storageRoot', async () => {
     const storageRoot = await createTempDir('blade-agent-storage-');
-    AgentSessionStore.configure(storageRoot);
 
-    const store = AgentSessionStore.getInstance();
+    const store = AgentSessionStore.create(storageRoot);
     store.saveSession(createSession('agent/unsafe:id'));
 
     const sessionPath = join(storageRoot, 'agents', 'sessions', 'agent_unsafe_id.json');

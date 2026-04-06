@@ -21,12 +21,37 @@ export type UserMessageContent = string | ContentPart[];
  *
  * 解耦 state/types 层对 subagents 具体实现的依赖。
  * BackgroundAgentManager 通过 structural typing 隐式满足此接口。
- * 仅包含通过 ExecutionContext 传递时被 tools 实际调用的方法。
+ *
+ * 分层设计：
+ * - IBackgroundAgentReader: 读取/查询能力（TaskOutput 使用）
+ * - IBackgroundAgentController: 启动/停止/恢复能力（Task 使用）
+ * - IBackgroundAgentManager: 完整接口（SessionRuntime 注入）
  */
-export interface IBackgroundAgentManager {
-  getAgent(agentId: string): object | undefined;
-  killAgent(agentId: string): boolean;
+
+export interface AgentProgress {
+  toolUseCount: number;
+  tokenCount: number;
+  lastActivity?: string;
+  summary?: string;
+  updatedAt: number;
 }
+
+export interface IBackgroundAgentReader {
+  getAgent(agentId: string): object | undefined;
+  isRunning(agentId: string): boolean;
+  waitForCompletion(agentId: string, timeout?: number): Promise<object | undefined>;
+}
+
+export interface IBackgroundAgentController {
+  killAgent(agentId: string): boolean;
+  cancelCurrentWork(agentId: string): boolean;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  startBackgroundAgent(options: any): string;
+  resumeAgent(agentId: string, newPrompt: string, ...args: unknown[]): string | undefined;
+  sendMessage(agentId: string, message: string): boolean;
+}
+
+export interface IBackgroundAgentManager extends IBackgroundAgentReader, IBackgroundAgentController {}
 
 /**
  * 子代理信息（用于 JSONL 写入）
@@ -101,6 +126,8 @@ export interface LoopOptions {
   autoCompact?: boolean;
   signal?: AbortSignal;
   onTurnLimitReached?: (data: { turnsCount: number }) => Promise<TurnLimitResponse>;
+  /** 进度回调，每次 tool call 完成后触发 */
+  onProgress?: (progress: AgentProgress) => void;
 }
 
 /**

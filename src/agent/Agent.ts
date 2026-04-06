@@ -47,6 +47,7 @@ import { LoopRunner } from './LoopRunner.js';
 import { ModelManager } from './ModelManager.js';
 import { PlanExecutor } from './PlanExecutor.js';
 import { StreamResponseHandler } from './StreamResponseHandler.js';
+import { AgentSessionStore } from './subagents/AgentSessionStore.js';
 import { BackgroundAgentManager } from './subagents/BackgroundAgentManager.js';
 import { SubagentRegistry } from './subagents/SubagentRegistry.js';
 import {
@@ -115,7 +116,7 @@ export class Agent {
     this.subagentRegistry =
       deps.subagentRegistry ?? new SubagentRegistry(this.rootLogger, getContextCwd(this.defaultContext));
     this.backgroundAgentManager =
-      deps.backgroundAgentManager ?? BackgroundAgentManager.getInstance(this.rootLogger);
+      deps.backgroundAgentManager ?? BackgroundAgentManager.create(this.rootLogger, AgentSessionStore.create());
     this.hookRuntime = deps.hookRuntime;
     this.modelManager = new ModelManager(
       config,

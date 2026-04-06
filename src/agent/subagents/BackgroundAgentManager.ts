@@ -41,6 +41,9 @@ interface BackgroundAgentRuntime {
 
   /** 开始时间 */
   startTime: number;
+
+  /** 待注入的消息队列（SendMessage 使用） */
+  pendingMessages: string[];
 }
 
 /**
@@ -82,32 +85,36 @@ export interface StartBackgroundAgentOptions {
  * 后台 Agent 管理器
  */
 export class BackgroundAgentManager {
-  private static instance: BackgroundAgentManager | null = null;
   private logger: InternalLogger = NOOP_LOGGER.child(LogCategory.AGENT);
 
   // 运行中的 agent
   private runningAgents = new Map<string, BackgroundAgentRuntime>();
 
-  // 会话存储
-  private sessionStore = AgentSessionStore.getInstance();
+  // 会话存储（支持注入，不再硬依赖全局 singleton）
+  private sessionStore: AgentSessionStore;
 
-  private constructor() {
+  constructor(sessionStore: AgentSessionStore, logger?: InternalLogger) {
+    this.sessionStore = sessionStore;
+    if (logger) {
+      this.logger = logger.child(LogCategory.AGENT);
+      this.sessionStore.setLogger(logger);
+    }
     this.cleanupOrphanedSessions();
   }
 
-  static getInstance(logger?: InternalLogger): BackgroundAgentManager {
-    if (!BackgroundAgentManager.instance) {
-      BackgroundAgentManager.instance = new BackgroundAgentManager();
-    }
-    if (logger) {
-      BackgroundAgentManager.instance.setLogger(logger);
-    }
-    return BackgroundAgentManager.instance;
+  /**
+   * 创建实例（推荐用于 per-runtime 场景）
+   *
+   * 每个 SessionRuntime 应该创建自己的 BackgroundAgentManager 实例，
+   * 各自持有独立的 sessionStore，避免同进程多 runtime 共享状态。
+   */
+  static create(logger: InternalLogger, sessionStore: AgentSessionStore): BackgroundAgentManager {
+    return new BackgroundAgentManager(sessionStore, logger);
   }
 
   setLogger(logger: InternalLogger): void {
     this.logger = logger.child(LogCategory.AGENT);
-    this.sessionStore = AgentSessionStore.getInstance(this.logger);
+    this.sessionStore.setLogger(logger);
   }
 
   private cleanupOrphanedSessions(): void {
@@ -212,6 +219,7 @@ export class BackgroundAgentManager {
       lifecycleController,
       workController,
       startTime,
+      pendingMessages: [],
     });
 
     // 执行完成后清理
@@ -277,6 +285,9 @@ export class BackgroundAgentManager {
 
       const loopResult = await agent.runAgenticLoop(prompt, context, {
         signal: workSignal,
+        onProgress: (progress) => {
+          this.sessionStore.updateSession(agentId, { progress });
+        },
       });
 
       this.sessionStore.updateSession(agentId, {
@@ -505,6 +516,53 @@ export class BackgroundAgentManager {
 
     this.logger.info(`Background agent cancelled: ${agentId}`);
     return true;
+  }
+
+  /**
+   * 仅中断当前工作，不销毁生命周期
+   *
+   * 与 killAgent 的区别：
+   * - killAgent: abort lifecycleController → 整个 agent 不可恢复
+   * - cancelCurrentWork: 仅 abort workController → 可以通过 resumeAgent 继续
+   */
+  cancelCurrentWork(agentId: string): boolean {
+    const runtime = this.runningAgents.get(agentId);
+    if (!runtime) return false;
+
+    if (runtime.workController.signal.aborted) {
+      return false;
+    }
+
+    runtime.workController.abort('work_cancelled');
+    this.logger.info(`Background agent work cancelled (lifecycle preserved): ${agentId}`);
+    return true;
+  }
+
+  /**
+   * 向运行中的 agent 发送消息（消息队列）
+   *
+   * 消息会在 agent 下一个 tool-round 边界被消费。
+   * 如果 agent 不在运行中，返回 false。
+   */
+  sendMessage(agentId: string, message: string): boolean {
+    const runtime = this.runningAgents.get(agentId);
+    if (!runtime) return false;
+
+    runtime.pendingMessages.push(message);
+    this.logger.debug(`Message queued for agent ${agentId}: ${message.slice(0, 100)}`);
+    return true;
+  }
+
+  /**
+   * 获取并清空 agent 的待处理消息
+   */
+  drainPendingMessages(agentId: string): string[] {
+    const runtime = this.runningAgents.get(agentId);
+    if (!runtime || runtime.pendingMessages.length === 0) return [];
+
+    const messages = [...runtime.pendingMessages];
+    runtime.pendingMessages.length = 0;
+    return messages;
   }
 
   /**

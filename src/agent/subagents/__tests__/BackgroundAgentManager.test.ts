@@ -56,23 +56,21 @@ const subagentConfig = {
   description: 'Research subagent',
 };
 
+let manager: InstanceType<typeof BackgroundAgentManager>;
+
 describe('BackgroundAgentManager', () => {
   beforeEach(() => {
     createAgent.mockClear();
     runAgenticLoop.mockClear();
-    AgentSessionStore.resetInstance();
-    BackgroundAgentManager.getInstance(NOOP_LOGGER).setLogger(NOOP_LOGGER);
+    const store = AgentSessionStore.create();
+    manager = BackgroundAgentManager.create(NOOP_LOGGER, store);
   });
 
   afterEach(() => {
-    const manager = BackgroundAgentManager.getInstance(NOOP_LOGGER);
     manager.killAll();
-    AgentSessionStore.resetInstance();
-    manager.setLogger(NOOP_LOGGER);
   });
 
   it('inherits the parent snapshot context when starting a background subagent', async () => {
-    const manager = BackgroundAgentManager.getInstance(NOOP_LOGGER);
     const snapshot = createContextSnapshot('parent-session', 'turn-1', {
       capabilities: {
         filesystem: {
@@ -105,7 +103,6 @@ describe('BackgroundAgentManager', () => {
   });
 
   it('updates the session description when resuming with a new description', async () => {
-    const manager = BackgroundAgentManager.getInstance(NOOP_LOGGER);
     const agentId = manager.startBackgroundAgent({
       config: subagentConfig,
       bladeConfig,
@@ -153,7 +150,6 @@ describe('BackgroundAgentManager', () => {
         }),
     );
 
-    const manager = BackgroundAgentManager.getInstance(NOOP_LOGGER);
     const agentId = manager.startBackgroundAgent({
       config: subagentConfig,
       bladeConfig,
@@ -201,7 +197,6 @@ describe('BackgroundAgentManager', () => {
         }),
     );
 
-    const manager = BackgroundAgentManager.getInstance(NOOP_LOGGER);
     const agentId = manager.startBackgroundAgent({
       config: subagentConfig,
       bladeConfig,

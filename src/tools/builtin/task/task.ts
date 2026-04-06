@@ -11,7 +11,7 @@
 
 import { nanoid } from 'nanoid';
 import { z } from 'zod';
-import { BackgroundAgentManager } from '../../../agent/subagents/BackgroundAgentManager.js';
+import type { BackgroundAgentManager } from '../../../agent/subagents/BackgroundAgentManager.js';
 import type { SubagentRegistry } from '../../../agent/subagents/SubagentRegistry.js';
 import { SubagentExecutor } from '../../../agent/subagents/SubagentExecutor.js';
 import type {
@@ -415,7 +415,18 @@ function handleBackgroundExecution(
     };
   }
 
-  const manager = BackgroundAgentManager.getInstance();
+  const manager = context.backgroundAgentManager as BackgroundAgentManager | undefined;
+  if (!manager) {
+    return {
+      success: false,
+      llmContent: 'BackgroundAgentManager not available in execution context',
+      displayContent: '❌ 后台 Agent 管理器不可用',
+      error: {
+        type: ToolErrorType.EXECUTION_ERROR,
+        message: 'BackgroundAgentManager not injected via ExecutionContext',
+      },
+    };
+  }
 
   const agentId = manager.startBackgroundAgent({
     config: subagentConfig,
@@ -479,7 +490,19 @@ function handleResume(
     };
   }
 
-  const manager = BackgroundAgentManager.getInstance();
+  const manager = context.backgroundAgentManager as BackgroundAgentManager | undefined;
+  if (!manager) {
+    return {
+      success: false,
+      llmContent: 'BackgroundAgentManager not available in execution context',
+      displayContent: '❌ 后台 Agent 管理器不可用',
+      error: {
+        type: ToolErrorType.EXECUTION_ERROR,
+        message: 'BackgroundAgentManager not injected via ExecutionContext',
+      },
+    };
+  }
+
   const session = manager.getAgent(agentId);
   if (!session) {
     return {

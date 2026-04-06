@@ -1,6 +1,7 @@
 import { basename, dirname } from 'node:path';
 import type { AgentRuntimeDeps } from '../agent/Agent.js';
 import { BackgroundAgentManager } from '../agent/subagents/BackgroundAgentManager.js';
+import { AgentSessionStore } from '../agent/subagents/AgentSessionStore.js';
 import { SubagentRegistry } from '../agent/subagents/SubagentRegistry.js';
 import { ContextManager } from '../context/ContextManager.js';
 import { HookManager } from '../hooks/HookManager.js';
@@ -96,7 +97,8 @@ export class SessionRuntime {
     this.storageRoot = bladeConfig.storageRoot ?? resolveStorageRoot(options.storagePath);
     this.mcpRegistry = new McpRegistry(this.storageRoot);
     this.subagentRegistry = new SubagentRegistry(this.rootLogger, getContextCwd(defaultContext));
-    this.backgroundAgentManager = BackgroundAgentManager.getInstance(this.rootLogger);
+    const sessionStore = AgentSessionStore.create(this.storageRoot, this.rootLogger);
+    this.backgroundAgentManager = BackgroundAgentManager.create(this.rootLogger, sessionStore);
     this.contextManager = new ContextManager({
       storage: {
         maxMemorySize: 1000,

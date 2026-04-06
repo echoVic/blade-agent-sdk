@@ -87,6 +87,9 @@ export function buildLoopConfig(deps: LoopHookBuilderDeps): AgentLoopConfig {
     runtimePatchManager, defaultProjectPath,
   } = deps;
 
+  // 进度跟踪计数器（用于 onProgress 回调）
+  let progressToolUseCount = 0;
+
   return {
     streamHandler,
     executionPipeline,
@@ -254,6 +257,21 @@ export function buildLoopConfig(deps: LoopHookBuilderDeps): AgentLoopConfig {
       if (modelId) {
         await modelManager.switchModelIfNeeded(modelId);
         loopState.setTransitionReason('model_switched');
+      }
+
+      // 触发进度回调
+      if (options?.onProgress) {
+        progressToolUseCount++;
+        try {
+          options.onProgress({
+            toolUseCount: progressToolUseCount,
+            tokenCount: 0, // token count is tracked at turn level, not per-tool
+            lastActivity: toolCall.function.name,
+            updatedAt: Date.now(),
+          });
+        } catch {
+          // 进度回调异常不应中断 agent 执行
+        }
       }
     },
 

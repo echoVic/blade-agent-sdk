@@ -10,6 +10,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { type InternalLogger, LogCategory, NOOP_LOGGER } from '../../logging/Logger.js';
+import type { AgentProgress } from '../types.js';
 import type { Message } from '../../services/ChatServiceInterface.js';
 
 /**
@@ -67,6 +68,9 @@ export interface AgentSession {
 
   /** 输出文件路径（后台 agent 完成后写入结果） */
   outputFile?: string;
+
+  /** 运行时进度（仅在 status === 'running' 时持续更新） */
+  progress?: AgentProgress;
 }
 
 /**
@@ -76,49 +80,30 @@ export interface AgentSession {
  * storageRoot 通过 configure() 注入，未配置时降级为内存模式。
  */
 export class AgentSessionStore {
-  private static instance: AgentSessionStore | null = null;
   private logger: InternalLogger = NOOP_LOGGER.child(LogCategory.AGENT);
   private sessionsDir: string | undefined;
 
   // 内存缓存（避免频繁读取文件）
   private cache = new Map<string, AgentSession>();
 
-  private constructor(storageRoot?: string) {
+  constructor(storageRoot?: string, logger?: InternalLogger) {
     if (storageRoot) {
       this.sessionsDir = path.join(storageRoot, 'agents', 'sessions');
       this.ensureDirectory();
     }
-  }
-
-  static getInstance(logger?: InternalLogger): AgentSessionStore {
-    if (!AgentSessionStore.instance) {
-      AgentSessionStore.instance = new AgentSessionStore();
-    }
     if (logger) {
-      AgentSessionStore.instance.setLogger(logger);
-    }
-    return AgentSessionStore.instance;
-  }
-
-  /**
-   * 配置持久化存储根目录（在首次 getInstance() 之前调用）
-   */
-  static configure(storageRoot: string): void {
-    if (AgentSessionStore.instance) {
-      // 实例已创建，更新 sessionsDir
-      AgentSessionStore.instance.sessionsDir = path.join(storageRoot, 'agents', 'sessions');
-      AgentSessionStore.instance.ensureDirectory();
-    } else {
-      // 预先配置，下次 getInstance() 时使用
-      AgentSessionStore.instance = new AgentSessionStore(storageRoot);
+      this.logger = logger.child(LogCategory.AGENT);
     }
   }
 
   /**
-   * 重置单例（用于测试）
+   * 创建独立实例（推荐用于 per-runtime 场景）
+   *
+   * 与 getInstance() 不同，create() 返回的实例不共享全局状态，
+   * 适合同进程多个 SessionRuntime 各自管理自己的 agent session。
    */
-  static resetInstance(): void {
-    AgentSessionStore.instance = null;
+  static create(storageRoot?: string, logger?: InternalLogger): AgentSessionStore {
+    return new AgentSessionStore(storageRoot, logger);
   }
 
   setLogger(logger: InternalLogger): void {

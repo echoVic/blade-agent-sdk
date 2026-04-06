@@ -7,7 +7,7 @@
  */
 
 import { z } from 'zod';
-import { BackgroundAgentManager } from '../../../agent/subagents/BackgroundAgentManager.js';
+import type { BackgroundAgentManager } from '../../../agent/subagents/BackgroundAgentManager.js';
 import { createTool } from '../../core/createTool.js';
 import type { ExecutionContext, ToolResult } from '../../types/index.js';
 import { ToolErrorType, ToolKind } from '../../types/index.js';
@@ -71,21 +71,21 @@ export const taskOutputTool = createTool({
     ],
   },
 
-  async execute(params, _context: ExecutionContext): Promise<ToolResult> {
+  async execute(params, context: ExecutionContext): Promise<ToolResult> {
     const { task_id, block, timeout } = params;
+    const agentManager = context.backgroundAgentManager as BackgroundAgentManager | undefined;
 
     // 根据 task_id 前缀判断类型
     if (task_id.startsWith('bash_')) {
       return handleShellOutput(task_id, block, timeout);
     }
     const shellManager = BackgroundShellManager.getInstance();
-    const agentManager = BackgroundAgentManager.getInstance();
 
     if (shellManager.getProcess(task_id)) {
       return handleShellOutput(task_id, block, timeout);
     }
-    if (agentManager.getAgent(task_id)) {
-      return handleAgentOutput(task_id, block, timeout);
+    if (agentManager?.getAgent(task_id)) {
+      return handleAgentOutput(task_id, block, timeout, agentManager);
     }
 
     return {
@@ -193,9 +193,9 @@ async function handleShellOutput(
 async function handleAgentOutput(
   taskId: string,
   block: boolean,
-  timeout: number
+  timeout: number,
+  manager: BackgroundAgentManager,
 ): Promise<ToolResult> {
-  const manager = BackgroundAgentManager.getInstance();
 
   // 获取会话信息
   let session = manager.getAgent(taskId);
@@ -241,6 +241,7 @@ async function handleAgentOutput(
     result: session.result,
     stats: session.stats,
     output_file: session.outputFile,
+    progress: session.progress,
   };
 
   const subagentStatus =
@@ -251,11 +252,17 @@ async function handleAgentOutput(
         : 'running';
 
   const statusEmoji = getStatusEmoji(session.status);
+  const progressInfo = session.progress
+    ? `工具调用: ${session.progress.toolUseCount} 次\n` +
+      (session.progress.lastActivity ? `最近活动: ${session.progress.lastActivity}\n` : '') +
+      (session.progress.summary ? `摘要: ${session.progress.summary}\n` : '')
+    : '';
   const displayContent =
     `${statusEmoji} TaskOutput(${taskId}) - Agent\n` +
     `状态: ${session.status}\n` +
     `类型: ${session.subagentType}\n` +
     `描述: ${session.description}\n` +
+    (progressInfo ? `\n进度:\n${progressInfo}` : '') +
     (session.stats?.duration ? `耗时: ${session.stats.duration}ms\n` : '') +
     (session.stats?.toolCalls ? `工具调用: ${session.stats.toolCalls} 次\n` : '') +
     (session.result?.message ? `\n结果:\n${session.result.message}` : '') +
