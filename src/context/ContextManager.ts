@@ -298,7 +298,7 @@ export class ContextManager {
    */
   async saveMessage(
     sessionId: string,
-    role: 'user' | 'assistant' | 'system',
+    role: Message['role'],
     content: Message['content'],
     parentUuid: string | null = null,
     metadata?: {

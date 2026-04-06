@@ -12,7 +12,19 @@ export {
   hasFilesystemCapability,
   mergeContext,
 } from './runtime/index.js';
-export type { ContextSnapshot, RuntimeContext } from './runtime/index.js';
+export type {
+  ContextSnapshot,
+  RuntimeContext,
+  RuntimeContextPatch,
+  RuntimeHookEvent,
+  RuntimeHookRegistration,
+  RuntimeModelOverride,
+  RuntimePatch,
+  RuntimePatchScope,
+  RuntimePatchSkillInfo,
+  RuntimeToolDiscoveryPatch,
+  RuntimeToolPolicyPatch,
+} from './runtime/index.js';
 
 export { createSession, forkSession, prompt, resumeSession } from './session/index.js';
 export type {
@@ -53,19 +65,40 @@ export type {
   SubagentSource,
 } from './agent/subagents/types.js';
 
+// --- Tool authoring primitives (stable) ---
 export { getBuiltinTools } from './tools/builtin/index.js';
-export { createMemoryReadTool, createMemoryWriteTool } from './tools/builtin/memory/index.js';
 export { createTool, defineTool, toolFromDefinition } from './tools/core/createTool.js';
+export { createMemoryReadTool, createMemoryWriteTool } from './tools/builtin/memory/index.js';
+export type {
+  FunctionDeclaration,
+  Tool,
+  ToolBehavior,
+  ToolConfig,
+  ToolDescription,
+  ToolDescriptionResolver,
+  ToolEffect,
+  ToolExposureConfig,
+  ToolExposureMode,
+  ToolSchema,
+} from './tools/types/index.js';
 
+// --- Catalog & exposure (consumed by session layer) ---
+export { ToolCatalog } from './tools/catalog/index.js';
+export type {
+  ToolCatalogEntry,
+  ToolCatalogReadView,
+  ToolCatalogSourcePolicy,
+  ToolSourceInfo,
+  ToolSourceKind,
+  ToolTrustLevel,
+} from './tools/catalog/index.js';
+export type { ToolExecutionUpdate } from './agent/loop/runToolCall.js';
+
+// --- Memory ---
 export { FileSystemMemoryStore, MemoryManager } from './memory/index.js';
 export type { Memory, MemoryInput, MemoryStore, MemoryType } from './memory/index.js';
 
-export { BashClassifier } from './hooks/BashClassifier.js';
-export type { BashClassification, BashCommandCategory } from './hooks/BashClassifier.js';
-
-export { DenialTracker } from './tools/execution/DenialTracker.js';
-export type { DenialRecord } from './tools/execution/DenialTracker.js';
-
+// --- Permission system ---
 export type {
   McpServerConfig,
   OutputFormat,
@@ -83,7 +116,16 @@ export type { AgentLogger, LogEntry, LogLevelName } from './types/logging.js';
 export type {
   CanUseTool,
   CanUseToolOptions,
+  PermissionHandler,
+  PermissionHandlerRequest,
   PermissionResult,
   PermissionRuleValue,
   PermissionUpdate,
+} from './types/permissions.js';
+export {
+  createCompositePermissionHandler,
+  createModePermissionHandler,
+  createPathSafetyPermissionHandler,
+  createPermissionHandlerFromCanUseTool,
+  createRuleBasedPermissionHandler,
 } from './types/permissions.js';

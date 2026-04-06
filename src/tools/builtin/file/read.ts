@@ -22,6 +22,7 @@ export const readTool = createTool({
   name: 'Read',
   displayName: 'File Read',
   kind: ToolKind.ReadOnly,
+  maxResultSizeChars: 500_000, // ~500KB — large files get externalized to avoid context bloat
 
   // Zod Schema 定义
   schema: z.object({
@@ -36,6 +37,18 @@ export const readTool = createTool({
     }).optional(),
     encoding: ToolSchemas.encoding(),
   }),
+
+  validateInput: (params, context) => {
+    if (!hasFilesystemCapability(context.contextSnapshot)) {
+      return {
+        message: 'No filesystem access in current context',
+        llmContent: 'No filesystem access in the current runtime context.',
+        displayContent: '❌ 当前上下文未启用文件系统访问',
+        errorType: ToolErrorType.PERMISSION_DENIED,
+      };
+    }
+    return undefined;
+  },
 
   // 工具描述
   description: {
@@ -84,18 +97,6 @@ export const readTool = createTool({
     const signal = context.signal ?? new AbortController().signal;
 
     try {
-      if (!hasFilesystemCapability(context.contextSnapshot)) {
-        return {
-          success: false,
-          llmContent: 'No filesystem access in the current runtime context.',
-          displayContent: '❌ 当前上下文未启用文件系统访问',
-          error: {
-            type: ToolErrorType.PERMISSION_DENIED,
-            message: 'No filesystem access in current context',
-          },
-        };
-      }
-
       updateOutput?.('Starting file read...');
 
       // 获取文件系统服务（ACP 或本地）
@@ -276,17 +277,12 @@ export const readTool = createTool({
   category: '文件操作',
   tags: ['file', 'io', 'read'],
 
-  /**
-   * 提取签名内容：返回文件路径
-   */
-  extractSignatureContent: (params) => params.file_path,
-
-  /**
-   * 抽象权限规则：返回扩展名通配符格式
-   */
-  abstractPermissionRule: (params) => {
+  preparePermissionMatcher: (params) => {
     const ext = extname(params.file_path);
-    return ext ? `**/*${ext}` : '**/*';
+    return {
+      signatureContent: params.file_path,
+      abstractRule: ext ? `**/*${ext}` : '**/*',
+    };
   },
 });
 

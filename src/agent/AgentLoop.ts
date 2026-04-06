@@ -19,6 +19,7 @@ import { decideNoToolTurn } from './loop/decideNoToolTurn.js';
 import { decideTurnLimit } from './loop/decideTurnLimit.js';
 import { executeToolCalls } from './loop/executeToolCalls.js';
 import { planToolExecution } from './loop/planToolExecution.js';
+import type { ToolExecutionUpdate } from './loop/runToolCall.js';
 import type { FunctionToolCall } from './loop/types.js';
 import { StreamingToolExecutor } from './StreamingToolExecutor.js';
 import type { StreamResponseHandler } from './StreamResponseHandler.js';
@@ -104,6 +105,8 @@ export interface AgentLoopConfig {
     result: ToolResult;
     toolUseUuid: string | null;
   }) => Promise<void>;
+
+  onToolExecutionUpdate?: (update: ToolExecutionUpdate) => Promise<void> | void;
 
   /**
    * Agent 正常结束时调用（无 tool calls）
@@ -284,13 +287,62 @@ export async function* agentLoop(
                 enqueueEvent({ type: 'stream_end' });
               }
             },
-            onToolReady: (toolCall) => {
-              const toolDef = executionPipeline.getRegistry().get(toolCall.function.name);
-              const toolKind = toolDef?.kind as 'readonly' | 'write' | 'execute' | undefined;
-              enqueueEvent({ type: 'tool_start', toolCall, toolKind });
-            },
-            onToolComplete: (toolCall, result) => {
-              enqueueEvent({ type: 'tool_result', toolCall, result });
+            onToolExecutionUpdate: async (update) => {
+              await config.onToolExecutionUpdate?.(update);
+              if (update.type === 'tool_ready') {
+                const toolDef = executionPipeline.getRegistry().get(update.toolCall.function.name);
+                const toolKind = toolDef?.kind as 'readonly' | 'write' | 'execute' | undefined;
+                enqueueEvent({ type: 'tool_start', toolCall: update.toolCall, toolKind });
+              }
+              if (update.type === 'tool_result') {
+                enqueueEvent({
+                  type: 'tool_result',
+                  toolCall: update.outcome.toolCall,
+                  result: update.outcome.result,
+                });
+              }
+              if (update.type === 'tool_progress') {
+                enqueueEvent({
+                  type: 'tool_progress',
+                  toolCall: update.toolCall,
+                  message: update.message,
+                });
+              }
+              if (update.type === 'tool_message') {
+                enqueueEvent({
+                  type: 'tool_message',
+                  toolCall: update.toolCall,
+                  message: update.message,
+                });
+              }
+              if (update.type === 'tool_runtime_patch') {
+                enqueueEvent({
+                  type: 'tool_runtime_patch',
+                  toolCall: update.toolCall,
+                  patch: update.patch,
+                });
+              }
+              if (update.type === 'tool_context_patch') {
+                enqueueEvent({
+                  type: 'tool_context_patch',
+                  toolCall: update.toolCall,
+                  patch: update.patch,
+                });
+              }
+              if (update.type === 'tool_new_messages') {
+                enqueueEvent({
+                  type: 'tool_new_messages',
+                  toolCall: update.toolCall,
+                  messages: update.messages,
+                });
+              }
+              if (update.type === 'tool_permission_updates') {
+                enqueueEvent({
+                  type: 'tool_permission_updates',
+                  toolCall: update.toolCall,
+                  updates: update.updates,
+                });
+              }
             },
           })
           .then(({ chatResponse, executionResults }) => {
@@ -614,6 +666,7 @@ export async function* agentLoop(
         signal,
         hooks: {
           onBeforeToolExec: config.onBeforeToolExec,
+          onUpdate: config.onToolExecutionUpdate,
         },
       });
     }
@@ -670,6 +723,12 @@ export async function* agentLoop(
           ? toolResultContent
           : JSON.stringify(toolResultContent),
       });
+
+      if (result.newMessages && result.newMessages.length > 0) {
+        messages.push(
+          ...result.newMessages.map((message) => ({ ...message })),
+        );
+      }
     }
 
     yield { type: 'turn_end', turn: turnsCount, hasToolCalls: true };

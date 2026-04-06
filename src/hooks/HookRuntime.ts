@@ -1,12 +1,9 @@
 import { nanoid } from 'nanoid';
 import type { UserMessageContent } from '../agent/types.js';
 import type { RuntimeHookRegistration } from '../runtime/index.js';
-import type {
-  ExecutionPipelineHookResult,
-  ExecutionPipelineHooks,
-} from '../tools/execution/ExecutionPipeline.js';
 import type { ContentPart } from '../services/ChatServiceInterface.js';
 import { cloneContentPart } from '../services/messageUtils.js';
+import type { ToolResult } from '../tools/types/index.js';
 import { HookEvent } from '../types/constants.js';
 import type { PermissionMode } from '../types/common.js';
 import type { PermissionResult } from '../types/permissions.js';
@@ -20,6 +17,21 @@ interface HookRuntimeOptions {
   callbacks?: Partial<Record<HookEvent, HookCallback[]>>;
   resolveProjectDir: () => string | undefined;
   hookManager?: HookManager;
+}
+
+export interface PreToolUseRuntimeResult {
+  toolUseId: string;
+  updatedInput: Record<string, unknown>;
+  action?: 'continue' | 'skip' | 'abort';
+  reason?: string;
+  needsConfirmation?: boolean;
+}
+
+export interface PostToolUseRuntimeResult {
+  toolUseId: string;
+  result: ToolResult;
+  action?: 'continue' | 'abort';
+  reason?: string;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -100,80 +112,178 @@ export class HookRuntime {
     }
   }
 
-  createExecutionPipelineHooks(): ExecutionPipelineHooks | undefined {
-    const hasPreToolHooks = this.bus.has(HookEvent.PreToolUse);
-    const hasPostToolHooks = this.bus.has(HookEvent.PostToolUse);
-    const hasPostToolFailureHooks = this.bus.has(HookEvent.PostToolUseFailure);
+  async applyPreToolUse(
+    toolName: string,
+    input: Record<string, unknown>,
+    options: {
+      toolUseId?: string;
+      permissionMode?: PermissionMode;
+      abortSignal?: AbortSignal;
+    } = {},
+  ): Promise<PreToolUseRuntimeResult> {
+    const toolUseId = options.toolUseId ?? `tool_${nanoid()}`;
+    let nextInput = { ...input };
 
-    if (!hasPreToolHooks && !hasPostToolHooks && !hasPostToolFailureHooks) {
-      return undefined;
+    if (this.bus.has(HookEvent.PreToolUse)) {
+      const outputs = await this.bus.dispatch(
+        HookEvent.PreToolUse,
+        buildHookInput(this.options.sessionId, HookEvent.PreToolUse, {
+          toolName,
+          toolInput: nextInput,
+        }),
+      );
+
+      for (const output of outputs) {
+        if (output.action === 'abort' || output.action === 'skip') {
+          return {
+            toolUseId,
+            updatedInput: nextInput,
+            action: output.action,
+            reason: output.reason,
+          };
+        }
+
+        if (output.modifiedInput && isRecord(output.modifiedInput)) {
+          nextInput = { ...nextInput, ...output.modifiedInput };
+        }
+      }
     }
 
-    return {
-      beforeExecute: async ({ toolName, params }) => {
-        if (!hasPreToolHooks) {
-          return undefined;
-        }
+    const projectDir = this.options.resolveProjectDir();
+    if (!projectDir) {
+      return { toolUseId, updatedInput: nextInput };
+    }
 
-        let nextParams: Record<string, unknown> = params;
-        const outputs = await this.bus.dispatch(
-          HookEvent.PreToolUse,
-          buildHookInput(this.options.sessionId, HookEvent.PreToolUse, {
-            toolName,
-            toolInput: nextParams,
-          }),
-        );
-
-        for (const output of outputs) {
-          if (output.action === 'abort' || output.action === 'skip') {
-            return {
-              action: output.action,
-              reason: output.reason,
-            } satisfies ExecutionPipelineHookResult;
-          }
-
-          if (output.modifiedInput && isRecord(output.modifiedInput)) {
-            nextParams = { ...nextParams, ...output.modifiedInput };
-          }
-        }
-
-        return nextParams === params ? undefined : { modifiedInput: nextParams };
+    const managerResult = await this.hookManager.executePreToolHooks(
+      toolName,
+      toolUseId,
+      nextInput,
+      {
+        projectDir,
+        sessionId: this.options.sessionId,
+        permissionMode: options.permissionMode ?? this.options.permissionMode,
+        abortSignal: options.abortSignal,
       },
-      afterExecute: async ({ toolName, params, result }) => {
-        const event = result.success ? HookEvent.PostToolUse : HookEvent.PostToolUseFailure;
-        if (!this.bus.has(event)) {
-          return undefined;
-        }
+    );
 
-        let nextOutput: unknown = result.llmContent;
-        const outputs = await this.bus.dispatch(
-          event,
-          buildHookInput(this.options.sessionId, event, {
-            toolName,
-            toolInput: params,
-            toolOutput: nextOutput,
-            error: result.success
-              ? undefined
-              : new Error(result.error?.message || `Tool "${toolName}" failed`),
-          }),
-        );
+    if (managerResult.modifiedInput) {
+      nextInput = { ...nextInput, ...managerResult.modifiedInput };
+    }
+    if (managerResult.warning) {
+      console.warn(`[HookRuntime] PreToolUse warning: ${managerResult.warning}`);
+    }
+    if (managerResult.decision === 'deny') {
+      return {
+        toolUseId,
+        updatedInput: nextInput,
+        action: 'abort',
+        reason: managerResult.reason || `Tool "${toolName}" was blocked by hook manager`,
+      };
+    }
+    if (managerResult.decision === 'ask') {
+      return {
+        toolUseId,
+        updatedInput: nextInput,
+        needsConfirmation: true,
+        reason: managerResult.reason || `Tool "${toolName}" requires confirmation from hooks`,
+      };
+    }
 
-        for (const output of outputs) {
-          if (output.action === 'abort' || output.action === 'skip') {
-            return {
-              action: output.action,
-              reason: output.reason,
-            } satisfies ExecutionPipelineHookResult;
-          }
+    return { toolUseId, updatedInput: nextInput };
+  }
 
-          if (output.modifiedOutput !== undefined) {
-            nextOutput = output.modifiedOutput;
-          }
-        }
+  async applyPostToolUse(
+    toolName: string,
+    input: Record<string, unknown>,
+    result: ToolResult,
+    options: {
+      toolUseId?: string;
+      permissionMode?: PermissionMode;
+      abortSignal?: AbortSignal;
+    } = {},
+  ): Promise<PostToolUseRuntimeResult> {
+    const toolUseId = options.toolUseId ?? `tool_${nanoid()}`;
+    let nextResult = result;
 
-        return nextOutput === result.llmContent ? undefined : { modifiedOutput: nextOutput };
-      },
-    };
+    const projectDir = this.options.resolveProjectDir();
+    if (projectDir) {
+      const managerResult = await this.hookManager.executePostToolHooks(
+        toolName,
+        toolUseId,
+        input,
+        nextResult,
+        {
+          projectDir,
+          sessionId: this.options.sessionId,
+          permissionMode: options.permissionMode ?? this.options.permissionMode,
+          abortSignal: options.abortSignal,
+        },
+      );
+
+      nextResult = this.applyManagerPostToolResult(nextResult, managerResult);
+    }
+
+    return this.applyPostToolCallbacks(
+      HookEvent.PostToolUse,
+      toolName,
+      input,
+      nextResult,
+      toolUseId,
+    );
+  }
+
+  async applyPostToolUseFailure(
+    toolName: string,
+    input: Record<string, unknown>,
+    result: ToolResult,
+    options: {
+      toolUseId?: string;
+      permissionMode?: PermissionMode;
+      errorType?: string;
+      isInterrupt?: boolean;
+      isTimeout?: boolean;
+      abortSignal?: AbortSignal;
+    } = {},
+  ): Promise<PostToolUseRuntimeResult> {
+    const toolUseId = options.toolUseId ?? `tool_${nanoid()}`;
+    let nextResult = result;
+
+    const projectDir = this.options.resolveProjectDir();
+    if (projectDir) {
+      const managerResult = await this.hookManager.executePostToolUseFailureHooks(
+        toolName,
+        toolUseId,
+        input,
+        result.error?.message || `Tool "${toolName}" failed`,
+        {
+          projectDir,
+          sessionId: this.options.sessionId,
+          permissionMode: options.permissionMode ?? this.options.permissionMode,
+          errorType: options.errorType,
+          isInterrupt: options.isInterrupt ?? false,
+          isTimeout: options.isTimeout ?? false,
+          abortSignal: options.abortSignal,
+        },
+      );
+
+      if (managerResult.additionalContext) {
+        nextResult = {
+          ...nextResult,
+          llmContent: `${nextResult.llmContent}\n\n${managerResult.additionalContext}`,
+        };
+      }
+      if (managerResult.warning) {
+        console.warn(`[HookRuntime] PostToolUseFailure warning: ${managerResult.warning}`);
+      }
+    }
+
+    return this.applyPostToolCallbacks(
+      HookEvent.PostToolUseFailure,
+      toolName,
+      input,
+      nextResult,
+      toolUseId,
+    );
   }
 
   async applyPermissionRequestHooks(
@@ -436,6 +546,101 @@ export class HookRuntime {
       if (output.action === 'abort') {
         throw new Error(output.reason || `Hook ${event} aborted`);
       }
+    }
+  }
+
+  private applyManagerPostToolResult(result: ToolResult, hookResult: {
+    additionalContext?: string;
+    modifiedOutput?: unknown;
+    warning?: string;
+  }): ToolResult {
+    let nextResult = result;
+
+    if (hookResult.warning) {
+      console.warn(`[HookRuntime] Hook warning: ${hookResult.warning}`);
+    }
+
+    if (hookResult.additionalContext) {
+      const currentContent = nextResult.llmContent || nextResult.displayContent || '';
+      nextResult = {
+        ...nextResult,
+        llmContent: `${currentContent}\n\n---\n**Hook Context:**\n${hookResult.additionalContext}`,
+      };
+    }
+
+    if (hookResult.modifiedOutput !== undefined) {
+      const renderedOutput = this.stringifyHookOutput(hookResult.modifiedOutput);
+      nextResult = {
+        ...nextResult,
+        llmContent: renderedOutput,
+        displayContent: renderedOutput,
+      };
+    }
+
+    return nextResult;
+  }
+
+  private async applyPostToolCallbacks(
+    event: HookEvent.PostToolUse | HookEvent.PostToolUseFailure,
+    toolName: string,
+    input: Record<string, unknown>,
+    result: ToolResult,
+    toolUseId: string,
+  ): Promise<PostToolUseRuntimeResult> {
+    if (!this.bus.has(event)) {
+      return { toolUseId, result };
+    }
+
+    let nextResult = result;
+    let nextOutput: unknown = result.llmContent;
+    const outputs = await this.bus.dispatch(
+      event,
+      buildHookInput(this.options.sessionId, event, {
+        toolName,
+        toolInput: input,
+        toolOutput: nextOutput,
+        error: result.success
+          ? undefined
+          : new Error(result.error?.message || `Tool "${toolName}" failed`),
+      }),
+    );
+
+    for (const output of outputs) {
+      if (output.action === 'abort') {
+        return {
+          toolUseId,
+          result: nextResult,
+          action: 'abort',
+          reason: output.reason,
+        };
+      }
+
+      if (output.modifiedOutput !== undefined) {
+        nextOutput = output.modifiedOutput;
+      }
+    }
+
+    if (nextOutput !== result.llmContent) {
+      const renderedOutput = this.stringifyHookOutput(nextOutput);
+      nextResult = {
+        ...nextResult,
+        llmContent: renderedOutput,
+        displayContent: renderedOutput,
+      };
+    }
+
+    return { toolUseId, result: nextResult };
+  }
+
+  private stringifyHookOutput(output: unknown): string {
+    if (typeof output === 'string') {
+      return output;
+    }
+
+    try {
+      return JSON.stringify(output);
+    } catch {
+      return String(output);
     }
   }
 

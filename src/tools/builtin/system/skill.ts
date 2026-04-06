@@ -122,40 +122,47 @@ Important:
     const requestedModelId =
       content.metadata.runtimeEffects?.modelId;
     const runtimeHooks = compileRuntimeHooks(content);
+    const runtimePatch = {
+      scope: content.metadata.runtimeEffects?.activeScope ?? 'session',
+      source: 'skill' as const,
+      skill: {
+        id: content.metadata.name,
+        name: content.metadata.name,
+        basePath: content.metadata.basePath,
+      },
+      toolPolicy: {
+        allow: content.metadata.runtimeEffects?.allowedTools ?? content.metadata.allowedTools,
+        deny: content.metadata.runtimeEffects?.deniedTools ?? content.metadata.disallowedTools,
+      },
+      modelOverride: requestedModelId
+        ? {
+            modelId: requestedModelId,
+            effort: content.metadata.runtimeEffects?.effort,
+          }
+        : undefined,
+      systemPromptAppend: content.metadata.runtimeEffects?.systemPromptAppend,
+      environment: content.metadata.runtimeEffects?.environment,
+      hooks: runtimeHooks,
+    };
 
     // 返回双消息
     return {
       success: true,
       llmContent: skillInstructions,
       displayContent: `<command-message>The "${skill}" skill is loading</command-message>`,
+      effects: [
+        {
+          type: 'runtimePatch',
+          patch: runtimePatch,
+        },
+      ],
       metadata: {
         skillId: content.metadata.name,
         skillName: skill,
         basePath: content.metadata.basePath,
         version: content.metadata.version,
       },
-      runtimePatch: {
-        scope: content.metadata.runtimeEffects?.activeScope ?? 'session',
-        source: 'skill',
-        skill: {
-          id: content.metadata.name,
-          name: content.metadata.name,
-          basePath: content.metadata.basePath,
-        },
-        toolPolicy: {
-          allow: content.metadata.runtimeEffects?.allowedTools ?? content.metadata.allowedTools,
-          deny: content.metadata.runtimeEffects?.deniedTools ?? content.metadata.disallowedTools,
-        },
-        modelOverride: requestedModelId
-          ? {
-              modelId: requestedModelId,
-              effort: content.metadata.runtimeEffects?.effort,
-            }
-          : undefined,
-        systemPromptAppend: content.metadata.runtimeEffects?.systemPromptAppend,
-        environment: content.metadata.runtimeEffects?.environment,
-        hooks: runtimeHooks,
-      },
+      runtimePatch,
     };
   },
 });

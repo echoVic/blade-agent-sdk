@@ -1,8 +1,22 @@
 import { PermissionMode, type PermissionMode as PermissionModeValue } from '../../types/common.js';
+import {
+  resolveToolBehaviorSafely,
+  type ToolBehavior,
+} from '../../tools/types/ToolTypes.js';
 import type { FunctionToolCall } from './types.js';
 
 type ToolRegistryLike = {
-  get(name: string): { kind?: string } | undefined;
+  get(
+    name: string
+  ):
+    | {
+        kind?: string;
+        isReadOnly?: boolean;
+        isConcurrencySafe?: boolean;
+        isDestructive?: boolean;
+        resolveBehavior?: (params: Record<string, unknown>) => ToolBehavior;
+      }
+    | undefined;
 };
 
 export interface ToolExecutionPlan {
@@ -34,7 +48,13 @@ export function planToolExecution(
   const nonReadonlyCalls: FunctionToolCall[] = [];
 
   for (const call of calls) {
-    if (registry.get(call.function.name)?.kind === 'readonly') {
+    const tool = registry.get(call.function.name);
+    const parsedArgs = parseToolArguments(call.function.arguments);
+    const behavior = parsedArgs
+      ? resolveToolBehaviorSafely(tool as Parameters<typeof resolveToolBehaviorSafely>[0], parsedArgs)
+      : undefined;
+
+    if (behavior?.isReadOnly || (!behavior && tool?.kind === 'readonly')) {
       readonlyCalls.push(call);
       continue;
     }
@@ -66,4 +86,15 @@ export function planToolExecution(
     calls: [...readonlyCalls, ...nonReadonlyCalls],
     groups,
   };
+}
+
+function parseToolArguments(argumentsText: string): Record<string, unknown> | undefined {
+  try {
+    const parsed = JSON.parse(argumentsText) as unknown;
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed)
+      ? parsed as Record<string, unknown>
+      : undefined;
+  } catch {
+    return undefined;
+  }
 }

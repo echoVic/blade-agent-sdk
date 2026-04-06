@@ -827,5 +827,50 @@ describe('agentLoop', () => {
       expect(toolMsg).toBeDefined();
       expect((toolMsg as Message & { name?: string }).name).toBe('ReadFile');
     });
+
+    it('should append ToolResult.newMessages after the tool result message', async () => {
+      const messages: Message[] = [{ role: 'user' as const, content: 'Do the thing' }];
+      const chatService = createMockChatService([
+        {
+          content: 'Working',
+          toolCalls: [{
+            id: 'call_1',
+            type: 'function',
+            function: { name: 'Skill', arguments: '{}' },
+          }],
+        },
+        { content: 'Done' },
+      ]);
+
+      const executionPipeline = createMockExecutionPipeline({
+        Skill: {
+          success: true,
+          llmContent: 'tool-body',
+          displayContent: 'tool-body',
+          newMessages: [
+            { role: 'assistant', content: 'Injected assistant context' },
+            { role: 'system', content: 'Injected system context' },
+          ],
+        },
+      });
+
+      const config = baseConfig({
+        messages,
+        executionPipeline,
+        turnState: { chatService },
+      });
+      await collectEvents(agentLoop(config));
+
+      const toolIndex = messages.findIndex((message) => message.role === 'tool');
+      expect(toolIndex).toBeGreaterThan(-1);
+      expect(messages[toolIndex + 1]).toEqual({
+        role: 'assistant',
+        content: 'Injected assistant context',
+      });
+      expect(messages[toolIndex + 2]).toEqual({
+        role: 'system',
+        content: 'Injected system context',
+      });
+    });
   });
 });

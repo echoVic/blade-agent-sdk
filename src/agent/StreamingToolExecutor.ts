@@ -1,5 +1,4 @@
 import { type InternalLogger, LogCategory, NOOP_LOGGER } from '../logging/Logger.js';
-import type { ContextSnapshot } from '../runtime/index.js';
 import type {
   ChatResponse,
   IChatService,
@@ -7,23 +6,19 @@ import type {
   StreamToolCall,
 } from '../services/ChatServiceInterface.js';
 import type { ExecutionPipeline } from '../tools/execution/ExecutionPipeline.js';
-import type { ConfirmationHandler } from '../tools/types/ExecutionTypes.js';
 import type { ToolResult } from '../tools/types/index.js';
 import { ToolErrorType } from '../tools/types/index.js';
 import type { PermissionMode } from '../types/common.js';
 import { executeToolCalls, type ToolExecutionOutcome } from './loop/executeToolCalls.js';
 import { planToolExecution } from './loop/planToolExecution.js';
-import { repairToolCallParams } from './loop/repairToolCallParams.js';
+import {
+  emitToolExecutionUpdate,
+  runToolCall,
+  type ToolExecutionContext,
+  type ToolExecutionUpdate,
+} from './loop/runToolCall.js';
 import type { FunctionToolCall } from './loop/types.js';
 import type { StreamResponseHandler } from './StreamResponseHandler.js';
-
-interface ToolExecutionContext {
-  sessionId: string;
-  userId: string;
-  contextSnapshot?: ContextSnapshot;
-  skillActivationPaths?: string[];
-  confirmationHandler?: ConfirmationHandler;
-}
 
 interface ToolExecutionHooks {
   onBeforeToolExec?: (ctx: {
@@ -41,6 +36,7 @@ export interface StreamingToolExecutorConfig {
   onContentDelta?: (delta: string) => void | Promise<void>;
   onThinkingDelta?: (delta: string) => void | Promise<void>;
   onStreamEnd?: () => void | Promise<void>;
+  onToolExecutionUpdate?: (update: ToolExecutionUpdate) => void | Promise<void>;
   onToolReady?: (toolCall: FunctionToolCall) => void | Promise<void>;
   onToolComplete?: (
     toolCall: FunctionToolCall,
@@ -158,6 +154,18 @@ export class StreamingToolExecutor {
         signal,
         batchController,
         executionConfig,
+        forcePending: false,
+      })) || hasDispatchedTools;
+
+      await Promise.all(inFlightExecutions.values());
+
+      hasDispatchedTools = (await this.dispatchReadyToolCalls({
+        accumulator: toolCallAccumulator,
+        executionResults,
+        inFlightExecutions,
+        signal,
+        batchController,
+        executionConfig,
         forcePending: true,
       })) || hasDispatchedTools;
 
@@ -187,6 +195,21 @@ export class StreamingToolExecutor {
 
       throw error;
     }
+  }
+
+  private async emitToolExecutionUpdate(
+    executionConfig: StreamingToolExecutorConfig,
+    update: ToolExecutionUpdate,
+  ): Promise<void> {
+    await executionConfig.onToolExecutionUpdate?.(update);
+    await emitToolExecutionUpdate(
+      {
+        onToolReady: executionConfig.onToolReady,
+        onAfterToolExec: executionConfig.onAfterToolExec,
+        onToolComplete: executionConfig.onToolComplete,
+      },
+      update,
+    );
   }
 
   private async collectWithWrappedHandler(
@@ -228,10 +251,6 @@ export class StreamingToolExecutor {
       executionConfig.permissionMode,
     );
 
-    for (const toolCall of executionPlan.calls) {
-      await executionConfig.onToolReady?.(toolCall);
-    }
-
     if (signal?.aborted) {
       return { chatResponse, executionResults: [] };
     }
@@ -245,13 +264,9 @@ export class StreamingToolExecutor {
       signal,
       hooks: {
         onBeforeToolExec: executionConfig.hooks?.onBeforeToolExec,
-        onAfterToolExec: executionConfig.onAfterToolExec,
+        onUpdate: (update) => this.emitToolExecutionUpdate(executionConfig, update),
       },
     });
-
-    for (const { toolCall, result } of executionResults) {
-      await executionConfig.onToolComplete?.(toolCall, result);
-    }
 
     return { chatResponse, executionResults };
   }
@@ -286,11 +301,14 @@ export class StreamingToolExecutor {
           result: this.buildCascadeAbortResult(),
           toolUseUuid: null,
         };
-        await input.executionConfig.onAfterToolExec?.(input.executionResults[index]!);
-        await input.executionConfig.onToolComplete?.(
-          input.executionResults[index]!.toolCall,
-          input.executionResults[index]!.result,
-        );
+        await this.emitToolExecutionUpdate(input.executionConfig, {
+          type: 'tool_result',
+          outcome: input.executionResults[index]!,
+        });
+        await this.emitToolExecutionUpdate(input.executionConfig, {
+          type: 'tool_completed',
+          outcome: input.executionResults[index]!,
+        });
         continue;
       }
 
@@ -324,68 +342,57 @@ export class StreamingToolExecutor {
     executionConfig: StreamingToolExecutorConfig;
     executionResults: Array<ToolExecutionOutcome | undefined>;
   }): Promise<void> {
-    const combinedSignal = createCompositeAbortSignal(input.signal, input.batchController.signal);
+    await this.emitToolExecutionUpdate(input.executionConfig, {
+      type: 'tool_ready',
+      toolCall: input.toolCall,
+    });
+
+    let result: ToolResult;
+    let toolUseUuid: string | null = null;
 
     try {
-      await input.executionConfig.onToolReady?.(input.toolCall);
-
-      let result: ToolResult;
-      let toolUseUuid: string | null = null;
-
-      try {
-        const params = JSON.parse(input.toolCall.function.arguments) as Record<string, unknown>;
-        await repairToolCallParams(input.toolCall, params);
-
-        toolUseUuid = await input.executionConfig.hooks?.onBeforeToolExec?.({
-          toolCall: input.toolCall,
-          params,
-        }) ?? null;
-
-        result = await input.executionConfig.executionPipeline.execute(
-          input.toolCall.function.name,
-          params,
-          {
-            sessionId: input.executionConfig.executionContext.sessionId,
-            userId: input.executionConfig.executionContext.userId,
-            contextSnapshot: input.executionConfig.executionContext.contextSnapshot,
-            signal: combinedSignal.signal,
-            confirmationHandler: input.executionConfig.executionContext.confirmationHandler,
-            permissionMode: input.executionConfig.permissionMode,
-          },
-        );
-      } catch (error) {
-        this.logger.error(`Tool execution failed for ${input.toolCall.function.name}:`, error);
-        result = {
-          success: false,
-          llmContent: '',
-          displayContent: '',
-          error: {
-            type: ToolErrorType.EXECUTION_ERROR,
-            message: error instanceof Error ? error.message : 'Unknown error',
-          },
-        };
-      }
-
-      if (
-        input.toolCall.function.name === 'Bash' &&
-        !result.success &&
-        !input.batchController.signal.aborted &&
-        !input.signal?.aborted
-      ) {
-        input.batchController.abort();
-      }
-
-      input.executionResults[input.index] = {
+      const outcome = await runToolCall({
         toolCall: input.toolCall,
-        result,
-        toolUseUuid,
+        executionPipeline: input.executionConfig.executionPipeline,
+        executionContext: input.executionConfig.executionContext,
+        logger: this.logger,
+        permissionMode: input.executionConfig.permissionMode,
+        signal: input.signal,
+        batchSignal: input.batchController.signal,
+        hooks: {
+          onBeforeToolExec: input.executionConfig.hooks?.onBeforeToolExec,
+          onUpdate: (update) => this.emitToolExecutionUpdate(input.executionConfig, update),
+        },
+      });
+      result = outcome.result;
+      toolUseUuid = outcome.toolUseUuid;
+    } catch (error) {
+      this.logger.error(`Tool execution failed for ${input.toolCall.function.name}:`, error);
+      result = {
+        success: false,
+        llmContent: '',
+        displayContent: '',
+        error: {
+          type: ToolErrorType.EXECUTION_ERROR,
+          message: error instanceof Error ? error.message : 'Unknown error',
+        },
       };
-
-      await input.executionConfig.onAfterToolExec?.(input.executionResults[input.index]!);
-      await input.executionConfig.onToolComplete?.(input.toolCall, result);
-    } finally {
-      combinedSignal.cleanup();
     }
+
+    if (
+      input.toolCall.function.name === 'Bash' &&
+      !result.success &&
+      !input.batchController.signal.aborted &&
+      !input.signal?.aborted
+    ) {
+      input.batchController.abort();
+    }
+
+    input.executionResults[input.index] = {
+      toolCall: input.toolCall,
+      result,
+      toolUseUuid,
+    };
   }
 
   private accumulateToolCall(
@@ -499,37 +506,4 @@ export class StreamingToolExecutor {
       error.message.toLowerCase().includes(message.toLowerCase()),
     );
   }
-}
-
-function createCompositeAbortSignal(
-  outerSignal: AbortSignal | undefined,
-  batchSignal: AbortSignal,
-): { signal: AbortSignal; cleanup: () => void } {
-  if (!outerSignal) {
-    return { signal: batchSignal, cleanup: () => {} };
-  }
-
-  if (outerSignal.aborted || batchSignal.aborted) {
-    const controller = new AbortController();
-    controller.abort();
-    return { signal: controller.signal, cleanup: () => {} };
-  }
-
-  const controller = new AbortController();
-  const abort = () => {
-    if (!controller.signal.aborted) {
-      controller.abort();
-    }
-  };
-
-  outerSignal.addEventListener('abort', abort);
-  batchSignal.addEventListener('abort', abort);
-
-  return {
-    signal: controller.signal,
-    cleanup: () => {
-      outerSignal.removeEventListener('abort', abort);
-      batchSignal.removeEventListener('abort', abort);
-    },
-  };
 }

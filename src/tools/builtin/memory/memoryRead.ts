@@ -2,7 +2,7 @@ import { z } from 'zod';
 import type { Memory } from '../../../memory/MemoryTypes.js';
 import type { MemoryManager } from '../../../memory/MemoryManager.js';
 import { createTool } from '../../core/createTool.js';
-import { ToolKind } from '../../types/ToolTypes.js';
+import { ToolErrorType, ToolKind } from '../../types/ToolTypes.js';
 
 const memoryReadSchema = z.discriminatedUnion('operation', [
   z.object({
@@ -65,6 +65,10 @@ Operations:
               success: false,
               llmContent: `Memory "${params.name}" not found`,
               displayContent: `Memory "${params.name}" not found`,
+              error: {
+                type: ToolErrorType.EXECUTION_ERROR,
+                message: `Memory "${params.name}" not found`,
+              },
             };
           }
           return {
@@ -97,6 +101,10 @@ Operations:
         success: false,
         llmContent: `Unsupported operation: ${(params as { operation: string }).operation}`,
         displayContent: `Unsupported operation: ${(params as { operation: string }).operation}`,
+        error: {
+          type: ToolErrorType.EXECUTION_ERROR,
+          message: `Unsupported operation: ${(params as { operation: string }).operation}`,
+        },
       };
     },
   });

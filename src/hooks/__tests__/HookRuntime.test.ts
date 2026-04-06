@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { ContentPart } from '../../services/ChatServiceInterface.js';
+import type { ToolResult } from '../../tools/types/index.js';
 import { PermissionMode } from '../../types/common.js';
 import { HookEvent } from '../../types/constants.js';
 import { HookRuntime } from '../HookRuntime.js';
@@ -72,5 +73,84 @@ describe('HookRuntime', () => {
       { type: 'image_url', image_url: { url: 'data:image/png;base64,before' } },
       { type: 'image_url', image_url: { url: 'data:image/png;base64,after-first' } },
     ]);
+  });
+
+  it('merges callback and hook-manager pre/post tool hooks through one facade', async () => {
+    const hookManager = {
+      executePreToolHooks: vi.fn(async () => ({
+        decision: 'ask',
+        reason: 'manager confirmation',
+        modifiedInput: { manager: true },
+      })),
+      executePostToolHooks: vi.fn(async () => ({
+        additionalContext: 'manager context',
+      })),
+    };
+    const runtime = new HookRuntime({
+      sessionId: 'session-tool-hooks',
+      permissionMode: PermissionMode.DEFAULT,
+      callbacks: {
+        [HookEvent.PreToolUse]: [
+          async () => ({
+            action: 'continue',
+            modifiedInput: { callback: true },
+          }),
+        ],
+        [HookEvent.PostToolUse]: [
+          async () => ({
+            action: 'continue',
+            modifiedOutput: 'callback output',
+          }),
+        ],
+      },
+      resolveProjectDir: () => '/tmp/project',
+      hookManager: hookManager as never,
+    });
+
+    const pre = await runtime.applyPreToolUse('Read', { file_path: 'a.ts' }, {
+      toolUseId: 'tool-1',
+    });
+
+    const result: ToolResult = {
+      success: true,
+      llmContent: 'original output',
+      displayContent: 'original output',
+    };
+    const post = await runtime.applyPostToolUse('Read', pre.updatedInput, result, {
+      toolUseId: 'tool-1',
+    });
+
+    expect(pre.updatedInput).toEqual({
+      file_path: 'a.ts',
+      callback: true,
+      manager: true,
+    });
+    expect(pre.needsConfirmation).toBe(true);
+    expect(pre.reason).toBe('manager confirmation');
+    expect(hookManager.executePreToolHooks).toHaveBeenCalledWith(
+      'Read',
+      'tool-1',
+      expect.objectContaining({
+        callback: true,
+      }),
+      expect.objectContaining({
+        projectDir: '/tmp/project',
+      }),
+    );
+    expect(post.result.llmContent).toBe('callback output');
+    expect(post.result.displayContent).toBe('callback output');
+    expect(hookManager.executePostToolHooks).toHaveBeenCalledWith(
+      'Read',
+      'tool-1',
+      expect.objectContaining({
+        manager: true,
+      }),
+      expect.objectContaining({
+        llmContent: 'original output',
+      }),
+      expect.objectContaining({
+        projectDir: '/tmp/project',
+      }),
+    );
   });
 });

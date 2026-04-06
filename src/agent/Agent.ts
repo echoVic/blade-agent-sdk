@@ -30,9 +30,11 @@ import {
 } from '../services/ChatServiceInterface.js';
 import { discoverSkills } from '../skills/index.js';
 import { getBuiltinTools } from '../tools/builtin/index.js';
+import { ToolCatalog } from '../tools/catalog/ToolCatalog.js';
 import { ExecutionPipeline } from '../tools/execution/ExecutionPipeline.js';
 import { ToolRegistry } from '../tools/registry/ToolRegistry.js';
 import type { Tool } from '../tools/types/index.js';
+import { createPermissionHandlerFromCanUseTool } from '../types/permissions.js';
 import {
   type BladeConfig,
   type McpServerConfig,
@@ -78,6 +80,7 @@ export class Agent {
   private runtimeOptions: AgentOptions;
   private isInitialized = false;
   private executionPipeline: ExecutionPipeline;
+  private readonly toolCatalog: ToolCatalog;
   private readonly defaultContext: RuntimeContext;
   private readonly runtimeManaged: boolean;
   private readonly runtimeMcpRegistry?: McpRegistry;
@@ -104,6 +107,7 @@ export class Agent {
     this.rootLogger = deps.logger ?? NOOP_LOGGER;
     this.logger = this.rootLogger.child(LogCategory.AGENT);
     this.executionPipeline = deps.executionPipeline || this.createDefaultPipeline();
+    this.toolCatalog = this.executionPipeline.getCatalog() ?? new ToolCatalog(this.executionPipeline.getRegistry());
     this.defaultContext = deps.defaultContext ?? {};
     this.runtimeManaged = deps.runtimeManaged ?? false;
     this.runtimeMcpRegistry =
@@ -421,11 +425,16 @@ export class Agent {
       ...this.runtimeOptions.permissions,
     };
     const permissionMode = this.runtimeOptions.permissionMode ?? PermissionMode.DEFAULT;
+    const permissionHandler = this.runtimeOptions.permissionHandler
+      ?? (this.runtimeOptions.canUseTool
+        ? createPermissionHandlerFromCanUseTool(this.runtimeOptions.canUseTool)
+        : undefined);
     return new ExecutionPipeline(registry, {
       permissionConfig: permissions,
       permissionMode,
       maxHistorySize: 1000,
-      canUseTool: this.runtimeOptions.canUseTool,
+      permissionHandler,
+      toolCatalog: new ToolCatalog(registry),
     });
   }
 
@@ -509,7 +518,11 @@ export class Agent {
       this.logger.debug('📦 No builtin tools available');
       return;
     }
-    this.executionPipeline.getRegistry().registerAll(builtinTools);
+    this.toolCatalog.registerAll(builtinTools, {
+      kind: 'builtin',
+      trustLevel: 'trusted',
+      sourceId: 'builtin',
+    });
 
     if (this.runtimeManaged || !this.runtimeMcpRegistry) {
       return;
@@ -539,7 +552,11 @@ export class Agent {
       Array.from(targetServerNames),
     );
     for (const tool of mcpTools) {
-      this.executionPipeline.getRegistry().registerMcpTool(tool);
+      this.toolCatalog.registerMcpTool(tool, {
+        kind: 'mcp',
+        trustLevel: 'remote',
+        sourceId: resolveAgentMcpSourceId(tool),
+      });
     }
   }
 
@@ -621,4 +638,14 @@ export class Agent {
   private error(message: string, error?: unknown): void {
     this.logger.error(`[MainAgent] ${message}`, error || '');
   }
+}
+
+function resolveAgentMcpSourceId(tool: Tool): string {
+  const taggedServer = tool.tags.find((tag) => tag === tag.toLowerCase() && tag.length > 0);
+  if (taggedServer) {
+    return taggedServer;
+  }
+
+  const match = tool.name.match(/^mcp__([^_]+)__/);
+  return match?.[1] ?? 'mcp';
 }

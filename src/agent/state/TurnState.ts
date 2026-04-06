@@ -1,5 +1,7 @@
 import type { ContextSnapshot } from '../../runtime/index.js';
 import type { IChatService, Message } from '../../services/ChatServiceInterface.js';
+import type { ToolCatalog } from '../../tools/catalog/index.js';
+import type { ToolRegistry } from '../../tools/registry/ToolRegistry.js';
 import type { ConfirmationHandler } from '../../tools/types/ExecutionTypes.js';
 import type { PermissionMode } from '../../types/common.js';
 import type { BackgroundAgentManager } from '../subagents/BackgroundAgentManager.js';
@@ -32,6 +34,9 @@ export interface LoopExecutionContext {
   skillActivationPaths?: string[];
   confirmationHandler?: ConfirmationHandler;
   backgroundAgentManager?: BackgroundAgentManager;
+  toolRegistry?: ToolRegistry;
+  toolCatalog?: ToolCatalog;
+  discoveredTools?: string[];
 }
 
 export interface TurnState {

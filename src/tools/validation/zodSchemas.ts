@@ -1,10 +1,68 @@
 import { isAbsolute } from 'path';
 import { z } from 'zod';
 
+const BOOLEAN_LITERALS: Record<string, boolean> = {
+  'true': true,
+  '1': true,
+  'yes': true,
+  'y': true,
+  'on': true,
+  'false': false,
+  '0': false,
+  'no': false,
+  'n': false,
+  'off': false,
+};
+
+function normalizeBooleanString(value: string): boolean | undefined {
+  return BOOLEAN_LITERALS[value.trim().toLowerCase()];
+}
+
+function isNumericString(value: string): boolean {
+  return /^-?\d+(\.\d+)?$/.test(value.trim());
+}
+
 /**
  * Common Zod schema utilities
  */
 export const ToolSchemas = {
+  /**
+   * Semantic boolean schema tolerant of common string encodings emitted by LLMs.
+   */
+  semanticBoolean: () =>
+    z.union([
+      z.boolean(),
+      z.string().transform((value, ctx) => {
+        const normalized = normalizeBooleanString(value);
+        if (normalized === undefined) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: 'Must be a boolean-like value',
+          });
+          return z.NEVER;
+        }
+        return normalized;
+      }),
+    ]),
+
+  /**
+   * Semantic number schema tolerant of common numeric strings emitted by LLMs.
+   */
+  semanticNumber: () =>
+    z.union([
+      z.number(),
+      z.string().transform((value, ctx) => {
+        if (!isNumericString(value)) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: 'Must be a numeric value',
+          });
+          return z.NEVER;
+        }
+        return Number(value);
+      }),
+    ]),
+
   /**
    * File path schema (must be absolute)
    */
@@ -27,11 +85,14 @@ export const ToolSchemas = {
    * Timeout schema
    */
   timeout: (min = 1000, max = 300000, defaultValue = 30000) =>
-    z
-      .number()
-      .int('Must be an integer')
-      .min(min, `Cannot be less than ${min}ms`)
-      .max(max, `Cannot exceed ${max}ms`)
+    ToolSchemas.semanticNumber()
+      .pipe(
+        z
+          .number()
+          .int('Must be an integer')
+          .min(min, `Cannot be less than ${min}ms`)
+          .max(max, `Cannot exceed ${max}ms`)
+      )
       .default(defaultValue)
       .describe(`Timeout in milliseconds (default ${defaultValue}ms)`),
 
@@ -57,21 +118,27 @@ export const ToolSchemas = {
    * Line number schema
    */
   lineNumber: (options?: { min?: number; description?: string }) =>
-    z
-      .number()
-      .int('Line number must be an integer')
-      .min(options?.min ?? 0, `Line number cannot be less than ${options?.min ?? 0}`)
+    ToolSchemas.semanticNumber()
+      .pipe(
+        z
+          .number()
+          .int('Line number must be an integer')
+          .min(options?.min ?? 0, `Line number cannot be less than ${options?.min ?? 0}`)
+      )
       .describe(options?.description || 'Line number'),
 
   /**
    * Line limit schema
    */
   lineLimit: (options?: { min?: number; max?: number; description?: string }) =>
-    z
-      .number()
-      .int('Line count must be an integer')
-      .min(options?.min ?? 1, `Line count cannot be less than ${options?.min ?? 1}`)
-      .max(options?.max ?? 10000, `Line count cannot exceed ${options?.max ?? 10000}`)
+    ToolSchemas.semanticNumber()
+      .pipe(
+        z
+          .number()
+          .int('Line count must be an integer')
+          .min(options?.min ?? 1, `Line count cannot be less than ${options?.min ?? 1}`)
+          .max(options?.max ?? 10000, `Line count cannot exceed ${options?.max ?? 10000}`)
+      )
       .describe(options?.description || 'Limit on lines to read'),
 
   /**
@@ -107,8 +174,7 @@ export const ToolSchemas = {
    * Boolean flag schema
    */
   flag: (options?: { defaultValue?: boolean; description?: string }) =>
-    z
-      .boolean()
+    ToolSchemas.semanticBoolean()
       .default(options?.defaultValue ?? false)
       .describe(options?.description || 'Boolean flag'),
 
@@ -125,11 +191,14 @@ export const ToolSchemas = {
    * Port schema
    */
   port: () =>
-    z
-      .number()
-      .int('Port must be an integer')
-      .min(1, 'Port cannot be less than 1')
-      .max(65535, 'Port cannot exceed 65535')
+    ToolSchemas.semanticNumber()
+      .pipe(
+        z
+          .number()
+          .int('Port must be an integer')
+          .min(1, 'Port cannot be less than 1')
+          .max(65535, 'Port cannot exceed 65535')
+      )
       .describe('Port number'),
 
   /**
@@ -156,19 +225,25 @@ export const ToolSchemas = {
    * Non-negative integer schema
    */
   nonNegativeInt: (options?: { description?: string }) =>
-    z
-      .number()
-      .int('Must be an integer')
-      .min(0, 'Cannot be negative')
+    ToolSchemas.semanticNumber()
+      .pipe(
+        z
+          .number()
+          .int('Must be an integer')
+          .min(0, 'Cannot be negative')
+      )
       .describe(options?.description || 'Non-negative integer'),
 
   /**
    * Positive integer schema
    */
   positiveInt: (options?: { description?: string }) =>
-    z
-      .number()
-      .int('Must be an integer')
-      .min(1, 'Must be greater than 0')
+    ToolSchemas.semanticNumber()
+      .pipe(
+        z
+          .number()
+          .int('Must be an integer')
+          .min(1, 'Must be greater than 0')
+      )
       .describe(options?.description || 'Positive integer'),
 };

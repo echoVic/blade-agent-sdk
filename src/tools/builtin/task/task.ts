@@ -24,6 +24,7 @@ import { getErrorMessage } from '../../../utils/errorUtils.js';
 import { createTool } from '../../core/createTool.js';
 import type { ExecutionContext, ToolResult } from '../../types/index.js';
 import { ToolErrorType, ToolKind } from '../../types/index.js';
+import { ToolSchemas } from '../../validation/zodSchemas.js';
 
 /**
  * 从错误中提取用户友好的错误信息
@@ -128,12 +129,11 @@ export function createTaskTool({ registry }: { registry: SubagentRegistry }) {
         .max(100)
         .describe('Short task description (3-5 words)'),
       prompt: z.string().min(10).describe('Detailed task instructions'),
-      run_in_background: z
-        .boolean()
-        .default(false)
-        .describe(
-          'Set to true to run this agent in the background. Use TaskOutput to read the output later.'
-        ),
+      run_in_background: ToolSchemas.flag({
+        defaultValue: false,
+        description:
+          'Set to true to run this agent in the background. Use TaskOutput to read the output later.',
+      }),
       resume: z
         .string()
         .optional()
@@ -323,8 +323,10 @@ export function createTaskTool({ registry }: { registry: SubagentRegistry }) {
     version: '4.0.0',
     category: 'Subagent',
     tags: ['task', 'subagent', 'delegation', 'explore', 'plan'],
-    extractSignatureContent: (params) => `${params.subagent_type}:${params.description}`,
-    abstractPermissionRule: () => '',
+    preparePermissionMatcher: (params) => ({
+      signatureContent: `${params.subagent_type}:${params.description}`,
+      abstractRule: '',
+    }),
   });
 }
 

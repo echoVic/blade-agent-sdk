@@ -1,16 +1,28 @@
-import type { ExecutionContext, ToolInvocation, ToolResult } from '../types/index.js';
+import {
+  type ExecutionContext,
+  type ToolInvocation,
+  type ToolResult,
+  type ToolValidationError,
+  validationErrorToToolResult,
+} from '../types/index.js';
 
-/**
- * 统一的工具调用实现
- */
-export class UnifiedToolInvocation<TParams = unknown> implements ToolInvocation<TParams> {
+export class UnifiedToolInvocation<
+  TParams = unknown,
+  TResult extends ToolResult = ToolResult,
+> implements ToolInvocation<TParams, TResult> {
+  private validationPassed = false;
+
   constructor(
     public readonly toolName: string,
     public readonly params: TParams,
     private readonly executeFn: (
       params: TParams,
       context: ExecutionContext
-    ) => Promise<ToolResult>,
+    ) => Promise<TResult>,
+    private readonly validateFn?: (
+      params: TParams,
+      context: ExecutionContext
+    ) => Promise<void | ToolValidationError> | void | ToolValidationError,
     private readonly descriptionFn?: (params: TParams) => string,
     private readonly affectedPathsFn?: (params: TParams) => string[]
   ) {}
@@ -35,6 +47,27 @@ export class UnifiedToolInvocation<TParams = unknown> implements ToolInvocation<
     return [];
   }
 
+  async validate(
+    context: Partial<ExecutionContext> = {}
+  ): Promise<ToolValidationError | undefined> {
+    if (this.validationPassed || !this.validateFn) {
+      return undefined;
+    }
+
+    const validationResult = await this.validateFn(this.params, {
+      signal: context.signal,
+      updateOutput: context.updateOutput,
+      ...context,
+    });
+
+    if (!validationResult) {
+      this.validationPassed = true;
+      return undefined;
+    }
+
+    return validationResult;
+  }
+
   /**
    * 执行工具
    * @param signal - 中止信号
@@ -45,13 +78,19 @@ export class UnifiedToolInvocation<TParams = unknown> implements ToolInvocation<
     signal: AbortSignal,
     updateOutput?: (output: string) => void,
     context?: Partial<ExecutionContext>
-  ): Promise<ToolResult> {
+  ): Promise<TResult> {
     // 合并基础 context 和额外字段
     const fullContext: ExecutionContext = {
       signal,
       updateOutput,
       ...context, // 包含 confirmationHandler, permissionMode, userId, sessionId 等
     };
+
+    const validationError = await this.validate(fullContext);
+    if (validationError) {
+      return validationErrorToToolResult(validationError) as TResult;
+    }
+
     return this.executeFn(this.params, fullContext);
   }
 }

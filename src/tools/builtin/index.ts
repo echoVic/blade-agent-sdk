@@ -15,7 +15,7 @@ import { globTool, grepTool } from './search/index.js';
 // Shell 命令工具
 import { bashTool, killShellTool } from './shell/index.js';
 // System 工具
-import { askUserQuestionTool, skillTool } from './system/index.js';
+import { askUserQuestionTool, discoverToolsTool, skillTool } from './system/index.js';
 // 任务管理工具
 import { createTaskTool, taskOutputTool } from './task/index.js';
 import {
@@ -91,6 +91,7 @@ export async function getBuiltinTools(opts?: {
     enterPlanModeTool,
     exitPlanModeTool,
     askUserQuestionTool,
+    discoverToolsTool,
     skillTool,
     ...(opts?.mcpRegistry ? [createListMcpResourcesTool(opts.mcpRegistry), createReadMcpResourceTool(opts.mcpRegistry)] : []),
   ] as Tool<unknown>[];

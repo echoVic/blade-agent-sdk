@@ -111,7 +111,9 @@ class Session implements ISession {
       permissionMode: this.permissionMode,
       systemPrompt: this.options.systemPrompt,
       maxTurns: this.maxTurns,
+      permissionHandler: this.options.permissionHandler,
       canUseTool: this.options.canUseTool,
+      toolSourcePolicy: this.options.toolSourcePolicy,
       outputFormat: this.options.outputFormat,
       sandbox: this.options.sandbox,
     }, this.runtime.getAgentRuntimeDeps());
@@ -310,6 +312,72 @@ class Session implements ISession {
               id: value.toolCall.id,
               name: value.toolCall.function.name,
               input,
+              sessionId: this.sessionId,
+            };
+            break;
+          }
+          case 'tool_progress': {
+            if (value.toolCall.type !== 'function') break;
+            yield {
+              type: 'tool_progress',
+              id: value.toolCall.id,
+              name: value.toolCall.function.name,
+              message: value.message,
+              sessionId: this.sessionId,
+            };
+            break;
+          }
+          case 'tool_message': {
+            if (value.toolCall.type !== 'function') break;
+            yield {
+              type: 'tool_message',
+              id: value.toolCall.id,
+              name: value.toolCall.function.name,
+              message: value.message,
+              sessionId: this.sessionId,
+            };
+            break;
+          }
+          case 'tool_runtime_patch': {
+            if (value.toolCall.type !== 'function') break;
+            yield {
+              type: 'tool_runtime_patch',
+              id: value.toolCall.id,
+              name: value.toolCall.function.name,
+              patch: value.patch,
+              sessionId: this.sessionId,
+            };
+            break;
+          }
+          case 'tool_context_patch': {
+            if (value.toolCall.type !== 'function') break;
+            yield {
+              type: 'tool_context_patch',
+              id: value.toolCall.id,
+              name: value.toolCall.function.name,
+              patch: value.patch,
+              sessionId: this.sessionId,
+            };
+            break;
+          }
+          case 'tool_new_messages': {
+            if (value.toolCall.type !== 'function') break;
+            yield {
+              type: 'tool_new_messages',
+              id: value.toolCall.id,
+              name: value.toolCall.function.name,
+              messages: value.messages,
+              sessionId: this.sessionId,
+            };
+            break;
+          }
+          case 'tool_permission_updates': {
+            if (value.toolCall.type !== 'function') break;
+            yield {
+              type: 'tool_permission_updates',
+              id: value.toolCall.id,
+              name: value.toolCall.function.name,
+              updates: value.updates,
               sessionId: this.sessionId,
             };
             break;

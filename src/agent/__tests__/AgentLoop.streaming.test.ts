@@ -102,7 +102,18 @@ describe('agentLoop streaming integration', () => {
       };
       yield { finishReason: 'tool_calls' };
     });
-    const execute = vi.fn(async () => toolGate.promise);
+    const execute = vi.fn(async (
+      _toolName: string,
+      _params: Record<string, unknown>,
+      context?: {
+        onProgress?: (message: string) => void;
+        updateOutput?: (message: string) => void;
+      },
+    ) => {
+      context?.onProgress?.('loading');
+      context?.updateOutput?.('partial output');
+      return toolGate.promise;
+    });
     const streamResponse = vi.fn(async function* () {
       yield* [] as never[];
       throw new Error('streamResponse should not be used when tools are present');
@@ -141,6 +152,16 @@ describe('agentLoop streaming integration', () => {
       llmContent: 'exit now',
       displayContent: 'exit now',
       metadata: { shouldExitLoop: true },
+      effects: [
+        {
+          type: 'runtimePatch',
+          patch: {
+            scope: 'turn',
+            source: 'tool',
+            systemPromptAppend: 'extra',
+          },
+        },
+      ],
     });
 
     const { events, result } = await loopPromise;
@@ -154,6 +175,9 @@ describe('agentLoop streaming integration', () => {
     const eventTypes = events.map((event) => event.type);
     expect(eventTypes.filter((type) => type === 'stream_end')).toHaveLength(1);
     expect(eventTypes).toContain('tool_start');
+    expect(eventTypes).toContain('tool_progress');
+    expect(eventTypes).toContain('tool_message');
+    expect(eventTypes).toContain('tool_runtime_patch');
     expect(eventTypes).toContain('tool_result');
 
     const toolStartIndex = eventTypes.indexOf('tool_start');

@@ -8,11 +8,20 @@ export {
   getContextRoots,
 } from './utils.js';
 export type {
+  RuntimePatchApplication,
   RuntimePatch,
   RuntimeHookEvent,
   RuntimeHookRegistration,
+  RuntimePatchProvenance,
   RuntimePatchScope,
   RuntimePatchSkillInfo,
+  RuntimeToolDiscoveryPatch,
   RuntimeToolPolicyPatch,
   RuntimeModelOverride,
 } from './RuntimePatch.js';
+export {
+  normalizeRuntimePatchEnvironment,
+  normalizeRuntimePatchPromptAppend,
+  summarizeRuntimePatchApplications,
+} from './RuntimePatch.js';
+export type { RuntimeContextPatch } from './RuntimeContextPatch.js';

@@ -4,10 +4,11 @@
 
 import type { ContextSnapshot } from '../runtime/index.js';
 import type { ContentPart, Message } from '../services/ChatServiceInterface.js';
+import type { ToolCatalogSourcePolicy } from '../tools/catalog/index.js';
 import type { ConfirmationHandler } from '../tools/types/ExecutionTypes.js';
 import type { BackgroundAgentManager } from './subagents/BackgroundAgentManager.js';
 import type { OutputFormat, PermissionMode, PermissionsConfig, SandboxSettings } from '../types/common.js';
-import type { CanUseTool } from '../types/permissions.js';
+import type { CanUseTool, PermissionHandler } from '../types/permissions.js';
 import type { TokenBudgetConfig, TokenBudgetSnapshot } from './TokenBudget.js';
 
 export type { AgentEvent } from './AgentEvent.js';
@@ -64,9 +65,11 @@ export interface AgentOptions {
   permissionMode?: PermissionMode;
   maxTurns?: number; // 最大对话轮次 (-1=无限制, 0=禁用对话, N>0=限制轮次)
   toolWhitelist?: string[]; // 工具白名单（仅允许指定工具）
+  toolSourcePolicy?: ToolCatalogSourcePolicy; // 工具来源/信任级别过滤
   modelId?: string;
 
   // 权限控制
+  permissionHandler?: PermissionHandler;
   canUseTool?: CanUseTool;
 
   // MCP 配置

@@ -108,4 +108,70 @@ Focus on source files.
     expect(result.success).toBe(true);
     expect(String(result.llmContent)).toContain('Focus on source files.');
   });
+
+  it('returns skill activation as a runtimePatch effect', async () => {
+    await createProjectSkill(projectRoot, 'reviewer', `---
+name: reviewer
+description: Review code carefully
+allowed-tools:
+  - Read
+model: gpt-5.4
+scope: turn
+---
+
+Review code carefully.
+`);
+
+    const registry = SkillRegistry.getInstance({
+      cwd: projectRoot,
+      projectSkillsDir: 'skills',
+    });
+    await registry.initialize();
+
+    const context = {
+      contextSnapshot: createContextSnapshot('session-1', 'turn-1', {
+        capabilities: {
+          filesystem: {
+            roots: [projectRoot],
+            cwd: projectRoot,
+          },
+        },
+      }),
+    } satisfies Partial<ExecutionContext>;
+
+    const result = await executeSkill(
+      { skill: 'reviewer' },
+      context,
+    );
+
+    expect(result.success).toBe(true);
+    expect(result.effects).toEqual([
+      {
+        type: 'runtimePatch',
+        patch: {
+          scope: 'turn',
+          source: 'skill',
+          skill: {
+            id: 'reviewer',
+            name: 'reviewer',
+            basePath: path.join(projectRoot, 'skills', 'reviewer'),
+          },
+          toolPolicy: {
+            allow: ['Read'],
+            deny: undefined,
+          },
+          modelOverride: {
+            modelId: 'gpt-5.4',
+            effort: undefined,
+          },
+          systemPromptAppend: undefined,
+          environment: undefined,
+          hooks: undefined,
+        },
+      },
+    ]);
+    expect(result.runtimePatch).toEqual(result.effects?.[0]?.type === 'runtimePatch'
+      ? result.effects[0].patch
+      : undefined);
+  });
 });

@@ -12,6 +12,7 @@ import type {
   ToolResult,
 } from '../../types/index.js';
 import { ToolErrorType, ToolKind } from '../../types/index.js';
+import { lazySchema } from '../../validation/lazySchema.js';
 import { ToolSchemas } from '../../validation/zodSchemas.js';
 import { BackgroundShellManager } from './BackgroundShellManager.js';
 import { BashClassifier } from '../../../hooks/BashClassifier.js';
@@ -30,25 +31,28 @@ export const bashTool = createTool({
   name: 'Bash',
   displayName: 'Bash Command',
   kind: ToolKind.Execute,
+  maxResultSizeChars: 200_000, // ~200KB before externalization
 
   // Zod Schema 定义
-  schema: z.object({
-    command: ToolSchemas.command({
-      description: 'Bash command to execute',
-    }),
-    timeout: ToolSchemas.timeout(1000, 300000, 30000),
-    cwd: z
-      .string()
-      .optional()
-      .describe(
-        'Working directory (optional; applies only to this command). To persist, use cd'
-      ),
-    env: ToolSchemas.environment(),
-    run_in_background: z
-      .boolean()
-      .default(false)
-      .describe('Run in background (suitable for long-running commands)'),
-  }),
+  schema: lazySchema(() =>
+    z.object({
+      command: ToolSchemas.command({
+        description: 'Bash command to execute',
+      }),
+      timeout: ToolSchemas.timeout(1000, 300000, 30000),
+      cwd: z
+        .string()
+        .optional()
+        .describe(
+          'Working directory (optional; applies only to this command). To persist, use cd'
+        ),
+      env: ToolSchemas.environment(),
+      run_in_background: ToolSchemas.flag({
+        defaultValue: false,
+        description: 'Run in background (suitable for long-running commands)',
+      }),
+    })
+  ),
 
   // 工具描述
   description: {
@@ -158,6 +162,82 @@ Before executing commands:
     ],
   },
 
+  describe: ({ command, cwd, run_in_background } = {}) => {
+    const commandPreview = command?.trim()
+      ? command.trim().replace(/\s+/g, ' ').slice(0, 80)
+      : 'bash command';
+    const modeLabel = run_in_background ? 'Run background bash command' : 'Run bash command';
+    const cwdSuffix = cwd ? ` in ${cwd}` : '';
+
+    return {
+      short: `${modeLabel}: ${commandPreview}${cwdSuffix}`,
+    };
+  },
+
+  resolveBehavior: ({ command, run_in_background = false }) => {
+    const classification = BashClassifier.classify(command.trim());
+
+    if (run_in_background) {
+      return {
+        kind: ToolKind.Execute,
+        isReadOnly: false,
+        isConcurrencySafe: false,
+        isDestructive: classification.category === 'destructive',
+      };
+    }
+
+    if (classification.category === 'readonly') {
+      return {
+        kind: ToolKind.ReadOnly,
+        isReadOnly: true,
+        isConcurrencySafe: true,
+        isDestructive: false,
+      };
+    }
+
+    return {
+      kind: ToolKind.Execute,
+      isReadOnly: false,
+      isConcurrencySafe: false,
+      isDestructive: classification.category === 'destructive',
+    };
+  },
+
+  validateInput: ({ cwd }, context) => {
+    const workDir = cwd || context.contextSnapshot?.cwd;
+    if (workDir) {
+      return undefined;
+    }
+
+    return {
+      message: 'No working directory available',
+      llmContent:
+        'No working directory provided and no filesystem working directory is available.',
+      displayContent: '❌ 未提供工作目录，且当前上下文没有可用的工作目录',
+    };
+  },
+
+  checkPermissions: ({ command }) => {
+    const sandboxService = getSandboxService();
+    const sandboxCheck = sandboxService.checkCommand({ command });
+
+    if (sandboxCheck.allowed) {
+      return undefined;
+    }
+
+    if (sandboxCheck.requiresPermission) {
+      return {
+        behavior: 'ask',
+        message: sandboxCheck.reason || 'Command requires user permission',
+      } as const;
+    }
+
+    return {
+      behavior: 'deny',
+      message: sandboxCheck.reason || 'Blocked by sandbox',
+    } as const;
+  },
+
   // 执行函数
   async execute(params, context: ExecutionContext): Promise<ToolResult> {
     const { command, timeout = 30000, cwd, env, run_in_background = false } = params;
@@ -166,44 +246,9 @@ Before executing commands:
 
     try {
       const sandboxService = getSandboxService();
-      const sandboxCheck = sandboxService.checkCommand({ command });
-
-      if (!sandboxCheck.allowed) {
-        if (sandboxCheck.requiresPermission) {
-          return {
-            success: false,
-            llmContent: `Command requires permission: ${sandboxCheck.reason}`,
-            displayContent: '⚠️ Command requires user permission',
-            error: {
-              type: ToolErrorType.PERMISSION_DENIED,
-              message: sandboxCheck.reason || 'Permission required',
-            },
-          };
-        }
-        return {
-          success: false,
-          llmContent: `Command blocked by sandbox: ${sandboxCheck.reason}`,
-          displayContent: '🔒 Command blocked by sandbox',
-          error: {
-            type: ToolErrorType.PERMISSION_DENIED,
-            message: sandboxCheck.reason || 'Blocked by sandbox',
-          },
-        };
-      }
-
-      const workDir =
-        cwd
-        || context.contextSnapshot?.cwd;
+      const workDir = cwd || context.contextSnapshot?.cwd;
       if (!workDir) {
-        return {
-          success: false,
-          llmContent: 'No working directory provided and no filesystem working directory is available.',
-          displayContent: '❌ 未提供工作目录，且当前上下文没有可用的工作目录',
-          error: {
-            type: ToolErrorType.VALIDATION_ERROR,
-            message: 'No working directory available',
-          },
-        };
+        throw new Error('validateInput should guarantee a working directory');
       }
       const effectiveCommand = sandboxService.wrapCommandForSandbox(command, workDir);
 
@@ -256,59 +301,44 @@ Before executing commands:
   category: '命令工具',
   tags: ['bash', 'shell', 'non-interactive', 'event-driven'],
 
-  /**
-   * 提取签名内容：返回完整命令
-   * 用于显示和权限签名构建
-   */
-  extractSignatureContent: (params) => {
-    return params.command.trim();
-  },
-
-  /**
-   * 抽象权限规则：智能提取命令模式
-   *
-   * 设计目标：保留命令的"意图"部分，对变化的参数部分使用通配符
-   *
-   * 策略：
-   * 1. 对于 `cmd run/exec/test xxx args` 类型：保留前3个词 + 通配符
-   *    例如: `bun run test:unit foo.ts` → `bun run test:unit *`
-   * 2. 对于其他带参数的命令：保留前2个词 + 通配符
-   *    例如: `node script.js arg` → `node script.js *`
-   * 3. 对于无额外参数的命令：精确匹配
-   *    例如: `npm run build` → `npm run build`
-   *    例如: `git status` → `git status`
-   * 4. 单词命令：直接使用工具名前缀匹配
-   *    例如: `ls` → `` (空字符串，使用工具名前缀匹配 Bash)
-   *
-   * 注意：使用空格而非冒号，避免被 parseParamPairs 误解析为键值对
-   */
-  abstractPermissionRule: (params) => {
+  preparePermissionMatcher: (params) => {
     const command = params.command.trim();
     const classification = BashClassifier.classify(command);
     const parts = command.split(/\s+/);
+    const signatureContent = command;
 
     if (parts.length === 1) {
-      // 单词命令: ls → readonly:ls
-      return `${classification.category}:${parts[0]}`;
+      return {
+        signatureContent,
+        abstractRule: `${classification.category}:${parts[0]}`,
+      };
     }
 
-    // 检查是否是 run/exec/test 子命令模式
     const runLikeSubcommands = ['run', 'exec', 'test', 'start', 'build', 'dev'];
     if (runLikeSubcommands.includes(parts[1])) {
       if (parts.length === 2) {
-        return `${classification.category}:${parts[0]} ${parts[1]}`;
+        return {
+          signatureContent,
+          abstractRule: `${classification.category}:${parts[0]} ${parts[1]}`,
+        };
       }
-      return `${classification.category}:${parts[0]} ${parts[1]} *`;
+      return {
+        signatureContent,
+        abstractRule: `${classification.category}:${parts[0]} ${parts[1]} *`,
+      };
     }
 
     if (parts.length === 2) {
-      // git status → write:git status
-      return `${classification.category}:${parts[0]} ${parts[1]}`;
+      return {
+        signatureContent,
+        abstractRule: `${classification.category}:${parts[0]} ${parts[1]}`,
+      };
     }
 
-    // 有额外参数的命令：保留前2个词 + 通配符
-    // node script.js arg → node script.js *
-    return `${classification.category}:${parts[0]} ${parts[1]} *`;
+    return {
+      signatureContent,
+      abstractRule: `${classification.category}:${parts[0]} ${parts[1]} *`,
+    };
   },
 });
 
@@ -466,15 +496,30 @@ async function executeWithAcpTerminal(
       command
     );
 
+    const llmContent = {
+      stdout: truncated.stdout,
+      stderr: truncated.stderr,
+      execution_time: executionTime,
+      exit_code: result.exitCode,
+      ...(truncated.truncationInfo && { truncation_info: truncated.truncationInfo }),
+    };
+
+    if (!result.success) {
+      return {
+        success: false,
+        llmContent,
+        displayContent: displayMessage,
+        error: {
+          type: ToolErrorType.EXECUTION_ERROR,
+          message: result.error || `Command failed with exit code ${result.exitCode}`,
+        },
+        metadata,
+      };
+    }
+
     return {
-      success: result.success,
-      llmContent: {
-        stdout: truncated.stdout,
-        stderr: truncated.stderr,
-        execution_time: executionTime,
-        exit_code: result.exitCode,
-        ...(truncated.truncationInfo && { truncation_info: truncated.truncationInfo }),
-      },
+      success: true,
+      llmContent,
       displayContent: displayMessage,
       metadata,
     };

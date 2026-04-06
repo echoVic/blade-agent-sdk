@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import { HookManager } from '../../hooks/HookManager.js';
 import { NOOP_LOGGER } from '../../logging/Logger.js';
 import { createContextSnapshot, type RuntimeContext } from '../../runtime/index.js';
-import type { ToolDefinition } from '../../tools/types/index.js';
+import type { ToolDefinition, ToolResult } from '../../tools/types/index.js';
 import { PermissionMode } from '../../types/common.js';
 import { HookEvent } from '../../types/constants.js';
 import type { SessionOptions } from '../types.js';
@@ -119,6 +119,13 @@ describe('SessionRuntime', () => {
 
     const toolNames = runtime.getToolRegistry().getAll().map((tool) => tool.name);
     expect(toolNames).toEqual(['CustomTool']);
+    expect(runtime.getToolCatalog().getEntry('CustomTool')).toMatchObject({
+      source: {
+        kind: 'custom',
+        trustLevel: 'workspace',
+        sourceId: 'session',
+      },
+    });
 
     await runtime.close();
   });
@@ -200,7 +207,7 @@ describe('SessionRuntime', () => {
   });
 
   it('should apply session hook callbacks to tool execution', async () => {
-    const execute = vi.fn(async (params: { value?: string }) => ({
+    const execute = vi.fn(async (params: { value?: string }): Promise<ToolResult> => ({
       success: true,
       llmContent: params.value || 'missing',
       displayContent: params.value || 'missing',
@@ -307,7 +314,7 @@ describe('SessionRuntime', () => {
       behavior: 'allow' as const,
       updatedInput: input,
     }));
-    const execute = vi.fn(async (params: { value?: string }) => ({
+    const execute = vi.fn(async (params: { value?: string }): Promise<ToolResult> => ({
       success: true,
       llmContent: params.value || 'missing',
       displayContent: params.value || 'missing',

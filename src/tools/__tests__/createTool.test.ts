@@ -1,9 +1,29 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, expectTypeOf, it } from 'vitest';
 import { z } from 'zod';
-import { createTool } from '../core/createTool.js';
+import { createTool, toolFromDefinition } from '../core/createTool.js';
+import type { ReadMetadata, ToolResult } from '../types/ToolTypes.js';
 import { ToolKind } from '../types/ToolTypes.js';
+import { lazySchema } from '../validation/lazySchema.js';
 
 describe('createTool', () => {
+  it('exposes ToolResult as a success-discriminated generic union', () => {
+    type EchoResult = ToolResult<{ echoed: string }, ReadMetadata>;
+
+    expectTypeOf<EchoResult>().toMatchTypeOf<
+      | {
+          success: true;
+          data?: { echoed: string };
+          metadata?: ReadMetadata;
+        }
+      | {
+          success: false;
+          error: {
+            message: string;
+          };
+        }
+    >();
+  });
+
   const testSchema = z.object({
     message: z.string().describe('The message to echo'),
     count: z.number().optional().describe('Number of times to repeat'),
@@ -51,6 +71,24 @@ describe('createTool', () => {
     it('should not be strict by default', () => {
       expect(echoTool.strict).toBe(false);
     });
+
+    it('should default maxResultSizeChars to infinity', () => {
+      expect(echoTool.maxResultSizeChars).toBe(Number.POSITIVE_INFINITY);
+    });
+
+    it('should default interruptBehavior to cancel', () => {
+      expect(echoTool.interruptBehavior).toBe('cancel');
+    });
+
+    it('should resolve default behavior from static config', () => {
+      expect(echoTool.resolveBehavior!({ message: 'Hello' })).toEqual({
+        kind: ToolKind.ReadOnly,
+        isReadOnly: true,
+        isConcurrencySafe: true,
+        isDestructive: false,
+        interruptBehavior: 'cancel',
+      });
+    });
   });
 
   describe('getFunctionDeclaration', () => {
@@ -86,6 +124,67 @@ describe('createTool', () => {
       expect(declaration.parameters).toBeDefined();
       expect(declaration.parameters.type).toBe('object');
     });
+
+    it('should support lazy schemas without rebuilding them on repeated access', () => {
+      let schemaInitCount = 0;
+      const lazyTool = createTool({
+        name: 'LazyTool',
+        displayName: 'Lazy Tool',
+        kind: ToolKind.ReadOnly,
+        description: { short: 'Lazy tool' },
+        schema: lazySchema(() => {
+          schemaInitCount += 1;
+          return z.object({
+            value: z.string(),
+          });
+        }),
+        execute: async ({ value }) => ({
+          success: true,
+          llmContent: value,
+          displayContent: value,
+        }),
+      });
+
+      expect(schemaInitCount).toBe(0);
+
+      lazyTool.getFunctionDeclaration();
+      lazyTool.getMetadata();
+      lazyTool.build({ value: 'hello' });
+
+      expect(schemaInitCount).toBe(1);
+    });
+
+    it('should use dynamic descriptions for concrete invocations while preserving static declarations', () => {
+      const describedTool = createTool({
+        name: 'DescribeTool',
+        displayName: 'Describe Tool',
+        kind: ToolKind.Execute,
+        description: { short: 'General tool description' },
+        describe: (params) => ({
+          short: params?.target
+            ? `Inspect target: ${params.target}`
+            : 'General tool description',
+        }),
+        schema: z.object({
+          target: z.string(),
+        }),
+        execute: async ({ target }) => ({
+          success: true,
+          llmContent: target,
+          displayContent: target,
+        }),
+      });
+
+      expect(describedTool.getFunctionDeclaration().description).toContain(
+        'General tool description'
+      );
+      expect(describedTool.describe({ target: '/tmp/demo.txt' }).short).toBe(
+        'Inspect target: /tmp/demo.txt'
+      );
+      expect(describedTool.build({ target: '/tmp/demo.txt' }).getDescription()).toBe(
+        'Inspect target: /tmp/demo.txt'
+      );
+    });
   });
 
   describe('getMetadata', () => {
@@ -109,6 +208,38 @@ describe('createTool', () => {
       expect(invocation).toBeDefined();
     });
 
+    it('infers affected file paths from common path-shaped params', () => {
+      const pathTool = createTool({
+        name: 'PathTool',
+        displayName: 'Path Tool',
+        kind: ToolKind.Write,
+        description: { short: 'Path-aware tool' },
+        schema: z.object({
+          file_path: z.string(),
+          backupPath: z.string().optional(),
+          files: z.array(z.string()).optional(),
+        }),
+        execute: async ({ file_path }) => ({
+          success: true,
+          llmContent: file_path,
+          displayContent: file_path,
+        }),
+      });
+
+      const invocation = pathTool.build({
+        file_path: '/tmp/example.txt',
+        backupPath: '/tmp/example.bak',
+        files: ['/tmp/one.txt', '/tmp/two.txt'],
+      });
+
+      expect(invocation.getAffectedPaths()).toEqual([
+        '/tmp/example.txt',
+        '/tmp/example.bak',
+        '/tmp/one.txt',
+        '/tmp/two.txt',
+      ]);
+    });
+
     it('should throw on invalid params', () => {
       expect(() => {
         echoTool.build({ message: 123 } as unknown as z.infer<typeof testSchema>);
@@ -127,6 +258,78 @@ describe('createTool', () => {
       const result = await echoTool.execute({ message: 'Hi', count: 3 });
       expect(result.success).toBe(true);
       expect(result.llmContent).toBe('Hi Hi Hi');
+    });
+
+    it('should run semantic validateInput before execution', async () => {
+      const guardedTool = createTool({
+        name: 'GuardedTool',
+        displayName: 'Guarded Tool',
+        kind: ToolKind.ReadOnly,
+        description: { short: 'Tool with semantic validation' },
+        schema: z.object({
+          value: z.string(),
+        }),
+        validateInput: ({ value }) =>
+          value === 'blocked'
+            ? {
+                message: 'Blocked by semantic validation',
+                displayContent: 'blocked-display',
+              }
+            : undefined,
+        execute: async ({ value }) => ({
+          success: true,
+          llmContent: value,
+          displayContent: value,
+        }),
+      });
+
+      const blocked = await guardedTool.execute({ value: 'blocked' });
+      const allowed = await guardedTool.execute({ value: 'allowed' });
+
+      expect(blocked.success).toBe(false);
+      expect(blocked.error?.message).toBe('Blocked by semantic validation');
+      expect(blocked.displayContent).toBe('blocked-display');
+      expect(allowed.success).toBe(true);
+      expect(allowed.llmContent).toBe('allowed');
+    });
+
+    it('should expose tool-level checkPermissions when configured', async () => {
+      const guardedTool = createTool({
+        name: 'PermissionedTool',
+        displayName: 'Permissioned Tool',
+        kind: ToolKind.Execute,
+        description: { short: 'Tool with permission check' },
+        schema: z.object({
+          value: z.string(),
+        }),
+        checkPermissions: ({ value }) =>
+          value === 'blocked'
+            ? {
+                behavior: 'deny',
+                message: 'Blocked by tool permission',
+              }
+            : undefined,
+        execute: async ({ value }) => ({
+          success: true,
+          llmContent: value,
+          displayContent: value,
+        }),
+      });
+
+      const blocked = await guardedTool.checkPermissions?.(
+        { value: 'blocked' },
+        {} as never,
+      );
+      const allowed = await guardedTool.checkPermissions?.(
+        { value: 'allowed' },
+        {} as never,
+      );
+
+      expect(blocked).toEqual({
+        behavior: 'deny',
+        message: 'Blocked by tool permission',
+      });
+      expect(allowed).toBeUndefined();
     });
   });
 
@@ -165,10 +368,75 @@ describe('createTool', () => {
       });
       expect(tool.isReadOnly).toBe(false);
     });
+
+    it('should resolve dynamic behavior from validated params', () => {
+      const tool = createTool({
+        name: 'DynamicTool',
+        displayName: 'Dynamic Tool',
+        kind: ToolKind.Execute,
+        description: { short: 'Dynamic behavior tool' },
+        schema: z.object({
+          mode: z.enum(['read', 'write']).default('read'),
+        }),
+        resolveBehavior: (params) => ({
+          kind: params.mode === 'read' ? ToolKind.ReadOnly : ToolKind.Write,
+          isReadOnly: params.mode === 'read',
+          isConcurrencySafe: params.mode === 'read',
+          isDestructive: params.mode !== 'read',
+        }),
+        execute: async () => ({ success: true, llmContent: '', displayContent: '' }),
+      });
+
+      expect(tool.resolveBehavior!({} as unknown as { mode: 'read' | 'write' })).toEqual({
+        kind: ToolKind.ReadOnly,
+        isReadOnly: true,
+        isConcurrencySafe: true,
+        isDestructive: false,
+        interruptBehavior: 'cancel',
+      });
+      expect(tool.resolveBehavior!({ mode: 'write' })).toEqual({
+        kind: ToolKind.Write,
+        isReadOnly: false,
+        isConcurrencySafe: false,
+        isDestructive: true,
+        interruptBehavior: 'cancel',
+      });
+    });
+
+    it('should preserve explicit maxResultSizeChars overrides', () => {
+      const tool = createTool({
+        name: 'LimitedTool',
+        displayName: 'Limited Tool',
+        kind: ToolKind.ReadOnly,
+        description: { short: 'Limited tool' },
+        schema: z.object({}),
+        maxResultSizeChars: 128,
+        execute: async () => ({ success: true, llmContent: '', displayContent: '' }),
+      });
+
+      expect(tool.maxResultSizeChars).toBe(128);
+    });
+
+    it('should preserve explicit interruptBehavior overrides', () => {
+      const tool = createTool({
+        name: 'BlockingTool',
+        displayName: 'Blocking Tool',
+        kind: ToolKind.Execute,
+        description: { short: 'Blocking tool' },
+        schema: z.object({}),
+        interruptBehavior: 'block',
+        execute: async () => ({ success: true, llmContent: '', displayContent: '' }),
+      });
+
+      expect(tool.interruptBehavior).toBe('block');
+      expect(tool.resolveBehavior!({})).toMatchObject({
+        interruptBehavior: 'block',
+      });
+    });
   });
 
-  describe('signature extraction', () => {
-    it('should support extractSignatureContent', () => {
+  describe('permission matcher preparation', () => {
+    it('should support preparePermissionMatcher', () => {
       const toolWithSignature = createTool({
         name: 'SignatureTool',
         displayName: 'Signature Tool',
@@ -176,32 +444,53 @@ describe('createTool', () => {
         description: { short: 'Tool with signature' },
         schema: z.object({ path: z.string() }),
         execute: async () => ({ success: true, llmContent: '', displayContent: '' }),
-        extractSignatureContent: (params) => params.path,
+        preparePermissionMatcher: (params) => ({
+          signatureContent: params.path,
+          abstractRule: `read:${params.path}`,
+        }),
       });
 
-      expect(toolWithSignature.extractSignatureContent).toBeDefined();
-      expect(toolWithSignature.extractSignatureContent!({ path: '/test/file.ts' })).toBe(
-        '/test/file.ts'
-      );
+      expect(toolWithSignature.preparePermissionMatcher).toBeDefined();
+      expect(
+        toolWithSignature.preparePermissionMatcher!({ path: '/test/file.ts' })
+      ).toEqual({
+        signatureContent: '/test/file.ts',
+        abstractRule: 'read:/test/file.ts',
+      });
     });
   });
 
-  describe('permission rule abstraction', () => {
-    it('should support abstractPermissionRule', () => {
-      const toolWithPermission = createTool({
-        name: 'PermissionTool',
-        displayName: 'Permission Tool',
-        kind: ToolKind.Write,
-        description: { short: 'Tool with permission' },
-        schema: z.object({ path: z.string() }),
-        execute: async () => ({ success: true, llmContent: '', displayContent: '' }),
-        abstractPermissionRule: (params) => `write:${params.path}`,
+  describe('toolFromDefinition', () => {
+    it('preserves category, tags, and exposure metadata for simplified tool definitions', () => {
+      const tool = toolFromDefinition({
+        name: 'IndexedTool',
+        description: 'Indexed tool',
+        parameters: { type: 'object', properties: {} },
+        category: 'analysis',
+        tags: ['search', 'catalog'],
+        exposure: {
+          mode: 'deferred',
+          discoveryHint: 'Use when searching the tool catalog.',
+        },
+        async execute() {
+          return {
+            success: true,
+            llmContent: 'ok',
+            displayContent: 'ok',
+          };
+        },
       });
 
-      expect(toolWithPermission.abstractPermissionRule).toBeDefined();
-      expect(
-        toolWithPermission.abstractPermissionRule!({ path: '/test/file.ts' })
-      ).toBe('write:/test/file.ts');
+      expect(tool.category).toBe('analysis');
+      expect(tool.tags).toEqual(['search', 'catalog']);
+      expect(tool.exposure).toMatchObject({
+        mode: 'deferred',
+        discoveryHint: 'Use when searching the tool catalog.',
+      });
+      expect(tool.getMetadata()).toMatchObject({
+        category: 'analysis',
+        tags: ['search', 'catalog'],
+      });
     });
   });
 });

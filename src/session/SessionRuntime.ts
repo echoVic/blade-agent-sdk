@@ -14,18 +14,21 @@ import { getSandboxExecutor } from '../sandbox/SandboxExecutor.js';
 import { getSandboxService } from '../sandbox/SandboxService.js';
 import { FileAccessTracker } from '../tools/builtin/file/FileAccessTracker.js';
 import { getBuiltinTools } from '../tools/builtin/index.js';
+import { ToolCatalog } from '../tools/catalog/ToolCatalog.js';
 import { toolFromDefinition } from '../tools/core/createTool.js';
-import {
-  ExecutionPipeline,
-  type ExecutionPipelineHooks,
-} from '../tools/execution/ExecutionPipeline.js';
+import { ExecutionPipeline } from '../tools/execution/ExecutionPipeline.js';
 import { FileLockManager } from '../tools/execution/FileLockManager.js';
 import { ToolRegistry } from '../tools/registry/ToolRegistry.js';
 import type { Tool } from '../tools/types/index.js';
 import type { BladeConfig, McpServerConfig, PermissionsConfig } from '../types/common.js';
 import { PermissionMode } from '../types/common.js';
 import { HookEvent } from '../types/constants.js';
-import type { CanUseTool, PermissionResult } from '../types/permissions.js';
+import {
+  createCompositePermissionHandler,
+  createPermissionHandlerFromCanUseTool,
+  type PermissionHandler,
+  type PermissionResult,
+} from '../types/permissions.js';
 import type { ContextSnapshot, RuntimeContext } from '../runtime/index.js';
 import {
   getContextCwd,
@@ -70,6 +73,7 @@ export class SessionRuntime {
   private readonly mcpRegistry: McpRegistry;
   private readonly subagentRegistry: SubagentRegistry;
   private readonly toolRegistry = new ToolRegistry();
+  private readonly toolCatalog = new ToolCatalog(this.toolRegistry);
   private readonly contextManager: ContextManager;
   private readonly executionPipeline: ExecutionPipeline;
   private readonly backgroundAgentManager: BackgroundAgentManager;
@@ -141,6 +145,10 @@ export class SessionRuntime {
 
   getToolRegistry(): ToolRegistry {
     return this.toolRegistry;
+  }
+
+  getToolCatalog(): ToolCatalog {
+    return this.toolCatalog;
   }
 
   getBackgroundAgentManager(): BackgroundAgentManager {
@@ -239,9 +247,10 @@ export class SessionRuntime {
       permissionConfig,
       permissionMode: this.permissionMode,
       maxHistorySize: 1000,
-      canUseTool: this.createCanUseTool(),
-      hooks: this.createExecutionPipelineHooks(),
+      permissionHandler: this.createPermissionHandler(),
+      hookRuntime: this.hookRuntime,
       logger: this.rootLogger,
+      toolCatalog: this.toolCatalog,
     });
   }
 
@@ -260,7 +269,15 @@ export class SessionRuntime {
       includeMcpProtocolTools: false,
       subagentRegistry: this.subagentRegistry,
     });
-    this.registerTools(builtinTools);
+    const filteredTools = this.filterTools(builtinTools);
+    if (filteredTools.length === 0) {
+      return;
+    }
+    this.toolCatalog.registerAll(filteredTools as Tool[], {
+      kind: 'builtin',
+      trustLevel: 'trusted',
+      sourceId: 'builtin',
+    });
   }
 
   private initializeSubagents(): void {
@@ -333,7 +350,11 @@ export class SessionRuntime {
 
     const availableTools = await this.mcpRegistry.getAvailableToolsByServerNames(serverNames);
     for (const tool of this.filterTools(availableTools)) {
-      this.toolRegistry.registerMcpTool(tool);
+      this.toolCatalog.registerMcpTool(tool, {
+        kind: 'mcp',
+        trustLevel: 'remote',
+        sourceId: serverNameFromTool(tool),
+      });
     }
   }
 
@@ -342,7 +363,11 @@ export class SessionRuntime {
     if (filteredTools.length === 0) {
       return;
     }
-    this.toolRegistry.registerAll(filteredTools as Tool[]);
+    this.toolCatalog.registerAll(filteredTools as Tool[], {
+      kind: 'custom',
+      trustLevel: 'workspace',
+      sourceId: 'session',
+    });
   }
 
   private filterTools<TParams>(tools: Tool<TParams>[]): Tool<TParams>[] {
@@ -357,36 +382,55 @@ export class SessionRuntime {
     });
   }
 
-  private createCanUseTool(): CanUseTool | undefined {
+  private createPermissionHandler(): PermissionHandler | undefined {
     const hasPermissionCallbacks =
       (this.hookCallbacks[HookEvent.PermissionRequest]?.length ?? 0) > 0;
-    const hasProjectDir = Boolean(getContextCwd(this.defaultContext));
-    const baseCanUseTool = this.options.canUseTool;
+    const basePermissionHandler = this.options.permissionHandler
+      ?? (this.options.canUseTool
+        ? createPermissionHandlerFromCanUseTool(this.options.canUseTool)
+        : undefined);
 
-    if (!hasPermissionCallbacks && !baseCanUseTool && !hasProjectDir) {
+    if (!hasPermissionCallbacks && !basePermissionHandler) {
       return undefined;
     }
 
-    return async (toolName, input, options) => {
-      const hookResult = await this.hookRuntime.applyPermissionRequestHooks(
-        toolName,
-        input,
-        options,
-      );
-      Object.assign(input, hookResult.updatedInput);
-      if (hookResult.decision) {
-        return hookResult.decision;
-      }
+    const hookPermissionHandler = hasPermissionCallbacks
+      ? (async (request) => {
+          const hookResult = await this.hookRuntime.applyPermissionRequestHooks(
+            request.toolName,
+            request.input,
+            {
+              affectedPaths: request.affectedPaths,
+              toolKind: request.toolKind,
+              abortSignal: request.signal,
+            },
+          );
+          Object.assign(request.input, hookResult.updatedInput);
+          if (hookResult.decision) {
+            return hookResult.decision;
+          }
 
-      if (baseCanUseTool) {
-        return baseCanUseTool(toolName, input, options);
-      }
+          return {
+            behavior: 'allow',
+            updatedInput: hookResult.updatedInput,
+          } satisfies PermissionResult;
+        }) satisfies PermissionHandler
+      : undefined;
 
-      return { behavior: 'ask' } satisfies PermissionResult;
-    };
+    return createCompositePermissionHandler([
+      hookPermissionHandler,
+      basePermissionHandler,
+      async () => ({ behavior: 'ask' } satisfies PermissionResult),
+    ]);
+  }
+}
+
+function serverNameFromTool(tool: Tool): string {
+  const taggedServer = tool.tags.find((tag) => tag === tag.toLowerCase() && tag.length > 0);
+  if (taggedServer) {
+    return taggedServer;
   }
 
-  private createExecutionPipelineHooks(): ExecutionPipelineHooks | undefined {
-    return this.hookRuntime.createExecutionPipelineHooks();
-  }
+  const match = tool.name.match(/^mcp__([^_]+)__/);
+  return match?.[1] ?? 'mcp';
 }

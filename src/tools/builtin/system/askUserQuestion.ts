@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { createTool } from '../../core/createTool.js';
 import type { ToolResult } from '../../types/ToolTypes.js';
 import { ToolErrorType, ToolKind } from '../../types/ToolTypes.js';
+import { ToolSchemas } from '../../validation/zodSchemas.js';
 
 /**
  * Option schema - 选项定义
@@ -34,8 +35,7 @@ const questionSchema = z.object({
     .describe(
       'Very short label displayed as a chip/tag (max 12 chars). Examples: "Auth method", "Library", "Approach".'
     ),
-  multiSelect: z
-    .boolean()
+  multiSelect: ToolSchemas.semanticBoolean()
     .describe(
       'Set to true to allow the user to select multiple options instead of just one. Use when choices are not mutually exclusive.'
     ),

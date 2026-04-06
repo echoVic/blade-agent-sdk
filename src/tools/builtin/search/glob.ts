@@ -60,11 +60,16 @@ export const globTool = createTool({
       description: 'Glob pattern string (supports *, ?, ** wildcards)',
     }),
     path: z.string().optional().describe('Search path (optional, defaults to cwd)'),
-    max_results: ToolSchemas.positiveInt({
-      description: 'Maximum number of results',
-    })
-      .max(1000, 'At most 1000 results can be returned')
-      .default(100),
+    max_results: ToolSchemas.semanticNumber()
+      .pipe(
+        z
+          .number()
+          .int('Must be an integer')
+          .min(1, 'Must be greater than 0')
+          .max(1000, 'At most 1000 results can be returned')
+      )
+      .default(100)
+      .describe('Maximum number of results'),
     include_directories: z
       .boolean()
       .default(false)
@@ -249,15 +254,10 @@ export const globTool = createTool({
   category: '搜索工具',
   tags: ['file', 'search', 'glob', 'pattern', 'wildcard'],
 
-  /**
-   * 提取签名内容：返回 glob 模式
-   */
-  extractSignatureContent: (params) => params.pattern,
-
-  /**
-   * 抽象权限规则：返回通配符模式
-   */
-  abstractPermissionRule: () => '*',
+  preparePermissionMatcher: (params) => ({
+    signatureContent: params.pattern,
+    abstractRule: '*',
+  }),
 });
 
 /**

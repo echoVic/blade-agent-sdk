@@ -1,24 +1,22 @@
-import { EventEmitter } from 'events';
 import { PermissionMode } from '../../types/common.js';
 import { getErrorMessage } from '../../utils/errorUtils.js';
+import { searchTools } from '../search/toolSearch.js';
 import type { FunctionDeclaration, Tool } from '../types/index.js';
+import { resolveToolBehaviorHint } from '../types/index.js';
 
 /**
  * 工具注册表
  * 管理内置工具和MCP工具的注册、发现和查询
  */
-export class ToolRegistry extends EventEmitter {
+export class ToolRegistry {
   private tools = new Map<string, Tool>();
   private mcpTools = new Map<string, Tool>();
+  private aliases = new Map<string, string>();
   private categories = new Map<string, Set<string>>();
   private tags = new Map<string, Set<string>>();
   private sortedAllToolsCache?: Tool[];
   private sortedBuiltinToolsCache?: Tool[];
   private sortedMcpToolsCache?: Tool[];
-
-  constructor() {
-    super();
-  }
 
   /**
    * 注册内置工具
@@ -27,16 +25,12 @@ export class ToolRegistry extends EventEmitter {
     if (this.tools.has(tool.name)) {
       throw new Error(`工具 '${tool.name}' 已注册`);
     }
+    this.assertAliasesAvailable(tool);
 
     this.tools.set(tool.name, tool);
+    this.registerAliases(tool);
     this.updateIndexes(tool);
     this.invalidateSortedToolCaches();
-
-    this.emit('toolRegistered', {
-      type: 'builtin',
-      tool,
-      timestamp: Date.now(),
-    });
   }
 
   /**
@@ -65,31 +59,23 @@ export class ToolRegistry extends EventEmitter {
     const builtinTool = this.tools.get(name);
     if (builtinTool) {
       this.tools.delete(name);
+      this.unregisterAliases(builtinTool);
       this.removeFromIndexes(builtinTool);
       this.invalidateSortedToolCaches();
-
-      this.emit('toolUnregistered', {
-        type: 'builtin',
-        toolName: name,
-        timestamp: Date.now(),
-      });
 
       return true;
     }
 
-    const mcpTool = this.mcpTools.get(name);
+    const canonicalName = this.aliases.get(name) || name;
+    const mcpTool = this.mcpTools.get(canonicalName);
     if (!mcpTool) {
       return false;
     }
 
-    this.mcpTools.delete(name);
+    this.mcpTools.delete(canonicalName);
+    this.unregisterAliases(mcpTool);
     this.removeFromIndexes(mcpTool);
     this.invalidateSortedToolCaches();
-    this.emit('toolUnregistered', {
-      type: 'mcp',
-      toolName: name,
-      timestamp: Date.now(),
-    });
     return true;
   }
 
@@ -97,14 +83,16 @@ export class ToolRegistry extends EventEmitter {
    * 获取工具
    */
   get(name: string): Tool | undefined {
-    return this.tools.get(name) || this.mcpTools.get(name);
+    const canonicalName = this.aliases.get(name) || name;
+    return this.tools.get(canonicalName) || this.mcpTools.get(canonicalName);
   }
 
   /**
    * 检查工具是否存在
    */
   has(name: string): boolean {
-    return this.tools.has(name) || this.mcpTools.has(name);
+    const canonicalName = this.aliases.get(name) || name;
+    return this.tools.has(canonicalName) || this.mcpTools.has(canonicalName);
   }
 
   /**
@@ -172,20 +160,7 @@ export class ToolRegistry extends EventEmitter {
    * 搜索工具
    */
   search(query: string): Tool[] {
-    const lowerQuery = query.toLowerCase();
-    return this.getAll().filter((tool) => {
-      const desc =
-        typeof tool.description === 'string'
-          ? tool.description
-          : tool.description.short;
-      return (
-        tool.name.toLowerCase().includes(lowerQuery) ||
-        desc.toLowerCase().includes(lowerQuery) ||
-        tool.displayName.toLowerCase().includes(lowerQuery) ||
-        (tool.category && tool.category.toLowerCase().includes(lowerQuery)) ||
-        tool.tags.some((tag) => tag.toLowerCase().includes(lowerQuery))
-      );
-    });
+    return searchTools(this.getAll(), query);
   }
 
   /**
@@ -201,7 +176,7 @@ export class ToolRegistry extends EventEmitter {
    */
   getReadOnlyFunctionDeclarations(): FunctionDeclaration[] {
     return this.getAll()
-      .filter((tool) => tool.isReadOnly)
+      .filter((tool) => resolveToolBehaviorHint(tool).isReadOnly)
       .map((tool) => tool.getFunctionDeclaration());
   }
 
@@ -210,9 +185,9 @@ export class ToolRegistry extends EventEmitter {
    *
    * 工具暴露策略：
    * - PLAN 模式：仅暴露只读工具（防止 LLM 尝试调用被拒工具）
-   * - DEFAULT/AUTO_EDIT/YOLO 模式：暴露全量工具（执行阶段由 PermissionStage 控制）
+   * - DEFAULT/AUTO_EDIT/YOLO 模式：暴露全量工具（实际权限由 ExecutionPipeline 统一决策）
    *
-   * 这确保了工具暴露策略和执行阶段权限检查使用相同的模式值，
+   * 这确保了工具暴露策略和执行期权限检查使用相同的模式值，
    * 避免了 LLM 看到工具但执行被拒的循环问题。
    *
    * @param mode - 权限模式
@@ -225,7 +200,7 @@ export class ToolRegistry extends EventEmitter {
     }
 
     // 其他模式（default/autoEdit/yolo）：暴露全量工具
-    // 执行阶段由 PermissionStage 根据 permissionMode 进行细粒度控制
+    // 具体执行权限由 ExecutionPipeline 根据 permissionMode 进行细粒度控制
     return this.getFunctionDeclarations();
   }
 
@@ -233,7 +208,7 @@ export class ToolRegistry extends EventEmitter {
    * 获取只读工具
    */
   getReadOnlyTools(): Tool[] {
-    return this.getAll().filter((tool) => tool.isReadOnly);
+    return this.getAll().filter((tool) => resolveToolBehaviorHint(tool).isReadOnly);
   }
 
   /**
@@ -272,18 +247,18 @@ export class ToolRegistry extends EventEmitter {
   registerMcpTool(tool: Tool): void {
     if (this.mcpTools.has(tool.name)) {
       // MCP工具可以覆盖（支持热更新）
+      const previous = this.mcpTools.get(tool.name);
+      if (previous) {
+        this.unregisterAliases(previous);
+      }
       this.mcpTools.delete(tool.name);
     }
+    this.assertAliasesAvailable(tool, 'mcp');
 
     this.mcpTools.set(tool.name, tool);
+    this.registerAliases(tool);
     this.updateIndexes(tool);
     this.invalidateSortedToolCaches();
-
-    this.emit('toolRegistered', {
-      type: 'mcp',
-      tool,
-      timestamp: Date.now(),
-    });
   }
 
   private getSortedTools(tools: Tool[]): Tool[] {
@@ -313,16 +288,10 @@ export class ToolRegistry extends EventEmitter {
     for (const [name, tool] of this.mcpTools.entries()) {
       if (tool.tags.includes(serverName) || name.startsWith(legacyPrefix)) {
         this.mcpTools.delete(name);
+        this.unregisterAliases(tool);
         this.removeFromIndexes(tool);
         this.invalidateSortedToolCaches();
         removedCount++;
-
-        this.emit('toolUnregistered', {
-          type: 'mcp',
-          toolName: name,
-          serverName,
-          timestamp: Date.now(),
-        });
       }
     }
 
@@ -373,6 +342,51 @@ export class ToolRegistry extends EventEmitter {
         if (tagSet.size === 0) {
           this.tags.delete(tag);
         }
+      }
+    }
+  }
+
+  private assertAliasesAvailable(tool: Tool, namespace: 'builtin' | 'mcp' = 'builtin'): void {
+    for (const alias of tool.aliases ?? []) {
+      const existingAliasTarget = this.aliases.get(alias);
+      if (existingAliasTarget && existingAliasTarget !== tool.name) {
+        throw new Error(`工具别名 '${alias}' 已被 '${existingAliasTarget}' 使用`);
+      }
+
+      const builtinConflict = this.tools.get(alias);
+      if (builtinConflict && builtinConflict.name !== tool.name) {
+        throw new Error(`工具别名 '${alias}' 与已注册工具 '${builtinConflict.name}' 冲突`);
+      }
+
+      const mcpConflict = this.mcpTools.get(alias);
+      if (mcpConflict && mcpConflict.name !== tool.name) {
+        throw new Error(`工具别名 '${alias}' 与已注册工具 '${mcpConflict.name}' 冲突`);
+      }
+
+      if (alias === tool.name) {
+        throw new Error(`工具别名 '${alias}' 不能与主名称相同`);
+      }
+
+      if (namespace === 'builtin' && this.mcpTools.has(alias)) {
+        throw new Error(`工具别名 '${alias}' 与已注册 MCP 工具冲突`);
+      }
+
+      if (namespace === 'mcp' && this.tools.has(alias)) {
+        throw new Error(`工具别名 '${alias}' 与已注册内置工具冲突`);
+      }
+    }
+  }
+
+  private registerAliases(tool: Tool): void {
+    for (const alias of tool.aliases ?? []) {
+      this.aliases.set(alias, tool.name);
+    }
+  }
+
+  private unregisterAliases(tool: Tool): void {
+    for (const alias of tool.aliases ?? []) {
+      if (this.aliases.get(alias) === tool.name) {
+        this.aliases.delete(alias);
       }
     }
   }

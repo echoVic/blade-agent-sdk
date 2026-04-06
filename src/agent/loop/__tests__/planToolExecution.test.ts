@@ -2,27 +2,57 @@ import { describe, expect, it } from 'vitest';
 import { PermissionMode } from '../../../types/common.js';
 import { planToolExecution } from '../planToolExecution.js';
 import type { FunctionToolCall } from '../types.js';
+import { type ToolBehavior, ToolKind } from '../../../tools/types/ToolTypes.js';
 
-const makeCall = (name: string): FunctionToolCall => ({
+const makeCall = (name: string, args: Record<string, unknown> = {}): FunctionToolCall => ({
   id: `${name}-call`,
   type: 'function',
   function: {
     name,
-    arguments: '{}',
+    arguments: JSON.stringify(args),
   },
 });
 
-const toolKinds = new Map<string, { kind?: string }>([
+const toolKinds = new Map<
+  string,
+  {
+    kind?: string;
+    resolveBehavior?: (params: Record<string, unknown>) => ToolBehavior;
+  }
+>([
   ['Read', { kind: 'readonly' }],
   ['Glob', { kind: 'readonly' }],
   ['Grep', { kind: 'readonly' }],
   ['Edit', { kind: 'write' }],
   ['Write', { kind: 'write' }],
-  ['Bash', { kind: 'execute' }],
+  [
+    'Bash',
+    {
+      kind: 'execute',
+      resolveBehavior: (params) => {
+        const command = typeof params.command === 'string' ? params.command : '';
+        const isReadOnly = command.startsWith('ls') || command.startsWith('git status');
+        return {
+          kind: isReadOnly ? ToolKind.ReadOnly : ToolKind.Execute,
+          isReadOnly,
+          isConcurrencySafe: isReadOnly,
+          isDestructive: !isReadOnly,
+          interruptBehavior: 'cancel',
+        };
+      },
+    },
+  ],
 ]);
 
 const mockRegistry = {
-  get(name: string): { kind?: string } | undefined {
+  get(
+    name: string
+  ):
+    | {
+        kind?: string;
+        resolveBehavior?: (params: Record<string, unknown>) => ToolBehavior;
+      }
+    | undefined {
     return toolKinds.get(name);
   },
 };
@@ -72,7 +102,12 @@ describe('planToolExecution', () => {
 
   it('returns mixed mode with readonly calls grouped first', () => {
     const plan = planToolExecution(
-      [makeCall('Edit'), makeCall('Read'), makeCall('Bash'), makeCall('Glob')],
+      [
+        makeCall('Edit'),
+        makeCall('Read'),
+        makeCall('Bash', { command: 'npm install' }),
+        makeCall('Glob'),
+      ],
       mockRegistry,
     );
 
@@ -96,6 +131,28 @@ describe('planToolExecution', () => {
     expect(plan.groups?.map((group) => group.map((call) => call.function.name))).toEqual([
       ['Read'],
       ['Unknown'],
+    ]);
+  });
+
+  it('classifies the same tool differently based on call arguments', () => {
+    const plan = planToolExecution(
+      [
+        makeCall('Bash', { command: 'ls -la' }),
+        makeCall('Bash', { command: 'npm install' }),
+        makeCall('Read'),
+      ],
+      mockRegistry,
+    );
+
+    expect(plan.mode).toBe('mixed');
+    expect(plan.calls.map((call) => `${call.function.name}:${call.function.arguments}`)).toEqual([
+      'Bash:{"command":"ls -la"}',
+      'Read:{}',
+      'Bash:{"command":"npm install"}',
+    ]);
+    expect(plan.groups?.map((group) => group.map((call) => call.function.arguments))).toEqual([
+      ['{"command":"ls -la"}', '{}'],
+      ['{"command":"npm install"}'],
     ]);
   });
 });

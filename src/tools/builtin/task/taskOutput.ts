@@ -11,6 +11,7 @@ import { BackgroundAgentManager } from '../../../agent/subagents/BackgroundAgent
 import { createTool } from '../../core/createTool.js';
 import type { ExecutionContext, ToolResult } from '../../types/index.js';
 import { ToolErrorType, ToolKind } from '../../types/index.js';
+import { ToolSchemas } from '../../validation/zodSchemas.js';
 import { BackgroundShellManager } from '../shell/BackgroundShellManager.js';
 
 /**
@@ -27,13 +28,11 @@ export const taskOutputTool = createTool({
 
   schema: z.object({
     task_id: z.string().min(1).describe('The task ID to get output from'),
-    block: z.boolean().default(true).describe('Whether to wait for completion'),
-    timeout: z
-      .number()
-      .min(0)
-      .max(600000)
-      .default(30000)
-      .describe('Max wait time in ms'),
+    block: ToolSchemas.flag({
+      defaultValue: true,
+      description: 'Whether to wait for completion',
+    }),
+    timeout: ToolSchemas.timeout(0, 600000, 30000).describe('Max wait time in ms'),
   }),
 
   description: {
@@ -104,8 +103,10 @@ export const taskOutputTool = createTool({
   category: 'Task',
   tags: ['task', 'output', 'background', 'shell', 'agent'],
 
-  extractSignatureContent: (params) => params.task_id,
-  abstractPermissionRule: () => '*',
+  preparePermissionMatcher: (params) => ({
+    signatureContent: params.task_id,
+    abstractRule: '*',
+  }),
 });
 
 /**

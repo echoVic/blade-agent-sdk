@@ -663,6 +663,7 @@ export const grepTool = createTool({
   name: 'Grep',
   displayName: '内容搜索',
   kind: ToolKind.ReadOnly,
+  maxResultSizeChars: 100_000, // ~100KB before externalization
 
   // Zod Schema 定义
   schema: z.object({
@@ -977,13 +978,8 @@ export const grepTool = createTool({
   category: '搜索工具',
   tags: ['search', 'grep', 'ripgrep', 'regex', 'text', 'fallback'],
 
-  /**
-   * 提取签名内容：返回搜索模式
-   */
-  extractSignatureContent: (params) => params.pattern,
-
-  /**
-   * 抽象权限规则：返回通配符模式
-   */
-  abstractPermissionRule: () => '*',
+  preparePermissionMatcher: (params) => ({
+    signatureContent: params.pattern,
+    abstractRule: '*',
+  }),
 });

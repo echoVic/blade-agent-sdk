@@ -287,6 +287,10 @@ export class BackgroundAgentManager {
       });
 
       const duration = Date.now() - startTime;
+      const wasCancelled =
+        lifecycleSignal.aborted ||
+        workSignal.aborted ||
+        this.sessionStore.loadSession(agentId)?.status === 'cancelled';
       const result: SubagentResult = loopResult.success
         ? {
             success: true,
@@ -306,20 +310,37 @@ export class BackgroundAgentManager {
             stats: { duration },
           };
 
-      this.sessionStore.markCompleted(
-        agentId,
-        {
-          success: result.success,
-          message: result.message,
-          error: result.error,
-        },
-        result.stats
-      );
+      if (wasCancelled && !result.success) {
+        this.sessionStore.updateSession(agentId, {
+          status: 'cancelled',
+          result: {
+            success: false,
+            message: result.message,
+            error: result.error,
+          },
+          stats: result.stats,
+          completedAt: Date.now(),
+        });
+      } else {
+        this.sessionStore.markCompleted(
+          agentId,
+          {
+            success: result.success,
+            message: result.message,
+            error: result.error,
+          },
+          result.stats
+        );
+      }
 
       // Write output to file for streaming access
       const session = this.sessionStore.loadSession(agentId);
       if (session?.outputFile) {
-        const output = JSON.stringify({ status: result.success ? 'completed' : 'failed', result }, null, 2);
+        const output = JSON.stringify(
+          { status: wasCancelled ? 'cancelled' : result.success ? 'completed' : 'failed', result },
+          null,
+          2,
+        );
         await writeFile(session.outputFile, output, 'utf-8').catch(() => {/* ignore write errors */});
       }
 
@@ -328,16 +349,33 @@ export class BackgroundAgentManager {
     } catch (error) {
       const duration = Date.now() - startTime;
       const errorMessage = error instanceof Error ? error.message : String(error);
+      const wasCancelled =
+        lifecycleSignal.aborted ||
+        workSignal.aborted ||
+        this.sessionStore.loadSession(agentId)?.status === 'cancelled';
 
-      this.sessionStore.markCompleted(
-        agentId,
-        {
-          success: false,
-          message: '',
-          error: errorMessage,
-        },
-        { duration }
-      );
+      if (wasCancelled) {
+        this.sessionStore.updateSession(agentId, {
+          status: 'cancelled',
+          result: {
+            success: false,
+            message: '',
+            error: errorMessage,
+          },
+          stats: { duration },
+          completedAt: Date.now(),
+        });
+      } else {
+        this.sessionStore.markCompleted(
+          agentId,
+          {
+            success: false,
+            message: '',
+            error: errorMessage,
+          },
+          { duration }
+        );
+      }
 
       this.logger.warn(`Background agent failed: ${agentId}`, error);
 

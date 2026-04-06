@@ -24,8 +24,13 @@ function createExecutor(options: {
     { type: 'content_delta'; delta: string } | { type: 'thinking_delta'; delta: string },
     ChatResponse
   >;
-  execute?: (toolName: string, params: unknown) => Promise<ToolResult>;
+  execute?: (
+    toolName: string,
+    params: unknown,
+    context?: unknown,
+  ) => Promise<ToolResult>;
   toolKinds?: Record<string, 'readonly' | 'write' | 'execute'>;
+  toolInterruptBehaviors?: Record<string, 'cancel' | 'block'>;
 }) {
   const execute = vi.fn(
     options.execute
@@ -59,7 +64,10 @@ function createExecutor(options: {
 
   const executionPipeline = {
     getRegistry: () => ({
-      get: (name: string) => ({ kind: options.toolKinds?.[name] ?? 'execute' }),
+      get: (name: string) => ({
+        kind: options.toolKinds?.[name] ?? 'execute',
+        interruptBehavior: options.toolInterruptBehaviors?.[name] ?? 'cancel',
+      }),
     }),
     execute,
   };
@@ -167,6 +175,151 @@ describe('StreamingToolExecutor', () => {
     expect(executionResults).toHaveLength(1);
     expect(order.indexOf('stream_end')).toBeLessThan(order.indexOf('after:ReadFile'));
     expect(order.indexOf('after:ReadFile')).toBeLessThan(order.indexOf('complete:ReadFile'));
+  });
+
+  it('emits unified tool execution updates while preserving legacy callbacks', async () => {
+    const updates: string[] = [];
+
+    const { executor, execute } = createExecutor({
+      streamChat: async function* () {
+        yield {
+          toolCalls: [
+            {
+              index: 0,
+              id: 'tool-1',
+              function: {
+                name: 'ReadFile',
+                arguments: '{}',
+              },
+            },
+          ],
+        };
+        yield { finishReason: 'tool_calls' };
+      },
+    });
+
+    const { executionResults } = await executor.collectAndExecute(
+      [{ role: 'user', content: 'read a file' }],
+      [{ name: 'ReadFile', description: 'reads', parameters: {} }],
+      undefined,
+      {
+        executionPipeline: executionPipelineFromMock(execute),
+        executionContext: {
+          sessionId: 'session-1',
+          userId: 'user-1',
+        },
+        onToolExecutionUpdate: async (update) => {
+          if (update.type === 'tool_ready') {
+            updates.push(`update:ready:${update.toolCall.function.name}`);
+          }
+          if (update.type === 'tool_started') {
+            updates.push(`update:started:${update.toolCall.function.name}`);
+          }
+          if (update.type === 'tool_result') {
+            updates.push(`update:result:${update.outcome.toolCall.function.name}`);
+          }
+          if (update.type === 'tool_completed') {
+            updates.push(`update:completed:${update.outcome.toolCall.function.name}`);
+          }
+        },
+        onToolReady: (toolCall) => {
+          updates.push(`legacy:ready:${toolCall.function.name}`);
+        },
+        onAfterToolExec: ({ toolCall }) => {
+          updates.push(`legacy:after:${toolCall.function.name}`);
+        },
+        onToolComplete: (toolCall) => {
+          updates.push(`legacy:complete:${toolCall.function.name}`);
+        },
+      },
+    );
+
+    expect(executionResults).toHaveLength(1);
+    expect(updates).toEqual([
+      'update:ready:ReadFile',
+      'legacy:ready:ReadFile',
+      'update:started:ReadFile',
+      'update:result:ReadFile',
+      'legacy:after:ReadFile',
+      'update:completed:ReadFile',
+      'legacy:complete:ReadFile',
+    ]);
+  });
+
+  it('forwards progress, output messages, and effects through the unified execution stream', async () => {
+    const updates: string[] = [];
+
+    const { executor, execute } = createExecutor({
+      streamChat: async function* () {
+        yield {
+          toolCalls: [
+            {
+              index: 0,
+              id: 'tool-1',
+              function: {
+                name: 'ReadFile',
+                arguments: '{}',
+              },
+            },
+          ],
+        };
+        yield { finishReason: 'tool_calls' };
+      },
+      execute: async (_toolName: string, _params: unknown, context?: unknown) => {
+        const runtimeContext = context as {
+          onProgress?: (message: string) => Promise<void>;
+          updateOutput?: (message: string) => Promise<void>;
+        } | undefined;
+        await runtimeContext?.onProgress?.('Scanning');
+        await runtimeContext?.updateOutput?.('Scan complete');
+        return {
+          success: true,
+          llmContent: 'done',
+          displayContent: 'done',
+          runtimePatch: {
+            scope: 'turn',
+            source: 'tool',
+            toolDiscovery: {
+              discover: ['ReadFile'],
+            },
+          },
+        };
+      },
+    });
+
+    await executor.collectAndExecute(
+      [{ role: 'user', content: 'read a file' }],
+      [{ name: 'ReadFile', description: 'reads', parameters: {} }],
+      undefined,
+      {
+        executionPipeline: executionPipelineFromMock(execute),
+        executionContext: {
+          sessionId: 'session-1',
+          userId: 'user-1',
+        },
+        onToolExecutionUpdate: async (update) => {
+          if (update.type === 'tool_progress') {
+            updates.push(`progress:${update.message}`);
+          }
+          if (update.type === 'tool_message') {
+            updates.push(`message:${update.message}`);
+          }
+          if (update.type === 'tool_runtime_patch') {
+            updates.push('runtimePatch');
+          }
+          if (update.type === 'tool_result') {
+            updates.push(`result:${update.outcome.toolCall.function.name}`);
+          }
+        },
+      },
+    );
+
+    expect(updates).toEqual([
+      'progress:Scanning',
+      'message:Scan complete',
+      'runtimePatch',
+      'result:ReadFile',
+    ]);
   });
 
   it('buffers results by tool_call index even when tools finish out of order and fires onAfterToolExec per-tool immediately', async () => {
@@ -410,7 +563,7 @@ describe('StreamingToolExecutor', () => {
     await tick();
 
     expect(streamHandler.streamResponse).toHaveBeenCalledTimes(1);
-    expect(onReady).toHaveBeenCalledTimes(2);
+    expect(onReady).toHaveBeenCalledTimes(1);
     expect(started).toEqual(['WriteA']);
 
     firstToolGate.resolve({
@@ -422,6 +575,7 @@ describe('StreamingToolExecutor', () => {
     const { executionResults } = await promise;
 
     expect(started).toEqual(['WriteA', 'WriteB']);
+    expect(onReady).toHaveBeenCalledTimes(2);
     expect(executionResults.map(({ toolCall }) => toolCall.function.name)).toEqual([
       'WriteA',
       'WriteB',
@@ -544,14 +698,139 @@ describe('StreamingToolExecutor', () => {
     await expect(promise).rejects.toThrow('maximum context length exceeded');
     expect(onAfter).toHaveBeenCalledTimes(1);
   });
+
+  it('lets block-interrupt tools finish after the outer signal aborts', async () => {
+    const toolGate = deferred<ToolResult>();
+    const controller = new AbortController();
+    let settled = false;
+
+    const { executor, execute } = createExecutor({
+      streamChat: async function* () {
+        yield {
+          toolCalls: [
+            {
+              index: 0,
+              id: 'tool-1',
+              function: {
+                name: 'BlockingTool',
+                arguments: '{}',
+              },
+            },
+          ],
+        };
+        while (!controller.signal.aborted) {
+          await tick();
+        }
+      },
+      execute: async () => toolGate.promise,
+      toolInterruptBehaviors: {
+        BlockingTool: 'block',
+      },
+    });
+
+    const promise = executor
+      .collectAndExecute(
+        [{ role: 'user', content: 'run blocking tool' }],
+        [{ name: 'BlockingTool', description: 'block', parameters: {} }],
+        controller.signal,
+        {
+          executionPipeline: executionPipelineFromMock(execute, {
+            BlockingTool: { interruptBehavior: 'block' },
+          }),
+          executionContext: {
+            sessionId: 'session-1',
+            userId: 'user-1',
+          },
+        },
+      )
+      .finally(() => {
+        settled = true;
+      });
+
+    await tick();
+    await tick();
+    expect(execute).toHaveBeenCalledTimes(1);
+
+    controller.abort();
+    await tick();
+
+    expect(settled).toBe(false);
+
+    toolGate.resolve({
+      success: true,
+      llmContent: 'finished',
+      displayContent: 'finished',
+    });
+
+    const result = await promise;
+    expect(result.executionResults).toHaveLength(1);
+    expect(result.executionResults[0].result.success).toBe(true);
+  });
+
+  it('forwards skillActivationPaths through the streaming execution path', async () => {
+    const execute = vi.fn(async (
+      _toolName: string,
+      _params: unknown,
+      context?: unknown,
+    ): Promise<ToolResult> => ({
+      success: true,
+      llmContent: 'done',
+      displayContent: 'done',
+      metadata: {
+        observedSkillActivationPaths: (context as { skillActivationPaths?: string[] } | undefined)?.skillActivationPaths,
+      },
+    }));
+
+    const { executor } = createExecutor({
+      streamChat: async function* () {
+        yield {
+          toolCalls: [
+            {
+              index: 0,
+              id: 'tool-1',
+              function: {
+                name: 'ReadFile',
+                arguments: '{}',
+              },
+            },
+          ],
+        };
+        yield { finishReason: 'tool_calls' };
+      },
+      execute,
+    });
+
+    const result = await executor.collectAndExecute(
+      [{ role: 'user', content: 'read file' }],
+      [{ name: 'ReadFile', description: 'read', parameters: {} }],
+      undefined,
+      {
+        executionPipeline: executionPipelineFromMock(execute),
+        executionContext: {
+          sessionId: 'session-1',
+          userId: 'user-1',
+          skillActivationPaths: ['/workspace/src/index.ts'],
+        },
+      },
+    );
+
+    expect(result.executionResults).toHaveLength(1);
+    expect(result.executionResults[0].result.metadata).toMatchObject({
+      observedSkillActivationPaths: ['/workspace/src/index.ts'],
+    });
+  });
 });
 
 function executionPipelineFromMock(
   execute: ReturnType<typeof vi.fn>,
+  toolConfigs?: Record<string, { kind?: 'readonly' | 'write' | 'execute'; interruptBehavior?: 'cancel' | 'block' }>,
 ) {
   return {
     getRegistry: () => ({
-      get: () => ({ kind: 'execute' }),
+      get: (name: string) => ({
+        kind: toolConfigs?.[name]?.kind ?? 'execute',
+        interruptBehavior: toolConfigs?.[name]?.interruptBehavior ?? 'cancel',
+      }),
     }),
     execute,
   } as never;

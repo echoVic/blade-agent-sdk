@@ -8,6 +8,12 @@ import type { ExecutionPipeline } from '../../tools/execution/ExecutionPipeline.
 import { HookRuntime } from '../../hooks/HookRuntime.js';
 import { PermissionMode } from '../../types/common.js';
 import { HookEvent } from '../../types/constants.js';
+import { ToolCatalog } from '../../tools/catalog/ToolCatalog.js';
+import { createTool } from '../../tools/core/createTool.js';
+import { ToolRegistry } from '../../tools/registry/ToolRegistry.js';
+import { ToolKind } from '../../tools/types/ToolTypes.js';
+import { z } from 'zod';
+import type { Message } from '../../services/ChatServiceInterface.js';
 
 // ===== Mock Factories =====
 
@@ -65,6 +71,7 @@ function createMockModelManager(overrides: Partial<Record<string, unknown>> = {}
 
 function createMockPipeline(): ExecutionPipeline {
   return {
+    getCatalog: () => undefined,
     getRegistry: () => ({
       getAll: () => [],
       getFunctionDeclarationsByMode: () => [],
@@ -235,6 +242,7 @@ describe('LoopRunner', () => {
       } as unknown as MockModelManager;
 
       const pipeline = {
+        getCatalog: () => undefined,
         getRegistry: () => ({
           getAll: () => [],
           getFunctionDeclarationsByMode: () => [
@@ -292,6 +300,86 @@ describe('LoopRunner', () => {
       expect(chatCalls[1]).toEqual([
         expect.objectContaining({ name: 'Read' }),
       ]);
+    });
+
+    it('applies toolSourcePolicy when exposing tools for a turn', () => {
+      const mm = createMockModelManager();
+      const registry = new ToolRegistry();
+      const catalog = new ToolCatalog(registry);
+
+      catalog.register(
+        createTool({
+          name: 'BuiltinRead',
+          displayName: 'Builtin Read',
+          kind: ToolKind.ReadOnly,
+          description: { short: 'Builtin tool' },
+          schema: z.object({}),
+          execute: async () => ({
+            success: true,
+            llmContent: 'builtin',
+            displayContent: 'builtin',
+          }),
+        }),
+        {
+          kind: 'builtin',
+          trustLevel: 'trusted',
+          sourceId: 'builtin',
+        },
+      );
+
+      catalog.registerMcpTool(
+        createTool({
+          name: 'RemoteRead',
+          displayName: 'Remote Read',
+          kind: ToolKind.ReadOnly,
+          description: { short: 'Remote tool' },
+          schema: z.object({}),
+          execute: async () => ({
+            success: true,
+            llmContent: 'remote',
+            displayContent: 'remote',
+          }),
+        }),
+        {
+          kind: 'mcp',
+          trustLevel: 'remote',
+          sourceId: 'remote-server',
+        },
+      );
+
+      const pipeline = {
+        getRegistry: () => registry,
+        getCatalog: () => catalog,
+        execute: vi.fn(async (toolName: string) => ({
+          success: true,
+          llmContent: `Result of ${toolName}`,
+          displayContent: `Result of ${toolName}`,
+        })),
+      } as unknown as ExecutionPipeline;
+
+      const runner = new LoopRunner(
+        baseConfig,
+        {
+          toolSourcePolicy: {
+            allowedSources: ['builtin'],
+            allowedTrustLevels: ['trusted'],
+          },
+        },
+        mm,
+        pipeline,
+      );
+
+      const loopState = (
+        runner as unknown as {
+          createLoopState: (
+            context: ChatContext,
+            messages: Message[],
+            permissionMode: PermissionMode,
+          ) => { getTools(): Array<{ name: string }> };
+        }
+      ).createLoopState(createContext(), [], PermissionMode.DEFAULT);
+
+      expect(loopState.getTools().map((tool) => tool.name)).toEqual(['BuiltinRead']);
     });
 
     it('caches skill activation analysis until the message list changes', async () => {
@@ -355,6 +443,7 @@ describe('LoopRunner', () => {
       } as unknown as MockModelManager;
 
       const pipeline = {
+        getCatalog: () => undefined,
         getRegistry: () => ({
           getAll: () => [],
           getFunctionDeclarationsByMode: () => [
@@ -389,6 +478,114 @@ describe('LoopRunner', () => {
 
       expect(result.success).toBe(true);
       expect(analyzeFilesSpy).toHaveBeenCalledTimes(2);
+    });
+
+    it('loads deferred tools on the next turn after DiscoverTools activation', async () => {
+      const chatCalls: Array<Array<{ name: string }>> = [];
+      const chatMessages: Message[][] = [];
+      const chatFn = vi.fn(async (incomingMessages, tools) => {
+        chatMessages.push(incomingMessages as Message[]);
+        const toolNames = (tools as Array<{ name: string }>).map((tool) => tool.name);
+        chatCalls.push(tools as Array<{ name: string }>);
+
+        if (toolNames.includes('DiscoverTools') && !toolNames.includes('HeavyInspect')) {
+          return {
+            content: 'Load hidden tool',
+            toolCalls: [{
+              id: 'discover-call',
+              type: 'function' as const,
+              function: { name: 'DiscoverTools', arguments: '{"query":"heavy"}' },
+            }],
+            usage: { promptTokens: 100, completionTokens: 50, totalTokens: 150 },
+          };
+        }
+
+        return {
+          content: 'Done',
+          toolCalls: [],
+          usage: { promptTokens: 100, completionTokens: 50, totalTokens: 150 },
+        };
+      });
+
+      const mm = createMockModelManager();
+      mm.getChatService = () => ({
+        chat: chatFn,
+        streamChat: vi.fn(async function* () {}),
+        getConfig: () => ({
+          model: 'test-model',
+          maxContextTokens: 128000,
+          apiKey: 'test-key',
+          baseUrl: 'https://test.com',
+        }),
+        updateConfig: vi.fn(() => {}),
+      }) as never;
+
+      const readTool = createTool({
+        name: 'Read',
+        displayName: 'Read',
+        kind: ToolKind.ReadOnly,
+        description: { short: 'Read tool' },
+        schema: z.object({}),
+        execute: async () => ({ success: true, llmContent: '', displayContent: '' }),
+      });
+      const discoverTool = createTool({
+        name: 'DiscoverTools',
+        displayName: 'Discover Tools',
+        kind: ToolKind.ReadOnly,
+        description: { short: 'Discover hidden tools' },
+        schema: z.object({ query: z.string() }),
+        execute: async () => ({ success: true, llmContent: '', displayContent: '' }),
+      });
+      const heavyInspectTool = createTool({
+        name: 'HeavyInspect',
+        displayName: 'Heavy Inspect',
+        kind: ToolKind.Execute,
+        description: { short: 'Heavy inspection tool' },
+        exposure: { mode: 'deferred', discoveryHint: 'Use for heavyweight inspection.' },
+        schema: z.object({}),
+        execute: async () => ({ success: true, llmContent: '', displayContent: '' }),
+      });
+
+      const pipeline = {
+        getCatalog: () => undefined,
+        getRegistry: () => ({
+          getAll: () => [readTool, discoverTool, heavyInspectTool],
+          getFunctionDeclarationsByMode: () => [],
+          get: (name: string) => ({ kind: 'execute', name }),
+        }),
+        execute: vi.fn(async (toolName: string) => {
+          if (toolName === 'DiscoverTools') {
+            return {
+              success: true,
+              llmContent: 'Loaded hidden tool',
+              displayContent: 'Loaded hidden tool',
+              runtimePatch: {
+                scope: 'session',
+                source: 'tool',
+                toolDiscovery: {
+                  discover: ['HeavyInspect'],
+                },
+              },
+            };
+          }
+          return {
+            success: true,
+            llmContent: `Result of ${toolName}`,
+            displayContent: `Result of ${toolName}`,
+          };
+        }),
+      } as unknown as ExecutionPipeline;
+
+      const runner = new LoopRunner(baseConfig, baseOptions, mm, pipeline);
+      const result = await runner.runLoop('Hello', createContext());
+
+      expect(result.success).toBe(true);
+      expect(chatCalls[0].map((tool) => tool.name)).toEqual(
+        expect.arrayContaining(['DiscoverTools', 'Read']),
+      );
+      expect(chatCalls[1].map((tool) => tool.name)).toEqual(
+        expect.arrayContaining(['DiscoverTools', 'HeavyInspect', 'Read']),
+      );
     });
 
     it('refreshes the chat service on the next turn after model switch', async () => {
@@ -448,6 +645,7 @@ describe('LoopRunner', () => {
       } as unknown as MockModelManager;
 
       const pipeline = {
+        getCatalog: () => undefined,
         getRegistry: () => ({
           getAll: () => [],
           getFunctionDeclarationsByMode: () => [
@@ -526,6 +724,7 @@ describe('LoopRunner', () => {
       } as unknown as MockModelManager;
 
       const pipeline = {
+        getCatalog: () => undefined,
         getRegistry: () => ({
           getAll: () => [],
           getFunctionDeclarationsByMode: () => [
@@ -537,6 +736,85 @@ describe('LoopRunner', () => {
           success: true,
           llmContent: 'Legacy result',
           displayContent: 'Legacy result',
+          metadata: {
+            allowedTools: ['Read'],
+            modelId: 'model-b',
+            skillName: 'reader',
+            basePath: '/tmp/reader',
+          },
+        })),
+      } as unknown as ExecutionPipeline;
+
+      const runner = new LoopRunner(baseConfig, baseOptions, mm, pipeline);
+      const result = await runner.runLoop('Hello', createContext());
+
+      expect(result.success).toBe(true);
+      expect(runner.skillContext).toBeUndefined();
+      expect(switchModelIfNeeded).not.toHaveBeenCalled();
+    });
+
+    it('does not derive runtime state from legacy metadata on Skill tools', async () => {
+      const chatFn = vi.fn(async () => ({
+        content: 'Done',
+        toolCalls: [{
+          id: 'skill-call',
+          type: 'function' as const,
+          function: { name: 'Skill', arguments: '{}' },
+        }],
+        usage: { promptTokens: 100, completionTokens: 50, totalTokens: 150 },
+      }))
+        .mockResolvedValueOnce({
+          content: 'Triggering legacy skill metadata',
+          toolCalls: [{
+            id: 'skill-call',
+            type: 'function' as const,
+            function: { name: 'Skill', arguments: '{}' },
+          }],
+          usage: { promptTokens: 100, completionTokens: 50, totalTokens: 150 },
+        })
+        .mockResolvedValueOnce({
+          content: 'Done',
+          toolCalls: [],
+          usage: { promptTokens: 100, completionTokens: 50, totalTokens: 150 },
+        });
+
+      const switchModelIfNeeded = vi.fn(async () => {});
+      const mm = {
+        getChatService: () => ({
+          chat: chatFn,
+          chatWithRetryEvents: createRetryEventsMock(chatFn),
+          streamChat: vi.fn(async function* () {}),
+          getConfig: () => ({
+            model: 'test-model',
+            maxContextTokens: 128000,
+            apiKey: 'test-key',
+            baseUrl: 'https://test.com',
+          }),
+          updateConfig: vi.fn(() => {}),
+        }),
+        getContextManager: () => ({
+          saveMessage: vi.fn(async () => 'uuid-1'),
+          saveToolUse: vi.fn(async () => 'uuid-2'),
+          saveToolResult: vi.fn(async () => 'uuid-3'),
+          saveCompaction: vi.fn(async () => {}),
+        }),
+        getMaxContextTokens: () => 128000,
+        switchModelIfNeeded,
+      } as unknown as MockModelManager;
+
+      const pipeline = {
+        getCatalog: () => undefined,
+        getRegistry: () => ({
+          getAll: () => [],
+          getFunctionDeclarationsByMode: () => [
+            { name: 'Skill', description: 'Load a skill', parameters: {} },
+          ],
+          get: (name: string) => ({ kind: 'execute', name }),
+        }),
+        execute: vi.fn(async () => ({
+          success: true,
+          llmContent: 'Legacy skill result',
+          displayContent: 'Legacy skill result',
           metadata: {
             allowedTools: ['Read'],
             modelId: 'model-b',
@@ -604,6 +882,7 @@ describe('LoopRunner', () => {
       } as unknown as MockModelManager;
 
       const pipeline = {
+        getCatalog: () => undefined,
         getRegistry: () => ({
           getAll: () => [],
           getFunctionDeclarationsByMode: () => [
@@ -694,6 +973,7 @@ describe('LoopRunner', () => {
       } as unknown as MockModelManager;
 
       const pipeline = {
+        getCatalog: () => undefined,
         getRegistry: () => ({
           getAll: () => [],
           getFunctionDeclarationsByMode: () => [
@@ -788,6 +1068,7 @@ describe('LoopRunner', () => {
 
       let skillExecutions = 0;
       const pipeline = {
+        getCatalog: () => undefined,
         getRegistry: () => ({
           getAll: () => [],
           getFunctionDeclarationsByMode: () => [
@@ -911,6 +1192,7 @@ describe('LoopRunner', () => {
       } as unknown as MockModelManager;
 
       const pipeline = {
+        getCatalog: () => undefined,
         getRegistry: () => ({
           getAll: () => [],
           getFunctionDeclarationsByMode: () => [
@@ -1004,6 +1286,7 @@ describe('LoopRunner', () => {
       } as unknown as MockModelManager;
 
       const pipeline = {
+        getCatalog: () => undefined,
         getRegistry: () => ({
           getAll: () => [],
           getFunctionDeclarationsByMode: () => [
@@ -1097,6 +1380,7 @@ describe('LoopRunner', () => {
       } as unknown as MockModelManager;
 
       const pipeline = {
+        getCatalog: () => undefined,
         getRegistry: () => ({
           getAll: () => [],
           getFunctionDeclarationsByMode: () => [
@@ -1212,6 +1496,7 @@ describe('LoopRunner', () => {
 
       let callCount = 0;
       const pipeline = {
+        getCatalog: () => undefined,
         getRegistry: () => ({
           getAll: () => [],
           getFunctionDeclarationsByMode: () => {
@@ -1266,6 +1551,708 @@ describe('LoopRunner', () => {
           SKILL_MODE: 'enabled',
         }),
       ]);
+    });
+
+    it('merges runtime system prompt appends from multiple runtime patches in application order', async () => {
+      const chatFn = vi.fn(async (_messages, tools = []) => {
+        const toolNames = (tools as Array<{ name: string }>).map((tool) => tool.name);
+        if (toolNames.includes('PatchA')) {
+          return {
+            content: 'Apply patch A',
+            toolCalls: [{
+              id: 'patch-a-call',
+              type: 'function' as const,
+              function: { name: 'PatchA', arguments: '{}' },
+            }],
+            usage: { promptTokens: 100, completionTokens: 50, totalTokens: 150 },
+          };
+        }
+
+        if (toolNames.includes('PatchB')) {
+          return {
+            content: 'Apply patch B',
+            toolCalls: [{
+              id: 'patch-b-call',
+              type: 'function' as const,
+              function: { name: 'PatchB', arguments: '{}' },
+            }],
+            usage: { promptTokens: 100, completionTokens: 50, totalTokens: 150 },
+          };
+        }
+
+        return {
+          content: 'Done',
+          toolCalls: [],
+          usage: { promptTokens: 100, completionTokens: 50, totalTokens: 150 },
+        };
+      })
+        .mockResolvedValueOnce({
+          content: 'Apply patch A',
+          toolCalls: [{
+            id: 'patch-a-call',
+            type: 'function' as const,
+            function: { name: 'PatchA', arguments: '{}' },
+          }],
+          usage: { promptTokens: 100, completionTokens: 50, totalTokens: 150 },
+        })
+        .mockResolvedValueOnce({
+          content: 'Apply patch B',
+          toolCalls: [{
+            id: 'patch-b-call',
+            type: 'function' as const,
+            function: { name: 'PatchB', arguments: '{}' },
+          }],
+          usage: { promptTokens: 100, completionTokens: 50, totalTokens: 150 },
+        })
+        .mockResolvedValueOnce({
+          content: 'Done',
+          toolCalls: [],
+          usage: { promptTokens: 100, completionTokens: 50, totalTokens: 150 },
+        });
+
+      const mm = {
+        getChatService: () => ({
+          chat: chatFn,
+          chatWithRetryEvents: createRetryEventsMock(chatFn),
+          streamChat: vi.fn(async function* () {}),
+          getConfig: () => ({
+            model: 'test-model',
+            maxContextTokens: 128000,
+            apiKey: 'test-key',
+            baseUrl: 'https://test.com',
+          }),
+          updateConfig: vi.fn(() => {}),
+        }),
+        getContextManager: () => ({
+          saveMessage: vi.fn(async () => 'uuid-1'),
+          saveToolUse: vi.fn(async () => 'uuid-2'),
+          saveToolResult: vi.fn(async () => 'uuid-3'),
+          saveCompaction: vi.fn(async () => {}),
+        }),
+        getMaxContextTokens: () => 128000,
+        switchModelIfNeeded: vi.fn(async () => {}),
+      } as unknown as MockModelManager;
+
+      let callCount = 0;
+      const pipeline = {
+        getCatalog: () => undefined,
+        getRegistry: () => ({
+          getAll: () => [],
+          getFunctionDeclarationsByMode: () => {
+            callCount += 1;
+            if (callCount === 1) {
+              return [{ name: 'PatchA', description: 'Patch A', parameters: {} }];
+            }
+            if (callCount === 2) {
+              return [{ name: 'PatchB', description: 'Patch B', parameters: {} }];
+            }
+            return [];
+          },
+          get: (name: string) => ({ kind: 'execute', name }),
+        }),
+        execute: vi.fn(async (toolName: string) => ({
+          success: true,
+          llmContent: `${toolName} applied`,
+          displayContent: `${toolName} applied`,
+          runtimePatch: {
+            scope: 'session',
+            source: 'tool',
+            systemPromptAppend: toolName === 'PatchA' ? 'PATCH A' : 'PATCH B',
+          },
+        })),
+      } as unknown as ExecutionPipeline;
+
+      const runner = new LoopRunner(
+        baseConfig,
+        {
+          systemPrompt: 'BASE PROMPT',
+        },
+        mm,
+        pipeline,
+      );
+
+      const result = await runner.runLoop('Hello', createContext());
+      expect(result.success).toBe(true);
+
+      const prompt = await runner.buildSystemPromptOnDemand();
+      expect(prompt).toBe('BASE PROMPT\n\n---\n\nPATCH A\n\n---\n\nPATCH B');
+    });
+
+    it('merges runtime environment overlays and records runtime patch provenance', async () => {
+      const observedEnvironments: Array<Record<string, string> | undefined> = [];
+      const chatFn = vi.fn(async (_messages, tools = []) => {
+        const toolNames = (tools as Array<{ name: string }>).map((tool) => tool.name);
+        if (toolNames.includes('PatchEnvA')) {
+          return {
+            content: 'Apply env patch A',
+            toolCalls: [{
+              id: 'patch-env-a-call',
+              type: 'function' as const,
+              function: { name: 'PatchEnvA', arguments: '{}' },
+            }],
+            usage: { promptTokens: 100, completionTokens: 50, totalTokens: 150 },
+          };
+        }
+
+        if (toolNames.includes('PatchEnvB')) {
+          return {
+            content: 'Apply env patch B',
+            toolCalls: [{
+              id: 'patch-env-b-call',
+              type: 'function' as const,
+              function: { name: 'PatchEnvB', arguments: '{}' },
+            }],
+            usage: { promptTokens: 100, completionTokens: 50, totalTokens: 150 },
+          };
+        }
+
+        if (toolNames.includes('EnvTool')) {
+          return {
+            content: 'Inspect env',
+            toolCalls: [{
+              id: 'env-tool-call',
+              type: 'function' as const,
+              function: { name: 'EnvTool', arguments: '{}' },
+            }],
+            usage: { promptTokens: 100, completionTokens: 50, totalTokens: 150 },
+          };
+        }
+
+        return {
+          content: 'Done',
+          toolCalls: [],
+          usage: { promptTokens: 100, completionTokens: 50, totalTokens: 150 },
+        };
+      })
+        .mockResolvedValueOnce({
+          content: 'Apply env patch A',
+          toolCalls: [{
+            id: 'patch-env-a-call',
+            type: 'function' as const,
+            function: { name: 'PatchEnvA', arguments: '{}' },
+          }],
+          usage: { promptTokens: 100, completionTokens: 50, totalTokens: 150 },
+        })
+        .mockResolvedValueOnce({
+          content: 'Apply env patch B',
+          toolCalls: [{
+            id: 'patch-env-b-call',
+            type: 'function' as const,
+            function: { name: 'PatchEnvB', arguments: '{}' },
+          }],
+          usage: { promptTokens: 100, completionTokens: 50, totalTokens: 150 },
+        })
+        .mockResolvedValueOnce({
+          content: 'Inspect env',
+          toolCalls: [{
+            id: 'env-tool-call',
+            type: 'function' as const,
+            function: { name: 'EnvTool', arguments: '{}' },
+          }],
+          usage: { promptTokens: 100, completionTokens: 50, totalTokens: 150 },
+        })
+        .mockResolvedValueOnce({
+          content: 'Done',
+          toolCalls: [],
+          usage: { promptTokens: 100, completionTokens: 50, totalTokens: 150 },
+        });
+
+      const saveToolUse = vi.fn()
+        .mockResolvedValueOnce('tool-use-a')
+        .mockResolvedValueOnce('tool-use-b')
+        .mockResolvedValueOnce('tool-use-env');
+
+      const mm = {
+        getChatService: () => ({
+          chat: chatFn,
+          chatWithRetryEvents: createRetryEventsMock(chatFn),
+          streamChat: vi.fn(async function* () {}),
+          getConfig: () => ({
+            model: 'test-model',
+            maxContextTokens: 128000,
+            apiKey: 'test-key',
+            baseUrl: 'https://test.com',
+          }),
+          updateConfig: vi.fn(() => {}),
+        }),
+        getContextManager: () => ({
+          saveMessage: vi.fn(async () => 'uuid-1'),
+          saveToolUse,
+          saveToolResult: vi.fn(async () => 'uuid-3'),
+          saveCompaction: vi.fn(async () => {}),
+        }),
+        getMaxContextTokens: () => 128000,
+        switchModelIfNeeded: vi.fn(async () => {}),
+      } as unknown as MockModelManager;
+
+      let callCount = 0;
+      const pipeline = {
+        getCatalog: () => undefined,
+        getRegistry: () => ({
+          getAll: () => [],
+          getFunctionDeclarationsByMode: () => {
+            callCount += 1;
+            if (callCount === 1) {
+              return [{ name: 'PatchEnvA', description: 'Patch env A', parameters: {} }];
+            }
+            if (callCount === 2) {
+              return [{ name: 'PatchEnvB', description: 'Patch env B', parameters: {} }];
+            }
+            if (callCount === 3) {
+              return [{ name: 'EnvTool', description: 'Inspect env', parameters: {} }];
+            }
+            return [];
+          },
+          get: (name: string) => ({ kind: 'execute', name }),
+        }),
+        execute: vi.fn(async (
+          toolName: string,
+          _params: Record<string, unknown>,
+          executionContext: { contextSnapshot?: { environment?: Record<string, string> } },
+        ) => {
+          if (toolName === 'PatchEnvA') {
+            return {
+              success: true,
+              llmContent: 'Patch env A applied',
+              displayContent: 'Patch env A applied',
+              runtimePatch: {
+                scope: 'session',
+                source: 'tool',
+                environment: {
+                  ENV_A: '1',
+                  SHARED_ENV: 'a',
+                },
+              },
+            };
+          }
+
+          if (toolName === 'PatchEnvB') {
+            return {
+              success: true,
+              llmContent: 'Patch env B applied',
+              displayContent: 'Patch env B applied',
+              runtimePatch: {
+                scope: 'session',
+                source: 'tool',
+                environment: {
+                  ENV_B: '2',
+                  SHARED_ENV: 'b',
+                },
+              },
+            };
+          }
+
+          observedEnvironments.push(executionContext.contextSnapshot?.environment);
+          return {
+            success: true,
+            llmContent: 'Environment inspected',
+            displayContent: 'Environment inspected',
+          };
+        }),
+      } as unknown as ExecutionPipeline;
+
+      const runner = new LoopRunner(baseConfig, baseOptions, mm, pipeline);
+      const result = await runner.runLoop('Hello', createContext());
+
+      expect(result.success).toBe(true);
+      expect(observedEnvironments).toEqual([
+        expect.objectContaining({
+          ENV_A: '1',
+          ENV_B: '2',
+          SHARED_ENV: 'b',
+        }),
+      ]);
+      expect(
+        (runner as unknown as {
+          getRuntimePatchApplications: () => Array<{
+            provenance: { toolName: string; toolCallId: string; toolUseUuid: string | null };
+          }>;
+        }).getRuntimePatchApplications(),
+      ).toEqual([
+        expect.objectContaining({
+          provenance: expect.objectContaining({
+            toolName: 'PatchEnvA',
+            toolCallId: 'patch-env-a-call',
+            toolUseUuid: 'tool-use-a',
+          }),
+        }),
+        expect.objectContaining({
+          provenance: expect.objectContaining({
+            toolName: 'PatchEnvB',
+            toolCallId: 'patch-env-b-call',
+            toolUseUuid: 'tool-use-b',
+          }),
+        }),
+      ]);
+    });
+
+    it('applies ToolResult.contextPatch to subsequent tool executions in the same loop', async () => {
+      const observedPageIds: Array<string | undefined> = [];
+      const chatFn = vi.fn(async (_messages, tools = []) => {
+        const toolNames = (tools as Array<{ name: string }>).map((tool) => tool.name);
+        if (toolNames.includes('BrowserBootstrap')) {
+          return {
+            content: 'Bootstrap browser context',
+            toolCalls: [{
+              id: 'bootstrap-call',
+              type: 'function' as const,
+              function: { name: 'BrowserBootstrap', arguments: '{}' },
+            }],
+            usage: { promptTokens: 100, completionTokens: 50, totalTokens: 150 },
+          };
+        }
+
+        return {
+          content: 'Inspect browser context',
+          toolCalls: [{
+            id: 'inspect-call',
+            type: 'function' as const,
+            function: { name: 'BrowserInspect', arguments: '{}' },
+          }],
+          usage: { promptTokens: 100, completionTokens: 50, totalTokens: 150 },
+        };
+      })
+        .mockResolvedValueOnce({
+          content: 'Bootstrap browser context',
+          toolCalls: [{
+            id: 'bootstrap-call',
+            type: 'function' as const,
+            function: { name: 'BrowserBootstrap', arguments: '{}' },
+          }],
+          usage: { promptTokens: 100, completionTokens: 50, totalTokens: 150 },
+        })
+        .mockResolvedValueOnce({
+          content: 'Inspect browser context',
+          toolCalls: [{
+            id: 'inspect-call',
+            type: 'function' as const,
+            function: { name: 'BrowserInspect', arguments: '{}' },
+          }],
+          usage: { promptTokens: 100, completionTokens: 50, totalTokens: 150 },
+        })
+        .mockResolvedValueOnce({
+          content: 'Done',
+          toolCalls: [],
+          usage: { promptTokens: 100, completionTokens: 50, totalTokens: 150 },
+        });
+
+      const mm = {
+        getChatService: () => ({
+          chat: chatFn,
+          chatWithRetryEvents: createRetryEventsMock(chatFn),
+          streamChat: vi.fn(async function* () {}),
+          getConfig: () => ({
+            model: 'test-model',
+            maxContextTokens: 128000,
+            apiKey: 'test-key',
+            baseUrl: 'https://test.com',
+          }),
+          updateConfig: vi.fn(() => {}),
+        }),
+        getContextManager: () => ({
+          saveMessage: vi.fn(async () => 'uuid-1'),
+          saveToolUse: vi.fn(async () => 'uuid-2'),
+          saveToolResult: vi.fn(async () => 'uuid-3'),
+          saveCompaction: vi.fn(async () => {}),
+        }),
+        getMaxContextTokens: () => 128000,
+        switchModelIfNeeded: vi.fn(async () => {}),
+      } as unknown as MockModelManager;
+
+      let callCount = 0;
+      const pipeline = {
+        getCatalog: () => undefined,
+        getRegistry: () => ({
+          getAll: () => [],
+          getFunctionDeclarationsByMode: () => {
+            callCount += 1;
+            if (callCount === 1) {
+              return [{ name: 'BrowserBootstrap', description: 'Bootstrap browser context', parameters: {} }];
+            }
+            return [{ name: 'BrowserInspect', description: 'Inspect browser context', parameters: {} }];
+          },
+          get: (name: string) => ({ kind: 'execute', name }),
+        }),
+        execute: vi.fn(async (
+          toolName: string,
+          _params: Record<string, unknown>,
+          executionContext: { contextSnapshot?: { context?: { capabilities?: { browser?: { pageId?: string } } } } },
+        ) => {
+          if (toolName === 'BrowserBootstrap') {
+            return {
+              success: true,
+              llmContent: 'Browser bootstrapped',
+              displayContent: 'Browser bootstrapped',
+              contextPatch: {
+                scope: 'session',
+                context: {
+                  capabilities: {
+                    browser: {
+                      pageId: 'page-123',
+                    },
+                  },
+                },
+              },
+            };
+          }
+
+          observedPageIds.push(
+            executionContext.contextSnapshot?.context?.capabilities?.browser?.pageId,
+          );
+          return {
+            success: true,
+            llmContent: 'Browser inspected',
+            displayContent: 'Browser inspected',
+          };
+        }),
+      } as unknown as ExecutionPipeline;
+
+      const runner = new LoopRunner(baseConfig, baseOptions, mm, pipeline);
+      const result = await runner.runLoop('Hello', createContext());
+
+      expect(result.success).toBe(true);
+      expect(observedPageIds).toEqual(['page-123']);
+    });
+
+    it('persists ToolResult.newMessages after the tool result in session storage order', async () => {
+      const chatFn = vi.fn(async () => ({
+        content: 'Done',
+        toolCalls: [{
+          id: 'skill-call',
+          type: 'function' as const,
+          function: { name: 'Skill', arguments: '{}' },
+        }],
+        usage: { promptTokens: 100, completionTokens: 50, totalTokens: 150 },
+      }))
+        .mockResolvedValueOnce({
+          content: 'Activate skill',
+          toolCalls: [{
+            id: 'skill-call',
+            type: 'function' as const,
+            function: { name: 'Skill', arguments: '{}' },
+          }],
+          usage: { promptTokens: 100, completionTokens: 50, totalTokens: 150 },
+        })
+        .mockResolvedValueOnce({
+          content: 'Done',
+          toolCalls: [],
+          usage: { promptTokens: 100, completionTokens: 50, totalTokens: 150 },
+        });
+
+      const saveMessage = vi.fn(async () => 'msg-uuid');
+      const saveToolResult = vi.fn(async () => 'tool-result-uuid');
+      const mm = {
+        getChatService: () => ({
+          chat: chatFn,
+          chatWithRetryEvents: createRetryEventsMock(chatFn),
+          streamChat: vi.fn(async function* () {}),
+          getConfig: () => ({
+            model: 'test-model',
+            maxContextTokens: 128000,
+            apiKey: 'test-key',
+            baseUrl: 'https://test.com',
+          }),
+          updateConfig: vi.fn(() => {}),
+        }),
+        getContextManager: () => ({
+          saveMessage,
+          saveToolUse: vi.fn(async () => 'uuid-2'),
+          saveToolResult,
+          saveCompaction: vi.fn(async () => {}),
+        }),
+        getMaxContextTokens: () => 128000,
+        switchModelIfNeeded: vi.fn(async () => {}),
+      } as unknown as MockModelManager;
+
+      const pipeline = {
+        getCatalog: () => undefined,
+        getRegistry: () => ({
+          getAll: () => [],
+          getFunctionDeclarationsByMode: () => [
+            { name: 'Skill', description: 'Load a skill', parameters: {} },
+          ],
+          get: (name: string) => ({ kind: 'execute', name }),
+        }),
+        execute: vi.fn(async () => ({
+          success: true,
+          llmContent: 'Skill activated',
+          displayContent: 'Skill activated',
+          newMessages: [
+            { role: 'assistant', content: 'Injected assistant context' },
+            { role: 'system', content: 'Injected system context' },
+          ],
+        })),
+      } as unknown as ExecutionPipeline;
+
+      const runner = new LoopRunner(baseConfig, baseOptions, mm, pipeline);
+      const result = await runner.runLoop('Hello', createContext({ sessionId: 'sess-1' }));
+
+      expect(result.success).toBe(true);
+      expect(saveToolResult).toHaveBeenCalled();
+      expect(saveMessage).toHaveBeenCalledWith(
+        'sess-1',
+        'assistant',
+        'Injected assistant context',
+        'tool-result-uuid',
+        undefined,
+        undefined,
+      );
+      expect(saveMessage).toHaveBeenCalledWith(
+        'sess-1',
+        'system',
+        'Injected system context',
+        'msg-uuid',
+        undefined,
+        undefined,
+      );
+    });
+
+    it('consumes ToolResult.effects for context patches and injected messages', async () => {
+      const observedPageIds: Array<string | undefined> = [];
+      const saveMessage = vi.fn(async () => 'msg-uuid');
+      const chatFn = vi.fn(async (_messages, tools = []) => {
+        const toolNames = (tools as Array<{ name: string }>).map((tool) => tool.name);
+        if (toolNames.includes('BrowserBootstrap')) {
+          return {
+            content: 'Bootstrap browser context',
+            toolCalls: [{
+              id: 'bootstrap-call',
+              type: 'function' as const,
+              function: { name: 'BrowserBootstrap', arguments: '{}' },
+            }],
+            usage: { promptTokens: 100, completionTokens: 50, totalTokens: 150 },
+          };
+        }
+
+        return {
+          content: 'Inspect browser context',
+          toolCalls: [{
+            id: 'inspect-call',
+            type: 'function' as const,
+            function: { name: 'BrowserInspect', arguments: '{}' },
+          }],
+          usage: { promptTokens: 100, completionTokens: 50, totalTokens: 150 },
+        };
+      })
+        .mockResolvedValueOnce({
+          content: 'Bootstrap browser context',
+          toolCalls: [{
+            id: 'bootstrap-call',
+            type: 'function' as const,
+            function: { name: 'BrowserBootstrap', arguments: '{}' },
+          }],
+          usage: { promptTokens: 100, completionTokens: 50, totalTokens: 150 },
+        })
+        .mockResolvedValueOnce({
+          content: 'Inspect browser context',
+          toolCalls: [{
+            id: 'inspect-call',
+            type: 'function' as const,
+            function: { name: 'BrowserInspect', arguments: '{}' },
+          }],
+          usage: { promptTokens: 100, completionTokens: 50, totalTokens: 150 },
+        })
+        .mockResolvedValueOnce({
+          content: 'Done',
+          toolCalls: [],
+          usage: { promptTokens: 100, completionTokens: 50, totalTokens: 150 },
+        });
+
+      const mm = {
+        getChatService: () => ({
+          chat: chatFn,
+          chatWithRetryEvents: createRetryEventsMock(chatFn),
+          streamChat: vi.fn(async function* () {}),
+          getConfig: () => ({
+            model: 'test-model',
+            maxContextTokens: 128000,
+            apiKey: 'test-key',
+            baseUrl: 'https://test.com',
+          }),
+          updateConfig: vi.fn(() => {}),
+        }),
+        getContextManager: () => ({
+          saveMessage,
+          saveToolUse: vi.fn(async () => 'uuid-2'),
+          saveToolResult: vi.fn(async () => 'tool-result-uuid'),
+          saveCompaction: vi.fn(async () => {}),
+        }),
+        getMaxContextTokens: () => 128000,
+        switchModelIfNeeded: vi.fn(async () => {}),
+      } as unknown as MockModelManager;
+
+      let callCount = 0;
+      const pipeline = {
+        getCatalog: () => undefined,
+        getRegistry: () => ({
+          getAll: () => [],
+          getFunctionDeclarationsByMode: () => {
+            callCount += 1;
+            if (callCount === 1) {
+              return [{ name: 'BrowserBootstrap', description: 'Bootstrap browser context', parameters: {} }];
+            }
+            return [{ name: 'BrowserInspect', description: 'Inspect browser context', parameters: {} }];
+          },
+          get: (name: string) => ({ kind: 'execute', name }),
+        }),
+        execute: vi.fn(async (
+          toolName: string,
+          _params: Record<string, unknown>,
+          executionContext: { contextSnapshot?: { context?: { capabilities?: { browser?: { pageId?: string } } } } },
+        ) => {
+          if (toolName === 'BrowserBootstrap') {
+            return {
+              success: true,
+              llmContent: 'Browser bootstrapped',
+              displayContent: 'Browser bootstrapped',
+              effects: [
+                {
+                  type: 'contextPatch' as const,
+                  patch: {
+                    scope: 'session',
+                    context: {
+                      capabilities: {
+                        browser: {
+                          pageId: 'page-456',
+                        },
+                      },
+                    },
+                  },
+                },
+                {
+                  type: 'newMessages' as const,
+                  messages: [
+                    { role: 'assistant' as const, content: 'Injected via effects' },
+                  ],
+                },
+              ],
+            };
+          }
+
+          observedPageIds.push(
+            executionContext.contextSnapshot?.context?.capabilities?.browser?.pageId,
+          );
+          return {
+            success: true,
+            llmContent: 'Browser inspected',
+            displayContent: 'Browser inspected',
+          };
+        }),
+      } as unknown as ExecutionPipeline;
+
+      const runner = new LoopRunner(baseConfig, baseOptions, mm, pipeline);
+      const result = await runner.runLoop('Hello', createContext({ sessionId: 'sess-2' }));
+
+      expect(result.success).toBe(true);
+      expect(observedPageIds).toEqual(['page-456']);
+      expect(saveMessage).toHaveBeenCalledWith(
+        'sess-2',
+        'assistant',
+        'Injected via effects',
+        'tool-result-uuid',
+        undefined,
+        undefined,
+      );
     });
   });
 

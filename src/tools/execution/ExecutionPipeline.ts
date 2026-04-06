@@ -1,89 +1,128 @@
-import { EventEmitter } from 'node:events';
-import { HookManager } from '../../hooks/HookManager.js';
-import { HookStage } from '../../hooks/HookStage.js';
-import { PostToolUseHookStage } from '../../hooks/PostToolUseHookStage.js';
+import type { HookRuntime } from '../../hooks/HookRuntime.js';
 import { type InternalLogger, LogCategory, NOOP_LOGGER } from '../../logging/Logger.js';
 import { PermissionMode, type PermissionsConfig } from '../../types/common.js';
-import type { CanUseTool } from '../../types/permissions.js';
+import {
+  createModePermissionHandler,
+  createPathSafetyPermissionHandler,
+  createPermissionHandlerFromCanUseTool,
+  createRuleBasedPermissionHandler,
+  type CanUseTool,
+  type PermissionHandler,
+  type PermissionHandlerRequest,
+  type PermissionResult as CanUseToolResult,
+  type PermissionUpdate,
+} from '../../types/permissions.js';
 import { getErrorMessage, getErrorName } from '../../utils/errorUtils.js';
+import type { ToolCatalog } from '../catalog/ToolCatalog.js';
 import type { ToolRegistry } from '../registry/ToolRegistry.js';
-import { ToolExecution as ToolExecutionImpl } from '../types/ExecutionTypes.js';
 import type {
   ExecutionContext,
   ExecutionHistoryEntry,
-  PipelineStage,
+  ConfirmationDetails,
+  ToolEffect,
   ToolResult,
 } from '../types/index.js';
-import { getEffectiveProjectDir } from '../types/index.js';
-import { ToolErrorType } from '../types/ToolTypes.js';
-import { FileLockManager } from './FileLockManager.js';
 import {
-  ConfirmationStage,
-  DiscoveryStage,
-  ExecutionStage,
-  FormattingStage,
-  PermissionStage,
-} from './PipelineStages.js';
+  normalizePermissionEffects,
+  normalizeToolEffects,
+} from '../types/index.js';
+import {
+  isReadOnlyKind,
+  resolveToolBehaviorSafely,
+  ToolErrorType,
+  ToolKind,
+  type Tool,
+  type ToolBehavior,
+  type ToolInvocation,
+  validationErrorToToolResult,
+} from '../types/ToolTypes.js';
+import { FileLockManager } from './FileLockManager.js';
+import { ResultArtifactStore } from './ResultArtifactStore.js';
 import { DenialTracker } from './DenialTracker.js';
 
+function getString(params: Record<string, unknown>, key: string, defaultValue = ''): string {
+  const value = params[key];
+  return typeof value === 'string' ? value : defaultValue;
+}
 
+function buildPermissionSignature(
+  toolName: string,
+  params: Record<string, unknown>,
+  tool?: Pick<Tool, 'preparePermissionMatcher'>,
+): string {
+  const signatureContent = tool?.preparePermissionMatcher?.(params)?.signatureContent;
+  return signatureContent ? `${toolName}:${signatureContent}` : toolName;
+}
+
+interface PipelineExecutionState {
+  toolName: string;
+  tool: Tool;
+  params: Record<string, unknown>;
+  context: ExecutionContext;
+  result?: ToolResult;
+  invocation?: ToolInvocation<unknown>;
+  resolvedBehavior?: ToolBehavior;
+  permissionCheckResult?: { reason?: string };
+  affectedPaths: string[];
+  needsConfirmation: boolean;
+  toolRequestedConfirmation: boolean;
+  confirmationReason?: string;
+  permissionSignature?: string;
+  hookToolUseId?: string;
+}
 
 /**
- * 7阶段执行管道
- * Discovery → Permission → Hook(Pre) → Confirmation → Execution → PostHook → Formatting
+ * 执行管道
  */
-export class ExecutionPipeline extends EventEmitter {
-  private stages: PipelineStage[];
+export class ExecutionPipeline {
   private executionHistory: ExecutionHistoryEntry[] = [];
   private readonly maxHistorySize: number;
   private readonly maxConcurrency: number;
   private readonly toolTimeoutMs: number | undefined;
   private readonly sessionApprovals = new Set<string>();
   private readonly denialTracker = new DenialTracker();
-  private readonly hooks?: ExecutionPipelineHooks;
+  private readonly hookRuntime?: HookRuntime;
   private readonly logger: InternalLogger;
+  private readonly permissionRuleHandler: PermissionHandler;
+  private readonly pathSafetyHandler: PermissionHandler;
+  private readonly permissionHandlers: PermissionHandler[];
+  private readonly defaultPermissionMode: PermissionMode;
+  private readonly toolCatalog?: ToolCatalog;
+  private readonly resultArtifactStore = new ResultArtifactStore();
 
   constructor(
     private registry: ToolRegistry,
     config: ExecutionPipelineConfig = {}
   ) {
-    super();
-
     this.maxHistorySize = config.maxHistorySize || 1000;
     this.maxConcurrency = config.maxConcurrency ?? 10;
     this.toolTimeoutMs = config.toolTimeoutMs;
-    this.hooks = config.hooks;
+    this.hookRuntime = config.hookRuntime;
     this.logger = (config.logger ?? NOOP_LOGGER).child(LogCategory.EXECUTION);
+    this.toolCatalog = config.toolCatalog;
 
     const permissionConfig: PermissionsConfig = config.permissionConfig || {
       allow: [],
       ask: [],
       deny: [],
     };
-    const permissionMode = config.permissionMode ?? PermissionMode.DEFAULT;
-
-    const permissionStage = new PermissionStage(
-      permissionConfig,
-      this.sessionApprovals,
-      permissionMode,
-      this.logger,
-    );
-
-    this.stages = [
-      new DiscoveryStage(this.registry),
-      permissionStage,
-      new HookStage(),
-      new ConfirmationStage(
-        this.sessionApprovals,
-        permissionStage.getPermissionChecker(),
-        config.canUseTool,
-        this.logger,
-        this.denialTracker,
-      ),
-      new ExecutionStage(),
-      new PostToolUseHookStage(),
-      new FormattingStage(),
+    this.defaultPermissionMode = config.permissionMode ?? PermissionMode.DEFAULT;
+    this.permissionRuleHandler = createRuleBasedPermissionHandler(permissionConfig);
+    this.pathSafetyHandler = createPathSafetyPermissionHandler({
+      explicitAllowRules: permissionConfig.allow,
+    });
+    this.permissionHandlers = [
+      ...(config.permissionHandler
+        ? [config.permissionHandler]
+        : (config.canUseTool
+          ? [createPermissionHandlerFromCanUseTool(config.canUseTool)]
+          : [])),
+      createModePermissionHandler(this.defaultPermissionMode),
     ];
+  }
+
+  getCatalog(): ToolCatalog | undefined {
+    return this.toolCatalog;
   }
 
   /**
@@ -98,110 +137,107 @@ export class ExecutionPipeline extends EventEmitter {
     const executionId = this.generateExecutionId();
     const nextParams = { ...params };
 
-    if (this.hooks?.beforeExecute) {
-      const hookResult = await this.hooks.beforeExecute({
+    const tool = this.registry.get(toolName);
+    if (!tool) {
+      const result = this.normalizeResultEffects(await this.applyPostExecutionHooks(
+        toolName,
+        nextParams,
+        context,
+        this.createExecutionFailureResult(`Tool "${toolName}" not found`),
+        executionId,
+      ));
+      this.addToHistory({
+        executionId,
         toolName,
         params: nextParams,
+        result,
+        startTime,
+        endTime: Date.now(),
         context,
       });
-      const earlyResult = this.applyBeforeHookResult(toolName, nextParams, hookResult);
-      if (earlyResult) {
-        return earlyResult;
-      }
+      return result;
     }
 
-    // 创建执行实例
-    const execution = new ToolExecutionImpl(toolName, nextParams, {
-      ...context,
-      sessionId: context.sessionId || executionId,
-    });
-
-    this.emit('executionStarted', {
-      executionId,
+    const state: PipelineExecutionState = {
       toolName,
-      params,
-      context,
-      timestamp: startTime,
-    });
+      tool,
+      params: nextParams,
+      context: {
+        ...context,
+        sessionId: context.sessionId || executionId,
+      },
+      affectedPaths: [],
+      needsConfirmation: false,
+      toolRequestedConfirmation: false,
+    };
 
     // 检查工具是否需要文件锁
-    const tool = this.registry.get(toolName);
-    const needsFileLock = tool && !tool.isConcurrencySafe;
+    const resolvedBehavior = resolveToolBehaviorSafely(tool, nextParams);
     const filePath =
-      needsFileLock && params.file_path ? String(params.file_path) : null;
+      typeof nextParams.file_path === 'string' && nextParams.file_path.trim() !== ''
+        ? String(nextParams.file_path)
+        : null;
+    const lockMode =
+      resolvedBehavior?.isReadOnly === true && resolvedBehavior.isConcurrencySafe
+        ? 'read'
+        : 'write';
 
     const runPipeline = (): Promise<ToolResult> => {
-      if (needsFileLock && filePath) {
+      if (filePath) {
         const lockManager = FileLockManager.getInstance(this.logger);
-        return lockManager.acquireLock(filePath, () =>
-          this.executeWithPipeline(execution, executionId, startTime)
+        return lockManager.acquireLock(filePath, lockMode, () =>
+          this.executeWithPipeline(state, executionId, startTime)
         );
       }
-      return this.executeWithPipeline(execution, executionId, startTime);
+      return this.executeWithPipeline(state, executionId, startTime);
     };
 
     const result = await this.withTimeout(toolName, runPipeline);
-    return this.applyAfterExecuteHooks(toolName, nextParams, context, result);
+    return result;
   }
 
   /**
    * 通过管道执行工具（内部方法）
    */
   private async executeWithPipeline(
-    execution: ToolExecutionImpl,
+    state: PipelineExecutionState,
     executionId: string,
     startTime: number
   ): Promise<ToolResult> {
     try {
-      // 依次执行各个阶段
-      // Plan 模式 只读工具通过权限阶段自动放行，非只读工具走权限确认流程
-      for (const stage of this.stages) {
-        // 检查取消信号
-        if (execution.context.signal?.aborted) {
-          execution.abort('任务已被用户中止');
-          break;
-        }
-
-        this.emit('stageStarted', {
-          executionId,
-          stageName: stage.name,
-          timestamp: Date.now(),
-        });
-
-        await stage.process(execution);
-
-        this.emit('stageCompleted', {
-          executionId,
-          stageName: stage.name,
-          timestamp: Date.now(),
-        });
-
-        // 检查是否应该中止
-        if (execution.shouldAbort()) {
-          break;
-        }
+      await this.applyPreToolUseHooks(state, executionId);
+      if (!state.result && state.context.signal?.aborted) {
+        state.result = this.createAbortedResult('任务已被用户中止');
+      }
+      if (!state.result) {
+        await this.prepareExecution(state);
+      }
+      if (!state.result) {
+        await this.resolveConfirmation(state);
+      }
+      if (!state.result) {
+        await this.executeInvocation(state);
       }
 
-      const result = execution.getResult();
+      let result = await this.normalizeExecutionResult(state);
+      result = this.normalizeResultEffects(await this.applyPostExecutionHooks(
+        state.toolName,
+        state.params,
+        state.context,
+        result,
+        executionId,
+      ));
       const endTime = Date.now();
 
       // 记录执行历史
       this.addToHistory({
         executionId,
-        toolName: execution.toolName,
-        params: execution.params,
+        toolName: state.toolName,
+        params: state.params,
         result,
         startTime,
         endTime,
-        context: execution.context,
-      });
-
-      this.emit('executionCompleted', {
-        executionId,
-        toolName: execution.toolName,
-        result,
-        duration: endTime - startTime,
-        timestamp: endTime,
+        context: state.context,
       });
 
       return result;
@@ -223,41 +259,14 @@ export class ExecutionPipeline extends EventEmitter {
       };
 
       try {
-        const projectDir = getEffectiveProjectDir(execution.context);
-        if (!projectDir) {
-          return errorResult;
-        }
-
-        const hookManager = HookManager.getInstance();
-        const hookResult = await hookManager.executePostToolUseFailureHooks(
-          execution.toolName,
-          `tool_use_${executionId}`,
-          execution.params,
-          errorMsg,
-          {
-            projectDir,
-            sessionId: execution.context.sessionId || 'unknown',
-            permissionMode: execution.context.permissionMode ?? PermissionMode.DEFAULT,
-            isInterrupt: false,
-            isTimeout,
-            abortSignal: execution.context.signal,
-          }
-        );
-
-        // 如果 hook 返回 additionalContext，附加到错误信息
-        if (hookResult.additionalContext) {
-          errorResult = {
-            ...errorResult,
-            llmContent: `${errorResult.llmContent}\n\n${hookResult.additionalContext}`,
-          };
-        }
-
-        // 如果有警告，记录日志
-        if (hookResult.warning) {
-          console.warn(
-            `[ExecutionPipeline] PostToolUseFailure hook warning: ${hookResult.warning}`
-          );
-        }
+        errorResult = this.normalizeResultEffects(await this.applyPostExecutionHooks(
+          state.toolName,
+          state.params,
+          state.context,
+          errorResult,
+          executionId,
+          { isTimeout },
+        ));
       } catch (hookError) {
         // Hook 执行失败不应阻止错误处理
         console.warn(
@@ -268,20 +277,12 @@ export class ExecutionPipeline extends EventEmitter {
 
       this.addToHistory({
         executionId,
-        toolName: execution.toolName,
-        params: execution.params,
+        toolName: state.toolName,
+        params: state.params,
         result: errorResult,
         startTime,
         endTime,
-        context: execution.context,
-      });
-
-      this.emit('executionFailed', {
-        executionId,
-        toolName: execution.toolName,
-        error,
-        duration: endTime - startTime,
-        timestamp: endTime,
+        context: state.context,
       });
 
       return errorResult;
@@ -373,7 +374,6 @@ export class ExecutionPipeline extends EventEmitter {
    */
   clearHistory(): void {
     this.executionHistory = [];
-    this.emit('historyClear', { timestamp: Date.now() });
   }
 
   /**
@@ -413,51 +413,6 @@ export class ExecutionPipeline extends EventEmitter {
   }
 
   /**
-   * 添加自定义阶段
-   */
-  addStage(stage: PipelineStage, position = -1): void {
-    if (position === -1) {
-      // 插入到执行阶段之前
-      const executionIndex = this.stages.findIndex((s) => s.name === 'execution');
-      this.stages.splice(executionIndex, 0, stage);
-    } else {
-      this.stages.splice(position, 0, stage);
-    }
-
-    this.emit('stageAdded', {
-      stageName: stage.name,
-      position,
-      timestamp: Date.now(),
-    });
-  }
-
-  /**
-   * 移除阶段
-   */
-  removeStage(stageName: string): boolean {
-    const index = this.stages.findIndex((s) => s.name === stageName);
-    if (index === -1) {
-      return false;
-    }
-
-    this.stages.splice(index, 1);
-
-    this.emit('stageRemoved', {
-      stageName,
-      timestamp: Date.now(),
-    });
-
-    return true;
-  }
-
-  /**
-   * 获取阶段列表
-   */
-  getStages(): PipelineStage[] {
-    return [...this.stages];
-  }
-
-  /**
    * 获取工具注册表（用于工具管理）
    */
   getRegistry(): ToolRegistry {
@@ -483,57 +438,231 @@ export class ExecutionPipeline extends EventEmitter {
     }
   }
 
-  private applyBeforeHookResult(
-    toolName: string,
-    params: Record<string, unknown>,
-    hookResult: ExecutionPipelineHookResult | undefined,
-  ): ToolResult | null {
-    if (!hookResult) {
-      return null;
+  private async prepareExecution(state: PipelineExecutionState): Promise<void> {
+    try {
+      this.rebuildInvocationState(state);
+
+      const validationError = await state.invocation?.validate?.(state.context);
+      if (validationError) {
+        state.result = validationErrorToToolResult(validationError);
+        return;
+      }
+
+      const toolPermissionResult = state.tool.checkPermissions
+        ? await state.tool.checkPermissions(state.invocation!.params, state.context)
+        : undefined;
+      const toolPermissionUpdatedInput =
+        toolPermissionResult?.behavior === 'allow'
+          ? toolPermissionResult.updatedInput
+          : undefined;
+
+      if (toolPermissionUpdatedInput) {
+        Object.assign(state.params, toolPermissionUpdatedInput);
+        this.rebuildInvocationState(state);
+      }
+
+      if (toolPermissionResult?.behavior === 'deny') {
+        state.result = this.createAbortedResult(toolPermissionResult.message, {
+          shouldExitLoop: toolPermissionResult.interrupt,
+        });
+        return;
+      }
+
+      if (toolPermissionResult?.behavior === 'ask') {
+        state.needsConfirmation = true;
+        state.toolRequestedConfirmation = true;
+        state.confirmationReason =
+          toolPermissionResult.message || 'Tool-specific confirmation required';
+      }
+
+      state.permissionSignature = buildPermissionSignature(
+        state.tool.name,
+        toParamsRecord(state.invocation!.params, state.params),
+        state.tool,
+      );
+
+      let checkResult = await this.permissionRuleHandler(
+        this.buildPermissionRequest(state, state.affectedPaths),
+      );
+
+      const hasRememberedApproval = Boolean(
+        state.permissionSignature
+        && this.sessionApprovals.has(state.permissionSignature),
+      );
+
+      if (hasRememberedApproval) {
+        state.needsConfirmation = false;
+        checkResult = {
+          behavior: 'allow',
+        };
+      }
+
+      state.permissionCheckResult = {
+        reason: hasRememberedApproval
+          ? 'User already allowed this operation in this session'
+          : checkResult.behavior === 'allow'
+            ? undefined
+            : checkResult.message,
+      };
+
+      switch (checkResult.behavior) {
+        case 'deny':
+          state.result = this.createAbortedResult(
+            checkResult.message || `Tool invocation "${state.tool.name}" was denied by permission rules`,
+          );
+          return;
+        case 'ask':
+          if (state.permissionSignature && this.sessionApprovals.has(state.permissionSignature)) {
+            state.needsConfirmation = false;
+          } else {
+            state.needsConfirmation = true;
+            state.confirmationReason = combineConfirmationReasons(
+              state.confirmationReason,
+              checkResult.message || 'User confirmation required',
+            );
+          }
+          break;
+        case 'allow':
+          break;
+      }
+
+      const pathSafetyResult = await this.pathSafetyHandler(
+        this.buildPermissionRequest(state, state.affectedPaths),
+      );
+      await this.handlePermissionHandlerResult(pathSafetyResult, state);
+      if (state.result) {
+        return;
+      }
+    } catch (error) {
+      state.result = this.createAbortedResult(`Permission check failed: ${getErrorMessage(error)}`);
+    }
+  }
+
+  private async resolveConfirmation(state: PipelineExecutionState): Promise<void> {
+    if (!state.invocation) {
+      state.result = this.createAbortedResult(
+        'Pre-confirmation stage failed; cannot request user approval',
+      );
+      return;
     }
 
-    if (hookResult.modifiedInput) {
-      Object.assign(params, hookResult.modifiedInput);
+    const affectedPaths = state.invocation.getAffectedPaths() || [];
+
+    if (this.permissionHandlers.length > 0) {
+      for (const permissionHandler of this.permissionHandlers) {
+        const request = this.buildPermissionRequest(state, affectedPaths);
+        const result = await permissionHandler(request);
+        await this.handlePermissionHandlerResult(result, state, request);
+        if (state.result) {
+          return;
+        }
+      }
+      if (!state.needsConfirmation) {
+        return;
+      }
+    } else if (!state.needsConfirmation) {
+      return;
     }
+
+    await this.handleLegacyConfirmation(state, affectedPaths);
+  }
+
+  private async executeInvocation(state: PipelineExecutionState): Promise<void> {
+    if (!state.invocation) {
+      state.result = this.createAbortedResult(
+        'Pre-execution stage failed; cannot run tool',
+      );
+      return;
+    }
+
+    try {
+      state.result = await state.invocation.execute(
+        state.context.signal ?? new AbortController().signal,
+        state.context.onProgress,
+        state.context,
+      );
+    } catch (error) {
+      state.result = this.createAbortedResult(`Tool execution failed: ${getErrorMessage(error)}`);
+    }
+  }
+
+  private async applyPreToolUseHooks(
+    state: PipelineExecutionState,
+    executionId: string,
+  ): Promise<void> {
+    if (!this.hookRuntime) {
+      return;
+    }
+
+    const hookResult = await this.hookRuntime.applyPreToolUse(
+      state.toolName,
+      state.params,
+      {
+        toolUseId: state.hookToolUseId ?? `tool_use_${executionId}`,
+        permissionMode: state.context.permissionMode,
+        abortSignal: state.context.signal,
+      },
+    );
+
+    state.hookToolUseId = hookResult.toolUseId;
+    Object.assign(state.params, hookResult.updatedInput);
 
     if (hookResult.action === 'abort') {
-      return this.createHookFailureResult(
-        hookResult.reason || `Tool "${toolName}" was aborted by hook`,
+      state.result = this.createAbortedResult(
+        hookResult.reason || `Tool "${state.toolName}" was aborted by hook`,
       );
+      return;
     }
 
     if (hookResult.action === 'skip') {
-      const message = hookResult.reason || `Tool "${toolName}" was skipped by hook`;
-      return {
+      const message = hookResult.reason || `Tool "${state.toolName}" was skipped by hook`;
+      state.result = {
         success: true,
         llmContent: message,
         displayContent: message,
       };
+      return;
     }
 
-    return null;
+    if (hookResult.needsConfirmation) {
+      state.needsConfirmation = true;
+      state.confirmationReason = combineConfirmationReasons(
+        state.confirmationReason,
+        hookResult.reason || 'Hook requires confirmation',
+      );
+    }
   }
 
-  private async applyAfterExecuteHooks(
+  private async applyPostExecutionHooks(
     toolName: string,
     params: Record<string, unknown>,
     context: ExecutionContext,
     result: ToolResult,
+    executionId: string,
+    options: {
+      isTimeout?: boolean;
+      isInterrupt?: boolean;
+    } = {},
   ): Promise<ToolResult> {
-    if (!this.hooks?.afterExecute) {
+    if (!this.hookRuntime) {
       return result;
     }
 
-    const hookResult = await this.hooks.afterExecute({
-      toolName,
-      params,
-      context,
-      result,
-    });
-
-    if (!hookResult) {
-      return result;
-    }
+    const toolUseId = `tool_use_${executionId}`;
+    const hookResult = result.success
+      ? await this.hookRuntime.applyPostToolUse(toolName, params, result, {
+          toolUseId,
+          permissionMode: context.permissionMode,
+          abortSignal: context.signal,
+        })
+      : await this.hookRuntime.applyPostToolUseFailure(toolName, params, result, {
+          toolUseId,
+          permissionMode: context.permissionMode,
+          errorType: result.error?.type,
+          isInterrupt: options.isInterrupt ?? false,
+          isTimeout: options.isTimeout ?? false,
+          abortSignal: context.signal,
+        });
 
     if (hookResult.action === 'abort') {
       return this.createHookFailureResult(
@@ -541,19 +670,218 @@ export class ExecutionPipeline extends EventEmitter {
       );
     }
 
-    if (hookResult.modifiedOutput === undefined) {
-      return result;
-    }
+    return hookResult.result;
+  }
 
-    const nextOutput = this.stringifyHookOutput(hookResult.modifiedOutput);
+  private rebuildInvocationState(state: PipelineExecutionState): void {
+    state.invocation = state.tool.build(state.params);
+    state.resolvedBehavior = resolveToolBehaviorSafely(state.tool, state.invocation.params);
+    state.affectedPaths = state.invocation.getAffectedPaths() || [];
+    state.permissionSignature = buildPermissionSignature(
+      state.tool.name,
+      toParamsRecord(state.invocation.params, state.params),
+      state.tool,
+    );
+  }
+
+  private buildPermissionRequest(
+    state: PipelineExecutionState,
+    affectedPaths: string[],
+  ): PermissionHandlerRequest {
+    const resolvedBehavior = state.resolvedBehavior;
+    const toolKind = resolvedBehavior?.kind ?? state.tool.kind ?? ToolKind.Execute;
+    const invocationDescription = state.invocation?.getDescription();
+
     return {
-      ...result,
-      llmContent: nextOutput,
-      displayContent: nextOutput,
+      toolName: state.toolName,
+      input: state.params,
+      signal: state.context.signal || new AbortController().signal,
+      permissionMode: state.context.permissionMode || this.defaultPermissionMode,
+      sessionApproved: Boolean(
+        state.permissionSignature
+        && this.sessionApprovals.has(state.permissionSignature),
+      ),
+      affectedPaths,
+      toolKind,
+      toolMeta: {
+        isReadOnly: resolvedBehavior?.isReadOnly ?? isReadOnlyKind(toolKind),
+        isConcurrencySafe: resolvedBehavior?.isConcurrencySafe ?? true,
+        isDestructive: resolvedBehavior?.isDestructive ?? false,
+        signature: state.permissionSignature,
+        description: invocationDescription,
+      },
     };
   }
 
+  private async handlePermissionHandlerResult(
+    result: CanUseToolResult,
+    state: PipelineExecutionState,
+    request?: PermissionHandlerRequest,
+  ): Promise<void> {
+    switch (result.behavior) {
+      case 'allow':
+        if (result.updatedInput) {
+          Object.assign(state.params, result.updatedInput);
+          try {
+            this.rebuildInvocationState(state);
+          } catch (error) {
+            state.result = this.createAbortedResult(
+              `Permission handler updated parameters are invalid: ${getErrorMessage(error)}`,
+            );
+            return;
+          }
+          if (request) {
+            request.input = state.params;
+            request.toolMeta = {
+              isReadOnly:
+                state.resolvedBehavior?.isReadOnly
+                ?? isReadOnlyKind(state.resolvedBehavior?.kind ?? state.tool.kind),
+              isConcurrencySafe: state.resolvedBehavior?.isConcurrencySafe ?? true,
+              isDestructive: state.resolvedBehavior?.isDestructive ?? false,
+              signature: state.permissionSignature,
+              description: state.invocation?.getDescription(),
+            };
+          }
+        }
+        for (const effect of normalizePermissionEffects(result)) {
+          if (effect.type === 'permissionUpdates') {
+            this.applyPermissionUpdates(effect.updates);
+          }
+        }
+        if (state.permissionSignature && this.sessionApprovals.has(state.permissionSignature)) {
+          state.needsConfirmation = false;
+          state.confirmationReason = undefined;
+        }
+        if (!state.toolRequestedConfirmation && !state.confirmationReason) {
+          state.needsConfirmation = false;
+        }
+        this.logger.debug(`permissionHandler allowed: ${state.toolName}`);
+        break;
+
+      case 'deny':
+        if (this.denialTracker && state.permissionSignature) {
+          this.denialTracker.record(
+            state.permissionSignature,
+            state.toolName,
+            result.message || 'Denied by permissionHandler',
+          );
+        }
+        state.result = this.createAbortedResult(result.message, {
+          shouldExitLoop: result.interrupt,
+        });
+        break;
+
+      case 'ask':
+        state.needsConfirmation = true;
+        state.confirmationReason = combineConfirmationReasons(
+          state.confirmationReason,
+          result.message || 'User confirmation required',
+        );
+        break;
+    }
+  }
+
+  private applyPermissionUpdates(updates: PermissionUpdate[]): void {
+    for (const update of updates) {
+      switch (update.type) {
+        case 'addRules':
+          for (const rule of update.rules) {
+            const ruleStr = rule.ruleContent
+              ? `${rule.toolName}:${rule.ruleContent}`
+              : rule.toolName;
+            if (update.behavior === 'allow') {
+              this.sessionApprovals.add(ruleStr);
+            }
+            this.logger.debug(`Permission rule added: ${ruleStr} -> ${update.behavior}`);
+          }
+          break;
+        case 'removeRules':
+          for (const rule of update.rules) {
+            const ruleStr = rule.ruleContent
+              ? `${rule.toolName}:${rule.ruleContent}`
+              : rule.toolName;
+            this.sessionApprovals.delete(ruleStr);
+            this.logger.debug(`Permission rule removed: ${ruleStr}`);
+          }
+          break;
+      }
+    }
+  }
+
+  private async handleLegacyConfirmation(
+    state: PipelineExecutionState,
+    affectedPaths: string[],
+  ): Promise<void> {
+    if (!state.invocation) {
+      state.result = this.createAbortedResult(
+        'Pre-confirmation stage failed; cannot request user approval',
+      );
+      return;
+    }
+
+    try {
+      const description = state.invocation.getDescription();
+      const confirmationTitle =
+        description && description !== `执行工具: ${state.tool.name}`
+          ? `权限确认: ${description}`
+          : `权限确认: ${state.permissionSignature ?? state.tool.name}`;
+
+      const confirmationDetails: ConfirmationDetails = {
+        title: confirmationTitle,
+        message: state.confirmationReason || '此操作需要用户确认',
+        kind: state.resolvedBehavior?.kind ?? state.tool.kind,
+        details: this.generatePreviewForTool(state.tool.name, state.params),
+        risks: this.extractRisksFromPermissionCheck(
+          state.tool,
+          state.params,
+          state.permissionCheckResult,
+        ),
+        affectedFiles: affectedPaths,
+      };
+
+      this.logger.warn(`工具 "${state.tool.name}" 需要用户确认: ${confirmationDetails.title}`);
+
+      const confirmationHandler = state.context.confirmationHandler;
+      if (confirmationHandler) {
+        this.logger.info(`[ExecutionPipeline] Requesting confirmation for ${state.tool.name}`);
+        const response = await confirmationHandler.requestConfirmation(confirmationDetails);
+        this.logger.info(`[ExecutionPipeline] Confirmation response: approved=${response.approved}`);
+
+        if (!response.approved) {
+          const reason = response.reason || 'User rejected';
+          if (this.denialTracker && state.permissionSignature) {
+            this.denialTracker.record(
+              state.permissionSignature,
+              state.tool.name,
+              reason,
+            );
+          }
+          state.result = this.createAbortedResult(`User rejected execution: ${reason}`, {
+            shouldExitLoop: true,
+          });
+          return;
+        }
+
+        if ((response.scope || 'once') === 'session' && state.permissionSignature) {
+          this.sessionApprovals.add(state.permissionSignature);
+        }
+        state.needsConfirmation = false;
+      } else {
+        this.logger.warn('No ConfirmationHandler; auto-approving tool execution');
+        state.needsConfirmation = false;
+      }
+    } catch (error) {
+      state.result = this.createAbortedResult(
+        `User confirmation failed: ${getErrorMessage(error)}`,
+      );
+    }
+  }
+
   private createHookFailureResult(message: string): ToolResult {
+    return this.createExecutionFailureResult(message);
+  }
+
+  private createExecutionFailureResult(message: string): ToolResult {
     return {
       success: false,
       llmContent: `Tool execution failed: ${message}`,
@@ -565,15 +893,224 @@ export class ExecutionPipeline extends EventEmitter {
     };
   }
 
-  private stringifyHookOutput(output: unknown): string {
-    if (typeof output === 'string') {
-      return output;
+  private createAbortedResult(
+    reason?: string,
+    options?: { shouldExitLoop?: boolean },
+  ): ToolResult {
+    return {
+      success: false,
+      llmContent: `Tool execution aborted: ${reason || 'Unknown reason'}`,
+      displayContent: `执行已中止: ${reason || '未知原因'}`,
+      error: {
+        type: ToolErrorType.EXECUTION_ERROR,
+        message: reason || 'Execution aborted',
+      },
+      metadata: options?.shouldExitLoop ? { shouldExitLoop: true } : undefined,
+    };
+  }
+
+  private async normalizeExecutionResult(state: PipelineExecutionState): Promise<ToolResult> {
+    const result = state.result;
+    if (!result) {
+      throw new Error('Tool execution result not set');
     }
-    try {
-      return JSON.stringify(output);
-    } catch {
-      return String(output);
+
+    if (!result.llmContent) {
+      result.llmContent = 'Execution completed';
     }
+
+    if (!result.displayContent) {
+      result.displayContent = result.success ? '执行成功' : '执行失败';
+    }
+
+    if (!result.metadata) {
+      result.metadata = {};
+    }
+
+    const maxResultSizeChars =
+      state.tool.maxResultSizeChars ?? Number.POSITIVE_INFINITY;
+    if (Number.isFinite(maxResultSizeChars) && maxResultSizeChars >= 0) {
+      const llmContentLength = typeof result.llmContent === 'string' ? result.llmContent.length : undefined;
+      const displayContentLength = typeof result.displayContent === 'string' ? result.displayContent.length : undefined;
+      const exceedsLimit =
+        (llmContentLength !== undefined && llmContentLength > maxResultSizeChars)
+        || (displayContentLength !== undefined && displayContentLength > maxResultSizeChars);
+
+      if (exceedsLimit) {
+        try {
+          const artifact = await this.resultArtifactStore.persist({
+            executionId: state.context.sessionId || state.toolName,
+            sessionId: state.context.sessionId,
+            toolName: state.toolName,
+            context: state.context,
+            llmContent: typeof result.llmContent === 'string' ? result.llmContent : undefined,
+            displayContent: typeof result.displayContent === 'string' ? result.displayContent : undefined,
+          });
+          const summary = `[externalized result to ${artifact.path}]`;
+          if (llmContentLength !== undefined) {
+            result.llmContent = summary;
+            result.metadata.llmContentOriginalLength = llmContentLength;
+          }
+          if (displayContentLength !== undefined) {
+            result.displayContent = summary;
+            result.metadata.displayContentOriginalLength = displayContentLength;
+          }
+          result.metadata.resultExternalized = true;
+          result.metadata.resultArtifactPath = artifact.path;
+          result.metadata.resultSizeLimit = maxResultSizeChars;
+        } catch {
+          const llmContent = this.truncateStringResult(result.llmContent, maxResultSizeChars);
+          if (llmContent) {
+            result.llmContent = llmContent.value;
+            result.metadata.resultTruncated = true;
+            result.metadata.resultSizeLimit = maxResultSizeChars;
+            result.metadata.llmContentOriginalLength = llmContent.originalLength;
+          }
+
+          const displayContent = this.truncateStringResult(
+            result.displayContent,
+            maxResultSizeChars,
+          );
+          if (displayContent) {
+            result.displayContent = displayContent.value;
+            result.metadata.resultTruncated = true;
+            result.metadata.resultSizeLimit = maxResultSizeChars;
+            result.metadata.displayContentOriginalLength = displayContent.originalLength;
+          }
+        }
+      } else {
+        const llmContent = this.truncateStringResult(result.llmContent, maxResultSizeChars);
+        if (llmContent) {
+          result.llmContent = llmContent.value;
+          result.metadata.resultTruncated = true;
+          result.metadata.resultSizeLimit = maxResultSizeChars;
+          result.metadata.llmContentOriginalLength = llmContent.originalLength;
+        }
+
+        const displayContent = this.truncateStringResult(
+          result.displayContent,
+          maxResultSizeChars,
+        );
+        if (displayContent) {
+          result.displayContent = displayContent.value;
+          result.metadata.resultTruncated = true;
+          result.metadata.resultSizeLimit = maxResultSizeChars;
+          result.metadata.displayContentOriginalLength = displayContent.originalLength;
+        }
+      }
+    }
+
+    result.metadata.executionId = state.context.sessionId;
+    result.metadata.toolName = state.toolName;
+    result.metadata.timestamp = Date.now();
+
+    state.result = result;
+    return result;
+  }
+
+  private normalizeResultEffects(result: ToolResult): ToolResult {
+    result.effects = normalizeToolEffects(result);
+    return result;
+  }
+
+  private generatePreviewForTool(
+    toolName: string,
+    params: Record<string, unknown>,
+  ): string | undefined {
+    switch (toolName) {
+      case 'Edit': {
+        const oldString = getString(params, 'old_string');
+        const newString = getString(params, 'new_string');
+        if (!oldString && !newString) return undefined;
+
+        const maxLines = 20;
+        const truncate = (text: string): string => {
+          const lines = text.split('\n');
+          if (lines.length <= maxLines) return text;
+          return `${lines.slice(0, maxLines).join('\n')}\n... (还有 ${lines.length - maxLines} 行)`;
+        };
+
+        return `**变更前:**\n\`\`\`\n${truncate(oldString || '(空)')}\n\`\`\`\n\n**变更后:**\n\`\`\`\n${truncate(newString || '(删除)')}\n\`\`\``;
+      }
+      case 'Write': {
+        const content = getString(params, 'content');
+        const encoding = getString(params, 'encoding', 'utf8');
+        if (encoding !== 'utf8' || !content) {
+          return `将写入 ${encoding === 'base64' ? 'Base64 编码' : encoding === 'binary' ? '二进制' : ''} 内容`;
+        }
+
+        const maxLines = 30;
+        const lines = content.split('\n');
+        if (lines.length <= maxLines) {
+          return `**文件内容预览:**\n\`\`\`\n${content}\n\`\`\``;
+        }
+
+        const preview = lines.slice(0, maxLines).join('\n');
+        return `**文件内容预览 (前 ${maxLines} 行):**\n\`\`\`\n${preview}\n\`\`\`\n\n... (还有 ${lines.length - maxLines} 行)`;
+      }
+      default:
+        return undefined;
+    }
+  }
+
+  private extractRisksFromPermissionCheck(
+    tool: { name: string },
+    params: Record<string, unknown>,
+    permissionCheckResult?: { reason?: string },
+  ): string[] {
+    const risks: string[] = [];
+
+    if (permissionCheckResult?.reason) {
+      risks.push(permissionCheckResult.reason);
+    }
+
+    if (tool.name === 'Bash') {
+      const command = getString(params, 'command');
+      const mainCommand = command.trim().split(/\s+/)[0];
+
+      if (['cat', 'head', 'tail'].includes(mainCommand)) {
+        risks.push(`💡 建议使用 Read 工具代替 ${mainCommand} 命令`);
+      } else if (['grep', 'rg'].includes(mainCommand)) {
+        risks.push('💡 建议使用 Grep 工具代替 grep/rg 命令');
+      } else if (mainCommand === 'find') {
+        risks.push('💡 建议使用 Glob 工具代替 find 命令');
+      } else if (['sed', 'awk'].includes(mainCommand)) {
+        risks.push(`💡 建议使用 Edit 工具代替 ${mainCommand} 命令`);
+      }
+
+      if (command.includes('rm')) risks.push('⚠️ 此命令可能删除文件');
+      if (command.includes('sudo')) risks.push('⚠️ 此命令需要管理员权限');
+      if (command.includes('git push')) risks.push('⚠️ 此命令将推送代码到远程仓库');
+    } else if (['Write', 'Edit'].includes(tool.name)) {
+      risks.push('此操作将修改文件内容');
+    } else if (tool.name === 'Delete') {
+      risks.push('此操作将永久删除文件');
+    }
+
+    return risks;
+  }
+
+  private truncateStringResult(
+    value: unknown,
+    maxLength: number,
+  ): { value: string; originalLength: number } | undefined {
+    if (typeof value !== 'string' || value.length <= maxLength) {
+      return undefined;
+    }
+
+    const removedChars = value.length - maxLength;
+    const suffix = `\n\n...[truncated ${removedChars} chars]`;
+    if (maxLength <= suffix.length) {
+      return {
+        value: value.slice(0, maxLength),
+        originalLength: value.length,
+      };
+    }
+
+    return {
+      value: `${value.slice(0, maxLength - suffix.length)}${suffix}`,
+      originalLength: value.length,
+    };
   }
 
   private partitionToolCalls(
@@ -587,7 +1124,9 @@ export class ExecutionPipeline extends EventEmitter {
     let currentBatch: PartitionedToolCallBatch | null = null;
 
     for (const [index, request] of requests.entries()) {
-      const mode = this.canExecuteInParallel(request.toolName) ? 'parallel' : 'serial';
+      const mode = this.canExecuteInParallel(request.toolName, request.params)
+        ? 'parallel'
+        : 'serial';
       const indexedRequest: IndexedToolCallRequest = { ...request, index };
 
       if (!currentBatch || currentBatch.mode !== mode) {
@@ -602,9 +1141,13 @@ export class ExecutionPipeline extends EventEmitter {
     return batches;
   }
 
-  private canExecuteInParallel(toolName: string): boolean {
+  private canExecuteInParallel(
+    toolName: string,
+    params: Record<string, unknown>,
+  ): boolean {
     const tool = this.registry.get(toolName);
-    return tool?.kind === 'readonly' && tool.isConcurrencySafe;
+    const behavior = resolveToolBehaviorSafely(tool, params);
+    return behavior?.isReadOnly === true && behavior.isConcurrencySafe;
   }
 
   /**
@@ -679,11 +1222,11 @@ interface PartitionedToolCallBatch {
 export interface ExecutionPipelineConfig {
   maxHistorySize?: number;
   enableMetrics?: boolean;
-  customStages?: PipelineStage[];
   permissionConfig?: PermissionsConfig;
   permissionMode?: PermissionMode;
+  permissionHandler?: PermissionHandler;
   canUseTool?: CanUseTool;
-  hooks?: ExecutionPipelineHooks;
+  hookRuntime?: HookRuntime;
   logger?: InternalLogger;
   maxConcurrency?: number;
   /**
@@ -692,32 +1235,7 @@ export interface ExecutionPipelineConfig {
    * Defaults to no timeout (undefined).
    */
   toolTimeoutMs?: number;
-}
-
-export interface ExecutionPipelineHookContext {
-  toolName: string;
-  params: Record<string, unknown>;
-  context: ExecutionContext;
-}
-
-export interface ExecutionPipelineAfterHookContext extends ExecutionPipelineHookContext {
-  result: ToolResult;
-}
-
-export interface ExecutionPipelineHookResult {
-  action?: 'continue' | 'skip' | 'abort';
-  modifiedInput?: Record<string, unknown>;
-  modifiedOutput?: unknown;
-  reason?: string;
-}
-
-export interface ExecutionPipelineHooks {
-  beforeExecute?: (
-    context: ExecutionPipelineHookContext,
-  ) => Promise<ExecutionPipelineHookResult | undefined>;
-  afterExecute?: (
-    context: ExecutionPipelineAfterHookContext,
-  ) => Promise<ExecutionPipelineHookResult | undefined>;
+  toolCatalog?: ToolCatalog;
 }
 
 /**
@@ -730,4 +1248,25 @@ export interface ExecutionStats {
   averageDuration: number;
   toolUsage: Map<string, number>;
   recentExecutions: ExecutionHistoryEntry[];
+}
+
+function combineConfirmationReasons(
+  existingReason: string | undefined,
+  nextReason: string,
+): string {
+  if (!existingReason) {
+    return nextReason;
+  }
+
+  const reasons = new Set([existingReason, nextReason].filter(Boolean));
+  return [...reasons].join('\n');
+}
+
+function toParamsRecord(
+  params: unknown,
+  fallback: Record<string, unknown>,
+): Record<string, unknown> {
+  return params && typeof params === 'object' && !Array.isArray(params)
+    ? params as Record<string, unknown>
+    : fallback;
 }
