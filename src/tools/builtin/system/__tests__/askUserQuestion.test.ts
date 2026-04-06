@@ -152,7 +152,7 @@ describe('AskUserQuestion Tool', () => {
       expect(result.llmContent).toContain('TypeScript, ESLint');
     });
 
-    it('should handle ACP mode (approved but no answers)', async () => {
+    it('should handle approved but no answers', async () => {
       const mockHandler = {
         requestConfirmation: vi.fn(() =>
           Promise.resolve({
@@ -182,7 +182,7 @@ describe('AskUserQuestion Tool', () => {
 
       expect(result.success).toBe(true);
       expect(result.llmContent).toContain('approved but no answers');
-      expect(result.metadata?.acpMode).toBe(true);
+      expect(result.metadata?.noAnswersCollected).toBe(true);
     });
 
     it('should handle confirmation handler errors', async () => {

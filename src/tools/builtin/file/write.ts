@@ -1,7 +1,6 @@
 import { promises as fs } from 'fs';
 import { basename, dirname, extname } from 'path';
 import { z } from 'zod';
-import { isAcpMode } from '../../../acp/AcpServiceContext.js';
 import { hasFilesystemCapability } from '../../../runtime/index.js';
 import { getFileSystemService } from '../../../services/FileSystemService.js';
 import { isNodeError, getErrorCode, getErrorMessage, getErrorName } from '../../../utils/errorUtils.js';
@@ -86,9 +85,8 @@ export const writeTool = createTool({
     try {
       updateOutput?.('开始写入文件...');
 
-      // 获取文件系统服务（ACP 或本地）
+      // 获取文件系统服务
       const fsService = getFileSystemService();
-      const useAcp = isAcpMode();
 
       // 检查并创建目录（统一使用 FileSystemService）
       if (create_directories) {
@@ -180,27 +178,9 @@ export const writeTool = createTool({
       // 根据编码写入文件
       if (encoding === 'utf8') {
         // 文本文件：使用 FileSystemService 写入
-        if (useAcp) {
-          updateOutput?.('通过 IDE 写入文件...');
-        }
         await fsService.writeTextFile(file_path, content);
       } else {
         // 二进制文件写入
-        // ⚠️ ACP 模式下不支持二进制写入，必须明确失败
-        // 否则会写到本地磁盘而非远端，造成数据丢失/错位
-        if (useAcp) {
-          return {
-            success: false,
-            llmContent: `Binary file writes are not supported in ACP mode. The IDE only supports text file operations. Please use encoding='utf8' for text files, or ask the user to write the file manually.`,
-            displayContent: `❌ ACP 模式不支持二进制文件写入\n\n当前通过 IDE 执行文件操作，但 IDE 仅支持文本文件。\n\n💡 如果是文本文件，我会使用 encoding='utf8' 重试；如果必须写入二进制文件，需要在本地终端执行`,
-            error: {
-              type: ToolErrorType.VALIDATION_ERROR,
-              message: 'Binary writes not supported in ACP mode',
-            },
-          };
-        }
-
-        // 本地模式：正常写入二进制
         let writeBuffer: Buffer;
 
         if (encoding === 'base64') {
@@ -257,7 +237,6 @@ export const writeTool = createTool({
           encoding === 'utf8'
             ? `写入 ${lineCount} 行到 ${fileName}`
             : `写入 ${stats?.size ? formatFileSize(stats.size) : 'unknown'} 到 ${fileName}`,
-        // 🆕 ACP diff 支持：完整内容用于 IDE 显示差异
         kind: 'edit',
         oldContent: oldContent || '', // 新文件为空字符串
         newContent: encoding === 'utf8' ? content : undefined, // 仅文本文件

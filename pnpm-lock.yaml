@@ -8,9 +8,6 @@ importers:
 
   .:
     dependencies:
-      '@agentclientprotocol/sdk':
-        specifier: ^0.12.0
-        version: 0.12.0(zod@3.25.76)
       '@ai-sdk/openai':
         specifier: ^3.0.26
         version: 3.0.48(zod@3.25.76)
@@ -147,11 +144,6 @@ importers:
         version: 1.0.0
 
 packages:
-
-  '@agentclientprotocol/sdk@0.12.0':
-    resolution: {integrity: sha512-V8uH/KK1t7utqyJmTA7y7DzKu6+jKFIXM+ZVouz8E55j8Ej2RV42rEvPKn3/PpBJlliI5crcGk1qQhZ7VwaepA==}
-    peerDependencies:
-      zod: ^3.25.0 || ^4.0.0
 
   '@ai-sdk/anthropic@3.0.64':
     resolution: {integrity: sha512-rwLi/Rsuj2pYniQXIrvClHvXDzgM4UQHHnvHTWEF14efnlKclG/1ghpNC+adsRujAbCTr6gRsSbDE2vEqriV7g==}
@@ -2281,10 +2273,6 @@ packages:
     resolution: {integrity: sha512-bXE4cR/kVZhKZX/RjPEflHaKVhUVl85noU3v6b8apfQEc1x4A+zBxjZ4lN8LqGd6WZ3dl98pY4o717VFmoPp+A==}
 
 snapshots:
-
-  '@agentclientprotocol/sdk@0.12.0(zod@3.25.76)':
-    dependencies:
-      zod: 3.25.76
 
   '@ai-sdk/anthropic@3.0.64(zod@3.25.76)':
     dependencies:

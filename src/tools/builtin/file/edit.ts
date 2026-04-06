@@ -1,6 +1,5 @@
 import { basename, extname } from 'path';
 import { z } from 'zod';
-import { isAcpMode } from '../../../acp/AcpServiceContext.js';
 import { hasFilesystemCapability } from '../../../runtime/index.js';
 import { getFileSystemService } from '../../../services/FileSystemService.js';
 import { getErrorCode, getErrorMessage, getErrorName } from '../../../utils/errorUtils.js';
@@ -103,16 +102,12 @@ export const editTool = createTool({
     try {
       updateOutput?.('Starting to read file...');
 
-      // 获取文件系统服务（ACP 或本地）
+      // 获取文件系统服务
       const fsService = getFileSystemService();
-      const useAcp = isAcpMode();
 
       // 读取文件内容（统一使用 FileSystemService）
       let content: string;
       try {
-        if (useAcp) {
-          updateOutput?.('通过 IDE 读取文件...');
-        }
         content = await fsService.readTextFile(file_path);
       } catch (error) {
         if (getErrorCode(error) === 'ENOENT' || getErrorMessage(error)?.includes('not found')) {
@@ -325,9 +320,6 @@ export const editTool = createTool({
       }
 
       // 写入文件（统一使用 FileSystemService）
-      if (useAcp) {
-        updateOutput?.('通过 IDE 写入文件...');
-      }
       await fsService.writeTextFile(file_path, newContent);
 
       // 🔴 更新文件访问记录（记录编辑操作）

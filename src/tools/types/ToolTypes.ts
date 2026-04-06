@@ -73,8 +73,6 @@ interface DiffMetadataFields extends FileMetadataFields {
 interface ReadMetadataFields extends FileMetadataFields {
   file_type: string;
   encoding: string;
-  acp_mode?: boolean;
-  acp_fallback?: boolean;
   is_binary?: boolean;
   lines_read?: number;
   total_lines?: number;
@@ -181,7 +179,6 @@ interface BashForegroundMetadataFields extends BaseMetadataFields {
   stdout_length?: number;
   stderr_length?: number;
   has_stderr?: boolean;
-  acp_mode?: boolean;
 }
 
 /**

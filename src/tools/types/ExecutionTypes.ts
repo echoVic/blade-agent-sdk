@@ -25,7 +25,7 @@ export interface ConfirmationDetails {
     | 'exitPlanMode'
     | 'maxTurnsExceeded'
     | 'askUserQuestion'; // 确认类型
-  kind?: ToolKind; // 工具类型（readonly, write, execute），用于 ACP 权限模式判断
+  kind?: ToolKind; // 工具类型（readonly, write, execute），用于权限模式判断
   toolName?: string;
   args?: Record<string, unknown>;
   title?: string;

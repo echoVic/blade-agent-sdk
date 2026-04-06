@@ -1,8 +1,8 @@
 /**
  * 文件系统服务
  *
- * 抽象文件操作，支持本地和远程（ACP）两种实现。
- * 工具层统一通过此接口访问文件系统。
+ * 抽象文件操作，工具层统一通过此接口访问文件系统。
+ * 可通过 setFileSystemService() 注入自定义实现。
  */
 
 import * as fs from 'fs/promises';
@@ -83,7 +83,7 @@ export class LocalFileSystemService implements FileSystemService {
 
 /**
  * 当前活跃的文件系统服务
- * 默认使用本地文件系统，ACP 模式下会被替换
+ * 默认使用本地文件系统
  */
 let currentFileSystemService: FileSystemService = new LocalFileSystemService();
 
@@ -91,8 +91,6 @@ let currentFileSystemService: FileSystemService = new LocalFileSystemService();
  * 获取文件系统服务
  *
  * 返回当前活跃的文件系统服务实例。
- * - 终端模式：返回 LocalFileSystemService
- * - ACP 模式：返回 AcpFileSystemService（由 ACP 模块设置）
  */
 export function getFileSystemService(): FileSystemService {
   return currentFileSystemService;
@@ -101,8 +99,7 @@ export function getFileSystemService(): FileSystemService {
 /**
  * 设置文件系统服务
  *
- * 用于 ACP 模式切换文件系统实现。
- * @internal 仅供 ACP 模块使用
+ * 用于替换文件系统实现（如远程文件系统）。
  */
 export function setFileSystemService(service: FileSystemService): void {
   currentFileSystemService = service;
@@ -110,9 +107,6 @@ export function setFileSystemService(service: FileSystemService): void {
 
 /**
  * 重置为本地文件系统服务
- *
- * 用于 ACP 会话结束后恢复默认。
- * @internal 仅供 ACP 模块使用
  */
 export function resetFileSystemService(): void {
   currentFileSystemService = new LocalFileSystemService();
