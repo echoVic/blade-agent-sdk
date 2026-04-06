@@ -41,11 +41,6 @@ export class SubagentExecutor {
         modelId,
       }, {
         subagentRegistry: this.subagentRegistry,
-        // When a parent snapshot exists, inherit its context verbatim, even if
-        // that context is intentionally empty. The legacy fallback only applies
-        // to out-of-band subagent execution with no parent snapshot at all. In
-        // that case, use an empty default context so subagents do not gain
-        // implicit filesystem access from the host process.
         defaultContext: context.snapshot
           ? context.snapshot.context
           : {},

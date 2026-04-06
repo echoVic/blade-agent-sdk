@@ -1,4 +1,4 @@
-import { CannotRetryError, parseContextOverflowError } from '../../services/RetryPolicy.js';
+import { CannotRetryError, parseContextOverflowError } from '../services/RetryPolicy.js';
 
 const CONTEXT_OVERFLOW_PATTERNS = [
   'context_length_exceeded',

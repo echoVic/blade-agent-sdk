@@ -7,7 +7,8 @@
 import { type InternalLogger, LogCategory, NOOP_LOGGER } from '../logging/Logger.js';
 import { buildSystemPrompt, createPlanModeReminder } from '../prompts/index.js';
 import { PermissionMode } from '../types/common.js';
-import type { AgentEvent, ChatContext, LoopOptions, LoopResult, UserMessageContent } from './types.js';
+import type { AgentEvent } from './AgentEvent.js';
+import type { ChatContext, LoopOptions, LoopResult, UserMessageContent } from './types.js';
 
 type LoopExecutor = (
   message: UserMessageContent,

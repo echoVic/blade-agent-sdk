@@ -26,7 +26,7 @@ import type { StreamResponseHandler } from './StreamResponseHandler.js';
 import type { TurnState } from './state/TurnState.js';
 import type { TokenBudget } from './TokenBudget.js';
 import type { LoopResult, TurnLimitResponse } from './types.js';
-import { isOverflowRecoverable } from './recovery/isOverflowRecoverable.js';
+import { isOverflowRecoverable } from './isOverflowRecoverable.js';
 
 // ===== Loop 配置 =====
 

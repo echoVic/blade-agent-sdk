@@ -1,6 +1,6 @@
 import type { ContextSnapshot } from '../../runtime/index.js';
 import type { BladeConfig, PermissionMode } from '../../types/common.js';
-import type { BackgroundAgentManager } from '../../agent/subagents/BackgroundAgentManager.js';
+import type { IBackgroundAgentManager } from '../../agent/types.js';
 import type { ToolCatalog } from '../catalog/index.js';
 import type { ToolRegistry } from '../registry/ToolRegistry.js';
 import type { ToolResult } from './ToolTypes.js';
@@ -76,7 +76,7 @@ export interface ExecutionContext {
   confirmationHandler?: ConfirmationHandler;
   permissionMode?: PermissionMode;
   bladeConfig?: BladeConfig;
-  backgroundAgentManager?: BackgroundAgentManager;
+  backgroundAgentManager?: IBackgroundAgentManager;
   toolRegistry?: ToolRegistry;
   toolCatalog?: ToolCatalog;
   discoveredTools?: string[];

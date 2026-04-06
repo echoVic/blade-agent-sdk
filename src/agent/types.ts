@@ -6,20 +6,27 @@ import type { ContextSnapshot } from '../runtime/index.js';
 import type { ContentPart, Message } from '../services/ChatServiceInterface.js';
 import type { ToolCatalogSourcePolicy } from '../tools/catalog/index.js';
 import type { ConfirmationHandler } from '../tools/types/ExecutionTypes.js';
-import type { BackgroundAgentManager } from './subagents/BackgroundAgentManager.js';
 import type { OutputFormat, PermissionMode, PermissionsConfig, SandboxSettings } from '../types/common.js';
 import type { CanUseTool, PermissionHandler } from '../types/permissions.js';
 import type { TokenBudgetConfig, TokenBudgetSnapshot } from './TokenBudget.js';
-
-export type { AgentEvent } from './AgentEvent.js';
-export { agentLoop } from './AgentLoop.js';
-export type { AgentLoopConfig } from './AgentLoop.js';
 
 /**
  * 用户消息内容类型
  * 支持纯文本或多模态内容（文本 + 图片）
  */
 export type UserMessageContent = string | ContentPart[];
+
+/**
+ * 后台 Agent 管理器的最小接口
+ *
+ * 解耦 state/types 层对 subagents 具体实现的依赖。
+ * BackgroundAgentManager 通过 structural typing 隐式满足此接口。
+ * 仅包含通过 ExecutionContext 传递时被 tools 实际调用的方法。
+ */
+export interface IBackgroundAgentManager {
+  getAgent(agentId: string): object | undefined;
+  killAgent(agentId: string): boolean;
+}
 
 /**
  * 子代理信息（用于 JSONL 写入）
@@ -50,7 +57,7 @@ export interface ChatContext {
   systemPrompt?: string; // 动态传入的系统提示词（无状态设计）
   subagentInfo?: SubagentInfoForContext; // 子代理信息（用于 JSONL 写入）
   omitEnvironment?: boolean;
-  backgroundAgentManager?: BackgroundAgentManager;
+  backgroundAgentManager?: IBackgroundAgentManager;
 }
 
 /**

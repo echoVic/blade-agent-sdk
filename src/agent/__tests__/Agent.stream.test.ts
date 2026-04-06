@@ -1,5 +1,6 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
-import type { AgentEvent, ChatContext, LoopResult } from '../types.js';
+import type { AgentEvent } from '../AgentEvent.js';
+import type { ChatContext, LoopResult } from '../types.js';
 import { PermissionMode } from '../../types/common.js';
 
 const createMockChatService = () => ({

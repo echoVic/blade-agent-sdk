@@ -255,9 +255,6 @@ export class BackgroundAgentManager {
         modelId,
       }, {
         subagentRegistry,
-        // Background subagents should inherit the parent runtime context when a
-        // snapshot exists. Without a snapshot, default to an empty context so
-        // out-of-band background work does not gain implicit host access.
         defaultContext: snapshot
           ? snapshot.context
           : {},

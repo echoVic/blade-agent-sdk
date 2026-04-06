@@ -54,8 +54,8 @@ import {
   type TokenBudgetConfig,
   type TokenBudgetSnapshot,
 } from './TokenBudget.js';
+import type { AgentEvent } from './AgentEvent.js';
 import type {
-  AgentEvent,
   AgentOptions,
   ChatContext,
   LoopOptions,

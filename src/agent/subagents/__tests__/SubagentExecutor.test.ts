@@ -10,7 +10,7 @@ const runAgenticLoop = vi.fn(async () => ({
   },
 }));
 
-const createAgent = vi.fn(async (_config, _options, deps) => ({
+const createAgent = vi.fn(async (_config: unknown, _options: unknown, deps: unknown) => ({
   runAgenticLoop,
   deps,
 }));
