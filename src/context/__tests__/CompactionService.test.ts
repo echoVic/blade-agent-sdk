@@ -1,10 +1,15 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Message } from '../../services/ChatServiceInterface.js';
 
+const mockChat = vi.fn(async () => ({
+  content: '<summary>ok</summary>',
+}));
+const mockSideQuery = vi.fn(async () => ({
+  content: '<summary>ok</summary>',
+}));
 const mockCreateChatServiceAsync = vi.fn(async (_config: Record<string, unknown>) => ({
-  chat: async () => ({
-    content: '<summary>ok</summary>',
-  }),
+  chat: mockChat,
+  sideQuery: mockSideQuery,
 }));
 
 vi.mock('../../services/ChatServiceInterface.js', () => ({
@@ -23,6 +28,8 @@ const { compact } = await import('../CompactionService.js');
 describe('CompactionService', () => {
   beforeEach(() => {
     mockCreateChatServiceAsync.mockClear();
+    mockChat.mockClear();
+    mockSideQuery.mockClear();
   });
 
   it('uses the native openai provider for official OpenAI compaction requests', async () => {
@@ -44,5 +51,7 @@ describe('CompactionService', () => {
       }),
       expect.anything(),
     );
+    expect(mockSideQuery).toHaveBeenCalledTimes(1);
+    expect(mockChat).not.toHaveBeenCalled();
   });
 });

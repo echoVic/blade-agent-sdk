@@ -8,6 +8,7 @@ function createExecutionPipeline() {
     getRegistry: () => ({
       getAll: () => [],
     }),
+    getCatalog: () => undefined,
   };
 }
 

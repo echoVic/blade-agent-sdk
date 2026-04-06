@@ -514,7 +514,8 @@ IMPORTANT - Use the correct year in search queries:
   category: '网络工具',
   tags: ['web', 'search', 'internet', 'news'],
 
-  extractSignatureContent: (params) => `search:${sanitizeQuery(params.query)}`,
-
-  abstractPermissionRule: () => 'search:*',
+  preparePermissionMatcher: (params) => ({
+    signatureContent: `search:${sanitizeQuery(params.query)}`,
+    abstractRule: 'search:*',
+  }),
 });

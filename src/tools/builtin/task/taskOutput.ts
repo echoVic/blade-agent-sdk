@@ -7,10 +7,11 @@
  */
 
 import { z } from 'zod';
-import { BackgroundAgentManager } from '../../../agent/subagents/BackgroundAgentManager.js';
+import type { BackgroundAgentManager } from '../../../agent/subagents/BackgroundAgentManager.js';
 import { createTool } from '../../core/createTool.js';
 import type { ExecutionContext, ToolResult } from '../../types/index.js';
 import { ToolErrorType, ToolKind } from '../../types/index.js';
+import { ToolSchemas } from '../../validation/zodSchemas.js';
 import { BackgroundShellManager } from '../shell/BackgroundShellManager.js';
 
 /**
@@ -27,13 +28,11 @@ export const taskOutputTool = createTool({
 
   schema: z.object({
     task_id: z.string().min(1).describe('The task ID to get output from'),
-    block: z.boolean().default(true).describe('Whether to wait for completion'),
-    timeout: z
-      .number()
-      .min(0)
-      .max(600000)
-      .default(30000)
-      .describe('Max wait time in ms'),
+    block: ToolSchemas.flag({
+      defaultValue: true,
+      description: 'Whether to wait for completion',
+    }),
+    timeout: ToolSchemas.timeout(0, 600000, 30000).describe('Max wait time in ms'),
   }),
 
   description: {
@@ -72,21 +71,21 @@ export const taskOutputTool = createTool({
     ],
   },
 
-  async execute(params, _context: ExecutionContext): Promise<ToolResult> {
+  async execute(params, context: ExecutionContext): Promise<ToolResult> {
     const { task_id, block, timeout } = params;
+    const agentManager = context.backgroundAgentManager as BackgroundAgentManager | undefined;
 
     // 根据 task_id 前缀判断类型
     if (task_id.startsWith('bash_')) {
       return handleShellOutput(task_id, block, timeout);
     }
     const shellManager = BackgroundShellManager.getInstance();
-    const agentManager = BackgroundAgentManager.getInstance();
 
     if (shellManager.getProcess(task_id)) {
       return handleShellOutput(task_id, block, timeout);
     }
-    if (agentManager.getAgent(task_id)) {
-      return handleAgentOutput(task_id, block, timeout);
+    if (agentManager?.getAgent(task_id)) {
+      return handleAgentOutput(task_id, block, timeout, agentManager);
     }
 
     return {
@@ -104,8 +103,10 @@ export const taskOutputTool = createTool({
   category: 'Task',
   tags: ['task', 'output', 'background', 'shell', 'agent'],
 
-  extractSignatureContent: (params) => params.task_id,
-  abstractPermissionRule: () => '*',
+  preparePermissionMatcher: (params) => ({
+    signatureContent: params.task_id,
+    abstractRule: '*',
+  }),
 });
 
 /**
@@ -192,9 +193,9 @@ async function handleShellOutput(
 async function handleAgentOutput(
   taskId: string,
   block: boolean,
-  timeout: number
+  timeout: number,
+  manager: BackgroundAgentManager,
 ): Promise<ToolResult> {
-  const manager = BackgroundAgentManager.getInstance();
 
   // 获取会话信息
   let session = manager.getAgent(taskId);
@@ -239,6 +240,8 @@ async function handleAgentOutput(
       : undefined,
     result: session.result,
     stats: session.stats,
+    output_file: session.outputFile,
+    progress: session.progress,
   };
 
   const subagentStatus =
@@ -249,11 +252,17 @@ async function handleAgentOutput(
         : 'running';
 
   const statusEmoji = getStatusEmoji(session.status);
+  const progressInfo = session.progress
+    ? `工具调用: ${session.progress.toolUseCount} 次\n` +
+      (session.progress.lastActivity ? `最近活动: ${session.progress.lastActivity}\n` : '') +
+      (session.progress.summary ? `摘要: ${session.progress.summary}\n` : '')
+    : '';
   const displayContent =
     `${statusEmoji} TaskOutput(${taskId}) - Agent\n` +
     `状态: ${session.status}\n` +
     `类型: ${session.subagentType}\n` +
     `描述: ${session.description}\n` +
+    (progressInfo ? `\n进度:\n${progressInfo}` : '') +
     (session.stats?.duration ? `耗时: ${session.stats.duration}ms\n` : '') +
     (session.stats?.toolCalls ? `工具调用: ${session.stats.toolCalls} 次\n` : '') +
     (session.result?.message ? `\n结果:\n${session.result.message}` : '') +

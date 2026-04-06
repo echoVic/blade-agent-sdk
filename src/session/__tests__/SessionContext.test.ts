@@ -167,4 +167,141 @@ describe('Session runtime context', () => {
 
     session.close();
   });
+
+  it('should forward unified tool execution updates through session.stream()', async () => {
+    const storagePath = mkdtempSync(join(tmpdir(), 'session-context-stream-'));
+    createAgent.mockResolvedValueOnce({
+      async *streamChat(): AsyncGenerator<unknown, unknown, unknown> {
+        yield { type: 'turn_start', turn: 1 };
+        yield {
+          type: 'tool_start',
+          toolCall: {
+            id: 'tool-1',
+            type: 'function',
+            function: {
+              name: 'ReadFile',
+              arguments: '{}',
+            },
+          },
+        };
+        yield {
+          type: 'tool_progress',
+          toolCall: {
+            id: 'tool-1',
+            type: 'function',
+            function: {
+              name: 'ReadFile',
+              arguments: '{}',
+            },
+          },
+          message: 'loading',
+        };
+        yield {
+          type: 'tool_message',
+          toolCall: {
+            id: 'tool-1',
+            type: 'function',
+            function: {
+              name: 'ReadFile',
+              arguments: '{}',
+            },
+          },
+          message: 'partial output',
+        };
+        yield {
+          type: 'tool_runtime_patch',
+          toolCall: {
+            id: 'tool-1',
+            type: 'function',
+            function: {
+              name: 'ReadFile',
+              arguments: '{}',
+            },
+          },
+          patch: {
+            scope: 'turn',
+            source: 'tool',
+            systemPromptAppend: 'extra',
+          },
+        };
+        yield {
+          type: 'tool_result',
+          toolCall: {
+            id: 'tool-1',
+            type: 'function',
+            function: {
+              name: 'ReadFile',
+              arguments: '{}',
+            },
+          },
+          result: {
+            success: true,
+            llmContent: 'done',
+            displayContent: 'done',
+          },
+        };
+        return {
+          success: true,
+          finalMessage: 'ok',
+          metadata: {
+            turnsCount: 1,
+            toolCallsCount: 1,
+            duration: 0,
+          },
+        };
+      },
+      async setModel() {},
+    } as never);
+
+    const session = await createSession({
+      provider: { type: 'openai-compatible', apiKey: 'test-key' },
+      model: 'gpt-4o-mini',
+      storagePath,
+    });
+
+    await session.send('hello');
+
+    const events: string[] = [];
+    for await (const event of session.stream()) {
+      events.push(event.type);
+    }
+
+    expect(events).toEqual(expect.arrayContaining([
+      'tool_use',
+      'tool_progress',
+      'tool_message',
+      'tool_runtime_patch',
+      'tool_result',
+    ]));
+
+    session.close();
+  });
+
+  it('fails with a controlled runtime error instead of a non-null assertion crash', async () => {
+    const storagePath = mkdtempSync(join(tmpdir(), 'session-context-runtime-'));
+    const session = await createSession({
+      provider: { type: 'openai-compatible', apiKey: 'test-key' },
+      model: 'gpt-4o-mini',
+      storagePath,
+    });
+
+    await session.send('hello');
+
+    const brokenSession = session as unknown as {
+      runtime: null;
+      initialized: boolean;
+      stream: typeof session.stream;
+      close: typeof session.close;
+    };
+    brokenSession.runtime = null;
+    brokenSession.initialized = true;
+
+    await expect(async () => {
+      for await (const _event of brokenSession.stream()) {
+        // Drain stream.
+      }
+    }).rejects.toThrow('Session runtime is not initialized');
+
+    session.close();
+  });
 });

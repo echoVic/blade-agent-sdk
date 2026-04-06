@@ -15,13 +15,24 @@ import { globTool, grepTool } from './search/index.js';
 // Shell 命令工具
 import { bashTool, killShellTool } from './shell/index.js';
 // System 工具
-import { askUserQuestionTool, skillTool } from './system/index.js';
+import { askUserQuestionTool, discoverToolsTool, skillTool } from './system/index.js';
 // 任务管理工具
-import { taskOutputTool, taskTool } from './task/index.js';
+import { createTaskTool, taskOutputTool } from './task/index.js';
+import {
+  createTaskCreateTool,
+  createTaskGetTool,
+  createTaskListTool,
+  createTaskStopTool,
+  createTaskUpdateTool,
+} from './task/index.js';
 // MCP 资源工具
 import { createListMcpResourcesTool, createReadMcpResourceTool } from './mcp/index.js';
 // Todo 工具
 import { createTodoWriteTool } from './todo/index.js';
+// Memory 工具
+import { createMemoryReadTool, createMemoryWriteTool } from './memory/index.js';
+import { SubagentRegistry } from '../../agent/subagents/SubagentRegistry.js';
+import type { MemoryManager } from '../../memory/MemoryManager.js';
 // 网络工具
 import { webFetchTool, webSearchTool } from './web/index.js';
 
@@ -42,9 +53,15 @@ export async function getBuiltinTools(opts?: {
   configDir?: string;
   mcpRegistry?: McpRegistry;
   includeMcpProtocolTools?: boolean;
+  memoryManager?: MemoryManager;
+  subagentRegistry?: SubagentRegistry;
 }): Promise<Tool[]> {
   const sessionId = opts?.sessionId || `session_${Date.now()}`;
   const configDir = opts?.configDir;
+  const registry = opts?.subagentRegistry ?? new SubagentRegistry();
+  if (!opts?.subagentRegistry) {
+    registry.loadFromStandardLocations(undefined, configDir);
+  }
 
   const builtinTools: Tool<unknown>[] = [
     readTool,
@@ -57,12 +74,24 @@ export async function getBuiltinTools(opts?: {
     killShellTool,
     webFetchTool,
     webSearchTool,
-    taskTool,
+    createTaskTool({ registry }),
     taskOutputTool,
+    createTaskCreateTool({ sessionId }),
+    createTaskGetTool({ sessionId }),
+    createTaskUpdateTool({ sessionId }),
+    createTaskListTool({ sessionId }),
+    createTaskStopTool({ sessionId }),
     createTodoWriteTool({ sessionId, configDir }),
+    ...(opts?.memoryManager
+      ? [
+          createMemoryReadTool({ manager: opts.memoryManager }),
+          createMemoryWriteTool({ manager: opts.memoryManager }),
+        ]
+      : []),
     enterPlanModeTool,
     exitPlanModeTool,
     askUserQuestionTool,
+    discoverToolsTool,
     skillTool,
     ...(opts?.mcpRegistry ? [createListMcpResourcesTool(opts.mcpRegistry), createReadMcpResourceTool(opts.mcpRegistry)] : []),
   ] as Tool<unknown>[];

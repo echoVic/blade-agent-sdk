@@ -8,7 +8,7 @@
 import type { SubagentConfig } from './types.js';
 
 /**
- * 内置 Subagent 列表（3 个核心 agent）
+ * 内置 Subagent 列表
  *
  */
 export const builtinAgents: SubagentConfig[] = [
@@ -23,6 +23,7 @@ export const builtinAgents: SubagentConfig[] = [
     description:
       'Fast agent specialized for exploring codebases. Use this when you need to quickly find files by patterns (eg. "src/components/**/*.tsx"), search code for keywords (eg. "API endpoints"), or answer questions about the codebase (eg. "how do API endpoints work?"). When calling this agent, specify the desired thoroughness level: "quick" for basic searches, "medium" for moderate exploration, or "very thorough" for comprehensive analysis across multiple locations and naming conventions.',
     tools: ['Glob', 'Grep', 'Read', 'WebFetch', 'WebSearch'],
+    omitEnvironment: true,
     systemPrompt: `# Explore Subagent
 
 You are a specialized code exploration agent. Your job is to **directly execute searches** using the tools available to you.
@@ -65,6 +66,7 @@ Remember: Execute searches directly. Return ONE comprehensive message to the par
     description:
       'Software architect agent for designing implementation plans. Use this when you need to plan the implementation strategy for a task. Returns step-by-step plans, identifies critical files, and considers architectural trade-offs.',
     tools: [], // 所有工具
+    omitEnvironment: true,
     systemPrompt: `# Plan Subagent
 
 You are a software architect specializing in implementation planning.
@@ -100,5 +102,3 @@ You are a software architect specializing in implementation planning.
 Be thorough but concise. Focus on actionable steps.`,
   },
 ];
-
-

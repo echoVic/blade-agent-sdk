@@ -41,22 +41,21 @@ export const webFetchTool = createTool({
       .enum(['GET', 'POST', 'PUT', 'DELETE', 'HEAD'])
       .default('GET')
       .describe('HTTP method'),
-    extract_content: z
-      .boolean()
-      .default(false)
-      .describe(
-        'Use Jina Reader to extract clean content in Markdown format. Removes HTML clutter, scripts, and styling, returning only the main content.'
-      ),
+    extract_content: ToolSchemas.flag({
+      defaultValue: false,
+      description:
+        'Use Jina Reader to extract clean content in Markdown format. Removes HTML clutter, scripts, and styling, returning only the main content.',
+    }),
     jina_options: z
       .object({
-        with_generated_alt: z
-          .boolean()
-          .default(false)
-          .describe('Generate alt text for images'),
-        with_links_summary: z
-          .boolean()
-          .default(false)
-          .describe('Include summary of all links'),
+        with_generated_alt: ToolSchemas.flag({
+          defaultValue: false,
+          description: 'Generate alt text for images',
+        }),
+        with_links_summary: ToolSchemas.flag({
+          defaultValue: false,
+          description: 'Include summary of all links',
+        }),
         wait_for_selector: z
           .string()
           .optional()
@@ -67,7 +66,10 @@ export const webFetchTool = createTool({
     headers: z.record(z.string()).optional().describe('Request headers (optional)'),
     body: z.string().optional().describe('Request body (optional)'),
     timeout: ToolSchemas.timeout(1000, 120000, 30000),
-    follow_redirects: z.boolean().default(true).describe('Follow redirects'),
+    follow_redirects: ToolSchemas.flag({
+      defaultValue: true,
+      description: 'Follow redirects',
+    }),
     max_redirects: z
       .number()
       .int()
@@ -75,7 +77,10 @@ export const webFetchTool = createTool({
       .max(10)
       .default(5)
       .describe('Maximum redirect hops'),
-    return_headers: z.boolean().default(false).describe('Return response headers'),
+    return_headers: ToolSchemas.flag({
+      defaultValue: false,
+      description: 'Return response headers',
+    }),
   }),
 
   // 工具描述（对齐 Claude Code 官方）
@@ -256,29 +261,26 @@ Usage notes:
   category: '网络工具',
   tags: ['web', 'http', 'fetch', 'request', 'api'],
 
-  /**
-   * 提取签名内容：返回 domain:hostname 格式
-   * 例如：domain:github.com
-   */
-  extractSignatureContent: (params) => {
+  preparePermissionMatcher: (params) => {
+    let signatureContent: string;
     try {
       const urlObj = new URL(params.url);
-      return `domain:${urlObj.hostname}`;
+      signatureContent = `domain:${urlObj.hostname}`;
     } catch {
-      return params.url;
+      signatureContent = params.url;
     }
-  },
 
-  /**
-   * 抽象权限规则：提取域名通配符
-   * 例如：domain:github.com
-   */
-  abstractPermissionRule: (params) => {
     try {
       const urlObj = new URL(params.url);
-      return `domain:${urlObj.hostname}`;
+      return {
+        signatureContent,
+        abstractRule: `domain:${urlObj.hostname}`,
+      };
     } catch {
-      return '*';
+      return {
+        signatureContent,
+        abstractRule: '*',
+      };
     }
   },
 });

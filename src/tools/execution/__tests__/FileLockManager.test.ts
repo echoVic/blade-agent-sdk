@@ -1,6 +1,10 @@
 import { describe, expect, it, beforeEach } from 'vitest';
 import { FileLockManager } from '../FileLockManager.js';
 
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 describe('FileLockManager', () => {
   beforeEach(() => {
     // 每个测试前重置单例，确保测试隔离
@@ -165,6 +169,55 @@ describe('FileLockManager', () => {
 
       expect(executionOrder).toEqual(['op1', 'op2']);
     });
+
+    it('should allow concurrent read locks on the same file', async () => {
+      const manager = FileLockManager.getInstance();
+      let activeReaders = 0;
+      let maxActiveReaders = 0;
+
+      const read1 = manager.acquireLock('/tmp/file.ts', 'read', async () => {
+        activeReaders += 1;
+        maxActiveReaders = Math.max(maxActiveReaders, activeReaders);
+        await sleep(30);
+        activeReaders -= 1;
+        return 'read-1';
+      });
+
+      const read2 = manager.acquireLock('/tmp/file.ts', 'read', async () => {
+        activeReaders += 1;
+        maxActiveReaders = Math.max(maxActiveReaders, activeReaders);
+        await sleep(30);
+        activeReaders -= 1;
+        return 'read-2';
+      });
+
+      const results = await Promise.all([read1, read2]);
+
+      expect(results).toEqual(['read-1', 'read-2']);
+      expect(maxActiveReaders).toBe(2);
+    });
+
+    it('should block a write lock until active reads finish', async () => {
+      const manager = FileLockManager.getInstance();
+      const executionOrder: string[] = [];
+
+      const read = manager.acquireLock('/tmp/file.ts', 'read', async () => {
+        executionOrder.push('read-start');
+        await sleep(30);
+        executionOrder.push('read-end');
+        return 'read';
+      });
+
+      const write = manager.acquireLock('/tmp/file.ts', 'write', async () => {
+        executionOrder.push('write');
+        return 'write';
+      });
+
+      const results = await Promise.all([read, write]);
+
+      expect(results).toEqual(['read', 'write']);
+      expect(executionOrder).toEqual(['read-start', 'read-end', 'write']);
+    });
   });
 
   describe('isLocked', () => {
@@ -187,14 +240,12 @@ describe('FileLockManager', () => {
       await lockPromise;
     });
 
-    it('should still return true after operation completes (lock entry remains in map)', async () => {
+    it('should return false after the last operation completes and cleanup runs', async () => {
       const manager = FileLockManager.getInstance();
 
       await manager.acquireLock('/tmp/file.ts', async () => 'done');
 
-      // 注意：acquireLock 完成后锁条目仍然在 map 中
-      // isLocked 只检查 map 中是否有条目
-      expect(manager.isLocked('/tmp/file.ts')).toBe(true);
+      expect(manager.isLocked('/tmp/file.ts')).toBe(false);
     });
   });
 
@@ -202,23 +253,34 @@ describe('FileLockManager', () => {
     it('should clear the lock for a specific file', async () => {
       const manager = FileLockManager.getInstance();
 
-      await manager.acquireLock('/tmp/file.ts', async () => 'done');
+      const lockPromise = manager.acquireLock('/tmp/file.ts', async () => {
+        await sleep(50);
+        return 'done';
+      });
       expect(manager.isLocked('/tmp/file.ts')).toBe(true);
 
       manager.clearLock('/tmp/file.ts');
       expect(manager.isLocked('/tmp/file.ts')).toBe(false);
+      await lockPromise;
     });
 
     it('should not affect locks on other files', async () => {
       const manager = FileLockManager.getInstance();
 
-      await manager.acquireLock('/tmp/fileA.ts', async () => 'A');
-      await manager.acquireLock('/tmp/fileB.ts', async () => 'B');
+      const lockA = manager.acquireLock('/tmp/fileA.ts', async () => {
+        await sleep(50);
+        return 'A';
+      });
+      const lockB = manager.acquireLock('/tmp/fileB.ts', async () => {
+        await sleep(50);
+        return 'B';
+      });
 
       manager.clearLock('/tmp/fileA.ts');
 
       expect(manager.isLocked('/tmp/fileA.ts')).toBe(false);
       expect(manager.isLocked('/tmp/fileB.ts')).toBe(true);
+      await Promise.all([lockA, lockB]);
     });
 
     it('should not throw when clearing a non-existent lock', () => {
@@ -233,9 +295,20 @@ describe('FileLockManager', () => {
     it('should clear all locks', async () => {
       const manager = FileLockManager.getInstance();
 
-      await manager.acquireLock('/tmp/fileA.ts', async () => 'A');
-      await manager.acquireLock('/tmp/fileB.ts', async () => 'B');
-      await manager.acquireLock('/tmp/fileC.ts', async () => 'C');
+      const locks = [
+        manager.acquireLock('/tmp/fileA.ts', async () => {
+          await sleep(50);
+          return 'A';
+        }),
+        manager.acquireLock('/tmp/fileB.ts', async () => {
+          await sleep(50);
+          return 'B';
+        }),
+        manager.acquireLock('/tmp/fileC.ts', async () => {
+          await sleep(50);
+          return 'C';
+        }),
+      ];
 
       expect(manager.getLockedFileCount()).toBe(3);
 
@@ -245,6 +318,7 @@ describe('FileLockManager', () => {
       expect(manager.isLocked('/tmp/fileA.ts')).toBe(false);
       expect(manager.isLocked('/tmp/fileB.ts')).toBe(false);
       expect(manager.isLocked('/tmp/fileC.ts')).toBe(false);
+      await Promise.all(locks);
     });
 
     it('should not throw when no locks exist', () => {
@@ -264,20 +338,33 @@ describe('FileLockManager', () => {
     it('should return all locked file paths', async () => {
       const manager = FileLockManager.getInstance();
 
-      await manager.acquireLock('/tmp/fileA.ts', async () => 'A');
-      await manager.acquireLock('/tmp/fileB.ts', async () => 'B');
+      const lockA = manager.acquireLock('/tmp/fileA.ts', async () => {
+        await sleep(50);
+        return 'A';
+      });
+      const lockB = manager.acquireLock('/tmp/fileB.ts', async () => {
+        await sleep(50);
+        return 'B';
+      });
 
       const lockedFiles = manager.getLockedFiles();
       expect(lockedFiles).toContain('/tmp/fileA.ts');
       expect(lockedFiles).toContain('/tmp/fileB.ts');
       expect(lockedFiles).toHaveLength(2);
+      await Promise.all([lockA, lockB]);
     });
 
     it('should not include cleared files', async () => {
       const manager = FileLockManager.getInstance();
 
-      await manager.acquireLock('/tmp/fileA.ts', async () => 'A');
-      await manager.acquireLock('/tmp/fileB.ts', async () => 'B');
+      const lockA = manager.acquireLock('/tmp/fileA.ts', async () => {
+        await sleep(50);
+        return 'A';
+      });
+      const lockB = manager.acquireLock('/tmp/fileB.ts', async () => {
+        await sleep(50);
+        return 'B';
+      });
 
       manager.clearLock('/tmp/fileA.ts');
 
@@ -285,6 +372,7 @@ describe('FileLockManager', () => {
       expect(lockedFiles).not.toContain('/tmp/fileA.ts');
       expect(lockedFiles).toContain('/tmp/fileB.ts');
       expect(lockedFiles).toHaveLength(1);
+      await Promise.all([lockA, lockB]);
     });
   });
 
@@ -297,22 +385,36 @@ describe('FileLockManager', () => {
     it('should return the correct count of locked files', async () => {
       const manager = FileLockManager.getInstance();
 
-      await manager.acquireLock('/tmp/fileA.ts', async () => 'A');
+      const lockA = manager.acquireLock('/tmp/fileA.ts', async () => {
+        await sleep(50);
+        return 'A';
+      });
       expect(manager.getLockedFileCount()).toBe(1);
 
-      await manager.acquireLock('/tmp/fileB.ts', async () => 'B');
+      const lockB = manager.acquireLock('/tmp/fileB.ts', async () => {
+        await sleep(50);
+        return 'B';
+      });
       expect(manager.getLockedFileCount()).toBe(2);
+      await Promise.all([lockA, lockB]);
     });
 
     it('should decrease count after clearLock', async () => {
       const manager = FileLockManager.getInstance();
 
-      await manager.acquireLock('/tmp/fileA.ts', async () => 'A');
-      await manager.acquireLock('/tmp/fileB.ts', async () => 'B');
+      const lockA = manager.acquireLock('/tmp/fileA.ts', async () => {
+        await sleep(50);
+        return 'A';
+      });
+      const lockB = manager.acquireLock('/tmp/fileB.ts', async () => {
+        await sleep(50);
+        return 'B';
+      });
       expect(manager.getLockedFileCount()).toBe(2);
 
       manager.clearLock('/tmp/fileA.ts');
       expect(manager.getLockedFileCount()).toBe(1);
+      await Promise.all([lockA, lockB]);
     });
 
     it('should return 0 after clearAll', async () => {
@@ -329,7 +431,10 @@ describe('FileLockManager', () => {
   describe('resetInstance', () => {
     it('should create a fresh instance with no locks', async () => {
       const manager1 = FileLockManager.getInstance();
-      await manager1.acquireLock('/tmp/file.ts', async () => 'done');
+      const lockPromise = manager1.acquireLock('/tmp/file.ts', async () => {
+        await sleep(50);
+        return 'done';
+      });
       expect(manager1.getLockedFileCount()).toBe(1);
 
       FileLockManager.resetInstance();
@@ -337,6 +442,7 @@ describe('FileLockManager', () => {
       const manager2 = FileLockManager.getInstance();
       expect(manager2.getLockedFileCount()).toBe(0);
       expect(manager2.isLocked('/tmp/file.ts')).toBe(false);
+      await lockPromise;
     });
   });
 
@@ -404,7 +510,7 @@ describe('FileLockManager', () => {
       results.forEach((result, i) => {
         expect(result).toBe(`result-${i}`);
       });
-      expect(manager.getLockedFileCount()).toBe(fileCount);
+      expect(manager.getLockedFileCount()).toBe(0);
     });
   });
 });

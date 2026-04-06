@@ -1,6 +1,5 @@
 import { basename, extname } from 'path';
 import { z } from 'zod';
-import { isAcpMode } from '../../../acp/AcpServiceContext.js';
 import { hasFilesystemCapability } from '../../../runtime/index.js';
 import { getFileSystemService } from '../../../services/FileSystemService.js';
 import { getErrorMessage, getErrorName } from '../../../utils/errorUtils.js';
@@ -22,6 +21,7 @@ export const readTool = createTool({
   name: 'Read',
   displayName: 'File Read',
   kind: ToolKind.ReadOnly,
+  maxResultSizeChars: 500_000, // ~500KB — large files get externalized to avoid context bloat
 
   // Zod Schema 定义
   schema: z.object({
@@ -36,6 +36,18 @@ export const readTool = createTool({
     }).optional(),
     encoding: ToolSchemas.encoding(),
   }),
+
+  validateInput: (params, context) => {
+    if (!hasFilesystemCapability(context.contextSnapshot)) {
+      return {
+        message: 'No filesystem access in current context',
+        llmContent: 'No filesystem access in the current runtime context.',
+        displayContent: '❌ 当前上下文未启用文件系统访问',
+        errorType: ToolErrorType.PERMISSION_DENIED,
+      };
+    }
+    return undefined;
+  },
 
   // 工具描述
   description: {
@@ -84,23 +96,10 @@ export const readTool = createTool({
     const signal = context.signal ?? new AbortController().signal;
 
     try {
-      if (!hasFilesystemCapability(context.contextSnapshot)) {
-        return {
-          success: false,
-          llmContent: 'No filesystem access in the current runtime context.',
-          displayContent: '❌ 当前上下文未启用文件系统访问',
-          error: {
-            type: ToolErrorType.PERMISSION_DENIED,
-            message: 'No filesystem access in current context',
-          },
-        };
-      }
-
       updateOutput?.('Starting file read...');
 
-      // 获取文件系统服务（ACP 或本地）
+      // 获取文件系统服务
       const fsService = getFileSystemService();
-      const useAcp = isAcpMode();
 
       // 检查文件是否存在（统一使用 FileSystemService）
       try {
@@ -159,34 +158,20 @@ export const readTool = createTool({
         last_modified:
           stats?.mtime instanceof Date ? stats.mtime.toISOString() : undefined,
         encoding: encoding,
-        acp_mode: useAcp,
       };
 
       // 处理二进制文件
       if (isBinaryFile && encoding === 'utf8') {
-        // ⚠️ ACP 模式下二进制读取会 fallback 到本地
-        if (useAcp) {
-          updateOutput?.('⚠️ 二进制文件通过本地读取（ACP 不支持）...');
-          metadata.acp_fallback = true;
-        } else {
-          updateOutput?.('检测到二进制文件，使用 base64 编码...');
-        }
+        updateOutput?.('检测到二进制文件，使用 base64 编码...');
         const buffer = await fsService.readBinaryFile(file_path);
         content = buffer.toString('base64');
         metadata.encoding = 'base64';
         metadata.is_binary = true;
       } else if (isTextFile) {
         // 文本文件：使用 FileSystemService 读取
-        if (useAcp) {
-          updateOutput?.('通过 IDE 读取文件...');
-        }
         content = await fsService.readTextFile(file_path);
       } else {
         // 其他文件：使用二进制读取
-        // ⚠️ ACP 模式下会 fallback 到本地
-        if (useAcp) {
-          metadata.acp_fallback = true;
-        }
         const buffer = await fsService.readBinaryFile(file_path);
 
         if (encoding === 'base64') {
@@ -276,17 +261,12 @@ export const readTool = createTool({
   category: '文件操作',
   tags: ['file', 'io', 'read'],
 
-  /**
-   * 提取签名内容：返回文件路径
-   */
-  extractSignatureContent: (params) => params.file_path,
-
-  /**
-   * 抽象权限规则：返回扩展名通配符格式
-   */
-  abstractPermissionRule: (params) => {
+  preparePermissionMatcher: (params) => {
     const ext = extname(params.file_path);
-    return ext ? `**/*${ext}` : '**/*';
+    return {
+      signatureContent: params.file_path,
+      abstractRule: ext ? `**/*${ext}` : '**/*',
+    };
   },
 });
 

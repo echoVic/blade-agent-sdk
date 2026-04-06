@@ -20,6 +20,7 @@ import type {
   ContentPart,
   IChatService,
   Message,
+  SideQueryOptions,
   StreamChunk,
   ToolCall,
   UsageInfo,
@@ -461,6 +462,50 @@ export class VercelAIChatService implements IChatService {
     } catch (error) {
       const duration = Date.now() - startTime;
       this.logger.error('❌ [VercelAIChatService] Chat failed after', duration, 'ms');
+      throw error;
+    }
+  }
+
+  async sideQuery(
+    messages: Message[],
+    signal?: AbortSignal,
+    options?: SideQueryOptions,
+  ): Promise<ChatResponse> {
+    await this.initialized;
+    const startTime = Date.now();
+    this.logger.debug('🚀 [VercelAIChatService] Starting side query request');
+
+    const { coreMessages, experimentalOutput } = this.prepareRequest(messages);
+    const retryConfig = {
+      ...this.retryConfig,
+      querySource: options?.querySource ?? 'side_question',
+    };
+
+    try {
+      const gen = withRetry(
+        (ctx: RetryContext) =>
+          generateText({
+            model: this.model,
+            messages: coreMessages as never,
+            maxOutputTokens: ctx.maxTokensOverride
+              ?? options?.maxOutputTokens
+              ?? this.config.maxOutputTokens,
+            temperature: options?.temperature ?? this.config.temperature ?? 0,
+            abortSignal: signal,
+            experimental_output: experimentalOutput,
+          }),
+        retryConfig,
+        signal,
+      );
+
+      const result = await consumeRetryGenerator(gen, this.logger);
+
+      const duration = Date.now() - startTime;
+      this.logger.debug('📥 [VercelAIChatService] Side query response received in', duration, 'ms');
+      return this.buildChatResponse(result);
+    } catch (error) {
+      const duration = Date.now() - startTime;
+      this.logger.error('❌ [VercelAIChatService] Side query failed after', duration, 'ms');
       throw error;
     }
   }

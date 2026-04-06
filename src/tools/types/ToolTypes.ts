@@ -1,6 +1,11 @@
 import type { JSONSchema7 } from 'json-schema';
 import type { PermissionMode } from '../../types/common.js';
+import type { PermissionResult } from '../../types/permissions.js';
+import type { RuntimeContextPatch, RuntimePatch } from '../../runtime/index.js';
+import type { Message } from '../../services/ChatServiceInterface.js';
 import type { ExecutionContext } from './ExecutionTypes.js';
+import type { ToolEffect } from './ToolEffects.js';
+import type { z } from 'zod';
 
 /**
  * Node.js 错误类型（带有 code 属性）
@@ -20,6 +25,14 @@ export enum ToolKind {
   ReadOnly = 'readonly',
   Write = 'write',
   Execute = 'execute',
+}
+
+export interface ToolBehavior {
+  kind: ToolKind;
+  isReadOnly: boolean;
+  isConcurrencySafe: boolean;
+  isDestructive: boolean;
+  interruptBehavior: 'cancel' | 'block';
 }
 
 /**
@@ -60,8 +73,6 @@ interface DiffMetadataFields extends FileMetadataFields {
 interface ReadMetadataFields extends FileMetadataFields {
   file_type: string;
   encoding: string;
-  acp_mode?: boolean;
-  acp_fallback?: boolean;
   is_binary?: boolean;
   lines_read?: number;
   total_lines?: number;
@@ -168,7 +179,6 @@ interface BashForegroundMetadataFields extends BaseMetadataFields {
   stdout_length?: number;
   stderr_length?: number;
   has_stderr?: boolean;
-  acp_mode?: boolean;
 }
 
 /**
@@ -324,39 +334,54 @@ export function isEditMetadata(
   );
 }
 
-/**
- * 泛型工具执行结果
- *
- * @template TMetadata - metadata 的具体类型
- *
- * @example
- * // 在工具内部使用具体类型
- * async function execute(): Promise<TypedToolResult<EditMetadata>> {
- *   return {
- *     success: true,
- *     llmContent: '...',
- *     displayContent: '...',
- *     metadata: { file_path: '...', matches_found: 1, ... }
- *   };
- * }
- */
-interface TypedToolResult<TMetadata extends ToolResultMetadata = ToolResultMetadata> {
-  success: boolean;
+interface ToolResultBase<TMetadata extends ToolResultMetadata = ToolResultMetadata> {
   llmContent: string | object;
   displayContent: string;
-  error?: ToolError;
   metadata?: TMetadata;
+  effects?: ToolEffect[];
+  runtimePatch?: RuntimePatch;
+  contextPatch?: RuntimeContextPatch;
+  newMessages?: Message[];
 }
 
 /**
- * 工具执行结果（向后兼容的非泛型版本）
+ * 泛型工具执行成功结果
  */
-export type ToolResult = TypedToolResult<ToolResultMetadata>;
+export interface ToolSuccessResult<
+  TData = unknown,
+  TMetadata extends ToolResultMetadata = ToolResultMetadata,
+> extends ToolResultBase<TMetadata> {
+  success: true;
+  data?: TData;
+  error?: undefined;
+}
+
+/**
+ * 泛型工具执行失败结果
+ */
+export interface ToolFailureResult<
+  TMetadata extends ToolResultMetadata = ToolResultMetadata,
+> extends ToolResultBase<TMetadata> {
+  success: false;
+  data?: undefined;
+  error: ToolError;
+}
+
+/**
+ * 泛型工具执行结果
+ *
+ * @template TData - 成功结果携带的结构化数据
+ * @template TMetadata - metadata 的具体类型
+ */
+export type ToolResult<
+  TData = unknown,
+  TMetadata extends ToolResultMetadata = ToolResultMetadata,
+> = ToolSuccessResult<TData, TMetadata> | ToolFailureResult<TMetadata>;
 
 /**
  * 工具错误类型
  */
-interface ToolError {
+export interface ToolError {
   message: string;
   type: ToolErrorType;
   code?: string;
@@ -380,6 +405,15 @@ export interface FunctionDeclaration {
   parameters: JSONSchema7;
 }
 
+export interface ToolValidationError {
+  message: string;
+  llmContent?: string | object;
+  displayContent?: string;
+  metadata?: ToolResultMetadata;
+  /** Override the default VALIDATION_ERROR type (e.g. PERMISSION_DENIED for capability checks) */
+  errorType?: ToolErrorType;
+}
+
 /**
  * 工具调用抽象
  */
@@ -389,6 +423,7 @@ export interface ToolInvocation<TParams = unknown, TResult = ToolResult> {
 
   getDescription(): string;
   getAffectedPaths(): string[];
+  validate?(context?: Partial<ExecutionContext>): Promise<ToolValidationError | undefined>;
   execute(
     signal: AbortSignal,
     updateOutput?: (output: string) => void,
@@ -410,6 +445,30 @@ export interface ToolDescription {
   important?: string[];
 }
 
+export type ToolSchema<TSchema extends z.ZodSchema = z.ZodSchema> =
+  | TSchema
+  | (() => TSchema);
+
+export type ToolDescriptionResolver<TParams = unknown> = (
+  params?: TParams
+) => ToolDescription;
+
+export type ToolExposureMode =
+  | 'eager'
+  | 'deferred'
+  | 'discoverable-only';
+
+export interface ToolExposureConfig {
+  mode?: ToolExposureMode;
+  alwaysLoad?: boolean;
+  discoveryHint?: string;
+}
+
+export interface PreparedPermissionMatcher {
+  signatureContent?: string;
+  abstractRule?: string;
+}
+
 /**
  * 统一的工具定义接口
  * 
@@ -419,10 +478,14 @@ export interface ToolDescription {
  */
 export interface ToolDefinition<TParams = Record<string, unknown>> {
   name: string;
+  aliases?: string[];
   displayName?: string;
   description: string | ToolDescription;
   parameters: unknown;
   kind?: ToolKind;
+  category?: string;
+  tags?: string[];
+  exposure?: ToolExposureConfig;
   execute: (params: TParams, context: ExecutionContext) => Promise<ToolResult>;
 }
 
@@ -431,9 +494,14 @@ export interface ToolDefinition<TParams = Record<string, unknown>> {
  * TSchema: Schema 类型 (如 z.ZodObject)
  * TParams: 推断的参数类型
  */
-export interface ToolConfig<TSchema = unknown, TParams = unknown> {
+export interface ToolConfig<
+  TSchema extends z.ZodSchema = z.ZodSchema,
+  TParams = unknown,
+> {
   /** 工具唯一名称 */
   name: string;
+  /** 向后兼容的别名 */
+  aliases?: string[];
   /** 工具显示名称 */
   displayName: string;
   /** 工具类型 */
@@ -442,14 +510,38 @@ export interface ToolConfig<TSchema = unknown, TParams = unknown> {
   isReadOnly?: boolean;
   /** 🆕 是否支持并发安全（可选，默认 true） */
   isConcurrencySafe?: boolean;
+  /** 🆕 是否为破坏性操作（可选，默认 false） */
+  isDestructive?: boolean;
   /** 🆕 是否启用 OpenAI Structured Outputs（可选，默认 false） */
   strict?: boolean;
+  /** 工具结果返回给模型前允许保留的最大字符数 */
+  maxResultSizeChars?: number;
+  /** 用户中断时的默认行为 */
+  interruptBehavior?: 'cancel' | 'block';
   /** Schema 定义 (通常是 Zod Schema) */
-  schema: TSchema;
+  schema: ToolSchema<TSchema>;
   /** 工具描述 */
   description: ToolDescription;
+  /** 基于输入动态生成工具描述 */
+  describe?: ToolDescriptionResolver<TParams>;
+  /** Tool 暴露策略 */
+  exposure?: ToolExposureConfig;
   /** 执行函数 */
   execute: (params: TParams, context: ExecutionContext) => Promise<ToolResult>;
+  /** 参数语义校验（在 Zod 结构校验之后执行） */
+  validateInput?: (
+    params: TParams,
+    context: ExecutionContext,
+  ) => Promise<void | ToolValidationError> | void | ToolValidationError;
+  /** 工具自身的权限预检查（在全局权限处理前执行） */
+  checkPermissions?: (
+    params: TParams,
+    context: ExecutionContext,
+  ) => Promise<void | PermissionResult> | void | PermissionResult;
+  /** 基于参数动态解析工具行为 */
+  resolveBehavior?: (params: TParams) => Partial<ToolBehavior> | ToolBehavior;
+  /** 无调用参数时为暴露规划提供的行为 hint */
+  resolveBehaviorHint?: () => Partial<ToolBehavior> | ToolBehavior;
   /** 版本号 */
   version?: string;
   /** 分类 */
@@ -458,30 +550,11 @@ export interface ToolConfig<TSchema = unknown, TParams = unknown> {
   tags?: string[];
 
   /**
-   * ✅ 新增：签名内容提取器
-   * 从参数中提取用于权限签名的内容字符串
-   * @param params - 类型安全的参数对象
-   * @returns 签名内容字符串（如 "mv file.txt" 或 "/src/foo.ts"）
-   * @example
-   * // Bash 工具
-   * extractSignatureContent: (params) => params.command
-   * // Read 工具
-   * extractSignatureContent: (params) => params.file_path
+   * 准备用于权限系统的匹配信息
+   * signatureContent 用于构造精确签名
+   * abstractRule 用于构造抽象权限规则
    */
-  extractSignatureContent?: (params: TParams) => string;
-
-  /**
-   * ✅ 新增：权限规则抽象器
-   * 将具体参数抽象为通配符权限规则
-   * @param params - 类型安全的参数对象
-   * @returns 权限规则字符串（如 "mv:*" 或 "**\/*.ts"）
-   * @example
-   * // Bash 工具
-   * abstractPermissionRule: (params) => `${extractMainCmd(params.command)}:*`
-   * // Read 工具
-   * abstractPermissionRule: (params) => `**\/*${path.extname(params.file_path)}`
-   */
-  abstractPermissionRule?: (params: TParams) => string;
+  preparePermissionMatcher?: (params: TParams) => PreparedPermissionMatcher;
 }
 
 /**
@@ -490,18 +563,30 @@ export interface ToolConfig<TSchema = unknown, TParams = unknown> {
 export interface Tool<TParams = unknown> {
   /** 工具名称 */
   readonly name: string;
+  /** 向后兼容的别名 */
+  readonly aliases?: string[];
   /** 显示名称 */
   readonly displayName: string;
   /** 工具类型 */
   readonly kind: ToolKind;
-  /** 🆕 是否为只读工具 */
+  /** 🆕 是否为只读工具 hint（向后兼容） */
   readonly isReadOnly: boolean;
-  /** 🆕 是否支持并发安全 */
+  /** 🆕 是否支持并发安全 hint（向后兼容） */
   readonly isConcurrencySafe: boolean;
+  /** 🆕 是否为破坏性操作 hint（向后兼容） */
+  readonly isDestructive?: boolean;
   /** 🆕 是否启用 OpenAI Structured Outputs */
   readonly strict: boolean;
+  /** 工具结果返回给模型前允许保留的最大字符数 */
+  readonly maxResultSizeChars: number;
+  /** 用户中断时的默认行为 */
+  readonly interruptBehavior: 'cancel' | 'block';
   /** 工具描述 */
   readonly description: ToolDescription;
+  /** Tool 暴露策略 */
+  readonly exposure: Required<ToolExposureConfig> & {
+    mode: ToolExposureMode;
+  };
   /** 版本号 */
   readonly version: string;
   /** 分类 */
@@ -513,6 +598,11 @@ export interface Tool<TParams = unknown> {
    * 获取函数声明 (用于 LLM)
    */
   getFunctionDeclaration(): FunctionDeclaration;
+
+  /**
+   * 获取当前调用上下文下的工具描述
+   */
+  describe(params?: TParams): ToolDescription;
 
   /**
    * 获取工具元信息
@@ -530,16 +620,35 @@ export interface Tool<TParams = unknown> {
   execute(params: TParams, signal?: AbortSignal): Promise<ToolResult>;
 
   /**
-   * ✅ 新增：签名内容提取器
-   * 从参数中提取用于权限签名的内容字符串
+   * 参数语义校验（在 Zod 结构校验之后执行）
    */
-  extractSignatureContent?: (params: TParams) => string;
+  validateInput?: (
+    params: TParams,
+    context: ExecutionContext,
+  ) => Promise<void | ToolValidationError> | void | ToolValidationError;
 
   /**
-   * ✅ 新增：权限规则抽象器
-   * 将具体参数抽象为通配符权限规则
+   * 工具自身的权限预检查（在全局权限处理前执行）
    */
-  abstractPermissionRule?: (params: TParams) => string;
+  checkPermissions?: (
+    params: TParams,
+    context: ExecutionContext,
+  ) => Promise<void | PermissionResult> | void | PermissionResult;
+
+  /**
+   * 根据调用参数解析本次执行的行为
+   */
+  resolveBehavior?: (params: TParams) => ToolBehavior;
+
+  /**
+   * 在没有调用参数时提供暴露/规划阶段使用的行为 hint
+   */
+  getBehaviorHint?: () => ToolBehavior;
+
+  /**
+   * 准备用于权限系统的匹配信息
+   */
+  preparePermissionMatcher?: (params: TParams) => PreparedPermissionMatcher;
 }
 
 /**
@@ -547,4 +656,110 @@ export interface Tool<TParams = unknown> {
  */
 export function isReadOnlyKind(kind: ToolKind): boolean {
   return kind === ToolKind.ReadOnly;
+}
+
+export function createToolBehavior(
+  kind: ToolKind,
+  overrides: Partial<ToolBehavior> = {},
+): ToolBehavior {
+  return {
+    kind,
+    isReadOnly: overrides.isReadOnly ?? isReadOnlyKind(kind),
+    isConcurrencySafe: overrides.isConcurrencySafe ?? true,
+    isDestructive: overrides.isDestructive ?? false,
+    interruptBehavior: overrides.interruptBehavior ?? 'cancel',
+  };
+}
+
+export function getStaticToolBehavior(tool: {
+  kind?: ToolKind;
+  isReadOnly?: boolean;
+  isConcurrencySafe?: boolean;
+  isDestructive?: boolean;
+  interruptBehavior?: 'cancel' | 'block';
+}): ToolBehavior {
+  return createToolBehavior(tool.kind ?? ToolKind.Execute, {
+    isReadOnly: tool.isReadOnly,
+    isConcurrencySafe: tool.isConcurrencySafe,
+    isDestructive: tool.isDestructive,
+    interruptBehavior: tool.interruptBehavior,
+  });
+}
+
+export function resolveToolBehaviorHint(tool: {
+  kind?: ToolKind;
+  isReadOnly?: boolean;
+  isConcurrencySafe?: boolean;
+  isDestructive?: boolean;
+  interruptBehavior?: 'cancel' | 'block';
+  getBehaviorHint?: () => Partial<ToolBehavior> | ToolBehavior;
+}): ToolBehavior {
+  const staticBehavior = getStaticToolBehavior(tool);
+  if (!tool.getBehaviorHint) {
+    return staticBehavior;
+  }
+
+  return {
+    ...staticBehavior,
+    ...tool.getBehaviorHint(),
+  };
+}
+
+export function resolveToolBehavior<TParams>(
+  tool: {
+    kind?: ToolKind;
+    isReadOnly?: boolean;
+    isConcurrencySafe?: boolean;
+    isDestructive?: boolean;
+    interruptBehavior?: 'cancel' | 'block';
+    resolveBehavior?: (params: TParams) => Partial<ToolBehavior> | ToolBehavior;
+  },
+  params: TParams,
+): ToolBehavior {
+  const staticBehavior = getStaticToolBehavior(tool);
+  if (!tool.resolveBehavior) {
+    return staticBehavior;
+  }
+
+  return {
+    ...staticBehavior,
+    ...tool.resolveBehavior(params),
+  };
+}
+
+export function resolveToolBehaviorSafely<TParams>(
+  tool: {
+    kind?: ToolKind;
+    isReadOnly?: boolean;
+    isConcurrencySafe?: boolean;
+    isDestructive?: boolean;
+    interruptBehavior?: 'cancel' | 'block';
+    resolveBehavior?: (params: TParams) => Partial<ToolBehavior> | ToolBehavior;
+  } | undefined,
+  params: TParams,
+): ToolBehavior | undefined {
+  if (!tool) {
+    return undefined;
+  }
+
+  try {
+    return resolveToolBehavior(tool, params);
+  } catch {
+    return getStaticToolBehavior(tool);
+  }
+}
+
+export function validationErrorToToolResult(
+  error: ToolValidationError,
+): ToolResult {
+  return {
+    success: false,
+    llmContent: error.llmContent ?? error.message,
+    displayContent: error.displayContent ?? error.message,
+    error: {
+      type: error.errorType ?? ToolErrorType.VALIDATION_ERROR,
+      message: error.message,
+    },
+    metadata: error.metadata,
+  };
 }

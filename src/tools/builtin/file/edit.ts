@@ -1,6 +1,5 @@
 import { basename, extname } from 'path';
 import { z } from 'zod';
-import { isAcpMode } from '../../../acp/AcpServiceContext.js';
 import { hasFilesystemCapability } from '../../../runtime/index.js';
 import { getFileSystemService } from '../../../services/FileSystemService.js';
 import { getErrorCode, getErrorMessage, getErrorName } from '../../../utils/errorUtils.js';
@@ -21,6 +20,7 @@ import {
   unescapeString,
 } from './editCorrector.js';
 import { FileAccessTracker } from './FileAccessTracker.js';
+import { isSensitivePath } from './sensitivePathCheck.js';
 import { SnapshotManager } from './SnapshotManager.js';
 
 /**
@@ -50,6 +50,35 @@ export const editTool = createTool({
       .describe('Replace all matches (default: first only)'),
   }),
 
+  resolveBehavior: ({ file_path }) => {
+    const isDestructive = isSensitivePath(file_path);
+    return {
+      kind: ToolKind.Write,
+      isReadOnly: false,
+      isConcurrencySafe: false,
+      isDestructive,
+    };
+  },
+
+  validateInput: ({ file_path, old_string, new_string }, context) => {
+    if (!hasFilesystemCapability(context.contextSnapshot)) {
+      return {
+        message: 'No filesystem access in current context',
+        llmContent: 'No filesystem access in the current runtime context.',
+        displayContent: '❌ 当前上下文未启用文件系统访问',
+        errorType: ToolErrorType.PERMISSION_DENIED,
+      };
+    }
+    if (old_string === new_string) {
+      return {
+        message: 'New string is identical to old string',
+        llmContent: 'New string is identical; no replacement needed',
+        displayContent: '⚠️ 新字符串与旧字符串相同，无需进行替换',
+      };
+    }
+    return undefined;
+  },
+
   // 工具描述（对齐 Claude Code 官方）
   description: {
     short: 'Performs exact string replacements in files',
@@ -71,30 +100,14 @@ export const editTool = createTool({
     const signal = context.signal ?? new AbortController().signal;
 
     try {
-      if (!hasFilesystemCapability(context.contextSnapshot)) {
-        return {
-          success: false,
-          llmContent: 'No filesystem access in the current runtime context.',
-          displayContent: '❌ 当前上下文未启用文件系统访问',
-          error: {
-            type: ToolErrorType.PERMISSION_DENIED,
-            message: 'No filesystem access in current context',
-          },
-        };
-      }
-
       updateOutput?.('Starting to read file...');
 
-      // 获取文件系统服务（ACP 或本地）
+      // 获取文件系统服务
       const fsService = getFileSystemService();
-      const useAcp = isAcpMode();
 
       // 读取文件内容（统一使用 FileSystemService）
       let content: string;
       try {
-        if (useAcp) {
-          updateOutput?.('通过 IDE 读取文件...');
-        }
         content = await fsService.readTextFile(file_path);
       } catch (error) {
         if (getErrorCode(error) === 'ENOENT' || getErrorMessage(error)?.includes('not found')) {
@@ -161,19 +174,6 @@ export const editTool = createTool({
           console.warn('[EditTool] 创建快照失败:', error);
           // 快照失败不中断编辑操作，只记录警告
         }
-      }
-
-      // 验证字符串不能相同
-      if (old_string === new_string) {
-        return {
-          success: false,
-          llmContent: 'New string is identical; no replacement needed',
-          displayContent: '⚠️ 新字符串与旧字符串相同，无需进行替换',
-          error: {
-            type: ToolErrorType.VALIDATION_ERROR,
-            message: '新旧字符串相同',
-          },
-        };
       }
 
       // 智能匹配并查找匹配项
@@ -320,9 +320,6 @@ export const editTool = createTool({
       }
 
       // 写入文件（统一使用 FileSystemService）
-      if (useAcp) {
-        updateOutput?.('通过 IDE 写入文件...');
-      }
       await fsService.writeTextFile(file_path, newContent);
 
       // 🔴 更新文件访问记录（记录编辑操作）
@@ -414,17 +411,12 @@ export const editTool = createTool({
   category: '文件操作',
   tags: ['file', 'edit', 'replace', 'modify'],
 
-  /**
-   * 提取签名内容：返回文件路径
-   */
-  extractSignatureContent: (params) => params.file_path,
-
-  /**
-   * 抽象权限规则：返回扩展名通配符格式
-   */
-  abstractPermissionRule: (params) => {
+  preparePermissionMatcher: (params) => {
     const ext = extname(params.file_path);
-    return ext ? `**/*${ext}` : '**/*';
+    return {
+      signatureContent: params.file_path,
+      abstractRule: ext ? `**/*${ext}` : '**/*',
+    };
   },
 });
 

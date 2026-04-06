@@ -1,7 +1,10 @@
 import type { ContextSnapshot } from '../../runtime/index.js';
 import type { BladeConfig, PermissionMode } from '../../types/common.js';
-import type { Tool, ToolInvocation, ToolResult } from './ToolTypes.js';
-import { ToolErrorType, type ToolKind } from './ToolTypes.js';
+import type { IBackgroundAgentManager } from '../../agent/types.js';
+import type { ToolCatalog } from '../catalog/index.js';
+import type { ToolRegistry } from '../registry/ToolRegistry.js';
+import type { ToolResult } from './ToolTypes.js';
+import type { ToolKind } from './ToolTypes.js';
 
 interface QuestionOption {
   label: string;
@@ -22,7 +25,7 @@ export interface ConfirmationDetails {
     | 'exitPlanMode'
     | 'maxTurnsExceeded'
     | 'askUserQuestion'; // 确认类型
-  kind?: ToolKind; // 工具类型（readonly, write, execute），用于 ACP 权限模式判断
+  kind?: ToolKind; // 工具类型（readonly, write, execute），用于权限模式判断
   toolName?: string;
   args?: Record<string, unknown>;
   title?: string;
@@ -66,85 +69,21 @@ export interface ExecutionContext {
   sessionId?: string;
   messageId?: string;
   contextSnapshot?: ContextSnapshot;
+  skillActivationPaths?: string[];
   signal?: AbortSignal;
-  onProgress?: (message: string) => void;
-  updateOutput?: (output: string) => void;
+  onProgress?: (message: string) => void | Promise<void>;
+  updateOutput?: (output: string) => void | Promise<void>;
   confirmationHandler?: ConfirmationHandler;
   permissionMode?: PermissionMode;
   bladeConfig?: BladeConfig;
+  backgroundAgentManager?: IBackgroundAgentManager;
+  toolRegistry?: ToolRegistry;
+  toolCatalog?: ToolCatalog;
+  discoveredTools?: string[];
 }
 
 export function getEffectiveProjectDir(context: ExecutionContext): string | undefined {
   return context.contextSnapshot?.cwd;
-}
-
-interface ToolExecutionInternalState {
-  // DiscoveryStage 设置
-  tool?: Tool;
-
-  // PermissionStage 设置 (含 Zod 验证和默认值处理)
-  invocation?: ToolInvocation<unknown>;
-  permissionCheckResult?: { reason?: string };
-  needsConfirmation?: boolean;
-  confirmationReason?: string;
-  permissionSignature?: string;
-
-  // HookStage 设置
-  hookToolUseId?: string; // 用于关联 PreToolUse 和 PostToolUse 事件
-}
-
-/**
- * 工具执行状态
- */
-export class ToolExecution {
-  private aborted = false;
-  private result?: ToolResult;
-
-  // 内部状态 (由 Pipeline 阶段设置和访问)
-  public _internal: ToolExecutionInternalState = {};
-
-  constructor(
-    public readonly toolName: string,
-    public readonly params: Record<string, unknown>,
-    public readonly context: ExecutionContext
-  ) {}
-
-  shouldAbort(): boolean {
-    return this.aborted || (this.context.signal?.aborted ?? false);
-  }
-
-  abort(reason?: string, options?: { shouldExitLoop?: boolean }): void {
-    this.aborted = true;
-    this.result = {
-      success: false,
-      llmContent: `Tool execution aborted: ${reason || 'Unknown reason'}`,
-      displayContent: `执行已中止: ${reason || '未知原因'}`,
-      error: {
-        type: ToolErrorType.EXECUTION_ERROR,
-        message: reason || 'Execution aborted',
-      },
-      metadata: options?.shouldExitLoop ? { shouldExitLoop: true } : undefined,
-    };
-  }
-
-  setResult(result: ToolResult): void {
-    this.result = result;
-  }
-
-  getResult(): ToolResult {
-    if (!this.result) {
-      throw new Error('Tool execution result not set');
-    }
-    return this.result;
-  }
-}
-
-/**
- * 管道阶段接口
- */
-export interface PipelineStage {
-  readonly name: string;
-  process(execution: ToolExecution): Promise<void>;
 }
 
 /**

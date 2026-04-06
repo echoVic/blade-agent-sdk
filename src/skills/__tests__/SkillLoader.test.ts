@@ -93,6 +93,59 @@ metadata:
 Instructions here.
 `;
 
+const VALID_SKILL_RUNTIME_OBJECT = `---
+name: runtime-skill
+description: Skill with runtime object metadata
+allowed-tools: "Read Grep"
+disallowed-tools:
+  - Write
+model: gpt-4.1
+effort: high
+scope: session
+shell: false
+paths:
+  - src/**
+hooks:
+  - event: UserPromptSubmit
+    type: append_prompt
+    value: Please keep the response concise.
+---
+
+Review target: {{args}}
+`;
+
+const VALID_SKILL_SHELL_ARRAY = `---
+name: shell-array-skill
+description: Skill with shell allowlist array
+shell:
+  - git status
+  - pnpm test
+---
+
+Shell array config.
+`;
+
+const VALID_SKILL_SHELL_OBJECT = `---
+name: shell-object-skill
+description: Skill with shell object config
+shell:
+  enabled: false
+  allowlist:
+    - git status
+---
+
+Shell object config.
+`;
+
+const VALID_SKILL_ARGS_INJECTION = `---
+name: args-injection-skill
+description: Skill that accepts args and allows inline commands
+allowed-tools: "Read"
+---
+
+Input: {{args}}
+`;
+
 const INVALID_NO_FRONTMATTER = `# Just Markdown
 
 No YAML frontmatter here.
@@ -145,8 +198,15 @@ describe('SkillLoader', () => {
       expect(result.content!.metadata.name).toBe('test-skill');
       expect(result.content!.metadata.description).toBe('A test skill for unit testing');
       expect(result.content!.metadata.allowedTools).toEqual(['Read', 'Grep']);
+      expect(result.content!.metadata.runtimeEffects).toEqual({
+        allowedTools: ['Read', 'Grep'],
+        deniedTools: undefined,
+        modelId: undefined,
+        effort: undefined,
+        activeScope: 'session',
+      });
       expect(result.content!.metadata.version).toBe('1.0.0');
-      expect(result.content!.metadata.source).toBe('project');
+      expect(result.content!.metadata.source.kind).toBe('project');
       expect(result.content!.metadata.path).toBe(filePath);
       expect(result.content!.instructions).toBe('# Test Skill\n\nThis is the instruction content.');
     });
@@ -178,6 +238,13 @@ describe('SkillLoader', () => {
       expect(meta.argumentHint).toBe('<file_path>');
       expect(meta.model).toBe('gpt-4');
       expect(meta.whenToUse).toBe('When the user asks about files');
+      expect(meta.runtimeEffects).toEqual({
+        allowedTools: undefined,
+        deniedTools: undefined,
+        modelId: 'gpt-4',
+        effort: undefined,
+        activeScope: 'session',
+      });
     });
 
     it('should parse string boolean values (yes/no)', async () => {
@@ -201,6 +268,59 @@ describe('SkillLoader', () => {
         author: 'my-org',
         version: '1.2',
         tags: ['code-review', 'git'],
+      });
+    });
+
+    it('should compile a structured source object and runtime effects', async () => {
+      const filePath = await createSkillFile(tmpDir, VALID_SKILL_RUNTIME_OBJECT);
+      const result = await loadSkillMetadata(filePath, 'project');
+
+      expect(result.success).toBe(true);
+      const meta = result.content!.metadata;
+      expect(meta.source.kind).toBe('project');
+      expect(meta.source.trustLevel).toBe('workspace');
+      expect(meta.source.shellPolicy).toBe('inherit');
+      expect(meta.runtimeEffects).toEqual({
+        allowedTools: ['Read', 'Grep'],
+        deniedTools: ['Write'],
+        modelId: 'gpt-4.1',
+        effort: 'high',
+        activeScope: 'session',
+      });
+      expect(meta.conditions).toEqual({
+        paths: ['src/**'],
+      });
+      expect(result.content!.hooks).toEqual([
+        {
+          event: 'UserPromptSubmit',
+          type: 'append_prompt',
+          value: 'Please keep the response concise.',
+        },
+      ]);
+      expect(meta.shell).toEqual({
+        enabled: false,
+      });
+    });
+
+    it('should parse shell allowlist arrays without boolean coercion', async () => {
+      const filePath = await createSkillFile(tmpDir, VALID_SKILL_SHELL_ARRAY);
+      const result = await loadSkillMetadata(filePath, 'project');
+
+      expect(result.success).toBe(true);
+      expect(result.content!.metadata.shell).toEqual({
+        enabled: true,
+        allowlist: ['git status', 'pnpm test'],
+      });
+    });
+
+    it('should parse shell object configs with explicit enabled flags', async () => {
+      const filePath = await createSkillFile(tmpDir, VALID_SKILL_SHELL_OBJECT);
+      const result = await loadSkillMetadata(filePath, 'project');
+
+      expect(result.success).toBe(true);
+      expect(result.content!.metadata.shell).toEqual({
+        enabled: false,
+        allowlist: ['git status'],
       });
     });
 
@@ -267,6 +387,14 @@ describe('SkillLoader', () => {
 
       expect(result.success).toBe(true);
       expect(result.content!.metadata.basePath).toBe(path.dirname(filePath));
+    });
+
+    it('should not treat the individual skill directory as the source root fallback', async () => {
+      const filePath = await createSkillFile(tmpDir, VALID_SKILL);
+      const result = await loadSkillMetadata(filePath, 'project');
+
+      expect(result.success).toBe(true);
+      expect(result.content!.metadata.source.rootDir).toBeUndefined();
     });
   });
 
@@ -345,6 +473,48 @@ Result: !` + '`echo hello`' + `
       const content = await loadSkillContent(metaResult.content!.metadata);
       expect(content).not.toBeNull();
       expect(content!.scripts).toEqual(['scripts/analyze.py', 'scripts/setup.sh']);
+    });
+
+    it('should compile args and asset manifests for a runtime skill', async () => {
+      const filePath = await createSkillFile(tmpDir, VALID_SKILL_RUNTIME_OBJECT);
+      const skillDir = path.dirname(filePath);
+      await fs.mkdir(path.join(skillDir, 'scripts'), { recursive: true });
+      await fs.mkdir(path.join(skillDir, 'references'), { recursive: true });
+      await fs.mkdir(path.join(skillDir, 'templates'), { recursive: true });
+      await fs.writeFile(path.join(skillDir, 'scripts', 'review.sh'), '#!/bin/sh\necho review');
+      await fs.writeFile(path.join(skillDir, 'references', 'guide.md'), '# guide');
+      await fs.writeFile(path.join(skillDir, 'templates', 'checklist.md'), '- [ ] item');
+
+      const metaResult = await loadSkillMetadata(filePath, 'project');
+      expect(metaResult.success).toBe(true);
+
+      const content = await loadSkillContent(metaResult.content!.metadata, {
+        cwd: tmpDir,
+        args: 'src/index.ts',
+      });
+
+      expect(content).not.toBeNull();
+      expect(content!.instructions).toContain('Review target: src/index.ts');
+      expect(content!.assets).toEqual({
+        scripts: [{ name: 'review.sh', path: 'scripts/review.sh' }],
+        references: [{ name: 'guide.md', path: 'references/guide.md' }],
+        templates: [{ name: 'checklist.md', path: 'templates/checklist.md' }],
+      });
+    });
+
+    it('should not execute inline commands injected through args', async () => {
+      const filePath = await createSkillFile(tmpDir, VALID_SKILL_ARGS_INJECTION);
+      const metaResult = await loadSkillMetadata(filePath, 'project');
+      expect(metaResult.success).toBe(true);
+
+      const content = await loadSkillContent(metaResult.content!.metadata, {
+        cwd: tmpDir,
+        args: '!`echo injected`',
+      });
+
+      expect(content).not.toBeNull();
+      expect(content!.instructions).toContain('Input: !`echo injected`');
+      expect(content!.instructions).not.toContain('Input: injected');
     });
 
     it('should return empty scripts when no scripts/ directory exists', async () => {

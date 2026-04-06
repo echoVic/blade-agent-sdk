@@ -2,9 +2,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { HookManager } from '../../hooks/HookManager.js';
 import { NOOP_LOGGER } from '../../logging/Logger.js';
 import { createContextSnapshot, type RuntimeContext } from '../../runtime/index.js';
-import type { ToolDefinition } from '../../tools/types/index.js';
+import type { ToolDefinition, ToolResult } from '../../tools/types/index.js';
 import { PermissionMode } from '../../types/common.js';
 import { HookEvent } from '../../types/constants.js';
 import type { SessionOptions } from '../types.js';
@@ -84,6 +85,7 @@ describe('SessionRuntime', () => {
   });
 
   afterEach(async () => {
+    vi.restoreAllMocks();
     const runtime = new SessionRuntime(
       'cleanup',
       createOptions(),
@@ -117,6 +119,13 @@ describe('SessionRuntime', () => {
 
     const toolNames = runtime.getToolRegistry().getAll().map((tool) => tool.name);
     expect(toolNames).toEqual(['CustomTool']);
+    expect(runtime.getToolCatalog().getEntry('CustomTool')).toMatchObject({
+      source: {
+        kind: 'custom',
+        trustLevel: 'workspace',
+        sourceId: 'session',
+      },
+    });
 
     await runtime.close();
   });
@@ -153,8 +162,52 @@ describe('SessionRuntime', () => {
     await runtime.close();
   });
 
+  it('should project MCP server capabilities beyond flat tool registration', async () => {
+    const runtime = new SessionRuntime(
+      'session-capabilities',
+      createOptions({
+        mcpServers: {
+          test: {
+            command: 'echo',
+            oauth: { enabled: true, provider: 'test-provider' },
+            healthCheck: { enabled: true },
+          },
+        },
+      }),
+      {
+        models: [],
+        currentModelId: 'default',
+      },
+      PermissionMode.DEFAULT,
+      createFilesystemContext(workspaceRoot),
+      NOOP_LOGGER,
+    );
+
+    await runtime.initialize();
+
+    const capabilities = await runtime.mcpCapabilities();
+
+    expect(capabilities).toEqual([
+      expect.objectContaining({
+        name: 'test',
+        status: 'connected',
+        auth: expect.objectContaining({
+          enabled: true,
+        }),
+        tools: [
+          expect.objectContaining({
+            name: 'test_tool',
+            description: 'A test tool',
+          }),
+        ],
+      }),
+    ]);
+
+    await runtime.close();
+  });
+
   it('should apply session hook callbacks to tool execution', async () => {
-    const execute = vi.fn(async (params: { value?: string }) => ({
+    const execute = vi.fn(async (params: { value?: string }): Promise<ToolResult> => ({
       success: true,
       llmContent: params.value || 'missing',
       displayContent: params.value || 'missing',
@@ -213,12 +266,55 @@ describe('SessionRuntime', () => {
     await runtime.close();
   });
 
+  it('should combine session prompt hooks with the hook runtime facade', async () => {
+    const runtime = new SessionRuntime(
+      'session-hooks',
+      createOptions({
+        hooks: {
+          [HookEvent.UserPromptSubmit]: [
+            async () => ({
+              action: 'continue',
+              modifiedInput: 'from-session-hook',
+            }),
+          ],
+        },
+      }),
+      {
+        models: [],
+      },
+      PermissionMode.DEFAULT,
+      createFilesystemContext(workspaceRoot),
+      NOOP_LOGGER,
+    );
+
+    const managerSpy = vi
+      .spyOn(HookManager.getInstance(), 'executeUserPromptSubmitHooks')
+      .mockResolvedValue({
+        proceed: true,
+        updatedPrompt: 'from-hook-manager',
+        contextInjection: 'extra context',
+      });
+
+    const rewritten = await runtime.getHookRuntime().applyUserPromptSubmit('original prompt');
+
+    expect(managerSpy).toHaveBeenCalledWith(
+      'from-session-hook',
+      expect.objectContaining({
+        projectDir: workspaceRoot,
+        sessionId: 'session-hooks',
+      }),
+    );
+    expect(rewritten).toBe('from-hook-manager\n\nextra context');
+
+    await runtime.close();
+  });
+
   it('should let permission hooks modify input before canUseTool runs', async () => {
     const canUseTool = vi.fn(async (_toolName: string, input: Record<string, unknown>) => ({
       behavior: 'allow' as const,
       updatedInput: input,
     }));
-    const execute = vi.fn(async (params: { value?: string }) => ({
+    const execute = vi.fn(async (params: { value?: string }): Promise<ToolResult> => ({
       success: true,
       llmContent: params.value || 'missing',
       displayContent: params.value || 'missing',

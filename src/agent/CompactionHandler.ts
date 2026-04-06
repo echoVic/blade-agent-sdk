@@ -1,8 +1,10 @@
 import { CompactionService } from '../context/CompactionService.js';
 import type { ContextManager } from '../context/ContextManager.js';
 import { softCompact } from '../context/strategies/SoftCompactionStrategy.js';
+import { TokenCounter } from '../context/TokenCounter.js';
 import { type InternalLogger, LogCategory, NOOP_LOGGER } from '../logging/Logger.js';
 import type { IChatService, Message } from '../services/ChatServiceInterface.js';
+import { cloneMessage } from '../services/messageUtils.js';
 import type { CompactingEvent } from './AgentEvent.js';
 import type { ChatContext } from './types.js';
 
@@ -37,6 +39,7 @@ export class CompactionHandler {
     const softThreshold = Math.floor(availableForInput * 0.6);
     const threshold = Math.floor(availableForInput * 0.8);
     const emergencyThreshold = Math.floor(availableForInput * 0.95);
+    let effectivePromptTokens = actualPromptTokens;
 
     this.logger.debug(`[Agent] [轮次 ${currentTurn}] 压缩检查:`, {
       promptTokens: actualPromptTokens,
@@ -53,9 +56,31 @@ export class CompactionHandler {
       return false;
     }
 
+    const microcompactResult = CompactionService.microcompact(context.messages, {
+      preserveRecentToolMessages: 1,
+      minToolContentLength: 1500,
+      previewLength: 160,
+    });
+    if (microcompactResult.skippedNonStringToolMessages > 0) {
+      this.logger.debug(
+        `[Agent] [轮次 ${currentTurn}] microcompact 跳过 ${microcompactResult.skippedNonStringToolMessages} 条非字符串 tool message`,
+      );
+    }
+    if (microcompactResult.replacedCount > 0) {
+      context.messages = microcompactResult.messages;
+      effectivePromptTokens = TokenCounter.countTokens(context.messages, modelName);
+      this.logger.debug(
+        `[Agent] [轮次 ${currentTurn}] microcompact 完成: 替换 ${microcompactResult.replacedCount} 条工具结果, 节省 ${microcompactResult.savedChars} 字符, 估算 tokens ${actualPromptTokens} → ${effectivePromptTokens}`,
+      );
+
+      if (effectivePromptTokens < threshold) {
+        return true;
+      }
+    }
+
     // Tier 3: Emergency — keep only system message + recent messages
-    if (actualPromptTokens >= emergencyThreshold) {
-      this.logger.warn(`[Agent] [轮次 ${currentTurn}] 紧急压缩触发 (${actualPromptTokens} tokens >= 95%)`);
+    if (effectivePromptTokens >= emergencyThreshold) {
+      this.logger.warn(`[Agent] [轮次 ${currentTurn}] 紧急压缩触发 (${effectivePromptTokens} tokens >= 95%)`);
       yield { type: 'compacting', isCompacting: true };
 
       const systemMsg = context.messages.find((m) => m.role === 'system');
@@ -72,7 +97,7 @@ export class CompactionHandler {
     }
 
     // Tier 2: LLM-based compaction (existing logic)
-    if (actualPromptTokens >= threshold) {
+    if (effectivePromptTokens >= threshold) {
       const compactLogPrefix =
         currentTurn === 0
           ? '[Agent] 触发自动压缩'
@@ -155,12 +180,45 @@ export class CompactionHandler {
   ): AsyncGenerator<CompactingEvent, boolean> {
     this.logger.warn('[Agent] 反应式压缩触发 (context length error)');
     yield { type: 'compacting', isCompacting: true };
+    const originalMessages = context.messages.map(cloneMessage);
+    let workingMessages = originalMessages.map(cloneMessage);
 
     try {
       // Step 1: Aggressive soft compaction first
-      const softResult = softCompact(context.messages, { maxToolResultLength: 500 });
+      const microcompactResult = CompactionService.microcompact(workingMessages, {
+        preserveRecentToolMessages: 1,
+        minToolContentLength: 1000,
+        previewLength: 120,
+      });
+      if (microcompactResult.skippedNonStringToolMessages > 0) {
+        this.logger.debug(
+          `[Agent] reactive microcompact 跳过 ${microcompactResult.skippedNonStringToolMessages} 条非字符串 tool message`,
+        );
+      }
+      if (microcompactResult.replacedCount > 0) {
+        workingMessages = microcompactResult.messages;
+        const postMicrocompactTokens = TokenCounter.countTokens(
+          workingMessages,
+          this.getChatService().getConfig().model,
+        );
+        this.logger.debug(
+          `[Agent] reactive microcompact: 替换 ${microcompactResult.replacedCount} 条, 估算 tokens → ${postMicrocompactTokens}`,
+        );
+
+        const maxOutputTokens = this.getChatService().getConfig().maxOutputTokens ?? 8192;
+        const availableForInput =
+          (this.getChatService().getConfig().maxContextTokens ?? 128000) - maxOutputTokens;
+        if (postMicrocompactTokens < availableForInput) {
+          context.messages = workingMessages;
+          yield { type: 'compacting', isCompacting: false };
+          return true;
+        }
+      }
+
+      // Step 1.5: Aggressive soft compaction first
+      const softResult = softCompact(workingMessages, { maxToolResultLength: 500 });
       if (softResult.truncatedCount > 0) {
-        context.messages = softResult.messages;
+        workingMessages = softResult.messages;
         this.logger.debug(
           `[Agent] 反应式软压缩: 截断 ${softResult.truncatedCount} 条, 节省 ${softResult.savedChars} 字符`
         );
@@ -169,7 +227,7 @@ export class CompactionHandler {
       // Step 2: LLM-based compaction
       const chatService = this.getChatService();
       const chatConfig = chatService.getConfig();
-      const result = await CompactionService.compact(context.messages, {
+      const result = await CompactionService.compact(workingMessages, {
         trigger: 'auto',
         provider: chatConfig.provider,
         modelName: chatConfig.model,
@@ -207,8 +265,8 @@ export class CompactionHandler {
     } catch (error) {
       // Fallback: emergency truncation
       this.logger.error('[Agent] 反应式压缩失败，使用紧急截断:', error);
-      const systemMsg = context.messages.find((m) => m.role === 'system');
-      const recentMessages = context.messages.slice(-40);
+      const systemMsg = originalMessages.find((m) => m.role === 'system');
+      const recentMessages = originalMessages.slice(-40);
       const newMessages: Message[] = [];
       if (systemMsg && !recentMessages.includes(systemMsg)) {
         newMessages.push(systemMsg);

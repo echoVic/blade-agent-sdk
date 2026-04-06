@@ -1,33 +1,46 @@
+import { basename, dirname } from 'node:path';
 import type { AgentRuntimeDeps } from '../agent/Agent.js';
+import { BackgroundAgentManager } from '../agent/subagents/BackgroundAgentManager.js';
+import { AgentSessionStore } from '../agent/subagents/AgentSessionStore.js';
+import { SubagentRegistry } from '../agent/subagents/SubagentRegistry.js';
 import { ContextManager } from '../context/ContextManager.js';
 import { HookManager } from '../hooks/HookManager.js';
+import { HookRuntime } from '../hooks/HookRuntime.js';
 import type { InternalLogger } from '../logging/Logger.js';
 import { LogCategory } from '../logging/Logger.js';
+import { projectMcpCapabilities, type McpServerCapability } from '../mcp/McpCapabilityProjector.js';
 import { McpRegistry } from '../mcp/McpRegistry.js';
 import type { SdkMcpServerHandle } from '../mcp/SdkMcpServer.js';
-import { McpConnectionStatus } from '../mcp/types.js';
 import { getSandboxExecutor } from '../sandbox/SandboxExecutor.js';
 import { getSandboxService } from '../sandbox/SandboxService.js';
 import { FileAccessTracker } from '../tools/builtin/file/FileAccessTracker.js';
 import { getBuiltinTools } from '../tools/builtin/index.js';
+import { ToolCatalog } from '../tools/catalog/ToolCatalog.js';
 import { toolFromDefinition } from '../tools/core/createTool.js';
-import {
-  ExecutionPipeline,
-  type ExecutionPipelineHookResult,
-  type ExecutionPipelineHooks,
-} from '../tools/execution/ExecutionPipeline.js';
+import { ExecutionPipeline } from '../tools/execution/ExecutionPipeline.js';
 import { FileLockManager } from '../tools/execution/FileLockManager.js';
 import { ToolRegistry } from '../tools/registry/ToolRegistry.js';
 import type { Tool } from '../tools/types/index.js';
 import type { BladeConfig, McpServerConfig, PermissionsConfig } from '../types/common.js';
 import { PermissionMode } from '../types/common.js';
 import { HookEvent } from '../types/constants.js';
-import type { CanUseTool, PermissionResult } from '../types/permissions.js';
+import {
+  createCompositePermissionHandler,
+  createPermissionHandlerFromCanUseTool,
+  type PermissionHandler,
+  type PermissionResult,
+} from '../types/permissions.js';
 import type { ContextSnapshot, RuntimeContext } from '../runtime/index.js';
 import {
   getContextCwd,
 } from '../runtime/index.js';
-import type { HookCallback, HookInput, HookOutput, McpServerStatus, McpToolInfo, SessionOptions } from './types.js';
+import type {
+  AgentDefinition,
+  HookCallback,
+  McpServerStatus,
+  McpToolInfo,
+  SessionOptions,
+} from './types.js';
 
 function isSdkMcpServerHandle(
   config: McpServerConfig | SdkMcpServerHandle
@@ -35,18 +48,38 @@ function isSdkMcpServerHandle(
   return 'createClientTransport' in config && 'server' in config;
 }
 
-function getToolDescription(tool: Tool): string {
-  return typeof tool.description === 'string'
-    ? tool.description
-    : tool.description.short;
+function resolveStorageRoot(storagePath?: string): string | undefined {
+  if (!storagePath) {
+    return undefined;
+  }
+
+  return basename(storagePath) === 'sessions'
+    ? dirname(storagePath)
+    : storagePath;
+}
+
+function toSubagentConfig(name: string, definition: AgentDefinition) {
+  return {
+    name: definition.name || name,
+    description: definition.description,
+    systemPrompt: definition.systemPrompt,
+    tools: definition.allowedTools,
+    model: definition.model ?? 'inherit',
+    source: 'session' as const,
+  };
 }
 
 export class SessionRuntime {
+  private readonly storageRoot?: string;
   private readonly mcpRegistry: McpRegistry;
+  private readonly subagentRegistry: SubagentRegistry;
   private readonly toolRegistry = new ToolRegistry();
+  private readonly toolCatalog = new ToolCatalog(this.toolRegistry);
   private readonly contextManager: ContextManager;
   private readonly executionPipeline: ExecutionPipeline;
+  private readonly backgroundAgentManager: BackgroundAgentManager;
   private readonly hookCallbacks: Partial<Record<HookEvent, HookCallback[]>>;
+  private readonly hookRuntime: HookRuntime;
   private readonly rootLogger: InternalLogger;
   private readonly logger: InternalLogger;
   private initialized = false;
@@ -61,7 +94,11 @@ export class SessionRuntime {
   ) {
     this.rootLogger = logger;
     this.logger = logger.child(LogCategory.AGENT);
-    this.mcpRegistry = new McpRegistry(bladeConfig.storageRoot);
+    this.storageRoot = bladeConfig.storageRoot ?? resolveStorageRoot(options.storagePath);
+    this.mcpRegistry = new McpRegistry(this.storageRoot);
+    this.subagentRegistry = new SubagentRegistry(this.rootLogger, getContextCwd(defaultContext));
+    const sessionStore = AgentSessionStore.create(this.storageRoot, this.rootLogger);
+    this.backgroundAgentManager = BackgroundAgentManager.create(this.rootLogger, sessionStore);
     this.contextManager = new ContextManager({
       storage: {
         maxMemorySize: 1000,
@@ -73,6 +110,12 @@ export class SessionRuntime {
       projectPath: getContextCwd(defaultContext),
     });
     this.hookCallbacks = options.hooks || {};
+    this.hookRuntime = new HookRuntime({
+      sessionId,
+      permissionMode,
+      callbacks: this.hookCallbacks,
+      resolveProjectDir: () => getContextCwd(this.defaultContext),
+    });
     this.executionPipeline = this.createExecutionPipeline();
   }
 
@@ -82,6 +125,9 @@ export class SessionRuntime {
       contextManager: this.contextManager,
       defaultContext: this.defaultContext,
       mcpRegistry: this.mcpRegistry,
+      subagentRegistry: this.subagentRegistry,
+      backgroundAgentManager: this.backgroundAgentManager,
+      hookRuntime: this.hookRuntime,
       runtimeManaged: true,
       logger: this.rootLogger,
     };
@@ -95,8 +141,20 @@ export class SessionRuntime {
     return this.hookCallbacks;
   }
 
+  getHookRuntime(): HookRuntime {
+    return this.hookRuntime;
+  }
+
   getToolRegistry(): ToolRegistry {
     return this.toolRegistry;
+  }
+
+  getToolCatalog(): ToolCatalog {
+    return this.toolCatalog;
+  }
+
+  getBackgroundAgentManager(): BackgroundAgentManager {
+    return this.backgroundAgentManager;
   }
 
   async initialize(): Promise<void> {
@@ -107,6 +165,7 @@ export class SessionRuntime {
       getSandboxService().configure(this.options.sandbox);
     }
 
+    this.initializeSubagents();
     await this.contextManager.initialize();
     FileAccessTracker.getInstance(this.rootLogger);
     FileLockManager.getInstance(this.rootLogger);
@@ -137,24 +196,14 @@ export class SessionRuntime {
   }
 
   async mcpServerStatus(): Promise<McpServerStatus[]> {
-    const statuses: McpServerStatus[] = [];
-    for (const [name, serverInfo] of this.mcpRegistry.getAllServers()) {
-      const statusMap: Record<McpConnectionStatus, McpServerStatus['status']> = {
-        [McpConnectionStatus.CONNECTED]: 'connected',
-        [McpConnectionStatus.DISCONNECTED]: 'disconnected',
-        [McpConnectionStatus.CONNECTING]: 'connecting',
-        [McpConnectionStatus.ERROR]: 'error',
-      };
-      statuses.push({
-        name,
-        status: statusMap[serverInfo.status],
-        toolCount: serverInfo.tools.length,
-        tools: serverInfo.tools.map((tool) => tool.name),
-        connectedAt: serverInfo.connectedAt,
-        error: serverInfo.lastError?.message,
-      });
-    }
-    return statuses;
+    return (await this.mcpCapabilities()).map((capability) => ({
+      name: capability.name,
+      status: capability.status,
+      toolCount: capability.tools.length,
+      tools: capability.tools.map((tool) => tool.name),
+      connectedAt: capability.connectedAt,
+      error: capability.error,
+    }));
   }
 
   async mcpConnect(serverName: string): Promise<void> {
@@ -175,11 +224,17 @@ export class SessionRuntime {
   }
 
   async mcpListTools(): Promise<McpToolInfo[]> {
-    return this.toolRegistry.getMcpTools().map((tool) => ({
-      name: tool.name,
-      description: getToolDescription(tool),
-      serverName: tool.tags.find((tag) => tag !== 'mcp' && tag !== 'external') || 'unknown',
-    }));
+    return (await this.mcpCapabilities()).flatMap((capability) =>
+      capability.tools.map((tool) => ({
+        name: tool.name,
+        description: tool.description,
+        serverName: capability.name,
+      })),
+    );
+  }
+
+  async mcpCapabilities(): Promise<McpServerCapability[]> {
+    return projectMcpCapabilities(this.mcpRegistry);
   }
 
   private createExecutionPipeline(): ExecutionPipeline {
@@ -194,9 +249,10 @@ export class SessionRuntime {
       permissionConfig,
       permissionMode: this.permissionMode,
       maxHistorySize: 1000,
-      canUseTool: this.createCanUseTool(),
-      hooks: this.createExecutionPipelineHooks(),
+      permissionHandler: this.createPermissionHandler(),
+      hookRuntime: this.hookRuntime,
       logger: this.rootLogger,
+      toolCatalog: this.toolCatalog,
     });
   }
 
@@ -210,11 +266,33 @@ export class SessionRuntime {
   private async registerBuiltinTools(): Promise<void> {
     const builtinTools = await getBuiltinTools({
       sessionId: this.sessionId,
-      configDir: this.bladeConfig.storageRoot,
+      configDir: this.storageRoot,
       mcpRegistry: this.mcpRegistry,
       includeMcpProtocolTools: false,
+      subagentRegistry: this.subagentRegistry,
     });
-    this.registerTools(builtinTools);
+    const filteredTools = this.filterTools(builtinTools);
+    if (filteredTools.length === 0) {
+      return;
+    }
+    this.toolCatalog.registerAll(filteredTools as Tool[], {
+      kind: 'builtin',
+      trustLevel: 'trusted',
+      sourceId: 'builtin',
+    });
+  }
+
+  private initializeSubagents(): void {
+    this.subagentRegistry.setLogger(this.rootLogger);
+    this.subagentRegistry.setProjectDir(getContextCwd(this.defaultContext));
+    this.subagentRegistry.loadFromStandardLocations(
+      getContextCwd(this.defaultContext),
+      this.storageRoot,
+    );
+
+    for (const [name, definition] of Object.entries(this.options.agents ?? {})) {
+      this.subagentRegistry.register(toSubagentConfig(name, definition), { override: true });
+    }
   }
 
   private registerCustomTools(): void {
@@ -274,7 +352,11 @@ export class SessionRuntime {
 
     const availableTools = await this.mcpRegistry.getAvailableToolsByServerNames(serverNames);
     for (const tool of this.filterTools(availableTools)) {
-      this.toolRegistry.registerMcpTool(tool);
+      this.toolCatalog.registerMcpTool(tool, {
+        kind: 'mcp',
+        trustLevel: 'remote',
+        sourceId: serverNameFromTool(tool),
+      });
     }
   }
 
@@ -283,7 +365,11 @@ export class SessionRuntime {
     if (filteredTools.length === 0) {
       return;
     }
-    this.toolRegistry.registerAll(filteredTools as Tool[]);
+    this.toolCatalog.registerAll(filteredTools as Tool[], {
+      kind: 'custom',
+      trustLevel: 'workspace',
+      sourceId: 'session',
+    });
   }
 
   private filterTools<TParams>(tools: Tool<TParams>[]): Tool<TParams>[] {
@@ -298,139 +384,55 @@ export class SessionRuntime {
     });
   }
 
-  private createCanUseTool(): CanUseTool | undefined {
-    const permissionHooks = this.hookCallbacks[HookEvent.PermissionRequest];
-    const baseCanUseTool = this.options.canUseTool;
+  private createPermissionHandler(): PermissionHandler | undefined {
+    const hasPermissionCallbacks =
+      (this.hookCallbacks[HookEvent.PermissionRequest]?.length ?? 0) > 0;
+    const basePermissionHandler = this.options.permissionHandler
+      ?? (this.options.canUseTool
+        ? createPermissionHandlerFromCanUseTool(this.options.canUseTool)
+        : undefined);
 
-    if ((!permissionHooks || permissionHooks.length === 0) && !baseCanUseTool) {
+    if (!hasPermissionCallbacks && !basePermissionHandler) {
       return undefined;
     }
 
-    return async (toolName, input, options) => {
-      if (permissionHooks && permissionHooks.length > 0) {
-        for (const hook of permissionHooks) {
-          const result = await this.executeHook(hook, HookEvent.PermissionRequest, {
-            toolName,
-            toolInput: input,
-            affectedPaths: options.affectedPaths,
-            toolKind: options.toolKind,
-          });
-
-          if (result.modifiedInput && this.isRecord(result.modifiedInput)) {
-            Object.assign(input, result.modifiedInput);
+    const hookPermissionHandler = hasPermissionCallbacks
+      ? (async (request) => {
+          const hookResult = await this.hookRuntime.applyPermissionRequestHooks(
+            request.toolName,
+            request.input,
+            {
+              affectedPaths: request.affectedPaths,
+              toolKind: request.toolKind,
+              abortSignal: request.signal,
+            },
+          );
+          Object.assign(request.input, hookResult.updatedInput);
+          if (hookResult.decision) {
+            return hookResult.decision;
           }
 
-          if (result.action === 'abort' || result.action === 'skip') {
-            return {
-              behavior: 'deny',
-              message: result.reason || `Tool "${toolName}" was blocked by hook`,
-              interrupt: result.action === 'abort',
-            } satisfies PermissionResult;
-          }
-        }
-      }
+          return {
+            behavior: 'allow',
+            updatedInput: hookResult.updatedInput,
+          } satisfies PermissionResult;
+        }) satisfies PermissionHandler
+      : undefined;
 
-      if (baseCanUseTool) {
-        return baseCanUseTool(toolName, input, options);
-      }
+    return createCompositePermissionHandler([
+      hookPermissionHandler,
+      basePermissionHandler,
+      async () => ({ behavior: 'ask' } satisfies PermissionResult),
+    ]);
+  }
+}
 
-      return { behavior: 'ask' } satisfies PermissionResult;
-    };
+function serverNameFromTool(tool: Tool): string {
+  const taggedServer = tool.tags.find((tag) => tag === tag.toLowerCase() && tag.length > 0);
+  if (taggedServer) {
+    return taggedServer;
   }
 
-  private createExecutionPipelineHooks(): ExecutionPipelineHooks | undefined {
-    const hasPreToolHooks = (this.hookCallbacks[HookEvent.PreToolUse]?.length || 0) > 0;
-    const hasPostToolHooks = (this.hookCallbacks[HookEvent.PostToolUse]?.length || 0) > 0;
-    const hasPostToolFailureHooks =
-      (this.hookCallbacks[HookEvent.PostToolUseFailure]?.length || 0) > 0;
-
-    if (!hasPreToolHooks && !hasPostToolHooks && !hasPostToolFailureHooks) {
-      return undefined;
-    }
-
-    return {
-      beforeExecute: async ({ toolName, params }) => {
-        const hooks = this.hookCallbacks[HookEvent.PreToolUse];
-        if (!hooks || hooks.length === 0) {
-          return undefined;
-        }
-
-        let nextParams: Record<string, unknown> = params;
-        for (const hook of hooks) {
-          const result = await this.executeHook(hook, HookEvent.PreToolUse, {
-            toolName,
-            toolInput: nextParams,
-          });
-
-          if (result.action === 'abort' || result.action === 'skip') {
-            return {
-              action: result.action,
-              reason: result.reason,
-            } satisfies ExecutionPipelineHookResult;
-          }
-
-          if (result.modifiedInput && this.isRecord(result.modifiedInput)) {
-            nextParams = { ...nextParams, ...result.modifiedInput };
-          }
-        }
-
-        if (nextParams !== params) {
-          return { modifiedInput: nextParams } satisfies ExecutionPipelineHookResult;
-        }
-        return undefined;
-      },
-      afterExecute: async ({ toolName, params, result }) => {
-        const event = result.success ? HookEvent.PostToolUse : HookEvent.PostToolUseFailure;
-        const hooks = this.hookCallbacks[event];
-        if (!hooks || hooks.length === 0) {
-          return undefined;
-        }
-
-        let nextOutput: unknown = result.llmContent;
-        for (const hook of hooks) {
-          const hookResult = await this.executeHook(hook, event, {
-            toolName,
-            toolInput: params,
-            toolOutput: nextOutput,
-            error: result.success
-              ? undefined
-              : new Error(result.error?.message || `Tool "${toolName}" failed`),
-          });
-
-          if (hookResult.action === 'abort' || hookResult.action === 'skip') {
-            return {
-              action: hookResult.action,
-              reason: hookResult.reason,
-            } satisfies ExecutionPipelineHookResult;
-          }
-
-          if (hookResult.modifiedOutput !== undefined) {
-            nextOutput = hookResult.modifiedOutput;
-          }
-        }
-
-        if (nextOutput !== result.llmContent) {
-          return { modifiedOutput: nextOutput } satisfies ExecutionPipelineHookResult;
-        }
-        return undefined;
-      },
-    };
-  }
-
-  private async executeHook(
-    hook: HookCallback,
-    event: HookEvent,
-    payload: Record<string, unknown>,
-  ): Promise<HookOutput> {
-    const input: HookInput = {
-      event,
-      sessionId: this.sessionId,
-      ...payload,
-    };
-    return hook(input);
-  }
-
-  private isRecord(value: unknown): value is Record<string, unknown> {
-    return typeof value === 'object' && value !== null && !Array.isArray(value);
-  }
+  const match = tool.name.match(/^mcp__([^_]+)__/);
+  return match?.[1] ?? 'mcp';
 }

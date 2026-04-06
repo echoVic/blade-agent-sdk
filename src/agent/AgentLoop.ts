@@ -8,11 +8,9 @@
  */
 
 import type { InternalLogger } from '../logging/Logger.js';
-import type { ContextSnapshot } from '../runtime/index.js';
-import type { ChatResponse, IChatService, Message, ToolCall } from '../services/ChatServiceInterface.js';
+import type { ChatResponse, Message, ToolCall } from '../services/ChatServiceInterface.js';
 import { FallbackTriggeredError } from '../services/RetryPolicy.js';
 import type { ExecutionPipeline } from '../tools/execution/ExecutionPipeline.js';
-import type { ConfirmationHandler } from '../tools/types/ExecutionTypes.js';
 import type { ToolResult } from '../tools/types/index.js';
 import type { PermissionMode } from '../types/common.js';
 import type { AgentEvent, TokenUsageInfo } from './AgentEvent.js';
@@ -21,13 +19,14 @@ import { decideNoToolTurn } from './loop/decideNoToolTurn.js';
 import { decideTurnLimit } from './loop/decideTurnLimit.js';
 import { executeToolCalls } from './loop/executeToolCalls.js';
 import { planToolExecution } from './loop/planToolExecution.js';
+import type { ToolExecutionUpdate } from './loop/runToolCall.js';
 import type { FunctionToolCall } from './loop/types.js';
+import { StreamingToolExecutor } from './StreamingToolExecutor.js';
 import type { StreamResponseHandler } from './StreamResponseHandler.js';
+import type { TurnState } from './state/TurnState.js';
 import type { TokenBudget } from './TokenBudget.js';
 import type { LoopResult, TurnLimitResponse } from './types.js';
-
-/** LLM 工具定义（chat service 接受的格式） */
-type LlmToolDef = { name: string; description: string; parameters: unknown };
+import { isOverflowRecoverable } from './isOverflowRecoverable.js';
 
 // ===== Loop 配置 =====
 
@@ -37,9 +36,6 @@ type LlmToolDef = { name: string; description: string; parameters: unknown };
  * Agent.ts 负责组装这个 config，AgentLoop 只消费它。
  */
 export interface AgentLoopConfig {
-  /** LLM 服务 */
-  chatService: IChatService;
-
   /** 流式响应处理器（可选，无则使用非流式） */
   streamHandler?: StreamResponseHandler;
 
@@ -48,9 +44,6 @@ export interface AgentLoopConfig {
 
   /** 内部日志器 */
   logger?: InternalLogger;
-
-  /** 可用工具定义（已经过权限过滤和 Skill 限制，LLM 格式） */
-  tools: LlmToolDef[];
 
   /** 初始消息列表（包含 system prompt + 历史 + 当前用户消息） */
   messages: Message[];
@@ -64,22 +57,11 @@ export interface AgentLoopConfig {
   /** 中断信号 */
   signal?: AbortSignal;
 
-  /** 权限模式 */
-  permissionMode?: PermissionMode;
-
-  /** 当前模型最大上下文 token 数 */
-  maxContextTokens: number;
-
   /** Token 预算 */
   tokenBudget?: TokenBudget;
 
-  /** 工具执行上下文 */
-  executionContext: {
-    sessionId: string;
-    userId: string;
-    contextSnapshot?: ContextSnapshot;
-    confirmationHandler?: ConfirmationHandler;
-  };
+  /** 显式的 turn state 解析器 */
+  prepareTurnState: (turn: number) => TurnState;
 
   // ===== Hooks（副作用注入） =====
 
@@ -124,6 +106,8 @@ export interface AgentLoopConfig {
     toolUseUuid: string | null;
   }) => Promise<void>;
 
+  onToolExecutionUpdate?: (update: ToolExecutionUpdate) => Promise<void> | void;
+
   /**
    * Agent 正常结束时调用（无 tool calls）
    * 用于保存最终响应到 JSONL
@@ -155,6 +139,16 @@ export interface AgentLoopConfig {
   }) => AsyncGenerator<AgentEvent, boolean>;
 
   /**
+   * 恢复状态变更
+   */
+  onRecoveryStateChange?: (ctx: {
+    turn: number;
+    phase: 'started' | 'retrying' | 'failed' | 'reset';
+    reason?: string;
+    attempt: number;
+  }) => void;
+
+  /**
    * 轮次上限后的 compaction 处理
    */
   onTurnLimitCompact?: (ctx: {
@@ -179,18 +173,13 @@ export async function* agentLoop(
   config: AgentLoopConfig
 ): AsyncGenerator<AgentEvent, LoopResult> {
   const {
-    chatService,
     streamHandler,
     executionPipeline,
-    tools,
     messages,
     maxTurns,
     isYoloMode,
     signal,
-    permissionMode,
-    maxContextTokens,
     tokenBudget,
-    executionContext,
   } = config;
 
   const effectiveMaxTurns = isYoloMode ? AGENT_TURN_SAFETY_LIMIT : maxTurns;
@@ -200,6 +189,8 @@ export async function* agentLoop(
   const allToolResults: ToolResult[] = [];
   let totalTokens = 0;
   let lastPromptTokens: number | undefined;
+  let recoveryAttemptedTurn: number | null = null;
+  let recoveryAttempt = 0;
 
   yield { type: 'agent_start' };
 
@@ -236,11 +227,163 @@ export async function* agentLoop(
       return buildAbortResult(turnsCount - 1, allToolResults.length, startTime);
     }
 
+    const turnState = config.prepareTurnState(turnsCount);
+    const turnChatService = turnState.chatService;
+    const turnTools = turnState.tools;
+    const turnMaxContextTokens = turnState.maxContextTokens;
+    const turnPermissionMode = turnState.permissionMode;
+    const turnExecutionContext = turnState.executionContext;
+
     // 4. 调用 LLM（带 context-length 错误的反应式压缩）
-    let turnResult: ChatResponse;
+    let turnResult: ChatResponse | undefined;
+    let streamingExecutionResults:
+      | Array<{
+          toolCall: FunctionToolCall;
+          result: ToolResult;
+          toolUseUuid: string | null;
+        }>
+      | undefined;
     try {
-      if (streamHandler) {
-        const stream = streamHandler.streamResponse(messages, tools, signal);
+      if (streamHandler && turnTools.length > 0) {
+        const streamingExecutor = new StreamingToolExecutor(
+          streamHandler,
+          () => turnChatService,
+          config.logger,
+        );
+        const pendingEvents: AgentEvent[] = [];
+        let waitForEventsResolve: (() => void) | null = null;
+        let executionDone = false;
+        let executionError: unknown;
+
+        const flushWaiter = () => {
+          const resolve = waitForEventsResolve;
+          waitForEventsResolve = null;
+          resolve?.();
+        };
+
+        const enqueueEvent = (event: AgentEvent) => {
+          pendingEvents.push(event);
+          flushWaiter();
+        };
+
+        const executionPromise = streamingExecutor
+          .collectAndExecute(messages, turnTools, signal, {
+            executionPipeline,
+            executionContext: turnExecutionContext,
+            logger: config.logger,
+            permissionMode: turnPermissionMode,
+            hooks: {
+              onBeforeToolExec: config.onBeforeToolExec,
+            },
+            onAfterToolExec: config.onAfterToolExec,
+            onContentDelta: (delta) => {
+              enqueueEvent({ type: 'content_delta', delta });
+            },
+            onThinkingDelta: (delta) => {
+              enqueueEvent({ type: 'thinking_delta', delta });
+            },
+            onStreamEnd: () => {
+              if (!signal?.aborted) {
+                enqueueEvent({ type: 'stream_end' });
+              }
+            },
+            onToolExecutionUpdate: async (update) => {
+              await config.onToolExecutionUpdate?.(update);
+              if (update.type === 'tool_ready') {
+                const toolDef = executionPipeline.getRegistry().get(update.toolCall.function.name);
+                const toolKind = toolDef?.kind as 'readonly' | 'write' | 'execute' | undefined;
+                enqueueEvent({ type: 'tool_start', toolCall: update.toolCall, toolKind });
+              }
+              if (update.type === 'tool_result') {
+                enqueueEvent({
+                  type: 'tool_result',
+                  toolCall: update.outcome.toolCall,
+                  result: update.outcome.result,
+                });
+              }
+              if (update.type === 'tool_progress') {
+                enqueueEvent({
+                  type: 'tool_progress',
+                  toolCall: update.toolCall,
+                  message: update.message,
+                });
+              }
+              if (update.type === 'tool_message') {
+                enqueueEvent({
+                  type: 'tool_message',
+                  toolCall: update.toolCall,
+                  message: update.message,
+                });
+              }
+              if (update.type === 'tool_runtime_patch') {
+                enqueueEvent({
+                  type: 'tool_runtime_patch',
+                  toolCall: update.toolCall,
+                  patch: update.patch,
+                });
+              }
+              if (update.type === 'tool_context_patch') {
+                enqueueEvent({
+                  type: 'tool_context_patch',
+                  toolCall: update.toolCall,
+                  patch: update.patch,
+                });
+              }
+              if (update.type === 'tool_new_messages') {
+                enqueueEvent({
+                  type: 'tool_new_messages',
+                  toolCall: update.toolCall,
+                  messages: update.messages,
+                });
+              }
+              if (update.type === 'tool_permission_updates') {
+                enqueueEvent({
+                  type: 'tool_permission_updates',
+                  toolCall: update.toolCall,
+                  updates: update.updates,
+                });
+              }
+            },
+          })
+          .then(({ chatResponse, executionResults }) => {
+            turnResult = chatResponse;
+            streamingExecutionResults = executionResults;
+          })
+          .catch((error: unknown) => {
+            executionError = error;
+          })
+          .finally(() => {
+            executionDone = true;
+            flushWaiter();
+          });
+
+        while (!executionDone || pendingEvents.length > 0) {
+          if (pendingEvents.length === 0) {
+            await new Promise<void>((resolve) => {
+              waitForEventsResolve = resolve;
+              if (pendingEvents.length > 0 || executionDone) {
+                flushWaiter();
+              }
+            });
+            continue;
+          }
+
+          while (pendingEvents.length > 0) {
+            const event = pendingEvents.shift();
+            if (!event) {
+              break;
+            }
+            yield event;
+          }
+        }
+
+        await executionPromise;
+
+        if (executionError) {
+          throw executionError;
+        }
+      } else if (streamHandler) {
+        const stream = streamHandler.streamResponse(messages, turnTools, signal);
         while (true) {
           const { value, done } = await stream.next();
           if (done) {
@@ -253,9 +396,9 @@ export async function* agentLoop(
             yield { type: 'thinking_delta', delta: value.delta };
           }
         }
-      } else if (typeof chatService.chatWithRetryEvents === 'function') {
+      } else if (typeof turnChatService.chatWithRetryEvents === 'function') {
         // 使用 chatWithRetryEvents 以便 yield 重试事件
-        const retryGen = chatService.chatWithRetryEvents(messages, tools, signal);
+        const retryGen = turnChatService.chatWithRetryEvents(messages, turnTools, signal);
         while (true) {
           const { value, done } = await retryGen.next();
           if (done) {
@@ -272,7 +415,7 @@ export async function* agentLoop(
           };
         }
       } else {
-        turnResult = await chatService.chat(messages, tools, signal);
+        turnResult = await turnChatService.chat(messages, turnTools, signal);
       }
     } catch (llmError) {
       // 模型 fallback 处理
@@ -286,19 +429,77 @@ export async function* agentLoop(
         throw llmError;
       }
 
-      if (isContextLengthError(llmError) && config.onReactiveCompact) {
+      if (
+        isOverflowRecoverable(llmError)
+        && config.onReactiveCompact
+        && recoveryAttemptedTurn !== turnsCount
+      ) {
+        recoveryAttemptedTurn = turnsCount;
+        recoveryAttempt += 1;
+        config.onRecoveryStateChange?.({
+          turn: turnsCount,
+          phase: 'started',
+          reason: 'context_overflow',
+          attempt: recoveryAttempt,
+        });
+        yield { type: 'recovery', phase: 'started', reason: 'context_overflow' };
         const compactStream = config.onReactiveCompact({ messages });
+        let recovered = false;
         while (true) {
           const { value, done } = await compactStream.next();
-          if (done) break;
+          if (done) {
+            recovered = value;
+            break;
+          }
           yield value;
         }
+        if (!recovered) {
+          config.onRecoveryStateChange?.({
+            turn: turnsCount,
+            phase: 'failed',
+            reason: 'reactive_compact_failed',
+            attempt: recoveryAttempt,
+          });
+          yield { type: 'recovery', phase: 'failed', reason: 'reactive_compact' };
+          throw llmError;
+        }
+        config.onRecoveryStateChange?.({
+          turn: turnsCount,
+          phase: 'retrying',
+          reason: 'reactive_compact_retry',
+          attempt: recoveryAttempt,
+        });
+        yield { type: 'recovery', phase: 'retrying', reason: 'reactive_compact' };
         // Retry this turn
         turnsCount--;
         yield { type: 'turn_end', turn: turnsCount + 1, hasToolCalls: false };
         continue;
       }
+
+      if (isOverflowRecoverable(llmError) && recoveryAttemptedTurn === turnsCount) {
+        config.onRecoveryStateChange?.({
+          turn: turnsCount,
+          phase: 'failed',
+          reason: 'recovery_exhausted',
+          attempt: recoveryAttempt,
+        });
+        yield { type: 'recovery', phase: 'failed', reason: 'recovery_exhausted' };
+      }
       throw llmError;
+    }
+
+    if (!turnResult) {
+      throw new Error('Agent loop completed without a chat response');
+    }
+
+    recoveryAttemptedTurn = null;
+    if (recoveryAttempt > 0) {
+      config.onRecoveryStateChange?.({
+        turn: turnsCount,
+        phase: 'reset',
+        attempt: 0,
+      });
+      recoveryAttempt = 0;
     }
 
     // 5. Token usage
@@ -312,7 +513,7 @@ export async function* agentLoop(
         inputTokens: turnResult.usage.promptTokens ?? 0,
         outputTokens: turnResult.usage.completionTokens ?? 0,
         totalTokens,
-        maxContextTokens,
+        maxContextTokens: turnMaxContextTokens,
       };
       yield { type: 'token_usage', usage };
     }
@@ -322,6 +523,28 @@ export async function* agentLoop(
 
       if (tokenBudget.isWarning()) {
         yield { type: 'budget_warning', snapshot: tokenBudget.getSnapshot() };
+      }
+
+      if (tokenBudget.isApproachingLimit()) {
+        yield { type: 'budget_warning', snapshot: tokenBudget.getSnapshot() };
+      }
+
+      if (tokenBudget.isDiminishingReturns()) {
+        yield { type: 'agent_end' };
+        return {
+          success: false,
+          error: {
+            type: 'budget_exhausted',
+            message: 'Stopped due to diminishing returns: consecutive turns produced very few tokens',
+          },
+          metadata: {
+            turnsCount,
+            toolCallsCount: allToolResults.length,
+            duration: Date.now() - startTime,
+            tokensUsed: totalTokens,
+            tokenBudgetSnapshot: tokenBudget.getSnapshot(),
+          },
+        };
       }
 
       if (tokenBudget.isExhausted()) {
@@ -355,7 +578,7 @@ export async function* agentLoop(
     }
 
     // 7. 文本内容
-    if (turnResult.content?.trim() && !signal?.aborted) {
+    if (turnResult.content?.trim() && !signal?.aborted && !streamingExecutionResults) {
       yield { type: 'stream_end' };
     }
 
@@ -409,39 +632,44 @@ export async function* agentLoop(
     });
 
     // 10. 执行工具
-    const functionCalls = turnResult.toolCalls.filter(
-      (tc): tc is FunctionToolCall => tc.type === 'function'
-    );
-    const executionPlan = planToolExecution(
-      functionCalls,
-      executionPipeline.getRegistry(),
-      permissionMode,
-    );
+    let executionResults = streamingExecutionResults;
 
-    // 发射 tool_start 事件
-    for (const toolCall of executionPlan.calls) {
-      const toolDef = executionPipeline.getRegistry().get(toolCall.function.name);
-      const toolKind = toolDef?.kind as 'readonly' | 'write' | 'execute' | undefined;
-      yield { type: 'tool_start', toolCall, toolKind };
+    if (!executionResults) {
+      const functionCalls = turnResult.toolCalls.filter(
+        (tc): tc is FunctionToolCall => tc.type === 'function'
+      );
+      const executionPlan = planToolExecution(
+        functionCalls,
+        executionPipeline.getRegistry(),
+        turnPermissionMode,
+      );
+
+      // 发射 tool_start 事件
+      for (const toolCall of executionPlan.calls) {
+        const toolDef = executionPipeline.getRegistry().get(toolCall.function.name);
+        const toolKind = toolDef?.kind as 'readonly' | 'write' | 'execute' | undefined;
+        yield { type: 'tool_start', toolCall, toolKind };
+      }
+
+      // 检查 abort
+      if (signal?.aborted) {
+        yield { type: 'agent_end' };
+        return buildAbortResult(turnsCount, allToolResults.length, startTime);
+      }
+
+      executionResults = await executeToolCalls({
+        plan: executionPlan,
+        executionPipeline,
+        executionContext: turnExecutionContext,
+        logger: config.logger,
+        permissionMode: turnPermissionMode,
+        signal,
+        hooks: {
+          onBeforeToolExec: config.onBeforeToolExec,
+          onUpdate: config.onToolExecutionUpdate,
+        },
+      });
     }
-
-    // 检查 abort
-    if (signal?.aborted) {
-      yield { type: 'agent_end' };
-      return buildAbortResult(turnsCount, allToolResults.length, startTime);
-    }
-
-    const executionResults = await executeToolCalls({
-      plan: executionPlan,
-      executionPipeline,
-      executionContext,
-      logger: config.logger,
-      permissionMode: config.permissionMode,
-      signal,
-      hooks: {
-        onBeforeToolExec: config.onBeforeToolExec,
-      },
-    });
 
     // 处理结果
     for (const { toolCall, result, toolUseUuid } of executionResults) {
@@ -451,7 +679,9 @@ export async function* agentLoop(
       if (result.metadata?.shouldExitLoop) {
         const finalMessage =
           typeof result.llmContent === 'string' ? result.llmContent : '循环已退出';
-        yield { type: 'tool_result', toolCall, result };
+        if (!streamingExecutionResults) {
+          yield { type: 'tool_result', toolCall, result };
+        }
         yield { type: 'turn_end', turn: turnsCount, hasToolCalls: true };
         yield { type: 'agent_end' };
         return {
@@ -467,10 +697,14 @@ export async function* agentLoop(
         };
       }
 
-      yield { type: 'tool_result', toolCall, result };
+      if (!streamingExecutionResults) {
+        yield { type: 'tool_result', toolCall, result };
+      }
 
       // After-tool hook（JSONL 保存、模型切换等）
-      await config.onAfterToolExec?.({ toolCall, result, toolUseUuid });
+      if (!streamingExecutionResults) {
+        await config.onAfterToolExec?.({ toolCall, result, toolUseUuid });
+      }
 
       // 添加工具结果到消息历史
       let toolResultContent = result.success
@@ -489,6 +723,12 @@ export async function* agentLoop(
           ? toolResultContent
           : JSON.stringify(toolResultContent),
       });
+
+      if (result.newMessages && result.newMessages.length > 0) {
+        messages.push(
+          ...result.newMessages.map((message) => ({ ...message })),
+        );
+      }
     }
 
     yield { type: 'turn_end', turn: turnsCount, hasToolCalls: true };
@@ -561,15 +801,4 @@ function applyCompactionDecision(
   if (continueMessage) {
     messages.push(continueMessage);
   }
-}
-
-function isContextLengthError(error: unknown): boolean {
-  if (!(error instanceof Error)) return false;
-  const msg = error.message.toLowerCase();
-  return msg.includes('context_length_exceeded')
-    || msg.includes('maximum context length')
-    || msg.includes('too many tokens')
-    || msg.includes('request too large')
-    || msg.includes('context window')
-    || (msg.includes('413') && msg.includes('payload'));
 }

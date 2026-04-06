@@ -12,6 +12,7 @@
  */
 
 import type { ContextManager } from '../context/ContextManager.js';
+import type { HookRuntime } from '../hooks/HookRuntime.js';
 import {
   type InternalLogger,
   LogCategory,
@@ -29,9 +30,11 @@ import {
 } from '../services/ChatServiceInterface.js';
 import { discoverSkills } from '../skills/index.js';
 import { getBuiltinTools } from '../tools/builtin/index.js';
+import { ToolCatalog } from '../tools/catalog/ToolCatalog.js';
 import { ExecutionPipeline } from '../tools/execution/ExecutionPipeline.js';
 import { ToolRegistry } from '../tools/registry/ToolRegistry.js';
 import type { Tool } from '../tools/types/index.js';
+import { createPermissionHandlerFromCanUseTool } from '../types/permissions.js';
 import {
   type BladeConfig,
   type McpServerConfig,
@@ -44,14 +47,16 @@ import { LoopRunner } from './LoopRunner.js';
 import { ModelManager } from './ModelManager.js';
 import { PlanExecutor } from './PlanExecutor.js';
 import { StreamResponseHandler } from './StreamResponseHandler.js';
-import { subagentRegistry } from './subagents/SubagentRegistry.js';
+import { AgentSessionStore } from './subagents/AgentSessionStore.js';
+import { BackgroundAgentManager } from './subagents/BackgroundAgentManager.js';
+import { SubagentRegistry } from './subagents/SubagentRegistry.js';
 import {
   TokenBudget,
   type TokenBudgetConfig,
   type TokenBudgetSnapshot,
 } from './TokenBudget.js';
+import type { AgentEvent } from './AgentEvent.js';
 import type {
-  AgentEvent,
   AgentOptions,
   ChatContext,
   LoopOptions,
@@ -64,6 +69,9 @@ export interface AgentRuntimeDeps {
   contextManager?: ContextManager;
   defaultContext?: RuntimeContext;
   mcpRegistry?: McpRegistry;
+  subagentRegistry?: SubagentRegistry;
+  backgroundAgentManager?: BackgroundAgentManager;
+  hookRuntime?: HookRuntime;
   runtimeManaged?: boolean;
   logger?: InternalLogger;
 }
@@ -73,9 +81,13 @@ export class Agent {
   private runtimeOptions: AgentOptions;
   private isInitialized = false;
   private executionPipeline: ExecutionPipeline;
+  private readonly toolCatalog: ToolCatalog;
   private readonly defaultContext: RuntimeContext;
   private readonly runtimeManaged: boolean;
   private readonly runtimeMcpRegistry?: McpRegistry;
+  private readonly subagentRegistry: SubagentRegistry;
+  private readonly backgroundAgentManager: BackgroundAgentManager;
+  private readonly hookRuntime?: HookRuntime;
   private readonly logger: InternalLogger;
   private readonly rootLogger: InternalLogger;
   private lastPreparedSkillCwd?: string;
@@ -96,10 +108,16 @@ export class Agent {
     this.rootLogger = deps.logger ?? NOOP_LOGGER;
     this.logger = this.rootLogger.child(LogCategory.AGENT);
     this.executionPipeline = deps.executionPipeline || this.createDefaultPipeline();
+    this.toolCatalog = this.executionPipeline.getCatalog() ?? new ToolCatalog(this.executionPipeline.getRegistry());
     this.defaultContext = deps.defaultContext ?? {};
     this.runtimeManaged = deps.runtimeManaged ?? false;
     this.runtimeMcpRegistry =
       deps.mcpRegistry || (!this.runtimeManaged ? new McpRegistry(config.storageRoot) : undefined);
+    this.subagentRegistry =
+      deps.subagentRegistry ?? new SubagentRegistry(this.rootLogger, getContextCwd(this.defaultContext));
+    this.backgroundAgentManager =
+      deps.backgroundAgentManager ?? BackgroundAgentManager.create(this.rootLogger, AgentSessionStore.create());
+    this.hookRuntime = deps.hookRuntime;
     this.modelManager = new ModelManager(
       config,
       runtimeOptions.outputFormat,
@@ -178,6 +196,7 @@ export class Agent {
         streamHandler,
         compactionHandler,
         this.tokenBudget,
+        this.hookRuntime,
       );
 
       this.isInitialized = true;
@@ -206,11 +225,15 @@ export class Agent {
     let result: LoopResult;
     if (context.permissionMode === 'plan') {
       result = await this.planExecutor.runPlanLoop(
-        enhancedMessage, context, loopOptions,
+        enhancedMessage, this.withBackgroundAgentManager(context), loopOptions,
         (msg, ctx, opts, sp) => this.loopRunner.executeLoop(msg, ctx, opts, sp),
       );
     } else {
-      result = await this.loopRunner.runLoop(enhancedMessage, context, loopOptions);
+      result = await this.loopRunner.runLoop(
+        enhancedMessage,
+        this.withBackgroundAgentManager(context),
+        loopOptions,
+      );
     }
 
     if (!result.success) {
@@ -233,13 +256,14 @@ export class Agent {
     if (!this.isInitialized) throw new Error('Agent未初始化');
 
     const run = async () => {
-      const enhancedMessage = await this.prepareMessageForContext(message, context);
+      const contextWithBackgroundManager = this.withBackgroundAgentManager(context);
+      const enhancedMessage = await this.prepareMessageForContext(message, contextWithBackgroundManager);
 
-      const loopOptions: LoopOptions = { signal: context.signal, ...options };
+      const loopOptions: LoopOptions = { signal: contextWithBackgroundManager.signal, ...options };
 
-      if (context.permissionMode === 'plan') {
+      if (contextWithBackgroundManager.permissionMode === 'plan') {
         const planStream = this.planExecutor.runPlanLoopStream(
-          enhancedMessage, context, loopOptions,
+          enhancedMessage, contextWithBackgroundManager, loopOptions,
           (msg, ctx, opts, sp) => this.loopRunner.executeWithAgentLoop(msg, ctx, opts, sp),
         );
         let planResult: LoopResult | undefined;
@@ -256,7 +280,10 @@ export class Agent {
         if (planResult?.metadata?.targetMode) {
           const targetMode = planResult.metadata.targetMode as PermissionMode;
           const planContent = planResult.metadata.planContent as string | undefined;
-          const newContext: ChatContext = { ...context, permissionMode: targetMode };
+          const newContext: ChatContext = {
+            ...contextWithBackgroundManager,
+            permissionMode: targetMode,
+          };
           const messageWithPlan = this.injectPlanContent(enhancedMessage, planContent);
           return {
             events,
@@ -266,7 +293,13 @@ export class Agent {
         return { events, result: planResult };
       }
 
-      return { continuation: this.loopRunner.runLoopStream(enhancedMessage, context, loopOptions) };
+      return {
+        continuation: this.loopRunner.runLoopStream(
+          enhancedMessage,
+          contextWithBackgroundManager,
+          loopOptions,
+        ),
+      };
     };
 
     const generator = run();
@@ -300,6 +333,7 @@ export class Agent {
       permissionMode: context.permissionMode,
       systemPrompt: context.systemPrompt,
       subagentInfo: context.subagentInfo,
+      backgroundAgentManager: context.backgroundAgentManager ?? this.backgroundAgentManager,
     };
 
     return await this.loopRunner.runLoop(message, chatContext, options);
@@ -392,12 +426,28 @@ export class Agent {
       ...this.runtimeOptions.permissions,
     };
     const permissionMode = this.runtimeOptions.permissionMode ?? PermissionMode.DEFAULT;
+    const permissionHandler = this.runtimeOptions.permissionHandler
+      ?? (this.runtimeOptions.canUseTool
+        ? createPermissionHandlerFromCanUseTool(this.runtimeOptions.canUseTool)
+        : undefined);
     return new ExecutionPipeline(registry, {
       permissionConfig: permissions,
       permissionMode,
       maxHistorySize: 1000,
-      canUseTool: this.runtimeOptions.canUseTool,
+      permissionHandler,
+      toolCatalog: new ToolCatalog(registry),
     });
+  }
+
+  private withBackgroundAgentManager(context: ChatContext): ChatContext {
+    if (context.backgroundAgentManager) {
+      return context;
+    }
+
+    return {
+      ...context,
+      backgroundAgentManager: this.backgroundAgentManager,
+    };
   }
 
   private createTokenBudget(config?: TokenBudgetConfig): TokenBudget | undefined {
@@ -463,12 +513,17 @@ export class Agent {
       configDir: this.config.storageRoot,
       mcpRegistry: this.runtimeMcpRegistry,
       includeMcpProtocolTools: false,
+      subagentRegistry: this.subagentRegistry,
     });
     if (builtinTools.length === 0) {
       this.logger.debug('📦 No builtin tools available');
       return;
     }
-    this.executionPipeline.getRegistry().registerAll(builtinTools);
+    this.toolCatalog.registerAll(builtinTools, {
+      kind: 'builtin',
+      trustLevel: 'trusted',
+      sourceId: 'builtin',
+    });
 
     if (this.runtimeManaged || !this.runtimeMcpRegistry) {
       return;
@@ -498,21 +553,28 @@ export class Agent {
       Array.from(targetServerNames),
     );
     for (const tool of mcpTools) {
-      this.executionPipeline.getRegistry().registerMcpTool(tool);
+      this.toolCatalog.registerMcpTool(tool, {
+        kind: 'mcp',
+        trustLevel: 'remote',
+        sourceId: resolveAgentMcpSourceId(tool),
+      });
     }
   }
 
   private async loadSubagents(): Promise<void> {
-    subagentRegistry.setLogger(this.rootLogger);
-    subagentRegistry.setProjectDir(getContextCwd(this.defaultContext));
-    if (subagentRegistry.getAllNames().length > 0) {
-      this.logger.debug(`📦 Subagents already loaded: ${subagentRegistry.getAllNames().join(', ')}`);
+    this.subagentRegistry.setLogger(this.rootLogger);
+    this.subagentRegistry.setProjectDir(getContextCwd(this.defaultContext));
+    if (this.subagentRegistry.getAllNames().length > 0) {
+      this.logger.debug(`📦 Subagents already loaded: ${this.subagentRegistry.getAllNames().join(', ')}`);
       return;
     }
     try {
-      const loadedCount = subagentRegistry.loadFromStandardLocations();
+      const loadedCount = this.subagentRegistry.loadFromStandardLocations(
+        getContextCwd(this.defaultContext),
+        this.config.storageRoot,
+      );
       if (loadedCount > 0) {
-        this.logger.debug(`✅ Loaded ${loadedCount} subagents: ${subagentRegistry.getAllNames().join(', ')}`);
+        this.logger.debug(`✅ Loaded ${loadedCount} subagents: ${this.subagentRegistry.getAllNames().join(', ')}`);
       } else {
         this.logger.debug('📦 No subagents configured');
       }
@@ -577,4 +639,14 @@ export class Agent {
   private error(message: string, error?: unknown): void {
     this.logger.error(`[MainAgent] ${message}`, error || '');
   }
+}
+
+function resolveAgentMcpSourceId(tool: Tool): string {
+  const taggedServer = tool.tags.find((tag) => tag === tag.toLowerCase() && tag.length > 0);
+  if (taggedServer) {
+    return taggedServer;
+  }
+
+  const match = tool.name.match(/^mcp__([^_]+)__/);
+  return match?.[1] ?? 'mcp';
 }

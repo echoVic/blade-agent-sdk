@@ -12,6 +12,11 @@ import {
 } from '../services/ChatServiceInterface.js';
 import { PermissionMode, type ProviderType } from '../types/common.js';
 import { FileAnalyzer, type FileContent } from './FileAnalyzer.js';
+import {
+  microcompact,
+  type MicrocompactOptions,
+  type MicrocompactResult,
+} from './strategies/MicrocompactStrategy.js';
 import { TokenCounter } from './TokenCounter.js';
 
 /**
@@ -261,6 +266,13 @@ export async function compact(
   }
 }
 
+export function microcompactMessages(
+  messages: Message[],
+  options: MicrocompactOptions = {},
+): MicrocompactResult {
+  return microcompact(messages, options);
+}
+
 /**
  * 生成总结（调用 LLM）
  *
@@ -291,7 +303,7 @@ async function generateSummary(
     customHeaders: options.customHeaders,
   }, NOOP_LOGGER);
 
-  const response = await chatService.chat(
+  const response = await chatService.sideQuery(
     [{ role: 'user', content: prompt }]
   );
 
@@ -522,4 +534,7 @@ function fallbackCompact(
   };
 }
 
-export const CompactionService = { compact };
+export const CompactionService = {
+  compact,
+  microcompact: microcompactMessages,
+};

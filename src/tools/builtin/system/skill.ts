@@ -1,5 +1,8 @@
 import { z } from 'zod';
-import { getSkillRegistry } from '../../../skills/index.js';
+import { getSkillRegistry, isSkillAvailableInContext } from '../../../skills/index.js';
+import type { SkillContent } from '../../../skills/types.js';
+import type { RuntimeHookEvent, RuntimeHookRegistration } from '../../../runtime/index.js';
+import { HookEvent } from '../../../types/constants.js';
 import { createTool } from '../../core/createTool.js';
 import { getEffectiveProjectDir } from '../../types/ExecutionTypes.js';
 import type { ToolResult } from '../../types/ToolTypes.js';
@@ -51,13 +54,14 @@ Important:
   },
 
   async execute(params, context): Promise<ToolResult> {
-    const { skill } = params;
+    const { skill, args } = params;
 
     // 获取 SkillRegistry
     const registry = getSkillRegistry();
+    const skillMetadata = registry.get(skill);
 
     // 检查 skill 是否存在
-    if (!registry.has(skill)) {
+    if (!skillMetadata) {
       return {
         success: false,
         llmContent: `Skill "${skill}" not found. Available skills: ${
@@ -74,9 +78,27 @@ Important:
       };
     }
 
-    // 加载完整的 Skill 内容，传入 cwd 以支持内联命令替换（!`command` 语法）
     const cwd = getEffectiveProjectDir(context);
-    const content = await registry.loadContent(skill, { cwd });
+    const activationAllowed = isSkillAvailableInContext(skillMetadata, {
+      cwd,
+      referencedPaths: context.skillActivationPaths,
+      args,
+    });
+    if (!activationAllowed) {
+      const requiredPaths = skillMetadata.conditions?.paths?.join(', ') || 'unknown';
+      return {
+        success: false,
+        llmContent: `Skill "${skill}" is not available in the current context. Required path conditions: ${requiredPaths}`,
+        displayContent: `❌ Skill "${skill}" is not available here`,
+        error: {
+          type: ToolErrorType.VALIDATION_ERROR,
+          message: `Skill "${skill}" conditions are not satisfied`,
+        },
+      };
+    }
+
+    // 加载完整的 Skill 内容，传入 cwd 以支持内联命令替换（!`command` 语法）
+    const content = await registry.loadContent(skill, { cwd, args });
     if (!content) {
       return {
         success: false,
@@ -94,33 +116,93 @@ Important:
       content.metadata.name,
       content.instructions,
       content.metadata.basePath,
-      content.scripts
+      content.assets,
+      args
     );
     const requestedModelId =
-      typeof content.metadata.model === 'string' &&
-      content.metadata.model !== 'inherit' &&
-      content.metadata.model.trim() !== ''
-        ? content.metadata.model
-        : undefined;
+      content.metadata.runtimeEffects?.modelId;
+    const runtimeHooks = compileRuntimeHooks(content);
+    const runtimePatch = {
+      scope: content.metadata.runtimeEffects?.activeScope ?? 'session',
+      source: 'skill' as const,
+      skill: {
+        id: content.metadata.name,
+        name: content.metadata.name,
+        basePath: content.metadata.basePath,
+      },
+      toolPolicy: {
+        allow: content.metadata.runtimeEffects?.allowedTools ?? content.metadata.allowedTools,
+        deny: content.metadata.runtimeEffects?.deniedTools ?? content.metadata.disallowedTools,
+      },
+      modelOverride: requestedModelId
+        ? {
+            modelId: requestedModelId,
+            effort: content.metadata.runtimeEffects?.effort,
+          }
+        : undefined,
+      systemPromptAppend: content.metadata.runtimeEffects?.systemPromptAppend,
+      environment: content.metadata.runtimeEffects?.environment,
+      hooks: runtimeHooks,
+    };
 
     // 返回双消息
     return {
       success: true,
-      // llmContent: 完整的 Skill 指令（发送给 LLM，用户不可见）
       llmContent: skillInstructions,
-      // displayContent: 可见的加载提示（用户看到）
       displayContent: `<command-message>The "${skill}" skill is loading</command-message>`,
+      effects: [
+        {
+          type: 'runtimePatch',
+          patch: runtimePatch,
+        },
+      ],
       metadata: {
+        skillId: content.metadata.name,
         skillName: skill,
         basePath: content.metadata.basePath,
         version: content.metadata.version,
-        // allowed-tools: 限制 Skill 执行期间可用的工具
-        allowedTools: content.metadata.allowedTools,
-        modelId: requestedModelId,
       },
+      runtimePatch,
     };
   },
 });
+
+function compileRuntimeHooks(content: SkillContent): RuntimeHookRegistration[] | undefined {
+  if (!content.hooks || content.hooks.length === 0) {
+    return undefined;
+  }
+
+  if (content.metadata.source.hookPolicy === 'deny') {
+    return undefined;
+  }
+
+  const hooks = content.hooks.flatMap((hook): RuntimeHookRegistration[] => {
+    if (!isRuntimeHookEvent(hook.event)) {
+      return [];
+    }
+
+    return [{
+      event: hook.event,
+      type: hook.type,
+      value: hook.value,
+      tools: hook.tools,
+      once: hook.once,
+    }];
+  });
+
+  return hooks.length > 0 ? hooks : undefined;
+}
+
+function isRuntimeHookEvent(event: HookEvent): event is RuntimeHookEvent {
+  return event === HookEvent.PreToolUse
+    || event === HookEvent.PostToolUse
+    || event === HookEvent.PostToolUseFailure
+    || event === HookEvent.PermissionRequest
+    || event === HookEvent.UserPromptSubmit
+    || event === HookEvent.SessionStart
+    || event === HookEvent.SessionEnd
+    || event === HookEvent.TaskCompleted;
+}
 
 /**
  * 构建完整的 Skill 指令
@@ -129,12 +211,28 @@ function buildSkillInstructions(
   name: string,
   instructions: string,
   basePath: string,
-  scripts?: string[]
+  assets: {
+    scripts: Array<{ path: string }>;
+    references: Array<{ path: string }>;
+    templates: Array<{ path: string }>;
+  },
+  args?: string,
 ): string {
-  const scriptSection =
-    scripts && scripts.length > 0
-      ? `\n**Available Scripts** (invoke via Bash tool with \`${basePath}/\` prefix):\n${scripts.map((s) => `- ${s}`).join('\n')}\n`
-      : '';
+  const assetSection = [
+    assets.scripts.length > 0
+      ? `**Available Scripts** (invoke via Bash tool with \`${basePath}/\` prefix):\n${assets.scripts.map((asset) => `- ${asset.path}`).join('\n')}`
+      : '',
+    assets.references.length > 0
+      ? `**References**:\n${assets.references.map((asset) => `- ${asset.path}`).join('\n')}`
+      : '',
+    assets.templates.length > 0
+      ? `**Templates**:\n${assets.templates.map((asset) => `- ${asset.path}`).join('\n')}`
+      : '',
+  ].filter(Boolean).join('\n\n');
+
+  const argsSection = args
+    ? `\n**Invocation Arguments:** ${args}\n`
+    : '';
 
   return `# Skill: ${name}
 
@@ -142,7 +240,7 @@ You are now operating in the "${name}" skill mode. Follow the instructions below
 
 **Skill Base Path:** ${basePath}
 (You can reference scripts, templates, and references relative to this path)
-${scriptSection}
+${argsSection}${assetSection ? `\n\n${assetSection}\n` : ''}
 ---
 
 ${instructions}

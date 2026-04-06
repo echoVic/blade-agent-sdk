@@ -9,6 +9,9 @@
 
 import type { ToolCall } from '../services/ChatServiceInterface.js';
 import type { TodoItem } from '../tools/builtin/todo/types.js';
+import type { RuntimeContextPatch, RuntimePatch } from '../runtime/index.js';
+import type { Message } from '../services/ChatServiceInterface.js';
+import type { PermissionUpdate } from '../types/permissions.js';
 import type { ToolResult } from '../tools/types/ToolTypes.js';
 import type { TokenBudgetSnapshot } from './TokenBudget.js';
 
@@ -96,6 +99,48 @@ export interface ToolResultEvent {
   result: ToolResult;
 }
 
+/** 工具执行进度 */
+export interface ToolProgressEvent {
+  type: 'tool_progress';
+  toolCall: ToolCall;
+  message: string;
+}
+
+/** 工具输出消息更新 */
+export interface ToolMessageEvent {
+  type: 'tool_message';
+  toolCall: ToolCall;
+  message: string;
+}
+
+/** 工具运行时 patch 事件 */
+export interface ToolRuntimePatchEvent {
+  type: 'tool_runtime_patch';
+  toolCall: ToolCall;
+  patch: RuntimePatch;
+}
+
+/** 工具上下文 patch 事件 */
+export interface ToolContextPatchEvent {
+  type: 'tool_context_patch';
+  toolCall: ToolCall;
+  patch: RuntimeContextPatch;
+}
+
+/** 工具注入消息事件 */
+export interface ToolNewMessagesEvent {
+  type: 'tool_new_messages';
+  toolCall: ToolCall;
+  messages: Message[];
+}
+
+/** 工具权限更新事件 */
+export interface ToolPermissionUpdatesEvent {
+  type: 'tool_permission_updates';
+  toolCall: ToolCall;
+  updates: PermissionUpdate[];
+}
+
 // ===== 状态事件 =====
 
 /** Token 使用量 */
@@ -147,6 +192,13 @@ export interface ErrorEvent {
   message: string;
 }
 
+/** 恢复事件 */
+export interface RecoveryEvent {
+  type: 'recovery';
+  phase: 'started' | 'retrying' | 'failed';
+  reason: 'context_overflow' | 'reactive_compact' | 'recovery_exhausted';
+}
+
 // ===== 联合类型 =====
 
 /**
@@ -154,7 +206,7 @@ export interface ErrorEvent {
  *
  * 生命周期事件：agent_start/agent_end/turn_start/turn_end
  * 内容流事件：content_delta/thinking_delta/stream_end/content/thinking
- * 工具事件：tool_start/tool_result
+ * 工具事件：tool_start/tool_progress/tool_message/tool_runtime_patch/tool_context_patch/tool_new_messages/tool_permission_updates/tool_result
  * 状态事件：token_usage/compacting/todo_update/error
  */
 export type AgentEvent =
@@ -168,6 +220,12 @@ export type AgentEvent =
   | ContentEvent
   | ThinkingEvent
   | ToolStartEvent
+  | ToolProgressEvent
+  | ToolMessageEvent
+  | ToolRuntimePatchEvent
+  | ToolContextPatchEvent
+  | ToolNewMessagesEvent
+  | ToolPermissionUpdatesEvent
   | ToolResultEvent
   | TokenUsageEvent
   | BudgetWarningEvent
@@ -175,4 +233,5 @@ export type AgentEvent =
   | TodoUpdateEvent
   | ApiRetryEvent
   | ModelFallbackEvent
+  | RecoveryEvent
   | ErrorEvent;

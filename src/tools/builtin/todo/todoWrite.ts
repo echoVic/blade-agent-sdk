@@ -138,15 +138,10 @@ When in doubt, use this tool. Being proactive with task management demonstrates 
     category: 'TODO tools',
     tags: ['todo', 'task', 'management', 'planning'],
 
-    /**
-     * 提取签名内容：返回 todos 数量
-     */
-    extractSignatureContent: (params) => `${params.todos.length} todos`,
-
-    /**
-     * 抽象权限规则：返回通配符
-     */
-    abstractPermissionRule: () => '*',
+    preparePermissionMatcher: (params) => ({
+      signatureContent: `${params.todos.length} todos`,
+      abstractRule: '*',
+    }),
   });
 }
 

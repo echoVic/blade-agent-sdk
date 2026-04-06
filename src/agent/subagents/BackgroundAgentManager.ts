@@ -8,11 +8,15 @@
  */
 
 import { nanoid } from 'nanoid';
+import { writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { type InternalLogger, LogCategory, NOOP_LOGGER } from '../../logging/Logger.js';
 import type { ContextSnapshot } from '../../runtime/index.js';
 import type { Message } from '../../services/ChatServiceInterface.js';
 import type { BladeConfig, PermissionMode } from '../../types/common.js';
 import { Agent } from '../Agent.js';
+import type { SubagentRegistry } from './SubagentRegistry.js';
 import {
   type AgentSession,
   AgentSessionStore,
@@ -29,11 +33,17 @@ interface BackgroundAgentRuntime {
   /** 执行 Promise */
   promise: Promise<SubagentResult>;
 
-  /** 用于取消执行的 AbortController */
-  abortController: AbortController;
+  /** 终止整个后台 agent 生命周期 */
+  lifecycleController: AbortController;
+
+  /** 仅终止当前执行中的工作 */
+  workController: AbortController;
 
   /** 开始时间 */
   startTime: number;
+
+  /** 待注入的消息队列（SendMessage 使用） */
+  pendingMessages: string[];
 }
 
 /**
@@ -45,6 +55,9 @@ export interface StartBackgroundAgentOptions {
 
   /** BladeConfig 配置 */
   bladeConfig: BladeConfig;
+
+  /** 当前会话生效的 subagent 注册表 */
+  subagentRegistry?: SubagentRegistry;
 
   /** 任务描述 */
   description: string;
@@ -72,32 +85,36 @@ export interface StartBackgroundAgentOptions {
  * 后台 Agent 管理器
  */
 export class BackgroundAgentManager {
-  private static instance: BackgroundAgentManager | null = null;
   private logger: InternalLogger = NOOP_LOGGER.child(LogCategory.AGENT);
 
   // 运行中的 agent
   private runningAgents = new Map<string, BackgroundAgentRuntime>();
 
-  // 会话存储
-  private sessionStore = AgentSessionStore.getInstance();
+  // 会话存储（支持注入，不再硬依赖全局 singleton）
+  private sessionStore: AgentSessionStore;
 
-  private constructor() {
+  constructor(sessionStore: AgentSessionStore, logger?: InternalLogger) {
+    this.sessionStore = sessionStore;
+    if (logger) {
+      this.logger = logger.child(LogCategory.AGENT);
+      this.sessionStore.setLogger(logger);
+    }
     this.cleanupOrphanedSessions();
   }
 
-  static getInstance(logger?: InternalLogger): BackgroundAgentManager {
-    if (!BackgroundAgentManager.instance) {
-      BackgroundAgentManager.instance = new BackgroundAgentManager();
-    }
-    if (logger) {
-      BackgroundAgentManager.instance.setLogger(logger);
-    }
-    return BackgroundAgentManager.instance;
+  /**
+   * 创建实例（推荐用于 per-runtime 场景）
+   *
+   * 每个 SessionRuntime 应该创建自己的 BackgroundAgentManager 实例，
+   * 各自持有独立的 sessionStore，避免同进程多 runtime 共享状态。
+   */
+  static create(logger: InternalLogger, sessionStore: AgentSessionStore): BackgroundAgentManager {
+    return new BackgroundAgentManager(sessionStore, logger);
   }
 
   setLogger(logger: InternalLogger): void {
     this.logger = logger.child(LogCategory.AGENT);
-    this.sessionStore = AgentSessionStore.getInstance(this.logger);
+    this.sessionStore.setLogger(logger);
   }
 
   private cleanupOrphanedSessions(): void {
@@ -134,6 +151,7 @@ export class BackgroundAgentManager {
     const {
       config,
       bladeConfig,
+      subagentRegistry,
       description,
       prompt,
       parentSessionId,
@@ -146,8 +164,21 @@ export class BackgroundAgentManager {
     // 生成或使用已有的 agent ID
     const id = agentId || nanoid();
 
-    // 创建 AbortController 用于取消
-    const abortController = new AbortController();
+    // 创建输出文件路径
+    const outputFile = join(tmpdir(), `blade-agent-${id}.output`);
+
+    // 拆分生命周期取消和当前工作取消
+    const lifecycleController = new AbortController();
+    const workController = new AbortController();
+    lifecycleController.signal.addEventListener(
+      'abort',
+      () => {
+        if (!workController.signal.aborted) {
+          workController.abort(lifecycleController.signal.reason);
+        }
+      },
+      { once: true },
+    );
 
     // 创建会话记录
     const session: AgentSession = {
@@ -160,6 +191,7 @@ export class BackgroundAgentManager {
       createdAt: Date.now(),
       lastActiveAt: Date.now(),
       parentSessionId,
+      outputFile,
     };
 
     // 保存会话
@@ -170,10 +202,12 @@ export class BackgroundAgentManager {
       id,
       config,
       bladeConfig,
+      subagentRegistry,
       prompt,
       parentSessionId,
       permissionMode,
-      abortController.signal,
+      lifecycleController.signal,
+      workController.signal,
       existingMessages,
       snapshot,
     );
@@ -182,8 +216,10 @@ export class BackgroundAgentManager {
     this.runningAgents.set(id, {
       id,
       promise,
-      abortController,
+      lifecycleController,
+      workController,
       startTime,
+      pendingMessages: [],
     });
 
     // 执行完成后清理
@@ -202,17 +238,19 @@ export class BackgroundAgentManager {
     agentId: string,
     config: SubagentConfig,
     bladeConfig: BladeConfig,
+    subagentRegistry: SubagentRegistry | undefined,
     prompt: string,
     parentSessionId: string | undefined,
     permissionMode: PermissionMode | undefined,
-    signal: AbortSignal,
+    lifecycleSignal: AbortSignal,
+    workSignal: AbortSignal,
     existingMessages?: Message[],
     snapshot?: ContextSnapshot,
   ): Promise<SubagentResult> {
     const startTime = Date.now();
 
     try {
-      if (signal.aborted) {
+      if (lifecycleSignal.aborted || workSignal.aborted) {
         throw new Error('Agent execution was cancelled');
       }
 
@@ -223,6 +261,11 @@ export class BackgroundAgentManager {
         systemPrompt,
         toolWhitelist: config.tools,
         modelId,
+      }, {
+        subagentRegistry,
+        defaultContext: snapshot
+          ? snapshot.context
+          : {},
       });
 
       const context = {
@@ -234,12 +277,17 @@ export class BackgroundAgentManager {
         subagentInfo: {
           parentSessionId: parentSessionId || '',
           subagentType: config.name,
-          isSidechain: false,
+          // Background agents run in a separate session tree; mark as sidechain
+          // so their messages are not written into the parent session's store.
+          isSidechain: true,
         },
       };
 
       const loopResult = await agent.runAgenticLoop(prompt, context, {
-        signal,
+        signal: workSignal,
+        onProgress: (progress) => {
+          this.sessionStore.updateSession(agentId, { progress });
+        },
       });
 
       this.sessionStore.updateSession(agentId, {
@@ -247,6 +295,10 @@ export class BackgroundAgentManager {
       });
 
       const duration = Date.now() - startTime;
+      const wasCancelled =
+        lifecycleSignal.aborted ||
+        workSignal.aborted ||
+        this.sessionStore.loadSession(agentId)?.status === 'cancelled';
       const result: SubagentResult = loopResult.success
         ? {
             success: true,
@@ -266,31 +318,72 @@ export class BackgroundAgentManager {
             stats: { duration },
           };
 
-      this.sessionStore.markCompleted(
-        agentId,
-        {
-          success: result.success,
-          message: result.message,
-          error: result.error,
-        },
-        result.stats
-      );
+      if (wasCancelled && !result.success) {
+        this.sessionStore.updateSession(agentId, {
+          status: 'cancelled',
+          result: {
+            success: false,
+            message: result.message,
+            error: result.error,
+          },
+          stats: result.stats,
+          completedAt: Date.now(),
+        });
+      } else {
+        this.sessionStore.markCompleted(
+          agentId,
+          {
+            success: result.success,
+            message: result.message,
+            error: result.error,
+          },
+          result.stats
+        );
+      }
+
+      // Write output to file for streaming access
+      const session = this.sessionStore.loadSession(agentId);
+      if (session?.outputFile) {
+        const output = JSON.stringify(
+          { status: wasCancelled ? 'cancelled' : result.success ? 'completed' : 'failed', result },
+          null,
+          2,
+        );
+        await writeFile(session.outputFile, output, 'utf-8').catch(() => {/* ignore write errors */});
+      }
 
       this.logger.info(`Background agent completed: ${agentId} (success=${result.success})`);
       return result;
     } catch (error) {
       const duration = Date.now() - startTime;
       const errorMessage = error instanceof Error ? error.message : String(error);
+      const wasCancelled =
+        lifecycleSignal.aborted ||
+        workSignal.aborted ||
+        this.sessionStore.loadSession(agentId)?.status === 'cancelled';
 
-      this.sessionStore.markCompleted(
-        agentId,
-        {
-          success: false,
-          message: '',
-          error: errorMessage,
-        },
-        { duration }
-      );
+      if (wasCancelled) {
+        this.sessionStore.updateSession(agentId, {
+          status: 'cancelled',
+          result: {
+            success: false,
+            message: '',
+            error: errorMessage,
+          },
+          stats: { duration },
+          completedAt: Date.now(),
+        });
+      } else {
+        this.sessionStore.markCompleted(
+          agentId,
+          {
+            success: false,
+            message: '',
+            error: errorMessage,
+          },
+          { duration }
+        );
+      }
 
       this.logger.warn(`Background agent failed: ${agentId}`, error);
 
@@ -370,7 +463,9 @@ export class BackgroundAgentManager {
     config: SubagentConfig,
     bladeConfig: BladeConfig,
     parentSessionId?: string,
-    permissionMode?: PermissionMode
+    permissionMode?: PermissionMode,
+    subagentRegistry?: SubagentRegistry,
+    description?: string,
   ): string | undefined {
     const session = this.sessionStore.loadSession(agentId);
 
@@ -387,7 +482,8 @@ export class BackgroundAgentManager {
     return this.startBackgroundAgent({
       config,
       bladeConfig,
-      description: session.description,
+      subagentRegistry,
+      description: description ?? session.description,
       prompt: newPrompt,
       parentSessionId: parentSessionId || session.parentSessionId,
       permissionMode,
@@ -413,13 +509,60 @@ export class BackgroundAgentManager {
     }
 
     // 发送取消信号
-    runtime.abortController.abort();
+    runtime.lifecycleController.abort();
 
     // 更新状态
     this.sessionStore.updateSession(agentId, { status: 'cancelled' });
 
     this.logger.info(`Background agent cancelled: ${agentId}`);
     return true;
+  }
+
+  /**
+   * 仅中断当前工作，不销毁生命周期
+   *
+   * 与 killAgent 的区别：
+   * - killAgent: abort lifecycleController → 整个 agent 不可恢复
+   * - cancelCurrentWork: 仅 abort workController → 可以通过 resumeAgent 继续
+   */
+  cancelCurrentWork(agentId: string): boolean {
+    const runtime = this.runningAgents.get(agentId);
+    if (!runtime) return false;
+
+    if (runtime.workController.signal.aborted) {
+      return false;
+    }
+
+    runtime.workController.abort('work_cancelled');
+    this.logger.info(`Background agent work cancelled (lifecycle preserved): ${agentId}`);
+    return true;
+  }
+
+  /**
+   * 向运行中的 agent 发送消息（消息队列）
+   *
+   * 消息会在 agent 下一个 tool-round 边界被消费。
+   * 如果 agent 不在运行中，返回 false。
+   */
+  sendMessage(agentId: string, message: string): boolean {
+    const runtime = this.runningAgents.get(agentId);
+    if (!runtime) return false;
+
+    runtime.pendingMessages.push(message);
+    this.logger.debug(`Message queued for agent ${agentId}: ${message.slice(0, 100)}`);
+    return true;
+  }
+
+  /**
+   * 获取并清空 agent 的待处理消息
+   */
+  drainPendingMessages(agentId: string): string[] {
+    const runtime = this.runningAgents.get(agentId);
+    if (!runtime || runtime.pendingMessages.length === 0) return [];
+
+    const messages = [...runtime.pendingMessages];
+    runtime.pendingMessages.length = 0;
+    return messages;
   }
 
   /**

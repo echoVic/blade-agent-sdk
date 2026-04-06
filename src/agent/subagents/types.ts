@@ -57,6 +57,13 @@ export type SubagentColor =
   | 'pink'
   | 'cyan';
 
+export type SubagentSource =
+  | 'builtin'
+  | 'user'
+  | 'project'
+  | 'session'
+  | `plugin:${string}`;
+
 /**
  * Subagent 配置
  */
@@ -93,11 +100,10 @@ export interface SubagentConfig {
   skills?: string[];
 
   /** 配置来源（用于调试和优先级） */
-  source?:
-    | 'builtin'
-    | 'user'
-    | 'project'
-    | `plugin:${string}`;
+  source?: SubagentSource;
+
+  /** 运行时上下文裁剪 */
+  omitEnvironment?: boolean;
 }
 
 export interface SubagentContext {
@@ -107,6 +113,7 @@ export interface SubagentContext {
   permissionMode?: PermissionMode;
   subagentSessionId?: string;
   snapshot?: ContextSnapshot;
+  omitEnvironment?: boolean;
 }
 
 /**

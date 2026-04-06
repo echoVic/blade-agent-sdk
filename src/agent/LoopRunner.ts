@@ -5,28 +5,35 @@
  * - 构建 AgentLoopConfig（工具、消息、hooks）
  * - 执行 agentLoop 并转发事件
  * - 普通模式的 systemPrompt 构建
+ *
+ * 运行时补丁管理委托给 RuntimePatchManager
+ * Hooks 构建委托给 LoopHookBuilder（buildLoopConfig）
  */
 
-import { CompactionService } from '../context/CompactionService.js';
-import { HookManager } from '../hooks/HookManager.js';
+import type { HookRuntime } from '../hooks/HookRuntime.js';
 import { type InternalLogger, LogCategory, NOOP_LOGGER } from '../logging/Logger.js';
 import { buildSystemPrompt } from '../prompts/index.js';
 import type { Message } from '../services/ChatServiceInterface.js';
+import type { SkillActivationContext } from '../skills/index.js';
 import { injectSkillsMetadata } from '../skills/index.js';
+import {
+  ToolExposurePlanner,
+} from '../tools/exposure/index.js';
+import { ToolCatalog } from '../tools/catalog/index.js';
 import type { ExecutionPipeline } from '../tools/execution/ExecutionPipeline.js';
-import type { FunctionDeclaration } from '../tools/types/index.js';
 import {
   type BladeConfig,
-  type JsonValue,
   PermissionMode,
 } from '../types/common.js';
 import { getEnvironmentContext } from '../utils/environment.js';
 import type { AgentEvent } from './AgentEvent.js';
-import type { AgentLoopConfig } from './AgentLoop.js';
 import { agentLoop } from './AgentLoop.js';
 import type { CompactionHandler } from './CompactionHandler.js';
 import { AGENT_TURN_SAFETY_LIMIT } from './constants.js';
 import type { ModelManager } from './ModelManager.js';
+import { RuntimePatchManager } from './RuntimePatchManager.js';
+import { LoopState } from './state/LoopState.js';
+import type { LoopSkillState } from './state/TurnState.js';
 import type { StreamResponseHandler } from './StreamResponseHandler.js';
 import type { TokenBudget } from './TokenBudget.js';
 import type {
@@ -36,15 +43,9 @@ import type {
   LoopResult,
   UserMessageContent,
 } from './types.js';
+import { buildLoopConfig } from './LoopHookBuilder.js';
 
-function toJsonValue(value: string | object): JsonValue {
-  if (typeof value === 'string') return value;
-  try {
-    return JSON.parse(JSON.stringify(value)) as JsonValue;
-  } catch {
-    return String(value);
-  }
-}
+// ===== Module-level helpers =====
 
 function syncContextMessages(context: ChatContext, messages: Message[]): void {
   context.messages = messages.filter((message) => message.role !== 'system');
@@ -58,17 +59,8 @@ function hasPersistableUserContent(message: UserMessageContent): boolean {
   return message.some((part) => part.type === 'image_url' || part.text.trim() !== '');
 }
 
-/**
- * Skill 执行上下文
- */
-interface SkillExecutionContext {
-  skillName: string;
-  allowedTools?: string[];
-  basePath: string;
-}
-
 export class LoopRunner {
-  private activeSkillContext?: SkillExecutionContext;
+  readonly runtimePatchManager: RuntimePatchManager;
   private readonly logger: InternalLogger;
 
   constructor(
@@ -81,8 +73,10 @@ export class LoopRunner {
     private streamHandler?: StreamResponseHandler,
     private compactionHandler?: CompactionHandler,
     private tokenBudget?: TokenBudget,
+    private hookRuntime?: HookRuntime,
   ) {
     this.logger = (logger ?? NOOP_LOGGER).child(LogCategory.AGENT);
+    this.runtimePatchManager = new RuntimePatchManager(hookRuntime, this.logger);
   }
 
   // ===== 普通模式入口 =====
@@ -125,7 +119,11 @@ export class LoopRunner {
       }
     }
 
-    return result!;
+    if (!result) {
+      throw new Error('LoopRunner.executeLoop ended without a result');
+    }
+
+    return result;
   }
 
   async *executeWithAgentLoop(
@@ -134,14 +132,7 @@ export class LoopRunner {
     options?: LoopOptions,
     systemPrompt?: string,
   ): AsyncGenerator<AgentEvent, LoopResult> {
-    // 1. 获取可用工具定义
-    const registry = this.executionPipeline.getRegistry();
-    const permissionMode = context.permissionMode;
-    let rawTools = registry.getFunctionDeclarationsByMode(permissionMode);
-    rawTools = injectSkillsMetadata(rawTools);
-    const tools = this.applySkillToolRestrictions(rawTools);
-
-    // 2. 构建消息历史
+    // 1. 构建消息历史
     const needsSystemPrompt =
       context.messages.length === 0 ||
       !context.messages.some((msg) => msg.role === 'system');
@@ -164,8 +155,10 @@ export class LoopRunner {
     }
 
     messages.push(...context.messages, { role: 'user', content: message });
+    const permissionMode = context.permissionMode;
+    const loopState = this.createLoopState(context, messages, permissionMode);
 
-    // 3. 保存用户消息到 JSONL
+    // 2. 保存用户消息到 JSONL
     let lastMessageUuid: string | null = null;
     try {
       const contextMgr = this.modelManager.getContextManager();
@@ -178,7 +171,7 @@ export class LoopRunner {
       this.logger.warn('[LoopRunner] 保存用户消息失败:', error);
     }
 
-    // 4. 计算 maxTurns
+    // 3. 计算 maxTurns
     const isYoloMode = context.permissionMode === PermissionMode.YOLO;
     const configuredMaxTurns =
       this.runtimeOptions.maxTurns ?? options?.maxTurns ?? this.config.maxTurns ?? -1;
@@ -195,14 +188,27 @@ export class LoopRunner {
       ? AGENT_TURN_SAFETY_LIMIT
       : Math.min(configuredMaxTurns, AGENT_TURN_SAFETY_LIMIT);
 
-    // 5. 构建 AgentLoop hooks + config
-    const loopConfig = this.buildLoopConfig(
-      context, options, messages, tools, maxTurns, isYoloMode, permissionMode,
-      () => lastMessageUuid,
-      (uuid: string | null) => { lastMessageUuid = uuid; },
-    );
+    // 4. 构建 AgentLoop hooks + config
+    const loopConfig = buildLoopConfig({
+      context,
+      options,
+      loopState,
+      maxTurns,
+      isYoloMode,
+      getLastUuid: () => lastMessageUuid,
+      setLastUuid: (uuid: string | null) => { lastMessageUuid = uuid; },
+      streamHandler: this.streamHandler,
+      executionPipeline: this.executionPipeline,
+      logger: this.logger,
+      tokenBudget: this.tokenBudget,
+      compactionHandler: this.compactionHandler,
+      hookRuntime: this.hookRuntime,
+      modelManager: this.modelManager,
+      runtimePatchManager: this.runtimePatchManager,
+      defaultProjectPath: this.defaultProjectPath,
+    });
 
-    // 6. 运行 AgentLoop
+    // 5. 运行 AgentLoop
     try {
       const loop = agentLoop(loopConfig);
       let result: LoopResult | undefined;
@@ -220,7 +226,7 @@ export class LoopRunner {
         throw new Error('AgentLoop ended without result');
       }
 
-      syncContextMessages(context, messages);
+      syncContextMessages(context, loopState.messages);
       return result;
     } catch (error) {
       if (error instanceof Error &&
@@ -241,15 +247,21 @@ export class LoopRunner {
         },
         metadata: { turnsCount: 0, toolCallsCount: 0, duration: 0 },
       };
+    } finally {
+      this.runtimePatchManager.clearTurnScopedRuntimeState();
     }
   }
 
   // ===== SystemPrompt =====
 
   private async buildNormalSystemPrompt(context: ChatContext): Promise<string> {
-    const basePrompt =
-      context.systemPrompt ?? (await this.buildSystemPromptOnDemand(context));
+    const basePrompt = context.systemPrompt
+      ? this.runtimePatchManager.appendRuntimeSystemPrompt(context.systemPrompt)
+      : await this.buildSystemPromptOnDemand(context);
     const envContext = getEnvironmentContext(context.snapshot?.cwd ?? this.defaultProjectPath);
+    if (context.omitEnvironment) {
+      return basePrompt;
+    }
     return basePrompt
       ? `${envContext}\n\n---\n\n${basePrompt}`
       : envContext;
@@ -257,11 +269,14 @@ export class LoopRunner {
 
   async buildSystemPromptOnDemand(context?: ChatContext): Promise<string> {
     const replacePrompt = this.runtimeOptions.systemPrompt;
-    const appendPrompt = this.runtimeOptions.appendSystemPrompt;
-    // Undefined projectPath is intentional for context-free turns: it disables
-    // filesystem-derived prompt sources such as BLADE.md instead of falling
-    // back to an implicit process cwd.
+    const appendPrompt = this.runtimePatchManager.getEffectiveSystemPromptAppend(
+      this.runtimeOptions.appendSystemPrompt,
+    );
     const projectPath = context?.snapshot?.cwd ?? this.defaultProjectPath;
+    const skillActivationContext = this.runtimePatchManager.createSkillActivationContext(
+      projectPath,
+      context?.messages ?? [],
+    );
 
     const result = await buildSystemPrompt({
       projectPath,
@@ -269,297 +284,123 @@ export class LoopRunner {
       append: appendPrompt,
       includeEnvironment: false,
       language: this.config.language,
+      skillActivationContext,
     });
 
     return result.prompt;
   }
 
-  // ===== Skill 工具限制 =====
+  // ===== Skill 工具限制 (delegate to RuntimePatchManager) =====
 
-  get skillContext(): SkillExecutionContext | undefined {
-    return this.activeSkillContext;
+  get skillContext(): LoopSkillState | undefined {
+    return this.runtimePatchManager.skillContext;
   }
 
-  setSkillContext(ctx: SkillExecutionContext | undefined): void {
-    this.activeSkillContext = ctx;
+  setSkillContext(ctx: LoopSkillState | undefined): void {
+    this.runtimePatchManager.setSkillContext(ctx);
   }
 
   clearSkillContext(): void {
-    if (this.activeSkillContext) {
-      this.logger.debug(`🎯 Skill "${this.activeSkillContext.skillName}" deactivated`);
-      this.activeSkillContext = undefined;
-    }
+    this.runtimePatchManager.clearSkillContext();
   }
 
-  private applySkillToolRestrictions(
-    tools: FunctionDeclaration[]
-  ): FunctionDeclaration[] {
-    if (!this.activeSkillContext?.allowedTools) {
-      return tools;
-    }
-
-    const allowedTools = this.activeSkillContext.allowedTools;
-    this.logger.debug(`🔒 Applying Skill tool restrictions: ${allowedTools.join(', ')}`);
-
-    const filteredTools = tools.filter((tool) => {
-      return allowedTools.some((allowed) => {
-        if (allowed === tool.name) return true;
-        const match = allowed.match(/^(\w+)\(.*\)$/);
-        if (match && match[1] === tool.name) return true;
-        return false;
-      });
-    });
-
-    this.logger.debug(
-      `🔒 Filtered tools: ${filteredTools.map((t) => t.name).join(', ')} (${filteredTools.length}/${tools.length})`
-    );
-
-    return filteredTools;
+  getRuntimePatchApplications() {
+    return this.runtimePatchManager.getRuntimePatchApplications();
   }
 
-  // ===== AgentLoopConfig 构建 =====
+  // ===== LoopState 创建 =====
 
-  private buildLoopConfig(
+  private createLoopState(
     context: ChatContext,
-    options: LoopOptions | undefined,
     messages: Message[],
-    tools: FunctionDeclaration[],
-    maxTurns: number,
-    isYoloMode: boolean,
     permissionMode: PermissionMode | undefined,
-    getLastUuid: () => string | null,
-    setLastUuid: (uuid: string | null) => void,
-  ): AgentLoopConfig {
-    const self = this;
-    const chatService = this.modelManager.getChatService();
-
-    return {
-      chatService,
-      streamHandler: this.streamHandler,
-      executionPipeline: this.executionPipeline,
-      logger: this.logger,
-      tools,
+  ): LoopState {
+    const rpm = this.runtimePatchManager;
+    const catalog = this.executionPipeline.getCatalog();
+    const exposureCatalog = catalog ?? this.executionPipeline.getRegistry();
+    const registry = this.executionPipeline.getRegistry();
+    const exposurePlanner = new ToolExposurePlanner(exposureCatalog);
+    const effectiveSnapshot = rpm.buildRuntimeContextSnapshot(
+      context.sessionId,
+      context.snapshot,
+    );
+    const initialActivationCwd = effectiveSnapshot?.cwd ?? this.defaultProjectPath;
+    const initialSkillActivationContext = rpm.createSkillActivationContext(
+      initialActivationCwd,
       messages,
-      maxTurns,
-      isYoloMode,
-      signal: options?.signal,
+    );
+    let cachedSkillActivationContext = initialSkillActivationContext;
+    let cachedSkillActivationMessageCount = messages.length;
+    let cachedSkillActivationCwd = initialActivationCwd;
+    let loopState: LoopState;
+
+    const resolveSkillActivationContext = (): SkillActivationContext => {
+      const cwd = loopState.executionContext.contextSnapshot?.cwd ?? this.defaultProjectPath;
+      const currentMessageCount = loopState.messages.length;
+      if (
+        cachedSkillActivationContext
+        && cachedSkillActivationMessageCount === currentMessageCount
+        && cachedSkillActivationCwd === cwd
+      ) {
+        return cachedSkillActivationContext;
+      }
+
+      cachedSkillActivationContext = rpm.createSkillActivationContext(
+        cwd,
+        loopState.messages,
+      );
+      cachedSkillActivationMessageCount = currentMessageCount;
+      cachedSkillActivationCwd = cwd;
+      return cachedSkillActivationContext;
+    };
+
+    loopState = new LoopState({
+      messages,
       permissionMode,
-      maxContextTokens: this.modelManager.getMaxContextTokens(),
-      tokenBudget: this.tokenBudget,
       executionContext: {
         sessionId: context.sessionId,
         userId: context.userId || 'default',
-        contextSnapshot: context.snapshot,
+        contextSnapshot: effectiveSnapshot,
+        skillActivationPaths: initialSkillActivationContext.referencedPaths,
         confirmationHandler: context.confirmationHandler,
+        backgroundAgentManager: context.backgroundAgentManager,
+        toolCatalog: catalog instanceof ToolCatalog
+          ? catalog
+          : undefined,
+        toolRegistry: registry,
+        discoveredTools: Array.from(rpm.discoveredTools ?? []),
       },
-
-      // === Hooks ===
-
-      async *onBeforeTurn(ctx) {
-        if (!self.compactionHandler) return false;
-        const compactionStream = self.compactionHandler.checkAndCompactInLoop(
-          context, ctx.turn, ctx.lastPromptTokens
+      baseContextSnapshot: context.snapshot,
+      initialActiveSkill: rpm.skillContext,
+      resolveTools: () => {
+        const skillActivationContext = resolveSkillActivationContext();
+        loopState.executionContext.skillActivationPaths = skillActivationContext.referencedPaths;
+        loopState.executionContext.discoveredTools = Array.from(rpm.discoveredTools ?? []);
+        const runtimeToolPolicy = rpm.runtimeToolPolicySnapshot
+          ?? (rpm.skillContext
+            ? {
+                allow: rpm.skillContext.allowedTools,
+                deny: rpm.skillContext.deniedTools,
+                scope: rpm.skillContext.scope ?? 'session',
+              }
+            : undefined);
+        const rawExposurePlan = exposurePlanner.plan({
+          permissionMode,
+          runtimeToolPolicy,
+          discoveredTools: rpm.discoveredTools,
+          sourcePolicy: this.runtimeOptions.toolSourcePolicy,
+        });
+        rpm.syncDiscoverableToolsCatalogMessage(loopState.messages, rawExposurePlan.discoverableTools);
+        let rawTools = rawExposurePlan.declarations;
+        rawTools = injectSkillsMetadata(
+          rawTools,
+          skillActivationContext,
         );
-        let didCompact = false;
-        while (true) {
-          const { value, done } = await compactionStream.next();
-          if (done) { didCompact = value; break; }
-          yield value;
-        }
-        return didCompact;
+        return rawTools;
       },
-
-      onReactiveCompact: self.compactionHandler
-        ? async function* () {
-            const compactStream = self.compactionHandler!.reactiveCompact(context);
-            let result = false;
-            while (true) {
-              const { value, done } = await compactStream.next();
-              if (done) { result = value; break; }
-              yield value;
-            }
-            return result;
-          }
-        : undefined,
-
-      async onAssistantMessage(ctx) {
-        try {
-          const contextMgr = self.modelManager.getContextManager();
-          if (contextMgr && context.sessionId && ctx.content.trim() !== '') {
-            const uuid = await contextMgr.saveMessage(
-              context.sessionId, 'assistant', ctx.content,
-              getLastUuid(), undefined, context.subagentInfo
-            );
-            setLastUuid(uuid);
-          }
-        } catch (error) {
-          self.logger.warn('[LoopRunner] 保存助手消息失败:', error);
-        }
-      },
-
-      async onBeforeToolExec(ctx) {
-        try {
-          const contextMgr = self.modelManager.getContextManager();
-          if (contextMgr && context.sessionId) {
-            return await contextMgr.saveToolUse(
-              context.sessionId, ctx.toolCall.function.name,
-              ctx.params as Record<string, unknown> & import('../types/common.js').JsonValue,
-              getLastUuid(), context.subagentInfo
-            );
-          }
-        } catch (error) {
-          self.logger.warn('[LoopRunner] 保存工具调用失败:', error);
-        }
-        return null;
-      },
-
-      async onAfterToolExec(ctx) {
-        const { toolCall, result, toolUseUuid } = ctx;
-
-        // 保存工具结果到 JSONL
-        try {
-          const contextMgr = self.modelManager.getContextManager();
-          if (contextMgr && context.sessionId) {
-            const metadata = result.metadata;
-            const isSubagentStatus = (v: unknown): v is 'running' | 'completed' | 'failed' | 'cancelled' =>
-              v === 'running' || v === 'completed' || v === 'failed' || v === 'cancelled';
-            const subagentStatus = isSubagentStatus(metadata?.subagentStatus)
-              ? metadata.subagentStatus : 'completed';
-            const subagentRef = metadata && typeof metadata.subagentSessionId === 'string'
-              ? {
-                  subagentSessionId: metadata.subagentSessionId,
-                  subagentType: typeof metadata.subagentType === 'string'
-                    ? metadata.subagentType : toolCall.function.name,
-                  subagentStatus,
-                  subagentSummary: typeof metadata.subagentSummary === 'string'
-                    ? metadata.subagentSummary : undefined,
-                }
-              : undefined;
-            const uuid = await contextMgr.saveToolResult(
-              context.sessionId, toolCall.id, toolCall.function.name,
-              result.success ? toJsonValue(result.llmContent) : null,
-              toolUseUuid, result.success ? undefined : result.error?.message,
-              context.subagentInfo, subagentRef
-            );
-            setLastUuid(uuid);
-          }
-        } catch (err) {
-          self.logger.warn('[LoopRunner] 保存工具结果失败:', err);
-        }
-
-        // Skill 激活
-        if (toolCall.function.name === 'Skill' && result.success && result.metadata) {
-          const md = result.metadata;
-          if (md.skillName && typeof md.skillName === 'string') {
-            self.activeSkillContext = {
-              skillName: md.skillName,
-              allowedTools: Array.isArray(md.allowedTools) ? md.allowedTools as string[] : undefined,
-              basePath: typeof md.basePath === 'string' ? md.basePath : '',
-            };
-          }
-        }
-
-        // 模型切换
-        const modelId = result.metadata?.modelId?.trim()
-          || result.metadata?.model?.trim() || undefined;
-        if (modelId) {
-          await self.modelManager.switchModelIfNeeded(modelId);
-        }
-      },
-
-      async onComplete(ctx) {
-        try {
-          const contextMgr = self.modelManager.getContextManager();
-          if (contextMgr && context.sessionId && ctx.content.trim() !== '') {
-            const uuid = await contextMgr.saveMessage(
-              context.sessionId, 'assistant', ctx.content,
-              getLastUuid(), undefined, context.subagentInfo
-            );
-            setLastUuid(uuid);
-          }
-        } catch (error) {
-          self.logger.warn('[LoopRunner] 保存助手消息失败:', error);
-        }
-      },
-
-      async onStopCheck(ctx) {
-        try {
-          const projectDir = context.snapshot?.cwd ?? self.defaultProjectPath;
-          if (!projectDir) {
-            return { shouldStop: true };
-          }
-          const hookManager = HookManager.getInstance();
-          const stopResult = await hookManager.executeStopHooks({
-            projectDir,
-            sessionId: context.sessionId,
-            permissionMode: context.permissionMode ?? PermissionMode.DEFAULT,
-            reason: ctx.content,
-            abortSignal: options?.signal,
-          });
-          return {
-            shouldStop: stopResult.shouldStop,
-            continueReason: stopResult.continueReason,
-            warning: stopResult.warning,
-          };
-        } catch {
-          return { shouldStop: true };
-        }
-      },
-
-      onTurnLimitReached: options?.onTurnLimitReached,
-
-      async onTurnLimitCompact(_ctx) {
-        try {
-          const cs = chatService.getConfig();
-          const compactResult = await CompactionService.compact(
-            context.messages,
-            {
-              trigger: 'auto',
-              provider: cs.provider,
-              modelName: cs.model,
-              maxContextTokens: cs.maxContextTokens ?? 128000,
-              apiKey: cs.apiKey,
-              baseURL: cs.baseUrl,
-              customHeaders: cs.customHeaders,
-              projectDir: context.snapshot?.cwd ?? self.defaultProjectPath,
-            }
-          );
-          context.messages = compactResult.compactedMessages;
-          const continueMessage: Message = {
-            role: 'user',
-            content: 'This session is being continued from a previous conversation. '
-              + 'The conversation is summarized above.\n\n'
-              + 'Please continue the conversation from where we left it off without asking the user any further questions. '
-              + 'Continue with the last task that you were asked to work on.',
-          };
-          context.messages.push(continueMessage);
-
-          try {
-            const contextMgr = self.modelManager.getContextManager();
-            if (contextMgr && context.sessionId) {
-              await contextMgr.saveCompaction(
-                context.sessionId, compactResult.summary,
-                { trigger: 'auto', preTokens: compactResult.preTokens,
-                  postTokens: compactResult.postTokens, filesIncluded: compactResult.filesIncluded },
-                null
-              );
-            }
-          } catch (saveError) {
-            self.logger.warn('[LoopRunner] 保存压缩数据失败:', saveError);
-          }
-
-          return {
-            success: true,
-            compactedMessages: compactResult.compactedMessages,
-            continueMessage,
-          };
-        } catch (compactError) {
-          self.logger.error('[LoopRunner] 压缩失败，使用降级策略:', compactError);
-          const recentMessages = context.messages.slice(-80);
-          context.messages = recentMessages;
-          return { success: true, compactedMessages: recentMessages };
-        }
-      },
-    };
+      resolveChatService: () => this.modelManager.getChatService(),
+      resolveMaxContextTokens: () => this.modelManager.getMaxContextTokens(),
+    });
+    return loopState;
   }
 }

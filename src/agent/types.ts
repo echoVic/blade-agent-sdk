@@ -4,20 +4,54 @@
 
 import type { ContextSnapshot } from '../runtime/index.js';
 import type { ContentPart, Message } from '../services/ChatServiceInterface.js';
+import type { ToolCatalogSourcePolicy } from '../tools/catalog/index.js';
 import type { ConfirmationHandler } from '../tools/types/ExecutionTypes.js';
 import type { OutputFormat, PermissionMode, PermissionsConfig, SandboxSettings } from '../types/common.js';
-import type { CanUseTool } from '../types/permissions.js';
+import type { CanUseTool, PermissionHandler } from '../types/permissions.js';
 import type { TokenBudgetConfig, TokenBudgetSnapshot } from './TokenBudget.js';
-
-export type { AgentEvent } from './AgentEvent.js';
-export { agentLoop } from './AgentLoop.js';
-export type { AgentLoopConfig } from './AgentLoop.js';
 
 /**
  * 用户消息内容类型
  * 支持纯文本或多模态内容（文本 + 图片）
  */
 export type UserMessageContent = string | ContentPart[];
+
+/**
+ * 后台 Agent 管理器的最小接口
+ *
+ * 解耦 state/types 层对 subagents 具体实现的依赖。
+ * BackgroundAgentManager 通过 structural typing 隐式满足此接口。
+ *
+ * 分层设计：
+ * - IBackgroundAgentReader: 读取/查询能力（TaskOutput 使用）
+ * - IBackgroundAgentController: 启动/停止/恢复能力（Task 使用）
+ * - IBackgroundAgentManager: 完整接口（SessionRuntime 注入）
+ */
+
+export interface AgentProgress {
+  toolUseCount: number;
+  tokenCount: number;
+  lastActivity?: string;
+  summary?: string;
+  updatedAt: number;
+}
+
+export interface IBackgroundAgentReader {
+  getAgent(agentId: string): object | undefined;
+  isRunning(agentId: string): boolean;
+  waitForCompletion(agentId: string, timeout?: number): Promise<object | undefined>;
+}
+
+export interface IBackgroundAgentController {
+  killAgent(agentId: string): boolean;
+  cancelCurrentWork(agentId: string): boolean;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  startBackgroundAgent(options: any): string;
+  resumeAgent(agentId: string, newPrompt: string, ...args: unknown[]): string | undefined;
+  sendMessage(agentId: string, message: string): boolean;
+}
+
+export interface IBackgroundAgentManager extends IBackgroundAgentReader, IBackgroundAgentController {}
 
 /**
  * 子代理信息（用于 JSONL 写入）
@@ -47,6 +81,8 @@ export interface ChatContext {
   permissionMode?: PermissionMode; // 当前权限模式（用于 Plan 模式判断）
   systemPrompt?: string; // 动态传入的系统提示词（无状态设计）
   subagentInfo?: SubagentInfoForContext; // 子代理信息（用于 JSONL 写入）
+  omitEnvironment?: boolean;
+  backgroundAgentManager?: IBackgroundAgentManager;
 }
 
 /**
@@ -61,9 +97,11 @@ export interface AgentOptions {
   permissionMode?: PermissionMode;
   maxTurns?: number; // 最大对话轮次 (-1=无限制, 0=禁用对话, N>0=限制轮次)
   toolWhitelist?: string[]; // 工具白名单（仅允许指定工具）
+  toolSourcePolicy?: ToolCatalogSourcePolicy; // 工具来源/信任级别过滤
   modelId?: string;
 
   // 权限控制
+  permissionHandler?: PermissionHandler;
   canUseTool?: CanUseTool;
 
   // MCP 配置
@@ -88,6 +126,8 @@ export interface LoopOptions {
   autoCompact?: boolean;
   signal?: AbortSignal;
   onTurnLimitReached?: (data: { turnsCount: number }) => Promise<TurnLimitResponse>;
+  /** 进度回调，每次 tool call 完成后触发 */
+  onProgress?: (progress: AgentProgress) => void;
 }
 
 /**

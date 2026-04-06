@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { createTool } from '../../core/createTool.js';
 import type { ToolResult } from '../../types/ToolTypes.js';
 import { ToolErrorType, ToolKind } from '../../types/ToolTypes.js';
+import { ToolSchemas } from '../../validation/zodSchemas.js';
 
 /**
  * Option schema - 选项定义
@@ -34,8 +35,7 @@ const questionSchema = z.object({
     .describe(
       'Very short label displayed as a chip/tag (max 12 chars). Examples: "Auth method", "Library", "Approach".'
     ),
-  multiSelect: z
-    .boolean()
+  multiSelect: ToolSchemas.semanticBoolean()
     .describe(
       'Set to true to allow the user to select multiple options instead of just one. Use when choices are not mutually exclusive.'
     ),
@@ -123,17 +123,16 @@ Usage notes:
           };
         }
 
-        // ACP 兼容模式：approved 但没有 answers
-        // 这意味着在 ACP/IDE 会话中用户允许了操作，但 ACP 不支持收集答案
-        // 返回友好提示，让 LLM 知道需要用其他方式获取信息
+        // 兼容模式：approved 但没有 answers
+        // 某些会话环境中用户允许了操作，但不支持收集结构化答案
         return {
           success: true,
           llmContent:
             'The question was approved but no answers were collected. ' +
-            'This typically happens in IDE/ACP sessions where structured question UI is not available. ' +
+            'This can happen in sessions where structured question UI is not available. ' +
             'Please ask the user directly in your response or make reasonable assumptions based on context.',
-          displayContent: '⚠️ ACP 模式：无法收集答案',
-          metadata: { acpMode: true, noAnswersCollected: true },
+          displayContent: '⚠️ 未收集到答案',
+          metadata: { noAnswersCollected: true },
         };
       } catch (error) {
         return {

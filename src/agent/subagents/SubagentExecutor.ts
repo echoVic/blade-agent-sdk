@@ -1,6 +1,7 @@
 import { nanoid } from 'nanoid';
 import type { BladeConfig } from '../../types/common.js';
 import { Agent } from '../Agent.js';
+import type { SubagentRegistry } from './SubagentRegistry.js';
 import type { SubagentConfig, SubagentContext, SubagentResult } from './types.js';
 
 /**
@@ -15,7 +16,8 @@ import type { SubagentConfig, SubagentContext, SubagentResult } from './types.js
 export class SubagentExecutor {
   constructor(
     private config: SubagentConfig,
-    private bladeConfig: BladeConfig
+    private bladeConfig: BladeConfig,
+    private readonly subagentRegistry?: SubagentRegistry,
   ) {}
 
   /**
@@ -38,11 +40,7 @@ export class SubagentExecutor {
         toolWhitelist: this.config.tools,
         modelId,
       }, {
-        // When a parent snapshot exists, inherit its context verbatim, even if
-        // that context is intentionally empty. The legacy fallback only applies
-        // to out-of-band subagent execution with no parent snapshot at all. In
-        // that case, use an empty default context so subagents do not gain
-        // implicit filesystem access from the host process.
+        subagentRegistry: this.subagentRegistry,
         defaultContext: context.snapshot
           ? context.snapshot.context
           : {},
@@ -55,7 +53,10 @@ export class SubagentExecutor {
       const subagentInfo = {
         parentSessionId: context.parentSessionId || '',
         subagentType: this.config.name,
-        isSidechain: false,
+        // Mark as sidechain so the subagent's messages are stored in a
+        // separate session tree and do not pollute the parent session's
+        // persistent store.
+        isSidechain: true,
       };
       
       const loopResult = await agent.runAgenticLoop(
@@ -68,6 +69,7 @@ export class SubagentExecutor {
           permissionMode: context.permissionMode,
           systemPrompt,
           subagentInfo,
+          omitEnvironment: context.omitEnvironment ?? this.config.omitEnvironment,
         }
       );
 

@@ -84,6 +84,10 @@ session.close();
 
 ## 核心概念
 
+### 自动上下文管理
+
+SDK 内置多层上下文压缩策略（Microcompact → Soft → LLM 摘要 → 紧急截断），自动管理对话历史的 token 用量。当上下文接近模型上限时自动触发压缩，上下文溢出时自动恢复并重试，无需手动干预。详见 [Session API — 上下文自动压缩](./session#上下文自动压缩)。
+
 ### Session-first 设计
 
 SDK 的所有能力都围绕 **Session（会话）** 组织。Session 是唯一的入口：
