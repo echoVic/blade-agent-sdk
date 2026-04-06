@@ -2,6 +2,25 @@
 
 本文件记录 @blade-ai/agent-sdk 的所有重要变更。
 
+## [1.0.0] - 2026-04-06
+
+- ee7cb3f feat(agent): 重构后台代理管理器以支持多运行时和进度跟踪
+- 53ea992 refactor(agent): 提取运行时补丁管理和循环钩子构建逻辑
+- 53e2707 chore: 移除 ACP 相关代码和依赖
+- a84abfe feat(tools): 引入工具目录、运行时补丁和工具发现机制
+- 7c0ea04 feat(skills): 实现基于运行时补丁的技能激活系统
+- 6fcfa9e docs: 完善多个文档章节，新增自动上下文压缩等功能介绍
+- e1d56ad feat: 增强子代理与技能运行时控制，改进上下文压缩和后台代理管理
+- 6195b4f feat(agent): 改进上下文溢出恢复机制，支持嵌套错误检测
+- 5bbcda5 feat(agent): 实现流式工具执行器并修复参数预处理
+- 219a940 feat: 新增会话隔离的子代理注册表和可选内存工具
+- 92490b2 fix: enforce slug names for filesystem memory
+- 8a85354 fix: keep filesystem index internal
+- 50ae8e2 feat: add opt-in filesystem memory store
+- 14da1fd fix: enforce deterministic ordering in memory manager
+- ef61fd7 refactor: abstract memory manager over store interface
+- bf8f944 docs: add memory and subagent boundaries design spec
+- c9d2167 feat(agent): 引入 token 预算和智能工具执行规划
 ## [0.2.8] - 2026-03-31
 
 - b905554 feat(session): 支持多模态消息中的图像内容持久化
