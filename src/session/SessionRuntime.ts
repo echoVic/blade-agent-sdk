@@ -181,6 +181,13 @@ export class SessionRuntime {
     await this.contextManager.createSession(undefined, {}, { sessionId: this.sessionId });
   }
 
+  async ensureSessionLoaded(): Promise<void> {
+    const loaded = await this.contextManager.loadSession(this.sessionId);
+    if (!loaded) {
+      await this.contextManager.createSession(undefined, {}, { sessionId: this.sessionId });
+    }
+  }
+
   prepareTurn(snapshot: ContextSnapshot): void {
     this.contextManager.updateWorkspace({
       projectPath: snapshot.cwd,

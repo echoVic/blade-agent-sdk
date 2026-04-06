@@ -103,7 +103,9 @@ class Session implements ISession {
       this.rootLogger,
     );
     await this.runtime.initialize();
-    if (!this.isResumeSession) {
+    if (this.isResumeSession) {
+      await this.runtime.ensureSessionLoaded();
+    } else {
       await this.runtime.ensureSessionCreated();
     }
 
@@ -280,6 +282,9 @@ class Session implements ISession {
         switch (value.type) {
           case 'turn_start':
             yield { type: 'turn_start', turn: value.turn, sessionId: this.sessionId };
+            break;
+          case 'turn_end':
+            yield { type: 'turn_end', turn: value.turn, sessionId: this.sessionId };
             break;
           case 'content_delta':
             yield { type: 'content', delta: value.delta, sessionId: this.sessionId };

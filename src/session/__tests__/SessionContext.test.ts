@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { PersistentStore } from '../../context/storage/PersistentStore.js';
 import type { ContentPart } from '../../services/ChatServiceInterface.js';
 import { HookEvent } from '../../types/constants.js';
 
@@ -32,7 +33,7 @@ vi.mock('../../agent/Agent.js', () => ({
   },
 }));
 
-const { createSession } = await import('../Session.js');
+const { createSession, resumeSession } = await import('../Session.js');
 
 describe('Session runtime context', () => {
   it('should let turn-scoped context override the session default context', async () => {
@@ -273,6 +274,86 @@ describe('Session runtime context', () => {
       'tool_runtime_patch',
       'tool_result',
     ]));
+
+    session.close();
+  });
+
+  it('should forward turn_end events from the agent stream', async () => {
+    const storagePath = mkdtempSync(join(tmpdir(), 'session-context-turn-end-'));
+    createAgent.mockResolvedValueOnce({
+      async *streamChat(): AsyncGenerator<unknown, unknown, unknown> {
+        yield { type: 'turn_start', turn: 1 };
+        yield { type: 'turn_end', turn: 1, hasToolCalls: false };
+        return {
+          success: true,
+          finalMessage: 'ok',
+          metadata: {
+            turnsCount: 1,
+            toolCallsCount: 0,
+            duration: 0,
+          },
+        };
+      },
+      async setModel() {},
+    } as never);
+
+    const session = await createSession({
+      provider: { type: 'openai-compatible', apiKey: 'test-key' },
+      model: 'gpt-4o-mini',
+      storagePath,
+    });
+
+    await session.send('hello');
+
+    const events: string[] = [];
+    for await (const event of session.stream()) {
+      events.push(event.type);
+    }
+
+    expect(events).toEqual(expect.arrayContaining(['turn_start', 'turn_end']));
+
+    session.close();
+  });
+
+  it('should continue streaming after resumeSession restores an existing session', async () => {
+    const storagePath = mkdtempSync(join(tmpdir(), 'session-context-resume-stream-'));
+    const persistentStore = new PersistentStore(storagePath);
+    const sessionId = 'resumed-session';
+
+    await persistentStore.createSession(sessionId);
+
+    createAgent.mockResolvedValueOnce({
+      async *streamChat(): AsyncGenerator<unknown, unknown, unknown> {
+        yield { type: 'turn_start', turn: 1 };
+        yield { type: 'turn_end', turn: 1, hasToolCalls: false };
+        return {
+          success: true,
+          finalMessage: 'ok',
+          metadata: {
+            turnsCount: 1,
+            toolCallsCount: 0,
+            duration: 0,
+          },
+        };
+      },
+      async setModel() {},
+    } as never);
+
+    const session = await resumeSession({
+      sessionId,
+      provider: { type: 'openai-compatible', apiKey: 'test-key' },
+      model: 'gpt-4o-mini',
+      storagePath,
+    });
+
+    await session.send('hello again');
+
+    const events: string[] = [];
+    for await (const event of session.stream()) {
+      events.push(event.type);
+    }
+
+    expect(events).toEqual(expect.arrayContaining(['turn_start', 'turn_end', 'result']));
 
     session.close();
   });
