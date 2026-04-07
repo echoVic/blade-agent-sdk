@@ -363,6 +363,7 @@ export class LoopRunner {
         contextSnapshot: effectiveSnapshot,
         skillActivationPaths: initialSkillActivationContext.referencedPaths,
         confirmationHandler: context.confirmationHandler,
+        bladeConfig: this.config,
         backgroundAgentManager: context.backgroundAgentManager,
         toolCatalog: catalog instanceof ToolCatalog
           ? catalog

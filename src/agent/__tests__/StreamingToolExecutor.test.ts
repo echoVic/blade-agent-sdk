@@ -53,7 +53,11 @@ function createExecutor(options: {
   const streamHandler = {
     streamResponse: vi.fn(
       options.streamResponse
-        ?? (async function* () {
+        // biome-ignore lint/correctness/useYield: generator used only for its return value
+        ?? (async function* (): AsyncGenerator<
+          { type: 'content_delta'; delta: string } | { type: 'thinking_delta'; delta: string },
+          ChatResponse
+        > {
           return {
             content: '',
             toolCalls: [],
@@ -503,10 +507,15 @@ describe('StreamingToolExecutor', () => {
     const onReady = vi.fn();
 
     const { executor, streamHandler, execute } = createExecutor({
+      // biome-ignore lint/correctness/useYield: throws before yielding
       streamChat: async function* () {
         throw new Error('stream not supported');
       },
-      streamResponse: async function* () {
+      // biome-ignore lint/correctness/useYield: generator used only for its return value
+      streamResponse: async function* (): AsyncGenerator<
+        { type: 'content_delta'; delta: string } | { type: 'thinking_delta'; delta: string },
+        ChatResponse
+      > {
         return {
           content: '',
           toolCalls: [
@@ -584,8 +593,13 @@ describe('StreamingToolExecutor', () => {
 
   it('falls back to the wrapped handler when the stream returns zero chunks', async () => {
     const { executor, streamHandler, execute } = createExecutor({
+      // biome-ignore lint/correctness/useYield: empty generator simulating zero chunks
       streamChat: async function* () {},
-      streamResponse: async function* () {
+      // biome-ignore lint/correctness/useYield: generator used only for its return value
+      streamResponse: async function* (): AsyncGenerator<
+        { type: 'content_delta'; delta: string } | { type: 'thinking_delta'; delta: string },
+        ChatResponse
+      > {
         return {
           content: 'fallback content',
           toolCalls: [],
@@ -616,6 +630,7 @@ describe('StreamingToolExecutor', () => {
 
   it('propagates context-length errors directly when no tools were dispatched', async () => {
     const { executor, streamHandler, execute } = createExecutor({
+      // biome-ignore lint/correctness/useYield: throws before yielding
       streamChat: async function* () {
         throw new Error('maximum context length exceeded');
       },

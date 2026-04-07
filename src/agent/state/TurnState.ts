@@ -3,7 +3,7 @@ import type { IChatService, Message } from '../../services/ChatServiceInterface.
 import type { ToolCatalog } from '../../tools/catalog/index.js';
 import type { ToolRegistry } from '../../tools/registry/ToolRegistry.js';
 import type { ConfirmationHandler } from '../../tools/types/ExecutionTypes.js';
-import type { PermissionMode } from '../../types/common.js';
+import type { BladeConfig, PermissionMode } from '../../types/common.js';
 import type { IBackgroundAgentManager } from '../types.js';
 
 export type LlmToolDefinition = {
@@ -33,6 +33,7 @@ export interface LoopExecutionContext {
   contextSnapshot?: ContextSnapshot;
   skillActivationPaths?: string[];
   confirmationHandler?: ConfirmationHandler;
+  bladeConfig?: BladeConfig;
   backgroundAgentManager?: IBackgroundAgentManager;
   toolRegistry?: ToolRegistry;
   toolCatalog?: ToolCatalog;

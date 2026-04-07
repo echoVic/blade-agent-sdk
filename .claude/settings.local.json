@@ -38,7 +38,9 @@
       "Bash(pnpm run:*)",
       "Bash(pnpm vitest:*)",
       "Bash(node --input-type=module -e ':*)",
-      "Bash(unset INTEGRATION_API_KEY INTEGRATION_BASE_URL INTEGRATION_MODEL)"
+      "Bash(unset INTEGRATION_API_KEY INTEGRATION_BASE_URL INTEGRATION_MODEL)",
+      "Bash(pnpm biome:*)",
+      "Bash(grep -v '^--$')"
     ]
   }
 }

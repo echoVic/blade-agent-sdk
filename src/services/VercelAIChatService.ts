@@ -71,6 +71,18 @@ type AITool = {
   inputSchema: unknown;
 };
 
+function parseDataUrl(url: string): { data: string; mediaType?: string } | undefined {
+  const match = url.match(/^data:([^;,]+)?;base64,(.+)$/);
+  if (!match) {
+    return undefined;
+  }
+
+  return {
+    mediaType: match[1] || undefined,
+    data: match[2],
+  };
+}
+
 function safeJsonParse(
   str: string,
   logger: InternalLogger,
@@ -265,6 +277,14 @@ export class VercelAIChatService implements IChatService {
                 textPart.providerOptions = part.providerOptions as AIProviderOptions;
               }
               return textPart;
+            }
+            const dataUrl = parseDataUrl(part.image_url.url);
+            if (dataUrl) {
+              return {
+                type: 'image' as const,
+                image: dataUrl.data,
+                mediaType: dataUrl.mediaType,
+              };
             }
             return { type: 'image' as const, image: part.image_url.url };
           });

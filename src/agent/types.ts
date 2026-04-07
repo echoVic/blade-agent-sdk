@@ -9,6 +9,7 @@ import type { ConfirmationHandler } from '../tools/types/ExecutionTypes.js';
 import type { OutputFormat, PermissionMode, PermissionsConfig, SandboxSettings } from '../types/common.js';
 import type { CanUseTool, PermissionHandler } from '../types/permissions.js';
 import type { TokenBudgetConfig, TokenBudgetSnapshot } from './TokenBudget.js';
+import type { StartBackgroundAgentOptions } from './subagents/BackgroundAgentManager.js';
 
 /**
  * 用户消息内容类型
@@ -45,8 +46,7 @@ export interface IBackgroundAgentReader {
 export interface IBackgroundAgentController {
   killAgent(agentId: string): boolean;
   cancelCurrentWork(agentId: string): boolean;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  startBackgroundAgent(options: any): string;
+  startBackgroundAgent(options: StartBackgroundAgentOptions): string;
   resumeAgent(agentId: string, newPrompt: string, ...args: unknown[]): string | undefined;
   sendMessage(agentId: string, message: string): boolean;
 }

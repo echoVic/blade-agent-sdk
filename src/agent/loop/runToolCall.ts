@@ -10,7 +10,8 @@ import {
   type ToolResult,
   ToolErrorType,
 } from '../../tools/types/index.js';
-import type { PermissionMode } from '../../types/common.js';
+import type { BladeConfig, PermissionMode } from '../../types/common.js';
+import type { IBackgroundAgentManager } from '../types.js';
 import { repairToolCallParams } from './repairToolCallParams.js';
 import {
   createInterruptAwareAbortSignal,
@@ -80,6 +81,8 @@ export interface ToolExecutionContext {
   contextSnapshot?: ContextSnapshot;
   skillActivationPaths?: string[];
   confirmationHandler?: ConfirmationHandler;
+  bladeConfig?: BladeConfig;
+  backgroundAgentManager?: IBackgroundAgentManager;
   toolCatalog?: ToolCatalog;
   toolRegistry?: ToolRegistry;
   discoveredTools?: string[];
@@ -164,6 +167,11 @@ export async function runToolCall(
             });
           },
           confirmationHandler: input.executionContext.confirmationHandler,
+          bladeConfig: input.executionContext.bladeConfig,
+          backgroundAgentManager: input.executionContext.backgroundAgentManager,
+          toolCatalog: input.executionContext.toolCatalog,
+          toolRegistry: input.executionContext.toolRegistry,
+          discoveredTools: input.executionContext.discoveredTools,
           permissionMode: input.permissionMode,
         },
       );

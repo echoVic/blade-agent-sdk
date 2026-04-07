@@ -8,6 +8,7 @@ import type { ExecutionPipeline } from '../../tools/execution/ExecutionPipeline.
 import { HookRuntime } from '../../hooks/HookRuntime.js';
 import { PermissionMode } from '../../types/common.js';
 import { HookEvent } from '../../types/constants.js';
+import type { RuntimePatch } from '../../runtime/RuntimePatch.js';
 import { ToolCatalog } from '../../tools/catalog/ToolCatalog.js';
 import { createTool } from '../../tools/core/createTool.js';
 import { ToolRegistry } from '../../tools/registry/ToolRegistry.js';
@@ -32,6 +33,7 @@ type MockModelManager = ModelManager & {
 function createRetryEventsMock<TArgs extends unknown[], TResult>(
   chatFn: (...args: TArgs) => Promise<TResult>,
 ) {
+  // biome-ignore lint/correctness/useYield: generator used only for its return value
   return vi.fn(async function* (...args: TArgs): AsyncGenerator<never, TResult, unknown> {
     return await chatFn(...args);
   });
@@ -1217,7 +1219,7 @@ describe('LoopRunner', () => {
               type: 'append_prompt',
               value: 'Always include concrete file paths.',
             }],
-          } as any,
+          } as RuntimePatch,
         })),
       } as unknown as ExecutionPipeline;
 
@@ -1311,7 +1313,7 @@ describe('LoopRunner', () => {
               type: 'append_prompt',
               value: 'Turn-scoped hint.',
             }],
-          } as any,
+          } as RuntimePatch,
         })),
       } as unknown as ExecutionPipeline;
 
