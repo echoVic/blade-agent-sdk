@@ -7,13 +7,15 @@
 ## 核心能力
 
 - Session-first：`createSession()`、`resumeSession()`、`forkSession()`、`prompt()`
-- 流式 Agent 交互：`send()` + `stream()`，支持内容、thinking、tool use、tool result、usage、result 等事件
+- 流式 Agent 交互：`send()` + `stream()`，支持内容、thinking、tool use、tool result、usage、result 等 15 种事件类型
 - 多模型支持：`openai`、`anthropic`、`azure-openai`、`gemini`、`deepseek`、`openai-compatible`
-- 工具系统：内置 18 个标准工具，支持 `defineTool()`、`createTool()`、MCP 协议工具与 MCP 资源工具
+- 工具系统：内置 23 个标准工具，支持 `defineTool()`、`createTool()`、MCP 协议工具与 MCP 资源工具
+- 工具目录：`ToolCatalog` 统一管理内置、自定义、MCP 工具的来源追踪与信任分级
 - MCP：支持 `stdio`、`sse`、`http` 传输，也支持进程内 `createSdkMcpServer()`
-- 协作能力：支持子 Agent、`Task` / `TaskOutput` 工具，以及用户级和项目级 Skills
-- 安全与治理：`permissionMode`、`canUseTool`、Hooks、沙箱配置可组合使用
-- 工程能力：运行时 Context、结构化输出、日志接口、会话持久化与分叉、自动上下文压缩
+- 协作能力：子 Agent（前台/后台）、`Task` / `TaskOutput` / `TaskStop` 工具，以及用户级和项目级 Skills
+- Memory 系统：`MemoryManager` + `FileSystemMemoryStore`，可选的 `MemoryRead` / `MemoryWrite` 工具
+- 安全与治理：`permissionMode`、`canUseTool`、`permissionHandler`、Hooks、沙箱配置可组合使用
+- 工程能力：运行时 Context、结构化输出、日志接口、会话持久化与分叉、自动上下文压缩、上下文溢出恢复、Token 预算
 
 ## 安装
 

@@ -111,7 +111,7 @@ const tools = await getBuiltinTools({
 
 ## 内置工具列表
 
-SDK 内置 18 个标准工具，连接 MCP 后额外提供 2 个资源工具：
+SDK 内置 23 个标准工具，连接 MCP 后额外提供 2 个资源工具：
 
 | 分类 | 工具名 | Kind | 说明 |
 |------|--------|------|------|
@@ -125,10 +125,15 @@ SDK 内置 18 个标准工具，连接 MCP 后额外提供 2 个资源工具：
 | | KillShell | execute | 终止 Shell 进程 |
 | **网络** | WebFetch | readonly | 抓取网页内容 |
 | | WebSearch | readonly | 搜索互联网 |
-| **任务** | Task | execute | 创建子任务（子 Agent） |
+| **子任务** | Task | execute | 创建子任务（子 Agent） |
 | | TaskOutput | readonly | 获取子任务输出 |
+| **结构化任务** | TaskCreate | execute | 创建结构化任务条目 |
+| | TaskGet | readonly | 获取任务详情 |
+| | TaskUpdate | execute | 更新任务状态 |
+| | TaskList | readonly | 列出所有任务 |
 | | TaskStop | execute | 停止后台任务或后台 Agent |
 | **系统** | AskUserQuestion | readonly | 向用户提问 |
+| | DiscoverTools | readonly | 发现并搜索可用工具 |
 | | Skill | execute | 调用 Skill 脚本 |
 | **计划** | EnterPlanMode | readonly | 进入计划模式 |
 | | ExitPlanMode | readonly | 退出计划模式 |
@@ -137,7 +142,7 @@ SDK 内置 18 个标准工具，连接 MCP 后额外提供 2 个资源工具：
 | | ReadMcpResource | readonly | 读取 MCP 资源（需连接 MCP） |
 
 ::: tip
-`Task` 使用当前 session 的 `SubagentRegistry`。`MemoryRead` / `MemoryWrite` 属于 opt-in 工具，不在默认列表中。
+`Task` 使用当前 session 的 `SubagentRegistry`。`DiscoverTools` 允许 LLM 搜索和发现可用工具。`MemoryRead` / `MemoryWrite` 属于 opt-in 工具，不在默认列表中。
 :::
 
 ::: info 工具排序

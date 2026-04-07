@@ -1,6 +1,6 @@
 # 概览
 
-`@blade-ai/agent-sdk` 是一个 **Session-first** 的 AI Agent 开发框架。它将会话管理、工具执行、MCP 协议、权限控制、生命周期钩子和沙箱安全统一封装在 Session API 中，让你用最少的代码构建功能完整的 AI Agent 应用。
+`@blade-ai/agent-sdk` 是一个 **Session-first** 的 AI Agent 开发框架。它将会话管理、工具执行、MCP 协议、权限控制、生命周期钩子、沙箱安全、Memory 系统和工具目录统一封装在 Session API 中，让你用最少的代码构建功能完整的 AI Agent 应用。
 
 适合构建：CLI 助手、IDE 插件、自动化工作流、对话式开发工具、多 Agent 协作系统。
 

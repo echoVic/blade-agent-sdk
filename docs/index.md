@@ -17,7 +17,7 @@ features:
     details: 以 Session 为核心的交互模型，支持 send/stream 流式、prompt 一次性、持久化、分叉等高级模式
   - icon: 🔧
     title: 工具生态
-    details: 17 个内置工具 + MCP 协议集成，支持自定义工具扩展
+    details: 23 个内置工具 + MCP 协议集成，支持自定义工具、工具目录和工具发现
   - icon: 🔒
     title: 安全可控
     details: 多级权限模式、OS 级沙箱隔离、Hooks 生命周期拦截，全方位保障安全
