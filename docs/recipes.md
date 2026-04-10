@@ -243,3 +243,111 @@ for await (const msg of session.stream({ includeThinking: true })) {
 
 console.log(`\n总 Token: ${totalTokens}`);
 ```
+
+## Memory 系统
+
+Memory 系统是 opt-in 的。默认不注册 `MemoryRead` / `MemoryWrite` 工具，需要显式传入 `MemoryManager`：
+
+```ts
+import {
+  createSession,
+  FileSystemMemoryStore,
+  MemoryManager,
+} from '@blade-ai/agent-sdk';
+
+const memoryManager = new MemoryManager(
+  new FileSystemMemoryStore('/home/user/.blade/memory'),
+);
+
+const session = await createSession({
+  provider: { type: 'openai', apiKey: process.env.OPENAI_API_KEY! },
+  model: 'gpt-4o',
+});
+```
+
+::: tip
+`FileSystemMemoryStore` 使用 JSONL 格式持久化，按 slug 名称索引。Memory 类型包括 `user`（用户偏好）、`project`（项目约定）、`feedback`（反馈改进）和 `reference`（参考资料）。
+:::
+
+## 工具来源策略（ToolCatalogSourcePolicy）
+
+通过 `toolSourcePolicy` 按来源类型和信任级别过滤工具：
+
+```ts
+const session = await createSession({
+  provider: { type: 'openai', apiKey: process.env.OPENAI_API_KEY! },
+  model: 'gpt-4o',
+  toolSourcePolicy: {
+    allowedSources: ['builtin', 'custom'],
+    blockedSources: ['mcp'],
+    trustLevels: ['trusted', 'workspace'],
+  },
+});
+```
+
+| 来源类型 | 说明 |
+|----------|------|
+| `builtin` | SDK 内置工具 |
+| `custom` | `SessionOptions.tools` 中的自定义工具 |
+| `mcp` | MCP 服务器注册的工具 |
+| `session` | 运行时动态注册的工具 |
+
+| 信任级别 | 说明 |
+|----------|------|
+| `trusted` | 内置和自定义工具 |
+| `workspace` | 项目级工具 |
+| `remote` | 远程 MCP 工具 |
+
+## 子 Agent 协作
+
+利用内置子 Agent 和自定义 Agent 实现任务分解：
+
+```ts
+const session = await createSession({
+  provider: { type: 'anthropic', apiKey: process.env.ANTHROPIC_API_KEY! },
+  model: 'claude-sonnet-4-20250514',
+  agents: {
+    reviewer: {
+      name: 'reviewer',
+      description: '代码审查专家，负责审查变更的正确性和安全性',
+      allowedTools: ['Read', 'Glob', 'Grep'],
+      model: 'claude-sonnet-4-20250514',
+    },
+    'test-writer': {
+      name: 'test-writer',
+      description: '专门负责编写和修复单元测试',
+      allowedTools: ['Read', 'Write', 'Edit', 'Bash', 'Glob', 'Grep'],
+    },
+  },
+});
+```
+
+## 进程内 MCP Server
+
+当你需要 TypeScript 编写工具并通过 MCP 协议暴露时：
+
+```ts
+import { tool, createSdkMcpServer, createSession } from '@blade-ai/agent-sdk';
+import { z } from 'zod';
+
+const myTool = tool(
+  'analyze-deps',
+  '分析项目依赖关系',
+  { packageJson: z.string().describe('package.json 路径') },
+  async ({ packageJson }) => ({
+    content: [{ type: 'text', text: `分析完成: ${packageJson}` }],
+  }),
+);
+
+const server = await createSdkMcpServer({
+  name: 'my-tools',
+  version: '1.0.0',
+  tools: [myTool],
+});
+
+const session = await createSession({
+  provider: { type: 'openai', apiKey: process.env.OPENAI_API_KEY! },
+  model: 'gpt-4o',
+  mcpServers: { myTools: server },
+});
+```
