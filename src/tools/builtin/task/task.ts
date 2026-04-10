@@ -116,6 +116,7 @@ export function createTaskTool({ registry }: { registry: SubagentRegistry }) {
     displayName: 'Subagent Scheduler',
     kind: ToolKind.ReadOnly,
     isReadOnly: true,
+    isConcurrencySafe: false,
     schema: z.object({
       subagent_type: z
         .string()

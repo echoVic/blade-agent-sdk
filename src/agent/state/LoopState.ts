@@ -1,6 +1,7 @@
 import type { ContextSnapshot } from '../../runtime/index.js';
 import type { IChatService, Message } from '../../services/ChatServiceInterface.js';
 import type { PermissionMode } from '../../types/common.js';
+import type { ConversationState } from './ConversationState.js';
 import type {
   LoopExecutionContext,
   LoopRecoveryState,
@@ -10,7 +11,7 @@ import type {
 } from './TurnState.js';
 
 interface LoopStateOptions {
-  messages: Message[];
+  conversationState: ConversationState;
   permissionMode?: PermissionMode;
   executionContext: LoopExecutionContext;
   baseContextSnapshot?: ContextSnapshot;
@@ -21,7 +22,7 @@ interface LoopStateOptions {
 }
 
 export class LoopState {
-  messages: Message[];
+  conversationState: ConversationState;
   readonly permissionMode?: PermissionMode;
   readonly executionContext: LoopExecutionContext;
   private readonly baseContextSnapshot?: ContextSnapshot;
@@ -37,7 +38,7 @@ export class LoopState {
   private transitionReason?: string;
 
   constructor(options: LoopStateOptions) {
-    this.messages = options.messages;
+    this.conversationState = options.conversationState;
     this.permissionMode = options.permissionMode;
     this.executionContext = options.executionContext;
     this.baseContextSnapshot = options.baseContextSnapshot;
@@ -50,7 +51,7 @@ export class LoopState {
   buildTurnState(turn: number): TurnState {
     return {
       turn,
-      messages: this.messages,
+      messages: this.conversationState.toArray() as Message[],
       tools: this.resolveToolsFn(),
       chatService: this.resolveChatServiceFn(),
       maxContextTokens: this.resolveMaxContextTokensFn(),

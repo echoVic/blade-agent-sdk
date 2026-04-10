@@ -15,6 +15,7 @@ import { ToolRegistry } from '../../tools/registry/ToolRegistry.js';
 import { ToolKind } from '../../tools/types/ToolTypes.js';
 import { z } from 'zod';
 import type { Message } from '../../services/ChatServiceInterface.js';
+import { ConversationState } from '../state/ConversationState.js';
 
 // ===== Mock Factories =====
 
@@ -170,7 +171,13 @@ describe('LoopRunner', () => {
       await runner.runLoop('Hello', context);
 
       expect(context.messages.length).toBeGreaterThan(0);
-      expect(context.messages.every(m => m.role !== 'system')).toBe(true);
+      // After the loop, context.messages should not contain the root system prompt
+      // (it's managed by ConversationState), but may contain non-root system messages
+      // with valid _systemSource (e.g., catalog, tool_injection).
+      const hasRootPrompt = context.messages.some(
+        m => m.role === 'system' && !(m.metadata && typeof m.metadata === 'object' && !Array.isArray(m.metadata) && '_systemSource' in m.metadata)
+      );
+      expect(hasRootPrompt).toBe(false);
     });
 
     it('omits environment context when requested by the chat context', async () => {
@@ -375,11 +382,11 @@ describe('LoopRunner', () => {
         runner as unknown as {
           createLoopState: (
             context: ChatContext,
-            messages: Message[],
+            conversationState: ConversationState,
             permissionMode: PermissionMode,
           ) => { getTools(): Array<{ name: string }> };
         }
-      ).createLoopState(createContext(), [], PermissionMode.DEFAULT);
+      ).createLoopState(createContext(), new ConversationState(null, [], { role: 'user', content: 'test' }), PermissionMode.DEFAULT);
 
       expect(loopState.getTools().map((tool) => tool.name)).toEqual(['BuiltinRead']);
     });
@@ -2104,7 +2111,7 @@ describe('LoopRunner', () => {
         'system',
         'Injected system context',
         'msg-uuid',
-        undefined,
+        { customMetadata: { _systemSource: 'tool_injection' } },
         undefined,
       );
     });

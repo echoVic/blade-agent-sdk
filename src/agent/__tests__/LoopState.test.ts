@@ -1,14 +1,15 @@
 import { describe, expect, it } from 'vitest';
 import type { Message } from '../../services/ChatServiceInterface.js';
 import { LoopState } from '../state/LoopState.js';
+import { ConversationState } from '../state/ConversationState.js';
 
 describe('LoopState', () => {
-  it('exposes messages as a mutable buffer for the loop', () => {
+  it('exposes conversationState for the loop', () => {
     const initialMessages: Message[] = [{ role: 'user', content: 'hello' }];
-    const replacementMessages: Message[] = [{ role: 'assistant', content: 'updated' }];
+    const convState = new ConversationState(null, [], { role: 'user', content: 'hello' });
 
     const loopState = new LoopState({
-      messages: initialMessages,
+      conversationState: convState,
       executionContext: {
         sessionId: 'session-1',
         userId: 'user-1',
@@ -28,9 +29,8 @@ describe('LoopState', () => {
       resolveMaxContextTokens: () => 128000,
     });
 
-    loopState.messages = replacementMessages;
-
-    expect(loopState.messages).toBe(replacementMessages);
-    expect(loopState.buildTurnState(1).messages).toBe(replacementMessages);
+    expect(loopState.conversationState).toBe(convState);
+    const turnState = loopState.buildTurnState(1);
+    expect(turnState.messages).toEqual(convState.toArray());
   });
 });

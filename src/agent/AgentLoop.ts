@@ -15,18 +15,20 @@ import type { ToolResult } from '../tools/types/index.js';
 import type { PermissionMode } from '../types/common.js';
 import type { AgentEvent, TokenUsageInfo } from './AgentEvent.js';
 import { AGENT_TURN_SAFETY_LIMIT } from './constants.js';
+import { ExecutionEpoch } from './ExecutionEpoch.js';
+import { isOverflowRecoverable } from './isOverflowRecoverable.js';
 import { decideNoToolTurn } from './loop/decideNoToolTurn.js';
 import { decideTurnLimit } from './loop/decideTurnLimit.js';
 import { executeToolCalls } from './loop/executeToolCalls.js';
 import { planToolExecution } from './loop/planToolExecution.js';
 import type { ToolExecutionUpdate } from './loop/runToolCall.js';
 import type { FunctionToolCall } from './loop/types.js';
+import type { ConversationState } from './state/ConversationState.js';
+import type { TurnState } from './state/TurnState.js';
 import { StreamingToolExecutor } from './StreamingToolExecutor.js';
 import type { StreamResponseHandler } from './StreamResponseHandler.js';
-import type { TurnState } from './state/TurnState.js';
 import type { TokenBudget } from './TokenBudget.js';
 import type { LoopResult, TurnLimitResponse } from './types.js';
-import { isOverflowRecoverable } from './isOverflowRecoverable.js';
 
 // ===== Loop 配置 =====
 
@@ -45,8 +47,8 @@ export interface AgentLoopConfig {
   /** 内部日志器 */
   logger?: InternalLogger;
 
-  /** 初始消息列表（包含 system prompt + 历史 + 当前用户消息） */
-  messages: Message[];
+  /** ConversationState — 消息单一事实源 */
+  conversationState: ConversationState;
 
   /** 最大轮次 */
   maxTurns: number;
@@ -106,6 +108,16 @@ export interface AgentLoopConfig {
     toolUseUuid: string | null;
   }) => Promise<void>;
 
+  /**
+   * Epoch 失效时的工具执行丢弃回调
+   * 用于补写合成 error 闭合持久化链路
+   */
+  onAfterToolExecEpochDiscard?: (ctx: {
+    toolCall: FunctionToolCall;
+    toolUseUuid: string | null;
+    reason: string;
+  }) => Promise<void>;
+
   onToolExecutionUpdate?: (update: ToolExecutionUpdate) => Promise<void> | void;
 
   /**
@@ -150,15 +162,27 @@ export interface AgentLoopConfig {
 
   /**
    * 轮次上限后的 compaction 处理
+   * 纯函数式 hook：只负责计算并返回结果，ConversationState 写入由 AgentLoop 单一负责。
+   * 输入只含 contextMessages（不含 root prompt），确保 compaction 不触及 slot[0] 不变量。
    */
   onTurnLimitCompact?: (ctx: {
-    messages: Message[];
     contextMessages: Message[];
   }) => Promise<{
     success: boolean;
     compactedMessages?: Message[];
     continueMessage?: Message;
   }>;
+}
+
+// ===== 辅助 =====
+
+type PendingEventEntry = {
+  epochId: number;
+  event: AgentEvent;
+};
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
 // ===== 核心循环 =====
@@ -175,7 +199,7 @@ export async function* agentLoop(
   const {
     streamHandler,
     executionPipeline,
-    messages,
+    conversationState: convState,
     maxTurns,
     isYoloMode,
     signal,
@@ -191,11 +215,15 @@ export async function* agentLoop(
   let lastPromptTokens: number | undefined;
   let recoveryAttemptedTurn: number | null = null;
   let recoveryAttempt = 0;
+  let epoch: ExecutionEpoch | null = null;
 
   yield { type: 'agent_start' };
 
   // === Agentic Loop ===
   while (true) {
+    // 0. 创建新的执行 epoch（用于事务边界过滤）
+    epoch = new ExecutionEpoch();
+
     // 1. 检查中断信号
     if (signal?.aborted) {
       yield { type: 'agent_end' };
@@ -206,7 +234,7 @@ export async function* agentLoop(
     if (config.onBeforeTurn) {
       const beforeTurnStream = config.onBeforeTurn({
         turn: turnsCount,
-        messages,
+        messages: convState.toArray() as Message[],
         lastPromptTokens,
       });
       // 消费 hook 产出的事件（如 compacting 事件）
@@ -250,7 +278,7 @@ export async function* agentLoop(
           () => turnChatService,
           config.logger,
         );
-        const pendingEvents: AgentEvent[] = [];
+        const pendingEvents: PendingEventEntry[] = [];
         let waitForEventsResolve: (() => void) | null = null;
         let executionDone = false;
         let executionError: unknown;
@@ -262,12 +290,13 @@ export async function* agentLoop(
         };
 
         const enqueueEvent = (event: AgentEvent) => {
-          pendingEvents.push(event);
+          if (epoch && !epoch.isValid) return;
+          pendingEvents.push({ epochId: epoch ? epoch.id : -1, event });
           flushWaiter();
         };
 
         const executionPromise = streamingExecutor
-          .collectAndExecute(messages, turnTools, signal, {
+          .collectAndExecute(convState.toArray() as Message[], turnTools, signal, {
             executionPipeline,
             executionContext: turnExecutionContext,
             logger: config.logger,
@@ -276,6 +305,7 @@ export async function* agentLoop(
               onBeforeToolExec: config.onBeforeToolExec,
             },
             onAfterToolExec: config.onAfterToolExec,
+            onAfterToolExecEpochDiscard: config.onAfterToolExecEpochDiscard,
             onContentDelta: (delta) => {
               enqueueEvent({ type: 'content_delta', delta });
             },
@@ -344,7 +374,7 @@ export async function* agentLoop(
                 });
               }
             },
-          })
+          }, epoch ?? undefined)
           .then(({ chatResponse, executionResults }) => {
             turnResult = chatResponse;
             streamingExecutionResults = executionResults;
@@ -369,11 +399,11 @@ export async function* agentLoop(
           }
 
           while (pendingEvents.length > 0) {
-            const event = pendingEvents.shift();
-            if (!event) {
-              break;
-            }
-            yield event;
+            const entry = pendingEvents.shift();
+            if (!entry) break;
+            if (epoch && !epoch.isValid) continue;
+            if (epoch && entry.epochId !== epoch.id) continue;
+            yield entry.event;
           }
         }
 
@@ -383,7 +413,7 @@ export async function* agentLoop(
           throw executionError;
         }
       } else if (streamHandler) {
-        const stream = streamHandler.streamResponse(messages, turnTools, signal);
+        const stream = streamHandler.streamResponse(convState.toArray() as Message[], turnTools, signal);
         while (true) {
           const { value, done } = await stream.next();
           if (done) {
@@ -398,7 +428,7 @@ export async function* agentLoop(
         }
       } else if (typeof turnChatService.chatWithRetryEvents === 'function') {
         // 使用 chatWithRetryEvents 以便 yield 重试事件
-        const retryGen = turnChatService.chatWithRetryEvents(messages, turnTools, signal);
+        const retryGen = turnChatService.chatWithRetryEvents(convState.toArray() as Message[], turnTools, signal);
         while (true) {
           const { value, done } = await retryGen.next();
           if (done) {
@@ -415,11 +445,12 @@ export async function* agentLoop(
           };
         }
       } else {
-        turnResult = await turnChatService.chat(messages, turnTools, signal);
+        turnResult = await turnChatService.chat(convState.toArray() as Message[], turnTools, signal);
       }
     } catch (llmError) {
       // 模型 fallback 处理
       if (llmError instanceof FallbackTriggeredError) {
+        epoch?.invalidate();
         yield {
           type: 'model_fallback',
           originalModel: llmError.originalModel,
@@ -443,7 +474,7 @@ export async function* agentLoop(
           attempt: recoveryAttempt,
         });
         yield { type: 'recovery', phase: 'started', reason: 'context_overflow' };
-        const compactStream = config.onReactiveCompact({ messages });
+        const compactStream = config.onReactiveCompact({ messages: convState.toArray() as Message[] });
         let recovered = false;
         while (true) {
           const { value, done } = await compactStream.next();
@@ -470,6 +501,8 @@ export async function* agentLoop(
           attempt: recoveryAttempt,
         });
         yield { type: 'recovery', phase: 'retrying', reason: 'reactive_compact' };
+        // Invalidate current epoch before retry
+        epoch?.invalidate();
         // Retry this turn
         turnsCount--;
         yield { type: 'turn_end', turn: turnsCount + 1, hasToolCalls: false };
@@ -587,12 +620,12 @@ export async function* agentLoop(
       const content = turnResult.content || '';
       const noToolDecision = await decideNoToolTurn(
         content,
-        messages,
+        convState.toArray() as Message[],
         turnsCount,
         config.onStopCheck,
       );
       if (noToolDecision.action === 'retry' || noToolDecision.action === 'continue_with_reminder') {
-        messages.push(noToolDecision.message);
+        convState.append(noToolDecision.message);
         yield { type: 'turn_end', turn: turnsCount, hasToolCalls: false };
         continue;
       }
@@ -616,7 +649,7 @@ export async function* agentLoop(
     }
 
     // 9. 添加 LLM 响应到消息历史
-    messages.push({
+    convState.append({
       role: 'assistant',
       content: turnResult.content || '',
       reasoningContent: turnResult.reasoningContent,
@@ -673,6 +706,9 @@ export async function* agentLoop(
 
     // 处理结果
     for (const { toolCall, result, toolUseUuid } of executionResults) {
+      // Layer 4 guard: 防御性检查，epoch 失效则跳过写消息
+      if (epoch && !epoch.isValid) break;
+
       allToolResults.push(result);
 
       // 检查退出循环标记
@@ -715,7 +751,7 @@ export async function* agentLoop(
         toolResultContent = JSON.stringify(toolResultContent, null, 2);
       }
 
-      messages.push({
+      convState.append({
         role: 'tool',
         tool_call_id: toolCall.id,
         name: toolCall.function.name,
@@ -725,8 +761,11 @@ export async function* agentLoop(
       });
 
       if (result.newMessages && result.newMessages.length > 0) {
-        messages.push(
-          ...result.newMessages.map((message) => ({ ...message })),
+        convState.append(
+          ...result.newMessages.map((message) => ({
+            ...message,
+            ...(message.role === 'system' ? { metadata: { ...(isRecord(message.metadata) ? message.metadata : {}), _systemSource: 'tool_injection' as const } } : {}),
+          })),
         );
       }
     }
@@ -744,7 +783,7 @@ export async function* agentLoop(
       const limitDecision = await decideTurnLimit({
         maxTurns: config.maxTurns,
         turnsCount,
-        messages,
+        contextMessages: convState.getContextMessages(),
         toolCallsCount: allToolResults.length,
         startTime,
         totalTokens,
@@ -756,7 +795,12 @@ export async function* agentLoop(
         return limitDecision.result;
       }
 
-      applyCompactionDecision(messages, limitDecision.compactedMessages, limitDecision.continueMessage);
+      if (limitDecision.compactedMessages) {
+        convState.replaceContent(limitDecision.compactedMessages);
+        if (limitDecision.continueMessage) {
+          convState.append(limitDecision.continueMessage);
+        }
+      }
       turnsCount = 0;
     }
   }
@@ -781,24 +825,4 @@ function buildAbortResult(
       duration: Date.now() - startTime,
     },
   };
-}
-
-function applyCompactionDecision(
-  messages: Message[],
-  compactedMessages?: Message[],
-  continueMessage?: Message,
-): void {
-  if (!compactedMessages) {
-    return;
-  }
-
-  const systemMsg = messages.find((message) => message.role === 'system');
-  messages.length = 0;
-  if (systemMsg) {
-    messages.push(systemMsg);
-  }
-  messages.push(...compactedMessages);
-  if (continueMessage) {
-    messages.push(continueMessage);
-  }
 }

@@ -304,6 +304,7 @@ export class ContextManager {
     metadata?: {
       model?: string;
       usage?: { input_tokens: number; output_tokens: number };
+      customMetadata?: Record<string, unknown>;
     },
     subagentInfo?: {
       parentSessionId: string;

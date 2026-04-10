@@ -5,6 +5,7 @@ import type { ToolResult } from '../../tools/types/index.js';
 import type { AgentEvent } from '../AgentEvent.js';
 import type { AgentLoopConfig } from '../AgentLoop.js';
 import { agentLoop } from '../AgentLoop.js';
+import { ConversationState } from '../state/ConversationState.js';
 import type { TurnState } from '../state/TurnState.js';
 import type { LoopResult } from '../types.js';
 
@@ -60,9 +61,10 @@ function createMockChatService(responses: Array<{
   } as unknown as TurnState['chatService'];
 }
 
-type BaseConfigOverrides = Partial<Omit<AgentLoopConfig, 'prepareTurnState'>> & {
+type BaseConfigOverrides = Partial<Omit<AgentLoopConfig, 'prepareTurnState' | 'conversationState'>> & {
   prepareTurnState?: AgentLoopConfig['prepareTurnState'];
   turnState?: Partial<Omit<TurnState, 'turn' | 'messages'>>;
+  messages?: Message[];
 };
 
 function baseConfig(overrides: BaseConfigOverrides = {}): AgentLoopConfig {
@@ -75,6 +77,14 @@ function baseConfig(overrides: BaseConfigOverrides = {}): AgentLoopConfig {
     isYoloMode = false,
     ...rest
   } = overrides;
+
+  const convState = new ConversationState(null, [], messages[messages.length - 1] || { role: 'user', content: 'Hi' });
+  // Add all messages except the last (user message) as context
+  if (messages.length > 1) {
+    for (let i = 0; i < messages.length - 1; i++) {
+      convState.append(messages[i]);
+    }
+  }
 
   const defaultTurnState: Omit<TurnState, 'turn' | 'messages'> = {
     tools: [],
@@ -89,12 +99,12 @@ function baseConfig(overrides: BaseConfigOverrides = {}): AgentLoopConfig {
 
   return {
     executionPipeline,
-    messages,
+    conversationState: convState,
     maxTurns,
     isYoloMode,
     prepareTurnState: prepareTurnState ?? ((turn) => ({
       turn,
-      messages,
+      messages: convState.toArray() as Message[],
       ...defaultTurnState,
       ...turnState,
     })),
@@ -822,8 +832,9 @@ describe('agentLoop', () => {
       const config = baseConfig({ messages, turnState: { chatService } });
       await collectEvents(agentLoop(config));
 
-      // Messages should contain: user, assistant (with tool_calls), tool result
-      const toolMsg = messages.find((m) => m.role === 'tool');
+      // Messages are now tracked in ConversationState, not the original array
+      const allMessages = config.conversationState.toArray() as Message[];
+      const toolMsg = allMessages.find((m) => m.role === 'tool');
       expect(toolMsg).toBeDefined();
       expect((toolMsg as Message & { name?: string }).name).toBe('ReadFile');
     });
@@ -861,16 +872,24 @@ describe('agentLoop', () => {
       });
       await collectEvents(agentLoop(config));
 
-      const toolIndex = messages.findIndex((message) => message.role === 'tool');
+      // Messages are now tracked in ConversationState, not the original array
+      const allMessages = config.conversationState.toArray() as Message[];
+      const toolIndex = allMessages.findIndex((message) => message.role === 'tool');
       expect(toolIndex).toBeGreaterThan(-1);
-      expect(messages[toolIndex + 1]).toEqual({
-        role: 'assistant',
-        content: 'Injected assistant context',
-      });
-      expect(messages[toolIndex + 2]).toEqual({
-        role: 'system',
-        content: 'Injected system context',
-      });
+      expect(allMessages[toolIndex + 1]).toEqual(
+        expect.objectContaining({
+          role: 'assistant',
+          content: 'Injected assistant context',
+        }),
+      );
+      // system newMessages now get _systemSource metadata injected
+      expect(allMessages[toolIndex + 2]).toEqual(
+        expect.objectContaining({
+          role: 'system',
+          content: 'Injected system context',
+          metadata: expect.objectContaining({ _systemSource: 'tool_injection' }),
+        }),
+      );
     });
   });
 });

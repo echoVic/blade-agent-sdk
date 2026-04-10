@@ -6,7 +6,12 @@ import { type InternalLogger, LogCategory, NOOP_LOGGER } from '../logging/Logger
 import type { IChatService, Message } from '../services/ChatServiceInterface.js';
 import { cloneMessage } from '../services/messageUtils.js';
 import type { CompactingEvent } from './AgentEvent.js';
-import type { ChatContext } from './types.js';
+import type { ConversationState } from './state/ConversationState.js';
+
+export interface CompactionRuntimeContext {
+  sessionId: string;
+  projectDir?: string;
+}
 
 export class CompactionHandler {
   private readonly logger: InternalLogger;
@@ -20,7 +25,8 @@ export class CompactionHandler {
   }
 
   async *checkAndCompactInLoop(
-    context: ChatContext,
+    convState: ConversationState,
+    runtimeCtx: CompactionRuntimeContext,
     currentTurn: number,
     actualPromptTokens?: number
   ): AsyncGenerator<CompactingEvent, boolean> {
@@ -56,7 +62,7 @@ export class CompactionHandler {
       return false;
     }
 
-    const microcompactResult = CompactionService.microcompact(context.messages, {
+    const microcompactResult = CompactionService.microcompact(convState.getContextMessages(), {
       preserveRecentToolMessages: 1,
       minToolContentLength: 1500,
       previewLength: 160,
@@ -67,8 +73,8 @@ export class CompactionHandler {
       );
     }
     if (microcompactResult.replacedCount > 0) {
-      context.messages = microcompactResult.messages;
-      effectivePromptTokens = TokenCounter.countTokens(context.messages, modelName);
+      convState.replaceContent(microcompactResult.messages);
+      effectivePromptTokens = TokenCounter.countTokens(convState.getContextMessages(), modelName);
       this.logger.debug(
         `[Agent] [轮次 ${currentTurn}] microcompact 完成: 替换 ${microcompactResult.replacedCount} 条工具结果, 节省 ${microcompactResult.savedChars} 字符, 估算 tokens ${actualPromptTokens} → ${effectivePromptTokens}`,
       );
@@ -83,14 +89,8 @@ export class CompactionHandler {
       this.logger.warn(`[Agent] [轮次 ${currentTurn}] 紧急压缩触发 (${effectivePromptTokens} tokens >= 95%)`);
       yield { type: 'compacting', isCompacting: true };
 
-      const systemMsg = context.messages.find((m) => m.role === 'system');
-      const recentMessages = context.messages.slice(-40);
-      const newMessages: Message[] = [];
-      if (systemMsg && !recentMessages.includes(systemMsg)) {
-        newMessages.push(systemMsg);
-      }
-      newMessages.push(...recentMessages);
-      context.messages = newMessages;
+      const recentMessages = convState.getContextMessages().slice(-40);
+      convState.replaceContent(recentMessages);
 
       yield { type: 'compacting', isCompacting: false };
       return true;
@@ -107,7 +107,7 @@ export class CompactionHandler {
       yield { type: 'compacting', isCompacting: true };
 
       try {
-        const result = await CompactionService.compact(context.messages, {
+        const result = await CompactionService.compact(convState.getContextMessages(), {
           trigger: 'auto',
           provider: chatConfig.provider,
           modelName,
@@ -116,17 +116,17 @@ export class CompactionHandler {
           baseURL: chatConfig.baseUrl,
           customHeaders: chatConfig.customHeaders,
           actualPreTokens: actualPromptTokens,
-          projectDir: context.snapshot?.cwd,
+          projectDir: runtimeCtx.projectDir,
         });
 
         if (result.success) {
-          context.messages = result.compactedMessages;
+          convState.replaceContent(result.compactedMessages);
 
           this.logger.debug(
             `[Agent] [轮次 ${currentTurn}] 压缩完成: ${result.preTokens} → ${result.postTokens} tokens (-${((1 - result.postTokens / result.preTokens) * 100).toFixed(1)}%)`
           );
         } else {
-          context.messages = result.compactedMessages;
+          convState.replaceContent(result.compactedMessages);
 
           this.logger.warn(
             `[Agent] [轮次 ${currentTurn}] 压缩使用降级策略: ${result.preTokens} → ${result.postTokens} tokens`
@@ -135,9 +135,9 @@ export class CompactionHandler {
 
         try {
           const contextMgr = this.getContextManager();
-          if (contextMgr && context.sessionId) {
+          if (contextMgr && runtimeCtx.sessionId) {
             await contextMgr.saveCompaction(
-              context.sessionId,
+              runtimeCtx.sessionId,
               result.summary,
               {
                 trigger: 'auto',
@@ -165,9 +165,9 @@ export class CompactionHandler {
     }
 
     // Tier 1: Soft compaction — truncate large tool outputs, no LLM call
-    const softResult = softCompact(context.messages);
+    const softResult = softCompact(convState.getContextMessages());
     if (softResult.truncatedCount > 0) {
-      context.messages = softResult.messages;
+      convState.replaceContent(softResult.messages);
       this.logger.debug(
         `[Agent] [轮次 ${currentTurn}] 软压缩完成: 截断 ${softResult.truncatedCount} 条工具结果, 节省 ${softResult.savedChars} 字符`
       );
@@ -176,11 +176,12 @@ export class CompactionHandler {
   }
 
   async *reactiveCompact(
-    context: ChatContext,
+    convState: ConversationState,
+    runtimeCtx: CompactionRuntimeContext,
   ): AsyncGenerator<CompactingEvent, boolean> {
     this.logger.warn('[Agent] 反应式压缩触发 (context length error)');
     yield { type: 'compacting', isCompacting: true };
-    const originalMessages = context.messages.map(cloneMessage);
+    const originalMessages = convState.getContextMessages().map(cloneMessage);
     let workingMessages = originalMessages.map(cloneMessage);
 
     try {
@@ -209,7 +210,7 @@ export class CompactionHandler {
         const availableForInput =
           (this.getChatService().getConfig().maxContextTokens ?? 128000) - maxOutputTokens;
         if (postMicrocompactTokens < availableForInput) {
-          context.messages = workingMessages;
+          convState.replaceContent(workingMessages);
           yield { type: 'compacting', isCompacting: false };
           return true;
         }
@@ -235,17 +236,17 @@ export class CompactionHandler {
         apiKey: chatConfig.apiKey,
         baseURL: chatConfig.baseUrl,
         customHeaders: chatConfig.customHeaders,
-        projectDir: context.snapshot?.cwd,
+        projectDir: runtimeCtx.projectDir,
       });
 
-      context.messages = result.compactedMessages;
+      convState.replaceContent(result.compactedMessages);
 
       // Save to JSONL
       try {
         const contextMgr = this.getContextManager();
-        if (contextMgr && context.sessionId) {
+        if (contextMgr && runtimeCtx.sessionId) {
           await contextMgr.saveCompaction(
-            context.sessionId,
+            runtimeCtx.sessionId,
             result.summary,
             {
               trigger: 'auto',
@@ -265,99 +266,11 @@ export class CompactionHandler {
     } catch (error) {
       // Fallback: emergency truncation
       this.logger.error('[Agent] 反应式压缩失败，使用紧急截断:', error);
-      const systemMsg = originalMessages.find((m) => m.role === 'system');
       const recentMessages = originalMessages.slice(-40);
-      const newMessages: Message[] = [];
-      if (systemMsg && !recentMessages.includes(systemMsg)) {
-        newMessages.push(systemMsg);
-      }
-      newMessages.push(...recentMessages);
-      context.messages = newMessages;
+      convState.replaceContent(recentMessages);
 
       yield { type: 'compacting', isCompacting: false };
       return true;
-    }
-  }
-
-  async compactOnTurnLimit(
-    context: ChatContext,
-    messages: Message[],
-    lastPromptTokens?: number
-  ): Promise<{ success: boolean; messages: Message[] }> {
-    try {
-      const chatService = this.getChatService();
-      const chatConfig = chatService.getConfig();
-      const compactResult = await CompactionService.compact(context.messages, {
-        trigger: 'auto',
-        provider: chatConfig.provider,
-        modelName: chatConfig.model,
-        maxContextTokens: chatConfig.maxContextTokens ?? 128000,
-        apiKey: chatConfig.apiKey,
-        baseURL: chatConfig.baseUrl,
-        customHeaders: chatConfig.customHeaders,
-        actualPreTokens: lastPromptTokens,
-        projectDir: context.snapshot?.cwd,
-      });
-
-      context.messages = compactResult.compactedMessages;
-
-      const systemMsg = messages.find((m) => m.role === 'system');
-      const newMessages: Message[] = [];
-      if (systemMsg) {
-        newMessages.push(systemMsg);
-      }
-      newMessages.push(...context.messages);
-
-      const continueMessage: Message = {
-        role: 'user',
-        content:
-          'This session is being continued from a previous conversation. ' +
-          'The conversation is summarized above.\n\n' +
-          'Please continue the conversation from where we left it off without asking the user any further questions. ' +
-          'Continue with the last task that you were asked to work on.',
-      };
-      newMessages.push(continueMessage);
-      context.messages.push(continueMessage);
-
-      try {
-        const contextMgr = this.getContextManager();
-        if (contextMgr && context.sessionId) {
-          await contextMgr.saveCompaction(
-            context.sessionId,
-            compactResult.summary,
-            {
-              trigger: 'auto',
-              preTokens: compactResult.preTokens,
-              postTokens: compactResult.postTokens,
-              filesIncluded: compactResult.filesIncluded,
-            },
-            null
-          );
-        }
-      } catch (saveError) {
-          this.logger.warn('[Agent] 保存压缩数据失败:', saveError);
-      }
-
-      this.logger.info(
-        `✅ 上下文已压缩 (${compactResult.preTokens} → ${compactResult.postTokens} tokens)，重置轮次计数`
-      );
-
-      return { success: true, messages: newMessages };
-    } catch (compactError) {
-      this.logger.error('[Agent] 压缩失败，使用降级策略:', compactError);
-
-      const systemMsg = messages.find((m) => m.role === 'system');
-      const recentMessages = messages.slice(-80);
-      const newMessages: Message[] = [];
-      if (systemMsg && !recentMessages.some((m) => m.role === 'system')) {
-        newMessages.push(systemMsg);
-      }
-      newMessages.push(...recentMessages);
-      context.messages = newMessages.filter((m) => m.role !== 'system');
-
-      this.logger.warn(`⚠️ 降级压缩完成，保留 ${newMessages.length} 条消息`);
-
-      return { success: false, messages: newMessages };
     }
   }
 }

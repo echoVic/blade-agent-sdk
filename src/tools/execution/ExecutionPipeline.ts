@@ -705,7 +705,7 @@ export class ExecutionPipeline {
       toolKind,
       toolMeta: {
         isReadOnly: resolvedBehavior?.isReadOnly ?? isReadOnlyKind(toolKind),
-        isConcurrencySafe: resolvedBehavior?.isConcurrencySafe ?? true,
+        isConcurrencySafe: resolvedBehavior?.isConcurrencySafe ?? isReadOnlyKind(toolKind),
         isDestructive: resolvedBehavior?.isDestructive ?? false,
         signature: state.permissionSignature,
         description: invocationDescription,
@@ -736,7 +736,8 @@ export class ExecutionPipeline {
               isReadOnly:
                 state.resolvedBehavior?.isReadOnly
                 ?? isReadOnlyKind(state.resolvedBehavior?.kind ?? state.tool.kind),
-              isConcurrencySafe: state.resolvedBehavior?.isConcurrencySafe ?? true,
+              isConcurrencySafe: state.resolvedBehavior?.isConcurrencySafe
+                ?? isReadOnlyKind(state.resolvedBehavior?.kind ?? state.tool.kind),
               isDestructive: state.resolvedBehavior?.isDestructive ?? false,
               signature: state.permissionSignature,
               description: state.invocation?.getDescription(),

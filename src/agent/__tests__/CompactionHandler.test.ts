@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Message } from '../../services/ChatServiceInterface.js';
+import { ConversationState } from '../state/ConversationState.js';
 
 const mockCompact = vi.fn(async () => ({
   success: true,
@@ -48,16 +49,14 @@ describe('CompactionHandler', () => {
       () => undefined,
     );
 
-    const context = {
-      messages: [
-        { role: 'user', content: 'Investigate the build failure' },
-        { role: 'tool', tool_call_id: 'call-1', content: 'a'.repeat(4000) },
-        { role: 'tool', tool_call_id: 'call-2', content: 'b'.repeat(3800) },
-      ] satisfies Message[],
-      sessionId: 'session-1',
-    };
+    const contextMessages: Message[] = [
+      { role: 'user', content: 'Investigate the build failure' },
+      { role: 'tool', tool_call_id: 'call-1', content: 'a'.repeat(4000) },
+      { role: 'tool', tool_call_id: 'call-2', content: 'b'.repeat(3800) },
+    ];
+    const convState = new ConversationState(null, contextMessages.slice(0, -1), contextMessages[contextMessages.length - 1]);
 
-    const stream = handler.checkAndCompactInLoop(context as never, 2, 700);
+    const stream = handler.checkAndCompactInLoop(convState, { sessionId: 'session-1' }, 2, 700);
     let didCompact = false;
     while (true) {
       const { value, done } = await stream.next();
@@ -69,7 +68,9 @@ describe('CompactionHandler', () => {
 
     expect(didCompact).toBe(true);
     expect(mockCompact).not.toHaveBeenCalled();
-    expect(context.messages[1]).toEqual(
+    // After microcompact, the second context message (index 1 in contextMessages, index 1 in convState since no root prompt)
+    const updatedCtx = convState.getContextMessages();
+    expect(updatedCtx[1]).toEqual(
       expect.objectContaining({
         content: expect.stringContaining('[Microcompact]'),
       }),
@@ -98,12 +99,9 @@ describe('CompactionHandler', () => {
       { role: 'tool', tool_call_id: 'call-1', content: 'a'.repeat(4000) },
       { role: 'tool', tool_call_id: 'call-2', content: 'b'.repeat(3800) },
     ] satisfies Message[];
-    const context = {
-      messages: originalMessages.map((message) => ({ ...message })),
-      sessionId: 'session-1',
-    };
+    const convState = new ConversationState(null, originalMessages.slice(0, -1), originalMessages[originalMessages.length - 1]);
 
-    const stream = handler.reactiveCompact(context as never);
+    const stream = handler.reactiveCompact(convState, { sessionId: 'session-1' });
     let didCompact = false;
     while (true) {
       const { value, done } = await stream.next();
@@ -114,7 +112,10 @@ describe('CompactionHandler', () => {
     }
 
     expect(didCompact).toBe(true);
-    expect(context.messages[1]).toEqual(originalMessages[1]);
-    expect(context.messages[1]?.content).not.toContain('[Microcompact]');
+    // After fallback (error path), convState should have emergency-truncated messages from originals
+    const updatedCtx = convState.getContextMessages();
+    // The fallback uses originalMessages.slice(-40), so content should still be original (not microcompacted)
+    expect(updatedCtx[1]).toEqual(originalMessages[1]);
+    expect(updatedCtx[1]?.content).not.toContain('[Microcompact]');
   });
 });

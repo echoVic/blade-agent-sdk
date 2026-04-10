@@ -126,6 +126,7 @@ export class PersistentStore {
     };
     if (metadata.postTokens !== undefined) result.postTokens = metadata.postTokens;
     if (metadata.filesIncluded) result.filesIncluded = metadata.filesIncluded;
+    result._systemSource = 'compaction_summary';
     return result;
   }
 
@@ -164,6 +165,7 @@ export class PersistentStore {
     metadata?: {
       model?: string;
       usage?: { input_tokens: number; output_tokens: number };
+      customMetadata?: Record<string, unknown>;
     },
     subagentInfo?: {
       parentSessionId: string;
@@ -184,6 +186,7 @@ export class PersistentStore {
         createdAt: now,
         model: metadata?.model,
         usage: metadata?.usage,
+        customMetadata: metadata?.customMetadata,
       };
       const messageEntry = this.createEvent('message_created', sessionId, messageInfo);
       const partEntries = this.buildPartEntries(sessionId, messageId, content, now);
@@ -704,6 +707,7 @@ export class NoopPersistentStore {
     _metadata?: {
       model?: string;
       usage?: { input_tokens: number; output_tokens: number };
+      customMetadata?: Record<string, unknown>;
     },
     _subagentInfo?: {
       parentSessionId: string;

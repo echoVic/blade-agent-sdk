@@ -74,6 +74,7 @@ describe('agent loop decisions', () => {
       maxTurns: 3,
       turnsCount: 3,
       messages: [{ role: 'user', content: 'Hi' }] as Message[],
+      contextMessages: [{ role: 'user', content: 'Hi' }] as Message[],
       toolCallsCount: 2,
       startTime: Date.now() - 100,
       totalTokens: 321,

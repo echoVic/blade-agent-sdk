@@ -3,7 +3,6 @@ import type { LoopResult, TurnLimitResponse } from '../types.js';
 
 type TurnLimitReachedHandler = (data: { turnsCount: number }) => Promise<TurnLimitResponse>;
 type TurnLimitCompactHandler = (ctx: {
-  messages: Message[];
   contextMessages: Message[];
 }) => Promise<{
   success: boolean;
@@ -22,7 +21,7 @@ export type TurnLimitDecision =
 interface DecideTurnLimitInput {
   maxTurns: number;
   turnsCount: number;
-  messages: Message[];
+  contextMessages: Message[];
   toolCallsCount: number;
   startTime: number;
   totalTokens: number;
@@ -36,7 +35,7 @@ export async function decideTurnLimit(
   const {
     maxTurns,
     turnsCount,
-    messages,
+    contextMessages,
     toolCallsCount,
     startTime,
     totalTokens,
@@ -52,8 +51,7 @@ export async function decideTurnLimit(
       }
 
       const compactResult = await onTurnLimitCompact({
-        messages,
-        contextMessages: messages.filter((message) => message.role !== 'system'),
+        contextMessages,
       });
 
       if (compactResult.success && compactResult.compactedMessages) {

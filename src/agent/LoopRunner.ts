@@ -33,6 +33,8 @@ import { AGENT_TURN_SAFETY_LIMIT } from './constants.js';
 import type { ModelManager } from './ModelManager.js';
 import { RuntimePatchManager } from './RuntimePatchManager.js';
 import { LoopState } from './state/LoopState.js';
+import { ConversationState } from './state/ConversationState.js';
+import { isValidSystemSource } from './state/systemSource.js';
 import type { LoopSkillState } from './state/TurnState.js';
 import type { StreamResponseHandler } from './StreamResponseHandler.js';
 import type { TokenBudget } from './TokenBudget.js';
@@ -47,8 +49,12 @@ import { buildLoopConfig } from './LoopHookBuilder.js';
 
 // ===== Module-level helpers =====
 
-function syncContextMessages(context: ChatContext, messages: Message[]): void {
-  context.messages = messages.filter((message) => message.role !== 'system');
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function syncContextMessages(context: ChatContext, convState: ConversationState): void {
+  context.messages = convState.getContextMessages();
 }
 
 function hasPersistableUserContent(message: UserMessageContent): boolean {
@@ -132,31 +138,37 @@ export class LoopRunner {
     options?: LoopOptions,
     systemPrompt?: string,
   ): AsyncGenerator<AgentEvent, LoopResult> {
-    // 1. 构建消息历史
-    const needsSystemPrompt =
-      context.messages.length === 0 ||
-      !context.messages.some((msg) => msg.role === 'system');
-
-    const messages: Message[] = [];
-
-    if (needsSystemPrompt && systemPrompt) {
-      messages.push({
-        role: 'system',
-        content: [
-          {
-            type: 'text',
-            text: systemPrompt,
-            providerOptions: {
-              anthropic: { cacheControl: { type: 'ephemeral' } },
+    // 1. 构建消息历史 — 入口归一化 + ConversationState 构造
+    const rootPromptMessage: Message | null = systemPrompt
+      ? {
+          role: 'system',
+          content: [
+            {
+              type: 'text',
+              text: systemPrompt,
+              providerOptions: {
+                anthropic: { cacheControl: { type: 'ephemeral' } },
+              },
             },
-          },
-        ],
-      });
-    }
+          ],
+        }
+      : null;
 
-    messages.push(...context.messages, { role: 'user', content: message });
+    // 删除 _systemSource 不在受控枚举内的 system 消息（旧根 prompt、外部任意标记等）
+    const contextMessages = context.messages.filter((m) => {
+      if (m.role !== 'system') return true;
+      const source = isRecord(m.metadata) ? m.metadata._systemSource : undefined;
+      return isValidSystemSource(source);
+    });
+
+    const conversationState = new ConversationState(
+      rootPromptMessage,
+      contextMessages,
+      { role: 'user', content: message },
+    );
+
     const permissionMode = context.permissionMode;
-    const loopState = this.createLoopState(context, messages, permissionMode);
+    const loopState = this.createLoopState(context, conversationState, permissionMode);
 
     // 2. 保存用户消息到 JSONL
     let lastMessageUuid: string | null = null;
@@ -226,7 +238,7 @@ export class LoopRunner {
         throw new Error('AgentLoop ended without result');
       }
 
-      syncContextMessages(context, loopState.messages);
+      syncContextMessages(context, loopState.conversationState);
       return result;
     } catch (error) {
       if (error instanceof Error &&
@@ -312,7 +324,7 @@ export class LoopRunner {
 
   private createLoopState(
     context: ChatContext,
-    messages: Message[],
+    conversationState: ConversationState,
     permissionMode: PermissionMode | undefined,
   ): LoopState {
     const rpm = this.runtimePatchManager;
@@ -325,18 +337,19 @@ export class LoopRunner {
       context.snapshot,
     );
     const initialActivationCwd = effectiveSnapshot?.cwd ?? this.defaultProjectPath;
+    const initialMessages = conversationState.toArray() as Message[];
     const initialSkillActivationContext = rpm.createSkillActivationContext(
       initialActivationCwd,
-      messages,
+      initialMessages,
     );
     let cachedSkillActivationContext = initialSkillActivationContext;
-    let cachedSkillActivationMessageCount = messages.length;
+    let cachedSkillActivationMessageCount = initialMessages.length;
     let cachedSkillActivationCwd = initialActivationCwd;
     let loopState: LoopState;
 
     const resolveSkillActivationContext = (): SkillActivationContext => {
       const cwd = loopState.executionContext.contextSnapshot?.cwd ?? this.defaultProjectPath;
-      const currentMessageCount = loopState.messages.length;
+      const currentMessageCount = loopState.conversationState.length;
       if (
         cachedSkillActivationContext
         && cachedSkillActivationMessageCount === currentMessageCount
@@ -347,7 +360,7 @@ export class LoopRunner {
 
       cachedSkillActivationContext = rpm.createSkillActivationContext(
         cwd,
-        loopState.messages,
+        loopState.conversationState.toArray() as Message[],
       );
       cachedSkillActivationMessageCount = currentMessageCount;
       cachedSkillActivationCwd = cwd;
@@ -355,7 +368,7 @@ export class LoopRunner {
     };
 
     loopState = new LoopState({
-      messages,
+      conversationState,
       permissionMode,
       executionContext: {
         sessionId: context.sessionId,
@@ -391,7 +404,7 @@ export class LoopRunner {
           discoveredTools: rpm.discoveredTools,
           sourcePolicy: this.runtimeOptions.toolSourcePolicy,
         });
-        rpm.syncDiscoverableToolsCatalogMessage(loopState.messages, rawExposurePlan.discoverableTools);
+        rpm.syncDiscoverableToolsCatalogMessage(loopState.conversationState, rawExposurePlan.discoverableTools);
         let rawTools = rawExposurePlan.declarations;
         rawTools = injectSkillsMetadata(
           rawTools,

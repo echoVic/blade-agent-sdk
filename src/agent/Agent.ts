@@ -76,6 +76,19 @@ export interface AgentRuntimeDeps {
   logger?: InternalLogger;
 }
 
+/**
+ * 预处理结果，由 prepareContext() 统一产出。
+ * chat / streamChat 共享同一预处理管线。
+ */
+interface PreparedContext {
+  /** 经过附件 / @mention 处理后的消息 */
+  enhancedMessage: UserMessageContent;
+  /** 已注入 backgroundAgentManager 的上下文 */
+  context: ChatContext;
+  /** 合并 signal 后的循环选项 */
+  loopOptions: LoopOptions;
+}
+
 export class Agent {
   private config: BladeConfig;
   private runtimeOptions: AgentOptions;
@@ -216,25 +229,8 @@ export class Agent {
     context: ChatContext,
     options?: LoopOptions,
   ): Promise<string> {
-    if (!this.isInitialized) throw new Error('Agent未初始化');
-
-    const enhancedMessage = await this.prepareMessageForContext(message, context);
-
-    const loopOptions: LoopOptions = { signal: context.signal, ...options };
-
-    let result: LoopResult;
-    if (context.permissionMode === 'plan') {
-      result = await this.planExecutor.runPlanLoop(
-        enhancedMessage, this.withBackgroundAgentManager(context), loopOptions,
-        (msg, ctx, opts, sp) => this.loopRunner.executeLoop(msg, ctx, opts, sp),
-      );
-    } else {
-      result = await this.loopRunner.runLoop(
-        enhancedMessage,
-        this.withBackgroundAgentManager(context),
-        loopOptions,
-      );
-    }
+    const prepared = await this.prepareContext(message, context, options);
+    const result = await this.executeWithPlanSupport(prepared);
 
     if (!result.success) {
       if (result.error?.type === 'aborted' || result.metadata?.shouldExitLoop) return '';
@@ -242,7 +238,9 @@ export class Agent {
     }
 
     if (result.metadata?.targetMode && context.permissionMode === 'plan') {
-      return this.executePlanApproval(enhancedMessage, context, loopOptions, result);
+      return this.executePlanApproval(
+        prepared.enhancedMessage, prepared.context, prepared.loopOptions, result,
+      );
     }
 
     return result.finalMessage || '';
@@ -253,65 +251,12 @@ export class Agent {
     context: ChatContext,
     options?: LoopOptions,
   ): AsyncGenerator<AgentEvent, LoopResult> {
-    if (!this.isInitialized) throw new Error('Agent未初始化');
+    const self = this;
+    const prepare = this.prepareContext(message, context, options);
 
-    const run = async () => {
-      const contextWithBackgroundManager = this.withBackgroundAgentManager(context);
-      const enhancedMessage = await this.prepareMessageForContext(message, contextWithBackgroundManager);
-
-      const loopOptions: LoopOptions = { signal: contextWithBackgroundManager.signal, ...options };
-
-      if (contextWithBackgroundManager.permissionMode === 'plan') {
-        const planStream = this.planExecutor.runPlanLoopStream(
-          enhancedMessage, contextWithBackgroundManager, loopOptions,
-          (msg, ctx, opts, sp) => this.loopRunner.executeWithAgentLoop(msg, ctx, opts, sp),
-        );
-        let planResult: LoopResult | undefined;
-        const events: AgentEvent[] = [];
-        while (true) {
-          const { value, done } = await planStream.next();
-          if (done) {
-            planResult = value;
-            break;
-          }
-          events.push(value);
-        }
-
-        if (planResult?.metadata?.targetMode) {
-          const targetMode = planResult.metadata.targetMode as PermissionMode;
-          const planContent = planResult.metadata.planContent as string | undefined;
-          const newContext: ChatContext = {
-            ...contextWithBackgroundManager,
-            permissionMode: targetMode,
-          };
-          const messageWithPlan = this.injectPlanContent(enhancedMessage, planContent);
-          return {
-            events,
-            continuation: this.loopRunner.runLoopStream(messageWithPlan, newContext, loopOptions),
-          };
-        }
-        return { events, result: planResult };
-      }
-
-      return {
-        continuation: this.loopRunner.runLoopStream(
-          enhancedMessage,
-          contextWithBackgroundManager,
-          loopOptions,
-        ),
-      };
-    };
-
-    const generator = run();
     const wrapper = async function* (): AsyncGenerator<AgentEvent, LoopResult> {
-      const outcome = await generator;
-      if ('events' in outcome && outcome.events) {
-        for (const event of outcome.events) yield event;
-      }
-      if ('continuation' in outcome && outcome.continuation) {
-        return yield* outcome.continuation;
-      }
-      return outcome.result!;
+      const prepared = await prepare;
+      return yield* self.streamWithPlanSupport(prepared);
     };
     return wrapper();
   }
@@ -323,7 +268,7 @@ export class Agent {
   ): Promise<LoopResult> {
     if (!this.isInitialized) throw new Error('Agent未初始化');
 
-    const chatContext: ChatContext = {
+    const chatContext: ChatContext = this.withBackgroundAgentManager({
       messages: context.messages,
       userId: context.userId || 'subagent',
       sessionId: context.sessionId || `subagent_${Date.now()}`,
@@ -333,8 +278,8 @@ export class Agent {
       permissionMode: context.permissionMode,
       systemPrompt: context.systemPrompt,
       subagentInfo: context.subagentInfo,
-      backgroundAgentManager: context.backgroundAgentManager ?? this.backgroundAgentManager,
-    };
+      backgroundAgentManager: context.backgroundAgentManager,
+    });
 
     return await this.loopRunner.runLoop(message, chatContext, options);
   }
@@ -456,6 +401,78 @@ export class Agent {
     }
 
     return new TokenBudget(config);
+  }
+
+  // ===== 统一预处理 & Plan 路由 =====
+
+  /**
+   * 统一预处理管线：init 检查 → backgroundAgentManager 注入 → 附件 / @mention 处理 → loopOptions 合并。
+   * chat() 和 streamChat() 共用此方法；runAgenticLoop() 因面向子代理，无需此管线。
+   */
+  private async prepareContext(
+    message: UserMessageContent,
+    context: ChatContext,
+    options?: LoopOptions,
+  ): Promise<PreparedContext> {
+    if (!this.isInitialized) throw new Error('Agent未初始化');
+
+    const ctx = this.withBackgroundAgentManager(context);
+    const enhancedMessage = await this.prepareMessageForContext(message, ctx);
+    const loopOptions: LoopOptions = { signal: ctx.signal, ...options };
+
+    return { enhancedMessage, context: ctx, loopOptions };
+  }
+
+  /**
+   * 非流式 Plan 路由：plan 模式 → PlanExecutor 委托，否则 → LoopRunner 直行。
+   */
+  private async executeWithPlanSupport(prepared: PreparedContext): Promise<LoopResult> {
+    const { enhancedMessage, context, loopOptions } = prepared;
+
+    if (context.permissionMode === 'plan') {
+      return this.planExecutor.runPlanLoop(
+        enhancedMessage, context, loopOptions,
+        (msg, ctx, opts, sp) => this.loopRunner.executeLoop(msg, ctx, opts, sp),
+      );
+    }
+
+    return this.loopRunner.runLoop(enhancedMessage, context, loopOptions);
+  }
+
+  /**
+   * 流式 Plan 路由：plan 模式 → PlanExecutor 流 → 可能续接执行流，否则 → LoopRunner 流。
+   */
+  private async *streamWithPlanSupport(prepared: PreparedContext): AsyncGenerator<AgentEvent, LoopResult> {
+    const { enhancedMessage, context, loopOptions } = prepared;
+
+    if (context.permissionMode === 'plan') {
+      const planStream = this.planExecutor.runPlanLoopStream(
+        enhancedMessage, context, loopOptions,
+        (msg, ctx, opts, sp) => this.loopRunner.executeWithAgentLoop(msg, ctx, opts, sp),
+      );
+
+      let planResult: LoopResult | undefined;
+      while (true) {
+        const { value, done } = await planStream.next();
+        if (done) {
+          planResult = value;
+          break;
+        }
+        yield value;
+      }
+
+      if (planResult?.metadata?.targetMode) {
+        const targetMode = planResult.metadata.targetMode as PermissionMode;
+        const planContent = planResult.metadata.planContent as string | undefined;
+        const newContext: ChatContext = { ...context, permissionMode: targetMode };
+        const messageWithPlan = this.injectPlanContent(enhancedMessage, planContent);
+        return yield* this.loopRunner.runLoopStream(messageWithPlan, newContext, loopOptions);
+      }
+
+      return planResult!;
+    }
+
+    return yield* this.loopRunner.runLoopStream(enhancedMessage, context, loopOptions);
   }
 
   private async executePlanApproval(

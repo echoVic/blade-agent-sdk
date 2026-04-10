@@ -157,6 +157,7 @@ export interface MessageInfo {
     input_tokens: number;
     output_tokens: number;
   };
+  customMetadata?: Record<string, unknown>;
 }
 
 export interface PartInfo {

@@ -54,7 +54,10 @@ export function planToolExecution(
       ? resolveToolBehaviorSafely(tool as Parameters<typeof resolveToolBehaviorSafely>[0], parsedArgs)
       : undefined;
 
-    if (behavior?.isReadOnly || (!behavior && tool?.kind === 'readonly')) {
+    if (
+      (behavior?.isReadOnly && behavior.isConcurrencySafe) ||
+      (!behavior && tool?.kind === 'readonly' && tool?.isConcurrencySafe !== false)
+    ) {
       readonlyCalls.push(call);
       continue;
     }

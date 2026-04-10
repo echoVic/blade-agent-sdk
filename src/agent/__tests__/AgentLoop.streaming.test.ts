@@ -4,6 +4,7 @@ import type { ToolResult } from '../../tools/types/index.js';
 import type { AgentEvent } from '../AgentEvent.js';
 import type { AgentLoopConfig } from '../AgentLoop.js';
 import { agentLoop } from '../AgentLoop.js';
+import { ConversationState } from '../state/ConversationState.js';
 import type { TurnState } from '../state/TurnState.js';
 import type { LoopResult } from '../types.js';
 
@@ -17,9 +18,10 @@ function deferred<T>() {
   return { promise, resolve, reject };
 }
 
-type BaseConfigOverrides = Partial<Omit<AgentLoopConfig, 'prepareTurnState'>> & {
+type BaseConfigOverrides = Partial<Omit<AgentLoopConfig, 'prepareTurnState' | 'conversationState'>> & {
   prepareTurnState?: AgentLoopConfig['prepareTurnState'];
   turnState?: Partial<Omit<TurnState, 'turn' | 'messages'>>;
+  messages?: Message[];
 };
 
 function baseConfig(overrides: BaseConfigOverrides = {}): AgentLoopConfig {
@@ -37,6 +39,13 @@ function baseConfig(overrides: BaseConfigOverrides = {}): AgentLoopConfig {
     isYoloMode = false,
     ...rest
   } = overrides;
+
+  const convState = new ConversationState(null, [], messages[messages.length - 1] || { role: 'user', content: 'Hi' });
+  if (messages.length > 1) {
+    for (let i = 0; i < messages.length - 1; i++) {
+      convState.append(messages[i]);
+    }
+  }
 
   const defaultTurnState: Omit<TurnState, 'turn' | 'messages'> = {
     tools: [{ name: 'ReadFile', description: 'read', parameters: {} }],
@@ -58,12 +67,12 @@ function baseConfig(overrides: BaseConfigOverrides = {}): AgentLoopConfig {
 
   return {
     executionPipeline,
-    messages,
+    conversationState: convState,
     maxTurns,
     isYoloMode,
     prepareTurnState: prepareTurnState ?? ((turn) => ({
       turn,
-      messages,
+      messages: convState.toArray() as Message[],
       ...defaultTurnState,
       ...turnState,
     })),

@@ -11,14 +11,14 @@ import type { ContextManager } from '../context/ContextManager.js';
 import type { HookRuntime } from '../hooks/HookRuntime.js';
 import type { InternalLogger } from '../logging/Logger.js';
 import type { Message } from '../services/ChatServiceInterface.js';
+import type { ExecutionPipeline } from '../tools/execution/ExecutionPipeline.js';
 import {
   normalizeToolEffects,
   type ToolEffect,
 } from '../tools/types/index.js';
-import type { ExecutionPipeline } from '../tools/execution/ExecutionPipeline.js';
 import type { JsonValue } from '../types/common.js';
 import type { AgentLoopConfig } from './AgentLoop.js';
-import type { CompactionHandler } from './CompactionHandler.js';
+import type { CompactionHandler, CompactionRuntimeContext } from './CompactionHandler.js';
 import type { ModelManager } from './ModelManager.js';
 import type { RuntimePatchManager } from './RuntimePatchManager.js';
 import type { LoopState } from './state/LoopState.js';
@@ -94,7 +94,7 @@ export function buildLoopConfig(deps: LoopHookBuilderDeps): AgentLoopConfig {
     streamHandler,
     executionPipeline,
     logger,
-    messages: loopState.messages,
+    conversationState: loopState.conversationState,
     maxTurns,
     isYoloMode,
     signal: options?.signal,
@@ -105,8 +105,12 @@ export function buildLoopConfig(deps: LoopHookBuilderDeps): AgentLoopConfig {
 
     async *onBeforeTurn(ctx) {
       if (!compactionHandler) return false;
+      const runtimeCtx: CompactionRuntimeContext = {
+        sessionId: context.sessionId,
+        projectDir: context.snapshot?.cwd ?? defaultProjectPath,
+      };
       const compactionStream = compactionHandler.checkAndCompactInLoop(
-        context, ctx.turn, ctx.lastPromptTokens
+        loopState.conversationState, runtimeCtx, ctx.turn, ctx.lastPromptTokens
       );
       let didCompact = false;
       while (true) {
@@ -119,7 +123,11 @@ export function buildLoopConfig(deps: LoopHookBuilderDeps): AgentLoopConfig {
 
     onReactiveCompact: compactionHandler
       ? async function* () {
-          const compactStream = compactionHandler?.reactiveCompact(context);
+          const runtimeCtx: CompactionRuntimeContext = {
+            sessionId: context.sessionId,
+            projectDir: context.snapshot?.cwd ?? defaultProjectPath,
+          };
+          const compactStream = compactionHandler?.reactiveCompact(loopState.conversationState, runtimeCtx);
           if (!compactStream) {
             return false;
           }
@@ -215,12 +223,24 @@ export function buildLoopConfig(deps: LoopHookBuilderDeps): AgentLoopConfig {
         if (injectedMessages.length > 0) {
           let parentUuid = uuid;
           for (const injectedMessage of injectedMessages) {
+            const customMeta = (() => {
+              const isRec = (v: unknown): v is Record<string, unknown> =>
+                typeof v === 'object' && v !== null && !Array.isArray(v);
+              const base = isRec(injectedMessage.metadata)
+                ? { ...injectedMessage.metadata }
+                : {};
+              if (injectedMessage.role === 'system') {
+                base._systemSource = 'tool_injection';
+              }
+              return Object.keys(base).length > 0 ? base : undefined;
+            })();
+
             const injectedUuid = await contextMgr.saveMessage(
               sessionId,
               injectedMessage.role,
               injectedMessage.content,
               parentUuid,
-              undefined,
+              customMeta ? { customMetadata: customMeta } : undefined,
               context.subagentInfo,
             );
             parentUuid = injectedUuid;
@@ -275,6 +295,21 @@ export function buildLoopConfig(deps: LoopHookBuilderDeps): AgentLoopConfig {
       }
     },
 
+    async onAfterToolExecEpochDiscard(ctx) {
+      if (!ctx.toolUseUuid) return;
+      await persistToJsonl(modelManager, context.sessionId, logger, async (contextMgr, sessionId) => {
+        await contextMgr.saveToolResult(
+          sessionId,
+          ctx.toolCall.id,
+          ctx.toolCall.function.name,
+          null,
+          ctx.toolUseUuid!,
+          ctx.reason,
+          context.subagentInfo,
+        );
+      });
+    },
+
     async onComplete(ctx) {
       await persistToJsonl(modelManager, context.sessionId, logger, async (contextMgr, sessionId) => {
         if (ctx.content.trim() !== '') {
@@ -312,7 +347,7 @@ export function buildLoopConfig(deps: LoopHookBuilderDeps): AgentLoopConfig {
       try {
         const cs = loopState.getChatService().getConfig();
         const compactResult = await CompactionService.compact(
-          context.messages,
+          loopState.conversationState.getContextMessages(),
           {
             trigger: 'auto',
             provider: cs.provider,
@@ -324,7 +359,6 @@ export function buildLoopConfig(deps: LoopHookBuilderDeps): AgentLoopConfig {
             projectDir: context.snapshot?.cwd ?? defaultProjectPath,
           }
         );
-        context.messages = compactResult.compactedMessages;
         const continueMessage: Message = {
           role: 'user',
           content: 'This session is being continued from a previous conversation. '
@@ -332,8 +366,8 @@ export function buildLoopConfig(deps: LoopHookBuilderDeps): AgentLoopConfig {
             + 'Please continue the conversation from where we left it off without asking the user any further questions. '
             + 'Continue with the last task that you were asked to work on.',
         };
-        context.messages.push(continueMessage);
 
+        // 纯函数式：只持久化 + 返回结果，ConversationState 写入由 AgentLoop 单一负责
         await persistToJsonl(modelManager, context.sessionId, logger, async (contextMgr, sessionId) => {
           await contextMgr.saveCompaction(
             sessionId, compactResult.summary,
@@ -350,8 +384,7 @@ export function buildLoopConfig(deps: LoopHookBuilderDeps): AgentLoopConfig {
         };
       } catch (compactError) {
         logger.error('[LoopHookBuilder] 压缩失败，使用降级策略:', compactError);
-        const recentMessages = context.messages.slice(-80);
-        context.messages = recentMessages;
+        const recentMessages = loopState.conversationState.getContextMessages().slice(-80);
         return { success: true, compactedMessages: recentMessages };
       }
     },

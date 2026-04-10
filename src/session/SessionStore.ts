@@ -284,10 +284,11 @@ export class JsonlSessionStore implements SessionStore {
         record.message.role = data.role;
         record.message.id = data.messageId;
 
-        if (data.model || data.usage) {
+        if (data.model || data.usage || data.customMetadata) {
           record.message.metadata = {
             ...(data.model ? { model: data.model } : {}),
             ...(data.usage ? { usage: data.usage } : {}),
+            ...(data.customMetadata && typeof data.customMetadata === 'object' ? data.customMetadata as Record<string, unknown> : {}),
           };
         }
 

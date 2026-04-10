@@ -665,7 +665,7 @@ export function createToolBehavior(
   return {
     kind,
     isReadOnly: overrides.isReadOnly ?? isReadOnlyKind(kind),
-    isConcurrencySafe: overrides.isConcurrencySafe ?? true,
+    isConcurrencySafe: overrides.isConcurrencySafe ?? isReadOnlyKind(kind),
     isDestructive: overrides.isDestructive ?? false,
     interruptBehavior: overrides.interruptBehavior ?? 'cancel',
   };

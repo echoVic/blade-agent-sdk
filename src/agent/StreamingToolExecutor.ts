@@ -9,7 +9,8 @@ import type { ExecutionPipeline } from '../tools/execution/ExecutionPipeline.js'
 import type { ToolResult } from '../tools/types/index.js';
 import { ToolErrorType } from '../tools/types/index.js';
 import type { PermissionMode } from '../types/common.js';
-import { executeToolCalls, type ToolExecutionOutcome } from './loop/executeToolCalls.js';
+import type { ExecutionEpoch } from './ExecutionEpoch.js';
+import { type ToolExecutionOutcome } from './loop/executeToolCalls.js';
 import { planToolExecution } from './loop/planToolExecution.js';
 import {
   emitToolExecutionUpdate,
@@ -47,6 +48,11 @@ export interface StreamingToolExecutorConfig {
     result: ToolResult;
     toolUseUuid: string | null;
   }) => void | Promise<void>;
+  onAfterToolExecEpochDiscard?: (ctx: {
+    toolCall: FunctionToolCall;
+    toolUseUuid: string | null;
+    reason: string;
+  }) => Promise<void>;
 }
 
 interface ToolCallAccumulatorEntry {
@@ -68,11 +74,16 @@ export class StreamingToolExecutor {
     this.logger = (logger ?? NOOP_LOGGER).child(LogCategory.AGENT);
   }
 
+  private isEpochActive(epoch?: ExecutionEpoch): boolean {
+    return !epoch || epoch.isValid;
+  }
+
   async collectAndExecute(
     messages: Message[],
     tools: Array<{ name: string; description: string; parameters: unknown }>,
     signal: AbortSignal | undefined,
     executionConfig: StreamingToolExecutorConfig,
+    epoch?: ExecutionEpoch,
   ): Promise<{
     chatResponse: ChatResponse;
     executionResults: ToolExecutionOutcome[];
@@ -100,12 +111,16 @@ export class StreamingToolExecutor {
 
         if (chunk.content) {
           fullContent += chunk.content;
-          await executionConfig.onContentDelta?.(chunk.content);
+          if (this.isEpochActive(epoch)) {
+            await executionConfig.onContentDelta?.(chunk.content);
+          }
         }
 
         if (chunk.reasoningContent) {
           fullReasoningContent += chunk.reasoningContent;
-          await executionConfig.onThinkingDelta?.(chunk.reasoningContent);
+          if (this.isEpochActive(epoch)) {
+            await executionConfig.onThinkingDelta?.(chunk.reasoningContent);
+          }
         }
 
         if (chunk.usage) {
@@ -125,6 +140,7 @@ export class StreamingToolExecutor {
             batchController,
             executionConfig,
             forcePending: false,
+            epoch,
           })) || hasDispatchedTools;
         }
 
@@ -140,10 +156,10 @@ export class StreamingToolExecutor {
         toolCallAccumulator.size === 0
       ) {
         this.logger.warn('[Agent] 流式响应返回0个chunk，回退到包装的 StreamResponseHandler');
-        return this.collectWithWrappedHandler(messages, tools, signal, executionConfig);
+        return this.collectWithWrappedHandler(messages, tools, signal, executionConfig, epoch);
       }
 
-      if (!signal?.aborted) {
+      if (!signal?.aborted && this.isEpochActive(epoch)) {
         await executionConfig.onStreamEnd?.();
       }
 
@@ -155,6 +171,7 @@ export class StreamingToolExecutor {
         batchController,
         executionConfig,
         forcePending: false,
+        epoch,
       })) || hasDispatchedTools;
 
       await Promise.all(inFlightExecutions.values());
@@ -167,6 +184,7 @@ export class StreamingToolExecutor {
         batchController,
         executionConfig,
         forcePending: true,
+        epoch,
       })) || hasDispatchedTools;
 
       await Promise.all(inFlightExecutions.values());
@@ -185,7 +203,7 @@ export class StreamingToolExecutor {
     } catch (error) {
       if (this.isStreamingNotSupportedError(error)) {
         this.logger.warn('[Agent] 流式请求失败，回退到包装的 StreamResponseHandler');
-        return this.collectWithWrappedHandler(messages, tools, signal, executionConfig);
+        return this.collectWithWrappedHandler(messages, tools, signal, executionConfig, epoch);
       }
 
       if (hasDispatchedTools) {
@@ -200,7 +218,9 @@ export class StreamingToolExecutor {
   private async emitToolExecutionUpdate(
     executionConfig: StreamingToolExecutorConfig,
     update: ToolExecutionUpdate,
+    epoch?: ExecutionEpoch,
   ): Promise<void> {
+    if (!this.isEpochActive(epoch)) return;
     await executionConfig.onToolExecutionUpdate?.(update);
     await emitToolExecutionUpdate(
       {
@@ -217,6 +237,7 @@ export class StreamingToolExecutor {
     tools: Array<{ name: string; description: string; parameters: unknown }>,
     signal: AbortSignal | undefined,
     executionConfig: StreamingToolExecutorConfig,
+    epoch?: ExecutionEpoch,
   ): Promise<{
     chatResponse: ChatResponse;
     executionResults: ToolExecutionOutcome[];
@@ -231,6 +252,8 @@ export class StreamingToolExecutor {
         break;
       }
 
+      if (!this.isEpochActive(epoch)) break;
+
       if (value.type === 'content_delta') {
         await executionConfig.onContentDelta?.(value.delta);
       } else {
@@ -238,11 +261,11 @@ export class StreamingToolExecutor {
       }
     }
 
-    if (!signal?.aborted) {
+    if (!signal?.aborted && this.isEpochActive(epoch)) {
       await executionConfig.onStreamEnd?.();
     }
 
-    const functionToolCalls = (chatResponse.toolCalls ?? []).filter(
+    const functionToolCalls = (chatResponse?.toolCalls ?? []).filter(
       (toolCall): toolCall is FunctionToolCall => toolCall.type === 'function',
     );
     const executionPlan = planToolExecution(
@@ -251,24 +274,57 @@ export class StreamingToolExecutor {
       executionConfig.permissionMode,
     );
 
-    if (signal?.aborted) {
-      return { chatResponse, executionResults: [] };
+    if (signal?.aborted || !this.isEpochActive(epoch)) {
+      return { chatResponse: chatResponse!, executionResults: [] };
     }
 
-    const executionResults = await executeToolCalls({
-      plan: executionPlan,
-      executionPipeline: executionConfig.executionPipeline,
-      executionContext: executionConfig.executionContext,
-      logger: executionConfig.logger,
-      permissionMode: executionConfig.permissionMode,
-      signal,
-      hooks: {
-        onBeforeToolExec: executionConfig.hooks?.onBeforeToolExec,
-        onUpdate: (update) => this.emitToolExecutionUpdate(executionConfig, update),
-      },
-    });
+    // 复用 StreamingToolExecutor 自身的 epoch-aware executeToolCall()，
+    // 而非走外部 executeToolCalls() 路径——确保 onAfterToolExecEpochDiscard 可达。
+    const batchController = new AbortController();
+    const executionResults: Array<ToolExecutionOutcome | undefined> = [];
+    const allCalls = executionPlan.calls;
+    const MAX_CONCURRENCY = 5;
 
-    return { chatResponse, executionResults };
+    const executeOne = (index: number, toolCall: FunctionToolCall) =>
+      this.executeToolCall({
+        index,
+        toolCall,
+        signal,
+        batchController,
+        executionConfig,
+        executionResults,
+        epoch,
+      });
+
+    if (executionPlan.mode === 'serial') {
+      for (let i = 0; i < allCalls.length; i++) {
+        if (!this.isEpochActive(epoch)) break;
+        await executeOne(i, allCalls[i]);
+      }
+    } else if (executionPlan.mode === 'mixed') {
+      const groups = executionPlan.groups ?? allCalls.map((tc) => [tc]);
+      let globalIndex = 0;
+      for (const group of groups) {
+        if (!this.isEpochActive(epoch)) break;
+        await this.executeWithConcurrencyLimit(
+          group, MAX_CONCURRENCY,
+          (toolCall) => executeOne(globalIndex++, toolCall),
+        );
+      }
+    } else {
+      // parallel
+      await this.executeWithConcurrencyLimit(
+        allCalls, MAX_CONCURRENCY,
+        (toolCall, i) => executeOne(i, toolCall),
+      );
+    }
+
+    return {
+      chatResponse: chatResponse!,
+      executionResults: executionResults.filter(
+        (r): r is ToolExecutionOutcome => r !== undefined,
+      ),
+    };
   }
 
   private async dispatchReadyToolCalls(input: {
@@ -279,6 +335,7 @@ export class StreamingToolExecutor {
     batchController: AbortController;
     executionConfig: StreamingToolExecutorConfig;
     forcePending: boolean;
+    epoch?: ExecutionEpoch;
   }): Promise<boolean> {
     if (input.signal?.aborted) {
       return false;
@@ -294,6 +351,11 @@ export class StreamingToolExecutor {
         continue;
       }
 
+      // Epoch guard: 不在已失效的 epoch 中派发新工具
+      if (!this.isEpochActive(input.epoch)) {
+        continue;
+      }
+
       if (input.batchController.signal.aborted) {
         entry.cancelled = true;
         input.executionResults[index] = {
@@ -304,11 +366,11 @@ export class StreamingToolExecutor {
         await this.emitToolExecutionUpdate(input.executionConfig, {
           type: 'tool_result',
           outcome: input.executionResults[index]!,
-        });
+        }, input.epoch);
         await this.emitToolExecutionUpdate(input.executionConfig, {
           type: 'tool_completed',
           outcome: input.executionResults[index]!,
-        });
+        }, input.epoch);
         continue;
       }
 
@@ -327,11 +389,32 @@ export class StreamingToolExecutor {
           batchController: input.batchController,
           executionConfig: input.executionConfig,
           executionResults: input.executionResults,
+          epoch: input.epoch,
         }),
       );
     }
 
     return dispatchedAny;
+  }
+
+  /**
+   * 复刻 executeToolCalls.ts 的 executeWithConcurrency 语义：
+   * worker-pool 模式，最多 maxConcurrency 个并发 worker。
+   */
+  private async executeWithConcurrencyLimit<T>(
+    items: T[],
+    maxConcurrency: number,
+    executor: (item: T, index: number) => Promise<void>,
+  ): Promise<void> {
+    let nextIndex = 0;
+    const workerCount = Math.min(maxConcurrency, items.length);
+    const workers = Array.from({ length: workerCount }, async () => {
+      while (nextIndex < items.length) {
+        const currentIndex = nextIndex++;
+        await executor(items[currentIndex], currentIndex);
+      }
+    });
+    await Promise.all(workers);
   }
 
   private async executeToolCall(input: {
@@ -341,11 +424,36 @@ export class StreamingToolExecutor {
     batchController: AbortController;
     executionConfig: StreamingToolExecutorConfig;
     executionResults: Array<ToolExecutionOutcome | undefined>;
+    epoch?: ExecutionEpoch;
   }): Promise<void> {
+    // Layer 1 防御性 guard：epoch 失效后不启动新工具执行
+    if (!this.isEpochActive(input.epoch)) {
+      return;
+    }
+
+    // Layer 1b 防御性 guard：batch 已 abort（如 Bash 失败）后，
+    // 写 cascade-abort result 而非启动新工具执行，与主流式路径 dispatchReadyToolCalls 语义一致。
+    if (input.batchController.signal.aborted) {
+      input.executionResults[input.index] = {
+        toolCall: input.toolCall,
+        result: this.buildCascadeAbortResult(),
+        toolUseUuid: null,
+      };
+      await this.emitToolExecutionUpdate(input.executionConfig, {
+        type: 'tool_result',
+        outcome: input.executionResults[input.index]!,
+      }, input.epoch);
+      await this.emitToolExecutionUpdate(input.executionConfig, {
+        type: 'tool_completed',
+        outcome: input.executionResults[input.index]!,
+      }, input.epoch);
+      return;
+    }
+
     await this.emitToolExecutionUpdate(input.executionConfig, {
       type: 'tool_ready',
       toolCall: input.toolCall,
-    });
+    }, input.epoch);
 
     let result: ToolResult;
     let toolUseUuid: string | null = null;
@@ -361,7 +469,7 @@ export class StreamingToolExecutor {
         batchSignal: input.batchController.signal,
         hooks: {
           onBeforeToolExec: input.executionConfig.hooks?.onBeforeToolExec,
-          onUpdate: (update) => this.emitToolExecutionUpdate(input.executionConfig, update),
+          onUpdate: (update) => this.emitToolExecutionUpdate(input.executionConfig, update, input.epoch),
         },
       });
       result = outcome.result;
@@ -377,6 +485,17 @@ export class StreamingToolExecutor {
           message: error instanceof Error ? error.message : 'Unknown error',
         },
       };
+    }
+
+    // Epoch guard: 工具执行完后检查 epoch 是否仍有效
+    if (!this.isEpochActive(input.epoch)) {
+      // 不写真实结果，补写合成 error 闭合持久化链路
+      await input.executionConfig.onAfterToolExecEpochDiscard?.({
+        toolCall: input.toolCall,
+        toolUseUuid,
+        reason: 'Discarded: execution epoch invalidated',
+      });
+      return;
     }
 
     if (

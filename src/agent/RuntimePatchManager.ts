@@ -32,6 +32,7 @@ import {
 } from '../tools/types/index.js';
 import type { ToolDiscoveryEntry } from '../tools/exposure/index.js';
 import type { LoopState } from './state/LoopState.js';
+import type { ConversationState } from './state/ConversationState.js';
 import type { LoopSkillState } from './state/TurnState.js';
 
 export class RuntimePatchManager {
@@ -278,9 +279,12 @@ export class RuntimePatchManager {
     cwd: string | undefined,
     messages: Message[],
   ): SkillActivationContext {
+    // skill activation 仅基于用户/助手/工具对话内容做文件引用分析，
+    // 排除 system 消息（catalog、tool_injection、compaction_summary 等）避免行为漂移。
+    const nonSystemMessages = messages.filter((m) => m.role !== 'system');
     return {
       cwd,
-      referencedPaths: analyzeFiles(messages).map((reference) => reference.path),
+      referencedPaths: analyzeFiles(nonSystemMessages).map((reference) => reference.path),
     };
   }
 
@@ -313,10 +317,10 @@ export class RuntimePatchManager {
   }
 
   syncDiscoverableToolsCatalogMessage(
-    messages: Message[],
+    convState: ConversationState,
     discoverableTools: ToolDiscoveryEntry[],
   ): void {
-    const existingIndex = messages.findIndex((message) =>
+    const existingIndex = convState.findIndex((message) =>
       message.role === 'system'
       && Array.isArray(message.content)
       && message.content.some(
@@ -327,7 +331,7 @@ export class RuntimePatchManager {
 
     if (discoverableTools.length === 0) {
       if (existingIndex >= 0) {
-        messages.splice(existingIndex, 1);
+        convState.removeAt(existingIndex);
       }
       return;
     }
@@ -350,20 +354,15 @@ ${summary}`,
     const catalogMessage: Message = {
       role: 'system',
       content,
+      metadata: { _systemSource: 'catalog' },
     };
 
     if (existingIndex >= 0) {
-      messages[existingIndex] = catalogMessage;
+      convState.replaceAt(existingIndex, catalogMessage);
       return;
     }
 
-    const insertIndex = messages.findIndex((message) => message.role !== 'system');
-    if (insertIndex === -1) {
-      messages.push(catalogMessage);
-      return;
-    }
-
-    messages.splice(insertIndex, 0, catalogMessage);
+    convState.insertAfterSystemBlock(catalogMessage);
   }
 
   // ===== Turn-scoped 状态清理 =====
