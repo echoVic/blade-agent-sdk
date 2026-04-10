@@ -2,6 +2,45 @@
 
 本文件记录 @blade-ai/agent-sdk 的所有重要变更。
 
+## [1.0.3] - 2026-04-10
+
+- 4e3cf2a refactor: 优化代码中的空值检查和类型安全处理
+- 6307a10 feat: 引入 ConversationState 和 ExecutionEpoch 实现消息单一事实源与事务边界
+- 6772a52 docs: 根据 1.0.x 代码更新文档和 README
+- 61841db chore: release v1.0.2
+- 2d5bac1 feat(integration): 扩展集成测试以覆盖持久化会话、MCP、子代理和多模态功能
+- 2b737f2 chore: release v1.0.1
+- 6db7dfb test: 添加集成测试文件并更新开发工具配置
+- 789024c feat(session): 添加会话恢复支持和turn_end事件转发
+- 497fe6f chore: release v1.0.0
+- ee7cb3f feat(agent): 重构后台代理管理器以支持多运行时和进度跟踪
+- 53ea992 refactor(agent): 提取运行时补丁管理和循环钩子构建逻辑
+- 53e2707 chore: 移除 ACP 相关代码和依赖
+- a84abfe feat(tools): 引入工具目录、运行时补丁和工具发现机制
+- 7c0ea04 feat(skills): 实现基于运行时补丁的技能激活系统
+- 6fcfa9e docs: 完善多个文档章节，新增自动上下文压缩等功能介绍
+- e1d56ad feat: 增强子代理与技能运行时控制，改进上下文压缩和后台代理管理
+- 6195b4f feat(agent): 改进上下文溢出恢复机制，支持嵌套错误检测
+- 5bbcda5 feat(agent): 实现流式工具执行器并修复参数预处理
+- 219a940 feat: 新增会话隔离的子代理注册表和可选内存工具
+- 92490b2 fix: enforce slug names for filesystem memory
+- 8a85354 fix: keep filesystem index internal
+- 50ae8e2 feat: add opt-in filesystem memory store
+- 14da1fd fix: enforce deterministic ordering in memory manager
+- ef61fd7 refactor: abstract memory manager over store interface
+- bf8f944 docs: add memory and subagent boundaries design spec
+- c9d2167 feat(agent): 引入 token 预算和智能工具执行规划
+- e9cfb02 chore: release v0.2.8
+- b905554 feat(session): 支持多模态消息中的图像内容持久化
+- a265f5c chore: release v0.2.7
+- c93f077 chore: release v0.2.6
+- 0805124 refactor(scripts): 重构发布工具函数以支持通过.npmrc文件进行认证
+- f8934ca chore: release v0.2.5
+- b38bd52 fix: harden release publish flow
+- c95234e chore: release v0.2.4
+- c7d6778 build: migrate from bun to pnpm and vitest
+- bea6b62 docs: refresh README overview
+- 4db7cd2 docs: add linux.do link to README
 ## [1.0.2] - 2026-04-07
 
 - 2d5bac1 feat(integration): 扩展集成测试以覆盖持久化会话、MCP、子代理和多模态功能
