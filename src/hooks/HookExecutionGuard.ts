@@ -12,11 +12,12 @@ export class HookExecutionGuard {
    * 检查是否可以执行
    */
   canExecute(toolUseId: string, eventName: string): boolean {
-    if (!this.executedHooks.has(toolUseId)) {
-      this.executedHooks.set(toolUseId, new Set());
+    let executed = this.executedHooks.get(toolUseId);
+    if (!executed) {
+      executed = new Set();
+      this.executedHooks.set(toolUseId, executed);
     }
 
-    const executed = this.executedHooks.get(toolUseId)!;
     if (executed.has(eventName)) {
       console.warn(
         `[HookGuard] Hook ${eventName} for tool ${toolUseId} already executed, skipping`

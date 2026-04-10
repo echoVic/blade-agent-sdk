@@ -61,12 +61,14 @@ export class Matcher {
    * 匹配工具名（支持字符串和数组）
    */
   private matchTools(tools: string | string[], context: MatchContext): boolean {
+    const { toolName, command, filePath } = context;
+    if (!toolName) return false;
     // 数组格式：任一匹配即可
     if (Array.isArray(tools)) {
-      return tools.some((pattern) => this.matchToolWithParams(pattern, context));
+      return tools.some((pattern) => this.matchToolWithParams(pattern, toolName, command, filePath));
     }
     // 字符串格式
-    return this.matchToolWithParams(tools, context);
+    return this.matchToolWithParams(tools, toolName, command, filePath);
   }
 
   /**
@@ -106,29 +108,32 @@ export class Matcher {
    * - "Read(*.ts)" - 匹配读取 .ts 文件的调用
    * - "Edit|Write(src/**)" - 匹配 Edit 或 Write 工具且路径在 src 目录下
    */
-  private matchToolWithParams(pattern: string, context: MatchContext): boolean {
-    const { toolName, command, filePath } = context;
-
+  private matchToolWithParams(
+    pattern: string,
+    toolName: string,
+    command?: string,
+    filePath?: string,
+  ): boolean {
     // 检查是否是参数模式
     const paramMatch = PARAM_PATTERN_REGEX.exec(pattern);
 
     if (!paramMatch) {
       // 普通模式，只匹配工具名
-      return this.matchPattern(toolName!, pattern);
+      return this.matchPattern(toolName, pattern);
     }
 
     // 参数模式: Tool(argPattern)
     const [, toolPart, argPattern] = paramMatch;
 
     // 首先匹配工具名
-    if (!this.matchPattern(toolName!, toolPart)) {
+    if (!this.matchPattern(toolName, toolPart)) {
       return false;
     }
 
     // 然后匹配参数
     // 对于 Bash 工具，参数是 command
     // 对于 Read/Edit/Write 等工具，参数是 filePath
-    const argValue = this.getArgValue(toolName!, command, filePath);
+    const argValue = this.getArgValue(toolName, command, filePath);
 
     if (!argValue) {
       // 没有参数值，无法匹配参数模式

@@ -111,15 +111,16 @@ export class StreamResponseHandler {
     };
     const index = tc.index ?? 0;
 
-    if (!accumulator.has(index)) {
-      accumulator.set(index, {
+    let entry = accumulator.get(index);
+
+    if (!entry) {
+      entry = {
         id: tc.id || '',
         name: tc.function?.name || '',
         arguments: '',
-      });
+      };
+      accumulator.set(index, entry);
     }
-
-    const entry = accumulator.get(index)!;
 
     if (tc.id && !entry.id) entry.id = tc.id;
     if (tc.function?.name && !entry.name) entry.name = tc.function.name;

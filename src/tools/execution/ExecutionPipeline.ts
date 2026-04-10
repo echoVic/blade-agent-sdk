@@ -442,14 +442,19 @@ export class ExecutionPipeline {
     try {
       this.rebuildInvocationState(state);
 
-      const validationError = await state.invocation?.validate?.(state.context);
+      const invocation = state.invocation;
+      if (!invocation) {
+        throw new Error(`Failed to build invocation for tool: ${state.tool.name}`);
+      }
+
+      const validationError = await invocation.validate?.(state.context);
       if (validationError) {
         state.result = validationErrorToToolResult(validationError);
         return;
       }
 
       const toolPermissionResult = state.tool.checkPermissions
-        ? await state.tool.checkPermissions(state.invocation!.params, state.context)
+        ? await state.tool.checkPermissions(invocation.params, state.context)
         : undefined;
       const toolPermissionUpdatedInput =
         toolPermissionResult?.behavior === 'allow'
@@ -475,9 +480,11 @@ export class ExecutionPipeline {
           toolPermissionResult.message || 'Tool-specific confirmation required';
       }
 
+      // After optional rebuild, re-extract invocation (may have been reconstructed)
+      const currentInvocation = state.invocation ?? invocation;
       state.permissionSignature = buildPermissionSignature(
         state.tool.name,
-        toParamsRecord(state.invocation!.params, state.params),
+        toParamsRecord(currentInvocation.params, state.params),
         state.tool,
       );
 

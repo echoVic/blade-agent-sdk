@@ -218,7 +218,7 @@ export class JsonlSessionStore implements SessionStore {
     const toolCalls = new Map<string, SessionToolCallState>();
     const subagentRefs: SessionSubagentRef[] = [];
     let sessionInfo: Partial<SessionInfo> = { sessionId };
-    let createdAt = toTimestamp(undefined, entries[0]!.timestamp);
+    let createdAt = toTimestamp(undefined, entries[0]?.timestamp ?? new Date().toISOString());
     let lastActivity = createdAt;
     let summary: string | undefined;
 
@@ -386,7 +386,7 @@ export class JsonlSessionStore implements SessionStore {
       messages,
       messageIds,
       lastActivity: timeline.length > 0
-        ? timeline[timeline.length - 1]!.createdAt
+        ? (timeline.at(-1)?.createdAt ?? state.createdAt)
         : state.createdAt,
       summary: this.getLastSummaryForIds(
         messageIds,

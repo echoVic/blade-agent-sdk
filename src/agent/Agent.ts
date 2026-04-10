@@ -61,8 +61,10 @@ import type {
   ChatContext,
   LoopOptions,
   LoopResult,
+  PlanApprovalResult,
   UserMessageContent,
 } from './types.js';
+import { isPlanApprovalResult } from './types.js';
 
 export interface AgentRuntimeDeps {
   executionPipeline?: ExecutionPipeline;
@@ -237,7 +239,7 @@ export class Agent {
       throw new Error(result.error?.message || '执行失败');
     }
 
-    if (result.metadata?.targetMode && context.permissionMode === 'plan') {
+    if (isPlanApprovalResult(result) && context.permissionMode === 'plan') {
       return this.executePlanApproval(
         prepared.enhancedMessage, prepared.context, prepared.loopOptions, result,
       );
@@ -461,15 +463,18 @@ export class Agent {
         yield value;
       }
 
-      if (planResult?.metadata?.targetMode) {
-        const targetMode = planResult.metadata.targetMode as PermissionMode;
-        const planContent = planResult.metadata.planContent as string | undefined;
+      if (isPlanApprovalResult(planResult)) {
+        const targetMode = planResult.metadata.targetMode;
+        const planContent = planResult.metadata.planContent;
         const newContext: ChatContext = { ...context, permissionMode: targetMode };
         const messageWithPlan = this.injectPlanContent(enhancedMessage, planContent);
         return yield* this.loopRunner.runLoopStream(messageWithPlan, newContext, loopOptions);
       }
 
-      return planResult!;
+      if (!planResult) {
+        throw new Error('Plan stream completed without result');
+      }
+      return planResult;
     }
 
     return yield* this.loopRunner.runLoopStream(enhancedMessage, context, loopOptions);
@@ -479,10 +484,10 @@ export class Agent {
     enhancedMessage: UserMessageContent,
     context: ChatContext,
     loopOptions: LoopOptions,
-    result: LoopResult,
+    result: PlanApprovalResult,
   ): Promise<string> {
-    const targetMode = result.metadata!.targetMode as PermissionMode;
-    const planContent = result.metadata!.planContent as string | undefined;
+    const targetMode = result.metadata.targetMode;
+    const planContent = result.metadata.planContent;
     this.logger.debug(`🔄 Plan 模式已批准，切换到 ${targetMode} 模式并重新执行`);
 
     const newContext: ChatContext = { ...context, permissionMode: targetMode };

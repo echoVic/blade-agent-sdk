@@ -26,10 +26,12 @@ export class TodoManager {
    */
   static getInstance(sessionId: string, configDir?: string): TodoManager {
     const key = `${sessionId}-${configDir ?? ''}`;
-    if (!TodoManager.instances.has(key)) {
-      TodoManager.instances.set(key, new TodoManager(sessionId, configDir));
+    let instance = TodoManager.instances.get(key);
+    if (!instance) {
+      instance = new TodoManager(sessionId, configDir);
+      TodoManager.instances.set(key, instance);
     }
-    return TodoManager.instances.get(key)!;
+    return instance;
   }
 
   /**

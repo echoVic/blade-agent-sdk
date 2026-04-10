@@ -26,6 +26,19 @@ export interface OAuthConfig {
   redirectUri?: string;
 }
 
+/** authenticate() 交互式授权流程所需的完整配置 */
+export interface AuthorizationOAuthConfig extends OAuthConfig {
+  clientId: string;
+  authorizationUrl: string;
+  tokenUrl: string;
+}
+
+/** refreshAccessToken() 刷新令牌所需的最小配置 */
+export interface RefreshableOAuthConfig extends OAuthConfig {
+  clientId: string;
+  tokenUrl: string;
+}
+
 /**
  * OAuth 凭证（包含令牌和元数据）
  */

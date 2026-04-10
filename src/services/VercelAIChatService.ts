@@ -316,12 +316,13 @@ export class VercelAIChatService implements IChatService {
           result.push({ role: 'assistant', content: getTextContent(msg.content) });
         }
       } else if (msg.role === 'tool') {
+        if (!msg.tool_call_id) continue;
         result.push({
           role: 'tool',
           content: [
             {
               type: 'tool-result',
-              toolCallId: msg.tool_call_id!,
+              toolCallId: msg.tool_call_id,
               toolName: msg.name || 'unknown',
               output: { type: 'text', value: getTextContent(msg.content) },
             },

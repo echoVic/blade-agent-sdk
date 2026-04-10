@@ -8,7 +8,7 @@ import * as crypto from 'crypto';
 import * as http from 'http';
 import { URL } from 'url';
 import { OAuthTokenStorage } from './OAuthTokenStorage.js';
-import type { OAuthConfig, OAuthToken, OAuthTokenResponse } from './types.js';
+import type { AuthorizationOAuthConfig, OAuthConfig, OAuthToken, OAuthTokenResponse, RefreshableOAuthConfig } from './types.js';
 
 const REDIRECT_PORT = 7777;
 const REDIRECT_PATH = '/oauth/callback';
@@ -55,12 +55,12 @@ export class OAuthProvider {
   /**
    * 构建授权 URL
    */
-  private buildAuthorizationUrl(config: OAuthConfig, pkceParams: PKCEParams): string {
+  private buildAuthorizationUrl(config: AuthorizationOAuthConfig, pkceParams: PKCEParams): string {
     const redirectUri =
       config.redirectUri || `http://localhost:${REDIRECT_PORT}${REDIRECT_PATH}`;
 
     const params = new URLSearchParams({
-      client_id: config.clientId!,
+      client_id: config.clientId,
       response_type: 'code',
       redirect_uri: redirectUri,
       state: pkceParams.state,
@@ -72,7 +72,7 @@ export class OAuthProvider {
       params.append('scope', config.scopes.join(' '));
     }
 
-    const url = new URL(config.authorizationUrl!);
+    const url = new URL(config.authorizationUrl);
     params.forEach((value, key) => {
       url.searchParams.append(key, value);
     });
@@ -87,7 +87,12 @@ export class OAuthProvider {
     return new Promise((resolve, reject) => {
       const server = http.createServer((req, res) => {
         try {
-          const url = new URL(req.url!, `http://localhost:${REDIRECT_PORT}`);
+          if (!req.url) {
+            res.writeHead(400);
+            res.end('Bad request');
+            return;
+          }
+          const url = new URL(req.url, `http://localhost:${REDIRECT_PORT}`);
 
           if (url.pathname !== REDIRECT_PATH) {
             res.writeHead(404);
@@ -169,7 +174,7 @@ export class OAuthProvider {
    * 用授权码换取令牌
    */
   private async exchangeCodeForToken(
-    config: OAuthConfig,
+    config: AuthorizationOAuthConfig,
     code: string,
     codeVerifier: string
   ): Promise<OAuthTokenResponse> {
@@ -181,14 +186,14 @@ export class OAuthProvider {
       code,
       redirect_uri: redirectUri,
       code_verifier: codeVerifier,
-      client_id: config.clientId!,
+      client_id: config.clientId,
     });
 
     if (config.clientSecret) {
       params.append('client_secret', config.clientSecret);
     }
 
-    const response = await fetch(config.tokenUrl!, {
+    const response = await fetch(config.tokenUrl, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/x-www-form-urlencoded',
@@ -209,13 +214,13 @@ export class OAuthProvider {
    * 刷新访问令牌
    */
   async refreshAccessToken(
-    config: OAuthConfig,
+    config: RefreshableOAuthConfig,
     refreshToken: string
   ): Promise<OAuthTokenResponse> {
     const params = new URLSearchParams({
       grant_type: 'refresh_token',
       refresh_token: refreshToken,
-      client_id: config.clientId!,
+      client_id: config.clientId,
     });
 
     if (config.clientSecret) {
@@ -226,7 +231,7 @@ export class OAuthProvider {
       params.append('scope', config.scopes.join(' '));
     }
 
-    const response = await fetch(config.tokenUrl!, {
+    const response = await fetch(config.tokenUrl, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/x-www-form-urlencoded',
@@ -251,12 +256,13 @@ export class OAuthProvider {
     if (!config.clientId || !config.authorizationUrl || !config.tokenUrl) {
       throw new Error('Missing required OAuth configuration');
     }
+    const authConfig: AuthorizationOAuthConfig = config as AuthorizationOAuthConfig;
 
     // 生成 PKCE 参数
     const pkceParams = this.generatePKCEParams();
 
     // 构建授权 URL
-    const authUrl = this.buildAuthorizationUrl(config, pkceParams);
+    const authUrl = this.buildAuthorizationUrl(authConfig, pkceParams);
 
     console.log('\n[OAuth] Opening browser for authentication...');
     console.log(
@@ -282,7 +288,7 @@ export class OAuthProvider {
 
     // 用授权码换取令牌
     const tokenResponse = await this.exchangeCodeForToken(
-      config,
+      authConfig,
       code,
       pkceParams.codeVerifier
     );
@@ -365,8 +371,14 @@ export class OAuthProvider {
       try {
         console.log(`[OAuth] Refreshing expired token for server: ${serverName}`);
 
+        const refreshConfig: RefreshableOAuthConfig = {
+          ...config,
+          clientId: config.clientId,
+          tokenUrl: credentials.tokenUrl,
+        };
+
         const newTokenResponse = await this.refreshAccessToken(
-          config,
+          refreshConfig,
           token.refreshToken
         );
 

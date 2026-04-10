@@ -296,14 +296,15 @@ export function buildLoopConfig(deps: LoopHookBuilderDeps): AgentLoopConfig {
     },
 
     async onAfterToolExecEpochDiscard(ctx) {
-      if (!ctx.toolUseUuid) return;
+      const toolUseUuid = ctx.toolUseUuid;
+      if (!toolUseUuid) return;
       await persistToJsonl(modelManager, context.sessionId, logger, async (contextMgr, sessionId) => {
         await contextMgr.saveToolResult(
           sessionId,
           ctx.toolCall.id,
           ctx.toolCall.function.name,
           null,
-          ctx.toolUseUuid!,
+          toolUseUuid,
           ctx.reason,
           context.subagentInfo,
         );

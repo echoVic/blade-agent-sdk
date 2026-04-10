@@ -3,7 +3,7 @@
  * 导出系统提示相关的核心功能
  */
 
-export { buildSystemPrompt } from './builder.js';
 export type { BuildSystemPromptOptions, BuildSystemPromptResult } from './builder.js';
+export { buildSystemPrompt } from './builder.js';
 
 export { createPlanModeReminder, PLAN_MODE_SYSTEM_PROMPT } from './default.js';

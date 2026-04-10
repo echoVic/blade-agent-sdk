@@ -8,32 +8,32 @@ interface Encoding {
 const encodingCache = new Map<string, Encoding>();
 
 function getEncoding(modelName: string): Encoding {
-  if (!encodingCache.has(modelName)) {
+  let encoding = encodingCache.get(modelName);
+  if (!encoding) {
     try {
-      const encoding = encodingForModel(
+      encoding = encodingForModel(
         modelName as Parameters<typeof encodingForModel>[0]
       ) as unknown as Encoding;
-      encodingCache.set(modelName, encoding);
     } catch {
       try {
-        const encoding = encodingForModel(
+        encoding = encodingForModel(
           'gpt-4' as Parameters<typeof encodingForModel>[0]
         ) as unknown as Encoding;
-        encodingCache.set(modelName, encoding);
       } catch {
         console.warn(
           `[TokenCounter] 无法为模型 ${modelName} 获取 encoding，使用粗略估算`
         );
-        encodingCache.set(modelName, {
+        encoding = {
           encode: (text: string) => {
             return new Array(Math.ceil(text.length / 4));
           },
-        });
+        };
       }
     }
+    encodingCache.set(modelName, encoding);
   }
 
-  return encodingCache.get(modelName)!;
+  return encoding;
 }
 
 function countToolCallTokens(

@@ -52,6 +52,11 @@ export function createTool<TSchema extends z.ZodSchema>(
     discoveryHint: config.exposure?.discoveryHint ?? '',
   } as const;
 
+  // Extract optional callbacks to local const so TS narrowing works inside closures
+  const validateInputFn = config.validateInput;
+  const checkPermissionsFn = config.checkPermissions;
+  const preparePermissionMatcherFn = config.preparePermissionMatcher;
+
   return {
     name: config.name,
     aliases: config.aliases,
@@ -149,18 +154,18 @@ export function createTool<TSchema extends z.ZodSchema>(
       return invocation.execute(signal || new AbortController().signal);
     },
 
-    validateInput: config.validateInput
+    validateInput: validateInputFn
       ? (params: TParams, context: ExecutionContext) =>
-          config.validateInput!(params, context)
+          validateInputFn(params, context)
       : undefined,
 
     getBehaviorHint() {
       return behaviorHint;
     },
 
-    checkPermissions: config.checkPermissions
+    checkPermissions: checkPermissionsFn
       ? (params: TParams, context: ExecutionContext) =>
-          config.checkPermissions!(params, context)
+          checkPermissionsFn(params, context)
       : undefined,
 
     resolveBehavior(params: TParams) {
@@ -174,8 +179,8 @@ export function createTool<TSchema extends z.ZodSchema>(
       };
     },
 
-    preparePermissionMatcher: config.preparePermissionMatcher
-      ? (params: TParams) => config.preparePermissionMatcher!(params)
+    preparePermissionMatcher: preparePermissionMatcherFn
+      ? (params: TParams) => preparePermissionMatcherFn(params)
       : undefined,
   };
 }

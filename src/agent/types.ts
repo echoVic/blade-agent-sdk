@@ -167,3 +167,15 @@ export interface LoopResult {
     tokenBudgetSnapshot?: TokenBudgetSnapshot;
   };
 }
+
+/** Plan 审批通过后的 LoopResult 子类型 */
+export interface PlanApprovalResult extends LoopResult {
+  metadata: LoopResult['metadata'] & {
+    targetMode: PermissionMode;
+    planContent?: string;
+  };
+}
+
+export function isPlanApprovalResult(r: LoopResult | undefined): r is PlanApprovalResult {
+  return !!r?.metadata?.targetMode;
+}

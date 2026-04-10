@@ -304,18 +304,22 @@ export class ToolRegistry {
   private updateIndexes(tool: Tool): void {
     // 更新分类索引
     if (tool.category) {
-      if (!this.categories.has(tool.category)) {
-        this.categories.set(tool.category, new Set());
+      let categorySet = this.categories.get(tool.category);
+      if (!categorySet) {
+        categorySet = new Set();
+        this.categories.set(tool.category, categorySet);
       }
-      this.categories.get(tool.category)!.add(tool.name);
+      categorySet.add(tool.name);
     }
 
     // 更新标签索引
     for (const tag of tool.tags) {
-      if (!this.tags.has(tag)) {
-        this.tags.set(tag, new Set());
+      let tagSet = this.tags.get(tag);
+      if (!tagSet) {
+        tagSet = new Set();
+        this.tags.set(tag, tagSet);
       }
-      this.tags.get(tag)!.add(tool.name);
+      tagSet.add(tool.name);
     }
   }
 

@@ -275,7 +275,10 @@ export class StreamingToolExecutor {
     );
 
     if (signal?.aborted || !this.isEpochActive(epoch)) {
-      return { chatResponse: chatResponse!, executionResults: [] };
+      return {
+        chatResponse: chatResponse ?? { content: '', toolCalls: undefined, usage: undefined },
+        executionResults: [],
+      };
     }
 
     // 复用 StreamingToolExecutor 自身的 epoch-aware executeToolCall()，
@@ -319,8 +322,12 @@ export class StreamingToolExecutor {
       );
     }
 
+    if (!chatResponse) {
+      throw new Error('Stream completed without producing a chat response');
+    }
+
     return {
-      chatResponse: chatResponse!,
+      chatResponse,
       executionResults: executionResults.filter(
         (r): r is ToolExecutionOutcome => r !== undefined,
       ),
@@ -358,18 +365,19 @@ export class StreamingToolExecutor {
 
       if (input.batchController.signal.aborted) {
         entry.cancelled = true;
-        input.executionResults[index] = {
+        const outcome: ToolExecutionOutcome = {
           toolCall: this.toFunctionToolCall(entry.id, entry.name, entry.arguments),
           result: this.buildCascadeAbortResult(),
           toolUseUuid: null,
         };
+        input.executionResults[index] = outcome;
         await this.emitToolExecutionUpdate(input.executionConfig, {
           type: 'tool_result',
-          outcome: input.executionResults[index]!,
+          outcome,
         }, input.epoch);
         await this.emitToolExecutionUpdate(input.executionConfig, {
           type: 'tool_completed',
-          outcome: input.executionResults[index]!,
+          outcome,
         }, input.epoch);
         continue;
       }
@@ -434,18 +442,19 @@ export class StreamingToolExecutor {
     // Layer 1b 防御性 guard：batch 已 abort（如 Bash 失败）后，
     // 写 cascade-abort result 而非启动新工具执行，与主流式路径 dispatchReadyToolCalls 语义一致。
     if (input.batchController.signal.aborted) {
-      input.executionResults[input.index] = {
+      const outcome: ToolExecutionOutcome = {
         toolCall: input.toolCall,
         result: this.buildCascadeAbortResult(),
         toolUseUuid: null,
       };
+      input.executionResults[input.index] = outcome;
       await this.emitToolExecutionUpdate(input.executionConfig, {
         type: 'tool_result',
-        outcome: input.executionResults[input.index]!,
+        outcome,
       }, input.epoch);
       await this.emitToolExecutionUpdate(input.executionConfig, {
         type: 'tool_completed',
-        outcome: input.executionResults[input.index]!,
+        outcome,
       }, input.epoch);
       return;
     }
@@ -525,17 +534,18 @@ export class StreamingToolExecutor {
     };
     const index = toolCallChunk.index ?? 0;
 
-    if (!accumulator.has(index)) {
-      accumulator.set(index, {
+    let entry = accumulator.get(index);
+
+    if (!entry) {
+      entry = {
         id: toolCallChunk.id || '',
         name: toolCallChunk.function?.name || '',
         arguments: '',
         dispatched: false,
         cancelled: false,
-      });
+      };
+      accumulator.set(index, entry);
     }
-
-    const entry = accumulator.get(index)!;
 
     if (toolCallChunk.id && !entry.id) {
       entry.id = toolCallChunk.id;

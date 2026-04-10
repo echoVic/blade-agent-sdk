@@ -86,16 +86,16 @@ export class ContextManager {
     this.memory = new MemoryStore(this.options.storage.maxMemorySize);
     const persistentPath = this.options.storage.persistentPath;
     const actualPersistence = persistenceEnabled && !!persistentPath;
-    this.persistent = actualPersistence
+    this.persistent = actualPersistence && persistentPath
       ? new PersistentStore(
-        persistentPath!,
+        persistentPath,
         100,
         '0.0.10',
         this.projectPath,
       )
       : new NoopPersistentStore();
-    this.sessionStore = actualPersistence
-      ? new JsonlSessionStore(persistentPath!)
+    this.sessionStore = actualPersistence && persistentPath
+      ? new JsonlSessionStore(persistentPath)
       : new NoopSessionStore();
     this.cache = new CacheStore(
       this.options.storage.cacheSize,

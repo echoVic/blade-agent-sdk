@@ -221,10 +221,11 @@ export function createPathSafetyPermissionHandler(
     const hasHighSensitivity = sensitiveFiles.some(
       ({ result }) => result.level === SensitivityLevel.HIGH,
     );
+    const signature = request.toolMeta.signature;
     const hasExplicitAllow = Boolean(
-      request.toolMeta.signature
+      signature
       && (options.explicitAllowRules ?? []).some((rule) =>
-        matchPermissionRule(request.toolMeta.signature!, rule),
+        matchPermissionRule(signature, rule),
       ),
     );
 

@@ -31,7 +31,7 @@ function extractMimeType(url: string): string | undefined {
   // Remote URLs — attempt to infer MIME type from file extension
   const extMatch = /\.(\w+)(?:[?#]|$)/.exec(url);
   if (extMatch) {
-    const ext = extMatch[1]!.toLowerCase();
+    const ext = (extMatch[1] ?? '').toLowerCase();
     const mimeMap: Record<string, string> = {
       png: 'image/png',
       jpg: 'image/jpeg',
