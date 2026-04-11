@@ -2,6 +2,10 @@
 
 本文件记录 @blade-ai/agent-sdk 的所有重要变更。
 
+## [1.0.4] - 2026-04-11
+
+- c276ab3 refactor(tools): 移除 displayContent 字段并统一使用 metadata.summary
+- 9e1cab6 docs: 添加 Memory 系统、工具来源策略和子 Agent 协作文档
 ## [1.0.3] - 2026-04-10
 
 - 4e3cf2a refactor: 优化代码中的空值检查和类型安全处理
