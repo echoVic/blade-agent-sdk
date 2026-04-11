@@ -202,10 +202,12 @@ export function createTaskTool({ registry }: { registry: SubagentRegistry }) {
           return {
             success: false,
             llmContent: `Unknown subagent type: ${subagent_type}. Available types: ${registeredNames.join(', ') || 'none'}`,
-            displayContent: `❌ 未知的 subagent 类型: ${subagent_type}\n\n可用类型: ${registeredNames.join(', ') || '无'}`,
             error: {
               type: ToolErrorType.EXECUTION_ERROR,
               message: `Unknown subagent type: ${subagent_type}`,
+            },
+            metadata: {
+              summary: '未知子 Agent 类型',
             },
           };
         }
@@ -238,10 +240,12 @@ export function createTaskTool({ registry }: { registry: SubagentRegistry }) {
           return {
             success: false,
             llmContent: 'BladeConfig is required for subagent execution',
-            displayContent: '❌ 缺少 BladeConfig 配置',
             error: {
               type: ToolErrorType.EXECUTION_ERROR,
               message: 'BladeConfig is required',
+            },
+            metadata: {
+              summary: '配置缺失',
             },
           };
         }
@@ -312,11 +316,13 @@ export function createTaskTool({ registry }: { registry: SubagentRegistry }) {
         return {
           success: false,
           llmContent: `Subagent execution error: ${getErrorMessage(error)}`,
-          displayContent: `❌ Subagent 执行异常\n\n${errorMessage}`,
           error: {
             type: ToolErrorType.EXECUTION_ERROR,
             message: getErrorMessage(error),
             details: error,
+          },
+          metadata: {
+            summary: '子 Agent 执行失败',
           },
         };
       }
@@ -347,16 +353,8 @@ function buildTaskResult(
     return {
       success: true,
       llmContent: result.message,
-      displayContent:
-        `✅ Subagent 任务完成\n\n` +
-        `类型: ${subagentType}\n` +
-        `任务: ${description}\n` +
-        `Agent ID: ${result.agentId || 'N/A'}\n` +
-        `耗时: ${duration}ms\n` +
-        `工具调用: ${result.stats?.toolCalls || 0} 次\n` +
-        `Token: ${result.stats?.tokens || 0}\n\n` +
-        `结果:\n${outputPreview}`,
       metadata: {
+        summary: '子 Agent 执行完成',
         subagent_type: subagentType,
         description,
         duration,
@@ -372,18 +370,12 @@ function buildTaskResult(
   return {
     success: false,
     llmContent: `Subagent execution failed: ${result.error}`,
-    displayContent:
-      `⚠️ Subagent 任务失败\n\n` +
-      `类型: ${subagentType}\n` +
-      `任务: ${description}\n` +
-      `Agent ID: ${result.agentId || 'N/A'}\n` +
-      `耗时: ${duration}ms\n` +
-      `错误: ${result.error}`,
     error: {
       type: ToolErrorType.EXECUTION_ERROR,
       message: result.error || 'Unknown error',
     },
     metadata: {
+      summary: '子 Agent 执行失败',
       subagentSessionId,
       subagentType,
       subagentStatus: 'failed' as const,
@@ -408,10 +400,12 @@ function handleBackgroundExecution(
     return {
       success: false,
       llmContent: 'BladeConfig is required for background agent execution',
-      displayContent: '❌ 缺少 BladeConfig 配置',
       error: {
         type: ToolErrorType.EXECUTION_ERROR,
         message: 'BladeConfig is required',
+      },
+      metadata: {
+        summary: '配置缺失',
       },
     };
   }
@@ -421,10 +415,12 @@ function handleBackgroundExecution(
     return {
       success: false,
       llmContent: 'BackgroundAgentManager not available in execution context',
-      displayContent: '❌ 后台 Agent 管理器不可用',
       error: {
         type: ToolErrorType.EXECUTION_ERROR,
         message: 'BackgroundAgentManager not injected via ExecutionContext',
+      },
+      metadata: {
+        summary: '操作失败',
       },
     };
   }
@@ -448,13 +444,8 @@ function handleBackgroundExecution(
       status: 'running',
       message: `Agent started in background. Use TaskOutput(task_id: "${agentId}") to retrieve results.`,
     },
-    displayContent:
-      `🚀 后台 Agent 已启动\n\n` +
-      `Agent ID: ${agentId}\n` +
-      `类型: ${subagentConfig.name}\n` +
-      `任务: ${description}\n\n` +
-      `💡 使用 TaskOutput 工具获取结果`,
     metadata: {
+      summary: '后台 Agent 已启动',
       agent_id: agentId,
       subagent_type: subagentConfig.name,
       description,
@@ -483,10 +474,12 @@ function handleResume(
     return {
       success: false,
       llmContent: 'BladeConfig is required for agent resume',
-      displayContent: '❌ 缺少 BladeConfig 配置',
       error: {
         type: ToolErrorType.EXECUTION_ERROR,
         message: 'BladeConfig is required',
+      },
+      metadata: {
+        summary: '配置缺失',
       },
     };
   }
@@ -496,10 +489,12 @@ function handleResume(
     return {
       success: false,
       llmContent: 'BackgroundAgentManager not available in execution context',
-      displayContent: '❌ 后台 Agent 管理器不可用',
       error: {
         type: ToolErrorType.EXECUTION_ERROR,
         message: 'BackgroundAgentManager not injected via ExecutionContext',
+      },
+      metadata: {
+        summary: '操作失败',
       },
     };
   }
@@ -509,10 +504,12 @@ function handleResume(
     return {
       success: false,
       llmContent: `Cannot resume agent ${agentId}: session not found`,
-      displayContent: `❌ 无法恢复 Agent: ${agentId}\n\n会话不存在或已过期`,
       error: {
         type: ToolErrorType.EXECUTION_ERROR,
         message: `Agent session not found: ${agentId}`,
+      },
+      metadata: {
+        summary: '子 Agent 执行失败',
       },
     };
   }
@@ -521,10 +518,12 @@ function handleResume(
     return {
       success: false,
       llmContent: `Cannot resume agent ${agentId}: still running`,
-      displayContent: `❌ 无法恢复 Agent: ${agentId}\n\nAgent 仍在运行中，我会使用 TaskOutput 获取结果`,
       error: {
         type: ToolErrorType.EXECUTION_ERROR,
         message: `Agent is still running: ${agentId}`,
+      },
+      metadata: {
+        summary: '子 Agent 执行失败',
       },
     };
   }
@@ -544,10 +543,12 @@ function handleResume(
     return {
       success: false,
       llmContent: `Failed to resume agent ${agentId}`,
-      displayContent: `❌ 恢复 Agent 失败: ${agentId}`,
       error: {
         type: ToolErrorType.EXECUTION_ERROR,
         message: `Failed to resume agent: ${agentId}`,
+      },
+      metadata: {
+        summary: '子 Agent 执行失败',
       },
     };
   }
@@ -560,14 +561,8 @@ function handleResume(
       resumed_from: agentId,
       message: `Agent resumed in background. Use TaskOutput(task_id: "${newAgentId}") to retrieve results.`,
     },
-    displayContent:
-      `🔄 Agent 已恢复执行\n\n` +
-      `Agent ID: ${newAgentId}\n` +
-      `恢复自: ${agentId}\n` +
-      `类型: ${subagentConfig.name}\n` +
-      `任务: ${description}\n\n` +
-      `💡 使用 TaskOutput 工具获取结果`,
     metadata: {
+      summary: '子 Agent 恢复完成',
       agent_id: newAgentId,
       resumed_from: agentId,
       subagent_type: subagentConfig.name,

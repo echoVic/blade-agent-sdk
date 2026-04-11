@@ -29,15 +29,19 @@ Use when:
         return {
           success: false,
           llmContent: `Task #${taskId} not found`,
-          displayContent: `Task #${taskId} not found`,
           error: { type: ToolErrorType.VALIDATION_ERROR, message: `Task ${taskId} not found` },
+          metadata: {
+            summary: '未找到任务',
+          },
         };
       }
       return {
         success: true,
         llmContent: task,
-        displayContent: `Task #${task.id}: ${task.subject} [${task.status}]`,
-        metadata: { task },
+        metadata: {
+          summary: `获取任务: ${taskId}`,
+          task,
+        },
       };
     },
   });

@@ -28,10 +28,12 @@ This tool searches deferred/discoverable tools, returns the best matches, and ac
       return {
         success: false,
         llmContent: 'Tool discovery is unavailable because no tool registry was provided.',
-        displayContent: '❌ Tool discovery is unavailable in this runtime',
         error: {
           type: ToolErrorType.EXECUTION_ERROR,
           message: 'Tool registry is unavailable',
+        },
+        metadata: {
+          summary: '工具发现不可用',
         },
       };
     }
@@ -47,7 +49,9 @@ This tool searches deferred/discoverable tools, returns the best matches, and ac
       return {
         success: true,
         llmContent: `No hidden tools matched "${params.query}".`,
-        displayContent: `No hidden tools matched "${params.query}".`,
+        metadata: {
+          summary: '未找到匹配工具',
+        },
       };
     }
 
@@ -66,7 +70,6 @@ This tool searches deferred/discoverable tools, returns the best matches, and ac
     return {
       success: true,
       llmContent: `Activated deferred tools:\n${summary}`,
-      displayContent: `Loaded ${activatedNames.length} tool(s): ${activatedNames.join(', ')}`,
       effects: [
         {
           type: 'runtimePatch',
@@ -75,6 +78,7 @@ This tool searches deferred/discoverable tools, returns the best matches, and ac
       ],
       metadata: {
         discoveredTools: activatedNames,
+        summary: `发现 ${activatedNames.length} 个工具`,
       },
       runtimePatch,
     };

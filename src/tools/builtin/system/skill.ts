@@ -14,8 +14,8 @@ import { ToolErrorType, ToolKind } from '../../types/ToolTypes.js';
  *
  * Skills 是动态 Prompt 扩展机制，允许 AI 根据用户请求自动调用专业能力。
  * 执行 Skill 时，返回双消息：
- * - displayContent: 可见的加载提示（用户看到）
  * - llmContent: 完整的 Skill 指令（发送给 LLM）
+ * - metadata.summary: 简短的加载提示
  */
 export const skillTool = createTool({
   name: 'Skill',
@@ -70,10 +70,12 @@ Important:
             .map((s) => s.name)
             .join(', ') || 'none'
         }`,
-        displayContent: `❌ Skill "${skill}" not found`,
         error: {
           type: ToolErrorType.VALIDATION_ERROR,
           message: `Skill "${skill}" is not registered`,
+        },
+        metadata: {
+          summary: '未找到 Skill',
         },
       };
     }
@@ -89,10 +91,12 @@ Important:
       return {
         success: false,
         llmContent: `Skill "${skill}" is not available in the current context. Required path conditions: ${requiredPaths}`,
-        displayContent: `❌ Skill "${skill}" is not available here`,
         error: {
           type: ToolErrorType.VALIDATION_ERROR,
           message: `Skill "${skill}" conditions are not satisfied`,
+        },
+        metadata: {
+          summary: 'Skill 不可用',
         },
       };
     }
@@ -103,10 +107,12 @@ Important:
       return {
         success: false,
         llmContent: `Failed to load skill "${skill}" content`,
-        displayContent: `❌ Failed to load skill "${skill}"`,
         error: {
           type: ToolErrorType.EXECUTION_ERROR,
           message: `Could not read SKILL.md for "${skill}"`,
+        },
+        metadata: {
+          summary: 'Skill 加载失败',
         },
       };
     }
@@ -149,7 +155,6 @@ Important:
     return {
       success: true,
       llmContent: skillInstructions,
-      displayContent: `<command-message>The "${skill}" skill is loading</command-message>`,
       effects: [
         {
           type: 'runtimePatch',
@@ -161,6 +166,7 @@ Important:
         skillName: skill,
         basePath: content.metadata.basePath,
         version: content.metadata.version,
+        summary: `加载 Skill: ${skill}`,
       },
       runtimePatch,
     };

@@ -488,7 +488,6 @@ export class StreamingToolExecutor {
       result = {
         success: false,
         llmContent: '',
-        displayContent: '',
         error: {
           type: ToolErrorType.EXECUTION_ERROR,
           message: error instanceof Error ? error.message : 'Unknown error',
@@ -598,7 +597,6 @@ export class StreamingToolExecutor {
     return {
       success: false,
       llmContent: 'Tool execution cancelled because a sibling Bash tool failed',
-      displayContent: 'Tool execution cancelled because a sibling Bash tool failed',
       error: {
         type: ToolErrorType.EXECUTION_ERROR,
         message: 'Cancelled due to sibling Bash failure',

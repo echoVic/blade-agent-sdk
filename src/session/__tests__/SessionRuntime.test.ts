@@ -49,7 +49,6 @@ const customTool: ToolDefinition<{ value?: string }> = {
     return {
       success: true,
       llmContent: 'ok',
-      displayContent: 'ok',
     };
   },
 };
@@ -210,7 +209,6 @@ describe('SessionRuntime', () => {
     const execute = vi.fn(async (params: { value?: string }): Promise<ToolResult> => ({
       success: true,
       llmContent: params.value || 'missing',
-      displayContent: params.value || 'missing',
     }));
 
     const runtime = new SessionRuntime(
@@ -317,7 +315,6 @@ describe('SessionRuntime', () => {
     const execute = vi.fn(async (params: { value?: string }): Promise<ToolResult> => ({
       success: true,
       llmContent: params.value || 'missing',
-      displayContent: params.value || 'missing',
     }));
 
     const runtime = new SessionRuntime(

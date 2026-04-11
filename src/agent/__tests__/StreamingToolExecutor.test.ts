@@ -37,7 +37,6 @@ function createExecutor(options: {
       ?? (async (toolName: string) => ({
         success: true,
         llmContent: `result:${toolName}`,
-        displayContent: `result:${toolName}`,
       })),
   );
 
@@ -171,7 +170,6 @@ describe('StreamingToolExecutor', () => {
     toolGate.resolve({
       success: true,
       llmContent: 'file contents',
-      displayContent: 'file contents',
     });
 
     const { executionResults } = await promise;
@@ -279,7 +277,6 @@ describe('StreamingToolExecutor', () => {
         return {
           success: true,
           llmContent: 'done',
-          displayContent: 'done',
           runtimePatch: {
             scope: 'turn',
             source: 'tool',
@@ -397,7 +394,6 @@ describe('StreamingToolExecutor', () => {
     fastGate.resolve({
       success: true,
       llmContent: 'fast done',
-      displayContent: 'fast done',
     });
     await tick();
 
@@ -408,7 +404,6 @@ describe('StreamingToolExecutor', () => {
     slowGate.resolve({
       success: true,
       llmContent: 'slow done',
-      displayContent: 'slow done',
     });
 
     const { executionResults } = await promise;
@@ -461,7 +456,6 @@ describe('StreamingToolExecutor', () => {
           return {
             success: false,
             llmContent: '',
-            displayContent: '',
             error: {
               type: 'execution_error',
               message: 'bash failed',
@@ -546,7 +540,6 @@ describe('StreamingToolExecutor', () => {
         return {
           success: true,
           llmContent: 'b',
-          displayContent: 'b',
         };
       },
     });
@@ -578,7 +571,6 @@ describe('StreamingToolExecutor', () => {
     firstToolGate.resolve({
       success: true,
       llmContent: 'a',
-      displayContent: 'a',
     });
 
     const { executionResults } = await promise;
@@ -707,7 +699,6 @@ describe('StreamingToolExecutor', () => {
     toolGate.resolve({
       success: true,
       llmContent: 'done',
-      displayContent: 'done',
     });
 
     await expect(promise).rejects.toThrow('maximum context length exceeded');
@@ -774,7 +765,6 @@ describe('StreamingToolExecutor', () => {
     toolGate.resolve({
       success: true,
       llmContent: 'finished',
-      displayContent: 'finished',
     });
 
     const result = await promise;
@@ -790,7 +780,6 @@ describe('StreamingToolExecutor', () => {
     ): Promise<ToolResult> => ({
       success: true,
       llmContent: 'done',
-      displayContent: 'done',
       metadata: {
         observedSkillActivationPaths: (context as { skillActivationPaths?: string[] } | undefined)?.skillActivationPaths,
       },

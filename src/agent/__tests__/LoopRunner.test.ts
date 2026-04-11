@@ -83,7 +83,6 @@ function createMockPipeline(): ExecutionPipeline {
     execute: vi.fn(async (toolName: string) => ({
       success: true,
       llmContent: `Result of ${toolName}`,
-      displayContent: `Result of ${toolName}`,
     })),
   } as unknown as ExecutionPipeline;
 }
@@ -266,7 +265,6 @@ describe('LoopRunner', () => {
             return {
               success: true,
               llmContent: 'Skill activated',
-              displayContent: 'Skill activated',
               runtimePatch: {
                 scope: 'session',
                 source: 'skill',
@@ -284,7 +282,6 @@ describe('LoopRunner', () => {
           return {
             success: true,
             llmContent: `Result of ${toolName}`,
-            displayContent: `Result of ${toolName}`,
           };
         }),
       } as unknown as ExecutionPipeline;
@@ -326,7 +323,6 @@ describe('LoopRunner', () => {
           execute: async () => ({
             success: true,
             llmContent: 'builtin',
-            displayContent: 'builtin',
           }),
         }),
         {
@@ -346,7 +342,6 @@ describe('LoopRunner', () => {
           execute: async () => ({
             success: true,
             llmContent: 'remote',
-            displayContent: 'remote',
           }),
         }),
         {
@@ -362,7 +357,6 @@ describe('LoopRunner', () => {
         execute: vi.fn(async (toolName: string) => ({
           success: true,
           llmContent: `Result of ${toolName}`,
-          displayContent: `Result of ${toolName}`,
         })),
       } as unknown as ExecutionPipeline;
 
@@ -464,7 +458,6 @@ describe('LoopRunner', () => {
         execute: vi.fn(async () => ({
           success: true,
           llmContent: 'Skill activated',
-          displayContent: 'Skill activated',
           runtimePatch: {
             scope: 'session',
             source: 'skill',
@@ -535,7 +528,7 @@ describe('LoopRunner', () => {
         kind: ToolKind.ReadOnly,
         description: { short: 'Read tool' },
         schema: z.object({}),
-        execute: async () => ({ success: true, llmContent: '', displayContent: '' }),
+        execute: async () => ({ success: true, llmContent: '' }),
       });
       const discoverTool = createTool({
         name: 'DiscoverTools',
@@ -543,7 +536,7 @@ describe('LoopRunner', () => {
         kind: ToolKind.ReadOnly,
         description: { short: 'Discover hidden tools' },
         schema: z.object({ query: z.string() }),
-        execute: async () => ({ success: true, llmContent: '', displayContent: '' }),
+        execute: async () => ({ success: true, llmContent: '' }),
       });
       const heavyInspectTool = createTool({
         name: 'HeavyInspect',
@@ -552,7 +545,7 @@ describe('LoopRunner', () => {
         description: { short: 'Heavy inspection tool' },
         exposure: { mode: 'deferred', discoveryHint: 'Use for heavyweight inspection.' },
         schema: z.object({}),
-        execute: async () => ({ success: true, llmContent: '', displayContent: '' }),
+        execute: async () => ({ success: true, llmContent: '' }),
       });
 
       const pipeline = {
@@ -567,7 +560,6 @@ describe('LoopRunner', () => {
             return {
               success: true,
               llmContent: 'Loaded hidden tool',
-              displayContent: 'Loaded hidden tool',
               runtimePatch: {
                 scope: 'session',
                 source: 'tool',
@@ -580,7 +572,6 @@ describe('LoopRunner', () => {
           return {
             success: true,
             llmContent: `Result of ${toolName}`,
-            displayContent: `Result of ${toolName}`,
           };
         }),
       } as unknown as ExecutionPipeline;
@@ -665,7 +656,6 @@ describe('LoopRunner', () => {
         execute: vi.fn(async () => ({
           success: true,
           llmContent: 'Model switched',
-          displayContent: 'Model switched',
           runtimePatch: {
             scope: 'session',
             source: 'tool',
@@ -744,7 +734,6 @@ describe('LoopRunner', () => {
         execute: vi.fn(async () => ({
           success: true,
           llmContent: 'Legacy result',
-          displayContent: 'Legacy result',
           metadata: {
             allowedTools: ['Read'],
             modelId: 'model-b',
@@ -823,7 +812,6 @@ describe('LoopRunner', () => {
         execute: vi.fn(async () => ({
           success: true,
           llmContent: 'Legacy skill result',
-          displayContent: 'Legacy skill result',
           metadata: {
             allowedTools: ['Read'],
             modelId: 'model-b',
@@ -902,7 +890,6 @@ describe('LoopRunner', () => {
         execute: vi.fn(async () => ({
           success: false,
           llmContent: 'failed',
-          displayContent: 'failed',
           error: {
             type: 'execution_error',
             message: 'boom',
@@ -994,7 +981,6 @@ describe('LoopRunner', () => {
         execute: vi.fn(async () => ({
           success: true,
           llmContent: 'Skill activated',
-          displayContent: 'Skill activated',
           runtimePatch: {
             scope: 'turn',
             source: 'skill',
@@ -1094,7 +1080,6 @@ describe('LoopRunner', () => {
             return {
               success: true,
               llmContent: 'Skill activated',
-              displayContent: 'Skill activated',
               runtimePatch: {
                 scope: 'session',
                 source: 'skill',
@@ -1113,7 +1098,6 @@ describe('LoopRunner', () => {
           return {
             success: true,
             llmContent: 'Skill switched',
-            displayContent: 'Skill switched',
             runtimePatch: {
               scope: 'session',
               source: 'skill',
@@ -1212,7 +1196,6 @@ describe('LoopRunner', () => {
         execute: vi.fn(async () => ({
           success: true,
           llmContent: 'Skill activated',
-          displayContent: 'Skill activated',
           runtimePatch: {
             scope: 'session',
             source: 'skill',
@@ -1306,7 +1289,6 @@ describe('LoopRunner', () => {
         execute: vi.fn(async () => ({
           success: true,
           llmContent: 'Skill activated',
-          displayContent: 'Skill activated',
           runtimePatch: {
             scope: 'turn',
             source: 'skill',
@@ -1400,7 +1382,6 @@ describe('LoopRunner', () => {
         execute: vi.fn(async () => ({
           success: true,
           llmContent: 'Skill activated',
-          displayContent: 'Skill activated',
           runtimePatch: {
             scope: 'session',
             source: 'skill',
@@ -1526,7 +1507,6 @@ describe('LoopRunner', () => {
             return {
               success: true,
               llmContent: 'Skill activated',
-              displayContent: 'Skill activated',
               runtimePatch: {
                 scope: 'session',
                 source: 'skill',
@@ -1546,7 +1526,6 @@ describe('LoopRunner', () => {
           return {
             success: true,
             llmContent: 'Environment inspected',
-            displayContent: 'Environment inspected',
           };
         }),
       } as unknown as ExecutionPipeline;
@@ -1662,7 +1641,6 @@ describe('LoopRunner', () => {
         execute: vi.fn(async (toolName: string) => ({
           success: true,
           llmContent: `${toolName} applied`,
-          displayContent: `${toolName} applied`,
           runtimePatch: {
             scope: 'session',
             source: 'tool',
@@ -1823,7 +1801,6 @@ describe('LoopRunner', () => {
             return {
               success: true,
               llmContent: 'Patch env A applied',
-              displayContent: 'Patch env A applied',
               runtimePatch: {
                 scope: 'session',
                 source: 'tool',
@@ -1839,7 +1816,6 @@ describe('LoopRunner', () => {
             return {
               success: true,
               llmContent: 'Patch env B applied',
-              displayContent: 'Patch env B applied',
               runtimePatch: {
                 scope: 'session',
                 source: 'tool',
@@ -1855,7 +1831,6 @@ describe('LoopRunner', () => {
           return {
             success: true,
             llmContent: 'Environment inspected',
-            displayContent: 'Environment inspected',
           };
         }),
       } as unknown as ExecutionPipeline;
@@ -1991,7 +1966,6 @@ describe('LoopRunner', () => {
             return {
               success: true,
               llmContent: 'Browser bootstrapped',
-              displayContent: 'Browser bootstrapped',
               contextPatch: {
                 scope: 'session',
                 context: {
@@ -2011,7 +1985,6 @@ describe('LoopRunner', () => {
           return {
             success: true,
             llmContent: 'Browser inspected',
-            displayContent: 'Browser inspected',
           };
         }),
       } as unknown as ExecutionPipeline;
@@ -2085,7 +2058,6 @@ describe('LoopRunner', () => {
         execute: vi.fn(async () => ({
           success: true,
           llmContent: 'Skill activated',
-          displayContent: 'Skill activated',
           newMessages: [
             { role: 'assistant', content: 'Injected assistant context' },
             { role: 'system', content: 'Injected system context' },
@@ -2213,7 +2185,6 @@ describe('LoopRunner', () => {
             return {
               success: true,
               llmContent: 'Browser bootstrapped',
-              displayContent: 'Browser bootstrapped',
               effects: [
                 {
                   type: 'contextPatch' as const,
@@ -2244,7 +2215,6 @@ describe('LoopRunner', () => {
           return {
             success: true,
             llmContent: 'Browser inspected',
-            displayContent: 'Browser inspected',
           };
         }),
       } as unknown as ExecutionPipeline;

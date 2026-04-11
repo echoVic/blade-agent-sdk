@@ -46,10 +46,12 @@ The resource content can be text (returned as-is) or binary data (returned as ba
         return {
           success: false,
           llmContent: 'No MCP servers are currently connected.',
-          displayContent: 'No MCP servers connected',
           error: {
             message: 'No MCP servers connected',
             type: ToolErrorType.EXECUTION_ERROR,
+          },
+          metadata: {
+            summary: '无 MCP 服务器',
           },
         };
       }
@@ -88,33 +90,31 @@ The resource content can be text (returned as-is) or binary data (returned as ba
         return {
           success: false,
           llmContent: errorMessage + (errors.length > 0 ? `\n\nErrors:\n${errors.join('\n')}` : ''),
-          displayContent: 'Resource not found',
           error: {
             message: errorMessage,
             type: ToolErrorType.EXECUTION_ERROR,
           },
+          metadata: {
+            summary: '未找到 MCP 资源',
+          },
         };
       }
 
-      let displayContent: string;
       let llmContent: string;
 
       if (content.text !== undefined) {
-        displayContent = `Read ${content.text.length} characters from ${params.uri}`;
         llmContent = content.text;
       } else if (content.blob !== undefined) {
-        displayContent = `Read binary resource from ${params.uri} (base64 encoded)`;
         llmContent = `[Binary content, base64 encoded, ${content.blob.length} characters]\n\n${content.blob.slice(0, 1000)}${content.blob.length > 1000 ? '...' : ''}`;
       } else {
-        displayContent = `Read resource from ${params.uri}`;
         llmContent = JSON.stringify(content, null, 2);
       }
 
       return {
         success: true,
         llmContent,
-        displayContent,
         metadata: {
+          summary: `读取 MCP 资源: ${params.uri}`,
           uri: params.uri,
           serverName: foundServer,
           mimeType: content.mimeType,
@@ -128,10 +128,12 @@ The resource content can be text (returned as-is) or binary data (returned as ba
       return {
         success: false,
         llmContent: `Failed to read MCP resource: ${message}`,
-        displayContent: 'Failed to read resource',
         error: {
           message,
           type: ToolErrorType.EXECUTION_ERROR,
+        },
+        metadata: {
+          summary: 'MCP 资源读取失败',
         },
       };
     }

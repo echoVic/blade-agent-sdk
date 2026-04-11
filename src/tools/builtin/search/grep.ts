@@ -628,34 +628,6 @@ function parseContentLine(line: string): GrepMatch | null {
 }
 
 /**
- * 格式化显示消息
- */
-function formatDisplayMessage(metadata: GrepMetadata): string {
-  const { search_pattern, search_path, output_mode, total_matches, strategy } =
-    metadata;
-
-  let message = `✅ 在 ${search_path} 中搜索 "${search_pattern}"`;
-
-  if (strategy) {
-    message += `\n🔧 使用策略: ${strategy}`;
-  }
-
-  switch (output_mode) {
-    case 'files_with_matches':
-      message += `\n📁 找到 ${total_matches} 个包含匹配内容的文件`;
-      break;
-    case 'count':
-      message += `\n🔢 统计了 ${total_matches} 个文件的匹配数量`;
-      break;
-    case 'content':
-      message += `\n📝 找到 ${total_matches} 个匹配行`;
-      break;
-  }
-
-  return message;
-}
-
-/**
  * GrepTool - 内容搜索工具
  * 支持多级降级策略：ripgrep -> git grep -> system grep -> JavaScript fallback
  */
@@ -775,7 +747,6 @@ export const grepTool = createTool({
         return {
           success: false,
           llmContent: 'No filesystem access in the current runtime context.',
-          displayContent: '❌ 当前上下文未启用文件系统访问',
           error: {
             type: ToolErrorType.PERMISSION_DENIED,
             message: 'No filesystem access in current context',
@@ -788,7 +759,6 @@ export const grepTool = createTool({
         return {
           success: false,
           llmContent: 'No search path provided and no filesystem working directory is available.',
-          displayContent: '❌ 未提供搜索路径，且当前上下文没有可用的工作目录',
           error: {
             type: ToolErrorType.VALIDATION_ERROR,
             message: 'No search path available',
@@ -926,13 +896,13 @@ export const grepTool = createTool({
         head_limit: head_limit,
         strategy,
         exit_code: result?.exitCode,
+        summary: `搜索 "${pattern}": 找到 ${matches.length} 个匹配`,
       };
 
       if (result && result.exitCode !== 0 && result.stderr) {
         return {
           success: false,
           llmContent: `Search execution failed: ${result.stderr}`,
-          displayContent: `❌ 搜索执行失败: ${result.stderr}`,
           error: {
             type: ToolErrorType.EXECUTION_ERROR,
             message: result.stderr,
@@ -940,12 +910,9 @@ export const grepTool = createTool({
         };
       }
 
-      const displayMessage = formatDisplayMessage(metadata);
-
       return {
         success: true,
         llmContent: matches,
-        displayContent: displayMessage,
         metadata,
       };
     } catch (error) {
@@ -953,7 +920,6 @@ export const grepTool = createTool({
         return {
           success: false,
           llmContent: 'Search aborted',
-          displayContent: '⚠️ 搜索被用户中止',
           error: {
             type: ToolErrorType.EXECUTION_ERROR,
             message: '操作被中止',
@@ -964,7 +930,6 @@ export const grepTool = createTool({
       return {
         success: false,
         llmContent: `Search failed: ${getErrorMessage(error)}`,
-        displayContent: `❌ 搜索失败: ${getErrorMessage(error)}`,
         error: {
           type: ToolErrorType.EXECUTION_ERROR,
           message: getErrorMessage(error),

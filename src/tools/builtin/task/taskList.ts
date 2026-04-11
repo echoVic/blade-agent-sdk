@@ -36,10 +36,10 @@ Prefer working on tasks in ID order (lowest ID first) when multiple tasks are av
       return {
         success: true,
         llmContent: summary,
-        displayContent: tasks.length === 0
-          ? 'No tasks.'
-          : tasks.map((t) => `#${t.id} [${t.status}] ${t.subject}`).join('\n'),
-        metadata: { tasks: summary },
+        metadata: {
+          summary: `列出 ${tasks.length} 个任务`,
+          tasks: summary,
+        },
       };
     },
   });

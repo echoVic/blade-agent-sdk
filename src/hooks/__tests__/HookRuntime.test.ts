@@ -114,7 +114,6 @@ describe('HookRuntime', () => {
     const result: ToolResult = {
       success: true,
       llmContent: 'original output',
-      displayContent: 'original output',
     };
     const post = await runtime.applyPostToolUse('Read', pre.updatedInput, result, {
       toolUseId: 'tool-1',
@@ -138,7 +137,6 @@ describe('HookRuntime', () => {
       }),
     );
     expect(post.result.llmContent).toBe('callback output');
-    expect(post.result.displayContent).toBe('callback output');
     expect(hookManager.executePostToolHooks).toHaveBeenCalledWith(
       'Read',
       'tool-1',

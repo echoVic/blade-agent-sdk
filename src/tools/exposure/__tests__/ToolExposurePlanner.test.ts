@@ -22,7 +22,7 @@ describe('ToolExposurePlanner', () => {
         kind: ToolKind.ReadOnly,
         description: { short: 'Read tool' },
         schema: z.object({}),
-        execute: async () => ({ success: true, llmContent: '', displayContent: '' }),
+        execute: async () => ({ success: true, llmContent: '' }),
       }),
     );
     registerTool(
@@ -33,7 +33,7 @@ describe('ToolExposurePlanner', () => {
         kind: ToolKind.Write,
         description: { short: 'Write tool' },
         schema: z.object({}),
-        execute: async () => ({ success: true, llmContent: '', displayContent: '' }),
+        execute: async () => ({ success: true, llmContent: '' }),
       }),
     );
 
@@ -63,7 +63,7 @@ describe('ToolExposurePlanner', () => {
         }),
         description: { short: 'Hinted readonly tool' },
         schema: z.object({}),
-        execute: async () => ({ success: true, llmContent: '', displayContent: '' }),
+        execute: async () => ({ success: true, llmContent: '' }),
       }),
     );
     registerTool(
@@ -78,7 +78,7 @@ describe('ToolExposurePlanner', () => {
         }),
         description: { short: 'Hinted non-readonly tool' },
         schema: z.object({}),
-        execute: async () => ({ success: true, llmContent: '', displayContent: '' }),
+        execute: async () => ({ success: true, llmContent: '' }),
       }),
     );
 
@@ -105,7 +105,7 @@ describe('ToolExposurePlanner', () => {
           kind: name === 'Read' ? ToolKind.ReadOnly : ToolKind.Execute,
           description: { short: `${name} tool` },
           schema: z.object({}),
-          execute: async () => ({ success: true, llmContent: '', displayContent: '' }),
+          execute: async () => ({ success: true, llmContent: '' }),
         }),
       );
     }
@@ -142,7 +142,7 @@ describe('ToolExposurePlanner', () => {
           discoveryHint: 'Use when you need heavyweight inspection.',
         },
         schema: z.object({}),
-        execute: async () => ({ success: true, llmContent: '', displayContent: '' }),
+        execute: async () => ({ success: true, llmContent: '' }),
       }),
     );
     registerTool(
@@ -157,7 +157,7 @@ describe('ToolExposurePlanner', () => {
           alwaysLoad: true,
         },
         schema: z.object({}),
-        execute: async () => ({ success: true, llmContent: '', displayContent: '' }),
+        execute: async () => ({ success: true, llmContent: '' }),
       }),
     );
 
@@ -191,7 +191,7 @@ describe('ToolExposurePlanner', () => {
       kind: ToolKind.ReadOnly,
       description: { short: 'Builtin tool' },
       schema: z.object({}),
-      execute: async () => ({ success: true, llmContent: '', displayContent: '' }),
+      execute: async () => ({ success: true, llmContent: '' }),
     });
     const remoteMcpTool = createTool({
       name: 'RemoteTool',
@@ -199,7 +199,7 @@ describe('ToolExposurePlanner', () => {
       kind: ToolKind.ReadOnly,
       description: { short: 'Remote tool' },
       schema: z.object({}),
-      execute: async () => ({ success: true, llmContent: '', displayContent: '' }),
+      execute: async () => ({ success: true, llmContent: '' }),
     });
 
     catalog.register(builtinTool, {
@@ -241,7 +241,7 @@ describe('ToolExposurePlanner', () => {
         mode: 'deferred',
       },
       schema: z.object({}),
-      execute: async () => ({ success: true, llmContent: '', displayContent: '' }),
+      execute: async () => ({ success: true, llmContent: '' }),
     });
 
     catalog.register(deferredTool, {

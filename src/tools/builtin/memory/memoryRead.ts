@@ -53,9 +53,11 @@ Operations:
           return {
             success: true,
             llmContent: summaries,
-            displayContent: summaries.length === 0
-              ? 'No memories saved.'
-              : summaries.map((m) => `[${m.type}] ${m.name}: ${m.description}`).join('\n'),
+            metadata: {
+              summary: summaries.length === 0
+                ? '记忆列表为空'
+                : `列出 ${summaries.length} 条记忆`,
+            },
           };
         }
         case 'get': {
@@ -64,17 +66,21 @@ Operations:
             return {
               success: false,
               llmContent: `Memory "${params.name}" not found`,
-              displayContent: `Memory "${params.name}" not found`,
               error: {
                 type: ToolErrorType.EXECUTION_ERROR,
                 message: `Memory "${params.name}" not found`,
+              },
+              metadata: {
+                summary: `未找到记忆: ${params.name}`,
               },
             };
           }
           return {
             success: true,
             llmContent: memory,
-            displayContent: `[${memory.type}] ${memory.name}\n${memory.body}`,
+            metadata: {
+              summary: `读取记忆: ${params.name}`,
+            },
           };
         }
         case 'search': {
@@ -82,9 +88,9 @@ Operations:
           return {
             success: true,
             llmContent: summaries,
-            displayContent: summaries.length === 0
-              ? `No memories matching "${params.query}".`
-              : summaries.map((m) => `[${m.type}] ${m.name}: ${m.description}`).join('\n'),
+            metadata: {
+              summary: `搜索记忆: ${summaries.length} 条结果`,
+            },
           };
         }
         case 'index': {
@@ -92,7 +98,9 @@ Operations:
           return {
             success: true,
             llmContent: content,
-            displayContent: content,
+            metadata: {
+              summary: '读取所有记忆',
+            },
           };
         }
       }
@@ -100,10 +108,12 @@ Operations:
       return {
         success: false,
         llmContent: `Unsupported operation: ${(params as { operation: string }).operation}`,
-        displayContent: `Unsupported operation: ${(params as { operation: string }).operation}`,
         error: {
           type: ToolErrorType.EXECUTION_ERROR,
           message: `Unsupported operation: ${(params as { operation: string }).operation}`,
+        },
+        metadata: {
+          summary: '不支持的操作',
         },
       };
     },

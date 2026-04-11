@@ -13,7 +13,7 @@ describe('ToolCatalog', () => {
       kind: ToolKind.ReadOnly,
       description: { short: 'Read tool' },
       schema: z.object({}),
-      execute: async () => ({ success: true, llmContent: '', displayContent: '' }),
+      execute: async () => ({ success: true, llmContent: '' }),
     });
 
     catalog.register(builtinTool, {
@@ -42,7 +42,7 @@ describe('ToolCatalog', () => {
       description: { short: 'Search docs' },
       tags: ['docs'],
       schema: z.object({}),
-      execute: async () => ({ success: true, llmContent: '', displayContent: '' }),
+      execute: async () => ({ success: true, llmContent: '' }),
     });
 
     catalog.registerMcpTool(remoteTool, {
@@ -64,7 +64,7 @@ describe('ToolCatalog', () => {
       kind: ToolKind.ReadOnly,
       description: { short: 'Read tool' },
       schema: z.object({}),
-      execute: async () => ({ success: true, llmContent: '', displayContent: '' }),
+      execute: async () => ({ success: true, llmContent: '' }),
     });
     const writeTool = createTool({
       name: 'Write',
@@ -72,7 +72,7 @@ describe('ToolCatalog', () => {
       kind: ToolKind.Write,
       description: { short: 'Write tool' },
       schema: z.object({}),
-      execute: async () => ({ success: true, llmContent: '', displayContent: '' }),
+      execute: async () => ({ success: true, llmContent: '' }),
     });
 
     catalog.register(readTool, {

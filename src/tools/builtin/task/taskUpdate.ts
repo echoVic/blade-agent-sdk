@@ -40,15 +40,19 @@ ONLY mark a task as completed when you have FULLY accomplished it.`,
           return {
             success: false,
             llmContent: `Task #${taskId} not found`,
-            displayContent: `Task #${taskId} not found`,
             error: { type: ToolErrorType.VALIDATION_ERROR, message: `Task ${taskId} not found` },
+            metadata: {
+              summary: '未找到任务',
+            },
           };
         }
         await store.delete(taskId);
         return {
           success: true,
           llmContent: { taskId, deleted: true },
-          displayContent: `Task #${taskId} deleted`,
+          metadata: {
+            summary: `删除任务: ${taskId}`,
+          },
         };
       }
 
@@ -57,15 +61,19 @@ ONLY mark a task as completed when you have FULLY accomplished it.`,
         return {
           success: false,
           llmContent: `Task #${taskId} not found`,
-          displayContent: `Task #${taskId} not found`,
           error: { type: ToolErrorType.VALIDATION_ERROR, message: `Task ${taskId} not found` },
+          metadata: {
+            summary: '未找到任务',
+          },
         };
       }
       return {
         success: true,
         llmContent: task,
-        displayContent: `Task #${task.id} updated: ${task.subject} [${task.status}]`,
-        metadata: { task },
+        metadata: {
+          summary: `更新任务: ${taskId}`,
+          task,
+        },
       };
     },
   });

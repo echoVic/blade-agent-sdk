@@ -75,6 +75,9 @@ describe('ExitPlanMode Tool', () => {
     const defaultPlanPath = join(fakeHome, '.blade', 'plans', 'plan_session-456.md');
     expect(await pathExists(defaultPlanPath)).toBe(false);
     expect(result.success).toBe(true);
-    expect(result.displayContent).toBe('Plan mode exit (non-interactive)');
+    expect(result.llmContent).toBe(
+      '✅ Plan mode exit requested. No interactive confirmation available.\n' +
+      'Proceeding with implementation.',
+    );
   });
 });

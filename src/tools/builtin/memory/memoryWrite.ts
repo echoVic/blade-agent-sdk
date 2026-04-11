@@ -45,7 +45,9 @@ Memory types: user, feedback, project, reference`,
           return {
             success: true,
             llmContent: memory,
-            displayContent: `Memory "${params.name}" saved.`,
+            metadata: {
+              summary: `保存记忆: ${params.name}`,
+            },
           };
         }
         case 'delete': {
@@ -53,7 +55,9 @@ Memory types: user, feedback, project, reference`,
           return {
             success: true,
             llmContent: { name: params.name, deleteRequested: true },
-            displayContent: `Delete requested for memory "${params.name}".`,
+            metadata: {
+              summary: `删除记忆: ${params.name}`,
+            },
           };
         }
       }
@@ -61,10 +65,12 @@ Memory types: user, feedback, project, reference`,
       return {
         success: false,
         llmContent: `Unsupported operation: ${(params as { operation: string }).operation}`,
-        displayContent: `Unsupported operation: ${(params as { operation: string }).operation}`,
         error: {
           type: ToolErrorType.EXECUTION_ERROR,
           message: `Unsupported operation: ${(params as { operation: string }).operation}`,
+        },
+        metadata: {
+          summary: '不支持的操作',
         },
       };
     },

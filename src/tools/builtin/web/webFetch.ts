@@ -160,8 +160,10 @@ Usage notes:
           return {
             success: true,
             llmContent: response,
-            displayContent: formatDisplayMessage(response, metadata, false),
-            metadata,
+            metadata: {
+              ...metadata,
+              summary: `GET ${new URL(url).hostname} - ${response.status}`,
+            },
           };
         } catch {
           // Jina Reader 失败，回退到直接获取
@@ -211,7 +213,6 @@ Usage notes:
         return {
           success: false,
           llmContent: `HTTP error ${response.status}: ${response.status_text}`,
-          displayContent: formatDisplayMessage(response, metadata, true),
           error: {
             type: ToolErrorType.EXECUTION_ERROR,
             message: `HTTP error ${response.status}: ${response.status_text}`,
@@ -220,25 +221,32 @@ Usage notes:
               response_body: response.body,
             },
           },
-          metadata,
+          metadata: {
+            ...metadata,
+            summary: `${method} ${new URL(url).hostname} - ${response.status}`,
+          },
         };
       }
 
       return {
         success: true,
         llmContent: response,
-        displayContent: formatDisplayMessage(response, metadata, false),
-        metadata,
+        metadata: {
+          ...metadata,
+          summary: `${method} ${new URL(url).hostname} - ${response.status}`,
+        },
       };
     } catch (error: unknown) {
       if (getErrorName(error) === 'AbortError') {
         return {
           success: false,
           llmContent: 'Request aborted',
-          displayContent: '⚠️ 请求被用户中止',
           error: {
             type: ToolErrorType.EXECUTION_ERROR,
             message: '操作被中止',
+          },
+          metadata: {
+            summary: `${method} ${new URL(url).hostname} - aborted`,
           },
         };
       }
@@ -247,11 +255,13 @@ Usage notes:
       return {
         success: false,
         llmContent: `Network request failed: ${message}`,
-        displayContent: `❌ 网络请求失败: ${message}`,
         error: {
           type: ToolErrorType.EXECUTION_ERROR,
           message,
           details: error,
+        },
+        metadata: {
+          summary: `${method} ${new URL(url).hostname} - error`,
         },
       };
     }
@@ -394,102 +404,6 @@ async function performRequest(options: {
       response_time: 0, // 将在外部设置
     };
   }
-}
-
-/**
- * 格式化显示消息
- */
-function formatDisplayMessage(
-  response: WebResponse,
-  metadata: {
-    url: string;
-    method: string;
-    status: number;
-    response_time: number;
-    content_length: number;
-    final_url?: string;
-    redirect_count?: number;
-    content_type?: string;
-  },
-  isError: boolean
-): string {
-  const { url, method, status, response_time, content_length } = metadata;
-
-  let message = isError
-    ? `❌ ${method} ${url} - ${status} ${response.status_text}`
-    : `✅ ${method} ${url} - ${status} ${response.status_text}`;
-  message += `\n响应时间: ${response_time}ms`;
-  message += `\n内容长度: ${content_length} 字节`;
-
-  if (metadata.content_type) {
-    message += `\nContent-Type: ${metadata.content_type}`;
-  }
-
-  if (response.redirected && metadata.final_url && metadata.final_url !== url) {
-    message += `\n最终URL: ${metadata.final_url}`;
-    if (metadata.redirect_count) {
-      message += `\n重定向次数: ${metadata.redirect_count}`;
-    }
-  }
-
-  const preview = buildBodyPreview(response.body, response.content_type);
-  if (preview) {
-    message += `\n响应内容:\n${preview}`;
-  }
-
-  return message;
-}
-
-function buildBodyPreview(body: string, contentType?: string): string {
-  if (!body) {
-    return '(空响应)';
-  }
-
-  if (shouldTreatAsBinary(contentType, body)) {
-    return '[binary content omitted]';
-  }
-
-  const trimmed = body.trim();
-  if (!trimmed) {
-    return '(仅包含空白字符)';
-  }
-
-  return trimmed.length > 800 ? `${trimmed.slice(0, 800)}...` : trimmed;
-}
-
-function shouldTreatAsBinary(contentType?: string, body?: string): boolean {
-  if (contentType) {
-    const lowered = contentType.toLowerCase();
-    const binaryMimePrefixes = [
-      'image/',
-      'audio/',
-      'video/',
-      'application/pdf',
-      'application/zip',
-      'application/octet-stream',
-    ];
-    if (binaryMimePrefixes.some((prefix) => lowered.startsWith(prefix))) {
-      return true;
-    }
-  }
-
-  if (!body) {
-    return false;
-  }
-
-  let nonPrintable = 0;
-  const sampleLength = Math.min(body.length, 200);
-  for (let i = 0; i < sampleLength; i++) {
-    const code = body.charCodeAt(i);
-    if (code === 9 || code === 10 || code === 13) {
-      continue;
-    }
-    if (code < 32 || code > 126) {
-      nonPrintable++;
-    }
-  }
-
-  return nonPrintable / (sampleLength || 1) > 0.3;
 }
 
 async function fetchWithTimeout(

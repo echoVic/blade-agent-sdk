@@ -105,7 +105,6 @@ export const globTool = createTool({
         return {
           success: false,
           llmContent: 'No filesystem access in the current runtime context.',
-          displayContent: '❌ 当前上下文未启用文件系统访问',
           error: {
             type: ToolErrorType.PERMISSION_DENIED,
             message: 'No filesystem access in current context',
@@ -118,7 +117,6 @@ export const globTool = createTool({
         return {
           success: false,
           llmContent: 'No search path provided and no filesystem working directory is available.',
-          displayContent: '❌ 未提供搜索路径，且当前上下文没有可用的工作目录',
           error: {
             type: ToolErrorType.VALIDATION_ERROR,
             message: 'No search path available',
@@ -136,7 +134,6 @@ export const globTool = createTool({
           return {
             success: false,
             llmContent: `Search path must be a directory: ${searchPath}`,
-            displayContent: `❌ 搜索路径必须是目录: ${searchPath}`,
             error: {
               type: ToolErrorType.VALIDATION_ERROR,
               message: '搜索路径必须是目录',
@@ -148,7 +145,6 @@ export const globTool = createTool({
           return {
             success: false,
             llmContent: `Search path does not exist: ${searchPath}`,
-            displayContent: `❌ 搜索路径不存在: ${searchPath}`,
             error: {
               type: ToolErrorType.EXECUTION_ERROR,
               message: '搜索路径不存在',
@@ -196,9 +192,8 @@ export const globTool = createTool({
         include_directories,
         case_sensitive,
         truncated: wasTruncated, // 是否因达到 max_results 而截断
+        summary: `找到 ${matches.length} 个匹配 "${pattern}" 的文件`,
       };
-
-      const displayMessage = formatDisplayMessage(metadata);
 
       // 为 LLM 生成更友好的文本格式
       let llmFriendlyText: string;
@@ -218,7 +213,6 @@ export const globTool = createTool({
       return {
         success: true,
         llmContent: llmFriendlyText,
-        displayContent: displayMessage,
         metadata: {
           ...metadata,
           matches: sortedMatches, // 保留原始数据在 metadata 中
@@ -229,7 +223,6 @@ export const globTool = createTool({
         return {
           success: false,
           llmContent: 'File search aborted',
-          displayContent: '⚠️ 文件搜索被用户中止',
           error: {
             type: ToolErrorType.EXECUTION_ERROR,
             message: '操作被中止',
@@ -240,7 +233,6 @@ export const globTool = createTool({
       return {
         success: false,
         llmContent: `Search failed: ${getErrorMessage(error)}`,
-        displayContent: `❌ 搜索失败: ${getErrorMessage(error)}`,
         error: {
           type: ToolErrorType.EXECUTION_ERROR,
           message: getErrorMessage(error),
@@ -424,24 +416,4 @@ function sortMatches(matches: FileMatch[]): FileMatch[] {
     // 最后按路径名排序
     return a.relative_path.localeCompare(b.relative_path);
   });
-}
-
-/**
- * 格式化显示消息
- */
-function formatDisplayMessage(metadata: GlobMetadata): string {
-  const { search_path, pattern, total_matches, returned_matches, truncated } = metadata;
-
-  let message: string;
-
-  if (truncated) {
-    // 截断时使用"至少 N 个"避免误导
-    message = `✅ 在 ${search_path} 中找到至少 ${total_matches} 个匹配 "${pattern}" 的文件（已截断）`;
-    message += `\n📋 显示前 ${returned_matches} 个结果`;
-  } else {
-    // 未截断时显示准确数量
-    message = `✅ 在 ${search_path} 中找到 ${total_matches} 个匹配 "${pattern}" 的文件`;
-  }
-
-  return message;
 }

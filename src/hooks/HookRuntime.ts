@@ -561,7 +561,7 @@ export class HookRuntime {
     }
 
     if (hookResult.additionalContext) {
-      const currentContent = nextResult.llmContent || nextResult.displayContent || '';
+      const currentContent = nextResult.llmContent || '';
       nextResult = {
         ...nextResult,
         llmContent: `${currentContent}\n\n---\n**Hook Context:**\n${hookResult.additionalContext}`,
@@ -573,7 +573,6 @@ export class HookRuntime {
       nextResult = {
         ...nextResult,
         llmContent: renderedOutput,
-        displayContent: renderedOutput,
       };
     }
 
@@ -625,7 +624,6 @@ export class HookRuntime {
       nextResult = {
         ...nextResult,
         llmContent: renderedOutput,
-        displayContent: renderedOutput,
       };
     }
 

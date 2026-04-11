@@ -7,7 +7,6 @@ describe('executeToolCalls', () => {
     const execute = vi.fn(async () => ({
       success: true,
       llmContent: 'ok',
-      displayContent: 'ok',
     }));
 
     await executeToolCalls({
@@ -63,7 +62,6 @@ describe('executeToolCalls', () => {
     const execute = vi.fn(async () => ({
       success: true,
       llmContent: 'ok',
-      displayContent: 'ok',
     }));
 
     await executeToolCalls({
@@ -128,7 +126,6 @@ describe('executeToolCalls', () => {
           return {
             success: true,
             llmContent: 'ok',
-            displayContent: 'ok',
             effects: [
               {
                 type: 'runtimePatch',

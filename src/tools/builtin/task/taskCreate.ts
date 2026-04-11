@@ -32,8 +32,10 @@ All tasks are created with status \`pending\`.`,
       return {
         success: true,
         llmContent: { taskId: task.id, task },
-        displayContent: `Task #${task.id} created: ${task.subject}`,
-        metadata: { task },
+        metadata: {
+          summary: `创建任务: ${input.subject}`,
+          task,
+        },
       };
     },
   });

@@ -24,8 +24,8 @@ export function createTaskStopTool({ sessionId }: { sessionId: string }) {
         return {
           success: true,
           llmContent: latestSession ?? { taskId, status: stopped ? 'cancelled' : 'completed' },
-          displayContent: `Background agent #${taskId} stopped`,
           metadata: {
+            summary: `停止后台 Agent: ${taskId}`,
             task: latestSession,
             stoppedBackgroundAgent: true,
           },
@@ -39,8 +39,10 @@ export function createTaskStopTool({ sessionId }: { sessionId: string }) {
         return {
           success: false,
           llmContent: `Task #${taskId} not found`,
-          displayContent: `Task #${taskId} not found`,
           error: { type: ToolErrorType.VALIDATION_ERROR, message: `Task ${taskId} not found` },
+          metadata: {
+            summary: '未找到任务',
+          },
         };
       }
       const updated = await store.update(taskId, {
@@ -50,8 +52,10 @@ export function createTaskStopTool({ sessionId }: { sessionId: string }) {
       return {
         success: true,
         llmContent: updated ?? { taskId, status: 'completed' },
-        displayContent: `Task #${taskId} stopped`,
-        metadata: { task: updated },
+        metadata: {
+          summary: `停止任务: ${taskId}`,
+          task: updated,
+        },
       };
     },
   });

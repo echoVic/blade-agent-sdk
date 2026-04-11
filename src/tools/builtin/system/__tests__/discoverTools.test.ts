@@ -30,7 +30,7 @@ describe('DiscoverTools tool', () => {
         mode: 'deferred',
       },
       schema: z.object({}),
-      execute: async () => ({ success: true, llmContent: '', displayContent: '' }),
+      execute: async () => ({ success: true, llmContent: '' }),
     }) as never);
 
     const result = await executeDiscoverTools(
@@ -71,7 +71,7 @@ describe('DiscoverTools tool', () => {
         mode: 'deferred',
       },
       schema: z.object({}),
-      execute: async () => ({ success: true, llmContent: '', displayContent: '' }),
+      execute: async () => ({ success: true, llmContent: '' }),
     }) as never);
 
     const result = await executeDiscoverTools(
@@ -96,7 +96,7 @@ describe('DiscoverTools tool', () => {
         mode: 'deferred',
       },
       schema: z.object({}),
-      execute: async () => ({ success: true, llmContent: '', displayContent: '' }),
+      execute: async () => ({ success: true, llmContent: '' }),
     }), {
       kind: 'builtin',
       trustLevel: 'trusted',

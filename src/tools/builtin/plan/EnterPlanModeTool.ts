@@ -121,22 +121,22 @@ User: "What files handle routing?"
               '- When your research is complete, call ExitPlanMode with your implementation plan\n' +
               '- For pure research questions, answer directly without ExitPlanMode\n\n' +
               'Begin your research now.',
-            displayContent: '✅ Entering Plan mode',
             metadata: {
+              summary: '进入计划模式',
               approved: true,
-              enterPlanMode: true, // Signal to switch to Plan mode
+              enterPlanMode: true,
             },
           };
         } else {
           return {
-            success: true, // Rejection is not an error
+            success: true,
             llmContent:
               '⚠️ User declined to enter Plan mode.\n\n' +
               'Proceed with the task directly without planning phase. ' +
               'You can still use search tools to understand the codebase as needed, ' +
               'but implement the solution directly.',
-            displayContent: '⚠️ Plan mode declined, proceeding directly',
             metadata: {
+              summary: '计划模式被拒绝',
               approved: false,
               enterPlanMode: false,
             },
@@ -146,10 +146,12 @@ User: "What files handle routing?"
         return {
           success: false,
           llmContent: `Confirmation flow error: ${error instanceof Error ? error.message : 'Unknown error'}`,
-          displayContent: '❌ Failed to request confirmation',
           error: {
             type: ToolErrorType.EXECUTION_ERROR,
             message: 'Confirmation flow error',
+          },
+          metadata: {
+            summary: '确认失败',
           },
         };
       }
@@ -162,8 +164,11 @@ User: "What files handle routing?"
         'Plan mode requested but no interactive confirmation available.\n\n' +
         'Proceeding with research phase. Use read-only tools to explore the codebase, ' +
         'then call ExitPlanMode with your implementation plan when ready.',
-      displayContent: 'Plan mode (non-interactive)',
-      metadata: { approved: null, enterPlanMode: true },
+      metadata: {
+        summary: '进入计划模式',
+        approved: null,
+        enterPlanMode: true,
+      },
     };
   },
 });

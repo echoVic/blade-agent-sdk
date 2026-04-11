@@ -100,25 +100,25 @@ Before using this tool, ensure your plan is clear and unambiguous. If there are 
             success: true,
             llmContent:
               '✅ Plan approved by user. Plan mode exited; you can proceed to code changes.',
-            displayContent: '✅ Plan approved, exiting Plan mode',
             metadata: {
+              summary: '计划已批准',
               approved: true,
               shouldExitLoop: true,
-              targetMode: response.targetMode, // 目标权限模式 PermissionMode.DEFAULT/AUTO_EDIT
-              planContent: planContent, // 传递 plan 内容给 Agent
+              targetMode: response.targetMode,
+              planContent: planContent,
             },
           };
         } else {
           // 拒绝方案后退出循环，返回到用户输入界面
           return {
-            success: true, // 拒绝不是错误，是正常的用户交互
+            success: true,
             llmContent:
               '⚠️ Plan rejected by user. Awaiting user feedback.\n\n' +
               (response.feedback || 'No specific feedback provided.') +
               '\n\nThe agent has stopped and control is returned to the user. ' +
               'The user can now provide additional information or clarification.',
-            displayContent: '⚠️ 方案被拒绝，等待用户补充信息',
             metadata: {
+              summary: '计划被拒绝',
               approved: false,
               shouldExitLoop: true,
               feedback: response.feedback,
@@ -130,10 +130,12 @@ Before using this tool, ensure your plan is clear and unambiguous. If there are 
         return {
           success: false,
           llmContent: `Confirmation flow error: ${error instanceof Error ? error.message : 'Unknown error'}`,
-          displayContent: '❌ Confirmation failed',
           error: {
             type: ToolErrorType.EXECUTION_ERROR,
             message: 'Confirmation flow error',
+          },
+          metadata: {
+            summary: '确认失败',
           },
         };
       }
@@ -145,8 +147,10 @@ Before using this tool, ensure your plan is clear and unambiguous. If there are 
       llmContent:
         '✅ Plan mode exit requested. No interactive confirmation available.\n' +
         'Proceeding with implementation.',
-      displayContent: 'Plan mode exit (non-interactive)',
-      metadata: { approved: null },
+      metadata: {
+        summary: '退出计划模式',
+        approved: null,
+      },
     };
   },
 });

@@ -14,7 +14,6 @@ export class ResultArtifactStore {
     sessionId?: string;
     context: ExecutionContext;
     llmContent?: string;
-    displayContent?: string;
   }): Promise<PersistedToolResultArtifact> {
     const baseDir = await this.resolveBaseDir(options.context);
     await fs.mkdir(baseDir, { recursive: true });
@@ -26,7 +25,6 @@ export class ResultArtifactStore {
       toolName: options.toolName,
       sessionId: options.sessionId,
       llmContent: options.llmContent,
-      displayContent: options.displayContent,
       createdAt: new Date().toISOString(),
     }, null, 2), 'utf8');
 

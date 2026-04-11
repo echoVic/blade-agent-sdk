@@ -56,7 +56,6 @@ export const writeTool = createTool({
       return {
         message: 'No filesystem access in current context',
         llmContent: 'No filesystem access in the current runtime context.',
-        displayContent: '❌ 当前上下文未启用文件系统访问',
         errorType: ToolErrorType.PERMISSION_DENIED,
       };
     }
@@ -130,7 +129,6 @@ export const writeTool = createTool({
           return {
             success: false,
             llmContent: `If this is an existing file, you MUST use the Read tool first to read the file's contents. This tool will fail if you did not read the file first.`,
-            displayContent: `📖 我需要先读取文件内容，然后再进行写入。`,
             error: {
               type: ToolErrorType.VALIDATION_ERROR,
               message: 'File not read before write',
@@ -147,7 +145,6 @@ export const writeTool = createTool({
           return {
             success: false,
             llmContent: `The file has been modified by an external program since you last read it. You must use the Read tool again to see the current content before writing.\n\nDetails: ${externalModCheck.message}`,
-            displayContent: `❌ 写入失败：文件已被外部程序修改\n\n${externalModCheck.message}\n\n💡 我需要重新读取文件内容后再写入`,
             error: {
               type: ToolErrorType.VALIDATION_ERROR,
               message: 'File modified externally',
@@ -242,13 +239,6 @@ export const writeTool = createTool({
         newContent: encoding === 'utf8' ? content : undefined, // 仅文本文件
       };
 
-      const displayMessage = formatDisplayMessage(
-        file_path,
-        metadata,
-        content,
-        diffSnippet
-      );
-
       return {
         success: true,
         llmContent: {
@@ -257,7 +247,6 @@ export const writeTool = createTool({
           modified:
             stats?.mtime instanceof Date ? stats.mtime.toISOString() : undefined,
         },
-        displayContent: displayMessage,
         metadata,
       };
     } catch (error) {
@@ -265,7 +254,6 @@ export const writeTool = createTool({
         return {
           success: false,
           llmContent: 'File write aborted',
-          displayContent: '⚠️ 文件写入被用户中止',
           error: {
             type: ToolErrorType.EXECUTION_ERROR,
             message: '操作被中止',
@@ -276,7 +264,6 @@ export const writeTool = createTool({
       return {
         success: false,
         llmContent: `File write failed: ${getErrorMessage(error)}`,
-        displayContent: `❌ 写入文件失败: ${getErrorMessage(error)}`,
         error: {
           type: ToolErrorType.EXECUTION_ERROR,
           message: getErrorMessage(error),
@@ -298,45 +285,6 @@ export const writeTool = createTool({
     };
   },
 });
-
-/**
- * 格式化显示消息
- */
-function formatDisplayMessage(
-  filePath: string,
-  metadata: WriteMetadata,
-  content?: string,
-  diffSnippet?: string | null
-): string {
-  let message = `✅ 成功写入文件: ${filePath}`;
-
-  if (metadata.file_size !== undefined) {
-    message += ` (${formatFileSize(metadata.file_size as number)})`;
-  }
-
-  if (metadata.snapshot_created) {
-    message += `\n📸 已创建快照 (可回滚)`;
-  }
-
-  if (metadata.encoding !== 'utf8') {
-    message += `\n🔐 使用编码: ${metadata.encoding}`;
-  }
-
-  // 优先显示 diff（如果有）
-  if (diffSnippet) {
-    message += diffSnippet;
-  }
-
-  // 添加内容预览（仅对文本文件且没有 diff 时才显示完整预览）
-  if (content && metadata.encoding === 'utf8' && !diffSnippet) {
-    const preview = generateContentPreview(filePath, content);
-    if (preview) {
-      message += '\n\n' + preview;
-    }
-  }
-
-  return message;
-}
 
 /**
  * 生成文件内容预览（Markdown 代码块格式）

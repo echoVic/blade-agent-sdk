@@ -349,7 +349,6 @@ function isPathLikeKey(key: string): boolean {
  *     return {
  *       success: true,
  *       llmContent: `Received: ${params.message}`,
- *       displayContent: `Received: ${params.message}`,
  *     };
  *   }
  * });

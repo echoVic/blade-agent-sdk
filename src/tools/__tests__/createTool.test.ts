@@ -43,7 +43,7 @@ describe('createTool', () => {
     execute: async (params) => {
       const count = params.count || 1;
       const result = Array(count).fill(params.message).join(' ');
-      return { success: true, llmContent: result, displayContent: result };
+      return { success: true, llmContent: result };
     },
   });
 
@@ -141,7 +141,6 @@ describe('createTool', () => {
         execute: async ({ value }) => ({
           success: true,
           llmContent: value,
-          displayContent: value,
         }),
       });
 
@@ -171,7 +170,6 @@ describe('createTool', () => {
         execute: async ({ target }) => ({
           success: true,
           llmContent: target,
-          displayContent: target,
         }),
       });
 
@@ -222,7 +220,6 @@ describe('createTool', () => {
         execute: async ({ file_path }) => ({
           success: true,
           llmContent: file_path,
-          displayContent: file_path,
         }),
       });
 
@@ -273,13 +270,11 @@ describe('createTool', () => {
           value === 'blocked'
             ? {
                 message: 'Blocked by semantic validation',
-                displayContent: 'blocked-display',
               }
             : undefined,
         execute: async ({ value }) => ({
           success: true,
           llmContent: value,
-          displayContent: value,
         }),
       });
 
@@ -288,7 +283,6 @@ describe('createTool', () => {
 
       expect(blocked.success).toBe(false);
       expect(blocked.error?.message).toBe('Blocked by semantic validation');
-      expect(blocked.displayContent).toBe('blocked-display');
       expect(allowed.success).toBe(true);
       expect(allowed.llmContent).toBe('allowed');
     });
@@ -312,7 +306,6 @@ describe('createTool', () => {
         execute: async ({ value }) => ({
           success: true,
           llmContent: value,
-          displayContent: value,
         }),
       });
 
@@ -341,7 +334,7 @@ describe('createTool', () => {
         kind: ToolKind.ReadOnly,
         description: { short: 'Read only tool' },
         schema: z.object({}),
-        execute: async () => ({ success: true, llmContent: '', displayContent: '' }),
+        execute: async () => ({ success: true, llmContent: '' }),
       });
       expect(readonlyTool.isReadOnly).toBe(true);
 
@@ -351,7 +344,7 @@ describe('createTool', () => {
         kind: ToolKind.Write,
         description: { short: 'Write tool' },
         schema: z.object({}),
-        execute: async () => ({ success: true, llmContent: '', displayContent: '' }),
+        execute: async () => ({ success: true, llmContent: '' }),
       });
       expect(writeTool.isReadOnly).toBe(false);
     });
@@ -364,7 +357,7 @@ describe('createTool', () => {
         isReadOnly: false,
         description: { short: 'Custom tool' },
         schema: z.object({}),
-        execute: async () => ({ success: true, llmContent: '', displayContent: '' }),
+        execute: async () => ({ success: true, llmContent: '' }),
       });
       expect(tool.isReadOnly).toBe(false);
     });
@@ -384,7 +377,7 @@ describe('createTool', () => {
           isConcurrencySafe: params.mode === 'read',
           isDestructive: params.mode !== 'read',
         }),
-        execute: async () => ({ success: true, llmContent: '', displayContent: '' }),
+        execute: async () => ({ success: true, llmContent: '' }),
       });
 
       expect(tool.resolveBehavior!({} as unknown as { mode: 'read' | 'write' })).toEqual({
@@ -411,7 +404,7 @@ describe('createTool', () => {
         description: { short: 'Limited tool' },
         schema: z.object({}),
         maxResultSizeChars: 128,
-        execute: async () => ({ success: true, llmContent: '', displayContent: '' }),
+        execute: async () => ({ success: true, llmContent: '' }),
       });
 
       expect(tool.maxResultSizeChars).toBe(128);
@@ -425,7 +418,7 @@ describe('createTool', () => {
         description: { short: 'Blocking tool' },
         schema: z.object({}),
         interruptBehavior: 'block',
-        execute: async () => ({ success: true, llmContent: '', displayContent: '' }),
+        execute: async () => ({ success: true, llmContent: '' }),
       });
 
       expect(tool.interruptBehavior).toBe('block');
@@ -443,7 +436,7 @@ describe('createTool', () => {
         kind: ToolKind.ReadOnly,
         description: { short: 'Tool with signature' },
         schema: z.object({ path: z.string() }),
-        execute: async () => ({ success: true, llmContent: '', displayContent: '' }),
+        execute: async () => ({ success: true, llmContent: '' }),
         preparePermissionMatcher: (params) => ({
           signatureContent: params.path,
           abstractRule: `read:${params.path}`,
@@ -476,7 +469,6 @@ describe('createTool', () => {
           return {
             success: true,
             llmContent: 'ok',
-            displayContent: 'ok',
           };
         },
       });

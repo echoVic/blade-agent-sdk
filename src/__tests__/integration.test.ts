@@ -247,7 +247,6 @@ describeIntegration('4. 自定义工具调用', () => {
         return {
           success: true as const,
           llmContent: JSON.stringify({ city: params.city, temperature: 23, condition: 'sunny' }),
-          displayContent: `Weather for ${params.city}: 23°C, sunny`,
         };
       },
     });
@@ -310,7 +309,6 @@ describeIntegration('4. 自定义工具调用', () => {
         return {
           success: true as const,
           llmContent: JSON.stringify({ result }),
-          displayContent: `${params.a} ${params.operation} ${params.b} = ${result}`,
         };
       },
     });
@@ -519,7 +517,6 @@ describeIntegration('6.2 Hooks / Permissions / MCP 真实链路', () => {
       execute: async (params: { value: string }) => ({
         success: true,
         llmContent: `server:${params.value}`,
-        displayContent: `server:${params.value}`,
       }),
     });
 
@@ -574,7 +571,6 @@ describeIntegration('6.2 Hooks / Permissions / MCP 真实链路', () => {
       execute: async () => ({
         success: true,
         llmContent: 'should-not-run',
-        displayContent: 'should-not-run',
       }),
     });
 

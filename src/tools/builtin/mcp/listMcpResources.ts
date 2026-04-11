@@ -48,8 +48,11 @@ access their contents.`,
         return {
           success: true,
           llmContent: 'No MCP servers are currently connected.',
-          displayContent: 'No MCP servers connected',
-          metadata: { resources: [], serverCount: 0 },
+          metadata: {
+            summary: '无 MCP 服务器',
+            resources: [],
+            serverCount: 0,
+          },
         };
       }
 
@@ -95,8 +98,11 @@ access their contents.`,
         return {
           success: true,
           llmContent: message + (errors.length > 0 ? `\n\nErrors:\n${errors.join('\n')}` : ''),
-          displayContent: message,
-          metadata: { resources: [], errors },
+          metadata: {
+            summary: `列出 ${allResources.length} 个 MCP 资源`,
+            resources: [],
+            errors,
+          },
         };
       }
 
@@ -115,8 +121,8 @@ access their contents.`,
       return {
         success: true,
         llmContent: `${summary}\n\n${resourceList}`,
-        displayContent: summary,
         metadata: {
+          summary: `列出 ${allResources.length} 个 MCP 资源`,
           resources: allResources,
           resourceCount: allResources.length,
           errors: errors.length > 0 ? errors : undefined,
@@ -127,10 +133,12 @@ access their contents.`,
       return {
         success: false,
         llmContent: `Failed to list MCP resources: ${message}`,
-        displayContent: 'Failed to list resources',
         error: {
           message,
           type: ToolErrorType.EXECUTION_ERROR,
+        },
+        metadata: {
+          summary: 'MCP 资源列出失败',
         },
       };
     }

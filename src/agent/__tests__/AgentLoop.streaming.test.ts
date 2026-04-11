@@ -159,7 +159,6 @@ describe('agentLoop streaming integration', () => {
     toolGate.resolve({
       success: true,
       llmContent: 'exit now',
-      displayContent: 'exit now',
       metadata: { shouldExitLoop: true },
       effects: [
         {
@@ -222,7 +221,6 @@ describe('agentLoop streaming integration', () => {
     const execute = vi.fn(async () => ({
       success: true,
       llmContent: 'tool output',
-      displayContent: 'tool output',
     }));
 
     const { result } = await collectEvents(

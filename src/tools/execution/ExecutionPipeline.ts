@@ -251,7 +251,6 @@ export class ExecutionPipeline {
       let errorResult: ToolResult = {
         success: false,
         llmContent: `Tool execution failed: ${errorMsg}`,
-        displayContent: `错误: ${errorMsg}`,
         error: {
           type: ToolErrorType.EXECUTION_ERROR,
           message: errorMsg,
@@ -626,7 +625,6 @@ export class ExecutionPipeline {
       state.result = {
         success: true,
         llmContent: message,
-        displayContent: message,
       };
       return;
     }
@@ -893,7 +891,6 @@ export class ExecutionPipeline {
     return {
       success: false,
       llmContent: `Tool execution failed: ${message}`,
-      displayContent: `错误: ${message}`,
       error: {
         type: ToolErrorType.EXECUTION_ERROR,
         message,
@@ -908,7 +905,6 @@ export class ExecutionPipeline {
     return {
       success: false,
       llmContent: `Tool execution aborted: ${reason || 'Unknown reason'}`,
-      displayContent: `执行已中止: ${reason || '未知原因'}`,
       error: {
         type: ToolErrorType.EXECUTION_ERROR,
         message: reason || 'Execution aborted',
@@ -927,10 +923,6 @@ export class ExecutionPipeline {
       result.llmContent = 'Execution completed';
     }
 
-    if (!result.displayContent) {
-      result.displayContent = result.success ? '执行成功' : '执行失败';
-    }
-
     if (!result.metadata) {
       result.metadata = {};
     }
@@ -939,10 +931,7 @@ export class ExecutionPipeline {
       state.tool.maxResultSizeChars ?? Number.POSITIVE_INFINITY;
     if (Number.isFinite(maxResultSizeChars) && maxResultSizeChars >= 0) {
       const llmContentLength = typeof result.llmContent === 'string' ? result.llmContent.length : undefined;
-      const displayContentLength = typeof result.displayContent === 'string' ? result.displayContent.length : undefined;
-      const exceedsLimit =
-        (llmContentLength !== undefined && llmContentLength > maxResultSizeChars)
-        || (displayContentLength !== undefined && displayContentLength > maxResultSizeChars);
+      const exceedsLimit = llmContentLength !== undefined && llmContentLength > maxResultSizeChars;
 
       if (exceedsLimit) {
         try {
@@ -952,16 +941,11 @@ export class ExecutionPipeline {
             toolName: state.toolName,
             context: state.context,
             llmContent: typeof result.llmContent === 'string' ? result.llmContent : undefined,
-            displayContent: typeof result.displayContent === 'string' ? result.displayContent : undefined,
           });
           const summary = `[externalized result to ${artifact.path}]`;
           if (llmContentLength !== undefined) {
             result.llmContent = summary;
             result.metadata.llmContentOriginalLength = llmContentLength;
-          }
-          if (displayContentLength !== undefined) {
-            result.displayContent = summary;
-            result.metadata.displayContentOriginalLength = displayContentLength;
           }
           result.metadata.resultExternalized = true;
           result.metadata.resultArtifactPath = artifact.path;
@@ -974,17 +958,6 @@ export class ExecutionPipeline {
             result.metadata.resultSizeLimit = maxResultSizeChars;
             result.metadata.llmContentOriginalLength = llmContent.originalLength;
           }
-
-          const displayContent = this.truncateStringResult(
-            result.displayContent,
-            maxResultSizeChars,
-          );
-          if (displayContent) {
-            result.displayContent = displayContent.value;
-            result.metadata.resultTruncated = true;
-            result.metadata.resultSizeLimit = maxResultSizeChars;
-            result.metadata.displayContentOriginalLength = displayContent.originalLength;
-          }
         }
       } else {
         const llmContent = this.truncateStringResult(result.llmContent, maxResultSizeChars);
@@ -993,17 +966,6 @@ export class ExecutionPipeline {
           result.metadata.resultTruncated = true;
           result.metadata.resultSizeLimit = maxResultSizeChars;
           result.metadata.llmContentOriginalLength = llmContent.originalLength;
-        }
-
-        const displayContent = this.truncateStringResult(
-          result.displayContent,
-          maxResultSizeChars,
-        );
-        if (displayContent) {
-          result.displayContent = displayContent.value;
-          result.metadata.resultTruncated = true;
-          result.metadata.resultSizeLimit = maxResultSizeChars;
-          result.metadata.displayContentOriginalLength = displayContent.originalLength;
         }
       }
     }
@@ -1173,7 +1135,6 @@ export class ExecutionPipeline {
         resolve({
           success: false,
           llmContent: `Tool "${toolName}" timed out after ${timeoutMs}ms`,
-          displayContent: `⏱ Tool "${toolName}" timed out after ${timeoutMs}ms`,
           error: {
             type: ToolErrorType.EXECUTION_ERROR,
             message: `Tool execution timeout after ${timeoutMs}ms`,

@@ -336,7 +336,6 @@ export function isEditMetadata(
 
 interface ToolResultBase<TMetadata extends ToolResultMetadata = ToolResultMetadata> {
   llmContent: string | object;
-  displayContent: string;
   metadata?: TMetadata;
   effects?: ToolEffect[];
   runtimePatch?: RuntimePatch;
@@ -408,7 +407,6 @@ export interface FunctionDeclaration {
 export interface ToolValidationError {
   message: string;
   llmContent?: string | object;
-  displayContent?: string;
   metadata?: ToolResultMetadata;
   /** Override the default VALIDATION_ERROR type (e.g. PERMISSION_DENIED for capability checks) */
   errorType?: ToolErrorType;
@@ -755,7 +753,6 @@ export function validationErrorToToolResult(
   return {
     success: false,
     llmContent: error.llmContent ?? error.message,
-    displayContent: error.displayContent ?? error.message,
     error: {
       type: error.errorType ?? ToolErrorType.VALIDATION_ERROR,
       message: error.message,

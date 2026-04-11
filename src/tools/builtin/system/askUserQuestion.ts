@@ -100,8 +100,7 @@ Usage notes:
           return {
             success: true,
             llmContent: 'User cancelled the question prompt without providing answers.',
-            displayContent: '❌ 用户取消了问题',
-            metadata: { cancelled: true },
+            metadata: { cancelled: true, summary: '用户取消' },
           };
         }
 
@@ -118,8 +117,7 @@ Usage notes:
           return {
             success: true,
             llmContent: `User answers:\n${formattedAnswers}`,
-            displayContent: '✅ 用户已回答问题',
-            metadata: { answers: response.answers },
+            metadata: { answers: response.answers, summary: '用户回答已收集' },
           };
         }
 
@@ -131,17 +129,18 @@ Usage notes:
             'The question was approved but no answers were collected. ' +
             'This can happen in sessions where structured question UI is not available. ' +
             'Please ask the user directly in your response or make reasonable assumptions based on context.',
-          displayContent: '⚠️ 未收集到答案',
-          metadata: { noAnswersCollected: true },
+          metadata: { noAnswersCollected: true, summary: '未收集到回答' },
         };
       } catch (error) {
         return {
           success: false,
           llmContent: `Failed to ask user questions: ${error instanceof Error ? error.message : 'Unknown error'}`,
-          displayContent: '❌ 问题显示失败',
           error: {
             type: ToolErrorType.EXECUTION_ERROR,
             message: 'Failed to display questions',
+          },
+          metadata: {
+            summary: '提问失败',
           },
         };
       }
@@ -152,10 +151,12 @@ Usage notes:
       success: false,
       llmContent:
         'No confirmation handler available. Cannot ask user questions in non-interactive mode.',
-      displayContent: '❌ 非交互模式，无法提问',
       error: {
         type: ToolErrorType.EXECUTION_ERROR,
         message: 'No confirmation handler available',
+      },
+      metadata: {
+        summary: '非交互模式',
       },
     };
   },

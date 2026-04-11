@@ -187,7 +187,6 @@ export async function runToolCall(
       result: {
         success: false,
         llmContent: '',
-        displayContent: '',
         error: {
           type: ToolErrorType.EXECUTION_ERROR,
           message: error instanceof Error ? error.message : 'Unknown error',

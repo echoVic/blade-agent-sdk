@@ -238,7 +238,6 @@ describe('Session runtime context', () => {
           result: {
             success: true,
             llmContent: 'done',
-            displayContent: 'done',
           },
         };
         return {

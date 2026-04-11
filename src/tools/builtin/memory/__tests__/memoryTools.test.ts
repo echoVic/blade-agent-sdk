@@ -114,6 +114,5 @@ describe('memory tools', () => {
       name: 'missing-memory',
       deleteRequested: true,
     });
-    expect(result.displayContent).toBe('Delete requested for memory "missing-memory".');
   });
 });

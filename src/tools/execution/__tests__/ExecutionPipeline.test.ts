@@ -52,7 +52,6 @@ describe('ExecutionPipeline', () => {
           return {
             success: true,
             llmContent: `read:${id}`,
-            displayContent: `read:${id}`,
           };
         },
       })
@@ -99,7 +98,6 @@ describe('ExecutionPipeline', () => {
           return {
             success: true,
             llmContent: `write:${id}`,
-            displayContent: `write:${id}`,
           };
         },
       })
@@ -122,7 +120,6 @@ describe('ExecutionPipeline', () => {
           return {
             success: true,
             llmContent: `exec:${id}`,
-            displayContent: `exec:${id}`,
           };
         },
       })
@@ -162,7 +159,6 @@ describe('ExecutionPipeline', () => {
         execute: async ({ id }) => ({
           success: true,
           llmContent: `safe:${id}`,
-          displayContent: `safe:${id}`,
         }),
       })
     );
@@ -179,7 +175,6 @@ describe('ExecutionPipeline', () => {
         execute: async ({ id }) => ({
           success: true,
           llmContent: `unsafe:${id}`,
-          displayContent: `unsafe:${id}`,
         }),
       })
     );
@@ -235,7 +230,6 @@ describe('ExecutionPipeline', () => {
         execute: async ({ mode, id }) => ({
           success: true,
           llmContent: `${mode}:${id}`,
-          displayContent: `${mode}:${id}`,
         }),
       })
     );
@@ -290,7 +284,6 @@ describe('ExecutionPipeline', () => {
         execute: async ({ mode }) => ({
           success: true,
           llmContent: `ok:${mode}`,
-          displayContent: `ok:${mode}`,
         }),
       })
     );
@@ -333,7 +326,6 @@ describe('ExecutionPipeline', () => {
         execute: async ({ value }) => ({
           success: true,
           llmContent: value,
-          displayContent: value,
         }),
       })
     );
@@ -359,7 +351,6 @@ describe('ExecutionPipeline', () => {
     const executeSpy = vi.fn(async ({ value }: { value: string }): Promise<ToolResult> => ({
       success: true,
       llmContent: value,
-      displayContent: value,
     }));
 
     registerTool(
@@ -376,7 +367,6 @@ describe('ExecutionPipeline', () => {
           value === 'bad'
             ? {
                 message: 'Semantic validation failed',
-                displayContent: 'semantic-failure',
               }
             : undefined,
         execute: executeSpy,
@@ -395,7 +385,6 @@ describe('ExecutionPipeline', () => {
 
     expect(result.success).toBe(false);
     expect(result.error?.message).toBe('Semantic validation failed');
-    expect(result.displayContent).toBe('semantic-failure');
     expect(executeSpy).not.toHaveBeenCalled();
   });
 
@@ -404,7 +393,6 @@ describe('ExecutionPipeline', () => {
     const executeSpy = vi.fn(async ({ value }: { value: string }): Promise<ToolResult> => ({
       success: true,
       llmContent: value,
-      displayContent: value,
     }));
     const permissionHandler = vi.fn(async () => ({ behavior: 'allow' as const }));
 
@@ -451,7 +439,6 @@ describe('ExecutionPipeline', () => {
     const executeSpy = vi.fn(async ({ value }: { value: string }): Promise<ToolResult> => ({
       success: true,
       llmContent: value,
-      displayContent: value,
     }));
     const permissionHandler = vi.fn(async () => {
       return {
@@ -536,7 +523,6 @@ describe('ExecutionPipeline', () => {
         execute: async ({ value }) => ({
           success: true,
           llmContent: value,
-          displayContent: value,
         }),
       })
     );
@@ -608,7 +594,6 @@ describe('ExecutionPipeline', () => {
         execute: async ({ value }) => ({
           success: true,
           llmContent: value,
-          displayContent: value,
         }),
       })
     );
@@ -647,7 +632,6 @@ describe('ExecutionPipeline', () => {
     const executeSpy = vi.fn(async ({ value }: { value: string }): Promise<ToolResult> => ({
       success: true,
       llmContent: value,
-      displayContent: value,
     }));
     const confirmationHandler = {
       requestConfirmation: vi.fn(async () => ({
@@ -710,7 +694,6 @@ describe('ExecutionPipeline', () => {
         execute: async () => ({
           success: true,
           llmContent: 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ',
-          displayContent: 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ',
         }),
       })
     );
@@ -745,22 +728,18 @@ describe('ExecutionPipeline', () => {
     expect(result.success).toBe(true);
     expect(typeof result.llmContent).toBe('string');
     expect(result.llmContent).not.toBe('abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ');
-    expect(result.displayContent).not.toBe('abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ');
     expect(String(result.llmContent)).toContain('[externalized result');
     expect(result.metadata).toMatchObject({
       resultExternalized: true,
       resultSizeLimit: 32,
       llmContentOriginalLength: 52,
-      displayContentOriginalLength: 52,
     });
     const artifactPath = String(result.metadata?.resultArtifactPath);
     expect(artifactPath).toContain('.blade-tool-results');
     const artifact = JSON.parse(await fs.readFile(artifactPath, 'utf8')) as {
       llmContent: string;
-      displayContent: string;
     };
     expect(artifact.llmContent).toBe('abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ');
-    expect(artifact.displayContent).toBe('abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ');
   });
 
   it('normalizes legacy runtime result fields into effects before returning', async () => {
@@ -777,7 +756,6 @@ describe('ExecutionPipeline', () => {
         execute: async () => ({
           success: true,
           llmContent: 'ok',
-          displayContent: 'ok',
           runtimePatch: {
             scope: 'turn',
             source: 'tool',
@@ -879,7 +857,6 @@ describe('ExecutionPipeline', () => {
         execute: async ({ target }) => ({
           success: true,
           llmContent: target,
-          displayContent: target,
         }),
       })
     );
@@ -911,7 +888,6 @@ describe('ExecutionPipeline', () => {
     const executeSpy = vi.fn(async ({ file_path }: { file_path: string }): Promise<ToolResult> => ({
       success: true,
       llmContent: file_path,
-      displayContent: file_path,
     }));
 
     registerTool(
@@ -948,7 +924,6 @@ describe('ExecutionPipeline', () => {
     const executeSpy = vi.fn(async ({ file_path }: { file_path: string }): Promise<ToolResult> => ({
       success: true,
       llmContent: file_path,
-      displayContent: file_path,
     }));
     const confirmationHandler = {
       requestConfirmation: vi.fn(async () => ({

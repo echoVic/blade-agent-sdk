@@ -21,7 +21,6 @@ function createMockExecutionPipeline(results?: Record<string, ToolResult>) {
       return {
         success: true,
         llmContent: `Result of ${toolName}`,
-        displayContent: `Result of ${toolName}`,
       } as ToolResult;
     }),
   } as unknown as AgentLoopConfig['executionPipeline'];
@@ -234,7 +233,6 @@ describe('agentLoop', () => {
         return {
           success: true,
           llmContent: `Result of ${toolName}`,
-          displayContent: `Result of ${toolName}`,
         } as ToolResult;
       }),
       } as unknown as AgentLoopConfig['executionPipeline'];
@@ -294,7 +292,6 @@ describe('agentLoop', () => {
         ExitTool: {
           success: true,
           llmContent: 'Exiting',
-          displayContent: 'Exiting',
           metadata: { shouldExitLoop: true },
         },
       });
@@ -346,7 +343,7 @@ describe('agentLoop', () => {
       (pipeline.execute as Mock).mockImplementation(async () => {
         // Abort during tool execution
         controller.abort();
-        return { success: true, llmContent: 'ok', displayContent: 'ok' } as ToolResult;
+        return { success: true, llmContent: 'ok' } as ToolResult;
       });
 
       const config = baseConfig({
@@ -857,7 +854,6 @@ describe('agentLoop', () => {
         Skill: {
           success: true,
           llmContent: 'tool-body',
-          displayContent: 'tool-body',
           newMessages: [
             { role: 'assistant', content: 'Injected assistant context' },
             { role: 'system', content: 'Injected system context' },
