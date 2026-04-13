@@ -12,7 +12,7 @@ import type { ChatResponse, Message, ToolCall } from '../services/ChatServiceInt
 import { FallbackTriggeredError } from '../services/RetryPolicy.js';
 import type { ExecutionPipeline } from '../tools/execution/ExecutionPipeline.js';
 import type { ToolResult } from '../tools/types/index.js';
-import type { PermissionMode } from '../types/common.js';
+import type { JsonObject, PermissionMode } from '../types/common.js';
 import type { AgentEvent, TokenUsageInfo } from './AgentEvent.js';
 import { AGENT_TURN_SAFETY_LIMIT } from './constants.js';
 import { ExecutionEpoch } from './ExecutionEpoch.js';
@@ -95,7 +95,7 @@ export interface AgentLoopConfig {
    */
   onBeforeToolExec?: (ctx: {
     toolCall: FunctionToolCall;
-    params: Record<string, unknown>;
+    params: JsonObject;
   }) => Promise<string | null>;
 
   /**

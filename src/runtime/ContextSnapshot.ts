@@ -1,3 +1,4 @@
+import type { JsonObject } from '../types/common.js';
 import type { RuntimeContext } from './RuntimeContext.js';
 
 export interface ContextSnapshot {
@@ -30,9 +31,9 @@ function mergeStringRecords(
 }
 
 function mergeUnknownRecords(
-  base?: Record<string, unknown>,
-  override?: Record<string, unknown>,
-): Record<string, unknown> | undefined {
+  base?: JsonObject,
+  override?: JsonObject,
+): JsonObject | undefined {
   if (!base && !override) {
     return undefined;
   }

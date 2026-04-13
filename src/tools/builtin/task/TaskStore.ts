@@ -5,9 +5,11 @@
  * 可选磁盘持久化：当 configDir 提供时，任务写入 <configDir>/tasks/<sessionId>.json
  */
 
+import { nanoid } from 'nanoid';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import * as path from 'node:path';
-import { nanoid } from 'nanoid';
+
+import type { JsonObject } from '../../../types/common.js';
 
 export type TaskStatus = 'pending' | 'in_progress' | 'completed' | 'deleted';
 
@@ -18,7 +20,7 @@ export interface Task {
   status: TaskStatus;
   owner?: string;
   activeForm?: string;
-  metadata?: Record<string, unknown>;
+  metadata?: JsonObject;
   /** 此任务完成前阻塞的任务 ID 列表 */
   blocks: string[];
   /** 阻塞此任务的任务 ID 列表 */
@@ -31,7 +33,7 @@ export interface CreateTaskInput {
   subject: string;
   description: string;
   activeForm?: string;
-  metadata?: Record<string, unknown>;
+  metadata?: JsonObject;
 }
 
 export interface UpdateTaskInput {
@@ -40,7 +42,7 @@ export interface UpdateTaskInput {
   description?: string;
   activeForm?: string;
   owner?: string;
-  metadata?: Record<string, unknown>;
+  metadata?: JsonObject;
   addBlocks?: string[];
   addBlockedBy?: string[];
 }

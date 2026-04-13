@@ -1,3 +1,4 @@
+import type { JsonObject } from '../types/common.js';
 import { HookEvent } from '../types/constants.js';
 
 /**
@@ -123,7 +124,7 @@ export interface SkillMetadata {
   compatibility?: string;
 
   /** 任意元数据键值对 */
-  metadata?: Record<string, unknown>;
+  metadata?: JsonObject;
 
   /** SKILL.md 文件完整路径 */
   path: string;

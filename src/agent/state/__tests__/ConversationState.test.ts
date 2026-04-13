@@ -1,8 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import type { Message } from '../../../services/ChatServiceInterface.js';
+import type { JsonObject } from '../../../types/common.js';
 import { ConversationState } from '../ConversationState.js';
 
-const sys = (content: string, meta?: Record<string, unknown>): Message => ({
+const sys = (content: string, meta?: JsonObject): Message => ({
   role: 'system',
   content,
   ...(meta ? { metadata: meta } : {}),

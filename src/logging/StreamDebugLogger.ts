@@ -8,6 +8,8 @@
 import { appendFileSync, mkdirSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 
+import type { JsonObject } from '../types/common.js';
+
 let logFile: string | undefined;
 let initialized = false;
 
@@ -34,7 +36,7 @@ function ensureLogFile(): void {
 export function streamDebug(
   source: string,
   message: string,
-  data?: Record<string, unknown>
+  data?: JsonObject
 ): void {
   if (!logFile) return;
   ensureLogFile();

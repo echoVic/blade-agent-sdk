@@ -1,3 +1,4 @@
+import type { JsonValue } from '../../types/common.js';
 import type { CompressedContext, ContextMessage } from '../types.js';
 
 export interface CacheItem<T> {
@@ -140,7 +141,7 @@ export class CacheStore {
   /**
    * 缓存工具调用结果
    */
-  cacheToolResult(toolName: string, input: unknown, result: unknown): void {
+  cacheToolResult(toolName: string, input: JsonValue, result: JsonValue): void {
     const inputHash = this.hashInput(input);
     const key = `tool:${toolName}:${inputHash}`;
     this.set(key, result, 30 * 60 * 1000); // 30分钟TTL
@@ -149,7 +150,7 @@ export class CacheStore {
   /**
    * 获取缓存的工具调用结果
    */
-  getToolResult(toolName: string, input: unknown): unknown | null {
+  getToolResult(toolName: string, input: JsonValue): JsonValue | null {
     const inputHash = this.hashInput(input);
     const key = `tool:${toolName}:${inputHash}`;
     return this.get(key);
@@ -255,7 +256,7 @@ export class CacheStore {
   /**
    * 简单的输入哈希函数
    */
-  private hashInput(input: unknown): string {
+  private hashInput(input: JsonValue): string {
     const str = JSON.stringify(input);
     let hash = 0;
     for (let i = 0; i < str.length; i++) {
@@ -306,7 +307,7 @@ export class CacheStore {
   /**
    * 预热缓存（可用于启动时加载常用数据）
    */
-  warmup(data: { key: string; value: unknown; ttl?: number }[]): void {
+  warmup(data: { key: string; value: JsonValue; ttl?: number }[]): void {
     data.forEach(({ key, value, ttl }) => {
       this.set(key, value, ttl);
     });

@@ -1,3 +1,4 @@
+import type { JSONSchema7 } from 'json-schema';
 import { type InternalLogger, LogCategory, NOOP_LOGGER } from '../logging/Logger.js';
 import type {
   ChatResponse,
@@ -8,7 +9,7 @@ import type {
 import type { ExecutionPipeline } from '../tools/execution/ExecutionPipeline.js';
 import type { ToolResult } from '../tools/types/index.js';
 import { ToolErrorType } from '../tools/types/index.js';
-import type { PermissionMode } from '../types/common.js';
+import type { JsonObject, PermissionMode } from '../types/common.js';
 import type { ExecutionEpoch } from './ExecutionEpoch.js';
 import { type ToolExecutionOutcome } from './loop/executeToolCalls.js';
 import { planToolExecution } from './loop/planToolExecution.js';
@@ -24,7 +25,7 @@ import type { StreamResponseHandler } from './StreamResponseHandler.js';
 interface ToolExecutionHooks {
   onBeforeToolExec?: (ctx: {
     toolCall: FunctionToolCall;
-    params: Record<string, unknown>;
+    params: JsonObject;
   }) => Promise<string | null>;
 }
 
@@ -80,7 +81,7 @@ export class StreamingToolExecutor {
 
   async collectAndExecute(
     messages: Message[],
-    tools: Array<{ name: string; description: string; parameters: unknown }>,
+    tools: Array<{ name: string; description: string; parameters: JSONSchema7 }>,
     signal: AbortSignal | undefined,
     executionConfig: StreamingToolExecutorConfig,
     epoch?: ExecutionEpoch,
@@ -234,7 +235,7 @@ export class StreamingToolExecutor {
 
   private async collectWithWrappedHandler(
     messages: Message[],
-    tools: Array<{ name: string; description: string; parameters: unknown }>,
+    tools: Array<{ name: string; description: string; parameters: JSONSchema7 }>,
     signal: AbortSignal | undefined,
     executionConfig: StreamingToolExecutorConfig,
     epoch?: ExecutionEpoch,

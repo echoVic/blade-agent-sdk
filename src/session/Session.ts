@@ -3,25 +3,26 @@ import { Agent } from '../agent/Agent.js';
 import type { ChatContext, LoopResult, UserMessageContent } from '../agent/types.js';
 import { createRootLogger, type InternalLogger, LogCategory } from '../logging/Logger.js';
 import {
-  createContextSnapshot,
   type ContextSnapshot,
+  createContextSnapshot,
   type RuntimeContext,
 } from '../runtime/index.js';
 import type { ContentPart, Message } from '../services/ChatServiceInterface.js';
 import { cloneMessage } from '../services/messageUtils.js';
 import {
   type BladeConfig,
+  type JsonValue,
   type ModelConfig,
   PermissionMode,
   type ProviderType,
 } from '../types/common.js';
+import { SessionRuntime } from './SessionRuntime.js';
 import {
   JsonlSessionStore,
   NoopSessionStore,
   type SessionSnapshot,
   type SessionStore,
 } from './SessionStore.js';
-import { SessionRuntime } from './SessionRuntime.js';
 import type {
   ForkSessionOptions,
   ISession,
@@ -309,7 +310,7 @@ class Session implements ISession {
               id: value.toolCall.id,
               name: value.toolCall.function.name,
               input,
-              output: null,
+              output: '',
               duration: 0,
             });
             yield {
@@ -567,9 +568,9 @@ class Session implements ISession {
     return controller.signal;
   }
 
-  private safeParseJson(str: string): unknown {
+  private safeParseJson(str: string): JsonValue {
     try {
-      return JSON.parse(str);
+      return JSON.parse(str) as JsonValue;
     } catch {
       return str;
     }
@@ -709,7 +710,7 @@ export async function prompt(
           id: msg.id,
           name: msg.name,
           input: msg.input,
-          output: null,
+          output: '',
           duration: 0,
         });
       } else if (msg.type === 'tool_result') {

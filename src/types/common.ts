@@ -13,7 +13,7 @@ export interface ToolMessageMetadata {
   phase: 'start' | 'complete';
   summary?: string;
   detail?: string;
-  params?: Record<string, unknown>;
+  params?: JsonObject;
 }
 
 export interface SessionMessage {
@@ -21,7 +21,7 @@ export interface SessionMessage {
   role: MessageRole;
   content: string;
   timestamp: number;
-  metadata?: Record<string, unknown> | ToolMessageMetadata;
+  metadata?: JsonObject | ToolMessageMetadata;
   thinkingContent?: string;
 }
 
@@ -146,7 +146,7 @@ export interface JsonSchemaProperty {
   properties?: Record<string, JsonSchemaProperty>;
   required?: string[];
   additionalProperties?: boolean | JsonSchemaProperty;
-  default?: unknown;
+  default?: JsonValue;
   minimum?: number;
   maximum?: number;
   minLength?: number;

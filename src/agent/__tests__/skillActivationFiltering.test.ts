@@ -25,7 +25,7 @@ describe('createSkillActivationContext — system message filtering', () => {
 
     // System messages should NOT contribute to referencedPaths
     // Only user/assistant content should be analyzed
-    for (const path of ctx.referencedPaths) {
+    for (const path of ctx.referencedPaths ?? []) {
       expect(path).not.toContain('passwd');
       expect(path).not.toContain('catalog.json');
     }
@@ -39,7 +39,7 @@ describe('createSkillActivationContext — system message filtering', () => {
     ];
 
     const ctx = rpm.createSkillActivationContext('/test', messages);
-    const paths = ctx.referencedPaths;
+    const paths = ctx.referencedPaths ?? [];
 
     // Should find paths from user/assistant content
     expect(paths.some((p) => p.includes('index.ts') || p.includes('utils.ts'))).toBe(true);

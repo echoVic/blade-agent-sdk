@@ -71,7 +71,7 @@ The resource content can be text (returned as-is) or binary data (returned as ba
 
         try {
           const result = await serverInfo.client.readResource(params.uri, serverName);
-          content = result as ResourceContent;
+          content = result as unknown as ResourceContent;
           foundServer = serverName;
           break;
         } catch (error) {

@@ -5,6 +5,8 @@
  */
 
 import type { PermissionMode } from '../../types/common.js';
+import type { JsonObject, JsonValue } from '../../types/common.js';
+import type { ToolResult } from '../../tools/types/ToolTypes.js';
 import { HookEvent } from '../../types/constants.js';
 
 // ============================================================================
@@ -53,7 +55,7 @@ export interface PreToolUseInput extends HookInputBase {
   tool_use_id: string;
 
   /** 工具输入参数 */
-  tool_input: Record<string, unknown>;
+  tool_input: JsonObject;
 }
 
 /**
@@ -69,10 +71,10 @@ export interface PostToolUseInput extends HookInputBase {
   tool_use_id: string;
 
   /** 工具输入参数 */
-  tool_input: Record<string, unknown>;
+  tool_input: JsonObject;
 
   /** 工具响应 */
-  tool_response: unknown;
+  tool_response: ToolResult;
 }
 
 /**
@@ -98,7 +100,7 @@ export interface PostToolUseFailureInput extends HookInputBase {
   tool_use_id: string;
 
   /** 工具输入参数 */
-  tool_input: Record<string, unknown>;
+  tool_input: JsonObject;
 
   /** 错误信息 */
   error: string;
@@ -126,7 +128,7 @@ export interface PermissionRequestInput extends HookInputBase {
   tool_use_id: string;
 
   /** 工具输入参数 */
-  tool_input: Record<string, unknown>;
+  tool_input: JsonObject;
 }
 
 /**
@@ -429,7 +431,7 @@ interface PreToolUseOutput {
   permissionDecisionReason?: string;
 
   /** 修改后的工具输入 */
-  updatedInput?: Record<string, unknown>;
+  updatedInput?: JsonObject;
 }
 
 /**
@@ -442,7 +444,7 @@ interface PostToolUseOutput {
   additionalContext?: string;
 
   /** 修改后的工具输出 */
-  updatedOutput?: unknown;
+  updatedOutput?: JsonValue;
 }
 
 /**
@@ -920,7 +922,7 @@ export interface PreToolHookResult {
   reason?: string;
 
   /** 修改后的输入 */
-  modifiedInput?: Record<string, unknown>;
+  modifiedInput?: JsonObject;
 
   /** 警告信息 */
   warning?: string;
@@ -934,7 +936,7 @@ export interface PostToolHookResult {
   additionalContext?: string;
 
   /** 修改后的输出 */
-  modifiedOutput?: unknown;
+  modifiedOutput?: JsonValue;
 
   /** 警告信息 */
   warning?: string;

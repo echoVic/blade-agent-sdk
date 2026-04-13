@@ -145,7 +145,7 @@ describe('Session runtime context', () => {
         [HookEvent.UserPromptSubmit]: [
           async () => ({
             action: 'continue',
-            modifiedInput: 'updated prompt',
+            modifiedInput: { userPrompt: 'updated prompt' },
           }),
         ],
       },

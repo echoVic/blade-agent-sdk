@@ -5,6 +5,7 @@ import { join } from 'node:path';
 import { PersistentStore } from '../../context/storage/PersistentStore.js';
 import { JsonlSessionStore } from '../SessionStore.js';
 import type { ContentPart } from '../../services/ChatServiceInterface.js';
+import { assertDefined } from '../../__tests__/helpers/assertDefined.js';
 
 function createWorkspaceRoot(): string {
   return mkdtempSync(join(tmpdir(), 'session-store-test-'));
@@ -52,21 +53,22 @@ describe('JsonlSessionStore', () => {
     const state = await sessionStore.loadState(sessionId);
 
     expect(state).not.toBeNull();
-    expect(state!.messages).toHaveLength(4);
-    expect(state!.messages[0]?.id).toBe(userMessageId);
-    expect(state!.messages[0]?.role).toBe('user');
-    expect(state!.messages[1]?.role).toBe('assistant');
-    expect(state!.messages[1]?.tool_calls?.[0]?.id).toBe(toolCallId);
-    expect(state!.messages[2]?.role).toBe('tool');
-    expect(state!.messages[2]?.tool_call_id).toBe(toolCallId);
-    expect(state!.messages[3]?.role).toBe('system');
-    expect(state!.messages[3]?.id).toBe(summaryMessageId);
-    expect(state!.messages[3]?.content).toBe('Compacted summary');
-    expect(state!.summary).toBe('Compacted summary');
-    expect(state!.toolCalls).toHaveLength(1);
-    expect(state!.toolCalls[0]?.status).toBe('success');
-    expect(state!.subagentRefs).toHaveLength(2);
-    expect(state!.subagentRefs[1]?.status).toBe('completed');
+    assertDefined(state);
+    expect(state.messages).toHaveLength(4);
+    expect(state.messages[0]?.id).toBe(userMessageId);
+    expect(state.messages[0]?.role).toBe('user');
+    expect(state.messages[1]?.role).toBe('assistant');
+    expect(state.messages[1]?.tool_calls?.[0]?.id).toBe(toolCallId);
+    expect(state.messages[2]?.role).toBe('tool');
+    expect(state.messages[2]?.tool_call_id).toBe(toolCallId);
+    expect(state.messages[3]?.role).toBe('system');
+    expect(state.messages[3]?.id).toBe(summaryMessageId);
+    expect(state.messages[3]?.content).toBe('Compacted summary');
+    expect(state.summary).toBe('Compacted summary');
+    expect(state.toolCalls).toHaveLength(1);
+    expect(state.toolCalls[0]?.status).toBe('success');
+    expect(state.subagentRefs).toHaveLength(2);
+    expect(state.subagentRefs[1]?.status).toBe('completed');
   });
 
   it('should fork state by linear message boundary', async () => {
@@ -92,9 +94,10 @@ describe('JsonlSessionStore', () => {
     const snapshot = await sessionStore.forkState(sessionId, { messageId: assistantMessageId });
 
     expect(snapshot).not.toBeNull();
-    expect(snapshot!.messageIds).toEqual([userMessageId, assistantMessageId]);
-    expect(snapshot!.messages).toHaveLength(2);
-    expect(snapshot!.summary).toBeUndefined();
+    assertDefined(snapshot);
+    expect(snapshot.messageIds).toEqual([userMessageId, assistantMessageId]);
+    expect(snapshot.messages).toHaveLength(2);
+    expect(snapshot.summary).toBeUndefined();
   });
 
   it('should provide session summaries from the unified store', async () => {
@@ -115,8 +118,9 @@ describe('JsonlSessionStore', () => {
 
     expect(sessionIds).toEqual(['session-a', 'session-b']);
     expect(summary).not.toBeNull();
-    expect(summary!.messageCount).toBe(1);
-    expect(summary!.summaryText).toBe('Searchable summary');
+    assertDefined(summary);
+    expect(summary.messageCount).toBe(1);
+    expect(summary.summaryText).toBe('Searchable summary');
   });
 
   it('should reconstruct multimodal user messages preserving image parts', async () => {
@@ -135,8 +139,9 @@ describe('JsonlSessionStore', () => {
     const state = await sessionStore.loadState(sessionId);
 
     expect(state).not.toBeNull();
-    expect(state!.messages).toHaveLength(1);
-    expect(state!.messages[0]?.role).toBe('user');
-    expect(state!.messages[0]?.content).toEqual(content);
+    assertDefined(state);
+    expect(state.messages).toHaveLength(1);
+    expect(state.messages[0]?.role).toBe('user');
+    expect(state.messages[0]?.content).toEqual(content);
   });
 });

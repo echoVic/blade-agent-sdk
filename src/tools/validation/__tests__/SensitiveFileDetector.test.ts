@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { SensitiveFileDetector, SensitivityLevel } from '../SensitiveFileDetector.js';
+import { assertDefined } from '../../../__tests__/helpers/assertDefined.js';
 
 describe('SensitiveFileDetector', () => {
   describe('check - HIGH level files', () => {
@@ -149,9 +150,15 @@ describe('SensitiveFileDetector', () => {
         'index.ts',
       ]);
       expect(results.size).toBe(3);
-      expect(results.get('id_rsa')!.isSensitive).toBe(true);
-      expect(results.get('.env')!.isSensitive).toBe(true);
-      expect(results.get('index.ts')!.isSensitive).toBe(false);
+      const idRsaResult = results.get('id_rsa');
+      assertDefined(idRsaResult);
+      expect(idRsaResult.isSensitive).toBe(true);
+      const envResult = results.get('.env');
+      assertDefined(envResult);
+      expect(envResult.isSensitive).toBe(true);
+      const indexResult = results.get('index.ts');
+      assertDefined(indexResult);
+      expect(indexResult.isSensitive).toBe(false);
     });
   });
 

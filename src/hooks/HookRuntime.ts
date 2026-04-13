@@ -5,7 +5,7 @@ import type { ContentPart } from '../services/ChatServiceInterface.js';
 import { cloneContentPart } from '../services/messageUtils.js';
 import type { ToolResult } from '../tools/types/index.js';
 import { HookEvent } from '../types/constants.js';
-import type { PermissionMode } from '../types/common.js';
+import type { JsonObject, JsonValue, PermissionMode } from '../types/common.js';
 import type { PermissionResult } from '../types/permissions.js';
 import type { HookCallback, HookInput } from '../session/types.js';
 import { HookManager } from './HookManager.js';
@@ -21,7 +21,7 @@ interface HookRuntimeOptions {
 
 export interface PreToolUseRuntimeResult {
   toolUseId: string;
-  updatedInput: Record<string, unknown>;
+  updatedInput: JsonObject;
   action?: 'continue' | 'skip' | 'abort';
   reason?: string;
   needsConfirmation?: boolean;
@@ -34,7 +34,7 @@ export interface PostToolUseRuntimeResult {
   reason?: string;
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
+function isRecord(value: unknown): value is JsonObject {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
@@ -114,7 +114,7 @@ export class HookRuntime {
 
   async applyPreToolUse(
     toolName: string,
-    input: Record<string, unknown>,
+    input: JsonObject,
     options: {
       toolUseId?: string;
       permissionMode?: PermissionMode;
@@ -194,7 +194,7 @@ export class HookRuntime {
 
   async applyPostToolUse(
     toolName: string,
-    input: Record<string, unknown>,
+    input: JsonObject,
     result: ToolResult,
     options: {
       toolUseId?: string;
@@ -234,7 +234,7 @@ export class HookRuntime {
 
   async applyPostToolUseFailure(
     toolName: string,
-    input: Record<string, unknown>,
+    input: JsonObject,
     result: ToolResult,
     options: {
       toolUseId?: string;
@@ -288,14 +288,14 @@ export class HookRuntime {
 
   async applyPermissionRequestHooks(
     toolName: string,
-    input: Record<string, unknown>,
+    input: JsonObject,
     options: {
       affectedPaths?: string[];
       toolKind?: 'readonly' | 'write' | 'execute';
       abortSignal?: AbortSignal;
     },
   ): Promise<{
-    updatedInput: Record<string, unknown>;
+    updatedInput: JsonObject;
     decision?: PermissionResult;
   }> {
     let nextInput = input;
@@ -387,8 +387,13 @@ export class HookRuntime {
           throw new Error(output.reason || 'Prompt submission aborted by hook');
         }
 
-        if (typeof output.modifiedInput === 'string') {
-          nextMessage = this.replaceTextContent(nextMessage, output.modifiedInput);
+        if (output.modifiedInput != null) {
+          // Legacy path: older hooks may return a bare string as modifiedInput
+          if (typeof output.modifiedInput === 'string') {
+            nextMessage = this.replaceTextContent(nextMessage, output.modifiedInput);
+          } else if (typeof output.modifiedInput.userPrompt === 'string') {
+            nextMessage = this.replaceTextContent(nextMessage, output.modifiedInput.userPrompt);
+          }
         }
       }
     }
@@ -551,7 +556,7 @@ export class HookRuntime {
 
   private applyManagerPostToolResult(result: ToolResult, hookResult: {
     additionalContext?: string;
-    modifiedOutput?: unknown;
+    modifiedOutput?: JsonValue;
     warning?: string;
   }): ToolResult {
     let nextResult = result;
@@ -582,7 +587,7 @@ export class HookRuntime {
   private async applyPostToolCallbacks(
     event: HookEvent.PostToolUse | HookEvent.PostToolUseFailure,
     toolName: string,
-    input: Record<string, unknown>,
+    input: JsonObject,
     result: ToolResult,
     toolUseId: string,
   ): Promise<PostToolUseRuntimeResult> {
@@ -591,7 +596,7 @@ export class HookRuntime {
     }
 
     let nextResult = result;
-    let nextOutput: unknown = result.llmContent;
+    let nextOutput: string | object | JsonValue = result.llmContent;
     const outputs = await this.bus.dispatch(
       event,
       buildHookInput(this.options.sessionId, event, {
@@ -630,7 +635,7 @@ export class HookRuntime {
     return { toolUseId, result: nextResult };
   }
 
-  private stringifyHookOutput(output: unknown): string {
+  private stringifyHookOutput(output: string | object | JsonValue): string {
     if (typeof output === 'string') {
       return output;
     }
@@ -701,7 +706,7 @@ export class HookRuntime {
         const basePrompt = typeof input.userPrompt === 'string'
           ? input.userPrompt
           : '';
-        const modifiedInput = basePrompt.trim() === ''
+        const modifiedPrompt = basePrompt.trim() === ''
           ? hook.value
           : `${basePrompt}\n\n${hook.value}`;
 
@@ -711,7 +716,7 @@ export class HookRuntime {
 
         return {
           action: 'continue',
-          modifiedInput,
+          modifiedInput: { userPrompt: modifiedPrompt } as JsonObject,
         };
       };
     }

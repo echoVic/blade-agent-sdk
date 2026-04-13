@@ -5,15 +5,9 @@ import { createGoogleGenerativeAI } from '@ai-sdk/google';
 import { createOpenAI } from '@ai-sdk/openai';
 import { createOpenAICompatible } from '@ai-sdk/openai-compatible';
 import { generateText, jsonSchema, type LanguageModel, Output, streamText } from 'ai';
+import type { JSONSchema7 } from 'json-schema';
 import { type InternalLogger, LogCategory, NOOP_LOGGER } from '../logging/Logger.js';
-import type { OutputFormat } from '../types/common.js';
-import {
-  type RetryConfig,
-  type RetryEvent,
-  type RetryContext,
-  DEFAULT_RETRY_CONFIG,
-  withRetry,
-} from './RetryPolicy.js';
+import type { JsonObject, JsonValue, OutputFormat } from '../types/common.js';
 import type {
   ChatConfig,
   ChatResponse,
@@ -25,6 +19,13 @@ import type {
   ToolCall,
   UsageInfo,
 } from './ChatServiceInterface.js';
+import {
+  DEFAULT_RETRY_CONFIG,
+  type RetryConfig,
+  type RetryContext,
+  type RetryEvent,
+  withRetry,
+} from './RetryPolicy.js';
 
 function filterOrphanToolMessages(messages: Message[]): Message[] {
   const availableToolCallIds = new Set<string>();
@@ -52,7 +53,7 @@ function getTextContent(content: string | ContentPart[]): string {
     .join('\n');
 }
 
-type AIProviderOptions = Record<string, Record<string, unknown>>;
+type AIProviderOptions = Record<string, JsonObject>;
 
 type AITextPart = {
   type: 'text';
@@ -86,10 +87,10 @@ function parseDataUrl(url: string): { data: string; mediaType?: string } | undef
 function safeJsonParse(
   str: string,
   logger: InternalLogger,
-  fallback: unknown = {},
-): unknown {
+  fallback: JsonValue = {},
+): JsonValue {
   try {
-    return JSON.parse(str);
+    return JSON.parse(str) as JsonValue;
   } catch {
     logger.warn('⚠️ [VercelAIChatService] Failed to parse JSON, using fallback', { str });
     return fallback;
@@ -335,7 +336,7 @@ export class VercelAIChatService implements IChatService {
   }
 
   private convertTools(
-    tools?: Array<{ name: string; description: string; parameters: unknown }>
+    tools?: Array<{ name: string; description: string; parameters: JSONSchema7 }>
   ): Record<string, AITool> | undefined {
     if (!tools || tools.length === 0) return undefined;
 
@@ -407,7 +408,7 @@ export class VercelAIChatService implements IChatService {
 
   private prepareRequest(
     messages: Message[],
-    tools?: Array<{ name: string; description: string; parameters: unknown }>,
+    tools?: Array<{ name: string; description: string; parameters: JSONSchema7 }>,
   ) {
     const filteredMessages = filterOrphanToolMessages(messages);
     const coreMessages = this.convertMessages(filteredMessages);
@@ -449,7 +450,7 @@ export class VercelAIChatService implements IChatService {
 
   async chat(
     messages: Message[],
-    tools?: Array<{ name: string; description: string; parameters: unknown }>,
+    tools?: Array<{ name: string; description: string; parameters: JSONSchema7 }>,
     signal?: AbortSignal
   ): Promise<ChatResponse> {
     await this.initialized;
@@ -539,7 +540,7 @@ export class VercelAIChatService implements IChatService {
    */
   async *chatWithRetryEvents(
     messages: Message[],
-    tools?: Array<{ name: string; description: string; parameters: unknown }>,
+    tools?: Array<{ name: string; description: string; parameters: JSONSchema7 }>,
     signal?: AbortSignal
   ): AsyncGenerator<RetryEvent, ChatResponse> {
     await this.initialized;
@@ -583,7 +584,7 @@ export class VercelAIChatService implements IChatService {
 
   async *streamChat(
     messages: Message[],
-    tools?: Array<{ name: string; description: string; parameters: unknown }>,
+    tools?: Array<{ name: string; description: string; parameters: JSONSchema7 }>,
     signal?: AbortSignal
   ): AsyncGenerator<StreamChunk, void, unknown> {
     await this.initialized;

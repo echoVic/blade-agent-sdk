@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
+import type { JsonObject } from '../../../types/common.js';
 
 vi.mock('nanoid', () => ({
   nanoid: () => 'generated-subagent-id',
@@ -8,7 +9,7 @@ import { repairToolCallParams } from '../repairToolCallParams.js';
 
 describe('repairToolCallParams', () => {
   it('adds a generated subagent_session_id for Task calls when missing', async () => {
-    const params: Record<string, unknown> = {};
+    const params: JsonObject = {};
 
     await repairToolCallParams(
       {
@@ -26,7 +27,7 @@ describe('repairToolCallParams', () => {
   });
 
   it('uses the resume id for Task calls when present', async () => {
-    const params: Record<string, unknown> = {
+    const params: JsonObject = {
       resume: 'existing-session',
     };
 
@@ -46,7 +47,7 @@ describe('repairToolCallParams', () => {
   });
 
   it('parses todos when they are encoded as a JSON string', async () => {
-    const params: Record<string, unknown> = {
+    const params: JsonObject = {
       todos: JSON.stringify([
         { id: 'todo-1', content: 'write tests', status: 'in_progress' },
       ]),

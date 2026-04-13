@@ -1,7 +1,9 @@
 import { z } from 'zod';
+import { JsonValueSchema } from '../../../hooks/schemas/HookSchemas.js';
 import { createTool } from '../../core/createTool.js';
-import { ToolKind } from '../../types/ToolTypes.js';
 import { ToolErrorType } from '../../types/index.js';
+import { ToolKind } from '../../types/ToolTypes.js';
+import type { UpdateTaskInput } from './TaskStore.js';
 import { TaskStore } from './TaskStore.js';
 
 export function createTaskUpdateTool({ sessionId }: { sessionId: string }) {
@@ -26,7 +28,7 @@ ONLY mark a task as completed when you have FULLY accomplished it.`,
       description: z.string().optional(),
       activeForm: z.string().optional(),
       owner: z.string().optional(),
-      metadata: z.record(z.unknown()).optional().describe('Metadata keys to merge into the task. Set a key to null to delete it.'),
+      metadata: z.record(z.string(), JsonValueSchema).optional().describe('Metadata keys to merge into the task. Set a key to null to delete it.'),
       addBlocks: z.array(z.string()).optional().describe('Task IDs that this task blocks'),
       addBlockedBy: z.array(z.string()).optional().describe('Task IDs that must complete before this one can start'),
     }),
@@ -56,7 +58,7 @@ ONLY mark a task as completed when you have FULLY accomplished it.`,
         };
       }
 
-      const task = await store.update(taskId, input);
+      const task = await store.update(taskId, input as unknown as UpdateTaskInput);
       if (!task) {
         return {
           success: false,

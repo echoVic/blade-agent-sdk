@@ -1,5 +1,6 @@
 import { type Dispatcher, ProxyAgent, fetch as undiciFetch } from 'undici';
 import { z } from 'zod';
+import type { JsonValue } from '../../../types/common.js';
 import { getErrorMessage, getErrorName } from '../../../utils/errorUtils.js';
 import { createTool } from '../../core/createTool.js';
 import type {
@@ -226,7 +227,7 @@ async function searchWithProvider(
   }
 
   const rawText = await response.text();
-  let data: unknown;
+  let data: JsonValue;
   try {
     data = JSON.parse(rawText);
   } catch {

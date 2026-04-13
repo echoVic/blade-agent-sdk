@@ -1,3 +1,4 @@
+import type { JsonObject } from '../../types/common.js';
 import { PermissionMode, type PermissionMode as PermissionModeValue } from '../../types/common.js';
 import {
   resolveToolBehaviorSafely,
@@ -14,7 +15,7 @@ type ToolRegistryLike = {
         isReadOnly?: boolean;
         isConcurrencySafe?: boolean;
         isDestructive?: boolean;
-        resolveBehavior?: (params: Record<string, unknown>) => ToolBehavior;
+        resolveBehavior?: (params: JsonObject) => ToolBehavior;
       }
     | undefined;
 };
@@ -91,11 +92,11 @@ export function planToolExecution(
   };
 }
 
-function parseToolArguments(argumentsText: string): Record<string, unknown> | undefined {
+function parseToolArguments(argumentsText: string): JsonObject | undefined {
   try {
     const parsed = JSON.parse(argumentsText) as unknown;
     return parsed && typeof parsed === 'object' && !Array.isArray(parsed)
-      ? parsed as Record<string, unknown>
+      ? parsed as JsonObject
       : undefined;
   } catch {
     return undefined;

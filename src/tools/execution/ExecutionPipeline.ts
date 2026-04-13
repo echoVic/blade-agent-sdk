@@ -1,26 +1,25 @@
 import type { HookRuntime } from '../../hooks/HookRuntime.js';
-import { type InternalLogger, LogCategory, NOOP_LOGGER } from '../../logging/Logger.js';
-import { PermissionMode, type PermissionsConfig } from '../../types/common.js';
+import { LogCategory, NOOP_LOGGER, type InternalLogger } from '../../logging/Logger.js';
+import { PermissionMode, type JsonObject, type PermissionsConfig } from '../../types/common.js';
 import {
   createModePermissionHandler,
   createPathSafetyPermissionHandler,
   createPermissionHandlerFromCanUseTool,
   createRuleBasedPermissionHandler,
   type CanUseTool,
+  type PermissionResult as CanUseToolResult,
   type PermissionHandler,
   type PermissionHandlerRequest,
-  type PermissionResult as CanUseToolResult,
   type PermissionUpdate,
 } from '../../types/permissions.js';
 import { getErrorMessage, getErrorName } from '../../utils/errorUtils.js';
 import type { ToolCatalog } from '../catalog/ToolCatalog.js';
 import type { ToolRegistry } from '../registry/ToolRegistry.js';
 import type {
+  ConfirmationDetails,
   ExecutionContext,
   ExecutionHistoryEntry,
-  ConfirmationDetails,
-  ToolEffect,
-  ToolResult,
+  ToolResult
 } from '../types/index.js';
 import {
   normalizePermissionEffects,
@@ -31,23 +30,23 @@ import {
   resolveToolBehaviorSafely,
   ToolErrorType,
   ToolKind,
+  validationErrorToToolResult,
   type Tool,
   type ToolBehavior,
   type ToolInvocation,
-  validationErrorToToolResult,
 } from '../types/ToolTypes.js';
+import { DenialTracker } from './DenialTracker.js';
 import { FileLockManager } from './FileLockManager.js';
 import { ResultArtifactStore } from './ResultArtifactStore.js';
-import { DenialTracker } from './DenialTracker.js';
 
-function getString(params: Record<string, unknown>, key: string, defaultValue = ''): string {
+function getString(params: JsonObject, key: string, defaultValue = ''): string {
   const value = params[key];
   return typeof value === 'string' ? value : defaultValue;
 }
 
 function buildPermissionSignature(
   toolName: string,
-  params: Record<string, unknown>,
+  params: JsonObject,
   tool?: Pick<Tool, 'preparePermissionMatcher'>,
 ): string {
   const signatureContent = tool?.preparePermissionMatcher?.(params)?.signatureContent;
@@ -57,10 +56,10 @@ function buildPermissionSignature(
 interface PipelineExecutionState {
   toolName: string;
   tool: Tool;
-  params: Record<string, unknown>;
+  params: JsonObject;
   context: ExecutionContext;
   result?: ToolResult;
-  invocation?: ToolInvocation<unknown>;
+  invocation?: ToolInvocation<JsonObject>;
   resolvedBehavior?: ToolBehavior;
   permissionCheckResult?: { reason?: string };
   affectedPaths: string[];
@@ -130,12 +129,12 @@ export class ExecutionPipeline {
    */
   async execute(
     toolName: string,
-    params: Record<string, unknown>,
+    params: JsonObject,
     context: ExecutionContext
   ): Promise<ToolResult> {
     const startTime = Date.now();
     const executionId = this.generateExecutionId();
-    const nextParams = { ...params };
+    const nextParams = { ...params } as JsonObject;
 
     const tool = this.registry.get(toolName);
     if (!tool) {
@@ -294,7 +293,7 @@ export class ExecutionPipeline {
   async executeAll(
     requests: Array<{
       toolName: string;
-      params: Record<string, unknown>;
+      params: JsonObject;
       context: ExecutionContext;
     }>
   ): Promise<ToolResult[]> {
@@ -307,7 +306,7 @@ export class ExecutionPipeline {
   async executeTools(
     requests: Array<{
       toolName: string;
-      params: Record<string, unknown>;
+      params: JsonObject;
       context: ExecutionContext;
     }>,
     maxConcurrency: number = this.maxConcurrency
@@ -347,7 +346,7 @@ export class ExecutionPipeline {
   async executeParallel(
     requests: Array<{
       toolName: string;
-      params: Record<string, unknown>;
+      params: JsonObject;
       context: ExecutionContext;
     }>,
     maxConcurrency: number = this.maxConcurrency
@@ -640,7 +639,7 @@ export class ExecutionPipeline {
 
   private async applyPostExecutionHooks(
     toolName: string,
-    params: Record<string, unknown>,
+    params: JsonObject,
     context: ExecutionContext,
     result: ToolResult,
     executionId: string,
@@ -985,7 +984,7 @@ export class ExecutionPipeline {
 
   private generatePreviewForTool(
     toolName: string,
-    params: Record<string, unknown>,
+    params: JsonObject,
   ): string | undefined {
     switch (toolName) {
       case 'Edit': {
@@ -1025,7 +1024,7 @@ export class ExecutionPipeline {
 
   private extractRisksFromPermissionCheck(
     tool: { name: string },
-    params: Record<string, unknown>,
+    params: JsonObject,
     permissionCheckResult?: { reason?: string },
   ): string[] {
     const risks: string[] = [];
@@ -1086,7 +1085,7 @@ export class ExecutionPipeline {
   private partitionToolCalls(
     requests: Array<{
       toolName: string;
-      params: Record<string, unknown>;
+      params: JsonObject;
       context: ExecutionContext;
     }>
   ): PartitionedToolCallBatch[] {
@@ -1113,7 +1112,7 @@ export class ExecutionPipeline {
 
   private canExecuteInParallel(
     toolName: string,
-    params: Record<string, unknown>,
+    params: JsonObject,
   ): boolean {
     const tool = this.registry.get(toolName);
     const behavior = resolveToolBehaviorSafely(tool, params);
@@ -1175,7 +1174,7 @@ export class ExecutionPipeline {
 
 interface IndexedToolCallRequest {
   toolName: string;
-  params: Record<string, unknown>;
+  params: JsonObject;
   context: ExecutionContext;
   index: number;
 }
@@ -1233,9 +1232,9 @@ function combineConfirmationReasons(
 
 function toParamsRecord(
   params: unknown,
-  fallback: Record<string, unknown>,
-): Record<string, unknown> {
+  fallback: JsonObject,
+): JsonObject {
   return params && typeof params === 'object' && !Array.isArray(params)
-    ? params as Record<string, unknown>
+    ? params as JsonObject
     : fallback;
 }

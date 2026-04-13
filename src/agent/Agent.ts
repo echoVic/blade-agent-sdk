@@ -34,13 +34,15 @@ import { ToolCatalog } from '../tools/catalog/ToolCatalog.js';
 import { ExecutionPipeline } from '../tools/execution/ExecutionPipeline.js';
 import { ToolRegistry } from '../tools/registry/ToolRegistry.js';
 import type { Tool } from '../tools/types/index.js';
-import { createPermissionHandlerFromCanUseTool } from '../types/permissions.js';
 import {
   type BladeConfig,
+  type JsonObject,
   type McpServerConfig,
   PermissionMode,
   type PermissionsConfig,
 } from '../types/common.js';
+import { createPermissionHandlerFromCanUseTool } from '../types/permissions.js';
+import type { AgentEvent } from './AgentEvent.js';
 import { AttachmentHandler } from './AttachmentHandler.js';
 import { CompactionHandler } from './CompactionHandler.js';
 import { LoopRunner } from './LoopRunner.js';
@@ -55,7 +57,6 @@ import {
   type TokenBudgetConfig,
   type TokenBudgetSnapshot,
 } from './TokenBudget.js';
-import type { AgentEvent } from './AgentEvent.js';
 import type {
   AgentOptions,
   ChatContext,
@@ -313,7 +314,7 @@ export class Agent {
     return this.tokenBudget?.getSnapshot();
   }
 
-  public getStats(): Record<string, unknown> {
+  public getStats(): JsonObject {
     return {
       initialized: this.isInitialized,
       components: {

@@ -1,3 +1,4 @@
+import type { JSONSchema7 } from 'json-schema';
 import { type InternalLogger, LogCategory, NOOP_LOGGER } from '../logging/Logger.js';
 import { streamDebug } from '../logging/StreamDebugLogger.js';
 import type {
@@ -19,7 +20,7 @@ export class StreamResponseHandler {
 
   async *streamResponse(
     messages: Message[],
-    tools: Array<{ name: string; description: string; parameters: unknown }>,
+    tools: Array<{ name: string; description: string; parameters: JSONSchema7 }>,
     signal?: AbortSignal
   ): AsyncGenerator<
     { type: 'content_delta'; delta: string } | { type: 'thinking_delta'; delta: string },

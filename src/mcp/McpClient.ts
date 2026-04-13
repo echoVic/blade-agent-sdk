@@ -9,7 +9,7 @@ import { SSEClientTransport } from '@modelcontextprotocol/sdk/client/sse.js';
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
 import type { Transport } from '@modelcontextprotocol/sdk/shared/transport.js';
 import { EventEmitter } from 'events';
-import type { McpServerConfig } from '../types/common.js';
+import type { JsonObject, JsonValue, McpServerConfig } from '../types/common.js';
 import { toError } from '../utils/errorUtils.js';
 import { getPackageName, getVersion } from '../utils/packageInfo.js';
 import { OAuthProvider } from './auth/index.js';
@@ -443,7 +443,7 @@ export class McpClient extends EventEmitter {
    */
   async callTool(
     name: string,
-    arguments_: Record<string, unknown> = {}
+    arguments_: JsonObject = {}
   ): Promise<McpToolCallResponse> {
     if (!this.sdkClient) {
       throw new Error('客户端未连接到服务器');
@@ -605,13 +605,13 @@ export class McpClient extends EventEmitter {
     return this.disconnect();
   }
 
-  async listResources(serverId?: string): Promise<unknown[]> {
+  async listResources(serverId?: string): Promise<JsonValue[]> {
     if (!this.sdkClient) {
       return [];
     }
     try {
       const response = await this.sdkClient.listResources();
-      return response.resources || [];
+      return (response.resources || []) as unknown as JsonValue[];
     } catch {
       return [];
     }
@@ -621,11 +621,11 @@ export class McpClient extends EventEmitter {
     return this.availableTools;
   }
 
-  async readResource(uri: string, serverId?: string): Promise<unknown> {
+  async readResource(uri: string, serverId?: string): Promise<JsonValue> {
     if (!this.sdkClient) {
       throw new Error('客户端未连接');
     }
     const response = await this.sdkClient.readResource({ uri });
-    return response.contents?.[0] || { uri, text: '' };
+    return (response.contents?.[0] || { uri, text: '' }) as unknown as JsonValue;
   }
 }

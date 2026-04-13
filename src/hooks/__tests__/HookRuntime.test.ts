@@ -51,7 +51,7 @@ describe('HookRuntime', () => {
         [HookEvent.UserPromptSubmit]: [
           async () => ({
             action: 'continue',
-            modifiedInput: 'updated prompt',
+            modifiedInput: { userPrompt: 'updated prompt' },
           }),
         ],
       },

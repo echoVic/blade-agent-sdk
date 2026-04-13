@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { AtMentionParser } from '../processors/AtMentionParser.js';
+import { assertDefined } from '../../__tests__/helpers/assertDefined.js';
 
 describe('AtMentionParser', () => {
   describe('extract', () => {
@@ -21,8 +22,9 @@ describe('AtMentionParser', () => {
       expect(mentions).toHaveLength(1);
       expect(mentions[0].path).toBe('file.ts');
       expect(mentions[0].lineRange).toBeDefined();
-      expect(mentions[0].lineRange!.start).toBe(10);
-      expect(mentions[0].lineRange!.end).toBeUndefined();
+      assertDefined(mentions[0].lineRange);
+      expect(mentions[0].lineRange.start).toBe(10);
+      expect(mentions[0].lineRange.end).toBeUndefined();
     });
 
     it('should extract line range #L10-20', () => {
@@ -30,8 +32,9 @@ describe('AtMentionParser', () => {
       expect(mentions).toHaveLength(1);
       expect(mentions[0].path).toBe('src/agent.ts');
       expect(mentions[0].lineRange).toBeDefined();
-      expect(mentions[0].lineRange!.start).toBe(100);
-      expect(mentions[0].lineRange!.end).toBe(150);
+      assertDefined(mentions[0].lineRange);
+      expect(mentions[0].lineRange.start).toBe(100);
+      expect(mentions[0].lineRange.end).toBe(150);
     });
 
     it('should extract multiple mentions', () => {

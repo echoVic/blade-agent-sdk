@@ -1,7 +1,7 @@
 import { basename, dirname } from 'node:path';
 import type { AgentRuntimeDeps } from '../agent/Agent.js';
-import { BackgroundAgentManager } from '../agent/subagents/BackgroundAgentManager.js';
 import { AgentSessionStore } from '../agent/subagents/AgentSessionStore.js';
+import { BackgroundAgentManager } from '../agent/subagents/BackgroundAgentManager.js';
 import { SubagentRegistry } from '../agent/subagents/SubagentRegistry.js';
 import { ContextManager } from '../context/ContextManager.js';
 import { HookManager } from '../hooks/HookManager.js';
@@ -11,6 +11,10 @@ import { LogCategory } from '../logging/Logger.js';
 import { projectMcpCapabilities, type McpServerCapability } from '../mcp/McpCapabilityProjector.js';
 import { McpRegistry } from '../mcp/McpRegistry.js';
 import type { SdkMcpServerHandle } from '../mcp/SdkMcpServer.js';
+import type { ContextSnapshot, RuntimeContext } from '../runtime/index.js';
+import {
+  getContextCwd,
+} from '../runtime/index.js';
 import { getSandboxExecutor } from '../sandbox/SandboxExecutor.js';
 import { getSandboxService } from '../sandbox/SandboxService.js';
 import { FileAccessTracker } from '../tools/builtin/file/FileAccessTracker.js';
@@ -30,10 +34,6 @@ import {
   type PermissionHandler,
   type PermissionResult,
 } from '../types/permissions.js';
-import type { ContextSnapshot, RuntimeContext } from '../runtime/index.js';
-import {
-  getContextCwd,
-} from '../runtime/index.js';
 import type {
   AgentDefinition,
   HookCallback,
@@ -372,7 +372,7 @@ export class SessionRuntime {
     if (filteredTools.length === 0) {
       return;
     }
-    this.toolCatalog.registerAll(filteredTools as Tool[], {
+    this.toolCatalog.registerAll(filteredTools as unknown as Tool[], {
       kind: 'custom',
       trustLevel: 'workspace',
       sourceId: 'session',

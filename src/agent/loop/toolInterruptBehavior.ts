@@ -1,3 +1,4 @@
+import type { JsonObject } from '../../types/common.js';
 import {
   resolveToolBehaviorSafely,
   type ToolBehavior,
@@ -17,7 +18,7 @@ type ToolRegistryLike = {
         isDestructive?: boolean;
         interruptBehavior?: InterruptBehavior;
         resolveBehavior?: (
-          params: Record<string, unknown>,
+          params: JsonObject,
         ) => Partial<ToolBehavior> | ToolBehavior;
       }
     | undefined;
@@ -26,7 +27,7 @@ type ToolRegistryLike = {
 export function resolveToolInterruptBehavior(
   registry: ToolRegistryLike,
   toolName: string,
-  params: Record<string, unknown>,
+  params: JsonObject,
 ): InterruptBehavior {
   const tool = registry.get(toolName);
   const behavior = resolveToolBehaviorSafely(tool, params);

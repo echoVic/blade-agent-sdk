@@ -5,6 +5,7 @@
  * 当前支持：Exa (MCP)、DuckDuckGo、SearXNG（多实例）
  */
 
+import type { JsonObject, JsonValue } from '../../../types/common.js';
 import { getErrorName } from '../../../utils/errorUtils.js';
 import type { WebSearchResult } from './webSearch.js';
 
@@ -21,9 +22,9 @@ export interface SearchProvider {
   /** 构建搜索 URL */
   buildUrl: (query: string) => string;
   /** 构建 POST 请求体（仅当 method 为 POST 时使用） */
-  buildBody?: (query: string) => Record<string, unknown>;
+  buildBody?: (query: string) => JsonObject;
   /** 解析响应数据 */
-  parseResponse: (data: unknown) => WebSearchResult[];
+  parseResponse: (data: JsonValue) => WebSearchResult[];
   /** 获取请求头 */
   getHeaders: () => Record<string, string>;
   /** 可选的 SDK 搜索函数（优先使用，绕过 HTTP 请求） */
@@ -133,7 +134,7 @@ function flattenTopics(topics: DuckDuckGoTopic[]): WebSearchResult[] {
   return results;
 }
 
-function transformDuckDuckGoResponse(data: unknown): WebSearchResult[] {
+function transformDuckDuckGoResponse(data: JsonValue): WebSearchResult[] {
   if (!isDuckDuckGoResponse(data)) return [];
   const response = data;
 
@@ -186,7 +187,7 @@ function isSearXNGResponse(data: unknown): data is SearXNGResponse {
   return true;
 }
 
-function transformSearXNGResponse(data: unknown): WebSearchResult[] {
+function transformSearXNGResponse(data: JsonValue): WebSearchResult[] {
   if (!isSearXNGResponse(data)) return [];
   const response = data;
   const results: WebSearchResult[] = [];

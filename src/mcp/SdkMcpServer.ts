@@ -11,6 +11,7 @@ import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type { Transport } from '@modelcontextprotocol/sdk/shared/transport.js';
 import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
+import type { JsonObject } from '../types/common.js';
 import type { z } from 'zod';
 
 export type ToolResponse = CallToolResult;
@@ -22,7 +23,7 @@ export interface SdkTool {
   name: string;
   description: string;
   schema: Record<string, z.ZodTypeAny>;
-  handler: (params: Record<string, unknown>) => Promise<ToolResponse>;
+  handler: (params: JsonObject) => Promise<ToolResponse>;
 }
 
 /**
@@ -68,7 +69,7 @@ export function tool<T extends Record<string, z.ZodTypeAny>>(
     name,
     description,
     schema,
-    handler: handler as (params: Record<string, unknown>) => Promise<ToolResponse>,
+    handler: handler as (params: JsonObject) => Promise<ToolResponse>,
   };
 }
 
@@ -106,7 +107,7 @@ export async function createSdkMcpServer(config: {
 
   for (const t of config.tools) {
     server.tool(t.name, t.description, t.schema, async (params) => {
-      return t.handler(params as Record<string, unknown>);
+      return t.handler(params as JsonObject);
     });
   }
 

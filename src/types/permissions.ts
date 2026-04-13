@@ -1,11 +1,12 @@
-import { PermissionMode, type PermissionsConfig } from './common.js';
+import type { ToolEffect } from '../tools/types/ToolEffects.js';
 import type { ToolKind } from '../tools/types/ToolTypes.js';
 import { ToolKind as ToolKindValue } from '../tools/types/ToolTypes.js';
-import type { ToolEffect } from '../tools/types/ToolEffects.js';
 import {
   SensitiveFileDetector,
   SensitivityLevel,
 } from '../tools/validation/SensitiveFileDetector.js';
+import type { JsonObject } from './common.js';
+import { PermissionMode, type PermissionsConfig } from './common.js';
 
 export interface PermissionRuleValue {
   toolName: string;
@@ -26,7 +27,7 @@ export type PermissionUpdate =
 export type PermissionResult =
   | {
       behavior: 'allow';
-      updatedInput?: Record<string, unknown>;
+      updatedInput?: JsonObject;
       effects?: ToolEffect[];
       updatedPermissions?: PermissionUpdate[];
     }
@@ -48,13 +49,13 @@ export interface CanUseToolOptions {
 
 export type CanUseTool = (
   toolName: string,
-  input: Record<string, unknown>,
+  input: JsonObject,
   options: CanUseToolOptions
 ) => Promise<PermissionResult>;
 
 export interface PermissionHandlerRequest {
   toolName: string;
-  input: Record<string, unknown>;
+  input: JsonObject;
   signal: AbortSignal;
   permissionMode?: PermissionMode;
   sessionApproved?: boolean;

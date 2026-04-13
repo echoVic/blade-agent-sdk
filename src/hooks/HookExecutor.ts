@@ -4,6 +4,7 @@
  * 负责执行单个或多个 Hooks
  */
 
+import type { JsonObject, JsonValue } from '../types/common.js';
 import { OutputParser } from './OutputParser.js';
 import { SecureProcessExecutor } from './SecureProcessExecutor.js';
 import {
@@ -60,8 +61,8 @@ export class HookExecutor {
       return { decision: 'allow' };
     }
 
-    let cumulativeInput =
-      'tool_input' in input ? (input.tool_input as Record<string, unknown>) : {};
+    let cumulativeInput: JsonObject =
+      'tool_input' in input ? (input.tool_input as JsonObject) : {};
 
     const warnings: string[] = [];
 
@@ -126,7 +127,7 @@ export class HookExecutor {
             cumulativeInput = {
               ...cumulativeInput,
               ...specific.updatedInput,
-            };
+            } as JsonObject;
           }
         }
       } catch (err) {
@@ -183,7 +184,7 @@ export class HookExecutor {
 
     // 合并结果
     const additionalContexts: string[] = [];
-    let modifiedOutput: unknown ;
+    let modifiedOutput: JsonValue | undefined;
     const warnings: string[] = [];
 
     for (const result of results) {

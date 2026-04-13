@@ -3,6 +3,7 @@ import { FileAccessTracker } from '../FileAccessTracker.js';
 import { writeFile, mkdtemp } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { assertDefined } from '../../../../__tests__/helpers/assertDefined.js';
 
 describe('FileAccessTracker', () => {
   let tracker: FileAccessTracker;
@@ -66,13 +67,15 @@ describe('FileAccessTracker', () => {
       await tracker.recordFileEdit(testFile, 'session-1', 'edit');
       const record = tracker.getFileRecord(testFile);
       expect(record).toBeDefined();
-      expect(record!.lastOperation).toBe('edit');
+      assertDefined(record);
+      expect(record.lastOperation).toBe('edit');
     });
 
     it('should record file write', async () => {
       await tracker.recordFileEdit(testFile, 'session-1', 'write');
       const record = tracker.getFileRecord(testFile);
-      expect(record!.lastOperation).toBe('write');
+      assertDefined(record);
+      expect(record.lastOperation).toBe('write');
     });
   });
 
@@ -85,11 +88,12 @@ describe('FileAccessTracker', () => {
       await tracker.recordFileRead(testFile, 'session-1');
       const record = tracker.getFileRecord(testFile);
       expect(record).toBeDefined();
-      expect(record!.filePath).toBe(testFile);
-      expect(record!.sessionId).toBe('session-1');
-      expect(record!.lastOperation).toBe('read');
-      expect(record!.accessTime).toBeGreaterThan(0);
-      expect(record!.mtime).toBeGreaterThan(0);
+      assertDefined(record);
+      expect(record.filePath).toBe(testFile);
+      expect(record.sessionId).toBe('session-1');
+      expect(record.lastOperation).toBe('read');
+      expect(record.accessTime).toBeGreaterThan(0);
+      expect(record.mtime).toBeGreaterThan(0);
     });
   });
 

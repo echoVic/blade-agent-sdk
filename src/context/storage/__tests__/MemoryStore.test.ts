@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { MemoryStore } from '../MemoryStore.js';
 import type { ContextData, ContextMessage, ToolCall, WorkspaceContext } from '../../types.js';
+import { assertDefined } from '../../../__tests__/helpers/assertDefined.js';
 
 /**
  * Helper: create a minimal valid ContextData object
@@ -96,7 +97,8 @@ describe('MemoryStore', () => {
 
       const result = store.getContext();
       expect(result).not.toBeNull();
-      expect(result!.layers.session.sessionId).toBe('test-session');
+      assertDefined(result);
+      expect(result.layers.session.sessionId).toBe('test-session');
     });
 
     it('should return null when no context is set', () => {
@@ -122,7 +124,8 @@ describe('MemoryStore', () => {
       store.setContext(data);
 
       const result = store.getContext();
-      expect(result!.metadata.lastUpdated).toBeGreaterThan(0);
+      assertDefined(result);
+      expect(result.metadata.lastUpdated).toBeGreaterThan(0);
     });
 
     it('should overwrite previous context when called again', () => {
@@ -133,8 +136,9 @@ describe('MemoryStore', () => {
       store.setContext(newData);
 
       const result = store.getContext();
-      expect(result!.metadata.totalTokens).toBe(42);
-      expect(result!.metadata.priority).toBe(2);
+      assertDefined(result);
+      expect(result.metadata.totalTokens).toBe(42);
+      expect(result.metadata.priority).toBe(2);
     });
   });
 
@@ -145,8 +149,9 @@ describe('MemoryStore', () => {
       store.addMessage(msg);
 
       const ctx = store.getContext();
-      expect(ctx!.layers.conversation.messages).toHaveLength(1);
-      expect(ctx!.layers.conversation.messages[0].content).toBe('Test message');
+      assertDefined(ctx);
+      expect(ctx.layers.conversation.messages).toHaveLength(1);
+      expect(ctx.layers.conversation.messages[0].content).toBe('Test message');
     });
 
     it('should throw if context is not initialized', () => {
@@ -160,8 +165,9 @@ describe('MemoryStore', () => {
       store.addMessage(createMessage());
 
       const ctx = store.getContext();
-      expect(ctx!.layers.conversation.lastActivity).toBeGreaterThanOrEqual(before);
-      expect(ctx!.metadata.lastUpdated).toBeGreaterThanOrEqual(before);
+      assertDefined(ctx);
+      expect(ctx.layers.conversation.lastActivity).toBeGreaterThanOrEqual(before);
+      expect(ctx.metadata.lastUpdated).toBeGreaterThanOrEqual(before);
     });
 
     it('should add multiple messages in order', () => {
@@ -171,7 +177,8 @@ describe('MemoryStore', () => {
       store.addMessage(createMessage({ content: 'Third' }));
 
       const ctx = store.getContext();
-      const messages = ctx!.layers.conversation.messages;
+      assertDefined(ctx);
+      const messages = ctx.layers.conversation.messages;
       expect(messages).toHaveLength(3);
       expect(messages[0].content).toBe('First');
       expect(messages[1].content).toBe('Second');
@@ -190,7 +197,8 @@ describe('MemoryStore', () => {
       }
 
       const ctx = smallStore.getContext();
-      const messages = ctx!.layers.conversation.messages;
+      assertDefined(ctx);
+      const messages = ctx.layers.conversation.messages;
       // maxSize=10, keepCount = floor(10 * 0.8) = 8
       expect(messages.length).toBeLessThanOrEqual(10);
       // The most recent messages should be preserved
@@ -204,7 +212,8 @@ describe('MemoryStore', () => {
       }
 
       const ctx = store.getContext();
-      expect(ctx!.layers.conversation.messages).toHaveLength(5);
+      assertDefined(ctx);
+      expect(ctx.layers.conversation.messages).toHaveLength(5);
     });
   });
 
@@ -257,8 +266,9 @@ describe('MemoryStore', () => {
       store.addToolCall(tc);
 
       const ctx = store.getContext();
-      expect(ctx!.layers.tool.recentCalls).toHaveLength(1);
-      expect(ctx!.layers.tool.recentCalls[0].name).toBe('readFile');
+      assertDefined(ctx);
+      expect(ctx.layers.tool.recentCalls).toHaveLength(1);
+      expect(ctx.layers.tool.recentCalls[0].name).toBe('readFile');
     });
 
     it('should throw if context is not initialized', () => {
@@ -271,7 +281,8 @@ describe('MemoryStore', () => {
       store.addToolCall(createToolCall());
 
       const ctx = store.getContext();
-      expect(ctx!.metadata.lastUpdated).toBeGreaterThanOrEqual(before);
+      assertDefined(ctx);
+      expect(ctx.metadata.lastUpdated).toBeGreaterThanOrEqual(before);
     });
 
     it('should trim tool calls when exceeding 50', () => {
@@ -283,7 +294,8 @@ describe('MemoryStore', () => {
 
       const ctx = store.getContext();
       // After exceeding 50, it slices to keep the last 25
-      expect(ctx!.layers.tool.recentCalls.length).toBeLessThanOrEqual(50);
+      assertDefined(ctx);
+      expect(ctx.layers.tool.recentCalls.length).toBeLessThanOrEqual(50);
     });
   });
 
@@ -331,8 +343,9 @@ describe('MemoryStore', () => {
       });
 
       const ctx = store.getContext();
-      expect(ctx!.layers.workspace.projectPath).toBe('/my/project');
-      expect(ctx!.layers.workspace.currentFiles).toEqual(['file1.ts', 'file2.ts']);
+      assertDefined(ctx);
+      expect(ctx.layers.workspace.projectPath).toBe('/my/project');
+      expect(ctx.layers.workspace.currentFiles).toEqual(['file1.ts', 'file2.ts']);
     });
 
     it('should throw if context is not initialized', () => {
@@ -347,8 +360,9 @@ describe('MemoryStore', () => {
       store.updateWorkspace({ currentFiles: ['a.ts'] });
 
       const ctx = store.getContext();
-      expect(ctx!.layers.workspace.projectPath).toBe('/project');
-      expect(ctx!.layers.workspace.currentFiles).toEqual(['a.ts']);
+      assertDefined(ctx);
+      expect(ctx.layers.workspace.projectPath).toBe('/project');
+      expect(ctx.layers.workspace.currentFiles).toEqual(['a.ts']);
     });
 
     it('should update lastUpdated', () => {
@@ -357,7 +371,8 @@ describe('MemoryStore', () => {
       store.updateWorkspace({ recentFiles: ['x.ts'] });
 
       const ctx = store.getContext();
-      expect(ctx!.metadata.lastUpdated).toBeGreaterThanOrEqual(before);
+      assertDefined(ctx);
+      expect(ctx.metadata.lastUpdated).toBeGreaterThanOrEqual(before);
     });
   });
 

@@ -1,8 +1,7 @@
 import { PermissionMode } from '../../types/common.js';
+import { ToolRegistry } from '../registry/ToolRegistry.js';
 import { searchTools } from '../search/toolSearch.js';
 import type { FunctionDeclaration, Tool } from '../types/index.js';
-import { resolveToolBehaviorHint } from '../types/index.js';
-import { ToolRegistry } from '../registry/ToolRegistry.js';
 
 export type ToolSourceKind = 'builtin' | 'custom' | 'mcp' | 'session';
 export type ToolTrustLevel = 'trusted' | 'workspace' | 'remote';
@@ -53,8 +52,8 @@ export class ToolCatalog implements ToolCatalogReadView {
     trustLevel: 'workspace',
     sourceId: 'custom',
   }): void {
-    this.registry.register(tool as Tool);
-    this.entries.set(tool.name, { tool: tool as Tool, source });
+    this.registry.register(tool as unknown as Tool);
+    this.entries.set(tool.name, { tool: tool as unknown as Tool, source });
   }
 
   registerAll<TParams>(tools: Tool<TParams>[], source: ToolSourceInfo = {
@@ -72,8 +71,8 @@ export class ToolCatalog implements ToolCatalogReadView {
     trustLevel: 'remote',
     sourceId: 'mcp',
   }): void {
-    this.registry.registerMcpTool(tool as Tool);
-    this.entries.set(tool.name, { tool: tool as Tool, source });
+    this.registry.registerMcpTool(tool as unknown as Tool);
+    this.entries.set(tool.name, { tool: tool as unknown as Tool, source });
   }
 
   unregister(name: string): boolean {

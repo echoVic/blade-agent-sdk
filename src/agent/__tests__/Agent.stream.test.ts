@@ -2,6 +2,7 @@ import { describe, expect, it, vi, beforeEach } from 'vitest';
 import type { AgentEvent } from '../AgentEvent.js';
 import type { ChatContext, LoopResult } from '../types.js';
 import { PermissionMode } from '../../types/common.js';
+import { assertDefined } from '../../__tests__/helpers/assertDefined.js';
 
 const createMockChatService = () => ({
   chat: vi.fn(() => Promise.resolve({
@@ -231,8 +232,9 @@ describe('Agent.streamChat', () => {
       }
 
       expect(result).toBeDefined();
-      expect(result!.success).toBe(true);
-      expect(result!.finalMessage).toBe('Execution completed');
+      assertDefined(result);
+      expect(result.success).toBe(true);
+      expect(result.finalMessage).toBe('Execution completed');
     });
   });
 

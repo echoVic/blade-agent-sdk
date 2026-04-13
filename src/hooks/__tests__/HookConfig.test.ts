@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { DEFAULT_HOOK_CONFIG, mergeHookConfig } from '../HookConfig.js';
 import type { HookConfig } from '../types/HookTypes.js';
 import { HookType } from '../types/HookTypes.js';
+import { assertDefined } from '../../__tests__/helpers/assertDefined.js';
 
 function createDefaultHookConfig(): HookConfig {
   return { ...DEFAULT_HOOK_CONFIG, enabled: true };
@@ -87,7 +88,8 @@ describe('HookConfig', () => {
       };
       const merged = mergeHookConfig(base, override);
       expect(merged.PreToolUse).toHaveLength(1);
-      expect(merged.PreToolUse![0].matcher?.tools).toBe('Bash');
+      assertDefined(merged.PreToolUse);
+      expect(merged.PreToolUse[0].matcher?.tools).toBe('Bash');
     });
 
     it('should keep base values when override is undefined', () => {

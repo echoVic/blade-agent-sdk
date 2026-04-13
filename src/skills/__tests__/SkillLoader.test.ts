@@ -9,6 +9,7 @@ import {
   loadSkillMetadata,
   processInlineCommands
 } from '../SkillLoader.js';
+import { assertDefined } from '../../__tests__/helpers/assertDefined.js';
 
 // ===== Helper =====
 
@@ -195,20 +196,21 @@ describe('SkillLoader', () => {
 
       expect(result.success).toBe(true);
       expect(result.content).toBeDefined();
-      expect(result.content!.metadata.name).toBe('test-skill');
-      expect(result.content!.metadata.description).toBe('A test skill for unit testing');
-      expect(result.content!.metadata.allowedTools).toEqual(['Read', 'Grep']);
-      expect(result.content!.metadata.runtimeEffects).toEqual({
+      assertDefined(result.content);
+      expect(result.content.metadata.name).toBe('test-skill');
+      expect(result.content.metadata.description).toBe('A test skill for unit testing');
+      expect(result.content.metadata.allowedTools).toEqual(['Read', 'Grep']);
+      expect(result.content.metadata.runtimeEffects).toEqual({
         allowedTools: ['Read', 'Grep'],
         deniedTools: undefined,
         modelId: undefined,
         effort: undefined,
         activeScope: 'session',
       });
-      expect(result.content!.metadata.version).toBe('1.0.0');
-      expect(result.content!.metadata.source.kind).toBe('project');
-      expect(result.content!.metadata.path).toBe(filePath);
-      expect(result.content!.instructions).toBe('# Test Skill\n\nThis is the instruction content.');
+      expect(result.content.metadata.version).toBe('1.0.0');
+      expect(result.content.metadata.source.kind).toBe('project');
+      expect(result.content.metadata.path).toBe(filePath);
+      expect(result.content.instructions).toBe('# Test Skill\n\nThis is the instruction content.');
     });
 
     it('should parse comma-separated allowed-tools', async () => {
@@ -216,7 +218,8 @@ describe('SkillLoader', () => {
       const result = await loadSkillMetadata(filePath, 'user');
 
       expect(result.success).toBe(true);
-      expect(result.content!.metadata.allowedTools).toEqual(['Read', 'Grep', 'Glob']);
+      assertDefined(result.content);
+      expect(result.content.metadata.allowedTools).toEqual(['Read', 'Grep', 'Glob']);
     });
 
     it('should parse space-separated allowed-tools (agentskills.io format)', async () => {
@@ -224,7 +227,8 @@ describe('SkillLoader', () => {
       const result = await loadSkillMetadata(filePath, 'user');
 
       expect(result.success).toBe(true);
-      expect(result.content!.metadata.allowedTools).toEqual(['Bash(git:*)', 'Read', 'Grep']);
+      assertDefined(result.content);
+      expect(result.content.metadata.allowedTools).toEqual(['Bash(git:*)', 'Read', 'Grep']);
     });
 
     it('should parse boolean fields correctly', async () => {
@@ -232,7 +236,8 @@ describe('SkillLoader', () => {
       const result = await loadSkillMetadata(filePath, 'project');
 
       expect(result.success).toBe(true);
-      const meta = result.content!.metadata;
+      assertDefined(result.content);
+      const meta = result.content.metadata;
       expect(meta.userInvocable).toBe(true);
       expect(meta.disableModelInvocation).toBe(false);
       expect(meta.argumentHint).toBe('<file_path>');
@@ -252,8 +257,9 @@ describe('SkillLoader', () => {
       const result = await loadSkillMetadata(filePath, 'project');
 
       expect(result.success).toBe(true);
-      expect(result.content!.metadata.userInvocable).toBe(true);
-      expect(result.content!.metadata.disableModelInvocation).toBe(false);
+      assertDefined(result.content);
+      expect(result.content.metadata.userInvocable).toBe(true);
+      expect(result.content.metadata.disableModelInvocation).toBe(false);
     });
 
     it('should parse license, compatibility, and metadata fields', async () => {
@@ -261,7 +267,8 @@ describe('SkillLoader', () => {
       const result = await loadSkillMetadata(filePath, 'project');
 
       expect(result.success).toBe(true);
-      const meta = result.content!.metadata;
+      assertDefined(result.content);
+      const meta = result.content.metadata;
       expect(meta.license).toBe('Apache-2.0');
       expect(meta.compatibility).toBe('Requires git, python3 and network access');
       expect(meta.metadata).toEqual({
@@ -276,7 +283,8 @@ describe('SkillLoader', () => {
       const result = await loadSkillMetadata(filePath, 'project');
 
       expect(result.success).toBe(true);
-      const meta = result.content!.metadata;
+      assertDefined(result.content);
+      const meta = result.content.metadata;
       expect(meta.source.kind).toBe('project');
       expect(meta.source.trustLevel).toBe('workspace');
       expect(meta.source.shellPolicy).toBe('inherit');
@@ -290,7 +298,7 @@ describe('SkillLoader', () => {
       expect(meta.conditions).toEqual({
         paths: ['src/**'],
       });
-      expect(result.content!.hooks).toEqual([
+      expect(result.content.hooks).toEqual([
         {
           event: 'UserPromptSubmit',
           type: 'append_prompt',
@@ -307,7 +315,8 @@ describe('SkillLoader', () => {
       const result = await loadSkillMetadata(filePath, 'project');
 
       expect(result.success).toBe(true);
-      expect(result.content!.metadata.shell).toEqual({
+      assertDefined(result.content);
+      expect(result.content.metadata.shell).toEqual({
         enabled: true,
         allowlist: ['git status', 'pnpm test'],
       });
@@ -318,7 +327,8 @@ describe('SkillLoader', () => {
       const result = await loadSkillMetadata(filePath, 'project');
 
       expect(result.success).toBe(true);
-      expect(result.content!.metadata.shell).toEqual({
+      assertDefined(result.content);
+      expect(result.content.metadata.shell).toEqual({
         enabled: false,
         allowlist: ['git status'],
       });
@@ -329,9 +339,10 @@ describe('SkillLoader', () => {
       const result = await loadSkillMetadata(filePath, 'project');
 
       expect(result.success).toBe(true);
-      expect(result.content!.metadata.license).toBeUndefined();
-      expect(result.content!.metadata.compatibility).toBeUndefined();
-      expect(result.content!.metadata.metadata).toBeUndefined();
+      assertDefined(result.content);
+      expect(result.content.metadata.license).toBeUndefined();
+      expect(result.content.metadata.compatibility).toBeUndefined();
+      expect(result.content.metadata.metadata).toBeUndefined();
     });
 
     it('should fail on missing frontmatter', async () => {
@@ -386,7 +397,8 @@ describe('SkillLoader', () => {
       const result = await loadSkillMetadata(filePath, 'project');
 
       expect(result.success).toBe(true);
-      expect(result.content!.metadata.basePath).toBe(path.dirname(filePath));
+      assertDefined(result.content);
+      expect(result.content.metadata.basePath).toBe(path.dirname(filePath));
     });
 
     it('should not treat the individual skill directory as the source root fallback', async () => {
@@ -394,7 +406,8 @@ describe('SkillLoader', () => {
       const result = await loadSkillMetadata(filePath, 'project');
 
       expect(result.success).toBe(true);
-      expect(result.content!.metadata.source.rootDir).toBeUndefined();
+      assertDefined(result.content);
+      expect(result.content.metadata.source.rootDir).toBeUndefined();
     });
   });
 
@@ -404,10 +417,12 @@ describe('SkillLoader', () => {
       const metaResult = await loadSkillMetadata(filePath, 'project');
       expect(metaResult.success).toBe(true);
 
-      const content = await loadSkillContent(metaResult.content!.metadata);
+      assertDefined(metaResult.content);
+      const content = await loadSkillContent(metaResult.content.metadata);
       expect(content).not.toBeNull();
-      expect(content!.metadata.name).toBe('test-skill');
-      expect(content!.instructions).toContain('Test Skill');
+      assertDefined(content);
+      expect(content.metadata.name).toBe('test-skill');
+      expect(content.instructions).toContain('Test Skill');
     });
 
     it('should return null for deleted file', async () => {
@@ -416,7 +431,8 @@ describe('SkillLoader', () => {
       expect(metaResult.success).toBe(true);
 
       await fs.unlink(filePath);
-      const content = await loadSkillContent(metaResult.content!.metadata);
+      assertDefined(metaResult.content);
+      const content = await loadSkillContent(metaResult.content.metadata);
       expect(content).toBeNull();
     });
 
@@ -434,11 +450,13 @@ Hello !{ECHO_CMD}World
       const metaResult = await loadSkillMetadata(filePath, 'project');
       expect(metaResult.success).toBe(true);
 
-      const content = await loadSkillContent(metaResult.content!.metadata, { cwd: tmpDir });
+      assertDefined(metaResult.content);
+      const content = await loadSkillContent(metaResult.content.metadata, { cwd: tmpDir });
       expect(content).not.toBeNull();
       // echo -n "" returns empty string, so "(unavailable)" would not appear
       // The inline command replaces with output (empty string from echo -n "")
-      expect(content!.instructions).toContain('Hello ');
+      assertDefined(content);
+      expect(content.instructions).toContain('Hello ');
     });
 
     it('should not process inline commands when cwd is not provided', async () => {
@@ -454,9 +472,11 @@ Result: !` + '`echo hello`' + `
       expect(metaResult.success).toBe(true);
 
       // No cwd provided → inline commands should not be processed
-      const content = await loadSkillContent(metaResult.content!.metadata);
+      assertDefined(metaResult.content);
+      const content = await loadSkillContent(metaResult.content.metadata);
       expect(content).not.toBeNull();
-      expect(content!.instructions).toContain('!`echo hello`');
+      assertDefined(content);
+      expect(content.instructions).toContain('!`echo hello`');
     });
 
     it('should discover scripts in scripts/ directory', async () => {
@@ -470,9 +490,11 @@ Result: !` + '`echo hello`' + `
       const metaResult = await loadSkillMetadata(filePath, 'project');
       expect(metaResult.success).toBe(true);
 
-      const content = await loadSkillContent(metaResult.content!.metadata);
+      assertDefined(metaResult.content);
+      const content = await loadSkillContent(metaResult.content.metadata);
       expect(content).not.toBeNull();
-      expect(content!.scripts).toEqual(['scripts/analyze.py', 'scripts/setup.sh']);
+      assertDefined(content);
+      expect(content.scripts).toEqual(['scripts/analyze.py', 'scripts/setup.sh']);
     });
 
     it('should compile args and asset manifests for a runtime skill', async () => {
@@ -488,14 +510,16 @@ Result: !` + '`echo hello`' + `
       const metaResult = await loadSkillMetadata(filePath, 'project');
       expect(metaResult.success).toBe(true);
 
-      const content = await loadSkillContent(metaResult.content!.metadata, {
+      assertDefined(metaResult.content);
+      const content = await loadSkillContent(metaResult.content.metadata, {
         cwd: tmpDir,
         args: 'src/index.ts',
       });
 
       expect(content).not.toBeNull();
-      expect(content!.instructions).toContain('Review target: src/index.ts');
-      expect(content!.assets).toEqual({
+      assertDefined(content);
+      expect(content.instructions).toContain('Review target: src/index.ts');
+      expect(content.assets).toEqual({
         scripts: [{ name: 'review.sh', path: 'scripts/review.sh' }],
         references: [{ name: 'guide.md', path: 'references/guide.md' }],
         templates: [{ name: 'checklist.md', path: 'templates/checklist.md' }],
@@ -507,14 +531,16 @@ Result: !` + '`echo hello`' + `
       const metaResult = await loadSkillMetadata(filePath, 'project');
       expect(metaResult.success).toBe(true);
 
-      const content = await loadSkillContent(metaResult.content!.metadata, {
+      assertDefined(metaResult.content);
+      const content = await loadSkillContent(metaResult.content.metadata, {
         cwd: tmpDir,
         args: '!`echo injected`',
       });
 
       expect(content).not.toBeNull();
-      expect(content!.instructions).toContain('Input: !`echo injected`');
-      expect(content!.instructions).not.toContain('Input: injected');
+      assertDefined(content);
+      expect(content.instructions).toContain('Input: !`echo injected`');
+      expect(content.instructions).not.toContain('Input: injected');
     });
 
     it('should return empty scripts when no scripts/ directory exists', async () => {
@@ -522,9 +548,11 @@ Result: !` + '`echo hello`' + `
       const metaResult = await loadSkillMetadata(filePath, 'project');
       expect(metaResult.success).toBe(true);
 
-      const content = await loadSkillContent(metaResult.content!.metadata);
+      assertDefined(metaResult.content);
+      const content = await loadSkillContent(metaResult.content.metadata);
       expect(content).not.toBeNull();
-      expect(content!.scripts).toEqual([]);
+      assertDefined(content);
+      expect(content.scripts).toEqual([]);
     });
   });
 

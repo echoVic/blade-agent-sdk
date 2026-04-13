@@ -7,8 +7,10 @@ import { NOOP_LOGGER } from '../../logging/Logger.js';
 import { createContextSnapshot, type RuntimeContext } from '../../runtime/index.js';
 import type { ToolDefinition, ToolResult } from '../../tools/types/index.js';
 import { PermissionMode } from '../../types/common.js';
+import type { JsonObject } from '../../types/common.js';
 import { HookEvent } from '../../types/constants.js';
 import type { SessionOptions } from '../types.js';
+import { assertDefined } from '../../__tests__/helpers/assertDefined.js';
 
 const mockConnect = vi.fn(() => Promise.resolve());
 const mockDisconnect = vi.fn(() => Promise.resolve());
@@ -245,7 +247,9 @@ describe('SessionRuntime', () => {
 
     await runtime.initialize();
 
-    const result = await runtime.getAgentRuntimeDeps().executionPipeline!.execute(
+    const executionPipeline = runtime.getAgentRuntimeDeps().executionPipeline;
+    assertDefined(executionPipeline);
+    const result = await executionPipeline.execute(
       'CustomTool',
       { value: 'original' },
       {
@@ -272,7 +276,7 @@ describe('SessionRuntime', () => {
           [HookEvent.UserPromptSubmit]: [
             async () => ({
               action: 'continue',
-              modifiedInput: 'from-session-hook',
+              modifiedInput: { userPrompt: 'from-session-hook' },
             }),
           ],
         },
@@ -308,7 +312,7 @@ describe('SessionRuntime', () => {
   });
 
   it('should let permission hooks modify input before canUseTool runs', async () => {
-    const canUseTool = vi.fn(async (_toolName: string, input: Record<string, unknown>) => ({
+    const canUseTool = vi.fn(async (_toolName: string, input: JsonObject) => ({
       behavior: 'allow' as const,
       updatedInput: input,
     }));
@@ -346,7 +350,9 @@ describe('SessionRuntime', () => {
 
     await runtime.initialize();
 
-    const result = await runtime.getAgentRuntimeDeps().executionPipeline!.execute(
+    const executionPipeline4 = runtime.getAgentRuntimeDeps().executionPipeline;
+    assertDefined(executionPipeline4);
+    const result = await executionPipeline4.execute(
       'CustomTool',
       { value: 'original' },
       {
@@ -400,7 +406,9 @@ describe('SessionRuntime', () => {
 
     await runtime.initialize();
 
-    const result = await runtime.getAgentRuntimeDeps().executionPipeline!.execute(
+    const executionPipeline5 = runtime.getAgentRuntimeDeps().executionPipeline;
+    assertDefined(executionPipeline5);
+    const result = await executionPipeline5.execute(
       'CustomTool',
       { value: 'original' },
       {

@@ -1,14 +1,13 @@
 import type { UserMessageContent } from '../agent/types.js';
 import type { SdkMcpServerHandle } from '../mcp/SdkMcpServer.js';
-import type { ContextSnapshot, RuntimeContext } from '../runtime/index.js';
+import type { ContextSnapshot, RuntimeContext, RuntimeContextPatch, RuntimePatch } from '../runtime/index.js';
 import type { Message } from '../services/ChatServiceInterface.js';
 import type { ToolCatalogSourcePolicy } from '../tools/catalog/index.js';
 import type { ExecutionContext, ToolDefinition, ToolResult } from '../tools/types/index.js';
-import type { McpServerConfig, OutputFormat, PermissionMode, ProviderType, SandboxSettings, TokenUsage } from '../types/common.js';
+import type { JsonObject, JsonValue, McpServerConfig, OutputFormat, PermissionMode, ProviderType, SandboxSettings, TokenUsage } from '../types/common.js';
 import { HookEvent } from '../types/constants.js';
 import type { AgentLogger } from '../types/logging.js';
 import type { CanUseTool, PermissionHandler, PermissionUpdate } from '../types/permissions.js';
-import type { RuntimeContextPatch, RuntimePatch } from '../runtime/index.js';
 
 export type { ExecutionContext, ProviderType, TokenUsage, ToolDefinition, ToolResult };
 
@@ -25,8 +24,8 @@ export interface ProviderConfig {
 export interface ToolCallRecord {
   id: string;
   name: string;
-  input: unknown;
-  output: unknown;
+  input: JsonValue;
+  output: string | object;
   duration: number;
   isError?: boolean;
 }
@@ -44,14 +43,14 @@ export type StreamMessage =
   | { type: 'turn_end'; turn: number; sessionId: string }
   | { type: 'content'; delta: string; sessionId: string }
   | { type: 'thinking'; delta: string; sessionId: string }
-  | { type: 'tool_use'; id: string; name: string; input: unknown; sessionId: string }
+  | { type: 'tool_use'; id: string; name: string; input: JsonValue; sessionId: string }
   | { type: 'tool_progress'; id: string; name: string; message: string; sessionId: string }
   | { type: 'tool_message'; id: string; name: string; message: string; sessionId: string }
   | { type: 'tool_runtime_patch'; id: string; name: string; patch: RuntimePatch; sessionId: string }
   | { type: 'tool_context_patch'; id: string; name: string; patch: RuntimeContextPatch; sessionId: string }
   | { type: 'tool_new_messages'; id: string; name: string; messages: Message[]; sessionId: string }
   | { type: 'tool_permission_updates'; id: string; name: string; updates: PermissionUpdate[]; sessionId: string }
-  | { type: 'tool_result'; id: string; name: string; output: unknown; isError?: boolean; sessionId: string }
+  | { type: 'tool_result'; id: string; name: string; output: string | object; isError?: boolean; sessionId: string }
   | { type: 'usage'; usage: TokenUsage; sessionId: string }
   | { type: 'result'; subtype: 'success' | 'error'; content?: string; error?: string; sessionId: string }
   | { type: 'error'; message: string; code?: string; sessionId: string };
@@ -59,8 +58,8 @@ export type StreamMessage =
 export interface HookInput {
   event: HookEvent;
   toolName?: string;
-  toolInput?: unknown;
-  toolOutput?: unknown;
+  toolInput?: JsonObject;
+  toolOutput?: string | object;
   error?: Error;
   sessionId: string;
   [key: string]: unknown;
@@ -68,8 +67,13 @@ export interface HookInput {
 
 export interface HookOutput {
   action: 'continue' | 'skip' | 'abort';
-  modifiedInput?: unknown;
-  modifiedOutput?: unknown;
+  /**
+   * For PreToolUse hooks: a JsonObject to merge into tool input params.
+   * For UserPromptSubmit hooks: either a JsonObject with a `userPrompt`
+   * key, or a bare string (legacy form) that replaces the prompt text.
+   */
+  modifiedInput?: JsonObject | string;
+  modifiedOutput?: JsonValue;
   reason?: string;
 }
 
@@ -207,4 +211,4 @@ export interface ISession extends AsyncDisposable {
   fork(options?: ForkSessionOptions): Promise<ISession>;
 }
 
-export type { RuntimeContext, ContextSnapshot };
+export type { ContextSnapshot, RuntimeContext };

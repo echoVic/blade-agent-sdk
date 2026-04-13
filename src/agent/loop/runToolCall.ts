@@ -1,3 +1,4 @@
+import type { JsonObject } from '../../types/common.js';
 import { type InternalLogger, LogCategory, NOOP_LOGGER } from '../../logging/Logger.js';
 import type { ContextSnapshot } from '../../runtime/index.js';
 import type { ToolCatalog } from '../../tools/catalog/index.js';
@@ -33,7 +34,7 @@ export type ToolExecutionUpdate =
   | {
       type: 'tool_started';
       toolCall: FunctionToolCall;
-      params: Record<string, unknown>;
+      params: JsonObject;
       toolUseUuid: string | null;
     }
   | {
@@ -91,7 +92,7 @@ export interface ToolExecutionContext {
 export interface ToolExecutionHooks {
   onBeforeToolExec?: (ctx: {
     toolCall: FunctionToolCall;
-    params: Record<string, unknown>;
+    params: JsonObject;
   }) => Promise<string | null>;
   onToolReady?: (toolCall: FunctionToolCall) => void | Promise<void>;
   onAfterToolExec?: (ctx: ToolExecutionOutcome) => void | Promise<void>;
@@ -117,7 +118,7 @@ export async function runToolCall(
   let outcome: ToolExecutionOutcome;
 
   try {
-    const params = JSON.parse(input.toolCall.function.arguments) as Record<string, unknown>;
+    const params = JSON.parse(input.toolCall.function.arguments) as JsonObject;
     await repairToolCallParams(input.toolCall, params);
     const interruptBehavior = resolveToolInterruptBehavior(
       input.executionPipeline.getRegistry(),

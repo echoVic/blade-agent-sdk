@@ -5,6 +5,7 @@
 
 import { readFile } from 'node:fs/promises';
 import { basename } from 'node:path';
+import type { JsonObject } from '../types/common.js';
 import type { Message, ToolCall } from '../services/ChatServiceInterface.js';
 
 /**
@@ -232,10 +233,7 @@ function extractFilePathsFromToolCall(
 
   try {
     const functionName = toolCall.function.name;
-    const args = JSON.parse(toolCall.function.arguments || '{}') as Record<
-      string,
-      unknown
-    >;
+    const args = JSON.parse(toolCall.function.arguments || '{}') as JsonObject;
 
     const fileTools = [
       'Read',

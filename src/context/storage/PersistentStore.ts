@@ -3,7 +3,7 @@ import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
 import { JsonlSessionStore } from '../../session/SessionStore.js';
 import type { ContentPart } from '../../services/ChatServiceInterface.js';
-import type { JsonValue, MessageRole } from '../../types/common.js';
+import type { JsonObject, JsonValue, MessageRole } from '../../types/common.js';
 import type {
   ContextData,
   ConversationContext,
@@ -165,7 +165,7 @@ export class PersistentStore {
     metadata?: {
       model?: string;
       usage?: { input_tokens: number; output_tokens: number };
-      customMetadata?: Record<string, unknown>;
+      customMetadata?: JsonObject;
     },
     subagentInfo?: {
       parentSessionId: string;
@@ -238,7 +238,7 @@ export class PersistentStore {
       };
       entries.push(this.createEvent('part_created', sessionId, partInfo));
       if (toolName === 'Task' && toolInput && typeof toolInput === 'object') {
-        const subtaskInput = toolInput as Record<string, unknown>;
+        const subtaskInput = toolInput as JsonObject;
         const childSessionId =
           typeof subtaskInput.subagent_session_id === 'string'
             ? subtaskInput.subagent_session_id
@@ -707,7 +707,7 @@ export class NoopPersistentStore {
     _metadata?: {
       model?: string;
       usage?: { input_tokens: number; output_tokens: number };
-      customMetadata?: Record<string, unknown>;
+      customMetadata?: JsonObject;
     },
     _subagentInfo?: {
       parentSessionId: string;

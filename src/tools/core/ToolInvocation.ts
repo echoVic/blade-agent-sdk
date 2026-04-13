@@ -1,3 +1,4 @@
+import type { JsonObject } from '../../types/common.js';
 import {
   type ExecutionContext,
   type ToolInvocation,
@@ -7,7 +8,7 @@ import {
 } from '../types/index.js';
 
 export class UnifiedToolInvocation<
-  TParams = unknown,
+  TParams = JsonObject,
   TResult extends ToolResult = ToolResult,
 > implements ToolInvocation<TParams, TResult> {
   private validationPassed = false;

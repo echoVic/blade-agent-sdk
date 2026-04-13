@@ -1,3 +1,5 @@
+import type { JsonObject } from '../types/common.js';
+
 export interface RuntimeContext {
   id?: string;
   capabilities?: {
@@ -14,5 +16,5 @@ export interface RuntimeContext {
     };
   };
   environment?: Record<string, string>;
-  metadata?: Record<string, unknown>;
+  metadata?: JsonObject;
 }

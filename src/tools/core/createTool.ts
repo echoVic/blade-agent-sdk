@@ -1,4 +1,5 @@
 import type { z } from 'zod';
+import type { JsonObject } from '../../types/common.js';
 import type {
   ExecutionContext,
   Tool,
@@ -213,7 +214,7 @@ function formatToolDescription(description: {
  * 
  * 用于将用户定义的简化工具转换为内部 Tool 对象
  */
-export function toolFromDefinition<TParams = Record<string, unknown>>(
+export function toolFromDefinition<TParams = JsonObject>(
   definition: ToolDefinition<TParams>
 ): Tool<TParams> {
   const description = typeof definition.description === 'string'
@@ -301,7 +302,7 @@ function inferAffectedPaths(params: unknown): string[] {
   }
 
   const candidates = new Set<string>();
-  for (const [key, value] of Object.entries(params as Record<string, unknown>)) {
+  for (const [key, value] of Object.entries(params as JsonObject)) {
     if (typeof value === 'string' && isPathLikeKey(key)) {
       const normalized = value.trim();
       if (normalized) {
@@ -354,7 +355,7 @@ function isPathLikeKey(key: string): boolean {
  * });
  * ```
  */
-export function defineTool<TParams = Record<string, unknown>>(
+export function defineTool<TParams = JsonObject>(
   definition: ToolDefinition<TParams>
 ): ToolDefinition<TParams> {
   return definition;

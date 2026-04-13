@@ -6,6 +6,8 @@
 
 import { nanoid } from 'nanoid';
 import { HookEvent, PermissionMode } from '../types/constants.js';
+import type { JsonObject } from '../types/common.js';
+import type { ToolResult } from '../tools/types/ToolTypes.js';
 import { DEFAULT_HOOK_CONFIG, mergeHookConfig, parseEnvConfig } from './HookConfig.js';
 import { HookExecutionGuard } from './HookExecutionGuard.js';
 import { HookExecutor } from './HookExecutor.js';
@@ -181,7 +183,7 @@ export class HookManager {
   async executePreToolHooks(
     toolName: string,
     toolUseId: string,
-    toolInput: Record<string, unknown>,
+    toolInput: JsonObject,
     context: {
       projectDir: string;
       sessionId: string;
@@ -278,8 +280,8 @@ export class HookManager {
   async executePostToolHooks(
     toolName: string,
     toolUseId: string,
-    toolInput: Record<string, unknown>,
-    toolResponse: unknown,
+    toolInput: JsonObject,
+    toolResponse: ToolResult,
     context: {
       projectDir: string;
       sessionId: string;
@@ -612,7 +614,7 @@ export class HookManager {
   async executePermissionRequestHooks(
     toolName: string,
     toolUseId: string,
-    toolInput: Record<string, unknown>,
+    toolInput: JsonObject,
     context: {
       projectDir: string;
       sessionId: string;
@@ -853,7 +855,7 @@ export class HookManager {
   async executePostToolUseFailureHooks(
     toolName: string,
     toolUseId: string,
-    toolInput: Record<string, unknown>,
+    toolInput: JsonObject,
     error: string,
     context: {
       projectDir: string;
@@ -1579,7 +1581,7 @@ export class HookManager {
   /**
    * 从工具输入提取文件路径
    */
-  private extractFilePath(toolInput: Record<string, unknown>): string | undefined {
+  private extractFilePath(toolInput: JsonObject): string | undefined {
     // 常见的文件路径字段
     const pathFields = ['file_path', 'path', 'filePath', 'source', 'target'];
 
@@ -1598,7 +1600,7 @@ export class HookManager {
    */
   private extractCommand(
     toolName: string,
-    toolInput: Record<string, unknown>
+    toolInput: JsonObject
   ): string | undefined {
     // Bash 工具的命令
     if (toolName === 'Bash' || toolName === 'BashTool') {

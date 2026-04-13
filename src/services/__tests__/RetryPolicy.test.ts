@@ -11,6 +11,7 @@ import {
   withRetry,
   type RetryEvent,
 } from '../RetryPolicy.js';
+import { assertDefined } from '../../__tests__/helpers/assertDefined.js';
 
 /**
  * Helper: consume an AsyncGenerator, collecting yields and returning the result.
@@ -212,7 +213,8 @@ describe('RetryPolicy', () => {
       expect(operation).toHaveBeenCalledTimes(2);
       expect(yields).toHaveLength(1);
 
-      const event = yields[0]!;
+      const event = yields[0];
+      assertDefined(event);
       expect(event.type).toBe('retry_attempt');
       expect(event.attempt).toBe(1);
       expect(event.error.status).toBe(503);
@@ -489,8 +491,10 @@ describe('RetryPolicy', () => {
 
       expect(result).toBe('ok');
       expect(yields).toHaveLength(2);
-      expect(yields[0]!.attempt).toBe(1);
-      expect(yields[1]!.attempt).toBe(2);
+      assertDefined(yields[0]);
+      assertDefined(yields[1]);
+      expect(yields[0].attempt).toBe(1);
+      expect(yields[1].attempt).toBe(2);
     });
   });
 });

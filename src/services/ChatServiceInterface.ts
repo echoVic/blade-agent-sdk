@@ -3,18 +3,19 @@
  * 定义统一的聊天服务接口，支持多种 API 提供商
  */
 
+import type { JSONSchema7 } from 'json-schema';
 import { type InternalLogger, LogCategory, NOOP_LOGGER } from '../logging/Logger.js';
 import type { JsonValue, MessageRole, OutputFormat, ProviderType } from '../types/common.js';
 import type { QuerySource, RetryConfig, RetryEvent } from './RetryPolicy.js';
 import { VercelAIChatService } from './VercelAIChatService.js';
 
 export type {
-  RetryConfig,
-  RetryEvent,
-  QuerySource,
   CannotRetryError,
-  FallbackTriggeredError,
   ContextOverflowData,
+  FallbackTriggeredError,
+  QuerySource,
+  RetryConfig,
+  RetryEvent
 } from './RetryPolicy.js';
 
 /**
@@ -181,7 +182,7 @@ export interface IChatService {
     tools?: Array<{
       name: string;
       description: string;
-      parameters: unknown;
+      parameters: JSONSchema7;
     }>,
     signal?: AbortSignal
   ): Promise<ChatResponse>;
@@ -204,7 +205,7 @@ export interface IChatService {
     tools?: Array<{
       name: string;
       description: string;
-      parameters: unknown;
+      parameters: JSONSchema7;
     }>,
     signal?: AbortSignal
   ): AsyncGenerator<StreamChunk, void, unknown>;
@@ -219,7 +220,7 @@ export interface IChatService {
     tools?: Array<{
       name: string;
       description: string;
-      parameters: unknown;
+      parameters: JSONSchema7;
     }>,
     signal?: AbortSignal
   ): AsyncGenerator<RetryEvent, ChatResponse>;

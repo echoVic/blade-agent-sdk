@@ -3,11 +3,12 @@ import { createReadStream } from 'node:fs';
 import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
 import { createInterface } from 'node:readline';
+import type { JsonObject, JsonValue } from '../../types/common.js';
 import type { SessionEvent } from '../types.js';
 
 function isSessionEvent(data: unknown): data is SessionEvent {
   if (!data || typeof data !== 'object') return false;
-  const obj = data as Record<string, unknown>;
+  const obj = data as JsonObject;
   return typeof obj.id === 'string' && typeof obj.type === 'string' && typeof obj.timestamp === 'string';
 }
 
@@ -78,7 +79,7 @@ export class JSONLStore {
       const entries: SessionEvent[] = [];
       for (const line of lines) {
         try {
-          const parsed: unknown = JSON.parse(line);
+          const parsed: JsonValue = JSON.parse(line) as JsonValue;
           if (isSessionEvent(parsed)) {
             entries.push(parsed);
           } else {
@@ -120,7 +121,7 @@ export class JSONLStore {
         if (trimmed.length === 0) return;
 
         try {
-          const parsed: unknown = JSON.parse(trimmed);
+          const parsed: JsonValue = JSON.parse(trimmed) as JsonValue;
           if (isSessionEvent(parsed)) {
             await callback(parsed);
           }

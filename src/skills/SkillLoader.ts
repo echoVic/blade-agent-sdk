@@ -10,6 +10,7 @@ import { spawn } from 'node:child_process';
 import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
 import { parse as parseYaml } from 'yaml';
+import type { JsonObject } from '../types/common.js';
 import { HookEvent } from '../types/constants.js';
 import { getErrorCode } from '../utils/errorUtils.js';
 import {
@@ -21,9 +22,8 @@ import {
   type SkillMetadata,
   type SkillParseResult,
   type SkillShellConfig,
-  type SkillShellPolicy,
   type SkillSource,
-  type SkillSourceKind,
+  type SkillSourceKind
 } from './types.js';
 
 const FRONTMATTER_REGEX = /^---\r?\n([\s\S]*?)\r?\n---\r?\n?([\s\S]*)$/;
@@ -68,7 +68,7 @@ interface RawFrontmatter {
   when_to_use?: string;
   license?: string;
   compatibility?: string;
-  metadata?: Record<string, unknown>;
+  metadata?: JsonObject;
 }
 
 function parseStringArray(raw: string | string[] | undefined): string[] | undefined {

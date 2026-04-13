@@ -4,6 +4,7 @@
  * 解析 Hook 命令的输出
  */
 
+import type { JsonValue } from '../types/common.js';
 import { safeParseHookOutput } from './schemas/HookSchemas.js';
 import {
   type Hook,
@@ -284,7 +285,7 @@ export class OutputParser {
   /**
    * 尝试解析 JSON
    */
-  private tryParseJSON(text: string): unknown | null {
+  private tryParseJSON(text: string): JsonValue | null {
     try {
       const trimmed = text.trim();
       if (!trimmed) return null;

@@ -1,10 +1,9 @@
-import type { ContextSnapshot } from '../../runtime/index.js';
-import type { BladeConfig, PermissionMode } from '../../types/common.js';
 import type { IBackgroundAgentManager } from '../../agent/types.js';
+import type { ContextSnapshot } from '../../runtime/index.js';
+import type { BladeConfig, JsonObject, PermissionMode } from '../../types/common.js';
 import type { ToolCatalog } from '../catalog/index.js';
 import type { ToolRegistry } from '../registry/ToolRegistry.js';
-import type { ToolResult } from './ToolTypes.js';
-import type { ToolKind } from './ToolTypes.js';
+import type { ToolKind, ToolResult } from './ToolTypes.js';
 
 interface QuestionOption {
   label: string;
@@ -27,7 +26,7 @@ export interface ConfirmationDetails {
     | 'askUserQuestion'; // 确认类型
   kind?: ToolKind; // 工具类型（readonly, write, execute），用于权限模式判断
   toolName?: string;
-  args?: Record<string, unknown>;
+  args?: JsonObject;
   title?: string;
   message: string;
   details?: string; // 🆕 Plan 方案内容或其他详细信息
@@ -92,7 +91,7 @@ export function getEffectiveProjectDir(context: ExecutionContext): string | unde
 export interface ExecutionHistoryEntry {
   executionId: string;
   toolName: string;
-  params: Record<string, unknown>;
+  params: JsonObject;
   result: ToolResult;
   startTime: number;
   endTime: number;

@@ -63,7 +63,7 @@ export async function getBuiltinTools(opts?: {
     registry.loadFromStandardLocations(undefined, configDir);
   }
 
-  const builtinTools: Tool<unknown>[] = [
+  const builtinTools: Tool[] = [
     readTool,
     editTool,
     writeTool,
@@ -94,7 +94,7 @@ export async function getBuiltinTools(opts?: {
     discoverToolsTool,
     skillTool,
     ...(opts?.mcpRegistry ? [createListMcpResourcesTool(opts.mcpRegistry), createReadMcpResourceTool(opts.mcpRegistry)] : []),
-  ] as Tool<unknown>[];
+  ] as unknown as Tool[];
 
   // 添加 MCP 协议工具
   const mcpTools = opts?.mcpRegistry && opts.includeMcpProtocolTools !== false

@@ -1,11 +1,11 @@
 import type { JSONSchema7 } from 'json-schema';
-import type { PermissionMode } from '../../types/common.js';
-import type { PermissionResult } from '../../types/permissions.js';
+import type { z } from 'zod';
 import type { RuntimeContextPatch, RuntimePatch } from '../../runtime/index.js';
 import type { Message } from '../../services/ChatServiceInterface.js';
+import type { JsonObject, JsonValue, PermissionMode } from '../../types/common.js';
+import type { PermissionResult } from '../../types/permissions.js';
 import type { ExecutionContext } from './ExecutionTypes.js';
 import type { ToolEffect } from './ToolEffects.js';
-import type { z } from 'zod';
 
 /**
  * Node.js 错误类型（带有 code 属性）
@@ -347,7 +347,7 @@ interface ToolResultBase<TMetadata extends ToolResultMetadata = ToolResultMetada
  * 泛型工具执行成功结果
  */
 export interface ToolSuccessResult<
-  TData = unknown,
+  TData = JsonValue,
   TMetadata extends ToolResultMetadata = ToolResultMetadata,
 > extends ToolResultBase<TMetadata> {
   success: true;
@@ -373,7 +373,7 @@ export interface ToolFailureResult<
  * @template TMetadata - metadata 的具体类型
  */
 export type ToolResult<
-  TData = unknown,
+  TData = JsonValue,
   TMetadata extends ToolResultMetadata = ToolResultMetadata,
 > = ToolSuccessResult<TData, TMetadata> | ToolFailureResult<TMetadata>;
 
@@ -415,7 +415,7 @@ export interface ToolValidationError {
 /**
  * 工具调用抽象
  */
-export interface ToolInvocation<TParams = unknown, TResult = ToolResult> {
+export interface ToolInvocation<TParams = JsonObject, TResult = ToolResult> {
   readonly toolName: string;
   readonly params: TParams;
 
@@ -438,7 +438,7 @@ export interface ToolDescription {
   usageNotes?: string[];
   examples?: Array<{
     description: string;
-    params: Record<string, unknown>;
+    params: JsonObject;
   }>;
   important?: string[];
 }
@@ -447,7 +447,7 @@ export type ToolSchema<TSchema extends z.ZodSchema = z.ZodSchema> =
   | TSchema
   | (() => TSchema);
 
-export type ToolDescriptionResolver<TParams = unknown> = (
+export type ToolDescriptionResolver<TParams = JsonObject> = (
   params?: TParams
 ) => ToolDescription;
 
@@ -474,12 +474,12 @@ export interface PreparedPermissionMatcher {
  * 1. 简单模式：直接传入 name, description, parameters, execute
  * 2. 完整模式：使用 createTool + Zod Schema
  */
-export interface ToolDefinition<TParams = Record<string, unknown>> {
+export interface ToolDefinition<TParams = JsonObject> {
   name: string;
   aliases?: string[];
   displayName?: string;
   description: string | ToolDescription;
-  parameters: unknown;
+  parameters: JSONSchema7;
   kind?: ToolKind;
   category?: string;
   tags?: string[];
@@ -494,7 +494,7 @@ export interface ToolDefinition<TParams = Record<string, unknown>> {
  */
 export interface ToolConfig<
   TSchema extends z.ZodSchema = z.ZodSchema,
-  TParams = unknown,
+  TParams = JsonObject,
 > {
   /** 工具唯一名称 */
   name: string;
@@ -558,7 +558,7 @@ export interface ToolConfig<
 /**
  * Tool 接口
  */
-export interface Tool<TParams = unknown> {
+export interface Tool<TParams = JsonObject> {
   /** 工具名称 */
   readonly name: string;
   /** 向后兼容的别名 */

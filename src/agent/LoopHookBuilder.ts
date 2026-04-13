@@ -16,7 +16,7 @@ import {
   normalizeToolEffects,
   type ToolEffect,
 } from '../tools/types/index.js';
-import type { JsonValue } from '../types/common.js';
+import type { JsonObject, JsonValue } from '../types/common.js';
 import type { AgentLoopConfig } from './AgentLoop.js';
 import type { CompactionHandler, CompactionRuntimeContext } from './CompactionHandler.js';
 import type { ModelManager } from './ModelManager.js';
@@ -178,7 +178,7 @@ export function buildLoopConfig(deps: LoopHookBuilderDeps): AgentLoopConfig {
         if (contextMgr && context.sessionId) {
           return await contextMgr.saveToolUse(
             context.sessionId, ctx.toolCall.function.name,
-            ctx.params as Record<string, unknown> & import('../types/common.js').JsonValue,
+            ctx.params as JsonObject & JsonValue,
             getLastUuid(), context.subagentInfo
           );
         }

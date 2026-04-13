@@ -1,8 +1,9 @@
+import type { JsonObject, JsonValue } from '../../types/common.js';
 import type { FunctionToolCall } from './types.js';
 
 export async function repairToolCallParams(
   toolCall: FunctionToolCall,
-  params: Record<string, unknown>,
+  params: JsonObject,
 ): Promise<void> {
   if (
     toolCall.function.name === 'Task'
@@ -17,7 +18,7 @@ export async function repairToolCallParams(
 
   if (typeof params.todos === 'string') {
     try {
-      params.todos = JSON.parse(params.todos) as unknown;
+      params.todos = JSON.parse(params.todos) as JsonValue;
     } catch {
       // Let the validation layer handle malformed todos payloads.
     }

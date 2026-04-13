@@ -1,3 +1,4 @@
+import type { JSONSchema7 } from 'json-schema';
 import type { ContextSnapshot } from '../../runtime/index.js';
 import type { IChatService, Message } from '../../services/ChatServiceInterface.js';
 import type { ToolCatalog } from '../../tools/catalog/index.js';
@@ -9,7 +10,7 @@ import type { IBackgroundAgentManager } from '../types.js';
 export type LlmToolDefinition = {
   name: string;
   description: string;
-  parameters: unknown;
+  parameters: JSONSchema7;
 };
 
 export interface LoopSkillState {

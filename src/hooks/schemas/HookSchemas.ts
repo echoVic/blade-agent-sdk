@@ -5,12 +5,27 @@
  */
 
 import { z } from 'zod';
+import type { JsonValue } from '../../types/common.js';
 import { HookEvent } from '../../types/constants.js';
 import {
   DecisionBehavior,
   HookType,
   PermissionDecision,
 } from '../types/HookTypes.js';
+
+/**
+ * Zod schema for recursive JSON values (string | number | boolean | null | JsonObject | JsonValue[])
+ */
+export const JsonValueSchema: z.ZodType<JsonValue> = z.lazy(() =>
+  z.union([
+    z.string(),
+    z.number(),
+    z.boolean(),
+    z.null(),
+    z.array(JsonValueSchema),
+    z.record(z.string(), JsonValueSchema),
+  ]),
+);
 
 // ============================================================================
 // Hook Input Schemas
@@ -35,14 +50,14 @@ const PreToolUseInputSchema = HookInputBaseSchema.extend({
   hook_event_name: z.literal(HookEvent.PreToolUse),
   tool_name: z.string(),
   tool_use_id: z.string(),
-  tool_input: z.record(z.unknown()),
+  tool_input: z.record(z.string(), JsonValueSchema),
 });
 
 const PostToolUseInputSchema = HookInputBaseSchema.extend({
   hook_event_name: z.literal(HookEvent.PostToolUse),
   tool_name: z.string(),
   tool_use_id: z.string(),
-  tool_input: z.record(z.unknown()),
+  tool_input: z.record(z.string(), JsonValueSchema),
   tool_response: z.unknown(),
 });
 
@@ -55,7 +70,7 @@ const PostToolUseFailureInputSchema = HookInputBaseSchema.extend({
   hook_event_name: z.literal(HookEvent.PostToolUseFailure),
   tool_name: z.string(),
   tool_use_id: z.string(),
-  tool_input: z.record(z.unknown()),
+  tool_input: z.record(z.string(), JsonValueSchema),
   error: z.string(),
   error_type: z.string().optional(),
   is_interrupt: z.boolean(),
@@ -66,7 +81,7 @@ const PermissionRequestInputSchema = HookInputBaseSchema.extend({
   hook_event_name: z.literal(HookEvent.PermissionRequest),
   tool_name: z.string(),
   tool_use_id: z.string(),
-  tool_input: z.record(z.unknown()),
+  tool_input: z.record(z.string(), JsonValueSchema),
 });
 
 const UserPromptSubmitInputSchema = HookInputBaseSchema.extend({
@@ -240,13 +255,13 @@ const PreToolUseOutputSchema = z.object({
   hookEventName: z.literal('PreToolUse'),
   permissionDecision: z.nativeEnum(PermissionDecision).optional(),
   permissionDecisionReason: z.string().optional(),
-  updatedInput: z.record(z.unknown()).optional(),
+  updatedInput: z.record(z.string(), JsonValueSchema).optional(),
 });
 
 const PostToolUseOutputSchema = z.object({
   hookEventName: z.literal('PostToolUse'),
   additionalContext: z.string().optional(),
-  updatedOutput: z.unknown().optional(),
+  updatedOutput: JsonValueSchema.optional(),
 });
 
 const StopOutputSchema = z.object({

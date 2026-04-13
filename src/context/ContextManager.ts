@@ -304,7 +304,7 @@ export class ContextManager {
     metadata?: {
       model?: string;
       usage?: { input_tokens: number; output_tokens: number };
-      customMetadata?: Record<string, unknown>;
+      customMetadata?: JsonObject;
     },
     subagentInfo?: {
       parentSessionId: string;
@@ -503,7 +503,7 @@ export class ContextManager {
   /**
    * 获取缓存的工具调用结果
    */
-  getCachedToolResult(toolName: string, input: JsonValue): unknown | null {
+  getCachedToolResult(toolName: string, input: JsonValue): JsonValue | null {
     return this.cache.getToolResult(toolName, input);
   }
 

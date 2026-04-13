@@ -5,6 +5,7 @@ import { join } from 'node:path';
 import { JsonlSessionStore } from '../../session/SessionStore.js';
 import { PersistentStore } from '../storage/PersistentStore.js';
 import { ContextManager } from '../ContextManager.js';
+import { assertDefined } from '../../__tests__/helpers/assertDefined.js';
 
 function createWorkspaceRoot(): string {
   return mkdtempSync(join(tmpdir(), 'context-manager-test-'));
@@ -49,8 +50,9 @@ describe('ContextManager', () => {
 
     expect(loaded).toBe(true);
     expect(state).not.toBeNull();
+    assertDefined(state);
     expect(formatted.context.layers.conversation.messages.map((message) => message.id)).toEqual(
-      state!.messageIds,
+      state.messageIds,
     );
     expect(formatted.context.layers.conversation.summary).toBe('Compacted summary');
     expect(formatted.context.layers.tool.recentCalls).toHaveLength(1);
