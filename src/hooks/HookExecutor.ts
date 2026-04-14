@@ -62,7 +62,7 @@ export class HookExecutor {
     }
 
     let cumulativeInput: JsonObject =
-      'tool_input' in input ? (input.tool_input as JsonObject) : {};
+      'tool_input' in input ? input.tool_input : {};
 
     const warnings: string[] = [];
 
@@ -127,7 +127,7 @@ export class HookExecutor {
             cumulativeInput = {
               ...cumulativeInput,
               ...specific.updatedInput,
-            } as JsonObject;
+            };
           }
         }
       } catch (err) {
@@ -671,7 +671,7 @@ export class HookExecutor {
     input: HookInput,
     context: HookExecutionContext
   ): Promise<NotificationHookResult> {
-    const originalMessage = 'message' in input ? (input.message as string) : '';
+    const originalMessage = 'message' in input ? String(input.message) : '';
 
     if (hooks.length === 0) {
       return { suppress: false, message: originalMessage };
@@ -885,7 +885,7 @@ export class HookExecutor {
         if (specific && 'proceed' in specific && specific.proceed === false) {
           return {
             proceed: false,
-            response: specific && 'response' in specific ? (specific as { response?: string }).response : undefined,
+            response: 'response' in specific ? String(specific.response ?? '') || undefined : undefined,
             warning: warnings.length > 0 ? warnings.join('\n') : undefined,
           };
         }

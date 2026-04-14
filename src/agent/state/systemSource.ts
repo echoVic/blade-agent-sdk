@@ -12,5 +12,5 @@ export type SystemSource = (typeof VALID_SYSTEM_SOURCES)[number];
  * 检查给定值是否为合法的 SystemSource 枚举值。
  */
 export function isValidSystemSource(value: unknown): value is SystemSource {
-  return typeof value === 'string' && (VALID_SYSTEM_SOURCES as readonly string[]).includes(value);
+  return typeof value === 'string' && VALID_SYSTEM_SOURCES.some((s) => s === value);
 }

@@ -36,7 +36,7 @@ export class ConversationState {
   // ===== 读取 =====
 
   /** 只读快照，供 LLM 调用和序列化（返回浅拷贝防止外部修改数组结构） */
-  toArray(): ReadonlyArray<Message> {
+  toArray(): readonly Message[] {
     return [...this._messages];
   }
 

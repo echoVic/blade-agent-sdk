@@ -29,7 +29,7 @@ function isIncompleteIntent(content: string): boolean {
   return INCOMPLETE_INTENT_PATTERNS.some((pattern) => pattern.test(content));
 }
 
-function countRecentRetries(messages: Message[]): number {
+function countRecentRetries(messages: readonly Message[]): number {
   return messages
     .slice(-10)
     .filter((message) => message.role === 'user' && message.content === RETRY_PROMPT)
@@ -38,7 +38,7 @@ function countRecentRetries(messages: Message[]): number {
 
 export async function decideNoToolTurn(
   content: string,
-  messages: Message[],
+  messages: readonly Message[],
   turn: number,
   onStopCheck?: StopCheck,
 ): Promise<NoToolTurnDecision> {

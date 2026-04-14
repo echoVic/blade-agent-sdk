@@ -19,11 +19,10 @@ function hasLegacyOverflowMessage(error: unknown): boolean {
 }
 
 function getErrorCause(error: unknown): unknown {
-  if (!(error instanceof Error) || !('cause' in error)) {
-    return undefined;
+  if (error instanceof Error && 'cause' in error) {
+    return error.cause;
   }
-
-  return (error as Error & { cause?: unknown }).cause;
+  return undefined;
 }
 
 export function isOverflowRecoverable(error: unknown): boolean {

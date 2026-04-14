@@ -205,7 +205,8 @@ export class FileLockManager {
     const next = state.queue[0];
     if (next?.mode === 'read') {
       while (state.queue[0]?.mode === 'read') {
-        const request = state.queue.shift() as QueuedLockRequest<unknown>;
+        const request = state.queue.shift();
+        if (!request) break;
         this.startRequest(filePath, state, request);
       }
       return;

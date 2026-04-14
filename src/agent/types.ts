@@ -8,8 +8,9 @@ import type { ToolCatalogSourcePolicy } from '../tools/catalog/index.js';
 import type { ConfirmationHandler } from '../tools/types/ExecutionTypes.js';
 import type { OutputFormat, PermissionMode, PermissionsConfig, SandboxSettings } from '../types/common.js';
 import type { CanUseTool, PermissionHandler } from '../types/permissions.js';
-import type { TokenBudgetConfig, TokenBudgetSnapshot } from './TokenBudget.js';
+import type { AgentSession } from './subagents/AgentSessionStore.js';
 import type { StartBackgroundAgentOptions } from './subagents/BackgroundAgentManager.js';
+import type { TokenBudgetConfig, TokenBudgetSnapshot } from './TokenBudget.js';
 
 /**
  * 用户消息内容类型
@@ -38,9 +39,9 @@ export interface AgentProgress {
 }
 
 export interface IBackgroundAgentReader {
-  getAgent(agentId: string): object | undefined;
+  getAgent(agentId: string): AgentSession | undefined;
   isRunning(agentId: string): boolean;
-  waitForCompletion(agentId: string, timeout?: number): Promise<object | undefined>;
+  waitForCompletion(agentId: string, timeout?: number): Promise<AgentSession | undefined>;
 }
 
 export interface IBackgroundAgentController {

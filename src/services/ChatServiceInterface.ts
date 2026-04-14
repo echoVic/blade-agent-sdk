@@ -178,7 +178,7 @@ export interface IChatService {
    * 发送聊天请求（非流式）
    */
   chat(
-    messages: Message[],
+    messages: readonly Message[],
     tools?: Array<{
       name: string;
       description: string;
@@ -192,7 +192,7 @@ export interface IChatService {
    * 适用于 compaction、总结、review 等辅助推理。
    */
   sideQuery(
-    messages: Message[],
+    messages: readonly Message[],
     signal?: AbortSignal,
     options?: SideQueryOptions
   ): Promise<ChatResponse>;
@@ -201,7 +201,7 @@ export interface IChatService {
    * 发送聊天请求（流式）
    */
   streamChat(
-    messages: Message[],
+    messages: readonly Message[],
     tools?: Array<{
       name: string;
       description: string;
@@ -216,7 +216,7 @@ export interface IChatService {
    * yield: RetryEvent, return: ChatResponse
    */
   chatWithRetryEvents?(
-    messages: Message[],
+    messages: readonly Message[],
     tools?: Array<{
       name: string;
       description: string;

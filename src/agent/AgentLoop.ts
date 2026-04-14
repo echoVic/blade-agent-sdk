@@ -73,7 +73,7 @@ export interface AgentLoopConfig {
    */
   onBeforeTurn?: (ctx: {
     turn: number;
-    messages: Message[];
+    messages: readonly Message[];
     lastPromptTokens?: number;
   }) => AsyncGenerator<AgentEvent, boolean>;
 
@@ -147,7 +147,7 @@ export interface AgentLoopConfig {
    * 反应式压缩：当 LLM 返回 context-length 错误时调用
    */
   onReactiveCompact?: (ctx: {
-    messages: Message[];
+    messages: readonly Message[];
   }) => AsyncGenerator<AgentEvent, boolean>;
 
   /**
@@ -166,7 +166,7 @@ export interface AgentLoopConfig {
    * 输入只含 contextMessages（不含 root prompt），确保 compaction 不触及 slot[0] 不变量。
    */
   onTurnLimitCompact?: (ctx: {
-    contextMessages: Message[];
+    contextMessages: readonly Message[];
   }) => Promise<{
     success: boolean;
     compactedMessages?: Message[];
@@ -234,7 +234,7 @@ export async function* agentLoop(
     if (config.onBeforeTurn) {
       const beforeTurnStream = config.onBeforeTurn({
         turn: turnsCount,
-        messages: convState.toArray() as Message[],
+        messages: convState.toArray(),
         lastPromptTokens,
       });
       // 消费 hook 产出的事件（如 compacting 事件）
@@ -296,7 +296,7 @@ export async function* agentLoop(
         };
 
         const executionPromise = streamingExecutor
-          .collectAndExecute(convState.toArray() as Message[], turnTools, signal, {
+          .collectAndExecute(convState.toArray(), turnTools, signal, {
             executionPipeline,
             executionContext: turnExecutionContext,
             logger: config.logger,
@@ -413,7 +413,7 @@ export async function* agentLoop(
           throw executionError;
         }
       } else if (streamHandler) {
-        const stream = streamHandler.streamResponse(convState.toArray() as Message[], turnTools, signal);
+        const stream = streamHandler.streamResponse(convState.toArray(), turnTools, signal);
         while (true) {
           const { value, done } = await stream.next();
           if (done) {
@@ -428,7 +428,7 @@ export async function* agentLoop(
         }
       } else if (typeof turnChatService.chatWithRetryEvents === 'function') {
         // 使用 chatWithRetryEvents 以便 yield 重试事件
-        const retryGen = turnChatService.chatWithRetryEvents(convState.toArray() as Message[], turnTools, signal);
+        const retryGen = turnChatService.chatWithRetryEvents(convState.toArray(), turnTools, signal);
         while (true) {
           const { value, done } = await retryGen.next();
           if (done) {
@@ -445,7 +445,7 @@ export async function* agentLoop(
           };
         }
       } else {
-        turnResult = await turnChatService.chat(convState.toArray() as Message[], turnTools, signal);
+        turnResult = await turnChatService.chat(convState.toArray(), turnTools, signal);
       }
     } catch (llmError) {
       // 模型 fallback 处理
@@ -474,7 +474,7 @@ export async function* agentLoop(
           attempt: recoveryAttempt,
         });
         yield { type: 'recovery', phase: 'started', reason: 'context_overflow' };
-        const compactStream = config.onReactiveCompact({ messages: convState.toArray() as Message[] });
+        const compactStream = config.onReactiveCompact({ messages: convState.toArray() });
         let recovered = false;
         while (true) {
           const { value, done } = await compactStream.next();
@@ -620,7 +620,7 @@ export async function* agentLoop(
       const content = turnResult.content || '';
       const noToolDecision = await decideNoToolTurn(
         content,
-        convState.toArray() as Message[],
+        convState.toArray(),
         turnsCount,
         config.onStopCheck,
       );

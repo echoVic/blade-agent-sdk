@@ -27,7 +27,7 @@ import {
   withRetry,
 } from './RetryPolicy.js';
 
-function filterOrphanToolMessages(messages: Message[]): Message[] {
+function filterOrphanToolMessages(messages: readonly Message[]): Message[] {
   const availableToolCallIds = new Set<string>();
   for (const msg of messages) {
     if (msg.role === 'assistant' && msg.tool_calls) {
@@ -248,7 +248,7 @@ export class VercelAIChatService implements IChatService {
     return baseUrl.includes('generativelanguage.googleapis.com') || baseUrl.includes('aiplatform.googleapis.com');
   }
 
-  private convertMessages(messages: Message[]): AIMessage[] {
+  private convertMessages(messages: readonly Message[]): AIMessage[] {
     const result: AIMessage[] = [];
 
     for (const msg of messages) {
@@ -407,7 +407,7 @@ export class VercelAIChatService implements IChatService {
   }
 
   private prepareRequest(
-    messages: Message[],
+    messages: readonly Message[],
     tools?: Array<{ name: string; description: string; parameters: JSONSchema7 }>,
   ) {
     const filteredMessages = filterOrphanToolMessages(messages);
@@ -449,7 +449,7 @@ export class VercelAIChatService implements IChatService {
   }
 
   async chat(
-    messages: Message[],
+    messages: readonly Message[],
     tools?: Array<{ name: string; description: string; parameters: JSONSchema7 }>,
     signal?: AbortSignal
   ): Promise<ChatResponse> {
@@ -489,7 +489,7 @@ export class VercelAIChatService implements IChatService {
   }
 
   async sideQuery(
-    messages: Message[],
+    messages: readonly Message[],
     signal?: AbortSignal,
     options?: SideQueryOptions,
   ): Promise<ChatResponse> {
@@ -539,7 +539,7 @@ export class VercelAIChatService implements IChatService {
    * return: ChatResponse
    */
   async *chatWithRetryEvents(
-    messages: Message[],
+    messages: readonly Message[],
     tools?: Array<{ name: string; description: string; parameters: JSONSchema7 }>,
     signal?: AbortSignal
   ): AsyncGenerator<RetryEvent, ChatResponse> {
@@ -583,7 +583,7 @@ export class VercelAIChatService implements IChatService {
   }
 
   async *streamChat(
-    messages: Message[],
+    messages: readonly Message[],
     tools?: Array<{ name: string; description: string; parameters: JSONSchema7 }>,
     signal?: AbortSignal
   ): AsyncGenerator<StreamChunk, void, unknown> {

@@ -337,7 +337,7 @@ export class LoopRunner {
       context.snapshot,
     );
     const initialActivationCwd = effectiveSnapshot?.cwd ?? this.defaultProjectPath;
-    const initialMessages = conversationState.toArray() as Message[];
+    const initialMessages = conversationState.toArray();
     const initialSkillActivationContext = rpm.createSkillActivationContext(
       initialActivationCwd,
       initialMessages,
@@ -360,7 +360,7 @@ export class LoopRunner {
 
       cachedSkillActivationContext = rpm.createSkillActivationContext(
         cwd,
-        loopState.conversationState.toArray() as Message[],
+        loopState.conversationState.toArray(),
       );
       cachedSkillActivationMessageCount = currentMessageCount;
       cachedSkillActivationCwd = cwd;

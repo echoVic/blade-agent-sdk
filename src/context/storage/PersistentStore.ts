@@ -237,8 +237,8 @@ export class PersistentStore {
         createdAt: now,
       };
       entries.push(this.createEvent('part_created', sessionId, partInfo));
-      if (toolName === 'Task' && toolInput && typeof toolInput === 'object') {
-        const subtaskInput = toolInput as JsonObject;
+      if (toolName === 'Task' && toolInput && typeof toolInput === 'object' && !Array.isArray(toolInput)) {
+        const subtaskInput = toolInput;
         const childSessionId =
           typeof subtaskInput.subagent_session_id === 'string'
             ? subtaskInput.subagent_session_id

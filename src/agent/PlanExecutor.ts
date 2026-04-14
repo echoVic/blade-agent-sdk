@@ -39,9 +39,9 @@ export class PlanExecutor {
       return createPlanModeReminder(message);
     }
 
-    const textParts = message.filter((p) => p.type === 'text');
-    if (textParts.length > 0) {
-      const firstTextPart = textParts[0] as { type: 'text'; text: string };
+    const textParts = message.filter((p): p is Extract<typeof p, { type: 'text' }> => p.type === 'text');
+    const firstTextPart = textParts[0];
+    if (firstTextPart) {
       return message.map((p) =>
         p === firstTextPart
           ? { type: 'text' as const, text: createPlanModeReminder(firstTextPart.text) }

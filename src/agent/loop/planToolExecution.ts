@@ -94,9 +94,9 @@ export function planToolExecution(
 
 function parseToolArguments(argumentsText: string): JsonObject | undefined {
   try {
-    const parsed = JSON.parse(argumentsText) as unknown;
+    const parsed: unknown = JSON.parse(argumentsText);
     return parsed && typeof parsed === 'object' && !Array.isArray(parsed)
-      ? parsed as JsonObject
+      ? (parsed as JsonObject)
       : undefined;
   } catch {
     return undefined;

@@ -19,7 +19,7 @@ export class StreamResponseHandler {
   }
 
   async *streamResponse(
-    messages: Message[],
+    messages: readonly Message[],
     tools: Array<{ name: string; description: string; parameters: JSONSchema7 }>,
     signal?: AbortSignal
   ): AsyncGenerator<

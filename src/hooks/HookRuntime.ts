@@ -702,13 +702,14 @@ export class HookRuntime {
     hook: RuntimeHookRegistration,
   ): HookCallback | undefined {
     if (hook.event === HookEvent.UserPromptSubmit && hook.type === 'append_prompt' && hook.value) {
+      const hookValue = hook.value;
       return async (input) => {
         const basePrompt = typeof input.userPrompt === 'string'
           ? input.userPrompt
           : '';
         const modifiedPrompt = basePrompt.trim() === ''
-          ? hook.value
-          : `${basePrompt}\n\n${hook.value}`;
+          ? hookValue
+          : `${basePrompt}\n\n${hookValue}`;
 
         if (hook.once) {
           this.unregisterRuntimeHooks([registrationId]);
@@ -716,7 +717,7 @@ export class HookRuntime {
 
         return {
           action: 'continue',
-          modifiedInput: { userPrompt: modifiedPrompt } as JsonObject,
+          modifiedInput: { userPrompt: modifiedPrompt },
         };
       };
     }

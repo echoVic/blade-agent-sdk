@@ -521,8 +521,8 @@ function fallbackCompact(
       typeof summaryMessage.content === 'string'
         ? summaryMessage.content
         : summaryMessage.content
-            .filter((p) => p.type === 'text')
-            .map((p) => (p as { text: string }).text)
+            .filter((p): p is Extract<typeof p, { type: 'text' }> => p.type === 'text')
+            .map((p) => p.text)
             .join('\n'),
     preTokens,
     postTokens,

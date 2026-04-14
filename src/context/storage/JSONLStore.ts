@@ -3,12 +3,12 @@ import { createReadStream } from 'node:fs';
 import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
 import { createInterface } from 'node:readline';
-import type { JsonObject, JsonValue } from '../../types/common.js';
+import type { JsonValue } from '../../types/common.js';
 import type { SessionEvent } from '../types.js';
 
 function isSessionEvent(data: unknown): data is SessionEvent {
-  if (!data || typeof data !== 'object') return false;
-  const obj = data as JsonObject;
+  if (!data || typeof data !== 'object' || Array.isArray(data)) return false;
+  const obj = data as Record<string, unknown>;
   return typeof obj.id === 'string' && typeof obj.type === 'string' && typeof obj.timestamp === 'string';
 }
 

@@ -80,7 +80,7 @@ export class StreamingToolExecutor {
   }
 
   async collectAndExecute(
-    messages: Message[],
+    messages: readonly Message[],
     tools: Array<{ name: string; description: string; parameters: JSONSchema7 }>,
     signal: AbortSignal | undefined,
     executionConfig: StreamingToolExecutorConfig,
@@ -234,7 +234,7 @@ export class StreamingToolExecutor {
   }
 
   private async collectWithWrappedHandler(
-    messages: Message[],
+    messages: readonly Message[],
     tools: Array<{ name: string; description: string; parameters: JSONSchema7 }>,
     signal: AbortSignal | undefined,
     executionConfig: StreamingToolExecutorConfig,

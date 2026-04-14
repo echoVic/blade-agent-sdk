@@ -5,8 +5,8 @@
 
 import { readFile } from 'node:fs/promises';
 import { basename } from 'node:path';
-import type { JsonObject } from '../types/common.js';
 import type { Message, ToolCall } from '../services/ChatServiceInterface.js';
+import type { JsonObject } from '../types/common.js';
 
 /**
  * 文件引用信息
@@ -50,7 +50,7 @@ const MAX_LINES_PER_FILE = 1000;
  * @param messages - 消息列表
  * @returns 文件引用列表（按重要性排序，最多 5 个）
  */
-export function analyzeFiles(messages: Message[]): FileReference[] {
+export function analyzeFiles(messages: readonly Message[]): FileReference[] {
   const fileMap = new Map<string, FileReference>();
 
   messages.forEach((msg, index) => {
@@ -60,8 +60,8 @@ export function analyzeFiles(messages: Message[]): FileReference[] {
       typeof msg.content === 'string'
         ? msg.content
         : (msg.content || [])
-            .filter((p) => p.type === 'text')
-            .map((p) => (p as { text: string }).text)
+            .filter((p): p is Extract<typeof p, { type: 'text' }> => p.type === 'text')
+            .map((p) => p.text)
             .join('\n');
     const contentFiles = extractFilePathsFromContent(textContent);
     contentFiles.forEach((path) => {

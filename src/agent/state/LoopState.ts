@@ -1,5 +1,5 @@
 import type { ContextSnapshot } from '../../runtime/index.js';
-import type { IChatService, Message } from '../../services/ChatServiceInterface.js';
+import type { IChatService } from '../../services/ChatServiceInterface.js';
 import type { PermissionMode } from '../../types/common.js';
 import type { ConversationState } from './ConversationState.js';
 import type {
@@ -51,7 +51,7 @@ export class LoopState {
   buildTurnState(turn: number): TurnState {
     return {
       turn,
-      messages: this.conversationState.toArray() as Message[],
+      messages: this.conversationState.toArray(),
       tools: this.resolveToolsFn(),
       chatService: this.resolveChatServiceFn(),
       maxContextTokens: this.resolveMaxContextTokensFn(),

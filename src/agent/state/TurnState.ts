@@ -43,7 +43,7 @@ export interface LoopExecutionContext {
 
 export interface TurnState {
   turn: number;
-  messages: Message[];
+  messages: readonly Message[];
   tools: LlmToolDefinition[];
   chatService: IChatService;
   maxContextTokens: number;

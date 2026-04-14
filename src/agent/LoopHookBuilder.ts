@@ -178,7 +178,7 @@ export function buildLoopConfig(deps: LoopHookBuilderDeps): AgentLoopConfig {
         if (contextMgr && context.sessionId) {
           return await contextMgr.saveToolUse(
             context.sessionId, ctx.toolCall.function.name,
-            ctx.params as JsonObject & JsonValue,
+            ctx.params,
             getLastUuid(), context.subagentInfo
           );
         }

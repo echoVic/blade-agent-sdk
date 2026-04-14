@@ -5,11 +5,11 @@
  */
 
 import { spawn } from 'child_process';
-import type {
-  HookExecutionContext,
+import {
   HookExitCode,
-  HookInput,
-  ProcessResult,
+  type HookExecutionContext,
+  type HookInput,
+  type ProcessResult,
 } from './types/HookTypes.js';
 
 /**
@@ -129,7 +129,7 @@ export class SecureProcessExecutor {
         resolve({
           stdout: stdout.getContent(),
           stderr: stderr.getContent(),
-          exitCode: timedOut ? (124 as HookExitCode) : (code ?? 1),
+          exitCode: timedOut ? HookExitCode.TIMEOUT : (code ?? 1),
           timedOut,
         });
       });
@@ -172,8 +172,12 @@ export class SecureProcessExecutor {
       BLADE_PROJECT_DIR: input.project_dir,
       BLADE_SESSION_ID: input.session_id,
       BLADE_HOOK_EVENT: input.hook_event_name,
-      BLADE_TOOL_NAME: 'tool_name' in input ? (input.tool_name as string) : '',
-      BLADE_TOOL_USE_ID: 'tool_use_id' in input ? (input.tool_use_id as string) : '',
+      BLADE_TOOL_NAME: ('tool_name' in input && typeof input.tool_name === 'string')
+        ? input.tool_name
+        : undefined,
+      BLADE_TOOL_USE_ID: ('tool_use_id' in input && typeof input.tool_use_id === 'string')
+        ? input.tool_use_id
+        : undefined,
 
       // 保留必要的系统变量
       PATH: process.env.PATH || '',

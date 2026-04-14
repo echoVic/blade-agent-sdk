@@ -20,19 +20,19 @@ import {
   type ContextSnapshot,
   type RuntimeContext,
   type RuntimeContextPatch,
+  type RuntimePatch,
   type RuntimePatchApplication,
   type RuntimePatchProvenance,
-  type RuntimePatch,
 } from '../runtime/index.js';
 import type { Message } from '../services/ChatServiceInterface.js';
 import type { SkillActivationContext } from '../skills/index.js';
+import type { ToolDiscoveryEntry } from '../tools/exposure/index.js';
 import {
   getRuntimePatchEffect,
   type ToolEffect,
 } from '../tools/types/index.js';
-import type { ToolDiscoveryEntry } from '../tools/exposure/index.js';
-import type { LoopState } from './state/LoopState.js';
 import type { ConversationState } from './state/ConversationState.js';
+import type { LoopState } from './state/LoopState.js';
 import type { LoopSkillState } from './state/TurnState.js';
 
 export class RuntimePatchManager {
@@ -277,7 +277,7 @@ export class RuntimePatchManager {
 
   createSkillActivationContext(
     cwd: string | undefined,
-    messages: Message[],
+    messages: readonly Message[],
   ): SkillActivationContext {
     // skill activation 仅基于用户/助手/工具对话内容做文件引用分析，
     // 排除 system 消息（catalog、tool_injection、compaction_summary 等）避免行为漂移。
