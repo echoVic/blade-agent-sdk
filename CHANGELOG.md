@@ -2,6 +2,13 @@
 
 本文件记录 @blade-ai/agent-sdk 的所有重要变更。
 
+## [1.0.5] - 2026-04-14
+
+- beac8fc refactor(agent): 将 Message[] 类型改为 readonly Message[] 以增强不可变性
+- b0b38d5 refactor: 统一使用 JsonObject 和 JsonValue 类型替代 Record<string, unknown>
+- e11d471 chore: release v1.0.4
+- c276ab3 refactor(tools): 移除 displayContent 字段并统一使用 metadata.summary
+- 9e1cab6 docs: 添加 Memory 系统、工具来源策略和子 Agent 协作文档
 ## [1.0.4] - 2026-04-11
 
 - c276ab3 refactor(tools): 移除 displayContent 字段并统一使用 metadata.summary
