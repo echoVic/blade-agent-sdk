@@ -2,6 +2,9 @@
 
 本文件记录 @blade-ai/agent-sdk 的所有重要变更。
 
+## [1.0.6] - 2026-04-17
+
+- 72ec339 refactor(agent): 重构流式响应处理与事件队列机制
 ## [1.0.5] - 2026-04-14
 
 - beac8fc refactor(agent): 将 Message[] 类型改为 readonly Message[] 以增强不可变性
