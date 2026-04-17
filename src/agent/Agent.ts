@@ -48,7 +48,6 @@ import { CompactionHandler } from './CompactionHandler.js';
 import { LoopRunner } from './LoopRunner.js';
 import { ModelManager } from './ModelManager.js';
 import { PlanExecutor } from './PlanExecutor.js';
-import { StreamResponseHandler } from './StreamResponseHandler.js';
 import { AgentSessionStore } from './subagents/AgentSessionStore.js';
 import { BackgroundAgentManager } from './subagents/BackgroundAgentManager.js';
 import { SubagentRegistry } from './subagents/SubagentRegistry.js';
@@ -192,10 +191,6 @@ export class Agent {
 
       const modelConfig = this.modelManager.resolveModelConfig(this.runtimeOptions.modelId);
       await this.modelManager.applyModelConfig(modelConfig, '🚀 使用模型:');
-      const streamHandler = new StreamResponseHandler(
-        () => this.modelManager.getChatService(),
-        this.rootLogger,
-      );
       const compactionHandler = new CompactionHandler(
         () => this.modelManager.getChatService(),
         () => this.modelManager.getContextManager(),
@@ -209,7 +204,7 @@ export class Agent {
         this.executionPipeline,
         getContextCwd(this.defaultContext),
         this.rootLogger,
-        streamHandler,
+        true,
         compactionHandler,
         this.tokenBudget,
         this.hookRuntime,

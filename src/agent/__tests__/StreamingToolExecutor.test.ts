@@ -20,10 +20,7 @@ async function tick(): Promise<void> {
 
 function createExecutor(options: {
   streamChat: () => AsyncGenerator<StreamChunk, void, unknown>;
-  streamResponse?: () => AsyncGenerator<
-    { type: 'content_delta'; delta: string } | { type: 'thinking_delta'; delta: string },
-    ChatResponse
-  >;
+  fallbackChat?: () => Promise<ChatResponse>;
   execute?: (
     toolName: string,
     params: unknown,
@@ -42,27 +39,11 @@ function createExecutor(options: {
 
   const chatService = {
     streamChat: vi.fn(options.streamChat),
-    chat: vi.fn(),
+    chat: vi.fn(options.fallbackChat ?? (async () => ({ content: '', toolCalls: [] }))),
     getConfig: () => ({
       model: 'test-model',
       maxContextTokens: 128000,
     }),
-  };
-
-  const streamHandler = {
-    streamResponse: vi.fn(
-      options.streamResponse
-        // biome-ignore lint/correctness/useYield: generator used only for its return value
-        ?? (async function* (): AsyncGenerator<
-          { type: 'content_delta'; delta: string } | { type: 'thinking_delta'; delta: string },
-          ChatResponse
-        > {
-          return {
-            content: '',
-            toolCalls: [],
-          };
-        }),
-    ),
   };
 
   const executionPipeline = {
@@ -76,11 +57,10 @@ function createExecutor(options: {
   };
 
   const executor = new StreamingToolExecutor(
-    streamHandler as never,
     () => chatService as never,
   );
 
-  return { executor, chatService, streamHandler, executionPipeline, execute };
+  return { executor, chatService, executionPipeline, execute };
 }
 
 describe('StreamingToolExecutor', () => {
@@ -500,38 +480,32 @@ describe('StreamingToolExecutor', () => {
     const started: string[] = [];
     const onReady = vi.fn();
 
-    const { executor, streamHandler, execute } = createExecutor({
+    const { executor, chatService, execute } = createExecutor({
       // biome-ignore lint/correctness/useYield: throws before yielding
       streamChat: async function* () {
         throw new Error('stream not supported');
       },
-      // biome-ignore lint/correctness/useYield: generator used only for its return value
-      streamResponse: async function* (): AsyncGenerator<
-        { type: 'content_delta'; delta: string } | { type: 'thinking_delta'; delta: string },
-        ChatResponse
-      > {
-        return {
-          content: '',
-          toolCalls: [
-            {
-              id: 'tool-1',
-              type: 'function',
-              function: {
-                name: 'WriteA',
-                arguments: '{}',
-              },
+      fallbackChat: async () => ({
+        content: '',
+        toolCalls: [
+          {
+            id: 'tool-1',
+            type: 'function',
+            function: {
+              name: 'WriteA',
+              arguments: '{}',
             },
-            {
-              id: 'tool-2',
-              type: 'function',
-              function: {
-                name: 'WriteB',
-                arguments: '{}',
-              },
+          },
+          {
+            id: 'tool-2',
+            type: 'function',
+            function: {
+              name: 'WriteB',
+              arguments: '{}',
             },
-          ],
-        };
-      },
+          },
+        ],
+      }),
       execute: async (toolName: string) => {
         started.push(toolName);
         if (toolName === 'WriteA') {
@@ -564,7 +538,7 @@ describe('StreamingToolExecutor', () => {
 
     await tick();
 
-    expect(streamHandler.streamResponse).toHaveBeenCalledTimes(1);
+    expect(chatService.chat).toHaveBeenCalledTimes(1);
     expect(onReady).toHaveBeenCalledTimes(1);
     expect(started).toEqual(['WriteA']);
 
@@ -584,19 +558,13 @@ describe('StreamingToolExecutor', () => {
   });
 
   it('falls back to the wrapped handler when the stream returns zero chunks', async () => {
-    const { executor, streamHandler, execute } = createExecutor({
+    const { executor, chatService, execute } = createExecutor({
       // biome-ignore lint/correctness/useYield: empty generator simulating zero chunks
       streamChat: async function* () {},
-      // biome-ignore lint/correctness/useYield: generator used only for its return value
-      streamResponse: async function* (): AsyncGenerator<
-        { type: 'content_delta'; delta: string } | { type: 'thinking_delta'; delta: string },
-        ChatResponse
-      > {
-        return {
-          content: 'fallback content',
-          toolCalls: [],
-        };
-      },
+      fallbackChat: async () => ({
+        content: 'fallback content',
+        toolCalls: [],
+      }),
       execute: async () => {
         throw new Error('no tools should execute');
       },
@@ -615,13 +583,13 @@ describe('StreamingToolExecutor', () => {
       },
     );
 
-    expect(streamHandler.streamResponse).toHaveBeenCalledTimes(1);
+    expect(chatService.chat).toHaveBeenCalledTimes(1);
     expect(result.chatResponse.content).toBe('fallback content');
     expect(result.executionResults).toEqual([]);
   });
 
   it('propagates context-length errors directly when no tools were dispatched', async () => {
-    const { executor, streamHandler, execute } = createExecutor({
+    const { executor, chatService, execute } = createExecutor({
       // biome-ignore lint/correctness/useYield: throws before yielding
       streamChat: async function* () {
         throw new Error('maximum context length exceeded');
@@ -646,7 +614,7 @@ describe('StreamingToolExecutor', () => {
       ),
     ).rejects.toThrow('maximum context length exceeded');
 
-    expect(streamHandler.streamResponse).not.toHaveBeenCalled();
+    expect(chatService.chat).not.toHaveBeenCalled();
   });
 
   it('waits for in-flight tools before rethrowing a context-length error after dispatch', async () => {

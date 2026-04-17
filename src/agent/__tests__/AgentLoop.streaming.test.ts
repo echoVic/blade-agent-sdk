@@ -18,10 +18,16 @@ function deferred<T>() {
   return { promise, resolve, reject };
 }
 
-type BaseConfigOverrides = Partial<Omit<AgentLoopConfig, 'prepareTurnState' | 'conversationState'>> & {
+type BaseConfigOverrides = Partial<Omit<AgentLoopConfig, 'prepareTurnState' | 'conversationState' | 'hooks'>> & {
   prepareTurnState?: AgentLoopConfig['prepareTurnState'];
   turnState?: Partial<Omit<TurnState, 'turn' | 'messages'>>;
   messages?: Message[];
+  onBeforeToolExec?: NonNullable<NonNullable<AgentLoopConfig['hooks']>['tool']>['beforeExec'];
+  onAfterToolExec?: NonNullable<NonNullable<AgentLoopConfig['hooks']>['tool']>['afterExec'];
+  onAfterToolExecEpochDiscard?: NonNullable<NonNullable<AgentLoopConfig['hooks']>['tool']>['afterExecEpochDiscard'];
+  onToolExecutionUpdate?: NonNullable<NonNullable<AgentLoopConfig['hooks']>['tool']>['onUpdate'];
+  onAssistantMessage?: NonNullable<NonNullable<AgentLoopConfig['hooks']>['message']>['onAssistant'];
+  onComplete?: NonNullable<NonNullable<AgentLoopConfig['hooks']>['message']>['onComplete'];
 };
 
 function baseConfig(overrides: BaseConfigOverrides = {}): AgentLoopConfig {
@@ -37,6 +43,12 @@ function baseConfig(overrides: BaseConfigOverrides = {}): AgentLoopConfig {
     } as unknown as AgentLoopConfig['executionPipeline'],
     maxTurns = 5,
     isYoloMode = false,
+    onBeforeToolExec,
+    onAfterToolExec,
+    onAfterToolExecEpochDiscard,
+    onToolExecutionUpdate,
+    onAssistantMessage,
+    onComplete,
     ...rest
   } = overrides;
 
@@ -65,6 +77,19 @@ function baseConfig(overrides: BaseConfigOverrides = {}): AgentLoopConfig {
     },
   };
 
+  const hooks: NonNullable<AgentLoopConfig['hooks']> = {
+    tool: {
+      beforeExec: onBeforeToolExec,
+      afterExec: onAfterToolExec,
+      afterExecEpochDiscard: onAfterToolExecEpochDiscard,
+      onUpdate: onToolExecutionUpdate,
+    },
+    message: {
+      onAssistant: onAssistantMessage,
+      onComplete,
+    },
+  };
+
   return {
     executionPipeline,
     conversationState: convState,
@@ -76,6 +101,7 @@ function baseConfig(overrides: BaseConfigOverrides = {}): AgentLoopConfig {
       ...defaultTurnState,
       ...turnState,
     })),
+    hooks,
     ...rest,
   };
 }
@@ -94,7 +120,7 @@ async function collectEvents(
 }
 
 describe('agentLoop streaming integration', () => {
-  it('uses StreamingToolExecutor when streamHandler and tools are present, yielding streaming tool events without double-calling onAfterToolExec', async () => {
+  it('uses StreamingToolExecutor when streaming=true and tools are present, yielding streaming tool events without double-calling onAfterToolExec', async () => {
     const toolGate = deferred<ToolResult>();
     const streamChat = vi.fn(async function* () {
       yield {
@@ -127,14 +153,13 @@ describe('agentLoop streaming integration', () => {
       yield* [] as never[];
       throw new Error('streamResponse should not be used when tools are present');
     });
+    void streamResponse;
     const onAfterToolExec = vi.fn();
 
     const loopPromise = collectEvents(
       agentLoop(
         baseConfig({
-          streamHandler: {
-            streamResponse,
-          } as never,
+          streaming: true,
           executionPipeline: {
             getRegistry: () => ({
               get: (name: string) => ({ kind: 'execute', name }),
@@ -174,7 +199,6 @@ describe('agentLoop streaming integration', () => {
 
     const { events, result } = await loopPromise;
 
-    expect(streamResponse).not.toHaveBeenCalled();
     expect(streamChat).toHaveBeenCalledTimes(1);
     expect(result.success).toBe(true);
     expect(result.finalMessage).toBe('exit now');
@@ -196,7 +220,7 @@ describe('agentLoop streaming integration', () => {
     expect(streamEndIndex).toBeLessThan(toolResultIndex);
   });
 
-  it('keeps the non-streaming path unchanged when no streamHandler is provided', async () => {
+  it('keeps the non-streaming path unchanged when streaming=false', async () => {
     const chat = vi.fn()
       .mockResolvedValueOnce({
         content: 'need a tool',

@@ -19,8 +19,8 @@ import {
   type ToolExecutionContext,
   type ToolExecutionUpdate,
 } from './loop/runToolCall.js';
+import { streamChatResponse } from './loop/streamChatResponse.js';
 import type { FunctionToolCall } from './loop/types.js';
-import type { StreamResponseHandler } from './StreamResponseHandler.js';
 
 interface ToolExecutionHooks {
   onBeforeToolExec?: (ctx: {
@@ -68,7 +68,6 @@ export class StreamingToolExecutor {
   private readonly logger: InternalLogger;
 
   constructor(
-    private readonly streamHandler: StreamResponseHandler,
     private readonly getChatService: () => IChatService,
     logger?: InternalLogger,
   ) {
@@ -156,8 +155,8 @@ export class StreamingToolExecutor {
         fullContent.length === 0 &&
         toolCallAccumulator.size === 0
       ) {
-        this.logger.warn('[Agent] 流式响应返回0个chunk，回退到包装的 StreamResponseHandler');
-        return this.collectWithWrappedHandler(messages, tools, signal, executionConfig, epoch);
+        this.logger.warn('[Agent] 流式响应返回0个chunk，回退到 streamChatResponse');
+        return this.collectWithFallback(messages, tools, signal, executionConfig, epoch);
       }
 
       if (!signal?.aborted && this.isEpochActive(epoch)) {
@@ -203,8 +202,8 @@ export class StreamingToolExecutor {
       };
     } catch (error) {
       if (this.isStreamingNotSupportedError(error)) {
-        this.logger.warn('[Agent] 流式请求失败，回退到包装的 StreamResponseHandler');
-        return this.collectWithWrappedHandler(messages, tools, signal, executionConfig, epoch);
+        this.logger.warn('[Agent] 流式请求失败，回退到 streamChatResponse');
+        return this.collectWithFallback(messages, tools, signal, executionConfig, epoch);
       }
 
       if (hasDispatchedTools) {
@@ -233,7 +232,7 @@ export class StreamingToolExecutor {
     );
   }
 
-  private async collectWithWrappedHandler(
+  private async collectWithFallback(
     messages: readonly Message[],
     tools: Array<{ name: string; description: string; parameters: JSONSchema7 }>,
     signal: AbortSignal | undefined,
@@ -243,7 +242,7 @@ export class StreamingToolExecutor {
     chatResponse: ChatResponse;
     executionResults: ToolExecutionOutcome[];
   }> {
-    const stream = this.streamHandler.streamResponse(messages, tools, signal);
+    const stream = streamChatResponse(this.getChatService, messages, tools, signal, this.logger);
     let chatResponse: ChatResponse | undefined;
 
     while (true) {

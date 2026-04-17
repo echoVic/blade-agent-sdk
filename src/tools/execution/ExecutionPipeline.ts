@@ -66,8 +66,20 @@ interface PipelineExecutionState {
   needsConfirmation: boolean;
   toolRequestedConfirmation: boolean;
   confirmationReason?: string;
+  confirmationReasons: ConfirmationReasonEntry[];
   permissionSignature?: string;
   hookToolUseId?: string;
+}
+
+/**
+ * Confirmation reason source.
+ * Ranked for display: deny > tool > rule > path > handler.
+ */
+export type ConfirmationReasonSource = 'tool' | 'rule' | 'path' | 'handler' | 'hook';
+
+export interface ConfirmationReasonEntry {
+  source: ConfirmationReasonSource;
+  message: string;
 }
 
 /**
@@ -168,6 +180,7 @@ export class ExecutionPipeline {
       affectedPaths: [],
       needsConfirmation: false,
       toolRequestedConfirmation: false,
+      confirmationReasons: [],
     };
 
     // 检查工具是否需要文件锁
@@ -474,8 +487,7 @@ export class ExecutionPipeline {
       if (toolPermissionResult?.behavior === 'ask') {
         state.needsConfirmation = true;
         state.toolRequestedConfirmation = true;
-        state.confirmationReason =
-          toolPermissionResult.message || 'Tool-specific confirmation required';
+        addConfirmationReason(state, 'tool', toolPermissionResult.message);
       }
 
       // After optional rebuild, re-extract invocation (may have been reconstructed)
@@ -521,10 +533,7 @@ export class ExecutionPipeline {
             state.needsConfirmation = false;
           } else {
             state.needsConfirmation = true;
-            state.confirmationReason = combineConfirmationReasons(
-              state.confirmationReason,
-              checkResult.message || 'User confirmation required',
-            );
+            addConfirmationReason(state, 'rule', checkResult.message);
           }
           break;
         case 'allow':
@@ -630,10 +639,7 @@ export class ExecutionPipeline {
 
     if (hookResult.needsConfirmation) {
       state.needsConfirmation = true;
-      state.confirmationReason = combineConfirmationReasons(
-        state.confirmationReason,
-        hookResult.reason || 'Hook requires confirmation',
-      );
+      addConfirmationReason(state, 'hook', hookResult.reason);
     }
   }
 
@@ -756,6 +762,7 @@ export class ExecutionPipeline {
         if (state.permissionSignature && this.sessionApprovals.has(state.permissionSignature)) {
           state.needsConfirmation = false;
           state.confirmationReason = undefined;
+          state.confirmationReasons = [];
         }
         if (!state.toolRequestedConfirmation && !state.confirmationReason) {
           state.needsConfirmation = false;
@@ -778,10 +785,7 @@ export class ExecutionPipeline {
 
       case 'ask':
         state.needsConfirmation = true;
-        state.confirmationReason = combineConfirmationReasons(
-          state.confirmationReason,
-          result.message || 'User confirmation required',
-        );
+        addConfirmationReason(state, 'handler', result.message);
         break;
     }
   }
@@ -1219,15 +1223,46 @@ export interface ExecutionStats {
 }
 
 function combineConfirmationReasons(
-  existingReason: string | undefined,
-  nextReason: string,
-): string {
-  if (!existingReason) {
-    return nextReason;
-  }
+  entries: ConfirmationReasonEntry[],
+): string | undefined {
+  if (entries.length === 0) return undefined;
+  const rank: Record<ConfirmationReasonSource, number> = {
+    tool: 0,
+    rule: 1,
+    path: 2,
+    hook: 3,
+    handler: 4,
+  };
+  const seen = new Set<string>();
+  const sorted = [...entries]
+    .sort((a, b) => rank[a.source] - rank[b.source])
+    .filter((entry) => {
+      const key = `${entry.source}::${entry.message}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return Boolean(entry.message);
+    });
+  return sorted.map((entry) => entry.message).join('\n') || undefined;
+}
 
-  const reasons = new Set([existingReason, nextReason].filter(Boolean));
-  return [...reasons].join('\n');
+function addConfirmationReason(
+  state: PipelineExecutionState,
+  source: ConfirmationReasonSource,
+  message: string | undefined,
+): void {
+  const msg = message || defaultReasonMessage(source);
+  state.confirmationReasons.push({ source, message: msg });
+  state.confirmationReason = combineConfirmationReasons(state.confirmationReasons);
+}
+
+function defaultReasonMessage(source: ConfirmationReasonSource): string {
+  switch (source) {
+    case 'tool': return 'Tool-specific confirmation required';
+    case 'rule': return 'User confirmation required';
+    case 'path': return 'Path safety confirmation required';
+    case 'hook': return 'Hook requires confirmation';
+    case 'handler': return 'User confirmation required';
+  }
 }
 
 function toParamsRecord(

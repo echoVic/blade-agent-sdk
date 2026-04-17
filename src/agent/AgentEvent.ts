@@ -52,6 +52,13 @@ export interface TurnEndEvent {
   hasToolCalls: boolean;
 }
 
+/** 同一轮重试（反应式压缩等），不计入 turnsCount */
+export interface TurnRetryEvent {
+  type: 'turn_retry';
+  turn: number;
+  reason: 'reactive_compact';
+}
+
 // ===== 内容流事件 =====
 
 /** 内容增量（流式） */
@@ -214,6 +221,7 @@ export type AgentEvent =
   | AgentEndEvent
   | TurnStartEvent
   | TurnEndEvent
+  | TurnRetryEvent
   | ContentDeltaEvent
   | ThinkingDeltaEvent
   | StreamEndEvent

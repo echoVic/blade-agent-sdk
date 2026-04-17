@@ -60,10 +60,23 @@ function createMockChatService(responses: Array<{
   } as unknown as TurnState['chatService'];
 }
 
-type BaseConfigOverrides = Partial<Omit<AgentLoopConfig, 'prepareTurnState' | 'conversationState'>> & {
+type BaseConfigOverrides = Partial<Omit<AgentLoopConfig, 'prepareTurnState' | 'conversationState' | 'hooks'>> & {
   prepareTurnState?: AgentLoopConfig['prepareTurnState'];
   turnState?: Partial<Omit<TurnState, 'turn' | 'messages'>>;
   messages?: Message[];
+  // Legacy flat hooks (translated to grouped shape below)
+  onBeforeTurn?: NonNullable<NonNullable<AgentLoopConfig['hooks']>['turn']>['beforeTurn'];
+  onTurnLimitReached?: NonNullable<NonNullable<AgentLoopConfig['hooks']>['turn']>['onTurnLimitReached'];
+  onTurnLimitCompact?: NonNullable<NonNullable<AgentLoopConfig['hooks']>['turn']>['onTurnLimitCompact'];
+  onBeforeToolExec?: NonNullable<NonNullable<AgentLoopConfig['hooks']>['tool']>['beforeExec'];
+  onAfterToolExec?: NonNullable<NonNullable<AgentLoopConfig['hooks']>['tool']>['afterExec'];
+  onAfterToolExecEpochDiscard?: NonNullable<NonNullable<AgentLoopConfig['hooks']>['tool']>['afterExecEpochDiscard'];
+  onToolExecutionUpdate?: NonNullable<NonNullable<AgentLoopConfig['hooks']>['tool']>['onUpdate'];
+  onAssistantMessage?: NonNullable<NonNullable<AgentLoopConfig['hooks']>['message']>['onAssistant'];
+  onComplete?: NonNullable<NonNullable<AgentLoopConfig['hooks']>['message']>['onComplete'];
+  onReactiveCompact?: NonNullable<NonNullable<AgentLoopConfig['hooks']>['recovery']>['reactiveCompact'];
+  onRecoveryStateChange?: NonNullable<NonNullable<AgentLoopConfig['hooks']>['recovery']>['onStateChange'];
+  onStopCheck?: NonNullable<NonNullable<AgentLoopConfig['hooks']>['stop']>['check'];
 };
 
 function baseConfig(overrides: BaseConfigOverrides = {}): AgentLoopConfig {
@@ -74,6 +87,18 @@ function baseConfig(overrides: BaseConfigOverrides = {}): AgentLoopConfig {
     executionPipeline = createMockExecutionPipeline(),
     maxTurns = 10,
     isYoloMode = false,
+    onBeforeTurn,
+    onTurnLimitReached,
+    onTurnLimitCompact,
+    onBeforeToolExec,
+    onAfterToolExec,
+    onAfterToolExecEpochDiscard,
+    onToolExecutionUpdate,
+    onAssistantMessage,
+    onComplete,
+    onReactiveCompact,
+    onRecoveryStateChange,
+    onStopCheck,
     ...rest
   } = overrides;
 
@@ -96,6 +121,31 @@ function baseConfig(overrides: BaseConfigOverrides = {}): AgentLoopConfig {
     },
   };
 
+  const hooks: NonNullable<AgentLoopConfig['hooks']> = {
+    turn: {
+      beforeTurn: onBeforeTurn,
+      onTurnLimitReached,
+      onTurnLimitCompact,
+    },
+    tool: {
+      beforeExec: onBeforeToolExec,
+      afterExec: onAfterToolExec,
+      afterExecEpochDiscard: onAfterToolExecEpochDiscard,
+      onUpdate: onToolExecutionUpdate,
+    },
+    message: {
+      onAssistant: onAssistantMessage,
+      onComplete,
+    },
+    recovery: {
+      reactiveCompact: onReactiveCompact,
+      onStateChange: onRecoveryStateChange,
+    },
+    stop: {
+      check: onStopCheck,
+    },
+  };
+
   return {
     executionPipeline,
     conversationState: convState,
@@ -107,6 +157,7 @@ function baseConfig(overrides: BaseConfigOverrides = {}): AgentLoopConfig {
       ...defaultTurnState,
       ...turnState,
     })),
+    hooks,
     ...rest,
   };
 }
@@ -391,7 +442,12 @@ describe('agentLoop', () => {
       expect(result.finalMessage).toBe('Recovered answer');
       expect(chatFn).toHaveBeenCalledTimes(2);
       expect(onReactiveCompact).toHaveBeenCalledTimes(1);
-      expect(events.some((event) => event.type === 'turn_end' && event.turn === 1)).toBe(true);
+      // turn_retry replaces the old "fake turn_end" — turnsCount stays 1, only one real turn_end
+      const turnStartEvents = events.filter((e) => e.type === 'turn_start');
+      expect(turnStartEvents).toHaveLength(1);
+      const turnEndEvents = events.filter((e) => e.type === 'turn_end');
+      expect(turnEndEvents).toHaveLength(1);
+      expect(events.some((e) => e.type === 'turn_retry' && e.turn === 1 && e.reason === 'reactive_compact')).toBe(true);
     });
 
     it('retries the turn after a CannotRetryError wrapping overflow and reactive compaction succeeds', async () => {

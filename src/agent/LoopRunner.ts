@@ -36,7 +36,6 @@ import { LoopState } from './state/LoopState.js';
 import { ConversationState } from './state/ConversationState.js';
 import { isValidSystemSource } from './state/systemSource.js';
 import type { LoopSkillState } from './state/TurnState.js';
-import type { StreamResponseHandler } from './StreamResponseHandler.js';
 import type { TokenBudget } from './TokenBudget.js';
 import type {
   AgentOptions,
@@ -76,7 +75,7 @@ export class LoopRunner {
     private executionPipeline: ExecutionPipeline,
     private defaultProjectPath?: string,
     logger?: InternalLogger,
-    private streamHandler?: StreamResponseHandler,
+    private streaming?: boolean,
     private compactionHandler?: CompactionHandler,
     private tokenBudget?: TokenBudget,
     private hookRuntime?: HookRuntime,
@@ -209,7 +208,7 @@ export class LoopRunner {
       isYoloMode,
       getLastUuid: () => lastMessageUuid,
       setLastUuid: (uuid: string | null) => { lastMessageUuid = uuid; },
-      streamHandler: this.streamHandler,
+      streaming: this.streaming,
       executionPipeline: this.executionPipeline,
       logger: this.logger,
       tokenBudget: this.tokenBudget,
