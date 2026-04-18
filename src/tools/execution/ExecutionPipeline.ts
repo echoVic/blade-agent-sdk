@@ -1,13 +1,13 @@
 import type { HookRuntime } from '../../hooks/HookRuntime.js';
-import { LogCategory, NOOP_LOGGER, type InternalLogger } from '../../logging/Logger.js';
-import { PermissionMode, type JsonObject, type PermissionsConfig } from '../../types/common.js';
+import { type InternalLogger, LogCategory, NOOP_LOGGER } from '../../logging/Logger.js';
+import { type JsonObject, PermissionMode, type PermissionsConfig } from '../../types/common.js';
 import {
+  type CanUseTool,
+  type PermissionResult as CanUseToolResult,
   createModePermissionHandler,
   createPathSafetyPermissionHandler,
   createPermissionHandlerFromCanUseTool,
   createRuleBasedPermissionHandler,
-  type CanUseTool,
-  type PermissionResult as CanUseToolResult,
   type PermissionHandler,
   type PermissionHandlerRequest,
   type PermissionUpdate,
@@ -28,13 +28,14 @@ import {
 import {
   isReadOnlyKind,
   resolveToolBehaviorSafely,
-  ToolErrorType,
-  ToolKind,
-  validationErrorToToolResult,
   type Tool,
   type ToolBehavior,
+  ToolErrorType,
   type ToolInvocation,
+  ToolKind,
+  validationErrorToToolResult,
 } from '../types/ToolTypes.js';
+import { type ConcurrencyLimits, ConcurrencyScheduler } from './ConcurrencyScheduler.js';
 import { DenialTracker } from './DenialTracker.js';
 import { FileLockManager } from './FileLockManager.js';
 import { ResultArtifactStore } from './ResultArtifactStore.js';
@@ -99,6 +100,7 @@ export class ExecutionPipeline {
   private readonly permissionHandlers: PermissionHandler[];
   private readonly defaultPermissionMode: PermissionMode;
   private readonly toolCatalog?: ToolCatalog;
+  private readonly scheduler: ConcurrencyScheduler;
   private readonly resultArtifactStore = new ResultArtifactStore();
 
   constructor(
@@ -111,6 +113,11 @@ export class ExecutionPipeline {
     this.hookRuntime = config.hookRuntime;
     this.logger = (config.logger ?? NOOP_LOGGER).child(LogCategory.EXECUTION);
     this.toolCatalog = config.toolCatalog;
+    this.scheduler =
+      config.scheduler ??
+      (config.concurrencyLimits
+        ? new ConcurrencyScheduler(config.concurrencyLimits)
+        : ConcurrencyScheduler.getInstance());
 
     const permissionConfig: PermissionsConfig = config.permissionConfig || {
       allow: [],
@@ -204,7 +211,10 @@ export class ExecutionPipeline {
       return this.executeWithPipeline(state, executionId, startTime);
     };
 
-    const result = await this.withTimeout(toolName, runPipeline);
+    const toolKind = resolvedBehavior?.kind ?? tool.kind ?? ToolKind.Execute;
+    const result = await this.withTimeout(toolName, () =>
+      this.scheduler.schedule(toolKind, runPipeline),
+    );
     return result;
   }
 
@@ -1207,6 +1217,8 @@ export interface ExecutionPipelineConfig {
    * Defaults to no timeout (undefined).
    */
   toolTimeoutMs?: number;
+  scheduler?: ConcurrencyScheduler;
+  concurrencyLimits?: ConcurrencyLimits;
   toolCatalog?: ToolCatalog;
 }
 
