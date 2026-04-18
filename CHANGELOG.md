@@ -2,6 +2,12 @@
 
 本文件记录 @blade-ai/agent-sdk 的所有重要变更。
 
+## [1.0.7] - 2026-04-18
+
+- 59a6f33 feat(execution): 添加并发调度器管理工具执行并发
+- 7097ba5 ci(workflow): 添加多版本Node.js测试支持
+- c1c1ce8 chore: release v1.0.6
+- 72ec339 refactor(agent): 重构流式响应处理与事件队列机制
 ## [1.0.6] - 2026-04-17
 
 - 72ec339 refactor(agent): 重构流式响应处理与事件队列机制
