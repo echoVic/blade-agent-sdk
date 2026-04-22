@@ -1,5 +1,6 @@
 import { isPlainObject } from 'lodash-es';
 import type { ZodError, ZodIssue, z } from 'zod';
+import { SdkError } from '../../errors/SdkError.js';
 import { ToolErrorType } from '../types/index.js';
 
 type ZodIssueExtra = ZodIssue & {
@@ -25,18 +26,25 @@ function formatUnknown(value: unknown): string {
   }
 }
 
-class ToolValidationError extends Error {
+class ToolValidationError extends SdkError {
   constructor(
     message: string,
-    public readonly issues: Array<{
+    public readonly issues: readonly {
       field: string;
       message: string;
       value?: unknown;
-    }>,
-    public readonly type: ToolErrorType = ToolErrorType.VALIDATION_ERROR
+    }[],
+    public readonly type: ToolErrorType = ToolErrorType.VALIDATION_ERROR,
   ) {
-    super(message);
-    this.name = 'ToolValidationError';
+    super('TOOL_VALIDATION_ERROR', message);
+  }
+
+  override toJSON(): Record<string, unknown> {
+    return {
+      ...super.toJSON(),
+      issues: this.issues,
+      type: this.type,
+    };
   }
 }
 
@@ -177,10 +185,7 @@ function formatZodError(error: ZodError): ToolValidationError {
  * @param data 待验证的数据
  * @returns 验证成功返回数据，失败抛出 ToolValidationError
  */
-export function parseWithZod<T extends z.ZodSchema>(
-  schema: T,
-  data: unknown
-): z.infer<T> {
+export function parseWithZod<T extends z.ZodSchema>(schema: T, data: unknown): z.infer<T> {
   const result = schema.safeParse(data);
 
   if (!result.success) {

@@ -1,5 +1,6 @@
 import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
+import { SdkError } from '../errors/SdkError.js';
 
 const RESTRICTED_PATHS = [
   '.git',
@@ -12,13 +13,9 @@ const RESTRICTED_PATHS = [
   '.env.test',
 ];
 
-class PathSecurityError extends Error {
-  constructor(
-    message: string,
-    public readonly code: string
-  ) {
-    super(message);
-    this.name = 'PathSecurityError';
+class PathSecurityError extends SdkError {
+  constructor(message: string, code: string) {
+    super(code, message);
   }
 }
 
@@ -33,7 +30,7 @@ export function normalizePath(inputPath: string, workspaceRoot: string): string 
   if (!normalized.startsWith(normalizedRoot)) {
     throw new PathSecurityError(
       `Path outside workspace: ${inputPath} (resolved to ${normalized}, workspace: ${normalizedRoot})`,
-      'PATH_OUTSIDE_WORKSPACE'
+      'PATH_OUTSIDE_WORKSPACE',
     );
   }
 
@@ -47,7 +44,7 @@ export function checkRestricted(absolutePath: string): void {
     if (segments.includes(restricted)) {
       throw new PathSecurityError(
         `Access denied: "${restricted}" is a protected directory`,
-        'RESTRICTED_PATH'
+        'RESTRICTED_PATH',
       );
     }
   }
@@ -55,10 +52,7 @@ export function checkRestricted(absolutePath: string): void {
 
 function checkTraversal(inputPath: string): void {
   if (inputPath.includes('..')) {
-    throw new PathSecurityError(
-      `Path traversal not allowed: ${inputPath}`,
-      'PATH_TRAVERSAL'
-    );
+    throw new PathSecurityError(`Path traversal not allowed: ${inputPath}`, 'PATH_TRAVERSAL');
   }
 }
 
@@ -76,17 +70,14 @@ export async function validatePath(inputPath: string, workspaceRoot: string): Pr
   return absolutePath;
 }
 
-async function resolveSymlink(
-  absolutePath: string,
-  workspaceRoot: string
-): Promise<string> {
+async function resolveSymlink(absolutePath: string, workspaceRoot: string): Promise<string> {
   try {
     const realPath = await fs.realpath(absolutePath);
     const normalizedRoot = path.normalize(workspaceRoot);
     if (!realPath.startsWith(normalizedRoot)) {
       throw new PathSecurityError(
         `Symlink points outside workspace: ${absolutePath} -> ${realPath}`,
-        'SYMLINK_OUTSIDE_WORKSPACE'
+        'SYMLINK_OUTSIDE_WORKSPACE',
       );
     }
     return realPath;

@@ -94,37 +94,49 @@ export const DEFAULT_RETRY_CONFIG: RetryConfig = {
 
 // ===== Error Classes =====
 
+import { SdkError } from '../errors/SdkError.js';
+
 /**
  * Non-retryable error — wraps the original error with retry context.
  * Callers can inspect `retryContext.maxTokensOverride` for context overflow recovery.
  */
-export class CannotRetryError extends Error {
+export class CannotRetryError extends SdkError {
   constructor(
     public readonly originalError: unknown,
     public readonly retryContext: { model?: string; maxTokensOverride?: number },
   ) {
-    const msg = originalError instanceof Error
-      ? originalError.message
-      : String(originalError);
-    super(msg);
-    this.name = 'CannotRetryError';
-    // Append original stack as "Caused by" for better debugging
+    const msg = originalError instanceof Error ? originalError.message : String(originalError);
+    super('CANNOT_RETRY', msg, { cause: originalError });
     if (originalError instanceof Error && originalError.stack) {
       this.stack = `${this.stack}\nCaused by: ${originalError.stack}`;
     }
+  }
+
+  override toJSON(): Record<string, unknown> {
+    return {
+      ...super.toJSON(),
+      retryContext: this.retryContext,
+    };
   }
 }
 
 /**
  * Model fallback triggered — consecutive 529 errors exceeded limit.
  */
-export class FallbackTriggeredError extends Error {
+export class FallbackTriggeredError extends SdkError {
   constructor(
     public readonly originalModel: string,
     public readonly fallbackModel: string,
   ) {
-    super(`Model fallback triggered: ${originalModel} -> ${fallbackModel}`);
-    this.name = 'FallbackTriggeredError';
+    super('FALLBACK_TRIGGERED', `Model fallback triggered: ${originalModel} -> ${fallbackModel}`);
+  }
+
+  override toJSON(): Record<string, unknown> {
+    return {
+      ...super.toJSON(),
+      originalModel: this.originalModel,
+      fallbackModel: this.fallbackModel,
+    };
   }
 }
 
@@ -216,11 +228,7 @@ function extractHeaderValue(headers: unknown, headerName: string): string | unde
     return undefined;
   }
 
-  if (
-    isRecord(headers) &&
-    'get' in headers &&
-    typeof headers.get === 'function'
-  ) {
+  if (isRecord(headers) && 'get' in headers && typeof headers.get === 'function') {
     const value = headers.get(headerName);
     if (typeof value === 'string' && value.trim()) {
       return value.trim();
@@ -264,9 +272,7 @@ function getAbortReason(signal: AbortSignal): Error {
   }
 
   const error = new Error(
-    typeof reason === 'string' && reason.length > 0
-      ? reason
-      : 'The operation was aborted',
+    typeof reason === 'string' && reason.length > 0 ? reason : 'The operation was aborted',
   );
   error.name = 'AbortError';
   return error;
@@ -349,10 +355,7 @@ export function isStaleConnectionError(error: unknown): boolean {
   return message.includes('econnreset') || message.includes('epipe');
 }
 
-function isRetryableErrorForConfig(
-  error: unknown,
-  retryableStatusCodes: number[],
-): boolean {
+function isRetryableErrorForConfig(error: unknown, retryableStatusCodes: number[]): boolean {
   if (isAbortError(error)) {
     return false;
   }
@@ -392,12 +395,7 @@ function isRetryableErrorForConfig(
 
   // Only match full phrases for permanent errors to avoid false positives
   // (e.g. "port 4003" should not match "400")
-  const permanentPatterns = [
-    'bad request',
-    'unauthorized',
-    'forbidden',
-    'not found',
-  ];
+  const permanentPatterns = ['bad request', 'unauthorized', 'forbidden', 'not found'];
 
   if (permanentPatterns.some((pattern) => message.includes(pattern))) {
     return false;
@@ -477,11 +475,7 @@ function parseRetryAfterValue(value: string): number | undefined {
 
 // ===== Delay Calculation =====
 
-export function getRetryDelay(
-  attempt: number,
-  config: RetryConfig,
-  error?: unknown,
-): number {
+export function getRetryDelay(attempt: number, config: RetryConfig, error?: unknown): number {
   const exponentialDelay = Math.min(
     config.initialDelayMs * config.backoffMultiplier ** Math.max(0, attempt - 1),
     config.maxDelayMs,
@@ -489,9 +483,7 @@ export function getRetryDelay(
   const jitteredDelay = Math.round(exponentialDelay * (0.8 + Math.random() * 0.4));
   const retryAfterDelay = error ? extractRetryAfterMs(error) : undefined;
 
-  return retryAfterDelay !== undefined
-    ? Math.max(jitteredDelay, retryAfterDelay)
-    : jitteredDelay;
+  return retryAfterDelay !== undefined ? Math.max(jitteredDelay, retryAfterDelay) : jitteredDelay;
 }
 
 // ===== Core: withRetry AsyncGenerator =====
