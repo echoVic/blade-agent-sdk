@@ -17,12 +17,10 @@
     "noUnusedLocals": false,
     "noUnusedParameters": false,
     "noPropertyAccessFromIndexSignature": false,
-    "esModuleInterop": true,
     "resolveJsonModule": true,
     "declaration": true,
     "declarationMap": true,
     "types": ["node"],
-    "baseUrl": ".",
     "paths": {
       "@/*": ["./src/*"]
     },
