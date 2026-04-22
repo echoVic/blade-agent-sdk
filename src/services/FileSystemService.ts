@@ -2,7 +2,6 @@
  * 文件系统服务
  *
  * 抽象文件操作，工具层统一通过此接口访问文件系统。
- * 可通过 setFileSystemService() 注入自定义实现。
  */
 
 import * as fs from 'fs/promises';
@@ -10,7 +9,7 @@ import * as fs from 'fs/promises';
 /**
  * 文件统计信息
  */
-export interface FileStat {
+interface FileStat {
   size: number;
   isDirectory: boolean;
   isFile: boolean;
@@ -35,7 +34,7 @@ export interface FileSystemService {
 /**
  * 本地文件系统服务（默认实现）
  */
-export class LocalFileSystemService implements FileSystemService {
+class LocalFileSystemService implements FileSystemService {
   async readTextFile(filePath: string): Promise<string> {
     return fs.readFile(filePath, 'utf-8');
   }
@@ -94,20 +93,4 @@ let currentFileSystemService: FileSystemService = new LocalFileSystemService();
  */
 export function getFileSystemService(): FileSystemService {
   return currentFileSystemService;
-}
-
-/**
- * 设置文件系统服务
- *
- * 用于替换文件系统实现（如远程文件系统）。
- */
-export function setFileSystemService(service: FileSystemService): void {
-  currentFileSystemService = service;
-}
-
-/**
- * 重置为本地文件系统服务
- */
-export function resetFileSystemService(): void {
-  currentFileSystemService = new LocalFileSystemService();
 }

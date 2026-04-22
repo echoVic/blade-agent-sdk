@@ -12,7 +12,7 @@ const RESTRICTED_PATHS = [
   '.env.test',
 ];
 
-export class PathSecurityError extends Error {
+class PathSecurityError extends Error {
   constructor(
     message: string,
     public readonly code: string
@@ -53,7 +53,7 @@ export function checkRestricted(absolutePath: string): void {
   }
 }
 
-export function checkTraversal(inputPath: string): void {
+function checkTraversal(inputPath: string): void {
   if (inputPath.includes('..')) {
     throw new PathSecurityError(
       `Path traversal not allowed: ${inputPath}`,
@@ -76,7 +76,7 @@ export async function validatePath(inputPath: string, workspaceRoot: string): Pr
   return absolutePath;
 }
 
-export async function resolveSymlink(
+async function resolveSymlink(
   absolutePath: string,
   workspaceRoot: string
 ): Promise<string> {
@@ -108,7 +108,7 @@ export function isWithinWorkspace(absolutePath: string, workspaceRoot: string): 
   return normalized.startsWith(normalizedRoot);
 }
 
-export function isRestricted(absolutePath: string): boolean {
+function isRestricted(absolutePath: string): boolean {
   const segments = absolutePath.split(path.sep);
   return RESTRICTED_PATHS.some((restricted) => segments.includes(restricted));
 }

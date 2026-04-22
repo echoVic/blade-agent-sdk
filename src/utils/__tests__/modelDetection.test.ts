@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { ModelConfig } from '../../types/common.js';
-import { detectThinkingSupport, getThinkingConfig, isThinkingModel } from '../modelDetection.js';
+import { isThinkingModel } from '../modelDetection.js';
 
 function createModelConfig(overrides: Partial<ModelConfig>): ModelConfig {
   return {
@@ -13,104 +13,66 @@ function createModelConfig(overrides: Partial<ModelConfig>): ModelConfig {
 }
 
 describe('modelDetection', () => {
-  describe('detectThinkingSupport', () => {
+  describe('isThinkingModel', () => {
     it('should detect DeepSeek R1', () => {
-      expect(detectThinkingSupport('deepseek-r1')).toBe(true);
-      expect(detectThinkingSupport('deepseek-chat-r1')).toBe(true);
+      expect(isThinkingModel(createModelConfig({ model: 'deepseek-r1' }))).toBe(true);
+      expect(isThinkingModel(createModelConfig({ model: 'deepseek-chat-r1' }))).toBe(true);
     });
 
     it('should detect DeepSeek Reasoner', () => {
-      expect(detectThinkingSupport('deepseek-reasoner')).toBe(true);
+      expect(isThinkingModel(createModelConfig({ model: 'deepseek-reasoner' }))).toBe(true);
     });
 
     it('should detect OpenAI o1 models', () => {
-      expect(detectThinkingSupport('o1-preview')).toBe(true);
-      expect(detectThinkingSupport('o1-mini')).toBe(true);
-      expect(detectThinkingSupport('o1')).toBe(true);
+      expect(isThinkingModel(createModelConfig({ model: 'o1-preview' }))).toBe(true);
+      expect(isThinkingModel(createModelConfig({ model: 'o1-mini' }))).toBe(true);
+      expect(isThinkingModel(createModelConfig({ model: 'o1' }))).toBe(true);
     });
 
     it('should detect Qwen QwQ models', () => {
-      expect(detectThinkingSupport('qwen-qwq-32b')).toBe(true);
+      expect(isThinkingModel(createModelConfig({ model: 'qwen-qwq-32b' }))).toBe(true);
     });
 
     it('should detect Qwen thinking models', () => {
-      expect(detectThinkingSupport('qwen-think-72b')).toBe(true);
+      expect(isThinkingModel(createModelConfig({ model: 'qwen-think-72b' }))).toBe(true);
     });
 
     it('should detect Kimi k1 models', () => {
-      expect(detectThinkingSupport('kimi-k1-preview')).toBe(true);
-      expect(detectThinkingSupport('k1-32k')).toBe(true);
+      expect(isThinkingModel(createModelConfig({ model: 'kimi-k1-preview' }))).toBe(true);
+      expect(isThinkingModel(createModelConfig({ model: 'k1-32k' }))).toBe(true);
     });
 
     it('should detect Doubao thinking models', () => {
-      expect(detectThinkingSupport('doubao-pro-think')).toBe(true);
+      expect(isThinkingModel(createModelConfig({ model: 'doubao-pro-think' }))).toBe(true);
     });
 
     it('should detect Claude Opus 4', () => {
-      expect(detectThinkingSupport('claude-opus-4')).toBe(true);
+      expect(isThinkingModel(createModelConfig({ model: 'claude-opus-4' }))).toBe(true);
     });
 
     it('should detect GLM-4.7', () => {
-      expect(detectThinkingSupport('glm-4.7')).toBe(true);
-    });
-
-    it('should return false for non-thinking models', () => {
-      expect(detectThinkingSupport('gpt-4')).toBe(false);
-      expect(detectThinkingSupport('gpt-4-turbo')).toBe(false);
-      expect(detectThinkingSupport('claude-3-sonnet')).toBe(false);
-      expect(detectThinkingSupport('claude-3-haiku')).toBe(false);
-      expect(detectThinkingSupport('deepseek-chat')).toBe(false);
-    });
-  });
-
-  describe('getThinkingConfig', () => {
-    it('should use explicit user config when supportsThinking is set', () => {
-      const config = getThinkingConfig(createModelConfig({
-        model: 'gpt-4',
-        supportsThinking: true,
-        thinkingBudget: 5000,
-      }));
-      expect(config.supportsThinking).toBe(true);
-      expect(config.thinkingBudget).toBe(5000);
-    });
-
-    it('should use explicit false config', () => {
-      const config = getThinkingConfig(createModelConfig({
-        model: 'deepseek-r1',
-        supportsThinking: false,
-      }));
-      expect(config.supportsThinking).toBe(false);
-    });
-
-    it('should auto-detect thinking support when not explicitly set', () => {
-      const config = getThinkingConfig(createModelConfig({
-        model: 'deepseek-r1',
-      }));
-      expect(config.supportsThinking).toBe(true);
-      expect(config.thinkingBudget).toBeUndefined();
-    });
-
-    it('should auto-detect non-thinking model', () => {
-      const config = getThinkingConfig(createModelConfig({
-        model: 'gpt-4-turbo',
-      }));
-      expect(config.supportsThinking).toBe(false);
-    });
-  });
-
-  describe('isThinkingModel', () => {
-    it('should return true for thinking models', () => {
-      expect(isThinkingModel(createModelConfig({ model: 'deepseek-r1' }))).toBe(true);
-      expect(isThinkingModel(createModelConfig({ model: 'o1-preview' }))).toBe(true);
+      expect(isThinkingModel(createModelConfig({ model: 'glm-4.7' }))).toBe(true);
     });
 
     it('should return false for non-thinking models', () => {
       expect(isThinkingModel(createModelConfig({ model: 'gpt-4' }))).toBe(false);
+      expect(isThinkingModel(createModelConfig({ model: 'gpt-4-turbo' }))).toBe(false);
       expect(isThinkingModel(createModelConfig({ model: 'claude-3-sonnet' }))).toBe(false);
+      expect(isThinkingModel(createModelConfig({ model: 'claude-3-haiku' }))).toBe(false);
+      expect(isThinkingModel(createModelConfig({ model: 'deepseek-chat' }))).toBe(false);
     });
 
-    it('should respect explicit config', () => {
+    it('should respect explicit supportsThinking=true config', () => {
       expect(isThinkingModel(createModelConfig({ model: 'gpt-4', supportsThinking: true }))).toBe(true);
+    });
+
+    it('should respect explicit supportsThinking=false config even for thinking models', () => {
+      expect(isThinkingModel(createModelConfig({ model: 'deepseek-r1', supportsThinking: false }))).toBe(false);
+    });
+
+    it('should auto-detect when supportsThinking is not set', () => {
+      expect(isThinkingModel(createModelConfig({ model: 'deepseek-r1' }))).toBe(true);
+      expect(isThinkingModel(createModelConfig({ model: 'gpt-4-turbo' }))).toBe(false);
     });
   });
 });

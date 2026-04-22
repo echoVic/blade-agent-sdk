@@ -1,6 +1,16 @@
 import { describe, expect, it } from 'vitest';
 import * as path from 'path';
-import { PathSecurity, PathSecurityError } from '../pathSecurity.js';
+import { PathSecurity } from '../pathSecurity.js';
+
+function expectPathSecurityError(fn: () => void): void {
+  try {
+    fn();
+    expect.fail('Expected an error to be thrown');
+  } catch (error) {
+    expect(error).toBeInstanceOf(Error);
+    expect((error as Error).name).toBe('PathSecurityError');
+  }
+}
 
 describe('PathSecurity', () => {
   const workspaceRoot = '/workspace/project';
@@ -18,9 +28,9 @@ describe('PathSecurity', () => {
     });
 
     it('should throw for paths outside workspace', () => {
-      expect(() => {
+      expectPathSecurityError(() => {
         PathSecurity.normalize('/etc/passwd', workspaceRoot);
-      }).toThrow(PathSecurityError);
+      });
     });
 
     it('should handle paths with . and ..', () => {
@@ -29,41 +39,41 @@ describe('PathSecurity', () => {
     });
 
     it('should throw when .. escapes workspace', () => {
-      expect(() => {
+      expectPathSecurityError(() => {
         PathSecurity.normalize('../../../etc/passwd', workspaceRoot);
-      }).toThrow(PathSecurityError);
+      });
     });
   });
 
   describe('checkRestricted', () => {
     it('should throw for .git paths', () => {
-      expect(() => {
+      expectPathSecurityError(() => {
         PathSecurity.checkRestricted('/workspace/project/.git/config');
-      }).toThrow(PathSecurityError);
+      });
     });
 
     it('should throw for node_modules paths', () => {
-      expect(() => {
+      expectPathSecurityError(() => {
         PathSecurity.checkRestricted('/workspace/project/node_modules/lodash/index.js');
-      }).toThrow(PathSecurityError);
+      });
     });
 
     it('should throw for .env files', () => {
-      expect(() => {
+      expectPathSecurityError(() => {
         PathSecurity.checkRestricted('/workspace/project/.env');
-      }).toThrow(PathSecurityError);
+      });
     });
 
     it('should throw for .env.local files', () => {
-      expect(() => {
+      expectPathSecurityError(() => {
         PathSecurity.checkRestricted('/workspace/project/.env.local');
-      }).toThrow(PathSecurityError);
+      });
     });
 
     it('should throw for .claude paths', () => {
-      expect(() => {
+      expectPathSecurityError(() => {
         PathSecurity.checkRestricted('/workspace/project/.claude/settings.json');
-      }).toThrow(PathSecurityError);
+      });
     });
 
     it('should not throw for normal paths', () => {
@@ -75,15 +85,15 @@ describe('PathSecurity', () => {
 
   describe('checkTraversal', () => {
     it('should throw for paths with ..', () => {
-      expect(() => {
+      expectPathSecurityError(() => {
         PathSecurity.checkTraversal('../etc/passwd');
-      }).toThrow(PathSecurityError);
+      });
     });
 
     it('should throw for paths with .. in middle', () => {
-      expect(() => {
+      expectPathSecurityError(() => {
         PathSecurity.checkTraversal('src/../../../etc/passwd');
-      }).toThrow(PathSecurityError);
+      });
     });
 
     it('should not throw for paths without ..', () => {
@@ -142,20 +152,32 @@ describe('PathSecurity', () => {
     });
   });
 
-  describe('PathSecurityError', () => {
-    it('should have correct name', () => {
-      const error = new PathSecurityError('Test error', 'TEST_CODE');
-      expect(error.name).toBe('PathSecurityError');
+  describe('PathSecurityError behavior', () => {
+    it('should have correct name on thrown errors', () => {
+      try {
+        PathSecurity.normalize('/etc/passwd', workspaceRoot);
+        expect.fail('Expected an error to be thrown');
+      } catch (error) {
+        expect((error as Error).name).toBe('PathSecurityError');
+      }
     });
 
-    it('should have correct code', () => {
-      const error = new PathSecurityError('Test error', 'TEST_CODE');
-      expect(error.code).toBe('TEST_CODE');
+    it('should have correct message on thrown errors', () => {
+      try {
+        PathSecurity.checkRestricted('/workspace/project/.git/config');
+        expect.fail('Expected an error to be thrown');
+      } catch (error) {
+        expect((error as Error).message).toContain('protected directory');
+      }
     });
 
-    it('should have correct message', () => {
-      const error = new PathSecurityError('Test error', 'TEST_CODE');
-      expect(error.message).toBe('Test error');
+    it('should have a code property on thrown errors', () => {
+      try {
+        PathSecurity.normalize('/etc/passwd', workspaceRoot);
+        expect.fail('Expected an error to be thrown');
+      } catch (error) {
+        expect((error as { code: string }).code).toBe('PATH_OUTSIDE_WORKSPACE');
+      }
     });
   });
 });

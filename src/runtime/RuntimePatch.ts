@@ -75,12 +75,12 @@ export interface RuntimePatch {
   hooks?: RuntimeHookRegistration[];
 }
 
-export function normalizeRuntimePatchPromptAppend(value?: string): string | undefined {
+function normalizeRuntimePatchPromptAppend(value?: string): string | undefined {
   const trimmed = value?.trim();
   return trimmed ? trimmed : undefined;
 }
 
-export function normalizeRuntimePatchEnvironment(
+function normalizeRuntimePatchEnvironment(
   environment?: Record<string, string>,
 ): Record<string, string> | undefined {
   if (!environment) {

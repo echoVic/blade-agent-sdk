@@ -3,7 +3,7 @@ import { basename, dirname, extname } from 'path';
 import { z } from 'zod';
 import { hasFilesystemCapability } from '../../../runtime/index.js';
 import { getFileSystemService } from '../../../services/FileSystemService.js';
-import { isNodeError, getErrorCode, getErrorMessage, getErrorName } from '../../../utils/errorUtils.js';
+import { getErrorCode, getErrorMessage, getErrorName } from '../../../utils/errorUtils.js';
 import { createTool } from '../../core/createTool.js';
 import type {
   ExecutionContext,

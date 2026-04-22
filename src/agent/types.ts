@@ -57,7 +57,7 @@ export interface IBackgroundAgentManager extends IBackgroundAgentReader, IBackgr
 /**
  * 子代理信息（用于 JSONL 写入）
  */
-export interface SubagentInfoForContext {
+interface SubagentInfoForContext {
   parentSessionId: string;
   subagentType: string;
   isSidechain: boolean;

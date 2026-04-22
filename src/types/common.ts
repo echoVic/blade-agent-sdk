@@ -8,47 +8,11 @@ type JsonPrimitive = string | number | boolean | null;
 export type JsonValue = JsonPrimitive | JsonObject | JsonValue[];
 export type JsonObject = { [key: string]: JsonValue };
 
-export interface ToolMessageMetadata {
-  toolName: string;
-  phase: 'start' | 'complete';
-  summary?: string;
-  detail?: string;
-  params?: JsonObject;
-}
-
-export interface SessionMessage {
-  id: string;
-  role: MessageRole;
-  content: string;
-  timestamp: number;
-  metadata?: JsonObject | ToolMessageMetadata;
-  thinkingContent?: string;
-}
-
 export interface TokenUsage {
   inputTokens: number;
   outputTokens: number;
   totalTokens: number;
   maxContextTokens: number;
-}
-
-export interface PendingCommand {
-  displayText: string;
-  text: string;
-  images: Array<{ id: number; base64: string; mimeType: string }>;
-  parts: Array<
-    | { type: 'text'; text: string }
-    | { type: 'image'; id: number; base64: string; mimeType: string }
-  >;
-}
-
-export interface SubagentProgress {
-  id: string;
-  type: string;
-  description: string;
-  status: 'running' | 'completed' | 'failed';
-  currentTool?: string;
-  startTime: number;
 }
 
 export type ProviderType =
@@ -132,13 +96,7 @@ export interface BladeConfig {
   storageRoot?: string;
 }
 
-export interface RuntimeConfig extends BladeConfig {
-  permissionMode: PermissionMode;
-  projectRoot: string;
-  globalConfigDir: string;
-}
-
-export interface JsonSchemaProperty {
+interface JsonSchemaProperty {
   type: 'string' | 'number' | 'integer' | 'boolean' | 'array' | 'object' | 'null';
   description?: string;
   enum?: (string | number | boolean | null)[];
@@ -155,7 +113,7 @@ export interface JsonSchemaProperty {
   format?: string;
 }
 
-export interface JsonSchema {
+interface JsonSchema {
   type: 'object';
   properties: Record<string, JsonSchemaProperty>;
   required?: string[];
@@ -181,7 +139,7 @@ export interface NetworkSandboxSettings {
   socksProxyPort?: number;
 }
 
-export interface SandboxIgnoreViolations {
+interface SandboxIgnoreViolations {
   file?: string[];
   network?: string[];
 }

@@ -58,7 +58,7 @@ export function cloneToolCall(toolCall: ToolCall): ToolCall {
 /**
  * Deep-clone `Message['content']` (string passthrough, array cloned).
  */
-export function cloneContent(content: Message['content']): Message['content'] {
+function cloneContent(content: Message['content']): Message['content'] {
   if (typeof content === 'string') {
     return content;
   }

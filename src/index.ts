@@ -110,8 +110,8 @@ export {
   PermissionDecision,
   PermissionMode,
   StreamMessageType,
-  ToolKind,
 } from './types/constants.js';
+export { ToolKind } from './tools/types/ToolKind.js';
 export type { AgentLogger, LogEntry, LogLevelName } from './types/logging.js';
 export type {
   CanUseTool,

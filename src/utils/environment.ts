@@ -2,7 +2,7 @@ import { execSync } from 'child_process';
 import * as os from 'os';
 import * as path from 'path';
 
-export interface EnvironmentInfo {
+interface EnvironmentInfo {
   workingDirectory?: string;
   projectRoot?: string;
   platform: string;
@@ -81,26 +81,4 @@ function existsSync(filePath: string): boolean {
   }
 }
 
-export function getDirectoryStructure(
-  dir?: string,
-  maxDepth: number = 2
-): string {
-  if (!dir) {
-    return '.';
-  }
-  try {
-    const command = `find "${dir}" -maxdepth ${maxDepth} -type d -not -path "*/node_modules/*" -not -path "*/.git/*" -not -path "*/dist/*" | head -30`;
-    const output = execSync(command, {
-      encoding: 'utf8',
-      stdio: ['pipe', 'pipe', 'ignore'],
-    });
 
-    return output
-      .split('\n')
-      .filter(Boolean)
-      .map((p) => p.replace(dir, '.'))
-      .join('\n');
-  } catch {
-    return '.';
-  }
-}

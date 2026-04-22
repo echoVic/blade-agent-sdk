@@ -1,8 +1,8 @@
+import fg from 'fast-glob';
+import { LRUCache } from 'lru-cache';
 import { existsSync, readFileSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
-import fg from 'fast-glob';
-import { LRUCache } from 'lru-cache';
 import picomatch from 'picomatch';
 import { splitPath } from './pathHelpers.js';
 
@@ -25,7 +25,7 @@ export const DEFAULT_EXCLUDE_DIRS = [
   'jspm_packages',
 ] as const;
 
-export const DEFAULT_EXCLUDE_FILE_PATTERNS = [
+const DEFAULT_EXCLUDE_FILE_PATTERNS = [
   '*.log',
   'npm-debug.log*',
   'yarn-debug.log*',
@@ -165,7 +165,7 @@ async function collectGitignoreRulesOrderedAsync(
   return rules;
 }
 
-export interface FileFilterOptions {
+interface FileFilterOptions {
   cwd?: string;
   useGitignore?: boolean;
   useDefaults?: boolean;
@@ -307,8 +307,4 @@ export class FileFilter {
   getNegatePatterns(): string[] {
     return this.negatePatterns;
   }
-}
-
-export function getExcludePatterns(customPatterns: string[] = []): string[] {
-  return [...DEFAULT_EXCLUDE_DIRS, ...DEFAULT_EXCLUDE_FILE_PATTERNS, ...customPatterns];
 }

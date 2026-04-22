@@ -1,37 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { endsWithSeparator, splitPath } from '../pathHelpers.js';
+import { splitPath } from '../pathHelpers.js';
 
 describe('pathHelpers', () => {
-  describe('endsWithSeparator', () => {
-    it('should return true for paths ending with forward slash', () => {
-      expect(endsWithSeparator('/Users/john/')).toBe(true);
-    });
-
-    it('should return true for paths ending with backslash', () => {
-      expect(endsWithSeparator('C:\\Users\\HP\\')).toBe(true);
-    });
-
-    it('should return false for paths not ending with a separator', () => {
-      expect(endsWithSeparator('/Users/john')).toBe(false);
-    });
-
-    it('should return false for paths ending with a filename', () => {
-      expect(endsWithSeparator('/Users/john/file.txt')).toBe(false);
-    });
-
-    it('should return false for an empty string', () => {
-      expect(endsWithSeparator('')).toBe(false);
-    });
-
-    it('should return true for a single forward slash', () => {
-      expect(endsWithSeparator('/')).toBe(true);
-    });
-
-    it('should return true for a single backslash', () => {
-      expect(endsWithSeparator('\\')).toBe(true);
-    });
-  });
-
   describe('splitPath', () => {
     it('should split a Unix absolute path', () => {
       expect(splitPath('/Users/john/file.txt')).toEqual(['Users', 'john', 'file.txt']);

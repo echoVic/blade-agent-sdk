@@ -14,7 +14,7 @@ export function toError(error: unknown): Error {
   return new Error(getErrorMessage(error));
 }
 
-export interface NodeError extends Error {
+interface NodeError extends Error {
   code?: string;
   errno?: number;
   syscall?: string;
@@ -25,7 +25,7 @@ function hasStringCode(obj: object): obj is { code: string } {
   return 'code' in obj && typeof (obj as { code?: unknown }).code === 'string';
 }
 
-export function isNodeError(error: unknown): error is NodeError {
+function isNodeError(error: unknown): error is NodeError {
   return error instanceof Error && hasStringCode(error);
 }
 

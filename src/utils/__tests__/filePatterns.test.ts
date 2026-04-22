@@ -1,9 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   DEFAULT_EXCLUDE_DIRS,
-  DEFAULT_EXCLUDE_FILE_PATTERNS,
   FileFilter,
-  getExcludePatterns,
 } from '../filePatterns.js';
 
 describe('filePatterns', () => {
@@ -33,21 +31,25 @@ describe('filePatterns', () => {
     });
   });
 
-  describe('DEFAULT_EXCLUDE_FILE_PATTERNS', () => {
-    it('should include *.log', () => {
-      expect(DEFAULT_EXCLUDE_FILE_PATTERNS).toContain('*.log');
+  describe('default file pattern filtering', () => {
+    it('should ignore *.log files', () => {
+      const filter = new FileFilter({ useGitignore: false, useDefaults: true });
+      expect(filter.shouldIgnore('error.log')).toBe(true);
     });
 
-    it('should include *.lock', () => {
-      expect(DEFAULT_EXCLUDE_FILE_PATTERNS).toContain('*.lock');
+    it('should ignore *.lock files', () => {
+      const filter = new FileFilter({ useGitignore: false, useDefaults: true });
+      expect(filter.shouldIgnore('some.lock')).toBe(true);
     });
 
-    it('should include package-lock.json', () => {
-      expect(DEFAULT_EXCLUDE_FILE_PATTERNS).toContain('package-lock.json');
+    it('should ignore package-lock.json', () => {
+      const filter = new FileFilter({ useGitignore: false, useDefaults: true });
+      expect(filter.shouldIgnore('package-lock.json')).toBe(true);
     });
 
-    it('should include .DS_Store', () => {
-      expect(DEFAULT_EXCLUDE_FILE_PATTERNS).toContain('.DS_Store');
+    it('should ignore .DS_Store', () => {
+      const filter = new FileFilter({ useGitignore: false, useDefaults: true });
+      expect(filter.shouldIgnore('.DS_Store')).toBe(true);
     });
   });
 
@@ -135,18 +137,4 @@ describe('filePatterns', () => {
     });
   });
 
-  describe('getExcludePatterns', () => {
-    it('should return default patterns', () => {
-      const patterns = getExcludePatterns();
-      expect(patterns).toContain('node_modules');
-      expect(patterns).toContain('.git');
-      expect(patterns).toContain('*.log');
-    });
-
-    it('should merge custom patterns', () => {
-      const patterns = getExcludePatterns(['*.custom']);
-      expect(patterns).toContain('*.custom');
-      expect(patterns).toContain('node_modules');
-    });
-  });
 });

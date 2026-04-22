@@ -16,18 +16,6 @@
  */
 
 /**
- * 检查路径是否以分隔符结尾（跨平台）
- *
- * @example
- * endsWithSeparator('/Users/john/') // true
- * endsWithSeparator('C:\\Users\\HP\\') // true
- * endsWithSeparator('/Users/john') // false
- */
-export function endsWithSeparator(filePath: string): boolean {
-  return filePath.endsWith('/') || filePath.endsWith('\\');
-}
-
-/**
  * 分割路径为各个部分（跨平台）
  *
  * @example

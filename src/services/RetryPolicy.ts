@@ -435,7 +435,7 @@ export function isRetryableError(error: unknown): boolean {
  * Extract Retry-After header from error, checking both error.response.headers
  * and error.headers (some SDKs put headers directly on the error object).
  */
-export function extractRetryAfterMs(error: unknown): number | undefined {
+function extractRetryAfterMs(error: unknown): number | undefined {
   if (!isRecord(error)) {
     return undefined;
   }

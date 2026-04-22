@@ -38,7 +38,7 @@ const THINKING_MODEL_PATTERNS = [
  * @param modelName 模型名称（如 "deepseek-r1", "o1-preview"）
  * @returns 是否支持 thinking
  */
-export function detectThinkingSupport(modelName: string): boolean {
+function detectThinkingSupport(modelName: string): boolean {
   return THINKING_MODEL_PATTERNS.some((pattern) => pattern.test(modelName));
 }
 
@@ -49,7 +49,7 @@ export function detectThinkingSupport(modelName: string): boolean {
  * @param model ModelConfig 配置
  * @returns thinking 配置
  */
-export function getThinkingConfig(model: ModelConfig): {
+function getThinkingConfig(model: ModelConfig): {
   supportsThinking: boolean;
   thinkingBudget?: number;
 } {

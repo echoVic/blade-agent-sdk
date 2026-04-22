@@ -74,11 +74,11 @@ export type PermissionHandler = (
   request: PermissionHandlerRequest
 ) => Promise<PermissionResult>;
 
-export interface PathSafetyPermissionOptions {
+interface PathSafetyPermissionOptions {
   explicitAllowRules?: string[];
 }
 
-export type CompositePermissionStrategy = 'first-wins' | 'deny-wins';
+type CompositePermissionStrategy = 'first-wins' | 'deny-wins';
 
 export function createPermissionHandlerFromCanUseTool(
   canUseTool: CanUseTool

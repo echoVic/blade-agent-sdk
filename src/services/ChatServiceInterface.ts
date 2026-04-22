@@ -9,15 +9,6 @@ import type { JsonValue, MessageRole, OutputFormat, ProviderType } from '../type
 import type { QuerySource, RetryConfig, RetryEvent } from './RetryPolicy.js';
 import { VercelAIChatService } from './VercelAIChatService.js';
 
-export type {
-  CannotRetryError,
-  ContextOverflowData,
-  FallbackTriggeredError,
-  QuerySource,
-  RetryConfig,
-  RetryEvent
-} from './RetryPolicy.js';
-
 /**
  * 工具调用（完整版，LLM 返回的最终结果）
  * 替代 openai 的 ChatCompletionMessageToolCall
@@ -53,7 +44,7 @@ function getProviderHeaders(_providerId: string): Record<string, string> {
  * Anthropic Prompt Caching 配置
  * 用于标记可缓存的内容，减少 token 消耗（成本降低 90%，延迟降低 85%）
  */
-export interface AnthropicCacheControl {
+interface AnthropicCacheControl {
   type: 'ephemeral';
 }
 
