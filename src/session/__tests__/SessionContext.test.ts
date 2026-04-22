@@ -1,7 +1,7 @@
-import { describe, expect, it, vi } from 'vitest';
 import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { describe, expect, it, vi } from 'vitest';
 import { PersistentStore } from '../../context/storage/PersistentStore.js';
 import type { ContentPart } from '../../services/ChatServiceInterface.js';
 import { HookEvent } from '../../types/constants.js';
@@ -106,7 +106,7 @@ describe('Session runtime context', () => {
       }),
     );
 
-    session.close();
+    await session.close();
   });
 
   it('should preserve defaultContext when forking a session', async () => {
@@ -129,8 +129,8 @@ describe('Session runtime context', () => {
 
     expect(forked.getDefaultContext()).toEqual(session.getDefaultContext());
 
-    forked.close();
-    session.close();
+    await forked.close();
+    await session.close();
   });
 
   it('should preserve image parts when UserPromptSubmit hooks rewrite multimodal text', async () => {
@@ -166,7 +166,7 @@ describe('Session runtime context', () => {
       { type: 'image_url', image_url: { url: 'data:image/png;base64,hook' } },
     ]);
 
-    session.close();
+    await session.close();
   });
 
   it('should forward unified tool execution updates through session.stream()', async () => {
@@ -274,7 +274,7 @@ describe('Session runtime context', () => {
       'tool_result',
     ]));
 
-    session.close();
+    await session.close();
   });
 
   it('should forward turn_end events from the agent stream', async () => {
@@ -311,7 +311,7 @@ describe('Session runtime context', () => {
 
     expect(events).toEqual(expect.arrayContaining(['turn_start', 'turn_end']));
 
-    session.close();
+    await session.close();
   });
 
   it('should continue streaming after resumeSession restores an existing session', async () => {
@@ -354,7 +354,7 @@ describe('Session runtime context', () => {
 
     expect(events).toEqual(expect.arrayContaining(['turn_start', 'turn_end', 'result']));
 
-    session.close();
+    await session.close();
   });
 
   it('fails with a controlled runtime error instead of a non-null assertion crash', async () => {
@@ -382,6 +382,6 @@ describe('Session runtime context', () => {
       }
     }).rejects.toThrow('Session runtime is not initialized');
 
-    session.close();
+    await session.close();
   });
 });

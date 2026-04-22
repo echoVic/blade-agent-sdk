@@ -90,7 +90,7 @@ describe('Session in-memory mode', () => {
       'assistant-1',
     ]);
 
-    forked.close();
-    session.close();
+    await forked.close();
+    await session.close();
   });
 });

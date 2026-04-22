@@ -17,36 +17,32 @@ export const PermissionMode = {
 
 export type PermissionMode = (typeof PermissionMode)[keyof typeof PermissionMode];
 
-export enum HookEvent {
-  PreToolUse = 'PreToolUse',
-  PostToolUse = 'PostToolUse',
-  PostToolUseFailure = 'PostToolUseFailure',
-  PermissionRequest = 'PermissionRequest',
-  UserPromptSubmit = 'UserPromptSubmit',
-  SessionStart = 'SessionStart',
-  SessionEnd = 'SessionEnd',
-  Stop = 'Stop',
-  SubagentStart = 'SubagentStart',
-  SubagentStop = 'SubagentStop',
-  TaskCompleted = 'TaskCompleted',
-  Notification = 'Notification',
-  Compaction = 'Compaction',
-  // 控制流扩展
-  StopFailure = 'StopFailure',
-  // 压缩生命周期
-  PreCompact = 'PreCompact',
-  PostCompact = 'PostCompact',
-  // MCP 交互
-  Elicitation = 'Elicitation',
-  ElicitationResult = 'ElicitationResult',
-  // 配置
-  ConfigChange = 'ConfigChange',
-  // 环境
-  CwdChanged = 'CwdChanged',
-  FileChanged = 'FileChanged',
-  // 指令
-  InstructionsLoaded = 'InstructionsLoaded',
-}
+export const HookEvent = {
+  PreToolUse: 'PreToolUse',
+  PostToolUse: 'PostToolUse',
+  PostToolUseFailure: 'PostToolUseFailure',
+  PermissionRequest: 'PermissionRequest',
+  UserPromptSubmit: 'UserPromptSubmit',
+  SessionStart: 'SessionStart',
+  SessionEnd: 'SessionEnd',
+  Stop: 'Stop',
+  SubagentStart: 'SubagentStart',
+  SubagentStop: 'SubagentStop',
+  TaskCompleted: 'TaskCompleted',
+  Notification: 'Notification',
+  Compaction: 'Compaction',
+  StopFailure: 'StopFailure',
+  PreCompact: 'PreCompact',
+  PostCompact: 'PostCompact',
+  Elicitation: 'Elicitation',
+  ElicitationResult: 'ElicitationResult',
+  ConfigChange: 'ConfigChange',
+  CwdChanged: 'CwdChanged',
+  FileChanged: 'FileChanged',
+  InstructionsLoaded: 'InstructionsLoaded',
+} as const;
+
+export type HookEvent = (typeof HookEvent)[keyof typeof HookEvent];
 
 export const MessageRole = {
   SYSTEM: 'system',

@@ -45,7 +45,7 @@ interface HookInputBase {
  * PreToolUse 输入
  */
 export interface PreToolUseInput extends HookInputBase {
-  hook_event_name: HookEvent.PreToolUse;
+  hook_event_name: typeof HookEvent.PreToolUse;
 
   /** 工具名称 */
   tool_name: string;
@@ -61,7 +61,7 @@ export interface PreToolUseInput extends HookInputBase {
  * PostToolUse 输入
  */
 export interface PostToolUseInput extends HookInputBase {
-  hook_event_name: HookEvent.PostToolUse;
+  hook_event_name: typeof HookEvent.PostToolUse;
 
   /** 工具名称 */
   tool_name: string;
@@ -80,7 +80,7 @@ export interface PostToolUseInput extends HookInputBase {
  * Stop 输入
  */
 export interface StopInput extends HookInputBase {
-  hook_event_name: HookEvent.Stop;
+  hook_event_name: typeof HookEvent.Stop;
 
   /** 停止原因 */
   reason?: string;
@@ -90,7 +90,7 @@ export interface StopInput extends HookInputBase {
  * PostToolUseFailure 输入
  */
 export interface PostToolUseFailureInput extends HookInputBase {
-  hook_event_name: HookEvent.PostToolUseFailure;
+  hook_event_name: typeof HookEvent.PostToolUseFailure;
 
   /** 工具名称 */
   tool_name: string;
@@ -118,7 +118,7 @@ export interface PostToolUseFailureInput extends HookInputBase {
  * PermissionRequest 输入
  */
 export interface PermissionRequestInput extends HookInputBase {
-  hook_event_name: HookEvent.PermissionRequest;
+  hook_event_name: typeof HookEvent.PermissionRequest;
 
   /** 工具名称 */
   tool_name: string;
@@ -134,7 +134,7 @@ export interface PermissionRequestInput extends HookInputBase {
  * UserPromptSubmit 输入
  */
 export interface UserPromptSubmitInput extends HookInputBase {
-  hook_event_name: HookEvent.UserPromptSubmit;
+  hook_event_name: typeof HookEvent.UserPromptSubmit;
 
   /** 用户原始提示词 */
   user_prompt: string;
@@ -150,7 +150,7 @@ export interface UserPromptSubmitInput extends HookInputBase {
  * SessionStart 输入
  */
 export interface SessionStartInput extends HookInputBase {
-  hook_event_name: HookEvent.SessionStart;
+  hook_event_name: typeof HookEvent.SessionStart;
 
   /** 是否恢复会话 */
   is_resume: boolean;
@@ -163,7 +163,7 @@ export interface SessionStartInput extends HookInputBase {
  * SessionEnd 输入
  */
 export interface SessionEndInput extends HookInputBase {
-  hook_event_name: HookEvent.SessionEnd;
+  hook_event_name: typeof HookEvent.SessionEnd;
 
   /** 结束原因 */
   reason:
@@ -182,7 +182,7 @@ export interface SessionEndInput extends HookInputBase {
  * SubagentStart 输入
  */
 export interface SubagentStartInput extends HookInputBase {
-  hook_event_name: HookEvent.SubagentStart;
+  hook_event_name: typeof HookEvent.SubagentStart;
 
   /** 子 Agent 类型 (如 Bash, Explore, Plan 或自定义 agent 名称) */
   agent_type: string;
@@ -198,7 +198,7 @@ export interface SubagentStartInput extends HookInputBase {
  * SubagentStop 输入
  */
 export interface SubagentStopInput extends HookInputBase {
-  hook_event_name: HookEvent.SubagentStop;
+  hook_event_name: typeof HookEvent.SubagentStop;
 
   /** 子 Agent 类型 */
   agent_type: string;
@@ -220,7 +220,7 @@ export interface SubagentStopInput extends HookInputBase {
  * TaskCompleted 输入
  */
 export interface TaskCompletedInput extends HookInputBase {
-  hook_event_name: HookEvent.TaskCompleted;
+  hook_event_name: typeof HookEvent.TaskCompleted;
 
   /** 任务 ID */
   task_id: string;
@@ -239,7 +239,7 @@ export interface TaskCompletedInput extends HookInputBase {
  * Notification 输入
  */
 export interface NotificationInput extends HookInputBase {
-  hook_event_name: HookEvent.Notification;
+  hook_event_name: typeof HookEvent.Notification;
 
   /** 通知类型 */
   notification_type:
@@ -262,7 +262,7 @@ export interface NotificationInput extends HookInputBase {
  * Compaction 输入
  */
 export interface CompactionInput extends HookInputBase {
-  hook_event_name: HookEvent.Compaction;
+  hook_event_name: typeof HookEvent.Compaction;
 
   /** 触发方式 */
   trigger: 'manual' | 'auto';
@@ -278,7 +278,7 @@ export interface CompactionInput extends HookInputBase {
  * StopFailure 输入
  */
 export interface StopFailureInput extends HookInputBase {
-  hook_event_name: HookEvent.StopFailure;
+  hook_event_name: typeof HookEvent.StopFailure;
   reason: string;
   error?: string;
   tool_name?: string;
@@ -288,7 +288,7 @@ export interface StopFailureInput extends HookInputBase {
  * PreCompact 输入
  */
 export interface PreCompactInput extends HookInputBase {
-  hook_event_name: HookEvent.PreCompact;
+  hook_event_name: typeof HookEvent.PreCompact;
   trigger: 'manual' | 'auto';
   messages_before: number;
   tokens_before: number;
@@ -298,7 +298,7 @@ export interface PreCompactInput extends HookInputBase {
  * PostCompact 输入
  */
 export interface PostCompactInput extends HookInputBase {
-  hook_event_name: HookEvent.PostCompact;
+  hook_event_name: typeof HookEvent.PostCompact;
   trigger: 'manual' | 'auto';
   messages_before: number;
   messages_after: number;
@@ -311,7 +311,7 @@ export interface PostCompactInput extends HookInputBase {
  * Elicitation 输入
  */
 export interface ElicitationInput extends HookInputBase {
-  hook_event_name: HookEvent.Elicitation;
+  hook_event_name: typeof HookEvent.Elicitation;
   server_name: string;
   resource_uri?: string;
   message?: string;
@@ -321,7 +321,7 @@ export interface ElicitationInput extends HookInputBase {
  * ElicitationResult 输入
  */
 export interface ElicitationResultInput extends HookInputBase {
-  hook_event_name: HookEvent.ElicitationResult;
+  hook_event_name: typeof HookEvent.ElicitationResult;
   server_name: string;
   response?: string;
   was_cancelled: boolean;
@@ -331,7 +331,7 @@ export interface ElicitationResultInput extends HookInputBase {
  * ConfigChange 输入
  */
 export interface ConfigChangeInput extends HookInputBase {
-  hook_event_name: HookEvent.ConfigChange;
+  hook_event_name: typeof HookEvent.ConfigChange;
   changed_keys: string[];
   source: 'file' | 'command' | 'environment';
 }
@@ -340,7 +340,7 @@ export interface ConfigChangeInput extends HookInputBase {
  * CwdChanged 输入
  */
 export interface CwdChangedInput extends HookInputBase {
-  hook_event_name: HookEvent.CwdChanged;
+  hook_event_name: typeof HookEvent.CwdChanged;
   old_cwd: string;
   new_cwd: string;
 }
@@ -349,7 +349,7 @@ export interface CwdChangedInput extends HookInputBase {
  * FileChanged 输入
  */
 export interface FileChangedInput extends HookInputBase {
-  hook_event_name: HookEvent.FileChanged;
+  hook_event_name: typeof HookEvent.FileChanged;
   file_path: string;
   change_type: 'created' | 'modified' | 'deleted';
 }
@@ -358,7 +358,7 @@ export interface FileChangedInput extends HookInputBase {
  * InstructionsLoaded 输入
  */
 export interface InstructionsLoadedInput extends HookInputBase {
-  hook_event_name: HookEvent.InstructionsLoaded;
+  hook_event_name: typeof HookEvent.InstructionsLoaded;
   source: string;
   instructions_length: number;
 }

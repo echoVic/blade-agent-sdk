@@ -110,9 +110,9 @@ async function drainStream(session: ISession) {
 // ─── 清理 ───────────────────────────────────────────────
 let activeSessions: ISession[] = [];
 let tempDirs: string[] = [];
-afterEach(() => {
+afterEach(async () => {
   for (const s of activeSessions) {
-    try { s.close(); } catch { /* ignore */ }
+    try { await s.close(); } catch { /* ignore */ }
   }
   activeSessions = [];
   for (const dir of tempDirs) {
@@ -436,7 +436,7 @@ describeIntegration('6.1 持久化恢复与高级分叉', () => {
     await session.send('请记住暗号 BLUE-FOX-17。只回复 ACK。');
     const firstTurn = await drainStream(session);
     const sessionId = session.sessionId;
-    session.close();
+    await session.close();
     activeSessions = activeSessions.filter((candidate) => candidate !== session);
 
     const resumed = await resumeSession({

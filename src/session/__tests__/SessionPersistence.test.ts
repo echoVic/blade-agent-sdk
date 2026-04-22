@@ -55,7 +55,7 @@ describe('Session persistence', () => {
     expect(session.messages[3]?.id).toBe(summaryId);
     expect(session.messages[3]?.role).toBe('system');
 
-    session.close();
+    await session.close();
   });
 
   it('should fork sessions using store-backed linear truncation', async () => {
@@ -88,7 +88,7 @@ describe('Session persistence', () => {
       assistantMessageId,
     ]);
 
-    forkedSession.close();
+    await forkedSession.close();
   });
 
   it('should forward internal logs through the injected logger interface', async () => {
@@ -110,7 +110,7 @@ describe('Session persistence', () => {
     expect(entry?.category).toBe('Agent');
     expect(entry?.sessionId).toBe(session.sessionId);
 
-    session.close();
+    await session.close();
   });
 
   it('should isolate logger routing between concurrent sessions', async () => {
@@ -144,8 +144,8 @@ describe('Session persistence', () => {
     expect(entriesB).toHaveLength(0);
     expect(entriesA.every((entry) => entry.sessionId === sessionA.sessionId)).toBe(true);
 
-    sessionA.close();
-    sessionB.close();
+    await sessionA.close();
+    await sessionB.close();
   });
 
   it('should allow disabling disk-backed session persistence', async () => {
@@ -161,8 +161,8 @@ describe('Session persistence', () => {
     const forked = await session.fork();
     expect(forked.messages).toEqual([]);
 
-    forked.close();
-    session.close();
+    await forked.close();
+    await session.close();
   });
 
   it('should reject resume and sessionId-based fork when persistence is disabled', async () => {
@@ -201,6 +201,6 @@ describe('Session persistence', () => {
     expect(session.messages[0]?.role).toBe('user');
     expect(session.messages[0]?.content).toEqual(content);
 
-    session.close();
+    await session.close();
   });
 });

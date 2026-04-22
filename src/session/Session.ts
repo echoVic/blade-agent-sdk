@@ -248,9 +248,15 @@ class Session implements ISession {
     };
 
     this.abortController = new AbortController();
-    const signal = sendOptions?.signal
-      ? this.combineSignals(sendOptions.signal, this.abortController.signal)
-      : this.abortController.signal;
+    let signalCleanup: (() => void) | undefined;
+    let signal: AbortSignal;
+    if (sendOptions?.signal) {
+      const combined = this.combineSignals(sendOptions.signal, this.abortController.signal);
+      signal = combined.signal;
+      signalCleanup = combined.cleanup;
+    } else {
+      signal = this.abortController.signal;
+    }
 
     const snapshot = pendingSnapshot
       ?? createContextSnapshot(this.sessionId, nanoid(), this.defaultContext, sendOptions?.context);
@@ -452,20 +458,27 @@ class Session implements ISession {
       const errorMessage = error instanceof Error ? error.message : String(error);
       yield { type: 'error', message: errorMessage, sessionId: this.sessionId };
     } finally {
+      signalCleanup?.();
       this.abortController = null;
     }
   }
 
-  close(): void {
+  async close(): Promise<void> {
     this.abort();
     this.agent = null;
     this.initialized = false;
     this.pendingMessage = null;
     this.pendingSendOptions = null;
     this.pendingContextSnapshot = null;
-    void this.runtime?.getHookRuntime().runSessionEnd({ reason: 'other' });
-    void this.runtime?.close();
+    const runtime = this.runtime;
     this.runtime = null;
+    if (runtime) {
+      try {
+        await runtime.getHookRuntime().runSessionEnd({ reason: 'other' });
+      } finally {
+        await runtime.close();
+      }
+    }
     this.logger.debug(`[Session] Closed session ${this.sessionId}`);
   }
 
@@ -530,7 +543,7 @@ class Session implements ISession {
   }
 
   async [Symbol.asyncDispose](): Promise<void> {
-    this.close();
+    await this.close();
   }
 
   private async ensureInitialized(): Promise<void> {
@@ -553,19 +566,31 @@ class Session implements ISession {
     return this.runtime;
   }
 
-  private combineSignals(signal1: AbortSignal, signal2: AbortSignal): AbortSignal {
+  private combineSignals(
+    signal1: AbortSignal,
+    signal2: AbortSignal,
+  ): { signal: AbortSignal; cleanup: () => void } {
     const controller = new AbortController();
-
-    const abort = () => controller.abort();
 
     if (signal1.aborted || signal2.aborted) {
       controller.abort();
-    } else {
-      signal1.addEventListener('abort', abort);
-      signal2.addEventListener('abort', abort);
+      return { signal: controller.signal, cleanup: () => {} };
     }
 
-    return controller.signal;
+    const cleanup = () => {
+      signal1.removeEventListener('abort', onAbort);
+      signal2.removeEventListener('abort', onAbort);
+    };
+
+    const onAbort = () => {
+      cleanup();
+      controller.abort();
+    };
+
+    signal1.addEventListener('abort', onAbort);
+    signal2.addEventListener('abort', onAbort);
+
+    return { signal: controller.signal, cleanup };
   }
 
   private safeParseJson(str: string): JsonValue {
@@ -742,6 +767,6 @@ export async function prompt(
       turnsCount,
     };
   } finally {
-    session.close();
+    await session.close();
   }
 }

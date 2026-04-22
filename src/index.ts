@@ -1,3 +1,5 @@
+
+// --- Agent ---
 export type { ToolExecutionUpdate } from './agent/loop/runToolCall.js';
 export { SubagentExecutor } from './agent/subagents/SubagentExecutor.js';
 export { SubagentRegistry } from './agent/subagents/SubagentRegistry.js';
@@ -6,7 +8,7 @@ export type {
   SubagentConfig,
   SubagentContext,
   SubagentResult,
-  SubagentSource,
+  SubagentSource
 } from './agent/subagents/types.js';
 export type { SdkErrorOptions } from './errors/index.js';
 // --- Error hierarchy ---
@@ -15,17 +17,24 @@ export {
   ConfigError,
   PermissionDeniedError,
   SdkError,
-  ToolExecutionError,
+  ToolExecutionError
 } from './errors/index.js';
+// --- Hook system ---
+export {
+  DecisionBehavior,
+  HookExitCode,
+  HookType
+} from './hooks/types/HookTypes.js';
 export type {
   McpToolCallResponse,
-  McpToolDefinition,
-  SdkMcpServerHandle,
-  SdkTool,
-  ToolResponse as McpToolResponse,
+  McpToolDefinition, ToolResponse as McpToolResponse, SdkMcpServerHandle,
+  SdkTool
 } from './mcp/index.js';
+
+// --- MCP ---
 export { createSdkMcpServer, tool } from './mcp/index.js';
 export type { Memory, MemoryInput, MemoryStore, MemoryType } from './memory/index.js';
+
 // --- Memory ---
 export { FileSystemMemoryStore, MemoryManager } from './memory/index.js';
 export type {
@@ -39,12 +48,14 @@ export type {
   RuntimePatchScope,
   RuntimePatchSkillInfo,
   RuntimeToolDiscoveryPatch,
-  RuntimeToolPolicyPatch,
+  RuntimeToolPolicyPatch
 } from './runtime/index.js';
+
+// --- Runtime ---
 export {
   createContextSnapshot,
   hasFilesystemCapability,
-  mergeContext,
+  mergeContext
 } from './runtime/index.js';
 export type {
   AgentDefinition,
@@ -71,23 +82,25 @@ export type {
   TokenUsage,
   ToolCallRecord,
   ToolDefinition,
-  ToolResult,
+  ToolResult
 } from './session/index.js';
+
+// --- Session ---
 export { createSession, forkSession, prompt, resumeSession } from './session/index.js';
-// --- Tool authoring primitives (stable) ---
+// --- Tool authoring primitives ---
 export { getBuiltinTools } from './tools/builtin/index.js';
 export { createMemoryReadTool, createMemoryWriteTool } from './tools/builtin/memory/index.js';
+export { ToolCatalog } from './tools/catalog/index.js';
 export type {
   ToolCatalogEntry,
   ToolCatalogReadView,
   ToolCatalogSourcePolicy,
   ToolSourceInfo,
   ToolSourceKind,
-  ToolTrustLevel,
+  ToolTrustLevel
 } from './tools/catalog/index.js';
-// --- Catalog & exposure (consumed by session layer) ---
-export { ToolCatalog } from './tools/catalog/index.js';
 export { createTool, defineTool, toolFromDefinition } from './tools/core/createTool.js';
+export { ToolErrorType } from './tools/types/index.js';
 export type {
   FunctionDeclaration,
   Tool,
@@ -96,23 +109,24 @@ export type {
   ToolDescription,
   ToolDescriptionResolver,
   ToolEffect,
+  ToolError,
   ToolExposureConfig,
   ToolExposureMode,
-  ToolSchema,
+  ToolSchema
 } from './tools/types/index.js';
 export { ToolKind } from './tools/types/ToolKind.js';
-// --- Permission system ---
+// --- Constants & types ---
 export type {
   McpServerConfig,
   OutputFormat,
-  SandboxSettings,
+  SandboxSettings
 } from './types/common.js';
 export {
   HookEvent,
   MessageRole,
   PermissionDecision,
   PermissionMode,
-  StreamMessageType,
+  StreamMessageType
 } from './types/constants.js';
 export type { AgentLogger, LogEntry, LogLevelName } from './types/logging.js';
 export type {
@@ -122,12 +136,16 @@ export type {
   PermissionHandlerRequest,
   PermissionResult,
   PermissionRuleValue,
-  PermissionUpdate,
+  PermissionUpdate
 } from './types/permissions.js';
+
+// --- Permission system ---
 export {
   createCompositePermissionHandler,
   createModePermissionHandler,
   createPathSafetyPermissionHandler,
   createPermissionHandlerFromCanUseTool,
-  createRuleBasedPermissionHandler,
+  createRuleBasedPermissionHandler
 } from './types/permissions.js';
+// --- Error utilities ---
+export { getErrorCode, getErrorMessage, getErrorName, toError } from './utils/errorUtils.js';

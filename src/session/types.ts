@@ -80,14 +80,14 @@ export interface HookOutput {
 export type HookCallback = (input: HookInput) => Promise<HookOutput>;
 
 export type SessionHookEvent =
-  | HookEvent.PreToolUse
-  | HookEvent.PostToolUse
-  | HookEvent.PostToolUseFailure
-  | HookEvent.PermissionRequest
-  | HookEvent.UserPromptSubmit
-  | HookEvent.SessionStart
-  | HookEvent.SessionEnd
-  | HookEvent.TaskCompleted;
+  | typeof HookEvent.PreToolUse
+  | typeof HookEvent.PostToolUse
+  | typeof HookEvent.PostToolUseFailure
+  | typeof HookEvent.PermissionRequest
+  | typeof HookEvent.UserPromptSubmit
+  | typeof HookEvent.SessionStart
+  | typeof HookEvent.SessionEnd
+  | typeof HookEvent.TaskCompleted;
 
 
 
@@ -190,7 +190,7 @@ export interface ISession extends AsyncDisposable {
 
   stream(options?: StreamOptions): AsyncGenerator<StreamMessage>;
 
-  close(): void;
+  close(): Promise<void>;
   abort(): void;
 
   getDefaultContext(): RuntimeContext;

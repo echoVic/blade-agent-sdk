@@ -585,7 +585,7 @@ export class HookRuntime {
   }
 
   private async applyPostToolCallbacks(
-    event: HookEvent.PostToolUse | HookEvent.PostToolUseFailure,
+    event: typeof HookEvent.PostToolUse | typeof HookEvent.PostToolUseFailure,
     toolName: string,
     input: JsonObject,
     result: ToolResult,

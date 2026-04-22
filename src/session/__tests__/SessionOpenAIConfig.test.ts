@@ -37,6 +37,6 @@ describe('Session OpenAI config', () => {
       },
     ]);
 
-    session.close();
+    await session.close();
   });
 });

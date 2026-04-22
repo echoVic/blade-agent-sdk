@@ -23,14 +23,14 @@ export interface RuntimeModelOverride {
 // update this union and the runtime guard in src/tools/builtin/system/skill.ts
 // together so parsed hooks are not silently dropped at activation time.
 export type RuntimeHookEvent =
-  | HookEvent.PreToolUse
-  | HookEvent.PostToolUse
-  | HookEvent.PostToolUseFailure
-  | HookEvent.PermissionRequest
-  | HookEvent.UserPromptSubmit
-  | HookEvent.SessionStart
-  | HookEvent.SessionEnd
-  | HookEvent.TaskCompleted;
+  | typeof HookEvent.PreToolUse
+  | typeof HookEvent.PostToolUse
+  | typeof HookEvent.PostToolUseFailure
+  | typeof HookEvent.PermissionRequest
+  | typeof HookEvent.UserPromptSubmit
+  | typeof HookEvent.SessionStart
+  | typeof HookEvent.SessionEnd
+  | typeof HookEvent.TaskCompleted;
 
 export interface RuntimeHookRegistration {
   event: RuntimeHookEvent;
