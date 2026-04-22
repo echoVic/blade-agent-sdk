@@ -2,7 +2,8 @@ import { z } from 'zod';
 import type { Memory } from '../../../memory/MemoryTypes.js';
 import type { MemoryManager } from '../../../memory/MemoryManager.js';
 import { createTool } from '../../core/createTool.js';
-import { ToolErrorType, ToolKind } from '../../types/ToolTypes.js';
+import { ToolErrorType } from '../../types/ToolResult.js';
+import { ToolKind } from '../../types/ToolKind.js';
 
 const memoryReadSchema = z.discriminatedUnion('operation', [
   z.object({

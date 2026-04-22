@@ -4,9 +4,8 @@
  * 定义 Blade Hooks System 的核心类型
  */
 
-import type { PermissionMode } from '../../types/common.js';
-import type { JsonObject, JsonValue } from '../../types/common.js';
-import type { ToolResult } from '../../tools/types/ToolTypes.js';
+import type { ToolResult } from '../../tools/types/ToolResult.js';
+import type { JsonObject, JsonValue, PermissionMode } from '../../types/common.js';
 import { HookEvent } from '../../types/constants.js';
 
 // ============================================================================

@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { ToolCatalog } from '../../../catalog/ToolCatalog.js';
 import { ToolRegistry } from '../../../registry/ToolRegistry.js';
 import type { ExecutionContext } from '../../../types/ExecutionTypes.js';
-import { ToolKind } from '../../../types/ToolTypes.js';
+import { ToolKind } from '../../../types/ToolKind.js';
 import { createTool } from '../../../core/createTool.js';
 import { discoverToolsTool } from '../discoverTools.js';
 

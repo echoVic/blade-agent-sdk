@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { JsonValueSchema } from '../../../hooks/schemas/HookSchemas.js';
 import { createTool } from '../../core/createTool.js';
-import { ToolKind } from '../../types/ToolTypes.js';
+import { ToolKind } from '../../types/ToolKind.js';
 import type { CreateTaskInput } from './TaskStore.js';
 import { TaskStore } from './TaskStore.js';
 

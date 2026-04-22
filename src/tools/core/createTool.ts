@@ -8,7 +8,7 @@ import type {
   ToolInvocation,
   ToolResult,
 } from '../types/index.js';
-import { createToolBehavior, isReadOnlyKind, ToolKind } from '../types/ToolTypes.js';
+import { createToolBehavior, isReadOnlyKind, ToolKind } from '../types/ToolKind.js';
 import { parseWithZod } from '../validation/errorFormatter.js';
 import { resolveToolSchema } from '../validation/lazySchema.js';
 import { zodToFunctionSchema } from '../validation/zodToJson.js';

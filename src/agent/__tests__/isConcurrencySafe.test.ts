@@ -3,7 +3,7 @@ import {
   ToolKind,
   isReadOnlyKind,
   createToolBehavior,
-} from '../../tools/types/ToolTypes.js';
+} from '../../tools/types/ToolKind.js';
 
 describe('isConcurrencySafe inference', () => {
   describe('isReadOnlyKind', () => {

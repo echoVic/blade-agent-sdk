@@ -1,12 +1,13 @@
 import { z } from 'zod';
+import type { RuntimeHookEvent, RuntimeHookRegistration } from '../../../runtime/index.js';
 import { getSkillRegistry, isSkillAvailableInContext } from '../../../skills/index.js';
 import type { SkillContent } from '../../../skills/types.js';
-import type { RuntimeHookEvent, RuntimeHookRegistration } from '../../../runtime/index.js';
 import { HookEvent } from '../../../types/constants.js';
 import { createTool } from '../../core/createTool.js';
 import { getEffectiveProjectDir } from '../../types/ExecutionTypes.js';
-import type { ToolResult } from '../../types/ToolTypes.js';
-import { ToolErrorType, ToolKind } from '../../types/ToolTypes.js';
+import { ToolKind } from '../../types/ToolKind.js';
+import type { ToolResult } from '../../types/ToolResult.js';
+import { ToolErrorType } from '../../types/ToolResult.js';
 
 /**
  * Skill tool

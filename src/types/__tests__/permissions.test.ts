@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { ToolKind } from '../../tools/types/ToolTypes.js';
+import { ToolKind } from '../../tools/types/ToolKind.js';
 import { PermissionMode } from '../common.js';
 import {
   createCompositePermissionHandler,

@@ -1,7 +1,8 @@
 import { z } from 'zod';
 import type { McpRegistry } from '../../../mcp/McpRegistry.js';
 import { createTool } from '../../core/createTool.js';
-import { ToolErrorType, ToolKind } from '../../types/ToolTypes.js';
+import { ToolKind } from '../../types/ToolKind.js';
+import { ToolErrorType } from '../../types/ToolResult.js';
 
 const ReadMcpResourceParamsSchema = z.object({
   uri: z.string().describe('The URI of the MCP resource to read'),

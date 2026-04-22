@@ -1,8 +1,9 @@
 import { describe, expect, expectTypeOf, it } from 'vitest';
 import { z } from 'zod';
 import { createTool, toolFromDefinition } from '../core/createTool.js';
-import type { ReadMetadata, ToolResult } from '../types/ToolTypes.js';
-import { ToolKind } from '../types/ToolTypes.js';
+import type { ReadMetadata } from '../types/ToolMetadata.js';
+import type { ToolResult } from '../types/ToolResult.js';
+import { ToolKind } from '../types/ToolKind.js';
 import { lazySchema } from '../validation/lazySchema.js';
 
 describe('createTool', () => {

@@ -1,5 +1,5 @@
 import type { z } from 'zod';
-import type { ToolSchema } from '../types/ToolTypes.js';
+import type { ToolSchema } from '../types/ToolDefinition.js';
 
 export function lazySchema<TSchema extends z.ZodSchema>(
   factory: () => TSchema

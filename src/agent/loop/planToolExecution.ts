@@ -1,9 +1,9 @@
-import type { JsonObject } from '../../types/common.js';
-import { PermissionMode, type PermissionMode as PermissionModeValue } from '../../types/common.js';
 import {
   resolveToolBehaviorSafely,
   type ToolBehavior,
-} from '../../tools/types/ToolTypes.js';
+} from '../../tools/types/ToolKind.js';
+import type { JsonObject } from '../../types/common.js';
+import { PermissionMode, type PermissionMode as PermissionModeValue } from '../../types/common.js';
 import type { FunctionToolCall } from './types.js';
 
 type ToolRegistryLike = {

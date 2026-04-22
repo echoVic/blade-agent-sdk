@@ -5,9 +5,9 @@
  */
 
 import { nanoid } from 'nanoid';
-import { HookEvent, PermissionMode } from '../types/constants.js';
+import type { ToolResult } from '../tools/types/ToolResult.js';
 import type { JsonObject } from '../types/common.js';
-import type { ToolResult } from '../tools/types/ToolTypes.js';
+import { HookEvent, PermissionMode } from '../types/constants.js';
 import { DEFAULT_HOOK_CONFIG, mergeHookConfig, parseEnvConfig } from './HookConfig.js';
 import { HookExecutionGuard } from './HookExecutionGuard.js';
 import { HookExecutor } from './HookExecutor.js';

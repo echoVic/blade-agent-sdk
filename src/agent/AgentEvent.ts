@@ -7,12 +7,11 @@
  *   agent_start → (turn_start → [content/thinking/tool events] → turn_end)* → agent_end
  */
 
-import type { ToolCall } from '../services/ChatServiceInterface.js';
-import type { TodoItem } from '../tools/builtin/todo/types.js';
 import type { RuntimeContextPatch, RuntimePatch } from '../runtime/index.js';
-import type { Message } from '../services/ChatServiceInterface.js';
+import type { Message, ToolCall } from '../services/ChatServiceInterface.js';
+import type { TodoItem } from '../tools/builtin/todo/types.js';
+import type { ToolResult } from '../tools/types/ToolResult.js';
 import type { PermissionUpdate } from '../types/permissions.js';
-import type { ToolResult } from '../tools/types/ToolTypes.js';
 import type { TokenBudgetSnapshot } from './TokenBudget.js';
 
 // ===== Token 使用信息 =====

@@ -14,7 +14,7 @@
  * 仍由 FileLockManager 负责。两者正交。
  */
 
-import { ToolKind } from '../types/ToolTypes.js';
+import { ToolKind } from '../types/ToolKind.js';
 
 type PendingTask<T = unknown> = {
   fn: () => Promise<T>;

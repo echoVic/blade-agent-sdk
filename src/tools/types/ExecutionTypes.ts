@@ -3,7 +3,8 @@ import type { ContextSnapshot } from '../../runtime/index.js';
 import type { BladeConfig, JsonObject, PermissionMode } from '../../types/common.js';
 import type { ToolCatalog } from '../catalog/index.js';
 import type { ToolRegistry } from '../registry/ToolRegistry.js';
-import type { ToolKind, ToolResult } from './ToolTypes.js';
+import type { ToolKind } from './ToolKind.js';
+import type { ToolResult } from './ToolResult.js';
 
 interface QuestionOption {
   label: string;
@@ -18,12 +19,7 @@ interface Question {
 }
 
 export interface ConfirmationDetails {
-  type?:
-    | 'permission'
-    | 'enterPlanMode'
-    | 'exitPlanMode'
-    | 'maxTurnsExceeded'
-    | 'askUserQuestion'; // 确认类型
+  type?: 'permission' | 'enterPlanMode' | 'exitPlanMode' | 'maxTurnsExceeded' | 'askUserQuestion'; // 确认类型
   kind?: ToolKind; // 工具类型（readonly, write, execute），用于权限模式判断
   toolName?: string;
   args?: JsonObject;

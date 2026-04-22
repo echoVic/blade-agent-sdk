@@ -107,24 +107,26 @@ describe('ToolEffects helpers', () => {
   });
 
   it('extracts runtime patches from effect lists', () => {
-    expect(getRuntimePatchEffect([
-      {
-        type: 'newMessages',
-        messages: [],
-      },
-      {
-        type: 'runtimePatch',
-        patch: {
-          scope: 'turn',
-          source: 'skill',
-          skill: {
-            id: 'reviewer',
-            name: 'reviewer',
-            basePath: '/tmp/reviewer',
+    expect(
+      getRuntimePatchEffect([
+        {
+          type: 'newMessages',
+          messages: [],
+        },
+        {
+          type: 'runtimePatch',
+          patch: {
+            scope: 'turn',
+            source: 'skill',
+            skill: {
+              id: 'reviewer',
+              name: 'reviewer',
+              basePath: '/tmp/reviewer',
+            },
           },
         },
-      },
-    ])).toEqual({
+      ]),
+    ).toEqual({
       scope: 'turn',
       source: 'skill',
       skill: {

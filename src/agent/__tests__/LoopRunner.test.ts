@@ -12,7 +12,7 @@ import type { RuntimePatch } from '../../runtime/RuntimePatch.js';
 import { ToolCatalog } from '../../tools/catalog/ToolCatalog.js';
 import { createTool } from '../../tools/core/createTool.js';
 import { ToolRegistry } from '../../tools/registry/ToolRegistry.js';
-import { ToolKind } from '../../tools/types/ToolTypes.js';
+import { ToolKind } from '../../tools/types/ToolKind.js';
 import { z } from 'zod';
 import type { Message } from '../../services/ChatServiceInterface.js';
 import { ConversationState } from '../state/ConversationState.js';

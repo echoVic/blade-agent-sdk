@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { PermissionMode } from '../../../types/common.js';
 import { planToolExecution } from '../planToolExecution.js';
 import type { FunctionToolCall } from '../types.js';
-import { type ToolBehavior, ToolKind } from '../../../tools/types/ToolTypes.js';
+import { type ToolBehavior, ToolKind } from '../../../tools/types/ToolKind.js';
 
 const makeCall = (name: string, args: Record<string, unknown> = {}): FunctionToolCall => ({
   id: `${name}-call`,

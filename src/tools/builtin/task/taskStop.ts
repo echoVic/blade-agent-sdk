@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { createTool } from '../../core/createTool.js';
-import { ToolKind } from '../../types/ToolTypes.js';
+import { ToolKind } from '../../types/ToolKind.js';
 import { ToolErrorType } from '../../types/index.js';
 import { TaskStore } from './TaskStore.js';
 

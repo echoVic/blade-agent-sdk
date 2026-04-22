@@ -7,7 +7,7 @@ import { createTool } from '../../core/createTool.js';
 import { ToolRegistry } from '../../registry/ToolRegistry.js';
 import { PermissionMode } from '../../../types/common.js';
 import type { Tool, ToolResult } from '../../types/index.js';
-import { ToolKind } from '../../types/ToolTypes.js';
+import { ToolKind } from '../../types/ToolKind.js';
 import { ExecutionPipeline } from '../ExecutionPipeline.js';
 
 function sleep(ms: number): Promise<void> {

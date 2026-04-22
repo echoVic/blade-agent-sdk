@@ -1,9 +1,9 @@
-import type { JsonObject } from '../../types/common.js';
 import {
   resolveToolBehaviorSafely,
   type ToolBehavior,
   type ToolKind,
-} from '../../tools/types/ToolTypes.js';
+} from '../../tools/types/ToolKind.js';
+import type { JsonObject } from '../../types/common.js';
 
 type InterruptBehavior = ToolBehavior['interruptBehavior'];
 

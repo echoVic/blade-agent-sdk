@@ -28,13 +28,14 @@ import {
 import {
   isReadOnlyKind,
   resolveToolBehaviorSafely,
-  type Tool,
   type ToolBehavior,
-  ToolErrorType,
-  type ToolInvocation,
   ToolKind,
+} from '../types/ToolKind.js';
+import {
+  ToolErrorType,
   validationErrorToToolResult,
-} from '../types/ToolTypes.js';
+} from '../types/ToolResult.js';
+import type { Tool, ToolInvocation } from '../types/ToolDefinition.js';
 import { type ConcurrencyLimits, ConcurrencyScheduler } from './ConcurrencyScheduler.js';
 import { DenialTracker } from './DenialTracker.js';
 import { FileLockManager } from './FileLockManager.js';

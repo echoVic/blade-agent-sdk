@@ -2,8 +2,9 @@ import { promises as fs } from 'node:fs';
 import * as path from 'node:path';
 import { z } from 'zod';
 import { createTool } from '../../core/createTool.js';
-import type { ToolResult } from '../../types/ToolTypes.js';
-import { ToolErrorType, ToolKind } from '../../types/ToolTypes.js';
+import type { ToolResult } from '../../types/ToolResult.js';
+import { ToolErrorType } from '../../types/ToolResult.js';
+import { ToolKind } from '../../types/ToolKind.js';
 
 /**
  * ExitPlanMode tool

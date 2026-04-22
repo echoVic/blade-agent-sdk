@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from 'vitest';
-import { ToolKind } from '../../types/ToolTypes.js';
+import { ToolKind } from '../../types/ToolKind.js';
 import { ConcurrencyScheduler } from '../ConcurrencyScheduler.js';
 
 function deferred<T = void>() {

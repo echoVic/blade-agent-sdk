@@ -33,8 +33,9 @@ interface NormalizePermissionEffectsInput {
 }
 
 export function getRuntimePatchEffect(effects?: ToolEffect[]): RuntimePatch | undefined {
-  return effects?.find((effect): effect is Extract<ToolEffect, { type: 'runtimePatch' }> =>
-    effect.type === 'runtimePatch'
+  return effects?.find(
+    (effect): effect is Extract<ToolEffect, { type: 'runtimePatch' }> =>
+      effect.type === 'runtimePatch',
   )?.patch;
 }
 
@@ -56,9 +57,9 @@ export function normalizeToolEffects(input: NormalizeToolEffectsInput): ToolEffe
   }
 
   if (
-    !effects.some((effect) => effect.type === 'newMessages')
-    && input.newMessages
-    && input.newMessages.length > 0
+    !effects.some((effect) => effect.type === 'newMessages') &&
+    input.newMessages &&
+    input.newMessages.length > 0
   ) {
     effects.push({
       type: 'newMessages',
