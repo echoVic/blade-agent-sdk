@@ -12,6 +12,7 @@ import { createTool } from '../../core/createTool.js';
 import type { ExecutionContext, ToolResult } from '../../types/index.js';
 import { ToolErrorType, ToolKind } from '../../types/index.js';
 import { AgentId } from '../../../types/branded.js';
+import { lazySchema } from '../../validation/lazySchema.js';
 import { ToolSchemas } from '../../validation/zodSchemas.js';
 import { BackgroundShellManager } from '../shell/BackgroundShellManager.js';
 
@@ -27,14 +28,14 @@ export const taskOutputTool = createTool({
   displayName: 'Task Output',
   kind: ToolKind.ReadOnly,
 
-  schema: z.object({
+  schema: lazySchema(() => z.object({
     task_id: z.string().min(1).describe('The task ID to get output from'),
     block: ToolSchemas.flag({
       defaultValue: true,
       description: 'Whether to wait for completion',
     }),
     timeout: ToolSchemas.timeout(0, 600000, 30000).describe('Max wait time in ms'),
-  }),
+  })),
 
   description: {
     short: 'Retrieves output from a running or completed task',

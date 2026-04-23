@@ -4,6 +4,7 @@ import type { MemoryManager } from '../../../memory/MemoryManager.js';
 import { createTool } from '../../core/createTool.js';
 import { ToolErrorType } from '../../types/ToolResult.js';
 import { ToolKind } from '../../types/ToolKind.js';
+import { lazySchema } from '../../validation/lazySchema.js';
 
 const memoryReadSchema = z.discriminatedUnion('operation', [
   z.object({
@@ -46,7 +47,7 @@ Operations:
 - search: Search memories by query (returns summaries; case-insensitive substring match on name, description, body)
 - index: Read the derived memory index content`,
     },
-    schema: memoryReadSchema,
+    schema: lazySchema(() => memoryReadSchema),
     execute: async (params) => {
       switch (params.operation) {
         case 'list': {

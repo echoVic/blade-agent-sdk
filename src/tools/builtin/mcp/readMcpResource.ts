@@ -3,6 +3,7 @@ import type { McpRegistry } from '../../../mcp/McpRegistry.js';
 import { createTool } from '../../core/createTool.js';
 import { ToolKind } from '../../types/ToolKind.js';
 import { ToolErrorType } from '../../types/ToolResult.js';
+import { lazySchema } from '../../validation/lazySchema.js';
 
 const ReadMcpResourceParamsSchema = z.object({
   uri: z.string().describe('The URI of the MCP resource to read'),
@@ -37,7 +38,7 @@ The resource content can be text (returned as-is) or binary data (returned as ba
         'Read from specific server: ReadMcpResource({ uri: "db://table/record", serverName: "database-server" })',
       ],
     },
-    schema: ReadMcpResourceParamsSchema,
+    schema: lazySchema(() => ReadMcpResourceParamsSchema),
 
     async execute(params: ReadMcpResourceParams) {
       try {

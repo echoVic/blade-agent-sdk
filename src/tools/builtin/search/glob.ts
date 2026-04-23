@@ -18,11 +18,12 @@ function getEntryStats(entry: Entry): Stats | undefined {
 import { FileFilter } from '../../../utils/filePatterns.js';
 import { createTool } from '../../core/createTool.js';
 import type {
-  ExecutionContext,
-  GlobMetadata,
-  ToolResult
+    ExecutionContext,
+    GlobMetadata,
+    ToolResult
 } from '../../types/index.js';
 import { ToolErrorType, ToolKind } from '../../types/index.js';
+import { lazySchema } from '../../validation/lazySchema.js';
 import { ToolSchemas } from '../../validation/zodSchemas.js';
 
 /**
@@ -55,7 +56,7 @@ export const globTool = createTool({
   kind: ToolKind.ReadOnly,
 
   // Zod Schema 定义
-  schema: z.object({
+  schema: lazySchema(() => z.object({
     pattern: ToolSchemas.glob({
       description: 'Glob pattern string (supports *, ?, ** wildcards)',
     }),
@@ -75,7 +76,7 @@ export const globTool = createTool({
       .default(false)
       .describe('Include directories in results'),
     case_sensitive: z.boolean().default(false).describe('Case sensitive matching'),
-  }),
+  })),
 
   // 工具描述（对齐 Claude Code 官方）
   description: {

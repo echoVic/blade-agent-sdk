@@ -4,16 +4,17 @@ import type { JsonValue } from '../../../types/common.js';
 import { getErrorMessage, getErrorName } from '../../../utils/errorUtils.js';
 import { createTool } from '../../core/createTool.js';
 import type {
-  ExecutionContext,
-  ToolResult,
-  WebSearchMetadata,
+    ExecutionContext,
+    ToolResult,
+    WebSearchMetadata,
 } from '../../types/index.js';
 import { ToolErrorType, ToolKind } from '../../types/index.js';
+import { lazySchema } from '../../validation/lazySchema.js';
 import { getSearchCache } from './SearchCache.js';
 import {
-  getAllProviders,
-  getProviderCount,
-  type SearchProvider,
+    getAllProviders,
+    getProviderCount,
+    type SearchProvider,
 } from './searchProviders.js';
 
 // ============================================================================
@@ -365,7 +366,7 @@ export const webSearchTool = createTool({
   displayName: 'Web Search',
   kind: ToolKind.ReadOnly,
 
-  schema: z.object({
+  schema: lazySchema(() => z.object({
     query: z
       .string()
       .min(2, 'Search query must be at least 2 characters')
@@ -378,7 +379,7 @@ export const webSearchTool = createTool({
       .array(z.string().min(1))
       .optional()
       .describe('Exclude results from these domains (optional)'),
-  }),
+  })),
 
   description: {
     short: 'Search the web and use the results to inform responses',

@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { createTool } from '../../core/createTool.js';
 import type { ExecutionContext, ToolResult } from '../../types/index.js';
 import { ToolErrorType, ToolKind } from '../../types/index.js';
+import { lazySchema } from '../../validation/lazySchema.js';
 import { BackgroundShellManager } from './BackgroundShellManager.js';
 
 export const killShellTool = createTool({
@@ -9,9 +10,9 @@ export const killShellTool = createTool({
   displayName: '终止后台 Shell',
   kind: ToolKind.Execute,
 
-  schema: z.object({
+  schema: lazySchema(() => z.object({
     shell_id: z.string().min(1).describe('Background Shell ID to terminate'),
-  }),
+  })),
 
   // 工具描述（对齐 Claude Code 官方）
   description: {

@@ -4,6 +4,7 @@ import type { ToolResult } from '../../types/ToolResult.js';
 import { ToolErrorType } from '../../types/ToolResult.js';
 import { ToolKind } from '../../types/ToolKind.js';
 import { ToolSchemas } from '../../validation/zodSchemas.js';
+import { lazySchema } from '../../validation/lazySchema.js';
 
 /**
  * Option schema - 选项定义
@@ -69,7 +70,7 @@ export const askUserQuestionTool = createTool({
   displayName: 'Ask User Question',
   kind: ToolKind.ReadOnly,
 
-  schema: askUserQuestionSchema,
+  schema: lazySchema(() => askUserQuestionSchema),
 
   description: {
     short: 'Ask user questions to gather preferences or clarify requirements',

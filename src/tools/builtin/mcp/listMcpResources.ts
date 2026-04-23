@@ -3,6 +3,7 @@ import type { McpRegistry } from '../../../mcp/McpRegistry.js';
 import { createTool } from '../../core/createTool.js';
 import { ToolErrorType } from '../../types/ToolResult.js';
 import { ToolKind } from '../../types/ToolKind.js';
+import { lazySchema } from '../../validation/lazySchema.js';
 
 const ListMcpResourcesParamsSchema = z.object({
   serverName: z
@@ -39,7 +40,7 @@ access their contents.`,
         'List resources from specific server: ListMcpResources({ serverName: "my-server" })',
       ],
     },
-    schema: ListMcpResourcesParamsSchema,
+    schema: lazySchema(() => ListMcpResourcesParamsSchema),
 
     async execute(params: ListMcpResourcesParams) {
       try {

@@ -3,6 +3,7 @@ import { createTool } from '../../core/createTool.js';
 import type { ToolResult } from '../../types/ToolResult.js';
 import { ToolErrorType } from '../../types/ToolResult.js';
 import { ToolKind } from '../../types/ToolKind.js';
+import { lazySchema } from '../../validation/lazySchema.js';
 
 /**
  * EnterPlanMode tool
@@ -13,7 +14,7 @@ export const enterPlanModeTool = createTool({
   displayName: 'Enter Plan Mode',
   kind: ToolKind.ReadOnly,
 
-  schema: z.object({}),
+  schema: lazySchema(() => z.object({})),
 
   // 工具描述
   description: {

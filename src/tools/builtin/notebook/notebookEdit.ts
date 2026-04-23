@@ -1,6 +1,7 @@
 import * as fs from 'fs/promises';
 import { z } from 'zod';
 import { createTool } from '../../core/createTool.js';
+import { lazySchema } from '../../validation/lazySchema.js';
 import type { ToolResult } from '../../types/ToolResult.js';
 import { ToolErrorType } from '../../types/ToolResult.js';
 import { ToolKind } from '../../types/ToolKind.js';
@@ -14,7 +15,7 @@ export const notebookEditTool = createTool({
   displayName: 'Notebook Edit',
   kind: ToolKind.Write,
 
-  schema: z.object({
+  schema: lazySchema(() => z.object({
     notebook_path: z
       .string()
       .describe(
@@ -40,7 +41,7 @@ export const notebookEditTool = createTool({
       .describe(
         'The type of edit to make (replace, insert, delete). Defaults to replace.'
       ),
-  }),
+  })),
 
   // 工具描述（对齐 Claude Code 官方）
   description: {

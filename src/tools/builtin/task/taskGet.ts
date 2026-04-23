@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { createTool } from '../../core/createTool.js';
 import { ToolKind } from '../../types/ToolKind.js';
+import { lazySchema } from '../../validation/lazySchema.js';
 import { ToolErrorType } from '../../types/index.js';
 import type { SessionId } from '../../../types/branded.js';
 import { TaskStore } from './TaskStore.js';
@@ -19,9 +20,9 @@ Use when:
 - To understand task dependencies (what it blocks, what blocks it)
 - After being assigned a task, to get complete requirements`,
     },
-    schema: z.object({
+    schema: lazySchema(() => z.object({
       taskId: z.string().describe('The ID of the task to retrieve'),
-    }),
+    })),
     execute: async ({ taskId }, context) => {
       const sid = context?.sessionId ?? sessionId;
       const store = TaskStore.getInstance(sid);

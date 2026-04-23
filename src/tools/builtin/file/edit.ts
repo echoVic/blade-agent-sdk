@@ -5,19 +5,20 @@ import { getFileSystemService } from '../../../services/FileSystemService.js';
 import { getErrorCode, getErrorMessage, getErrorName } from '../../../utils/errorUtils.js';
 import { createTool } from '../../core/createTool.js';
 import type {
-  EditErrorMetadata,
-  EditMetadata,
-  ExecutionContext,
-  ToolResult,
+    EditErrorMetadata,
+    EditMetadata,
+    ExecutionContext,
+    ToolResult,
 } from '../../types/index.js';
 import { ToolErrorType, ToolKind } from '../../types/index.js';
+import { lazySchema } from '../../validation/lazySchema.js';
 import { ToolSchemas } from '../../validation/zodSchemas.js';
 import { generateDiffSnippetWithMatch } from './diffUtils.js';
 import {
-  flexibleMatch,
-  type MatchResult,
-  MatchStrategy,
-  unescapeString,
+    flexibleMatch,
+    type MatchResult,
+    MatchStrategy,
+    unescapeString,
 } from './editCorrector.js';
 import { FileAccessTracker } from './FileAccessTracker.js';
 import { isSensitivePath } from './sensitivePathCheck.js';
@@ -35,7 +36,7 @@ export const editTool = createTool({
   isConcurrencySafe: false, // 文件编辑不支持并发
 
   // Zod Schema 定义
-  schema: z.object({
+  schema: lazySchema(() => z.object({
     file_path: ToolSchemas.filePath({
       description: 'Absolute path of the file to edit',
     }),
@@ -48,7 +49,7 @@ export const editTool = createTool({
       .boolean()
       .default(false)
       .describe('Replace all matches (default: first only)'),
-  }),
+  })),
 
   resolveBehavior: ({ file_path }) => {
     const isDestructive = isSensitivePath(file_path);

@@ -8,6 +8,7 @@ import { getEffectiveProjectDir } from '../../types/ExecutionTypes.js';
 import { ToolKind } from '../../types/ToolKind.js';
 import type { ToolResult } from '../../types/ToolResult.js';
 import { ToolErrorType } from '../../types/ToolResult.js';
+import { lazySchema } from '../../validation/lazySchema.js';
 
 /**
  * Skill tool
@@ -23,12 +24,12 @@ export const skillTool = createTool({
   displayName: 'Skill',
   kind: ToolKind.Execute,
 
-  schema: z.object({
+  schema: lazySchema(() => z.object({
     skill: z
       .string()
       .describe('The skill name. E.g., "commit-message" or "code-review"'),
     args: z.string().optional().describe('Optional arguments for the skill'),
-  }),
+  })),
 
   description: {
     short: 'Execute a skill within the main conversation',

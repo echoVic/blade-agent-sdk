@@ -3,6 +3,7 @@ import { JsonValueSchema } from '../../../hooks/schemas/HookSchemas.js';
 import { createTool } from '../../core/createTool.js';
 import { ToolErrorType } from '../../types/index.js';
 import { ToolKind } from '../../types/ToolKind.js';
+import { lazySchema } from '../../validation/lazySchema.js';
 import type { SessionId } from '../../../types/branded.js';
 import type { UpdateTaskInput } from './TaskStore.js';
 import { TaskStore } from './TaskStore.js';
@@ -22,7 +23,7 @@ Use \`deleted\` to permanently remove a task.
 
 ONLY mark a task as completed when you have FULLY accomplished it.`,
     },
-    schema: z.object({
+    schema: lazySchema(() => z.object({
       taskId: z.string().describe('The ID of the task to update'),
       status: z.enum(['pending', 'in_progress', 'completed', 'deleted']).optional(),
       subject: z.string().optional(),
@@ -32,7 +33,7 @@ ONLY mark a task as completed when you have FULLY accomplished it.`,
       metadata: z.record(z.string(), JsonValueSchema).optional().describe('Metadata keys to merge into the task. Set a key to null to delete it.'),
       addBlocks: z.array(z.string()).optional().describe('Task IDs that this task blocks'),
       addBlockedBy: z.array(z.string()).optional().describe('Task IDs that must complete before this one can start'),
-    }),
+    })),
     execute: async ({ taskId, ...input }, context) => {
       const sid = context?.sessionId ?? sessionId;
       const store = TaskStore.getInstance(sid);

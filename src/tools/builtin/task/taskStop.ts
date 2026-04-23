@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { createTool } from '../../core/createTool.js';
 import { ToolKind } from '../../types/ToolKind.js';
+import { lazySchema } from '../../validation/lazySchema.js';
 import { ToolErrorType } from '../../types/index.js';
 import { AgentId, type SessionId } from '../../../types/branded.js';
 import { TaskStore } from './TaskStore.js';
@@ -14,9 +15,9 @@ export function createTaskStopTool({ sessionId }: { sessionId: SessionId }) {
       short: 'Stop a running background task',
       long: 'Use this tool to stop a running background task (spawned via the Agent tool with run_in_background=true). This marks the task as completed and records the stop time.',
     },
-    schema: z.object({
+    schema: lazySchema(() => z.object({
       taskId: z.string().describe('The ID of the background task to stop'),
-    }),
+    })),
     execute: async ({ taskId }, context) => {
       const agentManager = context.backgroundAgentManager;
       const aid = AgentId(taskId);

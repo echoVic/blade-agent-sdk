@@ -3,6 +3,7 @@ import { createTool } from '../../core/createTool.js';
 import type { ToolResult } from '../../types/ToolResult.js';
 import { ToolErrorType } from '../../types/ToolResult.js';
 import { ToolKind } from '../../types/ToolKind.js';
+import { lazySchema } from '../../validation/lazySchema.js';
 import { ToolSchemas } from '../../validation/zodSchemas.js';
 
 export const discoverToolsTool = createTool({
@@ -15,13 +16,13 @@ export const discoverToolsTool = createTool({
 
 This tool searches deferred/discoverable tools, returns the best matches, and activates them for subsequent turns in the current session.`,
   },
-  schema: z.object({
+  schema: lazySchema(() => z.object({
     query: z.string().min(1).describe('Search query for hidden tools'),
     max_results: ToolSchemas.semanticNumber()
       .pipe(z.number().int().min(1).max(10))
       .optional()
       .describe('Maximum tools to activate'),
-  }),
+  })),
   async execute(params, context): Promise<ToolResult> {
     const searchCatalog = context.toolCatalog;
     const searchSource = searchCatalog ?? context.toolRegistry;

@@ -6,9 +6,10 @@ import type { Message } from '../services/ChatServiceInterface.js';
 import type { ToolCatalogSourcePolicy } from '../tools/catalog/index.js';
 import type { ExecutionContext, ToolDefinition, ToolResult } from '../tools/types/index.js';
 import type { JsonObject, JsonValue, McpServerConfig, OutputFormat, PermissionMode, ProviderType, SandboxSettings, TokenUsage } from '../types/common.js';
-import { HookEvent } from '../types/constants.js';
+import { HookEvent, type StreamMessageType } from '../types/constants.js';
 import type { AgentLogger } from '../types/logging.js';
 import type { CanUseTool, PermissionHandler, PermissionUpdate } from '../types/permissions.js';
+import type { Assert, IsEqual } from '../types/typeAssertions.js';
 
 export type { ExecutionContext, ProviderType, TokenUsage, ToolDefinition, ToolResult };
 
@@ -55,6 +56,8 @@ export type StreamMessage =
   | { type: 'usage'; usage: TokenUsage; sessionId: SessionId }
   | { type: 'result'; subtype: 'success' | 'error'; content?: string; error?: string; sessionId: SessionId }
   | { type: 'error'; message: string; code?: string; sessionId: SessionId };
+
+type _AssertStreamMessageComplete = Assert<IsEqual<StreamMessage['type'], StreamMessageType>>;
 
 export interface HookInput {
   event: HookEvent;

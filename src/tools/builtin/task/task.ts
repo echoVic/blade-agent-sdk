@@ -25,6 +25,7 @@ import { getErrorMessage } from '../../../utils/errorUtils.js';
 import { createTool } from '../../core/createTool.js';
 import type { ExecutionContext, ToolResult } from '../../types/index.js';
 import { ToolErrorType, ToolKind } from '../../types/index.js';
+import { lazySchema } from '../../validation/lazySchema.js';
 import { ToolSchemas } from '../../validation/zodSchemas.js';
 
 /**
@@ -118,7 +119,7 @@ export function createTaskTool({ registry }: { registry: SubagentRegistry }) {
     kind: ToolKind.ReadOnly,
     isReadOnly: true,
     isConcurrencySafe: false,
-    schema: z.object({
+    schema: lazySchema(() => z.object({
       subagent_type: z
         .string()
         .refine((type) => isValidSubagentType(type, registry), (val) => ({
@@ -146,7 +147,7 @@ export function createTaskTool({ registry }: { registry: SubagentRegistry }) {
         .string()
         .optional()
         .describe('Internal subagent session id for tracking'),
-    }),
+    })),
     description: {
       short: 'Launch a new agent to handle complex, multi-step tasks autonomously',
       get long() {

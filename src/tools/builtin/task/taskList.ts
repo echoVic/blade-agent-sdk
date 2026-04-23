@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { createTool } from '../../core/createTool.js';
 import { ToolKind } from '../../types/ToolKind.js';
+import { lazySchema } from '../../validation/lazySchema.js';
 import type { SessionId } from '../../../types/branded.js';
 import { TaskStore } from './TaskStore.js';
 
@@ -22,7 +23,7 @@ Returns a summary of each task:
 
 Prefer working on tasks in ID order (lowest ID first) when multiple tasks are available.`,
     },
-    schema: z.object({}),
+    schema: lazySchema(() => z.object({})),
     execute: async (_input, context) => {
       const sid = context?.sessionId ?? sessionId;
       const store = TaskStore.getInstance(sid);

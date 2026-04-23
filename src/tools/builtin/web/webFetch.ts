@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { getErrorMessage, getErrorName } from '../../../utils/errorUtils.js';
 import { createTool } from '../../core/createTool.js';
+import { lazySchema } from '../../validation/lazySchema.js';
 import type {
   ExecutionContext,
   ToolResult,
@@ -35,7 +36,7 @@ export const webFetchTool = createTool({
   kind: ToolKind.ReadOnly,
 
   // Zod Schema 定义
-  schema: z.object({
+  schema: lazySchema(() => z.object({
     url: z.string().url().describe('URL to request'),
     method: z
       .enum(['GET', 'POST', 'PUT', 'DELETE', 'HEAD'])
@@ -81,7 +82,7 @@ export const webFetchTool = createTool({
       defaultValue: false,
       description: 'Return response headers',
     }),
-  }),
+  })),
 
   // 工具描述（对齐 Claude Code 官方）
   description: {

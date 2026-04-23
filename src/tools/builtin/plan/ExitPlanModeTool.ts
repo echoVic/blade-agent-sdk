@@ -2,9 +2,10 @@ import { promises as fs } from 'node:fs';
 import * as path from 'node:path';
 import { z } from 'zod';
 import { createTool } from '../../core/createTool.js';
+import { ToolKind } from '../../types/ToolKind.js';
 import type { ToolResult } from '../../types/ToolResult.js';
 import { ToolErrorType } from '../../types/ToolResult.js';
-import { ToolKind } from '../../types/ToolKind.js';
+import { lazySchema } from '../../validation/lazySchema.js';
 
 /**
  * ExitPlanMode tool
@@ -15,9 +16,9 @@ export const exitPlanModeTool = createTool({
   displayName: 'Exit Plan Mode',
   kind: ToolKind.ReadOnly,
 
-  schema: z.object({
+  schema: lazySchema(() => z.object({
     plan: z.string().describe('The complete implementation plan in markdown format'),
-  }),
+  })),
 
   // 工具描述
   description: {

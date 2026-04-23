@@ -19,6 +19,7 @@ import type {
   ToolResult,
 } from '../../types/index.js';
 import { ToolErrorType, ToolKind } from '../../types/index.js';
+import { lazySchema } from '../../validation/lazySchema.js';
 import { ToolSchemas } from '../../validation/zodSchemas.js';
 
 /**
@@ -638,7 +639,7 @@ export const grepTool = createTool({
   maxResultSizeChars: 100_000, // ~100KB before externalization
 
   // Zod Schema 定义
-  schema: z.object({
+  schema: lazySchema(() => z.object({
     pattern: ToolSchemas.pattern({
       description: 'The regular expression pattern to search for in file contents',
     }),
@@ -704,7 +705,7 @@ export const grepTool = createTool({
       .describe(
         'Enable multiline mode where . matches newlines and patterns can span lines (rg -U --multiline-dotall). Default: false'
       ),
-  }),
+  })),
 
   // 工具描述（对齐 Claude Code 官方）
   description: {

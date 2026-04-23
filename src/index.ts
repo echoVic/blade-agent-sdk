@@ -19,6 +19,8 @@ export {
   SdkError,
   ToolExecutionError
 } from './errors/index.js';
+// --- Hook schema accessors ---
+export { getHookSchemas } from './hooks/schemas/HookSchemas.js';
 // --- Hook system ---
 export {
   DecisionBehavior,
@@ -30,11 +32,9 @@ export type {
   McpToolDefinition, ToolResponse as McpToolResponse, SdkMcpServerHandle,
   SdkTool
 } from './mcp/index.js';
-
 // --- MCP ---
 export { createSdkMcpServer, tool } from './mcp/index.js';
 export type { Memory, MemoryInput, MemoryStore, MemoryType } from './memory/index.js';
-
 // --- Memory ---
 export { FileSystemMemoryStore, MemoryManager } from './memory/index.js';
 export type {
@@ -50,7 +50,6 @@ export type {
   RuntimeToolDiscoveryPatch,
   RuntimeToolPolicyPatch
 } from './runtime/index.js';
-
 // --- Runtime ---
 export {
   createContextSnapshot,
@@ -84,7 +83,6 @@ export type {
   ToolDefinition,
   ToolResult
 } from './session/index.js';
-
 // --- Session ---
 export { createSession, forkSession, prompt, resumeSession } from './session/index.js';
 // --- Tool authoring primitives ---
@@ -115,6 +113,7 @@ export type {
   ToolSchema
 } from './tools/types/index.js';
 export { ToolKind } from './tools/types/ToolKind.js';
+export { AgentId, MessageId, SessionId, ToolUseId } from './types/branded.js';
 // --- Constants & types ---
 export type {
   McpServerConfig,
@@ -128,7 +127,6 @@ export {
   PermissionMode,
   StreamMessageType
 } from './types/constants.js';
-export { AgentId, MessageId, SessionId, ToolUseId } from './types/branded.js';
 export type { AgentLogger, LogEntry, LogLevelName } from './types/logging.js';
 export type {
   CanUseTool,
@@ -139,7 +137,6 @@ export type {
   PermissionRuleValue,
   PermissionUpdate
 } from './types/permissions.js';
-
 // --- Permission system ---
 export {
   createCompositePermissionHandler,
@@ -148,5 +145,8 @@ export {
   createPermissionHandlerFromCanUseTool,
   createRuleBasedPermissionHandler
 } from './types/permissions.js';
+export type { Assert, Extends, IsEqual, KeysEqual } from './types/typeAssertions.js';
 // --- Error utilities ---
 export { getErrorCode, getErrorMessage, getErrorName, toError } from './utils/errorUtils.js';
+// --- Lazy initialization utilities ---
+export { lazySingleton } from './utils/lazySingleton.js';

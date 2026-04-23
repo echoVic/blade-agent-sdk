@@ -8,6 +8,7 @@ import type { ToolResult } from '../../tools/types/ToolResult.js';
 import type { SessionId } from '../../types/branded.js';
 import type { JsonObject, JsonValue, PermissionMode } from '../../types/common.js';
 import { HookEvent } from '../../types/constants.js';
+import type { Assert, Extends } from '../../types/typeAssertions.js';
 
 // ============================================================================
 // Hook Input
@@ -16,7 +17,7 @@ import { HookEvent } from '../../types/constants.js';
 /**
  * Hook 输入基础字段
  */
-interface HookInputBase {
+export interface HookInputBase {
   /** Hook 事件名称 */
   hook_event_name: HookEvent;
 
@@ -837,6 +838,10 @@ export interface HookConfig {
   /** InstructionsLoaded Hooks */
   InstructionsLoaded?: HookMatcher[];
 }
+
+type HookConfigEventKeys = Exclude<keyof HookConfig, 'enabled' | 'defaultTimeout' | 'timeoutBehavior' | 'failureBehavior' | 'maxConcurrentHooks'>;
+type _AssertHookConfigComplete = Assert<Extends<HookEvent, HookConfigEventKeys>>;
+type _AssertNoExtraKeys = Assert<Extends<HookConfigEventKeys, HookEvent>>;
 
 // ============================================================================
 // Hook Execution Results

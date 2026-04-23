@@ -11,6 +11,7 @@ import type {
   WriteMetadata,
 } from '../../types/index.js';
 import { ToolErrorType, ToolKind } from '../../types/index.js';
+import { lazySchema } from '../../validation/lazySchema.js';
 import { ToolSchemas } from '../../validation/zodSchemas.js';
 import { generateDiffSnippet } from './diffUtils.js';
 import { FileAccessTracker } from './FileAccessTracker.js';
@@ -29,7 +30,7 @@ export const writeTool = createTool({
   isConcurrencySafe: false, // 文件写入不支持并发
 
   // Zod Schema 定义
-  schema: z.object({
+  schema: lazySchema(() => z.object({
     file_path: ToolSchemas.filePath({
       description: 'Absolute file path to write',
     }),
@@ -39,7 +40,7 @@ export const writeTool = createTool({
       .boolean()
       .default(true)
       .describe('Automatically create missing parent directories'),
-  }),
+  })),
 
   resolveBehavior: ({ file_path }) => {
     const isDestructive = isSensitivePath(file_path);

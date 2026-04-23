@@ -5,11 +5,12 @@ import { getFileSystemService } from '../../../services/FileSystemService.js';
 import { getErrorMessage, getErrorName } from '../../../utils/errorUtils.js';
 import { createTool } from '../../core/createTool.js';
 import type {
-  ExecutionContext,
-  ReadMetadata,
-  ToolResult,
+    ExecutionContext,
+    ReadMetadata,
+    ToolResult,
 } from '../../types/index.js';
 import { ToolErrorType, ToolKind } from '../../types/index.js';
+import { lazySchema } from '../../validation/lazySchema.js';
 import { ToolSchemas } from '../../validation/zodSchemas.js';
 import { FileAccessTracker } from './FileAccessTracker.js';
 
@@ -24,7 +25,7 @@ export const readTool = createTool({
   maxResultSizeChars: 500_000, // ~500KB — large files get externalized to avoid context bloat
 
   // Zod Schema 定义
-  schema: z.object({
+  schema: lazySchema(() => z.object({
     file_path: ToolSchemas.filePath({
       description: 'File path to read (must be absolute)',
     }),
@@ -35,7 +36,7 @@ export const readTool = createTool({
       description: 'Number of lines to read (text files only)',
     }).optional(),
     encoding: ToolSchemas.encoding(),
-  }),
+  })),
 
   validateInput: (params, context) => {
     if (!hasFilesystemCapability(context.contextSnapshot)) {

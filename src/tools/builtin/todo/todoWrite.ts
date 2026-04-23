@@ -4,6 +4,7 @@ import { getErrorMessage } from '../../../utils/errorUtils.js';
 import { createTool } from '../../core/createTool.js';
 import type { ExecutionContext, ToolResult } from '../../types/index.js';
 import { ToolErrorType, ToolKind } from '../../types/index.js';
+import { lazySchema } from '../../validation/lazySchema.js';
 import { TodoManager } from './TodoManager.js';
 import type { TodoItem, TodoStats } from './types.js';
 import { TodoItemSchema } from './types.js';
@@ -20,9 +21,9 @@ export function createTodoWriteTool(opts: { sessionId: SessionId; configDir?: st
     kind: ToolKind.ReadOnly,
     isConcurrencySafe: false,
 
-    schema: z.object({
+    schema: lazySchema(() => z.object({
       todos: z.array(TodoItemSchema).min(1, 'At least one task is required'),
-    }),
+    })),
 
     // 工具描述（对齐 Claude Code 官方）
     description: {
