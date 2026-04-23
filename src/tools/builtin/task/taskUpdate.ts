@@ -3,10 +3,11 @@ import { JsonValueSchema } from '../../../hooks/schemas/HookSchemas.js';
 import { createTool } from '../../core/createTool.js';
 import { ToolErrorType } from '../../types/index.js';
 import { ToolKind } from '../../types/ToolKind.js';
+import type { SessionId } from '../../../types/branded.js';
 import type { UpdateTaskInput } from './TaskStore.js';
 import { TaskStore } from './TaskStore.js';
 
-export function createTaskUpdateTool({ sessionId }: { sessionId: string }) {
+export function createTaskUpdateTool({ sessionId }: { sessionId: SessionId }) {
   return createTool({
     name: 'TaskUpdate',
     displayName: 'Update Task',

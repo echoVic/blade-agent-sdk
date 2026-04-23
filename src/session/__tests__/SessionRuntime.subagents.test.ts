@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { NOOP_LOGGER } from '../../logging/Logger.js';
 import type { RuntimeContext } from '../../runtime/index.js';
+import { SessionId } from '../../types/branded.js';
 import { PermissionMode } from '../../types/common.js';
 import type { SessionOptions } from '../types.js';
 
@@ -52,7 +53,7 @@ describe('SessionRuntime subagents', () => {
 
   it('registers session agents per runtime without leaking across sessions', async () => {
     const runtimeA = new SessionRuntime(
-      'session-a',
+      SessionId('session-a'),
       createOptions({
         agents: {
           'session-auditor': {
@@ -71,7 +72,7 @@ describe('SessionRuntime subagents', () => {
       NOOP_LOGGER,
     );
     const runtimeB = new SessionRuntime(
-      'session-b',
+      SessionId('session-b'),
       createOptions(),
       {
         models: [],

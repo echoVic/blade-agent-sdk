@@ -14,19 +14,19 @@
 import type { ContextManager } from '../context/ContextManager.js';
 import type { HookRuntime } from '../hooks/HookRuntime.js';
 import {
-  type InternalLogger,
-  LogCategory,
-  NOOP_LOGGER,
+    type InternalLogger,
+    LogCategory,
+    NOOP_LOGGER,
 } from '../logging/Logger.js';
 import { McpRegistry } from '../mcp/McpRegistry.js';
 import { buildSystemPrompt } from '../prompts/index.js';
 import {
-  getContextCwd,
-  type RuntimeContext,
+    getContextCwd,
+    type RuntimeContext,
 } from '../runtime/index.js';
 import {
-  type IChatService,
-  type Message,
+    type IChatService,
+    type Message,
 } from '../services/ChatServiceInterface.js';
 import { discoverSkills } from '../skills/index.js';
 import { getBuiltinTools } from '../tools/builtin/index.js';
@@ -34,12 +34,13 @@ import { ToolCatalog } from '../tools/catalog/ToolCatalog.js';
 import { ExecutionPipeline } from '../tools/execution/ExecutionPipeline.js';
 import { ToolRegistry } from '../tools/registry/ToolRegistry.js';
 import type { Tool } from '../tools/types/index.js';
+import { SessionId } from '../types/branded.js';
 import {
-  type BladeConfig,
-  type JsonObject,
-  type McpServerConfig,
-  PermissionMode,
-  type PermissionsConfig,
+    type BladeConfig,
+    type JsonObject,
+    type McpServerConfig,
+    PermissionMode,
+    type PermissionsConfig,
 } from '../types/common.js';
 import { createPermissionHandlerFromCanUseTool } from '../types/permissions.js';
 import type { AgentEvent } from './AgentEvent.js';
@@ -52,17 +53,17 @@ import { AgentSessionStore } from './subagents/AgentSessionStore.js';
 import { BackgroundAgentManager } from './subagents/BackgroundAgentManager.js';
 import { SubagentRegistry } from './subagents/SubagentRegistry.js';
 import {
-  TokenBudget,
-  type TokenBudgetConfig,
-  type TokenBudgetSnapshot,
+    TokenBudget,
+    type TokenBudgetConfig,
+    type TokenBudgetSnapshot,
 } from './TokenBudget.js';
 import type {
-  AgentOptions,
-  ChatContext,
-  LoopOptions,
-  LoopResult,
-  PlanApprovalResult,
-  UserMessageContent,
+    AgentOptions,
+    ChatContext,
+    LoopOptions,
+    LoopResult,
+    PlanApprovalResult,
+    UserMessageContent,
 } from './types.js';
 import { isPlanApprovalResult } from './types.js';
 
@@ -269,7 +270,7 @@ export class Agent {
     const chatContext: ChatContext = this.withBackgroundAgentManager({
       messages: context.messages,
       userId: context.userId || 'subagent',
-      sessionId: context.sessionId || `subagent_${Date.now()}`,
+      sessionId: context.sessionId || SessionId(`subagent_${Date.now()}`),
       snapshot: context.snapshot,
       signal: context.signal,
       confirmationHandler: context.confirmationHandler,
@@ -527,7 +528,7 @@ export class Agent {
 
   private async registerBuiltinTools(): Promise<void> {
     const builtinTools = await getBuiltinTools({
-      sessionId: 'default',
+      sessionId: SessionId('default'),
       configDir: this.config.storageRoot,
       mcpRegistry: this.runtimeMcpRegistry,
       includeMcpProtocolTools: false,

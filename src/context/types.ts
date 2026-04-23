@@ -2,6 +2,7 @@
  * 上下文管理模块的核心类型定义
  */
 
+import type { MessageId, SessionId } from '../types/branded.js';
 import type { JsonObject, JsonValue, MessageRole } from '../types/common.js';
 
 export interface ContextMessage {
@@ -30,7 +31,7 @@ export interface SystemContext {
 }
 
 export interface SessionContext {
-  sessionId: string;
+  sessionId: SessionId;
   userId?: string;
   preferences: JsonObject;
   configuration: JsonObject;
@@ -134,7 +135,7 @@ export type PartType =
   | 'subtask_ref';
 
 export interface SessionInfo {
-  sessionId: string;
+  sessionId: SessionId;
   rootId: string;
   parentId?: string;
   relationType?: 'subagent';
@@ -148,7 +149,7 @@ export interface SessionInfo {
 }
 
 export interface MessageInfo {
-  messageId: string;
+  messageId: MessageId;
   role: MessageRole;
   parentMessageId?: string;
   createdAt: string;
@@ -162,7 +163,7 @@ export interface MessageInfo {
 
 export interface PartInfo {
   partId: string;
-  messageId: string;
+  messageId: MessageId;
   partType: PartType;
   payload: JsonValue;
   createdAt: string;
@@ -170,7 +171,7 @@ export interface PartInfo {
 
 export interface SessionEventBase {
   id: string;
-  sessionId: string;
+  sessionId: SessionId;
   timestamp: string;
   type: JSONLEventType;
   cwd?: string;

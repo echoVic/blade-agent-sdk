@@ -128,6 +128,7 @@ export {
   PermissionMode,
   StreamMessageType
 } from './types/constants.js';
+export { AgentId, MessageId, SessionId, ToolUseId } from './types/branded.js';
 export type { AgentLogger, LogEntry, LogLevelName } from './types/logging.js';
 export type {
   CanUseTool,

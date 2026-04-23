@@ -1,6 +1,7 @@
 import { randomUUID } from 'crypto';
 import * as fs from 'fs/promises';
 import * as path from 'path';
+import type { SessionId } from '../../../types/branded.js';
 import { getErrorCode } from '../../../utils/errorUtils.js';
 import type { TodoItem, TodoStatus, ValidationResult } from './types.js';
 
@@ -15,7 +16,7 @@ export class TodoManager {
   private filePath: string | undefined;
   private loaded = false;
 
-  private constructor(sessionId: string, configDir?: string) {
+  private constructor(sessionId: SessionId, configDir?: string) {
     this.filePath = configDir
       ? path.join(configDir, 'todos', `${sessionId}-agent-${sessionId}.json`)
       : undefined;
@@ -24,7 +25,7 @@ export class TodoManager {
   /**
    * 获取 TodoManager 实例（单例模式，按会话隔离）
    */
-  static getInstance(sessionId: string, configDir?: string): TodoManager {
+  static getInstance(sessionId: SessionId, configDir?: string): TodoManager {
     const key = `${sessionId}-${configDir ?? ''}`;
     let instance = TodoManager.instances.get(key);
     if (!instance) {

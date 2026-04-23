@@ -4,6 +4,8 @@
  * 保证单次工具调用只触发一次 Hook
  */
 
+import type { ToolUseId } from '../types/branded.js';
+
 export class HookExecutionGuard {
   // toolUseId -> Set<hookEventName>
   private executedHooks = new Map<string, Set<string>>();
@@ -11,7 +13,7 @@ export class HookExecutionGuard {
   /**
    * 检查是否可以执行
    */
-  canExecute(toolUseId: string, eventName: string): boolean {
+  canExecute(toolUseId: ToolUseId, eventName: string): boolean {
     let executed = this.executedHooks.get(toolUseId);
     if (!executed) {
       executed = new Set();
@@ -31,7 +33,7 @@ export class HookExecutionGuard {
   /**
    * 标记已执行
    */
-  markExecuted(toolUseId: string, eventName: string): void {
+  markExecuted(toolUseId: ToolUseId, eventName: string): void {
     const executed = this.executedHooks.get(toolUseId);
     if (executed) {
       executed.add(eventName);
@@ -41,7 +43,7 @@ export class HookExecutionGuard {
   /**
    * 清理已完成的工具
    */
-  cleanup(toolUseId: string): void {
+  cleanup(toolUseId: ToolUseId): void {
     this.executedHooks.delete(toolUseId);
   }
 

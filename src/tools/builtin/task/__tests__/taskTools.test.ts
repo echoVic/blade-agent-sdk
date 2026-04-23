@@ -4,6 +4,7 @@ import { getBuiltinTools } from '../../index.js';
 import type { ChatContext, LoopOptions } from '../../../../agent/types.js';
 import { AgentSessionStore } from '../../../../agent/subagents/AgentSessionStore.js';
 import { BackgroundAgentManager } from '../../../../agent/subagents/BackgroundAgentManager.js';
+import { AgentId, SessionId } from '../../../../types/branded.js';
 import { createTaskCreateTool } from '../taskCreate.js';
 import { createTaskGetTool } from '../taskGet.js';
 import { createTaskListTool } from '../taskList.js';
@@ -61,12 +62,12 @@ async function executeWithContext<TParams>(
       execute: (
         signal: AbortSignal,
         updateOutput?: (output: string) => void,
-        context?: { sessionId?: string }
+        context?: { sessionId?: SessionId }
       ) => Promise<Awaited<ReturnType<ReturnType<typeof createTaskCreateTool>['execute']>>>;
     };
   },
   params: TParams,
-  sessionId: string
+  sessionId: SessionId
 ) {
   return tool.build(params).execute(new AbortController().signal, undefined, {
     sessionId,
@@ -88,7 +89,7 @@ describe('task tools', () => {
   });
 
   it('registers all task management tools in builtin tools', async () => {
-    const tools = await getBuiltinTools({ sessionId: `builtin-${Date.now()}` });
+    const tools = await getBuiltinTools({ sessionId: SessionId(`builtin-${Date.now()}`) });
     const names = tools.map((tool) => tool.name);
 
     expect(names).toEqual(
@@ -103,8 +104,8 @@ describe('task tools', () => {
   });
 
   it('creates, reads, updates, lists, stops, and deletes tasks in the runtime session', async () => {
-    const runtimeSessionId = `runtime-${Date.now()}`;
-    const factorySessionId = `factory-${Date.now()}`;
+    const runtimeSessionId = SessionId(`runtime-${Date.now()}`);
+    const factorySessionId = SessionId(`factory-${Date.now()}`);
     const createTool = createTaskCreateTool({ sessionId: factorySessionId });
     const getTool = createTaskGetTool({ sessionId: factorySessionId });
     const updateTool = createTaskUpdateTool({ sessionId: factorySessionId });
@@ -228,19 +229,19 @@ describe('task tools', () => {
         }),
     );
 
-    const agentId = manager.startBackgroundAgent({
+    const agentId = AgentId(manager.startBackgroundAgent({
       config: subagentConfig,
       bladeConfig,
       description: 'Inspect repository',
       prompt: 'inspect',
-    });
+    }));
 
-    const stopTool = createTaskStopTool({ sessionId: `factory-${Date.now()}` });
+    const stopTool = createTaskStopTool({ sessionId: SessionId(`factory-${Date.now()}`) });
     const stopped = await stopTool.build({ taskId: agentId }).execute(
       new AbortController().signal,
       undefined,
       {
-        sessionId: `runtime-${Date.now()}`,
+        sessionId: SessionId(`runtime-${Date.now()}`),
         backgroundAgentManager: manager,
       } as never,
     );
@@ -263,9 +264,9 @@ describe('task tools', () => {
   });
 
   it('uses the background agent manager provided by execution context', async () => {
-    const stopTool = createTaskStopTool({ sessionId: `factory-${Date.now()}` });
+    const stopTool = createTaskStopTool({ sessionId: SessionId(`factory-${Date.now()}`) });
     const fakeManager = {
-      getAgent: vi.fn(() => ({ id: 'agent-1', status: 'running' })),
+      getAgent: vi.fn(() => ({ id: AgentId('agent-1'), status: 'running' })),
       killAgent: vi.fn(() => true),
     };
 
@@ -273,7 +274,7 @@ describe('task tools', () => {
       new AbortController().signal,
       undefined,
       {
-        sessionId: `runtime-${Date.now()}`,
+        sessionId: SessionId(`runtime-${Date.now()}`),
         backgroundAgentManager: fakeManager,
       } as never,
     );

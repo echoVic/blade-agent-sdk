@@ -3,6 +3,7 @@ import { access, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { constants as fsConstants } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
+import { MessageId, SessionId } from '../../../../types/branded.js';
 import { SnapshotManager } from '../SnapshotManager.js';
 
 const tempDirs: string[] = [];
@@ -32,11 +33,11 @@ describe('SnapshotManager', () => {
     const filePath = join(workspace, 'example.ts');
     await writeFile(filePath, 'console.log("hi")\n', 'utf8');
 
-    const manager = new SnapshotManager({ sessionId: 'session-noop' });
+    const manager = new SnapshotManager({ sessionId: SessionId('session-noop') });
 
     await manager.initialize();
-    const metadata = await manager.createSnapshot(filePath, 'message-1');
-    await manager.restoreSnapshot(filePath, 'message-1');
+    const metadata = await manager.createSnapshot(filePath, MessageId('message-1'));
+    await manager.restoreSnapshot(filePath, MessageId('message-1'));
 
     expect(manager.getSnapshotDir()).toBeUndefined();
     expect(metadata.backupFileName).toBe('');
@@ -52,12 +53,12 @@ describe('SnapshotManager', () => {
     await writeFile(filePath, 'export const value = 1;\n', 'utf8');
 
     const manager = new SnapshotManager({
-      sessionId: 'session-files',
+      sessionId: SessionId('session-files'),
       storageRoot,
     });
 
     await manager.initialize();
-    const metadata = await manager.createSnapshot(filePath, 'message-1');
+    const metadata = await manager.createSnapshot(filePath, MessageId('message-1'));
 
     const snapshotPath = join(
       storageRoot,

@@ -4,6 +4,7 @@ import { writeFile, mkdtemp } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { assertDefined } from '../../../../__tests__/helpers/assertDefined.js';
+import { SessionId } from '../../../../types/branded.js';
 
 describe('FileAccessTracker', () => {
   let tracker: FileAccessTracker;
@@ -35,12 +36,12 @@ describe('FileAccessTracker', () => {
 
   describe('recordFileRead', () => {
     it('should record file read', async () => {
-      await tracker.recordFileRead(testFile, 'session-1');
+      await tracker.recordFileRead(testFile, SessionId('session-1'));
       expect(tracker.hasFileBeenRead(testFile)).toBe(true);
     });
 
     it('should track file count', async () => {
-      await tracker.recordFileRead(testFile, 'session-1');
+      await tracker.recordFileRead(testFile, SessionId('session-1'));
       expect(tracker.getTrackedFileCount()).toBe(1);
     });
   });
@@ -51,12 +52,12 @@ describe('FileAccessTracker', () => {
     });
 
     it('should return true for tracked file', async () => {
-      await tracker.recordFileRead(testFile, 'session-1');
+      await tracker.recordFileRead(testFile, SessionId('session-1'));
       expect(tracker.hasFileBeenRead(testFile)).toBe(true);
     });
 
     it('should respect sessionId filter', async () => {
-      await tracker.recordFileRead(testFile, 'session-1');
+      await tracker.recordFileRead(testFile, SessionId('session-1'));
       expect(tracker.hasFileBeenRead(testFile, 'session-1')).toBe(true);
       expect(tracker.hasFileBeenRead(testFile, 'session-2')).toBe(false);
     });
@@ -64,7 +65,7 @@ describe('FileAccessTracker', () => {
 
   describe('recordFileEdit', () => {
     it('should record file edit', async () => {
-      await tracker.recordFileEdit(testFile, 'session-1', 'edit');
+      await tracker.recordFileEdit(testFile, SessionId('session-1'), 'edit');
       const record = tracker.getFileRecord(testFile);
       expect(record).toBeDefined();
       assertDefined(record);
@@ -72,7 +73,7 @@ describe('FileAccessTracker', () => {
     });
 
     it('should record file write', async () => {
-      await tracker.recordFileEdit(testFile, 'session-1', 'write');
+      await tracker.recordFileEdit(testFile, SessionId('session-1'), 'write');
       const record = tracker.getFileRecord(testFile);
       assertDefined(record);
       expect(record.lastOperation).toBe('write');
@@ -85,7 +86,7 @@ describe('FileAccessTracker', () => {
     });
 
     it('should return record with correct fields', async () => {
-      await tracker.recordFileRead(testFile, 'session-1');
+      await tracker.recordFileRead(testFile, SessionId('session-1'));
       const record = tracker.getFileRecord(testFile);
       expect(record).toBeDefined();
       assertDefined(record);
@@ -99,7 +100,7 @@ describe('FileAccessTracker', () => {
 
   describe('clearFileRecord', () => {
     it('should clear specific file record', async () => {
-      await tracker.recordFileRead(testFile, 'session-1');
+      await tracker.recordFileRead(testFile, SessionId('session-1'));
       tracker.clearFileRecord(testFile);
       expect(tracker.hasFileBeenRead(testFile)).toBe(false);
     });
@@ -107,7 +108,7 @@ describe('FileAccessTracker', () => {
 
   describe('clearAll', () => {
     it('should clear all records', async () => {
-      await tracker.recordFileRead(testFile, 'session-1');
+      await tracker.recordFileRead(testFile, SessionId('session-1'));
       tracker.clearAll();
       expect(tracker.getTrackedFileCount()).toBe(0);
     });
@@ -117,9 +118,9 @@ describe('FileAccessTracker', () => {
     it('should clear records for specific session', async () => {
       const testFile2 = join(tempDir, 'test2.txt');
       await writeFile(testFile2, 'hello');
-      await tracker.recordFileRead(testFile, 'session-1');
-      await tracker.recordFileRead(testFile2, 'session-2');
-      tracker.clearSession('session-1');
+      await tracker.recordFileRead(testFile, SessionId('session-1'));
+      await tracker.recordFileRead(testFile2, SessionId('session-2'));
+      tracker.clearSession(SessionId('session-1'));
       expect(tracker.hasFileBeenRead(testFile)).toBe(false);
       expect(tracker.hasFileBeenRead(testFile2)).toBe(true);
     });
@@ -129,8 +130,8 @@ describe('FileAccessTracker', () => {
     it('should return all tracked file paths', async () => {
       const testFile2 = join(tempDir, 'test2.txt');
       await writeFile(testFile2, 'hello');
-      await tracker.recordFileRead(testFile, 'session-1');
-      await tracker.recordFileRead(testFile2, 'session-1');
+      await tracker.recordFileRead(testFile, SessionId('session-1'));
+      await tracker.recordFileRead(testFile2, SessionId('session-1'));
       const files = tracker.getTrackedFiles();
       expect(files).toContain(testFile);
       expect(files).toContain(testFile2);
@@ -139,7 +140,7 @@ describe('FileAccessTracker', () => {
 
   describe('checkFileModification', () => {
     it('should return not modified for freshly read file', async () => {
-      await tracker.recordFileRead(testFile, 'session-1');
+      await tracker.recordFileRead(testFile, SessionId('session-1'));
       const result = await tracker.checkFileModification(testFile);
       expect(result.modified).toBe(false);
     });

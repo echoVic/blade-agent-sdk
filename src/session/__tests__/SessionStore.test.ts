@@ -6,6 +6,7 @@ import { PersistentStore } from '../../context/storage/PersistentStore.js';
 import { JsonlSessionStore } from '../SessionStore.js';
 import type { ContentPart } from '../../services/ChatServiceInterface.js';
 import { assertDefined } from '../../__tests__/helpers/assertDefined.js';
+import { SessionId } from '../../types/branded.js';
 
 function createWorkspaceRoot(): string {
   return mkdtempSync(join(tmpdir(), 'session-store-test-'));
@@ -17,7 +18,7 @@ describe('JsonlSessionStore', () => {
     const persistentStore = new PersistentStore(workspaceRoot);
     const sessionStore = new JsonlSessionStore(workspaceRoot);
 
-    const sessionId = 'session-1';
+    const sessionId = SessionId('session-1');
     const userMessageId = await persistentStore.saveMessage(sessionId, 'user', 'hello');
     const toolCallId = await persistentStore.saveToolUse(
       sessionId,
@@ -76,7 +77,7 @@ describe('JsonlSessionStore', () => {
     const persistentStore = new PersistentStore(workspaceRoot);
     const sessionStore = new JsonlSessionStore(workspaceRoot);
 
-    const sessionId = 'session-2';
+    const sessionId = SessionId('session-2');
     const userMessageId = await persistentStore.saveMessage(sessionId, 'user', 'hello');
     const assistantMessageId = await persistentStore.saveMessage(
       sessionId,
@@ -105,16 +106,16 @@ describe('JsonlSessionStore', () => {
     const persistentStore = new PersistentStore(workspaceRoot);
     const sessionStore = new JsonlSessionStore(workspaceRoot);
 
-    await persistentStore.saveMessage('session-a', 'user', 'alpha');
+    await persistentStore.saveMessage(SessionId('session-a'), 'user', 'alpha');
     await persistentStore.saveCompaction(
-      'session-a',
+      SessionId('session-a'),
       'Searchable summary',
       { trigger: 'auto', preTokens: 10 },
     );
-    await persistentStore.saveMessage('session-b', 'user', 'beta');
+    await persistentStore.saveMessage(SessionId('session-b'), 'user', 'beta');
 
     const sessionIds = await sessionStore.listSessions();
-    const summary = await sessionStore.getSessionSummary('session-a');
+    const summary = await sessionStore.getSessionSummary(SessionId('session-a'));
 
     expect(sessionIds).toEqual(['session-a', 'session-b']);
     expect(summary).not.toBeNull();
@@ -128,7 +129,7 @@ describe('JsonlSessionStore', () => {
     const persistentStore = new PersistentStore(workspaceRoot);
     const sessionStore = new JsonlSessionStore(workspaceRoot);
 
-    const sessionId = 'session-multimodal';
+    const sessionId = SessionId('session-multimodal');
     const content: ContentPart[] = [
       { type: 'text', text: 'describe this image' },
       { type: 'image_url', image_url: { url: 'data:image/png;base64,abc' } },

@@ -12,6 +12,7 @@ import {
   ToolErrorType,
 } from '../../tools/types/index.js';
 import type { BladeConfig, PermissionMode } from '../../types/common.js';
+import type { SessionId } from '../../types/branded.js';
 import type { IBackgroundAgentManager } from '../types.js';
 import { repairToolCallParams } from './repairToolCallParams.js';
 import {
@@ -77,7 +78,7 @@ export type ToolExecutionUpdate =
     };
 
 export interface ToolExecutionContext {
-  sessionId: string;
+  sessionId: SessionId;
   userId: string;
   contextSnapshot?: ContextSnapshot;
   skillActivationPaths?: string[];

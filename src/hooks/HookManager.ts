@@ -6,6 +6,7 @@
 
 import { nanoid } from 'nanoid';
 import type { ToolResult } from '../tools/types/ToolResult.js';
+import { SessionId, type ToolUseId } from '../types/branded.js';
 import type { JsonObject } from '../types/common.js';
 import { HookEvent, PermissionMode } from '../types/constants.js';
 import { DEFAULT_HOOK_CONFIG, mergeHookConfig, parseEnvConfig } from './HookConfig.js';
@@ -167,7 +168,7 @@ export class HookManager {
           void this.executeConfigChangeHooks(
             { changed_keys: changedKeys, source: 'file' },
             '',
-            '',
+            SessionId(''),
             PermissionMode.DEFAULT,
           ).catch(() => {});
         }
@@ -182,11 +183,11 @@ export class HookManager {
    */
   async executePreToolHooks(
     toolName: string,
-    toolUseId: string,
+    toolUseId: ToolUseId,
     toolInput: JsonObject,
     context: {
       projectDir: string;
-      sessionId: string;
+      sessionId: SessionId;
       permissionMode: PermissionMode;
       abortSignal?: AbortSignal;
     }
@@ -279,12 +280,12 @@ export class HookManager {
    */
   async executePostToolHooks(
     toolName: string,
-    toolUseId: string,
+    toolUseId: ToolUseId,
     toolInput: JsonObject,
     toolResponse: ToolResult,
     context: {
       projectDir: string;
-      sessionId: string;
+      sessionId: SessionId;
       permissionMode: PermissionMode;
       abortSignal?: AbortSignal;
     }
@@ -365,7 +366,7 @@ export class HookManager {
    */
   async executeStopHooks(context: {
     projectDir: string;
-    sessionId: string;
+    sessionId: SessionId;
     permissionMode: PermissionMode;
     reason?: string;
     abortSignal?: AbortSignal;
@@ -424,7 +425,7 @@ export class HookManager {
     agentType: string,
     context: {
       projectDir: string;
-      sessionId: string;
+      sessionId: SessionId;
       permissionMode: PermissionMode;
       taskDescription?: string;
       parentAgentId?: string;
@@ -486,7 +487,7 @@ export class HookManager {
     agentType: string,
     context: {
       projectDir: string;
-      sessionId: string;
+      sessionId: SessionId;
       permissionMode: PermissionMode;
       taskDescription?: string;
       success: boolean;
@@ -553,7 +554,7 @@ export class HookManager {
     taskId: string,
     context: {
       projectDir: string;
-      sessionId: string;
+      sessionId: SessionId;
       permissionMode: PermissionMode;
       taskDescription: string;
       resultSummary?: string;
@@ -613,11 +614,11 @@ export class HookManager {
    */
   async executePermissionRequestHooks(
     toolName: string,
-    toolUseId: string,
+    toolUseId: ToolUseId,
     toolInput: JsonObject,
     context: {
       projectDir: string;
-      sessionId: string;
+      sessionId: SessionId;
       permissionMode: PermissionMode;
       abortSignal?: AbortSignal;
     }
@@ -679,7 +680,7 @@ export class HookManager {
     userPrompt: string,
     context: {
       projectDir: string;
-      sessionId: string;
+      sessionId: SessionId;
       permissionMode: PermissionMode;
       hasImages: boolean;
       imageCount: number;
@@ -740,7 +741,7 @@ export class HookManager {
    */
   async executeSessionStartHooks(context: {
     projectDir: string;
-    sessionId: string;
+    sessionId: SessionId;
     permissionMode: PermissionMode;
     isResume: boolean;
     resumeSessionId?: string;
@@ -801,7 +802,7 @@ export class HookManager {
     reason: SessionEndInput['reason'],
     context: {
       projectDir: string;
-      sessionId: string;
+      sessionId: SessionId;
       permissionMode: PermissionMode;
       abortSignal?: AbortSignal;
     }
@@ -854,12 +855,12 @@ export class HookManager {
    */
   async executePostToolUseFailureHooks(
     toolName: string,
-    toolUseId: string,
+    toolUseId: ToolUseId,
     toolInput: JsonObject,
     error: string,
     context: {
       projectDir: string;
-      sessionId: string;
+      sessionId: SessionId;
       permissionMode: PermissionMode;
       errorType?: string;
       isInterrupt: boolean;
@@ -931,7 +932,7 @@ export class HookManager {
     message: string,
     context: {
       projectDir: string;
-      sessionId: string;
+      sessionId: SessionId;
       permissionMode: PermissionMode;
       title?: string;
       abortSignal?: AbortSignal;
@@ -994,7 +995,7 @@ export class HookManager {
     trigger: 'manual' | 'auto',
     context: {
       projectDir: string;
-      sessionId: string;
+      sessionId: SessionId;
       permissionMode: PermissionMode;
       messagesBefore: number;
       tokensBefore: number;
@@ -1056,7 +1057,7 @@ export class HookManager {
   async executeStopFailureHooks(
     params: { reason: string; error?: string; tool_name?: string },
     projectDir: string,
-    sessionId: string,
+    sessionId: SessionId,
     permissionMode: PermissionMode,
     signal?: AbortSignal
   ): Promise<StopFailureHookResult> {
@@ -1112,7 +1113,7 @@ export class HookManager {
   async executePreCompactHooks(
     params: { trigger: 'manual' | 'auto'; messages_before: number; tokens_before: number },
     projectDir: string,
-    sessionId: string,
+    sessionId: SessionId,
     permissionMode: PermissionMode,
     signal?: AbortSignal
   ): Promise<PreCompactHookResult> {
@@ -1175,7 +1176,7 @@ export class HookManager {
       summary?: string;
     },
     projectDir: string,
-    sessionId: string,
+    sessionId: SessionId,
     permissionMode: PermissionMode,
     signal?: AbortSignal
   ): Promise<PostCompactHookResult> {
@@ -1233,7 +1234,7 @@ export class HookManager {
   async executeElicitationHooks(
     params: { server_name: string; resource_uri?: string; message?: string },
     projectDir: string,
-    sessionId: string,
+    sessionId: SessionId,
     permissionMode: PermissionMode,
     signal?: AbortSignal
   ): Promise<ElicitationHookResult> {
@@ -1289,7 +1290,7 @@ export class HookManager {
   async executeElicitationResultHooks(
     params: { server_name: string; response?: string; was_cancelled: boolean },
     projectDir: string,
-    sessionId: string,
+    sessionId: SessionId,
     permissionMode: PermissionMode,
     signal?: AbortSignal
   ): Promise<ElicitationResultHookResult> {
@@ -1345,7 +1346,7 @@ export class HookManager {
   async executeConfigChangeHooks(
     params: { changed_keys: string[]; source: 'file' | 'command' | 'environment' },
     projectDir: string,
-    sessionId: string,
+    sessionId: SessionId,
     permissionMode: PermissionMode,
     signal?: AbortSignal
   ): Promise<ConfigChangeHookResult> {
@@ -1400,7 +1401,7 @@ export class HookManager {
   async executeCwdChangedHooks(
     params: { old_cwd: string; new_cwd: string },
     projectDir: string,
-    sessionId: string,
+    sessionId: SessionId,
     permissionMode: PermissionMode,
     signal?: AbortSignal
   ): Promise<CwdChangedHookResult> {
@@ -1455,7 +1456,7 @@ export class HookManager {
   async executeFileChangedHooks(
     params: { file_path: string; change_type: 'created' | 'modified' | 'deleted' },
     projectDir: string,
-    sessionId: string,
+    sessionId: SessionId,
     permissionMode: PermissionMode,
     signal?: AbortSignal
   ): Promise<FileChangedHookResult> {
@@ -1512,7 +1513,7 @@ export class HookManager {
   async executeInstructionsLoadedHooks(
     params: { source: string; instructions_length: number },
     projectDir: string,
-    sessionId: string,
+    sessionId: SessionId,
     permissionMode: PermissionMode,
     signal?: AbortSignal
   ): Promise<InstructionsLoadedHookResult> {

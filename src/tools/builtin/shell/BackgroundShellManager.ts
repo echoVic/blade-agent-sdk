@@ -1,11 +1,12 @@
 import { type ChildProcess, spawn } from 'child_process';
 import { randomUUID } from 'crypto';
+import type { SessionId } from '../../../types/branded.js';
 
 type BackgroundShellStatus = 'running' | 'exited' | 'killed' | 'error';
 
 interface StartOptions {
   command: string;
-  sessionId: string;
+  sessionId: SessionId;
   cwd: string;
   env?: Record<string, string | undefined>;
 }
@@ -13,7 +14,7 @@ interface StartOptions {
 interface BackgroundShellProcess {
   id: string;
   command: string;
-  sessionId: string;
+  sessionId: SessionId;
   cwd?: string;
   env?: Record<string, string | undefined>;
   process?: ChildProcess;

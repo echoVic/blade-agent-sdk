@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { MemoryStore } from '../MemoryStore.js';
+import { SessionId } from '../../../types/branded.js';
 import type { ContextData, ContextMessage, ToolCall, WorkspaceContext } from '../../types.js';
 import { assertDefined } from '../../../__tests__/helpers/assertDefined.js';
 
@@ -16,7 +17,7 @@ function createContextData(overrides?: Partial<ContextData>): ContextData {
         version: '1.0.0',
       },
       session: {
-        sessionId: 'test-session',
+        sessionId: SessionId('test-session'),
         preferences: {},
         configuration: {},
         startTime: Date.now(),

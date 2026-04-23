@@ -1,8 +1,9 @@
 import { nanoid } from 'nanoid';
 import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
-import { JsonlSessionStore } from '../../session/SessionStore.js';
 import type { ContentPart } from '../../services/ChatServiceInterface.js';
+import { JsonlSessionStore } from '../../session/SessionStore.js';
+import { MessageId, SessionId } from '../../types/branded.js';
 import type { JsonObject, JsonValue, MessageRole } from '../../types/common.js';
 import type {
   ContextData,
@@ -73,7 +74,7 @@ export class PersistentStore {
 
   private createEvent<T extends SessionEvent['type']>(
     type: T,
-    sessionId: string,
+    sessionId: SessionId,
     data: Extract<SessionEvent, { type: T }>['data']
   ): SessionEvent {
     return {
@@ -89,7 +90,7 @@ export class PersistentStore {
   }
 
   private async ensureSessionCreated(
-    sessionId: string,
+    sessionId: SessionId,
     subagentInfo?: { parentSessionId: string; subagentType: string; isSidechain: boolean }
   ): Promise<void> {
     const filePath = getSessionFilePathFromStorageRoot(this.storageRoot, sessionId);
@@ -144,7 +145,7 @@ export class PersistentStore {
   }
 
   async createSession(
-    sessionId: string,
+    sessionId: SessionId,
     subagentInfo?: {
       parentSessionId: string;
       subagentType: string;
@@ -158,7 +159,7 @@ export class PersistentStore {
    * 保存消息到 JSONL 文件（追加模式）
    */
   async saveMessage(
-    sessionId: string,
+    sessionId: SessionId,
     messageRole: MessageRole,
     content: string | ContentPart[],
     parentUuid: string | null = null,
@@ -178,7 +179,7 @@ export class PersistentStore {
       const store = new JSONLStore(filePath);
       await this.ensureSessionCreated(sessionId, subagentInfo);
       const now = new Date().toISOString();
-      const messageId = nanoid();
+      const messageId = MessageId(nanoid());
       const messageInfo: MessageInfo = {
         messageId,
         role: messageRole,
@@ -202,7 +203,7 @@ export class PersistentStore {
    * 保存工具调用到 JSONL 文件
    */
   async saveToolUse(
-    sessionId: string,
+    sessionId: SessionId,
     toolName: string,
     toolInput: JsonValue,
     parentUuid: string | null = null,
@@ -217,7 +218,7 @@ export class PersistentStore {
       const store = new JSONLStore(filePath);
       await this.ensureSessionCreated(sessionId, subagentInfo);
       const now = new Date().toISOString();
-      const messageId = parentUuid ?? nanoid();
+      const messageId = parentUuid ? MessageId(parentUuid) : MessageId(nanoid());
       const entries: SessionEvent[] = [];
       if (!parentUuid) {
         const messageInfo: MessageInfo = {
@@ -282,7 +283,7 @@ export class PersistentStore {
    * 保存工具结果到 JSONL 文件
    */
   async saveToolResult(
-    sessionId: string,
+    sessionId: SessionId,
     toolId: string,
     toolName: string,
     toolOutput: JsonValue,
@@ -305,7 +306,7 @@ export class PersistentStore {
       const store = new JSONLStore(filePath);
       await this.ensureSessionCreated(sessionId, subagentInfo);
       const now = new Date().toISOString();
-      const messageId = parentUuid ?? nanoid();
+      const messageId = parentUuid ? MessageId(parentUuid) : MessageId(nanoid());
       const entries: SessionEvent[] = [];
       if (!parentUuid) {
         const messageInfo: MessageInfo = {
@@ -365,7 +366,7 @@ export class PersistentStore {
    * @returns 总结消息的 UUID
    */
   async saveCompaction(
-    sessionId: string,
+    sessionId: SessionId,
     summary: string,
     metadata: {
       trigger: 'auto' | 'manual';
@@ -380,7 +381,7 @@ export class PersistentStore {
       const store = new JSONLStore(filePath);
       await this.ensureSessionCreated(sessionId);
       const now = new Date().toISOString();
-      const messageId = nanoid();
+      const messageId = MessageId(nanoid());
       const messageInfo: MessageInfo = {
         messageId,
         role: 'system',
@@ -411,7 +412,7 @@ export class PersistentStore {
    * 保存完整上下文数据（向后兼容方法）
    * 将 ContextData 转为 JSONL 格式保存
    */
-  async saveContext(sessionId: string, contextData: ContextData): Promise<void> {
+  async saveContext(sessionId: SessionId, contextData: ContextData): Promise<void> {
     try {
       await this.createSession(sessionId);
       const { conversation } = contextData.layers;
@@ -424,26 +425,9 @@ export class PersistentStore {
   }
 
   /**
-   * 保存会话上下文（向后兼容方法 - 已废弃）
-   */
-  async saveSession(sessionId: string, sessionContext: SessionContext): Promise<void> {
-    console.warn('[PersistentStore] saveSession 方法已废弃，请使用 saveMessage');
-  }
-
-  /**
-   * 保存对话上下文（向后兼容方法 - 已废弃）
-   */
-  async saveConversation(
-    sessionId: string,
-    conversation: ConversationContext
-  ): Promise<void> {
-    console.warn('[PersistentStore] saveConversation 方法已废弃，请使用 saveMessage');
-  }
-
-  /**
    * 加载会话上下文（从 JSONL 重建）
    */
-  async loadSession(sessionId: string): Promise<SessionContext | null> {
+  async loadSession(sessionId: SessionId): Promise<SessionContext | null> {
     const state = await this.getSessionStore().loadState(sessionId);
     if (!state) {
       return null;
@@ -461,7 +445,7 @@ export class PersistentStore {
   /**
    * 加载对话上下文（从 JSONL 重建）
    */
-  async loadConversation(sessionId: string): Promise<ConversationContext | null> {
+  async loadConversation(sessionId: SessionId): Promise<ConversationContext | null> {
     const state = await this.getSessionStore().loadState(sessionId);
     if (!state) {
       return null;
@@ -492,8 +476,8 @@ export class PersistentStore {
   /**
    * 获取会话摘要信息
    */
-  async getSessionSummary(sessionId: string): Promise<{
-    sessionId: string;
+  async getSessionSummary(sessionId: SessionId): Promise<{
+    sessionId: SessionId;
     lastActivity: number;
     messageCount: number;
     topics: string[];
@@ -514,7 +498,7 @@ export class PersistentStore {
   /**
    * 删除会话数据
    */
-  async deleteSession(sessionId: string): Promise<void> {
+  async deleteSession(sessionId: SessionId): Promise<void> {
     try {
       const filePath = getSessionFilePathFromStorageRoot(this.storageRoot, sessionId);
       const store = new JSONLStore(filePath);
@@ -536,7 +520,7 @@ export class PersistentStore {
 
       // 获取所有会话的摘要信息并按时间排序
       const sessionSummaries = await Promise.all(
-        sessions.map((sessionId) => this.getSessionSummary(sessionId))
+        sessions.map((sessionId) => this.getSessionSummary(SessionId(sessionId)))
       );
 
       const validSummaries = sessionSummaries
@@ -571,7 +555,7 @@ export class PersistentStore {
       let totalSize = 0;
 
       for (const sessionId of sessions) {
-        const filePath = getSessionFilePathFromStorageRoot(this.storageRoot, sessionId);
+        const filePath = getSessionFilePathFromStorageRoot(this.storageRoot, SessionId(sessionId));
         const store = new JSONLStore(filePath);
         const stats = await store.getStats();
         totalSize += stats.size;
@@ -631,8 +615,8 @@ export class PersistentStore {
   }
 
   private buildPartEntries(
-    sessionId: string,
-    messageId: string,
+    sessionId: SessionId,
+    messageId: MessageId,
     content: string | ContentPart[],
     createdAt: string,
   ): SessionEvent[] {
@@ -689,7 +673,7 @@ export class NoopPersistentStore {
   }
 
   async createSession(
-    _sessionId: string,
+    _sessionId: SessionId,
     _subagentInfo?: {
       parentSessionId: string;
       subagentType: string;
@@ -700,7 +684,7 @@ export class NoopPersistentStore {
   }
 
   async saveMessage(
-    _sessionId: string,
+    _sessionId: SessionId,
     _messageRole: MessageRole,
     _content: string | ContentPart[],
     _parentUuid: string | null = null,
@@ -719,7 +703,7 @@ export class NoopPersistentStore {
   }
 
   async saveToolUse(
-    _sessionId: string,
+    _sessionId: SessionId,
     _toolName: string,
     _toolInput: JsonValue,
     _parentUuid: string | null = null,
@@ -733,7 +717,7 @@ export class NoopPersistentStore {
   }
 
   async saveToolResult(
-    _sessionId: string,
+    _sessionId: SessionId,
     toolId: string,
     _toolName: string,
     _toolOutput: JsonValue,
@@ -755,7 +739,7 @@ export class NoopPersistentStore {
   }
 
   async saveCompaction(
-    _sessionId: string,
+    _sessionId: SessionId,
     _summary: string,
     _metadata: {
       trigger: 'auto' | 'manual';
@@ -768,26 +752,26 @@ export class NoopPersistentStore {
     return nanoid();
   }
 
-  async saveContext(_sessionId: string, _contextData: ContextData): Promise<void> {
+  async saveContext(_sessionId: SessionId, _contextData: ContextData): Promise<void> {
     return Promise.resolve();
   }
 
-  async saveSession(_sessionId: string, _sessionContext: SessionContext): Promise<void> {
+  async saveSession(_sessionId: SessionId, _sessionContext: SessionContext): Promise<void> {
     return Promise.resolve();
   }
 
   async saveConversation(
-    _sessionId: string,
+    _sessionId: SessionId,
     _conversation: ConversationContext,
   ): Promise<void> {
     return Promise.resolve();
   }
 
-  async loadSession(_sessionId: string): Promise<SessionContext | null> {
+  async loadSession(_sessionId: SessionId): Promise<SessionContext | null> {
     return null;
   }
 
-  async loadConversation(_sessionId: string): Promise<ConversationContext | null> {
+  async loadConversation(_sessionId: SessionId): Promise<ConversationContext | null> {
     return null;
   }
 
@@ -795,8 +779,8 @@ export class NoopPersistentStore {
     return [];
   }
 
-  async getSessionSummary(_sessionId: string): Promise<{
-    sessionId: string;
+  async getSessionSummary(_sessionId: SessionId): Promise<{
+    sessionId: SessionId;
     lastActivity: number;
     messageCount: number;
     topics: string[];
@@ -804,7 +788,7 @@ export class NoopPersistentStore {
     return null;
   }
 
-  async deleteSession(_sessionId: string): Promise<void> {
+  async deleteSession(_sessionId: SessionId): Promise<void> {
     return Promise.resolve();
   }
 

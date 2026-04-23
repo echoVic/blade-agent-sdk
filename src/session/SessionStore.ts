@@ -8,6 +8,7 @@ import type { PartInfo, SessionEvent, SessionInfo } from '../context/types.js';
 import type { ContentPart, Message, ToolCall } from '../services/ChatServiceInterface.js';
 import { cloneJsonValue, cloneMessage } from '../services/messageUtils.js';
 import type { JsonValue, MessageRole } from '../types/common.js';
+import { MessageId, type SessionId } from '../types/branded.js';
 
 interface SessionTimelineEntry {
   id: string;
@@ -28,7 +29,7 @@ interface SessionToolCallState {
 }
 
 interface SessionSubagentRef {
-  messageId: string;
+  messageId: MessageId;
   childSessionId: string;
   agentType: string;
   status: 'running' | 'completed' | 'failed' | 'cancelled';
@@ -38,7 +39,7 @@ interface SessionSubagentRef {
 }
 
 export interface SessionSummary {
-  sessionId: string;
+  sessionId: SessionId;
   lastActivity: number;
   messageCount: number;
   topics: string[];
@@ -46,7 +47,7 @@ export interface SessionSummary {
 }
 
 export interface SessionSnapshot {
-  sessionId: string;
+  sessionId: SessionId;
   messages: Message[];
   messageIds: string[];
   lastActivity: number;
@@ -63,27 +64,27 @@ export interface SessionState extends SessionSnapshot {
 }
 
 export interface SessionStore {
-  loadState(sessionId: string): Promise<SessionState | null>;
-  loadMessages(sessionId: string): Promise<Message[]>;
+  loadState(sessionId: SessionId): Promise<SessionState | null>;
+  loadMessages(sessionId: SessionId): Promise<Message[]>;
   forkState(
-    sessionId: string,
+    sessionId: SessionId,
     options?: { messageId?: string },
   ): Promise<SessionSnapshot | null>;
   listSessions(): Promise<string[]>;
-  getSessionSummary(sessionId: string): Promise<SessionSummary | null>;
+  getSessionSummary(sessionId: SessionId): Promise<SessionSummary | null>;
 }
 
 export class NoopSessionStore implements SessionStore {
-  async loadState(_sessionId: string): Promise<SessionState | null> {
+  async loadState(_sessionId: SessionId): Promise<SessionState | null> {
     return null;
   }
 
-  async loadMessages(_sessionId: string): Promise<Message[]> {
+  async loadMessages(_sessionId: SessionId): Promise<Message[]> {
     return [];
   }
 
   async forkState(
-    _sessionId: string,
+    _sessionId: SessionId,
     _options?: { messageId?: string },
   ): Promise<SessionSnapshot | null> {
     return null;
@@ -93,7 +94,7 @@ export class NoopSessionStore implements SessionStore {
     return [];
   }
 
-  async getSessionSummary(_sessionId: string): Promise<SessionSummary | null> {
+  async getSessionSummary(_sessionId: SessionId): Promise<SessionSummary | null> {
     return null;
   }
 }
@@ -134,7 +135,7 @@ function toMessageContent(parts: ContentPart[]): Message['content'] {
  */
 function upsertContentPart(
   contentParts: Map<string, Array<{ partId: string; content: ContentPart }>>,
-  messageId: string,
+  messageId: MessageId,
   partId: string,
   content: ContentPart,
 ): ContentPart[] {
@@ -205,7 +206,7 @@ export class JsonlSessionStore implements SessionStore {
     this.storageRoot = normalizeSessionStorageRoot(storageRoot);
   }
 
-  async loadState(sessionId: string): Promise<SessionState | null> {
+  async loadState(sessionId: SessionId): Promise<SessionState | null> {
     const entries = await this.readEntries(sessionId);
     if (entries.length === 0) {
       return null;
@@ -223,7 +224,7 @@ export class JsonlSessionStore implements SessionStore {
     let summary: string | undefined;
 
     const ensureMessageRecord = (
-      messageId: string,
+      messageId: MessageId,
       role: MessageRole,
       timestamp: string,
       parentMessageId?: string,
@@ -354,13 +355,13 @@ export class JsonlSessionStore implements SessionStore {
     };
   }
 
-  async loadMessages(sessionId: string): Promise<Message[]> {
+  async loadMessages(sessionId: SessionId): Promise<Message[]> {
     const state = await this.loadState(sessionId);
     return state?.messages ?? [];
   }
 
   async forkState(
-    sessionId: string,
+    sessionId: SessionId,
     options?: { messageId?: string },
   ): Promise<SessionSnapshot | null> {
     const state = await this.loadState(sessionId);
@@ -409,7 +410,7 @@ export class JsonlSessionStore implements SessionStore {
     }
   }
 
-  async getSessionSummary(sessionId: string): Promise<SessionSummary | null> {
+  async getSessionSummary(sessionId: SessionId): Promise<SessionSummary | null> {
     const state = await this.loadState(sessionId);
     if (!state) {
       return null;
@@ -426,7 +427,7 @@ export class JsonlSessionStore implements SessionStore {
     };
   }
 
-  private async readEntries(sessionId: string): Promise<SessionEvent[]> {
+  private async readEntries(sessionId: SessionId): Promise<SessionEvent[]> {
     const filePath = getSessionFilePathFromStorageRoot(this.storageRoot, sessionId);
     const store = new JSONLStore(filePath);
     return store.readAll();
@@ -457,7 +458,7 @@ export class JsonlSessionStore implements SessionStore {
         const providerOptions = isRecord(payload.providerOptions)
           ? payload.providerOptions as Extract<ContentPart, { type: 'text' }>['providerOptions']
           : undefined;
-        const nextParts = upsertContentPart(contentParts, record.id, part.partId, {
+        const nextParts = upsertContentPart(contentParts, MessageId(record.id), part.partId, {
           type: 'text',
           text: typeof payload.text === 'string' ? payload.text : '',
           ...(providerOptions ? { providerOptions } : {}),
@@ -474,7 +475,7 @@ export class JsonlSessionStore implements SessionStore {
           : typeof payload.url === 'string'
             ? payload.url
             : '';
-        const nextParts = upsertContentPart(contentParts, record.id, part.partId, {
+        const nextParts = upsertContentPart(contentParts, MessageId(record.id), part.partId, {
           type: 'image_url',
           image_url: {
             url,
@@ -569,7 +570,7 @@ export class JsonlSessionStore implements SessionStore {
           (status === 'running' || status === 'completed' || status === 'failed' || status === 'cancelled')
         ) {
           subagentRefs.push({
-            messageId: record.id,
+            messageId: MessageId(record.id),
             childSessionId,
             agentType,
             status,

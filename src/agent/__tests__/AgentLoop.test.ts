@@ -2,6 +2,7 @@ import { describe, expect, it, vi, type Mock } from 'vitest';
 import type { Message } from '../../services/ChatServiceInterface.js';
 import { CannotRetryError } from '../../services/RetryPolicy.js';
 import type { ToolResult } from '../../tools/types/index.js';
+import { SessionId } from '../../types/branded.js';
 import type { AgentEvent } from '../AgentEvent.js';
 import type { AgentLoopConfig } from '../AgentLoop.js';
 import { agentLoop } from '../AgentLoop.js';
@@ -116,7 +117,7 @@ function baseConfig(overrides: BaseConfigOverrides = {}): AgentLoopConfig {
     maxContextTokens: 128000,
     permissionMode: undefined,
     executionContext: {
-      sessionId: 'test-session',
+      sessionId: SessionId('test-session'),
       userId: 'test-user',
     },
   };

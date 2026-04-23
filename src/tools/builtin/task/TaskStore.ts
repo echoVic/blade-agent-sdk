@@ -9,6 +9,7 @@ import { nanoid } from 'nanoid';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import * as path from 'node:path';
 
+import type { SessionId } from '../../../types/branded.js';
 import type { JsonObject } from '../../../types/common.js';
 
 export type TaskStatus = 'pending' | 'in_progress' | 'completed' | 'deleted';
@@ -55,7 +56,7 @@ export class TaskStore {
   private readonly persistPath: string | undefined;
 
   private constructor(
-    private readonly sessionId: string,
+    private readonly sessionId: SessionId,
     configDir?: string,
   ) {
     this.persistPath = configDir
@@ -63,7 +64,7 @@ export class TaskStore {
       : undefined;
   }
 
-  static getInstance(sessionId: string, configDir?: string): TaskStore {
+  static getInstance(sessionId: SessionId, configDir?: string): TaskStore {
     const key = configDir ? `${sessionId}::${configDir}` : sessionId;
     let store = instances.get(key);
     if (!store) {
@@ -74,7 +75,7 @@ export class TaskStore {
   }
 
   /** Remove a session's store from the cache (call on session end). */
-  static clear(sessionId: string, configDir?: string): void {
+  static clear(sessionId: SessionId, configDir?: string): void {
     const key = configDir ? `${sessionId}::${configDir}` : sessionId;
     instances.delete(key);
   }

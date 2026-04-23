@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { ContextCompressor } from '../ContextCompressor.js';
+import { SessionId } from '../../../types/branded.js';
 import type { ContextData, ContextMessage, ToolCall } from '../../types.js';
 
 // ===== Helpers =====
@@ -33,7 +34,7 @@ function makeContextData(
     layers: {
       system: { role: 'assistant', capabilities: [], tools: [], version: '1.0' },
       session: {
-        sessionId: 'test', preferences: {}, configuration: {}, startTime: Date.now(),
+        sessionId: SessionId('test'), preferences: {}, configuration: {}, startTime: Date.now(),
       },
       conversation: {
         messages,

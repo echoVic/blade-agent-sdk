@@ -14,13 +14,14 @@ import { join } from 'node:path';
 import { type InternalLogger, LogCategory, NOOP_LOGGER } from '../../logging/Logger.js';
 import type { ContextSnapshot } from '../../runtime/index.js';
 import type { Message } from '../../services/ChatServiceInterface.js';
+import { AgentId, SessionId } from '../../types/branded.js';
 import type { BladeConfig, PermissionMode } from '../../types/common.js';
 import { Agent } from '../Agent.js';
-import type { SubagentRegistry } from './SubagentRegistry.js';
 import {
   type AgentSession,
   AgentSessionStore,
 } from './AgentSessionStore.js';
+import type { SubagentRegistry } from './SubagentRegistry.js';
 import type { SubagentConfig, SubagentResult } from './types.js';
 
 /**
@@ -72,7 +73,7 @@ export interface StartBackgroundAgentOptions {
   permissionMode?: PermissionMode;
 
   /** 已有的 agent ID（用于 resume） */
-  agentId?: string;
+  agentId?: AgentId;
 
   /** 恢复时的初始消息（用于 resume） */
   existingMessages?: Message[];
@@ -88,7 +89,7 @@ export class BackgroundAgentManager {
   private logger: InternalLogger = NOOP_LOGGER.child(LogCategory.AGENT);
 
   // 运行中的 agent
-  private runningAgents = new Map<string, BackgroundAgentRuntime>();
+  private runningAgents = new Map<AgentId, BackgroundAgentRuntime>();
 
   // 会话存储（支持注入，不再硬依赖全局 singleton）
   private sessionStore: AgentSessionStore;
@@ -162,7 +163,7 @@ export class BackgroundAgentManager {
     } = options;
 
     // 生成或使用已有的 agent ID
-    const id = agentId || nanoid();
+    const id = agentId || AgentId(nanoid());
 
     // 创建输出文件路径
     const outputFile = join(tmpdir(), `blade-agent-${id}.output`);
@@ -235,7 +236,7 @@ export class BackgroundAgentManager {
    * 执行 Agent（内部方法）
    */
   private async executeAgent(
-    agentId: string,
+    agentId: AgentId,
     config: SubagentConfig,
     bladeConfig: BladeConfig,
     subagentRegistry: SubagentRegistry | undefined,
@@ -271,7 +272,7 @@ export class BackgroundAgentManager {
       const context = {
         messages: existingMessages || [],
         userId: 'subagent',
-        sessionId: agentId,
+        sessionId: SessionId(agentId),
         snapshot,
         permissionMode,
         subagentInfo: {
@@ -400,14 +401,14 @@ export class BackgroundAgentManager {
   /**
    * 获取 Agent 状态
    */
-  getAgent(agentId: string): AgentSession | undefined {
+  getAgent(agentId: AgentId): AgentSession | undefined {
     return this.sessionStore.loadSession(agentId);
   }
 
   /**
    * 检查 Agent 是否正在运行
    */
-  isRunning(agentId: string): boolean {
+  isRunning(agentId: AgentId): boolean {
     return this.runningAgents.has(agentId);
   }
 
@@ -418,7 +419,7 @@ export class BackgroundAgentManager {
    * @returns Agent 会话，如果超时返回 undefined
    */
   async waitForCompletion(
-    agentId: string,
+    agentId: AgentId,
     timeout: number = 30000
   ): Promise<AgentSession | undefined> {
     const runtime = this.runningAgents.get(agentId);
@@ -458,7 +459,7 @@ export class BackgroundAgentManager {
    * @returns 新的 agent ID（如果创建了新 agent）或原 ID（如果继续执行）
    */
   resumeAgent(
-    agentId: string,
+    agentId: AgentId,
     newPrompt: string,
     config: SubagentConfig,
     bladeConfig: BladeConfig,
@@ -495,7 +496,7 @@ export class BackgroundAgentManager {
   /**
    * 取消/终止 Agent
    */
-  killAgent(agentId: string): boolean {
+  killAgent(agentId: AgentId): boolean {
     const runtime = this.runningAgents.get(agentId);
 
     if (!runtime) {
@@ -525,7 +526,7 @@ export class BackgroundAgentManager {
    * - killAgent: abort lifecycleController → 整个 agent 不可恢复
    * - cancelCurrentWork: 仅 abort workController → 可以通过 resumeAgent 继续
    */
-  cancelCurrentWork(agentId: string): boolean {
+  cancelCurrentWork(agentId: AgentId): boolean {
     const runtime = this.runningAgents.get(agentId);
     if (!runtime) return false;
 
@@ -544,7 +545,7 @@ export class BackgroundAgentManager {
    * 消息会在 agent 下一个 tool-round 边界被消费。
    * 如果 agent 不在运行中，返回 false。
    */
-  sendMessage(agentId: string, message: string): boolean {
+  sendMessage(agentId: AgentId, message: string): boolean {
     const runtime = this.runningAgents.get(agentId);
     if (!runtime) return false;
 
@@ -556,7 +557,7 @@ export class BackgroundAgentManager {
   /**
    * 获取并清空 agent 的待处理消息
    */
-  drainPendingMessages(agentId: string): string[] {
+  drainPendingMessages(agentId: AgentId): string[] {
     const runtime = this.runningAgents.get(agentId);
     if (!runtime || runtime.pendingMessages.length === 0) return [];
 

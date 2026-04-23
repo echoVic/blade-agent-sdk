@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { createContextSnapshot } from '../../../runtime/index.js';
+import { SessionId } from '../../../types/branded.js';
 
 const runAgenticLoop = vi.fn(async () => ({
   success: true,
@@ -25,7 +26,7 @@ const { SubagentExecutor } = await import('../SubagentExecutor.js');
 
 describe('SubagentExecutor', () => {
   it('should inherit the parent snapshot context when creating a subagent', async () => {
-    const snapshot = createContextSnapshot('parent-session', 'turn-1', {
+    const snapshot = createContextSnapshot(SessionId('parent-session'), 'turn-1', {
       capabilities: {
         filesystem: {
           roots: ['/parent-root'],

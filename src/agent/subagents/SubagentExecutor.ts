@@ -1,4 +1,5 @@
 import { nanoid } from 'nanoid';
+import { SessionId } from '../../types/branded.js';
 import type { BladeConfig } from '../../types/common.js';
 import { Agent } from '../Agent.js';
 import type { SubagentRegistry } from './SubagentRegistry.js';
@@ -64,7 +65,7 @@ export class SubagentExecutor {
         {
           messages: [],
           userId: 'subagent',
-          sessionId: agentId,
+          sessionId: SessionId(agentId),
           snapshot: context.snapshot,
           permissionMode: context.permissionMode,
           systemPrompt,

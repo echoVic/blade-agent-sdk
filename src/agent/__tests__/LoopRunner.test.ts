@@ -1,21 +1,22 @@
-import { describe, expect, it, vi, type Mock } from 'vitest';
-import { LoopRunner } from '../LoopRunner.js';
-import type { ModelManager } from '../ModelManager.js';
-import type { BladeConfig } from '../../types/common.js';
-import type { AgentOptions, ChatContext } from '../types.js';
+import { describe, expect, it, type Mock, vi } from 'vitest';
+import { z } from 'zod';
 import * as FileAnalyzerModule from '../../context/FileAnalyzer.js';
-import type { ExecutionPipeline } from '../../tools/execution/ExecutionPipeline.js';
 import { HookRuntime } from '../../hooks/HookRuntime.js';
-import { PermissionMode } from '../../types/common.js';
-import { HookEvent } from '../../types/constants.js';
 import type { RuntimePatch } from '../../runtime/RuntimePatch.js';
+import type { Message } from '../../services/ChatServiceInterface.js';
 import { ToolCatalog } from '../../tools/catalog/ToolCatalog.js';
 import { createTool } from '../../tools/core/createTool.js';
+import type { ExecutionPipeline } from '../../tools/execution/ExecutionPipeline.js';
 import { ToolRegistry } from '../../tools/registry/ToolRegistry.js';
 import { ToolKind } from '../../tools/types/ToolKind.js';
-import { z } from 'zod';
-import type { Message } from '../../services/ChatServiceInterface.js';
+import { SessionId } from '../../types/branded.js';
+import type { BladeConfig } from '../../types/common.js';
+import { PermissionMode } from '../../types/common.js';
+import { HookEvent } from '../../types/constants.js';
+import { LoopRunner } from '../LoopRunner.js';
+import type { ModelManager } from '../ModelManager.js';
 import { ConversationState } from '../state/ConversationState.js';
+import type { AgentOptions, ChatContext } from '../types.js';
 
 // ===== Mock Factories =====
 
@@ -91,7 +92,7 @@ function createContext(overrides: Partial<ChatContext> = {}): ChatContext {
   return {
     messages: [],
     userId: 'test-user',
-    sessionId: 'test-session',
+    sessionId: SessionId('test-session'),
     ...overrides,
   };
 }
@@ -127,7 +128,7 @@ describe('LoopRunner', () => {
       const pipeline = createMockPipeline();
       const runner = new LoopRunner(baseConfig, baseOptions, mm, pipeline);
 
-      const context = createContext({ sessionId: 'sess-1' });
+      const context = createContext({ sessionId: SessionId('sess-1') });
       await runner.runLoop('Test message', context);
 
       expect(mm._contextMgr.saveMessage).toHaveBeenCalled();
@@ -1214,7 +1215,7 @@ describe('LoopRunner', () => {
       } as unknown as ExecutionPipeline;
 
       const hookRuntime = new HookRuntime({
-        sessionId: 'test-session',
+        sessionId: SessionId('test-session'),
         permissionMode: PermissionMode.DEFAULT,
         resolveProjectDir: () => undefined,
         hookManager: {
@@ -1307,7 +1308,7 @@ describe('LoopRunner', () => {
       } as unknown as ExecutionPipeline;
 
       const hookRuntime = new HookRuntime({
-        sessionId: 'test-session',
+        sessionId: SessionId('test-session'),
         permissionMode: PermissionMode.DEFAULT,
         resolveProjectDir: () => undefined,
         hookManager: {
@@ -2066,7 +2067,7 @@ describe('LoopRunner', () => {
       } as unknown as ExecutionPipeline;
 
       const runner = new LoopRunner(baseConfig, baseOptions, mm, pipeline);
-      const result = await runner.runLoop('Hello', createContext({ sessionId: 'sess-1' }));
+      const result = await runner.runLoop('Hello', createContext({ sessionId: SessionId('sess-1') }));
 
       expect(result.success).toBe(true);
       expect(saveToolResult).toHaveBeenCalled();
@@ -2220,7 +2221,7 @@ describe('LoopRunner', () => {
       } as unknown as ExecutionPipeline;
 
       const runner = new LoopRunner(baseConfig, baseOptions, mm, pipeline);
-      const result = await runner.runLoop('Hello', createContext({ sessionId: 'sess-2' }));
+      const result = await runner.runLoop('Hello', createContext({ sessionId: SessionId('sess-2') }));
 
       expect(result.success).toBe(true);
       expect(observedPageIds).toEqual(['page-456']);

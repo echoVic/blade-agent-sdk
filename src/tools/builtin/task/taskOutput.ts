@@ -11,6 +11,7 @@ import type { BackgroundAgentManager } from '../../../agent/subagents/Background
 import { createTool } from '../../core/createTool.js';
 import type { ExecutionContext, ToolResult } from '../../types/index.js';
 import { ToolErrorType, ToolKind } from '../../types/index.js';
+import { AgentId } from '../../../types/branded.js';
 import { ToolSchemas } from '../../validation/zodSchemas.js';
 import { BackgroundShellManager } from '../shell/BackgroundShellManager.js';
 
@@ -84,8 +85,8 @@ export const taskOutputTool = createTool({
     if (shellManager.getProcess(task_id)) {
       return handleShellOutput(task_id, block, timeout);
     }
-    if (agentManager?.getAgent(task_id)) {
-      return handleAgentOutput(task_id, block, timeout, agentManager);
+    if (agentManager?.getAgent(AgentId(task_id))) {
+      return handleAgentOutput(AgentId(task_id), block, timeout, agentManager);
     }
 
     return {
@@ -189,7 +190,7 @@ async function handleShellOutput(
  * 处理后台 Agent 输出
  */
 async function handleAgentOutput(
-  taskId: string,
+  taskId: AgentId,
   block: boolean,
   timeout: number,
   manager: BackgroundAgentManager,

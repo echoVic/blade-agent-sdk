@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
 import { PersistentStore } from '../../context/storage/PersistentStore.js';
 import type { ContentPart } from '../../services/ChatServiceInterface.js';
+import { SessionId } from '../../types/branded.js';
 import { HookEvent } from '../../types/constants.js';
 
 const capturedContexts: unknown[] = [];
@@ -317,7 +318,7 @@ describe('Session runtime context', () => {
   it('should continue streaming after resumeSession restores an existing session', async () => {
     const storagePath = mkdtempSync(join(tmpdir(), 'session-context-resume-stream-'));
     const persistentStore = new PersistentStore(storagePath);
-    const sessionId = 'resumed-session';
+    const sessionId = SessionId('resumed-session');
 
     await persistentStore.createSession(sessionId);
 

@@ -3,6 +3,7 @@ import { access, mkdtemp, readFile, rm } from 'node:fs/promises';
 import { constants as fsConstants } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
+import { SessionId } from '../../../../types/branded.js';
 import { TodoManager } from '../TodoManager.js';
 
 const tempDirs: string[] = [];
@@ -28,7 +29,7 @@ async function pathExists(filePath: string): Promise<boolean> {
 
 describe('TodoManager', () => {
   it('updates todos in memory when configDir is not provided', async () => {
-    const manager = TodoManager.getInstance(`memory-${Date.now()}`);
+    const manager = TodoManager.getInstance(SessionId(`memory-${Date.now()}`));
 
     await manager.updateTodos([
       {
@@ -51,7 +52,7 @@ describe('TodoManager', () => {
 
   it('persists todos under configDir when configured', async () => {
     const configDir = await createTempDir('blade-todo-config-');
-    const sessionId = `persist-${Date.now()}`;
+    const sessionId = SessionId(`persist-${Date.now()}`);
     const manager = TodoManager.getInstance(sessionId, configDir);
 
     await manager.updateTodos([

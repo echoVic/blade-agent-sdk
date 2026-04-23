@@ -10,8 +10,9 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { type InternalLogger, LogCategory, NOOP_LOGGER } from '../../logging/Logger.js';
-import type { AgentProgress } from '../types.js';
 import type { Message } from '../../services/ChatServiceInterface.js';
+import { AgentId } from '../../types/branded.js';
+import type { AgentProgress } from '../types.js';
 
 /**
  * Agent 会话状态
@@ -23,7 +24,7 @@ export type AgentSessionStatus = 'running' | 'completed' | 'failed' | 'cancelled
  */
 export interface AgentSession {
   /** 会话 ID (agent_{uuid}) */
-  id: string;
+  id: AgentId;
 
   /** Subagent 类型 */
   subagentType: string;
@@ -84,7 +85,7 @@ export class AgentSessionStore {
   private sessionsDir: string | undefined;
 
   // 内存缓存（避免频繁读取文件）
-  private cache = new Map<string, AgentSession>();
+  private cache = new Map<AgentId, AgentSession>();
 
   constructor(storageRoot?: string, logger?: InternalLogger) {
     if (storageRoot) {
@@ -123,7 +124,7 @@ export class AgentSessionStore {
   /**
    * 获取会话文件路径
    */
-  private getSessionPath(agentId: string): string | undefined {
+  private getSessionPath(agentId: AgentId): string | undefined {
     if (!this.sessionsDir) return undefined;
     // 安全处理 ID，避免路径遍历
     const safeId = agentId.replace(/[^a-zA-Z0-9_-]/g, '_');
@@ -152,7 +153,7 @@ export class AgentSessionStore {
   /**
    * 加载会话
    */
-  loadSession(agentId: string): AgentSession | undefined {
+  loadSession(agentId: AgentId): AgentSession | undefined {
     // 先检查缓存
     if (this.cache.has(agentId)) {
       return this.cache.get(agentId);
@@ -183,7 +184,7 @@ export class AgentSessionStore {
    * 更新会话状态
    */
   updateSession(
-    agentId: string,
+    agentId: AgentId,
     updates: Partial<AgentSession>
   ): AgentSession | undefined {
     const session = this.loadSession(agentId);
@@ -204,7 +205,7 @@ export class AgentSessionStore {
   /**
    * 追加消息到会话
    */
-  appendMessages(agentId: string, messages: Message[]): AgentSession | undefined {
+  appendMessages(agentId: AgentId, messages: Message[]): AgentSession | undefined {
     const session = this.loadSession(agentId);
     if (!session) {
       return undefined;
@@ -219,7 +220,7 @@ export class AgentSessionStore {
    * 标记会话完成
    */
   markCompleted(
-    agentId: string,
+    agentId: AgentId,
     result: { success: boolean; message: string; error?: string },
     stats?: AgentSession['stats']
   ): AgentSession | undefined {
@@ -234,7 +235,7 @@ export class AgentSessionStore {
   /**
    * 删除会话
    */
-  deleteSession(agentId: string): boolean {
+  deleteSession(agentId: AgentId): boolean {
     try {
       const filePath = this.getSessionPath(agentId);
       if (filePath && fs.existsSync(filePath)) {
@@ -264,7 +265,7 @@ export class AgentSessionStore {
       for (const file of files) {
         if (!file.endsWith('.json')) continue;
 
-        const agentId = file.replace('.json', '');
+        const agentId = AgentId(file.replace('.json', ''));
         const session = this.loadSession(agentId);
         if (session) {
           sessions.push(session);

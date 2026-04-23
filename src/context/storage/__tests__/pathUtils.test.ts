@@ -4,6 +4,7 @@ import {
   getProjectStoragePath,
   getSessionFilePath,
 } from '../pathUtils.js';
+import { SessionId } from '../../../types/branded.js';
 
 const STORAGE_ROOT = '/tmp/test-storage';
 
@@ -41,14 +42,14 @@ describe('pathUtils', () => {
 
   describe('getSessionFilePath', () => {
     it('should return .jsonl file path', () => {
-      const result = getSessionFilePath(STORAGE_ROOT, '/Users/john/project', 'session-123');
+      const result = getSessionFilePath(STORAGE_ROOT, '/Users/john/project', SessionId('session-123'));
       expect(result).toContain('session-123.jsonl');
     });
 
     it('should be under project storage path', () => {
       const projectPath = '/Users/john/project';
       const storagePath = getProjectStoragePath(STORAGE_ROOT, projectPath);
-      const sessionPath = getSessionFilePath(STORAGE_ROOT, projectPath, 'session-123');
+      const sessionPath = getSessionFilePath(STORAGE_ROOT, projectPath, SessionId('session-123'));
       expect(sessionPath.startsWith(storagePath)).toBe(true);
     });
   });

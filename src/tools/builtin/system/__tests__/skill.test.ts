@@ -4,6 +4,7 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 import { createContextSnapshot } from '../../../../runtime/index.js';
 import { SkillRegistry } from '../../../../skills/SkillRegistry.js';
+import { SessionId } from '../../../../types/branded.js';
 import type { ExecutionContext } from '../../../types/ExecutionTypes.js';
 import { skillTool } from '../skill.js';
 
@@ -55,7 +56,7 @@ Focus on source files.
     await registry.initialize();
 
     const context = {
-      contextSnapshot: createContextSnapshot('session-1', 'turn-1', {
+      contextSnapshot: createContextSnapshot(SessionId('session-1'), 'turn-1', {
         capabilities: {
           filesystem: {
             roots: [projectRoot],
@@ -90,7 +91,7 @@ Focus on source files.
     await registry.initialize();
 
     const context = {
-      contextSnapshot: createContextSnapshot('session-1', 'turn-1', {
+      contextSnapshot: createContextSnapshot(SessionId('session-1'), 'turn-1', {
         capabilities: {
           filesystem: {
             roots: [projectRoot],
@@ -129,7 +130,7 @@ Review code carefully.
     await registry.initialize();
 
     const context = {
-      contextSnapshot: createContextSnapshot('session-1', 'turn-1', {
+      contextSnapshot: createContextSnapshot(SessionId('session-1'), 'turn-1', {
         capabilities: {
           filesystem: {
             roots: [projectRoot],

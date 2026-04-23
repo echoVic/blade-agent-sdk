@@ -6,6 +6,7 @@ import type { ContextSnapshot } from '../runtime/index.js';
 import type { ContentPart, Message } from '../services/ChatServiceInterface.js';
 import type { ToolCatalogSourcePolicy } from '../tools/catalog/index.js';
 import type { ConfirmationHandler } from '../tools/types/ExecutionTypes.js';
+import type { AgentId, SessionId } from '../types/branded.js';
 import type { OutputFormat, PermissionMode, PermissionsConfig, SandboxSettings } from '../types/common.js';
 import type { CanUseTool, PermissionHandler } from '../types/permissions.js';
 import type { AgentSession } from './subagents/AgentSessionStore.js';
@@ -39,17 +40,17 @@ export interface AgentProgress {
 }
 
 export interface IBackgroundAgentReader {
-  getAgent(agentId: string): AgentSession | undefined;
-  isRunning(agentId: string): boolean;
-  waitForCompletion(agentId: string, timeout?: number): Promise<AgentSession | undefined>;
+  getAgent(agentId: AgentId): AgentSession | undefined;
+  isRunning(agentId: AgentId): boolean;
+  waitForCompletion(agentId: AgentId, timeout?: number): Promise<AgentSession | undefined>;
 }
 
 export interface IBackgroundAgentController {
-  killAgent(agentId: string): boolean;
-  cancelCurrentWork(agentId: string): boolean;
+  killAgent(agentId: AgentId): boolean;
+  cancelCurrentWork(agentId: AgentId): boolean;
   startBackgroundAgent(options: StartBackgroundAgentOptions): string;
-  resumeAgent(agentId: string, newPrompt: string, ...args: unknown[]): string | undefined;
-  sendMessage(agentId: string, message: string): boolean;
+  resumeAgent(agentId: AgentId, newPrompt: string, ...args: unknown[]): string | undefined;
+  sendMessage(agentId: AgentId, message: string): boolean;
 }
 
 export interface IBackgroundAgentManager extends IBackgroundAgentReader, IBackgroundAgentController {}
@@ -75,7 +76,7 @@ interface SubagentInfoForContext {
 export interface ChatContext {
   messages: Message[];
   userId: string;
-  sessionId: string;
+  sessionId: SessionId;
   snapshot?: ContextSnapshot;
   signal?: AbortSignal;
   confirmationHandler?: ConfirmationHandler; // 会话级别的确认处理器

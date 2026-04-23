@@ -16,6 +16,7 @@ import {
   PermissionMode,
   type ProviderType,
 } from '../types/common.js';
+import { SessionId } from '../types/branded.js';
 import { SessionRuntime } from './SessionRuntime.js';
 import {
   JsonlSessionStore,
@@ -40,11 +41,11 @@ import type {
 } from './types.js';
 
 export interface ResumeOptions extends SessionOptions {
-  sessionId: string;
+  sessionId: SessionId;
 }
 
 class Session implements ISession {
-  readonly sessionId: string;
+  readonly sessionId: SessionId;
   private agent: Agent | null = null;
   private runtime: SessionRuntime | null = null;
   private abortController: AbortController | null = null;
@@ -64,8 +65,8 @@ class Session implements ISession {
   private pendingSendOptions: SendOptions | null = null;
   private pendingContextSnapshot: ContextSnapshot | null = null;
 
-  constructor(options: SessionOptions, sessionId?: string, isResume = false) {
-    this.sessionId = sessionId || nanoid();
+  constructor(options: SessionOptions, sessionId?: SessionId, isResume = false) {
+    this.sessionId = sessionId || SessionId(nanoid());
     this.options = options;
     this.maxTurns = options.maxTurns ?? 200;
     this.permissionMode = options.permissionMode ?? PermissionMode.DEFAULT;

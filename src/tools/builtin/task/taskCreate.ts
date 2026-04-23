@@ -2,10 +2,11 @@ import { z } from 'zod';
 import { JsonValueSchema } from '../../../hooks/schemas/HookSchemas.js';
 import { createTool } from '../../core/createTool.js';
 import { ToolKind } from '../../types/ToolKind.js';
+import type { SessionId } from '../../../types/branded.js';
 import type { CreateTaskInput } from './TaskStore.js';
 import { TaskStore } from './TaskStore.js';
 
-export function createTaskCreateTool({ sessionId }: { sessionId: string }) {
+export function createTaskCreateTool({ sessionId }: { sessionId: SessionId }) {
   return createTool({
     name: 'TaskCreate',
     displayName: 'Create Task',

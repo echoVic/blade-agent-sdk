@@ -1,6 +1,7 @@
 import * as crypto from 'node:crypto';
 import { promises as fs } from 'node:fs';
 import * as path from 'node:path';
+import type { MessageId, SessionId } from '../../../types/branded.js';
 
 /**
  * 快照元数据
@@ -15,7 +16,7 @@ export interface SnapshotMetadata {
  * 快照记录
  */
 export interface Snapshot {
-  messageId: string; // 对应的对话消息 ID
+  messageId: MessageId; // 对应的对话消息 ID
   backupFileName: string; // 快照文件哈希
   timestamp: Date; // 创建时间
   filePath: string; // 原始文件路径
@@ -25,7 +26,7 @@ export interface Snapshot {
  * 快照管理器配置
  */
 export interface SnapshotManagerOptions {
-  sessionId: string;
+  sessionId: SessionId;
   /** SDK 数据存储根目录。不提供时禁用文件快照。 */
   storageRoot?: string;
   enableCheckpoints?: boolean;
@@ -38,7 +39,7 @@ export interface SnapshotManagerOptions {
  * snapshotDir 有值时启用文件快照，undefined 时所有操作为 no-op。
  */
 export class SnapshotManager {
-  private readonly sessionId: string;
+  private readonly sessionId: SessionId;
   private readonly maxSnapshots: number;
   private readonly snapshotDir: string | undefined;
 
@@ -77,7 +78,7 @@ export class SnapshotManager {
   /**
    * 创建文件快照
    */
-  async createSnapshot(filePath: string, messageId: string): Promise<SnapshotMetadata> {
+  async createSnapshot(filePath: string, messageId: MessageId): Promise<SnapshotMetadata> {
     if (!this.snapshotDir) {
       return { backupFileName: '', version: 0, backupTime: new Date() };
     }
@@ -125,7 +126,7 @@ export class SnapshotManager {
   /**
    * 恢复文件快照
    */
-  async restoreSnapshot(filePath: string, messageId: string): Promise<void> {
+  async restoreSnapshot(filePath: string, messageId: MessageId): Promise<void> {
     if (!this.snapshotDir) return;
 
     const snapshot = this.snapshots

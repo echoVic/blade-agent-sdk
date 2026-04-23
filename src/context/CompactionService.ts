@@ -7,15 +7,16 @@ import { nanoid } from 'nanoid';
 import { HookManager } from '../hooks/HookManager.js';
 import { NOOP_LOGGER } from '../logging/Logger.js';
 import {
-  createChatServiceAsync,
-  type Message,
+    createChatServiceAsync,
+    type Message,
 } from '../services/ChatServiceInterface.js';
+import { SessionId } from '../types/branded.js';
 import { PermissionMode, type ProviderType } from '../types/common.js';
 import { FileAnalyzer, type FileContent } from './FileAnalyzer.js';
 import {
-  microcompact,
-  type MicrocompactOptions,
-  type MicrocompactResult,
+    microcompact,
+    type MicrocompactOptions,
+    type MicrocompactResult,
 } from './strategies/MicrocompactStrategy.js';
 import { TokenCounter } from './TokenCounter.js';
 
@@ -40,7 +41,7 @@ export interface CompactionOptions {
   /** 真实的 preTokens（可选，来自 LLM usage，比估算更准确） */
   actualPreTokens?: number;
   /** 会话 ID（用于 hooks） */
-  sessionId?: string;
+  sessionId?: SessionId;
   /** 权限模式（用于 hooks） */
   permissionMode?: PermissionMode;
   /** 当前 turn 的项目目录（用于 hooks） */
@@ -109,7 +110,7 @@ export async function compact(
         tokens_before: preTokens,
       },
       options.projectDir,
-      options.sessionId || 'unknown',
+      options.sessionId || SessionId('unknown'),
       options.permissionMode || PermissionMode.DEFAULT,
     );
 
@@ -135,7 +136,7 @@ export async function compact(
 
     const hookResult = await hookManager.executeCompactionHooks(options.trigger, {
       projectDir: options.projectDir,
-      sessionId: options.sessionId || 'unknown',
+      sessionId: options.sessionId || SessionId('unknown'),
       permissionMode: options.permissionMode || PermissionMode.DEFAULT,
       messagesBefore: messages.length,
       tokensBefore: preTokens,
@@ -239,7 +240,7 @@ export async function compact(
             summary,
           },
           options.projectDir,
-          options.sessionId || 'unknown',
+          options.sessionId || SessionId('unknown'),
           options.permissionMode || PermissionMode.DEFAULT,
         );
         if (postHookResult.warning) {

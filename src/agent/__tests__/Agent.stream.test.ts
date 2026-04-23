@@ -2,6 +2,7 @@ import { describe, expect, it, vi, beforeEach } from 'vitest';
 import type { AgentEvent } from '../AgentEvent.js';
 import type { ChatContext, LoopResult } from '../types.js';
 import { PermissionMode } from '../../types/common.js';
+import { SessionId } from '../../types/branded.js';
 import { assertDefined } from '../../__tests__/helpers/assertDefined.js';
 
 const createMockChatService = () => ({
@@ -99,7 +100,7 @@ describe('Agent.streamChat', () => {
       const context: ChatContext = {
         messages: [],
         userId: 'test-user',
-        sessionId: 'test-session',
+        sessionId: SessionId('test-session'),
         permissionMode: PermissionMode.PLAN,
       };
 
@@ -126,7 +127,7 @@ describe('Agent.streamChat', () => {
       const context: ChatContext = {
         messages: [],
         userId: 'test-user',
-        sessionId: 'test-session',
+        sessionId: SessionId('test-session'),
         permissionMode: PermissionMode.DEFAULT,
       };
 
@@ -149,7 +150,7 @@ describe('Agent.streamChat', () => {
       const context: ChatContext = {
         messages: [],
         userId: 'test-user',
-        sessionId: 'test-session',
+        sessionId: SessionId('test-session'),
         permissionMode: PermissionMode.PLAN,
       };
 
@@ -180,7 +181,7 @@ describe('Agent.streamChat', () => {
       const context: ChatContext = {
         messages: [],
         userId: 'test-user',
-        sessionId: 'test-session',
+        sessionId: SessionId('test-session'),
         permissionMode: PermissionMode.PLAN,
       };
 
@@ -216,7 +217,7 @@ describe('Agent.streamChat', () => {
       const context: ChatContext = {
         messages: [],
         userId: 'test-user',
-        sessionId: 'test-session',
+        sessionId: SessionId('test-session'),
         permissionMode: PermissionMode.PLAN,
       };
 
@@ -280,7 +281,7 @@ describe('Agent.streamChat', () => {
       const context: ChatContext = {
         messages: [],
         userId: 'test-user',
-        sessionId: 'test-session',
+        sessionId: SessionId('test-session'),
         permissionMode: PermissionMode.DEFAULT,
       };
 

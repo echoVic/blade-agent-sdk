@@ -3,6 +3,7 @@
  */
 
 import { McpRegistry } from '../../mcp/McpRegistry.js';
+import { SessionId } from '../../types/branded.js';
 import type { Tool } from '../types/index.js';
 // 文件操作工具
 import { editTool, readTool, writeTool } from './file/index.js';
@@ -49,14 +50,14 @@ async function getMcpTools(mcpRegistry: McpRegistry): Promise<Tool[]> {
  * 获取所有内置工具
  */
 export async function getBuiltinTools(opts?: {
-  sessionId?: string;
+  sessionId?: SessionId;
   configDir?: string;
   mcpRegistry?: McpRegistry;
   includeMcpProtocolTools?: boolean;
   memoryManager?: MemoryManager;
   subagentRegistry?: SubagentRegistry;
 }): Promise<Tool[]> {
-  const sessionId = opts?.sessionId || `session_${Date.now()}`;
+  const sessionId = opts?.sessionId ?? SessionId(`session_${Date.now()}`);
   const configDir = opts?.configDir;
   const registry = opts?.subagentRegistry ?? new SubagentRegistry();
   if (!opts?.subagentRegistry) {

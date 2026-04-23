@@ -16,6 +16,7 @@ import {
   normalizeToolEffects,
   type ToolEffect,
 } from '../tools/types/index.js';
+import type { SessionId } from '../types/branded.js';
 import type { JsonValue } from '../types/common.js';
 import type { AgentLoopConfig, AgentLoopHooks } from './AgentLoop.js';
 import type { CompactionHandler, CompactionRuntimeContext } from './CompactionHandler.js';
@@ -51,9 +52,9 @@ export interface LoopHookBuilderDeps {
 
 async function persistToJsonl(
   modelManager: ModelManager,
-  sessionId: string | undefined,
+  sessionId: SessionId | undefined,
   logger: InternalLogger,
-  callback: (contextManager: ContextManager, sessionId: string) => Promise<void>,
+  callback: (contextManager: ContextManager, sessionId: SessionId) => Promise<void>,
 ): Promise<void> {
   try {
     const contextMgr = modelManager.getContextManager();

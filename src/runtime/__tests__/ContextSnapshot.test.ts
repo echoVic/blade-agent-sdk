@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { SessionId } from '../../types/branded.js';
 import {
   createContextSnapshot,
   hasFilesystemCapability,
@@ -32,7 +33,7 @@ describe('ContextSnapshot', () => {
 
   it('should create a snapshot with convenience accessors derived from context', () => {
     const snapshot = createContextSnapshot(
-      'session-1',
+      SessionId('session-1'),
       'turn-1',
       {
         capabilities: {
@@ -55,10 +56,10 @@ describe('ContextSnapshot', () => {
   it('should report filesystem capability only when snapshot roots are present', () => {
     expect(hasFilesystemCapability()).toBe(false);
     expect(
-      hasFilesystemCapability(createContextSnapshot('s', 't', {})),
+      hasFilesystemCapability(createContextSnapshot(SessionId('s'), 't', {})),
     ).toBe(false);
     expect(
-      hasFilesystemCapability(createContextSnapshot('s', 't', {
+      hasFilesystemCapability(createContextSnapshot(SessionId('s'), 't', {
         capabilities: {
           filesystem: {
             roots: ['/repo'],

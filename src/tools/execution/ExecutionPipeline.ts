@@ -1,41 +1,42 @@
 import type { HookRuntime } from '../../hooks/HookRuntime.js';
 import { type InternalLogger, LogCategory, NOOP_LOGGER } from '../../logging/Logger.js';
+import { SessionId, ToolUseId } from '../../types/branded.js';
 import { type JsonObject, PermissionMode, type PermissionsConfig } from '../../types/common.js';
 import {
-  type CanUseTool,
-  type PermissionResult as CanUseToolResult,
-  createModePermissionHandler,
-  createPathSafetyPermissionHandler,
-  createPermissionHandlerFromCanUseTool,
-  createRuleBasedPermissionHandler,
-  type PermissionHandler,
-  type PermissionHandlerRequest,
-  type PermissionUpdate,
+    type CanUseTool,
+    type PermissionResult as CanUseToolResult,
+    createModePermissionHandler,
+    createPathSafetyPermissionHandler,
+    createPermissionHandlerFromCanUseTool,
+    createRuleBasedPermissionHandler,
+    type PermissionHandler,
+    type PermissionHandlerRequest,
+    type PermissionUpdate,
 } from '../../types/permissions.js';
 import { getErrorMessage, getErrorName } from '../../utils/errorUtils.js';
 import type { ToolCatalog } from '../catalog/ToolCatalog.js';
 import type { ToolRegistry } from '../registry/ToolRegistry.js';
 import type {
-  ConfirmationDetails,
-  ExecutionContext,
-  ExecutionHistoryEntry,
-  ToolResult
+    ConfirmationDetails,
+    ExecutionContext,
+    ExecutionHistoryEntry,
+    ToolResult
 } from '../types/index.js';
 import {
-  normalizePermissionEffects,
-  normalizeToolEffects,
+    normalizePermissionEffects,
+    normalizeToolEffects,
 } from '../types/index.js';
+import type { Tool, ToolInvocation } from '../types/ToolDefinition.js';
 import {
-  isReadOnlyKind,
-  resolveToolBehaviorSafely,
-  type ToolBehavior,
-  ToolKind,
+    isReadOnlyKind,
+    resolveToolBehaviorSafely,
+    type ToolBehavior,
+    ToolKind,
 } from '../types/ToolKind.js';
 import {
-  ToolErrorType,
-  validationErrorToToolResult,
+    ToolErrorType,
+    validationErrorToToolResult,
 } from '../types/ToolResult.js';
-import type { Tool, ToolInvocation } from '../types/ToolDefinition.js';
 import { type ConcurrencyLimits, ConcurrencyScheduler } from './ConcurrencyScheduler.js';
 import { DenialTracker } from './DenialTracker.js';
 import { FileLockManager } from './FileLockManager.js';
@@ -70,7 +71,7 @@ interface PipelineExecutionState {
   confirmationReason?: string;
   confirmationReasons: ConfirmationReasonEntry[];
   permissionSignature?: string;
-  hookToolUseId?: string;
+  hookToolUseId?: ToolUseId;
 }
 
 /**
@@ -183,7 +184,7 @@ export class ExecutionPipeline {
       params: nextParams,
       context: {
         ...context,
-        sessionId: context.sessionId || executionId,
+        sessionId: context.sessionId || SessionId(executionId),
       },
       affectedPaths: [],
       needsConfirmation: false,
@@ -623,7 +624,7 @@ export class ExecutionPipeline {
       state.toolName,
       state.params,
       {
-        toolUseId: state.hookToolUseId ?? `tool_use_${executionId}`,
+        toolUseId: state.hookToolUseId ?? ToolUseId(`tool_use_${executionId}`),
         permissionMode: state.context.permissionMode,
         abortSignal: state.context.signal,
       },
@@ -669,7 +670,7 @@ export class ExecutionPipeline {
       return result;
     }
 
-    const toolUseId = `tool_use_${executionId}`;
+    const toolUseId = ToolUseId(`tool_use_${executionId}`);
     const hookResult = result.success
       ? await this.hookRuntime.applyPostToolUse(toolName, params, result, {
           toolUseId,

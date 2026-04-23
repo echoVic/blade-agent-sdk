@@ -8,6 +8,7 @@ import {
   type SessionStore,
   type SessionSummary,
 } from '../session/SessionStore.js';
+import { SessionId } from '../types/branded.js';
 import type { JsonObject, JsonValue } from '../types/common.js';
 import { ContextCompressor } from './processors/ContextCompressor.js';
 import { ContextFilter } from './processors/ContextFilter.js';
@@ -25,7 +26,7 @@ import type {
   WorkspaceContext,
 } from './types.js';
 
-type SessionConfiguration = JsonObject & { sessionId?: string };
+type SessionConfiguration = JsonObject & { sessionId?: SessionId };
 
 function isJsonObject(value: unknown): value is JsonObject {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -52,7 +53,7 @@ export class ContextManager {
   private readonly options: ContextManagerOptions;
   private readonly projectPath?: string;
 
-  private currentSessionId: string | null = null;
+  private currentSessionId: SessionId | null = null;
   private initialized = false;
 
   constructor(options: Partial<ContextManagerOptions> = {}) {
@@ -191,7 +192,7 @@ export class ContextManager {
   /**
    * 加载现有会话
    */
-  async loadSession(sessionId: string): Promise<boolean> {
+  async loadSession(sessionId: SessionId): Promise<boolean> {
     try {
       // 先尝试从内存加载
       let contextData = this.memory.getContext();
@@ -297,7 +298,7 @@ export class ContextManager {
    * 保存消息到 JSONL (直接访问 PersistentStore,不依赖 currentSessionId)
    */
   async saveMessage(
-    sessionId: string,
+    sessionId: SessionId,
     role: Message['role'],
     content: Message['content'],
     parentUuid: string | null = null,
@@ -326,7 +327,7 @@ export class ContextManager {
    * 保存工具调用到 JSONL (直接访问 PersistentStore)
    */
   async saveToolUse(
-    sessionId: string,
+    sessionId: SessionId,
     toolName: string,
     toolInput: JsonValue,
     parentUuid: string | null = null,
@@ -349,7 +350,7 @@ export class ContextManager {
    * 保存工具结果到 JSONL (直接访问 PersistentStore)
    */
   async saveToolResult(
-    sessionId: string,
+    sessionId: SessionId,
     toolId: string,
     toolName: string,
     toolOutput: JsonValue,
@@ -383,7 +384,7 @@ export class ContextManager {
    * 保存压缩边界和总结到 JSONL (直接访问 PersistentStore)
    */
   async saveCompaction(
-    sessionId: string,
+    sessionId: SessionId,
     summary: string,
     metadata: {
       trigger: 'auto' | 'manual';
@@ -466,7 +467,7 @@ export class ContextManager {
     limit: number = 10
   ): Promise<
     Array<{
-      sessionId: string;
+      sessionId: SessionId;
       summary: string;
       lastActivity: number;
       relevanceScore: number;
@@ -474,19 +475,20 @@ export class ContextManager {
   > {
     const sessions = await this.sessionStore.listSessions();
     const results: Array<{
-      sessionId: string;
+      sessionId: SessionId;
       summary: string;
       lastActivity: number;
       relevanceScore: number;
     }> = [];
 
     for (const sessionId of sessions) {
-      const summary = await this.sessionStore.getSessionSummary(sessionId);
+      const sid = SessionId(sessionId);
+      const summary = await this.sessionStore.getSessionSummary(sid);
       if (summary) {
         const relevanceScore = this.calculateSummaryRelevance(query, summary);
         if (relevanceScore > 0) {
           results.push({
-            sessionId,
+            sessionId: sid,
             summary: summary.summaryText
               ? `${summary.messageCount}条消息，摘要：${summary.summaryText}`
               : `${summary.messageCount}条消息`,
@@ -548,9 +550,8 @@ export class ContextManager {
 
   // 私有方法
 
-  private generateSessionId(): string {
-    // 使用 nanoid 生成会话 ID
-    return nanoid();
+  private generateSessionId(): SessionId {
+    return SessionId(nanoid());
   }
 
   private async createSystemContext(): Promise<SystemContext> {

@@ -1,16 +1,17 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { assertDefined } from '../../__tests__/helpers/assertDefined.js';
 import { HookManager } from '../../hooks/HookManager.js';
 import { NOOP_LOGGER } from '../../logging/Logger.js';
 import { createContextSnapshot, type RuntimeContext } from '../../runtime/index.js';
 import type { ToolDefinition, ToolResult } from '../../tools/types/index.js';
-import { PermissionMode } from '../../types/common.js';
+import { SessionId } from '../../types/branded.js';
 import type { JsonObject } from '../../types/common.js';
+import { PermissionMode } from '../../types/common.js';
 import { HookEvent } from '../../types/constants.js';
 import type { SessionOptions } from '../types.js';
-import { assertDefined } from '../../__tests__/helpers/assertDefined.js';
 
 const mockConnect = vi.fn(() => Promise.resolve());
 const mockDisconnect = vi.fn(() => Promise.resolve());
@@ -88,7 +89,7 @@ describe('SessionRuntime', () => {
   afterEach(async () => {
     vi.restoreAllMocks();
     const runtime = new SessionRuntime(
-      'cleanup',
+      SessionId('cleanup'),
       createOptions(),
       {
         models: [],
@@ -102,7 +103,7 @@ describe('SessionRuntime', () => {
 
   it('should apply allowedTools/disallowedTools to the runtime registry', async () => {
     const runtime = new SessionRuntime(
-      'session-1',
+      SessionId('session-1'),
       createOptions({
         allowedTools: ['Read', 'CustomTool'],
         disallowedTools: ['Read'],
@@ -133,7 +134,7 @@ describe('SessionRuntime', () => {
 
   it('should refresh MCP tools on disconnect and reconnect', async () => {
     const runtime = new SessionRuntime(
-      'session-2',
+      SessionId('session-2'),
       createOptions({
         mcpServers: {
           test: { command: 'echo' },
@@ -165,7 +166,7 @@ describe('SessionRuntime', () => {
 
   it('should project MCP server capabilities beyond flat tool registration', async () => {
     const runtime = new SessionRuntime(
-      'session-capabilities',
+      SessionId('session-capabilities'),
       createOptions({
         mcpServers: {
           test: {
@@ -214,7 +215,7 @@ describe('SessionRuntime', () => {
     }));
 
     const runtime = new SessionRuntime(
-      'session-3',
+      SessionId('session-3'),
       createOptions({
         tools: [
           {
@@ -253,8 +254,8 @@ describe('SessionRuntime', () => {
       'CustomTool',
       { value: 'original' },
       {
-        sessionId: 'session-3',
-        contextSnapshot: createContextSnapshot('session-3', 'turn-1', createFilesystemContext(workspaceRoot)),
+        sessionId: SessionId('session-3'),
+        contextSnapshot: createContextSnapshot(SessionId('session-3'), 'turn-1', createFilesystemContext(workspaceRoot)),
       },
     );
 
@@ -270,7 +271,7 @@ describe('SessionRuntime', () => {
 
   it('should combine session prompt hooks with the hook runtime facade', async () => {
     const runtime = new SessionRuntime(
-      'session-hooks',
+      SessionId('session-hooks'),
       createOptions({
         hooks: {
           [HookEvent.UserPromptSubmit]: [
@@ -322,7 +323,7 @@ describe('SessionRuntime', () => {
     }));
 
     const runtime = new SessionRuntime(
-      'session-4',
+      SessionId('session-4'),
       createOptions({
         canUseTool,
         tools: [
@@ -356,8 +357,8 @@ describe('SessionRuntime', () => {
       'CustomTool',
       { value: 'original' },
       {
-        sessionId: 'session-4',
-        contextSnapshot: createContextSnapshot('session-4', 'turn-1', createFilesystemContext(workspaceRoot)),
+        sessionId: SessionId('session-4'),
+        contextSnapshot: createContextSnapshot(SessionId('session-4'), 'turn-1', createFilesystemContext(workspaceRoot)),
       },
     );
 
@@ -377,7 +378,7 @@ describe('SessionRuntime', () => {
 
   it('should apply post-tool-failure hooks to failed tool results', async () => {
     const runtime = new SessionRuntime(
-      'session-5',
+      SessionId('session-5'),
       createOptions({
         tools: [
           {
@@ -412,8 +413,8 @@ describe('SessionRuntime', () => {
       'CustomTool',
       { value: 'original' },
       {
-        sessionId: 'session-5',
-        contextSnapshot: createContextSnapshot('session-5', 'turn-1', createFilesystemContext(workspaceRoot)),
+        sessionId: SessionId('session-5'),
+        contextSnapshot: createContextSnapshot(SessionId('session-5'), 'turn-1', createFilesystemContext(workspaceRoot)),
       },
     );
 

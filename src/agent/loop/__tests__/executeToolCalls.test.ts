@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { createContextSnapshot } from '../../../runtime/index.js';
+import { SessionId } from '../../../types/branded.js';
 import { executeToolCalls } from '../executeToolCalls.js';
 
 describe('executeToolCalls', () => {
@@ -30,9 +31,9 @@ describe('executeToolCalls', () => {
         }),
       } as never,
       executionContext: {
-        sessionId: 'session-1',
+        sessionId: SessionId('session-1'),
         userId: 'user-1',
-        contextSnapshot: createContextSnapshot('session-1', 'turn-1', {
+        contextSnapshot: createContextSnapshot(SessionId('session-1'), 'turn-1', {
           capabilities: {
             filesystem: {
               roots: ['/snapshot-root'],
@@ -85,7 +86,7 @@ describe('executeToolCalls', () => {
         }),
       } as never,
       executionContext: {
-        sessionId: 'session-1',
+        sessionId: SessionId('session-1'),
         userId: 'user-1',
       },
       signal: controller.signal,
@@ -170,7 +171,7 @@ describe('executeToolCalls', () => {
         }),
       } as never,
       executionContext: {
-        sessionId: 'session-1',
+        sessionId: SessionId('session-1'),
         userId: 'user-1',
       },
       hooks: {

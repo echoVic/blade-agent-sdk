@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { createContextSnapshot } from '../../../../runtime/index.js';
+import { SessionId } from '../../../../types/branded.js';
 import { readTool } from '../read.js';
 
 describe('file tools runtime context', () => {
@@ -12,7 +13,7 @@ describe('file tools runtime context', () => {
       new AbortController().signal,
       undefined,
       {
-        contextSnapshot: createContextSnapshot('session-1', 'turn-1', {}),
+        contextSnapshot: createContextSnapshot(SessionId('session-1'), 'turn-1', {}),
       },
     );
 

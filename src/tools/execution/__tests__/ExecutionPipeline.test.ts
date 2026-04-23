@@ -5,6 +5,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
 import { createTool } from '../../core/createTool.js';
 import { ToolRegistry } from '../../registry/ToolRegistry.js';
+import { SessionId } from '../../../types/branded.js';
 import { PermissionMode } from '../../../types/common.js';
 import type { Tool, ToolResult } from '../../types/index.js';
 import { ToolKind } from '../../types/ToolKind.js';
@@ -708,7 +709,7 @@ describe('ExecutionPipeline', () => {
       {
         permissionMode: PermissionMode.YOLO,
         contextSnapshot: {
-          sessionId: 'session-1',
+          sessionId: SessionId('session-1'),
           turnId: 'turn-1',
           cwd: workspaceRoot,
           environment: {},

@@ -2,9 +2,10 @@ import { z } from 'zod';
 import { createTool } from '../../core/createTool.js';
 import { ToolKind } from '../../types/ToolKind.js';
 import { ToolErrorType } from '../../types/index.js';
+import { AgentId, type SessionId } from '../../../types/branded.js';
 import { TaskStore } from './TaskStore.js';
 
-export function createTaskStopTool({ sessionId }: { sessionId: string }) {
+export function createTaskStopTool({ sessionId }: { sessionId: SessionId }) {
   return createTool({
     name: 'TaskStop',
     displayName: 'Stop Task',
@@ -18,9 +19,10 @@ export function createTaskStopTool({ sessionId }: { sessionId: string }) {
     }),
     execute: async ({ taskId }, context) => {
       const agentManager = context.backgroundAgentManager;
-      if (agentManager?.getAgent(taskId)) {
-        const stopped = agentManager.killAgent(taskId);
-        const latestSession = agentManager.getAgent(taskId);
+      const aid = AgentId(taskId);
+      if (agentManager?.getAgent(aid)) {
+        const stopped = agentManager.killAgent(aid);
+        const latestSession = agentManager.getAgent(aid);
         return {
           success: true,
           llmContent: latestSession ?? { taskId, status: stopped ? 'cancelled' : 'completed' },

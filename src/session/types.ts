@@ -1,4 +1,5 @@
 import type { UserMessageContent } from '../agent/types.js';
+import type { SessionId } from '../types/branded.js';
 import type { SdkMcpServerHandle } from '../mcp/SdkMcpServer.js';
 import type { ContextSnapshot, RuntimeContext, RuntimeContextPatch, RuntimePatch } from '../runtime/index.js';
 import type { Message } from '../services/ChatServiceInterface.js';
@@ -39,21 +40,21 @@ export interface PromptResult {
 }
 
 export type StreamMessage =
-  | { type: 'turn_start'; turn: number; sessionId: string }
-  | { type: 'turn_end'; turn: number; sessionId: string }
-  | { type: 'content'; delta: string; sessionId: string }
-  | { type: 'thinking'; delta: string; sessionId: string }
-  | { type: 'tool_use'; id: string; name: string; input: JsonValue; sessionId: string }
-  | { type: 'tool_progress'; id: string; name: string; message: string; sessionId: string }
-  | { type: 'tool_message'; id: string; name: string; message: string; sessionId: string }
-  | { type: 'tool_runtime_patch'; id: string; name: string; patch: RuntimePatch; sessionId: string }
-  | { type: 'tool_context_patch'; id: string; name: string; patch: RuntimeContextPatch; sessionId: string }
-  | { type: 'tool_new_messages'; id: string; name: string; messages: Message[]; sessionId: string }
-  | { type: 'tool_permission_updates'; id: string; name: string; updates: PermissionUpdate[]; sessionId: string }
-  | { type: 'tool_result'; id: string; name: string; output: string | object; isError?: boolean; sessionId: string }
-  | { type: 'usage'; usage: TokenUsage; sessionId: string }
-  | { type: 'result'; subtype: 'success' | 'error'; content?: string; error?: string; sessionId: string }
-  | { type: 'error'; message: string; code?: string; sessionId: string };
+  | { type: 'turn_start'; turn: number; sessionId: SessionId }
+  | { type: 'turn_end'; turn: number; sessionId: SessionId }
+  | { type: 'content'; delta: string; sessionId: SessionId }
+  | { type: 'thinking'; delta: string; sessionId: SessionId }
+  | { type: 'tool_use'; id: string; name: string; input: JsonValue; sessionId: SessionId }
+  | { type: 'tool_progress'; id: string; name: string; message: string; sessionId: SessionId }
+  | { type: 'tool_message'; id: string; name: string; message: string; sessionId: SessionId }
+  | { type: 'tool_runtime_patch'; id: string; name: string; patch: RuntimePatch; sessionId: SessionId }
+  | { type: 'tool_context_patch'; id: string; name: string; patch: RuntimeContextPatch; sessionId: SessionId }
+  | { type: 'tool_new_messages'; id: string; name: string; messages: Message[]; sessionId: SessionId }
+  | { type: 'tool_permission_updates'; id: string; name: string; updates: PermissionUpdate[]; sessionId: SessionId }
+  | { type: 'tool_result'; id: string; name: string; output: string | object; isError?: boolean; sessionId: SessionId }
+  | { type: 'usage'; usage: TokenUsage; sessionId: SessionId }
+  | { type: 'result'; subtype: 'success' | 'error'; content?: string; error?: string; sessionId: SessionId }
+  | { type: 'error'; message: string; code?: string; sessionId: SessionId };
 
 export interface HookInput {
   event: HookEvent;
@@ -61,7 +62,7 @@ export interface HookInput {
   toolInput?: JsonObject;
   toolOutput?: string | object;
   error?: Error;
-  sessionId: string;
+  sessionId: SessionId;
   [key: string]: unknown;
 }
 
@@ -176,14 +177,14 @@ export interface ForkSessionOptions {
 }
 
 export interface ForkSessionResult {
-  sessionId: string;
+  sessionId: SessionId;
   parentSessionId: string;
   messageCount: number;
   forkedAt?: string;
 }
 
 export interface ISession extends AsyncDisposable {
-  readonly sessionId: string;
+  readonly sessionId: SessionId;
   readonly messages: Message[];
 
   send(message: UserMessageContent, options?: SendOptions): Promise<void>;

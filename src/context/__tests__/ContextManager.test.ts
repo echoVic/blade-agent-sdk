@@ -5,6 +5,7 @@ import { join } from 'node:path';
 import { JsonlSessionStore } from '../../session/SessionStore.js';
 import { PersistentStore } from '../storage/PersistentStore.js';
 import { ContextManager } from '../ContextManager.js';
+import { SessionId } from '../../types/branded.js';
 import { assertDefined } from '../../__tests__/helpers/assertDefined.js';
 
 function createWorkspaceRoot(): string {
@@ -26,7 +27,7 @@ describe('ContextManager', () => {
       },
     });
 
-    const sessionId = 'session-1';
+    const sessionId = SessionId('session-1');
     await persistentStore.saveMessage(sessionId, 'user', 'hello');
     const toolCallId = await persistentStore.saveToolUse(sessionId, 'Read', { file_path: 'README.md' });
     await persistentStore.saveToolResult(

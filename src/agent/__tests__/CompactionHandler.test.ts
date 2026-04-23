@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Message } from '../../services/ChatServiceInterface.js';
+import { SessionId } from '../../types/branded.js';
 import { ConversationState } from '../state/ConversationState.js';
 
 const mockCompact = vi.fn(async () => ({
@@ -56,7 +57,7 @@ describe('CompactionHandler', () => {
     ];
     const convState = new ConversationState(null, contextMessages.slice(0, -1), contextMessages[contextMessages.length - 1]);
 
-    const stream = handler.checkAndCompactInLoop(convState, { sessionId: 'session-1' }, 2, 700);
+    const stream = handler.checkAndCompactInLoop(convState, { sessionId: SessionId('session-1') }, 2, 700);
     let didCompact = false;
     while (true) {
       const { value, done } = await stream.next();
@@ -101,7 +102,7 @@ describe('CompactionHandler', () => {
     ] satisfies Message[];
     const convState = new ConversationState(null, originalMessages.slice(0, -1), originalMessages[originalMessages.length - 1]);
 
-    const stream = handler.reactiveCompact(convState, { sessionId: 'session-1' });
+    const stream = handler.reactiveCompact(convState, { sessionId: SessionId('session-1') });
     let didCompact = false;
     while (true) {
       const { value, done } = await stream.next();

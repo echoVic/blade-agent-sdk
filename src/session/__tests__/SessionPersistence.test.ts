@@ -6,6 +6,7 @@ import { join } from 'node:path';
 import { PersistentStore } from '../../context/storage/PersistentStore.js';
 import type { ContentPart } from '../../services/ChatServiceInterface.js';
 import { createSession, forkSession, resumeSession } from '../Session.js';
+import { SessionId } from '../../types/branded.js';
 
 function createWorkspaceRoot(): string {
   return mkdtempSync(join(tmpdir(), 'session-persistence-test-'));
@@ -32,7 +33,7 @@ describe('Session persistence', () => {
     const workspaceRoot = createWorkspaceRoot();
     const persistentStore = new PersistentStore(workspaceRoot);
 
-    const sessionId = 'session-1';
+    const sessionId = SessionId('session-1');
     await persistentStore.saveMessage(sessionId, 'user', 'hello');
     const toolCallId = await persistentStore.saveToolUse(sessionId, 'Read', { file_path: 'README.md' });
     await persistentStore.saveToolResult(sessionId, toolCallId, 'Read', 'contents', toolCallId);
@@ -62,7 +63,7 @@ describe('Session persistence', () => {
     const workspaceRoot = createWorkspaceRoot();
     const persistentStore = new PersistentStore(workspaceRoot);
 
-    const sessionId = 'session-2';
+    const sessionId = SessionId('session-2');
     const userMessageId = await persistentStore.saveMessage(sessionId, 'user', 'hello');
     const assistantMessageId = await persistentStore.saveMessage(
       sessionId,
@@ -169,13 +170,13 @@ describe('Session persistence', () => {
     const workspaceRoot = createWorkspaceRoot();
 
     await expect(resumeSession({
-      sessionId: 'session-disabled',
+      sessionId: SessionId('session-disabled'),
       ...createOptions(workspaceRoot),
       persistSession: false,
     })).rejects.toThrow(/requires session persistence/i);
 
     await expect(forkSession({
-      sessionId: 'session-disabled',
+      sessionId: SessionId('session-disabled'),
       ...createOptions(workspaceRoot),
       persistSession: false,
     })).rejects.toThrow(/requires session persistence/i);
@@ -185,7 +186,7 @@ describe('Session persistence', () => {
     const workspaceRoot = createWorkspaceRoot();
     const persistentStore = new PersistentStore(workspaceRoot);
 
-    const sessionId = 'session-multimodal';
+    const sessionId = SessionId('session-multimodal');
     const content: ContentPart[] = [
       { type: 'image_url', image_url: { url: 'data:image/png;base64,resume' } },
     ];

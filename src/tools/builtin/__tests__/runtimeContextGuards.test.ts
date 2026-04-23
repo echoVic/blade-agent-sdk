@@ -1,10 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import { createContextSnapshot } from '../../../runtime/index.js';
+import { SessionId } from '../../../types/branded.js';
 import { globTool } from '../search/glob.js';
 import { grepTool } from '../search/grep.js';
 import { bashTool } from '../shell/bash.js';
 
-const emptySnapshot = createContextSnapshot('session-1', 'turn-1', {});
+const emptySnapshot = createContextSnapshot(SessionId('session-1'), 'turn-1', {});
 
 describe('tool runtime context guards', () => {
   it('should reject Glob without filesystem capability', async () => {

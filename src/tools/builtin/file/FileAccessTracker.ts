@@ -1,5 +1,6 @@
 import { promises as fs } from 'node:fs';
 import { type InternalLogger, LogCategory, NOOP_LOGGER } from '../../../logging/Logger.js';
+import type { SessionId } from '../../../types/branded.js';
 import { getErrorCode, getErrorMessage } from '../../../utils/errorUtils.js';
 
 /**
@@ -9,7 +10,7 @@ export interface FileAccessRecord {
   filePath: string; // 文件绝对路径
   accessTime: number; // 最后访问时间戳（毫秒）- 包括 read/edit/write
   mtime: number; // 访问时文件的修改时间戳
-  sessionId: string; // 会话 ID
+  sessionId: SessionId; // 会话 ID
   lastOperation: 'read' | 'edit' | 'write'; // 最后操作类型
 }
 /**
@@ -54,7 +55,7 @@ export class FileAccessTracker {
    * @param filePath 文件绝对路径
    * @param sessionId 会话 ID
    */
-  async recordFileRead(filePath: string, sessionId: string): Promise<void> {
+  async recordFileRead(filePath: string, sessionId: SessionId): Promise<void> {
     try {
       // 获取文件的当前修改时间
       const stats = await fs.stat(filePath);
@@ -85,7 +86,7 @@ export class FileAccessTracker {
    */
   async recordFileEdit(
     filePath: string,
-    sessionId: string,
+    sessionId: SessionId,
     operation: 'edit' | 'write' = 'edit'
   ): Promise<void> {
     try {
@@ -263,7 +264,7 @@ export class FileAccessTracker {
    *
    * @param sessionId 会话 ID
    */
-  clearSession(sessionId: string): void {
+  clearSession(sessionId: SessionId): void {
     for (const [filePath, record] of this.accessedFiles.entries()) {
       if (record.sessionId === sessionId) {
         this.accessedFiles.delete(filePath);

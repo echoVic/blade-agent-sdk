@@ -2,9 +2,10 @@ import { z } from 'zod';
 import { createTool } from '../../core/createTool.js';
 import { ToolKind } from '../../types/ToolKind.js';
 import { ToolErrorType } from '../../types/index.js';
+import type { SessionId } from '../../../types/branded.js';
 import { TaskStore } from './TaskStore.js';
 
-export function createTaskGetTool({ sessionId }: { sessionId: string }) {
+export function createTaskGetTool({ sessionId }: { sessionId: SessionId }) {
   return createTool({
     name: 'TaskGet',
     displayName: 'Get Task',

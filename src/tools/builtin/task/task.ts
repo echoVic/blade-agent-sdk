@@ -19,6 +19,7 @@ import type {
   SubagentResult,
 } from '../../../agent/subagents/types.js';
 import { HookManager } from '../../../hooks/HookManager.js';
+import { AgentId, SessionId } from '../../../types/branded.js';
 import { PermissionMode } from '../../../types/common.js';
 import { getErrorMessage } from '../../../utils/errorUtils.js';
 import { createTool } from '../../core/createTool.js';
@@ -188,12 +189,13 @@ export function createTaskTool({ registry }: { registry: SubagentRegistry }) {
         subagent_session_id,
       } = params;
       const { updateOutput } = context;
-      const subagentSessionId =
+      const subagentSessionId = AgentId(
         typeof subagent_session_id === 'string' && subagent_session_id.length > 0
           ? subagent_session_id
           : typeof resume === 'string' && resume.length > 0
             ? resume
-            : nanoid();
+            : nanoid()
+      );
 
       try {
         const registeredNames = registry.getAllNames();
@@ -214,7 +216,7 @@ export function createTaskTool({ registry }: { registry: SubagentRegistry }) {
 
         if (resume) {
           return handleResume(
-            resume,
+            AgentId(resume),
             prompt,
             subagentConfig,
             description,
@@ -274,7 +276,7 @@ export function createTaskTool({ registry }: { registry: SubagentRegistry }) {
           const hookManager = HookManager.getInstance();
           const stopResult = await hookManager.executeSubagentStopHooks(subagent_type, {
             projectDir,
-            sessionId: context.sessionId || 'unknown',
+            sessionId: context.sessionId || SessionId('unknown'),
             permissionMode: context.permissionMode ?? PermissionMode.DEFAULT,
             taskDescription: description,
             success: result.success,
@@ -342,7 +344,7 @@ function buildTaskResult(
   subagentType: string,
   description: string,
   duration: number,
-  subagentSessionId: string,
+  subagentSessionId: AgentId,
 ): ToolResult {
   if (result.success) {
     const outputPreview =
@@ -393,7 +395,7 @@ function handleBackgroundExecution(
   description: string,
   prompt: string,
   context: ExecutionContext,
-  subagentSessionId: string,
+  subagentSessionId: AgentId,
   registry: SubagentRegistry,
 ): ToolResult {
   if (!context.bladeConfig) {
@@ -458,7 +460,7 @@ function handleBackgroundExecution(
 }
 
 function handleResume(
-  agentId: string,
+  agentId: AgentId,
   prompt: string,
   subagentConfig: {
     name: string;

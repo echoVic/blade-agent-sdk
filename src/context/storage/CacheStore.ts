@@ -1,3 +1,4 @@
+import type { SessionId } from '../../types/branded.js';
 import type { JsonValue } from '../../types/common.js';
 import type { CompressedContext, ContextMessage } from '../types.js';
 
@@ -107,7 +108,7 @@ export class CacheStore {
    * 缓存消息摘要
    */
   cacheMessageSummary(
-    sessionId: string,
+    sessionId: SessionId,
     messages: ContextMessage[],
     summary: string
   ): void {
@@ -127,7 +128,7 @@ export class CacheStore {
    * 获取缓存的消息摘要
    */
   getMessageSummary(
-    sessionId: string,
+    sessionId: SessionId,
     messageCount: number
   ): {
     summary: string;

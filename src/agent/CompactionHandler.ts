@@ -3,13 +3,14 @@ import type { ContextManager } from '../context/ContextManager.js';
 import { softCompact } from '../context/strategies/SoftCompactionStrategy.js';
 import { TokenCounter } from '../context/TokenCounter.js';
 import { type InternalLogger, LogCategory, NOOP_LOGGER } from '../logging/Logger.js';
-import type { IChatService, Message } from '../services/ChatServiceInterface.js';
+import type { IChatService } from '../services/ChatServiceInterface.js';
 import { cloneMessage } from '../services/messageUtils.js';
+import type { SessionId } from '../types/branded.js';
 import type { CompactingEvent } from './AgentEvent.js';
 import type { ConversationState } from './state/ConversationState.js';
 
 export interface CompactionRuntimeContext {
-  sessionId: string;
+  sessionId: SessionId;
   projectDir?: string;
 }
 

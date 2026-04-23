@@ -26,6 +26,7 @@ import {
 } from '../runtime/index.js';
 import type { Message } from '../services/ChatServiceInterface.js';
 import type { SkillActivationContext } from '../skills/index.js';
+import type { SessionId } from '../types/branded.js';
 import type { ToolDiscoveryEntry } from '../tools/exposure/index.js';
 import {
   getRuntimePatchEffect,
@@ -205,7 +206,7 @@ export class RuntimePatchManager {
   // ===== Context Snapshot 构建 =====
 
   buildRuntimeContextSnapshot(
-    sessionId: string,
+    sessionId: SessionId,
     snapshot?: ContextSnapshot,
   ): ContextSnapshot | undefined {
     const summary = summarizeRuntimePatchApplications(this.runtimePatchApplications);

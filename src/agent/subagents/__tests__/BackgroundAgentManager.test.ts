@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { NOOP_LOGGER } from '../../../logging/Logger.js';
 import { createContextSnapshot } from '../../../runtime/index.js';
+import { AgentId, SessionId } from '../../../types/branded.js';
 import type { ChatContext, LoopOptions } from '../../types.js';
 import { AgentSessionStore } from '../AgentSessionStore.js';
 
@@ -71,7 +72,7 @@ describe('BackgroundAgentManager', () => {
   });
 
   it('inherits the parent snapshot context when starting a background subagent', async () => {
-    const snapshot = createContextSnapshot('parent-session', 'turn-1', {
+    const snapshot = createContextSnapshot(SessionId('parent-session'), 'turn-1', {
       capabilities: {
         filesystem: {
           roots: ['/parent-root'],
@@ -83,13 +84,13 @@ describe('BackgroundAgentManager', () => {
       },
     });
 
-    const agentId = manager.startBackgroundAgent({
+    const agentId = AgentId(manager.startBackgroundAgent({
       config: subagentConfig,
       bladeConfig,
       description: 'Inspect repo',
       prompt: 'inspect',
       snapshot,
-    });
+    }));
 
     await manager.waitForCompletion(agentId, 1000);
 
@@ -103,12 +104,12 @@ describe('BackgroundAgentManager', () => {
   });
 
   it('updates the session description when resuming with a new description', async () => {
-    const agentId = manager.startBackgroundAgent({
+    const agentId = AgentId(manager.startBackgroundAgent({
       config: subagentConfig,
       bladeConfig,
       description: 'Original description',
       prompt: 'inspect',
-    });
+    }));
 
     await manager.waitForCompletion(agentId, 1000);
 
@@ -150,12 +151,12 @@ describe('BackgroundAgentManager', () => {
         }),
     );
 
-    const agentId = manager.startBackgroundAgent({
+    const agentId = AgentId(manager.startBackgroundAgent({
       config: subagentConfig,
       bladeConfig,
       description: 'Long running task',
       prompt: 'inspect',
-    });
+    }));
 
     const runtime = (manager as unknown as {
       runningAgents: Map<string, {
@@ -197,12 +198,12 @@ describe('BackgroundAgentManager', () => {
         }),
     );
 
-    const agentId = manager.startBackgroundAgent({
+    const agentId = AgentId(manager.startBackgroundAgent({
       config: subagentConfig,
       bladeConfig,
       description: 'Long running task',
       prompt: 'inspect',
-    });
+    }));
 
     expect(manager.killAgent(agentId)).toBe(true);
 

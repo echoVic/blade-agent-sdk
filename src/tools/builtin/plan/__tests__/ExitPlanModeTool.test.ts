@@ -1,9 +1,10 @@
-import { afterEach, describe, expect, it, vi } from 'vitest';
 import { constants as fsConstants } from 'node:fs';
 import { access, mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { PermissionMode, type BladeConfig } from '../../../../types/common.js';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { SessionId } from '../../../../types/branded.js';
+import { type BladeConfig, PermissionMode } from '../../../../types/common.js';
 import type { ExecutionContext } from '../../../types/ExecutionTypes.js';
 import { exitPlanModeTool } from '../ExitPlanModeTool.js';
 
@@ -47,7 +48,7 @@ describe('ExitPlanMode Tool', () => {
     }));
 
     const result = await executeWithContext({
-      sessionId: 'session-123',
+      sessionId: SessionId('session-123'),
       bladeConfig: { plansDirectory } as BladeConfig,
       confirmationHandler: { requestConfirmation },
     });
@@ -69,7 +70,7 @@ describe('ExitPlanMode Tool', () => {
     process.env.HOME = fakeHome;
 
     const result = await executeWithContext({
-      sessionId: 'session-456',
+      sessionId: SessionId('session-456'),
     });
 
     const defaultPlanPath = join(fakeHome, '.blade', 'plans', 'plan_session-456.md');

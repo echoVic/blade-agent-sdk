@@ -4,6 +4,7 @@ import type { IChatService, Message } from '../../services/ChatServiceInterface.
 import type { ToolCatalog } from '../../tools/catalog/index.js';
 import type { ToolRegistry } from '../../tools/registry/ToolRegistry.js';
 import type { ConfirmationHandler } from '../../tools/types/ExecutionTypes.js';
+import type { SessionId } from '../../types/branded.js';
 import type { BladeConfig, PermissionMode } from '../../types/common.js';
 import type { IBackgroundAgentManager } from '../types.js';
 
@@ -29,7 +30,7 @@ export interface LoopRecoveryState {
 }
 
 export interface LoopExecutionContext {
-  sessionId: string;
+  sessionId: SessionId;
   userId: string;
   contextSnapshot?: ContextSnapshot;
   skillActivationPaths?: string[];

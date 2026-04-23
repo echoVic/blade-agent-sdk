@@ -28,6 +28,7 @@ import type { Tool } from '../tools/types/index.js';
 import type { BladeConfig, McpServerConfig, PermissionsConfig } from '../types/common.js';
 import { PermissionMode } from '../types/common.js';
 import { HookEvent } from '../types/constants.js';
+import type { SessionId } from '../types/branded.js';
 import {
   createCompositePermissionHandler,
   createPermissionHandlerFromCanUseTool,
@@ -85,7 +86,7 @@ export class SessionRuntime {
   private initialized = false;
 
   constructor(
-    private readonly sessionId: string,
+    private readonly sessionId: SessionId,
     private readonly options: SessionOptions,
     private readonly bladeConfig: BladeConfig,
     private readonly permissionMode: PermissionMode,

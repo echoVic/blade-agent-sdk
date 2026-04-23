@@ -1,3 +1,4 @@
+import type { MessageId, SessionId } from '@/types/branded.js';
 import type { IBackgroundAgentManager } from '../../agent/types.js';
 import type { ContextSnapshot } from '../../runtime/index.js';
 import type { BladeConfig, JsonObject, PermissionMode } from '../../types/common.js';
@@ -61,8 +62,8 @@ export interface ConfirmationHandler {
  */
 export interface ExecutionContext {
   userId?: string;
-  sessionId?: string;
-  messageId?: string;
+  sessionId?: SessionId;
+  messageId?: MessageId;
   contextSnapshot?: ContextSnapshot;
   skillActivationPaths?: string[];
   signal?: AbortSignal;

@@ -4,15 +4,16 @@ import type { RuntimeHookRegistration } from '../runtime/index.js';
 import type { ContentPart } from '../services/ChatServiceInterface.js';
 import { cloneContentPart } from '../services/messageUtils.js';
 import type { ToolResult } from '../tools/types/index.js';
-import { HookEvent } from '../types/constants.js';
+import { ToolUseId, type SessionId } from '../types/branded.js';
 import type { JsonObject, JsonValue, PermissionMode } from '../types/common.js';
+import { HookEvent } from '../types/constants.js';
 import type { PermissionResult } from '../types/permissions.js';
 import type { HookCallback, HookInput } from '../session/types.js';
 import { HookManager } from './HookManager.js';
 import { HookBus } from './HookBus.js';
 
 interface HookRuntimeOptions {
-  sessionId: string;
+  sessionId: SessionId;
   permissionMode: PermissionMode;
   callbacks?: Partial<Record<HookEvent, HookCallback[]>>;
   resolveProjectDir: () => string | undefined;
@@ -20,7 +21,7 @@ interface HookRuntimeOptions {
 }
 
 export interface PreToolUseRuntimeResult {
-  toolUseId: string;
+  toolUseId: ToolUseId;
   updatedInput: JsonObject;
   action?: 'continue' | 'skip' | 'abort';
   reason?: string;
@@ -28,7 +29,7 @@ export interface PreToolUseRuntimeResult {
 }
 
 export interface PostToolUseRuntimeResult {
-  toolUseId: string;
+  toolUseId: ToolUseId;
   result: ToolResult;
   action?: 'continue' | 'abort';
   reason?: string;
@@ -39,7 +40,7 @@ function isRecord(value: unknown): value is JsonObject {
 }
 
 function buildHookInput(
-  sessionId: string,
+  sessionId: SessionId,
   event: HookEvent,
   payload: Record<string, unknown>,
 ): HookInput {
@@ -116,12 +117,12 @@ export class HookRuntime {
     toolName: string,
     input: JsonObject,
     options: {
-      toolUseId?: string;
+      toolUseId?: ToolUseId;
       permissionMode?: PermissionMode;
       abortSignal?: AbortSignal;
     } = {},
   ): Promise<PreToolUseRuntimeResult> {
-    const toolUseId = options.toolUseId ?? `tool_${nanoid()}`;
+    const toolUseId = options.toolUseId ?? `tool_${nanoid()}` as ToolUseId;
     let nextInput = { ...input };
 
     if (this.bus.has(HookEvent.PreToolUse)) {
@@ -197,12 +198,12 @@ export class HookRuntime {
     input: JsonObject,
     result: ToolResult,
     options: {
-      toolUseId?: string;
+      toolUseId?: ToolUseId;
       permissionMode?: PermissionMode;
       abortSignal?: AbortSignal;
     } = {},
   ): Promise<PostToolUseRuntimeResult> {
-    const toolUseId = options.toolUseId ?? `tool_${nanoid()}`;
+    const toolUseId = options.toolUseId ?? `tool_${nanoid()}` as ToolUseId;
     let nextResult = result;
 
     const projectDir = this.options.resolveProjectDir();
@@ -237,7 +238,7 @@ export class HookRuntime {
     input: JsonObject,
     result: ToolResult,
     options: {
-      toolUseId?: string;
+      toolUseId?: ToolUseId;
       permissionMode?: PermissionMode;
       errorType?: string;
       isInterrupt?: boolean;
@@ -245,7 +246,7 @@ export class HookRuntime {
       abortSignal?: AbortSignal;
     } = {},
   ): Promise<PostToolUseRuntimeResult> {
-    const toolUseId = options.toolUseId ?? `tool_${nanoid()}`;
+    const toolUseId = options.toolUseId ?? `tool_${nanoid()}` as ToolUseId;
     let nextResult = result;
 
     const projectDir = this.options.resolveProjectDir();
@@ -335,7 +336,7 @@ export class HookRuntime {
 
     const managerResult = await this.hookManager.executePermissionRequestHooks(
       toolName,
-      `permission_${toolName}_${Date.now()}`,
+      ToolUseId(`permission_${toolName}_${Date.now()}`),
       nextInput,
       {
         projectDir,
@@ -589,7 +590,7 @@ export class HookRuntime {
     toolName: string,
     input: JsonObject,
     result: ToolResult,
-    toolUseId: string,
+    toolUseId: ToolUseId,
   ): Promise<PostToolUseRuntimeResult> {
     if (!this.bus.has(event)) {
       return { toolUseId, result };

@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import type { SessionId } from '../../../types/branded.js';
 import { getErrorMessage } from '../../../utils/errorUtils.js';
 import { createTool } from '../../core/createTool.js';
 import type { ExecutionContext, ToolResult } from '../../types/index.js';
@@ -10,7 +11,7 @@ import { TodoItemSchema } from './types.js';
 /**
  * Create TodoWrite tool
  */
-export function createTodoWriteTool(opts: { sessionId: string; configDir?: string }) {
+export function createTodoWriteTool(opts: { sessionId: SessionId; configDir?: string }) {
   const { sessionId, configDir } = opts;
 
   return createTool({

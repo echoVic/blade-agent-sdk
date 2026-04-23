@@ -1,5 +1,6 @@
 import { execSync } from 'node:child_process';
 import * as path from 'node:path';
+import type { SessionId } from '../../types/branded.js';
 
 /**
  * 路径转义工具 - 将项目路径转为目录名
@@ -73,7 +74,7 @@ export function normalizeSessionStorageRoot(storageRoot: string): string {
  * @param sessionId 会话 ID
  * @returns {storageRoot}/projects/{escaped-path}/{sessionId}.jsonl
  */
-export function getSessionFilePath(storageRoot: string, projectPath: string, sessionId: string): string {
+export function getSessionFilePath(storageRoot: string, projectPath: string, sessionId: SessionId): string {
   return path.join(getProjectStoragePath(storageRoot, projectPath), `${sessionId}.jsonl`);
 }
 
@@ -85,7 +86,7 @@ export function getSessionFilePath(storageRoot: string, projectPath: string, ses
  */
 export function getSessionFilePathFromStorageRoot(
   storageRoot: string,
-  sessionId: string,
+  sessionId: SessionId,
 ): string {
   return path.join(normalizeSessionStorageRoot(storageRoot), `${sessionId}.jsonl`);
 }

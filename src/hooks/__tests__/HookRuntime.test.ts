@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { ContentPart } from '../../services/ChatServiceInterface.js';
 import type { ToolResult } from '../../tools/types/index.js';
+import { SessionId, ToolUseId } from '../../types/branded.js';
 import { PermissionMode } from '../../types/common.js';
 import { HookEvent } from '../../types/constants.js';
 import { HookRuntime } from '../HookRuntime.js';
@@ -11,7 +12,7 @@ describe('HookRuntime', () => {
       executeUserPromptSubmitHooks: vi.fn(async () => ({ proceed: true })),
     };
     const runtime = new HookRuntime({
-      sessionId: 'session-1',
+      sessionId: SessionId('session-1'),
       permissionMode: PermissionMode.DEFAULT,
       callbacks: {
         [HookEvent.UserPromptSubmit]: [
@@ -45,7 +46,7 @@ describe('HookRuntime', () => {
 
   it('replaces all text parts with one leading text part while preserving all images', async () => {
     const runtime = new HookRuntime({
-      sessionId: 'session-2',
+      sessionId: SessionId('session-2'),
       permissionMode: PermissionMode.DEFAULT,
       callbacks: {
         [HookEvent.UserPromptSubmit]: [
@@ -87,7 +88,7 @@ describe('HookRuntime', () => {
       })),
     };
     const runtime = new HookRuntime({
-      sessionId: 'session-tool-hooks',
+      sessionId: SessionId('session-tool-hooks'),
       permissionMode: PermissionMode.DEFAULT,
       callbacks: {
         [HookEvent.PreToolUse]: [
@@ -108,7 +109,7 @@ describe('HookRuntime', () => {
     });
 
     const pre = await runtime.applyPreToolUse('Read', { file_path: 'a.ts' }, {
-      toolUseId: 'tool-1',
+      toolUseId: ToolUseId('tool-1'),
     });
 
     const result: ToolResult = {
@@ -116,7 +117,7 @@ describe('HookRuntime', () => {
       llmContent: 'original output',
     };
     const post = await runtime.applyPostToolUse('Read', pre.updatedInput, result, {
-      toolUseId: 'tool-1',
+      toolUseId: ToolUseId('tool-1'),
     });
 
     expect(pre.updatedInput).toEqual({

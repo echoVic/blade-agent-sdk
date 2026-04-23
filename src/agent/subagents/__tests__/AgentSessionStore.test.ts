@@ -1,9 +1,10 @@
-import { afterEach, describe, expect, it } from 'vitest';
-import { access, mkdtemp, readFile, rm } from 'node:fs/promises';
 import { constants as fsConstants } from 'node:fs';
-import { join } from 'node:path';
+import { access, mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { AgentSessionStore, type AgentSession } from '../AgentSessionStore.js';
+import { join } from 'node:path';
+import { afterEach, describe, expect, it } from 'vitest';
+import { AgentId } from '../../../types/branded.js';
+import { type AgentSession, AgentSessionStore } from '../AgentSessionStore.js';
 
 const tempDirs: string[] = [];
 
@@ -28,7 +29,7 @@ async function pathExists(filePath: string): Promise<boolean> {
 
 function createSession(id: string): AgentSession {
   return {
-    id,
+    id: AgentId(id),
     subagentType: 'research',
     description: 'Research task',
     prompt: 'Inspect the repo',
@@ -46,7 +47,7 @@ describe('AgentSessionStore', () => {
     const store = AgentSessionStore.create();
     store.saveSession(createSession('agent-memory'));
 
-    expect(store.loadSession('agent-memory')?.id).toBe('agent-memory');
+    expect(store.loadSession(AgentId('agent-memory'))?.id).toBe('agent-memory');
     expect(store.listSessions().map((session) => session.id)).toEqual(['agent-memory']);
     expect(await pathExists(join(fakeHome, '.blade', 'agents', 'sessions'))).toBe(false);
   });

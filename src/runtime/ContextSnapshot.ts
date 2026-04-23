@@ -1,8 +1,9 @@
+import type { SessionId } from '../types/branded.js';
 import type { JsonObject } from '../types/common.js';
 import type { RuntimeContext } from './RuntimeContext.js';
 
 export interface ContextSnapshot {
-  readonly sessionId: string;
+  readonly sessionId: SessionId;
   readonly turnId: string;
   readonly context: RuntimeContext;
   readonly filesystemRoots: string[];
@@ -87,7 +88,7 @@ export function mergeContext(
 }
 
 export function createContextSnapshot(
-  sessionId: string,
+  sessionId: SessionId,
   turnId: string,
   defaultContext: RuntimeContext = {},
   turnContext?: RuntimeContext,

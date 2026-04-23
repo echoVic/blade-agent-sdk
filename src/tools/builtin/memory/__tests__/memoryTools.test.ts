@@ -3,6 +3,7 @@ import { getBuiltinTools } from '../../index.js';
 import { MemoryManager } from '../../../../memory/MemoryManager.js';
 import type { MemoryStore } from '../../../../memory/MemoryStore.js';
 import type { Memory, MemoryInput } from '../../../../memory/MemoryTypes.js';
+import { SessionId } from '../../../../types/branded.js';
 import { createMemoryReadTool, createMemoryWriteTool } from '../index.js';
 
 class InMemoryStore implements MemoryStore {
@@ -37,7 +38,7 @@ async function executeTool<TParams>(
 
 describe('memory tools', () => {
   it('does not register memory tools by default', async () => {
-    const tools = await getBuiltinTools({ sessionId: 'memory-default' });
+    const tools = await getBuiltinTools({ sessionId: SessionId('memory-default') });
     expect(tools.map((tool) => tool.name)).not.toEqual(
       expect.arrayContaining(['MemoryRead', 'MemoryWrite'])
     );
@@ -46,7 +47,7 @@ describe('memory tools', () => {
   it('registers memory tools only when a manager is provided', async () => {
     const manager = new MemoryManager(new InMemoryStore());
     const tools = await getBuiltinTools({
-      sessionId: 'memory-opt-in',
+      sessionId: SessionId('memory-opt-in'),
       memoryManager: manager,
     });
 

@@ -1,20 +1,21 @@
 import { spawn } from 'child_process';
 import { randomUUID } from 'crypto';
 import { z } from 'zod';
+import { BashClassifier } from '../../../hooks/BashClassifier.js';
 import { getSandboxService } from '../../../sandbox/SandboxService.js';
+import { SessionId } from '../../../types/branded.js';
 import { getErrorMessage, getErrorName } from '../../../utils/errorUtils.js';
 import { createTool } from '../../core/createTool.js';
 import type {
-  BashBackgroundMetadata,
-  BashForegroundMetadata,
-  ExecutionContext,
-  ToolResult,
+    BashBackgroundMetadata,
+    BashForegroundMetadata,
+    ExecutionContext,
+    ToolResult,
 } from '../../types/index.js';
 import { ToolErrorType, ToolKind } from '../../types/index.js';
 import { lazySchema } from '../../validation/lazySchema.js';
 import { ToolSchemas } from '../../validation/zodSchemas.js';
 import { BackgroundShellManager } from './BackgroundShellManager.js';
-import { BashClassifier } from '../../../hooks/BashClassifier.js';
 import { OutputTruncator } from './OutputTruncator.js';
 
 /**
@@ -341,7 +342,7 @@ function executeInBackground(
   const manager = BackgroundShellManager.getInstance();
   const backgroundProcess = manager.startBackgroundProcess({
     command,
-    sessionId: randomUUID(), // 每个后台进程使用唯一 ID
+    sessionId: SessionId(randomUUID()),
     cwd,
     env,
   });

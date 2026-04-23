@@ -5,6 +5,7 @@
  */
 
 import type { ToolResult } from '../../tools/types/ToolResult.js';
+import type { SessionId } from '../../types/branded.js';
 import type { JsonObject, JsonValue, PermissionMode } from '../../types/common.js';
 import { HookEvent } from '../../types/constants.js';
 
@@ -1181,7 +1182,7 @@ export interface HookExecutionContext {
   projectDir: string;
 
   /** 会话 ID */
-  sessionId: string;
+  sessionId: SessionId;
 
   /** 权限模式 */
   permissionMode: PermissionMode;

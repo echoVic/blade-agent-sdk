@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { Message } from '../../services/ChatServiceInterface.js';
+import { SessionId } from '../../types/branded.js';
 import { LoopState } from '../state/LoopState.js';
 import { ConversationState } from '../state/ConversationState.js';
 
@@ -11,7 +12,7 @@ describe('LoopState', () => {
     const loopState = new LoopState({
       conversationState: convState,
       executionContext: {
-        sessionId: 'session-1',
+        sessionId: SessionId('session-1'),
         userId: 'user-1',
       },
       resolveTools: () => [],

@@ -2,6 +2,7 @@ import { mkdtemp, readFile, rm } from 'fs/promises';
 import { tmpdir } from 'os';
 import * as path from 'path';
 import { afterEach, describe, expect, it } from 'vitest';
+import { SessionId } from '../../../../types/branded.js';
 import { TaskStore } from '../TaskStore.js';
 
 const tempDirs: string[] = [];
@@ -18,8 +19,8 @@ afterEach(async () => {
 
 describe('TaskStore', () => {
   it('isolates tasks by session id', async () => {
-    const sessionA = `session-a-${Date.now()}`;
-    const sessionB = `session-b-${Date.now()}`;
+    const sessionA = SessionId(`session-a-${Date.now()}`);
+    const sessionB = SessionId(`session-b-${Date.now()}`);
     const storeA = TaskStore.getInstance(sessionA);
     const storeB = TaskStore.getInstance(sessionB);
 
@@ -38,7 +39,7 @@ describe('TaskStore', () => {
   });
 
   it('updates dependencies, merges metadata, and deletes tasks', async () => {
-    const sessionId = `session-${Date.now()}`;
+    const sessionId = SessionId(`session-${Date.now()}`);
     const store = TaskStore.getInstance(sessionId);
 
     const dependency = await store.create({
@@ -79,7 +80,7 @@ describe('TaskStore', () => {
   });
 
   it('persists tasks when configDir is provided', async () => {
-    const sessionId = `persisted-session-${Date.now()}`;
+    const sessionId = SessionId(`persisted-session-${Date.now()}`);
     const configDir = await createTempDir();
     const store = TaskStore.getInstance(sessionId, configDir);
 

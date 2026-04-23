@@ -7,6 +7,7 @@ import { agentLoop } from '../AgentLoop.js';
 import { ConversationState } from '../state/ConversationState.js';
 import type { TurnState } from '../state/TurnState.js';
 import type { LoopResult } from '../types.js';
+import { SessionId } from '../../types/branded.js';
 
 function deferred<T>() {
   let resolve!: (value: T) => void;
@@ -72,7 +73,7 @@ function baseConfig(overrides: BaseConfigOverrides = {}): AgentLoopConfig {
     maxContextTokens: 128000,
     permissionMode: undefined,
     executionContext: {
-      sessionId: 'session-1',
+      sessionId: SessionId('session-1'),
       userId: 'user-1',
     },
   };
