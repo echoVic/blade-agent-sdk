@@ -2,6 +2,16 @@
 
 本文件记录 @blade-ai/agent-sdk 的所有重要变更。
 
+## [1.0.8] - 2026-04-23
+
+- 0b2e875 feat(生命周期管理): 添加清理注册表和会话关闭状态管理
+- 48810db feat: 添加懒加载工具模式并优化类型断言
+- fdbd692 refactor(types): 引入 branded 类型并替换相关 string 类型
+- d1fedf4 refactor(session): 将 HookEvent 枚举改为常量对象并修复异步关闭问题
+- 5b5e7b0 feat(错误处理): 实现SDK错误基类及派生错误类
+- c0c85f2 refactor: 移除未使用的代码和内部类型定义
+- f7db395 refactor(tools): 重构工具类型定义，拆分为多个独立文件
+- 540e60c chore: 更新依赖版本并调整tsconfig配置
 ## [1.0.7] - 2026-04-18
 
 - 59a6f33 feat(execution): 添加并发调度器管理工具执行并发
