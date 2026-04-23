@@ -1,6 +1,7 @@
 import { nanoid } from 'nanoid';
 import { Agent } from '../agent/Agent.js';
 import type { ChatContext, LoopResult, UserMessageContent } from '../agent/types.js';
+import { type CleanupHandle, registerCleanup } from '../lifecycle/CleanupRegistry.js';
 import { createRootLogger, type InternalLogger, LogCategory } from '../logging/Logger.js';
 import {
   type ContextSnapshot,
@@ -60,6 +61,8 @@ class Session implements ISession {
   private permissionMode: PermissionMode;
   private defaultContext: RuntimeContext;
   private initialized = false;
+  private closed = false;
+  private cleanupHandle: CleanupHandle | null = null;
 
   private pendingMessage: UserMessageContent | null = null;
   private pendingSendOptions: SendOptions | null = null;
@@ -82,6 +85,10 @@ class Session implements ISession {
 
   get messages(): Message[] {
     return [...this._messages];
+  }
+
+  get isClosed(): boolean {
+    return this.closed;
   }
 
   getDefaultContext(): RuntimeContext {
@@ -123,6 +130,7 @@ class Session implements ISession {
     }, this.runtime.getAgentRuntimeDeps());
 
     this.initialized = true;
+    this.cleanupHandle = registerCleanup(() => this.close());
     await this.runtime.getHookRuntime().runSessionStart({
       isResume: this.isResumeSession,
       resumeSessionId: this.isResumeSession ? this.sessionId : undefined,
@@ -465,6 +473,12 @@ class Session implements ISession {
   }
 
   async close(): Promise<void> {
+    if (this.closed) {
+      return;
+    }
+    this.closed = true;
+    this.cleanupHandle?.unregister();
+    this.cleanupHandle = null;
     this.abort();
     this.agent = null;
     this.initialized = false;
@@ -548,6 +562,9 @@ class Session implements ISession {
   }
 
   private async ensureInitialized(): Promise<void> {
+    if (this.closed) {
+      throw new Error('Session is closed');
+    }
     if (!this.initialized) {
       await this.initialize();
     }
@@ -706,7 +723,7 @@ export async function forkSession(options: ForkOptions): Promise<ISession> {
 
   const forkedSession = await sourceSession.fork({ messageId });
 
-  sourceSession.close();
+  await sourceSession.close();
 
   return forkedSession;
 }

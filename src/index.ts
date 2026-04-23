@@ -27,6 +27,9 @@ export {
   HookExitCode,
   HookType
 } from './hooks/types/HookTypes.js';
+// --- Lifecycle ---
+export { gracefulShutdown, registerCleanup, resetCleanupRegistry } from './lifecycle/CleanupRegistry.js';
+export type { CleanupFn, CleanupHandle, GracefulShutdownOptions } from './lifecycle/CleanupRegistry.js';
 export type {
   McpToolCallResponse,
   McpToolDefinition, ToolResponse as McpToolResponse, SdkMcpServerHandle,

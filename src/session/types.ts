@@ -189,6 +189,7 @@ export interface ForkSessionResult {
 export interface ISession extends AsyncDisposable {
   readonly sessionId: SessionId;
   readonly messages: Message[];
+  readonly isClosed: boolean;
 
   send(message: UserMessageContent, options?: SendOptions): Promise<void>;
 
