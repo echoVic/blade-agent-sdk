@@ -4,6 +4,7 @@ import {
   normalizeDeepSeekModel,
   resolveDeepSeekBaseUrl,
   sanitizeDeepSeekStrictSchema,
+  shouldOmitDeepSeekSamplingOptions,
   withDeepSeekDefaults,
 } from '../deepseek.js';
 
@@ -59,6 +60,27 @@ describe('DeepSeek provider helpers', () => {
       required: ['q', 'count'],
       additionalProperties: false,
     });
+  });
+
+  it('omits sampling options only for enabled DeepSeek thinking mode', () => {
+    expect(shouldOmitDeepSeekSamplingOptions({
+      provider: 'deepseek',
+      model: 'deepseek-reasoner',
+    })).toBe(true);
+    expect(shouldOmitDeepSeekSamplingOptions({
+      provider: 'deepseek',
+      model: 'deepseek-v4-pro',
+      deepseek: { thinking: { type: 'enabled' } },
+    })).toBe(true);
+    expect(shouldOmitDeepSeekSamplingOptions({
+      provider: 'deepseek',
+      model: 'deepseek-v4-pro',
+      deepseek: { thinking: { type: 'disabled' } },
+    })).toBe(false);
+    expect(shouldOmitDeepSeekSamplingOptions({
+      provider: 'openai',
+      model: 'deepseek-reasoner',
+    })).toBe(false);
   });
 
   it('creates FIM completion requests against the beta endpoint', async () => {

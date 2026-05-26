@@ -94,7 +94,7 @@ describe('VercelAIChatService', () => {
   it('passes DeepSeek thinking options and maps cache/reasoning usage', async () => {
     mockGenerateText.mockResolvedValue({
       text: 'answer',
-      reasoning: [{ text: 'think' }],
+      reasoningText: 'think',
       usage: {
         inputTokens: 12,
         outputTokens: 5,
@@ -113,6 +113,7 @@ describe('VercelAIChatService', () => {
         apiKey: 'test-key',
         baseUrl: '',
         model: 'deepseek-reasoner',
+        temperature: 0.9,
         supportsThinking: true,
       },
       NOOP_LOGGER,
@@ -129,6 +130,7 @@ describe('VercelAIChatService', () => {
           thinking: { type: 'enabled' },
         },
       },
+      temperature: undefined,
     }));
     expect(response.reasoningContent).toBe('think');
     expect(response.usage).toMatchObject({
@@ -138,5 +140,40 @@ describe('VercelAIChatService', () => {
       cacheReadInputTokens: 7,
       reasoningTokens: 3,
     });
+  });
+
+  it('keeps sampling options when DeepSeek thinking is explicitly disabled', async () => {
+    mockGenerateText.mockResolvedValue({
+      text: 'answer',
+      usage: { promptTokens: 1, completionTokens: 1, totalTokens: 2 },
+    });
+
+    const service = new VercelAIChatService(
+      {
+        provider: 'deepseek',
+        apiKey: 'test-key',
+        baseUrl: '',
+        model: 'deepseek-v4-pro',
+        temperature: 0.4,
+        providerOptions: {
+          deepseek: {
+            thinking: { type: 'disabled' },
+          },
+        },
+      },
+      NOOP_LOGGER,
+    );
+
+    await (service as unknown as { initialized: Promise<void> }).initialized;
+    await service.chat([{ role: 'user', content: 'hello' }]);
+
+    expect(mockGenerateText).toHaveBeenCalledWith(expect.objectContaining({
+      temperature: 0.4,
+      providerOptions: {
+        deepseek: {
+          thinking: { type: 'disabled' },
+        },
+      },
+    }));
   });
 });

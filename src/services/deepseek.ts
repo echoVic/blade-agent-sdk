@@ -105,6 +105,21 @@ export function buildDeepSeekProviderOptions(config: {
   };
 }
 
+export function shouldOmitDeepSeekSamplingOptions(config: {
+  provider: string;
+  providerId?: string;
+  model: string;
+  supportsThinking?: boolean;
+  deepseek?: DeepSeekProviderOptions;
+}): boolean {
+  if (config.provider !== 'deepseek' && config.providerId !== 'deepseek') return false;
+  const thinkingType = config.deepseek?.thinking?.type;
+  if (thinkingType === 'disabled') return false;
+  return thinkingType === 'enabled'
+    || Boolean(config.supportsThinking)
+    || isDeepSeekReasoningModel(config.model);
+}
+
 export function mergeDeepSeekUsage(
   usage?: AIUsage,
   providerMetadata?: { deepseek?: DeepSeekProviderMetadata },

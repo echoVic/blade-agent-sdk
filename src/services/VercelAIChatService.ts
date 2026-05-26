@@ -31,6 +31,7 @@ import {
   mergeDeepSeekUsage,
   normalizeDeepSeekModel,
   resolveDeepSeekBaseUrl,
+  shouldOmitDeepSeekSamplingOptions,
 } from './deepseek.js';
 
 function filterOrphanToolMessages(messages: readonly Message[]): Message[] {
@@ -472,6 +473,21 @@ export class VercelAIChatService implements IChatService {
     return this.config.providerOptions as AIProviderOptions | undefined;
   }
 
+  private shouldOmitSamplingOptions(): boolean {
+    return shouldOmitDeepSeekSamplingOptions({
+      provider: this.config.provider,
+      providerId: this.config.providerId,
+      model: this.config.model,
+      supportsThinking: this.config.supportsThinking,
+      deepseek: this.config.providerOptions?.deepseek,
+    });
+  }
+
+  private getTemperatureOverride(temperature?: number): number | undefined {
+    if (this.shouldOmitSamplingOptions()) return undefined;
+    return temperature;
+  }
+
   private prepareRequest(
     messages: readonly Message[],
     tools?: Array<{ name: string; description: string; parameters: JSONSchema7 }>,
@@ -500,7 +516,7 @@ export class VercelAIChatService implements IChatService {
 
     const reasoningText = Array.isArray(result.reasoning)
       ? result.reasoning.map((r) => r.text).join('')
-      : undefined;
+      : (result as { reasoningText?: string }).reasoningText;
 
     return {
       content: result.text,
@@ -535,7 +551,7 @@ export class VercelAIChatService implements IChatService {
             messages: coreMessages as never,
             tools: coreTools as never,
             maxOutputTokens: ctx.maxTokensOverride ?? this.config.maxOutputTokens,
-            temperature: this.config.temperature ?? 0,
+            temperature: this.getTemperatureOverride(this.config.temperature ?? 0),
             abortSignal: signal,
             experimental_output: experimentalOutput,
             providerOptions: this.getProviderOptions(),
@@ -581,7 +597,7 @@ export class VercelAIChatService implements IChatService {
             maxOutputTokens: ctx.maxTokensOverride
               ?? options?.maxOutputTokens
               ?? this.config.maxOutputTokens,
-            temperature: options?.temperature ?? this.config.temperature ?? 0,
+            temperature: this.getTemperatureOverride(options?.temperature ?? this.config.temperature ?? 0),
             abortSignal: signal,
             experimental_output: experimentalOutput,
             providerOptions: this.getProviderOptions(),
@@ -627,7 +643,7 @@ export class VercelAIChatService implements IChatService {
             messages: coreMessages as never,
             tools: coreTools as never,
             maxOutputTokens: ctx.maxTokensOverride ?? this.config.maxOutputTokens,
-            temperature: this.config.temperature ?? 0,
+            temperature: this.getTemperatureOverride(this.config.temperature ?? 0),
             abortSignal: signal,
             experimental_output: experimentalOutput,
             providerOptions: this.getProviderOptions(),
@@ -673,7 +689,7 @@ export class VercelAIChatService implements IChatService {
               messages: coreMessages as never,
               tools: coreTools as never,
               maxOutputTokens: ctx.maxTokensOverride ?? this.config.maxOutputTokens,
-              temperature: this.config.temperature ?? 0,
+              temperature: this.getTemperatureOverride(this.config.temperature ?? 0),
               abortSignal: signal,
               experimental_output: experimentalOutput,
               providerOptions: this.getProviderOptions(),
