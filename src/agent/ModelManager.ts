@@ -10,6 +10,7 @@ import {
   createChatServiceAsync,
   type IChatService,
 } from '../services/ChatServiceInterface.js';
+import { withDeepSeekDefaults } from '../services/deepseek.js';
 import type {
   BladeConfig,
   ModelConfig,
@@ -71,6 +72,7 @@ export class ModelManager {
   // ===== 模型应用 =====
 
   async applyModelConfig(modelConfig: ModelConfig, label: string): Promise<void> {
+    modelConfig = withDeepSeekDefaults(modelConfig);
     this.logger.debug(`[ModelManager] ${label} ${modelConfig.name} (${modelConfig.model})`);
 
     const modelSupportsThinking = isThinkingModel(modelConfig);
@@ -94,6 +96,7 @@ export class ModelManager {
       temperature: modelConfig.temperature ?? this.config.temperature,
       maxContextTokens: this.currentModelMaxContextTokens,
       supportsThinking,
+      providerOptions: modelConfig.providerOptions as never,
       outputFormat: this.outputFormat,
     });
 

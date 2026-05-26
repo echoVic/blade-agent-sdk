@@ -198,6 +198,7 @@ class Session implements ISession {
       'openai-compatible': 'openai-compatible',
       anthropic: 'anthropic',
       gemini: 'gemini',
+      deepseek: 'deepseek',
       'azure-openai': 'azure-openai',
     };
     return mapping[type] || 'openai-compatible';
@@ -209,6 +210,7 @@ class Session implements ISession {
       'openai-compatible': 'https://api.openai.com/v1',
       anthropic: 'https://api.anthropic.com',
       gemini: 'https://generativelanguage.googleapis.com',
+      deepseek: 'https://api.deepseek.com',
       'azure-openai': '',
     };
     return urls[type] || '';

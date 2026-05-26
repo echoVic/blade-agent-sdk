@@ -26,6 +26,12 @@ import {
   type RetryEvent,
   withRetry,
 } from './RetryPolicy.js';
+import {
+  buildDeepSeekProviderOptions,
+  mergeDeepSeekUsage,
+  normalizeDeepSeekModel,
+  resolveDeepSeekBaseUrl,
+} from './deepseek.js';
 
 function filterOrphanToolMessages(messages: readonly Message[]): Message[] {
   const availableToolCallIds = new Set<string>();
@@ -64,7 +70,7 @@ type AITextPart = {
 type AIMessage =
   | { role: 'system'; content: string; providerOptions?: AIProviderOptions }
   | { role: 'user'; content: string | Array<AITextPart | { type: 'image'; image: string }> }
-  | { role: 'assistant'; content: string | Array<{ type: 'text'; text: string } | { type: 'tool-call'; toolCallId: string; toolName: string; input: unknown }> }
+  | { role: 'assistant'; content: string | Array<{ type: 'reasoning'; text: string } | { type: 'text'; text: string } | { type: 'tool-call'; toolCallId: string; toolName: string; input: unknown }> }
   | { role: 'tool'; content: Array<{ type: 'tool-result'; toolCallId: string; toolName: string; output: { type: 'text'; value: string } }> };
 
 type AITool = {
@@ -208,14 +214,23 @@ export class VercelAIChatService implements IChatService {
         return compatible(model);
       }
 
+      case 'deepseek': {
+        const deepseek = createDeepSeek({
+          apiKey,
+          baseURL: resolveDeepSeekBaseUrl(baseUrl),
+          headers: customHeaders,
+        });
+        return deepseek(normalizeDeepSeekModel(model));
+      }
+
       default: {
         if (providerId === 'deepseek') {
           const deepseek = createDeepSeek({
             apiKey,
-            baseURL: baseUrl || undefined,
+            baseURL: resolveDeepSeekBaseUrl(baseUrl),
             headers: customHeaders,
           });
-          return deepseek(model);
+          return deepseek(normalizeDeepSeekModel(model));
         }
 
         const compatible = createOpenAICompatible({
@@ -295,6 +310,14 @@ export class VercelAIChatService implements IChatService {
         }
       } else if (msg.role === 'assistant') {
         if (msg.tool_calls && msg.tool_calls.length > 0) {
+          const content: Array<
+            { type: 'reasoning'; text: string }
+            | { type: 'text'; text: string }
+            | { type: 'tool-call'; toolCallId: string; toolName: string; input: unknown }
+          > = [];
+          if (msg.reasoningContent) {
+            content.push({ type: 'reasoning', text: msg.reasoningContent });
+          }
           const toolCalls = msg.tool_calls.map((tc) => {
             const fn = (tc as { function?: { name: string; arguments?: string } }).function;
             return {
@@ -306,15 +329,23 @@ export class VercelAIChatService implements IChatService {
           });
           const text = getTextContent(msg.content);
           if (text) {
+            content.push({ type: 'text', text });
+          }
+          content.push(...toolCalls);
+          result.push({ role: 'assistant', content });
+        } else {
+          const text = getTextContent(msg.content);
+          if (msg.reasoningContent) {
             result.push({
               role: 'assistant',
-              content: [{ type: 'text', text }, ...toolCalls],
+              content: [
+                { type: 'reasoning', text: msg.reasoningContent },
+                ...(text ? [{ type: 'text' as const, text }] : []),
+              ],
             });
           } else {
-            result.push({ role: 'assistant', content: toolCalls });
+            result.push({ role: 'assistant', content: text });
           }
-        } else {
-          result.push({ role: 'assistant', content: getTextContent(msg.content) });
         }
       } else if (msg.role === 'tool') {
         if (!msg.tool_call_id) continue;
@@ -379,15 +410,36 @@ export class VercelAIChatService implements IChatService {
       promptTokens?: number;
       completionTokens?: number;
       totalTokens?: number;
+      inputTokens?: number;
+      outputTokens?: number;
+      inputTokenDetails?: {
+        noCacheTokens?: number;
+        cacheReadTokens?: number;
+        cacheWriteTokens?: number;
+      };
+      outputTokenDetails?: {
+        textTokens?: number;
+        reasoningTokens?: number;
+      };
+      reasoningTokens?: number;
+      cachedInputTokens?: number;
     },
     providerMetadata?: {
       anthropic?: {
         cacheCreationInputTokens?: number;
         cacheReadInputTokens?: number;
       };
+      deepseek?: {
+        promptCacheHitTokens?: number;
+        promptCacheMissTokens?: number;
+      };
     }
   ): UsageInfo | undefined {
     if (!usage) return undefined;
+    if (providerMetadata?.deepseek || this.config.provider === 'deepseek' || this.config.providerId === 'deepseek') {
+      return mergeDeepSeekUsage(usage, providerMetadata);
+    }
+
     const prompt = usage.promptTokens ?? 0;
     const completion = usage.completionTokens ?? 0;
     const result: UsageInfo = {
@@ -404,6 +456,20 @@ export class VercelAIChatService implements IChatService {
       }
     }
     return result;
+  }
+
+  private getProviderOptions(): AIProviderOptions | undefined {
+    if (this.config.provider === 'deepseek' || this.config.providerId === 'deepseek') {
+      return {
+        ...buildDeepSeekProviderOptions({
+          model: this.config.model,
+          supportsThinking: this.config.supportsThinking,
+          deepseek: this.config.providerOptions?.deepseek,
+        }),
+        ...this.config.providerOptions,
+      } as AIProviderOptions;
+    }
+    return this.config.providerOptions as AIProviderOptions | undefined;
   }
 
   private prepareRequest(
@@ -424,6 +490,7 @@ export class VercelAIChatService implements IChatService {
     usage?: { promptTokens?: number; completionTokens?: number; totalTokens?: number };
     providerMetadata?: {
       anthropic?: { cacheCreationInputTokens?: number; cacheReadInputTokens?: number };
+      deepseek?: { promptCacheHitTokens?: number; promptCacheMissTokens?: number };
     };
   }): ChatResponse {
     const toolCalls =
@@ -443,6 +510,7 @@ export class VercelAIChatService implements IChatService {
         result.usage as { promptTokens?: number; completionTokens?: number; totalTokens?: number },
         result.providerMetadata as {
           anthropic?: { cacheCreationInputTokens?: number; cacheReadInputTokens?: number };
+          deepseek?: { promptCacheHitTokens?: number; promptCacheMissTokens?: number };
         }
       ),
     };
@@ -470,6 +538,7 @@ export class VercelAIChatService implements IChatService {
             temperature: this.config.temperature ?? 0,
             abortSignal: signal,
             experimental_output: experimentalOutput,
+            providerOptions: this.getProviderOptions(),
           }),
         this.retryConfig,
         signal,
@@ -515,6 +584,7 @@ export class VercelAIChatService implements IChatService {
             temperature: options?.temperature ?? this.config.temperature ?? 0,
             abortSignal: signal,
             experimental_output: experimentalOutput,
+            providerOptions: this.getProviderOptions(),
           }),
         retryConfig,
         signal,
@@ -560,6 +630,7 @@ export class VercelAIChatService implements IChatService {
             temperature: this.config.temperature ?? 0,
             abortSignal: signal,
             experimental_output: experimentalOutput,
+            providerOptions: this.getProviderOptions(),
           }),
         this.retryConfig,
         signal,
@@ -605,6 +676,7 @@ export class VercelAIChatService implements IChatService {
               temperature: this.config.temperature ?? 0,
               abortSignal: signal,
               experimental_output: experimentalOutput,
+              providerOptions: this.getProviderOptions(),
             }),
           ),
         this.retryConfig,
@@ -647,7 +719,7 @@ export class VercelAIChatService implements IChatService {
               finishReason: (part as { finishReason?: string }).finishReason,
               usage: this.convertUsage(
                 (part as { totalUsage?: { promptTokens?: number; completionTokens?: number; totalTokens?: number } }).totalUsage,
-                (part as { providerMetadata?: { anthropic?: { cacheCreationInputTokens?: number; cacheReadInputTokens?: number } } }).providerMetadata
+                (part as { providerMetadata?: { anthropic?: { cacheCreationInputTokens?: number; cacheReadInputTokens?: number }; deepseek?: { promptCacheHitTokens?: number; promptCacheMissTokens?: number } } }).providerMetadata
               ),
             };
             break;

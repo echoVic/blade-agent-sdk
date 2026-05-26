@@ -34,6 +34,7 @@ export interface ModelConfig {
   maxOutputTokens?: number;
   temperature?: number;
   headers?: Record<string, string>;
+  providerOptions?: JsonObject;
   thinkingEnabled?: boolean;
   thinkingBudget?: number;
   supportsThinking?: boolean;

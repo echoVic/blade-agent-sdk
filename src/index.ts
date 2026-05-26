@@ -40,6 +40,20 @@ export { createSdkMcpServer, tool } from './mcp/index.js';
 export type { Memory, MemoryInput, MemoryStore, MemoryType } from './memory/index.js';
 // --- Memory ---
 export { FileSystemMemoryStore, MemoryManager } from './memory/index.js';
+export {
+  createDeepSeekFimCompletion,
+  DEEPSEEK_BETA_BASE_URL,
+  DEEPSEEK_DEFAULT_BASE_URL,
+  DEEPSEEK_DEFAULT_MODEL,
+  normalizeDeepSeekModel,
+  resolveDeepSeekBaseUrl,
+  sanitizeDeepSeekStrictSchema,
+} from './services/deepseek.js';
+export type {
+  DeepSeekFimCompletionOptions,
+  DeepSeekFimCompletionResponse,
+  DeepSeekProviderOptions,
+} from './services/deepseek.js';
 export type {
   ContextSnapshot,
   RuntimeContext,

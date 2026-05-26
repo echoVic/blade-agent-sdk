@@ -59,7 +59,37 @@ interface ProviderConfig {
 ### DeepSeek
 
 ```ts
-{ type: 'deepseek', apiKey: 'xxx' }
+{
+  type: 'deepseek',
+  apiKey: process.env.DEEPSEEK_API_KEY!,
+  // 可省略，默认使用 https://api.deepseek.com
+  baseUrl: 'https://api.deepseek.com',
+}
+```
+
+DeepSeek 使用原生 provider 分支，默认模型建议使用 `deepseek-v4-pro`。旧别名 `deepseek-chat`、`deepseek-reasoner` 会继续兼容，但 SDK 会优先按当前 V4 模型路由。
+
+```ts
+const session = await createSession({
+  provider: { type: 'deepseek', apiKey: process.env.DEEPSEEK_API_KEY! },
+  model: 'deepseek-v4-pro',
+});
+```
+
+Thinking mode 可通过模型配置的 `providerOptions` 透传：
+
+```ts
+{
+  id: 'deepseek-pro',
+  name: 'DeepSeek V4 Pro',
+  provider: 'deepseek',
+  model: 'deepseek-v4-pro',
+  providerOptions: {
+    deepseek: {
+      thinking: { type: 'enabled' },
+    },
+  },
+}
 ```
 
 ### OpenAI 兼容

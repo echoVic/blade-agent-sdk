@@ -55,6 +55,12 @@ export interface ProviderOptions {
   anthropic?: {
     cacheControl?: AnthropicCacheControl;
   };
+  deepseek?: {
+    thinking?: {
+      type?: 'enabled' | 'disabled';
+    };
+    strictTools?: boolean;
+  };
 }
 
 /**
@@ -111,6 +117,7 @@ export interface ChatConfig {
   timeout?: number;
   apiVersion?: string; // GPT OpenAI Platform 专用：API 版本（如 '2024-03-01-preview'）
   supportsThinking?: boolean; // 是否支持 thinking 模式（DeepSeek Reasoner 等）
+  providerOptions?: ProviderOptions;
   customHeaders?: Record<string, string>; // Provider 特定的自定义 HTTP Headers
   providerId?: string; // models.dev 中的 Provider ID（用于获取特定配置）
   outputFormat?: OutputFormat; // 结构化输出格式（JSON Schema）
