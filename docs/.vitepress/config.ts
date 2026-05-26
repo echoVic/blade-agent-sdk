@@ -43,6 +43,7 @@ export default defineConfig({
         items: [
           { text: 'API 参考', link: '/api-reference' },
           { text: '常见模式', link: '/recipes' },
+          { text: 'DeepSeek API 调研', link: '/deepseek-api-research' },
         ],
       },
     ],
