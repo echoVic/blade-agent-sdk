@@ -165,6 +165,7 @@ export function buildLoopConfig(deps: LoopHookBuilderDeps): AgentLoopConfig {
               context.sessionId, ctx.toolCall.function.name,
               ctx.params,
               getLastUuid(), context.subagentInfo,
+              ctx.toolCall.id,
             );
           }
         } catch (error) {
@@ -295,10 +296,17 @@ export function buildLoopConfig(deps: LoopHookBuilderDeps): AgentLoopConfig {
     message: {
       async onAssistant(ctx) {
         await persistToJsonl(modelManager, context.sessionId, logger, async (contextMgr, sessionId) => {
-          if (ctx.content.trim() !== '') {
+          if (ctx.content.trim() !== '' || ctx.reasoningContent || (ctx.toolCalls?.length ?? 0) > 0) {
             const uuid = await contextMgr.saveMessage(
-              sessionId, 'assistant', ctx.content,
-              getLastUuid(), undefined, context.subagentInfo,
+              sessionId,
+              'assistant',
+              ctx.content,
+              getLastUuid(),
+              {
+                reasoningContent: ctx.reasoningContent,
+                toolCalls: ctx.toolCalls,
+              },
+              context.subagentInfo,
             );
             setLastUuid(uuid);
           }

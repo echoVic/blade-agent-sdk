@@ -1,6 +1,6 @@
 import * as crypto from 'crypto';
 import { nanoid } from 'nanoid';
-import type { Message } from '../services/ChatServiceInterface.js';
+import type { Message, ToolCall as ChatToolCall } from '../services/ChatServiceInterface.js';
 import {
   JsonlSessionStore,
   NoopSessionStore,
@@ -306,6 +306,8 @@ export class ContextManager {
       model?: string;
       usage?: { input_tokens: number; output_tokens: number };
       customMetadata?: JsonObject;
+      reasoningContent?: string;
+      toolCalls?: ChatToolCall[];
     },
     subagentInfo?: {
       parentSessionId: string;
@@ -335,14 +337,16 @@ export class ContextManager {
       parentSessionId: string;
       subagentType: string;
       isSidechain: boolean;
-    }
+    },
+    requestedToolCallId?: string,
   ): Promise<string> {
     return this.persistent.saveToolUse(
       sessionId,
       toolName,
       toolInput,
       parentUuid,
-      subagentInfo
+      subagentInfo,
+      requestedToolCallId,
     );
   }
 

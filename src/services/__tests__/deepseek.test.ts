@@ -1,9 +1,11 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   createDeepSeekFimCompletion,
+  prepareDeepSeekTools,
   normalizeDeepSeekModel,
   resolveDeepSeekBaseUrl,
   sanitizeDeepSeekStrictSchema,
+  shouldUseDeepSeekBetaBaseUrl,
   shouldOmitDeepSeekSamplingOptions,
   withDeepSeekDefaults,
 } from '../deepseek.js';
@@ -54,11 +56,68 @@ describe('DeepSeek provider helpers', () => {
       properties: {
         q: { type: 'string' },
         count: { type: 'number' },
+        nested: {
+          type: 'object',
+          properties: {
+            name: { type: 'string', minLength: 2, maxLength: 8 },
+          },
+          required: [],
+        },
+        tags: {
+          type: 'array',
+          minItems: 1,
+          maxItems: 3,
+          items: { type: 'string', minLength: 1 },
+        },
       },
       required: ['q'],
     })).toMatchObject({
-      required: ['q', 'count'],
+      required: ['q', 'count', 'nested', 'tags'],
       additionalProperties: false,
+      properties: {
+        nested: {
+          required: ['name'],
+          additionalProperties: false,
+          properties: {
+            name: { type: 'string' },
+          },
+        },
+        tags: {
+          type: 'array',
+          items: { type: 'string' },
+        },
+      },
+    });
+  });
+
+  it('prepares DeepSeek strict tools and beta endpoint selection', () => {
+    const tools = prepareDeepSeekTools([
+      {
+        name: 'search',
+        description: 'Search files',
+        parameters: {
+          type: 'object',
+          properties: {
+            q: { type: 'string', minLength: 1 },
+          },
+        },
+      },
+    ], { strictTools: true });
+
+    expect(shouldUseDeepSeekBetaBaseUrl({
+      provider: 'deepseek',
+      deepseek: { strictTools: true },
+    })).toBe(true);
+    expect(tools?.[0]).toMatchObject({
+      name: 'search',
+      strict: true,
+      parameters: {
+        required: ['q'],
+        additionalProperties: false,
+        properties: {
+          q: { type: 'string' },
+        },
+      },
     });
   });
 

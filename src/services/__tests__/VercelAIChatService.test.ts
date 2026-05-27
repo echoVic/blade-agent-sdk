@@ -91,6 +91,78 @@ describe('VercelAIChatService', () => {
     expect(mockCreateOpenAICompatible).not.toHaveBeenCalled();
   });
 
+  it('uses DeepSeek beta endpoint and strict sanitized tools when strictTools is enabled', async () => {
+    mockGenerateText.mockResolvedValue({
+      text: '',
+      toolCalls: [
+        {
+          id: 'raw-call',
+          name: 'Search',
+          arguments: '{"q":"needle"}',
+        },
+      ],
+    });
+
+    const service = new VercelAIChatService(
+      {
+        provider: 'deepseek',
+        apiKey: 'test-key',
+        baseUrl: '',
+        model: 'deepseek-v4-pro',
+        providerOptions: {
+          deepseek: { strictTools: true },
+        },
+      },
+      NOOP_LOGGER,
+    );
+
+    await (service as unknown as { initialized: Promise<void> }).initialized;
+    const response = await service.chat(
+      [{ role: 'user', content: 'search' }],
+      [
+        {
+          name: 'Search',
+          description: 'Search content',
+          parameters: {
+            type: 'object',
+            properties: {
+              q: { type: 'string', minLength: 1 },
+            },
+          },
+        },
+      ],
+    );
+
+    expect(mockCreateDeepSeek).toHaveBeenCalledWith({
+      apiKey: 'test-key',
+      baseURL: 'https://api.deepseek.com/beta',
+      headers: undefined,
+    });
+    expect(mockGenerateText).toHaveBeenCalledWith(expect.objectContaining({
+      tools: {
+        Search: expect.objectContaining({
+          strict: true,
+          inputSchema: expect.objectContaining({
+            jsonSchema: expect.objectContaining({
+              required: ['q'],
+              additionalProperties: false,
+              properties: {
+                q: { type: 'string' },
+              },
+            }),
+          }),
+        }),
+      },
+    }));
+    expect(response.toolCalls?.[0]).toMatchObject({
+      id: 'raw-call',
+      function: {
+        name: 'Search',
+        arguments: '{"q":"needle"}',
+      },
+    });
+  });
+
   it('passes DeepSeek thinking options and maps cache/reasoning usage', async () => {
     mockGenerateText.mockResolvedValue({
       text: 'answer',

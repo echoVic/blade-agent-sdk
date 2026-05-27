@@ -1,7 +1,7 @@
 import { nanoid } from 'nanoid';
 import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
-import type { ContentPart } from '../../services/ChatServiceInterface.js';
+import type { ContentPart, ToolCall } from '../../services/ChatServiceInterface.js';
 import { JsonlSessionStore } from '../../session/SessionStore.js';
 import { MessageId, SessionId } from '../../types/branded.js';
 import type { JsonObject, JsonValue, MessageRole } from '../../types/common.js';
@@ -48,6 +48,14 @@ function extractMimeType(url: string): string | undefined {
   }
 
   return undefined;
+}
+
+function parseToolCallArguments(value: string): JsonValue {
+  try {
+    return JSON.parse(value) as JsonValue;
+  } catch {
+    return value;
+  }
 }
 
 /**
@@ -167,6 +175,8 @@ export class PersistentStore {
       model?: string;
       usage?: { input_tokens: number; output_tokens: number };
       customMetadata?: JsonObject;
+      reasoningContent?: string;
+      toolCalls?: ToolCall[];
     },
     subagentInfo?: {
       parentSessionId: string;
@@ -190,7 +200,10 @@ export class PersistentStore {
         customMetadata: metadata?.customMetadata,
       };
       const messageEntry = this.createEvent('message_created', sessionId, messageInfo);
-      const partEntries = this.buildPartEntries(sessionId, messageId, content, now);
+      const partEntries = this.buildPartEntries(sessionId, messageId, content, now, {
+        reasoningContent: metadata?.reasoningContent,
+        toolCalls: metadata?.toolCalls,
+      });
       await store.appendBatch([messageEntry, ...partEntries]);
       return messageId;
     } catch (error) {
@@ -211,7 +224,8 @@ export class PersistentStore {
       parentSessionId: string;
       subagentType: string;
       isSidechain: boolean;
-    }
+    },
+    requestedToolCallId?: string,
   ): Promise<string> {
     try {
       const filePath = getSessionFilePathFromStorageRoot(this.storageRoot, sessionId);
@@ -229,7 +243,7 @@ export class PersistentStore {
         };
         entries.push(this.createEvent('message_created', sessionId, messageInfo));
       }
-      const toolCallId = nanoid();
+      const toolCallId = requestedToolCallId ?? nanoid();
       const partInfo: PartInfo = {
         partId: toolCallId,
         messageId,
@@ -619,47 +633,86 @@ export class PersistentStore {
     messageId: MessageId,
     content: string | ContentPart[],
     createdAt: string,
+    extra?: {
+      reasoningContent?: string;
+      toolCalls?: ToolCall[];
+    },
   ): SessionEvent[] {
+    const extraEntries: SessionEvent[] = [];
+    if (extra?.reasoningContent) {
+      extraEntries.push(this.createEvent('part_created', sessionId, {
+        partId: nanoid(),
+        messageId,
+        partType: 'reasoning',
+        payload: { text: extra.reasoningContent },
+        createdAt,
+      } satisfies PartInfo));
+    }
+
+    if (extra?.toolCalls) {
+      for (const toolCall of extra.toolCalls) {
+        extraEntries.push(this.createEvent('part_created', sessionId, {
+          partId: toolCall.id,
+          messageId,
+          partType: 'tool_call',
+          payload: {
+            toolCallId: toolCall.id,
+            toolName: toolCall.function.name,
+            input: parseToolCallArguments(toolCall.function.arguments),
+          },
+          createdAt,
+        } satisfies PartInfo));
+      }
+    }
+
     if (typeof content === 'string') {
       return [
-        this.createEvent('part_created', sessionId, {
-          partId: nanoid(),
-          messageId,
-          partType: 'text',
-          payload: { text: content },
-          createdAt,
-        } satisfies PartInfo),
+        ...extraEntries,
+        ...(content !== ''
+          ? [
+              this.createEvent('part_created', sessionId, {
+                partId: nanoid(),
+                messageId,
+                partType: 'text',
+                payload: { text: content },
+                createdAt,
+              } satisfies PartInfo),
+            ]
+          : []),
       ];
     }
 
-    return content.map((part) => {
-      if (part.type === 'text') {
+    return [
+      ...extraEntries,
+      ...content.map((part) => {
+        if (part.type === 'text') {
+          return this.createEvent('part_created', sessionId, {
+            partId: nanoid(),
+            messageId,
+            partType: 'text',
+            payload: {
+              text: part.text,
+              ...(part.providerOptions
+                ? { providerOptions: part.providerOptions as JsonValue }
+                : {}),
+            },
+            createdAt,
+          } satisfies PartInfo);
+        }
+
+        const mimeType = extractMimeType(part.image_url.url);
         return this.createEvent('part_created', sessionId, {
           partId: nanoid(),
           messageId,
-          partType: 'text',
+          partType: 'image',
           payload: {
-            text: part.text,
-            ...(part.providerOptions
-              ? { providerOptions: part.providerOptions as JsonValue }
-              : {}),
+            ...(mimeType !== undefined ? { mimeType } : {}),
+            dataUrl: part.image_url.url,
           },
           createdAt,
         } satisfies PartInfo);
-      }
-
-      const mimeType = extractMimeType(part.image_url.url);
-      return this.createEvent('part_created', sessionId, {
-        partId: nanoid(),
-        messageId,
-        partType: 'image',
-        payload: {
-          ...(mimeType !== undefined ? { mimeType } : {}),
-          dataUrl: part.image_url.url,
-        },
-        createdAt,
-      } satisfies PartInfo);
-    });
+      }),
+    ];
   }
 
   private getSessionStore(): JsonlSessionStore {
@@ -698,6 +751,7 @@ export class NoopPersistentStore {
       subagentType: string;
       isSidechain: boolean;
     },
+    _requestedToolCallId?: string,
   ): Promise<string> {
     return nanoid();
   }

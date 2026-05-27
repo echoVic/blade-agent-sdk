@@ -18,6 +18,13 @@ export interface DeepSeekProviderOptions {
   strictTools?: boolean;
 }
 
+export interface DeepSeekToolDefinition {
+  name: string;
+  description?: string;
+  parameters: JSONSchema7;
+  strict?: boolean;
+}
+
 export interface DeepSeekFimCompletionOptions {
   apiKey: string;
   baseUrl?: string;
@@ -78,6 +85,15 @@ export function normalizeDeepSeekModel(model?: string): string {
 export function resolveDeepSeekBaseUrl(baseUrl?: string, beta = false): string {
   if (baseUrl?.trim()) return baseUrl.replace(/\/$/, '');
   return beta ? DEEPSEEK_BETA_BASE_URL : DEEPSEEK_DEFAULT_BASE_URL;
+}
+
+export function shouldUseDeepSeekBetaBaseUrl(config: {
+  provider: string;
+  providerId?: string;
+  deepseek?: DeepSeekProviderOptions;
+}): boolean {
+  if (config.provider !== 'deepseek' && config.providerId !== 'deepseek') return false;
+  return Boolean(config.deepseek?.strictTools);
 }
 
 export function isDeepSeekReasoningModel(model: string): boolean {
@@ -158,10 +174,16 @@ export function withDeepSeekDefaults(modelConfig: ModelConfig): ModelConfig {
   if (modelConfig.provider !== 'deepseek') return modelConfig;
 
   const isReasonerAlias = modelConfig.model === 'deepseek-reasoner';
+  const strictTools = modelConfig.providerOptions?.deepseek
+    && typeof modelConfig.providerOptions.deepseek === 'object'
+    && !Array.isArray(modelConfig.providerOptions.deepseek)
+    && 'strictTools' in modelConfig.providerOptions.deepseek
+    ? Boolean(modelConfig.providerOptions.deepseek.strictTools)
+    : false;
   return {
     ...modelConfig,
     model: normalizeDeepSeekModel(modelConfig.model),
-    baseUrl: resolveDeepSeekBaseUrl(modelConfig.baseUrl),
+    baseUrl: resolveDeepSeekBaseUrl(modelConfig.baseUrl, strictTools),
     maxContextTokens: modelConfig.maxContextTokens ?? 1_000_000,
     maxOutputTokens: modelConfig.maxOutputTokens ?? 384_000,
     temperature: modelConfig.temperature ?? 0.3,
@@ -171,15 +193,94 @@ export function withDeepSeekDefaults(modelConfig: ModelConfig): ModelConfig {
 }
 
 export function sanitizeDeepSeekStrictSchema(schema: JSONSchema7): JSONSchema7 {
-  if (schema.type !== 'object' || !schema.properties) return schema;
+  const sanitized = sanitizeDeepSeekSchemaNode(schema);
+  return sanitized as JSONSchema7;
+}
 
-  const properties = schema.properties;
+function sanitizeDeepSeekSchemaNode(schema: JSONSchema7): JSONSchema7 {
+  const result: JSONSchema7 = { ...schema };
+
+  delete result.minLength;
+  delete result.maxLength;
+  delete result.minItems;
+  delete result.maxItems;
+
+  if (typeof result.additionalProperties === 'object' && result.additionalProperties !== null) {
+    result.additionalProperties = sanitizeDeepSeekSchemaNode(result.additionalProperties as JSONSchema7);
+  }
+
+  if (result.items && !Array.isArray(result.items)) {
+    result.items = sanitizeDeepSeekSchemaNode(result.items as JSONSchema7);
+  }
+
+  if (Array.isArray(result.anyOf)) {
+    result.anyOf = result.anyOf.map((item) => sanitizeDeepSeekSchemaNode(item as JSONSchema7));
+  }
+
+  if (Array.isArray(result.oneOf)) {
+    result.oneOf = result.oneOf.map((item) => sanitizeDeepSeekSchemaNode(item as JSONSchema7));
+  }
+
+  if (Array.isArray(result.allOf)) {
+    result.allOf = result.allOf.map((item) => sanitizeDeepSeekSchemaNode(item as JSONSchema7));
+  }
+
+  if (result.not && typeof result.not === 'object') {
+    result.not = sanitizeDeepSeekSchemaNode(result.not as JSONSchema7);
+  }
+
+  if (result.definitions) {
+    result.definitions = Object.fromEntries(
+      Object.entries(result.definitions).map(([key, value]) => [
+        key,
+        typeof value === 'boolean' ? value : sanitizeDeepSeekSchemaNode(value as JSONSchema7),
+      ]),
+    );
+  }
+
+  if (result.$defs) {
+    result.$defs = Object.fromEntries(
+      Object.entries(result.$defs).map(([key, value]) => [
+        key,
+        typeof value === 'boolean' ? value : sanitizeDeepSeekSchemaNode(value as JSONSchema7),
+      ]),
+    );
+  }
+
+  const types = Array.isArray(result.type) ? result.type : result.type ? [result.type] : [];
+  const isObject = types.includes('object') || Boolean(result.properties);
+  if (!isObject || !result.properties) return result;
+
+  const properties = Object.fromEntries(
+    Object.entries(result.properties).map(([key, value]) => [
+      key,
+      typeof value === 'boolean' ? value : sanitizeDeepSeekSchemaNode(value as JSONSchema7),
+    ]),
+  );
   const required = Object.keys(properties);
   return {
-    ...schema,
+    ...result,
+    properties,
     required,
     additionalProperties: false,
   };
+}
+
+export function prepareDeepSeekTools(
+  tools: Array<{ name: string; description: string; parameters: JSONSchema7 }> | undefined,
+  options?: DeepSeekProviderOptions,
+): DeepSeekToolDefinition[] | undefined {
+  if (!tools || tools.length === 0) return undefined;
+
+  return tools.map((tool) => {
+    const strict = Boolean(options?.strictTools);
+    return {
+      name: tool.name,
+      description: tool.description,
+      parameters: strict ? sanitizeDeepSeekStrictSchema(tool.parameters) : tool.parameters,
+      ...(strict ? { strict: true } : {}),
+    };
+  });
 }
 
 export async function createDeepSeekFimCompletion(

@@ -453,6 +453,15 @@ export class JsonlSessionStore implements SessionStore {
     } = params;
 
     switch (part.partType) {
+      case 'reasoning': {
+        const payload = isRecord(part.payload) ? part.payload : {};
+        const text = typeof payload.text === 'string' ? payload.text : '';
+        record.message.role = 'assistant';
+        record.message.reasoningContent = record.message.reasoningContent
+          ? `${record.message.reasoningContent}${text}`
+          : text;
+        break;
+      }
       case 'text': {
         const payload = isRecord(part.payload) ? part.payload : {};
         const providerOptions = isRecord(payload.providerOptions)

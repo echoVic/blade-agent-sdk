@@ -72,6 +72,66 @@ describe('JsonlSessionStore', () => {
     expect(state.subagentRefs[1]?.status).toBe('completed');
   });
 
+  it('should preserve assistant reasoning content with tool calls for resume', async () => {
+    const workspaceRoot = createWorkspaceRoot();
+    const persistentStore = new PersistentStore(workspaceRoot);
+    const sessionStore = new JsonlSessionStore(workspaceRoot);
+
+    const sessionId = SessionId('session-reasoning-tool-call');
+    const userMessageId = await persistentStore.saveMessage(sessionId, 'user', 'hello');
+    const assistantMessageId = await persistentStore.saveMessage(
+      sessionId,
+      'assistant',
+      '',
+      userMessageId,
+      {
+        reasoningContent: 'Need to inspect first.',
+        toolCalls: [
+          {
+            id: 'call-search',
+            type: 'function',
+            function: {
+              name: 'Search',
+              arguments: '{"q":"needle"}',
+            },
+          },
+        ],
+      },
+    );
+    await persistentStore.saveToolResult(
+      sessionId,
+      'call-search',
+      'Search',
+      'result',
+      'call-search',
+    );
+
+    const state = await sessionStore.loadState(sessionId);
+
+    expect(state).not.toBeNull();
+    assertDefined(state);
+    expect(state.messages).toHaveLength(3);
+    expect(state.messages[1]).toMatchObject({
+      id: assistantMessageId,
+      role: 'assistant',
+      content: '',
+      reasoningContent: 'Need to inspect first.',
+      tool_calls: [
+        {
+          id: 'call-search',
+          function: {
+            name: 'Search',
+            arguments: '{"q":"needle"}',
+          },
+        },
+      ],
+    });
+    expect(state.messages[2]).toMatchObject({
+      role: 'tool',
+      tool_call_id: 'call-search',
+    });
+  });
+
   it('should fork state by linear message boundary', async () => {
     const workspaceRoot = createWorkspaceRoot();
     const persistentStore = new PersistentStore(workspaceRoot);

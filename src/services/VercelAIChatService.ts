@@ -30,8 +30,10 @@ import {
   buildDeepSeekProviderOptions,
   mergeDeepSeekUsage,
   normalizeDeepSeekModel,
+  prepareDeepSeekTools,
   resolveDeepSeekBaseUrl,
   shouldOmitDeepSeekSamplingOptions,
+  shouldUseDeepSeekBetaBaseUrl,
 } from './deepseek.js';
 
 function filterOrphanToolMessages(messages: readonly Message[]): Message[] {
@@ -77,6 +79,7 @@ type AIMessage =
 type AITool = {
   description?: string;
   inputSchema: unknown;
+  strict?: boolean;
 };
 
 function parseDataUrl(url: string): { data: string; mediaType?: string } | undefined {
@@ -218,7 +221,14 @@ export class VercelAIChatService implements IChatService {
       case 'deepseek': {
         const deepseek = createDeepSeek({
           apiKey,
-          baseURL: resolveDeepSeekBaseUrl(baseUrl),
+          baseURL: resolveDeepSeekBaseUrl(
+            baseUrl,
+            shouldUseDeepSeekBetaBaseUrl({
+              provider,
+              providerId,
+              deepseek: config.providerOptions?.deepseek,
+            }),
+          ),
           headers: customHeaders,
         });
         return deepseek(normalizeDeepSeekModel(model));
@@ -228,7 +238,14 @@ export class VercelAIChatService implements IChatService {
         if (providerId === 'deepseek') {
           const deepseek = createDeepSeek({
             apiKey,
-            baseURL: resolveDeepSeekBaseUrl(baseUrl),
+            baseURL: resolveDeepSeekBaseUrl(
+              baseUrl,
+              shouldUseDeepSeekBetaBaseUrl({
+                provider,
+                providerId,
+                deepseek: config.providerOptions?.deepseek,
+              }),
+            ),
             headers: customHeaders,
           });
           return deepseek(normalizeDeepSeekModel(model));
@@ -373,26 +390,50 @@ export class VercelAIChatService implements IChatService {
     if (!tools || tools.length === 0) return undefined;
 
     const result: Record<string, AITool> = {};
-    for (const tool of tools) {
+    const preparedTools = this.isDeepSeekProvider()
+      ? prepareDeepSeekTools(tools, this.config.providerOptions?.deepseek)
+      : tools;
+    for (const tool of preparedTools ?? []) {
+      const strict = 'strict' in tool ? tool.strict : undefined;
       result[tool.name] = {
         description: tool.description,
         inputSchema: jsonSchema(tool.parameters as Parameters<typeof jsonSchema>[0]),
+        ...(strict !== undefined ? { strict } : {}),
       };
     }
     return result;
   }
 
   private convertToolCalls(
-    toolCalls: Array<{ toolCallId: string; toolName: string; args?: unknown; input?: unknown }>
+    toolCalls: Array<{
+      toolCallId?: string;
+      id?: string;
+      toolName?: string;
+      name?: string;
+      args?: unknown;
+      input?: unknown;
+      arguments?: unknown;
+      function?: { name?: string; arguments?: unknown };
+    }>
   ): ToolCall[] {
-    return toolCalls.map((tc) => ({
-      id: tc.toolCallId,
+    return toolCalls.map((tc, index) => ({
+      id: tc.toolCallId ?? tc.id ?? `call_${index}`,
       type: 'function' as const,
       function: {
-        name: tc.toolName,
-        arguments: JSON.stringify(tc.args ?? tc.input ?? {}),
+        name: tc.toolName ?? tc.name ?? tc.function?.name ?? '',
+        arguments: this.stringifyToolArguments(
+          tc.args ?? tc.input ?? tc.arguments ?? tc.function?.arguments ?? {},
+        ),
       },
     }));
+  }
+
+  private stringifyToolArguments(value: unknown): string {
+    if (typeof value === 'string') {
+      const parsed = safeJsonParse(value, this.logger, undefined);
+      return JSON.stringify(parsed ?? {});
+    }
+    return JSON.stringify(value ?? {});
   }
 
   private convertOutputFormat(outputFormat?: OutputFormat) {
@@ -460,7 +501,7 @@ export class VercelAIChatService implements IChatService {
   }
 
   private getProviderOptions(): AIProviderOptions | undefined {
-    if (this.config.provider === 'deepseek' || this.config.providerId === 'deepseek') {
+    if (this.isDeepSeekProvider()) {
       return {
         ...buildDeepSeekProviderOptions({
           model: this.config.model,
@@ -471,6 +512,10 @@ export class VercelAIChatService implements IChatService {
       } as AIProviderOptions;
     }
     return this.config.providerOptions as AIProviderOptions | undefined;
+  }
+
+  private isDeepSeekProvider(): boolean {
+    return this.config.provider === 'deepseek' || this.config.providerId === 'deepseek';
   }
 
   private shouldOmitSamplingOptions(): boolean {
@@ -501,7 +546,16 @@ export class VercelAIChatService implements IChatService {
 
   private buildChatResponse(result: {
     text: string;
-    toolCalls?: Array<{ toolCallId: string; toolName: string; args?: unknown }>;
+    toolCalls?: Array<{
+      toolCallId?: string;
+      id?: string;
+      toolName?: string;
+      name?: string;
+      args?: unknown;
+      input?: unknown;
+      arguments?: unknown;
+      function?: { name?: string; arguments?: unknown };
+    }>;
     reasoning?: Array<{ text: string }>;
     usage?: { promptTokens?: number; completionTokens?: number; totalTokens?: number };
     providerMetadata?: {
