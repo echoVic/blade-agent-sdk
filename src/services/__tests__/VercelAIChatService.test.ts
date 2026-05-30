@@ -179,6 +179,144 @@ describe('VercelAIChatService', () => {
     });
   });
 
+  it('normalizes DeepSeek multi-turn tool context before requests', async () => {
+    mockGenerateText.mockResolvedValue({
+      text: 'done',
+    });
+
+    const service = new VercelAIChatService(
+      {
+        provider: 'deepseek',
+        apiKey: 'test-key',
+        baseUrl: '',
+        model: 'deepseek-v4-pro',
+      },
+      NOOP_LOGGER,
+    );
+
+    await (service as unknown as { initialized: Promise<void> }).initialized;
+    await service.chat([
+      { role: 'user', content: 'start' },
+      {
+        role: 'assistant',
+        content: '',
+        reasoningContent: 'need a tool',
+        tool_calls: [
+          {
+            id: 'call_keep',
+            type: 'function',
+            function: { name: 'Search', arguments: '{"q":"needle"}' },
+          },
+          {
+            id: 'call_drop',
+            type: 'function',
+            function: { name: 'Read', arguments: '{"path":"missing"}' },
+          },
+        ],
+      },
+      {
+        role: 'tool',
+        tool_call_id: 'call_keep',
+        name: 'Search',
+        content: 'found',
+      },
+      {
+        role: 'tool',
+        tool_call_id: 'orphan',
+        name: 'Read',
+        content: 'orphaned',
+      },
+      {
+        role: 'assistant',
+        content: 'intermediate answer',
+        reasoningContent: 'ignored reasoning',
+      },
+      { role: 'user', content: 'continue' },
+    ]);
+
+    const request = mockGenerateText.mock.calls[0]?.[0] as { messages: unknown[] };
+    expect(request.messages).toEqual([
+      { role: 'user', content: 'start' },
+      {
+        role: 'assistant',
+        content: [
+          { type: 'reasoning', text: 'need a tool' },
+          {
+            type: 'tool-call',
+            toolCallId: 'call_keep',
+            toolName: 'Search',
+            input: { q: 'needle' },
+          },
+        ],
+      },
+      {
+        role: 'tool',
+        content: [
+          {
+            type: 'tool-result',
+            toolCallId: 'call_keep',
+            toolName: 'Search',
+            output: { type: 'text', value: 'found' },
+          },
+        ],
+      },
+      { role: 'assistant', content: 'intermediate answer' },
+      { role: 'user', content: 'continue' },
+    ]);
+  });
+
+  it('normalizes DeepSeek raw and snake_case tool call responses', async () => {
+    mockGenerateText.mockResolvedValue({
+      text: '',
+      tool_calls: [
+        {
+          tool_call_id: 'snake-call',
+          function: {
+            name: 'Search',
+            arguments: { q: 'needle' },
+          },
+        },
+        {
+          id: 'invalid-json',
+          name: 'Read',
+          arguments: '{"path":',
+        },
+      ],
+    });
+
+    const service = new VercelAIChatService(
+      {
+        provider: 'deepseek',
+        apiKey: 'test-key',
+        baseUrl: '',
+        model: 'deepseek-v4-pro',
+      },
+      NOOP_LOGGER,
+    );
+
+    await (service as unknown as { initialized: Promise<void> }).initialized;
+    const response = await service.chat([{ role: 'user', content: 'search' }]);
+
+    expect(response.toolCalls).toEqual([
+      {
+        id: 'snake-call',
+        type: 'function',
+        function: {
+          name: 'Search',
+          arguments: '{"q":"needle"}',
+        },
+      },
+      {
+        id: 'invalid-json',
+        type: 'function',
+        function: {
+          name: 'Read',
+          arguments: '{"path":',
+        },
+      },
+    ]);
+  });
+
   it('passes DeepSeek thinking options and maps cache/reasoning usage', async () => {
     mockGenerateText.mockResolvedValue({
       text: 'answer',
@@ -379,9 +517,9 @@ describe('VercelAIChatService', () => {
       yield { type: 'reasoning-delta', delta: 'think' };
       yield {
         type: 'tool-call',
-        toolCallId: 'call_read',
-        toolName: 'Read',
-        input: '{"path":"README.md"}',
+        tool_call_id: 'call_read',
+        name: 'Read',
+        arguments: '{"path":"README.md"}',
       };
       yield { type: 'text-delta', delta: 'done' };
       yield { type: 'finish', finishReason: 'tool-calls' };

@@ -221,6 +221,48 @@ describe('DeepSeek provider helpers', () => {
     });
   });
 
+  it('normalizes empty and legacy-def schemas for DeepSeek strict tools', () => {
+    expect(prepareDeepSeekTools([
+      {
+        name: 'ping',
+        description: 'Ping',
+        parameters: {},
+      },
+    ], { strictTools: true })?.[0]?.parameters).toEqual({
+      type: 'object',
+      properties: {},
+      required: [],
+      additionalProperties: false,
+    });
+
+    expect(sanitizeDeepSeekStrictSchema({
+      type: 'object',
+      properties: {
+        item: { $ref: '#/$def/Item' },
+      },
+      $def: {
+        Item: {
+          type: 'object',
+          properties: {
+            id: { type: 'string', minLength: 1 },
+          },
+        },
+      },
+    } as never)).toMatchObject({
+      required: ['item'],
+      additionalProperties: false,
+      $def: {
+        Item: {
+          required: ['id'],
+          additionalProperties: false,
+          properties: {
+            id: { type: 'string' },
+          },
+        },
+      },
+    });
+  });
+
   it('leaves non-strict DeepSeek tool schemas unchanged', () => {
     const parameters = {
       type: 'object' as const,

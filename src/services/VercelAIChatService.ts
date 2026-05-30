@@ -54,6 +54,41 @@ function filterOrphanToolMessages(messages: readonly Message[]): Message[] {
   });
 }
 
+function filterDeepSeekToolContext(messages: readonly Message[]): Message[] {
+  const toolResultIds = new Set<string>();
+  for (const msg of messages) {
+    if (msg.role === 'tool' && msg.tool_call_id) {
+      toolResultIds.add(msg.tool_call_id);
+    }
+  }
+
+  const retainedToolCallIds = new Set<string>();
+  const normalized = messages.map((msg) => {
+    if (msg.role !== 'assistant' || !msg.tool_calls || msg.tool_calls.length === 0) {
+      return msg;
+    }
+
+    const retainedToolCalls = msg.tool_calls.filter((tc) => toolResultIds.has(tc.id));
+    for (const tc of retainedToolCalls) {
+      retainedToolCallIds.add(tc.id);
+    }
+
+    if (retainedToolCalls.length === msg.tool_calls.length) {
+      return msg;
+    }
+
+    return {
+      ...msg,
+      tool_calls: retainedToolCalls.length > 0 ? retainedToolCalls : undefined,
+    };
+  });
+
+  return normalized.filter((msg) => {
+    if (msg.role !== 'tool') return true;
+    return Boolean(msg.tool_call_id && retainedToolCallIds.has(msg.tool_call_id));
+  });
+}
+
 function getTextContent(content: string | ContentPart[]): string {
   if (typeof content === 'string') return content;
   return content
@@ -80,6 +115,39 @@ type AITool = {
   description?: string;
   inputSchema: unknown;
   strict?: boolean;
+};
+
+type RawToolCall = {
+  toolCallId?: string;
+  tool_call_id?: string;
+  id?: string;
+  toolName?: string;
+  tool_name?: string;
+  name?: string;
+  args?: unknown;
+  input?: unknown;
+  arguments?: unknown;
+  function?: { name?: string; arguments?: unknown };
+};
+
+type RawToolCallResult = {
+  text?: string;
+  toolCalls?: RawToolCall[];
+  tool_calls?: RawToolCall[];
+  message?: {
+    toolCalls?: RawToolCall[];
+    tool_calls?: RawToolCall[];
+  };
+  choices?: Array<{
+    message?: {
+      toolCalls?: RawToolCall[];
+      tool_calls?: RawToolCall[];
+    };
+  }>;
+  steps?: Array<{
+    toolCalls?: RawToolCall[];
+    tool_calls?: RawToolCall[];
+  }>;
 };
 
 function parseDataUrl(url: string): { data: string; mediaType?: string } | undefined {
@@ -110,6 +178,33 @@ function safeJsonParse(
 function getStreamTextDelta(part: unknown): string | undefined {
   const chunk = part as { text?: string; textDelta?: string; delta?: string };
   return chunk.text ?? chunk.textDelta ?? chunk.delta;
+}
+
+function getDeepSeekStreamToolCall(part: unknown, index: number): ToolCall {
+  const raw = part as RawToolCall;
+  return {
+    id: raw.toolCallId ?? raw.tool_call_id ?? raw.id ?? `call_${index}`,
+    type: 'function',
+    function: {
+      name: raw.toolName ?? raw.tool_name ?? raw.name ?? raw.function?.name ?? '',
+      arguments: stringifyToolArgumentsValue(
+        raw.args ?? raw.input ?? raw.arguments ?? raw.function?.arguments ?? {},
+      ),
+    },
+  };
+}
+
+function stringifyToolArgumentsValue(value: unknown): string {
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    if (!trimmed) return '{}';
+    try {
+      return JSON.stringify(JSON.parse(trimmed));
+    } catch {
+      return value;
+    }
+  }
+  return JSON.stringify(value ?? {});
 }
 
 /**
@@ -288,6 +383,7 @@ export class VercelAIChatService implements IChatService {
 
   private convertMessages(messages: readonly Message[]): AIMessage[] {
     const result: AIMessage[] = [];
+    const isDeepSeek = this.isDeepSeekProvider();
 
     for (const msg of messages) {
       if (msg.role === 'system') {
@@ -358,7 +454,7 @@ export class VercelAIChatService implements IChatService {
           result.push({ role: 'assistant', content });
         } else {
           const text = getTextContent(msg.content);
-          if (msg.reasoningContent) {
+          if (msg.reasoningContent && !isDeepSeek) {
             result.push({
               role: 'assistant',
               content: [
@@ -410,22 +506,13 @@ export class VercelAIChatService implements IChatService {
   }
 
   private convertToolCalls(
-    toolCalls: Array<{
-      toolCallId?: string;
-      id?: string;
-      toolName?: string;
-      name?: string;
-      args?: unknown;
-      input?: unknown;
-      arguments?: unknown;
-      function?: { name?: string; arguments?: unknown };
-    }>
+    toolCalls: RawToolCall[]
   ): ToolCall[] {
     return toolCalls.map((tc, index) => ({
-      id: tc.toolCallId ?? tc.id ?? `call_${index}`,
+      id: tc.toolCallId ?? tc.tool_call_id ?? tc.id ?? `call_${index}`,
       type: 'function' as const,
       function: {
-        name: tc.toolName ?? tc.name ?? tc.function?.name ?? '',
+        name: tc.toolName ?? tc.tool_name ?? tc.name ?? tc.function?.name ?? '',
         arguments: this.stringifyToolArguments(
           tc.args ?? tc.input ?? tc.arguments ?? tc.function?.arguments ?? {},
         ),
@@ -434,11 +521,7 @@ export class VercelAIChatService implements IChatService {
   }
 
   private stringifyToolArguments(value: unknown): string {
-    if (typeof value === 'string') {
-      const parsed = safeJsonParse(value, this.logger, undefined);
-      return JSON.stringify(parsed ?? {});
-    }
-    return JSON.stringify(value ?? {});
+    return stringifyToolArgumentsValue(value);
   }
 
   private convertOutputFormat(outputFormat?: OutputFormat) {
@@ -548,25 +631,37 @@ export class VercelAIChatService implements IChatService {
     messages: readonly Message[],
     tools?: Array<{ name: string; description: string; parameters: JSONSchema7 }>,
   ) {
-    const filteredMessages = filterOrphanToolMessages(messages);
+    const filteredMessages = this.isDeepSeekProvider()
+      ? filterDeepSeekToolContext(messages)
+      : filterOrphanToolMessages(messages);
     const coreMessages = this.convertMessages(filteredMessages);
     const coreTools = this.convertTools(tools);
     const experimentalOutput = this.convertOutputFormat(this.config.outputFormat);
     return { coreMessages, coreTools, experimentalOutput };
   }
 
+  private extractToolCalls(result: RawToolCallResult): RawToolCall[] | undefined {
+    if (result.toolCalls && result.toolCalls.length > 0) return result.toolCalls;
+    if (result.tool_calls && result.tool_calls.length > 0) return result.tool_calls;
+    if (result.message?.toolCalls && result.message.toolCalls.length > 0) return result.message.toolCalls;
+    if (result.message?.tool_calls && result.message.tool_calls.length > 0) return result.message.tool_calls;
+    const choiceToolCalls = result.choices?.flatMap((choice) =>
+      choice.message?.toolCalls ?? choice.message?.tool_calls ?? [],
+    );
+    if (choiceToolCalls && choiceToolCalls.length > 0) return choiceToolCalls;
+    const stepToolCalls = result.steps?.flatMap((step) =>
+      step.toolCalls ?? step.tool_calls ?? [],
+    );
+    return stepToolCalls && stepToolCalls.length > 0 ? stepToolCalls : undefined;
+  }
+
   private buildChatResponse(result: {
     text: string;
-    toolCalls?: Array<{
-      toolCallId?: string;
-      id?: string;
-      toolName?: string;
-      name?: string;
-      args?: unknown;
-      input?: unknown;
-      arguments?: unknown;
-      function?: { name?: string; arguments?: unknown };
-    }>;
+    toolCalls?: RawToolCall[];
+    tool_calls?: RawToolCall[];
+    message?: RawToolCallResult['message'];
+    choices?: RawToolCallResult['choices'];
+    steps?: RawToolCallResult['steps'];
     reasoning?: Array<{ text: string }>;
     usage?: {
       promptTokens?: number;
@@ -593,9 +688,10 @@ export class VercelAIChatService implements IChatService {
       deepseek?: { promptCacheHitTokens?: number; promptCacheMissTokens?: number };
     };
   }): ChatResponse {
+    const rawToolCalls = this.extractToolCalls(result);
     const toolCalls =
-      result.toolCalls && result.toolCalls.length > 0
-        ? this.convertToolCalls(result.toolCalls as Array<{ toolCallId: string; toolName: string; args?: unknown }>)
+      rawToolCalls && rawToolCalls.length > 0
+        ? this.convertToolCalls(rawToolCalls)
         : undefined;
 
     const reasoningText = Array.isArray(result.reasoning)
@@ -806,25 +902,18 @@ export class VercelAIChatService implements IChatService {
             break;
           }
 
-          case 'tool-call':
+          case 'tool-call': {
+            const toolCall = getDeepSeekStreamToolCall(part, toolCallIndex);
             yield {
               toolCalls: [
                 {
                   index: toolCallIndex++,
-                  id: (part as { toolCallId: string }).toolCallId,
-                  type: 'function' as const,
-                  function: {
-                    name: (part as { toolName: string }).toolName,
-                    arguments: this.stringifyToolArguments(
-                      (part as { args?: unknown; input?: unknown }).args
-                      ?? (part as { input?: unknown }).input
-                      ?? {},
-                    ),
-                  },
+                  ...toolCall,
                 },
               ],
             };
             break;
+          }
 
           case 'finish':
             yield {

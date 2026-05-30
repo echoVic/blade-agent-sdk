@@ -286,8 +286,24 @@ export function withDeepSeekDefaults(modelConfig: ModelConfig): ModelConfig {
 }
 
 export function sanitizeDeepSeekStrictSchema(schema: JSONSchema7): JSONSchema7 {
-  const sanitized = sanitizeDeepSeekSchemaNode(schema);
-  return sanitized as JSONSchema7;
+  const rootSchema: JSONSchema7 = hasSchemaShape(schema)
+    ? schema
+    : { type: 'object' as const, properties: {} };
+  return sanitizeDeepSeekSchemaNode(rootSchema) as JSONSchema7;
+}
+
+function hasSchemaShape(schema: JSONSchema7): boolean {
+  return Boolean(
+    schema.type
+    || schema.properties
+    || schema.items
+    || schema.anyOf
+    || schema.oneOf
+    || schema.$ref
+    || (schema as Record<string, unknown>).$def
+    || schema.$defs
+    || schema.definitions,
+  );
 }
 
 function sanitizeDeepSeekSchemaNode(schema: JSONSchema7): JSONSchema7 {
@@ -347,6 +363,16 @@ function sanitizeDeepSeekSchemaNode(schema: JSONSchema7): JSONSchema7 {
   if (result.$defs) {
     result.$defs = Object.fromEntries(
       Object.entries(result.$defs).map(([key, value]) => [
+        key,
+        typeof value === 'boolean' ? value : sanitizeDeepSeekSchemaNode(value as JSONSchema7),
+      ]),
+    );
+  }
+
+  const legacyDefs = (result as Record<string, unknown>).$def;
+  if (legacyDefs && typeof legacyDefs === 'object' && !Array.isArray(legacyDefs)) {
+    (result as Record<string, unknown>).$def = Object.fromEntries(
+      Object.entries(legacyDefs).map(([key, value]) => [
         key,
         typeof value === 'boolean' ? value : sanitizeDeepSeekSchemaNode(value as JSONSchema7),
       ]),
