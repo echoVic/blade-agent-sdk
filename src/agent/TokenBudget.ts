@@ -20,9 +20,11 @@ export interface TokenBudgetConfig {
 
 export interface TokenBudgetSnapshot {
   totalInputTokens: number;
+  totalBillableInputTokens: number;
   totalOutputTokens: number;
   totalCacheWriteTokens: number;
   totalCacheReadTokens: number;
+  totalCacheMissTokens: number;
   totalTokens: number;
   estimatedCost: number;
   budgetRemaining: number | null;
@@ -40,9 +42,11 @@ interface ResolvedTokenBudgetConfig {
 
 export class TokenBudget {
   private inputTokens = 0;
+  private billableInputTokens = 0;
   private outputTokens = 0;
   private cacheWriteTokens = 0;
   private cacheReadTokens = 0;
+  private cacheMissTokens = 0;
   private readonly config: ResolvedTokenBudgetConfig;
 
   /** Output tokens yielded in each of the last N turns (for diminishing-returns detection). */
@@ -61,10 +65,16 @@ export class TokenBudget {
 
   record(usage: UsageInfo): void {
     const outputDelta = usage.completionTokens ?? 0;
-    this.inputTokens += usage.promptTokens ?? 0;
+    const inputDelta = usage.promptTokens ?? 0;
+    const billableInputDelta = usage.billableInputTokens
+      ?? usage.cacheMissInputTokens
+      ?? inputDelta;
+    this.inputTokens += inputDelta;
+    this.billableInputTokens += billableInputDelta;
     this.outputTokens += outputDelta;
     this.cacheWriteTokens += usage.cacheCreationInputTokens ?? 0;
     this.cacheReadTokens += usage.cacheReadInputTokens ?? 0;
+    this.cacheMissTokens += usage.cacheMissInputTokens ?? billableInputDelta;
 
     // Track recent per-turn output for diminishing-returns detection.
     this.recentOutputTokens.push(outputDelta);
@@ -128,7 +138,7 @@ export class TokenBudget {
 
   getSnapshot(): TokenBudgetSnapshot {
     const estimatedCost =
-      this.inputTokens * this.config.costPerInputToken
+      this.billableInputTokens * this.config.costPerInputToken
       + this.outputTokens * this.config.costPerOutputToken
       + this.cacheWriteTokens * this.config.costPerCacheWriteToken
       + this.cacheReadTokens * this.config.costPerCacheReadToken;
@@ -142,9 +152,11 @@ export class TokenBudget {
 
     return {
       totalInputTokens: this.inputTokens,
+      totalBillableInputTokens: this.billableInputTokens,
       totalOutputTokens: this.outputTokens,
       totalCacheWriteTokens: this.cacheWriteTokens,
       totalCacheReadTokens: this.cacheReadTokens,
+      totalCacheMissTokens: this.cacheMissTokens,
       totalTokens: this.totalTokens,
       estimatedCost,
       budgetRemaining,
@@ -154,10 +166,11 @@ export class TokenBudget {
 
   reset(): void {
     this.inputTokens = 0;
+    this.billableInputTokens = 0;
     this.outputTokens = 0;
     this.cacheWriteTokens = 0;
     this.cacheReadTokens = 0;
+    this.cacheMissTokens = 0;
     this.recentOutputTokens = [];
   }
 }
-

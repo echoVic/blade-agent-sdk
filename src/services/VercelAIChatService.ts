@@ -465,6 +465,8 @@ export class VercelAIChatService implements IChatService {
       };
       reasoningTokens?: number;
       cachedInputTokens?: number;
+      billableInputTokens?: number;
+      cacheMissInputTokens?: number;
     },
     providerMetadata?: {
       anthropic?: {
@@ -557,7 +559,26 @@ export class VercelAIChatService implements IChatService {
       function?: { name?: string; arguments?: unknown };
     }>;
     reasoning?: Array<{ text: string }>;
-    usage?: { promptTokens?: number; completionTokens?: number; totalTokens?: number };
+    usage?: {
+      promptTokens?: number;
+      completionTokens?: number;
+      totalTokens?: number;
+      inputTokens?: number;
+      outputTokens?: number;
+      inputTokenDetails?: {
+        noCacheTokens?: number;
+        cacheReadTokens?: number;
+        cacheWriteTokens?: number;
+      };
+      outputTokenDetails?: {
+        textTokens?: number;
+        reasoningTokens?: number;
+      };
+      reasoningTokens?: number;
+      cachedInputTokens?: number;
+      billableInputTokens?: number;
+      cacheMissInputTokens?: number;
+    };
     providerMetadata?: {
       anthropic?: { cacheCreationInputTokens?: number; cacheReadInputTokens?: number };
       deepseek?: { promptCacheHitTokens?: number; promptCacheMissTokens?: number };
@@ -577,7 +598,7 @@ export class VercelAIChatService implements IChatService {
       reasoningContent: reasoningText,
       toolCalls,
       usage: this.convertUsage(
-        result.usage as { promptTokens?: number; completionTokens?: number; totalTokens?: number },
+        result.usage,
         result.providerMetadata as {
           anthropic?: { cacheCreationInputTokens?: number; cacheReadInputTokens?: number };
           deepseek?: { promptCacheHitTokens?: number; promptCacheMissTokens?: number };
@@ -788,7 +809,9 @@ export class VercelAIChatService implements IChatService {
             yield {
               finishReason: (part as { finishReason?: string }).finishReason,
               usage: this.convertUsage(
-                (part as { totalUsage?: { promptTokens?: number; completionTokens?: number; totalTokens?: number } }).totalUsage,
+                (part as {
+                  totalUsage?: Parameters<VercelAIChatService['convertUsage']>[0];
+                }).totalUsage,
                 (part as { providerMetadata?: { anthropic?: { cacheCreationInputTokens?: number; cacheReadInputTokens?: number }; deepseek?: { promptCacheHitTokens?: number; promptCacheMissTokens?: number } } }).providerMetadata
               ),
             };

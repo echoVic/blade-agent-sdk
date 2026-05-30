@@ -171,7 +171,7 @@ describe('VercelAIChatService', () => {
         inputTokens: 12,
         outputTokens: 5,
         totalTokens: 17,
-        inputTokenDetails: { cacheReadTokens: 7 },
+        inputTokenDetails: { cacheReadTokens: 7, noCacheTokens: 5 },
         outputTokenDetails: { reasoningTokens: 3 },
       },
       providerMetadata: {
@@ -210,6 +210,8 @@ describe('VercelAIChatService', () => {
       completionTokens: 5,
       totalTokens: 17,
       cacheReadInputTokens: 7,
+      cacheMissInputTokens: 5,
+      billableInputTokens: 5,
       reasoningTokens: 3,
     });
   });

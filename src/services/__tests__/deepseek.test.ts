@@ -1,6 +1,8 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
+  createDeepSeekTokenBudgetCostConfig,
   createDeepSeekFimCompletion,
+  getDeepSeekPricing,
   prepareDeepSeekTools,
   normalizeDeepSeekModel,
   resolveDeepSeekBaseUrl,
@@ -22,6 +24,16 @@ describe('DeepSeek provider helpers', () => {
     expect(normalizeDeepSeekModel('deepseek-v4-pro')).toBe('deepseek-v4-pro');
     expect(resolveDeepSeekBaseUrl()).toBe('https://api.deepseek.com');
     expect(resolveDeepSeekBaseUrl(undefined, true)).toBe('https://api.deepseek.com/beta');
+  });
+
+  it('provides cache-aware DeepSeek token budget cost config', () => {
+    expect(getDeepSeekPricing('deepseek-chat')).toEqual(getDeepSeekPricing('deepseek-v4-flash'));
+    expect(createDeepSeekTokenBudgetCostConfig('deepseek-v4-pro')).toEqual({
+      costPerInputToken: 0.435 / 1_000_000,
+      costPerOutputToken: 0.87 / 1_000_000,
+      costPerCacheReadToken: 0.003625 / 1_000_000,
+    });
+    expect(createDeepSeekTokenBudgetCostConfig('unknown-model')).toBeUndefined();
   });
 
   it('applies DeepSeek model defaults', () => {
@@ -149,7 +161,14 @@ describe('DeepSeek provider helpers', () => {
         id: 'fim_1',
         model: 'deepseek-v4-pro',
         choices: [{ text: 'middle', finish_reason: 'stop', index: 0 }],
-        usage: { prompt_tokens: 2, completion_tokens: 1, total_tokens: 3 },
+        usage: {
+          prompt_tokens: 2,
+          completion_tokens: 1,
+          total_tokens: 3,
+          prompt_cache_hit_tokens: 1,
+          prompt_cache_miss_tokens: 1,
+          completion_tokens_details: { reasoning_tokens: 0 },
+        },
       }),
     }));
     vi.stubGlobal('fetch', fetchMock);
@@ -183,6 +202,10 @@ describe('DeepSeek provider helpers', () => {
       promptTokens: 2,
       completionTokens: 1,
       totalTokens: 3,
+      cacheReadInputTokens: 1,
+      cacheMissInputTokens: 1,
+      billableInputTokens: 1,
+      reasoningTokens: 0,
     });
   });
 });

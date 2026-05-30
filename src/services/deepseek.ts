@@ -6,6 +6,26 @@ export const DEEPSEEK_DEFAULT_BASE_URL = 'https://api.deepseek.com';
 export const DEEPSEEK_BETA_BASE_URL = 'https://api.deepseek.com/beta';
 export const DEEPSEEK_DEFAULT_MODEL = 'deepseek-v4-pro';
 
+/**
+ * Published DeepSeek chat pricing as per-token USD rates.
+ *
+ * Values are expressed per token rather than per 1M tokens so they can be
+ * passed directly to TokenBudget. Keep this table configurable at call sites:
+ * provider prices can change independently of SDK releases.
+ */
+export const DEEPSEEK_DEFAULT_PRICING: Record<string, DeepSeekPricing> = {
+  'deepseek-v4-flash': {
+    inputCacheHit: 0.0028 / 1_000_000,
+    inputCacheMiss: 0.14 / 1_000_000,
+    output: 0.28 / 1_000_000,
+  },
+  'deepseek-v4-pro': {
+    inputCacheHit: 0.003625 / 1_000_000,
+    inputCacheMiss: 0.435 / 1_000_000,
+    output: 0.87 / 1_000_000,
+  },
+};
+
 const DEEPSEEK_MODEL_ALIASES: Record<string, string> = {
   'deepseek-chat': 'deepseek-v4-flash',
   'deepseek-reasoner': 'deepseek-v4-flash',
@@ -16,6 +36,13 @@ export interface DeepSeekProviderOptions {
     type?: 'enabled' | 'disabled';
   };
   strictTools?: boolean;
+}
+
+export interface DeepSeekPricing {
+  inputCacheHit: number;
+  inputCacheMiss: number;
+  output: number;
+  reasoningOutput?: number;
 }
 
 export interface DeepSeekToolDefinition {
@@ -80,6 +107,26 @@ type AIUsage = {
 export function normalizeDeepSeekModel(model?: string): string {
   if (!model) return DEEPSEEK_DEFAULT_MODEL;
   return DEEPSEEK_MODEL_ALIASES[model] ?? model;
+}
+
+export function getDeepSeekPricing(model?: string): DeepSeekPricing | undefined {
+  return DEEPSEEK_DEFAULT_PRICING[normalizeDeepSeekModel(model)];
+}
+
+export function createDeepSeekTokenBudgetCostConfig(
+  model?: string,
+  pricing: DeepSeekPricing | undefined = getDeepSeekPricing(model),
+): {
+  costPerInputToken: number;
+  costPerOutputToken: number;
+  costPerCacheReadToken: number;
+} | undefined {
+  if (!pricing) return undefined;
+  return {
+    costPerInputToken: pricing.inputCacheMiss,
+    costPerOutputToken: pricing.reasoningOutput ?? pricing.output,
+    costPerCacheReadToken: pricing.inputCacheHit,
+  };
 }
 
 export function resolveDeepSeekBaseUrl(baseUrl?: string, beta = false): string {
@@ -155,6 +202,15 @@ export function mergeDeepSeekUsage(
     ?? providerMetadata?.deepseek?.promptCacheHitTokens;
   if (cacheRead !== undefined) {
     result.cacheReadInputTokens = cacheRead;
+  }
+
+  const cacheMiss = usage.inputTokenDetails?.noCacheTokens
+    ?? providerMetadata?.deepseek?.promptCacheMissTokens;
+  if (cacheMiss !== undefined) {
+    result.cacheMissInputTokens = cacheMiss;
+    result.billableInputTokens = cacheMiss;
+  } else if (cacheRead !== undefined) {
+    result.billableInputTokens = Math.max(prompt - cacheRead, 0);
   }
 
   const cacheWrite = usage.inputTokenDetails?.cacheWriteTokens;
@@ -320,6 +376,15 @@ export async function createDeepSeekFimCompletion(
       promptTokens: Number((raw.usage as JsonObject).prompt_tokens ?? 0),
       completionTokens: Number((raw.usage as JsonObject).completion_tokens ?? 0),
       totalTokens: Number((raw.usage as JsonObject).total_tokens ?? 0),
+      inputTokenDetails: {
+        cacheReadTokens: toOptionalNumber((raw.usage as JsonObject).prompt_cache_hit_tokens),
+        noCacheTokens: toOptionalNumber((raw.usage as JsonObject).prompt_cache_miss_tokens),
+      },
+      outputTokenDetails: {
+        reasoningTokens: toOptionalNumber(
+          ((raw.usage as JsonObject).completion_tokens_details as JsonObject | undefined)?.reasoning_tokens,
+        ),
+      },
     })
     : undefined;
 
@@ -339,4 +404,8 @@ export async function createDeepSeekFimCompletion(
     usage,
     raw,
   };
+}
+
+function toOptionalNumber(value: JsonValue | undefined): number | undefined {
+  return typeof value === 'number' ? value : undefined;
 }

@@ -134,6 +134,8 @@ export interface UsageInfo {
   reasoningTokens?: number; // Thinking 模型消耗的推理 tokens
   cacheCreationInputTokens?: number; // Anthropic: 缓存创建消耗的 tokens
   cacheReadInputTokens?: number; // Anthropic: 缓存读取的 tokens（节省的部分）
+  cacheMissInputTokens?: number; // DeepSeek: 未命中上下文缓存、按普通输入价计费的 tokens
+  billableInputTokens?: number; // 成本估算使用的输入 tokens；未设置时等同 promptTokens
 }
 
 export interface ChatResponse {

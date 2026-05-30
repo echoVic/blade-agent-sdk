@@ -337,6 +337,10 @@ export async function* agentLoop(
         outputTokens: turnResult.usage.completionTokens ?? 0,
         totalTokens,
         maxContextTokens: turnMaxContextTokens,
+        cacheReadInputTokens: turnResult.usage.cacheReadInputTokens,
+        cacheMissInputTokens: turnResult.usage.cacheMissInputTokens,
+        billableInputTokens: turnResult.usage.billableInputTokens,
+        reasoningTokens: turnResult.usage.reasoningTokens,
       };
       yield { type: 'token_usage', usage };
     }

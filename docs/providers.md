@@ -92,6 +92,23 @@ Thinking mode 可通过模型配置的 `providerOptions` 透传：
 }
 ```
 
+DeepSeek Context Caching 默认由官方服务端启用，SDK 不需要额外开关。响应 usage 会保留缓存命中与未命中口径：`cacheReadInputTokens` 对应 `prompt_cache_hit_tokens`，`cacheMissInputTokens` / `billableInputTokens` 对应 `prompt_cache_miss_tokens`。如果启用 Agent token budget，可复用内置价格表生成成本配置：
+
+```ts
+import { createDeepSeekTokenBudgetCostConfig } from '@blade-ai/agent-sdk';
+
+const session = await createSession({
+  provider: { type: 'deepseek', apiKey: process.env.DEEPSEEK_API_KEY! },
+  model: 'deepseek-v4-pro',
+  tokenBudget: {
+    maxTotalTokens: 1_000_000,
+    ...createDeepSeekTokenBudgetCostConfig('deepseek-v4-pro'),
+  },
+});
+```
+
+内置价格表按 DeepSeek 官方价格页的 cache hit、cache miss、output 三档折算为 per-token USD。价格变动时，应在业务侧传入自定义 `DeepSeekPricing` 或直接覆盖 `tokenBudget` 的成本字段。
+
 ### OpenAI 兼容
 
 适用于 Ollama、vLLM、LiteLLM 等兼容 OpenAI API 的服务：

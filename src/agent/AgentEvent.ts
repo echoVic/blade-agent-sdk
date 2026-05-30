@@ -21,6 +21,10 @@ export interface TokenUsageInfo {
   outputTokens: number;
   totalTokens: number;
   maxContextTokens: number;
+  cacheReadInputTokens?: number;
+  cacheMissInputTokens?: number;
+  billableInputTokens?: number;
+  reasoningTokens?: number;
 }
 
 // ===== Agent 生命周期事件 =====

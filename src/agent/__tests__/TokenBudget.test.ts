@@ -30,9 +30,11 @@ describe('TokenBudget', () => {
 
     const snapshot = budget.getSnapshot();
     expect(snapshot.totalInputTokens).toBe(150);
+    expect(snapshot.totalBillableInputTokens).toBe(150);
     expect(snapshot.totalOutputTokens).toBe(35);
     expect(snapshot.totalCacheWriteTokens).toBe(13);
     expect(snapshot.totalCacheReadTokens).toBe(7);
+    expect(snapshot.totalCacheMissTokens).toBe(150);
     expect(snapshot.totalTokens).toBe(185);
   });
 
@@ -73,13 +75,41 @@ describe('TokenBudget', () => {
 
     expect(budget.getSnapshot()).toEqual({
       totalInputTokens: 100,
+      totalBillableInputTokens: 100,
       totalOutputTokens: 50,
       totalCacheWriteTokens: 20,
       totalCacheReadTokens: 10,
+      totalCacheMissTokens: 100,
       totalTokens: 150,
       estimatedCost: 0.265,
       budgetRemaining: 850,
       budgetPercent: 0.15,
+    });
+  });
+
+  it('uses billable input tokens for cache-aware provider costs', () => {
+    const budget = new TokenBudget({
+      maxTotalTokens: 1000,
+      costPerInputToken: 0.001,
+      costPerOutputToken: 0.002,
+      costPerCacheReadToken: 0.0001,
+    });
+
+    budget.record(createUsage({
+      promptTokens: 100,
+      completionTokens: 50,
+      cacheReadInputTokens: 80,
+      cacheMissInputTokens: 20,
+      billableInputTokens: 20,
+    }));
+
+    expect(budget.getSnapshot()).toMatchObject({
+      totalInputTokens: 100,
+      totalBillableInputTokens: 20,
+      totalOutputTokens: 50,
+      totalCacheReadTokens: 80,
+      totalCacheMissTokens: 20,
+      estimatedCost: 0.128,
     });
   });
 
@@ -96,9 +126,11 @@ describe('TokenBudget', () => {
 
     expect(budget.getSnapshot()).toEqual({
       totalInputTokens: 0,
+      totalBillableInputTokens: 0,
       totalOutputTokens: 0,
       totalCacheWriteTokens: 0,
       totalCacheReadTokens: 0,
+      totalCacheMissTokens: 0,
       totalTokens: 0,
       estimatedCost: 0,
       budgetRemaining: 1000,
