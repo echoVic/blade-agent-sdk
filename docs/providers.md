@@ -112,10 +112,14 @@ const session = await createSession({
 也可以直接对单次 usage 计算成本明细：
 
 ```ts
-import { calculateDeepSeekCost } from '@blade-ai/agent-sdk';
+import { calculateDeepSeekCost, DeepSeekCostTracker } from '@blade-ai/agent-sdk';
 
 const cost = calculateDeepSeekCost(response.usage, 'deepseek-v4-pro');
 console.log(cost?.totalCost);
+
+const tracker = new DeepSeekCostTracker('deepseek-v4-pro');
+tracker.recordResponse(response);
+console.log(tracker.getSnapshot().cacheHitRate);
 ```
 
 ### DeepSeek 缓存命中优化
@@ -198,16 +202,34 @@ await createDeepSeekChatCompletion({
 ```ts
 const chunks = createDeepSeekLongContextMessages(largeDocument, {
   chunkTokenLimit: 128_000,
+  maxContextTokens: 128_000,
   reserveOutputTokens: 8_000,
 });
 ```
 
-### DeepSeek 批量请求
-
-DeepSeek 当前公开文档没有 OpenAI-style `/batches` API；SDK 提供 `createDeepSeekBatchChatCompletions`，在 `/chat/completions` 上做 bounded concurrency 批量请求，并保留每个请求的 usage 与成本明细。
+如果需要先检查哪些分片会进入请求，可以使用计划接口：
 
 ```ts
-import { createDeepSeekBatchChatCompletions } from '@blade-ai/agent-sdk';
+import { createDeepSeekLongContextPlan } from '@blade-ai/agent-sdk';
+
+const plan = createDeepSeekLongContextPlan(largeDocument, {
+  chunkTokenLimit: 64_000,
+  maxContextTokens: 128_000,
+  reserveOutputTokens: 8_000,
+});
+
+console.log(plan.includedChunkCount, plan.omittedChunkCount);
+```
+
+### DeepSeek 批量请求
+
+DeepSeek 当前公开文档没有 OpenAI-style `/batches` API；SDK 提供 `createDeepSeekBatchChatCompletions`，在 `/chat/completions` 上做 bounded concurrency 批量请求，并保留每个请求的 usage 与成本明细。批量请求同样会应用稳定前缀重排，可用 `summarizeDeepSeekBatchChatCompletions` 汇总命中率和成本。
+
+```ts
+import {
+  createDeepSeekBatchChatCompletions,
+  summarizeDeepSeekBatchChatCompletions,
+} from '@blade-ai/agent-sdk';
 
 const results = await createDeepSeekBatchChatCompletions({
   apiKey: process.env.DEEPSEEK_API_KEY!,
@@ -225,6 +247,9 @@ const results = await createDeepSeekBatchChatCompletions({
     },
   ],
 });
+
+const summary = summarizeDeepSeekBatchChatCompletions(results, 'deepseek-v4-pro');
+console.log(summary.cacheHitRate, summary.totalCost);
 
 for (const item of results) {
   if (item.error) {

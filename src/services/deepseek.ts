@@ -77,6 +77,7 @@ export interface DeepSeekLongContextChunk {
   index: number;
   content: string;
   estimatedTokens: number;
+  contentHash: string;
   cacheKey: string;
 }
 
@@ -85,6 +86,20 @@ export interface DeepSeekLongContextOptions {
   reserveOutputTokens?: number;
   charsPerToken?: number;
   chunkPrefix?: string;
+  maxContextTokens?: number;
+  maxChunks?: number;
+}
+
+export interface DeepSeekLongContextPlan {
+  chunks: DeepSeekLongContextChunk[];
+  messages: DeepSeekChatMessage[];
+  totalEstimatedTokens: number;
+  includedEstimatedTokens: number;
+  omittedEstimatedTokens: number;
+  includedChunkCount: number;
+  omittedChunkCount: number;
+  maxContextTokens?: number;
+  reserveOutputTokens: number;
 }
 
 export interface DeepSeekChatMessage {
@@ -100,6 +115,7 @@ export interface DeepSeekChatCompletionOptions {
   baseUrl?: string;
   model?: string;
   messages: DeepSeekChatMessage[];
+  cacheOptimization?: DeepSeekCacheOptimizationOptions;
   maxTokens?: number;
   temperature?: number;
   topP?: number;
@@ -130,6 +146,7 @@ export interface DeepSeekBatchChatCompletionOptions {
   baseUrl?: string;
   headers?: Record<string, string>;
   concurrency?: number;
+  cacheOptimization?: DeepSeekCacheOptimizationOptions;
   signal?: AbortSignal;
   requests: DeepSeekBatchChatCompletionItem[];
 }
@@ -138,6 +155,30 @@ export interface DeepSeekBatchChatCompletionResult {
   id: string;
   response?: DeepSeekChatCompletionResponse;
   error?: Error;
+}
+
+export interface DeepSeekCostSnapshot {
+  model: string;
+  requestCount: number;
+  promptTokens: number;
+  completionTokens: number;
+  totalTokens: number;
+  inputCacheHitTokens: number;
+  inputCacheMissTokens: number;
+  outputTokens: number;
+  reasoningOutputTokens: number;
+  cacheHitRate: number;
+  inputCacheHitCost: number;
+  inputCacheMissCost: number;
+  outputCost: number;
+  reasoningOutputCost: number;
+  totalCost: number;
+  currency: 'USD';
+}
+
+export interface DeepSeekBatchChatCompletionSummary extends DeepSeekCostSnapshot {
+  successCount: number;
+  errorCount: number;
 }
 
 export interface DeepSeekToolDefinition {
@@ -292,6 +333,101 @@ export function calculateDeepSeekCost(
     totalCost: inputCacheHitCost + inputCacheMissCost + outputCost + reasoningOutputCost,
     currency: 'USD',
   };
+}
+
+export class DeepSeekCostTracker {
+  private requestCount = 0;
+  private promptTokens = 0;
+  private completionTokens = 0;
+  private totalTokens = 0;
+  private inputCacheHitTokens = 0;
+  private inputCacheMissTokens = 0;
+  private outputTokens = 0;
+  private reasoningOutputTokens = 0;
+  private inputCacheHitCost = 0;
+  private inputCacheMissCost = 0;
+  private outputCost = 0;
+  private reasoningOutputCost = 0;
+
+  constructor(
+    private readonly model: string = DEEPSEEK_DEFAULT_MODEL,
+    private readonly pricing: DeepSeekPricing | undefined = getDeepSeekPricing(model),
+  ) {}
+
+  recordUsage(usage: UsageInfo): DeepSeekCostBreakdown | undefined {
+    this.requestCount += 1;
+    this.promptTokens += usage.promptTokens ?? 0;
+    this.completionTokens += usage.completionTokens ?? 0;
+    this.totalTokens += usage.totalTokens ?? (usage.promptTokens ?? 0) + (usage.completionTokens ?? 0);
+
+    const breakdown = calculateDeepSeekCost(usage, this.model, this.pricing);
+    if (!breakdown) {
+      const cacheHitTokens = usage.cacheReadInputTokens ?? 0;
+      const cacheMissTokens = usage.cacheMissInputTokens
+        ?? usage.billableInputTokens
+        ?? Math.max((usage.promptTokens ?? 0) - cacheHitTokens, 0);
+      const reasoningTokens = usage.reasoningTokens ?? 0;
+      this.inputCacheHitTokens += cacheHitTokens;
+      this.inputCacheMissTokens += cacheMissTokens;
+      this.reasoningOutputTokens += reasoningTokens;
+      this.outputTokens += Math.max((usage.completionTokens ?? 0) - reasoningTokens, 0);
+      return undefined;
+    }
+
+    this.inputCacheHitTokens += breakdown.inputCacheHitTokens;
+    this.inputCacheMissTokens += breakdown.inputCacheMissTokens;
+    this.outputTokens += breakdown.outputTokens;
+    this.reasoningOutputTokens += breakdown.reasoningOutputTokens;
+    this.inputCacheHitCost += breakdown.inputCacheHitCost;
+    this.inputCacheMissCost += breakdown.inputCacheMissCost;
+    this.outputCost += breakdown.outputCost;
+    this.reasoningOutputCost += breakdown.reasoningOutputCost;
+    return breakdown;
+  }
+
+  recordResponse(response: Pick<DeepSeekChatCompletionResponse, 'usage'>): DeepSeekCostBreakdown | undefined {
+    return response.usage ? this.recordUsage(response.usage) : undefined;
+  }
+
+  getSnapshot(): DeepSeekCostSnapshot {
+    const cacheInputTokens = this.inputCacheHitTokens + this.inputCacheMissTokens;
+    return {
+      model: normalizeDeepSeekModel(this.model),
+      requestCount: this.requestCount,
+      promptTokens: this.promptTokens,
+      completionTokens: this.completionTokens,
+      totalTokens: this.totalTokens,
+      inputCacheHitTokens: this.inputCacheHitTokens,
+      inputCacheMissTokens: this.inputCacheMissTokens,
+      outputTokens: this.outputTokens,
+      reasoningOutputTokens: this.reasoningOutputTokens,
+      cacheHitRate: cacheInputTokens === 0 ? 0 : this.inputCacheHitTokens / cacheInputTokens,
+      inputCacheHitCost: this.inputCacheHitCost,
+      inputCacheMissCost: this.inputCacheMissCost,
+      outputCost: this.outputCost,
+      reasoningOutputCost: this.reasoningOutputCost,
+      totalCost: this.inputCacheHitCost
+        + this.inputCacheMissCost
+        + this.outputCost
+        + this.reasoningOutputCost,
+      currency: 'USD',
+    };
+  }
+
+  reset(): void {
+    this.requestCount = 0;
+    this.promptTokens = 0;
+    this.completionTokens = 0;
+    this.totalTokens = 0;
+    this.inputCacheHitTokens = 0;
+    this.inputCacheMissTokens = 0;
+    this.outputTokens = 0;
+    this.reasoningOutputTokens = 0;
+    this.inputCacheHitCost = 0;
+    this.inputCacheMissCost = 0;
+    this.outputCost = 0;
+    this.reasoningOutputCost = 0;
+  }
 }
 
 export function resolveDeepSeekBaseUrl(baseUrl?: string, beta = false): string {
@@ -459,6 +595,7 @@ export function createDeepSeekLongContextChunks(
       index: chunks.length,
       content,
       estimatedTokens: estimateDeepSeekTokens(content, charsPerToken),
+      contentHash: hashDeepSeekChunkContent(content),
       cacheKey: `${prefix}:${chunks.length + 1}:${content.length}`,
     });
   }
@@ -466,11 +603,52 @@ export function createDeepSeekLongContextChunks(
   return chunks;
 }
 
+export function createDeepSeekLongContextPlan(
+  text: string,
+  options: DeepSeekLongContextOptions = {},
+): DeepSeekLongContextPlan {
+  const chunks = createDeepSeekLongContextChunks(text, {
+    ...options,
+    reserveOutputTokens: undefined,
+  });
+  const reserveOutputTokens = options.reserveOutputTokens ?? 0;
+  const maxInputTokens = options.maxContextTokens === undefined
+    ? Number.POSITIVE_INFINITY
+    : Math.max(options.maxContextTokens - reserveOutputTokens, 1);
+  const maxChunks = options.maxChunks ?? Number.POSITIVE_INFINITY;
+  const includedChunks: DeepSeekLongContextChunk[] = [];
+  let includedEstimatedTokens = 0;
+
+  for (const chunk of chunks) {
+    if (includedChunks.length >= maxChunks) break;
+    if (includedEstimatedTokens + chunk.estimatedTokens > maxInputTokens) break;
+    includedChunks.push(chunk);
+    includedEstimatedTokens += chunk.estimatedTokens;
+  }
+
+  const totalEstimatedTokens = chunks.reduce((sum, chunk) => sum + chunk.estimatedTokens, 0);
+  return {
+    chunks,
+    messages: includedChunks.map(deepSeekChunkToMessage),
+    totalEstimatedTokens,
+    includedEstimatedTokens,
+    omittedEstimatedTokens: totalEstimatedTokens - includedEstimatedTokens,
+    includedChunkCount: includedChunks.length,
+    omittedChunkCount: chunks.length - includedChunks.length,
+    maxContextTokens: options.maxContextTokens,
+    reserveOutputTokens,
+  };
+}
+
 export function createDeepSeekLongContextMessages(
   text: string,
   options: DeepSeekLongContextOptions = {},
 ): DeepSeekChatMessage[] {
-  return createDeepSeekLongContextChunks(text, options).map((chunk) => ({
+  return createDeepSeekLongContextPlan(text, options).messages;
+}
+
+function deepSeekChunkToMessage(chunk: DeepSeekLongContextChunk): DeepSeekChatMessage {
+  return {
     role: 'user',
     content: `<deepseek_context_chunk id="${chunk.id}" index="${chunk.index}">\n${chunk.content}\n</deepseek_context_chunk>`,
     metadata: {
@@ -479,10 +657,20 @@ export function createDeepSeekLongContextMessages(
         cache: 'stable',
         chunkId: chunk.id,
         cacheKey: chunk.cacheKey,
+        contentHash: chunk.contentHash,
         estimatedTokens: chunk.estimatedTokens,
       },
     },
-  }));
+  };
+}
+
+function hashDeepSeekChunkContent(content: string): string {
+  let hash = 0x811c9dc5;
+  for (let i = 0; i < content.length; i += 1) {
+    hash ^= content.charCodeAt(i);
+    hash = Math.imul(hash, 0x01000193);
+  }
+  return (hash >>> 0).toString(16).padStart(8, '0');
 }
 
 export function withDeepSeekDefaults(modelConfig: ModelConfig): ModelConfig {
@@ -721,6 +909,7 @@ export async function createDeepSeekChatCompletion(
   options: DeepSeekChatCompletionOptions,
 ): Promise<DeepSeekChatCompletionResponse> {
   const url = `${resolveDeepSeekBaseUrl(options.baseUrl)}/chat/completions`;
+  const messages = optimizeDeepSeekCachePrefix(options.messages, options.cacheOptimization);
   const response = await fetch(url, {
     method: 'POST',
     headers: {
@@ -730,7 +919,7 @@ export async function createDeepSeekChatCompletion(
     },
     body: JSON.stringify({
       model: normalizeDeepSeekModel(options.model),
-      messages: options.messages.map((message) => ({
+      messages: messages.map((message) => ({
         role: message.role,
         content: message.content,
         ...(message.name ? { name: message.name } : {}),
@@ -794,6 +983,7 @@ export async function createDeepSeekBatchChatCompletions(
           response: await createDeepSeekChatCompletion({
             apiKey: options.apiKey,
             baseUrl: options.baseUrl,
+            cacheOptimization: options.cacheOptimization,
             headers: options.headers,
             signal: options.signal,
             ...request,
@@ -813,6 +1003,31 @@ export async function createDeepSeekBatchChatCompletions(
     () => worker(),
   ));
   return results;
+}
+
+export function summarizeDeepSeekBatchChatCompletions(
+  results: readonly DeepSeekBatchChatCompletionResult[],
+  model: string = DEEPSEEK_DEFAULT_MODEL,
+  pricing: DeepSeekPricing | undefined = getDeepSeekPricing(model),
+): DeepSeekBatchChatCompletionSummary {
+  const tracker = new DeepSeekCostTracker(model, pricing);
+  let successCount = 0;
+  let errorCount = 0;
+
+  for (const result of results) {
+    if (result.response) {
+      successCount += 1;
+      tracker.recordResponse(result.response);
+    } else if (result.error) {
+      errorCount += 1;
+    }
+  }
+
+  return {
+    ...tracker.getSnapshot(),
+    successCount,
+    errorCount,
+  };
 }
 
 function parseDeepSeekRawUsage(rawUsage: JsonValue | undefined): UsageInfo | undefined {

@@ -3,8 +3,10 @@ import {
   calculateDeepSeekCost,
   createDeepSeekBatchChatCompletions,
   createDeepSeekChatCompletion,
+  createDeepSeekLongContextPlan,
   createDeepSeekTokenBudgetCostConfig,
   createDeepSeekFimCompletion,
+  DeepSeekCostTracker,
   createDeepSeekLongContextChunks,
   createDeepSeekLongContextMessages,
   estimateDeepSeekTokens,
@@ -16,6 +18,7 @@ import {
   resolveDeepSeekBaseUrl,
   sanitizeDeepSeekStrictSchema,
   serializeDeepSeekTools,
+  summarizeDeepSeekBatchChatCompletions,
   shouldUseDeepSeekBetaBaseUrl,
   shouldOmitDeepSeekSamplingOptions,
   withDeepSeekDefaults,
@@ -156,11 +159,11 @@ describe('DeepSeek provider helpers', () => {
 
     expect(estimateDeepSeekTokens('abcdef', 2)).toBe(3);
     expect(chunks).toEqual([
-      { id: 'doc_1', index: 0, content: 'aaaa', estimatedTokens: 2, cacheKey: 'doc:1:4' },
-      { id: 'doc_2', index: 1, content: 'aaaa', estimatedTokens: 2, cacheKey: 'doc:2:4' },
-      { id: 'doc_3', index: 2, content: 'aaaa', estimatedTokens: 2, cacheKey: 'doc:3:4' },
-      { id: 'doc_4', index: 3, content: 'aaaa', estimatedTokens: 2, cacheKey: 'doc:4:4' },
-      { id: 'doc_5', index: 4, content: 'aaaa', estimatedTokens: 2, cacheKey: 'doc:5:4' },
+      { id: 'doc_1', index: 0, content: 'aaaa', estimatedTokens: 2, contentHash: '4ceb2db9', cacheKey: 'doc:1:4' },
+      { id: 'doc_2', index: 1, content: 'aaaa', estimatedTokens: 2, contentHash: '4ceb2db9', cacheKey: 'doc:2:4' },
+      { id: 'doc_3', index: 2, content: 'aaaa', estimatedTokens: 2, contentHash: '4ceb2db9', cacheKey: 'doc:3:4' },
+      { id: 'doc_4', index: 3, content: 'aaaa', estimatedTokens: 2, contentHash: '4ceb2db9', cacheKey: 'doc:4:4' },
+      { id: 'doc_5', index: 4, content: 'aaaa', estimatedTokens: 2, contentHash: '4ceb2db9', cacheKey: 'doc:5:4' },
     ]);
     expect(createDeepSeekLongContextMessages('abcdef', {
       chunkTokenLimit: 2,
@@ -173,8 +176,73 @@ describe('DeepSeek provider helpers', () => {
         deepseek: {
           cache: 'stable',
           chunkId: 'doc_1',
+          contentHash: expect.any(String),
         },
       },
+    });
+  });
+
+  it('plans long context chunks within explicit input budgets', () => {
+    const plan = createDeepSeekLongContextPlan('a'.repeat(24), {
+      chunkTokenLimit: 3,
+      charsPerToken: 2,
+      maxContextTokens: 10,
+      reserveOutputTokens: 4,
+      chunkPrefix: 'doc',
+    });
+
+    expect(plan).toMatchObject({
+      totalEstimatedTokens: 12,
+      includedEstimatedTokens: 6,
+      omittedEstimatedTokens: 6,
+      includedChunkCount: 2,
+      omittedChunkCount: 2,
+      maxContextTokens: 10,
+      reserveOutputTokens: 4,
+    });
+    expect(plan.messages).toHaveLength(2);
+    expect(plan.messages[0]?.metadata).toMatchObject({
+      deepseek: {
+        cache: 'stable',
+        chunkId: 'doc_1',
+        estimatedTokens: 3,
+      },
+    });
+  });
+
+  it('tracks aggregate DeepSeek usage, cache hit rate, and costs', () => {
+    const tracker = new DeepSeekCostTracker('deepseek-v4-pro');
+
+    tracker.recordUsage({
+      promptTokens: 100,
+      completionTokens: 10,
+      totalTokens: 110,
+      cacheReadInputTokens: 80,
+      cacheMissInputTokens: 20,
+      billableInputTokens: 20,
+      reasoningTokens: 4,
+    });
+    tracker.recordUsage({
+      promptTokens: 50,
+      completionTokens: 5,
+      totalTokens: 55,
+      cacheReadInputTokens: 20,
+      cacheMissInputTokens: 30,
+      billableInputTokens: 30,
+    });
+
+    expect(tracker.getSnapshot()).toMatchObject({
+      model: 'deepseek-v4-pro',
+      requestCount: 2,
+      promptTokens: 150,
+      completionTokens: 15,
+      totalTokens: 165,
+      inputCacheHitTokens: 100,
+      inputCacheMissTokens: 50,
+      outputTokens: 11,
+      reasoningOutputTokens: 4,
+      cacheHitRate: 100 / 150,
+      totalCost: (100 * 0.003625 + 50 * 0.435 + 15 * 0.87) / 1_000_000,
     });
   });
 
@@ -480,7 +548,10 @@ describe('DeepSeek provider helpers', () => {
     const response = await createDeepSeekChatCompletion({
       apiKey: 'test-key',
       model: 'deepseek-v4-pro',
-      messages: [{ role: 'user', content: 'hello' }],
+      messages: [
+        { role: 'user', content: 'question' },
+        { role: 'user', content: 'stable repo map', metadata: { deepseekCache: 'stable' } },
+      ],
     });
 
     expect(fetchMock).toHaveBeenCalledWith(
@@ -497,6 +568,10 @@ describe('DeepSeek provider helpers', () => {
       cacheMissInputTokens: 3,
     });
     expect(response.cost?.inputCacheHitTokens).toBe(7);
+    expect(JSON.parse((fetchMock.mock.calls[0]?.[1] as RequestInit).body as string).messages).toEqual([
+      { role: 'user', content: 'stable repo map' },
+      { role: 'user', content: 'question' },
+    ]);
   });
 
   it('runs DeepSeek batch chat completions with per-item results', async () => {
@@ -530,5 +605,13 @@ describe('DeepSeek provider helpers', () => {
 
     expect(results[0]?.response?.choices[0]?.message?.content).toBe('ok');
     expect(results[1]?.error?.message).toBe('bad request');
+    expect(summarizeDeepSeekBatchChatCompletions(results, 'deepseek-v4-pro')).toMatchObject({
+      successCount: 1,
+      errorCount: 1,
+      requestCount: 1,
+      promptTokens: 1,
+      completionTokens: 1,
+      totalTokens: 2,
+    });
   });
 });
