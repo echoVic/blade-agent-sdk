@@ -52,6 +52,11 @@ export interface DeepSeekToolDefinition {
   strict?: boolean;
 }
 
+export interface DeepSeekSerializedTool {
+  type: 'function';
+  function: DeepSeekToolDefinition;
+}
+
 export interface DeepSeekFimCompletionOptions {
   apiKey: string;
   baseUrl?: string;
@@ -103,6 +108,39 @@ type AIUsage = {
   cachedInputTokens?: number;
   raw?: JsonObject;
 };
+
+const DEEPSEEK_SUPPORTED_STRING_FORMATS = new Set([
+  'email',
+  'hostname',
+  'ipv4',
+  'ipv6',
+  'uuid',
+]);
+
+const DEEPSEEK_UNSUPPORTED_SCHEMA_KEYWORDS = [
+  'additionalItems',
+  'contains',
+  'contentEncoding',
+  'contentMediaType',
+  'contentSchema',
+  'dependencies',
+  'dependentRequired',
+  'dependentSchemas',
+  'examples',
+  'maxContains',
+  'maxLength',
+  'maxItems',
+  'maxProperties',
+  'minContains',
+  'minLength',
+  'minItems',
+  'minProperties',
+  'patternProperties',
+  'propertyNames',
+  'unevaluatedItems',
+  'unevaluatedProperties',
+  'uniqueItems',
+] as const;
 
 export function normalizeDeepSeekModel(model?: string): string {
   if (!model) return DEEPSEEK_DEFAULT_MODEL;
@@ -158,12 +196,11 @@ export function buildDeepSeekProviderOptions(config: {
       ? { type: 'enabled' as const }
       : undefined);
 
-  if (!thinking && !explicit?.strictTools) return undefined;
+  if (!thinking) return undefined;
 
   return {
     deepseek: {
-      ...(thinking ? { thinking } : {}),
-      ...(explicit?.strictTools ? { strictTools: true } : {}),
+      thinking,
     },
   };
 }
@@ -256,10 +293,27 @@ export function sanitizeDeepSeekStrictSchema(schema: JSONSchema7): JSONSchema7 {
 function sanitizeDeepSeekSchemaNode(schema: JSONSchema7): JSONSchema7 {
   const result: JSONSchema7 = { ...schema };
 
-  delete result.minLength;
-  delete result.maxLength;
-  delete result.minItems;
-  delete result.maxItems;
+  for (const keyword of DEEPSEEK_UNSUPPORTED_SCHEMA_KEYWORDS) {
+    delete (result as Record<string, unknown>)[keyword];
+  }
+
+  if (
+    typeof result.format === 'string'
+    && !DEEPSEEK_SUPPORTED_STRING_FORMATS.has(result.format)
+  ) {
+    delete result.format;
+  }
+
+  if (Array.isArray(result.type)) {
+    const supportedTypes = result.type.filter((typeName) => typeName !== 'null');
+    if (supportedTypes.length === 1) {
+      result.type = supportedTypes[0];
+    } else if (supportedTypes.length > 1) {
+      result.type = supportedTypes;
+    } else {
+      delete result.type;
+    }
+  }
 
   if (typeof result.additionalProperties === 'object' && result.additionalProperties !== null) {
     result.additionalProperties = sanitizeDeepSeekSchemaNode(result.additionalProperties as JSONSchema7);
@@ -274,16 +328,12 @@ function sanitizeDeepSeekSchemaNode(schema: JSONSchema7): JSONSchema7 {
   }
 
   if (Array.isArray(result.oneOf)) {
-    result.oneOf = result.oneOf.map((item) => sanitizeDeepSeekSchemaNode(item as JSONSchema7));
+    result.anyOf = result.anyOf ?? result.oneOf.map((item) => sanitizeDeepSeekSchemaNode(item as JSONSchema7));
+    delete result.oneOf;
   }
 
-  if (Array.isArray(result.allOf)) {
-    result.allOf = result.allOf.map((item) => sanitizeDeepSeekSchemaNode(item as JSONSchema7));
-  }
-
-  if (result.not && typeof result.not === 'object') {
-    result.not = sanitizeDeepSeekSchemaNode(result.not as JSONSchema7);
-  }
+  delete result.allOf;
+  delete result.not;
 
   if (result.definitions) {
     result.definitions = Object.fromEntries(
@@ -337,6 +387,19 @@ export function prepareDeepSeekTools(
       ...(strict ? { strict: true } : {}),
     };
   });
+}
+
+export function serializeDeepSeekTools(
+  tools: Array<{ name: string; description: string; parameters: JSONSchema7 }> | undefined,
+  options?: DeepSeekProviderOptions,
+): DeepSeekSerializedTool[] | undefined {
+  const preparedTools = prepareDeepSeekTools(tools, options);
+  if (!preparedTools) return undefined;
+
+  return preparedTools.map((tool) => ({
+    type: 'function',
+    function: tool,
+  }));
 }
 
 export async function createDeepSeekFimCompletion(

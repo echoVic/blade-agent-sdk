@@ -8,6 +8,7 @@ import {
   normalizeDeepSeekModel,
   resolveDeepSeekBaseUrl,
   sanitizeDeepSeekStrictSchema,
+  serializeDeepSeekTools,
   shouldUseDeepSeekBetaBaseUrl,
   shouldOmitDeepSeekSamplingOptions,
   withDeepSeekDefaults,
@@ -102,12 +103,19 @@ describe('DeepSeek provider helpers', () => {
     expect(sanitizeDeepSeekStrictSchema({
       type: 'object',
       properties: {
-        q: { type: 'string' },
+        q: { type: 'string', format: 'date-time' },
         count: { type: 'number' },
+        email: { type: ['string', 'null'], format: 'email' },
         nested: {
           type: 'object',
           properties: {
             name: { type: 'string', minLength: 2, maxLength: 8 },
+            choice: {
+              oneOf: [
+                { type: 'string', minLength: 1 },
+                { type: 'integer' },
+              ],
+            },
           },
           required: [],
         },
@@ -115,19 +123,30 @@ describe('DeepSeek provider helpers', () => {
           type: 'array',
           minItems: 1,
           maxItems: 3,
+          uniqueItems: true,
           items: { type: 'string', minLength: 1 },
         },
       },
       required: ['q'],
+      allOf: [{ type: 'object' }],
+      propertyNames: { pattern: '^[a-z]+$' },
     })).toMatchObject({
-      required: ['q', 'count', 'nested', 'tags'],
+      required: ['q', 'count', 'email', 'nested', 'tags'],
       additionalProperties: false,
       properties: {
+        q: { type: 'string' },
+        email: { type: 'string', format: 'email' },
         nested: {
-          required: ['name'],
+          required: ['name', 'choice'],
           additionalProperties: false,
           properties: {
             name: { type: 'string' },
+            choice: {
+              anyOf: [
+                { type: 'string' },
+                { type: 'integer' },
+              ],
+            },
           },
         },
         tags: {
@@ -136,6 +155,12 @@ describe('DeepSeek provider helpers', () => {
         },
       },
     });
+    expect(sanitizeDeepSeekStrictSchema({
+      type: 'object',
+      properties: {},
+      allOf: [{ type: 'object' }],
+      propertyNames: { pattern: '^[a-z]+$' },
+    })).not.toHaveProperty('allOf');
   });
 
   it('prepares DeepSeek strict tools and beta endpoint selection', () => {
@@ -164,6 +189,33 @@ describe('DeepSeek provider helpers', () => {
         additionalProperties: false,
         properties: {
           q: { type: 'string' },
+        },
+      },
+    });
+    expect(serializeDeepSeekTools([
+      {
+        name: 'search',
+        description: 'Search files',
+        parameters: {
+          type: 'object',
+          properties: {
+            q: { type: 'string' },
+          },
+        },
+      },
+    ], { strictTools: true })?.[0]).toEqual({
+      type: 'function',
+      function: {
+        name: 'search',
+        description: 'Search files',
+        strict: true,
+        parameters: {
+          type: 'object',
+          properties: {
+            q: { type: 'string' },
+          },
+          required: ['q'],
+          additionalProperties: false,
         },
       },
     });

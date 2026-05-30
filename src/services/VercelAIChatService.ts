@@ -107,6 +107,11 @@ function safeJsonParse(
   }
 }
 
+function getStreamTextDelta(part: unknown): string | undefined {
+  const chunk = part as { text?: string; textDelta?: string; delta?: string };
+  return chunk.text ?? chunk.textDelta ?? chunk.delta;
+}
+
 /**
  * 消费 withRetry AsyncGenerator，收集 RetryEvent 并返回结果
  */
@@ -504,14 +509,18 @@ export class VercelAIChatService implements IChatService {
 
   private getProviderOptions(): AIProviderOptions | undefined {
     if (this.isDeepSeekProvider()) {
-      return {
-        ...buildDeepSeekProviderOptions({
-          model: this.config.model,
-          supportsThinking: this.config.supportsThinking,
-          deepseek: this.config.providerOptions?.deepseek,
-        }),
-        ...this.config.providerOptions,
+      const { deepseek, ...otherProviderOptions } = this.config.providerOptions ?? {};
+      const deepseekOptions = buildDeepSeekProviderOptions({
+        model: this.config.model,
+        supportsThinking: this.config.supportsThinking,
+        deepseek,
+      });
+
+      const providerOptions = {
+        ...otherProviderOptions,
+        ...deepseekOptions,
       } as AIProviderOptions;
+      return Object.keys(providerOptions).length > 0 ? providerOptions : undefined;
     }
     return this.config.providerOptions as AIProviderOptions | undefined;
   }
@@ -781,13 +790,21 @@ export class VercelAIChatService implements IChatService {
       let toolCallIndex = 0;
       for await (const part of result.fullStream) {
         switch (part.type) {
-          case 'text-delta':
-            yield { content: (part as { text?: string; textDelta?: string }).text ?? (part as { textDelta?: string }).textDelta };
+          case 'text-delta': {
+            const delta = getStreamTextDelta(part);
+            if (delta !== undefined) {
+              yield { content: delta };
+            }
             break;
+          }
 
-          case 'reasoning-delta':
-            yield { reasoningContent: (part as { textDelta?: string }).textDelta };
+          case 'reasoning-delta': {
+            const delta = getStreamTextDelta(part);
+            if (delta !== undefined) {
+              yield { reasoningContent: delta };
+            }
             break;
+          }
 
           case 'tool-call':
             yield {
@@ -798,7 +815,11 @@ export class VercelAIChatService implements IChatService {
                   type: 'function' as const,
                   function: {
                     name: (part as { toolName: string }).toolName,
-                    arguments: JSON.stringify((part as { args?: unknown; input?: unknown }).args ?? (part as { input?: unknown }).input ?? {}),
+                    arguments: this.stringifyToolArguments(
+                      (part as { args?: unknown; input?: unknown }).args
+                      ?? (part as { input?: unknown }).input
+                      ?? {},
+                    ),
                   },
                 },
               ],

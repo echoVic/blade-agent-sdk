@@ -103,6 +103,11 @@ describe('VercelAIChatService', () => {
           name: 'Search',
           arguments: '{"q":"needle"}',
         },
+        {
+          toolCallId: 'sdk-call',
+          toolName: 'Read',
+          input: '{"path":"README.md"}',
+        },
       ],
     });
 
@@ -142,6 +147,7 @@ describe('VercelAIChatService', () => {
       headers: undefined,
     });
     expect(mockGenerateText).toHaveBeenCalledWith(expect.objectContaining({
+      providerOptions: undefined,
       tools: {
         Search: expect.objectContaining({
           strict: true,
@@ -162,6 +168,13 @@ describe('VercelAIChatService', () => {
       function: {
         name: 'Search',
         arguments: '{"q":"needle"}',
+      },
+    });
+    expect(response.toolCalls?.[1]).toMatchObject({
+      id: 'sdk-call',
+      function: {
+        name: 'Read',
+        arguments: '{"path":"README.md"}',
       },
     });
   });
@@ -321,7 +334,6 @@ describe('VercelAIChatService', () => {
       providerOptions: {
         deepseek: {
           thinking: { type: 'enabled' },
-          strictTools: true,
         },
       },
       temperature: undefined,
@@ -359,6 +371,75 @@ describe('VercelAIChatService', () => {
           reasoningTokens: 2,
         },
       },
+    ]);
+  });
+
+  it('streams DeepSeek delta fields and preserves JSON-string tool inputs', async () => {
+    async function* fullStream() {
+      yield { type: 'reasoning-delta', delta: 'think' };
+      yield {
+        type: 'tool-call',
+        toolCallId: 'call_read',
+        toolName: 'Read',
+        input: '{"path":"README.md"}',
+      };
+      yield { type: 'text-delta', delta: 'done' };
+      yield { type: 'finish', finishReason: 'tool-calls' };
+    }
+    mockStreamText.mockReturnValue({ fullStream: fullStream() });
+
+    const service = new VercelAIChatService(
+      {
+        provider: 'deepseek',
+        apiKey: 'test-key',
+        baseUrl: '',
+        model: 'deepseek-v4-pro',
+        providerOptions: {
+          deepseek: {
+            thinking: { type: 'enabled' },
+          },
+        },
+      },
+      NOOP_LOGGER,
+    );
+
+    await (service as unknown as { initialized: Promise<void> }).initialized;
+    const chunks = [];
+    for await (const chunk of service.streamChat(
+      [{ role: 'user', content: 'read' }],
+      [
+        {
+          name: 'Read',
+          description: 'Read file',
+          parameters: {
+            type: 'object',
+            properties: {
+              path: { type: 'string' },
+            },
+          },
+        },
+      ],
+    )) {
+      chunks.push(chunk);
+    }
+
+    expect(chunks).toEqual([
+      { reasoningContent: 'think' },
+      {
+        toolCalls: [
+          {
+            index: 0,
+            id: 'call_read',
+            type: 'function',
+            function: {
+              name: 'Read',
+              arguments: '{"path":"README.md"}',
+            },
+          },
+        ],
+      },
+      { content: 'done' },
+      { finishReason: 'tool-calls', usage: undefined },
     ]);
   });
 });
