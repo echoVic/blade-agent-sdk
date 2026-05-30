@@ -3,6 +3,7 @@ import {
   createDeepSeekTokenBudgetCostConfig,
   createDeepSeekFimCompletion,
   getDeepSeekPricing,
+  mergeDeepSeekUsage,
   prepareDeepSeekTools,
   normalizeDeepSeekModel,
   resolveDeepSeekBaseUrl,
@@ -34,6 +35,41 @@ describe('DeepSeek provider helpers', () => {
       costPerCacheReadToken: 0.003625 / 1_000_000,
     });
     expect(createDeepSeekTokenBudgetCostConfig('unknown-model')).toBeUndefined();
+  });
+
+  it('maps DeepSeek provider cache metadata when token details are absent', () => {
+    expect(mergeDeepSeekUsage(
+      {
+        promptTokens: 20,
+        completionTokens: 3,
+        totalTokens: 23,
+      },
+      {
+        deepseek: {
+          promptCacheHitTokens: 12,
+          promptCacheMissTokens: 8,
+        },
+      },
+    )).toMatchObject({
+      promptTokens: 20,
+      completionTokens: 3,
+      totalTokens: 23,
+      cacheReadInputTokens: 12,
+      cacheMissInputTokens: 8,
+      billableInputTokens: 8,
+    });
+
+    expect(mergeDeepSeekUsage({
+      inputTokens: 20,
+      outputTokens: 3,
+      cachedInputTokens: 12,
+    })).toMatchObject({
+      promptTokens: 20,
+      completionTokens: 3,
+      totalTokens: 23,
+      cacheReadInputTokens: 12,
+      billableInputTokens: 8,
+    });
   });
 
   it('applies DeepSeek model defaults', () => {
@@ -133,6 +169,29 @@ describe('DeepSeek provider helpers', () => {
     });
   });
 
+  it('leaves non-strict DeepSeek tool schemas unchanged', () => {
+    const parameters = {
+      type: 'object' as const,
+      properties: {
+        q: { type: 'string' as const, minLength: 1 },
+      },
+      required: [],
+      additionalProperties: true,
+    };
+
+    expect(prepareDeepSeekTools([
+      {
+        name: 'search',
+        description: 'Search files',
+        parameters,
+      },
+    ])?.[0]).toEqual({
+      name: 'search',
+      description: 'Search files',
+      parameters,
+    });
+  });
+
   it('omits sampling options only for enabled DeepSeek thinking mode', () => {
     expect(shouldOmitDeepSeekSamplingOptions({
       provider: 'deepseek',
@@ -207,5 +266,23 @@ describe('DeepSeek provider helpers', () => {
       billableInputTokens: 1,
       reasoningTokens: 0,
     });
+  });
+
+  it('surfaces DeepSeek FIM API error messages', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => ({
+      ok: false,
+      status: 400,
+      json: async () => ({
+        error: {
+          message: 'invalid suffix',
+        },
+      }),
+    })));
+
+    await expect(createDeepSeekFimCompletion({
+      apiKey: 'test-key',
+      prompt: 'left',
+      suffix: 'right',
+    })).rejects.toThrow('invalid suffix');
   });
 });

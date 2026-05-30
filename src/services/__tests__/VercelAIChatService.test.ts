@@ -8,6 +8,7 @@ const mockCreateOpenAICompatible = vi.fn((_options?: Record<string, unknown>) =>
 const mockDeepSeekModelFactory = vi.fn((model: string) => ({ provider: 'deepseek', model }));
 const mockCreateDeepSeek = vi.fn((_options?: Record<string, unknown>) => mockDeepSeekModelFactory);
 const mockGenerateText = vi.fn();
+const mockStreamText = vi.fn();
 
 vi.mock('@ai-sdk/openai', () => ({
   createOpenAI: mockCreateOpenAI,
@@ -26,6 +27,7 @@ vi.mock('ai', async (importOriginal) => {
   return {
     ...actual,
     generateText: mockGenerateText,
+    streamText: mockStreamText,
   };
 });
 
@@ -40,6 +42,7 @@ describe('VercelAIChatService', () => {
     mockCreateDeepSeek.mockClear();
     mockDeepSeekModelFactory.mockClear();
     mockGenerateText.mockReset();
+    mockStreamText.mockReset();
   });
 
   it('uses the native OpenAI provider for openai configs', async () => {
@@ -249,5 +252,113 @@ describe('VercelAIChatService', () => {
         },
       },
     }));
+  });
+
+  it('streams DeepSeek reasoning, tool calls, and cache usage metadata', async () => {
+    async function* fullStream() {
+      yield { type: 'reasoning-delta', textDelta: 'thinking' };
+      yield {
+        type: 'tool-call',
+        toolCallId: 'call_search',
+        toolName: 'Search',
+        input: { q: 'needle' },
+      };
+      yield { type: 'text-delta', text: 'done' };
+      yield {
+        type: 'finish',
+        finishReason: 'tool-calls',
+        totalUsage: {
+          inputTokens: 20,
+          outputTokens: 4,
+          totalTokens: 24,
+          inputTokenDetails: { cacheReadTokens: 14, noCacheTokens: 6 },
+          outputTokenDetails: { reasoningTokens: 2 },
+        },
+        providerMetadata: {
+          deepseek: { promptCacheHitTokens: 14, promptCacheMissTokens: 6 },
+        },
+      };
+    }
+    mockStreamText.mockReturnValue({ fullStream: fullStream() });
+
+    const service = new VercelAIChatService(
+      {
+        provider: 'deepseek',
+        apiKey: 'test-key',
+        baseUrl: '',
+        model: 'deepseek-v4-pro',
+        providerOptions: {
+          deepseek: {
+            thinking: { type: 'enabled' },
+            strictTools: true,
+          },
+        },
+      },
+      NOOP_LOGGER,
+    );
+
+    await (service as unknown as { initialized: Promise<void> }).initialized;
+    const chunks = [];
+    for await (const chunk of service.streamChat(
+      [{ role: 'user', content: 'search' }],
+      [
+        {
+          name: 'Search',
+          description: 'Search content',
+          parameters: {
+            type: 'object',
+            properties: {
+              q: { type: 'string', minLength: 1 },
+            },
+          },
+        },
+      ],
+    )) {
+      chunks.push(chunk);
+    }
+
+    expect(mockStreamText).toHaveBeenCalledWith(expect.objectContaining({
+      providerOptions: {
+        deepseek: {
+          thinking: { type: 'enabled' },
+          strictTools: true,
+        },
+      },
+      temperature: undefined,
+      tools: {
+        Search: expect.objectContaining({
+          strict: true,
+        }),
+      },
+    }));
+    expect(chunks).toEqual([
+      { reasoningContent: 'thinking' },
+      {
+        toolCalls: [
+          {
+            index: 0,
+            id: 'call_search',
+            type: 'function',
+            function: {
+              name: 'Search',
+              arguments: '{"q":"needle"}',
+            },
+          },
+        ],
+      },
+      { content: 'done' },
+      {
+        finishReason: 'tool-calls',
+        usage: {
+          promptTokens: 20,
+          completionTokens: 4,
+          totalTokens: 24,
+          cacheReadInputTokens: 14,
+          cacheMissInputTokens: 6,
+          billableInputTokens: 6,
+          reasoningTokens: 2,
+        },
+      },
+    ]);
   });
 });
