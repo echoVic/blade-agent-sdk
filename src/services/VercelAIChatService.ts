@@ -531,6 +531,9 @@ export class VercelAIChatService implements IChatService {
     }
 
     const { json_schema } = outputFormat;
+    if (!json_schema?.schema) {
+      return undefined;
+    }
     return Output.object({
       schema: jsonSchema(json_schema.schema as Parameters<typeof jsonSchema>[0]),
     });

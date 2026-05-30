@@ -147,7 +147,7 @@ describe('VercelAIChatService', () => {
       headers: undefined,
     });
     expect(mockGenerateText).toHaveBeenCalledWith(expect.objectContaining({
-      providerOptions: undefined,
+      providerOptions: { deepseek: { thinking: { type: 'enabled' } } },
       tools: {
         Search: expect.objectContaining({
           strict: true,

@@ -448,6 +448,20 @@ export function isDeepSeekReasoningModel(model: string): boolean {
   return /(^|[-_])reasoner($|[-_])|(^|[-_])r1($|[-_])/i.test(model);
 }
 
+/**
+ * Whether the model has server-side thinking/reasoning enabled by default.
+ * DeepSeek V4 Pro enables thinking output at the API level even without
+ * an explicit `thinking: { type: 'enabled' }` request. SDK must account
+ * for this when managing token budgets.
+ */
+export function isDeepSeekThinkingDefaultModel(model: string): boolean {
+  // Check original name first (e.g. 'deepseek-reasoner' matches reasoning pattern
+  // even though it normalizes to 'deepseek-v4-flash' via alias table)
+  if (isDeepSeekReasoningModel(model)) return true;
+  const normalized = normalizeDeepSeekModel(model);
+  return normalized === 'deepseek-v4-pro' || isDeepSeekReasoningModel(normalized);
+}
+
 export function buildDeepSeekProviderOptions(config: {
   model: string;
   supportsThinking?: boolean;
@@ -455,7 +469,7 @@ export function buildDeepSeekProviderOptions(config: {
 }): ProviderOptions | undefined {
   const explicit = config.deepseek;
   const thinking = explicit?.thinking
-    ?? (config.supportsThinking || isDeepSeekReasoningModel(config.model)
+    ?? (config.supportsThinking || isDeepSeekThinkingDefaultModel(config.model)
       ? { type: 'enabled' as const }
       : undefined);
 
@@ -480,7 +494,7 @@ export function shouldOmitDeepSeekSamplingOptions(config: {
   if (thinkingType === 'disabled') return false;
   return thinkingType === 'enabled'
     || Boolean(config.supportsThinking)
-    || isDeepSeekReasoningModel(config.model);
+    || isDeepSeekThinkingDefaultModel(config.model);
 }
 
 export function mergeDeepSeekUsage(
@@ -680,6 +694,8 @@ export function withDeepSeekDefaults(modelConfig: ModelConfig): ModelConfig {
   if (modelConfig.provider !== 'deepseek') return modelConfig;
 
   const isReasonerAlias = modelConfig.model === 'deepseek-reasoner';
+  const normalizedModel = normalizeDeepSeekModel(modelConfig.model);
+  const isThinkingDefault = isDeepSeekThinkingDefaultModel(normalizedModel);
   const strictTools = modelConfig.providerOptions?.deepseek
     && typeof modelConfig.providerOptions.deepseek === 'object'
     && !Array.isArray(modelConfig.providerOptions.deepseek)
@@ -688,13 +704,13 @@ export function withDeepSeekDefaults(modelConfig: ModelConfig): ModelConfig {
     : false;
   return {
     ...modelConfig,
-    model: normalizeDeepSeekModel(modelConfig.model),
+    model: normalizedModel,
     baseUrl: resolveDeepSeekBaseUrl(modelConfig.baseUrl, strictTools),
     maxContextTokens: modelConfig.maxContextTokens ?? 1_000_000,
     maxOutputTokens: modelConfig.maxOutputTokens ?? 384_000,
     temperature: modelConfig.temperature ?? 0.3,
-    supportsThinking: modelConfig.supportsThinking ?? isReasonerAlias,
-    thinkingEnabled: modelConfig.thinkingEnabled ?? isReasonerAlias,
+    supportsThinking: modelConfig.supportsThinking ?? (isReasonerAlias || isThinkingDefault),
+    thinkingEnabled: modelConfig.thinkingEnabled ?? (isReasonerAlias || isThinkingDefault),
   };
 }
 
