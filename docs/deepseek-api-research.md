@@ -1,6 +1,6 @@
 # DeepSeek 模型 API 调研
 
-> 调研日期：2026-05-26。DeepSeek API 模型、价格和能力边界变化较快，接入前应再次核对官方文档。
+> 调研日期：2026-05-26；价格与 Batch API 状态在 2026-05-30 再次核对。DeepSeek API 模型、价格和能力边界变化较快，接入前应再次核对官方文档。
 
 ## 结论摘要
 
@@ -86,7 +86,7 @@ const response = await client.chat.completions.create({
 
 适配注意：
 
-- 不要假设 DeepSeek 支持 OpenAI Responses API、Assistants API、Threads、Files、Batches、Embeddings 等平台级接口；当前调研只确认 Chat/FIM/Models/Balance 等 API。
+- 不要假设 DeepSeek 支持 OpenAI Responses API、Assistants API、Threads、Files、Batches、Embeddings 等平台级接口；当前调研只确认 Chat/FIM/Models/Balance 等 API。2026-05-30 核对公开文档时，`/api/list-batches` 与 `/api/create-batch` 文档页返回 404，因此 SDK 的批量能力应实现为 `/chat/completions` 上的客户端 bounded concurrency helper，而不是伪装成官方 Batch endpoint。
 - `baseURL` 不需要补 `/v1`，官方示例直接使用 `https://api.deepseek.com`。
 - beta 能力必须切换到 `https://api.deepseek.com/beta`，不能只改请求 body。
 - `finish_reason` 除 OpenAI 常见值外，还可能出现 `insufficient_system_resource`。

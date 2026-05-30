@@ -30,6 +30,7 @@ import {
   buildDeepSeekProviderOptions,
   mergeDeepSeekUsage,
   normalizeDeepSeekModel,
+  optimizeDeepSeekCachePrefix,
   prepareDeepSeekTools,
   resolveDeepSeekBaseUrl,
   shouldOmitDeepSeekSamplingOptions,
@@ -631,9 +632,12 @@ export class VercelAIChatService implements IChatService {
     messages: readonly Message[],
     tools?: Array<{ name: string; description: string; parameters: JSONSchema7 }>,
   ) {
+    const optimizedMessages = this.isDeepSeekProvider()
+      ? optimizeDeepSeekCachePrefix(messages, this.config.providerOptions?.deepseek?.cacheOptimization)
+      : messages;
     const filteredMessages = this.isDeepSeekProvider()
-      ? filterDeepSeekToolContext(messages)
-      : filterOrphanToolMessages(messages);
+      ? filterDeepSeekToolContext(optimizedMessages)
+      : filterOrphanToolMessages(optimizedMessages);
     const coreMessages = this.convertMessages(filteredMessages);
     const coreTools = this.convertTools(tools);
     const experimentalOutput = this.convertOutputFormat(this.config.outputFormat);

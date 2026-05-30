@@ -60,6 +60,11 @@ export interface ProviderOptions {
       type?: 'enabled' | 'disabled';
     };
     strictTools?: boolean;
+    cacheOptimization?: {
+      enabled?: boolean;
+      stableMetadataKey?: string;
+      stableMetadataValue?: JsonValue;
+    };
   };
 }
 

@@ -1,6 +1,6 @@
 import type { JSONSchema7 } from 'json-schema';
 import type { JsonObject, JsonValue, ModelConfig } from '../types/common.js';
-import type { ProviderOptions, UsageInfo } from './ChatServiceInterface.js';
+import type { Message, ProviderOptions, UsageInfo } from './ChatServiceInterface.js';
 
 export const DEEPSEEK_DEFAULT_BASE_URL = 'https://api.deepseek.com';
 export const DEEPSEEK_BETA_BASE_URL = 'https://api.deepseek.com/beta';
@@ -24,11 +24,17 @@ export const DEEPSEEK_DEFAULT_PRICING: Record<string, DeepSeekPricing> = {
     inputCacheMiss: 0.435 / 1_000_000,
     output: 0.87 / 1_000_000,
   },
+  'deepseek-r1': {
+    inputCacheHit: 0.14 / 1_000_000,
+    inputCacheMiss: 0.55 / 1_000_000,
+    output: 2.19 / 1_000_000,
+  },
 };
 
 const DEEPSEEK_MODEL_ALIASES: Record<string, string> = {
   'deepseek-chat': 'deepseek-v4-flash',
   'deepseek-reasoner': 'deepseek-v4-flash',
+  'deepseek-r1-0528': 'deepseek-r1',
 };
 
 export interface DeepSeekProviderOptions {
@@ -36,6 +42,7 @@ export interface DeepSeekProviderOptions {
     type?: 'enabled' | 'disabled';
   };
   strictTools?: boolean;
+  cacheOptimization?: DeepSeekCacheOptimizationOptions;
 }
 
 export interface DeepSeekPricing {
@@ -43,6 +50,94 @@ export interface DeepSeekPricing {
   inputCacheMiss: number;
   output: number;
   reasoningOutput?: number;
+}
+
+export interface DeepSeekCostBreakdown {
+  model: string;
+  inputCacheHitTokens: number;
+  inputCacheMissTokens: number;
+  outputTokens: number;
+  reasoningOutputTokens: number;
+  inputCacheHitCost: number;
+  inputCacheMissCost: number;
+  outputCost: number;
+  reasoningOutputCost: number;
+  totalCost: number;
+  currency: 'USD';
+}
+
+export interface DeepSeekCacheOptimizationOptions {
+  enabled?: boolean;
+  stableMetadataKey?: string;
+  stableMetadataValue?: JsonValue;
+}
+
+export interface DeepSeekLongContextChunk {
+  id: string;
+  index: number;
+  content: string;
+  estimatedTokens: number;
+  cacheKey: string;
+}
+
+export interface DeepSeekLongContextOptions {
+  chunkTokenLimit?: number;
+  reserveOutputTokens?: number;
+  charsPerToken?: number;
+  chunkPrefix?: string;
+}
+
+export interface DeepSeekChatMessage {
+  role: 'system' | 'user' | 'assistant' | 'tool';
+  content: string;
+  name?: string;
+  tool_call_id?: string;
+  metadata?: JsonValue;
+}
+
+export interface DeepSeekChatCompletionOptions {
+  apiKey: string;
+  baseUrl?: string;
+  model?: string;
+  messages: DeepSeekChatMessage[];
+  maxTokens?: number;
+  temperature?: number;
+  topP?: number;
+  stream?: false;
+  signal?: AbortSignal;
+  headers?: Record<string, string>;
+}
+
+export interface DeepSeekChatCompletionResponse {
+  id?: string;
+  model?: string;
+  choices: Array<{
+    message?: JsonObject;
+    finish_reason?: string | null;
+    index?: number;
+  }>;
+  usage?: UsageInfo;
+  cost?: DeepSeekCostBreakdown;
+  raw: JsonValue;
+}
+
+export interface DeepSeekBatchChatCompletionItem extends Omit<DeepSeekChatCompletionOptions, 'apiKey' | 'baseUrl' | 'headers' | 'signal'> {
+  id: string;
+}
+
+export interface DeepSeekBatchChatCompletionOptions {
+  apiKey: string;
+  baseUrl?: string;
+  headers?: Record<string, string>;
+  concurrency?: number;
+  signal?: AbortSignal;
+  requests: DeepSeekBatchChatCompletionItem[];
+}
+
+export interface DeepSeekBatchChatCompletionResult {
+  id: string;
+  response?: DeepSeekChatCompletionResponse;
+  error?: Error;
 }
 
 export interface DeepSeekToolDefinition {
@@ -167,6 +262,38 @@ export function createDeepSeekTokenBudgetCostConfig(
   };
 }
 
+export function calculateDeepSeekCost(
+  usage: UsageInfo,
+  model?: string,
+  pricing: DeepSeekPricing | undefined = getDeepSeekPricing(model),
+): DeepSeekCostBreakdown | undefined {
+  if (!pricing) return undefined;
+
+  const inputCacheHitTokens = usage.cacheReadInputTokens ?? 0;
+  const inputCacheMissTokens = usage.cacheMissInputTokens
+    ?? usage.billableInputTokens
+    ?? Math.max((usage.promptTokens ?? 0) - inputCacheHitTokens, 0);
+  const reasoningOutputTokens = usage.reasoningTokens ?? 0;
+  const outputTokens = Math.max((usage.completionTokens ?? 0) - reasoningOutputTokens, 0);
+  const inputCacheHitCost = inputCacheHitTokens * pricing.inputCacheHit;
+  const inputCacheMissCost = inputCacheMissTokens * pricing.inputCacheMiss;
+  const outputCost = outputTokens * pricing.output;
+  const reasoningOutputCost = reasoningOutputTokens * (pricing.reasoningOutput ?? pricing.output);
+  return {
+    model: normalizeDeepSeekModel(model),
+    inputCacheHitTokens,
+    inputCacheMissTokens,
+    outputTokens,
+    reasoningOutputTokens,
+    inputCacheHitCost,
+    inputCacheMissCost,
+    outputCost,
+    reasoningOutputCost,
+    totalCost: inputCacheHitCost + inputCacheMissCost + outputCost + reasoningOutputCost,
+    currency: 'USD',
+  };
+}
+
 export function resolveDeepSeekBaseUrl(baseUrl?: string, beta = false): string {
   if (baseUrl?.trim()) return baseUrl.replace(/\/$/, '');
   return beta ? DEEPSEEK_BETA_BASE_URL : DEEPSEEK_DEFAULT_BASE_URL;
@@ -261,6 +388,101 @@ export function mergeDeepSeekUsage(
   }
 
   return result;
+}
+
+export function optimizeDeepSeekCachePrefix<T extends Message>(
+  messages: readonly T[],
+  options: DeepSeekCacheOptimizationOptions = {},
+): T[] {
+  if (options.enabled === false || messages.length < 2) return [...messages];
+
+  const firstConversationIndex = messages.findIndex(
+    (message) => message.role === 'assistant' || message.role === 'tool',
+  );
+  const prefixEnd = firstConversationIndex === -1 ? messages.length : firstConversationIndex;
+  const prefix = messages.slice(0, prefixEnd);
+  const tail = messages.slice(prefixEnd);
+  const leadingSystems: T[] = [];
+  let cursor = 0;
+  while (cursor < prefix.length && prefix[cursor]?.role === 'system') {
+    leadingSystems.push(prefix[cursor] as T);
+    cursor += 1;
+  }
+
+  const remainingPrefix = prefix.slice(cursor);
+  const stablePrefix = remainingPrefix.filter((message) => isDeepSeekStableCacheMessage(message, options));
+  if (stablePrefix.length === 0) return [...messages];
+
+  const volatilePrefix = remainingPrefix.filter((message) => !isDeepSeekStableCacheMessage(message, options));
+  return [...leadingSystems, ...stablePrefix, ...volatilePrefix, ...tail];
+}
+
+function isDeepSeekStableCacheMessage(
+  message: Message,
+  options: DeepSeekCacheOptimizationOptions,
+): boolean {
+  const metadata = message.metadata;
+  if (!metadata || typeof metadata !== 'object' || Array.isArray(metadata)) return false;
+  const key = options.stableMetadataKey ?? 'deepseekCache';
+  const expectedValue = options.stableMetadataValue ?? 'stable';
+  if ((metadata as JsonObject)[key] === expectedValue) return true;
+  const deepseek = (metadata as JsonObject).deepseek;
+  return Boolean(
+    deepseek
+    && typeof deepseek === 'object'
+    && !Array.isArray(deepseek)
+    && (deepseek as JsonObject).cache === 'stable',
+  );
+}
+
+export function estimateDeepSeekTokens(text: string, charsPerToken = 4): number {
+  return Math.ceil(text.length / Math.max(charsPerToken, 1));
+}
+
+export function createDeepSeekLongContextChunks(
+  text: string,
+  options: DeepSeekLongContextOptions = {},
+): DeepSeekLongContextChunk[] {
+  const charsPerToken = options.charsPerToken ?? 4;
+  const chunkTokenLimit = Math.max(
+    (options.chunkTokenLimit ?? 64_000) - (options.reserveOutputTokens ?? 0),
+    1,
+  );
+  const chunkCharLimit = Math.max(chunkTokenLimit * charsPerToken, 1);
+  const prefix = options.chunkPrefix ?? 'ctx';
+  const chunks: DeepSeekLongContextChunk[] = [];
+
+  for (let offset = 0; offset < text.length; offset += chunkCharLimit) {
+    const content = text.slice(offset, offset + chunkCharLimit);
+    chunks.push({
+      id: `${prefix}_${chunks.length + 1}`,
+      index: chunks.length,
+      content,
+      estimatedTokens: estimateDeepSeekTokens(content, charsPerToken),
+      cacheKey: `${prefix}:${chunks.length + 1}:${content.length}`,
+    });
+  }
+
+  return chunks;
+}
+
+export function createDeepSeekLongContextMessages(
+  text: string,
+  options: DeepSeekLongContextOptions = {},
+): DeepSeekChatMessage[] {
+  return createDeepSeekLongContextChunks(text, options).map((chunk) => ({
+    role: 'user',
+    content: `<deepseek_context_chunk id="${chunk.id}" index="${chunk.index}">\n${chunk.content}\n</deepseek_context_chunk>`,
+    metadata: {
+      deepseekCache: 'stable',
+      deepseek: {
+        cache: 'stable',
+        chunkId: chunk.id,
+        cacheKey: chunk.cacheKey,
+        estimatedTokens: chunk.estimatedTokens,
+      },
+    },
+  }));
 }
 
 export function withDeepSeekDefaults(modelConfig: ModelConfig): ModelConfig {
@@ -493,6 +715,123 @@ export async function createDeepSeekFimCompletion(
     usage,
     raw,
   };
+}
+
+export async function createDeepSeekChatCompletion(
+  options: DeepSeekChatCompletionOptions,
+): Promise<DeepSeekChatCompletionResponse> {
+  const url = `${resolveDeepSeekBaseUrl(options.baseUrl)}/chat/completions`;
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${options.apiKey}`,
+      'Content-Type': 'application/json',
+      ...options.headers,
+    },
+    body: JSON.stringify({
+      model: normalizeDeepSeekModel(options.model),
+      messages: options.messages.map((message) => ({
+        role: message.role,
+        content: message.content,
+        ...(message.name ? { name: message.name } : {}),
+        ...(message.tool_call_id ? { tool_call_id: message.tool_call_id } : {}),
+      })),
+      max_tokens: options.maxTokens,
+      temperature: options.temperature,
+      top_p: options.topP,
+      stream: false,
+    }),
+    signal: options.signal,
+  });
+
+  const raw = await response.json().catch(() => ({})) as JsonObject;
+  if (!response.ok) {
+    const message = typeof raw.error === 'object' && raw.error !== null && 'message' in raw.error
+      ? String((raw.error as JsonObject).message)
+      : `DeepSeek chat completion request failed with HTTP ${response.status}`;
+    throw new Error(message);
+  }
+
+  const usage = parseDeepSeekRawUsage(raw.usage);
+  return {
+    id: typeof raw.id === 'string' ? raw.id : undefined,
+    model: typeof raw.model === 'string' ? raw.model : undefined,
+    choices: Array.isArray(raw.choices)
+      ? raw.choices.map((choice) => {
+        const item = choice as JsonObject;
+        return {
+          message: typeof item.message === 'object' && item.message !== null && !Array.isArray(item.message)
+            ? item.message as JsonObject
+            : undefined,
+          finish_reason: typeof item.finish_reason === 'string' ? item.finish_reason : null,
+          index: typeof item.index === 'number' ? item.index : undefined,
+        };
+      })
+      : [],
+    usage,
+    cost: usage ? calculateDeepSeekCost(usage, options.model) : undefined,
+    raw,
+  };
+}
+
+export async function createDeepSeekBatchChatCompletions(
+  options: DeepSeekBatchChatCompletionOptions,
+): Promise<DeepSeekBatchChatCompletionResult[]> {
+  const concurrency = Math.max(1, Math.floor(options.concurrency ?? 4));
+  const results = new Array<DeepSeekBatchChatCompletionResult>(options.requests.length);
+  let nextIndex = 0;
+
+  async function worker(): Promise<void> {
+    while (nextIndex < options.requests.length) {
+      const currentIndex = nextIndex;
+      nextIndex += 1;
+      const request = options.requests[currentIndex];
+      if (!request) continue;
+
+      try {
+        results[currentIndex] = {
+          id: request.id,
+          response: await createDeepSeekChatCompletion({
+            apiKey: options.apiKey,
+            baseUrl: options.baseUrl,
+            headers: options.headers,
+            signal: options.signal,
+            ...request,
+          }),
+        };
+      } catch (error) {
+        results[currentIndex] = {
+          id: request.id,
+          error: error instanceof Error ? error : new Error(String(error)),
+        };
+      }
+    }
+  }
+
+  await Promise.all(Array.from(
+    { length: Math.min(concurrency, options.requests.length) },
+    () => worker(),
+  ));
+  return results;
+}
+
+function parseDeepSeekRawUsage(rawUsage: JsonValue | undefined): UsageInfo | undefined {
+  if (!rawUsage || typeof rawUsage !== 'object' || Array.isArray(rawUsage)) return undefined;
+  const usage = rawUsage as JsonObject;
+  return mergeDeepSeekUsage({
+    promptTokens: Number(usage.prompt_tokens ?? 0),
+    completionTokens: Number(usage.completion_tokens ?? 0),
+    totalTokens: Number(usage.total_tokens ?? 0),
+    inputTokenDetails: {
+      cacheReadTokens: toOptionalNumber(usage.prompt_cache_hit_tokens),
+      noCacheTokens: toOptionalNumber(usage.prompt_cache_miss_tokens),
+    },
+    outputTokenDetails: {
+      reasoningTokens: toOptionalNumber(
+        (usage.completion_tokens_details as JsonObject | undefined)?.reasoning_tokens,
+      ),
+    },
+  });
 }
 
 function toOptionalNumber(value: JsonValue | undefined): number | undefined {

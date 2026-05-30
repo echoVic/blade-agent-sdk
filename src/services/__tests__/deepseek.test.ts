@@ -1,9 +1,16 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
+  calculateDeepSeekCost,
+  createDeepSeekBatchChatCompletions,
+  createDeepSeekChatCompletion,
   createDeepSeekTokenBudgetCostConfig,
   createDeepSeekFimCompletion,
+  createDeepSeekLongContextChunks,
+  createDeepSeekLongContextMessages,
+  estimateDeepSeekTokens,
   getDeepSeekPricing,
   mergeDeepSeekUsage,
+  optimizeDeepSeekCachePrefix,
   prepareDeepSeekTools,
   normalizeDeepSeekModel,
   resolveDeepSeekBaseUrl,
@@ -30,12 +37,37 @@ describe('DeepSeek provider helpers', () => {
 
   it('provides cache-aware DeepSeek token budget cost config', () => {
     expect(getDeepSeekPricing('deepseek-chat')).toEqual(getDeepSeekPricing('deepseek-v4-flash'));
+    expect(getDeepSeekPricing('deepseek-r1')).toEqual({
+      inputCacheHit: 0.14 / 1_000_000,
+      inputCacheMiss: 0.55 / 1_000_000,
+      output: 2.19 / 1_000_000,
+    });
     expect(createDeepSeekTokenBudgetCostConfig('deepseek-v4-pro')).toEqual({
       costPerInputToken: 0.435 / 1_000_000,
       costPerOutputToken: 0.87 / 1_000_000,
       costPerCacheReadToken: 0.003625 / 1_000_000,
     });
     expect(createDeepSeekTokenBudgetCostConfig('unknown-model')).toBeUndefined();
+  });
+
+  it('calculates DeepSeek cost with cache hit, cache miss, and reasoning breakdown', () => {
+    expect(calculateDeepSeekCost({
+      promptTokens: 100,
+      completionTokens: 20,
+      totalTokens: 120,
+      cacheReadInputTokens: 70,
+      cacheMissInputTokens: 30,
+      billableInputTokens: 30,
+      reasoningTokens: 5,
+    }, 'deepseek-v4-pro')).toMatchObject({
+      model: 'deepseek-v4-pro',
+      inputCacheHitTokens: 70,
+      inputCacheMissTokens: 30,
+      outputTokens: 15,
+      reasoningOutputTokens: 5,
+      totalCost: (70 * 0.003625 + 30 * 0.435 + 20 * 0.87) / 1_000_000,
+      currency: 'USD',
+    });
   });
 
   it('maps DeepSeek provider cache metadata when token details are absent', () => {
@@ -96,6 +128,53 @@ describe('DeepSeek provider helpers', () => {
       model: 'deepseek-v4-flash',
       supportsThinking: true,
       thinkingEnabled: true,
+    });
+  });
+
+  it('moves stable DeepSeek prefix messages before volatile prefill context', () => {
+    const optimized = optimizeDeepSeekCachePrefix([
+      { role: 'system', content: 'policy' },
+      { role: 'user', content: 'volatile question' },
+      { role: 'user', content: 'stable repo map', metadata: { deepseekCache: 'stable' } },
+      { role: 'assistant', content: 'prior answer' },
+    ]);
+
+    expect(optimized.map((message) => message.content)).toEqual([
+      'policy',
+      'stable repo map',
+      'volatile question',
+      'prior answer',
+    ]);
+  });
+
+  it('creates stable long-context chunks and messages for 64K/128K workflows', () => {
+    const chunks = createDeepSeekLongContextChunks('a'.repeat(20), {
+      chunkTokenLimit: 2,
+      charsPerToken: 2,
+      chunkPrefix: 'doc',
+    });
+
+    expect(estimateDeepSeekTokens('abcdef', 2)).toBe(3);
+    expect(chunks).toEqual([
+      { id: 'doc_1', index: 0, content: 'aaaa', estimatedTokens: 2, cacheKey: 'doc:1:4' },
+      { id: 'doc_2', index: 1, content: 'aaaa', estimatedTokens: 2, cacheKey: 'doc:2:4' },
+      { id: 'doc_3', index: 2, content: 'aaaa', estimatedTokens: 2, cacheKey: 'doc:3:4' },
+      { id: 'doc_4', index: 3, content: 'aaaa', estimatedTokens: 2, cacheKey: 'doc:4:4' },
+      { id: 'doc_5', index: 4, content: 'aaaa', estimatedTokens: 2, cacheKey: 'doc:5:4' },
+    ]);
+    expect(createDeepSeekLongContextMessages('abcdef', {
+      chunkTokenLimit: 2,
+      charsPerToken: 2,
+      chunkPrefix: 'doc',
+    })[0]).toMatchObject({
+      role: 'user',
+      metadata: {
+        deepseekCache: 'stable',
+        deepseek: {
+          cache: 'stable',
+          chunkId: 'doc_1',
+        },
+      },
     });
   });
 
@@ -378,5 +457,78 @@ describe('DeepSeek provider helpers', () => {
       prompt: 'left',
       suffix: 'right',
     })).rejects.toThrow('invalid suffix');
+  });
+
+  it('creates DeepSeek chat completion requests with usage cost', async () => {
+    const fetchMock = vi.fn(async (_url: string, _init: RequestInit) => ({
+      ok: true,
+      json: async () => ({
+        id: 'chat_1',
+        model: 'deepseek-v4-pro',
+        choices: [{ message: { role: 'assistant', content: 'ok' }, finish_reason: 'stop', index: 0 }],
+        usage: {
+          prompt_tokens: 10,
+          completion_tokens: 3,
+          total_tokens: 13,
+          prompt_cache_hit_tokens: 7,
+          prompt_cache_miss_tokens: 3,
+        },
+      }),
+    }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    const response = await createDeepSeekChatCompletion({
+      apiKey: 'test-key',
+      model: 'deepseek-v4-pro',
+      messages: [{ role: 'user', content: 'hello' }],
+    });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      'https://api.deepseek.com/chat/completions',
+      expect.objectContaining({
+        method: 'POST',
+        headers: expect.objectContaining({ Authorization: 'Bearer test-key' }),
+      }),
+    );
+    expect(response.usage).toMatchObject({
+      promptTokens: 10,
+      completionTokens: 3,
+      cacheReadInputTokens: 7,
+      cacheMissInputTokens: 3,
+    });
+    expect(response.cost?.inputCacheHitTokens).toBe(7);
+  });
+
+  it('runs DeepSeek batch chat completions with per-item results', async () => {
+    const fetchMock = vi.fn(async (_url: string, init: RequestInit) => {
+      const body = JSON.parse(init.body as string) as { messages: Array<{ content: string }> };
+      if (body.messages[0]?.content === 'fail') {
+        return {
+          ok: false,
+          status: 400,
+          json: async () => ({ error: { message: 'bad request' } }),
+        };
+      }
+      return {
+        ok: true,
+        json: async () => ({
+          choices: [{ message: { role: 'assistant', content: 'ok' } }],
+          usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 },
+        }),
+      };
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const results = await createDeepSeekBatchChatCompletions({
+      apiKey: 'test-key',
+      concurrency: 2,
+      requests: [
+        { id: 'a', messages: [{ role: 'user', content: 'ok' }] },
+        { id: 'b', messages: [{ role: 'user', content: 'fail' }] },
+      ],
+    });
+
+    expect(results[0]?.response?.choices[0]?.message?.content).toBe('ok');
+    expect(results[1]?.error?.message).toBe('bad request');
   });
 });

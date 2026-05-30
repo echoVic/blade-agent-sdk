@@ -41,20 +41,37 @@ export type { Memory, MemoryInput, MemoryStore, MemoryType } from './memory/inde
 // --- Memory ---
 export { FileSystemMemoryStore, MemoryManager } from './memory/index.js';
 export {
+  calculateDeepSeekCost,
+  createDeepSeekBatchChatCompletions,
+  createDeepSeekChatCompletion,
+  createDeepSeekLongContextChunks,
+  createDeepSeekLongContextMessages,
   createDeepSeekTokenBudgetCostConfig,
   createDeepSeekFimCompletion,
   DEEPSEEK_BETA_BASE_URL,
   DEEPSEEK_DEFAULT_BASE_URL,
   DEEPSEEK_DEFAULT_MODEL,
   DEEPSEEK_DEFAULT_PRICING,
+  estimateDeepSeekTokens,
   getDeepSeekPricing,
   normalizeDeepSeekModel,
+  optimizeDeepSeekCachePrefix,
   resolveDeepSeekBaseUrl,
   sanitizeDeepSeekStrictSchema,
 } from './services/deepseek.js';
 export type {
+  DeepSeekBatchChatCompletionItem,
+  DeepSeekBatchChatCompletionOptions,
+  DeepSeekBatchChatCompletionResult,
+  DeepSeekCacheOptimizationOptions,
+  DeepSeekChatCompletionOptions,
+  DeepSeekChatCompletionResponse,
+  DeepSeekChatMessage,
+  DeepSeekCostBreakdown,
   DeepSeekFimCompletionOptions,
   DeepSeekFimCompletionResponse,
+  DeepSeekLongContextChunk,
+  DeepSeekLongContextOptions,
   DeepSeekPricing,
   DeepSeekProviderOptions,
 } from './services/deepseek.js';

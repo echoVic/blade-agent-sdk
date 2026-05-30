@@ -109,6 +109,132 @@ const session = await createSession({
 
 内置价格表按 DeepSeek 官方价格页的 cache hit、cache miss、output 三档折算为 per-token USD。价格变动时，应在业务侧传入自定义 `DeepSeekPricing` 或直接覆盖 `tokenBudget` 的成本字段。
 
+也可以直接对单次 usage 计算成本明细：
+
+```ts
+import { calculateDeepSeekCost } from '@blade-ai/agent-sdk';
+
+const cost = calculateDeepSeekCost(response.usage, 'deepseek-v4-pro');
+console.log(cost?.totalCost);
+```
+
+### DeepSeek 缓存命中优化
+
+DeepSeek 服务端会自动缓存 prompt 前缀。SDK 会在 DeepSeek provider 下对带稳定缓存标记的首轮上下文做安全重排：保留开头 system 消息不动，把首个 assistant/tool 消息之前标记为稳定的 user 上下文提前，使多次请求共享更长的相同前缀。
+
+```ts
+import {
+  createDeepSeekChatCompletion,
+  optimizeDeepSeekCachePrefix,
+} from '@blade-ai/agent-sdk';
+
+const messages = optimizeDeepSeekCachePrefix([
+  { role: 'system', content: 'You are a repository assistant.' },
+  { role: 'user', content: '本轮问题：解释构建流程' },
+  {
+    role: 'user',
+    content: '大型、稳定、跨请求复用的仓库摘要...',
+    metadata: { deepseekCache: 'stable' },
+  },
+]);
+
+const response = await createDeepSeekChatCompletion({
+  apiKey: process.env.DEEPSEEK_API_KEY!,
+  model: 'deepseek-v4-pro',
+  messages,
+});
+```
+
+如需使用自定义 metadata key：
+
+```ts
+const session = await createSession({
+  provider: { type: 'deepseek', apiKey: process.env.DEEPSEEK_API_KEY! },
+  model: 'deepseek-v4-pro',
+  providerOptions: {
+    deepseek: {
+      cacheOptimization: {
+        stableMetadataKey: 'cacheScope',
+        stableMetadataValue: 'project',
+      },
+    },
+  },
+});
+```
+
+这项优化不会重排已经进入多轮对话的 assistant/tool 历史，避免破坏 tool call 因果关系。
+
+### DeepSeek 长上下文分片
+
+对于 64K/128K 级稳定上下文，推荐先分片为稳定前缀消息，再追加本轮问题。默认估算为 4 chars/token，可根据业务 tokenizer 调整。
+
+```ts
+import {
+  createDeepSeekChatCompletion,
+  createDeepSeekLongContextMessages,
+  optimizeDeepSeekCachePrefix,
+} from '@blade-ai/agent-sdk';
+
+const contextMessages = createDeepSeekLongContextMessages(largeDocument, {
+  chunkTokenLimit: 64_000,
+  chunkPrefix: 'repo',
+});
+
+const messages = optimizeDeepSeekCachePrefix([
+  { role: 'system', content: 'Answer from the provided repository context.' },
+  ...contextMessages,
+  { role: 'user', content: '定位鉴权相关代码并给出风险点' },
+]);
+
+await createDeepSeekChatCompletion({
+  apiKey: process.env.DEEPSEEK_API_KEY!,
+  model: 'deepseek-v4-pro',
+  messages,
+});
+```
+
+对于 128K 场景，可以把 `chunkTokenLimit` 设置为 `128_000`，并预留输出空间：
+
+```ts
+const chunks = createDeepSeekLongContextMessages(largeDocument, {
+  chunkTokenLimit: 128_000,
+  reserveOutputTokens: 8_000,
+});
+```
+
+### DeepSeek 批量请求
+
+DeepSeek 当前公开文档没有 OpenAI-style `/batches` API；SDK 提供 `createDeepSeekBatchChatCompletions`，在 `/chat/completions` 上做 bounded concurrency 批量请求，并保留每个请求的 usage 与成本明细。
+
+```ts
+import { createDeepSeekBatchChatCompletions } from '@blade-ai/agent-sdk';
+
+const results = await createDeepSeekBatchChatCompletions({
+  apiKey: process.env.DEEPSEEK_API_KEY!,
+  concurrency: 4,
+  requests: [
+    {
+      id: 'case-1',
+      model: 'deepseek-v4-pro',
+      messages: [{ role: 'user', content: 'Summarize file A' }],
+    },
+    {
+      id: 'case-2',
+      model: 'deepseek-v4-pro',
+      messages: [{ role: 'user', content: 'Summarize file B' }],
+    },
+  ],
+});
+
+for (const item of results) {
+  if (item.error) {
+    console.error(item.id, item.error.message);
+  } else {
+    console.log(item.id, item.response?.cost?.totalCost);
+  }
+}
+```
+
 ### OpenAI 兼容
 
 适用于 Ollama、vLLM、LiteLLM 等兼容 OpenAI API 的服务：
