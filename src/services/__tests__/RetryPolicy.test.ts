@@ -9,7 +9,6 @@ import {
   isStaleConnectionError,
   parseContextOverflowError,
   withRetry,
-  type RetryEvent,
 } from '../RetryPolicy.js';
 import { assertDefined } from '../../__tests__/helpers/assertDefined.js';
 

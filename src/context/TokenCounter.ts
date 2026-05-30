@@ -100,7 +100,7 @@ export function shouldCompact(
   messages: Message[],
   modelName: string,
   maxTokens: number,
-  thresholdPercent: number = 0.8
+  thresholdPercent = 0.8
 ): boolean {
   const currentTokens = countTokens(messages, modelName);
   const threshold = Math.floor(maxTokens * thresholdPercent);

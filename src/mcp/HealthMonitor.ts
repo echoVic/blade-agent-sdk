@@ -3,7 +3,7 @@
  * 周期性检查连接状态并自动触发重连
  */
 
-import { EventEmitter } from 'events';
+import { EventEmitter } from 'node:events';
 import { getErrorMessage } from '../utils/errorUtils.js';
 import type { McpClient } from './McpClient.js';
 import { McpConnectionStatus } from './types.js';

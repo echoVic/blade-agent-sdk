@@ -55,8 +55,7 @@ export class TaskStore {
   private tasks = new Map<string, Task>();
   private readonly persistPath: string | undefined;
 
-  private constructor(
-    private readonly sessionId: SessionId,
+  private constructor(readonly sessionId: SessionId,
     configDir?: string,
   ) {
     this.persistPath = configDir

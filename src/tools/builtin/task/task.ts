@@ -312,7 +312,7 @@ export function createTaskTool({ registry }: { registry: SubagentRegistry }) {
 
         return buildTaskResult(result, subagent_type, description, duration, subagentSessionId);
       } catch (error) {
-        const errorMessage = extractUserFriendlyError(
+        const _errorMessage = extractUserFriendlyError(
           error instanceof Error ? error : new Error(getErrorMessage(error))
         );
 
@@ -348,9 +348,9 @@ function buildTaskResult(
   subagentSessionId: AgentId,
 ): ToolResult {
   if (result.success) {
-    const outputPreview =
+    const _outputPreview =
       result.message.length > 1000
-        ? result.message.slice(0, 1000) + '\n...(截断)'
+        ? `${result.message.slice(0, 1000)}\n...(截断)`
         : result.message;
 
     return {

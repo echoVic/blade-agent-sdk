@@ -3,7 +3,7 @@ import fg from 'fast-glob';
 import type { Stats } from 'node:fs';
 import { stat } from 'node:fs/promises';
 import type { Readable } from 'node:stream';
-import { join, resolve } from 'path';
+import { join, resolve } from 'node:path';
 import { z } from 'zod';
 import { hasFilesystemCapability } from '../../../runtime/index.js';
 import { getErrorCode, getErrorMessage, getErrorName } from '../../../utils/errorUtils.js';

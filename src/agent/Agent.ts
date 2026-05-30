@@ -24,9 +24,9 @@ import {
     getContextCwd,
     type RuntimeContext,
 } from '../runtime/index.js';
-import {
-    type IChatService,
-    type Message,
+import type {
+    IChatService,
+    Message,
 } from '../services/ChatServiceInterface.js';
 import { discoverSkills } from '../skills/index.js';
 import { getBuiltinTools } from '../tools/builtin/index.js';

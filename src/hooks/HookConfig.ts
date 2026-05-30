@@ -109,7 +109,7 @@ export function parseEnvConfig(): Partial<HookConfig> {
   // BLADE_HOOK_TIMEOUT
   if (process.env.BLADE_HOOK_TIMEOUT) {
     const timeout = parseInt(process.env.BLADE_HOOK_TIMEOUT, 10);
-    if (!isNaN(timeout) && timeout > 0) {
+    if (!Number.isNaN(timeout) && timeout > 0) {
       config.defaultTimeout = timeout;
     }
   }

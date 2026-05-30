@@ -128,10 +128,10 @@ async function collectGitignoreRulesOrderedAsync(
       let pattern = '';
       if (s.startsWith('/')) {
         const body = s.slice(1).replace(/\\/g, '/');
-        pattern = (dir ? dir + '/' : '') + body;
+        pattern = (dir ? `${dir}/` : '') + body;
         rules.push({ type: isNegate ? 'negate' : 'ignore', pattern });
         if (s.endsWith('/')) {
-          const withGlob = pattern + '**';
+          const withGlob = `${pattern}**`;
           rules.push({ type: isNegate ? 'negate' : 'ignore', pattern: withGlob });
           const trimmedDir = pattern.replace(/\/$/, '');
           if (trimmedDir !== pattern) {
@@ -141,10 +141,10 @@ async function collectGitignoreRulesOrderedAsync(
       } else {
         const sp = s.replace(/\\/g, '/');
         if (sp.includes('/')) {
-          pattern = (dir ? dir + '/' : '') + sp;
+          pattern = (dir ? `${dir}/` : '') + sp;
           rules.push({ type: isNegate ? 'negate' : 'ignore', pattern });
           if (sp.endsWith('/')) {
-            const withGlob = pattern + '**';
+            const withGlob = `${pattern}**`;
             rules.push({ type: isNegate ? 'negate' : 'ignore', pattern: withGlob });
             const trimmedDir = pattern.replace(/\/$/, '');
             if (trimmedDir !== pattern) {
@@ -152,7 +152,7 @@ async function collectGitignoreRulesOrderedAsync(
             }
           }
         } else {
-          pattern = (dir ? dir + '/**/' : '**/') + sp;
+          pattern = (dir ? `${dir}/**/` : '**/') + sp;
           rules.push({ type: isNegate ? 'negate' : 'ignore', pattern });
         }
       }

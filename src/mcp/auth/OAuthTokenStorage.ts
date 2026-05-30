@@ -3,8 +3,8 @@
  * 使用文件系统存储令牌
  */
 
-import { promises as fs } from 'fs';
-import path from 'path';
+import { promises as fs } from 'node:fs';
+import path from 'node:path';
 import { getErrorCode } from '../../utils/errorUtils.js';
 import type { OAuthCredentials, OAuthToken } from './types.js';
 

@@ -4,7 +4,7 @@
  * 安全地执行 Hook 子进程
  */
 
-import { spawn } from 'child_process';
+import { spawn } from 'node:child_process';
 import {
   HookExitCode,
   type HookExecutionContext,

@@ -1,4 +1,4 @@
-import * as fs from 'fs/promises';
+import * as fs from 'node:fs/promises';
 import { z } from 'zod';
 import { createTool } from '../../core/createTool.js';
 import { lazySchema } from '../../validation/lazySchema.js';
@@ -116,7 +116,7 @@ export const notebookEditTool = createTool({
           const cell = notebook.cells[cellIndex];
           cell.source = new_source
             .split('\n')
-            .map((line, i, arr) => (i < arr.length - 1 ? line + '\n' : line));
+            .map((line, i, arr) => (i < arr.length - 1 ? `${line}\n` : line));
           if (cell_type) {
             cell.cell_type = cell_type;
           }
@@ -141,7 +141,7 @@ export const notebookEditTool = createTool({
             cell_type,
             source: new_source
               .split('\n')
-              .map((line, i, arr) => (i < arr.length - 1 ? line + '\n' : line)),
+              .map((line, i, arr) => (i < arr.length - 1 ? `${line}\n` : line)),
             metadata: {},
             ...(cell_type === 'code' ? { execution_count: null, outputs: [] } : {}),
           };

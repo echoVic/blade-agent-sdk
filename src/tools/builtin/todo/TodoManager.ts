@@ -1,6 +1,6 @@
-import { randomUUID } from 'crypto';
-import * as fs from 'fs/promises';
-import * as path from 'path';
+import { randomUUID } from 'node:crypto';
+import * as fs from 'node:fs/promises';
+import * as path from 'node:path';
 import type { SessionId } from '../../../types/branded.js';
 import { getErrorCode } from '../../../utils/errorUtils.js';
 import type { TodoItem, TodoStatus, ValidationResult } from './types.js';

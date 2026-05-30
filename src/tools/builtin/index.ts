@@ -2,7 +2,7 @@
  * 内置工具模块
  */
 
-import { McpRegistry } from '../../mcp/McpRegistry.js';
+import type { McpRegistry } from '../../mcp/McpRegistry.js';
 import { SessionId } from '../../types/branded.js';
 import type { Tool } from '../types/index.js';
 // 文件操作工具

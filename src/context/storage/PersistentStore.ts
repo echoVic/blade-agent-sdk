@@ -70,8 +70,8 @@ export class PersistentStore {
 
   constructor(
     storageRoot: string,
-    maxSessions: number = 100,
-    version: string = '0.0.10',
+    maxSessions = 100,
+    version = '0.0.10',
     projectPath?: string,
   ) {
     this.storageRoot = normalizeSessionStorageRoot(storageRoot);

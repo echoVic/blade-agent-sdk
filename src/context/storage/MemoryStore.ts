@@ -9,7 +9,7 @@ export class MemoryStore {
   private readonly maxSize: number;
   private readonly accessLog: Map<string, number> = new Map();
 
-  constructor(maxSize: number = 1000) {
+  constructor(maxSize = 1000) {
     this.maxSize = maxSize;
   }
 
@@ -52,7 +52,7 @@ export class MemoryStore {
   /**
    * 获取最近的消息
    */
-  getRecentMessages(count: number = 10): ContextMessage[] {
+  getRecentMessages(count = 10): ContextMessage[] {
     if (!this.contextData) {
       return [];
     }

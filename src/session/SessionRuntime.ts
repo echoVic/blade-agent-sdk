@@ -26,7 +26,7 @@ import { FileLockManager } from '../tools/execution/FileLockManager.js';
 import { ToolRegistry } from '../tools/registry/ToolRegistry.js';
 import type { Tool } from '../tools/types/index.js';
 import type { BladeConfig, McpServerConfig, PermissionsConfig } from '../types/common.js';
-import { PermissionMode } from '../types/common.js';
+import type { PermissionMode } from '../types/common.js';
 import { HookEvent } from '../types/constants.js';
 import type { SessionId } from '../types/branded.js';
 import {

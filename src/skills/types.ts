@@ -1,5 +1,5 @@
 import type { JsonObject } from '../types/common.js';
-import { HookEvent } from '../types/constants.js';
+import type { HookEvent } from '../types/constants.js';
 
 /**
  * Skills 系统类型定义

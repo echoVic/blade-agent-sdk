@@ -1,4 +1,4 @@
-import { basename, extname } from 'path';
+import { basename, extname } from 'node:path';
 
 /**
  * Check whether a file path points to a sensitive file (credentials, keys, secrets).

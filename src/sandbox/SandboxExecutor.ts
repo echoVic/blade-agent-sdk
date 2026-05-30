@@ -1,7 +1,7 @@
-import { execSync } from 'child_process';
-import { existsSync, mkdtempSync, writeFileSync } from 'fs';
-import { tmpdir } from 'os';
-import { join } from 'path';
+import { execSync } from 'node:child_process';
+import { existsSync, mkdtempSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { type InternalLogger, LogCategory, NOOP_LOGGER } from '../logging/Logger.js';
 import type { NetworkSandboxSettings, SandboxSettings } from '../types/common.js';
 

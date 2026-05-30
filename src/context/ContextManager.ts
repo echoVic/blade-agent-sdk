@@ -1,4 +1,4 @@
-import * as crypto from 'crypto';
+import * as crypto from 'node:crypto';
 import { nanoid } from 'nanoid';
 import type { Message, ToolCall as ChatToolCall } from '../services/ChatServiceInterface.js';
 import {
@@ -468,7 +468,7 @@ export class ContextManager {
    */
   async searchSessions(
     query: string,
-    limit: number = 10
+    limit = 10
   ): Promise<
     Array<{
       sessionId: SessionId;

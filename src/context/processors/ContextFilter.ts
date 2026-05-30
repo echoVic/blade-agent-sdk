@@ -267,7 +267,7 @@ export class ContextFilter {
       return message;
     }
 
-    const compressed = message.content.substring(0, maxLength - 3) + '...';
+    const compressed = `${message.content.substring(0, maxLength - 3)}...`;
 
     return {
       ...message,

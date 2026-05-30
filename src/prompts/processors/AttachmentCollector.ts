@@ -5,8 +5,8 @@
  */
 
 import fg from 'fast-glob';
-import * as fs from 'fs/promises';
-import * as path from 'path';
+import * as fs from 'node:fs/promises';
+import * as path from 'node:path';
 import { type InternalLogger, LogCategory, NOOP_LOGGER } from '../../logging/Logger.js';
 import { splitPath } from '../../utils/pathHelpers.js';
 import { PathSecurity } from '../../utils/pathSecurity.js';
@@ -330,8 +330,8 @@ export class AttachmentCollector {
   private printTree(
     tree: FileTree,
     rootPath: string,
-    prefix: string = '',
-    isLast: boolean = true
+    prefix = '',
+    _isLast = true
   ): string {
     const lines: string[] = [];
 

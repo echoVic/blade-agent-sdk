@@ -199,7 +199,7 @@ export async function* agentLoop(
     }
 
     const turnState = config.prepareTurnState(turnsCount);
-    const turnTools = turnState.tools;
+    const _turnTools = turnState.tools;
     const turnMaxContextTokens = turnState.maxContextTokens;
     const turnPermissionMode = turnState.permissionMode;
     const turnExecutionContext = turnState.executionContext;

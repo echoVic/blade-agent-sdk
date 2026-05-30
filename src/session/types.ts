@@ -6,7 +6,7 @@ import type { Message } from '../services/ChatServiceInterface.js';
 import type { ToolCatalogSourcePolicy } from '../tools/catalog/index.js';
 import type { ExecutionContext, ToolDefinition, ToolResult } from '../tools/types/index.js';
 import type { JsonObject, JsonValue, McpServerConfig, OutputFormat, PermissionMode, ProviderType, SandboxSettings, TokenUsage } from '../types/common.js';
-import { HookEvent, type StreamMessageType } from '../types/constants.js';
+import type { HookEvent, StreamMessageType } from '../types/constants.js';
 import type { AgentLogger } from '../types/logging.js';
 import type { CanUseTool, PermissionHandler, PermissionUpdate } from '../types/permissions.js';
 import type { Assert, IsEqual } from '../types/typeAssertions.js';

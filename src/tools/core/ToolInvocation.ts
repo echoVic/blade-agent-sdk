@@ -23,7 +23,7 @@ export class UnifiedToolInvocation<
     private readonly validateFn?: (
       params: TParams,
       context: ExecutionContext
-    ) => Promise<void | ToolValidationError> | void | ToolValidationError,
+    ) => Promise<undefined | ToolValidationError> | undefined | ToolValidationError,
     private readonly descriptionFn?: (params: TParams) => string,
     private readonly affectedPathsFn?: (params: TParams) => string[]
   ) {}

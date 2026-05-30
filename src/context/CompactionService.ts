@@ -73,7 +73,7 @@ export interface CompactionResult {
 }
 
 /** 压缩阈值百分比（80%） */
-const THRESHOLD_PERCENT = 0.8;
+const _THRESHOLD_PERCENT = 0.8;
 
 /** 保留比例（20%） */
 const RETAIN_PERCENT = 0.2;
@@ -363,7 +363,7 @@ function buildCompactionPrompt(
       const maxLength = 5000;
       const truncatedContent =
         content.length > maxLength
-          ? content.substring(0, maxLength) + '...'
+          ? `${content.substring(0, maxLength)}...`
           : content;
 
       return `[${i + 1}] ${role}: ${truncatedContent}`;

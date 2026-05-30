@@ -1,4 +1,4 @@
-import { basename, extname } from 'path';
+import { basename, extname } from 'node:path';
 import { z } from 'zod';
 import { hasFilesystemCapability } from '../../../runtime/index.js';
 import { getFileSystemService } from '../../../services/FileSystemService.js';
@@ -61,7 +61,7 @@ export const editTool = createTool({
     };
   },
 
-  validateInput: ({ file_path, old_string, new_string }, context) => {
+  validateInput: ({ old_string, new_string }, context) => {
     if (!hasFilesystemCapability(context.contextSnapshot)) {
       return {
         message: 'No filesystem access in current context',
@@ -543,7 +543,7 @@ Total lines: ${totalLines}
   // 显示搜索字符串(截断长文本)
   const searchPreview =
     searchString.length > 300
-      ? searchString.substring(0, 300) + '\n... (truncated)'
+      ? `${searchString.substring(0, 300)}\n... (truncated)`
       : searchString;
 
   llmContent += `You tried to match:\n${searchPreview}\n\n`;
@@ -560,7 +560,7 @@ Total lines: ${totalLines}
     llmContent += `Possible similar matches found:\n`;
     fuzzyMatches.forEach((match, idx) => {
       const preview =
-        match.text.length > 100 ? match.text.substring(0, 100) + '...' : match.text;
+        match.text.length > 100 ? `${match.text.substring(0, 100)}...` : match.text;
       llmContent += `  ${idx + 1}. Line ${match.lineNumber} (similarity: ${Math.round(match.similarity * 100)}%)\n     ${preview.replace(/\n/g, '\\n')}\n`;
     });
     llmContent += '\n';
@@ -601,7 +601,7 @@ Common issues:
 function findFuzzyMatches(
   fileContent: string,
   searchString: string,
-  maxResults: number = 3
+  maxResults = 3
 ): Array<{ text: string; lineNumber: number; similarity: number }> {
   const lines = fileContent.split('\n');
   const searchLines = searchString.split('\n');

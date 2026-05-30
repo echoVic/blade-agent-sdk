@@ -169,7 +169,7 @@ export function parseContextOverflowError(error: unknown): ContextOverflowData |
   const maxTokens = parseInt(match[2], 10);
   const contextLimit = parseInt(match[3], 10);
 
-  if (isNaN(inputTokens) || isNaN(maxTokens) || isNaN(contextLimit)) {
+  if (Number.isNaN(inputTokens) || Number.isNaN(maxTokens) || Number.isNaN(contextLimit)) {
     return undefined;
   }
 

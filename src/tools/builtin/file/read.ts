@@ -1,4 +1,4 @@
-import { basename, extname } from 'path';
+import { basename, extname } from 'node:path';
 import { z } from 'zod';
 import { hasFilesystemCapability } from '../../../runtime/index.js';
 import { getFileSystemService } from '../../../services/FileSystemService.js';
@@ -38,7 +38,7 @@ export const readTool = createTool({
     encoding: ToolSchemas.encoding(),
   })),
 
-  validateInput: (params, context) => {
+  validateInput: (_params, context) => {
     if (!hasFilesystemCapability(context.contextSnapshot)) {
       return {
         message: 'No filesystem access in current context',
@@ -364,7 +364,7 @@ function checkIsBinaryFile(ext: string): boolean {
 /**
  * 格式化文件大小
  */
-function formatFileSize(bytes: number): string {
+function _formatFileSize(bytes: number): string {
   const units = ['B', 'KB', 'MB', 'GB'];
   let size = bytes;
   let unitIndex = 0;

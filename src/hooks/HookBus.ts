@@ -1,4 +1,4 @@
-import { HookEvent } from '../types/constants.js';
+import type { HookEvent } from '../types/constants.js';
 import type { HookCallback, HookInput, HookOutput } from '../session/types.js';
 
 export class HookBus {

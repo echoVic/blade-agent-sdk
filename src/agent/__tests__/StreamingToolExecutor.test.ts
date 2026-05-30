@@ -560,7 +560,6 @@ describe('StreamingToolExecutor', () => {
 
   it('falls back to the wrapped handler when the stream returns zero chunks', async () => {
     const { executor, chatService, execute } = createExecutor({
-      // biome-ignore lint/correctness/useYield: empty generator simulating zero chunks
       streamChat: async function* () {},
       fallbackChat: async () => ({
         content: 'fallback content',

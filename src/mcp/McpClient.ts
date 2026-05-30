@@ -8,7 +8,7 @@ import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { SSEClientTransport } from '@modelcontextprotocol/sdk/client/sse.js';
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
 import type { Transport } from '@modelcontextprotocol/sdk/shared/transport.js';
-import { EventEmitter } from 'events';
+import { EventEmitter } from 'node:events';
 import type { JsonObject, JsonValue, McpServerConfig } from '../types/common.js';
 import { toError } from '../utils/errorUtils.js';
 import { getPackageName, getVersion } from '../utils/packageInfo.js';
@@ -488,10 +488,10 @@ export class McpClient extends EventEmitter {
             this.serverName,
             oauth
           );
-          finalHeaders['Authorization'] = `Bearer ${newToken.accessToken}`;
+          finalHeaders.Authorization = `Bearer ${newToken.accessToken}`;
         } else {
           // 有有效令牌
-          finalHeaders['Authorization'] = `Bearer ${token}`;
+          finalHeaders.Authorization = `Bearer ${token}`;
         }
       } catch (error) {
         console.error('[McpClient] OAuth 认证失败:', error);
@@ -597,15 +597,15 @@ export class McpClient extends EventEmitter {
     return this.disconnect();
   }
 
-  async connectToServer(serverId?: string): Promise<void> {
+  async connectToServer(_serverId?: string): Promise<void> {
     return this.connect();
   }
 
-  async disconnectFromServer(serverId?: string): Promise<void> {
+  async disconnectFromServer(_serverId?: string): Promise<void> {
     return this.disconnect();
   }
 
-  async listResources(serverId?: string): Promise<JsonValue[]> {
+  async listResources(_serverId?: string): Promise<JsonValue[]> {
     if (!this.sdkClient) {
       return [];
     }
@@ -617,11 +617,11 @@ export class McpClient extends EventEmitter {
     }
   }
 
-  async listTools(serverId?: string): Promise<McpToolDefinition[]> {
+  async listTools(_serverId?: string): Promise<McpToolDefinition[]> {
     return this.availableTools;
   }
 
-  async readResource(uri: string, serverId?: string): Promise<JsonValue> {
+  async readResource(uri: string, _serverId?: string): Promise<JsonValue> {
     if (!this.sdkClient) {
       throw new Error('客户端未连接');
     }

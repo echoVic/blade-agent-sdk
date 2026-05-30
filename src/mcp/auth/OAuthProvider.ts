@@ -3,11 +3,11 @@
  * 实现基础的 OAuth 2.0 授权码流程 + PKCE
  */
 
-import { spawn } from 'child_process';
-import * as crypto from 'crypto';
-import * as http from 'http';
-import { URL } from 'url';
-import { OAuthTokenStorage } from './OAuthTokenStorage.js';
+import { spawn } from 'node:child_process';
+import * as crypto from 'node:crypto';
+import * as http from 'node:http';
+import { URL } from 'node:url';
+import type { OAuthTokenStorage } from './OAuthTokenStorage.js';
 import type { AuthorizationOAuthConfig, OAuthConfig, OAuthToken, OAuthTokenResponse, RefreshableOAuthConfig } from './types.js';
 
 const REDIRECT_PORT = 7777;

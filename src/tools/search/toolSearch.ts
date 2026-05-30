@@ -19,7 +19,7 @@ export function scoreToolSearchMatch(tool: Tool, normalizedQuery: string): numbe
       .filter(Boolean)
       .join(' ');
 
-  const fields: Array<[string, number]> = [
+  const fields: [string, number][] = [
     [tool.name, 120],
     ...aliases.map((alias) => [alias, 110] as [string, number]),
     [tool.displayName, 90],

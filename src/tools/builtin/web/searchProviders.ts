@@ -411,8 +411,7 @@ function createExaProvider(): SearchProvider {
           if (line.startsWith('data: ')) {
             const data: McpSearchResponse = JSON.parse(line.substring(6));
             if (
-              data.result &&
-              data.result.content &&
+              data.result?.content &&
               data.result.content.length > 0
             ) {
               return parseExaMcpResponse(data.result.content[0].text);

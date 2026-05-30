@@ -303,7 +303,7 @@ async function waitForShellCompletion(taskId: string, timeout: number): Promise<
 /**
  * 获取状态对应的 emoji
  */
-function getStatusEmoji(status: string): string {
+function _getStatusEmoji(status: string): string {
   switch (status) {
     case 'running':
       return '⏳';

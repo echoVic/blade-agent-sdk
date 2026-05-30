@@ -11,7 +11,7 @@ import type { ToolResult } from '../tools/types/index.js';
 import { ToolErrorType } from '../tools/types/index.js';
 import type { JsonObject, PermissionMode } from '../types/common.js';
 import type { ExecutionEpoch } from './ExecutionEpoch.js';
-import { type ToolExecutionOutcome } from './loop/executeToolCalls.js';
+import type { ToolExecutionOutcome } from './loop/executeToolCalls.js';
 import { planToolExecution } from './loop/planToolExecution.js';
 import {
   emitToolExecutionUpdate,

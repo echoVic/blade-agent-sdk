@@ -73,7 +73,7 @@ describe('PlanExecutor', () => {
       expect(executeLoop).toHaveBeenCalledTimes(1);
 
       // First arg should be the reminder-injected message
-      const calls = executeLoop.mock.calls as unknown as Array<[UserMessageContent, ChatContext, unknown, string]>;
+      const calls = executeLoop.mock.calls as unknown as [UserMessageContent, ChatContext, unknown, string][];
       const injectedMessage = calls[0][0];
       expect(typeof injectedMessage).toBe('string');
       expect(injectedMessage as string).toContain('do something');
@@ -93,7 +93,7 @@ describe('PlanExecutor', () => {
 
       await pe.runPlanLoop('test', context, loopOptions, executeLoop);
 
-      const calls = executeLoop.mock.calls as unknown as Array<[unknown, unknown, typeof loopOptions]>;
+      const calls = executeLoop.mock.calls as unknown as [unknown, unknown, typeof loopOptions][];
       expect(calls[0][2]).toBe(loopOptions);
     });
   });

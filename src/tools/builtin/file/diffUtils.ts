@@ -16,7 +16,7 @@ import * as Diff from 'diff';
 export function generateDiffSnippet(
   oldContent: string,
   newContent: string,
-  contextLines: number = 4
+  contextLines = 4
 ): string | null {
   // 如果内容完全相同，不生成 diff
   if (oldContent === newContent) {
@@ -63,7 +63,7 @@ export function generateDiffSnippetWithMatch(
   newContent: string,
   oldString: string,
   newString: string,
-  contextLines: number = 4
+  contextLines = 4
 ): string | null {
   // 找到第一个替换位置
   const firstMatchIndex = oldContent.indexOf(oldString);

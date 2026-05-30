@@ -35,8 +35,13 @@ describe('ModelManager.setModel', () => {
       currentModelId: 'default',
     };
     const manager = new ModelManager(config);
+    const [model] = config.models;
+    expect(model).toBeDefined();
+    if (!model) {
+      throw new Error('Expected a model config');
+    }
 
-    await manager.applyModelConfig(config.models[0]!, 'init');
+    await manager.applyModelConfig(model, 'init');
     await manager.setModel('gpt-4.1');
 
     expect(manager.getChatService().getConfig().model).toBe('gpt-4.1');

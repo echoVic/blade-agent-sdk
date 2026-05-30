@@ -4,7 +4,7 @@
  * 抽象文件操作，工具层统一通过此接口访问文件系统。
  */
 
-import * as fs from 'fs/promises';
+import * as fs from 'node:fs/promises';
 
 /**
  * 文件统计信息
@@ -84,7 +84,7 @@ class LocalFileSystemService implements FileSystemService {
  * 当前活跃的文件系统服务
  * 默认使用本地文件系统
  */
-let currentFileSystemService: FileSystemService = new LocalFileSystemService();
+const currentFileSystemService: FileSystemService = new LocalFileSystemService();
 
 /**
  * 获取文件系统服务

@@ -46,8 +46,8 @@ export interface CacheStats {
 export class SearchCache {
   private cache: LRUCache<string, CacheEntry>;
   private config: CacheConfig;
-  private hits: number = 0;
-  private misses: number = 0;
+  private hits = 0;
+  private misses = 0;
 
   constructor(config?: Partial<CacheConfig>) {
     this.config = {

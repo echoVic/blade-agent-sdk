@@ -1,5 +1,5 @@
-import { spawn } from 'child_process';
-import { randomUUID } from 'crypto';
+import { spawn } from 'node:child_process';
+import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
 import { BashClassifier } from '../../../hooks/BashClassifier.js';
 import { getSandboxService } from '../../../sandbox/SandboxService.js';
@@ -382,7 +382,7 @@ async function executeWithTimeout(
   env: Record<string, string> | undefined,
   timeout: number,
   signal: AbortSignal,
-  updateOutput?: (output: string) => void
+  _updateOutput?: (output: string) => void
 ): Promise<ToolResult> {
   return new Promise((resolve) => {
     const startTime = Date.now();

@@ -55,7 +55,7 @@ export class SandboxService {
 
     const commandName = this.extractCommandName(command);
     return this.settings.excludedCommands.some(
-      (excluded) => commandName === excluded || command.startsWith(excluded + ' ')
+      (excluded) => commandName === excluded || command.startsWith(`${excluded} `)
     );
   }
 
@@ -99,7 +99,7 @@ export class SandboxService {
 
     return this.settings.ignoreViolations.file.some((pattern) => {
       if (pattern.includes('*')) {
-        const regex = new RegExp('^' + pattern.replace(/\*/g, '.*') + '$');
+        const regex = new RegExp(`^${pattern.replace(/\*/g, '.*')}$`);
         return regex.test(filePath);
       }
       return filePath.startsWith(pattern);
@@ -113,7 +113,7 @@ export class SandboxService {
 
     return this.settings.ignoreViolations.network.some((pattern) => {
       if (pattern.includes('*')) {
-        const regex = new RegExp('^' + pattern.replace(/\*/g, '.*') + '$');
+        const regex = new RegExp(`^${pattern.replace(/\*/g, '.*')}$`);
         return regex.test(target);
       }
       return target === pattern || target.startsWith(pattern);

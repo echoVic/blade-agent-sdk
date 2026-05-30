@@ -207,7 +207,7 @@ export class SnapshotManager {
   /**
    * 清理所有快照（会话结束时调用）
    */
-  async cleanup(keepCount: number = 0): Promise<void> {
+  async cleanup(keepCount = 0): Promise<void> {
     const { snapshotDir } = this;
     if (!snapshotDir) return;
 

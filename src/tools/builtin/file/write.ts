@@ -1,5 +1,5 @@
-import { promises as fs } from 'fs';
-import { basename, dirname, extname } from 'path';
+import { promises as fs } from 'node:fs';
+import { basename, dirname, extname } from 'node:path';
 import { z } from 'zod';
 import { hasFilesystemCapability } from '../../../runtime/index.js';
 import { getFileSystemService } from '../../../services/FileSystemService.js';
@@ -52,7 +52,7 @@ export const writeTool = createTool({
     };
   },
 
-  validateInput: (params, context) => {
+  validateInput: (_params, context) => {
     if (!hasFilesystemCapability(context.contextSnapshot)) {
       return {
         message: 'No filesystem access in current context',
@@ -290,7 +290,7 @@ export const writeTool = createTool({
 /**
  * 生成文件内容预览（Markdown 代码块格式）
  */
-function generateContentPreview(filePath: string, content: string): string | null {
+function _generateContentPreview(filePath: string, content: string): string | null {
   // 获取文件扩展名，用于语法高亮
   const ext = extname(filePath).toLowerCase();
   const languageMap: Record<string, string> = {
@@ -355,7 +355,7 @@ function generateContentPreview(filePath: string, content: string): string | nul
 
   // 生成 Markdown 代码块
   let preview = '📄 文件内容:\n\n';
-  preview += '```' + language + '\n';
+  preview += `\`\`\`${language}\n`;
   preview += previewContent;
   if (!previewContent.endsWith('\n')) {
     preview += '\n';

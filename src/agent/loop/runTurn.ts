@@ -79,7 +79,7 @@ export interface TurnOutcome {
 export async function* runTurn(
   input: RunTurnInput,
 ): AsyncGenerator<AgentEvent, TurnOutcome> {
-  const { turnState, messages, executionPipeline, streaming, signal, epoch, logger } = input;
+  const { turnState, messages, streaming, signal, logger } = input;
   const tools = turnState.tools as Array<{
     name: string;
     description: string;

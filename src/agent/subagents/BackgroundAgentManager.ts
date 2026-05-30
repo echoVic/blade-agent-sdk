@@ -17,8 +17,8 @@ import type { Message } from '../../services/ChatServiceInterface.js';
 import { AgentId, SessionId } from '../../types/branded.js';
 import type { BladeConfig, PermissionMode } from '../../types/common.js';
 import { Agent } from '../Agent.js';
-import {
-  type AgentSession,
+import type {
+  AgentSession,
   AgentSessionStore,
 } from './AgentSessionStore.js';
 import type { SubagentRegistry } from './SubagentRegistry.js';
@@ -420,7 +420,7 @@ export class BackgroundAgentManager {
    */
   async waitForCompletion(
     agentId: AgentId,
-    timeout: number = 30000
+    timeout = 30000
   ): Promise<AgentSession | undefined> {
     const runtime = this.runningAgents.get(agentId);
 

@@ -184,7 +184,7 @@ function parseHooks(rawHooks: RawHookSpec[] | undefined): SkillHookSpec[] | unde
 
 function validateMetadata(
   frontmatter: RawFrontmatter,
-  filePath: string,
+  _filePath: string,
   source: SkillSource,
 ):
   | { valid: true; metadata: Omit<SkillMetadata, 'path' | 'basePath' | 'source'> }
@@ -318,7 +318,7 @@ export async function processInlineCommands(
 
   if (!content.includes('!`')) return content;
 
-  const fencedRanges: Array<[number, number]> = [];
+  const fencedRanges: [number, number][] = [];
   {
     const fencedRegex = new RegExp(FENCED_CODE_BLOCK_REGEX.source, 'gm');
     let m: RegExpExecArray | null = fencedRegex.exec(content);

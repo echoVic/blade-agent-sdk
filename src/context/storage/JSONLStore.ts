@@ -32,7 +32,7 @@ export class JSONLStore {
       await fs.mkdir(path.dirname(this.filePath), { recursive: true, mode: 0o755 });
 
       // 将对象序列化为 JSON 字符串并追加换行符
-      const line = JSON.stringify(entry) + '\n';
+      const line = `${JSON.stringify(entry)}\n`;
 
       // 追加写入文件
       await fs.appendFile(this.filePath, line, 'utf-8');
@@ -52,7 +52,7 @@ export class JSONLStore {
       await fs.mkdir(path.dirname(this.filePath), { recursive: true, mode: 0o755 });
 
       // 将所有条目序列化为一个字符串
-      const lines = entries.map((entry) => JSON.stringify(entry)).join('\n') + '\n';
+      const lines = `${entries.map((entry) => JSON.stringify(entry)).join('\n')}\n`;
 
       // 批量追加写入
       await fs.appendFile(this.filePath, lines, 'utf-8');

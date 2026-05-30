@@ -6,7 +6,7 @@ import { ConversationState } from '../state/ConversationState.js';
 
 describe('LoopState', () => {
   it('exposes conversationState for the loop', () => {
-    const initialMessages: Message[] = [{ role: 'user', content: 'hello' }];
+    const _initialMessages: Message[] = [{ role: 'user', content: 'hello' }];
     const convState = new ConversationState(null, [], { role: 'user', content: 'hello' });
 
     const loopState = new LoopState({

@@ -1,8 +1,8 @@
-import { execSync, spawn } from 'child_process';
-import { existsSync } from 'fs';
-import { readdir, readFile } from 'fs/promises';
-import { createRequire } from 'module';
-import { join, relative } from 'path';
+import { execSync, spawn } from 'node:child_process';
+import { existsSync } from 'node:fs';
+import { readdir, readFile } from 'node:fs/promises';
+import { createRequire } from 'node:module';
+import { join, relative } from 'node:path';
 
 // ESM-safe require for optional CJS packages (e.g. @vscode/ripgrep).
 // Bare `require()` is undefined in Node ESM; createRequire provides it.
@@ -69,7 +69,7 @@ function getPlatformRipgrepPath(): string | null {
   // 尝试从模块安装目录查找（用于 npm 包）
   try {
     const moduleDir = new URL(
-      '../../../../vendor/ripgrep/' + relativePath,
+      `../../../../vendor/ripgrep/${relativePath}`,
       import.meta.url
     ).pathname;
     if (existsSync(moduleDir)) {
@@ -164,9 +164,9 @@ function isSystemGrepAvailable(): boolean {
  */
 async function executeRipgrep(
   args: string[],
-  outputMode: string,
+  _outputMode: string,
   signal: AbortSignal,
-  updateOutput?: (output: string) => void
+  _updateOutput?: (output: string) => void
 ): Promise<{ stdout: string; stderr: string; exitCode: number }> {
   const rgPath = getRipgrepPath();
   if (!rgPath) {
@@ -311,7 +311,7 @@ async function executeSystemGrep(
 
   // 排除常见目录
   for (const dir of DEFAULT_EXCLUDE_DIRS) {
-    args.push('--exclude-dir=' + dir.replace(/^\./, ''));
+    args.push(`--exclude-dir=${dir.replace(/^\./, '')}`);
   }
 
   args.push('-e', pattern, path);

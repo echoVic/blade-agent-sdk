@@ -1,4 +1,4 @@
-import { EventEmitter } from 'events';
+import { EventEmitter } from 'node:events';
 import type { McpServerConfig } from '../types/common.js';
 import type { Tool } from '../tools/types/index.js';
 import { toError } from '../utils/errorUtils.js';

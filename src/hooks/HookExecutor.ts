@@ -508,7 +508,7 @@ export class HookExecutor {
         }
 
         // 收集 stdout 作为 contextInjection
-        if (result.stdout && result.stdout.trim()) {
+        if (result.stdout?.trim()) {
           contextInjections.push(result.stdout.trim());
         }
 
@@ -651,7 +651,7 @@ export class HookExecutor {
       }
 
       // 收集 stdout 作为 additionalContext
-      if (result.stdout && result.stdout.trim()) {
+      if (result.stdout?.trim()) {
         additionalContexts.push(result.stdout.trim());
       }
     }
@@ -699,7 +699,7 @@ export class HookExecutor {
         }
 
         // 修改消息内容（来自 stdout）
-        if (result.stdout && result.stdout.trim()) {
+        if (result.stdout?.trim()) {
           message = result.stdout.trim();
         }
       } catch (err) {
@@ -923,7 +923,6 @@ export class HookExecutor {
           if (result.warning) {
             warnings.push(result.warning);
           }
-          continue;
         }
       } catch (err) {
         const errorMsg = err instanceof Error ? err.message : String(err);

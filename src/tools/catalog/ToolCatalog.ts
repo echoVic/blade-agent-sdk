@@ -1,4 +1,4 @@
-import { PermissionMode } from '../../types/common.js';
+import type { PermissionMode } from '../../types/common.js';
 import { ToolRegistry } from '../registry/ToolRegistry.js';
 import { searchTools } from '../search/toolSearch.js';
 import type { FunctionDeclaration, Tool } from '../types/index.js';

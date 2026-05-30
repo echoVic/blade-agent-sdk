@@ -9,9 +9,9 @@ export class ContextCompressor {
   private readonly recentMessagesLimit: number;
 
   constructor(
-    maxSummaryLength: number = 500,
-    keyPointsLimit: number = 10,
-    recentMessagesLimit: number = 20
+    maxSummaryLength = 500,
+    keyPointsLimit = 10,
+    recentMessagesLimit = 20
   ) {
     this.maxSummaryLength = maxSummaryLength;
     this.keyPointsLimit = keyPointsLimit;
@@ -126,7 +126,7 @@ export class ContextCompressor {
     }
 
     return summary.length > this.maxSummaryLength
-      ? summary.substring(0, this.maxSummaryLength) + '...'
+      ? `${summary.substring(0, this.maxSummaryLength)}...`
       : summary;
   }
 

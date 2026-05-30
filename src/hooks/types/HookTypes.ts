@@ -7,7 +7,7 @@
 import type { ToolResult } from '../../tools/types/ToolResult.js';
 import type { SessionId } from '../../types/branded.js';
 import type { JsonObject, JsonValue, PermissionMode } from '../../types/common.js';
-import { HookEvent } from '../../types/constants.js';
+import type { HookEvent } from '../../types/constants.js';
 import type { Assert, Extends } from '../../types/typeAssertions.js';
 
 // ============================================================================

@@ -82,7 +82,7 @@ describe('createTool', () => {
     });
 
     it('should resolve default behavior from static config', () => {
-      expect(echoTool.resolveBehavior!({ message: 'Hello' })).toEqual({
+      expect(echoTool.resolveBehavior?.({ message: 'Hello' })).toEqual({
         kind: ToolKind.ReadOnly,
         isReadOnly: true,
         isConcurrencySafe: true,
@@ -381,14 +381,14 @@ describe('createTool', () => {
         execute: async () => ({ success: true, llmContent: '' }),
       });
 
-      expect(tool.resolveBehavior!({} as unknown as { mode: 'read' | 'write' })).toEqual({
+      expect(tool.resolveBehavior?.({} as unknown as { mode: 'read' | 'write' })).toEqual({
         kind: ToolKind.ReadOnly,
         isReadOnly: true,
         isConcurrencySafe: true,
         isDestructive: false,
         interruptBehavior: 'cancel',
       });
-      expect(tool.resolveBehavior!({ mode: 'write' })).toEqual({
+      expect(tool.resolveBehavior?.({ mode: 'write' })).toEqual({
         kind: ToolKind.Write,
         isReadOnly: false,
         isConcurrencySafe: false,
@@ -423,7 +423,7 @@ describe('createTool', () => {
       });
 
       expect(tool.interruptBehavior).toBe('block');
-      expect(tool.resolveBehavior!({})).toMatchObject({
+      expect(tool.resolveBehavior?.({})).toMatchObject({
         interruptBehavior: 'block',
       });
     });
@@ -446,7 +446,7 @@ describe('createTool', () => {
 
       expect(toolWithSignature.preparePermissionMatcher).toBeDefined();
       expect(
-        toolWithSignature.preparePermissionMatcher!({ path: '/test/file.ts' })
+        toolWithSignature.preparePermissionMatcher?.({ path: '/test/file.ts' })
       ).toEqual({
         signatureContent: '/test/file.ts',
         abstractRule: 'read:/test/file.ts',

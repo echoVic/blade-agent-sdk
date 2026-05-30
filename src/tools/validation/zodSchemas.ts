@@ -1,4 +1,4 @@
-import { isAbsolute } from 'path';
+import { isAbsolute } from 'node:path';
 import { z } from 'zod';
 
 const BOOLEAN_LITERALS: Record<string, boolean> = {

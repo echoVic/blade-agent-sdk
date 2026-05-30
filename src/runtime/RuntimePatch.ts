@@ -1,4 +1,4 @@
-import { HookEvent } from '../types/constants.js';
+import type { HookEvent } from '../types/constants.js';
 
 export type RuntimePatchScope = 'turn' | 'session';
 

@@ -1,6 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { McpRegistry } from '../McpRegistry.js';
-import { McpConnectionStatus } from '../types.js';
 
 const mockConnect = vi.fn(() => Promise.resolve());
 const mockDisconnect = vi.fn(() => Promise.resolve());

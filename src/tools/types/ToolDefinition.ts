@@ -86,11 +86,11 @@ export interface ToolConfig<TSchema extends z.ZodSchema = z.ZodSchema, TParams =
   validateInput?: (
     params: TParams,
     context: ExecutionContext,
-  ) => Promise<void | ToolValidationError> | void | ToolValidationError;
+  ) => Promise<undefined | ToolValidationError> | undefined | ToolValidationError;
   checkPermissions?: (
     params: TParams,
     context: ExecutionContext,
-  ) => Promise<void | PermissionResult> | void | PermissionResult;
+  ) => Promise<undefined | PermissionResult> | undefined | PermissionResult;
   resolveBehavior?: (params: TParams) => Partial<ToolBehavior> | ToolBehavior;
   resolveBehaviorHint?: () => Partial<ToolBehavior> | ToolBehavior;
   version?: string;
@@ -127,11 +127,11 @@ export interface Tool<TParams = JsonObject> {
   validateInput?: (
     params: TParams,
     context: ExecutionContext,
-  ) => Promise<void | ToolValidationError> | void | ToolValidationError;
+  ) => Promise<undefined | ToolValidationError> | undefined | ToolValidationError;
   checkPermissions?: (
     params: TParams,
     context: ExecutionContext,
-  ) => Promise<void | PermissionResult> | void | PermissionResult;
+  ) => Promise<undefined | PermissionResult> | undefined | PermissionResult;
   resolveBehavior?: (params: TParams) => ToolBehavior;
   getBehaviorHint?: () => ToolBehavior;
   preparePermissionMatcher?: (params: TParams) => PreparedPermissionMatcher;

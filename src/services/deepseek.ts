@@ -607,6 +607,9 @@ export function createDeepSeekLongContextPlan(
   text: string,
   options: DeepSeekLongContextOptions = {},
 ): DeepSeekLongContextPlan {
+  // Pass reserveOutputTokens: undefined to avoid double-deduction:
+  // chunk splitting should use full chunkTokenLimit; output token budget
+  // is subtracted separately below when selecting which chunks to include.
   const chunks = createDeepSeekLongContextChunks(text, {
     ...options,
     reserveOutputTokens: undefined,

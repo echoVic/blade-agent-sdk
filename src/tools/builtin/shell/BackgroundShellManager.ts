@@ -1,5 +1,5 @@
-import { type ChildProcess, spawn } from 'child_process';
-import { randomUUID } from 'crypto';
+import { type ChildProcess, spawn } from 'node:child_process';
+import { randomUUID } from 'node:crypto';
 import type { SessionId } from '../../../types/branded.js';
 
 type BackgroundShellStatus = 'running' | 'exited' | 'killed' | 'error';

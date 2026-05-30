@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { MemoryStore } from '../MemoryStore.js';
 import { SessionId } from '../../../types/branded.js';
-import type { ContextData, ContextMessage, ToolCall, WorkspaceContext } from '../../types.js';
+import type { ContextData, ContextMessage, ToolCall, } from '../../types.js';
 import { assertDefined } from '../../../__tests__/helpers/assertDefined.js';
 
 /**

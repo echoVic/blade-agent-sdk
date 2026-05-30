@@ -257,7 +257,7 @@ export function createCompositePermissionHandler(
   const activeHandlers = handlers.filter((handler): handler is PermissionHandler => Boolean(handler));
 
   return async (request) => {
-    let mergedAllowResult: Extract<PermissionResult, { behavior: 'allow' }> = {
+    const mergedAllowResult: Extract<PermissionResult, { behavior: 'allow' }> = {
       behavior: 'allow',
     };
     let firstAskResult: Extract<PermissionResult, { behavior: 'ask' }> | undefined;

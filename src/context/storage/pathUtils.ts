@@ -33,7 +33,7 @@ function escapeProjectPath(absPath: string): string {
 export function unescapeProjectPath(escapedPath: string): string {
   let result = escapedPath.replace(/_/g, ':');
   if (result.startsWith('-')) {
-    result = '/' + result.slice(1);
+    result = `/${result.slice(1)}`;
   }
   return result.replace(/-/g, '/');
 }

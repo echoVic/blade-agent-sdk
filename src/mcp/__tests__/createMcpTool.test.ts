@@ -1,6 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { JSONSchema7 } from 'json-schema';
-import { z } from 'zod';
 import { createMcpTool } from '../createMcpTool.js';
 
 const mockClient = {

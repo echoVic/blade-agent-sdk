@@ -46,7 +46,7 @@ export function createMcpTool(
     category: 'MCP tool',
     tags: ['mcp', 'external', serverName],
 
-    async execute(params, context) {
+    async execute(params, _context) {
       try {
         const result = await mcpClient.callTool(toolDef.name, params);
 
