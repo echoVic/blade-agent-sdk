@@ -100,6 +100,17 @@ export {
   hasFilesystemCapability,
   mergeContext
 } from './runtime/index.js';
+// --- Observability ---
+export type {
+  AgentTrace,
+  ObservabilityOptions,
+  TraceEvent,
+  TracePayloadSummary,
+  TraceSink,
+  TraceSpan,
+  TraceSpanKind,
+  TraceStatus,
+} from './observability/index.js';
 export type {
   AgentDefinition,
   ExecutionContext,

@@ -3,6 +3,7 @@ import { Agent } from '../agent/Agent.js';
 import type { ChatContext, LoopResult, UserMessageContent } from '../agent/types.js';
 import { type CleanupHandle, registerCleanup } from '../lifecycle/CleanupRegistry.js';
 import { createRootLogger, type InternalLogger, LogCategory } from '../logging/Logger.js';
+import { TraceRecorder, type AgentTrace } from '../observability/index.js';
 import {
   type ContextSnapshot,
   createContextSnapshot,
@@ -63,6 +64,7 @@ class Session implements ISession {
   private initialized = false;
   private closed = false;
   private cleanupHandle: CleanupHandle | null = null;
+  private readonly traces: AgentTrace[] = [];
 
   private pendingMessage: UserMessageContent | null = null;
   private pendingSendOptions: SendOptions | null = null;
@@ -97,6 +99,14 @@ class Session implements ISession {
 
   setDefaultContext(context: RuntimeContext): void {
     this.defaultContext = context;
+  }
+
+  getLastTrace(): AgentTrace | undefined {
+    return this.traces.at(-1);
+  }
+
+  getTraces(): AgentTrace[] {
+    return [...this.traces];
   }
 
   async initialize(): Promise<void> {
@@ -248,7 +258,29 @@ class Session implements ISession {
     this.pendingSendOptions = null;
     this.pendingContextSnapshot = null;
 
-    message = await runtime.getHookRuntime().applyUserPromptSubmit(message);
+    const traceRecorder = this.createTraceRecorder(message);
+    let traceFinished = false;
+    const finishTrace = async (
+      status: 'success' | 'error' | 'aborted',
+      data?: Record<string, unknown>,
+    ) => {
+      if (!traceRecorder || traceFinished) return;
+      traceFinished = true;
+      const trace = traceRecorder.finish(status, data);
+      this.rememberTrace(trace);
+      await this.notifyTraceSink(trace);
+    };
+
+    runtime.getHookRuntime().setTraceCollector(traceRecorder);
+    try {
+      message = await runtime.getHookRuntime().applyUserPromptSubmit(message);
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      await finishTrace('error', { error: errorMessage });
+      runtime.getHookRuntime().setTraceCollector(undefined);
+      yield { type: 'error', message: errorMessage, sessionId: this.sessionId };
+      return;
+    }
 
     const toolCalls: ToolCallRecord[] = [];
     let totalUsage: TokenUsage = {
@@ -290,6 +322,8 @@ class Session implements ISession {
 
     try {
       let loopResult: LoopResult | undefined;
+      const turnSpans = new Map<number, string>();
+      const toolSpans = new Map<string, string>();
 
       while (true) {
         const { value, done } = await stream.next();
@@ -298,24 +332,33 @@ class Session implements ISession {
           break;
         }
         switch (value.type) {
-          case 'turn_start':
+          case 'turn_start': {
+            const spanId = traceRecorder?.recordTurnStart(value.turn, value.maxTurns);
+            if (spanId) turnSpans.set(value.turn, spanId);
             yield { type: 'turn_start', turn: value.turn, sessionId: this.sessionId };
             break;
+          }
           case 'turn_end':
+            traceRecorder?.recordTurnEnd(turnSpans.get(value.turn), value.turn);
+            turnSpans.delete(value.turn);
             yield { type: 'turn_end', turn: value.turn, sessionId: this.sessionId };
             break;
           case 'content_delta':
+            traceRecorder?.addEvent('content_delta', { delta: value.delta });
             yield { type: 'content', delta: value.delta, sessionId: this.sessionId };
             break;
           case 'thinking_delta':
+            traceRecorder?.addEvent('thinking_delta', { delta: value.delta });
             if (options?.includeThinking) {
               yield { type: 'thinking', delta: value.delta, sessionId: this.sessionId };
             }
             break;
           case 'content':
+            traceRecorder?.addEvent('content', { content: value.content });
             yield { type: 'content', delta: value.content, sessionId: this.sessionId };
             break;
           case 'thinking':
+            traceRecorder?.addEvent('thinking', { content: value.content });
             if (options?.includeThinking) {
               yield { type: 'thinking', delta: value.content, sessionId: this.sessionId };
             }
@@ -330,6 +373,14 @@ class Session implements ISession {
               output: '',
               duration: 0,
             });
+            toolSpans.set(
+              value.toolCall.id,
+              traceRecorder?.recordToolStart(
+                value.toolCall.id,
+                value.toolCall.function.name,
+                input,
+              ) ?? '',
+            );
             yield {
               type: 'tool_use',
               id: value.toolCall.id,
@@ -341,6 +392,11 @@ class Session implements ISession {
           }
           case 'tool_progress': {
             if (value.toolCall.type !== 'function') break;
+            traceRecorder?.addEvent('tool_progress', {
+              toolCallId: value.toolCall.id,
+              name: value.toolCall.function.name,
+              message: value.message,
+            }, toolSpans.get(value.toolCall.id));
             yield {
               type: 'tool_progress',
               id: value.toolCall.id,
@@ -352,6 +408,11 @@ class Session implements ISession {
           }
           case 'tool_message': {
             if (value.toolCall.type !== 'function') break;
+            traceRecorder?.addEvent('tool_message', {
+              toolCallId: value.toolCall.id,
+              name: value.toolCall.function.name,
+              message: value.message,
+            }, toolSpans.get(value.toolCall.id));
             yield {
               type: 'tool_message',
               id: value.toolCall.id,
@@ -363,6 +424,11 @@ class Session implements ISession {
           }
           case 'tool_runtime_patch': {
             if (value.toolCall.type !== 'function') break;
+            traceRecorder?.addEvent('tool_runtime_patch', {
+              toolCallId: value.toolCall.id,
+              name: value.toolCall.function.name,
+              patch: value.patch,
+            }, toolSpans.get(value.toolCall.id));
             yield {
               type: 'tool_runtime_patch',
               id: value.toolCall.id,
@@ -374,6 +440,11 @@ class Session implements ISession {
           }
           case 'tool_context_patch': {
             if (value.toolCall.type !== 'function') break;
+            traceRecorder?.addEvent('tool_context_patch', {
+              toolCallId: value.toolCall.id,
+              name: value.toolCall.function.name,
+              patch: value.patch,
+            }, toolSpans.get(value.toolCall.id));
             yield {
               type: 'tool_context_patch',
               id: value.toolCall.id,
@@ -385,6 +456,11 @@ class Session implements ISession {
           }
           case 'tool_new_messages': {
             if (value.toolCall.type !== 'function') break;
+            traceRecorder?.addEvent('tool_new_messages', {
+              toolCallId: value.toolCall.id,
+              name: value.toolCall.function.name,
+              messages: value.messages,
+            }, toolSpans.get(value.toolCall.id));
             yield {
               type: 'tool_new_messages',
               id: value.toolCall.id,
@@ -396,6 +472,11 @@ class Session implements ISession {
           }
           case 'tool_permission_updates': {
             if (value.toolCall.type !== 'function') break;
+            traceRecorder?.addEvent('tool_permission_updates', {
+              toolCallId: value.toolCall.id,
+              name: value.toolCall.function.name,
+              updates: value.updates,
+            }, toolSpans.get(value.toolCall.id));
             yield {
               type: 'tool_permission_updates',
               id: value.toolCall.id,
@@ -412,6 +493,14 @@ class Session implements ISession {
               record.output = value.result.llmContent;
               record.isError = !value.result.success;
             }
+            traceRecorder?.recordToolResult(
+              toolSpans.get(value.toolCall.id),
+              value.toolCall.id,
+              value.toolCall.function.name,
+              value.result.llmContent,
+              !value.result.success,
+            );
+            toolSpans.delete(value.toolCall.id);
             yield {
               type: 'tool_result',
               id: value.toolCall.id,
@@ -429,6 +518,7 @@ class Session implements ISession {
               totalTokens: value.usage.totalTokens,
               maxContextTokens: value.usage.maxContextTokens,
             };
+            traceRecorder?.recordUsage(totalUsage);
             break;
           default:
             break;
@@ -444,6 +534,7 @@ class Session implements ISession {
 
       if (!loopResult.success && !isAborted && !shouldExit) {
         const messageText = loopResult.error?.message || 'Unknown error';
+        await finishTrace('error', { error: messageText });
         yield { type: 'error', message: messageText, sessionId: this.sessionId };
         return;
       }
@@ -459,6 +550,13 @@ class Session implements ISession {
         resultSummary: loopResult.finalMessage || '',
         success: loopResult.success,
       });
+      await finishTrace(isAborted ? 'aborted' : 'success', {
+        content: loopResult.finalMessage || '',
+        usage: totalUsage,
+        turnsCount: loopResult.metadata?.turnsCount,
+        toolCallsCount: loopResult.metadata?.toolCallsCount,
+        duration: loopResult.metadata?.duration,
+      });
       yield {
         type: 'result',
         subtype: 'success',
@@ -467,8 +565,10 @@ class Session implements ISession {
       };
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
+      await finishTrace('error', { error: errorMessage });
       yield { type: 'error', message: errorMessage, sessionId: this.sessionId };
     } finally {
+      runtime.getHookRuntime().setTraceCollector(undefined);
       signalCleanup?.();
       this.abortController = null;
     }
@@ -618,6 +718,38 @@ class Session implements ISession {
       return JSON.parse(str) as JsonValue;
     } catch {
       return str;
+    }
+  }
+
+  private createTraceRecorder(message: UserMessageContent): TraceRecorder | undefined {
+    const observability = this.options.observability;
+    if (!observability?.enabled) {
+      return undefined;
+    }
+    const recorder = new TraceRecorder(this.sessionId, observability, {
+      model: this.options.model,
+      provider: this.options.provider.type,
+      permissionMode: this.permissionMode,
+    });
+    recorder.addEvent('user_prompt', {
+      message,
+    });
+    return recorder;
+  }
+
+  private rememberTrace(trace: AgentTrace): void {
+    this.traces.push(trace);
+    const maxTraces = this.options.observability?.maxTraces ?? 20;
+    while (this.traces.length > maxTraces) {
+      this.traces.shift();
+    }
+  }
+
+  private async notifyTraceSink(trace: AgentTrace): Promise<void> {
+    try {
+      await this.options.observability?.sink?.(trace);
+    } catch (error) {
+      this.logger.warn('[Session] Observability trace sink failed:', error);
     }
   }
 

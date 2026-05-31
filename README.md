@@ -15,6 +15,7 @@
 - 协作能力：子 Agent（前台/后台）、`Task` / `TaskOutput` / `TaskStop` 工具，以及用户级和项目级 Skills
 - Memory 系统：`MemoryManager` + `FileSystemMemoryStore`，可选的 `MemoryRead` / `MemoryWrite` 工具
 - 安全与治理：`permissionMode`、`canUseTool`、`permissionHandler`、Hooks、沙箱配置可组合使用
+- Observability：可选 trace 记录，把 stream events、tool calls、usage、hooks 汇总为可调试的执行轨迹
 - 工程能力：运行时 Context、结构化输出、日志接口、会话持久化与分叉、自动上下文压缩、上下文溢出恢复、Token 预算
 
 ## 安装
@@ -63,13 +64,42 @@ console.log(result.toolCalls);
 console.log(result.usage);
 ```
 
+## Observability Trace
+
+当需要调试 Agent 行为时，可以开启 `observability`。SDK 会为每次 `send()` + `stream()` 生成一条 trace，串起 turn、内容流、工具调用、usage、hooks 和最终结果。
+
+默认情况下，trace 只记录结构化摘要，不保存完整 prompt、模型输出、工具入参或工具结果，避免把敏感内容写入调试数据。只有显式设置 `capturePayloads: true` 时才会记录完整 payload。
+
+```ts
+import { createSession } from '@blade-ai/agent-sdk';
+
+const session = await createSession({
+  provider: { type: 'openai', apiKey: process.env.OPENAI_API_KEY! },
+  model: 'gpt-4o-mini',
+  observability: {
+    enabled: true,
+    // capturePayloads: true, // 调试时才开启，可能包含敏感内容
+    sink: async (trace) => {
+      await sendTraceToYourPlatform(trace);
+    },
+  },
+});
+
+await session.send('分析当前项目的测试覆盖');
+for await (const event of session.stream()) {
+  if (event.type === 'content') process.stdout.write(event.delta);
+}
+
+console.log(session.getLastTrace());
+```
+
 ## 什么时候适合用它
 
 - 需要一个可持久化、可恢复、可分叉的 Agent Session 层
 - 需要把文件、搜索、Shell、Web、MCP 等能力统一暴露给模型
 - 需要在本地开发环境里组合权限控制和沙箱
 - 需要用自定义工具、MCP server、子 Agent 或 Skills 扩展能力
-- 需要结构化输出、日志和运行时 Context 来接入现有应用
+- 需要结构化输出、日志、trace 和运行时 Context 来接入现有应用
 
 ## 文档
 

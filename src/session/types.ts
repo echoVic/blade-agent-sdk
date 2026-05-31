@@ -1,6 +1,7 @@
 import type { UserMessageContent } from '../agent/types.js';
 import type { SessionId } from '../types/branded.js';
 import type { SdkMcpServerHandle } from '../mcp/SdkMcpServer.js';
+import type { AgentTrace, ObservabilityOptions } from '../observability/index.js';
 import type { ContextSnapshot, RuntimeContext, RuntimeContextPatch, RuntimePatch } from '../runtime/index.js';
 import type { Message } from '../services/ChatServiceInterface.js';
 import type { ToolCatalogSourcePolicy } from '../tools/catalog/index.js';
@@ -141,6 +142,7 @@ export interface SessionOptions {
 
   sandbox?: SandboxSettings;
 
+  observability?: ObservabilityOptions;
 }
 
 export interface SendOptions {
@@ -214,6 +216,9 @@ export interface ISession extends AsyncDisposable {
   mcpListTools(): Promise<McpToolInfo[]>;
 
   fork(options?: ForkSessionOptions): Promise<ISession>;
+
+  getLastTrace(): AgentTrace | undefined;
+  getTraces(): AgentTrace[];
 }
 
 export type { ContextSnapshot, RuntimeContext };

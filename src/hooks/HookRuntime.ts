@@ -9,6 +9,7 @@ import type { JsonObject, JsonValue, PermissionMode } from '../types/common.js';
 import { HookEvent } from '../types/constants.js';
 import type { PermissionResult } from '../types/permissions.js';
 import type { HookCallback, HookInput } from '../session/types.js';
+import type { HookTraceCollector } from '../observability/index.js';
 import { HookManager } from './HookManager.js';
 import { HookBus } from './HookBus.js';
 
@@ -55,6 +56,7 @@ export class HookRuntime {
   private readonly bus: HookBus;
   private readonly callbacks: Partial<Record<HookEvent, HookCallback[]>>;
   private readonly hookManager: HookManager;
+  private traceCollector?: HookTraceCollector;
   private readonly runtimeHookRegistrations = new Map<string, {
     event: HookEvent;
     callback: HookCallback;
@@ -73,6 +75,10 @@ export class HookRuntime {
 
   getCallbacks(): Partial<Record<HookEvent, HookCallback[]>> {
     return this.callbacks;
+  }
+
+  setTraceCollector(traceCollector: HookTraceCollector | undefined): void {
+    this.traceCollector = traceCollector;
   }
 
   registerRuntimeHooks(hooks: RuntimeHookRegistration[]): string[] {
@@ -126,7 +132,7 @@ export class HookRuntime {
     let nextInput = { ...input };
 
     if (this.bus.has(HookEvent.PreToolUse)) {
-      const outputs = await this.bus.dispatch(
+      const outputs = await this.dispatchObserved(
         HookEvent.PreToolUse,
         buildHookInput(this.options.sessionId, HookEvent.PreToolUse, {
           toolName,
@@ -302,7 +308,7 @@ export class HookRuntime {
     let nextInput = input;
 
     if (this.bus.has(HookEvent.PermissionRequest)) {
-      const outputs = await this.bus.dispatch(
+      const outputs = await this.dispatchObserved(
         HookEvent.PermissionRequest,
         buildHookInput(this.options.sessionId, HookEvent.PermissionRequest, {
           toolName,
@@ -374,7 +380,7 @@ export class HookRuntime {
 
     if (this.bus.has(HookEvent.UserPromptSubmit)) {
       const imageMeta = this.getImageMetadata(nextMessage);
-      const outputs = await this.bus.dispatch(
+      const outputs = await this.dispatchObserved(
         HookEvent.UserPromptSubmit,
         buildHookInput(this.options.sessionId, HookEvent.UserPromptSubmit, {
           userPrompt: this.getTextContent(nextMessage),
@@ -544,7 +550,7 @@ export class HookRuntime {
       return;
     }
 
-    const outputs = await this.bus.dispatch(
+    const outputs = await this.dispatchObserved(
       event,
       buildHookInput(this.options.sessionId, event, payload),
     );
@@ -598,7 +604,7 @@ export class HookRuntime {
 
     let nextResult = result;
     let nextOutput: string | object | JsonValue = result.llmContent;
-    const outputs = await this.bus.dispatch(
+    const outputs = await this.dispatchObserved(
       event,
       buildHookInput(this.options.sessionId, event, {
         toolName,
@@ -634,6 +640,25 @@ export class HookRuntime {
     }
 
     return { toolUseId, result: nextResult };
+  }
+
+  private async dispatchObserved(event: HookEvent, input: HookInput) {
+    const spanId = this.traceCollector?.recordHookStart(event, input);
+    try {
+      const outputs = await this.bus.dispatch(event, input);
+      if (spanId) {
+        this.traceCollector?.recordHookEnd(spanId, {
+          outputCount: outputs.length,
+          actions: outputs.map((output) => output.action),
+        });
+      }
+      return outputs;
+    } catch (error) {
+      if (spanId) {
+        this.traceCollector?.recordHookError(spanId, error);
+      }
+      throw error;
+    }
   }
 
   private stringifyHookOutput(output: string | object | JsonValue): string {
