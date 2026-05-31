@@ -1,4 +1,3 @@
-
 // --- Agent ---
 export type { ToolExecutionUpdate } from './agent/loop/runToolCall.js';
 export { SubagentExecutor } from './agent/subagents/SubagentExecutor.js';
@@ -8,8 +7,9 @@ export type {
   SubagentConfig,
   SubagentContext,
   SubagentResult,
-  SubagentSource
+  SubagentSource,
 } from './agent/subagents/types.js';
+export type { TokenBudgetConfig, TokenBudgetSnapshot } from './agent/TokenBudget.js';
 export type { SdkErrorOptions } from './errors/index.js';
 // --- Error hierarchy ---
 export {
@@ -17,7 +17,7 @@ export {
   ConfigError,
   PermissionDeniedError,
   SdkError,
-  ToolExecutionError
+  ToolExecutionError,
 } from './errors/index.js';
 // --- Hook schema accessors ---
 export { getHookSchemas } from './hooks/schemas/HookSchemas.js';
@@ -25,43 +25,61 @@ export { getHookSchemas } from './hooks/schemas/HookSchemas.js';
 export {
   DecisionBehavior,
   HookExitCode,
-  HookType
+  HookType,
 } from './hooks/types/HookTypes.js';
+export type {
+  CleanupFn,
+  CleanupHandle,
+  GracefulShutdownOptions,
+} from './lifecycle/CleanupRegistry.js';
 // --- Lifecycle ---
-export { gracefulShutdown, registerCleanup, resetCleanupRegistry } from './lifecycle/CleanupRegistry.js';
-export type { CleanupFn, CleanupHandle, GracefulShutdownOptions } from './lifecycle/CleanupRegistry.js';
+export {
+  gracefulShutdown,
+  registerCleanup,
+  resetCleanupRegistry,
+} from './lifecycle/CleanupRegistry.js';
 export type {
   McpToolCallResponse,
-  McpToolDefinition, ToolResponse as McpToolResponse, SdkMcpServerHandle,
-  SdkTool
+  McpToolDefinition,
+  SdkMcpServerHandle,
+  SdkTool,
+  ToolResponse as McpToolResponse,
 } from './mcp/index.js';
 // --- MCP ---
 export { createSdkMcpServer, tool } from './mcp/index.js';
 export type { Memory, MemoryInput, MemoryStore, MemoryType } from './memory/index.js';
 // --- Memory ---
 export { FileSystemMemoryStore, MemoryManager } from './memory/index.js';
+// --- Observability ---
+export type {
+  AgentTrace,
+  ObservabilityOptions,
+  TraceEvent,
+  TracePayloadSummary,
+  TraceSink,
+  TraceSpan,
+  TraceSpanKind,
+  TraceStatus,
+} from './observability/index.js';
+export type {
+  ContextSnapshot,
+  RuntimeContext,
+  RuntimeContextPatch,
+  RuntimeHookEvent,
+  RuntimeHookRegistration,
+  RuntimeModelOverride,
+  RuntimePatch,
+  RuntimePatchScope,
+  RuntimePatchSkillInfo,
+  RuntimeToolDiscoveryPatch,
+  RuntimeToolPolicyPatch,
+} from './runtime/index.js';
+// --- Runtime ---
 export {
-  calculateDeepSeekCost,
-  createDeepSeekBatchChatCompletions,
-  createDeepSeekChatCompletion,
-  createDeepSeekLongContextPlan,
-  createDeepSeekLongContextChunks,
-  createDeepSeekLongContextMessages,
-  createDeepSeekTokenBudgetCostConfig,
-  createDeepSeekFimCompletion,
-  DEEPSEEK_BETA_BASE_URL,
-  DEEPSEEK_DEFAULT_BASE_URL,
-  DEEPSEEK_DEFAULT_MODEL,
-  DEEPSEEK_DEFAULT_PRICING,
-  DeepSeekCostTracker,
-  estimateDeepSeekTokens,
-  getDeepSeekPricing,
-  normalizeDeepSeekModel,
-  optimizeDeepSeekCachePrefix,
-  resolveDeepSeekBaseUrl,
-  sanitizeDeepSeekStrictSchema,
-  summarizeDeepSeekBatchChatCompletions,
-} from './services/deepseek.js';
+  createContextSnapshot,
+  hasFilesystemCapability,
+  mergeContext,
+} from './runtime/index.js';
 export type {
   DeepSeekBatchChatCompletionItem,
   DeepSeekBatchChatCompletionOptions,
@@ -81,36 +99,28 @@ export type {
   DeepSeekPricing,
   DeepSeekProviderOptions,
 } from './services/deepseek.js';
-export type {
-  ContextSnapshot,
-  RuntimeContext,
-  RuntimeContextPatch,
-  RuntimeHookEvent,
-  RuntimeHookRegistration,
-  RuntimeModelOverride,
-  RuntimePatch,
-  RuntimePatchScope,
-  RuntimePatchSkillInfo,
-  RuntimeToolDiscoveryPatch,
-  RuntimeToolPolicyPatch
-} from './runtime/index.js';
-// --- Runtime ---
 export {
-  createContextSnapshot,
-  hasFilesystemCapability,
-  mergeContext
-} from './runtime/index.js';
-// --- Observability ---
-export type {
-  AgentTrace,
-  ObservabilityOptions,
-  TraceEvent,
-  TracePayloadSummary,
-  TraceSink,
-  TraceSpan,
-  TraceSpanKind,
-  TraceStatus,
-} from './observability/index.js';
+  calculateDeepSeekCost,
+  createDeepSeekBatchChatCompletions,
+  createDeepSeekChatCompletion,
+  createDeepSeekFimCompletion,
+  createDeepSeekLongContextChunks,
+  createDeepSeekLongContextMessages,
+  createDeepSeekLongContextPlan,
+  createDeepSeekTokenBudgetCostConfig,
+  DEEPSEEK_BETA_BASE_URL,
+  DEEPSEEK_DEFAULT_BASE_URL,
+  DEEPSEEK_DEFAULT_MODEL,
+  DEEPSEEK_DEFAULT_PRICING,
+  DeepSeekCostTracker,
+  estimateDeepSeekTokens,
+  getDeepSeekPricing,
+  normalizeDeepSeekModel,
+  optimizeDeepSeekCachePrefix,
+  resolveDeepSeekBaseUrl,
+  sanitizeDeepSeekStrictSchema,
+  summarizeDeepSeekBatchChatCompletions,
+} from './services/deepseek.js';
 export type {
   AgentDefinition,
   ExecutionContext,
@@ -136,24 +146,23 @@ export type {
   TokenUsage,
   ToolCallRecord,
   ToolDefinition,
-  ToolResult
+  ToolResult,
 } from './session/index.js';
 // --- Session ---
 export { createSession, forkSession, prompt, resumeSession } from './session/index.js';
 // --- Tool authoring primitives ---
 export { getBuiltinTools } from './tools/builtin/index.js';
 export { createMemoryReadTool, createMemoryWriteTool } from './tools/builtin/memory/index.js';
-export { ToolCatalog } from './tools/catalog/index.js';
 export type {
   ToolCatalogEntry,
   ToolCatalogReadView,
   ToolCatalogSourcePolicy,
   ToolSourceInfo,
   ToolSourceKind,
-  ToolTrustLevel
+  ToolTrustLevel,
 } from './tools/catalog/index.js';
+export { ToolCatalog } from './tools/catalog/index.js';
 export { createTool, defineTool, toolFromDefinition } from './tools/core/createTool.js';
-export { ToolErrorType } from './tools/types/index.js';
 export type {
   FunctionDeclaration,
   Tool,
@@ -165,22 +174,23 @@ export type {
   ToolError,
   ToolExposureConfig,
   ToolExposureMode,
-  ToolSchema
+  ToolSchema,
 } from './tools/types/index.js';
+export { ToolErrorType } from './tools/types/index.js';
 export { ToolKind } from './tools/types/ToolKind.js';
 export { AgentId, MessageId, SessionId, ToolUseId } from './types/branded.js';
 // --- Constants & types ---
 export type {
   McpServerConfig,
   OutputFormat,
-  SandboxSettings
+  SandboxSettings,
 } from './types/common.js';
 export {
   HookEvent,
   MessageRole,
   PermissionDecision,
   PermissionMode,
-  StreamMessageType
+  StreamMessageType,
 } from './types/constants.js';
 export type { AgentLogger, LogEntry, LogLevelName } from './types/logging.js';
 export type {
@@ -190,7 +200,7 @@ export type {
   PermissionHandlerRequest,
   PermissionResult,
   PermissionRuleValue,
-  PermissionUpdate
+  PermissionUpdate,
 } from './types/permissions.js';
 // --- Permission system ---
 export {
@@ -198,7 +208,7 @@ export {
   createModePermissionHandler,
   createPathSafetyPermissionHandler,
   createPermissionHandlerFromCanUseTool,
-  createRuleBasedPermissionHandler
+  createRuleBasedPermissionHandler,
 } from './types/permissions.js';
 export type { Assert, Extends, IsEqual, KeysEqual } from './types/typeAssertions.js';
 // --- Error utilities ---

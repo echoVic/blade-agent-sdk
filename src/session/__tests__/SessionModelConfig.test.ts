@@ -47,4 +47,27 @@ describe('Session model config', () => {
 
     await session.close();
   });
+
+  it('passes token budget options into agent runtime options', async () => {
+    const tokenBudget = {
+      maxTotalTokens: 1_000_000,
+      warningThresholdPercent: 0.75,
+      costPerInputToken: 0.0000001,
+      costPerOutputToken: 0.0000005,
+    };
+    const session = await createSession({
+      provider: { type: 'deepseek', apiKey: 'test-key' },
+      model: 'deepseek-v4-pro',
+      tokenBudget,
+    });
+
+    const [, agentOptions] = createAgent.mock.calls.at(-1) ?? [];
+    expect(agentOptions).toEqual(
+      expect.objectContaining({
+        tokenBudget,
+      }),
+    );
+
+    await session.close();
+  });
 });

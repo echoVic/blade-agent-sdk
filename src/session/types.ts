@@ -1,3 +1,4 @@
+import type { TokenBudgetConfig } from '../agent/TokenBudget.js';
 import type { UserMessageContent } from '../agent/types.js';
 import type { SdkMcpServerHandle } from '../mcp/SdkMcpServer.js';
 import type { AgentTrace, ObservabilityOptions } from '../observability/index.js';
@@ -168,6 +169,7 @@ export interface SessionOptions {
   providerOptions?: JsonObject;
   thinkingEnabled?: boolean;
   thinkingBudget?: number;
+  tokenBudget?: TokenBudgetConfig;
 
   allowedTools?: string[];
   disallowedTools?: string[];

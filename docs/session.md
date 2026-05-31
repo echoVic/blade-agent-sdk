@@ -1412,6 +1412,7 @@ async function analyzeCodeManual() {
 | `providerOptions` | `JsonObject`                                            | —  | —           | 透传给底层 provider 的高级选项                             |
 | `thinkingEnabled` | `boolean`                                               | —  | —           | 是否为支持 thinking 的模型启用 reasoning 内容                 |
 | `thinkingBudget`  | `number`                                                | —  | —           | thinking/reasoning token 预算，供 provider 适配使用          |
+| `tokenBudget`     | `TokenBudgetConfig`                                     | —  | —           | Agent 级 token 与成本预算配置                              |
 | `systemPrompt`    | `string`                                                | —  | —           | 会话级系统提示词                                          |
 | `maxTurns`        | `number`                                                | —  | `200`       | Agent 最大轮次限制                                      |
 | `allowedTools`    | `string[]`                                              | —  | —           | 工具白名单；未设置表示不限制，空数组表示禁用全部工具                    |

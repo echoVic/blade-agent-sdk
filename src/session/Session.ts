@@ -140,6 +140,7 @@ class Session implements ISession {
         toolSourcePolicy: this.options.toolSourcePolicy,
         outputFormat: this.options.outputFormat,
         sandbox: this.options.sandbox,
+        tokenBudget: this.options.tokenBudget,
       },
       this.runtime.getAgentRuntimeDeps(),
     );
