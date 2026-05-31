@@ -29,6 +29,31 @@ function createModelConfig(overrides: Partial<ModelConfig> = {}): ModelConfig {
 }
 
 describe('ModelManager.setModel', () => {
+  it('passes model output token limits into chat service config', async () => {
+    const config: BladeConfig = {
+      models: [
+        createModelConfig({
+          maxOutputTokens: 4096,
+        }),
+      ],
+      currentModelId: 'default',
+    };
+    const manager = new ModelManager(config);
+    const [model] = config.models;
+    expect(model).toBeDefined();
+    if (!model) {
+      throw new Error('Expected a model config');
+    }
+
+    await manager.applyModelConfig(model, 'init');
+
+    expect(mockCreateChatServiceAsync).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        maxOutputTokens: 4096,
+      }),
+    );
+  });
+
   it('should update the active model name for subsequent turns', async () => {
     const config: BladeConfig = {
       models: [createModelConfig()],

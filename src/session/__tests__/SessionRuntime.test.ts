@@ -132,6 +132,28 @@ describe('SessionRuntime', () => {
     await runtime.close();
   });
 
+  it('should disable all tools when allowedTools is an empty array', async () => {
+    const runtime = new SessionRuntime(
+      SessionId('session-empty-allowlist'),
+      createOptions({
+        allowedTools: [],
+        tools: [customTool],
+      }),
+      {
+        models: [],
+      },
+      PermissionMode.DEFAULT,
+      createFilesystemContext(workspaceRoot),
+      NOOP_LOGGER,
+    );
+
+    await runtime.initialize();
+
+    expect(runtime.getToolRegistry().getAll()).toEqual([]);
+
+    await runtime.close();
+  });
+
   it('should refresh MCP tools on disconnect and reconnect', async () => {
     const runtime = new SessionRuntime(
       SessionId('session-2'),

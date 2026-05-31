@@ -6,16 +6,9 @@
 
 import { ContextManager } from '../context/ContextManager.js';
 import { type InternalLogger, LogCategory, NOOP_LOGGER } from '../logging/Logger.js';
-import {
-  createChatServiceAsync,
-  type IChatService,
-} from '../services/ChatServiceInterface.js';
+import { createChatServiceAsync, type IChatService } from '../services/ChatServiceInterface.js';
 import { withDeepSeekDefaults } from '../services/deepseek.js';
-import type {
-  BladeConfig,
-  ModelConfig,
-  OutputFormat,
-} from '../types/common.js';
+import type { BladeConfig, ModelConfig, OutputFormat } from '../types/common.js';
 import { isThinkingModel } from '../utils/modelDetection.js';
 
 export class ModelManager {
@@ -57,12 +50,13 @@ export class ModelManager {
   // ===== 模型解析 =====
 
   resolveModelConfig(requestedModelId?: string): ModelConfig {
-    const modelId = requestedModelId && requestedModelId !== 'inherit' ? requestedModelId : undefined;
+    const modelId =
+      requestedModelId && requestedModelId !== 'inherit' ? requestedModelId : undefined;
     const models = this.config.models || [];
     const currentModelId = this.config.currentModelId;
     const modelConfig = modelId
-      ? models.find(m => m.id === modelId)
-      : models.find(m => m.id === currentModelId) || models[0];
+      ? models.find((m) => m.id === modelId)
+      : models.find((m) => m.id === currentModelId) || models[0];
     if (!modelConfig) {
       throw new Error(`❌ 模型配置未找到: ${modelId ?? 'current'}`);
     }
@@ -95,6 +89,7 @@ export class ModelManager {
       customHeaders: modelConfig.headers,
       temperature: modelConfig.temperature ?? this.config.temperature,
       maxContextTokens: this.currentModelMaxContextTokens,
+      maxOutputTokens: modelConfig.maxOutputTokens,
       supportsThinking,
       providerOptions: modelConfig.providerOptions as never,
       outputFormat: this.outputFormat,
@@ -109,7 +104,7 @@ export class ModelManager {
   async switchModelIfNeeded(modelId: string): Promise<void> {
     if (!modelId || modelId === this.currentModelId) return;
     const models = this.config.models || [];
-    const modelConfig = models.find(m => m.id === modelId);
+    const modelConfig = models.find((m) => m.id === modelId);
     if (!modelConfig) {
       this.logger.warn(`[ModelManager] ⚠️ 模型配置未找到: ${modelId}`);
       return;
@@ -122,10 +117,11 @@ export class ModelManager {
     if (!normalized) return;
 
     const models = this.config.models || [];
-    const matchedModel = models.find((candidate) =>
-      candidate.id === normalized
-      || candidate.model === normalized
-      || candidate.name === normalized,
+    const matchedModel = models.find(
+      (candidate) =>
+        candidate.id === normalized ||
+        candidate.model === normalized ||
+        candidate.name === normalized,
     );
 
     if (matchedModel) {

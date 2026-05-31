@@ -36,6 +36,8 @@ import { createSession } from '@blade-ai/agent-sdk';
 const session = await createSession({
   provider: { type: 'openai', apiKey: process.env.OPENAI_API_KEY! },
   model: 'gpt-4o-mini',
+  temperature: 0.2,
+  maxOutputTokens: 4096,
 });
 
 await session.send('分析当前项目的目录结构，并总结关键模块职责');
@@ -62,6 +64,25 @@ const result = await prompt('总结这个仓库的公开 API', {
 console.log(result.result);
 console.log(result.toolCalls);
 console.log(result.usage);
+```
+
+## 模型参数
+
+`createSession()` 可以直接配置常见模型采样和预算参数，这些字段会传入当前会话的默认 `ModelConfig`：
+
+```ts
+const session = await createSession({
+  provider: { type: 'openai', apiKey: process.env.OPENAI_API_KEY! },
+  model: 'gpt-5',
+  temperature: 0.2,
+  maxOutputTokens: 4096,
+  maxContextTokens: 128000,
+  providerOptions: {
+    openai: { reasoningEffort: 'low' },
+  },
+  thinkingEnabled: true,
+  thinkingBudget: 1024,
+});
 ```
 
 ## Observability Trace

@@ -861,6 +861,8 @@ interface SessionOptions {
 }
 ```
 
+`allowedTools` 未设置时不限制工具；设置为 `[]` 时表示禁用所有工具。
+
 ### ToolDefinition
 
 ```ts
@@ -1404,9 +1406,15 @@ async function analyzeCodeManual() {
 | ----------------- | ------------------------------------------------------- | -- | ----------- | ------------------------------------------------- |
 | `provider`        | `ProviderConfig`                                        | ✅  | —           | 模型提供方配置                                           |
 | `model`           | `string`                                                | ✅  | —           | 模型 ID（如 `'claude-sonnet-4-20250514'`, `'gpt-4o'`） |
+| `temperature`     | `number`                                                | —  | `0.7`       | 模型采样温度                                            |
+| `maxOutputTokens` | `number`                                                | —  | —           | 单次模型输出 token 限制                                  |
+| `maxContextTokens` | `number`                                               | —  | `128000`    | 会话默认模型上下文窗口大小                                  |
+| `providerOptions` | `JsonObject`                                            | —  | —           | 透传给底层 provider 的高级选项                             |
+| `thinkingEnabled` | `boolean`                                               | —  | —           | 是否为支持 thinking 的模型启用 reasoning 内容                 |
+| `thinkingBudget`  | `number`                                                | —  | —           | thinking/reasoning token 预算，供 provider 适配使用          |
 | `systemPrompt`    | `string`                                                | —  | —           | 会话级系统提示词                                          |
 | `maxTurns`        | `number`                                                | —  | `200`       | Agent 最大轮次限制                                      |
-| `allowedTools`    | `string[]`                                              | —  | —           | 工具白名单，为空表示允许全部                                    |
+| `allowedTools`    | `string[]`                                              | —  | —           | 工具白名单；未设置表示不限制，空数组表示禁用全部工具                    |
 | `disallowedTools` | `string[]`                                              | —  | —           | 工具黑名单                                             |
 | `toolSourcePolicy` | `ToolCatalogSourcePolicy`                              | —  | —           | 工具来源策略，按来源类型和信任级别过滤工具                            |
 | `tools`           | `ToolDefinition[]`                                      | —  | —           | 追加的自定义工具                                          |

@@ -3,7 +3,7 @@ import { Agent } from '../agent/Agent.js';
 import type { ChatContext, LoopResult, UserMessageContent } from '../agent/types.js';
 import { type CleanupHandle, registerCleanup } from '../lifecycle/CleanupRegistry.js';
 import { createRootLogger, type InternalLogger, LogCategory } from '../logging/Logger.js';
-import { TraceRecorder, type AgentTrace } from '../observability/index.js';
+import { type AgentTrace, TraceRecorder } from '../observability/index.js';
 import {
   type ContextSnapshot,
   createContextSnapshot,
@@ -11,6 +11,7 @@ import {
 } from '../runtime/index.js';
 import type { ContentPart, Message } from '../services/ChatServiceInterface.js';
 import { cloneMessage } from '../services/messageUtils.js';
+import { SessionId } from '../types/branded.js';
 import {
   type BladeConfig,
   type JsonValue,
@@ -18,7 +19,6 @@ import {
   PermissionMode,
   type ProviderType,
 } from '../types/common.js';
-import { SessionId } from '../types/branded.js';
 import { SessionRuntime } from './SessionRuntime.js';
 import {
   JsonlSessionStore,
@@ -77,9 +77,10 @@ class Session implements ISession {
     this.permissionMode = options.permissionMode ?? PermissionMode.DEFAULT;
     this.defaultContext = options.defaultContext ?? {};
     this.persistenceEnabled = options.persistSession ?? true;
-    this.store = (this.persistenceEnabled && options.storagePath)
-      ? new JsonlSessionStore(options.storagePath)
-      : new NoopSessionStore();
+    this.store =
+      this.persistenceEnabled && options.storagePath
+        ? new JsonlSessionStore(options.storagePath)
+        : new NoopSessionStore();
     this.isResumeSession = isResume;
     this.rootLogger = createRootLogger(options.logger, this.sessionId);
     this.logger = this.rootLogger.child(LogCategory.AGENT);
@@ -128,16 +129,20 @@ class Session implements ISession {
       await this.runtime.ensureSessionCreated();
     }
 
-    this.agent = await Agent.create(config, {
-      permissionMode: this.permissionMode,
-      systemPrompt: this.options.systemPrompt,
-      maxTurns: this.maxTurns,
-      permissionHandler: this.options.permissionHandler,
-      canUseTool: this.options.canUseTool,
-      toolSourcePolicy: this.options.toolSourcePolicy,
-      outputFormat: this.options.outputFormat,
-      sandbox: this.options.sandbox,
-    }, this.runtime.getAgentRuntimeDeps());
+    this.agent = await Agent.create(
+      config,
+      {
+        permissionMode: this.permissionMode,
+        systemPrompt: this.options.systemPrompt,
+        maxTurns: this.maxTurns,
+        permissionHandler: this.options.permissionHandler,
+        canUseTool: this.options.canUseTool,
+        toolSourcePolicy: this.options.toolSourcePolicy,
+        outputFormat: this.options.outputFormat,
+        sandbox: this.options.sandbox,
+      },
+      this.runtime.getAgentRuntimeDeps(),
+    );
 
     this.initialized = true;
     this.cleanupHandle = registerCleanup(() => this.close());
@@ -169,7 +174,7 @@ class Session implements ISession {
     return {
       models: [modelConfig],
       currentModelId: modelConfig.id,
-      temperature: 0.7,
+      temperature: this.options.temperature ?? 0.7,
       permissions: {
         allow: [],
         deny: [],
@@ -179,12 +184,13 @@ class Session implements ISession {
 
   private buildModelConfig(): ModelConfig {
     const provider = this.options.provider;
-    const openAIHeaders = provider.type === 'openai'
-      ? {
-        ...(provider.organization ? { 'OpenAI-Organization': provider.organization } : {}),
-        ...(provider.projectId ? { 'OpenAI-Project': provider.projectId } : {}),
-      }
-      : {};
+    const openAIHeaders =
+      provider.type === 'openai'
+        ? {
+            ...(provider.organization ? { 'OpenAI-Organization': provider.organization } : {}),
+            ...(provider.projectId ? { 'OpenAI-Project': provider.projectId } : {}),
+          }
+        : {};
     const headers = {
       ...provider.headers,
       ...openAIHeaders,
@@ -198,7 +204,12 @@ class Session implements ISession {
       apiKey: provider.apiKey || '',
       baseUrl: provider.baseUrl || this.getDefaultBaseUrl(provider.type),
       headers: Object.keys(headers).length > 0 ? headers : undefined,
-      maxContextTokens: 128000,
+      maxContextTokens: this.options.maxContextTokens ?? 128000,
+      maxOutputTokens: this.options.maxOutputTokens,
+      temperature: this.options.temperature,
+      providerOptions: this.options.providerOptions,
+      thinkingEnabled: this.options.thinkingEnabled,
+      thinkingBudget: this.options.thinkingBudget,
     };
   }
 
@@ -230,7 +241,9 @@ class Session implements ISession {
     await this.ensureInitialized();
 
     if (this.pendingMessage !== null) {
-      throw new Error('Cannot send a new message while a previous message is pending. Call stream() first.');
+      throw new Error(
+        'Cannot send a new message while a previous message is pending. Call stream() first.',
+      );
     }
 
     this.pendingMessage = message;
@@ -301,8 +314,9 @@ class Session implements ISession {
       signal = this.abortController.signal;
     }
 
-    const snapshot = pendingSnapshot
-      ?? createContextSnapshot(this.sessionId, nanoid(), this.defaultContext, sendOptions?.context);
+    const snapshot =
+      pendingSnapshot ??
+      createContextSnapshot(this.sessionId, nanoid(), this.defaultContext, sendOptions?.context);
     runtime.prepareTurn(snapshot);
 
     const context: ChatContext = {
@@ -392,11 +406,15 @@ class Session implements ISession {
           }
           case 'tool_progress': {
             if (value.toolCall.type !== 'function') break;
-            traceRecorder?.addEvent('tool_progress', {
-              toolCallId: value.toolCall.id,
-              name: value.toolCall.function.name,
-              message: value.message,
-            }, toolSpans.get(value.toolCall.id));
+            traceRecorder?.addEvent(
+              'tool_progress',
+              {
+                toolCallId: value.toolCall.id,
+                name: value.toolCall.function.name,
+                message: value.message,
+              },
+              toolSpans.get(value.toolCall.id),
+            );
             yield {
               type: 'tool_progress',
               id: value.toolCall.id,
@@ -408,11 +426,15 @@ class Session implements ISession {
           }
           case 'tool_message': {
             if (value.toolCall.type !== 'function') break;
-            traceRecorder?.addEvent('tool_message', {
-              toolCallId: value.toolCall.id,
-              name: value.toolCall.function.name,
-              message: value.message,
-            }, toolSpans.get(value.toolCall.id));
+            traceRecorder?.addEvent(
+              'tool_message',
+              {
+                toolCallId: value.toolCall.id,
+                name: value.toolCall.function.name,
+                message: value.message,
+              },
+              toolSpans.get(value.toolCall.id),
+            );
             yield {
               type: 'tool_message',
               id: value.toolCall.id,
@@ -424,11 +446,15 @@ class Session implements ISession {
           }
           case 'tool_runtime_patch': {
             if (value.toolCall.type !== 'function') break;
-            traceRecorder?.addEvent('tool_runtime_patch', {
-              toolCallId: value.toolCall.id,
-              name: value.toolCall.function.name,
-              patch: value.patch,
-            }, toolSpans.get(value.toolCall.id));
+            traceRecorder?.addEvent(
+              'tool_runtime_patch',
+              {
+                toolCallId: value.toolCall.id,
+                name: value.toolCall.function.name,
+                patch: value.patch,
+              },
+              toolSpans.get(value.toolCall.id),
+            );
             yield {
               type: 'tool_runtime_patch',
               id: value.toolCall.id,
@@ -440,11 +466,15 @@ class Session implements ISession {
           }
           case 'tool_context_patch': {
             if (value.toolCall.type !== 'function') break;
-            traceRecorder?.addEvent('tool_context_patch', {
-              toolCallId: value.toolCall.id,
-              name: value.toolCall.function.name,
-              patch: value.patch,
-            }, toolSpans.get(value.toolCall.id));
+            traceRecorder?.addEvent(
+              'tool_context_patch',
+              {
+                toolCallId: value.toolCall.id,
+                name: value.toolCall.function.name,
+                patch: value.patch,
+              },
+              toolSpans.get(value.toolCall.id),
+            );
             yield {
               type: 'tool_context_patch',
               id: value.toolCall.id,
@@ -456,11 +486,15 @@ class Session implements ISession {
           }
           case 'tool_new_messages': {
             if (value.toolCall.type !== 'function') break;
-            traceRecorder?.addEvent('tool_new_messages', {
-              toolCallId: value.toolCall.id,
-              name: value.toolCall.function.name,
-              messages: value.messages,
-            }, toolSpans.get(value.toolCall.id));
+            traceRecorder?.addEvent(
+              'tool_new_messages',
+              {
+                toolCallId: value.toolCall.id,
+                name: value.toolCall.function.name,
+                messages: value.messages,
+              },
+              toolSpans.get(value.toolCall.id),
+            );
             yield {
               type: 'tool_new_messages',
               id: value.toolCall.id,
@@ -472,11 +506,15 @@ class Session implements ISession {
           }
           case 'tool_permission_updates': {
             if (value.toolCall.type !== 'function') break;
-            traceRecorder?.addEvent('tool_permission_updates', {
-              toolCallId: value.toolCall.id,
-              name: value.toolCall.function.name,
-              updates: value.updates,
-            }, toolSpans.get(value.toolCall.id));
+            traceRecorder?.addEvent(
+              'tool_permission_updates',
+              {
+                toolCallId: value.toolCall.id,
+                name: value.toolCall.function.name,
+                updates: value.updates,
+              },
+              toolSpans.get(value.toolCall.id),
+            );
             yield {
               type: 'tool_permission_updates',
               id: value.toolCall.id,
@@ -757,8 +795,8 @@ class Session implements ISession {
     await this.ensureInitialized();
     const snapshot = this.persistenceEnabled
       ? await this.store.forkState(this.sessionId, {
-        messageId: options?.messageId,
-      })
+          messageId: options?.messageId,
+        })
       : this.createSnapshotFromMessages(options?.messageId);
 
     const forkedSession = new Session({
@@ -832,7 +870,9 @@ export async function createSession(options: SessionOptions): Promise<ISession> 
 
 export async function resumeSession(options: ResumeOptions): Promise<ISession> {
   if (options.persistSession === false) {
-    throw new Error('resumeSession() requires session persistence. Remove persistSession: false or use createSession().');
+    throw new Error(
+      'resumeSession() requires session persistence. Remove persistSession: false or use createSession().',
+    );
   }
   const { sessionId, ...sessionOptions } = options;
   const session = new Session(sessionOptions, sessionId, true);
@@ -847,7 +887,9 @@ export interface ForkOptions extends ResumeOptions {
 
 export async function forkSession(options: ForkOptions): Promise<ISession> {
   if (options.persistSession === false) {
-    throw new Error('forkSession() requires session persistence. Remove persistSession: false and call session.fork() on a live session instead.');
+    throw new Error(
+      'forkSession() requires session persistence. Remove persistSession: false and call session.fork() on a live session instead.',
+    );
   }
   const { sessionId, messageId, ...sessionOptions } = options;
 
@@ -871,7 +913,12 @@ export async function prompt(
   await session.initialize();
 
   const toolCalls: ToolCallRecord[] = [];
-  let totalUsage: TokenUsage = { inputTokens: 0, outputTokens: 0, totalTokens: 0, maxContextTokens: 0 };
+  let totalUsage: TokenUsage = {
+    inputTokens: 0,
+    outputTokens: 0,
+    totalTokens: 0,
+    maxContextTokens: 0,
+  };
   let turnsCount = 0;
   let result = '';
   let errorMessage: string | null = null;

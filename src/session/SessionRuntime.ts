@@ -385,7 +385,7 @@ export class SessionRuntime {
     const disallowedTools = new Set(this.options.disallowedTools || []);
 
     return tools.filter((tool) => {
-      if (allowedTools && allowedTools.length > 0 && !allowedTools.includes(tool.name)) {
+      if (allowedTools !== undefined && !allowedTools.includes(tool.name)) {
         return false;
       }
       return !disallowedTools.has(tool.name);

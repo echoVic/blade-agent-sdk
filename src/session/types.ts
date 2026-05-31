@@ -1,12 +1,26 @@
 import type { UserMessageContent } from '../agent/types.js';
-import type { SessionId } from '../types/branded.js';
 import type { SdkMcpServerHandle } from '../mcp/SdkMcpServer.js';
 import type { AgentTrace, ObservabilityOptions } from '../observability/index.js';
-import type { ContextSnapshot, RuntimeContext, RuntimeContextPatch, RuntimePatch } from '../runtime/index.js';
+import type {
+  ContextSnapshot,
+  RuntimeContext,
+  RuntimeContextPatch,
+  RuntimePatch,
+} from '../runtime/index.js';
 import type { Message } from '../services/ChatServiceInterface.js';
 import type { ToolCatalogSourcePolicy } from '../tools/catalog/index.js';
 import type { ExecutionContext, ToolDefinition, ToolResult } from '../tools/types/index.js';
-import type { JsonObject, JsonValue, McpServerConfig, OutputFormat, PermissionMode, ProviderType, SandboxSettings, TokenUsage } from '../types/common.js';
+import type { SessionId } from '../types/branded.js';
+import type {
+  JsonObject,
+  JsonValue,
+  McpServerConfig,
+  OutputFormat,
+  PermissionMode,
+  ProviderType,
+  SandboxSettings,
+  TokenUsage,
+} from '../types/common.js';
 import type { HookEvent, StreamMessageType } from '../types/constants.js';
 import type { AgentLogger } from '../types/logging.js';
 import type { CanUseTool, PermissionHandler, PermissionUpdate } from '../types/permissions.js';
@@ -49,13 +63,50 @@ export type StreamMessage =
   | { type: 'tool_use'; id: string; name: string; input: JsonValue; sessionId: SessionId }
   | { type: 'tool_progress'; id: string; name: string; message: string; sessionId: SessionId }
   | { type: 'tool_message'; id: string; name: string; message: string; sessionId: SessionId }
-  | { type: 'tool_runtime_patch'; id: string; name: string; patch: RuntimePatch; sessionId: SessionId }
-  | { type: 'tool_context_patch'; id: string; name: string; patch: RuntimeContextPatch; sessionId: SessionId }
-  | { type: 'tool_new_messages'; id: string; name: string; messages: Message[]; sessionId: SessionId }
-  | { type: 'tool_permission_updates'; id: string; name: string; updates: PermissionUpdate[]; sessionId: SessionId }
-  | { type: 'tool_result'; id: string; name: string; output: string | object; isError?: boolean; sessionId: SessionId }
+  | {
+      type: 'tool_runtime_patch';
+      id: string;
+      name: string;
+      patch: RuntimePatch;
+      sessionId: SessionId;
+    }
+  | {
+      type: 'tool_context_patch';
+      id: string;
+      name: string;
+      patch: RuntimeContextPatch;
+      sessionId: SessionId;
+    }
+  | {
+      type: 'tool_new_messages';
+      id: string;
+      name: string;
+      messages: Message[];
+      sessionId: SessionId;
+    }
+  | {
+      type: 'tool_permission_updates';
+      id: string;
+      name: string;
+      updates: PermissionUpdate[];
+      sessionId: SessionId;
+    }
+  | {
+      type: 'tool_result';
+      id: string;
+      name: string;
+      output: string | object;
+      isError?: boolean;
+      sessionId: SessionId;
+    }
   | { type: 'usage'; usage: TokenUsage; sessionId: SessionId }
-  | { type: 'result'; subtype: 'success' | 'error'; content?: string; error?: string; sessionId: SessionId }
+  | {
+      type: 'result';
+      subtype: 'success' | 'error';
+      content?: string;
+      error?: string;
+      sessionId: SessionId;
+    }
   | { type: 'error'; message: string; code?: string; sessionId: SessionId };
 
 type _AssertStreamMessageComplete = Assert<IsEqual<StreamMessage['type'], StreamMessageType>>;
@@ -94,8 +145,6 @@ export type SessionHookEvent =
   | typeof HookEvent.SessionEnd
   | typeof HookEvent.TaskCompleted;
 
-
-
 export interface SubagentInfo {
   parentSessionId: string;
   subagentType: string;
@@ -110,11 +159,15 @@ export interface AgentDefinition {
   model?: string;
 }
 
-
-
 export interface SessionOptions {
   provider: ProviderConfig;
   model: string;
+  temperature?: number;
+  maxOutputTokens?: number;
+  maxContextTokens?: number;
+  providerOptions?: JsonObject;
+  thinkingEnabled?: boolean;
+  thinkingBudget?: number;
 
   allowedTools?: string[];
   disallowedTools?: string[];
