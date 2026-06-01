@@ -2,6 +2,9 @@
 
 本文件记录 @blade-ai/agent-sdk 的所有重要变更。
 
+## [1.0.12] - 2026-06-01
+
+- dffe296 feat(package exports): 新增多子路径包导出，区分浏览器与服务端入口
 ## [1.0.11] - 2026-06-01
 
 - 31f1c68 feat(session): 新增token预算配置支持
