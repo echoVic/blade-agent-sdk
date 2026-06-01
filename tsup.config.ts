@@ -14,7 +14,16 @@ const externals: string[] = [
 ];
 
 export default defineConfig({
-  entry: ['src/index.ts'],
+  entry: {
+    index: 'src/index.ts',
+    'browser/index': 'src/browser/index.ts',
+    'browser/server-only-stub': 'src/browser/server-only-stub.ts',
+    'core/index': 'src/core/index.ts',
+    'local/index': 'src/local/index.ts',
+    'server/index': 'src/server/index.ts',
+    'session/index': 'src/session/index.ts',
+    'tools/index': 'src/tools/index.ts',
+  },
   format: ['esm'],
   target: 'node18',
   outDir: 'dist',

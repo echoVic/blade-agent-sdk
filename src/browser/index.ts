@@ -1,0 +1,42 @@
+export type {
+  AgentTrace,
+  ContextSnapshot,
+  ExecutionContext,
+  JsonObject,
+  JsonValue,
+  ModelConfig,
+  ObservabilityOptions,
+  ProviderType,
+  RuntimeContext,
+  RuntimeContextPatch,
+  RuntimePatch,
+  SendOptions,
+  StreamMessage,
+  StreamOptions,
+  TokenUsage,
+  ToolDefinition,
+  ToolEffect,
+  ToolResult,
+} from '../core/index.js';
+export {
+  HookEvent,
+  MessageRole,
+  PermissionDecision,
+  PermissionMode,
+  StreamMessageType,
+  ToolKind,
+} from '../core/index.js';
+
+export {
+  createMemoryReadTool,
+  createMemoryWriteTool,
+  createSdkMcpServer,
+  createSession,
+  FileSystemMemoryStore,
+  forkSession,
+  getBuiltinTools,
+  MemoryManager,
+  prompt,
+  resumeSession,
+  tool,
+} from './server-only-stub.js';

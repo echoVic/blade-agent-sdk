@@ -85,6 +85,25 @@ const session = await createSession({
 });
 ```
 
+## 包入口
+
+SDK 保持 session-first 的默认体验，root 入口面向 Node server 和 CLI 场景：
+
+```ts
+import { createSession } from '@blade-ai/agent-sdk';
+```
+
+需要更明确的运行时边界时，可以使用 subpath exports：
+
+```ts
+import { createSession } from '@blade-ai/agent-sdk/server';
+import { ToolKind } from '@blade-ai/agent-sdk/core';
+import { defineTool } from '@blade-ai/agent-sdk/tools';
+import { getBuiltinTools } from '@blade-ai/agent-sdk/local';
+```
+
+`@blade-ai/agent-sdk/core` 只导出 browser-safe 的类型、协议和常量。浏览器环境误导入 root、`server`、`session` 或 `local` 入口时，会解析到 browser stub，并在调用 server-only API 时抛出清晰错误。
+
 ## Observability Trace
 
 当需要调试 Agent 行为时，可以开启 `observability`。SDK 会为每次 `send()` + `stream()` 生成一条 trace，串起 turn、内容流、工具调用、usage、hooks 和最终结果。

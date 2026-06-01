@@ -1,6 +1,18 @@
 # API 参考
 
-`@blade-ai/agent-sdk` 根包导出的所有公开符号。
+`@blade-ai/agent-sdk` 根包保持 session-first 体验，面向 Node server 和 CLI 场景。浏览器端应优先从 `@blade-ai/agent-sdk/core` 导入类型、协议和常量；误导入 root、`server`、`session` 或 `local` 入口时会解析到 browser stub，并在调用 server-only API 时抛出清晰错误。
+
+## 包入口
+
+| 入口 | 运行环境 | 说明 |
+|------|---------|------|
+| `@blade-ai/agent-sdk` | Node server / CLI | 默认 session-first 入口，导出 `createSession()` 等完整 server runtime API |
+| `@blade-ai/agent-sdk/server` | Node server / CLI | 显式 server 入口，等价于 server-only root facade |
+| `@blade-ai/agent-sdk/session` | Node server / CLI | Session API 子入口 |
+| `@blade-ai/agent-sdk/core` | Browser-safe / Node | 类型、协议、事件、常量，不导入 Node-only runtime |
+| `@blade-ai/agent-sdk/browser` | Browser | Browser-safe 常量和 server-only stub |
+| `@blade-ai/agent-sdk/tools` | Browser-safe / Node | 工具定义、工具类型、工具目录等不依赖本地执行器的 API |
+| `@blade-ai/agent-sdk/local` | Node server / CLI | 内置工具、MCP、memory、sandbox 等 Node 本地能力 |
 
 ## 函数
 
