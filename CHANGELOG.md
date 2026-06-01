@@ -2,6 +2,11 @@
 
 本文件记录 @blade-ai/agent-sdk 的所有重要变更。
 
+## [1.0.11] - 2026-06-01
+
+- 31f1c68 feat(session): 新增token预算配置支持
+- 25d867b feat: 完善工具白名单处理并新增模型参数配置支持
+- 57efc18 feat(observability): 新增Agent会话可观测性追踪支持
 ## [1.0.10] - 2026-05-30
 
 - 无相关变更
