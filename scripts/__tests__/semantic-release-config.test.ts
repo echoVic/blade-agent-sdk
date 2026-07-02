@@ -42,17 +42,21 @@ describe('release workflow', () => {
     });
   });
 
-  it('verifies the package before running semantic-release with npm auth available', () => {
+  it('verifies the package before running semantic-release with trusted publishing', () => {
     const workflow = parse(
       readFileSync(resolve('.github/workflows/release.yml'), 'utf8')
     );
     const steps = workflow.jobs.release.steps;
     const commands = steps.map((step: { run?: string }) => step.run).filter(Boolean);
+    const setupNodeStep = steps.find((step: { uses?: string }) =>
+      step.uses?.startsWith('actions/setup-node@')
+    );
     const releaseStep = steps.find((step: { run?: string }) =>
       step.run?.includes('semantic-release')
     );
 
     expect(commands).toEqual([
+      'npm install -g npm@^11.5.1',
       'pnpm install --frozen-lockfile',
       'pnpm run lint',
       'pnpm run type-check',
@@ -60,9 +64,14 @@ describe('release workflow', () => {
       'pnpm run test',
       'pnpm exec semantic-release',
     ]);
+    expect(setupNodeStep.with).toMatchObject({
+      'node-version': '22.14',
+      'registry-url': 'https://registry.npmjs.org',
+    });
     expect(releaseStep.env).toMatchObject({
       GITHUB_TOKEN: '${{ secrets.GITHUB_TOKEN }}',
-      NPM_TOKEN: '${{ secrets.NPM_TOKEN }}',
     });
+    expect(releaseStep.env).not.toHaveProperty('NPM_TOKEN');
+    expect(releaseStep.env).not.toHaveProperty('NPM_CONFIG_PROVENANCE');
   });
 });

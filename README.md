@@ -181,7 +181,14 @@ pnpm run docs:dev
 - `BREAKING CHANGE:` 触发 major 版本
 - `docs:`、`test:`、`chore:` 等默认不会单独发包
 
-第一次启用前，需要在 GitHub 仓库的 Actions secrets 中配置 `NPM_TOKEN`，或在 npm 上为这个仓库配置 Trusted Publishing。手动预演可以运行：
+第一次启用前，需要在 npm 上为 `@blade-ai/agent-sdk` 配置 Trusted Publishing，让 GitHub Actions 通过 OIDC 发布，不再依赖长期 `NPM_TOKEN`。npm 配置项：
+
+- Owner: `echoVic`
+- Repository: `blade-agent-sdk`
+- Workflow filename: `release.yml`
+- Environment name: 留空
+
+手动预演可以运行：
 
 ```bash
 pnpm run release:dry
