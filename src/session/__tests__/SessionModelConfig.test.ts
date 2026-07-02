@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 
-const createAgent = vi.fn(async () => ({
+const createAgent = vi.fn(async (_config: unknown, _options?: unknown) => ({
   async setModel() {},
 }));
 

@@ -19,6 +19,7 @@ import {
   PermissionMode,
   prompt,
   type StreamMessage,
+  ToolErrorType,
 } from '../index.js';
 
 // ─── 配置 ─────────────────────────────────────────────────
@@ -219,7 +220,11 @@ describeDeepSeek('2. Thinking + Tool Use 组合场景', () => {
         }
         return {
           success: false as const,
-          error: `API Error: endpoint "${params.endpoint}" returned 503 Service Unavailable`,
+          llmContent: `API Error: endpoint "${params.endpoint}" returned 503 Service Unavailable`,
+          error: {
+            type: ToolErrorType.EXECUTION_ERROR,
+            message: `API Error: endpoint "${params.endpoint}" returned 503 Service Unavailable`,
+          },
         };
       },
     });
@@ -412,7 +417,8 @@ describeDeepSeek('5. 结构化输出兼容性', () => {
     // 验证输出是合法 JSON
     const jsonMatch = res.result.match(/\{[\s\S]*\}/);
     expect(jsonMatch).not.toBeNull();
-    const parsed = JSON.parse(jsonMatch![0]);
+    if (!jsonMatch) throw new Error('Expected JSON object in response');
+    const parsed = JSON.parse(jsonMatch[0]);
     expect(parsed.languages).toBeDefined();
     expect(parsed.languages.length).toBeGreaterThanOrEqual(3);
     expect(parsed.languages[0].name).toBeDefined();
@@ -509,7 +515,7 @@ describeDeepSeek('7. 并发与边界情况', () => {
 
     let aborted = false;
     try {
-      for await (const msg of session.stream({ includeThinking: true })) {
+      for await (const _msg of session.stream({ includeThinking: true })) {
         chunkCount++;
         if (chunkCount > 200) break; // 安全阀
       }

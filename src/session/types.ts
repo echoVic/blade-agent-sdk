@@ -175,10 +175,10 @@ export interface SessionOptions {
   disallowedTools?: string[];
   toolSourcePolicy?: ToolCatalogSourcePolicy;
   mcpServers?: Record<string, McpServerConfig | SdkMcpServerHandle>;
-  // 使用 ToolDefinition<any> 以容纳不同 TParams 的自定义工具：execute 的参数位是逆变的，
+  // 使用 ToolDefinition<never> 以容纳不同 TParams 的自定义工具：execute 的参数位是逆变的，
   // 若写成 ToolDefinition<JsonObject>[]，则 defineTool<{...}>() 得到的强类型工具无法赋值进来，
-  // 迫使调用方在 execute 内部做 cast。这里的 any 仅作用于数组元素的参数位，不泄漏到调用方的 execute。
-  tools?: ToolDefinition<any>[];
+  // 迫使调用方在 execute 内部做 cast。never 只用于数组元素的参数位，不泄漏到调用方的 execute。
+  tools?: ToolDefinition<never>[];
 
   permissionMode?: PermissionMode;
   permissionHandler?: PermissionHandler;
