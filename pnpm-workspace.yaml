@@ -1,0 +1,4 @@
+allowBuilds:
+  '@vscode/ripgrep': true
+  esbuild: true
+  node-pty: true

@@ -17,6 +17,7 @@
  * 13. Schema sanitization（strictTools 模式）
  * 14. Reasoning 模型（如果可用）
  */
+import type { JSONSchema7 } from 'json-schema';
 import { describe, expect, it } from 'vitest';
 import type { Message } from '../ChatServiceInterface.js';
 import { createChatServiceAsync } from '../ChatServiceInterface.js';
@@ -60,10 +61,12 @@ describeLive('DeepSeek V4 Pro 深度集成测试', () => {
       ]);
 
       expect(response.content).toContain('测试成功');
-      expect(response.usage).toBeDefined();
-      expect(response.usage!.promptTokens).toBeGreaterThan(0);
-      expect(response.usage!.completionTokens).toBeGreaterThan(0);
-      expect(response.usage!.totalTokens).toBeGreaterThan(0);
+      const { usage } = response;
+      expect(usage).toBeDefined();
+      if (!usage) throw new Error('Expected usage to be returned');
+      expect(usage.promptTokens).toBeGreaterThan(0);
+      expect(usage.completionTokens).toBeGreaterThan(0);
+      expect(usage.totalTokens).toBeGreaterThan(0);
     }, timeout);
 
     it('流式响应完整接收', async () => {
@@ -78,7 +81,7 @@ describeLive('DeepSeek V4 Pro 深度集成测试', () => {
 
       let content = '';
       let chunkCount = 0;
-      let finalUsage: typeof undefined | { totalTokens: number } = undefined;
+      let finalUsage: { totalTokens: number } | undefined;
 
       for await (const chunk of service.streamChat([
         { role: 'user', content: '从 1 数到 5，用逗号分隔' },
@@ -95,7 +98,8 @@ describeLive('DeepSeek V4 Pro 深度集成测试', () => {
       expect(content).toMatch(/1.*2.*3.*4.*5/);
       expect(chunkCount).toBeGreaterThan(1); // 确认是多 chunk 流式
       expect(finalUsage).toBeDefined();
-      expect(finalUsage!.totalTokens).toBeGreaterThan(0);
+      if (!finalUsage) throw new Error('Expected final usage to be returned');
+      expect(finalUsage.totalTokens).toBeGreaterThan(0);
     }, timeout);
 
     it('处理中文特殊字符和 emoji', async () => {
@@ -114,7 +118,7 @@ describeLive('DeepSeek V4 Pro 深度集成测试', () => {
 
       expect(response.content).toContain('你好');
       // 至少包含部分特殊字符
-      expect(response.content).toMatch(/[🌍αβ∑∞]/);
+      expect(response.content).toMatch(/[🌍αβ∑∞]/u);
     }, timeout);
 
     it('多轮对话上下文保持', async () => {
@@ -150,7 +154,7 @@ describeLive('DeepSeek V4 Pro 深度集成测试', () => {
         required: ['city', 'unit'],
         additionalProperties: false,
       },
-    };
+    } satisfies { name: string; description: string; parameters: JSONSchema7 };
 
     const calculatorTool = {
       name: 'calculate',
@@ -163,7 +167,7 @@ describeLive('DeepSeek V4 Pro 深度集成测试', () => {
         required: ['expression'],
         additionalProperties: false,
       },
-    };
+    } satisfies { name: string; description: string; parameters: JSONSchema7 };
 
     it('单工具调用，参数正确解析', async () => {
       const service = await createChatServiceAsync({
@@ -180,10 +184,12 @@ describeLive('DeepSeek V4 Pro 深度集成测试', () => {
         [weatherTool],
       );
 
-      expect(response.toolCalls).toBeDefined();
-      expect(response.toolCalls!.length).toBeGreaterThanOrEqual(1);
+      const toolCalls = response.toolCalls ?? [];
+      expect(toolCalls.length).toBeGreaterThanOrEqual(1);
 
-      const call = response.toolCalls![0];
+      const call = toolCalls[0];
+      expect(call).toBeDefined();
+      if (!call) throw new Error('Expected a weather tool call');
       expect(call.type).toBe('function');
       expect(call.function.name).toBe('get_weather');
 
@@ -207,10 +213,12 @@ describeLive('DeepSeek V4 Pro 深度集成测试', () => {
         [weatherTool, calculatorTool],
       );
 
-      expect(response.toolCalls).toBeDefined();
-      expect(response.toolCalls!.length).toBeGreaterThanOrEqual(1);
+      const toolCalls = response.toolCalls ?? [];
+      expect(toolCalls.length).toBeGreaterThanOrEqual(1);
 
-      const call = response.toolCalls![0];
+      const call = toolCalls[0];
+      expect(call).toBeDefined();
+      if (!call) throw new Error('Expected a calculator tool call');
       expect(call.function.name).toBe('calculate');
       const args = JSON.parse(call.function.arguments);
       expect(args.expression).toMatch(/123.*456/);
@@ -226,14 +234,14 @@ describeLive('DeepSeek V4 Pro 深度集成测试', () => {
         temperature: 0,
       });
 
-      let toolCalls: Array<{ id?: string; function?: { name?: string; arguments?: string } }> = [];
+      const toolCalls: Array<{ id?: string; function?: { name?: string; arguments?: string } }> = [];
       for await (const chunk of service.streamChat(
         [{ role: 'user', content: '查询上海天气，用华氏度' }],
         [weatherTool],
       )) {
         if (chunk.toolCalls) {
           for (const tc of chunk.toolCalls) {
-            toolCalls.push(tc as any);
+            toolCalls.push(tc);
           }
         }
       }
@@ -261,8 +269,11 @@ describeLive('DeepSeek V4 Pro 深度集成测试', () => {
         [weatherTool],
       );
 
-      expect(firstResponse.toolCalls).toBeDefined();
-      const toolCall = firstResponse.toolCalls![0];
+      const firstToolCalls = firstResponse.toolCalls ?? [];
+      expect(firstToolCalls.length).toBeGreaterThanOrEqual(1);
+      const toolCall = firstToolCalls[0];
+      expect(toolCall).toBeDefined();
+      if (!toolCall) throw new Error('Expected a tool call before returning tool result');
 
       // 回传 tool result 让模型生成最终回答
       const messages: Message[] = [
@@ -305,7 +316,9 @@ describeLive('DeepSeek V4 Pro 深度集成测试', () => {
         { role: 'user', content: 'say hello' },
       ]);
 
-      const usage = response.usage!;
+      const { usage } = response;
+      expect(usage).toBeDefined();
+      if (!usage) throw new Error('Expected usage to be returned');
       expect(usage.promptTokens).toBeGreaterThan(0);
       expect(usage.completionTokens).toBeGreaterThan(0);
       expect(usage.totalTokens).toBe(usage.promptTokens + usage.completionTokens);
@@ -381,7 +394,7 @@ describeLive('DeepSeek V4 Pro 深度集成测试', () => {
       let aborted = false;
 
       try {
-        for await (const chunk of service.streamChat(
+        for await (const _chunk of service.streamChat(
           [{ role: 'user', content: '从 1 数到 10000' }],
           undefined,
           controller.signal,
@@ -639,7 +652,8 @@ describe('DeepSeek 离线逻辑测试', () => {
       });
 
       expect(schema.properties).toBeDefined();
-      const nameSchema = (schema.properties as any).name;
+      const properties = schema.properties as Record<string, Record<string, unknown>>;
+      const nameSchema = properties.name;
       expect(nameSchema.minLength).toBeUndefined();
       expect(nameSchema.maxLength).toBeUndefined();
     });
@@ -666,7 +680,7 @@ describe('DeepSeek 离线逻辑测试', () => {
         },
       });
 
-      const props = schema.properties as any;
+      const props = schema.properties as Record<string, Record<string, unknown>>;
       expect(props.date.format).toBeUndefined();
       expect(props.email.format).toBe('email');
     });
@@ -684,7 +698,7 @@ describe('DeepSeek 离线逻辑测试', () => {
         },
       });
 
-      const valueSchema = (schema.properties as any).value;
+      const valueSchema = (schema.properties as Record<string, Record<string, unknown>>).value;
       expect(valueSchema.anyOf).toBeDefined();
       expect(valueSchema.oneOf).toBeUndefined();
     });
@@ -702,7 +716,8 @@ describe('DeepSeek 离线逻辑测试', () => {
         },
       });
 
-      const nestedField = (schema.properties as any).nested.properties.field;
+      const nested = (schema.properties as Record<string, { properties: Record<string, Record<string, unknown>> }>).nested;
+      const nestedField = nested.properties.field;
       expect(nestedField.minLength).toBeUndefined();
     });
   });
@@ -750,11 +765,12 @@ describe('DeepSeek 离线逻辑测试', () => {
       }, 'deepseek-v4-pro');
 
       expect(cost).toBeDefined();
-      expect(cost!.inputCacheHitTokens).toBe(200);
-      expect(cost!.inputCacheMissTokens).toBe(800);
-      expect(cost!.outputTokens).toBe(500);
-      expect(cost!.totalCost).toBeGreaterThan(0);
-      expect(cost!.currency).toBe('USD');
+      if (!cost) throw new Error('Expected known DeepSeek model cost');
+      expect(cost.inputCacheHitTokens).toBe(200);
+      expect(cost.inputCacheMissTokens).toBe(800);
+      expect(cost.outputTokens).toBe(500);
+      expect(cost.totalCost).toBeGreaterThan(0);
+      expect(cost.currency).toBe('USD');
     });
 
     it('未知模型返回 undefined', () => {
@@ -792,6 +808,8 @@ describe('DeepSeek 离线逻辑测试', () => {
   describe('withDeepSeekDefaults', () => {
     it('填充默认值', () => {
       const config = withDeepSeekDefaults({
+        id: 'deepseek-v4-pro',
+        name: 'DeepSeek V4 Pro',
         provider: 'deepseek',
         model: 'deepseek-v4-pro',
         apiKey: 'test',
@@ -807,6 +825,8 @@ describe('DeepSeek 离线逻辑测试', () => {
 
     it('非 deepseek provider 不修改', () => {
       const original = {
+        id: 'gpt-4',
+        name: 'GPT-4',
         provider: 'openai' as const,
         model: 'gpt-4',
         apiKey: 'test',
@@ -818,6 +838,8 @@ describe('DeepSeek 离线逻辑测试', () => {
 
     it('reasoner 别名启用 thinking', () => {
       const config = withDeepSeekDefaults({
+        id: 'deepseek-reasoner',
+        name: 'DeepSeek Reasoner',
         provider: 'deepseek',
         model: 'deepseek-reasoner',
         apiKey: 'test',
@@ -845,10 +867,15 @@ describe('DeepSeek 离线逻辑测试', () => {
         { strictTools: true },
       );
 
-      expect(tools).toBeDefined();
-      expect(tools![0].strict).toBe(true);
+      const preparedTools = tools ?? [];
+      expect(preparedTools.length).toBe(1);
+      const tool = preparedTools[0];
+      expect(tool).toBeDefined();
+      if (!tool) throw new Error('Expected prepared strict tool');
+      expect(tool.strict).toBe(true);
       // minLength 应被移除
-      expect((tools![0].parameters.properties as any)?.x?.minLength).toBeUndefined();
+      const properties = tool.parameters.properties as Record<string, Record<string, unknown>>;
+      expect(properties.x?.minLength).toBeUndefined();
     });
 
     it('非 strict 模式不修改 schema', () => {
@@ -866,9 +893,14 @@ describe('DeepSeek 离线逻辑测试', () => {
         { strictTools: false },
       );
 
-      expect(tools).toBeDefined();
-      expect(tools![0].strict).toBeUndefined();
-      expect((tools![0].parameters.properties as any)?.x?.minLength).toBe(1);
+      const preparedTools = tools ?? [];
+      expect(preparedTools.length).toBe(1);
+      const tool = preparedTools[0];
+      expect(tool).toBeDefined();
+      if (!tool) throw new Error('Expected prepared non-strict tool');
+      expect(tool.strict).toBeUndefined();
+      const properties = tool.parameters.properties as Record<string, Record<string, unknown>>;
+      expect(properties.x?.minLength).toBe(1);
     });
 
     it('空工具数组返回 undefined', () => {

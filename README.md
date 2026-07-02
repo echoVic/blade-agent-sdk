@@ -170,6 +170,21 @@ pnpm run lint
 pnpm run docs:dev
 ```
 
+## 发布
+
+本仓库使用 `semantic-release` 自动发包。代码合并到 `main` 后，GitHub Actions 会先运行 lint、type-check、build 和 test；通过后再根据 conventional commits 自动决定版本、创建 `v*` 标签、发布 GitHub Release，并把 `@blade-ai/agent-sdk` 发布到 npm。
+
+- `feat:` 触发 minor 版本
+- `fix:` 触发 patch 版本
+- `BREAKING CHANGE:` 触发 major 版本
+- `docs:`、`test:`、`chore:` 等默认不会单独发包
+
+第一次启用前，需要在 GitHub 仓库的 Actions secrets 中配置 `NPM_TOKEN`，或在 npm 上为这个仓库配置 Trusted Publishing。手动预演可以运行：
+
+```bash
+pnpm run release:dry
+```
+
 更多贡献约定见 [CONTRIBUTING.md](./CONTRIBUTING.md)。
 
 ## 社区
