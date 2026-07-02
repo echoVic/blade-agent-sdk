@@ -13,7 +13,7 @@ SDK 提供三种方式创建自定义工具，从简单到完整：
 最简单的工具定义方式，原样返回传入的定义。适合直接传给 `SessionOptions.tools`。
 
 ```ts
-import { defineTool } from '@blade-ai/agent-sdk';
+import { defineTool, ToolKind } from '@blade-ai/agent-sdk';
 
 const searchTool = defineTool({
   name: 'SearchDocs',
@@ -26,17 +26,22 @@ const searchTool = defineTool({
     },
     required: ['query'],
   },
-  kind: 'readonly',
+  kind: ToolKind.ReadOnly,
   execute: async (params) => {
     const results = await searchDocuments(params.query, params.limit ?? 10);
     return {
       success: true,
       llmContent: JSON.stringify(results),
-      displayContent: `找到 ${results.length} 条结果`,
+      // 可选：结构化数据（必须是 JSON 值），供调用方消费
+      data: { count: results.length },
     };
   },
 });
 ```
+
+::: tip
+`kind` 使用 `ToolKind` 枚举（`ToolKind.ReadOnly` / `ToolKind.Write` / `ToolKind.Execute`），从 `@blade-ai/agent-sdk` 导入。TypeScript 下不接受裸字符串字面量。
+:::
 
 ## createTool
 
@@ -44,12 +49,12 @@ const searchTool = defineTool({
 
 ```ts
 import { z } from 'zod';
-import { createTool } from '@blade-ai/agent-sdk';
+import { createTool, ToolKind } from '@blade-ai/agent-sdk';
 
 const deployTool = createTool({
   name: 'Deploy',
   displayName: 'Deploy',
-  kind: 'execute',
+  kind: ToolKind.Execute,
   description: {
     short: '部署应用到指定环境',
     long: '支持 staging 和 production 环境的自动部署',
@@ -64,7 +69,6 @@ const deployTool = createTool({
     return {
       success: true,
       llmContent: `已部署 v${params.version} 到 ${params.environment}`,
-      displayContent: `✅ 部署成功: v${params.version} → ${params.environment}`,
     };
   },
 });
@@ -194,17 +198,27 @@ interface ToolDescription {
 
 ### ToolResult
 
+`ToolResult` 是成功与失败两种结果的判别联合：
+
 ```ts
-interface ToolResult {
-  success: boolean;
+type ToolResult = ToolSuccessResult | ToolFailureResult;
+
+interface ToolSuccessResult {
+  success: true;
+  llmContent: string | object;   // 返回给 LLM 的内容
+  data?: JsonValue;              // 可选：结构化数据（必须是 JSON 值）
+  metadata?: ToolResultMetadata;
+}
+
+interface ToolFailureResult {
+  success: false;
   llmContent: string | object;
-  displayContent: string;
-  error?: ToolError;
-  metadata?: Record<string, unknown>;
+  error: ToolError;              // 失败时必填
+  metadata?: ToolResultMetadata;
 }
 ```
 
-`llmContent` 和 `displayContent` 分离设计让你可以给 LLM 提供结构化数据，同时给用户展示可读的摘要。
+`llmContent` 是给 LLM 消费的内容；如需返回结构化数据用 `data`（其类型为 `JsonValue`，因此自定义对象数组等需保证可 JSON 序列化）。失败时 `success: false` 且必须带 `error`。
 
 ### ExecutionContext
 
