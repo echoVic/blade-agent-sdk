@@ -3,6 +3,10 @@
   "version": "1.0.12",
   "private": false,
   "description": "Blade AI Agent SDK",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/echoVic/blade-agent-sdk"
+  },
   "type": "module",
   "engines": {
     "node": ">=22.14.0"

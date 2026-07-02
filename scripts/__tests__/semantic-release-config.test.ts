@@ -27,6 +27,17 @@ describe('semantic-release configuration', () => {
   });
 });
 
+describe('package provenance metadata', () => {
+  it('declares the GitHub repository URL expected by npm provenance', () => {
+    const packageJson = JSON.parse(readFileSync(resolve('package.json'), 'utf8'));
+
+    expect(packageJson.repository).toEqual({
+      type: 'git',
+      url: 'https://github.com/echoVic/blade-agent-sdk',
+    });
+  });
+});
+
 describe('release workflow', () => {
   it('runs after pushes to main and grants the release permissions', () => {
     const workflow = parse(
