@@ -220,6 +220,39 @@ interface ToolFailureResult {
 
 `llmContent` 是给 LLM 消费的内容；如需返回结构化数据用 `data`（其类型为 `JsonValue`，因此自定义对象数组等需保证可 JSON 序列化）。失败时 `success: false` 且必须带 `error`。
 
+::: warning data 必须可 JSON 序列化
+`data` 会被序列化落盘（结果产物存储），因此其类型约束为 `JsonValue`。若你的领域类型是 `interface`（无索引签名），赋给 `data` 时可能报「缺少索引签名」。解决办法是让该类型满足 `JsonValue`（字段均为 JSON 值），不要用 `as unknown` 强绕过——那会把「运行时序列化失败」的风险藏起来。
+:::
+
+### 为工具参数与 data 提供类型
+
+`defineTool` 支持两个可选泛型：`TParams`（参数类型）与 `TData`（`data` 字段类型，须 `extends JsonValue`）。指定后 `execute` 的 `params` 与返回的 `data` 都会得到精确类型，无需在 `execute` 内部做 `as` 断言：
+
+```ts
+import { defineTool, ToolKind } from '@blade-ai/agent-sdk';
+
+const tool = defineTool<{ query: string; limit?: number }, { count: number }>({
+  name: 'SearchDocs',
+  description: '搜索文档库',
+  kind: ToolKind.ReadOnly,
+  parameters: {
+    type: 'object',
+    properties: {
+      query: { type: 'string' },
+      limit: { type: 'number' },
+    },
+    required: ['query'],
+  },
+  execute: async (params) => {
+    // params.query: string, params.limit?: number —— 无需 cast
+    const results = await searchDocuments(params.query, params.limit ?? 10);
+    return { success: true, llmContent: JSON.stringify(results), data: { count: results.length } };
+  },
+});
+```
+
+带具体 `TParams` 的工具可以直接放进 `SessionOptions.tools`，无需断言。
+
 ### ExecutionContext
 
 ```ts

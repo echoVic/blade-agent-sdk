@@ -1,6 +1,6 @@
 import type { JSONSchema7 } from 'json-schema';
 import type { z } from 'zod';
-import type { JsonObject } from '../../types/common.js';
+import type { JsonObject, JsonValue } from '../../types/common.js';
 import type { PermissionResult } from '../../types/permissions.js';
 import type { ExecutionContext } from './ExecutionTypes.js';
 import type { ToolBehavior, ToolKind } from './ToolKind.js';
@@ -54,7 +54,7 @@ export interface PreparedPermissionMatcher {
   abstractRule?: string;
 }
 
-export interface ToolDefinition<TParams = JsonObject> {
+export interface ToolDefinition<TParams = JsonObject, TData extends JsonValue = JsonValue> {
   name: string;
   aliases?: string[];
   displayName?: string;
@@ -64,7 +64,7 @@ export interface ToolDefinition<TParams = JsonObject> {
   category?: string;
   tags?: string[];
   exposure?: ToolExposureConfig;
-  execute: (params: TParams, context: ExecutionContext) => Promise<ToolResult>;
+  execute: (params: TParams, context: ExecutionContext) => Promise<ToolResult<TData>>;
 }
 
 export interface ToolConfig<TSchema extends z.ZodSchema = z.ZodSchema, TParams = JsonObject> {

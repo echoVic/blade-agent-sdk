@@ -1,5 +1,5 @@
 import type { z } from 'zod';
-import type { JsonObject } from '../../types/common.js';
+import type { JsonObject, JsonValue } from '../../types/common.js';
 import type {
   ExecutionContext,
   Tool,
@@ -355,8 +355,8 @@ function isPathLikeKey(key: string): boolean {
  * });
  * ```
  */
-export function defineTool<TParams = JsonObject>(
-  definition: ToolDefinition<TParams>
-): ToolDefinition<TParams> {
+export function defineTool<TParams = JsonObject, TData extends JsonValue = JsonValue>(
+  definition: ToolDefinition<TParams, TData>
+): ToolDefinition<TParams, TData> {
   return definition;
 }
