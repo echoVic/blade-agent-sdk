@@ -181,6 +181,8 @@ export { ToolKind } from './tools/types/ToolKind.js';
 export { AgentId, MessageId, SessionId, ToolUseId } from './types/branded.js';
 // --- Constants & types ---
 export type {
+  JsonObject,
+  JsonValue,
   McpServerConfig,
   OutputFormat,
   SandboxSettings,

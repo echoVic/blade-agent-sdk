@@ -13,7 +13,7 @@ SDK 提供三种方式创建自定义工具，从简单到完整：
 最简单的工具定义方式，原样返回传入的定义。适合直接传给 `SessionOptions.tools`。
 
 ```ts
-import { defineTool } from '@blade-ai/agent-sdk';
+import { defineTool, ToolKind } from '@blade-ai/agent-sdk';
 
 const searchTool = defineTool({
   name: 'SearchDocs',
@@ -26,17 +26,22 @@ const searchTool = defineTool({
     },
     required: ['query'],
   },
-  kind: 'readonly',
+  kind: ToolKind.ReadOnly,
   execute: async (params) => {
     const results = await searchDocuments(params.query, params.limit ?? 10);
     return {
       success: true,
       llmContent: JSON.stringify(results),
-      displayContent: `找到 ${results.length} 条结果`,
+      // 可选：结构化数据（必须是 JSON 值），供调用方消费
+      data: { count: results.length },
     };
   },
 });
 ```
+
+::: tip
+`kind` 使用 `ToolKind` 枚举（`ToolKind.ReadOnly` / `ToolKind.Write` / `ToolKind.Execute`），从 `@blade-ai/agent-sdk` 导入。TypeScript 下不接受裸字符串字面量。
+:::
 
 ## createTool
 
@@ -44,12 +49,12 @@ const searchTool = defineTool({
 
 ```ts
 import { z } from 'zod';
-import { createTool } from '@blade-ai/agent-sdk';
+import { createTool, ToolKind } from '@blade-ai/agent-sdk';
 
 const deployTool = createTool({
   name: 'Deploy',
   displayName: 'Deploy',
-  kind: 'execute',
+  kind: ToolKind.Execute,
   description: {
     short: '部署应用到指定环境',
     long: '支持 staging 和 production 环境的自动部署',
@@ -64,7 +69,6 @@ const deployTool = createTool({
     return {
       success: true,
       llmContent: `已部署 v${params.version} 到 ${params.environment}`,
-      displayContent: `✅ 部署成功: v${params.version} → ${params.environment}`,
     };
   },
 });
@@ -194,17 +198,60 @@ interface ToolDescription {
 
 ### ToolResult
 
+`ToolResult` 是成功与失败两种结果的判别联合：
+
 ```ts
-interface ToolResult {
-  success: boolean;
+type ToolResult = ToolSuccessResult | ToolFailureResult;
+
+interface ToolSuccessResult {
+  success: true;
+  llmContent: string | object;   // 返回给 LLM 的内容
+  data?: JsonValue;              // 可选：结构化数据（必须是 JSON 值）
+  metadata?: ToolResultMetadata;
+}
+
+interface ToolFailureResult {
+  success: false;
   llmContent: string | object;
-  displayContent: string;
-  error?: ToolError;
-  metadata?: Record<string, unknown>;
+  error: ToolError;              // 失败时必填
+  metadata?: ToolResultMetadata;
 }
 ```
 
-`llmContent` 和 `displayContent` 分离设计让你可以给 LLM 提供结构化数据，同时给用户展示可读的摘要。
+`llmContent` 是给 LLM 消费的内容；如需返回结构化数据用 `data`（其类型为 `JsonValue`，因此自定义对象数组等需保证可 JSON 序列化）。失败时 `success: false` 且必须带 `error`。
+
+::: warning data 必须可 JSON 序列化
+`data` 会被序列化落盘（结果产物存储），因此其类型约束为 `JsonValue`。若你的领域类型是 `interface`（无索引签名），赋给 `data` 时可能报「缺少索引签名」。解决办法是让该类型满足 `JsonValue`（字段均为 JSON 值），不要用 `as unknown` 强绕过——那会把「运行时序列化失败」的风险藏起来。
+:::
+
+### 为工具参数与 data 提供类型
+
+`defineTool` 支持两个可选泛型：`TParams`（参数类型）与 `TData`（`data` 字段类型，须 `extends JsonValue`）。指定后 `execute` 的 `params` 与返回的 `data` 都会得到精确类型，无需在 `execute` 内部做 `as` 断言：
+
+```ts
+import { defineTool, ToolKind } from '@blade-ai/agent-sdk';
+
+const tool = defineTool<{ query: string; limit?: number }, { count: number }>({
+  name: 'SearchDocs',
+  description: '搜索文档库',
+  kind: ToolKind.ReadOnly,
+  parameters: {
+    type: 'object',
+    properties: {
+      query: { type: 'string' },
+      limit: { type: 'number' },
+    },
+    required: ['query'],
+  },
+  execute: async (params) => {
+    // params.query: string, params.limit?: number —— 无需 cast
+    const results = await searchDocuments(params.query, params.limit ?? 10);
+    return { success: true, llmContent: JSON.stringify(results), data: { count: results.length } };
+  },
+});
+```
+
+带具体 `TParams` 的工具可以直接放进 `SessionOptions.tools`，无需断言。
 
 ### ExecutionContext
 
