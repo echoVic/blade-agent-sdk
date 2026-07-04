@@ -134,6 +134,16 @@ describe('monorepo topology', () => {
     expect(permissionsSource).not.toContain('../../../../src/tools/types/ToolKind.js');
   });
 
+  it('owns core tool contracts inside agent-sdk', () => {
+    expect(existsSync('packages/agent-sdk/src/tools/types/index.ts')).toBe(true);
+
+    const coreSource = readFileSync('packages/agent-sdk/src/core/index.ts', 'utf-8');
+    const permissionsSource = readFileSync('packages/agent-sdk/src/types/permissions.ts', 'utf-8');
+
+    expect(coreSource).not.toContain('../../../../src/tools/types/index.js');
+    expect(permissionsSource).not.toContain('../../../../src/tools/types/index.js');
+  });
+
   it('owns core observability contracts inside agent-sdk', () => {
     expect(existsSync('packages/agent-sdk/src/observability/types.ts')).toBe(true);
 

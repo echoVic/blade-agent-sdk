@@ -43,7 +43,7 @@ export type {
   ToolExposureMode,
   ToolResult,
   ToolSchema,
-} from '../../../../src/tools/types/index.js';
+} from '../tools/types/index.js';
 export { ToolKind } from '../tools/types/ToolKind.js';
 export type {
   JsonObject,
