@@ -487,6 +487,111 @@ describe('SessionRuntime', () => {
     await runtime.close();
   });
 
+  it('should stream a guarded kernel turn through session stream messages', async () => {
+    const runtime = new SessionRuntime(
+      SessionId('session-kernel-stream'),
+      createOptions({
+        allowedTools: ['CustomTool'],
+        tools: [customTool],
+      }),
+      {
+        models: [],
+      },
+      PermissionMode.YOLO,
+      createFilesystemContext(workspaceRoot),
+      NOOP_LOGGER,
+    );
+    const generate = vi.fn(async () => {
+      if (generate.mock.calls.length === 1) {
+        return {
+          content: '',
+          toolCalls: [{ id: 'call_custom', name: 'CustomTool', input: { value: 'blade' } }],
+          finishReason: 'tool-calls',
+        };
+      }
+
+      return {
+        content: 'Kernel stream answer',
+        reasoningContent: 'Kernel thought',
+        usage: {
+          promptTokens: 11,
+          completionTokens: 7,
+          totalTokens: 18,
+          reasoningTokens: 2,
+        },
+        finishReason: 'stop',
+      };
+    });
+    const model: ModelPort = {
+      generate,
+      stream: async function* () {},
+    };
+
+    await runtime.initialize();
+    await runtime.ensureSessionCreated();
+
+    const events = [];
+    for await (const event of runtime.streamAgentKernelTurn({
+      input: 'Run guarded kernel stream',
+      model,
+      modelRequestDefaults: {
+        maxContextTokens: 32000,
+      },
+      includeThinking: true,
+      createExecutionContext: () => ({ userId: 'sdk-user' }),
+    })) {
+      events.push(event);
+    }
+
+    expect(events).toEqual([
+      { type: 'turn_start', turn: 1, sessionId: SessionId('session-kernel-stream') },
+      {
+        type: 'tool_use',
+        id: 'call_custom',
+        name: 'CustomTool',
+        input: { value: 'blade' },
+        sessionId: SessionId('session-kernel-stream'),
+      },
+      {
+        type: 'tool_result',
+        id: 'call_custom',
+        name: 'CustomTool',
+        output: 'ok',
+        sessionId: SessionId('session-kernel-stream'),
+      },
+      {
+        type: 'thinking',
+        delta: 'Kernel thought',
+        sessionId: SessionId('session-kernel-stream'),
+      },
+      {
+        type: 'content',
+        delta: 'Kernel stream answer',
+        sessionId: SessionId('session-kernel-stream'),
+      },
+      {
+        type: 'usage',
+        usage: {
+          inputTokens: 11,
+          outputTokens: 7,
+          totalTokens: 18,
+          maxContextTokens: 32000,
+          reasoningTokens: 2,
+        },
+        sessionId: SessionId('session-kernel-stream'),
+      },
+      { type: 'turn_end', turn: 1, sessionId: SessionId('session-kernel-stream') },
+      {
+        type: 'result',
+        subtype: 'success',
+        content: 'Kernel stream answer',
+        sessionId: SessionId('session-kernel-stream'),
+      },
+    ]);
+
+    await runtime.close();
+  });
+
   it('should disable all tools when allowedTools is an empty array', async () => {
     const runtime = new SessionRuntime(
       SessionId('session-empty-allowlist'),

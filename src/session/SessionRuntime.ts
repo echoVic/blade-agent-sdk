@@ -3,6 +3,7 @@ import type { ModelPort } from '@blade-ai/ai';
 import {
   AgentKernel,
   type AgentModelRequestDefaults,
+  type AgentStreamEvent,
   type AgentStorePort,
   type AgentToolCall,
   type AgentToolPort,
@@ -36,7 +37,7 @@ import { FileLockManager } from '../tools/execution/FileLockManager.js';
 import { ToolRegistry } from '../tools/registry/ToolRegistry.js';
 import type { ExecutionContext, Tool } from '../tools/types/index.js';
 import type { BladeConfig, McpServerConfig, PermissionsConfig } from '../types/common.js';
-import type { PermissionMode } from '../types/common.js';
+import type { PermissionMode, TokenUsage } from '../types/common.js';
 import { HookEvent } from '../types/constants.js';
 import type { SessionId } from '../types/branded.js';
 import {
@@ -51,6 +52,7 @@ import type {
   McpServerStatus,
   McpToolInfo,
   SessionOptions,
+  StreamMessage,
 } from './types.js';
 import { createSessionKernelModel } from './SessionModelPort.js';
 import { createKernelToolPort } from './SessionKernelAdapter.js';
@@ -94,6 +96,18 @@ export interface SessionAgentKernelOptions {
     signal?: AbortSignal,
   ) => ExecutionContext;
   maxSteps?: number;
+}
+
+export interface SessionAgentKernelStreamOptions extends SessionAgentKernelOptions {
+  input: string;
+  turnId?: string;
+  signal?: AbortSignal;
+  includeThinking?: boolean;
+}
+
+interface ResolvedSessionKernelModel {
+  model: ModelPort;
+  modelRequestDefaults?: AgentModelRequestDefaults;
 }
 
 export class SessionRuntime {
@@ -204,13 +218,52 @@ export class SessionRuntime {
   }
 
   createAgentKernel(options: SessionAgentKernelOptions = {}): AgentKernel {
-    const kernelModel = options.model
+    return this.createAgentKernelFromResolved(options, this.resolveAgentKernelModel(options));
+  }
+
+  async *streamAgentKernelTurn(
+    options: SessionAgentKernelStreamOptions,
+  ): AsyncGenerator<StreamMessage> {
+    const kernelModel = this.resolveAgentKernelModel(options);
+    const kernel = this.createAgentKernelFromResolved(options, kernelModel);
+    const maxContextTokens = kernelModel.modelRequestDefaults?.maxContextTokens ?? 0;
+
+    yield { type: 'turn_start', turn: 1, sessionId: this.sessionId };
+
+    for await (const event of kernel.runTurn({
+      input: options.input,
+      turnId: options.turnId,
+      signal: options.signal,
+    })) {
+      yield* this.kernelEventToStreamMessages(
+        event,
+        maxContextTokens,
+        options.includeThinking ?? false,
+      );
+    }
+  }
+
+  getBackgroundAgentManager(): BackgroundAgentManager {
+    return this.backgroundAgentManager;
+  }
+
+  private resolveAgentKernelModel(
+    options: SessionAgentKernelOptions,
+  ): ResolvedSessionKernelModel {
+    return options.model
       ? {
           model: options.model,
-          modelRequestDefaults: options.modelRequestDefaults,
+          ...(options.modelRequestDefaults
+            ? { modelRequestDefaults: options.modelRequestDefaults }
+            : {}),
         }
       : createSessionKernelModel(this.bladeConfig, options.modelId);
+  }
 
+  private createAgentKernelFromResolved(
+    options: SessionAgentKernelOptions,
+    kernelModel: ResolvedSessionKernelModel,
+  ): AgentKernel {
     return new AgentKernel({
       model: kernelModel.model,
       ...(kernelModel.modelRequestDefaults
@@ -227,8 +280,88 @@ export class SessionRuntime {
     });
   }
 
-  getBackgroundAgentManager(): BackgroundAgentManager {
-    return this.backgroundAgentManager;
+  private async *kernelEventToStreamMessages(
+    event: AgentStreamEvent,
+    maxContextTokens: number,
+    includeThinking: boolean,
+  ): AsyncGenerator<StreamMessage> {
+    switch (event.type) {
+      case 'content':
+        yield { type: 'content', delta: event.delta, sessionId: this.sessionId };
+        break;
+      case 'thinking':
+        if (includeThinking) {
+          yield { type: 'thinking', delta: event.delta, sessionId: this.sessionId };
+        }
+        break;
+      case 'tool_use':
+        yield {
+          type: 'tool_use',
+          id: event.toolCall.id,
+          name: event.toolCall.name,
+          input: event.toolCall.input,
+          sessionId: this.sessionId,
+        };
+        break;
+      case 'tool_result':
+        yield {
+          type: 'tool_result',
+          id: event.result.id,
+          name: event.result.name,
+          output: event.result.output,
+          ...(event.result.isError ? { isError: true } : {}),
+          sessionId: this.sessionId,
+        };
+        break;
+      case 'usage':
+        yield {
+          type: 'usage',
+          usage: this.toSessionUsage(event.usage, maxContextTokens),
+          sessionId: this.sessionId,
+        };
+        break;
+      case 'result':
+        yield { type: 'turn_end', turn: 1, sessionId: this.sessionId };
+        yield {
+          type: 'result',
+          subtype: 'success',
+          content: event.content,
+          sessionId: this.sessionId,
+        };
+        break;
+      case 'error':
+        yield {
+          type: 'error',
+          message: event.message,
+          ...(event.code ? { code: event.code } : {}),
+          sessionId: this.sessionId,
+        };
+        break;
+      default:
+        break;
+    }
+  }
+
+  private toSessionUsage(
+    usage: Extract<AgentStreamEvent, { type: 'usage' }>['usage'],
+    maxContextTokens: number,
+  ): TokenUsage {
+    return {
+      inputTokens: usage.promptTokens,
+      outputTokens: usage.completionTokens,
+      totalTokens: usage.totalTokens,
+      maxContextTokens,
+      ...(usage.cacheReadInputTokens !== undefined
+        ? { cacheReadInputTokens: usage.cacheReadInputTokens }
+        : {}),
+      ...(usage.cacheMissInputTokens !== undefined
+        ? { cacheMissInputTokens: usage.cacheMissInputTokens }
+        : {}),
+      ...(usage.billableInputTokens !== undefined
+        ? { billableInputTokens: usage.billableInputTokens }
+        : {}),
+      ...(usage.reasoningTokens !== undefined ? { reasoningTokens: usage.reasoningTokens } : {}),
+    };
   }
 
   async initialize(): Promise<void> {
