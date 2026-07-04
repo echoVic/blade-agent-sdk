@@ -151,6 +151,16 @@ const packageSpecs = [
       },
       {
         file: 'package/dist/local/index.d.ts',
+        forbidden: 'createSdkMcpServer(...args: unknown[])',
+        message: 'local MCP declarations must use package-local MCP API',
+      },
+      {
+        file: 'package/dist/local/index.d.ts',
+        forbidden: 'tool(...args: unknown[])',
+        message: 'local MCP declarations must use package-local MCP API',
+      },
+      {
+        file: 'package/dist/local/index.d.ts',
         forbidden: '../memory/index.js',
         message: 'local declarations must be emitted from package-local local entry source',
       },

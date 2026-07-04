@@ -345,6 +345,7 @@ Status:
 - Thirty-second adapter increment complete: `@blade-ai/agent-sdk/local` now owns the filesystem memory runtime locally. `MemoryType`, `MemoryInput`, `Memory`, `MemoryStore`, `FileSystemMemoryStore`, and `MemoryManager` live in package-local `src/local/memory.ts`, preserving slug validation, `MEMORY.md` index maintenance, deterministic listing/search, and index rendering without importing legacy root `src/memory`.
 - Thirty-third adapter increment complete: `@blade-ai/agent-sdk/local` now owns the memory read/write tools locally. `createMemoryReadTool()` and `createMemoryWriteTool()` use the package-local tool authoring runtime plus package-local `MemoryManager`, while `getBuiltinTools()` remains a broader legacy adapter for a later builtin-suite migration.
 - Thirty-fourth adapter increment complete: `@blade-ai/agent-sdk/local` now owns the sandbox runtime locally. `SandboxExecutor`, `SandboxService`, their singleton helpers, command checks, sandbox capability detection, execution option building, and command wrapping live in package-local `src/local/sandbox.ts` without importing legacy root `src/sandbox`.
+- Thirty-fifth adapter increment complete: `@blade-ai/agent-sdk/local` now owns the in-process MCP facade locally. `tool()` and `createSdkMcpServer()` live in package-local `src/local/mcp.ts`, use the MCP SDK directly, and no longer import legacy root `src/mcp` for local MCP server construction.
 
 ### Phase 5: Production Verification Chain
 
@@ -384,6 +385,7 @@ Status:
 - Twelfth verification-chain increment complete: `pnpm run verify:packages` now rejects packed `@blade-ai/agent-sdk/local` memory declaration regressions that publish the earlier stub-style `read`/`write`/boolean-delete API instead of the package-local `save`/`get`/`list`/`delete` memory API.
 - Thirteenth verification-chain increment complete: topology tests now require package-local memory tool sources and reject legacy root memory-tool imports from `local/builtin-tools.ts`; package verification also rejects packed `@blade-ai/agent-sdk/local` runtime regressions that point directly at legacy root memory tools.
 - Fourteenth verification-chain increment complete: topology tests now reject legacy root sandbox imports from `local/sandbox.ts`, and package verification rejects packed local sandbox declarations that fall back to the old placeholder constructor-only shape.
+- Fifteenth verification-chain increment complete: topology tests now reject legacy root MCP imports from `local/mcp.ts`, and package verification rejects packed local MCP declarations that fall back to the old `unknown[]` placeholder signatures.
 
 Commit:
 

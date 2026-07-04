@@ -4,6 +4,7 @@ import type {
   NetworkSandboxSettings,
   SandboxSettings,
 } from '../types/common.js';
+import type { z } from 'zod';
 import type { Tool } from '../tools/types/index.js';
 
 export interface McpToolDefinition {
@@ -25,11 +26,21 @@ export interface McpToolCallResponse {
 
 export interface SdkTool {
   name: string;
-  description?: string;
-  inputSchema?: JsonObject;
+  description: string;
+  schema: Record<string, z.ZodTypeAny>;
+  handler: (params: JsonObject) => Promise<McpToolResponse>;
 }
 
-export type McpToolResponse = McpToolCallResponse;
+export type McpToolResponse = {
+  content?: Array<{
+    type: string;
+    text?: string;
+    data?: string;
+    mimeType?: string;
+  }>;
+  isError?: boolean;
+  structuredContent?: JsonObject;
+};
 
 export interface SdkMcpServerHandle {
   name: string;
@@ -147,8 +158,17 @@ export declare class SandboxService {
   getCapabilities(): SandboxCapabilities;
 }
 
-export declare function createSdkMcpServer(...args: unknown[]): SdkMcpServerHandle;
-export declare function tool(...args: unknown[]): unknown;
+export declare function createSdkMcpServer(config: {
+  name: string;
+  version: string;
+  tools: SdkTool[];
+}): Promise<SdkMcpServerHandle>;
+export declare function tool<TSchema extends Record<string, z.ZodTypeAny>>(
+  name: string,
+  description: string,
+  schema: TSchema,
+  handler: (params: { [K in keyof TSchema]: z.infer<TSchema[K]> }) => Promise<McpToolResponse>,
+): SdkTool;
 export declare function getSandboxExecutor(...args: unknown[]): SandboxExecutor;
 export declare function getSandboxService(...args: unknown[]): SandboxService;
 export declare function getBuiltinTools(...args: unknown[]): Promise<Tool[]>;

@@ -178,6 +178,7 @@ describe('monorepo topology', () => {
     const serverSource = readFileSync('packages/agent-sdk/src/server/index.ts', 'utf-8');
     const localSource = readFileSync('packages/agent-sdk/src/local/index.ts', 'utf-8');
     const localMemorySource = readFileSync('packages/agent-sdk/src/local/memory.ts', 'utf-8');
+    const localMcpSource = readFileSync('packages/agent-sdk/src/local/mcp.ts', 'utf-8');
     const localBuiltinToolsSource = readFileSync(
       'packages/agent-sdk/src/local/builtin-tools.ts',
       'utf-8',
@@ -188,6 +189,7 @@ describe('monorepo topology', () => {
     expect(serverSource).toContain("from '../index.js'");
     expect(localSource).not.toContain("export * from '../../../../src/local/index.js'");
     expect(localSource).not.toContain("../../../../src/");
+    expect(localMcpSource).not.toContain('../../../../src/mcp');
     expect(localMemorySource).not.toContain("../../../../src/memory");
     expect(localBuiltinToolsSource).not.toContain('../../../../src/tools/builtin/memory');
     expect(localSandboxSource).not.toContain('../../../../src/sandbox');
