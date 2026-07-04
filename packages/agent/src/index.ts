@@ -3,6 +3,8 @@ import type {
   JsonValue,
   ModelMessage,
   ModelPort,
+  ModelResponse,
+  ModelToolCall,
   ModelUsageInfo,
 } from '@blade-ai/ai';
 
@@ -56,14 +58,38 @@ export class AgentKernel {
   constructor(readonly options: AgentKernelOptions) {}
 
   async *runTurn(turn: AgentTurnInput): AsyncIterable<AgentStreamEvent> {
-    const messages: readonly ModelMessage[] = turn.messages ?? [
+    let messages: readonly ModelMessage[] = turn.messages ?? [
       { role: 'user', content: turn.input },
     ];
 
-    const response = await this.options.model.generate({
+    let response = await this.options.model.generate({
       messages,
       signal: turn.signal,
     });
+
+    if (response.toolCalls && response.toolCalls.length > 0) {
+      if (!this.options.tools) {
+        throw new Error('Model requested tool calls, but no tool port is configured');
+      }
+
+      const toolMessages: ModelMessage[] = [];
+      for (const toolCall of response.toolCalls) {
+        yield { type: 'tool_use', toolCall };
+        const result = await this.options.tools.execute(toolCall, turn.signal);
+        yield { type: 'tool_result', result };
+        toolMessages.push(this.toolResultToMessage(result, toolCall));
+      }
+
+      messages = [
+        ...messages,
+        this.toolCallsToAssistantMessage(response),
+        ...toolMessages,
+      ];
+      response = await this.options.model.generate({
+        messages,
+        signal: turn.signal,
+      });
+    }
 
     if (response.reasoningContent) {
       yield { type: 'thinking', delta: response.reasoningContent };
@@ -78,6 +104,24 @@ export class AgentKernel {
       type: 'result',
       content: response.content,
       finishReason: response.finishReason,
+    };
+  }
+
+  private toolCallsToAssistantMessage(response: ModelResponse): ModelMessage {
+    return {
+      role: 'assistant',
+      content: response.content,
+      ...(response.reasoningContent ? { reasoningContent: response.reasoningContent } : {}),
+      toolCalls: response.toolCalls ?? [],
+    };
+  }
+
+  private toolResultToMessage(result: AgentToolResult, toolCall: ModelToolCall): ModelMessage {
+    return {
+      role: 'tool',
+      content: typeof result.output === 'string' ? result.output : JSON.stringify(result.output),
+      name: result.name || toolCall.name,
+      toolCallId: result.id || toolCall.id,
     };
   }
 }

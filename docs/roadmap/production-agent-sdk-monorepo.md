@@ -257,6 +257,7 @@ Status:
 
 - First kernel increment complete: `@blade-ai/agent` now exposes a runtime-independent `AgentKernel.runTurn()` that executes a no-tool user turn through `@blade-ai/ai`'s `ModelPort` and emits content, usage, thinking, and result events.
 - The first Phase 3 TDD guardrail lives in `packages/agent/src/__tests__/AgentKernel.test.ts`, proving the kernel can run without Node-local, MCP, provider SDK, filesystem, shell, sandbox, or session SDK dependencies.
+- The second kernel increment adds the first tool-call turn loop: `AgentKernel` can execute `ModelResponse.toolCalls` through an injected `AgentToolPort`, emit `tool_use` and `tool_result` events, append assistant/tool messages, and perform a follow-up model call for the final answer.
 
 ### Phase 4: Rebuild `@blade-ai/agent-sdk`
 
