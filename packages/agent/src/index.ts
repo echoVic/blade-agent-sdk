@@ -95,6 +95,11 @@ export class AgentKernel {
   constructor(readonly options: AgentKernelOptions) {}
 
   async *runTurn(turn: AgentTurnInput): AsyncIterable<AgentStreamEvent> {
+    if (turn.signal?.aborted) {
+      yield { type: 'error', code: 'ABORTED', message: 'Operation aborted' };
+      return;
+    }
+
     let messages: readonly ModelMessage[] = turn.messages ?? [
       { role: 'user', content: turn.input },
     ];

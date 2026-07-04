@@ -343,4 +343,31 @@ describe('AgentKernel', () => {
       { type: 'turn_end', content: 'Found traced docs', finishReason: 'stop' },
     ]);
   });
+
+  it('emits a controlled error event without calling the model when the turn is already aborted', async () => {
+    const generate = vi.fn(async (_request: ModelRequest): Promise<ModelResponse> => ({
+      content: 'should not run',
+      finishReason: 'stop',
+    }));
+    const model: ModelPort = {
+      generate,
+      stream: async function* () {},
+    };
+    const controller = new AbortController();
+    controller.abort('user cancelled');
+    const kernel = new AgentKernel({ model });
+
+    const events = [];
+    for await (const event of kernel.runTurn({
+      input: 'Do not start',
+      signal: controller.signal,
+    })) {
+      events.push(event);
+    }
+
+    expect(generate).not.toHaveBeenCalled();
+    expect(events).toEqual([
+      { type: 'error', code: 'ABORTED', message: 'Operation aborted' },
+    ]);
+  });
 });

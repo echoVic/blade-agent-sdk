@@ -260,6 +260,7 @@ Status:
 - The second kernel increment adds the first tool-call turn loop: `AgentKernel` can execute `ModelResponse.toolCalls` through an injected `AgentToolPort`, emit `tool_use` and `tool_result` events, append assistant/tool messages, and perform a follow-up model call for the final answer.
 - The third kernel increment adds `AgentPermissionPort` with allow/deny decisions before tool execution; denied tool calls do not reach `AgentToolPort`, emit an error tool result, and are fed back into the follow-up model call.
 - The fourth kernel increment adds a minimal runtime-independent `AgentTracePort`, with TDD coverage proving that turn start, model request/response, tool call start/end, usage, and turn end activity can be recorded as structured trace events without changing the session-first stream API.
+- The fifth kernel increment adds the first abort guard: if a turn starts with an already-aborted `AbortSignal`, `AgentKernel` emits a controlled `ABORTED` error event and does not call the model port.
 
 ### Phase 4: Rebuild `@blade-ai/agent-sdk`
 
