@@ -383,6 +383,7 @@ Status:
 - Second documentation increment complete: a session-first quickstart now documents the server/CLI `createSession()` flow, explicitly calls out `allowedTools: []` as disabling all tools, links to `examples/session-first-server.ts`, and adds `pnpm run verify:examples` to the root verification chain so the public quickstart import remains type-checked.
 - Third documentation increment complete: a Server / Next.js guide now documents Route Handler and Server Action usage, keeps root `createSession()` server-only, requires `runtime = 'nodejs'` for Route Handlers, and tells browser clients to communicate over HTTP while importing only browser-safe `core` / `tools` contracts.
 - Fourth documentation increment complete: a Browser Remote Client guide now documents browser-safe `core` / `browser` imports, remote HTTP NDJSON streaming with `StreamMessage`, server-only stub behavior, and the production boundary that keeps provider keys, tools, MCP, filesystem, shell, and sandbox execution on the server.
+- Fifth documentation increment complete: a Production Checklist now documents the required `pnpm run verify` release gate, package boundary checks, browser-safe entrypoint checks, optional GLM live smoke, release dry-run, and trusted publishing flow from `main`.
 
 Commit:
 

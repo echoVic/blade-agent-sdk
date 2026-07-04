@@ -22,6 +22,7 @@ export default defineConfig({
           { text: 'Session-first 快速开始', link: '/session-first-quickstart' },
           { text: 'Server / Next.js', link: '/server-nextjs' },
           { text: 'Browser Remote Client', link: '/browser-remote-client' },
+          { text: 'Production Checklist', link: '/production-checklist' },
           { text: 'Provider 与日志', link: '/providers' },
         ],
       },
