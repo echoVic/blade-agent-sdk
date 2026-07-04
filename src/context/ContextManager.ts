@@ -40,6 +40,19 @@ function isUsageMetadata(
     && typeof value.output_tokens === 'number';
 }
 
+function isChatToolCall(value: unknown): value is ChatToolCall {
+  return isJsonObject(value)
+    && typeof value.id === 'string'
+    && value.type === 'function'
+    && isJsonObject(value.function)
+    && typeof value.function.name === 'string'
+    && typeof value.function.arguments === 'string';
+}
+
+function isChatToolCallArray(value: unknown): value is ChatToolCall[] {
+  return Array.isArray(value) && value.every(isChatToolCall);
+}
+
 /**
  * 上下文管理器 - 统一管理所有上下文相关操作
  */
@@ -237,6 +250,11 @@ export class ContextManager {
         ? {
             model: typeof metadata.model === 'string' ? metadata.model : undefined,
             usage: isUsageMetadata(metadata.usage) ? metadata.usage : undefined,
+            customMetadata: metadata,
+            reasoningContent: typeof metadata.reasoningContent === 'string'
+              ? metadata.reasoningContent
+              : undefined,
+            toolCalls: isChatToolCallArray(metadata.toolCalls) ? metadata.toolCalls : undefined,
           }
         : undefined,
     );

@@ -1,5 +1,5 @@
 import { basename, dirname } from 'node:path';
-import type { AgentToolCall, AgentToolPort } from '@blade-ai/agent';
+import type { AgentStorePort, AgentToolCall, AgentToolPort } from '@blade-ai/agent';
 import type { AgentRuntimeDeps } from '../agent/Agent.js';
 import { AgentSessionStore } from '../agent/subagents/AgentSessionStore.js';
 import { BackgroundAgentManager } from '../agent/subagents/BackgroundAgentManager.js';
@@ -44,6 +44,7 @@ import type {
   SessionOptions,
 } from './types.js';
 import { createKernelToolPort } from './SessionKernelAdapter.js';
+import { createKernelStorePort } from './SessionKernelStoreAdapter.js';
 
 function isSdkMcpServerHandle(
   config: McpServerConfig | SdkMcpServerHandle
@@ -166,6 +167,12 @@ export class SessionRuntime {
       registry: this.toolRegistry,
       pipeline: this.executionPipeline,
       createExecutionContext,
+    });
+  }
+
+  getKernelStorePort(): AgentStorePort {
+    return createKernelStorePort({
+      contextManager: this.contextManager,
     });
   }
 

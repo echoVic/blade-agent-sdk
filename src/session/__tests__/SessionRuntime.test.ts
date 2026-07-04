@@ -167,6 +167,128 @@ describe('SessionRuntime', () => {
     await runtime.close();
   });
 
+  it('should persist kernel store messages through the runtime context manager', async () => {
+    const runtime = new SessionRuntime(
+      SessionId('session-kernel-store'),
+      createOptions(),
+      {
+        models: [],
+      },
+      PermissionMode.YOLO,
+      createFilesystemContext(workspaceRoot),
+      NOOP_LOGGER,
+    );
+
+    await runtime.initialize();
+    await runtime.ensureSessionCreated();
+
+    const storePort = runtime.getKernelStorePort();
+    await storePort.appendMessage(
+      { role: 'user', content: 'Persist from kernel' },
+      { turnId: 'turn_store', source: 'input', step: 0 },
+    );
+    await storePort.appendMessage(
+      { role: 'assistant', content: 'Stored by session runtime' },
+      { turnId: 'turn_store', source: 'model', step: 1 },
+    );
+
+    const contextManager = runtime.getAgentRuntimeDeps().contextManager;
+    assertDefined(contextManager);
+    const formatted = await contextManager.getFormattedContext();
+
+    expect(formatted.context.layers.conversation.messages.map((message) => ({
+      role: message.role,
+      content: message.content,
+      metadata: message.metadata,
+    }))).toEqual([
+      {
+        role: 'user',
+        content: 'Persist from kernel',
+        metadata: { kernel: { turnId: 'turn_store', source: 'input', step: 0 } },
+      },
+      {
+        role: 'assistant',
+        content: 'Stored by session runtime',
+        metadata: { kernel: { turnId: 'turn_store', source: 'model', step: 1 } },
+      },
+    ]);
+
+    await runtime.close();
+  });
+
+  it('should reload persisted kernel store message metadata', async () => {
+    const sessionId = SessionId('session-kernel-store-reload');
+    const storagePath = join(workspaceRoot, 'sessions');
+    const options = createOptions({ storagePath });
+    const runtime = new SessionRuntime(
+      sessionId,
+      options,
+      {
+        models: [],
+      },
+      PermissionMode.YOLO,
+      createFilesystemContext(workspaceRoot),
+      NOOP_LOGGER,
+    );
+
+    await runtime.initialize();
+    await runtime.ensureSessionCreated();
+    await runtime.getKernelStorePort().appendMessage(
+      {
+        role: 'assistant',
+        content: 'Persisted answer',
+        reasoningContent: 'persisted thought',
+        toolCalls: [{ id: 'call_reload', name: 'Search', input: { q: 'blade' } }],
+      },
+      { turnId: 'turn_reload', source: 'model', step: 1 },
+    );
+    await runtime.close();
+
+    const resumed = new SessionRuntime(
+      sessionId,
+      options,
+      {
+        models: [],
+      },
+      PermissionMode.YOLO,
+      createFilesystemContext(workspaceRoot),
+      NOOP_LOGGER,
+    );
+
+    await resumed.initialize();
+    await resumed.ensureSessionLoaded();
+    const contextManager = resumed.getAgentRuntimeDeps().contextManager;
+    assertDefined(contextManager);
+    const formatted = await contextManager.getFormattedContext();
+
+    expect(formatted.context.layers.conversation.messages.map((message) => ({
+      role: message.role,
+      content: message.content,
+      metadata: message.metadata,
+    }))).toEqual([
+      {
+        role: 'assistant',
+        content: 'Persisted answer',
+        metadata: {
+          kernel: { turnId: 'turn_reload', source: 'model', step: 1 },
+          reasoningContent: 'persisted thought',
+          toolCalls: [
+            {
+              id: 'call_reload',
+              type: 'function',
+              function: {
+                name: 'Search',
+                arguments: '{"q":"blade"}',
+              },
+            },
+          ],
+        },
+      },
+    ]);
+
+    await resumed.close();
+  });
+
   it('should disable all tools when allowedTools is an empty array', async () => {
     const runtime = new SessionRuntime(
       SessionId('session-empty-allowlist'),

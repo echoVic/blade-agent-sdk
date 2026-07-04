@@ -298,6 +298,7 @@ Commit:
 Status:
 
 - First adapter increment complete: `SessionKernelAdapter` bridges the existing session tool registry and execution pipeline into `AgentToolPort`, and `SessionRuntime.getKernelToolPort()` exposes registered local/MCP/custom tools to `AgentKernel` without coupling `@blade-ai/agent` to SDK-local session internals.
+- Second adapter increment complete: `SessionKernelStoreAdapter` bridges `AgentStorePort` into the existing session `ContextManager`, preserving kernel-appended user, assistant, and tool messages in session-first history with kernel turn/step metadata.
 
 ### Phase 5: Production Verification Chain
 
