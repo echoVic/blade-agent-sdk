@@ -59,10 +59,30 @@ export interface AgentPermissionPort {
   ): Promise<AgentPermissionDecision> | AgentPermissionDecision;
 }
 
+export type AgentTraceEvent =
+  | { type: 'turn_start'; input: string }
+  | { type: 'model_request'; messages: readonly ModelMessage[] }
+  | {
+      type: 'model_response';
+      content: string;
+      finishReason?: string;
+      toolCalls?: readonly AgentToolCall[];
+      usage?: ModelUsageInfo;
+    }
+  | { type: 'tool_call_start'; toolCall: AgentToolCall }
+  | { type: 'tool_call_end'; toolCall: AgentToolCall; result: AgentToolResult }
+  | { type: 'usage'; usage: ModelUsageInfo }
+  | { type: 'turn_end'; content: string; finishReason?: string };
+
+export interface AgentTracePort {
+  record(event: AgentTraceEvent): Promise<void> | void;
+}
+
 export interface AgentKernelOptions {
   model: ModelPort;
   tools?: AgentToolPort;
   permissions?: AgentPermissionPort;
+  trace?: AgentTracePort;
 }
 
 export interface AgentTurnInput {
@@ -79,10 +99,13 @@ export class AgentKernel {
       { role: 'user', content: turn.input },
     ];
 
+    await this.recordTrace({ type: 'turn_start', input: turn.input });
+    await this.recordTrace({ type: 'model_request', messages });
     let response = await this.options.model.generate({
       messages,
       signal: turn.signal,
     });
+    await this.recordModelResponse(response);
 
     if (response.toolCalls && response.toolCalls.length > 0) {
       if (!this.options.tools) {
@@ -92,7 +115,9 @@ export class AgentKernel {
       const toolMessages: ModelMessage[] = [];
       for (const toolCall of response.toolCalls) {
         yield { type: 'tool_use', toolCall };
+        await this.recordTrace({ type: 'tool_call_start', toolCall });
         const result = await this.executeToolCall(toolCall, messages, turn.signal);
+        await this.recordTrace({ type: 'tool_call_end', toolCall, result });
         yield { type: 'tool_result', result };
         toolMessages.push(this.toolResultToMessage(result, toolCall));
       }
@@ -102,10 +127,12 @@ export class AgentKernel {
         this.toolCallsToAssistantMessage(response),
         ...toolMessages,
       ];
+      await this.recordTrace({ type: 'model_request', messages });
       response = await this.options.model.generate({
         messages,
         signal: turn.signal,
       });
+      await this.recordModelResponse(response);
     }
 
     if (response.reasoningContent) {
@@ -116,7 +143,13 @@ export class AgentKernel {
     }
     if (response.usage) {
       yield { type: 'usage', usage: response.usage };
+      await this.recordTrace({ type: 'usage', usage: response.usage });
     }
+    await this.recordTrace({
+      type: 'turn_end',
+      content: response.content,
+      finishReason: response.finishReason,
+    });
     yield {
       type: 'result',
       content: response.content,
@@ -166,5 +199,19 @@ export class AgentKernel {
       name: result.name || toolCall.name,
       toolCallId: result.id || toolCall.id,
     };
+  }
+
+  private async recordModelResponse(response: ModelResponse): Promise<void> {
+    await this.recordTrace({
+      type: 'model_response',
+      content: response.content,
+      ...(response.finishReason ? { finishReason: response.finishReason } : {}),
+      ...(response.toolCalls && response.toolCalls.length > 0 ? { toolCalls: response.toolCalls } : {}),
+      ...(response.usage ? { usage: response.usage } : {}),
+    });
+  }
+
+  private async recordTrace(event: AgentTraceEvent): Promise<void> {
+    await this.options.trace?.record(event);
   }
 }

@@ -1,6 +1,12 @@
 import type { ModelPort, ModelRequest, ModelResponse } from '@blade-ai/ai';
 import { describe, expect, it, vi } from 'vitest';
-import { AgentKernel, type AgentPermissionPort, type AgentToolPort } from '../index.js';
+import {
+  AgentKernel,
+  type AgentPermissionPort,
+  type AgentToolPort,
+  type AgentTraceEvent,
+  type AgentTracePort,
+} from '../index.js';
 
 describe('AgentKernel', () => {
   it('runs a no-tool turn through the model port and emits result events', async () => {
@@ -236,6 +242,105 @@ describe('AgentKernel', () => {
       },
       { type: 'content', delta: 'I cannot search because permission was denied.' },
       { type: 'result', content: 'I cannot search because permission was denied.', finishReason: 'stop' },
+    ]);
+  });
+
+  it('records trace events for model, tool, usage, and result activity', async () => {
+    const generate = vi.fn(async (_request: ModelRequest): Promise<ModelResponse> => {
+      if (generate.mock.calls.length === 1) {
+        return {
+          content: '',
+          toolCalls: [{ id: 'call_search', name: 'Search', input: { q: 'blade' } }],
+          finishReason: 'tool-calls',
+        };
+      }
+
+      return {
+        content: 'Found traced docs',
+        usage: {
+          promptTokens: 8,
+          completionTokens: 6,
+          totalTokens: 14,
+        },
+        finishReason: 'stop',
+      };
+    });
+    const model: ModelPort = {
+      generate,
+      stream: async function* () {},
+    };
+    const tools: AgentToolPort = {
+      list: async () => [],
+      execute: async () => ({
+        id: 'call_search',
+        name: 'Search',
+        output: 'Blade docs result',
+      }),
+    };
+    const traceEvents: AgentTraceEvent[] = [];
+    const trace: AgentTracePort = {
+      record: (event) => {
+        traceEvents.push(event);
+      },
+    };
+
+    const kernel = new AgentKernel({ model, tools, trace });
+
+    for await (const _event of kernel.runTurn({ input: 'Find Blade docs' })) {
+      // Drain the turn.
+    }
+
+    expect(traceEvents).toEqual([
+      { type: 'turn_start', input: 'Find Blade docs' },
+      { type: 'model_request', messages: [{ role: 'user', content: 'Find Blade docs' }] },
+      {
+        type: 'model_response',
+        finishReason: 'tool-calls',
+        content: '',
+        toolCalls: [{ id: 'call_search', name: 'Search', input: { q: 'blade' } }],
+      },
+      { type: 'tool_call_start', toolCall: { id: 'call_search', name: 'Search', input: { q: 'blade' } } },
+      {
+        type: 'tool_call_end',
+        toolCall: { id: 'call_search', name: 'Search', input: { q: 'blade' } },
+        result: { id: 'call_search', name: 'Search', output: 'Blade docs result' },
+      },
+      {
+        type: 'model_request',
+        messages: [
+          { role: 'user', content: 'Find Blade docs' },
+          {
+            role: 'assistant',
+            content: '',
+            toolCalls: [{ id: 'call_search', name: 'Search', input: { q: 'blade' } }],
+          },
+          {
+            role: 'tool',
+            content: 'Blade docs result',
+            name: 'Search',
+            toolCallId: 'call_search',
+          },
+        ],
+      },
+      {
+        type: 'model_response',
+        finishReason: 'stop',
+        content: 'Found traced docs',
+        usage: {
+          promptTokens: 8,
+          completionTokens: 6,
+          totalTokens: 14,
+        },
+      },
+      {
+        type: 'usage',
+        usage: {
+          promptTokens: 8,
+          completionTokens: 6,
+          totalTokens: 14,
+        },
+      },
+      { type: 'turn_end', content: 'Found traced docs', finishReason: 'stop' },
     ]);
   });
 });
