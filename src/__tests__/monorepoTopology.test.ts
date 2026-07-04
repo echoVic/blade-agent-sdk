@@ -190,9 +190,25 @@ describe('monorepo topology', () => {
     const rootSource = readFileSync('packages/agent-sdk/src/index.ts', 'utf-8');
 
     expect(rootSource).not.toContain("export * from '../../../src/index.js'");
+    expect(rootSource).not.toContain("../../../src/agent/subagents");
     expect(rootSource).toContain("from './session/index.js'");
     expect(rootSource).toContain("from './tools/index.js'");
     expect(rootSource).toContain("from './core/index.js'");
+  });
+
+  it('owns root subagent compatibility exports inside agent-sdk', () => {
+    const rootSource = readFileSync('packages/agent-sdk/src/index.ts', 'utf-8');
+
+    for (const file of [
+      'packages/agent-sdk/src/subagents/index.ts',
+      'packages/agent-sdk/src/subagents/SubagentExecutor.ts',
+      'packages/agent-sdk/src/subagents/SubagentRegistry.ts',
+      'packages/agent-sdk/src/subagents/types.ts',
+    ]) {
+      expect(existsSync(file), file).toBe(true);
+    }
+
+    expect(rootSource).toContain("from './subagents/index.js'");
   });
 
   it('owns permission handler runtime factories inside agent-sdk', () => {

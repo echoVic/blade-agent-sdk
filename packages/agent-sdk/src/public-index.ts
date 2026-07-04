@@ -1,35 +1,21 @@
-import type { JsonObject } from './core/index.js';
-
 export * from '@blade-ai/ai/deepseek';
 
-export declare class SubagentExecutor {
-  constructor(...args: unknown[]);
-}
-
-export declare class SubagentRegistry {
-  constructor(...args: unknown[]);
-}
-
-export type SubagentColor = 'red' | 'orange' | 'yellow' | 'green' | 'blue' | 'purple' | 'pink' | 'gray';
-export type SubagentSource = 'builtin' | 'project' | 'user' | 'session';
-export interface SubagentConfig {
-  id: string;
-  name: string;
-  description: string;
-  prompt: string;
-  color?: SubagentColor;
-  source?: SubagentSource;
-  tools?: string[];
-}
-export interface SubagentContext {
-  prompt: string;
-  context?: JsonObject;
-}
-export interface SubagentResult {
-  success: boolean;
-  output: string;
-  error?: string;
-}
+export type {
+  ClaudeCodePermissionMode,
+  SubagentColor,
+  SubagentConfig,
+  SubagentContext,
+  SubagentExecutionRunner,
+  SubagentFrontmatter,
+  SubagentResult,
+  SubagentSource,
+} from './subagents/index.js';
+export {
+  mapClaudeCodePermissionMode,
+  SubagentExecutor,
+  SubagentRegistry,
+  subagentRegistry,
+} from './subagents/index.js';
 
 export type {
   AgentTrace,

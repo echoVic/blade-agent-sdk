@@ -13,6 +13,7 @@ const publicDeclarationMaps = [
   'index.d.ts.map',
   'local/index.d.ts.map',
   'session/index.d.ts.map',
+  'subagents/index.d.ts.map',
   'tools/index.d.ts.map',
   'types/permissions.d.ts.map',
 ];

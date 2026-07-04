@@ -1,13 +1,16 @@
 export * from '@blade-ai/ai/deepseek';
-export { SubagentExecutor } from '../../../src/agent/subagents/SubagentExecutor.js';
-export { SubagentRegistry } from '../../../src/agent/subagents/SubagentRegistry.js';
 export type {
   SubagentColor,
   SubagentConfig,
   SubagentContext,
   SubagentResult,
   SubagentSource,
-} from '../../../src/agent/subagents/types.js';
+} from './subagents/index.js';
+export {
+  mapClaudeCodePermissionMode,
+  SubagentExecutor,
+  SubagentRegistry,
+} from './subagents/index.js';
 export type {
   AgentTrace,
   CanUseTool,

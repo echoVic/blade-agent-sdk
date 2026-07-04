@@ -124,6 +124,16 @@ const packageSpecs = [
         message: 'root declarations must be emitted from package-local root entry source',
       },
       {
+        file: 'package/dist/index.js',
+        forbidden: 'src/agent/subagents',
+        message: 'root runtime must use package-local subagent compatibility exports',
+      },
+      {
+        file: 'package/dist/index.d.ts',
+        forbidden: '../agent/subagents',
+        message: 'root declarations must use package-local subagent compatibility exports',
+      },
+      {
         file: 'package/dist/index.d.ts',
         forbidden: 'public-index.js',
         message: 'root declarations must reference final public entrypoints, not overlay sources',
