@@ -2,6 +2,7 @@ import type { ModelPort, ModelRequest, ModelResponse } from '@blade-ai/ai';
 import { describe, expect, it, vi } from 'vitest';
 import {
   AgentKernel,
+  type AgentHookPort,
   type AgentPermissionPort,
   type AgentStoreAppendContext,
   type AgentStorePort,
@@ -577,5 +578,53 @@ describe('AgentKernel', () => {
         context: { turnId: 'turn_tool', source: 'model', step: 2 },
       },
     ]);
+  });
+
+  it('runs model lifecycle hooks that can rewrite requests and observe responses', async () => {
+    const generate = vi.fn(async (_request: ModelRequest): Promise<ModelResponse> => ({
+      content: 'Hooked answer',
+      finishReason: 'stop',
+    }));
+    const model: ModelPort = {
+      generate,
+      stream: async function* () {},
+    };
+    const afterModelResponses: Parameters<NonNullable<AgentHookPort['afterModel']>>[0][] = [];
+    const hooks: AgentHookPort = {
+      beforeModel: async (request, context) => {
+        expect(context).toEqual({
+          turnId: 'turn_hook',
+          step: 1,
+          messages: [{ role: 'user', content: 'Original prompt' }],
+        });
+        return {
+          ...request,
+          messages: [{ role: 'user', content: 'Rewritten prompt' }],
+        };
+      },
+      afterModel: (response, context) => {
+        expect(context).toEqual({
+          turnId: 'turn_hook',
+          step: 1,
+          messages: [{ role: 'user', content: 'Rewritten prompt' }],
+        });
+        afterModelResponses.push(response);
+      },
+    };
+    const kernel = new AgentKernel({ model, hooks });
+
+    const events = [];
+    for await (const event of kernel.runTurn({ input: 'Original prompt', turnId: 'turn_hook' })) {
+      events.push(event);
+    }
+
+    expect(generate).toHaveBeenCalledWith({
+      messages: [{ role: 'user', content: 'Rewritten prompt' }],
+      signal: undefined,
+    });
+    expect(afterModelResponses).toEqual([
+      { content: 'Hooked answer', finishReason: 'stop' },
+    ]);
+    expect(events).toContainEqual({ type: 'content', delta: 'Hooked answer' });
   });
 });

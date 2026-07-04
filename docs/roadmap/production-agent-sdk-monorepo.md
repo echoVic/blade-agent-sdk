@@ -263,6 +263,7 @@ Status:
 - The fifth kernel increment adds the first abort guard: if a turn starts with an already-aborted `AbortSignal`, `AgentKernel` emits a controlled `ABORTED` error event and does not call the model port.
 - The sixth kernel increment adds multi-iteration tool loops with a `maxSteps` model-step limit, so the kernel can continue across repeated model tool-call responses while stopping runaway loops with a controlled `MAX_STEPS_EXCEEDED` error event.
 - The seventh kernel increment adds a runtime-independent `AgentStorePort`, allowing the kernel to append newly created input, assistant, and tool messages with turn/step context while leaving filesystem, database, and session storage implementations to outer adapters.
+- The eighth kernel increment adds a runtime-independent `AgentHookPort` for model lifecycle hooks: `beforeModel` can rewrite model requests, and `afterModel` can observe responses with turn, step, and message context, preparing the session hook runtime migration without coupling the kernel to SDK-local hooks.
 
 ### Phase 4: Rebuild `@blade-ai/agent-sdk`
 

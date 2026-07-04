@@ -3,6 +3,7 @@ import type {
   JsonValue,
   ModelMessage,
   ModelPort,
+  ModelRequest,
   ModelResponse,
   ModelToolCall,
   ModelUsageInfo,
@@ -94,12 +95,24 @@ export interface AgentStorePort {
   ): Promise<void> | void;
 }
 
+export interface AgentHookContext {
+  turnId?: string;
+  step: number;
+  messages: readonly ModelMessage[];
+}
+
+export interface AgentHookPort {
+  beforeModel?(request: ModelRequest, context: AgentHookContext): Promise<ModelRequest> | ModelRequest;
+  afterModel?(response: ModelResponse, context: AgentHookContext): Promise<void> | void;
+}
+
 export interface AgentKernelOptions {
   model: ModelPort;
   tools?: AgentToolPort;
   permissions?: AgentPermissionPort;
   trace?: AgentTracePort;
   store?: AgentStorePort;
+  hooks?: AgentHookPort;
   maxSteps?: number;
 }
 
@@ -137,9 +150,10 @@ export class AgentKernel {
 
     await this.recordTrace({ type: 'turn_start', input: turn.input });
     await this.recordTrace({ type: 'model_request', messages });
-    let response = await this.options.model.generate({
+    let response = await this.generateModel({ messages, signal: turn.signal }, {
+      turnId: turn.turnId,
+      step: 1,
       messages,
-      signal: turn.signal,
     });
     modelSteps += 1;
     await this.recordModelResponse(response);
@@ -187,11 +201,12 @@ export class AgentKernel {
         ...toolMessages,
       ];
       await this.recordTrace({ type: 'model_request', messages });
-      response = await this.options.model.generate({
-        messages,
-        signal: turn.signal,
-      });
       modelSteps += 1;
+      response = await this.generateModel({ messages, signal: turn.signal }, {
+        turnId: turn.turnId,
+        step: modelSteps,
+        messages,
+      });
       await this.recordModelResponse(response);
     }
 
@@ -290,5 +305,18 @@ export class AgentKernel {
 
   private async recordTrace(event: AgentTraceEvent): Promise<void> {
     await this.options.trace?.record(event);
+  }
+
+  private async generateModel(
+    request: ModelRequest,
+    context: AgentHookContext,
+  ): Promise<ModelResponse> {
+    const nextRequest = await this.options.hooks?.beforeModel?.(request, context) ?? request;
+    const response = await this.options.model.generate(nextRequest);
+    await this.options.hooks?.afterModel?.(response, {
+      ...context,
+      messages: nextRequest.messages,
+    });
+    return response;
   }
 }
