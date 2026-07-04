@@ -6,6 +6,7 @@ import type {
   SessionOptions,
   UserMessageContent,
 } from './types.js';
+import type { SessionRuntimeFactory } from './factory.js';
 
 export type {
   AgentDefinition,
@@ -48,10 +49,15 @@ export type {
   ToolTrustLevel,
   UserMessageContent,
 } from './types.js';
+export type { SessionRuntimeFactory } from './factory.js';
 
 export declare function createSession(options: SessionOptions): Promise<ISession>;
 export declare function resumeSession(options: ResumeOptions): Promise<ISession>;
 export declare function forkSession(options: ForkOptions): Promise<ISession>;
+export declare function setSessionRuntimeFactory(
+  factory: SessionRuntimeFactory,
+): () => void;
+export declare function resetSessionRuntimeFactory(): void;
 export declare function prompt(
   message: UserMessageContent,
   options: SessionOptions,

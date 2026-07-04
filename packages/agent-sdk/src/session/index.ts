@@ -1,9 +1,7 @@
 import {
-  createSession as createRootSession,
-  forkSession as forkRootSession,
-  prompt as promptRootSession,
-  resumeSession as resumeRootSession,
-} from '../../../../src/session/Session.js';
+  createDefaultSessionRuntimeFactory,
+} from './runtimeFactory.js';
+import type { SessionRuntimeFactory } from './factory.js';
 import type {
   ForkOptions,
   ISession,
@@ -12,6 +10,22 @@ import type {
   SessionOptions,
   UserMessageContent,
 } from './types.js';
+
+let sessionRuntimeFactory: SessionRuntimeFactory = createDefaultSessionRuntimeFactory();
+
+export function setSessionRuntimeFactory(
+  factory: SessionRuntimeFactory,
+): () => void {
+  const previousFactory = sessionRuntimeFactory;
+  sessionRuntimeFactory = factory;
+  return () => {
+    sessionRuntimeFactory = previousFactory;
+  };
+}
+
+export function resetSessionRuntimeFactory(): void {
+  sessionRuntimeFactory = createDefaultSessionRuntimeFactory();
+}
 
 export type {
   AgentDefinition,
@@ -54,22 +68,33 @@ export type {
   ToolTrustLevel,
   UserMessageContent,
 } from './types.js';
+export type { SessionRuntimeFactory } from './factory.js';
 
 export async function createSession(options: SessionOptions): Promise<ISession> {
-  return await createRootSession(options as never) as unknown as ISession;
+  return sessionRuntimeFactory.create(options);
 }
 
 export async function resumeSession(options: ResumeOptions): Promise<ISession> {
-  return await resumeRootSession(options as never) as unknown as ISession;
+  if (options.persistSession === false) {
+    throw new Error(
+      'resumeSession() requires session persistence. Remove persistSession: false or use createSession().',
+    );
+  }
+  return sessionRuntimeFactory.resume(options);
 }
 
 export async function forkSession(options: ForkOptions): Promise<ISession> {
-  return await forkRootSession(options as never) as unknown as ISession;
+  if (options.persistSession === false) {
+    throw new Error(
+      'forkSession() requires session persistence. Remove persistSession: false and call session.fork() on a live session instead.',
+    );
+  }
+  return sessionRuntimeFactory.fork(options);
 }
 
 export async function prompt(
   message: UserMessageContent,
   options: SessionOptions,
 ): Promise<PromptResult> {
-  return await promptRootSession(message as never, options as never) as unknown as PromptResult;
+  return sessionRuntimeFactory.prompt(message, options);
 }

@@ -300,7 +300,9 @@ describe('monorepo topology', () => {
     const sessionSource = readFileSync('packages/agent-sdk/src/session/index.ts', 'utf-8');
 
     expect(sessionSource).not.toContain("export * from '../../../../src/session/index.js'");
+    expect(sessionSource).not.toContain("../../../../src/session/Session.js");
     expect(sessionSource).toContain("from './types.js'");
+    expect(sessionSource).toContain('createDefaultSessionRuntimeFactory');
   });
 
   it('resolves workspace packages from source during type checking', () => {
