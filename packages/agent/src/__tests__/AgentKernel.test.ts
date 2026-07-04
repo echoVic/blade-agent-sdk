@@ -1,6 +1,6 @@
 import type { ModelPort, ModelRequest, ModelResponse } from '@blade-ai/ai';
 import { describe, expect, it, vi } from 'vitest';
-import { AgentKernel, type AgentToolPort } from '../index.js';
+import { AgentKernel, type AgentPermissionPort, type AgentToolPort } from '../index.js';
 
 describe('AgentKernel', () => {
   it('runs a no-tool turn through the model port and emits result events', async () => {
@@ -124,6 +124,118 @@ describe('AgentKernel', () => {
         },
       },
       { type: 'result', content: 'Found Blade docs', finishReason: 'stop' },
+    ]);
+  });
+
+  it('checks permission before executing an allowed tool call', async () => {
+    const generate = vi.fn(async (_request: ModelRequest): Promise<ModelResponse> => {
+      if (generate.mock.calls.length === 1) {
+        return {
+          content: '',
+          toolCalls: [{ id: 'call_search', name: 'Search', input: { q: 'blade' } }],
+          finishReason: 'tool-calls',
+        };
+      }
+
+      return { content: 'Allowed result', finishReason: 'stop' };
+    });
+    const model: ModelPort = {
+      generate,
+      stream: async function* () {},
+    };
+    const execute = vi.fn(async () => ({
+      id: 'call_search',
+      name: 'Search',
+      output: 'Blade docs result',
+    }));
+    const tools: AgentToolPort = {
+      list: async () => [],
+      execute,
+    };
+    const checkToolCall = vi.fn(async () => ({ behavior: 'allow' as const }));
+    const permissions: AgentPermissionPort = { checkToolCall };
+
+    const kernel = new AgentKernel({ model, tools, permissions });
+
+    const events = [];
+    for await (const event of kernel.runTurn({ input: 'Find Blade docs' })) {
+      events.push(event);
+    }
+
+    expect(checkToolCall).toHaveBeenCalledWith(
+      { id: 'call_search', name: 'Search', input: { q: 'blade' } },
+      { messages: [{ role: 'user', content: 'Find Blade docs' }] },
+      undefined,
+    );
+    expect(execute).toHaveBeenCalledWith(
+      { id: 'call_search', name: 'Search', input: { q: 'blade' } },
+      undefined,
+    );
+    expect(events).toContainEqual({ type: 'content', delta: 'Allowed result' });
+  });
+
+  it('does not execute denied tool calls and feeds the denial back to the model', async () => {
+    const generate = vi.fn(async (_request: ModelRequest): Promise<ModelResponse> => {
+      if (generate.mock.calls.length === 1) {
+        return {
+          content: '',
+          toolCalls: [{ id: 'call_search', name: 'Search', input: { q: 'blade' } }],
+          finishReason: 'tool-calls',
+        };
+      }
+
+      return { content: 'I cannot search because permission was denied.', finishReason: 'stop' };
+    });
+    const model: ModelPort = {
+      generate,
+      stream: async function* () {},
+    };
+    const execute = vi.fn(async () => ({
+      id: 'call_search',
+      name: 'Search',
+      output: 'should not run',
+    }));
+    const tools: AgentToolPort = {
+      list: async () => [],
+      execute,
+    };
+    const permissions: AgentPermissionPort = {
+      checkToolCall: async () => ({ behavior: 'deny', message: 'Search is disabled' }),
+    };
+
+    const kernel = new AgentKernel({ model, tools, permissions });
+
+    const events = [];
+    for await (const event of kernel.runTurn({ input: 'Find Blade docs' })) {
+      events.push(event);
+    }
+
+    expect(execute).not.toHaveBeenCalled();
+    expect(generate).toHaveBeenNthCalledWith(2, {
+      messages: [
+        { role: 'user', content: 'Find Blade docs' },
+        {
+          role: 'assistant',
+          content: '',
+          toolCalls: [{ id: 'call_search', name: 'Search', input: { q: 'blade' } }],
+        },
+        {
+          role: 'tool',
+          content: 'Search is disabled',
+          name: 'Search',
+          toolCallId: 'call_search',
+        },
+      ],
+      signal: undefined,
+    });
+    expect(events).toEqual([
+      { type: 'tool_use', toolCall: { id: 'call_search', name: 'Search', input: { q: 'blade' } } },
+      {
+        type: 'tool_result',
+        result: { id: 'call_search', name: 'Search', output: 'Search is disabled', isError: true },
+      },
+      { type: 'content', delta: 'I cannot search because permission was denied.' },
+      { type: 'result', content: 'I cannot search because permission was denied.', finishReason: 'stop' },
     ]);
   });
 });

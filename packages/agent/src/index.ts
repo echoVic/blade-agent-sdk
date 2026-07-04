@@ -43,9 +43,26 @@ export interface AgentToolPort {
   execute(toolCall: AgentToolCall, signal?: AbortSignal): Promise<AgentToolResult>;
 }
 
+export type AgentPermissionDecision =
+  | { behavior: 'allow' }
+  | { behavior: 'deny'; message?: string };
+
+export interface AgentPermissionContext {
+  messages: readonly ModelMessage[];
+}
+
+export interface AgentPermissionPort {
+  checkToolCall(
+    toolCall: AgentToolCall,
+    context: AgentPermissionContext,
+    signal?: AbortSignal,
+  ): Promise<AgentPermissionDecision> | AgentPermissionDecision;
+}
+
 export interface AgentKernelOptions {
   model: ModelPort;
   tools?: AgentToolPort;
+  permissions?: AgentPermissionPort;
 }
 
 export interface AgentTurnInput {
@@ -75,7 +92,7 @@ export class AgentKernel {
       const toolMessages: ModelMessage[] = [];
       for (const toolCall of response.toolCalls) {
         yield { type: 'tool_use', toolCall };
-        const result = await this.options.tools.execute(toolCall, turn.signal);
+        const result = await this.executeToolCall(toolCall, messages, turn.signal);
         yield { type: 'tool_result', result };
         toolMessages.push(this.toolResultToMessage(result, toolCall));
       }
@@ -105,6 +122,32 @@ export class AgentKernel {
       content: response.content,
       finishReason: response.finishReason,
     };
+  }
+
+  private async executeToolCall(
+    toolCall: AgentToolCall,
+    messages: readonly ModelMessage[],
+    signal?: AbortSignal,
+  ): Promise<AgentToolResult> {
+    const decision = await this.options.permissions?.checkToolCall(
+      toolCall,
+      { messages },
+      signal,
+    );
+
+    if (decision?.behavior === 'deny') {
+      return {
+        id: toolCall.id,
+        name: toolCall.name,
+        output: decision.message ?? `Tool ${toolCall.name} was denied by permission policy`,
+        isError: true,
+      };
+    }
+
+    if (!this.options.tools) {
+      throw new Error('Model requested tool calls, but no tool port is configured');
+    }
+    return this.options.tools.execute(toolCall, signal);
   }
 
   private toolCallsToAssistantMessage(response: ModelResponse): ModelMessage {
