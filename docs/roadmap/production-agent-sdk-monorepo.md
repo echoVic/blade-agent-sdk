@@ -353,6 +353,10 @@ Deliverables:
 - release workflow runs `pnpm run verify` before publishing.
 - dry-run release workflow or command documented.
 
+Status:
+
+- First release-automation increment complete: semantic-release now uses a fixed-version monorepo release for `@blade-ai/ai`, `@blade-ai/agent`, and `@blade-ai/agent-sdk`. The release workflow still runs `pnpm run verify` before publishing, uses GitHub OIDC trusted publishing without `NPM_TOKEN`, and publishes all three package roots through `@semantic-release/npm`. A local prepare plugin synchronizes each package manifest to `nextRelease.version` and rewrites internal `workspace:*` dependencies to the same concrete version before npm publish. `pnpm run release:dry` remains the tokened release rehearsal path without publishing.
+
 Commit:
 
 - `ci: publish monorepo packages from main`

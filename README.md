@@ -187,21 +187,23 @@ pnpm run docs:dev
 
 ## 发布
 
-本仓库使用 `semantic-release` 自动发包。代码合并到 `main` 后，GitHub Actions 会先运行 lint、type-check、build 和 test；通过后再根据 conventional commits 自动决定版本、创建 `v*` 标签、发布 GitHub Release，并把 `@blade-ai/agent-sdk` 发布到 npm。
+本仓库使用 `semantic-release` 自动发包。代码合并到 `main` 后，GitHub Actions 会先运行完整的 `pnpm run verify`；通过后再根据 conventional commits 自动决定版本、创建 `v*` 标签、发布 GitHub Release，并以 fixed-version monorepo 模式把 `@blade-ai/ai`、`@blade-ai/agent`、`@blade-ai/agent-sdk` 发布到 npm。
+
+发布前本地 release 插件会把三个 workspace 包的 `version` 和内部 `workspace:*` 依赖同步成同一个发布版本，避免 npm 包里泄漏 workspace 协议。
 
 - `feat:` 触发 minor 版本
 - `fix:` 触发 patch 版本
 - `BREAKING CHANGE:` 触发 major 版本
 - `docs:`、`test:`、`chore:` 等默认不会单独发包
 
-第一次启用前，需要在 npm 上为 `@blade-ai/agent-sdk` 配置 Trusted Publishing，让 GitHub Actions 通过 OIDC 发布，不再依赖长期 `NPM_TOKEN`。npm 配置项：
+第一次启用前，需要在 npm 上分别为 `@blade-ai/ai`、`@blade-ai/agent`、`@blade-ai/agent-sdk` 配置 Trusted Publishing，让 GitHub Actions 通过 OIDC 发布，不再依赖长期 `NPM_TOKEN`。每个 npm 包使用相同配置项：
 
 - Owner: `echoVic`
 - Repository: `blade-agent-sdk`
 - Workflow filename: `release.yml`
 - Environment name: 留空
 
-手动预演可以运行：
+手动预演不会执行 prepare/publish，但仍会验证 GitHub 和 npm 发布权限；本地运行时需要提供可用的 `GITHUB_TOKEN` 或 `GH_TOKEN`：
 
 ```bash
 pnpm run release:dry
