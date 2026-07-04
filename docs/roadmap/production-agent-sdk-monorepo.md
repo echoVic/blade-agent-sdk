@@ -2,7 +2,8 @@
 
 ## Goal
 
-Rebuild Blade Agent SDK into a production-grade, Pi-inspired monorepo with three core packages:
+Rebuild Blade Agent SDK into a production-grade monorepo inspired by
+[`earendil-works/pi`](https://github.com/earendil-works/pi), with three core packages:
 
 - `@blade-ai/ai`: provider-agnostic model API, streaming, usage, pricing, provider options.
 - `@blade-ai/agent`: runtime-independent agent kernel, loop contracts, tool calling protocol, state, traces, permissions.
@@ -15,6 +16,13 @@ import { createSession } from '@blade-ai/agent-sdk';
 ```
 
 Backward compatibility is not a constraint. Architecture correctness, production quality, clear types, and agent-friendly APIs take priority.
+
+Pi reference mapping:
+
+- Pi `@earendil-works/pi-ai` maps to Blade `@blade-ai/ai`.
+- Pi `@earendil-works/pi-agent-core` maps to Blade `@blade-ai/agent`.
+- Pi `@earendil-works/pi-coding-agent` maps to Blade `@blade-ai/agent-sdk` adapters, but Blade keeps `createSession()` as the primary product API instead of making a CLI-first package the center.
+- Pi `@earendil-works/pi-tui` remains an optional future adapter direction, not part of the core SDK split.
 
 ## Principles
 
@@ -183,6 +191,8 @@ Status:
 - `@blade-ai/ai` now publishes a `./retry` subpath with JS and declaration output.
 - Chat protocol types now live in `@blade-ai/ai/chat`, including `ChatConfig`, `Message`, `UsageInfo`, `StreamChunk`, `ChatResponse`, and `IChatService`.
 - The legacy root `src/services/ChatServiceInterface.ts` now re-exports chat protocol types and keeps only the SDK-local `createChatServiceAsync()` factory.
+- DeepSeek pure provider helpers now live in `@blade-ai/ai/deepseek`, including model normalization, endpoint selection, cache-aware usage and pricing helpers, cache-prefix optimization, long-context chunk planning, strict tool schema sanitization, and default DeepSeek model config.
+- The session SDK's Vercel AI chat service and root public helper exports now consume `@blade-ai/ai/deepseek`; SDK-local DeepSeek fetch APIs remain in `src/services/deepseek.ts` for a later network adapter extraction.
 
 ### Phase 3: Extract `@blade-ai/agent`
 

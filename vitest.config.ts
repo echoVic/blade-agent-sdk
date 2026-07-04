@@ -10,6 +10,7 @@ export default defineConfig({
     alias: {
       '@': resolve(__dirname, 'src'),
       '@blade-ai/ai/chat': resolve(__dirname, 'packages/ai/src/chat/index.ts'),
+      '@blade-ai/ai/deepseek': resolve(__dirname, 'packages/ai/src/deepseek/index.ts'),
       '@blade-ai/ai/retry': resolve(__dirname, 'packages/ai/src/retry/index.ts'),
       '@blade-ai/ai': resolve(__dirname, 'packages/ai/src/index.ts'),
     },

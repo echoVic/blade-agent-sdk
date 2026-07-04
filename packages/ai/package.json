@@ -15,6 +15,10 @@
       "types": "./dist/chat/index.d.ts",
       "import": "./dist/chat/index.js"
     },
+    "./deepseek": {
+      "types": "./dist/deepseek/index.d.ts",
+      "import": "./dist/deepseek/index.js"
+    },
     "./retry": {
       "types": "./dist/retry/index.d.ts",
       "import": "./dist/retry/index.js"

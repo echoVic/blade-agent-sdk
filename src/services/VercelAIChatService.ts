@@ -36,7 +36,7 @@ import {
   resolveDeepSeekBaseUrl,
   shouldOmitDeepSeekSamplingOptions,
   shouldUseDeepSeekBetaBaseUrl,
-} from './deepseek.js';
+} from '@blade-ai/ai/deepseek';
 
 function filterOrphanToolMessages(messages: readonly Message[]): Message[] {
   const availableToolCallIds = new Set<string>();
