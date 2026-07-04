@@ -165,6 +165,21 @@ const packageSpecs = [
         message: 'local declarations must be emitted from package-local local entry source',
       },
       {
+        file: 'package/dist/local/index.d.ts',
+        forbidden: 'read(id: string)',
+        message: 'local memory declarations must use package-local memory API',
+      },
+      {
+        file: 'package/dist/local/index.d.ts',
+        forbidden: 'write(input: MemoryInput)',
+        message: 'local memory declarations must use package-local memory API',
+      },
+      {
+        file: 'package/dist/local/index.d.ts',
+        forbidden: 'delete(id: string): Promise<boolean>',
+        message: 'local memory declarations must use package-local memory API',
+      },
+      {
         file: 'package/dist/local/index.js',
         forbidden: 'src/mcp',
         message: 'local runtime entry must route through package-local local adapters',

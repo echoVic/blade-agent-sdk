@@ -34,37 +34,45 @@ export interface SdkMcpServerHandle {
 }
 
 export interface Memory {
-  id: string;
-  type: string;
-  content: string;
-  metadata?: JsonObject;
-  createdAt?: string;
-  updatedAt?: string;
+  name: string;
+  description: string;
+  type: MemoryType;
+  body: string;
+  updatedAt: number;
 }
 
+export type MemoryType = 'user' | 'feedback' | 'project' | 'reference';
+
 export interface MemoryInput {
-  type: string;
-  content: string;
-  metadata?: JsonObject;
+  name: string;
+  description: string;
+  type: MemoryType;
+  body: string;
 }
 
 export interface MemoryStore {
+  save(input: MemoryInput): Promise<Memory>;
+  get(name: string): Promise<Memory | undefined>;
   list(): Promise<Memory[]>;
-  read(id: string): Promise<Memory | undefined>;
-  write(input: MemoryInput): Promise<Memory>;
-  delete(id: string): Promise<boolean>;
+  delete(name: string): Promise<void>;
 }
 
 export declare class FileSystemMemoryStore implements MemoryStore {
-  constructor(...args: unknown[]);
+  constructor(dir?: string);
+  save(input: MemoryInput): Promise<Memory>;
+  get(name: string): Promise<Memory | undefined>;
   list(): Promise<Memory[]>;
-  read(id: string): Promise<Memory | undefined>;
-  write(input: MemoryInput): Promise<Memory>;
-  delete(id: string): Promise<boolean>;
+  delete(name: string): Promise<void>;
 }
 
 export declare class MemoryManager {
-  constructor(...args: unknown[]);
+  constructor(store: MemoryStore);
+  save(input: MemoryInput): Promise<Memory>;
+  get(name: string): Promise<Memory | undefined>;
+  list(): Promise<Memory[]>;
+  delete(name: string): Promise<void>;
+  search(query: string): Promise<Memory[]>;
+  readIndexContent(): Promise<string>;
 }
 
 export interface SandboxCapabilities {

@@ -177,11 +177,13 @@ describe('monorepo topology', () => {
   it('owns node adapter public entry sources inside agent-sdk', () => {
     const serverSource = readFileSync('packages/agent-sdk/src/server/index.ts', 'utf-8');
     const localSource = readFileSync('packages/agent-sdk/src/local/index.ts', 'utf-8');
+    const localMemorySource = readFileSync('packages/agent-sdk/src/local/memory.ts', 'utf-8');
 
     expect(serverSource).not.toContain("export * from '../../../../src/server/index.js'");
     expect(serverSource).toContain("from '../index.js'");
     expect(localSource).not.toContain("export * from '../../../../src/local/index.js'");
     expect(localSource).not.toContain("../../../../src/");
+    expect(localMemorySource).not.toContain("../../../../src/memory");
     for (const file of [
       'packages/agent-sdk/src/local/mcp.ts',
       'packages/agent-sdk/src/local/memory.ts',
