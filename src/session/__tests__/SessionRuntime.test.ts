@@ -592,6 +592,69 @@ describe('SessionRuntime', () => {
     await runtime.close();
   });
 
+  it('should apply session prompt hooks before guarded kernel model calls', async () => {
+    const runtime = new SessionRuntime(
+      SessionId('session-kernel-hooks'),
+      createOptions({
+        hooks: {
+          [HookEvent.UserPromptSubmit]: [
+            async () => ({
+              action: 'continue',
+              modifiedInput: { userPrompt: 'Prompt rewritten for kernel' },
+            }),
+          ],
+        },
+      }),
+      {
+        models: [],
+      },
+      PermissionMode.DEFAULT,
+      createFilesystemContext(workspaceRoot),
+      NOOP_LOGGER,
+    );
+    const managerSpy = vi
+      .spyOn(HookManager.getInstance(), 'executeUserPromptSubmitHooks')
+      .mockResolvedValue({ proceed: true });
+    const generate = vi.fn(async () => ({
+      content: 'Kernel hook answer',
+      finishReason: 'stop',
+    }));
+    const model: ModelPort = {
+      generate,
+      stream: async function* () {},
+    };
+
+    await runtime.initialize();
+    await runtime.ensureSessionCreated();
+
+    for await (const _event of runtime.streamAgentKernelTurn({
+      input: 'Original kernel prompt',
+      model,
+    })) {
+      // Drain the stream so the kernel turn completes.
+    }
+
+    expect(generate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        messages: [
+          {
+            role: 'user',
+            content: 'Prompt rewritten for kernel',
+          },
+        ],
+      }),
+    );
+    expect(managerSpy).toHaveBeenCalledWith(
+      'Prompt rewritten for kernel',
+      expect.objectContaining({
+        projectDir: workspaceRoot,
+        sessionId: 'session-kernel-hooks',
+      }),
+    );
+
+    await runtime.close();
+  });
+
   it('should disable all tools when allowedTools is an empty array', async () => {
     const runtime = new SessionRuntime(
       SessionId('session-empty-allowlist'),

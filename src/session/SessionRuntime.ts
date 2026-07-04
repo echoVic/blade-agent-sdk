@@ -2,6 +2,7 @@ import { basename, dirname } from 'node:path';
 import type { ModelPort } from '@blade-ai/ai';
 import {
   AgentKernel,
+  type AgentHookPort,
   type AgentModelRequestDefaults,
   type AgentStreamEvent,
   type AgentStorePort,
@@ -55,6 +56,7 @@ import type {
   StreamMessage,
 } from './types.js';
 import { createSessionKernelModel } from './SessionModelPort.js';
+import { createKernelHookPort } from './SessionKernelHookAdapter.js';
 import { createKernelToolPort } from './SessionKernelAdapter.js';
 import { createKernelStorePort } from './SessionKernelStoreAdapter.js';
 import { createKernelTracePort } from './SessionKernelTraceAdapter.js';
@@ -217,6 +219,10 @@ export class SessionRuntime {
     return createKernelTracePort({ recorder });
   }
 
+  getKernelHookPort(): AgentHookPort {
+    return createKernelHookPort({ hookRuntime: this.hookRuntime });
+  }
+
   createAgentKernel(options: SessionAgentKernelOptions = {}): AgentKernel {
     return this.createAgentKernelFromResolved(options, this.resolveAgentKernelModel(options));
   }
@@ -270,6 +276,7 @@ export class SessionRuntime {
         ? { modelRequestDefaults: kernelModel.modelRequestDefaults }
         : {}),
       store: this.getKernelStorePort(),
+      hooks: this.getKernelHookPort(),
       ...(options.traceRecorder
         ? { trace: this.getKernelTracePort(options.traceRecorder) }
         : {}),
