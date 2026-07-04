@@ -14,6 +14,7 @@ describe('Production checklist documentation', () => {
       'pnpm run verify:packages',
       'pnpm run verify:entrypoints',
       'pnpm run test:live:glm',
+      'pnpm run test:live:session-glm',
       'pnpm run release:dry',
       'semantic-release',
       'trusted publishing',

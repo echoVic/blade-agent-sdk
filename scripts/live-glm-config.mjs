@@ -23,6 +23,7 @@ const BASE_URL_ALIASES = [
 
 const MODEL_ALIASES = [
   'GLM_MODEL',
+  'INTEGRATION_MODEL',
   'MODEL',
   'model',
 ];
@@ -37,7 +38,7 @@ export function loadLiveGlmConfig(options = {}) {
   };
 
   const apiKey = pickFirst(merged, API_KEY_ALIASES);
-  const baseUrl = pickFirst(merged, BASE_URL_ALIASES);
+  const baseUrl = pickFirstBaseUrl(merged, BASE_URL_ALIASES);
   const model = pickFirst(merged, MODEL_ALIASES) ?? 'glm-5.2';
 
   if (!apiKey || !baseUrl) {
@@ -48,7 +49,7 @@ export function loadLiveGlmConfig(options = {}) {
 
   return {
     apiKey,
-    baseUrl: normalizeOpenAICompatibleBaseUrl(baseUrl),
+    baseUrl,
     model,
   };
 }
@@ -139,6 +140,16 @@ function pickFirst(env, aliases) {
   for (const alias of aliases) {
     const value = env[alias];
     if (typeof value === 'string' && value.trim()) return value.trim();
+  }
+  return undefined;
+}
+
+function pickFirstBaseUrl(env, aliases) {
+  for (const alias of aliases) {
+    const value = env[alias];
+    if (typeof value !== 'string' || !value.trim()) continue;
+    const normalized = normalizeOpenAICompatibleBaseUrl(value);
+    if (normalized) return normalized;
   }
   return undefined;
 }

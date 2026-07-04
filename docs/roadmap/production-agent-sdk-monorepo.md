@@ -91,6 +91,7 @@ Current guardrails:
 - `pnpm run verify:boundaries` scans package source imports and fails if `@blade-ai/ai` depends on agent/session SDK layers, or if `@blade-ai/agent` imports Node-local runtime modules, MCP SDKs, or `@blade-ai/agent-sdk`.
 - The same boundary verifier also checks package manifests so `@blade-ai/agent` cannot declare MCP SDKs, provider runtime SDKs, or local filesystem/terminal/storage dependencies.
 - `pnpm run test:live:glm` builds `@blade-ai/ai` and verifies one non-streaming plus one streaming request against a GLM/OpenAI-compatible endpoint using `.env` credentials.
+- `pnpm run test:live:session-glm` builds all three packages and verifies a real session-first `createSession()` + `send()` + `stream()` turn against the same GLM/OpenAI-compatible endpoint with `allowedTools: []`.
 
 ## Roadmap
 
@@ -340,6 +341,7 @@ Status:
 
 - First verification-chain increment complete: root `pnpm run verify` now aggregates lint, root and workspace type checks, package boundary checks, docs build, entrypoint/browser-safety checks, packed package smoke tests, unit tests, and integration tests. `pnpm run verify:packages` packs `@blade-ai/ai`, `@blade-ai/agent`, and `@blade-ai/agent-sdk`, checks required JS/declaration files and absence of test files, installs the tarballs into an external temporary consumer, and imports the public package/subpath exports. The release workflow now runs the same `pnpm run verify` gate before semantic-release.
 - Second verification-chain increment complete: the package boundary verifier now rejects forbidden runtime dependencies declared in the `@blade-ai/agent` manifest, not just forbidden imports from source files, protecting the runtime-independent kernel boundary before code is imported.
+- Third verification-chain increment complete: `pnpm run test:live:session-glm` now provides a dedicated session-first live smoke over the built `@blade-ai/ai`, `@blade-ai/agent`, and `@blade-ai/agent-sdk` packages, while the heavier `test:integration` suite remains explicitly gated by `INTEGRATION_API_KEY` / `INTEGRATION_BASE_URL`.
 
 Commit:
 

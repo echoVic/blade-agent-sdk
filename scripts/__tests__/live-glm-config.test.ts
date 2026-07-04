@@ -47,6 +47,28 @@ describe('live GLM config loader', () => {
     });
   });
 
+  it('accepts integration model aliases for shared live test configuration', async () => {
+    const cwd = mkdtempSync(join(tmpdir(), 'blade-glm-integration-env-'));
+    writeFileSync(join(cwd, '.env'), JSON.stringify({
+      key: 'json-key',
+      url: 'https://glm.example.test/v1',
+    }));
+
+    // @ts-expect-error dynamic mjs helper is loaded at runtime by the live script.
+    const { loadLiveGlmConfig } = await import('../live-glm-config.mjs');
+
+    expect(loadLiveGlmConfig({
+      cwd,
+      env: {
+        INTEGRATION_MODEL: 'glm-integration',
+      },
+    })).toEqual({
+      apiKey: 'json-key',
+      baseUrl: 'https://glm.example.test/v1',
+      model: 'glm-integration',
+    });
+  });
+
   it('normalizes gateway root URLs to OpenAI-compatible /v1 base URLs', async () => {
     const cwd = mkdtempSync(join(tmpdir(), 'blade-glm-root-url-env-'));
     writeFileSync(join(cwd, '.env'), JSON.stringify({
@@ -59,6 +81,26 @@ describe('live GLM config loader', () => {
 
     expect(loadLiveGlmConfig({ cwd, env: {} })).toMatchObject({
       baseUrl: 'https://gateway.example.test/v1',
+    });
+  });
+
+  it('ignores framework BASE_URL slash defaults when .env has a real provider URL', async () => {
+    const cwd = mkdtempSync(join(tmpdir(), 'blade-glm-framework-base-url-env-'));
+    writeFileSync(join(cwd, '.env'), JSON.stringify({
+      key: 'json-key',
+      url: 'https://glm.example.test',
+    }));
+
+    // @ts-expect-error dynamic mjs helper is loaded at runtime by the live script.
+    const { loadLiveGlmConfig } = await import('../live-glm-config.mjs');
+
+    expect(loadLiveGlmConfig({
+      cwd,
+      env: {
+        BASE_URL: '/',
+      },
+    })).toMatchObject({
+      baseUrl: 'https://glm.example.test/v1',
     });
   });
 });

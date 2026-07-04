@@ -73,9 +73,12 @@ pnpm run docs:build
 
 ```bash
 pnpm run test:live:glm
+pnpm run test:live:session-glm
 ```
 
-这个脚本会构建 `@blade-ai/ai`，读取 `.env` 中的 GLM baseUrl / apiKey，执行一次非流式请求和一次流式请求，并检查 usage 信息。
+`test:live:glm` 会构建 `@blade-ai/ai`，读取 `.env` 中的 GLM baseUrl / apiKey，执行一次非流式请求和一次流式请求，并检查 usage 信息。
+
+`test:live:session-glm` 会构建 `@blade-ai/ai`、`@blade-ai/agent` 和 `@blade-ai/agent-sdk`，再用 session-first `createSession()` 真实执行一次 `send()` + `stream()`。它会显式设置 `allowedTools: []`，验证无工具场景下的 content / result 事件和 server SDK 到 kernel/provider 的端到端组合。
 
 ## Release Rehearsal
 
@@ -107,5 +110,6 @@ dry-run 不发布 npm 包。它通常需要 GitHub token 环境，适合维护�
 - 新行为有 RED -> GREEN 记录，测试覆盖了 public API 或 package boundary。
 - `pnpm run verify` 通过。
 - 如果涉及真实 provider/runtime 行为，`pnpm run test:live:glm` 已手动通过或明确记录未跑原因。
+- 如果涉及 session runtime、kernel adapter、model config 或 stream 行为，`pnpm run test:live:session-glm` 已手动通过或明确记录未跑原因。
 - 如果涉及发版配置，`pnpm run release:dry` 已手动通过或明确记录未跑原因。
 - 工作区干净，commit message 能说明变更类型和边界。
