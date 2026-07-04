@@ -4,6 +4,16 @@ import { createDeepSeek } from '@ai-sdk/deepseek';
 import { createGoogleGenerativeAI } from '@ai-sdk/google';
 import { createOpenAI } from '@ai-sdk/openai';
 import { createOpenAICompatible } from '@ai-sdk/openai-compatible';
+import {
+  createOpenAICompatibleModelPort,
+} from '@blade-ai/ai/providers/openai-compatible';
+import type {
+  ModelPort,
+  ModelRequest,
+  ModelResponse,
+  ModelStreamEvent,
+  ModelToolCall,
+} from '@blade-ai/ai/model';
 import { generateText, jsonSchema, type LanguageModel, Output, streamText } from 'ai';
 import type { JSONSchema7 } from 'json-schema';
 import { type InternalLogger, LogCategory, NOOP_LOGGER } from '../logging/Logger.js';
@@ -229,7 +239,8 @@ async function consumeRetryGenerator<T>(
 }
 
 export class VercelAIChatService implements IChatService {
-  private model!: LanguageModel;
+  private model?: LanguageModel;
+  private modelPort?: ModelPort;
   private config: ChatConfig;
   private initialized: Promise<void>;
   private readonly logger: InternalLogger;
@@ -247,12 +258,41 @@ export class VercelAIChatService implements IChatService {
   }
 
   private async initModel(config: ChatConfig): Promise<void> {
+    this.modelPort = undefined;
+    this.model = undefined;
+    if (this.shouldUseModelPort(config)) {
+      this.modelPort = createOpenAICompatibleModelPort({
+        apiKey: config.apiKey,
+        baseUrl: config.baseUrl,
+        headers: config.customHeaders,
+        model: config.model,
+        name: config.providerId || 'openai-compatible',
+      });
+      this.logger.debug('🚀 [VercelAIChatService] Initialized with AI ModelPort', {
+        provider: config.provider,
+        model: config.model,
+        providerId: config.providerId,
+      });
+      return;
+    }
+
     this.model = await this.createModel(config);
     this.logger.debug('🚀 [VercelAIChatService] Initialized', {
       provider: config.provider,
       model: config.model,
       providerId: config.providerId,
     });
+  }
+
+  private shouldUseModelPort(config: ChatConfig): boolean {
+    return config.provider === 'openai-compatible' && config.providerId !== 'deepseek';
+  }
+
+  private getLanguageModel(): LanguageModel {
+    if (!this.model) {
+      throw new Error('Language model is not initialized for this provider');
+    }
+    return this.model;
   }
 
   private async createModel(config: ChatConfig): Promise<LanguageModel> {
@@ -720,6 +760,94 @@ export class VercelAIChatService implements IChatService {
     };
   }
 
+  private buildModelPortRequest(
+    messages: readonly Message[],
+    tools?: Array<{ name: string; description: string; parameters: JSONSchema7 }>,
+    signal?: AbortSignal,
+    overrides: {
+      maxOutputTokens?: number;
+      temperature?: number;
+    } = {},
+  ): ModelRequest {
+    const filteredMessages = filterOrphanToolMessages(messages);
+    return {
+      provider: this.config.provider,
+      model: this.config.model,
+      messages: filteredMessages.map((message) => ({
+        role: message.role,
+        content: getTextContent(message.content),
+        ...(message.name ? { name: message.name } : {}),
+        ...(message.tool_call_id ? { toolCallId: message.tool_call_id } : {}),
+        ...(message.metadata !== undefined ? { metadata: message.metadata } : {}),
+      })),
+      tools: tools?.map((tool) => ({
+        name: tool.name,
+        description: tool.description,
+        parameters: tool.parameters as unknown as JsonObject,
+      })),
+      maxOutputTokens: overrides.maxOutputTokens ?? this.config.maxOutputTokens,
+      temperature: this.getTemperatureOverride(overrides.temperature ?? this.config.temperature),
+      maxContextTokens: this.config.maxContextTokens,
+      providerOptions: this.config.providerOptions as JsonObject | undefined,
+      signal,
+    };
+  }
+
+  private modelResponseToChatResponse(response: ModelResponse): ChatResponse {
+    return {
+      content: response.content,
+      reasoningContent: response.reasoningContent,
+      toolCalls: this.modelToolCallsToChatToolCalls(response.toolCalls),
+      usage: response.usage,
+    };
+  }
+
+  private modelToolCallsToChatToolCalls(toolCalls: ModelToolCall[] | undefined): ToolCall[] | undefined {
+    if (!toolCalls || toolCalls.length === 0) return undefined;
+    return toolCalls.map((toolCall) => ({
+      id: toolCall.id,
+      type: 'function',
+      function: {
+        name: toolCall.name,
+        arguments: JSON.stringify(toolCall.input ?? {}),
+      },
+    }));
+  }
+
+  private modelStreamEventToChunk(
+    event: ModelStreamEvent,
+    toolCallIndex: number,
+  ): { chunk?: StreamChunk; nextToolCallIndex: number } {
+    switch (event.type) {
+      case 'content_delta':
+        return { chunk: { content: event.delta }, nextToolCallIndex: toolCallIndex };
+      case 'reasoning_delta':
+        return { chunk: { reasoningContent: event.delta }, nextToolCallIndex: toolCallIndex };
+      case 'tool_call': {
+        const chatToolCall = this.modelToolCallsToChatToolCalls([event.toolCall])?.[0];
+        if (!chatToolCall) return { nextToolCallIndex: toolCallIndex };
+        return {
+          chunk: {
+            toolCalls: [
+              {
+                index: toolCallIndex,
+                ...chatToolCall,
+              },
+            ],
+          },
+          nextToolCallIndex: toolCallIndex + 1,
+        };
+      }
+      case 'usage':
+        return { chunk: { usage: event.usage }, nextToolCallIndex: toolCallIndex };
+      case 'done':
+        return { chunk: { finishReason: event.finishReason }, nextToolCallIndex: toolCallIndex };
+      case 'error':
+        throw event.error;
+    }
+    return { nextToolCallIndex: toolCallIndex };
+  }
+
   async chat(
     messages: readonly Message[],
     tools?: Array<{ name: string; description: string; parameters: JSONSchema7 }>,
@@ -729,13 +857,18 @@ export class VercelAIChatService implements IChatService {
     const startTime = Date.now();
     this.logger.debug('🚀 [VercelAIChatService] Starting chat request');
 
+    if (this.modelPort) {
+      const response = await this.modelPort.generate(this.buildModelPortRequest(messages, tools, signal));
+      return this.modelResponseToChatResponse(response);
+    }
+
     const { coreMessages, coreTools, experimentalOutput } = this.prepareRequest(messages, tools);
 
     try {
       const gen = withRetry(
         (ctx: RetryContext) =>
           generateText({
-            model: this.model,
+            model: this.getLanguageModel(),
             messages: coreMessages as never,
             tools: coreTools as never,
             maxOutputTokens: ctx.maxTokensOverride ?? this.config.maxOutputTokens,
@@ -777,10 +910,18 @@ export class VercelAIChatService implements IChatService {
     };
 
     try {
+      if (this.modelPort) {
+        const response = await this.modelPort.generate(this.buildModelPortRequest(messages, undefined, signal, {
+          maxOutputTokens: options?.maxOutputTokens,
+          temperature: options?.temperature,
+        }));
+        return this.modelResponseToChatResponse(response);
+      }
+
       const gen = withRetry(
         (ctx: RetryContext) =>
           generateText({
-            model: this.model,
+            model: this.getLanguageModel(),
             messages: coreMessages as never,
             maxOutputTokens: ctx.maxTokensOverride
               ?? options?.maxOutputTokens
@@ -824,10 +965,16 @@ export class VercelAIChatService implements IChatService {
     const { coreMessages, coreTools, experimentalOutput } = this.prepareRequest(messages, tools);
 
     try {
+      if (this.modelPort) {
+        return this.modelResponseToChatResponse(
+          await this.modelPort.generate(this.buildModelPortRequest(messages, tools, signal)),
+        );
+      }
+
       const gen = withRetry(
         (ctx: RetryContext) =>
           generateText({
-            model: this.model,
+            model: this.getLanguageModel(),
             messages: coreMessages as never,
             tools: coreTools as never,
             maxOutputTokens: ctx.maxTokensOverride ?? this.config.maxOutputTokens,
@@ -869,11 +1016,21 @@ export class VercelAIChatService implements IChatService {
     const { coreMessages, coreTools, experimentalOutput } = this.prepareRequest(messages, tools);
 
     try {
+      if (this.modelPort) {
+        let toolCallIndex = 0;
+        for await (const event of this.modelPort.stream(this.buildModelPortRequest(messages, tools, signal))) {
+          const { chunk, nextToolCallIndex } = this.modelStreamEventToChunk(event, toolCallIndex);
+          toolCallIndex = nextToolCallIndex;
+          if (chunk) yield chunk;
+        }
+        return;
+      }
+
       const gen = withRetry(
         (ctx: RetryContext) =>
           Promise.resolve(
             streamText({
-              model: this.model,
+              model: this.getLanguageModel(),
               messages: coreMessages as never,
               tools: coreTools as never,
               maxOutputTokens: ctx.maxTokensOverride ?? this.config.maxOutputTokens,

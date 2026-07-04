@@ -200,6 +200,7 @@ Status:
 - The `@blade-ai/ai` root exports `Model*` protocol types and `ModelUsageInfo` while preserving the existing chat `UsageInfo` root export until the chat/runtime migration is complete.
 - The first provider runtime adapter now lives in `@blade-ai/ai/providers/openai-compatible`, exposing a `ModelPort` over Vercel AI SDK's OpenAI-compatible provider and normalizing text, reasoning, tool calls, usage, and stream events.
 - The GLM live test now supports both JSON `.env` files with `key/url` fields and conventional `GLM_API_KEY`/`GLM_BASE_URL` environment variables, normalizing gateway root URLs to `/v1`.
+- The session SDK's `VercelAIChatService` now delegates `provider: "openai-compatible"` chat and stream execution through `@blade-ai/ai/providers/openai-compatible`, beginning the recomposition of SDK runtime code on top of `@blade-ai/ai`.
 - DeepSeek pure provider helpers now live in `@blade-ai/ai/deepseek`, including model normalization, endpoint selection, cache-aware usage and pricing helpers, cache-prefix optimization, long-context chunk planning, strict tool schema sanitization, and default DeepSeek model config.
 - The session SDK's Vercel AI chat service and root public helper exports now consume `@blade-ai/ai/deepseek`; SDK-local DeepSeek fetch APIs remain in `src/services/deepseek.ts` for a later network adapter extraction.
 - A package boundary verifier now enforces key Pi-style dependency direction checks during the migration.

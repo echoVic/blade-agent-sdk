@@ -9,6 +9,12 @@ const mockDeepSeekModelFactory = vi.fn((model: string) => ({ provider: 'deepseek
 const mockCreateDeepSeek = vi.fn((_options?: Record<string, unknown>) => mockDeepSeekModelFactory);
 const mockGenerateText = vi.fn();
 const mockStreamText = vi.fn();
+const mockModelPortGenerate = vi.fn();
+const mockModelPortStream = vi.fn();
+const mockCreateOpenAICompatibleModelPort = vi.fn(() => ({
+  generate: mockModelPortGenerate,
+  stream: mockModelPortStream,
+}));
 
 vi.mock('@ai-sdk/openai', () => ({
   createOpenAI: mockCreateOpenAI,
@@ -20,6 +26,10 @@ vi.mock('@ai-sdk/deepseek', () => ({
 
 vi.mock('@ai-sdk/openai-compatible', () => ({
   createOpenAICompatible: mockCreateOpenAICompatible,
+}));
+
+vi.mock('@blade-ai/ai/providers/openai-compatible', () => ({
+  createOpenAICompatibleModelPort: mockCreateOpenAICompatibleModelPort,
 }));
 
 vi.mock('ai', async (importOriginal) => {
@@ -43,6 +53,9 @@ describe('VercelAIChatService', () => {
     mockDeepSeekModelFactory.mockClear();
     mockGenerateText.mockReset();
     mockStreamText.mockReset();
+    mockCreateOpenAICompatibleModelPort.mockClear();
+    mockModelPortGenerate.mockReset();
+    mockModelPortStream.mockReset();
   });
 
   it('uses the native OpenAI provider for openai configs', async () => {
@@ -92,6 +105,168 @@ describe('VercelAIChatService', () => {
     });
     expect(mockDeepSeekModelFactory).toHaveBeenCalledWith('deepseek-v4-flash');
     expect(mockCreateOpenAICompatible).not.toHaveBeenCalled();
+  });
+
+  it('delegates OpenAI-compatible chat requests to the AI ModelPort adapter', async () => {
+    mockModelPortGenerate.mockResolvedValue({
+      content: 'hello',
+      reasoningContent: 'thinking',
+      toolCalls: [
+        {
+          id: 'call_search',
+          name: 'Search',
+          input: { q: 'blade' },
+        },
+      ],
+      usage: {
+        promptTokens: 10,
+        completionTokens: 4,
+        totalTokens: 14,
+      },
+      finishReason: 'stop',
+    });
+
+    const service = new VercelAIChatService(
+      {
+        provider: 'openai-compatible',
+        providerId: 'glm',
+        apiKey: 'test-key',
+        baseUrl: 'https://gateway.example.test/v1',
+        model: 'glm-5.2',
+        temperature: 0.2,
+        maxOutputTokens: 64,
+        customHeaders: { 'X-Test': '1' },
+        providerOptions: { custom: { trace: 'enabled' } } as never,
+      },
+      NOOP_LOGGER,
+    );
+
+    await (service as unknown as { initialized: Promise<void> }).initialized;
+    const response = await service.chat(
+      [{ role: 'user', content: 'hello' }],
+      [
+        {
+          name: 'Search',
+          description: 'Search docs',
+          parameters: {
+            type: 'object',
+            properties: {
+              q: { type: 'string' },
+            },
+          },
+        },
+      ],
+    );
+
+    expect(mockCreateOpenAICompatibleModelPort).toHaveBeenCalledWith({
+      apiKey: 'test-key',
+      baseUrl: 'https://gateway.example.test/v1',
+      headers: { 'X-Test': '1' },
+      model: 'glm-5.2',
+      name: 'glm',
+    });
+    expect(mockCreateOpenAICompatible).not.toHaveBeenCalled();
+    expect(mockGenerateText).not.toHaveBeenCalled();
+    expect(mockModelPortGenerate).toHaveBeenCalledWith(expect.objectContaining({
+      maxOutputTokens: 64,
+      messages: [{ role: 'user', content: 'hello' }],
+      model: 'glm-5.2',
+      provider: 'openai-compatible',
+      providerOptions: { custom: { trace: 'enabled' } },
+      temperature: 0.2,
+      tools: [
+        {
+          name: 'Search',
+          description: 'Search docs',
+          parameters: {
+            type: 'object',
+            properties: {
+              q: { type: 'string' },
+            },
+          },
+        },
+      ],
+    }));
+    expect(response).toEqual({
+      content: 'hello',
+      reasoningContent: 'thinking',
+      toolCalls: [
+        {
+          id: 'call_search',
+          type: 'function',
+          function: {
+            name: 'Search',
+            arguments: '{"q":"blade"}',
+          },
+        },
+      ],
+      usage: {
+        promptTokens: 10,
+        completionTokens: 4,
+        totalTokens: 14,
+      },
+    });
+  });
+
+  it('delegates OpenAI-compatible stream requests to the AI ModelPort adapter', async () => {
+    mockModelPortStream.mockReturnValue((async function* () {
+      yield { type: 'reasoning_delta', delta: 'think' };
+      yield { type: 'content_delta', delta: 'done' };
+      yield { type: 'tool_call', toolCall: { id: 'call_search', name: 'Search', input: { q: 'blade' } } };
+      yield { type: 'usage', usage: { promptTokens: 3, completionTokens: 2, totalTokens: 5 } };
+      yield { type: 'done', finishReason: 'tool-calls' };
+    })());
+
+    const service = new VercelAIChatService(
+      {
+        provider: 'openai-compatible',
+        providerId: 'glm',
+        apiKey: 'test-key',
+        baseUrl: 'https://gateway.example.test/v1',
+        model: 'glm-5.2',
+        maxOutputTokens: 32,
+      },
+      NOOP_LOGGER,
+    );
+
+    await (service as unknown as { initialized: Promise<void> }).initialized;
+    const chunks = [];
+    for await (const chunk of service.streamChat([{ role: 'user', content: 'hello' }])) {
+      chunks.push(chunk);
+    }
+
+    expect(mockStreamText).not.toHaveBeenCalled();
+    expect(mockModelPortStream).toHaveBeenCalledWith(expect.objectContaining({
+      maxOutputTokens: 32,
+      messages: [{ role: 'user', content: 'hello' }],
+      model: 'glm-5.2',
+      provider: 'openai-compatible',
+    }));
+    expect(chunks).toEqual([
+      { reasoningContent: 'think' },
+      { content: 'done' },
+      {
+        toolCalls: [
+          {
+            index: 0,
+            id: 'call_search',
+            type: 'function',
+            function: {
+              name: 'Search',
+              arguments: '{"q":"blade"}',
+            },
+          },
+        ],
+      },
+      {
+        usage: {
+          promptTokens: 3,
+          completionTokens: 2,
+          totalTokens: 5,
+        },
+      },
+      { finishReason: 'tool-calls' },
+    ]);
   });
 
   it('uses DeepSeek beta endpoint and strict sanitized tools when strictTools is enabled', async () => {
