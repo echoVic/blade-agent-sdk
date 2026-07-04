@@ -92,6 +92,57 @@ describe('AgentKernel', () => {
     });
   });
 
+  it('can stream a no-tool turn through the model port without waiting for generate', async () => {
+    const generate = vi.fn(async (_request: ModelRequest): Promise<ModelResponse> => ({
+      content: 'should not run',
+      finishReason: 'stop',
+    }));
+    const stream = vi.fn(async function* (_request: ModelRequest) {
+      yield { type: 'reasoning_delta' as const, delta: 'thinking' };
+      yield { type: 'content_delta' as const, delta: 'Hello' };
+      yield { type: 'content_delta' as const, delta: ' from Blade' };
+      yield {
+        type: 'usage' as const,
+        usage: {
+          promptTokens: 3,
+          completionTokens: 4,
+          totalTokens: 7,
+        },
+      };
+      yield { type: 'done' as const, finishReason: 'stop' };
+    });
+    const model: ModelPort = {
+      generate,
+      stream,
+    };
+    const kernel = new AgentKernel({ model, modelCallMode: 'stream' });
+
+    const events = [];
+    for await (const event of kernel.runTurn({ input: 'Say hello' })) {
+      events.push(event);
+    }
+
+    expect(generate).not.toHaveBeenCalled();
+    expect(stream).toHaveBeenCalledWith({
+      messages: [{ role: 'user', content: 'Say hello' }],
+      signal: undefined,
+    });
+    expect(events).toEqual([
+      { type: 'thinking', delta: 'thinking' },
+      { type: 'content', delta: 'Hello' },
+      { type: 'content', delta: ' from Blade' },
+      {
+        type: 'usage',
+        usage: {
+          promptTokens: 3,
+          completionTokens: 4,
+          totalTokens: 7,
+        },
+      },
+      { type: 'result', content: 'Hello from Blade', finishReason: 'stop' },
+    ]);
+  });
+
   it('executes model tool calls and follows up with tool results', async () => {
     const generate = vi.fn(async (_request: ModelRequest): Promise<ModelResponse> => {
       if (generate.mock.calls.length === 1) {

@@ -277,6 +277,7 @@ Status:
 - The eighth kernel increment adds a runtime-independent `AgentHookPort` for model lifecycle hooks: `beforeModel` can rewrite model requests, and `afterModel` can observe responses with turn, step, and message context, preparing the session hook runtime migration without coupling the kernel to SDK-local hooks.
 - The ninth kernel increment splits `@blade-ai/agent` source ownership into package-local `kernel`, `protocol`, `ports`, `state`, and `tracing` modules while keeping the root package export stable. `AgentKernel` now lives in `src/kernel/AgentKernel.ts`, and protocol/port/state/trace contracts are independently importable within the package for future kernel growth.
 - The tenth kernel increment publishes the kernel package modules as explicit subpath exports: `@blade-ai/agent/kernel`, `@blade-ai/agent/protocol`, `@blade-ai/agent/ports`, `@blade-ai/agent/state`, and `@blade-ai/agent/tracing`. Package verification now requires those JS/declaration files in the tarball and imports each subpath from a temporary consumer install.
+- The eleventh kernel increment adds optional model-level streaming mode: `AgentKernel` can call `ModelPort.stream()`, emit incremental thinking/content/usage events, aggregate the streamed response, and continue through the same tool loop, trace, hook, and store path without depending on provider or runtime adapters.
 
 ### Phase 4: Rebuild `@blade-ai/agent-sdk`
 

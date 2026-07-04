@@ -30,9 +30,12 @@ export type AgentModelRequestDefaults = Partial<Pick<
   'model' | 'maxOutputTokens' | 'temperature' | 'maxContextTokens' | 'providerOptions' | 'outputFormat'
 >>;
 
+export type AgentModelCallMode = 'generate' | 'stream';
+
 export interface AgentKernelOptions {
   model: ModelPort;
   modelRequestDefaults?: AgentModelRequestDefaults;
+  modelCallMode?: AgentModelCallMode;
   tools?: AgentToolPort;
   permissions?: AgentPermissionPort;
   trace?: AgentTracePort;
@@ -47,6 +50,7 @@ export interface AgentTurnInput {
   turnId?: string;
   signal?: AbortSignal;
   maxSteps?: number;
+  modelCallMode?: AgentModelCallMode;
 }
 
 const DEFAULT_MAX_STEPS = 10;
@@ -58,6 +62,7 @@ export class AgentKernel {
     const inputMessage: ModelMessage = { role: 'user', content: turn.input };
     let messages: readonly ModelMessage[] = turn.messages ?? [inputMessage];
     const maxSteps = turn.maxSteps ?? this.options.maxSteps ?? DEFAULT_MAX_STEPS;
+    const modelCallMode = turn.modelCallMode ?? this.options.modelCallMode ?? 'generate';
     let modelSteps = 0;
 
     if (!turn.messages) {
@@ -75,7 +80,7 @@ export class AgentKernel {
 
     await this.recordTrace({ type: 'turn_start', input: turn.input });
     await this.recordTrace({ type: 'model_request', messages });
-    let response = await this.generateModel(await this.createModelRequest(messages, turn.signal), {
+    let response = yield* this.requestModel(modelCallMode, await this.createModelRequest(messages, turn.signal), {
       turnId: turn.turnId,
       step: 1,
       messages,
@@ -138,7 +143,7 @@ export class AgentKernel {
       ];
       await this.recordTrace({ type: 'model_request', messages });
       modelSteps += 1;
-      response = await this.generateModel(await this.createModelRequest(messages, turn.signal), {
+      response = yield* this.requestModel(modelCallMode, await this.createModelRequest(messages, turn.signal), {
         turnId: turn.turnId,
         step: modelSteps,
         messages,
@@ -146,13 +151,13 @@ export class AgentKernel {
       await this.recordModelResponse(response);
     }
 
-    if (response.reasoningContent) {
+    if (modelCallMode === 'generate' && response.reasoningContent) {
       yield { type: 'thinking', delta: response.reasoningContent };
     }
-    if (response.content) {
+    if (modelCallMode === 'generate' && response.content) {
       yield { type: 'content', delta: response.content };
     }
-    if (response.usage) {
+    if (modelCallMode === 'generate' && response.usage) {
       yield { type: 'usage', usage: response.usage };
       await this.recordTrace({ type: 'usage', usage: response.usage });
     }
@@ -171,6 +176,18 @@ export class AgentKernel {
       content: response.content,
       finishReason: response.finishReason,
     };
+  }
+
+  private async *requestModel(
+    mode: AgentModelCallMode,
+    request: ModelRequest,
+    context: AgentHookContext,
+  ): AsyncGenerator<AgentStreamEvent, ModelResponse> {
+    if (mode === 'stream') {
+      return yield* this.streamModel(request, context);
+    }
+
+    return await this.generateModel(request, context);
   }
 
   private async appendStoreMessage(
@@ -249,6 +266,85 @@ export class AgentKernel {
   ): Promise<ModelResponse> {
     const nextRequest = await this.options.hooks?.beforeModel?.(request, context) ?? request;
     const response = await this.options.model.generate(nextRequest);
+    await this.options.hooks?.afterModel?.(response, {
+      ...context,
+      messages: nextRequest.messages,
+    });
+    return response;
+  }
+
+  private async *streamModel(
+    request: ModelRequest,
+    context: AgentHookContext,
+  ): AsyncGenerator<AgentStreamEvent, ModelResponse> {
+    const nextRequest = await this.options.hooks?.beforeModel?.(request, context) ?? request;
+    let content = '';
+    let reasoningContent = '';
+    let usage: ModelResponse['usage'];
+    let finishReason: string | undefined;
+    const toolCalls: ModelToolCall[] = [];
+    let doneResponse: ModelResponse | undefined;
+
+    for await (const event of this.options.model.stream(nextRequest)) {
+      if (event.type === 'content_delta') {
+        content += event.delta;
+        yield { type: 'content', delta: event.delta };
+        continue;
+      }
+
+      if (event.type === 'reasoning_delta') {
+        reasoningContent += event.delta;
+        yield { type: 'thinking', delta: event.delta };
+        continue;
+      }
+
+      if (event.type === 'tool_call') {
+        toolCalls.push(event.toolCall);
+        continue;
+      }
+
+      if (event.type === 'usage') {
+        usage = event.usage;
+        yield { type: 'usage', usage: event.usage };
+        await this.recordTrace({ type: 'usage', usage: event.usage });
+        continue;
+      }
+
+      if (event.type === 'done') {
+        doneResponse = event.response ?? doneResponse;
+        finishReason = event.finishReason ?? event.response?.finishReason ?? finishReason;
+        continue;
+      }
+
+      yield {
+        type: 'error',
+        code: 'MODEL_STREAM_ERROR',
+        message: event.error.message,
+      };
+      throw event.error;
+    }
+
+    const response: ModelResponse = doneResponse
+      ? {
+          ...doneResponse,
+          content: doneResponse.content || content,
+          ...(doneResponse.reasoningContent || reasoningContent
+            ? { reasoningContent: doneResponse.reasoningContent ?? reasoningContent }
+            : {}),
+          ...(doneResponse.toolCalls ?? toolCalls.length > 0
+            ? { toolCalls: doneResponse.toolCalls ?? toolCalls }
+            : {}),
+          ...(doneResponse.usage ?? usage ? { usage: doneResponse.usage ?? usage } : {}),
+          finishReason: doneResponse.finishReason ?? finishReason,
+        }
+      : {
+          content,
+          ...(reasoningContent ? { reasoningContent } : {}),
+          ...(toolCalls.length > 0 ? { toolCalls } : {}),
+          ...(usage ? { usage } : {}),
+          ...(finishReason ? { finishReason } : {}),
+        };
+
     await this.options.hooks?.afterModel?.(response, {
       ...context,
       messages: nextRequest.messages,
