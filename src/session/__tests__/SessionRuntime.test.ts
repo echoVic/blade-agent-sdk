@@ -170,7 +170,16 @@ describe('SessionRuntime', () => {
     const toolPort = runtime.getKernelToolPort(() => ({ userId: 'sdk-user' }));
 
     await expect(toolPort.list()).resolves.toEqual([
-      { id: 'CustomTool', name: 'CustomTool', input: {} },
+      {
+        name: 'CustomTool',
+        description: 'Custom test tool',
+        parameters: {
+          type: 'object',
+          properties: {
+            value: { type: 'string' },
+          },
+        },
+      },
     ]);
     await expect(toolPort.execute({
       id: 'call_custom',

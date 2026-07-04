@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
 import { PersistentStore } from '../../context/storage/PersistentStore.js';
 import type { ContentPart } from '../../services/ChatServiceInterface.js';
+import type { ToolDefinition } from '../../tools/types/index.js';
 import { SessionId } from '../../types/branded.js';
 import { HookEvent } from '../../types/constants.js';
 
@@ -390,6 +391,7 @@ describe('Session runtime context', () => {
       provider: { type: 'openai-compatible', apiKey: 'test-key' },
       model: 'gpt-4o-mini',
       storagePath,
+      allowedTools: [],
     });
 
     await session.send('hello kernel');
@@ -432,6 +434,62 @@ describe('Session runtime context', () => {
       { role: 'user', content: 'hello kernel' },
       { role: 'assistant', content: 'kernel public answer' },
     ]);
+
+    await session.close();
+  });
+
+  it('should expose session tools to the kernel model when experimentalKernel is enabled', async () => {
+    kernelModelGenerate.mockClear();
+    createVercelModelPort.mockClear();
+    const lookupWeatherTool: ToolDefinition<{ city: string }> = {
+      name: 'LookupWeather',
+      description: 'Look up weather for a city',
+      parameters: {
+        type: 'object',
+        properties: {
+          city: { type: 'string' },
+        },
+        required: ['city'],
+      },
+      async execute() {
+        return {
+          success: true,
+          llmContent: 'sunny',
+        };
+      },
+    };
+    const storagePath = mkdtempSync(join(tmpdir(), 'session-context-kernel-tools-'));
+    const session = await createSession({
+      provider: { type: 'openai-compatible', apiKey: 'test-key' },
+      model: 'gpt-4o-mini',
+      storagePath,
+      allowedTools: ['LookupWeather'],
+      tools: [lookupWeatherTool as never],
+    });
+
+    await session.send('what is the weather in Paris?');
+
+    for await (const _event of session.stream({ experimentalKernel: true })) {
+      // Drain the stream to completion.
+    }
+
+    expect(kernelModelGenerate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        tools: [
+          {
+            name: 'LookupWeather',
+            description: 'Look up weather for a city',
+            parameters: {
+              type: 'object',
+              properties: {
+                city: { type: 'string' },
+              },
+              required: ['city'],
+            },
+          },
+        ],
+      }),
+    );
 
     await session.close();
   });

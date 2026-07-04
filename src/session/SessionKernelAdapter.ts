@@ -13,11 +13,15 @@ export interface KernelToolPortOptions {
 export function createKernelToolPort(options: KernelToolPortOptions): AgentToolPort {
   return {
     async list() {
-      return options.registry.getAll().map((tool) => ({
-        id: tool.name,
-        name: tool.name,
-        input: {},
-      }));
+      return options.registry.getAll().map((tool) => {
+        const declaration = tool.getFunctionDeclaration();
+        return {
+          name: declaration.name,
+          description: declaration.description,
+          parameters: declaration.parameters as JsonObject,
+          ...(tool.strict ? { strict: true } : {}),
+        };
+      });
     },
     async execute(toolCall, signal) {
       const result = await options.pipeline.execute(

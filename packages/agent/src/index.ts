@@ -5,6 +5,7 @@ import type {
   ModelPort,
   ModelRequest,
   ModelResponse,
+  ModelToolDefinition,
   ModelToolCall,
   ModelUsageInfo,
 } from '@blade-ai/ai';
@@ -40,7 +41,7 @@ export type AgentStreamEvent =
   | { type: 'error'; message: string; code?: string };
 
 export interface AgentToolPort {
-  list(): Promise<AgentToolCall[]>;
+  list(): Promise<readonly ModelToolDefinition[]>;
   execute(toolCall: AgentToolCall, signal?: AbortSignal): Promise<AgentToolResult>;
 }
 
@@ -156,7 +157,7 @@ export class AgentKernel {
 
     await this.recordTrace({ type: 'turn_start', input: turn.input });
     await this.recordTrace({ type: 'model_request', messages });
-    let response = await this.generateModel(this.createModelRequest(messages, turn.signal), {
+    let response = await this.generateModel(await this.createModelRequest(messages, turn.signal), {
       turnId: turn.turnId,
       step: 1,
       messages,
@@ -208,7 +209,7 @@ export class AgentKernel {
       ];
       await this.recordTrace({ type: 'model_request', messages });
       modelSteps += 1;
-      response = await this.generateModel(this.createModelRequest(messages, turn.signal), {
+      response = await this.generateModel(await this.createModelRequest(messages, turn.signal), {
         turnId: turn.turnId,
         step: modelSteps,
         messages,
@@ -326,13 +327,15 @@ export class AgentKernel {
     return response;
   }
 
-  private createModelRequest(
+  private async createModelRequest(
     messages: readonly ModelMessage[],
     signal?: AbortSignal,
-  ): ModelRequest {
+  ): Promise<ModelRequest> {
+    const tools = await this.options.tools?.list();
     return {
       ...this.options.modelRequestDefaults,
       messages,
+      ...(tools && tools.length > 0 ? { tools } : {}),
       signal,
     };
   }

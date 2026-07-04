@@ -40,7 +40,16 @@ describe('SessionKernelAdapter', () => {
     });
 
     await expect(toolPort.list()).resolves.toEqual([
-      { id: 'Lookup', name: 'Lookup', input: {} },
+      expect.objectContaining({
+        name: 'Lookup',
+        description: 'Look up a value',
+        parameters: expect.objectContaining({
+          type: 'object',
+          properties: expect.objectContaining({
+            q: expect.objectContaining({ type: 'string' }),
+          }),
+        }),
+      }),
     ]);
 
     const result = await toolPort.execute({

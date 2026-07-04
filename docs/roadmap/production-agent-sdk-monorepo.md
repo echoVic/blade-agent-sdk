@@ -305,6 +305,7 @@ Status:
 - Sixth adapter increment complete: `SessionRuntime.streamAgentKernelTurn()` adds a guarded kernel stream path that maps kernel content, thinking, tool, usage, error, and result events into the existing session `StreamMessage` protocol without switching the public `Session.stream()` default path yet.
 - Seventh adapter increment complete: `SessionKernelHookAdapter` bridges the kernel `AgentHookPort` into the session `HookRuntime` for first-step prompt submission rewrites, so guarded kernel turns preserve session-first prompt hooks before `Session.stream()` is moved onto the kernel loop.
 - Eighth adapter increment complete: `Session.stream({ experimentalKernel: true })` exposes the first session-first public switch onto the kernel stream path, preserving pending-message consumption, abort signal composition, trace finishing, task-completed hooks, tool execution context, and `session.messages` synchronization while keeping the legacy loop as the default.
+- Ninth adapter increment complete: the kernel tool port now lists real model tool definitions instead of placeholder call shapes, and `AgentKernel` includes registered session tool schemas in model requests so the experimental session-first kernel path can advertise local/MCP/custom tools before executing tool calls.
 
 ### Phase 5: Production Verification Chain
 
