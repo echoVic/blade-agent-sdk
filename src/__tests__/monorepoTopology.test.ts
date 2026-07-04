@@ -66,11 +66,14 @@ describe('monorepo topology', () => {
 
   it('overlays package-local public declarations for agent-sdk', () => {
     const sdk = readJson('packages/agent-sdk/package.json');
+    const overlayScript = readFileSync('packages/agent-sdk/scripts/overlay-public-dts.mjs', 'utf-8');
 
     expect(existsSync('packages/agent-sdk/tsconfig.public-dts.json')).toBe(true);
     expect(existsSync('packages/agent-sdk/scripts/overlay-public-dts.mjs')).toBe(true);
     expect(sdk.scripts?.build).toContain('tsc -p tsconfig.public-dts.json');
     expect(sdk.scripts?.build).toContain('node scripts/overlay-public-dts.mjs');
+    expect(overlayScript).toContain('local/public-index.d.ts');
+    expect(overlayScript).toContain('public-index.js');
   });
 
   it('builds the publishable agent-sdk package from its own package manifest', () => {
@@ -174,6 +177,15 @@ describe('monorepo topology', () => {
     expect(localSource).toContain('createSdkMcpServer');
     expect(localSource).toContain('getBuiltinTools');
     expect(localSource).toContain('SandboxService');
+  });
+
+  it('owns the session-first root public entry source inside agent-sdk', () => {
+    const rootSource = readFileSync('packages/agent-sdk/src/index.ts', 'utf-8');
+
+    expect(rootSource).not.toContain("export * from '../../../src/index.js'");
+    expect(rootSource).toContain("from './session/index.js'");
+    expect(rootSource).toContain("from './tools/index.js'");
+    expect(rootSource).toContain("from './core/index.js'");
   });
 
   it('organizes the agent package around kernel, protocol, ports, state, and tracing modules', () => {

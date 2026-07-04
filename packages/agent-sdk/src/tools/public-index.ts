@@ -2,6 +2,7 @@ import type { z } from 'zod';
 import type { JsonObject, JsonValue, PermissionMode } from '../types/common.js';
 import type {
   FunctionDeclaration,
+  FunctionToolCall,
   Tool,
   ToolBehavior,
   ToolConfig,
@@ -10,6 +11,8 @@ import type {
   ToolDescriptionResolver,
   ToolEffect,
   ToolError,
+  ToolExecutionOutcome,
+  ToolExecutionUpdate,
   ToolExposureConfig,
   ToolExposureMode,
   ToolResult,
@@ -73,6 +76,7 @@ export declare function toolFromDefinition<TParams = JsonObject>(
 
 export type {
   FunctionDeclaration,
+  FunctionToolCall,
   Tool,
   ToolBehavior,
   ToolConfig,
@@ -81,6 +85,8 @@ export type {
   ToolDescriptionResolver,
   ToolEffect,
   ToolError,
+  ToolExecutionOutcome,
+  ToolExecutionUpdate,
   ToolExposureConfig,
   ToolExposureMode,
   ToolResult,

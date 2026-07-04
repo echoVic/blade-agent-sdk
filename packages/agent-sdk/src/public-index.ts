@@ -1,20 +1,54 @@
+import type { JsonObject, PermissionMode } from './core/index.js';
+import type {
+  CanUseTool,
+  PermissionHandler,
+  PermissionsConfig,
+} from './core/index.js';
+
 export * from '@blade-ai/ai/deepseek';
-export { SubagentExecutor } from '../../../src/agent/subagents/SubagentExecutor.js';
-export { SubagentRegistry } from '../../../src/agent/subagents/SubagentRegistry.js';
-export type {
-  SubagentColor,
-  SubagentConfig,
-  SubagentContext,
-  SubagentResult,
-  SubagentSource,
-} from '../../../src/agent/subagents/types.js';
-export {
-  createCompositePermissionHandler,
-  createModePermissionHandler,
-  createPathSafetyPermissionHandler,
-  createPermissionHandlerFromCanUseTool,
-  createRuleBasedPermissionHandler,
-} from '../../../src/types/permissions.js';
+
+export declare class SubagentExecutor {
+  constructor(...args: unknown[]);
+}
+
+export declare class SubagentRegistry {
+  constructor(...args: unknown[]);
+}
+
+export type SubagentColor = 'red' | 'orange' | 'yellow' | 'green' | 'blue' | 'purple' | 'pink' | 'gray';
+export type SubagentSource = 'builtin' | 'project' | 'user' | 'session';
+export interface SubagentConfig {
+  id: string;
+  name: string;
+  description: string;
+  prompt: string;
+  color?: SubagentColor;
+  source?: SubagentSource;
+  tools?: string[];
+}
+export interface SubagentContext {
+  prompt: string;
+  context?: JsonObject;
+}
+export interface SubagentResult {
+  success: boolean;
+  output: string;
+  error?: string;
+}
+
+export declare function createPermissionHandlerFromCanUseTool(
+  canUseTool: CanUseTool,
+): PermissionHandler;
+export declare function createModePermissionHandler(defaultMode?: PermissionMode): PermissionHandler;
+export declare function createRuleBasedPermissionHandler(config?: PermissionsConfig): PermissionHandler;
+export declare function createPathSafetyPermissionHandler(options?: {
+  explicitAllowRules?: string[];
+}): PermissionHandler;
+export declare function createCompositePermissionHandler(
+  handlers: Array<PermissionHandler | undefined>,
+  strategy?: 'first-wins' | 'deny-wins',
+): PermissionHandler;
+
 export type {
   AgentTrace,
   CanUseTool,
@@ -31,6 +65,7 @@ export type {
   PermissionResult,
   PermissionRuleValue,
   PermissionUpdate,
+  PermissionsConfig,
   ProviderType,
   RuntimeContext,
   RuntimeContextPatch,
@@ -64,14 +99,14 @@ export {
 export type {
   McpToolCallResponse,
   McpToolDefinition,
+  McpToolResponse,
   SandboxCapabilities,
   SandboxCheckResult,
   SandboxExecutionContext,
   SandboxExecutionOptions,
   SdkMcpServerHandle,
   SdkTool,
-  McpToolResponse,
-} from './local/index.js';
+} from './local/public-index.js';
 export {
   createMemoryReadTool,
   createMemoryWriteTool,
@@ -84,7 +119,7 @@ export {
   SandboxExecutor,
   SandboxService,
   tool,
-} from './local/index.js';
+} from './local/public-index.js';
 export type {
   AgentDefinition,
   AgentLogger,
@@ -116,13 +151,13 @@ export type {
   TokenBudgetConfig,
   ToolCallRecord,
   UserMessageContent,
-} from './session/index.js';
+} from './session/public-index.js';
 export {
   createSession,
   forkSession,
   prompt,
   resumeSession,
-} from './session/index.js';
+} from './session/public-index.js';
 export type {
   FunctionDeclaration,
   FunctionToolCall,
@@ -146,7 +181,7 @@ export type {
   ToolSourceInfo,
   ToolSourceKind,
   ToolTrustLevel,
-} from './tools/index.js';
+} from './tools/public-index.js';
 export {
   createTool,
   defineTool,
@@ -154,4 +189,4 @@ export {
   ToolErrorType,
   ToolKind,
   toolFromDefinition,
-} from './tools/index.js';
+} from './tools/public-index.js';

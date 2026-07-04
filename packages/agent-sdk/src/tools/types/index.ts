@@ -333,3 +333,68 @@ export interface Tool<TParams = JsonObject> {
   resolveBehavior?(params: TParams): Partial<ToolBehavior> | ToolBehavior;
   preparePermissionMatcher?(params: TParams): PreparedPermissionMatcher;
 }
+
+export interface FunctionToolCall {
+  id?: string;
+  type: 'function';
+  function: {
+    name: string;
+    arguments: string;
+  };
+}
+
+export interface ToolExecutionOutcome {
+  toolCall: FunctionToolCall;
+  result: ToolResult;
+  toolUseUuid: string | null;
+}
+
+export type ToolExecutionUpdate =
+  | {
+      type: 'tool_ready';
+      toolCall: FunctionToolCall;
+    }
+  | {
+      type: 'tool_started';
+      toolCall: FunctionToolCall;
+      params: JsonObject;
+      toolUseUuid: string | null;
+    }
+  | {
+      type: 'tool_progress';
+      toolCall: FunctionToolCall;
+      message: string;
+    }
+  | {
+      type: 'tool_message';
+      toolCall: FunctionToolCall;
+      message: string;
+    }
+  | {
+      type: 'tool_runtime_patch';
+      toolCall: FunctionToolCall;
+      patch: Extract<ToolEffect, { type: 'runtimePatch' }>['patch'];
+    }
+  | {
+      type: 'tool_context_patch';
+      toolCall: FunctionToolCall;
+      patch: Extract<ToolEffect, { type: 'contextPatch' }>['patch'];
+    }
+  | {
+      type: 'tool_new_messages';
+      toolCall: FunctionToolCall;
+      messages: Extract<ToolEffect, { type: 'newMessages' }>['messages'];
+    }
+  | {
+      type: 'tool_permission_updates';
+      toolCall: FunctionToolCall;
+      updates: Extract<ToolEffect, { type: 'permissionUpdates' }>['updates'];
+    }
+  | {
+      type: 'tool_result';
+      outcome: ToolExecutionOutcome;
+    }
+  | {
+      type: 'tool_completed';
+      outcome: ToolExecutionOutcome;
+    };

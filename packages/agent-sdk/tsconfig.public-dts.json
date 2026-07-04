@@ -7,17 +7,12 @@
     "emitDeclarationOnly": true,
     "declarationMap": false,
     "paths": {
-      "@blade-ai/agent": ["../agent/src/index.ts"],
-      "@blade-ai/ai": ["../ai/src/index.ts"],
-      "@blade-ai/ai/chat": ["../ai/src/chat/index.ts"],
-      "@blade-ai/ai/deepseek": ["../ai/src/deepseek/index.ts"],
-      "@blade-ai/ai/model": ["../ai/src/model/index.ts"],
-      "@blade-ai/ai/providers/openai-compatible": ["../ai/src/providers/openai-compatible/index.ts"],
-      "@blade-ai/ai/providers/vercel": ["../ai/src/providers/vercel/index.ts"],
-      "@blade-ai/ai/retry": ["../ai/src/retry/index.ts"]
+      "@/*": ["../../src/*"]
     }
   },
   "files": [
+    "src/public-index.ts",
+    "src/local/public-index.ts",
     "src/session/public-index.ts",
     "src/tools/public-index.ts"
   ],

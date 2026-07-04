@@ -60,6 +60,7 @@ const packageSpecs = [
       'package/dist/browser/index.js',
       'package/dist/browser/server-only-stub.js',
       'package/dist/core/index.d.ts',
+      'package/dist/local/index.d.ts',
       'package/dist/tools/index.js',
     ],
     forbiddenFileContents: [
@@ -77,6 +78,46 @@ const packageSpecs = [
         file: 'package/dist/tools/index.d.ts',
         forbidden: './catalog/index.js',
         message: 'tools declarations must be emitted from package-local tools entry source',
+      },
+      {
+        file: 'package/dist/index.d.ts',
+        forbidden: './agent/loop/runToolCall.js',
+        message: 'root declarations must be emitted from package-local root entry source',
+      },
+      {
+        file: 'package/dist/index.d.ts',
+        forbidden: './tools/core/createTool.js',
+        message: 'root declarations must be emitted from package-local root entry source',
+      },
+      {
+        file: 'package/dist/index.d.ts',
+        forbidden: './tools/catalog/index.js',
+        message: 'root declarations must be emitted from package-local root entry source',
+      },
+      {
+        file: 'package/dist/index.d.ts',
+        forbidden: 'public-index.js',
+        message: 'root declarations must reference final public entrypoints, not overlay sources',
+      },
+      {
+        file: 'package/dist/local/index.d.ts',
+        forbidden: '../mcp/index.js',
+        message: 'local declarations must be emitted from package-local local entry source',
+      },
+      {
+        file: 'package/dist/local/index.d.ts',
+        forbidden: '../memory/index.js',
+        message: 'local declarations must be emitted from package-local local entry source',
+      },
+      {
+        file: 'package/dist/local/index.d.ts',
+        forbidden: '../sandbox/index.js',
+        message: 'local declarations must be emitted from package-local local entry source',
+      },
+      {
+        file: 'package/dist/local/index.d.ts',
+        forbidden: '../tools/builtin',
+        message: 'local declarations must be emitted from package-local local entry source',
       },
     ],
     imports: [
