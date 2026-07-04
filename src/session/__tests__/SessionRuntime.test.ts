@@ -1,6 +1,7 @@
 import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import type { ModelPort } from '@blade-ai/ai';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { assertDefined } from '../../__tests__/helpers/assertDefined.js';
 import { HookManager } from '../../hooks/HookManager.js';
@@ -314,6 +315,85 @@ describe('SessionRuntime', () => {
 
     expect(recorder.getTrace().events.map((event) => event.type)).toEqual(
       expect.arrayContaining(['turn_start', 'turn_end']),
+    );
+
+    await runtime.close();
+  });
+
+  it('should compose an AgentKernel with session store and trace adapters', async () => {
+    const runtime = new SessionRuntime(
+      SessionId('session-kernel-runtime'),
+      createOptions(),
+      {
+        models: [],
+      },
+      PermissionMode.YOLO,
+      createFilesystemContext(workspaceRoot),
+      NOOP_LOGGER,
+    );
+    const model: ModelPort = {
+      generate: vi.fn(async () => ({
+        content: 'Kernel answer',
+        usage: {
+          promptTokens: 2,
+          completionTokens: 3,
+          totalTokens: 5,
+        },
+        finishReason: 'stop',
+      })),
+      stream: async function* () {},
+    };
+    const recorder = new TraceRecorder(SessionId('session-kernel-runtime'), {
+      enabled: true,
+      capturePayloads: true,
+    });
+
+    await runtime.initialize();
+    await runtime.ensureSessionCreated();
+
+    const kernel = runtime.createAgentKernel({ model, traceRecorder: recorder });
+    const events = [];
+    for await (const event of kernel.runTurn({
+      input: 'Run through kernel',
+      turnId: 'turn_kernel_runtime',
+    })) {
+      events.push(event);
+    }
+
+    expect(events).toEqual([
+      { type: 'content', delta: 'Kernel answer' },
+      {
+        type: 'usage',
+        usage: {
+          promptTokens: 2,
+          completionTokens: 3,
+          totalTokens: 5,
+        },
+      },
+      { type: 'result', content: 'Kernel answer', finishReason: 'stop' },
+    ]);
+
+    const contextManager = runtime.getAgentRuntimeDeps().contextManager;
+    assertDefined(contextManager);
+    const formatted = await contextManager.getFormattedContext();
+    expect(formatted.context.layers.conversation.messages.map((message) => ({
+      role: message.role,
+      content: message.content,
+      metadata: message.metadata,
+    }))).toEqual([
+      {
+        role: 'user',
+        content: 'Run through kernel',
+        metadata: { kernel: { turnId: 'turn_kernel_runtime', source: 'input', step: 0 } },
+      },
+      {
+        role: 'assistant',
+        content: 'Kernel answer',
+        metadata: { kernel: { turnId: 'turn_kernel_runtime', source: 'model', step: 1 } },
+      },
+    ]);
+    expect(recorder.getTrace().events.map((event) => event.type)).toEqual(
+      expect.arrayContaining(['turn_start', 'model_request', 'model_response', 'usage', 'turn_end']),
     );
 
     await runtime.close();

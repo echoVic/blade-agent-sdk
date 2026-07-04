@@ -1,5 +1,12 @@
 import { basename, dirname } from 'node:path';
-import type { AgentStorePort, AgentToolCall, AgentToolPort, AgentTracePort } from '@blade-ai/agent';
+import type { ModelPort } from '@blade-ai/ai';
+import {
+  AgentKernel,
+  type AgentStorePort,
+  type AgentToolCall,
+  type AgentToolPort,
+  type AgentTracePort,
+} from '@blade-ai/agent';
 import type { AgentRuntimeDeps } from '../agent/Agent.js';
 import { AgentSessionStore } from '../agent/subagents/AgentSessionStore.js';
 import { BackgroundAgentManager } from '../agent/subagents/BackgroundAgentManager.js';
@@ -73,6 +80,16 @@ function toSubagentConfig(name: string, definition: AgentDefinition) {
     model: definition.model ?? 'inherit',
     source: 'session' as const,
   };
+}
+
+export interface SessionAgentKernelOptions {
+  model: ModelPort;
+  traceRecorder?: TraceRecorder;
+  createExecutionContext?: (
+    toolCall: AgentToolCall,
+    signal?: AbortSignal,
+  ) => ExecutionContext;
+  maxSteps?: number;
 }
 
 export class SessionRuntime {
@@ -180,6 +197,20 @@ export class SessionRuntime {
 
   getKernelTracePort(recorder: TraceRecorder): AgentTracePort {
     return createKernelTracePort({ recorder });
+  }
+
+  createAgentKernel(options: SessionAgentKernelOptions): AgentKernel {
+    return new AgentKernel({
+      model: options.model,
+      store: this.getKernelStorePort(),
+      ...(options.traceRecorder
+        ? { trace: this.getKernelTracePort(options.traceRecorder) }
+        : {}),
+      ...(options.createExecutionContext
+        ? { tools: this.getKernelToolPort(options.createExecutionContext) }
+        : {}),
+      ...(options.maxSteps !== undefined ? { maxSteps: options.maxSteps } : {}),
+    });
   }
 
   getBackgroundAgentManager(): BackgroundAgentManager {
