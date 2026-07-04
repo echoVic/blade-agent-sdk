@@ -27,6 +27,10 @@
       "types": "./dist/providers/openai-compatible/index.d.ts",
       "import": "./dist/providers/openai-compatible/index.js"
     },
+    "./providers/vercel": {
+      "types": "./dist/providers/vercel/index.d.ts",
+      "import": "./dist/providers/vercel/index.js"
+    },
     "./retry": {
       "types": "./dist/retry/index.d.ts",
       "import": "./dist/retry/index.js"
@@ -42,6 +46,11 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@ai-sdk/anthropic": "^3.0.71",
+    "@ai-sdk/azure": "^3.0.54",
+    "@ai-sdk/deepseek": "^2.0.29",
+    "@ai-sdk/google": "^3.0.64",
+    "@ai-sdk/openai": "^3.0.53",
     "@ai-sdk/openai-compatible": "^2.0.41",
     "@types/json-schema": "^7.0.15",
     "ai": "^6.0.168"

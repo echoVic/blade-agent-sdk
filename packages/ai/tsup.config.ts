@@ -7,6 +7,7 @@ export default defineConfig({
     'deepseek/index': 'src/deepseek/index.ts',
     'model/index': 'src/model/index.ts',
     'providers/openai-compatible/index': 'src/providers/openai-compatible/index.ts',
+    'providers/vercel/index': 'src/providers/vercel/index.ts',
     'retry/index': 'src/retry/index.ts',
   },
   format: ['esm'],

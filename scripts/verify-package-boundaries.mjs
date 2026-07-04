@@ -25,6 +25,16 @@ const rules = [
   },
 ];
 
+const manifestRules = [
+  {
+    name: '@blade-ai/agent-sdk',
+    packageJson: 'packages/agent-sdk/package.json',
+    disallowedDependencies: [
+      [/^@ai-sdk\/(?:anthropic|azure|deepseek|google|openai|openai-compatible)$/, 'Provider SDK dependencies belong in @blade-ai/ai, not the session SDK'],
+    ],
+  },
+];
+
 const importPattern = /\b(?:import|export)\s+(?:type\s+)?(?:[^'"]*?\s+from\s+)?['"]([^'"]+)['"]|import\s*\(\s*['"]([^'"]+)['"]\s*\)/g;
 
 function listSourceFiles(dir) {
@@ -60,6 +70,27 @@ function isWithin(childPath, parentPath) {
 }
 
 const violations = [];
+
+for (const rule of manifestRules) {
+  const packageJsonPath = resolve(rootDir, rule.packageJson);
+  if (!existsSync(packageJsonPath)) {
+    violations.push(`${rule.name}: missing package manifest ${rule.packageJson}`);
+    continue;
+  }
+
+  const manifest = JSON.parse(readFileSync(packageJsonPath, 'utf-8'));
+  const dependencySections = ['dependencies', 'optionalDependencies', 'peerDependencies'];
+  for (const section of dependencySections) {
+    const dependencies = manifest[section] ?? {};
+    for (const dependencyName of Object.keys(dependencies)) {
+      for (const [pattern, reason] of rule.disallowedDependencies) {
+        if (pattern.test(dependencyName)) {
+          violations.push(`${rule.packageJson}: disallowed ${section} "${dependencyName}" - ${reason}`);
+        }
+      }
+    }
+  }
+}
 
 for (const rule of rules) {
   const packageSourceDir = resolve(rootDir, rule.sourceDir);

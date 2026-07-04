@@ -15,6 +15,10 @@ const mockCreateOpenAICompatibleModelPort = vi.fn(() => ({
   generate: mockModelPortGenerate,
   stream: mockModelPortStream,
 }));
+const mockCreateVercelLanguageModel = vi.fn((options: { provider: string; model: string }) => ({
+  provider: options.provider,
+  model: options.model,
+}));
 
 vi.mock('@ai-sdk/openai', () => ({
   createOpenAI: mockCreateOpenAI,
@@ -30,6 +34,10 @@ vi.mock('@ai-sdk/openai-compatible', () => ({
 
 vi.mock('@blade-ai/ai/providers/openai-compatible', () => ({
   createOpenAICompatibleModelPort: mockCreateOpenAICompatibleModelPort,
+}));
+
+vi.mock('@blade-ai/ai/providers/vercel', () => ({
+  createVercelLanguageModel: mockCreateVercelLanguageModel,
 }));
 
 vi.mock('ai', async (importOriginal) => {
@@ -54,11 +62,12 @@ describe('VercelAIChatService', () => {
     mockGenerateText.mockReset();
     mockStreamText.mockReset();
     mockCreateOpenAICompatibleModelPort.mockClear();
+    mockCreateVercelLanguageModel.mockClear();
     mockModelPortGenerate.mockReset();
     mockModelPortStream.mockReset();
   });
 
-  it('uses the native OpenAI provider for openai configs', async () => {
+  it('delegates OpenAI provider creation to the AI Vercel provider factory', async () => {
     const service = new VercelAIChatService(
       {
         provider: 'openai',
@@ -74,18 +83,23 @@ describe('VercelAIChatService', () => {
 
     await (service as unknown as { initialized: Promise<void> }).initialized;
 
-    expect(mockCreateOpenAI).toHaveBeenCalledWith({
+    expect(mockCreateVercelLanguageModel).toHaveBeenCalledWith({
+      provider: 'openai',
+      providerId: undefined,
       apiKey: 'test-key',
-      baseURL: 'https://api.openai.com/v1',
+      baseUrl: 'https://api.openai.com/v1',
+      model: 'gpt-5',
       headers: {
         'X-Test': '1',
       },
+      apiVersion: undefined,
+      providerOptions: undefined,
     });
-    expect(mockOpenAIModelFactory).toHaveBeenCalledWith('gpt-5');
+    expect(mockCreateOpenAI).not.toHaveBeenCalled();
     expect(mockCreateOpenAICompatible).not.toHaveBeenCalled();
   });
 
-  it('uses the native DeepSeek provider for deepseek configs', async () => {
+  it('delegates DeepSeek provider creation to the AI Vercel provider factory', async () => {
     const service = new VercelAIChatService(
       {
         provider: 'deepseek',
@@ -98,12 +112,17 @@ describe('VercelAIChatService', () => {
 
     await (service as unknown as { initialized: Promise<void> }).initialized;
 
-    expect(mockCreateDeepSeek).toHaveBeenCalledWith({
+    expect(mockCreateVercelLanguageModel).toHaveBeenCalledWith({
+      provider: 'deepseek',
+      providerId: undefined,
       apiKey: 'test-key',
-      baseURL: 'https://api.deepseek.com',
+      baseUrl: '',
+      model: 'deepseek-chat',
       headers: undefined,
+      apiVersion: undefined,
+      providerOptions: undefined,
     });
-    expect(mockDeepSeekModelFactory).toHaveBeenCalledWith('deepseek-v4-flash');
+    expect(mockCreateDeepSeek).not.toHaveBeenCalled();
     expect(mockCreateOpenAICompatible).not.toHaveBeenCalled();
   });
 
@@ -316,10 +335,17 @@ describe('VercelAIChatService', () => {
       ],
     );
 
-    expect(mockCreateDeepSeek).toHaveBeenCalledWith({
+    expect(mockCreateVercelLanguageModel).toHaveBeenCalledWith({
+      provider: 'deepseek',
+      providerId: undefined,
       apiKey: 'test-key',
-      baseURL: 'https://api.deepseek.com/beta',
+      baseUrl: '',
+      model: 'deepseek-v4-pro',
       headers: undefined,
+      apiVersion: undefined,
+      providerOptions: {
+        deepseek: { strictTools: true },
+      },
     });
     expect(mockGenerateText).toHaveBeenCalledWith(expect.objectContaining({
       providerOptions: { deepseek: { thinking: { type: 'enabled' } } },

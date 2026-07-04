@@ -12,6 +12,7 @@
       "@blade-ai/ai/deepseek": ["../ai/src/deepseek/index.ts"],
       "@blade-ai/ai/model": ["../ai/src/model/index.ts"],
       "@blade-ai/ai/providers/openai-compatible": ["../ai/src/providers/openai-compatible/index.ts"],
+      "@blade-ai/ai/providers/vercel": ["../ai/src/providers/vercel/index.ts"],
       "@blade-ai/ai/retry": ["../ai/src/retry/index.ts"]
     }
   },

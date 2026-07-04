@@ -60,8 +60,6 @@
   "dependencies": {
     "@blade-ai/agent": "workspace:*",
     "@blade-ai/ai": "workspace:*",
-    "@ai-sdk/openai": "^3.0.53",
-    "@ai-sdk/openai-compatible": "^2.0.41",
     "@modelcontextprotocol/sdk": "^1.29.0",
     "ai": "^6.0.168",
     "async-mutex": "^0.5.0",
@@ -88,10 +86,6 @@
     "zustand": "^5.0.12"
   },
   "optionalDependencies": {
-    "@ai-sdk/anthropic": "^3.0.71",
-    "@ai-sdk/azure": "^3.0.54",
-    "@ai-sdk/deepseek": "^2.0.29",
-    "@ai-sdk/google": "^3.0.64",
     "@vscode/ripgrep": "^1.17.0",
     "node-pty": "1.0.0"
   },

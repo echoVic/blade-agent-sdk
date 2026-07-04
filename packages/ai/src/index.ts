@@ -72,4 +72,5 @@ export interface AiModelPort {
 export * from './chat/index.js';
 export * from './deepseek/index.js';
 export * from './providers/openai-compatible/index.js';
+export * from './providers/vercel/index.js';
 export * from './retry/index.js';

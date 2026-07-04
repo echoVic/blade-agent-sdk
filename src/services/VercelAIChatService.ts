@@ -1,12 +1,7 @@
-import { createAnthropic } from '@ai-sdk/anthropic';
-import { createAzure } from '@ai-sdk/azure';
-import { createDeepSeek } from '@ai-sdk/deepseek';
-import { createGoogleGenerativeAI } from '@ai-sdk/google';
-import { createOpenAI } from '@ai-sdk/openai';
-import { createOpenAICompatible } from '@ai-sdk/openai-compatible';
 import {
   createOpenAICompatibleModelPort,
 } from '@blade-ai/ai/providers/openai-compatible';
+import { createVercelLanguageModel } from '@blade-ai/ai/providers/vercel';
 import type {
   ModelPort,
   ModelRequest,
@@ -40,12 +35,9 @@ import {
 import {
   buildDeepSeekProviderOptions,
   mergeDeepSeekUsage,
-  normalizeDeepSeekModel,
   optimizeDeepSeekCachePrefix,
   prepareDeepSeekTools,
-  resolveDeepSeekBaseUrl,
   shouldOmitDeepSeekSamplingOptions,
-  shouldUseDeepSeekBetaBaseUrl,
 } from '@blade-ai/ai/deepseek';
 
 function filterOrphanToolMessages(messages: readonly Message[]): Message[] {
@@ -296,131 +288,16 @@ export class VercelAIChatService implements IChatService {
   }
 
   private async createModel(config: ChatConfig): Promise<LanguageModel> {
-    const { provider, apiKey, baseUrl, model, customHeaders, providerId, apiVersion } = config;
-
-    switch (provider) {
-      case 'openai': {
-        const openai = createOpenAI({
-          apiKey,
-          baseURL: baseUrl || undefined,
-          headers: customHeaders,
-        });
-        return openai(model);
-      }
-
-      case 'anthropic': {
-        const anthropic = createAnthropic({
-          apiKey,
-          baseURL: baseUrl || undefined,
-          headers: customHeaders,
-        });
-        return anthropic(model);
-      }
-
-      case 'gemini': {
-        if (baseUrl && !this.isGeminiOfficialUrl(baseUrl)) {
-          const compatible = createOpenAICompatible({
-            name: 'gemini',
-            apiKey,
-            baseURL: baseUrl,
-            headers: customHeaders,
-          });
-          return compatible(model);
-        }
-        const google = createGoogleGenerativeAI({
-          apiKey,
-          baseURL: baseUrl || undefined,
-        });
-        return google(model);
-      }
-
-      case 'azure-openai': {
-        const resourceName = this.extractAzureResourceName(baseUrl);
-        if (resourceName) {
-          const azure = createAzure({
-            apiKey,
-            resourceName,
-            apiVersion: apiVersion || '2024-08-01-preview',
-          });
-          return azure(model);
-        }
-        const azureBaseUrl = this.buildAzureBaseUrl(baseUrl, model);
-        const compatible = createOpenAICompatible({
-          name: 'azure-openai',
-          apiKey,
-          baseURL: azureBaseUrl,
-          headers: {
-            ...customHeaders,
-            'api-key': apiKey,
-          },
-          queryParams: {
-            'api-version': apiVersion || '2024-08-01-preview',
-          },
-        });
-        return compatible(model);
-      }
-
-      case 'deepseek': {
-        const deepseek = createDeepSeek({
-          apiKey,
-          baseURL: resolveDeepSeekBaseUrl(
-            baseUrl,
-            shouldUseDeepSeekBetaBaseUrl({
-              provider,
-              providerId,
-              deepseek: config.providerOptions?.deepseek,
-            }),
-          ),
-          headers: customHeaders,
-        });
-        return deepseek(normalizeDeepSeekModel(model));
-      }
-
-      default: {
-        if (providerId === 'deepseek') {
-          const deepseek = createDeepSeek({
-            apiKey,
-            baseURL: resolveDeepSeekBaseUrl(
-              baseUrl,
-              shouldUseDeepSeekBetaBaseUrl({
-                provider,
-                providerId,
-                deepseek: config.providerOptions?.deepseek,
-              }),
-            ),
-            headers: customHeaders,
-          });
-          return deepseek(normalizeDeepSeekModel(model));
-        }
-
-        const compatible = createOpenAICompatible({
-          name: providerId || 'custom',
-          apiKey,
-          baseURL: baseUrl,
-          headers: customHeaders,
-        });
-        return compatible(model);
-      }
-    }
-  }
-
-  private extractAzureResourceName(baseUrl?: string): string | undefined {
-    if (!baseUrl) return undefined;
-    const match = baseUrl.match(/https:\/\/([^.]+)\.openai\.azure(?:\.com|\.us|\.cn|\.de)/);
-    return match ? match[1] : undefined;
-  }
-
-  private buildAzureBaseUrl(baseUrl?: string, deployment?: string): string {
-    if (!baseUrl) return '';
-    const url = baseUrl.replace(/\/$/, '').replace(/\?.*$/, '');
-    if (url.includes('/openai/deployments/')) {
-      return url;
-    }
-    return `${url}/openai/deployments/${deployment}`;
-  }
-
-  private isGeminiOfficialUrl(baseUrl: string): boolean {
-    return baseUrl.includes('generativelanguage.googleapis.com') || baseUrl.includes('aiplatform.googleapis.com');
+    return createVercelLanguageModel({
+      provider: config.provider,
+      providerId: config.providerId,
+      apiKey: config.apiKey,
+      baseUrl: config.baseUrl,
+      model: config.model,
+      headers: config.customHeaders,
+      apiVersion: config.apiVersion,
+      providerOptions: config.providerOptions as JsonObject | undefined,
+    });
   }
 
   private convertMessages(messages: readonly Message[]): AIMessage[] {

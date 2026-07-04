@@ -13,6 +13,7 @@ export default defineConfig({
       '@blade-ai/ai/deepseek': resolve(__dirname, 'packages/ai/src/deepseek/index.ts'),
       '@blade-ai/ai/model': resolve(__dirname, 'packages/ai/src/model/index.ts'),
       '@blade-ai/ai/providers/openai-compatible': resolve(__dirname, 'packages/ai/src/providers/openai-compatible/index.ts'),
+      '@blade-ai/ai/providers/vercel': resolve(__dirname, 'packages/ai/src/providers/vercel/index.ts'),
       '@blade-ai/ai/retry': resolve(__dirname, 'packages/ai/src/retry/index.ts'),
       '@blade-ai/ai': resolve(__dirname, 'packages/ai/src/index.ts'),
     },

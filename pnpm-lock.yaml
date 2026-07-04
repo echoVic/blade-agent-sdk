@@ -170,12 +170,6 @@ importers:
 
   packages/agent-sdk:
     dependencies:
-      '@ai-sdk/openai':
-        specifier: ^3.0.53
-        version: 3.0.53(zod@3.25.76)
-      '@ai-sdk/openai-compatible':
-        specifier: ^2.0.41
-        version: 2.0.41(zod@3.25.76)
       '@blade-ai/agent':
         specifier: workspace:*
         version: link:../agent
@@ -265,6 +259,15 @@ importers:
         specifier: ^3.2.4
         version: 3.2.4(@types/node@22.19.15)(yaml@2.8.3)
     optionalDependencies:
+      '@vscode/ripgrep':
+        specifier: ^1.17.0
+        version: 1.17.1
+      node-pty:
+        specifier: 1.0.0
+        version: 1.0.0
+
+  packages/ai:
+    dependencies:
       '@ai-sdk/anthropic':
         specifier: ^3.0.71
         version: 3.0.71(zod@3.25.76)
@@ -277,15 +280,9 @@ importers:
       '@ai-sdk/google':
         specifier: ^3.0.64
         version: 3.0.64(zod@3.25.76)
-      '@vscode/ripgrep':
-        specifier: ^1.17.0
-        version: 1.17.1
-      node-pty:
-        specifier: 1.0.0
-        version: 1.0.0
-
-  packages/ai:
-    dependencies:
+      '@ai-sdk/openai':
+        specifier: ^3.0.53
+        version: 3.0.53(zod@3.25.76)
       '@ai-sdk/openai-compatible':
         specifier: ^2.0.41
         version: 2.0.41(zod@3.25.76)
@@ -3689,7 +3686,6 @@ snapshots:
       '@ai-sdk/provider': 3.0.8
       '@ai-sdk/provider-utils': 4.0.23(zod@3.25.76)
       zod: 3.25.76
-    optional: true
 
   '@ai-sdk/azure@3.0.54(zod@3.25.76)':
     dependencies:
@@ -3697,14 +3693,12 @@ snapshots:
       '@ai-sdk/provider': 3.0.8
       '@ai-sdk/provider-utils': 4.0.23(zod@3.25.76)
       zod: 3.25.76
-    optional: true
 
   '@ai-sdk/deepseek@2.0.29(zod@3.25.76)':
     dependencies:
       '@ai-sdk/provider': 3.0.8
       '@ai-sdk/provider-utils': 4.0.23(zod@3.25.76)
       zod: 3.25.76
-    optional: true
 
   '@ai-sdk/gateway@3.0.104(zod@3.25.76)':
     dependencies:
@@ -3718,7 +3712,6 @@ snapshots:
       '@ai-sdk/provider': 3.0.8
       '@ai-sdk/provider-utils': 4.0.23(zod@3.25.76)
       zod: 3.25.76
-    optional: true
 
   '@ai-sdk/openai-compatible@2.0.41(zod@3.25.76)':
     dependencies:
