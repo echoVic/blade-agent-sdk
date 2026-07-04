@@ -1,4 +1,9 @@
-import type { JsonObject, JsonValue } from '../types/common.js';
+import type {
+  JsonObject,
+  JsonValue,
+  NetworkSandboxSettings,
+  SandboxSettings,
+} from '../types/common.js';
 import type { Tool } from '../tools/types/index.js';
 
 export interface McpToolDefinition {
@@ -77,37 +82,69 @@ export declare class MemoryManager {
 
 export interface SandboxCapabilities {
   available: boolean;
-  reason?: string;
+  type: 'bubblewrap' | 'seatbelt' | 'none';
+  version?: string;
+  features: {
+    fileSystemIsolation: boolean;
+    networkIsolation: boolean;
+    processIsolation: boolean;
+  };
 }
 
 export interface SandboxCheckResult {
-  available: boolean;
+  allowed: boolean;
   reason?: string;
+  requiresPermission?: boolean;
+  isExcluded?: boolean;
 }
 
 export interface SandboxExecutionContext {
-  sessionId?: string;
-  cwd?: string;
-  env?: Record<string, string>;
-  metadata?: JsonObject;
+  command: string;
+  dangerouslyDisableSandbox?: boolean;
+  workDir?: string;
 }
 
 export interface SandboxExecutionOptions {
-  command?: string;
-  args?: string[];
-  code?: string;
-  language?: string;
-  timeoutMs?: number;
-  signal?: AbortSignal;
-  context?: SandboxExecutionContext;
+  workDir: string;
+  allowedReadPaths?: string[];
+  allowedWritePaths?: string[];
+  allowNetwork?: boolean;
+  allowedNetworkHosts?: string[];
+  env?: Record<string, string>;
+  timeout?: number;
 }
 
 export declare class SandboxExecutor {
-  constructor(...args: unknown[]);
+  static getInstance(...args: unknown[]): SandboxExecutor;
+  static resetInstance(): void;
+  configure(settings: SandboxSettings): void;
+  getCapabilities(): SandboxCapabilities;
+  isEnabled(): boolean;
+  canUseSandbox(): boolean;
+  wrapCommand(command: string, options: SandboxExecutionOptions): string;
+  buildExecutionOptions(
+    workDir: string,
+    networkSettings?: NetworkSandboxSettings,
+  ): SandboxExecutionOptions;
 }
 
 export declare class SandboxService {
-  constructor(...args: unknown[]);
+  static getInstance(): SandboxService;
+  static resetInstance(): void;
+  configure(settings: SandboxSettings): void;
+  getSettings(): SandboxSettings;
+  isEnabled(): boolean;
+  shouldAutoAllowBash(): boolean;
+  isCommandExcluded(command: string): boolean;
+  allowsUnsandboxedCommands(): boolean;
+  checkCommand(ctx: SandboxExecutionContext): SandboxCheckResult;
+  shouldIgnoreFileViolation(filePath: string): boolean;
+  shouldIgnoreNetworkViolation(target: string): boolean;
+  getNetworkSettings(): NetworkSandboxSettings;
+  allowsLocalBinding(): boolean;
+  isUnixSocketAllowed(socketPath: string): boolean;
+  wrapCommandForSandbox(command: string, workDir: string): string;
+  getCapabilities(): SandboxCapabilities;
 }
 
 export declare function createSdkMcpServer(...args: unknown[]): SdkMcpServerHandle;

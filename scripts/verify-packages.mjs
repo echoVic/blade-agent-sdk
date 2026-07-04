@@ -161,6 +161,16 @@ const packageSpecs = [
       },
       {
         file: 'package/dist/local/index.d.ts',
+        forbidden: 'constructor(...args: unknown[]): SandboxExecutor',
+        message: 'local sandbox declarations must use package-local sandbox API',
+      },
+      {
+        file: 'package/dist/local/index.d.ts',
+        forbidden: 'constructor(...args: unknown[]): SandboxService',
+        message: 'local sandbox declarations must use package-local sandbox API',
+      },
+      {
+        file: 'package/dist/local/index.d.ts',
         forbidden: '../tools/builtin',
         message: 'local declarations must be emitted from package-local local entry source',
       },
