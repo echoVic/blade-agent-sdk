@@ -31,6 +31,7 @@ export default defineConfig({
         items: [
           { text: 'Session 会话', link: '/session' },
           { text: '工具系统', link: '/tools' },
+          { text: 'Tool Authoring', link: '/tool-authoring' },
           { text: '权限控制', link: '/permissions' },
           { text: 'Hooks 生命周期', link: '/hooks' },
         ],

@@ -388,6 +388,7 @@ Status:
 - Fourth documentation increment complete: a Browser Remote Client guide now documents browser-safe `core` / `browser` imports, remote HTTP NDJSON streaming with `StreamMessage`, server-only stub behavior, and the production boundary that keeps provider keys, tools, MCP, filesystem, shell, and sandbox execution on the server.
 - Fifth documentation increment complete: a Production Checklist now documents the required `pnpm run verify` release gate, package boundary checks, browser-safe entrypoint checks, optional GLM live smoke, release dry-run, and trusted publishing flow from `main`.
 - Sixth documentation increment complete: a Provider and model guide now documents session-first provider configuration, direct `@blade-ai/ai` `ModelPort` usage, OpenAI-compatible/GLM smoke testing, Vercel provider adapters, stream events, usage normalization, and the boundary that keeps `@blade-ai/agent` independent of provider SDKs.
+- Seventh documentation increment complete: a Tool Authoring guide now documents production custom tool design for session-first apps, browser-safe tool imports, `defineTool` / `createTool`, `ExecutionContext`, allowed-tool policy, permission update effects, stream event mapping, and verification expectations.
 
 Commit:
 
