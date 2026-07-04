@@ -308,6 +308,7 @@ Status:
 - Ninth adapter increment complete: the kernel tool port now lists real model tool definitions instead of placeholder call shapes, and `AgentKernel` includes registered session tool schemas in model requests so the experimental session-first kernel path can advertise local/MCP/custom tools before executing tool calls.
 - Tenth adapter increment complete: the public experimental kernel stream path now round-trips tool calls through session tools, feeds tool results back into the follow-up model request, emits session `tool_use`/`tool_result` events, and preserves assistant `tool_calls` plus tool `name`/`tool_call_id` when synchronizing `session.messages`.
 - Eleventh adapter increment complete: the public experimental kernel stream path now preserves the pending user message when a turn is aborted before model execution, emits a controlled `ABORTED` stream error without calling the model, and finishes observability traces with `aborted` status.
+- Twelfth adapter increment complete: kernel observability now records usage with the same session max context token limit used by stream `usage` events, keeping trace-based debugging and accounting aligned with the session-first public API.
 
 ### Phase 5: Production Verification Chain
 

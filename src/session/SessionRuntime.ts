@@ -215,8 +215,8 @@ export class SessionRuntime {
     });
   }
 
-  getKernelTracePort(recorder: TraceRecorder): AgentTracePort {
-    return createKernelTracePort({ recorder });
+  getKernelTracePort(recorder: TraceRecorder, maxContextTokens?: number): AgentTracePort {
+    return createKernelTracePort({ recorder, maxContextTokens });
   }
 
   getKernelHookPort(): AgentHookPort {
@@ -278,7 +278,12 @@ export class SessionRuntime {
       store: this.getKernelStorePort(),
       hooks: this.getKernelHookPort(),
       ...(options.traceRecorder
-        ? { trace: this.getKernelTracePort(options.traceRecorder) }
+        ? {
+            trace: this.getKernelTracePort(
+              options.traceRecorder,
+              kernelModel.modelRequestDefaults?.maxContextTokens,
+            ),
+          }
         : {}),
       ...(options.createExecutionContext
         ? { tools: this.getKernelToolPort(options.createExecutionContext) }

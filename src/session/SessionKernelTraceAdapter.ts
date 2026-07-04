@@ -4,6 +4,7 @@ import type { TokenUsage } from '../types/common.js';
 
 export interface KernelTracePortOptions {
   recorder: TraceRecorder;
+  maxContextTokens?: number;
 }
 
 export function createKernelTracePort(options: KernelTracePortOptions): AgentTracePort {
@@ -50,7 +51,10 @@ export function createKernelTracePort(options: KernelTracePortOptions): AgentTra
           toolSpans.delete(event.toolCall.id);
           break;
         case 'usage':
-          options.recorder.recordUsage(toTokenUsage(event.usage));
+          options.recorder.recordUsage(toTokenUsage(
+            event.usage,
+            options.maxContextTokens ?? 0,
+          ));
           break;
         case 'turn_end':
           options.recorder.addEvent('turn_end', {
@@ -67,11 +71,14 @@ export function createKernelTracePort(options: KernelTracePortOptions): AgentTra
   };
 }
 
-function toTokenUsage(eventUsage: Extract<AgentTraceEvent, { type: 'usage' }>['usage']): TokenUsage {
+function toTokenUsage(
+  eventUsage: Extract<AgentTraceEvent, { type: 'usage' }>['usage'],
+  maxContextTokens: number,
+): TokenUsage {
   return {
     inputTokens: eventUsage.promptTokens,
     outputTokens: eventUsage.completionTokens,
     totalTokens: eventUsage.totalTokens,
-    maxContextTokens: 0,
+    maxContextTokens,
   };
 }

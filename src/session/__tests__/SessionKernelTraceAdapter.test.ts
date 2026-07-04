@@ -10,7 +10,7 @@ describe('SessionKernelTraceAdapter', () => {
       enabled: true,
       capturePayloads: true,
     });
-    const tracePort = createKernelTracePort({ recorder });
+    const tracePort = createKernelTracePort({ recorder, maxContextTokens: 4096 });
 
     const events: AgentTraceEvent[] = [
       { type: 'turn_start', input: 'Find Blade docs' },
@@ -52,6 +52,14 @@ describe('SessionKernelTraceAdapter', () => {
         expect.objectContaining({ kind: 'tool', name: 'Search', status: 'success' }),
       ]),
     );
+    expect(trace.events.find((event) => event.type === 'usage')?.data?.usage).toMatchObject({
+      value: {
+        inputTokens: 8,
+        outputTokens: 5,
+        totalTokens: 13,
+        maxContextTokens: 4096,
+      },
+    });
     expect(JSON.stringify(trace)).toContain('Blade docs result');
   });
 

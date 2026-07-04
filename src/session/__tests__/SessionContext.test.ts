@@ -694,6 +694,39 @@ describe('Session runtime context', () => {
     await session.close();
   });
 
+  it('should record kernel stream usage with the session max context token limit', async () => {
+    kernelModelGenerate.mockClear();
+    createVercelModelPort.mockClear();
+    const storagePath = mkdtempSync(join(tmpdir(), 'session-context-kernel-trace-usage-'));
+    const session = await createSession({
+      provider: { type: 'openai-compatible', apiKey: 'test-key' },
+      model: 'gpt-4o-mini',
+      storagePath,
+      allowedTools: [],
+      observability: {
+        enabled: true,
+        capturePayloads: true,
+      },
+    });
+
+    await session.send('record kernel usage');
+    for await (const _event of session.stream({ experimentalKernel: true })) {
+      // Drain stream.
+    }
+
+    const usageEvent = session.getLastTrace()?.events.find((event) => event.type === 'usage');
+    expect(usageEvent?.data?.usage).toMatchObject({
+      value: {
+        inputTokens: 3,
+        outputTokens: 4,
+        totalTokens: 7,
+        maxContextTokens: 128000,
+      },
+    });
+
+    await session.close();
+  });
+
   it('fails with a controlled runtime error instead of a non-null assertion crash', async () => {
     const storagePath = mkdtempSync(join(tmpdir(), 'session-context-runtime-'));
     const session = await createSession({
