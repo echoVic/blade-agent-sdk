@@ -1,5 +1,5 @@
 import { basename, dirname } from 'node:path';
-import type { AgentStorePort, AgentToolCall, AgentToolPort } from '@blade-ai/agent';
+import type { AgentStorePort, AgentToolCall, AgentToolPort, AgentTracePort } from '@blade-ai/agent';
 import type { AgentRuntimeDeps } from '../agent/Agent.js';
 import { AgentSessionStore } from '../agent/subagents/AgentSessionStore.js';
 import { BackgroundAgentManager } from '../agent/subagents/BackgroundAgentManager.js';
@@ -9,6 +9,7 @@ import { HookManager } from '../hooks/HookManager.js';
 import { HookRuntime } from '../hooks/HookRuntime.js';
 import type { InternalLogger } from '../logging/Logger.js';
 import { LogCategory } from '../logging/Logger.js';
+import type { TraceRecorder } from '../observability/TraceRecorder.js';
 import { projectMcpCapabilities, type McpServerCapability } from '../mcp/McpCapabilityProjector.js';
 import { McpRegistry } from '../mcp/McpRegistry.js';
 import type { SdkMcpServerHandle } from '../mcp/SdkMcpServer.js';
@@ -45,6 +46,7 @@ import type {
 } from './types.js';
 import { createKernelToolPort } from './SessionKernelAdapter.js';
 import { createKernelStorePort } from './SessionKernelStoreAdapter.js';
+import { createKernelTracePort } from './SessionKernelTraceAdapter.js';
 
 function isSdkMcpServerHandle(
   config: McpServerConfig | SdkMcpServerHandle
@@ -174,6 +176,10 @@ export class SessionRuntime {
     return createKernelStorePort({
       contextManager: this.contextManager,
     });
+  }
+
+  getKernelTracePort(recorder: TraceRecorder): AgentTracePort {
+    return createKernelTracePort({ recorder });
   }
 
   getBackgroundAgentManager(): BackgroundAgentManager {

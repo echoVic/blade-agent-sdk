@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { assertDefined } from '../../__tests__/helpers/assertDefined.js';
 import { HookManager } from '../../hooks/HookManager.js';
 import { NOOP_LOGGER } from '../../logging/Logger.js';
+import { TraceRecorder } from '../../observability/TraceRecorder.js';
 import { createContextSnapshot, type RuntimeContext } from '../../runtime/index.js';
 import type { ToolDefinition, ToolResult } from '../../tools/types/index.js';
 import { SessionId } from '../../types/branded.js';
@@ -287,6 +288,35 @@ describe('SessionRuntime', () => {
     ]);
 
     await resumed.close();
+  });
+
+  it('should expose kernel trace events through the runtime trace port', async () => {
+    const runtime = new SessionRuntime(
+      SessionId('session-kernel-trace'),
+      createOptions(),
+      {
+        models: [],
+      },
+      PermissionMode.YOLO,
+      createFilesystemContext(workspaceRoot),
+      NOOP_LOGGER,
+    );
+
+    await runtime.initialize();
+
+    const recorder = new TraceRecorder(SessionId('session-kernel-trace'), {
+      enabled: true,
+      capturePayloads: true,
+    });
+    const tracePort = runtime.getKernelTracePort(recorder);
+    await tracePort.record({ type: 'turn_start', input: 'Trace from kernel' });
+    await tracePort.record({ type: 'turn_end', content: 'Traced answer', finishReason: 'stop' });
+
+    expect(recorder.getTrace().events.map((event) => event.type)).toEqual(
+      expect.arrayContaining(['turn_start', 'turn_end']),
+    );
+
+    await runtime.close();
   });
 
   it('should disable all tools when allowedTools is an empty array', async () => {
