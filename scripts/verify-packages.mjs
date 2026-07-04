@@ -58,6 +58,7 @@ const packageSpecs = [
       'package/dist/session/index.js',
       'package/dist/session/index.d.ts',
       'package/dist/session/factory.d.ts',
+      'package/dist/session/store.d.ts',
       'package/dist/browser/index.js',
       'package/dist/browser/server-only-stub.js',
       'package/dist/core/index.d.ts',
@@ -83,6 +84,16 @@ const packageSpecs = [
         file: 'package/dist/session/index.js',
         forbidden: 'src/session/Session',
         message: 'session runtime entry must route through package-local session factory',
+      },
+      {
+        file: 'package/dist/session/store.d.ts',
+        forbidden: '../context/storage',
+        message: 'session store declarations must be emitted from package-local session store source',
+      },
+      {
+        file: 'package/dist/session/store.d.ts',
+        forbidden: './SessionStore.js',
+        message: 'session store declarations must not point back at legacy root session store',
       },
       {
         file: 'package/dist/tools/index.d.ts',

@@ -76,6 +76,7 @@ describe('monorepo topology', () => {
     expect(sdk.scripts?.build).toContain('node scripts/overlay-public-dts.mjs');
     expect(publicDts.files).toContain('src/core/index.ts');
     expect(publicDts.files).toContain('src/types/permissions.ts');
+    expect(publicDts.files).toContain('src/session/store.ts');
     expect(overlayScript).toContain('local/public-index.d.ts');
     expect(overlayScript).toContain('public-index.js');
     expect(overlayScript).toContain('types/permissions.d.ts.map');
@@ -321,9 +322,13 @@ describe('monorepo topology', () => {
 
   it('owns the public session entry source inside agent-sdk', () => {
     const sessionSource = readFileSync('packages/agent-sdk/src/session/index.ts', 'utf-8');
+    const sessionStoreSource = readFileSync('packages/agent-sdk/src/session/store.ts', 'utf-8');
 
     expect(sessionSource).not.toContain("export * from '../../../../src/session/index.js'");
     expect(sessionSource).not.toContain("../../../../src/session/Session.js");
+    expect(existsSync('packages/agent-sdk/src/session/store.ts')).toBe(true);
+    expect(sessionStoreSource).not.toContain('../../../../src/session/SessionStore');
+    expect(sessionStoreSource).not.toContain('../../../../src/context/storage');
     expect(sessionSource).toContain("from './types.js'");
     expect(sessionSource).toContain('createDefaultSessionRuntimeFactory');
   });

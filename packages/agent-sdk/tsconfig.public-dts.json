@@ -16,6 +16,7 @@
     "src/local/public-index.ts",
     "src/session/factory.ts",
     "src/session/public-index.ts",
+    "src/session/store.ts",
     "src/subagents/index.ts",
     "src/tools/public-index.ts",
     "src/types/permissions.ts"

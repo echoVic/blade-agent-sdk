@@ -347,6 +347,7 @@ Status:
 - Thirty-fourth adapter increment complete: `@blade-ai/agent-sdk/local` now owns the sandbox runtime locally. `SandboxExecutor`, `SandboxService`, their singleton helpers, command checks, sandbox capability detection, execution option building, and command wrapping live in package-local `src/local/sandbox.ts` without importing legacy root `src/sandbox`.
 - Thirty-fifth adapter increment complete: `@blade-ai/agent-sdk/local` now owns the in-process MCP facade locally. `tool()` and `createSdkMcpServer()` live in package-local `src/local/mcp.ts`, use the MCP SDK directly, and no longer import legacy root `src/mcp` for local MCP server construction.
 - Thirty-sixth adapter increment complete: `@blade-ai/agent-sdk/local` now owns the builtin tools entry locally. `getBuiltinTools()` no longer re-exports legacy root builtin registration; its current package-local baseline returns no tools by default and registers package-local memory read/write tools when a `MemoryManager` is provided, while the broader builtin suites remain staged for later adapter migrations.
+- Thirty-seventh adapter increment complete: `@blade-ai/agent-sdk/session` now owns the JSONL session store implementation locally. `JsonlSessionStore`, `NoopSessionStore`, session snapshots, summaries, timelines, tool-call state, and subagent refs can be rebuilt from the existing unified JSONL event format without importing legacy root `src/session/SessionStore` or root context storage helpers, preparing the package-local `Session` runtime migration.
 
 ### Phase 5: Production Verification Chain
 
@@ -388,6 +389,7 @@ Status:
 - Fourteenth verification-chain increment complete: topology tests now reject legacy root sandbox imports from `local/sandbox.ts`, and package verification rejects packed local sandbox declarations that fall back to the old placeholder constructor-only shape.
 - Fifteenth verification-chain increment complete: topology tests now reject legacy root MCP imports from `local/mcp.ts`, and package verification rejects packed local MCP declarations that fall back to the old `unknown[]` placeholder signatures.
 - Sixteenth verification-chain increment complete: topology tests now reject legacy root builtin-tool imports from `local/builtin-tools.ts`, and package verification rejects packed local builtin declarations that fall back to the old `getBuiltinTools(...args: unknown[])` placeholder signature.
+- Seventeenth verification-chain increment complete: topology tests now require package-local session store source ownership, and package verification requires the packed `@blade-ai/agent-sdk` session store declaration while rejecting declaration regressions that point back at root context storage or legacy root `SessionStore`.
 
 Commit:
 
