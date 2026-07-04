@@ -23,7 +23,7 @@ export type {
   RuntimePatchSkillInfo,
   RuntimeToolDiscoveryPatch,
   RuntimeToolPolicyPatch,
-} from '../../../../src/runtime/index.js';
+} from '../runtime/types.js';
 export type {
   SendOptions,
   StreamMessage,
