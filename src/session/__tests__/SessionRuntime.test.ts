@@ -132,6 +132,41 @@ describe('SessionRuntime', () => {
     await runtime.close();
   });
 
+  it('should expose registered session tools through the kernel tool port', async () => {
+    const runtime = new SessionRuntime(
+      SessionId('session-kernel-tools'),
+      createOptions({
+        allowedTools: ['CustomTool'],
+        tools: [customTool],
+      }),
+      {
+        models: [],
+      },
+      PermissionMode.YOLO,
+      createFilesystemContext(workspaceRoot),
+      NOOP_LOGGER,
+    );
+
+    await runtime.initialize();
+
+    const toolPort = runtime.getKernelToolPort(() => ({ userId: 'sdk-user' }));
+
+    await expect(toolPort.list()).resolves.toEqual([
+      { id: 'CustomTool', name: 'CustomTool', input: {} },
+    ]);
+    await expect(toolPort.execute({
+      id: 'call_custom',
+      name: 'CustomTool',
+      input: { value: 'blade' },
+    })).resolves.toEqual({
+      id: 'call_custom',
+      name: 'CustomTool',
+      output: 'ok',
+    });
+
+    await runtime.close();
+  });
+
   it('should disable all tools when allowedTools is an empty array', async () => {
     const runtime = new SessionRuntime(
       SessionId('session-empty-allowlist'),

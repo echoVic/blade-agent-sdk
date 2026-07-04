@@ -1,4 +1,5 @@
 import { basename, dirname } from 'node:path';
+import type { AgentToolCall, AgentToolPort } from '@blade-ai/agent';
 import type { AgentRuntimeDeps } from '../agent/Agent.js';
 import { AgentSessionStore } from '../agent/subagents/AgentSessionStore.js';
 import { BackgroundAgentManager } from '../agent/subagents/BackgroundAgentManager.js';
@@ -24,7 +25,7 @@ import { toolFromDefinition } from '../tools/core/createTool.js';
 import { ExecutionPipeline } from '../tools/execution/ExecutionPipeline.js';
 import { FileLockManager } from '../tools/execution/FileLockManager.js';
 import { ToolRegistry } from '../tools/registry/ToolRegistry.js';
-import type { Tool } from '../tools/types/index.js';
+import type { ExecutionContext, Tool } from '../tools/types/index.js';
 import type { BladeConfig, McpServerConfig, PermissionsConfig } from '../types/common.js';
 import type { PermissionMode } from '../types/common.js';
 import { HookEvent } from '../types/constants.js';
@@ -42,6 +43,7 @@ import type {
   McpToolInfo,
   SessionOptions,
 } from './types.js';
+import { createKernelToolPort } from './SessionKernelAdapter.js';
 
 function isSdkMcpServerHandle(
   config: McpServerConfig | SdkMcpServerHandle
@@ -152,6 +154,19 @@ export class SessionRuntime {
 
   getToolCatalog(): ToolCatalog {
     return this.toolCatalog;
+  }
+
+  getKernelToolPort(
+    createExecutionContext: (
+      toolCall: AgentToolCall,
+      signal?: AbortSignal,
+    ) => ExecutionContext,
+  ): AgentToolPort {
+    return createKernelToolPort({
+      registry: this.toolRegistry,
+      pipeline: this.executionPipeline,
+      createExecutionContext,
+    });
   }
 
   getBackgroundAgentManager(): BackgroundAgentManager {

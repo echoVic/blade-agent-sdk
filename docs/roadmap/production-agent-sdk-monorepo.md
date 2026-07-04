@@ -295,6 +295,10 @@ Commit:
 
 - `refactor(agent-sdk): recompose session-first sdk on core packages`
 
+Status:
+
+- First adapter increment complete: `SessionKernelAdapter` bridges the existing session tool registry and execution pipeline into `AgentToolPort`, and `SessionRuntime.getKernelToolPort()` exposes registered local/MCP/custom tools to `AgentKernel` without coupling `@blade-ai/agent` to SDK-local session internals.
+
 ### Phase 5: Production Verification Chain
 
 Objective: Make quality gates broad enough for a production agent SDK.

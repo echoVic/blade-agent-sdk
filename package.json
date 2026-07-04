@@ -58,7 +58,7 @@
     "CHANGELOG.md"
   ],
   "scripts": {
-    "build": "pnpm --filter @blade-ai/ai run build && tsup && tsc -p tsconfig.build.json",
+    "build": "pnpm --filter @blade-ai/ai run build && pnpm --filter @blade-ai/agent run build && tsup && tsc -p tsconfig.build.json",
     "test": "vitest run",
     "test:live:glm": "pnpm --filter @blade-ai/ai run build && node scripts/test-live-glm.mjs",
     "lint": "biome lint src packages",
@@ -97,6 +97,7 @@
     "node-pty": "1.0.0"
   },
   "dependencies": {
+    "@blade-ai/agent": "workspace:*",
     "@blade-ai/ai": "workspace:*",
     "@ai-sdk/openai": "^3.0.53",
     "@ai-sdk/openai-compatible": "^2.0.41",
