@@ -27,6 +27,20 @@ const rules = [
 
 const manifestRules = [
   {
+    name: '@blade-ai/agent',
+    packageJson: 'packages/agent/package.json',
+    disallowedDependencies: [
+      [/^@modelcontextprotocol(?:\/|$)/, 'Agent kernel must not depend on MCP SDKs'],
+      [/^@ai-sdk(?:\/|$)/, 'Agent kernel must not depend on provider SDK implementations'],
+      [/^ai$/, 'Agent kernel must not depend on provider runtime implementations'],
+      [/^@vscode\/ripgrep$/, 'Agent kernel must not depend on local filesystem tooling'],
+      [/^node-pty$/, 'Agent kernel must not depend on local terminal tooling'],
+      [/^fast-glob$/, 'Agent kernel must not depend on local filesystem traversal tooling'],
+      [/^undici$/, 'Agent kernel must not depend on server HTTP runtime tooling'],
+      [/^write-file-atomic$/, 'Agent kernel must not depend on filesystem storage implementations'],
+    ],
+  },
+  {
     name: '@blade-ai/agent-sdk',
     packageJson: 'packages/agent-sdk/package.json',
     disallowedDependencies: [
