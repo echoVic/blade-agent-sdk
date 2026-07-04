@@ -2,6 +2,7 @@ import { describe, expectTypeOf, it } from 'vitest';
 import type {
   JsonObject,
   ModelPort,
+  ModelOutputFormat,
   ModelRequest,
   ModelResponse,
   ModelStreamEvent,
@@ -10,6 +11,7 @@ import type {
 } from '../index.js';
 import type {
   ModelPort as RootModelPort,
+  ModelOutputFormat as RootModelOutputFormat,
   ModelUsageInfo,
   UsageInfo as RootUsageInfo,
 } from '../../index.js';
@@ -35,15 +37,19 @@ describe('@blade-ai/ai model protocol types', () => {
       messages: ReadonlyArray<{
         role: 'system' | 'user' | 'assistant' | 'tool';
         content: string;
+        reasoningContent?: string;
+        toolCalls?: readonly ModelToolCall[];
       }>;
       tools?: ReadonlyArray<{
         name: string;
         description?: string;
         parameters: JsonObject;
+        strict?: boolean;
       }>;
       temperature?: number;
       maxOutputTokens?: number;
       maxContextTokens?: number;
+      outputFormat?: ModelOutputFormat;
       providerOptions?: JsonObject;
       signal?: AbortSignal;
     }>();
@@ -73,6 +79,7 @@ describe('@blade-ai/ai model protocol types', () => {
 
   it('exposes model protocol types from the package root without replacing chat UsageInfo', () => {
     expectTypeOf<RootModelPort>().toEqualTypeOf<ModelPort>();
+    expectTypeOf<RootModelOutputFormat>().toEqualTypeOf<ModelOutputFormat>();
     expectTypeOf<ModelUsageInfo>().toEqualTypeOf<UsageInfo>();
     expectTypeOf<RootUsageInfo>().toMatchTypeOf<{
       promptTokens: number;

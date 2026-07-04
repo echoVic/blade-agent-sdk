@@ -8,6 +8,7 @@ export type { JsonObject, JsonPrimitive, JsonValue };
 export type {
   ModelMessage,
   ModelMessageRole,
+  ModelOutputFormat,
   ModelPort,
   ModelProvider,
   ModelRequest,

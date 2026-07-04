@@ -1,5 +1,5 @@
 import { createOpenAICompatible } from '@ai-sdk/openai-compatible';
-import { generateText, jsonSchema, streamText } from 'ai';
+import { generateText, jsonSchema, Output, streamText } from 'ai';
 import type {
   JsonObject,
   JsonValue,
@@ -97,6 +97,7 @@ export function createOpenAICompatibleModelPort(options: OpenAICompatibleModelPo
         maxOutputTokens: request.maxOutputTokens,
         temperature: request.temperature,
         abortSignal: request.signal,
+        experimental_output: toExperimentalOutput(request.outputFormat),
         providerOptions: request.providerOptions,
       } as never) as GenerateTextResult;
 
@@ -111,6 +112,7 @@ export function createOpenAICompatibleModelPort(options: OpenAICompatibleModelPo
         maxOutputTokens: request.maxOutputTokens,
         temperature: request.temperature,
         abortSignal: request.signal,
+        experimental_output: toExperimentalOutput(request.outputFormat),
         providerOptions: request.providerOptions,
       } as never) as { fullStream: AsyncIterable<StreamPart> };
 
@@ -121,18 +123,65 @@ export function createOpenAICompatibleModelPort(options: OpenAICompatibleModelPo
   };
 }
 
-function toAiMessages(messages: readonly ModelMessage[]): Array<{
-  role: ModelMessage['role'];
-  content: string;
-  name?: string;
-  toolCallId?: string;
-}> {
-  return messages.map((message) => ({
-    role: message.role,
-    content: message.content,
-    ...(message.name ? { name: message.name } : {}),
-    ...(message.toolCallId ? { toolCallId: message.toolCallId } : {}),
-  }));
+function toExperimentalOutput(outputFormat: ModelRequest['outputFormat']): unknown {
+  if (!outputFormat || outputFormat.type !== 'json_schema') return undefined;
+  const schema = outputFormat.json_schema?.schema;
+  if (!schema) return undefined;
+  return Output.object({
+    schema: jsonSchema(schema as never),
+  });
+}
+
+function toAiMessages(messages: readonly ModelMessage[]): unknown[] {
+  return messages.map((message) => {
+    if (message.role === 'assistant' && message.toolCalls && message.toolCalls.length > 0) {
+      const content: unknown[] = [];
+      if (message.reasoningContent) {
+        content.push({ type: 'reasoning', text: message.reasoningContent });
+      }
+      if (message.content) {
+        content.push({ type: 'text', text: message.content });
+      }
+      content.push(...message.toolCalls.map((toolCall) => ({
+        type: 'tool-call',
+        toolCallId: toolCall.id,
+        toolName: toolCall.name,
+        input: toolCall.input,
+      })));
+      return { role: 'assistant', content };
+    }
+
+    if (message.role === 'assistant' && message.reasoningContent) {
+      return {
+        role: 'assistant',
+        content: [
+          { type: 'reasoning', text: message.reasoningContent },
+          ...(message.content ? [{ type: 'text', text: message.content }] : []),
+        ],
+      };
+    }
+
+    if (message.role === 'tool' && message.toolCallId) {
+      return {
+        role: 'tool',
+        content: [
+          {
+            type: 'tool-result',
+            toolCallId: message.toolCallId,
+            toolName: message.name || 'unknown',
+            output: { type: 'text', value: message.content },
+          },
+        ],
+      };
+    }
+
+    return {
+      role: message.role,
+      content: message.content,
+      ...(message.name ? { name: message.name } : {}),
+      ...(message.toolCallId ? { toolCallId: message.toolCallId } : {}),
+    };
+  });
 }
 
 function toAiTools(tools: readonly ModelToolDefinition[] | undefined): Record<string, {

@@ -1,7 +1,7 @@
 import {
   createOpenAICompatibleModelPort,
 } from '@blade-ai/ai/providers/openai-compatible';
-import { createVercelLanguageModel } from '@blade-ai/ai/providers/vercel';
+import { createVercelModelPort } from '@blade-ai/ai/providers/vercel';
 import type {
   ModelPort,
   ModelRequest,
@@ -9,7 +9,6 @@ import type {
   ModelStreamEvent,
   ModelToolCall,
 } from '@blade-ai/ai/model';
-import { generateText, jsonSchema, type LanguageModel, Output, streamText } from 'ai';
 import type { JSONSchema7 } from 'json-schema';
 import { type InternalLogger, LogCategory, NOOP_LOGGER } from '../logging/Logger.js';
 import type { JsonObject, JsonValue } from '../types/common.js';
@@ -19,11 +18,9 @@ import type {
   ContentPart,
   IChatService,
   Message,
-  OutputFormat,
   SideQueryOptions,
   StreamChunk,
   ToolCall,
-  UsageInfo,
 } from './ChatServiceInterface.js';
 import {
   DEFAULT_RETRY_CONFIG,
@@ -33,10 +30,7 @@ import {
   withRetry,
 } from './RetryPolicy.js';
 import {
-  buildDeepSeekProviderOptions,
-  mergeDeepSeekUsage,
   optimizeDeepSeekCachePrefix,
-  prepareDeepSeekTools,
   shouldOmitDeepSeekSamplingOptions,
 } from '@blade-ai/ai/deepseek';
 
@@ -101,71 +95,6 @@ function getTextContent(content: string | ContentPart[]): string {
     .join('\n');
 }
 
-type AIProviderOptions = Record<string, JsonObject>;
-
-type AITextPart = {
-  type: 'text';
-  text: string;
-  providerOptions?: AIProviderOptions;
-};
-
-type AIMessage =
-  | { role: 'system'; content: string; providerOptions?: AIProviderOptions }
-  | { role: 'user'; content: string | Array<AITextPart | { type: 'image'; image: string }> }
-  | { role: 'assistant'; content: string | Array<{ type: 'reasoning'; text: string } | { type: 'text'; text: string } | { type: 'tool-call'; toolCallId: string; toolName: string; input: unknown }> }
-  | { role: 'tool'; content: Array<{ type: 'tool-result'; toolCallId: string; toolName: string; output: { type: 'text'; value: string } }> };
-
-type AITool = {
-  description?: string;
-  inputSchema: unknown;
-  strict?: boolean;
-};
-
-type RawToolCall = {
-  toolCallId?: string;
-  tool_call_id?: string;
-  id?: string;
-  toolName?: string;
-  tool_name?: string;
-  name?: string;
-  args?: unknown;
-  input?: unknown;
-  arguments?: unknown;
-  function?: { name?: string; arguments?: unknown };
-};
-
-type RawToolCallResult = {
-  text?: string;
-  toolCalls?: RawToolCall[];
-  tool_calls?: RawToolCall[];
-  message?: {
-    toolCalls?: RawToolCall[];
-    tool_calls?: RawToolCall[];
-  };
-  choices?: Array<{
-    message?: {
-      toolCalls?: RawToolCall[];
-      tool_calls?: RawToolCall[];
-    };
-  }>;
-  steps?: Array<{
-    toolCalls?: RawToolCall[];
-    tool_calls?: RawToolCall[];
-  }>;
-};
-
-function parseDataUrl(url: string): { data: string; mediaType?: string } | undefined {
-  const match = url.match(/^data:([^;,]+)?;base64,(.+)$/);
-  if (!match) {
-    return undefined;
-  }
-
-  return {
-    mediaType: match[1] || undefined,
-    data: match[2],
-  };
-}
-
 function safeJsonParse(
   str: string,
   logger: InternalLogger,
@@ -177,38 +106,6 @@ function safeJsonParse(
     logger.warn('⚠️ [VercelAIChatService] Failed to parse JSON, using fallback', { str });
     return fallback;
   }
-}
-
-function getStreamTextDelta(part: unknown): string | undefined {
-  const chunk = part as { text?: string; textDelta?: string; delta?: string };
-  return chunk.text ?? chunk.textDelta ?? chunk.delta;
-}
-
-function getDeepSeekStreamToolCall(part: unknown, index: number): ToolCall {
-  const raw = part as RawToolCall;
-  return {
-    id: raw.toolCallId ?? raw.tool_call_id ?? raw.id ?? `call_${index}`,
-    type: 'function',
-    function: {
-      name: raw.toolName ?? raw.tool_name ?? raw.name ?? raw.function?.name ?? '',
-      arguments: stringifyToolArgumentsValue(
-        raw.args ?? raw.input ?? raw.arguments ?? raw.function?.arguments ?? {},
-      ),
-    },
-  };
-}
-
-function stringifyToolArgumentsValue(value: unknown): string {
-  if (typeof value === 'string') {
-    const trimmed = value.trim();
-    if (!trimmed) return '{}';
-    try {
-      return JSON.stringify(JSON.parse(trimmed));
-    } catch {
-      return value;
-    }
-  }
-  return JSON.stringify(value ?? {});
 }
 
 /**
@@ -231,7 +128,6 @@ async function consumeRetryGenerator<T>(
 }
 
 export class VercelAIChatService implements IChatService {
-  private model?: LanguageModel;
   private modelPort?: ModelPort;
   private config: ChatConfig;
   private initialized: Promise<void>;
@@ -251,7 +147,6 @@ export class VercelAIChatService implements IChatService {
 
   private async initModel(config: ChatConfig): Promise<void> {
     this.modelPort = undefined;
-    this.model = undefined;
     if (this.shouldUseModelPort(config)) {
       this.modelPort = createOpenAICompatibleModelPort({
         apiKey: config.apiKey,
@@ -268,8 +163,8 @@ export class VercelAIChatService implements IChatService {
       return;
     }
 
-    this.model = await this.createModel(config);
-    this.logger.debug('🚀 [VercelAIChatService] Initialized', {
+    this.modelPort = this.createModelPort(config);
+    this.logger.debug('🚀 [VercelAIChatService] Initialized with AI Vercel ModelPort', {
       provider: config.provider,
       model: config.model,
       providerId: config.providerId,
@@ -280,15 +175,15 @@ export class VercelAIChatService implements IChatService {
     return config.provider === 'openai-compatible' && config.providerId !== 'deepseek';
   }
 
-  private getLanguageModel(): LanguageModel {
-    if (!this.model) {
-      throw new Error('Language model is not initialized for this provider');
+  private getModelPort(): ModelPort {
+    if (!this.modelPort) {
+      throw new Error('Model port is not initialized for this provider');
     }
-    return this.model;
+    return this.modelPort;
   }
 
-  private async createModel(config: ChatConfig): Promise<LanguageModel> {
-    return createVercelLanguageModel({
+  private createModelPort(config: ChatConfig): ModelPort {
+    return createVercelModelPort({
       provider: config.provider,
       providerId: config.providerId,
       apiKey: config.apiKey,
@@ -297,237 +192,8 @@ export class VercelAIChatService implements IChatService {
       headers: config.customHeaders,
       apiVersion: config.apiVersion,
       providerOptions: config.providerOptions as JsonObject | undefined,
+      supportsThinking: config.supportsThinking,
     });
-  }
-
-  private convertMessages(messages: readonly Message[]): AIMessage[] {
-    const result: AIMessage[] = [];
-    const isDeepSeek = this.isDeepSeekProvider();
-
-    for (const msg of messages) {
-      if (msg.role === 'system') {
-        if (Array.isArray(msg.content)) {
-          const textPart = msg.content.find((p) => p.type === 'text') as
-            | { type: 'text'; text: string; providerOptions?: AIProviderOptions }
-            | undefined;
-          const systemMsg: AIMessage = {
-            role: 'system',
-            content: getTextContent(msg.content),
-          };
-          if (textPart?.providerOptions) {
-            (systemMsg as { providerOptions?: AIProviderOptions }).providerOptions =
-              textPart.providerOptions as AIProviderOptions;
-          }
-          result.push(systemMsg);
-        } else {
-          result.push({ role: 'system', content: msg.content });
-        }
-      } else if (msg.role === 'user') {
-        if (Array.isArray(msg.content)) {
-          const parts = msg.content.map((part) => {
-            if (part.type === 'text') {
-              const textPart: AITextPart = { type: 'text', text: part.text };
-              if (part.providerOptions) {
-                textPart.providerOptions = part.providerOptions as AIProviderOptions;
-              }
-              return textPart;
-            }
-            const dataUrl = parseDataUrl(part.image_url.url);
-            if (dataUrl) {
-              return {
-                type: 'image' as const,
-                image: dataUrl.data,
-                mediaType: dataUrl.mediaType,
-              };
-            }
-            return { type: 'image' as const, image: part.image_url.url };
-          });
-          result.push({ role: 'user', content: parts });
-        } else {
-          result.push({ role: 'user', content: msg.content });
-        }
-      } else if (msg.role === 'assistant') {
-        if (msg.tool_calls && msg.tool_calls.length > 0) {
-          const content: Array<
-            { type: 'reasoning'; text: string }
-            | { type: 'text'; text: string }
-            | { type: 'tool-call'; toolCallId: string; toolName: string; input: unknown }
-          > = [];
-          if (msg.reasoningContent) {
-            content.push({ type: 'reasoning', text: msg.reasoningContent });
-          }
-          const toolCalls = msg.tool_calls.map((tc) => {
-            const fn = (tc as { function?: { name: string; arguments?: string } }).function;
-            return {
-              type: 'tool-call' as const,
-              toolCallId: tc.id,
-              toolName: fn?.name || '',
-              input: safeJsonParse(fn?.arguments || '{}', this.logger, {}),
-            };
-          });
-          const text = getTextContent(msg.content);
-          if (text) {
-            content.push({ type: 'text', text });
-          }
-          content.push(...toolCalls);
-          result.push({ role: 'assistant', content });
-        } else {
-          const text = getTextContent(msg.content);
-          if (msg.reasoningContent && !isDeepSeek) {
-            result.push({
-              role: 'assistant',
-              content: [
-                { type: 'reasoning', text: msg.reasoningContent },
-                ...(text ? [{ type: 'text' as const, text }] : []),
-              ],
-            });
-          } else {
-            result.push({ role: 'assistant', content: text });
-          }
-        }
-      } else if (msg.role === 'tool') {
-        if (!msg.tool_call_id) continue;
-        result.push({
-          role: 'tool',
-          content: [
-            {
-              type: 'tool-result',
-              toolCallId: msg.tool_call_id,
-              toolName: msg.name || 'unknown',
-              output: { type: 'text', value: getTextContent(msg.content) },
-            },
-          ],
-        });
-      }
-    }
-
-    return result;
-  }
-
-  private convertTools(
-    tools?: Array<{ name: string; description: string; parameters: JSONSchema7 }>
-  ): Record<string, AITool> | undefined {
-    if (!tools || tools.length === 0) return undefined;
-
-    const result: Record<string, AITool> = {};
-    const preparedTools = this.isDeepSeekProvider()
-      ? prepareDeepSeekTools(tools, this.config.providerOptions?.deepseek)
-      : tools;
-    for (const tool of preparedTools ?? []) {
-      const strict = 'strict' in tool ? tool.strict : undefined;
-      result[tool.name] = {
-        description: tool.description,
-        inputSchema: jsonSchema(tool.parameters as Parameters<typeof jsonSchema>[0]),
-        ...(strict !== undefined ? { strict } : {}),
-      };
-    }
-    return result;
-  }
-
-  private convertToolCalls(
-    toolCalls: RawToolCall[]
-  ): ToolCall[] {
-    return toolCalls.map((tc, index) => ({
-      id: tc.toolCallId ?? tc.tool_call_id ?? tc.id ?? `call_${index}`,
-      type: 'function' as const,
-      function: {
-        name: tc.toolName ?? tc.tool_name ?? tc.name ?? tc.function?.name ?? '',
-        arguments: this.stringifyToolArguments(
-          tc.args ?? tc.input ?? tc.arguments ?? tc.function?.arguments ?? {},
-        ),
-      },
-    }));
-  }
-
-  private stringifyToolArguments(value: unknown): string {
-    return stringifyToolArgumentsValue(value);
-  }
-
-  private convertOutputFormat(outputFormat?: OutputFormat) {
-    if (!outputFormat || outputFormat.type !== 'json_schema') {
-      return undefined;
-    }
-
-    const { json_schema } = outputFormat;
-    if (!json_schema?.schema) {
-      return undefined;
-    }
-    return Output.object({
-      schema: jsonSchema(json_schema.schema as Parameters<typeof jsonSchema>[0]),
-    });
-  }
-
-  private convertUsage(
-    usage?: {
-      promptTokens?: number;
-      completionTokens?: number;
-      totalTokens?: number;
-      inputTokens?: number;
-      outputTokens?: number;
-      inputTokenDetails?: {
-        noCacheTokens?: number;
-        cacheReadTokens?: number;
-        cacheWriteTokens?: number;
-      };
-      outputTokenDetails?: {
-        textTokens?: number;
-        reasoningTokens?: number;
-      };
-      reasoningTokens?: number;
-      cachedInputTokens?: number;
-      billableInputTokens?: number;
-      cacheMissInputTokens?: number;
-    },
-    providerMetadata?: {
-      anthropic?: {
-        cacheCreationInputTokens?: number;
-        cacheReadInputTokens?: number;
-      };
-      deepseek?: {
-        promptCacheHitTokens?: number;
-        promptCacheMissTokens?: number;
-      };
-    }
-  ): UsageInfo | undefined {
-    if (!usage) return undefined;
-    if (providerMetadata?.deepseek || this.config.provider === 'deepseek' || this.config.providerId === 'deepseek') {
-      return mergeDeepSeekUsage(usage, providerMetadata);
-    }
-
-    const prompt = usage.promptTokens ?? 0;
-    const completion = usage.completionTokens ?? 0;
-    const result: UsageInfo = {
-      promptTokens: prompt,
-      completionTokens: completion,
-      totalTokens: usage.totalTokens ?? prompt + completion,
-    };
-    if (providerMetadata?.anthropic) {
-      if (providerMetadata.anthropic.cacheCreationInputTokens !== undefined) {
-        result.cacheCreationInputTokens = providerMetadata.anthropic.cacheCreationInputTokens;
-      }
-      if (providerMetadata.anthropic.cacheReadInputTokens !== undefined) {
-        result.cacheReadInputTokens = providerMetadata.anthropic.cacheReadInputTokens;
-      }
-    }
-    return result;
-  }
-
-  private getProviderOptions(): AIProviderOptions | undefined {
-    if (this.isDeepSeekProvider()) {
-      const { deepseek, ...otherProviderOptions } = this.config.providerOptions ?? {};
-      const deepseekOptions = buildDeepSeekProviderOptions({
-        model: this.config.model,
-        supportsThinking: this.config.supportsThinking,
-        deepseek,
-      });
-
-      const providerOptions = {
-        ...otherProviderOptions,
-        ...deepseekOptions,
-      } as AIProviderOptions;
-      return Object.keys(providerOptions).length > 0 ? providerOptions : undefined;
-    }
-    return this.config.providerOptions as AIProviderOptions | undefined;
   }
 
   private isDeepSeekProvider(): boolean {
@@ -551,7 +217,6 @@ export class VercelAIChatService implements IChatService {
 
   private prepareRequest(
     messages: readonly Message[],
-    tools?: Array<{ name: string; description: string; parameters: JSONSchema7 }>,
   ) {
     const optimizedMessages = this.isDeepSeekProvider()
       ? optimizeDeepSeekCachePrefix(messages, this.config.providerOptions?.deepseek?.cacheOptimization)
@@ -559,82 +224,7 @@ export class VercelAIChatService implements IChatService {
     const filteredMessages = this.isDeepSeekProvider()
       ? filterDeepSeekToolContext(optimizedMessages)
       : filterOrphanToolMessages(optimizedMessages);
-    const coreMessages = this.convertMessages(filteredMessages);
-    const coreTools = this.convertTools(tools);
-    const experimentalOutput = this.convertOutputFormat(this.config.outputFormat);
-    return { coreMessages, coreTools, experimentalOutput };
-  }
-
-  private extractToolCalls(result: RawToolCallResult): RawToolCall[] | undefined {
-    if (result.toolCalls && result.toolCalls.length > 0) return result.toolCalls;
-    if (result.tool_calls && result.tool_calls.length > 0) return result.tool_calls;
-    if (result.message?.toolCalls && result.message.toolCalls.length > 0) return result.message.toolCalls;
-    if (result.message?.tool_calls && result.message.tool_calls.length > 0) return result.message.tool_calls;
-    const choiceToolCalls = result.choices?.flatMap((choice) =>
-      choice.message?.toolCalls ?? choice.message?.tool_calls ?? [],
-    );
-    if (choiceToolCalls && choiceToolCalls.length > 0) return choiceToolCalls;
-    const stepToolCalls = result.steps?.flatMap((step) =>
-      step.toolCalls ?? step.tool_calls ?? [],
-    );
-    return stepToolCalls && stepToolCalls.length > 0 ? stepToolCalls : undefined;
-  }
-
-  private buildChatResponse(result: {
-    text: string;
-    toolCalls?: RawToolCall[];
-    tool_calls?: RawToolCall[];
-    message?: RawToolCallResult['message'];
-    choices?: RawToolCallResult['choices'];
-    steps?: RawToolCallResult['steps'];
-    reasoning?: Array<{ text: string }>;
-    usage?: {
-      promptTokens?: number;
-      completionTokens?: number;
-      totalTokens?: number;
-      inputTokens?: number;
-      outputTokens?: number;
-      inputTokenDetails?: {
-        noCacheTokens?: number;
-        cacheReadTokens?: number;
-        cacheWriteTokens?: number;
-      };
-      outputTokenDetails?: {
-        textTokens?: number;
-        reasoningTokens?: number;
-      };
-      reasoningTokens?: number;
-      cachedInputTokens?: number;
-      billableInputTokens?: number;
-      cacheMissInputTokens?: number;
-    };
-    providerMetadata?: {
-      anthropic?: { cacheCreationInputTokens?: number; cacheReadInputTokens?: number };
-      deepseek?: { promptCacheHitTokens?: number; promptCacheMissTokens?: number };
-    };
-  }): ChatResponse {
-    const rawToolCalls = this.extractToolCalls(result);
-    const toolCalls =
-      rawToolCalls && rawToolCalls.length > 0
-        ? this.convertToolCalls(rawToolCalls)
-        : undefined;
-
-    const reasoningText = Array.isArray(result.reasoning)
-      ? result.reasoning.map((r) => r.text).join('')
-      : (result as { reasoningText?: string }).reasoningText;
-
-    return {
-      content: result.text,
-      reasoningContent: reasoningText,
-      toolCalls,
-      usage: this.convertUsage(
-        result.usage,
-        result.providerMetadata as {
-          anthropic?: { cacheCreationInputTokens?: number; cacheReadInputTokens?: number };
-          deepseek?: { promptCacheHitTokens?: number; promptCacheMissTokens?: number };
-        }
-      ),
-    };
+    return { filteredMessages };
   }
 
   private buildModelPortRequest(
@@ -653,8 +243,16 @@ export class VercelAIChatService implements IChatService {
       messages: filteredMessages.map((message) => ({
         role: message.role,
         content: getTextContent(message.content),
+        ...(
+          message.reasoningContent && (!this.isDeepSeekProvider() || message.tool_calls?.length)
+            ? { reasoningContent: message.reasoningContent }
+            : {}
+        ),
         ...(message.name ? { name: message.name } : {}),
         ...(message.tool_call_id ? { toolCallId: message.tool_call_id } : {}),
+        ...(message.tool_calls && message.tool_calls.length > 0
+          ? { toolCalls: message.tool_calls.map((toolCall) => this.chatToolCallToModelToolCall(toolCall)) }
+          : {}),
         ...(message.metadata !== undefined ? { metadata: message.metadata } : {}),
       })),
       tools: tools?.map((tool) => ({
@@ -665,9 +263,31 @@ export class VercelAIChatService implements IChatService {
       maxOutputTokens: overrides.maxOutputTokens ?? this.config.maxOutputTokens,
       temperature: this.getTemperatureOverride(overrides.temperature ?? this.config.temperature),
       maxContextTokens: this.config.maxContextTokens,
+      outputFormat: this.config.outputFormat
+        ? {
+            ...this.config.outputFormat,
+            json_schema: {
+              ...this.config.outputFormat.json_schema,
+              schema: this.config.outputFormat.json_schema.schema as unknown as JsonObject,
+            },
+          }
+        : undefined,
       providerOptions: this.config.providerOptions as JsonObject | undefined,
       signal,
     };
+  }
+
+  private chatToolCallToModelToolCall(toolCall: ToolCall): ModelToolCall {
+    return {
+      id: toolCall.id,
+      name: toolCall.function.name,
+      input: this.toJsonObject(safeJsonParse(toolCall.function.arguments || '{}', this.logger, {})),
+    };
+  }
+
+  private toJsonObject(value: JsonValue): JsonObject {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
+    return value as JsonObject;
   }
 
   private modelResponseToChatResponse(response: ModelResponse): ChatResponse {
@@ -734,26 +354,15 @@ export class VercelAIChatService implements IChatService {
     const startTime = Date.now();
     this.logger.debug('🚀 [VercelAIChatService] Starting chat request');
 
-    if (this.modelPort) {
-      const response = await this.modelPort.generate(this.buildModelPortRequest(messages, tools, signal));
-      return this.modelResponseToChatResponse(response);
-    }
-
-    const { coreMessages, coreTools, experimentalOutput } = this.prepareRequest(messages, tools);
+    const { filteredMessages } = this.prepareRequest(messages);
 
     try {
       const gen = withRetry(
         (ctx: RetryContext) =>
-          generateText({
-            model: this.getLanguageModel(),
-            messages: coreMessages as never,
-            tools: coreTools as never,
+          this.getModelPort().generate(this.buildModelPortRequest(filteredMessages, tools, signal, {
             maxOutputTokens: ctx.maxTokensOverride ?? this.config.maxOutputTokens,
-            temperature: this.getTemperatureOverride(this.config.temperature ?? 0),
-            abortSignal: signal,
-            experimental_output: experimentalOutput,
-            providerOptions: this.getProviderOptions(),
-          }),
+            temperature: this.config.temperature ?? 0,
+          })),
         this.retryConfig,
         signal,
       );
@@ -763,7 +372,7 @@ export class VercelAIChatService implements IChatService {
       const duration = Date.now() - startTime;
       this.logger.debug('📥 [VercelAIChatService] Response received in', duration, 'ms');
 
-      return this.buildChatResponse(result);
+      return this.modelResponseToChatResponse(result);
     } catch (error) {
       const duration = Date.now() - startTime;
       this.logger.error('❌ [VercelAIChatService] Chat failed after', duration, 'ms');
@@ -780,34 +389,21 @@ export class VercelAIChatService implements IChatService {
     const startTime = Date.now();
     this.logger.debug('🚀 [VercelAIChatService] Starting side query request');
 
-    const { coreMessages, experimentalOutput } = this.prepareRequest(messages);
+    const { filteredMessages } = this.prepareRequest(messages);
     const retryConfig = {
       ...this.retryConfig,
       querySource: options?.querySource ?? 'side_question',
     };
 
     try {
-      if (this.modelPort) {
-        const response = await this.modelPort.generate(this.buildModelPortRequest(messages, undefined, signal, {
-          maxOutputTokens: options?.maxOutputTokens,
-          temperature: options?.temperature,
-        }));
-        return this.modelResponseToChatResponse(response);
-      }
-
       const gen = withRetry(
         (ctx: RetryContext) =>
-          generateText({
-            model: this.getLanguageModel(),
-            messages: coreMessages as never,
+          this.getModelPort().generate(this.buildModelPortRequest(filteredMessages, undefined, signal, {
             maxOutputTokens: ctx.maxTokensOverride
               ?? options?.maxOutputTokens
               ?? this.config.maxOutputTokens,
-            temperature: this.getTemperatureOverride(options?.temperature ?? this.config.temperature ?? 0),
-            abortSignal: signal,
-            experimental_output: experimentalOutput,
-            providerOptions: this.getProviderOptions(),
-          }),
+            temperature: options?.temperature ?? this.config.temperature ?? 0,
+          })),
         retryConfig,
         signal,
       );
@@ -816,7 +412,7 @@ export class VercelAIChatService implements IChatService {
 
       const duration = Date.now() - startTime;
       this.logger.debug('📥 [VercelAIChatService] Side query response received in', duration, 'ms');
-      return this.buildChatResponse(result);
+      return this.modelResponseToChatResponse(result);
     } catch (error) {
       const duration = Date.now() - startTime;
       this.logger.error('❌ [VercelAIChatService] Side query failed after', duration, 'ms');
@@ -839,27 +435,15 @@ export class VercelAIChatService implements IChatService {
     const startTime = Date.now();
     this.logger.debug('🚀 [VercelAIChatService] Starting chat request (with retry events)');
 
-    const { coreMessages, coreTools, experimentalOutput } = this.prepareRequest(messages, tools);
+    const { filteredMessages } = this.prepareRequest(messages);
 
     try {
-      if (this.modelPort) {
-        return this.modelResponseToChatResponse(
-          await this.modelPort.generate(this.buildModelPortRequest(messages, tools, signal)),
-        );
-      }
-
       const gen = withRetry(
         (ctx: RetryContext) =>
-          generateText({
-            model: this.getLanguageModel(),
-            messages: coreMessages as never,
-            tools: coreTools as never,
+          this.getModelPort().generate(this.buildModelPortRequest(filteredMessages, tools, signal, {
             maxOutputTokens: ctx.maxTokensOverride ?? this.config.maxOutputTokens,
-            temperature: this.getTemperatureOverride(this.config.temperature ?? 0),
-            abortSignal: signal,
-            experimental_output: experimentalOutput,
-            providerOptions: this.getProviderOptions(),
-          }),
+            temperature: this.config.temperature ?? 0,
+          })),
         this.retryConfig,
         signal,
       );
@@ -870,7 +454,7 @@ export class VercelAIChatService implements IChatService {
         if (done) {
           const duration = Date.now() - startTime;
           this.logger.debug('📥 [VercelAIChatService] Response received in', duration, 'ms');
-          return this.buildChatResponse(value);
+          return this.modelResponseToChatResponse(value);
         }
         yield value;
       }
@@ -890,33 +474,15 @@ export class VercelAIChatService implements IChatService {
     const startTime = Date.now();
     this.logger.debug('🚀 [VercelAIChatService] Starting stream request');
 
-    const { coreMessages, coreTools, experimentalOutput } = this.prepareRequest(messages, tools);
+    const { filteredMessages } = this.prepareRequest(messages);
 
     try {
-      if (this.modelPort) {
-        let toolCallIndex = 0;
-        for await (const event of this.modelPort.stream(this.buildModelPortRequest(messages, tools, signal))) {
-          const { chunk, nextToolCallIndex } = this.modelStreamEventToChunk(event, toolCallIndex);
-          toolCallIndex = nextToolCallIndex;
-          if (chunk) yield chunk;
-        }
-        return;
-      }
-
       const gen = withRetry(
         (ctx: RetryContext) =>
-          Promise.resolve(
-            streamText({
-              model: this.getLanguageModel(),
-              messages: coreMessages as never,
-              tools: coreTools as never,
-              maxOutputTokens: ctx.maxTokensOverride ?? this.config.maxOutputTokens,
-              temperature: this.getTemperatureOverride(this.config.temperature ?? 0),
-              abortSignal: signal,
-              experimental_output: experimentalOutput,
-              providerOptions: this.getProviderOptions(),
-            }),
-          ),
+          Promise.resolve(this.getModelPort().stream(this.buildModelPortRequest(filteredMessages, tools, signal, {
+            maxOutputTokens: ctx.maxTokensOverride ?? this.config.maxOutputTokens,
+            temperature: this.config.temperature ?? 0,
+          }))),
         this.retryConfig,
         signal,
       );
@@ -926,49 +492,10 @@ export class VercelAIChatService implements IChatService {
       this.logger.debug('📥 [VercelAIChatService] Stream started');
 
       let toolCallIndex = 0;
-      for await (const part of result.fullStream) {
-        switch (part.type) {
-          case 'text-delta': {
-            const delta = getStreamTextDelta(part);
-            if (delta !== undefined) {
-              yield { content: delta };
-            }
-            break;
-          }
-
-          case 'reasoning-delta': {
-            const delta = getStreamTextDelta(part);
-            if (delta !== undefined) {
-              yield { reasoningContent: delta };
-            }
-            break;
-          }
-
-          case 'tool-call': {
-            const toolCall = getDeepSeekStreamToolCall(part, toolCallIndex);
-            yield {
-              toolCalls: [
-                {
-                  index: toolCallIndex++,
-                  ...toolCall,
-                },
-              ],
-            };
-            break;
-          }
-
-          case 'finish':
-            yield {
-              finishReason: (part as { finishReason?: string }).finishReason,
-              usage: this.convertUsage(
-                (part as {
-                  totalUsage?: Parameters<VercelAIChatService['convertUsage']>[0];
-                }).totalUsage,
-                (part as { providerMetadata?: { anthropic?: { cacheCreationInputTokens?: number; cacheReadInputTokens?: number }; deepseek?: { promptCacheHitTokens?: number; promptCacheMissTokens?: number } } }).providerMetadata
-              ),
-            };
-            break;
-        }
+      for await (const event of result) {
+        const { chunk, nextToolCallIndex } = this.modelStreamEventToChunk(event, toolCallIndex);
+        toolCallIndex = nextToolCallIndex;
+        if (chunk) yield chunk;
       }
 
       const duration = Date.now() - startTime;

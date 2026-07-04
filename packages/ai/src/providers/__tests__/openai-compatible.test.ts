@@ -6,12 +6,14 @@ const createOpenAICompatible = vi.fn(() => compatibleModel);
 const generateText = vi.fn();
 const streamText = vi.fn();
 const jsonSchema = vi.fn((schema: JsonObject) => ({ kind: 'json-schema', schema }));
+const outputObject = vi.fn((config: { schema: unknown }) => ({ kind: 'output-object', ...config }));
 
 vi.mock('@ai-sdk/openai-compatible', () => ({
   createOpenAICompatible,
 }));
 
 vi.mock('ai', () => ({
+  Output: { object: outputObject },
   generateText,
   jsonSchema,
   streamText,
@@ -156,5 +158,115 @@ describe('OpenAI-compatible ModelPort adapter', () => {
       },
       { type: 'done', finishReason: 'stop' },
     ]);
+  });
+
+  it('passes JSON schema outputFormat to generateText as experimental_output', async () => {
+    generateText.mockResolvedValue({ text: '{"ok":true}' });
+    const { createOpenAICompatibleModelPort } = await import('../openai-compatible/index.js');
+    const port = createOpenAICompatibleModelPort({
+      apiKey: 'test-key',
+      baseUrl: 'https://example.test/v1',
+      model: 'glm-5.2',
+    });
+
+    await port.generate({
+      messages: [{ role: 'user', content: 'json please' }],
+      outputFormat: {
+        type: 'json_schema',
+        json_schema: {
+          name: 'Answer',
+          schema: {
+            type: 'object',
+            properties: { ok: { type: 'boolean' } },
+            required: ['ok'],
+            additionalProperties: false,
+          },
+          strict: true,
+        },
+      },
+    });
+
+    expect(outputObject).toHaveBeenCalledWith({
+      schema: {
+        kind: 'json-schema',
+        schema: {
+          type: 'object',
+          properties: { ok: { type: 'boolean' } },
+          required: ['ok'],
+          additionalProperties: false,
+        },
+      },
+    });
+    expect(generateText).toHaveBeenCalledWith(expect.objectContaining({
+      experimental_output: {
+        kind: 'output-object',
+        schema: {
+          kind: 'json-schema',
+          schema: {
+            type: 'object',
+            properties: { ok: { type: 'boolean' } },
+            required: ['ok'],
+            additionalProperties: false,
+          },
+        },
+      },
+    }));
+  });
+
+  it('maps assistant tool calls and tool results into Vercel AI messages', async () => {
+    generateText.mockResolvedValue({ text: 'done' });
+    const { createOpenAICompatibleModelPort } = await import('../openai-compatible/index.js');
+    const port = createOpenAICompatibleModelPort({
+      apiKey: 'test-key',
+      baseUrl: 'https://example.test/v1',
+      model: 'glm-5.2',
+    });
+
+    await port.generate({
+      messages: [
+        { role: 'user', content: 'start' },
+        {
+          role: 'assistant',
+          content: '',
+          reasoningContent: 'need a tool',
+          toolCalls: [{ id: 'call_search', name: 'Search', input: { q: 'needle' } }],
+        },
+        {
+          role: 'tool',
+          name: 'Search',
+          toolCallId: 'call_search',
+          content: 'found',
+        },
+      ],
+    });
+
+    expect(generateText).toHaveBeenCalledWith(expect.objectContaining({
+      messages: [
+        { role: 'user', content: 'start' },
+        {
+          role: 'assistant',
+          content: [
+            { type: 'reasoning', text: 'need a tool' },
+            {
+              type: 'tool-call',
+              toolCallId: 'call_search',
+              toolName: 'Search',
+              input: { q: 'needle' },
+            },
+          ],
+        },
+        {
+          role: 'tool',
+          content: [
+            {
+              type: 'tool-result',
+              toolCallId: 'call_search',
+              toolName: 'Search',
+              output: { type: 'text', value: 'found' },
+            },
+          ],
+        },
+      ],
+    }));
   });
 });

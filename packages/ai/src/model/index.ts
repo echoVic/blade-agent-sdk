@@ -15,8 +15,10 @@ export type ModelMessageRole = 'system' | 'user' | 'assistant' | 'tool';
 export interface ModelMessage {
   role: ModelMessageRole;
   content: string;
+  reasoningContent?: string;
   name?: string;
   toolCallId?: string;
+  toolCalls?: readonly ModelToolCall[];
   metadata?: JsonValue;
 }
 
@@ -24,12 +26,23 @@ export interface ModelToolDefinition {
   name: string;
   description?: string;
   parameters: JsonObject;
+  strict?: boolean;
 }
 
 export interface ModelToolCall {
   id: string;
   name: string;
   input: JsonObject;
+}
+
+export interface ModelOutputFormat {
+  type: 'json_schema';
+  json_schema: {
+    name: string;
+    description?: string;
+    schema: JsonObject;
+    strict?: boolean;
+  };
 }
 
 export interface UsageInfo {
@@ -51,6 +64,7 @@ export interface ModelRequest {
   temperature?: number;
   maxOutputTokens?: number;
   maxContextTokens?: number;
+  outputFormat?: ModelOutputFormat;
   providerOptions?: JsonObject;
   metadata?: JsonObject;
   signal?: AbortSignal;

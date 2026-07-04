@@ -205,6 +205,10 @@ Status:
 - DeepSeek pure provider helpers now live in `@blade-ai/ai/deepseek`, including model normalization, endpoint selection, cache-aware usage and pricing helpers, cache-prefix optimization, long-context chunk planning, strict tool schema sanitization, and default DeepSeek model config.
 - DeepSeek runtime fetch APIs now live in `@blade-ai/ai/deepseek`, including FIM completion, chat completion, batch chat completion, per-response usage parsing, cache optimization, and cost calculation; the legacy SDK `src/services/deepseek.ts` path re-exports these runtime functions during migration.
 - A package boundary verifier now enforces key Pi-style dependency direction checks during the migration, including rejecting provider SDK dependencies from the session SDK package manifest.
+- Generic Vercel AI execution now lives in `@blade-ai/ai/providers/vercel` as `createVercelModelPort`, covering generate and stream execution for native OpenAI, Anthropic, Gemini, Azure OpenAI, DeepSeek, and compatible fallback providers.
+- `ModelRequest` now carries structured output format, assistant tool-call context, tool results, strict tool metadata, and provider options so model adapters own provider-runtime message/tool/output conversion.
+- The OpenAI-compatible and generic Vercel ModelPort adapters now normalize structured output, assistant tool calls, tool results, usage, reasoning, stream events, and DeepSeek strict-tool/thinking options behind `@blade-ai/ai`.
+- The session SDK's `VercelAIChatService` now delegates all provider chat and stream execution through `ModelPort`, with no direct `generateText`, `streamText`, `jsonSchema`, or `Output` runtime dependency in the session service.
 
 ### Phase 3: Extract `@blade-ai/agent`
 

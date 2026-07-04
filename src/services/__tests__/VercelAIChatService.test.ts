@@ -7,17 +7,15 @@ const mockCompatibleModelFactory = vi.fn((model: string) => ({ provider: 'compat
 const mockCreateOpenAICompatible = vi.fn((_options?: Record<string, unknown>) => mockCompatibleModelFactory);
 const mockDeepSeekModelFactory = vi.fn((model: string) => ({ provider: 'deepseek', model }));
 const mockCreateDeepSeek = vi.fn((_options?: Record<string, unknown>) => mockDeepSeekModelFactory);
-const mockGenerateText = vi.fn();
-const mockStreamText = vi.fn();
 const mockModelPortGenerate = vi.fn();
 const mockModelPortStream = vi.fn();
 const mockCreateOpenAICompatibleModelPort = vi.fn(() => ({
   generate: mockModelPortGenerate,
   stream: mockModelPortStream,
 }));
-const mockCreateVercelLanguageModel = vi.fn((options: { provider: string; model: string }) => ({
-  provider: options.provider,
-  model: options.model,
+const mockCreateVercelModelPort = vi.fn(() => ({
+  generate: mockModelPortGenerate,
+  stream: mockModelPortStream,
 }));
 
 vi.mock('@ai-sdk/openai', () => ({
@@ -37,17 +35,8 @@ vi.mock('@blade-ai/ai/providers/openai-compatible', () => ({
 }));
 
 vi.mock('@blade-ai/ai/providers/vercel', () => ({
-  createVercelLanguageModel: mockCreateVercelLanguageModel,
+  createVercelModelPort: mockCreateVercelModelPort,
 }));
-
-vi.mock('ai', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('ai')>();
-  return {
-    ...actual,
-    generateText: mockGenerateText,
-    streamText: mockStreamText,
-  };
-});
 
 const { VercelAIChatService } = await import('../VercelAIChatService.js');
 
@@ -59,15 +48,13 @@ describe('VercelAIChatService', () => {
     mockCompatibleModelFactory.mockClear();
     mockCreateDeepSeek.mockClear();
     mockDeepSeekModelFactory.mockClear();
-    mockGenerateText.mockReset();
-    mockStreamText.mockReset();
     mockCreateOpenAICompatibleModelPort.mockClear();
-    mockCreateVercelLanguageModel.mockClear();
+    mockCreateVercelModelPort.mockClear();
     mockModelPortGenerate.mockReset();
     mockModelPortStream.mockReset();
   });
 
-  it('delegates OpenAI provider creation to the AI Vercel provider factory', async () => {
+  it('delegates OpenAI provider creation to the AI Vercel ModelPort factory', async () => {
     const service = new VercelAIChatService(
       {
         provider: 'openai',
@@ -83,7 +70,7 @@ describe('VercelAIChatService', () => {
 
     await (service as unknown as { initialized: Promise<void> }).initialized;
 
-    expect(mockCreateVercelLanguageModel).toHaveBeenCalledWith({
+    expect(mockCreateVercelModelPort).toHaveBeenCalledWith({
       provider: 'openai',
       providerId: undefined,
       apiKey: 'test-key',
@@ -99,7 +86,7 @@ describe('VercelAIChatService', () => {
     expect(mockCreateOpenAICompatible).not.toHaveBeenCalled();
   });
 
-  it('delegates DeepSeek provider creation to the AI Vercel provider factory', async () => {
+  it('delegates DeepSeek provider creation to the AI Vercel ModelPort factory', async () => {
     const service = new VercelAIChatService(
       {
         provider: 'deepseek',
@@ -112,7 +99,7 @@ describe('VercelAIChatService', () => {
 
     await (service as unknown as { initialized: Promise<void> }).initialized;
 
-    expect(mockCreateVercelLanguageModel).toHaveBeenCalledWith({
+    expect(mockCreateVercelModelPort).toHaveBeenCalledWith({
       provider: 'deepseek',
       providerId: undefined,
       apiKey: 'test-key',
@@ -185,7 +172,6 @@ describe('VercelAIChatService', () => {
       name: 'glm',
     });
     expect(mockCreateOpenAICompatible).not.toHaveBeenCalled();
-    expect(mockGenerateText).not.toHaveBeenCalled();
     expect(mockModelPortGenerate).toHaveBeenCalledWith(expect.objectContaining({
       maxOutputTokens: 64,
       messages: [{ role: 'user', content: 'hello' }],
@@ -254,7 +240,6 @@ describe('VercelAIChatService', () => {
       chunks.push(chunk);
     }
 
-    expect(mockStreamText).not.toHaveBeenCalled();
     expect(mockModelPortStream).toHaveBeenCalledWith(expect.objectContaining({
       maxOutputTokens: 32,
       messages: [{ role: 'user', content: 'hello' }],
@@ -288,19 +273,58 @@ describe('VercelAIChatService', () => {
     ]);
   });
 
-  it('uses DeepSeek beta endpoint and strict sanitized tools when strictTools is enabled', async () => {
-    mockGenerateText.mockResolvedValue({
-      text: '',
+  it('passes structured output format through ModelPort requests', async () => {
+    mockModelPortGenerate.mockResolvedValue({
+      content: '{"ok":true}',
+    });
+
+    const outputFormat = {
+      type: 'json_schema' as const,
+      json_schema: {
+        name: 'Answer',
+        schema: {
+          type: 'object' as const,
+          properties: {
+            ok: { type: 'boolean' as const },
+          },
+          required: ['ok'],
+          additionalProperties: false,
+        },
+      },
+    };
+
+    const service = new VercelAIChatService(
+      {
+        provider: 'openai',
+        apiKey: 'test-key',
+        baseUrl: 'https://api.openai.com/v1',
+        model: 'gpt-5',
+        outputFormat,
+      },
+      NOOP_LOGGER,
+    );
+
+    await (service as unknown as { initialized: Promise<void> }).initialized;
+    await service.chat([{ role: 'user', content: 'json please' }]);
+
+    expect(mockModelPortGenerate).toHaveBeenCalledWith(expect.objectContaining({
+      outputFormat,
+    }));
+  });
+
+  it('delegates DeepSeek strict tool config through the AI Vercel ModelPort', async () => {
+    mockModelPortGenerate.mockResolvedValue({
+      content: '',
       toolCalls: [
         {
           id: 'raw-call',
           name: 'Search',
-          arguments: '{"q":"needle"}',
+          input: { q: 'needle' },
         },
         {
-          toolCallId: 'sdk-call',
-          toolName: 'Read',
-          input: '{"path":"README.md"}',
+          id: 'sdk-call',
+          name: 'Read',
+          input: { path: 'README.md' },
         },
       ],
     });
@@ -335,7 +359,7 @@ describe('VercelAIChatService', () => {
       ],
     );
 
-    expect(mockCreateVercelLanguageModel).toHaveBeenCalledWith({
+    expect(mockCreateVercelModelPort).toHaveBeenCalledWith({
       provider: 'deepseek',
       providerId: undefined,
       apiKey: 'test-key',
@@ -347,22 +371,21 @@ describe('VercelAIChatService', () => {
         deepseek: { strictTools: true },
       },
     });
-    expect(mockGenerateText).toHaveBeenCalledWith(expect.objectContaining({
-      providerOptions: { deepseek: { thinking: { type: 'enabled' } } },
-      tools: {
-        Search: expect.objectContaining({
-          strict: true,
-          inputSchema: expect.objectContaining({
-            jsonSchema: expect.objectContaining({
-              required: ['q'],
-              additionalProperties: false,
-              properties: {
-                q: { type: 'string' },
-              },
-            }),
-          }),
-        }),
-      },
+    expect(mockModelPortGenerate).toHaveBeenCalledWith(expect.objectContaining({
+      provider: 'deepseek',
+      providerOptions: { deepseek: { strictTools: true } },
+      tools: [
+        {
+          name: 'Search',
+          description: 'Search content',
+          parameters: {
+            type: 'object',
+            properties: {
+              q: { type: 'string', minLength: 1 },
+            },
+          },
+        },
+      ],
     }));
     expect(response.toolCalls?.[0]).toMatchObject({
       id: 'raw-call',
@@ -381,8 +404,8 @@ describe('VercelAIChatService', () => {
   });
 
   it('normalizes DeepSeek multi-turn tool context before requests', async () => {
-    mockGenerateText.mockResolvedValue({
-      text: 'done',
+    mockModelPortGenerate.mockResolvedValue({
+      content: 'done',
     });
 
     const service = new VercelAIChatService(
@@ -435,52 +458,41 @@ describe('VercelAIChatService', () => {
       { role: 'user', content: 'continue' },
     ]);
 
-    const request = mockGenerateText.mock.calls[0]?.[0] as { messages: unknown[] };
+    const request = mockModelPortGenerate.mock.calls[0]?.[0] as { messages: unknown[] };
     expect(request.messages).toEqual([
       { role: 'user', content: 'start' },
       {
         role: 'assistant',
-        content: [
-          { type: 'reasoning', text: 'need a tool' },
-          {
-            type: 'tool-call',
-            toolCallId: 'call_keep',
-            toolName: 'Search',
-            input: { q: 'needle' },
-          },
+        content: '',
+        reasoningContent: 'need a tool',
+        toolCalls: [
+          { id: 'call_keep', name: 'Search', input: { q: 'needle' } },
         ],
       },
       {
         role: 'tool',
-        content: [
-          {
-            type: 'tool-result',
-            toolCallId: 'call_keep',
-            toolName: 'Search',
-            output: { type: 'text', value: 'found' },
-          },
-        ],
+        content: 'found',
+        name: 'Search',
+        toolCallId: 'call_keep',
       },
       { role: 'assistant', content: 'intermediate answer' },
       { role: 'user', content: 'continue' },
     ]);
   });
 
-  it('normalizes DeepSeek raw and snake_case tool call responses', async () => {
-    mockGenerateText.mockResolvedValue({
-      text: '',
-      tool_calls: [
+  it('maps ModelPort tool calls to chat function tool calls', async () => {
+    mockModelPortGenerate.mockResolvedValue({
+      content: '',
+      toolCalls: [
         {
-          tool_call_id: 'snake-call',
-          function: {
-            name: 'Search',
-            arguments: { q: 'needle' },
-          },
+          id: 'search-call',
+          name: 'Search',
+          input: { q: 'needle' },
         },
         {
-          id: 'invalid-json',
+          id: 'read-call',
           name: 'Read',
-          arguments: '{"path":',
+          input: { path: 'README.md' },
         },
       ],
     });
@@ -500,7 +512,7 @@ describe('VercelAIChatService', () => {
 
     expect(response.toolCalls).toEqual([
       {
-        id: 'snake-call',
+        id: 'search-call',
         type: 'function',
         function: {
           name: 'Search',
@@ -508,29 +520,28 @@ describe('VercelAIChatService', () => {
         },
       },
       {
-        id: 'invalid-json',
+        id: 'read-call',
         type: 'function',
         function: {
           name: 'Read',
-          arguments: '{"path":',
+          arguments: '{"path":"README.md"}',
         },
       },
     ]);
   });
 
-  it('passes DeepSeek thinking options and maps cache/reasoning usage', async () => {
-    mockGenerateText.mockResolvedValue({
-      text: 'answer',
-      reasoningText: 'think',
+  it('omits sampling for DeepSeek thinking models and maps cache/reasoning usage', async () => {
+    mockModelPortGenerate.mockResolvedValue({
+      content: 'answer',
+      reasoningContent: 'think',
       usage: {
-        inputTokens: 12,
-        outputTokens: 5,
+        promptTokens: 12,
+        completionTokens: 5,
         totalTokens: 17,
-        inputTokenDetails: { cacheReadTokens: 7, noCacheTokens: 5 },
-        outputTokenDetails: { reasoningTokens: 3 },
-      },
-      providerMetadata: {
-        deepseek: { promptCacheHitTokens: 7, promptCacheMissTokens: 5 },
+        cacheReadInputTokens: 7,
+        cacheMissInputTokens: 5,
+        billableInputTokens: 5,
+        reasoningTokens: 3,
       },
     });
 
@@ -551,12 +562,10 @@ describe('VercelAIChatService', () => {
       { role: 'user', content: 'hello' },
     ]);
 
-    expect(mockGenerateText).toHaveBeenCalledWith(expect.objectContaining({
-      providerOptions: {
-        deepseek: {
-          thinking: { type: 'enabled' },
-        },
-      },
+    expect(mockCreateVercelModelPort).toHaveBeenCalledWith(expect.objectContaining({
+      supportsThinking: true,
+    }));
+    expect(mockModelPortGenerate).toHaveBeenCalledWith(expect.objectContaining({
       temperature: undefined,
     }));
     expect(response.reasoningContent).toBe('think');
@@ -572,8 +581,8 @@ describe('VercelAIChatService', () => {
   });
 
   it('keeps sampling options when DeepSeek thinking is explicitly disabled', async () => {
-    mockGenerateText.mockResolvedValue({
-      text: 'answer',
+    mockModelPortGenerate.mockResolvedValue({
+      content: 'answer',
       usage: { promptTokens: 1, completionTokens: 1, totalTokens: 2 },
     });
 
@@ -596,7 +605,7 @@ describe('VercelAIChatService', () => {
     await (service as unknown as { initialized: Promise<void> }).initialized;
     await service.chat([{ role: 'user', content: 'hello' }]);
 
-    expect(mockGenerateText).toHaveBeenCalledWith(expect.objectContaining({
+    expect(mockModelPortGenerate).toHaveBeenCalledWith(expect.objectContaining({
       temperature: 0.4,
       providerOptions: {
         deepseek: {
@@ -607,31 +616,27 @@ describe('VercelAIChatService', () => {
   });
 
   it('streams DeepSeek reasoning, tool calls, and cache usage metadata', async () => {
-    async function* fullStream() {
-      yield { type: 'reasoning-delta', textDelta: 'thinking' };
+    mockModelPortStream.mockReturnValue((async function* () {
+      yield { type: 'reasoning_delta', delta: 'thinking' };
       yield {
-        type: 'tool-call',
-        toolCallId: 'call_search',
-        toolName: 'Search',
-        input: { q: 'needle' },
+        type: 'tool_call',
+        toolCall: { id: 'call_search', name: 'Search', input: { q: 'needle' } },
       };
-      yield { type: 'text-delta', text: 'done' };
+      yield { type: 'content_delta', delta: 'done' };
       yield {
-        type: 'finish',
-        finishReason: 'tool-calls',
-        totalUsage: {
-          inputTokens: 20,
-          outputTokens: 4,
+        type: 'usage',
+        usage: {
+          promptTokens: 20,
+          completionTokens: 4,
           totalTokens: 24,
-          inputTokenDetails: { cacheReadTokens: 14, noCacheTokens: 6 },
-          outputTokenDetails: { reasoningTokens: 2 },
-        },
-        providerMetadata: {
-          deepseek: { promptCacheHitTokens: 14, promptCacheMissTokens: 6 },
+          cacheReadInputTokens: 14,
+          cacheMissInputTokens: 6,
+          billableInputTokens: 6,
+          reasoningTokens: 2,
         },
       };
-    }
-    mockStreamText.mockReturnValue({ fullStream: fullStream() });
+      yield { type: 'done', finishReason: 'tool-calls' };
+    })());
 
     const service = new VercelAIChatService(
       {
@@ -669,18 +674,26 @@ describe('VercelAIChatService', () => {
       chunks.push(chunk);
     }
 
-    expect(mockStreamText).toHaveBeenCalledWith(expect.objectContaining({
+    expect(mockModelPortStream).toHaveBeenCalledWith(expect.objectContaining({
       providerOptions: {
         deepseek: {
           thinking: { type: 'enabled' },
+          strictTools: true,
         },
       },
       temperature: undefined,
-      tools: {
-        Search: expect.objectContaining({
-          strict: true,
-        }),
-      },
+      tools: [
+        {
+          name: 'Search',
+          description: 'Search content',
+          parameters: {
+            type: 'object',
+            properties: {
+              q: { type: 'string', minLength: 1 },
+            },
+          },
+        },
+      ],
     }));
     expect(chunks).toEqual([
       { reasoningContent: 'thinking' },
@@ -699,7 +712,6 @@ describe('VercelAIChatService', () => {
       },
       { content: 'done' },
       {
-        finishReason: 'tool-calls',
         usage: {
           promptTokens: 20,
           completionTokens: 4,
@@ -710,22 +722,20 @@ describe('VercelAIChatService', () => {
           reasoningTokens: 2,
         },
       },
+      { finishReason: 'tool-calls' },
     ]);
   });
 
-  it('streams DeepSeek delta fields and preserves JSON-string tool inputs', async () => {
-    async function* fullStream() {
-      yield { type: 'reasoning-delta', delta: 'think' };
+  it('maps ModelPort stream events to chat stream chunks', async () => {
+    mockModelPortStream.mockReturnValue((async function* () {
+      yield { type: 'reasoning_delta', delta: 'think' };
       yield {
-        type: 'tool-call',
-        tool_call_id: 'call_read',
-        name: 'Read',
-        arguments: '{"path":"README.md"}',
+        type: 'tool_call',
+        toolCall: { id: 'call_read', name: 'Read', input: { path: 'README.md' } },
       };
-      yield { type: 'text-delta', delta: 'done' };
-      yield { type: 'finish', finishReason: 'tool-calls' };
-    }
-    mockStreamText.mockReturnValue({ fullStream: fullStream() });
+      yield { type: 'content_delta', delta: 'done' };
+      yield { type: 'done', finishReason: 'tool-calls' };
+    })());
 
     const service = new VercelAIChatService(
       {
@@ -778,7 +788,7 @@ describe('VercelAIChatService', () => {
         ],
       },
       { content: 'done' },
-      { finishReason: 'tool-calls', usage: undefined },
+      { finishReason: 'tool-calls' },
     ]);
   });
 });
