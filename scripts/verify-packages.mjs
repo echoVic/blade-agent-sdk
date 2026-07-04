@@ -186,6 +186,11 @@ const packageSpecs = [
       },
       {
         file: 'package/dist/local/index.d.ts',
+        forbidden: 'getBuiltinTools(...args: unknown[])',
+        message: 'local builtin tool declarations must use package-local builtin tool API',
+      },
+      {
+        file: 'package/dist/local/index.d.ts',
         forbidden: 'read(id: string)',
         message: 'local memory declarations must use package-local memory API',
       },

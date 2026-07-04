@@ -158,6 +158,15 @@ export declare class SandboxService {
   getCapabilities(): SandboxCapabilities;
 }
 
+export interface BuiltinToolsOptions {
+  memoryManager?: MemoryManager;
+  sessionId?: unknown;
+  configDir?: string;
+  mcpRegistry?: unknown;
+  includeMcpProtocolTools?: boolean;
+  subagentRegistry?: unknown;
+}
+
 export declare function createSdkMcpServer(config: {
   name: string;
   version: string;
@@ -171,7 +180,7 @@ export declare function tool<TSchema extends Record<string, z.ZodTypeAny>>(
 ): SdkTool;
 export declare function getSandboxExecutor(...args: unknown[]): SandboxExecutor;
 export declare function getSandboxService(...args: unknown[]): SandboxService;
-export declare function getBuiltinTools(...args: unknown[]): Promise<Tool[]>;
+export declare function getBuiltinTools(options?: BuiltinToolsOptions): Promise<Tool[]>;
 export declare function createMemoryReadTool(args: { manager: MemoryManager }): Tool;
 export declare function createMemoryWriteTool(args: { manager: MemoryManager }): Tool;
 

@@ -27,3 +27,4 @@ export {
   createMemoryWriteTool,
   getBuiltinTools,
 } from './builtin-tools.js';
+export type { BuiltinToolsOptions } from './builtin-tools.js';

@@ -191,6 +191,7 @@ describe('monorepo topology', () => {
     expect(localSource).not.toContain("../../../../src/");
     expect(localMcpSource).not.toContain('../../../../src/mcp');
     expect(localMemorySource).not.toContain("../../../../src/memory");
+    expect(localBuiltinToolsSource).not.toContain('../../../../src/tools/builtin');
     expect(localBuiltinToolsSource).not.toContain('../../../../src/tools/builtin/memory');
     expect(localSandboxSource).not.toContain('../../../../src/sandbox');
     for (const file of [

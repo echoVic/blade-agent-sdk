@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   createMemoryReadTool,
   createMemoryWriteTool,
+  getBuiltinTools,
 } from '../../packages/agent-sdk/src/local/builtin-tools.js';
 import {
   MemoryManager,
@@ -41,6 +42,16 @@ async function executeTool<TParams>(
 }
 
 describe('agent-sdk local memory tools', () => {
+  it('registers package-local memory tools only when a manager is provided', async () => {
+    const manager = new MemoryManager(new InMemoryStore());
+
+    await expect(getBuiltinTools()).resolves.toEqual([]);
+    await expect(getBuiltinTools({ memoryManager: manager })).resolves.toMatchObject([
+      { name: 'MemoryRead' },
+      { name: 'MemoryWrite' },
+    ]);
+  });
+
   it('read and write tools operate on the package-local memory manager', async () => {
     const manager = new MemoryManager(new InMemoryStore());
     const readTool = createMemoryReadTool({ manager });
