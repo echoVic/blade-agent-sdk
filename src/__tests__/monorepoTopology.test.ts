@@ -64,13 +64,13 @@ describe('monorepo topology', () => {
     }
   });
 
-  it('overlays package-local session declarations for agent-sdk', () => {
+  it('overlays package-local public declarations for agent-sdk', () => {
     const sdk = readJson('packages/agent-sdk/package.json');
 
-    expect(existsSync('packages/agent-sdk/tsconfig.session-dts.json')).toBe(true);
-    expect(existsSync('packages/agent-sdk/scripts/overlay-session-dts.mjs')).toBe(true);
-    expect(sdk.scripts?.build).toContain('tsc -p tsconfig.session-dts.json');
-    expect(sdk.scripts?.build).toContain('node scripts/overlay-session-dts.mjs');
+    expect(existsSync('packages/agent-sdk/tsconfig.public-dts.json')).toBe(true);
+    expect(existsSync('packages/agent-sdk/scripts/overlay-public-dts.mjs')).toBe(true);
+    expect(sdk.scripts?.build).toContain('tsc -p tsconfig.public-dts.json');
+    expect(sdk.scripts?.build).toContain('node scripts/overlay-public-dts.mjs');
   });
 
   it('builds the publishable agent-sdk package from its own package manifest', () => {
@@ -153,6 +153,15 @@ describe('monorepo topology', () => {
 
     expect(coreSource).not.toContain('../../../../src/tools/types/index.js');
     expect(permissionsSource).not.toContain('../../../../src/tools/types/index.js');
+  });
+
+  it('owns the public tools entry source inside agent-sdk', () => {
+    const toolsSource = readFileSync('packages/agent-sdk/src/tools/index.ts', 'utf-8');
+
+    expect(toolsSource).not.toContain("export * from '../../../../src/tools/index.js'");
+    expect(toolsSource).toContain("from './types/index.js'");
+    expect(toolsSource).toContain("from './types/ToolKind.js'");
+    expect(existsSync('packages/agent-sdk/src/tools/public-index.ts')).toBe(true);
   });
 
   it('organizes the agent package around kernel, protocol, ports, state, and tracing modules', () => {
@@ -263,5 +272,16 @@ describe('monorepo topology', () => {
 
     expect(root.scripts?.['verify:boundaries']).toBe('node scripts/verify-package-boundaries.mjs');
     expect(existsSync(join('scripts', 'verify-package-boundaries.mjs'))).toBe(true);
+  });
+
+  it('fresh-builds every publishable package before package verification', () => {
+    const root = readJson('package.json');
+
+    expect(root.scripts?.['verify:packages']).toContain('pnpm --filter @blade-ai/ai run build');
+    expect(root.scripts?.['verify:packages']).toContain('pnpm --filter @blade-ai/agent run build');
+    expect(root.scripts?.['verify:packages']).toContain(
+      'pnpm --filter @blade-ai/agent-sdk run build',
+    );
+    expect(root.scripts?.['verify:packages']).toContain('node scripts/verify-packages.mjs');
   });
 });

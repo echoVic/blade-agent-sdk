@@ -71,7 +71,7 @@
     "verify:examples": "tsc -p examples/tsconfig.json --noEmit",
     "verify:boundaries": "node scripts/verify-package-boundaries.mjs",
     "verify:entrypoints": "pnpm run build && pnpm --filter @blade-ai/agent-sdk run build && node scripts/verify-entrypoints.mjs",
-    "verify:packages": "pnpm run build && node scripts/verify-packages.mjs",
+    "verify:packages": "pnpm --filter @blade-ai/ai run build && pnpm --filter @blade-ai/agent run build && pnpm --filter @blade-ai/agent-sdk run build && node scripts/verify-packages.mjs",
     "release": "semantic-release",
     "release:dry": "semantic-release --dry-run --no-ci",
     "release:legacy": "node scripts/release.js",

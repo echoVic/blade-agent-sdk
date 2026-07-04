@@ -12,6 +12,8 @@ import type {
 import type { PermissionResult, PermissionUpdate } from '../../types/permissions.js';
 import type { ToolBehavior, ToolKind } from './ToolKind.js';
 
+export type { ToolBehavior } from './ToolKind.js';
+
 type JsonSchemaPrimitiveType =
   | 'string'
   | 'number'
@@ -134,14 +136,17 @@ export interface ToolResultMetadata {
 
 export interface ToolError {
   message: string;
-  type:
-    | 'validation_error'
-    | 'permission_denied'
-    | 'execution_error'
-    | 'timeout_error'
-    | 'network_error';
+  type: ToolErrorType;
   code?: string;
   details?: unknown;
+}
+
+export enum ToolErrorType {
+  VALIDATION_ERROR = 'validation_error',
+  PERMISSION_DENIED = 'permission_denied',
+  EXECUTION_ERROR = 'execution_error',
+  TIMEOUT_ERROR = 'timeout_error',
+  NETWORK_ERROR = 'network_error',
 }
 
 export interface ToolValidationError {
@@ -284,4 +289,47 @@ export interface ToolConfig<TSchema extends z.ZodSchema = z.ZodSchema, TParams =
   category?: string;
   tags?: string[];
   preparePermissionMatcher?: (params: TParams) => PreparedPermissionMatcher;
+}
+
+export interface Tool<TParams = JsonObject> {
+  name: string;
+  aliases?: string[];
+  displayName?: string;
+  kind: ToolKind;
+  isReadOnly: boolean;
+  isConcurrencySafe: boolean;
+  isDestructive?: boolean;
+  strict?: boolean;
+  maxResultSizeChars?: number;
+  interruptBehavior?: 'cancel' | 'block';
+  description: ToolDescription;
+  exposure?: Required<ToolExposureConfig>;
+  version?: string;
+  category?: string;
+  tags: string[];
+  describe(params?: TParams): ToolDescription;
+  getFunctionDeclaration(): FunctionDeclaration;
+  getMetadata(): {
+    name: string;
+    displayName?: string;
+    kind: ToolKind;
+    version: string;
+    category?: string;
+    tags: string[];
+    description: ToolDescription;
+    schema: JsonSchemaObject | JsonObject;
+  };
+  build(params: TParams): ToolInvocation<TParams>;
+  execute(params: TParams, signal?: AbortSignal): Promise<ToolResult>;
+  validateInput?(
+    params: TParams,
+    context: ExecutionContext,
+  ): Promise<undefined | ToolValidationError> | undefined | ToolValidationError;
+  checkPermissions?(
+    params: TParams,
+    context: ExecutionContext,
+  ): Promise<undefined | PermissionResult> | undefined | PermissionResult;
+  getBehaviorHint?(): Partial<ToolBehavior> | ToolBehavior;
+  resolveBehavior?(params: TParams): Partial<ToolBehavior> | ToolBehavior;
+  preparePermissionMatcher?(params: TParams): PreparedPermissionMatcher;
 }

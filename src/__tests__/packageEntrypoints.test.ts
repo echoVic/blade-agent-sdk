@@ -70,7 +70,7 @@ describe('package entrypoints', () => {
     expect(packageJson.scripts).toMatchObject({
       verify: 'pnpm run lint && pnpm run type-check && pnpm -r run type-check && pnpm run verify:examples && pnpm run verify:boundaries && pnpm run docs:build && pnpm run verify:entrypoints && pnpm run verify:packages && pnpm run test:unit && pnpm run test:integration',
       'verify:examples': 'tsc -p examples/tsconfig.json --noEmit',
-      'verify:packages': 'pnpm run build && node scripts/verify-packages.mjs',
+      'verify:packages': 'pnpm --filter @blade-ai/ai run build && pnpm --filter @blade-ai/agent run build && pnpm --filter @blade-ai/agent-sdk run build && node scripts/verify-packages.mjs',
       'test:unit': 'vitest run --exclude "src/__tests__/integration.test.ts" --exclude "src/__tests__/*.live.test.ts" --exclude "src/services/__tests__/*.live.test.ts" --exclude "src/services/__tests__/deepseek-deep.live.test.ts"',
       'test:integration': 'vitest run src/__tests__/integration.test.ts',
     });

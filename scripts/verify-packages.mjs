@@ -68,6 +68,16 @@ const packageSpecs = [
         forbidden: './Session.js',
         message: 'session declarations must be emitted from package-local session entry source',
       },
+      {
+        file: 'package/dist/tools/index.d.ts',
+        forbidden: './core/createTool.js',
+        message: 'tools declarations must be emitted from package-local tools entry source',
+      },
+      {
+        file: 'package/dist/tools/index.d.ts',
+        forbidden: './catalog/index.js',
+        message: 'tools declarations must be emitted from package-local tools entry source',
+      },
     ],
     imports: [
       '@blade-ai/agent-sdk',

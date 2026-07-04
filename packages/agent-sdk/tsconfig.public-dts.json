@@ -17,7 +17,10 @@
       "@blade-ai/ai/retry": ["../ai/src/retry/index.ts"]
     }
   },
-  "files": ["src/session/public-index.ts"],
+  "files": [
+    "src/session/public-index.ts",
+    "src/tools/public-index.ts"
+  ],
   "include": [],
   "exclude": [
     "node_modules",
