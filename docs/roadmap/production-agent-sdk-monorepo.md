@@ -380,6 +380,7 @@ Deliverables:
 Status:
 
 - First documentation increment complete: VitePress now includes an architecture guide and package/entrypoint guide. The architecture guide documents the `@blade-ai/ai` / `@blade-ai/agent` / `@blade-ai/agent-sdk` responsibilities, dependency direction, runtime boundaries, observability boundaries, and production verification gates. The package guide documents recommended imports, Browser-safe vs Server / CLI boundaries, direct `@blade-ai/ai` provider usage, runtime-independent `@blade-ai/agent` usage, and session-first `@blade-ai/agent-sdk` usage.
+- Second documentation increment complete: a session-first quickstart now documents the server/CLI `createSession()` flow, explicitly calls out `allowedTools: []` as disabling all tools, links to `examples/session-first-server.ts`, and adds `pnpm run verify:examples` to the root verification chain so the public quickstart import remains type-checked.
 
 Commit:
 
