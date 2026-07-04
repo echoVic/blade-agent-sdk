@@ -14,6 +14,7 @@ import { cloneMessage } from '../services/messageUtils.js';
 import { SessionId } from '../types/branded.js';
 import {
   type BladeConfig,
+  type JsonObject,
   type JsonValue,
   type ModelConfig,
   PermissionMode,
@@ -728,12 +729,25 @@ class Session implements ISession {
       throw new Error('Session context manager is not available');
     }
     const formatted = await contextManager.getFormattedContext();
-    this._messages = formatted.context.layers.conversation.messages.map((message) => ({
-      id: message.id,
-      role: message.role,
-      content: message.content,
-      ...(message.metadata ? { metadata: message.metadata } : {}),
-    }));
+    this._messages = formatted.context.layers.conversation.messages.map((message) => {
+      const metadata = message.metadata;
+      return {
+        id: message.id,
+        role: message.role,
+        content: message.content,
+        ...(metadata ? { metadata } : {}),
+        ...(typeof metadata?.reasoningContent === 'string'
+          ? { reasoningContent: metadata.reasoningContent }
+          : {}),
+        ...(isSessionToolCallArray(metadata?.toolCalls)
+          ? { tool_calls: metadata.toolCalls }
+          : {}),
+        ...(typeof metadata?.tool_call_id === 'string'
+          ? { tool_call_id: metadata.tool_call_id }
+          : {}),
+        ...(typeof metadata?.name === 'string' ? { name: metadata.name } : {}),
+      };
+    });
   }
 
   async close(): Promise<void> {
@@ -1092,4 +1106,26 @@ export async function prompt(
   } finally {
     await session.close();
   }
+}
+
+function isSessionToolCallArray(value: unknown): value is NonNullable<Message['tool_calls']> {
+  return Array.isArray(value) && value.every(isSessionToolCall);
+}
+
+function isSessionToolCall(value: unknown): value is NonNullable<Message['tool_calls']>[number] {
+  if (!isJsonObject(value)) {
+    return false;
+  }
+  const fn = value.function;
+  return (
+    typeof value.id === 'string'
+    && value.type === 'function'
+    && isJsonObject(fn)
+    && typeof fn.name === 'string'
+    && typeof fn.arguments === 'string'
+  );
+}
+
+function isJsonObject(value: unknown): value is JsonObject {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
 }

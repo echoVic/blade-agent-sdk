@@ -267,7 +267,7 @@ interface StreamOptions {
 }
 ```
 
-`experimentalKernel` 是迁移期的受控开关。开启后仍然使用 `send()` + `stream()` 的 session-first API，但本次 turn 会通过 `@blade-ai/agent` 的运行时无关 kernel 执行，并复用 session 的模型配置、工具定义与执行端口、HookRuntime、ContextManager 和 trace recorder。默认值为 `false`，生产流量建议等 kernel 路径覆盖更多 legacy loop 语义后再整体切换。
+`experimentalKernel` 是迁移期的受控开关。开启后仍然使用 `send()` + `stream()` 的 session-first API，但本次 turn 会通过 `@blade-ai/agent` 的运行时无关 kernel 执行，并复用 session 的模型配置、工具定义与执行端口、HookRuntime、ContextManager 和 trace recorder。工具调用会继续以 `tool_use` / `tool_result` 事件流出，并在 `session.messages` 中保留 assistant `tool_calls` 与 tool `tool_call_id` / `name` 历史。默认值为 `false`，生产流量建议等 kernel 路径覆盖更多 legacy loop 语义后再整体切换。
 
 ### StreamMessage 类型
 

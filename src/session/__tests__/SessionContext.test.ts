@@ -1,6 +1,7 @@
 import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import type { ModelResponse } from '@blade-ai/ai';
 import { describe, expect, it, vi } from 'vitest';
 import { PersistentStore } from '../../context/storage/PersistentStore.js';
 import type { ContentPart } from '../../services/ChatServiceInterface.js';
@@ -10,7 +11,7 @@ import { HookEvent } from '../../types/constants.js';
 
 const capturedContexts: unknown[] = [];
 const capturedMessages: unknown[] = [];
-const kernelModelGenerate = vi.fn(async () => ({
+const kernelModelGenerate = vi.fn(async (): Promise<ModelResponse> => ({
   content: 'kernel public answer',
   usage: {
     promptTokens: 3,
@@ -490,6 +491,161 @@ describe('Session runtime context', () => {
         ],
       }),
     );
+
+    await session.close();
+  });
+
+  it('should execute session tools through the kernel stream path', async () => {
+    kernelModelGenerate.mockReset();
+    kernelModelGenerate
+      .mockResolvedValueOnce({
+        content: '',
+        toolCalls: [
+          {
+            id: 'call_weather',
+            name: 'LookupWeather',
+            input: { city: 'Paris' },
+          },
+        ],
+        finishReason: 'tool-calls',
+      })
+      .mockResolvedValueOnce({
+        content: 'Paris is sunny.',
+        usage: {
+          promptTokens: 9,
+          completionTokens: 5,
+          totalTokens: 14,
+        },
+        finishReason: 'stop',
+      });
+    createVercelModelPort.mockClear();
+    const lookupWeatherTool: ToolDefinition<{ city: string }> = {
+      name: 'LookupWeather',
+      description: 'Look up weather for a city',
+      parameters: {
+        type: 'object',
+        properties: {
+          city: { type: 'string' },
+        },
+        required: ['city'],
+      },
+      async execute({ city }) {
+        return {
+          success: true,
+          llmContent: `weather:${city}:sunny`,
+        };
+      },
+    };
+    const storagePath = mkdtempSync(join(tmpdir(), 'session-context-kernel-tool-roundtrip-'));
+    const session = await createSession({
+      provider: { type: 'openai-compatible', apiKey: 'test-key' },
+      model: 'gpt-4o-mini',
+      storagePath,
+      allowedTools: ['LookupWeather'],
+      tools: [lookupWeatherTool as never],
+    });
+
+    await session.send('what is the weather in Paris?');
+
+    const events = [];
+    for await (const event of session.stream({ experimentalKernel: true })) {
+      events.push(event);
+    }
+
+    expect(kernelModelGenerate).toHaveBeenCalledTimes(2);
+    expect(kernelModelGenerate).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({
+        messages: [
+          { role: 'user', content: 'what is the weather in Paris?' },
+          {
+            role: 'assistant',
+            content: '',
+            toolCalls: [
+              {
+                id: 'call_weather',
+                name: 'LookupWeather',
+                input: { city: 'Paris' },
+              },
+            ],
+          },
+          {
+            role: 'tool',
+            content: 'weather:Paris:sunny',
+            name: 'LookupWeather',
+            toolCallId: 'call_weather',
+          },
+        ],
+      }),
+    );
+    expect(events).toEqual([
+      { type: 'turn_start', turn: 1, sessionId: session.sessionId },
+      {
+        type: 'tool_use',
+        id: 'call_weather',
+        name: 'LookupWeather',
+        input: { city: 'Paris' },
+        sessionId: session.sessionId,
+      },
+      {
+        type: 'tool_result',
+        id: 'call_weather',
+        name: 'LookupWeather',
+        output: 'weather:Paris:sunny',
+        sessionId: session.sessionId,
+      },
+      { type: 'content', delta: 'Paris is sunny.', sessionId: session.sessionId },
+      {
+        type: 'usage',
+        usage: {
+          inputTokens: 9,
+          outputTokens: 5,
+          totalTokens: 14,
+          maxContextTokens: 128000,
+        },
+        sessionId: session.sessionId,
+      },
+      { type: 'turn_end', turn: 1, sessionId: session.sessionId },
+      {
+        type: 'result',
+        subtype: 'success',
+        content: 'Paris is sunny.',
+        sessionId: session.sessionId,
+      },
+    ]);
+    expect(session.messages.map((message) => ({
+      role: message.role,
+      content: message.content,
+      ...(message.role === 'assistant' && message.tool_calls
+        ? { tool_calls: message.tool_calls }
+        : {}),
+      ...(message.role === 'tool'
+        ? { name: message.name, tool_call_id: message.tool_call_id }
+        : {}),
+    }))).toEqual([
+      { role: 'user', content: 'what is the weather in Paris?' },
+      {
+        role: 'assistant',
+        content: '',
+        tool_calls: [
+          {
+            id: 'call_weather',
+            type: 'function',
+            function: {
+              name: 'LookupWeather',
+              arguments: JSON.stringify({ city: 'Paris' }),
+            },
+          },
+        ],
+      },
+      {
+        role: 'tool',
+        content: 'weather:Paris:sunny',
+        name: 'LookupWeather',
+        tool_call_id: 'call_weather',
+      },
+      { role: 'assistant', content: 'Paris is sunny.' },
+    ]);
 
     await session.close();
   });
