@@ -154,6 +154,7 @@ Status:
 - The browser-safe `@blade-ai/agent-sdk/browser` and `@blade-ai/agent-sdk/core` public source entries now live as explicit package-local contracts instead of wildcard-forwarding to root `src/browser` and `src/core`, while their deeper protocol type modules remain a later package-local migration step.
 - The `@blade-ai/agent-sdk/core` JSON, model config, constants, and permission contract types now resolve through package-local `packages/agent-sdk/src/types/*` modules instead of root `src/types/*`, while deeper tool/runtime/session contracts remain staged for later ownership migration.
 - The `@blade-ai/agent-sdk/core` tool kind and tool behavior contract now resolve through package-local `packages/agent-sdk/src/tools/types/ToolKind.ts`, while richer tool definition/result/effect contracts remain staged for later package-local migration.
+- The `@blade-ai/agent-sdk/core` observability contract types now resolve through package-local `packages/agent-sdk/src/observability/types.ts`; runtime trace recording implementation remains outside browser-safe core.
 
 ### Phase 2: Extract `@blade-ai/ai`
 
@@ -322,6 +323,7 @@ Status:
 - Sixteenth adapter increment complete: the browser-safe `browser/index`, `browser/server-only-stub`, and `core/index` public source entries are now owned inside `packages/agent-sdk/src`, with a topology guard preventing them from regressing to root wildcard forwarders. These entries still reference deeper root protocol/type modules until those modules are migrated package-local in later slices.
 - Seventeenth adapter increment complete: `@blade-ai/agent-sdk/core` now owns its JSON value/object types, model and sandbox config contracts, constants, and permission request/result/update type contracts in package-local `src/types/*` files. Runtime permission handler factories remain in the root SDK implementation for now because they depend on non-contract validation/runtime code.
 - Eighteenth adapter increment complete: `@blade-ai/agent-sdk/core` now owns `ToolKind` and `ToolBehavior` in package-local `src/tools/types/ToolKind.ts`, and the package-local permission contracts use that local tool kind type. `ToolDefinition`, `ToolConfig`, `ToolResult`, and `ToolEffect` still come from root tool contracts until their dependent runtime/session types are migrated.
+- Nineteenth adapter increment complete: `@blade-ai/agent-sdk/core` now owns `AgentTrace`, `TraceEvent`, `TraceSpan`, `TraceSink`, and `ObservabilityOptions` as package-local observability contracts. `TraceRecorder` stays in the server/session implementation because it is runtime behavior, not a browser-safe contract.
 
 ### Phase 5: Production Verification Chain
 

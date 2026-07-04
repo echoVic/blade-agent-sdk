@@ -10,7 +10,7 @@ export type {
   TraceSpan,
   TraceSpanKind,
   TraceStatus,
-} from '../../../../src/observability/index.js';
+} from '../observability/types.js';
 export type {
   ContextSnapshot,
   RuntimeContext,
