@@ -84,4 +84,11 @@ describe('monorepo topology', () => {
       );
     }
   });
+
+  it('declares a package boundary verifier for production architecture gates', () => {
+    const root = readJson('package.json');
+
+    expect(root.scripts?.['verify:boundaries']).toBe('node scripts/verify-package-boundaries.mjs');
+    expect(existsSync(join('scripts', 'verify-package-boundaries.mjs'))).toBe(true);
+  });
 });

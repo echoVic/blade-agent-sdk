@@ -86,6 +86,10 @@ The final production verification chain must include:
 - Release dry-run: semantic-release validates package metadata and provenance.
 - Optional live tests: GLM `glm-5.2` via `.env` `baseUrl` and `apiKey`, gated behind an explicit script.
 
+Current guardrails:
+
+- `pnpm run verify:boundaries` scans package source imports and fails if `@blade-ai/ai` depends on agent/session SDK layers, or if `@blade-ai/agent` imports Node-local runtime modules, MCP SDKs, or `@blade-ai/agent-sdk`.
+
 ## Roadmap
 
 ### Phase 0: Roadmap and Safety Baseline
@@ -195,6 +199,7 @@ Status:
 - The `@blade-ai/ai` root exports `Model*` protocol types and `ModelUsageInfo` while preserving the existing chat `UsageInfo` root export until the chat/runtime migration is complete.
 - DeepSeek pure provider helpers now live in `@blade-ai/ai/deepseek`, including model normalization, endpoint selection, cache-aware usage and pricing helpers, cache-prefix optimization, long-context chunk planning, strict tool schema sanitization, and default DeepSeek model config.
 - The session SDK's Vercel AI chat service and root public helper exports now consume `@blade-ai/ai/deepseek`; SDK-local DeepSeek fetch APIs remain in `src/services/deepseek.ts` for a later network adapter extraction.
+- A package boundary verifier now enforces key Pi-style dependency direction checks during the migration.
 
 ### Phase 3: Extract `@blade-ai/agent`
 

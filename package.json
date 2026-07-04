@@ -63,6 +63,7 @@
     "lint": "biome lint src packages",
     "lint:fix": "biome lint --write src packages",
     "type-check": "tsc --noEmit",
+    "verify:boundaries": "node scripts/verify-package-boundaries.mjs",
     "verify:entrypoints": "pnpm run build && pnpm --filter @blade-ai/agent-sdk run build && node scripts/verify-entrypoints.mjs",
     "release": "semantic-release",
     "release:dry": "semantic-release --dry-run --no-ci",
