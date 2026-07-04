@@ -57,6 +57,7 @@ const packageSpecs = [
       'package/dist/index.d.ts',
       'package/dist/session/index.js',
       'package/dist/session/index.d.ts',
+      'package/dist/session/config.d.ts',
       'package/dist/session/factory.d.ts',
       'package/dist/session/store.d.ts',
       'package/dist/browser/index.js',
@@ -84,6 +85,16 @@ const packageSpecs = [
         file: 'package/dist/session/index.js',
         forbidden: 'src/session/Session',
         message: 'session runtime entry must route through package-local session factory',
+      },
+      {
+        file: 'package/dist/session/config.d.ts',
+        forbidden: './Session.js',
+        message: 'session config declarations must be emitted from package-local session config source',
+      },
+      {
+        file: 'package/dist/session/config.d.ts',
+        forbidden: '../../../../src/types/common',
+        message: 'session config declarations must use package-local core config types',
       },
       {
         file: 'package/dist/session/store.d.ts',

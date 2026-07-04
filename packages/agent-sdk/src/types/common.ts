@@ -79,6 +79,21 @@ export interface PermissionsConfig {
   deny?: string[];
 }
 
+export interface BladeConfig {
+  models: ModelConfig[];
+  currentModelId?: string;
+  mcpServers?: Record<string, McpServerConfig>;
+  inProcessMcpServerNames?: string[];
+  permissions?: PermissionsConfig;
+  theme?: string;
+  language?: string;
+  debug?: boolean | string;
+  temperature?: number;
+  maxTurns?: number;
+  plansDirectory?: string;
+  storageRoot?: string;
+}
+
 interface JsonSchemaProperty {
   type: 'string' | 'number' | 'integer' | 'boolean' | 'array' | 'object' | 'null';
   description?: string;
