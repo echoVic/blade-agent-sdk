@@ -22,6 +22,7 @@ describe('semantic-release configuration', () => {
     expect(config.plugins).toEqual([
       '@semantic-release/commit-analyzer',
       '@semantic-release/release-notes-generator',
+      './scripts/semantic-release/monorepo-release-notes.cjs',
       './scripts/semantic-release/sync-workspace-versions.cjs',
       ['@semantic-release/npm', { pkgRoot: 'packages/ai' }],
       ['@semantic-release/npm', { pkgRoot: 'packages/agent' }],
@@ -70,6 +71,23 @@ describe('release scripts', () => {
     expect(readme).toContain('@blade-ai/ai');
     expect(readme).toContain('@blade-ai/agent');
     expect(readme).toContain('@blade-ai/agent-sdk');
+  });
+
+  it('generates per-package release notes for the fixed-version monorepo release', async () => {
+    const { generateMonorepoReleaseNotes } = require('../../scripts/semantic-release/monorepo-release-notes.cjs');
+
+    const notes = await generateMonorepoReleaseNotes({
+      nextRelease: { version: '2.3.4' },
+    });
+
+    expect(notes).toContain('## Published packages');
+    expect(notes).toContain('@blade-ai/ai@2.3.4');
+    expect(notes).toContain('@blade-ai/agent@2.3.4');
+    expect(notes).toContain('@blade-ai/agent-sdk@2.3.4');
+    expect(notes).toContain('Provider-agnostic model runtime');
+    expect(notes).toContain('Runtime-independent agent kernel');
+    expect(notes).toContain('Session-first product SDK');
+    expect(notes).toContain('pnpm add @blade-ai/agent-sdk@2.3.4');
   });
 
   it('synchronizes workspace package versions and internal dependencies before npm publish', async () => {

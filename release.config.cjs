@@ -4,6 +4,7 @@ module.exports = {
   plugins: [
     '@semantic-release/commit-analyzer',
     '@semantic-release/release-notes-generator',
+    './scripts/semantic-release/monorepo-release-notes.cjs',
     './scripts/semantic-release/sync-workspace-versions.cjs',
     ['@semantic-release/npm', { pkgRoot: 'packages/ai' }],
     ['@semantic-release/npm', { pkgRoot: 'packages/agent' }],

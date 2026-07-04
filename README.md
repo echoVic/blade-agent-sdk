@@ -191,6 +191,8 @@ pnpm run docs:dev
 
 发布前本地 release 插件会把三个 workspace 包的 `version` 和内部 `workspace:*` 依赖同步成同一个发布版本，避免 npm 包里泄漏 workspace 协议。
 
+GitHub Release notes 会在 conventional commit 摘要后追加三包发布清单，列出 `@blade-ai/ai`、`@blade-ai/agent`、`@blade-ai/agent-sdk` 的同版本发布结果和 session-first 安装命令。
+
 - `feat:` 触发 minor 版本
 - `fix:` 触发 patch 版本
 - `BREAKING CHANGE:` 触发 major 版本
