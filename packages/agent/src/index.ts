@@ -83,13 +83,17 @@ export interface AgentKernelOptions {
   tools?: AgentToolPort;
   permissions?: AgentPermissionPort;
   trace?: AgentTracePort;
+  maxSteps?: number;
 }
 
 export interface AgentTurnInput {
   input: string;
   messages?: readonly ModelMessage[];
   signal?: AbortSignal;
+  maxSteps?: number;
 }
+
+const DEFAULT_MAX_STEPS = 10;
 
 export class AgentKernel {
   constructor(readonly options: AgentKernelOptions) {}
@@ -103,6 +107,8 @@ export class AgentKernel {
     let messages: readonly ModelMessage[] = turn.messages ?? [
       { role: 'user', content: turn.input },
     ];
+    const maxSteps = turn.maxSteps ?? this.options.maxSteps ?? DEFAULT_MAX_STEPS;
+    let modelSteps = 0;
 
     await this.recordTrace({ type: 'turn_start', input: turn.input });
     await this.recordTrace({ type: 'model_request', messages });
@@ -110,9 +116,19 @@ export class AgentKernel {
       messages,
       signal: turn.signal,
     });
+    modelSteps += 1;
     await this.recordModelResponse(response);
 
-    if (response.toolCalls && response.toolCalls.length > 0) {
+    while (response.toolCalls && response.toolCalls.length > 0) {
+      if (modelSteps >= maxSteps) {
+        yield {
+          type: 'error',
+          code: 'MAX_STEPS_EXCEEDED',
+          message: 'Agent turn exceeded maxSteps',
+        };
+        return;
+      }
+
       if (!this.options.tools) {
         throw new Error('Model requested tool calls, but no tool port is configured');
       }
@@ -137,6 +153,7 @@ export class AgentKernel {
         messages,
         signal: turn.signal,
       });
+      modelSteps += 1;
       await this.recordModelResponse(response);
     }
 

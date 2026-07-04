@@ -370,4 +370,107 @@ describe('AgentKernel', () => {
       { type: 'error', code: 'ABORTED', message: 'Operation aborted' },
     ]);
   });
+
+  it('continues tool-call iterations until the model returns a final response', async () => {
+    const generate = vi.fn(async (_request: ModelRequest): Promise<ModelResponse> => {
+      if (generate.mock.calls.length === 1) {
+        return {
+          content: '',
+          toolCalls: [{ id: 'call_search', name: 'Search', input: { q: 'blade' } }],
+          finishReason: 'tool-calls',
+        };
+      }
+      if (generate.mock.calls.length === 2) {
+        return {
+          content: '',
+          toolCalls: [{ id: 'call_read', name: 'Read', input: { path: 'docs.md' } }],
+          finishReason: 'tool-calls',
+        };
+      }
+
+      return {
+        content: 'Found and read Blade docs',
+        finishReason: 'stop',
+      };
+    });
+    const model: ModelPort = {
+      generate,
+      stream: async function* () {},
+    };
+    const execute = vi.fn(async (toolCall) => ({
+      id: toolCall.id,
+      name: toolCall.name,
+      output: `${toolCall.name} result`,
+    }));
+    const tools: AgentToolPort = {
+      list: async () => [],
+      execute,
+    };
+
+    const kernel = new AgentKernel({ model, tools });
+
+    const events = [];
+    for await (const event of kernel.runTurn({ input: 'Find then read Blade docs' })) {
+      events.push(event);
+    }
+
+    expect(generate).toHaveBeenCalledTimes(3);
+    expect(execute).toHaveBeenNthCalledWith(
+      1,
+      { id: 'call_search', name: 'Search', input: { q: 'blade' } },
+      undefined,
+    );
+    expect(execute).toHaveBeenNthCalledWith(
+      2,
+      { id: 'call_read', name: 'Read', input: { path: 'docs.md' } },
+      undefined,
+    );
+    expect(events).toEqual([
+      { type: 'tool_use', toolCall: { id: 'call_search', name: 'Search', input: { q: 'blade' } } },
+      { type: 'tool_result', result: { id: 'call_search', name: 'Search', output: 'Search result' } },
+      { type: 'tool_use', toolCall: { id: 'call_read', name: 'Read', input: { path: 'docs.md' } } },
+      { type: 'tool_result', result: { id: 'call_read', name: 'Read', output: 'Read result' } },
+      { type: 'content', delta: 'Found and read Blade docs' },
+      { type: 'result', content: 'Found and read Blade docs', finishReason: 'stop' },
+    ]);
+  });
+
+  it('stops tool-call iterations with a controlled error when maxSteps is exceeded', async () => {
+    const generate = vi.fn(async (_request: ModelRequest): Promise<ModelResponse> => ({
+      content: '',
+      toolCalls: [{ id: `call_${generate.mock.calls.length}`, name: 'Search', input: {} }],
+      finishReason: 'tool-calls',
+    }));
+    const model: ModelPort = {
+      generate,
+      stream: async function* () {},
+    };
+    const execute = vi.fn(async (toolCall) => ({
+      id: toolCall.id,
+      name: toolCall.name,
+      output: 'looping',
+    }));
+    const tools: AgentToolPort = {
+      list: async () => [],
+      execute,
+    };
+    const kernel = new AgentKernel({ model, tools });
+
+    const events = [];
+    for await (const event of kernel.runTurn({ input: 'Loop forever', maxSteps: 2 })) {
+      events.push(event);
+    }
+
+    expect(generate).toHaveBeenCalledTimes(2);
+    expect(execute).toHaveBeenCalledTimes(1);
+    expect(events).toEqual([
+      { type: 'tool_use', toolCall: { id: 'call_1', name: 'Search', input: {} } },
+      { type: 'tool_result', result: { id: 'call_1', name: 'Search', output: 'looping' } },
+      {
+        type: 'error',
+        code: 'MAX_STEPS_EXCEEDED',
+        message: 'Agent turn exceeded maxSteps',
+      },
+    ]);
+  });
 });
