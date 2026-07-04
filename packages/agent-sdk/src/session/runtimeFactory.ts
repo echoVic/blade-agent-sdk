@@ -1,31 +1,27 @@
 import {
-  createSession as createRootSession,
-  forkSession as forkRootSession,
-  prompt as promptRootSession,
-  resumeSession as resumeRootSession,
-} from '../../../../src/session/Session.js';
-import type {
-  ISession,
-  PromptResult,
-} from './types.js';
+  createSession,
+  forkSession,
+  prompt,
+  resumeSession,
+} from './Session.js';
 import type { SessionRuntimeFactory } from './factory.js';
+import { createLegacySessionRuntimeFactory } from './legacySessionAdapter.js';
 
 export function createDefaultSessionRuntimeFactory(): SessionRuntimeFactory {
+  const legacyRuntime = createLegacySessionRuntimeFactory();
+
   return {
     async create(options) {
-      return await createRootSession(options as never) as unknown as ISession;
+      return createSession(legacyRuntime, options);
     },
     async resume(options) {
-      return await resumeRootSession(options as never) as unknown as ISession;
+      return resumeSession(legacyRuntime, options);
     },
     async fork(options) {
-      return await forkRootSession(options as never) as unknown as ISession;
+      return forkSession(legacyRuntime, options);
     },
     async prompt(message, options) {
-      return await promptRootSession(
-        message as never,
-        options as never,
-      ) as unknown as PromptResult;
+      return prompt(legacyRuntime, message, options);
     },
   };
 }

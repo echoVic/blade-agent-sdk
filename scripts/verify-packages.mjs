@@ -57,6 +57,7 @@ const packageSpecs = [
       'package/dist/index.d.ts',
       'package/dist/session/index.js',
       'package/dist/session/index.d.ts',
+      'package/dist/session/Session.d.ts',
       'package/dist/session/config.d.ts',
       'package/dist/session/factory.d.ts',
       'package/dist/session/store.d.ts',
@@ -83,8 +84,23 @@ const packageSpecs = [
       },
       {
         file: 'package/dist/session/index.js',
-        forbidden: 'src/session/Session',
-        message: 'session runtime entry must route through package-local session factory',
+        forbidden: '../../../../src/session/Session',
+        message: 'session runtime entry must not import the legacy root Session directly',
+      },
+      {
+        file: 'package/dist/session/index.js',
+        forbidden: 'from"../../../../src/session/Session',
+        message: 'session runtime entry must not import the legacy root Session directly',
+      },
+      {
+        file: 'package/dist/session/index.js',
+        forbidden: 'from "../../../../src/session/Session',
+        message: 'session runtime entry must not import the legacy root Session directly',
+      },
+      {
+        file: 'package/dist/session/Session.d.ts',
+        forbidden: '../../../../src/session/Session',
+        message: 'package-local Session declarations must expose local session contracts only',
       },
       {
         file: 'package/dist/session/config.d.ts',
