@@ -263,8 +263,11 @@ interface SendOptions {
 ```ts
 interface StreamOptions {
   includeThinking?: boolean;   // 是否包含模型思考过程（默认 false）
+  experimentalKernel?: boolean; // 使用运行时无关 AgentKernel 执行本次 stream（实验性，默认 false）
 }
 ```
+
+`experimentalKernel` 是迁移期的受控开关。开启后仍然使用 `send()` + `stream()` 的 session-first API，但本次 turn 会通过 `@blade-ai/agent` 的运行时无关 kernel 执行，并复用 session 的模型配置、工具端口、HookRuntime、ContextManager 和 trace recorder。默认值为 `false`，生产流量建议等 kernel 路径覆盖更多 legacy loop 语义后再整体切换。
 
 ### StreamMessage 类型
 

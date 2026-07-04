@@ -211,6 +211,7 @@ export interface SendOptions {
 
 export interface StreamOptions {
   includeThinking?: boolean;
+  experimentalKernel?: boolean;
 }
 
 export interface ModelInfo {

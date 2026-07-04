@@ -285,17 +285,6 @@ class Session implements ISession {
       await this.notifyTraceSink(trace);
     };
 
-    runtime.getHookRuntime().setTraceCollector(traceRecorder);
-    try {
-      message = await runtime.getHookRuntime().applyUserPromptSubmit(message);
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : String(error);
-      await finishTrace('error', { error: errorMessage });
-      runtime.getHookRuntime().setTraceCollector(undefined);
-      yield { type: 'error', message: errorMessage, sessionId: this.sessionId };
-      return;
-    }
-
     const toolCalls: ToolCallRecord[] = [];
     let totalUsage: TokenUsage = {
       inputTokens: 0,
@@ -319,6 +308,34 @@ class Session implements ISession {
       pendingSnapshot ??
       createContextSnapshot(this.sessionId, nanoid(), this.defaultContext, sendOptions?.context);
     runtime.prepareTurn(snapshot);
+
+    if (options?.experimentalKernel) {
+      yield* this.streamExperimentalKernelTurn({
+        runtime,
+        message,
+        streamOptions: options,
+        sendOptions,
+        snapshot,
+        traceRecorder,
+        finishTrace,
+        signal,
+        signalCleanup,
+      });
+      return;
+    }
+
+    runtime.getHookRuntime().setTraceCollector(traceRecorder);
+    try {
+      message = await runtime.getHookRuntime().applyUserPromptSubmit(message, {
+        abortSignal: signal,
+      });
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      await finishTrace('error', { error: errorMessage });
+      runtime.getHookRuntime().setTraceCollector(undefined);
+      yield { type: 'error', message: errorMessage, sessionId: this.sessionId };
+      return;
+    }
 
     const context: ChatContext = {
       messages: this._messages,
@@ -611,6 +628,112 @@ class Session implements ISession {
       signalCleanup?.();
       this.abortController = null;
     }
+  }
+
+  private async *streamExperimentalKernelTurn(options: {
+    runtime: SessionRuntime;
+    message: UserMessageContent;
+    streamOptions?: StreamOptions;
+    sendOptions: SendOptions | null;
+    snapshot: ContextSnapshot;
+    traceRecorder?: TraceRecorder;
+    finishTrace: (
+      status: 'success' | 'error' | 'aborted',
+      data?: Record<string, unknown>,
+    ) => Promise<void>;
+    signal: AbortSignal;
+    signalCleanup?: () => void;
+  }): AsyncGenerator<StreamMessage> {
+    const startedAt = Date.now();
+    let finalContent = '';
+    let usage: TokenUsage = {
+      inputTokens: 0,
+      outputTokens: 0,
+      totalTokens: 0,
+      maxContextTokens: 0,
+    };
+    let errorMessage: string | undefined;
+    let errorCode: string | undefined;
+    let toolCallsCount = 0;
+
+    options.runtime.getHookRuntime().setTraceCollector(options.traceRecorder);
+
+    try {
+      for await (const event of options.runtime.streamAgentKernelTurn({
+        input: this.getTextContent(options.message),
+        signal: options.signal,
+        includeThinking: options.streamOptions?.includeThinking,
+        maxSteps: options.sendOptions?.maxTurns ?? this.maxTurns,
+        traceRecorder: options.traceRecorder,
+        createExecutionContext: (_toolCall, signal) => ({
+          sessionId: this.sessionId,
+          contextSnapshot: options.snapshot,
+          signal,
+        }),
+      })) {
+        if (event.type === 'result' && event.subtype === 'success') {
+          finalContent = event.content ?? '';
+        } else if (event.type === 'usage') {
+          usage = event.usage;
+        } else if (event.type === 'error') {
+          errorMessage = event.message;
+          errorCode = event.code;
+        } else if (event.type === 'tool_use') {
+          toolCallsCount += 1;
+        }
+
+        yield event;
+      }
+
+      await this.syncMessagesFromRuntime(options.runtime);
+
+      if (errorMessage) {
+        await options.finishTrace(
+          errorCode === 'ABORTED' || options.signal.aborted ? 'aborted' : 'error',
+          { error: errorMessage },
+        );
+        return;
+      }
+
+      const imageCount = this.getImageCount(options.message);
+      await options.runtime.getHookRuntime().runTaskCompleted({
+        taskId: this.sessionId,
+        taskDescription: this.getTextContent(options.message),
+        hasImages: imageCount > 0,
+        imageCount,
+        resultSummary: finalContent,
+        success: true,
+      });
+      await options.finishTrace(options.signal.aborted ? 'aborted' : 'success', {
+        content: finalContent,
+        usage,
+        turnsCount: 1,
+        toolCallsCount,
+        duration: Date.now() - startedAt,
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      await options.finishTrace('error', { error: message });
+      yield { type: 'error', message, sessionId: this.sessionId };
+    } finally {
+      options.runtime.getHookRuntime().setTraceCollector(undefined);
+      options.signalCleanup?.();
+      this.abortController = null;
+    }
+  }
+
+  private async syncMessagesFromRuntime(runtime: SessionRuntime): Promise<void> {
+    const contextManager = runtime.getAgentRuntimeDeps().contextManager;
+    if (!contextManager) {
+      throw new Error('Session context manager is not available');
+    }
+    const formatted = await contextManager.getFormattedContext();
+    this._messages = formatted.context.layers.conversation.messages.map((message) => ({
+      id: message.id,
+      role: message.role,
+      content: message.content,
+      ...(message.metadata ? { metadata: message.metadata } : {}),
+    }));
   }
 
   async close(): Promise<void> {

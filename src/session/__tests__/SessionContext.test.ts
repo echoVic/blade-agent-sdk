@@ -9,6 +9,19 @@ import { HookEvent } from '../../types/constants.js';
 
 const capturedContexts: unknown[] = [];
 const capturedMessages: unknown[] = [];
+const kernelModelGenerate = vi.fn(async () => ({
+  content: 'kernel public answer',
+  usage: {
+    promptTokens: 3,
+    completionTokens: 4,
+    totalTokens: 7,
+  },
+  finishReason: 'stop',
+}));
+const createVercelModelPort = vi.fn(() => ({
+  generate: kernelModelGenerate,
+  stream: async function* () {},
+}));
 
 const createAgent = vi.fn(async () => ({
   async *streamChat(message: unknown, context: unknown) {
@@ -32,6 +45,10 @@ vi.mock('../../agent/Agent.js', () => ({
   Agent: {
     create: createAgent,
   },
+}));
+
+vi.mock('@blade-ai/ai/providers/vercel', () => ({
+  createVercelModelPort,
 }));
 
 const { createSession, resumeSession } = await import('../Session.js');
@@ -354,6 +371,67 @@ describe('Session runtime context', () => {
     }
 
     expect(events).toEqual(expect.arrayContaining(['turn_start', 'turn_end', 'result']));
+
+    await session.close();
+  });
+
+  it('should stream through the kernel when experimentalKernel is enabled', async () => {
+    kernelModelGenerate.mockClear();
+    createVercelModelPort.mockClear();
+    createAgent.mockResolvedValueOnce({
+      async *streamChat(): AsyncGenerator<unknown, unknown, unknown> {
+        yield { type: 'content', content: 'legacy stream should not run' };
+        throw new Error('legacy stream should not run');
+      },
+      async setModel() {},
+    } as never);
+    const storagePath = mkdtempSync(join(tmpdir(), 'session-context-kernel-stream-'));
+    const session = await createSession({
+      provider: { type: 'openai-compatible', apiKey: 'test-key' },
+      model: 'gpt-4o-mini',
+      storagePath,
+    });
+
+    await session.send('hello kernel');
+
+    const events = [];
+    for await (const event of session.stream({ experimentalKernel: true })) {
+      events.push(event);
+    }
+
+    expect(kernelModelGenerate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        messages: [{ role: 'user', content: 'hello kernel' }],
+      }),
+    );
+    expect(events).toEqual([
+      { type: 'turn_start', turn: 1, sessionId: session.sessionId },
+      { type: 'content', delta: 'kernel public answer', sessionId: session.sessionId },
+      {
+        type: 'usage',
+        usage: {
+          inputTokens: 3,
+          outputTokens: 4,
+          totalTokens: 7,
+          maxContextTokens: 128000,
+        },
+        sessionId: session.sessionId,
+      },
+      { type: 'turn_end', turn: 1, sessionId: session.sessionId },
+      {
+        type: 'result',
+        subtype: 'success',
+        content: 'kernel public answer',
+        sessionId: session.sessionId,
+      },
+    ]);
+    expect(session.messages.map((message) => ({
+      role: message.role,
+      content: message.content,
+    }))).toEqual([
+      { role: 'user', content: 'hello kernel' },
+      { role: 'assistant', content: 'kernel public answer' },
+    ]);
 
     await session.close();
   });
