@@ -11,6 +11,7 @@
       "@blade-ai/ai/chat": ["../ai/src/chat/index.ts"],
       "@blade-ai/ai/deepseek": ["../ai/src/deepseek/index.ts"],
       "@blade-ai/ai/model": ["../ai/src/model/index.ts"],
+      "@blade-ai/ai/providers/openai-compatible": ["../ai/src/providers/openai-compatible/index.ts"],
       "@blade-ai/ai/retry": ["../ai/src/retry/index.ts"]
     }
   },

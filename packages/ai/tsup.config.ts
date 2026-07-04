@@ -6,6 +6,7 @@ export default defineConfig({
     'chat/index': 'src/chat/index.ts',
     'deepseek/index': 'src/deepseek/index.ts',
     'model/index': 'src/model/index.ts',
+    'providers/openai-compatible/index': 'src/providers/openai-compatible/index.ts',
     'retry/index': 'src/retry/index.ts',
   },
   format: ['esm'],

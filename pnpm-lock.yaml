@@ -286,6 +286,9 @@ importers:
 
   packages/ai:
     dependencies:
+      '@ai-sdk/openai-compatible':
+        specifier: ^2.0.41
+        version: 2.0.41(zod@3.25.76)
       '@types/json-schema':
         specifier: ^7.0.15
         version: 7.0.15

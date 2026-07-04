@@ -60,6 +60,7 @@
   "scripts": {
     "build": "pnpm --filter @blade-ai/ai run build && tsup && tsc -p tsconfig.build.json",
     "test": "vitest run",
+    "test:live:glm": "pnpm --filter @blade-ai/ai run build && node scripts/test-live-glm.mjs",
     "lint": "biome lint src packages",
     "lint:fix": "biome lint --write src packages",
     "type-check": "tsc --noEmit",

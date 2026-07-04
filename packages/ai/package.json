@@ -23,6 +23,10 @@
       "types": "./dist/model/index.d.ts",
       "import": "./dist/model/index.js"
     },
+    "./providers/openai-compatible": {
+      "types": "./dist/providers/openai-compatible/index.d.ts",
+      "import": "./dist/providers/openai-compatible/index.js"
+    },
     "./retry": {
       "types": "./dist/retry/index.d.ts",
       "import": "./dist/retry/index.js"
@@ -38,6 +42,7 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@ai-sdk/openai-compatible": "^2.0.41",
     "@types/json-schema": "^7.0.15",
     "ai": "^6.0.168"
   },
