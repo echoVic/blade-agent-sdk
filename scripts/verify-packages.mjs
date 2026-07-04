@@ -165,6 +165,26 @@ const packageSpecs = [
         message: 'local declarations must be emitted from package-local local entry source',
       },
       {
+        file: 'package/dist/local/index.js',
+        forbidden: 'src/mcp',
+        message: 'local runtime entry must route through package-local local adapters',
+      },
+      {
+        file: 'package/dist/local/index.js',
+        forbidden: 'src/memory',
+        message: 'local runtime entry must route through package-local local adapters',
+      },
+      {
+        file: 'package/dist/local/index.js',
+        forbidden: 'src/sandbox',
+        message: 'local runtime entry must route through package-local local adapters',
+      },
+      {
+        file: 'package/dist/local/index.js',
+        forbidden: 'src/tools/builtin',
+        message: 'local runtime entry must route through package-local local adapters',
+      },
+      {
         file: 'package/dist/types/permissions.d.ts',
         forbidden: 'SensitiveFileDetector',
         message: 'permission declarations must be emitted from package-local permission source',

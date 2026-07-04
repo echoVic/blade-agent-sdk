@@ -181,6 +181,15 @@ describe('monorepo topology', () => {
     expect(serverSource).not.toContain("export * from '../../../../src/server/index.js'");
     expect(serverSource).toContain("from '../index.js'");
     expect(localSource).not.toContain("export * from '../../../../src/local/index.js'");
+    expect(localSource).not.toContain("../../../../src/");
+    for (const file of [
+      'packages/agent-sdk/src/local/mcp.ts',
+      'packages/agent-sdk/src/local/memory.ts',
+      'packages/agent-sdk/src/local/sandbox.ts',
+      'packages/agent-sdk/src/local/builtin-tools.ts',
+    ]) {
+      expect(existsSync(file), file).toBe(true);
+    }
     expect(localSource).toContain('createSdkMcpServer');
     expect(localSource).toContain('getBuiltinTools');
     expect(localSource).toContain('SandboxService');

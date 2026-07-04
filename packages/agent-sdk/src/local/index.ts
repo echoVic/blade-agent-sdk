@@ -4,26 +4,26 @@
 export type {
   McpToolCallResponse,
   McpToolDefinition,
+  McpToolResponse,
   SdkMcpServerHandle,
   SdkTool,
-  ToolResponse as McpToolResponse,
-} from '../../../../src/mcp/index.js';
-export { createSdkMcpServer, tool } from '../../../../src/mcp/index.js';
-export { FileSystemMemoryStore, MemoryManager } from '../../../../src/memory/index.js';
+} from './mcp.js';
+export { createSdkMcpServer, tool } from './mcp.js';
+export { FileSystemMemoryStore, MemoryManager } from './memory.js';
 export type {
   SandboxCapabilities,
   SandboxCheckResult,
   SandboxExecutionContext,
   SandboxExecutionOptions,
-} from '../../../../src/sandbox/index.js';
+} from './sandbox.js';
 export {
   getSandboxExecutor,
   getSandboxService,
   SandboxExecutor,
   SandboxService,
-} from '../../../../src/sandbox/index.js';
-export { getBuiltinTools } from '../../../../src/tools/builtin/index.js';
+} from './sandbox.js';
 export {
   createMemoryReadTool,
   createMemoryWriteTool,
-} from '../../../../src/tools/builtin/memory/index.js';
+  getBuiltinTools,
+} from './builtin-tools.js';
