@@ -69,10 +69,7 @@ describe('release workflow', () => {
     expect(commands).toEqual([
       'npm install -g npm@^11.5.1',
       'pnpm install --frozen-lockfile',
-      'pnpm run lint',
-      'pnpm run type-check',
-      'pnpm run build',
-      'pnpm run test',
+      'pnpm run verify',
       'pnpm exec semantic-release',
     ]);
     expect(setupNodeStep.with).toMatchObject({

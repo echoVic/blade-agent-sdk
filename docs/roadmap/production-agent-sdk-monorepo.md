@@ -333,6 +333,10 @@ CI:
 - CI runs lint, type-check, build, unit, integration, package verification, docs build.
 - Live GLM tests stay manual or scheduled with secrets, not mandatory for every PR.
 
+Status:
+
+- First verification-chain increment complete: root `pnpm run verify` now aggregates lint, root and workspace type checks, package boundary checks, docs build, entrypoint/browser-safety checks, packed package smoke tests, unit tests, and integration tests. `pnpm run verify:packages` packs `@blade-ai/ai`, `@blade-ai/agent`, and `@blade-ai/agent-sdk`, checks required JS/declaration files and absence of test files, installs the tarballs into an external temporary consumer, and imports the public package/subpath exports. The release workflow now runs the same `pnpm run verify` gate before semantic-release.
+
 Commit:
 
 - `ci: add production verification chain`
