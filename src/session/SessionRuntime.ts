@@ -2,6 +2,7 @@ import { basename, dirname } from 'node:path';
 import type { ModelPort } from '@blade-ai/ai';
 import {
   AgentKernel,
+  type AgentModelRequestDefaults,
   type AgentStorePort,
   type AgentToolCall,
   type AgentToolPort,
@@ -51,6 +52,7 @@ import type {
   McpToolInfo,
   SessionOptions,
 } from './types.js';
+import { createSessionKernelModel } from './SessionModelPort.js';
 import { createKernelToolPort } from './SessionKernelAdapter.js';
 import { createKernelStorePort } from './SessionKernelStoreAdapter.js';
 import { createKernelTracePort } from './SessionKernelTraceAdapter.js';
@@ -83,7 +85,9 @@ function toSubagentConfig(name: string, definition: AgentDefinition) {
 }
 
 export interface SessionAgentKernelOptions {
-  model: ModelPort;
+  model?: ModelPort;
+  modelId?: string;
+  modelRequestDefaults?: AgentModelRequestDefaults;
   traceRecorder?: TraceRecorder;
   createExecutionContext?: (
     toolCall: AgentToolCall,
@@ -199,9 +203,19 @@ export class SessionRuntime {
     return createKernelTracePort({ recorder });
   }
 
-  createAgentKernel(options: SessionAgentKernelOptions): AgentKernel {
+  createAgentKernel(options: SessionAgentKernelOptions = {}): AgentKernel {
+    const kernelModel = options.model
+      ? {
+          model: options.model,
+          modelRequestDefaults: options.modelRequestDefaults,
+        }
+      : createSessionKernelModel(this.bladeConfig, options.modelId);
+
     return new AgentKernel({
-      model: options.model,
+      model: kernelModel.model,
+      ...(kernelModel.modelRequestDefaults
+        ? { modelRequestDefaults: kernelModel.modelRequestDefaults }
+        : {}),
       store: this.getKernelStorePort(),
       ...(options.traceRecorder
         ? { trace: this.getKernelTracePort(options.traceRecorder) }

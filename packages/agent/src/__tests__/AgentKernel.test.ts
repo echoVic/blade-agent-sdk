@@ -52,6 +52,46 @@ describe('AgentKernel', () => {
     ]);
   });
 
+  it('applies model request defaults to generated model requests', async () => {
+    const generate = vi.fn(async (_request: ModelRequest): Promise<ModelResponse> => ({
+      content: 'Configured answer',
+      finishReason: 'stop',
+    }));
+    const model: ModelPort = {
+      generate,
+      stream: async function* () {},
+    };
+    const providerOptions = {
+      openai: {
+        reasoningEffort: 'low',
+      },
+    };
+    const kernel = new AgentKernel({
+      model,
+      modelRequestDefaults: {
+        model: 'gpt-5',
+        maxOutputTokens: 4096,
+        maxContextTokens: 32000,
+        temperature: 0.2,
+        providerOptions,
+      },
+    });
+
+    for await (const _event of kernel.runTurn({ input: 'Use configured model' })) {
+      // Drain the turn.
+    }
+
+    expect(generate).toHaveBeenCalledWith({
+      model: 'gpt-5',
+      maxOutputTokens: 4096,
+      maxContextTokens: 32000,
+      temperature: 0.2,
+      providerOptions,
+      messages: [{ role: 'user', content: 'Use configured model' }],
+      signal: undefined,
+    });
+  });
+
   it('executes model tool calls and follows up with tool results', async () => {
     const generate = vi.fn(async (_request: ModelRequest): Promise<ModelResponse> => {
       if (generate.mock.calls.length === 1) {

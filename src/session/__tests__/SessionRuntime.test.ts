@@ -18,6 +18,15 @@ import type { SessionOptions } from '../types.js';
 const mockConnect = vi.fn(() => Promise.resolve());
 const mockDisconnect = vi.fn(() => Promise.resolve());
 const mockOn = vi.fn(() => {});
+const mockKernelModelGenerate = vi.fn(async () => ({
+  content: 'Configured kernel answer',
+  finishReason: 'stop',
+}));
+const mockKernelModelStream = vi.fn(async function* () {});
+const mockCreateVercelModelPort = vi.fn(() => ({
+  generate: mockKernelModelGenerate,
+  stream: mockKernelModelStream,
+}));
 
 vi.mock('../../mcp/McpClient.js', () => ({
   McpClient: class MockMcpClient {
@@ -37,6 +46,10 @@ vi.mock('../../mcp/McpClient.js', () => ({
     disconnect = mockDisconnect;
     on = mockOn;
   },
+}));
+
+vi.mock('@blade-ai/ai/providers/vercel', () => ({
+  createVercelModelPort: mockCreateVercelModelPort,
 }));
 
 const { SessionRuntime } = await import('../SessionRuntime.js');
@@ -86,6 +99,9 @@ describe('SessionRuntime', () => {
     mockConnect.mockClear();
     mockDisconnect.mockClear();
     mockOn.mockClear();
+    mockKernelModelGenerate.mockClear();
+    mockKernelModelStream.mockClear();
+    mockCreateVercelModelPort.mockClear();
   });
 
   afterEach(async () => {
@@ -395,6 +411,78 @@ describe('SessionRuntime', () => {
     expect(recorder.getTrace().events.map((event) => event.type)).toEqual(
       expect.arrayContaining(['turn_start', 'model_request', 'model_response', 'usage', 'turn_end']),
     );
+
+    await runtime.close();
+  });
+
+  it('should compose an AgentKernel from the session model config', async () => {
+    const providerOptions = {
+      openai: {
+        reasoningEffort: 'low',
+      },
+    } satisfies JsonObject;
+    const runtime = new SessionRuntime(
+      SessionId('session-kernel-config-model'),
+      createOptions(),
+      {
+        temperature: 0.2,
+        currentModelId: 'primary',
+        models: [
+          {
+            id: 'primary',
+            name: 'Primary model',
+            provider: 'openai',
+            model: 'o1',
+            apiKey: 'test-key',
+            baseUrl: 'https://models.example/v1',
+            headers: { 'x-blade': 'test' },
+            maxOutputTokens: 4096,
+            maxContextTokens: 32000,
+            providerOptions,
+            thinkingEnabled: true,
+          },
+        ],
+      },
+      PermissionMode.YOLO,
+      createFilesystemContext(workspaceRoot),
+      NOOP_LOGGER,
+    );
+
+    await runtime.initialize();
+    await runtime.ensureSessionCreated();
+
+    const kernel = runtime.createAgentKernel({});
+    const events = [];
+    for await (const event of kernel.runTurn({
+      input: 'Run with configured model',
+      turnId: 'turn_configured_model',
+    })) {
+      events.push(event);
+    }
+
+    expect(mockCreateVercelModelPort).toHaveBeenCalledWith({
+      provider: 'openai',
+      apiKey: 'test-key',
+      baseUrl: 'https://models.example/v1',
+      model: 'o1',
+      headers: { 'x-blade': 'test' },
+      providerOptions,
+      supportsThinking: true,
+    });
+    expect(mockKernelModelGenerate).toHaveBeenCalledWith({
+      model: 'o1',
+      maxOutputTokens: 4096,
+      maxContextTokens: 32000,
+      temperature: 0.2,
+      providerOptions,
+      messages: [{ role: 'user', content: 'Run with configured model' }],
+      signal: undefined,
+    });
+    expect(events).toContainEqual({
+      type: 'result',
+      content: 'Configured kernel answer',
+      finishReason: 'stop',
+    });
 
     await runtime.close();
   });

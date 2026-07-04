@@ -301,6 +301,7 @@ Status:
 - Second adapter increment complete: `SessionKernelStoreAdapter` bridges `AgentStorePort` into the existing session `ContextManager`, preserving kernel-appended user, assistant, and tool messages in session-first history with kernel turn/step metadata.
 - Third adapter increment complete: `SessionKernelTraceAdapter` bridges `AgentTracePort` into the existing session `TraceRecorder`, preserving kernel turn/model/tool/usage events under the session observability redaction and payload-capture policy.
 - Fourth adapter increment complete: `SessionRuntime.createAgentKernel()` composes an `AgentKernel` from an injected `ModelPort` plus the session store, trace, and optional tool adapters, creating the first runtime-level seam for replacing the legacy session loop with the runtime-independent kernel.
+- Fifth adapter increment complete: `AgentKernel` now accepts runtime-independent model request defaults, and `SessionRuntime.createAgentKernel()` can build its own `ModelPort` plus request defaults from the session `BladeConfig`, preserving provider, model, sampling, context, provider options, and thinking capability while keeping the kernel free of provider implementations.
 
 ### Phase 5: Production Verification Chain
 

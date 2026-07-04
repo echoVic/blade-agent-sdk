@@ -106,8 +106,14 @@ export interface AgentHookPort {
   afterModel?(response: ModelResponse, context: AgentHookContext): Promise<void> | void;
 }
 
+export type AgentModelRequestDefaults = Partial<Pick<
+  ModelRequest,
+  'model' | 'maxOutputTokens' | 'temperature' | 'maxContextTokens' | 'providerOptions' | 'outputFormat'
+>>;
+
 export interface AgentKernelOptions {
   model: ModelPort;
+  modelRequestDefaults?: AgentModelRequestDefaults;
   tools?: AgentToolPort;
   permissions?: AgentPermissionPort;
   trace?: AgentTracePort;
@@ -150,7 +156,7 @@ export class AgentKernel {
 
     await this.recordTrace({ type: 'turn_start', input: turn.input });
     await this.recordTrace({ type: 'model_request', messages });
-    let response = await this.generateModel({ messages, signal: turn.signal }, {
+    let response = await this.generateModel(this.createModelRequest(messages, turn.signal), {
       turnId: turn.turnId,
       step: 1,
       messages,
@@ -202,7 +208,7 @@ export class AgentKernel {
       ];
       await this.recordTrace({ type: 'model_request', messages });
       modelSteps += 1;
-      response = await this.generateModel({ messages, signal: turn.signal }, {
+      response = await this.generateModel(this.createModelRequest(messages, turn.signal), {
         turnId: turn.turnId,
         step: modelSteps,
         messages,
@@ -318,5 +324,16 @@ export class AgentKernel {
       messages: nextRequest.messages,
     });
     return response;
+  }
+
+  private createModelRequest(
+    messages: readonly ModelMessage[],
+    signal?: AbortSignal,
+  ): ModelRequest {
+    return {
+      ...this.options.modelRequestDefaults,
+      messages,
+      signal,
+    };
   }
 }
