@@ -78,17 +78,35 @@ export interface AgentTracePort {
   record(event: AgentTraceEvent): Promise<void> | void;
 }
 
+export type AgentStoreMessageSource = 'input' | 'model' | 'tool';
+
+export interface AgentStoreAppendContext {
+  turnId?: string;
+  source: AgentStoreMessageSource;
+  step: number;
+}
+
+export interface AgentStorePort {
+  appendMessage(
+    message: ModelMessage,
+    context: AgentStoreAppendContext,
+    signal?: AbortSignal,
+  ): Promise<void> | void;
+}
+
 export interface AgentKernelOptions {
   model: ModelPort;
   tools?: AgentToolPort;
   permissions?: AgentPermissionPort;
   trace?: AgentTracePort;
+  store?: AgentStorePort;
   maxSteps?: number;
 }
 
 export interface AgentTurnInput {
   input: string;
   messages?: readonly ModelMessage[];
+  turnId?: string;
   signal?: AbortSignal;
   maxSteps?: number;
 }
@@ -104,11 +122,18 @@ export class AgentKernel {
       return;
     }
 
-    let messages: readonly ModelMessage[] = turn.messages ?? [
-      { role: 'user', content: turn.input },
-    ];
+    const inputMessage: ModelMessage = { role: 'user', content: turn.input };
+    let messages: readonly ModelMessage[] = turn.messages ?? [inputMessage];
     const maxSteps = turn.maxSteps ?? this.options.maxSteps ?? DEFAULT_MAX_STEPS;
     let modelSteps = 0;
+
+    if (!turn.messages) {
+      await this.appendStoreMessage(inputMessage, {
+        turnId: turn.turnId,
+        source: 'input',
+        step: 0,
+      }, turn.signal);
+    }
 
     await this.recordTrace({ type: 'turn_start', input: turn.input });
     await this.recordTrace({ type: 'model_request', messages });
@@ -134,18 +159,31 @@ export class AgentKernel {
       }
 
       const toolMessages: ModelMessage[] = [];
+      const assistantToolMessage = this.toolCallsToAssistantMessage(response);
+      await this.appendStoreMessage(assistantToolMessage, {
+        turnId: turn.turnId,
+        source: 'model',
+        step: modelSteps,
+      }, turn.signal);
+
       for (const toolCall of response.toolCalls) {
         yield { type: 'tool_use', toolCall };
         await this.recordTrace({ type: 'tool_call_start', toolCall });
         const result = await this.executeToolCall(toolCall, messages, turn.signal);
         await this.recordTrace({ type: 'tool_call_end', toolCall, result });
         yield { type: 'tool_result', result };
-        toolMessages.push(this.toolResultToMessage(result, toolCall));
+        const toolMessage = this.toolResultToMessage(result, toolCall);
+        await this.appendStoreMessage(toolMessage, {
+          turnId: turn.turnId,
+          source: 'tool',
+          step: modelSteps,
+        }, turn.signal);
+        toolMessages.push(toolMessage);
       }
 
       messages = [
         ...messages,
-        this.toolCallsToAssistantMessage(response),
+        assistantToolMessage,
         ...toolMessages,
       ];
       await this.recordTrace({ type: 'model_request', messages });
@@ -167,6 +205,11 @@ export class AgentKernel {
       yield { type: 'usage', usage: response.usage };
       await this.recordTrace({ type: 'usage', usage: response.usage });
     }
+    await this.appendStoreMessage(this.responseToAssistantMessage(response), {
+      turnId: turn.turnId,
+      source: 'model',
+      step: modelSteps,
+    }, turn.signal);
     await this.recordTrace({
       type: 'turn_end',
       content: response.content,
@@ -177,6 +220,14 @@ export class AgentKernel {
       content: response.content,
       finishReason: response.finishReason,
     };
+  }
+
+  private async appendStoreMessage(
+    message: ModelMessage,
+    context: AgentStoreAppendContext,
+    signal?: AbortSignal,
+  ): Promise<void> {
+    await this.options.store?.appendMessage(message, context, signal);
   }
 
   private async executeToolCall(
@@ -206,11 +257,15 @@ export class AgentKernel {
   }
 
   private toolCallsToAssistantMessage(response: ModelResponse): ModelMessage {
+    return this.responseToAssistantMessage(response);
+  }
+
+  private responseToAssistantMessage(response: ModelResponse): ModelMessage {
     return {
       role: 'assistant',
       content: response.content,
       ...(response.reasoningContent ? { reasoningContent: response.reasoningContent } : {}),
-      toolCalls: response.toolCalls ?? [],
+      ...(response.toolCalls && response.toolCalls.length > 0 ? { toolCalls: response.toolCalls } : {}),
     };
   }
 

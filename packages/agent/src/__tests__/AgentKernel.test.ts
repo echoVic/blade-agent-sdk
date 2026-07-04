@@ -3,6 +3,8 @@ import { describe, expect, it, vi } from 'vitest';
 import {
   AgentKernel,
   type AgentPermissionPort,
+  type AgentStoreAppendContext,
+  type AgentStorePort,
   type AgentToolPort,
   type AgentTraceEvent,
   type AgentTracePort,
@@ -470,6 +472,109 @@ describe('AgentKernel', () => {
         type: 'error',
         code: 'MAX_STEPS_EXCEEDED',
         message: 'Agent turn exceeded maxSteps',
+      },
+    ]);
+  });
+
+  it('appends user and final assistant messages through the store port for a no-tool turn', async () => {
+    const generate = vi.fn(async (_request: ModelRequest): Promise<ModelResponse> => ({
+      content: 'Stored answer',
+      reasoningContent: 'Short thought',
+      finishReason: 'stop',
+    }));
+    const model: ModelPort = {
+      generate,
+      stream: async function* () {},
+    };
+    const appended: Array<{ message: Parameters<AgentStorePort['appendMessage']>[0]; context: AgentStoreAppendContext }> = [];
+    const store: AgentStorePort = {
+      appendMessage: async (message, context) => {
+        appended.push({ message, context });
+      },
+    };
+
+    const kernel = new AgentKernel({ model, store });
+
+    for await (const _event of kernel.runTurn({ input: 'Persist this', turnId: 'turn_1' })) {
+      // Drain the turn.
+    }
+
+    expect(appended).toEqual([
+      {
+        message: { role: 'user', content: 'Persist this' },
+        context: { turnId: 'turn_1', source: 'input', step: 0 },
+      },
+      {
+        message: { role: 'assistant', content: 'Stored answer', reasoningContent: 'Short thought' },
+        context: { turnId: 'turn_1', source: 'model', step: 1 },
+      },
+    ]);
+  });
+
+  it('appends assistant tool-call and tool-result messages through the store port', async () => {
+    const generate = vi.fn(async (_request: ModelRequest): Promise<ModelResponse> => {
+      if (generate.mock.calls.length === 1) {
+        return {
+          content: '',
+          toolCalls: [{ id: 'call_search', name: 'Search', input: { q: 'blade' } }],
+          finishReason: 'tool-calls',
+        };
+      }
+
+      return {
+        content: 'Stored tool answer',
+        finishReason: 'stop',
+      };
+    });
+    const model: ModelPort = {
+      generate,
+      stream: async function* () {},
+    };
+    const tools: AgentToolPort = {
+      list: async () => [],
+      execute: async () => ({
+        id: 'call_search',
+        name: 'Search',
+        output: 'Stored tool result',
+      }),
+    };
+    const appended: Array<{ message: Parameters<AgentStorePort['appendMessage']>[0]; context: AgentStoreAppendContext }> = [];
+    const store: AgentStorePort = {
+      appendMessage: (message, context) => {
+        appended.push({ message, context });
+      },
+    };
+    const kernel = new AgentKernel({ model, tools, store });
+
+    for await (const _event of kernel.runTurn({ input: 'Persist tool turn', turnId: 'turn_tool' })) {
+      // Drain the turn.
+    }
+
+    expect(appended).toEqual([
+      {
+        message: { role: 'user', content: 'Persist tool turn' },
+        context: { turnId: 'turn_tool', source: 'input', step: 0 },
+      },
+      {
+        message: {
+          role: 'assistant',
+          content: '',
+          toolCalls: [{ id: 'call_search', name: 'Search', input: { q: 'blade' } }],
+        },
+        context: { turnId: 'turn_tool', source: 'model', step: 1 },
+      },
+      {
+        message: {
+          role: 'tool',
+          content: 'Stored tool result',
+          name: 'Search',
+          toolCallId: 'call_search',
+        },
+        context: { turnId: 'turn_tool', source: 'tool', step: 1 },
+      },
+      {
+        message: { role: 'assistant', content: 'Stored tool answer' },
+        context: { turnId: 'turn_tool', source: 'model', step: 2 },
       },
     ]);
   });
