@@ -19,6 +19,10 @@
       "types": "./dist/deepseek/index.d.ts",
       "import": "./dist/deepseek/index.js"
     },
+    "./model": {
+      "types": "./dist/model/index.d.ts",
+      "import": "./dist/model/index.js"
+    },
     "./retry": {
       "types": "./dist/retry/index.d.ts",
       "import": "./dist/retry/index.js"

@@ -25,6 +25,7 @@
       "@blade-ai/ai": ["./packages/ai/src/index.ts"],
       "@blade-ai/ai/chat": ["./packages/ai/src/chat/index.ts"],
       "@blade-ai/ai/deepseek": ["./packages/ai/src/deepseek/index.ts"],
+      "@blade-ai/ai/model": ["./packages/ai/src/model/index.ts"],
       "@blade-ai/ai/retry": ["./packages/ai/src/retry/index.ts"],
       "@/*": ["./src/*"]
     },

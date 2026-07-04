@@ -191,6 +191,8 @@ Status:
 - `@blade-ai/ai` now publishes a `./retry` subpath with JS and declaration output.
 - Chat protocol types now live in `@blade-ai/ai/chat`, including `ChatConfig`, `Message`, `UsageInfo`, `StreamChunk`, `ChatResponse`, and `IChatService`.
 - The legacy root `src/services/ChatServiceInterface.ts` now re-exports chat protocol types and keeps only the SDK-local `createChatServiceAsync()` factory.
+- Model execution protocol types now live in `@blade-ai/ai/model`, including `ModelPort`, `ModelRequest`, `ModelStreamEvent`, `ModelResponse`, `ModelToolCall`, and model-scoped `UsageInfo`.
+- The `@blade-ai/ai` root exports `Model*` protocol types and `ModelUsageInfo` while preserving the existing chat `UsageInfo` root export until the chat/runtime migration is complete.
 - DeepSeek pure provider helpers now live in `@blade-ai/ai/deepseek`, including model normalization, endpoint selection, cache-aware usage and pricing helpers, cache-prefix optimization, long-context chunk planning, strict tool schema sanitization, and default DeepSeek model config.
 - The session SDK's Vercel AI chat service and root public helper exports now consume `@blade-ai/ai/deepseek`; SDK-local DeepSeek fetch APIs remain in `src/services/deepseek.ts` for a later network adapter extraction.
 

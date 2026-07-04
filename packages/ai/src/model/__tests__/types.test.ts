@@ -1,0 +1,83 @@
+import { describe, expectTypeOf, it } from 'vitest';
+import type {
+  JsonObject,
+  ModelPort,
+  ModelRequest,
+  ModelResponse,
+  ModelStreamEvent,
+  ModelToolCall,
+  UsageInfo,
+} from '../index.js';
+import type {
+  ModelPort as RootModelPort,
+  ModelUsageInfo,
+  UsageInfo as RootUsageInfo,
+} from '../../index.js';
+
+describe('@blade-ai/ai model protocol types', () => {
+  it('defines the provider-agnostic model port used by the agent kernel', () => {
+    expectTypeOf<UsageInfo>().toMatchTypeOf<{
+      promptTokens: number;
+      completionTokens: number;
+      totalTokens: number;
+      reasoningTokens?: number;
+      cacheReadInputTokens?: number;
+      billableInputTokens?: number;
+    }>();
+
+    expectTypeOf<ModelToolCall>().toMatchTypeOf<{
+      id: string;
+      name: string;
+      input: JsonObject;
+    }>();
+
+    expectTypeOf<ModelRequest>().toMatchTypeOf<{
+      messages: ReadonlyArray<{
+        role: 'system' | 'user' | 'assistant' | 'tool';
+        content: string;
+      }>;
+      tools?: ReadonlyArray<{
+        name: string;
+        description?: string;
+        parameters: JsonObject;
+      }>;
+      temperature?: number;
+      maxOutputTokens?: number;
+      maxContextTokens?: number;
+      providerOptions?: JsonObject;
+      signal?: AbortSignal;
+    }>();
+
+    expectTypeOf<ModelStreamEvent>().toMatchTypeOf<
+      | { type: 'content_delta'; delta: string }
+      | { type: 'reasoning_delta'; delta: string }
+      | { type: 'tool_call'; toolCall: ModelToolCall }
+      | { type: 'usage'; usage: UsageInfo }
+      | { type: 'done'; response?: ModelResponse; finishReason?: string }
+      | { type: 'error'; error: Error }
+    >();
+
+    expectTypeOf<ModelResponse>().toMatchTypeOf<{
+      content: string;
+      reasoningContent?: string;
+      toolCalls?: ModelToolCall[];
+      usage?: UsageInfo;
+      finishReason?: string;
+    }>();
+
+    type StreamReturn = ReturnType<ModelPort['stream']>;
+    expectTypeOf<StreamReturn>().toEqualTypeOf<AsyncIterable<ModelStreamEvent>>();
+    expectTypeOf<Parameters<ModelPort['stream']>[0]>().toEqualTypeOf<ModelRequest>();
+    expectTypeOf<ReturnType<ModelPort['generate']>>().toEqualTypeOf<Promise<ModelResponse>>();
+  });
+
+  it('exposes model protocol types from the package root without replacing chat UsageInfo', () => {
+    expectTypeOf<RootModelPort>().toEqualTypeOf<ModelPort>();
+    expectTypeOf<ModelUsageInfo>().toEqualTypeOf<UsageInfo>();
+    expectTypeOf<RootUsageInfo>().toMatchTypeOf<{
+      promptTokens: number;
+      completionTokens: number;
+      totalTokens: number;
+    }>();
+  });
+});

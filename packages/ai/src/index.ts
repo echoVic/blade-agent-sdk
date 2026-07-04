@@ -1,6 +1,22 @@
-export type JsonPrimitive = string | number | boolean | null;
-export type JsonValue = JsonPrimitive | JsonObject | JsonValue[];
-export type JsonObject = { [key: string]: JsonValue };
+import type {
+  JsonObject,
+  JsonPrimitive,
+  JsonValue,
+} from './model/index.js';
+
+export type { JsonObject, JsonPrimitive, JsonValue };
+export type {
+  ModelMessage,
+  ModelMessageRole,
+  ModelPort,
+  ModelProvider,
+  ModelRequest,
+  ModelResponse,
+  ModelStreamEvent,
+  ModelToolCall,
+  ModelToolDefinition,
+  UsageInfo as ModelUsageInfo,
+} from './model/index.js';
 
 export type AiProvider =
   | 'anthropic'
