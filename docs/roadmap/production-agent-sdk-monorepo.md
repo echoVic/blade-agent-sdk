@@ -150,6 +150,7 @@ Status:
 - `@blade-ai/agent-sdk` is the publishable session-first package and retains the current root, browser, server, session, tools, and local entrypoints during migration.
 - Package builds use package-local `tsup.config.ts` plus `tsconfig.build.json` so JS and declaration output are verified independently.
 - The publishable `@blade-ai/agent-sdk` build now derives external dependencies from `packages/agent-sdk/package.json`, not the private root orchestrator manifest, keeping package output tied to the package's own publish contract.
+- The publishable `@blade-ai/agent-sdk` JS bundle now starts from package-local `packages/agent-sdk/src/*` public entry wrappers instead of direct `../../src/*` tsup entries, creating the first enforceable source-ownership seam before the remaining implementation and declaration output are migrated into the package.
 
 ### Phase 2: Extract `@blade-ai/ai`
 
@@ -314,6 +315,7 @@ Status:
 - Twelfth adapter increment complete: kernel observability now records usage with the same session max context token limit used by stream `usage` events, keeping trace-based debugging and accounting aligned with the session-first public API.
 - Thirteenth adapter increment complete: kernel tool results now preserve permission update effects, emit session `tool_permission_updates` events before `tool_result`, and record the same updates into the session trace so permission state remains observable through the kernel path.
 - Fourteenth adapter increment complete: `Session.stream()` now uses the runtime-independent kernel path by default, while `stream({ runtime: 'legacy' })` remains as an explicit migration escape hatch for old loop behavior; the deprecated `experimentalKernel` flag is still accepted during the transition.
+- Fifteenth adapter increment complete: the `@blade-ai/agent-sdk` package build now resolves every public JS entry (`.`, `browser`, `server`, `session`, `tools`, `local`, and `core`) through package-local source wrappers, with a topology test preventing the package tsup config from pointing directly at root `../../src/*` entry files. This is an incremental package-ownership step; the wrapped implementations and declaration emit still need to move package-local in later slices.
 
 ### Phase 5: Production Verification Chain
 

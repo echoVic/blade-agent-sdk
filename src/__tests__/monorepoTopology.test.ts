@@ -69,6 +69,31 @@ describe('monorepo topology', () => {
     expect(config).not.toContain("readFileSync('../../package.json'");
   });
 
+  it('builds the publishable agent-sdk package from package-local source entries', () => {
+    const config = readFileSync('packages/agent-sdk/tsup.config.ts', 'utf-8');
+
+    for (const entry of [
+      'index',
+      'browser/index',
+      'browser/server-only-stub',
+      'core/index',
+      'local/index',
+      'server/index',
+      'session/index',
+      'tools/index',
+    ]) {
+      const expectedEntry = entry.includes('/')
+        ? `'${entry}': 'src/${entry}.ts'`
+        : `${entry}: 'src/${entry}.ts'`;
+      expect(config, `${entry} should be built from packages/agent-sdk/src`).toContain(
+        expectedEntry,
+      );
+      expect(existsSync(join('packages/agent-sdk/src', `${entry}.ts`)), `${entry}.ts`).toBe(true);
+    }
+
+    expect(config).not.toContain('../../src/');
+  });
+
   it('resolves workspace packages from source during type checking', () => {
     const agentTsconfig = readJson('packages/agent/tsconfig.json');
     const sdkTsconfig = readJson('packages/agent-sdk/tsconfig.json');
