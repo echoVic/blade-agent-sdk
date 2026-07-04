@@ -137,11 +137,6 @@ export class AgentKernel {
   constructor(readonly options: AgentKernelOptions) {}
 
   async *runTurn(turn: AgentTurnInput): AsyncIterable<AgentStreamEvent> {
-    if (turn.signal?.aborted) {
-      yield { type: 'error', code: 'ABORTED', message: 'Operation aborted' };
-      return;
-    }
-
     const inputMessage: ModelMessage = { role: 'user', content: turn.input };
     let messages: readonly ModelMessage[] = turn.messages ?? [inputMessage];
     const maxSteps = turn.maxSteps ?? this.options.maxSteps ?? DEFAULT_MAX_STEPS;
@@ -153,6 +148,11 @@ export class AgentKernel {
         source: 'input',
         step: 0,
       }, turn.signal);
+    }
+
+    if (turn.signal?.aborted) {
+      yield { type: 'error', code: 'ABORTED', message: 'Operation aborted' };
+      return;
     }
 
     await this.recordTrace({ type: 'turn_start', input: turn.input });

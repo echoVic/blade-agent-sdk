@@ -650,6 +650,50 @@ describe('Session runtime context', () => {
     await session.close();
   });
 
+  it('should preserve the pending user message when the kernel stream is aborted before model execution', async () => {
+    kernelModelGenerate.mockClear();
+    createVercelModelPort.mockClear();
+    const storagePath = mkdtempSync(join(tmpdir(), 'session-context-kernel-abort-'));
+    const controller = new AbortController();
+    const session = await createSession({
+      provider: { type: 'openai-compatible', apiKey: 'test-key' },
+      model: 'gpt-4o-mini',
+      storagePath,
+      allowedTools: [],
+      observability: { enabled: true },
+    });
+
+    await session.send('cancel before kernel model starts', {
+      signal: controller.signal,
+    });
+    controller.abort('user cancelled');
+
+    const events = [];
+    for await (const event of session.stream({ experimentalKernel: true })) {
+      events.push(event);
+    }
+
+    expect(kernelModelGenerate).not.toHaveBeenCalled();
+    expect(events).toEqual([
+      { type: 'turn_start', turn: 1, sessionId: session.sessionId },
+      {
+        type: 'error',
+        code: 'ABORTED',
+        message: 'Operation aborted',
+        sessionId: session.sessionId,
+      },
+    ]);
+    expect(session.messages.map((message) => ({
+      role: message.role,
+      content: message.content,
+    }))).toEqual([
+      { role: 'user', content: 'cancel before kernel model starts' },
+    ]);
+    expect(session.getLastTrace()?.status).toBe('aborted');
+
+    await session.close();
+  });
+
   it('fails with a controlled runtime error instead of a non-null assertion crash', async () => {
     const storagePath = mkdtempSync(join(tmpdir(), 'session-context-runtime-'));
     const session = await createSession({
