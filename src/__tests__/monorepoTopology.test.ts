@@ -218,6 +218,13 @@ describe('monorepo topology', () => {
     expect(coreSource).not.toContain('../../../../src/session/types.js');
   });
 
+  it('owns the public session entry source inside agent-sdk', () => {
+    const sessionSource = readFileSync('packages/agent-sdk/src/session/index.ts', 'utf-8');
+
+    expect(sessionSource).not.toContain("export * from '../../../../src/session/index.js'");
+    expect(sessionSource).toContain("from './types.js'");
+  });
+
   it('resolves workspace packages from source during type checking', () => {
     const agentTsconfig = readJson('packages/agent/tsconfig.json');
     const sdkTsconfig = readJson('packages/agent-sdk/tsconfig.json');

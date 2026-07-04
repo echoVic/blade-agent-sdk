@@ -1,9 +1,93 @@
-import type { RuntimeContext, RuntimeContextPatch, RuntimePatch } from '../runtime/types.js';
-import type { JsonValue, TokenUsage } from '../types/common.js';
-import type { PermissionUpdate } from '../types/permissions.js';
+import type { AgentTrace, ObservabilityOptions } from '../observability/types.js';
+import type {
+  ContextSnapshot,
+  RuntimeContext,
+  RuntimeContextPatch,
+  RuntimePatch,
+} from '../runtime/types.js';
+import type { ToolDefinition, ToolResult } from '../tools/types/index.js';
+import type {
+  JsonObject,
+  JsonValue,
+  McpServerConfig,
+  OutputFormat,
+  PermissionMode,
+  ProviderType,
+  SandboxSettings,
+  TokenUsage,
+} from '../types/common.js';
+import type { HookEvent } from '../types/constants.js';
+import type { CanUseTool, PermissionHandler, PermissionUpdate } from '../types/permissions.js';
 
 export type SessionId = string;
 export type SessionMessageRole = 'system' | 'user' | 'assistant' | 'tool';
+export type UserMessageContent = string | SessionContentPart[];
+
+export interface TokenBudgetConfig {
+  maxTotalTokens?: number;
+  warningThresholdPercent?: number;
+  costPerInputToken?: number;
+  costPerOutputToken?: number;
+  costPerCacheWriteToken?: number;
+  costPerCacheReadToken?: number;
+}
+
+export type ToolSourceKind = 'builtin' | 'custom' | 'mcp' | 'session';
+export type ToolTrustLevel = 'trusted' | 'workspace' | 'remote';
+
+export interface ToolCatalogSourcePolicy {
+  allowedSources?: ToolSourceKind[];
+  allowedTrustLevels?: ToolTrustLevel[];
+}
+
+export interface SdkMcpServerHandle {
+  name: string;
+  version: string;
+  createClientTransport: () => Promise<unknown>;
+  server: unknown;
+}
+
+export type LogLevelName = 'debug' | 'info' | 'warn' | 'error';
+
+export interface LogEntry {
+  level: LogLevelName;
+  category: string;
+  message: string;
+  timestamp: string;
+  sessionId?: string;
+  args?: unknown[];
+}
+
+export interface AgentLogger {
+  log(entry: LogEntry): void;
+}
+
+export interface ProviderConfig {
+  type: ProviderType;
+  apiKey?: string;
+  baseUrl?: string;
+  headers?: Record<string, string>;
+  organization?: string;
+  apiVersion?: string;
+  projectId?: string;
+}
+
+export interface ToolCallRecord {
+  id: string;
+  name: string;
+  input: JsonValue;
+  output: string | object;
+  duration: number;
+  isError?: boolean;
+}
+
+export interface PromptResult {
+  result: string;
+  toolCalls: ToolCallRecord[];
+  usage: TokenUsage;
+  duration: number;
+  turnsCount: number;
+}
 
 export interface SessionToolCall {
   id: string;
@@ -108,3 +192,167 @@ export interface StreamOptions {
    */
   experimentalKernel?: boolean;
 }
+
+export interface HookInput {
+  event: HookEvent;
+  toolName?: string;
+  toolInput?: JsonObject;
+  toolOutput?: string | object;
+  error?: Error;
+  sessionId: SessionId;
+  [key: string]: unknown;
+}
+
+export interface HookOutput {
+  action: 'continue' | 'skip' | 'abort';
+  /**
+   * For PreToolUse hooks: a JsonObject to merge into tool input params.
+   * For UserPromptSubmit hooks: either a JsonObject with a `userPrompt`
+   * key, or a bare string (legacy form) that replaces the prompt text.
+   */
+  modifiedInput?: JsonObject | string;
+  modifiedOutput?: JsonValue;
+  reason?: string;
+}
+
+export type HookCallback = (input: HookInput) => Promise<HookOutput>;
+
+export type SessionHookEvent =
+  | typeof HookEvent.PreToolUse
+  | typeof HookEvent.PostToolUse
+  | typeof HookEvent.PostToolUseFailure
+  | typeof HookEvent.PermissionRequest
+  | typeof HookEvent.UserPromptSubmit
+  | typeof HookEvent.SessionStart
+  | typeof HookEvent.SessionEnd
+  | typeof HookEvent.TaskCompleted;
+
+export interface SubagentInfo {
+  parentSessionId: string;
+  subagentType: string;
+  depth: number;
+}
+
+export interface AgentDefinition {
+  name: string;
+  description: string;
+  systemPrompt?: string;
+  allowedTools?: string[];
+  model?: string;
+}
+
+export interface SessionOptions {
+  provider: ProviderConfig;
+  model: string;
+  temperature?: number;
+  maxOutputTokens?: number;
+  maxContextTokens?: number;
+  providerOptions?: JsonObject;
+  thinkingEnabled?: boolean;
+  thinkingBudget?: number;
+  tokenBudget?: TokenBudgetConfig;
+
+  allowedTools?: string[];
+  disallowedTools?: string[];
+  toolSourcePolicy?: ToolCatalogSourcePolicy;
+  mcpServers?: Record<string, McpServerConfig | SdkMcpServerHandle>;
+  tools?: ToolDefinition<never>[];
+
+  permissionMode?: PermissionMode;
+  permissionHandler?: PermissionHandler;
+  canUseTool?: CanUseTool;
+
+  systemPrompt?: string;
+  maxTurns?: number;
+  agents?: Record<string, AgentDefinition>;
+  subagent?: SubagentInfo;
+
+  hooks?: Partial<Record<SessionHookEvent, HookCallback[]>>;
+
+  defaultContext?: RuntimeContext;
+  logger?: AgentLogger;
+  storagePath?: string;
+  persistSession?: boolean;
+
+  outputFormat?: OutputFormat;
+
+  sandbox?: SandboxSettings;
+
+  observability?: ObservabilityOptions;
+}
+
+export interface ModelInfo {
+  id: string;
+  name: string;
+  provider: string;
+  maxContextTokens?: number;
+}
+
+export interface McpServerStatus {
+  name: string;
+  status: 'connected' | 'disconnected' | 'connecting' | 'error';
+  toolCount: number;
+  tools?: string[];
+  connectedAt?: Date;
+  error?: string;
+}
+
+export interface McpToolInfo {
+  name: string;
+  description: string;
+  serverName: string;
+}
+
+export interface ForkSessionOptions {
+  messageId?: string;
+}
+
+export interface ForkSessionResult {
+  sessionId: SessionId;
+  parentSessionId: string;
+  messageCount: number;
+  forkedAt?: string;
+}
+
+export interface ISession extends AsyncDisposable {
+  readonly sessionId: SessionId;
+  readonly messages: SessionMessage[];
+  readonly isClosed: boolean;
+
+  send(message: UserMessageContent, options?: SendOptions): Promise<void>;
+
+  stream(options?: StreamOptions): AsyncGenerator<StreamMessage>;
+
+  close(): Promise<void>;
+  abort(): void;
+
+  getDefaultContext(): RuntimeContext;
+  setDefaultContext(context: RuntimeContext): void;
+
+  setPermissionMode(mode: PermissionMode): void;
+  setModel(model: string): Promise<void>;
+  setMaxTurns(maxTurns: number): void;
+
+  supportedModels(): Promise<ModelInfo[]>;
+
+  mcpServerStatus(): Promise<McpServerStatus[]>;
+  mcpConnect(serverName: string): Promise<void>;
+  mcpDisconnect(serverName: string): Promise<void>;
+  mcpReconnect(serverName: string): Promise<void>;
+  mcpListTools(): Promise<McpToolInfo[]>;
+
+  fork(options?: ForkSessionOptions): Promise<ISession>;
+
+  getLastTrace(): AgentTrace | undefined;
+  getTraces(): AgentTrace[];
+}
+
+export interface ResumeOptions extends SessionOptions {
+  sessionId: SessionId;
+}
+
+export interface ForkOptions extends ResumeOptions {
+  messageId?: string;
+}
+
+export type { ContextSnapshot, RuntimeContext, ToolDefinition, ToolResult };
