@@ -28,7 +28,7 @@ export type {
   SendOptions,
   StreamMessage,
   StreamOptions,
-} from '../../../../src/session/types.js';
+} from '../session/types.js';
 export type { ToolBehavior } from '../tools/types/ToolKind.js';
 export type {
   ExecutionContext,

@@ -150,6 +150,14 @@ describe('monorepo topology', () => {
     expect(coreSource).not.toContain('../../../../src/runtime/index.js');
   });
 
+  it('owns core session stream contracts inside agent-sdk', () => {
+    expect(existsSync('packages/agent-sdk/src/session/types.ts')).toBe(true);
+
+    const coreSource = readFileSync('packages/agent-sdk/src/core/index.ts', 'utf-8');
+
+    expect(coreSource).not.toContain('../../../../src/session/types.js');
+  });
+
   it('resolves workspace packages from source during type checking', () => {
     const agentTsconfig = readJson('packages/agent/tsconfig.json');
     const sdkTsconfig = readJson('packages/agent-sdk/tsconfig.json');

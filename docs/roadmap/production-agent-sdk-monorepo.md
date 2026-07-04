@@ -156,6 +156,7 @@ Status:
 - The `@blade-ai/agent-sdk/core` tool kind and tool behavior contract now resolve through package-local `packages/agent-sdk/src/tools/types/ToolKind.ts`, while richer tool definition/result/effect contracts remain staged for later package-local migration.
 - The `@blade-ai/agent-sdk/core` observability contract types now resolve through package-local `packages/agent-sdk/src/observability/types.ts`; runtime trace recording implementation remains outside browser-safe core.
 - The `@blade-ai/agent-sdk/core` runtime contract types now resolve through package-local `packages/agent-sdk/src/runtime/types.ts`; runtime context merging and patch summarization helpers remain outside browser-safe core.
+- The `@blade-ai/agent-sdk/core` session stream contract types now resolve through package-local `packages/agent-sdk/src/session/types.ts`; full `SessionOptions` and runtime session management remain outside browser-safe core.
 
 ### Phase 2: Extract `@blade-ai/ai`
 
@@ -326,6 +327,7 @@ Status:
 - Eighteenth adapter increment complete: `@blade-ai/agent-sdk/core` now owns `ToolKind` and `ToolBehavior` in package-local `src/tools/types/ToolKind.ts`, and the package-local permission contracts use that local tool kind type. `ToolDefinition`, `ToolConfig`, `ToolResult`, and `ToolEffect` still come from root tool contracts until their dependent runtime/session types are migrated.
 - Nineteenth adapter increment complete: `@blade-ai/agent-sdk/core` now owns `AgentTrace`, `TraceEvent`, `TraceSpan`, `TraceSink`, and `ObservabilityOptions` as package-local observability contracts. `TraceRecorder` stays in the server/session implementation because it is runtime behavior, not a browser-safe contract.
 - Twentieth adapter increment complete: `@blade-ai/agent-sdk/core` now owns `RuntimeContext`, `ContextSnapshot`, `RuntimePatch`, `RuntimeContextPatch`, and related runtime patch contract types in package-local `src/runtime/types.ts`. Root runtime helper functions such as `mergeContext`, `createContextSnapshot`, and `summarizeRuntimePatchApplications` stay in the implementation layer.
+- Twenty-first adapter increment complete: `@blade-ai/agent-sdk/core` now owns `SendOptions`, `StreamOptions`, `StreamMessage`, and the message payload contracts needed by stream events in package-local `src/session/types.ts`. Broader session construction, MCP, persistence, hooks, and adapter runtime options stay in the session implementation layer.
 
 ### Phase 5: Production Verification Chain
 
