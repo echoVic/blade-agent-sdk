@@ -6,6 +6,7 @@ interface PackageJson {
   name?: string;
   private?: boolean;
   workspaces?: unknown;
+  exports?: Record<string, unknown>;
   scripts?: Record<string, string>;
   dependencies?: Record<string, string>;
   devDependencies?: Record<string, string>;
@@ -158,6 +159,39 @@ describe('monorepo topology', () => {
     const agentIndexSource = readFileSync('packages/agent/src/index.ts', 'utf-8');
 
     expect(agentIndexSource).not.toContain('class AgentKernel');
+  });
+
+  it('publishes agent kernel modules as explicit subpath exports', () => {
+    const agentPackage = readJson('packages/agent/package.json');
+    const agentBuildConfig = readFileSync('packages/agent/tsup.config.ts', 'utf-8');
+
+    expect(agentPackage.exports).toMatchObject({
+      './kernel': {
+        types: './dist/kernel/AgentKernel.d.ts',
+        import: './dist/kernel/AgentKernel.js',
+      },
+      './protocol': {
+        types: './dist/protocol/index.d.ts',
+        import: './dist/protocol/index.js',
+      },
+      './ports': {
+        types: './dist/ports/index.d.ts',
+        import: './dist/ports/index.js',
+      },
+      './state': {
+        types: './dist/state/index.d.ts',
+        import: './dist/state/index.js',
+      },
+      './tracing': {
+        types: './dist/tracing/index.d.ts',
+        import: './dist/tracing/index.js',
+      },
+    });
+    expect(agentBuildConfig).toContain('kernel/AgentKernel');
+    expect(agentBuildConfig).toContain('protocol/index');
+    expect(agentBuildConfig).toContain('ports/index');
+    expect(agentBuildConfig).toContain('state/index');
+    expect(agentBuildConfig).toContain('tracing/index');
   });
 
   it('owns core observability contracts inside agent-sdk', () => {
