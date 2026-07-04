@@ -167,6 +167,8 @@ describe('monorepo topology', () => {
     const toolsSource = readFileSync('packages/agent-sdk/src/tools/index.ts', 'utf-8');
 
     expect(toolsSource).not.toContain("export * from '../../../../src/tools/index.js'");
+    expect(toolsSource).not.toContain("../../../../src/tools/catalog/ToolCatalog.js");
+    expect(toolsSource).not.toContain("../../../../src/tools/core/createTool.js");
     expect(toolsSource).toContain("from './types/index.js'");
     expect(toolsSource).toContain("from './types/ToolKind.js'");
     expect(existsSync('packages/agent-sdk/src/tools/public-index.ts')).toBe(true);

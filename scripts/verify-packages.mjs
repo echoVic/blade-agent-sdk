@@ -89,6 +89,26 @@ const packageSpecs = [
         message: 'tools declarations must be emitted from package-local tools entry source',
       },
       {
+        file: 'package/dist/tools/index.js',
+        forbidden: 'src/tools/core/createTool',
+        message: 'tools runtime must be emitted from package-local tools source',
+      },
+      {
+        file: 'package/dist/tools/index.js',
+        forbidden: 'src/tools/catalog/ToolCatalog',
+        message: 'tools runtime must be emitted from package-local tools source',
+      },
+      {
+        file: 'package/dist/tools/index.d.ts',
+        forbidden: '../core/createTool.js',
+        message: 'tools declarations must be emitted from package-local tools entry source',
+      },
+      {
+        file: 'package/dist/tools/index.d.ts',
+        forbidden: '../catalog/ToolCatalog.js',
+        message: 'tools declarations must be emitted from package-local tools entry source',
+      },
+      {
         file: 'package/dist/index.d.ts',
         forbidden: './agent/loop/runToolCall.js',
         message: 'root declarations must be emitted from package-local root entry source',
