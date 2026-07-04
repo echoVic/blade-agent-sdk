@@ -58,7 +58,7 @@
     "CHANGELOG.md"
   ],
   "scripts": {
-    "build": "tsup && tsc -p tsconfig.build.json",
+    "build": "pnpm --filter @blade-ai/ai run build && tsup && tsc -p tsconfig.build.json",
     "test": "vitest run",
     "lint": "biome lint src packages",
     "lint:fix": "biome lint --write src packages",
@@ -95,6 +95,7 @@
     "node-pty": "1.0.0"
   },
   "dependencies": {
+    "@blade-ai/ai": "workspace:*",
     "@ai-sdk/openai": "^3.0.53",
     "@ai-sdk/openai-compatible": "^2.0.41",
     "@modelcontextprotocol/sdk": "^1.29.0",

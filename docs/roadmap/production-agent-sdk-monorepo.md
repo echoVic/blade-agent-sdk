@@ -176,6 +176,12 @@ Commit:
 
 - `refactor(ai): extract provider runtime package`
 
+Status:
+
+- First extraction increment complete: retry policy now lives in `@blade-ai/ai/retry`.
+- The legacy root path `src/services/RetryPolicy.ts` re-exports the package implementation so existing runtime code keeps working during migration.
+- `@blade-ai/ai` now publishes a `./retry` subpath with JS and declaration output.
+
 ### Phase 3: Extract `@blade-ai/agent`
 
 Objective: Create a runtime-independent agent kernel with clear ports and protocol types.

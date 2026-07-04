@@ -9,6 +9,8 @@ export default defineConfig({
   resolve: {
     alias: {
       '@': resolve(__dirname, 'src'),
+      '@blade-ai/ai/retry': resolve(__dirname, 'packages/ai/src/retry/index.ts'),
+      '@blade-ai/ai': resolve(__dirname, 'packages/ai/src/index.ts'),
     },
   },
 });
