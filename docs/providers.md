@@ -1,4 +1,83 @@
-# Provider 配置
+# Provider 与模型
+
+Blade 的 provider 层分成两种用法：
+
+- 应用代码优先使用 `@blade-ai/agent-sdk` 的 session-first API，由 SDK 负责把 provider 配置接到 `@blade-ai/ai` 的 `ModelPort`。
+- adapter、测试和底层 runtime 代码可以直接使用 `@blade-ai/ai` 的 provider 子入口，拿到标准 `ModelPort`，再交给 `@blade-ai/agent` 或自定义运行时。
+
+## Session-first 用法
+
+大多数 server / CLI 应用只需要从 `@blade-ai/agent-sdk` 创建 session：
+
+```ts
+import { createSession } from '@blade-ai/agent-sdk';
+
+const session = await createSession({
+  provider: {
+    type: 'openai-compatible',
+    apiKey: process.env.GLM_API_KEY!,
+    baseUrl: process.env.GLM_BASE_URL!,
+  },
+  model: 'glm-5.2',
+  temperature: 0.2,
+  maxOutputTokens: 1024,
+  allowedTools: [],
+});
+
+await session.send('用一句话说明 Blade 的 provider 分层。');
+
+for await (const event of session.stream()) {
+  if (event.type === 'content') process.stdout.write(event.delta);
+  if (event.type === 'usage') console.log(event.usage);
+}
+
+session.close();
+```
+
+GLM / OpenAI-compatible 真实 smoke test 已接入独立脚本：
+
+```bash
+pnpm run test:live:glm
+```
+
+这个脚本会读取 `.env` 中的 GLM/OpenAI-compatible 凭据，使用 `glm-5.2` 做一次非流式请求和一次 stream 请求，并校验 provider 返回的 usage 信息。
+
+## 直接使用 `@blade-ai/ai`
+
+当你在写 provider adapter、模型层测试，或想绕开 session 直接验证模型协议时，可以直接创建 `ModelPort`：
+
+```ts
+import { createOpenAICompatibleModelPort } from '@blade-ai/ai/providers/openai-compatible';
+import type { ModelPort } from '@blade-ai/ai/model';
+
+const model: ModelPort = createOpenAICompatibleModelPort({
+  apiKey: process.env.GLM_API_KEY!,
+  baseUrl: process.env.GLM_BASE_URL!,
+  model: 'glm-5.2',
+  name: 'glm',
+});
+
+const response = await model.generate({
+  model: 'glm-5.2',
+  messages: [{ role: 'user', content: 'ping' }],
+});
+
+console.log(response.content, response.usage);
+```
+
+通用 Vercel AI provider adapter 在 `@blade-ai/ai/providers/vercel`：
+
+```ts
+import { createVercelModelPort } from '@blade-ai/ai/providers/vercel';
+
+const model = createVercelModelPort({
+  provider: 'openai',
+  apiKey: process.env.OPENAI_API_KEY!,
+  model: 'gpt-4o-mini',
+});
+```
+
+底层 adapter 统一输出 `ModelResponse` 和 `ModelStreamEvent`，包括 content delta、reasoning delta、tool call、usage 和 done/error 事件。`@blade-ai/agent` 只依赖这个协议，不直接依赖 provider SDK。
 
 ## 支持的 Provider
 

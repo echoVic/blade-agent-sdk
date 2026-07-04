@@ -23,7 +23,7 @@ export default defineConfig({
           { text: 'Server / Next.js', link: '/server-nextjs' },
           { text: 'Browser Remote Client', link: '/browser-remote-client' },
           { text: 'Production Checklist', link: '/production-checklist' },
-          { text: 'Provider 与日志', link: '/providers' },
+          { text: 'Provider 与模型', link: '/providers' },
         ],
       },
       {
