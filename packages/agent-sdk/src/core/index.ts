@@ -29,10 +29,10 @@ export type {
   StreamMessage,
   StreamOptions,
 } from '../../../../src/session/types.js';
+export type { ToolBehavior } from '../tools/types/ToolKind.js';
 export type {
   ExecutionContext,
   FunctionDeclaration,
-  ToolBehavior,
   ToolConfig,
   ToolDefinition,
   ToolDescription,
@@ -44,7 +44,7 @@ export type {
   ToolResult,
   ToolSchema,
 } from '../../../../src/tools/types/index.js';
-export { ToolKind } from '../../../../src/tools/types/ToolKind.js';
+export { ToolKind } from '../tools/types/ToolKind.js';
 export type {
   JsonObject,
   JsonValue,

@@ -1,5 +1,5 @@
 import type { ToolEffect } from '../../../../src/tools/types/index.js';
-import type { ToolKind } from '../../../../src/tools/types/ToolKind.js';
+import type { ToolKind } from '../tools/types/ToolKind.js';
 import type { JsonObject, PermissionMode } from './common.js';
 
 export interface PermissionRuleValue {
