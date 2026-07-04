@@ -28,7 +28,14 @@ export async function forkSession(
   runtime: SessionRuntimeFactory,
   options: ForkOptions,
 ): Promise<ISession> {
-  return runtime.fork(options);
+  const { messageId } = options;
+  const sourceSession = await runtime.resume(options);
+
+  try {
+    return await sourceSession.fork({ messageId });
+  } finally {
+    await sourceSession.close();
+  }
 }
 
 export async function prompt(

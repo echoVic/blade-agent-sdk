@@ -49,7 +49,7 @@ function createFakeSession(id: string): ISession {
 }
 
 describe('agent-sdk session runtime factory', () => {
-  it('routes create, resume, and fork through the package-local session factory', async () => {
+  it('routes create and resume through the package-local session factory', async () => {
     const calls: string[] = [];
     let createCalls = 0;
     const fakePromptSession = createFakeSession('prompted');
@@ -75,8 +75,7 @@ describe('agent-sdk session runtime factory', () => {
         return createFakeSession(`resumed:${receivedOptions.sessionId}`);
       },
       async fork(receivedOptions) {
-        calls.push(`fork:${receivedOptions.sessionId}:${receivedOptions.messageId ?? ''}`);
-        return createFakeSession(`forked:${receivedOptions.sessionId}`);
+        throw new Error(`runtime fork should not be called for ${receivedOptions.sessionId}`);
       },
       async prompt(_message: UserMessageContent, _receivedOptions) {
         throw new Error('runtime prompt should not be called');
@@ -89,7 +88,7 @@ describe('agent-sdk session runtime factory', () => {
         sessionId: 'resumed:old',
       });
       await expect(forkSession({ ...options, sessionId: 'old', messageId: 'm1' })).resolves.toMatchObject({
-        sessionId: 'forked:old',
+        sessionId: 'forked:resumed:old',
       });
       await expect(prompt('hello', options)).resolves.toMatchObject({
         result: 'factory prompt',
@@ -101,7 +100,7 @@ describe('agent-sdk session runtime factory', () => {
     expect(calls).toEqual([
       'create:test-model',
       'resume:old',
-      'fork:old:m1',
+      'resume:old',
       'create:test-model',
       'send:hello',
     ]);
@@ -187,5 +186,44 @@ describe('agent-sdk session runtime factory', () => {
     }
 
     expect(calls).toEqual(['create:test-model', 'send:hello', 'stream', 'close']);
+  });
+
+  it('implements forkSession from package-local resume and live session fork lifecycle', async () => {
+    const calls: string[] = [];
+    const sourceSession = createFakeSession('source');
+    const forkedSession = createFakeSession('forked:source');
+    sourceSession.fork = async (forkOptions) => {
+      calls.push(`session-fork:${forkOptions?.messageId ?? ''}`);
+      return forkedSession;
+    };
+    sourceSession.close = async () => {
+      calls.push('source-close');
+    };
+
+    const restore = setSessionRuntimeFactory({
+      async create() {
+        throw new Error('create should not be called');
+      },
+      async resume(receivedOptions) {
+        calls.push(`resume:${receivedOptions.sessionId}`);
+        return sourceSession;
+      },
+      async fork() {
+        throw new Error('runtime fork should not be called');
+      },
+      async prompt() {
+        throw new Error('prompt should not be called');
+      },
+    });
+
+    try {
+      await expect(
+        forkSession({ ...options, sessionId: 'old', messageId: 'm1' }),
+      ).resolves.toBe(forkedSession);
+    } finally {
+      restore();
+    }
+
+    expect(calls).toEqual(['resume:old', 'session-fork:m1', 'source-close']);
   });
 });

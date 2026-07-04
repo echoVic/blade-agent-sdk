@@ -1,7 +1,10 @@
 import {
   createDefaultSessionRuntimeFactory,
 } from './runtimeFactory.js';
-import { prompt as runPromptLifecycle } from './Session.js';
+import {
+  forkSession as runForkLifecycle,
+  prompt as runPromptLifecycle,
+} from './Session.js';
 import type { SessionRuntimeFactory } from './factory.js';
 import type {
   ForkOptions,
@@ -90,7 +93,7 @@ export async function forkSession(options: ForkOptions): Promise<ISession> {
       'forkSession() requires session persistence. Remove persistSession: false and call session.fork() on a live session instead.',
     );
   }
-  return sessionRuntimeFactory.fork(options);
+  return runForkLifecycle(sessionRuntimeFactory, options);
 }
 
 export async function prompt(

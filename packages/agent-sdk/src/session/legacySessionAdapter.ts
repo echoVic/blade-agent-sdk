@@ -1,6 +1,5 @@
 import {
   createSession as createLegacySession,
-  forkSession as forkLegacySession,
   resumeSession as resumeLegacySession,
 } from '../../../../src/session/Session.js';
 import type { SessionRuntimeFactory } from './factory.js';
@@ -10,7 +9,10 @@ import type {
   SessionOptions,
   UserMessageContent,
 } from './types.js';
-import { prompt as runPromptLifecycle } from './Session.js';
+import {
+  forkSession as runForkLifecycle,
+  prompt as runPromptLifecycle,
+} from './Session.js';
 
 export function createLegacySessionRuntimeFactory(): SessionRuntimeFactory {
   const runtime: SessionRuntimeFactory = {
@@ -21,7 +23,7 @@ export function createLegacySessionRuntimeFactory(): SessionRuntimeFactory {
       return await resumeLegacySession(options as never) as unknown as ISession;
     },
     async fork(options) {
-      return await forkLegacySession(options as never) as unknown as ISession;
+      return runForkLifecycle(runtime, options);
     },
     async prompt(message, options) {
       return runPromptLifecycle(
