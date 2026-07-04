@@ -1,1 +1,74 @@
-export * from '../../../../src/core/index.js';
+// Browser-safe protocol, constants, and type exports.
+// Keep this entry free of Node-only runtime imports.
+
+export type {
+  AgentTrace,
+  ObservabilityOptions,
+  TraceEvent,
+  TracePayloadSummary,
+  TraceSink,
+  TraceSpan,
+  TraceSpanKind,
+  TraceStatus,
+} from '../../../../src/observability/index.js';
+export type {
+  ContextSnapshot,
+  RuntimeContext,
+  RuntimeContextPatch,
+  RuntimeHookEvent,
+  RuntimeHookRegistration,
+  RuntimeModelOverride,
+  RuntimePatch,
+  RuntimePatchScope,
+  RuntimePatchSkillInfo,
+  RuntimeToolDiscoveryPatch,
+  RuntimeToolPolicyPatch,
+} from '../../../../src/runtime/index.js';
+export type {
+  SendOptions,
+  StreamMessage,
+  StreamOptions,
+} from '../../../../src/session/types.js';
+export type {
+  ExecutionContext,
+  FunctionDeclaration,
+  ToolBehavior,
+  ToolConfig,
+  ToolDefinition,
+  ToolDescription,
+  ToolDescriptionResolver,
+  ToolEffect,
+  ToolError,
+  ToolExposureConfig,
+  ToolExposureMode,
+  ToolResult,
+  ToolSchema,
+} from '../../../../src/tools/types/index.js';
+export { ToolKind } from '../../../../src/tools/types/ToolKind.js';
+export type {
+  JsonObject,
+  JsonValue,
+  McpServerConfig,
+  ModelConfig,
+  OutputFormat,
+  PermissionsConfig,
+  ProviderType,
+  SandboxSettings,
+  TokenUsage,
+} from '../../../../src/types/common.js';
+export {
+  HookEvent,
+  MessageRole,
+  PermissionDecision,
+  PermissionMode,
+  StreamMessageType,
+} from '../../../../src/types/constants.js';
+export type {
+  CanUseTool,
+  CanUseToolOptions,
+  PermissionHandler,
+  PermissionHandlerRequest,
+  PermissionResult,
+  PermissionRuleValue,
+  PermissionUpdate,
+} from '../../../../src/types/permissions.js';

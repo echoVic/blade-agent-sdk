@@ -94,6 +94,20 @@ describe('monorepo topology', () => {
     expect(config).not.toContain('../../src/');
   });
 
+  it('owns browser-safe agent-sdk public entry source inside the package', () => {
+    for (const file of [
+      'packages/agent-sdk/src/browser/index.ts',
+      'packages/agent-sdk/src/browser/server-only-stub.ts',
+      'packages/agent-sdk/src/core/index.ts',
+    ]) {
+      const source = readFileSync(file, 'utf-8');
+
+      expect(source, `${file} should not be a root source wildcard forwarder`).not.toMatch(
+        /export \* from ['"]\.\.\/\.\.\/\.\.\/\.\.\/src\//,
+      );
+    }
+  });
+
   it('resolves workspace packages from source during type checking', () => {
     const agentTsconfig = readJson('packages/agent/tsconfig.json');
     const sdkTsconfig = readJson('packages/agent-sdk/tsconfig.json');
