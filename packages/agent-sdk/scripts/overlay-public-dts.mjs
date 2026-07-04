@@ -8,6 +8,14 @@ const overlays = [
   ['session/public-index.d.ts', 'session/index.d.ts'],
   ['tools/public-index.d.ts', 'tools/index.d.ts'],
 ];
+const publicDeclarationMaps = [
+  'core/index.d.ts.map',
+  'index.d.ts.map',
+  'local/index.d.ts.map',
+  'session/index.d.ts.map',
+  'tools/index.d.ts.map',
+  'types/permissions.d.ts.map',
+];
 
 for (const [sourcePath, targetPath] of overlays) {
   const source = join(dist, sourcePath);
@@ -17,4 +25,8 @@ for (const [sourcePath, targetPath] of overlays) {
   const rewritten = readFileSync(target, 'utf8').replaceAll('public-index.js', 'index.js');
   writeFileSync(target, rewritten);
   rmSync(source, { force: true });
+}
+
+for (const sourceMapPath of publicDeclarationMaps) {
+  rmSync(join(dist, sourceMapPath), { force: true });
 }

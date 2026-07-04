@@ -62,6 +62,15 @@ const packageSpecs = [
       'package/dist/core/index.d.ts',
       'package/dist/local/index.d.ts',
       'package/dist/tools/index.js',
+      'package/dist/types/permissions.d.ts',
+    ],
+    forbiddenFiles: [
+      'package/dist/core/index.d.ts.map',
+      'package/dist/index.d.ts.map',
+      'package/dist/local/index.d.ts.map',
+      'package/dist/session/index.d.ts.map',
+      'package/dist/tools/index.d.ts.map',
+      'package/dist/types/permissions.d.ts.map',
     ],
     forbiddenFileContents: [
       {
@@ -118,6 +127,16 @@ const packageSpecs = [
         file: 'package/dist/local/index.d.ts',
         forbidden: '../tools/builtin',
         message: 'local declarations must be emitted from package-local local entry source',
+      },
+      {
+        file: 'package/dist/types/permissions.d.ts',
+        forbidden: 'SensitiveFileDetector',
+        message: 'permission declarations must be emitted from package-local permission source',
+      },
+      {
+        file: 'package/dist/types/permissions.d.ts',
+        forbidden: './ToolEffects.js',
+        message: 'permission declarations must use package-local tool contracts',
       },
     ],
     imports: [
@@ -177,6 +196,12 @@ function verifyTarballContents(spec, tarballPath) {
   for (const file of spec.requiredFiles) {
     if (!entries.includes(file)) {
       throw new Error(`${spec.name} tarball is missing required file: ${file}`);
+    }
+  }
+
+  for (const file of spec.forbiddenFiles ?? []) {
+    if (entries.includes(file)) {
+      throw new Error(`${spec.name} tarball includes forbidden file: ${file}`);
     }
   }
 

@@ -11,10 +11,12 @@
     }
   },
   "files": [
+    "src/core/index.ts",
     "src/public-index.ts",
     "src/local/public-index.ts",
     "src/session/public-index.ts",
-    "src/tools/public-index.ts"
+    "src/tools/public-index.ts",
+    "src/types/permissions.ts"
   ],
   "include": [],
   "exclude": [

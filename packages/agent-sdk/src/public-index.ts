@@ -1,9 +1,4 @@
-import type { JsonObject, PermissionMode } from './core/index.js';
-import type {
-  CanUseTool,
-  PermissionHandler,
-  PermissionsConfig,
-} from './core/index.js';
+import type { JsonObject } from './core/index.js';
 
 export * from '@blade-ai/ai/deepseek';
 
@@ -35,19 +30,6 @@ export interface SubagentResult {
   output: string;
   error?: string;
 }
-
-export declare function createPermissionHandlerFromCanUseTool(
-  canUseTool: CanUseTool,
-): PermissionHandler;
-export declare function createModePermissionHandler(defaultMode?: PermissionMode): PermissionHandler;
-export declare function createRuleBasedPermissionHandler(config?: PermissionsConfig): PermissionHandler;
-export declare function createPathSafetyPermissionHandler(options?: {
-  explicitAllowRules?: string[];
-}): PermissionHandler;
-export declare function createCompositePermissionHandler(
-  handlers: Array<PermissionHandler | undefined>,
-  strategy?: 'first-wins' | 'deny-wins',
-): PermissionHandler;
 
 export type {
   AgentTrace,
@@ -90,6 +72,11 @@ export type {
   TraceStatus,
 } from './core/index.js';
 export {
+  createCompositePermissionHandler,
+  createModePermissionHandler,
+  createPathSafetyPermissionHandler,
+  createPermissionHandlerFromCanUseTool,
+  createRuleBasedPermissionHandler,
   HookEvent,
   MessageRole,
   PermissionDecision,

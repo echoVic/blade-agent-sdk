@@ -72,3 +72,10 @@ export type {
   PermissionRuleValue,
   PermissionUpdate,
 } from '../types/permissions.js';
+export {
+  createCompositePermissionHandler,
+  createModePermissionHandler,
+  createPathSafetyPermissionHandler,
+  createPermissionHandlerFromCanUseTool,
+  createRuleBasedPermissionHandler,
+} from '../types/permissions.js';

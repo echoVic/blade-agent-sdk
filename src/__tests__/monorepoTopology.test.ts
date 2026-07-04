@@ -13,6 +13,7 @@ interface PackageJson {
   compilerOptions?: {
     paths?: Record<string, string[]>;
   };
+  files?: string[];
   exclude?: string[];
 }
 
@@ -66,14 +67,18 @@ describe('monorepo topology', () => {
 
   it('overlays package-local public declarations for agent-sdk', () => {
     const sdk = readJson('packages/agent-sdk/package.json');
+    const publicDts = readJson('packages/agent-sdk/tsconfig.public-dts.json');
     const overlayScript = readFileSync('packages/agent-sdk/scripts/overlay-public-dts.mjs', 'utf-8');
 
     expect(existsSync('packages/agent-sdk/tsconfig.public-dts.json')).toBe(true);
     expect(existsSync('packages/agent-sdk/scripts/overlay-public-dts.mjs')).toBe(true);
     expect(sdk.scripts?.build).toContain('tsc -p tsconfig.public-dts.json');
     expect(sdk.scripts?.build).toContain('node scripts/overlay-public-dts.mjs');
+    expect(publicDts.files).toContain('src/core/index.ts');
+    expect(publicDts.files).toContain('src/types/permissions.ts');
     expect(overlayScript).toContain('local/public-index.d.ts');
     expect(overlayScript).toContain('public-index.js');
+    expect(overlayScript).toContain('types/permissions.d.ts.map');
   });
 
   it('builds the publishable agent-sdk package from its own package manifest', () => {
@@ -186,6 +191,18 @@ describe('monorepo topology', () => {
     expect(rootSource).toContain("from './session/index.js'");
     expect(rootSource).toContain("from './tools/index.js'");
     expect(rootSource).toContain("from './core/index.js'");
+  });
+
+  it('owns permission handler runtime factories inside agent-sdk', () => {
+    const rootSource = readFileSync('packages/agent-sdk/src/index.ts', 'utf-8');
+    const permissionsSource = readFileSync('packages/agent-sdk/src/types/permissions.ts', 'utf-8');
+
+    expect(rootSource).not.toContain("from '../../../src/types/permissions.js'");
+    expect(permissionsSource).toContain('createPermissionHandlerFromCanUseTool');
+    expect(permissionsSource).toContain('createModePermissionHandler');
+    expect(permissionsSource).toContain('createRuleBasedPermissionHandler');
+    expect(permissionsSource).toContain('createPathSafetyPermissionHandler');
+    expect(permissionsSource).toContain('createCompositePermissionHandler');
   });
 
   it('organizes the agent package around kernel, protocol, ports, state, and tracing modules', () => {

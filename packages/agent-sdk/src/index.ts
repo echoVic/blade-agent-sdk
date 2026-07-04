@@ -8,13 +8,6 @@ export type {
   SubagentResult,
   SubagentSource,
 } from '../../../src/agent/subagents/types.js';
-export {
-  createCompositePermissionHandler,
-  createModePermissionHandler,
-  createPathSafetyPermissionHandler,
-  createPermissionHandlerFromCanUseTool,
-  createRuleBasedPermissionHandler,
-} from '../../../src/types/permissions.js';
 export type {
   AgentTrace,
   CanUseTool,
@@ -55,6 +48,11 @@ export type {
   TraceStatus,
 } from './core/index.js';
 export {
+  createCompositePermissionHandler,
+  createModePermissionHandler,
+  createPathSafetyPermissionHandler,
+  createPermissionHandlerFromCanUseTool,
+  createRuleBasedPermissionHandler,
   HookEvent,
   MessageRole,
   PermissionDecision,
