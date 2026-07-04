@@ -1,16 +1,16 @@
 import { readFileSync } from 'node:fs';
 import { defineConfig } from 'tsup';
 
-const rootPackageJson = JSON.parse(readFileSync('../../package.json', 'utf-8')) as {
+const packageJson = JSON.parse(readFileSync('./package.json', 'utf-8')) as {
   dependencies?: Record<string, string>;
   optionalDependencies?: Record<string, string>;
   peerDependencies?: Record<string, string>;
 };
 
 const external = [
-  ...Object.keys(rootPackageJson.dependencies ?? {}),
-  ...Object.keys(rootPackageJson.optionalDependencies ?? {}),
-  ...Object.keys(rootPackageJson.peerDependencies ?? {}),
+  ...Object.keys(packageJson.dependencies ?? {}),
+  ...Object.keys(packageJson.optionalDependencies ?? {}),
+  ...Object.keys(packageJson.peerDependencies ?? {}),
   '@blade-ai/agent',
   '@blade-ai/ai',
 ];

@@ -62,6 +62,13 @@ describe('monorepo topology', () => {
     }
   });
 
+  it('builds the publishable agent-sdk package from its own package manifest', () => {
+    const config = readFileSync('packages/agent-sdk/tsup.config.ts', 'utf-8');
+
+    expect(config).toContain("readFileSync('./package.json'");
+    expect(config).not.toContain("readFileSync('../../package.json'");
+  });
+
   it('resolves workspace packages from source during type checking', () => {
     const agentTsconfig = readJson('packages/agent/tsconfig.json');
     const sdkTsconfig = readJson('packages/agent-sdk/tsconfig.json');

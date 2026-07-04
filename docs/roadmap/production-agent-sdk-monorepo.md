@@ -148,6 +148,7 @@ Status:
 - Root package is now a private workspace orchestrator.
 - `@blade-ai/agent-sdk` is the publishable session-first package and retains the current root, browser, server, session, tools, and local entrypoints during migration.
 - Package builds use package-local `tsup.config.ts` plus `tsconfig.build.json` so JS and declaration output are verified independently.
+- The publishable `@blade-ai/agent-sdk` build now derives external dependencies from `packages/agent-sdk/package.json`, not the private root orchestrator manifest, keeping package output tied to the package's own publish contract.
 
 ### Phase 2: Extract `@blade-ai/ai`
 
