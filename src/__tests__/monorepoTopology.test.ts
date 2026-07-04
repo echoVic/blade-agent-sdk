@@ -344,6 +344,7 @@ describe('monorepo topology', () => {
     expect(sessionRuntimeFactorySource).toContain("from './Session.js'");
     expect(sessionLifecycleSource).not.toContain('../../../../src/session/Session.js');
     expect(legacySessionAdapterSource).toContain('../../../../src/session/Session.js');
+    expect(legacySessionAdapterSource).not.toContain('prompt as promptLegacy');
     expect(sessionConfigSource).not.toContain('../../../../src/session/Session');
     expect(sessionConfigSource).not.toContain('../../../../src/types/common');
     expect(sessionStoreSource).not.toContain('../../../../src/session/SessionStore');

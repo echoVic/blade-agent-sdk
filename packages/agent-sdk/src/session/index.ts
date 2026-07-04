@@ -1,6 +1,7 @@
 import {
   createDefaultSessionRuntimeFactory,
 } from './runtimeFactory.js';
+import { prompt as runPromptLifecycle } from './Session.js';
 import type { SessionRuntimeFactory } from './factory.js';
 import type {
   ForkOptions,
@@ -96,5 +97,5 @@ export async function prompt(
   message: UserMessageContent,
   options: SessionOptions,
 ): Promise<PromptResult> {
-  return sessionRuntimeFactory.prompt(message, options);
+  return runPromptLifecycle(sessionRuntimeFactory, message, options);
 }

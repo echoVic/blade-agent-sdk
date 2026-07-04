@@ -8,7 +8,6 @@ import {
 } from '../../packages/agent-sdk/src/session/index.js';
 import type {
   ISession,
-  PromptResult,
   SessionOptions,
   UserMessageContent,
 } from '../../packages/agent-sdk/src/session/index.js';
@@ -50,12 +49,26 @@ function createFakeSession(id: string): ISession {
 }
 
 describe('agent-sdk session runtime factory', () => {
-  it('routes create, resume, fork, and prompt through package-local session factory', async () => {
+  it('routes create, resume, and fork through the package-local session factory', async () => {
     const calls: string[] = [];
+    let createCalls = 0;
+    const fakePromptSession = createFakeSession('prompted');
+    fakePromptSession.send = async (message) => {
+      calls.push(`send:${message}`);
+    };
+    fakePromptSession.stream = async function* () {
+      yield {
+        type: 'result',
+        subtype: 'success',
+        content: 'factory prompt',
+        sessionId: 'prompted',
+      };
+    };
     const restore = setSessionRuntimeFactory({
       async create(receivedOptions) {
         calls.push(`create:${receivedOptions.model}`);
-        return createFakeSession('created');
+        createCalls += 1;
+        return createCalls === 1 ? createFakeSession('created') : fakePromptSession;
       },
       async resume(receivedOptions) {
         calls.push(`resume:${receivedOptions.sessionId}`);
@@ -65,20 +78,8 @@ describe('agent-sdk session runtime factory', () => {
         calls.push(`fork:${receivedOptions.sessionId}:${receivedOptions.messageId ?? ''}`);
         return createFakeSession(`forked:${receivedOptions.sessionId}`);
       },
-      async prompt(message: UserMessageContent, receivedOptions) {
-        calls.push(`prompt:${receivedOptions.model}:${message}`);
-        return {
-          result: 'factory prompt',
-          toolCalls: [],
-          usage: {
-            inputTokens: 0,
-            outputTokens: 0,
-            totalTokens: 0,
-            maxContextTokens: 0,
-          },
-          duration: 0,
-          turnsCount: 0,
-        } satisfies PromptResult;
+      async prompt(_message: UserMessageContent, _receivedOptions) {
+        throw new Error('runtime prompt should not be called');
       },
     });
 
@@ -101,7 +102,90 @@ describe('agent-sdk session runtime factory', () => {
       'create:test-model',
       'resume:old',
       'fork:old:m1',
-      'prompt:test-model:hello',
+      'create:test-model',
+      'send:hello',
     ]);
+  });
+
+  it('implements prompt from package-local session lifecycle instead of delegating to runtime prompt', async () => {
+    const calls: string[] = [];
+    const fakeSession = createFakeSession('created');
+    fakeSession.send = async (message) => {
+      calls.push(`send:${message}`);
+    };
+    fakeSession.stream = async function* () {
+      calls.push('stream');
+      yield { type: 'turn_start', turn: 1, sessionId: 'created' };
+      yield { type: 'content', delta: 'hello ', sessionId: 'created' };
+      yield {
+        type: 'tool_use',
+        id: 'tool-1',
+        name: 'lookup',
+        input: { query: 'blade' },
+        sessionId: 'created',
+      };
+      yield {
+        type: 'tool_result',
+        id: 'tool-1',
+        name: 'lookup',
+        output: 'found',
+        sessionId: 'created',
+      };
+      yield {
+        type: 'usage',
+        usage: {
+          inputTokens: 2,
+          outputTokens: 3,
+          totalTokens: 5,
+          maxContextTokens: 128000,
+        },
+        sessionId: 'created',
+      };
+      yield { type: 'result', subtype: 'success', content: 'hello world', sessionId: 'created' };
+    };
+    fakeSession.close = async () => {
+      calls.push('close');
+    };
+
+    const restore = setSessionRuntimeFactory({
+      async create(receivedOptions) {
+        calls.push(`create:${receivedOptions.model}`);
+        return fakeSession;
+      },
+      async resume() {
+        throw new Error('resume should not be called');
+      },
+      async fork() {
+        throw new Error('fork should not be called');
+      },
+      async prompt() {
+        throw new Error('runtime prompt should not be called');
+      },
+    });
+
+    try {
+      await expect(prompt('hello', options)).resolves.toMatchObject({
+        result: 'hello world',
+        toolCalls: [
+          {
+            id: 'tool-1',
+            name: 'lookup',
+            input: { query: 'blade' },
+            output: 'found',
+          },
+        ],
+        usage: {
+          inputTokens: 2,
+          outputTokens: 3,
+          totalTokens: 5,
+          maxContextTokens: 128000,
+        },
+        turnsCount: 1,
+      });
+    } finally {
+      restore();
+    }
+
+    expect(calls).toEqual(['create:test-model', 'send:hello', 'stream', 'close']);
   });
 });
