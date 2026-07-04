@@ -6,9 +6,7 @@
     "noEmit": false,
     "emitDeclarationOnly": true,
     "paths": {
-      "@/*": ["../../src/*"],
-      "@blade-ai/agent": ["../agent/src/index.ts"],
-      "@blade-ai/ai": ["../ai/src/index.ts"]
+      "@/*": ["../../src/*"]
     }
   },
   "include": ["../../src/**/*"],

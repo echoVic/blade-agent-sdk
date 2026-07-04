@@ -53,4 +53,5 @@ export interface AiModelPort {
   stream(request: AiModelRequest): AsyncIterable<AiStreamEvent>;
 }
 
+export * from './chat/index.js';
 export * from './retry/index.js';

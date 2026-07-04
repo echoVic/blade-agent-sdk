@@ -23,6 +23,7 @@
     "types": ["node"],
     "paths": {
       "@blade-ai/ai": ["./packages/ai/src/index.ts"],
+      "@blade-ai/ai/chat": ["./packages/ai/src/chat/index.ts"],
       "@blade-ai/ai/retry": ["./packages/ai/src/retry/index.ts"],
       "@/*": ["./src/*"]
     },

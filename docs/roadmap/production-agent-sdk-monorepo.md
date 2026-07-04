@@ -181,6 +181,8 @@ Status:
 - First extraction increment complete: retry policy now lives in `@blade-ai/ai/retry`.
 - The legacy root path `src/services/RetryPolicy.ts` re-exports the package implementation so existing runtime code keeps working during migration.
 - `@blade-ai/ai` now publishes a `./retry` subpath with JS and declaration output.
+- Chat protocol types now live in `@blade-ai/ai/chat`, including `ChatConfig`, `Message`, `UsageInfo`, `StreamChunk`, `ChatResponse`, and `IChatService`.
+- The legacy root `src/services/ChatServiceInterface.ts` now re-exports chat protocol types and keeps only the SDK-local `createChatServiceAsync()` factory.
 
 ### Phase 3: Extract `@blade-ai/agent`
 

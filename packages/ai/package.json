@@ -11,6 +11,10 @@
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
     },
+    "./chat": {
+      "types": "./dist/chat/index.d.ts",
+      "import": "./dist/chat/index.js"
+    },
     "./retry": {
       "types": "./dist/retry/index.d.ts",
       "import": "./dist/retry/index.js"
@@ -26,6 +30,7 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@types/json-schema": "^7.0.15",
     "ai": "^6.0.168"
   },
   "devDependencies": {

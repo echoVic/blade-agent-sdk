@@ -7,13 +7,14 @@ import { createOpenAICompatible } from '@ai-sdk/openai-compatible';
 import { generateText, jsonSchema, type LanguageModel, Output, streamText } from 'ai';
 import type { JSONSchema7 } from 'json-schema';
 import { type InternalLogger, LogCategory, NOOP_LOGGER } from '../logging/Logger.js';
-import type { JsonObject, JsonValue, OutputFormat } from '../types/common.js';
+import type { JsonObject, JsonValue } from '../types/common.js';
 import type {
   ChatConfig,
   ChatResponse,
   ContentPart,
   IChatService,
   Message,
+  OutputFormat,
   SideQueryOptions,
   StreamChunk,
   ToolCall,
