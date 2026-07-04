@@ -310,7 +310,7 @@ class Session implements ISession {
       createContextSnapshot(this.sessionId, nanoid(), this.defaultContext, sendOptions?.context);
     runtime.prepareTurn(snapshot);
 
-    if (options?.experimentalKernel) {
+    if (this.shouldUseKernelStream(options)) {
       yield* this.streamExperimentalKernelTurn({
         runtime,
         message,
@@ -629,6 +629,19 @@ class Session implements ISession {
       signalCleanup?.();
       this.abortController = null;
     }
+  }
+
+  private shouldUseKernelStream(options?: StreamOptions): boolean {
+    if (options?.runtime === 'legacy') {
+      return false;
+    }
+    if (options?.runtime === 'kernel') {
+      return true;
+    }
+    if (options?.experimentalKernel === false) {
+      return false;
+    }
+    return true;
   }
 
   private async *streamExperimentalKernelTurn(options: {

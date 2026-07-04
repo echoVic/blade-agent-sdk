@@ -211,6 +211,11 @@ export interface SendOptions {
 
 export interface StreamOptions {
   includeThinking?: boolean;
+  runtime?: 'kernel' | 'legacy';
+  /**
+   * @deprecated Kernel runtime is now the default. Use `runtime: 'legacy'`
+   * only when explicitly exercising the old session loop.
+   */
   experimentalKernel?: boolean;
 }
 

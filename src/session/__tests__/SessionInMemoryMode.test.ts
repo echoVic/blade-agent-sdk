@@ -67,12 +67,12 @@ describe('Session in-memory mode', () => {
     });
 
     await session.send('first');
-    for await (const _event of session.stream()) {
+    for await (const _event of session.stream({ runtime: 'legacy' })) {
       // Drain stream.
     }
 
     await session.send('second');
-    for await (const _event of session.stream()) {
+    for await (const _event of session.stream({ runtime: 'legacy' })) {
       // Drain stream.
     }
 

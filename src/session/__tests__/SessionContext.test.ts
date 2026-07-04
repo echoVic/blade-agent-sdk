@@ -96,7 +96,7 @@ describe('Session runtime context', () => {
       },
     });
 
-    for await (const _event of session.stream()) {
+    for await (const _event of session.stream({ runtime: 'legacy' })) {
       // Drain the stream to completion.
     }
 
@@ -176,7 +176,7 @@ describe('Session runtime context', () => {
       { type: 'image_url', image_url: { url: 'data:image/png;base64,hook' } },
     ] satisfies ContentPart[]);
 
-    for await (const _event of session.stream()) {
+    for await (const _event of session.stream({ runtime: 'legacy' })) {
       // Drain the stream to completion.
     }
 
@@ -282,7 +282,7 @@ describe('Session runtime context', () => {
     await session.send('hello');
 
     const events: string[] = [];
-    for await (const event of session.stream()) {
+    for await (const event of session.stream({ runtime: 'legacy' })) {
       events.push(event.type);
     }
 
@@ -377,7 +377,7 @@ describe('Session runtime context', () => {
     await session.close();
   });
 
-  it('should stream through the kernel when experimentalKernel is enabled', async () => {
+  it('should stream through the kernel by default', async () => {
     kernelModelGenerate.mockClear();
     createVercelModelPort.mockClear();
     createAgent.mockResolvedValueOnce({
@@ -398,7 +398,7 @@ describe('Session runtime context', () => {
     await session.send('hello kernel');
 
     const events = [];
-    for await (const event of session.stream({ experimentalKernel: true })) {
+    for await (const event of session.stream()) {
       events.push(event);
     }
 
@@ -439,7 +439,7 @@ describe('Session runtime context', () => {
     await session.close();
   });
 
-  it('should expose session tools to the kernel model when experimentalKernel is enabled', async () => {
+  it('should expose session tools to the kernel model when kernel runtime is enabled', async () => {
     kernelModelGenerate.mockClear();
     createVercelModelPort.mockClear();
     const lookupWeatherTool: ToolDefinition<{ city: string }> = {
@@ -470,7 +470,7 @@ describe('Session runtime context', () => {
 
     await session.send('what is the weather in Paris?');
 
-    for await (const _event of session.stream({ experimentalKernel: true })) {
+    for await (const _event of session.stream({ runtime: 'kernel' })) {
       // Drain the stream to completion.
     }
 
@@ -548,7 +548,7 @@ describe('Session runtime context', () => {
     await session.send('what is the weather in Paris?');
 
     const events = [];
-    for await (const event of session.stream({ experimentalKernel: true })) {
+    for await (const event of session.stream({ runtime: 'kernel' })) {
       events.push(event);
     }
 
@@ -714,7 +714,7 @@ describe('Session runtime context', () => {
     await session.send('remember weather permission');
 
     const events = [];
-    for await (const event of session.stream({ experimentalKernel: true })) {
+    for await (const event of session.stream({ runtime: 'kernel' })) {
       events.push(event);
     }
 
@@ -797,7 +797,7 @@ describe('Session runtime context', () => {
     controller.abort('user cancelled');
 
     const events = [];
-    for await (const event of session.stream({ experimentalKernel: true })) {
+    for await (const event of session.stream({ runtime: 'kernel' })) {
       events.push(event);
     }
 
@@ -838,7 +838,7 @@ describe('Session runtime context', () => {
     });
 
     await session.send('record kernel usage');
-    for await (const _event of session.stream({ experimentalKernel: true })) {
+    for await (const _event of session.stream({ runtime: 'kernel' })) {
       // Drain stream.
     }
 

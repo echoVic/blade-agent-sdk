@@ -76,7 +76,7 @@ describe('Session observability', () => {
     });
 
     await session.send('prompt contains secret-prompt');
-    for await (const _event of session.stream()) {
+    for await (const _event of session.stream({ runtime: 'legacy' })) {
       // Drain stream.
     }
 
@@ -111,7 +111,7 @@ describe('Session observability', () => {
     });
 
     await session.send('prompt contains visible-prompt');
-    for await (const _event of session.stream()) {
+    for await (const _event of session.stream({ runtime: 'legacy' })) {
       // Drain stream.
     }
 
