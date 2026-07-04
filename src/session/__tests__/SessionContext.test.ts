@@ -650,6 +650,134 @@ describe('Session runtime context', () => {
     await session.close();
   });
 
+  it('should emit permission update effects from session tools through the kernel stream path', async () => {
+    kernelModelGenerate.mockReset();
+    kernelModelGenerate
+      .mockResolvedValueOnce({
+        content: '',
+        toolCalls: [
+          {
+            id: 'call_weather_permissions',
+            name: 'LookupWeather',
+            input: { city: 'Paris' },
+          },
+        ],
+        finishReason: 'tool-calls',
+      })
+      .mockResolvedValueOnce({
+        content: 'Permission remembered.',
+        finishReason: 'stop',
+      });
+    createVercelModelPort.mockClear();
+    const lookupWeatherTool: ToolDefinition<{ city: string }> = {
+      name: 'LookupWeather',
+      description: 'Look up weather for a city',
+      parameters: {
+        type: 'object',
+        properties: {
+          city: { type: 'string' },
+        },
+        required: ['city'],
+      },
+      async execute({ city }) {
+        return {
+          success: true,
+          llmContent: `weather:${city}:sunny`,
+          effects: [
+            {
+              type: 'permissionUpdates',
+              updates: [
+                {
+                  type: 'addRules',
+                  behavior: 'allow',
+                  rules: [{ toolName: 'LookupWeather', ruleContent: city }],
+                },
+              ],
+            },
+          ],
+        };
+      },
+    };
+    const storagePath = mkdtempSync(join(tmpdir(), 'session-context-kernel-permission-effects-'));
+    const session = await createSession({
+      provider: { type: 'openai-compatible', apiKey: 'test-key' },
+      model: 'gpt-4o-mini',
+      storagePath,
+      allowedTools: ['LookupWeather'],
+      tools: [lookupWeatherTool as never],
+      observability: {
+        enabled: true,
+        capturePayloads: true,
+      },
+    });
+
+    await session.send('remember weather permission');
+
+    const events = [];
+    for await (const event of session.stream({ experimentalKernel: true })) {
+      events.push(event);
+    }
+
+    expect(events).toEqual([
+      { type: 'turn_start', turn: 1, sessionId: session.sessionId },
+      {
+        type: 'tool_use',
+        id: 'call_weather_permissions',
+        name: 'LookupWeather',
+        input: { city: 'Paris' },
+        sessionId: session.sessionId,
+      },
+      {
+        type: 'tool_permission_updates',
+        id: 'call_weather_permissions',
+        name: 'LookupWeather',
+        updates: [
+          {
+            type: 'addRules',
+            behavior: 'allow',
+            rules: [{ toolName: 'LookupWeather', ruleContent: 'Paris' }],
+          },
+        ],
+        sessionId: session.sessionId,
+      },
+      {
+        type: 'tool_result',
+        id: 'call_weather_permissions',
+        name: 'LookupWeather',
+        output: 'weather:Paris:sunny',
+        sessionId: session.sessionId,
+      },
+      { type: 'content', delta: 'Permission remembered.', sessionId: session.sessionId },
+      { type: 'turn_end', turn: 1, sessionId: session.sessionId },
+      {
+        type: 'result',
+        subtype: 'success',
+        content: 'Permission remembered.',
+        sessionId: session.sessionId,
+      },
+    ]);
+    expect(session.getLastTrace()?.events).toContainEqual(
+      expect.objectContaining({
+        type: 'tool_permission_updates',
+        data: expect.objectContaining({
+          toolCallId: expect.objectContaining({ value: 'call_weather_permissions' }),
+          name: expect.objectContaining({ value: 'LookupWeather' }),
+          updates: expect.objectContaining({
+            value: [
+              {
+                type: 'addRules',
+                behavior: 'allow',
+                rules: [{ toolName: 'LookupWeather', ruleContent: 'Paris' }],
+              },
+            ],
+          }),
+        }),
+      }),
+    );
+
+    await session.close();
+  });
+
   it('should preserve the pending user message when the kernel stream is aborted before model execution', async () => {
     kernelModelGenerate.mockClear();
     createVercelModelPort.mockClear();

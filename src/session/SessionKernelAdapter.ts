@@ -1,7 +1,9 @@
 import type { AgentToolCall, AgentToolPort, AgentToolResult } from '@blade-ai/agent';
 import type { ExecutionPipeline } from '../tools/execution/ExecutionPipeline.js';
 import type { ToolRegistry } from '../tools/registry/ToolRegistry.js';
+import { normalizeToolEffects } from '../tools/types/ToolEffects.js';
 import type { ExecutionContext } from '../tools/types/index.js';
+import type { ToolResult } from '../tools/types/ToolResult.js';
 import type { JsonObject, JsonValue } from '../types/common.js';
 
 export interface KernelToolPortOptions {
@@ -37,10 +39,22 @@ export function createKernelToolPort(options: KernelToolPortOptions): AgentToolP
         id: toolCall.id,
         name: toolCall.name,
         output: normalizeKernelToolOutput(result.llmContent),
+        ...toKernelToolEffects(result),
         ...(!result.success ? { isError: true } : {}),
       } satisfies AgentToolResult;
     },
   };
+}
+
+function toKernelToolEffects(result: ToolResult): Pick<AgentToolResult, 'effects'> {
+  const effects = normalizeToolEffects(result)
+    .filter((effect) => effect.type === 'permissionUpdates')
+    .map((effect) => ({
+      type: 'permissionUpdates' as const,
+      updates: effect.updates,
+    }));
+
+  return effects.length > 0 ? { effects } : {};
 }
 
 function normalizeKernelToolOutput(output: string | object): string | JsonObject {

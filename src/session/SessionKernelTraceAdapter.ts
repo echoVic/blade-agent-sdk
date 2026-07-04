@@ -50,6 +50,13 @@ export function createKernelTracePort(options: KernelTracePortOptions): AgentTra
           );
           toolSpans.delete(event.toolCall.id);
           break;
+        case 'tool_permission_updates':
+          options.recorder.addEvent('tool_permission_updates', {
+            toolCallId: event.toolCall.id,
+            name: event.toolCall.name,
+            updates: event.updates,
+          }, toolSpans.get(event.toolCall.id));
+          break;
         case 'usage':
           options.recorder.recordUsage(toTokenUsage(
             event.usage,

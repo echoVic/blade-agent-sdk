@@ -176,6 +176,97 @@ describe('AgentKernel', () => {
     ]);
   });
 
+  it('emits permission update effects from tool results before the tool result event', async () => {
+    const generate = vi.fn(async (_request: ModelRequest): Promise<ModelResponse> => {
+      if (generate.mock.calls.length === 1) {
+        return {
+          content: '',
+          toolCalls: [
+            {
+              id: 'call_search',
+              name: 'Search',
+              input: { q: 'blade' },
+            },
+          ],
+          finishReason: 'tool-calls',
+        };
+      }
+
+      return {
+        content: 'Permission updated',
+        finishReason: 'stop',
+      };
+    });
+    const model: ModelPort = {
+      generate,
+      stream: async function* () {},
+    };
+    const tools: AgentToolPort = {
+      list: async () => [],
+      execute: async () => ({
+        id: 'call_search',
+        name: 'Search',
+        output: 'Blade docs result',
+        effects: [
+          {
+            type: 'permissionUpdates',
+            updates: [
+              {
+                type: 'addRules',
+                behavior: 'allow',
+                rules: [{ toolName: 'Search', ruleContent: 'q=blade' }],
+              },
+            ],
+          },
+        ],
+      }),
+    };
+
+    const kernel = new AgentKernel({ model, tools });
+
+    const events = [];
+    for await (const event of kernel.runTurn({ input: 'Find Blade docs' })) {
+      events.push(event);
+    }
+
+    expect(events).toEqual([
+      { type: 'tool_use', toolCall: { id: 'call_search', name: 'Search', input: { q: 'blade' } } },
+      {
+        type: 'tool_permission_updates',
+        toolCall: { id: 'call_search', name: 'Search', input: { q: 'blade' } },
+        updates: [
+          {
+            type: 'addRules',
+            behavior: 'allow',
+            rules: [{ toolName: 'Search', ruleContent: 'q=blade' }],
+          },
+        ],
+      },
+      {
+        type: 'tool_result',
+        result: {
+          id: 'call_search',
+          name: 'Search',
+          output: 'Blade docs result',
+          effects: [
+            {
+              type: 'permissionUpdates',
+              updates: [
+                {
+                  type: 'addRules',
+                  behavior: 'allow',
+                  rules: [{ toolName: 'Search', ruleContent: 'q=blade' }],
+                },
+              ],
+            },
+          ],
+        },
+      },
+      { type: 'content', delta: 'Permission updated' },
+      { type: 'result', content: 'Permission updated', finishReason: 'stop' },
+    ]);
+  });
+
   it('checks permission before executing an allowed tool call', async () => {
     const generate = vi.fn(async (_request: ModelRequest): Promise<ModelResponse> => {
       if (generate.mock.calls.length === 1) {

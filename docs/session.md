@@ -267,7 +267,7 @@ interface StreamOptions {
 }
 ```
 
-`experimentalKernel` 是迁移期的受控开关。开启后仍然使用 `send()` + `stream()` 的 session-first API，但本次 turn 会通过 `@blade-ai/agent` 的运行时无关 kernel 执行，并复用 session 的模型配置、工具定义与执行端口、HookRuntime、ContextManager 和 trace recorder。工具调用会继续以 `tool_use` / `tool_result` 事件流出，并在 `session.messages` 中保留 assistant `tool_calls` 与 tool `tool_call_id` / `name` 历史。kernel trace 的 usage 会使用与 stream `usage` 事件一致的 `maxContextTokens`。如果 `send()` 传入的 `AbortSignal` 在模型执行前已取消，kernel 路径会发出带 `ABORTED` code 的 `error` 事件、保留已消费的 user message，并把 trace 标记为 `aborted`。默认值为 `false`，生产流量建议等 kernel 路径覆盖更多 legacy loop 语义后再整体切换。
+`experimentalKernel` 是迁移期的受控开关。开启后仍然使用 `send()` + `stream()` 的 session-first API，但本次 turn 会通过 `@blade-ai/agent` 的运行时无关 kernel 执行，并复用 session 的模型配置、工具定义与执行端口、HookRuntime、ContextManager 和 trace recorder。工具调用会继续以 `tool_use` / `tool_result` 事件流出，工具产生的权限更新会继续以 `tool_permission_updates` 事件流出并写入 trace，并在 `session.messages` 中保留 assistant `tool_calls` 与 tool `tool_call_id` / `name` 历史。kernel trace 的 usage 会使用与 stream `usage` 事件一致的 `maxContextTokens`。如果 `send()` 传入的 `AbortSignal` 在模型执行前已取消，kernel 路径会发出带 `ABORTED` code 的 `error` 事件、保留已消费的 user message，并把 trace 标记为 `aborted`。默认值为 `false`，生产流量建议等 kernel 路径覆盖更多 legacy loop 语义后再整体切换。
 
 ### StreamMessage 类型
 

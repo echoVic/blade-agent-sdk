@@ -4,6 +4,7 @@ import {
   AgentKernel,
   type AgentHookPort,
   type AgentModelRequestDefaults,
+  type AgentPermissionUpdate,
   type AgentStreamEvent,
   type AgentStorePort,
   type AgentToolCall,
@@ -46,6 +47,7 @@ import {
   createPermissionHandlerFromCanUseTool,
   type PermissionHandler,
   type PermissionResult,
+  type PermissionUpdate,
 } from '../types/permissions.js';
 import type {
   AgentDefinition,
@@ -322,6 +324,15 @@ export class SessionRuntime {
           name: event.result.name,
           output: event.result.output,
           ...(event.result.isError ? { isError: true } : {}),
+          sessionId: this.sessionId,
+        };
+        break;
+      case 'tool_permission_updates':
+        yield {
+          type: 'tool_permission_updates',
+          id: event.toolCall.id,
+          name: event.toolCall.name,
+          updates: toSessionPermissionUpdates(event.updates),
           sessionId: this.sessionId,
         };
         break;
@@ -661,4 +672,24 @@ function serverNameFromTool(tool: Tool): string {
 
   const match = tool.name.match(/^mcp__([^_]+)__/);
   return match?.[1] ?? 'mcp';
+}
+
+function toSessionPermissionUpdates(updates: readonly AgentPermissionUpdate[]): PermissionUpdate[] {
+  return updates.map((update) => {
+    const rules = update.rules.map((rule) => ({
+      toolName: rule.toolName,
+      ...(rule.ruleContent !== undefined ? { ruleContent: rule.ruleContent } : {}),
+    }));
+
+    return update.type === 'addRules'
+      ? {
+          type: 'addRules' as const,
+          behavior: update.behavior,
+          rules,
+        }
+      : {
+          type: 'removeRules' as const,
+          rules,
+        };
+  });
 }
