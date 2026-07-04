@@ -1,0 +1,54 @@
+export type JsonPrimitive = string | number | boolean | null;
+export type JsonValue = JsonPrimitive | JsonObject | JsonValue[];
+export type JsonObject = { [key: string]: JsonValue };
+
+export type AiProvider =
+  | 'anthropic'
+  | 'azure-openai'
+  | 'deepseek'
+  | 'gemini'
+  | 'openai'
+  | 'openai-compatible';
+
+export interface AiUsage {
+  inputTokens: number;
+  outputTokens: number;
+  totalTokens: number;
+  reasoningTokens?: number;
+  cacheCreationInputTokens?: number;
+  cacheReadInputTokens?: number;
+  cacheMissInputTokens?: number;
+  billableInputTokens?: number;
+}
+
+export interface AiMessage {
+  role: 'system' | 'user' | 'assistant' | 'tool';
+  content: string;
+  name?: string;
+  metadata?: JsonValue;
+}
+
+export interface AiToolCall {
+  id: string;
+  name: string;
+  input: JsonObject;
+}
+
+export type AiStreamEvent =
+  | { type: 'content_delta'; delta: string }
+  | { type: 'reasoning_delta'; delta: string }
+  | { type: 'tool_call'; toolCall: AiToolCall }
+  | { type: 'usage'; usage: AiUsage }
+  | { type: 'done'; finishReason?: string };
+
+export interface AiModelRequest {
+  messages: AiMessage[];
+  temperature?: number;
+  maxOutputTokens?: number;
+  providerOptions?: JsonObject;
+  signal?: AbortSignal;
+}
+
+export interface AiModelPort {
+  stream(request: AiModelRequest): AsyncIterable<AiStreamEvent>;
+}

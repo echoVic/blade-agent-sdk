@@ -128,6 +128,13 @@ Commit:
 
 - `build: introduce ai agent agent-sdk workspace skeleton`
 
+Status:
+
+- Implemented workspace skeleton with `packages/ai`, `packages/agent`, and `packages/agent-sdk`.
+- Root package is now a private workspace orchestrator.
+- `@blade-ai/agent-sdk` is the publishable session-first package and retains the current root, browser, server, session, tools, and local entrypoints during migration.
+- Package builds use package-local `tsup.config.ts` plus `tsconfig.build.json` so JS and declaration output are verified independently.
+
 ### Phase 2: Extract `@blade-ai/ai`
 
 Objective: Move model/provider responsibilities behind a clean AI package.

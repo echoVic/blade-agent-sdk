@@ -4,6 +4,9 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+const packageRoot = existsSync(join(repoRoot, 'packages/agent-sdk/package.json'))
+  ? join(repoRoot, 'packages/agent-sdk')
+  : repoRoot;
 const disallowedRuntimeImports = [
   'node:',
   'child_process',
@@ -14,7 +17,7 @@ const disallowedRuntimeImports = [
 
 function run(command, args, options = {}) {
   const result = spawnSync(command, args, {
-    cwd: repoRoot,
+    cwd: packageRoot,
     encoding: 'utf8',
     stdio: ['ignore', 'pipe', 'pipe'],
     ...options,
@@ -47,7 +50,7 @@ function assertNoDisallowedImports(filePath) {
 }
 
 function collectStaticImports(entryPath, seen = new Set()) {
-  const absolutePath = resolve(repoRoot, entryPath);
+  const absolutePath = resolve(packageRoot, entryPath);
   if (seen.has(absolutePath)) return seen;
   seen.add(absolutePath);
 
@@ -100,7 +103,7 @@ verifyBrowserSafeDist('dist/browser/server-only-stub.js');
 verifyBrowserSafeDist('dist/core/index.js');
 verifyBrowserSafeDist('dist/tools/index.js');
 
-const tempDir = mkdtempSync(join(repoRoot, '.tmp-entrypoints-'));
+const tempDir = mkdtempSync(join(packageRoot, '.tmp-entrypoints-'));
 try {
   const entry = join(tempDir, 'client-entry.ts');
   const output = join(tempDir, 'bundle.js');
@@ -122,7 +125,7 @@ try {
     '--conditions=browser',
     '--format=esm',
     `--outfile=${output}`,
-  ]);
+  ], { cwd: repoRoot });
   assertNoDisallowedImports(output);
 } finally {
   rmSync(tempDir, { recursive: true, force: true });

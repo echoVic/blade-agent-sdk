@@ -1,0 +1,25 @@
+{
+  "extends": "../../tsconfig.json",
+  "compilerOptions": {
+    "rootDir": "../../src",
+    "outDir": "./dist",
+    "noEmit": false,
+    "emitDeclarationOnly": true,
+    "paths": {
+      "@/*": ["../../src/*"],
+      "@blade-ai/agent": ["../agent/src/index.ts"],
+      "@blade-ai/ai": ["../ai/src/index.ts"]
+    }
+  },
+  "include": ["../../src/**/*"],
+  "exclude": [
+    "node_modules",
+    "dist",
+    "**/*.test.ts",
+    "**/*.spec.ts",
+    "**/__tests__/**",
+    "../../src/**/*.test.ts",
+    "../../src/**/*.spec.ts",
+    "../../src/**/__tests__/**"
+  ]
+}

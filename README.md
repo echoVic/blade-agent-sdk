@@ -30,6 +30,16 @@ pnpm add @blade-ai/agent-sdk
 
 > **ESM-only**：本包为纯 ESM（`"type": "module"`），仅通过 `import` 使用，不支持 CommonJS `require()`（否则会报 `ERR_PACKAGE_PATH_NOT_EXPORTED`）。请确保项目为 ESM（package.json 设 `"type": "module"`）或使用支持 ESM 的运行时/打包器。
 
+## Monorepo 包结构
+
+仓库采用 pnpm workspace。根目录 `package.json` 是私有 orchestrator，不直接发布；npm 发布包位于 `packages/agent-sdk`。
+
+- `packages/ai`：provider-agnostic 的模型、stream event、usage 和 provider option 基础接口
+- `packages/agent`：运行时无关的 agent kernel、tool port 和 agent stream 协议基础接口
+- `packages/agent-sdk`：session-first 产品 SDK，发布为 `@blade-ai/agent-sdk`，组合 agent/ai 以及 server/local 能力
+
+当前重构仍处在迁移阶段：`@blade-ai/agent-sdk` 保持原有 session-first 入口和 subpath exports，内部实现会逐步从旧 root `src` 拆入 `ai`、`agent` 和 `agent-sdk` 包。
+
 ## 快速开始
 
 ```ts
@@ -166,9 +176,12 @@ README 只保留概览。详细用法请直接看文档：
 ```bash
 pnpm install
 pnpm run build
+pnpm -r run build
 pnpm test
 pnpm run type-check
+pnpm -r run type-check
 pnpm run lint
+pnpm run verify:entrypoints
 pnpm run docs:dev
 ```
 

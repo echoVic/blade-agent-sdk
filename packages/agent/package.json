@@ -1,0 +1,32 @@
+{
+  "name": "@blade-ai/agent",
+  "version": "0.0.0",
+  "private": false,
+  "description": "Runtime-independent Blade Agent kernel contracts",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsup --config tsup.config.ts && tsc -p tsconfig.build.json",
+    "type-check": "tsc --noEmit -p tsconfig.json",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@blade-ai/ai": "workspace:*"
+  },
+  "devDependencies": {
+    "tsup": "^8.5.1",
+    "typescript": "^6.0.3",
+    "vitest": "^3.2.4"
+  }
+}

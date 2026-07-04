@@ -61,7 +61,7 @@ describe('package entrypoints', () => {
 
   it('declares the browser/server entrypoint verification script', () => {
     expect(packageJson.scripts['verify:entrypoints']).toBe(
-      'pnpm run build && node scripts/verify-entrypoints.mjs',
+      'pnpm run build && pnpm --filter @blade-ai/agent-sdk run build && node scripts/verify-entrypoints.mjs',
     );
     expect(existsSync(join(process.cwd(), 'scripts/verify-entrypoints.mjs'))).toBe(true);
   });

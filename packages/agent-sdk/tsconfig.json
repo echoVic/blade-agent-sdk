@@ -1,0 +1,14 @@
+{
+  "extends": "../../tsconfig.json",
+  "compilerOptions": {
+    "rootDir": "../..",
+    "outDir": "./dist",
+    "noEmit": true,
+    "paths": {
+      "@/*": ["../../src/*"],
+      "@blade-ai/agent": ["../agent/src/index.ts"],
+      "@blade-ai/ai": ["../ai/src/index.ts"]
+    }
+  },
+  "include": ["src/**/*", "../../src/**/*"]
+}
