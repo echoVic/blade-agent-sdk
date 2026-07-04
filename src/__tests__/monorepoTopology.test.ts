@@ -108,6 +108,22 @@ describe('monorepo topology', () => {
     }
   });
 
+  it('owns core json, constant, and permission contracts inside agent-sdk', () => {
+    for (const file of [
+      'packages/agent-sdk/src/types/common.ts',
+      'packages/agent-sdk/src/types/constants.ts',
+      'packages/agent-sdk/src/types/permissions.ts',
+    ]) {
+      expect(existsSync(file), file).toBe(true);
+    }
+
+    const coreSource = readFileSync('packages/agent-sdk/src/core/index.ts', 'utf-8');
+
+    expect(coreSource).not.toContain('../../../../src/types/common.js');
+    expect(coreSource).not.toContain('../../../../src/types/constants.js');
+    expect(coreSource).not.toContain('../../../../src/types/permissions.js');
+  });
+
   it('resolves workspace packages from source during type checking', () => {
     const agentTsconfig = readJson('packages/agent/tsconfig.json');
     const sdkTsconfig = readJson('packages/agent-sdk/tsconfig.json');

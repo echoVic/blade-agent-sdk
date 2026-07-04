@@ -152,6 +152,7 @@ Status:
 - The publishable `@blade-ai/agent-sdk` build now derives external dependencies from `packages/agent-sdk/package.json`, not the private root orchestrator manifest, keeping package output tied to the package's own publish contract.
 - The publishable `@blade-ai/agent-sdk` JS bundle now starts from package-local `packages/agent-sdk/src/*` public entry wrappers instead of direct `../../src/*` tsup entries, creating the first enforceable source-ownership seam before the remaining implementation and declaration output are migrated into the package.
 - The browser-safe `@blade-ai/agent-sdk/browser` and `@blade-ai/agent-sdk/core` public source entries now live as explicit package-local contracts instead of wildcard-forwarding to root `src/browser` and `src/core`, while their deeper protocol type modules remain a later package-local migration step.
+- The `@blade-ai/agent-sdk/core` JSON, model config, constants, and permission contract types now resolve through package-local `packages/agent-sdk/src/types/*` modules instead of root `src/types/*`, while deeper tool/runtime/session contracts remain staged for later ownership migration.
 
 ### Phase 2: Extract `@blade-ai/ai`
 
@@ -318,6 +319,7 @@ Status:
 - Fourteenth adapter increment complete: `Session.stream()` now uses the runtime-independent kernel path by default, while `stream({ runtime: 'legacy' })` remains as an explicit migration escape hatch for old loop behavior; the deprecated `experimentalKernel` flag is still accepted during the transition.
 - Fifteenth adapter increment complete: the `@blade-ai/agent-sdk` package build now resolves every public JS entry (`.`, `browser`, `server`, `session`, `tools`, `local`, and `core`) through package-local source wrappers, with a topology test preventing the package tsup config from pointing directly at root `../../src/*` entry files. This is an incremental package-ownership step; the wrapped implementations and declaration emit still need to move package-local in later slices.
 - Sixteenth adapter increment complete: the browser-safe `browser/index`, `browser/server-only-stub`, and `core/index` public source entries are now owned inside `packages/agent-sdk/src`, with a topology guard preventing them from regressing to root wildcard forwarders. These entries still reference deeper root protocol/type modules until those modules are migrated package-local in later slices.
+- Seventeenth adapter increment complete: `@blade-ai/agent-sdk/core` now owns its JSON value/object types, model and sandbox config contracts, constants, and permission request/result/update type contracts in package-local `src/types/*` files. Runtime permission handler factories remain in the root SDK implementation for now because they depend on non-contract validation/runtime code.
 
 ### Phase 5: Production Verification Chain
 

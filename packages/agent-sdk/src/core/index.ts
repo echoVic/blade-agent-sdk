@@ -55,14 +55,14 @@ export type {
   ProviderType,
   SandboxSettings,
   TokenUsage,
-} from '../../../../src/types/common.js';
+} from '../types/common.js';
 export {
   HookEvent,
   MessageRole,
   PermissionDecision,
   PermissionMode,
   StreamMessageType,
-} from '../../../../src/types/constants.js';
+} from '../types/constants.js';
 export type {
   CanUseTool,
   CanUseToolOptions,
@@ -71,4 +71,4 @@ export type {
   PermissionResult,
   PermissionRuleValue,
   PermissionUpdate,
-} from '../../../../src/types/permissions.js';
+} from '../types/permissions.js';
