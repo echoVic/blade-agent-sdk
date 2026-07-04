@@ -377,6 +377,10 @@ Deliverables:
 - Browser-safe/remote-client guide.
 - Production checklist.
 
+Status:
+
+- First documentation increment complete: VitePress now includes an architecture guide and package/entrypoint guide. The architecture guide documents the `@blade-ai/ai` / `@blade-ai/agent` / `@blade-ai/agent-sdk` responsibilities, dependency direction, runtime boundaries, observability boundaries, and production verification gates. The package guide documents recommended imports, Browser-safe vs Server / CLI boundaries, direct `@blade-ai/ai` provider usage, runtime-independent `@blade-ai/agent` usage, and session-first `@blade-ai/agent-sdk` usage.
+
 Commit:
 
 - `docs: document production agent sdk architecture`

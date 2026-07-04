@@ -17,6 +17,8 @@ export default defineConfig({
         text: '入门',
         items: [
           { text: '概览', link: '/blade-agent-sdk' },
+          { text: '架构说明', link: '/architecture' },
+          { text: '包与入口', link: '/packages' },
           { text: 'Provider 与日志', link: '/providers' },
         ],
       },

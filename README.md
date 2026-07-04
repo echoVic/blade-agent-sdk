@@ -159,6 +159,8 @@ README 只保留概览。详细用法请直接看文档：
 
 - [文档首页](./docs/index.md)
 - [概览](./docs/blade-agent-sdk.md)
+- [架构说明](./docs/architecture.md)
+- [包与入口](./docs/packages.md)
 - [Session API](./docs/session.md)
 - [Provider 配置](./docs/providers.md)
 - [工具系统](./docs/tools.md)
