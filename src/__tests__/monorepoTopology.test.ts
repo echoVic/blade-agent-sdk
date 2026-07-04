@@ -164,6 +164,18 @@ describe('monorepo topology', () => {
     expect(existsSync('packages/agent-sdk/src/tools/public-index.ts')).toBe(true);
   });
 
+  it('owns node adapter public entry sources inside agent-sdk', () => {
+    const serverSource = readFileSync('packages/agent-sdk/src/server/index.ts', 'utf-8');
+    const localSource = readFileSync('packages/agent-sdk/src/local/index.ts', 'utf-8');
+
+    expect(serverSource).not.toContain("export * from '../../../../src/server/index.js'");
+    expect(serverSource).toContain("from '../index.js'");
+    expect(localSource).not.toContain("export * from '../../../../src/local/index.js'");
+    expect(localSource).toContain('createSdkMcpServer');
+    expect(localSource).toContain('getBuiltinTools');
+    expect(localSource).toContain('SandboxService');
+  });
+
   it('organizes the agent package around kernel, protocol, ports, state, and tracing modules', () => {
     for (const file of [
       'packages/agent/src/kernel/AgentKernel.ts',
