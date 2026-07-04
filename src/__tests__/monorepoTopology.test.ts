@@ -144,6 +144,22 @@ describe('monorepo topology', () => {
     expect(permissionsSource).not.toContain('../../../../src/tools/types/index.js');
   });
 
+  it('organizes the agent package around kernel, protocol, ports, state, and tracing modules', () => {
+    for (const file of [
+      'packages/agent/src/kernel/AgentKernel.ts',
+      'packages/agent/src/protocol/index.ts',
+      'packages/agent/src/ports/index.ts',
+      'packages/agent/src/state/index.ts',
+      'packages/agent/src/tracing/index.ts',
+    ]) {
+      expect(existsSync(file), file).toBe(true);
+    }
+
+    const agentIndexSource = readFileSync('packages/agent/src/index.ts', 'utf-8');
+
+    expect(agentIndexSource).not.toContain('class AgentKernel');
+  });
+
   it('owns core observability contracts inside agent-sdk', () => {
     expect(existsSync('packages/agent-sdk/src/observability/types.ts')).toBe(true);
 
