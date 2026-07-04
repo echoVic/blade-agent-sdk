@@ -115,7 +115,7 @@ export declare function tool(...args: unknown[]): unknown;
 export declare function getSandboxExecutor(...args: unknown[]): SandboxExecutor;
 export declare function getSandboxService(...args: unknown[]): SandboxService;
 export declare function getBuiltinTools(...args: unknown[]): Promise<Tool[]>;
-export declare function createMemoryReadTool(...args: unknown[]): Tool;
-export declare function createMemoryWriteTool(...args: unknown[]): Tool;
+export declare function createMemoryReadTool(args: { manager: MemoryManager }): Tool;
+export declare function createMemoryWriteTool(args: { manager: MemoryManager }): Tool;
 
 export type LocalAdapterValue = JsonValue;
