@@ -62,6 +62,13 @@ const packageSpecs = [
       'package/dist/core/index.d.ts',
       'package/dist/tools/index.js',
     ],
+    forbiddenFileContents: [
+      {
+        file: 'package/dist/session/index.d.ts',
+        forbidden: './Session.js',
+        message: 'session declarations must be emitted from package-local session entry source',
+      },
+    ],
     imports: [
       '@blade-ai/agent-sdk',
       '@blade-ai/agent-sdk/core',
@@ -146,6 +153,22 @@ function verifyPackedManifest(spec, tarballPath, tempDir) {
   }
 }
 
+function verifyForbiddenFileContents(spec, tarballPath, tempDir) {
+  for (const rule of spec.forbiddenFileContents ?? []) {
+    const extractDir = join(
+      tempDir,
+      `content-${spec.name.replaceAll(/[^a-z0-9]+/gi, '-')}-${rule.file.replaceAll(/[^a-z0-9]+/gi, '-')}`,
+    );
+    run('mkdir', ['-p', extractDir]);
+    run('tar', ['-xzf', tarballPath, '-C', extractDir, rule.file]);
+    const filePath = join(extractDir, rule.file);
+    const source = readFileSync(filePath, 'utf8');
+    if (source.includes(rule.forbidden)) {
+      throw new Error(`${spec.name} ${rule.file}: ${rule.message}`);
+    }
+  }
+}
+
 function installConsumer(tarballs, tempDir) {
   const consumerDir = join(tempDir, 'consumer');
   run('mkdir', ['-p', consumerDir]);
@@ -190,6 +213,7 @@ try {
     const tarballPath = packPackage(spec, packDir);
     verifyTarballContents(spec, tarballPath);
     verifyPackedManifest(spec, tarballPath, tempDir);
+    verifyForbiddenFileContents(spec, tarballPath, tempDir);
     tarballs.set(spec.name, tarballPath);
   }
 

@@ -53,7 +53,7 @@
     "README.md"
   ],
   "scripts": {
-    "build": "tsup --config tsup.config.ts && tsc -p tsconfig.build.json",
+    "build": "tsup --config tsup.config.ts && tsc -p tsconfig.build.json && tsc -p tsconfig.session-dts.json && node scripts/overlay-session-dts.mjs",
     "type-check": "tsc --noEmit -p tsconfig.json",
     "test": "vitest run"
   },

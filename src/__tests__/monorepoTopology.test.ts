@@ -59,8 +59,18 @@ describe('monorepo topology', () => {
 
       expect(existsSync(join(dir, 'tsup.config.ts')), `${dir}/tsup.config.ts`).toBe(true);
       expect(existsSync(join(dir, 'tsconfig.build.json')), `${dir}/tsconfig.build.json`).toBe(true);
-      expect(pkg.scripts?.build).toBe('tsup --config tsup.config.ts && tsc -p tsconfig.build.json');
+      expect(pkg.scripts?.build).toContain('tsup --config tsup.config.ts');
+      expect(pkg.scripts?.build).toContain('tsc -p tsconfig.build.json');
     }
+  });
+
+  it('overlays package-local session declarations for agent-sdk', () => {
+    const sdk = readJson('packages/agent-sdk/package.json');
+
+    expect(existsSync('packages/agent-sdk/tsconfig.session-dts.json')).toBe(true);
+    expect(existsSync('packages/agent-sdk/scripts/overlay-session-dts.mjs')).toBe(true);
+    expect(sdk.scripts?.build).toContain('tsc -p tsconfig.session-dts.json');
+    expect(sdk.scripts?.build).toContain('node scripts/overlay-session-dts.mjs');
   });
 
   it('builds the publishable agent-sdk package from its own package manifest', () => {
