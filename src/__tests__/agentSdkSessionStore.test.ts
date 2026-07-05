@@ -61,6 +61,8 @@ describe('agent-sdk package-local session store', () => {
 
     const state = await sessionStore.loadState(sessionId);
     const forked = await sessionStore.forkState(sessionId, { messageId: assistantMessageId });
+    await sessionStore.writeForkState('forked-session', forked);
+    const forkedState = await sessionStore.loadState('forked-session');
 
     expectDefined(state);
     expect(state.messages).toHaveLength(4);
@@ -102,6 +104,15 @@ describe('agent-sdk package-local session store', () => {
     expectDefined(forked);
     expect(forked.messageIds).toEqual([userMessageId, assistantMessageId]);
     expect(forked.summary).toBeUndefined();
+
+    expectDefined(forkedState);
+    expect(forkedState.sessionId).toBe('forked-session');
+    expect(forkedState.messageIds).toEqual([userMessageId, assistantMessageId]);
+    expect(forkedState.messages).toEqual(forked.messages);
+    expect(forkedState.sessionInfo).toMatchObject({
+      sessionId: 'forked-session',
+      parentId: sessionId,
+    });
   });
 
   it('keeps empty session persistence as an explicit noop implementation', async () => {
@@ -110,7 +121,27 @@ describe('agent-sdk package-local session store', () => {
     await expect(store.loadState('missing')).resolves.toBeNull();
     await expect(store.loadMessages('missing')).resolves.toEqual([]);
     await expect(store.forkState('missing')).resolves.toBeNull();
+    await expect(store.writeForkState('forked', null)).resolves.toBeNull();
     await expect(store.listSessions()).resolves.toEqual([]);
     await expect(store.getSessionSummary('missing')).resolves.toBeNull();
+  });
+
+  it('returns generated message ids when writing fork snapshots with anonymous messages', async () => {
+    const workspaceRoot = createWorkspaceRoot();
+    const sessionStore = new JsonlSessionStore(workspaceRoot);
+
+    const written = await sessionStore.writeForkState('anonymous-fork', {
+      sessionId: 'parent-session',
+      messages: [{ role: 'user', content: 'hello without an id' }],
+      messageIds: [],
+      lastActivity: Date.now(),
+    });
+    const reloaded = await sessionStore.loadState('anonymous-fork');
+
+    expectDefined(written);
+    expectDefined(reloaded);
+    expect(written.messageIds).toEqual(reloaded.messageIds);
+    expect(written.messages).toEqual(reloaded.messages);
+    expect(written.messageIds).toHaveLength(1);
   });
 });

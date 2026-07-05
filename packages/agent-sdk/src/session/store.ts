@@ -1,5 +1,6 @@
 import * as fs from 'node:fs/promises';
 import { basename, join } from 'node:path';
+import { nanoid } from 'nanoid';
 import type { JsonObject, JsonValue, MessageRole } from '../types/common.js';
 import type {
   SessionContentPart,
@@ -123,6 +124,10 @@ export interface SessionStore {
   loadState(sessionId: string): Promise<SessionState | null>;
   loadMessages(sessionId: string): Promise<SessionMessage[]>;
   forkState(sessionId: string, options?: { messageId?: string }): Promise<SessionSnapshot | null>;
+  writeForkState(
+    forkedSessionId: string,
+    snapshot: SessionSnapshot | null,
+  ): Promise<SessionSnapshot | null>;
   listSessions(): Promise<string[]>;
   getSessionSummary(sessionId: string): Promise<SessionSummary | null>;
 }
@@ -139,6 +144,13 @@ export class NoopSessionStore implements SessionStore {
   async forkState(
     _sessionId: string,
     _options?: { messageId?: string },
+  ): Promise<SessionSnapshot | null> {
+    return null;
+  }
+
+  async writeForkState(
+    _forkedSessionId: string,
+    _snapshot: SessionSnapshot | null,
   ): Promise<SessionSnapshot | null> {
     return null;
   }
@@ -431,6 +443,59 @@ export class JsonlSessionStore implements SessionStore {
     };
   }
 
+  async writeForkState(
+    forkedSessionId: string,
+    snapshot: SessionSnapshot | null,
+  ): Promise<SessionSnapshot | null> {
+    if (!snapshot) {
+      return null;
+    }
+
+    const now = new Date().toISOString();
+    const entries: SessionEvent[] = [
+      this.createSessionCreatedEvent({
+        sessionId: forkedSessionId,
+        parentId: snapshot.sessionId,
+        createdAt: now,
+        updatedAt: now,
+      }),
+    ];
+    const materializedMessages: SessionMessage[] = [];
+    const messageIds: string[] = [];
+
+    for (const message of snapshot.messages) {
+      const messageId = message.id ?? nanoid();
+      const materializedMessage: SessionMessage = {
+        ...cloneSessionMessage(message),
+        id: messageId,
+      };
+      const createdAt = now;
+      messageIds.push(messageId);
+      materializedMessages.push(materializedMessage);
+      entries.push(
+        this.createMessageCreatedEvent({
+          messageId,
+          role: materializedMessage.role,
+          createdAt,
+          customMetadata: isRecord(materializedMessage.metadata)
+            ? materializedMessage.metadata
+            : undefined,
+        }),
+      );
+      entries.push(...this.createPartEventsForMessage(messageId, materializedMessage, createdAt));
+    }
+
+    await this.writeEntries(forkedSessionId, entries);
+
+    return {
+      sessionId: forkedSessionId,
+      messages: materializedMessages.map(cloneSessionMessage),
+      messageIds,
+      lastActivity: Date.now(),
+      summary: snapshot.summary,
+    };
+  }
+
   async listSessions(): Promise<string[]> {
     try {
       const files = await fs.readdir(this.storageRoot, { withFileTypes: true });
@@ -478,6 +543,153 @@ export class JsonlSessionStore implements SessionStore {
         });
     } catch {
       return [];
+    }
+  }
+
+  private createSessionCreatedEvent(data: SessionInfo): SessionEvent {
+    return {
+      type: 'session_created',
+      timestamp: new Date().toISOString(),
+      data,
+    };
+  }
+
+  private createMessageCreatedEvent(data: MessageInfo): SessionEvent {
+    return {
+      type: 'message_created',
+      timestamp: new Date().toISOString(),
+      data,
+    };
+  }
+
+  private createPartCreatedEvent(data: PartInfo): SessionEvent {
+    return {
+      type: 'part_created',
+      timestamp: new Date().toISOString(),
+      data,
+    };
+  }
+
+  private async writeEntries(sessionId: string, entries: SessionEvent[]): Promise<void> {
+    const filePath = getSessionFilePath(this.storageRoot, sessionId);
+    await fs.mkdir(this.storageRoot, { recursive: true, mode: 0o755 });
+    await fs.writeFile(
+      filePath,
+      `${entries.map((entry) => JSON.stringify(entry)).join('\n')}\n`,
+      'utf-8',
+    );
+  }
+
+  private createPartEventsForMessage(
+    messageId: string,
+    message: SessionMessage,
+    createdAt: string,
+  ): SessionEvent[] {
+    const entries: SessionEvent[] = [];
+    if (message.reasoningContent) {
+      entries.push(
+        this.createPartCreatedEvent({
+          partId: nanoid(),
+          messageId,
+          partType: 'reasoning',
+          payload: { text: message.reasoningContent },
+          createdAt,
+        }),
+      );
+    }
+
+    if (message.tool_calls) {
+      for (const toolCall of message.tool_calls) {
+        entries.push(
+          this.createPartCreatedEvent({
+            partId: toolCall.id,
+            messageId,
+            partType: 'tool_call',
+            payload: {
+              toolCallId: toolCall.id,
+              toolName: toolCall.function.name,
+              input: this.parseToolCallArguments(toolCall.function.arguments),
+            },
+            createdAt,
+          }),
+        );
+      }
+    }
+
+    if (message.role === 'tool') {
+      entries.push(
+        this.createPartCreatedEvent({
+          partId: message.tool_call_id ?? nanoid(),
+          messageId,
+          partType: 'tool_result',
+          payload: {
+            toolCallId: message.tool_call_id ?? messageId,
+            toolName: message.name ?? 'unknown',
+            output: this.parseToolResultContent(message.content),
+          },
+          createdAt,
+        }),
+      );
+      return entries;
+    }
+
+    if (typeof message.content === 'string') {
+      if (message.content.length > 0) {
+        const payload: JsonObject = { text: message.content };
+        if (message.role === 'system' && message.metadata !== undefined) {
+          payload.metadata = message.metadata;
+        }
+        entries.push(
+          this.createPartCreatedEvent({
+            partId: nanoid(),
+            messageId,
+            partType: message.role === 'system' ? 'summary' : 'text',
+            payload,
+            createdAt,
+          }),
+        );
+      }
+      return entries;
+    }
+
+    for (const part of message.content) {
+      entries.push(
+        this.createPartCreatedEvent({
+          partId: nanoid(),
+          messageId,
+          partType: part.type === 'text' ? 'text' : 'image',
+          payload:
+            part.type === 'text'
+              ? { text: part.text }
+              : { dataUrl: part.image_url.url },
+          createdAt,
+        }),
+      );
+    }
+
+    return entries;
+  }
+
+  private parseToolCallArguments(value: string): JsonValue {
+    try {
+      return JSON.parse(value) as JsonValue;
+    } catch {
+      return value;
+    }
+  }
+
+  private parseToolResultContent(value: SessionMessage['content']): JsonValue {
+    if (typeof value !== 'string') {
+      return value.map((part): JsonObject =>
+        part.type === 'text'
+          ? { type: 'text', text: part.text }
+          : { type: 'image_url', image_url: { url: part.image_url.url } },
+      );
+    }
+    try {
+      return JSON.parse(value) as JsonValue;
+    } catch {
+      return value;
     }
   }
 
