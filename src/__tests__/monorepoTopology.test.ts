@@ -15,6 +15,7 @@ interface PackageJson {
   };
   files?: string[];
   exclude?: string[];
+  publishConfig?: Record<string, unknown>;
 }
 
 function readJson(path: string): PackageJson {
@@ -27,6 +28,8 @@ describe('monorepo topology', () => {
     const workspace = readFileSync('pnpm-workspace.yaml', 'utf-8');
 
     expect(root.private).toBe(true);
+    expect(root.files).toBeUndefined();
+    expect(root.publishConfig).toBeUndefined();
     expect(workspace).toContain('packages:');
     expect(workspace).toContain("'packages/*'");
   });

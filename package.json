@@ -51,12 +51,6 @@
       "default": "./package.json"
     }
   },
-  "files": [
-    "dist",
-    "vendor/ripgrep/**",
-    "README.md",
-    "CHANGELOG.md"
-  ],
   "scripts": {
     "build": "pnpm --filter @blade-ai/ai run build && pnpm --filter @blade-ai/agent run build && tsup && tsc -p tsconfig.build.json",
     "test": "vitest run",
@@ -92,10 +86,6 @@
   ],
   "author": "echoVic",
   "license": "MIT",
-  "publishConfig": {
-    "access": "public",
-    "registry": "https://registry.npmjs.org/"
-  },
   "optionalDependencies": {
     "@ai-sdk/anthropic": "^3.0.71",
     "@ai-sdk/azure": "^3.0.54",
