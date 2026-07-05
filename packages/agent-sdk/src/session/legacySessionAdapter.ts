@@ -1,12 +1,13 @@
 import {
   createSession as createLegacySession,
-  type ResumeOptions as LegacyResumeOptions,
   resumeSession as resumeLegacySession,
 } from '../../../../src/session/Session.js';
-import type { SessionOptions as LegacySessionOptions } from '../../../../src/session/types.js';
 import { SessionId as toLegacySessionId } from '../../../../src/types/branded.js';
 import type { SessionRuntimeFactory } from './factory.js';
 import type { ResumeOptions, SessionOptions } from './types.js';
+
+type LegacySessionOptions = Parameters<typeof createLegacySession>[0];
+type LegacyResumeOptions = Parameters<typeof resumeLegacySession>[0];
 
 function toLegacySessionOptions(options: SessionOptions): LegacySessionOptions {
   const { mcpServers, ...rest } = options;

@@ -359,6 +359,7 @@ describe('monorepo topology', () => {
     expect(sessionLifecycleSource).toContain('forkSession() requires session persistence');
     expect(sessionLifecycleSource).not.toContain('../../../../src/session/Session.js');
     expect(legacySessionAdapterSource).toContain('../../../../src/session/Session.js');
+    expect(legacySessionAdapterSource).not.toContain('../../../../src/session/types.js');
     expect(legacySessionAdapterSource).not.toContain('forkSession as forkLegacy');
     expect(legacySessionAdapterSource).not.toContain('prompt as promptLegacy');
     expect(legacySessionAdapterSource).not.toContain('as never');
