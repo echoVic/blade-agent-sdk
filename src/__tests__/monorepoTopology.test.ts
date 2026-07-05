@@ -14,6 +14,7 @@ interface PackageJson {
   devDependencies?: Record<string, string>;
   optionalDependencies?: Record<string, string>;
   compilerOptions?: {
+    rootDir?: string;
     paths?: Record<string, string[]>;
   };
   files?: string[];
@@ -102,6 +103,21 @@ describe('monorepo topology', () => {
       expect(pkg.scripts?.build).toContain('tsup --config tsup.config.ts');
       expect(pkg.scripts?.build).toContain('tsc -p tsconfig.build.json');
     }
+  });
+
+  it('emits agent-sdk build declarations from package-local source only', () => {
+    const buildConfig = readJson('packages/agent-sdk/tsconfig.build.json');
+
+    expect(buildConfig.compilerOptions?.rootDir).toBe('./src');
+    expect(buildConfig.include).toEqual(['src/**/*']);
+    expect(buildConfig.compilerOptions?.paths).toMatchObject({
+      '@blade-ai/agent': ['../agent/dist/index.d.ts'],
+      '@blade-ai/ai': ['../ai/dist/index.d.ts'],
+      '@blade-ai/ai/deepseek': ['../ai/dist/deepseek/index.d.ts'],
+      '@blade-ai/ai/providers/vercel': ['../ai/dist/providers/vercel/index.d.ts'],
+    });
+    expect(JSON.stringify(buildConfig.compilerOptions?.paths)).not.toContain('@/*');
+    expect(JSON.stringify(buildConfig)).not.toContain('../../src');
   });
 
   it('overlays package-local public declarations for agent-sdk', () => {
@@ -695,5 +711,8 @@ describe('monorepo topology', () => {
     expect(packageVerifierSource).toContain('experimentalKernel');
     expect(packageVerifierSource).toContain('legacyStream');
     expect(packageVerifierSource).toContain('packageLocalLegacy');
+    expect(packageVerifierSource).toContain('package/dist/agent/Agent.d.ts');
+    expect(packageVerifierSource).toContain('package/dist/context/ContextManager.d.ts');
+    expect(packageVerifierSource).toContain('package/dist/mcp/McpRegistry.d.ts');
   });
 });

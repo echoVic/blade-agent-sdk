@@ -95,6 +95,9 @@ const packageSpecs = [
       'package/dist/session/index.d.ts.map',
       'package/dist/tools/index.d.ts.map',
       'package/dist/types/permissions.d.ts.map',
+      'package/dist/agent/Agent.d.ts',
+      'package/dist/context/ContextManager.d.ts',
+      'package/dist/mcp/McpRegistry.d.ts',
     ],
     forbiddenFileContents: [
       {

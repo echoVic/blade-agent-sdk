@@ -560,6 +560,7 @@ Status:
 - One-hundred-fifteenth verification-chain increment complete: `pnpm run verify:examples` now forbids the legacy `@/* -> src/*` alias and maps public `@blade-ai/agent` plus `@blade-ai/agent-sdk` subpaths to package-local source facades, proving examples cannot silently bypass the monorepo package boundaries during local type-checking.
 - One-hundred-sixteenth verification-chain increment complete: the `@blade-ai/agent-sdk` public declaration overlay now resolves `@blade-ai/ai` public imports from built package declarations instead of inherited workspace source aliases, and topology forbids `../../src`, `../ai/src`, and `../agent/src` aliases in that overlay config.
 - One-hundred-seventeenth verification-chain increment complete: the `@blade-ai/agent-sdk` package type-check program now includes only package-local `src/**/*` and no longer exposes the legacy `@/* -> ../../src/*` alias, proving package-local SDK source can type-check without treating the root implementation tree as part of the package.
+- One-hundred-eighteenth verification-chain increment complete: the `@blade-ai/agent-sdk` declaration build now emits from package-local `src/**/*` instead of root `../../src/**/*`, resolves `@blade-ai/ai` and `@blade-ai/agent` imports from built declarations, and packed package verification forbids representative legacy root declaration directories such as `dist/agent`, `dist/context`, and `dist/mcp`.
 
 Commit:
 
