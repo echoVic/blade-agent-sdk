@@ -119,4 +119,58 @@ describe('agent-sdk package-local session runtime shell', () => {
       'load:existing-session',
     ]);
   });
+
+  it('owns turn workspace preparation through an injected workspace port', () => {
+    const updates: unknown[] = [];
+    const runtime = new PackageLocalSessionRuntime({
+      sessionId: 'session-1',
+      options,
+      bladeConfig,
+      defaultContext: {},
+      workspace: {
+        updateWorkspace(update) {
+          updates.push(update);
+        },
+      },
+    });
+
+    runtime.prepareTurn({
+      sessionId: 'session-1',
+      turnId: 'turn-1',
+      context: {},
+      filesystemRoots: ['/workspace'],
+      cwd: '/workspace/project',
+      environment: {
+        NODE_ENV: 'test',
+        cwd: '/stale',
+      },
+    });
+
+    runtime.prepareTurn({
+      sessionId: 'session-1',
+      turnId: 'turn-2',
+      context: {},
+      filesystemRoots: [],
+      cwd: undefined,
+      environment: {
+        NODE_ENV: 'production',
+      },
+    });
+
+    expect(updates).toEqual([
+      {
+        projectPath: '/workspace/project',
+        environment: {
+          NODE_ENV: 'test',
+          cwd: '/workspace/project',
+        },
+      },
+      {
+        projectPath: undefined,
+        environment: {
+          NODE_ENV: 'production',
+        },
+      },
+    ]);
+  });
 });

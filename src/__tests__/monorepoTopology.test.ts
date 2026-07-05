@@ -473,6 +473,8 @@ describe('monorepo topology', () => {
     expect(packageLocalRuntimeInstanceSource).toContain('ensureSessionCreated');
     expect(packageLocalRuntimeInstanceSource).toContain('ensureSessionLoaded');
     expect(packageLocalRuntimeInstanceSource).toContain('PackageLocalRuntimeSessionStorePort');
+    expect(packageLocalRuntimeInstanceSource).toContain('prepareTurn');
+    expect(packageLocalRuntimeInstanceSource).toContain('PackageLocalRuntimeWorkspacePort');
     expect(existsSync('packages/agent-sdk/src/session/packageLocalLegacyRuntimeFactory.ts')).toBe(
       true,
     );

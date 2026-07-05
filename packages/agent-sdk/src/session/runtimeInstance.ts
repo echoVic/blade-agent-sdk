@@ -1,5 +1,5 @@
 import { basename, dirname } from 'node:path';
-import type { RuntimeContext } from '../runtime/types.js';
+import type { ContextSnapshot, RuntimeContext } from '../runtime/types.js';
 import type { BladeConfig, McpServerConfig } from '../types/common.js';
 import type {
   SdkMcpServerHandle,
@@ -15,11 +15,21 @@ export interface PackageLocalSessionRuntimeOptions {
   bladeConfig: BladeConfig;
   defaultContext: RuntimeContext;
   sessionStore?: PackageLocalRuntimeSessionStorePort;
+  workspace?: PackageLocalRuntimeWorkspacePort;
 }
 
 export interface PackageLocalRuntimeSessionStorePort {
   createSession(sessionId: SessionId): Promise<void>;
   loadSession(sessionId: SessionId): Promise<boolean>;
+}
+
+export interface PackageLocalRuntimeWorkspacePort {
+  updateWorkspace(update: PackageLocalRuntimeWorkspaceUpdate): void;
+}
+
+export interface PackageLocalRuntimeWorkspaceUpdate {
+  projectPath: string | undefined;
+  environment: Record<string, string>;
 }
 
 export function resolvePackageLocalRuntimeStorageRoot(
@@ -60,6 +70,7 @@ export class PackageLocalSessionRuntime {
   readonly projectPath?: string;
   readonly hookCallbacks: Partial<Record<SessionHookEvent, HookCallback[]>>;
   readonly sessionStore: PackageLocalRuntimeSessionStorePort;
+  readonly workspace: PackageLocalRuntimeWorkspacePort;
 
   constructor(options: PackageLocalSessionRuntimeOptions) {
     this.sessionId = options.sessionId;
@@ -72,6 +83,7 @@ export class PackageLocalSessionRuntime {
     this.projectPath = getRuntimeContextCwd(options.defaultContext);
     this.hookCallbacks = options.options.hooks ?? {};
     this.sessionStore = options.sessionStore ?? createNoopRuntimeSessionStore();
+    this.workspace = options.workspace ?? createNoopRuntimeWorkspace();
   }
 
   getConfiguredMcpServers(): Record<string, McpServerConfig | SdkMcpServerHandle> {
@@ -88,6 +100,16 @@ export class PackageLocalSessionRuntime {
       await this.sessionStore.createSession(this.sessionId);
     }
   }
+
+  prepareTurn(snapshot: ContextSnapshot): void {
+    this.workspace.updateWorkspace({
+      projectPath: snapshot.cwd,
+      environment: {
+        ...snapshot.environment,
+        ...(snapshot.cwd ? { cwd: snapshot.cwd } : {}),
+      },
+    });
+  }
 }
 
 function createNoopRuntimeSessionStore(): PackageLocalRuntimeSessionStorePort {
@@ -96,5 +118,11 @@ function createNoopRuntimeSessionStore(): PackageLocalRuntimeSessionStorePort {
     async loadSession() {
       return false;
     },
+  };
+}
+
+function createNoopRuntimeWorkspace(): PackageLocalRuntimeWorkspacePort {
+  return {
+    updateWorkspace() {},
   };
 }
