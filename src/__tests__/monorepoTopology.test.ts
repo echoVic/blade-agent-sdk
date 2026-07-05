@@ -298,10 +298,17 @@ describe('monorepo topology', () => {
 
   it('owns core observability contracts inside agent-sdk', () => {
     expect(existsSync('packages/agent-sdk/src/observability/types.ts')).toBe(true);
+    expect(existsSync('packages/agent-sdk/src/observability/TraceRecorder.ts')).toBe(true);
 
     const coreSource = readFileSync('packages/agent-sdk/src/core/index.ts', 'utf-8');
+    const traceRecorderSource = readFileSync(
+      'packages/agent-sdk/src/observability/TraceRecorder.ts',
+      'utf-8',
+    );
 
     expect(coreSource).not.toContain('../../../../src/observability/index.js');
+    expect(traceRecorderSource).not.toContain('../../../../src/');
+    expect(traceRecorderSource).toContain("from './types.js'");
   });
 
   it('owns core runtime contracts inside agent-sdk', () => {
