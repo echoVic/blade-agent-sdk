@@ -129,10 +129,15 @@ describe('package provenance metadata', () => {
 
     expect(packageVerifier).toContain('function verifyConsumerBrowserBundle');
     expect(packageVerifier).toContain('consumer-browser-entry.ts');
+    expect(packageVerifier).toContain("from '@blade-ai/agent-sdk/session';");
+    expect(packageVerifier).toContain("from '@blade-ai/agent-sdk/server';");
+    expect(packageVerifier).toContain("from '@blade-ai/agent-sdk/local';");
     expect(packageVerifier).toContain('--platform=browser');
     expect(packageVerifier).toContain('--conditions=browser');
     expect(packageVerifier).toContain('assertNoBrowserDisallowedMarkers');
     expect(packageVerifier).toContain('server-only for createSession');
+    expect(packageVerifier).toContain('server-only for resumeSession');
+    expect(packageVerifier).toContain('server-only for getBuiltinTools');
   });
 });
 
