@@ -3,6 +3,7 @@ import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'no
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { build as bundleWithEsbuild } from 'esbuild';
 import { stringify } from 'yaml';
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
@@ -1044,7 +1045,7 @@ function assertNoBrowserDisallowedMarkers(filePath) {
   }
 }
 
-function verifyConsumerBrowserBundle(consumerDir) {
+async function verifyConsumerBrowserBundle(consumerDir) {
   const entry = join(consumerDir, 'consumer-browser-entry.ts');
   const output = join(consumerDir, 'consumer-browser-bundle.js');
   writeFileSync(
@@ -1064,14 +1065,16 @@ function verifyConsumerBrowserBundle(consumerDir) {
     ].join('\n'),
   );
 
-  run(resolve(repoRoot, 'node_modules/.bin/esbuild'), [
-    entry,
-    '--bundle',
-    '--platform=browser',
-    '--conditions=browser',
-    '--format=esm',
-    `--outfile=${output}`,
-  ], { cwd: consumerDir });
+  await bundleWithEsbuild({
+    entryPoints: [entry],
+    bundle: true,
+    platform: 'browser',
+    conditions: ['browser'],
+    format: 'esm',
+    outfile: output,
+    absWorkingDir: consumerDir,
+    logLevel: 'silent',
+  });
 
   const browserRunOutput = run(process.execPath, [output], { cwd: consumerDir });
   if (!browserRunOutput.includes('server-only for createSession')) {
@@ -1084,6 +1087,46 @@ function verifyConsumerBrowserBundle(consumerDir) {
     throw new Error('Browser bundle does not include the getBuiltinTools server-only stub message');
   }
   assertNoBrowserDisallowedMarkers(output);
+}
+
+async function verifyAgentBrowserBundle(consumerDir) {
+  const entry = join(consumerDir, 'consumer-agent-browser-entry.ts');
+  const agentBundleOutput = join(consumerDir, 'consumer-agent-browser-bundle.js');
+  writeFileSync(
+    entry,
+    [
+      "import { AgentKernel } from '@blade-ai/agent';",
+      "import { AgentKernel as AgentKernelFromSubpath } from '@blade-ai/agent/kernel';",
+      'const fakeModel = {',
+      '  async generate() {',
+      "    return { content: 'ok', finishReason: 'stop' };",
+      '  },',
+      '  async *stream() {',
+      "    yield { type: 'done', response: { content: 'ok', finishReason: 'stop' } };",
+      '  },',
+      '};',
+      'const kernel = new AgentKernel({ model: fakeModel });',
+      'const kernelFromSubpath = new AgentKernelFromSubpath({ model: fakeModel });',
+      "console.log('agent browser bundle', kernel.constructor.name, kernelFromSubpath.constructor.name);",
+    ].join('\n'),
+  );
+
+  await bundleWithEsbuild({
+    entryPoints: [entry],
+    bundle: true,
+    platform: 'browser',
+    conditions: ['browser'],
+    format: 'esm',
+    outfile: agentBundleOutput,
+    absWorkingDir: consumerDir,
+    logLevel: 'silent',
+  });
+
+  const browserRunOutput = run(process.execPath, [agentBundleOutput], { cwd: consumerDir });
+  if (!browserRunOutput.includes('agent browser bundle')) {
+    throw new Error('Agent browser bundle smoke did not execute');
+  }
+  assertNoBrowserDisallowedMarkers(agentBundleOutput);
 }
 
 const tempDir = mkdtempSync(join(tmpdir(), 'blade-verify-packages-'));
@@ -1104,7 +1147,8 @@ try {
   const consumerDir = installConsumer(tarballs, tempDir);
   verifyConsumerImports(consumerDir);
   verifyConsumerTypes(consumerDir);
-  verifyConsumerBrowserBundle(consumerDir);
+  await verifyConsumerBrowserBundle(consumerDir);
+  await verifyAgentBrowserBundle(consumerDir);
 } finally {
   rmSync(tempDir, { recursive: true, force: true });
 }

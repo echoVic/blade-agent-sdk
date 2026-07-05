@@ -161,17 +161,31 @@ describe('package provenance metadata', () => {
   it('bundles browser-safe entrypoints from the packed temporary consumer', () => {
     const packageVerifier = readFileSync(resolve('scripts/verify-packages.mjs'), 'utf8');
 
+    expect(packageVerifier).toContain("import { build as bundleWithEsbuild } from 'esbuild';");
     expect(packageVerifier).toContain('function verifyConsumerBrowserBundle');
     expect(packageVerifier).toContain('consumer-browser-entry.ts');
     expect(packageVerifier).toContain("from '@blade-ai/agent-sdk/session';");
     expect(packageVerifier).toContain("from '@blade-ai/agent-sdk/server';");
     expect(packageVerifier).toContain("from '@blade-ai/agent-sdk/local';");
-    expect(packageVerifier).toContain('--platform=browser');
-    expect(packageVerifier).toContain('--conditions=browser');
+    expect(packageVerifier).toContain('await bundleWithEsbuild({');
+    expect(packageVerifier).toContain("platform: 'browser'");
+    expect(packageVerifier).toContain("conditions: ['browser']");
+    expect(packageVerifier).not.toContain("resolve(repoRoot, 'node_modules/.bin/esbuild')");
     expect(packageVerifier).toContain('assertNoBrowserDisallowedMarkers');
     expect(packageVerifier).toContain('server-only for createSession');
     expect(packageVerifier).toContain('server-only for resumeSession');
     expect(packageVerifier).toContain('server-only for getBuiltinTools');
+  });
+
+  it('browser-bundles the packed runtime-independent agent package', () => {
+    const packageVerifier = readFileSync(resolve('scripts/verify-packages.mjs'), 'utf8');
+
+    expect(packageVerifier).toContain('function verifyAgentBrowserBundle');
+    expect(packageVerifier).toContain('consumer-agent-browser-entry.ts');
+    expect(packageVerifier).toContain("from '@blade-ai/agent';");
+    expect(packageVerifier).toContain("from '@blade-ai/agent/kernel';");
+    expect(packageVerifier).toContain('agent browser bundle');
+    expect(packageVerifier).toContain('assertNoBrowserDisallowedMarkers(agentBundleOutput)');
   });
 });
 

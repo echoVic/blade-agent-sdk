@@ -544,6 +544,7 @@ Status:
 - Ninety-ninth verification-chain increment complete: `pnpm run verify:packages` now type-checks packed temporary-consumer imports across the public `@blade-ai/ai/chat`, `model`, and `retry` subpaths, proving chat compatibility contracts, provider-agnostic model contracts, and retry policy helpers are consumable directly instead of relying on root re-export coverage.
 - One-hundredth verification-chain increment complete: `pnpm run verify:entrypoints` now runs its browser bundle smoke through the esbuild JS API instead of an external CLI subprocess, reducing process-wrapper variance while keeping the browser-condition bundle and Node-only marker checks intact.
 - One-hundred-first verification-chain increment complete: `pnpm run verify:packages` now writes and executes a packed temporary-consumer `consumer-runtime.mjs` file that imports public runtime subpaths, asserts key value exports for `@blade-ai/ai`, `@blade-ai/agent`, and `@blade-ai/agent-sdk`, and verifies type-only subpaths stay empty at runtime, proving published tarballs expose the intended Node ESM runtime surface rather than merely resolving module specifiers.
+- One-hundred-second verification-chain increment complete: `pnpm run verify:packages` now browser-bundles the packed `@blade-ai/agent` root and `kernel` subpath through the esbuild JS API, executes the bundle smoke, and scans it for Node-only markers, proving the runtime-independent agent kernel remains browser-bundle-safe after publish instead of relying only on source and manifest boundary checks.
 
 Commit:
 
