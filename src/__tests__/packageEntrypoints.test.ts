@@ -66,6 +66,15 @@ describe('package entrypoints', () => {
     expect(existsSync(join(process.cwd(), 'scripts/verify-entrypoints.mjs'))).toBe(true);
   });
 
+  it('runs the browser bundle check through the esbuild JS API', () => {
+    const verifier = readFileSync('scripts/verify-entrypoints.mjs', 'utf-8');
+
+    expect(verifier).toContain("import { build as bundleWithEsbuild } from 'esbuild';");
+    expect(verifier).toContain('await bundleWithEsbuild({');
+    expect(verifier).not.toContain("'pnpm', [\n    'exec',\n    'esbuild'");
+    expect(verifier).not.toContain("resolve(repoRoot, 'node_modules/.bin/esbuild')");
+  });
+
   it('declares production verification scripts for package and release gates', () => {
     expect(packageJson.scripts).toMatchObject({
       verify: 'pnpm run lint && pnpm run type-check && pnpm -r run type-check && pnpm run verify:examples && pnpm run verify:boundaries && pnpm run docs:build && pnpm run verify:entrypoints && pnpm run verify:packages && pnpm run test:unit && pnpm run test:integration',

@@ -2,6 +2,7 @@ import { spawnSync } from 'node:child_process';
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { build as bundleWithEsbuild } from 'esbuild';
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const packageRoot = existsSync(join(repoRoot, 'packages/agent-sdk/package.json'))
@@ -116,16 +117,16 @@ try {
     'utf8',
   );
 
-  run('pnpm', [
-    'exec',
-    'esbuild',
-    entry,
-    '--bundle',
-    '--platform=browser',
-    '--conditions=browser',
-    '--format=esm',
-    `--outfile=${output}`,
-  ], { cwd: repoRoot });
+  await bundleWithEsbuild({
+    entryPoints: [entry],
+    bundle: true,
+    platform: 'browser',
+    conditions: ['browser'],
+    format: 'esm',
+    outfile: output,
+    absWorkingDir: repoRoot,
+    logLevel: 'silent',
+  });
   assertNoDisallowedImports(output);
 } finally {
   rmSync(tempDir, { recursive: true, force: true });

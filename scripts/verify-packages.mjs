@@ -549,6 +549,27 @@ function verifyConsumerTypes(consumerDir) {
     join(consumerDir, 'consumer-types.ts'),
     `import type { ModelPort, ModelRequest, ModelResponse, ModelStreamEvent } from '@blade-ai/ai';
 import { createOpenAICompatibleModelPort } from '@blade-ai/ai';
+import type {
+  ChatConfig,
+  ChatResponse,
+  Message as ChatMessage,
+  StreamChunk as ChatStreamChunk,
+  UsageInfo as ChatUsageInfo,
+} from '@blade-ai/ai/chat';
+import type {
+  ModelMessage,
+  ModelRequest as ModelSubpathRequest,
+  ModelResponse as ModelSubpathResponse,
+  ModelStreamEvent as ModelSubpathStreamEvent,
+  UsageInfo as ModelSubpathUsageInfo,
+} from '@blade-ai/ai/model';
+import type {
+  QuerySource,
+  RetryConfig,
+  RetryContext,
+  RetryEvent,
+} from '@blade-ai/ai/retry';
+import { DEFAULT_RETRY_CONFIG, isRetryableError, withRetry } from '@blade-ai/ai/retry';
 import type { DeepSeekCostBreakdown, DeepSeekProviderOptions } from '@blade-ai/ai/deepseek';
 import { calculateDeepSeekCost, normalizeDeepSeekModel } from '@blade-ai/ai/deepseek';
 import type { OpenAICompatibleModelPortOptions } from '@blade-ai/ai/providers/openai-compatible';
@@ -655,6 +676,62 @@ const request: ModelRequest = {
   temperature: 0.2,
   maxOutputTokens: 128,
 };
+const chatConfig: ChatConfig = {
+  provider: 'openai-compatible',
+  apiKey: 'test-key',
+  baseUrl: 'https://example.test/v1',
+  model: 'glm-5.2',
+};
+const chatMessage: ChatMessage = { role: 'user', content: 'hello' };
+const chatUsage: ChatUsageInfo = {
+  promptTokens: 1,
+  completionTokens: 1,
+  totalTokens: 2,
+};
+const chatResponse: ChatResponse = {
+  content: 'ok',
+  usage: chatUsage,
+};
+const chatStreamChunk: ChatStreamChunk = {
+  content: 'ok',
+  usage: chatUsage,
+};
+
+const modelSubpathMessage: ModelMessage = { role: 'user', content: 'hello' };
+const modelSubpathUsage: ModelSubpathUsageInfo = {
+  promptTokens: 1,
+  completionTokens: 1,
+  totalTokens: 2,
+};
+const modelSubpathRequest: ModelSubpathRequest = {
+  messages: [modelSubpathMessage],
+};
+const modelSubpathResponse: ModelSubpathResponse = {
+  content: 'ok',
+  usage: modelSubpathUsage,
+};
+const modelSubpathStreamEvent: ModelSubpathStreamEvent = {
+  type: 'done',
+  response: modelSubpathResponse,
+  finishReason: 'stop',
+};
+
+const retrySource: QuerySource = 'main_thread';
+const retryConfig: RetryConfig = {
+  ...DEFAULT_RETRY_CONFIG,
+  querySource: retrySource,
+};
+const retryContext: RetryContext = {};
+const retryEvent: RetryEvent = {
+  type: 'retry_attempt',
+  attempt: 1,
+  maxRetries: retryConfig.maxRetries,
+  delayMs: 0,
+  error: { message: 'retry me', status: 503 },
+  querySource: retrySource,
+};
+const withRetryRef: typeof withRetry = withRetry;
+const retryableNetworkError: boolean = isRetryableError({ status: 503 });
 
 async function useModelPort(): Promise<ModelResponse> {
   return await model.generate(request);
@@ -847,6 +924,16 @@ async function useSession(): Promise<void> {
 void useModelPort;
 void compatibleModelFromSubpath;
 void vercelModel;
+void chatConfig;
+void chatMessage;
+void chatResponse;
+void chatStreamChunk;
+void modelSubpathRequest;
+void modelSubpathStreamEvent;
+void retryContext;
+void retryEvent;
+void withRetryRef;
+void retryableNetworkError;
 void deepseekOptions;
 void deepseekCost;
 void useKernel;

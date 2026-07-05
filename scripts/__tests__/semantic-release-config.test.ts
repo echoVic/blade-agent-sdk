@@ -127,9 +127,15 @@ describe('package provenance metadata', () => {
   it('type-checks exported AI provider subpaths from the packed temporary consumer', () => {
     const packageVerifier = readFileSync(resolve('scripts/verify-packages.mjs'), 'utf8');
 
+    expect(packageVerifier).toContain("'@blade-ai/ai/chat'");
+    expect(packageVerifier).toContain("'@blade-ai/ai/model'");
+    expect(packageVerifier).toContain("'@blade-ai/ai/retry'");
     expect(packageVerifier).toContain("'@blade-ai/ai/deepseek'");
     expect(packageVerifier).toContain("'@blade-ai/ai/providers/openai-compatible'");
     expect(packageVerifier).toContain("'@blade-ai/ai/providers/vercel'");
+    expect(packageVerifier).toContain("from '@blade-ai/ai/chat';");
+    expect(packageVerifier).toContain("from '@blade-ai/ai/model';");
+    expect(packageVerifier).toContain("from '@blade-ai/ai/retry';");
     expect(packageVerifier).toContain("from '@blade-ai/ai/deepseek';");
     expect(packageVerifier).toContain("from '@blade-ai/ai/providers/openai-compatible';");
     expect(packageVerifier).toContain("from '@blade-ai/ai/providers/vercel';");
