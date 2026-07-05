@@ -42,6 +42,74 @@ async function collect(stream: AsyncGenerator<StreamMessage>): Promise<StreamMes
 }
 
 describe('agent-sdk default kernel runtime factory', () => {
+  it('uses the package-local AgentKernel factory when no kernel factory is injected', async () => {
+    const generate = vi.fn(async () => ({
+      content: 'default kernel answer',
+      usage: {
+        promptTokens: 3,
+        completionTokens: 4,
+        totalTokens: 7,
+      },
+      finishReason: 'stop' as const,
+    }));
+    const defaultKernelModel: ModelPort = {
+      generate,
+      async *stream() {},
+    };
+    const factory = createDefaultKernelSessionRuntimeFactory({
+      createSessionId: () => 'default-kernel-session',
+      createTurnId: () => 'default-kernel-turn',
+      runtime: {
+        kernelModelResolver: {
+          resolve() {
+            return {
+              model: defaultKernelModel,
+              modelRequestDefaults: {
+                model: 'default-kernel-model',
+                temperature: 0.4,
+                maxOutputTokens: 512,
+                maxContextTokens: 8192,
+              },
+            };
+          },
+        },
+      },
+    });
+
+    const session = await factory.create(options);
+    await session.send('hello from default kernel');
+
+    await expect(collect(session.stream())).resolves.toEqual([
+      { type: 'turn_start', turn: 1, sessionId: 'default-kernel-session' },
+      { type: 'content', delta: 'default kernel answer', sessionId: 'default-kernel-session' },
+      {
+        type: 'usage',
+        usage: {
+          inputTokens: 3,
+          outputTokens: 4,
+          totalTokens: 7,
+          maxContextTokens: 8192,
+        },
+        sessionId: 'default-kernel-session',
+      },
+      { type: 'turn_end', turn: 1, sessionId: 'default-kernel-session' },
+      {
+        type: 'result',
+        subtype: 'success',
+        content: 'default kernel answer',
+        sessionId: 'default-kernel-session',
+      },
+    ]);
+    expect(generate).toHaveBeenCalledWith({
+      model: 'default-kernel-model',
+      temperature: 0.4,
+      maxOutputTokens: 512,
+      maxContextTokens: 8192,
+      messages: [{ role: 'user', content: 'hello from default kernel' }],
+      signal: expect.any(AbortSignal),
+    });
+  });
+
   it('assembles package-local kernel sessions from session options and runtime ports', async () => {
     const kernelOptions: AgentKernelOptions[] = [];
     const turns: Array<{ input: string; turnId?: string; signal?: AbortSignal }> = [];

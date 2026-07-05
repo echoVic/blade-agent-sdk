@@ -1,5 +1,6 @@
 import { nanoid } from 'nanoid';
 import { buildBladeConfig } from './config.js';
+import { createPackageLocalAgentKernelFactory } from './kernelFactory.js';
 import { createPackageLocalKernelModelResolver } from './kernelModelResolver.js';
 import { createPackageLocalKernelSessionRuntimeFactory } from './packageLocalKernelRuntimeFactory.js';
 import {
@@ -34,6 +35,7 @@ export function createDefaultKernelSessionRuntimeFactory(
   options: DefaultKernelSessionRuntimeFactoryOptions = {},
 ): SessionRuntimeFactory {
   const runtimes = new WeakMap<PackageLocalSessionRuntimeContext, PackageLocalSessionRuntime>();
+  const defaultKernelFactory = createPackageLocalAgentKernelFactory();
   const defaultKernelModelResolver = createPackageLocalKernelModelResolver();
 
   return createPackageLocalKernelSessionRuntimeFactory({
@@ -47,6 +49,7 @@ export function createDefaultKernelSessionRuntimeFactory(
         bladeConfig: buildBladeConfig(context.options),
         defaultContext: context.options.defaultContext ?? {},
         ...runtimePorts,
+        kernelFactory: runtimePorts.kernelFactory ?? defaultKernelFactory,
         kernelModelResolver: runtimePorts.kernelModelResolver ?? defaultKernelModelResolver,
       });
       runtimes.set(context, runtime);
