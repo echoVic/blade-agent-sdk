@@ -54,6 +54,7 @@ import { isPackageLocalSdkMcpServerHandle } from './runtimeMcpServers.js';
 import { getPackageLocalMcpToolSourceId } from './runtimeMcpTools.js';
 import { createPackageLocalRuntimeNoopPorts } from './runtimeNoopPorts.js';
 import { packageLocalSubagentConfigFromDefinition } from './runtimeSubagents.js';
+import { filterPackageLocalRuntimeTools } from './runtimeToolFilters.js';
 import { createSessionTraceFinalizer, SessionTraceManager } from './traces.js';
 import type { SessionSnapshot } from './store.js';
 
@@ -619,14 +620,9 @@ export class PackageLocalSessionRuntime {
   }
 
   filterTools<TTool extends PackageLocalRuntimeNamedTool>(tools: TTool[]): TTool[] {
-    const allowedTools = this.options.allowedTools;
-    const disallowedTools = new Set(this.options.disallowedTools ?? []);
-
-    return tools.filter((tool) => {
-      if (allowedTools !== undefined && !allowedTools.includes(tool.name)) {
-        return false;
-      }
-      return !disallowedTools.has(tool.name);
+    return filterPackageLocalRuntimeTools(tools, {
+      allowedTools: this.options.allowedTools,
+      disallowedTools: this.options.disallowedTools,
     });
   }
 

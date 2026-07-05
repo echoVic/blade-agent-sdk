@@ -467,6 +467,11 @@ describe('monorepo topology', () => {
     )
       ? readFileSync('packages/agent-sdk/src/session/runtimeMcpServers.ts', 'utf-8')
       : '';
+    const runtimeToolFiltersSource = existsSync(
+      'packages/agent-sdk/src/session/runtimeToolFilters.ts',
+    )
+      ? readFileSync('packages/agent-sdk/src/session/runtimeToolFilters.ts', 'utf-8')
+      : '';
     const runtimeNoopPortsSource = existsSync('packages/agent-sdk/src/session/runtimeNoopPorts.ts')
       ? readFileSync('packages/agent-sdk/src/session/runtimeNoopPorts.ts', 'utf-8')
       : '';
@@ -572,7 +577,12 @@ describe('monorepo topology', () => {
     expect(packageLocalRuntimeInstanceSource).toContain('PackageLocalRuntimeMcpServerCapability');
     expect(packageLocalRuntimeInstanceSource).toContain('filterTools');
     expect(packageLocalRuntimeInstanceSource).toContain('PackageLocalRuntimeNamedTool');
-    expect(packageLocalRuntimeInstanceSource).toContain('allowedTools !== undefined');
+    expect(existsSync('packages/agent-sdk/src/session/runtimeToolFilters.ts')).toBe(true);
+    expect(runtimeToolFiltersSource).not.toContain('../../../../src/');
+    expect(runtimeToolFiltersSource).toContain('filterPackageLocalRuntimeTools');
+    expect(runtimeToolFiltersSource).toContain('allowedTools !== undefined');
+    expect(packageLocalRuntimeInstanceSource).toContain('filterPackageLocalRuntimeTools');
+    expect(packageLocalRuntimeInstanceSource).not.toContain('allowedTools !== undefined');
     expect(packageLocalRuntimeInstanceSource).toContain('registerTools');
     expect(packageLocalRuntimeInstanceSource).toContain('PackageLocalRuntimeToolCatalogPort');
     expect(packageLocalRuntimeInstanceSource).toContain('PackageLocalRuntimeToolSource');
