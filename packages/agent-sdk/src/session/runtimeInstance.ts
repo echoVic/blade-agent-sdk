@@ -19,6 +19,7 @@ export interface PackageLocalSessionRuntimeOptions {
   sessionStore?: PackageLocalRuntimeSessionStorePort;
   workspace?: PackageLocalRuntimeWorkspacePort;
   mcpRegistry?: PackageLocalRuntimeMcpRegistryPort;
+  toolCatalog?: PackageLocalRuntimeToolCatalogPort;
 }
 
 export interface PackageLocalRuntimeSessionStorePort {
@@ -46,6 +47,19 @@ export interface PackageLocalRuntimeMcpRegistryPort {
   disconnectServer?(serverName: string): Promise<void>;
   reconnectServer?(serverName: string): Promise<void>;
   refreshTools?(serverNames: string[]): Promise<void>;
+}
+
+export interface PackageLocalRuntimeToolCatalogPort {
+  registerAll<TTool extends PackageLocalRuntimeNamedTool>(
+    tools: TTool[],
+    source: PackageLocalRuntimeToolSource,
+  ): void;
+}
+
+export interface PackageLocalRuntimeToolSource {
+  kind: string;
+  source: string;
+  trust?: string;
 }
 
 export interface PackageLocalRuntimeMcpToolCapability {
@@ -114,6 +128,7 @@ export class PackageLocalSessionRuntime {
   readonly sessionStore: PackageLocalRuntimeSessionStorePort;
   readonly workspace: PackageLocalRuntimeWorkspacePort;
   readonly mcpRegistry: PackageLocalRuntimeMcpRegistryPort;
+  readonly toolCatalog: PackageLocalRuntimeToolCatalogPort;
 
   constructor(options: PackageLocalSessionRuntimeOptions) {
     this.sessionId = options.sessionId;
@@ -128,6 +143,7 @@ export class PackageLocalSessionRuntime {
     this.sessionStore = options.sessionStore ?? createNoopRuntimeSessionStore();
     this.workspace = options.workspace ?? createNoopRuntimeWorkspace();
     this.mcpRegistry = options.mcpRegistry ?? createNoopRuntimeMcpRegistry();
+    this.toolCatalog = options.toolCatalog ?? createNoopRuntimeToolCatalog();
   }
 
   getConfiguredMcpServers(): Record<string, McpServerConfig | SdkMcpServerHandle> {
@@ -236,6 +252,18 @@ export class PackageLocalSessionRuntime {
       return !disallowedTools.has(tool.name);
     });
   }
+
+  registerTools<TTool extends PackageLocalRuntimeNamedTool>(
+    tools: TTool[],
+    source: PackageLocalRuntimeToolSource,
+  ): void {
+    const filteredTools = this.filterTools(tools);
+    if (filteredTools.length === 0) {
+      return;
+    }
+
+    this.toolCatalog.registerAll(filteredTools, source);
+  }
 }
 
 function createNoopRuntimeSessionStore(): PackageLocalRuntimeSessionStorePort {
@@ -264,5 +292,11 @@ function createNoopRuntimeMcpRegistry(): PackageLocalRuntimeMcpRegistryPort {
     async disconnectServer() {},
     async reconnectServer() {},
     async refreshTools() {},
+  };
+}
+
+function createNoopRuntimeToolCatalog(): PackageLocalRuntimeToolCatalogPort {
+  return {
+    registerAll() {},
   };
 }

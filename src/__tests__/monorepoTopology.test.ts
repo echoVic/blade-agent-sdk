@@ -489,6 +489,9 @@ describe('monorepo topology', () => {
     expect(packageLocalRuntimeInstanceSource).toContain('filterTools');
     expect(packageLocalRuntimeInstanceSource).toContain('PackageLocalRuntimeNamedTool');
     expect(packageLocalRuntimeInstanceSource).toContain('allowedTools !== undefined');
+    expect(packageLocalRuntimeInstanceSource).toContain('registerTools');
+    expect(packageLocalRuntimeInstanceSource).toContain('PackageLocalRuntimeToolCatalogPort');
+    expect(packageLocalRuntimeInstanceSource).toContain('PackageLocalRuntimeToolSource');
     expect(existsSync('packages/agent-sdk/src/session/packageLocalLegacyRuntimeFactory.ts')).toBe(
       true,
     );

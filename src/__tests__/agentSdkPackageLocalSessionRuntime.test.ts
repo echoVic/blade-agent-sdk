@@ -404,4 +404,74 @@ describe('agent-sdk package-local session runtime shell', () => {
     });
     expect(denylistRuntime.filterTools(tools)).toEqual([{ name: 'read' }, { name: 'write' }]);
   });
+
+  it('owns filtered tool registration through an injected tool catalog port', () => {
+    const registerAll = vi.fn();
+    const runtime = new PackageLocalSessionRuntime({
+      sessionId: 'session-1',
+      options: {
+        ...options,
+        allowedTools: ['read', 'write'],
+        disallowedTools: ['write'],
+      },
+      bladeConfig,
+      defaultContext: {},
+      toolCatalog: {
+        registerAll,
+      },
+    });
+
+    runtime.registerTools(
+      [
+        { name: 'read', description: 'Read files' },
+        { name: 'write', description: 'Write files' },
+        { name: 'search', description: 'Search files' },
+      ],
+      {
+        kind: 'builtin',
+        source: 'local',
+        trust: 'trusted',
+      },
+    );
+
+    expect(registerAll).toHaveBeenCalledTimes(1);
+    expect(registerAll).toHaveBeenCalledWith(
+      [{ name: 'read', description: 'Read files' }],
+      {
+        kind: 'builtin',
+        source: 'local',
+        trust: 'trusted',
+      },
+    );
+  });
+
+  it('skips tool catalog registration when filtering removes every tool', () => {
+    const registerAll = vi.fn();
+    const runtime = new PackageLocalSessionRuntime({
+      sessionId: 'session-1',
+      options: {
+        ...options,
+        allowedTools: [],
+      },
+      bladeConfig,
+      defaultContext: {},
+      toolCatalog: {
+        registerAll,
+      },
+    });
+
+    runtime.registerTools(
+      [
+        { name: 'read', description: 'Read files' },
+        { name: 'write', description: 'Write files' },
+      ],
+      {
+        kind: 'builtin',
+        source: 'local',
+        trust: 'trusted',
+      },
+    );
+
+    expect(registerAll).not.toHaveBeenCalled();
+  });
 });
