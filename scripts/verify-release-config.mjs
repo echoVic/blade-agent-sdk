@@ -174,6 +174,8 @@ function verifyReleaseWorkflow() {
   const setupNodeStep = steps.find((step) => step.uses?.startsWith('actions/setup-node@'));
   const releaseStep = steps.find((step) => step.run?.includes('semantic-release'));
   const releaseStepIndex = steps.findIndex((step) => step.run?.includes('semantic-release'));
+  const captureTagStep = steps.find((step) => step.name === 'Capture latest release tag');
+  const captureTagStepIndex = steps.indexOf(captureTagStep);
   const postPublishStep = steps.find((step) => step.name === 'Verify published artifacts');
   const postPublishStepIndex = steps.indexOf(postPublishStep);
 
@@ -185,6 +187,7 @@ function verifyReleaseWorkflow() {
     'npm install -g npm@^11.5.1',
     'pnpm install --frozen-lockfile',
     'pnpm run verify',
+    captureTagStep?.run,
     'pnpm exec semantic-release',
     postPublishStep?.run,
   ], 'release workflow commands');
@@ -200,6 +203,15 @@ function verifyReleaseWorkflow() {
   if ('NPM_TOKEN' in (releaseStep?.env ?? {})) {
     fail('release workflow must not rely on a long-lived NPM_TOKEN');
   }
+  if (captureTagStepIndex >= releaseStepIndex || captureTagStepIndex < 0) {
+    fail('release workflow must capture the previous release tag before semantic-release');
+  }
+  if (!captureTagStep?.run?.includes('PREVIOUS_RELEASE_TAG=')) {
+    fail('release workflow must export PREVIOUS_RELEASE_TAG before semantic-release');
+  }
+  if (!captureTagStep?.run?.includes('$GITHUB_ENV')) {
+    fail('release workflow must persist PREVIOUS_RELEASE_TAG through GITHUB_ENV');
+  }
   if (postPublishStepIndex <= releaseStepIndex) {
     fail('release workflow must verify published artifacts after semantic-release');
   }
@@ -211,6 +223,12 @@ function verifyReleaseWorkflow() {
   }
   if (!postPublishStep?.run?.includes('pnpm run verify:published -- --version "$published_version"')) {
     fail('post-publish verification must run verify:published for the discovered version');
+  }
+  if (!postPublishStep?.run?.includes('$PREVIOUS_RELEASE_TAG')) {
+    fail('post-publish verification must compare against the pre-release tag');
+  }
+  if (!postPublishStep?.run?.includes('[ "$published_version" = "$PREVIOUS_RELEASE_TAG" ]')) {
+    fail('post-publish verification must skip when semantic-release created no new tag');
   }
   if (postPublishStep?.env?.GH_TOKEN !== '${{ secrets.GITHUB_TOKEN }}') {
     fail('post-publish verification must pass GH_TOKEN for gh release checks');

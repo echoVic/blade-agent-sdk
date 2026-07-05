@@ -48,6 +48,12 @@ jobs:
       - name: Verify
         run: pnpm run verify
 
+      - name: Capture latest release tag
+        run: |
+          git fetch --tags --force
+          previous_release_tag="$(git describe --tags --abbrev=0 --match 'v*' 2>/dev/null || true)"
+          echo "PREVIOUS_RELEASE_TAG=$previous_release_tag" >> "$GITHUB_ENV"
+
       - name: Release
         run: pnpm exec semantic-release
         env:
@@ -59,6 +65,10 @@ jobs:
           published_version="$(git describe --tags --abbrev=0 --match 'v*' 2>/dev/null || true)"
           if [ -z "$published_version" ]; then
             echo "No v* release tag found; skipping post-publish verification."
+            exit 0
+          fi
+          if [ "$published_version" = "$PREVIOUS_RELEASE_TAG" ]; then
+            echo "No new release tag detected; skipping post-publish verification."
             exit 0
           fi
           pnpm run verify:published -- --version "$published_version"

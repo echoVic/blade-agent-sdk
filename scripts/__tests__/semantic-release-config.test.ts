@@ -428,6 +428,7 @@ describe('release workflow', () => {
       'npm install -g npm@^11.5.1',
       'pnpm install --frozen-lockfile',
       'pnpm run verify',
+      expect.stringContaining('PREVIOUS_RELEASE_TAG='),
       'pnpm exec semantic-release',
       expect.stringContaining('pnpm run verify:published -- --version "$published_version"'),
     ]);
@@ -443,6 +444,30 @@ describe('release workflow', () => {
     });
     expect(releaseStep.env).not.toHaveProperty('NPM_TOKEN');
     expect(releaseStep.env).not.toHaveProperty('NPM_CONFIG_PROVENANCE');
+  });
+
+  it('skips post-publish verification when semantic-release does not create a new tag', () => {
+    const workflow = parse(
+      readFileSync(resolve('.github/workflows/release.yml'), 'utf8')
+    );
+    const steps = workflow.jobs.release.steps;
+    const releaseStepIndex = steps.findIndex((step: { run?: string }) =>
+      step.run?.includes('semantic-release')
+    );
+    const captureTagStep = steps.find((step: { name?: string }) =>
+      step.name === 'Capture latest release tag'
+    );
+    const captureTagStepIndex = steps.indexOf(captureTagStep);
+    const postPublishStep = steps.find((step: { name?: string }) =>
+      step.name === 'Verify published artifacts'
+    );
+
+    expect(captureTagStepIndex).toBeLessThan(releaseStepIndex);
+    expect(captureTagStep.run).toContain('PREVIOUS_RELEASE_TAG=');
+    expect(captureTagStep.run).toContain('$GITHUB_ENV');
+    expect(postPublishStep.run).toContain('$PREVIOUS_RELEASE_TAG');
+    expect(postPublishStep.run).toContain('No new release tag detected; skipping post-publish verification.');
+    expect(postPublishStep.run).toContain('[ "$published_version" = "$PREVIOUS_RELEASE_TAG" ]');
   });
 
   it('runs post-publish verification against the latest release tag after semantic-release', () => {
