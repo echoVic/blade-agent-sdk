@@ -517,6 +517,11 @@ describe('monorepo topology', () => {
     )
       ? readFileSync('packages/agent-sdk/src/session/runtimeKernelPorts.ts', 'utf-8')
       : '';
+    const runtimeAgentDepsSource = existsSync(
+      'packages/agent-sdk/src/session/runtimeAgentDeps.ts',
+    )
+      ? readFileSync('packages/agent-sdk/src/session/runtimeAgentDeps.ts', 'utf-8')
+      : '';
     const runtimeKernelTraceFinalizationSource = existsSync(
       'packages/agent-sdk/src/session/runtimeKernelTraceFinalization.ts',
     )
@@ -804,6 +809,11 @@ describe('monorepo topology', () => {
     expect(packageLocalRuntimeInstanceSource).toContain('PackageLocalAgentRuntimeDeps');
     expect(packageLocalRuntimeInstanceSource).toContain('PackageLocalRuntimeBackgroundAgentManagerPort');
     expect(packageLocalRuntimeInstanceSource).toContain('PackageLocalRuntimeHookRuntimePort');
+    expect(existsSync('packages/agent-sdk/src/session/runtimeAgentDeps.ts')).toBe(true);
+    expect(runtimeAgentDepsSource).not.toContain('../../../../src/');
+    expect(runtimeAgentDepsSource).toContain('createPackageLocalAgentRuntimeDeps');
+    expect(packageLocalRuntimeInstanceSource).toContain('createPackageLocalAgentRuntimeDeps');
+    expect(packageLocalRuntimeInstanceSource).not.toContain('runtimeManaged: true');
     expect(packageLocalRuntimeInstanceSource).toContain('getKernelToolPort');
     expect(packageLocalRuntimeInstanceSource).toContain('getKernelStorePort');
     expect(packageLocalRuntimeInstanceSource).toContain('getKernelTracePort');

@@ -45,6 +45,11 @@ import {
   type PackageLocalRuntimeAgentKernelPort,
 } from './runtimeAgentKernels.js';
 import {
+  createPackageLocalAgentRuntimeDeps,
+  type PackageLocalAgentRuntimeDeps,
+  type PackageLocalRuntimeBackgroundAgentManagerPort,
+} from './runtimeAgentDeps.js';
+import {
   createPackageLocalRuntimeKernelHookPort,
   createPackageLocalRuntimeKernelStorePort,
   createPackageLocalRuntimeKernelToolPort,
@@ -109,6 +114,10 @@ export type {
   PackageLocalRuntimeKernelModelResolveOptions,
   PackageLocalRuntimeResolvedKernelModel,
 } from './runtimeKernelModels.js';
+export type {
+  PackageLocalAgentRuntimeDeps,
+  PackageLocalRuntimeBackgroundAgentManagerPort,
+} from './runtimeAgentDeps.js';
 export type {
   PackageLocalRuntimeKernelHookPortCreateOptions,
   PackageLocalRuntimeKernelPortFactoryPort,
@@ -262,21 +271,6 @@ export type {
   PackageLocalRuntimePermissionHookPort,
   PackageLocalRuntimePermissionHookResult,
 } from './runtimePermissions.js';
-
-export interface PackageLocalRuntimeBackgroundAgentManagerPort {
-  [operation: string]: unknown;
-}
-
-export interface PackageLocalAgentRuntimeDeps {
-  executionPipeline: unknown;
-  defaultContext: RuntimeContext;
-  mcpRegistry: PackageLocalRuntimeMcpRegistryPort;
-  subagentRegistry: PackageLocalRuntimeSubagentRegistryPort;
-  backgroundAgentManager: PackageLocalRuntimeBackgroundAgentManagerPort;
-  hookRuntime: PackageLocalRuntimeHookRuntimePort;
-  runtimeManaged: true;
-  logger: PackageLocalRuntimeLoggerPort;
-}
 
 export interface PackageLocalRuntimeNamedTool {
   name: string;
@@ -544,16 +538,15 @@ export class PackageLocalSessionRuntime {
   }
 
   getAgentRuntimeDeps(): PackageLocalAgentRuntimeDeps {
-    return {
+    return createPackageLocalAgentRuntimeDeps({
       executionPipeline: this.createExecutionPipeline(),
       defaultContext: this.defaultContext,
       mcpRegistry: this.mcpRegistry,
       subagentRegistry: this.subagentRegistry,
       backgroundAgentManager: this.backgroundAgentManager,
       hookRuntime: this.hookRuntime,
-      runtimeManaged: true,
       logger: this.logger,
-    };
+    });
   }
 
   getKernelToolPort(
