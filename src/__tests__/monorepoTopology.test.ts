@@ -343,6 +343,8 @@ describe('monorepo topology', () => {
     expect(existsSync('packages/agent-sdk/src/session/store.ts')).toBe(true);
     expect(sessionRuntimeFactorySource).not.toContain('../../../../src/session/Session.js');
     expect(sessionRuntimeFactorySource).toContain("from './Session.js'");
+    expect(sessionRuntimeFactorySource).not.toContain("from './legacySessionAdapter.js'");
+    expect(sessionRuntimeFactorySource).toContain("import('./legacySessionAdapter.js')");
     expect(sessionFactorySource).not.toContain('fork(options');
     expect(sessionFactorySource).not.toContain('prompt(message');
     expect(sessionRuntimeFactorySource).not.toContain('forkSession');
