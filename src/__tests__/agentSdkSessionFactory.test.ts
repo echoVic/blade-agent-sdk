@@ -13,7 +13,6 @@ import {
 import type {
   ISession,
   SessionOptions,
-  UserMessageContent,
 } from '../../packages/agent-sdk/src/session/index.js';
 
 const options: SessionOptions = {
@@ -77,12 +76,6 @@ describe('agent-sdk session runtime factory', () => {
       async resume(receivedOptions) {
         calls.push(`resume:${receivedOptions.sessionId}`);
         return createFakeSession(`resumed:${receivedOptions.sessionId}`);
-      },
-      async fork(receivedOptions) {
-        throw new Error(`runtime fork should not be called for ${receivedOptions.sessionId}`);
-      },
-      async prompt(_message: UserMessageContent, _receivedOptions) {
-        throw new Error('runtime prompt should not be called');
       },
     });
 
@@ -158,12 +151,6 @@ describe('agent-sdk session runtime factory', () => {
       async resume() {
         throw new Error('resume should not be called');
       },
-      async fork() {
-        throw new Error('fork should not be called');
-      },
-      async prompt() {
-        throw new Error('runtime prompt should not be called');
-      },
     });
 
     try {
@@ -212,12 +199,6 @@ describe('agent-sdk session runtime factory', () => {
         calls.push(`resume:${receivedOptions.sessionId}`);
         return sourceSession;
       },
-      async fork() {
-        throw new Error('runtime fork should not be called');
-      },
-      async prompt() {
-        throw new Error('prompt should not be called');
-      },
     });
 
     try {
@@ -240,12 +221,6 @@ describe('agent-sdk session runtime factory', () => {
       async resume() {
         calls.push('resume');
         return createFakeSession('resumed');
-      },
-      async fork() {
-        throw new Error('runtime fork should not be called');
-      },
-      async prompt() {
-        throw new Error('prompt should not be called');
       },
     };
 

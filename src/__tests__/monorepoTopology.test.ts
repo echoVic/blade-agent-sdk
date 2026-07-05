@@ -327,6 +327,7 @@ describe('monorepo topology', () => {
       'packages/agent-sdk/src/session/runtimeFactory.ts',
       'utf-8',
     );
+    const sessionFactorySource = readFileSync('packages/agent-sdk/src/session/factory.ts', 'utf-8');
     const sessionLifecycleSource = readFileSync('packages/agent-sdk/src/session/Session.ts', 'utf-8');
     const legacySessionAdapterSource = readFileSync(
       'packages/agent-sdk/src/session/legacySessionAdapter.ts',
@@ -342,6 +343,10 @@ describe('monorepo topology', () => {
     expect(existsSync('packages/agent-sdk/src/session/store.ts')).toBe(true);
     expect(sessionRuntimeFactorySource).not.toContain('../../../../src/session/Session.js');
     expect(sessionRuntimeFactorySource).toContain("from './Session.js'");
+    expect(sessionFactorySource).not.toContain('fork(options');
+    expect(sessionFactorySource).not.toContain('prompt(message');
+    expect(sessionRuntimeFactorySource).not.toContain('forkSession');
+    expect(sessionRuntimeFactorySource).not.toContain('prompt');
     expect(sessionSource).toContain('createSession as runCreateLifecycle');
     expect(sessionSource).toContain('resumeSession as runResumeLifecycle');
     expect(sessionSource).not.toContain('return sessionRuntimeFactory.create(options)');
