@@ -45,6 +45,13 @@ import {
   type PackageLocalRuntimeAgentKernelPort,
 } from './runtimeAgentKernels.js';
 import {
+  createPackageLocalRuntimeKernelHookPort,
+  createPackageLocalRuntimeKernelStorePort,
+  createPackageLocalRuntimeKernelToolPort,
+  createPackageLocalRuntimeKernelTracePort,
+  type PackageLocalRuntimeKernelPortFactoryPort,
+} from './runtimeKernelPorts.js';
+import {
   streamPackageLocalRuntimeAgentKernelTurn,
   type PackageLocalRuntimeAgentKernelOptions,
   type PackageLocalRuntimeAgentKernelStreamOptions,
@@ -102,6 +109,13 @@ export type {
   PackageLocalRuntimeKernelModelResolveOptions,
   PackageLocalRuntimeResolvedKernelModel,
 } from './runtimeKernelModels.js';
+export type {
+  PackageLocalRuntimeKernelHookPortCreateOptions,
+  PackageLocalRuntimeKernelPortFactoryPort,
+  PackageLocalRuntimeKernelStorePortCreateOptions,
+  PackageLocalRuntimeKernelToolPortCreateOptions,
+  PackageLocalRuntimeKernelTracePortCreateOptions,
+} from './runtimeKernelPorts.js';
 export type {
   PackageLocalRuntimeHookManagerPort,
   PackageLocalRuntimeHookRuntimePort,
@@ -251,36 +265,6 @@ export type {
 
 export interface PackageLocalRuntimeBackgroundAgentManagerPort {
   [operation: string]: unknown;
-}
-
-export interface PackageLocalRuntimeKernelToolPortCreateOptions {
-  toolCatalog: PackageLocalRuntimeToolCatalogPort;
-  executionPipeline: unknown;
-  createExecutionContext: (
-    toolCall: AgentToolCall,
-    signal?: AbortSignal,
-  ) => ExecutionContext;
-}
-
-export interface PackageLocalRuntimeKernelStorePortCreateOptions {
-  sessionId: SessionId;
-  sessionStore: PackageLocalRuntimeSessionStorePort;
-}
-
-export interface PackageLocalRuntimeKernelTracePortCreateOptions {
-  recorder: TraceRecorder;
-  maxContextTokens?: number;
-}
-
-export interface PackageLocalRuntimeKernelHookPortCreateOptions {
-  hookRuntime: PackageLocalRuntimeHookRuntimePort;
-}
-
-export interface PackageLocalRuntimeKernelPortFactoryPort {
-  createToolPort(options: PackageLocalRuntimeKernelToolPortCreateOptions): AgentToolPort;
-  createStorePort(options: PackageLocalRuntimeKernelStorePortCreateOptions): AgentStorePort;
-  createTracePort(options: PackageLocalRuntimeKernelTracePortCreateOptions): AgentTracePort;
-  createHookPort(options: PackageLocalRuntimeKernelHookPortCreateOptions): AgentHookPort;
 }
 
 export interface PackageLocalAgentRuntimeDeps {
@@ -578,7 +562,8 @@ export class PackageLocalSessionRuntime {
       signal?: AbortSignal,
     ) => ExecutionContext,
   ): AgentToolPort {
-    return this.kernelPortFactory.createToolPort({
+    return createPackageLocalRuntimeKernelToolPort({
+      kernelPortFactory: this.kernelPortFactory,
       toolCatalog: this.toolCatalog,
       executionPipeline: this.createExecutionPipeline(),
       createExecutionContext,
@@ -586,21 +571,24 @@ export class PackageLocalSessionRuntime {
   }
 
   getKernelStorePort(): AgentStorePort {
-    return this.kernelPortFactory.createStorePort({
+    return createPackageLocalRuntimeKernelStorePort({
+      kernelPortFactory: this.kernelPortFactory,
       sessionId: this.sessionId,
       sessionStore: this.sessionStore,
     });
   }
 
   getKernelTracePort(recorder: TraceRecorder, maxContextTokens?: number): AgentTracePort {
-    return this.kernelPortFactory.createTracePort({
+    return createPackageLocalRuntimeKernelTracePort({
+      kernelPortFactory: this.kernelPortFactory,
       recorder,
       maxContextTokens,
     });
   }
 
   getKernelHookPort(): AgentHookPort {
-    return this.kernelPortFactory.createHookPort({
+    return createPackageLocalRuntimeKernelHookPort({
+      kernelPortFactory: this.kernelPortFactory,
       hookRuntime: this.hookRuntime,
     });
   }

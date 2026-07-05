@@ -512,6 +512,11 @@ describe('monorepo topology', () => {
     )
       ? readFileSync('packages/agent-sdk/src/session/runtimeAgentKernels.ts', 'utf-8')
       : '';
+    const runtimeKernelPortsSource = existsSync(
+      'packages/agent-sdk/src/session/runtimeKernelPorts.ts',
+    )
+      ? readFileSync('packages/agent-sdk/src/session/runtimeKernelPorts.ts', 'utf-8')
+      : '';
     const runtimeKernelTraceFinalizationSource = existsSync(
       'packages/agent-sdk/src/session/runtimeKernelTraceFinalization.ts',
     )
@@ -804,6 +809,17 @@ describe('monorepo topology', () => {
     expect(packageLocalRuntimeInstanceSource).toContain('getKernelTracePort');
     expect(packageLocalRuntimeInstanceSource).toContain('getKernelHookPort');
     expect(packageLocalRuntimeInstanceSource).toContain('PackageLocalRuntimeKernelPortFactoryPort');
+    expect(existsSync('packages/agent-sdk/src/session/runtimeKernelPorts.ts')).toBe(true);
+    expect(runtimeKernelPortsSource).not.toContain('../../../../src/');
+    expect(runtimeKernelPortsSource).toContain('createPackageLocalRuntimeKernelToolPort');
+    expect(runtimeKernelPortsSource).toContain('createPackageLocalRuntimeKernelStorePort');
+    expect(runtimeKernelPortsSource).toContain('createPackageLocalRuntimeKernelTracePort');
+    expect(runtimeKernelPortsSource).toContain('createPackageLocalRuntimeKernelHookPort');
+    expect(packageLocalRuntimeInstanceSource).toContain('createPackageLocalRuntimeKernelToolPort');
+    expect(packageLocalRuntimeInstanceSource).not.toContain('this.kernelPortFactory.createToolPort({');
+    expect(packageLocalRuntimeInstanceSource).not.toContain('this.kernelPortFactory.createStorePort({');
+    expect(packageLocalRuntimeInstanceSource).not.toContain('this.kernelPortFactory.createTracePort({');
+    expect(packageLocalRuntimeInstanceSource).not.toContain('this.kernelPortFactory.createHookPort({');
     expect(packageLocalRuntimeInstanceSource).toContain('createAgentKernel');
     expect(packageLocalRuntimeInstanceSource).toContain('PackageLocalRuntimeAgentKernelFactoryPort');
     expect(packageLocalRuntimeInstanceSource).toContain('PackageLocalRuntimeKernelModelResolverPort');
