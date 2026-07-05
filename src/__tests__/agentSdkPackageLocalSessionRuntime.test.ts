@@ -363,6 +363,78 @@ describe('agent-sdk package-local session runtime shell', () => {
     ]);
   });
 
+  it('owns configured MCP server registration through an injected MCP registry port', async () => {
+    const calls: string[] = [];
+    const warnings: unknown[][] = [];
+    const localHandle = {
+      name: 'local',
+      version: '1.0.0',
+      server: {},
+      createClientTransport: async () => ({}),
+    };
+    const disabledConfig = {
+      command: 'node',
+      args: ['disabled.js'],
+      disabled: true,
+    };
+    const remoteConfig = {
+      command: 'node',
+      args: ['remote.js'],
+    };
+    const failingConfig = {
+      command: 'node',
+      args: ['failing.js'],
+    };
+    const failure = new Error('boom');
+    const runtime = new PackageLocalSessionRuntime({
+      sessionId: 'session-1',
+      options: {
+        ...options,
+        mcpServers: {
+          local: localHandle,
+          disabled: disabledConfig,
+          remote: remoteConfig,
+          failing: failingConfig,
+        },
+      },
+      bladeConfig,
+      defaultContext: {},
+      mcpRegistry: {
+        disconnectAll: vi.fn(async () => {}),
+        getCapabilities: vi.fn(async () => []),
+        registerInProcessServer: vi.fn(async (serverName, config) => {
+          calls.push(`in-process:${serverName}:${config === localHandle}`);
+        }),
+        registerServer: vi.fn(async (serverName, config) => {
+          calls.push(`remote:${serverName}:${config === remoteConfig || config === failingConfig}`);
+          if (serverName === 'failing') {
+            throw failure;
+          }
+        }),
+        refreshTools: vi.fn(async (serverNames) => {
+          calls.push(`refresh:${serverNames.join(',')}`);
+        }),
+      },
+      logger: {
+        warn(...args) {
+          warnings.push(args);
+        },
+      },
+    });
+
+    await runtime.registerConfiguredMcpServers();
+
+    expect(calls).toEqual([
+      'in-process:local:true',
+      'remote:remote:true',
+      'remote:failing:true',
+      'refresh:local,disabled,remote,failing',
+    ]);
+    expect(warnings).toEqual([
+      ['[PackageLocalSessionRuntime] Failed to register MCP server failing:', failure],
+    ]);
+  });
+
   it('owns tool filtering semantics including empty allowedTools', () => {
     const tools = [
       { name: 'read' },

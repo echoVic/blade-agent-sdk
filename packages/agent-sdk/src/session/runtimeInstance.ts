@@ -20,6 +20,7 @@ export interface PackageLocalSessionRuntimeOptions {
   workspace?: PackageLocalRuntimeWorkspacePort;
   mcpRegistry?: PackageLocalRuntimeMcpRegistryPort;
   toolCatalog?: PackageLocalRuntimeToolCatalogPort;
+  logger?: PackageLocalRuntimeLoggerPort;
 }
 
 export interface PackageLocalRuntimeSessionStorePort {
@@ -39,6 +40,11 @@ export interface PackageLocalRuntimeWorkspaceUpdate {
 export interface PackageLocalRuntimeMcpRegistryPort {
   disconnectAll(): Promise<void>;
   getCapabilities(): Promise<PackageLocalRuntimeMcpServerCapability[]>;
+  registerInProcessServer?(
+    serverName: string,
+    config: SdkMcpServerHandle,
+  ): Promise<void>;
+  registerServer?(serverName: string, config: McpServerConfig): Promise<void>;
   ensureServerRegistered?(
     serverName: string,
     config: McpServerConfig | SdkMcpServerHandle,
@@ -60,6 +66,10 @@ export interface PackageLocalRuntimeToolSource {
   kind: string;
   source: string;
   trust?: string;
+}
+
+export interface PackageLocalRuntimeLoggerPort {
+  warn(...args: unknown[]): void;
 }
 
 export interface PackageLocalRuntimeMcpToolCapability {
@@ -129,6 +139,7 @@ export class PackageLocalSessionRuntime {
   readonly workspace: PackageLocalRuntimeWorkspacePort;
   readonly mcpRegistry: PackageLocalRuntimeMcpRegistryPort;
   readonly toolCatalog: PackageLocalRuntimeToolCatalogPort;
+  readonly logger: PackageLocalRuntimeLoggerPort;
 
   constructor(options: PackageLocalSessionRuntimeOptions) {
     this.sessionId = options.sessionId;
@@ -144,6 +155,7 @@ export class PackageLocalSessionRuntime {
     this.workspace = options.workspace ?? createNoopRuntimeWorkspace();
     this.mcpRegistry = options.mcpRegistry ?? createNoopRuntimeMcpRegistry();
     this.toolCatalog = options.toolCatalog ?? createNoopRuntimeToolCatalog();
+    this.logger = options.logger ?? createNoopRuntimeLogger();
   }
 
   getConfiguredMcpServers(): Record<string, McpServerConfig | SdkMcpServerHandle> {
@@ -217,6 +229,35 @@ export class PackageLocalSessionRuntime {
     await this.refreshMcpTools([serverName]);
   }
 
+  async registerConfiguredMcpServers(): Promise<void> {
+    const configuredServers = this.options.mcpServers;
+    if (!configuredServers) {
+      return;
+    }
+
+    for (const [serverName, config] of Object.entries(configuredServers)) {
+      if (isPackageLocalSdkMcpServerHandle(config)) {
+        await this.registerInProcessMcpServer(serverName, config);
+        continue;
+      }
+
+      if (config.disabled) {
+        continue;
+      }
+
+      try {
+        await this.registerRemoteMcpServer(serverName, config);
+      } catch (error) {
+        this.logger.warn(
+          `[PackageLocalSessionRuntime] Failed to register MCP server ${serverName}:`,
+          error,
+        );
+      }
+    }
+
+    await this.refreshMcpTools(Object.keys(configuredServers));
+  }
+
   private async ensureMcpServerRegistered(serverName: string): Promise<void> {
     const config = this.options.mcpServers?.[serverName];
     if (!config) {
@@ -239,6 +280,28 @@ export class PackageLocalSessionRuntime {
       throw new Error(`Package-local MCP registry port does not implement ${method}`);
     }
     await action.call(this.mcpRegistry, serverName);
+  }
+
+  private async registerInProcessMcpServer(
+    serverName: string,
+    config: SdkMcpServerHandle,
+  ): Promise<void> {
+    const action = this.mcpRegistry.registerInProcessServer;
+    if (!action) {
+      throw new Error('Package-local MCP registry port does not implement registerInProcessServer');
+    }
+    await action.call(this.mcpRegistry, serverName, config);
+  }
+
+  private async registerRemoteMcpServer(
+    serverName: string,
+    config: McpServerConfig,
+  ): Promise<void> {
+    const action = this.mcpRegistry.registerServer;
+    if (!action) {
+      throw new Error('Package-local MCP registry port does not implement registerServer');
+    }
+    await action.call(this.mcpRegistry, serverName, config);
   }
 
   filterTools<TTool extends PackageLocalRuntimeNamedTool>(tools: TTool[]): TTool[] {
@@ -287,6 +350,8 @@ function createNoopRuntimeMcpRegistry(): PackageLocalRuntimeMcpRegistryPort {
     async getCapabilities() {
       return [];
     },
+    async registerInProcessServer() {},
+    async registerServer() {},
     async ensureServerRegistered() {},
     async connectServer() {},
     async disconnectServer() {},
@@ -298,5 +363,11 @@ function createNoopRuntimeMcpRegistry(): PackageLocalRuntimeMcpRegistryPort {
 function createNoopRuntimeToolCatalog(): PackageLocalRuntimeToolCatalogPort {
   return {
     registerAll() {},
+  };
+}
+
+function createNoopRuntimeLogger(): PackageLocalRuntimeLoggerPort {
+  return {
+    warn() {},
   };
 }
