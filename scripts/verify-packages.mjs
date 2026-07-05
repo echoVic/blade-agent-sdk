@@ -513,6 +513,137 @@ function verifyConsumerImports(consumerDir) {
   });
 }
 
+function verifyConsumerTypes(consumerDir) {
+  writeFileSync(
+    join(consumerDir, 'tsconfig.json'),
+    JSON.stringify({
+      compilerOptions: {
+        target: 'ES2022',
+        module: 'NodeNext',
+        moduleResolution: 'NodeNext',
+        strict: true,
+        noEmit: true,
+        skipLibCheck: true,
+        lib: ['ES2022', 'DOM'],
+      },
+      include: ['consumer-types.ts'],
+    }, null, 2),
+  );
+
+  writeFileSync(
+    join(consumerDir, 'consumer-types.ts'),
+    `import type { ModelPort, ModelRequest, ModelResponse, ModelStreamEvent } from '@blade-ai/ai';
+import { createOpenAICompatibleModelPort } from '@blade-ai/ai';
+import type { AgentStreamEvent } from '@blade-ai/agent';
+import { AgentKernel } from '@blade-ai/agent';
+import type { SessionOptions, StreamMessage } from '@blade-ai/agent-sdk';
+import { createSession, defineTool, ToolKind } from '@blade-ai/agent-sdk';
+
+const model = createOpenAICompatibleModelPort({
+  apiKey: 'test-key',
+  baseUrl: 'https://example.test/v1',
+  model: 'glm-5.2',
+});
+
+const request: ModelRequest = {
+  messages: [{ role: 'user', content: 'hello' }],
+  temperature: 0.2,
+  maxOutputTokens: 128,
+};
+
+async function useModelPort(): Promise<ModelResponse> {
+  return await model.generate(request);
+}
+
+const fakeModel: ModelPort = {
+  async generate(): Promise<ModelResponse> {
+    return {
+      content: 'ok',
+      finishReason: 'stop',
+      usage: {
+        promptTokens: 1,
+        completionTokens: 1,
+        totalTokens: 2,
+      },
+    };
+  },
+
+  async *stream(): AsyncIterable<ModelStreamEvent> {
+    yield {
+      type: 'done',
+      response: { content: 'ok', finishReason: 'stop' },
+      finishReason: 'stop',
+    };
+  },
+};
+
+const kernel = new AgentKernel({ model: fakeModel, modelCallMode: 'stream' });
+
+async function useKernel(): Promise<void> {
+  for await (const event of kernel.runTurn({ input: 'hello' })) {
+    const typedEvent: AgentStreamEvent = event;
+    if (typedEvent.type === 'result') {
+      typedEvent.content satisfies string;
+    }
+  }
+}
+
+const echoTool = defineTool({
+  name: 'echo',
+  description: 'Echo input',
+  kind: ToolKind.ReadOnly,
+  parameters: {
+    type: 'object',
+    properties: {
+      text: { type: 'string' },
+    },
+    required: ['text'],
+  },
+  async execute(input: { text: string }) {
+    return {
+      success: true,
+      data: input.text,
+      llmContent: input.text,
+    };
+  },
+});
+
+const sessionOptions: SessionOptions = {
+  provider: {
+    type: 'openai-compatible',
+    apiKey: 'test-key',
+    baseUrl: 'https://example.test/v1',
+  },
+  model: 'glm-5.2',
+  allowedTools: [],
+  tools: [echoTool],
+  temperature: 0.2,
+  maxOutputTokens: 128,
+};
+
+async function useSession(): Promise<void> {
+  const session = await createSession(sessionOptions);
+  await session.send('hello');
+  for await (const event of session.stream()) {
+    const typedEvent: StreamMessage = event;
+    if (typedEvent.type === 'content') {
+      typedEvent.delta satisfies string;
+    }
+  }
+  session.close();
+}
+
+void useModelPort;
+void useKernel;
+void useSession;
+`,
+  );
+
+  run(resolve(repoRoot, 'node_modules/.bin/tsc'), ['--noEmit', '-p', 'tsconfig.json'], {
+    cwd: consumerDir,
+  });
+}
+
 const tempDir = mkdtempSync(join(tmpdir(), 'blade-verify-packages-'));
 try {
   const packDir = join(tempDir, 'packs');
@@ -530,6 +661,7 @@ try {
 
   const consumerDir = installConsumer(tarballs, tempDir);
   verifyConsumerImports(consumerDir);
+  verifyConsumerTypes(consumerDir);
 } finally {
   rmSync(tempDir, { recursive: true, force: true });
 }

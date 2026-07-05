@@ -99,6 +99,19 @@ describe('package provenance metadata', () => {
       expect(packageVerifier).toContain("'package/README.md'");
     }
   });
+
+  it('type-checks public package contracts from the packed temporary consumer', () => {
+    const packageVerifier = readFileSync(resolve('scripts/verify-packages.mjs'), 'utf8');
+
+    expect(packageVerifier).toContain('function verifyConsumerTypes');
+    expect(packageVerifier).toContain('consumer-types.ts');
+    expect(packageVerifier).toContain('tsconfig.json');
+    expect(packageVerifier).toContain('tsc');
+    expect(packageVerifier).toContain('--noEmit');
+    expect(packageVerifier).toContain("import { createOpenAICompatibleModelPort } from '@blade-ai/ai';");
+    expect(packageVerifier).toContain("import { AgentKernel } from '@blade-ai/agent';");
+    expect(packageVerifier).toContain("import { createSession, defineTool, ToolKind } from '@blade-ai/agent-sdk';");
+  });
 });
 
 describe('release scripts', () => {
