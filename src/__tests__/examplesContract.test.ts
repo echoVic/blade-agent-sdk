@@ -5,11 +5,26 @@ const packageJson = JSON.parse(readFileSync('package.json', 'utf8')) as {
   scripts: Record<string, string>;
 };
 
+const examplesTsconfig = JSON.parse(readFileSync('examples/tsconfig.json', 'utf8')) as {
+  compilerOptions: {
+    paths: Record<string, string[]>;
+  };
+};
+
 describe('examples and quickstart documentation', () => {
   it('adds type-checked examples to the production verification chain', () => {
     expect(packageJson.scripts['verify:examples']).toBe('tsc -p examples/tsconfig.json --noEmit');
     expect(packageJson.scripts.verify).toContain('pnpm run verify:examples');
     expect(existsSync('examples/tsconfig.json')).toBe(true);
+  });
+
+  it('type-checks examples against package-local public source entries', () => {
+    expect(examplesTsconfig.compilerOptions.paths['@blade-ai/agent-sdk']).toEqual([
+      '../packages/agent-sdk/src/index.ts',
+    ]);
+    expect(examplesTsconfig.compilerOptions.paths['@blade-ai/agent-sdk']).not.toContain(
+      '../src/index.ts',
+    );
   });
 
   it('keeps the session-first server quickstart example available', () => {

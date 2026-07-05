@@ -4,7 +4,7 @@
     "noEmit": true,
     "rootDir": "..",
     "paths": {
-      "@blade-ai/agent-sdk": ["../src/index.ts"],
+      "@blade-ai/agent-sdk": ["../packages/agent-sdk/src/index.ts"],
       "@blade-ai/agent": ["../packages/agent/src/index.ts"],
       "@blade-ai/ai": ["../packages/ai/src/index.ts"],
       "@blade-ai/ai/chat": ["../packages/ai/src/chat/index.ts"],
