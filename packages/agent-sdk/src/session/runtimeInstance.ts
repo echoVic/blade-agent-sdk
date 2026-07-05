@@ -52,6 +52,11 @@ import {
   type PackageLocalRuntimeAgentKernelPort,
 } from './runtimeAgentKernels.js';
 import {
+  finishPackageLocalKernelTraceError,
+  updatePackageLocalKernelTraceFinalization,
+  type PackageLocalKernelTraceFinalizationState,
+} from './runtimeKernelTraceFinalization.js';
+import {
   resolvePackageLocalRuntimeKernelModel,
   type PackageLocalRuntimeKernelModelResolverPort,
   type PackageLocalRuntimeResolvedKernelModel,
@@ -761,7 +766,7 @@ export class PackageLocalSessionRuntime {
       kernelModel,
     );
     const maxContextTokens = kernelModel.modelRequestDefaults?.maxContextTokens ?? 0;
-    let usage: unknown;
+    const traceFinalizationState: PackageLocalKernelTraceFinalizationState = {};
 
     yield { type: 'turn_start', turn: 1, sessionId: this.sessionId };
 
@@ -776,30 +781,18 @@ export class PackageLocalSessionRuntime {
         traceCollector: traceRecorder,
         stream: kernelEvents,
       })) {
-        if (event.type === 'usage') {
-          usage = event.usage;
-        }
         yield* projectPackageLocalKernelEventToStreamMessages(event, {
           sessionId: this.sessionId,
           maxContextTokens,
           includeThinking: options.includeThinking ?? false,
         });
-        if (event.type === 'result') {
-          await traceFinalizer.finish('success', {
-            content: event.content,
-            usage,
-          });
-        } else if (event.type === 'error') {
-          await traceFinalizer.finish('error', {
-            error: event.message,
-            code: event.code,
-          });
-        }
+        await updatePackageLocalKernelTraceFinalization(event, {
+          state: traceFinalizationState,
+          traceFinalizer,
+        });
       }
     } catch (error) {
-      await traceFinalizer.finish('error', {
-        error: error instanceof Error ? error.message : String(error),
-      });
+      await finishPackageLocalKernelTraceError(error, traceFinalizer);
       throw error;
     }
   }

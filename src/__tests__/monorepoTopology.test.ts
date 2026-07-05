@@ -490,6 +490,11 @@ describe('monorepo topology', () => {
     )
       ? readFileSync('packages/agent-sdk/src/session/runtimeAgentKernels.ts', 'utf-8')
       : '';
+    const runtimeKernelTraceFinalizationSource = existsSync(
+      'packages/agent-sdk/src/session/runtimeKernelTraceFinalization.ts',
+    )
+      ? readFileSync('packages/agent-sdk/src/session/runtimeKernelTraceFinalization.ts', 'utf-8')
+      : '';
     const runtimeKernelModelsSource = existsSync(
       'packages/agent-sdk/src/session/runtimeKernelModels.ts',
     )
@@ -707,6 +712,21 @@ describe('monorepo topology', () => {
     expect(packageLocalRuntimeInstanceSource).toContain(
       'projectPackageLocalKernelEventToStreamMessages',
     );
+    expect(existsSync('packages/agent-sdk/src/session/runtimeKernelTraceFinalization.ts')).toBe(
+      true,
+    );
+    expect(runtimeKernelTraceFinalizationSource).not.toContain('../../../../src/');
+    expect(runtimeKernelTraceFinalizationSource).toContain(
+      'updatePackageLocalKernelTraceFinalization',
+    );
+    expect(runtimeKernelTraceFinalizationSource).toContain('finishPackageLocalKernelTraceError');
+    expect(packageLocalRuntimeInstanceSource).toContain(
+      'updatePackageLocalKernelTraceFinalization',
+    );
+    expect(packageLocalRuntimeInstanceSource).toContain('finishPackageLocalKernelTraceError');
+    expect(packageLocalRuntimeInstanceSource).not.toContain("event.type === 'usage'");
+    expect(packageLocalRuntimeInstanceSource).not.toContain("traceFinalizer.finish('success'");
+    expect(packageLocalRuntimeInstanceSource).not.toContain("traceFinalizer.finish('error'");
     expect(packageLocalRuntimeInstanceSource).toContain(
       'PackageLocalRuntimeKernelStreamProjectionOptions',
     );
