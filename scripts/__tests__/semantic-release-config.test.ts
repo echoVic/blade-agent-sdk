@@ -50,6 +50,7 @@ describe('package provenance metadata', () => {
       });
       expect(packageJson.publishConfig).toEqual({
         access: 'public',
+        provenance: true,
         registry: 'https://registry.npmjs.org/',
       });
     }
@@ -310,6 +311,13 @@ describe('release scripts', () => {
     expect(releaseVerifier).toContain('prepared manifest');
     expect(releaseVerifier).toContain('workspace:');
     expect(releaseVerifier).toContain('0.0.0');
+  });
+
+  it('requires npm provenance in publishable package metadata', () => {
+    const releaseVerifier = readFileSync(resolve('scripts/verify-release-config.mjs'), 'utf8');
+
+    expect(releaseVerifier).toContain('provenance');
+    expect(releaseVerifier).toContain('publishConfig');
   });
 });
 

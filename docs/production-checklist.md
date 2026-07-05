@@ -82,7 +82,7 @@ pnpm run test:live:session-glm
 
 ## Release Rehearsal
 
-`pnpm run verify` 会先执行无 token 的静态 release gate，校验 semantic-release 配置、三包 publish metadata、release workflow 的 verify-before-release 顺序，以及 OIDC trusted publishing 设置：
+`pnpm run verify` 会先执行无 token 的静态 release gate，校验 semantic-release 配置、三包 publish metadata、`publishConfig.provenance: true`、release workflow 的 verify-before-release 顺序，以及 OIDC trusted publishing 设置：
 
 ```bash
 pnpm run verify:release
@@ -103,7 +103,7 @@ dry-run 不发布 npm 包。它通常需要 GitHub token 环境，适合维护�
 1. 安装依赖。
 2. 运行 `pnpm run verify`。
 3. 运行 `pnpm exec semantic-release`。
-4. 使用 GitHub OIDC trusted publishing 发布 `@blade-ai/ai`、`@blade-ai/agent`、`@blade-ai/agent-sdk`。
+4. 使用 GitHub OIDC trusted publishing 和 npm provenance 发布 `@blade-ai/ai`、`@blade-ai/agent`、`@blade-ai/agent-sdk`。
 
 不要绕过 `pnpm run verify` 直接发布。不要在 trusted publishing 流程中依赖长期 `NPM_TOKEN`。
 

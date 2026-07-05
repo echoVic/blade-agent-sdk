@@ -102,6 +102,7 @@ function verifyPackageMetadata() {
     assertDeepEqual(manifest.engines, { node: '>=22.14.0' }, `${pkg.name} engines`);
     assertDeepEqual(manifest.publishConfig, {
       access: 'public',
+      provenance: true,
       registry: 'https://registry.npmjs.org/',
     }, `${pkg.name} publishConfig`);
     assertDeepEqual(manifest.repository, {
