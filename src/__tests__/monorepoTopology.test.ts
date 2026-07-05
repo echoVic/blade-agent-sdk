@@ -606,11 +606,11 @@ describe('monorepo topology', () => {
     expect(sessionRuntimeFactorySource).not.toContain('../../../../src/session/Session.js');
     expect(sessionRuntimeFactorySource).toContain('interface DefaultSessionRuntimeFactoryOptions');
     expect(sessionRuntimeFactorySource).toContain('loadKernelRuntimeFactory');
-    expect(sessionRuntimeFactorySource).toContain('loadLegacyRuntimeFactory');
-    expect(sessionRuntimeFactorySource).toContain('loadRuntimeFactory');
+    expect(sessionRuntimeFactorySource).toContain('createDefaultKernelSessionRuntimeFactory');
+    expect(sessionRuntimeFactorySource).not.toContain('loadLegacyRuntimeFactory');
+    expect(sessionRuntimeFactorySource).not.toContain('loadDefaultLegacyRuntimeFactory');
     expect(sessionRuntimeFactorySource).toContain("from './Session.js'");
-    expect(sessionRuntimeFactorySource).not.toContain("from './legacySessionAdapter.js'");
-    expect(sessionRuntimeFactorySource).toContain("import('./legacySessionAdapter.js')");
+    expect(sessionRuntimeFactorySource).not.toContain('legacySessionAdapter');
     expect(sessionFactorySource).not.toContain('fork(options');
     expect(sessionFactorySource).not.toContain('prompt(message');
     expect(sessionRuntimeFactorySource).not.toContain('forkSession');

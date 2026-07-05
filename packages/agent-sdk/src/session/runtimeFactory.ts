@@ -2,37 +2,44 @@ import {
   createSession,
   resumeSession,
 } from './Session.js';
+import {
+  createDefaultKernelSessionRuntimeFactory,
+  type DefaultKernelSessionRuntimeFactoryOptions,
+} from './defaultKernelRuntimeFactory.js';
 import type { SessionRuntimeFactory } from './factory.js';
 
-let legacyRuntimeFactoryPromise: Promise<SessionRuntimeFactory> | null = null;
-
-export interface DefaultSessionRuntimeFactoryOptions {
+export interface DefaultSessionRuntimeFactoryOptions
+  extends DefaultKernelSessionRuntimeFactoryOptions {
   loadKernelRuntimeFactory?: () => Promise<SessionRuntimeFactory>;
-  loadLegacyRuntimeFactory?: () => Promise<SessionRuntimeFactory>;
-}
-
-async function loadDefaultLegacyRuntimeFactory(): Promise<SessionRuntimeFactory> {
-  legacyRuntimeFactoryPromise ??= import('./legacySessionAdapter.js').then(
-    ({ createLegacySessionRuntimeFactory }) => createLegacySessionRuntimeFactory(),
-  );
-  return legacyRuntimeFactoryPromise;
 }
 
 export function createDefaultSessionRuntimeFactory(
   options: DefaultSessionRuntimeFactoryOptions = {},
 ): SessionRuntimeFactory {
-  const loadRuntimeFactory =
-    options.loadKernelRuntimeFactory ??
-    options.loadLegacyRuntimeFactory ??
-    loadDefaultLegacyRuntimeFactory;
+  const { loadKernelRuntimeFactory, ...kernelRuntimeOptions } = options;
+  const runtimeFactory =
+    loadKernelRuntimeFactory === undefined
+      ? createDefaultKernelSessionRuntimeFactory(kernelRuntimeOptions)
+      : undefined;
+  const runtimeFactoryPromise = loadKernelRuntimeFactory?.();
+
+  async function resolveRuntimeFactory(): Promise<SessionRuntimeFactory> {
+    if (runtimeFactory) {
+      return runtimeFactory;
+    }
+    if (runtimeFactoryPromise) {
+      return runtimeFactoryPromise;
+    }
+    throw new Error('Kernel session runtime factory could not be resolved.');
+  }
 
   return {
     async create(options) {
-      const runtime = await loadRuntimeFactory();
+      const runtime = await resolveRuntimeFactory();
       return createSession(runtime, options);
     },
     async resume(options) {
-      const runtime = await loadRuntimeFactory();
+      const runtime = await resolveRuntimeFactory();
       return resumeSession(runtime, options);
     },
   };

@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import {
   createSession,
   forkSession,
@@ -11,10 +11,15 @@ import {
   resumeSession as runResumeLifecycle,
 } from '../../packages/agent-sdk/src/session/Session.js';
 import { createDefaultSessionRuntimeFactory } from '../../packages/agent-sdk/src/session/runtimeFactory.js';
+import { PackageLocalSession } from '../../packages/agent-sdk/src/session/sessionInstance.js';
 import type {
   ISession,
   SessionOptions,
 } from '../../packages/agent-sdk/src/session/index.js';
+
+vi.mock('../../packages/agent-sdk/src/session/legacySessionAdapter.js', () => {
+  throw new Error('legacy session adapter should not be loaded by the default session factory');
+});
 
 const options: SessionOptions = {
   provider: {
@@ -53,30 +58,23 @@ function createFakeSession(id: string): ISession {
 }
 
 describe('agent-sdk session runtime factory', () => {
-  it('builds the default lifecycle around an injected legacy runtime factory loader', async () => {
-    const calls: string[] = [];
-    const loadLegacyRuntimeFactory = async () => ({
-      async create(receivedOptions: SessionOptions) {
-        calls.push(`legacy-create:${receivedOptions.model}`);
-        return createFakeSession('created');
-      },
-      async resume(receivedOptions: SessionOptions & { sessionId: string }) {
-        calls.push(`legacy-resume:${receivedOptions.sessionId}`);
-        return createFakeSession(`resumed:${receivedOptions.sessionId}`);
-      },
-    });
+  it('builds the default lifecycle around the package-local kernel runtime factory', async () => {
     const factory = createDefaultSessionRuntimeFactory({
-      loadLegacyRuntimeFactory,
+      createSessionId: () => 'kernel-default-session',
+      createTurnId: () => 'kernel-default-turn',
     });
 
-    await expect(factory.create(options)).resolves.toMatchObject({ sessionId: 'created' });
-    await expect(factory.resume({ ...options, sessionId: 'old' })).resolves.toMatchObject({
-      sessionId: 'resumed:old',
-    });
-    expect(calls).toEqual(['legacy-create:test-model', 'legacy-resume:old']);
+    const created = await factory.create(options);
+    const resumed = await factory.resume({ ...options, sessionId: 'old' });
+
+    expect(created).toBeInstanceOf(PackageLocalSession);
+    expect(created.sessionId).toBe('kernel-default-session');
+    expect(created.getDefaultContext()).toEqual({});
+    expect(resumed).toBeInstanceOf(PackageLocalSession);
+    expect(resumed.sessionId).toBe('old');
   });
 
-  it('prefers an injected kernel runtime factory before the legacy fallback', async () => {
+  it('uses an injected kernel runtime factory when provided', async () => {
     const calls: string[] = [];
     const factory = createDefaultSessionRuntimeFactory({
       loadKernelRuntimeFactory: async () => ({
@@ -89,9 +87,6 @@ describe('agent-sdk session runtime factory', () => {
           return createFakeSession(`kernel-resumed:${receivedOptions.sessionId}`);
         },
       }),
-      loadLegacyRuntimeFactory: async () => {
-        throw new Error('legacy fallback should not load when a kernel factory is available');
-      },
     });
 
     await expect(factory.create(options)).resolves.toMatchObject({ sessionId: 'kernel-created' });

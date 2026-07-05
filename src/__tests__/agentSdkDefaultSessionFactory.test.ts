@@ -29,10 +29,8 @@ const options: SessionOptions = {
   model: 'test-model',
 };
 
-const legacySessionDoubles: ISession[] = [];
-
 function createLegacySessionDouble(sessionId: string): ISession {
-  const session = {
+  return {
     sessionId,
     messages: [],
     isClosed: false,
@@ -63,46 +61,24 @@ function createLegacySessionDouble(sessionId: string): ISession {
     getTraces: vi.fn(() => []),
     [Symbol.asyncDispose]: vi.fn(async () => {}),
   };
-  legacySessionDoubles.push(session);
-  return session;
-}
-
-async function collect(stream: AsyncGenerator<StreamMessage>): Promise<StreamMessage[]> {
-  const messages: StreamMessage[] = [];
-  for await (const message of stream) {
-    messages.push(message);
-  }
-  return messages;
 }
 
 describe('agent-sdk default session factory', () => {
-  it('returns package-local carriers from public create and resume lifecycles', async () => {
-    legacySessionDoubles.length = 0;
+  it('returns package-local kernel sessions from public create and resume lifecycles', async () => {
     resetSessionRuntimeFactory();
 
     const created = await createSession(options);
     const resumed = await resumeSession({ ...options, sessionId: 'existing-session' });
 
     expect(created).toBeInstanceOf(PackageLocalSession);
-    expect(created.sessionId).toBe('created-legacy');
+    expect(created.sessionId).not.toBe('created-legacy');
+    expect(created.getDefaultContext()).toEqual({});
     expect(resumed).toBeInstanceOf(PackageLocalSession);
-    expect(resumed.sessionId).toBe('resumed-legacy');
-    expect(createLegacySession).toHaveBeenCalledWith(options);
-    expect(resumeLegacySession).toHaveBeenCalledWith({
-      ...options,
-      sessionId: 'existing-session',
-    });
+    expect(resumed.sessionId).toBe('existing-session');
+    expect(createLegacySession).not.toHaveBeenCalled();
+    expect(resumeLegacySession).not.toHaveBeenCalled();
 
-    await created.send('hello');
-    expect(legacySessionDoubles[0]?.send).not.toHaveBeenCalled();
-    await expect(collect(created.stream())).resolves.toEqual([
-      {
-        type: 'result',
-        subtype: 'success',
-        content: 'streamed:created-legacy',
-        sessionId: 'created-legacy',
-      },
-    ]);
-    expect(legacySessionDoubles[0]?.send).toHaveBeenCalledWith('hello', undefined);
+    await created.close();
+    await resumed.close();
   });
 });
