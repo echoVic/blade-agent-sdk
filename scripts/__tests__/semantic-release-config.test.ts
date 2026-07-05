@@ -300,6 +300,17 @@ describe('release scripts', () => {
       }
     }
   });
+
+  it('verifies prepared release manifests from the real package metadata', () => {
+    const releaseVerifier = readFileSync(resolve('scripts/verify-release-config.mjs'), 'utf8');
+
+    expect(releaseVerifier).toContain('verifyPreparedReleaseManifestVersions');
+    expect(releaseVerifier).toContain('syncWorkspaceVersions');
+    expect(releaseVerifier).toContain('123.45.67');
+    expect(releaseVerifier).toContain('prepared manifest');
+    expect(releaseVerifier).toContain('workspace:');
+    expect(releaseVerifier).toContain('0.0.0');
+  });
 });
 
 describe('release workflow', () => {

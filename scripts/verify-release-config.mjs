@@ -1,6 +1,7 @@
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
-import { resolve } from 'node:path';
+import { tmpdir } from 'node:os';
+import { dirname, join, resolve } from 'node:path';
 import { parse } from 'yaml';
 
 const require = createRequire(import.meta.url);
@@ -113,6 +114,54 @@ function verifyPackageMetadata() {
   }
 }
 
+async function verifyPreparedReleaseManifestVersions() {
+  const { syncWorkspaceVersions } = require('./semantic-release/sync-workspace-versions.cjs');
+  const version = '123.45.67';
+  const tempDir = mkdtempSync(join(tmpdir(), 'blade-release-manifests-'));
+
+  try {
+    for (const pkg of publishablePackages) {
+      const sourceManifest = readFileSync(resolve(pkg.dir, 'package.json'), 'utf8');
+      const targetManifest = join(tempDir, pkg.dir, 'package.json');
+      mkdirSync(dirname(targetManifest), { recursive: true });
+      writeFileSync(targetManifest, sourceManifest);
+    }
+
+    await syncWorkspaceVersions({
+      cwd: tempDir,
+      nextRelease: { version },
+    });
+
+    for (const pkg of publishablePackages) {
+      const manifest = JSON.parse(readFileSync(join(tempDir, pkg.dir, 'package.json'), 'utf8'));
+      const serializedManifest = JSON.stringify(manifest);
+
+      if (manifest.version !== version) {
+        fail(`${pkg.name} prepared manifest version must be ${version}`);
+      }
+      if (serializedManifest.includes('workspace:')) {
+        fail(`${pkg.name} prepared manifest must not contain workspace: dependencies`);
+      }
+      if (serializedManifest.includes('0.0.0')) {
+        fail(`${pkg.name} prepared manifest must not contain 0.0.0 placeholder versions`);
+      }
+      for (const dependencyBlock of [
+        manifest.dependencies,
+        manifest.peerDependencies,
+        manifest.optionalDependencies,
+      ]) {
+        for (const [name, dependencyVersion] of Object.entries(dependencyBlock ?? {})) {
+          if (publishablePackages.some((candidate) => candidate.name === name) && dependencyVersion !== version) {
+            fail(`${pkg.name} prepared manifest dependency ${name} must be ${version}`);
+          }
+        }
+      }
+    }
+  } finally {
+    rmSync(tempDir, { recursive: true, force: true });
+  }
+}
+
 function verifyReleaseWorkflow() {
   const workflow = parse(readFileSync(resolve('.github/workflows/release.yml'), 'utf8'));
   const steps = workflow.jobs?.release?.steps ?? [];
@@ -148,6 +197,7 @@ function verifyReleaseWorkflow() {
 verifyRootScripts();
 verifySemanticReleaseConfig();
 verifyPackageMetadata();
+await verifyPreparedReleaseManifestVersions();
 verifyReleaseWorkflow();
 
 console.log('release configuration verification passed');

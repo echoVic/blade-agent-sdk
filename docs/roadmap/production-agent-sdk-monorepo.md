@@ -586,6 +586,7 @@ Status:
 - Second release-automation increment complete: release notes now include a generated per-package section for the fixed-version monorepo release, listing the published `@blade-ai/ai`, `@blade-ai/agent`, and `@blade-ai/agent-sdk` versions plus the session-first install command after the conventional commit notes.
 - Third release-automation increment complete: the retired manual `scripts/release.js` path and its helper were removed, `release:legacy` is no longer exposed from the root package scripts, and `pnpm run verify:release` now rejects any reintroduction of manual release aliases or legacy release helper files so publishing stays on the semantic-release workflow from `main`.
 - Fourth release-automation increment complete: the repository now pins the pnpm toolchain to `pnpm@11.7.0` in root package metadata and every GitHub workflow that installs dependencies, while release verification rejects unpinned release workflow pnpm setup so CI, docs, and main-branch publishing use the same package manager version.
+- Fifth release-automation increment complete: `pnpm run verify:release` now copies the real publishable package manifests into a temporary release-prep workspace, runs the semantic-release workspace-version prepare plugin with a synthetic release version, and rejects prepared manifests that still contain `workspace:` or `0.0.0` placeholders so fixed-version monorepo publishing is verified against the actual package metadata.
 
 Commit:
 
