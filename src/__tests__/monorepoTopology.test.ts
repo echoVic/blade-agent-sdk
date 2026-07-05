@@ -492,7 +492,8 @@ describe('monorepo topology', () => {
     const legacySessionAdapterRootImports = [
       ...legacySessionAdapterSource.matchAll(/from ['"](\.\.\/\.\.\/\.\.\/\.\.\/src\/[^'"]+)['"]/g),
     ].map((match) => match[1]);
-    expect(legacySessionAdapterRootImports).toEqual(['../../../../src/session/Session.js']);
+    expect(legacySessionAdapterRootImports).toEqual([]);
+    expect(legacySessionAdapterSource).toContain("import('../../../../src/session/Session.js')");
     expect(legacySessionAdapterSource).not.toContain('forkSession as forkLegacy');
     expect(legacySessionAdapterSource).not.toContain('prompt as promptLegacy');
     expect(legacySessionAdapterSource).toContain('createLegacyDelegateSession');
