@@ -1,8 +1,9 @@
 import { execFile } from 'node:child_process';
-import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
+import { pathToFileURL } from 'node:url';
 import { promisify } from 'node:util';
 
 const execFileAsync = promisify(execFile);
@@ -12,6 +13,13 @@ const publishablePackages = [
   '@blade-ai/ai',
   '@blade-ai/agent',
   '@blade-ai/agent-sdk',
+];
+const browserDisallowedMarkers = [
+  'node:',
+  'child_process',
+  'undici',
+  '@modelcontextprotocol',
+  'node-pty',
 ];
 
 function parseArgs(argv) {
@@ -142,6 +150,7 @@ async function verifyPublishedInstallSmoke({ version }) {
     `@blade-ai/agent@${version}`,
     `@blade-ai/agent-sdk@${version}`,
     'typescript@^6.0.3',
+    'esbuild@^0.28.1',
   ];
   const npmInstallCommandLabel = `npm install ${packageSpecs.join(' ')}`;
 
@@ -205,10 +214,95 @@ if (Object.keys(agentProtocol).length !== 0) {
     );
     await run(process.execPath, [runtimeSmokePath], { cwd: consumerDir });
     await verifyPublishedTypesSmoke({ consumerDir });
+    await verifyPublishedBrowserBundleSmoke({ consumerDir });
     console.log(`[verify-published] temporary consumer smoke passed: ${npmInstallCommandLabel}`);
   } finally {
     await rm(consumerDir, { recursive: true, force: true });
   }
+}
+
+async function assertNoBrowserDisallowedMarkers(bundlePath) {
+  const source = await readFile(bundlePath, 'utf8');
+  for (const marker of browserDisallowedMarkers) {
+    if (source.includes(marker)) {
+      throw new Error(`Published browser bundle includes Node-only marker: ${marker}`);
+    }
+  }
+}
+
+async function verifyPublishedBrowserBundleSmoke({ consumerDir }) {
+  const entryPath = join(consumerDir, 'consumer-browser-entry.ts');
+  const bundlePath = join(consumerDir, 'consumer-browser-bundle.mjs');
+
+  await writeFile(
+    entryPath,
+    `import { createSession as rootCreateSession, PermissionMode } from '@blade-ai/agent-sdk';
+import { PermissionMode as CorePermissionMode } from '@blade-ai/agent-sdk/core';
+import { createSession as serverCreateSession } from '@blade-ai/agent-sdk/server';
+import { resumeSession } from '@blade-ai/agent-sdk/session';
+import { getBuiltinTools } from '@blade-ai/agent-sdk/local';
+import { defineTool, ToolKind } from '@blade-ai/agent-sdk/tools';
+
+function assertServerOnly(action, expected) {
+  try {
+    action();
+  } catch (error) {
+    if (!String(error.message).includes(expected)) {
+      throw error;
+    }
+    console.log(error.message);
+    return;
+  }
+  throw new Error(\`Expected server-only stub for \${expected}\`);
+}
+
+const noopTool = defineTool({
+  name: 'noop',
+  description: 'Browser-safe tool contract smoke',
+  parameters: {
+    type: 'object',
+    properties: {},
+  },
+  async execute() {
+    return 'ok';
+  },
+});
+
+console.log(PermissionMode.DEFAULT, CorePermissionMode.DEFAULT, ToolKind.READ, noopTool.name);
+assertServerOnly(() => rootCreateSession({}), 'server-only for createSession');
+assertServerOnly(() => serverCreateSession({}), 'server-only for createSession');
+assertServerOnly(() => resumeSession('session-id'), 'server-only for resumeSession');
+assertServerOnly(() => getBuiltinTools(), 'server-only for getBuiltinTools');
+`,
+  );
+
+  const esbuild = await import(pathToFileURL(join(consumerDir, 'node_modules/esbuild/lib/main.js')).href);
+  try {
+    await esbuild.build({
+      entryPoints: [entryPath],
+      bundle: true,
+      platform: 'browser',
+      conditions: ['browser'],
+      format: 'esm',
+      outfile: bundlePath,
+      absWorkingDir: consumerDir,
+      logLevel: 'silent',
+    });
+  } finally {
+    esbuild.stop();
+  }
+  await assertNoBrowserDisallowedMarkers(bundlePath);
+  const output = await run(process.execPath, [bundlePath], { cwd: consumerDir });
+  for (const expected of [
+    'server-only for createSession',
+    'server-only for resumeSession',
+    'server-only for getBuiltinTools',
+  ]) {
+    if (!output.includes(expected)) {
+      throw new Error(`Published browser bundle smoke missing expected output: ${expected}`);
+    }
+  }
+  console.log('[verify-published] temporary consumer browser bundle smoke passed');
 }
 
 async function verifyPublishedTypesSmoke({ consumerDir }) {

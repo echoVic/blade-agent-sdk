@@ -397,6 +397,29 @@ describe('release scripts', () => {
     expect(publishedVerifier).toContain("from '@blade-ai/agent-sdk/browser';");
     expect(roadmap).toContain('public subpath declarations');
   });
+
+  it('browser-bundles published browser-safe entrypoints from the temporary consumer', () => {
+    const publishedVerifier = readFileSync(resolve('scripts/verify-published.mjs'), 'utf8');
+    const readme = readFileSync(resolve('README.md'), 'utf8');
+    const checklist = readFileSync(resolve('docs/production-checklist.md'), 'utf8');
+
+    expect(publishedVerifier).toContain('esbuild@^0.28.1');
+    expect(publishedVerifier).toContain('verifyPublishedBrowserBundleSmoke');
+    expect(publishedVerifier).toContain('consumer-browser-entry.ts');
+    expect(publishedVerifier).toContain("from '@blade-ai/agent-sdk';");
+    expect(publishedVerifier).toContain("from '@blade-ai/agent-sdk/session';");
+    expect(publishedVerifier).toContain("from '@blade-ai/agent-sdk/server';");
+    expect(publishedVerifier).toContain("from '@blade-ai/agent-sdk/local';");
+    expect(publishedVerifier).toContain("from '@blade-ai/agent-sdk/core';");
+    expect(publishedVerifier).toContain("from '@blade-ai/agent-sdk/tools';");
+    expect(publishedVerifier).toContain("platform: 'browser'");
+    expect(publishedVerifier).toContain("conditions: ['browser']");
+    expect(publishedVerifier).toContain('assertNoBrowserDisallowedMarkers');
+    expect(publishedVerifier).toContain('server-only for createSession');
+    expect(publishedVerifier).toContain('server-only for getBuiltinTools');
+    expect(readme).toContain('browser bundle smoke');
+    expect(checklist).toContain('browser bundle smoke');
+  });
 });
 
 describe('release workflow', () => {
