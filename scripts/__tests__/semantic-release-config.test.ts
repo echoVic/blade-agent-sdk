@@ -403,6 +403,7 @@ describe('release scripts', () => {
     const readme = readFileSync(resolve('README.md'), 'utf8');
     const checklist = readFileSync(resolve('docs/production-checklist.md'), 'utf8');
 
+    expect(publishedVerifier).toContain("import { bundleWithEsbuildRetry } from './esbuild-bundle.mjs';");
     expect(publishedVerifier).toContain('esbuild@^0.28.1');
     expect(publishedVerifier).toContain('verifyPublishedBrowserBundleSmoke');
     expect(publishedVerifier).toContain('consumer-browser-entry.ts');
@@ -412,6 +413,7 @@ describe('release scripts', () => {
     expect(publishedVerifier).toContain("from '@blade-ai/agent-sdk/local';");
     expect(publishedVerifier).toContain("from '@blade-ai/agent-sdk/core';");
     expect(publishedVerifier).toContain("from '@blade-ai/agent-sdk/tools';");
+    expect(publishedVerifier).toContain('await bundleWithEsbuildRetry({');
     expect(publishedVerifier).toContain("platform: 'browser'");
     expect(publishedVerifier).toContain("conditions: ['browser']");
     expect(publishedVerifier).toContain('assertNoBrowserDisallowedMarkers');

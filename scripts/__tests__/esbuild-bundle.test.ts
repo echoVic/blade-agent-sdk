@@ -18,21 +18,21 @@ describe('esbuild bundle helper', () => {
     expect(events).toEqual(['reset', 'build']);
   });
 
-  it('retries once when the esbuild service stops', async () => {
+  it('retries twice by default when the esbuild service keeps stopping briefly', async () => {
     const { bundleWithEsbuildRetry } = await import('../esbuild-bundle.mjs');
     const calls: unknown[] = [];
 
     await bundleWithEsbuildRetry({ entryPoints: ['entry.ts'] }, {
       build: async (options: unknown) => {
         calls.push(options);
-        if (calls.length === 1) {
+        if (calls.length <= 2) {
           throw new Error('The service was stopped');
         }
         return { outputFiles: [] };
       },
     });
 
-    expect(calls).toHaveLength(2);
+    expect(calls).toHaveLength(3);
   });
 
   it('retries once when the esbuild service is no longer running', async () => {

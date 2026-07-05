@@ -565,6 +565,7 @@ Status:
 - One-hundred-nineteenth verification-chain increment complete: all publishable package declaration builds now disable declaration maps, and `pnpm run verify:packages` dynamically rejects any packed `.d.ts.map` entry so npm tarballs keep their type surface concise and do not ship local source-map metadata.
 - One-hundred-twentieth verification-chain increment complete: all publishable package JS builds now disable source maps, and `pnpm run verify:packages` dynamically rejects any packed `.js.map` entry so npm tarballs do not ship local JavaScript source-map metadata.
 - One-hundred-twenty-first verification-chain increment complete: topology now guards the remaining root session source against migration-era stream runtime markers, rejecting `runtime?: 'kernel' | 'legacy'`, `experimentalKernel`, and explicit legacy/kernel branch checks in `src/session/types.ts` and `src/session/Session.ts` so the source contract stays aligned with the packed kernel-only session declarations.
+- One-hundred-twenty-second verification-chain increment complete: browser-bundle verification now tolerates two consecutive transient esbuild service stops by default, and the post-publish browser bundle smoke reuses the same retry helper while still loading esbuild from the temporary npm consumer install.
 
 Commit:
 

@@ -10,7 +10,7 @@ function isServiceStoppedError(error) {
 export async function bundleWithEsbuildRetry(options, config = {}) {
   const build = config.build ?? bundleWithEsbuild;
   const resetService = config.resetService ?? stopEsbuildService;
-  const retries = config.retries ?? 1;
+  const retries = config.retries ?? 2;
   let attempt = 0;
 
   resetService();

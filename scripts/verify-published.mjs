@@ -5,6 +5,7 @@ import { join } from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
 import { pathToFileURL } from 'node:url';
 import { promisify } from 'node:util';
+import { bundleWithEsbuildRetry } from './esbuild-bundle.mjs';
 
 const execFileAsync = promisify(execFile);
 
@@ -278,7 +279,7 @@ assertServerOnly(() => getBuiltinTools(), 'server-only for getBuiltinTools');
 
   const esbuild = await import(pathToFileURL(join(consumerDir, 'node_modules/esbuild/lib/main.js')).href);
   try {
-    await esbuild.build({
+    await bundleWithEsbuildRetry({
       entryPoints: [entryPath],
       bundle: true,
       platform: 'browser',
@@ -287,6 +288,9 @@ assertServerOnly(() => getBuiltinTools(), 'server-only for getBuiltinTools');
       outfile: bundlePath,
       absWorkingDir: consumerDir,
       logLevel: 'silent',
+    }, {
+      build: esbuild.build,
+      resetService: esbuild.stop,
     });
   } finally {
     esbuild.stop();
