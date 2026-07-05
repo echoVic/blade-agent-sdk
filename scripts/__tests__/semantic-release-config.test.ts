@@ -356,6 +356,9 @@ describe('release scripts', () => {
     expect(publishedVerifier).toContain('@blade-ai/agent@${version}');
     expect(publishedVerifier).toContain('@blade-ai/agent-sdk@${version}');
     expect(publishedVerifier).toContain("assertRuntimeExport(agentSdk, 'createSession')");
+    expect(publishedVerifier).toContain("assertRuntimeExport(agentSdkServer, 'createSession')");
+    expect(publishedVerifier).toContain("assertRuntimeExport(agentSdkLocal, 'getBuiltinTools')");
+    expect(publishedVerifier).toContain("assertRuntimeExport(agentSdkBrowser, 'PermissionMode')");
     expect(readme).toContain('临时 consumer');
     expect(checklist).toContain('临时 consumer');
   });
@@ -389,6 +392,9 @@ describe('release scripts', () => {
     expect(publishedVerifier).toContain("from '@blade-ai/agent-sdk/session';");
     expect(publishedVerifier).toContain("from '@blade-ai/agent-sdk/tools';");
     expect(publishedVerifier).toContain("from '@blade-ai/agent-sdk/core';");
+    expect(publishedVerifier).toContain("from '@blade-ai/agent-sdk/server';");
+    expect(publishedVerifier).toContain("from '@blade-ai/agent-sdk/local';");
+    expect(publishedVerifier).toContain("from '@blade-ai/agent-sdk/browser';");
     expect(roadmap).toContain('public subpath declarations');
   });
 });

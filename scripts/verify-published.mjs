@@ -171,7 +171,10 @@ import * as agent from '@blade-ai/agent';
 import * as agentKernel from '@blade-ai/agent/kernel';
 import * as agentProtocol from '@blade-ai/agent/protocol';
 import * as agentSdk from '@blade-ai/agent-sdk';
+import * as agentSdkBrowser from '@blade-ai/agent-sdk/browser';
 import * as agentSdkCore from '@blade-ai/agent-sdk/core';
+import * as agentSdkLocal from '@blade-ai/agent-sdk/local';
+import * as agentSdkServer from '@blade-ai/agent-sdk/server';
 import * as agentSdkSession from '@blade-ai/agent-sdk/session';
 import * as agentSdkTools from '@blade-ai/agent-sdk/tools';
 
@@ -188,7 +191,10 @@ assertRuntimeExport(agent, 'AgentKernel');
 assertRuntimeExport(agentKernel, 'AgentKernel');
 assertRuntimeExport(agentSdk, 'createSession');
 assertRuntimeExport(agentSdk, 'defineTool');
+assertRuntimeExport(agentSdkBrowser, 'PermissionMode');
 assertRuntimeExport(agentSdkCore, 'PermissionMode');
+assertRuntimeExport(agentSdkLocal, 'getBuiltinTools');
+assertRuntimeExport(agentSdkServer, 'createSession');
 assertRuntimeExport(agentSdkSession, 'createSession');
 assertRuntimeExport(agentSdkTools, 'ToolKind');
 
@@ -235,8 +241,12 @@ import type { AgentToolCall } from '@blade-ai/agent/protocol';
 import type { SessionOptions } from '@blade-ai/agent-sdk';
 import type { StreamMessage } from '@blade-ai/agent-sdk';
 import type { ToolDefinition } from '@blade-ai/agent-sdk';
+import type { StreamMessage as BrowserStreamMessage } from '@blade-ai/agent-sdk/browser';
+import { PermissionMode as BrowserPermissionMode } from '@blade-ai/agent-sdk/browser';
 import type { ISession } from '@blade-ai/agent-sdk/session';
+import type { ISession as ServerSession } from '@blade-ai/agent-sdk/server';
 import type { ToolDefinition as SubpathToolDefinition } from '@blade-ai/agent-sdk/tools';
+import type { BuiltinToolsOptions } from '@blade-ai/agent-sdk/local';
 import type { PermissionMode, RuntimeContext } from '@blade-ai/agent-sdk/core';
 import { PermissionMode as CorePermissionMode } from '@blade-ai/agent-sdk/core';
 
@@ -324,7 +334,11 @@ const toolDefinition: ToolDefinition<{ text?: string }, string> = {
 };
 const subpathToolDefinition: SubpathToolDefinition<{ text?: string }, string> = toolDefinition;
 const sessionRef: ISession | null = null;
+const serverSessionRef: ServerSession | null = sessionRef;
+const builtinToolsOptions: BuiltinToolsOptions = {};
 const permissionMode: PermissionMode = CorePermissionMode.DEFAULT;
+const browserStreamMessage: BrowserStreamMessage = streamMessage;
+const browserPermissionMode: BrowserPermissionMode = BrowserPermissionMode.DEFAULT;
 const runtimeContext: RuntimeContext = {};
 
 void modelSubpathResponse;
@@ -337,7 +351,11 @@ void streamMessage;
 void toolDefinition;
 void subpathToolDefinition;
 void sessionRef;
+void serverSessionRef;
+void builtinToolsOptions;
 void permissionMode;
+void browserStreamMessage;
+void browserPermissionMode;
 void runtimeContext;
 `,
   );
