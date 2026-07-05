@@ -180,3 +180,25 @@ describe('release workflow', () => {
     expect(releaseStep.env).not.toHaveProperty('NPM_CONFIG_PROVENANCE');
   });
 });
+
+describe('ci workflow', () => {
+  it('runs the full production verify chain on pushes and pull requests', () => {
+    const workflow = parse(
+      readFileSync(resolve('.github/workflows/ci.yml'), 'utf8')
+    );
+    const steps = workflow.jobs.verify.steps;
+    const commands = steps.map((step: { run?: string }) => step.run).filter(Boolean);
+
+    expect(workflow.on.push.branches).toEqual([
+      'main',
+      'master',
+      'refactor/**',
+      'codex/**',
+    ]);
+    expect(workflow.on.pull_request).toBeNull();
+    expect(commands).toEqual([
+      'pnpm install --frozen-lockfile',
+      'pnpm run verify',
+    ]);
+  });
+});
