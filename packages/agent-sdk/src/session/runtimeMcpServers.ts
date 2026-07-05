@@ -12,6 +12,17 @@ interface PackageLocalMcpRegistryActionPort {
   registerServer?(serverName: string, config: McpServerConfig): Promise<void> | void;
 }
 
+interface PackageLocalMcpLoggerPort {
+  warn(...args: unknown[]): void;
+}
+
+export interface PackageLocalConfiguredMcpServersRegistrationOptions {
+  configuredServers?: Record<string, McpServerConfig | SdkMcpServerHandle>;
+  mcpRegistry: PackageLocalMcpRegistryActionPort;
+  logger: PackageLocalMcpLoggerPort;
+  refreshMcpTools(serverNames: string[]): Promise<void> | void;
+}
+
 export function isPackageLocalSdkMcpServerHandle(
   config: unknown,
 ): config is SdkMcpServerHandle {
@@ -57,4 +68,35 @@ export async function registerPackageLocalRemoteMcpServer(
     throw new Error('Package-local MCP registry port does not implement registerServer');
   }
   await action.call(registry, serverName, config);
+}
+
+export async function registerPackageLocalConfiguredMcpServers(
+  options: PackageLocalConfiguredMcpServersRegistrationOptions,
+): Promise<void> {
+  const configuredServers = options.configuredServers;
+  if (!configuredServers) {
+    return;
+  }
+
+  for (const [serverName, config] of Object.entries(configuredServers)) {
+    if (isPackageLocalSdkMcpServerHandle(config)) {
+      await registerPackageLocalInProcessMcpServer(options.mcpRegistry, serverName, config);
+      continue;
+    }
+
+    if (config.disabled) {
+      continue;
+    }
+
+    try {
+      await registerPackageLocalRemoteMcpServer(options.mcpRegistry, serverName, config);
+    } catch (error) {
+      options.logger.warn(
+        `[PackageLocalSessionRuntime] Failed to register MCP server ${serverName}:`,
+        error,
+      );
+    }
+  }
+
+  await options.refreshMcpTools(Object.keys(configuredServers));
 }

@@ -58,9 +58,7 @@ import {
 } from './runtimeContext.js';
 import {
   callPackageLocalMcpRegistryAction,
-  isPackageLocalSdkMcpServerHandle,
-  registerPackageLocalInProcessMcpServer,
-  registerPackageLocalRemoteMcpServer,
+  registerPackageLocalConfiguredMcpServers,
 } from './runtimeMcpServers.js';
 import {
   listPackageLocalRuntimeMcpTools,
@@ -454,32 +452,12 @@ export class PackageLocalSessionRuntime {
   }
 
   async registerConfiguredMcpServers(): Promise<void> {
-    const configuredServers = this.options.mcpServers;
-    if (!configuredServers) {
-      return;
-    }
-
-    for (const [serverName, config] of Object.entries(configuredServers)) {
-      if (isPackageLocalSdkMcpServerHandle(config)) {
-        await registerPackageLocalInProcessMcpServer(this.mcpRegistry, serverName, config);
-        continue;
-      }
-
-      if (config.disabled) {
-        continue;
-      }
-
-      try {
-        await registerPackageLocalRemoteMcpServer(this.mcpRegistry, serverName, config);
-      } catch (error) {
-        this.logger.warn(
-          `[PackageLocalSessionRuntime] Failed to register MCP server ${serverName}:`,
-          error,
-        );
-      }
-    }
-
-    await this.refreshMcpTools(Object.keys(configuredServers));
+    await registerPackageLocalConfiguredMcpServers({
+      configuredServers: this.options.mcpServers,
+      mcpRegistry: this.mcpRegistry,
+      logger: this.logger,
+      refreshMcpTools: (serverNames) => this.refreshMcpTools(serverNames),
+    });
   }
 
   private async ensureMcpServerRegistered(serverName: string): Promise<void> {

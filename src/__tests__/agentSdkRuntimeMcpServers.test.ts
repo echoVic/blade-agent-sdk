@@ -79,4 +79,68 @@ describe('agent-sdk package-local runtime MCP server helpers', () => {
       'Package-local MCP registry port does not implement registerServer',
     );
   });
+
+  it('registers configured MCP servers and refreshes configured tool names without runtime state', async () => {
+    expect(existsSync(mcpServersSourcePath)).toBe(true);
+
+    const { registerPackageLocalConfiguredMcpServers } = await import(mcpServersModulePath);
+    const calls: unknown[] = [];
+    const warnings: unknown[][] = [];
+    const localConfig = {
+      server: {},
+      createClientTransport: async () => ({}),
+    };
+    const remoteConfig = {
+      command: 'node',
+      args: ['server.js'],
+    };
+    const failingRemoteConfig = {
+      command: 'node',
+      args: ['missing.js'],
+    };
+
+    await registerPackageLocalConfiguredMcpServers({
+      configuredServers: {
+        local: localConfig,
+        remote: remoteConfig,
+        disabled: {
+          command: 'node',
+          args: ['disabled.js'],
+          disabled: true,
+        },
+        failing: failingRemoteConfig,
+      },
+      mcpRegistry: {
+        registerInProcessServer(serverName: string, config: unknown) {
+          calls.push(['in-process', serverName, config]);
+        },
+        registerServer(serverName: string, config: unknown) {
+          calls.push(['remote', serverName, config]);
+          if (serverName === 'failing') {
+            throw new Error('remote failed');
+          }
+        },
+      },
+      logger: {
+        warn(...args: unknown[]) {
+          warnings.push(args);
+        },
+      },
+      refreshMcpTools(serverNames: string[]) {
+        calls.push(['refresh', serverNames]);
+      },
+    });
+
+    expect(calls).toEqual([
+      ['in-process', 'local', localConfig],
+      ['remote', 'remote', remoteConfig],
+      ['remote', 'failing', failingRemoteConfig],
+      ['refresh', ['local', 'remote', 'disabled', 'failing']],
+    ]);
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0][0]).toBe(
+      '[PackageLocalSessionRuntime] Failed to register MCP server failing:',
+    );
+    expect(warnings[0][1]).toBeInstanceOf(Error);
+  });
 });

@@ -607,6 +607,7 @@ describe('monorepo topology', () => {
     expect(runtimeMcpServersSource).toContain('callPackageLocalMcpRegistryAction');
     expect(runtimeMcpServersSource).toContain('registerPackageLocalInProcessMcpServer');
     expect(runtimeMcpServersSource).toContain('registerPackageLocalRemoteMcpServer');
+    expect(runtimeMcpServersSource).toContain('registerPackageLocalConfiguredMcpServers');
     expect(packageLocalRuntimeInstanceSource).not.toContain(
       'function isPackageLocalSdkMcpServerHandle',
     );
@@ -658,6 +659,9 @@ describe('monorepo topology', () => {
     expect(packageLocalRuntimeInstanceSource).not.toContain('private async registerRemoteMcpServer');
     expect(packageLocalRuntimeInstanceSource).toContain('PackageLocalRuntimeLoggerPort');
     expect(packageLocalRuntimeInstanceSource).toContain('refreshMcpTools');
+    expect(packageLocalRuntimeInstanceSource).toContain('registerPackageLocalConfiguredMcpServers');
+    expect(packageLocalRuntimeInstanceSource).not.toContain('Object.entries(configuredServers)');
+    expect(packageLocalRuntimeInstanceSource).not.toContain('if (config.disabled)');
     expect(packageLocalRuntimeInstanceSource).toContain('getAvailableToolsByServerNames');
     expect(packageLocalRuntimeInstanceSource).toContain('registerMcpTool');
     expect(packageLocalRuntimeInstanceSource).toContain('removeMcpTools');
