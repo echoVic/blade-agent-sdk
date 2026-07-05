@@ -50,6 +50,11 @@ describe('monorepo topology', () => {
     expect(root.scripts?.build).not.toContain('tsconfig.build.json');
   });
 
+  it('does not keep obsolete root package build configs', () => {
+    expect(existsSync('tsup.config.ts')).toBe(false);
+    expect(existsSync('tsconfig.build.json')).toBe(false);
+  });
+
   it('contains ai, agent, and agent-sdk packages with source entrypoints', () => {
     const expectedPackages = [
       ['packages/ai', '@blade-ai/ai'],
