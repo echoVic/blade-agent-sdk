@@ -485,6 +485,11 @@ describe('monorepo topology', () => {
     )
       ? readFileSync('packages/agent-sdk/src/session/runtimeExecutionPipeline.ts', 'utf-8')
       : '';
+    const runtimeAgentKernelsSource = existsSync(
+      'packages/agent-sdk/src/session/runtimeAgentKernels.ts',
+    )
+      ? readFileSync('packages/agent-sdk/src/session/runtimeAgentKernels.ts', 'utf-8')
+      : '';
     const runtimeKernelModelsSource = existsSync(
       'packages/agent-sdk/src/session/runtimeKernelModels.ts',
     )
@@ -680,6 +685,12 @@ describe('monorepo topology', () => {
     expect(packageLocalRuntimeInstanceSource).toContain('createAgentKernel');
     expect(packageLocalRuntimeInstanceSource).toContain('PackageLocalRuntimeAgentKernelFactoryPort');
     expect(packageLocalRuntimeInstanceSource).toContain('PackageLocalRuntimeKernelModelResolverPort');
+    expect(existsSync('packages/agent-sdk/src/session/runtimeAgentKernels.ts')).toBe(true);
+    expect(runtimeAgentKernelsSource).not.toContain('../../../../src/');
+    expect(runtimeAgentKernelsSource).toContain('createPackageLocalRuntimeAgentKernel');
+    expect(packageLocalRuntimeInstanceSource).toContain('createPackageLocalRuntimeAgentKernel');
+    expect(packageLocalRuntimeInstanceSource).not.toContain('this.kernelFactory.create({');
+    expect(packageLocalRuntimeInstanceSource).not.toContain('? { modelRequestDefaults:');
     expect(existsSync('packages/agent-sdk/src/session/runtimeKernelModels.ts')).toBe(true);
     expect(runtimeKernelModelsSource).not.toContain('../../../../src/');
     expect(runtimeKernelModelsSource).toContain('resolvePackageLocalRuntimeKernelModel');

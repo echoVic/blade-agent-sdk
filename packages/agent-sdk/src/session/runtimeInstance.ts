@@ -1,11 +1,9 @@
 import type { ModelMessage, ModelPort } from '@blade-ai/ai';
 import type {
-  AgentKernelOptions,
   AgentModelRequestDefaults,
   AgentStoreAppendContext,
   AgentHookPort,
   AgentStorePort,
-  AgentStreamEvent,
   AgentToolCall,
   AgentToolPort,
   AgentTracePort,
@@ -47,6 +45,11 @@ import {
   createPackageLocalRuntimeExecutionPipeline,
   type PackageLocalRuntimeExecutionPipelineFactoryPort,
 } from './runtimeExecutionPipeline.js';
+import {
+  createPackageLocalRuntimeAgentKernel,
+  type PackageLocalRuntimeAgentKernelFactoryPort,
+  type PackageLocalRuntimeAgentKernelPort,
+} from './runtimeAgentKernels.js';
 import {
   resolvePackageLocalRuntimeKernelModel,
   type PackageLocalRuntimeKernelModelResolverPort,
@@ -92,6 +95,11 @@ export type {
   PackageLocalRuntimeExecutionPipelineCreateOptions,
   PackageLocalRuntimeExecutionPipelineFactoryPort,
 } from './runtimeExecutionPipeline.js';
+export type {
+  PackageLocalRuntimeAgentKernelFactoryPort,
+  PackageLocalRuntimeAgentKernelPort,
+  PackageLocalRuntimeAgentKernelTurn,
+} from './runtimeAgentKernels.js';
 
 export interface PackageLocalSessionRuntimeOptions {
   sessionId: SessionId;
@@ -278,20 +286,6 @@ export interface PackageLocalRuntimeAgentKernelStreamOptions
   turnId?: string;
   signal?: AbortSignal;
   includeThinking?: boolean;
-}
-
-export interface PackageLocalRuntimeAgentKernelTurn {
-  input: string;
-  turnId?: string;
-  signal?: AbortSignal;
-}
-
-export interface PackageLocalRuntimeAgentKernelPort {
-  runTurn(turn: PackageLocalRuntimeAgentKernelTurn): AsyncIterable<AgentStreamEvent>;
-}
-
-export interface PackageLocalRuntimeAgentKernelFactoryPort {
-  create(options: AgentKernelOptions): PackageLocalRuntimeAgentKernelPort;
 }
 
 export interface PackageLocalAgentRuntimeDeps {
@@ -726,25 +720,25 @@ export class PackageLocalSessionRuntime {
     options: PackageLocalRuntimeAgentKernelOptions,
     kernelModel: PackageLocalRuntimeResolvedKernelModel,
   ): PackageLocalRuntimeAgentKernelPort {
-    return this.kernelFactory.create({
-      model: kernelModel.model,
-      ...(kernelModel.modelRequestDefaults
-        ? { modelRequestDefaults: kernelModel.modelRequestDefaults }
-        : {}),
-      store: this.getKernelStorePort(),
-      hooks: this.getKernelHookPort(),
-      ...(options.traceRecorder
-        ? {
-            trace: this.getKernelTracePort(
-              options.traceRecorder,
-              kernelModel.modelRequestDefaults?.maxContextTokens,
-            ),
-          }
-        : {}),
-      ...(options.createExecutionContext
-        ? { tools: this.getKernelToolPort(options.createExecutionContext) }
-        : {}),
-      ...(options.maxSteps !== undefined ? { maxSteps: options.maxSteps } : {}),
+    return createPackageLocalRuntimeAgentKernel({
+      options,
+      kernelModel,
+      kernelFactory: this.kernelFactory,
+      ports: {
+        store: this.getKernelStorePort(),
+        hooks: this.getKernelHookPort(),
+        ...(options.traceRecorder
+          ? {
+              trace: this.getKernelTracePort(
+                options.traceRecorder,
+                kernelModel.modelRequestDefaults?.maxContextTokens,
+              ),
+            }
+          : {}),
+        ...(options.createExecutionContext
+          ? { tools: this.getKernelToolPort(options.createExecutionContext) }
+          : {}),
+      },
     });
   }
 
