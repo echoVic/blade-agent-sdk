@@ -386,6 +386,10 @@ describe('monorepo topology', () => {
       'packages/agent-sdk/src/session/packageLocalRuntimeFactory.ts',
       'utf-8',
     );
+    const packageLocalLegacyRuntimeFactorySource = readFileSync(
+      'packages/agent-sdk/src/session/packageLocalLegacyRuntimeFactory.ts',
+      'utf-8',
+    );
     const sessionFactorySource = readFileSync('packages/agent-sdk/src/session/factory.ts', 'utf-8');
     const sessionLifecycleSource = readFileSync('packages/agent-sdk/src/session/Session.ts', 'utf-8');
     const legacySessionAdapterSource = readFileSync(
@@ -445,6 +449,15 @@ describe('monorepo topology', () => {
     expect(sessionInstanceSource).toContain('class PackageLocalSession');
     expect(packageLocalRuntimeFactorySource).not.toContain('../../../../src/');
     expect(packageLocalRuntimeFactorySource).toContain('createPackageLocalSessionRuntimeFactory');
+    expect(existsSync('packages/agent-sdk/src/session/packageLocalLegacyRuntimeFactory.ts')).toBe(
+      true,
+    );
+    expect(packageLocalLegacyRuntimeFactorySource).not.toContain('../../../../src/');
+    expect(packageLocalLegacyRuntimeFactorySource).toContain(
+      'createPackageLocalLegacySessionRuntimeFactory',
+    );
+    expect(packageLocalLegacyRuntimeFactorySource).toContain('createPackageLocalSessionRuntimeFactory');
+    expect(packageLocalLegacyRuntimeFactorySource).toContain('createLegacyStreamTurnBridge');
     expect(sessionRuntimeFactorySource).not.toContain('../../../../src/session/Session.js');
     expect(sessionRuntimeFactorySource).toContain("from './Session.js'");
     expect(sessionRuntimeFactorySource).not.toContain("from './legacySessionAdapter.js'");
