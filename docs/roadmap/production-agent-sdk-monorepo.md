@@ -360,6 +360,7 @@ Status:
 - Forty-seventh adapter increment complete: the temporary legacy root session adapter now uses an explicit typed option bridge instead of `as never` / `as unknown as ISession` casts. Public session IDs are converted through the legacy branded `SessionId` constructor, and the remaining MCP handle compatibility cast is isolated to the `mcpServers` field until the package-local session runtime removes the legacy adapter entirely.
 - Forty-eighth adapter increment complete: the temporary legacy root session adapter no longer imports legacy root `src/session/types.ts`; it infers the create/resume option shapes from the legacy functions it calls. This keeps the bridge coupled only to the legacy entrypoint while package-local session contracts continue to own the public API surface.
 - Forty-ninth adapter increment complete: the temporary legacy root session adapter no longer imports legacy root branded type helpers. The resume bridge now casts only the `sessionId` field against the inferred legacy resume option type, leaving `src/session/Session.ts` as the adapter's only remaining root implementation import.
+- Fiftieth adapter increment complete: topology protection for the temporary legacy root session adapter now uses an explicit root-import allowlist. Until the package-local `Session` runtime fully replaces the adapter, the adapter may only import the legacy root `src/session/Session.ts` entrypoint and cannot grow new direct dependencies on broader root implementation modules.
 
 ### Phase 5: Production Verification Chain
 
@@ -415,6 +416,7 @@ Status:
 - Twenty-eighth verification-chain increment complete: topology tests now reject `as never` and `as unknown as ISession` in the temporary legacy session adapter, forcing the remaining bridge to stay typed and explicit while the package-local session implementation is migrated.
 - Twenty-ninth verification-chain increment complete: topology tests now reject direct imports from legacy root `src/session/types.ts` inside the temporary session adapter, so adapter compatibility types must be inferred from the remaining legacy entrypoint rather than coupling to broader root session contracts.
 - Thirtieth verification-chain increment complete: topology tests now reject direct imports from legacy root `src/types/branded.ts` inside the temporary session adapter, keeping the adapter's remaining root dependency focused on the legacy `Session` entrypoint.
+- Thirty-first verification-chain increment complete: topology tests now extract every root `src/*` import from the temporary legacy session adapter and compare it to a single allowed import list, preventing future piecemeal legacy root dependencies from sneaking into the session bridge.
 
 Commit:
 
