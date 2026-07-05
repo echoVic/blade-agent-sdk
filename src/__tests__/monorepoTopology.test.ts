@@ -557,6 +557,9 @@ describe('monorepo topology', () => {
     expect(existsSync('packages/agent-sdk/src/session/runtimeMcpServers.ts')).toBe(true);
     expect(runtimeMcpServersSource).not.toContain('../../../../src/');
     expect(runtimeMcpServersSource).toContain('isPackageLocalSdkMcpServerHandle');
+    expect(runtimeMcpServersSource).toContain('callPackageLocalMcpRegistryAction');
+    expect(runtimeMcpServersSource).toContain('registerPackageLocalInProcessMcpServer');
+    expect(runtimeMcpServersSource).toContain('registerPackageLocalRemoteMcpServer');
     expect(packageLocalRuntimeInstanceSource).not.toContain(
       'function isPackageLocalSdkMcpServerHandle',
     );
@@ -589,6 +592,9 @@ describe('monorepo topology', () => {
     expect(packageLocalRuntimeInstanceSource).toContain('registerConfiguredMcpServers');
     expect(packageLocalRuntimeInstanceSource).toContain('registerInProcessServer');
     expect(packageLocalRuntimeInstanceSource).toContain('registerServer');
+    expect(packageLocalRuntimeInstanceSource).not.toContain('private async callMcpRegistryMethod');
+    expect(packageLocalRuntimeInstanceSource).not.toContain('private async registerInProcessMcpServer');
+    expect(packageLocalRuntimeInstanceSource).not.toContain('private async registerRemoteMcpServer');
     expect(packageLocalRuntimeInstanceSource).toContain('PackageLocalRuntimeLoggerPort');
     expect(packageLocalRuntimeInstanceSource).toContain('refreshMcpTools');
     expect(packageLocalRuntimeInstanceSource).toContain('getAvailableToolsByServerNames');

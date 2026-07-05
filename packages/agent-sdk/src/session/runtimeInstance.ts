@@ -50,7 +50,12 @@ import {
   getPackageLocalRuntimeContextCwd,
   resolvePackageLocalRuntimeStorageRoot,
 } from './runtimeContext.js';
-import { isPackageLocalSdkMcpServerHandle } from './runtimeMcpServers.js';
+import {
+  callPackageLocalMcpRegistryAction,
+  isPackageLocalSdkMcpServerHandle,
+  registerPackageLocalInProcessMcpServer,
+  registerPackageLocalRemoteMcpServer,
+} from './runtimeMcpServers.js';
 import { getPackageLocalMcpToolSourceId } from './runtimeMcpTools.js';
 import { createPackageLocalRuntimeNoopPorts } from './runtimeNoopPorts.js';
 import { packageLocalSubagentConfigFromDefinition } from './runtimeSubagents.js';
@@ -517,18 +522,18 @@ export class PackageLocalSessionRuntime {
 
   async mcpConnect(serverName: string): Promise<void> {
     await this.ensureMcpServerRegistered(serverName);
-    await this.callMcpRegistryMethod('connectServer', serverName);
+    await callPackageLocalMcpRegistryAction(this.mcpRegistry, 'connectServer', serverName);
     await this.refreshMcpTools([serverName]);
   }
 
   async mcpDisconnect(serverName: string): Promise<void> {
-    await this.callMcpRegistryMethod('disconnectServer', serverName);
+    await callPackageLocalMcpRegistryAction(this.mcpRegistry, 'disconnectServer', serverName);
     await this.refreshMcpTools([serverName]);
   }
 
   async mcpReconnect(serverName: string): Promise<void> {
     await this.ensureMcpServerRegistered(serverName);
-    await this.callMcpRegistryMethod('reconnectServer', serverName);
+    await callPackageLocalMcpRegistryAction(this.mcpRegistry, 'reconnectServer', serverName);
     await this.refreshMcpTools([serverName]);
   }
 
@@ -540,7 +545,7 @@ export class PackageLocalSessionRuntime {
 
     for (const [serverName, config] of Object.entries(configuredServers)) {
       if (isPackageLocalSdkMcpServerHandle(config)) {
-        await this.registerInProcessMcpServer(serverName, config);
+        await registerPackageLocalInProcessMcpServer(this.mcpRegistry, serverName, config);
         continue;
       }
 
@@ -549,7 +554,7 @@ export class PackageLocalSessionRuntime {
       }
 
       try {
-        await this.registerRemoteMcpServer(serverName, config);
+        await registerPackageLocalRemoteMcpServer(this.mcpRegistry, serverName, config);
       } catch (error) {
         this.logger.warn(
           `[PackageLocalSessionRuntime] Failed to register MCP server ${serverName}:`,
@@ -584,39 +589,6 @@ export class PackageLocalSessionRuntime {
         sourceId: getPackageLocalMcpToolSourceId(tool),
       });
     }
-  }
-
-  private async callMcpRegistryMethod(
-    method: 'connectServer' | 'disconnectServer' | 'reconnectServer',
-    serverName: string,
-  ): Promise<void> {
-    const action = this.mcpRegistry[method];
-    if (!action) {
-      throw new Error(`Package-local MCP registry port does not implement ${method}`);
-    }
-    await action.call(this.mcpRegistry, serverName);
-  }
-
-  private async registerInProcessMcpServer(
-    serverName: string,
-    config: SdkMcpServerHandle,
-  ): Promise<void> {
-    const action = this.mcpRegistry.registerInProcessServer;
-    if (!action) {
-      throw new Error('Package-local MCP registry port does not implement registerInProcessServer');
-    }
-    await action.call(this.mcpRegistry, serverName, config);
-  }
-
-  private async registerRemoteMcpServer(
-    serverName: string,
-    config: McpServerConfig,
-  ): Promise<void> {
-    const action = this.mcpRegistry.registerServer;
-    if (!action) {
-      throw new Error('Package-local MCP registry port does not implement registerServer');
-    }
-    await action.call(this.mcpRegistry, serverName, config);
   }
 
   filterTools<TTool extends PackageLocalRuntimeNamedTool>(tools: TTool[]): TTool[] {
