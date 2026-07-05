@@ -2,7 +2,13 @@ import { basename, dirname } from 'node:path';
 import type { ContextSnapshot, RuntimeContext } from '../runtime/types.js';
 import type { SubagentConfig } from '../subagents/types.js';
 import { HookEvent } from '../types/constants.js';
-import type { BladeConfig, JsonObject, McpServerConfig } from '../types/common.js';
+import {
+  PermissionMode,
+  type BladeConfig,
+  type JsonObject,
+  type McpServerConfig,
+  type PermissionsConfig,
+} from '../types/common.js';
 import {
   createCompositePermissionHandler,
   createPermissionHandlerFromCanUseTool,
@@ -35,6 +41,7 @@ export interface PackageLocalSessionRuntimeOptions {
   subagentRegistry?: PackageLocalRuntimeSubagentRegistryPort;
   permissionHooks?: PackageLocalRuntimePermissionHookPort;
   hookManager?: PackageLocalRuntimeHookManagerPort;
+  executionPipelineFactory?: PackageLocalRuntimeExecutionPipelineFactoryPort;
 }
 
 export interface PackageLocalRuntimeSessionStorePort {
@@ -144,6 +151,19 @@ export interface PackageLocalRuntimeHookManagerPort {
   enable(): void;
 }
 
+export interface PackageLocalRuntimeExecutionPipelineCreateOptions {
+  permissionConfig: Required<PermissionsConfig>;
+  permissionMode: PermissionMode;
+  maxHistorySize: number;
+  permissionHandler: PermissionHandler | undefined;
+  logger: PackageLocalRuntimeLoggerPort;
+  toolCatalog: PackageLocalRuntimeToolCatalogPort;
+}
+
+export interface PackageLocalRuntimeExecutionPipelineFactoryPort {
+  create(options: PackageLocalRuntimeExecutionPipelineCreateOptions): unknown;
+}
+
 export interface PackageLocalRuntimeMcpToolCapability {
   name: string;
   description: string;
@@ -235,6 +255,7 @@ export class PackageLocalSessionRuntime {
   readonly subagentRegistry: PackageLocalRuntimeSubagentRegistryPort;
   readonly permissionHooks: PackageLocalRuntimePermissionHookPort;
   readonly hookManager: PackageLocalRuntimeHookManagerPort;
+  readonly executionPipelineFactory: PackageLocalRuntimeExecutionPipelineFactoryPort;
 
   constructor(options: PackageLocalSessionRuntimeOptions) {
     this.sessionId = options.sessionId;
@@ -256,6 +277,8 @@ export class PackageLocalSessionRuntime {
     this.subagentRegistry = options.subagentRegistry ?? createNoopRuntimeSubagentRegistry();
     this.permissionHooks = options.permissionHooks ?? createNoopRuntimePermissionHooks();
     this.hookManager = options.hookManager ?? createNoopRuntimeHookManager();
+    this.executionPipelineFactory =
+      options.executionPipelineFactory ?? createNoopRuntimeExecutionPipelineFactory();
   }
 
   getConfiguredMcpServers(): Record<string, McpServerConfig | SdkMcpServerHandle> {
@@ -534,6 +557,24 @@ export class PackageLocalSessionRuntime {
       this.hookManager.enable();
     }
   }
+
+  createExecutionPipeline(): unknown {
+    const permissionConfig: Required<PermissionsConfig> = {
+      allow: [],
+      ask: [],
+      deny: [],
+      ...this.bladeConfig.permissions,
+    };
+
+    return this.executionPipelineFactory.create({
+      permissionConfig,
+      permissionMode: this.options.permissionMode ?? PermissionMode.DEFAULT,
+      maxHistorySize: 1000,
+      permissionHandler: this.createPermissionHandler(),
+      logger: this.logger,
+      toolCatalog: this.toolCatalog,
+    });
+  }
 }
 
 function createNoopRuntimeSessionStore(): PackageLocalRuntimeSessionStorePort {
@@ -607,6 +648,14 @@ function createNoopRuntimePermissionHooks(): PackageLocalRuntimePermissionHookPo
 function createNoopRuntimeHookManager(): PackageLocalRuntimeHookManagerPort {
   return {
     enable() {},
+  };
+}
+
+function createNoopRuntimeExecutionPipelineFactory(): PackageLocalRuntimeExecutionPipelineFactoryPort {
+  return {
+    create() {
+      return undefined;
+    },
   };
 }
 

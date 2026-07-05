@@ -6,7 +6,7 @@ import {
 } from '../../packages/agent-sdk/src/session/runtimeInstance.js';
 import type { SessionOptions } from '../../packages/agent-sdk/src/session/types.js';
 import { HookEvent } from '../../packages/agent-sdk/src/types/constants.js';
-import type { BladeConfig } from '../../packages/agent-sdk/src/types/common.js';
+import { PermissionMode, type BladeConfig } from '../../packages/agent-sdk/src/types/common.js';
 import type { PermissionHandlerRequest } from '../../packages/agent-sdk/src/types/permissions.js';
 import { ToolKind } from '../../packages/agent-sdk/src/tools/types/ToolKind.js';
 
@@ -972,5 +972,58 @@ describe('agent-sdk package-local session runtime shell', () => {
 
     runtimeWithHooks.initializeHooks();
     expect(enable).toHaveBeenCalledTimes(1);
+  });
+
+  it('owns execution pipeline creation through an injected factory port', () => {
+    const pipeline = { id: 'pipeline' };
+    const create = vi.fn((input: unknown) => {
+      void input;
+      return pipeline;
+    });
+    const permissionHandler = vi.fn(async () => ({ behavior: 'allow' as const }));
+    const toolCatalog = {
+      registerAll: vi.fn(),
+      registerMcpTool: vi.fn(),
+      removeMcpTools: vi.fn(() => 0),
+    };
+    const logger = { warn: vi.fn(), debug: vi.fn() };
+    const runtime = new PackageLocalSessionRuntime({
+      sessionId: 'session-1',
+      options: {
+        ...options,
+        permissionMode: PermissionMode.YOLO,
+        permissionHandler,
+      },
+      bladeConfig: {
+        ...bladeConfig,
+        permissions: {
+          allow: ['Read'],
+          ask: ['Write'],
+          deny: ['Bash'],
+        },
+      },
+      defaultContext: {},
+      toolCatalog,
+      logger,
+      executionPipelineFactory: { create },
+    });
+
+    expect(runtime.createExecutionPipeline()).toBe(pipeline);
+    expect(create).toHaveBeenCalledTimes(1);
+    const createOptions = create.mock.calls[0]?.[0] as
+      | { permissionHandler?: unknown }
+      | undefined;
+    expect(createOptions).toMatchObject({
+      permissionConfig: {
+        allow: ['Read'],
+        ask: ['Write'],
+        deny: ['Bash'],
+      },
+      permissionMode: PermissionMode.YOLO,
+      maxHistorySize: 1000,
+      logger,
+      toolCatalog,
+    });
+    expect(createOptions?.permissionHandler).toEqual(expect.any(Function));
   });
 });
