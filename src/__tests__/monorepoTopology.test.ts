@@ -527,6 +527,9 @@ describe('monorepo topology', () => {
     expect(packageLocalRuntimeInstanceSource).toContain('getKernelTracePort');
     expect(packageLocalRuntimeInstanceSource).toContain('getKernelHookPort');
     expect(packageLocalRuntimeInstanceSource).toContain('PackageLocalRuntimeKernelPortFactoryPort');
+    expect(packageLocalRuntimeInstanceSource).toContain('createAgentKernel');
+    expect(packageLocalRuntimeInstanceSource).toContain('PackageLocalRuntimeAgentKernelFactoryPort');
+    expect(packageLocalRuntimeInstanceSource).toContain('PackageLocalRuntimeKernelModelResolverPort');
     expect(existsSync('packages/agent-sdk/src/session/packageLocalLegacyRuntimeFactory.ts')).toBe(
       true,
     );

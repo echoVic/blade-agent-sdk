@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
+import type { ModelPort } from '@blade-ai/ai';
 import {
   isPackageLocalSdkMcpServerHandle,
   PackageLocalSessionRuntime,
@@ -1147,4 +1148,115 @@ describe('agent-sdk package-local session runtime shell', () => {
     expect(kernelPortFactory.createHookPort).toHaveBeenCalledWith({ hookRuntime });
     expect(createPipeline).toHaveBeenCalledTimes(1);
   });
+
+  it('creates an agent kernel through an injected package-local factory', () => {
+    const model = createModelPort();
+    const kernel = { id: 'kernel' };
+    const storePort = { appendMessage: vi.fn() };
+    const hookPort = { beforeModel: vi.fn((request) => request) };
+    const tracePort = { record: vi.fn() };
+    const toolPort = {
+      list: vi.fn(async () => []),
+      execute: vi.fn(async (toolCall) => ({
+        id: toolCall.id,
+        name: toolCall.name,
+        output: '',
+      })),
+    };
+    const traceRecorder = {} as TraceRecorder;
+    const createExecutionContext = vi.fn(() => ({}));
+    const kernelFactory = {
+      create: vi.fn(() => kernel),
+    };
+    const runtime = new PackageLocalSessionRuntime({
+      sessionId: 'session-1',
+      options,
+      bladeConfig,
+      defaultContext: {},
+      kernelFactory,
+      kernelPortFactory: {
+        createToolPort: vi.fn(() => toolPort),
+        createStorePort: vi.fn(() => storePort),
+        createTracePort: vi.fn(() => tracePort),
+        createHookPort: vi.fn(() => hookPort),
+      },
+    });
+
+    expect(
+      runtime.createAgentKernel({
+        model,
+        modelRequestDefaults: {
+          model: 'explicit-model',
+          maxContextTokens: 32000,
+          temperature: 0.2,
+        },
+        traceRecorder,
+        createExecutionContext,
+        maxSteps: 7,
+      }),
+    ).toBe(kernel);
+
+    expect(kernelFactory.create).toHaveBeenCalledWith({
+      model,
+      modelRequestDefaults: {
+        model: 'explicit-model',
+        maxContextTokens: 32000,
+        temperature: 0.2,
+      },
+      store: storePort,
+      hooks: hookPort,
+      trace: tracePort,
+      tools: toolPort,
+      maxSteps: 7,
+    });
+  });
+
+  it('resolves the session kernel model through an injected package-local resolver', () => {
+    const resolvedModel = createModelPort();
+    const kernel = { id: 'kernel' };
+    const kernelFactory = {
+      create: vi.fn(() => kernel),
+    };
+    const modelResolver = {
+      resolve: vi.fn(() => ({
+        model: resolvedModel,
+        modelRequestDefaults: {
+          model: 'resolved-model',
+          maxContextTokens: 128000,
+        },
+      })),
+    };
+    const runtime = new PackageLocalSessionRuntime({
+      sessionId: 'session-1',
+      options,
+      bladeConfig,
+      defaultContext: {},
+      kernelFactory,
+      kernelModelResolver: modelResolver,
+    });
+
+    expect(runtime.createAgentKernel({ modelId: 'secondary-model' })).toBe(kernel);
+    expect(modelResolver.resolve).toHaveBeenCalledWith({
+      bladeConfig,
+      modelId: 'secondary-model',
+    });
+    expect(kernelFactory.create).toHaveBeenCalledWith({
+      model: resolvedModel,
+      modelRequestDefaults: {
+        model: 'resolved-model',
+        maxContextTokens: 128000,
+      },
+      store: expect.any(Object),
+      hooks: expect.any(Object),
+    });
+  });
 });
+
+function createModelPort(): ModelPort {
+  return {
+    async generate() {
+      return { content: '' };
+    },
+    async *stream() {},
+  };
+}

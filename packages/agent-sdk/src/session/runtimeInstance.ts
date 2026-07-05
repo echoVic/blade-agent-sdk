@@ -1,5 +1,8 @@
 import { basename, dirname } from 'node:path';
+import type { ModelPort } from '@blade-ai/ai';
 import type {
+  AgentKernelOptions,
+  AgentModelRequestDefaults,
   AgentHookPort,
   AgentStorePort,
   AgentToolCall,
@@ -54,6 +57,8 @@ export interface PackageLocalSessionRuntimeOptions {
   backgroundAgentManager?: PackageLocalRuntimeBackgroundAgentManagerPort;
   executionPipelineFactory?: PackageLocalRuntimeExecutionPipelineFactoryPort;
   kernelPortFactory?: PackageLocalRuntimeKernelPortFactoryPort;
+  kernelFactory?: PackageLocalRuntimeAgentKernelFactoryPort;
+  kernelModelResolver?: PackageLocalRuntimeKernelModelResolverPort;
 }
 
 export interface PackageLocalRuntimeSessionStorePort {
@@ -213,6 +218,36 @@ export interface PackageLocalRuntimeKernelPortFactoryPort {
   createHookPort(options: PackageLocalRuntimeKernelHookPortCreateOptions): AgentHookPort;
 }
 
+export interface PackageLocalRuntimeAgentKernelOptions {
+  model?: ModelPort;
+  modelId?: string;
+  modelRequestDefaults?: AgentModelRequestDefaults;
+  traceRecorder?: TraceRecorder;
+  createExecutionContext?: (
+    toolCall: AgentToolCall,
+    signal?: AbortSignal,
+  ) => ExecutionContext;
+  maxSteps?: number;
+}
+
+export interface PackageLocalRuntimeResolvedKernelModel {
+  model: ModelPort;
+  modelRequestDefaults?: AgentModelRequestDefaults;
+}
+
+export interface PackageLocalRuntimeKernelModelResolveOptions {
+  bladeConfig: BladeConfig;
+  modelId?: string;
+}
+
+export interface PackageLocalRuntimeKernelModelResolverPort {
+  resolve(options: PackageLocalRuntimeKernelModelResolveOptions): PackageLocalRuntimeResolvedKernelModel;
+}
+
+export interface PackageLocalRuntimeAgentKernelFactoryPort {
+  create(options: AgentKernelOptions): unknown;
+}
+
 export interface PackageLocalAgentRuntimeDeps {
   executionPipeline: unknown;
   defaultContext: RuntimeContext;
@@ -319,6 +354,8 @@ export class PackageLocalSessionRuntime {
   readonly backgroundAgentManager: PackageLocalRuntimeBackgroundAgentManagerPort;
   readonly executionPipelineFactory: PackageLocalRuntimeExecutionPipelineFactoryPort;
   readonly kernelPortFactory: PackageLocalRuntimeKernelPortFactoryPort;
+  readonly kernelFactory: PackageLocalRuntimeAgentKernelFactoryPort;
+  readonly kernelModelResolver: PackageLocalRuntimeKernelModelResolverPort;
   private executionPipelineCreated = false;
   private executionPipeline: unknown;
 
@@ -348,6 +385,9 @@ export class PackageLocalSessionRuntime {
     this.executionPipelineFactory =
       options.executionPipelineFactory ?? createNoopRuntimeExecutionPipelineFactory();
     this.kernelPortFactory = options.kernelPortFactory ?? createNoopRuntimeKernelPortFactory();
+    this.kernelFactory = options.kernelFactory ?? createNoopRuntimeAgentKernelFactory();
+    this.kernelModelResolver =
+      options.kernelModelResolver ?? createNoopRuntimeKernelModelResolver();
   }
 
   getConfiguredMcpServers(): Record<string, McpServerConfig | SdkMcpServerHandle> {
@@ -695,6 +735,48 @@ export class PackageLocalSessionRuntime {
       hookRuntime: this.hookRuntime,
     });
   }
+
+  createAgentKernel(options: PackageLocalRuntimeAgentKernelOptions = {}): unknown {
+    const kernelModel = this.resolveAgentKernelModel(options);
+    return this.kernelFactory.create({
+      model: kernelModel.model,
+      ...(kernelModel.modelRequestDefaults
+        ? { modelRequestDefaults: kernelModel.modelRequestDefaults }
+        : {}),
+      store: this.getKernelStorePort(),
+      hooks: this.getKernelHookPort(),
+      ...(options.traceRecorder
+        ? {
+            trace: this.getKernelTracePort(
+              options.traceRecorder,
+              kernelModel.modelRequestDefaults?.maxContextTokens,
+            ),
+          }
+        : {}),
+      ...(options.createExecutionContext
+        ? { tools: this.getKernelToolPort(options.createExecutionContext) }
+        : {}),
+      ...(options.maxSteps !== undefined ? { maxSteps: options.maxSteps } : {}),
+    });
+  }
+
+  private resolveAgentKernelModel(
+    options: PackageLocalRuntimeAgentKernelOptions,
+  ): PackageLocalRuntimeResolvedKernelModel {
+    if (options.model) {
+      return {
+        model: options.model,
+        ...(options.modelRequestDefaults
+          ? { modelRequestDefaults: options.modelRequestDefaults }
+          : {}),
+      };
+    }
+
+    return this.kernelModelResolver.resolve({
+      bladeConfig: this.bladeConfig,
+      modelId: options.modelId,
+    });
+  }
 }
 
 function createNoopRuntimeSessionStore(): PackageLocalRuntimeSessionStorePort {
@@ -813,6 +895,22 @@ function createNoopRuntimeKernelPortFactory(): PackageLocalRuntimeKernelPortFact
     },
     createHookPort() {
       return {};
+    },
+  };
+}
+
+function createNoopRuntimeAgentKernelFactory(): PackageLocalRuntimeAgentKernelFactoryPort {
+  return {
+    create(options) {
+      return options;
+    },
+  };
+}
+
+function createNoopRuntimeKernelModelResolver(): PackageLocalRuntimeKernelModelResolverPort {
+  return {
+    resolve() {
+      throw new Error('Package-local kernel model resolver port is required to create a kernel');
     },
   };
 }
