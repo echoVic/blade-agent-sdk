@@ -15,12 +15,20 @@ const packageSpecs = [
       'package/dist/index.js',
       'package/dist/index.d.ts',
       'package/dist/chat/index.js',
+      'package/dist/deepseek/index.d.ts',
       'package/dist/model/index.d.ts',
+      'package/dist/providers/openai-compatible/index.js',
+      'package/dist/providers/openai-compatible/index.d.ts',
+      'package/dist/providers/vercel/index.js',
+      'package/dist/providers/vercel/index.d.ts',
     ],
     imports: [
       '@blade-ai/ai',
       '@blade-ai/ai/chat',
+      '@blade-ai/ai/deepseek',
       '@blade-ai/ai/model',
+      '@blade-ai/ai/providers/openai-compatible',
+      '@blade-ai/ai/providers/vercel',
       '@blade-ai/ai/retry',
     ],
   },
@@ -534,16 +542,44 @@ function verifyConsumerTypes(consumerDir) {
     join(consumerDir, 'consumer-types.ts'),
     `import type { ModelPort, ModelRequest, ModelResponse, ModelStreamEvent } from '@blade-ai/ai';
 import { createOpenAICompatibleModelPort } from '@blade-ai/ai';
+import type { DeepSeekCostBreakdown, DeepSeekProviderOptions } from '@blade-ai/ai/deepseek';
+import { calculateDeepSeekCost, normalizeDeepSeekModel } from '@blade-ai/ai/deepseek';
+import type { OpenAICompatibleModelPortOptions } from '@blade-ai/ai/providers/openai-compatible';
+import { createOpenAICompatibleModelPort as createCompatibleModelPortFromSubpath } from '@blade-ai/ai/providers/openai-compatible';
+import type { VercelLanguageModelOptions } from '@blade-ai/ai/providers/vercel';
+import { createVercelModelPort } from '@blade-ai/ai/providers/vercel';
 import type { AgentStreamEvent } from '@blade-ai/agent';
 import { AgentKernel } from '@blade-ai/agent';
 import type { SessionOptions, StreamMessage } from '@blade-ai/agent-sdk';
 import { createSession, defineTool, ToolKind } from '@blade-ai/agent-sdk';
 
-const model = createOpenAICompatibleModelPort({
+const compatibleOptions: OpenAICompatibleModelPortOptions = {
   apiKey: 'test-key',
   baseUrl: 'https://example.test/v1',
   model: 'glm-5.2',
-});
+};
+const model = createOpenAICompatibleModelPort(compatibleOptions);
+const compatibleModelFromSubpath: ModelPort = createCompatibleModelPortFromSubpath(compatibleOptions);
+
+const vercelOptions: VercelLanguageModelOptions = {
+  provider: 'openai-compatible',
+  providerId: 'glm',
+  apiKey: 'test-key',
+  baseUrl: 'https://example.test/v1',
+  model: 'glm-5.2',
+};
+const vercelModel: ModelPort = createVercelModelPort(vercelOptions);
+
+const deepseekOptions: DeepSeekProviderOptions = {
+  thinking: { type: 'enabled' },
+  strictTools: true,
+};
+const normalizedDeepSeekModel: string = normalizeDeepSeekModel('deepseek-chat');
+const deepseekCost: DeepSeekCostBreakdown | undefined = calculateDeepSeekCost({
+  promptTokens: 1,
+  completionTokens: 1,
+  totalTokens: 2,
+}, normalizedDeepSeekModel);
 
 const request: ModelRequest = {
   messages: [{ role: 'user', content: 'hello' }],
@@ -634,6 +670,10 @@ async function useSession(): Promise<void> {
 }
 
 void useModelPort;
+void compatibleModelFromSubpath;
+void vercelModel;
+void deepseekOptions;
+void deepseekCost;
 void useKernel;
 void useSession;
 `,

@@ -112,6 +112,17 @@ describe('package provenance metadata', () => {
     expect(packageVerifier).toContain("import { AgentKernel } from '@blade-ai/agent';");
     expect(packageVerifier).toContain("import { createSession, defineTool, ToolKind } from '@blade-ai/agent-sdk';");
   });
+
+  it('type-checks exported AI provider subpaths from the packed temporary consumer', () => {
+    const packageVerifier = readFileSync(resolve('scripts/verify-packages.mjs'), 'utf8');
+
+    expect(packageVerifier).toContain("'@blade-ai/ai/deepseek'");
+    expect(packageVerifier).toContain("'@blade-ai/ai/providers/openai-compatible'");
+    expect(packageVerifier).toContain("'@blade-ai/ai/providers/vercel'");
+    expect(packageVerifier).toContain("from '@blade-ai/ai/deepseek';");
+    expect(packageVerifier).toContain("from '@blade-ai/ai/providers/openai-compatible';");
+    expect(packageVerifier).toContain("from '@blade-ai/ai/providers/vercel';");
+  });
 });
 
 describe('release scripts', () => {

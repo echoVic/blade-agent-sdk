@@ -536,6 +536,7 @@ Status:
 - Ninety-first verification-chain increment complete: integration tests now reuse the shared GLM live config loader so `.env`, `GLM_*`, and `INTEGRATION_*` aliases resolve through the same path as live smoke tests. Default `test:integration` remains skipped for CI/release stability unless `INTEGRATION_LIVE=1` is set, while `test:integration:live` is the explicit full real-GLM entrypoint.
 - Ninety-second verification-chain increment complete: publishable package manifests now carry npm-facing metadata for license, engines, side-effect safety, homepage, bugs, and keywords, each package has its own README, and `pnpm run verify:packages` requires `package/README.md` inside every packed tarball before running the temporary-consumer install smoke.
 - Ninety-third verification-chain increment complete: `pnpm run verify:packages` now writes a TypeScript temporary-consumer file after installing the packed tarballs and runs `tsc --noEmit` against public `@blade-ai/ai`, `@blade-ai/agent`, and `@blade-ai/agent-sdk` imports, proving package declarations support real external ModelPort, AgentKernel, SessionOptions, StreamMessage, defineTool, and ToolKind usage.
+- Ninety-fourth verification-chain increment complete: the packed temporary consumer now imports and type-checks the provider-focused `@blade-ai/ai/deepseek`, `@blade-ai/ai/providers/openai-compatible`, and `@blade-ai/ai/providers/vercel` subpaths, while tarball checks require their JS and declaration artifacts so exported provider contracts cannot regress silently.
 
 Commit:
 
