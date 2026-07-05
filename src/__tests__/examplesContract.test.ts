@@ -27,6 +27,23 @@ describe('examples and quickstart documentation', () => {
     );
   });
 
+  it('keeps examples on publishable package facades instead of legacy root aliases', () => {
+    expect(examplesTsconfig.compilerOptions.paths).not.toHaveProperty('@/*');
+    expect(examplesTsconfig.compilerOptions.paths).toMatchObject({
+      '@blade-ai/agent/kernel': ['../packages/agent/src/kernel/AgentKernel.ts'],
+      '@blade-ai/agent/ports': ['../packages/agent/src/ports/index.ts'],
+      '@blade-ai/agent/protocol': ['../packages/agent/src/protocol/index.ts'],
+      '@blade-ai/agent/state': ['../packages/agent/src/state/index.ts'],
+      '@blade-ai/agent/tracing': ['../packages/agent/src/tracing/index.ts'],
+      '@blade-ai/agent-sdk/browser': ['../packages/agent-sdk/src/browser/index.ts'],
+      '@blade-ai/agent-sdk/core': ['../packages/agent-sdk/src/core/index.ts'],
+      '@blade-ai/agent-sdk/local': ['../packages/agent-sdk/src/local/index.ts'],
+      '@blade-ai/agent-sdk/server': ['../packages/agent-sdk/src/server/index.ts'],
+      '@blade-ai/agent-sdk/session': ['../packages/agent-sdk/src/session/index.ts'],
+      '@blade-ai/agent-sdk/tools': ['../packages/agent-sdk/src/tools/index.ts'],
+    });
+  });
+
   it('keeps the session-first server quickstart example available', () => {
     const examplePath = 'examples/session-first-server.ts';
 

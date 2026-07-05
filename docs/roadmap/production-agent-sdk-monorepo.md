@@ -557,6 +557,7 @@ Status:
 - One-hundred-twelfth verification-chain increment complete: topology now requires the private root workspace package to omit runtime `dependencies` and `optionalDependencies`, leaving root package dependencies as dev-only workspace/test/tooling inputs while publishable runtime ownership stays in `packages/ai`, `packages/agent`, and `packages/agent-sdk`.
 - One-hundred-thirteenth verification-chain increment complete: topology now requires obsolete root package build config files (`tsup.config.ts` and `tsconfig.build.json`) to be absent, keeping build ownership exclusively in the publishable package directories while root `pnpm run build` remains an orchestrator command.
 - One-hundred-fourteenth verification-chain increment complete: `pnpm run verify:examples` now type-checks `@blade-ai/agent-sdk` examples against `packages/agent-sdk/src/index.ts` instead of the legacy root `src/index.ts`, proving quickstart examples exercise the publishable package facade during local verification.
+- One-hundred-fifteenth verification-chain increment complete: `pnpm run verify:examples` now forbids the legacy `@/* -> src/*` alias and maps public `@blade-ai/agent` plus `@blade-ai/agent-sdk` subpaths to package-local source facades, proving examples cannot silently bypass the monorepo package boundaries during local type-checking.
 
 Commit:
 
