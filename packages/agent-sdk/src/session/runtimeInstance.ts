@@ -47,6 +47,7 @@ import type {
   HookCallback,
   StreamMessage,
 } from './types.js';
+import { createPackageLocalKernelTracePort } from './kernelTracePort.js';
 import { createSessionTraceFinalizer, SessionTraceManager } from './traces.js';
 import type { SessionSnapshot } from './store.js';
 
@@ -1143,10 +1144,8 @@ function createNoopRuntimeKernelPortFactory(): PackageLocalRuntimeKernelPortFact
         },
       };
     },
-    createTracePort() {
-      return {
-        record() {},
-      };
+    createTracePort(options) {
+      return createPackageLocalKernelTracePort(options);
     },
     createHookPort() {
       return {};

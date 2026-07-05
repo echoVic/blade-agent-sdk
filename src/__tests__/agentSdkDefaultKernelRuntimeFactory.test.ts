@@ -456,6 +456,11 @@ describe('agent-sdk default kernel runtime factory', () => {
       async generate() {
         return {
           content: 'traced answer',
+          usage: {
+            promptTokens: 5,
+            completionTokens: 7,
+            totalTokens: 12,
+          },
           finishReason: 'stop' as const,
         };
       },
@@ -469,7 +474,10 @@ describe('agent-sdk default kernel runtime factory', () => {
           resolve() {
             return {
               model: defaultKernelModel,
-              modelRequestDefaults: { model: 'test-model' },
+              modelRequestDefaults: {
+                model: 'test-model',
+                maxContextTokens: 4096,
+              },
             };
           },
         },
@@ -498,9 +506,26 @@ describe('agent-sdk default kernel runtime factory', () => {
       },
     });
     expect(trace?.events.map((event) => event.type)).toEqual(
-      expect.arrayContaining(['user_prompt', 'result']),
+      expect.arrayContaining([
+        'user_prompt',
+        'turn_start',
+        'model_request',
+        'model_response',
+        'usage',
+        'turn_end',
+        'result',
+      ]),
     );
+    expect(trace?.events.find((event) => event.type === 'usage')?.data?.usage).toMatchObject({
+      value: {
+        inputTokens: 5,
+        outputTokens: 7,
+        totalTokens: 12,
+        maxContextTokens: 4096,
+      },
+    });
     expect(JSON.stringify(trace)).toContain('trace this turn');
+    expect(JSON.stringify(trace)).toContain('traced answer');
     expect(session.getTraces()).toEqual([trace]);
     expect(sink).toHaveBeenCalledWith(trace);
   });
