@@ -123,6 +123,7 @@ export interface SessionState extends SessionSnapshot {
 }
 
 export interface SessionStore {
+  createSession(sessionId: string): Promise<void>;
   loadState(sessionId: string): Promise<SessionState | null>;
   loadMessages(sessionId: string): Promise<SessionMessage[]>;
   appendMessage(
@@ -140,6 +141,8 @@ export interface SessionStore {
 }
 
 export class NoopSessionStore implements SessionStore {
+  async createSession(_sessionId: string): Promise<void> {}
+
   async loadState(_sessionId: string): Promise<SessionState | null> {
     return null;
   }
@@ -324,6 +327,22 @@ export class JsonlSessionStore implements SessionStore {
 
   constructor(storageRoot: string) {
     this.storageRoot = normalizeSessionStorageRoot(storageRoot);
+  }
+
+  async createSession(sessionId: string): Promise<void> {
+    const existing = await this.loadState(sessionId);
+    if (existing) {
+      return;
+    }
+
+    const now = new Date().toISOString();
+    await this.writeEntries(sessionId, [
+      this.createSessionCreatedEvent({
+        sessionId,
+        createdAt: now,
+        updatedAt: now,
+      }),
+    ]);
   }
 
   async loadState(sessionId: string): Promise<SessionState | null> {

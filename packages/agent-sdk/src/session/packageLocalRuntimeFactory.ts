@@ -25,6 +25,7 @@ export interface PackageLocalSessionRuntimeFactoryOptions {
   createSessionRuntimePort?: (
     context: PackageLocalSessionRuntimeContext,
   ) => PackageLocalSessionRuntimePort;
+  initialize?: (context: PackageLocalSessionRuntimeContext) => Promise<void> | void;
   cleanup?: (context: PackageLocalSessionRuntimeContext) => Promise<void> | void;
 }
 
@@ -44,20 +45,24 @@ export function createPackageLocalSessionRuntimeFactory(
 
   return {
     async create(sessionOptions) {
-      return createSessionFor({
+      const context = {
         sessionId: options.createSessionId(),
         options: sessionOptions,
         isResume: false,
-      });
+      };
+      await options.initialize?.(context);
+      return createSessionFor(context);
     },
 
     async resume(resumeOptions: ResumeOptions) {
       const { sessionId, ...sessionOptions } = resumeOptions;
-      return createSessionFor({
+      const context = {
         sessionId,
         options: sessionOptions,
         isResume: true,
-      });
+      };
+      await options.initialize?.(context);
+      return createSessionFor(context);
     },
   };
 }

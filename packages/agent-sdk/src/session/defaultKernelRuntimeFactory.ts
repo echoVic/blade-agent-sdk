@@ -42,7 +42,9 @@ function createJsonlRuntimeSessionStore(
 
   const store = new JsonlSessionStore(options.storagePath);
   return {
-    async createSession() {},
+    async createSession(sessionId) {
+      await store.createSession(sessionId);
+    },
     async loadSession(sessionId) {
       return (await store.loadState(sessionId)) !== null;
     },

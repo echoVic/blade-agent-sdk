@@ -390,4 +390,50 @@ describe('agent-sdk default kernel runtime factory', () => {
       messageIds: expect.any(Array),
     });
   });
+
+  it('persists create and resume lifecycle through the package-local JSONL store', async () => {
+    const workspaceRoot = createWorkspaceRoot();
+    const factory = createDefaultKernelSessionRuntimeFactory({
+      createSessionId: () => 'empty-session',
+      createTurnId: () => 'unused-turn',
+      runtime: {
+        kernelModelResolver: {
+          resolve() {
+            return {
+              model,
+              modelRequestDefaults: { model: 'test-model' },
+            };
+          },
+        },
+      },
+    });
+    const store = new JsonlSessionStore(workspaceRoot);
+
+    const created = await factory.create({
+      ...options,
+      storagePath: workspaceRoot,
+    });
+    const resumed = await factory.resume({
+      ...options,
+      storagePath: workspaceRoot,
+      sessionId: 'missing-session',
+    });
+
+    await expect(store.loadState(created.sessionId)).resolves.toMatchObject({
+      sessionId: 'empty-session',
+      messages: [],
+      messageIds: [],
+      sessionInfo: {
+        sessionId: 'empty-session',
+      },
+    });
+    await expect(store.loadState(resumed.sessionId)).resolves.toMatchObject({
+      sessionId: 'missing-session',
+      messages: [],
+      messageIds: [],
+      sessionInfo: {
+        sessionId: 'missing-session',
+      },
+    });
+  });
 });
