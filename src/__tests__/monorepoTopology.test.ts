@@ -336,6 +336,7 @@ describe('monorepo topology', () => {
       'packages/agent-sdk/src/session/turnAbort.ts',
       'utf-8',
     );
+    const sessionTurnSource = readFileSync('packages/agent-sdk/src/session/turn.ts', 'utf-8');
     const sessionPromptAccumulatorSource = readFileSync(
       'packages/agent-sdk/src/session/promptStreamAccumulator.ts',
       'utf-8',
@@ -361,6 +362,7 @@ describe('monorepo topology', () => {
     expect(existsSync('packages/agent-sdk/src/session/content.ts')).toBe(true);
     expect(existsSync('packages/agent-sdk/src/session/pendingTurn.ts')).toBe(true);
     expect(existsSync('packages/agent-sdk/src/session/turnAbort.ts')).toBe(true);
+    expect(existsSync('packages/agent-sdk/src/session/turn.ts')).toBe(true);
     expect(existsSync('packages/agent-sdk/src/session/promptStreamAccumulator.ts')).toBe(true);
     expect(existsSync('packages/agent-sdk/src/session/cleanup.ts')).toBe(true);
     expect(existsSync('packages/agent-sdk/src/session/lifecycle.ts')).toBe(true);
@@ -368,6 +370,9 @@ describe('monorepo topology', () => {
     expect(sessionContentSource).not.toContain('../../../../src/');
     expect(sessionPendingTurnSource).not.toContain('../../../../src/');
     expect(sessionTurnAbortSource).not.toContain('../../../../src/');
+    expect(sessionTurnSource).not.toContain('../../../../src/');
+    expect(sessionTurnSource).toContain('createSessionContextSnapshot');
+    expect(sessionTurnSource).toContain('class SessionTurnController');
     expect(sessionPromptAccumulatorSource).not.toContain('../../../../src/');
     expect(sessionCleanupSource).not.toContain('../../../../src/');
     expect(sessionLifecycleStateSource).not.toContain('../../../../src/');
