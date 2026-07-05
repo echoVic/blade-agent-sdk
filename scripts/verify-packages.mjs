@@ -521,11 +521,75 @@ function installConsumer(tarballs, tempDir) {
 }
 
 function verifyConsumerImports(consumerDir) {
-  const imports = packageSpecs.flatMap((spec) => spec.imports);
-  const script = imports.map((specifier) => `await import(${JSON.stringify(specifier)});`).join('\n');
-  run(process.execPath, ['--input-type=module', '-e', script], {
-    cwd: consumerDir,
-  });
+  const runtimeSmokePath = join(consumerDir, 'consumer-runtime.mjs');
+  writeFileSync(
+    runtimeSmokePath,
+    `import * as ai from '@blade-ai/ai';
+import * as aiChat from '@blade-ai/ai/chat';
+import * as aiDeepseek from '@blade-ai/ai/deepseek';
+import * as aiModel from '@blade-ai/ai/model';
+import * as aiOpenAICompatible from '@blade-ai/ai/providers/openai-compatible';
+import * as aiVercel from '@blade-ai/ai/providers/vercel';
+import * as aiRetry from '@blade-ai/ai/retry';
+import * as agent from '@blade-ai/agent';
+import * as agentKernel from '@blade-ai/agent/kernel';
+import * as agentProtocol from '@blade-ai/agent/protocol';
+import * as agentPorts from '@blade-ai/agent/ports';
+import * as agentState from '@blade-ai/agent/state';
+import * as agentTracing from '@blade-ai/agent/tracing';
+import * as agentSdk from '@blade-ai/agent-sdk';
+import * as agentSdkCore from '@blade-ai/agent-sdk/core';
+import * as agentSdkBrowser from '@blade-ai/agent-sdk/browser';
+import * as agentSdkServer from '@blade-ai/agent-sdk/server';
+import * as agentSdkSession from '@blade-ai/agent-sdk/session';
+import * as agentSdkTools from '@blade-ai/agent-sdk/tools';
+import * as agentSdkLocal from '@blade-ai/agent-sdk/local';
+
+function assertRuntimeExport(module, name) {
+  if (!(name in module)) {
+    throw new Error(\`Missing runtime export \${name}\`);
+  }
+}
+
+assertRuntimeExport(ai, 'createOpenAICompatibleModelPort');
+assertRuntimeExport(aiDeepseek, 'normalizeDeepSeekModel');
+assertRuntimeExport(aiOpenAICompatible, 'createOpenAICompatibleModelPort');
+assertRuntimeExport(aiVercel, 'createVercelModelPort');
+assertRuntimeExport(aiRetry, 'DEFAULT_RETRY_CONFIG');
+assertRuntimeExport(aiRetry, 'withRetry');
+assertRuntimeExport(agent, 'AgentKernel');
+assertRuntimeExport(agentKernel, 'AgentKernel');
+assertRuntimeExport(agentSdk, 'createSession');
+assertRuntimeExport(agentSdk, 'defineTool');
+assertRuntimeExport(agentSdkCore, 'PermissionMode');
+assertRuntimeExport(agentSdkBrowser, 'PermissionMode');
+assertRuntimeExport(agentSdkServer, 'createSession');
+assertRuntimeExport(agentSdkSession, 'createSession');
+assertRuntimeExport(agentSdkSession, 'resumeSession');
+assertRuntimeExport(agentSdkTools, 'ToolKind');
+assertRuntimeExport(agentSdkLocal, 'getBuiltinTools');
+
+if (Object.keys(aiChat).length !== 0) {
+  throw new Error('@blade-ai/ai/chat should remain type-only at runtime');
+}
+if (Object.keys(aiModel).length !== 0) {
+  throw new Error('@blade-ai/ai/model should remain type-only at runtime');
+}
+if (Object.keys(agentProtocol).length !== 0) {
+  throw new Error('@blade-ai/agent/protocol should remain type-only at runtime');
+}
+if (Object.keys(agentPorts).length !== 0) {
+  throw new Error('@blade-ai/agent/ports should remain type-only at runtime');
+}
+if (Object.keys(agentState).length !== 0) {
+  throw new Error('@blade-ai/agent/state should remain type-only at runtime');
+}
+if (Object.keys(agentTracing).length !== 0) {
+  throw new Error('@blade-ai/agent/tracing should remain type-only at runtime');
+}
+`,
+  );
+  run(process.execPath, [runtimeSmokePath], { cwd: consumerDir });
 }
 
 function verifyConsumerTypes(consumerDir) {

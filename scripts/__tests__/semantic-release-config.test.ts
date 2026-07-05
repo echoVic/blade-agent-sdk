@@ -124,6 +124,23 @@ describe('package provenance metadata', () => {
     expect(packageVerifier).toContain("from '@blade-ai/agent-sdk/browser';");
   });
 
+  it('runtime-loads public value exports from the packed temporary consumer', () => {
+    const packageVerifier = readFileSync(resolve('scripts/verify-packages.mjs'), 'utf8');
+
+    expect(packageVerifier).toContain('consumer-runtime.mjs');
+    expect(packageVerifier).toContain('function assertRuntimeExport');
+    expect(packageVerifier).toContain("import * as aiChat from '@blade-ai/ai/chat';");
+    expect(packageVerifier).toContain("import * as aiModel from '@blade-ai/ai/model';");
+    expect(packageVerifier).toContain("assertRuntimeExport(ai, 'createOpenAICompatibleModelPort')");
+    expect(packageVerifier).toContain("assertRuntimeExport(aiRetry, 'DEFAULT_RETRY_CONFIG')");
+    expect(packageVerifier).toContain("assertRuntimeExport(agent, 'AgentKernel')");
+    expect(packageVerifier).toContain("assertRuntimeExport(agentKernel, 'AgentKernel')");
+    expect(packageVerifier).toContain("assertRuntimeExport(agentSdk, 'createSession')");
+    expect(packageVerifier).toContain("assertRuntimeExport(agentSdk, 'defineTool')");
+    expect(packageVerifier).toContain("assertRuntimeExport(agentSdkTools, 'ToolKind')");
+    expect(packageVerifier).toContain("throw new Error('@blade-ai/ai/chat should remain type-only at runtime')");
+  });
+
   it('type-checks exported AI provider subpaths from the packed temporary consumer', () => {
     const packageVerifier = readFileSync(resolve('scripts/verify-packages.mjs'), 'utf8');
 
