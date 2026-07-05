@@ -584,6 +584,7 @@ Status:
 - Fifth documentation increment complete: a Production Checklist now documents the required `pnpm run verify` release gate, package boundary checks, browser-safe entrypoint checks, optional GLM live smoke, release dry-run, and trusted publishing flow from `main`.
 - Sixth documentation increment complete: a Provider and model guide now documents session-first provider configuration, direct `@blade-ai/ai` `ModelPort` usage, OpenAI-compatible/GLM smoke testing, Vercel provider adapters, stream events, usage normalization, and the boundary that keeps `@blade-ai/agent` independent of provider SDKs.
 - Seventh documentation increment complete: a Tool Authoring guide now documents production custom tool design for session-first apps, browser-safe tool imports, `defineTool` / `createTool`, `ExecutionContext`, allowed-tool policy, permission update effects, stream event mapping, and verification expectations.
+- Eighth documentation increment complete: the root README now presents the Pi-style three-package architecture as installable public packages, documents the recommended `@blade-ai/ai` / `@blade-ai/agent` / `@blade-ai/agent-sdk` import boundaries, and surfaces the production verification chain including packed tarball temporary-consumer smoke, browser/entrypoint checks, default integration skip behavior, and explicit GLM live commands.
 
 Commit:
 

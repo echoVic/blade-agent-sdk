@@ -26,19 +26,34 @@ npm install @blade-ai/agent-sdk
 pnpm add @blade-ai/agent-sdk
 ```
 
+如果你要直接使用底层模型适配层或 runtime-independent agent kernel，可以安装完整三包：
+
+```bash
+npm install @blade-ai/ai @blade-ai/agent @blade-ai/agent-sdk
+pnpm add @blade-ai/ai @blade-ai/agent @blade-ai/agent-sdk
+```
+
 已发布包面向 npm 分发；这个仓库本身使用 `pnpm` 进行依赖安装、构建、测试、发布和文档开发。
 
 > **ESM-only**：本包为纯 ESM（`"type": "module"`），仅通过 `import` 使用，不支持 CommonJS `require()`（否则会报 `ERR_PACKAGE_PATH_NOT_EXPORTED`）。请确保项目为 ESM（package.json 设 `"type": "module"`）或使用支持 ESM 的运行时/打包器。
 
 ## Monorepo 包结构
 
-仓库采用 pnpm workspace。根目录 `package.json` 是私有 orchestrator，不直接发布；npm 发布包位于 `packages/agent-sdk`。
+仓库采用 pnpm workspace。根目录 `package.json` 是私有 orchestrator，不直接发布；npm 发布包位于 `packages/*`。整体边界对标 Pi 的分层思路：模型 API、agent loop/kernel、产品 SDK 分开演进，但 Blade 保持 session-first 作为默认用户体验。
 
-- `packages/ai`：provider-agnostic 的模型、stream event、usage 和 provider option 基础接口
-- `packages/agent`：运行时无关的 agent kernel、tool port 和 agent stream 协议基础接口
-- `packages/agent-sdk`：session-first 产品 SDK，发布为 `@blade-ai/agent-sdk`，组合 agent/ai 以及 server/local 能力
+- `@blade-ai/ai` / `packages/ai`：provider-agnostic 的 `ModelPort`、stream event、usage normalization 和 provider adapter，例如 OpenAI-compatible / GLM / Vercel AI SDK 适配。
+- `@blade-ai/agent` / `packages/agent`：运行时无关的 `AgentKernel`、tool/store/hook/trace ports 和 agent stream 协议，不依赖 Node 本地能力、MCP、文件系统、shell 或 provider SDK。
+- `@blade-ai/agent-sdk` / `packages/agent-sdk`：session-first 产品 SDK，组合 `@blade-ai/agent` 与 `@blade-ai/ai`，并在 server / CLI 场景里接入本地工具、MCP、权限、hooks、observability、sandbox 和 session persistence。
 
-当前重构仍处在迁移阶段：`@blade-ai/agent-sdk` 保持原有 session-first 入口和 subpath exports，内部实现会逐步从旧 root `src` 拆入 `ai`、`agent` 和 `agent-sdk` 包。
+推荐 import 边界：
+
+```ts
+import { createOpenAICompatibleModelPort } from '@blade-ai/ai';
+import { AgentKernel } from '@blade-ai/agent';
+import { createSession } from '@blade-ai/agent-sdk';
+```
+
+大多数应用只需要 `@blade-ai/agent-sdk`。只有当你要自己组装模型层或 agent kernel 时，才直接依赖 `@blade-ai/ai` / `@blade-ai/agent`。
 
 ## 快速开始
 
@@ -177,15 +192,27 @@ README 只保留概览。详细用法请直接看文档：
 
 ```bash
 pnpm install
-pnpm run build
-pnpm -r run build
-pnpm test
-pnpm run type-check
-pnpm -r run type-check
-pnpm run lint
+pnpm run verify
+pnpm run verify:packages
 pnpm run verify:entrypoints
+pnpm run test:unit
+pnpm run test:integration
+pnpm run docs:build
 pnpm run docs:dev
 ```
+
+`pnpm run verify` 是 CI 和发版前的生产 gate，会串起 lint、root/workspace type-check、examples type-check、package boundary scanner、docs build、entrypoint/browser-safety scanner、packed package smoke、unit tests 和默认 integration skip 检查。
+
+`pnpm run verify:packages` 会先 fresh-build 三个发布包，再打出 packed tarball，把它们安装到外部 temporary consumer 项目里，并从 consumer 侧 import root/subpath exports，防止声明文件、exports、workspace 依赖或包内容在 npm 分发时回退。
+
+真实模型测试是显式 opt-in：
+
+```bash
+pnpm run test:live:session-glm
+INTEGRATION_LIVE=1 pnpm run test:integration:live
+```
+
+`test:live:session-glm` 会用 `.env` / `GLM_*` / `INTEGRATION_*` 配置对 `glm-5.2` 跑一次 session-first smoke；`test:integration:live` 会跑完整真实 integration suite。默认 `pnpm run test:integration` 不设置 `INTEGRATION_LIVE=1` 时只验证跳过行为，避免 CI 和 release 被外部模型波动拖住。
 
 ## 发布
 
