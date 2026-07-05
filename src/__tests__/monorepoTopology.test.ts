@@ -657,9 +657,14 @@ describe('monorepo topology', () => {
     expect(existsSync('packages/agent-sdk/src/session/runtimeHooks.ts')).toBe(true);
     expect(runtimeHooksSource).not.toContain('../../../../src/');
     expect(runtimeHooksSource).toContain('initializePackageLocalRuntimeHooks');
+    expect(runtimeHooksSource).toContain('streamWithPackageLocalRuntimeTraceCollector');
     expect(packageLocalRuntimeInstanceSource).toContain('initializePackageLocalRuntimeHooks');
+    expect(packageLocalRuntimeInstanceSource).toContain(
+      'streamWithPackageLocalRuntimeTraceCollector',
+    );
     expect(packageLocalRuntimeInstanceSource).not.toContain('this.hookManager.enable()');
     expect(packageLocalRuntimeInstanceSource).not.toContain('Object.keys(this.options.hooks');
+    expect(packageLocalRuntimeInstanceSource).not.toContain('this.hookRuntime.setTraceCollector');
     expect(packageLocalRuntimeInstanceSource).toContain('createExecutionPipeline');
     expect(packageLocalRuntimeInstanceSource).toContain(
       'PackageLocalRuntimeExecutionPipelineFactoryPort',

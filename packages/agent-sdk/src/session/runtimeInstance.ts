@@ -38,6 +38,7 @@ import {
 } from './kernelStreamProjection.js';
 import {
   initializePackageLocalRuntimeHooks,
+  streamWithPackageLocalRuntimeTraceCollector,
   type PackageLocalRuntimeHookManagerPort,
   type PackageLocalRuntimeHookRuntimePort,
 } from './runtimeHooks.js';
@@ -765,11 +766,15 @@ export class PackageLocalSessionRuntime {
     yield { type: 'turn_start', turn: 1, sessionId: this.sessionId };
 
     try {
-      this.hookRuntime.setTraceCollector?.(traceRecorder);
-      for await (const event of kernel.runTurn({
+      const kernelEvents = kernel.runTurn({
         input: options.input,
         turnId: options.turnId,
         signal: options.signal,
+      });
+      for await (const event of streamWithPackageLocalRuntimeTraceCollector({
+        hookRuntime: this.hookRuntime,
+        traceCollector: traceRecorder,
+        stream: kernelEvents,
       })) {
         if (event.type === 'usage') {
           usage = event.usage;
@@ -796,8 +801,6 @@ export class PackageLocalSessionRuntime {
         error: error instanceof Error ? error.message : String(error),
       });
       throw error;
-    } finally {
-      this.hookRuntime.setTraceCollector?.(undefined);
     }
   }
 
