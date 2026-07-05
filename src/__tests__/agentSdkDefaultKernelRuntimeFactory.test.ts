@@ -1,7 +1,11 @@
 import { describe, expect, it, vi } from 'vitest';
+import { mkdtempSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import type { AgentKernelOptions } from '@blade-ai/agent';
 import type { ModelPort } from '@blade-ai/ai';
 import { createDefaultKernelSessionRuntimeFactory } from '../../packages/agent-sdk/src/session/defaultKernelRuntimeFactory.js';
+import { JsonlSessionStore } from '../../packages/agent-sdk/src/session/store.js';
 import { PackageLocalSession } from '../../packages/agent-sdk/src/session/sessionInstance.js';
 import type { SessionOptions, StreamMessage } from '../../packages/agent-sdk/src/session/types.js';
 
@@ -39,6 +43,10 @@ async function collect(stream: AsyncGenerator<StreamMessage>): Promise<StreamMes
     messages.push(message);
   }
   return messages;
+}
+
+function createWorkspaceRoot(): string {
+  return mkdtempSync(join(tmpdir(), 'agent-sdk-default-kernel-runtime-test-'));
 }
 
 describe('agent-sdk default kernel runtime factory', () => {
@@ -268,5 +276,53 @@ describe('agent-sdk default kernel runtime factory', () => {
     expect(connectServer).toHaveBeenCalledWith('remote');
     expect(disconnectServer).toHaveBeenCalledWith('remote');
     expect(reconnectServer).toHaveBeenCalledWith('remote');
+  });
+
+  it('forks resumed sessions by materializing package-local JSONL history', async () => {
+    const workspaceRoot = createWorkspaceRoot();
+    const store = new JsonlSessionStore(workspaceRoot);
+    const sourceSnapshot = await store.writeForkState('parent-session', {
+      sessionId: 'root-session',
+      messages: [
+        { id: 'message-1', role: 'user', content: 'hello' },
+        { id: 'message-2', role: 'assistant', content: 'hi' },
+        { id: 'message-3', role: 'user', content: 'later' },
+      ],
+      messageIds: ['message-1', 'message-2', 'message-3'],
+      lastActivity: Date.now(),
+    });
+    const factory = createDefaultKernelSessionRuntimeFactory({
+      createSessionId: () => 'forked-session',
+      createTurnId: () => 'forked-turn',
+      runtime: {
+        kernelModelResolver: {
+          resolve() {
+            return {
+              model,
+              modelRequestDefaults: { model: 'test-model' },
+            };
+          },
+        },
+      },
+    });
+
+    expect(sourceSnapshot?.messageIds).toEqual(['message-1', 'message-2', 'message-3']);
+
+    const source = await factory.resume({
+      ...options,
+      storagePath: workspaceRoot,
+      sessionId: 'parent-session',
+    });
+    const forked = await source.fork({ messageId: 'message-2' });
+    const forkedState = await store.loadState(forked.sessionId);
+
+    expect(forked).toBeInstanceOf(PackageLocalSession);
+    expect(forked.sessionId).toBe('forked-session');
+    expect(forkedState?.messageIds).toEqual(['message-1', 'message-2']);
+    expect(forkedState?.messages.map((message) => message.content)).toEqual(['hello', 'hi']);
+    expect(forkedState?.sessionInfo).toMatchObject({
+      sessionId: 'forked-session',
+      parentId: 'parent-session',
+    });
   });
 });

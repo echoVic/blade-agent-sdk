@@ -101,6 +101,8 @@ describe('agent-sdk package-local session runtime shell', () => {
           calls.push(`load:${sessionId}`);
           return sessionId === 'existing-session';
         }),
+        forkState: vi.fn(async () => null),
+        writeForkState: vi.fn(async () => null),
       },
     });
 
@@ -1098,6 +1100,8 @@ describe('agent-sdk package-local session runtime shell', () => {
     const sessionStore = {
       createSession: vi.fn(async () => {}),
       loadSession: vi.fn(async () => true),
+      forkState: vi.fn(async () => null),
+      writeForkState: vi.fn(async () => null),
     };
     const toolCatalog = {
       registerAll: vi.fn(),

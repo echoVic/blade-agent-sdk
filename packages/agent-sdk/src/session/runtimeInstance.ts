@@ -36,12 +36,15 @@ import type {
   McpToolInfo,
   McpServerStatus,
   SdkMcpServerHandle,
+  ForkSessionOptions,
+  ISession,
   SessionHookEvent,
   SessionId,
   SessionOptions,
   HookCallback,
   StreamMessage,
 } from './types.js';
+import type { SessionSnapshot } from './store.js';
 
 export interface PackageLocalSessionRuntimeOptions {
   sessionId: SessionId;
@@ -64,11 +67,24 @@ export interface PackageLocalSessionRuntimeOptions {
   kernelPortFactory?: PackageLocalRuntimeKernelPortFactoryPort;
   kernelFactory?: PackageLocalRuntimeAgentKernelFactoryPort;
   kernelModelResolver?: PackageLocalRuntimeKernelModelResolverPort;
+  createForkSessionId?: () => SessionId;
+  createForkSession?: (
+    sessionId: SessionId,
+    options: SessionOptions,
+  ) => Promise<ISession> | ISession;
 }
 
 export interface PackageLocalRuntimeSessionStorePort {
   createSession(sessionId: SessionId): Promise<void>;
   loadSession(sessionId: SessionId): Promise<boolean>;
+  forkState(
+    sessionId: SessionId,
+    options?: ForkSessionOptions,
+  ): Promise<SessionSnapshot | null>;
+  writeForkState(
+    forkedSessionId: SessionId,
+    snapshot: SessionSnapshot | null,
+  ): Promise<SessionSnapshot | null>;
 }
 
 export interface PackageLocalRuntimeWorkspacePort {
@@ -384,6 +400,11 @@ export class PackageLocalSessionRuntime {
   readonly kernelPortFactory: PackageLocalRuntimeKernelPortFactoryPort;
   readonly kernelFactory: PackageLocalRuntimeAgentKernelFactoryPort;
   readonly kernelModelResolver: PackageLocalRuntimeKernelModelResolverPort;
+  private readonly createForkSessionId?: () => SessionId;
+  private readonly createForkSession?: (
+    sessionId: SessionId,
+    options: SessionOptions,
+  ) => Promise<ISession> | ISession;
   private executionPipelineCreated = false;
   private executionPipeline: unknown;
 
@@ -416,6 +437,8 @@ export class PackageLocalSessionRuntime {
     this.kernelFactory = options.kernelFactory ?? createNoopRuntimeAgentKernelFactory();
     this.kernelModelResolver =
       options.kernelModelResolver ?? createNoopRuntimeKernelModelResolver();
+    this.createForkSessionId = options.createForkSessionId;
+    this.createForkSession = options.createForkSession;
   }
 
   getConfiguredMcpServers(): Record<string, McpServerConfig | SdkMcpServerHandle> {
@@ -470,6 +493,25 @@ export class PackageLocalSessionRuntime {
         serverName: capability.name,
       })),
     );
+  }
+
+  async fork(options?: ForkSessionOptions): Promise<ISession> {
+    if (!this.createForkSessionId || !this.createForkSession) {
+      throw new Error('Fork runtime is not configured for this session.');
+    }
+
+    const snapshot = await this.sessionStore.forkState(this.sessionId, options);
+    if (!snapshot) {
+      throw new Error(`Session "${this.sessionId}" was not found for fork.`);
+    }
+
+    const forkedSessionId = this.createForkSessionId();
+    const writtenSnapshot = await this.sessionStore.writeForkState(forkedSessionId, snapshot);
+    if (!writtenSnapshot) {
+      throw new Error(`Session "${this.sessionId}" could not be materialized for fork.`);
+    }
+
+    return this.createForkSession(forkedSessionId, this.options);
   }
 
   async mcpConnect(serverName: string): Promise<void> {
@@ -916,6 +958,12 @@ function createNoopRuntimeSessionStore(): PackageLocalRuntimeSessionStorePort {
     async createSession() {},
     async loadSession() {
       return false;
+    },
+    async forkState() {
+      return null;
+    },
+    async writeForkState() {
+      return null;
     },
   };
 }

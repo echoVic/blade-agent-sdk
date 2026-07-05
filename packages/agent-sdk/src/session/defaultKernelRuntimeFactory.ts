@@ -6,9 +6,11 @@ import { createPackageLocalKernelSessionRuntimeFactory } from './packageLocalKer
 import {
   PackageLocalSessionRuntime,
   type PackageLocalSessionRuntimeOptions,
+  type PackageLocalRuntimeSessionStorePort,
 } from './runtimeInstance.js';
+import { JsonlSessionStore } from './store.js';
 import type { SessionRuntimeFactory } from './factory.js';
-import type { SessionId } from './types.js';
+import type { SessionId, SessionOptions } from './types.js';
 import type { PackageLocalSessionRuntimeContext } from './packageLocalRuntimeFactory.js';
 
 export type DefaultKernelRuntimePorts = Omit<
@@ -31,15 +33,39 @@ function resolveRuntimePorts(
   return typeof runtime === 'function' ? runtime(context) : (runtime ?? {});
 }
 
+function createJsonlRuntimeSessionStore(
+  options: SessionOptions,
+): PackageLocalRuntimeSessionStorePort | undefined {
+  if (options.persistSession === false || !options.storagePath) {
+    return undefined;
+  }
+
+  const store = new JsonlSessionStore(options.storagePath);
+  return {
+    async createSession() {},
+    async loadSession(sessionId) {
+      return (await store.loadState(sessionId)) !== null;
+    },
+    async forkState(sessionId, forkOptions) {
+      return store.forkState(sessionId, forkOptions);
+    },
+    async writeForkState(forkedSessionId, snapshot) {
+      return store.writeForkState(forkedSessionId, snapshot);
+    },
+  };
+}
+
 export function createDefaultKernelSessionRuntimeFactory(
   options: DefaultKernelSessionRuntimeFactoryOptions = {},
 ): SessionRuntimeFactory {
   const runtimes = new WeakMap<PackageLocalSessionRuntimeContext, PackageLocalSessionRuntime>();
+  const createSessionId = options.createSessionId ?? nanoid;
   const defaultKernelFactory = createPackageLocalAgentKernelFactory();
   const defaultKernelModelResolver = createPackageLocalKernelModelResolver();
+  let runtimeFactory: SessionRuntimeFactory;
 
-  return createPackageLocalKernelSessionRuntimeFactory({
-    createSessionId: options.createSessionId ?? nanoid,
+  runtimeFactory = createPackageLocalKernelSessionRuntimeFactory({
+    createSessionId,
     createTurnId: options.createTurnId ?? nanoid,
     createRuntime(context) {
       const runtimePorts = resolveRuntimePorts(options.runtime, context);
@@ -48,9 +74,15 @@ export function createDefaultKernelSessionRuntimeFactory(
         options: context.options,
         bladeConfig: buildBladeConfig(context.options),
         defaultContext: context.options.defaultContext ?? {},
+        sessionStore:
+          runtimePorts.sessionStore ?? createJsonlRuntimeSessionStore(context.options),
         ...runtimePorts,
         kernelFactory: runtimePorts.kernelFactory ?? defaultKernelFactory,
         kernelModelResolver: runtimePorts.kernelModelResolver ?? defaultKernelModelResolver,
+        createForkSessionId: createSessionId,
+        createForkSession(sessionId, sessionOptions) {
+          return runtimeFactory.resume({ ...sessionOptions, sessionId });
+        },
       });
       runtimes.set(context, runtime);
       return runtime;
@@ -60,4 +92,6 @@ export function createDefaultKernelSessionRuntimeFactory(
       runtimes.delete(context);
     },
   });
+
+  return runtimeFactory;
 }
