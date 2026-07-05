@@ -47,6 +47,9 @@
     "./retry": {
       "types": "./dist/retry/index.d.ts",
       "import": "./dist/retry/index.js"
+    },
+    "./package.json": {
+      "default": "./package.json"
     }
   },
   "files": [

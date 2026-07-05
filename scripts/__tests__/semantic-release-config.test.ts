@@ -129,6 +129,12 @@ describe('package provenance metadata', () => {
 
     expect(packageVerifier).toContain('consumer-runtime.mjs');
     expect(packageVerifier).toContain('function assertRuntimeExport');
+    expect(packageVerifier).toContain("import aiPackage from '@blade-ai/ai/package.json'");
+    expect(packageVerifier).toContain("import agentPackage from '@blade-ai/agent/package.json'");
+    expect(packageVerifier).toContain("import agentSdkPackage from '@blade-ai/agent-sdk/package.json'");
+    expect(packageVerifier).toContain("assertPackageName(aiPackage, '@blade-ai/ai')");
+    expect(packageVerifier).toContain("assertPackageName(agentPackage, '@blade-ai/agent')");
+    expect(packageVerifier).toContain("assertPackageName(agentSdkPackage, '@blade-ai/agent-sdk')");
     expect(packageVerifier).toContain("import * as aiChat from '@blade-ai/ai/chat';");
     expect(packageVerifier).toContain("import * as aiModel from '@blade-ai/ai/model';");
     expect(packageVerifier).toContain("assertRuntimeExport(ai, 'createOpenAICompatibleModelPort')");

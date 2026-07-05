@@ -525,7 +525,10 @@ function verifyConsumerImports(consumerDir) {
   const runtimeSmokePath = join(consumerDir, 'consumer-runtime.mjs');
   writeFileSync(
     runtimeSmokePath,
-    `import * as ai from '@blade-ai/ai';
+    `import aiPackage from '@blade-ai/ai/package.json' with { type: 'json' };
+import agentPackage from '@blade-ai/agent/package.json' with { type: 'json' };
+import agentSdkPackage from '@blade-ai/agent-sdk/package.json' with { type: 'json' };
+import * as ai from '@blade-ai/ai';
 import * as aiChat from '@blade-ai/ai/chat';
 import * as aiDeepseek from '@blade-ai/ai/deepseek';
 import * as aiModel from '@blade-ai/ai/model';
@@ -552,6 +555,15 @@ function assertRuntimeExport(module, name) {
   }
 }
 
+function assertPackageName(manifest, name) {
+  if (manifest.name !== name) {
+    throw new Error(\`Expected package metadata for \${name}, received \${manifest.name}\`);
+  }
+}
+
+assertPackageName(aiPackage, '@blade-ai/ai');
+assertPackageName(agentPackage, '@blade-ai/agent');
+assertPackageName(agentSdkPackage, '@blade-ai/agent-sdk');
 assertRuntimeExport(ai, 'createOpenAICompatibleModelPort');
 assertRuntimeExport(aiDeepseek, 'normalizeDeepSeekModel');
 assertRuntimeExport(aiOpenAICompatible, 'createOpenAICompatibleModelPort');

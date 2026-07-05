@@ -43,6 +43,9 @@
     "./tracing": {
       "types": "./dist/tracing/index.d.ts",
       "import": "./dist/tracing/index.js"
+    },
+    "./package.json": {
+      "default": "./package.json"
     }
   },
   "files": [

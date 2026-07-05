@@ -45,6 +45,20 @@ describe('monorepo topology', () => {
     }
   });
 
+  it('exposes package metadata subpaths for every publishable package', () => {
+    for (const [dir, packageJsonPath] of [
+      ['packages/ai', './package.json'],
+      ['packages/agent', './package.json'],
+      ['packages/agent-sdk', './package.json'],
+    ] as const) {
+      const pkg = readJson(join(dir, 'package.json'));
+
+      expect(pkg.exports?.['./package.json'], `${dir} ./package.json export`).toEqual({
+        default: packageJsonPath,
+      });
+    }
+  });
+
   it('makes agent-sdk depend on ai and agent through workspace protocol', () => {
     const sdk = readJson('packages/agent-sdk/package.json');
 

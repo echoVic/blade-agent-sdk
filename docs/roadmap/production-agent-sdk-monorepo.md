@@ -547,6 +547,7 @@ Status:
 - One-hundred-second verification-chain increment complete: `pnpm run verify:packages` now browser-bundles the packed `@blade-ai/agent` root and `kernel` subpath through the esbuild JS API, executes the bundle smoke, and scans it for Node-only markers, proving the runtime-independent agent kernel remains browser-bundle-safe after publish instead of relying only on source and manifest boundary checks.
 - One-hundred-third verification-chain increment complete: `pnpm run verify:boundaries` now rejects `@blade-ai/ai` manifest dependencies on `@blade-ai/agent` or `@blade-ai/agent-sdk`, proving provider-layer ownership cannot regress through package metadata before source imports are scanned.
 - One-hundred-fourth verification-chain increment complete: `pnpm run verify:boundaries` now rejects `@blade-ai/agent` manifest dependencies on `@blade-ai/agent-sdk`, proving the runtime-independent kernel cannot gain a session-layer dependency through package metadata even before source imports are scanned.
+- One-hundred-fifth verification-chain increment complete: all three publishable packages now expose `./package.json` metadata subpaths, and `pnpm run verify:packages` runtime-loads those metadata exports from packed temporary-consumer installs, proving package names and provenance metadata remain consumable after npm packing.
 
 Commit:
 
