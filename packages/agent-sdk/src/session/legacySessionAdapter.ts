@@ -2,7 +2,6 @@ import {
   createSession as createLegacySession,
   resumeSession as resumeLegacySession,
 } from '../../../../src/session/Session.js';
-import { SessionId as toLegacySessionId } from '../../../../src/types/branded.js';
 import type { SessionRuntimeFactory } from './factory.js';
 import type { ResumeOptions, SessionOptions } from './types.js';
 
@@ -21,7 +20,7 @@ function toLegacyResumeOptions(options: ResumeOptions): LegacyResumeOptions {
   const { sessionId, ...sessionOptions } = options;
   return {
     ...toLegacySessionOptions(sessionOptions),
-    sessionId: toLegacySessionId(sessionId),
+    sessionId: sessionId as LegacyResumeOptions['sessionId'],
   };
 }
 
