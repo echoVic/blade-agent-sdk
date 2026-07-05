@@ -125,6 +125,7 @@ async function verifyPublishedInstallSmoke({ version }) {
     `@blade-ai/ai@${version}`,
     `@blade-ai/agent@${version}`,
     `@blade-ai/agent-sdk@${version}`,
+    'typescript@^6.0.3',
   ];
   const npmInstallCommandLabel = `npm install ${packageSpecs.join(' ')}`;
 
@@ -181,10 +182,80 @@ if (Object.keys(agentProtocol).length !== 0) {
 `,
     );
     await run(process.execPath, [runtimeSmokePath], { cwd: consumerDir });
+    await verifyPublishedTypesSmoke({ consumerDir });
     console.log(`[verify-published] temporary consumer smoke passed: ${npmInstallCommandLabel}`);
   } finally {
     await rm(consumerDir, { recursive: true, force: true });
   }
+}
+
+async function verifyPublishedTypesSmoke({ consumerDir }) {
+  await writeFile(
+    join(consumerDir, 'tsconfig.json'),
+    JSON.stringify({
+      compilerOptions: {
+        module: 'NodeNext',
+        moduleResolution: 'NodeNext',
+        target: 'ES2022',
+        strict: true,
+        skipLibCheck: false,
+        noEmit: true,
+      },
+      include: ['consumer-types.ts'],
+    }, null, 2),
+  );
+  await writeFile(
+    join(consumerDir, 'consumer-types.ts'),
+    `import type { ModelPort } from '@blade-ai/ai';
+import type { ModelRequest } from '@blade-ai/ai';
+import type { AgentKernelOptions } from '@blade-ai/agent';
+import type { SessionOptions } from '@blade-ai/agent-sdk';
+import type { StreamMessage } from '@blade-ai/agent-sdk';
+import type { ToolDefinition } from '@blade-ai/agent-sdk';
+
+const modelPort: ModelPort = {
+  async generate(request: ModelRequest) {
+    return {
+      content: request.messages.at(-1)?.content?.toString() ?? '',
+    };
+  },
+};
+
+const kernelOptions: AgentKernelOptions = {
+  model: modelPort,
+  maxSteps: 2,
+};
+
+const sessionOptions: SessionOptions = {
+  model: 'glm-5.2',
+  provider: 'openai-compatible',
+  allowedTools: [],
+  temperature: 0.2,
+  maxOutputTokens: 128,
+};
+
+const streamMessage: StreamMessage = {
+  type: 'content',
+  content: 'ok',
+};
+
+const toolDefinition: ToolDefinition = {
+  name: 'noop',
+  description: 'No-op tool',
+  parameters: {
+    type: 'object',
+    properties: {},
+  },
+};
+
+void kernelOptions;
+void sessionOptions;
+void streamMessage;
+void toolDefinition;
+`,
+  );
+  await run('npx', ['tsc', '--noEmit'], { cwd: consumerDir });
+  console.log('[verify-published] temporary consumer TypeScript public declarations passed');
 }
 
 async function verifyPublishedWithPolling(options) {

@@ -347,6 +347,23 @@ describe('release scripts', () => {
     expect(readme).toContain('临时 consumer');
     expect(checklist).toContain('临时 consumer');
   });
+
+  it('type-checks public declarations from the published temporary consumer', () => {
+    const publishedVerifier = readFileSync(resolve('scripts/verify-published.mjs'), 'utf8');
+    const readme = readFileSync(resolve('README.md'), 'utf8');
+    const checklist = readFileSync(resolve('docs/production-checklist.md'), 'utf8');
+
+    expect(publishedVerifier).toContain('verifyPublishedTypesSmoke');
+    expect(publishedVerifier).toContain('consumer-types.ts');
+    expect(publishedVerifier).toContain('tsconfig.json');
+    expect(publishedVerifier).toContain('tsc');
+    expect(publishedVerifier).toContain('--noEmit');
+    expect(publishedVerifier).toContain("import type { ModelPort } from '@blade-ai/ai';");
+    expect(publishedVerifier).toContain("import type { AgentKernelOptions } from '@blade-ai/agent';");
+    expect(publishedVerifier).toContain("import type { SessionOptions } from '@blade-ai/agent-sdk';");
+    expect(readme).toContain('TypeScript public declarations');
+    expect(checklist).toContain('TypeScript public declarations');
+  });
 });
 
 describe('release workflow', () => {

@@ -590,6 +590,7 @@ Status:
 - Sixth release-automation increment complete: all three publishable packages now declare `publishConfig.provenance: true`, and `pnpm run verify:release` rejects package metadata that would publish without explicit npm provenance enabled, complementing the GitHub OIDC trusted publishing workflow.
 - Seventh release-automation increment complete: the repository now exposes `pnpm run verify:published -- --version <version>` as a post-publish visibility check that polls the GitHub Release and all three npm packages, so maintainers can verify public artifacts after the main-branch semantic-release workflow finishes.
 - Eighth release-automation increment complete: `pnpm run verify:published -- --version <version>` now installs the released `@blade-ai/ai`, `@blade-ai/agent`, and `@blade-ai/agent-sdk` versions into a temporary consumer and runs runtime import smoke checks against the public package exports, proving the external npm install path works after publication.
+- Ninth release-automation increment complete: the post-publish verifier now also writes a temporary TypeScript consumer and runs `tsc --noEmit` against public `ModelPort`, `AgentKernelOptions`, `SessionOptions`, `StreamMessage`, and tool declaration imports from the released npm packages, proving the external type surface works after publication.
 
 Commit:
 
