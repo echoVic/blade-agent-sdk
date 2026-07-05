@@ -406,6 +406,10 @@ describe('monorepo topology', () => {
       'packages/agent-sdk/src/session/defaultKernelRuntimeFactory.ts',
       'utf-8',
     );
+    const kernelModelResolverSource = readFileSync(
+      'packages/agent-sdk/src/session/kernelModelResolver.ts',
+      'utf-8',
+    );
     const packageLocalRuntimeInstanceSource = readFileSync(
       'packages/agent-sdk/src/session/runtimeInstance.ts',
       'utf-8',
@@ -582,6 +586,12 @@ describe('monorepo topology', () => {
     expect(defaultKernelRuntimeFactorySource).toContain('createPackageLocalKernelSessionRuntimeFactory');
     expect(defaultKernelRuntimeFactorySource).toContain('PackageLocalSessionRuntime');
     expect(defaultKernelRuntimeFactorySource).toContain('buildBladeConfig');
+    expect(defaultKernelRuntimeFactorySource).toContain('createPackageLocalKernelModelResolver');
+    expect(existsSync('packages/agent-sdk/src/session/kernelModelResolver.ts')).toBe(true);
+    expect(kernelModelResolverSource).not.toContain('../../../../src/');
+    expect(kernelModelResolverSource).toContain('createPackageLocalKernelModelResolver');
+    expect(kernelModelResolverSource).toContain('@blade-ai/ai/providers/vercel');
+    expect(kernelModelResolverSource).toContain('PackageLocalRuntimeKernelModelResolverPort');
     expect(sessionRuntimeFactorySource).not.toContain('../../../../src/session/Session.js');
     expect(sessionRuntimeFactorySource).toContain('interface DefaultSessionRuntimeFactoryOptions');
     expect(sessionRuntimeFactorySource).toContain('loadKernelRuntimeFactory');
