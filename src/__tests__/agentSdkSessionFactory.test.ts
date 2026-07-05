@@ -76,6 +76,31 @@ describe('agent-sdk session runtime factory', () => {
     expect(calls).toEqual(['legacy-create:test-model', 'legacy-resume:old']);
   });
 
+  it('prefers an injected kernel runtime factory before the legacy fallback', async () => {
+    const calls: string[] = [];
+    const factory = createDefaultSessionRuntimeFactory({
+      loadKernelRuntimeFactory: async () => ({
+        async create(receivedOptions: SessionOptions) {
+          calls.push(`kernel-create:${receivedOptions.model}`);
+          return createFakeSession('kernel-created');
+        },
+        async resume(receivedOptions: SessionOptions & { sessionId: string }) {
+          calls.push(`kernel-resume:${receivedOptions.sessionId}`);
+          return createFakeSession(`kernel-resumed:${receivedOptions.sessionId}`);
+        },
+      }),
+      loadLegacyRuntimeFactory: async () => {
+        throw new Error('legacy fallback should not load when a kernel factory is available');
+      },
+    });
+
+    await expect(factory.create(options)).resolves.toMatchObject({ sessionId: 'kernel-created' });
+    await expect(factory.resume({ ...options, sessionId: 'old' })).resolves.toMatchObject({
+      sessionId: 'kernel-resumed:old',
+    });
+    expect(calls).toEqual(['kernel-create:test-model', 'kernel-resume:old']);
+  });
+
   it('routes create and resume through the package-local session factory', async () => {
     const calls: string[] = [];
     let createCalls = 0;

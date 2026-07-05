@@ -7,6 +7,7 @@ import type { SessionRuntimeFactory } from './factory.js';
 let legacyRuntimeFactoryPromise: Promise<SessionRuntimeFactory> | null = null;
 
 export interface DefaultSessionRuntimeFactoryOptions {
+  loadKernelRuntimeFactory?: () => Promise<SessionRuntimeFactory>;
   loadLegacyRuntimeFactory?: () => Promise<SessionRuntimeFactory>;
 }
 
@@ -20,17 +21,19 @@ async function loadDefaultLegacyRuntimeFactory(): Promise<SessionRuntimeFactory>
 export function createDefaultSessionRuntimeFactory(
   options: DefaultSessionRuntimeFactoryOptions = {},
 ): SessionRuntimeFactory {
-  const loadLegacyRuntimeFactory =
-    options.loadLegacyRuntimeFactory ?? loadDefaultLegacyRuntimeFactory;
+  const loadRuntimeFactory =
+    options.loadKernelRuntimeFactory ??
+    options.loadLegacyRuntimeFactory ??
+    loadDefaultLegacyRuntimeFactory;
 
   return {
     async create(options) {
-      const legacyRuntime = await loadLegacyRuntimeFactory();
-      return createSession(legacyRuntime, options);
+      const runtime = await loadRuntimeFactory();
+      return createSession(runtime, options);
     },
     async resume(options) {
-      const legacyRuntime = await loadLegacyRuntimeFactory();
-      return resumeSession(legacyRuntime, options);
+      const runtime = await loadRuntimeFactory();
+      return resumeSession(runtime, options);
     },
   };
 }

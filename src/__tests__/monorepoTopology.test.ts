@@ -572,7 +572,9 @@ describe('monorepo topology', () => {
     expect(packageLocalKernelRuntimeFactorySource).toContain('createKernelStreamTurnBridge');
     expect(sessionRuntimeFactorySource).not.toContain('../../../../src/session/Session.js');
     expect(sessionRuntimeFactorySource).toContain('interface DefaultSessionRuntimeFactoryOptions');
+    expect(sessionRuntimeFactorySource).toContain('loadKernelRuntimeFactory');
     expect(sessionRuntimeFactorySource).toContain('loadLegacyRuntimeFactory');
+    expect(sessionRuntimeFactorySource).toContain('loadRuntimeFactory');
     expect(sessionRuntimeFactorySource).toContain("from './Session.js'");
     expect(sessionRuntimeFactorySource).not.toContain("from './legacySessionAdapter.js'");
     expect(sessionRuntimeFactorySource).toContain("import('./legacySessionAdapter.js')");
