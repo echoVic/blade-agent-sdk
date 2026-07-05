@@ -471,6 +471,11 @@ describe('monorepo topology', () => {
     )
       ? readFileSync('packages/agent-sdk/src/session/runtimeMcpServers.ts', 'utf-8')
       : '';
+    const runtimeMcpCapabilitiesSource = existsSync(
+      'packages/agent-sdk/src/session/runtimeMcpCapabilities.ts',
+    )
+      ? readFileSync('packages/agent-sdk/src/session/runtimeMcpCapabilities.ts', 'utf-8')
+      : '';
     const runtimeToolFiltersSource = existsSync(
       'packages/agent-sdk/src/session/runtimeToolFilters.ts',
     )
@@ -620,6 +625,20 @@ describe('monorepo topology', () => {
     expect(packageLocalRuntimeInstanceSource).toContain('mcpReconnect');
     expect(packageLocalRuntimeInstanceSource).toContain('ensureServerRegistered');
     expect(packageLocalRuntimeInstanceSource).toContain('PackageLocalRuntimeMcpServerCapability');
+    expect(existsSync('packages/agent-sdk/src/session/runtimeMcpCapabilities.ts')).toBe(true);
+    expect(runtimeMcpCapabilitiesSource).not.toContain('../../../../src/');
+    expect(runtimeMcpCapabilitiesSource).toContain(
+      'projectPackageLocalRuntimeMcpServerStatus',
+    );
+    expect(runtimeMcpCapabilitiesSource).toContain('listPackageLocalRuntimeMcpTools');
+    expect(packageLocalRuntimeInstanceSource).toContain(
+      'projectPackageLocalRuntimeMcpServerStatus',
+    );
+    expect(packageLocalRuntimeInstanceSource).toContain('listPackageLocalRuntimeMcpTools');
+    expect(packageLocalRuntimeInstanceSource).not.toContain(
+      'capability.tools.map((tool) => tool.name)',
+    );
+    expect(packageLocalRuntimeInstanceSource).not.toContain('.flatMap((capability)');
     expect(packageLocalRuntimeInstanceSource).toContain('filterTools');
     expect(packageLocalRuntimeInstanceSource).toContain('PackageLocalRuntimeNamedTool');
     expect(existsSync('packages/agent-sdk/src/session/runtimeToolFilters.ts')).toBe(true);

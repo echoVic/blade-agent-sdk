@@ -62,6 +62,11 @@ import {
   registerPackageLocalInProcessMcpServer,
   registerPackageLocalRemoteMcpServer,
 } from './runtimeMcpServers.js';
+import {
+  listPackageLocalRuntimeMcpTools,
+  projectPackageLocalRuntimeMcpServerStatus,
+  type PackageLocalRuntimeMcpServerCapability,
+} from './runtimeMcpCapabilities.js';
 import { getPackageLocalMcpToolSourceId } from './runtimeMcpTools.js';
 import { createPackageLocalRuntimeNoopPorts } from './runtimeNoopPorts.js';
 import { packageLocalSubagentConfigFromDefinition } from './runtimeSubagents.js';
@@ -279,28 +284,6 @@ export interface PackageLocalAgentRuntimeDeps {
   logger: PackageLocalRuntimeLoggerPort;
 }
 
-export interface PackageLocalRuntimeMcpToolCapability {
-  name: string;
-  description: string;
-  inputSchema: unknown;
-}
-
-export interface PackageLocalRuntimeMcpServerCapability {
-  name: string;
-  status: 'connected' | 'disconnected' | 'connecting' | 'error';
-  connectedAt?: Date;
-  error?: string;
-  auth: {
-    enabled: boolean;
-    provider?: string;
-  };
-  health: {
-    enabled: boolean;
-    status: 'healthy' | 'degraded' | 'unhealthy' | 'checking' | 'disabled' | 'unknown';
-  };
-  tools: PackageLocalRuntimeMcpToolCapability[];
-}
-
 export interface PackageLocalRuntimeNamedTool {
   name: string;
 }
@@ -420,24 +403,11 @@ export class PackageLocalSessionRuntime {
   }
 
   async mcpServerStatus(): Promise<McpServerStatus[]> {
-    return (await this.mcpCapabilities()).map((capability) => ({
-      name: capability.name,
-      status: capability.status,
-      toolCount: capability.tools.length,
-      tools: capability.tools.map((tool) => tool.name),
-      connectedAt: capability.connectedAt,
-      error: capability.error,
-    }));
+    return projectPackageLocalRuntimeMcpServerStatus(await this.mcpCapabilities());
   }
 
   async mcpListTools(): Promise<McpToolInfo[]> {
-    return (await this.mcpCapabilities()).flatMap((capability) =>
-      capability.tools.map((tool) => ({
-        name: tool.name,
-        description: tool.description,
-        serverName: capability.name,
-      })),
-    );
+    return listPackageLocalRuntimeMcpTools(await this.mcpCapabilities());
   }
 
   async fork(options?: ForkSessionOptions): Promise<ISession> {
