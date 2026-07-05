@@ -71,7 +71,7 @@ import {
   type PackageLocalRuntimeMcpTool,
 } from './runtimeMcpTools.js';
 import { createPackageLocalRuntimeNoopPorts } from './runtimeNoopPorts.js';
-import { packageLocalSubagentConfigFromDefinition } from './runtimeSubagents.js';
+import { initializePackageLocalRuntimeSubagents } from './runtimeSubagents.js';
 import { filterPackageLocalRuntimeTools } from './runtimeToolFilters.js';
 import {
   registerPackageLocalRuntimeBuiltinTools,
@@ -524,15 +524,13 @@ export class PackageLocalSessionRuntime {
   }
 
   initializeSubagents(): void {
-    this.subagentRegistry.setLogger(this.logger);
-    this.subagentRegistry.setProjectDir(this.projectPath);
-    this.subagentRegistry.loadFromStandardLocations(this.projectPath, this.storageRoot);
-
-    for (const [name, definition] of Object.entries(this.options.agents ?? {})) {
-      this.subagentRegistry.register(packageLocalSubagentConfigFromDefinition(name, definition), {
-        override: true,
-      });
-    }
+    initializePackageLocalRuntimeSubagents({
+      subagentRegistry: this.subagentRegistry,
+      logger: this.logger,
+      projectPath: this.projectPath,
+      storageRoot: this.storageRoot,
+      agents: this.options.agents,
+    });
   }
 
   createPermissionHandler(): PermissionHandler | undefined {

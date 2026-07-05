@@ -38,4 +38,62 @@ describe('agent-sdk package-local runtime subagent helpers', () => {
       source: 'session',
     });
   });
+
+  it('initializes runtime subagent registry without session runtime state', async () => {
+    expect(existsSync(subagentsSourcePath)).toBe(true);
+
+    const { initializePackageLocalRuntimeSubagents } = await import(subagentsModulePath);
+    const calls: unknown[] = [];
+    const logger = {
+      warn() {},
+    };
+
+    initializePackageLocalRuntimeSubagents({
+      subagentRegistry: {
+        setLogger(value: unknown) {
+          calls.push(['setLogger', value]);
+        },
+        setProjectDir(projectDir?: string) {
+          calls.push(['setProjectDir', projectDir]);
+        },
+        loadFromStandardLocations(projectDir?: string, storageRoot?: string) {
+          calls.push(['loadFromStandardLocations', projectDir, storageRoot]);
+          return 2;
+        },
+        register(config: unknown, options?: unknown) {
+          calls.push(['register', config, options]);
+        },
+      },
+      logger,
+      projectPath: '/repo',
+      storageRoot: '/storage',
+      agents: {
+        reviewer: {
+          description: 'Review code',
+          systemPrompt: 'Be direct',
+          allowedTools: ['read'],
+        },
+      },
+    });
+
+    expect(calls).toEqual([
+      ['setLogger', logger],
+      ['setProjectDir', '/repo'],
+      ['loadFromStandardLocations', '/repo', '/storage'],
+      [
+        'register',
+        {
+          name: 'reviewer',
+          description: 'Review code',
+          systemPrompt: 'Be direct',
+          tools: ['read'],
+          model: 'inherit',
+          source: 'session',
+        },
+        {
+          override: true,
+        },
+      ],
+    ]);
+  });
 });
