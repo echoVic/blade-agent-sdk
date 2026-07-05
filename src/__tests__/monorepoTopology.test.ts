@@ -484,6 +484,11 @@ describe('monorepo topology', () => {
     const runtimeHooksSource = existsSync('packages/agent-sdk/src/session/runtimeHooks.ts')
       ? readFileSync('packages/agent-sdk/src/session/runtimeHooks.ts', 'utf-8')
       : '';
+    const runtimeTraceManagerSource = existsSync(
+      'packages/agent-sdk/src/session/runtimeTraceManager.ts',
+    )
+      ? readFileSync('packages/agent-sdk/src/session/runtimeTraceManager.ts', 'utf-8')
+      : '';
     const runtimeExecutionPipelineSource = existsSync(
       'packages/agent-sdk/src/session/runtimeExecutionPipeline.ts',
     )
@@ -676,6 +681,16 @@ describe('monorepo topology', () => {
     expect(packageLocalRuntimeInstanceSource).not.toContain('this.hookManager.enable()');
     expect(packageLocalRuntimeInstanceSource).not.toContain('Object.keys(this.options.hooks');
     expect(packageLocalRuntimeInstanceSource).not.toContain('this.hookRuntime.setTraceCollector');
+    expect(existsSync('packages/agent-sdk/src/session/runtimeTraceManager.ts')).toBe(true);
+    expect(runtimeTraceManagerSource).not.toContain('../../../../src/');
+    expect(runtimeTraceManagerSource).toContain('createPackageLocalRuntimeTraceManager');
+    expect(runtimeTraceManagerSource).toContain('new SessionTraceManager({');
+    expect(packageLocalRuntimeInstanceSource).toContain('createPackageLocalRuntimeTraceManager');
+    expect(packageLocalRuntimeInstanceSource).not.toContain('new SessionTraceManager({');
+    expect(packageLocalRuntimeInstanceSource).not.toContain(
+      'permissionMode: options.options.permissionMode ?? PermissionMode.DEFAULT',
+    );
+    expect(packageLocalRuntimeInstanceSource).not.toContain('Observability trace sink failed');
     expect(packageLocalRuntimeInstanceSource).toContain('createExecutionPipeline');
     expect(packageLocalRuntimeInstanceSource).toContain(
       'PackageLocalRuntimeExecutionPipelineFactoryPort',

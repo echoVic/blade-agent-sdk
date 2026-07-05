@@ -10,11 +10,7 @@ import type {
 import type { ContextSnapshot, RuntimeContext } from '../runtime/types.js';
 import type { SubagentConfig } from '../subagents/types.js';
 import { HookEvent } from '../types/constants.js';
-import {
-  PermissionMode,
-  type BladeConfig,
-  type McpServerConfig,
-} from '../types/common.js';
+import type { BladeConfig, McpServerConfig } from '../types/common.js';
 import type { PermissionHandler } from '../types/permissions.js';
 import type { TraceRecorder } from '../observability/TraceRecorder.js';
 import type { AgentTrace } from '../observability/types.js';
@@ -74,7 +70,10 @@ import {
   createPackageLocalRuntimePermissionHandler,
   type PackageLocalRuntimePermissionHookPort,
 } from './runtimePermissions.js';
-import { SessionTraceManager } from './traces.js';
+import {
+  createPackageLocalRuntimeTraceManager,
+} from './runtimeTraceManager.js';
+import type { SessionTraceManager } from './traces.js';
 import type { SessionSnapshot } from './store.js';
 
 export type { PackageLocalRuntimeKernelStreamProjectionOptions } from './kernelStreamProjection.js';
@@ -373,16 +372,13 @@ export class PackageLocalSessionRuntime {
     this.kernelModelResolver = options.kernelModelResolver ?? noopPorts.kernelModelResolver;
     this.createForkSessionId = options.createForkSessionId;
     this.createForkSession = options.createForkSession;
-    this.traceManager = new SessionTraceManager({
+    this.traceManager = createPackageLocalRuntimeTraceManager({
       sessionId: this.sessionId,
       observability: options.options.observability,
-      metadata: {
-        model: options.options.model,
-        provider: options.options.provider.type,
-        permissionMode: options.options.permissionMode ?? PermissionMode.DEFAULT,
-      },
-      onSinkError: (error) =>
-        this.logger.warn('[PackageLocalSessionRuntime] Observability trace sink failed:', error),
+      model: options.options.model,
+      providerType: options.options.provider.type,
+      permissionMode: options.options.permissionMode,
+      logger: this.logger,
     });
   }
 
