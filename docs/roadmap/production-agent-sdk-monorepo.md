@@ -585,6 +585,7 @@ Status:
 - Sixth documentation increment complete: a Provider and model guide now documents session-first provider configuration, direct `@blade-ai/ai` `ModelPort` usage, OpenAI-compatible/GLM smoke testing, Vercel provider adapters, stream events, usage normalization, and the boundary that keeps `@blade-ai/agent` independent of provider SDKs.
 - Seventh documentation increment complete: a Tool Authoring guide now documents production custom tool design for session-first apps, browser-safe tool imports, `defineTool` / `createTool`, `ExecutionContext`, allowed-tool policy, permission update effects, stream event mapping, and verification expectations.
 - Eighth documentation increment complete: the root README now presents the Pi-style three-package architecture as installable public packages, documents the recommended `@blade-ai/ai` / `@blade-ai/agent` / `@blade-ai/agent-sdk` import boundaries, and surfaces the production verification chain including packed tarball temporary-consumer smoke, browser/entrypoint checks, default integration skip behavior, and explicit GLM live commands.
+- Ninth documentation increment complete: examples now cover all three public package layers. `examples/ai-model-port.ts` demonstrates direct `@blade-ai/ai` `ModelPort.generate()` usage against OpenAI-compatible / GLM configuration, `examples/agent-kernel.ts` demonstrates runtime-independent `AgentKernel.runTurn()` with an injected model port, and `pnpm run verify:examples` type-checks those examples alongside the session-first server example.
 
 Commit:
 

@@ -39,15 +39,16 @@ import { getBuiltinTools } from '@blade-ai/agent-sdk/local';
 `@blade-ai/ai` 负责模型和 provider 层。它适合用于自定义 provider adapter、模型测试、usage 归一化或直接调用底层模型协议。
 
 ```ts
-import { createOpenAICompatibleModelPort } from '@blade-ai/ai/providers/openai-compatible';
+import { createOpenAICompatibleModelPort } from '@blade-ai/ai';
 
 const model = createOpenAICompatibleModelPort({
-  provider: 'glm',
-  baseURL: process.env.GLM_BASE_URL!,
   apiKey: process.env.GLM_API_KEY!,
+  baseUrl: process.env.GLM_BASE_URL!,
   model: 'glm-5.2',
 });
 ```
+
+完整示例见 [`examples/ai-model-port.ts`](../examples/ai-model-port.ts)。
 
 可以直接使用的典型入口：
 
@@ -77,6 +78,8 @@ Kernel 通过 ports 访问外部能力：
 - store port 由调用方注入
 - hook port 由调用方注入
 - trace port 由调用方注入
+
+完整示例见 [`examples/agent-kernel.ts`](../examples/agent-kernel.ts)，它用一个内存 `ModelPort` 演示 `kernel.runTurn()` 的事件流。
 
 ## `@blade-ai/agent-sdk`
 

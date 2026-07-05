@@ -24,6 +24,25 @@ describe('examples and quickstart documentation', () => {
     expect(source).toContain('session.close()');
   });
 
+  it('keeps direct package-boundary examples available for ai and agent users', () => {
+    const aiExamplePath = 'examples/ai-model-port.ts';
+    const agentExamplePath = 'examples/agent-kernel.ts';
+
+    expect(existsSync(aiExamplePath), `${aiExamplePath} should exist`).toBe(true);
+    expect(existsSync(agentExamplePath), `${agentExamplePath} should exist`).toBe(true);
+
+    const aiExample = readFileSync(aiExamplePath, 'utf8');
+    const agentExample = readFileSync(agentExamplePath, 'utf8');
+    const packageGuide = readFileSync('docs/packages.md', 'utf8');
+
+    expect(aiExample).toContain("import { createOpenAICompatibleModelPort } from '@blade-ai/ai';");
+    expect(aiExample).toContain('model.generate');
+    expect(agentExample).toContain("import { AgentKernel } from '@blade-ai/agent';");
+    expect(agentExample).toContain('kernel.runTurn');
+    expect(packageGuide).toContain('examples/ai-model-port.ts');
+    expect(packageGuide).toContain('examples/agent-kernel.ts');
+  });
+
   it('documents the session-first quickstart and links it from the docs site', () => {
     const docPath = 'docs/session-first-quickstart.md';
 
