@@ -21,6 +21,7 @@ export interface PackageLocalSessionRuntimeOptions {
   mcpRegistry?: PackageLocalRuntimeMcpRegistryPort;
   toolCatalog?: PackageLocalRuntimeToolCatalogPort;
   logger?: PackageLocalRuntimeLoggerPort;
+  customToolFactory?: PackageLocalRuntimeCustomToolFactoryPort;
 }
 
 export interface PackageLocalRuntimeSessionStorePort {
@@ -80,6 +81,12 @@ export interface PackageLocalRuntimeToolSource {
 
 export interface PackageLocalRuntimeLoggerPort {
   warn(...args: unknown[]): void;
+}
+
+export type PackageLocalRuntimeToolDefinition = NonNullable<SessionOptions['tools']>[number];
+
+export interface PackageLocalRuntimeCustomToolFactoryPort {
+  fromDefinition(definition: PackageLocalRuntimeToolDefinition): PackageLocalRuntimeNamedTool;
 }
 
 export interface PackageLocalRuntimeMcpToolCapability {
@@ -154,6 +161,7 @@ export class PackageLocalSessionRuntime {
   readonly mcpRegistry: PackageLocalRuntimeMcpRegistryPort;
   readonly toolCatalog: PackageLocalRuntimeToolCatalogPort;
   readonly logger: PackageLocalRuntimeLoggerPort;
+  readonly customToolFactory?: PackageLocalRuntimeCustomToolFactoryPort;
 
   constructor(options: PackageLocalSessionRuntimeOptions) {
     this.sessionId = options.sessionId;
@@ -170,6 +178,7 @@ export class PackageLocalSessionRuntime {
     this.mcpRegistry = options.mcpRegistry ?? createNoopRuntimeMcpRegistry();
     this.toolCatalog = options.toolCatalog ?? createNoopRuntimeToolCatalog();
     this.logger = options.logger ?? createNoopRuntimeLogger();
+    this.customToolFactory = options.customToolFactory;
   }
 
   getConfiguredMcpServers(): Record<string, McpServerConfig | SdkMcpServerHandle> {
@@ -352,6 +361,25 @@ export class PackageLocalSessionRuntime {
     }
 
     this.toolCatalog.registerAll(filteredTools, source);
+  }
+
+  registerCustomTools(): void {
+    const definitions = this.options.tools ?? [];
+    if (definitions.length === 0) {
+      return;
+    }
+
+    if (!this.customToolFactory) {
+      throw new Error('Package-local custom tool factory port is required to register tools');
+    }
+
+    const customToolFactory = this.customToolFactory;
+    const tools = definitions.map((definition) => customToolFactory.fromDefinition(definition));
+    this.registerTools(tools, {
+      kind: 'custom',
+      trustLevel: 'workspace',
+      sourceId: 'session',
+    });
   }
 }
 

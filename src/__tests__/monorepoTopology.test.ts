@@ -500,6 +500,8 @@ describe('monorepo topology', () => {
     expect(packageLocalRuntimeInstanceSource).toContain('registerMcpTool');
     expect(packageLocalRuntimeInstanceSource).toContain('removeMcpTools');
     expect(packageLocalRuntimeInstanceSource).toContain('packageLocalServerNameFromTool');
+    expect(packageLocalRuntimeInstanceSource).toContain('registerCustomTools');
+    expect(packageLocalRuntimeInstanceSource).toContain('PackageLocalRuntimeCustomToolFactoryPort');
     expect(existsSync('packages/agent-sdk/src/session/packageLocalLegacyRuntimeFactory.ts')).toBe(
       true,
     );

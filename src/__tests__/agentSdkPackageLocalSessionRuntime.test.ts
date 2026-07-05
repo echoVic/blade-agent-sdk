@@ -631,4 +631,74 @@ describe('agent-sdk package-local session runtime shell', () => {
 
     expect(registerAll).not.toHaveBeenCalled();
   });
+
+  it('owns custom tool registration through an injected tool factory port', () => {
+    const registerAll = vi.fn();
+    const definitions = [
+      { name: 'custom-read' },
+      { name: 'custom-write' },
+    ];
+    const factoryCalls: unknown[] = [];
+    const runtime = new PackageLocalSessionRuntime({
+      sessionId: 'session-1',
+      options: {
+        ...options,
+        allowedTools: ['custom-read'],
+        tools: definitions as NonNullable<SessionOptions['tools']>,
+      },
+      bladeConfig,
+      defaultContext: {},
+      toolCatalog: {
+        registerAll,
+        registerMcpTool: vi.fn(),
+        removeMcpTools: vi.fn(() => 0),
+      },
+      customToolFactory: {
+        fromDefinition(definition) {
+          factoryCalls.push(definition);
+          return {
+            name: definition.name,
+            runtimeName: `runtime:${definition.name}`,
+          };
+        },
+      },
+    });
+
+    runtime.registerCustomTools();
+
+    expect(factoryCalls).toEqual(definitions);
+    expect(registerAll).toHaveBeenCalledTimes(1);
+    expect(registerAll).toHaveBeenCalledWith(
+      [{ name: 'custom-read', runtimeName: 'runtime:custom-read' }],
+      {
+        kind: 'custom',
+        sourceId: 'session',
+        trustLevel: 'workspace',
+      },
+    );
+  });
+
+  it('skips custom tool factory work when no custom tools are configured', () => {
+    const registerAll = vi.fn();
+    const fromDefinition = vi.fn();
+    const runtime = new PackageLocalSessionRuntime({
+      sessionId: 'session-1',
+      options,
+      bladeConfig,
+      defaultContext: {},
+      toolCatalog: {
+        registerAll,
+        registerMcpTool: vi.fn(),
+        removeMcpTools: vi.fn(() => 0),
+      },
+      customToolFactory: {
+        fromDefinition,
+      },
+    });
+
+    runtime.registerCustomTools();
+
+    expect(fromDefinition).not.toHaveBeenCalled();
+    expect(registerAll).not.toHaveBeenCalled();
+  });
 });
