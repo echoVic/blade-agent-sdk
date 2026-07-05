@@ -781,7 +781,15 @@ describe('monorepo topology', () => {
     expect(existsSync('packages/agent-sdk/src/session/runtimeExecutionPipeline.ts')).toBe(true);
     expect(runtimeExecutionPipelineSource).not.toContain('../../../../src/');
     expect(runtimeExecutionPipelineSource).toContain('createPackageLocalRuntimeExecutionPipeline');
+    expect(runtimeExecutionPipelineSource).toContain(
+      'createPackageLocalRuntimeExecutionPipelineCache',
+    );
     expect(packageLocalRuntimeInstanceSource).toContain('createPackageLocalRuntimeExecutionPipeline');
+    expect(packageLocalRuntimeInstanceSource).toContain(
+      'createPackageLocalRuntimeExecutionPipelineCache',
+    );
+    expect(packageLocalRuntimeInstanceSource).not.toContain('private executionPipelineCreated');
+    expect(packageLocalRuntimeInstanceSource).not.toContain('private executionPipeline: unknown');
     expect(packageLocalRuntimeInstanceSource).not.toContain('allow: []');
     expect(packageLocalRuntimeInstanceSource).not.toContain('maxHistorySize: 1000');
     expect(packageLocalRuntimeInstanceSource).not.toContain(

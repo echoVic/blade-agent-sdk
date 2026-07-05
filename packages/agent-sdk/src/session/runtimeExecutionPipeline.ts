@@ -28,6 +28,10 @@ export interface PackageLocalRuntimeExecutionPipelineOptions {
   maxHistorySize?: number;
 }
 
+export interface PackageLocalRuntimeExecutionPipelineCache {
+  get(): unknown;
+}
+
 export function createPackageLocalRuntimeExecutionPipeline(
   options: PackageLocalRuntimeExecutionPipelineOptions,
 ): unknown {
@@ -46,4 +50,23 @@ export function createPackageLocalRuntimeExecutionPipeline(
     logger: options.logger,
     toolCatalog: options.toolCatalog,
   });
+}
+
+export function createPackageLocalRuntimeExecutionPipelineCache(
+  createPipeline: () => unknown,
+): PackageLocalRuntimeExecutionPipelineCache {
+  let created = false;
+  let pipeline: unknown;
+
+  return {
+    get(): unknown {
+      if (created) {
+        return pipeline;
+      }
+
+      pipeline = createPipeline();
+      created = true;
+      return pipeline;
+    },
+  };
 }

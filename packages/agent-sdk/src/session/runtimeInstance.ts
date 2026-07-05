@@ -34,7 +34,9 @@ import {
   type PackageLocalRuntimeHookRuntimePort,
 } from './runtimeHooks.js';
 import {
+  createPackageLocalRuntimeExecutionPipelineCache,
   createPackageLocalRuntimeExecutionPipeline,
+  type PackageLocalRuntimeExecutionPipelineCache,
   type PackageLocalRuntimeExecutionPipelineFactoryPort,
 } from './runtimeExecutionPipeline.js';
 import {
@@ -320,14 +322,13 @@ export class PackageLocalSessionRuntime {
   readonly kernelPortFactory: PackageLocalRuntimeKernelPortFactoryPort;
   readonly kernelFactory: PackageLocalRuntimeAgentKernelFactoryPort;
   readonly kernelModelResolver: PackageLocalRuntimeKernelModelResolverPort;
+  private readonly executionPipelineCache: PackageLocalRuntimeExecutionPipelineCache;
   private readonly createForkSessionId?: () => SessionId;
   private readonly createForkSession?: (
     sessionId: SessionId,
     options: SessionOptions,
   ) => Promise<ISession> | ISession;
   private readonly traceManager: SessionTraceManager;
-  private executionPipelineCreated = false;
-  private executionPipeline: unknown;
 
   constructor(options: PackageLocalSessionRuntimeOptions) {
     this.sessionId = options.sessionId;
@@ -357,6 +358,16 @@ export class PackageLocalSessionRuntime {
     this.kernelPortFactory = options.kernelPortFactory ?? noopPorts.kernelPortFactory;
     this.kernelFactory = options.kernelFactory ?? noopPorts.kernelFactory;
     this.kernelModelResolver = options.kernelModelResolver ?? noopPorts.kernelModelResolver;
+    this.executionPipelineCache = createPackageLocalRuntimeExecutionPipelineCache(() =>
+      createPackageLocalRuntimeExecutionPipeline({
+        bladeConfig: this.bladeConfig,
+        permissionMode: this.options.permissionMode,
+        permissionHandler: this.createPermissionHandler(),
+        logger: this.logger,
+        toolCatalog: this.toolCatalog,
+        executionPipelineFactory: this.executionPipelineFactory,
+      }),
+    );
     this.createForkSessionId = options.createForkSessionId;
     this.createForkSession = options.createForkSession;
     this.traceManager = createPackageLocalRuntimeTraceManager({
@@ -545,20 +556,7 @@ export class PackageLocalSessionRuntime {
   }
 
   createExecutionPipeline(): unknown {
-    if (this.executionPipelineCreated) {
-      return this.executionPipeline;
-    }
-
-    this.executionPipeline = createPackageLocalRuntimeExecutionPipeline({
-      bladeConfig: this.bladeConfig,
-      permissionMode: this.options.permissionMode,
-      permissionHandler: this.createPermissionHandler(),
-      logger: this.logger,
-      toolCatalog: this.toolCatalog,
-      executionPipelineFactory: this.executionPipelineFactory,
-    });
-    this.executionPipelineCreated = true;
-    return this.executionPipeline;
+    return this.executionPipelineCache.get();
   }
 
   getAgentRuntimeDeps(): PackageLocalAgentRuntimeDeps {

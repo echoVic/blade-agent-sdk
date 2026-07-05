@@ -1,5 +1,8 @@
 import { describe, expect, it, vi } from 'vitest';
-import { createPackageLocalRuntimeExecutionPipeline } from '../../packages/agent-sdk/src/session/runtimeExecutionPipeline.js';
+import {
+  createPackageLocalRuntimeExecutionPipeline,
+  createPackageLocalRuntimeExecutionPipelineCache,
+} from '../../packages/agent-sdk/src/session/runtimeExecutionPipeline.js';
 import type { PackageLocalRuntimeExecutionPipelineFactoryPort } from '../../packages/agent-sdk/src/session/runtimeExecutionPipeline.js';
 import { PermissionMode, type BladeConfig } from '../../packages/agent-sdk/src/types/common.js';
 
@@ -81,5 +84,16 @@ describe('agent-sdk package-local runtime execution pipeline helpers', () => {
       logger,
       toolCatalog,
     });
+  });
+
+  it('caches runtime execution pipeline creation outside the session runtime class', () => {
+    const pipeline = { id: 'cached-pipeline' };
+    const createPipeline = vi.fn(() => pipeline);
+
+    const cache = createPackageLocalRuntimeExecutionPipelineCache(createPipeline);
+
+    expect(cache.get()).toBe(pipeline);
+    expect(cache.get()).toBe(pipeline);
+    expect(createPipeline).toHaveBeenCalledTimes(1);
   });
 });
