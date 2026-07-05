@@ -369,6 +369,7 @@ Status:
 - Fifty-sixth adapter increment complete: `@blade-ai/agent-sdk/session` now owns the package-local session lifecycle state shell. `SessionLifecycleState` centralizes open/closed guards, idempotent close cleanup, pending-turn clearing, and active-turn aborting so the future package-local `Session` class can compose migrated state helpers without depending on legacy root `Session` fields.
 - Fifty-seventh adapter increment complete: `@blade-ai/agent-sdk/session` now owns package-local turn preparation. `SessionTurnController` composes lifecycle guards, pending-turn buffering, abort-scope creation, and package-local context snapshot construction so the future package-local `Session` class can prepare `send()` / `stream()` turns without root `createContextSnapshot()` or legacy private pending fields.
 - Fifty-eighth adapter increment complete: `@blade-ai/agent-sdk` now owns the trace recorder runtime locally. Package-local `TraceRecorder` records stream events, tool calls, usage, hook spans, and final results into the shared `AgentTrace` contract while preserving safe payload redaction by default, preparing the package-local session runtime to stop importing legacy root observability behavior.
+- Fifty-ninth adapter increment complete: `@blade-ai/agent-sdk/session` now owns session trace lifecycle management locally. `SessionTraceManager` creates package-local trace recorders with session metadata and initial prompt events, keeps the bounded trace history, and isolates trace sink failures from the session turn lifecycle without depending on legacy root `Session` private methods.
 
 ### Phase 5: Production Verification Chain
 
@@ -433,6 +434,7 @@ Status:
 - Thirty-seventh verification-chain increment complete: focused package-local tests now cover session lifecycle state behavior for open/closed guards, close cleanup idempotence, pending-turn cleanup, and abort-without-close semantics. Topology also requires the lifecycle state source to remain package-local without root imports.
 - Thirty-eighth verification-chain increment complete: focused package-local tests now cover turn preparation behavior for context snapshot merging, pending-turn consumption, active abort-scope creation, external abort propagation, and closed-session guards. Topology also requires the turn controller source to remain package-local without root imports.
 - Thirty-ninth verification-chain increment complete: focused package-local tests now cover trace recorder behavior for unified stream/tool/usage/hook/result events, safe default redaction, explicit payload capture, and cloned trace reads. Topology also requires the recorder source to remain package-local without root imports.
+- Fortieth verification-chain increment complete: focused package-local tests now cover session trace manager behavior for observability disabled mode, recorder creation with metadata and prompt events, bounded trace retention, and sink failure isolation. Topology also requires the trace manager source to remain package-local without root imports.
 
 Commit:
 
