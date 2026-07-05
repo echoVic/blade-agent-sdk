@@ -476,6 +476,9 @@ describe('monorepo topology', () => {
     )
       ? readFileSync('packages/agent-sdk/src/session/runtimeMcpCapabilities.ts', 'utf-8')
       : '';
+    const runtimeForkingSource = existsSync('packages/agent-sdk/src/session/runtimeForking.ts')
+      ? readFileSync('packages/agent-sdk/src/session/runtimeForking.ts', 'utf-8')
+      : '';
     const runtimeToolFiltersSource = existsSync(
       'packages/agent-sdk/src/session/runtimeToolFilters.ts',
     )
@@ -620,6 +623,17 @@ describe('monorepo topology', () => {
     expect(packageLocalRuntimeInstanceSource).toContain('ensureSessionCreated');
     expect(packageLocalRuntimeInstanceSource).toContain('ensureSessionLoaded');
     expect(packageLocalRuntimeInstanceSource).toContain('PackageLocalRuntimeSessionStorePort');
+    expect(existsSync('packages/agent-sdk/src/session/runtimeForking.ts')).toBe(true);
+    expect(runtimeForkingSource).not.toContain('../../../../src/');
+    expect(runtimeForkingSource).toContain('forkPackageLocalRuntimeSession');
+    expect(packageLocalRuntimeInstanceSource).toContain('forkPackageLocalRuntimeSession');
+    expect(packageLocalRuntimeInstanceSource).not.toContain(
+      'this.sessionStore.forkState(this.sessionId, options)',
+    );
+    expect(packageLocalRuntimeInstanceSource).not.toContain(
+      'this.sessionStore.writeForkState(forkedSessionId, snapshot)',
+    );
+    expect(packageLocalRuntimeInstanceSource).not.toContain('this.createForkSessionId()');
     expect(packageLocalRuntimeInstanceSource).toContain('prepareTurn');
     expect(packageLocalRuntimeInstanceSource).toContain('PackageLocalRuntimeWorkspacePort');
     expect(packageLocalRuntimeInstanceSource).toContain('close');

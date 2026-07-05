@@ -84,6 +84,7 @@ import {
 import {
   createPackageLocalRuntimeTraceManager,
 } from './runtimeTraceManager.js';
+import { forkPackageLocalRuntimeSession } from './runtimeForking.js';
 import type { SessionTraceManager } from './traces.js';
 import type { SessionSnapshot } from './store.js';
 
@@ -413,22 +414,14 @@ export class PackageLocalSessionRuntime {
   }
 
   async fork(options?: ForkSessionOptions): Promise<ISession> {
-    if (!this.createForkSessionId || !this.createForkSession) {
-      throw new Error('Fork runtime is not configured for this session.');
-    }
-
-    const snapshot = await this.sessionStore.forkState(this.sessionId, options);
-    if (!snapshot) {
-      throw new Error(`Session "${this.sessionId}" was not found for fork.`);
-    }
-
-    const forkedSessionId = this.createForkSessionId();
-    const writtenSnapshot = await this.sessionStore.writeForkState(forkedSessionId, snapshot);
-    if (!writtenSnapshot) {
-      throw new Error(`Session "${this.sessionId}" could not be materialized for fork.`);
-    }
-
-    return this.createForkSession(forkedSessionId, this.options);
+    return forkPackageLocalRuntimeSession({
+      sessionId: this.sessionId,
+      options: this.options,
+      forkOptions: options,
+      sessionStore: this.sessionStore,
+      createForkSessionId: this.createForkSessionId,
+      createForkSession: this.createForkSession,
+    });
   }
 
   getLastTrace(): AgentTrace | undefined {
