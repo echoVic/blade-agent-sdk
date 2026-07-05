@@ -390,6 +390,7 @@ Status:
 - Seventy-seventh adapter increment complete: `PackageLocalSessionRuntime` now owns session create/load lifecycle semantics through an injected `PackageLocalRuntimeSessionStorePort`. `ensureSessionCreated()` and `ensureSessionLoaded()` mirror the root runtime's create-or-load behavior without importing root `ContextManager`, preparing the package-local runtime shell to take over persistence wiring incrementally.
 - Seventy-eighth adapter increment complete: `PackageLocalSessionRuntime` now owns turn workspace preparation through an injected `PackageLocalRuntimeWorkspacePort`. `prepareTurn(snapshot)` mirrors the root runtime's project path and environment update semantics, including `cwd` normalization, without importing root workspace/context managers.
 - Seventy-ninth adapter increment complete: `PackageLocalSessionRuntime` now owns close lifecycle semantics through an injected `PackageLocalRuntimeMcpRegistryPort`. `close()` mirrors the root runtime's MCP disconnect-all behavior without importing root MCP registry implementation.
+- Eightieth adapter increment complete: `PackageLocalSessionRuntime` now owns MCP read-side capability projection through the package-local MCP registry port. `mcpCapabilities()` and `mcpServerStatus()` expose package-local capability/status contracts without importing root `projectMcpCapabilities()` or the root MCP registry implementation.
 
 ### Phase 5: Production Verification Chain
 
@@ -476,6 +477,7 @@ Status:
 - Fifty-ninth verification-chain increment complete: focused package-local runtime tests now cover `ensureSessionCreated()` and `ensureSessionLoaded()` against an injected store port, including load-miss create fallback and load-hit no-op behavior. Topology also requires the store port and lifecycle methods to remain on the package-local runtime shell.
 - Sixtieth verification-chain increment complete: focused package-local runtime tests now cover `prepareTurn(snapshot)` against an injected workspace port, including project path forwarding and `cwd` environment normalization. Topology also requires the workspace port and prepare-turn method to remain package-local.
 - Sixty-first verification-chain increment complete: focused package-local runtime tests now cover `close()` against an injected MCP registry port. Topology also requires the MCP registry port and close lifecycle method to remain on the package-local runtime shell.
+- Sixty-second verification-chain increment complete: focused package-local runtime tests now cover `mcpCapabilities()` and `mcpServerStatus()` against an injected MCP registry port. Topology also requires the package-local MCP capability type and status projection methods to remain on the runtime shell.
 
 Commit:
 

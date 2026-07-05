@@ -183,11 +183,64 @@ describe('agent-sdk package-local session runtime shell', () => {
       defaultContext: {},
       mcpRegistry: {
         disconnectAll,
+        getCapabilities: vi.fn(async () => []),
       },
     });
 
     await runtime.close();
 
     expect(disconnectAll).toHaveBeenCalledTimes(1);
+  });
+
+  it('owns MCP capability projection through an injected MCP registry port', async () => {
+    const connectedAt = new Date('2026-01-01T00:00:00.000Z');
+    const capabilities = [
+      {
+        name: 'local-tools',
+        status: 'connected' as const,
+        connectedAt,
+        auth: {
+          enabled: true,
+          provider: 'github',
+        },
+        health: {
+          enabled: true,
+          status: 'healthy' as const,
+        },
+        tools: [
+          {
+            name: 'search',
+            description: 'Search docs',
+            inputSchema: {
+              type: 'object',
+            },
+          },
+        ],
+      },
+    ];
+    const getCapabilities = vi.fn(async () => capabilities);
+    const runtime = new PackageLocalSessionRuntime({
+      sessionId: 'session-1',
+      options,
+      bladeConfig,
+      defaultContext: {},
+      mcpRegistry: {
+        disconnectAll: vi.fn(async () => {}),
+        getCapabilities,
+      },
+    });
+
+    await expect(runtime.mcpCapabilities()).resolves.toBe(capabilities);
+    await expect(runtime.mcpServerStatus()).resolves.toEqual([
+      {
+        name: 'local-tools',
+        status: 'connected',
+        toolCount: 1,
+        tools: ['search'],
+        connectedAt,
+        error: undefined,
+      },
+    ]);
+    expect(getCapabilities).toHaveBeenCalledTimes(2);
   });
 });

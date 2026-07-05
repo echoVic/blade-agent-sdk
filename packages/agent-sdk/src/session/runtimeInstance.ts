@@ -2,6 +2,7 @@ import { basename, dirname } from 'node:path';
 import type { ContextSnapshot, RuntimeContext } from '../runtime/types.js';
 import type { BladeConfig, McpServerConfig } from '../types/common.js';
 import type {
+  McpServerStatus,
   SdkMcpServerHandle,
   SessionHookEvent,
   SessionId,
@@ -35,6 +36,29 @@ export interface PackageLocalRuntimeWorkspaceUpdate {
 
 export interface PackageLocalRuntimeMcpRegistryPort {
   disconnectAll(): Promise<void>;
+  getCapabilities(): Promise<PackageLocalRuntimeMcpServerCapability[]>;
+}
+
+export interface PackageLocalRuntimeMcpToolCapability {
+  name: string;
+  description: string;
+  inputSchema: unknown;
+}
+
+export interface PackageLocalRuntimeMcpServerCapability {
+  name: string;
+  status: 'connected' | 'disconnected' | 'connecting' | 'error';
+  connectedAt?: Date;
+  error?: string;
+  auth: {
+    enabled: boolean;
+    provider?: string;
+  };
+  health: {
+    enabled: boolean;
+    status: 'healthy' | 'degraded' | 'unhealthy' | 'checking' | 'disabled' | 'unknown';
+  };
+  tools: PackageLocalRuntimeMcpToolCapability[];
 }
 
 export function resolvePackageLocalRuntimeStorageRoot(
@@ -121,6 +145,21 @@ export class PackageLocalSessionRuntime {
   async close(): Promise<void> {
     await this.mcpRegistry.disconnectAll();
   }
+
+  async mcpCapabilities(): Promise<PackageLocalRuntimeMcpServerCapability[]> {
+    return this.mcpRegistry.getCapabilities();
+  }
+
+  async mcpServerStatus(): Promise<McpServerStatus[]> {
+    return (await this.mcpCapabilities()).map((capability) => ({
+      name: capability.name,
+      status: capability.status,
+      toolCount: capability.tools.length,
+      tools: capability.tools.map((tool) => tool.name),
+      connectedAt: capability.connectedAt,
+      error: capability.error,
+    }));
+  }
 }
 
 function createNoopRuntimeSessionStore(): PackageLocalRuntimeSessionStorePort {
@@ -141,5 +180,8 @@ function createNoopRuntimeWorkspace(): PackageLocalRuntimeWorkspacePort {
 function createNoopRuntimeMcpRegistry(): PackageLocalRuntimeMcpRegistryPort {
   return {
     async disconnectAll() {},
+    async getCapabilities() {
+      return [];
+    },
   };
 }
