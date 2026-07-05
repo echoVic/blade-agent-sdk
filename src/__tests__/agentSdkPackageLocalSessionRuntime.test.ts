@@ -1151,7 +1151,10 @@ describe('agent-sdk package-local session runtime shell', () => {
 
   it('creates an agent kernel through an injected package-local factory', () => {
     const model = createModelPort();
-    const kernel = { id: 'kernel' };
+    const kernel = {
+      id: 'kernel',
+      async *runTurn() {},
+    };
     const storePort = { appendMessage: vi.fn() };
     const hookPort = { beforeModel: vi.fn((request) => request) };
     const tracePort = { record: vi.fn() };
@@ -1213,7 +1216,10 @@ describe('agent-sdk package-local session runtime shell', () => {
 
   it('resolves the session kernel model through an injected package-local resolver', () => {
     const resolvedModel = createModelPort();
-    const kernel = { id: 'kernel' };
+    const kernel = {
+      id: 'kernel',
+      async *runTurn() {},
+    };
     const kernelFactory = {
       create: vi.fn(() => kernel),
     };
@@ -1362,6 +1368,89 @@ describe('agent-sdk package-local session runtime shell', () => {
         { maxContextTokens: 4096, includeThinking: false },
       ),
     ).toEqual([
+      { type: 'turn_end', turn: 1, sessionId: 'session-1' },
+      { type: 'result', subtype: 'success', content: 'done', sessionId: 'session-1' },
+    ]);
+  });
+
+  it('streams agent kernel turns through package-local stream projection', async () => {
+    const signal = new AbortController().signal;
+    const model = createModelPort();
+    const runTurns: unknown[] = [];
+    const kernel = {
+      async *runTurn(turn: unknown) {
+        runTurns.push(turn);
+        yield { type: 'content' as const, delta: 'hello' };
+        yield { type: 'thinking' as const, delta: 'thought' };
+        yield {
+          type: 'usage' as const,
+          usage: {
+            promptTokens: 4,
+            completionTokens: 6,
+            totalTokens: 10,
+          },
+        };
+        yield { type: 'result' as const, content: 'done' };
+      },
+    };
+    const kernelFactory = {
+      create: vi.fn(() => kernel),
+    };
+    const runtime = new PackageLocalSessionRuntime({
+      sessionId: 'session-1',
+      options,
+      bladeConfig,
+      defaultContext: {},
+      kernelFactory,
+    });
+
+    const messages = [];
+    for await (const message of runtime.streamAgentKernelTurn({
+      input: 'hi',
+      turnId: 'turn-1',
+      signal,
+      model,
+      modelRequestDefaults: {
+        model: 'explicit-model',
+        maxContextTokens: 8192,
+      },
+      includeThinking: true,
+      maxSteps: 3,
+    })) {
+      messages.push(message);
+    }
+
+    expect(runTurns).toEqual([
+      {
+        input: 'hi',
+        turnId: 'turn-1',
+        signal,
+      },
+    ]);
+    expect(kernelFactory.create).toHaveBeenCalledWith({
+      model,
+      modelRequestDefaults: {
+        model: 'explicit-model',
+        maxContextTokens: 8192,
+      },
+      store: expect.any(Object),
+      hooks: expect.any(Object),
+      maxSteps: 3,
+    });
+    expect(messages).toEqual([
+      { type: 'turn_start', turn: 1, sessionId: 'session-1' },
+      { type: 'content', delta: 'hello', sessionId: 'session-1' },
+      { type: 'thinking', delta: 'thought', sessionId: 'session-1' },
+      {
+        type: 'usage',
+        usage: {
+          inputTokens: 4,
+          outputTokens: 6,
+          totalTokens: 10,
+          maxContextTokens: 8192,
+        },
+        sessionId: 'session-1',
+      },
       { type: 'turn_end', turn: 1, sessionId: 'session-1' },
       { type: 'result', subtype: 'success', content: 'done', sessionId: 'session-1' },
     ]);

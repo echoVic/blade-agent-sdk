@@ -530,6 +530,9 @@ describe('monorepo topology', () => {
     expect(packageLocalRuntimeInstanceSource).toContain('createAgentKernel');
     expect(packageLocalRuntimeInstanceSource).toContain('PackageLocalRuntimeAgentKernelFactoryPort');
     expect(packageLocalRuntimeInstanceSource).toContain('PackageLocalRuntimeKernelModelResolverPort');
+    expect(packageLocalRuntimeInstanceSource).toContain('streamAgentKernelTurn');
+    expect(packageLocalRuntimeInstanceSource).toContain('PackageLocalRuntimeAgentKernelPort');
+    expect(packageLocalRuntimeInstanceSource).toContain('PackageLocalRuntimeAgentKernelStreamOptions');
     expect(packageLocalRuntimeInstanceSource).toContain('projectKernelEventToStreamMessages');
     expect(packageLocalRuntimeInstanceSource).toContain(
       'PackageLocalRuntimeKernelStreamProjectionOptions',

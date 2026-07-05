@@ -235,6 +235,14 @@ export interface PackageLocalRuntimeAgentKernelOptions {
   maxSteps?: number;
 }
 
+export interface PackageLocalRuntimeAgentKernelStreamOptions
+  extends PackageLocalRuntimeAgentKernelOptions {
+  input: string;
+  turnId?: string;
+  signal?: AbortSignal;
+  includeThinking?: boolean;
+}
+
 export interface PackageLocalRuntimeResolvedKernelModel {
   model: ModelPort;
   modelRequestDefaults?: AgentModelRequestDefaults;
@@ -249,8 +257,18 @@ export interface PackageLocalRuntimeKernelModelResolverPort {
   resolve(options: PackageLocalRuntimeKernelModelResolveOptions): PackageLocalRuntimeResolvedKernelModel;
 }
 
+export interface PackageLocalRuntimeAgentKernelTurn {
+  input: string;
+  turnId?: string;
+  signal?: AbortSignal;
+}
+
+export interface PackageLocalRuntimeAgentKernelPort {
+  runTurn(turn: PackageLocalRuntimeAgentKernelTurn): AsyncIterable<AgentStreamEvent>;
+}
+
 export interface PackageLocalRuntimeAgentKernelFactoryPort {
-  create(options: AgentKernelOptions): unknown;
+  create(options: AgentKernelOptions): PackageLocalRuntimeAgentKernelPort;
 }
 
 export interface PackageLocalRuntimeKernelStreamProjectionOptions {
@@ -746,8 +764,17 @@ export class PackageLocalSessionRuntime {
     });
   }
 
-  createAgentKernel(options: PackageLocalRuntimeAgentKernelOptions = {}): unknown {
+  createAgentKernel(
+    options: PackageLocalRuntimeAgentKernelOptions = {},
+  ): PackageLocalRuntimeAgentKernelPort {
     const kernelModel = this.resolveAgentKernelModel(options);
+    return this.createAgentKernelFromResolved(options, kernelModel);
+  }
+
+  private createAgentKernelFromResolved(
+    options: PackageLocalRuntimeAgentKernelOptions,
+    kernelModel: PackageLocalRuntimeResolvedKernelModel,
+  ): PackageLocalRuntimeAgentKernelPort {
     return this.kernelFactory.create({
       model: kernelModel.model,
       ...(kernelModel.modelRequestDefaults
@@ -768,6 +795,27 @@ export class PackageLocalSessionRuntime {
         : {}),
       ...(options.maxSteps !== undefined ? { maxSteps: options.maxSteps } : {}),
     });
+  }
+
+  async *streamAgentKernelTurn(
+    options: PackageLocalRuntimeAgentKernelStreamOptions,
+  ): AsyncGenerator<StreamMessage> {
+    const kernelModel = this.resolveAgentKernelModel(options);
+    const kernel = this.createAgentKernelFromResolved(options, kernelModel);
+    const maxContextTokens = kernelModel.modelRequestDefaults?.maxContextTokens ?? 0;
+
+    yield { type: 'turn_start', turn: 1, sessionId: this.sessionId };
+
+    for await (const event of kernel.runTurn({
+      input: options.input,
+      turnId: options.turnId,
+      signal: options.signal,
+    })) {
+      yield* this.projectKernelEventToStreamMessages(event, {
+        maxContextTokens,
+        includeThinking: options.includeThinking ?? false,
+      });
+    }
   }
 
   projectKernelEventToStreamMessages(
@@ -985,8 +1033,12 @@ function createNoopRuntimeKernelPortFactory(): PackageLocalRuntimeKernelPortFact
 
 function createNoopRuntimeAgentKernelFactory(): PackageLocalRuntimeAgentKernelFactoryPort {
   return {
-    create(options) {
-      return options;
+    create() {
+      return {
+        runTurn() {
+          throw new Error('Package-local agent kernel factory port is required to run a turn');
+        },
+      };
     },
   };
 }
