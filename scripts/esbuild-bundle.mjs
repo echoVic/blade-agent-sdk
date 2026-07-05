@@ -1,4 +1,4 @@
-import { build as bundleWithEsbuild } from 'esbuild';
+import { build as bundleWithEsbuild, stop as stopEsbuildService } from 'esbuild';
 
 function isServiceStoppedError(error) {
   return error instanceof Error && (
@@ -9,6 +9,7 @@ function isServiceStoppedError(error) {
 
 export async function bundleWithEsbuildRetry(options, config = {}) {
   const build = config.build ?? bundleWithEsbuild;
+  const resetService = config.resetService ?? stopEsbuildService;
   const retries = config.retries ?? 1;
   let attempt = 0;
 
@@ -20,6 +21,7 @@ export async function bundleWithEsbuildRetry(options, config = {}) {
         throw error;
       }
       attempt += 1;
+      resetService();
       config.onRetry?.(error, attempt);
     }
   }

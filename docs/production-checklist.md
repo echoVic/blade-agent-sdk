@@ -82,7 +82,13 @@ pnpm run test:live:session-glm
 
 ## Release Rehearsal
 
-发版前可以用 dry-run 检查 semantic-release 配置、版本推导、release notes 和包元数据：
+`pnpm run verify` 会先执行无 token 的静态 release gate，校验 semantic-release 配置、三包 publish metadata、release workflow 的 verify-before-release 顺序，以及 OIDC trusted publishing 设置：
+
+```bash
+pnpm run verify:release
+```
+
+发版前还可以用 dry-run 检查 semantic-release 的版本推导、release notes 和远端权限：
 
 ```bash
 pnpm run release:dry

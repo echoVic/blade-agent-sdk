@@ -175,7 +175,9 @@ describe('package provenance metadata', () => {
     expect(packageVerifier).toContain("from '@blade-ai/agent-sdk/server';");
     expect(packageVerifier).toContain("from '@blade-ai/agent-sdk/local';");
     expect(packageVerifier).toContain('await bundleWithEsbuildRetry({');
-    expect(esbuildHelper).toContain("import { build as bundleWithEsbuild } from 'esbuild';");
+    expect(esbuildHelper).toContain("import { build as bundleWithEsbuild, stop as stopEsbuildService } from 'esbuild';");
+    expect(esbuildHelper).toContain('const resetService = config.resetService ?? stopEsbuildService;');
+    expect(esbuildHelper).toContain('resetService();');
     expect(esbuildHelper).toContain('The service was stopped');
     expect(packageVerifier).toContain("platform: 'browser'");
     expect(packageVerifier).toContain("conditions: ['browser']");
@@ -199,6 +201,15 @@ describe('package provenance metadata', () => {
 });
 
 describe('release scripts', () => {
+  it('runs release configuration verification in the main production gate', () => {
+    const packageJson = JSON.parse(readFileSync(resolve('package.json'), 'utf8'));
+
+    expect(packageJson.scripts['verify:release']).toBe('node scripts/verify-release-config.mjs');
+    expect(packageJson.scripts.verify).toContain(
+      'pnpm run verify:packages && pnpm run verify:release && pnpm run test:unit'
+    );
+  });
+
   it('keeps a semantic-release dry-run command for tokened release rehearsal without publishing', () => {
     const packageJson = JSON.parse(readFileSync(resolve('package.json'), 'utf8'));
 

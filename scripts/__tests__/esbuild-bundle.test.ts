@@ -21,6 +21,7 @@ describe('esbuild bundle helper', () => {
   it('retries once when the esbuild service is no longer running', async () => {
     const { bundleWithEsbuildRetry } = await import('../esbuild-bundle.mjs');
     const calls: unknown[] = [];
+    const resetCalls: string[] = [];
 
     await bundleWithEsbuildRetry({ entryPoints: ['entry.ts'] }, {
       build: async (options: unknown) => {
@@ -30,9 +31,13 @@ describe('esbuild bundle helper', () => {
         }
         return { outputFiles: [] };
       },
+      resetService: () => {
+        resetCalls.push('reset');
+      },
     });
 
     expect(calls).toHaveLength(2);
+    expect(resetCalls).toEqual(['reset']);
   });
 
   it('does not retry unrelated esbuild errors', async () => {

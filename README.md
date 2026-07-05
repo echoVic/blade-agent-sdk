@@ -195,13 +195,14 @@ pnpm install
 pnpm run verify
 pnpm run verify:packages
 pnpm run verify:entrypoints
+pnpm run verify:release
 pnpm run test:unit
 pnpm run test:integration
 pnpm run docs:build
 pnpm run docs:dev
 ```
 
-`pnpm run verify` 是 CI 和发版前的生产 gate，会串起 lint、root/workspace type-check、examples type-check、package boundary scanner、docs build、entrypoint/browser-safety scanner、packed package smoke、unit tests 和默认 integration skip 检查。
+`pnpm run verify` 是 CI 和发版前的生产 gate，会串起 lint、root/workspace type-check、examples type-check、package boundary scanner、docs build、entrypoint/browser-safety scanner、packed package smoke、release config verification、unit tests 和默认 integration skip 检查。
 
 `pnpm run verify:packages` 会先 fresh-build 三个发布包，再打出 packed tarball，把它们安装到外部 temporary consumer 项目里，并从 consumer 侧 import root/subpath exports，防止声明文件、exports、workspace 依赖或包内容在 npm 分发时回退。
 
@@ -221,6 +222,8 @@ INTEGRATION_LIVE=1 pnpm run test:integration:live
 发布前本地 release 插件会把三个 workspace 包的 `version` 和内部 `workspace:*` 依赖同步成同一个发布版本，避免 npm 包里泄漏 workspace 协议。
 
 GitHub Release notes 会在 conventional commit 摘要后追加三包发布清单，列出 `@blade-ai/ai`、`@blade-ai/agent`、`@blade-ai/agent-sdk` 的同版本发布结果和 session-first 安装命令。
+
+`pnpm run verify:release` 会在不触发网络发版的情况下静态校验 `semantic-release` 配置、三包 publish metadata、release workflow 的 verify-before-release 顺序，以及 OIDC trusted publishing 设置。
 
 - `feat:` 触发 minor 版本
 - `fix:` 触发 patch 版本
