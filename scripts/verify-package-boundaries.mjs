@@ -27,6 +27,14 @@ const rules = [
 
 const manifestRules = [
   {
+    name: '@blade-ai/ai',
+    packageJson: 'packages/ai/package.json',
+    disallowedDependencies: [
+      [/^@blade-ai\/agent(?:\/|$)/, 'AI package must not depend on the agent kernel'],
+      [/^@blade-ai\/agent-sdk(?:\/|$)/, 'AI package must not depend on the session SDK'],
+    ],
+  },
+  {
     name: '@blade-ai/agent',
     packageJson: 'packages/agent/package.json',
     disallowedDependencies: [
