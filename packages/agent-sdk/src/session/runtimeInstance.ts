@@ -40,6 +40,11 @@ import {
   projectPackageLocalKernelEventToStreamMessages,
 } from './kernelStreamProjection.js';
 import {
+  resolvePackageLocalRuntimeKernelModel,
+  type PackageLocalRuntimeKernelModelResolverPort,
+  type PackageLocalRuntimeResolvedKernelModel,
+} from './runtimeKernelModels.js';
+import {
   getPackageLocalRuntimeContextCwd,
   resolvePackageLocalRuntimeStorageRoot,
 } from './runtimeContext.js';
@@ -66,6 +71,11 @@ export {
   resolvePackageLocalRuntimeStorageRoot,
 } from './runtimeContext.js';
 export { isPackageLocalSdkMcpServerHandle } from './runtimeMcpServers.js';
+export type {
+  PackageLocalRuntimeKernelModelResolverPort,
+  PackageLocalRuntimeKernelModelResolveOptions,
+  PackageLocalRuntimeResolvedKernelModel,
+} from './runtimeKernelModels.js';
 
 export interface PackageLocalSessionRuntimeOptions {
   sessionId: SessionId;
@@ -273,20 +283,6 @@ export interface PackageLocalRuntimeAgentKernelStreamOptions
   turnId?: string;
   signal?: AbortSignal;
   includeThinking?: boolean;
-}
-
-export interface PackageLocalRuntimeResolvedKernelModel {
-  model: ModelPort;
-  modelRequestDefaults?: AgentModelRequestDefaults;
-}
-
-export interface PackageLocalRuntimeKernelModelResolveOptions {
-  bladeConfig: BladeConfig;
-  modelId?: string;
-}
-
-export interface PackageLocalRuntimeKernelModelResolverPort {
-  resolve(options: PackageLocalRuntimeKernelModelResolveOptions): PackageLocalRuntimeResolvedKernelModel;
 }
 
 export interface PackageLocalRuntimeAgentKernelTurn {
@@ -729,7 +725,11 @@ export class PackageLocalSessionRuntime {
   createAgentKernel(
     options: PackageLocalRuntimeAgentKernelOptions = {},
   ): PackageLocalRuntimeAgentKernelPort {
-    const kernelModel = this.resolveAgentKernelModel(options);
+    const kernelModel = resolvePackageLocalRuntimeKernelModel({
+      options,
+      bladeConfig: this.bladeConfig,
+      kernelModelResolver: this.kernelModelResolver,
+    });
     return this.createAgentKernelFromResolved(options, kernelModel);
   }
 
@@ -762,7 +762,11 @@ export class PackageLocalSessionRuntime {
   async *streamAgentKernelTurn(
     options: PackageLocalRuntimeAgentKernelStreamOptions,
   ): AsyncGenerator<StreamMessage> {
-    const kernelModel = this.resolveAgentKernelModel(options);
+    const kernelModel = resolvePackageLocalRuntimeKernelModel({
+      options,
+      bladeConfig: this.bladeConfig,
+      kernelModelResolver: this.kernelModelResolver,
+    });
     const traceRecorder = options.traceRecorder ?? this.traceManager.createRecorder(options.input);
     const traceFinalizer = createSessionTraceFinalizer(traceRecorder, this.traceManager);
     const kernel = this.createAgentKernelFromResolved(
@@ -814,21 +818,4 @@ export class PackageLocalSessionRuntime {
     }
   }
 
-  private resolveAgentKernelModel(
-    options: PackageLocalRuntimeAgentKernelOptions,
-  ): PackageLocalRuntimeResolvedKernelModel {
-    if (options.model) {
-      return {
-        model: options.model,
-        ...(options.modelRequestDefaults
-          ? { modelRequestDefaults: options.modelRequestDefaults }
-          : {}),
-      };
-    }
-
-    return this.kernelModelResolver.resolve({
-      bladeConfig: this.bladeConfig,
-      modelId: options.modelId,
-    });
-  }
 }

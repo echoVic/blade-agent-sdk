@@ -5,7 +5,7 @@ import type { BladeConfig, ModelConfig } from '../types/common.js';
 import type {
   PackageLocalRuntimeKernelModelResolverPort,
   PackageLocalRuntimeResolvedKernelModel,
-} from './runtimeInstance.js';
+} from './runtimeKernelModels.js';
 
 export interface PackageLocalKernelModelResolverOptions {
   createModelPort?: (options: VercelLanguageModelOptions) => ModelPort;

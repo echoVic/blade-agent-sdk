@@ -477,6 +477,11 @@ describe('monorepo topology', () => {
     )
       ? readFileSync('packages/agent-sdk/src/session/runtimePermissions.ts', 'utf-8')
       : '';
+    const runtimeKernelModelsSource = existsSync(
+      'packages/agent-sdk/src/session/runtimeKernelModels.ts',
+    )
+      ? readFileSync('packages/agent-sdk/src/session/runtimeKernelModels.ts', 'utf-8')
+      : '';
     const runtimeNoopPortsSource = existsSync('packages/agent-sdk/src/session/runtimeNoopPorts.ts')
       ? readFileSync('packages/agent-sdk/src/session/runtimeNoopPorts.ts', 'utf-8')
       : '';
@@ -652,6 +657,11 @@ describe('monorepo topology', () => {
     expect(packageLocalRuntimeInstanceSource).toContain('createAgentKernel');
     expect(packageLocalRuntimeInstanceSource).toContain('PackageLocalRuntimeAgentKernelFactoryPort');
     expect(packageLocalRuntimeInstanceSource).toContain('PackageLocalRuntimeKernelModelResolverPort');
+    expect(existsSync('packages/agent-sdk/src/session/runtimeKernelModels.ts')).toBe(true);
+    expect(runtimeKernelModelsSource).not.toContain('../../../../src/');
+    expect(runtimeKernelModelsSource).toContain('resolvePackageLocalRuntimeKernelModel');
+    expect(packageLocalRuntimeInstanceSource).toContain('resolvePackageLocalRuntimeKernelModel');
+    expect(packageLocalRuntimeInstanceSource).not.toContain('private resolveAgentKernelModel');
     expect(packageLocalRuntimeInstanceSource).toContain('streamAgentKernelTurn');
     expect(packageLocalRuntimeInstanceSource).toContain('PackageLocalRuntimeAgentKernelPort');
     expect(packageLocalRuntimeInstanceSource).toContain('PackageLocalRuntimeAgentKernelStreamOptions');
