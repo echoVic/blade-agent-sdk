@@ -2,7 +2,9 @@ import {
   createSession as createLegacySession,
   resumeSession as resumeLegacySession,
 } from '../../../../src/session/Session.js';
+import { nanoid } from 'nanoid';
 import type { SessionRuntimeFactory } from './factory.js';
+import { createLegacyDelegateSession } from './legacySessionDelegate.js';
 import type { ResumeOptions, SessionOptions } from './types.js';
 
 type LegacySessionOptions = Parameters<typeof createLegacySession>[0];
@@ -27,10 +29,21 @@ function toLegacyResumeOptions(options: ResumeOptions): LegacyResumeOptions {
 export function createLegacySessionRuntimeFactory(): SessionRuntimeFactory {
   return {
     async create(options) {
-      return createLegacySession(toLegacySessionOptions(options));
+      const legacySession = await createLegacySession(toLegacySessionOptions(options));
+      return createLegacyDelegateSession({
+        delegate: legacySession,
+        options,
+        createTurnId: nanoid,
+      });
     },
     async resume(options) {
-      return resumeLegacySession(toLegacyResumeOptions(options));
+      const legacySession = await resumeLegacySession(toLegacyResumeOptions(options));
+      const { sessionId: _sessionId, ...sessionOptions } = options;
+      return createLegacyDelegateSession({
+        delegate: legacySession,
+        options: sessionOptions,
+        createTurnId: nanoid,
+      });
     },
   };
 }

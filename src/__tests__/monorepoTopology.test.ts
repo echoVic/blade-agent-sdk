@@ -382,6 +382,10 @@ describe('monorepo topology', () => {
       'packages/agent-sdk/src/session/sessionInstance.ts',
       'utf-8',
     );
+    const legacySessionDelegateSource = readFileSync(
+      'packages/agent-sdk/src/session/legacySessionDelegate.ts',
+      'utf-8',
+    );
     const packageLocalRuntimeFactorySource = readFileSync(
       'packages/agent-sdk/src/session/packageLocalRuntimeFactory.ts',
       'utf-8',
@@ -451,6 +455,10 @@ describe('monorepo topology', () => {
     expect(sessionInstanceSource).toContain('this.delegate?.fork');
     expect(sessionInstanceSource).toContain('this.delegate?.mcpConnect');
     expect(sessionInstanceSource).toContain('this.delegate?.getTraces');
+    expect(existsSync('packages/agent-sdk/src/session/legacySessionDelegate.ts')).toBe(true);
+    expect(legacySessionDelegateSource).not.toContain('../../../../src/');
+    expect(legacySessionDelegateSource).toContain('createLegacyDelegateSession');
+    expect(legacySessionDelegateSource).toContain('new PackageLocalSession');
     expect(packageLocalRuntimeFactorySource).not.toContain('../../../../src/');
     expect(packageLocalRuntimeFactorySource).toContain('createPackageLocalSessionRuntimeFactory');
     expect(existsSync('packages/agent-sdk/src/session/packageLocalLegacyRuntimeFactory.ts')).toBe(
@@ -487,6 +495,7 @@ describe('monorepo topology', () => {
     expect(legacySessionAdapterRootImports).toEqual(['../../../../src/session/Session.js']);
     expect(legacySessionAdapterSource).not.toContain('forkSession as forkLegacy');
     expect(legacySessionAdapterSource).not.toContain('prompt as promptLegacy');
+    expect(legacySessionAdapterSource).toContain('createLegacyDelegateSession');
     expect(legacySessionAdapterSource).not.toContain('as never');
     expect(legacySessionAdapterSource).not.toContain('as unknown as ISession');
     expect(sessionConfigSource).not.toContain('../../../../src/session/Session');
