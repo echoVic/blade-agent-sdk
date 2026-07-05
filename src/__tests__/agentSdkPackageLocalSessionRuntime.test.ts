@@ -784,4 +784,88 @@ describe('agent-sdk package-local session runtime shell', () => {
 
     expect(registerAll).not.toHaveBeenCalled();
   });
+
+  it('owns subagent initialization through an injected subagent registry port', () => {
+    const logger = { warn: vi.fn(), debug: vi.fn(), child: vi.fn(() => logger) };
+    const calls: unknown[] = [];
+    const runtime = new PackageLocalSessionRuntime({
+      sessionId: 'session-1',
+      options: {
+        ...options,
+        storagePath: '/workspace/.blade/sessions',
+        agents: {
+          reviewer: {
+            name: 'Review',
+            description: 'Review code',
+            systemPrompt: 'Review safely',
+            allowedTools: ['read'],
+            model: 'gpt-5',
+          },
+          planner: {
+            name: '',
+            description: 'Plan work',
+          },
+        },
+      },
+      bladeConfig,
+      defaultContext: {
+        capabilities: {
+          filesystem: {
+            roots: ['/project'],
+            cwd: '/project',
+          },
+        },
+        environment: {
+          cwd: '/env-project',
+        },
+      },
+      logger,
+      subagentRegistry: {
+        setLogger(input) {
+          calls.push(['setLogger', input]);
+        },
+        setProjectDir(projectDir) {
+          calls.push(['setProjectDir', projectDir]);
+        },
+        loadFromStandardLocations(projectDir, storageRoot) {
+          calls.push(['loadFromStandardLocations', projectDir, storageRoot]);
+        },
+        register(config, options) {
+          calls.push(['register', config, options]);
+        },
+      },
+    });
+
+    runtime.initializeSubagents();
+
+    expect(calls).toEqual([
+      ['setLogger', logger],
+      ['setProjectDir', '/project'],
+      ['loadFromStandardLocations', '/project', '/workspace/.blade'],
+      [
+        'register',
+        {
+          name: 'Review',
+          description: 'Review code',
+          systemPrompt: 'Review safely',
+          tools: ['read'],
+          model: 'gpt-5',
+          source: 'session',
+        },
+        { override: true },
+      ],
+      [
+        'register',
+        {
+          name: 'planner',
+          description: 'Plan work',
+          systemPrompt: undefined,
+          tools: undefined,
+          model: 'inherit',
+          source: 'session',
+        },
+        { override: true },
+      ],
+    ]);
+  });
 });

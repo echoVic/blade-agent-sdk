@@ -1,5 +1,6 @@
 import { basename, dirname } from 'node:path';
 import type { ContextSnapshot, RuntimeContext } from '../runtime/types.js';
+import type { SubagentConfig } from '../subagents/types.js';
 import type { BladeConfig, McpServerConfig } from '../types/common.js';
 import type {
   McpToolInfo,
@@ -23,6 +24,7 @@ export interface PackageLocalSessionRuntimeOptions {
   logger?: PackageLocalRuntimeLoggerPort;
   customToolFactory?: PackageLocalRuntimeCustomToolFactoryPort;
   builtinToolProvider?: PackageLocalRuntimeBuiltinToolProviderPort;
+  subagentRegistry?: PackageLocalRuntimeSubagentRegistryPort;
 }
 
 export interface PackageLocalRuntimeSessionStorePort {
@@ -81,10 +83,13 @@ export interface PackageLocalRuntimeToolSource {
 }
 
 export interface PackageLocalRuntimeLoggerPort {
+  child?(category: unknown): PackageLocalRuntimeLoggerPort;
+  debug?(...args: unknown[]): void;
   warn(...args: unknown[]): void;
 }
 
 export type PackageLocalRuntimeToolDefinition = NonNullable<SessionOptions['tools']>[number];
+export type PackageLocalRuntimeAgentDefinition = NonNullable<SessionOptions['agents']>[string];
 
 export interface PackageLocalRuntimeCustomToolFactoryPort {
   fromDefinition(definition: PackageLocalRuntimeToolDefinition): PackageLocalRuntimeNamedTool;
@@ -99,6 +104,13 @@ export interface PackageLocalRuntimeBuiltinToolContext {
 
 export interface PackageLocalRuntimeBuiltinToolProviderPort {
   getTools(context: PackageLocalRuntimeBuiltinToolContext): Promise<PackageLocalRuntimeNamedTool[]>;
+}
+
+export interface PackageLocalRuntimeSubagentRegistryPort {
+  setLogger(logger: PackageLocalRuntimeLoggerPort): void;
+  setProjectDir(projectDir?: string): void;
+  loadFromStandardLocations(projectDir?: string, storageRoot?: string): number | undefined;
+  register(config: SubagentConfig, options?: { override?: boolean }): void;
 }
 
 export interface PackageLocalRuntimeMcpToolCapability {
@@ -129,6 +141,20 @@ export interface PackageLocalRuntimeNamedTool {
 
 export interface PackageLocalRuntimeMcpTool extends PackageLocalRuntimeNamedTool {
   tags?: readonly string[];
+}
+
+export function packageLocalSubagentConfigFromDefinition(
+  name: string,
+  definition: PackageLocalRuntimeAgentDefinition,
+): SubagentConfig {
+  return {
+    name: definition.name || name,
+    description: definition.description,
+    systemPrompt: definition.systemPrompt,
+    tools: definition.allowedTools,
+    model: definition.model ?? 'inherit',
+    source: 'session',
+  };
 }
 
 export function resolvePackageLocalRuntimeStorageRoot(
@@ -175,6 +201,7 @@ export class PackageLocalSessionRuntime {
   readonly logger: PackageLocalRuntimeLoggerPort;
   readonly customToolFactory?: PackageLocalRuntimeCustomToolFactoryPort;
   readonly builtinToolProvider?: PackageLocalRuntimeBuiltinToolProviderPort;
+  readonly subagentRegistry: PackageLocalRuntimeSubagentRegistryPort;
 
   constructor(options: PackageLocalSessionRuntimeOptions) {
     this.sessionId = options.sessionId;
@@ -193,6 +220,7 @@ export class PackageLocalSessionRuntime {
     this.logger = options.logger ?? createNoopRuntimeLogger();
     this.customToolFactory = options.customToolFactory;
     this.builtinToolProvider = options.builtinToolProvider;
+    this.subagentRegistry = options.subagentRegistry ?? createNoopRuntimeSubagentRegistry();
   }
 
   getConfiguredMcpServers(): Record<string, McpServerConfig | SdkMcpServerHandle> {
@@ -410,6 +438,18 @@ export class PackageLocalSessionRuntime {
       sourceId: 'builtin',
     });
   }
+
+  initializeSubagents(): void {
+    this.subagentRegistry.setLogger(this.logger);
+    this.subagentRegistry.setProjectDir(this.projectPath);
+    this.subagentRegistry.loadFromStandardLocations(this.projectPath, this.storageRoot);
+
+    for (const [name, definition] of Object.entries(this.options.agents ?? {})) {
+      this.subagentRegistry.register(packageLocalSubagentConfigFromDefinition(name, definition), {
+        override: true,
+      });
+    }
+  }
 }
 
 function createNoopRuntimeSessionStore(): PackageLocalRuntimeSessionStorePort {
@@ -458,6 +498,17 @@ function createNoopRuntimeToolCatalog(): PackageLocalRuntimeToolCatalogPort {
 function createNoopRuntimeLogger(): PackageLocalRuntimeLoggerPort {
   return {
     warn() {},
+  };
+}
+
+function createNoopRuntimeSubagentRegistry(): PackageLocalRuntimeSubagentRegistryPort {
+  return {
+    setLogger() {},
+    setProjectDir() {},
+    loadFromStandardLocations() {
+      return 0;
+    },
+    register() {},
   };
 }
 
