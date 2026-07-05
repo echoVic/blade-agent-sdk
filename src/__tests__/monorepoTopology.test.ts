@@ -519,10 +519,9 @@ describe('monorepo topology', () => {
     expect(sessionKernelStreamBridgeSource).toContain('getUserMessageText');
     expect(sessionInstanceSource).not.toContain('../../../../src/');
     expect(sessionInstanceSource).toContain('class PackageLocalSession');
-    expect(sessionInstanceSource).toContain('interface PackageLocalSessionDelegate');
-    expect(sessionInstanceSource).toContain('this.delegate?.fork');
-    expect(sessionInstanceSource).toContain('this.delegate?.mcpConnect');
-    expect(sessionInstanceSource).toContain('this.delegate?.getTraces');
+    expect(sessionInstanceSource).not.toContain('PackageLocalSessionDelegate');
+    expect(sessionInstanceSource).not.toContain('delegate?:');
+    expect(sessionInstanceSource).not.toContain('this.delegate');
     expect(existsSync('packages/agent-sdk/src/session/legacySessionDelegate.ts')).toBe(false);
     expect(packageLocalRuntimeFactorySource).not.toContain('../../../../src/');
     expect(packageLocalRuntimeFactorySource).toContain('createPackageLocalSessionRuntimeFactory');

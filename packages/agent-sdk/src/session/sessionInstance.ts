@@ -41,32 +41,10 @@ export interface PackageLocalSessionOptions {
   initialMessages?: SessionMessage[];
   cleanup?: SessionCloseCleanup;
   runtime?: PackageLocalSessionRuntimePort;
-  delegate?: PackageLocalSessionDelegate;
 }
 
 export interface PackageLocalSessionRuntimePort {
   loadMessages?: () => Promise<SessionMessage[]> | SessionMessage[];
-  mcpServerStatus?: ISession['mcpServerStatus'];
-  mcpConnect?: ISession['mcpConnect'];
-  mcpDisconnect?: ISession['mcpDisconnect'];
-  mcpReconnect?: ISession['mcpReconnect'];
-  mcpListTools?: ISession['mcpListTools'];
-  fork?: ISession['fork'];
-  getLastTrace?: ISession['getLastTrace'];
-  getTraces?: ISession['getTraces'];
-}
-
-export interface PackageLocalSessionDelegate {
-  readonly messages?: SessionMessage[];
-  readonly isClosed?: boolean;
-  close?: () => Promise<void>;
-  abort?: () => void;
-  getDefaultContext?: () => RuntimeContext;
-  setDefaultContext?: (context: RuntimeContext) => void;
-  setPermissionMode?: ISession['setPermissionMode'];
-  setModel?: ISession['setModel'];
-  setMaxTurns?: ISession['setMaxTurns'];
-  supportedModels?: ISession['supportedModels'];
   mcpServerStatus?: ISession['mcpServerStatus'];
   mcpConnect?: ISession['mcpConnect'];
   mcpDisconnect?: ISession['mcpDisconnect'];
@@ -83,7 +61,6 @@ export class PackageLocalSession implements ISession {
   private readonly streamTurn: PackageLocalSessionStreamTurn;
   private readonly cleanup?: SessionCloseCleanup;
   private readonly runtime?: PackageLocalSessionRuntimePort;
-  private readonly delegate?: PackageLocalSessionDelegate;
   private readonly pendingTurns = new PendingTurnBuffer();
   private readonly turnAbort = new TurnAbortController();
   private readonly lifecycle = new SessionLifecycleState({
@@ -100,7 +77,6 @@ export class PackageLocalSession implements ISession {
     this.streamTurn = options.streamTurn;
     this.cleanup = options.cleanup;
     this.runtime = options.runtime;
-    this.delegate = options.delegate;
     this.messagesSnapshot = options.initialMessages ?? [];
     this.defaultContext = options.options.defaultContext ?? {};
     this.turns = new SessionTurnController({
@@ -114,11 +90,11 @@ export class PackageLocalSession implements ISession {
   }
 
   get messages(): SessionMessage[] {
-    return this.delegate?.messages ?? this.messagesSnapshot;
+    return this.messagesSnapshot;
   }
 
   get isClosed(): boolean {
-    return this.lifecycle.isClosed() || this.delegate?.isClosed === true;
+    return this.lifecycle.isClosed();
   }
 
   async send(message: UserMessageContent, options?: SendOptions): Promise<void> {
@@ -148,23 +124,20 @@ export class PackageLocalSession implements ISession {
   async close(): Promise<void> {
     await this.lifecycle.close(async () => {
       await this.cleanup?.();
-      await this.delegate?.close?.();
     });
   }
 
   abort(): void {
     this.lifecycle.abort();
-    this.delegate?.abort?.();
   }
 
   getDefaultContext(): RuntimeContext {
-    return this.delegate?.getDefaultContext?.() ?? this.defaultContext;
+    return this.defaultContext;
   }
 
   setDefaultContext(context: RuntimeContext): void {
     this.lifecycle.assertOpen();
     this.defaultContext = context;
-    this.delegate?.setDefaultContext?.(context);
   }
 
   setPermissionMode(mode: Parameters<ISession['setPermissionMode']>[0]): void {
@@ -173,9 +146,6 @@ export class PackageLocalSession implements ISession {
       ...this.sessionOptions,
       permissionMode: mode,
     };
-    if (this.delegate?.setPermissionMode) {
-      this.delegate.setPermissionMode(mode);
-    }
   }
 
   async setModel(model: Parameters<ISession['setModel']>[0]): Promise<void> {
@@ -184,9 +154,6 @@ export class PackageLocalSession implements ISession {
       ...this.sessionOptions,
       model,
     };
-    if (this.delegate?.setModel) {
-      await this.delegate.setModel(model);
-    }
   }
 
   setMaxTurns(maxTurns: Parameters<ISession['setMaxTurns']>[0]): void {
@@ -195,15 +162,9 @@ export class PackageLocalSession implements ISession {
       ...this.sessionOptions,
       maxTurns,
     };
-    if (this.delegate?.setMaxTurns) {
-      this.delegate.setMaxTurns(maxTurns);
-    }
   }
 
   async supportedModels(): Promise<ModelInfo[]> {
-    if (this.delegate?.supportedModels) {
-      return this.delegate.supportedModels();
-    }
     return [
       {
         id: 'default',
@@ -217,9 +178,6 @@ export class PackageLocalSession implements ISession {
     if (this.runtime?.mcpServerStatus) {
       return this.runtime.mcpServerStatus();
     }
-    if (this.delegate?.mcpServerStatus) {
-      return this.delegate.mcpServerStatus();
-    }
     return [];
   }
 
@@ -227,10 +185,6 @@ export class PackageLocalSession implements ISession {
     this.lifecycle.assertOpen();
     if (this.runtime?.mcpConnect) {
       await this.runtime.mcpConnect(serverName);
-      return;
-    }
-    if (this.delegate?.mcpConnect) {
-      await this.delegate.mcpConnect(serverName);
       return;
     }
     throw new Error('MCP runtime is not configured for this session.');
@@ -242,10 +196,6 @@ export class PackageLocalSession implements ISession {
       await this.runtime.mcpDisconnect(serverName);
       return;
     }
-    if (this.delegate?.mcpDisconnect) {
-      await this.delegate.mcpDisconnect(serverName);
-      return;
-    }
     throw new Error('MCP runtime is not configured for this session.');
   }
 
@@ -255,19 +205,12 @@ export class PackageLocalSession implements ISession {
       await this.runtime.mcpReconnect(serverName);
       return;
     }
-    if (this.delegate?.mcpReconnect) {
-      await this.delegate.mcpReconnect(serverName);
-      return;
-    }
     throw new Error('MCP runtime is not configured for this session.');
   }
 
   async mcpListTools(): Promise<McpToolInfo[]> {
     if (this.runtime?.mcpListTools) {
       return this.runtime.mcpListTools();
-    }
-    if (this.delegate?.mcpListTools) {
-      return this.delegate.mcpListTools();
     }
     return [];
   }
@@ -277,18 +220,15 @@ export class PackageLocalSession implements ISession {
     if (this.runtime?.fork) {
       return this.runtime.fork(options);
     }
-    if (this.delegate?.fork) {
-      return this.delegate.fork(options);
-    }
     throw new Error('Fork runtime is not configured for this session.');
   }
 
   getLastTrace(): AgentTrace | undefined {
-    return this.runtime?.getLastTrace?.() ?? this.delegate?.getLastTrace?.();
+    return this.runtime?.getLastTrace?.();
   }
 
   getTraces(): AgentTrace[] {
-    return this.runtime?.getTraces?.() ?? this.delegate?.getTraces?.() ?? [];
+    return this.runtime?.getTraces?.() ?? [];
   }
 
   async [Symbol.asyncDispose](): Promise<void> {
