@@ -103,6 +103,16 @@ const packageSpecs = [
         message: 'package-local Session declarations must expose local session contracts only',
       },
       {
+        file: 'package/dist/session/factory.d.ts',
+        forbidden: 'fork(options',
+        message: 'session runtime factory declarations must expose only create/resume primitives',
+      },
+      {
+        file: 'package/dist/session/factory.d.ts',
+        forbidden: 'prompt(message',
+        message: 'session runtime factory declarations must expose only create/resume primitives',
+      },
+      {
         file: 'package/dist/session/config.d.ts',
         forbidden: './Session.js',
         message: 'session config declarations must be emitted from package-local session config source',

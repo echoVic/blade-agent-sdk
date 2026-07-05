@@ -399,6 +399,7 @@ describe('monorepo topology', () => {
 
   it('fresh-builds every publishable package before package verification', () => {
     const root = readJson('package.json');
+    const packageVerifierSource = readFileSync('scripts/verify-packages.mjs', 'utf-8');
 
     expect(root.scripts?.['verify:packages']).toContain('pnpm --filter @blade-ai/ai run build');
     expect(root.scripts?.['verify:packages']).toContain('pnpm --filter @blade-ai/agent run build');
@@ -406,5 +407,8 @@ describe('monorepo topology', () => {
       'pnpm --filter @blade-ai/agent-sdk run build',
     );
     expect(root.scripts?.['verify:packages']).toContain('node scripts/verify-packages.mjs');
+    expect(packageVerifierSource).toContain('package/dist/session/factory.d.ts');
+    expect(packageVerifierSource).toContain('fork(options');
+    expect(packageVerifierSource).toContain('prompt(message');
   });
 });

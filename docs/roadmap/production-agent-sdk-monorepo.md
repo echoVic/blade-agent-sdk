@@ -404,6 +404,7 @@ Status:
 - Twenty-second verification-chain increment complete: topology tests now reject public `session/index.ts` regressions where `createSession()` or `resumeSession()` call `sessionRuntimeFactory.create/resume` directly instead of entering the package-local lifecycle facade.
 - Twenty-third verification-chain increment complete: session factory tests now call package-local lifecycle functions directly and prove `resumeSession()`/`forkSession()` reject `persistSession: false` before touching the runtime factory. Topology tests also reject moving those guard strings back into the public `session/index.ts` entry.
 - Twenty-fourth verification-chain increment complete: topology tests now require `SessionRuntimeFactory` and the default runtime factory to stay limited to `create()`/`resume()` primitives, preventing future `fork()` or `prompt()` runtime hooks from bypassing package-local lifecycle ownership.
+- Twenty-fifth verification-chain increment complete: package verification now rejects packed `@blade-ai/agent-sdk` session factory declarations that expose `fork(options)` or `prompt(message)`, so the published `SessionRuntimeFactory` contract remains a narrow `create()`/`resume()` primitive port.
 
 Commit:
 
