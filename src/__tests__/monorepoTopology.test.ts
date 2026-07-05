@@ -530,6 +530,12 @@ describe('monorepo topology', () => {
     expect(packageLocalRuntimeInstanceSource).toContain('createAgentKernel');
     expect(packageLocalRuntimeInstanceSource).toContain('PackageLocalRuntimeAgentKernelFactoryPort');
     expect(packageLocalRuntimeInstanceSource).toContain('PackageLocalRuntimeKernelModelResolverPort');
+    expect(packageLocalRuntimeInstanceSource).toContain('projectKernelEventToStreamMessages');
+    expect(packageLocalRuntimeInstanceSource).toContain(
+      'PackageLocalRuntimeKernelStreamProjectionOptions',
+    );
+    expect(packageLocalRuntimeInstanceSource).toContain('toPackageLocalSessionUsage');
+    expect(packageLocalRuntimeInstanceSource).toContain('toPackageLocalSessionPermissionUpdates');
     expect(existsSync('packages/agent-sdk/src/session/packageLocalLegacyRuntimeFactory.ts')).toBe(
       true,
     );
