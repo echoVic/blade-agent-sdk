@@ -2,14 +2,18 @@ import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
-const packageJson = JSON.parse(readFileSync('package.json', 'utf-8')) as {
+const rootPackageJson = JSON.parse(readFileSync('package.json', 'utf-8')) as {
+  scripts: Record<string, string>;
+};
+
+const sdkPackageJson = JSON.parse(readFileSync('packages/agent-sdk/package.json', 'utf-8')) as {
   exports: Record<string, unknown>;
   scripts: Record<string, string>;
 };
 
 describe('package entrypoints', () => {
   it('declares server-first root and explicit subpath exports', () => {
-    expect(packageJson.exports).toMatchObject({
+    expect(sdkPackageJson.exports).toMatchObject({
       '.': {
         types: './dist/index.d.ts',
         browser: './dist/browser/index.js',
@@ -47,20 +51,20 @@ describe('package entrypoints', () => {
 
   it('has source modules for every public subpath entry', () => {
     for (const file of [
-      'src/core/index.ts',
-      'src/browser/index.ts',
-      'src/browser/server-only-stub.ts',
-      'src/server/index.ts',
-      'src/tools/index.ts',
-      'src/local/index.ts',
-      'src/session/index.ts',
+      'packages/agent-sdk/src/core/index.ts',
+      'packages/agent-sdk/src/browser/index.ts',
+      'packages/agent-sdk/src/browser/server-only-stub.ts',
+      'packages/agent-sdk/src/server/index.ts',
+      'packages/agent-sdk/src/tools/index.ts',
+      'packages/agent-sdk/src/local/index.ts',
+      'packages/agent-sdk/src/session/index.ts',
     ]) {
       expect(existsSync(join(process.cwd(), file)), file).toBe(true);
     }
   });
 
   it('declares the browser/server entrypoint verification script', () => {
-    expect(packageJson.scripts['verify:entrypoints']).toBe(
+    expect(rootPackageJson.scripts['verify:entrypoints']).toBe(
       'pnpm run build && pnpm --filter @blade-ai/agent-sdk run build && node scripts/verify-entrypoints.mjs',
     );
     expect(existsSync(join(process.cwd(), 'scripts/verify-entrypoints.mjs'))).toBe(true);
@@ -81,7 +85,7 @@ describe('package entrypoints', () => {
   });
 
   it('declares production verification scripts for package and release gates', () => {
-    expect(packageJson.scripts).toMatchObject({
+    expect(rootPackageJson.scripts).toMatchObject({
       verify: 'pnpm run lint && pnpm run type-check && pnpm -r run type-check && pnpm run verify:examples && pnpm run verify:boundaries && pnpm run docs:build && pnpm run verify:entrypoints && pnpm run verify:packages && pnpm run verify:release && pnpm run test:unit && pnpm run test:integration',
       'verify:examples': 'tsc -p examples/tsconfig.json --noEmit',
       'verify:packages': 'pnpm --filter @blade-ai/ai run build && pnpm --filter @blade-ai/agent run build && pnpm --filter @blade-ai/agent-sdk run build && node scripts/verify-packages.mjs',

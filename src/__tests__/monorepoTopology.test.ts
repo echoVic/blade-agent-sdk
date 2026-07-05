@@ -5,6 +5,8 @@ import { describe, expect, it } from 'vitest';
 interface PackageJson {
   name?: string;
   private?: boolean;
+  main?: string;
+  types?: string;
   workspaces?: unknown;
   exports?: Record<string, unknown>;
   scripts?: Record<string, string>;
@@ -28,6 +30,9 @@ describe('monorepo topology', () => {
     const workspace = readFileSync('pnpm-workspace.yaml', 'utf-8');
 
     expect(root.private).toBe(true);
+    expect(root.main).toBeUndefined();
+    expect(root.types).toBeUndefined();
+    expect(root.exports).toBeUndefined();
     expect(root.files).toBeUndefined();
     expect(root.publishConfig).toBeUndefined();
     expect(workspace).toContain('packages:');

@@ -12,45 +12,6 @@
     "node": ">=22.14.0"
   },
   "packageManager": "pnpm@10.6.0",
-  "main": "./dist/index.js",
-  "types": "./dist/index.d.ts",
-  "exports": {
-    ".": {
-      "types": "./dist/index.d.ts",
-      "browser": "./dist/browser/index.js",
-      "import": "./dist/index.js"
-    },
-    "./core": {
-      "types": "./dist/core/index.d.ts",
-      "import": "./dist/core/index.js"
-    },
-    "./browser": {
-      "types": "./dist/browser/index.d.ts",
-      "import": "./dist/browser/index.js"
-    },
-    "./server": {
-      "types": "./dist/server/index.d.ts",
-      "browser": "./dist/browser/server-only-stub.js",
-      "import": "./dist/server/index.js"
-    },
-    "./session": {
-      "types": "./dist/session/index.d.ts",
-      "browser": "./dist/browser/server-only-stub.js",
-      "import": "./dist/session/index.js"
-    },
-    "./tools": {
-      "types": "./dist/tools/index.d.ts",
-      "import": "./dist/tools/index.js"
-    },
-    "./local": {
-      "types": "./dist/local/index.d.ts",
-      "browser": "./dist/browser/server-only-stub.js",
-      "import": "./dist/local/index.js"
-    },
-    "./package.json": {
-      "default": "./package.json"
-    }
-  },
   "scripts": {
     "build": "pnpm --filter @blade-ai/ai run build && pnpm --filter @blade-ai/agent run build && tsup && tsc -p tsconfig.build.json",
     "test": "vitest run",
