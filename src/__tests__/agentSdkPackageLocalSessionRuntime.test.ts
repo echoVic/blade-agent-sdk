@@ -243,4 +243,67 @@ describe('agent-sdk package-local session runtime shell', () => {
     ]);
     expect(getCapabilities).toHaveBeenCalledTimes(2);
   });
+
+  it('owns MCP tool list projection through package-local capabilities', async () => {
+    const runtime = new PackageLocalSessionRuntime({
+      sessionId: 'session-1',
+      options,
+      bladeConfig,
+      defaultContext: {},
+      mcpRegistry: {
+        disconnectAll: vi.fn(async () => {}),
+        getCapabilities: vi.fn(async () => [
+          {
+            name: 'server-a',
+            status: 'connected' as const,
+            auth: {
+              enabled: false,
+            },
+            health: {
+              enabled: false,
+              status: 'disabled' as const,
+            },
+            tools: [
+              {
+                name: 'search',
+                description: 'Search docs',
+                inputSchema: {},
+              },
+            ],
+          },
+          {
+            name: 'server-b',
+            status: 'disconnected' as const,
+            auth: {
+              enabled: false,
+            },
+            health: {
+              enabled: false,
+              status: 'disabled' as const,
+            },
+            tools: [
+              {
+                name: 'read',
+                description: 'Read docs',
+                inputSchema: {},
+              },
+            ],
+          },
+        ]),
+      },
+    });
+
+    await expect(runtime.mcpListTools()).resolves.toEqual([
+      {
+        name: 'search',
+        description: 'Search docs',
+        serverName: 'server-a',
+      },
+      {
+        name: 'read',
+        description: 'Read docs',
+        serverName: 'server-b',
+      },
+    ]);
+  });
 });

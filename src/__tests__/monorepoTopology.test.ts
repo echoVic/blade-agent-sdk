@@ -479,6 +479,7 @@ describe('monorepo topology', () => {
     expect(packageLocalRuntimeInstanceSource).toContain('PackageLocalRuntimeMcpRegistryPort');
     expect(packageLocalRuntimeInstanceSource).toContain('mcpCapabilities');
     expect(packageLocalRuntimeInstanceSource).toContain('mcpServerStatus');
+    expect(packageLocalRuntimeInstanceSource).toContain('mcpListTools');
     expect(packageLocalRuntimeInstanceSource).toContain('PackageLocalRuntimeMcpServerCapability');
     expect(existsSync('packages/agent-sdk/src/session/packageLocalLegacyRuntimeFactory.ts')).toBe(
       true,

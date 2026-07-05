@@ -2,6 +2,7 @@ import { basename, dirname } from 'node:path';
 import type { ContextSnapshot, RuntimeContext } from '../runtime/types.js';
 import type { BladeConfig, McpServerConfig } from '../types/common.js';
 import type {
+  McpToolInfo,
   McpServerStatus,
   SdkMcpServerHandle,
   SessionHookEvent,
@@ -159,6 +160,16 @@ export class PackageLocalSessionRuntime {
       connectedAt: capability.connectedAt,
       error: capability.error,
     }));
+  }
+
+  async mcpListTools(): Promise<McpToolInfo[]> {
+    return (await this.mcpCapabilities()).flatMap((capability) =>
+      capability.tools.map((tool) => ({
+        name: tool.name,
+        description: tool.description,
+        serverName: capability.name,
+      })),
+    );
   }
 }
 
