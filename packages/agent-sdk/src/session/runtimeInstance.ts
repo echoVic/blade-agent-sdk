@@ -17,7 +17,6 @@ import {
   PermissionMode,
   type BladeConfig,
   type McpServerConfig,
-  type PermissionsConfig,
 } from '../types/common.js';
 import type { PermissionHandler } from '../types/permissions.js';
 import type { TraceRecorder } from '../observability/TraceRecorder.js';
@@ -44,6 +43,10 @@ import {
   type PackageLocalRuntimeHookManagerPort,
   type PackageLocalRuntimeHookRuntimePort,
 } from './runtimeHooks.js';
+import {
+  createPackageLocalRuntimeExecutionPipeline,
+  type PackageLocalRuntimeExecutionPipelineFactoryPort,
+} from './runtimeExecutionPipeline.js';
 import {
   resolvePackageLocalRuntimeKernelModel,
   type PackageLocalRuntimeKernelModelResolverPort,
@@ -85,6 +88,10 @@ export type {
   PackageLocalRuntimeHookManagerPort,
   PackageLocalRuntimeHookRuntimePort,
 } from './runtimeHooks.js';
+export type {
+  PackageLocalRuntimeExecutionPipelineCreateOptions,
+  PackageLocalRuntimeExecutionPipelineFactoryPort,
+} from './runtimeExecutionPipeline.js';
 
 export interface PackageLocalSessionRuntimeOptions {
   sessionId: SessionId;
@@ -221,19 +228,6 @@ export type {
 
 export interface PackageLocalRuntimeBackgroundAgentManagerPort {
   [operation: string]: unknown;
-}
-
-export interface PackageLocalRuntimeExecutionPipelineCreateOptions {
-  permissionConfig: Required<PermissionsConfig>;
-  permissionMode: PermissionMode;
-  maxHistorySize: number;
-  permissionHandler: PermissionHandler | undefined;
-  logger: PackageLocalRuntimeLoggerPort;
-  toolCatalog: PackageLocalRuntimeToolCatalogPort;
-}
-
-export interface PackageLocalRuntimeExecutionPipelineFactoryPort {
-  create(options: PackageLocalRuntimeExecutionPipelineCreateOptions): unknown;
 }
 
 export interface PackageLocalRuntimeKernelToolPortCreateOptions {
@@ -659,20 +653,13 @@ export class PackageLocalSessionRuntime {
       return this.executionPipeline;
     }
 
-    const permissionConfig: Required<PermissionsConfig> = {
-      allow: [],
-      ask: [],
-      deny: [],
-      ...this.bladeConfig.permissions,
-    };
-
-    this.executionPipeline = this.executionPipelineFactory.create({
-      permissionConfig,
-      permissionMode: this.options.permissionMode ?? PermissionMode.DEFAULT,
-      maxHistorySize: 1000,
+    this.executionPipeline = createPackageLocalRuntimeExecutionPipeline({
+      bladeConfig: this.bladeConfig,
+      permissionMode: this.options.permissionMode,
       permissionHandler: this.createPermissionHandler(),
       logger: this.logger,
       toolCatalog: this.toolCatalog,
+      executionPipelineFactory: this.executionPipelineFactory,
     });
     this.executionPipelineCreated = true;
     return this.executionPipeline;

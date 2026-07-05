@@ -480,6 +480,11 @@ describe('monorepo topology', () => {
     const runtimeHooksSource = existsSync('packages/agent-sdk/src/session/runtimeHooks.ts')
       ? readFileSync('packages/agent-sdk/src/session/runtimeHooks.ts', 'utf-8')
       : '';
+    const runtimeExecutionPipelineSource = existsSync(
+      'packages/agent-sdk/src/session/runtimeExecutionPipeline.ts',
+    )
+      ? readFileSync('packages/agent-sdk/src/session/runtimeExecutionPipeline.ts', 'utf-8')
+      : '';
     const runtimeKernelModelsSource = existsSync(
       'packages/agent-sdk/src/session/runtimeKernelModels.ts',
     )
@@ -653,6 +658,15 @@ describe('monorepo topology', () => {
     expect(packageLocalRuntimeInstanceSource).toContain('createExecutionPipeline');
     expect(packageLocalRuntimeInstanceSource).toContain(
       'PackageLocalRuntimeExecutionPipelineFactoryPort',
+    );
+    expect(existsSync('packages/agent-sdk/src/session/runtimeExecutionPipeline.ts')).toBe(true);
+    expect(runtimeExecutionPipelineSource).not.toContain('../../../../src/');
+    expect(runtimeExecutionPipelineSource).toContain('createPackageLocalRuntimeExecutionPipeline');
+    expect(packageLocalRuntimeInstanceSource).toContain('createPackageLocalRuntimeExecutionPipeline');
+    expect(packageLocalRuntimeInstanceSource).not.toContain('allow: []');
+    expect(packageLocalRuntimeInstanceSource).not.toContain('maxHistorySize: 1000');
+    expect(packageLocalRuntimeInstanceSource).not.toContain(
+      'this.executionPipelineFactory.create({',
     );
     expect(packageLocalRuntimeInstanceSource).toContain('getAgentRuntimeDeps');
     expect(packageLocalRuntimeInstanceSource).toContain('PackageLocalAgentRuntimeDeps');

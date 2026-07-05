@@ -1,0 +1,85 @@
+import { describe, expect, it, vi } from 'vitest';
+import { createPackageLocalRuntimeExecutionPipeline } from '../../packages/agent-sdk/src/session/runtimeExecutionPipeline.js';
+import type { PackageLocalRuntimeExecutionPipelineFactoryPort } from '../../packages/agent-sdk/src/session/runtimeExecutionPipeline.js';
+import { PermissionMode, type BladeConfig } from '../../packages/agent-sdk/src/types/common.js';
+
+const bladeConfig: BladeConfig = {
+  currentModelId: 'default',
+  temperature: 0.7,
+  models: [],
+};
+
+describe('agent-sdk package-local runtime execution pipeline helpers', () => {
+  it('creates a pipeline with default permission config and permission mode', () => {
+    const pipeline = { id: 'pipeline' };
+    const factory: PackageLocalRuntimeExecutionPipelineFactoryPort = {
+      create: vi.fn(() => pipeline),
+    };
+    const logger = { warn: vi.fn() };
+    const toolCatalog = {};
+
+    const created = createPackageLocalRuntimeExecutionPipeline({
+      bladeConfig,
+      executionPipelineFactory: factory,
+      permissionHandler: undefined,
+      logger,
+      toolCatalog,
+    });
+
+    expect(created).toBe(pipeline);
+    expect(factory.create).toHaveBeenCalledWith({
+      permissionConfig: {
+        allow: [],
+        ask: [],
+        deny: [],
+      },
+      permissionMode: PermissionMode.DEFAULT,
+      maxHistorySize: 1000,
+      permissionHandler: undefined,
+      logger,
+      toolCatalog,
+    });
+  });
+
+  it('passes configured permissions, mode, handler, logger, and tool catalog to the factory', () => {
+    const pipeline = { id: 'configured-pipeline' };
+    const factory: PackageLocalRuntimeExecutionPipelineFactoryPort = {
+      create: vi.fn(() => pipeline),
+    };
+    const permissionHandler = vi.fn(async () => ({ behavior: 'allow' as const }));
+    const logger = { warn: vi.fn(), debug: vi.fn() };
+    const toolCatalog = {
+      registerAll: vi.fn(),
+    };
+
+    const created = createPackageLocalRuntimeExecutionPipeline({
+      bladeConfig: {
+        ...bladeConfig,
+        permissions: {
+          allow: ['Read'],
+          ask: ['Write'],
+          deny: ['Bash'],
+        },
+      },
+      permissionMode: PermissionMode.YOLO,
+      executionPipelineFactory: factory,
+      permissionHandler,
+      logger,
+      toolCatalog,
+    });
+
+    expect(created).toBe(pipeline);
+    expect(factory.create).toHaveBeenCalledWith({
+      permissionConfig: {
+        allow: ['Read'],
+        ask: ['Write'],
+        deny: ['Bash'],
+      },
+      permissionMode: PermissionMode.YOLO,
+      maxHistorySize: 1000,
+      permissionHandler,
+      logger,
+      toolCatalog,
+    });
+  });
+});
