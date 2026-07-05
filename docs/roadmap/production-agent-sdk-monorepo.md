@@ -362,6 +362,7 @@ Status:
 - Forty-ninth adapter increment complete: the temporary legacy root session adapter no longer imports legacy root branded type helpers. The resume bridge now casts only the `sessionId` field against the inferred legacy resume option type, leaving `src/session/Session.ts` as the adapter's only remaining root implementation import.
 - Fiftieth adapter increment complete: topology protection for the temporary legacy root session adapter now uses an explicit root-import allowlist. Until the package-local `Session` runtime fully replaces the adapter, the adapter may only import the legacy root `src/session/Session.ts` entrypoint and cannot grow new direct dependencies on broader root implementation modules.
 - Fifty-first adapter increment complete: `@blade-ai/agent-sdk/session` now owns the pure user-message content helpers locally. Text extraction, image counting, and JSON-or-string tool argument parsing live in `packages/agent-sdk/src/session/content.ts` against package-local contracts, preparing the package-local `Session` runtime to stop depending on private helpers in legacy root `src/session/Session.ts`.
+- Fifty-second adapter increment complete: `@blade-ai/agent-sdk/session` now owns the pending-turn state machine locally. `PendingTurnBuffer` preserves the session-first `send()` before `stream()` contract, rejects overlapping pending messages, consumes turns atomically, and exposes cleanup for close/abort paths without depending on legacy root `Session` fields.
 
 ### Phase 5: Production Verification Chain
 
@@ -419,6 +420,7 @@ Status:
 - Thirtieth verification-chain increment complete: topology tests now reject direct imports from legacy root `src/types/branded.ts` inside the temporary session adapter, keeping the adapter's remaining root dependency focused on the legacy `Session` entrypoint.
 - Thirty-first verification-chain increment complete: topology tests now extract every root `src/*` import from the temporary legacy session adapter and compare it to a single allowed import list, preventing future piecemeal legacy root dependencies from sneaking into the session bridge.
 - Thirty-second verification-chain increment complete: focused package-local tests now cover session content helper behavior for string prompts, multimodal text/image parts, and JSON fallback parsing; topology also requires the helper source to remain package-local without root imports.
+- Thirty-third verification-chain increment complete: focused package-local tests now cover pending-turn lifecycle behavior for missing sends, single-message consumption, overlapping send rejection, and cleanup. Topology also requires the pending-turn source to remain package-local without root imports.
 
 Commit:
 

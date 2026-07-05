@@ -328,6 +328,10 @@ describe('monorepo topology', () => {
       'utf-8',
     );
     const sessionContentSource = readFileSync('packages/agent-sdk/src/session/content.ts', 'utf-8');
+    const sessionPendingTurnSource = readFileSync(
+      'packages/agent-sdk/src/session/pendingTurn.ts',
+      'utf-8',
+    );
     const sessionFactorySource = readFileSync('packages/agent-sdk/src/session/factory.ts', 'utf-8');
     const sessionLifecycleSource = readFileSync('packages/agent-sdk/src/session/Session.ts', 'utf-8');
     const legacySessionAdapterSource = readFileSync(
@@ -342,8 +346,10 @@ describe('monorepo topology', () => {
     expect(existsSync('packages/agent-sdk/src/session/legacySessionAdapter.ts')).toBe(true);
     expect(existsSync('packages/agent-sdk/src/session/config.ts')).toBe(true);
     expect(existsSync('packages/agent-sdk/src/session/content.ts')).toBe(true);
+    expect(existsSync('packages/agent-sdk/src/session/pendingTurn.ts')).toBe(true);
     expect(existsSync('packages/agent-sdk/src/session/store.ts')).toBe(true);
     expect(sessionContentSource).not.toContain('../../../../src/');
+    expect(sessionPendingTurnSource).not.toContain('../../../../src/');
     expect(sessionRuntimeFactorySource).not.toContain('../../../../src/session/Session.js');
     expect(sessionRuntimeFactorySource).toContain("from './Session.js'");
     expect(sessionRuntimeFactorySource).not.toContain("from './legacySessionAdapter.js'");
