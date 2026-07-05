@@ -7,7 +7,15 @@
     "emitDeclarationOnly": true,
     "declarationMap": false,
     "paths": {
-      "@/*": ["../../src/*"]
+      "@blade-ai/ai": ["../ai/dist/index.d.ts"],
+      "@blade-ai/ai/chat": ["../ai/dist/chat/index.d.ts"],
+      "@blade-ai/ai/deepseek": ["../ai/dist/deepseek/index.d.ts"],
+      "@blade-ai/ai/model": ["../ai/dist/model/index.d.ts"],
+      "@blade-ai/ai/providers/openai-compatible": [
+        "../ai/dist/providers/openai-compatible/index.d.ts"
+      ],
+      "@blade-ai/ai/providers/vercel": ["../ai/dist/providers/vercel/index.d.ts"],
+      "@blade-ai/ai/retry": ["../ai/dist/retry/index.d.ts"]
     }
   },
   "files": [

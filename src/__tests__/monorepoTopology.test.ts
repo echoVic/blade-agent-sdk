@@ -120,6 +120,18 @@ describe('monorepo topology', () => {
     expect(overlayScript).toContain('types/permissions.d.ts.map');
   });
 
+  it('emits agent-sdk public declarations from built package declarations', () => {
+    const publicDts = readJson('packages/agent-sdk/tsconfig.public-dts.json');
+
+    expect(publicDts.compilerOptions?.paths).toMatchObject({
+      '@blade-ai/ai': ['../ai/dist/index.d.ts'],
+      '@blade-ai/ai/deepseek': ['../ai/dist/deepseek/index.d.ts'],
+    });
+    expect(JSON.stringify(publicDts.compilerOptions?.paths)).not.toContain('../../src');
+    expect(JSON.stringify(publicDts.compilerOptions?.paths)).not.toContain('../ai/src');
+    expect(JSON.stringify(publicDts.compilerOptions?.paths)).not.toContain('../agent/src');
+  });
+
   it('builds the publishable agent-sdk package from its own package manifest', () => {
     const config = readFileSync('packages/agent-sdk/tsup.config.ts', 'utf-8');
 
