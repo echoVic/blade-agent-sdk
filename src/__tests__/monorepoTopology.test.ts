@@ -394,6 +394,10 @@ describe('monorepo topology', () => {
       'packages/agent-sdk/src/session/packageLocalLegacyRuntimeFactory.ts',
       'utf-8',
     );
+    const packageLocalRuntimeInstanceSource = readFileSync(
+      'packages/agent-sdk/src/session/runtimeInstance.ts',
+      'utf-8',
+    );
     const sessionFactorySource = readFileSync('packages/agent-sdk/src/session/factory.ts', 'utf-8');
     const sessionLifecycleSource = readFileSync('packages/agent-sdk/src/session/Session.ts', 'utf-8');
     const legacySessionAdapterSource = readFileSync(
@@ -421,6 +425,7 @@ describe('monorepo topology', () => {
     expect(existsSync('packages/agent-sdk/src/session/promptSubmit.ts')).toBe(true);
     expect(existsSync('packages/agent-sdk/src/session/legacyStreamRunner.ts')).toBe(true);
     expect(existsSync('packages/agent-sdk/src/session/sessionInstance.ts')).toBe(true);
+    expect(existsSync('packages/agent-sdk/src/session/runtimeInstance.ts')).toBe(true);
     expect(existsSync('packages/agent-sdk/src/session/packageLocalRuntimeFactory.ts')).toBe(true);
     expect(existsSync('packages/agent-sdk/src/session/store.ts')).toBe(true);
     expect(sessionContentSource).not.toContain('../../../../src/');
@@ -461,6 +466,10 @@ describe('monorepo topology', () => {
     expect(legacySessionDelegateSource).toContain('new PackageLocalSession');
     expect(packageLocalRuntimeFactorySource).not.toContain('../../../../src/');
     expect(packageLocalRuntimeFactorySource).toContain('createPackageLocalSessionRuntimeFactory');
+    expect(packageLocalRuntimeInstanceSource).not.toContain('../../../../src/');
+    expect(packageLocalRuntimeInstanceSource).toContain('class PackageLocalSessionRuntime');
+    expect(packageLocalRuntimeInstanceSource).toContain('resolvePackageLocalRuntimeStorageRoot');
+    expect(packageLocalRuntimeInstanceSource).toContain('isPackageLocalSdkMcpServerHandle');
     expect(existsSync('packages/agent-sdk/src/session/packageLocalLegacyRuntimeFactory.ts')).toBe(
       true,
     );

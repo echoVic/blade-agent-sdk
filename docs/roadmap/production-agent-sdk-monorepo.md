@@ -386,6 +386,7 @@ Status:
 - Seventy-third adapter increment complete: the temporary legacy session adapter no longer statically imports the legacy root `src/session/Session.ts` module. It keeps the remaining compatibility dependency behind a cached dynamic import used only by create/resume, further narrowing the package-local session entry's static runtime closure while the adapter is being replaced.
 - Seventy-fourth adapter increment complete: the temporary legacy session adapter now exposes an explicit `LegacySessionModulePort` and accepts an injected `loadLegacySessionModule()` plus turn-id factory. The default adapter still dynamically loads the root legacy session module, but the compatibility dependency is now a narrow package-local port that can be replaced by a package-local driver without changing the public session factory.
 - Seventy-fifth adapter increment complete: the default package-local session runtime factory now accepts an injected legacy runtime factory loader while preserving the default lazy adapter import. This moves the final compatibility boundary one level outward, so future server/local assembly can replace the temporary legacy adapter without changing package-local session lifecycle code.
+- Seventy-sixth adapter increment complete: `@blade-ai/agent-sdk/session` now owns the first package-local runtime shell. `PackageLocalSessionRuntime` derives session storage root, project cwd, hooks, and configured MCP server state locally, and `isPackageLocalSdkMcpServerHandle()` replaces the root runtime's in-process MCP handle guard as the package-local runtime migration anchor.
 
 ### Phase 5: Production Verification Chain
 
@@ -468,6 +469,7 @@ Status:
 - Fifty-fifth verification-chain increment complete: topology now forbids static root `from '../../../../src/*'` imports inside the temporary legacy session adapter and requires the remaining root session dependency to stay behind an explicit dynamic import until the adapter is removed.
 - Fifty-sixth verification-chain increment complete: focused adapter tests now cover creating and resuming package-local sessions through an injected `LegacySessionModulePort`, proving the temporary adapter can be exercised without loading the legacy root runtime. Topology also rejects root-type-derived adapter option shapes, keeping the remaining root dependency at the dynamic default loader boundary.
 - Fifty-seventh verification-chain increment complete: focused session factory tests now cover composing the default lifecycle around an injected legacy runtime factory loader, proving the outer package-local factory can be exercised without loading the temporary legacy adapter. Topology also requires the default factory injection seam to remain present.
+- Fifty-eighth verification-chain increment complete: focused package-local runtime tests now cover storage-root normalization, project cwd derivation, hook callback ownership, and in-process MCP handle detection without importing root `src/session/SessionRuntime.ts`. Topology also requires the runtime shell to remain package-local and root-import-free.
 
 Commit:
 
