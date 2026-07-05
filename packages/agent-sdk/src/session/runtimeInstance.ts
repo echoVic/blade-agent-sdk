@@ -14,6 +14,12 @@ export interface PackageLocalSessionRuntimeOptions {
   options: SessionOptions;
   bladeConfig: BladeConfig;
   defaultContext: RuntimeContext;
+  sessionStore?: PackageLocalRuntimeSessionStorePort;
+}
+
+export interface PackageLocalRuntimeSessionStorePort {
+  createSession(sessionId: SessionId): Promise<void>;
+  loadSession(sessionId: SessionId): Promise<boolean>;
 }
 
 export function resolvePackageLocalRuntimeStorageRoot(
@@ -53,6 +59,7 @@ export class PackageLocalSessionRuntime {
   readonly storageRoot?: string;
   readonly projectPath?: string;
   readonly hookCallbacks: Partial<Record<SessionHookEvent, HookCallback[]>>;
+  readonly sessionStore: PackageLocalRuntimeSessionStorePort;
 
   constructor(options: PackageLocalSessionRuntimeOptions) {
     this.sessionId = options.sessionId;
@@ -64,9 +71,30 @@ export class PackageLocalSessionRuntime {
       resolvePackageLocalRuntimeStorageRoot(options.options.storagePath);
     this.projectPath = getRuntimeContextCwd(options.defaultContext);
     this.hookCallbacks = options.options.hooks ?? {};
+    this.sessionStore = options.sessionStore ?? createNoopRuntimeSessionStore();
   }
 
   getConfiguredMcpServers(): Record<string, McpServerConfig | SdkMcpServerHandle> {
     return this.options.mcpServers ?? {};
   }
+
+  async ensureSessionCreated(): Promise<void> {
+    await this.sessionStore.createSession(this.sessionId);
+  }
+
+  async ensureSessionLoaded(): Promise<void> {
+    const loaded = await this.sessionStore.loadSession(this.sessionId);
+    if (!loaded) {
+      await this.sessionStore.createSession(this.sessionId);
+    }
+  }
+}
+
+function createNoopRuntimeSessionStore(): PackageLocalRuntimeSessionStorePort {
+  return {
+    async createSession() {},
+    async loadSession() {
+      return false;
+    },
+  };
 }

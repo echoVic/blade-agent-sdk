@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import {
   isPackageLocalSdkMcpServerHandle,
   PackageLocalSessionRuntime,
@@ -79,5 +79,44 @@ describe('agent-sdk package-local session runtime shell', () => {
       }),
     ).toBe(false);
     expect(isPackageLocalSdkMcpServerHandle(null)).toBe(false);
+  });
+
+  it('owns session create and load lifecycle through an injected store port', async () => {
+    const calls: string[] = [];
+    const runtime = new PackageLocalSessionRuntime({
+      sessionId: 'session-1',
+      options,
+      bladeConfig,
+      defaultContext: {},
+      sessionStore: {
+        createSession: vi.fn(async (sessionId) => {
+          calls.push(`create:${sessionId}`);
+        }),
+        loadSession: vi.fn(async (sessionId) => {
+          calls.push(`load:${sessionId}`);
+          return sessionId === 'existing-session';
+        }),
+      },
+    });
+
+    await runtime.ensureSessionCreated();
+    await runtime.ensureSessionLoaded();
+
+    const resumedRuntime = new PackageLocalSessionRuntime({
+      sessionId: 'existing-session',
+      options,
+      bladeConfig,
+      defaultContext: {},
+      sessionStore: runtime.sessionStore,
+    });
+
+    await resumedRuntime.ensureSessionLoaded();
+
+    expect(calls).toEqual([
+      'create:session-1',
+      'load:session-1',
+      'create:session-1',
+      'load:existing-session',
+    ]);
   });
 });
