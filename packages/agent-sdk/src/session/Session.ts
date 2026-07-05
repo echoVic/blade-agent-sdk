@@ -21,6 +21,11 @@ export async function resumeSession(
   runtime: SessionRuntimeFactory,
   options: ResumeOptions,
 ): Promise<ISession> {
+  if (options.persistSession === false) {
+    throw new Error(
+      'resumeSession() requires session persistence. Remove persistSession: false or use createSession().',
+    );
+  }
   return runtime.resume(options);
 }
 
@@ -28,6 +33,11 @@ export async function forkSession(
   runtime: SessionRuntimeFactory,
   options: ForkOptions,
 ): Promise<ISession> {
+  if (options.persistSession === false) {
+    throw new Error(
+      'forkSession() requires session persistence. Remove persistSession: false and call session.fork() on a live session instead.',
+    );
+  }
   const { messageId } = options;
   const sourceSession = await runtime.resume(options);
 

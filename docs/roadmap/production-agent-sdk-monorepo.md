@@ -353,6 +353,7 @@ Status:
 - Fortieth adapter increment complete: `@blade-ai/agent-sdk/session` now owns the public `prompt()` lifecycle locally. The package-local lifecycle creates a session through the injected factory, sends the user message, consumes stream events into `PromptResult` tool calls, usage, duration, and turn count, and closes the session in a `finally` block; the legacy adapter no longer imports the root `prompt()` helper.
 - Forty-first adapter increment complete: `@blade-ai/agent-sdk/session` now owns the public `forkSession()` lifecycle locally. The package-local lifecycle resumes the source session through the injected factory, calls the live session's `fork({ messageId })`, and closes the source session in a `finally` block; the legacy adapter no longer imports the root `forkSession()` helper.
 - Forty-second adapter increment complete: the public `@blade-ai/agent-sdk/session` entry now routes all four session-first API functions (`createSession`, `resumeSession`, `forkSession`, and `prompt`) through package-local lifecycle functions in `src/session/Session.ts`. `createSession()` and `resumeSession()` remain thin wrappers over the injected runtime primitive for now, but the public entry no longer bypasses the package-local lifecycle boundary.
+- Forty-third adapter increment complete: `@blade-ai/agent-sdk/session` now owns the `persistSession: false` resume/fork guards inside the package-local lifecycle facade instead of the public entry wrapper. The public session entry now only injects the configured runtime factory into `createSession`, `resumeSession`, `forkSession`, and `prompt`, while lifecycle invariants live with the package-local session control flow.
 
 ### Phase 5: Production Verification Chain
 
@@ -400,6 +401,7 @@ Status:
 - Twentieth verification-chain increment complete: session factory tests now prove package-local `prompt()` is composed from `create`/`send`/`stream`/`close` instead of delegating to `SessionRuntimeFactory.prompt()`, and topology tests reject reintroducing the root `prompt` import in the legacy session adapter.
 - Twenty-first verification-chain increment complete: session factory tests now prove package-local `forkSession()` is composed from `resume` plus the live session's `fork()` and source-session cleanup instead of delegating to `SessionRuntimeFactory.fork()`, and topology tests reject reintroducing the root `forkSession` import in the legacy session adapter.
 - Twenty-second verification-chain increment complete: topology tests now reject public `session/index.ts` regressions where `createSession()` or `resumeSession()` call `sessionRuntimeFactory.create/resume` directly instead of entering the package-local lifecycle facade.
+- Twenty-third verification-chain increment complete: session factory tests now call package-local lifecycle functions directly and prove `resumeSession()`/`forkSession()` reject `persistSession: false` before touching the runtime factory. Topology tests also reject moving those guard strings back into the public `session/index.ts` entry.
 
 Commit:
 

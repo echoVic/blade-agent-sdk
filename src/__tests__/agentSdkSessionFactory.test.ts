@@ -6,6 +6,10 @@ import {
   resumeSession,
   setSessionRuntimeFactory,
 } from '../../packages/agent-sdk/src/session/index.js';
+import {
+  forkSession as runForkLifecycle,
+  resumeSession as runResumeLifecycle,
+} from '../../packages/agent-sdk/src/session/Session.js';
 import type {
   ISession,
   SessionOptions,
@@ -225,5 +229,37 @@ describe('agent-sdk session runtime factory', () => {
     }
 
     expect(calls).toEqual(['resume:old', 'session-fork:m1', 'source-close']);
+  });
+
+  it('rejects persistence-disabled resume and fork inside the package-local lifecycle', async () => {
+    const calls: string[] = [];
+    const runtime = {
+      async create() {
+        throw new Error('create should not be called');
+      },
+      async resume() {
+        calls.push('resume');
+        return createFakeSession('resumed');
+      },
+      async fork() {
+        throw new Error('runtime fork should not be called');
+      },
+      async prompt() {
+        throw new Error('prompt should not be called');
+      },
+    };
+
+    await expect(
+      runResumeLifecycle(runtime, { ...options, sessionId: 'old', persistSession: false }),
+    ).rejects.toThrow(
+      'resumeSession() requires session persistence. Remove persistSession: false or use createSession().',
+    );
+    await expect(
+      runForkLifecycle(runtime, { ...options, sessionId: 'old', persistSession: false }),
+    ).rejects.toThrow(
+      'forkSession() requires session persistence. Remove persistSession: false and call session.fork() on a live session instead.',
+    );
+
+    expect(calls).toEqual([]);
   });
 });

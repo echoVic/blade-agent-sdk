@@ -346,6 +346,10 @@ describe('monorepo topology', () => {
     expect(sessionSource).toContain('resumeSession as runResumeLifecycle');
     expect(sessionSource).not.toContain('return sessionRuntimeFactory.create(options)');
     expect(sessionSource).not.toContain('return sessionRuntimeFactory.resume(options)');
+    expect(sessionSource).not.toContain('resumeSession() requires session persistence');
+    expect(sessionSource).not.toContain('forkSession() requires session persistence');
+    expect(sessionLifecycleSource).toContain('resumeSession() requires session persistence');
+    expect(sessionLifecycleSource).toContain('forkSession() requires session persistence');
     expect(sessionLifecycleSource).not.toContain('../../../../src/session/Session.js');
     expect(legacySessionAdapterSource).toContain('../../../../src/session/Session.js');
     expect(legacySessionAdapterSource).not.toContain('forkSession as forkLegacy');

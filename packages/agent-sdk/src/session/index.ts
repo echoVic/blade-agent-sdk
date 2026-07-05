@@ -81,20 +81,10 @@ export async function createSession(options: SessionOptions): Promise<ISession> 
 }
 
 export async function resumeSession(options: ResumeOptions): Promise<ISession> {
-  if (options.persistSession === false) {
-    throw new Error(
-      'resumeSession() requires session persistence. Remove persistSession: false or use createSession().',
-    );
-  }
   return runResumeLifecycle(sessionRuntimeFactory, options);
 }
 
 export async function forkSession(options: ForkOptions): Promise<ISession> {
-  if (options.persistSession === false) {
-    throw new Error(
-      'forkSession() requires session persistence. Remove persistSession: false and call session.fork() on a live session instead.',
-    );
-  }
   return runForkLifecycle(sessionRuntimeFactory, options);
 }
 
