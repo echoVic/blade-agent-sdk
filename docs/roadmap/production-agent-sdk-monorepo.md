@@ -584,6 +584,7 @@ Status:
 
 - First release-automation increment complete: semantic-release now uses a fixed-version monorepo release for `@blade-ai/ai`, `@blade-ai/agent`, and `@blade-ai/agent-sdk`. The release workflow still runs `pnpm run verify` before publishing, uses GitHub OIDC trusted publishing without `NPM_TOKEN`, and publishes all three package roots through `@semantic-release/npm`. A local prepare plugin synchronizes each package manifest to `nextRelease.version` and rewrites internal `workspace:*` dependencies to the same concrete version before npm publish. `pnpm run release:dry` remains the tokened release rehearsal path without publishing.
 - Second release-automation increment complete: release notes now include a generated per-package section for the fixed-version monorepo release, listing the published `@blade-ai/ai`, `@blade-ai/agent`, and `@blade-ai/agent-sdk` versions plus the session-first install command after the conventional commit notes.
+- Third release-automation increment complete: the retired manual `scripts/release.js` path and its helper were removed, `release:legacy` is no longer exposed from the root package scripts, and `pnpm run verify:release` now rejects any reintroduction of manual release aliases or legacy release helper files so publishing stays on the semantic-release workflow from `main`.
 
 Commit:
 

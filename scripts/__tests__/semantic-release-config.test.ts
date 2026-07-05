@@ -1,5 +1,5 @@
 import { createRequire } from 'node:module';
-import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 
@@ -214,6 +214,20 @@ describe('release scripts', () => {
     const packageJson = JSON.parse(readFileSync(resolve('package.json'), 'utf8'));
 
     expect(packageJson.scripts['release:dry']).toBe('semantic-release --dry-run --no-ci');
+  });
+
+  it('does not expose the retired manual release script path', () => {
+    const packageJson = JSON.parse(readFileSync(resolve('package.json'), 'utf8'));
+    const releaseVerifier = readFileSync(resolve('scripts/verify-release-config.mjs'), 'utf8');
+
+    expect(packageJson.scripts).not.toHaveProperty('release:legacy');
+    expect(packageJson.scripts).not.toHaveProperty('release:manual');
+    expect(JSON.stringify(packageJson.scripts)).not.toContain('scripts/release.js');
+    expect(existsSync(resolve('scripts/release.js'))).toBe(false);
+    expect(existsSync(resolve('scripts/release-utils.js'))).toBe(false);
+    expect(releaseVerifier).toContain('release:legacy');
+    expect(releaseVerifier).toContain('scripts/release.js');
+    expect(releaseVerifier).toContain('release-utils.js');
   });
 
   it('documents the GitHub token requirement for semantic-release dry runs', () => {

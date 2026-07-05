@@ -1,4 +1,4 @@
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { resolve } from 'node:path';
 import { parse } from 'yaml';
@@ -42,6 +42,21 @@ function verifyRootScripts() {
 
   if (packageJson.scripts?.['release:dry'] !== 'semantic-release --dry-run --no-ci') {
     fail('package.json must keep release:dry as semantic-release --dry-run --no-ci');
+  }
+  if ('release:legacy' in (packageJson.scripts ?? {})) {
+    fail('package.json must not expose the retired release:legacy script');
+  }
+  if ('release:manual' in (packageJson.scripts ?? {})) {
+    fail('package.json must not expose manual release script aliases');
+  }
+  if (JSON.stringify(packageJson.scripts ?? {}).includes('scripts/release.js')) {
+    fail('package.json scripts must not reference scripts/release.js');
+  }
+  if (existsSync(resolve('scripts/release.js'))) {
+    fail('scripts/release.js has been retired in favor of semantic-release');
+  }
+  if (existsSync(resolve('scripts/release-utils.js'))) {
+    fail('scripts/release-utils.js must not remain after retiring the manual release script');
   }
   if (packageJson.scripts?.['verify:release'] !== 'node scripts/verify-release-config.mjs') {
     fail('package.json must expose verify:release');

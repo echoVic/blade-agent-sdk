@@ -31,7 +31,6 @@
     "verify:release": "node scripts/verify-release-config.mjs",
     "release": "semantic-release",
     "release:dry": "semantic-release --dry-run --no-ci",
-    "release:legacy": "node scripts/release.js",
     "docs:dev": "vitepress dev docs",
     "docs:build": "vitepress build docs",
     "docs:preview": "vitepress preview docs"
