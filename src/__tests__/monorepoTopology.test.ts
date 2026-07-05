@@ -617,6 +617,9 @@ describe('monorepo topology', () => {
     expect(runtimeMcpServersSource).toContain('registerPackageLocalRemoteMcpServer');
     expect(runtimeMcpServersSource).toContain('registerPackageLocalConfiguredMcpServers');
     expect(runtimeMcpServersSource).toContain('ensurePackageLocalMcpServerRegistered');
+    expect(runtimeMcpServersSource).toContain('connectPackageLocalRuntimeMcpServer');
+    expect(runtimeMcpServersSource).toContain('disconnectPackageLocalRuntimeMcpServer');
+    expect(runtimeMcpServersSource).toContain('reconnectPackageLocalRuntimeMcpServer');
     expect(packageLocalRuntimeInstanceSource).not.toContain(
       'function isPackageLocalSdkMcpServerHandle',
     );
@@ -645,7 +648,16 @@ describe('monorepo topology', () => {
     expect(packageLocalRuntimeInstanceSource).toContain('mcpDisconnect');
     expect(packageLocalRuntimeInstanceSource).toContain('mcpReconnect');
     expect(packageLocalRuntimeInstanceSource).toContain('ensureServerRegistered');
-    expect(packageLocalRuntimeInstanceSource).toContain('ensurePackageLocalMcpServerRegistered');
+    expect(packageLocalRuntimeInstanceSource).not.toContain('ensurePackageLocalMcpServerRegistered');
+    expect(packageLocalRuntimeInstanceSource).not.toContain(
+      "callPackageLocalMcpRegistryAction(this.mcpRegistry, 'connectServer', serverName)",
+    );
+    expect(packageLocalRuntimeInstanceSource).not.toContain(
+      "callPackageLocalMcpRegistryAction(this.mcpRegistry, 'disconnectServer', serverName)",
+    );
+    expect(packageLocalRuntimeInstanceSource).not.toContain(
+      "callPackageLocalMcpRegistryAction(this.mcpRegistry, 'reconnectServer', serverName)",
+    );
     expect(packageLocalRuntimeInstanceSource).not.toContain('private async ensureMcpServerRegistered');
     expect(packageLocalRuntimeInstanceSource).toContain('PackageLocalRuntimeMcpServerCapability');
     expect(existsSync('packages/agent-sdk/src/session/runtimeMcpCapabilities.ts')).toBe(true);

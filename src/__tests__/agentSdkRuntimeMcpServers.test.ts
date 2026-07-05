@@ -178,4 +178,76 @@ describe('agent-sdk package-local runtime MCP server helpers', () => {
       }),
     ).rejects.toThrow('MCP server "missing" not found in configuration');
   });
+
+  it('runs MCP server lifecycle actions and refreshes tools without runtime state', async () => {
+    expect(existsSync(mcpServersSourcePath)).toBe(true);
+
+    const source = await import('node:fs/promises').then((fs) =>
+      fs.readFile(mcpServersSourcePath, 'utf-8'),
+    );
+    expect(source).toContain('connectPackageLocalRuntimeMcpServer');
+    expect(source).toContain('disconnectPackageLocalRuntimeMcpServer');
+    expect(source).toContain('reconnectPackageLocalRuntimeMcpServer');
+
+    const {
+      connectPackageLocalRuntimeMcpServer,
+      disconnectPackageLocalRuntimeMcpServer,
+      reconnectPackageLocalRuntimeMcpServer,
+    } = await import(mcpServersModulePath);
+    const remoteConfig = {
+      command: 'node',
+      args: ['server.js'],
+    };
+    const calls: unknown[] = [];
+    const registry = {
+      ensureServerRegistered(serverName: string, config: unknown) {
+        calls.push(['ensure', serverName, config, this === registry]);
+      },
+      connectServer(serverName: string) {
+        calls.push(['connect', serverName, this === registry]);
+      },
+      disconnectServer(serverName: string) {
+        calls.push(['disconnect', serverName, this === registry]);
+      },
+      reconnectServer(serverName: string) {
+        calls.push(['reconnect', serverName, this === registry]);
+      },
+    };
+    const refreshMcpTools = async (serverNames: string[]) => {
+      calls.push(['refresh', serverNames]);
+    };
+
+    await connectPackageLocalRuntimeMcpServer({
+      serverName: 'remote',
+      configuredServers: {
+        remote: remoteConfig,
+      },
+      mcpRegistry: registry,
+      refreshMcpTools,
+    });
+    await disconnectPackageLocalRuntimeMcpServer({
+      serverName: 'remote',
+      mcpRegistry: registry,
+      refreshMcpTools,
+    });
+    await reconnectPackageLocalRuntimeMcpServer({
+      serverName: 'remote',
+      configuredServers: {
+        remote: remoteConfig,
+      },
+      mcpRegistry: registry,
+      refreshMcpTools,
+    });
+
+    expect(calls).toEqual([
+      ['ensure', 'remote', remoteConfig, true],
+      ['connect', 'remote', true],
+      ['refresh', ['remote']],
+      ['disconnect', 'remote', true],
+      ['refresh', ['remote']],
+      ['ensure', 'remote', remoteConfig, true],
+      ['reconnect', 'remote', true],
+      ['refresh', ['remote']],
+    ]);
+  });
 });

@@ -33,6 +33,16 @@ export interface PackageLocalMcpServerEnsureOptions {
   mcpRegistry: PackageLocalMcpRegistryActionPort;
 }
 
+export interface PackageLocalMcpServerConnectOptions extends PackageLocalMcpServerEnsureOptions {
+  refreshMcpTools(serverNames: string[]): Promise<void> | void;
+}
+
+export interface PackageLocalMcpServerDisconnectOptions {
+  serverName: string;
+  mcpRegistry: PackageLocalMcpRegistryActionPort;
+  refreshMcpTools(serverNames: string[]): Promise<void> | void;
+}
+
 export function isPackageLocalSdkMcpServerHandle(
   config: unknown,
 ): config is SdkMcpServerHandle {
@@ -124,4 +134,35 @@ export async function ensurePackageLocalMcpServerRegistered(
     options.serverName,
     config,
   );
+}
+
+export async function connectPackageLocalRuntimeMcpServer(
+  options: PackageLocalMcpServerConnectOptions,
+): Promise<void> {
+  await ensurePackageLocalMcpServerRegistered(options);
+  await callPackageLocalMcpRegistryAction(options.mcpRegistry, 'connectServer', options.serverName);
+  await options.refreshMcpTools([options.serverName]);
+}
+
+export async function disconnectPackageLocalRuntimeMcpServer(
+  options: PackageLocalMcpServerDisconnectOptions,
+): Promise<void> {
+  await callPackageLocalMcpRegistryAction(
+    options.mcpRegistry,
+    'disconnectServer',
+    options.serverName,
+  );
+  await options.refreshMcpTools([options.serverName]);
+}
+
+export async function reconnectPackageLocalRuntimeMcpServer(
+  options: PackageLocalMcpServerConnectOptions,
+): Promise<void> {
+  await ensurePackageLocalMcpServerRegistered(options);
+  await callPackageLocalMcpRegistryAction(
+    options.mcpRegistry,
+    'reconnectServer',
+    options.serverName,
+  );
+  await options.refreshMcpTools([options.serverName]);
 }

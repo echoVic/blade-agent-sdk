@@ -57,8 +57,9 @@ import {
   resolvePackageLocalRuntimeStorageRoot,
 } from './runtimeContext.js';
 import {
-  callPackageLocalMcpRegistryAction,
-  ensurePackageLocalMcpServerRegistered,
+  connectPackageLocalRuntimeMcpServer,
+  disconnectPackageLocalRuntimeMcpServer,
+  reconnectPackageLocalRuntimeMcpServer,
   registerPackageLocalConfiguredMcpServers,
 } from './runtimeMcpServers.js';
 import {
@@ -433,28 +434,29 @@ export class PackageLocalSessionRuntime {
   }
 
   async mcpConnect(serverName: string): Promise<void> {
-    await ensurePackageLocalMcpServerRegistered({
+    await connectPackageLocalRuntimeMcpServer({
       serverName,
       configuredServers: this.options.mcpServers,
       mcpRegistry: this.mcpRegistry,
+      refreshMcpTools: (serverNames) => this.refreshMcpTools(serverNames),
     });
-    await callPackageLocalMcpRegistryAction(this.mcpRegistry, 'connectServer', serverName);
-    await this.refreshMcpTools([serverName]);
   }
 
   async mcpDisconnect(serverName: string): Promise<void> {
-    await callPackageLocalMcpRegistryAction(this.mcpRegistry, 'disconnectServer', serverName);
-    await this.refreshMcpTools([serverName]);
+    await disconnectPackageLocalRuntimeMcpServer({
+      serverName,
+      mcpRegistry: this.mcpRegistry,
+      refreshMcpTools: (serverNames) => this.refreshMcpTools(serverNames),
+    });
   }
 
   async mcpReconnect(serverName: string): Promise<void> {
-    await ensurePackageLocalMcpServerRegistered({
+    await reconnectPackageLocalRuntimeMcpServer({
       serverName,
       configuredServers: this.options.mcpServers,
       mcpRegistry: this.mcpRegistry,
+      refreshMcpTools: (serverNames) => this.refreshMcpTools(serverNames),
     });
-    await callPackageLocalMcpRegistryAction(this.mcpRegistry, 'reconnectServer', serverName);
-    await this.refreshMcpTools([serverName]);
   }
 
   async registerConfiguredMcpServers(): Promise<void> {
