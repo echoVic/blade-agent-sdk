@@ -96,4 +96,23 @@ describe('package boundary verifier', () => {
     expect(result.stderr).toContain('@blade-ai/agent-sdk');
     expect(result.stderr).toContain('AI package');
   });
+
+  it('rejects provider runtime dependencies declared by the session-sdk manifest', () => {
+    const cwd = createBoundaryFixture({
+      sdkDependencies: {
+        ai: '^6.0.168',
+      },
+    });
+    const result = spawnSync(process.execPath, [
+      resolve('scripts/verify-package-boundaries.mjs'),
+    ], {
+      cwd,
+      encoding: 'utf8',
+    });
+
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain('packages/agent-sdk/package.json');
+    expect(result.stderr).toContain('"ai"');
+    expect(result.stderr).toContain('Provider runtime');
+  });
 });

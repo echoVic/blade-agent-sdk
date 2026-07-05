@@ -54,6 +54,7 @@ const manifestRules = [
     packageJson: 'packages/agent-sdk/package.json',
     disallowedDependencies: [
       [/^@ai-sdk\/(?:anthropic|azure|deepseek|google|openai|openai-compatible)$/, 'Provider SDK dependencies belong in @blade-ai/ai, not the session SDK'],
+      [/^ai$/, 'Provider runtime dependency belongs in @blade-ai/ai, not the session SDK'],
     ],
   },
 ];

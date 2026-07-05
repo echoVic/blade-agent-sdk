@@ -3,8 +3,8 @@ import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'no
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { build as bundleWithEsbuild } from 'esbuild';
 import { stringify } from 'yaml';
+import { bundleWithEsbuildRetry } from './esbuild-bundle.mjs';
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const browserDisallowedMarkers = [
@@ -1077,7 +1077,7 @@ async function verifyConsumerBrowserBundle(consumerDir) {
     ].join('\n'),
   );
 
-  await bundleWithEsbuild({
+  await bundleWithEsbuildRetry({
     entryPoints: [entry],
     bundle: true,
     platform: 'browser',
@@ -1123,7 +1123,7 @@ async function verifyAgentBrowserBundle(consumerDir) {
     ].join('\n'),
   );
 
-  await bundleWithEsbuild({
+  await bundleWithEsbuildRetry({
     entryPoints: [entry],
     bundle: true,
     platform: 'browser',

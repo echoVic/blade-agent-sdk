@@ -68,9 +68,12 @@ describe('package entrypoints', () => {
 
   it('runs the browser bundle check through the esbuild JS API', () => {
     const verifier = readFileSync('scripts/verify-entrypoints.mjs', 'utf-8');
+    const helper = readFileSync('scripts/esbuild-bundle.mjs', 'utf-8');
 
-    expect(verifier).toContain("import { build as bundleWithEsbuild } from 'esbuild';");
-    expect(verifier).toContain('await bundleWithEsbuild({');
+    expect(verifier).toContain("import { bundleWithEsbuildRetry } from './esbuild-bundle.mjs';");
+    expect(verifier).toContain('await bundleWithEsbuildRetry({');
+    expect(helper).toContain("import { build as bundleWithEsbuild } from 'esbuild';");
+    expect(helper).toContain('The service was stopped');
     expect(verifier).not.toContain("'pnpm', [\n    'exec',\n    'esbuild'");
     expect(verifier).not.toContain("resolve(repoRoot, 'node_modules/.bin/esbuild')");
   });

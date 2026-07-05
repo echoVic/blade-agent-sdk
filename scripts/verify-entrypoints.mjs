@@ -2,7 +2,7 @@ import { spawnSync } from 'node:child_process';
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { build as bundleWithEsbuild } from 'esbuild';
+import { bundleWithEsbuildRetry } from './esbuild-bundle.mjs';
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const packageRoot = existsSync(join(repoRoot, 'packages/agent-sdk/package.json'))
@@ -117,7 +117,7 @@ try {
     'utf8',
   );
 
-  await bundleWithEsbuild({
+  await bundleWithEsbuildRetry({
     entryPoints: [entry],
     bundle: true,
     platform: 'browser',

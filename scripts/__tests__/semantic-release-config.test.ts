@@ -166,14 +166,17 @@ describe('package provenance metadata', () => {
 
   it('bundles browser-safe entrypoints from the packed temporary consumer', () => {
     const packageVerifier = readFileSync(resolve('scripts/verify-packages.mjs'), 'utf8');
+    const esbuildHelper = readFileSync(resolve('scripts/esbuild-bundle.mjs'), 'utf8');
 
-    expect(packageVerifier).toContain("import { build as bundleWithEsbuild } from 'esbuild';");
+    expect(packageVerifier).toContain("import { bundleWithEsbuildRetry } from './esbuild-bundle.mjs';");
     expect(packageVerifier).toContain('function verifyConsumerBrowserBundle');
     expect(packageVerifier).toContain('consumer-browser-entry.ts');
     expect(packageVerifier).toContain("from '@blade-ai/agent-sdk/session';");
     expect(packageVerifier).toContain("from '@blade-ai/agent-sdk/server';");
     expect(packageVerifier).toContain("from '@blade-ai/agent-sdk/local';");
-    expect(packageVerifier).toContain('await bundleWithEsbuild({');
+    expect(packageVerifier).toContain('await bundleWithEsbuildRetry({');
+    expect(esbuildHelper).toContain("import { build as bundleWithEsbuild } from 'esbuild';");
+    expect(esbuildHelper).toContain('The service was stopped');
     expect(packageVerifier).toContain("platform: 'browser'");
     expect(packageVerifier).toContain("conditions: ['browser']");
     expect(packageVerifier).not.toContain("resolve(repoRoot, 'node_modules/.bin/esbuild')");
