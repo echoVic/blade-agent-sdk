@@ -537,6 +537,7 @@ Status:
 - Ninety-second verification-chain increment complete: publishable package manifests now carry npm-facing metadata for license, engines, side-effect safety, homepage, bugs, and keywords, each package has its own README, and `pnpm run verify:packages` requires `package/README.md` inside every packed tarball before running the temporary-consumer install smoke.
 - Ninety-third verification-chain increment complete: `pnpm run verify:packages` now writes a TypeScript temporary-consumer file after installing the packed tarballs and runs `tsc --noEmit` against public `@blade-ai/ai`, `@blade-ai/agent`, and `@blade-ai/agent-sdk` imports, proving package declarations support real external ModelPort, AgentKernel, SessionOptions, StreamMessage, defineTool, and ToolKind usage.
 - Ninety-fourth verification-chain increment complete: the packed temporary consumer now imports and type-checks the provider-focused `@blade-ai/ai/deepseek`, `@blade-ai/ai/providers/openai-compatible`, and `@blade-ai/ai/providers/vercel` subpaths, while tarball checks require their JS and declaration artifacts so exported provider contracts cannot regress silently.
+- Ninety-fifth verification-chain increment complete: `pnpm run verify:packages` now browser-bundles a temporary consumer against the packed `@blade-ai/agent-sdk` tarball with `--platform=browser` and `--conditions=browser`, proving the root browser condition resolves to the server-only `createSession` stub while browser-safe `core` and `tools` contracts stay free of Node-only dependency markers.
 
 Commit:
 

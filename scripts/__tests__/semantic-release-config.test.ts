@@ -123,6 +123,17 @@ describe('package provenance metadata', () => {
     expect(packageVerifier).toContain("from '@blade-ai/ai/providers/openai-compatible';");
     expect(packageVerifier).toContain("from '@blade-ai/ai/providers/vercel';");
   });
+
+  it('bundles browser-safe entrypoints from the packed temporary consumer', () => {
+    const packageVerifier = readFileSync(resolve('scripts/verify-packages.mjs'), 'utf8');
+
+    expect(packageVerifier).toContain('function verifyConsumerBrowserBundle');
+    expect(packageVerifier).toContain('consumer-browser-entry.ts');
+    expect(packageVerifier).toContain('--platform=browser');
+    expect(packageVerifier).toContain('--conditions=browser');
+    expect(packageVerifier).toContain('assertNoBrowserDisallowedMarkers');
+    expect(packageVerifier).toContain('server-only for createSession');
+  });
 });
 
 describe('release scripts', () => {

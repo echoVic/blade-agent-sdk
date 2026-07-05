@@ -6,6 +6,13 @@ import { fileURLToPath } from 'node:url';
 import { stringify } from 'yaml';
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+const browserDisallowedMarkers = [
+  'node:',
+  'child_process',
+  'undici',
+  '@modelcontextprotocol',
+  'node-pty',
+];
 const packageSpecs = [
   {
     name: '@blade-ai/ai',
@@ -684,6 +691,45 @@ void useSession;
   });
 }
 
+function assertNoBrowserDisallowedMarkers(filePath) {
+  const source = readFileSync(filePath, 'utf8');
+  for (const marker of browserDisallowedMarkers) {
+    if (source.includes(marker)) {
+      throw new Error(`Browser bundle includes Node-only marker ${marker}: ${filePath}`);
+    }
+  }
+}
+
+function verifyConsumerBrowserBundle(consumerDir) {
+  const entry = join(consumerDir, 'consumer-browser-entry.ts');
+  const output = join(consumerDir, 'consumer-browser-bundle.js');
+  writeFileSync(
+    entry,
+    [
+      "import { createSession, PermissionMode } from '@blade-ai/agent-sdk';",
+      "import { StreamMessageType } from '@blade-ai/agent-sdk/core';",
+      "import { ToolKind } from '@blade-ai/agent-sdk/tools';",
+      "console.log(PermissionMode.DEFAULT, StreamMessageType.CONTENT, ToolKind.ReadOnly);",
+      "try { createSession({} as never); } catch (error) { console.log((error as Error).message); }",
+    ].join('\n'),
+  );
+
+  run(resolve(repoRoot, 'node_modules/.bin/esbuild'), [
+    entry,
+    '--bundle',
+    '--platform=browser',
+    '--conditions=browser',
+    '--format=esm',
+    `--outfile=${output}`,
+  ], { cwd: consumerDir });
+
+  const browserRunOutput = run(process.execPath, [output], { cwd: consumerDir });
+  if (!browserRunOutput.includes('server-only for createSession')) {
+    throw new Error('Browser bundle does not include the createSession server-only stub message');
+  }
+  assertNoBrowserDisallowedMarkers(output);
+}
+
 const tempDir = mkdtempSync(join(tmpdir(), 'blade-verify-packages-'));
 try {
   const packDir = join(tempDir, 'packs');
@@ -702,6 +748,7 @@ try {
   const consumerDir = installConsumer(tarballs, tempDir);
   verifyConsumerImports(consumerDir);
   verifyConsumerTypes(consumerDir);
+  verifyConsumerBrowserBundle(consumerDir);
 } finally {
   rmSync(tempDir, { recursive: true, force: true });
 }
