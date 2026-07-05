@@ -417,6 +417,7 @@ describe('release workflow', () => {
       'pnpm install --frozen-lockfile',
       'pnpm run verify',
       'pnpm exec semantic-release',
+      expect.stringContaining('pnpm run verify:published -- --version "$published_version"'),
     ]);
     expect(setupPnpmStep.with).toMatchObject({
       version: '11.7.0',
@@ -430,6 +431,28 @@ describe('release workflow', () => {
     });
     expect(releaseStep.env).not.toHaveProperty('NPM_TOKEN');
     expect(releaseStep.env).not.toHaveProperty('NPM_CONFIG_PROVENANCE');
+  });
+
+  it('runs post-publish verification against the latest release tag after semantic-release', () => {
+    const workflow = parse(
+      readFileSync(resolve('.github/workflows/release.yml'), 'utf8')
+    );
+    const steps = workflow.jobs.release.steps;
+    const releaseStepIndex = steps.findIndex((step: { run?: string }) =>
+      step.run?.includes('semantic-release')
+    );
+    const postPublishStep = steps.find((step: { name?: string }) =>
+      step.name === 'Verify published artifacts'
+    );
+    const postPublishStepIndex = steps.indexOf(postPublishStep);
+
+    expect(postPublishStepIndex).toBeGreaterThan(releaseStepIndex);
+    expect(postPublishStep.run).toContain('git fetch --tags --force');
+    expect(postPublishStep.run).toContain("git describe --tags --abbrev=0 --match 'v*'");
+    expect(postPublishStep.run).toContain('pnpm run verify:published -- --version "$published_version"');
+    expect(postPublishStep.env).toMatchObject({
+      GH_TOKEN: '${{ secrets.GITHUB_TOKEN }}',
+    });
   });
 });
 

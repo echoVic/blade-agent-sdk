@@ -173,6 +173,9 @@ function verifyReleaseWorkflow() {
   const setupPnpmStep = steps.find((step) => step.uses?.startsWith('pnpm/action-setup@'));
   const setupNodeStep = steps.find((step) => step.uses?.startsWith('actions/setup-node@'));
   const releaseStep = steps.find((step) => step.run?.includes('semantic-release'));
+  const releaseStepIndex = steps.findIndex((step) => step.run?.includes('semantic-release'));
+  const postPublishStep = steps.find((step) => step.name === 'Verify published artifacts');
+  const postPublishStepIndex = steps.indexOf(postPublishStep);
 
   assertDeepEqual(workflow.on?.push?.branches, ['main'], 'release workflow push branches');
   if (workflow.permissions?.['id-token'] !== 'write') {
@@ -183,6 +186,7 @@ function verifyReleaseWorkflow() {
     'pnpm install --frozen-lockfile',
     'pnpm run verify',
     'pnpm exec semantic-release',
+    postPublishStep?.run,
   ], 'release workflow commands');
   if (setupNodeStep?.with?.['registry-url'] !== 'https://registry.npmjs.org') {
     fail('release workflow setup-node must target the npm registry');
@@ -195,6 +199,21 @@ function verifyReleaseWorkflow() {
   }
   if ('NPM_TOKEN' in (releaseStep?.env ?? {})) {
     fail('release workflow must not rely on a long-lived NPM_TOKEN');
+  }
+  if (postPublishStepIndex <= releaseStepIndex) {
+    fail('release workflow must verify published artifacts after semantic-release');
+  }
+  if (!postPublishStep?.run?.includes('git fetch --tags --force')) {
+    fail('post-publish verification must refresh release tags');
+  }
+  if (!postPublishStep?.run?.includes("git describe --tags --abbrev=0 --match 'v*'")) {
+    fail('post-publish verification must discover the latest v* release tag');
+  }
+  if (!postPublishStep?.run?.includes('pnpm run verify:published -- --version "$published_version"')) {
+    fail('post-publish verification must run verify:published for the discovered version');
+  }
+  if (postPublishStep?.env?.GH_TOKEN !== '${{ secrets.GITHUB_TOKEN }}') {
+    fail('post-publish verification must pass GH_TOKEN for gh release checks');
   }
 }
 

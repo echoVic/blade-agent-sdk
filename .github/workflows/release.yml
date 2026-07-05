@@ -52,3 +52,15 @@ jobs:
         run: pnpm exec semantic-release
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Verify published artifacts
+        run: |
+          git fetch --tags --force
+          published_version="$(git describe --tags --abbrev=0 --match 'v*' 2>/dev/null || true)"
+          if [ -z "$published_version" ]; then
+            echo "No v* release tag found; skipping post-publish verification."
+            exit 0
+          fi
+          pnpm run verify:published -- --version "$published_version"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

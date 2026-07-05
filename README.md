@@ -217,7 +217,7 @@ INTEGRATION_LIVE=1 pnpm run test:integration:live
 
 ## 发布
 
-本仓库使用 `semantic-release` 自动发包。代码合并到 `main` 后，GitHub Actions 会先运行完整的 `pnpm run verify`；通过后再根据 conventional commits 自动决定版本、创建 `v*` 标签、发布 GitHub Release，并以 fixed-version monorepo 模式把 `@blade-ai/ai`、`@blade-ai/agent`、`@blade-ai/agent-sdk` 发布到 npm。
+本仓库使用 `semantic-release` 自动发包。代码合并到 `main` 后，GitHub Actions 会先运行完整的 `pnpm run verify`；通过后再根据 conventional commits 自动决定版本、创建 `v*` 标签、发布 GitHub Release，并以 fixed-version monorepo 模式把 `@blade-ai/ai`、`@blade-ai/agent`、`@blade-ai/agent-sdk` 发布到 npm。发布步骤结束后，workflow 会刷新最新 `v*` tag 并自动运行 `pnpm run verify:published -- --version <tag>`，确认公开 Release、npm 包、runtime import smoke 和 root/subpath 类型声明都能从外部 consumer 使用。
 
 发布前本地 release 插件会把三个 workspace 包的 `version` 和内部 `workspace:*` 依赖同步成同一个发布版本，避免 npm 包里泄漏 workspace 协议。
 
@@ -243,7 +243,7 @@ GitHub Release notes 会在 conventional commit 摘要后追加三包发布清�
 pnpm run release:dry
 ```
 
-发布 workflow 完成后，用公开可见性检查确认 GitHub Release 和三个 npm 包都已经能被外部用户解析。该命令还会创建一个临时 consumer，从 npm 安装同版本的三包，并执行 runtime import smoke 与 root/subpath TypeScript public declarations 编译：
+发布 workflow 已经会自动运行公开可见性检查。维护者也可以在本地用同一命令复核 GitHub Release 和三个 npm 包是否都已经能被外部用户解析。该命令会创建一个临时 consumer，从 npm 安装同版本的三包，并执行 runtime import smoke 与 root/subpath TypeScript public declarations 编译：
 
 ```bash
 pnpm run verify:published -- --version 1.2.3
