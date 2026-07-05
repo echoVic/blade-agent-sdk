@@ -374,6 +374,10 @@ describe('monorepo topology', () => {
       'packages/agent-sdk/src/session/legacyStreamRunner.ts',
       'utf-8',
     );
+    const sessionLegacyStreamBridgeSource = readFileSync(
+      'packages/agent-sdk/src/session/legacyStreamBridge.ts',
+      'utf-8',
+    );
     const sessionInstanceSource = readFileSync(
       'packages/agent-sdk/src/session/sessionInstance.ts',
       'utf-8',
@@ -433,6 +437,10 @@ describe('monorepo topology', () => {
     expect(sessionPromptSubmitSource).toContain('applySessionPromptSubmit');
     expect(sessionLegacyStreamRunnerSource).not.toContain('../../../../src/');
     expect(sessionLegacyStreamRunnerSource).toContain('runLegacySessionStreamTurn');
+    expect(existsSync('packages/agent-sdk/src/session/legacyStreamBridge.ts')).toBe(true);
+    expect(sessionLegacyStreamBridgeSource).not.toContain('../../../../src/');
+    expect(sessionLegacyStreamBridgeSource).toContain('createLegacyStreamTurnBridge');
+    expect(sessionLegacyStreamBridgeSource).toContain('runLegacySessionStreamTurn');
     expect(sessionInstanceSource).not.toContain('../../../../src/');
     expect(sessionInstanceSource).toContain('class PackageLocalSession');
     expect(packageLocalRuntimeFactorySource).not.toContain('../../../../src/');
