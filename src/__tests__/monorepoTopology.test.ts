@@ -362,6 +362,10 @@ describe('monorepo topology', () => {
       'packages/agent-sdk/src/session/taskCompleted.ts',
       'utf-8',
     );
+    const sessionStreamCompletionSource = readFileSync(
+      'packages/agent-sdk/src/session/streamCompletion.ts',
+      'utf-8',
+    );
     const sessionFactorySource = readFileSync('packages/agent-sdk/src/session/factory.ts', 'utf-8');
     const sessionLifecycleSource = readFileSync('packages/agent-sdk/src/session/Session.ts', 'utf-8');
     const legacySessionAdapterSource = readFileSync(
@@ -385,6 +389,7 @@ describe('monorepo topology', () => {
     expect(existsSync('packages/agent-sdk/src/session/traces.ts')).toBe(true);
     expect(existsSync('packages/agent-sdk/src/session/legacyStreamEvents.ts')).toBe(true);
     expect(existsSync('packages/agent-sdk/src/session/taskCompleted.ts')).toBe(true);
+    expect(existsSync('packages/agent-sdk/src/session/streamCompletion.ts')).toBe(true);
     expect(existsSync('packages/agent-sdk/src/session/store.ts')).toBe(true);
     expect(sessionContentSource).not.toContain('../../../../src/');
     expect(sessionPendingTurnSource).not.toContain('../../../../src/');
@@ -402,6 +407,8 @@ describe('monorepo topology', () => {
     expect(legacyStreamEventsSource).toContain('class LegacyStreamEventProjector');
     expect(sessionTaskCompletedSource).not.toContain('../../../../src/');
     expect(sessionTaskCompletedSource).toContain('reportSessionTaskCompleted');
+    expect(sessionStreamCompletionSource).not.toContain('../../../../src/');
+    expect(sessionStreamCompletionSource).toContain('completeSessionStreamResult');
     expect(sessionRuntimeFactorySource).not.toContain('../../../../src/session/Session.js');
     expect(sessionRuntimeFactorySource).toContain("from './Session.js'");
     expect(sessionRuntimeFactorySource).not.toContain("from './legacySessionAdapter.js'");
