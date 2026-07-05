@@ -378,6 +378,7 @@ Status:
 - Sixty-fifth adapter increment complete: `@blade-ai/agent-sdk/session` now owns the package-local legacy stream turn runner. `runLegacySessionStreamTurn()` composes prompt-submit hooks, legacy event projection, stream-result completion, and final collector cleanup behind a package-local seam so the future package-local `Session.stream()` no longer needs the large inline legacy event loop.
 - Sixty-sixth adapter increment complete: `@blade-ai/agent-sdk/session` now has a package-local session instance shell. `PackageLocalSession` composes the local pending-turn buffer, abort-scope controller, lifecycle state, and turn preparation with an injected stream runner, giving the default runtime factory a concrete package-local `ISession` carrier for replacing the temporary legacy adapter.
 - Sixty-seventh adapter increment complete: `@blade-ai/agent-sdk/session` now has a package-local runtime factory seam for `PackageLocalSession`. `createPackageLocalSessionRuntimeFactory()` creates/resumes package-local session instances from injected id generation, turn id generation, stream runners, and cleanup hooks, preparing the default runtime factory to stop returning legacy root `Session` objects.
+- Sixty-eighth adapter increment complete: `PackageLocalSession` now passes a session-level stream context into injected stream runners. Runners receive the package-local `sessionId` and original `SessionOptions` alongside each prepared active turn, giving the next default-factory slice enough context to bridge package-local session instances to the migrated legacy stream runner without reaching back into root `Session`.
 
 ### Phase 5: Production Verification Chain
 
@@ -451,6 +452,7 @@ Status:
 - Forty-sixth verification-chain increment complete: focused package-local tests now cover the composed legacy stream runner for rewritten prompts, legacy event projection, usage/result completion, prompt-submit failure short-circuiting, trace finalization, and collector cleanup. Topology also requires the legacy stream runner helper to remain package-local without root imports.
 - Forty-seventh verification-chain increment complete: focused package-local tests now cover the session instance shell for pending-turn preparation, default/turn context merging, injected stream runner dispatch, missing pending-turn rejection, idempotent close cleanup, and closed-session guards. Topology also requires the session instance source to remain package-local without root imports.
 - Forty-eighth verification-chain increment complete: focused package-local tests now cover the package-local runtime factory seam for generated create ids, supplied resume ids, injected stream runner dispatch, and session cleanup context propagation. Topology also requires the runtime factory seam to remain package-local without root imports.
+- Forty-ninth verification-chain increment complete: focused package-local tests now cover stream-context propagation from `PackageLocalSession.stream()` into injected stream runners, proving each runner can observe the package-local session id and original session options without importing legacy root state.
 
 Commit:
 

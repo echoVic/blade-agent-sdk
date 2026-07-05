@@ -94,6 +94,32 @@ describe('agent-sdk package-local Session instance', () => {
     expect(streamTurn).toHaveBeenCalledTimes(1);
   });
 
+  it('passes session context to the injected stream runner', async () => {
+    const streamTurn = vi.fn(async function* (_turn, _streamOptions, sessionContext) {
+      expect(sessionContext).toEqual({
+        sessionId: 'session-1',
+        options,
+      });
+      yield {
+        type: 'result',
+        subtype: 'success',
+        content: 'ok',
+        sessionId: 'session-1',
+      } satisfies StreamMessage;
+    });
+    const session = new PackageLocalSession({
+      sessionId: 'session-1',
+      options,
+      streamTurn,
+      createTurnId: () => 'turn-1',
+    });
+
+    await session.send('hello');
+    await collect(session.stream());
+
+    expect(streamTurn).toHaveBeenCalledTimes(1);
+  });
+
   it('centralizes lifecycle close and abort behavior', async () => {
     const cleanup = vi.fn();
     const session = new PackageLocalSession({

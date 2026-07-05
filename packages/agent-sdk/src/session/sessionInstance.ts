@@ -25,7 +25,13 @@ import type {
 export type PackageLocalSessionStreamTurn = (
   turn: ActiveSessionTurn,
   options?: StreamOptions,
+  context?: PackageLocalSessionStreamContext,
 ) => AsyncGenerator<StreamMessage>;
+
+export interface PackageLocalSessionStreamContext {
+  sessionId: SessionId;
+  options: SessionOptions;
+}
 
 export interface PackageLocalSessionOptions {
   sessionId: SessionId;
@@ -80,7 +86,10 @@ export class PackageLocalSession implements ISession {
   async *stream(options?: StreamOptions): AsyncGenerator<StreamMessage> {
     const turn = this.turns.beginStreamTurn();
     try {
-      yield* this.streamTurn(turn, options);
+      yield* this.streamTurn(turn, options, {
+        sessionId: this.sessionId,
+        options: this.sessionOptions,
+      });
     } finally {
       turn.cleanup();
     }
