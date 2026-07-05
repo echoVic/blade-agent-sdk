@@ -1,5 +1,5 @@
 import { TraceRecorder } from '../observability/TraceRecorder.js';
-import type { AgentTrace, ObservabilityOptions } from '../observability/types.js';
+import type { AgentTrace, ObservabilityOptions, TraceStatus } from '../observability/types.js';
 import type { JsonValue } from '../types/common.js';
 import type { SessionId, UserMessageContent } from './types.js';
 
@@ -57,4 +57,32 @@ export class SessionTraceManager {
       this.onSinkError?.(error);
     }
   }
+}
+
+export interface SessionTraceFinalizer {
+  finish(
+    status: Exclude<TraceStatus, 'running'>,
+    data?: Record<string, unknown>,
+  ): Promise<AgentTrace | undefined>;
+}
+
+export function createSessionTraceFinalizer(
+  recorder: TraceRecorder | undefined,
+  manager: Pick<SessionTraceManager, 'remember' | 'notifySink'>,
+): SessionTraceFinalizer {
+  let finished = false;
+
+  return {
+    async finish(status, data) {
+      if (!recorder || finished) {
+        return undefined;
+      }
+
+      finished = true;
+      const trace = recorder.finish(status, data);
+      manager.remember(trace);
+      await manager.notifySink(trace);
+      return trace;
+    },
+  };
 }

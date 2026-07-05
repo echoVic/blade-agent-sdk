@@ -387,6 +387,7 @@ describe('monorepo topology', () => {
     expect(sessionLifecycleStateSource).not.toContain('../../../../src/');
     expect(sessionTracesSource).not.toContain('../../../../src/');
     expect(sessionTracesSource).toContain('../observability/TraceRecorder.js');
+    expect(sessionTracesSource).toContain('createSessionTraceFinalizer');
     expect(sessionRuntimeFactorySource).not.toContain('../../../../src/session/Session.js');
     expect(sessionRuntimeFactorySource).toContain("from './Session.js'");
     expect(sessionRuntimeFactorySource).not.toContain("from './legacySessionAdapter.js'");

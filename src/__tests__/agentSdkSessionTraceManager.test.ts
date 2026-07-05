@@ -1,5 +1,8 @@
 import { describe, expect, it, vi } from 'vitest';
-import { SessionTraceManager } from '../../packages/agent-sdk/src/session/traces.js';
+import {
+  createSessionTraceFinalizer,
+  SessionTraceManager,
+} from '../../packages/agent-sdk/src/session/traces.js';
 
 function createFinishedTrace(sessionId: string, marker: string) {
   const manager = new SessionTraceManager({
@@ -101,5 +104,68 @@ describe('agent-sdk session trace manager', () => {
     expect(sink).toHaveBeenCalledWith(trace);
     expect(onSinkError).toHaveBeenCalledOnce();
     expect(onSinkError.mock.calls[0]?.[0]).toBeInstanceOf(Error);
+  });
+
+  it('treats trace finalization as a no-op when no recorder exists', async () => {
+    const manager = new SessionTraceManager({
+      sessionId: 'session-1',
+      observability: undefined,
+      metadata: {},
+    });
+    const finalizer = createSessionTraceFinalizer(undefined, manager);
+
+    await expect(finalizer.finish('success', { content: 'ignored' })).resolves.toBeUndefined();
+
+    expect(manager.getTraces()).toEqual([]);
+  });
+
+  it('finishes, remembers, and notifies a trace only once', async () => {
+    const sink = vi.fn();
+    const manager = new SessionTraceManager({
+      sessionId: 'session-1',
+      observability: {
+        enabled: true,
+        capturePayloads: true,
+        sink,
+      },
+      metadata: {},
+    });
+    const recorder = manager.createRecorder('trace me');
+    const finalizer = createSessionTraceFinalizer(recorder, manager);
+
+    const trace = await finalizer.finish('success', { content: 'done' });
+    const duplicate = await finalizer.finish('error', { error: 'too late' });
+
+    expect(trace?.status).toBe('success');
+    expect(duplicate).toBeUndefined();
+    expect(manager.getTraces()).toHaveLength(1);
+    expect(manager.getLastTrace()?.status).toBe('success');
+    expect(sink).toHaveBeenCalledOnce();
+    expect(sink).toHaveBeenCalledWith(trace);
+  });
+
+  it('remembers finished traces even when the sink fails', async () => {
+    const sink = vi.fn(async () => {
+      throw new Error('sink failed');
+    });
+    const onSinkError = vi.fn();
+    const manager = new SessionTraceManager({
+      sessionId: 'session-1',
+      observability: {
+        enabled: true,
+        sink,
+      },
+      metadata: {},
+      onSinkError,
+    });
+    const recorder = manager.createRecorder('safe');
+    const finalizer = createSessionTraceFinalizer(recorder, manager);
+
+    const trace = await finalizer.finish('aborted', { reason: 'user_abort' });
+
+    expect(trace?.status).toBe('aborted');
+    expect(manager.getTraces()).toHaveLength(1);
+    expect(manager.getLastTrace()).toEqual(trace);
+    expect(onSinkError).toHaveBeenCalledOnce();
   });
 });
