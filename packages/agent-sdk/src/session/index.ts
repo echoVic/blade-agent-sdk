@@ -2,7 +2,9 @@ import {
   createDefaultSessionRuntimeFactory,
 } from './runtimeFactory.js';
 import {
+  createSession as runCreateLifecycle,
   forkSession as runForkLifecycle,
+  resumeSession as runResumeLifecycle,
   prompt as runPromptLifecycle,
 } from './Session.js';
 import type { SessionRuntimeFactory } from './factory.js';
@@ -75,7 +77,7 @@ export type {
 export type { SessionRuntimeFactory } from './factory.js';
 
 export async function createSession(options: SessionOptions): Promise<ISession> {
-  return sessionRuntimeFactory.create(options);
+  return runCreateLifecycle(sessionRuntimeFactory, options);
 }
 
 export async function resumeSession(options: ResumeOptions): Promise<ISession> {
@@ -84,7 +86,7 @@ export async function resumeSession(options: ResumeOptions): Promise<ISession> {
       'resumeSession() requires session persistence. Remove persistSession: false or use createSession().',
     );
   }
-  return sessionRuntimeFactory.resume(options);
+  return runResumeLifecycle(sessionRuntimeFactory, options);
 }
 
 export async function forkSession(options: ForkOptions): Promise<ISession> {
