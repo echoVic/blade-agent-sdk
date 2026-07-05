@@ -111,6 +111,12 @@ describe('package provenance metadata', () => {
     expect(packageVerifier).toContain("import { createOpenAICompatibleModelPort } from '@blade-ai/ai';");
     expect(packageVerifier).toContain("import { AgentKernel } from '@blade-ai/agent';");
     expect(packageVerifier).toContain("import { createSession, defineTool, ToolKind } from '@blade-ai/agent-sdk';");
+    expect(packageVerifier).toContain("from '@blade-ai/agent-sdk/core';");
+    expect(packageVerifier).toContain("from '@blade-ai/agent-sdk/session';");
+    expect(packageVerifier).toContain("from '@blade-ai/agent-sdk/tools';");
+    expect(packageVerifier).toContain("from '@blade-ai/agent-sdk/local';");
+    expect(packageVerifier).toContain("from '@blade-ai/agent-sdk/server';");
+    expect(packageVerifier).toContain("from '@blade-ai/agent-sdk/browser';");
   });
 
   it('type-checks exported AI provider subpaths from the packed temporary consumer', () => {

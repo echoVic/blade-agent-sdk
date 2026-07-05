@@ -539,6 +539,7 @@ Status:
 - Ninety-fourth verification-chain increment complete: the packed temporary consumer now imports and type-checks the provider-focused `@blade-ai/ai/deepseek`, `@blade-ai/ai/providers/openai-compatible`, and `@blade-ai/ai/providers/vercel` subpaths, while tarball checks require their JS and declaration artifacts so exported provider contracts cannot regress silently.
 - Ninety-fifth verification-chain increment complete: `pnpm run verify:packages` now browser-bundles a temporary consumer against the packed `@blade-ai/agent-sdk` tarball with `--platform=browser` and `--conditions=browser`, proving the root browser condition resolves to the server-only `createSession` stub while browser-safe `core` and `tools` contracts stay free of Node-only dependency markers.
 - Ninety-sixth verification-chain increment complete: the packed browser-bundle consumer now also imports `@blade-ai/agent-sdk/session`, `@blade-ai/agent-sdk/server`, and `@blade-ai/agent-sdk/local` under browser conditions and executes their stubs, proving server/local/session subpaths fail clearly in browser bundles without dragging Node, MCP, shell, or local runtime dependencies into client output.
+- Ninety-seventh verification-chain increment complete: `pnpm run verify:packages` now type-checks packed temporary-consumer imports across the public `@blade-ai/agent-sdk/core`, `session`, `tools`, `local`, `server`, and `browser` subpaths, proving subpath declarations remain usable directly and do not rely on root-only export luck.
 
 Commit:
 

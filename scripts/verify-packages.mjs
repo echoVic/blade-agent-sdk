@@ -559,6 +559,45 @@ import type { AgentStreamEvent } from '@blade-ai/agent';
 import { AgentKernel } from '@blade-ai/agent';
 import type { SessionOptions, StreamMessage } from '@blade-ai/agent-sdk';
 import { createSession, defineTool, ToolKind } from '@blade-ai/agent-sdk';
+import type {
+  JsonObject as CoreJsonObject,
+  PermissionHandler,
+  RuntimeContext,
+  StreamMessage as CoreStreamMessage,
+  ToolDefinition as CoreToolDefinition,
+} from '@blade-ai/agent-sdk/core';
+import {
+  createModePermissionHandler,
+  PermissionDecision,
+  PermissionMode as CorePermissionMode,
+  StreamMessageType as CoreStreamMessageType,
+  ToolKind as CoreToolKind,
+} from '@blade-ai/agent-sdk/core';
+import type {
+  ISession as SubpathSession,
+  ResumeOptions,
+  SessionOptions as SubpathSessionOptions,
+} from '@blade-ai/agent-sdk/session';
+import {
+  createSession as createSessionFromSessionSubpath,
+  resumeSession as resumeSessionFromSessionSubpath,
+} from '@blade-ai/agent-sdk/session';
+import type {
+  ToolDefinition as ToolsToolDefinition,
+  ToolResult as ToolsToolResult,
+} from '@blade-ai/agent-sdk/tools';
+import {
+  defineTool as defineToolFromToolsSubpath,
+  ToolKind as ToolsToolKind,
+} from '@blade-ai/agent-sdk/tools';
+import type { BuiltinToolsOptions } from '@blade-ai/agent-sdk/local';
+import { getBuiltinTools } from '@blade-ai/agent-sdk/local';
+import { createSession as createSessionFromServerSubpath } from '@blade-ai/agent-sdk/server';
+import type { StreamMessage as BrowserStreamMessage } from '@blade-ai/agent-sdk/browser';
+import {
+  PermissionMode as BrowserPermissionMode,
+  createSession as createBrowserSession,
+} from '@blade-ai/agent-sdk/browser';
 
 const compatibleOptions: OpenAICompatibleModelPortOptions = {
   apiKey: 'test-key',
@@ -664,6 +703,62 @@ const sessionOptions: SessionOptions = {
   maxOutputTokens: 128,
 };
 
+const coreJson: CoreJsonObject = { ok: true };
+const runtimeContext: RuntimeContext = {
+  capabilities: {
+    filesystem: {
+      roots: ['/tmp/project'],
+      cwd: '/tmp/project',
+    },
+  },
+  metadata: coreJson,
+};
+const coreStreamMessage: CoreStreamMessage = {
+  type: CoreStreamMessageType.CONTENT,
+  delta: 'ok',
+  sessionId: 'session-id',
+};
+const coreToolDefinition: CoreToolDefinition<{ text: string }, string> = echoTool;
+const corePermissionHandler: PermissionHandler = createModePermissionHandler(CorePermissionMode.DEFAULT);
+const coreDecision = PermissionDecision.ALLOW;
+const coreToolKind = CoreToolKind.ReadOnly;
+
+const sessionOptionsFromSubpath: SubpathSessionOptions = sessionOptions;
+const resumeOptions: ResumeOptions = {
+  ...sessionOptionsFromSubpath,
+  sessionId: 'session-id',
+};
+const createSessionFromSessionSubpathRef: typeof createSession = createSessionFromSessionSubpath;
+const resumeSessionFromSessionSubpathRef: (options: ResumeOptions) => Promise<SubpathSession> =
+  resumeSessionFromSessionSubpath;
+const createSessionFromServerSubpathRef: typeof createSession = createSessionFromServerSubpath;
+
+const toolsResult: ToolsToolResult<string> = {
+  success: true,
+  data: 'ok',
+  llmContent: 'ok',
+};
+const toolsTool: ToolsToolDefinition<{ text: string }, string> = defineToolFromToolsSubpath({
+  name: 'typed_echo',
+  description: 'Typed echo input',
+  kind: ToolsToolKind.ReadOnly,
+  parameters: {
+    type: 'object',
+    properties: { text: { type: 'string' } },
+    required: ['text'],
+  },
+  async execute(input: { text: string }) {
+    return toolsResult;
+  },
+});
+
+const builtinOptions: BuiltinToolsOptions = {};
+const getBuiltinToolsRef: typeof getBuiltinTools = getBuiltinTools;
+
+const browserStreamMessage: BrowserStreamMessage = coreStreamMessage;
+const browserMode: BrowserPermissionMode = BrowserPermissionMode.DEFAULT;
+const browserCreateSessionRef: typeof createBrowserSession = createBrowserSession;
+
 async function useSession(): Promise<void> {
   const session = await createSession(sessionOptions);
   await session.send('hello');
@@ -682,6 +777,21 @@ void vercelModel;
 void deepseekOptions;
 void deepseekCost;
 void useKernel;
+void runtimeContext;
+void coreToolDefinition;
+void corePermissionHandler;
+void coreDecision;
+void coreToolKind;
+void resumeOptions;
+void createSessionFromSessionSubpathRef;
+void resumeSessionFromSessionSubpathRef;
+void createSessionFromServerSubpathRef;
+void toolsTool;
+void builtinOptions;
+void getBuiltinToolsRef;
+void browserStreamMessage;
+void browserMode;
+void browserCreateSessionRef;
 void useSession;
 `,
   );
