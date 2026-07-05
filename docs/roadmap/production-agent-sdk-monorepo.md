@@ -365,6 +365,7 @@ Status:
 - Fifty-second adapter increment complete: `@blade-ai/agent-sdk/session` now owns the pending-turn state machine locally. `PendingTurnBuffer` preserves the session-first `send()` before `stream()` contract, rejects overlapping pending messages, consumes turns atomically, and exposes cleanup for close/abort paths without depending on legacy root `Session` fields.
 - Fifty-third adapter increment complete: `@blade-ai/agent-sdk/session` now owns turn abort-scope management locally. `TurnAbortController` creates per-turn abort signals, composes optional caller signals with the session abort signal, disconnects listeners during cleanup, and clears active turn state on external or session abort without depending on legacy root `Session` private methods.
 - Fifty-fourth adapter increment complete: `@blade-ai/agent-sdk/session` now owns prompt stream event accumulation locally. `PromptStreamAccumulator` converts session `StreamMessage` events into `PromptResult` state for tool calls, usage, turn count, final content, and stream errors, and the package-local `prompt()` lifecycle now delegates to that accumulator instead of carrying inline event-reduction logic.
+- Fifty-fifth adapter increment complete: `@blade-ai/agent-sdk/session` now owns lifecycle cleanup error preservation locally. `closeSessionAfterLifecycle()` keeps prompt/fork primary errors from being masked by cleanup failures while still surfacing pure close failures, and the package-local `prompt()` and `forkSession()` lifecycles now use it for session cleanup.
 
 ### Phase 5: Production Verification Chain
 
@@ -425,6 +426,7 @@ Status:
 - Thirty-third verification-chain increment complete: focused package-local tests now cover pending-turn lifecycle behavior for missing sends, single-message consumption, overlapping send rejection, and cleanup. Topology also requires the pending-turn source to remain package-local without root imports.
 - Thirty-fourth verification-chain increment complete: focused package-local tests now cover turn abort-scope behavior for local signals, external abort propagation, session abort propagation, cleanup listener disconnection, and overlapping turn rejection. Topology also requires the turn-abort source to remain package-local without root imports.
 - Thirty-fifth verification-chain increment complete: focused package-local tests now cover prompt stream accumulation for successful results, tool result updates, stream errors, and result-error fallbacks. Topology also requires the prompt accumulator source to remain package-local without root imports and requires the package-local `prompt()` lifecycle to instantiate it.
+- Thirty-sixth verification-chain increment complete: session factory lifecycle tests now prove prompt stream errors and fork errors remain the user-visible failure when cleanup also fails. Topology also requires the cleanup helper source to remain package-local without root imports and requires the package-local lifecycle to call it.
 
 Commit:
 

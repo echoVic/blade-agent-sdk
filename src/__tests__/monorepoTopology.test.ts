@@ -340,6 +340,7 @@ describe('monorepo topology', () => {
       'packages/agent-sdk/src/session/promptStreamAccumulator.ts',
       'utf-8',
     );
+    const sessionCleanupSource = readFileSync('packages/agent-sdk/src/session/cleanup.ts', 'utf-8');
     const sessionFactorySource = readFileSync('packages/agent-sdk/src/session/factory.ts', 'utf-8');
     const sessionLifecycleSource = readFileSync('packages/agent-sdk/src/session/Session.ts', 'utf-8');
     const legacySessionAdapterSource = readFileSync(
@@ -357,11 +358,13 @@ describe('monorepo topology', () => {
     expect(existsSync('packages/agent-sdk/src/session/pendingTurn.ts')).toBe(true);
     expect(existsSync('packages/agent-sdk/src/session/turnAbort.ts')).toBe(true);
     expect(existsSync('packages/agent-sdk/src/session/promptStreamAccumulator.ts')).toBe(true);
+    expect(existsSync('packages/agent-sdk/src/session/cleanup.ts')).toBe(true);
     expect(existsSync('packages/agent-sdk/src/session/store.ts')).toBe(true);
     expect(sessionContentSource).not.toContain('../../../../src/');
     expect(sessionPendingTurnSource).not.toContain('../../../../src/');
     expect(sessionTurnAbortSource).not.toContain('../../../../src/');
     expect(sessionPromptAccumulatorSource).not.toContain('../../../../src/');
+    expect(sessionCleanupSource).not.toContain('../../../../src/');
     expect(sessionRuntimeFactorySource).not.toContain('../../../../src/session/Session.js');
     expect(sessionRuntimeFactorySource).toContain("from './Session.js'");
     expect(sessionRuntimeFactorySource).not.toContain("from './legacySessionAdapter.js'");
@@ -379,6 +382,7 @@ describe('monorepo topology', () => {
     expect(sessionLifecycleSource).toContain('resumeSession() requires session persistence');
     expect(sessionLifecycleSource).toContain('forkSession() requires session persistence');
     expect(sessionLifecycleSource).toContain('new PromptStreamAccumulator()');
+    expect(sessionLifecycleSource).toContain('closeSessionAfterLifecycle');
     expect(sessionLifecycleSource).not.toContain('../../../../src/session/Session.js');
     const legacySessionAdapterRootImports = [
       ...legacySessionAdapterSource.matchAll(/from ['"](\.\.\/\.\.\/\.\.\/\.\.\/src\/[^'"]+)['"]/g),

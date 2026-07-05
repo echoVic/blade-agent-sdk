@@ -1,3 +1,4 @@
+import { closeSessionAfterLifecycle } from './cleanup.js';
 import type { SessionRuntimeFactory } from './factory.js';
 import { PromptStreamAccumulator } from './promptStreamAccumulator.js';
 import type {
@@ -39,11 +40,15 @@ export async function forkSession(
   }
   const { messageId } = options;
   const sourceSession = await runtime.resume(options);
+  let primaryError: unknown;
 
   try {
     return await sourceSession.fork({ messageId });
+  } catch (error) {
+    primaryError = error;
+    throw error;
   } finally {
-    await sourceSession.close();
+    await closeSessionAfterLifecycle(sourceSession, primaryError);
   }
 }
 
@@ -55,6 +60,7 @@ export async function prompt(
   const startTime = Date.now();
   const session = await runtime.create(options);
   const accumulator = new PromptStreamAccumulator();
+  let primaryError: unknown;
 
   try {
     await session.send(message);
@@ -64,7 +70,10 @@ export async function prompt(
     }
 
     return accumulator.build({ duration: Date.now() - startTime });
+  } catch (error) {
+    primaryError = error;
+    throw error;
   } finally {
-    await session.close();
+    await closeSessionAfterLifecycle(session, primaryError);
   }
 }

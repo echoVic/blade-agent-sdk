@@ -212,6 +212,56 @@ describe('agent-sdk session runtime factory', () => {
     expect(calls).toEqual(['resume:old', 'session-fork:m1', 'source-close']);
   });
 
+  it('preserves prompt stream errors when session cleanup also fails', async () => {
+    const fakeSession = createFakeSession('created');
+    fakeSession.stream = async function* () {
+      yield { type: 'error', message: 'model failed', sessionId: 'created' };
+    };
+    fakeSession.close = async () => {
+      throw new Error('close failed');
+    };
+
+    const restore = setSessionRuntimeFactory({
+      async create() {
+        return fakeSession;
+      },
+      async resume() {
+        throw new Error('resume should not be called');
+      },
+    });
+
+    try {
+      await expect(prompt('hello', options)).rejects.toThrow('model failed');
+    } finally {
+      restore();
+    }
+  });
+
+  it('preserves fork errors when source session cleanup also fails', async () => {
+    const sourceSession = createFakeSession('source');
+    sourceSession.fork = async () => {
+      throw new Error('fork failed');
+    };
+    sourceSession.close = async () => {
+      throw new Error('close failed');
+    };
+
+    const restore = setSessionRuntimeFactory({
+      async create() {
+        throw new Error('create should not be called');
+      },
+      async resume() {
+        return sourceSession;
+      },
+    });
+
+    try {
+      await expect(forkSession({ ...options, sessionId: 'old' })).rejects.toThrow('fork failed');
+    } finally {
+      restore();
+    }
+  });
+
   it('rejects persistence-disabled resume and fork inside the package-local lifecycle', async () => {
     const calls: string[] = [];
     const runtime = {
