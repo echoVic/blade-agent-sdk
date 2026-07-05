@@ -173,4 +173,21 @@ describe('agent-sdk package-local session runtime shell', () => {
       },
     ]);
   });
+
+  it('owns close lifecycle through an injected MCP registry port', async () => {
+    const disconnectAll = vi.fn(async () => {});
+    const runtime = new PackageLocalSessionRuntime({
+      sessionId: 'session-1',
+      options,
+      bladeConfig,
+      defaultContext: {},
+      mcpRegistry: {
+        disconnectAll,
+      },
+    });
+
+    await runtime.close();
+
+    expect(disconnectAll).toHaveBeenCalledTimes(1);
+  });
 });

@@ -389,6 +389,7 @@ Status:
 - Seventy-sixth adapter increment complete: `@blade-ai/agent-sdk/session` now owns the first package-local runtime shell. `PackageLocalSessionRuntime` derives session storage root, project cwd, hooks, and configured MCP server state locally, and `isPackageLocalSdkMcpServerHandle()` replaces the root runtime's in-process MCP handle guard as the package-local runtime migration anchor.
 - Seventy-seventh adapter increment complete: `PackageLocalSessionRuntime` now owns session create/load lifecycle semantics through an injected `PackageLocalRuntimeSessionStorePort`. `ensureSessionCreated()` and `ensureSessionLoaded()` mirror the root runtime's create-or-load behavior without importing root `ContextManager`, preparing the package-local runtime shell to take over persistence wiring incrementally.
 - Seventy-eighth adapter increment complete: `PackageLocalSessionRuntime` now owns turn workspace preparation through an injected `PackageLocalRuntimeWorkspacePort`. `prepareTurn(snapshot)` mirrors the root runtime's project path and environment update semantics, including `cwd` normalization, without importing root workspace/context managers.
+- Seventy-ninth adapter increment complete: `PackageLocalSessionRuntime` now owns close lifecycle semantics through an injected `PackageLocalRuntimeMcpRegistryPort`. `close()` mirrors the root runtime's MCP disconnect-all behavior without importing root MCP registry implementation.
 
 ### Phase 5: Production Verification Chain
 
@@ -474,6 +475,7 @@ Status:
 - Fifty-eighth verification-chain increment complete: focused package-local runtime tests now cover storage-root normalization, project cwd derivation, hook callback ownership, and in-process MCP handle detection without importing root `src/session/SessionRuntime.ts`. Topology also requires the runtime shell to remain package-local and root-import-free.
 - Fifty-ninth verification-chain increment complete: focused package-local runtime tests now cover `ensureSessionCreated()` and `ensureSessionLoaded()` against an injected store port, including load-miss create fallback and load-hit no-op behavior. Topology also requires the store port and lifecycle methods to remain on the package-local runtime shell.
 - Sixtieth verification-chain increment complete: focused package-local runtime tests now cover `prepareTurn(snapshot)` against an injected workspace port, including project path forwarding and `cwd` environment normalization. Topology also requires the workspace port and prepare-turn method to remain package-local.
+- Sixty-first verification-chain increment complete: focused package-local runtime tests now cover `close()` against an injected MCP registry port. Topology also requires the MCP registry port and close lifecycle method to remain on the package-local runtime shell.
 
 Commit:
 

@@ -16,6 +16,7 @@ export interface PackageLocalSessionRuntimeOptions {
   defaultContext: RuntimeContext;
   sessionStore?: PackageLocalRuntimeSessionStorePort;
   workspace?: PackageLocalRuntimeWorkspacePort;
+  mcpRegistry?: PackageLocalRuntimeMcpRegistryPort;
 }
 
 export interface PackageLocalRuntimeSessionStorePort {
@@ -30,6 +31,10 @@ export interface PackageLocalRuntimeWorkspacePort {
 export interface PackageLocalRuntimeWorkspaceUpdate {
   projectPath: string | undefined;
   environment: Record<string, string>;
+}
+
+export interface PackageLocalRuntimeMcpRegistryPort {
+  disconnectAll(): Promise<void>;
 }
 
 export function resolvePackageLocalRuntimeStorageRoot(
@@ -71,6 +76,7 @@ export class PackageLocalSessionRuntime {
   readonly hookCallbacks: Partial<Record<SessionHookEvent, HookCallback[]>>;
   readonly sessionStore: PackageLocalRuntimeSessionStorePort;
   readonly workspace: PackageLocalRuntimeWorkspacePort;
+  readonly mcpRegistry: PackageLocalRuntimeMcpRegistryPort;
 
   constructor(options: PackageLocalSessionRuntimeOptions) {
     this.sessionId = options.sessionId;
@@ -84,6 +90,7 @@ export class PackageLocalSessionRuntime {
     this.hookCallbacks = options.options.hooks ?? {};
     this.sessionStore = options.sessionStore ?? createNoopRuntimeSessionStore();
     this.workspace = options.workspace ?? createNoopRuntimeWorkspace();
+    this.mcpRegistry = options.mcpRegistry ?? createNoopRuntimeMcpRegistry();
   }
 
   getConfiguredMcpServers(): Record<string, McpServerConfig | SdkMcpServerHandle> {
@@ -110,6 +117,10 @@ export class PackageLocalSessionRuntime {
       },
     });
   }
+
+  async close(): Promise<void> {
+    await this.mcpRegistry.disconnectAll();
+  }
 }
 
 function createNoopRuntimeSessionStore(): PackageLocalRuntimeSessionStorePort {
@@ -124,5 +135,11 @@ function createNoopRuntimeSessionStore(): PackageLocalRuntimeSessionStorePort {
 function createNoopRuntimeWorkspace(): PackageLocalRuntimeWorkspacePort {
   return {
     updateWorkspace() {},
+  };
+}
+
+function createNoopRuntimeMcpRegistry(): PackageLocalRuntimeMcpRegistryPort {
+  return {
+    async disconnectAll() {},
   };
 }
