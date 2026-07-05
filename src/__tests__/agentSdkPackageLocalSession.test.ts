@@ -123,6 +123,45 @@ describe('agent-sdk package-local Session instance', () => {
     expect(streamTurn).toHaveBeenCalledTimes(1);
   });
 
+  it('owns basic control state without requiring a delegate', async () => {
+    const streamTurn = vi.fn(async function* (turn, _streamOptions, sessionContext) {
+      expect(turn.sendOptions?.maxTurns).toBeUndefined();
+      expect(sessionContext?.options).toMatchObject({
+        model: 'model-2',
+        permissionMode: PermissionMode.YOLO,
+        maxTurns: 3,
+      });
+      yield {
+        type: 'result',
+        subtype: 'success',
+        content: 'ok',
+        sessionId: 'session-1',
+      } satisfies StreamMessage;
+    });
+    const session = new PackageLocalSession({
+      sessionId: 'session-1',
+      options,
+      streamTurn,
+      createTurnId: () => 'turn-1',
+    });
+
+    session.setPermissionMode(PermissionMode.YOLO);
+    await session.setModel('model-2');
+    session.setMaxTurns(3);
+
+    await expect(session.supportedModels()).resolves.toEqual([
+      {
+        id: 'default',
+        name: 'model-2',
+        provider: 'openai-compatible',
+      },
+    ]);
+    await session.send('hello');
+    await collect(session.stream());
+
+    expect(streamTurn).toHaveBeenCalledTimes(1);
+  });
+
   it('centralizes lifecycle close and abort behavior', async () => {
     const cleanup = vi.fn();
     const session = new PackageLocalSession({

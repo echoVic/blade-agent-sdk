@@ -65,7 +65,7 @@ export interface PackageLocalSessionDelegate {
 
 export class PackageLocalSession implements ISession {
   readonly sessionId: SessionId;
-  private readonly sessionOptions: SessionOptions;
+  private sessionOptions: SessionOptions;
   private readonly streamTurn: PackageLocalSessionStreamTurn;
   private readonly cleanup?: SessionCloseCleanup;
   private readonly delegate?: PackageLocalSessionDelegate;
@@ -142,27 +142,36 @@ export class PackageLocalSession implements ISession {
   }
 
   setPermissionMode(mode: Parameters<ISession['setPermissionMode']>[0]): void {
+    this.lifecycle.assertOpen();
+    this.sessionOptions = {
+      ...this.sessionOptions,
+      permissionMode: mode,
+    };
     if (this.delegate?.setPermissionMode) {
       this.delegate.setPermissionMode(mode);
-      return;
     }
-    throw new Error('setPermissionMode is not implemented by PackageLocalSession yet.');
   }
 
   async setModel(model: Parameters<ISession['setModel']>[0]): Promise<void> {
+    this.lifecycle.assertOpen();
+    this.sessionOptions = {
+      ...this.sessionOptions,
+      model,
+    };
     if (this.delegate?.setModel) {
       await this.delegate.setModel(model);
-      return;
     }
-    throw new Error('setModel is not implemented by PackageLocalSession yet.');
   }
 
   setMaxTurns(maxTurns: Parameters<ISession['setMaxTurns']>[0]): void {
+    this.lifecycle.assertOpen();
+    this.sessionOptions = {
+      ...this.sessionOptions,
+      maxTurns,
+    };
     if (this.delegate?.setMaxTurns) {
       this.delegate.setMaxTurns(maxTurns);
-      return;
     }
-    throw new Error('setMaxTurns is not implemented by PackageLocalSession yet.');
   }
 
   async supportedModels(): Promise<ModelInfo[]> {

@@ -566,6 +566,7 @@ Status:
 - One-hundred-twentieth verification-chain increment complete: all publishable package JS builds now disable source maps, and `pnpm run verify:packages` dynamically rejects any packed `.js.map` entry so npm tarballs do not ship local JavaScript source-map metadata.
 - One-hundred-twenty-first verification-chain increment complete: topology now guards the remaining root session source against migration-era stream runtime markers, rejecting `runtime?: 'kernel' | 'legacy'`, `experimentalKernel`, and explicit legacy/kernel branch checks in `src/session/types.ts` and `src/session/Session.ts` so the source contract stays aligned with the packed kernel-only session declarations.
 - One-hundred-twenty-second verification-chain increment complete: browser-bundle verification now tolerates two consecutive transient esbuild service stops by default, and the post-publish browser bundle smoke reuses the same retry helper while still loading esbuild from the temporary npm consumer install.
+- One-hundred-twenty-third verification-chain increment complete: the package-local `Session` instance now owns basic control state for `setPermissionMode()`, `setModel()`, and `setMaxTurns()` without requiring a legacy delegate. Focused tests prove updated model, permission mode, and max-turn defaults flow into later stream context and supported-model projection.
 
 Commit:
 
