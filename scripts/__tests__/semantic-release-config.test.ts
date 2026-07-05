@@ -330,6 +330,23 @@ describe('release scripts', () => {
     expect(readme).toContain('pnpm run verify:published -- --version');
     expect(checklist).toContain('pnpm run verify:published -- --version');
   });
+
+  it('verifies published packages by installing them into a temporary consumer', () => {
+    const publishedVerifier = readFileSync(resolve('scripts/verify-published.mjs'), 'utf8');
+    const readme = readFileSync(resolve('README.md'), 'utf8');
+    const checklist = readFileSync(resolve('docs/production-checklist.md'), 'utf8');
+
+    expect(publishedVerifier).toContain('verifyPublishedInstallSmoke');
+    expect(publishedVerifier).toContain('mkdtemp');
+    expect(publishedVerifier).toContain('consumer-runtime.mjs');
+    expect(publishedVerifier).toContain('npm install');
+    expect(publishedVerifier).toContain('@blade-ai/ai@${version}');
+    expect(publishedVerifier).toContain('@blade-ai/agent@${version}');
+    expect(publishedVerifier).toContain('@blade-ai/agent-sdk@${version}');
+    expect(publishedVerifier).toContain("assertRuntimeExport(agentSdk, 'createSession')");
+    expect(readme).toContain('临时 consumer');
+    expect(checklist).toContain('临时 consumer');
+  });
 });
 
 describe('release workflow', () => {

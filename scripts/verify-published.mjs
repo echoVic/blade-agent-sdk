@@ -1,4 +1,7 @@
 import { execFile } from 'node:child_process';
+import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
 import { promisify } from 'node:util';
 
@@ -63,10 +66,11 @@ function normalizeVersion(version) {
   return version.startsWith('v') ? version.slice(1) : version;
 }
 
-async function run(command, args) {
+async function run(command, args, options = {}) {
   const { stdout } = await execFileAsync(command, args, {
     encoding: 'utf8',
     maxBuffer: 1024 * 1024,
+    ...options,
   });
   return stdout.trim();
 }
@@ -110,8 +114,77 @@ async function verifyPublishedOnce({ repo, version }) {
   for (const packageName of publishablePackages) {
     await verifyNpmPackage({ packageName, version });
   }
+  await verifyPublishedInstallSmoke({ version });
 
   return releaseUrl;
+}
+
+async function verifyPublishedInstallSmoke({ version }) {
+  const consumerDir = await mkdtemp(join(tmpdir(), 'blade-published-consumer-'));
+  const packageSpecs = [
+    `@blade-ai/ai@${version}`,
+    `@blade-ai/agent@${version}`,
+    `@blade-ai/agent-sdk@${version}`,
+  ];
+  const npmInstallCommandLabel = `npm install ${packageSpecs.join(' ')}`;
+
+  try {
+    await writeFile(
+      join(consumerDir, 'package.json'),
+      JSON.stringify({
+        private: true,
+        type: 'module',
+      }, null, 2),
+    );
+    await run('npm', [
+      'install',
+      '--ignore-scripts',
+      '--no-audit',
+      '--no-fund',
+      ...packageSpecs,
+    ], { cwd: consumerDir });
+
+    const runtimeSmokePath = join(consumerDir, 'consumer-runtime.mjs');
+    await writeFile(
+      runtimeSmokePath,
+      `import * as ai from '@blade-ai/ai';
+import * as aiOpenAICompatible from '@blade-ai/ai/providers/openai-compatible';
+import * as aiRetry from '@blade-ai/ai/retry';
+import * as agent from '@blade-ai/agent';
+import * as agentKernel from '@blade-ai/agent/kernel';
+import * as agentProtocol from '@blade-ai/agent/protocol';
+import * as agentSdk from '@blade-ai/agent-sdk';
+import * as agentSdkCore from '@blade-ai/agent-sdk/core';
+import * as agentSdkSession from '@blade-ai/agent-sdk/session';
+import * as agentSdkTools from '@blade-ai/agent-sdk/tools';
+
+function assertRuntimeExport(module, name) {
+  if (!(name in module)) {
+    throw new Error(\`Missing runtime export \${name}\`);
+  }
+}
+
+assertRuntimeExport(ai, 'createOpenAICompatibleModelPort');
+assertRuntimeExport(aiOpenAICompatible, 'createOpenAICompatibleModelPort');
+assertRuntimeExport(aiRetry, 'DEFAULT_RETRY_CONFIG');
+assertRuntimeExport(agent, 'AgentKernel');
+assertRuntimeExport(agentKernel, 'AgentKernel');
+assertRuntimeExport(agentSdk, 'createSession');
+assertRuntimeExport(agentSdk, 'defineTool');
+assertRuntimeExport(agentSdkCore, 'PermissionMode');
+assertRuntimeExport(agentSdkSession, 'createSession');
+assertRuntimeExport(agentSdkTools, 'ToolKind');
+
+if (Object.keys(agentProtocol).length !== 0) {
+  throw new Error('@blade-ai/agent/protocol should remain type-only at runtime');
+}
+`,
+    );
+    await run(process.execPath, [runtimeSmokePath], { cwd: consumerDir });
+    console.log(`[verify-published] temporary consumer smoke passed: ${npmInstallCommandLabel}`);
+  } finally {
+    await rm(consumerDir, { recursive: true, force: true });
+  }
 }
 
 async function verifyPublishedWithPolling(options) {

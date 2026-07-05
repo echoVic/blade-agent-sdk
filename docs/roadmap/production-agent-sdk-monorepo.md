@@ -589,6 +589,7 @@ Status:
 - Fifth release-automation increment complete: `pnpm run verify:release` now copies the real publishable package manifests into a temporary release-prep workspace, runs the semantic-release workspace-version prepare plugin with a synthetic release version, and rejects prepared manifests that still contain `workspace:` or `0.0.0` placeholders so fixed-version monorepo publishing is verified against the actual package metadata.
 - Sixth release-automation increment complete: all three publishable packages now declare `publishConfig.provenance: true`, and `pnpm run verify:release` rejects package metadata that would publish without explicit npm provenance enabled, complementing the GitHub OIDC trusted publishing workflow.
 - Seventh release-automation increment complete: the repository now exposes `pnpm run verify:published -- --version <version>` as a post-publish visibility check that polls the GitHub Release and all three npm packages, so maintainers can verify public artifacts after the main-branch semantic-release workflow finishes.
+- Eighth release-automation increment complete: `pnpm run verify:published -- --version <version>` now installs the released `@blade-ai/ai`, `@blade-ai/agent`, and `@blade-ai/agent-sdk` versions into a temporary consumer and runs runtime import smoke checks against the public package exports, proving the external npm install path works after publication.
 
 Commit:
 
