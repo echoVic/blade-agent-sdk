@@ -465,6 +465,9 @@ describe('monorepo topology', () => {
     const runtimeNoopPortsSource = existsSync('packages/agent-sdk/src/session/runtimeNoopPorts.ts')
       ? readFileSync('packages/agent-sdk/src/session/runtimeNoopPorts.ts', 'utf-8')
       : '';
+    const runtimeSubagentsSource = existsSync('packages/agent-sdk/src/session/runtimeSubagents.ts')
+      ? readFileSync('packages/agent-sdk/src/session/runtimeSubagents.ts', 'utf-8')
+      : '';
     const sessionFactorySource = readFileSync('packages/agent-sdk/src/session/factory.ts', 'utf-8');
     const sessionLifecycleSource = readFileSync('packages/agent-sdk/src/session/Session.ts', 'utf-8');
     const sessionStoreSource = readFileSync('packages/agent-sdk/src/session/store.ts', 'utf-8');
@@ -573,7 +576,13 @@ describe('monorepo topology', () => {
     expect(packageLocalRuntimeInstanceSource).toContain('PackageLocalRuntimeBuiltinToolContext');
     expect(packageLocalRuntimeInstanceSource).toContain('initializeSubagents');
     expect(packageLocalRuntimeInstanceSource).toContain('PackageLocalRuntimeSubagentRegistryPort');
+    expect(existsSync('packages/agent-sdk/src/session/runtimeSubagents.ts')).toBe(true);
+    expect(runtimeSubagentsSource).not.toContain('../../../../src/');
+    expect(runtimeSubagentsSource).toContain('packageLocalSubagentConfigFromDefinition');
     expect(packageLocalRuntimeInstanceSource).toContain('packageLocalSubagentConfigFromDefinition');
+    expect(packageLocalRuntimeInstanceSource).not.toContain(
+      'function packageLocalSubagentConfigFromDefinition',
+    );
     expect(packageLocalRuntimeInstanceSource).toContain('createPermissionHandler');
     expect(packageLocalRuntimeInstanceSource).toContain('PackageLocalRuntimePermissionHookPort');
     expect(packageLocalRuntimeInstanceSource).toContain('createPermissionHandlerFromCanUseTool');

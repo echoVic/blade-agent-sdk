@@ -49,6 +49,7 @@ import {
 } from './kernelStreamProjection.js';
 import { getPackageLocalMcpToolSourceId } from './runtimeMcpTools.js';
 import { createPackageLocalRuntimeNoopPorts } from './runtimeNoopPorts.js';
+import { packageLocalSubagentConfigFromDefinition } from './runtimeSubagents.js';
 import { createSessionTraceFinalizer, SessionTraceManager } from './traces.js';
 import type { SessionSnapshot } from './store.js';
 
@@ -341,20 +342,6 @@ export interface PackageLocalRuntimeNamedTool {
 
 export interface PackageLocalRuntimeMcpTool extends PackageLocalRuntimeNamedTool {
   tags?: readonly string[];
-}
-
-export function packageLocalSubagentConfigFromDefinition(
-  name: string,
-  definition: PackageLocalRuntimeAgentDefinition,
-): SubagentConfig {
-  return {
-    name: definition.name || name,
-    description: definition.description,
-    systemPrompt: definition.systemPrompt,
-    tools: definition.allowedTools,
-    model: definition.model ?? 'inherit',
-    source: 'session',
-  };
 }
 
 export function resolvePackageLocalRuntimeStorageRoot(
