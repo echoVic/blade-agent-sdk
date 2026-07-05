@@ -5,6 +5,10 @@ interface PackageLocalMcpRegistryActionPort {
   connectServer?(serverName: string): Promise<void> | void;
   disconnectServer?(serverName: string): Promise<void> | void;
   reconnectServer?(serverName: string): Promise<void> | void;
+  ensureServerRegistered?(
+    serverName: string,
+    config: McpServerConfig | SdkMcpServerHandle,
+  ): Promise<void> | void;
   registerInProcessServer?(
     serverName: string,
     config: SdkMcpServerHandle,
@@ -21,6 +25,12 @@ export interface PackageLocalConfiguredMcpServersRegistrationOptions {
   mcpRegistry: PackageLocalMcpRegistryActionPort;
   logger: PackageLocalMcpLoggerPort;
   refreshMcpTools(serverNames: string[]): Promise<void> | void;
+}
+
+export interface PackageLocalMcpServerEnsureOptions {
+  serverName: string;
+  configuredServers?: Record<string, McpServerConfig | SdkMcpServerHandle>;
+  mcpRegistry: PackageLocalMcpRegistryActionPort;
 }
 
 export function isPackageLocalSdkMcpServerHandle(
@@ -99,4 +109,19 @@ export async function registerPackageLocalConfiguredMcpServers(
   }
 
   await options.refreshMcpTools(Object.keys(configuredServers));
+}
+
+export async function ensurePackageLocalMcpServerRegistered(
+  options: PackageLocalMcpServerEnsureOptions,
+): Promise<void> {
+  const config = options.configuredServers?.[options.serverName];
+  if (!config) {
+    throw new Error(`MCP server "${options.serverName}" not found in configuration`);
+  }
+
+  await options.mcpRegistry.ensureServerRegistered?.call(
+    options.mcpRegistry,
+    options.serverName,
+    config,
+  );
 }

@@ -58,6 +58,7 @@ import {
 } from './runtimeContext.js';
 import {
   callPackageLocalMcpRegistryAction,
+  ensurePackageLocalMcpServerRegistered,
   registerPackageLocalConfiguredMcpServers,
 } from './runtimeMcpServers.js';
 import {
@@ -435,7 +436,11 @@ export class PackageLocalSessionRuntime {
   }
 
   async mcpConnect(serverName: string): Promise<void> {
-    await this.ensureMcpServerRegistered(serverName);
+    await ensurePackageLocalMcpServerRegistered({
+      serverName,
+      configuredServers: this.options.mcpServers,
+      mcpRegistry: this.mcpRegistry,
+    });
     await callPackageLocalMcpRegistryAction(this.mcpRegistry, 'connectServer', serverName);
     await this.refreshMcpTools([serverName]);
   }
@@ -446,7 +451,11 @@ export class PackageLocalSessionRuntime {
   }
 
   async mcpReconnect(serverName: string): Promise<void> {
-    await this.ensureMcpServerRegistered(serverName);
+    await ensurePackageLocalMcpServerRegistered({
+      serverName,
+      configuredServers: this.options.mcpServers,
+      mcpRegistry: this.mcpRegistry,
+    });
     await callPackageLocalMcpRegistryAction(this.mcpRegistry, 'reconnectServer', serverName);
     await this.refreshMcpTools([serverName]);
   }
@@ -458,15 +467,6 @@ export class PackageLocalSessionRuntime {
       logger: this.logger,
       refreshMcpTools: (serverNames) => this.refreshMcpTools(serverNames),
     });
-  }
-
-  private async ensureMcpServerRegistered(serverName: string): Promise<void> {
-    const config = this.options.mcpServers?.[serverName];
-    if (!config) {
-      throw new Error(`MCP server "${serverName}" not found in configuration`);
-    }
-
-    await this.mcpRegistry.ensureServerRegistered?.(serverName, config);
   }
 
   async refreshMcpTools(serverNames: string[]): Promise<void> {

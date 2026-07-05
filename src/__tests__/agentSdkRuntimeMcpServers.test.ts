@@ -143,4 +143,39 @@ describe('agent-sdk package-local runtime MCP server helpers', () => {
     );
     expect(warnings[0][1]).toBeInstanceOf(Error);
   });
+
+  it('ensures configured MCP servers through registry ports without runtime state', async () => {
+    expect(existsSync(mcpServersSourcePath)).toBe(true);
+
+    const { ensurePackageLocalMcpServerRegistered } = await import(mcpServersModulePath);
+    const remoteConfig = {
+      command: 'node',
+      args: ['server.js'],
+    };
+    const calls: unknown[] = [];
+    const registry = {
+      ensureServerRegistered(serverName: string, config: unknown) {
+        calls.push([serverName, config, this === registry]);
+      },
+    };
+
+    await ensurePackageLocalMcpServerRegistered({
+      serverName: 'remote',
+      configuredServers: {
+        remote: remoteConfig,
+      },
+      mcpRegistry: registry,
+    });
+
+    expect(calls).toEqual([['remote', remoteConfig, true]]);
+    await expect(
+      ensurePackageLocalMcpServerRegistered({
+        serverName: 'missing',
+        configuredServers: {
+          remote: remoteConfig,
+        },
+        mcpRegistry: registry,
+      }),
+    ).rejects.toThrow('MCP server "missing" not found in configuration');
+  });
 });
