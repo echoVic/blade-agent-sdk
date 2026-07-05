@@ -462,6 +462,11 @@ describe('monorepo topology', () => {
     const runtimeMcpToolsSource = existsSync('packages/agent-sdk/src/session/runtimeMcpTools.ts')
       ? readFileSync('packages/agent-sdk/src/session/runtimeMcpTools.ts', 'utf-8')
       : '';
+    const runtimeMcpServersSource = existsSync(
+      'packages/agent-sdk/src/session/runtimeMcpServers.ts',
+    )
+      ? readFileSync('packages/agent-sdk/src/session/runtimeMcpServers.ts', 'utf-8')
+      : '';
     const runtimeNoopPortsSource = existsSync('packages/agent-sdk/src/session/runtimeNoopPorts.ts')
       ? readFileSync('packages/agent-sdk/src/session/runtimeNoopPorts.ts', 'utf-8')
       : '';
@@ -544,6 +549,12 @@ describe('monorepo topology', () => {
     expect(packageLocalRuntimeInstanceSource).toContain('getPackageLocalRuntimeContextCwd');
     expect(packageLocalRuntimeInstanceSource).not.toContain('function getRuntimeContextCwd');
     expect(packageLocalRuntimeInstanceSource).toContain('isPackageLocalSdkMcpServerHandle');
+    expect(existsSync('packages/agent-sdk/src/session/runtimeMcpServers.ts')).toBe(true);
+    expect(runtimeMcpServersSource).not.toContain('../../../../src/');
+    expect(runtimeMcpServersSource).toContain('isPackageLocalSdkMcpServerHandle');
+    expect(packageLocalRuntimeInstanceSource).not.toContain(
+      'function isPackageLocalSdkMcpServerHandle',
+    );
     expect(packageLocalRuntimeInstanceSource).toContain('ensureSessionCreated');
     expect(packageLocalRuntimeInstanceSource).toContain('ensureSessionLoaded');
     expect(packageLocalRuntimeInstanceSource).toContain('PackageLocalRuntimeSessionStorePort');

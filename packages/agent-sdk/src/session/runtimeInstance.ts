@@ -50,6 +50,7 @@ import {
   getPackageLocalRuntimeContextCwd,
   resolvePackageLocalRuntimeStorageRoot,
 } from './runtimeContext.js';
+import { isPackageLocalSdkMcpServerHandle } from './runtimeMcpServers.js';
 import { getPackageLocalMcpToolSourceId } from './runtimeMcpTools.js';
 import { createPackageLocalRuntimeNoopPorts } from './runtimeNoopPorts.js';
 import { packageLocalSubagentConfigFromDefinition } from './runtimeSubagents.js';
@@ -61,6 +62,7 @@ export {
   getPackageLocalRuntimeContextCwd,
   resolvePackageLocalRuntimeStorageRoot,
 } from './runtimeContext.js';
+export { isPackageLocalSdkMcpServerHandle } from './runtimeMcpServers.js';
 
 export interface PackageLocalSessionRuntimeOptions {
   sessionId: SessionId;
@@ -349,17 +351,6 @@ export interface PackageLocalRuntimeNamedTool {
 
 export interface PackageLocalRuntimeMcpTool extends PackageLocalRuntimeNamedTool {
   tags?: readonly string[];
-}
-
-export function isPackageLocalSdkMcpServerHandle(
-  config: unknown,
-): config is SdkMcpServerHandle {
-  return (
-    typeof config === 'object' &&
-    config !== null &&
-    'createClientTransport' in config &&
-    'server' in config
-  );
 }
 
 export class PackageLocalSessionRuntime {
