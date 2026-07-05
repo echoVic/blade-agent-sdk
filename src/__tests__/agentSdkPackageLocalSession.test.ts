@@ -181,6 +181,34 @@ describe('agent-sdk package-local Session instance', () => {
     );
   });
 
+  it('routes fork through a package-local runtime port without requiring a delegate', async () => {
+    const forked = { sessionId: 'forked-session' } as ISession;
+    const fork = vi.fn(async () => forked);
+    const session = new PackageLocalSession({
+      sessionId: 'session-1',
+      options,
+      streamTurn: async function* () {},
+      createTurnId: () => 'turn-1',
+      runtime: { fork },
+    });
+
+    await expect(session.fork({ messageId: 'message-1' })).resolves.toBe(forked);
+    expect(fork).toHaveBeenCalledWith({ messageId: 'message-1' });
+  });
+
+  it('fails fork with a clear runtime capability error when no fork runtime is configured', async () => {
+    const session = new PackageLocalSession({
+      sessionId: 'session-1',
+      options,
+      streamTurn: async function* () {},
+      createTurnId: () => 'turn-1',
+    });
+
+    await expect(session.fork({ messageId: 'message-1' })).rejects.toThrow(
+      'Fork runtime is not configured for this session.',
+    );
+  });
+
   it('centralizes lifecycle close and abort behavior', async () => {
     const cleanup = vi.fn();
     const session = new PackageLocalSession({

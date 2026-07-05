@@ -568,6 +568,7 @@ Status:
 - One-hundred-twenty-second verification-chain increment complete: browser-bundle verification now tolerates two consecutive transient esbuild service stops by default, and the post-publish browser bundle smoke reuses the same retry helper while still loading esbuild from the temporary npm consumer install.
 - One-hundred-twenty-third verification-chain increment complete: the package-local `Session` instance now owns basic control state for `setPermissionMode()`, `setModel()`, and `setMaxTurns()` without requiring a legacy delegate. Focused tests prove updated model, permission mode, and max-turn defaults flow into later stream context and supported-model projection.
 - One-hundred-twenty-fourth verification-chain increment complete: package-local kernel sessions now inject a `PackageLocalSessionRuntimePort` into `PackageLocalSession`, routing MCP status/list/actions through the package-local runtime instead of requiring a legacy delegate. Focused tests prove `mcpConnect()`, `mcpDisconnect()`, and `mcpReconnect()` reach the kernel runtime MCP registry from the session-first API.
+- One-hundred-twenty-fifth verification-chain increment complete: `PackageLocalSession.fork()` now routes through the package-local runtime port before falling back to the migration delegate, and missing fork support returns an explicit capability error instead of a migration-era stub. Focused tests prove runtime-injected fork works from both direct session construction and the package-local runtime factory.
 
 Commit:
 

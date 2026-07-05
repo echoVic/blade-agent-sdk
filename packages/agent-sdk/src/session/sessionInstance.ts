@@ -49,6 +49,7 @@ export interface PackageLocalSessionRuntimePort {
   mcpDisconnect?: ISession['mcpDisconnect'];
   mcpReconnect?: ISession['mcpReconnect'];
   mcpListTools?: ISession['mcpListTools'];
+  fork?: ISession['fork'];
 }
 
 export interface PackageLocalSessionDelegate {
@@ -258,10 +259,14 @@ export class PackageLocalSession implements ISession {
   }
 
   async fork(options?: ForkSessionOptions): Promise<ISession> {
+    this.lifecycle.assertOpen();
+    if (this.runtime?.fork) {
+      return this.runtime.fork(options);
+    }
     if (this.delegate?.fork) {
       return this.delegate.fork(options);
     }
-    throw new Error('fork is not implemented by PackageLocalSession yet.');
+    throw new Error('Fork runtime is not configured for this session.');
   }
 
   getLastTrace(): AgentTrace | undefined {

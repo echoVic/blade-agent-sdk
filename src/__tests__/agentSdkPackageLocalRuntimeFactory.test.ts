@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { createPackageLocalSessionRuntimeFactory } from '../../packages/agent-sdk/src/session/packageLocalRuntimeFactory.js';
 import { PackageLocalSession } from '../../packages/agent-sdk/src/session/sessionInstance.js';
 import type {
+  ISession,
   SessionOptions,
   StreamMessage,
 } from '../../packages/agent-sdk/src/session/types.js';
@@ -103,5 +104,29 @@ describe('agent-sdk package-local runtime factory', () => {
         sessionId: 'session-resumed',
       },
     ]);
+  });
+
+  it('wires package-local runtime ports into created sessions', async () => {
+    const forked = { sessionId: 'forked-session' } as ISession;
+    const fork = vi.fn(async () => forked);
+    const createSessionRuntimePort = vi.fn((context) => {
+      expect(context).toMatchObject({
+        sessionId: 'session-created',
+        isResume: false,
+      });
+      return { fork };
+    });
+    const factory = createPackageLocalSessionRuntimeFactory({
+      createSessionId: () => 'session-created',
+      createTurnId: () => 'turn-created',
+      createStreamTurn: () => async function* () {},
+      createSessionRuntimePort,
+    });
+
+    const session = await factory.create(options);
+
+    await expect(session.fork({ messageId: 'message-1' })).resolves.toBe(forked);
+    expect(createSessionRuntimePort).toHaveBeenCalledTimes(1);
+    expect(fork).toHaveBeenCalledWith({ messageId: 'message-1' });
   });
 });
