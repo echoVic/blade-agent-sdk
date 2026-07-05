@@ -422,18 +422,6 @@ describe('monorepo topology', () => {
       'utf-8',
     );
     const sessionTracesSource = readFileSync('packages/agent-sdk/src/session/traces.ts', 'utf-8');
-    const sessionTaskCompletedSource = readFileSync(
-      'packages/agent-sdk/src/session/taskCompleted.ts',
-      'utf-8',
-    );
-    const sessionStreamCompletionSource = readFileSync(
-      'packages/agent-sdk/src/session/streamCompletion.ts',
-      'utf-8',
-    );
-    const sessionPromptSubmitSource = readFileSync(
-      'packages/agent-sdk/src/session/promptSubmit.ts',
-      'utf-8',
-    );
     const sessionKernelStreamBridgeSource = readFileSync(
       'packages/agent-sdk/src/session/kernelStreamBridge.ts',
       'utf-8',
@@ -484,9 +472,9 @@ describe('monorepo topology', () => {
     expect(existsSync('packages/agent-sdk/src/session/lifecycle.ts')).toBe(true);
     expect(existsSync('packages/agent-sdk/src/session/traces.ts')).toBe(true);
     expect(existsSync('packages/agent-sdk/src/session/legacyStreamEvents.ts')).toBe(false);
-    expect(existsSync('packages/agent-sdk/src/session/taskCompleted.ts')).toBe(true);
-    expect(existsSync('packages/agent-sdk/src/session/streamCompletion.ts')).toBe(true);
-    expect(existsSync('packages/agent-sdk/src/session/promptSubmit.ts')).toBe(true);
+    expect(existsSync('packages/agent-sdk/src/session/taskCompleted.ts')).toBe(false);
+    expect(existsSync('packages/agent-sdk/src/session/streamCompletion.ts')).toBe(false);
+    expect(existsSync('packages/agent-sdk/src/session/promptSubmit.ts')).toBe(false);
     expect(existsSync('packages/agent-sdk/src/session/legacyStreamRunner.ts')).toBe(false);
     expect(existsSync('packages/agent-sdk/src/session/legacyStreamBridge.ts')).toBe(false);
     expect(existsSync('packages/agent-sdk/src/session/packageLocalLegacyRuntimeFactory.ts')).toBe(false);
@@ -506,12 +494,6 @@ describe('monorepo topology', () => {
     expect(sessionTracesSource).not.toContain('../../../../src/');
     expect(sessionTracesSource).toContain('../observability/TraceRecorder.js');
     expect(sessionTracesSource).toContain('createSessionTraceFinalizer');
-    expect(sessionTaskCompletedSource).not.toContain('../../../../src/');
-    expect(sessionTaskCompletedSource).toContain('reportSessionTaskCompleted');
-    expect(sessionStreamCompletionSource).not.toContain('../../../../src/');
-    expect(sessionStreamCompletionSource).toContain('completeSessionStreamResult');
-    expect(sessionPromptSubmitSource).not.toContain('../../../../src/');
-    expect(sessionPromptSubmitSource).toContain('applySessionPromptSubmit');
     expect(existsSync('packages/agent-sdk/src/session/kernelStreamBridge.ts')).toBe(true);
     expect(sessionKernelStreamBridgeSource).not.toContain('../../../../src/');
     expect(sessionKernelStreamBridgeSource).toContain('createKernelStreamTurnBridge');
