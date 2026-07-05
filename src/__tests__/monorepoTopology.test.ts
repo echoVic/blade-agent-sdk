@@ -426,6 +426,11 @@ describe('monorepo topology', () => {
       'packages/agent-sdk/src/session/kernelStreamBridge.ts',
       'utf-8',
     );
+    const sessionKernelStreamProjectionSource = existsSync(
+      'packages/agent-sdk/src/session/kernelStreamProjection.ts',
+    )
+      ? readFileSync('packages/agent-sdk/src/session/kernelStreamProjection.ts', 'utf-8')
+      : '';
     const sessionInstanceSource = readFileSync(
       'packages/agent-sdk/src/session/sessionInstance.ts',
       'utf-8',
@@ -495,10 +500,15 @@ describe('monorepo topology', () => {
     expect(sessionTracesSource).toContain('../observability/TraceRecorder.js');
     expect(sessionTracesSource).toContain('createSessionTraceFinalizer');
     expect(existsSync('packages/agent-sdk/src/session/kernelStreamBridge.ts')).toBe(true);
+    expect(existsSync('packages/agent-sdk/src/session/kernelStreamProjection.ts')).toBe(true);
     expect(sessionKernelStreamBridgeSource).not.toContain('../../../../src/');
     expect(sessionKernelStreamBridgeSource).toContain('createKernelStreamTurnBridge');
     expect(sessionKernelStreamBridgeSource).toContain('streamAgentKernelTurn');
     expect(sessionKernelStreamBridgeSource).toContain('getUserMessageText');
+    expect(sessionKernelStreamProjectionSource).not.toContain('../../../../src/');
+    expect(sessionKernelStreamProjectionSource).toContain(
+      'projectPackageLocalKernelEventToStreamMessages',
+    );
     expect(sessionInstanceSource).not.toContain('../../../../src/');
     expect(sessionInstanceSource).toContain('class PackageLocalSession');
     expect(sessionInstanceSource).not.toContain('PackageLocalSessionDelegate');
@@ -574,12 +584,16 @@ describe('monorepo topology', () => {
     expect(packageLocalRuntimeInstanceSource).toContain('streamAgentKernelTurn');
     expect(packageLocalRuntimeInstanceSource).toContain('PackageLocalRuntimeAgentKernelPort');
     expect(packageLocalRuntimeInstanceSource).toContain('PackageLocalRuntimeAgentKernelStreamOptions');
-    expect(packageLocalRuntimeInstanceSource).toContain('projectKernelEventToStreamMessages');
+    expect(packageLocalRuntimeInstanceSource).toContain(
+      'projectPackageLocalKernelEventToStreamMessages',
+    );
     expect(packageLocalRuntimeInstanceSource).toContain(
       'PackageLocalRuntimeKernelStreamProjectionOptions',
     );
-    expect(packageLocalRuntimeInstanceSource).toContain('toPackageLocalSessionUsage');
-    expect(packageLocalRuntimeInstanceSource).toContain('toPackageLocalSessionPermissionUpdates');
+    expect(packageLocalRuntimeInstanceSource).not.toContain('toPackageLocalSessionUsage');
+    expect(packageLocalRuntimeInstanceSource).not.toContain(
+      'toPackageLocalSessionPermissionUpdates',
+    );
     expect(existsSync('packages/agent-sdk/src/session/packageLocalKernelRuntimeFactory.ts')).toBe(
       true,
     );
