@@ -110,6 +110,11 @@ describe('package provenance metadata', () => {
     expect(packageVerifier).toContain('--noEmit');
     expect(packageVerifier).toContain("import { createOpenAICompatibleModelPort } from '@blade-ai/ai';");
     expect(packageVerifier).toContain("import { AgentKernel } from '@blade-ai/agent';");
+    expect(packageVerifier).toContain("from '@blade-ai/agent/kernel';");
+    expect(packageVerifier).toContain("from '@blade-ai/agent/protocol';");
+    expect(packageVerifier).toContain("from '@blade-ai/agent/ports';");
+    expect(packageVerifier).toContain("from '@blade-ai/agent/state';");
+    expect(packageVerifier).toContain("from '@blade-ai/agent/tracing';");
     expect(packageVerifier).toContain("import { createSession, defineTool, ToolKind } from '@blade-ai/agent-sdk';");
     expect(packageVerifier).toContain("from '@blade-ai/agent-sdk/core';");
     expect(packageVerifier).toContain("from '@blade-ai/agent-sdk/session';");

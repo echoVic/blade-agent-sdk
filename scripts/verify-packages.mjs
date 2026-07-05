@@ -557,6 +557,29 @@ import type { VercelLanguageModelOptions } from '@blade-ai/ai/providers/vercel';
 import { createVercelModelPort } from '@blade-ai/ai/providers/vercel';
 import type { AgentStreamEvent } from '@blade-ai/agent';
 import { AgentKernel } from '@blade-ai/agent';
+import type {
+  AgentKernelOptions,
+  AgentTurnInput,
+} from '@blade-ai/agent/kernel';
+import { AgentKernel as AgentKernelFromSubpath } from '@blade-ai/agent/kernel';
+import type {
+  AgentStreamEvent as AgentProtocolStreamEvent,
+  AgentToolCall,
+  AgentToolResult,
+} from '@blade-ai/agent/protocol';
+import type {
+  AgentHookPort,
+  AgentPermissionPort,
+  AgentToolPort,
+} from '@blade-ai/agent/ports';
+import type {
+  AgentStoreAppendContext,
+  AgentStorePort,
+} from '@blade-ai/agent/state';
+import type {
+  AgentTraceEvent,
+  AgentTracePort,
+} from '@blade-ai/agent/tracing';
 import type { SessionOptions, StreamMessage } from '@blade-ai/agent-sdk';
 import { createSession, defineTool, ToolKind } from '@blade-ai/agent-sdk';
 import type {
@@ -660,6 +683,56 @@ const fakeModel: ModelPort = {
 };
 
 const kernel = new AgentKernel({ model: fakeModel, modelCallMode: 'stream' });
+const agentKernelOptions: AgentKernelOptions = { model: fakeModel };
+const kernelFromSubpath: AgentKernel = new AgentKernelFromSubpath(agentKernelOptions);
+const agentTurnInput: AgentTurnInput = { input: 'hello', turnId: 'turn-id' };
+const agentToolCall: AgentToolCall = {
+  id: 'tool-call-id',
+  name: 'echo',
+  input: { text: 'hello' },
+};
+const agentToolResult: AgentToolResult = {
+  id: agentToolCall.id,
+  name: agentToolCall.name,
+  output: 'hello',
+};
+const agentProtocolEvent: AgentProtocolStreamEvent = {
+  type: 'tool_result',
+  result: agentToolResult,
+};
+const agentToolPort: AgentToolPort = {
+  async list() {
+    return [];
+  },
+  async execute(toolCall) {
+    return {
+      id: toolCall.id,
+      name: toolCall.name,
+      output: 'ok',
+    };
+  },
+};
+const agentPermissionPort: AgentPermissionPort = {
+  checkToolCall() {
+    return { behavior: 'allow' };
+  },
+};
+const agentHookPort: AgentHookPort = {};
+const agentStoreContext: AgentStoreAppendContext = {
+  source: 'input',
+  step: 0,
+  turnId: 'turn-id',
+};
+const agentStorePort: AgentStorePort = {
+  appendMessage() {},
+};
+const agentTraceEvent: AgentTraceEvent = {
+  type: 'turn_start',
+  input: 'hello',
+};
+const agentTracePort: AgentTracePort = {
+  record() {},
+};
 
 async function useKernel(): Promise<void> {
   for await (const event of kernel.runTurn({ input: 'hello' })) {
@@ -777,6 +850,16 @@ void vercelModel;
 void deepseekOptions;
 void deepseekCost;
 void useKernel;
+void kernelFromSubpath;
+void agentTurnInput;
+void agentProtocolEvent;
+void agentToolPort;
+void agentPermissionPort;
+void agentHookPort;
+void agentStoreContext;
+void agentStorePort;
+void agentTraceEvent;
+void agentTracePort;
 void runtimeContext;
 void coreToolDefinition;
 void corePermissionHandler;
