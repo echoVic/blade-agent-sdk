@@ -10,6 +10,7 @@ import {
   forkSession as runForkLifecycle,
   resumeSession as runResumeLifecycle,
 } from '../../packages/agent-sdk/src/session/Session.js';
+import { createDefaultSessionRuntimeFactory } from '../../packages/agent-sdk/src/session/runtimeFactory.js';
 import type {
   ISession,
   SessionOptions,
@@ -52,6 +53,29 @@ function createFakeSession(id: string): ISession {
 }
 
 describe('agent-sdk session runtime factory', () => {
+  it('builds the default lifecycle around an injected legacy runtime factory loader', async () => {
+    const calls: string[] = [];
+    const loadLegacyRuntimeFactory = async () => ({
+      async create(receivedOptions: SessionOptions) {
+        calls.push(`legacy-create:${receivedOptions.model}`);
+        return createFakeSession('created');
+      },
+      async resume(receivedOptions: SessionOptions & { sessionId: string }) {
+        calls.push(`legacy-resume:${receivedOptions.sessionId}`);
+        return createFakeSession(`resumed:${receivedOptions.sessionId}`);
+      },
+    });
+    const factory = createDefaultSessionRuntimeFactory({
+      loadLegacyRuntimeFactory,
+    });
+
+    await expect(factory.create(options)).resolves.toMatchObject({ sessionId: 'created' });
+    await expect(factory.resume({ ...options, sessionId: 'old' })).resolves.toMatchObject({
+      sessionId: 'resumed:old',
+    });
+    expect(calls).toEqual(['legacy-create:test-model', 'legacy-resume:old']);
+  });
+
   it('routes create and resume through the package-local session factory', async () => {
     const calls: string[] = [];
     let createCalls = 0;

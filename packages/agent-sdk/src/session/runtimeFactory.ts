@@ -6,14 +6,23 @@ import type { SessionRuntimeFactory } from './factory.js';
 
 let legacyRuntimeFactoryPromise: Promise<SessionRuntimeFactory> | null = null;
 
-async function loadLegacyRuntimeFactory(): Promise<SessionRuntimeFactory> {
+export interface DefaultSessionRuntimeFactoryOptions {
+  loadLegacyRuntimeFactory?: () => Promise<SessionRuntimeFactory>;
+}
+
+async function loadDefaultLegacyRuntimeFactory(): Promise<SessionRuntimeFactory> {
   legacyRuntimeFactoryPromise ??= import('./legacySessionAdapter.js').then(
     ({ createLegacySessionRuntimeFactory }) => createLegacySessionRuntimeFactory(),
   );
   return legacyRuntimeFactoryPromise;
 }
 
-export function createDefaultSessionRuntimeFactory(): SessionRuntimeFactory {
+export function createDefaultSessionRuntimeFactory(
+  options: DefaultSessionRuntimeFactoryOptions = {},
+): SessionRuntimeFactory {
+  const loadLegacyRuntimeFactory =
+    options.loadLegacyRuntimeFactory ?? loadDefaultLegacyRuntimeFactory;
+
   return {
     async create(options) {
       const legacyRuntime = await loadLegacyRuntimeFactory();
