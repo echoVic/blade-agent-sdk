@@ -1,6 +1,6 @@
 import { nanoid } from 'nanoid';
 import { Agent } from '../agent/Agent.js';
-import type { ChatContext, LoopResult, UserMessageContent } from '../agent/types.js';
+import type { UserMessageContent } from '../agent/types.js';
 import { type CleanupHandle, registerCleanup } from '../lifecycle/CleanupRegistry.js';
 import { createRootLogger, type InternalLogger, LogCategory } from '../logging/Logger.js';
 import { type AgentTrace, TraceRecorder } from '../observability/index.js';
@@ -15,7 +15,6 @@ import { SessionId } from '../types/branded.js';
 import {
   type BladeConfig,
   type JsonObject,
-  type JsonValue,
   type ModelConfig,
   PermissionMode,
   type ProviderType,
@@ -266,7 +265,7 @@ class Session implements ISession {
       throw new Error('No pending message. Call send() before stream().');
     }
 
-    let message = this.pendingMessage;
+    const message = this.pendingMessage;
     const sendOptions = this.pendingSendOptions;
     const pendingSnapshot = this.pendingContextSnapshot;
     this.pendingMessage = null;
@@ -286,14 +285,6 @@ class Session implements ISession {
       await this.notifyTraceSink(trace);
     };
 
-    const toolCalls: ToolCallRecord[] = [];
-    let totalUsage: TokenUsage = {
-      inputTokens: 0,
-      outputTokens: 0,
-      totalTokens: 0,
-      maxContextTokens: 0,
-    };
-
     this.abortController = new AbortController();
     let signalCleanup: (() => void) | undefined;
     let signal: AbortSignal;
@@ -310,338 +301,17 @@ class Session implements ISession {
       createContextSnapshot(this.sessionId, nanoid(), this.defaultContext, sendOptions?.context);
     runtime.prepareTurn(snapshot);
 
-    if (this.shouldUseKernelStream(options)) {
-      yield* this.streamExperimentalKernelTurn({
-        runtime,
-        message,
-        streamOptions: options,
-        sendOptions,
-        snapshot,
-        traceRecorder,
-        finishTrace,
-        signal,
-        signalCleanup,
-      });
-      return;
-    }
-
-    runtime.getHookRuntime().setTraceCollector(traceRecorder);
-    try {
-      message = await runtime.getHookRuntime().applyUserPromptSubmit(message, {
-        abortSignal: signal,
-      });
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : String(error);
-      await finishTrace('error', { error: errorMessage });
-      runtime.getHookRuntime().setTraceCollector(undefined);
-      yield { type: 'error', message: errorMessage, sessionId: this.sessionId };
-      return;
-    }
-
-    const context: ChatContext = {
-      messages: this._messages,
-      userId: 'sdk-user',
-      sessionId: this.sessionId,
+    yield* this.streamExperimentalKernelTurn({
+      runtime,
+      message,
+      streamOptions: options,
+      sendOptions,
       snapshot,
       signal,
-      permissionMode: this.permissionMode,
-      backgroundAgentManager: runtime.getBackgroundAgentManager(),
-    };
-
-    const stream = this.getAgent().streamChat(message, context, {
-      maxTurns: sendOptions?.maxTurns ?? this.maxTurns,
-      signal,
+      signalCleanup,
+      traceRecorder,
+      finishTrace,
     });
-
-    try {
-      let loopResult: LoopResult | undefined;
-      const turnSpans = new Map<number, string>();
-      const toolSpans = new Map<string, string>();
-
-      while (true) {
-        const { value, done } = await stream.next();
-        if (done) {
-          loopResult = value;
-          break;
-        }
-        switch (value.type) {
-          case 'turn_start': {
-            const spanId = traceRecorder?.recordTurnStart(value.turn, value.maxTurns);
-            if (spanId) turnSpans.set(value.turn, spanId);
-            yield { type: 'turn_start', turn: value.turn, sessionId: this.sessionId };
-            break;
-          }
-          case 'turn_end':
-            traceRecorder?.recordTurnEnd(turnSpans.get(value.turn), value.turn);
-            turnSpans.delete(value.turn);
-            yield { type: 'turn_end', turn: value.turn, sessionId: this.sessionId };
-            break;
-          case 'content_delta':
-            traceRecorder?.addEvent('content_delta', { delta: value.delta });
-            yield { type: 'content', delta: value.delta, sessionId: this.sessionId };
-            break;
-          case 'thinking_delta':
-            traceRecorder?.addEvent('thinking_delta', { delta: value.delta });
-            if (options?.includeThinking) {
-              yield { type: 'thinking', delta: value.delta, sessionId: this.sessionId };
-            }
-            break;
-          case 'content':
-            traceRecorder?.addEvent('content', { content: value.content });
-            yield { type: 'content', delta: value.content, sessionId: this.sessionId };
-            break;
-          case 'thinking':
-            traceRecorder?.addEvent('thinking', { content: value.content });
-            if (options?.includeThinking) {
-              yield { type: 'thinking', delta: value.content, sessionId: this.sessionId };
-            }
-            break;
-          case 'tool_start': {
-            if (value.toolCall.type !== 'function') break;
-            const input = this.safeParseJson(value.toolCall.function.arguments);
-            toolCalls.push({
-              id: value.toolCall.id,
-              name: value.toolCall.function.name,
-              input,
-              output: '',
-              duration: 0,
-            });
-            toolSpans.set(
-              value.toolCall.id,
-              traceRecorder?.recordToolStart(
-                value.toolCall.id,
-                value.toolCall.function.name,
-                input,
-              ) ?? '',
-            );
-            yield {
-              type: 'tool_use',
-              id: value.toolCall.id,
-              name: value.toolCall.function.name,
-              input,
-              sessionId: this.sessionId,
-            };
-            break;
-          }
-          case 'tool_progress': {
-            if (value.toolCall.type !== 'function') break;
-            traceRecorder?.addEvent(
-              'tool_progress',
-              {
-                toolCallId: value.toolCall.id,
-                name: value.toolCall.function.name,
-                message: value.message,
-              },
-              toolSpans.get(value.toolCall.id),
-            );
-            yield {
-              type: 'tool_progress',
-              id: value.toolCall.id,
-              name: value.toolCall.function.name,
-              message: value.message,
-              sessionId: this.sessionId,
-            };
-            break;
-          }
-          case 'tool_message': {
-            if (value.toolCall.type !== 'function') break;
-            traceRecorder?.addEvent(
-              'tool_message',
-              {
-                toolCallId: value.toolCall.id,
-                name: value.toolCall.function.name,
-                message: value.message,
-              },
-              toolSpans.get(value.toolCall.id),
-            );
-            yield {
-              type: 'tool_message',
-              id: value.toolCall.id,
-              name: value.toolCall.function.name,
-              message: value.message,
-              sessionId: this.sessionId,
-            };
-            break;
-          }
-          case 'tool_runtime_patch': {
-            if (value.toolCall.type !== 'function') break;
-            traceRecorder?.addEvent(
-              'tool_runtime_patch',
-              {
-                toolCallId: value.toolCall.id,
-                name: value.toolCall.function.name,
-                patch: value.patch,
-              },
-              toolSpans.get(value.toolCall.id),
-            );
-            yield {
-              type: 'tool_runtime_patch',
-              id: value.toolCall.id,
-              name: value.toolCall.function.name,
-              patch: value.patch,
-              sessionId: this.sessionId,
-            };
-            break;
-          }
-          case 'tool_context_patch': {
-            if (value.toolCall.type !== 'function') break;
-            traceRecorder?.addEvent(
-              'tool_context_patch',
-              {
-                toolCallId: value.toolCall.id,
-                name: value.toolCall.function.name,
-                patch: value.patch,
-              },
-              toolSpans.get(value.toolCall.id),
-            );
-            yield {
-              type: 'tool_context_patch',
-              id: value.toolCall.id,
-              name: value.toolCall.function.name,
-              patch: value.patch,
-              sessionId: this.sessionId,
-            };
-            break;
-          }
-          case 'tool_new_messages': {
-            if (value.toolCall.type !== 'function') break;
-            traceRecorder?.addEvent(
-              'tool_new_messages',
-              {
-                toolCallId: value.toolCall.id,
-                name: value.toolCall.function.name,
-                messages: value.messages,
-              },
-              toolSpans.get(value.toolCall.id),
-            );
-            yield {
-              type: 'tool_new_messages',
-              id: value.toolCall.id,
-              name: value.toolCall.function.name,
-              messages: value.messages,
-              sessionId: this.sessionId,
-            };
-            break;
-          }
-          case 'tool_permission_updates': {
-            if (value.toolCall.type !== 'function') break;
-            traceRecorder?.addEvent(
-              'tool_permission_updates',
-              {
-                toolCallId: value.toolCall.id,
-                name: value.toolCall.function.name,
-                updates: value.updates,
-              },
-              toolSpans.get(value.toolCall.id),
-            );
-            yield {
-              type: 'tool_permission_updates',
-              id: value.toolCall.id,
-              name: value.toolCall.function.name,
-              updates: value.updates,
-              sessionId: this.sessionId,
-            };
-            break;
-          }
-          case 'tool_result': {
-            if (value.toolCall.type !== 'function') break;
-            const record = toolCalls.find((tc) => tc.id === value.toolCall.id);
-            if (record) {
-              record.output = value.result.llmContent;
-              record.isError = !value.result.success;
-            }
-            traceRecorder?.recordToolResult(
-              toolSpans.get(value.toolCall.id),
-              value.toolCall.id,
-              value.toolCall.function.name,
-              value.result.llmContent,
-              !value.result.success,
-            );
-            toolSpans.delete(value.toolCall.id);
-            yield {
-              type: 'tool_result',
-              id: value.toolCall.id,
-              name: value.toolCall.function.name,
-              output: value.result.llmContent,
-              isError: !value.result.success,
-              sessionId: this.sessionId,
-            };
-            break;
-          }
-          case 'token_usage':
-            totalUsage = {
-              inputTokens: value.usage.inputTokens,
-              outputTokens: value.usage.outputTokens,
-              totalTokens: value.usage.totalTokens,
-              maxContextTokens: value.usage.maxContextTokens,
-            };
-            traceRecorder?.recordUsage(totalUsage);
-            break;
-          default:
-            break;
-        }
-      }
-
-      if (!loopResult) {
-        throw new Error('Stream ended without result');
-      }
-
-      const isAborted = loopResult.error?.type === 'aborted';
-      const shouldExit = loopResult.metadata?.shouldExitLoop;
-
-      if (!loopResult.success && !isAborted && !shouldExit) {
-        const messageText = loopResult.error?.message || 'Unknown error';
-        await finishTrace('error', { error: messageText });
-        yield { type: 'error', message: messageText, sessionId: this.sessionId };
-        return;
-      }
-
-      yield { type: 'usage', usage: totalUsage, sessionId: this.sessionId };
-      this._messages = context.messages;
-      const imageCount = this.getImageCount(message);
-      await runtime.getHookRuntime().runTaskCompleted({
-        taskId: this.sessionId,
-        taskDescription: this.getTextContent(message),
-        hasImages: imageCount > 0,
-        imageCount,
-        resultSummary: loopResult.finalMessage || '',
-        success: loopResult.success,
-      });
-      await finishTrace(isAborted ? 'aborted' : 'success', {
-        content: loopResult.finalMessage || '',
-        usage: totalUsage,
-        turnsCount: loopResult.metadata?.turnsCount,
-        toolCallsCount: loopResult.metadata?.toolCallsCount,
-        duration: loopResult.metadata?.duration,
-      });
-      yield {
-        type: 'result',
-        subtype: 'success',
-        content: loopResult.finalMessage || '',
-        sessionId: this.sessionId,
-      };
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : String(error);
-      await finishTrace('error', { error: errorMessage });
-      yield { type: 'error', message: errorMessage, sessionId: this.sessionId };
-    } finally {
-      runtime.getHookRuntime().setTraceCollector(undefined);
-      signalCleanup?.();
-      this.abortController = null;
-    }
-  }
-
-  private shouldUseKernelStream(options?: StreamOptions): boolean {
-    if (options?.runtime === 'legacy') {
-      return false;
-    }
-    if (options?.runtime === 'kernel') {
-      return true;
-    }
-    if (options?.experimentalKernel === false) {
-      return false;
-    }
-    return true;
   }
 
   private async *streamExperimentalKernelTurn(options: {
@@ -900,14 +570,6 @@ class Session implements ISession {
     signal2.addEventListener('abort', onAbort);
 
     return { signal: controller.signal, cleanup };
-  }
-
-  private safeParseJson(str: string): JsonValue {
-    try {
-      return JSON.parse(str) as JsonValue;
-    } catch {
-      return str;
-    }
   }
 
   private createTraceRecorder(message: UserMessageContent): TraceRecorder | undefined {

@@ -735,4 +735,16 @@ describe('monorepo topology', () => {
     expect(packageVerifierSource).toContain("entry.endsWith('.d.ts.map')");
     expect(packageVerifierSource).toContain("entry.endsWith('.js.map')");
   });
+
+  it('keeps the root session stream contract kernel-only', () => {
+    const rootSessionTypes = readFileSync('src/session/types.ts', 'utf-8');
+    const rootSessionRuntime = readFileSync('src/session/Session.ts', 'utf-8');
+
+    expect(rootSessionTypes).toContain('includeThinking?: boolean');
+    expect(rootSessionTypes).not.toContain("runtime?: 'kernel' | 'legacy'");
+    expect(rootSessionTypes).not.toContain('experimentalKernel');
+    expect(rootSessionRuntime).not.toContain("runtime === 'legacy'");
+    expect(rootSessionRuntime).not.toContain("runtime === 'kernel'");
+    expect(rootSessionRuntime).not.toContain('experimentalKernel');
+  });
 });

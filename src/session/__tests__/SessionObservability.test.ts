@@ -1,59 +1,23 @@
 import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import type { ModelResponse } from '@blade-ai/ai';
 import { describe, expect, it, vi } from 'vitest';
+import type { ToolDefinition } from '../../tools/types/index.js';
 import { HookEvent } from '../../types/constants.js';
 
-const createAgent = vi.fn(async () => ({
-  async *streamChat(): AsyncGenerator<unknown, unknown, unknown> {
-    yield { type: 'turn_start', turn: 1, maxTurns: 10 };
-    yield { type: 'content_delta', delta: 'secret answer' };
-    yield {
-      type: 'tool_start',
-      toolCall: {
-        id: 'tool-1',
-        type: 'function',
-        function: {
-          name: 'SecretTool',
-          arguments: JSON.stringify({ token: 'secret-token', count: 3 }),
-        },
-      },
-    };
-    yield {
-      type: 'tool_result',
-      toolCall: {
-        id: 'tool-1',
-        type: 'function',
-        function: {
-          name: 'SecretTool',
-          arguments: JSON.stringify({ token: 'secret-token', count: 3 }),
-        },
-      },
-      result: {
-        success: true,
-        llmContent: 'secret tool output',
-      },
-    };
-    yield {
-      type: 'token_usage',
-      usage: {
-        inputTokens: 11,
-        outputTokens: 7,
-        totalTokens: 18,
-        maxContextTokens: 128000,
-      },
-    };
-    yield { type: 'turn_end', turn: 1, hasToolCalls: true };
-    return {
-      success: true,
-      finalMessage: 'secret answer',
-      metadata: {
-        turnsCount: 1,
-        toolCallsCount: 1,
-        duration: 42,
-      },
-    };
+const kernelModelGenerate = vi.fn(async (): Promise<ModelResponse> => ({
+  content: 'secret answer',
+  usage: {
+    promptTokens: 11,
+    completionTokens: 7,
+    totalTokens: 18,
   },
+  finishReason: 'stop',
+}));
+
+const createAgent = vi.fn(async () => ({
+  async *streamChat() {},
   async setModel() {},
 }));
 
@@ -63,20 +27,74 @@ vi.mock('../../agent/Agent.js', () => ({
   },
 }));
 
+vi.mock('@blade-ai/ai/providers/vercel', () => ({
+  createVercelModelPort: vi.fn(() => ({
+    generate: kernelModelGenerate,
+    stream: async function* () {},
+  })),
+}));
+
 const { createSession } = await import('../Session.js');
+
+function queueSecretToolRoundTrip(): void {
+  kernelModelGenerate.mockReset();
+  kernelModelGenerate
+    .mockResolvedValueOnce({
+      content: '',
+      toolCalls: [
+        {
+          id: 'tool-1',
+          name: 'SecretTool',
+          input: { token: 'secret-token', count: 3 },
+        },
+      ],
+      finishReason: 'tool-calls',
+    })
+    .mockResolvedValueOnce({
+      content: 'secret answer',
+      usage: {
+        promptTokens: 11,
+        completionTokens: 7,
+        totalTokens: 18,
+      },
+      finishReason: 'stop',
+    });
+}
+
+const secretTool: ToolDefinition<{ token: string; count: number }> = {
+  name: 'SecretTool',
+  description: 'Return a secret tool output',
+  parameters: {
+    type: 'object',
+    properties: {
+      token: { type: 'string' },
+      count: { type: 'number' },
+    },
+    required: ['token', 'count'],
+  },
+  async execute() {
+    return {
+      success: true,
+      llmContent: 'secret tool output',
+    };
+  },
+};
 
 describe('Session observability', () => {
   it('records a safe trace without capturing prompt or tool payloads by default', async () => {
+    queueSecretToolRoundTrip();
     const storagePath = mkdtempSync(join(tmpdir(), 'session-observability-safe-'));
     const session = await createSession({
       provider: { type: 'openai-compatible', apiKey: 'test-key' },
       model: 'gpt-4o-mini',
       storagePath,
+      allowedTools: ['SecretTool'],
+      tools: [secretTool as never],
       observability: { enabled: true },
     });
 
     await session.send('prompt contains secret-prompt');
-    for await (const _event of session.stream({ runtime: 'legacy' })) {
+    for await (const _event of session.stream()) {
       // Drain stream.
     }
 
@@ -84,7 +102,7 @@ describe('Session observability', () => {
     expect(trace).toBeDefined();
     expect(trace?.status).toBe('success');
     expect(trace?.events.map((event) => event.type)).toEqual(
-      expect.arrayContaining(['content_delta', 'usage', 'result']),
+      expect.arrayContaining(['model_request', 'model_response', 'tool_result', 'usage', 'result']),
     );
     expect(trace?.spans.some((span) => span.kind === 'tool' && span.name === 'SecretTool')).toBe(true);
 
@@ -99,11 +117,14 @@ describe('Session observability', () => {
   });
 
   it('records full payloads when capturePayloads is explicitly enabled', async () => {
+    queueSecretToolRoundTrip();
     const storagePath = mkdtempSync(join(tmpdir(), 'session-observability-payloads-'));
     const session = await createSession({
       provider: { type: 'openai-compatible', apiKey: 'test-key' },
       model: 'gpt-4o-mini',
       storagePath,
+      allowedTools: ['SecretTool'],
+      tools: [secretTool as never],
       observability: {
         enabled: true,
         capturePayloads: true,
@@ -111,7 +132,7 @@ describe('Session observability', () => {
     });
 
     await session.send('prompt contains visible-prompt');
-    for await (const _event of session.stream({ runtime: 'legacy' })) {
+    for await (const _event of session.stream()) {
       // Drain stream.
     }
 

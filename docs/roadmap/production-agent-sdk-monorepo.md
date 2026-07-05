@@ -418,6 +418,7 @@ Status:
 - One hundred fifth adapter increment complete: the temporary root-loading `legacySessionAdapter.ts` has been removed from `@blade-ai/agent-sdk/session`. The package no longer carries a default-path bridge that dynamically imports legacy root `src/session/Session.js`, leaving the remaining package-local legacy stream helpers isolated for explicitly tested adapter behavior.
 - One hundred sixth adapter increment complete: package-local legacy stream helpers have been retired from `@blade-ai/agent-sdk/session`. `legacyStreamEvents.ts`, `legacyStreamRunner.ts`, `legacyStreamBridge.ts`, `packageLocalLegacyRuntimeFactory.ts`, and `legacySessionDelegate.ts` were removed, and the public package-local `StreamOptions` contract now exposes only `includeThinking` because the session runtime is kernel-only.
 - One hundred seventh adapter increment complete: packed `@blade-ai/agent-sdk/session` declarations are now guarded against retired legacy stream/runtime contracts. Package verification requires `dist/session/types.d.ts` in the tarball and rejects `runtime?: 'kernel' | 'legacy'`, `experimentalKernel`, `legacyStream`, and `packageLocalLegacy` markers so the public session-first type surface cannot silently regress to migration-era escape hatches.
+- One hundred eighth adapter increment complete: the legacy stream escape hatch has been retired from the remaining root session source. Root `StreamOptions` now exposes only `includeThinking`, `Session.stream()` always routes through the kernel turn bridge, and root session context, in-memory history, and observability tests now exercise the kernel-default path instead of the old `Agent.streamChat()` loop.
 
 ### Phase 5: Production Verification Chain
 
@@ -563,6 +564,7 @@ Status:
 - One-hundred-eighteenth verification-chain increment complete: the `@blade-ai/agent-sdk` declaration build now emits from package-local `src/**/*` instead of root `../../src/**/*`, resolves `@blade-ai/ai` and `@blade-ai/agent` imports from built declarations, and packed package verification forbids representative legacy root declaration directories such as `dist/agent`, `dist/context`, and `dist/mcp`.
 - One-hundred-nineteenth verification-chain increment complete: all publishable package declaration builds now disable declaration maps, and `pnpm run verify:packages` dynamically rejects any packed `.d.ts.map` entry so npm tarballs keep their type surface concise and do not ship local source-map metadata.
 - One-hundred-twentieth verification-chain increment complete: all publishable package JS builds now disable source maps, and `pnpm run verify:packages` dynamically rejects any packed `.js.map` entry so npm tarballs do not ship local JavaScript source-map metadata.
+- One-hundred-twenty-first verification-chain increment complete: topology now guards the remaining root session source against migration-era stream runtime markers, rejecting `runtime?: 'kernel' | 'legacy'`, `experimentalKernel`, and explicit legacy/kernel branch checks in `src/session/types.ts` and `src/session/Session.ts` so the source contract stays aligned with the packed kernel-only session declarations.
 
 Commit:
 
