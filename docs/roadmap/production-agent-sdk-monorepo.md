@@ -374,6 +374,7 @@ Status:
 - Sixty-first adapter increment complete: `@blade-ai/agent-sdk/session` now owns the legacy agent-event to session-stream projection locally. `LegacyStreamEventProjector` maps legacy turn/content/thinking/tool/usage events into package-local `StreamMessage` contracts while updating trace spans, tool-call records, and usage state, preparing the future package-local stream runtime to replace the large legacy `Session.stream()` switch.
 - Sixty-second adapter increment complete: `@blade-ai/agent-sdk/session` now owns TaskCompleted hook reporting locally. `reportSessionTaskCompleted()` builds hook payloads from package-local user-message content helpers, including multimodal text/image metadata, so the future package-local stream runtime can report task completion without legacy `Session` private helpers.
 - Sixty-third adapter increment complete: `@blade-ai/agent-sdk/session` now owns stream-result completion locally. `completeSessionStreamResult()` converts legacy loop results into final session usage/result/error messages, TaskCompleted reporting, and trace finalization without depending on legacy `Session.stream()` private branches.
+- Sixty-fourth adapter increment complete: `@blade-ai/agent-sdk/session` now owns prompt-submit hook application locally. `applySessionPromptSubmit()` attaches the trace collector, applies UserPromptSubmit hooks with the active abort signal, and converts hook failures into finalized error traces plus session error messages without depending on legacy `Session.stream()` start branches.
 
 ### Phase 5: Production Verification Chain
 
@@ -443,6 +444,7 @@ Status:
 - Forty-second verification-chain increment complete: focused package-local tests now cover legacy stream event projection for turn/content/thinking/tool lifecycle/tool side-effect/usage events, including trace recording and tool-call state updates. Topology also requires the projector source to remain package-local without root imports.
 - Forty-third verification-chain increment complete: focused package-local tests now cover TaskCompleted hook reporting for text and multimodal prompts, proving task descriptions, image flags, image counts, summaries, and success flags are derived without legacy root helpers. Topology also requires the reporter source to remain package-local without root imports.
 - Forty-fourth verification-chain increment complete: focused package-local tests now cover stream result completion for missing loop results, non-abort failures, successful completions, and aborted completions, including final session messages, TaskCompleted payloads, and trace status/data. Topology also requires the stream completion helper to remain package-local without root imports.
+- Forty-fifth verification-chain increment complete: focused package-local tests now cover prompt-submit hook application for trace collector installation, abort-signal forwarding, rewritten prompts, hook failure error messages, trace finalization, and collector cleanup. Topology also requires the prompt-submit helper to remain package-local without root imports.
 
 Commit:
 
