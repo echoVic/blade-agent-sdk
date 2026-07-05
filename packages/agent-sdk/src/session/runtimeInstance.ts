@@ -47,6 +47,7 @@ import type {
 import {
   projectPackageLocalKernelEventToStreamMessages,
 } from './kernelStreamProjection.js';
+import { getPackageLocalMcpToolSourceId } from './runtimeMcpTools.js';
 import { createPackageLocalRuntimeNoopPorts } from './runtimeNoopPorts.js';
 import { createSessionTraceFinalizer, SessionTraceManager } from './traces.js';
 import type { SessionSnapshot } from './store.js';
@@ -612,7 +613,7 @@ export class PackageLocalSessionRuntime {
       this.toolCatalog.registerMcpTool(tool, {
         kind: 'mcp',
         trustLevel: 'remote',
-        sourceId: packageLocalServerNameFromTool(tool),
+        sourceId: getPackageLocalMcpToolSourceId(tool),
       });
     }
   }
@@ -944,14 +945,4 @@ export class PackageLocalSessionRuntime {
       modelId: options.modelId,
     });
   }
-}
-
-function packageLocalServerNameFromTool(tool: PackageLocalRuntimeMcpTool): string {
-  const taggedServer = tool.tags?.find((tag) => tag === tag.toLowerCase() && tag.length > 0);
-  if (taggedServer) {
-    return taggedServer;
-  }
-
-  const match = tool.name.match(/^mcp__([^_]+)__/);
-  return match?.[1] ?? 'mcp';
 }

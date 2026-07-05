@@ -459,6 +459,9 @@ describe('monorepo topology', () => {
       'packages/agent-sdk/src/session/runtimeInstance.ts',
       'utf-8',
     );
+    const runtimeMcpToolsSource = existsSync('packages/agent-sdk/src/session/runtimeMcpTools.ts')
+      ? readFileSync('packages/agent-sdk/src/session/runtimeMcpTools.ts', 'utf-8')
+      : '';
     const runtimeNoopPortsSource = existsSync('packages/agent-sdk/src/session/runtimeNoopPorts.ts')
       ? readFileSync('packages/agent-sdk/src/session/runtimeNoopPorts.ts', 'utf-8')
       : '';
@@ -558,7 +561,11 @@ describe('monorepo topology', () => {
     expect(packageLocalRuntimeInstanceSource).toContain('getAvailableToolsByServerNames');
     expect(packageLocalRuntimeInstanceSource).toContain('registerMcpTool');
     expect(packageLocalRuntimeInstanceSource).toContain('removeMcpTools');
-    expect(packageLocalRuntimeInstanceSource).toContain('packageLocalServerNameFromTool');
+    expect(existsSync('packages/agent-sdk/src/session/runtimeMcpTools.ts')).toBe(true);
+    expect(runtimeMcpToolsSource).not.toContain('../../../../src/');
+    expect(runtimeMcpToolsSource).toContain('getPackageLocalMcpToolSourceId');
+    expect(packageLocalRuntimeInstanceSource).toContain('getPackageLocalMcpToolSourceId');
+    expect(packageLocalRuntimeInstanceSource).not.toContain('function packageLocalServerNameFromTool');
     expect(packageLocalRuntimeInstanceSource).toContain('registerCustomTools');
     expect(packageLocalRuntimeInstanceSource).toContain('PackageLocalRuntimeCustomToolFactoryPort');
     expect(packageLocalRuntimeInstanceSource).toContain('registerBuiltinTools');
