@@ -263,22 +263,10 @@ interface SendOptions {
 ```ts
 interface StreamOptions {
   includeThinking?: boolean;   // 是否包含模型思考过程（默认 false）
-  runtime?: 'kernel' | 'legacy'; // 执行 runtime（默认 kernel）
-  experimentalKernel?: boolean; // 旧迁移开关，已废弃；请改用 runtime
 }
 ```
 
 `stream()` 默认通过 `@blade-ai/agent` 的运行时无关 `AgentKernel` 执行，同时保持 `send()` + `stream()` 的 session-first API。kernel runtime 会复用 session 的模型配置、工具定义与执行端口、HookRuntime、ContextManager 和 trace recorder。工具调用会继续以 `tool_use` / `tool_result` 事件流出，工具产生的权限更新会继续以 `tool_permission_updates` 事件流出并写入 trace，并在 `session.messages` 中保留 assistant `tool_calls` 与 tool `tool_call_id` / `name` 历史。kernel trace 的 usage 会使用与 stream `usage` 事件一致的 `maxContextTokens`。如果 `send()` 传入的 `AbortSignal` 在模型执行前已取消，kernel 路径会发出带 `ABORTED` code 的 `error` 事件、保留已消费的 user message，并把 trace 标记为 `aborted`。
-
-`runtime: 'legacy'` 只用于迁移期排查旧 session loop 行为。旧的 `experimentalKernel` 字段仍被接受以兼容迁移中的调用方，但新代码应该使用 `runtime`。
-
-```ts
-await session.send('使用旧 session loop 排查一次行为差异');
-
-for await (const event of session.stream({ runtime: 'legacy' })) {
-  // 只在迁移排查时使用 legacy runtime。
-}
-```
 
 ### StreamMessage 类型
 

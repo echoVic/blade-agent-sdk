@@ -354,10 +354,6 @@ describe('monorepo topology', () => {
       'utf-8',
     );
     const sessionTracesSource = readFileSync('packages/agent-sdk/src/session/traces.ts', 'utf-8');
-    const legacyStreamEventsSource = readFileSync(
-      'packages/agent-sdk/src/session/legacyStreamEvents.ts',
-      'utf-8',
-    );
     const sessionTaskCompletedSource = readFileSync(
       'packages/agent-sdk/src/session/taskCompleted.ts',
       'utf-8',
@@ -370,14 +366,6 @@ describe('monorepo topology', () => {
       'packages/agent-sdk/src/session/promptSubmit.ts',
       'utf-8',
     );
-    const sessionLegacyStreamRunnerSource = readFileSync(
-      'packages/agent-sdk/src/session/legacyStreamRunner.ts',
-      'utf-8',
-    );
-    const sessionLegacyStreamBridgeSource = readFileSync(
-      'packages/agent-sdk/src/session/legacyStreamBridge.ts',
-      'utf-8',
-    );
     const sessionKernelStreamBridgeSource = readFileSync(
       'packages/agent-sdk/src/session/kernelStreamBridge.ts',
       'utf-8',
@@ -386,16 +374,8 @@ describe('monorepo topology', () => {
       'packages/agent-sdk/src/session/sessionInstance.ts',
       'utf-8',
     );
-    const legacySessionDelegateSource = readFileSync(
-      'packages/agent-sdk/src/session/legacySessionDelegate.ts',
-      'utf-8',
-    );
     const packageLocalRuntimeFactorySource = readFileSync(
       'packages/agent-sdk/src/session/packageLocalRuntimeFactory.ts',
-      'utf-8',
-    );
-    const packageLocalLegacyRuntimeFactorySource = readFileSync(
-      'packages/agent-sdk/src/session/packageLocalLegacyRuntimeFactory.ts',
       'utf-8',
     );
     const packageLocalKernelRuntimeFactorySource = readFileSync(
@@ -435,11 +415,13 @@ describe('monorepo topology', () => {
     expect(existsSync('packages/agent-sdk/src/session/cleanup.ts')).toBe(true);
     expect(existsSync('packages/agent-sdk/src/session/lifecycle.ts')).toBe(true);
     expect(existsSync('packages/agent-sdk/src/session/traces.ts')).toBe(true);
-    expect(existsSync('packages/agent-sdk/src/session/legacyStreamEvents.ts')).toBe(true);
+    expect(existsSync('packages/agent-sdk/src/session/legacyStreamEvents.ts')).toBe(false);
     expect(existsSync('packages/agent-sdk/src/session/taskCompleted.ts')).toBe(true);
     expect(existsSync('packages/agent-sdk/src/session/streamCompletion.ts')).toBe(true);
     expect(existsSync('packages/agent-sdk/src/session/promptSubmit.ts')).toBe(true);
-    expect(existsSync('packages/agent-sdk/src/session/legacyStreamRunner.ts')).toBe(true);
+    expect(existsSync('packages/agent-sdk/src/session/legacyStreamRunner.ts')).toBe(false);
+    expect(existsSync('packages/agent-sdk/src/session/legacyStreamBridge.ts')).toBe(false);
+    expect(existsSync('packages/agent-sdk/src/session/packageLocalLegacyRuntimeFactory.ts')).toBe(false);
     expect(existsSync('packages/agent-sdk/src/session/sessionInstance.ts')).toBe(true);
     expect(existsSync('packages/agent-sdk/src/session/runtimeInstance.ts')).toBe(true);
     expect(existsSync('packages/agent-sdk/src/session/packageLocalRuntimeFactory.ts')).toBe(true);
@@ -456,20 +438,12 @@ describe('monorepo topology', () => {
     expect(sessionTracesSource).not.toContain('../../../../src/');
     expect(sessionTracesSource).toContain('../observability/TraceRecorder.js');
     expect(sessionTracesSource).toContain('createSessionTraceFinalizer');
-    expect(legacyStreamEventsSource).not.toContain('../../../../src/');
-    expect(legacyStreamEventsSource).toContain('class LegacyStreamEventProjector');
     expect(sessionTaskCompletedSource).not.toContain('../../../../src/');
     expect(sessionTaskCompletedSource).toContain('reportSessionTaskCompleted');
     expect(sessionStreamCompletionSource).not.toContain('../../../../src/');
     expect(sessionStreamCompletionSource).toContain('completeSessionStreamResult');
     expect(sessionPromptSubmitSource).not.toContain('../../../../src/');
     expect(sessionPromptSubmitSource).toContain('applySessionPromptSubmit');
-    expect(sessionLegacyStreamRunnerSource).not.toContain('../../../../src/');
-    expect(sessionLegacyStreamRunnerSource).toContain('runLegacySessionStreamTurn');
-    expect(existsSync('packages/agent-sdk/src/session/legacyStreamBridge.ts')).toBe(true);
-    expect(sessionLegacyStreamBridgeSource).not.toContain('../../../../src/');
-    expect(sessionLegacyStreamBridgeSource).toContain('createLegacyStreamTurnBridge');
-    expect(sessionLegacyStreamBridgeSource).toContain('runLegacySessionStreamTurn');
     expect(existsSync('packages/agent-sdk/src/session/kernelStreamBridge.ts')).toBe(true);
     expect(sessionKernelStreamBridgeSource).not.toContain('../../../../src/');
     expect(sessionKernelStreamBridgeSource).toContain('createKernelStreamTurnBridge');
@@ -481,10 +455,7 @@ describe('monorepo topology', () => {
     expect(sessionInstanceSource).toContain('this.delegate?.fork');
     expect(sessionInstanceSource).toContain('this.delegate?.mcpConnect');
     expect(sessionInstanceSource).toContain('this.delegate?.getTraces');
-    expect(existsSync('packages/agent-sdk/src/session/legacySessionDelegate.ts')).toBe(true);
-    expect(legacySessionDelegateSource).not.toContain('../../../../src/');
-    expect(legacySessionDelegateSource).toContain('createLegacyDelegateSession');
-    expect(legacySessionDelegateSource).toContain('new PackageLocalSession');
+    expect(existsSync('packages/agent-sdk/src/session/legacySessionDelegate.ts')).toBe(false);
     expect(packageLocalRuntimeFactorySource).not.toContain('../../../../src/');
     expect(packageLocalRuntimeFactorySource).toContain('createPackageLocalSessionRuntimeFactory');
     expect(packageLocalRuntimeInstanceSource).not.toContain('../../../../src/');
@@ -560,15 +531,6 @@ describe('monorepo topology', () => {
     );
     expect(packageLocalRuntimeInstanceSource).toContain('toPackageLocalSessionUsage');
     expect(packageLocalRuntimeInstanceSource).toContain('toPackageLocalSessionPermissionUpdates');
-    expect(existsSync('packages/agent-sdk/src/session/packageLocalLegacyRuntimeFactory.ts')).toBe(
-      true,
-    );
-    expect(packageLocalLegacyRuntimeFactorySource).not.toContain('../../../../src/');
-    expect(packageLocalLegacyRuntimeFactorySource).toContain(
-      'createPackageLocalLegacySessionRuntimeFactory',
-    );
-    expect(packageLocalLegacyRuntimeFactorySource).toContain('createPackageLocalSessionRuntimeFactory');
-    expect(packageLocalLegacyRuntimeFactorySource).toContain('createLegacyStreamTurnBridge');
     expect(existsSync('packages/agent-sdk/src/session/packageLocalKernelRuntimeFactory.ts')).toBe(
       true,
     );

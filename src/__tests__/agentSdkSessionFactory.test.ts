@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import {
   createSession,
   forkSession,
@@ -16,10 +16,6 @@ import type {
   ISession,
   SessionOptions,
 } from '../../packages/agent-sdk/src/session/index.js';
-
-vi.mock('../../packages/agent-sdk/src/session/legacySessionAdapter.js', () => {
-  throw new Error('legacy session adapter should not be loaded by the default session factory');
-});
 
 const options: SessionOptions = {
   provider: {
