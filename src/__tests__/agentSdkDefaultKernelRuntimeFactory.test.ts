@@ -391,6 +391,65 @@ describe('agent-sdk default kernel runtime factory', () => {
     });
   });
 
+  it('refreshes session messages after persisted default kernel turns', async () => {
+    const workspaceRoot = createWorkspaceRoot();
+    const defaultKernelModel: ModelPort = {
+      async generate() {
+        return {
+          content: 'fresh answer',
+          finishReason: 'stop' as const,
+        };
+      },
+      async *stream() {},
+    };
+    const factory = createDefaultKernelSessionRuntimeFactory({
+      createSessionId: () => 'fresh-session',
+      createTurnId: () => 'fresh-turn',
+      runtime: {
+        kernelModelResolver: {
+          resolve() {
+            return {
+              model: defaultKernelModel,
+              modelRequestDefaults: { model: 'test-model' },
+            };
+          },
+        },
+      },
+    });
+
+    const session = await factory.create({
+      ...options,
+      storagePath: workspaceRoot,
+    });
+    await session.send('refresh this turn');
+    await collect(session.stream());
+
+    expect(session.messages).toMatchObject([
+      {
+        role: 'user',
+        content: 'refresh this turn',
+        metadata: {
+          kernel: {
+            turnId: 'fresh-turn',
+            source: 'input',
+            step: 0,
+          },
+        },
+      },
+      {
+        role: 'assistant',
+        content: 'fresh answer',
+        metadata: {
+          kernel: {
+            turnId: 'fresh-turn',
+            source: 'model',
+            step: 1,
+          },
+        },
+      },
+    ]);
+  });
+
   it('persists create and resume lifecycle through the package-local JSONL store', async () => {
     const workspaceRoot = createWorkspaceRoot();
     const factory = createDefaultKernelSessionRuntimeFactory({

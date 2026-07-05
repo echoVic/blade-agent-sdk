@@ -45,6 +45,7 @@ export interface PackageLocalSessionOptions {
 }
 
 export interface PackageLocalSessionRuntimePort {
+  loadMessages?: () => Promise<SessionMessage[]> | SessionMessage[];
   mcpServerStatus?: ISession['mcpServerStatus'];
   mcpConnect?: ISession['mcpConnect'];
   mcpDisconnect?: ISession['mcpDisconnect'];
@@ -88,7 +89,7 @@ export class PackageLocalSession implements ISession {
     turnAbort: this.turnAbort,
   });
   private readonly turns: SessionTurnController;
-  private readonly initialMessages: SessionMessage[];
+  private messagesSnapshot: SessionMessage[];
   private defaultContext: RuntimeContext;
 
   constructor(options: PackageLocalSessionOptions) {
@@ -98,7 +99,7 @@ export class PackageLocalSession implements ISession {
     this.cleanup = options.cleanup;
     this.runtime = options.runtime;
     this.delegate = options.delegate;
-    this.initialMessages = options.initialMessages ?? [];
+    this.messagesSnapshot = options.initialMessages ?? [];
     this.defaultContext = options.options.defaultContext ?? {};
     this.turns = new SessionTurnController({
       sessionId: options.sessionId,
@@ -111,7 +112,7 @@ export class PackageLocalSession implements ISession {
   }
 
   get messages(): SessionMessage[] {
-    return this.delegate?.messages ?? this.initialMessages;
+    return this.delegate?.messages ?? this.messagesSnapshot;
   }
 
   get isClosed(): boolean {
@@ -129,8 +130,16 @@ export class PackageLocalSession implements ISession {
         sessionId: this.sessionId,
         options: this.sessionOptions,
       });
+      await this.refreshMessages();
     } finally {
       turn.cleanup();
+    }
+  }
+
+  private async refreshMessages(): Promise<void> {
+    const messages = await this.runtime?.loadMessages?.();
+    if (messages) {
+      this.messagesSnapshot = messages;
     }
   }
 
