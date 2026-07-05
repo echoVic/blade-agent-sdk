@@ -494,6 +494,10 @@ describe('monorepo topology', () => {
     ].map((match) => match[1]);
     expect(legacySessionAdapterRootImports).toEqual([]);
     expect(legacySessionAdapterSource).toContain("import('../../../../src/session/Session.js')");
+    expect(legacySessionAdapterSource).toContain('interface LegacySessionModulePort');
+    expect(legacySessionAdapterSource).toContain('loadLegacySessionModule');
+    expect(legacySessionAdapterSource).not.toContain("typeof import('../../../../src/session/Session.js')");
+    expect(legacySessionAdapterSource).not.toContain("Parameters<LegacySessionModule['createSession']>");
     expect(legacySessionAdapterSource).not.toContain('forkSession as forkLegacy');
     expect(legacySessionAdapterSource).not.toContain('prompt as promptLegacy');
     expect(legacySessionAdapterSource).toContain('createLegacyDelegateSession');

@@ -1,54 +1,60 @@
 import { nanoid } from 'nanoid';
 import type { SessionRuntimeFactory } from './factory.js';
 import { createLegacyDelegateSession } from './legacySessionDelegate.js';
-import type { ResumeOptions, SessionOptions } from './types.js';
+import type { ISession, ResumeOptions, SessionOptions } from './types.js';
 
-type LegacySessionModule = typeof import('../../../../src/session/Session.js');
-type LegacySessionOptions = Parameters<LegacySessionModule['createSession']>[0];
-type LegacyResumeOptions = Parameters<LegacySessionModule['resumeSession']>[0];
+export interface LegacySessionModulePort {
+  createSession(options: SessionOptions): Promise<ISession>;
+  resumeSession(options: ResumeOptions): Promise<ISession>;
+}
 
-let legacySessionModulePromise: Promise<LegacySessionModule> | null = null;
+export interface LegacySessionRuntimeFactoryOptions {
+  loadLegacySessionModule?: () => Promise<LegacySessionModulePort>;
+  createTurnId?: () => string;
+}
 
-function loadLegacySessionModule(): Promise<LegacySessionModule> {
-  legacySessionModulePromise ??= import('../../../../src/session/Session.js');
+let legacySessionModulePromise: Promise<LegacySessionModulePort> | null = null;
+
+function loadDefaultLegacySessionModule(): Promise<LegacySessionModulePort> {
+  legacySessionModulePromise ??= import('../../../../src/session/Session.js').then(
+    (module) => module as LegacySessionModulePort,
+  );
   return legacySessionModulePromise;
 }
 
-function toLegacySessionOptions(options: SessionOptions): LegacySessionOptions {
-  const { mcpServers, ...rest } = options;
-  return {
-    ...rest,
-    ...(mcpServers ? { mcpServers: mcpServers as LegacySessionOptions['mcpServers'] } : {}),
-  };
+function toLegacySessionOptions(options: SessionOptions): SessionOptions {
+  return options;
 }
 
-function toLegacyResumeOptions(options: ResumeOptions): LegacyResumeOptions {
-  const { sessionId, ...sessionOptions } = options;
-  return {
-    ...toLegacySessionOptions(sessionOptions),
-    sessionId: sessionId as LegacyResumeOptions['sessionId'],
-  };
+function toLegacyResumeOptions(options: ResumeOptions): ResumeOptions {
+  return options;
 }
 
-export function createLegacySessionRuntimeFactory(): SessionRuntimeFactory {
+export function createLegacySessionRuntimeFactory(
+  options: LegacySessionRuntimeFactoryOptions = {},
+): SessionRuntimeFactory {
+  const loadLegacySessionModule =
+    options.loadLegacySessionModule ?? loadDefaultLegacySessionModule;
+  const createTurnId = options.createTurnId ?? nanoid;
+
   return {
-    async create(options) {
+    async create(sessionOptions) {
       const { createSession } = await loadLegacySessionModule();
-      const legacySession = await createSession(toLegacySessionOptions(options));
-      return createLegacyDelegateSession({
-        delegate: legacySession,
-        options,
-        createTurnId: nanoid,
-      });
-    },
-    async resume(options) {
-      const { resumeSession } = await loadLegacySessionModule();
-      const legacySession = await resumeSession(toLegacyResumeOptions(options));
-      const { sessionId: _sessionId, ...sessionOptions } = options;
+      const legacySession = await createSession(toLegacySessionOptions(sessionOptions));
       return createLegacyDelegateSession({
         delegate: legacySession,
         options: sessionOptions,
-        createTurnId: nanoid,
+        createTurnId,
+      });
+    },
+    async resume(resumeOptions) {
+      const { resumeSession } = await loadLegacySessionModule();
+      const legacySession = await resumeSession(toLegacyResumeOptions(resumeOptions));
+      const { sessionId: _sessionId, ...sessionOptions } = resumeOptions;
+      return createLegacyDelegateSession({
+        delegate: legacySession,
+        options: sessionOptions,
+        createTurnId,
       });
     },
   };
