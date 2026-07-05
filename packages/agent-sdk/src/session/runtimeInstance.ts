@@ -1,7 +1,15 @@
 import { basename, dirname } from 'node:path';
 import type { ContextSnapshot, RuntimeContext } from '../runtime/types.js';
 import type { SubagentConfig } from '../subagents/types.js';
-import type { BladeConfig, McpServerConfig } from '../types/common.js';
+import { HookEvent } from '../types/constants.js';
+import type { BladeConfig, JsonObject, McpServerConfig } from '../types/common.js';
+import {
+  createCompositePermissionHandler,
+  createPermissionHandlerFromCanUseTool,
+  type PermissionHandler,
+  type PermissionResult,
+} from '../types/permissions.js';
+import type { ToolKind } from '../tools/types/ToolKind.js';
 import type {
   McpToolInfo,
   McpServerStatus,
@@ -25,6 +33,7 @@ export interface PackageLocalSessionRuntimeOptions {
   customToolFactory?: PackageLocalRuntimeCustomToolFactoryPort;
   builtinToolProvider?: PackageLocalRuntimeBuiltinToolProviderPort;
   subagentRegistry?: PackageLocalRuntimeSubagentRegistryPort;
+  permissionHooks?: PackageLocalRuntimePermissionHookPort;
 }
 
 export interface PackageLocalRuntimeSessionStorePort {
@@ -111,6 +120,23 @@ export interface PackageLocalRuntimeSubagentRegistryPort {
   setProjectDir(projectDir?: string): void;
   loadFromStandardLocations(projectDir?: string, storageRoot?: string): number | undefined;
   register(config: SubagentConfig, options?: { override?: boolean }): void;
+}
+
+export interface PackageLocalRuntimePermissionHookResult {
+  updatedInput: JsonObject;
+  decision?: PermissionResult;
+}
+
+export interface PackageLocalRuntimePermissionHookPort {
+  applyPermissionRequestHooks(
+    toolName: string,
+    input: JsonObject,
+    options: {
+      affectedPaths?: string[];
+      toolKind?: ToolKind;
+      abortSignal?: AbortSignal;
+    },
+  ): Promise<PackageLocalRuntimePermissionHookResult>;
 }
 
 export interface PackageLocalRuntimeMcpToolCapability {
@@ -202,6 +228,7 @@ export class PackageLocalSessionRuntime {
   readonly customToolFactory?: PackageLocalRuntimeCustomToolFactoryPort;
   readonly builtinToolProvider?: PackageLocalRuntimeBuiltinToolProviderPort;
   readonly subagentRegistry: PackageLocalRuntimeSubagentRegistryPort;
+  readonly permissionHooks: PackageLocalRuntimePermissionHookPort;
 
   constructor(options: PackageLocalSessionRuntimeOptions) {
     this.sessionId = options.sessionId;
@@ -221,6 +248,7 @@ export class PackageLocalSessionRuntime {
     this.customToolFactory = options.customToolFactory;
     this.builtinToolProvider = options.builtinToolProvider;
     this.subagentRegistry = options.subagentRegistry ?? createNoopRuntimeSubagentRegistry();
+    this.permissionHooks = options.permissionHooks ?? createNoopRuntimePermissionHooks();
   }
 
   getConfiguredMcpServers(): Record<string, McpServerConfig | SdkMcpServerHandle> {
@@ -450,6 +478,49 @@ export class PackageLocalSessionRuntime {
       });
     }
   }
+
+  createPermissionHandler(): PermissionHandler | undefined {
+    const hasPermissionCallbacks =
+      (this.hookCallbacks[HookEvent.PermissionRequest]?.length ?? 0) > 0;
+    const basePermissionHandler =
+      this.options.permissionHandler ??
+      (this.options.canUseTool
+        ? createPermissionHandlerFromCanUseTool(this.options.canUseTool)
+        : undefined);
+
+    if (!hasPermissionCallbacks && !basePermissionHandler) {
+      return undefined;
+    }
+
+    const hookPermissionHandler = hasPermissionCallbacks
+      ? (async (request) => {
+          const hookResult = await this.permissionHooks.applyPermissionRequestHooks(
+            request.toolName,
+            request.input,
+            {
+              affectedPaths: request.affectedPaths,
+              toolKind: request.toolKind,
+              abortSignal: request.signal,
+            },
+          );
+          Object.assign(request.input, hookResult.updatedInput);
+          if (hookResult.decision) {
+            return hookResult.decision;
+          }
+
+          return {
+            behavior: 'allow',
+            updatedInput: hookResult.updatedInput,
+          } satisfies PermissionResult;
+        }) satisfies PermissionHandler
+      : undefined;
+
+    return createCompositePermissionHandler([
+      hookPermissionHandler,
+      basePermissionHandler,
+      async () => ({ behavior: 'ask' }) satisfies PermissionResult,
+    ]);
+  }
 }
 
 function createNoopRuntimeSessionStore(): PackageLocalRuntimeSessionStorePort {
@@ -509,6 +580,14 @@ function createNoopRuntimeSubagentRegistry(): PackageLocalRuntimeSubagentRegistr
       return 0;
     },
     register() {},
+  };
+}
+
+function createNoopRuntimePermissionHooks(): PackageLocalRuntimePermissionHookPort {
+  return {
+    async applyPermissionRequestHooks(_toolName, input) {
+      return { updatedInput: input };
+    },
   };
 }
 

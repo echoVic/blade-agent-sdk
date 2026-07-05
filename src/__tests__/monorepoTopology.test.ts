@@ -508,6 +508,10 @@ describe('monorepo topology', () => {
     expect(packageLocalRuntimeInstanceSource).toContain('initializeSubagents');
     expect(packageLocalRuntimeInstanceSource).toContain('PackageLocalRuntimeSubagentRegistryPort');
     expect(packageLocalRuntimeInstanceSource).toContain('packageLocalSubagentConfigFromDefinition');
+    expect(packageLocalRuntimeInstanceSource).toContain('createPermissionHandler');
+    expect(packageLocalRuntimeInstanceSource).toContain('PackageLocalRuntimePermissionHookPort');
+    expect(packageLocalRuntimeInstanceSource).toContain('createPermissionHandlerFromCanUseTool');
+    expect(packageLocalRuntimeInstanceSource).toContain('createCompositePermissionHandler');
     expect(existsSync('packages/agent-sdk/src/session/packageLocalLegacyRuntimeFactory.ts')).toBe(
       true,
     );

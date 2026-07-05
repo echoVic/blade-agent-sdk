@@ -5,7 +5,10 @@ import {
   resolvePackageLocalRuntimeStorageRoot,
 } from '../../packages/agent-sdk/src/session/runtimeInstance.js';
 import type { SessionOptions } from '../../packages/agent-sdk/src/session/types.js';
+import { HookEvent } from '../../packages/agent-sdk/src/types/constants.js';
 import type { BladeConfig } from '../../packages/agent-sdk/src/types/common.js';
+import type { PermissionHandlerRequest } from '../../packages/agent-sdk/src/types/permissions.js';
+import { ToolKind } from '../../packages/agent-sdk/src/tools/types/ToolKind.js';
 
 const options: SessionOptions = {
   provider: {
@@ -867,5 +870,77 @@ describe('agent-sdk package-local session runtime shell', () => {
         { override: true },
       ],
     ]);
+  });
+
+  it('owns permission handler composition with permission hooks before canUseTool', async () => {
+    const abortController = new AbortController();
+    const canUseTool = vi.fn(async () => ({ behavior: 'allow' as const }));
+    const hookCalls: unknown[] = [];
+    const runtime = new PackageLocalSessionRuntime({
+      sessionId: 'session-1',
+      options: {
+        ...options,
+        canUseTool,
+        hooks: {
+          [HookEvent.PermissionRequest]: [
+            async () => ({
+              action: 'continue',
+              modifiedInput: { value: 'from-hook' },
+            }),
+          ],
+        },
+      },
+      bladeConfig,
+      defaultContext: {},
+      permissionHooks: {
+        async applyPermissionRequestHooks(toolName, input, options) {
+          hookCalls.push([toolName, { ...input }, options]);
+          return {
+            updatedInput: { ...input, value: 'from-hook' },
+          };
+        },
+      },
+    });
+
+    const handler = runtime.createPermissionHandler();
+    expect(handler).toBeDefined();
+
+    const request: PermissionHandlerRequest = {
+      toolName: 'CustomTool',
+      input: { value: 'original' },
+      signal: abortController.signal,
+      affectedPaths: ['/workspace/file.ts'],
+      toolKind: ToolKind.Write,
+      toolMeta: {
+        isReadOnly: false,
+        isConcurrencySafe: false,
+        isDestructive: false,
+      },
+    };
+
+    const result = await handler?.(request);
+
+    expect(hookCalls).toEqual([
+      [
+        'CustomTool',
+        { value: 'original' },
+        {
+          affectedPaths: ['/workspace/file.ts'],
+          toolKind: ToolKind.Write,
+          abortSignal: abortController.signal,
+        },
+      ],
+    ]);
+    expect(canUseTool).toHaveBeenCalledWith(
+      'CustomTool',
+      { value: 'from-hook' },
+      {
+        signal: abortController.signal,
+        toolKind: ToolKind.Write,
+        affectedPaths: ['/workspace/file.ts'],
+      },
+    );
+    expect(request.input).toEqual({ value: 'from-hook' });
+    expect(result).toEqual({ behavior: 'ask' });
   });
 });
