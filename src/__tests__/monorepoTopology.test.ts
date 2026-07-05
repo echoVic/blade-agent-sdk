@@ -447,6 +447,10 @@ describe('monorepo topology', () => {
     expect(sessionLegacyStreamBridgeSource).toContain('runLegacySessionStreamTurn');
     expect(sessionInstanceSource).not.toContain('../../../../src/');
     expect(sessionInstanceSource).toContain('class PackageLocalSession');
+    expect(sessionInstanceSource).toContain('interface PackageLocalSessionDelegate');
+    expect(sessionInstanceSource).toContain('this.delegate?.fork');
+    expect(sessionInstanceSource).toContain('this.delegate?.mcpConnect');
+    expect(sessionInstanceSource).toContain('this.delegate?.getTraces');
     expect(packageLocalRuntimeFactorySource).not.toContain('../../../../src/');
     expect(packageLocalRuntimeFactorySource).toContain('createPackageLocalSessionRuntimeFactory');
     expect(existsSync('packages/agent-sdk/src/session/packageLocalLegacyRuntimeFactory.ts')).toBe(

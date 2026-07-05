@@ -39,6 +39,28 @@ export interface PackageLocalSessionOptions {
   streamTurn: PackageLocalSessionStreamTurn;
   createTurnId: () => string;
   cleanup?: SessionCloseCleanup;
+  delegate?: PackageLocalSessionDelegate;
+}
+
+export interface PackageLocalSessionDelegate {
+  readonly messages?: SessionMessage[];
+  readonly isClosed?: boolean;
+  close?: () => Promise<void>;
+  abort?: () => void;
+  getDefaultContext?: () => RuntimeContext;
+  setDefaultContext?: (context: RuntimeContext) => void;
+  setPermissionMode?: ISession['setPermissionMode'];
+  setModel?: ISession['setModel'];
+  setMaxTurns?: ISession['setMaxTurns'];
+  supportedModels?: ISession['supportedModels'];
+  mcpServerStatus?: ISession['mcpServerStatus'];
+  mcpConnect?: ISession['mcpConnect'];
+  mcpDisconnect?: ISession['mcpDisconnect'];
+  mcpReconnect?: ISession['mcpReconnect'];
+  mcpListTools?: ISession['mcpListTools'];
+  fork?: ISession['fork'];
+  getLastTrace?: ISession['getLastTrace'];
+  getTraces?: ISession['getTraces'];
 }
 
 export class PackageLocalSession implements ISession {
@@ -46,6 +68,7 @@ export class PackageLocalSession implements ISession {
   private readonly sessionOptions: SessionOptions;
   private readonly streamTurn: PackageLocalSessionStreamTurn;
   private readonly cleanup?: SessionCloseCleanup;
+  private readonly delegate?: PackageLocalSessionDelegate;
   private readonly pendingTurns = new PendingTurnBuffer();
   private readonly turnAbort = new TurnAbortController();
   private readonly lifecycle = new SessionLifecycleState({
@@ -60,6 +83,7 @@ export class PackageLocalSession implements ISession {
     this.sessionOptions = options.options;
     this.streamTurn = options.streamTurn;
     this.cleanup = options.cleanup;
+    this.delegate = options.delegate;
     this.defaultContext = options.options.defaultContext ?? {};
     this.turns = new SessionTurnController({
       sessionId: options.sessionId,
@@ -72,11 +96,11 @@ export class PackageLocalSession implements ISession {
   }
 
   get messages(): SessionMessage[] {
-    return [];
+    return this.delegate?.messages ?? [];
   }
 
   get isClosed(): boolean {
-    return this.lifecycle.isClosed();
+    return this.lifecycle.isClosed() || this.delegate?.isClosed === true;
   }
 
   async send(message: UserMessageContent, options?: SendOptions): Promise<void> {
@@ -96,35 +120,55 @@ export class PackageLocalSession implements ISession {
   }
 
   async close(): Promise<void> {
-    await this.lifecycle.close(this.cleanup);
+    await this.lifecycle.close(async () => {
+      await this.cleanup?.();
+      await this.delegate?.close?.();
+    });
   }
 
   abort(): void {
     this.lifecycle.abort();
+    this.delegate?.abort?.();
   }
 
   getDefaultContext(): RuntimeContext {
-    return this.defaultContext;
+    return this.delegate?.getDefaultContext?.() ?? this.defaultContext;
   }
 
   setDefaultContext(context: RuntimeContext): void {
     this.lifecycle.assertOpen();
     this.defaultContext = context;
+    this.delegate?.setDefaultContext?.(context);
   }
 
-  setPermissionMode(): void {
+  setPermissionMode(mode: Parameters<ISession['setPermissionMode']>[0]): void {
+    if (this.delegate?.setPermissionMode) {
+      this.delegate.setPermissionMode(mode);
+      return;
+    }
     throw new Error('setPermissionMode is not implemented by PackageLocalSession yet.');
   }
 
-  async setModel(): Promise<void> {
+  async setModel(model: Parameters<ISession['setModel']>[0]): Promise<void> {
+    if (this.delegate?.setModel) {
+      await this.delegate.setModel(model);
+      return;
+    }
     throw new Error('setModel is not implemented by PackageLocalSession yet.');
   }
 
-  setMaxTurns(): void {
+  setMaxTurns(maxTurns: Parameters<ISession['setMaxTurns']>[0]): void {
+    if (this.delegate?.setMaxTurns) {
+      this.delegate.setMaxTurns(maxTurns);
+      return;
+    }
     throw new Error('setMaxTurns is not implemented by PackageLocalSession yet.');
   }
 
   async supportedModels(): Promise<ModelInfo[]> {
+    if (this.delegate?.supportedModels) {
+      return this.delegate.supportedModels();
+    }
     return [
       {
         id: 'default',
@@ -135,35 +179,56 @@ export class PackageLocalSession implements ISession {
   }
 
   async mcpServerStatus(): Promise<McpServerStatus[]> {
+    if (this.delegate?.mcpServerStatus) {
+      return this.delegate.mcpServerStatus();
+    }
     return [];
   }
 
-  async mcpConnect(): Promise<void> {
+  async mcpConnect(serverName: Parameters<ISession['mcpConnect']>[0]): Promise<void> {
+    if (this.delegate?.mcpConnect) {
+      await this.delegate.mcpConnect(serverName);
+      return;
+    }
     throw new Error('mcpConnect is not implemented by PackageLocalSession yet.');
   }
 
-  async mcpDisconnect(): Promise<void> {
+  async mcpDisconnect(serverName: Parameters<ISession['mcpDisconnect']>[0]): Promise<void> {
+    if (this.delegate?.mcpDisconnect) {
+      await this.delegate.mcpDisconnect(serverName);
+      return;
+    }
     throw new Error('mcpDisconnect is not implemented by PackageLocalSession yet.');
   }
 
-  async mcpReconnect(): Promise<void> {
+  async mcpReconnect(serverName: Parameters<ISession['mcpReconnect']>[0]): Promise<void> {
+    if (this.delegate?.mcpReconnect) {
+      await this.delegate.mcpReconnect(serverName);
+      return;
+    }
     throw new Error('mcpReconnect is not implemented by PackageLocalSession yet.');
   }
 
   async mcpListTools(): Promise<McpToolInfo[]> {
+    if (this.delegate?.mcpListTools) {
+      return this.delegate.mcpListTools();
+    }
     return [];
   }
 
-  async fork(_options?: ForkSessionOptions): Promise<ISession> {
+  async fork(options?: ForkSessionOptions): Promise<ISession> {
+    if (this.delegate?.fork) {
+      return this.delegate.fork(options);
+    }
     throw new Error('fork is not implemented by PackageLocalSession yet.');
   }
 
   getLastTrace(): AgentTrace | undefined {
-    return undefined;
+    return this.delegate?.getLastTrace?.();
   }
 
   getTraces(): AgentTrace[] {
-    return [];
+    return this.delegate?.getTraces?.() ?? [];
   }
 
   async [Symbol.asyncDispose](): Promise<void> {
