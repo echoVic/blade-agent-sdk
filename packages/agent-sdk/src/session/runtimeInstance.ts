@@ -40,6 +40,11 @@ import {
   projectPackageLocalKernelEventToStreamMessages,
 } from './kernelStreamProjection.js';
 import {
+  initializePackageLocalRuntimeHooks,
+  type PackageLocalRuntimeHookManagerPort,
+  type PackageLocalRuntimeHookRuntimePort,
+} from './runtimeHooks.js';
+import {
   resolvePackageLocalRuntimeKernelModel,
   type PackageLocalRuntimeKernelModelResolverPort,
   type PackageLocalRuntimeResolvedKernelModel,
@@ -76,6 +81,10 @@ export type {
   PackageLocalRuntimeKernelModelResolveOptions,
   PackageLocalRuntimeResolvedKernelModel,
 } from './runtimeKernelModels.js';
+export type {
+  PackageLocalRuntimeHookManagerPort,
+  PackageLocalRuntimeHookRuntimePort,
+} from './runtimeHooks.js';
 
 export interface PackageLocalSessionRuntimeOptions {
   sessionId: SessionId;
@@ -209,14 +218,6 @@ export type {
   PackageLocalRuntimePermissionHookPort,
   PackageLocalRuntimePermissionHookResult,
 } from './runtimePermissions.js';
-
-export interface PackageLocalRuntimeHookManagerPort {
-  enable(): void;
-}
-
-export interface PackageLocalRuntimeHookRuntimePort extends PackageLocalRuntimeHookManagerPort {
-  setTraceCollector?(collector: unknown): void;
-}
 
 export interface PackageLocalRuntimeBackgroundAgentManagerPort {
   [operation: string]: unknown;
@@ -647,9 +648,10 @@ export class PackageLocalSessionRuntime {
   }
 
   initializeHooks(): void {
-    if (this.options.hooks && Object.keys(this.options.hooks).length > 0) {
-      this.hookManager.enable();
-    }
+    initializePackageLocalRuntimeHooks({
+      hookManager: this.hookManager,
+      hooks: this.hookCallbacks,
+    });
   }
 
   createExecutionPipeline(): unknown {

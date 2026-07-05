@@ -477,6 +477,9 @@ describe('monorepo topology', () => {
     )
       ? readFileSync('packages/agent-sdk/src/session/runtimePermissions.ts', 'utf-8')
       : '';
+    const runtimeHooksSource = existsSync('packages/agent-sdk/src/session/runtimeHooks.ts')
+      ? readFileSync('packages/agent-sdk/src/session/runtimeHooks.ts', 'utf-8')
+      : '';
     const runtimeKernelModelsSource = existsSync(
       'packages/agent-sdk/src/session/runtimeKernelModels.ts',
     )
@@ -641,6 +644,12 @@ describe('monorepo topology', () => {
     expect(packageLocalRuntimeInstanceSource).not.toContain('createCompositePermissionHandler');
     expect(packageLocalRuntimeInstanceSource).toContain('initializeHooks');
     expect(packageLocalRuntimeInstanceSource).toContain('PackageLocalRuntimeHookManagerPort');
+    expect(existsSync('packages/agent-sdk/src/session/runtimeHooks.ts')).toBe(true);
+    expect(runtimeHooksSource).not.toContain('../../../../src/');
+    expect(runtimeHooksSource).toContain('initializePackageLocalRuntimeHooks');
+    expect(packageLocalRuntimeInstanceSource).toContain('initializePackageLocalRuntimeHooks');
+    expect(packageLocalRuntimeInstanceSource).not.toContain('this.hookManager.enable()');
+    expect(packageLocalRuntimeInstanceSource).not.toContain('Object.keys(this.options.hooks');
     expect(packageLocalRuntimeInstanceSource).toContain('createExecutionPipeline');
     expect(packageLocalRuntimeInstanceSource).toContain(
       'PackageLocalRuntimeExecutionPipelineFactoryPort',
