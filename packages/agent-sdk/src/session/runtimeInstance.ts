@@ -1,4 +1,11 @@
 import { basename, dirname } from 'node:path';
+import type {
+  AgentHookPort,
+  AgentStorePort,
+  AgentToolCall,
+  AgentToolPort,
+  AgentTracePort,
+} from '@blade-ai/agent';
 import type { ContextSnapshot, RuntimeContext } from '../runtime/types.js';
 import type { SubagentConfig } from '../subagents/types.js';
 import { HookEvent } from '../types/constants.js';
@@ -15,7 +22,9 @@ import {
   type PermissionHandler,
   type PermissionResult,
 } from '../types/permissions.js';
+import type { TraceRecorder } from '../observability/TraceRecorder.js';
 import type { ToolKind } from '../tools/types/ToolKind.js';
+import type { ExecutionContext } from '../tools/types/index.js';
 import type {
   McpToolInfo,
   McpServerStatus,
@@ -44,6 +53,7 @@ export interface PackageLocalSessionRuntimeOptions {
   hookRuntime?: PackageLocalRuntimeHookRuntimePort;
   backgroundAgentManager?: PackageLocalRuntimeBackgroundAgentManagerPort;
   executionPipelineFactory?: PackageLocalRuntimeExecutionPipelineFactoryPort;
+  kernelPortFactory?: PackageLocalRuntimeKernelPortFactoryPort;
 }
 
 export interface PackageLocalRuntimeSessionStorePort {
@@ -174,6 +184,35 @@ export interface PackageLocalRuntimeExecutionPipelineFactoryPort {
   create(options: PackageLocalRuntimeExecutionPipelineCreateOptions): unknown;
 }
 
+export interface PackageLocalRuntimeKernelToolPortCreateOptions {
+  toolCatalog: PackageLocalRuntimeToolCatalogPort;
+  executionPipeline: unknown;
+  createExecutionContext: (
+    toolCall: AgentToolCall,
+    signal?: AbortSignal,
+  ) => ExecutionContext;
+}
+
+export interface PackageLocalRuntimeKernelStorePortCreateOptions {
+  sessionStore: PackageLocalRuntimeSessionStorePort;
+}
+
+export interface PackageLocalRuntimeKernelTracePortCreateOptions {
+  recorder: TraceRecorder;
+  maxContextTokens?: number;
+}
+
+export interface PackageLocalRuntimeKernelHookPortCreateOptions {
+  hookRuntime: PackageLocalRuntimeHookRuntimePort;
+}
+
+export interface PackageLocalRuntimeKernelPortFactoryPort {
+  createToolPort(options: PackageLocalRuntimeKernelToolPortCreateOptions): AgentToolPort;
+  createStorePort(options: PackageLocalRuntimeKernelStorePortCreateOptions): AgentStorePort;
+  createTracePort(options: PackageLocalRuntimeKernelTracePortCreateOptions): AgentTracePort;
+  createHookPort(options: PackageLocalRuntimeKernelHookPortCreateOptions): AgentHookPort;
+}
+
 export interface PackageLocalAgentRuntimeDeps {
   executionPipeline: unknown;
   defaultContext: RuntimeContext;
@@ -279,6 +318,7 @@ export class PackageLocalSessionRuntime {
   readonly hookRuntime: PackageLocalRuntimeHookRuntimePort;
   readonly backgroundAgentManager: PackageLocalRuntimeBackgroundAgentManagerPort;
   readonly executionPipelineFactory: PackageLocalRuntimeExecutionPipelineFactoryPort;
+  readonly kernelPortFactory: PackageLocalRuntimeKernelPortFactoryPort;
   private executionPipelineCreated = false;
   private executionPipeline: unknown;
 
@@ -307,6 +347,7 @@ export class PackageLocalSessionRuntime {
       options.backgroundAgentManager ?? createNoopRuntimeBackgroundAgentManager();
     this.executionPipelineFactory =
       options.executionPipelineFactory ?? createNoopRuntimeExecutionPipelineFactory();
+    this.kernelPortFactory = options.kernelPortFactory ?? createNoopRuntimeKernelPortFactory();
   }
 
   getConfiguredMcpServers(): Record<string, McpServerConfig | SdkMcpServerHandle> {
@@ -622,6 +663,38 @@ export class PackageLocalSessionRuntime {
       logger: this.logger,
     };
   }
+
+  getKernelToolPort(
+    createExecutionContext: (
+      toolCall: AgentToolCall,
+      signal?: AbortSignal,
+    ) => ExecutionContext,
+  ): AgentToolPort {
+    return this.kernelPortFactory.createToolPort({
+      toolCatalog: this.toolCatalog,
+      executionPipeline: this.createExecutionPipeline(),
+      createExecutionContext,
+    });
+  }
+
+  getKernelStorePort(): AgentStorePort {
+    return this.kernelPortFactory.createStorePort({
+      sessionStore: this.sessionStore,
+    });
+  }
+
+  getKernelTracePort(recorder: TraceRecorder, maxContextTokens?: number): AgentTracePort {
+    return this.kernelPortFactory.createTracePort({
+      recorder,
+      maxContextTokens,
+    });
+  }
+
+  getKernelHookPort(): AgentHookPort {
+    return this.kernelPortFactory.createHookPort({
+      hookRuntime: this.hookRuntime,
+    });
+  }
 }
 
 function createNoopRuntimeSessionStore(): PackageLocalRuntimeSessionStorePort {
@@ -707,6 +780,39 @@ function createNoopRuntimeExecutionPipelineFactory(): PackageLocalRuntimeExecuti
   return {
     create() {
       return undefined;
+    },
+  };
+}
+
+function createNoopRuntimeKernelPortFactory(): PackageLocalRuntimeKernelPortFactoryPort {
+  return {
+    createToolPort() {
+      return {
+        async list() {
+          return [];
+        },
+        async execute(toolCall) {
+          return {
+            id: toolCall.id,
+            name: toolCall.name,
+            output: '',
+            isError: true,
+          };
+        },
+      };
+    },
+    createStorePort() {
+      return {
+        appendMessage() {},
+      };
+    },
+    createTracePort() {
+      return {
+        record() {},
+      };
+    },
+    createHookPort() {
+      return {};
     },
   };
 }

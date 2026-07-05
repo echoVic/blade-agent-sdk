@@ -5,6 +5,7 @@ import {
   resolvePackageLocalRuntimeStorageRoot,
 } from '../../packages/agent-sdk/src/session/runtimeInstance.js';
 import type { SessionOptions } from '../../packages/agent-sdk/src/session/types.js';
+import type { TraceRecorder } from '../../packages/agent-sdk/src/observability/TraceRecorder.js';
 import { HookEvent } from '../../packages/agent-sdk/src/types/constants.js';
 import { PermissionMode, type BladeConfig } from '../../packages/agent-sdk/src/types/common.js';
 import type { PermissionHandlerRequest } from '../../packages/agent-sdk/src/types/permissions.js';
@@ -1077,5 +1078,73 @@ describe('agent-sdk package-local session runtime shell', () => {
       logger,
     });
     expect(create).toHaveBeenCalledTimes(1);
+  });
+
+  it('creates kernel ports through an injected package-local factory', () => {
+    const toolPort = {
+      list: vi.fn(async () => []),
+      execute: vi.fn(async (toolCall) => ({
+        id: toolCall.id,
+        name: toolCall.name,
+        output: '',
+      })),
+    };
+    const storePort = { appendMessage: vi.fn() };
+    const tracePort = { record: vi.fn() };
+    const hookPort = { beforeModel: vi.fn((request) => request) };
+    const pipeline = { id: 'pipeline' };
+    const createPipeline = vi.fn(() => pipeline);
+    const sessionStore = {
+      createSession: vi.fn(async () => {}),
+      loadSession: vi.fn(async () => true),
+    };
+    const toolCatalog = {
+      registerAll: vi.fn(),
+      registerMcpTool: vi.fn(),
+      removeMcpTools: vi.fn(() => 0),
+    };
+    const hookRuntime = {
+      enable: vi.fn(),
+      setTraceCollector: vi.fn(),
+    };
+    const traceRecorder = {
+      startSpan: vi.fn(),
+    } as unknown as TraceRecorder;
+    const createExecutionContext = vi.fn(() => ({}));
+    const kernelPortFactory = {
+      createToolPort: vi.fn(() => toolPort),
+      createStorePort: vi.fn(() => storePort),
+      createTracePort: vi.fn(() => tracePort),
+      createHookPort: vi.fn(() => hookPort),
+    };
+    const runtime = new PackageLocalSessionRuntime({
+      sessionId: 'session-1',
+      options,
+      bladeConfig,
+      defaultContext: {},
+      sessionStore,
+      toolCatalog,
+      hookRuntime,
+      executionPipelineFactory: { create: createPipeline },
+      kernelPortFactory,
+    });
+
+    expect(runtime.getKernelToolPort(createExecutionContext)).toBe(toolPort);
+    expect(runtime.getKernelStorePort()).toBe(storePort);
+    expect(runtime.getKernelTracePort(traceRecorder, 4096)).toBe(tracePort);
+    expect(runtime.getKernelHookPort()).toBe(hookPort);
+
+    expect(kernelPortFactory.createToolPort).toHaveBeenCalledWith({
+      toolCatalog,
+      executionPipeline: pipeline,
+      createExecutionContext,
+    });
+    expect(kernelPortFactory.createStorePort).toHaveBeenCalledWith({ sessionStore });
+    expect(kernelPortFactory.createTracePort).toHaveBeenCalledWith({
+      recorder: traceRecorder,
+      maxContextTokens: 4096,
+    });
+    expect(kernelPortFactory.createHookPort).toHaveBeenCalledWith({ hookRuntime });
+    expect(createPipeline).toHaveBeenCalledTimes(1);
   });
 });
