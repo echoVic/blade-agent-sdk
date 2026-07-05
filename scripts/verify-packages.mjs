@@ -57,6 +57,7 @@ const packageSpecs = [
       'package/dist/index.d.ts',
       'package/dist/session/index.js',
       'package/dist/session/index.d.ts',
+      'package/dist/session/types.d.ts',
       'package/dist/session/Session.d.ts',
       'package/dist/session/config.d.ts',
       'package/dist/session/factory.d.ts',
@@ -81,6 +82,26 @@ const packageSpecs = [
         file: 'package/dist/session/index.d.ts',
         forbidden: './Session.js',
         message: 'session declarations must be emitted from package-local session entry source',
+      },
+      {
+        file: 'package/dist/session/types.d.ts',
+        forbidden: "runtime?: 'kernel' | 'legacy'",
+        message: 'session declarations must not expose retired legacy stream runtime options',
+      },
+      {
+        file: 'package/dist/session/types.d.ts',
+        forbidden: 'experimentalKernel',
+        message: 'session declarations must not expose retired experimental kernel flags',
+      },
+      {
+        file: 'package/dist/session/types.d.ts',
+        forbidden: 'legacyStream',
+        message: 'session declarations must not expose retired legacy stream helpers',
+      },
+      {
+        file: 'package/dist/session/types.d.ts',
+        forbidden: 'packageLocalLegacy',
+        message: 'session declarations must not expose retired package-local legacy runtime helpers',
       },
       {
         file: 'package/dist/session/index.js',

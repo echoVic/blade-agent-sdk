@@ -638,5 +638,9 @@ describe('monorepo topology', () => {
     expect(packageVerifierSource).toContain('verifyNoEagerLegacySessionRuntime');
     expect(packageVerifierSource).toContain('collectPackedStaticImports');
     expect(packageVerifierSource).toContain('package/dist/session/index.js');
+    expect(packageVerifierSource).toContain("runtime?: 'kernel' | 'legacy'");
+    expect(packageVerifierSource).toContain('experimentalKernel');
+    expect(packageVerifierSource).toContain('legacyStream');
+    expect(packageVerifierSource).toContain('packageLocalLegacy');
   });
 });
