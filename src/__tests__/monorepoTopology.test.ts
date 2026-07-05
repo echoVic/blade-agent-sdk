@@ -15,6 +15,7 @@ interface PackageJson {
   optionalDependencies?: Record<string, string>;
   compilerOptions?: {
     rootDir?: string;
+    declarationMap?: boolean;
     paths?: Record<string, string[]>;
   };
   files?: string[];
@@ -684,6 +685,14 @@ describe('monorepo topology', () => {
     }
   });
 
+  it('does not emit declaration maps from publishable package builds', () => {
+    for (const dir of ['packages/ai', 'packages/agent', 'packages/agent-sdk']) {
+      const buildConfig = readJson(join(dir, 'tsconfig.build.json'));
+
+      expect(buildConfig.compilerOptions?.declarationMap).toBe(false);
+    }
+  });
+
   it('declares a package boundary verifier for production architecture gates', () => {
     const root = readJson('package.json');
 
@@ -714,5 +723,6 @@ describe('monorepo topology', () => {
     expect(packageVerifierSource).toContain('package/dist/agent/Agent.d.ts');
     expect(packageVerifierSource).toContain('package/dist/context/ContextManager.d.ts');
     expect(packageVerifierSource).toContain('package/dist/mcp/McpRegistry.d.ts');
+    expect(packageVerifierSource).toContain("entry.endsWith('.d.ts.map')");
   });
 });

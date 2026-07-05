@@ -5,6 +5,7 @@
     "outDir": "./dist",
     "noEmit": false,
     "emitDeclarationOnly": true,
+    "declarationMap": false,
     "paths": {
       "@blade-ai/agent": ["../agent/dist/index.d.ts"],
       "@blade-ai/ai": ["../ai/dist/index.d.ts"],

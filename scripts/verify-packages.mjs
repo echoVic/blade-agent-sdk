@@ -397,6 +397,11 @@ function verifyTarballContents(spec, tarballPath) {
     }
   }
 
+  const declarationMapEntry = entries.find((entry) => entry.endsWith('.d.ts.map'));
+  if (declarationMapEntry) {
+    throw new Error(`${spec.name} tarball includes a declaration map: ${declarationMapEntry}`);
+  }
+
   const testEntry = entries.find((entry) =>
     entry.includes('/__tests__/') || /\.(test|spec)\.[cm]?[jt]s$/.test(entry)
   );
