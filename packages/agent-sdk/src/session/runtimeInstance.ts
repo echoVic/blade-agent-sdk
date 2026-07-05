@@ -67,7 +67,10 @@ import {
   projectPackageLocalRuntimeMcpServerStatus,
   type PackageLocalRuntimeMcpServerCapability,
 } from './runtimeMcpCapabilities.js';
-import { getPackageLocalMcpToolSourceId } from './runtimeMcpTools.js';
+import {
+  refreshPackageLocalRuntimeMcpTools,
+  type PackageLocalRuntimeMcpTool,
+} from './runtimeMcpTools.js';
 import { createPackageLocalRuntimeNoopPorts } from './runtimeNoopPorts.js';
 import { packageLocalSubagentConfigFromDefinition } from './runtimeSubagents.js';
 import { filterPackageLocalRuntimeTools } from './runtimeToolFilters.js';
@@ -288,10 +291,6 @@ export interface PackageLocalRuntimeNamedTool {
   name: string;
 }
 
-export interface PackageLocalRuntimeMcpTool extends PackageLocalRuntimeNamedTool {
-  tags?: readonly string[];
-}
-
 export class PackageLocalSessionRuntime {
   readonly sessionId: SessionId;
   readonly options: SessionOptions;
@@ -493,19 +492,12 @@ export class PackageLocalSessionRuntime {
   }
 
   async refreshMcpTools(serverNames: string[]): Promise<void> {
-    for (const serverName of serverNames) {
-      this.toolCatalog.removeMcpTools(serverName);
-    }
-
-    const availableTools =
-      (await this.mcpRegistry.getAvailableToolsByServerNames?.(serverNames)) ?? [];
-    for (const tool of this.filterTools(availableTools)) {
-      this.toolCatalog.registerMcpTool(tool, {
-        kind: 'mcp',
-        trustLevel: 'remote',
-        sourceId: getPackageLocalMcpToolSourceId(tool),
-      });
-    }
+    await refreshPackageLocalRuntimeMcpTools({
+      serverNames,
+      mcpRegistry: this.mcpRegistry,
+      toolCatalog: this.toolCatalog,
+      filterTools: (tools) => this.filterTools(tools),
+    });
   }
 
   filterTools<TTool extends PackageLocalRuntimeNamedTool>(tools: TTool[]): TTool[] {

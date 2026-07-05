@@ -664,7 +664,11 @@ describe('monorepo topology', () => {
     expect(existsSync('packages/agent-sdk/src/session/runtimeMcpTools.ts')).toBe(true);
     expect(runtimeMcpToolsSource).not.toContain('../../../../src/');
     expect(runtimeMcpToolsSource).toContain('getPackageLocalMcpToolSourceId');
-    expect(packageLocalRuntimeInstanceSource).toContain('getPackageLocalMcpToolSourceId');
+    expect(runtimeMcpToolsSource).toContain('refreshPackageLocalRuntimeMcpTools');
+    expect(packageLocalRuntimeInstanceSource).not.toContain('getPackageLocalMcpToolSourceId');
+    expect(packageLocalRuntimeInstanceSource).toContain('refreshPackageLocalRuntimeMcpTools');
+    expect(packageLocalRuntimeInstanceSource).not.toContain('removeMcpTools(serverName);');
+    expect(packageLocalRuntimeInstanceSource).not.toContain('registerMcpTool(tool,');
     expect(packageLocalRuntimeInstanceSource).not.toContain('function packageLocalServerNameFromTool');
     expect(packageLocalRuntimeInstanceSource).toContain('registerCustomTools');
     expect(packageLocalRuntimeInstanceSource).toContain('PackageLocalRuntimeCustomToolFactoryPort');

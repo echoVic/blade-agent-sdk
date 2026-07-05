@@ -29,4 +29,67 @@ describe('agent-sdk package-local runtime MCP tool helpers', () => {
       }),
     ).toBe('mcp');
   });
+
+  it('refreshes MCP tools through registry and catalog ports without runtime state', async () => {
+    const { refreshPackageLocalRuntimeMcpTools } = await import(mcpToolsModulePath);
+    const removedServers: string[] = [];
+    const registeredTools: Array<{
+      toolName: string;
+      source: {
+        kind: string;
+        trustLevel: string;
+        sourceId: string;
+      };
+    }> = [];
+
+    await refreshPackageLocalRuntimeMcpTools({
+      serverNames: ['filesystem', 'github'],
+      mcpRegistry: {
+        async getAvailableToolsByServerNames(serverNames: string[]) {
+          expect(serverNames).toEqual(['filesystem', 'github']);
+          return [
+            {
+              name: 'mcp__filesystem__read_file',
+              tags: ['filesystem'],
+            },
+            {
+              name: 'mcp__github__list_issues',
+              tags: ['GitHub'],
+            },
+          ];
+        },
+      },
+      toolCatalog: {
+        removeMcpTools(serverName: string) {
+          removedServers.push(serverName);
+          return 1;
+        },
+        registerMcpTool(tool: { name: string }, source: {
+          kind: string;
+          trustLevel: string;
+          sourceId: string;
+        }) {
+          registeredTools.push({
+            toolName: tool.name,
+            source,
+          });
+        },
+      },
+      filterTools(tools: Array<{ name: string; tags?: readonly string[] }>) {
+        return tools.filter((tool) => tool.name.includes('github'));
+      },
+    });
+
+    expect(removedServers).toEqual(['filesystem', 'github']);
+    expect(registeredTools).toEqual([
+      {
+        toolName: 'mcp__github__list_issues',
+        source: {
+          kind: 'mcp',
+          trustLevel: 'remote',
+          sourceId: 'github',
+        },
+      },
+    ]);
+  });
 });
