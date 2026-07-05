@@ -693,6 +693,15 @@ describe('monorepo topology', () => {
     }
   });
 
+  it('does not emit JavaScript source maps from publishable package builds', () => {
+    for (const dir of ['packages/ai', 'packages/agent', 'packages/agent-sdk']) {
+      const tsupConfig = readFileSync(join(dir, 'tsup.config.ts'), 'utf-8');
+
+      expect(tsupConfig).toContain('sourcemap: false');
+      expect(tsupConfig).not.toContain('sourcemap: true');
+    }
+  });
+
   it('declares a package boundary verifier for production architecture gates', () => {
     const root = readJson('package.json');
 
@@ -724,5 +733,6 @@ describe('monorepo topology', () => {
     expect(packageVerifierSource).toContain('package/dist/context/ContextManager.d.ts');
     expect(packageVerifierSource).toContain('package/dist/mcp/McpRegistry.d.ts');
     expect(packageVerifierSource).toContain("entry.endsWith('.d.ts.map')");
+    expect(packageVerifierSource).toContain("entry.endsWith('.js.map')");
   });
 });

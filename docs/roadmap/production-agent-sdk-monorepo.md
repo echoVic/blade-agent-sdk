@@ -562,6 +562,7 @@ Status:
 - One-hundred-seventeenth verification-chain increment complete: the `@blade-ai/agent-sdk` package type-check program now includes only package-local `src/**/*` and no longer exposes the legacy `@/* -> ../../src/*` alias, proving package-local SDK source can type-check without treating the root implementation tree as part of the package.
 - One-hundred-eighteenth verification-chain increment complete: the `@blade-ai/agent-sdk` declaration build now emits from package-local `src/**/*` instead of root `../../src/**/*`, resolves `@blade-ai/ai` and `@blade-ai/agent` imports from built declarations, and packed package verification forbids representative legacy root declaration directories such as `dist/agent`, `dist/context`, and `dist/mcp`.
 - One-hundred-nineteenth verification-chain increment complete: all publishable package declaration builds now disable declaration maps, and `pnpm run verify:packages` dynamically rejects any packed `.d.ts.map` entry so npm tarballs keep their type surface concise and do not ship local source-map metadata.
+- One-hundred-twentieth verification-chain increment complete: all publishable package JS builds now disable source maps, and `pnpm run verify:packages` dynamically rejects any packed `.js.map` entry so npm tarballs do not ship local JavaScript source-map metadata.
 
 Commit:
 

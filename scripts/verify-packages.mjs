@@ -402,6 +402,11 @@ function verifyTarballContents(spec, tarballPath) {
     throw new Error(`${spec.name} tarball includes a declaration map: ${declarationMapEntry}`);
   }
 
+  const sourceMapEntry = entries.find((entry) => entry.endsWith('.js.map'));
+  if (sourceMapEntry) {
+    throw new Error(`${spec.name} tarball includes a JavaScript source map: ${sourceMapEntry}`);
+  }
+
   const testEntry = entries.find((entry) =>
     entry.includes('/__tests__/') || /\.(test|spec)\.[cm]?[jt]s$/.test(entry)
   );

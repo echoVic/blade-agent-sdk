@@ -14,6 +14,6 @@ export default defineConfig({
   outDir: 'dist',
   clean: true,
   dts: false,
-  sourcemap: true,
+  sourcemap: false,
   external: ['@blade-ai/ai'],
 });
