@@ -502,6 +502,9 @@ describe('monorepo topology', () => {
     expect(packageLocalRuntimeInstanceSource).toContain('packageLocalServerNameFromTool');
     expect(packageLocalRuntimeInstanceSource).toContain('registerCustomTools');
     expect(packageLocalRuntimeInstanceSource).toContain('PackageLocalRuntimeCustomToolFactoryPort');
+    expect(packageLocalRuntimeInstanceSource).toContain('registerBuiltinTools');
+    expect(packageLocalRuntimeInstanceSource).toContain('PackageLocalRuntimeBuiltinToolProviderPort');
+    expect(packageLocalRuntimeInstanceSource).toContain('PackageLocalRuntimeBuiltinToolContext');
     expect(existsSync('packages/agent-sdk/src/session/packageLocalLegacyRuntimeFactory.ts')).toBe(
       true,
     );

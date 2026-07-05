@@ -22,6 +22,7 @@ export interface PackageLocalSessionRuntimeOptions {
   toolCatalog?: PackageLocalRuntimeToolCatalogPort;
   logger?: PackageLocalRuntimeLoggerPort;
   customToolFactory?: PackageLocalRuntimeCustomToolFactoryPort;
+  builtinToolProvider?: PackageLocalRuntimeBuiltinToolProviderPort;
 }
 
 export interface PackageLocalRuntimeSessionStorePort {
@@ -87,6 +88,17 @@ export type PackageLocalRuntimeToolDefinition = NonNullable<SessionOptions['tool
 
 export interface PackageLocalRuntimeCustomToolFactoryPort {
   fromDefinition(definition: PackageLocalRuntimeToolDefinition): PackageLocalRuntimeNamedTool;
+}
+
+export interface PackageLocalRuntimeBuiltinToolContext {
+  sessionId: SessionId;
+  configDir: string | undefined;
+  mcpRegistry: PackageLocalRuntimeMcpRegistryPort;
+  includeMcpProtocolTools: boolean;
+}
+
+export interface PackageLocalRuntimeBuiltinToolProviderPort {
+  getTools(context: PackageLocalRuntimeBuiltinToolContext): Promise<PackageLocalRuntimeNamedTool[]>;
 }
 
 export interface PackageLocalRuntimeMcpToolCapability {
@@ -162,6 +174,7 @@ export class PackageLocalSessionRuntime {
   readonly toolCatalog: PackageLocalRuntimeToolCatalogPort;
   readonly logger: PackageLocalRuntimeLoggerPort;
   readonly customToolFactory?: PackageLocalRuntimeCustomToolFactoryPort;
+  readonly builtinToolProvider?: PackageLocalRuntimeBuiltinToolProviderPort;
 
   constructor(options: PackageLocalSessionRuntimeOptions) {
     this.sessionId = options.sessionId;
@@ -179,6 +192,7 @@ export class PackageLocalSessionRuntime {
     this.toolCatalog = options.toolCatalog ?? createNoopRuntimeToolCatalog();
     this.logger = options.logger ?? createNoopRuntimeLogger();
     this.customToolFactory = options.customToolFactory;
+    this.builtinToolProvider = options.builtinToolProvider;
   }
 
   getConfiguredMcpServers(): Record<string, McpServerConfig | SdkMcpServerHandle> {
@@ -379,6 +393,21 @@ export class PackageLocalSessionRuntime {
       kind: 'custom',
       trustLevel: 'workspace',
       sourceId: 'session',
+    });
+  }
+
+  async registerBuiltinTools(): Promise<void> {
+    const tools = await this.builtinToolProvider?.getTools({
+      sessionId: this.sessionId,
+      configDir: this.storageRoot,
+      mcpRegistry: this.mcpRegistry,
+      includeMcpProtocolTools: false,
+    });
+
+    this.registerTools(tools ?? [], {
+      kind: 'builtin',
+      trustLevel: 'trusted',
+      sourceId: 'builtin',
     });
   }
 }

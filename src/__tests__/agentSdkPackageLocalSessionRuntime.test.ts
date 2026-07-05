@@ -701,4 +701,87 @@ describe('agent-sdk package-local session runtime shell', () => {
     expect(fromDefinition).not.toHaveBeenCalled();
     expect(registerAll).not.toHaveBeenCalled();
   });
+
+  it('owns builtin tool registration through an injected builtin tool provider port', async () => {
+    const registerAll = vi.fn();
+    const providerCalls: unknown[] = [];
+    const mcpRegistry = {
+      disconnectAll: vi.fn(async () => {}),
+      getCapabilities: vi.fn(async () => []),
+    };
+    const runtime = new PackageLocalSessionRuntime({
+      sessionId: 'session-1',
+      options: {
+        ...options,
+        storagePath: '/workspace/.blade/sessions',
+        allowedTools: ['read', 'write'],
+        disallowedTools: ['write'],
+      },
+      bladeConfig,
+      defaultContext: {},
+      mcpRegistry,
+      toolCatalog: {
+        registerAll,
+        registerMcpTool: vi.fn(),
+        removeMcpTools: vi.fn(() => 0),
+      },
+      builtinToolProvider: {
+        async getTools(context) {
+          providerCalls.push(context);
+          return [
+            { name: 'read', description: 'Read files' },
+            { name: 'write', description: 'Write files' },
+            { name: 'search', description: 'Search files' },
+          ];
+        },
+      },
+    });
+
+    await runtime.registerBuiltinTools();
+
+    expect(providerCalls).toEqual([
+      {
+        sessionId: 'session-1',
+        configDir: '/workspace/.blade',
+        mcpRegistry,
+        includeMcpProtocolTools: false,
+      },
+    ]);
+    expect(registerAll).toHaveBeenCalledTimes(1);
+    expect(registerAll).toHaveBeenCalledWith(
+      [{ name: 'read', description: 'Read files' }],
+      {
+        kind: 'builtin',
+        sourceId: 'builtin',
+        trustLevel: 'trusted',
+      },
+    );
+  });
+
+  it('skips builtin tool catalog registration when no builtin tools survive filtering', async () => {
+    const registerAll = vi.fn();
+    const runtime = new PackageLocalSessionRuntime({
+      sessionId: 'session-1',
+      options: {
+        ...options,
+        allowedTools: [],
+      },
+      bladeConfig,
+      defaultContext: {},
+      toolCatalog: {
+        registerAll,
+        registerMcpTool: vi.fn(),
+        removeMcpTools: vi.fn(() => 0),
+      },
+      builtinToolProvider: {
+        async getTools() {
+          return [{ name: 'read', description: 'Read files' }];
+        },
+      },
+    });
+
+    await runtime.registerBuiltinTools();
+
+    expect(registerAll).not.toHaveBeenCalled();
+  });
 });
