@@ -117,6 +117,7 @@ function verifyReleaseWorkflow() {
   const workflow = parse(readFileSync(resolve('.github/workflows/release.yml'), 'utf8'));
   const steps = workflow.jobs?.release?.steps ?? [];
   const commands = steps.map((step) => step.run).filter(Boolean);
+  const setupPnpmStep = steps.find((step) => step.uses?.startsWith('pnpm/action-setup@'));
   const setupNodeStep = steps.find((step) => step.uses?.startsWith('actions/setup-node@'));
   const releaseStep = steps.find((step) => step.run?.includes('semantic-release'));
 
@@ -132,6 +133,9 @@ function verifyReleaseWorkflow() {
   ], 'release workflow commands');
   if (setupNodeStep?.with?.['registry-url'] !== 'https://registry.npmjs.org') {
     fail('release workflow setup-node must target the npm registry');
+  }
+  if (setupPnpmStep?.with?.version !== '11.7.0') {
+    fail('release workflow must pin pnpm/action-setup to pnpm 11.7.0');
   }
   if (releaseStep?.env?.GITHUB_TOKEN !== '${{ secrets.GITHUB_TOKEN }}') {
     fail('release workflow must pass GITHUB_TOKEN to semantic-release');

@@ -11,7 +11,7 @@
   "engines": {
     "node": ">=22.14.0"
   },
-  "packageManager": "pnpm@10.6.0",
+  "packageManager": "pnpm@11.7.0",
   "scripts": {
     "build": "pnpm --filter @blade-ai/agent-sdk run build",
     "test": "vitest run",

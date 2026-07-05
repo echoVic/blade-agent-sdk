@@ -18,4 +18,30 @@ describe('Node.js version policy', () => {
 
     expect(packageJson.engines.node).toBe('>=22.14.0');
   });
+
+  it('pins the pnpm toolchain consistently across local metadata and GitHub workflows', () => {
+    const packageJson = JSON.parse(readFileSync(resolve('package.json'), 'utf8'));
+    const workflows = [
+      '.github/workflows/ci.yml',
+      '.github/workflows/release.yml',
+      '.github/workflows/deploy-docs.yml',
+    ];
+
+    expect(packageJson.packageManager).toBe('pnpm@11.7.0');
+
+    for (const workflowPath of workflows) {
+      const workflow = parse(readFileSync(resolve(workflowPath), 'utf8'));
+      const jobs = Object.values(workflow.jobs ?? {}) as Array<{
+        steps?: Array<{ uses?: string; with?: Record<string, string> }>;
+      }>;
+      const setupPnpmSteps = jobs
+        .flatMap((job) => job.steps ?? [])
+        .filter((step) => step.uses?.startsWith('pnpm/action-setup@'));
+
+      expect(setupPnpmSteps.length, `${workflowPath} pnpm setup step`).toBeGreaterThan(0);
+      for (const step of setupPnpmSteps) {
+        expect(step.with?.version, `${workflowPath} pnpm version`).toBe('11.7.0');
+      }
+    }
+  });
 });

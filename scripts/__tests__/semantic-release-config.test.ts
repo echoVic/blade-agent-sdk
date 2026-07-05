@@ -323,6 +323,9 @@ describe('release workflow', () => {
     );
     const steps = workflow.jobs.release.steps;
     const commands = steps.map((step: { run?: string }) => step.run).filter(Boolean);
+    const setupPnpmStep = steps.find((step: { uses?: string }) =>
+      step.uses?.startsWith('pnpm/action-setup@')
+    );
     const setupNodeStep = steps.find((step: { uses?: string }) =>
       step.uses?.startsWith('actions/setup-node@')
     );
@@ -336,6 +339,9 @@ describe('release workflow', () => {
       'pnpm run verify',
       'pnpm exec semantic-release',
     ]);
+    expect(setupPnpmStep.with).toMatchObject({
+      version: '11.7.0',
+    });
     expect(setupNodeStep.with).toMatchObject({
       'node-version': '22.14',
       'registry-url': 'https://registry.npmjs.org',
