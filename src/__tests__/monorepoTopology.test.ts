@@ -472,6 +472,11 @@ describe('monorepo topology', () => {
     )
       ? readFileSync('packages/agent-sdk/src/session/runtimeToolFilters.ts', 'utf-8')
       : '';
+    const runtimePermissionsSource = existsSync(
+      'packages/agent-sdk/src/session/runtimePermissions.ts',
+    )
+      ? readFileSync('packages/agent-sdk/src/session/runtimePermissions.ts', 'utf-8')
+      : '';
     const runtimeNoopPortsSource = existsSync('packages/agent-sdk/src/session/runtimeNoopPorts.ts')
       ? readFileSync('packages/agent-sdk/src/session/runtimeNoopPorts.ts', 'utf-8')
       : '';
@@ -621,8 +626,14 @@ describe('monorepo topology', () => {
     );
     expect(packageLocalRuntimeInstanceSource).toContain('createPermissionHandler');
     expect(packageLocalRuntimeInstanceSource).toContain('PackageLocalRuntimePermissionHookPort');
-    expect(packageLocalRuntimeInstanceSource).toContain('createPermissionHandlerFromCanUseTool');
-    expect(packageLocalRuntimeInstanceSource).toContain('createCompositePermissionHandler');
+    expect(existsSync('packages/agent-sdk/src/session/runtimePermissions.ts')).toBe(true);
+    expect(runtimePermissionsSource).not.toContain('../../../../src/');
+    expect(runtimePermissionsSource).toContain('createPackageLocalRuntimePermissionHandler');
+    expect(runtimePermissionsSource).toContain('createPermissionHandlerFromCanUseTool');
+    expect(runtimePermissionsSource).toContain('createCompositePermissionHandler');
+    expect(packageLocalRuntimeInstanceSource).toContain('createPackageLocalRuntimePermissionHandler');
+    expect(packageLocalRuntimeInstanceSource).not.toContain('createPermissionHandlerFromCanUseTool');
+    expect(packageLocalRuntimeInstanceSource).not.toContain('createCompositePermissionHandler');
     expect(packageLocalRuntimeInstanceSource).toContain('initializeHooks');
     expect(packageLocalRuntimeInstanceSource).toContain('PackageLocalRuntimeHookManagerPort');
     expect(packageLocalRuntimeInstanceSource).toContain('createExecutionPipeline');

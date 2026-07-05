@@ -16,19 +16,12 @@ import { HookEvent } from '../types/constants.js';
 import {
   PermissionMode,
   type BladeConfig,
-  type JsonObject,
   type McpServerConfig,
   type PermissionsConfig,
 } from '../types/common.js';
-import {
-  createCompositePermissionHandler,
-  createPermissionHandlerFromCanUseTool,
-  type PermissionHandler,
-  type PermissionResult,
-} from '../types/permissions.js';
+import type { PermissionHandler } from '../types/permissions.js';
 import type { TraceRecorder } from '../observability/TraceRecorder.js';
 import type { AgentTrace } from '../observability/types.js';
-import type { ToolKind } from '../tools/types/ToolKind.js';
 import type { ExecutionContext } from '../tools/types/index.js';
 import type {
   McpToolInfo,
@@ -60,6 +53,10 @@ import { getPackageLocalMcpToolSourceId } from './runtimeMcpTools.js';
 import { createPackageLocalRuntimeNoopPorts } from './runtimeNoopPorts.js';
 import { packageLocalSubagentConfigFromDefinition } from './runtimeSubagents.js';
 import { filterPackageLocalRuntimeTools } from './runtimeToolFilters.js';
+import {
+  createPackageLocalRuntimePermissionHandler,
+  type PackageLocalRuntimePermissionHookPort,
+} from './runtimePermissions.js';
 import { createSessionTraceFinalizer, SessionTraceManager } from './traces.js';
 import type { SessionSnapshot } from './store.js';
 
@@ -198,22 +195,10 @@ export interface PackageLocalRuntimeSubagentRegistryPort {
   register(config: SubagentConfig, options?: { override?: boolean }): void;
 }
 
-export interface PackageLocalRuntimePermissionHookResult {
-  updatedInput: JsonObject;
-  decision?: PermissionResult;
-}
-
-export interface PackageLocalRuntimePermissionHookPort {
-  applyPermissionRequestHooks(
-    toolName: string,
-    input: JsonObject,
-    options: {
-      affectedPaths?: string[];
-      toolKind?: ToolKind;
-      abortSignal?: AbortSignal;
-    },
-  ): Promise<PackageLocalRuntimePermissionHookResult>;
-}
+export type {
+  PackageLocalRuntimePermissionHookPort,
+  PackageLocalRuntimePermissionHookResult,
+} from './runtimePermissions.js';
 
 export interface PackageLocalRuntimeHookManagerPort {
   enable(): void;
@@ -657,46 +642,12 @@ export class PackageLocalSessionRuntime {
   }
 
   createPermissionHandler(): PermissionHandler | undefined {
-    const hasPermissionCallbacks =
-      (this.hookCallbacks[HookEvent.PermissionRequest]?.length ?? 0) > 0;
-    const basePermissionHandler =
-      this.options.permissionHandler ??
-      (this.options.canUseTool
-        ? createPermissionHandlerFromCanUseTool(this.options.canUseTool)
-        : undefined);
-
-    if (!hasPermissionCallbacks && !basePermissionHandler) {
-      return undefined;
-    }
-
-    const hookPermissionHandler = hasPermissionCallbacks
-      ? (async (request) => {
-          const hookResult = await this.permissionHooks.applyPermissionRequestHooks(
-            request.toolName,
-            request.input,
-            {
-              affectedPaths: request.affectedPaths,
-              toolKind: request.toolKind,
-              abortSignal: request.signal,
-            },
-          );
-          Object.assign(request.input, hookResult.updatedInput);
-          if (hookResult.decision) {
-            return hookResult.decision;
-          }
-
-          return {
-            behavior: 'allow',
-            updatedInput: hookResult.updatedInput,
-          } satisfies PermissionResult;
-        }) satisfies PermissionHandler
-      : undefined;
-
-    return createCompositePermissionHandler([
-      hookPermissionHandler,
-      basePermissionHandler,
-      async () => ({ behavior: 'ask' }) satisfies PermissionResult,
-    ]);
+    return createPackageLocalRuntimePermissionHandler({
+      hasPermissionCallbacks: (this.hookCallbacks[HookEvent.PermissionRequest]?.length ?? 0) > 0,
+      permissionHooks: this.permissionHooks,
+      permissionHandler: this.options.permissionHandler,
+      canUseTool: this.options.canUseTool,
+    });
   }
 
   initializeHooks(): void {
