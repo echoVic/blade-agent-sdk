@@ -243,6 +243,12 @@ GitHub Release notes 会在 conventional commit 摘要后追加三包发布清�
 pnpm run release:dry
 ```
 
+发布 workflow 完成后，用公开可见性检查确认 GitHub Release 和三个 npm 包都已经能被外部用户解析：
+
+```bash
+pnpm run verify:published -- --version 1.2.3
+```
+
 更多贡献约定见 [CONTRIBUTING.md](./CONTRIBUTING.md)。
 
 ## 社区

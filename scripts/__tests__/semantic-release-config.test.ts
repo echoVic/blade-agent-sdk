@@ -319,6 +319,17 @@ describe('release scripts', () => {
     expect(releaseVerifier).toContain('provenance');
     expect(releaseVerifier).toContain('publishConfig');
   });
+
+  it('exposes a post-publish verifier for GitHub Release and npm package visibility', () => {
+    const packageJson = JSON.parse(readFileSync(resolve('package.json'), 'utf8'));
+    const readme = readFileSync(resolve('README.md'), 'utf8');
+    const checklist = readFileSync(resolve('docs/production-checklist.md'), 'utf8');
+
+    expect(packageJson.scripts['verify:published']).toBe('node scripts/verify-published.mjs');
+    expect(existsSync(resolve('scripts/verify-published.mjs'))).toBe(true);
+    expect(readme).toContain('pnpm run verify:published -- --version');
+    expect(checklist).toContain('pnpm run verify:published -- --version');
+  });
 });
 
 describe('release workflow', () => {

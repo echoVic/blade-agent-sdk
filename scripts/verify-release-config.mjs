@@ -62,6 +62,9 @@ function verifyRootScripts() {
   if (packageJson.scripts?.['verify:release'] !== 'node scripts/verify-release-config.mjs') {
     fail('package.json must expose verify:release');
   }
+  if (packageJson.scripts?.['verify:published'] !== 'node scripts/verify-published.mjs') {
+    fail('package.json must expose verify:published for post-publish checks');
+  }
   if (!verifyScript.includes('pnpm run verify:packages && pnpm run verify:release && pnpm run test:unit')) {
     fail('package.json verify script must run verify:release after package verification and before tests');
   }
