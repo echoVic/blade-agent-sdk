@@ -12,6 +12,7 @@ interface PackageJson {
   scripts?: Record<string, string>;
   dependencies?: Record<string, string>;
   devDependencies?: Record<string, string>;
+  optionalDependencies?: Record<string, string>;
   compilerOptions?: {
     paths?: Record<string, string[]>;
   };
@@ -35,6 +36,8 @@ describe('monorepo topology', () => {
     expect(root.exports).toBeUndefined();
     expect(root.files).toBeUndefined();
     expect(root.publishConfig).toBeUndefined();
+    expect(root.dependencies).toBeUndefined();
+    expect(root.optionalDependencies).toBeUndefined();
     expect(workspace).toContain('packages:');
     expect(workspace).toContain("'packages/*'");
   });
