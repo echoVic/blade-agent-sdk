@@ -1,6 +1,5 @@
-import type { ModelMessage, ModelPort } from '@blade-ai/ai';
+import type { ModelMessage } from '@blade-ai/ai';
 import type {
-  AgentModelRequestDefaults,
   AgentStoreAppendContext,
   AgentHookPort,
   AgentStorePort,
@@ -34,11 +33,7 @@ import type {
   StreamMessage,
 } from './types.js';
 import {
-  projectPackageLocalKernelEventToStreamMessages,
-} from './kernelStreamProjection.js';
-import {
   initializePackageLocalRuntimeHooks,
-  streamWithPackageLocalRuntimeTraceCollector,
   type PackageLocalRuntimeHookManagerPort,
   type PackageLocalRuntimeHookRuntimePort,
 } from './runtimeHooks.js';
@@ -52,10 +47,10 @@ import {
   type PackageLocalRuntimeAgentKernelPort,
 } from './runtimeAgentKernels.js';
 import {
-  finishPackageLocalKernelTraceError,
-  updatePackageLocalKernelTraceFinalization,
-  type PackageLocalKernelTraceFinalizationState,
-} from './runtimeKernelTraceFinalization.js';
+  streamPackageLocalAgentKernelTurn,
+  type PackageLocalRuntimeAgentKernelOptions,
+  type PackageLocalRuntimeAgentKernelStreamOptions,
+} from './runtimeKernelTurnStream.js';
 import {
   resolvePackageLocalRuntimeKernelModel,
   type PackageLocalRuntimeKernelModelResolverPort,
@@ -79,7 +74,7 @@ import {
   createPackageLocalRuntimePermissionHandler,
   type PackageLocalRuntimePermissionHookPort,
 } from './runtimePermissions.js';
-import { createSessionTraceFinalizer, SessionTraceManager } from './traces.js';
+import { SessionTraceManager } from './traces.js';
 import type { SessionSnapshot } from './store.js';
 
 export type { PackageLocalRuntimeKernelStreamProjectionOptions } from './kernelStreamProjection.js';
@@ -272,26 +267,6 @@ export interface PackageLocalRuntimeKernelPortFactoryPort {
   createStorePort(options: PackageLocalRuntimeKernelStorePortCreateOptions): AgentStorePort;
   createTracePort(options: PackageLocalRuntimeKernelTracePortCreateOptions): AgentTracePort;
   createHookPort(options: PackageLocalRuntimeKernelHookPortCreateOptions): AgentHookPort;
-}
-
-export interface PackageLocalRuntimeAgentKernelOptions {
-  model?: ModelPort;
-  modelId?: string;
-  modelRequestDefaults?: AgentModelRequestDefaults;
-  traceRecorder?: TraceRecorder;
-  createExecutionContext?: (
-    toolCall: AgentToolCall,
-    signal?: AbortSignal,
-  ) => ExecutionContext;
-  maxSteps?: number;
-}
-
-export interface PackageLocalRuntimeAgentKernelStreamOptions
-  extends PackageLocalRuntimeAgentKernelOptions {
-  input: string;
-  turnId?: string;
-  signal?: AbortSignal;
-  includeThinking?: boolean;
 }
 
 export interface PackageLocalAgentRuntimeDeps {
@@ -757,7 +732,6 @@ export class PackageLocalSessionRuntime {
       kernelModelResolver: this.kernelModelResolver,
     });
     const traceRecorder = options.traceRecorder ?? this.traceManager.createRecorder(options.input);
-    const traceFinalizer = createSessionTraceFinalizer(traceRecorder, this.traceManager);
     const kernel = this.createAgentKernelFromResolved(
       {
         ...options,
@@ -766,35 +740,15 @@ export class PackageLocalSessionRuntime {
       kernelModel,
     );
     const maxContextTokens = kernelModel.modelRequestDefaults?.maxContextTokens ?? 0;
-    const traceFinalizationState: PackageLocalKernelTraceFinalizationState = {};
-
-    yield { type: 'turn_start', turn: 1, sessionId: this.sessionId };
-
-    try {
-      const kernelEvents = kernel.runTurn({
-        input: options.input,
-        turnId: options.turnId,
-        signal: options.signal,
-      });
-      for await (const event of streamWithPackageLocalRuntimeTraceCollector({
-        hookRuntime: this.hookRuntime,
-        traceCollector: traceRecorder,
-        stream: kernelEvents,
-      })) {
-        yield* projectPackageLocalKernelEventToStreamMessages(event, {
-          sessionId: this.sessionId,
-          maxContextTokens,
-          includeThinking: options.includeThinking ?? false,
-        });
-        await updatePackageLocalKernelTraceFinalization(event, {
-          state: traceFinalizationState,
-          traceFinalizer,
-        });
-      }
-    } catch (error) {
-      await finishPackageLocalKernelTraceError(error, traceFinalizer);
-      throw error;
-    }
+    yield* streamPackageLocalAgentKernelTurn({
+      sessionId: this.sessionId,
+      streamOptions: options,
+      kernel,
+      traceRecorder,
+      traceManager: this.traceManager,
+      hookRuntime: this.hookRuntime,
+      maxContextTokens,
+    });
   }
 
 }

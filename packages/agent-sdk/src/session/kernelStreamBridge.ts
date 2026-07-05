@@ -1,6 +1,6 @@
 import type { AgentToolCall } from '@blade-ai/agent';
 import { getUserMessageText } from './content.js';
-import type { PackageLocalRuntimeAgentKernelStreamOptions } from './runtimeInstance.js';
+import type { PackageLocalRuntimeAgentKernelStreamOptions } from './runtimeKernelTurnStream.js';
 import type {
   PackageLocalSessionStreamContext,
   PackageLocalSessionStreamTurn,

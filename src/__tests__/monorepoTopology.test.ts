@@ -459,6 +459,10 @@ describe('monorepo topology', () => {
       'packages/agent-sdk/src/session/runtimeInstance.ts',
       'utf-8',
     );
+    const kernelStreamBridgeSource = readFileSync(
+      'packages/agent-sdk/src/session/kernelStreamBridge.ts',
+      'utf-8',
+    );
     const runtimeMcpToolsSource = existsSync('packages/agent-sdk/src/session/runtimeMcpTools.ts')
       ? readFileSync('packages/agent-sdk/src/session/runtimeMcpTools.ts', 'utf-8')
       : '';
@@ -494,6 +498,11 @@ describe('monorepo topology', () => {
       'packages/agent-sdk/src/session/runtimeKernelTraceFinalization.ts',
     )
       ? readFileSync('packages/agent-sdk/src/session/runtimeKernelTraceFinalization.ts', 'utf-8')
+      : '';
+    const runtimeKernelTurnStreamSource = existsSync(
+      'packages/agent-sdk/src/session/runtimeKernelTurnStream.ts',
+    )
+      ? readFileSync('packages/agent-sdk/src/session/runtimeKernelTurnStream.ts', 'utf-8')
       : '';
     const runtimeKernelModelsSource = existsSync(
       'packages/agent-sdk/src/session/runtimeKernelModels.ts',
@@ -664,9 +673,6 @@ describe('monorepo topology', () => {
     expect(runtimeHooksSource).toContain('initializePackageLocalRuntimeHooks');
     expect(runtimeHooksSource).toContain('streamWithPackageLocalRuntimeTraceCollector');
     expect(packageLocalRuntimeInstanceSource).toContain('initializePackageLocalRuntimeHooks');
-    expect(packageLocalRuntimeInstanceSource).toContain(
-      'streamWithPackageLocalRuntimeTraceCollector',
-    );
     expect(packageLocalRuntimeInstanceSource).not.toContain('this.hookManager.enable()');
     expect(packageLocalRuntimeInstanceSource).not.toContain('Object.keys(this.options.hooks');
     expect(packageLocalRuntimeInstanceSource).not.toContain('this.hookRuntime.setTraceCollector');
@@ -709,9 +715,6 @@ describe('monorepo topology', () => {
     expect(packageLocalRuntimeInstanceSource).toContain('streamAgentKernelTurn');
     expect(packageLocalRuntimeInstanceSource).toContain('PackageLocalRuntimeAgentKernelPort');
     expect(packageLocalRuntimeInstanceSource).toContain('PackageLocalRuntimeAgentKernelStreamOptions');
-    expect(packageLocalRuntimeInstanceSource).toContain(
-      'projectPackageLocalKernelEventToStreamMessages',
-    );
     expect(existsSync('packages/agent-sdk/src/session/runtimeKernelTraceFinalization.ts')).toBe(
       true,
     );
@@ -720,13 +723,29 @@ describe('monorepo topology', () => {
       'updatePackageLocalKernelTraceFinalization',
     );
     expect(runtimeKernelTraceFinalizationSource).toContain('finishPackageLocalKernelTraceError');
-    expect(packageLocalRuntimeInstanceSource).toContain(
+    expect(runtimeKernelTurnStreamSource).toContain(
       'updatePackageLocalKernelTraceFinalization',
     );
-    expect(packageLocalRuntimeInstanceSource).toContain('finishPackageLocalKernelTraceError');
+    expect(runtimeKernelTurnStreamSource).toContain('finishPackageLocalKernelTraceError');
     expect(packageLocalRuntimeInstanceSource).not.toContain("event.type === 'usage'");
     expect(packageLocalRuntimeInstanceSource).not.toContain("traceFinalizer.finish('success'");
     expect(packageLocalRuntimeInstanceSource).not.toContain("traceFinalizer.finish('error'");
+    expect(existsSync('packages/agent-sdk/src/session/runtimeKernelTurnStream.ts')).toBe(true);
+    expect(runtimeKernelTurnStreamSource).not.toContain('../../../../src/');
+    expect(runtimeKernelTurnStreamSource).toContain('streamPackageLocalAgentKernelTurn');
+    expect(runtimeKernelTurnStreamSource).toContain('PackageLocalRuntimeAgentKernelStreamOptions');
+    expect(runtimeKernelTurnStreamSource).toContain('streamWithPackageLocalRuntimeTraceCollector');
+    expect(runtimeKernelTurnStreamSource).toContain('projectPackageLocalKernelEventToStreamMessages');
+    expect(packageLocalRuntimeInstanceSource).toContain('streamPackageLocalAgentKernelTurn');
+    expect(packageLocalRuntimeInstanceSource).not.toContain('kernel.runTurn({');
+    expect(packageLocalRuntimeInstanceSource).not.toContain(
+      'streamWithPackageLocalRuntimeTraceCollector({',
+    );
+    expect(packageLocalRuntimeInstanceSource).not.toContain(
+      'projectPackageLocalKernelEventToStreamMessages(event',
+    );
+    expect(packageLocalRuntimeInstanceSource).not.toContain('createSessionTraceFinalizer');
+    expect(kernelStreamBridgeSource).not.toContain("from './runtimeInstance.js'");
     expect(packageLocalRuntimeInstanceSource).toContain(
       'PackageLocalRuntimeKernelStreamProjectionOptions',
     );
