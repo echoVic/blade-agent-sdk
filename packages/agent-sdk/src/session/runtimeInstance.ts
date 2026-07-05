@@ -70,6 +70,10 @@ export interface PackageLocalRuntimeMcpServerCapability {
   tools: PackageLocalRuntimeMcpToolCapability[];
 }
 
+export interface PackageLocalRuntimeNamedTool {
+  name: string;
+}
+
 export function resolvePackageLocalRuntimeStorageRoot(
   storagePath?: string,
 ): string | undefined {
@@ -219,6 +223,18 @@ export class PackageLocalSessionRuntime {
       throw new Error(`Package-local MCP registry port does not implement ${method}`);
     }
     await action.call(this.mcpRegistry, serverName);
+  }
+
+  filterTools<TTool extends PackageLocalRuntimeNamedTool>(tools: TTool[]): TTool[] {
+    const allowedTools = this.options.allowedTools;
+    const disallowedTools = new Set(this.options.disallowedTools ?? []);
+
+    return tools.filter((tool) => {
+      if (allowedTools !== undefined && !allowedTools.includes(tool.name)) {
+        return false;
+      }
+      return !disallowedTools.has(tool.name);
+    });
   }
 }
 

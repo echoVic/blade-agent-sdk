@@ -393,6 +393,7 @@ Status:
 - Eightieth adapter increment complete: `PackageLocalSessionRuntime` now owns MCP read-side capability projection through the package-local MCP registry port. `mcpCapabilities()` and `mcpServerStatus()` expose package-local capability/status contracts without importing root `projectMcpCapabilities()` or the root MCP registry implementation.
 - Eighty-first adapter increment complete: `PackageLocalSessionRuntime` now owns MCP tool-list projection through package-local capabilities. `mcpListTools()` derives public tool info from the same package-local capability contract instead of calling through the root MCP registry.
 - Eighty-second adapter increment complete: `PackageLocalSessionRuntime` now owns MCP action lifecycle sequencing through the package-local MCP registry port. `mcpConnect()`, `mcpDisconnect()`, and `mcpReconnect()` perform package-local configured-server lookup, call injected registry actions, and trigger injected tool refreshes without importing root MCP or tool registry implementations.
+- Eighty-third adapter increment complete: `PackageLocalSessionRuntime` now owns tool filtering semantics locally. `filterTools()` preserves the security-sensitive `allowedTools !== undefined` behavior, so `allowedTools: []` disables all tools while disallow rules still apply after allowlist filtering.
 
 ### Phase 5: Production Verification Chain
 
@@ -482,6 +483,7 @@ Status:
 - Sixty-second verification-chain increment complete: focused package-local runtime tests now cover `mcpCapabilities()` and `mcpServerStatus()` against an injected MCP registry port. Topology also requires the package-local MCP capability type and status projection methods to remain on the runtime shell.
 - Sixty-third verification-chain increment complete: focused package-local runtime tests now cover `mcpListTools()` projection from package-local MCP capabilities. Topology also requires the tool-list projection method to remain on the runtime shell.
 - Sixty-fourth verification-chain increment complete: focused package-local runtime tests now cover `mcpConnect()`, `mcpDisconnect()`, and `mcpReconnect()` action ordering against an injected MCP registry port, including missing configured-server failures. Topology also requires these action methods and refresh/registration port seams to remain on the runtime shell.
+- Sixty-fifth verification-chain increment complete: focused package-local runtime tests now cover `filterTools()` for empty allowlists, combined allow/deny lists, and deny-only filtering. Topology also requires the package-local named-tool contract and `allowedTools !== undefined` guard to remain in the runtime shell.
 
 Commit:
 

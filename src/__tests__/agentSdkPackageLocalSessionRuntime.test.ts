@@ -362,4 +362,46 @@ describe('agent-sdk package-local session runtime shell', () => {
       'refresh:remote',
     ]);
   });
+
+  it('owns tool filtering semantics including empty allowedTools', () => {
+    const tools = [
+      { name: 'read' },
+      { name: 'write' },
+      { name: 'search' },
+    ];
+
+    const disabledRuntime = new PackageLocalSessionRuntime({
+      sessionId: 'session-1',
+      options: {
+        ...options,
+        allowedTools: [],
+      },
+      bladeConfig,
+      defaultContext: {},
+    });
+    expect(disabledRuntime.filterTools(tools)).toEqual([]);
+
+    const allowlistRuntime = new PackageLocalSessionRuntime({
+      sessionId: 'session-1',
+      options: {
+        ...options,
+        allowedTools: ['read', 'write'],
+        disallowedTools: ['write'],
+      },
+      bladeConfig,
+      defaultContext: {},
+    });
+    expect(allowlistRuntime.filterTools(tools)).toEqual([{ name: 'read' }]);
+
+    const denylistRuntime = new PackageLocalSessionRuntime({
+      sessionId: 'session-1',
+      options: {
+        ...options,
+        disallowedTools: ['search'],
+      },
+      bladeConfig,
+      defaultContext: {},
+    });
+    expect(denylistRuntime.filterTools(tools)).toEqual([{ name: 'read' }, { name: 'write' }]);
+  });
 });
