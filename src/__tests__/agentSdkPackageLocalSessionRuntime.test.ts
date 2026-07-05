@@ -338,8 +338,17 @@ describe('agent-sdk package-local session runtime shell', () => {
         reconnectServer: vi.fn(async (serverName) => {
           calls.push(`reconnect:${serverName}`);
         }),
-        refreshTools: vi.fn(async (serverNames) => {
-          calls.push(`refresh:${serverNames.join(',')}`);
+        getAvailableToolsByServerNames: vi.fn(async (serverNames) => {
+          calls.push(`available:${serverNames.join(',')}`);
+          return [];
+        }),
+      },
+      toolCatalog: {
+        registerAll: vi.fn(),
+        registerMcpTool: vi.fn(),
+        removeMcpTools: vi.fn((serverName) => {
+          calls.push(`remove:${serverName}`);
+          return 0;
         }),
       },
     });
@@ -354,12 +363,71 @@ describe('agent-sdk package-local session runtime shell', () => {
     expect(calls).toEqual([
       'ensure:remote:true',
       'connect:remote',
-      'refresh:remote',
+      'remove:remote',
+      'available:remote',
       'disconnect:remote',
-      'refresh:remote',
+      'remove:remote',
+      'available:remote',
       'ensure:remote:true',
       'reconnect:remote',
-      'refresh:remote',
+      'remove:remote',
+      'available:remote',
+    ]);
+  });
+
+  it('owns MCP tool refresh registration through injected registry and catalog ports', async () => {
+    const calls: string[] = [];
+    const readTool = {
+      name: 'read',
+      description: 'Read docs',
+      tags: ['server-a'],
+    };
+    const writeTool = {
+      name: 'mcp__server-b__write',
+      description: 'Write docs',
+      tags: [],
+    };
+    const searchTool = {
+      name: 'search',
+      description: 'Search docs',
+      tags: ['server-a'],
+    };
+    const runtime = new PackageLocalSessionRuntime({
+      sessionId: 'session-1',
+      options: {
+        ...options,
+        allowedTools: ['read', 'mcp__server-b__write'],
+      },
+      bladeConfig,
+      defaultContext: {},
+      mcpRegistry: {
+        disconnectAll: vi.fn(async () => {}),
+        getCapabilities: vi.fn(async () => []),
+        getAvailableToolsByServerNames: vi.fn(async (serverNames) => {
+          calls.push(`available:${serverNames.join(',')}`);
+          return [readTool, writeTool, searchTool];
+        }),
+      },
+      toolCatalog: {
+        registerAll: vi.fn(),
+        removeMcpTools: vi.fn((serverName) => {
+          calls.push(`remove:${serverName}`);
+          return 1;
+        }),
+        registerMcpTool: vi.fn((tool, source) => {
+          calls.push(`register:${tool.name}:${source.sourceId}:${source.kind}:${source.trustLevel}`);
+        }),
+      },
+    });
+
+    await runtime.refreshMcpTools(['server-a', 'server-b']);
+
+    expect(calls).toEqual([
+      'remove:server-a',
+      'remove:server-b',
+      'available:server-a,server-b',
+      'register:read:server-a:mcp:remote',
+      'register:mcp__server-b__write:server-b:mcp:remote',
     ]);
   });
 
@@ -411,8 +479,17 @@ describe('agent-sdk package-local session runtime shell', () => {
             throw failure;
           }
         }),
-        refreshTools: vi.fn(async (serverNames) => {
-          calls.push(`refresh:${serverNames.join(',')}`);
+        getAvailableToolsByServerNames: vi.fn(async (serverNames) => {
+          calls.push(`available:${serverNames.join(',')}`);
+          return [];
+        }),
+      },
+      toolCatalog: {
+        registerAll: vi.fn(),
+        registerMcpTool: vi.fn(),
+        removeMcpTools: vi.fn((serverName) => {
+          calls.push(`remove:${serverName}`);
+          return 0;
         }),
       },
       logger: {
@@ -428,7 +505,11 @@ describe('agent-sdk package-local session runtime shell', () => {
       'in-process:local:true',
       'remote:remote:true',
       'remote:failing:true',
-      'refresh:local,disabled,remote,failing',
+      'remove:local',
+      'remove:disabled',
+      'remove:remote',
+      'remove:failing',
+      'available:local,disabled,remote,failing',
     ]);
     expect(warnings).toEqual([
       ['[PackageLocalSessionRuntime] Failed to register MCP server failing:', failure],
@@ -490,6 +571,8 @@ describe('agent-sdk package-local session runtime shell', () => {
       defaultContext: {},
       toolCatalog: {
         registerAll,
+        registerMcpTool: vi.fn(),
+        removeMcpTools: vi.fn(() => 0),
       },
     });
 
@@ -501,8 +584,8 @@ describe('agent-sdk package-local session runtime shell', () => {
       ],
       {
         kind: 'builtin',
-        source: 'local',
-        trust: 'trusted',
+        sourceId: 'builtin',
+        trustLevel: 'trusted',
       },
     );
 
@@ -511,8 +594,8 @@ describe('agent-sdk package-local session runtime shell', () => {
       [{ name: 'read', description: 'Read files' }],
       {
         kind: 'builtin',
-        source: 'local',
-        trust: 'trusted',
+        sourceId: 'builtin',
+        trustLevel: 'trusted',
       },
     );
   });
@@ -529,6 +612,8 @@ describe('agent-sdk package-local session runtime shell', () => {
       defaultContext: {},
       toolCatalog: {
         registerAll,
+        registerMcpTool: vi.fn(),
+        removeMcpTools: vi.fn(() => 0),
       },
     });
 
@@ -539,8 +624,8 @@ describe('agent-sdk package-local session runtime shell', () => {
       ],
       {
         kind: 'builtin',
-        source: 'local',
-        trust: 'trusted',
+        sourceId: 'builtin',
+        trustLevel: 'trusted',
       },
     );
 

@@ -52,7 +52,9 @@ export interface PackageLocalRuntimeMcpRegistryPort {
   connectServer?(serverName: string): Promise<void>;
   disconnectServer?(serverName: string): Promise<void>;
   reconnectServer?(serverName: string): Promise<void>;
-  refreshTools?(serverNames: string[]): Promise<void>;
+  getAvailableToolsByServerNames?(
+    serverNames: string[],
+  ): Promise<PackageLocalRuntimeMcpTool[]>;
 }
 
 export interface PackageLocalRuntimeToolCatalogPort {
@@ -60,12 +62,20 @@ export interface PackageLocalRuntimeToolCatalogPort {
     tools: TTool[],
     source: PackageLocalRuntimeToolSource,
   ): void;
+  registerMcpTool<TTool extends PackageLocalRuntimeMcpTool>(
+    tool: TTool,
+    source: PackageLocalRuntimeToolSource,
+  ): void;
+  removeMcpTools(serverName: string): number;
 }
 
+export type PackageLocalRuntimeToolSourceKind = 'builtin' | 'custom' | 'mcp' | 'session';
+export type PackageLocalRuntimeToolTrustLevel = 'trusted' | 'workspace' | 'remote';
+
 export interface PackageLocalRuntimeToolSource {
-  kind: string;
-  source: string;
-  trust?: string;
+  kind: PackageLocalRuntimeToolSourceKind;
+  trustLevel: PackageLocalRuntimeToolTrustLevel;
+  sourceId: string;
 }
 
 export interface PackageLocalRuntimeLoggerPort {
@@ -96,6 +106,10 @@ export interface PackageLocalRuntimeMcpServerCapability {
 
 export interface PackageLocalRuntimeNamedTool {
   name: string;
+}
+
+export interface PackageLocalRuntimeMcpTool extends PackageLocalRuntimeNamedTool {
+  tags?: readonly string[];
 }
 
 export function resolvePackageLocalRuntimeStorageRoot(
@@ -267,8 +281,20 @@ export class PackageLocalSessionRuntime {
     await this.mcpRegistry.ensureServerRegistered?.(serverName, config);
   }
 
-  private async refreshMcpTools(serverNames: string[]): Promise<void> {
-    await this.mcpRegistry.refreshTools?.(serverNames);
+  async refreshMcpTools(serverNames: string[]): Promise<void> {
+    for (const serverName of serverNames) {
+      this.toolCatalog.removeMcpTools(serverName);
+    }
+
+    const availableTools =
+      (await this.mcpRegistry.getAvailableToolsByServerNames?.(serverNames)) ?? [];
+    for (const tool of this.filterTools(availableTools)) {
+      this.toolCatalog.registerMcpTool(tool, {
+        kind: 'mcp',
+        trustLevel: 'remote',
+        sourceId: packageLocalServerNameFromTool(tool),
+      });
+    }
   }
 
   private async callMcpRegistryMethod(
@@ -356,13 +382,19 @@ function createNoopRuntimeMcpRegistry(): PackageLocalRuntimeMcpRegistryPort {
     async connectServer() {},
     async disconnectServer() {},
     async reconnectServer() {},
-    async refreshTools() {},
+    async getAvailableToolsByServerNames() {
+      return [];
+    },
   };
 }
 
 function createNoopRuntimeToolCatalog(): PackageLocalRuntimeToolCatalogPort {
   return {
     registerAll() {},
+    registerMcpTool() {},
+    removeMcpTools() {
+      return 0;
+    },
   };
 }
 
@@ -370,4 +402,14 @@ function createNoopRuntimeLogger(): PackageLocalRuntimeLoggerPort {
   return {
     warn() {},
   };
+}
+
+function packageLocalServerNameFromTool(tool: PackageLocalRuntimeMcpTool): string {
+  const taggedServer = tool.tags?.find((tag) => tag === tag.toLowerCase() && tag.length > 0);
+  if (taggedServer) {
+    return taggedServer;
+  }
+
+  const match = tool.name.match(/^mcp__([^_]+)__/);
+  return match?.[1] ?? 'mcp';
 }

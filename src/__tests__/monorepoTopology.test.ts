@@ -484,7 +484,6 @@ describe('monorepo topology', () => {
     expect(packageLocalRuntimeInstanceSource).toContain('mcpDisconnect');
     expect(packageLocalRuntimeInstanceSource).toContain('mcpReconnect');
     expect(packageLocalRuntimeInstanceSource).toContain('ensureServerRegistered');
-    expect(packageLocalRuntimeInstanceSource).toContain('refreshTools');
     expect(packageLocalRuntimeInstanceSource).toContain('PackageLocalRuntimeMcpServerCapability');
     expect(packageLocalRuntimeInstanceSource).toContain('filterTools');
     expect(packageLocalRuntimeInstanceSource).toContain('PackageLocalRuntimeNamedTool');
@@ -496,6 +495,11 @@ describe('monorepo topology', () => {
     expect(packageLocalRuntimeInstanceSource).toContain('registerInProcessServer');
     expect(packageLocalRuntimeInstanceSource).toContain('registerServer');
     expect(packageLocalRuntimeInstanceSource).toContain('PackageLocalRuntimeLoggerPort');
+    expect(packageLocalRuntimeInstanceSource).toContain('refreshMcpTools');
+    expect(packageLocalRuntimeInstanceSource).toContain('getAvailableToolsByServerNames');
+    expect(packageLocalRuntimeInstanceSource).toContain('registerMcpTool');
+    expect(packageLocalRuntimeInstanceSource).toContain('removeMcpTools');
+    expect(packageLocalRuntimeInstanceSource).toContain('packageLocalServerNameFromTool');
     expect(existsSync('packages/agent-sdk/src/session/packageLocalLegacyRuntimeFactory.ts')).toBe(
       true,
     );
