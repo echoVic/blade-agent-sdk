@@ -420,16 +420,12 @@ describe('monorepo topology', () => {
     );
     const sessionFactorySource = readFileSync('packages/agent-sdk/src/session/factory.ts', 'utf-8');
     const sessionLifecycleSource = readFileSync('packages/agent-sdk/src/session/Session.ts', 'utf-8');
-    const legacySessionAdapterSource = readFileSync(
-      'packages/agent-sdk/src/session/legacySessionAdapter.ts',
-      'utf-8',
-    );
     const sessionStoreSource = readFileSync('packages/agent-sdk/src/session/store.ts', 'utf-8');
 
     expect(sessionSource).not.toContain("export * from '../../../../src/session/index.js'");
     expect(sessionSource).not.toContain("../../../../src/session/Session.js");
     expect(existsSync('packages/agent-sdk/src/session/Session.ts')).toBe(true);
-    expect(existsSync('packages/agent-sdk/src/session/legacySessionAdapter.ts')).toBe(true);
+    expect(existsSync('packages/agent-sdk/src/session/legacySessionAdapter.ts')).toBe(false);
     expect(existsSync('packages/agent-sdk/src/session/config.ts')).toBe(true);
     expect(existsSync('packages/agent-sdk/src/session/content.ts')).toBe(true);
     expect(existsSync('packages/agent-sdk/src/session/pendingTurn.ts')).toBe(true);
@@ -626,20 +622,6 @@ describe('monorepo topology', () => {
     expect(sessionLifecycleSource).toContain('new PromptStreamAccumulator()');
     expect(sessionLifecycleSource).toContain('closeSessionAfterLifecycle');
     expect(sessionLifecycleSource).not.toContain('../../../../src/session/Session.js');
-    const legacySessionAdapterRootImports = [
-      ...legacySessionAdapterSource.matchAll(/from ['"](\.\.\/\.\.\/\.\.\/\.\.\/src\/[^'"]+)['"]/g),
-    ].map((match) => match[1]);
-    expect(legacySessionAdapterRootImports).toEqual([]);
-    expect(legacySessionAdapterSource).toContain("import('../../../../src/session/Session.js')");
-    expect(legacySessionAdapterSource).toContain('interface LegacySessionModulePort');
-    expect(legacySessionAdapterSource).toContain('loadLegacySessionModule');
-    expect(legacySessionAdapterSource).not.toContain("typeof import('../../../../src/session/Session.js')");
-    expect(legacySessionAdapterSource).not.toContain("Parameters<LegacySessionModule['createSession']>");
-    expect(legacySessionAdapterSource).not.toContain('forkSession as forkLegacy');
-    expect(legacySessionAdapterSource).not.toContain('prompt as promptLegacy');
-    expect(legacySessionAdapterSource).toContain('createLegacyDelegateSession');
-    expect(legacySessionAdapterSource).not.toContain('as never');
-    expect(legacySessionAdapterSource).not.toContain('as unknown as ISession');
     expect(sessionConfigSource).not.toContain('../../../../src/session/Session');
     expect(sessionConfigSource).not.toContain('../../../../src/types/common');
     expect(sessionStoreSource).not.toContain('../../../../src/session/SessionStore');
