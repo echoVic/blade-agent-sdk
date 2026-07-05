@@ -199,6 +199,7 @@ async function verifyPublishedTypesSmoke({ consumerDir }) {
         target: 'ES2022',
         strict: true,
         skipLibCheck: false,
+        lib: ['ES2022', 'DOM', 'ESNext.Disposable'],
         noEmit: true,
       },
       include: ['consumer-types.ts'],
@@ -208,17 +209,45 @@ async function verifyPublishedTypesSmoke({ consumerDir }) {
     join(consumerDir, 'consumer-types.ts'),
     `import type { ModelPort } from '@blade-ai/ai';
 import type { ModelRequest } from '@blade-ai/ai';
+import type { ModelResponse, ModelStreamEvent } from '@blade-ai/ai';
+import type { ModelResponse as ModelSubpathResponse } from '@blade-ai/ai/model';
+import type { OpenAICompatibleModelPortOptions } from '@blade-ai/ai/providers/openai-compatible';
 import type { AgentKernelOptions } from '@blade-ai/agent';
+import type { AgentTurnInput } from '@blade-ai/agent/kernel';
+import type { AgentToolPort } from '@blade-ai/agent/ports';
+import type { AgentToolCall } from '@blade-ai/agent/protocol';
 import type { SessionOptions } from '@blade-ai/agent-sdk';
 import type { StreamMessage } from '@blade-ai/agent-sdk';
 import type { ToolDefinition } from '@blade-ai/agent-sdk';
+import type { ISession } from '@blade-ai/agent-sdk/session';
+import type { ToolDefinition as SubpathToolDefinition } from '@blade-ai/agent-sdk/tools';
+import type { PermissionMode, RuntimeContext } from '@blade-ai/agent-sdk/core';
+import { PermissionMode as CorePermissionMode } from '@blade-ai/agent-sdk/core';
 
 const modelPort: ModelPort = {
-  async generate(request: ModelRequest) {
+  async generate(request: ModelRequest): Promise<ModelResponse> {
     return {
       content: request.messages.at(-1)?.content?.toString() ?? '',
     };
   },
+
+  async *stream(): AsyncIterable<ModelStreamEvent> {
+    yield {
+      type: 'done',
+      response: { content: 'ok' },
+      finishReason: 'stop',
+    };
+  },
+};
+
+const modelSubpathResponse: ModelSubpathResponse = {
+  content: 'ok',
+};
+
+const openaiCompatibleOptions: OpenAICompatibleModelPortOptions = {
+  apiKey: 'test-key',
+  baseUrl: 'https://example.test/v1',
+  model: 'glm-5.2',
 };
 
 const kernelOptions: AgentKernelOptions = {
@@ -226,9 +255,30 @@ const kernelOptions: AgentKernelOptions = {
   maxSteps: 2,
 };
 
+const turnInput: AgentTurnInput = {
+  input: 'hello',
+};
+
+const toolPort: AgentToolPort = {
+  async list() {
+    return [];
+  },
+  async execute(toolCall: AgentToolCall) {
+    return {
+      id: toolCall.id,
+      name: toolCall.name,
+      output: 'ok',
+    };
+  },
+};
+
 const sessionOptions: SessionOptions = {
   model: 'glm-5.2',
-  provider: 'openai-compatible',
+  provider: {
+    type: 'openai-compatible',
+    apiKey: 'test-key',
+    baseUrl: 'https://example.test/v1',
+  },
   allowedTools: [],
   temperature: 0.2,
   maxOutputTokens: 128,
@@ -236,22 +286,43 @@ const sessionOptions: SessionOptions = {
 
 const streamMessage: StreamMessage = {
   type: 'content',
-  content: 'ok',
+  delta: 'ok',
+  sessionId: 'session-id',
 };
 
-const toolDefinition: ToolDefinition = {
+const toolDefinition: ToolDefinition<{ text?: string }, string> = {
   name: 'noop',
   description: 'No-op tool',
   parameters: {
     type: 'object',
     properties: {},
   },
+  async execute(input) {
+    const data = input.text ?? 'ok';
+    return {
+      success: true,
+      data,
+      llmContent: data,
+    };
+  },
 };
+const subpathToolDefinition: SubpathToolDefinition<{ text?: string }, string> = toolDefinition;
+const sessionRef: ISession | null = null;
+const permissionMode: PermissionMode = CorePermissionMode.DEFAULT;
+const runtimeContext: RuntimeContext = {};
 
+void modelSubpathResponse;
+void openaiCompatibleOptions;
 void kernelOptions;
+void turnInput;
+void toolPort;
 void sessionOptions;
 void streamMessage;
 void toolDefinition;
+void subpathToolDefinition;
+void sessionRef;
+void permissionMode;
+void runtimeContext;
 `,
   );
   await run('npx', ['tsc', '--noEmit'], { cwd: consumerDir });

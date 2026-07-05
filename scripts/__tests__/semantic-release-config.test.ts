@@ -364,6 +364,21 @@ describe('release scripts', () => {
     expect(readme).toContain('TypeScript public declarations');
     expect(checklist).toContain('TypeScript public declarations');
   });
+
+  it('type-checks public subpath declarations from the published temporary consumer', () => {
+    const publishedVerifier = readFileSync(resolve('scripts/verify-published.mjs'), 'utf8');
+    const roadmap = readFileSync(resolve('docs/roadmap/production-agent-sdk-monorepo.md'), 'utf8');
+
+    expect(publishedVerifier).toContain("from '@blade-ai/ai/model';");
+    expect(publishedVerifier).toContain("from '@blade-ai/ai/providers/openai-compatible';");
+    expect(publishedVerifier).toContain("from '@blade-ai/agent/kernel';");
+    expect(publishedVerifier).toContain("from '@blade-ai/agent/ports';");
+    expect(publishedVerifier).toContain("from '@blade-ai/agent/protocol';");
+    expect(publishedVerifier).toContain("from '@blade-ai/agent-sdk/session';");
+    expect(publishedVerifier).toContain("from '@blade-ai/agent-sdk/tools';");
+    expect(publishedVerifier).toContain("from '@blade-ai/agent-sdk/core';");
+    expect(roadmap).toContain('public subpath declarations');
+  });
 });
 
 describe('release workflow', () => {

@@ -107,7 +107,7 @@ dry-run 不发布 npm 包。它通常需要 GitHub token 环境，适合维护�
 
 不要绕过 `pnpm run verify` 直接发布。不要在 trusted publishing 流程中依赖长期 `NPM_TOKEN`。
 
-发布 workflow 完成后，用 post-publish verifier 确认 GitHub Release 和三个 npm 包版本都已经公开可见。该命令还会创建一个临时 consumer，从 npm 安装同版本的三包，并执行 runtime import smoke 与 TypeScript public declarations 编译：
+发布 workflow 完成后，用 post-publish verifier 确认 GitHub Release 和三个 npm 包版本都已经公开可见。该命令还会创建一个临时 consumer，从 npm 安装同版本的三包，并执行 runtime import smoke 与 root/subpath TypeScript public declarations 编译：
 
 ```bash
 pnpm run verify:published -- --version 1.2.3

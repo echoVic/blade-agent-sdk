@@ -591,6 +591,7 @@ Status:
 - Seventh release-automation increment complete: the repository now exposes `pnpm run verify:published -- --version <version>` as a post-publish visibility check that polls the GitHub Release and all three npm packages, so maintainers can verify public artifacts after the main-branch semantic-release workflow finishes.
 - Eighth release-automation increment complete: `pnpm run verify:published -- --version <version>` now installs the released `@blade-ai/ai`, `@blade-ai/agent`, and `@blade-ai/agent-sdk` versions into a temporary consumer and runs runtime import smoke checks against the public package exports, proving the external npm install path works after publication.
 - Ninth release-automation increment complete: the post-publish verifier now also writes a temporary TypeScript consumer and runs `tsc --noEmit` against public `ModelPort`, `AgentKernelOptions`, `SessionOptions`, `StreamMessage`, and tool declaration imports from the released npm packages, proving the external type surface works after publication.
+- Tenth release-automation increment complete: the post-publish verifier now type-checks public subpath declarations from the released npm packages, including `@blade-ai/ai/model`, `@blade-ai/ai/providers/openai-compatible`, `@blade-ai/agent/kernel`, `@blade-ai/agent/ports`, `@blade-ai/agent/protocol`, and the session/tools/core `@blade-ai/agent-sdk` subpaths, proving direct Pi-style package-boundary imports work after publication.
 
 Commit:
 

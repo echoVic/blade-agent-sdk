@@ -243,7 +243,7 @@ GitHub Release notes 会在 conventional commit 摘要后追加三包发布清�
 pnpm run release:dry
 ```
 
-发布 workflow 完成后，用公开可见性检查确认 GitHub Release 和三个 npm 包都已经能被外部用户解析。该命令还会创建一个临时 consumer，从 npm 安装同版本的三包，并执行 runtime import smoke 与 TypeScript public declarations 编译：
+发布 workflow 完成后，用公开可见性检查确认 GitHub Release 和三个 npm 包都已经能被外部用户解析。该命令还会创建一个临时 consumer，从 npm 安装同版本的三包，并执行 runtime import smoke 与 root/subpath TypeScript public declarations 编译：
 
 ```bash
 pnpm run verify:published -- --version 1.2.3
