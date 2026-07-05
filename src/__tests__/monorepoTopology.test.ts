@@ -402,6 +402,10 @@ describe('monorepo topology', () => {
       'packages/agent-sdk/src/session/packageLocalKernelRuntimeFactory.ts',
       'utf-8',
     );
+    const defaultKernelRuntimeFactorySource = readFileSync(
+      'packages/agent-sdk/src/session/defaultKernelRuntimeFactory.ts',
+      'utf-8',
+    );
     const packageLocalRuntimeInstanceSource = readFileSync(
       'packages/agent-sdk/src/session/runtimeInstance.ts',
       'utf-8',
@@ -570,6 +574,14 @@ describe('monorepo topology', () => {
     );
     expect(packageLocalKernelRuntimeFactorySource).toContain('createPackageLocalSessionRuntimeFactory');
     expect(packageLocalKernelRuntimeFactorySource).toContain('createKernelStreamTurnBridge');
+    expect(existsSync('packages/agent-sdk/src/session/defaultKernelRuntimeFactory.ts')).toBe(
+      true,
+    );
+    expect(defaultKernelRuntimeFactorySource).not.toContain('../../../../src/');
+    expect(defaultKernelRuntimeFactorySource).toContain('createDefaultKernelSessionRuntimeFactory');
+    expect(defaultKernelRuntimeFactorySource).toContain('createPackageLocalKernelSessionRuntimeFactory');
+    expect(defaultKernelRuntimeFactorySource).toContain('PackageLocalSessionRuntime');
+    expect(defaultKernelRuntimeFactorySource).toContain('buildBladeConfig');
     expect(sessionRuntimeFactorySource).not.toContain('../../../../src/session/Session.js');
     expect(sessionRuntimeFactorySource).toContain('interface DefaultSessionRuntimeFactoryOptions');
     expect(sessionRuntimeFactorySource).toContain('loadKernelRuntimeFactory');
