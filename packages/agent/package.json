@@ -3,11 +3,20 @@
   "version": "0.0.0",
   "private": false,
   "description": "Runtime-independent Blade Agent kernel contracts",
+  "license": "MIT",
+  "homepage": "https://github.com/echoVic/blade-agent-sdk#readme",
+  "bugs": {
+    "url": "https://github.com/echoVic/blade-agent-sdk/issues"
+  },
   "repository": {
     "type": "git",
     "url": "https://github.com/echoVic/blade-agent-sdk"
   },
   "type": "module",
+  "engines": {
+    "node": ">=22.14.0"
+  },
+  "sideEffects": false,
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "exports": {
@@ -39,6 +48,14 @@
   "files": [
     "dist",
     "README.md"
+  ],
+  "keywords": [
+    "agent",
+    "sdk",
+    "llm",
+    "kernel",
+    "runtime-independent",
+    "tools"
   ],
   "scripts": {
     "build": "tsup --config tsup.config.ts && tsc -p tsconfig.build.json",

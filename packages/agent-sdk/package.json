@@ -3,11 +3,20 @@
   "version": "1.0.12",
   "private": false,
   "description": "Session-first Blade Agent SDK",
+  "license": "MIT",
+  "homepage": "https://github.com/echoVic/blade-agent-sdk#readme",
+  "bugs": {
+    "url": "https://github.com/echoVic/blade-agent-sdk/issues"
+  },
   "repository": {
     "type": "git",
     "url": "https://github.com/echoVic/blade-agent-sdk"
   },
   "type": "module",
+  "engines": {
+    "node": ">=22.14.0"
+  },
+  "sideEffects": false,
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "exports": {
@@ -51,6 +60,15 @@
     "dist",
     "vendor/ripgrep/**",
     "README.md"
+  ],
+  "keywords": [
+    "agent",
+    "sdk",
+    "llm",
+    "session-first",
+    "mcp",
+    "tools",
+    "cli"
   ],
   "scripts": {
     "build": "pnpm --filter @blade-ai/ai run build && pnpm --filter @blade-ai/agent run build && tsup --config tsup.config.ts && tsc -p tsconfig.build.json && tsc -p tsconfig.public-dts.json && node scripts/overlay-public-dts.mjs",

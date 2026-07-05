@@ -11,6 +11,7 @@ const packageSpecs = [
     name: '@blade-ai/ai',
     dir: 'packages/ai',
     requiredFiles: [
+      'package/README.md',
       'package/dist/index.js',
       'package/dist/index.d.ts',
       'package/dist/chat/index.js',
@@ -27,6 +28,7 @@ const packageSpecs = [
     name: '@blade-ai/agent',
     dir: 'packages/agent',
     requiredFiles: [
+      'package/README.md',
       'package/dist/index.js',
       'package/dist/index.d.ts',
       'package/dist/kernel/AgentKernel.js',
@@ -53,6 +55,7 @@ const packageSpecs = [
     name: '@blade-ai/agent-sdk',
     dir: 'packages/agent-sdk',
     requiredFiles: [
+      'package/README.md',
       'package/dist/index.js',
       'package/dist/index.d.ts',
       'package/dist/session/index.js',

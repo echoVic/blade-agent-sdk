@@ -54,6 +54,51 @@ describe('package provenance metadata', () => {
       });
     }
   });
+
+  it('keeps publishable package metadata and README files npm-friendly', () => {
+    const packages = [
+      {
+        path: 'packages/ai',
+        name: '@blade-ai/ai',
+        requiredReadmeText: ['ModelPort', 'createOpenAICompatibleModelPort'],
+      },
+      {
+        path: 'packages/agent',
+        name: '@blade-ai/agent',
+        requiredReadmeText: ['AgentKernel', 'runtime-independent'],
+      },
+      {
+        path: 'packages/agent-sdk',
+        name: '@blade-ai/agent-sdk',
+        requiredReadmeText: ['createSession', 'session-first'],
+      },
+    ];
+    const packageVerifier = readFileSync(resolve('scripts/verify-packages.mjs'), 'utf8');
+
+    for (const pkg of packages) {
+      const packageJson = JSON.parse(readFileSync(resolve(pkg.path, 'package.json'), 'utf8'));
+      const readme = readFileSync(resolve(pkg.path, 'README.md'), 'utf8');
+
+      expect(packageJson.license).toBe('MIT');
+      expect(packageJson.engines).toEqual({ node: '>=22.14.0' });
+      expect(packageJson.sideEffects).toBe(false);
+      expect(packageJson.homepage).toBe('https://github.com/echoVic/blade-agent-sdk#readme');
+      expect(packageJson.bugs).toEqual({
+        url: 'https://github.com/echoVic/blade-agent-sdk/issues',
+      });
+      expect(packageJson.keywords).toEqual(expect.arrayContaining([
+        'agent',
+        'sdk',
+        'llm',
+      ]));
+      expect(readme).toContain(pkg.name);
+      for (const text of pkg.requiredReadmeText) {
+        expect(readme).toContain(text);
+      }
+      expect(packageVerifier).toContain(`name: '${pkg.name}'`);
+      expect(packageVerifier).toContain("'package/README.md'");
+    }
+  });
 });
 
 describe('release scripts', () => {
