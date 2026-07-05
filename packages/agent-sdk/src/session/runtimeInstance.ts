@@ -1,4 +1,3 @@
-import { basename, dirname } from 'node:path';
 import type { ModelMessage, ModelPort } from '@blade-ai/ai';
 import type {
   AgentKernelOptions,
@@ -47,6 +46,10 @@ import type {
 import {
   projectPackageLocalKernelEventToStreamMessages,
 } from './kernelStreamProjection.js';
+import {
+  getPackageLocalRuntimeContextCwd,
+  resolvePackageLocalRuntimeStorageRoot,
+} from './runtimeContext.js';
 import { getPackageLocalMcpToolSourceId } from './runtimeMcpTools.js';
 import { createPackageLocalRuntimeNoopPorts } from './runtimeNoopPorts.js';
 import { packageLocalSubagentConfigFromDefinition } from './runtimeSubagents.js';
@@ -54,6 +57,10 @@ import { createSessionTraceFinalizer, SessionTraceManager } from './traces.js';
 import type { SessionSnapshot } from './store.js';
 
 export type { PackageLocalRuntimeKernelStreamProjectionOptions } from './kernelStreamProjection.js';
+export {
+  getPackageLocalRuntimeContextCwd,
+  resolvePackageLocalRuntimeStorageRoot,
+} from './runtimeContext.js';
 
 export interface PackageLocalSessionRuntimeOptions {
   sessionId: SessionId;
@@ -344,16 +351,6 @@ export interface PackageLocalRuntimeMcpTool extends PackageLocalRuntimeNamedTool
   tags?: readonly string[];
 }
 
-export function resolvePackageLocalRuntimeStorageRoot(
-  storagePath?: string,
-): string | undefined {
-  if (!storagePath) {
-    return undefined;
-  }
-
-  return basename(storagePath) === 'sessions' ? dirname(storagePath) : storagePath;
-}
-
 export function isPackageLocalSdkMcpServerHandle(
   config: unknown,
 ): config is SdkMcpServerHandle {
@@ -363,14 +360,6 @@ export function isPackageLocalSdkMcpServerHandle(
     'createClientTransport' in config &&
     'server' in config
   );
-}
-
-function getRuntimeContextCwd(context: RuntimeContext): string | undefined {
-  return typeof context.capabilities?.filesystem?.cwd === 'string'
-    ? context.capabilities.filesystem.cwd
-    : typeof context.environment?.cwd === 'string'
-      ? context.environment.cwd
-      : undefined;
 }
 
 export class PackageLocalSessionRuntime {
@@ -414,7 +403,7 @@ export class PackageLocalSessionRuntime {
     this.storageRoot =
       options.bladeConfig.storageRoot ??
       resolvePackageLocalRuntimeStorageRoot(options.options.storagePath);
-    this.projectPath = getRuntimeContextCwd(options.defaultContext);
+    this.projectPath = getPackageLocalRuntimeContextCwd(options.defaultContext);
     this.hookCallbacks = options.options.hooks ?? {};
     const noopPorts = createPackageLocalRuntimeNoopPorts();
     this.sessionStore = options.sessionStore ?? noopPorts.sessionStore;
