@@ -13,6 +13,7 @@ export async function bundleWithEsbuildRetry(options, config = {}) {
   const retries = config.retries ?? 1;
   let attempt = 0;
 
+  resetService();
   while (true) {
     try {
       return await build(options);

@@ -39,6 +39,14 @@ describe('monorepo topology', () => {
     expect(workspace).toContain("'packages/*'");
   });
 
+  it('keeps root build orchestration out of root dist output', () => {
+    const root = readJson('package.json');
+
+    expect(root.scripts?.build).toBe('pnpm --filter @blade-ai/agent-sdk run build');
+    expect(root.scripts?.build).not.toContain('tsup');
+    expect(root.scripts?.build).not.toContain('tsconfig.build.json');
+  });
+
   it('contains ai, agent, and agent-sdk packages with source entrypoints', () => {
     const expectedPackages = [
       ['packages/ai', '@blade-ai/ai'],

@@ -553,6 +553,7 @@ Status:
 - One-hundred-eighth verification-chain increment complete: `pnpm run verify` now includes `pnpm run verify:release`, a token-free release configuration gate that checks semantic-release branch/tag/plugin shape, all three publishable package metadata blocks, the release workflow's verify-before-release command order, npm registry setup, GitHub token wiring, and absence of long-lived `NPM_TOKEN` publishing.
 - One-hundred-ninth verification-chain increment complete: topology now requires the private root workspace package to stay an orchestrator without npm `files` or `publishConfig` metadata, keeping the publish surface exclusively on `packages/ai`, `packages/agent`, and `packages/agent-sdk`.
 - One-hundred-tenth verification-chain increment complete: topology now requires the private root workspace package to omit npm entrypoint metadata (`main`, `types`, and `exports`), while package entrypoint tests assert the session-first public export surface from `packages/agent-sdk/package.json`, proving the publish contract lives on the publishable SDK package instead of the root orchestrator.
+- One-hundred-eleventh verification-chain increment complete: root `build` now delegates only to the publishable `@blade-ai/agent-sdk` package build instead of producing root `dist` output, and `verify:entrypoints` builds that package directly before browser/import smoke checks. The esbuild bundle helper also resets the JS service before each first build attempt so stale service state is cleared before browser-bundle verification.
 
 Commit:
 

@@ -65,7 +65,7 @@ describe('package entrypoints', () => {
 
   it('declares the browser/server entrypoint verification script', () => {
     expect(rootPackageJson.scripts['verify:entrypoints']).toBe(
-      'pnpm run build && pnpm --filter @blade-ai/agent-sdk run build && node scripts/verify-entrypoints.mjs',
+      'pnpm --filter @blade-ai/agent-sdk run build && node scripts/verify-entrypoints.mjs',
     );
     expect(existsSync(join(process.cwd(), 'scripts/verify-entrypoints.mjs'))).toBe(true);
   });
@@ -95,6 +95,7 @@ describe('package entrypoints', () => {
     });
     expect(existsSync(join(process.cwd(), 'scripts/verify-packages.mjs'))).toBe(true);
     expect(existsSync(join(process.cwd(), 'scripts/verify-release-config.mjs'))).toBe(true);
+    expect(rootPackageJson.scripts.verify).toContain('pnpm run verify:entrypoints');
   });
 
   it('throws clear errors from browser runtime stubs', async () => {
@@ -120,9 +121,9 @@ describe('package entrypoints', () => {
     ];
 
     for (const file of [
-      'src/core/index.ts',
-      'src/browser/index.ts',
-      'src/browser/server-only-stub.ts',
+      'packages/agent-sdk/src/core/index.ts',
+      'packages/agent-sdk/src/browser/index.ts',
+      'packages/agent-sdk/src/browser/server-only-stub.ts',
     ]) {
       const source = readFileSync(file, 'utf-8');
       for (const pattern of disallowedPatterns) {

@@ -1,6 +1,23 @@
 import { describe, expect, it } from 'vitest';
 
 describe('esbuild bundle helper', () => {
+  it('resets the esbuild service before the first build attempt', async () => {
+    const { bundleWithEsbuildRetry } = await import('../esbuild-bundle.mjs');
+    const events: string[] = [];
+
+    await bundleWithEsbuildRetry({ entryPoints: ['entry.ts'] }, {
+      build: async () => {
+        events.push('build');
+        return { outputFiles: [] };
+      },
+      resetService: () => {
+        events.push('reset');
+      },
+    });
+
+    expect(events).toEqual(['reset', 'build']);
+  });
+
   it('retries once when the esbuild service stops', async () => {
     const { bundleWithEsbuildRetry } = await import('../esbuild-bundle.mjs');
     const calls: unknown[] = [];
@@ -37,7 +54,7 @@ describe('esbuild bundle helper', () => {
     });
 
     expect(calls).toHaveLength(2);
-    expect(resetCalls).toEqual(['reset']);
+    expect(resetCalls).toEqual(['reset', 'reset']);
   });
 
   it('does not retry unrelated esbuild errors', async () => {
