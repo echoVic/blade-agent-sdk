@@ -41,6 +41,8 @@ export interface PackageLocalSessionRuntimeOptions {
   subagentRegistry?: PackageLocalRuntimeSubagentRegistryPort;
   permissionHooks?: PackageLocalRuntimePermissionHookPort;
   hookManager?: PackageLocalRuntimeHookManagerPort;
+  hookRuntime?: PackageLocalRuntimeHookRuntimePort;
+  backgroundAgentManager?: PackageLocalRuntimeBackgroundAgentManagerPort;
   executionPipelineFactory?: PackageLocalRuntimeExecutionPipelineFactoryPort;
 }
 
@@ -151,6 +153,14 @@ export interface PackageLocalRuntimeHookManagerPort {
   enable(): void;
 }
 
+export interface PackageLocalRuntimeHookRuntimePort extends PackageLocalRuntimeHookManagerPort {
+  setTraceCollector?(collector: unknown): void;
+}
+
+export interface PackageLocalRuntimeBackgroundAgentManagerPort {
+  [operation: string]: unknown;
+}
+
 export interface PackageLocalRuntimeExecutionPipelineCreateOptions {
   permissionConfig: Required<PermissionsConfig>;
   permissionMode: PermissionMode;
@@ -162,6 +172,17 @@ export interface PackageLocalRuntimeExecutionPipelineCreateOptions {
 
 export interface PackageLocalRuntimeExecutionPipelineFactoryPort {
   create(options: PackageLocalRuntimeExecutionPipelineCreateOptions): unknown;
+}
+
+export interface PackageLocalAgentRuntimeDeps {
+  executionPipeline: unknown;
+  defaultContext: RuntimeContext;
+  mcpRegistry: PackageLocalRuntimeMcpRegistryPort;
+  subagentRegistry: PackageLocalRuntimeSubagentRegistryPort;
+  backgroundAgentManager: PackageLocalRuntimeBackgroundAgentManagerPort;
+  hookRuntime: PackageLocalRuntimeHookRuntimePort;
+  runtimeManaged: true;
+  logger: PackageLocalRuntimeLoggerPort;
 }
 
 export interface PackageLocalRuntimeMcpToolCapability {
@@ -255,7 +276,11 @@ export class PackageLocalSessionRuntime {
   readonly subagentRegistry: PackageLocalRuntimeSubagentRegistryPort;
   readonly permissionHooks: PackageLocalRuntimePermissionHookPort;
   readonly hookManager: PackageLocalRuntimeHookManagerPort;
+  readonly hookRuntime: PackageLocalRuntimeHookRuntimePort;
+  readonly backgroundAgentManager: PackageLocalRuntimeBackgroundAgentManagerPort;
   readonly executionPipelineFactory: PackageLocalRuntimeExecutionPipelineFactoryPort;
+  private executionPipelineCreated = false;
+  private executionPipeline: unknown;
 
   constructor(options: PackageLocalSessionRuntimeOptions) {
     this.sessionId = options.sessionId;
@@ -276,7 +301,10 @@ export class PackageLocalSessionRuntime {
     this.builtinToolProvider = options.builtinToolProvider;
     this.subagentRegistry = options.subagentRegistry ?? createNoopRuntimeSubagentRegistry();
     this.permissionHooks = options.permissionHooks ?? createNoopRuntimePermissionHooks();
-    this.hookManager = options.hookManager ?? createNoopRuntimeHookManager();
+    this.hookRuntime = options.hookRuntime ?? createNoopRuntimeHookRuntime();
+    this.hookManager = options.hookManager ?? this.hookRuntime;
+    this.backgroundAgentManager =
+      options.backgroundAgentManager ?? createNoopRuntimeBackgroundAgentManager();
     this.executionPipelineFactory =
       options.executionPipelineFactory ?? createNoopRuntimeExecutionPipelineFactory();
   }
@@ -559,6 +587,10 @@ export class PackageLocalSessionRuntime {
   }
 
   createExecutionPipeline(): unknown {
+    if (this.executionPipelineCreated) {
+      return this.executionPipeline;
+    }
+
     const permissionConfig: Required<PermissionsConfig> = {
       allow: [],
       ask: [],
@@ -566,7 +598,7 @@ export class PackageLocalSessionRuntime {
       ...this.bladeConfig.permissions,
     };
 
-    return this.executionPipelineFactory.create({
+    this.executionPipeline = this.executionPipelineFactory.create({
       permissionConfig,
       permissionMode: this.options.permissionMode ?? PermissionMode.DEFAULT,
       maxHistorySize: 1000,
@@ -574,6 +606,21 @@ export class PackageLocalSessionRuntime {
       logger: this.logger,
       toolCatalog: this.toolCatalog,
     });
+    this.executionPipelineCreated = true;
+    return this.executionPipeline;
+  }
+
+  getAgentRuntimeDeps(): PackageLocalAgentRuntimeDeps {
+    return {
+      executionPipeline: this.createExecutionPipeline(),
+      defaultContext: this.defaultContext,
+      mcpRegistry: this.mcpRegistry,
+      subagentRegistry: this.subagentRegistry,
+      backgroundAgentManager: this.backgroundAgentManager,
+      hookRuntime: this.hookRuntime,
+      runtimeManaged: true,
+      logger: this.logger,
+    };
   }
 }
 
@@ -645,10 +692,15 @@ function createNoopRuntimePermissionHooks(): PackageLocalRuntimePermissionHookPo
   };
 }
 
-function createNoopRuntimeHookManager(): PackageLocalRuntimeHookManagerPort {
+function createNoopRuntimeHookRuntime(): PackageLocalRuntimeHookRuntimePort {
   return {
     enable() {},
+    setTraceCollector() {},
   };
+}
+
+function createNoopRuntimeBackgroundAgentManager(): PackageLocalRuntimeBackgroundAgentManagerPort {
+  return {};
 }
 
 function createNoopRuntimeExecutionPipelineFactory(): PackageLocalRuntimeExecutionPipelineFactoryPort {

@@ -1026,4 +1026,56 @@ describe('agent-sdk package-local session runtime shell', () => {
     });
     expect(createOptions?.permissionHandler).toEqual(expect.any(Function));
   });
+
+  it('projects package-local agent runtime dependencies through injected ports', () => {
+    const pipeline = { id: 'pipeline' };
+    const context = {
+      environment: {
+        cwd: '/workspace',
+      },
+    };
+    const mcpRegistry = {
+      disconnectAll: vi.fn(async () => {}),
+      getCapabilities: vi.fn(async () => []),
+    };
+    const subagentRegistry = {
+      setLogger: vi.fn(),
+      setProjectDir: vi.fn(),
+      loadFromStandardLocations: vi.fn(() => 0),
+      register: vi.fn(),
+    };
+    const hookRuntime = {
+      enable: vi.fn(),
+      setTraceCollector: vi.fn(),
+    };
+    const backgroundAgentManager = {
+      run: vi.fn(),
+    };
+    const logger = { warn: vi.fn(), debug: vi.fn() };
+    const create = vi.fn(() => pipeline);
+    const runtime = new PackageLocalSessionRuntime({
+      sessionId: 'session-1',
+      options,
+      bladeConfig,
+      defaultContext: context,
+      mcpRegistry,
+      subagentRegistry,
+      hookRuntime,
+      backgroundAgentManager,
+      logger,
+      executionPipelineFactory: { create },
+    });
+
+    expect(runtime.getAgentRuntimeDeps()).toEqual({
+      executionPipeline: pipeline,
+      defaultContext: context,
+      mcpRegistry,
+      subagentRegistry,
+      backgroundAgentManager,
+      hookRuntime,
+      runtimeManaged: true,
+      logger,
+    });
+    expect(create).toHaveBeenCalledTimes(1);
+  });
 });

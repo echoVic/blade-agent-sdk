@@ -518,6 +518,10 @@ describe('monorepo topology', () => {
     expect(packageLocalRuntimeInstanceSource).toContain(
       'PackageLocalRuntimeExecutionPipelineFactoryPort',
     );
+    expect(packageLocalRuntimeInstanceSource).toContain('getAgentRuntimeDeps');
+    expect(packageLocalRuntimeInstanceSource).toContain('PackageLocalAgentRuntimeDeps');
+    expect(packageLocalRuntimeInstanceSource).toContain('PackageLocalRuntimeBackgroundAgentManagerPort');
+    expect(packageLocalRuntimeInstanceSource).toContain('PackageLocalRuntimeHookRuntimePort');
     expect(existsSync('packages/agent-sdk/src/session/packageLocalLegacyRuntimeFactory.ts')).toBe(
       true,
     );
