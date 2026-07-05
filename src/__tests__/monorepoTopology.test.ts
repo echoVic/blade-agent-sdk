@@ -412,5 +412,8 @@ describe('monorepo topology', () => {
     expect(packageVerifierSource).toContain('package/dist/session/factory.d.ts');
     expect(packageVerifierSource).toContain('fork(options');
     expect(packageVerifierSource).toContain('prompt(message');
+    expect(packageVerifierSource).toContain('verifyNoEagerLegacySessionRuntime');
+    expect(packageVerifierSource).toContain('collectPackedStaticImports');
+    expect(packageVerifierSource).toContain('package/dist/session/index.js');
   });
 });

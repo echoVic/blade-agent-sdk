@@ -356,6 +356,7 @@ Status:
 - Forty-third adapter increment complete: `@blade-ai/agent-sdk/session` now owns the `persistSession: false` resume/fork guards inside the package-local lifecycle facade instead of the public entry wrapper. The public session entry now only injects the configured runtime factory into `createSession`, `resumeSession`, `forkSession`, and `prompt`, while lifecycle invariants live with the package-local session control flow.
 - Forty-fourth adapter increment complete: `SessionRuntimeFactory` is now a narrow primitive port with only `create()` and `resume()`. Package-local lifecycle code owns `forkSession()` and `prompt()` composition, and both the default runtime factory and the legacy root adapter no longer expose `fork()` or `prompt()` escape hatches that could bypass the session lifecycle facade.
 - Forty-fifth adapter increment complete: the default `@blade-ai/agent-sdk/session` runtime factory now lazy-loads the temporary legacy root session adapter on first `create()`/`resume()` use instead of statically importing it. This keeps the public session entry on package-local lifecycle code during module load and narrows the remaining root implementation dependency to a deferred server-runtime boundary.
+- Forty-sixth adapter increment complete: the temporary legacy root session adapter remains behind a lazy boundary, and package verification now inspects the packed public `dist/session/index.js` static import closure to ensure legacy root session runtime content is not eagerly bundled into the session entry. Dynamic loading of the temporary adapter remains allowed until the package-local `Session` runtime fully replaces it.
 
 ### Phase 5: Production Verification Chain
 
@@ -407,6 +408,7 @@ Status:
 - Twenty-fourth verification-chain increment complete: topology tests now require `SessionRuntimeFactory` and the default runtime factory to stay limited to `create()`/`resume()` primitives, preventing future `fork()` or `prompt()` runtime hooks from bypassing package-local lifecycle ownership.
 - Twenty-fifth verification-chain increment complete: package verification now rejects packed `@blade-ai/agent-sdk` session factory declarations that expose `fork(options)` or `prompt(message)`, so the published `SessionRuntimeFactory` contract remains a narrow `create()`/`resume()` primitive port.
 - Twenty-sixth verification-chain increment complete: topology tests now reject static `legacySessionAdapter` imports from the default session runtime factory and require the adapter to be loaded through `import('./legacySessionAdapter.js')`, preserving a lazy boundary around the remaining root session implementation.
+- Twenty-seventh verification-chain increment complete: `pnpm run verify:packages` now extracts the packed `@blade-ai/agent-sdk` tarball, walks the static import closure from `package/dist/session/index.js`, and rejects eager inclusion of legacy root session runtime markers while still permitting the temporary adapter to remain behind a dynamic `import()` boundary.
 
 Commit:
 

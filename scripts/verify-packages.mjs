@@ -394,6 +394,67 @@ function verifyForbiddenFileContents(spec, tarballPath, tempDir) {
   }
 }
 
+function resolvePackedRelativeImport(fromFile, specifier, packageDir) {
+  if (!specifier.startsWith('.')) return null;
+
+  const candidate = resolve(dirname(fromFile), specifier);
+  const candidates = [
+    candidate,
+    `${candidate}.js`,
+    join(candidate, 'index.js'),
+  ];
+  const resolved = candidates.find((file) => existsSync(file));
+  if (!resolved) return null;
+  if (!resolved.startsWith(packageDir)) {
+    throw new Error(`Packed import escapes package directory: ${fromFile} -> ${specifier}`);
+  }
+  return resolved;
+}
+
+function collectPackedStaticImports(entryFile, packageDir, seen = new Set()) {
+  if (seen.has(entryFile)) return seen;
+  seen.add(entryFile);
+
+  const source = readFileSync(entryFile, 'utf8');
+  const staticImportPattern = /\bimport\s+(?:[\w*{}\s,]+from\s*)?["']([^"']+)["']/g;
+  for (const match of source.matchAll(staticImportPattern)) {
+    const child = resolvePackedRelativeImport(entryFile, match[1], packageDir);
+    if (child) {
+      collectPackedStaticImports(child, packageDir, seen);
+    }
+  }
+  return seen;
+}
+
+function verifyNoEagerLegacySessionRuntime(spec, tarballPath, tempDir) {
+  if (spec.name !== '@blade-ai/agent-sdk') return;
+
+  const extractDir = join(tempDir, 'eager-session-runtime');
+  const packageDir = join(extractDir, 'package');
+  const sessionEntry = 'package/dist/session/index.js';
+  run('mkdir', ['-p', extractDir]);
+  run('tar', ['-xzf', tarballPath, '-C', extractDir]);
+
+  const eagerFiles = collectPackedStaticImports(join(extractDir, sessionEntry), packageDir);
+  const forbiddenMarkers = [
+    '../../src/session/Session.ts',
+    '../../src/session/SessionRuntime.ts',
+    '../../src/session/SessionStore.ts',
+  ];
+
+  for (const filePath of eagerFiles) {
+    const source = readFileSync(filePath, 'utf8');
+    const relativeFilePath = filePath.slice(`${extractDir}/`.length);
+    for (const marker of forbiddenMarkers) {
+      if (source.includes(marker)) {
+        throw new Error(
+          `${spec.name} ${relativeFilePath}: public session entry eagerly includes legacy root session runtime marker ${marker}`,
+        );
+      }
+    }
+  }
+}
+
 function installConsumer(tarballs, tempDir) {
   const consumerDir = join(tempDir, 'consumer');
   run('mkdir', ['-p', consumerDir]);
@@ -439,6 +500,7 @@ try {
     verifyTarballContents(spec, tarballPath);
     verifyPackedManifest(spec, tarballPath, tempDir);
     verifyForbiddenFileContents(spec, tarballPath, tempDir);
+    verifyNoEagerLegacySessionRuntime(spec, tarballPath, tempDir);
     tarballs.set(spec.name, tarballPath);
   }
 
