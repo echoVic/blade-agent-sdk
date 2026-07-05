@@ -38,6 +38,14 @@ export interface PackageLocalRuntimeWorkspaceUpdate {
 export interface PackageLocalRuntimeMcpRegistryPort {
   disconnectAll(): Promise<void>;
   getCapabilities(): Promise<PackageLocalRuntimeMcpServerCapability[]>;
+  ensureServerRegistered?(
+    serverName: string,
+    config: McpServerConfig | SdkMcpServerHandle,
+  ): Promise<void>;
+  connectServer?(serverName: string): Promise<void>;
+  disconnectServer?(serverName: string): Promise<void>;
+  reconnectServer?(serverName: string): Promise<void>;
+  refreshTools?(serverNames: string[]): Promise<void>;
 }
 
 export interface PackageLocalRuntimeMcpToolCapability {
@@ -171,6 +179,47 @@ export class PackageLocalSessionRuntime {
       })),
     );
   }
+
+  async mcpConnect(serverName: string): Promise<void> {
+    await this.ensureMcpServerRegistered(serverName);
+    await this.callMcpRegistryMethod('connectServer', serverName);
+    await this.refreshMcpTools([serverName]);
+  }
+
+  async mcpDisconnect(serverName: string): Promise<void> {
+    await this.callMcpRegistryMethod('disconnectServer', serverName);
+    await this.refreshMcpTools([serverName]);
+  }
+
+  async mcpReconnect(serverName: string): Promise<void> {
+    await this.ensureMcpServerRegistered(serverName);
+    await this.callMcpRegistryMethod('reconnectServer', serverName);
+    await this.refreshMcpTools([serverName]);
+  }
+
+  private async ensureMcpServerRegistered(serverName: string): Promise<void> {
+    const config = this.options.mcpServers?.[serverName];
+    if (!config) {
+      throw new Error(`MCP server "${serverName}" not found in configuration`);
+    }
+
+    await this.mcpRegistry.ensureServerRegistered?.(serverName, config);
+  }
+
+  private async refreshMcpTools(serverNames: string[]): Promise<void> {
+    await this.mcpRegistry.refreshTools?.(serverNames);
+  }
+
+  private async callMcpRegistryMethod(
+    method: 'connectServer' | 'disconnectServer' | 'reconnectServer',
+    serverName: string,
+  ): Promise<void> {
+    const action = this.mcpRegistry[method];
+    if (!action) {
+      throw new Error(`Package-local MCP registry port does not implement ${method}`);
+    }
+    await action.call(this.mcpRegistry, serverName);
+  }
 }
 
 function createNoopRuntimeSessionStore(): PackageLocalRuntimeSessionStorePort {
@@ -194,5 +243,10 @@ function createNoopRuntimeMcpRegistry(): PackageLocalRuntimeMcpRegistryPort {
     async getCapabilities() {
       return [];
     },
+    async ensureServerRegistered() {},
+    async connectServer() {},
+    async disconnectServer() {},
+    async reconnectServer() {},
+    async refreshTools() {},
   };
 }

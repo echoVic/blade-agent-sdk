@@ -306,4 +306,60 @@ describe('agent-sdk package-local session runtime shell', () => {
       },
     ]);
   });
+
+  it('owns MCP action lifecycle through an injected MCP registry port', async () => {
+    const calls: string[] = [];
+    const remoteConfig = {
+      command: 'node',
+      args: ['server.js'],
+    };
+    const runtime = new PackageLocalSessionRuntime({
+      sessionId: 'session-1',
+      options: {
+        ...options,
+        mcpServers: {
+          remote: remoteConfig,
+        },
+      },
+      bladeConfig,
+      defaultContext: {},
+      mcpRegistry: {
+        disconnectAll: vi.fn(async () => {}),
+        getCapabilities: vi.fn(async () => []),
+        ensureServerRegistered: vi.fn(async (serverName, config) => {
+          calls.push(`ensure:${serverName}:${config === remoteConfig}`);
+        }),
+        connectServer: vi.fn(async (serverName) => {
+          calls.push(`connect:${serverName}`);
+        }),
+        disconnectServer: vi.fn(async (serverName) => {
+          calls.push(`disconnect:${serverName}`);
+        }),
+        reconnectServer: vi.fn(async (serverName) => {
+          calls.push(`reconnect:${serverName}`);
+        }),
+        refreshTools: vi.fn(async (serverNames) => {
+          calls.push(`refresh:${serverNames.join(',')}`);
+        }),
+      },
+    });
+
+    await runtime.mcpConnect('remote');
+    await runtime.mcpDisconnect('remote');
+    await runtime.mcpReconnect('remote');
+
+    await expect(runtime.mcpConnect('missing')).rejects.toThrow(
+      'MCP server "missing" not found in configuration',
+    );
+    expect(calls).toEqual([
+      'ensure:remote:true',
+      'connect:remote',
+      'refresh:remote',
+      'disconnect:remote',
+      'refresh:remote',
+      'ensure:remote:true',
+      'reconnect:remote',
+      'refresh:remote',
+    ]);
+  });
 });
