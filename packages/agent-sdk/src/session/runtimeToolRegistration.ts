@@ -18,12 +18,43 @@ export interface PackageLocalRuntimeCustomToolSource {
   sourceId: 'session';
 }
 
+export interface PackageLocalRuntimeBuiltinToolSource {
+  kind: 'builtin';
+  trustLevel: 'trusted';
+  sourceId: 'builtin';
+}
+
 export interface PackageLocalRuntimeCustomToolRegistrationOptions<
   TTool extends PackageLocalRuntimeNamedTool,
 > {
   definitions?: readonly PackageLocalRuntimeToolDefinition[];
   customToolFactory?: PackageLocalRuntimeCustomToolFactoryPort<TTool>;
   registerTools(tools: TTool[], source: PackageLocalRuntimeCustomToolSource): void;
+}
+
+export interface PackageLocalRuntimeBuiltinToolContext<TMcpRegistry> {
+  sessionId: string;
+  configDir: string | undefined;
+  mcpRegistry: TMcpRegistry;
+  includeMcpProtocolTools: false;
+}
+
+export interface PackageLocalRuntimeBuiltinToolProviderPort<
+  TTool extends PackageLocalRuntimeNamedTool,
+  TMcpRegistry,
+> {
+  getTools(context: PackageLocalRuntimeBuiltinToolContext<TMcpRegistry>): Promise<TTool[]>;
+}
+
+export interface PackageLocalRuntimeBuiltinToolRegistrationOptions<
+  TTool extends PackageLocalRuntimeNamedTool,
+  TMcpRegistry,
+> {
+  sessionId: string;
+  storageRoot?: string;
+  mcpRegistry: TMcpRegistry;
+  builtinToolProvider?: PackageLocalRuntimeBuiltinToolProviderPort<TTool, TMcpRegistry>;
+  registerTools(tools: TTool[], source: PackageLocalRuntimeBuiltinToolSource): void;
 }
 
 export function registerPackageLocalRuntimeCustomTools<
@@ -44,5 +75,24 @@ export function registerPackageLocalRuntimeCustomTools<
     kind: 'custom',
     trustLevel: 'workspace',
     sourceId: 'session',
+  });
+}
+
+export async function registerPackageLocalRuntimeBuiltinTools<
+  TTool extends PackageLocalRuntimeNamedTool,
+  TMcpRegistry,
+>(options: PackageLocalRuntimeBuiltinToolRegistrationOptions<TTool, TMcpRegistry>): Promise<void> {
+  const tools =
+    (await options.builtinToolProvider?.getTools({
+      sessionId: options.sessionId,
+      configDir: options.storageRoot,
+      mcpRegistry: options.mcpRegistry,
+      includeMcpProtocolTools: false,
+    })) ?? [];
+
+  options.registerTools(tools, {
+    kind: 'builtin',
+    trustLevel: 'trusted',
+    sourceId: 'builtin',
   });
 }

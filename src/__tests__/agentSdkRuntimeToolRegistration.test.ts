@@ -79,4 +79,43 @@ describe('agent-sdk package-local runtime tool registration helpers', () => {
       }),
     ).toThrow('Package-local custom tool factory port is required to register tools');
   });
+
+  it('registers builtin tools through provider and registration ports without runtime state', async () => {
+    expect(existsSync(toolRegistrationSourcePath)).toBe(true);
+
+    const { registerPackageLocalRuntimeBuiltinTools } = await import(toolRegistrationModulePath);
+    const mcpRegistry = {};
+    const registered: unknown[] = [];
+
+    await registerPackageLocalRuntimeBuiltinTools({
+      sessionId: 'session-1',
+      storageRoot: '/tmp/blade',
+      mcpRegistry,
+      builtinToolProvider: {
+        async getTools(context: unknown) {
+          expect(context).toEqual({
+            sessionId: 'session-1',
+            configDir: '/tmp/blade',
+            mcpRegistry,
+            includeMcpProtocolTools: false,
+          });
+          return [{ name: 'read' }, { name: 'write' }];
+        },
+      },
+      registerTools(tools: Array<{ name: string }>, source: unknown) {
+        registered.push({ tools, source });
+      },
+    });
+
+    expect(registered).toEqual([
+      {
+        tools: [{ name: 'read' }, { name: 'write' }],
+        source: {
+          kind: 'builtin',
+          trustLevel: 'trusted',
+          sourceId: 'builtin',
+        },
+      },
+    ]);
+  });
 });

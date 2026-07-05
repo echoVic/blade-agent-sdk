@@ -73,7 +73,10 @@ import {
 import { createPackageLocalRuntimeNoopPorts } from './runtimeNoopPorts.js';
 import { packageLocalSubagentConfigFromDefinition } from './runtimeSubagents.js';
 import { filterPackageLocalRuntimeTools } from './runtimeToolFilters.js';
-import { registerPackageLocalRuntimeCustomTools } from './runtimeToolRegistration.js';
+import {
+  registerPackageLocalRuntimeBuiltinTools,
+  registerPackageLocalRuntimeCustomTools,
+} from './runtimeToolRegistration.js';
 import {
   createPackageLocalRuntimePermissionHandler,
   type PackageLocalRuntimePermissionHookPort,
@@ -509,17 +512,14 @@ export class PackageLocalSessionRuntime {
   }
 
   async registerBuiltinTools(): Promise<void> {
-    const tools = await this.builtinToolProvider?.getTools({
+    await registerPackageLocalRuntimeBuiltinTools({
       sessionId: this.sessionId,
-      configDir: this.storageRoot,
+      storageRoot: this.storageRoot,
       mcpRegistry: this.mcpRegistry,
-      includeMcpProtocolTools: false,
-    });
-
-    this.registerTools(tools ?? [], {
-      kind: 'builtin',
-      trustLevel: 'trusted',
-      sourceId: 'builtin',
+      builtinToolProvider: this.builtinToolProvider,
+      registerTools: (tools, source) => {
+        this.registerTools(tools, source);
+      },
     });
   }
 

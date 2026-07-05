@@ -685,7 +685,9 @@ describe('monorepo topology', () => {
     expect(existsSync('packages/agent-sdk/src/session/runtimeToolRegistration.ts')).toBe(true);
     expect(runtimeToolRegistrationSource).not.toContain('../../../../src/');
     expect(runtimeToolRegistrationSource).toContain('registerPackageLocalRuntimeCustomTools');
+    expect(runtimeToolRegistrationSource).toContain('registerPackageLocalRuntimeBuiltinTools');
     expect(packageLocalRuntimeInstanceSource).toContain('registerPackageLocalRuntimeCustomTools');
+    expect(packageLocalRuntimeInstanceSource).toContain('registerPackageLocalRuntimeBuiltinTools');
     expect(packageLocalRuntimeInstanceSource).toContain('registerCustomTools');
     expect(packageLocalRuntimeInstanceSource).toContain('PackageLocalRuntimeCustomToolFactoryPort');
     expect(packageLocalRuntimeInstanceSource).not.toContain(
@@ -697,6 +699,8 @@ describe('monorepo topology', () => {
     expect(packageLocalRuntimeInstanceSource).toContain('registerBuiltinTools');
     expect(packageLocalRuntimeInstanceSource).toContain('PackageLocalRuntimeBuiltinToolProviderPort');
     expect(packageLocalRuntimeInstanceSource).toContain('PackageLocalRuntimeBuiltinToolContext');
+    expect(packageLocalRuntimeInstanceSource).not.toContain('includeMcpProtocolTools: false');
+    expect(packageLocalRuntimeInstanceSource).not.toContain('builtinToolProvider?.getTools');
     expect(packageLocalRuntimeInstanceSource).toContain('initializeSubagents');
     expect(packageLocalRuntimeInstanceSource).toContain('PackageLocalRuntimeSubagentRegistryPort');
     expect(existsSync('packages/agent-sdk/src/session/runtimeSubagents.ts')).toBe(true);
