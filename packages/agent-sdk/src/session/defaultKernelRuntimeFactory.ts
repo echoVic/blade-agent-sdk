@@ -48,6 +48,9 @@ function createJsonlRuntimeSessionStore(
     async loadSession(sessionId) {
       return (await store.loadState(sessionId)) !== null;
     },
+    async loadMessages(sessionId) {
+      return store.loadMessages(sessionId);
+    },
     async appendMessage(sessionId, message, context) {
       await store.appendMessage(sessionId, message, context);
     },

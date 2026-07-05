@@ -101,6 +101,7 @@ describe('agent-sdk package-local session runtime shell', () => {
           calls.push(`load:${sessionId}`);
           return sessionId === 'existing-session';
         }),
+        loadMessages: vi.fn(async () => []),
         appendMessage: vi.fn(),
         forkState: vi.fn(async () => null),
         writeForkState: vi.fn(async () => null),
@@ -1101,6 +1102,7 @@ describe('agent-sdk package-local session runtime shell', () => {
     const sessionStore = {
       createSession: vi.fn(async () => {}),
       loadSession: vi.fn(async () => true),
+      loadMessages: vi.fn(async () => []),
       appendMessage: vi.fn(),
       forkState: vi.fn(async () => null),
       writeForkState: vi.fn(async () => null),

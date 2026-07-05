@@ -436,4 +436,43 @@ describe('agent-sdk default kernel runtime factory', () => {
       },
     });
   });
+
+  it('hydrates resumed session messages from package-local JSONL history', async () => {
+    const workspaceRoot = createWorkspaceRoot();
+    const store = new JsonlSessionStore(workspaceRoot);
+    await store.writeForkState('history-session', {
+      sessionId: 'root-session',
+      messages: [
+        { id: 'message-1', role: 'user', content: 'remember me' },
+        { id: 'message-2', role: 'assistant', content: 'remembered' },
+      ],
+      messageIds: ['message-1', 'message-2'],
+      lastActivity: Date.now(),
+    });
+    const factory = createDefaultKernelSessionRuntimeFactory({
+      createSessionId: () => 'unused-session',
+      createTurnId: () => 'unused-turn',
+      runtime: {
+        kernelModelResolver: {
+          resolve() {
+            return {
+              model,
+              modelRequestDefaults: { model: 'test-model' },
+            };
+          },
+        },
+      },
+    });
+
+    const session = await factory.resume({
+      ...options,
+      storagePath: workspaceRoot,
+      sessionId: 'history-session',
+    });
+
+    expect(session.messages).toEqual([
+      { id: 'message-1', role: 'user', content: 'remember me' },
+      { id: 'message-2', role: 'assistant', content: 'remembered' },
+    ]);
+  });
 });

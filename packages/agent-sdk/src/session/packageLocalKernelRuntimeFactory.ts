@@ -5,7 +5,7 @@ import {
 } from './packageLocalRuntimeFactory.js';
 import type { PackageLocalSessionRuntimePort } from './sessionInstance.js';
 import type { SessionRuntimeFactory } from './factory.js';
-import type { SessionId } from './types.js';
+import type { SessionId, SessionMessage } from './types.js';
 
 export interface PackageLocalKernelSessionRuntimeFactoryOptions {
   createSessionId: () => SessionId;
@@ -17,6 +17,7 @@ export interface PackageLocalKernelSessionRuntimeFactoryOptions {
 export interface PackageLocalKernelSessionRuntime extends KernelStreamBridgeRuntime {
   ensureSessionCreated?: () => Promise<void> | void;
   ensureSessionLoaded?: () => Promise<void> | void;
+  loadMessages?: () => Promise<SessionMessage[]> | SessionMessage[];
 }
 
 export function createPackageLocalKernelSessionRuntimeFactory(
@@ -41,9 +42,10 @@ export function createPackageLocalKernelSessionRuntimeFactory(
       const runtime = getRuntime(context);
       if (context.isResume) {
         await runtime.ensureSessionLoaded?.();
-        return;
+        return { messages: await runtime.loadMessages?.() };
       }
       await runtime.ensureSessionCreated?.();
+      return { messages: await runtime.loadMessages?.() };
     },
     async cleanup(context) {
       await options.cleanup?.(context);

@@ -7,6 +7,7 @@ import {
 import type {
   ResumeOptions,
   SessionId,
+  SessionMessage,
   SessionOptions,
 } from './types.js';
 
@@ -14,6 +15,10 @@ export interface PackageLocalSessionRuntimeContext {
   sessionId: SessionId;
   options: SessionOptions;
   isResume: boolean;
+}
+
+export interface PackageLocalSessionInitialState {
+  messages?: SessionMessage[];
 }
 
 export interface PackageLocalSessionRuntimeFactoryOptions {
@@ -25,17 +30,26 @@ export interface PackageLocalSessionRuntimeFactoryOptions {
   createSessionRuntimePort?: (
     context: PackageLocalSessionRuntimeContext,
   ) => PackageLocalSessionRuntimePort;
-  initialize?: (context: PackageLocalSessionRuntimeContext) => Promise<void> | void;
+  initialize?: (
+    context: PackageLocalSessionRuntimeContext,
+  ) =>
+    | Promise<PackageLocalSessionInitialState | undefined>
+    | PackageLocalSessionInitialState
+    | undefined;
   cleanup?: (context: PackageLocalSessionRuntimeContext) => Promise<void> | void;
 }
 
 export function createPackageLocalSessionRuntimeFactory(
   options: PackageLocalSessionRuntimeFactoryOptions,
 ): SessionRuntimeFactory {
-  function createSessionFor(context: PackageLocalSessionRuntimeContext): PackageLocalSession {
+  function createSessionFor(
+    context: PackageLocalSessionRuntimeContext,
+    initialState?: PackageLocalSessionInitialState,
+  ): PackageLocalSession {
     return new PackageLocalSession({
       sessionId: context.sessionId,
       options: context.options,
+      initialMessages: initialState?.messages,
       createTurnId: options.createTurnId,
       streamTurn: options.createStreamTurn(context),
       runtime: options.createSessionRuntimePort?.(context),
@@ -50,8 +64,8 @@ export function createPackageLocalSessionRuntimeFactory(
         options: sessionOptions,
         isResume: false,
       };
-      await options.initialize?.(context);
-      return createSessionFor(context);
+      const initialState = await options.initialize?.(context);
+      return createSessionFor(context, initialState);
     },
 
     async resume(resumeOptions: ResumeOptions) {
@@ -61,8 +75,8 @@ export function createPackageLocalSessionRuntimeFactory(
         options: sessionOptions,
         isResume: true,
       };
-      await options.initialize?.(context);
-      return createSessionFor(context);
+      const initialState = await options.initialize?.(context);
+      return createSessionFor(context, initialState);
     },
   };
 }

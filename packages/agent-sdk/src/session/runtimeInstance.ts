@@ -41,6 +41,7 @@ import type {
   ISession,
   SessionHookEvent,
   SessionId,
+  SessionMessage,
   SessionOptions,
   HookCallback,
   StreamMessage,
@@ -78,6 +79,7 @@ export interface PackageLocalSessionRuntimeOptions {
 export interface PackageLocalRuntimeSessionStorePort {
   createSession(sessionId: SessionId): Promise<void>;
   loadSession(sessionId: SessionId): Promise<boolean>;
+  loadMessages(sessionId: SessionId): Promise<SessionMessage[]>;
   appendMessage(
     sessionId: SessionId,
     message: ModelMessage,
@@ -461,6 +463,10 @@ export class PackageLocalSessionRuntime {
     if (!loaded) {
       await this.sessionStore.createSession(this.sessionId);
     }
+  }
+
+  async loadMessages(): Promise<SessionMessage[]> {
+    return this.sessionStore.loadMessages(this.sessionId);
   }
 
   prepareTurn(snapshot: ContextSnapshot): void {
@@ -966,6 +972,9 @@ function createNoopRuntimeSessionStore(): PackageLocalRuntimeSessionStorePort {
     async createSession() {},
     async loadSession() {
       return false;
+    },
+    async loadMessages() {
+      return [];
     },
     appendMessage() {},
     async forkState() {

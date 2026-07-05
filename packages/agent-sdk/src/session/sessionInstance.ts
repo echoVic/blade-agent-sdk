@@ -38,6 +38,7 @@ export interface PackageLocalSessionOptions {
   options: SessionOptions;
   streamTurn: PackageLocalSessionStreamTurn;
   createTurnId: () => string;
+  initialMessages?: SessionMessage[];
   cleanup?: SessionCloseCleanup;
   runtime?: PackageLocalSessionRuntimePort;
   delegate?: PackageLocalSessionDelegate;
@@ -87,6 +88,7 @@ export class PackageLocalSession implements ISession {
     turnAbort: this.turnAbort,
   });
   private readonly turns: SessionTurnController;
+  private readonly initialMessages: SessionMessage[];
   private defaultContext: RuntimeContext;
 
   constructor(options: PackageLocalSessionOptions) {
@@ -96,6 +98,7 @@ export class PackageLocalSession implements ISession {
     this.cleanup = options.cleanup;
     this.runtime = options.runtime;
     this.delegate = options.delegate;
+    this.initialMessages = options.initialMessages ?? [];
     this.defaultContext = options.options.defaultContext ?? {};
     this.turns = new SessionTurnController({
       sessionId: options.sessionId,
@@ -108,7 +111,7 @@ export class PackageLocalSession implements ISession {
   }
 
   get messages(): SessionMessage[] {
-    return this.delegate?.messages ?? [];
+    return this.delegate?.messages ?? this.initialMessages;
   }
 
   get isClosed(): boolean {
