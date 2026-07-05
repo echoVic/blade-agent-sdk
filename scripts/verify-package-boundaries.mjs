@@ -38,6 +38,7 @@ const manifestRules = [
     name: '@blade-ai/agent',
     packageJson: 'packages/agent/package.json',
     disallowedDependencies: [
+      [/^@blade-ai\/agent-sdk(?:\/|$)/, 'Agent kernel must not depend on the session SDK'],
       [/^@modelcontextprotocol(?:\/|$)/, 'Agent kernel must not depend on MCP SDKs'],
       [/^@ai-sdk(?:\/|$)/, 'Agent kernel must not depend on provider SDK implementations'],
       [/^ai$/, 'Agent kernel must not depend on provider runtime implementations'],

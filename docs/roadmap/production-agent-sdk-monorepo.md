@@ -546,6 +546,7 @@ Status:
 - One-hundred-first verification-chain increment complete: `pnpm run verify:packages` now writes and executes a packed temporary-consumer `consumer-runtime.mjs` file that imports public runtime subpaths, asserts key value exports for `@blade-ai/ai`, `@blade-ai/agent`, and `@blade-ai/agent-sdk`, and verifies type-only subpaths stay empty at runtime, proving published tarballs expose the intended Node ESM runtime surface rather than merely resolving module specifiers.
 - One-hundred-second verification-chain increment complete: `pnpm run verify:packages` now browser-bundles the packed `@blade-ai/agent` root and `kernel` subpath through the esbuild JS API, executes the bundle smoke, and scans it for Node-only markers, proving the runtime-independent agent kernel remains browser-bundle-safe after publish instead of relying only on source and manifest boundary checks.
 - One-hundred-third verification-chain increment complete: `pnpm run verify:boundaries` now rejects `@blade-ai/ai` manifest dependencies on `@blade-ai/agent` or `@blade-ai/agent-sdk`, proving provider-layer ownership cannot regress through package metadata before source imports are scanned.
+- One-hundred-fourth verification-chain increment complete: `pnpm run verify:boundaries` now rejects `@blade-ai/agent` manifest dependencies on `@blade-ai/agent-sdk`, proving the runtime-independent kernel cannot gain a session-layer dependency through package metadata even before source imports are scanned.
 
 Commit:
 

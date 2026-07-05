@@ -57,6 +57,25 @@ describe('package boundary verifier', () => {
     expect(result.stderr).toContain('Agent kernel');
   });
 
+  it('rejects session-sdk dependencies declared by the agent kernel manifest', () => {
+    const cwd = createBoundaryFixture({
+      agentDependencies: {
+        '@blade-ai/agent-sdk': 'workspace:*',
+      },
+    });
+    const result = spawnSync(process.execPath, [
+      resolve('scripts/verify-package-boundaries.mjs'),
+    ], {
+      cwd,
+      encoding: 'utf8',
+    });
+
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain('packages/agent/package.json');
+    expect(result.stderr).toContain('@blade-ai/agent-sdk');
+    expect(result.stderr).toContain('Agent kernel');
+  });
+
   it('rejects upper-layer dependencies declared by the ai manifest', () => {
     const cwd = createBoundaryFixture({
       aiDependencies: {
