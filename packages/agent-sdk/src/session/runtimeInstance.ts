@@ -73,6 +73,7 @@ import {
 import { createPackageLocalRuntimeNoopPorts } from './runtimeNoopPorts.js';
 import { packageLocalSubagentConfigFromDefinition } from './runtimeSubagents.js';
 import { filterPackageLocalRuntimeTools } from './runtimeToolFilters.js';
+import { registerPackageLocalRuntimeCustomTools } from './runtimeToolRegistration.js';
 import {
   createPackageLocalRuntimePermissionHandler,
   type PackageLocalRuntimePermissionHookPort,
@@ -498,21 +499,12 @@ export class PackageLocalSessionRuntime {
   }
 
   registerCustomTools(): void {
-    const definitions = this.options.tools ?? [];
-    if (definitions.length === 0) {
-      return;
-    }
-
-    if (!this.customToolFactory) {
-      throw new Error('Package-local custom tool factory port is required to register tools');
-    }
-
-    const customToolFactory = this.customToolFactory;
-    const tools = definitions.map((definition) => customToolFactory.fromDefinition(definition));
-    this.registerTools(tools, {
-      kind: 'custom',
-      trustLevel: 'workspace',
-      sourceId: 'session',
+    registerPackageLocalRuntimeCustomTools({
+      definitions: this.options.tools,
+      customToolFactory: this.customToolFactory,
+      registerTools: (tools, source) => {
+        this.registerTools(tools, source);
+      },
     });
   }
 

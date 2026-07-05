@@ -481,6 +481,11 @@ describe('monorepo topology', () => {
     )
       ? readFileSync('packages/agent-sdk/src/session/runtimeToolFilters.ts', 'utf-8')
       : '';
+    const runtimeToolRegistrationSource = existsSync(
+      'packages/agent-sdk/src/session/runtimeToolRegistration.ts',
+    )
+      ? readFileSync('packages/agent-sdk/src/session/runtimeToolRegistration.ts', 'utf-8')
+      : '';
     const runtimePermissionsSource = existsSync(
       'packages/agent-sdk/src/session/runtimePermissions.ts',
     )
@@ -677,8 +682,18 @@ describe('monorepo topology', () => {
     expect(packageLocalRuntimeInstanceSource).not.toContain('removeMcpTools(serverName);');
     expect(packageLocalRuntimeInstanceSource).not.toContain('registerMcpTool(tool,');
     expect(packageLocalRuntimeInstanceSource).not.toContain('function packageLocalServerNameFromTool');
+    expect(existsSync('packages/agent-sdk/src/session/runtimeToolRegistration.ts')).toBe(true);
+    expect(runtimeToolRegistrationSource).not.toContain('../../../../src/');
+    expect(runtimeToolRegistrationSource).toContain('registerPackageLocalRuntimeCustomTools');
+    expect(packageLocalRuntimeInstanceSource).toContain('registerPackageLocalRuntimeCustomTools');
     expect(packageLocalRuntimeInstanceSource).toContain('registerCustomTools');
     expect(packageLocalRuntimeInstanceSource).toContain('PackageLocalRuntimeCustomToolFactoryPort');
+    expect(packageLocalRuntimeInstanceSource).not.toContain(
+      "throw new Error('Package-local custom tool factory port is required to register tools')",
+    );
+    expect(packageLocalRuntimeInstanceSource).not.toContain(
+      'definitions.map((definition) => customToolFactory.fromDefinition(definition))',
+    );
     expect(packageLocalRuntimeInstanceSource).toContain('registerBuiltinTools');
     expect(packageLocalRuntimeInstanceSource).toContain('PackageLocalRuntimeBuiltinToolProviderPort');
     expect(packageLocalRuntimeInstanceSource).toContain('PackageLocalRuntimeBuiltinToolContext');
