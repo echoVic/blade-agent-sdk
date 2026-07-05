@@ -733,10 +733,17 @@ describe('monorepo topology', () => {
     expect(existsSync('packages/agent-sdk/src/session/runtimeKernelTurnStream.ts')).toBe(true);
     expect(runtimeKernelTurnStreamSource).not.toContain('../../../../src/');
     expect(runtimeKernelTurnStreamSource).toContain('streamPackageLocalAgentKernelTurn');
+    expect(runtimeKernelTurnStreamSource).toContain('streamPackageLocalRuntimeAgentKernelTurn');
+    expect(runtimeKernelTurnStreamSource).toContain('resolvePackageLocalRuntimeKernelModel');
     expect(runtimeKernelTurnStreamSource).toContain('PackageLocalRuntimeAgentKernelStreamOptions');
     expect(runtimeKernelTurnStreamSource).toContain('streamWithPackageLocalRuntimeTraceCollector');
     expect(runtimeKernelTurnStreamSource).toContain('projectPackageLocalKernelEventToStreamMessages');
-    expect(packageLocalRuntimeInstanceSource).toContain('streamPackageLocalAgentKernelTurn');
+    expect(packageLocalRuntimeInstanceSource).toContain('streamPackageLocalRuntimeAgentKernelTurn');
+    expect(packageLocalRuntimeInstanceSource).not.toContain(
+      'this.traceManager.createRecorder(options.input)',
+    );
+    expect(packageLocalRuntimeInstanceSource).not.toContain('const kernel =');
+    expect(packageLocalRuntimeInstanceSource).not.toContain('const maxContextTokens =');
     expect(packageLocalRuntimeInstanceSource).not.toContain('kernel.runTurn({');
     expect(packageLocalRuntimeInstanceSource).not.toContain(
       'streamWithPackageLocalRuntimeTraceCollector({',

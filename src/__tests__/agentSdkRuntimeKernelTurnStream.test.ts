@@ -1,7 +1,10 @@
 import type { AgentStreamEvent } from '@blade-ai/agent';
 import { describe, expect, it, vi } from 'vitest';
 import type { TraceRecorder } from '../../packages/agent-sdk/src/observability/TraceRecorder.js';
-import { streamPackageLocalAgentKernelTurn } from '../../packages/agent-sdk/src/session/runtimeKernelTurnStream.js';
+import {
+  streamPackageLocalAgentKernelTurn,
+  streamPackageLocalRuntimeAgentKernelTurn,
+} from '../../packages/agent-sdk/src/session/runtimeKernelTurnStream.js';
 
 describe('agent-sdk package-local kernel turn stream helper', () => {
   it('projects kernel events and finalizes successful traces with retained usage', async () => {
@@ -121,6 +124,105 @@ describe('agent-sdk package-local kernel turn stream helper', () => {
     }).rejects.toThrow(error);
     expect(traceRecorder.finish).toHaveBeenCalledWith('error', {
       error: 'stream failed',
+    });
+  });
+
+  it('resolves the kernel model, creates a trace recorder, and delegates the kernel stream', async () => {
+    const model = {
+      generate: vi.fn(),
+      stream: vi.fn(),
+    };
+    const trace = { id: 'trace-3' };
+    const traceRecorder = {
+      finish: vi.fn(() => trace),
+    } as unknown as TraceRecorder;
+    const traceManager = {
+      createRecorder: vi.fn(() => traceRecorder),
+      remember: vi.fn(),
+      notifySink: vi.fn(async () => undefined),
+    };
+    const kernelModelResolver = {
+      resolve: vi.fn(() => ({
+        model,
+        modelRequestDefaults: {
+          maxContextTokens: 42,
+        },
+      })),
+    };
+    const createAgentKernel = vi.fn((_kernelOptions, _kernelModel) => ({
+      async *runTurn() {
+        yield {
+          type: 'usage',
+          usage: {
+            promptTokens: 2,
+            completionTokens: 4,
+            totalTokens: 6,
+          },
+        } satisfies AgentStreamEvent;
+        yield { type: 'result', content: 'done' } satisfies AgentStreamEvent;
+      },
+    }));
+
+    const messages = [];
+    for await (const message of streamPackageLocalRuntimeAgentKernelTurn({
+      sessionId: 'session-1',
+      streamOptions: {
+        input: 'hello',
+        modelId: 'glm-5.2',
+      },
+      bladeConfig: {
+        models: [],
+        currentModelId: 'default-model',
+      },
+      traceManager,
+      hookRuntime: {
+        enable: vi.fn(),
+        setTraceCollector: vi.fn(),
+      },
+      kernelModelResolver,
+      createAgentKernel,
+    })) {
+      messages.push(message);
+    }
+
+    expect(kernelModelResolver.resolve).toHaveBeenCalledWith({
+      bladeConfig: {
+        models: [],
+        currentModelId: 'default-model',
+      },
+      modelId: 'glm-5.2',
+    });
+    expect(traceManager.createRecorder).toHaveBeenCalledWith('hello');
+    expect(createAgentKernel).toHaveBeenCalledWith(
+      {
+        input: 'hello',
+        modelId: 'glm-5.2',
+        traceRecorder,
+      },
+      {
+        model,
+        modelRequestDefaults: {
+          maxContextTokens: 42,
+        },
+      },
+    );
+    expect(messages).toContainEqual({
+      type: 'usage',
+      usage: {
+        inputTokens: 2,
+        outputTokens: 4,
+        totalTokens: 6,
+        maxContextTokens: 42,
+      },
+      sessionId: 'session-1',
+    });
+    expect(traceRecorder.finish).toHaveBeenCalledWith('success', {
+      content: 'done',
+      usage: {
+        promptTokens: 2,
+        completionTokens: 4,
+        totalTokens: 6,
+      },
     });
   });
 });

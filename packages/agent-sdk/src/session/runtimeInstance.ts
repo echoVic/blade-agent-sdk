@@ -47,7 +47,7 @@ import {
   type PackageLocalRuntimeAgentKernelPort,
 } from './runtimeAgentKernels.js';
 import {
-  streamPackageLocalAgentKernelTurn,
+  streamPackageLocalRuntimeAgentKernelTurn,
   type PackageLocalRuntimeAgentKernelOptions,
   type PackageLocalRuntimeAgentKernelStreamOptions,
 } from './runtimeKernelTurnStream.js';
@@ -726,28 +726,15 @@ export class PackageLocalSessionRuntime {
   async *streamAgentKernelTurn(
     options: PackageLocalRuntimeAgentKernelStreamOptions,
   ): AsyncGenerator<StreamMessage> {
-    const kernelModel = resolvePackageLocalRuntimeKernelModel({
-      options,
-      bladeConfig: this.bladeConfig,
-      kernelModelResolver: this.kernelModelResolver,
-    });
-    const traceRecorder = options.traceRecorder ?? this.traceManager.createRecorder(options.input);
-    const kernel = this.createAgentKernelFromResolved(
-      {
-        ...options,
-        ...(traceRecorder ? { traceRecorder } : {}),
-      },
-      kernelModel,
-    );
-    const maxContextTokens = kernelModel.modelRequestDefaults?.maxContextTokens ?? 0;
-    yield* streamPackageLocalAgentKernelTurn({
+    yield* streamPackageLocalRuntimeAgentKernelTurn({
       sessionId: this.sessionId,
       streamOptions: options,
-      kernel,
-      traceRecorder,
+      bladeConfig: this.bladeConfig,
       traceManager: this.traceManager,
       hookRuntime: this.hookRuntime,
-      maxContextTokens,
+      kernelModelResolver: this.kernelModelResolver,
+      createAgentKernel: (kernelOptions, kernelModel) =>
+        this.createAgentKernelFromResolved(kernelOptions, kernelModel),
     });
   }
 

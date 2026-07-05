@@ -2,6 +2,7 @@ import type { ModelPort } from '@blade-ai/ai';
 import type { AgentModelRequestDefaults, AgentToolCall } from '@blade-ai/agent';
 import type { TraceRecorder } from '../observability/TraceRecorder.js';
 import type { ExecutionContext } from '../tools/types/index.js';
+import type { BladeConfig } from '../types/common.js';
 import type { SessionId, StreamMessage } from './types.js';
 import {
   projectPackageLocalKernelEventToStreamMessages,
@@ -16,7 +17,12 @@ import {
   updatePackageLocalKernelTraceFinalization,
   type PackageLocalKernelTraceFinalizationState,
 } from './runtimeKernelTraceFinalization.js';
-import type { PackageLocalRuntimeKernelModelOptions } from './runtimeKernelModels.js';
+import {
+  resolvePackageLocalRuntimeKernelModel,
+  type PackageLocalRuntimeKernelModelOptions,
+  type PackageLocalRuntimeKernelModelResolverPort,
+  type PackageLocalRuntimeResolvedKernelModel,
+} from './runtimeKernelModels.js';
 import { createSessionTraceFinalizer, type SessionTraceManager } from './traces.js';
 
 export interface PackageLocalRuntimeAgentKernelOptions
@@ -48,6 +54,19 @@ export interface PackageLocalRuntimeKernelTurnStreamOptions {
   traceManager: Pick<SessionTraceManager, 'remember' | 'notifySink'>;
   hookRuntime: PackageLocalRuntimeHookRuntimePort;
   maxContextTokens: number;
+}
+
+export interface PackageLocalRuntimeKernelTurnResolutionOptions {
+  sessionId: SessionId;
+  streamOptions: PackageLocalRuntimeAgentKernelStreamOptions;
+  bladeConfig: BladeConfig;
+  traceManager: Pick<SessionTraceManager, 'createRecorder' | 'remember' | 'notifySink'>;
+  hookRuntime: PackageLocalRuntimeHookRuntimePort;
+  kernelModelResolver: PackageLocalRuntimeKernelModelResolverPort;
+  createAgentKernel: (
+    options: PackageLocalRuntimeAgentKernelOptions,
+    kernelModel: PackageLocalRuntimeResolvedKernelModel,
+  ) => PackageLocalRuntimeAgentKernelPort;
 }
 
 export async function* streamPackageLocalAgentKernelTurn(
@@ -86,4 +105,35 @@ export async function* streamPackageLocalAgentKernelTurn(
     await finishPackageLocalKernelTraceError(error, traceFinalizer);
     throw error;
   }
+}
+
+export async function* streamPackageLocalRuntimeAgentKernelTurn(
+  options: PackageLocalRuntimeKernelTurnResolutionOptions,
+): AsyncGenerator<StreamMessage> {
+  const kernelModel = resolvePackageLocalRuntimeKernelModel({
+    options: options.streamOptions,
+    bladeConfig: options.bladeConfig,
+    kernelModelResolver: options.kernelModelResolver,
+  });
+  const traceRecorder =
+    options.streamOptions.traceRecorder ??
+    options.traceManager.createRecorder(options.streamOptions.input);
+  const kernel = options.createAgentKernel(
+    {
+      ...options.streamOptions,
+      ...(traceRecorder ? { traceRecorder } : {}),
+    },
+    kernelModel,
+  );
+  const maxContextTokens = kernelModel.modelRequestDefaults?.maxContextTokens ?? 0;
+
+  yield* streamPackageLocalAgentKernelTurn({
+    sessionId: options.sessionId,
+    streamOptions: options.streamOptions,
+    kernel,
+    traceRecorder,
+    traceManager: options.traceManager,
+    hookRuntime: options.hookRuntime,
+    maxContextTokens,
+  });
 }
