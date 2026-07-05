@@ -5,7 +5,6 @@
     "outDir": "./dist",
     "noEmit": true,
     "paths": {
-      "@/*": ["../../src/*"],
       "@blade-ai/agent": ["../agent/src/index.ts"],
       "@blade-ai/ai": ["../ai/src/index.ts"],
       "@blade-ai/ai/chat": ["../ai/src/chat/index.ts"],
@@ -16,5 +15,5 @@
       "@blade-ai/ai/retry": ["../ai/src/retry/index.ts"]
     }
   },
-  "include": ["src/**/*", "../../src/**/*"]
+  "include": ["src/**/*"]
 }

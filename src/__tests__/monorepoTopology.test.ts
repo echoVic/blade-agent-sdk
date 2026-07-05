@@ -17,6 +17,7 @@ interface PackageJson {
     paths?: Record<string, string[]>;
   };
   files?: string[];
+  include?: string[];
   exclude?: string[];
   publishConfig?: Record<string, unknown>;
 }
@@ -653,6 +654,8 @@ describe('monorepo topology', () => {
       '@blade-ai/agent': ['../agent/src/index.ts'],
       '@blade-ai/ai': ['../ai/src/index.ts'],
     });
+    expect(sdkTsconfig.compilerOptions?.paths).not.toHaveProperty('@/*');
+    expect(sdkTsconfig.include).toEqual(['src/**/*']);
   });
 
   it('excludes test declarations from package build output', () => {
