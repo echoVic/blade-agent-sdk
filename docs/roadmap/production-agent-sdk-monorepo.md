@@ -372,6 +372,7 @@ Status:
 - Fifty-ninth adapter increment complete: `@blade-ai/agent-sdk/session` now owns session trace lifecycle management locally. `SessionTraceManager` creates package-local trace recorders with session metadata and initial prompt events, keeps the bounded trace history, and isolates trace sink failures from the session turn lifecycle without depending on legacy root `Session` private methods.
 - Sixtieth adapter increment complete: `@blade-ai/agent-sdk/session` now owns trace finalization locally. `createSessionTraceFinalizer()` closes a recorder at most once, remembers the completed trace, and notifies the trace sink through `SessionTraceManager`, preparing the package-local stream runtime to replace the legacy `finishTrace` closure.
 - Sixty-first adapter increment complete: `@blade-ai/agent-sdk/session` now owns the legacy agent-event to session-stream projection locally. `LegacyStreamEventProjector` maps legacy turn/content/thinking/tool/usage events into package-local `StreamMessage` contracts while updating trace spans, tool-call records, and usage state, preparing the future package-local stream runtime to replace the large legacy `Session.stream()` switch.
+- Sixty-second adapter increment complete: `@blade-ai/agent-sdk/session` now owns TaskCompleted hook reporting locally. `reportSessionTaskCompleted()` builds hook payloads from package-local user-message content helpers, including multimodal text/image metadata, so the future package-local stream runtime can report task completion without legacy `Session` private helpers.
 
 ### Phase 5: Production Verification Chain
 
@@ -439,6 +440,7 @@ Status:
 - Fortieth verification-chain increment complete: focused package-local tests now cover session trace manager behavior for observability disabled mode, recorder creation with metadata and prompt events, bounded trace retention, and sink failure isolation. Topology also requires the trace manager source to remain package-local without root imports.
 - Forty-first verification-chain increment complete: focused package-local tests now cover trace finalization behavior for disabled observability, single-finish idempotence, trace retention, sink notification, and sink failure isolation. Topology also requires the trace finalizer to remain in the package-local trace manager source.
 - Forty-second verification-chain increment complete: focused package-local tests now cover legacy stream event projection for turn/content/thinking/tool lifecycle/tool side-effect/usage events, including trace recording and tool-call state updates. Topology also requires the projector source to remain package-local without root imports.
+- Forty-third verification-chain increment complete: focused package-local tests now cover TaskCompleted hook reporting for text and multimodal prompts, proving task descriptions, image flags, image counts, summaries, and success flags are derived without legacy root helpers. Topology also requires the reporter source to remain package-local without root imports.
 
 Commit:
 
