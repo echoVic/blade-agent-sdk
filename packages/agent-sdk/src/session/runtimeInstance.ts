@@ -34,6 +34,7 @@ export interface PackageLocalSessionRuntimeOptions {
   builtinToolProvider?: PackageLocalRuntimeBuiltinToolProviderPort;
   subagentRegistry?: PackageLocalRuntimeSubagentRegistryPort;
   permissionHooks?: PackageLocalRuntimePermissionHookPort;
+  hookManager?: PackageLocalRuntimeHookManagerPort;
 }
 
 export interface PackageLocalRuntimeSessionStorePort {
@@ -139,6 +140,10 @@ export interface PackageLocalRuntimePermissionHookPort {
   ): Promise<PackageLocalRuntimePermissionHookResult>;
 }
 
+export interface PackageLocalRuntimeHookManagerPort {
+  enable(): void;
+}
+
 export interface PackageLocalRuntimeMcpToolCapability {
   name: string;
   description: string;
@@ -229,6 +234,7 @@ export class PackageLocalSessionRuntime {
   readonly builtinToolProvider?: PackageLocalRuntimeBuiltinToolProviderPort;
   readonly subagentRegistry: PackageLocalRuntimeSubagentRegistryPort;
   readonly permissionHooks: PackageLocalRuntimePermissionHookPort;
+  readonly hookManager: PackageLocalRuntimeHookManagerPort;
 
   constructor(options: PackageLocalSessionRuntimeOptions) {
     this.sessionId = options.sessionId;
@@ -249,6 +255,7 @@ export class PackageLocalSessionRuntime {
     this.builtinToolProvider = options.builtinToolProvider;
     this.subagentRegistry = options.subagentRegistry ?? createNoopRuntimeSubagentRegistry();
     this.permissionHooks = options.permissionHooks ?? createNoopRuntimePermissionHooks();
+    this.hookManager = options.hookManager ?? createNoopRuntimeHookManager();
   }
 
   getConfiguredMcpServers(): Record<string, McpServerConfig | SdkMcpServerHandle> {
@@ -521,6 +528,12 @@ export class PackageLocalSessionRuntime {
       async () => ({ behavior: 'ask' }) satisfies PermissionResult,
     ]);
   }
+
+  initializeHooks(): void {
+    if (this.options.hooks && Object.keys(this.options.hooks).length > 0) {
+      this.hookManager.enable();
+    }
+  }
 }
 
 function createNoopRuntimeSessionStore(): PackageLocalRuntimeSessionStorePort {
@@ -588,6 +601,12 @@ function createNoopRuntimePermissionHooks(): PackageLocalRuntimePermissionHookPo
     async applyPermissionRequestHooks(_toolName, input) {
       return { updatedInput: input };
     },
+  };
+}
+
+function createNoopRuntimeHookManager(): PackageLocalRuntimeHookManagerPort {
+  return {
+    enable() {},
   };
 }
 

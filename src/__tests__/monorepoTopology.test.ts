@@ -512,6 +512,8 @@ describe('monorepo topology', () => {
     expect(packageLocalRuntimeInstanceSource).toContain('PackageLocalRuntimePermissionHookPort');
     expect(packageLocalRuntimeInstanceSource).toContain('createPermissionHandlerFromCanUseTool');
     expect(packageLocalRuntimeInstanceSource).toContain('createCompositePermissionHandler');
+    expect(packageLocalRuntimeInstanceSource).toContain('initializeHooks');
+    expect(packageLocalRuntimeInstanceSource).toContain('PackageLocalRuntimeHookManagerPort');
     expect(existsSync('packages/agent-sdk/src/session/packageLocalLegacyRuntimeFactory.ts')).toBe(
       true,
     );

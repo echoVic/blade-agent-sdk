@@ -943,4 +943,34 @@ describe('agent-sdk package-local session runtime shell', () => {
     expect(request.input).toEqual({ value: 'from-hook' });
     expect(result).toEqual({ behavior: 'ask' });
   });
+
+  it('owns hook manager initialization through an injected hook manager port', () => {
+    const enable = vi.fn();
+    const runtimeWithoutHooks = new PackageLocalSessionRuntime({
+      sessionId: 'session-1',
+      options,
+      bladeConfig,
+      defaultContext: {},
+      hookManager: { enable },
+    });
+
+    runtimeWithoutHooks.initializeHooks();
+    expect(enable).not.toHaveBeenCalled();
+
+    const runtimeWithHooks = new PackageLocalSessionRuntime({
+      sessionId: 'session-2',
+      options: {
+        ...options,
+        hooks: {
+          [HookEvent.SessionStart]: [],
+        },
+      },
+      bladeConfig,
+      defaultContext: {},
+      hookManager: { enable },
+    });
+
+    runtimeWithHooks.initializeHooks();
+    expect(enable).toHaveBeenCalledTimes(1);
+  });
 });
