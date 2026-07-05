@@ -31,6 +31,7 @@ import {
   type PermissionResult,
 } from '../types/permissions.js';
 import type { TraceRecorder } from '../observability/TraceRecorder.js';
+import type { AgentTrace } from '../observability/types.js';
 import type { ToolKind } from '../tools/types/ToolKind.js';
 import type { ExecutionContext } from '../tools/types/index.js';
 import type {
@@ -46,6 +47,7 @@ import type {
   HookCallback,
   StreamMessage,
 } from './types.js';
+import { createSessionTraceFinalizer, SessionTraceManager } from './traces.js';
 import type { SessionSnapshot } from './store.js';
 
 export interface PackageLocalSessionRuntimeOptions {
@@ -414,6 +416,7 @@ export class PackageLocalSessionRuntime {
     sessionId: SessionId,
     options: SessionOptions,
   ) => Promise<ISession> | ISession;
+  private readonly traceManager: SessionTraceManager;
   private executionPipelineCreated = false;
   private executionPipeline: unknown;
 
@@ -448,6 +451,17 @@ export class PackageLocalSessionRuntime {
       options.kernelModelResolver ?? createNoopRuntimeKernelModelResolver();
     this.createForkSessionId = options.createForkSessionId;
     this.createForkSession = options.createForkSession;
+    this.traceManager = new SessionTraceManager({
+      sessionId: this.sessionId,
+      observability: options.options.observability,
+      metadata: {
+        model: options.options.model,
+        provider: options.options.provider.type,
+        permissionMode: options.options.permissionMode ?? PermissionMode.DEFAULT,
+      },
+      onSinkError: (error) =>
+        this.logger.warn('[PackageLocalSessionRuntime] Observability trace sink failed:', error),
+    });
   }
 
   getConfiguredMcpServers(): Record<string, McpServerConfig | SdkMcpServerHandle> {
@@ -525,6 +539,14 @@ export class PackageLocalSessionRuntime {
     }
 
     return this.createForkSession(forkedSessionId, this.options);
+  }
+
+  getLastTrace(): AgentTrace | undefined {
+    return this.traceManager.getLastTrace();
+  }
+
+  getTraces(): AgentTrace[] {
+    return this.traceManager.getTraces();
   }
 
   async mcpConnect(serverName: string): Promise<void> {
@@ -857,20 +879,53 @@ export class PackageLocalSessionRuntime {
     options: PackageLocalRuntimeAgentKernelStreamOptions,
   ): AsyncGenerator<StreamMessage> {
     const kernelModel = this.resolveAgentKernelModel(options);
-    const kernel = this.createAgentKernelFromResolved(options, kernelModel);
+    const traceRecorder = options.traceRecorder ?? this.traceManager.createRecorder(options.input);
+    const traceFinalizer = createSessionTraceFinalizer(traceRecorder, this.traceManager);
+    const kernel = this.createAgentKernelFromResolved(
+      {
+        ...options,
+        ...(traceRecorder ? { traceRecorder } : {}),
+      },
+      kernelModel,
+    );
     const maxContextTokens = kernelModel.modelRequestDefaults?.maxContextTokens ?? 0;
+    let usage: unknown;
 
     yield { type: 'turn_start', turn: 1, sessionId: this.sessionId };
 
-    for await (const event of kernel.runTurn({
-      input: options.input,
-      turnId: options.turnId,
-      signal: options.signal,
-    })) {
-      yield* this.projectKernelEventToStreamMessages(event, {
-        maxContextTokens,
-        includeThinking: options.includeThinking ?? false,
+    try {
+      this.hookRuntime.setTraceCollector?.(traceRecorder);
+      for await (const event of kernel.runTurn({
+        input: options.input,
+        turnId: options.turnId,
+        signal: options.signal,
+      })) {
+        if (event.type === 'usage') {
+          usage = event.usage;
+        }
+        yield* this.projectKernelEventToStreamMessages(event, {
+          maxContextTokens,
+          includeThinking: options.includeThinking ?? false,
+        });
+        if (event.type === 'result') {
+          await traceFinalizer.finish('success', {
+            content: event.content,
+            usage,
+          });
+        } else if (event.type === 'error') {
+          await traceFinalizer.finish('error', {
+            error: event.message,
+            code: event.code,
+          });
+        }
+      }
+    } catch (error) {
+      await traceFinalizer.finish('error', {
+        error: error instanceof Error ? error.message : String(error),
       });
+      throw error;
+    } finally {
+      this.hookRuntime.setTraceCollector?.(undefined);
     }
   }
 

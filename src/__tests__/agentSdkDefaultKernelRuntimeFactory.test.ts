@@ -450,6 +450,61 @@ describe('agent-sdk default kernel runtime factory', () => {
     ]);
   });
 
+  it('records default kernel traces through the package-local session runtime', async () => {
+    const sink = vi.fn();
+    const defaultKernelModel: ModelPort = {
+      async generate() {
+        return {
+          content: 'traced answer',
+          finishReason: 'stop' as const,
+        };
+      },
+      async *stream() {},
+    };
+    const factory = createDefaultKernelSessionRuntimeFactory({
+      createSessionId: () => 'traced-session',
+      createTurnId: () => 'traced-turn',
+      runtime: {
+        kernelModelResolver: {
+          resolve() {
+            return {
+              model: defaultKernelModel,
+              modelRequestDefaults: { model: 'test-model' },
+            };
+          },
+        },
+      },
+    });
+
+    const session = await factory.create({
+      ...options,
+      observability: {
+        enabled: true,
+        capturePayloads: true,
+        sink,
+      },
+    });
+    await session.send('trace this turn');
+    await collect(session.stream());
+
+    const trace = session.getLastTrace();
+    expect(trace).toMatchObject({
+      sessionId: 'traced-session',
+      status: 'success',
+      metadata: {
+        model: 'test-model',
+        provider: 'openai-compatible',
+        permissionMode: 'default',
+      },
+    });
+    expect(trace?.events.map((event) => event.type)).toEqual(
+      expect.arrayContaining(['user_prompt', 'result']),
+    );
+    expect(JSON.stringify(trace)).toContain('trace this turn');
+    expect(session.getTraces()).toEqual([trace]);
+    expect(sink).toHaveBeenCalledWith(trace);
+  });
+
   it('persists create and resume lifecycle through the package-local JSONL store', async () => {
     const workspaceRoot = createWorkspaceRoot();
     const factory = createDefaultKernelSessionRuntimeFactory({

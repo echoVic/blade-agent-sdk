@@ -52,6 +52,8 @@ export interface PackageLocalSessionRuntimePort {
   mcpReconnect?: ISession['mcpReconnect'];
   mcpListTools?: ISession['mcpListTools'];
   fork?: ISession['fork'];
+  getLastTrace?: ISession['getLastTrace'];
+  getTraces?: ISession['getTraces'];
 }
 
 export interface PackageLocalSessionDelegate {
@@ -282,11 +284,11 @@ export class PackageLocalSession implements ISession {
   }
 
   getLastTrace(): AgentTrace | undefined {
-    return this.delegate?.getLastTrace?.();
+    return this.runtime?.getLastTrace?.() ?? this.delegate?.getLastTrace?.();
   }
 
   getTraces(): AgentTrace[] {
-    return this.delegate?.getTraces?.() ?? [];
+    return this.runtime?.getTraces?.() ?? this.delegate?.getTraces?.() ?? [];
   }
 
   async [Symbol.asyncDispose](): Promise<void> {

@@ -209,6 +209,32 @@ describe('agent-sdk package-local Session instance', () => {
     );
   });
 
+  it('reads traces from a package-local runtime port without requiring a delegate', () => {
+    const trace: AgentTrace = {
+      id: 'trace-1',
+      sessionId: 'session-1',
+      status: 'success',
+      startedAt: '2026-01-01T00:00:00.000Z',
+      endedAt: '2026-01-01T00:00:01.000Z',
+      events: [],
+      spans: [],
+    };
+    const getLastTrace = vi.fn(() => trace);
+    const getTraces = vi.fn(() => [trace]);
+    const session = new PackageLocalSession({
+      sessionId: 'session-1',
+      options,
+      streamTurn: async function* () {},
+      createTurnId: () => 'turn-1',
+      runtime: { getLastTrace, getTraces },
+    });
+
+    expect(session.getLastTrace()).toBe(trace);
+    expect(session.getTraces()).toEqual([trace]);
+    expect(getLastTrace).toHaveBeenCalledTimes(1);
+    expect(getTraces).toHaveBeenCalledTimes(1);
+  });
+
   it('centralizes lifecycle close and abort behavior', async () => {
     const cleanup = vi.fn();
     const session = new PackageLocalSession({
