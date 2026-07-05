@@ -62,6 +62,7 @@
     "test": "vitest run",
     "test:unit": "vitest run --exclude \"src/__tests__/integration.test.ts\" --exclude \"src/__tests__/*.live.test.ts\" --exclude \"src/services/__tests__/*.live.test.ts\" --exclude \"src/services/__tests__/deepseek-deep.live.test.ts\"",
     "test:integration": "vitest run src/__tests__/integration.test.ts",
+    "test:integration:live": "INTEGRATION_LIVE=1 vitest run src/__tests__/integration.test.ts",
     "test:live:glm": "pnpm --filter @blade-ai/ai run build && node scripts/test-live-glm.mjs",
     "test:live:session-glm": "pnpm --filter @blade-ai/ai run build && pnpm --filter @blade-ai/agent run build && pnpm --filter @blade-ai/agent-sdk run build && node scripts/test-live-session-glm.mjs",
     "lint": "biome lint src packages",

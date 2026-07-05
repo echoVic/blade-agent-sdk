@@ -3,13 +3,19 @@
  *
  * 使用真实 LLM API 端到端测试核心功能。
  *
- * 运行前需设置环境变量：
+ * 默认会跳过真实 LLM 调用。运行前需显式开启：
+ *   export INTEGRATION_LIVE=1
+ *
+ * 然后设置环境变量或在 .env 中提供 GLM/OpenAI-compatible 凭据：
+ *   GLM_API_KEY / GLM_BASE_URL，或 JSON .env 中的 key/url
+ *
+ * 也兼容显式集成测试变量：
  *   export INTEGRATION_API_KEY="your-api-key"
  *   export INTEGRATION_BASE_URL="https://your-provider.com/v1"
- *   export INTEGRATION_MODEL="gpt-5.4"            # 可选，默认 gpt-4o-mini
+ *   export INTEGRATION_MODEL="glm-5.2"            # 可选，默认 glm-5.2
  *   export INTEGRATION_PROVIDER_TYPE="openai-compatible"  # 可选，默认 openai-compatible
  *
- * 运行方式: pnpm vitest run src/__tests__/integration.test.ts
+ * 运行方式: pnpm run test:integration:live
  */
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -31,16 +37,22 @@ import {
   type ProviderType,
 } from '../index.js';
 
-// ─── 配置（从环境变量读取） ─────────────────────────────────
-const API_KEY = process.env.INTEGRATION_API_KEY;
-const BASE_URL = process.env.INTEGRATION_BASE_URL;
-const MODEL = process.env.INTEGRATION_MODEL || 'gpt-4o-mini';
+// @ts-expect-error dynamic mjs helper is loaded at runtime by integration tests.
+const { loadLiveGlmConfig } = await import('../../scripts/live-glm-config.mjs');
+
+// ─── 配置（从共享 .env / 环境变量 loader 读取） ─────────────────────────────────
+const LIVE_CONFIG = loadLiveGlmConfig();
+const HAS_LIVE_CONFIG = 'apiKey' in LIVE_CONFIG && 'baseUrl' in LIVE_CONFIG;
+const API_KEY = HAS_LIVE_CONFIG ? LIVE_CONFIG.apiKey : undefined;
+const BASE_URL = HAS_LIVE_CONFIG ? LIVE_CONFIG.baseUrl : undefined;
+const MODEL = HAS_LIVE_CONFIG ? LIVE_CONFIG.model : 'glm-5.2';
 const PROVIDER_TYPE = (process.env.INTEGRATION_PROVIDER_TYPE || 'openai-compatible') as ProviderType;
+const RUN_INTEGRATION = process.env.INTEGRATION_LIVE === '1';
 const TIMEOUT = 120_000; // 2 分钟超时
 
-if (!API_KEY || !BASE_URL) {
+if (!RUN_INTEGRATION || !API_KEY || !BASE_URL) {
   console.warn(
-    '\n⚠️  集成测试需要环境变量 INTEGRATION_API_KEY 和 INTEGRATION_BASE_URL\n' +
+    `\n⚠️  ${RUN_INTEGRATION ? (LIVE_CONFIG.skipReason ?? 'Missing GLM live test credentials') : 'Integration live tests are opt-in. Set INTEGRATION_LIVE=1 to run them.'}\n` +
     '   跳过所有集成测试。\n',
   );
 }
@@ -55,7 +67,7 @@ const MULTIMODAL_TEST_IMAGE_DATA_URL =
   'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIHWP4//8/AwAI/AL+KDnxWQAAAABJRU5ErkJggg==';
 
 // 当缺少环境变量时跳过测试
-const describeIntegration = API_KEY && BASE_URL ? describe : describe.skip;
+const describeIntegration = RUN_INTEGRATION && API_KEY && BASE_URL ? describe : describe.skip;
 
 // 基础 SessionOptions 工厂
 function baseOptions(overrides: Record<string, unknown> = {}) {

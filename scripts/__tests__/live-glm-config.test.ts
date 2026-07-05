@@ -1,4 +1,4 @@
-import { mkdtempSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
@@ -102,5 +102,22 @@ describe('live GLM config loader', () => {
     })).toMatchObject({
       baseUrl: 'https://glm.example.test/v1',
     });
+  });
+});
+
+describe('integration live config contract', () => {
+  it('reuses the shared GLM .env loader for integration credentials', () => {
+    const source = readFileSync('src/__tests__/integration.test.ts', 'utf8');
+    const packageJson = JSON.parse(readFileSync('package.json', 'utf8'));
+
+    expect(source).toContain('../../scripts/live-glm-config.mjs');
+    expect(source).toContain('loadLiveGlmConfig');
+    expect(source).toContain('INTEGRATION_LIVE');
+    expect(source).toContain('Missing GLM live test credentials');
+    expect(source).not.toContain('const API_KEY = process.env.INTEGRATION_API_KEY');
+    expect(source).not.toContain('const BASE_URL = process.env.INTEGRATION_BASE_URL');
+    expect(packageJson.scripts['test:integration:live']).toBe(
+      'INTEGRATION_LIVE=1 vitest run src/__tests__/integration.test.ts',
+    );
   });
 });
