@@ -320,6 +320,18 @@ describe('release scripts', () => {
     expect(releaseVerifier).toContain('publishConfig');
   });
 
+  it('verifies npm provenance attestations after packages are published', () => {
+    const publishedVerifier = readFileSync(resolve('scripts/verify-published.mjs'), 'utf8');
+    const readme = readFileSync(resolve('README.md'), 'utf8');
+    const checklist = readFileSync(resolve('docs/production-checklist.md'), 'utf8');
+
+    expect(publishedVerifier).toContain('verifyNpmPackageProvenance');
+    expect(publishedVerifier).toContain('dist.attestations.provenance.predicateType');
+    expect(publishedVerifier).toContain('https://slsa.dev/provenance/v1');
+    expect(readme).toContain('npm provenance attestations');
+    expect(checklist).toContain('npm provenance attestations');
+  });
+
   it('exposes a post-publish verifier for GitHub Release and npm package visibility', () => {
     const packageJson = JSON.parse(readFileSync(resolve('package.json'), 'utf8'));
     const readme = readFileSync(resolve('README.md'), 'utf8');

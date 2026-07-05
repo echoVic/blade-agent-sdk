@@ -99,12 +99,27 @@ async function verifyNpmPackage({ packageName, version }) {
     'view',
     `${packageName}@${version}`,
     'version',
+    'dist',
     '--json',
   ]);
-  const publishedVersion = JSON.parse(stdout);
+  const metadata = JSON.parse(stdout);
+  const publishedVersion = metadata.version;
 
   if (publishedVersion !== version) {
     throw new Error(`${packageName} version mismatch: expected ${version}, got ${publishedVersion}`);
+  }
+  return metadata;
+}
+
+function verifyNpmPackageProvenance({ packageName, version, metadata }) {
+  const expectedPredicateType = 'https://slsa.dev/provenance/v1';
+  const provenancePredicateType = metadata?.dist?.attestations?.provenance?.predicateType;
+
+  if (provenancePredicateType !== expectedPredicateType) {
+    throw new Error([
+      `${packageName}@${version} missing npm provenance attestation`,
+      `expected dist.attestations.provenance.predicateType to be ${expectedPredicateType}`,
+    ].join(': '));
   }
 }
 
@@ -112,7 +127,8 @@ async function verifyPublishedOnce({ repo, version }) {
   const releaseUrl = await verifyGithubRelease({ repo, version });
 
   for (const packageName of publishablePackages) {
-    await verifyNpmPackage({ packageName, version });
+    const metadata = await verifyNpmPackage({ packageName, version });
+    verifyNpmPackageProvenance({ packageName, version, metadata });
   }
   await verifyPublishedInstallSmoke({ version });
 
@@ -370,6 +386,7 @@ async function main() {
   console.log(`[verify-published] GitHub Release visible: ${releaseUrl}`);
   for (const packageName of publishablePackages) {
     console.log(`[verify-published] npm package visible: ${packageName}@${version}`);
+    console.log(`[verify-published] npm provenance attestation visible: ${packageName}@${version}`);
   }
 }
 
