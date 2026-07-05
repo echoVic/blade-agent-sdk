@@ -1,12 +1,11 @@
 import type { SessionRuntimeFactory } from './factory.js';
-import type { TokenUsage } from '../types/common.js';
+import { PromptStreamAccumulator } from './promptStreamAccumulator.js';
 import type {
   ForkOptions,
   ISession,
   PromptResult,
   ResumeOptions,
   SessionOptions,
-  ToolCallRecord,
   UserMessageContent,
 } from './types.js';
 
@@ -55,69 +54,16 @@ export async function prompt(
 ): Promise<PromptResult> {
   const startTime = Date.now();
   const session = await runtime.create(options);
-  const toolCalls: ToolCallRecord[] = [];
-  let totalUsage: TokenUsage = {
-    inputTokens: 0,
-    outputTokens: 0,
-    totalTokens: 0,
-    maxContextTokens: 0,
-  };
-  let turnsCount = 0;
-  let result = '';
-  let errorMessage: string | null = null;
+  const accumulator = new PromptStreamAccumulator();
 
   try {
     await session.send(message);
 
     for await (const streamMessage of session.stream()) {
-      switch (streamMessage.type) {
-        case 'turn_start':
-          turnsCount = streamMessage.turn;
-          break;
-        case 'tool_use':
-          toolCalls.push({
-            id: streamMessage.id,
-            name: streamMessage.name,
-            input: streamMessage.input,
-            output: '',
-            duration: 0,
-          });
-          break;
-        case 'tool_result': {
-          const record = toolCalls.find((toolCall) => toolCall.id === streamMessage.id);
-          if (record) {
-            record.output = streamMessage.output;
-            record.isError = streamMessage.isError;
-          }
-          break;
-        }
-        case 'usage':
-          totalUsage = streamMessage.usage;
-          break;
-        case 'result':
-          if (streamMessage.subtype === 'success') {
-            result = streamMessage.content ?? '';
-          } else {
-            errorMessage = streamMessage.error ?? 'Unknown error';
-          }
-          break;
-        case 'error':
-          errorMessage = streamMessage.message;
-          break;
-      }
+      accumulator.accept(streamMessage);
     }
 
-    if (errorMessage) {
-      throw new Error(errorMessage);
-    }
-
-    return {
-      result,
-      toolCalls,
-      usage: totalUsage,
-      duration: Date.now() - startTime,
-      turnsCount,
-    };
+    return accumulator.build({ duration: Date.now() - startTime });
   } finally {
     await session.close();
   }
