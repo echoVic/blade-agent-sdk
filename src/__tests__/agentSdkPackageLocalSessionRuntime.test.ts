@@ -101,6 +101,7 @@ describe('agent-sdk package-local session runtime shell', () => {
           calls.push(`load:${sessionId}`);
           return sessionId === 'existing-session';
         }),
+        appendMessage: vi.fn(),
         forkState: vi.fn(async () => null),
         writeForkState: vi.fn(async () => null),
       },
@@ -1100,6 +1101,7 @@ describe('agent-sdk package-local session runtime shell', () => {
     const sessionStore = {
       createSession: vi.fn(async () => {}),
       loadSession: vi.fn(async () => true),
+      appendMessage: vi.fn(),
       forkState: vi.fn(async () => null),
       writeForkState: vi.fn(async () => null),
     };
@@ -1144,7 +1146,10 @@ describe('agent-sdk package-local session runtime shell', () => {
       executionPipeline: pipeline,
       createExecutionContext,
     });
-    expect(kernelPortFactory.createStorePort).toHaveBeenCalledWith({ sessionStore });
+    expect(kernelPortFactory.createStorePort).toHaveBeenCalledWith({
+      sessionId: 'session-1',
+      sessionStore,
+    });
     expect(kernelPortFactory.createTracePort).toHaveBeenCalledWith({
       recorder: traceRecorder,
       maxContextTokens: 4096,

@@ -1,8 +1,9 @@
 import { basename, dirname } from 'node:path';
-import type { ModelPort } from '@blade-ai/ai';
+import type { ModelMessage, ModelPort } from '@blade-ai/ai';
 import type {
   AgentKernelOptions,
   AgentModelRequestDefaults,
+  AgentStoreAppendContext,
   AgentHookPort,
   AgentPermissionUpdate,
   AgentStorePort,
@@ -77,6 +78,11 @@ export interface PackageLocalSessionRuntimeOptions {
 export interface PackageLocalRuntimeSessionStorePort {
   createSession(sessionId: SessionId): Promise<void>;
   loadSession(sessionId: SessionId): Promise<boolean>;
+  appendMessage(
+    sessionId: SessionId,
+    message: ModelMessage,
+    context: AgentStoreAppendContext,
+  ): Promise<void> | void;
   forkState(
     sessionId: SessionId,
     options?: ForkSessionOptions,
@@ -220,6 +226,7 @@ export interface PackageLocalRuntimeKernelToolPortCreateOptions {
 }
 
 export interface PackageLocalRuntimeKernelStorePortCreateOptions {
+  sessionId: SessionId;
   sessionStore: PackageLocalRuntimeSessionStorePort;
 }
 
@@ -789,6 +796,7 @@ export class PackageLocalSessionRuntime {
 
   getKernelStorePort(): AgentStorePort {
     return this.kernelPortFactory.createStorePort({
+      sessionId: this.sessionId,
       sessionStore: this.sessionStore,
     });
   }
@@ -959,6 +967,7 @@ function createNoopRuntimeSessionStore(): PackageLocalRuntimeSessionStorePort {
     async loadSession() {
       return false;
     },
+    appendMessage() {},
     async forkState() {
       return null;
     },
@@ -1063,9 +1072,11 @@ function createNoopRuntimeKernelPortFactory(): PackageLocalRuntimeKernelPortFact
         },
       };
     },
-    createStorePort() {
+    createStorePort(options) {
       return {
-        appendMessage() {},
+        appendMessage(message, context) {
+          return options.sessionStore.appendMessage(options.sessionId, message, context);
+        },
       };
     },
     createTracePort() {

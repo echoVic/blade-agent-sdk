@@ -1,5 +1,7 @@
 import * as fs from 'node:fs/promises';
 import { basename, join } from 'node:path';
+import type { AgentStoreAppendContext } from '@blade-ai/agent';
+import type { ModelMessage } from '@blade-ai/ai';
 import { nanoid } from 'nanoid';
 import type { JsonObject, JsonValue, MessageRole } from '../types/common.js';
 import type {
@@ -123,6 +125,11 @@ export interface SessionState extends SessionSnapshot {
 export interface SessionStore {
   loadState(sessionId: string): Promise<SessionState | null>;
   loadMessages(sessionId: string): Promise<SessionMessage[]>;
+  appendMessage(
+    sessionId: string,
+    message: ModelMessage,
+    context: AgentStoreAppendContext,
+  ): Promise<SessionMessage>;
   forkState(sessionId: string, options?: { messageId?: string }): Promise<SessionSnapshot | null>;
   writeForkState(
     forkedSessionId: string,
@@ -139,6 +146,14 @@ export class NoopSessionStore implements SessionStore {
 
   async loadMessages(_sessionId: string): Promise<SessionMessage[]> {
     return [];
+  }
+
+  async appendMessage(
+    _sessionId: string,
+    message: ModelMessage,
+    _context: AgentStoreAppendContext,
+  ): Promise<SessionMessage> {
+    return modelMessageToSessionMessage(message, {});
   }
 
   async forkState(
@@ -263,6 +278,45 @@ function getToolCallState(
 
 function isSessionEvent(value: unknown): value is SessionEvent {
   return isRecord(value) && typeof value.type === 'string' && typeof value.timestamp === 'string';
+}
+
+function modelMessageToSessionMessage(
+  message: ModelMessage,
+  metadata: JsonObject,
+): SessionMessage {
+  return {
+    role: message.role,
+    content: message.content,
+    ...(message.reasoningContent ? { reasoningContent: message.reasoningContent } : {}),
+    ...(message.name ? { name: message.name } : {}),
+    ...(message.toolCallId ? { tool_call_id: message.toolCallId } : {}),
+    ...(message.toolCalls && message.toolCalls.length > 0
+      ? {
+          tool_calls: message.toolCalls.map((toolCall) => ({
+            id: toolCall.id,
+            type: 'function' as const,
+            function: {
+              name: toolCall.name,
+              arguments: JSON.stringify(toolCall.input),
+            },
+          })),
+        }
+      : {}),
+    metadata: {
+      ...metadata,
+      ...(isRecord(message.metadata) ? { modelMetadata: message.metadata } : {}),
+    },
+  };
+}
+
+function kernelMetadataFromAppendContext(context: AgentStoreAppendContext): JsonObject {
+  return {
+    kernel: {
+      ...(context.turnId ? { turnId: context.turnId } : {}),
+      source: context.source,
+      step: context.step,
+    },
+  };
 }
 
 export class JsonlSessionStore implements SessionStore {
@@ -409,6 +463,44 @@ export class JsonlSessionStore implements SessionStore {
   async loadMessages(sessionId: string): Promise<SessionMessage[]> {
     const state = await this.loadState(sessionId);
     return state?.messages ?? [];
+  }
+
+  async appendMessage(
+    sessionId: string,
+    message: ModelMessage,
+    context: AgentStoreAppendContext,
+  ): Promise<SessionMessage> {
+    const now = new Date().toISOString();
+    const messageId = nanoid();
+    const materializedMessage: SessionMessage = {
+      ...modelMessageToSessionMessage(message, kernelMetadataFromAppendContext(context)),
+      id: messageId,
+    };
+    const entries: SessionEvent[] = [];
+    const state = await this.loadState(sessionId);
+    if (!state) {
+      entries.push(
+        this.createSessionCreatedEvent({
+          sessionId,
+          createdAt: now,
+          updatedAt: now,
+        }),
+      );
+    }
+    entries.push(
+      this.createMessageCreatedEvent({
+        messageId,
+        role: materializedMessage.role,
+        createdAt: now,
+        customMetadata: isRecord(materializedMessage.metadata)
+          ? materializedMessage.metadata
+          : undefined,
+      }),
+    );
+    entries.push(...this.createPartEventsForMessage(messageId, materializedMessage, now));
+
+    await this.appendEntries(sessionId, entries);
+    return cloneSessionMessage(materializedMessage);
   }
 
   async forkState(
@@ -574,6 +666,16 @@ export class JsonlSessionStore implements SessionStore {
     const filePath = getSessionFilePath(this.storageRoot, sessionId);
     await fs.mkdir(this.storageRoot, { recursive: true, mode: 0o755 });
     await fs.writeFile(
+      filePath,
+      `${entries.map((entry) => JSON.stringify(entry)).join('\n')}\n`,
+      'utf-8',
+    );
+  }
+
+  private async appendEntries(sessionId: string, entries: SessionEvent[]): Promise<void> {
+    const filePath = getSessionFilePath(this.storageRoot, sessionId);
+    await fs.mkdir(this.storageRoot, { recursive: true, mode: 0o755 });
+    await fs.appendFile(
       filePath,
       `${entries.map((entry) => JSON.stringify(entry)).join('\n')}\n`,
       'utf-8',

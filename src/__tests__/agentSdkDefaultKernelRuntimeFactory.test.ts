@@ -325,4 +325,69 @@ describe('agent-sdk default kernel runtime factory', () => {
       parentId: 'parent-session',
     });
   });
+
+  it('persists default kernel turn messages through the package-local JSONL store', async () => {
+    const workspaceRoot = createWorkspaceRoot();
+    const generate = vi.fn(async () => ({
+      content: 'persisted answer',
+      reasoningContent: 'persisted reasoning',
+      finishReason: 'stop' as const,
+    }));
+    const defaultKernelModel: ModelPort = {
+      generate,
+      async *stream() {},
+    };
+    const factory = createDefaultKernelSessionRuntimeFactory({
+      createSessionId: () => 'persisted-session',
+      createTurnId: () => 'persisted-turn',
+      runtime: {
+        kernelModelResolver: {
+          resolve() {
+            return {
+              model: defaultKernelModel,
+              modelRequestDefaults: { model: 'test-model' },
+            };
+          },
+        },
+      },
+    });
+    const store = new JsonlSessionStore(workspaceRoot);
+
+    const session = await factory.create({
+      ...options,
+      storagePath: workspaceRoot,
+    });
+    await session.send('persist this turn');
+    await collect(session.stream());
+
+    await expect(store.loadState('persisted-session')).resolves.toMatchObject({
+      sessionId: 'persisted-session',
+      messages: [
+        {
+          role: 'user',
+          content: 'persist this turn',
+          metadata: {
+            kernel: {
+              turnId: 'persisted-turn',
+              source: 'input',
+              step: 0,
+            },
+          },
+        },
+        {
+          role: 'assistant',
+          content: 'persisted answer',
+          reasoningContent: 'persisted reasoning',
+          metadata: {
+            kernel: {
+              turnId: 'persisted-turn',
+              source: 'model',
+              step: 1,
+            },
+          },
+        },
+      ],
+      messageIds: expect.any(Array),
+    });
+  });
 });
