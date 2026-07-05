@@ -39,7 +39,16 @@ export interface PackageLocalSessionOptions {
   streamTurn: PackageLocalSessionStreamTurn;
   createTurnId: () => string;
   cleanup?: SessionCloseCleanup;
+  runtime?: PackageLocalSessionRuntimePort;
   delegate?: PackageLocalSessionDelegate;
+}
+
+export interface PackageLocalSessionRuntimePort {
+  mcpServerStatus?: ISession['mcpServerStatus'];
+  mcpConnect?: ISession['mcpConnect'];
+  mcpDisconnect?: ISession['mcpDisconnect'];
+  mcpReconnect?: ISession['mcpReconnect'];
+  mcpListTools?: ISession['mcpListTools'];
 }
 
 export interface PackageLocalSessionDelegate {
@@ -68,6 +77,7 @@ export class PackageLocalSession implements ISession {
   private sessionOptions: SessionOptions;
   private readonly streamTurn: PackageLocalSessionStreamTurn;
   private readonly cleanup?: SessionCloseCleanup;
+  private readonly runtime?: PackageLocalSessionRuntimePort;
   private readonly delegate?: PackageLocalSessionDelegate;
   private readonly pendingTurns = new PendingTurnBuffer();
   private readonly turnAbort = new TurnAbortController();
@@ -83,6 +93,7 @@ export class PackageLocalSession implements ISession {
     this.sessionOptions = options.options;
     this.streamTurn = options.streamTurn;
     this.cleanup = options.cleanup;
+    this.runtime = options.runtime;
     this.delegate = options.delegate;
     this.defaultContext = options.options.defaultContext ?? {};
     this.turns = new SessionTurnController({
@@ -188,6 +199,9 @@ export class PackageLocalSession implements ISession {
   }
 
   async mcpServerStatus(): Promise<McpServerStatus[]> {
+    if (this.runtime?.mcpServerStatus) {
+      return this.runtime.mcpServerStatus();
+    }
     if (this.delegate?.mcpServerStatus) {
       return this.delegate.mcpServerStatus();
     }
@@ -195,30 +209,48 @@ export class PackageLocalSession implements ISession {
   }
 
   async mcpConnect(serverName: Parameters<ISession['mcpConnect']>[0]): Promise<void> {
+    this.lifecycle.assertOpen();
+    if (this.runtime?.mcpConnect) {
+      await this.runtime.mcpConnect(serverName);
+      return;
+    }
     if (this.delegate?.mcpConnect) {
       await this.delegate.mcpConnect(serverName);
       return;
     }
-    throw new Error('mcpConnect is not implemented by PackageLocalSession yet.');
+    throw new Error('MCP runtime is not configured for this session.');
   }
 
   async mcpDisconnect(serverName: Parameters<ISession['mcpDisconnect']>[0]): Promise<void> {
+    this.lifecycle.assertOpen();
+    if (this.runtime?.mcpDisconnect) {
+      await this.runtime.mcpDisconnect(serverName);
+      return;
+    }
     if (this.delegate?.mcpDisconnect) {
       await this.delegate.mcpDisconnect(serverName);
       return;
     }
-    throw new Error('mcpDisconnect is not implemented by PackageLocalSession yet.');
+    throw new Error('MCP runtime is not configured for this session.');
   }
 
   async mcpReconnect(serverName: Parameters<ISession['mcpReconnect']>[0]): Promise<void> {
+    this.lifecycle.assertOpen();
+    if (this.runtime?.mcpReconnect) {
+      await this.runtime.mcpReconnect(serverName);
+      return;
+    }
     if (this.delegate?.mcpReconnect) {
       await this.delegate.mcpReconnect(serverName);
       return;
     }
-    throw new Error('mcpReconnect is not implemented by PackageLocalSession yet.');
+    throw new Error('MCP runtime is not configured for this session.');
   }
 
   async mcpListTools(): Promise<McpToolInfo[]> {
+    if (this.runtime?.mcpListTools) {
+      return this.runtime.mcpListTools();
+    }
     if (this.delegate?.mcpListTools) {
       return this.delegate.mcpListTools();
     }

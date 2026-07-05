@@ -162,6 +162,25 @@ describe('agent-sdk package-local Session instance', () => {
     expect(streamTurn).toHaveBeenCalledTimes(1);
   });
 
+  it('fails MCP actions with a clear runtime capability error when no MCP runtime is configured', async () => {
+    const session = new PackageLocalSession({
+      sessionId: 'session-1',
+      options,
+      streamTurn: async function* () {},
+      createTurnId: () => 'turn-1',
+    });
+
+    await expect(session.mcpConnect('server-1')).rejects.toThrow(
+      'MCP runtime is not configured for this session.',
+    );
+    await expect(session.mcpDisconnect('server-1')).rejects.toThrow(
+      'MCP runtime is not configured for this session.',
+    );
+    await expect(session.mcpReconnect('server-1')).rejects.toThrow(
+      'MCP runtime is not configured for this session.',
+    );
+  });
+
   it('centralizes lifecycle close and abort behavior', async () => {
     const cleanup = vi.fn();
     const session = new PackageLocalSession({

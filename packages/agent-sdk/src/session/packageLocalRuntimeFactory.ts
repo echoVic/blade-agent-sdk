@@ -1,6 +1,7 @@
 import type { SessionRuntimeFactory } from './factory.js';
 import {
   PackageLocalSession,
+  type PackageLocalSessionRuntimePort,
   type PackageLocalSessionStreamTurn,
 } from './sessionInstance.js';
 import type {
@@ -21,6 +22,9 @@ export interface PackageLocalSessionRuntimeFactoryOptions {
   createStreamTurn: (
     context: PackageLocalSessionRuntimeContext,
   ) => PackageLocalSessionStreamTurn;
+  createSessionRuntimePort?: (
+    context: PackageLocalSessionRuntimeContext,
+  ) => PackageLocalSessionRuntimePort;
   cleanup?: (context: PackageLocalSessionRuntimeContext) => Promise<void> | void;
 }
 
@@ -33,6 +37,7 @@ export function createPackageLocalSessionRuntimeFactory(
       options: context.options,
       createTurnId: options.createTurnId,
       streamTurn: options.createStreamTurn(context),
+      runtime: options.createSessionRuntimePort?.(context),
       cleanup: options.cleanup ? () => options.cleanup?.(context) : undefined,
     });
   }

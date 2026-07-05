@@ -211,4 +211,62 @@ describe('agent-sdk default kernel runtime factory', () => {
     expect(turns[0]?.signal).toBeInstanceOf(AbortSignal);
     expect(disconnectAll).toHaveBeenCalledTimes(1);
   });
+
+  it('routes package-local session MCP actions through the kernel runtime', async () => {
+    const connectServer = vi.fn(async () => {});
+    const disconnectServer = vi.fn(async () => {});
+    const reconnectServer = vi.fn(async () => {});
+    const factory = createDefaultKernelSessionRuntimeFactory({
+      createSessionId: () => 'mcp-session',
+      createTurnId: () => 'mcp-turn',
+      runtime: {
+        mcpRegistry: {
+          disconnectAll: vi.fn(async () => {}),
+          connectServer,
+          disconnectServer,
+          reconnectServer,
+          async getCapabilities() {
+            return [
+              {
+                name: 'remote',
+                status: 'connected',
+                auth: { enabled: false },
+                health: { enabled: false, status: 'disabled' },
+                tools: [{ name: 'remote_tool', description: 'Remote tool', inputSchema: {} }],
+              },
+            ];
+          },
+          async getAvailableToolsByServerNames() {
+            return [];
+          },
+        },
+        kernelModelResolver: {
+          resolve() {
+            return {
+              model,
+              modelRequestDefaults: { model: 'test-model' },
+            };
+          },
+        },
+      },
+    });
+
+    const session = await factory.create({
+      ...options,
+      mcpServers: {
+        remote: {
+          command: 'node',
+          args: ['server.js'],
+        },
+      },
+    });
+
+    await session.mcpConnect('remote');
+    await session.mcpDisconnect('remote');
+    await session.mcpReconnect('remote');
+
+    expect(connectServer).toHaveBeenCalledWith('remote');
+    expect(disconnectServer).toHaveBeenCalledWith('remote');
+    expect(reconnectServer).toHaveBeenCalledWith('remote');
+  });
 });
