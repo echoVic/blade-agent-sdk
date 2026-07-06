@@ -17,6 +17,7 @@ const publishablePackages = [
 ];
 const expectedPublishedPackageMetadata = {
   license: 'MIT',
+  engines: { node: '>=22.14.0' },
   homepage: 'https://github.com/echoVic/blade-agent-sdk#readme',
   bugs: {
     url: 'https://github.com/echoVic/blade-agent-sdk/issues',
@@ -429,6 +430,11 @@ function verifyPublishedPackageMetadata(requirement, manifest) {
       field: 'license',
       expected: requirement.license,
       message: 'installed manifest license mismatch',
+    },
+    {
+      field: 'engines',
+      expected: requirement.engines,
+      message: 'installed manifest node engine mismatch',
     },
     {
       field: 'homepage',

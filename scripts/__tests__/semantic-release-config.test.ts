@@ -654,6 +654,24 @@ describe('release scripts', () => {
     expect(roadmap).toContain('package npm metadata gate');
   });
 
+  it('verifies packed and published package engine metadata', () => {
+    const packageVerifier = readFileSync(resolve('scripts/verify-packages.mjs'), 'utf8');
+    const publishedVerifier = readFileSync(resolve('scripts/verify-published.mjs'), 'utf8');
+    const readme = readFileSync(resolve('README.md'), 'utf8');
+    const checklist = readFileSync(resolve('docs/production-checklist.md'), 'utf8');
+    const roadmap = readFileSync(resolve('docs/roadmap/production-agent-sdk-monorepo.md'), 'utf8');
+
+    expect(packageVerifier).toContain('packed manifest node engine mismatch');
+    expect(packageVerifier).toContain("engines: { node: '>=22.14.0' }");
+    expect(publishedVerifier).toContain('installed manifest node engine mismatch');
+    expect(publishedVerifier).toContain("engines: { node: '>=22.14.0' }");
+    expect(readme).toContain('packed package engine metadata');
+    expect(readme).toContain('published package engine metadata');
+    expect(checklist).toContain('packed package engine metadata');
+    expect(checklist).toContain('published package engine metadata');
+    expect(roadmap).toContain('package engine metadata artifact gate');
+  });
+
   it('verifies packed package manifest entry targets before publication', () => {
     const packageVerifier = readFileSync(resolve('scripts/verify-packages.mjs'), 'utf8');
     const readme = readFileSync(resolve('README.md'), 'utf8');

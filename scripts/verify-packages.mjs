@@ -16,6 +16,7 @@ const browserDisallowedMarkers = [
 ];
 const expectedPackedPackageMetadata = {
   license: 'MIT',
+  engines: { node: '>=22.14.0' },
   homepage: 'https://github.com/echoVic/blade-agent-sdk#readme',
   bugs: {
     url: 'https://github.com/echoVic/blade-agent-sdk/issues',
@@ -557,6 +558,11 @@ function verifyPackedPackageMetadata(spec, manifest) {
       field: 'license',
       expected: expectedPackedPackageMetadata.license,
       message: 'packed manifest license mismatch',
+    },
+    {
+      field: 'engines',
+      expected: expectedPackedPackageMetadata.engines,
+      message: 'packed manifest node engine mismatch',
     },
     {
       field: 'homepage',
