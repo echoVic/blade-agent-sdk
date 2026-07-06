@@ -443,6 +443,20 @@ const sessionOptions: SessionOptions = {
   allowedTools: [],
   temperature: 0.2,
   maxOutputTokens: 128,
+  maxContextTokens: 128000,
+  providerOptions: {
+    openai: { reasoningEffort: 'low' },
+  },
+  thinkingEnabled: true,
+  thinkingBudget: 1024,
+  tokenBudget: {
+    maxTotalTokens: 100000,
+    warningThresholdPercent: 80,
+    costPerInputToken: 0.0000001,
+    costPerOutputToken: 0.0000002,
+    costPerCacheWriteToken: 0.00000005,
+    costPerCacheReadToken: 0.00000001,
+  },
 };
 
 const streamMessage: StreamMessage = {

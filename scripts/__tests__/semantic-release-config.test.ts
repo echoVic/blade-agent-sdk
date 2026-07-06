@@ -420,6 +420,31 @@ describe('release scripts', () => {
     expect(checklist).toContain('TypeScript public declarations');
   });
 
+  it('guards session model sampling and budget options across public docs and type smokes', () => {
+    const sessionTypes = readFileSync(resolve('packages/agent-sdk/src/session/types.ts'), 'utf8');
+    const packageVerifier = readFileSync(resolve('scripts/verify-packages.mjs'), 'utf8');
+    const publishedVerifier = readFileSync(resolve('scripts/verify-published.mjs'), 'utf8');
+    const readme = readFileSync(resolve('README.md'), 'utf8');
+    const sessionDocs = readFileSync(resolve('docs/session.md'), 'utf8');
+    const publicFields = [
+      'temperature',
+      'maxOutputTokens',
+      'maxContextTokens',
+      'providerOptions',
+      'thinkingEnabled',
+      'thinkingBudget',
+      'tokenBudget',
+    ];
+
+    for (const field of publicFields) {
+      expect(sessionTypes).toContain(`${field}?:`);
+      expect(packageVerifier).toContain(`${field}:`);
+      expect(publishedVerifier).toContain(`${field}:`);
+      expect(readme).toContain(field);
+      expect(sessionDocs).toContain(`| \`${field}\``);
+    }
+  });
+
   it('type-checks public subpath declarations from the published temporary consumer', () => {
     const publishedVerifier = readFileSync(resolve('scripts/verify-published.mjs'), 'utf8');
     const roadmap = readFileSync(resolve('docs/roadmap/production-agent-sdk-monorepo.md'), 'utf8');

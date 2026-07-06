@@ -109,6 +109,10 @@ const session = await createSession({
   },
   thinkingEnabled: true,
   thinkingBudget: 1024,
+  tokenBudget: {
+    maxTotalTokens: 100000,
+    warningThresholdPercent: 80,
+  },
 });
 ```
 
