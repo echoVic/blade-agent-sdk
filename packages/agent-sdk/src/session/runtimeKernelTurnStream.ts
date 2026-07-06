@@ -111,7 +111,11 @@ export async function* streamPackageLocalAgentKernelTurn(
   } catch (error) {
     options.hookRuntime.setTraceCollector?.(options.traceRecorder);
     try {
-      await reportPackageLocalKernelTaskFailure(error, options);
+      try {
+        await reportPackageLocalKernelTaskFailure(error, options);
+      } catch {
+        // Hook failures are recorded by the hook runtime; the original stream error owns this path.
+      }
     } finally {
       options.hookRuntime.setTraceCollector?.(undefined);
     }

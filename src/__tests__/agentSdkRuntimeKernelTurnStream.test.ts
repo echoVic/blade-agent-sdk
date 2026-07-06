@@ -246,6 +246,59 @@ describe('agent-sdk package-local kernel turn stream helper', () => {
     expect(activeCollector).toBeUndefined();
   });
 
+  it('preserves thrown stream errors when TaskCompleted failure hooks throw', async () => {
+    const streamError = new Error('stream failed first');
+    const hookError = new Error('task hook failed later');
+    const trace = { id: 'trace-hook-failure' };
+    const traceRecorder = {
+      finish: vi.fn(() => trace),
+    } as unknown as TraceRecorder;
+    const traceManager = {
+      remember: vi.fn(),
+      notifySink: vi.fn(async () => undefined),
+    };
+    let activeCollector: unknown;
+
+    const stream = streamPackageLocalAgentKernelTurn({
+      sessionId: 'session-hook-failure',
+      streamOptions: {
+        input: 'summarize before failure',
+        turnId: 'turn-hook-failure',
+      },
+      kernel: {
+        async *runTurn() {
+          yield { type: 'content', delta: 'before failure' } satisfies AgentStreamEvent;
+          throw streamError;
+        },
+      },
+      traceRecorder,
+      traceManager,
+      hookRuntime: {
+        enable: vi.fn(),
+        setTraceCollector: vi.fn((collector) => {
+          activeCollector = collector;
+        }),
+        runTaskCompleted: vi.fn(async () => {
+          expect(activeCollector).toBe(traceRecorder);
+          throw hookError;
+        }),
+      },
+      maxContextTokens: 99,
+    });
+
+    await expect(async () => {
+      for await (const _message of stream) {
+        // drain
+      }
+    }).rejects.toThrow(streamError);
+    expect(traceRecorder.finish).toHaveBeenCalledWith('error', {
+      error: 'stream failed first',
+    });
+    expect(traceManager.remember).toHaveBeenCalledWith(trace);
+    expect(traceManager.notifySink).toHaveBeenCalledWith(trace);
+    expect(activeCollector).toBeUndefined();
+  });
+
   it('resolves the kernel model, creates a trace recorder, and delegates the kernel stream', async () => {
     const model = {
       generate: vi.fn(),
