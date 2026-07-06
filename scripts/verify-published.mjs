@@ -1,7 +1,7 @@
 import { execFile } from 'node:child_process';
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join, relative } from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
 import { pathToFileURL } from 'node:url';
 import { promisify } from 'node:util';
@@ -206,6 +206,7 @@ async function verifyPublishedInstallSmoke({ version }) {
     ], { cwd: consumerDir });
 
     await verifyPublishedPackageManifests({ consumerDir, version });
+    await verifyPublishedPackageFileScope({ consumerDir });
     await verifyPublishedReadmes({ consumerDir });
 
     const runtimeSmokePath = join(consumerDir, 'consumer-runtime.mjs');
@@ -312,6 +313,44 @@ async function verifyPublishedPackageManifests({ consumerDir, version }) {
     }
   }
   console.log('[verify-published] temporary consumer published package manifests passed');
+}
+
+async function verifyPublishedPackageFileScope({ consumerDir }) {
+  for (const requirement of publishedManifestRequirements) {
+    const packageDir = join(consumerDir, dirname(requirement.manifestPath));
+    const files = (await run('find', [packageDir, '-type', 'f']))
+      .split('\n')
+      .filter(Boolean)
+      .map((filePath) => relative(packageDir, filePath))
+      .map((filePath) => filePath.replaceAll('\\', '/'));
+
+    const declarationMapEntry = files.find((filePath) => filePath.endsWith('.d.ts.map'));
+    if (declarationMapEntry) {
+      throw new Error(
+        `${requirement.packageName} installed package includes a declaration map: ${declarationMapEntry}`,
+      );
+    }
+
+    const sourceMapEntry = files.find((filePath) => filePath.endsWith('.js.map'));
+    if (sourceMapEntry) {
+      throw new Error(
+        `${requirement.packageName} installed package includes a JavaScript source map: ${sourceMapEntry}`,
+      );
+    }
+
+    const testEntry = files.find((filePath) =>
+      filePath.includes('/__tests__/') || /\.(test|spec)\.[cm]?[jt]s$/.test(filePath)
+    );
+    if (testEntry) {
+      throw new Error(`${requirement.packageName} installed package includes a test file: ${testEntry}`);
+    }
+
+    const sourceEntry = files.find((filePath) => filePath.includes('/src/') || filePath.startsWith('src/'));
+    if (sourceEntry) {
+      throw new Error(`${requirement.packageName} installed package includes source files: ${sourceEntry}`);
+    }
+  }
+  console.log('[verify-published] temporary consumer published package file scope passed');
 }
 
 function assertPublishedManifestTarget({ packageName, label, target }) {

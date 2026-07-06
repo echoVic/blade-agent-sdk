@@ -503,6 +503,26 @@ describe('release scripts', () => {
     expect(roadmap).toContain('published package manifest entry target gate');
   });
 
+  it('verifies published package installed file scope from the temporary consumer install', () => {
+    const publishedVerifier = readFileSync(resolve('scripts/verify-published.mjs'), 'utf8');
+    const checklist = readFileSync(resolve('docs/production-checklist.md'), 'utf8');
+    const roadmap = readFileSync(resolve('docs/roadmap/production-agent-sdk-monorepo.md'), 'utf8');
+
+    expect(publishedVerifier).toContain('verifyPublishedPackageFileScope');
+    expect(publishedVerifier).toContain("run('find'");
+    expect(publishedVerifier).toContain("'.d.ts.map'");
+    expect(publishedVerifier).toContain("'.js.map'");
+    expect(publishedVerifier).toContain("includes('/__tests__/')");
+    expect(publishedVerifier).toContain("/\\.(test|spec)\\.[cm]?[jt]s$/");
+    expect(publishedVerifier).toContain("includes('/src/')");
+    expect(publishedVerifier).toContain('installed package includes a declaration map');
+    expect(publishedVerifier).toContain('installed package includes a JavaScript source map');
+    expect(publishedVerifier).toContain('installed package includes a test file');
+    expect(publishedVerifier).toContain('installed package includes source files');
+    expect(checklist).toContain('published package file scope');
+    expect(roadmap).toContain('published package file-scope gate');
+  });
+
   it('type-checks public declarations from the published temporary consumer', () => {
     const publishedVerifier = readFileSync(resolve('scripts/verify-published.mjs'), 'utf8');
     const readme = readFileSync(resolve('README.md'), 'utf8');
