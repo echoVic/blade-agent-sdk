@@ -26,7 +26,9 @@ const rules = [
   {
     name: '@blade-ai/agent-sdk',
     sourceDir: 'packages/agent-sdk/src',
-    disallowedSpecifiers: [],
+    disallowedSpecifiers: [
+      [/^@blade-ai\/agent-sdk(?:\/|$)/, 'Session SDK source must not import its own public facade'],
+    ],
   },
 ];
 

@@ -135,4 +135,25 @@ describe('package boundary verifier', () => {
     expect(result.stderr).toContain("relative import \"../../../src/index.js\"");
     expect(result.stderr).toContain('leaves packages/agent-sdk/src');
   });
+
+  it('rejects session-sdk source imports from its own public facade', () => {
+    const cwd = createBoundaryFixture();
+    mkdirSync(join(cwd, 'packages', 'agent-sdk', 'src', 'session'), { recursive: true });
+    writeFileSync(
+      join(cwd, 'packages', 'agent-sdk', 'src', 'session', 'feature.ts'),
+      "import { createSession } from '@blade-ai/agent-sdk/session';\nexport { createSession };\n",
+    );
+
+    const result = spawnSync(process.execPath, [
+      resolve('scripts/verify-package-boundaries.mjs'),
+    ], {
+      cwd,
+      encoding: 'utf8',
+    });
+
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain('packages/agent-sdk/src/session/feature.ts');
+    expect(result.stderr).toContain('@blade-ai/agent-sdk/session');
+    expect(result.stderr).toContain('Session SDK source must not import its own public facade');
+  });
 });
