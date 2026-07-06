@@ -40,8 +40,8 @@ import {
   type PackageLocalRuntimeExecutionPipelineFactoryPort,
 } from './runtimeExecutionPipeline.js';
 import {
-  createPackageLocalRuntimeAgentKernelFromResolved,
   createPackageLocalRuntimeAgentKernelFromOptions,
+  createPackageLocalRuntimeResolvedAgentKernelCreator,
   type PackageLocalRuntimeAgentKernelFactoryPort,
   type PackageLocalRuntimeAgentKernelPort,
 } from './runtimeAgentKernels.js';
@@ -64,7 +64,6 @@ import {
 } from './runtimeKernelTurnStream.js';
 import type {
   PackageLocalRuntimeKernelModelResolverPort,
-  PackageLocalRuntimeResolvedKernelModel,
 } from './runtimeKernelModels.js';
 import {
   getPackageLocalRuntimeContextCwd,
@@ -602,22 +601,6 @@ export class PackageLocalSessionRuntime {
     });
   }
 
-  private createAgentKernelFromResolved(
-    options: PackageLocalRuntimeAgentKernelOptions,
-    kernelModel: PackageLocalRuntimeResolvedKernelModel,
-  ): PackageLocalRuntimeAgentKernelPort {
-    return createPackageLocalRuntimeAgentKernelFromResolved({
-      options,
-      kernelModel,
-      kernelFactory: this.kernelFactory,
-      getStorePort: () => this.getKernelStorePort(),
-      getHookPort: () => this.getKernelHookPort(),
-      getTracePort: (recorder, maxContextTokens) =>
-        this.getKernelTracePort(recorder, maxContextTokens),
-      getToolPort: (createExecutionContext) => this.getKernelToolPort(createExecutionContext),
-    });
-  }
-
   async *streamAgentKernelTurn(
     options: PackageLocalRuntimeAgentKernelStreamOptions,
   ): AsyncGenerator<StreamMessage> {
@@ -628,8 +611,14 @@ export class PackageLocalSessionRuntime {
       traceManager: this.traceManager,
       hookRuntime: this.hookRuntime,
       kernelModelResolver: this.kernelModelResolver,
-      createAgentKernel: (kernelOptions, kernelModel) =>
-        this.createAgentKernelFromResolved(kernelOptions, kernelModel),
+      createAgentKernel: createPackageLocalRuntimeResolvedAgentKernelCreator({
+        kernelFactory: this.kernelFactory,
+        getStorePort: () => this.getKernelStorePort(),
+        getHookPort: () => this.getKernelHookPort(),
+        getTracePort: (recorder, maxContextTokens) =>
+          this.getKernelTracePort(recorder, maxContextTokens),
+        getToolPort: (createExecutionContext) => this.getKernelToolPort(createExecutionContext),
+      }),
     });
   }
 

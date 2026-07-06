@@ -10,6 +10,7 @@ import {
   createPackageLocalRuntimeAgentKernel,
   createPackageLocalRuntimeAgentKernelFromResolved,
   createPackageLocalRuntimeAgentKernelFromOptions,
+  createPackageLocalRuntimeResolvedAgentKernelCreator,
   projectPackageLocalRuntimeAgentKernelPorts,
 } from '../../packages/agent-sdk/src/session/runtimeAgentKernels.js';
 import type {
@@ -290,6 +291,61 @@ describe('agent-sdk package-local runtime agent kernel helpers', () => {
       trace: tracePort,
       tools: toolPort,
       maxSteps: 9,
+    });
+  });
+
+  it('creates a reusable resolved kernel creator without runtime state', () => {
+    const kernel = {
+      async *runTurn() {},
+    };
+    const kernelFactory: PackageLocalRuntimeAgentKernelFactoryPort = {
+      create: vi.fn(() => kernel),
+    };
+    const getStorePort = vi.fn(() => storePort);
+    const getHookPort = vi.fn(() => hookPort);
+    const getTracePort = vi.fn(() => tracePort);
+    const getToolPort = vi.fn(() => toolPort);
+    const createExecutionContext = vi.fn();
+    const traceRecorder = { startSpan: vi.fn() } as unknown as TraceRecorder;
+    const kernelModel: PackageLocalRuntimeResolvedKernelModel = {
+      model: modelPort,
+      modelRequestDefaults: {
+        model: 'glm-5.2',
+        maxContextTokens: 32768,
+      },
+    };
+
+    const createResolvedKernel = createPackageLocalRuntimeResolvedAgentKernelCreator({
+      kernelFactory,
+      getStorePort,
+      getHookPort,
+      getTracePort,
+      getToolPort,
+    });
+
+    const created = createResolvedKernel(
+      {
+        traceRecorder,
+        createExecutionContext,
+        maxSteps: 3,
+      },
+      kernelModel,
+    );
+
+    expect(created).toBe(kernel);
+    expect(getTracePort).toHaveBeenCalledWith(traceRecorder, 32768);
+    expect(getToolPort).toHaveBeenCalledWith(createExecutionContext);
+    expect(kernelFactory.create).toHaveBeenCalledWith({
+      model: modelPort,
+      modelRequestDefaults: {
+        model: 'glm-5.2',
+        maxContextTokens: 32768,
+      },
+      store: storePort,
+      hooks: hookPort,
+      trace: tracePort,
+      tools: toolPort,
+      maxSteps: 3,
     });
   });
 });

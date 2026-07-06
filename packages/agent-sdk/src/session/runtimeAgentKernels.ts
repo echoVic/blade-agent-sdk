@@ -134,6 +134,29 @@ export function createPackageLocalRuntimeAgentKernelFromResolved(
   });
 }
 
+export type PackageLocalRuntimeResolvedAgentKernelCreator = (
+  options: PackageLocalRuntimeResolvedAgentKernelCreationOptions,
+  kernelModel: PackageLocalRuntimeResolvedKernelModel,
+) => PackageLocalRuntimeAgentKernelPort;
+
+export interface CreatePackageLocalRuntimeResolvedAgentKernelCreatorOptions
+  extends Omit<CreatePackageLocalRuntimeAgentKernelFromResolvedOptions, 'options' | 'kernelModel'> {}
+
+export function createPackageLocalRuntimeResolvedAgentKernelCreator(
+  options: CreatePackageLocalRuntimeResolvedAgentKernelCreatorOptions,
+): PackageLocalRuntimeResolvedAgentKernelCreator {
+  return (agentKernelOptions, kernelModel) =>
+    createPackageLocalRuntimeAgentKernelFromResolved({
+      options: agentKernelOptions,
+      kernelModel,
+      kernelFactory: options.kernelFactory,
+      getStorePort: options.getStorePort,
+      getHookPort: options.getHookPort,
+      getTracePort: options.getTracePort,
+      getToolPort: options.getToolPort,
+    });
+}
+
 export interface CreatePackageLocalRuntimeAgentKernelFromOptionsOptions
   extends Omit<CreatePackageLocalRuntimeAgentKernelFromResolvedOptions, 'kernelModel'> {
   options: PackageLocalRuntimeAgentKernelOptions;
