@@ -68,6 +68,7 @@ import {
   getPackageLocalRuntimeContextCwd,
   resolvePackageLocalRuntimeStorageRoot,
 } from './runtimeContext.js';
+import { preparePackageLocalRuntimeWorkspaceTurn } from './runtimeWorkspace.js';
 import {
   createPackageLocalRuntimeSessionLifecycleOperations,
   type PackageLocalRuntimeSessionLifecycleOperations,
@@ -422,12 +423,9 @@ export class PackageLocalSessionRuntime {
   }
 
   prepareTurn(snapshot: ContextSnapshot): void {
-    this.workspace.updateWorkspace({
-      projectPath: snapshot.cwd,
-      environment: {
-        ...snapshot.environment,
-        ...(snapshot.cwd ? { cwd: snapshot.cwd } : {}),
-      },
+    preparePackageLocalRuntimeWorkspaceTurn({
+      workspace: this.workspace,
+      snapshot,
     });
   }
 

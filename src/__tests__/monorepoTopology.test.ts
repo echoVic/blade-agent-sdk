@@ -551,6 +551,9 @@ describe('monorepo topology', () => {
     const runtimeContextSource = existsSync('packages/agent-sdk/src/session/runtimeContext.ts')
       ? readFileSync('packages/agent-sdk/src/session/runtimeContext.ts', 'utf-8')
       : '';
+    const runtimeWorkspaceSource = existsSync('packages/agent-sdk/src/session/runtimeWorkspace.ts')
+      ? readFileSync('packages/agent-sdk/src/session/runtimeWorkspace.ts', 'utf-8')
+      : '';
     const sessionFactorySource = readFileSync('packages/agent-sdk/src/session/factory.ts', 'utf-8');
     const sessionLifecycleSource = readFileSync('packages/agent-sdk/src/session/Session.ts', 'utf-8');
     const sessionStoreSource = readFileSync('packages/agent-sdk/src/session/store.ts', 'utf-8');
@@ -669,6 +672,12 @@ describe('monorepo topology', () => {
     expect(packageLocalRuntimeInstanceSource).not.toContain('this.createForkSessionId()');
     expect(packageLocalRuntimeInstanceSource).toContain('prepareTurn');
     expect(packageLocalRuntimeInstanceSource).toContain('PackageLocalRuntimeWorkspacePort');
+    expect(existsSync('packages/agent-sdk/src/session/runtimeWorkspace.ts')).toBe(true);
+    expect(runtimeWorkspaceSource).not.toContain('../../../../src/');
+    expect(runtimeWorkspaceSource).toContain('preparePackageLocalRuntimeWorkspaceTurn');
+    expect(packageLocalRuntimeInstanceSource).toContain('preparePackageLocalRuntimeWorkspaceTurn');
+    expect(packageLocalRuntimeInstanceSource).not.toContain('this.workspace.updateWorkspace({');
+    expect(packageLocalRuntimeInstanceSource).not.toContain('...snapshot.environment');
     expect(packageLocalRuntimeInstanceSource).toContain('close');
     expect(packageLocalRuntimeInstanceSource).toContain('PackageLocalRuntimeMcpRegistryPort');
     expect(packageLocalRuntimeInstanceSource).toContain('mcpCapabilities');
