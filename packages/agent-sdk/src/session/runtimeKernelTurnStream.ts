@@ -118,15 +118,15 @@ async function reportPackageLocalKernelTaskCompleted(
   event: AgentStreamEvent,
   options: Pick<PackageLocalRuntimeKernelTurnStreamOptions, 'sessionId' | 'streamOptions' | 'hookRuntime'>,
 ): Promise<void> {
-  if (event.type !== 'result') {
+  if (event.type !== 'result' && event.type !== 'error') {
     return;
   }
 
   await options.hookRuntime.runTaskCompleted?.({
     taskId: options.streamOptions.turnId ?? options.sessionId,
     taskDescription: options.streamOptions.input,
-    resultSummary: event.content,
-    success: true,
+    resultSummary: event.type === 'result' ? event.content : event.message,
+    success: event.type === 'result',
     abortSignal: options.streamOptions.signal,
   });
 }

@@ -130,6 +130,60 @@ describe('agent-sdk package-local kernel turn stream helper', () => {
     });
   });
 
+  it('reports kernel error events through TaskCompleted hooks', async () => {
+    const abortController = new AbortController();
+    const runTaskCompleted = vi.fn(async () => undefined);
+    const traceRecorder = {
+      finish: vi.fn(() => ({ id: 'trace-task-error' })),
+    } as unknown as TraceRecorder;
+
+    const messages = [];
+    for await (const message of streamPackageLocalAgentKernelTurn({
+      sessionId: 'session-task-error',
+      streamOptions: {
+        input: 'fail the repo summary',
+        turnId: 'turn-task-error',
+        signal: abortController.signal,
+      },
+      kernel: {
+        async *runTurn() {
+          yield {
+            type: 'error',
+            message: 'model failed',
+            code: 'MODEL_FAILED',
+          } satisfies AgentStreamEvent;
+        },
+      },
+      traceRecorder,
+      traceManager: {
+        remember: vi.fn(),
+        notifySink: vi.fn(async () => undefined),
+      },
+      hookRuntime: {
+        enable: vi.fn(),
+        setTraceCollector: vi.fn(),
+        runTaskCompleted,
+      },
+      maxContextTokens: 99,
+    })) {
+      messages.push(message);
+    }
+
+    expect(messages).toContainEqual({
+      type: 'error',
+      message: 'model failed',
+      code: 'MODEL_FAILED',
+      sessionId: 'session-task-error',
+    });
+    expect(runTaskCompleted).toHaveBeenCalledWith({
+      taskId: 'turn-task-error',
+      taskDescription: 'fail the repo summary',
+      resultSummary: 'model failed',
+      success: false,
+      abortSignal: abortController.signal,
+    });
+  });
+
   it('finalizes thrown stream errors and rethrows them', async () => {
     const error = new Error('stream failed');
     const trace = { id: 'trace-2' };
