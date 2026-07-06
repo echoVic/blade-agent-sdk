@@ -438,6 +438,19 @@ describe('release scripts', () => {
     expect(roadmap).toContain('public subpath declarations');
   });
 
+  it('rejects server-only contracts from published browser-safe core declarations', () => {
+    const publishedVerifier = readFileSync(resolve('scripts/verify-published.mjs'), 'utf8');
+
+    expect(publishedVerifier).toContain('verifyPublishedCoreDeclarationBoundary');
+    expect(publishedVerifier).toContain("node_modules/@blade-ai/agent-sdk/dist/core/index.d.ts");
+    expect(publishedVerifier).toContain("forbidden: 'createSession'");
+    expect(publishedVerifier).toContain("forbidden: 'resumeSession'");
+    expect(publishedVerifier).toContain("forbidden: 'forkSession'");
+    expect(publishedVerifier).toContain("forbidden: 'getBuiltinTools'");
+    expect(publishedVerifier).toContain("forbidden: 'createSdkMcpServer'");
+    expect(publishedVerifier).toContain('published core declarations must stay browser-safe');
+  });
+
   it('browser-bundles published browser-safe entrypoints from the temporary consumer', () => {
     const publishedVerifier = readFileSync(resolve('scripts/verify-published.mjs'), 'utf8');
     const readme = readFileSync(resolve('README.md'), 'utf8');
