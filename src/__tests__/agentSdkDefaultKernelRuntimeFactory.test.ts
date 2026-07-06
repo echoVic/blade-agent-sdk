@@ -222,6 +222,52 @@ describe('agent-sdk default kernel runtime factory', () => {
     expect(disconnectAll).toHaveBeenCalledTimes(1);
   });
 
+  it('applies UserPromptSubmit hooks through the default package-local hook runtime', async () => {
+    const generate = vi.fn(async () => ({
+      content: 'hooked answer',
+      finishReason: 'stop' as const,
+    }));
+    const defaultKernelModel: ModelPort = {
+      generate,
+      async *stream() {},
+    };
+    const factory = createDefaultKernelSessionRuntimeFactory({
+      createSessionId: () => 'hook-session',
+      createTurnId: () => 'hook-turn',
+      runtime: {
+        kernelModelResolver: {
+          resolve() {
+            return {
+              model: defaultKernelModel,
+              modelRequestDefaults: { model: 'test-model' },
+            };
+          },
+        },
+      },
+    });
+
+    const session = await factory.create({
+      ...options,
+      hooks: {
+        [HookEvent.UserPromptSubmit]: [
+          async () => ({
+            action: 'continue',
+            modifiedInput: { userPrompt: 'updated prompt' },
+          }),
+        ],
+      },
+    });
+
+    await session.send('original prompt');
+    await collect(session.stream());
+
+    expect(generate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        messages: [{ role: 'user', content: 'updated prompt' }],
+      }),
+    );
+  });
+
   it('initializes configured runtime capabilities before package-local kernel turns', async () => {
     const order: string[] = [];
     const registerServer = vi.fn(async (serverName: string) => {

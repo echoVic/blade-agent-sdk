@@ -8,6 +8,7 @@ import {
   type PackageLocalSessionRuntimeOptions,
   type PackageLocalRuntimeSessionStorePort,
 } from './runtimeInstance.js';
+import { createPackageLocalRuntimeHookRuntime } from './runtimeHooks.js';
 import { JsonlSessionStore } from './store.js';
 import type { SessionRuntimeFactory } from './factory.js';
 import type { SessionId, SessionOptions } from './types.js';
@@ -77,16 +78,23 @@ export function createDefaultKernelSessionRuntimeFactory(
     createTurnId: options.createTurnId ?? nanoid,
     createRuntime(context) {
       const runtimePorts = resolveRuntimePorts(options.runtime, context);
+      const resolvedRuntimePorts = {
+        ...runtimePorts,
+        hookRuntime: runtimePorts.hookRuntime ?? createPackageLocalRuntimeHookRuntime({
+          sessionId: context.sessionId,
+          hooks: context.options.hooks,
+        }),
+      };
       const runtime = new PackageLocalSessionRuntime({
         sessionId: context.sessionId,
         options: context.options,
         bladeConfig: buildBladeConfig(context.options),
         defaultContext: context.options.defaultContext ?? {},
         sessionStore:
-          runtimePorts.sessionStore ?? createJsonlRuntimeSessionStore(context.options),
-        ...runtimePorts,
-        kernelFactory: runtimePorts.kernelFactory ?? defaultKernelFactory,
-        kernelModelResolver: runtimePorts.kernelModelResolver ?? defaultKernelModelResolver,
+          resolvedRuntimePorts.sessionStore ?? createJsonlRuntimeSessionStore(context.options),
+        ...resolvedRuntimePorts,
+        kernelFactory: resolvedRuntimePorts.kernelFactory ?? defaultKernelFactory,
+        kernelModelResolver: resolvedRuntimePorts.kernelModelResolver ?? defaultKernelModelResolver,
         createForkSessionId: createSessionId,
         createForkSession(sessionId, sessionOptions) {
           return runtimeFactory.resume({ ...sessionOptions, sessionId });

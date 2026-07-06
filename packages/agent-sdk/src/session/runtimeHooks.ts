@@ -1,3 +1,6 @@
+import type { AgentHookPort } from '@blade-ai/agent';
+import type { ModelRequest } from '@blade-ai/ai';
+import { HookEvent } from '../types/constants.js';
 import type { HookCallback, SessionHookEvent } from './types.js';
 
 export interface PackageLocalRuntimeHookManagerPort {
@@ -6,6 +9,7 @@ export interface PackageLocalRuntimeHookManagerPort {
 
 export interface PackageLocalRuntimeHookRuntimePort extends PackageLocalRuntimeHookManagerPort {
   setTraceCollector?(collector: unknown): void;
+  createAgentHookPort?(): AgentHookPort;
 }
 
 export interface PackageLocalRuntimeHooksInitializationOptions {
@@ -21,6 +25,17 @@ export interface PackageLocalRuntimeTraceCollectorStreamOptions<TChunk> {
   hookRuntime: PackageLocalRuntimeHookRuntimePort;
   traceCollector: unknown;
   stream: AsyncIterable<TChunk>;
+}
+
+export interface PackageLocalHookTraceCollector {
+  recordHookStart?(event: HookEvent, payload: Record<string, unknown>): string;
+  recordHookEnd?(spanId: string, payload?: Record<string, unknown>): void;
+  recordHookError?(spanId: string, error: unknown): void;
+}
+
+export interface PackageLocalRuntimeHookRuntimeOptions {
+  sessionId: string;
+  hooks?: Partial<Record<SessionHookEvent, HookCallback[]>>;
 }
 
 export function initializePackageLocalRuntimeHooks(
@@ -39,6 +54,117 @@ export function createPackageLocalRuntimeHookOperations(
       initializePackageLocalRuntimeHooks(options);
     },
   };
+}
+
+export function createPackageLocalRuntimeHookRuntime(
+  options: PackageLocalRuntimeHookRuntimeOptions,
+): PackageLocalRuntimeHookRuntimePort {
+  let traceCollector: PackageLocalHookTraceCollector | undefined;
+
+  return {
+    enable() {},
+    setTraceCollector(collector) {
+      traceCollector = collector as PackageLocalHookTraceCollector | undefined;
+    },
+    createAgentHookPort() {
+      return {
+        async beforeModel(request, context) {
+          if (context.step !== 1) {
+            return request;
+          }
+
+          return applyPackageLocalUserPromptSubmitHooks({
+            request,
+            sessionId: options.sessionId,
+            callbacks: options.hooks?.[HookEvent.UserPromptSubmit] ?? [],
+            traceCollector,
+          });
+        },
+      };
+    },
+  };
+}
+
+interface PackageLocalUserPromptSubmitHookOptions {
+  request: ModelRequest;
+  sessionId: string;
+  callbacks: readonly HookCallback[];
+  traceCollector?: PackageLocalHookTraceCollector;
+}
+
+async function applyPackageLocalUserPromptSubmitHooks(
+  options: PackageLocalUserPromptSubmitHookOptions,
+): Promise<ModelRequest> {
+  if (options.callbacks.length === 0) {
+    return options.request;
+  }
+
+  const userMessageIndex = findLastUserMessageIndex(options.request);
+  const userMessage = userMessageIndex === -1
+    ? undefined
+    : options.request.messages[userMessageIndex];
+  if (!userMessage) {
+    return options.request;
+  }
+
+  let nextPrompt = userMessage.content;
+
+  for (const callback of options.callbacks) {
+    const payload = {
+      event: HookEvent.UserPromptSubmit,
+      sessionId: options.sessionId,
+      userPrompt: nextPrompt,
+      hasImages: false,
+      imageCount: 0,
+    };
+    const spanId = options.traceCollector?.recordHookStart?.(HookEvent.UserPromptSubmit, payload);
+
+    try {
+      const output = await callback(payload);
+      if (spanId) {
+        options.traceCollector?.recordHookEnd?.(spanId, {
+          action: output.action,
+          reason: output.reason,
+        });
+      }
+
+      if (output.action === 'abort') {
+        throw new Error(output.reason || 'Prompt submission aborted by hook');
+      }
+
+      if (typeof output.modifiedInput === 'string') {
+        nextPrompt = output.modifiedInput;
+      } else if (typeof output.modifiedInput?.userPrompt === 'string') {
+        nextPrompt = output.modifiedInput.userPrompt;
+      }
+    } catch (error) {
+      if (spanId) {
+        options.traceCollector?.recordHookError?.(spanId, error);
+      }
+      throw error;
+    }
+  }
+
+  if (nextPrompt === userMessage.content) {
+    return options.request;
+  }
+
+  return {
+    ...options.request,
+    messages: options.request.messages.map((message, index) =>
+      index === userMessageIndex ? { ...message, content: nextPrompt } : message
+    ),
+  };
+}
+
+function findLastUserMessageIndex(request: ModelRequest): number {
+  for (let index = request.messages.length - 1; index >= 0; index -= 1) {
+    if (request.messages[index]?.role === 'user') {
+      return index;
+    }
+  }
+
+  return -1;
 }
 
 export async function* streamWithPackageLocalRuntimeTraceCollector<TChunk>(

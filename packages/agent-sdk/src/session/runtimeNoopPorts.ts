@@ -221,8 +221,8 @@ function createNoopRuntimeKernelPortFactory(): PackageLocalRuntimeKernelPortFact
     createTracePort(options) {
       return createPackageLocalKernelTracePort(options);
     },
-    createHookPort() {
-      return {};
+    createHookPort(options) {
+      return options.hookRuntime.createAgentHookPort?.() ?? {};
     },
   };
 }

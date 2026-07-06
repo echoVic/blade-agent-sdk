@@ -10,6 +10,7 @@ import type { ModelMessage } from '@blade-ai/ai';
 import type { TraceRecorder } from '../observability/TraceRecorder.js';
 import type { ExecutionContext } from '../tools/types/index.js';
 import type { SessionId } from './types.js';
+import type { PackageLocalRuntimeHookRuntimePort } from './runtimeHooks.js';
 
 export interface PackageLocalRuntimeKernelToolPortCreateOptions {
   toolCatalog: unknown;
@@ -31,7 +32,7 @@ export interface PackageLocalRuntimeKernelTracePortCreateOptions {
 }
 
 export interface PackageLocalRuntimeKernelHookPortCreateOptions {
-  hookRuntime: unknown;
+  hookRuntime: PackageLocalRuntimeHookRuntimePort;
 }
 
 export interface PackageLocalRuntimeKernelPortFactoryPort {
@@ -87,7 +88,7 @@ export interface CreatePackageLocalRuntimeKernelPortOperationsOptions {
   createExecutionPipeline(): unknown;
   sessionId: SessionId;
   sessionStore: PackageLocalRuntimeKernelSessionStorePort;
-  hookRuntime: unknown;
+  hookRuntime: PackageLocalRuntimeHookRuntimePort;
 }
 
 export function createPackageLocalRuntimeKernelPortOperations(
