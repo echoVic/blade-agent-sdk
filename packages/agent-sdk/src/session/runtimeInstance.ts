@@ -51,11 +51,9 @@ import {
   type PackageLocalRuntimeBackgroundAgentManagerPort,
 } from './runtimeAgentDeps.js';
 import {
-  createPackageLocalRuntimeKernelHookPort,
-  createPackageLocalRuntimeKernelStorePort,
-  createPackageLocalRuntimeKernelToolPort,
-  createPackageLocalRuntimeKernelTracePort,
+  createPackageLocalRuntimeKernelPortOperations,
   type PackageLocalRuntimeKernelPortFactoryPort,
+  type PackageLocalRuntimeKernelPortOperations,
 } from './runtimeKernelPorts.js';
 import {
   streamPackageLocalRuntimeAgentKernelTurn,
@@ -300,6 +298,7 @@ export class PackageLocalSessionRuntime {
   readonly kernelFactory: PackageLocalRuntimeAgentKernelFactoryPort;
   readonly kernelModelResolver: PackageLocalRuntimeKernelModelResolverPort;
   private readonly executionPipelineCache: PackageLocalRuntimeExecutionPipelineCache;
+  private readonly kernelPortOperations: PackageLocalRuntimeKernelPortOperations;
   private readonly agentKernelOperations: PackageLocalRuntimeAgentKernelOperations;
   private readonly createForkSessionId?: () => SessionId;
   private readonly createForkSession?: (
@@ -346,6 +345,14 @@ export class PackageLocalSessionRuntime {
         executionPipelineFactory: this.executionPipelineFactory,
       }),
     );
+    this.kernelPortOperations = createPackageLocalRuntimeKernelPortOperations({
+      kernelPortFactory: this.kernelPortFactory,
+      toolCatalog: this.toolCatalog,
+      createExecutionPipeline: () => this.createExecutionPipeline(),
+      sessionId: this.sessionId,
+      sessionStore: this.sessionStore,
+      hookRuntime: this.hookRuntime,
+    });
     this.agentKernelOperations = createPackageLocalRuntimeAgentKernelOperations({
       bladeConfig: this.bladeConfig,
       kernelModelResolver: this.kernelModelResolver,
@@ -565,35 +572,19 @@ export class PackageLocalSessionRuntime {
       signal?: AbortSignal,
     ) => ExecutionContext,
   ): AgentToolPort {
-    return createPackageLocalRuntimeKernelToolPort({
-      kernelPortFactory: this.kernelPortFactory,
-      toolCatalog: this.toolCatalog,
-      executionPipeline: this.createExecutionPipeline(),
-      createExecutionContext,
-    });
+    return this.kernelPortOperations.createToolPort(createExecutionContext);
   }
 
   getKernelStorePort(): AgentStorePort {
-    return createPackageLocalRuntimeKernelStorePort({
-      kernelPortFactory: this.kernelPortFactory,
-      sessionId: this.sessionId,
-      sessionStore: this.sessionStore,
-    });
+    return this.kernelPortOperations.createStorePort();
   }
 
   getKernelTracePort(recorder: TraceRecorder, maxContextTokens?: number): AgentTracePort {
-    return createPackageLocalRuntimeKernelTracePort({
-      kernelPortFactory: this.kernelPortFactory,
-      recorder,
-      maxContextTokens,
-    });
+    return this.kernelPortOperations.createTracePort(recorder, maxContextTokens);
   }
 
   getKernelHookPort(): AgentHookPort {
-    return createPackageLocalRuntimeKernelHookPort({
-      kernelPortFactory: this.kernelPortFactory,
-      hookRuntime: this.hookRuntime,
-    });
+    return this.kernelPortOperations.createHookPort();
   }
 
   createAgentKernel(

@@ -69,6 +69,62 @@ export interface CreatePackageLocalRuntimeKernelHookPortOptions
   kernelPortFactory: PackageLocalRuntimeKernelPortFactoryPort;
 }
 
+export interface PackageLocalRuntimeKernelPortOperations {
+  createToolPort(
+    createExecutionContext: (
+      toolCall: AgentToolCall,
+      signal?: AbortSignal,
+    ) => ExecutionContext,
+  ): AgentToolPort;
+  createStorePort(): AgentStorePort;
+  createTracePort(recorder: TraceRecorder, maxContextTokens?: number): AgentTracePort;
+  createHookPort(): AgentHookPort;
+}
+
+export interface CreatePackageLocalRuntimeKernelPortOperationsOptions {
+  kernelPortFactory: PackageLocalRuntimeKernelPortFactoryPort;
+  toolCatalog: unknown;
+  createExecutionPipeline(): unknown;
+  sessionId: SessionId;
+  sessionStore: PackageLocalRuntimeKernelSessionStorePort;
+  hookRuntime: unknown;
+}
+
+export function createPackageLocalRuntimeKernelPortOperations(
+  options: CreatePackageLocalRuntimeKernelPortOperationsOptions,
+): PackageLocalRuntimeKernelPortOperations {
+  return {
+    createToolPort(createExecutionContext) {
+      return createPackageLocalRuntimeKernelToolPort({
+        kernelPortFactory: options.kernelPortFactory,
+        toolCatalog: options.toolCatalog,
+        executionPipeline: options.createExecutionPipeline(),
+        createExecutionContext,
+      });
+    },
+    createStorePort() {
+      return createPackageLocalRuntimeKernelStorePort({
+        kernelPortFactory: options.kernelPortFactory,
+        sessionId: options.sessionId,
+        sessionStore: options.sessionStore,
+      });
+    },
+    createTracePort(recorder, maxContextTokens) {
+      return createPackageLocalRuntimeKernelTracePort({
+        kernelPortFactory: options.kernelPortFactory,
+        recorder,
+        maxContextTokens,
+      });
+    },
+    createHookPort() {
+      return createPackageLocalRuntimeKernelHookPort({
+        kernelPortFactory: options.kernelPortFactory,
+        hookRuntime: options.hookRuntime,
+      });
+    },
+  };
+}
+
 export function createPackageLocalRuntimeKernelToolPort(
   options: CreatePackageLocalRuntimeKernelToolPortOptions,
 ): AgentToolPort {

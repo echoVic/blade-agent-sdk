@@ -825,7 +825,23 @@ describe('monorepo topology', () => {
     expect(runtimeKernelPortsSource).toContain('createPackageLocalRuntimeKernelStorePort');
     expect(runtimeKernelPortsSource).toContain('createPackageLocalRuntimeKernelTracePort');
     expect(runtimeKernelPortsSource).toContain('createPackageLocalRuntimeKernelHookPort');
-    expect(packageLocalRuntimeInstanceSource).toContain('createPackageLocalRuntimeKernelToolPort');
+    expect(runtimeKernelPortsSource).toContain('createPackageLocalRuntimeKernelPortOperations');
+    expect(packageLocalRuntimeInstanceSource).toContain(
+      'createPackageLocalRuntimeKernelPortOperations',
+    );
+    expect(packageLocalRuntimeInstanceSource).toContain('kernelPortOperations');
+    expect(packageLocalRuntimeInstanceSource).not.toContain(
+      'createPackageLocalRuntimeKernelToolPort',
+    );
+    expect(packageLocalRuntimeInstanceSource).not.toContain(
+      'createPackageLocalRuntimeKernelStorePort',
+    );
+    expect(packageLocalRuntimeInstanceSource).not.toContain(
+      'createPackageLocalRuntimeKernelTracePort',
+    );
+    expect(packageLocalRuntimeInstanceSource).not.toContain(
+      'createPackageLocalRuntimeKernelHookPort',
+    );
     expect(packageLocalRuntimeInstanceSource).not.toContain('this.kernelPortFactory.createToolPort({');
     expect(packageLocalRuntimeInstanceSource).not.toContain('this.kernelPortFactory.createStorePort({');
     expect(packageLocalRuntimeInstanceSource).not.toContain('this.kernelPortFactory.createTracePort({');
