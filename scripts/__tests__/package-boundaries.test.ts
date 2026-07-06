@@ -340,4 +340,36 @@ describe('package boundary verifier', () => {
     expect(result.stderr).toContain('export "./cli"');
     expect(result.stderr).toContain('CLI product capabilities belong in a separate package');
   });
+
+  it('rejects CLI product keywords in the session SDK manifest', () => {
+    const cwd = createBoundaryFixture();
+    writeJson(join(cwd, 'packages', 'agent-sdk', 'package.json'), {
+      name: '@blade-ai/agent-sdk',
+      main: './dist/index.js',
+      types: './dist/index.d.ts',
+      exports: {
+        '.': {
+          types: './dist/index.d.ts',
+          import: './dist/index.js',
+        },
+        './package.json': {
+          default: './package.json',
+        },
+      },
+      keywords: ['agent', 'sdk', 'cli'],
+      dependencies: {},
+    });
+
+    const result = spawnSync(process.execPath, [
+      resolve('scripts/verify-package-boundaries.mjs'),
+    ], {
+      cwd,
+      encoding: 'utf8',
+    });
+
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain('packages/agent-sdk/package.json');
+    expect(result.stderr).toContain('keyword "cli"');
+    expect(result.stderr).toContain('CLI product capabilities belong in a separate package');
+  });
 });

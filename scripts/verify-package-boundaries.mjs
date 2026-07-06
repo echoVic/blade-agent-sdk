@@ -65,6 +65,9 @@ const manifestRules = [
     disallowedExportSubpaths: [
       ['./cli', 'CLI product capabilities belong in a separate package'],
     ],
+    disallowedKeywords: [
+      ['cli', 'CLI product capabilities belong in a separate package'],
+    ],
     disallowedDependencies: [
       [/^@ai-sdk\/(?:anthropic|azure|deepseek|google|openai|openai-compatible)$/, 'Provider SDK dependencies belong in @blade-ai/ai, not the session SDK'],
       [/^ai$/, 'Provider runtime dependency belongs in @blade-ai/ai, not the session SDK'],
@@ -221,6 +224,11 @@ for (const rule of manifestRules) {
   for (const [subpath, reason] of rule.disallowedExportSubpaths ?? []) {
     if (collectExportSubpaths(manifest.exports).includes(subpath)) {
       violations.push(`${rule.packageJson}: export "${subpath}" is not allowed - ${reason}`);
+    }
+  }
+  for (const [keyword, reason] of rule.disallowedKeywords ?? []) {
+    if (Array.isArray(manifest.keywords) && manifest.keywords.includes(keyword)) {
+      violations.push(`${rule.packageJson}: keyword "${keyword}" is not allowed - ${reason}`);
     }
   }
 

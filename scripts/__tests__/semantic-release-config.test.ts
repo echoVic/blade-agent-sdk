@@ -92,6 +92,9 @@ describe('package provenance metadata', () => {
         'sdk',
         'llm',
       ]));
+      if (pkg.name === '@blade-ai/agent-sdk') {
+        expect(packageJson.keywords).not.toContain('cli');
+      }
       expect(readme).toContain(pkg.name);
       for (const text of pkg.requiredReadmeText) {
         expect(readme).toContain(text);
@@ -554,6 +557,8 @@ describe('release scripts', () => {
       expect(verifier).toContain('function assertNoCliProductManifest');
       expect(verifier).toContain("@blade-ai/agent-sdk manifest must not publish a bin field");
       expect(verifier).toContain("@blade-ai/agent-sdk manifest must not publish a ./cli export");
+      expect(verifier).toContain('@blade-ai/agent-sdk manifest must not publish CLI product keyword');
+      expect(verifier).toContain('manifest.keywords');
       expect(verifier).toContain('CLI product capabilities belong in a separate package');
     }
   });

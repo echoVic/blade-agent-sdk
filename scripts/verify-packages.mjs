@@ -527,6 +527,9 @@ function assertNoCliProductManifest(packageName, manifest) {
   if (manifest.exports && typeof manifest.exports === 'object' && './cli' in manifest.exports) {
     throw new Error('@blade-ai/agent-sdk manifest must not publish a ./cli export; CLI product capabilities belong in a separate package');
   }
+  if (Array.isArray(manifest.keywords) && manifest.keywords.includes('cli')) {
+    throw new Error('@blade-ai/agent-sdk manifest must not publish CLI product keyword "cli"; CLI product capabilities belong in a separate package');
+  }
 }
 
 function verifyForbiddenFileContents(spec, tarballPath, tempDir) {

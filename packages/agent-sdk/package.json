@@ -68,7 +68,7 @@
     "session-first",
     "mcp",
     "tools",
-    "cli"
+    "server"
   ],
   "scripts": {
     "build": "pnpm --filter @blade-ai/ai run build && pnpm --filter @blade-ai/agent run build && tsup --config tsup.config.ts && tsc -p tsconfig.build.json && tsc -p tsconfig.public-dts.json && node scripts/overlay-public-dts.mjs",
