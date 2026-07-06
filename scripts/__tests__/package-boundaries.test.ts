@@ -115,4 +115,24 @@ describe('package boundary verifier', () => {
     expect(result.stderr).toContain('"ai"');
     expect(result.stderr).toContain('Provider runtime');
   });
+
+  it('rejects session-sdk source imports that leave the package source tree', () => {
+    const cwd = createBoundaryFixture();
+    writeFileSync(
+      join(cwd, 'packages', 'agent-sdk', 'src', 'index.ts'),
+      "export * from '../../../src/index.js';\n",
+    );
+
+    const result = spawnSync(process.execPath, [
+      resolve('scripts/verify-package-boundaries.mjs'),
+    ], {
+      cwd,
+      encoding: 'utf8',
+    });
+
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain('packages/agent-sdk/src/index.ts');
+    expect(result.stderr).toContain("relative import \"../../../src/index.js\"");
+    expect(result.stderr).toContain('leaves packages/agent-sdk/src');
+  });
 });

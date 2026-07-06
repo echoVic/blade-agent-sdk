@@ -23,6 +23,11 @@ const rules = [
       [/^@modelcontextprotocol(?:\/|$)/, 'Agent kernel must not depend on MCP SDKs'],
     ],
   },
+  {
+    name: '@blade-ai/agent-sdk',
+    sourceDir: 'packages/agent-sdk/src',
+    disallowedSpecifiers: [],
+  },
 ];
 
 const manifestRules = [
