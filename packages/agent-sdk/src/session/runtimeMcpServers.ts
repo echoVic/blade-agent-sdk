@@ -2,6 +2,7 @@ import type { McpServerConfig } from '../types/common.js';
 import type { SdkMcpServerHandle } from './types.js';
 
 interface PackageLocalMcpRegistryActionPort {
+  disconnectAll?(): Promise<void> | void;
   connectServer?(serverName: string): Promise<void> | void;
   disconnectServer?(serverName: string): Promise<void> | void;
   reconnectServer?(serverName: string): Promise<void> | void;
@@ -41,6 +42,10 @@ export interface PackageLocalMcpServerDisconnectOptions {
   serverName: string;
   mcpRegistry: PackageLocalMcpRegistryActionPort;
   refreshMcpTools(serverNames: string[]): Promise<void> | void;
+}
+
+export interface PackageLocalMcpServerCloseOptions {
+  mcpRegistry: PackageLocalMcpRegistryActionPort;
 }
 
 export function isPackageLocalSdkMcpServerHandle(
@@ -134,6 +139,12 @@ export async function ensurePackageLocalMcpServerRegistered(
     options.serverName,
     config,
   );
+}
+
+export async function closePackageLocalRuntimeMcpServers(
+  options: PackageLocalMcpServerCloseOptions,
+): Promise<void> {
+  await options.mcpRegistry.disconnectAll?.call(options.mcpRegistry);
 }
 
 export async function connectPackageLocalRuntimeMcpServer(

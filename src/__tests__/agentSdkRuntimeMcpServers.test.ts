@@ -1,5 +1,5 @@
 import { existsSync } from 'node:fs';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 const mcpServersModulePath = '../../packages/agent-sdk/src/session/runtimeMcpServers.js';
 const mcpServersSourcePath = 'packages/agent-sdk/src/session/runtimeMcpServers.ts';
@@ -249,5 +249,20 @@ describe('agent-sdk package-local runtime MCP server helpers', () => {
       ['reconnect', 'remote', true],
       ['refresh', ['remote']],
     ]);
+  });
+
+  it('closes all MCP servers through the registry port without runtime state', async () => {
+    expect(existsSync(mcpServersSourcePath)).toBe(true);
+
+    const { closePackageLocalRuntimeMcpServers } = await import(mcpServersModulePath);
+    const registry = {
+      disconnectAll: vi.fn(async function disconnectAll(this: unknown) {
+        expect(this).toBe(registry);
+      }),
+    };
+
+    await closePackageLocalRuntimeMcpServers({ mcpRegistry: registry });
+
+    expect(registry.disconnectAll).toHaveBeenCalledOnce();
   });
 });
