@@ -12,9 +12,9 @@ import { createSession } from '@blade-ai/agent-sdk';
 
 | 包 | 职责 | 不能做什么 |
 | --- | --- | --- |
-| `@blade-ai/ai` | Provider-agnostic 模型协议、stream event、usage、provider adapter、模型选项归一化 | 不理解 Agent loop、Session、工具执行、本地运行时 |
+| `@blade-ai/ai` | Provider-agnostic 模型协议、stream event、usage、provider adapter、provider-specific helper、模型选项归一化 | 不理解 Agent loop、Session、工具执行、本地运行时 |
 | `@blade-ai/agent` | runtime-independent Agent kernel、tool call protocol、permission contract、store/trace/hook ports | 不导入 Node-only 模块、MCP SDK、provider SDK、本地工具、文件系统 |
-| `@blade-ai/agent-sdk` | session-first 产品 SDK，组合 AI provider、Agent kernel、server runtime、MCP、工具、持久化、hooks、observability；Node-local adapters 由 `/local` 显式承载 | 不把 browser-safe API、root session facade 和 Node-only local adapters 混成一个入口 |
+| `@blade-ai/agent-sdk` | session-first 产品 SDK，组合 AI provider、Agent kernel、server runtime、MCP、工具、持久化、hooks、observability；Node-local adapters 由 `/local` 显式承载 | 不把 browser-safe API、root session facade、Node-only local adapters 和 provider-specific helper 混成一个入口 |
 
 依赖方向固定为：
 

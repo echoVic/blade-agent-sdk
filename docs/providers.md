@@ -171,10 +171,10 @@ Thinking mode 可通过模型配置的 `providerOptions` 透传：
 }
 ```
 
-DeepSeek Context Caching 默认由官方服务端启用，SDK 不需要额外开关。响应 usage 会保留缓存命中与未命中口径：`cacheReadInputTokens` 对应 `prompt_cache_hit_tokens`，`cacheMissInputTokens` / `billableInputTokens` 对应 `prompt_cache_miss_tokens`。如果启用 Agent token budget，可复用内置价格表生成成本配置：
+DeepSeek Context Caching 默认由官方服务端启用，SDK 不需要额外开关。响应 usage 会保留缓存命中与未命中口径：`cacheReadInputTokens` 对应 `prompt_cache_hit_tokens`，`cacheMissInputTokens` / `billableInputTokens` 对应 `prompt_cache_miss_tokens`。如果启用 Agent token budget，可复用 `@blade-ai/ai/deepseek` 的内置价格表生成成本配置：
 
 ```ts
-import { createDeepSeekTokenBudgetCostConfig } from '@blade-ai/agent-sdk';
+import { createDeepSeekTokenBudgetCostConfig } from '@blade-ai/ai/deepseek';
 
 const session = await createSession({
   provider: { type: 'deepseek', apiKey: process.env.DEEPSEEK_API_KEY! },
@@ -191,7 +191,7 @@ const session = await createSession({
 也可以直接对单次 usage 计算成本明细：
 
 ```ts
-import { calculateDeepSeekCost, DeepSeekCostTracker } from '@blade-ai/agent-sdk';
+import { calculateDeepSeekCost, DeepSeekCostTracker } from '@blade-ai/ai/deepseek';
 
 const cost = calculateDeepSeekCost(response.usage, 'deepseek-v4-pro');
 console.log(cost?.totalCost);
@@ -209,7 +209,7 @@ DeepSeek 服务端会自动缓存 prompt 前缀。SDK 会在 DeepSeek provider �
 import {
   createDeepSeekChatCompletion,
   optimizeDeepSeekCachePrefix,
-} from '@blade-ai/agent-sdk';
+} from '@blade-ai/ai/deepseek';
 
 const messages = optimizeDeepSeekCachePrefix([
   { role: 'system', content: 'You are a repository assistant.' },
@@ -256,7 +256,7 @@ import {
   createDeepSeekChatCompletion,
   createDeepSeekLongContextMessages,
   optimizeDeepSeekCachePrefix,
-} from '@blade-ai/agent-sdk';
+} from '@blade-ai/ai/deepseek';
 
 const contextMessages = createDeepSeekLongContextMessages(largeDocument, {
   chunkTokenLimit: 64_000,
@@ -289,7 +289,7 @@ const chunks = createDeepSeekLongContextMessages(largeDocument, {
 如果需要先检查哪些分片会进入请求，可以使用计划接口：
 
 ```ts
-import { createDeepSeekLongContextPlan } from '@blade-ai/agent-sdk';
+import { createDeepSeekLongContextPlan } from '@blade-ai/ai/deepseek';
 
 const plan = createDeepSeekLongContextPlan(largeDocument, {
   chunkTokenLimit: 64_000,
@@ -302,13 +302,13 @@ console.log(plan.includedChunkCount, plan.omittedChunkCount);
 
 ### DeepSeek 批量请求
 
-DeepSeek 当前公开文档没有 OpenAI-style `/batches` API；SDK 提供 `createDeepSeekBatchChatCompletions`，在 `/chat/completions` 上做 bounded concurrency 批量请求，并保留每个请求的 usage 与成本明细。批量请求同样会应用稳定前缀重排，可用 `summarizeDeepSeekBatchChatCompletions` 汇总命中率和成本。
+DeepSeek 当前公开文档没有 OpenAI-style `/batches` API；`@blade-ai/ai/deepseek` 提供 `createDeepSeekBatchChatCompletions`，在 `/chat/completions` 上做 bounded concurrency 批量请求，并保留每个请求的 usage 与成本明细。批量请求同样会应用稳定前缀重排，可用 `summarizeDeepSeekBatchChatCompletions` 汇总命中率和成本。
 
 ```ts
 import {
   createDeepSeekBatchChatCompletions,
   summarizeDeepSeekBatchChatCompletions,
-} from '@blade-ai/agent-sdk';
+} from '@blade-ai/ai/deepseek';
 
 const results = await createDeepSeekBatchChatCompletions({
   apiKey: process.env.DEEPSEEK_API_KEY!,

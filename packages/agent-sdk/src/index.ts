@@ -1,4 +1,3 @@
-export * from '@blade-ai/ai/deepseek';
 export type {
   SubagentColor,
   SubagentConfig,

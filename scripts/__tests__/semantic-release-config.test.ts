@@ -174,6 +174,17 @@ describe('package provenance metadata', () => {
     expect(packageVerifier).toContain('root declarations must keep Node-local builtin tools behind @blade-ai/agent-sdk/local');
   });
 
+  it('rejects provider-specific helpers from root package declarations', () => {
+    const packageVerifier = readFileSync(resolve('scripts/verify-packages.mjs'), 'utf8');
+
+    expect(packageVerifier).toContain("file: 'package/dist/index.d.ts'");
+    expect(packageVerifier).toContain("forbidden: 'normalizeDeepSeekModel'");
+    expect(packageVerifier).toContain("forbidden: 'calculateDeepSeekCost'");
+    expect(packageVerifier).toContain("forbidden: 'DeepSeekCostTracker'");
+    expect(packageVerifier).toContain("forbidden: 'DEEPSEEK_DEFAULT_MODEL'");
+    expect(packageVerifier).toContain('root declarations must keep provider-specific DeepSeek helpers in @blade-ai/ai/deepseek');
+  });
+
   it('runtime-loads public value exports from the packed temporary consumer', () => {
     const packageVerifier = readFileSync(resolve('scripts/verify-packages.mjs'), 'utf8');
 
@@ -195,6 +206,8 @@ describe('package provenance metadata', () => {
     expect(packageVerifier).toContain("assertRuntimeExport(agentSdk, 'defineTool')");
     expect(packageVerifier).toContain("assertNoRuntimeExport(agentSdk, 'getBuiltinTools')");
     expect(packageVerifier).toContain("assertNoRuntimeExport(agentSdk, 'createSdkMcpServer')");
+    expect(packageVerifier).toContain("assertNoRuntimeExport(agentSdk, 'normalizeDeepSeekModel')");
+    expect(packageVerifier).toContain("assertNoRuntimeExport(agentSdk, 'DeepSeekCostTracker')");
     expect(packageVerifier).toContain("assertRuntimeExport(agentSdkTools, 'ToolKind')");
     expect(packageVerifier).toContain("throw new Error('@blade-ai/ai/chat should remain type-only at runtime')");
   });
@@ -452,6 +465,8 @@ describe('release scripts', () => {
     expect(publishedVerifier).toContain("assertRuntimeExport(agentSdk, 'createSession')");
     expect(publishedVerifier).toContain("assertNoRuntimeExport(agentSdk, 'getBuiltinTools')");
     expect(publishedVerifier).toContain("assertNoRuntimeExport(agentSdk, 'createSdkMcpServer')");
+    expect(publishedVerifier).toContain("assertNoRuntimeExport(agentSdk, 'normalizeDeepSeekModel')");
+    expect(publishedVerifier).toContain("assertNoRuntimeExport(agentSdk, 'DeepSeekCostTracker')");
     expect(publishedVerifier).toContain("assertRuntimeExport(agentSdkServer, 'createSession')");
     expect(publishedVerifier).toContain("assertRuntimeExport(agentSdkLocal, 'getBuiltinTools')");
     expect(publishedVerifier).toContain("assertRuntimeExport(agentSdkBrowser, 'PermissionMode')");
@@ -622,6 +637,20 @@ describe('release scripts', () => {
     expect(publishedVerifier).toContain("forbidden: 'SandboxExecutor'");
     expect(publishedVerifier).toContain(
       'published root declarations must keep Node-local builtin tools behind @blade-ai/agent-sdk/local',
+    );
+  });
+
+  it('rejects provider-specific helpers from published root package declarations', () => {
+    const publishedVerifier = readFileSync(resolve('scripts/verify-published.mjs'), 'utf8');
+
+    expect(publishedVerifier).toContain('verifyPublishedRootDeclarationBoundary');
+    expect(publishedVerifier).toContain("node_modules/@blade-ai/agent-sdk/dist/index.d.ts");
+    expect(publishedVerifier).toContain("forbidden: 'normalizeDeepSeekModel'");
+    expect(publishedVerifier).toContain("forbidden: 'calculateDeepSeekCost'");
+    expect(publishedVerifier).toContain("forbidden: 'DeepSeekCostTracker'");
+    expect(publishedVerifier).toContain("forbidden: 'DEEPSEEK_DEFAULT_MODEL'");
+    expect(publishedVerifier).toContain(
+      'published root declarations must keep provider-specific DeepSeek helpers in @blade-ai/ai/deepseek',
     );
   });
 

@@ -1,5 +1,3 @@
-export * from '@blade-ai/ai/deepseek';
-
 export type {
   ClaudeCodePermissionMode,
   SubagentColor,

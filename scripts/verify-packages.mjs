@@ -256,6 +256,26 @@ const packageSpecs = [
         message: 'root declarations must keep sandbox adapters behind @blade-ai/agent-sdk/local',
       },
       {
+        file: 'package/dist/index.d.ts',
+        forbidden: 'normalizeDeepSeekModel',
+        message: 'root declarations must keep provider-specific DeepSeek helpers in @blade-ai/ai/deepseek',
+      },
+      {
+        file: 'package/dist/index.d.ts',
+        forbidden: 'calculateDeepSeekCost',
+        message: 'root declarations must keep provider-specific DeepSeek helpers in @blade-ai/ai/deepseek',
+      },
+      {
+        file: 'package/dist/index.d.ts',
+        forbidden: 'DeepSeekCostTracker',
+        message: 'root declarations must keep provider-specific DeepSeek helpers in @blade-ai/ai/deepseek',
+      },
+      {
+        file: 'package/dist/index.d.ts',
+        forbidden: 'DEEPSEEK_DEFAULT_MODEL',
+        message: 'root declarations must keep provider-specific DeepSeek helpers in @blade-ai/ai/deepseek',
+      },
+      {
         file: 'package/dist/core/index.d.ts',
         forbidden: 'createSession',
         message: 'core declarations must stay browser-safe and not expose server-only session APIs',
@@ -642,6 +662,10 @@ assertNoRuntimeExport(agentSdk, 'getBuiltinTools');
 assertNoRuntimeExport(agentSdk, 'createSdkMcpServer');
 assertNoRuntimeExport(agentSdk, 'FileSystemMemoryStore');
 assertNoRuntimeExport(agentSdk, 'SandboxExecutor');
+assertNoRuntimeExport(agentSdk, 'normalizeDeepSeekModel');
+assertNoRuntimeExport(agentSdk, 'calculateDeepSeekCost');
+assertNoRuntimeExport(agentSdk, 'DeepSeekCostTracker');
+assertNoRuntimeExport(agentSdk, 'DEEPSEEK_DEFAULT_MODEL');
 assertRuntimeExport(agentSdkCore, 'PermissionMode');
 assertRuntimeExport(agentSdkBrowser, 'PermissionMode');
 assertRuntimeExport(agentSdkServer, 'createSession');

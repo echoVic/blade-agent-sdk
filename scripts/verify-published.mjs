@@ -249,6 +249,10 @@ assertNoRuntimeExport(agentSdk, 'getBuiltinTools');
 assertNoRuntimeExport(agentSdk, 'createSdkMcpServer');
 assertNoRuntimeExport(agentSdk, 'FileSystemMemoryStore');
 assertNoRuntimeExport(agentSdk, 'SandboxExecutor');
+assertNoRuntimeExport(agentSdk, 'normalizeDeepSeekModel');
+assertNoRuntimeExport(agentSdk, 'calculateDeepSeekCost');
+assertNoRuntimeExport(agentSdk, 'DeepSeekCostTracker');
+assertNoRuntimeExport(agentSdk, 'DEEPSEEK_DEFAULT_MODEL');
 assertRuntimeExport(agentSdkBrowser, 'PermissionMode');
 assertRuntimeExport(agentSdkCore, 'PermissionMode');
 assertRuntimeExport(agentSdkLocal, 'getBuiltinTools');
@@ -481,6 +485,22 @@ async function verifyPublishedRootDeclarationBoundary({ consumerDir }) {
     {
       forbidden: 'SandboxExecutor',
       message: 'published root declarations must keep sandbox adapters behind @blade-ai/agent-sdk/local',
+    },
+    {
+      forbidden: 'normalizeDeepSeekModel',
+      message: 'published root declarations must keep provider-specific DeepSeek helpers in @blade-ai/ai/deepseek',
+    },
+    {
+      forbidden: 'calculateDeepSeekCost',
+      message: 'published root declarations must keep provider-specific DeepSeek helpers in @blade-ai/ai/deepseek',
+    },
+    {
+      forbidden: 'DeepSeekCostTracker',
+      message: 'published root declarations must keep provider-specific DeepSeek helpers in @blade-ai/ai/deepseek',
+    },
+    {
+      forbidden: 'DEEPSEEK_DEFAULT_MODEL',
+      message: 'published root declarations must keep provider-specific DeepSeek helpers in @blade-ai/ai/deepseek',
     },
   ];
 

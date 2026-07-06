@@ -36,7 +36,7 @@ import { getBuiltinTools } from '@blade-ai/agent-sdk/local';
 
 ## `@blade-ai/ai`
 
-`@blade-ai/ai` 负责模型和 provider 层。它适合用于自定义 provider adapter、模型测试、usage 归一化或直接调用底层模型协议。
+`@blade-ai/ai` 负责模型和 provider 层。它适合用于自定义 provider adapter、模型测试、usage 归一化、provider-specific helper 或直接调用底层模型协议。
 
 ```ts
 import { createOpenAICompatibleModelPort } from '@blade-ai/ai';
@@ -59,7 +59,7 @@ const model = createOpenAICompatibleModelPort({
 | `@blade-ai/ai/chat` | legacy chat protocol 类型 |
 | `@blade-ai/ai/providers/openai-compatible` | OpenAI-compatible provider adapter |
 | `@blade-ai/ai/providers/vercel` | Vercel AI provider adapter |
-| `@blade-ai/ai/deepseek` | DeepSeek helper 和 runtime |
+| `@blade-ai/ai/deepseek` | DeepSeek helper、成本/缓存/长上下文工具和 runtime |
 | `@blade-ai/ai/retry` | Retry policy |
 
 ## `@blade-ai/agent`
@@ -83,7 +83,7 @@ Kernel 通过 ports 访问外部能力：
 
 ## `@blade-ai/agent-sdk`
 
-`@blade-ai/agent-sdk` 是产品层 SDK，组合模型、kernel、工具、MCP、hooks、memory、observability、持久化和本地能力。应用开发者优先使用 root 的 session-first API；Node 本地 adapter 从 `@blade-ai/agent-sdk/local` 显式导入。
+`@blade-ai/agent-sdk` 是产品层 SDK，组合模型、kernel、工具、MCP、hooks、memory、observability、持久化和本地能力。应用开发者优先使用 root 的 session-first API；Node 本地 adapter 从 `@blade-ai/agent-sdk/local` 显式导入，provider-specific helper 从 `@blade-ai/ai/*` 显式导入。
 
 Server / CLI 场景可以使用 root：
 

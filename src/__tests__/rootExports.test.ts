@@ -22,6 +22,13 @@ describe('root exports', () => {
     expect(rootEntry).not.toHaveProperty('SandboxService');
   });
 
+  it('keeps provider-specific helpers in the ai package', () => {
+    expect(rootEntry).not.toHaveProperty('normalizeDeepSeekModel');
+    expect(rootEntry).not.toHaveProperty('calculateDeepSeekCost');
+    expect(rootEntry).not.toHaveProperty('DeepSeekCostTracker');
+    expect(rootEntry).not.toHaveProperty('DEEPSEEK_DEFAULT_MODEL');
+  });
+
   it('exports the catalog and subagent primitives without local adapters', () => {
     expect(SubagentRegistry).toBeDefined();
     expect(SubagentExecutor).toBeDefined();

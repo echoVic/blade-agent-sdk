@@ -69,51 +69,6 @@ export {
   mergeContext,
 } from './runtime/index.js';
 export type {
-  DeepSeekBatchChatCompletionItem,
-  DeepSeekBatchChatCompletionOptions,
-  DeepSeekBatchChatCompletionResult,
-  DeepSeekChatCompletionOptions,
-  DeepSeekChatCompletionResponse,
-  DeepSeekFimCompletionOptions,
-  DeepSeekFimCompletionResponse,
-} from './services/deepseek.js';
-export type {
-  DeepSeekBatchChatCompletionSummary,
-  DeepSeekCacheOptimizationOptions,
-  DeepSeekChatMessage,
-  DeepSeekCostBreakdown,
-  DeepSeekCostSnapshot,
-  DeepSeekLongContextChunk,
-  DeepSeekLongContextOptions,
-  DeepSeekLongContextPlan,
-  DeepSeekPricing,
-  DeepSeekProviderOptions,
-} from '@blade-ai/ai/deepseek';
-export {
-  createDeepSeekBatchChatCompletions,
-  createDeepSeekChatCompletion,
-  createDeepSeekFimCompletion,
-} from './services/deepseek.js';
-export {
-  calculateDeepSeekCost,
-  createDeepSeekLongContextChunks,
-  createDeepSeekLongContextMessages,
-  createDeepSeekLongContextPlan,
-  createDeepSeekTokenBudgetCostConfig,
-  DEEPSEEK_BETA_BASE_URL,
-  DEEPSEEK_DEFAULT_BASE_URL,
-  DEEPSEEK_DEFAULT_MODEL,
-  DEEPSEEK_DEFAULT_PRICING,
-  DeepSeekCostTracker,
-  estimateDeepSeekTokens,
-  getDeepSeekPricing,
-  normalizeDeepSeekModel,
-  optimizeDeepSeekCachePrefix,
-  resolveDeepSeekBaseUrl,
-  sanitizeDeepSeekStrictSchema,
-  summarizeDeepSeekBatchChatCompletions,
-} from '@blade-ai/ai/deepseek';
-export type {
   AgentDefinition,
   ExecutionContext,
   ForkOptions,

@@ -2,7 +2,7 @@
 
 Session-first Blade Agent SDK for server and CLI applications.
 
-Use this package when you want the product-level SDK: `createSession()`, streaming turns, tool execution, MCP, permissions, hooks, observability, sandbox integration, memory, subagents, and session persistence. It composes `@blade-ai/agent` and `@blade-ai/ai` behind a stable session-first API. Node-local adapters such as builtin tools, in-process MCP, filesystem memory, and sandbox helpers are available from `@blade-ai/agent-sdk/local`.
+Use this package when you want the product-level SDK: `createSession()`, streaming turns, tool execution, MCP, permissions, hooks, observability, sandbox integration, memory, subagents, and session persistence. It composes `@blade-ai/agent` and `@blade-ai/ai` behind a stable session-first API. Node-local adapters such as builtin tools, in-process MCP, filesystem memory, and sandbox helpers are available from `@blade-ai/agent-sdk/local`; provider-specific helpers are available from `@blade-ai/ai/*` subpaths such as `@blade-ai/ai/deepseek`.
 
 ## Installation
 

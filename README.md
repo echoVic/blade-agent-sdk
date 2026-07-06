@@ -41,9 +41,9 @@ pnpm add @blade-ai/ai @blade-ai/agent @blade-ai/agent-sdk
 
 仓库采用 pnpm workspace。根目录 `package.json` 是私有 orchestrator，不直接发布；npm 发布包位于 `packages/*`。整体边界对标 Pi 的分层思路：模型 API、agent loop/kernel、产品 SDK 分开演进，但 Blade 保持 session-first 作为默认用户体验。
 
-- `@blade-ai/ai` / `packages/ai`：provider-agnostic 的 `ModelPort`、stream event、usage normalization 和 provider adapter，例如 OpenAI-compatible / GLM / Vercel AI SDK 适配。
+- `@blade-ai/ai` / `packages/ai`：provider-agnostic 的 `ModelPort`、stream event、usage normalization、provider adapter 和 provider-specific helper，例如 OpenAI-compatible / GLM / Vercel AI SDK / DeepSeek helper。
 - `@blade-ai/agent` / `packages/agent`：运行时无关的 `AgentKernel`、tool/store/hook/trace ports 和 agent stream 协议，不依赖 Node 本地能力、MCP、文件系统、shell 或 provider SDK。
-- `@blade-ai/agent-sdk` / `packages/agent-sdk`：session-first 产品 SDK，组合 `@blade-ai/agent` 与 `@blade-ai/ai`；root 入口保留 `createSession()`、工具定义、权限、协议和类型，Node 本地工具、MCP、memory、sandbox adapter 需要从 `@blade-ai/agent-sdk/local` 显式导入。
+- `@blade-ai/agent-sdk` / `packages/agent-sdk`：session-first 产品 SDK，组合 `@blade-ai/agent` 与 `@blade-ai/ai`；root 入口保留 `createSession()`、工具定义、权限、协议和类型，Node 本地工具、MCP、memory、sandbox adapter 需要从 `@blade-ai/agent-sdk/local` 显式导入，provider-specific helper 从 `@blade-ai/ai/*` 导入。
 
 推荐 import 边界：
 
