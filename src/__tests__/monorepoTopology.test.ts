@@ -812,7 +812,12 @@ describe('monorepo topology', () => {
     expect(existsSync('packages/agent-sdk/src/session/runtimeAgentDeps.ts')).toBe(true);
     expect(runtimeAgentDepsSource).not.toContain('../../../../src/');
     expect(runtimeAgentDepsSource).toContain('createPackageLocalAgentRuntimeDeps');
-    expect(packageLocalRuntimeInstanceSource).toContain('createPackageLocalAgentRuntimeDeps');
+    expect(runtimeAgentDepsSource).toContain('createPackageLocalAgentRuntimeDepsOperations');
+    expect(packageLocalRuntimeInstanceSource).toContain(
+      'createPackageLocalAgentRuntimeDepsOperations',
+    );
+    expect(packageLocalRuntimeInstanceSource).toContain('agentRuntimeDepsOperations');
+    expect(packageLocalRuntimeInstanceSource).not.toContain('createPackageLocalAgentRuntimeDeps({');
     expect(packageLocalRuntimeInstanceSource).not.toContain('runtimeManaged: true');
     expect(packageLocalRuntimeInstanceSource).toContain('getKernelToolPort');
     expect(packageLocalRuntimeInstanceSource).toContain('getKernelStorePort');

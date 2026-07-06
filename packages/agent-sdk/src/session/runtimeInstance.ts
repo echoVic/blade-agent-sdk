@@ -46,8 +46,9 @@ import {
   type PackageLocalRuntimeAgentKernelPort,
 } from './runtimeAgentKernels.js';
 import {
-  createPackageLocalAgentRuntimeDeps,
+  createPackageLocalAgentRuntimeDepsOperations,
   type PackageLocalAgentRuntimeDeps,
+  type PackageLocalAgentRuntimeDepsOperations,
   type PackageLocalRuntimeBackgroundAgentManagerPort,
 } from './runtimeAgentDeps.js';
 import {
@@ -298,6 +299,7 @@ export class PackageLocalSessionRuntime {
   readonly kernelFactory: PackageLocalRuntimeAgentKernelFactoryPort;
   readonly kernelModelResolver: PackageLocalRuntimeKernelModelResolverPort;
   private readonly executionPipelineCache: PackageLocalRuntimeExecutionPipelineCache;
+  private readonly agentRuntimeDepsOperations: PackageLocalAgentRuntimeDepsOperations;
   private readonly kernelPortOperations: PackageLocalRuntimeKernelPortOperations;
   private readonly agentKernelOperations: PackageLocalRuntimeAgentKernelOperations;
   private readonly createForkSessionId?: () => SessionId;
@@ -345,6 +347,15 @@ export class PackageLocalSessionRuntime {
         executionPipelineFactory: this.executionPipelineFactory,
       }),
     );
+    this.agentRuntimeDepsOperations = createPackageLocalAgentRuntimeDepsOperations({
+      createExecutionPipeline: () => this.createExecutionPipeline(),
+      defaultContext: this.defaultContext,
+      mcpRegistry: this.mcpRegistry,
+      subagentRegistry: this.subagentRegistry,
+      backgroundAgentManager: this.backgroundAgentManager,
+      hookRuntime: this.hookRuntime,
+      logger: this.logger,
+    });
     this.kernelPortOperations = createPackageLocalRuntimeKernelPortOperations({
       kernelPortFactory: this.kernelPortFactory,
       toolCatalog: this.toolCatalog,
@@ -555,15 +566,7 @@ export class PackageLocalSessionRuntime {
   }
 
   getAgentRuntimeDeps(): PackageLocalAgentRuntimeDeps {
-    return createPackageLocalAgentRuntimeDeps({
-      executionPipeline: this.createExecutionPipeline(),
-      defaultContext: this.defaultContext,
-      mcpRegistry: this.mcpRegistry,
-      subagentRegistry: this.subagentRegistry,
-      backgroundAgentManager: this.backgroundAgentManager,
-      hookRuntime: this.hookRuntime,
-      logger: this.logger,
-    });
+    return this.agentRuntimeDepsOperations.get();
   }
 
   getKernelToolPort(

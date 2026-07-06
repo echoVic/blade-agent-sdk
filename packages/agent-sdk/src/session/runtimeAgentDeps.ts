@@ -25,6 +25,33 @@ export interface PackageLocalAgentRuntimeDepsOptions {
   logger: unknown;
 }
 
+export interface PackageLocalAgentRuntimeDepsOperations {
+  get(): PackageLocalAgentRuntimeDeps;
+}
+
+export interface PackageLocalAgentRuntimeDepsOperationsOptions
+  extends Omit<PackageLocalAgentRuntimeDepsOptions, 'executionPipeline'> {
+  createExecutionPipeline(): unknown;
+}
+
+export function createPackageLocalAgentRuntimeDepsOperations(
+  options: PackageLocalAgentRuntimeDepsOperationsOptions,
+): PackageLocalAgentRuntimeDepsOperations {
+  return {
+    get() {
+      return createPackageLocalAgentRuntimeDeps({
+        executionPipeline: options.createExecutionPipeline(),
+        defaultContext: options.defaultContext,
+        mcpRegistry: options.mcpRegistry,
+        subagentRegistry: options.subagentRegistry,
+        backgroundAgentManager: options.backgroundAgentManager,
+        hookRuntime: options.hookRuntime,
+        logger: options.logger,
+      });
+    },
+  };
+}
+
 export function createPackageLocalAgentRuntimeDeps(
   options: PackageLocalAgentRuntimeDepsOptions,
 ): PackageLocalAgentRuntimeDeps {

@@ -38,4 +38,42 @@ describe('agent-sdk package-local runtime agent dependency helpers', () => {
       logger,
     });
   });
+
+  it('creates reusable agent runtime dependency operations without session runtime state', async () => {
+    expect(existsSync(runtimeAgentDepsSourcePath)).toBe(true);
+
+    const { createPackageLocalAgentRuntimeDepsOperations } = await import(
+      runtimeAgentDepsModulePath
+    );
+    const executionPipeline = { id: 'pipeline' };
+    const createExecutionPipeline = vi.fn(() => executionPipeline);
+    const defaultContext = { cwd: '/workspace' };
+    const mcpRegistry = { disconnectAll: vi.fn() };
+    const subagentRegistry = { register: vi.fn() };
+    const backgroundAgentManager = { run: vi.fn() };
+    const hookRuntime = { enable: vi.fn() };
+    const logger = { warn: vi.fn() };
+
+    const operations = createPackageLocalAgentRuntimeDepsOperations({
+      createExecutionPipeline,
+      defaultContext,
+      mcpRegistry,
+      subagentRegistry,
+      backgroundAgentManager,
+      hookRuntime,
+      logger,
+    });
+
+    expect(operations.get()).toEqual({
+      executionPipeline,
+      defaultContext,
+      mcpRegistry,
+      subagentRegistry,
+      backgroundAgentManager,
+      hookRuntime,
+      runtimeManaged: true,
+      logger,
+    });
+    expect(createExecutionPipeline).toHaveBeenCalledOnce();
+  });
 });
