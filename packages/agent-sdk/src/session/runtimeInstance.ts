@@ -27,11 +27,10 @@ import type {
   HookCallback,
   StreamMessage,
 } from './types.js';
-import {
-  createPackageLocalRuntimeHookOperations,
-  type PackageLocalRuntimeHookOperations,
-  type PackageLocalRuntimeHookManagerPort,
-  type PackageLocalRuntimeHookRuntimePort,
+import type {
+  PackageLocalRuntimeHookOperations,
+  PackageLocalRuntimeHookManagerPort,
+  PackageLocalRuntimeHookRuntimePort,
 } from './runtimeHooks.js';
 import {
   createPackageLocalRuntimeExecutionPipelineOperations,
@@ -103,11 +102,11 @@ import type {
   PackageLocalRuntimeSessionToolRegistrationOperations,
 } from './runtimeToolRegistration.js';
 import { createPackageLocalRuntimeToolOperations } from './runtimeTools.js';
-import {
-  createPackageLocalRuntimePermissionOperations,
-  type PackageLocalRuntimePermissionHookPort,
-  type PackageLocalRuntimePermissionOperations,
+import type {
+  PackageLocalRuntimePermissionHookPort,
+  PackageLocalRuntimePermissionOperations,
 } from './runtimePermissions.js';
+import { createPackageLocalRuntimeGuardOperations } from './runtimeGuards.js';
 import {
   createPackageLocalRuntimeTraceRuntime,
   type PackageLocalRuntimeTraceOperations,
@@ -444,16 +443,15 @@ export class PackageLocalSessionRuntime {
     this.toolRegistrationOperations = toolOperations.registration;
     this.sessionToolRegistrationOperations = toolOperations.sessionRegistration;
     this.toolFilterOperations = toolOperations.filter;
-    this.permissionOperations = createPackageLocalRuntimePermissionOperations({
+    const guardOperations = createPackageLocalRuntimeGuardOperations({
       hooks: this.hookCallbacks,
+      hookManager: this.hookManager,
       permissionHooks: this.permissionHooks,
       permissionHandler: this.options.permissionHandler,
       canUseTool: this.options.canUseTool,
     });
-    this.hookOperations = createPackageLocalRuntimeHookOperations({
-      hookManager: this.hookManager,
-      hooks: this.hookCallbacks,
-    });
+    this.permissionOperations = guardOperations.permissions;
+    this.hookOperations = guardOperations.hooks;
     this.subagentOperations = createPackageLocalRuntimeSubagentOperations({
       subagentRegistry: this.subagentRegistry,
       logger: this.logger,
