@@ -75,22 +75,20 @@ import {
   createPackageLocalRuntimeSessionLifecycleOperations,
   type PackageLocalRuntimeSessionLifecycleOperations,
 } from './runtimeSessionLifecycle.js';
-import {
-  createPackageLocalRuntimeMcpServerOperations,
-  type PackageLocalRuntimeMcpServerConfigOperations,
-  type PackageLocalRuntimeMcpServerRegistrationOperations,
-  type PackageLocalRuntimeMcpServerLifecycleOperations,
+import type {
+  PackageLocalRuntimeMcpServerConfigOperations,
+  PackageLocalRuntimeMcpServerRegistrationOperations,
+  PackageLocalRuntimeMcpServerLifecycleOperations,
 } from './runtimeMcpServers.js';
-import {
-  createPackageLocalRuntimeMcpCapabilityOperations,
-  type PackageLocalRuntimeMcpCapabilityOperations,
-  type PackageLocalRuntimeMcpServerCapability,
+import type {
+  PackageLocalRuntimeMcpCapabilityOperations,
+  PackageLocalRuntimeMcpServerCapability,
 } from './runtimeMcpCapabilities.js';
-import {
-  createPackageLocalRuntimeMcpToolRefreshOperations,
-  type PackageLocalRuntimeMcpToolRefreshOperations,
-  type PackageLocalRuntimeMcpTool,
+import type {
+  PackageLocalRuntimeMcpToolRefreshOperations,
+  PackageLocalRuntimeMcpTool,
 } from './runtimeMcpTools.js';
+import { createPackageLocalRuntimeMcpOperations } from './runtimeMcp.js';
 import { resolvePackageLocalRuntimePorts } from './runtimeNoopPorts.js';
 import {
   createPackageLocalRuntimeSubagentOperations,
@@ -374,23 +372,20 @@ export class PackageLocalSessionRuntime {
     this.workspaceOperations = createPackageLocalRuntimeWorkspaceOperations({
       workspace: this.workspace,
     });
-    this.mcpCapabilityOperations = createPackageLocalRuntimeMcpCapabilityOperations({
+    const mcpOperations = createPackageLocalRuntimeMcpOperations({
       mcpRegistry: this.mcpRegistry,
-    });
-    const mcpServerOperations = createPackageLocalRuntimeMcpServerOperations({
       configuredServers: this.options.mcpServers,
-      mcpRegistry: this.mcpRegistry,
       logger: this.logger,
+      toolCatalog: this.toolCatalog,
+      filterTools: (tools) => this.filterTools(tools),
       refreshMcpTools: (serverNames) => this.refreshMcpTools(serverNames),
     });
+    this.mcpCapabilityOperations = mcpOperations.capabilities;
+    const mcpServerOperations = mcpOperations.servers;
     this.mcpServerConfigOperations = mcpServerOperations.config;
     this.mcpServerRegistrationOperations = mcpServerOperations.registration;
     this.mcpServerLifecycleOperations = mcpServerOperations.lifecycle;
-    this.mcpToolRefreshOperations = createPackageLocalRuntimeMcpToolRefreshOperations({
-      mcpRegistry: this.mcpRegistry,
-      toolCatalog: this.toolCatalog,
-      filterTools: (tools) => this.filterTools(tools),
-    });
+    this.mcpToolRefreshOperations = mcpOperations.tools;
     this.executionPipelineOperations = createPackageLocalRuntimeExecutionPipelineOperations({
       bladeConfig: this.bladeConfig,
       permissionMode: this.options.permissionMode,

@@ -466,6 +466,9 @@ describe('monorepo topology', () => {
     const runtimeMcpToolsSource = existsSync('packages/agent-sdk/src/session/runtimeMcpTools.ts')
       ? readFileSync('packages/agent-sdk/src/session/runtimeMcpTools.ts', 'utf-8')
       : '';
+    const runtimeMcpSource = existsSync('packages/agent-sdk/src/session/runtimeMcp.ts')
+      ? readFileSync('packages/agent-sdk/src/session/runtimeMcp.ts', 'utf-8')
+      : '';
     const runtimeMcpServersSource = existsSync(
       'packages/agent-sdk/src/session/runtimeMcpServers.ts',
     )
@@ -652,9 +655,24 @@ describe('monorepo topology', () => {
     expect(runtimeMcpServersSource).toContain(
       'createPackageLocalRuntimeMcpServerOperations',
     );
+    expect(existsSync('packages/agent-sdk/src/session/runtimeMcp.ts')).toBe(true);
+    expect(runtimeMcpSource).not.toContain('../../../../src/');
+    expect(runtimeMcpSource).toContain('createPackageLocalRuntimeMcpOperations');
+    expect(runtimeMcpSource).toContain('createPackageLocalRuntimeMcpCapabilityOperations');
+    expect(runtimeMcpSource).toContain('createPackageLocalRuntimeMcpServerOperations');
+    expect(runtimeMcpSource).toContain('createPackageLocalRuntimeMcpToolRefreshOperations');
     expect(packageLocalRuntimeInstanceSource).toContain('mcpServerConfigOperations');
     expect(packageLocalRuntimeInstanceSource).toContain(
-      'createPackageLocalRuntimeMcpServerOperations',
+      'createPackageLocalRuntimeMcpOperations',
+    );
+    expect(packageLocalRuntimeInstanceSource).toContain('mcpOperations.capabilities');
+    expect(packageLocalRuntimeInstanceSource).toContain('mcpOperations.servers');
+    expect(packageLocalRuntimeInstanceSource).toContain('mcpOperations.tools');
+    expect(packageLocalRuntimeInstanceSource).not.toContain(
+      'createPackageLocalRuntimeMcpCapabilityOperations({',
+    );
+    expect(packageLocalRuntimeInstanceSource).not.toContain(
+      'createPackageLocalRuntimeMcpServerOperations({',
     );
     expect(packageLocalRuntimeInstanceSource).not.toContain(
       'createPackageLocalRuntimeMcpServerConfigOperations({',
@@ -770,10 +788,11 @@ describe('monorepo topology', () => {
     expect(runtimeMcpCapabilitiesSource).toContain(
       'createPackageLocalRuntimeMcpCapabilityOperations',
     );
-    expect(packageLocalRuntimeInstanceSource).toContain(
-      'createPackageLocalRuntimeMcpCapabilityOperations',
-    );
     expect(packageLocalRuntimeInstanceSource).toContain('mcpCapabilityOperations');
+    expect(packageLocalRuntimeInstanceSource).toContain('mcpOperations.capabilities');
+    expect(packageLocalRuntimeInstanceSource).not.toContain(
+      'createPackageLocalRuntimeMcpCapabilityOperations({',
+    );
     expect(packageLocalRuntimeInstanceSource).not.toContain(
       'projectPackageLocalRuntimeMcpServerStatus',
     );
@@ -846,6 +865,9 @@ describe('monorepo topology', () => {
     expect(runtimeMcpToolsSource).toContain('refreshPackageLocalRuntimeMcpTools');
     expect(runtimeMcpToolsSource).toContain('createPackageLocalRuntimeMcpToolRefreshOperations');
     expect(packageLocalRuntimeInstanceSource).toContain('mcpToolRefreshOperations');
+    expect(packageLocalRuntimeInstanceSource).not.toContain(
+      'createPackageLocalRuntimeMcpToolRefreshOperations({',
+    );
     expect(packageLocalRuntimeInstanceSource).not.toContain('getPackageLocalMcpToolSourceId');
     expect(packageLocalRuntimeInstanceSource).not.toContain('refreshPackageLocalRuntimeMcpTools({');
     expect(packageLocalRuntimeInstanceSource).not.toContain('removeMcpTools(serverName);');
