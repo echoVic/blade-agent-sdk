@@ -168,11 +168,15 @@ function recordSuppressedPackageLocalTaskCompletedHookFailure(
   error: unknown,
   traceRecorder: TraceRecorder | undefined,
 ): void {
-  traceRecorder?.addEvent?.('hook_error', {
-    event: HookEvent.TaskCompleted,
-    error: error instanceof Error ? error.message : String(error),
-    suppressed: true,
-  });
+  try {
+    traceRecorder?.addEvent?.('hook_error', {
+      event: HookEvent.TaskCompleted,
+      error: error instanceof Error ? error.message : String(error),
+      suppressed: true,
+    });
+  } catch {
+    // Suppressed-hook observability is best effort and must not replace the stream outcome.
+  }
 }
 
 async function reportPackageLocalKernelTaskCompleted(

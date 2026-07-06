@@ -238,6 +238,60 @@ describe('agent-sdk package-local kernel turn stream helper', () => {
     });
   });
 
+  it('preserves successful kernel results when suppressed hook trace recording throws', async () => {
+    const trace = { id: 'trace-task-hook-trace-failure' };
+    const traceRecorder = {
+      addEvent: vi.fn(() => {
+        throw new Error('trace event write failed');
+      }),
+      finish: vi.fn(() => trace),
+    } as unknown as TraceRecorder;
+    const traceManager = {
+      remember: vi.fn(),
+      notifySink: vi.fn(async () => undefined),
+    };
+    const runTaskCompleted = vi.fn(async () => {
+      throw new Error('task hook failed before trace write');
+    });
+
+    const messages = [];
+    for await (const message of streamPackageLocalAgentKernelTurn({
+      sessionId: 'session-task-hook-trace-failure',
+      streamOptions: {
+        input: 'summarize the repo',
+        turnId: 'turn-task-hook-trace-failure',
+      },
+      kernel: {
+        async *runTurn() {
+          yield { type: 'result', content: 'repo summary' } satisfies AgentStreamEvent;
+        },
+      },
+      traceRecorder,
+      traceManager,
+      hookRuntime: {
+        enable: vi.fn(),
+        setTraceCollector: vi.fn(),
+        runTaskCompleted,
+      },
+      maxContextTokens: 99,
+    })) {
+      messages.push(message);
+    }
+
+    expect(messages).toContainEqual({
+      type: 'result',
+      subtype: 'success',
+      content: 'repo summary',
+      sessionId: 'session-task-hook-trace-failure',
+    });
+    expect(traceRecorder.finish).toHaveBeenCalledWith('success', {
+      content: 'repo summary',
+      usage: undefined,
+    });
+    expect(traceManager.remember).toHaveBeenCalledWith(trace);
+    expect(traceManager.notifySink).toHaveBeenCalledWith(trace);
+  });
+
   it('reports kernel error events through TaskCompleted hooks', async () => {
     const abortController = new AbortController();
     const runTaskCompleted = vi.fn(async (_payload: unknown) => undefined);
