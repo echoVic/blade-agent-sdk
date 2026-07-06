@@ -104,6 +104,44 @@ describe('package provenance metadata', () => {
     }
   });
 
+  it('keeps direct dependency versions exact in workspace manifests', () => {
+    const packagePaths = [
+      'package.json',
+      'packages/ai/package.json',
+      'packages/agent/package.json',
+      'packages/agent-sdk/package.json',
+    ];
+    const dependencySections = [
+      'dependencies',
+      'devDependencies',
+      'optionalDependencies',
+      'peerDependencies',
+    ];
+    const exactVersionPattern = /^\d+\.\d+\.\d+(?:[-+][0-9A-Za-z-.]+)?$/;
+
+    for (const packagePath of packagePaths) {
+      const packageJson = JSON.parse(readFileSync(resolve(packagePath), 'utf8'));
+
+      for (const section of dependencySections) {
+        for (const [dependencyName, dependencyVersion] of Object.entries(
+          packageJson[section] ?? {}
+        )) {
+          const version = String(dependencyVersion);
+          const isWorkspaceInternal = version === 'workspace:*' && dependencyName.startsWith('@blade-ai/');
+
+          expect(
+            isWorkspaceInternal || exactVersionPattern.test(version),
+            `${packagePath} ${section}.${dependencyName} must use an exact version, got ${version}`
+          ).toBe(true);
+        }
+      }
+    }
+
+    const releaseVerifier = readFileSync(resolve('scripts/verify-release-config.mjs'), 'utf8');
+    expect(releaseVerifier).toContain('verifyExactDirectDependencyVersions');
+    expect(releaseVerifier).toContain('must use an exact dependency version');
+  });
+
   it('documents direct install and import usage in every publishable package README', () => {
     const packages = [
       {

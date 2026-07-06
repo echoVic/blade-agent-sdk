@@ -89,6 +89,8 @@ pnpm run test:live:session-glm
 pnpm run verify:release
 ```
 
+所有 workspace manifest 的 direct dependencies 必须使用 exact versions；源码里的内部 `@blade-ai/*` workspace 依赖可以保持 `workspace:*`，发布前会被 release prepare 步骤改成同一个 concrete version。
+
 发版前还可以用 dry-run 检查 semantic-release 的版本推导、release notes 和远端权限：
 
 ```bash

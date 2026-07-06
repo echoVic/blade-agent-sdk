@@ -6,6 +6,19 @@ import { parse } from 'yaml';
 
 const require = createRequire(import.meta.url);
 const requiredKeywords = ['agent', 'sdk', 'llm'];
+const workspaceManifestPaths = [
+  'package.json',
+  'packages/ai/package.json',
+  'packages/agent/package.json',
+  'packages/agent-sdk/package.json',
+];
+const dependencySections = [
+  'dependencies',
+  'devDependencies',
+  'optionalDependencies',
+  'peerDependencies',
+];
+const exactVersionPattern = /^\d+\.\d+\.\d+(?:[-+][0-9A-Za-z-.]+)?$/;
 const publishablePackages = [
   {
     dir: 'packages/ai',
@@ -148,6 +161,21 @@ function verifyPackageMetadata() {
     }
     if (!readme.includes(pkg.importSnippet)) {
       fail(`${pkg.name} README must document direct import usage`);
+    }
+  }
+}
+
+function verifyExactDirectDependencyVersions() {
+  for (const manifestPath of workspaceManifestPaths) {
+    const manifest = readJson(manifestPath);
+    for (const section of dependencySections) {
+      for (const [dependencyName, dependencyVersion] of Object.entries(manifest[section] ?? {})) {
+        const version = String(dependencyVersion);
+        const isWorkspaceInternal = version === 'workspace:*' && dependencyName.startsWith('@blade-ai/');
+        if (!isWorkspaceInternal && !exactVersionPattern.test(version)) {
+          fail(`${manifestPath} ${section}.${dependencyName} must use an exact dependency version, got ${version}`);
+        }
+      }
     }
   }
 }
@@ -325,6 +353,7 @@ function verifyWorkflowDependencyInstalls() {
 verifyRootScripts();
 verifySemanticReleaseConfig();
 verifyPackageMetadata();
+verifyExactDirectDependencyVersions();
 await verifyPreparedReleaseManifestVersions();
 verifyReleaseWorkflow();
 verifyCiWorkflow();
