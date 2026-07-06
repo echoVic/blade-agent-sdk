@@ -22,6 +22,7 @@ const session = await createSession({
   maxTurns: 1,
   persistSession: false,
   allowedTools: [],
+  observability: { enabled: true },
 });
 
 try {
@@ -50,6 +51,23 @@ try {
   }
   if (sawToolUse) {
     throw new Error('Session GLM live stream used a tool even though allowedTools: [] was set');
+  }
+
+  const trace = session.getLastTrace();
+  if (!trace) {
+    throw new Error('Session GLM live stream did not record an observability trace');
+  }
+  if (trace.status !== 'success') {
+    throw new Error(`Session GLM live trace did not finish successfully: ${trace.status}`);
+  }
+  const traceEventTypes = new Set(trace.events.map((event) => event.type));
+  for (const expectedEvent of ['model_request', 'turn_end', 'result']) {
+    if (!traceEventTypes.has(expectedEvent)) {
+      throw new Error(`Session GLM live trace missing ${expectedEvent} event`);
+    }
+  }
+  if (sawUsage && !traceEventTypes.has('usage')) {
+    throw new Error('Session GLM live trace missing usage event emitted by the stream');
   }
 
   console.log(`Session GLM live test passed with model ${config.model}`);

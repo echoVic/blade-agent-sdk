@@ -16,6 +16,11 @@ describe('session-first GLM live smoke script', () => {
     const source = readFileSync(scriptPath, 'utf8');
     expect(source).toContain('createSession');
     expect(source).toContain('allowedTools: []');
+    expect(source).toContain('observability: { enabled: true }');
     expect(source).toContain('session.stream()');
+    expect(source).toContain('session.getLastTrace()');
+    expect(source).toContain("trace.events.map((event) => event.type)");
+    expect(source).toContain("'model_request'");
+    expect(source).toContain("'turn_end'");
   });
 });

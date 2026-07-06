@@ -78,7 +78,7 @@ pnpm run test:live:session-glm
 
 `test:live:glm` 会构建 `@blade-ai/ai`，读取 `.env` 中的 GLM baseUrl / apiKey，执行一次非流式请求和一次流式请求，并检查 usage 信息。
 
-`test:live:session-glm` 会构建 `@blade-ai/ai`、`@blade-ai/agent` 和 `@blade-ai/agent-sdk`，再用 session-first `createSession()` 真实执行一次 `send()` + `stream()`。它会显式设置 `allowedTools: []`，验证无工具场景下的 content / result 事件和 server SDK 到 kernel/provider 的端到端组合。
+`test:live:session-glm` 会构建 `@blade-ai/ai`、`@blade-ai/agent` 和 `@blade-ai/agent-sdk`，再用 session-first `createSession()` 真实执行一次 `send()` + `stream()`。它会显式设置 `allowedTools: []`，验证无工具场景下的 content / result 事件、server SDK 到 kernel/provider 的端到端组合，以及成功 trace 中的 `model_request`、`turn_end` 和 `result` 事件。
 
 ## Release Rehearsal
 

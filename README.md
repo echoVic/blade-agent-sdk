@@ -213,7 +213,7 @@ pnpm run test:live:session-glm
 INTEGRATION_LIVE=1 pnpm run test:integration:live
 ```
 
-`test:live:session-glm` 会用 `.env` / `GLM_*` / `INTEGRATION_*` 配置对 `glm-5.2` 跑一次 session-first smoke；`test:integration:live` 会跑完整真实 integration suite。默认 `pnpm run test:integration` 不设置 `INTEGRATION_LIVE=1` 时只验证跳过行为，避免 CI 和 release 被外部模型波动拖住。
+`test:live:session-glm` 会用 `.env` / `GLM_*` / `INTEGRATION_*` 配置对 `glm-5.2` 跑一次 session-first smoke，并校验 stream 成功事件、`allowedTools: []` 无工具行为和 observability trace；`test:integration:live` 会跑完整真实 integration suite。默认 `pnpm run test:integration` 不设置 `INTEGRATION_LIVE=1` 时只验证跳过行为，避免 CI 和 release 被外部模型波动拖住。
 
 ## 发布
 
