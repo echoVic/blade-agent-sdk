@@ -616,6 +616,24 @@ describe('release scripts', () => {
     }
   });
 
+  it('verifies published package npm metadata from the temporary consumer install', () => {
+    const publishedVerifier = readFileSync(resolve('scripts/verify-published.mjs'), 'utf8');
+    const checklist = readFileSync(resolve('docs/production-checklist.md'), 'utf8');
+    const roadmap = readFileSync(resolve('docs/roadmap/production-agent-sdk-monorepo.md'), 'utf8');
+
+    expect(publishedVerifier).toContain('verifyPublishedPackageMetadata');
+    expect(publishedVerifier).toContain('installed manifest license mismatch');
+    expect(publishedVerifier).toContain('installed manifest homepage mismatch');
+    expect(publishedVerifier).toContain('installed manifest bugs mismatch');
+    expect(publishedVerifier).toContain('installed manifest repository mismatch');
+    expect(publishedVerifier).toContain("license: 'MIT'");
+    expect(publishedVerifier).toContain("homepage: 'https://github.com/echoVic/blade-agent-sdk#readme'");
+    expect(publishedVerifier).toContain("url: 'https://github.com/echoVic/blade-agent-sdk/issues'");
+    expect(publishedVerifier).toContain("url: 'https://github.com/echoVic/blade-agent-sdk'");
+    expect(checklist).toContain('published package npm metadata');
+    expect(roadmap).toContain('published package npm metadata gate');
+  });
+
   it('verifies published package manifest entry targets from the temporary consumer install', () => {
     const publishedVerifier = readFileSync(resolve('scripts/verify-published.mjs'), 'utf8');
     const checklist = readFileSync(resolve('docs/production-checklist.md'), 'utf8');

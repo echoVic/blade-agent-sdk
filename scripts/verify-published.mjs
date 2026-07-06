@@ -15,18 +15,32 @@ const publishablePackages = [
   '@blade-ai/agent',
   '@blade-ai/agent-sdk',
 ];
+const expectedPublishedPackageMetadata = {
+  license: 'MIT',
+  homepage: 'https://github.com/echoVic/blade-agent-sdk#readme',
+  bugs: {
+    url: 'https://github.com/echoVic/blade-agent-sdk/issues',
+  },
+  repository: {
+    type: 'git',
+    url: 'https://github.com/echoVic/blade-agent-sdk',
+  },
+};
 const publishedManifestRequirements = [
   {
     packageName: '@blade-ai/ai',
     manifestPath: 'node_modules/@blade-ai/ai/package.json',
+    ...expectedPublishedPackageMetadata,
   },
   {
     packageName: '@blade-ai/agent',
     manifestPath: 'node_modules/@blade-ai/agent/package.json',
+    ...expectedPublishedPackageMetadata,
   },
   {
     packageName: '@blade-ai/agent-sdk',
     manifestPath: 'node_modules/@blade-ai/agent-sdk/package.json',
+    ...expectedPublishedPackageMetadata,
   },
 ];
 const publishedReadmeRequirements = [
@@ -368,6 +382,7 @@ async function verifyPublishedPackageManifests({ consumerDir, version }) {
     if (serializedManifest.includes('0.0.0')) {
       throw new Error(`${requirement.packageName} installed manifest must not contain 0.0.0 placeholder versions`);
     }
+    verifyPublishedPackageMetadata(requirement, manifest);
     assertNoCliProductManifest(requirement.packageName, manifest);
     assertPublishedManifestTarget({
       packageName: requirement.packageName,
@@ -399,6 +414,40 @@ async function verifyPublishedPackageManifests({ consumerDir, version }) {
     }
   }
   console.log('[verify-published] temporary consumer published package manifests passed');
+}
+
+function verifyPublishedPackageMetadata(requirement, manifest) {
+  const metadataRules = [
+    {
+      field: 'license',
+      expected: requirement.license,
+      message: 'installed manifest license mismatch',
+    },
+    {
+      field: 'homepage',
+      expected: requirement.homepage,
+      message: 'installed manifest homepage mismatch',
+    },
+    {
+      field: 'bugs',
+      expected: requirement.bugs,
+      message: 'installed manifest bugs mismatch',
+    },
+    {
+      field: 'repository',
+      expected: requirement.repository,
+      message: 'installed manifest repository mismatch',
+    },
+  ];
+
+  for (const rule of metadataRules) {
+    const actual = manifest[rule.field];
+    if (JSON.stringify(actual) !== JSON.stringify(rule.expected)) {
+      throw new Error(
+        `${requirement.packageName} ${rule.message}: expected ${JSON.stringify(rule.expected)}, got ${JSON.stringify(actual)}`,
+      );
+    }
+  }
 }
 
 function assertNoCliProductManifest(packageName, manifest) {
