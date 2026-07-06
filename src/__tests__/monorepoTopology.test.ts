@@ -940,8 +940,14 @@ describe('monorepo topology', () => {
     expect(runtimeExecutionPipelineSource).toContain(
       'createPackageLocalRuntimeExecutionPipelineCache',
     );
-    expect(packageLocalRuntimeInstanceSource).toContain('createPackageLocalRuntimeExecutionPipeline');
-    expect(packageLocalRuntimeInstanceSource).toContain(
+    expect(runtimeExecutionPipelineSource).toContain(
+      'createPackageLocalRuntimeExecutionPipelineOperations',
+    );
+    expect(packageLocalRuntimeInstanceSource).toContain('executionPipelineOperations');
+    expect(packageLocalRuntimeInstanceSource).not.toContain(
+      'createPackageLocalRuntimeExecutionPipeline({',
+    );
+    expect(packageLocalRuntimeInstanceSource).not.toContain(
       'createPackageLocalRuntimeExecutionPipelineCache',
     );
     expect(packageLocalRuntimeInstanceSource).not.toContain('private executionPipelineCreated');

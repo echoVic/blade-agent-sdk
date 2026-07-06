@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import {
   createPackageLocalRuntimeExecutionPipeline,
   createPackageLocalRuntimeExecutionPipelineCache,
+  createPackageLocalRuntimeExecutionPipelineOperations,
 } from '../../packages/agent-sdk/src/session/runtimeExecutionPipeline.js';
 import type { PackageLocalRuntimeExecutionPipelineFactoryPort } from '../../packages/agent-sdk/src/session/runtimeExecutionPipeline.js';
 import { PermissionMode, type BladeConfig } from '../../packages/agent-sdk/src/types/common.js';
@@ -95,5 +96,41 @@ describe('agent-sdk package-local runtime execution pipeline helpers', () => {
     expect(cache.get()).toBe(pipeline);
     expect(cache.get()).toBe(pipeline);
     expect(createPipeline).toHaveBeenCalledTimes(1);
+  });
+
+  it('creates pipeline operations that lazily cache configured pipeline creation', () => {
+    const pipeline = { id: 'operations-pipeline' };
+    const factory: PackageLocalRuntimeExecutionPipelineFactoryPort = {
+      create: vi.fn(() => pipeline),
+    };
+    const permissionHandler = vi.fn(async () => ({ behavior: 'allow' as const }));
+    const createPermissionHandler = vi.fn(() => permissionHandler);
+    const logger = { warn: vi.fn() };
+    const toolCatalog = {};
+    const operations = createPackageLocalRuntimeExecutionPipelineOperations({
+      bladeConfig,
+      permissionMode: PermissionMode.PLAN,
+      createPermissionHandler,
+      logger,
+      toolCatalog,
+      executionPipelineFactory: factory,
+    });
+
+    expect(operations.get()).toBe(pipeline);
+    expect(operations.get()).toBe(pipeline);
+    expect(createPermissionHandler).toHaveBeenCalledTimes(1);
+    expect(factory.create).toHaveBeenCalledTimes(1);
+    expect(factory.create).toHaveBeenCalledWith({
+      permissionConfig: {
+        allow: [],
+        ask: [],
+        deny: [],
+      },
+      permissionMode: PermissionMode.PLAN,
+      maxHistorySize: 1000,
+      permissionHandler,
+      logger,
+      toolCatalog,
+    });
   });
 });

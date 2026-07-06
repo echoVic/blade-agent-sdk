@@ -34,9 +34,8 @@ import {
   type PackageLocalRuntimeHookRuntimePort,
 } from './runtimeHooks.js';
 import {
-  createPackageLocalRuntimeExecutionPipelineCache,
-  createPackageLocalRuntimeExecutionPipeline,
-  type PackageLocalRuntimeExecutionPipelineCache,
+  createPackageLocalRuntimeExecutionPipelineOperations,
+  type PackageLocalRuntimeExecutionPipelineOperations,
   type PackageLocalRuntimeExecutionPipelineFactoryPort,
 } from './runtimeExecutionPipeline.js';
 import {
@@ -327,7 +326,7 @@ export class PackageLocalSessionRuntime {
   private readonly mcpServerRegistrationOperations: PackageLocalRuntimeMcpServerRegistrationOperations;
   private readonly mcpServerLifecycleOperations: PackageLocalRuntimeMcpServerLifecycleOperations;
   private readonly mcpToolRefreshOperations: PackageLocalRuntimeMcpToolRefreshOperations;
-  private readonly executionPipelineCache: PackageLocalRuntimeExecutionPipelineCache;
+  private readonly executionPipelineOperations: PackageLocalRuntimeExecutionPipelineOperations;
   private readonly agentRuntimeDepsOperations: PackageLocalAgentRuntimeDepsOperations;
   private readonly kernelPortOperations: PackageLocalRuntimeKernelPortOperations;
   private readonly agentKernelOperations: PackageLocalRuntimeAgentKernelOperations;
@@ -400,16 +399,14 @@ export class PackageLocalSessionRuntime {
       toolCatalog: this.toolCatalog,
       filterTools: (tools) => this.filterTools(tools),
     });
-    this.executionPipelineCache = createPackageLocalRuntimeExecutionPipelineCache(() =>
-      createPackageLocalRuntimeExecutionPipeline({
-        bladeConfig: this.bladeConfig,
-        permissionMode: this.options.permissionMode,
-        permissionHandler: this.createPermissionHandler(),
-        logger: this.logger,
-        toolCatalog: this.toolCatalog,
-        executionPipelineFactory: this.executionPipelineFactory,
-      }),
-    );
+    this.executionPipelineOperations = createPackageLocalRuntimeExecutionPipelineOperations({
+      bladeConfig: this.bladeConfig,
+      permissionMode: this.options.permissionMode,
+      createPermissionHandler: () => this.createPermissionHandler(),
+      logger: this.logger,
+      toolCatalog: this.toolCatalog,
+      executionPipelineFactory: this.executionPipelineFactory,
+    });
     this.agentRuntimeDepsOperations = createPackageLocalAgentRuntimeDepsOperations({
       createExecutionPipeline: () => this.createExecutionPipeline(),
       defaultContext: this.defaultContext,
@@ -601,7 +598,7 @@ export class PackageLocalSessionRuntime {
   }
 
   createExecutionPipeline(): unknown {
-    return this.executionPipelineCache.get();
+    return this.executionPipelineOperations.get();
   }
 
   getAgentRuntimeDeps(): PackageLocalAgentRuntimeDeps {

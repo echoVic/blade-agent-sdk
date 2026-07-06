@@ -28,7 +28,16 @@ export interface PackageLocalRuntimeExecutionPipelineOptions {
   maxHistorySize?: number;
 }
 
+export interface PackageLocalRuntimeExecutionPipelineOperationsOptions
+  extends Omit<PackageLocalRuntimeExecutionPipelineOptions, 'permissionHandler'> {
+  createPermissionHandler(): PermissionHandler | undefined;
+}
+
 export interface PackageLocalRuntimeExecutionPipelineCache {
+  get(): unknown;
+}
+
+export interface PackageLocalRuntimeExecutionPipelineOperations {
   get(): unknown;
 }
 
@@ -69,4 +78,15 @@ export function createPackageLocalRuntimeExecutionPipelineCache(
       return pipeline;
     },
   };
+}
+
+export function createPackageLocalRuntimeExecutionPipelineOperations(
+  options: PackageLocalRuntimeExecutionPipelineOperationsOptions,
+): PackageLocalRuntimeExecutionPipelineOperations {
+  return createPackageLocalRuntimeExecutionPipelineCache(() =>
+    createPackageLocalRuntimeExecutionPipeline({
+      ...options,
+      permissionHandler: options.createPermissionHandler(),
+    }),
+  );
 }
