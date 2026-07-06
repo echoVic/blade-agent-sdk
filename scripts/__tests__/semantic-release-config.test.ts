@@ -204,6 +204,10 @@ describe('package provenance metadata', () => {
     for (const verifier of [packageVerifier, publishedVerifier]) {
       expect(verifier).toContain('function assertRuntimeExportParity');
       expect(verifier).toContain("assertRuntimeExportParity(agentSdk, agentSdkServer, 'root', 'server')");
+      expect(verifier).toContain('function assertDeclarationExportParity');
+      expect(verifier).toContain("'node_modules/@blade-ai/agent-sdk/dist/index.d.ts'");
+      expect(verifier).toContain("'node_modules/@blade-ai/agent-sdk/dist/server/index.d.ts'");
+      expect(verifier).toContain("assertDeclarationExportParity(rootDeclaration, serverDeclaration, 'root', 'server')");
       expect(verifier).toContain('subagentRegistry');
       expect(verifier).toContain('ClaudeCodePermissionMode');
       expect(verifier).toContain('SubagentExecutionRunner');

@@ -724,6 +724,57 @@ if (Object.keys(agentTracing).length !== 0) {
   run(process.execPath, [runtimeSmokePath], { cwd: consumerDir });
 }
 
+function collectDeclarationExports(source) {
+  const strippedSource = source
+    .replaceAll(/\/\*[\s\S]*?\*\//g, '')
+    .replaceAll(/\/\/.*$/gm, '');
+  const exportNames = new Set();
+  const namedExportPattern = /\bexport\s+(?:type\s+)?\{([\s\S]*?)\}\s+from\s+["'][^"']+["']/g;
+
+  for (const match of strippedSource.matchAll(namedExportPattern)) {
+    for (const rawSpecifier of match[1].split(',')) {
+      const specifier = rawSpecifier.trim();
+      if (!specifier) continue;
+      const withoutTypeModifier = specifier.replace(/^type\s+/, '').trim();
+      const aliased = withoutTypeModifier.match(/\bas\s+([A-Za-z_$][\w$]*)$/);
+      const exportedName = aliased?.[1] ?? withoutTypeModifier.match(/^([A-Za-z_$][\w$]*)/)?.[1];
+      if (exportedName) {
+        exportNames.add(exportedName);
+      }
+    }
+  }
+
+  return [...exportNames].sort();
+}
+
+function assertDeclarationExportParity(leftSource, rightSource, leftName, rightName) {
+  const leftExports = collectDeclarationExports(leftSource);
+  const rightExports = collectDeclarationExports(rightSource);
+  const missingFromRight = leftExports.filter((name) => !rightExports.includes(name));
+  const extraInRight = rightExports.filter((name) => !leftExports.includes(name));
+
+  if (missingFromRight.length > 0 || extraInRight.length > 0) {
+    throw new Error([
+      `Declaration export mismatch between ${leftName} and ${rightName}`,
+      missingFromRight.length > 0 ? `missing from ${rightName}: ${missingFromRight.join(', ')}` : undefined,
+      extraInRight.length > 0 ? `extra in ${rightName}: ${extraInRight.join(', ')}` : undefined,
+    ].filter(Boolean).join('; '));
+  }
+}
+
+function verifyServerDeclarationParity(consumerDir) {
+  const rootDeclaration = readFileSync(
+    join(consumerDir, 'node_modules/@blade-ai/agent-sdk/dist/index.d.ts'),
+    'utf8',
+  );
+  const serverDeclaration = readFileSync(
+    join(consumerDir, 'node_modules/@blade-ai/agent-sdk/dist/server/index.d.ts'),
+    'utf8',
+  );
+
+  assertDeclarationExportParity(rootDeclaration, serverDeclaration, 'root', 'server');
+}
+
 function verifyConsumerTypes(consumerDir) {
   writeFileSync(
     join(consumerDir, 'tsconfig.json'),
@@ -1321,6 +1372,7 @@ try {
 
   const consumerDir = installConsumer(tarballs, tempDir);
   verifyConsumerImports(consumerDir);
+  verifyServerDeclarationParity(consumerDir);
   verifyConsumerTypes(consumerDir);
   await verifyConsumerBrowserBundle(consumerDir);
   await verifyAgentBrowserBundle(consumerDir);
