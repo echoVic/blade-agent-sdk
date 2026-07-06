@@ -16,6 +16,8 @@ const publishablePackages = [
   '@blade-ai/agent-sdk',
 ];
 const expectedPublishedPackageMetadata = {
+  type: 'module',
+  sideEffects: false,
   license: 'MIT',
   engines: { node: '>=22.14.0' },
   homepage: 'https://github.com/echoVic/blade-agent-sdk#readme',
@@ -426,6 +428,16 @@ async function verifyPublishedPackageManifests({ consumerDir, version }) {
 
 function verifyPublishedPackageMetadata(requirement, manifest) {
   const metadataRules = [
+    {
+      field: 'type',
+      expected: requirement.type,
+      message: 'installed manifest type module mismatch',
+    },
+    {
+      field: 'sideEffects',
+      expected: requirement.sideEffects,
+      message: 'installed manifest sideEffects mismatch',
+    },
     {
       field: 'license',
       expected: requirement.license,

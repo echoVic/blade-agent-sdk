@@ -15,6 +15,8 @@ const browserDisallowedMarkers = [
   'node-pty',
 ];
 const expectedPackedPackageMetadata = {
+  type: 'module',
+  sideEffects: false,
   license: 'MIT',
   engines: { node: '>=22.14.0' },
   homepage: 'https://github.com/echoVic/blade-agent-sdk#readme',
@@ -554,6 +556,16 @@ function verifyPackedManifest(spec, tarballPath, tempDir) {
 
 function verifyPackedPackageMetadata(spec, manifest) {
   const metadataRules = [
+    {
+      field: 'type',
+      expected: expectedPackedPackageMetadata.type,
+      message: 'packed manifest type module mismatch',
+    },
+    {
+      field: 'sideEffects',
+      expected: expectedPackedPackageMetadata.sideEffects,
+      message: 'packed manifest sideEffects mismatch',
+    },
     {
       field: 'license',
       expected: expectedPackedPackageMetadata.license,

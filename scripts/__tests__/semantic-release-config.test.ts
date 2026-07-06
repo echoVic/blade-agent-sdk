@@ -672,6 +672,28 @@ describe('release scripts', () => {
     expect(roadmap).toContain('package engine metadata artifact gate');
   });
 
+  it('verifies packed and published package module metadata', () => {
+    const packageVerifier = readFileSync(resolve('scripts/verify-packages.mjs'), 'utf8');
+    const publishedVerifier = readFileSync(resolve('scripts/verify-published.mjs'), 'utf8');
+    const readme = readFileSync(resolve('README.md'), 'utf8');
+    const checklist = readFileSync(resolve('docs/production-checklist.md'), 'utf8');
+    const roadmap = readFileSync(resolve('docs/roadmap/production-agent-sdk-monorepo.md'), 'utf8');
+
+    expect(packageVerifier).toContain('packed manifest type module mismatch');
+    expect(packageVerifier).toContain('packed manifest sideEffects mismatch');
+    expect(packageVerifier).toContain("type: 'module'");
+    expect(packageVerifier).toContain('sideEffects: false');
+    expect(publishedVerifier).toContain('installed manifest type module mismatch');
+    expect(publishedVerifier).toContain('installed manifest sideEffects mismatch');
+    expect(publishedVerifier).toContain("type: 'module'");
+    expect(publishedVerifier).toContain('sideEffects: false');
+    expect(readme).toContain('packed package module metadata');
+    expect(readme).toContain('published package module metadata');
+    expect(checklist).toContain('packed package module metadata');
+    expect(checklist).toContain('published package module metadata');
+    expect(roadmap).toContain('package module metadata artifact gate');
+  });
+
   it('verifies packed package manifest entry targets before publication', () => {
     const packageVerifier = readFileSync(resolve('scripts/verify-packages.mjs'), 'utf8');
     const readme = readFileSync(resolve('README.md'), 'utf8');
