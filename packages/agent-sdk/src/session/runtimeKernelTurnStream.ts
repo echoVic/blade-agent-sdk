@@ -97,7 +97,7 @@ export async function* streamPackageLocalAgentKernelTurn(
       traceCollector: options.traceRecorder,
       stream: kernelEvents,
     })) {
-      await reportPackageLocalKernelTaskCompleted(event, options);
+      await tryReportPackageLocalKernelTaskCompleted(event, options);
       yield* projectPackageLocalKernelEventToStreamMessages(event, {
         sessionId: options.sessionId,
         maxContextTokens: options.maxContextTokens,
@@ -111,16 +111,23 @@ export async function* streamPackageLocalAgentKernelTurn(
   } catch (error) {
     options.hookRuntime.setTraceCollector?.(options.traceRecorder);
     try {
-      try {
-        await reportPackageLocalKernelTaskFailure(error, options);
-      } catch {
-        // Hook failures are recorded by the hook runtime; the original stream error owns this path.
-      }
+      await tryReportPackageLocalKernelTaskFailure(error, options);
     } finally {
       options.hookRuntime.setTraceCollector?.(undefined);
     }
     await finishPackageLocalKernelTraceError(error, traceFinalizer);
     throw error;
+  }
+}
+
+async function tryReportPackageLocalKernelTaskFailure(
+  error: unknown,
+  options: Pick<PackageLocalRuntimeKernelTurnStreamOptions, 'sessionId' | 'streamOptions' | 'hookRuntime'>,
+): Promise<void> {
+  try {
+    await reportPackageLocalKernelTaskFailure(error, options);
+  } catch {
+    // Hook failures are recorded by the hook runtime; the kernel failure owns this path.
   }
 }
 
@@ -135,6 +142,17 @@ async function reportPackageLocalKernelTaskFailure(
     success: false,
     abortSignal: options.streamOptions.signal,
   });
+}
+
+async function tryReportPackageLocalKernelTaskCompleted(
+  event: AgentStreamEvent,
+  options: Pick<PackageLocalRuntimeKernelTurnStreamOptions, 'sessionId' | 'streamOptions' | 'hookRuntime'>,
+): Promise<void> {
+  try {
+    await reportPackageLocalKernelTaskCompleted(event, options);
+  } catch {
+    // Hook failures are recorded by the hook runtime; stream projection and trace finalization continue.
+  }
 }
 
 async function reportPackageLocalKernelTaskCompleted(

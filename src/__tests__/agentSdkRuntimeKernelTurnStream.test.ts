@@ -130,6 +130,64 @@ describe('agent-sdk package-local kernel turn stream helper', () => {
     });
   });
 
+  it('preserves successful kernel results when TaskCompleted hooks throw', async () => {
+    const trace = { id: 'trace-task-hook-failure' };
+    const traceRecorder = {
+      finish: vi.fn(() => trace),
+    } as unknown as TraceRecorder;
+    const traceManager = {
+      remember: vi.fn(),
+      notifySink: vi.fn(async () => undefined),
+    };
+    const runTaskCompleted = vi.fn(async () => {
+      throw new Error('task hook failed after success');
+    });
+
+    const messages = [];
+    for await (const message of streamPackageLocalAgentKernelTurn({
+      sessionId: 'session-task-hook-failure',
+      streamOptions: {
+        input: 'summarize the repo',
+        turnId: 'turn-task-hook-failure',
+      },
+      kernel: {
+        async *runTurn() {
+          yield { type: 'result', content: 'repo summary' } satisfies AgentStreamEvent;
+        },
+      },
+      traceRecorder,
+      traceManager,
+      hookRuntime: {
+        enable: vi.fn(),
+        setTraceCollector: vi.fn(),
+        runTaskCompleted,
+      },
+      maxContextTokens: 99,
+    })) {
+      messages.push(message);
+    }
+
+    expect(messages).toContainEqual({
+      type: 'result',
+      subtype: 'success',
+      content: 'repo summary',
+      sessionId: 'session-task-hook-failure',
+    });
+    expect(traceRecorder.finish).toHaveBeenCalledWith('success', {
+      content: 'repo summary',
+      usage: undefined,
+    });
+    expect(traceManager.remember).toHaveBeenCalledWith(trace);
+    expect(traceManager.notifySink).toHaveBeenCalledWith(trace);
+    expect(runTaskCompleted).toHaveBeenCalledWith({
+      taskId: 'turn-task-hook-failure',
+      taskDescription: 'summarize the repo',
+      resultSummary: 'repo summary',
+      success: true,
+      abortSignal: undefined,
+    });
+  });
+
   it('reports kernel error events through TaskCompleted hooks', async () => {
     const abortController = new AbortController();
     const runTaskCompleted = vi.fn(async (_payload: unknown) => undefined);
@@ -181,6 +239,68 @@ describe('agent-sdk package-local kernel turn stream helper', () => {
       resultSummary: 'model failed',
       success: false,
       abortSignal: abortController.signal,
+    });
+  });
+
+  it('preserves kernel error events when TaskCompleted hooks throw', async () => {
+    const trace = { id: 'trace-error-hook-failure' };
+    const traceRecorder = {
+      finish: vi.fn(() => trace),
+    } as unknown as TraceRecorder;
+    const traceManager = {
+      remember: vi.fn(),
+      notifySink: vi.fn(async () => undefined),
+    };
+    const runTaskCompleted = vi.fn(async () => {
+      throw new Error('task hook failed after error event');
+    });
+
+    const messages = [];
+    for await (const message of streamPackageLocalAgentKernelTurn({
+      sessionId: 'session-error-hook-failure',
+      streamOptions: {
+        input: 'fail the repo summary',
+        turnId: 'turn-error-hook-failure',
+      },
+      kernel: {
+        async *runTurn() {
+          yield {
+            type: 'error',
+            message: 'model failed',
+            code: 'MODEL_FAILED',
+          } satisfies AgentStreamEvent;
+        },
+      },
+      traceRecorder,
+      traceManager,
+      hookRuntime: {
+        enable: vi.fn(),
+        setTraceCollector: vi.fn(),
+        runTaskCompleted,
+      },
+      maxContextTokens: 99,
+    })) {
+      messages.push(message);
+    }
+
+    expect(messages).toContainEqual({
+      type: 'error',
+      message: 'model failed',
+      code: 'MODEL_FAILED',
+      sessionId: 'session-error-hook-failure',
+    });
+    expect(traceRecorder.finish).toHaveBeenCalledWith('error', {
+      error: 'model failed',
+      code: 'MODEL_FAILED',
+    });
+    expect(traceManager.remember).toHaveBeenCalledWith(trace);
+    expect(traceManager.notifySink).toHaveBeenCalledWith(trace);
+    expect(runTaskCompleted).toHaveBeenCalledWith({
+      taskId: 'turn-error-hook-failure',
+      taskDescription: 'fail the repo summary',
+      resultSummary: 'model failed',
+      success: false,
+      abortSignal: undefined,
     });
   });
 
