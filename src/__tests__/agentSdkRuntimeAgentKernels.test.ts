@@ -9,13 +9,16 @@ import { describe, expect, it, vi } from 'vitest';
 import {
   createPackageLocalRuntimeAgentKernel,
   createPackageLocalRuntimeAgentKernelFromResolved,
+  createPackageLocalRuntimeAgentKernelFromOptions,
   projectPackageLocalRuntimeAgentKernelPorts,
 } from '../../packages/agent-sdk/src/session/runtimeAgentKernels.js';
 import type {
   PackageLocalRuntimeAgentKernelFactoryPort,
   PackageLocalRuntimeResolvedKernelModel,
 } from '../../packages/agent-sdk/src/session/runtimeAgentKernels.js';
+import type { PackageLocalRuntimeKernelModelResolverPort } from '../../packages/agent-sdk/src/session/runtimeKernelModels.js';
 import type { TraceRecorder } from '../../packages/agent-sdk/src/observability/TraceRecorder.js';
+import type { BladeConfig } from '../../packages/agent-sdk/src/types/common.js';
 
 const modelPort: ModelPort = {
   async generate() {
@@ -222,6 +225,71 @@ describe('agent-sdk package-local runtime agent kernel helpers', () => {
       trace: tracePort,
       tools: toolPort,
       maxSteps: 5,
+    });
+  });
+
+  it('resolves kernel models before creating agent kernels without runtime state', () => {
+    const kernel = {
+      async *runTurn() {},
+    };
+    const kernelFactory: PackageLocalRuntimeAgentKernelFactoryPort = {
+      create: vi.fn(() => kernel),
+    };
+    const bladeConfig: BladeConfig = {
+      models: [],
+      currentModelId: 'primary',
+    };
+    const resolvedKernelModel: PackageLocalRuntimeResolvedKernelModel = {
+      model: modelPort,
+      modelRequestDefaults: {
+        model: 'glm-5.2',
+        maxContextTokens: 16384,
+      },
+    };
+    const kernelModelResolver: PackageLocalRuntimeKernelModelResolverPort = {
+      resolve: vi.fn(() => resolvedKernelModel),
+    };
+    const getStorePort = vi.fn(() => storePort);
+    const getHookPort = vi.fn(() => hookPort);
+    const getTracePort = vi.fn(() => tracePort);
+    const getToolPort = vi.fn(() => toolPort);
+    const createExecutionContext = vi.fn();
+    const traceRecorder = { startSpan: vi.fn() } as unknown as TraceRecorder;
+
+    const created = createPackageLocalRuntimeAgentKernelFromOptions({
+      options: {
+        modelId: 'secondary',
+        traceRecorder,
+        createExecutionContext,
+        maxSteps: 9,
+      },
+      bladeConfig,
+      kernelModelResolver,
+      kernelFactory,
+      getStorePort,
+      getHookPort,
+      getTracePort,
+      getToolPort,
+    });
+
+    expect(created).toBe(kernel);
+    expect(kernelModelResolver.resolve).toHaveBeenCalledWith({
+      bladeConfig,
+      modelId: 'secondary',
+    });
+    expect(getTracePort).toHaveBeenCalledWith(traceRecorder, 16384);
+    expect(getToolPort).toHaveBeenCalledWith(createExecutionContext);
+    expect(kernelFactory.create).toHaveBeenCalledWith({
+      model: modelPort,
+      modelRequestDefaults: {
+        model: 'glm-5.2',
+        maxContextTokens: 16384,
+      },
+      store: storePort,
+      hooks: hookPort,
+      trace: tracePort,
+      tools: toolPort,
+      maxSteps: 9,
     });
   });
 });

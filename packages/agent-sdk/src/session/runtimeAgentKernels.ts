@@ -9,8 +9,12 @@ import type {
 } from '@blade-ai/agent';
 import type { TraceRecorder } from '../observability/TraceRecorder.js';
 import type { ExecutionContext } from '../tools/types/index.js';
-import type {
-  PackageLocalRuntimeResolvedKernelModel,
+import type { BladeConfig } from '../types/common.js';
+import {
+  resolvePackageLocalRuntimeKernelModel,
+  type PackageLocalRuntimeKernelModelOptions,
+  type PackageLocalRuntimeKernelModelResolverPort,
+  type PackageLocalRuntimeResolvedKernelModel,
 } from './runtimeKernelModels.js';
 
 export type { PackageLocalRuntimeResolvedKernelModel } from './runtimeKernelModels.js';
@@ -58,6 +62,10 @@ export interface PackageLocalRuntimeAgentKernelPortProjectionOptions {
 export interface PackageLocalRuntimeResolvedAgentKernelCreationOptions
   extends PackageLocalRuntimeAgentKernelCreationOptions,
     PackageLocalRuntimeAgentKernelPortProjectionOptions {}
+
+export interface PackageLocalRuntimeAgentKernelOptions
+  extends PackageLocalRuntimeResolvedAgentKernelCreationOptions,
+    PackageLocalRuntimeKernelModelOptions {}
 
 export interface ProjectPackageLocalRuntimeAgentKernelPortsOptions {
   options: PackageLocalRuntimeAgentKernelPortProjectionOptions;
@@ -123,6 +131,33 @@ export function createPackageLocalRuntimeAgentKernelFromResolved(
       getTracePort: options.getTracePort,
       getToolPort: options.getToolPort,
     }),
+  });
+}
+
+export interface CreatePackageLocalRuntimeAgentKernelFromOptionsOptions
+  extends Omit<CreatePackageLocalRuntimeAgentKernelFromResolvedOptions, 'kernelModel'> {
+  options: PackageLocalRuntimeAgentKernelOptions;
+  bladeConfig: BladeConfig;
+  kernelModelResolver: PackageLocalRuntimeKernelModelResolverPort;
+}
+
+export function createPackageLocalRuntimeAgentKernelFromOptions(
+  options: CreatePackageLocalRuntimeAgentKernelFromOptionsOptions,
+): PackageLocalRuntimeAgentKernelPort {
+  const kernelModel = resolvePackageLocalRuntimeKernelModel({
+    options: options.options,
+    bladeConfig: options.bladeConfig,
+    kernelModelResolver: options.kernelModelResolver,
+  });
+
+  return createPackageLocalRuntimeAgentKernelFromResolved({
+    options: options.options,
+    kernelModel,
+    kernelFactory: options.kernelFactory,
+    getStorePort: options.getStorePort,
+    getHookPort: options.getHookPort,
+    getTracePort: options.getTracePort,
+    getToolPort: options.getToolPort,
   });
 }
 

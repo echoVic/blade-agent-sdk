@@ -41,6 +41,7 @@ import {
 } from './runtimeExecutionPipeline.js';
 import {
   createPackageLocalRuntimeAgentKernelFromResolved,
+  createPackageLocalRuntimeAgentKernelFromOptions,
   type PackageLocalRuntimeAgentKernelFactoryPort,
   type PackageLocalRuntimeAgentKernelPort,
 } from './runtimeAgentKernels.js';
@@ -61,10 +62,9 @@ import {
   type PackageLocalRuntimeAgentKernelOptions,
   type PackageLocalRuntimeAgentKernelStreamOptions,
 } from './runtimeKernelTurnStream.js';
-import {
-  resolvePackageLocalRuntimeKernelModel,
-  type PackageLocalRuntimeKernelModelResolverPort,
-  type PackageLocalRuntimeResolvedKernelModel,
+import type {
+  PackageLocalRuntimeKernelModelResolverPort,
+  PackageLocalRuntimeResolvedKernelModel,
 } from './runtimeKernelModels.js';
 import {
   getPackageLocalRuntimeContextCwd,
@@ -589,12 +589,17 @@ export class PackageLocalSessionRuntime {
   createAgentKernel(
     options: PackageLocalRuntimeAgentKernelOptions = {},
   ): PackageLocalRuntimeAgentKernelPort {
-    const kernelModel = resolvePackageLocalRuntimeKernelModel({
+    return createPackageLocalRuntimeAgentKernelFromOptions({
       options,
       bladeConfig: this.bladeConfig,
       kernelModelResolver: this.kernelModelResolver,
+      kernelFactory: this.kernelFactory,
+      getStorePort: () => this.getKernelStorePort(),
+      getHookPort: () => this.getKernelHookPort(),
+      getTracePort: (recorder, maxContextTokens) =>
+        this.getKernelTracePort(recorder, maxContextTokens),
+      getToolPort: (createExecutionContext) => this.getKernelToolPort(createExecutionContext),
     });
-    return this.createAgentKernelFromResolved(options, kernelModel);
   }
 
   private createAgentKernelFromResolved(

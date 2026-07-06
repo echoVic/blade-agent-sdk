@@ -840,9 +840,17 @@ describe('monorepo topology', () => {
     expect(runtimeAgentKernelsSource).toContain(
       'createPackageLocalRuntimeAgentKernelFromResolved',
     );
+    expect(runtimeAgentKernelsSource).toContain(
+      'createPackageLocalRuntimeAgentKernelFromOptions',
+    );
+    expect(runtimeAgentKernelsSource).toContain('resolvePackageLocalRuntimeKernelModel');
+    expect(packageLocalRuntimeInstanceSource).toContain(
+      'createPackageLocalRuntimeAgentKernelFromOptions',
+    );
     expect(packageLocalRuntimeInstanceSource).toContain(
       'createPackageLocalRuntimeAgentKernelFromResolved',
     );
+    expect(packageLocalRuntimeInstanceSource).not.toContain('resolvePackageLocalRuntimeKernelModel');
     expect(packageLocalRuntimeInstanceSource).not.toContain(
       'projectPackageLocalRuntimeAgentKernelPorts',
     );
@@ -858,7 +866,7 @@ describe('monorepo topology', () => {
     expect(existsSync('packages/agent-sdk/src/session/runtimeKernelModels.ts')).toBe(true);
     expect(runtimeKernelModelsSource).not.toContain('../../../../src/');
     expect(runtimeKernelModelsSource).toContain('resolvePackageLocalRuntimeKernelModel');
-    expect(packageLocalRuntimeInstanceSource).toContain('resolvePackageLocalRuntimeKernelModel');
+    expect(packageLocalRuntimeInstanceSource).not.toContain('resolvePackageLocalRuntimeKernelModel');
     expect(packageLocalRuntimeInstanceSource).not.toContain('private resolveAgentKernelModel');
     expect(packageLocalRuntimeInstanceSource).toContain('streamAgentKernelTurn');
     expect(packageLocalRuntimeInstanceSource).toContain('PackageLocalRuntimeAgentKernelPort');
