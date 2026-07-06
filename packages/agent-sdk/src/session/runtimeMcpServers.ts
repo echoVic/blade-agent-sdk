@@ -29,6 +29,19 @@ export interface PackageLocalRuntimeMcpServerConfigOperations {
   getConfigured(): Record<string, McpServerConfig | SdkMcpServerHandle>;
 }
 
+export interface PackageLocalRuntimeMcpServerOperationsOptions {
+  configuredServers?: Record<string, McpServerConfig | SdkMcpServerHandle>;
+  mcpRegistry: PackageLocalMcpRegistryActionPort;
+  logger: PackageLocalMcpLoggerPort;
+  refreshMcpTools(serverNames: string[]): Promise<void> | void;
+}
+
+export interface PackageLocalRuntimeMcpServerOperations {
+  config: PackageLocalRuntimeMcpServerConfigOperations;
+  registration: PackageLocalRuntimeMcpServerRegistrationOperations;
+  lifecycle: PackageLocalRuntimeMcpServerLifecycleOperations;
+}
+
 export interface PackageLocalConfiguredMcpServersRegistrationOptions {
   configuredServers?: Record<string, McpServerConfig | SdkMcpServerHandle>;
   mcpRegistry: PackageLocalMcpRegistryActionPort;
@@ -258,5 +271,26 @@ export function createPackageLocalRuntimeMcpServerLifecycleOperations(
         refreshMcpTools: options.refreshMcpTools,
       });
     },
+  };
+}
+
+export function createPackageLocalRuntimeMcpServerOperations(
+  options: PackageLocalRuntimeMcpServerOperationsOptions,
+): PackageLocalRuntimeMcpServerOperations {
+  return {
+    config: createPackageLocalRuntimeMcpServerConfigOperations({
+      configuredServers: options.configuredServers,
+    }),
+    registration: createPackageLocalRuntimeMcpServerRegistrationOperations({
+      configuredServers: options.configuredServers,
+      mcpRegistry: options.mcpRegistry,
+      logger: options.logger,
+      refreshMcpTools: options.refreshMcpTools,
+    }),
+    lifecycle: createPackageLocalRuntimeMcpServerLifecycleOperations({
+      configuredServers: options.configuredServers,
+      mcpRegistry: options.mcpRegistry,
+      refreshMcpTools: options.refreshMcpTools,
+    }),
   };
 }

@@ -217,6 +217,72 @@ describe('agent-sdk package-local runtime MCP server helpers', () => {
     ).toEqual({});
   });
 
+  it('bundles MCP server operations behind injected ports', async () => {
+    expect(existsSync(mcpServersSourcePath)).toBe(true);
+
+    const { createPackageLocalRuntimeMcpServerOperations } = await import(
+      mcpServersModulePath
+    );
+    const localConfig = {
+      server: {},
+      createClientTransport: async () => ({}),
+    };
+    const remoteConfig = {
+      command: 'node',
+      args: ['server.js'],
+    };
+    const configuredServers = {
+      local: localConfig,
+      remote: remoteConfig,
+    };
+    const calls: unknown[] = [];
+    const registry = {
+      ensureServerRegistered(serverName: string, config: unknown) {
+        calls.push(['ensure', serverName, config, this === registry]);
+      },
+      registerInProcessServer(serverName: string, config: unknown) {
+        calls.push(['in-process', serverName, config, this === registry]);
+      },
+      registerServer(serverName: string, config: unknown) {
+        calls.push(['remote', serverName, config, this === registry]);
+      },
+      connectServer(serverName: string) {
+        calls.push(['connect', serverName, this === registry]);
+      },
+      disconnectAll() {
+        calls.push(['disconnect-all', this === registry]);
+      },
+    };
+
+    const operations = createPackageLocalRuntimeMcpServerOperations({
+      configuredServers,
+      mcpRegistry: registry,
+      logger: {
+        warn(...args: unknown[]) {
+          calls.push(['warn', args]);
+        },
+      },
+      refreshMcpTools(serverNames: string[]) {
+        calls.push(['refresh', serverNames]);
+      },
+    });
+
+    expect(operations.config.getConfigured()).toBe(configuredServers);
+    await operations.registration.registerConfigured();
+    await operations.lifecycle.connect('remote');
+    await operations.lifecycle.close();
+
+    expect(calls).toEqual([
+      ['in-process', 'local', localConfig, true],
+      ['remote', 'remote', remoteConfig, true],
+      ['refresh', ['local', 'remote']],
+      ['ensure', 'remote', remoteConfig, true],
+      ['connect', 'remote', true],
+      ['refresh', ['remote']],
+      ['disconnect-all', true],
+    ]);
+  });
+
   it('ensures configured MCP servers through registry ports without runtime state', async () => {
     expect(existsSync(mcpServersSourcePath)).toBe(true);
 

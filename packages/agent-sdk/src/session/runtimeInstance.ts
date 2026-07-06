@@ -77,9 +77,7 @@ import {
   type PackageLocalRuntimeSessionLifecycleOperations,
 } from './runtimeSessionLifecycle.js';
 import {
-  createPackageLocalRuntimeMcpServerConfigOperations,
-  createPackageLocalRuntimeMcpServerRegistrationOperations,
-  createPackageLocalRuntimeMcpServerLifecycleOperations,
+  createPackageLocalRuntimeMcpServerOperations,
   type PackageLocalRuntimeMcpServerConfigOperations,
   type PackageLocalRuntimeMcpServerRegistrationOperations,
   type PackageLocalRuntimeMcpServerLifecycleOperations,
@@ -384,22 +382,15 @@ export class PackageLocalSessionRuntime {
     this.mcpCapabilityOperations = createPackageLocalRuntimeMcpCapabilityOperations({
       mcpRegistry: this.mcpRegistry,
     });
-    this.mcpServerConfigOperations = createPackageLocalRuntimeMcpServerConfigOperations({
+    const mcpServerOperations = createPackageLocalRuntimeMcpServerOperations({
       configuredServers: this.options.mcpServers,
+      mcpRegistry: this.mcpRegistry,
+      logger: this.logger,
+      refreshMcpTools: (serverNames) => this.refreshMcpTools(serverNames),
     });
-    this.mcpServerRegistrationOperations =
-      createPackageLocalRuntimeMcpServerRegistrationOperations({
-        configuredServers: this.options.mcpServers,
-        mcpRegistry: this.mcpRegistry,
-        logger: this.logger,
-        refreshMcpTools: (serverNames) => this.refreshMcpTools(serverNames),
-      });
-    this.mcpServerLifecycleOperations =
-      createPackageLocalRuntimeMcpServerLifecycleOperations({
-        configuredServers: this.options.mcpServers,
-        mcpRegistry: this.mcpRegistry,
-        refreshMcpTools: (serverNames) => this.refreshMcpTools(serverNames),
-      });
+    this.mcpServerConfigOperations = mcpServerOperations.config;
+    this.mcpServerRegistrationOperations = mcpServerOperations.registration;
+    this.mcpServerLifecycleOperations = mcpServerOperations.lifecycle;
     this.mcpToolRefreshOperations = createPackageLocalRuntimeMcpToolRefreshOperations({
       mcpRegistry: this.mcpRegistry,
       toolCatalog: this.toolCatalog,

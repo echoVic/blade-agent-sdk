@@ -643,10 +643,22 @@ describe('monorepo topology', () => {
     expect(runtimeMcpServersSource).toContain(
       'createPackageLocalRuntimeMcpServerConfigOperations',
     );
+    expect(runtimeMcpServersSource).toContain(
+      'createPackageLocalRuntimeMcpServerOperations',
+    );
     expect(packageLocalRuntimeInstanceSource).toContain('mcpServerConfigOperations');
+    expect(packageLocalRuntimeInstanceSource).toContain(
+      'createPackageLocalRuntimeMcpServerOperations',
+    );
+    expect(packageLocalRuntimeInstanceSource).not.toContain(
+      'createPackageLocalRuntimeMcpServerConfigOperations({',
+    );
     expect(packageLocalRuntimeInstanceSource).not.toContain('this.options.mcpServers ?? {}');
     expect(runtimeMcpServersSource).toContain(
       'createPackageLocalRuntimeMcpServerRegistrationOperations',
+    );
+    expect(packageLocalRuntimeInstanceSource).not.toContain(
+      'createPackageLocalRuntimeMcpServerRegistrationOperations({',
     );
     expect(runtimeMcpServersSource).toContain('ensurePackageLocalMcpServerRegistered');
     expect(runtimeMcpServersSource).toContain('closePackageLocalRuntimeMcpServers');
@@ -657,6 +669,9 @@ describe('monorepo topology', () => {
       'createPackageLocalRuntimeMcpServerLifecycleOperations',
     );
     expect(packageLocalRuntimeInstanceSource).toContain('mcpServerLifecycleOperations');
+    expect(packageLocalRuntimeInstanceSource).not.toContain(
+      'createPackageLocalRuntimeMcpServerLifecycleOperations({',
+    );
     expect(packageLocalRuntimeInstanceSource).not.toContain(
       'connectPackageLocalRuntimeMcpServer({',
     );
@@ -799,9 +814,7 @@ describe('monorepo topology', () => {
     expect(packageLocalRuntimeInstanceSource).not.toContain('private async registerRemoteMcpServer');
     expect(packageLocalRuntimeInstanceSource).toContain('PackageLocalRuntimeLoggerPort');
     expect(packageLocalRuntimeInstanceSource).toContain('refreshMcpTools');
-    expect(packageLocalRuntimeInstanceSource).toContain(
-      'createPackageLocalRuntimeMcpServerRegistrationOperations',
-    );
+    expect(packageLocalRuntimeInstanceSource).toContain('mcpServerOperations.registration');
     expect(packageLocalRuntimeInstanceSource).not.toContain('Object.entries(configuredServers)');
     expect(packageLocalRuntimeInstanceSource).not.toContain('if (config.disabled)');
     expect(packageLocalRuntimeInstanceSource).toContain('getAvailableToolsByServerNames');
