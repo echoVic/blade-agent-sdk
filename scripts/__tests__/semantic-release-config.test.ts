@@ -791,7 +791,7 @@ describe('release workflow', () => {
 
     expect(commands).toEqual([
       'npm install -g npm@^11.5.1',
-      'pnpm install --frozen-lockfile',
+      'pnpm install --frozen-lockfile --ignore-scripts',
       'pnpm run verify',
       expect.stringContaining('PREVIOUS_RELEASE_TAG='),
       'pnpm exec semantic-release',
@@ -882,9 +882,36 @@ describe('ci workflow', () => {
     ]);
     expect(workflow.on.pull_request).toBeNull();
     expect(commands).toEqual([
-      'pnpm install --frozen-lockfile',
+      'pnpm install --frozen-lockfile --ignore-scripts',
       'pnpm run verify',
     ]);
+  });
+
+  it('requires workflow dependency installs to ignore lifecycle scripts', () => {
+    const workflowPaths = [
+      '.github/workflows/ci.yml',
+      '.github/workflows/release.yml',
+      '.github/workflows/deploy-docs.yml',
+    ];
+    for (const workflowPath of workflowPaths) {
+      const workflow = parse(readFileSync(resolve(workflowPath), 'utf8'));
+      const jobs = Object.values(workflow.jobs ?? {}) as Array<{ steps?: Array<{ run?: string }> }>;
+      const installCommands = jobs
+        .flatMap((job) => job.steps ?? [])
+        .map((step) => step.run)
+        .filter((command): command is string => command?.startsWith('pnpm install') ?? false);
+
+      expect(installCommands.length).toBeGreaterThan(0);
+      for (const command of installCommands) {
+        expect(command).toContain('--frozen-lockfile');
+        expect(command).toContain('--ignore-scripts');
+      }
+    }
+
+    const releaseVerifier = readFileSync(resolve('scripts/verify-release-config.mjs'), 'utf8');
+    expect(releaseVerifier).toContain('verifyWorkflowDependencyInstalls');
+    expect(releaseVerifier).toContain('--ignore-scripts');
+    expect(releaseVerifier).toContain('workflow dependency install commands must ignore lifecycle scripts');
   });
 
   it('keeps CI workflow toolchain pins covered by the release verifier', () => {

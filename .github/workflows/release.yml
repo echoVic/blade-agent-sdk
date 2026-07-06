@@ -43,7 +43,7 @@ jobs:
         run: npm install -g npm@^11.5.1
 
       - name: Install dependencies
-        run: pnpm install --frozen-lockfile
+        run: pnpm install --frozen-lockfile --ignore-scripts
 
       - name: Verify
         run: pnpm run verify

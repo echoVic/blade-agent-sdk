@@ -219,7 +219,7 @@ function verifyReleaseWorkflow() {
   }
   assertDeepEqual(commands, [
     'npm install -g npm@^11.5.1',
-    'pnpm install --frozen-lockfile',
+    'pnpm install --frozen-lockfile --ignore-scripts',
     'pnpm run verify',
     captureTagStep?.run,
     'pnpm exec semantic-release',
@@ -281,7 +281,7 @@ function verifyCiWorkflow() {
 
   assertDeepEqual(verifyJob?.strategy?.matrix?.['node-version'], ['22'], 'ci workflow node versions');
   assertDeepEqual(commands, [
-    'pnpm install --frozen-lockfile',
+    'pnpm install --frozen-lockfile --ignore-scripts',
     'pnpm run verify',
   ], 'ci workflow commands');
   if (setupPnpmStep?.with?.version !== '11.7.0') {
@@ -292,11 +292,42 @@ function verifyCiWorkflow() {
   }
 }
 
+function verifyWorkflowDependencyInstalls() {
+  const workflowPaths = [
+    '.github/workflows/ci.yml',
+    '.github/workflows/release.yml',
+    '.github/workflows/deploy-docs.yml',
+  ];
+
+  for (const workflowPath of workflowPaths) {
+    const workflow = parse(readFileSync(resolve(workflowPath), 'utf8'));
+    const jobs = Object.values(workflow.jobs ?? {});
+    const installCommands = [];
+    for (const job of jobs) {
+      for (const step of job.steps ?? []) {
+        if (typeof step.run === 'string' && step.run.startsWith('pnpm install')) {
+          installCommands.push(step.run);
+        }
+      }
+    }
+
+    if (installCommands.length === 0) {
+      fail(`${workflowPath} must include a pnpm install dependency step`);
+    }
+    for (const command of installCommands) {
+      if (!command.includes('--frozen-lockfile') || !command.includes('--ignore-scripts')) {
+        fail(`${workflowPath} workflow dependency install commands must ignore lifecycle scripts and use the frozen lockfile`);
+      }
+    }
+  }
+}
+
 verifyRootScripts();
 verifySemanticReleaseConfig();
 verifyPackageMetadata();
 await verifyPreparedReleaseManifestVersions();
 verifyReleaseWorkflow();
 verifyCiWorkflow();
+verifyWorkflowDependencyInstalls();
 
 console.log('release configuration verification passed');
