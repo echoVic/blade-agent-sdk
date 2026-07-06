@@ -5,6 +5,7 @@ import { dirname, join, relative } from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
 import { pathToFileURL } from 'node:url';
 import { promisify } from 'node:util';
+import ssri from 'ssri';
 import { bundleWithEsbuildRetry } from './esbuild-bundle.mjs';
 
 const execFileAsync = promisify(execFile);
@@ -200,6 +201,43 @@ async function verifyNpmPackage({ packageName, version }) {
   return metadata;
 }
 
+async function verifyNpmLatestDistTag({ packageName, version }) {
+  const stdout = await run('npm', [
+    'view',
+    packageName,
+    'dist-tags',
+    '--json',
+  ]);
+  const distTags = JSON.parse(stdout);
+
+  if (distTags.latest !== version) {
+    throw new Error(`${packageName} npm latest dist-tag mismatch: expected ${version}, got ${distTags.latest}`);
+  }
+}
+
+function verifyNpmPackageTarballIntegrity({ packageName, version, metadata }) {
+  if (!metadata.dist || typeof metadata.dist !== 'object') {
+    throw new Error(`${packageName}@${version} missing npm dist metadata`);
+  }
+
+  const tarball = metadata.dist.tarball;
+  const integrity = metadata.dist.integrity;
+  const shasum = metadata.dist.shasum;
+
+  if (typeof tarball !== 'string' || tarball.length === 0) {
+    throw new Error(`${packageName}@${version} missing registry tarball URL`);
+  }
+  if (typeof integrity !== 'string' || integrity.length === 0) {
+    throw new Error(`${packageName}@${version} missing registry tarball integrity`);
+  }
+  if (typeof shasum !== 'string' || shasum.length === 0) {
+    throw new Error(`${packageName}@${version} missing registry tarball shasum`);
+  }
+  if (ssri.parse(integrity).toString().length === 0) {
+    throw new Error(`${packageName}@${version} registry tarball integrity is not valid SRI`);
+  }
+}
+
 function verifyNpmPackageProvenance({ packageName, version, metadata }) {
   const expectedPredicateType = 'https://slsa.dev/provenance/v1';
   const provenancePredicateType = metadata?.dist?.attestations?.provenance?.predicateType;
@@ -214,17 +252,21 @@ function verifyNpmPackageProvenance({ packageName, version, metadata }) {
 
 async function verifyPublishedOnce({ repo, version }) {
   const releaseUrl = await verifyGithubRelease({ repo, version });
+  const packageMetadataByName = new Map();
 
   for (const packageName of publishablePackages) {
+    await verifyNpmLatestDistTag({ packageName, version });
     const metadata = await verifyNpmPackage({ packageName, version });
+    verifyNpmPackageTarballIntegrity({ packageName, version, metadata });
     verifyNpmPackageProvenance({ packageName, version, metadata });
+    packageMetadataByName.set(packageName, metadata);
   }
-  await verifyPublishedInstallSmoke({ version });
+  await verifyPublishedInstallSmoke({ version, packageMetadataByName });
 
   return releaseUrl;
 }
 
-async function verifyPublishedInstallSmoke({ version }) {
+async function verifyPublishedInstallSmoke({ version, packageMetadataByName }) {
   const consumerDir = await mkdtemp(join(tmpdir(), 'blade-published-consumer-'));
   const packageSpecs = [
     `@blade-ai/ai@${version}`,
@@ -251,6 +293,7 @@ async function verifyPublishedInstallSmoke({ version }) {
       ...packageSpecs,
     ], { cwd: consumerDir });
 
+    await verifyPublishedPackageLockfileTarballs({ consumerDir, packageMetadataByName });
     await verifyPublishedPackageManifests({ consumerDir, version });
     await verifyPublishedPackageFileScope({ consumerDir });
     await verifyPublishedLicenseArtifacts({ consumerDir });
@@ -341,6 +384,36 @@ if (Object.keys(agentProtocol).length !== 0) {
   } finally {
     await rm(consumerDir, { recursive: true, force: true });
   }
+}
+
+async function verifyPublishedPackageLockfileTarballs({ consumerDir, packageMetadataByName }) {
+  const lockfile = JSON.parse(await readFile(join(consumerDir, 'package-lock.json'), 'utf8'));
+
+  for (const packageName of publishablePackages) {
+    const lockfileEntry = lockfile.packages?.[`node_modules/${packageName}`];
+    const metadata = packageMetadataByName.get(packageName);
+
+    if (!lockfileEntry) {
+      throw new Error(`${packageName} missing from published temporary consumer package-lock.json`);
+    }
+    if (!metadata) {
+      throw new Error(`${packageName} missing registry metadata for package-lock verification`);
+    }
+    if (lockfileEntry.resolved !== metadata.dist.tarball) {
+      throw new Error(
+        `${packageName} package-lock resolved tarball mismatch: expected ${metadata.dist.tarball}, got ${lockfileEntry.resolved}`,
+      );
+    }
+
+    const installedIntegrity = ssri.parse(lockfileEntry.integrity).toString();
+    const registryIntegrity = ssri.parse(metadata.dist.integrity).toString();
+    if (installedIntegrity !== registryIntegrity) {
+      throw new Error(
+        `${packageName} package-lock integrity mismatch: expected ${registryIntegrity}, got ${installedIntegrity}`,
+      );
+    }
+  }
+  console.log('[verify-published] temporary consumer package-lock tarball integrity passed');
 }
 
 function collectDeclarationExports(source) {
