@@ -38,6 +38,13 @@ const manifestRules = [
   {
     name: '@blade-ai/ai',
     packageJson: 'packages/ai/package.json',
+    disallowBin: true,
+    disallowedExportSubpaths: [
+      ['./cli', 'CLI product capabilities belong in a separate package'],
+    ],
+    disallowedKeywords: [
+      ['cli', 'CLI product capabilities belong in a separate package'],
+    ],
     disallowedDependencies: [
       [/^@blade-ai\/agent(?:\/|$)/, 'AI package must not depend on the agent kernel'],
       [/^@blade-ai\/agent-sdk(?:\/|$)/, 'AI package must not depend on the session SDK'],
@@ -46,6 +53,13 @@ const manifestRules = [
   {
     name: '@blade-ai/agent',
     packageJson: 'packages/agent/package.json',
+    disallowBin: true,
+    disallowedExportSubpaths: [
+      ['./cli', 'CLI product capabilities belong in a separate package'],
+    ],
+    disallowedKeywords: [
+      ['cli', 'CLI product capabilities belong in a separate package'],
+    ],
     disallowedDependencies: [
       [/^@blade-ai\/agent-sdk(?:\/|$)/, 'Agent kernel must not depend on the session SDK'],
       [/^@modelcontextprotocol(?:\/|$)/, 'Agent kernel must not depend on MCP SDKs'],

@@ -18,7 +18,7 @@ CI=true pnpm run verify
 | Root type check | `pnpm run type-check` | 检查根 SDK 源码类型 |
 | Workspace type check | `pnpm -r run type-check` | 检查 `@blade-ai/ai`、`@blade-ai/agent`、`@blade-ai/agent-sdk` 包类型 |
 | Examples | `pnpm run verify:examples` | 确保 session-first quickstart 示例持续可类型检查 |
-| Package boundaries | `pnpm run verify:boundaries` | 确保 `@blade-ai/agent` 不引入 Node-local runtime、MCP、filesystem、provider SDK 或 session SDK；三包源码相对 import/export 必须带显式 ESM 运行时文件扩展 |
+| Package boundaries | `pnpm run verify:boundaries` | 确保 `@blade-ai/agent` 不引入 Node-local runtime、MCP、filesystem、provider SDK 或 session SDK；三包源码相对 import/export 必须带显式 ESM 运行时文件扩展；三包 manifest 不暴露 CLI product capability |
 | Docs build | `pnpm run docs:build` | 确保 VitePress 文档可构建 |
 | Entrypoints | `pnpm run verify:entrypoints` | 检查 root、server、session、local、core、tools、browser 入口和 browser-safe 约束 |
 | Package smoke | `pnpm run verify:packages` | pack 三个 npm 包，检查 packed package npm metadata、packed package description metadata、packed package author metadata、packed package discoverability metadata、packed package module metadata、packed package engine metadata、packed package license artifacts、packed package manifest entry targets 和 packed SDK browser export conditions，安装到临时 consumer，import 公共入口，type-check `SessionOptions` 采样/上下文/thinking/token budget 字段，并检查 browser-safe `core` 和 root 声明不暴露 server/local API 或 provider-specific helper |
@@ -32,7 +32,7 @@ CI=true pnpm run verify
 - `@blade-ai/ai` 只负责 model/provider 协议、stream、usage、provider options、provider adapters 和 provider-specific helper。
 - `@blade-ai/agent` 保持 runtime-independent，只依赖端口和协议，不直接依赖 Node-only API、MCP SDK、provider SDK、本地工具、filesystem、shell、sandbox 或 `@blade-ai/agent-sdk`。
 - `@blade-ai/agent-sdk` 作为产品 SDK 保持 session-first root 入口；Node-local adapters 必须通过 `@blade-ai/agent-sdk/local` 显式导入，DeepSeek 等 provider-specific helper 必须通过 `@blade-ai/ai/*` 显式导入：
-- `@blade-ai/agent-sdk` 可用于 CLI process embedding，但 does not publish a CLI product，也不提供 `@blade-ai/agent-sdk/cli`；Pi-style coding-agent / CLI 产品必须拆成独立包。
+- `@blade-ai/ai`、`@blade-ai/agent` 和 `@blade-ai/agent-sdk` 都是库包，does not publish a CLI product、不提供 `./cli` export，也不声明 `cli` keyword；`@blade-ai/agent-sdk` 仍可用于 CLI process embedding，但不提供 `@blade-ai/agent-sdk/cli`，未来 Pi-style coding-agent / CLI 产品必须拆成独立包。
 
 ```ts
 import { createSession } from '@blade-ai/agent-sdk';

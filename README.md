@@ -137,7 +137,7 @@ import { getBuiltinTools } from '@blade-ai/agent-sdk/local';
 
 `@blade-ai/agent-sdk/core` 只导出 browser-safe 的类型、协议和常量。浏览器环境误导入 root、`server`、`session` 或 `local` 入口时，会解析到 browser stub，并在调用 server-only API 时抛出清晰错误。
 
-`@blade-ai/agent-sdk` 可以嵌入你自己的 CLI 进程，但 does not publish a CLI product。不要依赖不存在的 `@blade-ai/agent-sdk/cli`；未来如果提供 Pi-style coding-agent / CLI 产品，应由独立包承载。
+`@blade-ai/agent-sdk` 可以嵌入你自己的 CLI 进程，但 `@blade-ai/ai`、`@blade-ai/agent` 和 `@blade-ai/agent-sdk` 都 does not publish a CLI product。不要依赖不存在的 `@blade-ai/agent-sdk/cli`；未来如果提供 Pi-style coding-agent / CLI 产品，应由独立包承载。
 
 ## Observability Trace
 
@@ -210,7 +210,7 @@ pnpm run docs:build
 pnpm run docs:dev
 ```
 
-`pnpm run verify` 是 CI 和发版前的生产 gate，会串起 lint、root/workspace type-check、examples type-check、package boundary scanner、docs build、entrypoint/browser-safety scanner、packed package smoke、release config verification、unit tests 和默认 integration skip 检查。package boundary scanner 会同时保护三包依赖方向、build entry ownership、publish manifest targets，以及 package 源码里的 ESM 相对 import/export 必须带显式运行时文件扩展。release config verification 还会确认根 `package.json` 保持 private orchestrator，不声明 `publishConfig` 或 `files`，并拒绝任何会让 semantic-release 发布 workspace root 的 npm plugin 配置。
+`pnpm run verify` 是 CI 和发版前的生产 gate，会串起 lint、root/workspace type-check、examples type-check、package boundary scanner、docs build、entrypoint/browser-safety scanner、packed package smoke、release config verification、unit tests 和默认 integration skip 检查。package boundary scanner 会同时保护三包依赖方向、build entry ownership、publish manifest targets、CLI product capability 禁入，以及 package 源码里的 ESM 相对 import/export 必须带显式运行时文件扩展。release config verification 还会确认根 `package.json` 保持 private orchestrator，不声明 `publishConfig` 或 `files`，并拒绝任何会让 semantic-release 发布 workspace root 的 npm plugin 配置。
 
 `pnpm run verify:packages` 会先 fresh-build 三个发布包，再打出 packed tarball，把它们安装到外部 temporary consumer 项目里，并从 consumer 侧 import root/subpath exports，检查 packed package size budgets、packed package npm metadata、packed package description metadata、packed package author metadata、packed package discoverability metadata、packed package module metadata、packed package engine metadata、packed package license artifacts、packed package manifest entry targets 和 packed SDK browser export conditions，防止声明文件、exports、browser stub、workspace 依赖、模块格式、Node 运行时契约、npm 包描述、维护方信息、npm 可发现性、许可证文本、包体积或包内容在 npm 分发时回退。
 
