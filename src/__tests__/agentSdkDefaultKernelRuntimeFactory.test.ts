@@ -8,6 +8,8 @@ import { createDefaultKernelSessionRuntimeFactory } from '../../packages/agent-s
 import { JsonlSessionStore } from '../../packages/agent-sdk/src/session/store.js';
 import { PackageLocalSession } from '../../packages/agent-sdk/src/session/sessionInstance.js';
 import type { SessionOptions, StreamMessage } from '../../packages/agent-sdk/src/session/types.js';
+import type { ToolDefinition } from '../../packages/agent-sdk/src/tools/types/index.js';
+import { HookEvent } from '../../packages/agent-sdk/src/types/constants.js';
 
 const model: ModelPort = {
   async generate() {
@@ -218,6 +220,150 @@ describe('agent-sdk default kernel runtime factory', () => {
     expect(turns[0]).toMatchObject({ input: 'hello', turnId: 'kernel-turn' });
     expect(turns[0]?.signal).toBeInstanceOf(AbortSignal);
     expect(disconnectAll).toHaveBeenCalledTimes(1);
+  });
+
+  it('initializes configured runtime capabilities before package-local kernel turns', async () => {
+    const order: string[] = [];
+    const registerServer = vi.fn(async (serverName: string) => {
+      order.push(`mcp:${serverName}`);
+    });
+    const registerAll = vi.fn((tools: Array<{ name: string }>, source: { kind: string }) => {
+      order.push(`register:${source.kind}:${tools.map((tool) => tool.name).join(',')}`);
+    });
+    const customTool: ToolDefinition = {
+      name: 'custom_tool',
+      description: 'Custom test tool',
+      parameters: {
+        type: 'object',
+        properties: {},
+      },
+      async execute() {
+        return {
+          success: true,
+          data: 'ok',
+          llmContent: 'ok',
+        };
+      },
+    };
+    const factory = createDefaultKernelSessionRuntimeFactory({
+      createSessionId: () => 'capability-session',
+      createTurnId: () => 'capability-turn',
+      runtime: {
+        mcpRegistry: {
+          disconnectAll: vi.fn(async () => {}),
+          registerServer,
+          async getCapabilities() {
+            return [];
+          },
+          async getAvailableToolsByServerNames(serverNames) {
+            order.push(`mcp-tools:${serverNames.join(',')}`);
+            return [];
+          },
+        },
+        toolCatalog: {
+          registerAll,
+          registerMcpTool: vi.fn(),
+          removeMcpTools: vi.fn((serverName: string) => {
+            order.push(`mcp-remove:${serverName}`);
+            return 0;
+          }),
+        },
+        customToolFactory: {
+          fromDefinition(definition) {
+            order.push(`custom:${definition.name}`);
+            return { name: definition.name };
+          },
+        },
+        builtinToolProvider: {
+          async getTools(context) {
+            order.push(`builtin:${context.sessionId}:${context.includeMcpProtocolTools}`);
+            return [{ name: 'builtin_tool' }];
+          },
+        },
+        hookManager: {
+          enable() {
+            order.push('hooks');
+          },
+        },
+        subagentRegistry: {
+          setLogger() {
+            order.push('subagent-logger');
+          },
+          setProjectDir() {
+            order.push('subagent-project');
+          },
+          loadFromStandardLocations() {
+            order.push('subagent-load');
+            return 0;
+          },
+          register(config) {
+            order.push(`subagent:${config.name}`);
+          },
+        },
+        kernelModelResolver: {
+          resolve() {
+            return {
+              model,
+              modelRequestDefaults: { model: 'test-model' },
+            };
+          },
+        },
+        kernelFactory: {
+          create() {
+            return {
+              async *runTurn() {
+                order.push('kernel');
+                yield { type: 'result' as const, content: 'done' };
+              },
+            };
+          },
+        },
+      },
+    });
+
+    const session = await factory.create({
+      ...options,
+      hooks: {
+        [HookEvent.SessionStart]: [async () => ({ action: 'continue' })],
+      },
+      tools: [customTool],
+      agents: {
+        reviewer: {
+          name: 'reviewer',
+          description: 'Reviews output',
+          allowedTools: ['custom_tool'],
+        },
+      },
+      mcpServers: {
+        remote: {
+          command: 'node',
+          args: ['server.js'],
+        },
+      },
+    });
+
+    await session.send('run with configured capabilities');
+    await collect(session.stream());
+
+    expect(order).toEqual([
+      'mcp:remote',
+      'mcp-remove:remote',
+      'mcp-tools:remote',
+      'custom:custom_tool',
+      'register:custom:custom_tool',
+      'builtin:capability-session:false',
+      'register:builtin:builtin_tool',
+      'subagent-logger',
+      'subagent-project',
+      'subagent-load',
+      'subagent:reviewer',
+      'hooks',
+      'kernel',
+    ]);
+    expect(registerServer).toHaveBeenCalledWith('remote', {
+      command: 'node',
+      args: ['server.js'],
+    });
   });
 
   it('routes package-local session MCP actions through the kernel runtime', async () => {

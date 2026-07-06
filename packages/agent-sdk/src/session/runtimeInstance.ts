@@ -324,6 +324,7 @@ export class PackageLocalSessionRuntime {
   private readonly traceOperations: PackageLocalRuntimeTraceOperations;
   private readonly forkOperations: PackageLocalRuntimeForkOperations;
   private readonly traceManager: SessionTraceManager;
+  private runtimeCapabilitiesInitialization?: Promise<void>;
 
   constructor(options: PackageLocalSessionRuntimeOptions) {
     this.sessionId = options.sessionId;
@@ -519,6 +520,19 @@ export class PackageLocalSessionRuntime {
 
   async registerConfiguredMcpServers(): Promise<void> {
     await this.mcpServerRegistrationOperations.registerConfigured();
+  }
+
+  async ensureRuntimeCapabilitiesInitialized(): Promise<void> {
+    this.runtimeCapabilitiesInitialization ??= this.initializeRuntimeCapabilities();
+    await this.runtimeCapabilitiesInitialization;
+  }
+
+  private async initializeRuntimeCapabilities(): Promise<void> {
+    await this.registerConfiguredMcpServers();
+    this.registerCustomTools();
+    await this.registerBuiltinTools();
+    this.initializeSubagents();
+    this.initializeHooks();
   }
 
   async refreshMcpTools(serverNames: string[]): Promise<void> {

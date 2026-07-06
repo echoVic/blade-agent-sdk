@@ -10,6 +10,7 @@ import type { StreamMessage } from './types.js';
 import type { ExecutionContext } from '../tools/types/index.js';
 
 export interface KernelStreamBridgeRuntime {
+  ensureRuntimeCapabilitiesInitialized?: () => Promise<void> | void;
   prepareTurn(snapshot: ActiveSessionTurn['snapshot']): Promise<void> | void;
   streamAgentKernelTurn(
     options: PackageLocalRuntimeAgentKernelStreamOptions,
@@ -48,6 +49,7 @@ export function createKernelStreamTurnBridge(
     streamContext,
   ) {
     const context = streamContext ?? options.context;
+    await options.runtime.ensureRuntimeCapabilitiesInitialized?.();
     await options.runtime.prepareTurn(turn.snapshot);
     const maxSteps = resolveMaxSteps(turn, context);
 
