@@ -94,7 +94,10 @@ import {
   createPackageLocalRuntimeSubagentOperations,
   type PackageLocalRuntimeSubagentOperations,
 } from './runtimeSubagents.js';
-import { filterPackageLocalRuntimeTools } from './runtimeToolFilters.js';
+import {
+  createPackageLocalRuntimeToolFilterOperations,
+  type PackageLocalRuntimeToolFilterOperations,
+} from './runtimeToolFilters.js';
 import {
   createPackageLocalRuntimeToolRegistrationOperations,
   createPackageLocalRuntimeSessionToolRegistrationOperations,
@@ -326,6 +329,7 @@ export class PackageLocalSessionRuntime {
     PackageLocalRuntimeToolSource
   >;
   private readonly sessionToolRegistrationOperations: PackageLocalRuntimeSessionToolRegistrationOperations;
+  private readonly toolFilterOperations: PackageLocalRuntimeToolFilterOperations;
   private readonly permissionOperations: PackageLocalRuntimePermissionOperations;
   private readonly hookOperations: PackageLocalRuntimeHookOperations;
   private readonly subagentOperations: PackageLocalRuntimeSubagentOperations;
@@ -430,6 +434,10 @@ export class PackageLocalSessionRuntime {
     this.toolRegistrationOperations = createPackageLocalRuntimeToolRegistrationOperations({
       filterTools: (tools) => this.filterTools(tools),
       toolCatalog: this.toolCatalog,
+    });
+    this.toolFilterOperations = createPackageLocalRuntimeToolFilterOperations({
+      allowedTools: this.options.allowedTools,
+      disallowedTools: this.options.disallowedTools,
     });
     this.sessionToolRegistrationOperations =
       createPackageLocalRuntimeSessionToolRegistrationOperations({
@@ -554,10 +562,7 @@ export class PackageLocalSessionRuntime {
   }
 
   filterTools<TTool extends PackageLocalRuntimeNamedTool>(tools: TTool[]): TTool[] {
-    return filterPackageLocalRuntimeTools(tools, {
-      allowedTools: this.options.allowedTools,
-      disallowedTools: this.options.disallowedTools,
-    });
+    return this.toolFilterOperations.filter(tools);
   }
 
   registerTools<TTool extends PackageLocalRuntimeNamedTool>(

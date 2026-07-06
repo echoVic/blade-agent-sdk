@@ -25,4 +25,22 @@ describe('agent-sdk package-local runtime tool filtering helpers', () => {
       }),
     ).toEqual([{ name: 'read' }, { name: 'write' }]);
   });
+
+  it('creates filter operations that retain explicit allowlist policy', async () => {
+    const { createPackageLocalRuntimeToolFilterOperations } =
+      await import(toolFiltersModulePath);
+    const tools = [{ name: 'read' }, { name: 'write' }, { name: 'search' }];
+
+    expect(
+      createPackageLocalRuntimeToolFilterOperations({
+        allowedTools: ['read', 'write'],
+        disallowedTools: ['write'],
+      }).filter(tools),
+    ).toEqual([{ name: 'read' }]);
+    expect(
+      createPackageLocalRuntimeToolFilterOperations({
+        allowedTools: [],
+      }).filter(tools),
+    ).toEqual([]);
+  });
 });

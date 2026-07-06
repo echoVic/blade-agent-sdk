@@ -7,6 +7,10 @@ export interface PackageLocalRuntimeToolFilterOptions {
   disallowedTools?: readonly string[];
 }
 
+export interface PackageLocalRuntimeToolFilterOperations {
+  filter<TTool extends PackageLocalRuntimeToolFilterable>(tools: readonly TTool[]): TTool[];
+}
+
 export function filterPackageLocalRuntimeTools<TTool extends PackageLocalRuntimeToolFilterable>(
   tools: readonly TTool[],
   options: PackageLocalRuntimeToolFilterOptions,
@@ -20,4 +24,12 @@ export function filterPackageLocalRuntimeTools<TTool extends PackageLocalRuntime
     }
     return !disallowedTools.has(tool.name);
   });
+}
+
+export function createPackageLocalRuntimeToolFilterOperations(
+  options: PackageLocalRuntimeToolFilterOptions,
+): PackageLocalRuntimeToolFilterOperations {
+  return {
+    filter: (tools) => filterPackageLocalRuntimeTools(tools, options),
+  };
 }
