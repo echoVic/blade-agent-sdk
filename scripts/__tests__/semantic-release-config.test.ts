@@ -546,6 +546,18 @@ describe('release scripts', () => {
     expect(roadmap).toContain('published package manifest gate');
   });
 
+  it('rejects CLI product entrypoints from packed and published SDK manifests', () => {
+    const packageVerifier = readFileSync(resolve('scripts/verify-packages.mjs'), 'utf8');
+    const publishedVerifier = readFileSync(resolve('scripts/verify-published.mjs'), 'utf8');
+
+    for (const verifier of [packageVerifier, publishedVerifier]) {
+      expect(verifier).toContain('function assertNoCliProductManifest');
+      expect(verifier).toContain("@blade-ai/agent-sdk manifest must not publish a bin field");
+      expect(verifier).toContain("@blade-ai/agent-sdk manifest must not publish a ./cli export");
+      expect(verifier).toContain('CLI product capabilities belong in a separate package');
+    }
+  });
+
   it('verifies published package manifest entry targets from the temporary consumer install', () => {
     const publishedVerifier = readFileSync(resolve('scripts/verify-published.mjs'), 'utf8');
     const checklist = readFileSync(resolve('docs/production-checklist.md'), 'utf8');

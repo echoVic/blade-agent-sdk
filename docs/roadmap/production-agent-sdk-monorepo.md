@@ -674,6 +674,7 @@ Status:
 - Two-hundred-twenty-sixth verification-chain increment complete: packed and post-publish runtime smoke tests now compare the full runtime export key set of `@blade-ai/agent-sdk` and `@blade-ai/agent-sdk/server`, so future server-safe root value exports cannot silently miss the explicit server facade while root-local and provider-helper exclusion checks remain in place.
 - Two-hundred-twenty-seventh verification-chain increment complete: packed and post-publish temporary consumers now read the installed `@blade-ai/agent-sdk/dist/index.d.ts` and `@blade-ai/agent-sdk/dist/server/index.d.ts` declaration files and compare their named export sets, so server-safe root type exports cannot silently drift away from the explicit server facade after package build, pack, or publication.
 - Two-hundred-twenty-eighth verification-chain increment complete: `pnpm run verify:boundaries` now rejects CLI product entrypoints in the `@blade-ai/agent-sdk` manifest, including a `bin` field or `./cli` export. This keeps the session-first SDK as a server/library facade and reserves future Pi-style coding-agent or CLI product behavior for a separate package.
+- Two-hundred-twenty-ninth verification-chain increment complete: packed-package and post-publish temporary-consumer manifest checks now also reject a `bin` field or `./cli` export in the npm-visible `@blade-ai/agent-sdk` manifest, extending the Pi-style CLI product boundary from source metadata to the actual tarball and installed publication artifacts.
 
 Commit:
 

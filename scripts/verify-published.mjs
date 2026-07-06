@@ -368,6 +368,7 @@ async function verifyPublishedPackageManifests({ consumerDir, version }) {
     if (serializedManifest.includes('0.0.0')) {
       throw new Error(`${requirement.packageName} installed manifest must not contain 0.0.0 placeholder versions`);
     }
+    assertNoCliProductManifest(requirement.packageName, manifest);
     assertPublishedManifestTarget({
       packageName: requirement.packageName,
       label: 'main',
@@ -398,6 +399,17 @@ async function verifyPublishedPackageManifests({ consumerDir, version }) {
     }
   }
   console.log('[verify-published] temporary consumer published package manifests passed');
+}
+
+function assertNoCliProductManifest(packageName, manifest) {
+  if (packageName !== '@blade-ai/agent-sdk') return;
+
+  if (manifest.bin !== undefined) {
+    throw new Error('@blade-ai/agent-sdk manifest must not publish a bin field; CLI product capabilities belong in a separate package');
+  }
+  if (manifest.exports && typeof manifest.exports === 'object' && './cli' in manifest.exports) {
+    throw new Error('@blade-ai/agent-sdk manifest must not publish a ./cli export; CLI product capabilities belong in a separate package');
+  }
 }
 
 async function verifyPublishedPackageFileScope({ consumerDir }) {

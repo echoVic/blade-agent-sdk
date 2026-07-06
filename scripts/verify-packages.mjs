@@ -504,6 +504,18 @@ function verifyPackedManifest(spec, tarballPath, tempDir) {
   if (serialized.includes('workspace:')) {
     throw new Error(`${spec.name} packed manifest still contains workspace protocol dependencies`);
   }
+  assertNoCliProductManifest(spec.name, manifest);
+}
+
+function assertNoCliProductManifest(packageName, manifest) {
+  if (packageName !== '@blade-ai/agent-sdk') return;
+
+  if (manifest.bin !== undefined) {
+    throw new Error('@blade-ai/agent-sdk manifest must not publish a bin field; CLI product capabilities belong in a separate package');
+  }
+  if (manifest.exports && typeof manifest.exports === 'object' && './cli' in manifest.exports) {
+    throw new Error('@blade-ai/agent-sdk manifest must not publish a ./cli export; CLI product capabilities belong in a separate package');
+  }
 }
 
 function verifyForbiddenFileContents(spec, tarballPath, tempDir) {
