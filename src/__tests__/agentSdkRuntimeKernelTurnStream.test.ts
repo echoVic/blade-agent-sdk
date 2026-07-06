@@ -190,6 +190,7 @@ describe('agent-sdk package-local kernel turn stream helper', () => {
     const traceRecorder = {
       finish: vi.fn(() => trace),
     } as unknown as TraceRecorder;
+    const runTaskCompleted = vi.fn(async () => undefined);
 
     const stream = streamPackageLocalAgentKernelTurn({
       sessionId: 'session-1',
@@ -216,6 +217,7 @@ describe('agent-sdk package-local kernel turn stream helper', () => {
       hookRuntime: {
         enable: vi.fn(),
         setTraceCollector: vi.fn(),
+        runTaskCompleted,
       },
       maxContextTokens: 99,
     });
@@ -227,6 +229,13 @@ describe('agent-sdk package-local kernel turn stream helper', () => {
     }).rejects.toThrow(error);
     expect(traceRecorder.finish).toHaveBeenCalledWith('error', {
       error: 'stream failed',
+    });
+    expect(runTaskCompleted).toHaveBeenCalledWith({
+      taskId: 'turn-1',
+      taskDescription: 'hi',
+      resultSummary: 'stream failed',
+      success: false,
+      abortSignal: undefined,
     });
   });
 

@@ -109,9 +109,23 @@ export async function* streamPackageLocalAgentKernelTurn(
       });
     }
   } catch (error) {
+    await reportPackageLocalKernelTaskFailure(error, options);
     await finishPackageLocalKernelTraceError(error, traceFinalizer);
     throw error;
   }
+}
+
+async function reportPackageLocalKernelTaskFailure(
+  error: unknown,
+  options: Pick<PackageLocalRuntimeKernelTurnStreamOptions, 'sessionId' | 'streamOptions' | 'hookRuntime'>,
+): Promise<void> {
+  await options.hookRuntime.runTaskCompleted?.({
+    taskId: options.streamOptions.turnId ?? options.sessionId,
+    taskDescription: options.streamOptions.input,
+    resultSummary: error instanceof Error ? error.message : String(error),
+    success: false,
+    abortSignal: options.streamOptions.signal,
+  });
 }
 
 async function reportPackageLocalKernelTaskCompleted(
