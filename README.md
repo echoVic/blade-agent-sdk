@@ -118,7 +118,7 @@ const session = await createSession({
 
 ## 包入口
 
-SDK 保持 session-first 的默认体验，root 入口面向 Node server 和 CLI 场景：
+SDK 保持 session-first 的默认体验，root 入口面向 Node server 和 CLI process embedding 场景：
 
 ```ts
 import { createSession } from '@blade-ai/agent-sdk';
@@ -136,6 +136,8 @@ import { getBuiltinTools } from '@blade-ai/agent-sdk/local';
 `@blade-ai/agent-sdk/server` 是显式 server-only facade，直接组合 session/core/tools/subagent API，不通过 root wildcard 转发。它会保持与 root 的公开 server-safe runtime/type surface 对齐，同时发布产物里的 server 入口也能被 verifier 独立检查。
 
 `@blade-ai/agent-sdk/core` 只导出 browser-safe 的类型、协议和常量。浏览器环境误导入 root、`server`、`session` 或 `local` 入口时，会解析到 browser stub，并在调用 server-only API 时抛出清晰错误。
+
+`@blade-ai/agent-sdk` 可以嵌入你自己的 CLI 进程，但 does not publish a CLI product。不要依赖不存在的 `@blade-ai/agent-sdk/cli`；未来如果提供 Pi-style coding-agent / CLI 产品，应由独立包承载。
 
 ## Observability Trace
 

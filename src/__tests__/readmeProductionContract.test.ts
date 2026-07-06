@@ -22,4 +22,16 @@ describe('README production contract', () => {
     expect(readme).toContain('temporary consumer');
     expect(readme).toContain('INTEGRATION_LIVE=1');
   });
+
+  it('distinguishes CLI-process embedding from a CLI product package', () => {
+    const packageReadme = readFileSync('packages/agent-sdk/README.md', 'utf8');
+    const apiReference = readFileSync('docs/api-reference.md', 'utf8');
+    const checklist = readFileSync('docs/production-checklist.md', 'utf8');
+
+    for (const doc of [readme, packageReadme, apiReference, checklist]) {
+      expect(doc).toContain('CLI process embedding');
+      expect(doc).toContain('does not publish a CLI product');
+      expect(doc).toContain('@blade-ai/agent-sdk/cli');
+    }
+  });
 });

@@ -676,6 +676,7 @@ Status:
 - Two-hundred-twenty-eighth verification-chain increment complete: `pnpm run verify:boundaries` now rejects CLI product entrypoints in the `@blade-ai/agent-sdk` manifest, including a `bin` field or `./cli` export. This keeps the session-first SDK as a server/library facade and reserves future Pi-style coding-agent or CLI product behavior for a separate package.
 - Two-hundred-twenty-ninth verification-chain increment complete: packed-package and post-publish temporary-consumer manifest checks now also reject a `bin` field or `./cli` export in the npm-visible `@blade-ai/agent-sdk` manifest, extending the Pi-style CLI product boundary from source metadata to the actual tarball and installed publication artifacts.
 - Two-hundred-thirtieth verification-chain increment complete: packed-package and post-publish file-scope checks now reject `dist/cli/*` files in the npm-visible `@blade-ai/agent-sdk` artifact, so CLI product code cannot silently ship inside the session-first SDK tarball even without a manifest `bin` or `./cli` entrypoint.
+- Two-hundred-thirty-first documentation increment complete: README, package README, API reference, and production checklist now distinguish CLI process embedding from a CLI product package. The docs explicitly say `@blade-ai/agent-sdk` does not publish a CLI product or `@blade-ai/agent-sdk/cli`, preserving the Pi-style separation between the session-first SDK facade and any future coding-agent / CLI product package.
 
 Commit:
 

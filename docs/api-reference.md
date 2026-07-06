@@ -1,6 +1,6 @@
 # API 参考
 
-`@blade-ai/agent-sdk` 根包保持 session-first 体验，面向 Node server 和 CLI 场景。Node 本地能力需要从 `@blade-ai/agent-sdk/local` 显式导入。浏览器端应优先从 `@blade-ai/agent-sdk/core` 导入类型、协议和常量；误导入 root、`server`、`session` 或 `local` 入口时会解析到 browser stub，并在调用 server-only API 时抛出清晰错误。
+`@blade-ai/agent-sdk` 根包保持 session-first 体验，面向 Node server 和 CLI process embedding 场景。它 does not publish a CLI product，也不提供 `@blade-ai/agent-sdk/cli`；未来 Pi-style coding-agent / CLI 产品应由独立包承载。Node 本地能力需要从 `@blade-ai/agent-sdk/local` 显式导入。浏览器端应优先从 `@blade-ai/agent-sdk/core` 导入类型、协议和常量；误导入 root、`server`、`session` 或 `local` 入口时会解析到 browser stub，并在调用 server-only API 时抛出清晰错误。
 
 ## 包入口
 

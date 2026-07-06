@@ -32,6 +32,7 @@ CI=true pnpm run verify
 - `@blade-ai/ai` 只负责 model/provider 协议、stream、usage、provider options、provider adapters 和 provider-specific helper。
 - `@blade-ai/agent` 保持 runtime-independent，只依赖端口和协议，不直接依赖 Node-only API、MCP SDK、provider SDK、本地工具、filesystem、shell、sandbox 或 `@blade-ai/agent-sdk`。
 - `@blade-ai/agent-sdk` 作为产品 SDK 保持 session-first root 入口；Node-local adapters 必须通过 `@blade-ai/agent-sdk/local` 显式导入，DeepSeek 等 provider-specific helper 必须通过 `@blade-ai/ai/*` 显式导入：
+- `@blade-ai/agent-sdk` 可用于 CLI process embedding，但 does not publish a CLI product，也不提供 `@blade-ai/agent-sdk/cli`；Pi-style coding-agent / CLI 产品必须拆成独立包。
 
 ```ts
 import { createSession } from '@blade-ai/agent-sdk';
