@@ -528,6 +528,20 @@ function verifyPackedManifest(spec, tarballPath, tempDir) {
   }
   verifyPackedPackageMetadata(spec, manifest);
   assertNoCliProductManifest(spec.name, manifest);
+  assertPackedManifestTarget({
+    packageName: spec.name,
+    label: 'main',
+    target: manifest.main,
+  });
+  assertPackedManifestTarget({
+    packageName: spec.name,
+    label: 'types',
+    target: manifest.types,
+  });
+  verifyPackedManifestExports({
+    packageName: spec.name,
+    exportsMap: manifest.exports,
+  });
 }
 
 function verifyPackedPackageMetadata(spec, manifest) {
@@ -575,6 +589,48 @@ function assertNoCliProductManifest(packageName, manifest) {
   }
   if (Array.isArray(manifest.keywords) && manifest.keywords.includes('cli')) {
     throw new Error('@blade-ai/agent-sdk manifest must not publish CLI product keyword "cli"; CLI product capabilities belong in a separate package');
+  }
+}
+
+function assertPackedManifestTarget({ packageName, label, target }) {
+  if (typeof target !== 'string') return;
+  if (target === './package.json') return;
+
+  if (!target.startsWith('./')) {
+    throw new Error(`${packageName} ${label} packed manifest target must stay package-relative: ${target}`);
+  }
+  if (target.startsWith('../') || target.includes('/../')) {
+    throw new Error(`${packageName} ${label} packed manifest target must not escape the package: ${target}`);
+  }
+  if (target.includes('/src/') || target.startsWith('./src/')) {
+    throw new Error(`${packageName} ${label} packed manifest target must not point at source files: ${target}`);
+  }
+  if (!target.startsWith('./dist/')) {
+    throw new Error(`${packageName} ${label} packed manifest target must point at ./dist/: ${target}`);
+  }
+}
+
+function verifyPackedManifestExports({ packageName, exportsMap }) {
+  if (!exportsMap || typeof exportsMap !== 'object') return;
+
+  for (const [exportName, exportValue] of Object.entries(exportsMap)) {
+    if (typeof exportValue === 'string') {
+      assertPackedManifestTarget({
+        packageName,
+        label: `exports.${exportName}`,
+        target: exportValue,
+      });
+      continue;
+    }
+    if (!exportValue || typeof exportValue !== 'object') continue;
+
+    for (const [condition, target] of Object.entries(exportValue)) {
+      assertPackedManifestTarget({
+        packageName,
+        label: `exports.${exportName}.${condition}`,
+        target,
+      });
+    }
   }
 }
 
