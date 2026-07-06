@@ -35,6 +35,26 @@ const expectedPackedSdkBrowserExports = {
   './session': './dist/browser/server-only-stub.js',
   './local': './dist/browser/server-only-stub.js',
 };
+const packedReadmeRequirements = [
+  {
+    packageName: '@blade-ai/ai',
+    readmePath: 'package/README.md',
+    installCommand: 'pnpm add @blade-ai/ai',
+    importSnippet: "import { createOpenAICompatibleModelPort } from '@blade-ai/ai';",
+  },
+  {
+    packageName: '@blade-ai/agent',
+    readmePath: 'package/README.md',
+    installCommand: 'pnpm add @blade-ai/agent',
+    importSnippet: "import { AgentKernel } from '@blade-ai/agent';",
+  },
+  {
+    packageName: '@blade-ai/agent-sdk',
+    readmePath: 'package/README.md',
+    installCommand: 'pnpm add @blade-ai/agent-sdk',
+    importSnippet: "import { createSession } from '@blade-ai/agent-sdk';",
+  },
+];
 const packageSpecs = [
   {
     name: '@blade-ai/ai',
@@ -519,6 +539,26 @@ function assertNoCliProductFiles(packageName, entries) {
   const cliEntry = entries.find((entry) => entry.startsWith('package/dist/cli/'));
   if (cliEntry) {
     throw new Error(`@blade-ai/agent-sdk tarball includes CLI product files: ${cliEntry}`);
+  }
+}
+
+function verifyPackedReadmes(spec, tarballPath, tempDir) {
+  const requirement = packedReadmeRequirements.find((item) => item.packageName === spec.name);
+  if (!requirement) return;
+
+  const extractDir = join(tempDir, `readme-${spec.name.replaceAll(/[^a-z0-9]+/gi, '-')}`);
+  run('mkdir', ['-p', extractDir]);
+  run('tar', ['-xzf', tarballPath, '-C', extractDir, requirement.readmePath]);
+  const readme = readFileSync(join(extractDir, requirement.readmePath), 'utf8');
+
+  if (!readme.includes(requirement.packageName)) {
+    throw new Error(`${spec.name} packed README must name the package`);
+  }
+  if (!readme.includes(requirement.installCommand)) {
+    throw new Error(`${spec.name} packed README must document direct installation`);
+  }
+  if (!readme.includes(requirement.importSnippet)) {
+    throw new Error(`${spec.name} packed README must document direct import usage`);
   }
 }
 
@@ -1549,6 +1589,7 @@ try {
   for (const spec of packageSpecs) {
     const tarballPath = packPackage(spec, packDir);
     verifyTarballContents(spec, tarballPath);
+    verifyPackedReadmes(spec, tarballPath, tempDir);
     verifyPackedManifest(spec, tarballPath, tempDir);
     verifyForbiddenFileContents(spec, tarballPath, tempDir);
     verifyNoEagerLegacySessionRuntime(spec, tarballPath, tempDir);

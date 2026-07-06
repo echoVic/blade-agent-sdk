@@ -583,6 +583,28 @@ describe('release scripts', () => {
     expect(roadmap).toContain('published package README gate');
   });
 
+  it('verifies packed package READMEs before publication', () => {
+    const packageVerifier = readFileSync(resolve('scripts/verify-packages.mjs'), 'utf8');
+    const readme = readFileSync(resolve('README.md'), 'utf8');
+    const checklist = readFileSync(resolve('docs/production-checklist.md'), 'utf8');
+    const roadmap = readFileSync(resolve('docs/roadmap/production-agent-sdk-monorepo.md'), 'utf8');
+
+    expect(packageVerifier).toContain('packedReadmeRequirements');
+    expect(packageVerifier).toContain('verifyPackedReadmes');
+    expect(packageVerifier).toContain("'package/README.md'");
+    expect(packageVerifier).toContain("installCommand: 'pnpm add @blade-ai/ai'");
+    expect(packageVerifier).toContain("installCommand: 'pnpm add @blade-ai/agent'");
+    expect(packageVerifier).toContain("installCommand: 'pnpm add @blade-ai/agent-sdk'");
+    expect(packageVerifier).toContain("importSnippet: \"import { createOpenAICompatibleModelPort } from '@blade-ai/ai';\"");
+    expect(packageVerifier).toContain("importSnippet: \"import { AgentKernel } from '@blade-ai/agent';\"");
+    expect(packageVerifier).toContain("importSnippet: \"import { createSession } from '@blade-ai/agent-sdk';\"");
+    expect(packageVerifier).toContain('packed README must document direct installation');
+    expect(packageVerifier).toContain('packed README must document direct import usage');
+    expect(readme).toContain('packed package READMEs');
+    expect(checklist).toContain('packed package READMEs');
+    expect(roadmap).toContain('packed package README gate');
+  });
+
   it('verifies installed published package manifests from the temporary consumer install', () => {
     const publishedVerifier = readFileSync(resolve('scripts/verify-published.mjs'), 'utf8');
     const checklist = readFileSync(resolve('docs/production-checklist.md'), 'utf8');

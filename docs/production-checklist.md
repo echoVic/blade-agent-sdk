@@ -109,7 +109,7 @@ dry-run 不发布 npm 包。它通常需要 GitHub token 环境，适合维护�
 2. 运行 `pnpm run verify`。
 3. 运行 `pnpm exec semantic-release`。
 4. 使用 GitHub OIDC trusted publishing 和 npm provenance 发布 `@blade-ai/ai`、`@blade-ai/agent`、`@blade-ai/agent-sdk`。
-5. 对比发布前后的最新 `v*` tag；只有 semantic-release 创建新 tag 时，才运行 `pnpm run verify:published -- --version <tag>` 做 post-publish GitHub Release / npm / npm provenance attestations / 临时 consumer / published package manifests / published package npm metadata / published package discoverability metadata / published package module metadata / published package engine metadata / published package manifest entry targets / published SDK browser export conditions / published package file scope / published package READMEs / browser-safe core 声明边界 / SDK browser bundle smoke / `@blade-ai/agent` browser bundle smoke 校验。
+5. 对比发布前后的最新 `v*` tag；只有 semantic-release 创建新 tag 时，才运行 `pnpm run verify:published -- --version <tag>` 做 post-publish GitHub Release / npm / npm provenance attestations / 临时 consumer / published package manifests / published package npm metadata / published package discoverability metadata / published package module metadata / published package engine metadata / published package manifest entry targets / published SDK browser export conditions / published package file scope / published package READMEs / browser-safe core 声明边界 / SDK browser bundle smoke / `@blade-ai/agent` browser bundle smoke 校验。发布前的 `pnpm run verify:packages` 还会检查 packed package READMEs，确认 tarball 中的 `README.md` 保留包名、直接安装命令和最小 import 示例。
 
 不要绕过 `pnpm run verify` 直接发布。不要在 trusted publishing 流程中依赖长期 `NPM_TOKEN`。
 
