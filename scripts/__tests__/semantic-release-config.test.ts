@@ -197,6 +197,19 @@ describe('package provenance metadata', () => {
     }
   });
 
+  it('type-checks server facade parity with the public root surface', () => {
+    const packageVerifier = readFileSync(resolve('scripts/verify-packages.mjs'), 'utf8');
+    const publishedVerifier = readFileSync(resolve('scripts/verify-published.mjs'), 'utf8');
+
+    for (const verifier of [packageVerifier, publishedVerifier]) {
+      expect(verifier).toContain('subagentRegistry');
+      expect(verifier).toContain('ClaudeCodePermissionMode');
+      expect(verifier).toContain('SubagentExecutionRunner');
+      expect(verifier).toContain('SubagentFrontmatter');
+      expect(verifier).toContain('PermissionsConfig');
+    }
+  });
+
   it('runtime-loads public value exports from the packed temporary consumer', () => {
     const packageVerifier = readFileSync(resolve('scripts/verify-packages.mjs'), 'utf8');
 

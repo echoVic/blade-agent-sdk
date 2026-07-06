@@ -133,7 +133,7 @@ import { defineTool } from '@blade-ai/agent-sdk/tools';
 import { getBuiltinTools } from '@blade-ai/agent-sdk/local';
 ```
 
-`@blade-ai/agent-sdk/server` 是显式 server-only facade，直接组合 session/core/tools/subagent API，不通过 root wildcard 转发。这样 root 保持 session-first，同时发布产物里的 server 入口也能被 verifier 独立检查。
+`@blade-ai/agent-sdk/server` 是显式 server-only facade，直接组合 session/core/tools/subagent API，不通过 root wildcard 转发。它会保持与 root 的公开 server-safe runtime/type surface 对齐，同时发布产物里的 server 入口也能被 verifier 独立检查。
 
 `@blade-ai/agent-sdk/core` 只导出 browser-safe 的类型、协议和常量。浏览器环境误导入 root、`server`、`session` 或 `local` 入口时，会解析到 browser stub，并在调用 server-only API 时抛出清晰错误。
 

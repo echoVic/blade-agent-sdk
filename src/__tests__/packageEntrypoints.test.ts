@@ -1,6 +1,8 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
+import * as packageRootEntry from '../../packages/agent-sdk/src/index.js';
+import * as packageServerEntry from '../../packages/agent-sdk/src/server/index.js';
 
 const rootPackageJson = JSON.parse(readFileSync('package.json', 'utf-8')) as {
   scripts: Record<string, string>;
@@ -71,6 +73,12 @@ describe('package entrypoints', () => {
     expect(source).toContain("from '../core/index.js'");
     expect(source).toContain("from '../tools/index.js'");
     expect(source).toContain("from '../subagents/index.js'");
+  });
+
+  it('keeps root and server runtime facade value exports aligned', () => {
+    expect(packageRootEntry).toHaveProperty('subagentRegistry');
+    expect(packageServerEntry).toHaveProperty('subagentRegistry');
+    expect(Object.keys(packageServerEntry).sort()).toEqual(Object.keys(packageRootEntry).sort());
   });
 
   it('declares the browser/server entrypoint verification script', () => {

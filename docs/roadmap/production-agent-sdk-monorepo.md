@@ -670,6 +670,7 @@ Status:
 - Two-hundred-twenty-second verification-chain increment complete: the root `@blade-ai/agent-sdk` entry now keeps Node-local adapters behind the explicit `@blade-ai/agent-sdk/local` subpath. Focused root export tests prove `getBuiltinTools`, `createSdkMcpServer`, `FileSystemMemoryStore`, and sandbox adapters are absent from the root namespace, while packed and post-publish consumer verifiers reject those symbols from root runtime exports and root declarations.
 - Two-hundred-twenty-third verification-chain increment complete: the root `@blade-ai/agent-sdk` entry now also keeps provider-specific DeepSeek helpers inside `@blade-ai/ai/deepseek`. Focused root export tests prove `normalizeDeepSeekModel`, `calculateDeepSeekCost`, `DeepSeekCostTracker`, and `DEEPSEEK_DEFAULT_MODEL` are absent from the SDK root namespace, while packed and post-publish consumer verifiers reject those symbols from root runtime exports and root declarations.
 - Two-hundred-twenty-fourth verification-chain increment complete: the `@blade-ai/agent-sdk/server` entry is now an explicit package-local facade over session, core, tools, and subagent exports instead of wildcard-forwarding through the SDK root. Focused entrypoint tests reject `export * from '../index.js'`, and packed plus post-publish verifiers reject server JS or declaration artifacts that point back at the root facade.
+- Two-hundred-twenty-fifth verification-chain increment complete: the package-local root and server facades now keep their server-safe runtime values aligned, including `subagentRegistry`, and packed plus post-publish temporary consumers type-check the matching server subpath public surface for `PermissionsConfig`, `ClaudeCodePermissionMode`, `SubagentExecutionRunner`, and `SubagentFrontmatter`.
 
 Commit:
 
@@ -752,6 +753,7 @@ Status:
 - Eleventh documentation increment complete: the README, package guide, API reference, tools guide, recipes, MCP guide, and package README now document the Pi-style root/local split: root remains session-first for server and CLI code, while builtin tools, in-process MCP helpers, filesystem memory, and sandbox adapters must be imported from `@blade-ai/agent-sdk/local`.
 - Twelfth documentation increment complete: the README, package guide, architecture guide, production checklist, provider guide, and package README now document the provider-helper split: `@blade-ai/agent-sdk` root remains session-first, while DeepSeek cost/cache/long-context/runtime helpers are imported from `@blade-ai/ai/deepseek`.
 - Thirteenth documentation increment complete: the README and package guide now document `@blade-ai/agent-sdk/server` as an explicit server-only facade that composes session/core/tools/subagent exports without wildcard-forwarding through root, matching the packed and post-publish verifier guardrails.
+- Fourteenth documentation increment complete: the README and package guide now clarify that `@blade-ai/agent-sdk/server` stays aligned with the root entry's server-safe runtime/type surface while remaining independently auditable as an explicit facade.
 
 Commit:
 

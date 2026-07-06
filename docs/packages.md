@@ -91,7 +91,7 @@ Server / CLI 场景可以使用 root：
 import { createSession } from '@blade-ai/agent-sdk';
 ```
 
-也可以使用 `@blade-ai/agent-sdk/server` 表达更明确的 server-only 边界。这个入口是显式 facade，直接从 `session`、`core`、`tools` 和 `subagents` 组合公开 API，不通过 root wildcard 转发；packed package 和 post-publish verifier 都会拒绝它退回 root facade。
+也可以使用 `@blade-ai/agent-sdk/server` 表达更明确的 server-only 边界。这个入口是显式 facade，直接从 `session`、`core`、`tools` 和 `subagents` 组合公开 API，不通过 root wildcard 转发；它会保持与 root 的公开 server-safe runtime/type surface 对齐，packed package 和 post-publish verifier 都会拒绝它退回 root facade 或漏掉 root 已公开的 server-safe 类型和值。
 
 浏览器代码不要直接调用 root、`server`、`session` 或 `local` 的运行时 API。需要共享类型时，从 `core` 或 `tools` 导入：
 

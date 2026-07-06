@@ -679,6 +679,7 @@ assertNoRuntimeExport(agentSdk, 'DEEPSEEK_DEFAULT_MODEL');
 assertRuntimeExport(agentSdkCore, 'PermissionMode');
 assertRuntimeExport(agentSdkBrowser, 'PermissionMode');
 assertRuntimeExport(agentSdkServer, 'createSession');
+assertRuntimeExport(agentSdkServer, 'subagentRegistry');
 assertRuntimeExport(agentSdkSession, 'createSession');
 assertRuntimeExport(agentSdkSession, 'resumeSession');
 assertRuntimeExport(agentSdkTools, 'ToolKind');
@@ -815,7 +816,17 @@ import {
 } from '@blade-ai/agent-sdk/tools';
 import type { BuiltinToolsOptions } from '@blade-ai/agent-sdk/local';
 import { getBuiltinTools } from '@blade-ai/agent-sdk/local';
-import { createSession as createSessionFromServerSubpath } from '@blade-ai/agent-sdk/server';
+import type {
+  ClaudeCodePermissionMode,
+  ISession as ServerSession,
+  PermissionsConfig as ServerPermissionsConfig,
+  SubagentExecutionRunner,
+  SubagentFrontmatter,
+} from '@blade-ai/agent-sdk/server';
+import {
+  createSession as createSessionFromServerSubpath,
+  subagentRegistry,
+} from '@blade-ai/agent-sdk/server';
 import type { StreamMessage as BrowserStreamMessage } from '@blade-ai/agent-sdk/browser';
 import {
   PermissionMode as BrowserPermissionMode,
@@ -1075,6 +1086,20 @@ const createSessionFromSessionSubpathRef: typeof createSession = createSessionFr
 const resumeSessionFromSessionSubpathRef: (options: ResumeOptions) => Promise<SubpathSession> =
   resumeSessionFromSessionSubpath;
 const createSessionFromServerSubpathRef: typeof createSession = createSessionFromServerSubpath;
+const serverSessionRef: ServerSession | null = null;
+const serverPermissionConfig: ServerPermissionsConfig = {
+  allow: ['read'],
+};
+const serverPermissionMode: ClaudeCodePermissionMode = 'default';
+const serverSubagentFrontmatter: SubagentFrontmatter = {
+  name: 'reviewer',
+  description: 'Reviews code',
+};
+const serverSubagentRunner: SubagentExecutionRunner = async () => ({
+  success: true,
+  message: 'ok',
+});
+const serverSubagentRegistryRef: typeof subagentRegistry = subagentRegistry;
 
 const toolsResult: ToolsToolResult<string> = {
   success: true,
@@ -1149,6 +1174,12 @@ void resumeOptions;
 void createSessionFromSessionSubpathRef;
 void resumeSessionFromSessionSubpathRef;
 void createSessionFromServerSubpathRef;
+void serverSessionRef;
+void serverPermissionConfig;
+void serverPermissionMode;
+void serverSubagentFrontmatter;
+void serverSubagentRunner;
+void serverSubagentRegistryRef;
 void toolsTool;
 void builtinOptions;
 void getBuiltinToolsRef;

@@ -257,6 +257,7 @@ assertRuntimeExport(agentSdkBrowser, 'PermissionMode');
 assertRuntimeExport(agentSdkCore, 'PermissionMode');
 assertRuntimeExport(agentSdkLocal, 'getBuiltinTools');
 assertRuntimeExport(agentSdkServer, 'createSession');
+assertRuntimeExport(agentSdkServer, 'subagentRegistry');
 assertRuntimeExport(agentSdkSession, 'createSession');
 assertRuntimeExport(agentSdkTools, 'ToolKind');
 
@@ -706,7 +707,14 @@ import type { ToolDefinition } from '@blade-ai/agent-sdk';
 import type { StreamMessage as BrowserStreamMessage } from '@blade-ai/agent-sdk/browser';
 import { PermissionMode as BrowserPermissionMode } from '@blade-ai/agent-sdk/browser';
 import type { ISession } from '@blade-ai/agent-sdk/session';
-import type { ISession as ServerSession } from '@blade-ai/agent-sdk/server';
+import type {
+  ClaudeCodePermissionMode,
+  ISession as ServerSession,
+  PermissionsConfig as ServerPermissionsConfig,
+  SubagentExecutionRunner,
+  SubagentFrontmatter,
+} from '@blade-ai/agent-sdk/server';
+import { subagentRegistry } from '@blade-ai/agent-sdk/server';
 import type { ToolDefinition as SubpathToolDefinition } from '@blade-ai/agent-sdk/tools';
 import type { BuiltinToolsOptions } from '@blade-ai/agent-sdk/local';
 import type { PermissionMode, RuntimeContext } from '@blade-ai/agent-sdk/core';
@@ -811,6 +819,19 @@ const toolDefinition: ToolDefinition<{ text?: string }, string> = {
 const subpathToolDefinition: SubpathToolDefinition<{ text?: string }, string> = toolDefinition;
 const sessionRef: ISession | null = null;
 const serverSessionRef: ServerSession | null = sessionRef;
+const serverPermissionConfig: ServerPermissionsConfig = {
+  allow: ['read'],
+};
+const serverPermissionMode: ClaudeCodePermissionMode = 'default';
+const serverSubagentFrontmatter: SubagentFrontmatter = {
+  name: 'reviewer',
+  description: 'Reviews code',
+};
+const serverSubagentRunner: SubagentExecutionRunner = async () => ({
+  success: true,
+  message: 'ok',
+});
+const serverSubagentRegistryRef: typeof subagentRegistry = subagentRegistry;
 const builtinToolsOptions: BuiltinToolsOptions = {};
 const permissionMode: PermissionMode = CorePermissionMode.DEFAULT;
 const browserStreamMessage: BrowserStreamMessage = streamMessage;
@@ -828,6 +849,11 @@ void toolDefinition;
 void subpathToolDefinition;
 void sessionRef;
 void serverSessionRef;
+void serverPermissionConfig;
+void serverPermissionMode;
+void serverSubagentFrontmatter;
+void serverSubagentRunner;
+void serverSubagentRegistryRef;
 void builtinToolsOptions;
 void permissionMode;
 void browserStreamMessage;

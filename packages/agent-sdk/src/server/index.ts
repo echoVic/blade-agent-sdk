@@ -1,9 +1,12 @@
 // Explicit server-side facade. Keep this entry session-first without wildcard
 // forwarding through the root facade, so package boundaries stay auditable.
 export type {
+  ClaudeCodePermissionMode,
   SubagentColor,
   SubagentConfig,
   SubagentContext,
+  SubagentExecutionRunner,
+  SubagentFrontmatter,
   SubagentResult,
   SubagentSource,
 } from '../subagents/index.js';
@@ -11,6 +14,7 @@ export {
   mapClaudeCodePermissionMode,
   SubagentExecutor,
   SubagentRegistry,
+  subagentRegistry,
 } from '../subagents/index.js';
 export type {
   AgentTrace,
@@ -28,6 +32,7 @@ export type {
   PermissionResult,
   PermissionRuleValue,
   PermissionUpdate,
+  PermissionsConfig,
   ProviderType,
   RuntimeContext,
   RuntimeContextPatch,
