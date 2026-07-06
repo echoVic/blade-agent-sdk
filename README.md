@@ -227,6 +227,8 @@ INTEGRATION_LIVE=1 pnpm run test:integration:live
 
 本仓库使用 `semantic-release` 自动发包。代码合并到 `main` 后，GitHub Actions 会先运行完整的 `pnpm run verify`；通过后再根据 conventional commits 自动决定版本、创建 `v*` 标签、发布 GitHub Release，并以 fixed-version monorepo 模式把 `@blade-ai/ai`、`@blade-ai/agent`、`@blade-ai/agent-sdk` 发布到 npm。如果发布步骤产生了新的 `v*` tag，workflow 会自动运行 `pnpm run verify:published -- --version <tag>`，确认公开 Release、npm 包、npm latest dist-tag、registry tarball integrity、npm provenance attestations、published package manifests、published package size budgets、published package npm metadata、published package description metadata、published package author metadata、published package discoverability metadata、published package module metadata、published package engine metadata、published package license artifacts、published package manifest entry targets、published SDK browser export conditions、published package file scope、published package READMEs、runtime import smoke、root/subpath 类型声明、browser-safe `core` 声明边界、SDK browser bundle smoke 和 `@blade-ai/agent` browser bundle smoke 都能从外部 consumer 使用；没有新版本时会跳过 post-publish verification。
 
+release workflow 使用 `concurrency.group: release-main` 和 `cancel-in-progress: false` 串行化 main 分支发布，避免连续 push 触发重叠 publish，也避免取消正在进行的 npm publish / post-publish verification。
+
 发布前本地 release 插件会把三个 workspace 包的 `version` 和内部 `workspace:*` 依赖同步成同一个发布版本，避免 npm 包里泄漏 workspace 协议。
 
 GitHub Release notes 会在 conventional commit 摘要后追加三包发布清单，列出 `@blade-ai/ai`、`@blade-ai/agent`、`@blade-ai/agent-sdk` 的同版本发布结果和 session-first 安装命令。

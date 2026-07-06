@@ -1159,6 +1159,21 @@ describe('release workflow', () => {
     });
   });
 
+  it('serializes main-branch release jobs without cancelling in-flight publishes', () => {
+    const workflow = parse(
+      readFileSync(resolve('.github/workflows/release.yml'), 'utf8')
+    );
+    const releaseVerifier = readFileSync(resolve('scripts/verify-release-config.mjs'), 'utf8');
+
+    expect(workflow.concurrency).toEqual({
+      group: 'release-main',
+      'cancel-in-progress': false,
+    });
+    expect(releaseVerifier).toContain('release workflow concurrency');
+    expect(releaseVerifier).toContain('release workflow must serialize main-branch publishing jobs');
+    expect(releaseVerifier).toContain('release workflow must not cancel an in-flight publish');
+  });
+
   it('verifies the package before running semantic-release with trusted publishing', () => {
     const workflow = parse(
       readFileSync(resolve('.github/workflows/release.yml'), 'utf8')

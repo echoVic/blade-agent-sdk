@@ -297,8 +297,18 @@ function verifyReleaseWorkflow() {
   const postPublishStepIndex = steps.indexOf(postPublishStep);
 
   assertDeepEqual(workflow.on?.push?.branches, ['main'], 'release workflow push branches');
+  assertDeepEqual(workflow.concurrency, {
+    group: 'release-main',
+    'cancel-in-progress': false,
+  }, 'release workflow concurrency');
   if (workflow.permissions?.['id-token'] !== 'write') {
     fail('release workflow must grant id-token: write for trusted publishing');
+  }
+  if (workflow.concurrency?.group !== 'release-main') {
+    fail('release workflow must serialize main-branch publishing jobs');
+  }
+  if (workflow.concurrency?.['cancel-in-progress'] !== false) {
+    fail('release workflow must not cancel an in-flight publish');
   }
   assertDeepEqual(commands, [
     'npm install -g npm@^11.5.1',
