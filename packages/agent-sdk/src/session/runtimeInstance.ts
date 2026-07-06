@@ -74,7 +74,6 @@ import {
   type PackageLocalRuntimeSessionLifecycleOperations,
 } from './runtimeSessionLifecycle.js';
 import {
-  closePackageLocalRuntimeMcpServers,
   createPackageLocalRuntimeMcpServerRegistrationOperations,
   createPackageLocalRuntimeMcpServerLifecycleOperations,
   type PackageLocalRuntimeMcpServerRegistrationOperations,
@@ -489,9 +488,7 @@ export class PackageLocalSessionRuntime {
   }
 
   async close(): Promise<void> {
-    await closePackageLocalRuntimeMcpServers({
-      mcpRegistry: this.mcpRegistry,
-    });
+    await this.mcpServerLifecycleOperations.close();
   }
 
   async mcpCapabilities(): Promise<PackageLocalRuntimeMcpServerCapability[]> {

@@ -258,6 +258,9 @@ describe('agent-sdk package-local runtime MCP server helpers', () => {
       disconnectServer(serverName: string) {
         calls.push(['disconnect', serverName, this === registry]);
       },
+      disconnectAll() {
+        calls.push(['disconnect-all', this === registry]);
+      },
       reconnectServer(serverName: string) {
         calls.push(['reconnect', serverName, this === registry]);
       },
@@ -321,6 +324,9 @@ describe('agent-sdk package-local runtime MCP server helpers', () => {
       disconnectServer(serverName: string) {
         calls.push(['disconnect', serverName, this === registry]);
       },
+      disconnectAll() {
+        calls.push(['disconnect-all', this === registry]);
+      },
       reconnectServer(serverName: string) {
         calls.push(['reconnect', serverName, this === registry]);
       },
@@ -339,6 +345,7 @@ describe('agent-sdk package-local runtime MCP server helpers', () => {
     await operations.connect('remote');
     await operations.disconnect('remote');
     await operations.reconnect('remote');
+    await operations.close();
 
     expect(calls).toEqual([
       ['ensure', 'remote', remoteConfig, true],
@@ -349,6 +356,7 @@ describe('agent-sdk package-local runtime MCP server helpers', () => {
       ['ensure', 'remote', remoteConfig, true],
       ['reconnect', 'remote', true],
       ['refresh', ['remote']],
+      ['disconnect-all', true],
     ]);
   });
 

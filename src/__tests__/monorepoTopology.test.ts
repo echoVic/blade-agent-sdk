@@ -697,7 +697,8 @@ describe('monorepo topology', () => {
     expect(packageLocalRuntimeInstanceSource).not.toContain('...snapshot.environment');
     expect(packageLocalRuntimeInstanceSource).toContain('close');
     expect(packageLocalRuntimeInstanceSource).toContain('PackageLocalRuntimeMcpRegistryPort');
-    expect(packageLocalRuntimeInstanceSource).toContain('closePackageLocalRuntimeMcpServers');
+    expect(runtimeMcpServersSource).toContain('closePackageLocalRuntimeMcpServers');
+    expect(packageLocalRuntimeInstanceSource).not.toContain('closePackageLocalRuntimeMcpServers({');
     expect(packageLocalRuntimeInstanceSource).not.toContain('this.mcpRegistry.disconnectAll()');
     expect(packageLocalRuntimeInstanceSource).toContain('mcpCapabilities');
     expect(packageLocalRuntimeInstanceSource).toContain('mcpServerStatus');

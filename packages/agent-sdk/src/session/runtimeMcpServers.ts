@@ -56,6 +56,7 @@ export interface PackageLocalMcpServerCloseOptions {
 }
 
 export interface PackageLocalRuntimeMcpServerLifecycleOperations {
+  close(): Promise<void>;
   connect(serverName: string): Promise<void>;
   disconnect(serverName: string): Promise<void>;
   reconnect(serverName: string): Promise<void>;
@@ -211,6 +212,11 @@ export function createPackageLocalRuntimeMcpServerLifecycleOperations(
   options: PackageLocalRuntimeMcpServerLifecycleOperationsOptions,
 ): PackageLocalRuntimeMcpServerLifecycleOperations {
   return {
+    close() {
+      return closePackageLocalRuntimeMcpServers({
+        mcpRegistry: options.mcpRegistry,
+      });
+    },
     connect(serverName) {
       return connectPackageLocalRuntimeMcpServer({
         serverName,
