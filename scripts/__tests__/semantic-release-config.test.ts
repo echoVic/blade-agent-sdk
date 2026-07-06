@@ -142,6 +142,21 @@ describe('package provenance metadata', () => {
     expect(releaseVerifier).toContain('must use an exact dependency version');
   });
 
+  it('keeps dependency build scripts behind a narrow pnpm allowlist', () => {
+    const workspace = parse(readFileSync(resolve('pnpm-workspace.yaml'), 'utf8'));
+
+    expect(workspace.allowBuilds).toEqual({
+      '@vscode/ripgrep': true,
+      esbuild: true,
+      'node-pty': true,
+    });
+
+    const releaseVerifier = readFileSync(resolve('scripts/verify-release-config.mjs'), 'utf8');
+    expect(releaseVerifier).toContain('verifyPnpmWorkspaceSupplyChainPolicy');
+    expect(releaseVerifier).toContain('allowBuilds');
+    expect(releaseVerifier).toContain('pnpm-workspace.yaml allowBuilds must stay limited');
+  });
+
   it('documents direct install and import usage in every publishable package README', () => {
     const packages = [
       {

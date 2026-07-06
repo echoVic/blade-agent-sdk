@@ -231,7 +231,7 @@ INTEGRATION_LIVE=1 pnpm run test:integration:live
 
 GitHub Release notes 会在 conventional commit 摘要后追加三包发布清单，列出 `@blade-ai/ai`、`@blade-ai/agent`、`@blade-ai/agent-sdk` 的同版本发布结果和 session-first 安装命令。
 
-`pnpm run verify:release` 会在不触发网络发版的情况下静态校验 `semantic-release` 配置、三包 publish metadata、direct dependencies 使用 exact versions、`publishConfig.provenance: true`、workflow 使用 `pnpm install --frozen-lockfile --ignore-scripts`、release workflow 的 verify-before-release 顺序，以及 OIDC trusted publishing 设置。
+`pnpm run verify:release` 会在不触发网络发版的情况下静态校验 `semantic-release` 配置、三包 publish metadata、direct dependencies 使用 exact versions、`pnpm-workspace.yaml` 的 dependency build-script allowlist、`publishConfig.provenance: true`、workflow 使用 `pnpm install --frozen-lockfile --ignore-scripts`、release workflow 的 verify-before-release 顺序，以及 OIDC trusted publishing 设置。
 
 - `feat:` 触发 minor 版本
 - `fix:` 触发 patch 版本

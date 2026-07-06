@@ -19,6 +19,11 @@ const dependencySections = [
   'peerDependencies',
 ];
 const exactVersionPattern = /^\d+\.\d+\.\d+(?:[-+][0-9A-Za-z-.]+)?$/;
+const allowedDependencyBuildScripts = {
+  '@vscode/ripgrep': true,
+  esbuild: true,
+  'node-pty': true,
+};
 const publishablePackages = [
   {
     dir: 'packages/ai',
@@ -178,6 +183,16 @@ function verifyExactDirectDependencyVersions() {
       }
     }
   }
+}
+
+function verifyPnpmWorkspaceSupplyChainPolicy() {
+  const workspace = parse(readFileSync(resolve('pnpm-workspace.yaml'), 'utf8'));
+
+  assertDeepEqual(
+    workspace.allowBuilds,
+    allowedDependencyBuildScripts,
+    'pnpm-workspace.yaml allowBuilds must stay limited to approved dependency build scripts',
+  );
 }
 
 async function verifyPreparedReleaseManifestVersions() {
@@ -354,6 +369,7 @@ verifyRootScripts();
 verifySemanticReleaseConfig();
 verifyPackageMetadata();
 verifyExactDirectDependencyVersions();
+verifyPnpmWorkspaceSupplyChainPolicy();
 await verifyPreparedReleaseManifestVersions();
 verifyReleaseWorkflow();
 verifyCiWorkflow();
