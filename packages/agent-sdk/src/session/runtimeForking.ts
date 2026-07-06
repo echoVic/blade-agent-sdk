@@ -24,6 +24,10 @@ export interface PackageLocalRuntimeForkOptions {
   ) => Promise<ISession> | ISession;
 }
 
+export interface PackageLocalRuntimeForkOperations {
+  fork(options?: ForkSessionOptions): Promise<ISession>;
+}
+
 export async function forkPackageLocalRuntimeSession(
   options: PackageLocalRuntimeForkOptions,
 ): Promise<ISession> {
@@ -44,4 +48,16 @@ export async function forkPackageLocalRuntimeSession(
   }
 
   return createForkSession(forkedSessionId, options.options);
+}
+
+export function createPackageLocalRuntimeForkOperations(
+  options: Omit<PackageLocalRuntimeForkOptions, 'forkOptions'>,
+): PackageLocalRuntimeForkOperations {
+  return {
+    fork: (forkOptions) =>
+      forkPackageLocalRuntimeSession({
+        ...options,
+        forkOptions,
+      }),
+  };
 }

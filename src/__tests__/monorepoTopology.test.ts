@@ -685,7 +685,11 @@ describe('monorepo topology', () => {
     expect(existsSync('packages/agent-sdk/src/session/runtimeForking.ts')).toBe(true);
     expect(runtimeForkingSource).not.toContain('../../../../src/');
     expect(runtimeForkingSource).toContain('forkPackageLocalRuntimeSession');
-    expect(packageLocalRuntimeInstanceSource).toContain('forkPackageLocalRuntimeSession');
+    expect(runtimeForkingSource).toContain('createPackageLocalRuntimeForkOperations');
+    expect(packageLocalRuntimeInstanceSource).toContain('forkOperations');
+    expect(packageLocalRuntimeInstanceSource).not.toContain(
+      'forkPackageLocalRuntimeSession({',
+    );
     expect(packageLocalRuntimeInstanceSource).not.toContain(
       'this.sessionStore.forkState(this.sessionId, options)',
     );

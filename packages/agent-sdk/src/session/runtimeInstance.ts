@@ -114,7 +114,10 @@ import {
   createPackageLocalRuntimeTraceRuntime,
   type PackageLocalRuntimeTraceOperations,
 } from './runtimeTraceManager.js';
-import { forkPackageLocalRuntimeSession } from './runtimeForking.js';
+import {
+  createPackageLocalRuntimeForkOperations,
+  type PackageLocalRuntimeForkOperations,
+} from './runtimeForking.js';
 import type { SessionTraceManager } from './traces.js';
 import type { SessionSnapshot } from './store.js';
 
@@ -335,11 +338,7 @@ export class PackageLocalSessionRuntime {
   private readonly hookOperations: PackageLocalRuntimeHookOperations;
   private readonly subagentOperations: PackageLocalRuntimeSubagentOperations;
   private readonly traceOperations: PackageLocalRuntimeTraceOperations;
-  private readonly createForkSessionId?: () => SessionId;
-  private readonly createForkSession?: (
-    sessionId: SessionId,
-    options: SessionOptions,
-  ) => Promise<ISession> | ISession;
+  private readonly forkOperations: PackageLocalRuntimeForkOperations;
   private readonly traceManager: SessionTraceManager;
 
   constructor(options: PackageLocalSessionRuntimeOptions) {
@@ -468,8 +467,13 @@ export class PackageLocalSessionRuntime {
       storageRoot: this.storageRoot,
       agents: this.options.agents,
     });
-    this.createForkSessionId = options.createForkSessionId;
-    this.createForkSession = options.createForkSession;
+    this.forkOperations = createPackageLocalRuntimeForkOperations({
+      sessionId: this.sessionId,
+      options: this.options,
+      sessionStore: this.sessionStore,
+      createForkSessionId: options.createForkSessionId,
+      createForkSession: options.createForkSession,
+    });
     const traceRuntime = createPackageLocalRuntimeTraceRuntime({
       sessionId: this.sessionId,
       observability: options.options.observability,
@@ -530,14 +534,7 @@ export class PackageLocalSessionRuntime {
   }
 
   async fork(options?: ForkSessionOptions): Promise<ISession> {
-    return forkPackageLocalRuntimeSession({
-      sessionId: this.sessionId,
-      options: this.options,
-      forkOptions: options,
-      sessionStore: this.sessionStore,
-      createForkSessionId: this.createForkSessionId,
-      createForkSession: this.createForkSession,
-    });
+    return this.forkOperations.fork(options);
   }
 
   getLastTrace(): AgentTrace | undefined {
