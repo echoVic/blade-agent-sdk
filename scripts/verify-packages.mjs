@@ -1,5 +1,5 @@
 import { spawnSync } from 'node:child_process';
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -62,6 +62,7 @@ const packageSpecs = [
     name: '@blade-ai/ai',
     dir: 'packages/ai',
     expectedDescription: 'Provider-agnostic AI model interfaces for Blade Agent',
+    maxPackedBytes: 128 * 1024,
     requiredFiles: [
       'package/README.md',
       'package/LICENSE',
@@ -89,6 +90,7 @@ const packageSpecs = [
     name: '@blade-ai/agent',
     dir: 'packages/agent',
     expectedDescription: 'Runtime-independent Blade Agent kernel contracts',
+    maxPackedBytes: 64 * 1024,
     requiredFiles: [
       'package/README.md',
       'package/LICENSE',
@@ -118,6 +120,7 @@ const packageSpecs = [
     name: '@blade-ai/agent-sdk',
     dir: 'packages/agent-sdk',
     expectedDescription: 'Session-first Blade Agent SDK',
+    maxPackedBytes: 256 * 1024,
     requiredFiles: [
       'package/README.md',
       'package/LICENSE',
@@ -501,6 +504,17 @@ function packPackage(spec, outputDir) {
     throw new Error(`Packed tarball does not exist for ${spec.name}: ${tarballPath}`);
   }
   return tarballPath;
+}
+
+function verifyPackedArtifactSize(spec, tarballPath) {
+  if (!spec.maxPackedBytes) return;
+
+  const sizeBytes = statSync(tarballPath).size;
+  if (sizeBytes > spec.maxPackedBytes) {
+    throw new Error(
+      `${spec.name} packed tarball exceeds size budget: ${sizeBytes} bytes > ${spec.maxPackedBytes} bytes`,
+    );
+  }
 }
 
 function listTarball(tarballPath) {
@@ -1617,6 +1631,7 @@ try {
   const tarballs = new Map();
   for (const spec of packageSpecs) {
     const tarballPath = packPackage(spec, packDir);
+    verifyPackedArtifactSize(spec, tarballPath);
     verifyTarballContents(spec, tarballPath);
     verifyPackedReadmes(spec, tarballPath, tempDir);
     verifyPackedLicenseArtifacts(spec, tarballPath, tempDir);

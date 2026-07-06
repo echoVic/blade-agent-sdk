@@ -768,6 +768,28 @@ describe('release scripts', () => {
     expect(roadmap).toContain('package author metadata artifact gate');
   });
 
+  it('verifies packed and published package artifact size budgets', () => {
+    const packageVerifier = readFileSync(resolve('scripts/verify-packages.mjs'), 'utf8');
+    const publishedVerifier = readFileSync(resolve('scripts/verify-published.mjs'), 'utf8');
+    const readme = readFileSync(resolve('README.md'), 'utf8');
+    const checklist = readFileSync(resolve('docs/production-checklist.md'), 'utf8');
+    const roadmap = readFileSync(resolve('docs/roadmap/production-agent-sdk-monorepo.md'), 'utf8');
+
+    expect(packageVerifier).toContain('maxPackedBytes');
+    expect(packageVerifier).toContain('packed tarball exceeds size budget');
+    expect(packageVerifier).toContain('statSync(tarballPath).size');
+
+    expect(publishedVerifier).toContain('maxInstalledBytes');
+    expect(publishedVerifier).toContain('installed package exceeds size budget');
+    expect(publishedVerifier).toContain('calculateDirectorySizeBytes');
+
+    expect(readme).toContain('packed package size budgets');
+    expect(readme).toContain('published package size budgets');
+    expect(checklist).toContain('packed package size budgets');
+    expect(checklist).toContain('published package size budgets');
+    expect(roadmap).toContain('package artifact size budget gate');
+  });
+
   it('verifies packed and published package engine metadata', () => {
     const packageVerifier = readFileSync(resolve('scripts/verify-packages.mjs'), 'utf8');
     const publishedVerifier = readFileSync(resolve('scripts/verify-published.mjs'), 'utf8');

@@ -1,5 +1,5 @@
 import { execFile } from 'node:child_process';
-import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join, relative } from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
@@ -41,18 +41,21 @@ const publishedManifestRequirements = [
     packageName: '@blade-ai/ai',
     manifestPath: 'node_modules/@blade-ai/ai/package.json',
     description: 'Provider-agnostic AI model interfaces for Blade Agent',
+    maxInstalledBytes: 256 * 1024,
     ...expectedPublishedPackageMetadata,
   },
   {
     packageName: '@blade-ai/agent',
     manifestPath: 'node_modules/@blade-ai/agent/package.json',
     description: 'Runtime-independent Blade Agent kernel contracts',
+    maxInstalledBytes: 128 * 1024,
     ...expectedPublishedPackageMetadata,
   },
   {
     packageName: '@blade-ai/agent-sdk',
     manifestPath: 'node_modules/@blade-ai/agent-sdk/package.json',
     description: 'Session-first Blade Agent SDK',
+    maxInstalledBytes: 1024 * 1024,
     ...expectedPublishedPackageMetadata,
   },
 ];
@@ -529,6 +532,13 @@ function assertNoCliProductManifest(packageName, manifest) {
 async function verifyPublishedPackageFileScope({ consumerDir }) {
   for (const requirement of publishedManifestRequirements) {
     const packageDir = join(consumerDir, dirname(requirement.manifestPath));
+    const installedBytes = await calculateDirectorySizeBytes(packageDir);
+    if (installedBytes > requirement.maxInstalledBytes) {
+      throw new Error(
+        `${requirement.packageName} installed package exceeds size budget: ${installedBytes} bytes > ${requirement.maxInstalledBytes} bytes`,
+      );
+    }
+
     const files = (await run('find', [packageDir, '-type', 'f']))
       .split('\n')
       .filter(Boolean)
@@ -564,6 +574,18 @@ async function verifyPublishedPackageFileScope({ consumerDir }) {
     assertNoCliProductFiles(requirement.packageName, files);
   }
   console.log('[verify-published] temporary consumer published package file scope passed');
+}
+
+async function calculateDirectorySizeBytes(directory) {
+  const files = (await run('find', [directory, '-type', 'f']))
+    .split('\n')
+    .filter(Boolean);
+  let totalBytes = 0;
+
+  for (const filePath of files) {
+    totalBytes += (await stat(filePath)).size;
+  }
+  return totalBytes;
 }
 
 function assertNoCliProductFiles(packageName, files) {
