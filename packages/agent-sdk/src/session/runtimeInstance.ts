@@ -9,7 +9,6 @@ import type {
 } from '@blade-ai/agent';
 import type { ContextSnapshot, RuntimeContext } from '../runtime/types.js';
 import type { SubagentConfig } from '../subagents/types.js';
-import { HookEvent } from '../types/constants.js';
 import type { BladeConfig, McpServerConfig } from '../types/common.js';
 import type { PermissionHandler } from '../types/permissions.js';
 import type { TraceRecorder } from '../observability/TraceRecorder.js';
@@ -100,8 +99,9 @@ import {
   type PackageLocalRuntimeSessionToolRegistrationOperations,
 } from './runtimeToolRegistration.js';
 import {
-  createPackageLocalRuntimePermissionHandler,
+  createPackageLocalRuntimePermissionOperations,
   type PackageLocalRuntimePermissionHookPort,
+  type PackageLocalRuntimePermissionOperations,
 } from './runtimePermissions.js';
 import {
   createPackageLocalRuntimeTraceOperations,
@@ -323,6 +323,7 @@ export class PackageLocalSessionRuntime {
     PackageLocalRuntimeToolSource
   >;
   private readonly sessionToolRegistrationOperations: PackageLocalRuntimeSessionToolRegistrationOperations;
+  private readonly permissionOperations: PackageLocalRuntimePermissionOperations;
   private readonly traceOperations: PackageLocalRuntimeTraceOperations;
   private readonly createForkSessionId?: () => SessionId;
   private readonly createForkSession?: (
@@ -437,6 +438,12 @@ export class PackageLocalSessionRuntime {
           this.registerTools(tools, source);
         },
       });
+    this.permissionOperations = createPackageLocalRuntimePermissionOperations({
+      hooks: this.hookCallbacks,
+      permissionHooks: this.permissionHooks,
+      permissionHandler: this.options.permissionHandler,
+      canUseTool: this.options.canUseTool,
+    });
     this.createForkSessionId = options.createForkSessionId;
     this.createForkSession = options.createForkSession;
     this.traceManager = createPackageLocalRuntimeTraceManager({
@@ -565,12 +572,7 @@ export class PackageLocalSessionRuntime {
   }
 
   createPermissionHandler(): PermissionHandler | undefined {
-    return createPackageLocalRuntimePermissionHandler({
-      hasPermissionCallbacks: (this.hookCallbacks[HookEvent.PermissionRequest]?.length ?? 0) > 0,
-      permissionHooks: this.permissionHooks,
-      permissionHandler: this.options.permissionHandler,
-      canUseTool: this.options.canUseTool,
-    });
+    return this.permissionOperations.createPermissionHandler();
   }
 
   initializeHooks(): void {

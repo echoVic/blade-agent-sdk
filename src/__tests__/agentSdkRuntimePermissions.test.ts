@@ -107,4 +107,35 @@ describe('agent-sdk package-local runtime permission helpers', () => {
     expect(baseHandler).not.toHaveBeenCalled();
     expect(result).toEqual({ behavior: 'deny', message: 'blocked by hook' });
   });
+
+  it('bundles permission handler creation behind injected runtime hooks', async () => {
+    const { createPackageLocalRuntimePermissionOperations } = await import(permissionsModulePath);
+    const permissionHooks: PackageLocalRuntimePermissionHookPort = {
+      async applyPermissionRequestHooks(_toolName, input) {
+        return {
+          updatedInput: {
+            ...input,
+            value: 'from-operation-hook',
+          },
+        };
+      },
+    };
+    const baseHandler = vi.fn(async () => ({ behavior: 'allow' as const }));
+
+    const operations = createPackageLocalRuntimePermissionOperations({
+      hooks: {
+        PermissionRequest: [async () => undefined],
+      },
+      permissionHooks,
+      permissionHandler: baseHandler,
+    });
+
+    const request = permissionRequest({ value: 'original' });
+    const handler = operations.createPermissionHandler();
+    const result = await handler?.(request);
+
+    expect(request.input).toEqual({ value: 'from-operation-hook' });
+    expect(baseHandler).toHaveBeenCalledWith(request);
+    expect(result).toEqual({ behavior: 'ask' });
+  });
 });

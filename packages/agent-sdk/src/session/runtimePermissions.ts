@@ -8,6 +8,8 @@ import {
 import type { ToolKind } from '../tools/types/ToolKind.js';
 import type { SessionOptions } from './types.js';
 
+const permissionRequestHookEvent = 'PermissionRequest';
+
 export interface PackageLocalRuntimePermissionHookResult {
   updatedInput: JsonObject;
   decision?: PermissionResult;
@@ -30,6 +32,33 @@ export interface PackageLocalRuntimePermissionHandlerOptions {
   permissionHooks: PackageLocalRuntimePermissionHookPort;
   permissionHandler?: PermissionHandler;
   canUseTool?: SessionOptions['canUseTool'];
+}
+
+export interface PackageLocalRuntimePermissionOperations {
+  createPermissionHandler(): PermissionHandler | undefined;
+}
+
+export interface PackageLocalRuntimePermissionOperationsOptions {
+  hooks?: Partial<Record<string, readonly unknown[]>>;
+  permissionHooks: PackageLocalRuntimePermissionHookPort;
+  permissionHandler?: PermissionHandler;
+  canUseTool?: SessionOptions['canUseTool'];
+}
+
+export function createPackageLocalRuntimePermissionOperations(
+  options: PackageLocalRuntimePermissionOperationsOptions,
+): PackageLocalRuntimePermissionOperations {
+  return {
+    createPermissionHandler() {
+      return createPackageLocalRuntimePermissionHandler({
+        hasPermissionCallbacks:
+          (options.hooks?.[permissionRequestHookEvent]?.length ?? 0) > 0,
+        permissionHooks: options.permissionHooks,
+        permissionHandler: options.permissionHandler,
+        canUseTool: options.canUseTool,
+      });
+    },
+  };
 }
 
 export function createPackageLocalRuntimePermissionHandler(

@@ -851,9 +851,17 @@ describe('monorepo topology', () => {
     expect(existsSync('packages/agent-sdk/src/session/runtimePermissions.ts')).toBe(true);
     expect(runtimePermissionsSource).not.toContain('../../../../src/');
     expect(runtimePermissionsSource).toContain('createPackageLocalRuntimePermissionHandler');
+    expect(runtimePermissionsSource).toContain('createPackageLocalRuntimePermissionOperations');
     expect(runtimePermissionsSource).toContain('createPermissionHandlerFromCanUseTool');
     expect(runtimePermissionsSource).toContain('createCompositePermissionHandler');
-    expect(packageLocalRuntimeInstanceSource).toContain('createPackageLocalRuntimePermissionHandler');
+    expect(packageLocalRuntimeInstanceSource).toContain(
+      'createPackageLocalRuntimePermissionOperations',
+    );
+    expect(packageLocalRuntimeInstanceSource).toContain('permissionOperations');
+    expect(packageLocalRuntimeInstanceSource).not.toContain(
+      'createPackageLocalRuntimePermissionHandler({',
+    );
+    expect(packageLocalRuntimeInstanceSource).not.toContain('HookEvent.PermissionRequest');
     expect(packageLocalRuntimeInstanceSource).not.toContain('createPermissionHandlerFromCanUseTool');
     expect(packageLocalRuntimeInstanceSource).not.toContain('createCompositePermissionHandler');
     expect(packageLocalRuntimeInstanceSource).toContain('initializeHooks');
