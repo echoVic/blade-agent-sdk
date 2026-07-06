@@ -52,11 +52,10 @@ import type {
   PackageLocalRuntimeKernelPortOperations,
 } from './runtimeKernelPorts.js';
 import { createPackageLocalRuntimeKernelOperations } from './runtimeKernel.js';
-import {
-  createPackageLocalRuntimeKernelTurnStreamOperations,
-  type PackageLocalRuntimeAgentKernelOptions,
-  type PackageLocalRuntimeAgentKernelStreamOptions,
-  type PackageLocalRuntimeKernelTurnStreamOperations,
+import type {
+  PackageLocalRuntimeAgentKernelOptions,
+  PackageLocalRuntimeAgentKernelStreamOptions,
+  PackageLocalRuntimeKernelTurnStreamOperations,
 } from './runtimeKernelTurnStream.js';
 import type {
   PackageLocalRuntimeKernelModelResolverPort,
@@ -98,10 +97,10 @@ import type {
   PackageLocalRuntimePermissionOperations,
 } from './runtimePermissions.js';
 import { createPackageLocalRuntimeGuardOperations } from './runtimeGuards.js';
-import {
-  createPackageLocalRuntimeTraceRuntime,
-  type PackageLocalRuntimeTraceOperations,
+import type {
+  PackageLocalRuntimeTraceOperations,
 } from './runtimeTraceManager.js';
+import { createPackageLocalRuntimeTurnOperations } from './runtimeTurn.js';
 import {
   createPackageLocalRuntimeForkOperations,
   type PackageLocalRuntimeForkOperations,
@@ -447,24 +446,21 @@ export class PackageLocalSessionRuntime {
       createForkSessionId: options.createForkSessionId,
       createForkSession: options.createForkSession,
     });
-    const traceRuntime = createPackageLocalRuntimeTraceRuntime({
+    const turnOperations = createPackageLocalRuntimeTurnOperations({
       sessionId: this.sessionId,
       observability: options.options.observability,
       model: options.options.model,
       providerType: options.options.provider.type,
       permissionMode: options.options.permissionMode,
       logger: this.logger,
-    });
-    this.traceManager = traceRuntime.traceManager;
-    this.kernelTurnStreamOperations = createPackageLocalRuntimeKernelTurnStreamOperations({
-      sessionId: this.sessionId,
       bladeConfig: this.bladeConfig,
-      traceManager: this.traceManager,
       hookRuntime: this.hookRuntime,
       kernelModelResolver: this.kernelModelResolver,
       createAgentKernel: this.agentKernelOperations.createFromResolved,
     });
-    this.traceOperations = traceRuntime.traceOperations;
+    this.traceManager = turnOperations.traceManager;
+    this.kernelTurnStreamOperations = turnOperations.kernelTurnStream;
+    this.traceOperations = turnOperations.traceOperations;
   }
 
   getConfiguredMcpServers(): Record<string, McpServerConfig | SdkMcpServerHandle> {
