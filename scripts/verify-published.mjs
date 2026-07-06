@@ -217,6 +217,7 @@ if (Object.keys(agentProtocol).length !== 0) {
     await verifyPublishedTypesSmoke({ consumerDir });
     await verifyPublishedCoreDeclarationBoundary({ consumerDir });
     await verifyPublishedBrowserBundleSmoke({ consumerDir });
+    await verifyPublishedAgentBrowserBundleSmoke({ consumerDir });
     console.log(`[verify-published] temporary consumer smoke passed: ${npmInstallCommandLabel}`);
   } finally {
     await rm(consumerDir, { recursive: true, force: true });
@@ -344,6 +345,56 @@ assertServerOnly(() => getBuiltinTools(), 'server-only for getBuiltinTools');
     }
   }
   console.log('[verify-published] temporary consumer browser bundle smoke passed');
+}
+
+async function verifyPublishedAgentBrowserBundleSmoke({ consumerDir }) {
+  const entryPath = join(consumerDir, 'consumer-agent-browser-entry.ts');
+  const bundlePath = join(consumerDir, 'consumer-agent-browser-bundle.js');
+
+  await writeFile(
+    entryPath,
+    [
+      "import { AgentKernel } from '@blade-ai/agent';",
+      "import { AgentKernel as AgentKernelFromSubpath } from '@blade-ai/agent/kernel';",
+      'const fakeModel = {',
+      '  async generate() {',
+      "    return { content: 'ok', finishReason: 'stop' };",
+      '  },',
+      '  async *stream() {',
+      "    yield { type: 'done', response: { content: 'ok', finishReason: 'stop' } };",
+      '  },',
+      '};',
+      'const kernel = new AgentKernel({ model: fakeModel });',
+      'const kernelFromSubpath = new AgentKernelFromSubpath({ model: fakeModel });',
+      "console.log('agent browser bundle', kernel.constructor.name, kernelFromSubpath.constructor.name);",
+    ].join('\n'),
+  );
+
+  const esbuild = await import(pathToFileURL(join(consumerDir, 'node_modules/esbuild/lib/main.js')).href);
+  try {
+    await bundleWithEsbuildRetry({
+      entryPoints: [entryPath],
+      bundle: true,
+      platform: 'browser',
+      conditions: ['browser'],
+      format: 'esm',
+      outfile: bundlePath,
+      absWorkingDir: consumerDir,
+      logLevel: 'silent',
+    }, {
+      build: esbuild.build,
+      resetService: esbuild.stop,
+    });
+  } finally {
+    esbuild.stop();
+  }
+
+  await assertNoBrowserDisallowedMarkers(bundlePath);
+  const output = await run(process.execPath, [bundlePath], { cwd: consumerDir });
+  if (!output.includes('agent browser bundle')) {
+    throw new Error('Published agent browser bundle smoke did not execute');
+  }
+  console.log('[verify-published] temporary consumer agent browser bundle smoke passed');
 }
 
 async function verifyPublishedTypesSmoke({ consumerDir }) {
