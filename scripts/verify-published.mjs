@@ -16,6 +16,7 @@ const publishablePackages = [
   '@blade-ai/agent-sdk',
 ];
 const expectedPublishedPackageMetadata = {
+  author: 'echoVic',
   type: 'module',
   sideEffects: false,
   license: 'MIT',
@@ -452,6 +453,11 @@ function verifyPublishedPackageMetadata(requirement, manifest) {
       field: 'description',
       expected: requirement.description,
       message: 'installed manifest description mismatch',
+    },
+    {
+      field: 'author',
+      expected: requirement.author,
+      message: 'installed manifest author mismatch',
     },
     {
       field: 'type',

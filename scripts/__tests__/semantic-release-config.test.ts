@@ -738,6 +738,36 @@ describe('release scripts', () => {
     expect(roadmap).toContain('package description metadata artifact gate');
   });
 
+  it('verifies packed and published package author metadata', () => {
+    const releaseVerifier = readFileSync(resolve('scripts/verify-release-config.mjs'), 'utf8');
+    const packageVerifier = readFileSync(resolve('scripts/verify-packages.mjs'), 'utf8');
+    const publishedVerifier = readFileSync(resolve('scripts/verify-published.mjs'), 'utf8');
+    const readme = readFileSync(resolve('README.md'), 'utf8');
+    const checklist = readFileSync(resolve('docs/production-checklist.md'), 'utf8');
+    const roadmap = readFileSync(resolve('docs/roadmap/production-agent-sdk-monorepo.md'), 'utf8');
+
+    for (const packagePath of [
+      'packages/ai/package.json',
+      'packages/agent/package.json',
+      'packages/agent-sdk/package.json',
+    ]) {
+      const packageJson = JSON.parse(readFileSync(resolve(packagePath), 'utf8'));
+      expect(packageJson.author).toBe('echoVic');
+    }
+
+    expect(releaseVerifier).toContain("author: 'echoVic'");
+    expect(releaseVerifier).toContain('must declare package author');
+    expect(packageVerifier).toContain('packed manifest author mismatch');
+    expect(packageVerifier).toContain("author: 'echoVic'");
+    expect(publishedVerifier).toContain('installed manifest author mismatch');
+    expect(publishedVerifier).toContain("author: 'echoVic'");
+    expect(readme).toContain('packed package author metadata');
+    expect(readme).toContain('published package author metadata');
+    expect(checklist).toContain('packed package author metadata');
+    expect(checklist).toContain('published package author metadata');
+    expect(roadmap).toContain('package author metadata artifact gate');
+  });
+
   it('verifies packed and published package engine metadata', () => {
     const packageVerifier = readFileSync(resolve('scripts/verify-packages.mjs'), 'utf8');
     const publishedVerifier = readFileSync(resolve('scripts/verify-published.mjs'), 'utf8');

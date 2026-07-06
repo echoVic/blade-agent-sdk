@@ -17,6 +17,7 @@ const browserDisallowedMarkers = [
 const requiredPackageKeywords = ['agent', 'sdk', 'llm'];
 const mitPermissionGrant = 'Permission is hereby granted, free of charge';
 const expectedPackedPackageMetadata = {
+  author: 'echoVic',
   type: 'module',
   sideEffects: false,
   license: 'MIT',
@@ -619,6 +620,11 @@ function verifyPackedPackageMetadata(spec, manifest) {
       field: 'description',
       expected: spec.expectedDescription,
       message: 'packed manifest description mismatch',
+    },
+    {
+      field: 'author',
+      expected: expectedPackedPackageMetadata.author,
+      message: 'packed manifest author mismatch',
     },
     {
       field: 'type',

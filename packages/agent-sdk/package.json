@@ -3,6 +3,7 @@
   "version": "1.0.12",
   "private": false,
   "description": "Session-first Blade Agent SDK",
+  "author": "echoVic",
   "license": "MIT",
   "homepage": "https://github.com/echoVic/blade-agent-sdk#readme",
   "bugs": {

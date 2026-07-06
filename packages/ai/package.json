@@ -3,6 +3,7 @@
   "version": "0.0.0",
   "private": false,
   "description": "Provider-agnostic AI model interfaces for Blade Agent",
+  "author": "echoVic",
   "license": "MIT",
   "homepage": "https://github.com/echoVic/blade-agent-sdk#readme",
   "bugs": {
