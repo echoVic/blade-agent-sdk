@@ -61,6 +61,10 @@ const manifestRules = [
   {
     name: '@blade-ai/agent-sdk',
     packageJson: 'packages/agent-sdk/package.json',
+    disallowBin: true,
+    disallowedExportSubpaths: [
+      ['./cli', 'CLI product capabilities belong in a separate package'],
+    ],
     disallowedDependencies: [
       [/^@ai-sdk\/(?:anthropic|azure|deepseek|google|openai|openai-compatible)$/, 'Provider SDK dependencies belong in @blade-ai/ai, not the session SDK'],
       [/^ai$/, 'Provider runtime dependency belongs in @blade-ai/ai, not the session SDK'],
@@ -186,6 +190,13 @@ function collectExportTargets(exportsValue, path = 'export') {
   return targets;
 }
 
+function collectExportSubpaths(exportsValue) {
+  if (!exportsValue || typeof exportsValue !== 'object' || Array.isArray(exportsValue)) {
+    return [];
+  }
+  return Object.keys(exportsValue);
+}
+
 function isDistArtifactTarget(target) {
   return target.startsWith('./dist/');
 }
@@ -204,6 +215,15 @@ for (const rule of manifestRules) {
   }
 
   const manifest = JSON.parse(readFileSync(packageJsonPath, 'utf-8'));
+  if (rule.disallowBin && manifest.bin !== undefined) {
+    violations.push(`${rule.packageJson}: bin field is not allowed - CLI product capabilities belong in a separate package`);
+  }
+  for (const [subpath, reason] of rule.disallowedExportSubpaths ?? []) {
+    if (collectExportSubpaths(manifest.exports).includes(subpath)) {
+      violations.push(`${rule.packageJson}: export "${subpath}" is not allowed - ${reason}`);
+    }
+  }
+
   const dependencySections = ['dependencies', 'optionalDependencies', 'peerDependencies'];
   for (const section of dependencySections) {
     const dependencies = manifest[section] ?? {};
