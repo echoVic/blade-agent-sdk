@@ -111,8 +111,7 @@ import {
   type PackageLocalRuntimePermissionOperations,
 } from './runtimePermissions.js';
 import {
-  createPackageLocalRuntimeTraceOperations,
-  createPackageLocalRuntimeTraceManager,
+  createPackageLocalRuntimeTraceRuntime,
   type PackageLocalRuntimeTraceOperations,
 } from './runtimeTraceManager.js';
 import { forkPackageLocalRuntimeSession } from './runtimeForking.js';
@@ -472,7 +471,7 @@ export class PackageLocalSessionRuntime {
     });
     this.createForkSessionId = options.createForkSessionId;
     this.createForkSession = options.createForkSession;
-    this.traceManager = createPackageLocalRuntimeTraceManager({
+    const traceRuntime = createPackageLocalRuntimeTraceRuntime({
       sessionId: this.sessionId,
       observability: options.options.observability,
       model: options.options.model,
@@ -480,6 +479,7 @@ export class PackageLocalSessionRuntime {
       permissionMode: options.options.permissionMode,
       logger: this.logger,
     });
+    this.traceManager = traceRuntime.traceManager;
     this.kernelTurnStreamOperations = createPackageLocalRuntimeKernelTurnStreamOperations({
       sessionId: this.sessionId,
       bladeConfig: this.bladeConfig,
@@ -488,9 +488,7 @@ export class PackageLocalSessionRuntime {
       kernelModelResolver: this.kernelModelResolver,
       createAgentKernel: this.agentKernelOperations.createFromResolved,
     });
-    this.traceOperations = createPackageLocalRuntimeTraceOperations({
-      traceManager: this.traceManager,
-    });
+    this.traceOperations = traceRuntime.traceOperations;
   }
 
   getConfiguredMcpServers(): Record<string, McpServerConfig | SdkMcpServerHandle> {

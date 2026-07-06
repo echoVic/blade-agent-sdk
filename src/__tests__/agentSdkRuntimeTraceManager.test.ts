@@ -2,8 +2,10 @@ import { describe, expect, it, vi } from 'vitest';
 import {
   createPackageLocalRuntimeTraceOperations,
   createPackageLocalRuntimeTraceManager,
+  createPackageLocalRuntimeTraceRuntime,
 } from '../../packages/agent-sdk/src/session/runtimeTraceManager.js';
 import type { AgentTrace } from '../../packages/agent-sdk/src/observability/types.js';
+import { PermissionMode } from '../../packages/agent-sdk/src/types/common.js';
 
 describe('agent-sdk package-local runtime trace manager helper', () => {
   it('creates session trace metadata from runtime model, provider, and default permission mode', () => {
@@ -91,5 +93,34 @@ describe('agent-sdk package-local runtime trace manager helper', () => {
     expect(operations.getTraces()).toBe(traces);
     expect(traceManager.getLastTrace).toHaveBeenCalledOnce();
     expect(traceManager.getTraces).toHaveBeenCalledOnce();
+  });
+
+  it('creates trace runtime bundle with manager and access operations', () => {
+    const runtime = createPackageLocalRuntimeTraceRuntime({
+      sessionId: 'session-runtime',
+      observability: {
+        enabled: true,
+      },
+      model: 'glm-5.2',
+      providerType: 'openai-compatible',
+      permissionMode: PermissionMode.AUTO_EDIT,
+      logger: {
+        warn: vi.fn(),
+      },
+    });
+
+    const trace = runtime.traceManager.createRecorder('bundle prompt')?.finish('success');
+    if (!trace) {
+      throw new Error('expected trace');
+    }
+    runtime.traceManager.remember(trace);
+
+    expect(trace?.metadata).toEqual({
+      model: 'glm-5.2',
+      provider: 'openai-compatible',
+      permissionMode: PermissionMode.AUTO_EDIT,
+    });
+    expect(runtime.traceOperations.getLastTrace()).toBe(trace);
+    expect(runtime.traceOperations.getTraces()).toEqual([trace]);
   });
 });

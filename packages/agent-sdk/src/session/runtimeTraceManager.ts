@@ -34,6 +34,11 @@ export interface PackageLocalRuntimeTraceOperationsOptions {
   traceManager: PackageLocalRuntimeTraceAccessPort;
 }
 
+export interface PackageLocalRuntimeTraceRuntime {
+  traceManager: SessionTraceManager;
+  traceOperations: PackageLocalRuntimeTraceOperations;
+}
+
 export function createPackageLocalRuntimeTraceOperations(
   options: PackageLocalRuntimeTraceOperationsOptions,
 ): PackageLocalRuntimeTraceOperations {
@@ -64,4 +69,16 @@ export function createPackageLocalRuntimeTraceManager(
         error,
       ),
   });
+}
+
+export function createPackageLocalRuntimeTraceRuntime(
+  options: PackageLocalRuntimeTraceManagerOptions,
+): PackageLocalRuntimeTraceRuntime {
+  const traceManager = createPackageLocalRuntimeTraceManager(options);
+  return {
+    traceManager,
+    traceOperations: createPackageLocalRuntimeTraceOperations({
+      traceManager,
+    }),
+  };
 }
