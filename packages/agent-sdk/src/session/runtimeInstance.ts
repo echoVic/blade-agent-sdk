@@ -67,14 +67,9 @@ import {
   getPackageLocalRuntimeContextCwd,
   resolvePackageLocalRuntimeStorageRoot,
 } from './runtimeContext.js';
-import {
-  createPackageLocalRuntimeWorkspaceOperations,
-  type PackageLocalRuntimeWorkspaceOperations,
-} from './runtimeWorkspace.js';
-import {
-  createPackageLocalRuntimeSessionLifecycleOperations,
-  type PackageLocalRuntimeSessionLifecycleOperations,
-} from './runtimeSessionLifecycle.js';
+import type { PackageLocalRuntimeWorkspaceOperations } from './runtimeWorkspace.js';
+import type { PackageLocalRuntimeSessionLifecycleOperations } from './runtimeSessionLifecycle.js';
+import { createPackageLocalRuntimeSessionOperations } from './runtimeSessionOperations.js';
 import type {
   PackageLocalRuntimeMcpServerConfigOperations,
   PackageLocalRuntimeMcpServerRegistrationOperations,
@@ -365,13 +360,13 @@ export class PackageLocalSessionRuntime {
     this.kernelPortFactory = runtimePorts.kernelPortFactory;
     this.kernelFactory = runtimePorts.kernelFactory;
     this.kernelModelResolver = runtimePorts.kernelModelResolver;
-    this.sessionLifecycleOperations = createPackageLocalRuntimeSessionLifecycleOperations({
+    const sessionOperations = createPackageLocalRuntimeSessionOperations({
       sessionId: this.sessionId,
       sessionStore: this.sessionStore,
-    });
-    this.workspaceOperations = createPackageLocalRuntimeWorkspaceOperations({
       workspace: this.workspace,
     });
+    this.sessionLifecycleOperations = sessionOperations.lifecycle;
+    this.workspaceOperations = sessionOperations.workspace;
     const mcpOperations = createPackageLocalRuntimeMcpOperations({
       mcpRegistry: this.mcpRegistry,
       configuredServers: this.options.mcpServers,

@@ -479,6 +479,11 @@ describe('monorepo topology', () => {
     )
       ? readFileSync('packages/agent-sdk/src/session/runtimeSessionLifecycle.ts', 'utf-8')
       : '';
+    const runtimeSessionOperationsSource = existsSync(
+      'packages/agent-sdk/src/session/runtimeSessionOperations.ts',
+    )
+      ? readFileSync('packages/agent-sdk/src/session/runtimeSessionOperations.ts', 'utf-8')
+      : '';
     const runtimeMcpCapabilitiesSource = existsSync(
       'packages/agent-sdk/src/session/runtimeMcpCapabilities.ts',
     )
@@ -715,10 +720,26 @@ describe('monorepo topology', () => {
     expect(runtimeSessionLifecycleSource).toContain(
       'createPackageLocalRuntimeSessionLifecycleOperations',
     );
-    expect(packageLocalRuntimeInstanceSource).toContain(
+    expect(existsSync('packages/agent-sdk/src/session/runtimeSessionOperations.ts')).toBe(true);
+    expect(runtimeSessionOperationsSource).not.toContain('../../../../src/');
+    expect(runtimeSessionOperationsSource).toContain(
+      'createPackageLocalRuntimeSessionOperations',
+    );
+    expect(runtimeSessionOperationsSource).toContain(
       'createPackageLocalRuntimeSessionLifecycleOperations',
     );
+    expect(runtimeSessionOperationsSource).toContain(
+      'createPackageLocalRuntimeWorkspaceOperations',
+    );
+    expect(packageLocalRuntimeInstanceSource).toContain(
+      'createPackageLocalRuntimeSessionOperations',
+    );
     expect(packageLocalRuntimeInstanceSource).toContain('sessionLifecycleOperations');
+    expect(packageLocalRuntimeInstanceSource).toContain('sessionOperations.lifecycle');
+    expect(packageLocalRuntimeInstanceSource).toContain('sessionOperations.workspace');
+    expect(packageLocalRuntimeInstanceSource).not.toContain(
+      'createPackageLocalRuntimeSessionLifecycleOperations({',
+    );
     expect(packageLocalRuntimeInstanceSource).toContain('PackageLocalRuntimeSessionStorePort');
     expect(packageLocalRuntimeInstanceSource).not.toContain(
       'const loaded = await this.sessionStore.loadSession(this.sessionId)',
@@ -750,6 +771,9 @@ describe('monorepo topology', () => {
       'createPackageLocalRuntimeWorkspaceOperations',
     );
     expect(packageLocalRuntimeInstanceSource).toContain('workspaceOperations');
+    expect(packageLocalRuntimeInstanceSource).not.toContain(
+      'createPackageLocalRuntimeWorkspaceOperations({',
+    );
     expect(packageLocalRuntimeInstanceSource).not.toContain(
       'preparePackageLocalRuntimeWorkspaceTurn({',
     );
