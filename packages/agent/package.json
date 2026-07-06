@@ -50,6 +50,7 @@
   },
   "files": [
     "dist",
+    "LICENSE",
     "README.md"
   ],
   "keywords": [

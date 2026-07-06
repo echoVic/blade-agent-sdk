@@ -1,6 +1,6 @@
 import { createRequire } from 'node:module';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
-import { join, resolve } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 
 import { describe, expect, it } from 'vitest';
@@ -603,6 +603,41 @@ describe('release scripts', () => {
     expect(readme).toContain('packed package READMEs');
     expect(checklist).toContain('packed package READMEs');
     expect(roadmap).toContain('packed package README gate');
+  });
+
+  it('verifies packed and published package license artifacts', () => {
+    const releaseVerifier = readFileSync(resolve('scripts/verify-release-config.mjs'), 'utf8');
+    const packageVerifier = readFileSync(resolve('scripts/verify-packages.mjs'), 'utf8');
+    const publishedVerifier = readFileSync(resolve('scripts/verify-published.mjs'), 'utf8');
+    const readme = readFileSync(resolve('README.md'), 'utf8');
+    const checklist = readFileSync(resolve('docs/production-checklist.md'), 'utf8');
+    const roadmap = readFileSync(resolve('docs/roadmap/production-agent-sdk-monorepo.md'), 'utf8');
+
+    for (const packagePath of [
+      'packages/ai/package.json',
+      'packages/agent/package.json',
+      'packages/agent-sdk/package.json',
+    ]) {
+      const packageJson = JSON.parse(readFileSync(resolve(packagePath), 'utf8'));
+      expect(packageJson.files).toContain('LICENSE');
+      expect(existsSync(resolve(dirname(packagePath), 'LICENSE'))).toBe(true);
+    }
+
+    expect(releaseVerifier).toContain("'LICENSE'");
+    expect(releaseVerifier).toContain('LICENSE must include the MIT permission grant');
+    expect(packageVerifier).toContain("'package/LICENSE'");
+    expect(packageVerifier).toContain('verifyPackedLicenseArtifacts');
+    expect(packageVerifier).toContain('packed LICENSE must include the MIT permission grant');
+    expect(publishedVerifier).toContain('verifyPublishedLicenseArtifacts');
+    expect(publishedVerifier).toContain("node_modules/@blade-ai/ai/LICENSE");
+    expect(publishedVerifier).toContain("node_modules/@blade-ai/agent/LICENSE");
+    expect(publishedVerifier).toContain("node_modules/@blade-ai/agent-sdk/LICENSE");
+    expect(publishedVerifier).toContain('published LICENSE must include the MIT permission grant');
+    expect(readme).toContain('packed package license artifacts');
+    expect(readme).toContain('published package license artifacts');
+    expect(checklist).toContain('packed package license artifacts');
+    expect(checklist).toContain('published package license artifacts');
+    expect(roadmap).toContain('package license artifact gate');
   });
 
   it('verifies installed published package manifests from the temporary consumer install', () => {

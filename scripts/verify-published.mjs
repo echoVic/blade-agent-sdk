@@ -80,6 +80,21 @@ const browserDisallowedMarkers = [
   'node-pty',
 ];
 const requiredPackageKeywords = ['agent', 'sdk', 'llm'];
+const mitPermissionGrant = 'Permission is hereby granted, free of charge';
+const publishedLicenseRequirements = [
+  {
+    packageName: '@blade-ai/ai',
+    licensePath: 'node_modules/@blade-ai/ai/LICENSE',
+  },
+  {
+    packageName: '@blade-ai/agent',
+    licensePath: 'node_modules/@blade-ai/agent/LICENSE',
+  },
+  {
+    packageName: '@blade-ai/agent-sdk',
+    licensePath: 'node_modules/@blade-ai/agent-sdk/LICENSE',
+  },
+];
 
 function parseArgs(argv) {
   const options = {
@@ -231,6 +246,7 @@ async function verifyPublishedInstallSmoke({ version }) {
 
     await verifyPublishedPackageManifests({ consumerDir, version });
     await verifyPublishedPackageFileScope({ consumerDir });
+    await verifyPublishedLicenseArtifacts({ consumerDir });
     await verifyPublishedReadmes({ consumerDir });
 
     const runtimeSmokePath = join(consumerDir, 'consumer-runtime.mjs');
@@ -627,6 +643,17 @@ async function verifyPublishedReadmes({ consumerDir }) {
     }
   }
   console.log('[verify-published] temporary consumer published package READMEs passed');
+}
+
+async function verifyPublishedLicenseArtifacts({ consumerDir }) {
+  for (const requirement of publishedLicenseRequirements) {
+    const license = await readFile(join(consumerDir, requirement.licensePath), 'utf8');
+
+    if (!license.includes(mitPermissionGrant)) {
+      throw new Error(`${requirement.packageName} published LICENSE must include the MIT permission grant`);
+    }
+  }
+  console.log('[verify-published] temporary consumer published package license artifacts passed');
 }
 
 async function verifyPublishedCoreDeclarationBoundary({ consumerDir }) {

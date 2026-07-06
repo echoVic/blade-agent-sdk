@@ -6,6 +6,7 @@ import { parse } from 'yaml';
 
 const require = createRequire(import.meta.url);
 const requiredKeywords = ['agent', 'sdk', 'llm'];
+const mitPermissionGrant = 'Permission is hereby granted, free of charge';
 const workspaceManifestPaths = [
   'package.json',
   'packages/ai/package.json',
@@ -28,7 +29,7 @@ const publishablePackages = [
   {
     dir: 'packages/ai',
     name: '@blade-ai/ai',
-    publishFiles: ['dist', 'README.md'],
+    publishFiles: ['dist', 'LICENSE', 'README.md'],
     npmPlugin: ['@semantic-release/npm', { pkgRoot: 'packages/ai' }],
     installCommand: 'pnpm add @blade-ai/ai',
     importSnippet: "import { createOpenAICompatibleModelPort } from '@blade-ai/ai';",
@@ -36,7 +37,7 @@ const publishablePackages = [
   {
     dir: 'packages/agent',
     name: '@blade-ai/agent',
-    publishFiles: ['dist', 'README.md'],
+    publishFiles: ['dist', 'LICENSE', 'README.md'],
     npmPlugin: ['@semantic-release/npm', { pkgRoot: 'packages/agent' }],
     installCommand: 'pnpm add @blade-ai/agent',
     importSnippet: "import { AgentKernel } from '@blade-ai/agent';",
@@ -44,7 +45,7 @@ const publishablePackages = [
   {
     dir: 'packages/agent-sdk',
     name: '@blade-ai/agent-sdk',
-    publishFiles: ['dist', 'vendor/ripgrep/**', 'README.md'],
+    publishFiles: ['dist', 'vendor/ripgrep/**', 'LICENSE', 'README.md'],
     npmPlugin: ['@semantic-release/npm', { pkgRoot: 'packages/agent-sdk' }],
     installCommand: 'pnpm add @blade-ai/agent-sdk',
     importSnippet: "import { createSession } from '@blade-ai/agent-sdk';",
@@ -120,6 +121,7 @@ function verifyPackageMetadata() {
   for (const pkg of publishablePackages) {
     const manifest = readJson(`${pkg.dir}/package.json`);
     const readme = readFileSync(resolve(pkg.dir, 'README.md'), 'utf8');
+    const license = readFileSync(resolve(pkg.dir, 'LICENSE'), 'utf8');
 
     if (manifest.name !== pkg.name) {
       fail(`${pkg.dir}/package.json name must be ${pkg.name}`);
@@ -136,6 +138,9 @@ function verifyPackageMetadata() {
     assertDeepEqual(manifest.files, pkg.publishFiles, `${pkg.name} published files`);
     if (manifest.license !== 'MIT') {
       fail(`${pkg.name} must declare MIT license`);
+    }
+    if (!license.includes(mitPermissionGrant)) {
+      fail(`${pkg.name} LICENSE must include the MIT permission grant`);
     }
     if (manifest.homepage !== 'https://github.com/echoVic/blade-agent-sdk#readme') {
       fail(`${pkg.name} must declare the project homepage`);

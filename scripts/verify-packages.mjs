@@ -15,6 +15,7 @@ const browserDisallowedMarkers = [
   'node-pty',
 ];
 const requiredPackageKeywords = ['agent', 'sdk', 'llm'];
+const mitPermissionGrant = 'Permission is hereby granted, free of charge';
 const expectedPackedPackageMetadata = {
   type: 'module',
   sideEffects: false,
@@ -61,6 +62,7 @@ const packageSpecs = [
     dir: 'packages/ai',
     requiredFiles: [
       'package/README.md',
+      'package/LICENSE',
       'package/dist/index.js',
       'package/dist/index.d.ts',
       'package/dist/chat/index.js',
@@ -86,6 +88,7 @@ const packageSpecs = [
     dir: 'packages/agent',
     requiredFiles: [
       'package/README.md',
+      'package/LICENSE',
       'package/dist/index.js',
       'package/dist/index.d.ts',
       'package/dist/kernel/AgentKernel.js',
@@ -113,6 +116,7 @@ const packageSpecs = [
     dir: 'packages/agent-sdk',
     requiredFiles: [
       'package/README.md',
+      'package/LICENSE',
       'package/dist/index.js',
       'package/dist/index.d.ts',
       'package/dist/session/index.js',
@@ -559,6 +563,17 @@ function verifyPackedReadmes(spec, tarballPath, tempDir) {
   }
   if (!readme.includes(requirement.importSnippet)) {
     throw new Error(`${spec.name} packed README must document direct import usage`);
+  }
+}
+
+function verifyPackedLicenseArtifacts(spec, tarballPath, tempDir) {
+  const extractDir = join(tempDir, `license-${spec.name.replaceAll(/[^a-z0-9]+/gi, '-')}`);
+  run('mkdir', ['-p', extractDir]);
+  run('tar', ['-xzf', tarballPath, '-C', extractDir, 'package/LICENSE']);
+  const license = readFileSync(join(extractDir, 'package/LICENSE'), 'utf8');
+
+  if (!license.includes(mitPermissionGrant)) {
+    throw new Error(`${spec.name} packed LICENSE must include the MIT permission grant`);
   }
 }
 
@@ -1590,6 +1605,7 @@ try {
     const tarballPath = packPackage(spec, packDir);
     verifyTarballContents(spec, tarballPath);
     verifyPackedReadmes(spec, tarballPath, tempDir);
+    verifyPackedLicenseArtifacts(spec, tarballPath, tempDir);
     verifyPackedManifest(spec, tarballPath, tempDir);
     verifyForbiddenFileContents(spec, tarballPath, tempDir);
     verifyNoEagerLegacySessionRuntime(spec, tarballPath, tempDir);
