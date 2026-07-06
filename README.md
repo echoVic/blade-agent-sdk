@@ -210,7 +210,7 @@ pnpm run docs:build
 pnpm run docs:dev
 ```
 
-`pnpm run verify` 是 CI 和发版前的生产 gate，会串起 lint、root/workspace type-check、examples type-check、package boundary scanner、docs build、entrypoint/browser-safety scanner、packed package smoke、release config verification、unit tests 和默认 integration skip 检查。
+`pnpm run verify` 是 CI 和发版前的生产 gate，会串起 lint、root/workspace type-check、examples type-check、package boundary scanner、docs build、entrypoint/browser-safety scanner、packed package smoke、release config verification、unit tests 和默认 integration skip 检查。package boundary scanner 会同时保护三包依赖方向、build entry ownership、publish manifest targets，以及 package 源码里的 ESM 相对 import/export 必须带显式运行时文件扩展。
 
 `pnpm run verify:packages` 会先 fresh-build 三个发布包，再打出 packed tarball，把它们安装到外部 temporary consumer 项目里，并从 consumer 侧 import root/subpath exports，检查 packed package size budgets、packed package npm metadata、packed package description metadata、packed package author metadata、packed package discoverability metadata、packed package module metadata、packed package engine metadata、packed package license artifacts、packed package manifest entry targets 和 packed SDK browser export conditions，防止声明文件、exports、browser stub、workspace 依赖、模块格式、Node 运行时契约、npm 包描述、维护方信息、npm 可发现性、许可证文本、包体积或包内容在 npm 分发时回退。
 

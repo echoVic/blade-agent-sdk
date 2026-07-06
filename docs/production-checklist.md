@@ -18,7 +18,7 @@ CI=true pnpm run verify
 | Root type check | `pnpm run type-check` | 检查根 SDK 源码类型 |
 | Workspace type check | `pnpm -r run type-check` | 检查 `@blade-ai/ai`、`@blade-ai/agent`、`@blade-ai/agent-sdk` 包类型 |
 | Examples | `pnpm run verify:examples` | 确保 session-first quickstart 示例持续可类型检查 |
-| Package boundaries | `pnpm run verify:boundaries` | 确保 `@blade-ai/agent` 不引入 Node-local runtime、MCP、filesystem、provider SDK 或 session SDK |
+| Package boundaries | `pnpm run verify:boundaries` | 确保 `@blade-ai/agent` 不引入 Node-local runtime、MCP、filesystem、provider SDK 或 session SDK；三包源码相对 import/export 必须带显式 ESM 运行时文件扩展 |
 | Docs build | `pnpm run docs:build` | 确保 VitePress 文档可构建 |
 | Entrypoints | `pnpm run verify:entrypoints` | 检查 root、server、session、local、core、tools、browser 入口和 browser-safe 约束 |
 | Package smoke | `pnpm run verify:packages` | pack 三个 npm 包，检查 packed package npm metadata、packed package description metadata、packed package author metadata、packed package discoverability metadata、packed package module metadata、packed package engine metadata、packed package license artifacts、packed package manifest entry targets 和 packed SDK browser export conditions，安装到临时 consumer，import 公共入口，type-check `SessionOptions` 采样/上下文/thinking/token budget 字段，并检查 browser-safe `core` 和 root 声明不暴露 server/local API 或 provider-specific helper |

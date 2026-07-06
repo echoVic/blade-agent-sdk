@@ -115,6 +115,15 @@ function isWithin(childPath, parentPath) {
   return rel === '' || (!rel.startsWith('..') && !rel.includes(`..${sep}`));
 }
 
+function hasExplicitRuntimeFileExtension(specifier) {
+  const cleanSpecifier = specifier.split(/[?#]/, 1)[0];
+  const lastSegment = cleanSpecifier.split('/').at(-1) ?? '';
+  if (!/\.[A-Za-z0-9]+$/.test(lastSegment)) {
+    return false;
+  }
+  return !/\.(?:ts|tsx|mts|cts)$/i.test(lastSegment);
+}
+
 function findObjectLiteralBody(source, propertyName) {
   const propertyMatch = new RegExp(`\\b${propertyName}\\s*:`).exec(source);
   if (!propertyMatch) return null;
@@ -300,6 +309,12 @@ for (const rule of rules) {
       }
 
       if (specifier.startsWith('.')) {
+        if (!hasExplicitRuntimeFileExtension(specifier)) {
+          violations.push(
+            `${displayPath}: relative import "${specifier}" must include an explicit runtime file extension`,
+          );
+        }
+
         const resolved = normalize(resolve(dirname(file), specifier));
         if (!isWithin(resolved, packageSourceDir)) {
           violations.push(`${displayPath}: relative import "${specifier}" leaves ${rule.sourceDir}`);

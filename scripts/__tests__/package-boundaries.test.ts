@@ -251,6 +251,28 @@ describe('package boundary verifier', () => {
     expect(result.stderr).toContain('Agent kernel source must not import its own public facade');
   });
 
+  it('rejects package source relative imports without runtime file extensions', () => {
+    const cwd = createBoundaryFixture();
+    mkdirSync(join(cwd, 'packages', 'agent', 'src', 'kernel'), { recursive: true });
+    writeFileSync(join(cwd, 'packages', 'agent', 'src', 'kernel', 'index.ts'), 'export {};\n');
+    writeFileSync(
+      join(cwd, 'packages', 'agent', 'src', 'index.ts'),
+      "export * from './kernel';\n",
+    );
+
+    const result = spawnSync(process.execPath, [
+      resolve('scripts/verify-package-boundaries.mjs'),
+    ], {
+      cwd,
+      encoding: 'utf8',
+    });
+
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain('packages/agent/src/index.ts');
+    expect(result.stderr).toContain('relative import "./kernel"');
+    expect(result.stderr).toContain('must include an explicit runtime file extension');
+  });
+
   it('rejects package build entries that leave the package source tree', () => {
     const cwd = createBoundaryFixture();
     writeTsupConfig(join(cwd, 'packages', 'agent-sdk', 'tsup.config.ts'), {

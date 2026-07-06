@@ -90,6 +90,7 @@ Current guardrails:
 
 - `pnpm run verify:boundaries` scans package source imports and fails if `@blade-ai/ai` depends on agent/session SDK layers, or if `@blade-ai/agent` imports Node-local runtime modules, MCP SDKs, or `@blade-ai/agent-sdk`.
 - The same boundary verifier also checks package manifests so `@blade-ai/agent` cannot declare MCP SDKs, provider runtime SDKs, or local filesystem/terminal/storage dependencies.
+- Package source relative imports and exports must include explicit runtime file extensions, keeping the emitted ESM package graph aligned with Node and bundler resolution.
 - `pnpm run test:live:glm` builds `@blade-ai/ai` and verifies one non-streaming plus one streaming request against a GLM/OpenAI-compatible endpoint using `.env` credentials.
 - `pnpm run test:live:session-glm` builds all three packages and verifies a real session-first `createSession()` + `send()` + `stream()` turn against the same GLM/OpenAI-compatible endpoint with `allowedTools: []`.
 
@@ -688,6 +689,7 @@ Status:
 - Two-hundred-thirty-first documentation increment complete: README, package README, API reference, and production checklist now distinguish CLI process embedding from a CLI product package. The docs explicitly say `@blade-ai/agent-sdk` does not publish a CLI product or `@blade-ai/agent-sdk/cli`, preserving the Pi-style separation between the session-first SDK facade and any future coding-agent / CLI product package.
 - Two-hundred-thirty-second verification-chain increment complete: source, packed-package, and post-publish manifest gates now reject the `cli` keyword in `@blade-ai/agent-sdk` metadata. The package keeps npm discoverability focused on the session-first server SDK while still documenting CLI process embedding separately from any future Pi-style CLI product package.
 - Two-hundred-thirty-third verification-chain increment complete: the package artifact size budget gate now covers packed-package and post-publish artifact checks. `pnpm run verify:packages` rejects oversized packed tarballs before publication, and `pnpm run verify:published -- --version <version>` rejects npm-installed package directories that exceed their published package size budgets, catching accidental source/map/asset bloat beyond the existing file-scope gates.
+- Two-hundred-thirty-fourth verification-chain increment complete: `pnpm run verify:boundaries` now rejects package source relative imports and exports without explicit runtime file extensions, preventing extensionless TypeScript source specifiers from leaking into the ESM package graph before build, pack, or publication.
 
 Commit:
 
