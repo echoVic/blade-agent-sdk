@@ -18,6 +18,10 @@ export interface PackageLocalRuntimeSubagentInitializationOptions {
   agents?: SessionOptions['agents'];
 }
 
+export interface PackageLocalRuntimeSubagentOperations {
+  initialize(): void;
+}
+
 export function packageLocalSubagentConfigFromDefinition(
   name: string,
   definition: PackageLocalRuntimeAgentDefinition,
@@ -44,4 +48,14 @@ export function initializePackageLocalRuntimeSubagents(
       override: true,
     });
   }
+}
+
+export function createPackageLocalRuntimeSubagentOperations(
+  options: PackageLocalRuntimeSubagentInitializationOptions,
+): PackageLocalRuntimeSubagentOperations {
+  return {
+    initialize() {
+      initializePackageLocalRuntimeSubagents(options);
+    },
+  };
 }

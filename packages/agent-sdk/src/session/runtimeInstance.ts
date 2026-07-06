@@ -90,7 +90,10 @@ import {
   type PackageLocalRuntimeMcpTool,
 } from './runtimeMcpTools.js';
 import { createPackageLocalRuntimeNoopPorts } from './runtimeNoopPorts.js';
-import { initializePackageLocalRuntimeSubagents } from './runtimeSubagents.js';
+import {
+  createPackageLocalRuntimeSubagentOperations,
+  type PackageLocalRuntimeSubagentOperations,
+} from './runtimeSubagents.js';
 import { filterPackageLocalRuntimeTools } from './runtimeToolFilters.js';
 import {
   createPackageLocalRuntimeToolRegistrationOperations,
@@ -325,6 +328,7 @@ export class PackageLocalSessionRuntime {
   private readonly sessionToolRegistrationOperations: PackageLocalRuntimeSessionToolRegistrationOperations;
   private readonly permissionOperations: PackageLocalRuntimePermissionOperations;
   private readonly hookOperations: PackageLocalRuntimeHookOperations;
+  private readonly subagentOperations: PackageLocalRuntimeSubagentOperations;
   private readonly traceOperations: PackageLocalRuntimeTraceOperations;
   private readonly createForkSessionId?: () => SessionId;
   private readonly createForkSession?: (
@@ -449,6 +453,13 @@ export class PackageLocalSessionRuntime {
       hookManager: this.hookManager,
       hooks: this.hookCallbacks,
     });
+    this.subagentOperations = createPackageLocalRuntimeSubagentOperations({
+      subagentRegistry: this.subagentRegistry,
+      logger: this.logger,
+      projectPath: this.projectPath,
+      storageRoot: this.storageRoot,
+      agents: this.options.agents,
+    });
     this.createForkSessionId = options.createForkSessionId;
     this.createForkSession = options.createForkSession;
     this.traceManager = createPackageLocalRuntimeTraceManager({
@@ -565,13 +576,7 @@ export class PackageLocalSessionRuntime {
   }
 
   initializeSubagents(): void {
-    initializePackageLocalRuntimeSubagents({
-      subagentRegistry: this.subagentRegistry,
-      logger: this.logger,
-      projectPath: this.projectPath,
-      storageRoot: this.storageRoot,
-      agents: this.options.agents,
-    });
+    this.subagentOperations.initialize();
   }
 
   createPermissionHandler(): PermissionHandler | undefined {

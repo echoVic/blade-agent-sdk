@@ -836,8 +836,15 @@ describe('monorepo topology', () => {
     expect(runtimeSubagentsSource).not.toContain('../../../../src/');
     expect(runtimeSubagentsSource).toContain('packageLocalSubagentConfigFromDefinition');
     expect(runtimeSubagentsSource).toContain('initializePackageLocalRuntimeSubagents');
+    expect(runtimeSubagentsSource).toContain('createPackageLocalRuntimeSubagentOperations');
     expect(packageLocalRuntimeInstanceSource).not.toContain('packageLocalSubagentConfigFromDefinition');
-    expect(packageLocalRuntimeInstanceSource).toContain('initializePackageLocalRuntimeSubagents');
+    expect(packageLocalRuntimeInstanceSource).toContain(
+      'createPackageLocalRuntimeSubagentOperations',
+    );
+    expect(packageLocalRuntimeInstanceSource).toContain('subagentOperations');
+    expect(packageLocalRuntimeInstanceSource).not.toContain(
+      'initializePackageLocalRuntimeSubagents({',
+    );
     expect(packageLocalRuntimeInstanceSource).not.toContain(
       'function packageLocalSubagentConfigFromDefinition',
     );
