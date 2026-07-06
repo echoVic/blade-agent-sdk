@@ -580,4 +580,13 @@ describe('ci workflow', () => {
       'pnpm run verify',
     ]);
   });
+
+  it('keeps CI workflow toolchain pins covered by the release verifier', () => {
+    const releaseVerifier = readFileSync(resolve('scripts/verify-release-config.mjs'), 'utf8');
+
+    expect(releaseVerifier).toContain("'.github/workflows/ci.yml'");
+    expect(releaseVerifier).toContain('verifyCiWorkflow');
+    expect(releaseVerifier).toContain('ci workflow must run on Node 22');
+    expect(releaseVerifier).toContain('ci workflow must pin pnpm/action-setup to pnpm 11.7.0');
+  });
 });

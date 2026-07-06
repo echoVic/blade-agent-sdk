@@ -260,10 +260,31 @@ function verifyReleaseWorkflow() {
   }
 }
 
+function verifyCiWorkflow() {
+  const workflow = parse(readFileSync(resolve('.github/workflows/ci.yml'), 'utf8'));
+  const verifyJob = workflow.jobs?.verify;
+  const steps = verifyJob?.steps ?? [];
+  const commands = steps.map((step) => step.run).filter(Boolean);
+  const setupPnpmStep = steps.find((step) => step.uses?.startsWith('pnpm/action-setup@'));
+
+  assertDeepEqual(verifyJob?.strategy?.matrix?.['node-version'], ['22'], 'ci workflow node versions');
+  assertDeepEqual(commands, [
+    'pnpm install --frozen-lockfile',
+    'pnpm run verify',
+  ], 'ci workflow commands');
+  if (setupPnpmStep?.with?.version !== '11.7.0') {
+    fail('ci workflow must pin pnpm/action-setup to pnpm 11.7.0');
+  }
+  if (!verifyJob?.strategy?.matrix?.['node-version']?.includes('22')) {
+    fail('ci workflow must run on Node 22');
+  }
+}
+
 verifyRootScripts();
 verifySemanticReleaseConfig();
 verifyPackageMetadata();
 await verifyPreparedReleaseManifestVersions();
 verifyReleaseWorkflow();
+verifyCiWorkflow();
 
 console.log('release configuration verification passed');

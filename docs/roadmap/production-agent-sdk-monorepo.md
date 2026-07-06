@@ -690,6 +690,7 @@ Status:
 - Seventeenth release-automation increment complete: `pnpm run verify:release` now rejects widened publishable package `files` metadata. Focused release verifier tests prove `@blade-ai/ai` and `@blade-ai/agent` publish only `dist` plus `README.md`, while `@blade-ai/agent-sdk` may additionally publish `vendor/ripgrep/**`, keeping npm tarball scope narrow before pack/install verification runs.
 - Eighteenth release-automation increment complete: `pnpm run verify:release` now rejects missing npm discoverability metadata. Focused release verifier tests prove publishable packages must keep the project homepage, GitHub issues URL, and baseline `agent` / `sdk` / `llm` keywords so all three public packages remain searchable and supportable after automated main-branch publishing.
 - Nineteenth release-automation increment complete: `pnpm run verify:release` now rejects release workflows whose `actions/setup-node` version drifts below the package engine floor. Focused workflow tests prove the main-branch publishing job stays pinned to Node `22.14`, matching the `>=22.14.0` engine contract used by all three publishable packages.
+- Twentieth release-automation increment complete: `pnpm run verify:release` now validates the CI workflow toolchain and command chain as part of release readiness. Focused workflow tests prove CI remains on Node `22`, pins `pnpm/action-setup` to `11.7.0`, and runs only the frozen install plus full production `pnpm run verify` gate before main-branch publishing can rely on it.
 
 Commit:
 
