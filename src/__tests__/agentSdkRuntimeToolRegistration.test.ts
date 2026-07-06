@@ -152,4 +152,70 @@ describe('agent-sdk package-local runtime tool registration helpers', () => {
 
     expect(toolCatalog.registerAll).toHaveBeenCalledOnce();
   });
+
+  it('bundles session custom and builtin tool registration behind injected ports', async () => {
+    expect(existsSync(toolRegistrationSourcePath)).toBe(true);
+
+    const { createPackageLocalRuntimeSessionToolRegistrationOperations } = await import(
+      toolRegistrationModulePath
+    );
+    const mcpRegistry = {};
+    const registered: unknown[] = [];
+
+    const operations = createPackageLocalRuntimeSessionToolRegistrationOperations({
+      definitions: [
+        {
+          name: 'search_docs',
+          description: 'Search docs',
+          inputSchema: {},
+        },
+      ],
+      customToolFactory: {
+        fromDefinition(definition: { name: string }) {
+          return {
+            name: `custom_${definition.name}`,
+          };
+        },
+      },
+      sessionId: 'session-1',
+      storageRoot: '/tmp/blade',
+      mcpRegistry,
+      builtinToolProvider: {
+        async getTools(context: unknown) {
+          expect(context).toEqual({
+            sessionId: 'session-1',
+            configDir: '/tmp/blade',
+            mcpRegistry,
+            includeMcpProtocolTools: false,
+          });
+          return [{ name: 'read' }];
+        },
+      },
+      registerTools(tools: Array<{ name: string }>, source: unknown) {
+        registered.push({ tools, source });
+      },
+    });
+
+    operations.registerCustomTools();
+    await operations.registerBuiltinTools();
+
+    expect(registered).toEqual([
+      {
+        tools: [{ name: 'custom_search_docs' }],
+        source: {
+          kind: 'custom',
+          trustLevel: 'workspace',
+          sourceId: 'session',
+        },
+      },
+      {
+        tools: [{ name: 'read' }],
+        source: {
+          kind: 'builtin',
+          trustLevel: 'trusted',
+          sourceId: 'builtin',
+        },
+      },
+    ]);
+  });
 });

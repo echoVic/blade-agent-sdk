@@ -797,10 +797,21 @@ describe('monorepo topology', () => {
     expect(runtimeToolRegistrationSource).toContain(
       'createPackageLocalRuntimeToolRegistrationOperations',
     );
-    expect(packageLocalRuntimeInstanceSource).toContain('registerPackageLocalRuntimeCustomTools');
-    expect(packageLocalRuntimeInstanceSource).toContain('registerPackageLocalRuntimeBuiltinTools');
+    expect(runtimeToolRegistrationSource).toContain(
+      'createPackageLocalRuntimeSessionToolRegistrationOperations',
+    );
     expect(packageLocalRuntimeInstanceSource).toContain(
       'createPackageLocalRuntimeToolRegistrationOperations',
+    );
+    expect(packageLocalRuntimeInstanceSource).toContain(
+      'createPackageLocalRuntimeSessionToolRegistrationOperations',
+    );
+    expect(packageLocalRuntimeInstanceSource).toContain('sessionToolRegistrationOperations');
+    expect(packageLocalRuntimeInstanceSource).not.toContain(
+      'registerPackageLocalRuntimeCustomTools({',
+    );
+    expect(packageLocalRuntimeInstanceSource).not.toContain(
+      'registerPackageLocalRuntimeBuiltinTools({',
     );
     expect(packageLocalRuntimeInstanceSource).toContain('toolRegistrationOperations');
     expect(packageLocalRuntimeInstanceSource).toContain('registerCustomTools');

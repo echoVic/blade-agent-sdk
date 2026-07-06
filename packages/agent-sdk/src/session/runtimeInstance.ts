@@ -95,9 +95,9 @@ import { initializePackageLocalRuntimeSubagents } from './runtimeSubagents.js';
 import { filterPackageLocalRuntimeTools } from './runtimeToolFilters.js';
 import {
   createPackageLocalRuntimeToolRegistrationOperations,
-  registerPackageLocalRuntimeBuiltinTools,
-  registerPackageLocalRuntimeCustomTools,
+  createPackageLocalRuntimeSessionToolRegistrationOperations,
   type PackageLocalRuntimeToolRegistrationOperations,
+  type PackageLocalRuntimeSessionToolRegistrationOperations,
 } from './runtimeToolRegistration.js';
 import {
   createPackageLocalRuntimePermissionHandler,
@@ -322,6 +322,7 @@ export class PackageLocalSessionRuntime {
     PackageLocalRuntimeNamedTool,
     PackageLocalRuntimeToolSource
   >;
+  private readonly sessionToolRegistrationOperations: PackageLocalRuntimeSessionToolRegistrationOperations;
   private readonly traceOperations: PackageLocalRuntimeTraceOperations;
   private readonly createForkSessionId?: () => SessionId;
   private readonly createForkSession?: (
@@ -424,6 +425,18 @@ export class PackageLocalSessionRuntime {
       filterTools: (tools) => this.filterTools(tools),
       toolCatalog: this.toolCatalog,
     });
+    this.sessionToolRegistrationOperations =
+      createPackageLocalRuntimeSessionToolRegistrationOperations({
+        definitions: this.options.tools,
+        customToolFactory: this.customToolFactory,
+        sessionId: this.sessionId,
+        storageRoot: this.storageRoot,
+        mcpRegistry: this.mcpRegistry,
+        builtinToolProvider: this.builtinToolProvider,
+        registerTools: (tools, source) => {
+          this.registerTools(tools, source);
+        },
+      });
     this.createForkSessionId = options.createForkSessionId;
     this.createForkSession = options.createForkSession;
     this.traceManager = createPackageLocalRuntimeTraceManager({
@@ -534,25 +547,11 @@ export class PackageLocalSessionRuntime {
   }
 
   registerCustomTools(): void {
-    registerPackageLocalRuntimeCustomTools({
-      definitions: this.options.tools,
-      customToolFactory: this.customToolFactory,
-      registerTools: (tools, source) => {
-        this.registerTools(tools, source);
-      },
-    });
+    this.sessionToolRegistrationOperations.registerCustomTools();
   }
 
   async registerBuiltinTools(): Promise<void> {
-    await registerPackageLocalRuntimeBuiltinTools({
-      sessionId: this.sessionId,
-      storageRoot: this.storageRoot,
-      mcpRegistry: this.mcpRegistry,
-      builtinToolProvider: this.builtinToolProvider,
-      registerTools: (tools, source) => {
-        this.registerTools(tools, source);
-      },
-    });
+    await this.sessionToolRegistrationOperations.registerBuiltinTools();
   }
 
   initializeSubagents(): void {

@@ -57,6 +57,27 @@ export interface PackageLocalRuntimeBuiltinToolRegistrationOptions<
   registerTools(tools: TTool[], source: PackageLocalRuntimeBuiltinToolSource): void;
 }
 
+export interface PackageLocalRuntimeSessionToolRegistrationOperations {
+  registerCustomTools(): void;
+  registerBuiltinTools(): Promise<void>;
+}
+
+export interface PackageLocalRuntimeSessionToolRegistrationOperationsOptions<
+  TTool extends PackageLocalRuntimeNamedTool,
+  TMcpRegistry,
+> {
+  definitions?: readonly PackageLocalRuntimeToolDefinition[];
+  customToolFactory?: PackageLocalRuntimeCustomToolFactoryPort<TTool>;
+  sessionId: string;
+  storageRoot?: string;
+  mcpRegistry: TMcpRegistry;
+  builtinToolProvider?: PackageLocalRuntimeBuiltinToolProviderPort<TTool, TMcpRegistry>;
+  registerTools(
+    tools: TTool[],
+    source: PackageLocalRuntimeCustomToolSource | PackageLocalRuntimeBuiltinToolSource,
+  ): void;
+}
+
 export interface PackageLocalRuntimeToolRegistrationCatalogPort<
   TTool extends PackageLocalRuntimeNamedTool,
   TSource,
@@ -99,6 +120,32 @@ export function createPackageLocalRuntimeToolRegistrationOperations<
       }
 
       options.toolCatalog.registerAll(filteredTools, source);
+    },
+  };
+}
+
+export function createPackageLocalRuntimeSessionToolRegistrationOperations<
+  TTool extends PackageLocalRuntimeNamedTool,
+  TMcpRegistry,
+>(
+  options: PackageLocalRuntimeSessionToolRegistrationOperationsOptions<TTool, TMcpRegistry>,
+): PackageLocalRuntimeSessionToolRegistrationOperations {
+  return {
+    registerCustomTools() {
+      registerPackageLocalRuntimeCustomTools({
+        definitions: options.definitions,
+        customToolFactory: options.customToolFactory,
+        registerTools: options.registerTools,
+      });
+    },
+    registerBuiltinTools() {
+      return registerPackageLocalRuntimeBuiltinTools({
+        sessionId: options.sessionId,
+        storageRoot: options.storageRoot,
+        mcpRegistry: options.mcpRegistry,
+        builtinToolProvider: options.builtinToolProvider,
+        registerTools: options.registerTools,
+      });
     },
   };
 }
