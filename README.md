@@ -212,7 +212,7 @@ pnpm run docs:dev
 
 `pnpm run verify` 是 CI 和发版前的生产 gate，会串起 lint、root/workspace type-check、examples type-check、package boundary scanner、docs build、entrypoint/browser-safety scanner、packed package smoke、release config verification、unit tests 和默认 integration skip 检查。
 
-`pnpm run verify:packages` 会先 fresh-build 三个发布包，再打出 packed tarball，把它们安装到外部 temporary consumer 项目里，并从 consumer 侧 import root/subpath exports，检查 packed package npm metadata 和 packed package manifest entry targets，防止声明文件、exports、workspace 依赖或包内容在 npm 分发时回退。
+`pnpm run verify:packages` 会先 fresh-build 三个发布包，再打出 packed tarball，把它们安装到外部 temporary consumer 项目里，并从 consumer 侧 import root/subpath exports，检查 packed package npm metadata、packed package manifest entry targets 和 packed SDK browser export conditions，防止声明文件、exports、browser stub、workspace 依赖或包内容在 npm 分发时回退。
 
 真实模型测试是显式 opt-in：
 

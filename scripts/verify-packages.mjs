@@ -25,6 +25,12 @@ const expectedPackedPackageMetadata = {
     url: 'https://github.com/echoVic/blade-agent-sdk',
   },
 };
+const expectedPackedSdkBrowserExports = {
+  '.': './dist/browser/index.js',
+  './server': './dist/browser/server-only-stub.js',
+  './session': './dist/browser/server-only-stub.js',
+  './local': './dist/browser/server-only-stub.js',
+};
 const packageSpecs = [
   {
     name: '@blade-ai/ai',
@@ -542,6 +548,7 @@ function verifyPackedManifest(spec, tarballPath, tempDir) {
     packageName: spec.name,
     exportsMap: manifest.exports,
   });
+  verifyPackedSdkBrowserExportConditions(spec.name, manifest);
 }
 
 function verifyPackedPackageMetadata(spec, manifest) {
@@ -630,6 +637,31 @@ function verifyPackedManifestExports({ packageName, exportsMap }) {
         label: `exports.${exportName}.${condition}`,
         target,
       });
+    }
+  }
+}
+
+function verifyPackedSdkBrowserExportConditions(packageName, manifest) {
+  if (packageName !== '@blade-ai/agent-sdk') return;
+  const exportsMap = manifest.exports;
+  if (!exportsMap || typeof exportsMap !== 'object') {
+    throw new Error('@blade-ai/agent-sdk packed SDK export map is missing');
+  }
+
+  for (const [exportName, expectedBrowserTarget] of Object.entries(expectedPackedSdkBrowserExports)) {
+    const exportValue = exportsMap[exportName];
+    if (!exportValue || typeof exportValue !== 'object') {
+      throw new Error(`@blade-ai/agent-sdk packed SDK export ${exportName} must be an export condition object`);
+    }
+    if (exportValue.browser !== expectedBrowserTarget) {
+      throw new Error(
+        `@blade-ai/agent-sdk packed SDK export ${exportName} browser condition mismatch: expected ${expectedBrowserTarget}, got ${exportValue.browser}`,
+      );
+    }
+    if (typeof exportValue.import !== 'string') {
+      throw new Error(
+        `@blade-ai/agent-sdk packed SDK export ${exportName} must keep an import condition alongside the browser condition`,
+      );
     }
   }
 }
