@@ -75,9 +75,10 @@ import {
 } from './runtimeSessionLifecycle.js';
 import {
   closePackageLocalRuntimeMcpServers,
+  createPackageLocalRuntimeMcpServerRegistrationOperations,
   createPackageLocalRuntimeMcpServerLifecycleOperations,
+  type PackageLocalRuntimeMcpServerRegistrationOperations,
   type PackageLocalRuntimeMcpServerLifecycleOperations,
-  registerPackageLocalConfiguredMcpServers,
 } from './runtimeMcpServers.js';
 import {
   createPackageLocalRuntimeMcpCapabilityOperations,
@@ -309,6 +310,7 @@ export class PackageLocalSessionRuntime {
   readonly kernelModelResolver: PackageLocalRuntimeKernelModelResolverPort;
   private readonly sessionLifecycleOperations: PackageLocalRuntimeSessionLifecycleOperations<SessionMessage>;
   private readonly mcpCapabilityOperations: PackageLocalRuntimeMcpCapabilityOperations;
+  private readonly mcpServerRegistrationOperations: PackageLocalRuntimeMcpServerRegistrationOperations;
   private readonly mcpServerLifecycleOperations: PackageLocalRuntimeMcpServerLifecycleOperations;
   private readonly executionPipelineCache: PackageLocalRuntimeExecutionPipelineCache;
   private readonly agentRuntimeDepsOperations: PackageLocalAgentRuntimeDepsOperations;
@@ -361,6 +363,13 @@ export class PackageLocalSessionRuntime {
     this.mcpCapabilityOperations = createPackageLocalRuntimeMcpCapabilityOperations({
       mcpRegistry: this.mcpRegistry,
     });
+    this.mcpServerRegistrationOperations =
+      createPackageLocalRuntimeMcpServerRegistrationOperations({
+        configuredServers: this.options.mcpServers,
+        mcpRegistry: this.mcpRegistry,
+        logger: this.logger,
+        refreshMcpTools: (serverNames) => this.refreshMcpTools(serverNames),
+      });
     this.mcpServerLifecycleOperations =
       createPackageLocalRuntimeMcpServerLifecycleOperations({
         configuredServers: this.options.mcpServers,
@@ -496,12 +505,7 @@ export class PackageLocalSessionRuntime {
   }
 
   async registerConfiguredMcpServers(): Promise<void> {
-    await registerPackageLocalConfiguredMcpServers({
-      configuredServers: this.options.mcpServers,
-      mcpRegistry: this.mcpRegistry,
-      logger: this.logger,
-      refreshMcpTools: (serverNames) => this.refreshMcpTools(serverNames),
-    });
+    await this.mcpServerRegistrationOperations.registerConfigured();
   }
 
   async refreshMcpTools(serverNames: string[]): Promise<void> {

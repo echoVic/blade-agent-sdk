@@ -28,6 +28,13 @@ export interface PackageLocalConfiguredMcpServersRegistrationOptions {
   refreshMcpTools(serverNames: string[]): Promise<void> | void;
 }
 
+export interface PackageLocalRuntimeMcpServerRegistrationOperations {
+  registerConfigured(): Promise<void>;
+}
+
+export type PackageLocalRuntimeMcpServerRegistrationOperationsOptions =
+  PackageLocalConfiguredMcpServersRegistrationOptions;
+
 export interface PackageLocalMcpServerEnsureOptions {
   serverName: string;
   configuredServers?: Record<string, McpServerConfig | SdkMcpServerHandle>;
@@ -136,6 +143,16 @@ export async function registerPackageLocalConfiguredMcpServers(
   }
 
   await options.refreshMcpTools(Object.keys(configuredServers));
+}
+
+export function createPackageLocalRuntimeMcpServerRegistrationOperations(
+  options: PackageLocalRuntimeMcpServerRegistrationOperationsOptions,
+): PackageLocalRuntimeMcpServerRegistrationOperations {
+  return {
+    registerConfigured() {
+      return registerPackageLocalConfiguredMcpServers(options);
+    },
+  };
 }
 
 export async function ensurePackageLocalMcpServerRegistered(
