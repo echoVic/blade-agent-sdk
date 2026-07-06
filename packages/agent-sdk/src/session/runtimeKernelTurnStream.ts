@@ -109,7 +109,12 @@ export async function* streamPackageLocalAgentKernelTurn(
       });
     }
   } catch (error) {
-    await reportPackageLocalKernelTaskFailure(error, options);
+    options.hookRuntime.setTraceCollector?.(options.traceRecorder);
+    try {
+      await reportPackageLocalKernelTaskFailure(error, options);
+    } finally {
+      options.hookRuntime.setTraceCollector?.(undefined);
+    }
     await finishPackageLocalKernelTraceError(error, traceFinalizer);
     throw error;
   }

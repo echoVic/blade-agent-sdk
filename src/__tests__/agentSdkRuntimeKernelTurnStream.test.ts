@@ -83,7 +83,7 @@ describe('agent-sdk package-local kernel turn stream helper', () => {
   });
 
   it('reports successful kernel results through TaskCompleted hooks', async () => {
-    const runTaskCompleted = vi.fn(async () => undefined);
+    const runTaskCompleted = vi.fn(async (_payload: unknown) => undefined);
     const traceRecorder = {
       finish: vi.fn(() => ({ id: 'trace-task' })),
     } as unknown as TraceRecorder;
@@ -132,7 +132,7 @@ describe('agent-sdk package-local kernel turn stream helper', () => {
 
   it('reports kernel error events through TaskCompleted hooks', async () => {
     const abortController = new AbortController();
-    const runTaskCompleted = vi.fn(async () => undefined);
+    const runTaskCompleted = vi.fn(async (_payload: unknown) => undefined);
     const traceRecorder = {
       finish: vi.fn(() => ({ id: 'trace-task-error' })),
     } as unknown as TraceRecorder;
@@ -190,7 +190,8 @@ describe('agent-sdk package-local kernel turn stream helper', () => {
     const traceRecorder = {
       finish: vi.fn(() => trace),
     } as unknown as TraceRecorder;
-    const runTaskCompleted = vi.fn(async () => undefined);
+    const runTaskCompleted = vi.fn(async (_payload: unknown) => undefined);
+    let activeCollector: unknown;
 
     const stream = streamPackageLocalAgentKernelTurn({
       sessionId: 'session-1',
@@ -216,8 +217,13 @@ describe('agent-sdk package-local kernel turn stream helper', () => {
       },
       hookRuntime: {
         enable: vi.fn(),
-        setTraceCollector: vi.fn(),
-        runTaskCompleted,
+        setTraceCollector: vi.fn((collector) => {
+          activeCollector = collector;
+        }),
+        runTaskCompleted: vi.fn(async (payload) => {
+          expect(activeCollector).toBe(traceRecorder);
+          await runTaskCompleted(payload);
+        }),
       },
       maxContextTokens: 99,
     });
@@ -237,6 +243,7 @@ describe('agent-sdk package-local kernel turn stream helper', () => {
       success: false,
       abortSignal: undefined,
     });
+    expect(activeCollector).toBeUndefined();
   });
 
   it('resolves the kernel model, creates a trace recorder, and delegates the kernel stream', async () => {
