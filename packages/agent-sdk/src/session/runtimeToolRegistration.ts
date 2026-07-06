@@ -57,6 +57,52 @@ export interface PackageLocalRuntimeBuiltinToolRegistrationOptions<
   registerTools(tools: TTool[], source: PackageLocalRuntimeBuiltinToolSource): void;
 }
 
+export interface PackageLocalRuntimeToolRegistrationCatalogPort<
+  TTool extends PackageLocalRuntimeNamedTool,
+  TSource,
+> {
+  registerAll<TRegisteredTool extends TTool>(
+    tools: TRegisteredTool[],
+    source: TSource,
+  ): void;
+}
+
+export interface PackageLocalRuntimeToolRegistrationOperations<
+  TTool extends PackageLocalRuntimeNamedTool,
+  TSource,
+> {
+  registerTools<TRegisteredTool extends TTool>(
+    tools: TRegisteredTool[],
+    source: TSource,
+  ): void;
+}
+
+export interface PackageLocalRuntimeToolRegistrationOperationsOptions<
+  TTool extends PackageLocalRuntimeNamedTool,
+  TSource,
+> {
+  filterTools<TRegisteredTool extends TTool>(tools: TRegisteredTool[]): TRegisteredTool[];
+  toolCatalog: PackageLocalRuntimeToolRegistrationCatalogPort<TTool, TSource>;
+}
+
+export function createPackageLocalRuntimeToolRegistrationOperations<
+  TTool extends PackageLocalRuntimeNamedTool,
+  TSource,
+>(
+  options: PackageLocalRuntimeToolRegistrationOperationsOptions<TTool, TSource>,
+): PackageLocalRuntimeToolRegistrationOperations<TTool, TSource> {
+  return {
+    registerTools(tools, source) {
+      const filteredTools = options.filterTools(tools);
+      if (filteredTools.length === 0) {
+        return;
+      }
+
+      options.toolCatalog.registerAll(filteredTools, source);
+    },
+  };
+}
+
 export function registerPackageLocalRuntimeCustomTools<
   TTool extends PackageLocalRuntimeNamedTool,
 >(options: PackageLocalRuntimeCustomToolRegistrationOptions<TTool>): void {

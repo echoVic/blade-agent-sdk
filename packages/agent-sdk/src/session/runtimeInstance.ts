@@ -87,8 +87,10 @@ import { createPackageLocalRuntimeNoopPorts } from './runtimeNoopPorts.js';
 import { initializePackageLocalRuntimeSubagents } from './runtimeSubagents.js';
 import { filterPackageLocalRuntimeTools } from './runtimeToolFilters.js';
 import {
+  createPackageLocalRuntimeToolRegistrationOperations,
   registerPackageLocalRuntimeBuiltinTools,
   registerPackageLocalRuntimeCustomTools,
+  type PackageLocalRuntimeToolRegistrationOperations,
 } from './runtimeToolRegistration.js';
 import {
   createPackageLocalRuntimePermissionHandler,
@@ -302,6 +304,10 @@ export class PackageLocalSessionRuntime {
   private readonly agentRuntimeDepsOperations: PackageLocalAgentRuntimeDepsOperations;
   private readonly kernelPortOperations: PackageLocalRuntimeKernelPortOperations;
   private readonly agentKernelOperations: PackageLocalRuntimeAgentKernelOperations;
+  private readonly toolRegistrationOperations: PackageLocalRuntimeToolRegistrationOperations<
+    PackageLocalRuntimeNamedTool,
+    PackageLocalRuntimeToolSource
+  >;
   private readonly createForkSessionId?: () => SessionId;
   private readonly createForkSession?: (
     sessionId: SessionId,
@@ -373,6 +379,10 @@ export class PackageLocalSessionRuntime {
       getTracePort: (recorder, maxContextTokens) =>
         this.getKernelTracePort(recorder, maxContextTokens),
       getToolPort: (createExecutionContext) => this.getKernelToolPort(createExecutionContext),
+    });
+    this.toolRegistrationOperations = createPackageLocalRuntimeToolRegistrationOperations({
+      filterTools: (tools) => this.filterTools(tools),
+      toolCatalog: this.toolCatalog,
     });
     this.createForkSessionId = options.createForkSessionId;
     this.createForkSession = options.createForkSession;
@@ -505,12 +515,7 @@ export class PackageLocalSessionRuntime {
     tools: TTool[],
     source: PackageLocalRuntimeToolSource,
   ): void {
-    const filteredTools = this.filterTools(tools);
-    if (filteredTools.length === 0) {
-      return;
-    }
-
-    this.toolCatalog.registerAll(filteredTools, source);
+    this.toolRegistrationOperations.registerTools(tools, source);
   }
 
   registerCustomTools(): void {

@@ -1,5 +1,5 @@
 import { existsSync } from 'node:fs';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 const toolRegistrationModulePath =
   '../../packages/agent-sdk/src/session/runtimeToolRegistration.js';
@@ -117,5 +117,39 @@ describe('agent-sdk package-local runtime tool registration helpers', () => {
         },
       },
     ]);
+  });
+
+  it('creates reusable tool registration operations without session runtime state', async () => {
+    expect(existsSync(toolRegistrationSourcePath)).toBe(true);
+
+    const { createPackageLocalRuntimeToolRegistrationOperations } = await import(
+      toolRegistrationModulePath
+    );
+    const source = {
+      kind: 'session',
+      trustLevel: 'workspace',
+      sourceId: 'test',
+    };
+    const tools = [{ name: 'read' }, { name: 'write' }];
+    const filteredTools = [{ name: 'read' }];
+    const filterTools = vi.fn(() => filteredTools);
+    const toolCatalog = {
+      registerAll: vi.fn(),
+    };
+
+    const operations = createPackageLocalRuntimeToolRegistrationOperations({
+      filterTools,
+      toolCatalog,
+    });
+
+    operations.registerTools(tools, source);
+
+    expect(filterTools).toHaveBeenCalledWith(tools);
+    expect(toolCatalog.registerAll).toHaveBeenCalledWith(filteredTools, source);
+
+    filterTools.mockReturnValueOnce([]);
+    operations.registerTools(tools, source);
+
+    expect(toolCatalog.registerAll).toHaveBeenCalledOnce();
   });
 });

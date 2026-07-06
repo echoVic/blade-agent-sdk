@@ -722,10 +722,19 @@ describe('monorepo topology', () => {
     expect(runtimeToolRegistrationSource).not.toContain('../../../../src/');
     expect(runtimeToolRegistrationSource).toContain('registerPackageLocalRuntimeCustomTools');
     expect(runtimeToolRegistrationSource).toContain('registerPackageLocalRuntimeBuiltinTools');
+    expect(runtimeToolRegistrationSource).toContain(
+      'createPackageLocalRuntimeToolRegistrationOperations',
+    );
     expect(packageLocalRuntimeInstanceSource).toContain('registerPackageLocalRuntimeCustomTools');
     expect(packageLocalRuntimeInstanceSource).toContain('registerPackageLocalRuntimeBuiltinTools');
+    expect(packageLocalRuntimeInstanceSource).toContain(
+      'createPackageLocalRuntimeToolRegistrationOperations',
+    );
+    expect(packageLocalRuntimeInstanceSource).toContain('toolRegistrationOperations');
     expect(packageLocalRuntimeInstanceSource).toContain('registerCustomTools');
     expect(packageLocalRuntimeInstanceSource).toContain('PackageLocalRuntimeCustomToolFactoryPort');
+    expect(packageLocalRuntimeInstanceSource).not.toContain('filteredTools.length === 0');
+    expect(packageLocalRuntimeInstanceSource).not.toContain('this.toolCatalog.registerAll');
     expect(packageLocalRuntimeInstanceSource).not.toContain(
       "throw new Error('Package-local custom tool factory port is required to register tools')",
     );
