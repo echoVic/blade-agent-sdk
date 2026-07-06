@@ -17,6 +17,7 @@ export interface PackageLocalKernelSessionRuntimeFactoryOptions {
 export interface PackageLocalKernelSessionRuntime extends KernelStreamBridgeRuntime {
   ensureSessionCreated?: () => Promise<void> | void;
   ensureSessionLoaded?: () => Promise<void> | void;
+  runSessionStart?: (isResume: boolean) => Promise<void> | void;
   loadMessages?: () => Promise<SessionMessage[]> | SessionMessage[];
 }
 
@@ -42,9 +43,11 @@ export function createPackageLocalKernelSessionRuntimeFactory(
       const runtime = getRuntime(context);
       if (context.isResume) {
         await runtime.ensureSessionLoaded?.();
+        await runtime.runSessionStart?.(true);
         return { messages: await runtime.loadMessages?.() };
       }
       await runtime.ensureSessionCreated?.();
+      await runtime.runSessionStart?.(false);
       return { messages: await runtime.loadMessages?.() };
     },
     async cleanup(context) {

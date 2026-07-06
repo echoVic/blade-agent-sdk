@@ -474,6 +474,15 @@ export class PackageLocalSessionRuntime {
     return this.sessionLifecycleOperations.loadMessages();
   }
 
+  async runSessionStart(isResume: boolean): Promise<void> {
+    await this.hookRuntime.runSessionStart?.({
+      isResume,
+      ...(isResume ? { resumeSessionId: this.sessionId } : {}),
+      model: this.options.model,
+      provider: this.options.provider.type,
+    });
+  }
+
   prepareTurn(snapshot: ContextSnapshot): void {
     this.workspaceOperations.prepareTurn(snapshot);
   }

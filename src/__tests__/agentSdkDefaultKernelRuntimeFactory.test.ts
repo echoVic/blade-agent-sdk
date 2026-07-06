@@ -268,6 +268,44 @@ describe('agent-sdk default kernel runtime factory', () => {
     );
   });
 
+  it('runs SessionStart hooks during package-local session initialization', async () => {
+    const sessionStart = vi.fn(async () => ({
+      action: 'continue' as const,
+    }));
+    const factory = createDefaultKernelSessionRuntimeFactory({
+      createSessionId: () => 'start-hook-session',
+      createTurnId: () => 'start-hook-turn',
+      runtime: {
+        kernelModelResolver: {
+          resolve() {
+            return {
+              model,
+              modelRequestDefaults: { model: 'test-model' },
+            };
+          },
+        },
+      },
+    });
+
+    const session = await factory.create({
+      ...options,
+      hooks: {
+        [HookEvent.SessionStart]: [sessionStart],
+      },
+    });
+
+    expect(session.sessionId).toBe('start-hook-session');
+    expect(sessionStart).toHaveBeenCalledWith(
+      expect.objectContaining({
+        event: HookEvent.SessionStart,
+        sessionId: 'start-hook-session',
+        isResume: false,
+        model: 'test-model',
+        provider: 'openai-compatible',
+      }),
+    );
+  });
+
   it('initializes configured runtime capabilities before package-local kernel turns', async () => {
     const order: string[] = [];
     const registerServer = vi.fn(async (serverName: string) => {

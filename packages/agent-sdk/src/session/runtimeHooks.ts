@@ -10,6 +10,7 @@ export interface PackageLocalRuntimeHookManagerPort {
 export interface PackageLocalRuntimeHookRuntimePort extends PackageLocalRuntimeHookManagerPort {
   setTraceCollector?(collector: unknown): void;
   createAgentHookPort?(): AgentHookPort;
+  runSessionStart?(payload: PackageLocalSessionStartHookPayload): Promise<void> | void;
 }
 
 export interface PackageLocalRuntimeHooksInitializationOptions {
@@ -36,6 +37,14 @@ export interface PackageLocalHookTraceCollector {
 export interface PackageLocalRuntimeHookRuntimeOptions {
   sessionId: string;
   hooks?: Partial<Record<SessionHookEvent, HookCallback[]>>;
+}
+
+export interface PackageLocalSessionStartHookPayload {
+  isResume: boolean;
+  resumeSessionId?: string;
+  model: string;
+  provider: string;
+  abortSignal?: AbortSignal;
 }
 
 export function initializePackageLocalRuntimeHooks(
@@ -82,7 +91,55 @@ export function createPackageLocalRuntimeHookRuntime(
         },
       };
     },
+    async runSessionStart(payload) {
+      await runPackageLocalHookCallbacks({
+        event: HookEvent.SessionStart,
+        sessionId: options.sessionId,
+        callbacks: options.hooks?.[HookEvent.SessionStart] ?? [],
+        payload,
+        traceCollector,
+      });
+    },
   };
+}
+
+interface PackageLocalHookCallbackRunOptions {
+  event: SessionHookEvent;
+  sessionId: string;
+  callbacks: readonly HookCallback[];
+  payload: object;
+  traceCollector?: PackageLocalHookTraceCollector;
+}
+
+async function runPackageLocalHookCallbacks(
+  options: PackageLocalHookCallbackRunOptions,
+): Promise<void> {
+  for (const callback of options.callbacks) {
+    const payload = {
+      event: options.event,
+      sessionId: options.sessionId,
+      ...options.payload,
+    };
+    const spanId = options.traceCollector?.recordHookStart?.(options.event, payload);
+
+    try {
+      const output = await callback(payload);
+      if (spanId) {
+        options.traceCollector?.recordHookEnd?.(spanId, {
+          action: output.action,
+          reason: output.reason,
+        });
+      }
+      if (output.action === 'abort') {
+        throw new Error(output.reason || `${options.event} aborted by hook`);
+      }
+    } catch (error) {
+      if (spanId) {
+        options.traceCollector?.recordHookError?.(spanId, error);
+      }
+      throw error;
+    }
+  }
 }
 
 interface PackageLocalUserPromptSubmitHookOptions {
