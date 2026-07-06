@@ -1,7 +1,9 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
+  createPackageLocalRuntimeTraceOperations,
   createPackageLocalRuntimeTraceManager,
 } from '../../packages/agent-sdk/src/session/runtimeTraceManager.js';
+import type { AgentTrace } from '../../packages/agent-sdk/src/observability/types.js';
 
 describe('agent-sdk package-local runtime trace manager helper', () => {
   it('creates session trace metadata from runtime model, provider, and default permission mode', () => {
@@ -56,5 +58,38 @@ describe('agent-sdk package-local runtime trace manager helper', () => {
       '[PackageLocalSessionRuntime] Observability trace sink failed:',
       expect.any(Error),
     );
+  });
+
+  it('creates reusable trace access operations without session runtime state', () => {
+    const firstTrace: AgentTrace = {
+      id: 'trace-1',
+      sessionId: 'session-1',
+      status: 'success',
+      startedAt: '2026-07-06T00:00:00.000Z',
+      spans: [],
+      events: [],
+    };
+    const lastTrace: AgentTrace = {
+      id: 'trace-2',
+      sessionId: 'session-1',
+      status: 'success',
+      startedAt: '2026-07-06T00:00:01.000Z',
+      spans: [],
+      events: [],
+    };
+    const traces = [firstTrace, lastTrace];
+    const traceManager = {
+      getLastTrace: vi.fn(() => lastTrace),
+      getTraces: vi.fn(() => traces),
+    };
+
+    const operations = createPackageLocalRuntimeTraceOperations({
+      traceManager,
+    });
+
+    expect(operations.getLastTrace()).toBe(lastTrace);
+    expect(operations.getTraces()).toBe(traces);
+    expect(traceManager.getLastTrace).toHaveBeenCalledOnce();
+    expect(traceManager.getTraces).toHaveBeenCalledOnce();
   });
 });

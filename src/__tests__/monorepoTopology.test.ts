@@ -834,9 +834,14 @@ describe('monorepo topology', () => {
     expect(existsSync('packages/agent-sdk/src/session/runtimeTraceManager.ts')).toBe(true);
     expect(runtimeTraceManagerSource).not.toContain('../../../../src/');
     expect(runtimeTraceManagerSource).toContain('createPackageLocalRuntimeTraceManager');
+    expect(runtimeTraceManagerSource).toContain('createPackageLocalRuntimeTraceOperations');
     expect(runtimeTraceManagerSource).toContain('new SessionTraceManager({');
     expect(packageLocalRuntimeInstanceSource).toContain('createPackageLocalRuntimeTraceManager');
+    expect(packageLocalRuntimeInstanceSource).toContain('createPackageLocalRuntimeTraceOperations');
+    expect(packageLocalRuntimeInstanceSource).toContain('traceOperations');
     expect(packageLocalRuntimeInstanceSource).not.toContain('new SessionTraceManager({');
+    expect(packageLocalRuntimeInstanceSource).not.toContain('this.traceManager.getLastTrace()');
+    expect(packageLocalRuntimeInstanceSource).not.toContain('this.traceManager.getTraces()');
     expect(packageLocalRuntimeInstanceSource).not.toContain(
       'permissionMode: options.options.permissionMode ?? PermissionMode.DEFAULT',
     );

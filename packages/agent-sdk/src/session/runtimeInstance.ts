@@ -103,7 +103,9 @@ import {
   type PackageLocalRuntimePermissionHookPort,
 } from './runtimePermissions.js';
 import {
+  createPackageLocalRuntimeTraceOperations,
   createPackageLocalRuntimeTraceManager,
+  type PackageLocalRuntimeTraceOperations,
 } from './runtimeTraceManager.js';
 import { forkPackageLocalRuntimeSession } from './runtimeForking.js';
 import type { SessionTraceManager } from './traces.js';
@@ -316,6 +318,7 @@ export class PackageLocalSessionRuntime {
     PackageLocalRuntimeNamedTool,
     PackageLocalRuntimeToolSource
   >;
+  private readonly traceOperations: PackageLocalRuntimeTraceOperations;
   private readonly createForkSessionId?: () => SessionId;
   private readonly createForkSession?: (
     sessionId: SessionId,
@@ -409,6 +412,9 @@ export class PackageLocalSessionRuntime {
       permissionMode: options.options.permissionMode,
       logger: this.logger,
     });
+    this.traceOperations = createPackageLocalRuntimeTraceOperations({
+      traceManager: this.traceManager,
+    });
   }
 
   getConfiguredMcpServers(): Record<string, McpServerConfig | SdkMcpServerHandle> {
@@ -464,11 +470,11 @@ export class PackageLocalSessionRuntime {
   }
 
   getLastTrace(): AgentTrace | undefined {
-    return this.traceManager.getLastTrace();
+    return this.traceOperations.getLastTrace();
   }
 
   getTraces(): AgentTrace[] {
-    return this.traceManager.getTraces();
+    return this.traceOperations.getTraces();
   }
 
   async mcpConnect(serverName: string): Promise<void> {

@@ -1,4 +1,5 @@
 import type { ObservabilityOptions } from '../observability/types.js';
+import type { AgentTrace } from '../observability/types.js';
 import {
   PermissionMode,
   type ProviderType,
@@ -17,6 +18,33 @@ export interface PackageLocalRuntimeTraceManagerOptions {
   providerType: ProviderType;
   permissionMode?: PermissionMode;
   logger: PackageLocalRuntimeTraceLoggerPort;
+}
+
+export interface PackageLocalRuntimeTraceAccessPort {
+  getLastTrace(): AgentTrace | undefined;
+  getTraces(): AgentTrace[];
+}
+
+export interface PackageLocalRuntimeTraceOperations {
+  getLastTrace(): AgentTrace | undefined;
+  getTraces(): AgentTrace[];
+}
+
+export interface PackageLocalRuntimeTraceOperationsOptions {
+  traceManager: PackageLocalRuntimeTraceAccessPort;
+}
+
+export function createPackageLocalRuntimeTraceOperations(
+  options: PackageLocalRuntimeTraceOperationsOptions,
+): PackageLocalRuntimeTraceOperations {
+  return {
+    getLastTrace() {
+      return options.traceManager.getLastTrace();
+    },
+    getTraces() {
+      return options.traceManager.getTraces();
+    },
+  };
 }
 
 export function createPackageLocalRuntimeTraceManager(
