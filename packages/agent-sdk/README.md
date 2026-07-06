@@ -4,6 +4,14 @@ Session-first Blade Agent SDK for server and CLI applications.
 
 Use this package when you want the product-level SDK: `createSession()`, streaming turns, tool execution, MCP, permissions, hooks, observability, sandbox integration, memory, subagents, and session persistence. It composes `@blade-ai/agent` and `@blade-ai/ai` behind a stable session-first API.
 
+## Installation
+
+```bash
+pnpm add @blade-ai/agent-sdk
+```
+
+## Usage
+
 ```ts
 import { createSession } from '@blade-ai/agent-sdk';
 

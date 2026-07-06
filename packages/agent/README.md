@@ -4,6 +4,14 @@ Runtime-independent agent kernel contracts for Blade Agent.
 
 Use this package when you need the core `AgentKernel` without the session-first product SDK. The kernel runs turns through injected ports for model, tools, permissions, hooks, trace, and store. It does not own Node-local capabilities, MCP clients, filesystem access, shell execution, provider SDKs, or session persistence.
 
+## Installation
+
+```bash
+pnpm add @blade-ai/agent
+```
+
+## Usage
+
 ```ts
 import { AgentKernel } from '@blade-ai/agent';
 

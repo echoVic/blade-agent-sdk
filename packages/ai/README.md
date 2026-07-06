@@ -4,6 +4,14 @@ Provider-agnostic model runtime contracts for Blade Agent.
 
 Use this package when you want to work directly with the model layer instead of the session-first SDK. It owns `ModelPort`, normalized model requests/responses, stream events, usage metadata, and provider adapters such as OpenAI-compatible / GLM and Vercel AI SDK models.
 
+## Installation
+
+```bash
+pnpm add @blade-ai/ai
+```
+
+## Usage
+
 ```ts
 import { createOpenAICompatibleModelPort } from '@blade-ai/ai';
 

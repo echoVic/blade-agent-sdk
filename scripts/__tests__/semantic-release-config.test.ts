@@ -101,6 +101,32 @@ describe('package provenance metadata', () => {
     }
   });
 
+  it('documents direct install and import usage in every publishable package README', () => {
+    const packages = [
+      {
+        path: 'packages/ai',
+        name: '@blade-ai/ai',
+        importSnippet: "import { createOpenAICompatibleModelPort } from '@blade-ai/ai';",
+      },
+      {
+        path: 'packages/agent',
+        name: '@blade-ai/agent',
+        importSnippet: "import { AgentKernel } from '@blade-ai/agent';",
+      },
+      {
+        path: 'packages/agent-sdk',
+        name: '@blade-ai/agent-sdk',
+        importSnippet: "import { createSession } from '@blade-ai/agent-sdk';",
+      },
+    ];
+
+    for (const pkg of packages) {
+      const readme = readFileSync(resolve(pkg.path, 'README.md'), 'utf8');
+      expect(readme).toContain(`pnpm add ${pkg.name}`);
+      expect(readme).toContain(pkg.importSnippet);
+    }
+  });
+
   it('type-checks public package contracts from the packed temporary consumer', () => {
     const packageVerifier = readFileSync(resolve('scripts/verify-packages.mjs'), 'utf8');
 
