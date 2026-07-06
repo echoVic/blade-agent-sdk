@@ -471,6 +471,11 @@ describe('monorepo topology', () => {
     )
       ? readFileSync('packages/agent-sdk/src/session/runtimeMcpServers.ts', 'utf-8')
       : '';
+    const runtimeSessionLifecycleSource = existsSync(
+      'packages/agent-sdk/src/session/runtimeSessionLifecycle.ts',
+    )
+      ? readFileSync('packages/agent-sdk/src/session/runtimeSessionLifecycle.ts', 'utf-8')
+      : '';
     const runtimeMcpCapabilitiesSource = existsSync(
       'packages/agent-sdk/src/session/runtimeMcpCapabilities.ts',
     )
@@ -635,7 +640,22 @@ describe('monorepo topology', () => {
     );
     expect(packageLocalRuntimeInstanceSource).toContain('ensureSessionCreated');
     expect(packageLocalRuntimeInstanceSource).toContain('ensureSessionLoaded');
+    expect(existsSync('packages/agent-sdk/src/session/runtimeSessionLifecycle.ts')).toBe(true);
+    expect(runtimeSessionLifecycleSource).not.toContain('../../../../src/');
+    expect(runtimeSessionLifecycleSource).toContain(
+      'createPackageLocalRuntimeSessionLifecycleOperations',
+    );
+    expect(packageLocalRuntimeInstanceSource).toContain(
+      'createPackageLocalRuntimeSessionLifecycleOperations',
+    );
+    expect(packageLocalRuntimeInstanceSource).toContain('sessionLifecycleOperations');
     expect(packageLocalRuntimeInstanceSource).toContain('PackageLocalRuntimeSessionStorePort');
+    expect(packageLocalRuntimeInstanceSource).not.toContain(
+      'const loaded = await this.sessionStore.loadSession(this.sessionId)',
+    );
+    expect(packageLocalRuntimeInstanceSource).not.toContain(
+      'return this.sessionStore.loadMessages(this.sessionId)',
+    );
     expect(existsSync('packages/agent-sdk/src/session/runtimeForking.ts')).toBe(true);
     expect(runtimeForkingSource).not.toContain('../../../../src/');
     expect(runtimeForkingSource).toContain('forkPackageLocalRuntimeSession');

@@ -69,6 +69,10 @@ import {
   resolvePackageLocalRuntimeStorageRoot,
 } from './runtimeContext.js';
 import {
+  createPackageLocalRuntimeSessionLifecycleOperations,
+  type PackageLocalRuntimeSessionLifecycleOperations,
+} from './runtimeSessionLifecycle.js';
+import {
   connectPackageLocalRuntimeMcpServer,
   disconnectPackageLocalRuntimeMcpServer,
   reconnectPackageLocalRuntimeMcpServer,
@@ -300,6 +304,7 @@ export class PackageLocalSessionRuntime {
   readonly kernelPortFactory: PackageLocalRuntimeKernelPortFactoryPort;
   readonly kernelFactory: PackageLocalRuntimeAgentKernelFactoryPort;
   readonly kernelModelResolver: PackageLocalRuntimeKernelModelResolverPort;
+  private readonly sessionLifecycleOperations: PackageLocalRuntimeSessionLifecycleOperations<SessionMessage>;
   private readonly executionPipelineCache: PackageLocalRuntimeExecutionPipelineCache;
   private readonly agentRuntimeDepsOperations: PackageLocalAgentRuntimeDepsOperations;
   private readonly kernelPortOperations: PackageLocalRuntimeKernelPortOperations;
@@ -343,6 +348,10 @@ export class PackageLocalSessionRuntime {
     this.kernelPortFactory = options.kernelPortFactory ?? noopPorts.kernelPortFactory;
     this.kernelFactory = options.kernelFactory ?? noopPorts.kernelFactory;
     this.kernelModelResolver = options.kernelModelResolver ?? noopPorts.kernelModelResolver;
+    this.sessionLifecycleOperations = createPackageLocalRuntimeSessionLifecycleOperations({
+      sessionId: this.sessionId,
+      sessionStore: this.sessionStore,
+    });
     this.executionPipelineCache = createPackageLocalRuntimeExecutionPipelineCache(() =>
       createPackageLocalRuntimeExecutionPipeline({
         bladeConfig: this.bladeConfig,
@@ -401,18 +410,15 @@ export class PackageLocalSessionRuntime {
   }
 
   async ensureSessionCreated(): Promise<void> {
-    await this.sessionStore.createSession(this.sessionId);
+    await this.sessionLifecycleOperations.ensureSessionCreated();
   }
 
   async ensureSessionLoaded(): Promise<void> {
-    const loaded = await this.sessionStore.loadSession(this.sessionId);
-    if (!loaded) {
-      await this.sessionStore.createSession(this.sessionId);
-    }
+    await this.sessionLifecycleOperations.ensureSessionLoaded();
   }
 
   async loadMessages(): Promise<SessionMessage[]> {
-    return this.sessionStore.loadMessages(this.sessionId);
+    return this.sessionLifecycleOperations.loadMessages();
   }
 
   prepareTurn(snapshot: ContextSnapshot): void {
