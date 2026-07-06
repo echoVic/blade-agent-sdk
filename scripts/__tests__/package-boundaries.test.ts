@@ -156,4 +156,46 @@ describe('package boundary verifier', () => {
     expect(result.stderr).toContain('@blade-ai/agent-sdk/session');
     expect(result.stderr).toContain('Session SDK source must not import its own public facade');
   });
+
+  it('rejects ai source imports from its own public facade', () => {
+    const cwd = createBoundaryFixture();
+    mkdirSync(join(cwd, 'packages', 'ai', 'src', 'model'), { recursive: true });
+    writeFileSync(
+      join(cwd, 'packages', 'ai', 'src', 'model', 'feature.ts'),
+      "import type { ModelPort } from '@blade-ai/ai/model';\nexport type FeaturePort = ModelPort;\n",
+    );
+
+    const result = spawnSync(process.execPath, [
+      resolve('scripts/verify-package-boundaries.mjs'),
+    ], {
+      cwd,
+      encoding: 'utf8',
+    });
+
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain('packages/ai/src/model/feature.ts');
+    expect(result.stderr).toContain('@blade-ai/ai/model');
+    expect(result.stderr).toContain('AI package source must not import its own public facade');
+  });
+
+  it('rejects agent source imports from its own public facade', () => {
+    const cwd = createBoundaryFixture();
+    mkdirSync(join(cwd, 'packages', 'agent', 'src', 'kernel'), { recursive: true });
+    writeFileSync(
+      join(cwd, 'packages', 'agent', 'src', 'kernel', 'feature.ts'),
+      "import type { AgentKernel } from '@blade-ai/agent/kernel';\nexport type FeatureKernel = AgentKernel;\n",
+    );
+
+    const result = spawnSync(process.execPath, [
+      resolve('scripts/verify-package-boundaries.mjs'),
+    ], {
+      cwd,
+      encoding: 'utf8',
+    });
+
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain('packages/agent/src/kernel/feature.ts');
+    expect(result.stderr).toContain('@blade-ai/agent/kernel');
+    expect(result.stderr).toContain('Agent kernel source must not import its own public facade');
+  });
 });

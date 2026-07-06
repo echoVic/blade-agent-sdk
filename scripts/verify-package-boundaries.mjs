@@ -9,6 +9,7 @@ const rules = [
     name: '@blade-ai/ai',
     sourceDir: 'packages/ai/src',
     disallowedSpecifiers: [
+      [/^@blade-ai\/ai(?:\/|$)/, 'AI package source must not import its own public facade'],
       [/^@blade-ai\/agent(?:\/|$)/, 'AI package must not depend on the agent kernel'],
       [/^@blade-ai\/agent-sdk(?:\/|$)/, 'AI package must not depend on the session SDK'],
     ],
@@ -17,6 +18,7 @@ const rules = [
     name: '@blade-ai/agent',
     sourceDir: 'packages/agent/src',
     disallowedSpecifiers: [
+      [/^@blade-ai\/agent(?:\/|$)/, 'Agent kernel source must not import its own public facade'],
       [/^@blade-ai\/agent-sdk(?:\/|$)/, 'Agent kernel must not depend on the session SDK'],
       [/^node:/, 'Agent kernel must stay runtime independent and avoid node:* imports'],
       [/^(?:fs|node:fs|child_process|node:child_process|worker_threads|node:worker_threads)$/, 'Agent kernel must avoid Node-local runtime modules'],
