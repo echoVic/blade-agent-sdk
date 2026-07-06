@@ -386,6 +386,21 @@ describe('release scripts', () => {
     expect(releaseVerifier).toContain('keywords');
   });
 
+  it('requires package README install and import snippets in the release verifier', () => {
+    const releaseVerifier = readFileSync(resolve('scripts/verify-release-config.mjs'), 'utf8');
+    const roadmap = readFileSync(resolve('docs/roadmap/production-agent-sdk-monorepo.md'), 'utf8');
+
+    expect(releaseVerifier).toContain("installCommand: 'pnpm add @blade-ai/ai'");
+    expect(releaseVerifier).toContain("installCommand: 'pnpm add @blade-ai/agent'");
+    expect(releaseVerifier).toContain("installCommand: 'pnpm add @blade-ai/agent-sdk'");
+    expect(releaseVerifier).toContain("importSnippet: \"import { createOpenAICompatibleModelPort } from '@blade-ai/ai';\"");
+    expect(releaseVerifier).toContain("importSnippet: \"import { AgentKernel } from '@blade-ai/agent';\"");
+    expect(releaseVerifier).toContain("importSnippet: \"import { createSession } from '@blade-ai/agent-sdk';\"");
+    expect(releaseVerifier).toContain('README must document direct installation');
+    expect(releaseVerifier).toContain('README must document direct import usage');
+    expect(roadmap).toContain('release verifier now rejects package READMEs without direct install/import snippets');
+  });
+
   it('verifies npm provenance attestations after packages are published', () => {
     const publishedVerifier = readFileSync(resolve('scripts/verify-published.mjs'), 'utf8');
     const readme = readFileSync(resolve('README.md'), 'utf8');

@@ -12,18 +12,24 @@ const publishablePackages = [
     name: '@blade-ai/ai',
     publishFiles: ['dist', 'README.md'],
     npmPlugin: ['@semantic-release/npm', { pkgRoot: 'packages/ai' }],
+    installCommand: 'pnpm add @blade-ai/ai',
+    importSnippet: "import { createOpenAICompatibleModelPort } from '@blade-ai/ai';",
   },
   {
     dir: 'packages/agent',
     name: '@blade-ai/agent',
     publishFiles: ['dist', 'README.md'],
     npmPlugin: ['@semantic-release/npm', { pkgRoot: 'packages/agent' }],
+    installCommand: 'pnpm add @blade-ai/agent',
+    importSnippet: "import { AgentKernel } from '@blade-ai/agent';",
   },
   {
     dir: 'packages/agent-sdk',
     name: '@blade-ai/agent-sdk',
     publishFiles: ['dist', 'vendor/ripgrep/**', 'README.md'],
     npmPlugin: ['@semantic-release/npm', { pkgRoot: 'packages/agent-sdk' }],
+    installCommand: 'pnpm add @blade-ai/agent-sdk',
+    importSnippet: "import { createSession } from '@blade-ai/agent-sdk';",
   },
 ];
 
@@ -136,6 +142,12 @@ function verifyPackageMetadata() {
     }, `${pkg.name} repository`);
     if (!readme.includes(pkg.name)) {
       fail(`${pkg.name} README must name the package`);
+    }
+    if (!readme.includes(pkg.installCommand)) {
+      fail(`${pkg.name} README must document direct installation`);
+    }
+    if (!readme.includes(pkg.importSnippet)) {
+      fail(`${pkg.name} README must document direct import usage`);
     }
   }
 }
