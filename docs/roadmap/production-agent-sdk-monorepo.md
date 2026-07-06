@@ -662,6 +662,7 @@ Status:
 - Two-hundred-fourteenth verification-chain increment complete: thrown stream failure `TaskCompleted` hooks now run inside the package-local trace collector scope. Focused kernel-turn tests prove the trace recorder is active while failure callbacks run and cleared again before the original stream error is rethrown.
 - Two-hundred-fifteenth verification-chain increment complete: thrown stream failure `TaskCompleted` hook failures no longer mask the original stream error or skip trace finalization. Focused kernel-turn tests prove a failing completion hook still runs inside the trace collector scope, the collector is cleared, the trace is finalized with the original stream error, sinks are notified, and callers receive the original stream failure.
 - Two-hundred-sixteenth verification-chain increment complete: result and kernel-error `TaskCompleted` hook failures no longer mask completed kernel events or skip trace finalization. Focused kernel-turn tests prove successful result events and kernel error events still project to session stream messages, finalize traces, remember traces, and notify sinks when completion hooks fail.
+- Two-hundred-seventeenth verification-chain increment complete: suppressed `TaskCompleted` hook failures are now recorded on the active trace before the kernel stream continues. Focused kernel-turn and trace-recorder tests prove custom hook runtime failures surface as `hook_error` trace events with `suppressed: true` while valid result events still finalize successfully.
 
 Commit:
 

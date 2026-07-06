@@ -7,6 +7,7 @@ import type { SessionId, StreamMessage } from './types.js';
 import {
   projectPackageLocalKernelEventToStreamMessages,
 } from './kernelStreamProjection.js';
+import { HookEvent } from '../types/constants.js';
 import {
   streamWithPackageLocalRuntimeTraceCollector,
   type PackageLocalRuntimeHookRuntimePort,
@@ -122,11 +123,15 @@ export async function* streamPackageLocalAgentKernelTurn(
 
 async function tryReportPackageLocalKernelTaskFailure(
   error: unknown,
-  options: Pick<PackageLocalRuntimeKernelTurnStreamOptions, 'sessionId' | 'streamOptions' | 'hookRuntime'>,
+  options: Pick<
+    PackageLocalRuntimeKernelTurnStreamOptions,
+    'sessionId' | 'streamOptions' | 'hookRuntime' | 'traceRecorder'
+  >,
 ): Promise<void> {
   try {
     await reportPackageLocalKernelTaskFailure(error, options);
-  } catch {
+  } catch (hookError) {
+    recordSuppressedPackageLocalTaskCompletedHookFailure(hookError, options.traceRecorder);
     // Hook failures are recorded by the hook runtime; the kernel failure owns this path.
   }
 }
@@ -146,13 +151,28 @@ async function reportPackageLocalKernelTaskFailure(
 
 async function tryReportPackageLocalKernelTaskCompleted(
   event: AgentStreamEvent,
-  options: Pick<PackageLocalRuntimeKernelTurnStreamOptions, 'sessionId' | 'streamOptions' | 'hookRuntime'>,
+  options: Pick<
+    PackageLocalRuntimeKernelTurnStreamOptions,
+    'sessionId' | 'streamOptions' | 'hookRuntime' | 'traceRecorder'
+  >,
 ): Promise<void> {
   try {
     await reportPackageLocalKernelTaskCompleted(event, options);
-  } catch {
+  } catch (hookError) {
+    recordSuppressedPackageLocalTaskCompletedHookFailure(hookError, options.traceRecorder);
     // Hook failures are recorded by the hook runtime; stream projection and trace finalization continue.
   }
+}
+
+function recordSuppressedPackageLocalTaskCompletedHookFailure(
+  error: unknown,
+  traceRecorder: TraceRecorder | undefined,
+): void {
+  traceRecorder?.addEvent?.('hook_error', {
+    event: HookEvent.TaskCompleted,
+    error: error instanceof Error ? error.message : String(error),
+    suppressed: true,
+  });
 }
 
 async function reportPackageLocalKernelTaskCompleted(
