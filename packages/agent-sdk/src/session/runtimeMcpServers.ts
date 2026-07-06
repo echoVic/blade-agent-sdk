@@ -21,6 +21,14 @@ interface PackageLocalMcpLoggerPort {
   warn(...args: unknown[]): void;
 }
 
+export interface PackageLocalRuntimeMcpServerConfigOperationsOptions {
+  configuredServers?: Record<string, McpServerConfig | SdkMcpServerHandle>;
+}
+
+export interface PackageLocalRuntimeMcpServerConfigOperations {
+  getConfigured(): Record<string, McpServerConfig | SdkMcpServerHandle>;
+}
+
 export interface PackageLocalConfiguredMcpServersRegistrationOptions {
   configuredServers?: Record<string, McpServerConfig | SdkMcpServerHandle>;
   mcpRegistry: PackageLocalMcpRegistryActionPort;
@@ -144,6 +152,16 @@ export async function registerPackageLocalConfiguredMcpServers(
   }
 
   await options.refreshMcpTools(Object.keys(configuredServers));
+}
+
+export function createPackageLocalRuntimeMcpServerConfigOperations(
+  options: PackageLocalRuntimeMcpServerConfigOperationsOptions,
+): PackageLocalRuntimeMcpServerConfigOperations {
+  return {
+    getConfigured() {
+      return options.configuredServers ?? {};
+    },
+  };
 }
 
 export function createPackageLocalRuntimeMcpServerRegistrationOperations(

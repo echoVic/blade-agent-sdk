@@ -193,6 +193,30 @@ describe('agent-sdk package-local runtime MCP server helpers', () => {
     ]);
   });
 
+  it('creates MCP server config operations without session runtime state', async () => {
+    expect(existsSync(mcpServersSourcePath)).toBe(true);
+
+    const { createPackageLocalRuntimeMcpServerConfigOperations } = await import(
+      mcpServersModulePath
+    );
+    const localConfig = {
+      server: {},
+      createClientTransport: async () => ({}),
+    };
+    const configuredServers = {
+      local: localConfig,
+    };
+
+    expect(
+      createPackageLocalRuntimeMcpServerConfigOperations({
+        configuredServers,
+      }).getConfigured(),
+    ).toBe(configuredServers);
+    expect(
+      createPackageLocalRuntimeMcpServerConfigOperations({}).getConfigured(),
+    ).toEqual({});
+  });
+
   it('ensures configured MCP servers through registry ports without runtime state', async () => {
     expect(existsSync(mcpServersSourcePath)).toBe(true);
 

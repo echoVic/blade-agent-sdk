@@ -77,8 +77,10 @@ import {
   type PackageLocalRuntimeSessionLifecycleOperations,
 } from './runtimeSessionLifecycle.js';
 import {
+  createPackageLocalRuntimeMcpServerConfigOperations,
   createPackageLocalRuntimeMcpServerRegistrationOperations,
   createPackageLocalRuntimeMcpServerLifecycleOperations,
+  type PackageLocalRuntimeMcpServerConfigOperations,
   type PackageLocalRuntimeMcpServerRegistrationOperations,
   type PackageLocalRuntimeMcpServerLifecycleOperations,
 } from './runtimeMcpServers.js';
@@ -323,6 +325,7 @@ export class PackageLocalSessionRuntime {
   private readonly sessionLifecycleOperations: PackageLocalRuntimeSessionLifecycleOperations<SessionMessage>;
   private readonly workspaceOperations: PackageLocalRuntimeWorkspaceOperations;
   private readonly mcpCapabilityOperations: PackageLocalRuntimeMcpCapabilityOperations;
+  private readonly mcpServerConfigOperations: PackageLocalRuntimeMcpServerConfigOperations;
   private readonly mcpServerRegistrationOperations: PackageLocalRuntimeMcpServerRegistrationOperations;
   private readonly mcpServerLifecycleOperations: PackageLocalRuntimeMcpServerLifecycleOperations;
   private readonly mcpToolRefreshOperations: PackageLocalRuntimeMcpToolRefreshOperations;
@@ -380,6 +383,9 @@ export class PackageLocalSessionRuntime {
     });
     this.mcpCapabilityOperations = createPackageLocalRuntimeMcpCapabilityOperations({
       mcpRegistry: this.mcpRegistry,
+    });
+    this.mcpServerConfigOperations = createPackageLocalRuntimeMcpServerConfigOperations({
+      configuredServers: this.options.mcpServers,
     });
     this.mcpServerRegistrationOperations =
       createPackageLocalRuntimeMcpServerRegistrationOperations({
@@ -499,7 +505,7 @@ export class PackageLocalSessionRuntime {
   }
 
   getConfiguredMcpServers(): Record<string, McpServerConfig | SdkMcpServerHandle> {
-    return this.options.mcpServers ?? {};
+    return this.mcpServerConfigOperations.getConfigured();
   }
 
   async ensureSessionCreated(): Promise<void> {

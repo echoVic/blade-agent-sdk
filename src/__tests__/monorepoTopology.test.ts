@@ -641,6 +641,11 @@ describe('monorepo topology', () => {
     expect(runtimeMcpServersSource).toContain('registerPackageLocalRemoteMcpServer');
     expect(runtimeMcpServersSource).toContain('registerPackageLocalConfiguredMcpServers');
     expect(runtimeMcpServersSource).toContain(
+      'createPackageLocalRuntimeMcpServerConfigOperations',
+    );
+    expect(packageLocalRuntimeInstanceSource).toContain('mcpServerConfigOperations');
+    expect(packageLocalRuntimeInstanceSource).not.toContain('this.options.mcpServers ?? {}');
+    expect(runtimeMcpServersSource).toContain(
       'createPackageLocalRuntimeMcpServerRegistrationOperations',
     );
     expect(runtimeMcpServersSource).toContain('ensurePackageLocalMcpServerRegistered');
