@@ -68,6 +68,12 @@ const manifestRules = [
   },
 ];
 
+const buildEntryRules = rules.map((rule) => ({
+  name: rule.name,
+  configPath: `${dirname(rule.sourceDir)}/tsup.config.ts`,
+  sourceDir: rule.sourceDir,
+}));
+
 const importPattern = /\b(?:import|export)\s+(?:type\s+)?(?:[^'"]*?\s+from\s+)?['"]([^'"]+)['"]|import\s*\(\s*['"]([^'"]+)['"]\s*\)/g;
 
 function listSourceFiles(dir) {
@@ -102,6 +108,68 @@ function isWithin(childPath, parentPath) {
   return rel === '' || (!rel.startsWith('..') && !rel.includes(`..${sep}`));
 }
 
+function findObjectLiteralBody(source, propertyName) {
+  const propertyMatch = new RegExp(`\\b${propertyName}\\s*:`).exec(source);
+  if (!propertyMatch) return null;
+
+  const objectStart = source.indexOf('{', propertyMatch.index + propertyMatch[0].length);
+  if (objectStart === -1) return null;
+
+  let depth = 0;
+  let quote = null;
+  let escaped = false;
+  for (let index = objectStart; index < source.length; index += 1) {
+    const char = source[index];
+
+    if (quote) {
+      if (escaped) {
+        escaped = false;
+        continue;
+      }
+      if (char === '\\') {
+        escaped = true;
+        continue;
+      }
+      if (char === quote) {
+        quote = null;
+      }
+      continue;
+    }
+
+    if (char === '"' || char === "'" || char === '`') {
+      quote = char;
+      continue;
+    }
+    if (char === '{') {
+      depth += 1;
+      continue;
+    }
+    if (char === '}') {
+      depth -= 1;
+      if (depth === 0) {
+        return source.slice(objectStart + 1, index);
+      }
+    }
+  }
+
+  return null;
+}
+
+function extractTsupEntries(source) {
+  const entryBody = findObjectLiteralBody(source, 'entry');
+  if (!entryBody) return null;
+
+  const entries = [];
+  const entryPattern = /(?:^|[,\n\r])\s*(?:(['"`])([^'"`]+)\1|([A-Za-z_$][\w$-]*))\s*:\s*(['"`])([^'"`]+)\4/g;
+  for (const match of entryBody.matchAll(entryPattern)) {
+    entries.push({
+      name: match[2] ?? match[3],
+      path: match[5],
+    });
+  }
+  return entries;
+}
+
 const violations = [];
 
 for (const rule of manifestRules) {
@@ -121,6 +189,29 @@ for (const rule of manifestRules) {
           violations.push(`${rule.packageJson}: disallowed ${section} "${dependencyName}" - ${reason}`);
         }
       }
+    }
+  }
+}
+
+for (const rule of buildEntryRules) {
+  const configPath = resolve(rootDir, rule.configPath);
+  if (!existsSync(configPath)) {
+    violations.push(`${rule.name}: missing build config ${rule.configPath}`);
+    continue;
+  }
+
+  const entries = extractTsupEntries(readFileSync(configPath, 'utf-8'));
+  if (!entries || entries.length === 0) {
+    violations.push(`${rule.configPath}: missing static tsup entry map`);
+    continue;
+  }
+
+  const packageRoot = dirname(configPath);
+  const packageSourceDir = resolve(rootDir, rule.sourceDir);
+  for (const entry of entries) {
+    const resolved = normalize(resolve(packageRoot, entry.path));
+    if (!isWithin(resolved, packageSourceDir)) {
+      violations.push(`${rule.configPath}: build entry "${entry.name}" -> "${entry.path}" leaves ${rule.sourceDir}`);
     }
   }
 }

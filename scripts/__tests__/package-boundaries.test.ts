@@ -9,6 +9,16 @@ function writeJson(path: string, value: unknown): void {
   writeFileSync(path, JSON.stringify(value, null, 2));
 }
 
+function writeTsupConfig(path: string, entries: Record<string, string>): void {
+  const entryLines = Object.entries(entries)
+    .map(([name, entry]) => `    ${JSON.stringify(name)}: ${JSON.stringify(entry)},`)
+    .join('\n');
+  writeFileSync(
+    path,
+    `import { defineConfig } from 'tsup';\n\nexport default defineConfig({\n  entry: {\n${entryLines}\n  },\n});\n`,
+  );
+}
+
 function createBoundaryFixture(options: {
   aiDependencies?: Record<string, string>;
   agentDependencies?: Record<string, string>;
@@ -31,6 +41,15 @@ function createBoundaryFixture(options: {
   writeJson(join(cwd, 'packages', 'agent-sdk', 'package.json'), {
     name: '@blade-ai/agent-sdk',
     dependencies: options.sdkDependencies ?? {},
+  });
+  writeTsupConfig(join(cwd, 'packages', 'ai', 'tsup.config.ts'), {
+    index: 'src/index.ts',
+  });
+  writeTsupConfig(join(cwd, 'packages', 'agent', 'tsup.config.ts'), {
+    index: 'src/index.ts',
+  });
+  writeTsupConfig(join(cwd, 'packages', 'agent-sdk', 'tsup.config.ts'), {
+    index: 'src/index.ts',
   });
 
   return cwd;
@@ -197,5 +216,24 @@ describe('package boundary verifier', () => {
     expect(result.stderr).toContain('packages/agent/src/kernel/feature.ts');
     expect(result.stderr).toContain('@blade-ai/agent/kernel');
     expect(result.stderr).toContain('Agent kernel source must not import its own public facade');
+  });
+
+  it('rejects package build entries that leave the package source tree', () => {
+    const cwd = createBoundaryFixture();
+    writeTsupConfig(join(cwd, 'packages', 'agent-sdk', 'tsup.config.ts'), {
+      index: '../../src/index.ts',
+    });
+
+    const result = spawnSync(process.execPath, [
+      resolve('scripts/verify-package-boundaries.mjs'),
+    ], {
+      cwd,
+      encoding: 'utf8',
+    });
+
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain('packages/agent-sdk/tsup.config.ts');
+    expect(result.stderr).toContain('build entry "index"');
+    expect(result.stderr).toContain('leaves packages/agent-sdk/src');
   });
 });
