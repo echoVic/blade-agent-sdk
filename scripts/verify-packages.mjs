@@ -14,6 +14,17 @@ const browserDisallowedMarkers = [
   '@modelcontextprotocol',
   'node-pty',
 ];
+const expectedPackedPackageMetadata = {
+  license: 'MIT',
+  homepage: 'https://github.com/echoVic/blade-agent-sdk#readme',
+  bugs: {
+    url: 'https://github.com/echoVic/blade-agent-sdk/issues',
+  },
+  repository: {
+    type: 'git',
+    url: 'https://github.com/echoVic/blade-agent-sdk',
+  },
+};
 const packageSpecs = [
   {
     name: '@blade-ai/ai',
@@ -515,7 +526,42 @@ function verifyPackedManifest(spec, tarballPath, tempDir) {
   if (serialized.includes('workspace:')) {
     throw new Error(`${spec.name} packed manifest still contains workspace protocol dependencies`);
   }
+  verifyPackedPackageMetadata(spec, manifest);
   assertNoCliProductManifest(spec.name, manifest);
+}
+
+function verifyPackedPackageMetadata(spec, manifest) {
+  const metadataRules = [
+    {
+      field: 'license',
+      expected: expectedPackedPackageMetadata.license,
+      message: 'packed manifest license mismatch',
+    },
+    {
+      field: 'homepage',
+      expected: expectedPackedPackageMetadata.homepage,
+      message: 'packed manifest homepage mismatch',
+    },
+    {
+      field: 'bugs',
+      expected: expectedPackedPackageMetadata.bugs,
+      message: 'packed manifest bugs mismatch',
+    },
+    {
+      field: 'repository',
+      expected: expectedPackedPackageMetadata.repository,
+      message: 'packed manifest repository mismatch',
+    },
+  ];
+
+  for (const rule of metadataRules) {
+    const actual = manifest[rule.field];
+    if (JSON.stringify(actual) !== JSON.stringify(rule.expected)) {
+      throw new Error(
+        `${spec.name} ${rule.message}: expected ${JSON.stringify(rule.expected)}, got ${JSON.stringify(actual)}`,
+      );
+    }
+  }
 }
 
 function assertNoCliProductManifest(packageName, manifest) {

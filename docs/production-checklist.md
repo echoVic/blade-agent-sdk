@@ -21,7 +21,7 @@ CI=true pnpm run verify
 | Package boundaries | `pnpm run verify:boundaries` | 确保 `@blade-ai/agent` 不引入 Node-local runtime、MCP、filesystem、provider SDK 或 session SDK |
 | Docs build | `pnpm run docs:build` | 确保 VitePress 文档可构建 |
 | Entrypoints | `pnpm run verify:entrypoints` | 检查 root、server、session、local、core、tools、browser 入口和 browser-safe 约束 |
-| Package smoke | `pnpm run verify:packages` | pack 三个 npm 包，安装到临时 consumer，import 公共入口，type-check `SessionOptions` 采样/上下文/thinking/token budget 字段，并检查 browser-safe `core` 和 root 声明不暴露 server/local API 或 provider-specific helper |
+| Package smoke | `pnpm run verify:packages` | pack 三个 npm 包，检查 packed package npm metadata，安装到临时 consumer，import 公共入口，type-check `SessionOptions` 采样/上下文/thinking/token budget 字段，并检查 browser-safe `core` 和 root 声明不暴露 server/local API 或 provider-specific helper |
 | Unit tests | `pnpm run test:unit` | 覆盖 provider、agent kernel、session runtime、tools、hooks、observability、权限和 token budget |
 | Integration tests | `pnpm run test:integration` | 有 `INTEGRATION_API_KEY` / `INTEGRATION_BASE_URL` 时跑真实集成；缺少时按测试策略跳过 |
 
