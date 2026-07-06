@@ -14,6 +14,10 @@ export interface PackageLocalRuntimeWorkspaceTurnOptions {
   snapshot: ContextSnapshot;
 }
 
+export interface PackageLocalRuntimeWorkspaceOperations {
+  prepareTurn(snapshot: ContextSnapshot): void;
+}
+
 export function preparePackageLocalRuntimeWorkspaceTurn(
   options: PackageLocalRuntimeWorkspaceTurnOptions,
 ): void {
@@ -24,4 +28,16 @@ export function preparePackageLocalRuntimeWorkspaceTurn(
       ...(options.snapshot.cwd ? { cwd: options.snapshot.cwd } : {}),
     },
   });
+}
+
+export function createPackageLocalRuntimeWorkspaceOperations(
+  options: Pick<PackageLocalRuntimeWorkspaceTurnOptions, 'workspace'>,
+): PackageLocalRuntimeWorkspaceOperations {
+  return {
+    prepareTurn: (snapshot) =>
+      preparePackageLocalRuntimeWorkspaceTurn({
+        workspace: options.workspace,
+        snapshot,
+      }),
+  };
 }

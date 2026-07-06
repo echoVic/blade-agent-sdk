@@ -702,7 +702,13 @@ describe('monorepo topology', () => {
     expect(existsSync('packages/agent-sdk/src/session/runtimeWorkspace.ts')).toBe(true);
     expect(runtimeWorkspaceSource).not.toContain('../../../../src/');
     expect(runtimeWorkspaceSource).toContain('preparePackageLocalRuntimeWorkspaceTurn');
-    expect(packageLocalRuntimeInstanceSource).toContain('preparePackageLocalRuntimeWorkspaceTurn');
+    expect(runtimeWorkspaceSource).toContain(
+      'createPackageLocalRuntimeWorkspaceOperations',
+    );
+    expect(packageLocalRuntimeInstanceSource).toContain('workspaceOperations');
+    expect(packageLocalRuntimeInstanceSource).not.toContain(
+      'preparePackageLocalRuntimeWorkspaceTurn({',
+    );
     expect(packageLocalRuntimeInstanceSource).not.toContain('this.workspace.updateWorkspace({');
     expect(packageLocalRuntimeInstanceSource).not.toContain('...snapshot.environment');
     expect(packageLocalRuntimeInstanceSource).toContain('close');

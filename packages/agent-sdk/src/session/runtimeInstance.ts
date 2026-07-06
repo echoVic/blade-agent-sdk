@@ -69,7 +69,10 @@ import {
   getPackageLocalRuntimeContextCwd,
   resolvePackageLocalRuntimeStorageRoot,
 } from './runtimeContext.js';
-import { preparePackageLocalRuntimeWorkspaceTurn } from './runtimeWorkspace.js';
+import {
+  createPackageLocalRuntimeWorkspaceOperations,
+  type PackageLocalRuntimeWorkspaceOperations,
+} from './runtimeWorkspace.js';
 import {
   createPackageLocalRuntimeSessionLifecycleOperations,
   type PackageLocalRuntimeSessionLifecycleOperations,
@@ -319,6 +322,7 @@ export class PackageLocalSessionRuntime {
   readonly kernelFactory: PackageLocalRuntimeAgentKernelFactoryPort;
   readonly kernelModelResolver: PackageLocalRuntimeKernelModelResolverPort;
   private readonly sessionLifecycleOperations: PackageLocalRuntimeSessionLifecycleOperations<SessionMessage>;
+  private readonly workspaceOperations: PackageLocalRuntimeWorkspaceOperations;
   private readonly mcpCapabilityOperations: PackageLocalRuntimeMcpCapabilityOperations;
   private readonly mcpServerRegistrationOperations: PackageLocalRuntimeMcpServerRegistrationOperations;
   private readonly mcpServerLifecycleOperations: PackageLocalRuntimeMcpServerLifecycleOperations;
@@ -371,6 +375,9 @@ export class PackageLocalSessionRuntime {
     this.sessionLifecycleOperations = createPackageLocalRuntimeSessionLifecycleOperations({
       sessionId: this.sessionId,
       sessionStore: this.sessionStore,
+    });
+    this.workspaceOperations = createPackageLocalRuntimeWorkspaceOperations({
+      workspace: this.workspace,
     });
     this.mcpCapabilityOperations = createPackageLocalRuntimeMcpCapabilityOperations({
       mcpRegistry: this.mcpRegistry,
@@ -511,10 +518,7 @@ export class PackageLocalSessionRuntime {
   }
 
   prepareTurn(snapshot: ContextSnapshot): void {
-    preparePackageLocalRuntimeWorkspaceTurn({
-      workspace: this.workspace,
-      snapshot,
-    });
+    this.workspaceOperations.prepareTurn(snapshot);
   }
 
   async close(): Promise<void> {

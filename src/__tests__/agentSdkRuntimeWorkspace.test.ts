@@ -56,4 +56,36 @@ describe('agent-sdk package-local runtime workspace helpers', () => {
       },
     });
   });
+
+  it('creates workspace operations that prepare turns through the injected workspace port', async () => {
+    const { createPackageLocalRuntimeWorkspaceOperations } = await import(
+      runtimeWorkspaceModulePath
+    );
+    const workspace = {
+      updateWorkspace: vi.fn(),
+    };
+    const operations = createPackageLocalRuntimeWorkspaceOperations({
+      workspace,
+    });
+
+    operations.prepareTurn({
+      sessionId: 'session-ops',
+      turnId: 'turn-ops',
+      context: {},
+      filesystemRoots: ['/repo'],
+      cwd: '/repo/app',
+      environment: {
+        cwd: '/old',
+        NODE_ENV: 'test',
+      },
+    });
+
+    expect(workspace.updateWorkspace).toHaveBeenCalledWith({
+      projectPath: '/repo/app',
+      environment: {
+        cwd: '/repo/app',
+        NODE_ENV: 'test',
+      },
+    });
+  });
 });
