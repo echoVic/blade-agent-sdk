@@ -10,6 +10,7 @@ import {
   createPackageLocalRuntimeAgentKernel,
   createPackageLocalRuntimeAgentKernelFromResolved,
   createPackageLocalRuntimeAgentKernelFromOptions,
+  createPackageLocalRuntimeAgentKernelOperations,
   createPackageLocalRuntimeResolvedAgentKernelCreator,
   projectPackageLocalRuntimeAgentKernelPorts,
 } from '../../packages/agent-sdk/src/session/runtimeAgentKernels.js';
@@ -346,6 +347,82 @@ describe('agent-sdk package-local runtime agent kernel helpers', () => {
       trace: tracePort,
       tools: toolPort,
       maxSteps: 3,
+    });
+  });
+
+  it('creates options-level and resolved kernel operations from shared ports', () => {
+    const kernel = {
+      async *runTurn() {},
+    };
+    const kernelFactory: PackageLocalRuntimeAgentKernelFactoryPort = {
+      create: vi.fn(() => kernel),
+    };
+    const bladeConfig: BladeConfig = {
+      models: [],
+      currentModelId: 'primary',
+    };
+    const resolvedKernelModel: PackageLocalRuntimeResolvedKernelModel = {
+      model: modelPort,
+      modelRequestDefaults: {
+        model: 'glm-5.2',
+        maxContextTokens: 65536,
+      },
+    };
+    const kernelModelResolver: PackageLocalRuntimeKernelModelResolverPort = {
+      resolve: vi.fn(() => resolvedKernelModel),
+    };
+    const getStorePort = vi.fn(() => storePort);
+    const getHookPort = vi.fn(() => hookPort);
+    const getTracePort = vi.fn(() => tracePort);
+    const getToolPort = vi.fn(() => toolPort);
+    const createExecutionContext = vi.fn();
+    const traceRecorder = { startSpan: vi.fn() } as unknown as TraceRecorder;
+
+    const operations = createPackageLocalRuntimeAgentKernelOperations({
+      bladeConfig,
+      kernelModelResolver,
+      kernelFactory,
+      getStorePort,
+      getHookPort,
+      getTracePort,
+      getToolPort,
+    });
+
+    expect(
+      operations.createFromOptions({
+        modelId: 'secondary',
+        maxSteps: 4,
+      }),
+    ).toBe(kernel);
+    expect(kernelModelResolver.resolve).toHaveBeenCalledWith({
+      bladeConfig,
+      modelId: 'secondary',
+    });
+
+    expect(
+      operations.createFromResolved(
+        {
+          traceRecorder,
+          createExecutionContext,
+          maxSteps: 6,
+        },
+        resolvedKernelModel,
+      ),
+    ).toBe(kernel);
+
+    expect(getTracePort).toHaveBeenCalledWith(traceRecorder, 65536);
+    expect(getToolPort).toHaveBeenCalledWith(createExecutionContext);
+    expect(kernelFactory.create).toHaveBeenLastCalledWith({
+      model: modelPort,
+      modelRequestDefaults: {
+        model: 'glm-5.2',
+        maxContextTokens: 65536,
+      },
+      store: storePort,
+      hooks: hookPort,
+      trace: tracePort,
+      tools: toolPort,
+      maxSteps: 6,
     });
   });
 });

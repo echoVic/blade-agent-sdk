@@ -184,6 +184,44 @@ export function createPackageLocalRuntimeAgentKernelFromOptions(
   });
 }
 
+export interface PackageLocalRuntimeAgentKernelOperations {
+  createFromOptions(
+    options?: PackageLocalRuntimeAgentKernelOptions,
+  ): PackageLocalRuntimeAgentKernelPort;
+  createFromResolved: PackageLocalRuntimeResolvedAgentKernelCreator;
+}
+
+export interface CreatePackageLocalRuntimeAgentKernelOperationsOptions
+  extends Omit<CreatePackageLocalRuntimeAgentKernelFromOptionsOptions, 'options'> {}
+
+export function createPackageLocalRuntimeAgentKernelOperations(
+  options: CreatePackageLocalRuntimeAgentKernelOperationsOptions,
+): PackageLocalRuntimeAgentKernelOperations {
+  const createFromResolved = createPackageLocalRuntimeResolvedAgentKernelCreator({
+    kernelFactory: options.kernelFactory,
+    getStorePort: options.getStorePort,
+    getHookPort: options.getHookPort,
+    getTracePort: options.getTracePort,
+    getToolPort: options.getToolPort,
+  });
+
+  return {
+    createFromOptions(agentKernelOptions = {}) {
+      return createPackageLocalRuntimeAgentKernelFromOptions({
+        options: agentKernelOptions,
+        bladeConfig: options.bladeConfig,
+        kernelModelResolver: options.kernelModelResolver,
+        kernelFactory: options.kernelFactory,
+        getStorePort: options.getStorePort,
+        getHookPort: options.getHookPort,
+        getTracePort: options.getTracePort,
+        getToolPort: options.getToolPort,
+      });
+    },
+    createFromResolved,
+  };
+}
+
 export function createPackageLocalRuntimeAgentKernel(
   options: CreatePackageLocalRuntimeAgentKernelOptions,
 ): PackageLocalRuntimeAgentKernelPort {

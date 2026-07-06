@@ -846,11 +846,18 @@ describe('monorepo topology', () => {
     expect(runtimeAgentKernelsSource).toContain(
       'createPackageLocalRuntimeResolvedAgentKernelCreator',
     );
+    expect(runtimeAgentKernelsSource).toContain(
+      'createPackageLocalRuntimeAgentKernelOperations',
+    );
     expect(runtimeAgentKernelsSource).toContain('resolvePackageLocalRuntimeKernelModel');
     expect(packageLocalRuntimeInstanceSource).toContain(
+      'createPackageLocalRuntimeAgentKernelOperations',
+    );
+    expect(packageLocalRuntimeInstanceSource).toContain('agentKernelOperations');
+    expect(packageLocalRuntimeInstanceSource).not.toContain(
       'createPackageLocalRuntimeAgentKernelFromOptions',
     );
-    expect(packageLocalRuntimeInstanceSource).toContain(
+    expect(packageLocalRuntimeInstanceSource).not.toContain(
       'createPackageLocalRuntimeResolvedAgentKernelCreator',
     );
     expect(packageLocalRuntimeInstanceSource).not.toContain('private createAgentKernelFromResolved');
