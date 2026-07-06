@@ -329,6 +329,15 @@ describe('release scripts', () => {
     expect(releaseVerifier).toContain('must declare sideEffects false');
   });
 
+  it('requires a narrow publish files whitelist in the release verifier', () => {
+    const releaseVerifier = readFileSync(resolve('scripts/verify-release-config.mjs'), 'utf8');
+
+    expect(releaseVerifier).toContain('publishFiles');
+    expect(releaseVerifier).toContain('manifest.files');
+    expect(releaseVerifier).toContain("'vendor/ripgrep/**'");
+    expect(releaseVerifier).toContain('published files');
+  });
+
   it('verifies npm provenance attestations after packages are published', () => {
     const publishedVerifier = readFileSync(resolve('scripts/verify-published.mjs'), 'utf8');
     const readme = readFileSync(resolve('README.md'), 'utf8');

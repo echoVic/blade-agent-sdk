@@ -9,16 +9,19 @@ const publishablePackages = [
   {
     dir: 'packages/ai',
     name: '@blade-ai/ai',
+    publishFiles: ['dist', 'README.md'],
     npmPlugin: ['@semantic-release/npm', { pkgRoot: 'packages/ai' }],
   },
   {
     dir: 'packages/agent',
     name: '@blade-ai/agent',
+    publishFiles: ['dist', 'README.md'],
     npmPlugin: ['@semantic-release/npm', { pkgRoot: 'packages/agent' }],
   },
   {
     dir: 'packages/agent-sdk',
     name: '@blade-ai/agent-sdk',
+    publishFiles: ['dist', 'vendor/ripgrep/**', 'README.md'],
     npmPlugin: ['@semantic-release/npm', { pkgRoot: 'packages/agent-sdk' }],
   },
 ];
@@ -105,6 +108,7 @@ function verifyPackageMetadata() {
     if (manifest.sideEffects !== false) {
       fail(`${pkg.name} must declare sideEffects false`);
     }
+    assertDeepEqual(manifest.files, pkg.publishFiles, `${pkg.name} published files`);
     if (manifest.license !== 'MIT') {
       fail(`${pkg.name} must declare MIT license`);
     }
