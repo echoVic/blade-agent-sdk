@@ -86,7 +86,8 @@ import {
   type PackageLocalRuntimeMcpServerCapability,
 } from './runtimeMcpCapabilities.js';
 import {
-  refreshPackageLocalRuntimeMcpTools,
+  createPackageLocalRuntimeMcpToolRefreshOperations,
+  type PackageLocalRuntimeMcpToolRefreshOperations,
   type PackageLocalRuntimeMcpTool,
 } from './runtimeMcpTools.js';
 import { createPackageLocalRuntimeNoopPorts } from './runtimeNoopPorts.js';
@@ -312,6 +313,7 @@ export class PackageLocalSessionRuntime {
   private readonly mcpCapabilityOperations: PackageLocalRuntimeMcpCapabilityOperations;
   private readonly mcpServerRegistrationOperations: PackageLocalRuntimeMcpServerRegistrationOperations;
   private readonly mcpServerLifecycleOperations: PackageLocalRuntimeMcpServerLifecycleOperations;
+  private readonly mcpToolRefreshOperations: PackageLocalRuntimeMcpToolRefreshOperations;
   private readonly executionPipelineCache: PackageLocalRuntimeExecutionPipelineCache;
   private readonly agentRuntimeDepsOperations: PackageLocalAgentRuntimeDepsOperations;
   private readonly kernelPortOperations: PackageLocalRuntimeKernelPortOperations;
@@ -376,6 +378,11 @@ export class PackageLocalSessionRuntime {
         mcpRegistry: this.mcpRegistry,
         refreshMcpTools: (serverNames) => this.refreshMcpTools(serverNames),
       });
+    this.mcpToolRefreshOperations = createPackageLocalRuntimeMcpToolRefreshOperations({
+      mcpRegistry: this.mcpRegistry,
+      toolCatalog: this.toolCatalog,
+      filterTools: (tools) => this.filterTools(tools),
+    });
     this.executionPipelineCache = createPackageLocalRuntimeExecutionPipelineCache(() =>
       createPackageLocalRuntimeExecutionPipeline({
         bladeConfig: this.bladeConfig,
@@ -509,12 +516,7 @@ export class PackageLocalSessionRuntime {
   }
 
   async refreshMcpTools(serverNames: string[]): Promise<void> {
-    await refreshPackageLocalRuntimeMcpTools({
-      serverNames,
-      mcpRegistry: this.mcpRegistry,
-      toolCatalog: this.toolCatalog,
-      filterTools: (tools) => this.filterTools(tools),
-    });
+    await this.mcpToolRefreshOperations.refresh(serverNames);
   }
 
   filterTools<TTool extends PackageLocalRuntimeNamedTool>(tools: TTool[]): TTool[] {

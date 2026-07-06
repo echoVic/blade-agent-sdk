@@ -33,6 +33,14 @@ export interface PackageLocalRuntimeMcpToolRefreshOptions<
   filterTools(tools: TTool[]): TTool[];
 }
 
+export interface PackageLocalRuntimeMcpToolRefreshOperations {
+  refresh(serverNames: readonly string[]): Promise<void>;
+}
+
+export type PackageLocalRuntimeMcpToolRefreshOperationsOptions<
+  TTool extends PackageLocalRuntimeMcpTool,
+> = Omit<PackageLocalRuntimeMcpToolRefreshOptions<TTool>, 'serverNames'>;
+
 export function getPackageLocalMcpToolSourceId(tool: PackageLocalRuntimeMcpTool): string {
   const taggedServer = tool.tags?.find((tag) => tag === tag.toLowerCase() && tag.length > 0);
   if (taggedServer) {
@@ -60,4 +68,21 @@ export async function refreshPackageLocalRuntimeMcpTools<
       sourceId: getPackageLocalMcpToolSourceId(tool),
     });
   }
+}
+
+export function createPackageLocalRuntimeMcpToolRefreshOperations<
+  TTool extends PackageLocalRuntimeMcpTool,
+>(
+  options: PackageLocalRuntimeMcpToolRefreshOperationsOptions<TTool>,
+): PackageLocalRuntimeMcpToolRefreshOperations {
+  return {
+    refresh(serverNames) {
+      return refreshPackageLocalRuntimeMcpTools({
+        serverNames,
+        mcpRegistry: options.mcpRegistry,
+        toolCatalog: options.toolCatalog,
+        filterTools: options.filterTools,
+      });
+    },
+  };
 }

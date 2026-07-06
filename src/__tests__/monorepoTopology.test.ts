@@ -783,8 +783,10 @@ describe('monorepo topology', () => {
     expect(runtimeMcpToolsSource).not.toContain('../../../../src/');
     expect(runtimeMcpToolsSource).toContain('getPackageLocalMcpToolSourceId');
     expect(runtimeMcpToolsSource).toContain('refreshPackageLocalRuntimeMcpTools');
+    expect(runtimeMcpToolsSource).toContain('createPackageLocalRuntimeMcpToolRefreshOperations');
+    expect(packageLocalRuntimeInstanceSource).toContain('mcpToolRefreshOperations');
     expect(packageLocalRuntimeInstanceSource).not.toContain('getPackageLocalMcpToolSourceId');
-    expect(packageLocalRuntimeInstanceSource).toContain('refreshPackageLocalRuntimeMcpTools');
+    expect(packageLocalRuntimeInstanceSource).not.toContain('refreshPackageLocalRuntimeMcpTools({');
     expect(packageLocalRuntimeInstanceSource).not.toContain('removeMcpTools(serverName);');
     expect(packageLocalRuntimeInstanceSource).not.toContain('registerMcpTool(tool,');
     expect(packageLocalRuntimeInstanceSource).not.toContain('function packageLocalServerNameFromTool');
