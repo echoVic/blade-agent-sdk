@@ -485,6 +485,24 @@ describe('release scripts', () => {
     expect(roadmap).toContain('published package manifest gate');
   });
 
+  it('verifies published package manifest entry targets from the temporary consumer install', () => {
+    const publishedVerifier = readFileSync(resolve('scripts/verify-published.mjs'), 'utf8');
+    const checklist = readFileSync(resolve('docs/production-checklist.md'), 'utf8');
+    const roadmap = readFileSync(resolve('docs/roadmap/production-agent-sdk-monorepo.md'), 'utf8');
+
+    expect(publishedVerifier).toContain('assertPublishedManifestTarget');
+    expect(publishedVerifier).toContain("label: 'main'");
+    expect(publishedVerifier).toContain("label: 'types'");
+    expect(publishedVerifier).toContain("label: `exports.${exportName}.${condition}`");
+    expect(publishedVerifier).toContain('installed manifest target must point at ./dist/');
+    expect(publishedVerifier).toContain('installed manifest target must not point at source files');
+    expect(publishedVerifier).toContain('installed manifest target must stay package-relative');
+    expect(publishedVerifier).toContain('installed manifest target must not escape the package');
+    expect(publishedVerifier).toContain("target === './package.json'");
+    expect(checklist).toContain('published package manifest entry targets');
+    expect(roadmap).toContain('published package manifest entry target gate');
+  });
+
   it('type-checks public declarations from the published temporary consumer', () => {
     const publishedVerifier = readFileSync(resolve('scripts/verify-published.mjs'), 'utf8');
     const readme = readFileSync(resolve('README.md'), 'utf8');

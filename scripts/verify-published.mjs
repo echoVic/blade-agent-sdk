@@ -282,6 +282,20 @@ async function verifyPublishedPackageManifests({ consumerDir, version }) {
     if (serializedManifest.includes('0.0.0')) {
       throw new Error(`${requirement.packageName} installed manifest must not contain 0.0.0 placeholder versions`);
     }
+    assertPublishedManifestTarget({
+      packageName: requirement.packageName,
+      label: 'main',
+      target: manifest.main,
+    });
+    assertPublishedManifestTarget({
+      packageName: requirement.packageName,
+      label: 'types',
+      target: manifest.types,
+    });
+    verifyPublishedManifestExports({
+      packageName: requirement.packageName,
+      exportsMap: manifest.exports,
+    });
 
     for (const dependencyBlock of [
       manifest.dependencies,
@@ -298,6 +312,48 @@ async function verifyPublishedPackageManifests({ consumerDir, version }) {
     }
   }
   console.log('[verify-published] temporary consumer published package manifests passed');
+}
+
+function assertPublishedManifestTarget({ packageName, label, target }) {
+  if (typeof target !== 'string') return;
+  if (target === './package.json') return;
+
+  if (!target.startsWith('./')) {
+    throw new Error(`${packageName} ${label} installed manifest target must stay package-relative: ${target}`);
+  }
+  if (target.startsWith('../') || target.includes('/../')) {
+    throw new Error(`${packageName} ${label} installed manifest target must not escape the package: ${target}`);
+  }
+  if (target.includes('/src/') || target.startsWith('./src/')) {
+    throw new Error(`${packageName} ${label} installed manifest target must not point at source files: ${target}`);
+  }
+  if (!target.startsWith('./dist/')) {
+    throw new Error(`${packageName} ${label} installed manifest target must point at ./dist/: ${target}`);
+  }
+}
+
+function verifyPublishedManifestExports({ packageName, exportsMap }) {
+  if (!exportsMap || typeof exportsMap !== 'object') return;
+
+  for (const [exportName, exportValue] of Object.entries(exportsMap)) {
+    if (typeof exportValue === 'string') {
+      assertPublishedManifestTarget({
+        packageName,
+        label: `exports.${exportName}`,
+        target: exportValue,
+      });
+      continue;
+    }
+    if (!exportValue || typeof exportValue !== 'object') continue;
+
+    for (const [condition, target] of Object.entries(exportValue)) {
+      assertPublishedManifestTarget({
+        packageName,
+        label: `exports.${exportName}.${condition}`,
+        target,
+      });
+    }
+  }
 }
 
 async function verifyPublishedReadmes({ consumerDir }) {
