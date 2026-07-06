@@ -32,22 +32,21 @@ import type {
   PackageLocalRuntimeHookManagerPort,
   PackageLocalRuntimeHookRuntimePort,
 } from './runtimeHooks.js';
-import {
-  createPackageLocalRuntimeExecutionPipelineOperations,
-  type PackageLocalRuntimeExecutionPipelineOperations,
-  type PackageLocalRuntimeExecutionPipelineFactoryPort,
+import type {
+  PackageLocalRuntimeExecutionPipelineOperations,
+  PackageLocalRuntimeExecutionPipelineFactoryPort,
 } from './runtimeExecutionPipeline.js';
+import { createPackageLocalRuntimeExecutionOperations } from './runtimeExecution.js';
 import {
   createPackageLocalRuntimeAgentKernelOperations,
   type PackageLocalRuntimeAgentKernelOperations,
   type PackageLocalRuntimeAgentKernelFactoryPort,
   type PackageLocalRuntimeAgentKernelPort,
 } from './runtimeAgentKernels.js';
-import {
-  createPackageLocalAgentRuntimeDepsOperations,
-  type PackageLocalAgentRuntimeDeps,
-  type PackageLocalAgentRuntimeDepsOperations,
-  type PackageLocalRuntimeBackgroundAgentManagerPort,
+import type {
+  PackageLocalAgentRuntimeDeps,
+  PackageLocalAgentRuntimeDepsOperations,
+  PackageLocalRuntimeBackgroundAgentManagerPort,
 } from './runtimeAgentDeps.js';
 import {
   createPackageLocalRuntimeKernelPortOperations,
@@ -381,23 +380,21 @@ export class PackageLocalSessionRuntime {
     this.mcpServerRegistrationOperations = mcpServerOperations.registration;
     this.mcpServerLifecycleOperations = mcpServerOperations.lifecycle;
     this.mcpToolRefreshOperations = mcpOperations.tools;
-    this.executionPipelineOperations = createPackageLocalRuntimeExecutionPipelineOperations({
+    const executionOperations = createPackageLocalRuntimeExecutionOperations({
       bladeConfig: this.bladeConfig,
       permissionMode: this.options.permissionMode,
       createPermissionHandler: () => this.createPermissionHandler(),
       logger: this.logger,
       toolCatalog: this.toolCatalog,
       executionPipelineFactory: this.executionPipelineFactory,
-    });
-    this.agentRuntimeDepsOperations = createPackageLocalAgentRuntimeDepsOperations({
-      createExecutionPipeline: () => this.createExecutionPipeline(),
       defaultContext: this.defaultContext,
       mcpRegistry: this.mcpRegistry,
       subagentRegistry: this.subagentRegistry,
       backgroundAgentManager: this.backgroundAgentManager,
       hookRuntime: this.hookRuntime,
-      logger: this.logger,
     });
+    this.executionPipelineOperations = executionOperations.pipeline;
+    this.agentRuntimeDepsOperations = executionOperations.agentDeps;
     this.kernelPortOperations = createPackageLocalRuntimeKernelPortOperations({
       kernelPortFactory: this.kernelPortFactory,
       toolCatalog: this.toolCatalog,

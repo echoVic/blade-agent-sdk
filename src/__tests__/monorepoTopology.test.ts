@@ -526,6 +526,11 @@ describe('monorepo topology', () => {
     )
       ? readFileSync('packages/agent-sdk/src/session/runtimeExecutionPipeline.ts', 'utf-8')
       : '';
+    const runtimeExecutionSource = existsSync(
+      'packages/agent-sdk/src/session/runtimeExecution.ts',
+    )
+      ? readFileSync('packages/agent-sdk/src/session/runtimeExecution.ts', 'utf-8')
+      : '';
     const runtimeAgentKernelsSource = existsSync(
       'packages/agent-sdk/src/session/runtimeAgentKernels.ts',
     )
@@ -1040,7 +1045,22 @@ describe('monorepo topology', () => {
     expect(runtimeExecutionPipelineSource).toContain(
       'createPackageLocalRuntimeExecutionPipelineOperations',
     );
+    expect(existsSync('packages/agent-sdk/src/session/runtimeExecution.ts')).toBe(true);
+    expect(runtimeExecutionSource).not.toContain('../../../../src/');
+    expect(runtimeExecutionSource).toContain('createPackageLocalRuntimeExecutionOperations');
+    expect(runtimeExecutionSource).toContain(
+      'createPackageLocalRuntimeExecutionPipelineOperations',
+    );
+    expect(runtimeExecutionSource).toContain('createPackageLocalAgentRuntimeDepsOperations');
+    expect(packageLocalRuntimeInstanceSource).toContain(
+      'createPackageLocalRuntimeExecutionOperations',
+    );
     expect(packageLocalRuntimeInstanceSource).toContain('executionPipelineOperations');
+    expect(packageLocalRuntimeInstanceSource).toContain('executionOperations.pipeline');
+    expect(packageLocalRuntimeInstanceSource).toContain('executionOperations.agentDeps');
+    expect(packageLocalRuntimeInstanceSource).not.toContain(
+      'createPackageLocalRuntimeExecutionPipelineOperations({',
+    );
     expect(packageLocalRuntimeInstanceSource).not.toContain(
       'createPackageLocalRuntimeExecutionPipeline({',
     );
@@ -1062,10 +1082,10 @@ describe('monorepo topology', () => {
     expect(runtimeAgentDepsSource).not.toContain('../../../../src/');
     expect(runtimeAgentDepsSource).toContain('createPackageLocalAgentRuntimeDeps');
     expect(runtimeAgentDepsSource).toContain('createPackageLocalAgentRuntimeDepsOperations');
-    expect(packageLocalRuntimeInstanceSource).toContain(
-      'createPackageLocalAgentRuntimeDepsOperations',
-    );
     expect(packageLocalRuntimeInstanceSource).toContain('agentRuntimeDepsOperations');
+    expect(packageLocalRuntimeInstanceSource).not.toContain(
+      'createPackageLocalAgentRuntimeDepsOperations({',
+    );
     expect(packageLocalRuntimeInstanceSource).not.toContain('createPackageLocalAgentRuntimeDeps({');
     expect(packageLocalRuntimeInstanceSource).not.toContain('runtimeManaged: true');
     expect(packageLocalRuntimeInstanceSource).toContain('getKernelToolPort');
