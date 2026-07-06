@@ -63,6 +63,16 @@ describe('package entrypoints', () => {
     }
   });
 
+  it('keeps the server entry as an explicit facade instead of a root wildcard forwarder', () => {
+    const source = readFileSync('packages/agent-sdk/src/server/index.ts', 'utf-8');
+
+    expect(source).not.toContain("export * from '../index.js'");
+    expect(source).toContain("from '../session/index.js'");
+    expect(source).toContain("from '../core/index.js'");
+    expect(source).toContain("from '../tools/index.js'");
+    expect(source).toContain("from '../subagents/index.js'");
+  });
+
   it('declares the browser/server entrypoint verification script', () => {
     expect(rootPackageJson.scripts['verify:entrypoints']).toBe(
       'pnpm --filter @blade-ai/agent-sdk run build && node scripts/verify-entrypoints.mjs',

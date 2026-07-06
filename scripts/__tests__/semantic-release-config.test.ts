@@ -185,6 +185,18 @@ describe('package provenance metadata', () => {
     expect(packageVerifier).toContain('root declarations must keep provider-specific DeepSeek helpers in @blade-ai/ai/deepseek');
   });
 
+  it('rejects server entry wildcard forwarding through the root facade', () => {
+    const packageVerifier = readFileSync(resolve('scripts/verify-packages.mjs'), 'utf8');
+    const publishedVerifier = readFileSync(resolve('scripts/verify-published.mjs'), 'utf8');
+
+    for (const verifier of [packageVerifier, publishedVerifier]) {
+      expect(verifier).toContain("file: 'package/dist/server/index.js'");
+      expect(verifier).toContain("file: 'package/dist/server/index.d.ts'");
+      expect(verifier).toContain('server runtime entry must be an explicit package-local facade');
+      expect(verifier).toContain('server declarations must be an explicit package-local facade');
+    }
+  });
+
   it('runtime-loads public value exports from the packed temporary consumer', () => {
     const packageVerifier = readFileSync(resolve('scripts/verify-packages.mjs'), 'utf8');
 

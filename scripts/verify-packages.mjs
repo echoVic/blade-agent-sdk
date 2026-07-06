@@ -276,6 +276,16 @@ const packageSpecs = [
         message: 'root declarations must keep provider-specific DeepSeek helpers in @blade-ai/ai/deepseek',
       },
       {
+        file: 'package/dist/server/index.js',
+        forbidden: '../index.js',
+        message: 'server runtime entry must be an explicit package-local facade',
+      },
+      {
+        file: 'package/dist/server/index.d.ts',
+        forbidden: '../index.js',
+        message: 'server declarations must be an explicit package-local facade',
+      },
+      {
         file: 'package/dist/core/index.d.ts',
         forbidden: 'createSession',
         message: 'core declarations must stay browser-safe and not expose server-only session APIs',

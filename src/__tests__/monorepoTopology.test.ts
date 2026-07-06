@@ -255,7 +255,11 @@ describe('monorepo topology', () => {
     const localSandboxSource = readFileSync('packages/agent-sdk/src/local/sandbox.ts', 'utf-8');
 
     expect(serverSource).not.toContain("export * from '../../../../src/server/index.js'");
-    expect(serverSource).toContain("from '../index.js'");
+    expect(serverSource).not.toContain("from '../index.js'");
+    expect(serverSource).toContain("from '../session/index.js'");
+    expect(serverSource).toContain("from '../core/index.js'");
+    expect(serverSource).toContain("from '../tools/index.js'");
+    expect(serverSource).toContain("from '../subagents/index.js'");
     expect(localSource).not.toContain("export * from '../../../../src/local/index.js'");
     expect(localSource).not.toContain("../../../../src/");
     expect(localMcpSource).not.toContain('../../../../src/mcp');

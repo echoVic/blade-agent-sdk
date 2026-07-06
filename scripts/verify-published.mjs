@@ -268,6 +268,7 @@ if (Object.keys(agentProtocol).length !== 0) {
     await run(process.execPath, [runtimeSmokePath], { cwd: consumerDir });
     await verifyPublishedTypesSmoke({ consumerDir });
     await verifyPublishedRootDeclarationBoundary({ consumerDir });
+    await verifyPublishedServerEntryBoundary({ consumerDir });
     await verifyPublishedCoreDeclarationBoundary({ consumerDir });
     await verifyPublishedBrowserBundleSmoke({ consumerDir });
     await verifyPublishedAgentBrowserBundleSmoke({ consumerDir });
@@ -507,6 +508,30 @@ async function verifyPublishedRootDeclarationBoundary({ consumerDir }) {
   for (const rule of forbiddenRootDeclarations) {
     if (declarationSource.includes(rule.forbidden)) {
       throw new Error(`${declarationPath}: ${rule.message}`);
+    }
+  }
+}
+
+async function verifyPublishedServerEntryBoundary({ consumerDir }) {
+  const rules = [
+    {
+      file: 'package/dist/server/index.js',
+      path: join(consumerDir, 'node_modules/@blade-ai/agent-sdk/dist/server/index.js'),
+      forbidden: '../index.js',
+      message: 'server runtime entry must be an explicit package-local facade',
+    },
+    {
+      file: 'package/dist/server/index.d.ts',
+      path: join(consumerDir, 'node_modules/@blade-ai/agent-sdk/dist/server/index.d.ts'),
+      forbidden: '../index.js',
+      message: 'server declarations must be an explicit package-local facade',
+    },
+  ];
+
+  for (const rule of rules) {
+    const source = await readFile(rule.path, 'utf8');
+    if (source.includes(rule.forbidden)) {
+      throw new Error(`${rule.file}: ${rule.message}`);
     }
   }
 }
