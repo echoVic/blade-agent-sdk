@@ -44,4 +44,30 @@ describe('agent-sdk package-local runtime noop ports', () => {
       }),
     ).toThrow('Package-local kernel model resolver port is required to create a kernel');
   });
+
+  it('resolves injected runtime ports with noop fallbacks outside the runtime class', async () => {
+    const { resolvePackageLocalRuntimePorts } = await import(noopModulePath);
+    const injectedSessionStore = {
+      createSession: async () => undefined,
+      loadSession: async () => true,
+      loadMessages: async () => [],
+      appendMessage: () => undefined,
+      forkState: async () => null,
+      writeForkState: async () => null,
+    };
+    const injectedHookRuntime = {
+      enable() {},
+      setTraceCollector() {},
+    };
+
+    const ports = resolvePackageLocalRuntimePorts({
+      sessionStore: injectedSessionStore,
+      hookRuntime: injectedHookRuntime,
+    });
+
+    expect(ports.sessionStore).toBe(injectedSessionStore);
+    expect(ports.hookRuntime).toBe(injectedHookRuntime);
+    expect(ports.hookManager).toBe(injectedHookRuntime);
+    await expect(ports.mcpRegistry.getCapabilities()).resolves.toEqual([]);
+  });
 });

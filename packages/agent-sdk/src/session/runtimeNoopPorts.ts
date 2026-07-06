@@ -3,6 +3,7 @@ import type {
   PackageLocalRuntimeAgentKernelFactoryPort,
   PackageLocalRuntimeBackgroundAgentManagerPort,
   PackageLocalRuntimeExecutionPipelineFactoryPort,
+  PackageLocalRuntimeHookManagerPort,
   PackageLocalRuntimeHookRuntimePort,
   PackageLocalRuntimeKernelModelResolverPort,
   PackageLocalRuntimeKernelPortFactoryPort,
@@ -31,6 +32,27 @@ export interface PackageLocalRuntimeNoopPorts {
   kernelModelResolver: PackageLocalRuntimeKernelModelResolverPort;
 }
 
+export interface PackageLocalRuntimePortResolutionOptions {
+  sessionStore?: PackageLocalRuntimeSessionStorePort;
+  workspace?: PackageLocalRuntimeWorkspacePort;
+  mcpRegistry?: PackageLocalRuntimeMcpRegistryPort;
+  toolCatalog?: PackageLocalRuntimeToolCatalogPort;
+  logger?: PackageLocalRuntimeLoggerPort;
+  subagentRegistry?: PackageLocalRuntimeSubagentRegistryPort;
+  permissionHooks?: PackageLocalRuntimePermissionHookPort;
+  hookManager?: PackageLocalRuntimeHookManagerPort;
+  hookRuntime?: PackageLocalRuntimeHookRuntimePort;
+  backgroundAgentManager?: PackageLocalRuntimeBackgroundAgentManagerPort;
+  executionPipelineFactory?: PackageLocalRuntimeExecutionPipelineFactoryPort;
+  kernelPortFactory?: PackageLocalRuntimeKernelPortFactoryPort;
+  kernelFactory?: PackageLocalRuntimeAgentKernelFactoryPort;
+  kernelModelResolver?: PackageLocalRuntimeKernelModelResolverPort;
+}
+
+export interface PackageLocalRuntimeResolvedPorts extends PackageLocalRuntimeNoopPorts {
+  hookManager: PackageLocalRuntimeHookManagerPort;
+}
+
 export function createPackageLocalRuntimeNoopPorts(): PackageLocalRuntimeNoopPorts {
   return {
     sessionStore: createNoopRuntimeSessionStore(),
@@ -46,6 +68,32 @@ export function createPackageLocalRuntimeNoopPorts(): PackageLocalRuntimeNoopPor
     kernelPortFactory: createNoopRuntimeKernelPortFactory(),
     kernelFactory: createNoopRuntimeAgentKernelFactory(),
     kernelModelResolver: createNoopRuntimeKernelModelResolver(),
+  };
+}
+
+export function resolvePackageLocalRuntimePorts(
+  options: PackageLocalRuntimePortResolutionOptions,
+): PackageLocalRuntimeResolvedPorts {
+  const noopPorts = createPackageLocalRuntimeNoopPorts();
+  const hookRuntime = options.hookRuntime ?? noopPorts.hookRuntime;
+
+  return {
+    sessionStore: options.sessionStore ?? noopPorts.sessionStore,
+    workspace: options.workspace ?? noopPorts.workspace,
+    mcpRegistry: options.mcpRegistry ?? noopPorts.mcpRegistry,
+    toolCatalog: options.toolCatalog ?? noopPorts.toolCatalog,
+    logger: options.logger ?? noopPorts.logger,
+    subagentRegistry: options.subagentRegistry ?? noopPorts.subagentRegistry,
+    permissionHooks: options.permissionHooks ?? noopPorts.permissionHooks,
+    hookRuntime,
+    hookManager: options.hookManager ?? hookRuntime,
+    backgroundAgentManager:
+      options.backgroundAgentManager ?? noopPorts.backgroundAgentManager,
+    executionPipelineFactory:
+      options.executionPipelineFactory ?? noopPorts.executionPipelineFactory,
+    kernelPortFactory: options.kernelPortFactory ?? noopPorts.kernelPortFactory,
+    kernelFactory: options.kernelFactory ?? noopPorts.kernelFactory,
+    kernelModelResolver: options.kernelModelResolver ?? noopPorts.kernelModelResolver,
   };
 }
 

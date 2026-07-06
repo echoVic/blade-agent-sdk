@@ -617,7 +617,13 @@ describe('monorepo topology', () => {
     expect(existsSync('packages/agent-sdk/src/session/runtimeNoopPorts.ts')).toBe(true);
     expect(runtimeNoopPortsSource).not.toContain('../../../../src/');
     expect(runtimeNoopPortsSource).toContain('createPackageLocalRuntimeNoopPorts');
-    expect(packageLocalRuntimeInstanceSource).toContain('createPackageLocalRuntimeNoopPorts');
+    expect(runtimeNoopPortsSource).toContain('resolvePackageLocalRuntimePorts');
+    expect(packageLocalRuntimeInstanceSource).toContain('resolvePackageLocalRuntimePorts');
+    expect(packageLocalRuntimeInstanceSource).not.toContain('const noopPorts');
+    expect(packageLocalRuntimeInstanceSource).not.toContain('?? noopPorts.');
+    expect(packageLocalRuntimeInstanceSource).not.toContain(
+      'this.hookManager = options.hookManager ?? this.hookRuntime',
+    );
     expect(packageLocalRuntimeInstanceSource).not.toContain('function createNoopRuntime');
     expect(packageLocalRuntimeInstanceSource).toContain('resolvePackageLocalRuntimeStorageRoot');
     expect(existsSync('packages/agent-sdk/src/session/runtimeContext.ts')).toBe(true);

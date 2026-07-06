@@ -90,7 +90,7 @@ import {
   type PackageLocalRuntimeMcpToolRefreshOperations,
   type PackageLocalRuntimeMcpTool,
 } from './runtimeMcpTools.js';
-import { createPackageLocalRuntimeNoopPorts } from './runtimeNoopPorts.js';
+import { resolvePackageLocalRuntimePorts } from './runtimeNoopPorts.js';
 import {
   createPackageLocalRuntimeSubagentOperations,
   type PackageLocalRuntimeSubagentOperations,
@@ -352,24 +352,23 @@ export class PackageLocalSessionRuntime {
       resolvePackageLocalRuntimeStorageRoot(options.options.storagePath);
     this.projectPath = getPackageLocalRuntimeContextCwd(options.defaultContext);
     this.hookCallbacks = options.options.hooks ?? {};
-    const noopPorts = createPackageLocalRuntimeNoopPorts();
-    this.sessionStore = options.sessionStore ?? noopPorts.sessionStore;
-    this.workspace = options.workspace ?? noopPorts.workspace;
-    this.mcpRegistry = options.mcpRegistry ?? noopPorts.mcpRegistry;
-    this.toolCatalog = options.toolCatalog ?? noopPorts.toolCatalog;
-    this.logger = options.logger ?? noopPorts.logger;
+    const runtimePorts = resolvePackageLocalRuntimePorts(options);
+    this.sessionStore = runtimePorts.sessionStore;
+    this.workspace = runtimePorts.workspace;
+    this.mcpRegistry = runtimePorts.mcpRegistry;
+    this.toolCatalog = runtimePorts.toolCatalog;
+    this.logger = runtimePorts.logger;
     this.customToolFactory = options.customToolFactory;
     this.builtinToolProvider = options.builtinToolProvider;
-    this.subagentRegistry = options.subagentRegistry ?? noopPorts.subagentRegistry;
-    this.permissionHooks = options.permissionHooks ?? noopPorts.permissionHooks;
-    this.hookRuntime = options.hookRuntime ?? noopPorts.hookRuntime;
-    this.hookManager = options.hookManager ?? this.hookRuntime;
-    this.backgroundAgentManager = options.backgroundAgentManager ?? noopPorts.backgroundAgentManager;
-    this.executionPipelineFactory =
-      options.executionPipelineFactory ?? noopPorts.executionPipelineFactory;
-    this.kernelPortFactory = options.kernelPortFactory ?? noopPorts.kernelPortFactory;
-    this.kernelFactory = options.kernelFactory ?? noopPorts.kernelFactory;
-    this.kernelModelResolver = options.kernelModelResolver ?? noopPorts.kernelModelResolver;
+    this.subagentRegistry = runtimePorts.subagentRegistry;
+    this.permissionHooks = runtimePorts.permissionHooks;
+    this.hookRuntime = runtimePorts.hookRuntime;
+    this.hookManager = runtimePorts.hookManager;
+    this.backgroundAgentManager = runtimePorts.backgroundAgentManager;
+    this.executionPipelineFactory = runtimePorts.executionPipelineFactory;
+    this.kernelPortFactory = runtimePorts.kernelPortFactory;
+    this.kernelFactory = runtimePorts.kernelFactory;
+    this.kernelModelResolver = runtimePorts.kernelModelResolver;
     this.sessionLifecycleOperations = createPackageLocalRuntimeSessionLifecycleOperations({
       sessionId: this.sessionId,
       sessionStore: this.sessionStore,
