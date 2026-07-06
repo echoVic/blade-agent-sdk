@@ -1,5 +1,5 @@
 import type { ModelPort } from '@blade-ai/ai';
-import type { AgentModelRequestDefaults, AgentToolCall } from '@blade-ai/agent';
+import type { AgentModelRequestDefaults, AgentStreamEvent, AgentToolCall } from '@blade-ai/agent';
 import type { TraceRecorder } from '../observability/TraceRecorder.js';
 import type { ExecutionContext } from '../tools/types/index.js';
 import type { BladeConfig } from '../types/common.js';
@@ -97,6 +97,7 @@ export async function* streamPackageLocalAgentKernelTurn(
       traceCollector: options.traceRecorder,
       stream: kernelEvents,
     })) {
+      await reportPackageLocalKernelTaskCompleted(event, options);
       yield* projectPackageLocalKernelEventToStreamMessages(event, {
         sessionId: options.sessionId,
         maxContextTokens: options.maxContextTokens,
@@ -111,6 +112,23 @@ export async function* streamPackageLocalAgentKernelTurn(
     await finishPackageLocalKernelTraceError(error, traceFinalizer);
     throw error;
   }
+}
+
+async function reportPackageLocalKernelTaskCompleted(
+  event: AgentStreamEvent,
+  options: Pick<PackageLocalRuntimeKernelTurnStreamOptions, 'sessionId' | 'streamOptions' | 'hookRuntime'>,
+): Promise<void> {
+  if (event.type !== 'result') {
+    return;
+  }
+
+  await options.hookRuntime.runTaskCompleted?.({
+    taskId: options.streamOptions.turnId ?? options.sessionId,
+    taskDescription: options.streamOptions.input,
+    resultSummary: event.content,
+    success: true,
+    abortSignal: options.streamOptions.signal,
+  });
 }
 
 export async function* streamPackageLocalRuntimeAgentKernelTurn(

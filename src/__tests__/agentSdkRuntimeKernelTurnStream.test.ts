@@ -82,6 +82,54 @@ describe('agent-sdk package-local kernel turn stream helper', () => {
     expect(hookRuntime.setTraceCollector).toHaveBeenLastCalledWith(undefined);
   });
 
+  it('reports successful kernel results through TaskCompleted hooks', async () => {
+    const runTaskCompleted = vi.fn(async () => undefined);
+    const traceRecorder = {
+      finish: vi.fn(() => ({ id: 'trace-task' })),
+    } as unknown as TraceRecorder;
+
+    const messages = [];
+    for await (const message of streamPackageLocalAgentKernelTurn({
+      sessionId: 'session-task',
+      streamOptions: {
+        input: 'summarize the repo',
+        turnId: 'turn-task',
+      },
+      kernel: {
+        async *runTurn() {
+          yield { type: 'result', content: 'repo summary' } satisfies AgentStreamEvent;
+        },
+      },
+      traceRecorder,
+      traceManager: {
+        remember: vi.fn(),
+        notifySink: vi.fn(async () => undefined),
+      },
+      hookRuntime: {
+        enable: vi.fn(),
+        setTraceCollector: vi.fn(),
+        runTaskCompleted,
+      },
+      maxContextTokens: 99,
+    })) {
+      messages.push(message);
+    }
+
+    expect(messages).toContainEqual({
+      type: 'result',
+      subtype: 'success',
+      content: 'repo summary',
+      sessionId: 'session-task',
+    });
+    expect(runTaskCompleted).toHaveBeenCalledWith({
+      taskId: 'turn-task',
+      taskDescription: 'summarize the repo',
+      resultSummary: 'repo summary',
+      success: true,
+      abortSignal: undefined,
+    });
+  });
+
   it('finalizes thrown stream errors and rethrows them', async () => {
     const error = new Error('stream failed');
     const trace = { id: 'trace-2' };
