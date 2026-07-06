@@ -11,6 +11,7 @@ export interface PackageLocalRuntimeHookRuntimePort extends PackageLocalRuntimeH
   setTraceCollector?(collector: unknown): void;
   createAgentHookPort?(): AgentHookPort;
   runSessionStart?(payload: PackageLocalSessionStartHookPayload): Promise<void> | void;
+  runSessionEnd?(payload: PackageLocalSessionEndHookPayload): Promise<void> | void;
 }
 
 export interface PackageLocalRuntimeHooksInitializationOptions {
@@ -44,6 +45,22 @@ export interface PackageLocalSessionStartHookPayload {
   resumeSessionId?: string;
   model: string;
   provider: string;
+  abortSignal?: AbortSignal;
+}
+
+export type PackageLocalSessionEndReason =
+  | 'error'
+  | 'other'
+  | 'user_exit'
+  | 'max_turns'
+  | 'idle_timeout'
+  | 'ctrl_c'
+  | 'esc'
+  | 'clear'
+  | 'logout';
+
+export interface PackageLocalSessionEndHookPayload {
+  reason: PackageLocalSessionEndReason;
   abortSignal?: AbortSignal;
 }
 
@@ -96,6 +113,15 @@ export function createPackageLocalRuntimeHookRuntime(
         event: HookEvent.SessionStart,
         sessionId: options.sessionId,
         callbacks: options.hooks?.[HookEvent.SessionStart] ?? [],
+        payload,
+        traceCollector,
+      });
+    },
+    async runSessionEnd(payload) {
+      await runPackageLocalHookCallbacks({
+        event: HookEvent.SessionEnd,
+        sessionId: options.sessionId,
+        callbacks: options.hooks?.[HookEvent.SessionEnd] ?? [],
         payload,
         traceCollector,
       });

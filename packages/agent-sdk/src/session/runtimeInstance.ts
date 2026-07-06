@@ -488,7 +488,11 @@ export class PackageLocalSessionRuntime {
   }
 
   async close(): Promise<void> {
-    await this.mcpServerLifecycleOperations.close();
+    try {
+      await this.hookRuntime.runSessionEnd?.({ reason: 'other' });
+    } finally {
+      await this.mcpServerLifecycleOperations.close();
+    }
   }
 
   async mcpCapabilities(): Promise<PackageLocalRuntimeMcpServerCapability[]> {

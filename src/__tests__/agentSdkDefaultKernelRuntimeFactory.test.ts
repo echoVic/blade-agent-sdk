@@ -306,6 +306,43 @@ describe('agent-sdk default kernel runtime factory', () => {
     );
   });
 
+  it('runs SessionEnd hooks when closing package-local sessions', async () => {
+    const sessionEnd = vi.fn(async () => ({
+      action: 'continue' as const,
+    }));
+    const factory = createDefaultKernelSessionRuntimeFactory({
+      createSessionId: () => 'end-hook-session',
+      createTurnId: () => 'end-hook-turn',
+      runtime: {
+        kernelModelResolver: {
+          resolve() {
+            return {
+              model,
+              modelRequestDefaults: { model: 'test-model' },
+            };
+          },
+        },
+      },
+    });
+
+    const session = await factory.create({
+      ...options,
+      hooks: {
+        [HookEvent.SessionEnd]: [sessionEnd],
+      },
+    });
+
+    await session.close();
+
+    expect(sessionEnd).toHaveBeenCalledWith(
+      expect.objectContaining({
+        event: HookEvent.SessionEnd,
+        sessionId: 'end-hook-session',
+        reason: 'other',
+      }),
+    );
+  });
+
   it('initializes configured runtime capabilities before package-local kernel turns', async () => {
     const order: string[] = [];
     const registerServer = vi.fn(async (serverName: string) => {

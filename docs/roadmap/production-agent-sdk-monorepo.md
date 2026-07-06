@@ -655,6 +655,7 @@ Status:
 - Two-hundred-seventh verification-chain increment complete: `pnpm run verify:boundaries` now validates package build entry ownership in each `tsup.config.ts`. Focused verifier tests prove a package build entry cannot point outside its own `packages/*/src` tree, preventing publishable package builds from silently reaching back into the legacy root source tree after source ownership has been migrated.
 - Two-hundred-eighth verification-chain increment complete: `pnpm run verify:boundaries` now validates publish manifest target ownership. Focused verifier tests prove package `main`, `types`, and nested `exports` targets cannot expose source files and must point at `./dist/*` artifacts, with only the explicit `./package.json` export allowed outside dist.
 - Two-hundred-ninth verification-chain increment complete: the package-local default kernel runtime now runs callback-based `SessionStart` hooks during session create/resume initialization. Focused default-runtime tests prove `createSession()` invokes configured `SessionStart` callbacks with the package-local session id, resume flag, model, and provider metadata before the session is returned.
+- Two-hundred-tenth verification-chain increment complete: the package-local default kernel runtime now runs callback-based `SessionEnd` hooks during session close. Focused default-runtime tests prove closing a package-local session invokes configured `SessionEnd` callbacks with the package-local session id and close reason while runtime cleanup remains owned by the package-local runtime.
 
 Commit:
 
