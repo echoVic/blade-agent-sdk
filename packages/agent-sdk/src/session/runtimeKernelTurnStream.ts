@@ -69,6 +69,12 @@ export interface PackageLocalRuntimeKernelTurnResolutionOptions {
   ) => PackageLocalRuntimeAgentKernelPort;
 }
 
+export interface PackageLocalRuntimeKernelTurnStreamOperations {
+  stream(
+    options: PackageLocalRuntimeAgentKernelStreamOptions,
+  ): AsyncGenerator<StreamMessage>;
+}
+
 export async function* streamPackageLocalAgentKernelTurn(
   options: PackageLocalRuntimeKernelTurnStreamOptions,
 ): AsyncGenerator<StreamMessage> {
@@ -136,4 +142,16 @@ export async function* streamPackageLocalRuntimeAgentKernelTurn(
     hookRuntime: options.hookRuntime,
     maxContextTokens,
   });
+}
+
+export function createPackageLocalRuntimeKernelTurnStreamOperations(
+  options: Omit<PackageLocalRuntimeKernelTurnResolutionOptions, 'streamOptions'>,
+): PackageLocalRuntimeKernelTurnStreamOperations {
+  return {
+    stream: (streamOptions) =>
+      streamPackageLocalRuntimeAgentKernelTurn({
+        ...options,
+        streamOptions,
+      }),
+  };
 }

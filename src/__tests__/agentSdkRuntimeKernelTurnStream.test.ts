@@ -2,6 +2,7 @@ import type { AgentStreamEvent } from '@blade-ai/agent';
 import { describe, expect, it, vi } from 'vitest';
 import type { TraceRecorder } from '../../packages/agent-sdk/src/observability/TraceRecorder.js';
 import {
+  createPackageLocalRuntimeKernelTurnStreamOperations,
   streamPackageLocalAgentKernelTurn,
   streamPackageLocalRuntimeAgentKernelTurn,
 } from '../../packages/agent-sdk/src/session/runtimeKernelTurnStream.js';
@@ -223,6 +224,88 @@ describe('agent-sdk package-local kernel turn stream helper', () => {
         completionTokens: 4,
         totalTokens: 6,
       },
+    });
+  });
+
+  it('creates stream operations that delegate runtime turn streaming through injected ports', async () => {
+    const model = {
+      generate: vi.fn(),
+      stream: vi.fn(),
+    };
+    const traceRecorder = {
+      finish: vi.fn(() => ({ id: 'trace-4' })),
+    } as unknown as TraceRecorder;
+    const traceManager = {
+      createRecorder: vi.fn(() => traceRecorder),
+      remember: vi.fn(),
+      notifySink: vi.fn(async () => undefined),
+    };
+    const kernelModelResolver = {
+      resolve: vi.fn(() => ({
+        model,
+        modelRequestDefaults: {
+          maxContextTokens: 24,
+        },
+      })),
+    };
+    const createAgentKernel = vi.fn((_kernelOptions, _kernelModel) => ({
+      async *runTurn() {
+        yield { type: 'content', delta: 'hi' } satisfies AgentStreamEvent;
+        yield { type: 'result', content: 'hi' } satisfies AgentStreamEvent;
+      },
+    }));
+    const operations = createPackageLocalRuntimeKernelTurnStreamOperations({
+      sessionId: 'session-ops',
+      bladeConfig: {
+        models: [],
+        currentModelId: 'default-model',
+      },
+      traceManager,
+      hookRuntime: {
+        enable: vi.fn(),
+        setTraceCollector: vi.fn(),
+      },
+      kernelModelResolver,
+      createAgentKernel,
+    });
+
+    const messages = [];
+    for await (const message of operations.stream({
+      input: 'hello operations',
+      modelId: 'glm-5.2',
+    })) {
+      messages.push(message);
+    }
+
+    expect(traceManager.createRecorder).toHaveBeenCalledWith('hello operations');
+    expect(kernelModelResolver.resolve).toHaveBeenCalledWith({
+      bladeConfig: {
+        models: [],
+        currentModelId: 'default-model',
+      },
+      modelId: 'glm-5.2',
+    });
+    expect(createAgentKernel).toHaveBeenCalledWith(
+      {
+        input: 'hello operations',
+        modelId: 'glm-5.2',
+        traceRecorder,
+      },
+      {
+        model,
+        modelRequestDefaults: {
+          maxContextTokens: 24,
+        },
+      },
+    );
+    expect(messages).toContainEqual({
+      type: 'content',
+      delta: 'hi',
+      sessionId: 'session-ops',
+    });
+    expect(traceRecorder.finish).toHaveBeenCalledWith('success', {
+      content: 'hi',
+      usage: undefined,
     });
   });
 });

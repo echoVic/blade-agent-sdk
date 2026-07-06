@@ -1049,11 +1049,17 @@ describe('monorepo topology', () => {
     expect(runtimeKernelTurnStreamSource).not.toContain('../../../../src/');
     expect(runtimeKernelTurnStreamSource).toContain('streamPackageLocalAgentKernelTurn');
     expect(runtimeKernelTurnStreamSource).toContain('streamPackageLocalRuntimeAgentKernelTurn');
+    expect(runtimeKernelTurnStreamSource).toContain(
+      'createPackageLocalRuntimeKernelTurnStreamOperations',
+    );
     expect(runtimeKernelTurnStreamSource).toContain('resolvePackageLocalRuntimeKernelModel');
     expect(runtimeKernelTurnStreamSource).toContain('PackageLocalRuntimeAgentKernelStreamOptions');
     expect(runtimeKernelTurnStreamSource).toContain('streamWithPackageLocalRuntimeTraceCollector');
     expect(runtimeKernelTurnStreamSource).toContain('projectPackageLocalKernelEventToStreamMessages');
-    expect(packageLocalRuntimeInstanceSource).toContain('streamPackageLocalRuntimeAgentKernelTurn');
+    expect(packageLocalRuntimeInstanceSource).toContain('kernelTurnStreamOperations');
+    expect(packageLocalRuntimeInstanceSource).not.toContain(
+      'streamPackageLocalRuntimeAgentKernelTurn({',
+    );
     expect(packageLocalRuntimeInstanceSource).not.toContain(
       'this.traceManager.createRecorder(options.input)',
     );

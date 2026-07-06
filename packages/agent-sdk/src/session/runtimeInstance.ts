@@ -57,9 +57,10 @@ import {
   type PackageLocalRuntimeKernelPortOperations,
 } from './runtimeKernelPorts.js';
 import {
-  streamPackageLocalRuntimeAgentKernelTurn,
+  createPackageLocalRuntimeKernelTurnStreamOperations,
   type PackageLocalRuntimeAgentKernelOptions,
   type PackageLocalRuntimeAgentKernelStreamOptions,
+  type PackageLocalRuntimeKernelTurnStreamOperations,
 } from './runtimeKernelTurnStream.js';
 import type {
   PackageLocalRuntimeKernelModelResolverPort,
@@ -324,6 +325,7 @@ export class PackageLocalSessionRuntime {
   private readonly agentRuntimeDepsOperations: PackageLocalAgentRuntimeDepsOperations;
   private readonly kernelPortOperations: PackageLocalRuntimeKernelPortOperations;
   private readonly agentKernelOperations: PackageLocalRuntimeAgentKernelOperations;
+  private readonly kernelTurnStreamOperations: PackageLocalRuntimeKernelTurnStreamOperations;
   private readonly toolRegistrationOperations: PackageLocalRuntimeToolRegistrationOperations<
     PackageLocalRuntimeNamedTool,
     PackageLocalRuntimeToolSource
@@ -478,6 +480,14 @@ export class PackageLocalSessionRuntime {
       permissionMode: options.options.permissionMode,
       logger: this.logger,
     });
+    this.kernelTurnStreamOperations = createPackageLocalRuntimeKernelTurnStreamOperations({
+      sessionId: this.sessionId,
+      bladeConfig: this.bladeConfig,
+      traceManager: this.traceManager,
+      hookRuntime: this.hookRuntime,
+      kernelModelResolver: this.kernelModelResolver,
+      createAgentKernel: this.agentKernelOperations.createFromResolved,
+    });
     this.traceOperations = createPackageLocalRuntimeTraceOperations({
       traceManager: this.traceManager,
     });
@@ -630,15 +640,7 @@ export class PackageLocalSessionRuntime {
   async *streamAgentKernelTurn(
     options: PackageLocalRuntimeAgentKernelStreamOptions,
   ): AsyncGenerator<StreamMessage> {
-    yield* streamPackageLocalRuntimeAgentKernelTurn({
-      sessionId: this.sessionId,
-      streamOptions: options,
-      bladeConfig: this.bladeConfig,
-      traceManager: this.traceManager,
-      hookRuntime: this.hookRuntime,
-      kernelModelResolver: this.kernelModelResolver,
-      createAgentKernel: this.agentKernelOperations.createFromResolved,
-    });
+    yield* this.kernelTurnStreamOperations.stream(options);
   }
 
 }
