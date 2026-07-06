@@ -79,10 +79,14 @@ export function createSessionTraceFinalizer(
       }
 
       finished = true;
-      const trace = recorder.finish(status, data);
-      manager.remember(trace);
-      await manager.notifySink(trace);
-      return trace;
+      try {
+        const trace = recorder.finish(status, data);
+        manager.remember(trace);
+        await manager.notifySink(trace);
+        return trace;
+      } catch {
+        return undefined;
+      }
     },
   };
 }

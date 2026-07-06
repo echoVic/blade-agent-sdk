@@ -119,6 +119,25 @@ describe('agent-sdk session trace manager', () => {
     expect(manager.getTraces()).toEqual([]);
   });
 
+  it('isolates recorder finish failures from the session turn lifecycle', async () => {
+    const recorder = {
+      finish: vi.fn(() => {
+        throw new Error('trace finish failed');
+      }),
+    };
+    const manager = {
+      remember: vi.fn(),
+      notifySink: vi.fn(async () => undefined),
+    };
+    const finalizer = createSessionTraceFinalizer(recorder as never, manager);
+
+    await expect(finalizer.finish('success', { content: 'done' })).resolves.toBeUndefined();
+
+    expect(recorder.finish).toHaveBeenCalledWith('success', { content: 'done' });
+    expect(manager.remember).not.toHaveBeenCalled();
+    expect(manager.notifySink).not.toHaveBeenCalled();
+  });
+
   it('finishes, remembers, and notifies a trace only once', async () => {
     const sink = vi.fn();
     const manager = new SessionTraceManager({
