@@ -338,6 +338,16 @@ describe('release scripts', () => {
     expect(releaseVerifier).toContain('published files');
   });
 
+  it('requires npm discoverability metadata in the release verifier', () => {
+    const releaseVerifier = readFileSync(resolve('scripts/verify-release-config.mjs'), 'utf8');
+
+    expect(releaseVerifier).toContain('manifest.homepage');
+    expect(releaseVerifier).toContain('manifest.bugs');
+    expect(releaseVerifier).toContain('manifest.keywords');
+    expect(releaseVerifier).toContain('homepage');
+    expect(releaseVerifier).toContain('keywords');
+  });
+
   it('verifies npm provenance attestations after packages are published', () => {
     const publishedVerifier = readFileSync(resolve('scripts/verify-published.mjs'), 'utf8');
     const readme = readFileSync(resolve('README.md'), 'utf8');

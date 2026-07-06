@@ -5,6 +5,7 @@ import { dirname, join, resolve } from 'node:path';
 import { parse } from 'yaml';
 
 const require = createRequire(import.meta.url);
+const requiredKeywords = ['agent', 'sdk', 'llm'];
 const publishablePackages = [
   {
     dir: 'packages/ai',
@@ -111,6 +112,17 @@ function verifyPackageMetadata() {
     assertDeepEqual(manifest.files, pkg.publishFiles, `${pkg.name} published files`);
     if (manifest.license !== 'MIT') {
       fail(`${pkg.name} must declare MIT license`);
+    }
+    if (manifest.homepage !== 'https://github.com/echoVic/blade-agent-sdk#readme') {
+      fail(`${pkg.name} must declare the project homepage`);
+    }
+    assertDeepEqual(manifest.bugs, {
+      url: 'https://github.com/echoVic/blade-agent-sdk/issues',
+    }, `${pkg.name} bugs`);
+    for (const keyword of requiredKeywords) {
+      if (!manifest.keywords?.includes(keyword)) {
+        fail(`${pkg.name} keywords must include ${keyword}`);
+      }
     }
     assertDeepEqual(manifest.engines, { node: '>=22.14.0' }, `${pkg.name} engines`);
     assertDeepEqual(manifest.publishConfig, {
