@@ -104,11 +104,11 @@ dry-run 不发布 npm 包。它通常需要 GitHub token 环境，适合维护�
 2. 运行 `pnpm run verify`。
 3. 运行 `pnpm exec semantic-release`。
 4. 使用 GitHub OIDC trusted publishing 和 npm provenance 发布 `@blade-ai/ai`、`@blade-ai/agent`、`@blade-ai/agent-sdk`。
-5. 对比发布前后的最新 `v*` tag；只有 semantic-release 创建新 tag 时，才运行 `pnpm run verify:published -- --version <tag>` 做 post-publish GitHub Release / npm / npm provenance attestations / 临时 consumer / published package READMEs / browser-safe core 声明边界 / SDK browser bundle smoke / `@blade-ai/agent` browser bundle smoke 校验。
+5. 对比发布前后的最新 `v*` tag；只有 semantic-release 创建新 tag 时，才运行 `pnpm run verify:published -- --version <tag>` 做 post-publish GitHub Release / npm / npm provenance attestations / 临时 consumer / published package manifests / published package READMEs / browser-safe core 声明边界 / SDK browser bundle smoke / `@blade-ai/agent` browser bundle smoke 校验。
 
 不要绕过 `pnpm run verify` 直接发布。不要在 trusted publishing 流程中依赖长期 `NPM_TOKEN`。
 
-发布 workflow 会在新版本产生后自动执行 post-publish verifier，确认 GitHub Release、三个 npm 包版本和 npm provenance attestations 都已经公开可见；没有新 tag 的 main 提交会跳过该步骤，避免拿旧版本重复验证。维护者也可以在本地用同一命令复核。该命令会创建一个临时 consumer，从 npm 安装同版本的三包，并执行 runtime import smoke、root/subpath TypeScript public declarations 编译、published package READMEs 安装和 import 示例检查、`SessionOptions` 采样/上下文/thinking/token budget 字段编译、browser-safe `core` 声明边界检查、SDK browser bundle smoke 与 `@blade-ai/agent` browser bundle smoke：
+发布 workflow 会在新版本产生后自动执行 post-publish verifier，确认 GitHub Release、三个 npm 包版本和 npm provenance attestations 都已经公开可见；没有新 tag 的 main 提交会跳过该步骤，避免拿旧版本重复验证。维护者也可以在本地用同一命令复核。该命令会创建一个临时 consumer，从 npm 安装同版本的三包，并执行 runtime import smoke、root/subpath TypeScript public declarations 编译、published package manifests 版本和内部依赖检查、published package READMEs 安装和 import 示例检查、`SessionOptions` 采样/上下文/thinking/token budget 字段编译、browser-safe `core` 声明边界检查、SDK browser bundle smoke 与 `@blade-ai/agent` browser bundle smoke：
 
 ```bash
 pnpm run verify:published -- --version 1.2.3

@@ -15,6 +15,20 @@ const publishablePackages = [
   '@blade-ai/agent',
   '@blade-ai/agent-sdk',
 ];
+const publishedManifestRequirements = [
+  {
+    packageName: '@blade-ai/ai',
+    manifestPath: 'node_modules/@blade-ai/ai/package.json',
+  },
+  {
+    packageName: '@blade-ai/agent',
+    manifestPath: 'node_modules/@blade-ai/agent/package.json',
+  },
+  {
+    packageName: '@blade-ai/agent-sdk',
+    manifestPath: 'node_modules/@blade-ai/agent-sdk/package.json',
+  },
+];
 const publishedReadmeRequirements = [
   {
     packageName: '@blade-ai/ai',
@@ -191,6 +205,7 @@ async function verifyPublishedInstallSmoke({ version }) {
       ...packageSpecs,
     ], { cwd: consumerDir });
 
+    await verifyPublishedPackageManifests({ consumerDir, version });
     await verifyPublishedReadmes({ consumerDir });
 
     const runtimeSmokePath = join(consumerDir, 'consumer-runtime.mjs');
@@ -244,6 +259,45 @@ if (Object.keys(agentProtocol).length !== 0) {
   } finally {
     await rm(consumerDir, { recursive: true, force: true });
   }
+}
+
+async function verifyPublishedPackageManifests({ consumerDir, version }) {
+  for (const requirement of publishedManifestRequirements) {
+    const manifest = JSON.parse(
+      await readFile(join(consumerDir, requirement.manifestPath), 'utf8'),
+    );
+    const serializedManifest = JSON.stringify(manifest);
+
+    if (manifest.name !== requirement.packageName) {
+      throw new Error(`${requirement.packageName} installed manifest name mismatch: ${manifest.name}`);
+    }
+    if (manifest.version !== version) {
+      throw new Error(
+        `${requirement.packageName} installed manifest version mismatch: expected ${version}, got ${manifest.version}`,
+      );
+    }
+    if (serializedManifest.includes('workspace:')) {
+      throw new Error(`${requirement.packageName} installed manifest must not contain workspace: dependencies`);
+    }
+    if (serializedManifest.includes('0.0.0')) {
+      throw new Error(`${requirement.packageName} installed manifest must not contain 0.0.0 placeholder versions`);
+    }
+
+    for (const dependencyBlock of [
+      manifest.dependencies,
+      manifest.peerDependencies,
+      manifest.optionalDependencies,
+    ]) {
+      for (const [dependencyName, dependencyVersion] of Object.entries(dependencyBlock ?? {})) {
+        if (publishablePackages.includes(dependencyName) && dependencyVersion !== version) {
+          throw new Error(
+            `${requirement.packageName} internal dependency ${dependencyName} must match published version ${version}, got ${dependencyVersion}`,
+          );
+        }
+      }
+    }
+  }
+  console.log('[verify-published] temporary consumer published package manifests passed');
 }
 
 async function verifyPublishedReadmes({ consumerDir }) {

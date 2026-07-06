@@ -466,6 +466,25 @@ describe('release scripts', () => {
     expect(roadmap).toContain('published package README gate');
   });
 
+  it('verifies installed published package manifests from the temporary consumer install', () => {
+    const publishedVerifier = readFileSync(resolve('scripts/verify-published.mjs'), 'utf8');
+    const checklist = readFileSync(resolve('docs/production-checklist.md'), 'utf8');
+    const roadmap = readFileSync(resolve('docs/roadmap/production-agent-sdk-monorepo.md'), 'utf8');
+
+    expect(publishedVerifier).toContain('publishedManifestRequirements');
+    expect(publishedVerifier).toContain('verifyPublishedPackageManifests');
+    expect(publishedVerifier).toContain("manifestPath: 'node_modules/@blade-ai/ai/package.json'");
+    expect(publishedVerifier).toContain("manifestPath: 'node_modules/@blade-ai/agent/package.json'");
+    expect(publishedVerifier).toContain("manifestPath: 'node_modules/@blade-ai/agent-sdk/package.json'");
+    expect(publishedVerifier).toContain('installed manifest version mismatch');
+    expect(publishedVerifier).toContain('installed manifest must not contain workspace: dependencies');
+    expect(publishedVerifier).toContain('installed manifest must not contain 0.0.0 placeholder versions');
+    expect(publishedVerifier).toContain('internal dependency');
+    expect(publishedVerifier).toContain('must match published version');
+    expect(checklist).toContain('published package manifests');
+    expect(roadmap).toContain('published package manifest gate');
+  });
+
   it('type-checks public declarations from the published temporary consumer', () => {
     const publishedVerifier = readFileSync(resolve('scripts/verify-published.mjs'), 'utf8');
     const readme = readFileSync(resolve('README.md'), 'utf8');
