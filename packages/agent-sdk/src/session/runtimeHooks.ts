@@ -13,6 +13,10 @@ export interface PackageLocalRuntimeHooksInitializationOptions {
   hooks?: Partial<Record<SessionHookEvent, HookCallback[]>>;
 }
 
+export interface PackageLocalRuntimeHookOperations {
+  initialize(): void;
+}
+
 export interface PackageLocalRuntimeTraceCollectorStreamOptions<TChunk> {
   hookRuntime: PackageLocalRuntimeHookRuntimePort;
   traceCollector: unknown;
@@ -25,6 +29,16 @@ export function initializePackageLocalRuntimeHooks(
   if (options.hooks && Object.keys(options.hooks).length > 0) {
     options.hookManager.enable();
   }
+}
+
+export function createPackageLocalRuntimeHookOperations(
+  options: PackageLocalRuntimeHooksInitializationOptions,
+): PackageLocalRuntimeHookOperations {
+  return {
+    initialize() {
+      initializePackageLocalRuntimeHooks(options);
+    },
+  };
 }
 
 export async function* streamWithPackageLocalRuntimeTraceCollector<TChunk>(

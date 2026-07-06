@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
+  createPackageLocalRuntimeHookOperations,
   initializePackageLocalRuntimeHooks,
   streamWithPackageLocalRuntimeTraceCollector,
 } from '../../packages/agent-sdk/src/session/runtimeHooks.js';
@@ -33,6 +34,20 @@ describe('agent-sdk package-local runtime hook helpers', () => {
         [HookEvent.UserPromptSubmit]: [async () => ({ action: 'continue' })],
       },
     });
+
+    expect(manager.enable).toHaveBeenCalledTimes(1);
+  });
+
+  it('bundles hook initialization behind injected ports', () => {
+    const manager = hookManager();
+    const operations = createPackageLocalRuntimeHookOperations({
+      hookManager: manager,
+      hooks: {
+        [HookEvent.UserPromptSubmit]: [async () => ({ action: 'continue' })],
+      },
+    });
+
+    operations.initialize();
 
     expect(manager.enable).toHaveBeenCalledTimes(1);
   });

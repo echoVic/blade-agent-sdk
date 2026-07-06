@@ -28,7 +28,8 @@ import type {
   StreamMessage,
 } from './types.js';
 import {
-  initializePackageLocalRuntimeHooks,
+  createPackageLocalRuntimeHookOperations,
+  type PackageLocalRuntimeHookOperations,
   type PackageLocalRuntimeHookManagerPort,
   type PackageLocalRuntimeHookRuntimePort,
 } from './runtimeHooks.js';
@@ -324,6 +325,7 @@ export class PackageLocalSessionRuntime {
   >;
   private readonly sessionToolRegistrationOperations: PackageLocalRuntimeSessionToolRegistrationOperations;
   private readonly permissionOperations: PackageLocalRuntimePermissionOperations;
+  private readonly hookOperations: PackageLocalRuntimeHookOperations;
   private readonly traceOperations: PackageLocalRuntimeTraceOperations;
   private readonly createForkSessionId?: () => SessionId;
   private readonly createForkSession?: (
@@ -443,6 +445,10 @@ export class PackageLocalSessionRuntime {
       permissionHooks: this.permissionHooks,
       permissionHandler: this.options.permissionHandler,
       canUseTool: this.options.canUseTool,
+    });
+    this.hookOperations = createPackageLocalRuntimeHookOperations({
+      hookManager: this.hookManager,
+      hooks: this.hookCallbacks,
     });
     this.createForkSessionId = options.createForkSessionId;
     this.createForkSession = options.createForkSession;
@@ -576,10 +582,7 @@ export class PackageLocalSessionRuntime {
   }
 
   initializeHooks(): void {
-    initializePackageLocalRuntimeHooks({
-      hookManager: this.hookManager,
-      hooks: this.hookCallbacks,
-    });
+    this.hookOperations.initialize();
   }
 
   createExecutionPipeline(): unknown {
