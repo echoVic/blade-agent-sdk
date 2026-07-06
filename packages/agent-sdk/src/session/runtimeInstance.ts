@@ -97,16 +97,12 @@ import {
   createPackageLocalRuntimeSubagentOperations,
   type PackageLocalRuntimeSubagentOperations,
 } from './runtimeSubagents.js';
-import {
-  createPackageLocalRuntimeToolFilterOperations,
-  type PackageLocalRuntimeToolFilterOperations,
-} from './runtimeToolFilters.js';
-import {
-  createPackageLocalRuntimeToolRegistrationOperations,
-  createPackageLocalRuntimeSessionToolRegistrationOperations,
-  type PackageLocalRuntimeToolRegistrationOperations,
-  type PackageLocalRuntimeSessionToolRegistrationOperations,
+import type { PackageLocalRuntimeToolFilterOperations } from './runtimeToolFilters.js';
+import type {
+  PackageLocalRuntimeToolRegistrationOperations,
+  PackageLocalRuntimeSessionToolRegistrationOperations,
 } from './runtimeToolRegistration.js';
+import { createPackageLocalRuntimeToolOperations } from './runtimeTools.js';
 import {
   createPackageLocalRuntimePermissionOperations,
   type PackageLocalRuntimePermissionHookPort,
@@ -431,26 +427,23 @@ export class PackageLocalSessionRuntime {
         this.getKernelTracePort(recorder, maxContextTokens),
       getToolPort: (createExecutionContext) => this.getKernelToolPort(createExecutionContext),
     });
-    this.toolRegistrationOperations = createPackageLocalRuntimeToolRegistrationOperations({
-      filterTools: (tools) => this.filterTools(tools),
-      toolCatalog: this.toolCatalog,
-    });
-    this.toolFilterOperations = createPackageLocalRuntimeToolFilterOperations({
+    const toolOperations = createPackageLocalRuntimeToolOperations({
       allowedTools: this.options.allowedTools,
       disallowedTools: this.options.disallowedTools,
+      definitions: this.options.tools,
+      customToolFactory: this.customToolFactory,
+      sessionId: this.sessionId,
+      storageRoot: this.storageRoot,
+      mcpRegistry: this.mcpRegistry,
+      builtinToolProvider: this.builtinToolProvider,
+      toolCatalog: this.toolCatalog,
+      registerTools: (tools, source) => {
+        this.registerTools(tools, source);
+      },
     });
-    this.sessionToolRegistrationOperations =
-      createPackageLocalRuntimeSessionToolRegistrationOperations({
-        definitions: this.options.tools,
-        customToolFactory: this.customToolFactory,
-        sessionId: this.sessionId,
-        storageRoot: this.storageRoot,
-        mcpRegistry: this.mcpRegistry,
-        builtinToolProvider: this.builtinToolProvider,
-        registerTools: (tools, source) => {
-          this.registerTools(tools, source);
-        },
-      });
+    this.toolRegistrationOperations = toolOperations.registration;
+    this.sessionToolRegistrationOperations = toolOperations.sessionRegistration;
+    this.toolFilterOperations = toolOperations.filter;
     this.permissionOperations = createPackageLocalRuntimePermissionOperations({
       hooks: this.hookCallbacks,
       permissionHooks: this.permissionHooks,

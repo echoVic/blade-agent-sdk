@@ -494,6 +494,9 @@ describe('monorepo topology', () => {
     )
       ? readFileSync('packages/agent-sdk/src/session/runtimeToolRegistration.ts', 'utf-8')
       : '';
+    const runtimeToolsSource = existsSync('packages/agent-sdk/src/session/runtimeTools.ts')
+      ? readFileSync('packages/agent-sdk/src/session/runtimeTools.ts', 'utf-8')
+      : '';
     const runtimePermissionsSource = existsSync(
       'packages/agent-sdk/src/session/runtimePermissions.ts',
     )
@@ -793,8 +796,22 @@ describe('monorepo topology', () => {
     expect(runtimeToolFiltersSource).toContain(
       'createPackageLocalRuntimeToolFilterOperations',
     );
+    expect(existsSync('packages/agent-sdk/src/session/runtimeTools.ts')).toBe(true);
+    expect(runtimeToolsSource).not.toContain('../../../../src/');
+    expect(runtimeToolsSource).toContain('createPackageLocalRuntimeToolOperations');
+    expect(runtimeToolsSource).toContain('createPackageLocalRuntimeToolFilterOperations');
+    expect(runtimeToolsSource).toContain('createPackageLocalRuntimeToolRegistrationOperations');
+    expect(runtimeToolsSource).toContain(
+      'createPackageLocalRuntimeSessionToolRegistrationOperations',
+    );
     expect(runtimeToolFiltersSource).toContain('allowedTools !== undefined');
     expect(packageLocalRuntimeInstanceSource).toContain('toolFilterOperations');
+    expect(packageLocalRuntimeInstanceSource).toContain(
+      'createPackageLocalRuntimeToolOperations',
+    );
+    expect(packageLocalRuntimeInstanceSource).not.toContain(
+      'createPackageLocalRuntimeToolFilterOperations({',
+    );
     expect(packageLocalRuntimeInstanceSource).not.toContain(
       'filterPackageLocalRuntimeTools(tools, {',
     );
@@ -841,13 +858,16 @@ describe('monorepo topology', () => {
     expect(runtimeToolRegistrationSource).toContain(
       'createPackageLocalRuntimeSessionToolRegistrationOperations',
     );
-    expect(packageLocalRuntimeInstanceSource).toContain(
-      'createPackageLocalRuntimeToolRegistrationOperations',
+    expect(packageLocalRuntimeInstanceSource).not.toContain(
+      'createPackageLocalRuntimeToolRegistrationOperations({',
     );
-    expect(packageLocalRuntimeInstanceSource).toContain(
-      'createPackageLocalRuntimeSessionToolRegistrationOperations',
+    expect(packageLocalRuntimeInstanceSource).not.toContain(
+      'createPackageLocalRuntimeSessionToolRegistrationOperations({',
     );
     expect(packageLocalRuntimeInstanceSource).toContain('sessionToolRegistrationOperations');
+    expect(packageLocalRuntimeInstanceSource).toContain('toolOperations.registration');
+    expect(packageLocalRuntimeInstanceSource).toContain('toolOperations.sessionRegistration');
+    expect(packageLocalRuntimeInstanceSource).toContain('toolOperations.filter');
     expect(packageLocalRuntimeInstanceSource).not.toContain(
       'registerPackageLocalRuntimeCustomTools({',
     );
