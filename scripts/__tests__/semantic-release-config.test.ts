@@ -202,6 +202,8 @@ describe('package provenance metadata', () => {
     const publishedVerifier = readFileSync(resolve('scripts/verify-published.mjs'), 'utf8');
 
     for (const verifier of [packageVerifier, publishedVerifier]) {
+      expect(verifier).toContain('function assertRuntimeExportParity');
+      expect(verifier).toContain("assertRuntimeExportParity(agentSdk, agentSdkServer, 'root', 'server')");
       expect(verifier).toContain('subagentRegistry');
       expect(verifier).toContain('ClaudeCodePermissionMode');
       expect(verifier).toContain('SubagentExecutionRunner');

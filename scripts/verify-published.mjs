@@ -238,6 +238,21 @@ function assertNoRuntimeExport(module, name) {
   }
 }
 
+function assertRuntimeExportParity(leftModule, rightModule, leftName, rightName) {
+  const leftKeys = Object.keys(leftModule).sort();
+  const rightKeys = Object.keys(rightModule).sort();
+  const missingFromRight = leftKeys.filter((key) => !rightKeys.includes(key));
+  const extraInRight = rightKeys.filter((key) => !leftKeys.includes(key));
+
+  if (missingFromRight.length > 0 || extraInRight.length > 0) {
+    throw new Error([
+      \`Runtime export mismatch between \${leftName} and \${rightName}\`,
+      missingFromRight.length > 0 ? \`missing from \${rightName}: \${missingFromRight.join(', ')}\` : undefined,
+      extraInRight.length > 0 ? \`extra in \${rightName}: \${extraInRight.join(', ')}\` : undefined,
+    ].filter(Boolean).join('; '));
+  }
+}
+
 assertRuntimeExport(ai, 'createOpenAICompatibleModelPort');
 assertRuntimeExport(aiOpenAICompatible, 'createOpenAICompatibleModelPort');
 assertRuntimeExport(aiRetry, 'DEFAULT_RETRY_CONFIG');
@@ -258,6 +273,7 @@ assertRuntimeExport(agentSdkCore, 'PermissionMode');
 assertRuntimeExport(agentSdkLocal, 'getBuiltinTools');
 assertRuntimeExport(agentSdkServer, 'createSession');
 assertRuntimeExport(agentSdkServer, 'subagentRegistry');
+assertRuntimeExportParity(agentSdk, agentSdkServer, 'root', 'server');
 assertRuntimeExport(agentSdkSession, 'createSession');
 assertRuntimeExport(agentSdkTools, 'ToolKind');
 
