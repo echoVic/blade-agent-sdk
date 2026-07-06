@@ -836,7 +836,13 @@ describe('monorepo topology', () => {
     expect(existsSync('packages/agent-sdk/src/session/runtimeAgentKernels.ts')).toBe(true);
     expect(runtimeAgentKernelsSource).not.toContain('../../../../src/');
     expect(runtimeAgentKernelsSource).toContain('createPackageLocalRuntimeAgentKernel');
+    expect(runtimeAgentKernelsSource).toContain('projectPackageLocalRuntimeAgentKernelPorts');
     expect(packageLocalRuntimeInstanceSource).toContain('createPackageLocalRuntimeAgentKernel');
+    expect(packageLocalRuntimeInstanceSource).toContain('projectPackageLocalRuntimeAgentKernelPorts');
+    expect(packageLocalRuntimeInstanceSource).not.toContain('store: this.getKernelStorePort()');
+    expect(packageLocalRuntimeInstanceSource).not.toContain('hooks: this.getKernelHookPort()');
+    expect(packageLocalRuntimeInstanceSource).not.toContain('trace: this.getKernelTracePort');
+    expect(packageLocalRuntimeInstanceSource).not.toContain('tools: this.getKernelToolPort');
     expect(packageLocalRuntimeInstanceSource).not.toContain('this.kernelFactory.create({');
     expect(packageLocalRuntimeInstanceSource).not.toContain('? { modelRequestDefaults:');
     expect(existsSync('packages/agent-sdk/src/session/runtimeKernelModels.ts')).toBe(true);

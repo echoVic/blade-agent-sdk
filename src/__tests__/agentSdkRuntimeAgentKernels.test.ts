@@ -6,11 +6,15 @@ import type {
   AgentTracePort,
 } from '@blade-ai/agent';
 import { describe, expect, it, vi } from 'vitest';
-import { createPackageLocalRuntimeAgentKernel } from '../../packages/agent-sdk/src/session/runtimeAgentKernels.js';
+import {
+  createPackageLocalRuntimeAgentKernel,
+  projectPackageLocalRuntimeAgentKernelPorts,
+} from '../../packages/agent-sdk/src/session/runtimeAgentKernels.js';
 import type {
   PackageLocalRuntimeAgentKernelFactoryPort,
   PackageLocalRuntimeResolvedKernelModel,
 } from '../../packages/agent-sdk/src/session/runtimeAgentKernels.js';
+import type { TraceRecorder } from '../../packages/agent-sdk/src/observability/TraceRecorder.js';
 
 const modelPort: ModelPort = {
   async generate() {
@@ -115,5 +119,56 @@ describe('agent-sdk package-local runtime agent kernel helpers', () => {
       tools: toolPort,
       maxSteps: 7,
     });
+  });
+
+  it('projects required and optional kernel ports without runtime state', () => {
+    const getStorePort = vi.fn(() => storePort);
+    const getHookPort = vi.fn(() => hookPort);
+    const getTracePort = vi.fn(() => tracePort);
+    const getToolPort = vi.fn(() => toolPort);
+    const createExecutionContext = vi.fn();
+    const traceRecorder = { startSpan: vi.fn() } as unknown as TraceRecorder;
+    const kernelModel: PackageLocalRuntimeResolvedKernelModel = {
+      model: modelPort,
+      modelRequestDefaults: {
+        maxContextTokens: 4096,
+      },
+    };
+
+    expect(
+      projectPackageLocalRuntimeAgentKernelPorts({
+        options: {},
+        kernelModel,
+        getStorePort,
+        getHookPort,
+        getTracePort,
+        getToolPort,
+      }),
+    ).toEqual({
+      store: storePort,
+      hooks: hookPort,
+    });
+
+    expect(
+      projectPackageLocalRuntimeAgentKernelPorts({
+        options: {
+          traceRecorder,
+          createExecutionContext,
+        },
+        kernelModel,
+        getStorePort,
+        getHookPort,
+        getTracePort,
+        getToolPort,
+      }),
+    ).toEqual({
+      store: storePort,
+      hooks: hookPort,
+      trace: tracePort,
+      tools: toolPort,
+    });
+
+    expect(getTracePort).toHaveBeenCalledWith(traceRecorder, 4096);
+    expect(getToolPort).toHaveBeenCalledWith(createExecutionContext);
   });
 });

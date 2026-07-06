@@ -41,6 +41,7 @@ import {
 } from './runtimeExecutionPipeline.js';
 import {
   createPackageLocalRuntimeAgentKernel,
+  projectPackageLocalRuntimeAgentKernelPorts,
   type PackageLocalRuntimeAgentKernelFactoryPort,
   type PackageLocalRuntimeAgentKernelPort,
 } from './runtimeAgentKernels.js';
@@ -605,21 +606,15 @@ export class PackageLocalSessionRuntime {
       options,
       kernelModel,
       kernelFactory: this.kernelFactory,
-      ports: {
-        store: this.getKernelStorePort(),
-        hooks: this.getKernelHookPort(),
-        ...(options.traceRecorder
-          ? {
-              trace: this.getKernelTracePort(
-                options.traceRecorder,
-                kernelModel.modelRequestDefaults?.maxContextTokens,
-              ),
-            }
-          : {}),
-        ...(options.createExecutionContext
-          ? { tools: this.getKernelToolPort(options.createExecutionContext) }
-          : {}),
-      },
+      ports: projectPackageLocalRuntimeAgentKernelPorts({
+        options,
+        kernelModel,
+        getStorePort: () => this.getKernelStorePort(),
+        getHookPort: () => this.getKernelHookPort(),
+        getTracePort: (recorder, maxContextTokens) =>
+          this.getKernelTracePort(recorder, maxContextTokens),
+        getToolPort: (createExecutionContext) => this.getKernelToolPort(createExecutionContext),
+      }),
     });
   }
 

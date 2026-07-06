@@ -1,4 +1,5 @@
 import type {
+  AgentToolCall,
   AgentHookPort,
   AgentKernelOptions,
   AgentStorePort,
@@ -6,6 +7,8 @@ import type {
   AgentToolPort,
   AgentTracePort,
 } from '@blade-ai/agent';
+import type { TraceRecorder } from '../observability/TraceRecorder.js';
+import type { ExecutionContext } from '../tools/types/index.js';
 import type {
   PackageLocalRuntimeResolvedKernelModel,
 } from './runtimeKernelModels.js';
@@ -42,6 +45,48 @@ export interface CreatePackageLocalRuntimeAgentKernelOptions {
   kernelModel: PackageLocalRuntimeResolvedKernelModel;
   kernelFactory: PackageLocalRuntimeAgentKernelFactoryPort;
   ports: PackageLocalRuntimeAgentKernelPorts;
+}
+
+export interface PackageLocalRuntimeAgentKernelPortProjectionOptions {
+  traceRecorder?: TraceRecorder;
+  createExecutionContext?: (
+    toolCall: AgentToolCall,
+    signal?: AbortSignal,
+  ) => ExecutionContext;
+}
+
+export interface ProjectPackageLocalRuntimeAgentKernelPortsOptions {
+  options: PackageLocalRuntimeAgentKernelPortProjectionOptions;
+  kernelModel: PackageLocalRuntimeResolvedKernelModel;
+  getStorePort(): AgentStorePort;
+  getHookPort(): AgentHookPort;
+  getTracePort(recorder: TraceRecorder, maxContextTokens?: number): AgentTracePort;
+  getToolPort(
+    createExecutionContext: (
+      toolCall: AgentToolCall,
+      signal?: AbortSignal,
+    ) => ExecutionContext,
+  ): AgentToolPort;
+}
+
+export function projectPackageLocalRuntimeAgentKernelPorts(
+  options: ProjectPackageLocalRuntimeAgentKernelPortsOptions,
+): PackageLocalRuntimeAgentKernelPorts {
+  return {
+    store: options.getStorePort(),
+    hooks: options.getHookPort(),
+    ...(options.options.traceRecorder
+      ? {
+          trace: options.getTracePort(
+            options.options.traceRecorder,
+            options.kernelModel.modelRequestDefaults?.maxContextTokens,
+          ),
+        }
+      : {}),
+    ...(options.options.createExecutionContext
+      ? { tools: options.getToolPort(options.options.createExecutionContext) }
+      : {}),
+  };
 }
 
 export function createPackageLocalRuntimeAgentKernel(
