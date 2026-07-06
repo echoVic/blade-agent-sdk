@@ -320,6 +320,15 @@ describe('release scripts', () => {
     expect(releaseVerifier).toContain('publishConfig');
   });
 
+  it('requires ESM and side-effect-free metadata in the release verifier', () => {
+    const releaseVerifier = readFileSync(resolve('scripts/verify-release-config.mjs'), 'utf8');
+
+    expect(releaseVerifier).toContain("manifest.type !== 'module'");
+    expect(releaseVerifier).toContain('manifest.sideEffects !== false');
+    expect(releaseVerifier).toContain('must be ESM-only');
+    expect(releaseVerifier).toContain('must declare sideEffects false');
+  });
+
   it('verifies npm provenance attestations after packages are published', () => {
     const publishedVerifier = readFileSync(resolve('scripts/verify-published.mjs'), 'utf8');
     const readme = readFileSync(resolve('README.md'), 'utf8');

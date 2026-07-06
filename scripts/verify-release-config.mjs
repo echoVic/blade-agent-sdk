@@ -99,6 +99,12 @@ function verifyPackageMetadata() {
     if (manifest.private !== false) {
       fail(`${pkg.name} must be publishable`);
     }
+    if (manifest.type !== 'module') {
+      fail(`${pkg.name} must be ESM-only`);
+    }
+    if (manifest.sideEffects !== false) {
+      fail(`${pkg.name} must declare sideEffects false`);
+    }
     if (manifest.license !== 'MIT') {
       fail(`${pkg.name} must declare MIT license`);
     }
