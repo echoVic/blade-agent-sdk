@@ -639,6 +639,19 @@ describe('monorepo topology', () => {
     expect(runtimeMcpServersSource).toContain('connectPackageLocalRuntimeMcpServer');
     expect(runtimeMcpServersSource).toContain('disconnectPackageLocalRuntimeMcpServer');
     expect(runtimeMcpServersSource).toContain('reconnectPackageLocalRuntimeMcpServer');
+    expect(runtimeMcpServersSource).toContain(
+      'createPackageLocalRuntimeMcpServerLifecycleOperations',
+    );
+    expect(packageLocalRuntimeInstanceSource).toContain('mcpServerLifecycleOperations');
+    expect(packageLocalRuntimeInstanceSource).not.toContain(
+      'connectPackageLocalRuntimeMcpServer({',
+    );
+    expect(packageLocalRuntimeInstanceSource).not.toContain(
+      'disconnectPackageLocalRuntimeMcpServer({',
+    );
+    expect(packageLocalRuntimeInstanceSource).not.toContain(
+      'reconnectPackageLocalRuntimeMcpServer({',
+    );
     expect(packageLocalRuntimeInstanceSource).not.toContain(
       'function isPackageLocalSdkMcpServerHandle',
     );

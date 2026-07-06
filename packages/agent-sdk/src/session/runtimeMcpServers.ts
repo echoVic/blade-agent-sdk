@@ -48,6 +48,18 @@ export interface PackageLocalMcpServerCloseOptions {
   mcpRegistry: PackageLocalMcpRegistryActionPort;
 }
 
+export interface PackageLocalRuntimeMcpServerLifecycleOperations {
+  connect(serverName: string): Promise<void>;
+  disconnect(serverName: string): Promise<void>;
+  reconnect(serverName: string): Promise<void>;
+}
+
+export interface PackageLocalRuntimeMcpServerLifecycleOperationsOptions {
+  configuredServers?: Record<string, McpServerConfig | SdkMcpServerHandle>;
+  mcpRegistry: PackageLocalMcpRegistryActionPort;
+  refreshMcpTools(serverNames: string[]): Promise<void> | void;
+}
+
 export function isPackageLocalSdkMcpServerHandle(
   config: unknown,
 ): config is SdkMcpServerHandle {
@@ -176,4 +188,34 @@ export async function reconnectPackageLocalRuntimeMcpServer(
     options.serverName,
   );
   await options.refreshMcpTools([options.serverName]);
+}
+
+export function createPackageLocalRuntimeMcpServerLifecycleOperations(
+  options: PackageLocalRuntimeMcpServerLifecycleOperationsOptions,
+): PackageLocalRuntimeMcpServerLifecycleOperations {
+  return {
+    connect(serverName) {
+      return connectPackageLocalRuntimeMcpServer({
+        serverName,
+        configuredServers: options.configuredServers,
+        mcpRegistry: options.mcpRegistry,
+        refreshMcpTools: options.refreshMcpTools,
+      });
+    },
+    disconnect(serverName) {
+      return disconnectPackageLocalRuntimeMcpServer({
+        serverName,
+        mcpRegistry: options.mcpRegistry,
+        refreshMcpTools: options.refreshMcpTools,
+      });
+    },
+    reconnect(serverName) {
+      return reconnectPackageLocalRuntimeMcpServer({
+        serverName,
+        configuredServers: options.configuredServers,
+        mcpRegistry: options.mcpRegistry,
+        refreshMcpTools: options.refreshMcpTools,
+      });
+    },
+  };
 }

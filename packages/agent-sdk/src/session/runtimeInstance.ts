@@ -75,9 +75,8 @@ import {
 } from './runtimeSessionLifecycle.js';
 import {
   closePackageLocalRuntimeMcpServers,
-  connectPackageLocalRuntimeMcpServer,
-  disconnectPackageLocalRuntimeMcpServer,
-  reconnectPackageLocalRuntimeMcpServer,
+  createPackageLocalRuntimeMcpServerLifecycleOperations,
+  type PackageLocalRuntimeMcpServerLifecycleOperations,
   registerPackageLocalConfiguredMcpServers,
 } from './runtimeMcpServers.js';
 import {
@@ -310,6 +309,7 @@ export class PackageLocalSessionRuntime {
   readonly kernelModelResolver: PackageLocalRuntimeKernelModelResolverPort;
   private readonly sessionLifecycleOperations: PackageLocalRuntimeSessionLifecycleOperations<SessionMessage>;
   private readonly mcpCapabilityOperations: PackageLocalRuntimeMcpCapabilityOperations;
+  private readonly mcpServerLifecycleOperations: PackageLocalRuntimeMcpServerLifecycleOperations;
   private readonly executionPipelineCache: PackageLocalRuntimeExecutionPipelineCache;
   private readonly agentRuntimeDepsOperations: PackageLocalAgentRuntimeDepsOperations;
   private readonly kernelPortOperations: PackageLocalRuntimeKernelPortOperations;
@@ -361,6 +361,12 @@ export class PackageLocalSessionRuntime {
     this.mcpCapabilityOperations = createPackageLocalRuntimeMcpCapabilityOperations({
       mcpRegistry: this.mcpRegistry,
     });
+    this.mcpServerLifecycleOperations =
+      createPackageLocalRuntimeMcpServerLifecycleOperations({
+        configuredServers: this.options.mcpServers,
+        mcpRegistry: this.mcpRegistry,
+        refreshMcpTools: (serverNames) => this.refreshMcpTools(serverNames),
+      });
     this.executionPipelineCache = createPackageLocalRuntimeExecutionPipelineCache(() =>
       createPackageLocalRuntimeExecutionPipeline({
         bladeConfig: this.bladeConfig,
@@ -478,29 +484,15 @@ export class PackageLocalSessionRuntime {
   }
 
   async mcpConnect(serverName: string): Promise<void> {
-    await connectPackageLocalRuntimeMcpServer({
-      serverName,
-      configuredServers: this.options.mcpServers,
-      mcpRegistry: this.mcpRegistry,
-      refreshMcpTools: (serverNames) => this.refreshMcpTools(serverNames),
-    });
+    await this.mcpServerLifecycleOperations.connect(serverName);
   }
 
   async mcpDisconnect(serverName: string): Promise<void> {
-    await disconnectPackageLocalRuntimeMcpServer({
-      serverName,
-      mcpRegistry: this.mcpRegistry,
-      refreshMcpTools: (serverNames) => this.refreshMcpTools(serverNames),
-    });
+    await this.mcpServerLifecycleOperations.disconnect(serverName);
   }
 
   async mcpReconnect(serverName: string): Promise<void> {
-    await reconnectPackageLocalRuntimeMcpServer({
-      serverName,
-      configuredServers: this.options.mcpServers,
-      mcpRegistry: this.mcpRegistry,
-      refreshMcpTools: (serverNames) => this.refreshMcpTools(serverNames),
-    });
+    await this.mcpServerLifecycleOperations.reconnect(serverName);
   }
 
   async registerConfiguredMcpServers(): Promise<void> {
