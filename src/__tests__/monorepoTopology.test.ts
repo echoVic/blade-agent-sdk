@@ -837,8 +837,18 @@ describe('monorepo topology', () => {
     expect(runtimeAgentKernelsSource).not.toContain('../../../../src/');
     expect(runtimeAgentKernelsSource).toContain('createPackageLocalRuntimeAgentKernel');
     expect(runtimeAgentKernelsSource).toContain('projectPackageLocalRuntimeAgentKernelPorts');
-    expect(packageLocalRuntimeInstanceSource).toContain('createPackageLocalRuntimeAgentKernel');
-    expect(packageLocalRuntimeInstanceSource).toContain('projectPackageLocalRuntimeAgentKernelPorts');
+    expect(runtimeAgentKernelsSource).toContain(
+      'createPackageLocalRuntimeAgentKernelFromResolved',
+    );
+    expect(packageLocalRuntimeInstanceSource).toContain(
+      'createPackageLocalRuntimeAgentKernelFromResolved',
+    );
+    expect(packageLocalRuntimeInstanceSource).not.toContain(
+      'projectPackageLocalRuntimeAgentKernelPorts',
+    );
+    expect(packageLocalRuntimeInstanceSource).not.toContain(
+      'createPackageLocalRuntimeAgentKernel({',
+    );
     expect(packageLocalRuntimeInstanceSource).not.toContain('store: this.getKernelStorePort()');
     expect(packageLocalRuntimeInstanceSource).not.toContain('hooks: this.getKernelHookPort()');
     expect(packageLocalRuntimeInstanceSource).not.toContain('trace: this.getKernelTracePort');

@@ -55,6 +55,10 @@ export interface PackageLocalRuntimeAgentKernelPortProjectionOptions {
   ) => ExecutionContext;
 }
 
+export interface PackageLocalRuntimeResolvedAgentKernelCreationOptions
+  extends PackageLocalRuntimeAgentKernelCreationOptions,
+    PackageLocalRuntimeAgentKernelPortProjectionOptions {}
+
 export interface ProjectPackageLocalRuntimeAgentKernelPortsOptions {
   options: PackageLocalRuntimeAgentKernelPortProjectionOptions;
   kernelModel: PackageLocalRuntimeResolvedKernelModel;
@@ -87,6 +91,39 @@ export function projectPackageLocalRuntimeAgentKernelPorts(
       ? { tools: options.getToolPort(options.options.createExecutionContext) }
       : {}),
   };
+}
+
+export interface CreatePackageLocalRuntimeAgentKernelFromResolvedOptions {
+  options: PackageLocalRuntimeResolvedAgentKernelCreationOptions;
+  kernelModel: PackageLocalRuntimeResolvedKernelModel;
+  kernelFactory: PackageLocalRuntimeAgentKernelFactoryPort;
+  getStorePort(): AgentStorePort;
+  getHookPort(): AgentHookPort;
+  getTracePort(recorder: TraceRecorder, maxContextTokens?: number): AgentTracePort;
+  getToolPort(
+    createExecutionContext: (
+      toolCall: AgentToolCall,
+      signal?: AbortSignal,
+    ) => ExecutionContext,
+  ): AgentToolPort;
+}
+
+export function createPackageLocalRuntimeAgentKernelFromResolved(
+  options: CreatePackageLocalRuntimeAgentKernelFromResolvedOptions,
+): PackageLocalRuntimeAgentKernelPort {
+  return createPackageLocalRuntimeAgentKernel({
+    options: options.options,
+    kernelModel: options.kernelModel,
+    kernelFactory: options.kernelFactory,
+    ports: projectPackageLocalRuntimeAgentKernelPorts({
+      options: options.options,
+      kernelModel: options.kernelModel,
+      getStorePort: options.getStorePort,
+      getHookPort: options.getHookPort,
+      getTracePort: options.getTracePort,
+      getToolPort: options.getToolPort,
+    }),
+  });
 }
 
 export function createPackageLocalRuntimeAgentKernel(
