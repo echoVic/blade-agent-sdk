@@ -665,6 +665,7 @@ Status:
 - Two-hundred-seventeenth verification-chain increment complete: suppressed `TaskCompleted` hook failures are now recorded on the active trace before the kernel stream continues. Focused kernel-turn and trace-recorder tests prove custom hook runtime failures surface as `hook_error` trace events with `suppressed: true` while valid result events still finalize successfully.
 - Two-hundred-eighteenth verification-chain increment complete: suppressed `TaskCompleted` hook trace recording is now best-effort and cannot replace valid stream outcomes. Focused kernel-turn tests prove a trace event write failure while recording a suppressed completion hook failure still preserves the successful result stream, success trace finalization, trace retention, and sink notification.
 - Two-hundred-nineteenth verification-chain increment complete: session trace finalization is now best-effort when recorder finishing or trace retention fails. Focused trace manager and kernel trace tests prove recorder finish failures resolve as no-ops without calling trace retention or sink notification, keeping observability failures isolated from session turn lifecycles.
+- Two-hundred-twentieth verification-chain increment complete: `pnpm run verify:packages` now rejects packed `@blade-ai/agent-sdk/core` declarations that expose server-only session APIs such as `createSession`, `resumeSession`, `forkSession`, or Node-local APIs such as `getBuiltinTools` and `createSdkMcpServer`, keeping the browser-safe core type surface aligned with the Pi-style package boundary.
 
 Commit:
 

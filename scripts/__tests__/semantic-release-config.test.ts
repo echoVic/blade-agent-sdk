@@ -125,6 +125,18 @@ describe('package provenance metadata', () => {
     expect(packageVerifier).toContain("from '@blade-ai/agent-sdk/browser';");
   });
 
+  it('rejects server-only contracts from browser-safe core declarations', () => {
+    const packageVerifier = readFileSync(resolve('scripts/verify-packages.mjs'), 'utf8');
+
+    expect(packageVerifier).toContain("file: 'package/dist/core/index.d.ts'");
+    expect(packageVerifier).toContain("forbidden: 'createSession'");
+    expect(packageVerifier).toContain("forbidden: 'resumeSession'");
+    expect(packageVerifier).toContain("forbidden: 'forkSession'");
+    expect(packageVerifier).toContain("forbidden: 'getBuiltinTools'");
+    expect(packageVerifier).toContain("forbidden: 'createSdkMcpServer'");
+    expect(packageVerifier).toContain('core declarations must stay browser-safe');
+  });
+
   it('runtime-loads public value exports from the packed temporary consumer', () => {
     const packageVerifier = readFileSync(resolve('scripts/verify-packages.mjs'), 'utf8');
 
