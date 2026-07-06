@@ -484,6 +484,11 @@ describe('monorepo topology', () => {
     )
       ? readFileSync('packages/agent-sdk/src/session/runtimeSessionOperations.ts', 'utf-8')
       : '';
+    const runtimeSessionCapabilitiesSource = existsSync(
+      'packages/agent-sdk/src/session/runtimeSessionCapabilities.ts',
+    )
+      ? readFileSync('packages/agent-sdk/src/session/runtimeSessionCapabilities.ts', 'utf-8')
+      : '';
     const runtimeMcpCapabilitiesSource = existsSync(
       'packages/agent-sdk/src/session/runtimeMcpCapabilities.ts',
     )
@@ -762,7 +767,24 @@ describe('monorepo topology', () => {
     expect(runtimeForkingSource).not.toContain('../../../../src/');
     expect(runtimeForkingSource).toContain('forkPackageLocalRuntimeSession');
     expect(runtimeForkingSource).toContain('createPackageLocalRuntimeForkOperations');
+    expect(existsSync('packages/agent-sdk/src/session/runtimeSessionCapabilities.ts')).toBe(true);
+    expect(runtimeSessionCapabilitiesSource).not.toContain('../../../../src/');
+    expect(runtimeSessionCapabilitiesSource).toContain(
+      'createPackageLocalRuntimeSessionCapabilityOperations',
+    );
+    expect(runtimeSessionCapabilitiesSource).toContain(
+      'createPackageLocalRuntimeSubagentOperations',
+    );
+    expect(runtimeSessionCapabilitiesSource).toContain('createPackageLocalRuntimeForkOperations');
+    expect(packageLocalRuntimeInstanceSource).toContain(
+      'createPackageLocalRuntimeSessionCapabilityOperations',
+    );
+    expect(packageLocalRuntimeInstanceSource).toContain('sessionCapabilityOperations.subagents');
+    expect(packageLocalRuntimeInstanceSource).toContain('sessionCapabilityOperations.fork');
     expect(packageLocalRuntimeInstanceSource).toContain('forkOperations');
+    expect(packageLocalRuntimeInstanceSource).not.toContain(
+      'createPackageLocalRuntimeForkOperations({',
+    );
     expect(packageLocalRuntimeInstanceSource).not.toContain(
       'forkPackageLocalRuntimeSession({',
     );
@@ -958,8 +980,8 @@ describe('monorepo topology', () => {
     expect(runtimeSubagentsSource).toContain('initializePackageLocalRuntimeSubagents');
     expect(runtimeSubagentsSource).toContain('createPackageLocalRuntimeSubagentOperations');
     expect(packageLocalRuntimeInstanceSource).not.toContain('packageLocalSubagentConfigFromDefinition');
-    expect(packageLocalRuntimeInstanceSource).toContain(
-      'createPackageLocalRuntimeSubagentOperations',
+    expect(packageLocalRuntimeInstanceSource).not.toContain(
+      'createPackageLocalRuntimeSubagentOperations({',
     );
     expect(packageLocalRuntimeInstanceSource).toContain('subagentOperations');
     expect(packageLocalRuntimeInstanceSource).not.toContain(

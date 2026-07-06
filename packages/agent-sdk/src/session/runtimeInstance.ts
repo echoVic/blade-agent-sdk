@@ -82,10 +82,7 @@ import type {
 } from './runtimeMcpTools.js';
 import { createPackageLocalRuntimeMcpOperations } from './runtimeMcp.js';
 import { resolvePackageLocalRuntimePorts } from './runtimeNoopPorts.js';
-import {
-  createPackageLocalRuntimeSubagentOperations,
-  type PackageLocalRuntimeSubagentOperations,
-} from './runtimeSubagents.js';
+import type { PackageLocalRuntimeSubagentOperations } from './runtimeSubagents.js';
 import type { PackageLocalRuntimeToolFilterOperations } from './runtimeToolFilters.js';
 import type {
   PackageLocalRuntimeToolRegistrationOperations,
@@ -101,10 +98,8 @@ import type {
   PackageLocalRuntimeTraceOperations,
 } from './runtimeTraceManager.js';
 import { createPackageLocalRuntimeTurnOperations } from './runtimeTurn.js';
-import {
-  createPackageLocalRuntimeForkOperations,
-  type PackageLocalRuntimeForkOperations,
-} from './runtimeForking.js';
+import type { PackageLocalRuntimeForkOperations } from './runtimeForking.js';
+import { createPackageLocalRuntimeSessionCapabilityOperations } from './runtimeSessionCapabilities.js';
 import type { SessionTraceManager } from './traces.js';
 import type { SessionSnapshot } from './store.js';
 
@@ -432,20 +427,19 @@ export class PackageLocalSessionRuntime {
     });
     this.permissionOperations = guardOperations.permissions;
     this.hookOperations = guardOperations.hooks;
-    this.subagentOperations = createPackageLocalRuntimeSubagentOperations({
-      subagentRegistry: this.subagentRegistry,
-      logger: this.logger,
-      projectPath: this.projectPath,
-      storageRoot: this.storageRoot,
-      agents: this.options.agents,
-    });
-    this.forkOperations = createPackageLocalRuntimeForkOperations({
+    const sessionCapabilityOperations = createPackageLocalRuntimeSessionCapabilityOperations({
       sessionId: this.sessionId,
       options: this.options,
       sessionStore: this.sessionStore,
       createForkSessionId: options.createForkSessionId,
       createForkSession: options.createForkSession,
+      subagentRegistry: this.subagentRegistry,
+      logger: this.logger,
+      projectPath: this.projectPath,
+      storageRoot: this.storageRoot,
     });
+    this.subagentOperations = sessionCapabilityOperations.subagents;
+    this.forkOperations = sessionCapabilityOperations.fork;
     const turnOperations = createPackageLocalRuntimeTurnOperations({
       sessionId: this.sessionId,
       observability: options.options.observability,
