@@ -26,6 +26,12 @@ const expectedPublishedPackageMetadata = {
     url: 'https://github.com/echoVic/blade-agent-sdk',
   },
 };
+const expectedPublishedSdkBrowserExports = {
+  '.': './dist/browser/index.js',
+  './server': './dist/browser/server-only-stub.js',
+  './session': './dist/browser/server-only-stub.js',
+  './local': './dist/browser/server-only-stub.js',
+};
 const publishedManifestRequirements = [
   {
     packageName: '@blade-ai/ai',
@@ -398,6 +404,7 @@ async function verifyPublishedPackageManifests({ consumerDir, version }) {
       packageName: requirement.packageName,
       exportsMap: manifest.exports,
     });
+    verifyPublishedSdkBrowserExportConditions(requirement.packageName, manifest);
 
     for (const dependencyBlock of [
       manifest.dependencies,
@@ -551,6 +558,31 @@ function verifyPublishedManifestExports({ packageName, exportsMap }) {
         label: `exports.${exportName}.${condition}`,
         target,
       });
+    }
+  }
+}
+
+function verifyPublishedSdkBrowserExportConditions(packageName, manifest) {
+  if (packageName !== '@blade-ai/agent-sdk') return;
+  const exportsMap = manifest.exports;
+  if (!exportsMap || typeof exportsMap !== 'object') {
+    throw new Error('@blade-ai/agent-sdk published SDK export map is missing');
+  }
+
+  for (const [exportName, expectedBrowserTarget] of Object.entries(expectedPublishedSdkBrowserExports)) {
+    const exportValue = exportsMap[exportName];
+    if (!exportValue || typeof exportValue !== 'object') {
+      throw new Error(`@blade-ai/agent-sdk published SDK export ${exportName} must be an export condition object`);
+    }
+    if (exportValue.browser !== expectedBrowserTarget) {
+      throw new Error(
+        `@blade-ai/agent-sdk published SDK export ${exportName} browser condition mismatch: expected ${expectedBrowserTarget}, got ${exportValue.browser}`,
+      );
+    }
+    if (typeof exportValue.import !== 'string') {
+      throw new Error(
+        `@blade-ai/agent-sdk published SDK export ${exportName} must keep an import condition alongside the browser condition`,
+      );
     }
   }
 }

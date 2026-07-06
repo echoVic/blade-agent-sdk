@@ -711,6 +711,25 @@ describe('release scripts', () => {
     expect(roadmap).toContain('published package manifest entry target gate');
   });
 
+  it('verifies published SDK browser export conditions from the temporary consumer install', () => {
+    const publishedVerifier = readFileSync(resolve('scripts/verify-published.mjs'), 'utf8');
+    const readme = readFileSync(resolve('README.md'), 'utf8');
+    const checklist = readFileSync(resolve('docs/production-checklist.md'), 'utf8');
+    const roadmap = readFileSync(resolve('docs/roadmap/production-agent-sdk-monorepo.md'), 'utf8');
+
+    expect(publishedVerifier).toContain('verifyPublishedSdkBrowserExportConditions');
+    expect(publishedVerifier).toContain("'.': './dist/browser/index.js'");
+    expect(publishedVerifier).toContain("'./server': './dist/browser/server-only-stub.js'");
+    expect(publishedVerifier).toContain("'./session': './dist/browser/server-only-stub.js'");
+    expect(publishedVerifier).toContain("'./local': './dist/browser/server-only-stub.js'");
+    expect(publishedVerifier).toContain('published SDK export');
+    expect(publishedVerifier).toContain('browser condition mismatch');
+    expect(publishedVerifier).toContain('must keep an import condition alongside the browser condition');
+    expect(readme).toContain('published SDK browser export conditions');
+    expect(checklist).toContain('published SDK browser export conditions');
+    expect(roadmap).toContain('published SDK browser export condition gate');
+  });
+
   it('verifies published package installed file scope from the temporary consumer install', () => {
     const publishedVerifier = readFileSync(resolve('scripts/verify-published.mjs'), 'utf8');
     const checklist = readFileSync(resolve('docs/production-checklist.md'), 'utf8');
