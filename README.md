@@ -210,7 +210,7 @@ pnpm run docs:build
 pnpm run docs:dev
 ```
 
-`pnpm run verify` 是 CI 和发版前的生产 gate，会串起 lint、root/workspace type-check、examples type-check、package boundary scanner、docs build、entrypoint/browser-safety scanner、packed package smoke、release config verification、unit tests 和默认 integration skip 检查。package boundary scanner 会同时保护三包依赖方向、build entry ownership、publish manifest targets，以及 package 源码里的 ESM 相对 import/export 必须带显式运行时文件扩展。
+`pnpm run verify` 是 CI 和发版前的生产 gate，会串起 lint、root/workspace type-check、examples type-check、package boundary scanner、docs build、entrypoint/browser-safety scanner、packed package smoke、release config verification、unit tests 和默认 integration skip 检查。package boundary scanner 会同时保护三包依赖方向、build entry ownership、publish manifest targets，以及 package 源码里的 ESM 相对 import/export 必须带显式运行时文件扩展。release config verification 还会确认根 `package.json` 保持 private orchestrator，不声明 `publishConfig` 或 `files`，并拒绝任何会让 semantic-release 发布 workspace root 的 npm plugin 配置。
 
 `pnpm run verify:packages` 会先 fresh-build 三个发布包，再打出 packed tarball，把它们安装到外部 temporary consumer 项目里，并从 consumer 侧 import root/subpath exports，检查 packed package size budgets、packed package npm metadata、packed package description metadata、packed package author metadata、packed package discoverability metadata、packed package module metadata、packed package engine metadata、packed package license artifacts、packed package manifest entry targets 和 packed SDK browser export conditions，防止声明文件、exports、browser stub、workspace 依赖、模块格式、Node 运行时契约、npm 包描述、维护方信息、npm 可发现性、许可证文本、包体积或包内容在 npm 分发时回退。
 
@@ -231,7 +231,7 @@ INTEGRATION_LIVE=1 pnpm run test:integration:live
 
 GitHub Release notes 会在 conventional commit 摘要后追加三包发布清单，列出 `@blade-ai/ai`、`@blade-ai/agent`、`@blade-ai/agent-sdk` 的同版本发布结果和 session-first 安装命令。
 
-`pnpm run verify:release` 会在不触发网络发版的情况下静态校验 `semantic-release` 配置、三包 publish metadata、direct dependencies 使用 exact versions、`pnpm-workspace.yaml` 的 dependency build-script allowlist、`publishConfig.provenance: true`、workflow 使用 `pnpm install --frozen-lockfile --ignore-scripts`、release workflow 的 verify-before-release 顺序、package README 直接安装/import 示例、package LICENSE artifact，以及 OIDC trusted publishing 设置。`pnpm run verify:packages` 会在发布前检查 packed package READMEs 和 packed package license artifacts，确保 tarball 中的 `README.md` 仍包含包名、直接安装命令和最小 import 示例，并且 `LICENSE` 保留 MIT 授权文本。
+`pnpm run verify:release` 会在不触发网络发版的情况下静态校验 `semantic-release` 配置、root private orchestrator 发布安全、三包 publish metadata、direct dependencies 使用 exact versions、`pnpm-workspace.yaml` 的 dependency build-script allowlist、`publishConfig.provenance: true`、workflow 使用 `pnpm install --frozen-lockfile --ignore-scripts`、release workflow 的 verify-before-release 顺序、package README 直接安装/import 示例、package LICENSE artifact，以及 OIDC trusted publishing 设置。`pnpm run verify:packages` 会在发布前检查 packed package READMEs 和 packed package license artifacts，确保 tarball 中的 `README.md` 仍包含包名、直接安装命令和最小 import 示例，并且 `LICENSE` 保留 MIT 授权文本。
 
 - `feat:` 触发 minor 版本
 - `fix:` 触发 patch 版本

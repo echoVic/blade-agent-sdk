@@ -33,6 +33,29 @@ describe('semantic-release configuration', () => {
 });
 
 describe('package provenance metadata', () => {
+  it('keeps the workspace root as a private non-publishable orchestrator in the release gate', () => {
+    const rootPackageJson = JSON.parse(readFileSync(resolve('package.json'), 'utf8'));
+    const releaseConfig = require('../../release.config.cjs');
+    const releaseVerifier = readFileSync(resolve('scripts/verify-release-config.mjs'), 'utf8');
+    const publishesRootPackage = releaseConfig.plugins.some((plugin: unknown) => {
+      const isNpmPlugin = Array.isArray(plugin)
+        ? plugin[0] === '@semantic-release/npm'
+        : plugin === '@semantic-release/npm';
+      const pkgRoot = Array.isArray(plugin) ? plugin[1]?.pkgRoot : undefined;
+
+      return isNpmPlugin && (pkgRoot === undefined || pkgRoot === '.');
+    });
+
+    expect(rootPackageJson.private).toBe(true);
+    expect(rootPackageJson.publishConfig).toBeUndefined();
+    expect(rootPackageJson.files).toBeUndefined();
+    expect(publishesRootPackage).toBe(false);
+    expect(releaseVerifier).toContain('function verifyRootPackagePublishSafety');
+    expect(releaseVerifier).toContain('root package.json must remain private');
+    expect(releaseVerifier).toContain('root package.json must not declare publishConfig');
+    expect(releaseVerifier).toContain('root package.json must not declare published files');
+  });
+
   it('declares the GitHub repository URL and public npm publish config on every publishable package', () => {
     const packagePaths = [
       'packages/ai/package.json',

@@ -72,6 +72,29 @@ function assertDeepEqual(actual, expected, label) {
   }
 }
 
+function verifyRootPackagePublishSafety() {
+  const packageJson = readJson('package.json');
+  const config = require('../release.config.cjs');
+
+  if (packageJson.private !== true) {
+    fail('root package.json must remain private');
+  }
+  if ('publishConfig' in packageJson) {
+    fail('root package.json must not declare publishConfig');
+  }
+  if ('files' in packageJson) {
+    fail('root package.json must not declare published files');
+  }
+  for (const plugin of config.plugins ?? []) {
+    const isNpmPlugin = Array.isArray(plugin) ? plugin[0] === '@semantic-release/npm' : plugin === '@semantic-release/npm';
+    const pkgRoot = Array.isArray(plugin) ? plugin[1]?.pkgRoot : undefined;
+
+    if (isNpmPlugin && (pkgRoot === undefined || pkgRoot === '.')) {
+      fail('semantic-release must not publish the workspace root package');
+    }
+  }
+}
+
 function verifyRootScripts() {
   const packageJson = readJson('package.json');
   const verifyScript = packageJson.scripts?.verify ?? '';
@@ -382,6 +405,7 @@ function verifyWorkflowDependencyInstalls() {
   }
 }
 
+verifyRootPackagePublishSafety();
 verifyRootScripts();
 verifySemanticReleaseConfig();
 verifyPackageMetadata();

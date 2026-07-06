@@ -83,13 +83,15 @@ pnpm run test:live:session-glm
 
 ## Release Rehearsal
 
-`pnpm run verify` 会先执行无 token 的静态 release gate，校验 semantic-release 配置、三包 publish metadata、`publishConfig.provenance: true`、release workflow 的 verify-before-release 顺序，以及 OIDC trusted publishing 设置：
+`pnpm run verify` 会先执行无 token 的静态 release gate，校验 semantic-release 配置、root private orchestrator 发布安全、三包 publish metadata、`publishConfig.provenance: true`、release workflow 的 verify-before-release 顺序，以及 OIDC trusted publishing 设置：
 
 ```bash
 pnpm run verify:release
 ```
 
 所有 workspace manifest 的 direct dependencies 必须使用 exact versions；源码里的内部 `@blade-ai/*` workspace 依赖可以保持 `workspace:*`，发布前会被 release prepare 步骤改成同一个 concrete version。
+
+根 `package.json` 必须保持 private orchestrator，不声明 `publishConfig` 或 `files`，semantic-release 也不能配置发布 workspace root；只有 `@blade-ai/ai`、`@blade-ai/agent`、`@blade-ai/agent-sdk` 三个 `packages/*` manifest 是可发布 npm 包。
 
 依赖 build scripts 必须维持最小 allowlist：`@vscode/ripgrep`、`esbuild`、`node-pty`。不要为了临时安装方便扩大 `pnpm-workspace.yaml` 的 `allowBuilds`。
 

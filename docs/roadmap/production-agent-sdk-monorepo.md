@@ -91,6 +91,7 @@ Current guardrails:
 - `pnpm run verify:boundaries` scans package source imports and fails if `@blade-ai/ai` depends on agent/session SDK layers, or if `@blade-ai/agent` imports Node-local runtime modules, MCP SDKs, or `@blade-ai/agent-sdk`.
 - The same boundary verifier also checks package manifests so `@blade-ai/agent` cannot declare MCP SDKs, provider runtime SDKs, or local filesystem/terminal/storage dependencies.
 - Package source relative imports and exports must include explicit runtime file extensions, keeping the emitted ESM package graph aligned with Node and bundler resolution.
+- `pnpm run verify:release` keeps the workspace root as a private non-publishable orchestrator, rejects root `publishConfig` / `files` metadata, and fails any semantic-release npm plugin configuration that would publish the root package instead of the three package roots.
 - `pnpm run test:live:glm` builds `@blade-ai/ai` and verifies one non-streaming plus one streaming request against a GLM/OpenAI-compatible endpoint using `.env` credentials.
 - `pnpm run test:live:session-glm` builds all three packages and verifies a real session-first `createSession()` + `send()` + `stream()` turn against the same GLM/OpenAI-compatible endpoint with `allowedTools: []`.
 
@@ -743,6 +744,7 @@ Status:
 - Published SDK browser export condition gate complete: the post-publish verifier now rejects published `@blade-ai/agent-sdk` manifests whose root browser condition no longer resolves to `./dist/browser/index.js`, or whose `server`, `session`, and `local` browser conditions no longer resolve to the explicit server-only stub. The published SDK browser export condition gate catches npm artifact regressions that would otherwise drag server/local dependencies into browser consumers after publication.
 - Twenty-eighth release-automation increment complete: the post-publish verifier now includes a published package file-scope gate. After installing the released packages into a temporary consumer, it scans each installed package directory and rejects declaration maps, JavaScript source maps, test files, and source files. This extends the packed-tarball file-scope rules to the actual npm-installed artifacts users consume.
 - Twenty-ninth release-automation increment complete: the post-publish verifier now includes a published package npm metadata gate. After installing the released packages into a temporary consumer, it rejects npm-visible manifests whose `license`, `homepage`, `bugs`, or `repository` metadata drift from the source release contract, keeping published artifacts traceable and supportable after semantic-release preparation.
+- Thirtieth release-automation increment complete: `pnpm run verify:release` now keeps the workspace root as a private non-publishable orchestrator. The release gate rejects root `publishConfig` / `files` metadata and any semantic-release npm plugin configuration that would publish the workspace root, ensuring main-branch publishing can only target `@blade-ai/ai`, `@blade-ai/agent`, and `@blade-ai/agent-sdk`.
 
 Commit:
 
