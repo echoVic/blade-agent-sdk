@@ -488,6 +488,17 @@ function verifyTarballContents(spec, tarballPath) {
   if (testEntry) {
     throw new Error(`${spec.name} tarball includes a test file: ${testEntry}`);
   }
+
+  assertNoCliProductFiles(spec.name, entries);
+}
+
+function assertNoCliProductFiles(packageName, entries) {
+  if (packageName !== '@blade-ai/agent-sdk') return;
+
+  const cliEntry = entries.find((entry) => entry.startsWith('package/dist/cli/'));
+  if (cliEntry) {
+    throw new Error(`@blade-ai/agent-sdk tarball includes CLI product files: ${cliEntry}`);
+  }
 }
 
 function verifyPackedManifest(spec, tarballPath, tempDir) {

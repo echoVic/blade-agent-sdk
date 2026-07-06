@@ -596,6 +596,19 @@ describe('release scripts', () => {
     expect(roadmap).toContain('published package file-scope gate');
   });
 
+  it('rejects CLI product files from packed and published SDK artifacts', () => {
+    const packageVerifier = readFileSync(resolve('scripts/verify-packages.mjs'), 'utf8');
+    const publishedVerifier = readFileSync(resolve('scripts/verify-published.mjs'), 'utf8');
+
+    expect(packageVerifier).toContain('function assertNoCliProductFiles');
+    expect(packageVerifier).toContain("entry.startsWith('package/dist/cli/')");
+    expect(packageVerifier).toContain('@blade-ai/agent-sdk tarball includes CLI product files');
+
+    expect(publishedVerifier).toContain('function assertNoCliProductFiles');
+    expect(publishedVerifier).toContain("filePath.startsWith('dist/cli/')");
+    expect(publishedVerifier).toContain('@blade-ai/agent-sdk installed package includes CLI product files');
+  });
+
   it('type-checks public declarations from the published temporary consumer', () => {
     const publishedVerifier = readFileSync(resolve('scripts/verify-published.mjs'), 'utf8');
     const readme = readFileSync(resolve('README.md'), 'utf8');

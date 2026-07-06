@@ -446,8 +446,19 @@ async function verifyPublishedPackageFileScope({ consumerDir }) {
     if (sourceEntry) {
       throw new Error(`${requirement.packageName} installed package includes source files: ${sourceEntry}`);
     }
+
+    assertNoCliProductFiles(requirement.packageName, files);
   }
   console.log('[verify-published] temporary consumer published package file scope passed');
+}
+
+function assertNoCliProductFiles(packageName, files) {
+  if (packageName !== '@blade-ai/agent-sdk') return;
+
+  const cliFile = files.find((filePath) => filePath.startsWith('dist/cli/'));
+  if (cliFile) {
+    throw new Error(`@blade-ai/agent-sdk installed package includes CLI product files: ${cliFile}`);
+  }
 }
 
 function assertPublishedManifestTarget({ packageName, label, target }) {
