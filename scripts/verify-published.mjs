@@ -232,6 +232,12 @@ function assertRuntimeExport(module, name) {
   }
 }
 
+function assertNoRuntimeExport(module, name) {
+  if (name in module) {
+    throw new Error(\`Unexpected runtime export \${name}\`);
+  }
+}
+
 assertRuntimeExport(ai, 'createOpenAICompatibleModelPort');
 assertRuntimeExport(aiOpenAICompatible, 'createOpenAICompatibleModelPort');
 assertRuntimeExport(aiRetry, 'DEFAULT_RETRY_CONFIG');
@@ -239,6 +245,10 @@ assertRuntimeExport(agent, 'AgentKernel');
 assertRuntimeExport(agentKernel, 'AgentKernel');
 assertRuntimeExport(agentSdk, 'createSession');
 assertRuntimeExport(agentSdk, 'defineTool');
+assertNoRuntimeExport(agentSdk, 'getBuiltinTools');
+assertNoRuntimeExport(agentSdk, 'createSdkMcpServer');
+assertNoRuntimeExport(agentSdk, 'FileSystemMemoryStore');
+assertNoRuntimeExport(agentSdk, 'SandboxExecutor');
 assertRuntimeExport(agentSdkBrowser, 'PermissionMode');
 assertRuntimeExport(agentSdkCore, 'PermissionMode');
 assertRuntimeExport(agentSdkLocal, 'getBuiltinTools');
@@ -253,6 +263,7 @@ if (Object.keys(agentProtocol).length !== 0) {
     );
     await run(process.execPath, [runtimeSmokePath], { cwd: consumerDir });
     await verifyPublishedTypesSmoke({ consumerDir });
+    await verifyPublishedRootDeclarationBoundary({ consumerDir });
     await verifyPublishedCoreDeclarationBoundary({ consumerDir });
     await verifyPublishedBrowserBundleSmoke({ consumerDir });
     await verifyPublishedAgentBrowserBundleSmoke({ consumerDir });
@@ -442,6 +453,38 @@ async function verifyPublishedCoreDeclarationBoundary({ consumerDir }) {
   ];
 
   for (const rule of forbiddenCoreDeclarations) {
+    if (declarationSource.includes(rule.forbidden)) {
+      throw new Error(`${declarationPath}: ${rule.message}`);
+    }
+  }
+}
+
+async function verifyPublishedRootDeclarationBoundary({ consumerDir }) {
+  const declarationPath = join(
+    consumerDir,
+    'node_modules/@blade-ai/agent-sdk/dist/index.d.ts',
+  );
+  const declarationSource = await readFile(declarationPath, 'utf8');
+  const forbiddenRootDeclarations = [
+    {
+      forbidden: 'getBuiltinTools',
+      message: 'published root declarations must keep Node-local builtin tools behind @blade-ai/agent-sdk/local',
+    },
+    {
+      forbidden: 'createSdkMcpServer',
+      message: 'published root declarations must keep Node-local MCP helpers behind @blade-ai/agent-sdk/local',
+    },
+    {
+      forbidden: 'FileSystemMemoryStore',
+      message: 'published root declarations must keep filesystem memory adapters behind @blade-ai/agent-sdk/local',
+    },
+    {
+      forbidden: 'SandboxExecutor',
+      message: 'published root declarations must keep sandbox adapters behind @blade-ai/agent-sdk/local',
+    },
+  ];
+
+  for (const rule of forbiddenRootDeclarations) {
     if (declarationSource.includes(rule.forbidden)) {
       throw new Error(`${declarationPath}: ${rule.message}`);
     }

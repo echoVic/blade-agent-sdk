@@ -163,6 +163,17 @@ describe('package provenance metadata', () => {
     expect(packageVerifier).toContain('core declarations must stay browser-safe');
   });
 
+  it('rejects node-local adapters from root package declarations', () => {
+    const packageVerifier = readFileSync(resolve('scripts/verify-packages.mjs'), 'utf8');
+
+    expect(packageVerifier).toContain("file: 'package/dist/index.d.ts'");
+    expect(packageVerifier).toContain("forbidden: 'getBuiltinTools'");
+    expect(packageVerifier).toContain("forbidden: 'createSdkMcpServer'");
+    expect(packageVerifier).toContain("forbidden: 'FileSystemMemoryStore'");
+    expect(packageVerifier).toContain("forbidden: 'SandboxExecutor'");
+    expect(packageVerifier).toContain('root declarations must keep Node-local builtin tools behind @blade-ai/agent-sdk/local');
+  });
+
   it('runtime-loads public value exports from the packed temporary consumer', () => {
     const packageVerifier = readFileSync(resolve('scripts/verify-packages.mjs'), 'utf8');
 
@@ -182,6 +193,8 @@ describe('package provenance metadata', () => {
     expect(packageVerifier).toContain("assertRuntimeExport(agentKernel, 'AgentKernel')");
     expect(packageVerifier).toContain("assertRuntimeExport(agentSdk, 'createSession')");
     expect(packageVerifier).toContain("assertRuntimeExport(agentSdk, 'defineTool')");
+    expect(packageVerifier).toContain("assertNoRuntimeExport(agentSdk, 'getBuiltinTools')");
+    expect(packageVerifier).toContain("assertNoRuntimeExport(agentSdk, 'createSdkMcpServer')");
     expect(packageVerifier).toContain("assertRuntimeExport(agentSdkTools, 'ToolKind')");
     expect(packageVerifier).toContain("throw new Error('@blade-ai/ai/chat should remain type-only at runtime')");
   });
@@ -437,6 +450,8 @@ describe('release scripts', () => {
     expect(publishedVerifier).toContain('@blade-ai/agent@${version}');
     expect(publishedVerifier).toContain('@blade-ai/agent-sdk@${version}');
     expect(publishedVerifier).toContain("assertRuntimeExport(agentSdk, 'createSession')");
+    expect(publishedVerifier).toContain("assertNoRuntimeExport(agentSdk, 'getBuiltinTools')");
+    expect(publishedVerifier).toContain("assertNoRuntimeExport(agentSdk, 'createSdkMcpServer')");
     expect(publishedVerifier).toContain("assertRuntimeExport(agentSdkServer, 'createSession')");
     expect(publishedVerifier).toContain("assertRuntimeExport(agentSdkLocal, 'getBuiltinTools')");
     expect(publishedVerifier).toContain("assertRuntimeExport(agentSdkBrowser, 'PermissionMode')");
@@ -594,6 +609,20 @@ describe('release scripts', () => {
     expect(publishedVerifier).toContain("forbidden: 'getBuiltinTools'");
     expect(publishedVerifier).toContain("forbidden: 'createSdkMcpServer'");
     expect(publishedVerifier).toContain('published core declarations must stay browser-safe');
+  });
+
+  it('rejects node-local adapters from published root package declarations', () => {
+    const publishedVerifier = readFileSync(resolve('scripts/verify-published.mjs'), 'utf8');
+
+    expect(publishedVerifier).toContain('verifyPublishedRootDeclarationBoundary');
+    expect(publishedVerifier).toContain("node_modules/@blade-ai/agent-sdk/dist/index.d.ts");
+    expect(publishedVerifier).toContain("forbidden: 'getBuiltinTools'");
+    expect(publishedVerifier).toContain("forbidden: 'createSdkMcpServer'");
+    expect(publishedVerifier).toContain("forbidden: 'FileSystemMemoryStore'");
+    expect(publishedVerifier).toContain("forbidden: 'SandboxExecutor'");
+    expect(publishedVerifier).toContain(
+      'published root declarations must keep Node-local builtin tools behind @blade-ai/agent-sdk/local',
+    );
   });
 
   it('browser-bundles published browser-safe entrypoints from the temporary consumer', () => {

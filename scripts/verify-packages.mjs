@@ -236,6 +236,26 @@ const packageSpecs = [
         message: 'root declarations must reference final public entrypoints, not overlay sources',
       },
       {
+        file: 'package/dist/index.d.ts',
+        forbidden: 'getBuiltinTools',
+        message: 'root declarations must keep Node-local builtin tools behind @blade-ai/agent-sdk/local',
+      },
+      {
+        file: 'package/dist/index.d.ts',
+        forbidden: 'createSdkMcpServer',
+        message: 'root declarations must keep Node-local MCP helpers behind @blade-ai/agent-sdk/local',
+      },
+      {
+        file: 'package/dist/index.d.ts',
+        forbidden: 'FileSystemMemoryStore',
+        message: 'root declarations must keep filesystem memory adapters behind @blade-ai/agent-sdk/local',
+      },
+      {
+        file: 'package/dist/index.d.ts',
+        forbidden: 'SandboxExecutor',
+        message: 'root declarations must keep sandbox adapters behind @blade-ai/agent-sdk/local',
+      },
+      {
         file: 'package/dist/core/index.d.ts',
         forbidden: 'createSession',
         message: 'core declarations must stay browser-safe and not expose server-only session APIs',
@@ -593,6 +613,12 @@ function assertRuntimeExport(module, name) {
   }
 }
 
+function assertNoRuntimeExport(module, name) {
+  if (name in module) {
+    throw new Error(\`Unexpected runtime export \${name}\`);
+  }
+}
+
 function assertPackageName(manifest, name) {
   if (manifest.name !== name) {
     throw new Error(\`Expected package metadata for \${name}, received \${manifest.name}\`);
@@ -612,6 +638,10 @@ assertRuntimeExport(agent, 'AgentKernel');
 assertRuntimeExport(agentKernel, 'AgentKernel');
 assertRuntimeExport(agentSdk, 'createSession');
 assertRuntimeExport(agentSdk, 'defineTool');
+assertNoRuntimeExport(agentSdk, 'getBuiltinTools');
+assertNoRuntimeExport(agentSdk, 'createSdkMcpServer');
+assertNoRuntimeExport(agentSdk, 'FileSystemMemoryStore');
+assertNoRuntimeExport(agentSdk, 'SandboxExecutor');
 assertRuntimeExport(agentSdkCore, 'PermissionMode');
 assertRuntimeExport(agentSdkBrowser, 'PermissionMode');
 assertRuntimeExport(agentSdkServer, 'createSession');

@@ -249,11 +249,11 @@ console.log(`\n总 Token: ${totalTokens}`);
 Memory 系统是 opt-in 的。默认不注册 `MemoryRead` / `MemoryWrite` 工具，需要显式传入 `MemoryManager`：
 
 ```ts
+import { createSession } from '@blade-ai/agent-sdk';
 import {
-  createSession,
   FileSystemMemoryStore,
   MemoryManager,
-} from '@blade-ai/agent-sdk';
+} from '@blade-ai/agent-sdk/local';
 
 const memoryManager = new MemoryManager(
   new FileSystemMemoryStore('/home/user/.blade/memory'),
@@ -327,7 +327,8 @@ const session = await createSession({
 当你需要 TypeScript 编写工具并通过 MCP 协议暴露时：
 
 ```ts
-import { tool, createSdkMcpServer, createSession } from '@blade-ai/agent-sdk';
+import { createSession } from '@blade-ai/agent-sdk';
+import { tool, createSdkMcpServer } from '@blade-ai/agent-sdk/local';
 import { z } from 'zod';
 
 const myTool = tool(

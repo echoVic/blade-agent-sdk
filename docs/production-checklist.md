@@ -21,7 +21,7 @@ CI=true pnpm run verify
 | Package boundaries | `pnpm run verify:boundaries` | 确保 `@blade-ai/agent` 不引入 Node-local runtime、MCP、filesystem、provider SDK 或 session SDK |
 | Docs build | `pnpm run docs:build` | 确保 VitePress 文档可构建 |
 | Entrypoints | `pnpm run verify:entrypoints` | 检查 root、server、session、local、core、tools、browser 入口和 browser-safe 约束 |
-| Package smoke | `pnpm run verify:packages` | pack 三个 npm 包，安装到临时 consumer，import 公共入口，type-check `SessionOptions` 采样/上下文/thinking/token budget 字段，并检查 browser-safe `core` 声明不暴露 server/local API |
+| Package smoke | `pnpm run verify:packages` | pack 三个 npm 包，安装到临时 consumer，import 公共入口，type-check `SessionOptions` 采样/上下文/thinking/token budget 字段，并检查 browser-safe `core` 和 root 声明不暴露 server/local API |
 | Unit tests | `pnpm run test:unit` | 覆盖 provider、agent kernel、session runtime、tools、hooks、observability、权限和 token budget |
 | Integration tests | `pnpm run test:integration` | 有 `INTEGRATION_API_KEY` / `INTEGRATION_BASE_URL` 时跑真实集成；缺少时按测试策略跳过 |
 
@@ -31,7 +31,7 @@ CI=true pnpm run verify
 
 - `@blade-ai/ai` 只负责 model/provider 协议、stream、usage、provider options 和 provider adapters。
 - `@blade-ai/agent` 保持 runtime-independent，只依赖端口和协议，不直接依赖 Node-only API、MCP SDK、provider SDK、本地工具、filesystem、shell、sandbox 或 `@blade-ai/agent-sdk`。
-- `@blade-ai/agent-sdk` 作为产品 SDK 组合 server/local adapters，并保持 session-first 入口：
+- `@blade-ai/agent-sdk` 作为产品 SDK 保持 session-first root 入口；Node-local adapters 必须通过 `@blade-ai/agent-sdk/local` 显式导入：
 
 ```ts
 import { createSession } from '@blade-ai/agent-sdk';

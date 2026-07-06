@@ -1,12 +1,12 @@
 # API 参考
 
-`@blade-ai/agent-sdk` 根包保持 session-first 体验，面向 Node server 和 CLI 场景。浏览器端应优先从 `@blade-ai/agent-sdk/core` 导入类型、协议和常量；误导入 root、`server`、`session` 或 `local` 入口时会解析到 browser stub，并在调用 server-only API 时抛出清晰错误。
+`@blade-ai/agent-sdk` 根包保持 session-first 体验，面向 Node server 和 CLI 场景。Node 本地能力需要从 `@blade-ai/agent-sdk/local` 显式导入。浏览器端应优先从 `@blade-ai/agent-sdk/core` 导入类型、协议和常量；误导入 root、`server`、`session` 或 `local` 入口时会解析到 browser stub，并在调用 server-only API 时抛出清晰错误。
 
 ## 包入口
 
 | 入口 | 运行环境 | 说明 |
 |------|---------|------|
-| `@blade-ai/agent-sdk` | Node server / CLI | 默认 session-first 入口，导出 `createSession()` 等完整 server runtime API |
+| `@blade-ai/agent-sdk` | Node server / CLI | 默认 session-first 入口，导出 `createSession()`、工具定义、权限、协议和类型；不导出 Node 本地 adapter |
 | `@blade-ai/agent-sdk/server` | Node server / CLI | 显式 server 入口，等价于 server-only root facade |
 | `@blade-ai/agent-sdk/session` | Node server / CLI | Session API 子入口 |
 | `@blade-ai/agent-sdk/core` | Browser-safe / Node | 类型、协议、事件、常量，不导入 Node-only runtime |
@@ -25,11 +25,11 @@
 | `defineTool` | tools | 定义工具（简单模式） |
 | `createTool` | tools | 创建工具（Zod 模式） |
 | `toolFromDefinition` | tools | 转换 ToolDefinition → Tool |
-| `getBuiltinTools` | tools | 获取内置工具 |
-| `createMemoryReadTool` | tools | 创建 opt-in MemoryRead 工具 |
-| `createMemoryWriteTool` | tools | 创建 opt-in MemoryWrite 工具 |
-| `tool` | mcp | 定义 MCP 工具 |
-| `createSdkMcpServer` | mcp | 创建进程内 MCP Server |
+| `getBuiltinTools` | local | 获取内置工具 |
+| `createMemoryReadTool` | local | 创建 opt-in MemoryRead 工具 |
+| `createMemoryWriteTool` | local | 创建 opt-in MemoryWrite 工具 |
+| `tool` | local | 定义 MCP 工具 |
+| `createSdkMcpServer` | local | 创建进程内 MCP Server |
 | `createContextSnapshot` | runtime | 创建上下文快照 |
 | `mergeContext` | runtime | 合并上下文 |
 | `hasFilesystemCapability` | runtime | 检查文件系统能力 |
@@ -44,8 +44,8 @@
 | 名称 | 来源 | 说明 |
 |------|------|------|
 | `ToolCatalog` | tools/catalog | 工具目录，管理来源追踪、信任分级和策略过滤 |
-| `FileSystemMemoryStore` | memory | 文件系统 memory 适配器 |
-| `MemoryManager` | memory | memory 编排层 |
+| `FileSystemMemoryStore` | local | 文件系统 memory 适配器 |
+| `MemoryManager` | local | memory 编排层 |
 | `SubagentRegistry` | subagents | 注册和发现子 Agent |
 | `SubagentExecutor` | subagents | 执行单个子 Agent |
 

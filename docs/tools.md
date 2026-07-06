@@ -103,9 +103,9 @@ function getBuiltinTools(opts?: {
 import {
   FileSystemMemoryStore,
   MemoryManager,
-  SubagentRegistry,
   getBuiltinTools,
-} from '@blade-ai/agent-sdk';
+} from '@blade-ai/agent-sdk/local';
+import { SubagentRegistry } from '@blade-ai/agent-sdk';
 
 const tools = await getBuiltinTools({
   memoryManager: new MemoryManager(new FileSystemMemoryStore('/tmp/blade-memory')),

@@ -23,19 +23,18 @@ import { join } from 'node:path';
 import { describe, it, expect, afterEach } from 'vitest';
 import { z } from 'zod';
 import {
-  createSdkMcpServer,
   createSession,
-  forkSession,
-  prompt,
   defineTool,
+  forkSession,
   PermissionMode,
+  prompt,
   resumeSession,
-  tool,
   type ISession,
-  type StreamMessage,
   type PromptResult,
   type ProviderType,
+  type StreamMessage,
 } from '../index.js';
+import { createSdkMcpServer, tool } from '../../packages/agent-sdk/src/local/index.js';
 
 // @ts-expect-error dynamic mjs helper is loaded at runtime by integration tests.
 const { loadLiveGlmConfig } = await import('../../scripts/live-glm-config.mjs');

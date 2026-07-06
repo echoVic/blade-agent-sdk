@@ -38,18 +38,6 @@ export {
   registerCleanup,
   resetCleanupRegistry,
 } from './lifecycle/CleanupRegistry.js';
-export type {
-  McpToolCallResponse,
-  McpToolDefinition,
-  SdkMcpServerHandle,
-  SdkTool,
-  ToolResponse as McpToolResponse,
-} from './mcp/index.js';
-// --- MCP ---
-export { createSdkMcpServer, tool } from './mcp/index.js';
-export type { Memory, MemoryInput, MemoryStore, MemoryType } from './memory/index.js';
-// --- Memory ---
-export { FileSystemMemoryStore, MemoryManager } from './memory/index.js';
 // --- Observability ---
 export type {
   AgentTrace,
@@ -154,9 +142,6 @@ export type {
 } from './session/index.js';
 // --- Session ---
 export { createSession, forkSession, prompt, resumeSession } from './session/index.js';
-// --- Tool authoring primitives ---
-export { getBuiltinTools } from './tools/builtin/index.js';
-export { createMemoryReadTool, createMemoryWriteTool } from './tools/builtin/memory/index.js';
 export type {
   ToolCatalogEntry,
   ToolCatalogReadView,

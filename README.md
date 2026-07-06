@@ -11,9 +11,9 @@
 - 多模型支持：`openai`、`anthropic`、`azure-openai`、`gemini`、`deepseek`、`openai-compatible`
 - 工具系统：内置 23 个标准工具，支持 `defineTool()`、`createTool()`、MCP 协议工具与 MCP 资源工具
 - 工具目录：`ToolCatalog` 统一管理内置、自定义、MCP 工具的来源追踪与信任分级
-- MCP：支持 `stdio`、`sse`、`http` 传输，也支持进程内 `createSdkMcpServer()`
+- MCP：支持 `stdio`、`sse`、`http` 传输，也支持从 `@blade-ai/agent-sdk/local` 显式导入的进程内 `createSdkMcpServer()`
 - 协作能力：子 Agent（前台/后台）、`Task` / `TaskOutput` / `TaskStop` 工具，以及用户级和项目级 Skills
-- Memory 系统：`MemoryManager` + `FileSystemMemoryStore`，可选的 `MemoryRead` / `MemoryWrite` 工具
+- Memory 系统：`@blade-ai/agent-sdk/local` 提供 `MemoryManager` + `FileSystemMemoryStore`，可选的 `MemoryRead` / `MemoryWrite` 工具
 - 安全与治理：`permissionMode`、`canUseTool`、`permissionHandler`、Hooks、沙箱配置可组合使用
 - Observability：可选 trace 记录，把 stream events、tool calls、usage、hooks 汇总为可调试的执行轨迹
 - 工程能力：运行时 Context、结构化输出、日志接口、会话持久化与分叉、自动上下文压缩、上下文溢出恢复、Token 预算
@@ -43,7 +43,7 @@ pnpm add @blade-ai/ai @blade-ai/agent @blade-ai/agent-sdk
 
 - `@blade-ai/ai` / `packages/ai`：provider-agnostic 的 `ModelPort`、stream event、usage normalization 和 provider adapter，例如 OpenAI-compatible / GLM / Vercel AI SDK 适配。
 - `@blade-ai/agent` / `packages/agent`：运行时无关的 `AgentKernel`、tool/store/hook/trace ports 和 agent stream 协议，不依赖 Node 本地能力、MCP、文件系统、shell 或 provider SDK。
-- `@blade-ai/agent-sdk` / `packages/agent-sdk`：session-first 产品 SDK，组合 `@blade-ai/agent` 与 `@blade-ai/ai`，并在 server / CLI 场景里接入本地工具、MCP、权限、hooks、observability、sandbox 和 session persistence。
+- `@blade-ai/agent-sdk` / `packages/agent-sdk`：session-first 产品 SDK，组合 `@blade-ai/agent` 与 `@blade-ai/ai`；root 入口保留 `createSession()`、工具定义、权限、协议和类型，Node 本地工具、MCP、memory、sandbox adapter 需要从 `@blade-ai/agent-sdk/local` 显式导入。
 
 推荐 import 边界：
 

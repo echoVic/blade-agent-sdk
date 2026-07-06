@@ -83,7 +83,7 @@ Kernel 通过 ports 访问外部能力：
 
 ## `@blade-ai/agent-sdk`
 
-`@blade-ai/agent-sdk` 是产品层 SDK，组合模型、kernel、工具、MCP、hooks、memory、observability、持久化和本地能力。应用开发者优先使用这个包。
+`@blade-ai/agent-sdk` 是产品层 SDK，组合模型、kernel、工具、MCP、hooks、memory、observability、持久化和本地能力。应用开发者优先使用 root 的 session-first API；Node 本地 adapter 从 `@blade-ai/agent-sdk/local` 显式导入。
 
 Server / CLI 场景可以使用 root：
 

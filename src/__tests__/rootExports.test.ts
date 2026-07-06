@@ -1,12 +1,9 @@
 import { describe, expect, expectTypeOf, it } from 'vitest';
+import * as rootEntry from '../index.js';
 import {
-  FileSystemMemoryStore,
-  MemoryManager,
   SubagentExecutor,
   SubagentRegistry,
   ToolCatalog,
-  createMemoryReadTool,
-  createMemoryWriteTool,
 } from '../index.js';
 import type {
   RuntimePatch,
@@ -16,11 +13,16 @@ import type {
 } from '../index.js';
 
 describe('root exports', () => {
-  it('exports the opt-in memory, catalog, and subagent primitives', () => {
-    expect(MemoryManager).toBeDefined();
-    expect(FileSystemMemoryStore).toBeDefined();
-    expect(createMemoryReadTool).toBeDefined();
-    expect(createMemoryWriteTool).toBeDefined();
+  it('keeps local adapters behind the explicit local subpath', () => {
+    expect(rootEntry).not.toHaveProperty('getBuiltinTools');
+    expect(rootEntry).not.toHaveProperty('createSdkMcpServer');
+    expect(rootEntry).not.toHaveProperty('FileSystemMemoryStore');
+    expect(rootEntry).not.toHaveProperty('MemoryManager');
+    expect(rootEntry).not.toHaveProperty('SandboxExecutor');
+    expect(rootEntry).not.toHaveProperty('SandboxService');
+  });
+
+  it('exports the catalog and subagent primitives without local adapters', () => {
     expect(SubagentRegistry).toBeDefined();
     expect(SubagentExecutor).toBeDefined();
     expect(ToolCatalog).toBeDefined();

@@ -157,7 +157,8 @@ interface McpToolInfo {
 当你需要用 TypeScript 编写自定义工具时，可以用 `tool()` 和 `createSdkMcpServer()` 创建进程内 MCP Server，无需启动额外进程：
 
 ```ts
-import { tool, createSdkMcpServer, createSession } from '@blade-ai/agent-sdk';
+import { createSession } from '@blade-ai/agent-sdk';
+import { tool, createSdkMcpServer } from '@blade-ai/agent-sdk/local';
 import { z } from 'zod';
 
 // 定义工具（使用 Zod Schema）
@@ -297,7 +298,8 @@ MCP 服务器注册的工具在发送给 LLM 时排列在内置工具**之后**�
 ### 多服务器组合
 
 ```ts
-import { tool, createSdkMcpServer, createSession } from '@blade-ai/agent-sdk';
+import { createSession } from '@blade-ai/agent-sdk';
+import { tool, createSdkMcpServer } from '@blade-ai/agent-sdk/local';
 import { z } from 'zod';
 
 // 进程内工具
