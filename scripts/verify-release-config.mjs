@@ -29,6 +29,7 @@ const publishablePackages = [
   {
     dir: 'packages/ai',
     name: '@blade-ai/ai',
+    description: 'Provider-agnostic AI model interfaces for Blade Agent',
     publishFiles: ['dist', 'LICENSE', 'README.md'],
     npmPlugin: ['@semantic-release/npm', { pkgRoot: 'packages/ai' }],
     installCommand: 'pnpm add @blade-ai/ai',
@@ -37,6 +38,7 @@ const publishablePackages = [
   {
     dir: 'packages/agent',
     name: '@blade-ai/agent',
+    description: 'Runtime-independent Blade Agent kernel contracts',
     publishFiles: ['dist', 'LICENSE', 'README.md'],
     npmPlugin: ['@semantic-release/npm', { pkgRoot: 'packages/agent' }],
     installCommand: 'pnpm add @blade-ai/agent',
@@ -45,6 +47,7 @@ const publishablePackages = [
   {
     dir: 'packages/agent-sdk',
     name: '@blade-ai/agent-sdk',
+    description: 'Session-first Blade Agent SDK',
     publishFiles: ['dist', 'vendor/ripgrep/**', 'LICENSE', 'README.md'],
     npmPlugin: ['@semantic-release/npm', { pkgRoot: 'packages/agent-sdk' }],
     installCommand: 'pnpm add @blade-ai/agent-sdk',
@@ -128,6 +131,9 @@ function verifyPackageMetadata() {
     }
     if (manifest.private !== false) {
       fail(`${pkg.name} must be publishable`);
+    }
+    if (manifest.description !== pkg.description) {
+      fail(`${pkg.name} must declare package description`);
     }
     if (manifest.type !== 'module') {
       fail(`${pkg.name} must be ESM-only`);

@@ -39,16 +39,19 @@ const publishedManifestRequirements = [
   {
     packageName: '@blade-ai/ai',
     manifestPath: 'node_modules/@blade-ai/ai/package.json',
+    description: 'Provider-agnostic AI model interfaces for Blade Agent',
     ...expectedPublishedPackageMetadata,
   },
   {
     packageName: '@blade-ai/agent',
     manifestPath: 'node_modules/@blade-ai/agent/package.json',
+    description: 'Runtime-independent Blade Agent kernel contracts',
     ...expectedPublishedPackageMetadata,
   },
   {
     packageName: '@blade-ai/agent-sdk',
     manifestPath: 'node_modules/@blade-ai/agent-sdk/package.json',
+    description: 'Session-first Blade Agent SDK',
     ...expectedPublishedPackageMetadata,
   },
 ];
@@ -445,6 +448,11 @@ async function verifyPublishedPackageManifests({ consumerDir, version }) {
 
 function verifyPublishedPackageMetadata(requirement, manifest) {
   const metadataRules = [
+    {
+      field: 'description',
+      expected: requirement.description,
+      message: 'installed manifest description mismatch',
+    },
     {
       field: 'type',
       expected: requirement.type,

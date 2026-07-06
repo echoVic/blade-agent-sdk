@@ -60,6 +60,7 @@ const packageSpecs = [
   {
     name: '@blade-ai/ai',
     dir: 'packages/ai',
+    expectedDescription: 'Provider-agnostic AI model interfaces for Blade Agent',
     requiredFiles: [
       'package/README.md',
       'package/LICENSE',
@@ -86,6 +87,7 @@ const packageSpecs = [
   {
     name: '@blade-ai/agent',
     dir: 'packages/agent',
+    expectedDescription: 'Runtime-independent Blade Agent kernel contracts',
     requiredFiles: [
       'package/README.md',
       'package/LICENSE',
@@ -114,6 +116,7 @@ const packageSpecs = [
   {
     name: '@blade-ai/agent-sdk',
     dir: 'packages/agent-sdk',
+    expectedDescription: 'Session-first Blade Agent SDK',
     requiredFiles: [
       'package/README.md',
       'package/LICENSE',
@@ -612,6 +615,11 @@ function verifyPackedManifest(spec, tarballPath, tempDir) {
 
 function verifyPackedPackageMetadata(spec, manifest) {
   const metadataRules = [
+    {
+      field: 'description',
+      expected: spec.expectedDescription,
+      message: 'packed manifest description mismatch',
+    },
     {
       field: 'type',
       expected: expectedPackedPackageMetadata.type,

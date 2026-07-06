@@ -711,6 +711,33 @@ describe('release scripts', () => {
     expect(roadmap).toContain('package npm metadata gate');
   });
 
+  it('verifies packed and published package description metadata', () => {
+    const releaseVerifier = readFileSync(resolve('scripts/verify-release-config.mjs'), 'utf8');
+    const packageVerifier = readFileSync(resolve('scripts/verify-packages.mjs'), 'utf8');
+    const publishedVerifier = readFileSync(resolve('scripts/verify-published.mjs'), 'utf8');
+    const readme = readFileSync(resolve('README.md'), 'utf8');
+    const checklist = readFileSync(resolve('docs/production-checklist.md'), 'utf8');
+    const roadmap = readFileSync(resolve('docs/roadmap/production-agent-sdk-monorepo.md'), 'utf8');
+
+    expect(releaseVerifier).toContain("description: 'Provider-agnostic AI model interfaces for Blade Agent'");
+    expect(releaseVerifier).toContain("description: 'Runtime-independent Blade Agent kernel contracts'");
+    expect(releaseVerifier).toContain("description: 'Session-first Blade Agent SDK'");
+    expect(releaseVerifier).toContain('must declare package description');
+    expect(packageVerifier).toContain('packed manifest description mismatch');
+    expect(packageVerifier).toContain("expectedDescription: 'Provider-agnostic AI model interfaces for Blade Agent'");
+    expect(packageVerifier).toContain("expectedDescription: 'Runtime-independent Blade Agent kernel contracts'");
+    expect(packageVerifier).toContain("expectedDescription: 'Session-first Blade Agent SDK'");
+    expect(publishedVerifier).toContain('installed manifest description mismatch');
+    expect(publishedVerifier).toContain("description: 'Provider-agnostic AI model interfaces for Blade Agent'");
+    expect(publishedVerifier).toContain("description: 'Runtime-independent Blade Agent kernel contracts'");
+    expect(publishedVerifier).toContain("description: 'Session-first Blade Agent SDK'");
+    expect(readme).toContain('packed package description metadata');
+    expect(readme).toContain('published package description metadata');
+    expect(checklist).toContain('packed package description metadata');
+    expect(checklist).toContain('published package description metadata');
+    expect(roadmap).toContain('package description metadata artifact gate');
+  });
+
   it('verifies packed and published package engine metadata', () => {
     const packageVerifier = readFileSync(resolve('scripts/verify-packages.mjs'), 'utf8');
     const publishedVerifier = readFileSync(resolve('scripts/verify-published.mjs'), 'utf8');
