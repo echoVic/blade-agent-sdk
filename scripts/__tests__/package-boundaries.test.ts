@@ -32,14 +32,47 @@ function createBoundaryFixture(options: {
 
   writeJson(join(cwd, 'packages', 'ai', 'package.json'), {
     name: '@blade-ai/ai',
+    main: './dist/index.js',
+    types: './dist/index.d.ts',
+    exports: {
+      '.': {
+        types: './dist/index.d.ts',
+        import: './dist/index.js',
+      },
+      './package.json': {
+        default: './package.json',
+      },
+    },
     dependencies: options.aiDependencies ?? {},
   });
   writeJson(join(cwd, 'packages', 'agent', 'package.json'), {
     name: '@blade-ai/agent',
+    main: './dist/index.js',
+    types: './dist/index.d.ts',
+    exports: {
+      '.': {
+        types: './dist/index.d.ts',
+        import: './dist/index.js',
+      },
+      './package.json': {
+        default: './package.json',
+      },
+    },
     dependencies: options.agentDependencies ?? {},
   });
   writeJson(join(cwd, 'packages', 'agent-sdk', 'package.json'), {
     name: '@blade-ai/agent-sdk',
+    main: './dist/index.js',
+    types: './dist/index.d.ts',
+    exports: {
+      '.': {
+        types: './dist/index.d.ts',
+        import: './dist/index.js',
+      },
+      './package.json': {
+        default: './package.json',
+      },
+    },
     dependencies: options.sdkDependencies ?? {},
   });
   writeTsupConfig(join(cwd, 'packages', 'ai', 'tsup.config.ts'), {
@@ -235,5 +268,37 @@ describe('package boundary verifier', () => {
     expect(result.stderr).toContain('packages/agent-sdk/tsup.config.ts');
     expect(result.stderr).toContain('build entry "index"');
     expect(result.stderr).toContain('leaves packages/agent-sdk/src');
+  });
+
+  it('rejects publish exports that expose source files instead of dist artifacts', () => {
+    const cwd = createBoundaryFixture();
+    writeJson(join(cwd, 'packages', 'agent-sdk', 'package.json'), {
+      name: '@blade-ai/agent-sdk',
+      main: './src/index.ts',
+      types: './dist/index.d.ts',
+      exports: {
+        '.': {
+          types: './dist/index.d.ts',
+          import: './src/index.ts',
+        },
+        './package.json': {
+          default: './package.json',
+        },
+      },
+      dependencies: {},
+    });
+
+    const result = spawnSync(process.execPath, [
+      resolve('scripts/verify-package-boundaries.mjs'),
+    ], {
+      cwd,
+      encoding: 'utf8',
+    });
+
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain('packages/agent-sdk/package.json');
+    expect(result.stderr).toContain('main target "./src/index.ts"');
+    expect(result.stderr).toContain('export "." import target "./src/index.ts"');
+    expect(result.stderr).toContain('must point at ./dist artifacts');
   });
 });

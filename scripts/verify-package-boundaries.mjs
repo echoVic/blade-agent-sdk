@@ -170,6 +170,30 @@ function extractTsupEntries(source) {
   return entries;
 }
 
+function collectExportTargets(exportsValue, path = 'export') {
+  if (typeof exportsValue === 'string') {
+    return [{ path, target: exportsValue }];
+  }
+  if (!exportsValue || typeof exportsValue !== 'object' || Array.isArray(exportsValue)) {
+    return [];
+  }
+
+  const targets = [];
+  for (const [key, value] of Object.entries(exportsValue)) {
+    const childPath = path === 'export' ? `export "${key}"` : `${path} ${key}`;
+    targets.push(...collectExportTargets(value, childPath));
+  }
+  return targets;
+}
+
+function isDistArtifactTarget(target) {
+  return target.startsWith('./dist/');
+}
+
+function isPackageJsonExportTarget(path, target) {
+  return path.startsWith('export "./package.json"') && target === './package.json';
+}
+
 const violations = [];
 
 for (const rule of manifestRules) {
@@ -189,6 +213,20 @@ for (const rule of manifestRules) {
           violations.push(`${rule.packageJson}: disallowed ${section} "${dependencyName}" - ${reason}`);
         }
       }
+    }
+  }
+
+  for (const field of ['main', 'types']) {
+    const target = manifest[field];
+    if (typeof target === 'string' && !isDistArtifactTarget(target)) {
+      violations.push(`${rule.packageJson}: ${field} target "${target}" must point at ./dist artifacts`);
+    }
+  }
+
+  for (const { path, target } of collectExportTargets(manifest.exports)) {
+    if (isPackageJsonExportTarget(path, target)) continue;
+    if (!isDistArtifactTarget(target)) {
+      violations.push(`${rule.packageJson}: ${path} target "${target}" must point at ./dist artifacts`);
     }
   }
 }
