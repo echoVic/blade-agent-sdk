@@ -705,10 +705,26 @@ describe('monorepo topology', () => {
       'projectPackageLocalRuntimeMcpServerStatus',
     );
     expect(runtimeMcpCapabilitiesSource).toContain('listPackageLocalRuntimeMcpTools');
+    expect(runtimeMcpCapabilitiesSource).toContain(
+      'createPackageLocalRuntimeMcpCapabilityOperations',
+    );
     expect(packageLocalRuntimeInstanceSource).toContain(
+      'createPackageLocalRuntimeMcpCapabilityOperations',
+    );
+    expect(packageLocalRuntimeInstanceSource).toContain('mcpCapabilityOperations');
+    expect(packageLocalRuntimeInstanceSource).not.toContain(
       'projectPackageLocalRuntimeMcpServerStatus',
     );
-    expect(packageLocalRuntimeInstanceSource).toContain('listPackageLocalRuntimeMcpTools');
+    expect(packageLocalRuntimeInstanceSource).not.toContain('listPackageLocalRuntimeMcpTools');
+    expect(packageLocalRuntimeInstanceSource).not.toContain(
+      'return this.mcpRegistry.getCapabilities()',
+    );
+    expect(packageLocalRuntimeInstanceSource).not.toContain(
+      'projectPackageLocalRuntimeMcpServerStatus(await this.mcpCapabilities())',
+    );
+    expect(packageLocalRuntimeInstanceSource).not.toContain(
+      'listPackageLocalRuntimeMcpTools(await this.mcpCapabilities())',
+    );
     expect(packageLocalRuntimeInstanceSource).not.toContain(
       'capability.tools.map((tool) => tool.name)',
     );

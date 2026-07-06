@@ -80,8 +80,8 @@ import {
   registerPackageLocalConfiguredMcpServers,
 } from './runtimeMcpServers.js';
 import {
-  listPackageLocalRuntimeMcpTools,
-  projectPackageLocalRuntimeMcpServerStatus,
+  createPackageLocalRuntimeMcpCapabilityOperations,
+  type PackageLocalRuntimeMcpCapabilityOperations,
   type PackageLocalRuntimeMcpServerCapability,
 } from './runtimeMcpCapabilities.js';
 import {
@@ -306,6 +306,7 @@ export class PackageLocalSessionRuntime {
   readonly kernelFactory: PackageLocalRuntimeAgentKernelFactoryPort;
   readonly kernelModelResolver: PackageLocalRuntimeKernelModelResolverPort;
   private readonly sessionLifecycleOperations: PackageLocalRuntimeSessionLifecycleOperations<SessionMessage>;
+  private readonly mcpCapabilityOperations: PackageLocalRuntimeMcpCapabilityOperations;
   private readonly executionPipelineCache: PackageLocalRuntimeExecutionPipelineCache;
   private readonly agentRuntimeDepsOperations: PackageLocalAgentRuntimeDepsOperations;
   private readonly kernelPortOperations: PackageLocalRuntimeKernelPortOperations;
@@ -352,6 +353,9 @@ export class PackageLocalSessionRuntime {
     this.sessionLifecycleOperations = createPackageLocalRuntimeSessionLifecycleOperations({
       sessionId: this.sessionId,
       sessionStore: this.sessionStore,
+    });
+    this.mcpCapabilityOperations = createPackageLocalRuntimeMcpCapabilityOperations({
+      mcpRegistry: this.mcpRegistry,
     });
     this.executionPipelineCache = createPackageLocalRuntimeExecutionPipelineCache(() =>
       createPackageLocalRuntimeExecutionPipeline({
@@ -434,15 +438,15 @@ export class PackageLocalSessionRuntime {
   }
 
   async mcpCapabilities(): Promise<PackageLocalRuntimeMcpServerCapability[]> {
-    return this.mcpRegistry.getCapabilities();
+    return this.mcpCapabilityOperations.getCapabilities();
   }
 
   async mcpServerStatus(): Promise<McpServerStatus[]> {
-    return projectPackageLocalRuntimeMcpServerStatus(await this.mcpCapabilities());
+    return this.mcpCapabilityOperations.getServerStatus();
   }
 
   async mcpListTools(): Promise<McpToolInfo[]> {
-    return listPackageLocalRuntimeMcpTools(await this.mcpCapabilities());
+    return this.mcpCapabilityOperations.listTools();
   }
 
   async fork(options?: ForkSessionOptions): Promise<ISession> {

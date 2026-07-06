@@ -22,6 +22,38 @@ export interface PackageLocalRuntimeMcpServerCapability {
   tools: PackageLocalRuntimeMcpToolCapability[];
 }
 
+export interface PackageLocalRuntimeMcpCapabilityRegistryPort {
+  getCapabilities(): Promise<PackageLocalRuntimeMcpServerCapability[]>;
+}
+
+export interface PackageLocalRuntimeMcpCapabilityOperations {
+  getCapabilities(): Promise<PackageLocalRuntimeMcpServerCapability[]>;
+  getServerStatus(): Promise<McpServerStatus[]>;
+  listTools(): Promise<McpToolInfo[]>;
+}
+
+export interface PackageLocalRuntimeMcpCapabilityOperationsOptions {
+  mcpRegistry: PackageLocalRuntimeMcpCapabilityRegistryPort;
+}
+
+export function createPackageLocalRuntimeMcpCapabilityOperations(
+  options: PackageLocalRuntimeMcpCapabilityOperationsOptions,
+): PackageLocalRuntimeMcpCapabilityOperations {
+  return {
+    getCapabilities() {
+      return options.mcpRegistry.getCapabilities();
+    },
+    async getServerStatus() {
+      return projectPackageLocalRuntimeMcpServerStatus(
+        await options.mcpRegistry.getCapabilities(),
+      );
+    },
+    async listTools() {
+      return listPackageLocalRuntimeMcpTools(await options.mcpRegistry.getCapabilities());
+    },
+  };
+}
+
 export function projectPackageLocalRuntimeMcpServerStatus(
   capabilities: readonly PackageLocalRuntimeMcpServerCapability[],
 ): McpServerStatus[] {

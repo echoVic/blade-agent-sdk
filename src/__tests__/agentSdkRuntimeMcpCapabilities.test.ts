@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import {
   listPackageLocalRuntimeMcpTools,
   projectPackageLocalRuntimeMcpServerStatus,
@@ -93,5 +93,27 @@ describe('agent-sdk package-local MCP capability helpers', () => {
         serverName: 'server-b',
       },
     ]);
+  });
+
+  it('creates reusable MCP capability operations without session runtime state', async () => {
+    const { createPackageLocalRuntimeMcpCapabilityOperations } = await import(
+      '../../packages/agent-sdk/src/session/runtimeMcpCapabilities.js'
+    );
+    const mcpRegistry = {
+      getCapabilities: vi.fn(async () => capabilities),
+    };
+
+    const operations = createPackageLocalRuntimeMcpCapabilityOperations({
+      mcpRegistry,
+    });
+
+    await expect(operations.getCapabilities()).resolves.toBe(capabilities);
+    await expect(operations.getServerStatus()).resolves.toEqual(
+      projectPackageLocalRuntimeMcpServerStatus(capabilities),
+    );
+    await expect(operations.listTools()).resolves.toEqual(
+      listPackageLocalRuntimeMcpTools(capabilities),
+    );
+    expect(mcpRegistry.getCapabilities).toHaveBeenCalledTimes(3);
   });
 });
