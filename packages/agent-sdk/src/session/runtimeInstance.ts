@@ -37,22 +37,21 @@ import type {
   PackageLocalRuntimeExecutionPipelineFactoryPort,
 } from './runtimeExecutionPipeline.js';
 import { createPackageLocalRuntimeExecutionOperations } from './runtimeExecution.js';
-import {
-  createPackageLocalRuntimeAgentKernelOperations,
-  type PackageLocalRuntimeAgentKernelOperations,
-  type PackageLocalRuntimeAgentKernelFactoryPort,
-  type PackageLocalRuntimeAgentKernelPort,
+import type {
+  PackageLocalRuntimeAgentKernelOperations,
+  PackageLocalRuntimeAgentKernelFactoryPort,
+  PackageLocalRuntimeAgentKernelPort,
 } from './runtimeAgentKernels.js';
 import type {
   PackageLocalAgentRuntimeDeps,
   PackageLocalAgentRuntimeDepsOperations,
   PackageLocalRuntimeBackgroundAgentManagerPort,
 } from './runtimeAgentDeps.js';
-import {
-  createPackageLocalRuntimeKernelPortOperations,
-  type PackageLocalRuntimeKernelPortFactoryPort,
-  type PackageLocalRuntimeKernelPortOperations,
+import type {
+  PackageLocalRuntimeKernelPortFactoryPort,
+  PackageLocalRuntimeKernelPortOperations,
 } from './runtimeKernelPorts.js';
+import { createPackageLocalRuntimeKernelOperations } from './runtimeKernel.js';
 import {
   createPackageLocalRuntimeKernelTurnStreamOperations,
   type PackageLocalRuntimeAgentKernelOptions,
@@ -395,7 +394,10 @@ export class PackageLocalSessionRuntime {
     });
     this.executionPipelineOperations = executionOperations.pipeline;
     this.agentRuntimeDepsOperations = executionOperations.agentDeps;
-    this.kernelPortOperations = createPackageLocalRuntimeKernelPortOperations({
+    const kernelOperations = createPackageLocalRuntimeKernelOperations({
+      bladeConfig: this.bladeConfig,
+      kernelModelResolver: this.kernelModelResolver,
+      kernelFactory: this.kernelFactory,
       kernelPortFactory: this.kernelPortFactory,
       toolCatalog: this.toolCatalog,
       createExecutionPipeline: () => this.createExecutionPipeline(),
@@ -403,16 +405,8 @@ export class PackageLocalSessionRuntime {
       sessionStore: this.sessionStore,
       hookRuntime: this.hookRuntime,
     });
-    this.agentKernelOperations = createPackageLocalRuntimeAgentKernelOperations({
-      bladeConfig: this.bladeConfig,
-      kernelModelResolver: this.kernelModelResolver,
-      kernelFactory: this.kernelFactory,
-      getStorePort: () => this.getKernelStorePort(),
-      getHookPort: () => this.getKernelHookPort(),
-      getTracePort: (recorder, maxContextTokens) =>
-        this.getKernelTracePort(recorder, maxContextTokens),
-      getToolPort: (createExecutionContext) => this.getKernelToolPort(createExecutionContext),
-    });
+    this.kernelPortOperations = kernelOperations.ports;
+    this.agentKernelOperations = kernelOperations.agentKernel;
     const toolOperations = createPackageLocalRuntimeToolOperations({
       allowedTools: this.options.allowedTools,
       disallowedTools: this.options.disallowedTools,
