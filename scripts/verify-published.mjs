@@ -15,6 +15,26 @@ const publishablePackages = [
   '@blade-ai/agent',
   '@blade-ai/agent-sdk',
 ];
+const publishedReadmeRequirements = [
+  {
+    packageName: '@blade-ai/ai',
+    readmePath: 'node_modules/@blade-ai/ai/README.md',
+    installCommand: 'pnpm add @blade-ai/ai',
+    importSnippet: "import { createOpenAICompatibleModelPort } from '@blade-ai/ai';",
+  },
+  {
+    packageName: '@blade-ai/agent',
+    readmePath: 'node_modules/@blade-ai/agent/README.md',
+    installCommand: 'pnpm add @blade-ai/agent',
+    importSnippet: "import { AgentKernel } from '@blade-ai/agent';",
+  },
+  {
+    packageName: '@blade-ai/agent-sdk',
+    readmePath: 'node_modules/@blade-ai/agent-sdk/README.md',
+    installCommand: 'pnpm add @blade-ai/agent-sdk',
+    importSnippet: "import { createSession } from '@blade-ai/agent-sdk';",
+  },
+];
 const browserDisallowedMarkers = [
   'node:',
   'child_process',
@@ -171,6 +191,8 @@ async function verifyPublishedInstallSmoke({ version }) {
       ...packageSpecs,
     ], { cwd: consumerDir });
 
+    await verifyPublishedReadmes({ consumerDir });
+
     const runtimeSmokePath = join(consumerDir, 'consumer-runtime.mjs');
     await writeFile(
       runtimeSmokePath,
@@ -222,6 +244,23 @@ if (Object.keys(agentProtocol).length !== 0) {
   } finally {
     await rm(consumerDir, { recursive: true, force: true });
   }
+}
+
+async function verifyPublishedReadmes({ consumerDir }) {
+  for (const requirement of publishedReadmeRequirements) {
+    const readme = await readFile(join(consumerDir, requirement.readmePath), 'utf8');
+
+    if (!readme.includes(requirement.packageName)) {
+      throw new Error(`${requirement.packageName} published README must name the package`);
+    }
+    if (!readme.includes(requirement.installCommand)) {
+      throw new Error(`${requirement.packageName} published README must document direct installation`);
+    }
+    if (!readme.includes(requirement.importSnippet)) {
+      throw new Error(`${requirement.packageName} published README must document direct import usage`);
+    }
+  }
+  console.log('[verify-published] temporary consumer published package READMEs passed');
 }
 
 async function verifyPublishedCoreDeclarationBoundary({ consumerDir }) {

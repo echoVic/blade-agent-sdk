@@ -444,6 +444,28 @@ describe('release scripts', () => {
     expect(checklist).toContain('临时 consumer');
   });
 
+  it('verifies published package READMEs from the temporary consumer install', () => {
+    const publishedVerifier = readFileSync(resolve('scripts/verify-published.mjs'), 'utf8');
+    const checklist = readFileSync(resolve('docs/production-checklist.md'), 'utf8');
+    const roadmap = readFileSync(resolve('docs/roadmap/production-agent-sdk-monorepo.md'), 'utf8');
+
+    expect(publishedVerifier).toContain('publishedReadmeRequirements');
+    expect(publishedVerifier).toContain('verifyPublishedReadmes');
+    expect(publishedVerifier).toContain("node_modules/@blade-ai/ai/README.md");
+    expect(publishedVerifier).toContain("node_modules/@blade-ai/agent/README.md");
+    expect(publishedVerifier).toContain("node_modules/@blade-ai/agent-sdk/README.md");
+    expect(publishedVerifier).toContain("installCommand: 'pnpm add @blade-ai/ai'");
+    expect(publishedVerifier).toContain("installCommand: 'pnpm add @blade-ai/agent'");
+    expect(publishedVerifier).toContain("installCommand: 'pnpm add @blade-ai/agent-sdk'");
+    expect(publishedVerifier).toContain("importSnippet: \"import { createOpenAICompatibleModelPort } from '@blade-ai/ai';\"");
+    expect(publishedVerifier).toContain("importSnippet: \"import { AgentKernel } from '@blade-ai/agent';\"");
+    expect(publishedVerifier).toContain("importSnippet: \"import { createSession } from '@blade-ai/agent-sdk';\"");
+    expect(publishedVerifier).toContain('published README must document direct installation');
+    expect(publishedVerifier).toContain('published README must document direct import usage');
+    expect(checklist).toContain('published package READMEs');
+    expect(roadmap).toContain('published package README gate');
+  });
+
   it('type-checks public declarations from the published temporary consumer', () => {
     const publishedVerifier = readFileSync(resolve('scripts/verify-published.mjs'), 'utf8');
     const readme = readFileSync(resolve('README.md'), 'utf8');
