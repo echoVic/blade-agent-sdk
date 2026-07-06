@@ -14,6 +14,7 @@ const browserDisallowedMarkers = [
   '@modelcontextprotocol',
   'node-pty',
 ];
+const requiredPackageKeywords = ['agent', 'sdk', 'llm'];
 const expectedPackedPackageMetadata = {
   type: 'module',
   sideEffects: false,
@@ -599,6 +600,12 @@ function verifyPackedPackageMetadata(spec, manifest) {
       throw new Error(
         `${spec.name} ${rule.message}: expected ${JSON.stringify(rule.expected)}, got ${JSON.stringify(actual)}`,
       );
+    }
+  }
+
+  for (const keyword of requiredPackageKeywords) {
+    if (!manifest.keywords?.includes(keyword)) {
+      throw new Error(`${spec.name} packed manifest keywords must include ${keyword}`);
     }
   }
 }

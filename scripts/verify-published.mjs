@@ -79,6 +79,7 @@ const browserDisallowedMarkers = [
   '@modelcontextprotocol',
   'node-pty',
 ];
+const requiredPackageKeywords = ['agent', 'sdk', 'llm'];
 
 function parseArgs(argv) {
   const options = {
@@ -471,6 +472,12 @@ function verifyPublishedPackageMetadata(requirement, manifest) {
       throw new Error(
         `${requirement.packageName} ${rule.message}: expected ${JSON.stringify(rule.expected)}, got ${JSON.stringify(actual)}`,
       );
+    }
+  }
+
+  for (const keyword of requiredPackageKeywords) {
+    if (!manifest.keywords?.includes(keyword)) {
+      throw new Error(`${requirement.packageName} installed manifest keywords must include ${keyword}`);
     }
   }
 }
