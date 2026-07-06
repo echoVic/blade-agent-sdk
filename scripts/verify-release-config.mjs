@@ -216,6 +216,9 @@ function verifyReleaseWorkflow() {
   if (setupNodeStep?.with?.['registry-url'] !== 'https://registry.npmjs.org') {
     fail('release workflow setup-node must target the npm registry');
   }
+  if (setupNodeStep?.with?.['node-version'] !== '22.14') {
+    fail('release workflow Node version must match the package engine floor');
+  }
   if (setupPnpmStep?.with?.version !== '11.7.0') {
     fail('release workflow must pin pnpm/action-setup to pnpm 11.7.0');
   }

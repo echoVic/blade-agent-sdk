@@ -505,6 +505,14 @@ describe('release workflow', () => {
     expect(releaseStep.env).not.toHaveProperty('NPM_CONFIG_PROVENANCE');
   });
 
+  it('pins the release workflow Node version to the package engine floor in the verifier', () => {
+    const releaseVerifier = readFileSync(resolve('scripts/verify-release-config.mjs'), 'utf8');
+
+    expect(releaseVerifier).toContain("setupNodeStep?.with?.['node-version']");
+    expect(releaseVerifier).toContain("'22.14'");
+    expect(releaseVerifier).toContain('release workflow Node version must match the package engine floor');
+  });
+
   it('skips post-publish verification when semantic-release does not create a new tag', () => {
     const workflow = parse(
       readFileSync(resolve('.github/workflows/release.yml'), 'utf8')
