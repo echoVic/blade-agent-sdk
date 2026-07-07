@@ -1,5 +1,6 @@
 import { execFile } from 'node:child_process';
 import { mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises';
+import { builtinModules } from 'node:module';
 import { tmpdir } from 'node:os';
 import { dirname, join, relative } from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
@@ -21,6 +22,7 @@ const dependencySections = [
   'optionalDependencies',
   'peerDependencies',
 ];
+const nodeBuiltinModules = new Set(builtinModules);
 const exactVersionPattern = /^\d+\.\d+\.\d+(?:[-+][0-9A-Za-z-.]+)?$/;
 const allowedPublicExportConditions = new Set(['types', 'browser', 'import']);
 const expectedPublishedPackageMetadata = {
@@ -555,9 +557,27 @@ async function verifyPublishedPackageManifests({ consumerDir, version }) {
       installedFiles,
     });
     verifyPublishedSdkBrowserExportConditions(requirement.packageName, manifest);
+    await verifyPublishedRuntimeExternalDependencies({
+      packageName: requirement.packageName,
+      packageDir,
+      manifest,
+    });
 
   }
   console.log('[verify-published] temporary consumer published package manifests passed');
+}
+
+async function verifyPublishedRuntimeExternalDependencies({ packageName, packageDir, manifest }) {
+  const declaredDependencies = getDeclaredRuntimeDependencies(manifest);
+
+  for (const dependencyName of await collectRuntimeExternalImports(packageDir)) {
+    if (dependencyName === manifest.name || declaredDependencies.has(dependencyName)) {
+      continue;
+    }
+    throw new Error(
+      `${packageName} installed runtime import is not declared in package dependencies: ${dependencyName}`,
+    );
+  }
 }
 
 function verifyPublishedManifestDependencyVersions(packageName, manifest, version) {
@@ -579,6 +599,71 @@ function verifyPublishedManifestDependencyVersions(packageName, manifest, versio
       }
     }
   }
+}
+
+function getDeclaredRuntimeDependencies(manifest) {
+  return new Set(
+    dependencySections.flatMap((section) => Object.keys(manifest[section] ?? {})),
+  );
+}
+
+async function collectRuntimeExternalImports(packageDir) {
+  const distDir = join(packageDir, 'dist');
+  const files = (await run('find', [distDir, '-type', 'f', '-name', '*.js']))
+    .split('\n')
+    .filter(Boolean);
+  const dependencies = new Set();
+
+  for (const filePath of files) {
+    const source = await readFile(filePath, 'utf8');
+    for (const specifier of collectImportSpecifiers(source)) {
+      const dependencyName = getExternalPackageName(specifier);
+      if (dependencyName) {
+        dependencies.add(dependencyName);
+      }
+    }
+  }
+
+  return dependencies;
+}
+
+function collectImportSpecifiers(source) {
+  const specifiers = new Set();
+  const patterns = [
+    /\bimport\s*["']([^"']+)["']/g,
+    /\bimport\s*(?:[\w*{}\s,]+from\s*)["']([^"']+)["']/g,
+    /\bexport\s*(?:[\w*{}\s,]+from\s*|\*\s+from\s*)["']([^"']+)["']/g,
+    /\bimport\s*\(\s*["']([^"']+)["']\s*\)/g,
+  ];
+
+  for (const pattern of patterns) {
+    for (const match of source.matchAll(pattern)) {
+      specifiers.add(match[1]);
+    }
+  }
+
+  return specifiers;
+}
+
+function getExternalPackageName(specifier) {
+  if (
+    specifier.startsWith('.') ||
+    specifier.startsWith('/') ||
+    specifier.startsWith('data:') ||
+    specifier.startsWith('file:')
+  ) {
+    return null;
+  }
+
+  const normalizedSpecifier = specifier.startsWith('node:') ? specifier.slice(5) : specifier;
+  if (specifier.startsWith('node:') || nodeBuiltinModules.has(normalizedSpecifier)) {
+    return null;
+  }
+
+  if (normalizedSpecifier.startsWith('@')) {
+    return normalizedSpecifier.split('/').slice(0, 2).join('/');
+  }
+  return normalizedSpecifier.split('/')[0];
 }
 
 function assertNoPackageLifecycleScripts(packageName, manifest, label) {

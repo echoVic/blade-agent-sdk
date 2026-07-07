@@ -1146,6 +1146,24 @@ describe('release scripts', () => {
     expect(roadmap).toContain('manifest target existence gate');
   });
 
+  it('verifies packed and published runtime external dependencies are declared', () => {
+    const packageVerifier = readFileSync(resolve('scripts/verify-packages.mjs'), 'utf8');
+    const publishedVerifier = readFileSync(resolve('scripts/verify-published.mjs'), 'utf8');
+    const readme = readFileSync(resolve('README.md'), 'utf8');
+    const checklist = readFileSync(resolve('docs/production-checklist.md'), 'utf8');
+    const roadmap = readFileSync(resolve('docs/roadmap/production-agent-sdk-monorepo.md'), 'utf8');
+
+    expect(packageVerifier).toContain('verifyPackedRuntimeExternalDependencies');
+    expect(packageVerifier).toContain('packed runtime import is not declared in package dependencies');
+    expect(packageVerifier).toContain('collectRuntimeExternalImports');
+    expect(publishedVerifier).toContain('verifyPublishedRuntimeExternalDependencies');
+    expect(publishedVerifier).toContain('installed runtime import is not declared in package dependencies');
+    expect(publishedVerifier).toContain('collectRuntimeExternalImports');
+    expect(readme).toContain('runtime external dependency declaration checks');
+    expect(checklist).toContain('runtime external dependency declaration checks');
+    expect(roadmap).toContain('runtime external dependency declaration gate');
+  });
+
   it('verifies packed SDK browser export conditions before publication', () => {
     const packageVerifier = readFileSync(resolve('scripts/verify-packages.mjs'), 'utf8');
     const readme = readFileSync(resolve('README.md'), 'utf8');

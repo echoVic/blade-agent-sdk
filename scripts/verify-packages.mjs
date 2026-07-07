@@ -1,5 +1,6 @@
 import { spawnSync } from 'node:child_process';
 import { existsSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { builtinModules } from 'node:module';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -21,6 +22,7 @@ const dependencySections = [
   'optionalDependencies',
   'peerDependencies',
 ];
+const nodeBuiltinModules = new Set(builtinModules);
 const exactVersionPattern = /^\d+\.\d+\.\d+(?:[-+][0-9A-Za-z-.]+)?$/;
 const allowedPublicExportConditions = new Set(['types', 'browser', 'import']);
 const forbiddenPackageLifecycleScripts = new Set([
@@ -726,6 +728,24 @@ function verifyPackedManifest(spec, tarballPath, tempDir) {
   verifyPackedSdkBrowserExportConditions(spec.name, manifest);
 }
 
+function verifyPackedRuntimeExternalDependencies(spec, tarballPath, tempDir) {
+  const extractDir = join(tempDir, `runtime-deps-${spec.name.replaceAll(/[^a-z0-9]+/gi, '-')}`);
+  run('mkdir', ['-p', extractDir]);
+  run('tar', ['-xzf', tarballPath, '-C', extractDir]);
+  const packageDir = join(extractDir, 'package');
+  const manifest = JSON.parse(readFileSync(join(packageDir, 'package.json'), 'utf8'));
+  const declaredDependencies = getDeclaredRuntimeDependencies(manifest);
+
+  for (const dependencyName of collectRuntimeExternalImports(packageDir)) {
+    if (dependencyName === manifest.name || declaredDependencies.has(dependencyName)) {
+      continue;
+    }
+    throw new Error(
+      `${spec.name} packed runtime import is not declared in package dependencies: ${dependencyName}`,
+    );
+  }
+}
+
 function verifyPackedManifestDependencyVersions(packageName, manifest) {
   for (const section of dependencySections) {
     for (const [dependencyName, dependencyVersion] of Object.entries(manifest[section] ?? {})) {
@@ -751,6 +771,71 @@ function verifyPackedManifestDependencyVersions(packageName, manifest) {
       }
     }
   }
+}
+
+function getDeclaredRuntimeDependencies(manifest) {
+  return new Set(
+    dependencySections.flatMap((section) => Object.keys(manifest[section] ?? {})),
+  );
+}
+
+function collectRuntimeExternalImports(packageDir) {
+  const distDir = join(packageDir, 'dist');
+  const files = run('find', [distDir, '-type', 'f', '-name', '*.js'])
+    .split('\n')
+    .filter(Boolean);
+  const dependencies = new Set();
+
+  for (const filePath of files) {
+    const source = readFileSync(filePath, 'utf8');
+    for (const specifier of collectImportSpecifiers(source)) {
+      const dependencyName = getExternalPackageName(specifier);
+      if (dependencyName) {
+        dependencies.add(dependencyName);
+      }
+    }
+  }
+
+  return dependencies;
+}
+
+function collectImportSpecifiers(source) {
+  const specifiers = new Set();
+  const patterns = [
+    /\bimport\s*["']([^"']+)["']/g,
+    /\bimport\s*(?:[\w*{}\s,]+from\s*)["']([^"']+)["']/g,
+    /\bexport\s*(?:[\w*{}\s,]+from\s*|\*\s+from\s*)["']([^"']+)["']/g,
+    /\bimport\s*\(\s*["']([^"']+)["']\s*\)/g,
+  ];
+
+  for (const pattern of patterns) {
+    for (const match of source.matchAll(pattern)) {
+      specifiers.add(match[1]);
+    }
+  }
+
+  return specifiers;
+}
+
+function getExternalPackageName(specifier) {
+  if (
+    specifier.startsWith('.') ||
+    specifier.startsWith('/') ||
+    specifier.startsWith('data:') ||
+    specifier.startsWith('file:')
+  ) {
+    return null;
+  }
+
+  const normalizedSpecifier = specifier.startsWith('node:') ? specifier.slice(5) : specifier;
+  if (specifier.startsWith('node:') || nodeBuiltinModules.has(normalizedSpecifier)) {
+    return null;
+  }
+
+  if (normalizedSpecifier.startsWith('@')) {
+    return normalizedSpecifier.split('/').slice(0, 2).join('/');
+  }
+  return normalizedSpecifier.split('/')[0];
 }
 
 function assertNoPackageLifecycleScripts(packageName, manifest, label) {
@@ -1899,6 +1984,7 @@ try {
     verifyPackedReadmes(spec, tarballPath, tempDir);
     verifyPackedLicenseArtifacts(spec, tarballPath, tempDir);
     verifyPackedManifest(spec, tarballPath, tempDir);
+    verifyPackedRuntimeExternalDependencies(spec, tarballPath, tempDir);
     verifyForbiddenFileContents(spec, tarballPath, tempDir);
     verifyNoEagerLegacySessionRuntime(spec, tarballPath, tempDir);
     tarballs.set(spec.name, tarballPath);
