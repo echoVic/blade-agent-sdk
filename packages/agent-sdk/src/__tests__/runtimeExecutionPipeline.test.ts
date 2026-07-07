@@ -3,9 +3,9 @@ import {
   createPackageLocalRuntimeExecutionPipeline,
   createPackageLocalRuntimeExecutionPipelineCache,
   createPackageLocalRuntimeExecutionPipelineOperations,
-} from '../../packages/agent-sdk/src/session/runtimeExecutionPipeline.js';
-import type { PackageLocalRuntimeExecutionPipelineFactoryPort } from '../../packages/agent-sdk/src/session/runtimeExecutionPipeline.js';
-import { PermissionMode, type BladeConfig } from '../../packages/agent-sdk/src/types/common.js';
+} from '../session/runtimeExecutionPipeline.js';
+import type { PackageLocalRuntimeExecutionPipelineFactoryPort } from '../session/runtimeExecutionPipeline.js';
+import { PermissionMode, type BladeConfig } from '../types/common.js';
 
 const bladeConfig: BladeConfig = {
   currentModelId: 'default',
