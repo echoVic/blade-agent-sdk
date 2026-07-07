@@ -147,6 +147,7 @@ describe('package entrypoints', () => {
 
   it('keeps agent-sdk public entry facade tests package-local', () => {
     expect(existsSync(join(process.cwd(), 'packages/agent-sdk/src/__tests__/permissionEntry.test.ts'))).toBe(true);
+    expect(existsSync(join(process.cwd(), 'packages/agent-sdk/src/__tests__/subagentsEntry.test.ts'))).toBe(true);
     expect(existsSync(join(process.cwd(), 'packages/agent-sdk/src/__tests__/toolsEntry.test.ts'))).toBe(true);
   });
 

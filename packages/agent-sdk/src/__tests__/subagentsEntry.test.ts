@@ -4,7 +4,7 @@ import {
   SubagentExecutor,
   SubagentRegistry,
   mapClaudeCodePermissionMode,
-} from '../../packages/agent-sdk/src/index.js';
+} from '../index.js';
 
 describe('agent-sdk root subagent exports', () => {
   it('exposes package-local subagent registry behavior', () => {
