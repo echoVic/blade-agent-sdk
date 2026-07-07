@@ -311,13 +311,16 @@ function verifyReleaseWorkflow() {
     fail('release workflow must not cancel an in-flight publish');
   }
   assertDeepEqual(commands, [
-    'npm install -g npm@^11.5.1',
+    'npm install -g npm@11.5.1',
     'pnpm install --frozen-lockfile --ignore-scripts',
     'pnpm run verify',
     captureTagStep?.run,
     'pnpm exec semantic-release',
     postPublishStep?.run,
   ], 'release workflow commands');
+  if (!commands.includes('npm install -g npm@11.5.1')) {
+    fail('release workflow must pin the trusted-publishing npm CLI to npm@11.5.1');
+  }
   if (setupNodeStep?.with?.['registry-url'] !== 'https://registry.npmjs.org') {
     fail('release workflow setup-node must target the npm registry');
   }
