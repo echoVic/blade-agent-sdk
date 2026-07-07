@@ -80,6 +80,7 @@ describe('package entrypoints', () => {
     expect(existsSync(join(process.cwd(), 'packages/agent-sdk/src/__tests__/runtimeKernelFactory.test.ts'))).toBe(true);
     expect(existsSync(join(process.cwd(), 'packages/agent-sdk/src/__tests__/runtimeKernelModelResolver.test.ts'))).toBe(true);
     expect(existsSync(join(process.cwd(), 'packages/agent-sdk/src/__tests__/runtimeKernelStreamBridge.test.ts'))).toBe(true);
+    expect(existsSync(join(process.cwd(), 'packages/agent-sdk/src/__tests__/runtimeKernelStreamProjection.test.ts'))).toBe(true);
   });
 
   it('keeps the server entry as an explicit facade instead of a root wildcard forwarder', () => {

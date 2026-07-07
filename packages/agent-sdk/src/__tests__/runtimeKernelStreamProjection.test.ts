@@ -1,8 +1,8 @@
 import { existsSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 
-const projectionModulePath = '../../packages/agent-sdk/src/session/kernelStreamProjection.js';
-const projectionSourcePath = 'packages/agent-sdk/src/session/kernelStreamProjection.ts';
+const projectionModulePath = '../session/kernelStreamProjection.js';
+const projectionSourcePath = 'src/session/kernelStreamProjection.ts';
 
 describe('agent-sdk kernel stream projection', () => {
   it('projects agent kernel events into session stream messages without runtime state', async () => {
