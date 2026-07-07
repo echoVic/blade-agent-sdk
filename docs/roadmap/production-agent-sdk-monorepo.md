@@ -282,6 +282,7 @@ Status:
 - The tenth kernel increment publishes the kernel package modules as explicit subpath exports: `@blade-ai/agent/kernel`, `@blade-ai/agent/protocol`, `@blade-ai/agent/ports`, `@blade-ai/agent/state`, and `@blade-ai/agent/tracing`. Package verification now requires those JS/declaration files in the tarball and imports each subpath from a temporary consumer install.
 - The eleventh kernel increment adds optional model-level streaming mode: `AgentKernel` can call `ModelPort.stream()`, emit incremental thinking/content/usage events, aggregate the streamed response, and continue through the same tool loop, trace, hook, and store path without depending on provider or runtime adapters.
 - Agent package tool-update event package-local test migration complete: tool execution update to public agent event projection now lives under `packages/agent/src/__tests__`, and the root monorepo topology guard requires that package-owned test file to remain present so the strict package test gate directly covers runtime-independent loop event projection.
+- Agent package AsyncEventQueue package-local test migration complete: enqueue order, producer waiting, fail propagation, live filtering, concurrent enqueue, and close/fail idempotence coverage now lives under `packages/agent/src/__tests__`, and the root monorepo topology guard requires that package-owned test file to remain present so the strict package test gate directly covers runtime-independent async event queue behavior.
 
 ### Phase 4: Rebuild `@blade-ai/agent-sdk`
 

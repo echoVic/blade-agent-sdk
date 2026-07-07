@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { AsyncEventQueue } from '../AsyncEventQueue.js';
+import { AsyncEventQueue } from '../loop/index.js';
 
 async function collect<T>(queue: AsyncEventQueue<T>): Promise<T[]> {
   const out: T[] = [];
