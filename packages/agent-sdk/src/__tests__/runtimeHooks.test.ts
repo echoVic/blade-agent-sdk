@@ -3,9 +3,9 @@ import {
   createPackageLocalRuntimeHookOperations,
   initializePackageLocalRuntimeHooks,
   streamWithPackageLocalRuntimeTraceCollector,
-} from '../../packages/agent-sdk/src/session/runtimeHooks.js';
-import type { PackageLocalRuntimeHookManagerPort } from '../../packages/agent-sdk/src/session/runtimeHooks.js';
-import { HookEvent } from '../../packages/agent-sdk/src/types/constants.js';
+} from '../session/runtimeHooks.js';
+import type { PackageLocalRuntimeHookManagerPort } from '../session/runtimeHooks.js';
+import { HookEvent } from '../types/constants.js';
 
 function hookManager(): PackageLocalRuntimeHookManagerPort {
   return {
