@@ -16,6 +16,7 @@ import type { AgentEvent } from './AgentEvent.js';
 import { AGENT_TURN_SAFETY_LIMIT } from './constants.js';
 import { ExecutionEpoch } from './ExecutionEpoch.js';
 import { isOverflowRecoverable } from './isOverflowRecoverable.js';
+import { createAgentRecoveryAttemptTracker } from './recoveryAttemptTracker.js';
 import { decideNoToolTurn } from './loop/decideNoToolTurn.js';
 import { decideTurnLimit } from './loop/decideTurnLimit.js';
 import { executeToolCalls } from './loop/executeToolCalls.js';
@@ -148,10 +149,9 @@ export async function* agentLoop(
   const startTime = Date.now();
   let turnsCount = 0;
   const toolResultTracker = createAgentToolResultTracker<ToolResult>();
+  const recoveryAttemptTracker = createAgentRecoveryAttemptTracker();
   let totalTokens = 0;
   let lastPromptTokens: number | undefined;
-  let recoveryAttemptedTurn: number | null = null;
-  let recoveryAttempt = 0;
   /** 当前回合需要重试（不自增 turnsCount、不发 turn_end） */
   let retryCurrentTurn = false;
   let epoch: ExecutionEpoch | null = null;
@@ -255,10 +255,9 @@ export async function* agentLoop(
       if (
         isOverflowRecoverable(llmError)
         && recoveryHooks?.reactiveCompact
-        && recoveryAttemptedTurn !== turnsCount
+        && recoveryAttemptTracker.canAttempt(turnsCount)
       ) {
-        recoveryAttemptedTurn = turnsCount;
-        recoveryAttempt += 1;
+        const recoveryAttempt = recoveryAttemptTracker.startAttempt(turnsCount);
         recoveryHooks.onStateChange?.({
           turn: turnsCount,
           phase: 'started',
@@ -300,12 +299,12 @@ export async function* agentLoop(
         continue;
       }
 
-      if (isOverflowRecoverable(llmError) && recoveryAttemptedTurn === turnsCount) {
+      if (isOverflowRecoverable(llmError) && recoveryAttemptTracker.hasAttemptedTurn(turnsCount)) {
         recoveryHooks?.onStateChange?.({
           turn: turnsCount,
           phase: 'failed',
           reason: 'recovery_exhausted',
-          attempt: recoveryAttempt,
+          attempt: recoveryAttemptTracker.attempt,
         });
         yield { type: 'recovery', phase: 'failed', reason: 'recovery_exhausted' };
       }
@@ -316,14 +315,12 @@ export async function* agentLoop(
       throw new Error('Agent loop completed without a chat response');
     }
 
-    recoveryAttemptedTurn = null;
-    if (recoveryAttempt > 0) {
+    if (recoveryAttemptTracker.consumeResetAttempt() !== null) {
       recoveryHooks?.onStateChange?.({
         turn: turnsCount,
         phase: 'reset',
         attempt: 0,
       });
-      recoveryAttempt = 0;
     }
 
     // Token usage
