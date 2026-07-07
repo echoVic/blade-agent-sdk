@@ -355,6 +355,7 @@ describe('package provenance metadata', () => {
     expect(packageVerifier).toContain("assertRuntimeExport(agentLoop, 'planToolExecution')");
     expect(packageVerifier).toContain("assertRuntimeExport(agentLoop, 'resolveToolInterruptBehavior')");
     expect(packageVerifier).toContain("assertRuntimeExport(agentLoop, 'createInterruptAwareAbortSignal')");
+    expect(packageVerifier).toContain("assertRuntimeExport(agentLoop, 'toolUpdateToAgentEvent')");
     expect(packageVerifier).toContain("assertRuntimeExport(agentLoop, 'RETRY_PROMPT')");
     expect(packageVerifier).toContain("assertRuntimeExport(agentLoop, 'ToolKind')");
     expect(packageVerifier).toContain("assertRuntimeExport(agentRecovery, 'isOverflowRecoverable')");
@@ -427,6 +428,7 @@ describe('package provenance metadata', () => {
     expect(packageVerifier).toContain('planToolExecution');
     expect(packageVerifier).toContain('resolveToolInterruptBehavior');
     expect(packageVerifier).toContain('createInterruptAwareAbortSignal');
+    expect(packageVerifier).toContain('toolUpdateToAgentEvent');
     expect(packageVerifier).toContain('ToolKind');
     expect(packageVerifier).toContain("from '@blade-ai/agent/recovery';");
     expect(packageVerifier).toContain('isOverflowRecoverable');
@@ -766,6 +768,7 @@ describe('release scripts', () => {
     expect(publishedVerifier).toContain("assertRuntimeExport(agentLoop, 'planToolExecution')");
     expect(publishedVerifier).toContain("assertRuntimeExport(agentLoop, 'resolveToolInterruptBehavior')");
     expect(publishedVerifier).toContain("assertRuntimeExport(agentLoop, 'createInterruptAwareAbortSignal')");
+    expect(publishedVerifier).toContain("assertRuntimeExport(agentLoop, 'toolUpdateToAgentEvent')");
     expect(publishedVerifier).toContain("assertRuntimeExport(agentLoop, 'RETRY_PROMPT')");
     expect(publishedVerifier).toContain("assertRuntimeExport(agentLoop, 'ToolKind')");
     expect(publishedVerifier).toContain("assertRuntimeExport(agentRecovery, 'isOverflowRecoverable')");
@@ -1546,6 +1549,7 @@ describe('release scripts', () => {
     expect(publishedVerifier).toContain('planToolExecution');
     expect(publishedVerifier).toContain('resolveToolInterruptBehavior');
     expect(publishedVerifier).toContain('createInterruptAwareAbortSignal');
+    expect(publishedVerifier).toContain('toolUpdateToAgentEvent');
     expect(publishedVerifier).toContain('ToolKind');
     expect(publishedVerifier).toContain("from '@blade-ai/agent/ports';");
     expect(publishedVerifier).toContain("from '@blade-ai/agent/protocol';");
@@ -1659,6 +1663,7 @@ describe('release scripts', () => {
     expect(publishedVerifier).toContain('planToolExecution');
     expect(publishedVerifier).toContain('resolveToolInterruptBehavior');
     expect(publishedVerifier).toContain('createInterruptAwareAbortSignal');
+    expect(publishedVerifier).toContain('toolUpdateToAgentEvent');
     expect(publishedVerifier).toContain('ToolKind');
     expect(publishedVerifier).toContain("from '@blade-ai/agent/recovery';");
     expect(publishedVerifier).toContain('new TokenBudget');

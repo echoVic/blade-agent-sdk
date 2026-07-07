@@ -1504,6 +1504,7 @@ assertRuntimeExport(agentLoop, 'decideTurnLimit');
 assertRuntimeExport(agentLoop, 'planToolExecution');
 assertRuntimeExport(agentLoop, 'resolveToolInterruptBehavior');
 assertRuntimeExport(agentLoop, 'createInterruptAwareAbortSignal');
+assertRuntimeExport(agentLoop, 'toolUpdateToAgentEvent');
 assertRuntimeExport(agentLoop, 'RETRY_PROMPT');
 assertRuntimeExport(agentLoop, 'ToolKind');
 assertRuntimeExport(agentRecovery, 'isOverflowRecoverable');
@@ -1673,10 +1674,13 @@ import {
   decideTurnLimit,
   planToolExecution,
   resolveToolInterruptBehavior,
+  toolUpdateToAgentEvent,
   ToolKind as AgentLoopToolKind,
 } from '@blade-ai/agent/loop';
 import type {
   AgentFunctionToolCall,
+  AgentLoopToolEvent,
+  AgentLoopToolExecutionUpdate,
   ToolBehavior as AgentLoopToolBehavior,
   ToolExecutionPlan,
   ToolInterruptBehavior,
@@ -1906,6 +1910,14 @@ const interruptSignal = createInterruptAwareAbortSignal({
   interruptBehavior: toolInterruptBehavior,
 });
 interruptSignal.cleanup();
+const toolExecutionUpdate: AgentLoopToolExecutionUpdate = {
+  type: 'tool_ready',
+  toolCall: plannedToolCall,
+};
+const toolAgentEvent: AgentLoopToolEvent | null = toolUpdateToAgentEvent(
+  toolExecutionUpdate,
+  { get: () => ({ kind: AgentLoopToolKind.ReadOnly }) },
+);
 const executionEpoch = new ExecutionEpoch();
 executionEpoch.invalidate();
 const executionEpochIsInvalid: boolean = !executionEpoch.isValid;
@@ -2137,6 +2149,7 @@ void noToolDecision;
 void turnLimitDecision;
 void toolExecutionPlan;
 void interruptSignal;
+void toolAgentEvent;
 void executionEpochIsInvalid;
 void overflowIsRecoverable;
 void tokenBudgetConfig;
@@ -2244,7 +2257,7 @@ async function verifyAgentBrowserBundle(consumerDir) {
       "import { AgentKernel } from '@blade-ai/agent';",
       "import { ExecutionEpoch } from '@blade-ai/agent/epoch';",
       "import { AgentKernel as AgentKernelFromSubpath } from '@blade-ai/agent/kernel';",
-      "import { AsyncEventQueue, createInterruptAwareAbortSignal, decideNoToolTurn, decideTurnLimit, planToolExecution, resolveToolInterruptBehavior, ToolKind } from '@blade-ai/agent/loop';",
+      "import { AsyncEventQueue, createInterruptAwareAbortSignal, decideNoToolTurn, decideTurnLimit, planToolExecution, resolveToolInterruptBehavior, toolUpdateToAgentEvent, ToolKind } from '@blade-ai/agent/loop';",
       "import { isOverflowRecoverable } from '@blade-ai/agent/recovery';",
       'const fakeModel = {',
       '  async generate() {',
@@ -2266,8 +2279,9 @@ async function verifyAgentBrowserBundle(consumerDir) {
       "const interruptBehavior = resolveToolInterruptBehavior({ get: () => ({ kind: ToolKind.Execute, interruptBehavior: 'cancel' }) }, 'Bash', {});",
       "const interruptSignal = createInterruptAwareAbortSignal({ interruptBehavior });",
       'interruptSignal.cleanup();',
+      "const toolEvent = toolUpdateToAgentEvent({ type: 'tool_ready', toolCall: { id: 'read-1', type: 'function', function: { name: 'Read', arguments: '{}' } } }, { get: () => ({ kind: ToolKind.ReadOnly }) });",
       "const overflow = isOverflowRecoverable(new Error('context_length_exceeded'));",
-      "console.log('agent browser bundle', kernel.constructor.name, kernelFromSubpath.constructor.name, epoch.constructor.name, queue.constructor.name, decision.action, turnLimit.action, toolPlan.mode, interruptBehavior, overflow);",
+      "console.log('agent browser bundle', kernel.constructor.name, kernelFromSubpath.constructor.name, epoch.constructor.name, queue.constructor.name, decision.action, turnLimit.action, toolPlan.mode, interruptBehavior, toolEvent?.type, overflow);",
     ].join('\n'),
   );
 

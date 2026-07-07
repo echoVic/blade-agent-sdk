@@ -23,6 +23,7 @@ import {
   decideTurnLimit,
   planToolExecution,
   resolveToolInterruptBehavior,
+  toolUpdateToAgentEvent,
   ToolKind,
 } from '@blade-ai/agent/loop';
 import { isOverflowRecoverable } from '@blade-ai/agent/recovery';
@@ -65,6 +66,10 @@ resolveToolInterruptBehavior(
   {},
 );
 createInterruptAwareAbortSignal({ interruptBehavior: 'cancel' }).cleanup();
+toolUpdateToAgentEvent(
+  { type: 'tool_ready', toolCall: { id: 'read-1', type: 'function', function: { name: 'Read', arguments: '{}' } } },
+  { get: () => ({ kind: ToolKind.ReadOnly }) },
+);
 
 isOverflowRecoverable(new Error('context_length_exceeded')); // true
 isValidSystemSource('catalog'); // true
