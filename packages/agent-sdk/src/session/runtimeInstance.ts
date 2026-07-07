@@ -64,6 +64,7 @@ import {
   getPackageLocalRuntimeContextCwd,
   resolvePackageLocalRuntimeStorageRoot,
 } from './runtimeContext.js';
+import { buildSessionModelConfig } from './config.js';
 import type { PackageLocalRuntimeWorkspaceOperations } from './runtimeWorkspace.js';
 import type { PackageLocalRuntimeSessionLifecycleOperations } from './runtimeSessionLifecycle.js';
 import { createPackageLocalRuntimeSessionOperations } from './runtimeSessionOperations.js';
@@ -505,6 +506,21 @@ export class PackageLocalSessionRuntime {
 
   async mcpListTools(): Promise<McpToolInfo[]> {
     return this.mcpCapabilityOperations.listTools();
+  }
+
+  setPermissionMode(mode: Parameters<ISession['setPermissionMode']>[0]): void {
+    this.options.permissionMode = mode;
+  }
+
+  async setModel(model: Parameters<ISession['setModel']>[0]): Promise<void> {
+    this.options.model = model;
+    const modelConfig = buildSessionModelConfig(this.options);
+    this.bladeConfig.models = [modelConfig];
+    this.bladeConfig.currentModelId = modelConfig.id;
+  }
+
+  setMaxTurns(maxTurns: Parameters<ISession['setMaxTurns']>[0]): void {
+    this.options.maxTurns = maxTurns;
   }
 
   async fork(options?: ForkSessionOptions): Promise<ISession> {

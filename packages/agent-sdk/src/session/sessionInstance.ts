@@ -45,6 +45,9 @@ export interface PackageLocalSessionOptions {
 
 export interface PackageLocalSessionRuntimePort {
   loadMessages?: () => Promise<SessionMessage[]> | SessionMessage[];
+  setPermissionMode?: ISession['setPermissionMode'];
+  setModel?: ISession['setModel'];
+  setMaxTurns?: ISession['setMaxTurns'];
   mcpServerStatus?: ISession['mcpServerStatus'];
   mcpConnect?: ISession['mcpConnect'];
   mcpDisconnect?: ISession['mcpDisconnect'];
@@ -142,6 +145,7 @@ export class PackageLocalSession implements ISession {
 
   setPermissionMode(mode: Parameters<ISession['setPermissionMode']>[0]): void {
     this.lifecycle.assertOpen();
+    this.runtime?.setPermissionMode?.(mode);
     this.sessionOptions = {
       ...this.sessionOptions,
       permissionMode: mode,
@@ -150,6 +154,7 @@ export class PackageLocalSession implements ISession {
 
   async setModel(model: Parameters<ISession['setModel']>[0]): Promise<void> {
     this.lifecycle.assertOpen();
+    await this.runtime?.setModel?.(model);
     this.sessionOptions = {
       ...this.sessionOptions,
       model,
@@ -158,6 +163,7 @@ export class PackageLocalSession implements ISession {
 
   setMaxTurns(maxTurns: Parameters<ISession['setMaxTurns']>[0]): void {
     this.lifecycle.assertOpen();
+    this.runtime?.setMaxTurns?.(maxTurns);
     this.sessionOptions = {
       ...this.sessionOptions,
       maxTurns,

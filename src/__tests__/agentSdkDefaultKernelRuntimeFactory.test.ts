@@ -120,6 +120,50 @@ describe('agent-sdk default kernel runtime factory', () => {
     });
   });
 
+  it('applies setModel to the package-local kernel runtime before resolving turns', async () => {
+    const resolvedModels: string[] = [];
+    const factory = createDefaultKernelSessionRuntimeFactory({
+      createSessionId: () => 'model-switch-session',
+      createTurnId: () => 'model-switch-turn',
+      runtime: {
+        kernelModelResolver: {
+          resolve(resolveOptions) {
+            const modelName = resolveOptions.bladeConfig.models[0]?.model;
+            resolvedModels.push(modelName ?? 'missing');
+            return {
+              model,
+              modelRequestDefaults: { model: modelName ?? 'missing' },
+            };
+          },
+        },
+        kernelFactory: {
+          create(createOptions) {
+            return {
+              async *runTurn() {
+                yield {
+                  type: 'result' as const,
+                  content: createOptions.modelRequestDefaults?.model ?? 'missing',
+                };
+              },
+            };
+          },
+        },
+      },
+    });
+
+    const session = await factory.create({ ...options, model: 'model-a' });
+    await session.setModel('model-b');
+    await session.send('use switched model');
+
+    await expect(collect(session.stream())).resolves.toContainEqual({
+      type: 'result',
+      subtype: 'success',
+      content: 'model-b',
+      sessionId: 'model-switch-session',
+    });
+    expect(resolvedModels).toEqual(['model-b']);
+  });
+
   it('assembles package-local kernel sessions from session options and runtime ports', async () => {
     const kernelOptions: AgentKernelOptions[] = [];
     const turns: Array<{ input: string; turnId?: string; signal?: AbortSignal }> = [];
