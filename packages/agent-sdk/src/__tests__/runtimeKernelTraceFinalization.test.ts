@@ -4,7 +4,7 @@ import {
   finishPackageLocalKernelTraceError,
   updatePackageLocalKernelTraceFinalization,
   type PackageLocalKernelTraceFinalizationState,
-} from '../../packages/agent-sdk/src/session/runtimeKernelTraceFinalization.js';
+} from '../session/runtimeKernelTraceFinalization.js';
 
 describe('agent-sdk package-local kernel trace finalization helpers', () => {
   it('stores usage and finalizes success results with the latest usage', async () => {
