@@ -694,7 +694,7 @@ function verifyPackedManifest(spec, tarballPath, tempDir) {
   });
   verifyPackedManifestExports({
     packageName: spec.name,
-    exportsMap: manifest.exports,
+    manifest,
   });
   verifyPackedSdkBrowserExportConditions(spec.name, manifest);
 }
@@ -829,19 +829,63 @@ function assertPackedManifestTarget({ packageName, label, target }) {
   }
 }
 
-function verifyPackedManifestExports({ packageName, exportsMap }) {
+function getManifestRootExportConditions(exportsMap) {
+  if (!exportsMap || typeof exportsMap !== 'object' || Array.isArray(exportsMap)) {
+    return null;
+  }
+  const rootExport = exportsMap['.'];
+  if (!rootExport || typeof rootExport !== 'object' || Array.isArray(rootExport)) {
+    return null;
+  }
+  return rootExport;
+}
+
+function isPackageJsonManifestExport(exportName, exportValue) {
+  return (
+    exportName === './package.json' &&
+    ((typeof exportValue === 'string' && exportValue === './package.json') ||
+      (exportValue &&
+        typeof exportValue === 'object' &&
+        !Array.isArray(exportValue) &&
+        exportValue.default === './package.json'))
+  );
+}
+
+function verifyPackedManifestExports({ packageName, manifest }) {
+  const exportsMap = manifest.exports;
+  const rootExport = getManifestRootExportConditions(exportsMap);
+  if (!rootExport) {
+    throw new Error(`${packageName} packed manifest exports must declare a root "." condition object`);
+  }
+  if (typeof manifest.main === 'string' && typeof rootExport.import === 'string' && manifest.main !== rootExport.import) {
+    throw new Error(
+      `${packageName} main target "${manifest.main}" must match root export import target "${rootExport.import}"`,
+    );
+  }
+  if (typeof manifest.types === 'string' && typeof rootExport.types === 'string' && manifest.types !== rootExport.types) {
+    throw new Error(
+      `${packageName} types target "${manifest.types}" must match root export types target "${rootExport.types}"`,
+    );
+  }
   if (!exportsMap || typeof exportsMap !== 'object') return;
 
   for (const [exportName, exportValue] of Object.entries(exportsMap)) {
+    if (isPackageJsonManifestExport(exportName, exportValue)) continue;
     if (typeof exportValue === 'string') {
-      assertPackedManifestTarget({
-        packageName,
-        label: `exports.${exportName}`,
-        target: exportValue,
-      });
-      continue;
+      throw new Error(
+        `${packageName} packed manifest export ${exportName} must declare paired types and import conditions`,
+      );
     }
-    if (!exportValue || typeof exportValue !== 'object') continue;
+    if (!exportValue || typeof exportValue !== 'object' || Array.isArray(exportValue)) {
+      throw new Error(
+        `${packageName} packed manifest export ${exportName} must declare paired types and import conditions`,
+      );
+    }
+    if (typeof exportValue.types !== 'string' || typeof exportValue.import !== 'string') {
+      throw new Error(
+        `${packageName} packed manifest export ${exportName} must declare paired types and import conditions`,
+      );
+    }
 
     for (const [condition, target] of Object.entries(exportValue)) {
       assertPackedManifestTarget({
@@ -849,6 +893,7 @@ function verifyPackedManifestExports({ packageName, exportsMap }) {
         label: `exports.${exportName}.${condition}`,
         target,
       });
+      continue;
     }
   }
 }

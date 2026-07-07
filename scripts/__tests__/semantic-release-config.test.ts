@@ -1022,6 +1022,25 @@ describe('release scripts', () => {
     expect(roadmap).toContain('packed package manifest entry target gate');
   });
 
+  it('mirrors source root export manifest contracts in packed and published verifiers', () => {
+    const packageVerifier = readFileSync(resolve('scripts/verify-packages.mjs'), 'utf8');
+    const publishedVerifier = readFileSync(resolve('scripts/verify-published.mjs'), 'utf8');
+    const readme = readFileSync(resolve('README.md'), 'utf8');
+    const checklist = readFileSync(resolve('docs/production-checklist.md'), 'utf8');
+    const roadmap = readFileSync(resolve('docs/roadmap/production-agent-sdk-monorepo.md'), 'utf8');
+
+    for (const verifier of [packageVerifier, publishedVerifier]) {
+      expect(verifier).toContain('getManifestRootExportConditions');
+      expect(verifier).toContain('exports must declare a root "." condition object');
+      expect(verifier).toContain('must declare paired types and import conditions');
+      expect(verifier).toContain('must match root export import target');
+      expect(verifier).toContain('must match root export types target');
+    }
+    expect(readme).toContain('root export manifest contracts');
+    expect(checklist).toContain('root export manifest contracts');
+    expect(roadmap).toContain('root export manifest contract gate');
+  });
+
   it('verifies packed SDK browser export conditions before publication', () => {
     const packageVerifier = readFileSync(resolve('scripts/verify-packages.mjs'), 'utf8');
     const readme = readFileSync(resolve('README.md'), 'utf8');
