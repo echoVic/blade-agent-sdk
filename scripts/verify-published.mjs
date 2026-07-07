@@ -482,6 +482,12 @@ async function verifyPublishedPackageManifests({ consumerDir, version }) {
         `${requirement.packageName} installed manifest version mismatch: expected ${version}, got ${manifest.version}`,
       );
     }
+    if ('private' in manifest) {
+      throw new Error(`${requirement.packageName} installed manifest must not contain private metadata`);
+    }
+    if ('devDependencies' in manifest) {
+      throw new Error(`${requirement.packageName} installed manifest must not contain devDependencies`);
+    }
     if (serializedManifest.includes('workspace:')) {
       throw new Error(`${requirement.packageName} installed manifest must not contain workspace: dependencies`);
     }

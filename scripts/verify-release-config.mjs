@@ -261,6 +261,12 @@ async function verifyPreparedReleaseManifestVersions() {
       if (manifest.version !== version) {
         fail(`${pkg.name} prepared manifest version must be ${version}`);
       }
+      if ('private' in manifest) {
+        fail(`${pkg.name} prepared manifest must not contain private metadata`);
+      }
+      if ('devDependencies' in manifest) {
+        fail(`${pkg.name} prepared manifest must not contain devDependencies`);
+      }
       if (serializedManifest.includes('workspace:')) {
         fail(`${pkg.name} prepared manifest must not contain workspace: dependencies`);
       }

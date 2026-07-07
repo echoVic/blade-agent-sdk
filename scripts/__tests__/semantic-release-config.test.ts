@@ -454,12 +454,16 @@ describe('release scripts', () => {
         JSON.stringify({
           name: `@blade-ai/${packageName}`,
           version: '0.0.0',
+          private: false,
           dependencies: packageName === 'ai'
             ? { zod: '^3.25.0' }
             : { '@blade-ai/ai': 'workspace:*' },
           optionalDependencies: packageName === 'agent-sdk'
             ? { '@blade-ai/agent': 'workspace:*' }
             : undefined,
+          devDependencies: {
+            typescript: '6.0.3',
+          },
         }, null, 2),
       );
     }
@@ -474,6 +478,8 @@ describe('release scripts', () => {
         readFileSync(join(cwd, 'packages', packageName, 'package.json'), 'utf8'),
       );
       expect(manifest.version).toBe('2.3.4');
+      expect(manifest).not.toHaveProperty('private');
+      expect(manifest).not.toHaveProperty('devDependencies');
       expect(JSON.stringify(manifest)).not.toContain('workspace:');
       if (packageName === 'agent') {
         expect(manifest.dependencies['@blade-ai/ai']).toBe('2.3.4');
@@ -494,6 +500,21 @@ describe('release scripts', () => {
     expect(releaseVerifier).toContain('prepared manifest');
     expect(releaseVerifier).toContain('workspace:');
     expect(releaseVerifier).toContain('0.0.0');
+    expect(releaseVerifier).toContain('prepared manifest must not contain private metadata');
+    expect(releaseVerifier).toContain('prepared manifest must not contain devDependencies');
+  });
+
+  it('verifies published package manifests omit private and dev dependency metadata', () => {
+    const publishedVerifier = readFileSync(resolve('scripts/verify-published.mjs'), 'utf8');
+    const readme = readFileSync(resolve('README.md'), 'utf8');
+    const checklist = readFileSync(resolve('docs/production-checklist.md'), 'utf8');
+    const roadmap = readFileSync(resolve('docs/roadmap/production-agent-sdk-monorepo.md'), 'utf8');
+
+    expect(publishedVerifier).toContain('installed manifest must not contain private metadata');
+    expect(publishedVerifier).toContain('installed manifest must not contain devDependencies');
+    expect(readme).toContain('npm-facing manifest hygiene');
+    expect(checklist).toContain('npm-facing manifest hygiene');
+    expect(roadmap).toContain('npm-facing manifest hygiene gate');
   });
 
   it('requires npm provenance in publishable package metadata', () => {

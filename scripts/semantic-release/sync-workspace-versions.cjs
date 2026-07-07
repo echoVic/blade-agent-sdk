@@ -46,6 +46,8 @@ async function syncWorkspaceVersions(context) {
   for (const packageDir of publishablePackages) {
     const { manifestPath, manifest } = readManifest(cwd, packageDir);
     manifest.version = version;
+    delete manifest.private;
+    delete manifest.devDependencies;
     syncDependencyBlock(manifest.dependencies, version);
     syncDependencyBlock(manifest.peerDependencies, version);
     syncDependencyBlock(manifest.optionalDependencies, version);
