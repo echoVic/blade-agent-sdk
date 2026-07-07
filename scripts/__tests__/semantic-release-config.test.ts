@@ -8,6 +8,15 @@ import { parse } from 'yaml';
 
 const require = createRequire(import.meta.url);
 
+function readFunctionSource(source: string, functionName: string): string {
+  const start = source.indexOf(`function ${functionName}`);
+  if (start === -1) {
+    throw new Error(`Missing function ${functionName}`);
+  }
+  const nextFunction = source.indexOf('\nfunction ', start + 1);
+  return nextFunction === -1 ? source.slice(start) : source.slice(start, nextFunction);
+}
+
 describe('semantic-release configuration', () => {
   it('publishes only from main with v-prefixed tags', () => {
     const config = require('../../release.config.cjs');
@@ -699,17 +708,19 @@ describe('release scripts', () => {
     expect(roadmap).toContain('published package manifest gate');
   });
 
-  it('rejects CLI product entrypoints from packed and published SDK manifests', () => {
+  it('rejects CLI product entrypoints from packed and published library manifests', () => {
     const packageVerifier = readFileSync(resolve('scripts/verify-packages.mjs'), 'utf8');
     const publishedVerifier = readFileSync(resolve('scripts/verify-published.mjs'), 'utf8');
 
     for (const verifier of [packageVerifier, publishedVerifier]) {
-      expect(verifier).toContain('function assertNoCliProductManifest');
-      expect(verifier).toContain("@blade-ai/agent-sdk manifest must not publish a bin field");
-      expect(verifier).toContain("@blade-ai/agent-sdk manifest must not publish a ./cli export");
-      expect(verifier).toContain('@blade-ai/agent-sdk manifest must not publish CLI product keyword');
-      expect(verifier).toContain('manifest.keywords');
-      expect(verifier).toContain('CLI product capabilities belong in a separate package');
+      const helperSource = readFunctionSource(verifier, 'assertNoCliProductManifest');
+
+      expect(helperSource).not.toContain("packageName !== '@blade-ai/agent-sdk'");
+      expect(helperSource).toContain('${packageName} manifest must not publish a bin field');
+      expect(helperSource).toContain('${packageName} manifest must not publish a ./cli export');
+      expect(helperSource).toContain('${packageName} manifest must not publish CLI product keyword');
+      expect(helperSource).toContain('manifest.keywords');
+      expect(helperSource).toContain('CLI product capabilities belong in a separate package');
     }
   });
 
@@ -987,17 +998,19 @@ describe('release scripts', () => {
     expect(roadmap).toContain('published package file-scope gate');
   });
 
-  it('rejects CLI product files from packed and published SDK artifacts', () => {
+  it('rejects CLI product files from packed and published library artifacts', () => {
     const packageVerifier = readFileSync(resolve('scripts/verify-packages.mjs'), 'utf8');
     const publishedVerifier = readFileSync(resolve('scripts/verify-published.mjs'), 'utf8');
+    const packageHelperSource = readFunctionSource(packageVerifier, 'assertNoCliProductFiles');
+    const publishedHelperSource = readFunctionSource(publishedVerifier, 'assertNoCliProductFiles');
 
-    expect(packageVerifier).toContain('function assertNoCliProductFiles');
-    expect(packageVerifier).toContain("entry.startsWith('package/dist/cli/')");
-    expect(packageVerifier).toContain('@blade-ai/agent-sdk tarball includes CLI product files');
+    expect(packageHelperSource).toContain("entry.startsWith('package/dist/cli/')");
+    expect(packageHelperSource).not.toContain("packageName !== '@blade-ai/agent-sdk'");
+    expect(packageHelperSource).toContain('${packageName} tarball includes CLI product files');
 
-    expect(publishedVerifier).toContain('function assertNoCliProductFiles');
-    expect(publishedVerifier).toContain("filePath.startsWith('dist/cli/')");
-    expect(publishedVerifier).toContain('@blade-ai/agent-sdk installed package includes CLI product files');
+    expect(publishedHelperSource).toContain("filePath.startsWith('dist/cli/')");
+    expect(publishedHelperSource).not.toContain("packageName !== '@blade-ai/agent-sdk'");
+    expect(publishedHelperSource).toContain('${packageName} installed package includes CLI product files');
   });
 
   it('type-checks public declarations from the published temporary consumer', () => {

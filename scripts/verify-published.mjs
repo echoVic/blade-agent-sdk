@@ -589,16 +589,14 @@ function verifyPublishedPackageMetadata(requirement, manifest) {
 }
 
 function assertNoCliProductManifest(packageName, manifest) {
-  if (packageName !== '@blade-ai/agent-sdk') return;
-
   if (manifest.bin !== undefined) {
-    throw new Error('@blade-ai/agent-sdk manifest must not publish a bin field; CLI product capabilities belong in a separate package');
+    throw new Error(`${packageName} manifest must not publish a bin field; CLI product capabilities belong in a separate package`);
   }
   if (manifest.exports && typeof manifest.exports === 'object' && './cli' in manifest.exports) {
-    throw new Error('@blade-ai/agent-sdk manifest must not publish a ./cli export; CLI product capabilities belong in a separate package');
+    throw new Error(`${packageName} manifest must not publish a ./cli export; CLI product capabilities belong in a separate package`);
   }
   if (Array.isArray(manifest.keywords) && manifest.keywords.includes('cli')) {
-    throw new Error('@blade-ai/agent-sdk manifest must not publish CLI product keyword "cli"; CLI product capabilities belong in a separate package');
+    throw new Error(`${packageName} manifest must not publish CLI product keyword "cli"; CLI product capabilities belong in a separate package`);
   }
 }
 
@@ -662,11 +660,9 @@ async function calculateDirectorySizeBytes(directory) {
 }
 
 function assertNoCliProductFiles(packageName, files) {
-  if (packageName !== '@blade-ai/agent-sdk') return;
-
   const cliFile = files.find((filePath) => filePath.startsWith('dist/cli/'));
   if (cliFile) {
-    throw new Error(`@blade-ai/agent-sdk installed package includes CLI product files: ${cliFile}`);
+    throw new Error(`${packageName} installed package includes CLI product files: ${cliFile}`);
   }
 }
 
