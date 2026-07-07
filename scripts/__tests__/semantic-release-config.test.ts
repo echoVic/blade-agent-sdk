@@ -445,6 +445,7 @@ describe('package provenance metadata', () => {
     expect(agentBrowserBundleSource).toContain('modelResponseToAssistantMessage');
     expect(agentBrowserBundleSource).toContain('toolResultToToolMessage');
     expect(agentBrowserBundleSource).toContain('agent browser bundle');
+    expect(agentBrowserBundleSource).toContain('catalog true');
     expect(agentBrowserBundleSource).toContain('assertNoBrowserDisallowedMarkers(agentBundleOutput)');
   });
 });
@@ -1697,6 +1698,7 @@ describe('release scripts', () => {
     expect(publishedAgentBrowserBundleSource).toContain('modelResponseToAssistantMessage');
     expect(publishedAgentBrowserBundleSource).toContain('toolResultToToolMessage');
     expect(publishedAgentBrowserBundleSource).toContain('agent browser bundle');
+    expect(publishedAgentBrowserBundleSource).toContain('catalog true');
     expect(publishedAgentBrowserBundleSource).toContain('consumer-agent-browser-bundle.js');
     expect(readme).toContain('@blade-ai/agent` browser bundle smoke');
     expect(checklist).toContain('@blade-ai/agent` browser bundle smoke');
