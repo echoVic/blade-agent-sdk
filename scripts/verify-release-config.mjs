@@ -7,6 +7,7 @@ import { parse } from 'yaml';
 const require = createRequire(import.meta.url);
 const requiredKeywords = ['agent', 'sdk', 'llm'];
 const mitPermissionGrant = 'Permission is hereby granted, free of charge';
+const sourcePackageVersionPlaceholder = '0.0.0';
 const workspaceManifestPaths = [
   'package.json',
   'packages/ai/package.json',
@@ -165,6 +166,9 @@ function verifyPackageMetadata() {
 
     if (manifest.name !== pkg.name) {
       fail(`${pkg.dir}/package.json name must be ${pkg.name}`);
+    }
+    if (manifest.version !== sourcePackageVersionPlaceholder) {
+      fail(`${pkg.name} must use the 0.0.0 source version placeholder`);
     }
     if ('private' in manifest) {
       fail(`${pkg.name} source manifest must not contain private metadata`);

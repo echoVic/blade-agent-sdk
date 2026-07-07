@@ -83,13 +83,13 @@ pnpm run test:live:session-glm
 
 ## Release Rehearsal
 
-`pnpm run verify` 会先执行无 token 的静态 release gate，校验 semantic-release 配置、root private orchestrator 发布安全、三包 publish metadata、source package LICENSE artifacts、`publishConfig.provenance: true`、release workflow 的 verify-before-release 顺序，以及 OIDC trusted publishing 设置：
+`pnpm run verify` 会先执行无 token 的静态 release gate，校验 semantic-release 配置、root private orchestrator 发布安全、三包 publish metadata、publishable source package version placeholders、source package LICENSE artifacts、`publishConfig.provenance: true`、release workflow 的 verify-before-release 顺序，以及 OIDC trusted publishing 设置：
 
 ```bash
 pnpm run verify:release
 ```
 
-所有 workspace manifest 的 direct dependencies 必须使用 exact versions；源码里的内部 `@blade-ai/*` workspace 依赖可以保持 `workspace:*`，发布前会被 release prepare 步骤改成同一个 concrete version。npm-facing manifest hygiene 要求 source package manifests、packed tarball manifests、release prepare 产物和 post-publish 安装产物都不能包含 `private` 或 `devDependencies`，避免把源码仓库开发元数据带进 npm 包。source package LICENSE 与根 LICENSE 完全一致；packed package dependency-version gate 会拒绝 packed tarball manifest 里的外部依赖 range 或 `0.0.0` placeholder，也会拒绝内部 `@blade-ai/*` 依赖 range；内部依赖只能是本地 pack 阶段的 `0.0.0` 或 concrete exact version，避免 npm 包在真正发布前漏出不稳定依赖声明。package lifecycle script gate 还会拒绝 `preinstall`、`install`、`postinstall`、`prepare`、`prepublish` 和 `prepublishOnly`，确保发布包 manifest 不引入自动执行脚本。
+所有 publishable source package 的 `version` 必须保持 `0.0.0` placeholder。所有 workspace manifest 的 direct dependencies 必须使用 exact versions；源码里的内部 `@blade-ai/*` workspace 依赖可以保持 `workspace:*`，发布前会被 release prepare 步骤改成同一个 concrete version。npm-facing manifest hygiene 要求 source package manifests、packed tarball manifests、release prepare 产物和 post-publish 安装产物都不能包含 `private` 或 `devDependencies`，避免把源码仓库开发元数据带进 npm 包。source package LICENSE 与根 LICENSE 完全一致；packed package dependency-version gate 会拒绝 packed tarball manifest 里的外部依赖 range 或 `0.0.0` placeholder，也会拒绝内部 `@blade-ai/*` 依赖 range；内部依赖只能是本地 pack 阶段的 `0.0.0` 或 concrete exact version，避免 npm 包在真正发布前漏出不稳定依赖声明。package lifecycle script gate 还会拒绝 `preinstall`、`install`、`postinstall`、`prepare`、`prepublish` 和 `prepublishOnly`，确保发布包 manifest 不引入自动执行脚本。
 
 根 `package.json` 必须保持 private orchestrator，不声明 `publishConfig` 或 `files`，semantic-release 也不能配置发布 workspace root；只有 `@blade-ai/ai`、`@blade-ai/agent`、`@blade-ai/agent-sdk` 三个 `packages/*` manifest 是可发布 npm 包。
 

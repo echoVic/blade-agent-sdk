@@ -1,6 +1,6 @@
 {
   "name": "@blade-ai/agent-sdk",
-  "version": "1.0.12",
+  "version": "0.0.0",
   "description": "Session-first Blade Agent SDK",
   "author": "echoVic",
   "license": "MIT",

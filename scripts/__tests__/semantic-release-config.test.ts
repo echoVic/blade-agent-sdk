@@ -87,6 +87,7 @@ describe('package provenance metadata', () => {
 
       expect(packageJson.private).toBeUndefined();
       expect(packageJson.devDependencies).toBeUndefined();
+      expect(packageJson.version).toBe('0.0.0');
       expect(packageJson.repository).toEqual({
         type: 'git',
         url: 'https://github.com/echoVic/blade-agent-sdk',
@@ -101,6 +102,7 @@ describe('package provenance metadata', () => {
 
     expect(releaseVerifier).toContain('must not contain private metadata');
     expect(releaseVerifier).toContain('must not contain devDependencies');
+    expect(releaseVerifier).toContain('must use the 0.0.0 source version placeholder');
   });
 
   it('keeps publishable package metadata and README files npm-friendly', () => {
