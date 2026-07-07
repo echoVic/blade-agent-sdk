@@ -112,6 +112,10 @@ describe('package entrypoints', () => {
     expect(existsSync(join(process.cwd(), 'packages/agent-sdk/src/__tests__/runtimeTurn.test.ts'))).toBe(true);
   });
 
+  it('keeps agent-sdk session helper tests package-local', () => {
+    expect(existsSync(join(process.cwd(), 'packages/agent-sdk/src/__tests__/sessionContent.test.ts'))).toBe(true);
+  });
+
   it('keeps the server entry as an explicit facade instead of a root wildcard forwarder', () => {
     const source = readFileSync('packages/agent-sdk/src/server/index.ts', 'utf-8');
 

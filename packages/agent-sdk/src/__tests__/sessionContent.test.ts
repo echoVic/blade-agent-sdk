@@ -3,7 +3,7 @@ import {
   countUserMessageImages,
   getUserMessageText,
   parseJsonOrString,
-} from '../../packages/agent-sdk/src/session/content.js';
+} from '../session/content.js';
 
 describe('agent-sdk session content helpers', () => {
   it('extracts text from string and multimodal user messages', () => {
