@@ -118,6 +118,8 @@ const packageSpecs = [
       'package/dist/index.d.ts',
       'package/dist/budget/TokenBudget.js',
       'package/dist/budget/TokenBudget.d.ts',
+      'package/dist/epoch/ExecutionEpoch.js',
+      'package/dist/epoch/ExecutionEpoch.d.ts',
       'package/dist/kernel/AgentKernel.js',
       'package/dist/kernel/AgentKernel.d.ts',
       'package/dist/protocol/index.js',
@@ -132,6 +134,7 @@ const packageSpecs = [
     imports: [
       '@blade-ai/agent',
       '@blade-ai/agent/budget',
+      '@blade-ai/agent/epoch',
       '@blade-ai/agent/kernel',
       '@blade-ai/agent/protocol',
       '@blade-ai/agent/ports',
@@ -1425,6 +1428,7 @@ import * as aiVercel from '@blade-ai/ai/providers/vercel';
 import * as aiRetry from '@blade-ai/ai/retry';
 import * as agent from '@blade-ai/agent';
 import * as agentBudget from '@blade-ai/agent/budget';
+import * as agentEpoch from '@blade-ai/agent/epoch';
 import * as agentKernel from '@blade-ai/agent/kernel';
 import * as agentProtocol from '@blade-ai/agent/protocol';
 import * as agentPorts from '@blade-ai/agent/ports';
@@ -1482,7 +1486,9 @@ assertRuntimeExport(aiRetry, 'DEFAULT_RETRY_CONFIG');
 assertRuntimeExport(aiRetry, 'withRetry');
 assertRuntimeExport(agent, 'AgentKernel');
 assertRuntimeExport(agent, 'TokenBudget');
+assertRuntimeExport(agent, 'ExecutionEpoch');
 assertRuntimeExport(agentBudget, 'TokenBudget');
+assertRuntimeExport(agentEpoch, 'ExecutionEpoch');
 assertRuntimeExport(agentKernel, 'AgentKernel');
 assertRuntimeExport(agentSdk, 'createSession');
 assertRuntimeExport(agentSdk, 'defineTool');
@@ -1632,6 +1638,7 @@ import type {
   TokenBudgetConfig,
   TokenBudgetSnapshot,
 } from '@blade-ai/agent/budget';
+import { ExecutionEpoch } from '@blade-ai/agent/epoch';
 import type {
   AgentKernelOptions,
   AgentTurnInput,
@@ -1824,6 +1831,9 @@ const fakeModel: ModelPort = {
 };
 
 const kernel = new AgentKernel({ model: fakeModel, modelCallMode: 'stream' });
+const executionEpoch = new ExecutionEpoch();
+executionEpoch.invalidate();
+const executionEpochIsInvalid: boolean = !executionEpoch.isValid;
 const tokenBudgetConfig: TokenBudgetConfig = { maxTotalTokens: 100 };
 const tokenBudgetSnapshot: TokenBudgetSnapshot = {
   totalInputTokens: 1,
@@ -2042,6 +2052,7 @@ void retryableNetworkError;
 void deepseekOptions;
 void deepseekCost;
 void useKernel;
+void executionEpochIsInvalid;
 void tokenBudgetConfig;
 void tokenBudgetSnapshot;
 void kernelFromSubpath;
@@ -2144,6 +2155,7 @@ async function verifyAgentBrowserBundle(consumerDir) {
     entry,
     [
       "import { AgentKernel } from '@blade-ai/agent';",
+      "import { ExecutionEpoch } from '@blade-ai/agent/epoch';",
       "import { AgentKernel as AgentKernelFromSubpath } from '@blade-ai/agent/kernel';",
       'const fakeModel = {',
       '  async generate() {',
@@ -2154,8 +2166,9 @@ async function verifyAgentBrowserBundle(consumerDir) {
       '  },',
       '};',
       'const kernel = new AgentKernel({ model: fakeModel });',
+      'const epoch = new ExecutionEpoch();',
       'const kernelFromSubpath = new AgentKernelFromSubpath({ model: fakeModel });',
-      "console.log('agent browser bundle', kernel.constructor.name, kernelFromSubpath.constructor.name);",
+      "console.log('agent browser bundle', kernel.constructor.name, kernelFromSubpath.constructor.name, epoch.constructor.name);",
     ].join('\n'),
   );
 

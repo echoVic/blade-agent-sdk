@@ -243,6 +243,7 @@ describe('package provenance metadata', () => {
     expect(packageVerifier).toContain("import { createOpenAICompatibleModelPort } from '@blade-ai/ai';");
     expect(packageVerifier).toContain("import { AgentKernel } from '@blade-ai/agent';");
     expect(packageVerifier).toContain("from '@blade-ai/agent/budget';");
+    expect(packageVerifier).toContain("from '@blade-ai/agent/epoch';");
     expect(packageVerifier).toContain('session budget declarations must use the explicit @blade-ai/agent/budget subpath');
     expect(packageVerifier).toContain('session budget declarations must expose TokenBudgetSnapshot from @blade-ai/agent/budget');
     expect(packageVerifier).toContain("from '@blade-ai/agent/kernel';");
@@ -340,6 +341,11 @@ describe('package provenance metadata', () => {
     expect(packageVerifier).toContain("assertRuntimeExport(ai, 'createOpenAICompatibleModelPort')");
     expect(packageVerifier).toContain("assertRuntimeExport(aiRetry, 'DEFAULT_RETRY_CONFIG')");
     expect(packageVerifier).toContain("assertRuntimeExport(agent, 'AgentKernel')");
+    expect(packageVerifier).toContain("import * as agentEpoch from '@blade-ai/agent/epoch';");
+    expect(packageVerifier).toContain("'package/dist/epoch/ExecutionEpoch.js'");
+    expect(packageVerifier).toContain("'package/dist/epoch/ExecutionEpoch.d.ts'");
+    expect(packageVerifier).toContain("assertRuntimeExport(agent, 'ExecutionEpoch')");
+    expect(packageVerifier).toContain("assertRuntimeExport(agentEpoch, 'ExecutionEpoch')");
     expect(packageVerifier).toContain("assertRuntimeExport(agentKernel, 'AgentKernel')");
     expect(packageVerifier).toContain("assertRuntimeExport(agentSdk, 'createSession')");
     expect(packageVerifier).toContain("assertRuntimeExport(agentSdk, 'defineTool')");
@@ -725,7 +731,10 @@ describe('release scripts', () => {
     expect(publishedVerifier).toContain("@blade-ai/ai/chat should remain type-only at runtime");
     expect(publishedVerifier).toContain("@blade-ai/ai/model should remain type-only at runtime");
     expect(publishedVerifier).toContain("import * as agentBudget from '@blade-ai/agent/budget';");
+    expect(publishedVerifier).toContain("import * as agentEpoch from '@blade-ai/agent/epoch';");
     expect(publishedVerifier).toContain("assertRuntimeExport(agentBudget, 'TokenBudget')");
+    expect(publishedVerifier).toContain("assertRuntimeExport(agent, 'ExecutionEpoch')");
+    expect(publishedVerifier).toContain("assertRuntimeExport(agentEpoch, 'ExecutionEpoch')");
     expect(publishedVerifier).toContain("import * as agentPorts from '@blade-ai/agent/ports';");
     expect(publishedVerifier).toContain("import * as agentState from '@blade-ai/agent/state';");
     expect(publishedVerifier).toContain("import * as agentTracing from '@blade-ai/agent/tracing';");
@@ -1449,6 +1458,7 @@ describe('release scripts', () => {
     expect(publishedVerifier).toContain('DeepSeekProviderOptions');
     expect(publishedVerifier).toContain('VercelLanguageModelOptions');
     expect(publishedVerifier).toContain("import type { AgentKernelOptions } from '@blade-ai/agent';");
+    expect(publishedVerifier).toContain("import { ExecutionEpoch } from '@blade-ai/agent/epoch';");
     expect(publishedVerifier).toContain("import type { SessionOptions } from '@blade-ai/agent-sdk';");
     expect(readme).toContain('TypeScript public declarations');
     expect(checklist).toContain('TypeScript public declarations');
@@ -1490,6 +1500,7 @@ describe('release scripts', () => {
     expect(publishedVerifier).toContain("from '@blade-ai/ai/providers/openai-compatible';");
     expect(publishedVerifier).toContain("from '@blade-ai/ai/providers/vercel';");
     expect(publishedVerifier).toContain("from '@blade-ai/agent/budget';");
+    expect(publishedVerifier).toContain("from '@blade-ai/agent/epoch';");
     expect(publishedVerifier).toContain("from '@blade-ai/agent/kernel';");
     expect(publishedVerifier).toContain("from '@blade-ai/agent/ports';");
     expect(publishedVerifier).toContain("from '@blade-ai/agent/protocol';");

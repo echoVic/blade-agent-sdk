@@ -33,6 +33,10 @@
       "types": "./dist/budget/TokenBudget.d.ts",
       "import": "./dist/budget/TokenBudget.js"
     },
+    "./epoch": {
+      "types": "./dist/epoch/ExecutionEpoch.d.ts",
+      "import": "./dist/epoch/ExecutionEpoch.js"
+    },
     "./protocol": {
       "types": "./dist/protocol/index.d.ts",
       "import": "./dist/protocol/index.js"

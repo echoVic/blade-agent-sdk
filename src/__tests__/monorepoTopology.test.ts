@@ -326,6 +326,7 @@ describe('monorepo topology', () => {
     for (const file of [
       'packages/agent/src/kernel/AgentKernel.ts',
       'packages/agent/src/budget/TokenBudget.ts',
+      'packages/agent/src/epoch/ExecutionEpoch.ts',
       'packages/agent/src/protocol/index.ts',
       'packages/agent/src/ports/index.ts',
       'packages/agent/src/state/index.ts',
@@ -352,6 +353,10 @@ describe('monorepo topology', () => {
         types: './dist/budget/TokenBudget.d.ts',
         import: './dist/budget/TokenBudget.js',
       },
+      './epoch': {
+        types: './dist/epoch/ExecutionEpoch.d.ts',
+        import: './dist/epoch/ExecutionEpoch.js',
+      },
       './protocol': {
         types: './dist/protocol/index.d.ts',
         import: './dist/protocol/index.js',
@@ -371,6 +376,7 @@ describe('monorepo topology', () => {
     });
     expect(agentBuildConfig).toContain('kernel/AgentKernel');
     expect(agentBuildConfig).toContain('budget/TokenBudget');
+    expect(agentBuildConfig).toContain('epoch/ExecutionEpoch');
     expect(agentBuildConfig).toContain('protocol/index');
     expect(agentBuildConfig).toContain('ports/index');
     expect(agentBuildConfig).toContain('state/index');
@@ -1589,6 +1595,7 @@ describe('monorepo topology', () => {
     expect(sdkTsconfig.compilerOptions?.paths).toMatchObject({
       '@blade-ai/agent': ['../agent/src/index.ts'],
       '@blade-ai/agent/budget': ['../agent/src/budget/TokenBudget.ts'],
+      '@blade-ai/agent/epoch': ['../agent/src/epoch/ExecutionEpoch.ts'],
       '@blade-ai/ai': ['../ai/src/index.ts'],
     });
     expect(sdkTsconfig.compilerOptions?.paths).not.toHaveProperty('@/*');

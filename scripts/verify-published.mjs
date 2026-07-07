@@ -346,6 +346,7 @@ import * as aiVercel from '@blade-ai/ai/providers/vercel';
 import * as aiRetry from '@blade-ai/ai/retry';
 import * as agent from '@blade-ai/agent';
 import * as agentBudget from '@blade-ai/agent/budget';
+import * as agentEpoch from '@blade-ai/agent/epoch';
 import * as agentKernel from '@blade-ai/agent/kernel';
 import * as agentPorts from '@blade-ai/agent/ports';
 import * as agentProtocol from '@blade-ai/agent/protocol';
@@ -402,7 +403,9 @@ assertRuntimeExport(aiRetry, 'DEFAULT_RETRY_CONFIG');
 assertRuntimeExport(aiRetry, 'withRetry');
 assertRuntimeExport(aiVercel, 'createVercelModelPort');
 assertRuntimeExport(agent, 'AgentKernel');
+assertRuntimeExport(agent, 'ExecutionEpoch');
 assertRuntimeExport(agentBudget, 'TokenBudget');
+assertRuntimeExport(agentEpoch, 'ExecutionEpoch');
 assertRuntimeExport(agentKernel, 'AgentKernel');
 assertRuntimeExport(agentSdk, 'createSession');
 assertRuntimeExport(agentSdk, 'defineTool');
@@ -1524,6 +1527,7 @@ async function verifyPublishedAgentBrowserBundleSmoke({ consumerDir }) {
     [
       "import { AgentKernel } from '@blade-ai/agent';",
       "import { TokenBudget } from '@blade-ai/agent/budget';",
+      "import { ExecutionEpoch } from '@blade-ai/agent/epoch';",
       "import { AgentKernel as AgentKernelFromSubpath } from '@blade-ai/agent/kernel';",
       'const fakeModel = {',
       '  async generate() {',
@@ -1534,9 +1538,10 @@ async function verifyPublishedAgentBrowserBundleSmoke({ consumerDir }) {
       '  },',
       '};',
       'const budget = new TokenBudget({ maxTotalTokens: 10 });',
+      'const epoch = new ExecutionEpoch();',
       'const kernel = new AgentKernel({ model: fakeModel });',
       'const kernelFromSubpath = new AgentKernelFromSubpath({ model: fakeModel });',
-      "console.log('agent browser bundle', kernel.constructor.name, kernelFromSubpath.constructor.name, budget.constructor.name);",
+      "console.log('agent browser bundle', kernel.constructor.name, kernelFromSubpath.constructor.name, budget.constructor.name, epoch.constructor.name);",
     ].join('\n'),
   );
 
@@ -1616,6 +1621,7 @@ import { createOpenAICompatibleModelPort } from '@blade-ai/ai/providers/openai-c
 import type { VercelLanguageModelOptions } from '@blade-ai/ai/providers/vercel';
 import { createVercelModelPort } from '@blade-ai/ai/providers/vercel';
 import type { AgentKernelOptions } from '@blade-ai/agent';
+import { ExecutionEpoch } from '@blade-ai/agent/epoch';
 import type {
   TokenBudgetConfig,
   TokenBudgetSnapshot,
@@ -1754,6 +1760,9 @@ const kernelOptions: AgentKernelOptions = {
   model: modelPort,
   maxSteps: 2,
 };
+const executionEpoch = new ExecutionEpoch();
+executionEpoch.invalidate();
+const executionEpochIsInvalid: boolean = !executionEpoch.isValid;
 const tokenBudgetConfig: TokenBudgetConfig = { maxTotalTokens: 100 };
 const tokenBudgetSnapshot: TokenBudgetSnapshot = {
   totalInputTokens: 1,
@@ -1890,6 +1899,7 @@ void retryEvent;
 void withRetryRef;
 void retryableNetworkError;
 void kernelOptions;
+void executionEpochIsInvalid;
 void tokenBudgetConfig;
 void tokenBudgetSnapshot;
 void turnInput;

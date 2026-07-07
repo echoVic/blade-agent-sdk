@@ -7,6 +7,7 @@
     "paths": {
       "@blade-ai/agent": ["../agent/src/index.ts"],
       "@blade-ai/agent/budget": ["../agent/src/budget/TokenBudget.ts"],
+      "@blade-ai/agent/epoch": ["../agent/src/epoch/ExecutionEpoch.ts"],
       "@blade-ai/ai": ["../ai/src/index.ts"],
       "@blade-ai/ai/chat": ["../ai/src/chat/index.ts"],
       "@blade-ai/ai/deepseek": ["../ai/src/deepseek/index.ts"],

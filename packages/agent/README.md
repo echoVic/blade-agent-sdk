@@ -15,6 +15,7 @@ pnpm add @blade-ai/agent
 ```ts
 import { AgentKernel } from '@blade-ai/agent';
 import { TokenBudget } from '@blade-ai/agent/budget';
+import { ExecutionEpoch } from '@blade-ai/agent/epoch';
 
 const kernel = new AgentKernel({
   model,
@@ -27,6 +28,9 @@ for await (const event of kernel.runTurn({ input: 'hello' })) {
   // handle content, tool_use, tool_result, usage,
   // budget_warning, budget_exhausted, result, error
 }
+
+const epoch = new ExecutionEpoch();
+epoch.invalidate();
 ```
 
 Most application code should use `@blade-ai/agent-sdk`. Use `@blade-ai/agent` directly for runtime-independent adapters, kernel tests, or non-Node hosts that provide their own ports.
