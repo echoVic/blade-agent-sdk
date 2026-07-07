@@ -11,7 +11,7 @@ import {
   getSandboxExecutor,
   getSandboxService,
   tool,
-} from '../../packages/agent-sdk/src/local/index.js';
+} from '../local/index.js';
 
 describe('agent-sdk local entry', () => {
   it('keeps node-local adapter exports available through the package-local local entry', () => {
