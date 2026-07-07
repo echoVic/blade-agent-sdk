@@ -1,8 +1,8 @@
 import { existsSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 
-const subagentsModulePath = '../../packages/agent-sdk/src/session/runtimeSubagents.js';
-const subagentsSourcePath = 'packages/agent-sdk/src/session/runtimeSubagents.ts';
+const subagentsModulePath = '../session/runtimeSubagents.js';
+const subagentsSourcePath = 'src/session/runtimeSubagents.ts';
 
 describe('agent-sdk package-local runtime subagent helpers', () => {
   it('maps session agent definitions to package-local subagent configs without runtime state', async () => {
