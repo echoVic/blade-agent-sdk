@@ -1,13 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import { TraceRecorder } from '../observability/TraceRecorder.js';
-import { SessionId } from '../types/branded.js';
 
-const tracePortModulePath = '../../packages/agent-sdk/src/session/kernelTracePort.js';
+const tracePortModulePath = '../session/kernelTracePort.js';
 
 describe('agent-sdk package-local kernel trace port', () => {
   it('records total-only kernel usage without requiring token breakdowns', async () => {
     const { createPackageLocalKernelTracePort } = await import(tracePortModulePath);
-    const recorder = new TraceRecorder(SessionId('session-total-only-usage'), {
+    const recorder = new TraceRecorder('session-total-only-usage', {
       enabled: true,
       capturePayloads: true,
     });
