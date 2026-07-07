@@ -359,6 +359,41 @@ describe('package boundary verifier', () => {
     expect(result.stderr).toContain('export "./browser" must be a condition object');
   });
 
+  it('rejects publish exports whose types condition is not first', () => {
+    const cwd = createBoundaryFixture();
+    writeJson(join(cwd, 'packages', 'agent-sdk', 'package.json'), {
+      name: '@blade-ai/agent-sdk',
+      main: './dist/index.js',
+      types: './dist/index.d.ts',
+      exports: {
+        '.': {
+          import: './dist/index.js',
+          types: './dist/index.d.ts',
+        },
+        './tools': {
+          import: './dist/tools/index.js',
+          types: './dist/tools/index.d.ts',
+        },
+        './package.json': {
+          default: './package.json',
+        },
+      },
+      dependencies: {},
+    });
+
+    const result = spawnSync(process.execPath, [
+      resolve('scripts/verify-package-boundaries.mjs'),
+    ], {
+      cwd,
+      encoding: 'utf8',
+    });
+
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain('packages/agent-sdk/package.json');
+    expect(result.stderr).toContain('export "." must declare the types condition first');
+    expect(result.stderr).toContain('export "./tools" must declare the types condition first');
+  });
+
   it('rejects root entry fields that drift from the root export conditions', () => {
     const cwd = createBoundaryFixture();
     writeJson(join(cwd, 'packages', 'agent-sdk', 'package.json'), {

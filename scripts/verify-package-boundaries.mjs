@@ -259,6 +259,10 @@ function getRootExportConditions(exportsValue) {
   return rootExport;
 }
 
+function isTypesConditionFirst(exportValue) {
+  return Object.keys(exportValue).at(0) === 'types';
+}
+
 const violations = [];
 
 for (const rule of manifestRules) {
@@ -329,6 +333,9 @@ for (const rule of manifestRules) {
     }
     if (typeof exportValue.import !== 'string') {
       violations.push(`${rule.packageJson}: export "${subpath}" must declare an import condition`);
+    }
+    if (typeof exportValue.types === 'string' && !isTypesConditionFirst(exportValue)) {
+      violations.push(`${rule.packageJson}: export "${subpath}" must declare the types condition first`);
     }
   }
 

@@ -1041,6 +1041,23 @@ describe('release scripts', () => {
     expect(roadmap).toContain('root export manifest contract gate');
   });
 
+  it('mirrors source types-first export condition order in packed and published verifiers', () => {
+    const packageVerifier = readFileSync(resolve('scripts/verify-packages.mjs'), 'utf8');
+    const publishedVerifier = readFileSync(resolve('scripts/verify-published.mjs'), 'utf8');
+    const readme = readFileSync(resolve('README.md'), 'utf8');
+    const checklist = readFileSync(resolve('docs/production-checklist.md'), 'utf8');
+    const roadmap = readFileSync(resolve('docs/roadmap/production-agent-sdk-monorepo.md'), 'utf8');
+
+    for (const verifier of [packageVerifier, publishedVerifier]) {
+      expect(verifier).toContain('assertManifestTypesConditionFirst');
+      expect(verifier).toContain('Object.keys(exportValue).at(0)');
+      expect(verifier).toContain('must declare the types condition first');
+    }
+    expect(readme).toContain('types-first export condition order');
+    expect(checklist).toContain('types-first export condition order');
+    expect(roadmap).toContain('types-first export condition order gate');
+  });
+
   it('verifies packed SDK browser export conditions before publication', () => {
     const packageVerifier = readFileSync(resolve('scripts/verify-packages.mjs'), 'utf8');
     const readme = readFileSync(resolve('README.md'), 'utf8');

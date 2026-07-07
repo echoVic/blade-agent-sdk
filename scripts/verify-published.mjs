@@ -774,6 +774,12 @@ function isPackageJsonManifestExport(exportName, exportValue) {
   );
 }
 
+function assertManifestTypesConditionFirst({ packageName, exportName, exportValue, label }) {
+  if (Object.keys(exportValue).at(0) !== 'types') {
+    throw new Error(`${packageName} ${label} export ${exportName} must declare the types condition first`);
+  }
+}
+
 function verifyPublishedManifestExports({ packageName, manifest }) {
   const exportsMap = manifest.exports;
   const rootExport = getManifestRootExportConditions(exportsMap);
@@ -809,6 +815,12 @@ function verifyPublishedManifestExports({ packageName, manifest }) {
         `${packageName} installed manifest export ${exportName} must declare paired types and import conditions`,
       );
     }
+    assertManifestTypesConditionFirst({
+      packageName,
+      exportName,
+      exportValue,
+      label: 'installed manifest',
+    });
 
     for (const [condition, target] of Object.entries(exportValue)) {
       assertPublishedManifestTarget({
