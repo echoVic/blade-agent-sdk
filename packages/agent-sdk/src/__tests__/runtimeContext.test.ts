@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   getPackageLocalRuntimeContextCwd,
   resolvePackageLocalRuntimeStorageRoot,
-} from '../../packages/agent-sdk/src/session/runtimeContext.js';
+} from '../session/runtimeContext.js';
 
 describe('agent-sdk package-local runtime context helpers', () => {
   it('normalizes session storage paths to their runtime storage root', () => {
