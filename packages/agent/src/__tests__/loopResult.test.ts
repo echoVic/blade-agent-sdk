@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   buildAgentLoopAbortResult,
   buildAgentLoopBudgetExhaustedResult,
+  buildAgentLoopSuccessResult,
 } from '../loop/loopResult.js';
 
 describe('agent loop result builders', () => {
@@ -76,6 +77,31 @@ describe('agent loop result builders', () => {
       duration: 60,
       tokensUsed: 1200,
       tokenBudgetSnapshot: snapshot,
+    });
+  });
+
+  it('builds a successful final response result with usage metadata', () => {
+    const snapshot = { usedTokens: 42, maxTokens: 100 };
+    const result = buildAgentLoopSuccessResult({
+      finalMessage: 'done',
+      turnsCount: 3,
+      toolCallsCount: 2,
+      startTime: 300,
+      now: 375,
+      tokensUsed: 42,
+      tokenBudgetSnapshot: snapshot,
+    });
+
+    expect(result).toEqual({
+      success: true,
+      finalMessage: 'done',
+      metadata: {
+        turnsCount: 3,
+        toolCallsCount: 2,
+        duration: 75,
+        tokensUsed: 42,
+        tokenBudgetSnapshot: snapshot,
+      },
     });
   });
 });

@@ -26,6 +26,18 @@ export interface AgentLoopBudgetExhaustedResult {
   };
 }
 
+export interface AgentLoopSuccessResult {
+  success: true;
+  finalMessage: string | undefined;
+  metadata: {
+    turnsCount: number;
+    toolCallsCount: number;
+    duration: number;
+    tokensUsed: number;
+    tokenBudgetSnapshot: unknown;
+  };
+}
+
 export interface AgentLoopResultTiming {
   turnsCount: number;
   toolCallsCount: number;
@@ -35,6 +47,12 @@ export interface AgentLoopResultTiming {
 
 export interface AgentLoopBudgetExhaustedResultInput extends AgentLoopResultTiming {
   reason: 'exhausted' | 'diminishing_returns';
+  tokensUsed: number;
+  tokenBudgetSnapshot: unknown;
+}
+
+export interface AgentLoopSuccessResultInput extends AgentLoopResultTiming {
+  finalMessage: string | undefined;
   tokensUsed: number;
   tokenBudgetSnapshot: unknown;
 }
@@ -54,6 +72,22 @@ export function buildAgentLoopAbortResult(input: AgentLoopResultTiming): AgentLo
       turnsCount: input.turnsCount,
       toolCallsCount: input.toolCallsCount,
       duration: getLoopDuration(input),
+    },
+  };
+}
+
+export function buildAgentLoopSuccessResult(
+  input: AgentLoopSuccessResultInput,
+): AgentLoopSuccessResult {
+  return {
+    success: true,
+    finalMessage: input.finalMessage,
+    metadata: {
+      turnsCount: input.turnsCount,
+      toolCallsCount: input.toolCallsCount,
+      duration: getLoopDuration(input),
+      tokensUsed: input.tokensUsed,
+      tokenBudgetSnapshot: input.tokenBudgetSnapshot,
     },
   };
 }

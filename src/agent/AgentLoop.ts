@@ -22,6 +22,7 @@ import { executeToolCalls } from './loop/executeToolCalls.js';
 import {
   buildAgentLoopAbortResult,
   buildAgentLoopBudgetExhaustedResult,
+  buildAgentLoopSuccessResult,
 } from './loop/loopResult.js';
 import { planToolExecution } from './loop/planToolExecution.js';
 import { runTurn } from './loop/runTurn.js';
@@ -425,17 +426,14 @@ export async function* agentLoop(
 
       yield { type: 'turn_end', turn: turnsCount, hasToolCalls: false };
       yield { type: 'agent_end' };
-      return {
-        success: true,
+      return buildAgentLoopSuccessResult({
         finalMessage: turnResult.content,
-        metadata: {
-          turnsCount,
-          toolCallsCount: totalToolCalls,
-          duration: Date.now() - startTime,
-          tokensUsed: totalTokens,
-          tokenBudgetSnapshot: tokenBudget?.getSnapshot(),
-        },
-      };
+        turnsCount,
+        toolCallsCount: totalToolCalls,
+        startTime,
+        tokensUsed: totalTokens,
+        tokenBudgetSnapshot: tokenBudget?.getSnapshot(),
+      }) as LoopResult;
     }
 
     // 写入 assistant 消息
