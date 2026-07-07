@@ -11,7 +11,7 @@ import type { ChatResponse, Message, ToolCall } from '../services/ChatServiceInt
 import { FallbackTriggeredError } from '../services/RetryPolicy.js';
 import type { ExecutionPipeline } from '../tools/execution/ExecutionPipeline.js';
 import type { ToolResult } from '../tools/types/index.js';
-import type { JsonObject, PermissionMode } from '../types/common.js';
+import type { JsonObject } from '../types/common.js';
 import type { AgentEvent, TokenUsageInfo } from './AgentEvent.js';
 import { AGENT_TURN_SAFETY_LIMIT } from './constants.js';
 import { ExecutionEpoch } from './ExecutionEpoch.js';
@@ -23,6 +23,7 @@ import {
   buildAgentLoopAbortResult,
   buildAgentLoopBudgetExhaustedResult,
   buildAgentLoopSuccessResult,
+  buildAgentLoopToolExitResult,
 } from './loop/loopResult.js';
 import { planToolExecution } from './loop/planToolExecution.js';
 import { runTurn } from './loop/runTurn.js';
@@ -507,17 +508,14 @@ export async function* agentLoop(
         }
         yield { type: 'turn_end', turn: turnsCount, hasToolCalls: true };
         yield { type: 'agent_end' };
-        return {
+        return buildAgentLoopToolExitResult({
           success: result.success,
           finalMessage,
-          metadata: {
-            turnsCount,
-            toolCallsCount: totalToolCalls,
-            duration: Date.now() - startTime,
-            shouldExitLoop: true,
-            targetMode: result.metadata?.targetMode as PermissionMode | undefined,
-          },
-        };
+          turnsCount,
+          toolCallsCount: totalToolCalls,
+          startTime,
+          targetMode: result.metadata?.targetMode,
+        }) as LoopResult;
       }
 
       if (!streamingExecutionResults) {

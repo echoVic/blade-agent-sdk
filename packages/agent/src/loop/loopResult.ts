@@ -38,6 +38,18 @@ export interface AgentLoopSuccessResult {
   };
 }
 
+export interface AgentLoopToolExitResult {
+  success: boolean;
+  finalMessage: string;
+  metadata: {
+    turnsCount: number;
+    toolCallsCount: number;
+    duration: number;
+    shouldExitLoop: true;
+    targetMode: unknown;
+  };
+}
+
 export interface AgentLoopResultTiming {
   turnsCount: number;
   toolCallsCount: number;
@@ -55,6 +67,12 @@ export interface AgentLoopSuccessResultInput extends AgentLoopResultTiming {
   finalMessage: string | undefined;
   tokensUsed: number;
   tokenBudgetSnapshot: unknown;
+}
+
+export interface AgentLoopToolExitResultInput extends AgentLoopResultTiming {
+  success: boolean;
+  finalMessage: string;
+  targetMode: unknown;
 }
 
 function getLoopDuration(input: Pick<AgentLoopResultTiming, 'startTime' | 'now'>): number {
@@ -88,6 +106,22 @@ export function buildAgentLoopSuccessResult(
       duration: getLoopDuration(input),
       tokensUsed: input.tokensUsed,
       tokenBudgetSnapshot: input.tokenBudgetSnapshot,
+    },
+  };
+}
+
+export function buildAgentLoopToolExitResult(
+  input: AgentLoopToolExitResultInput,
+): AgentLoopToolExitResult {
+  return {
+    success: input.success,
+    finalMessage: input.finalMessage,
+    metadata: {
+      turnsCount: input.turnsCount,
+      toolCallsCount: input.toolCallsCount,
+      duration: getLoopDuration(input),
+      shouldExitLoop: true,
+      targetMode: input.targetMode,
     },
   };
 }

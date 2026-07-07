@@ -375,8 +375,10 @@ describe('monorepo topology', () => {
     expect(rootAgentLoopSource).toContain('buildAgentLoopAbortResult');
     expect(rootAgentLoopSource).toContain('buildAgentLoopBudgetExhaustedResult');
     expect(rootAgentLoopSource).toContain('buildAgentLoopSuccessResult');
+    expect(rootAgentLoopSource).toContain('buildAgentLoopToolExitResult');
     expect(rootAgentLoopSource).not.toContain('function buildAbortResult');
     expect(rootAgentLoopSource).not.toContain('return {\n        success: true,');
+    expect(rootAgentLoopSource).not.toContain('shouldExitLoop: true,\n            targetMode:');
     expect(rootAgentLoopSource).not.toContain('message: \'Token budget exhausted\'');
     expect(rootAgentLoopSource).not.toContain(
       'message: \'Stopped due to diminishing returns: consecutive turns produced very few tokens\'',

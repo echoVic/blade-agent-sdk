@@ -3,6 +3,7 @@ import {
   buildAgentLoopAbortResult,
   buildAgentLoopBudgetExhaustedResult,
   buildAgentLoopSuccessResult,
+  buildAgentLoopToolExitResult,
 } from '../loop/loopResult.js';
 
 describe('agent loop result builders', () => {
@@ -101,6 +102,30 @@ describe('agent loop result builders', () => {
         duration: 75,
         tokensUsed: 42,
         tokenBudgetSnapshot: snapshot,
+      },
+    });
+  });
+
+  it('builds a tool-requested exit result with target mode metadata', () => {
+    const result = buildAgentLoopToolExitResult({
+      success: true,
+      finalMessage: 'approved',
+      turnsCount: 5,
+      toolCallsCount: 8,
+      startTime: 500,
+      now: 620,
+      targetMode: 'default',
+    });
+
+    expect(result).toEqual({
+      success: true,
+      finalMessage: 'approved',
+      metadata: {
+        turnsCount: 5,
+        toolCallsCount: 8,
+        duration: 120,
+        shouldExitLoop: true,
+        targetMode: 'default',
       },
     });
   });
