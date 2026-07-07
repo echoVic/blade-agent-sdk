@@ -445,6 +445,7 @@ describe('package provenance metadata', () => {
     expect(agentBrowserBundleSource).toContain('modelResponseToAssistantMessage');
     expect(agentBrowserBundleSource).toContain('toolResultToToolMessage');
     expect(agentBrowserBundleSource).toContain('agent browser bundle');
+    expect(agentBrowserBundleSource).toContain('AgentKernel AgentKernel TokenBudget _ExecutionEpoch AsyncEventQueue');
     expect(agentBrowserBundleSource).toContain('finish stop serial cancel tool_start true');
     expect(agentBrowserBundleSource).toContain('catalog true');
     expect(agentBrowserBundleSource).toContain('assistant tool');
@@ -1700,6 +1701,7 @@ describe('release scripts', () => {
     expect(publishedAgentBrowserBundleSource).toContain('modelResponseToAssistantMessage');
     expect(publishedAgentBrowserBundleSource).toContain('toolResultToToolMessage');
     expect(publishedAgentBrowserBundleSource).toContain('agent browser bundle');
+    expect(publishedAgentBrowserBundleSource).toContain('AgentKernel AgentKernel TokenBudget _ExecutionEpoch AsyncEventQueue');
     expect(publishedAgentBrowserBundleSource).toContain('finish stop serial cancel tool_start true');
     expect(publishedAgentBrowserBundleSource).toContain('catalog true');
     expect(publishedAgentBrowserBundleSource).toContain('assistant tool');

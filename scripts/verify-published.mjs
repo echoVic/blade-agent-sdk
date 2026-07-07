@@ -1615,6 +1615,9 @@ async function verifyPublishedAgentBrowserBundleSmoke({ consumerDir }) {
   if (!output.includes('agent browser bundle')) {
     throw new Error('Published agent browser bundle smoke did not execute');
   }
+  if (!output.includes('AgentKernel AgentKernel TokenBudget _ExecutionEpoch AsyncEventQueue')) {
+    throw new Error('Published agent browser bundle core runtime smoke did not execute');
+  }
   if (!output.includes('finish stop serial cancel tool_start true')) {
     throw new Error('Published agent browser bundle loop/recovery smoke did not execute');
   }
