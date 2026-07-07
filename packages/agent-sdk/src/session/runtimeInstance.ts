@@ -72,7 +72,7 @@ import type {
 import type {
   PackageLocalRuntimeKernelModelResolverPort,
 } from './runtimeKernelModels.js';
-import { createPackageLocalRuntimeInitialState } from './runtimeState.js';
+import { createPackageLocalRuntimeBootstrap } from './runtimeBootstrap.js';
 import {
   createPackageLocalRuntimeSessionOperations,
   type PackageLocalRuntimeSessionOperations,
@@ -82,7 +82,6 @@ import {
   createPackageLocalRuntimeMcpOperations,
   type PackageLocalRuntimeMcpOperations,
 } from './runtimeMcp.js';
-import { resolvePackageLocalRuntimePorts } from './runtimeNoopPorts.js';
 import type { PackageLocalRuntimeSubagentOperations } from './runtimeSubagents.js';
 import type { PackageLocalRuntimeToolFilterOperations } from './runtimeToolFilters.js';
 import type {
@@ -217,15 +216,11 @@ export class PackageLocalSessionRuntime {
     this.options = options.options;
     this.bladeConfig = options.bladeConfig;
     this.defaultContext = options.defaultContext;
-    const initialState = createPackageLocalRuntimeInitialState({
-      options: options.options,
-      bladeConfig: options.bladeConfig,
-      defaultContext: options.defaultContext,
-    });
-    this.storageRoot = initialState.storageRoot;
-    this.projectPath = initialState.projectPath;
-    this.hookCallbacks = initialState.hookCallbacks;
-    const runtimePorts = resolvePackageLocalRuntimePorts(options);
+    const bootstrap = createPackageLocalRuntimeBootstrap(options);
+    this.storageRoot = bootstrap.initialState.storageRoot;
+    this.projectPath = bootstrap.initialState.projectPath;
+    this.hookCallbacks = bootstrap.initialState.hookCallbacks;
+    const runtimePorts = bootstrap.ports;
     this.sessionStore = runtimePorts.sessionStore;
     this.workspace = runtimePorts.workspace;
     this.mcpRegistry = runtimePorts.mcpRegistry;

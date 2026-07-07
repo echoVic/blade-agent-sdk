@@ -593,6 +593,9 @@ describe('monorepo topology', () => {
     const runtimeNoopPortsSource = existsSync('packages/agent-sdk/src/session/runtimeNoopPorts.ts')
       ? readFileSync('packages/agent-sdk/src/session/runtimeNoopPorts.ts', 'utf-8')
       : '';
+    const runtimeBootstrapSource = existsSync('packages/agent-sdk/src/session/runtimeBootstrap.ts')
+      ? readFileSync('packages/agent-sdk/src/session/runtimeBootstrap.ts', 'utf-8')
+      : '';
     const runtimeSubagentsSource = existsSync('packages/agent-sdk/src/session/runtimeSubagents.ts')
       ? readFileSync('packages/agent-sdk/src/session/runtimeSubagents.ts', 'utf-8')
       : '';
@@ -682,7 +685,13 @@ describe('monorepo topology', () => {
     expect(runtimeNoopPortsSource).not.toContain('../../../../src/');
     expect(runtimeNoopPortsSource).toContain('createPackageLocalRuntimeNoopPorts');
     expect(runtimeNoopPortsSource).toContain('resolvePackageLocalRuntimePorts');
-    expect(packageLocalRuntimeInstanceSource).toContain('resolvePackageLocalRuntimePorts');
+    expect(existsSync('packages/agent-sdk/src/session/runtimeBootstrap.ts')).toBe(true);
+    expect(runtimeBootstrapSource).not.toContain('../../../../src/');
+    expect(runtimeBootstrapSource).toContain('createPackageLocalRuntimeBootstrap');
+    expect(runtimeBootstrapSource).toContain('createPackageLocalRuntimeInitialState');
+    expect(runtimeBootstrapSource).toContain('resolvePackageLocalRuntimePorts');
+    expect(packageLocalRuntimeInstanceSource).toContain('createPackageLocalRuntimeBootstrap');
+    expect(packageLocalRuntimeInstanceSource).not.toContain('resolvePackageLocalRuntimePorts');
     expect(packageLocalRuntimeInstanceSource).not.toContain('const noopPorts');
     expect(packageLocalRuntimeInstanceSource).not.toContain('?? noopPorts.');
     expect(packageLocalRuntimeInstanceSource).not.toContain(
@@ -694,7 +703,9 @@ describe('monorepo topology', () => {
     expect(runtimeStateSource).toContain('createPackageLocalRuntimeInitialState');
     expect(runtimeStateSource).toContain('resolvePackageLocalRuntimeStorageRoot');
     expect(runtimeStateSource).toContain('getPackageLocalRuntimeContextCwd');
-    expect(packageLocalRuntimeInstanceSource).toContain('createPackageLocalRuntimeInitialState');
+    expect(packageLocalRuntimeInstanceSource).not.toContain(
+      'createPackageLocalRuntimeInitialState',
+    );
     expect(packageLocalRuntimeInstanceSource).not.toContain(
       'resolvePackageLocalRuntimeStorageRoot(options.options.storagePath)',
     );
