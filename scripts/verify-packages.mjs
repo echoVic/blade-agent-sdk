@@ -2335,6 +2335,9 @@ async function verifyAgentBrowserBundle(consumerDir) {
   if (!browserRunOutput.includes('agent browser bundle')) {
     throw new Error('Agent browser bundle smoke did not execute');
   }
+  if (!browserRunOutput.includes('finish stop serial cancel tool_start true')) {
+    throw new Error('Agent browser bundle loop/recovery smoke did not execute');
+  }
   if (!browserRunOutput.includes('catalog true')) {
     throw new Error('Agent browser bundle system-source smoke did not execute');
   }
