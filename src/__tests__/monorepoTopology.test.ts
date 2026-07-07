@@ -346,6 +346,8 @@ describe('monorepo topology', () => {
       expect(existsSync(file), file).toBe(true);
     }
 
+    expect(existsSync('packages/agent/src/__tests__/toolUpdateToAgentEvent.test.ts')).toBe(true);
+
     const agentIndexSource = readFileSync('packages/agent/src/index.ts', 'utf-8');
     const agentLoopSource = readFileSync('packages/agent/src/loop/index.ts', 'utf-8');
     const agentRecoverySource = readFileSync('packages/agent/src/recovery/index.ts', 'utf-8');

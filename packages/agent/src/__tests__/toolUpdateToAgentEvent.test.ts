@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import type { ToolRegistry } from '../../../tools/registry/ToolRegistry.js';
-import { toolUpdateToAgentEvent } from '../toolUpdateToAgentEvent.js';
-import type { FunctionToolCall } from '../types.js';
+import type { AgentFunctionToolCall } from '../loop/planToolExecution.js';
+import type { ToolExecutionRegistryLike } from '../loop/toolBehavior.js';
+import { toolUpdateToAgentEvent } from '../loop/toolUpdateToAgentEvent.js';
 
-const toolCall: FunctionToolCall = {
+const toolCall: AgentFunctionToolCall = {
   id: 'tc-1',
   type: 'function',
   function: { name: 'Read', arguments: '{}' },
@@ -12,7 +12,7 @@ const toolCall: FunctionToolCall = {
 const registry = {
   get: (name: string) =>
     name === 'Read' ? { kind: 'readonly' as const } : undefined,
-} as unknown as ToolRegistry;
+} satisfies ToolExecutionRegistryLike;
 
 describe('toolUpdateToAgentEvent', () => {
   it('maps tool_ready to tool_start with kind from registry', () => {
@@ -21,7 +21,7 @@ describe('toolUpdateToAgentEvent', () => {
   });
 
   it('maps tool_ready for unknown tool to tool_start with undefined kind', () => {
-    const unknown: FunctionToolCall = {
+    const unknown: AgentFunctionToolCall = {
       ...toolCall,
       function: { ...toolCall.function, name: 'Unknown' },
     };
