@@ -973,6 +973,42 @@ describe('agent-sdk package-local session runtime shell', () => {
     ]);
   });
 
+  it('retries runtime capability initialization after a failed attempt', async () => {
+    const registerAll = vi.fn();
+    const providerFailure = new Error('builtin provider unavailable');
+    let providerCalls = 0;
+    const runtime = new PackageLocalSessionRuntime({
+      sessionId: 'session-1',
+      options,
+      bladeConfig,
+      defaultContext: {},
+      toolCatalog: {
+        registerAll,
+        registerMcpTool: vi.fn(),
+        removeMcpTools: vi.fn(() => 0),
+      },
+      builtinToolProvider: {
+        async getTools() {
+          providerCalls += 1;
+          if (providerCalls === 1) {
+            throw providerFailure;
+          }
+          return [{ name: 'read' }];
+        },
+      },
+    });
+
+    await expect(runtime.ensureRuntimeCapabilitiesInitialized()).rejects.toThrow(providerFailure);
+    await runtime.ensureRuntimeCapabilitiesInitialized();
+
+    expect(providerCalls).toBe(2);
+    expect(registerAll).toHaveBeenCalledWith([{ name: 'read' }], {
+      kind: 'builtin',
+      sourceId: 'builtin',
+      trustLevel: 'trusted',
+    });
+  });
+
   it('owns permission handler composition with permission hooks before canUseTool', async () => {
     const abortController = new AbortController();
     const canUseTool = vi.fn(async () => ({ behavior: 'allow' as const }));

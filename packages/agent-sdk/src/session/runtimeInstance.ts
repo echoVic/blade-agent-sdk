@@ -566,9 +566,15 @@ export class PackageLocalSessionRuntime {
   }
 
   async ensureRuntimeCapabilitiesInitialized(): Promise<void> {
-    this.runtimeCapabilitiesInitialization ??= this.initializeRuntimeCapabilities().then(() => {
-      this.runtimeCapabilitiesInitialized = true;
-    });
+    this.runtimeCapabilitiesInitialization ??= this.initializeRuntimeCapabilities()
+      .then(() => {
+        this.runtimeCapabilitiesInitialized = true;
+      })
+      .catch((error: unknown) => {
+        this.runtimeCapabilitiesInitialization = undefined;
+        this.runtimeCapabilitiesInitialized = false;
+        throw error;
+      });
     await this.runtimeCapabilitiesInitialization;
 
     if (this.subagentLocationsNeedRefresh) {
