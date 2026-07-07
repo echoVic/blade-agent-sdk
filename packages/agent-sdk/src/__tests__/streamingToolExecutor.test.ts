@@ -1,9 +1,8 @@
 import { describe, expect, it, vi } from 'vitest';
-import type { ChatResponse, StreamChunk } from '../../services/ChatServiceInterface.js';
-import type { ToolResult } from '../../tools/types/index.js';
-import { PermissionMode } from '../../types/common.js';
-import { SessionId } from '../../types/branded.js';
-import { StreamingToolExecutor } from '../StreamingToolExecutor.js';
+import type { ChatResponse, StreamChunk } from '@blade-ai/ai/chat';
+import type { ToolResult } from '../tools/types/index.js';
+import { PermissionMode } from '../types/common.js';
+import { PackageLocalStreamingToolExecutor } from '../session/streamingToolExecutor.js';
 
 function deferred<T>() {
   let resolve!: (value: T) => void;
@@ -57,14 +56,14 @@ function createExecutor(options: {
     execute,
   };
 
-  const executor = new StreamingToolExecutor(
+  const executor = new PackageLocalStreamingToolExecutor(
     () => chatService as never,
   );
 
   return { executor, chatService, executionPipeline, execute };
 }
 
-describe('StreamingToolExecutor', () => {
+describe('PackageLocalStreamingToolExecutor', () => {
   it('dispatches a tool as soon as arguments become parseable, forwards deltas, and emits stream_end before tool completion', async () => {
     const finishGate = deferred<void>();
     const toolGate = deferred<ToolResult>();
@@ -109,7 +108,7 @@ describe('StreamingToolExecutor', () => {
       {
         executionPipeline: executionPipelineFromMock(execute),
         executionContext: {
-          sessionId: SessionId('session-1'),
+          sessionId: 'session-1',
           userId: 'user-1',
         },
         onContentDelta: (delta) => {
@@ -188,7 +187,7 @@ describe('StreamingToolExecutor', () => {
       {
         executionPipeline: executionPipelineFromMock(execute),
         executionContext: {
-          sessionId: SessionId('session-1'),
+          sessionId: 'session-1',
           userId: 'user-1',
         },
         onToolExecutionUpdate: async (update) => {
@@ -276,7 +275,7 @@ describe('StreamingToolExecutor', () => {
       {
         executionPipeline: executionPipelineFromMock(execute),
         executionContext: {
-          sessionId: SessionId('session-1'),
+          sessionId: 'session-1',
           userId: 'user-1',
         },
         onToolExecutionUpdate: async (update) => {
@@ -354,7 +353,7 @@ describe('StreamingToolExecutor', () => {
         {
           executionPipeline: executionPipelineFromMock(execute),
           executionContext: {
-            sessionId: SessionId('session-1'),
+            sessionId: 'session-1',
             userId: 'user-1',
           },
           onAfterToolExec: ({ toolCall }) => {
@@ -458,7 +457,7 @@ describe('StreamingToolExecutor', () => {
       {
         executionPipeline: executionPipelineFromMock(execute),
         executionContext: {
-          sessionId: SessionId('session-1'),
+          sessionId: 'session-1',
           userId: 'user-1',
         },
         onAfterToolExec: onAfter,
@@ -529,7 +528,7 @@ describe('StreamingToolExecutor', () => {
       {
         executionPipeline: executionPipelineFromMock(execute),
         executionContext: {
-          sessionId: SessionId('session-1'),
+          sessionId: 'session-1',
           userId: 'user-1',
         },
         permissionMode: PermissionMode.PLAN,
@@ -577,7 +576,7 @@ describe('StreamingToolExecutor', () => {
       {
         executionPipeline: executionPipelineFromMock(execute),
         executionContext: {
-          sessionId: SessionId('session-1'),
+          sessionId: 'session-1',
           userId: 'user-1',
         },
       },
@@ -607,7 +606,7 @@ describe('StreamingToolExecutor', () => {
         {
           executionPipeline: executionPipelineFromMock(execute),
           executionContext: {
-            sessionId: SessionId('session-1'),
+            sessionId: 'session-1',
             userId: 'user-1',
           },
         },
@@ -649,7 +648,7 @@ describe('StreamingToolExecutor', () => {
         {
           executionPipeline: executionPipelineFromMock(execute),
           executionContext: {
-            sessionId: SessionId('session-1'),
+            sessionId: 'session-1',
             userId: 'user-1',
           },
           onAfterToolExec: onAfter,
@@ -712,7 +711,7 @@ describe('StreamingToolExecutor', () => {
             BlockingTool: { interruptBehavior: 'block' },
           }),
           executionContext: {
-            sessionId: SessionId('session-1'),
+            sessionId: 'session-1',
             userId: 'user-1',
           },
         },
@@ -779,7 +778,7 @@ describe('StreamingToolExecutor', () => {
       {
         executionPipeline: executionPipelineFromMock(execute),
         executionContext: {
-          sessionId: SessionId('session-1'),
+          sessionId: 'session-1',
           userId: 'user-1',
           skillActivationPaths: ['/workspace/src/index.ts'],
         },
