@@ -1,12 +1,12 @@
 import { existsSync } from 'node:fs';
 import { describe, expect, it, vi } from 'vitest';
-import type { PackageLocalRuntimePermissionHookPort } from '../../packages/agent-sdk/src/session/runtimePermissions.js';
-import type { JsonObject } from '../../packages/agent-sdk/src/types/common.js';
-import type { PermissionHandlerRequest } from '../../packages/agent-sdk/src/types/permissions.js';
-import { ToolKind } from '../../packages/agent-sdk/src/tools/types/ToolKind.js';
+import type { PackageLocalRuntimePermissionHookPort } from '../session/runtimePermissions.js';
+import type { JsonObject } from '../types/common.js';
+import type { PermissionHandlerRequest } from '../types/permissions.js';
+import { ToolKind } from '../tools/types/ToolKind.js';
 
-const permissionsModulePath = '../../packages/agent-sdk/src/session/runtimePermissions.js';
-const permissionsSourcePath = 'packages/agent-sdk/src/session/runtimePermissions.ts';
+const permissionsModulePath = '../session/runtimePermissions.js';
+const permissionsSourcePath = 'src/session/runtimePermissions.ts';
 
 function permissionRequest(input: JsonObject): PermissionHandlerRequest {
   return {
