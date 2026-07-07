@@ -16,7 +16,7 @@ pnpm add @blade-ai/agent
 import { AgentKernel } from '@blade-ai/agent';
 import { TokenBudget } from '@blade-ai/agent/budget';
 import { ExecutionEpoch } from '@blade-ai/agent/epoch';
-import { AsyncEventQueue } from '@blade-ai/agent/loop';
+import { AsyncEventQueue, decideNoToolTurn } from '@blade-ai/agent/loop';
 import { isOverflowRecoverable } from '@blade-ai/agent/recovery';
 import { isValidSystemSource } from '@blade-ai/agent/state';
 
@@ -37,6 +37,8 @@ epoch.invalidate();
 
 const queue = new AsyncEventQueue<string>();
 queue.close();
+
+await decideNoToolTurn('All done', [], 1);
 
 isOverflowRecoverable(new Error('context_length_exceeded')); // true
 isValidSystemSource('catalog'); // true

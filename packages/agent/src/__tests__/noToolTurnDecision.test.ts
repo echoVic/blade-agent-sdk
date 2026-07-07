@@ -1,0 +1,78 @@
+import type { Message } from '@blade-ai/ai/chat';
+import { describe, expect, it, vi } from 'vitest';
+import {
+  DEFAULT_CONTINUE_REMINDER,
+  RETRY_PROMPT,
+  decideNoToolTurn,
+} from '../loop/index.js';
+
+describe('decideNoToolTurn', () => {
+  it.each([
+    '让我先检查一下：',
+    '让我开始修复：',
+    'Let me check the files first',
+    'Planning...',
+  ])('retries when assistant content implies unfinished action: %s', async (content) => {
+    const decision = await decideNoToolTurn(content, [], 1);
+
+    expect(decision).toEqual({
+      action: 'retry',
+      message: { role: 'user', content: RETRY_PROMPT },
+    });
+  });
+
+  it('stops retrying after two recent retry prompts', async () => {
+    const messages: Message[] = [
+      { role: 'user', content: RETRY_PROMPT },
+      { role: 'assistant', content: '让我先看一下：' },
+      { role: 'user', content: RETRY_PROMPT },
+    ];
+
+    await expect(decideNoToolTurn('让我开始修复：', messages, 3)).resolves.toEqual({
+      action: 'finish',
+    });
+  });
+
+  it('continues with a default reminder when the stop hook asks to continue without a reason', async () => {
+    const onStopCheck = vi.fn(async () => ({ shouldStop: false }));
+
+    const decision = await decideNoToolTurn('Done for now', [], 2, onStopCheck);
+
+    expect(onStopCheck).toHaveBeenCalledWith({ content: 'Done for now', turn: 2 });
+    expect(decision).toEqual({
+      action: 'continue_with_reminder',
+      message: { role: 'user', content: DEFAULT_CONTINUE_REMINDER },
+      warning: undefined,
+    });
+  });
+
+  it('continues with a custom reminder and warning when provided by the stop hook', async () => {
+    const onStopCheck = vi.fn(async () => ({
+      shouldStop: false,
+      continueReason: 'Keep executing the migration checklist',
+      warning: 'still-working',
+    }));
+
+    const decision = await decideNoToolTurn('I will continue', [], 4, onStopCheck);
+
+    expect(decision.action).toBe('continue_with_reminder');
+    if (decision.action === 'continue_with_reminder') {
+      expect(decision.message.content).toContain('Keep executing the migration checklist');
+      expect(decision.warning).toBe('still-working');
+    }
+  });
+
+  it('finishes when there is no retry need and no stop hook asks to continue', async () => {
+    await expect(decideNoToolTurn('All done', [], 1)).resolves.toEqual({
+      action: 'finish',
+    });
+  });
+
+  it('finishes when the stop hook asks to stop', async () => {
+    const onStopCheck = vi.fn(async () => ({ shouldStop: true }));
+
+    await expect(decideNoToolTurn('Done', [], 1, onStopCheck)).resolves.toEqual({
+      action: 'finish',
+    });
+  });
+});

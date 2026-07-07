@@ -1499,6 +1499,8 @@ assertRuntimeExport(agentBudget, 'TokenBudget');
 assertRuntimeExport(agentEpoch, 'ExecutionEpoch');
 assertRuntimeExport(agentKernel, 'AgentKernel');
 assertRuntimeExport(agentLoop, 'AsyncEventQueue');
+assertRuntimeExport(agentLoop, 'decideNoToolTurn');
+assertRuntimeExport(agentLoop, 'RETRY_PROMPT');
 assertRuntimeExport(agentRecovery, 'isOverflowRecoverable');
 if (!agentRecovery.isOverflowRecoverable(new Error('context_length_exceeded'))) {
   throw new Error('@blade-ai/agent/recovery overflow guard returned an unexpected result');
@@ -1659,7 +1661,7 @@ import type {
   AgentTurnInput,
 } from '@blade-ai/agent/kernel';
 import { AgentKernel as AgentKernelFromSubpath } from '@blade-ai/agent/kernel';
-import { AsyncEventQueue } from '@blade-ai/agent/loop';
+import { AsyncEventQueue, decideNoToolTurn } from '@blade-ai/agent/loop';
 import type {
   AgentStreamEvent as AgentProtocolStreamEvent,
   AgentToolCall,
@@ -1853,6 +1855,7 @@ const kernel = new AgentKernel({ model: fakeModel, modelCallMode: 'stream' });
 const queue = new AsyncEventQueue<string>();
 queue.enqueue('turn_start');
 queue.close();
+const noToolDecision = await decideNoToolTurn('All done', [], 1);
 const executionEpoch = new ExecutionEpoch();
 executionEpoch.invalidate();
 const executionEpochIsInvalid: boolean = !executionEpoch.isValid;
@@ -2080,6 +2083,7 @@ void deepseekOptions;
 void deepseekCost;
 void useKernel;
 void queue;
+void noToolDecision;
 void executionEpochIsInvalid;
 void overflowIsRecoverable;
 void tokenBudgetConfig;
@@ -2187,7 +2191,7 @@ async function verifyAgentBrowserBundle(consumerDir) {
       "import { AgentKernel } from '@blade-ai/agent';",
       "import { ExecutionEpoch } from '@blade-ai/agent/epoch';",
       "import { AgentKernel as AgentKernelFromSubpath } from '@blade-ai/agent/kernel';",
-      "import { AsyncEventQueue } from '@blade-ai/agent/loop';",
+      "import { AsyncEventQueue, decideNoToolTurn } from '@blade-ai/agent/loop';",
       "import { isOverflowRecoverable } from '@blade-ai/agent/recovery';",
       'const fakeModel = {',
       '  async generate() {',
@@ -2203,8 +2207,9 @@ async function verifyAgentBrowserBundle(consumerDir) {
       "queue.enqueue('event');",
       'queue.close();',
       'const kernelFromSubpath = new AgentKernelFromSubpath({ model: fakeModel });',
+      "const decision = await decideNoToolTurn('All done', [], 1);",
       "const overflow = isOverflowRecoverable(new Error('context_length_exceeded'));",
-      "console.log('agent browser bundle', kernel.constructor.name, kernelFromSubpath.constructor.name, epoch.constructor.name, queue.constructor.name, overflow);",
+      "console.log('agent browser bundle', kernel.constructor.name, kernelFromSubpath.constructor.name, epoch.constructor.name, queue.constructor.name, decision.action, overflow);",
     ].join('\n'),
   );
 
