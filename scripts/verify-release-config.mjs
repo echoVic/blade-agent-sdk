@@ -156,6 +156,8 @@ function verifySemanticReleaseConfig() {
 }
 
 function verifyPackageMetadata() {
+  const rootLicense = readFileSync(resolve('LICENSE'), 'utf8');
+
   for (const pkg of publishablePackages) {
     const manifest = readJson(`${pkg.dir}/package.json`);
     const readme = readFileSync(resolve(pkg.dir, 'README.md'), 'utf8');
@@ -189,6 +191,9 @@ function verifyPackageMetadata() {
     }
     if (!license.includes(mitPermissionGrant)) {
       fail(`${pkg.name} LICENSE must include the MIT permission grant`);
+    }
+    if (license !== rootLicense) {
+      fail(`${pkg.name} source LICENSE must match the root LICENSE exactly`);
     }
     if (manifest.homepage !== 'https://github.com/echoVic/blade-agent-sdk#readme') {
       fail(`${pkg.name} must declare the project homepage`);

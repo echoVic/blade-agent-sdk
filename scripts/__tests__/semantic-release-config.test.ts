@@ -788,6 +788,8 @@ describe('release scripts', () => {
 
     expect(releaseVerifier).toContain("'LICENSE'");
     expect(releaseVerifier).toContain('LICENSE must include the MIT permission grant');
+    expect(releaseVerifier).toContain("readFileSync(resolve('LICENSE'), 'utf8')");
+    expect(releaseVerifier).toContain('source LICENSE must match the root LICENSE exactly');
     expect(packageVerifier).toContain("'package/LICENSE'");
     expect(packageVerifier).toContain('verifyPackedLicenseArtifacts');
     expect(packageVerifier).toContain('packed LICENSE must include the MIT permission grant');
@@ -800,13 +802,18 @@ describe('release scripts', () => {
     expect(publishedVerifier).toContain('published LICENSE must include the MIT permission grant');
     expect(publishedVerifier).toContain("readFile(resolve('LICENSE'), 'utf8')");
     expect(publishedVerifier).toContain('published LICENSE must match the root LICENSE exactly');
+    expect(readme).toContain('source package LICENSE artifacts');
     expect(readme).toContain('packed package license artifacts');
     expect(readme).toContain('published package license artifacts');
+    expect(readme).toContain('source package LICENSE 与根 LICENSE 完全一致');
     expect(readme).toContain('LICENSE 与根 LICENSE 完全一致');
+    expect(checklist).toContain('source package LICENSE artifacts');
     expect(checklist).toContain('packed package license artifacts');
     expect(checklist).toContain('published package license artifacts');
+    expect(checklist).toContain('source package LICENSE 与根 LICENSE 完全一致');
     expect(checklist).toContain('LICENSE 与根 LICENSE 完全一致');
     expect(roadmap).toContain('package license artifact gate');
+    expect(roadmap).toContain('source, packed-package, and post-publish license verification');
     expect(roadmap).toContain('LICENSE 与根 LICENSE 完全一致');
   });
 
