@@ -1801,4 +1801,34 @@ describe('ci workflow', () => {
     expect(releaseVerifier).toContain('docs workflow permissions');
     expect(releaseVerifier).toContain('docs workflow must grant only GitHub Pages deployment permissions');
   });
+
+  it('keeps docs deployment workflow toolchain pins covered by the release verifier', () => {
+    const workflow = parse(
+      readFileSync(resolve('.github/workflows/deploy-docs.yml'), 'utf8')
+    );
+    const buildSteps = workflow.jobs.build.steps;
+    const commands = buildSteps.map((step: { run?: string }) => step.run).filter(Boolean);
+    const setupPnpmStep = buildSteps.find((step: { uses?: string }) =>
+      step.uses?.startsWith('pnpm/action-setup@')
+    );
+    const setupNodeStep = buildSteps.find((step: { uses?: string }) =>
+      step.uses?.startsWith('actions/setup-node@')
+    );
+    const uploadStep = buildSteps.find((step: { uses?: string }) =>
+      step.uses?.startsWith('actions/upload-pages-artifact@')
+    );
+    const releaseVerifier = readFileSync(resolve('scripts/verify-release-config.mjs'), 'utf8');
+
+    expect(commands).toEqual([
+      'pnpm install --frozen-lockfile --ignore-scripts',
+      'pnpm run docs:build',
+    ]);
+    expect(setupPnpmStep.with).toMatchObject({ version: '11.7.0' });
+    expect(setupNodeStep.with).toMatchObject({ 'node-version': '22' });
+    expect(uploadStep.with).toMatchObject({ path: 'docs/.vitepress/dist' });
+    expect(releaseVerifier).toContain('docs workflow must pin pnpm/action-setup to pnpm 11.7.0');
+    expect(releaseVerifier).toContain('docs workflow must run on Node 22');
+    expect(releaseVerifier).toContain('docs workflow commands');
+    expect(releaseVerifier).toContain('docs workflow must upload docs/.vitepress/dist');
+  });
 });

@@ -455,6 +455,11 @@ function verifyCiWorkflow() {
 
 function verifyDocsWorkflow() {
   const workflow = parse(readFileSync(resolve('.github/workflows/deploy-docs.yml'), 'utf8'));
+  const steps = workflow.jobs?.build?.steps ?? [];
+  const commands = steps.map((step) => step.run).filter(Boolean);
+  const setupPnpmStep = steps.find((step) => step.uses?.startsWith('pnpm/action-setup@'));
+  const setupNodeStep = steps.find((step) => step.uses?.startsWith('actions/setup-node@'));
+  const uploadStep = steps.find((step) => step.uses?.startsWith('actions/upload-pages-artifact@'));
   const expectedPermissions = {
     contents: 'read',
     pages: 'write',
@@ -464,6 +469,19 @@ function verifyDocsWorkflow() {
   assertDeepEqual(workflow.permissions, expectedPermissions, 'docs workflow permissions');
   if (JSON.stringify(workflow.permissions) !== JSON.stringify(expectedPermissions)) {
     fail('docs workflow must grant only GitHub Pages deployment permissions');
+  }
+  assertDeepEqual(commands, [
+    'pnpm install --frozen-lockfile --ignore-scripts',
+    'pnpm run docs:build',
+  ], 'docs workflow commands');
+  if (setupPnpmStep?.with?.version !== '11.7.0') {
+    fail('docs workflow must pin pnpm/action-setup to pnpm 11.7.0');
+  }
+  if (setupNodeStep?.with?.['node-version'] !== '22') {
+    fail('docs workflow must run on Node 22');
+  }
+  if (uploadStep?.with?.path !== 'docs/.vitepress/dist') {
+    fail('docs workflow must upload docs/.vitepress/dist');
   }
 }
 
