@@ -248,6 +248,17 @@ function isPackageJsonExportEntry(subpath, exportValue) {
   );
 }
 
+function getRootExportConditions(exportsValue) {
+  if (!exportsValue || typeof exportsValue !== 'object' || Array.isArray(exportsValue)) {
+    return null;
+  }
+  const rootExport = exportsValue['.'];
+  if (!rootExport || typeof rootExport !== 'object' || Array.isArray(rootExport)) {
+    return null;
+  }
+  return rootExport;
+}
+
 const violations = [];
 
 for (const rule of manifestRules) {
@@ -288,6 +299,20 @@ for (const rule of manifestRules) {
     const target = manifest[field];
     if (typeof target === 'string' && !isDistArtifactTarget(target)) {
       violations.push(`${rule.packageJson}: ${field} target "${target}" must point at ./dist artifacts`);
+    }
+  }
+
+  const rootExport = getRootExportConditions(manifest.exports);
+  if (rootExport) {
+    if (typeof manifest.main === 'string' && typeof rootExport.import === 'string' && manifest.main !== rootExport.import) {
+      violations.push(
+        `${rule.packageJson}: main target "${manifest.main}" must match root export import target "${rootExport.import}"`,
+      );
+    }
+    if (typeof manifest.types === 'string' && typeof rootExport.types === 'string' && manifest.types !== rootExport.types) {
+      violations.push(
+        `${rule.packageJson}: types target "${manifest.types}" must match root export types target "${rootExport.types}"`,
+      );
     }
   }
 
