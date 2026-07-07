@@ -21,6 +21,10 @@ import type {
   AgentStoreAppendContext,
   AgentStorePort,
 } from '../state/index.js';
+import {
+  modelResponseToAssistantMessage,
+  toolResultToToolMessage,
+} from '../state/index.js';
 import type {
   AgentTraceEvent,
   AgentTracePort,
@@ -105,7 +109,7 @@ export class AgentKernel {
       }
 
       const toolMessages: ModelMessage[] = [];
-      const assistantToolMessage = this.toolCallsToAssistantMessage(response);
+      const assistantToolMessage = modelResponseToAssistantMessage(response);
       await this.appendStoreMessage(assistantToolMessage, {
         turnId: turn.turnId,
         source: 'model',
@@ -129,7 +133,7 @@ export class AgentKernel {
         }
         await this.recordTrace({ type: 'tool_call_end', toolCall, result });
         yield { type: 'tool_result', result };
-        const toolMessage = this.toolResultToMessage(result, toolCall);
+        const toolMessage = toolResultToToolMessage(result, toolCall);
         await this.appendStoreMessage(toolMessage, {
           turnId: turn.turnId,
           source: 'tool',
@@ -164,7 +168,7 @@ export class AgentKernel {
       await this.recordTrace({ type: 'usage', usage: response.usage });
       yield* this.recordTokenBudget(response.usage);
     }
-    await this.appendStoreMessage(this.responseToAssistantMessage(response), {
+    await this.appendStoreMessage(modelResponseToAssistantMessage(response), {
       turnId: turn.turnId,
       source: 'model',
       step: modelSteps,
@@ -225,28 +229,6 @@ export class AgentKernel {
       throw new Error('Model requested tool calls, but no tool port is configured');
     }
     return this.options.tools.execute(toolCall, signal);
-  }
-
-  private toolCallsToAssistantMessage(response: ModelResponse): ModelMessage {
-    return this.responseToAssistantMessage(response);
-  }
-
-  private responseToAssistantMessage(response: ModelResponse): ModelMessage {
-    return {
-      role: 'assistant',
-      content: response.content,
-      ...(response.reasoningContent ? { reasoningContent: response.reasoningContent } : {}),
-      ...(response.toolCalls && response.toolCalls.length > 0 ? { toolCalls: response.toolCalls } : {}),
-    };
-  }
-
-  private toolResultToMessage(result: AgentToolResult, toolCall: ModelToolCall): ModelMessage {
-    return {
-      role: 'tool',
-      content: typeof result.output === 'string' ? result.output : JSON.stringify(result.output),
-      name: result.name || toolCall.name,
-      toolCallId: result.id || toolCall.id,
-    };
   }
 
   private async recordModelResponse(response: ModelResponse): Promise<void> {

@@ -17,6 +17,11 @@ import { AgentKernel } from '@blade-ai/agent';
 import { TokenBudget } from '@blade-ai/agent/budget';
 import { ExecutionEpoch } from '@blade-ai/agent/epoch';
 import {
+  isValidSystemSource,
+  modelResponseToAssistantMessage,
+  toolResultToToolMessage,
+} from '@blade-ai/agent/state';
+import {
   AsyncEventQueue,
   createInterruptAwareAbortSignal,
   decideNoToolTurn,
@@ -27,7 +32,6 @@ import {
   ToolKind,
 } from '@blade-ai/agent/loop';
 import { isOverflowRecoverable } from '@blade-ai/agent/recovery';
-import { isValidSystemSource } from '@blade-ai/agent/state';
 
 const kernel = new AgentKernel({
   model,
@@ -73,6 +77,11 @@ toolUpdateToAgentEvent(
 
 isOverflowRecoverable(new Error('context_length_exceeded')); // true
 isValidSystemSource('catalog'); // true
+modelResponseToAssistantMessage({ content: 'hello' });
+toolResultToToolMessage(
+  { id: 'call_read', name: 'Read', output: 'ok' },
+  { id: 'fallback', name: 'Fallback' },
+);
 ```
 
 Most application code should use `@blade-ai/agent-sdk`. Use `@blade-ai/agent` directly for runtime-independent adapters, kernel tests, or non-Node hosts that provide their own ports.

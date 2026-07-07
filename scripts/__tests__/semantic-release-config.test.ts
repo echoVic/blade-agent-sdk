@@ -362,7 +362,11 @@ describe('package provenance metadata', () => {
     expect(packageVerifier).toContain("agentRecovery.isOverflowRecoverable(new Error('context_length_exceeded'))");
     expect(packageVerifier).toContain("assertRuntimeExport(agentState, 'isValidSystemSource')");
     expect(packageVerifier).toContain("assertRuntimeExport(agentState, 'VALID_SYSTEM_SOURCES')");
+    expect(packageVerifier).toContain("assertRuntimeExport(agentState, 'modelResponseToAssistantMessage')");
+    expect(packageVerifier).toContain("assertRuntimeExport(agentState, 'toolResultToToolMessage')");
     expect(packageVerifier).toContain("agentState.isValidSystemSource('catalog')");
+    expect(packageVerifier).toContain('agentState.modelResponseToAssistantMessage');
+    expect(packageVerifier).toContain('agentState.toolResultToToolMessage');
     expect(packageVerifier).toContain("assertRuntimeExport(agentSdk, 'createSession')");
     expect(packageVerifier).toContain("assertRuntimeExport(agentSdk, 'defineTool')");
     expect(packageVerifier).toContain("assertNoRuntimeExport(agentSdk, 'getBuiltinTools')");
@@ -775,7 +779,11 @@ describe('release scripts', () => {
     expect(publishedVerifier).toContain("agentRecovery.isOverflowRecoverable(new Error('context_length_exceeded'))");
     expect(publishedVerifier).toContain("assertRuntimeExport(agentState, 'isValidSystemSource')");
     expect(publishedVerifier).toContain("assertRuntimeExport(agentState, 'VALID_SYSTEM_SOURCES')");
+    expect(publishedVerifier).toContain("assertRuntimeExport(agentState, 'modelResponseToAssistantMessage')");
+    expect(publishedVerifier).toContain("assertRuntimeExport(agentState, 'toolResultToToolMessage')");
     expect(publishedVerifier).toContain("agentState.isValidSystemSource('catalog')");
+    expect(publishedVerifier).toContain('agentState.modelResponseToAssistantMessage');
+    expect(publishedVerifier).toContain('agentState.toolResultToToolMessage');
     expect(publishedVerifier).toContain("import * as agentPorts from '@blade-ai/agent/ports';");
     expect(publishedVerifier).toContain("import * as agentState from '@blade-ai/agent/state';");
     expect(publishedVerifier).toContain("import * as agentTracing from '@blade-ai/agent/tracing';");
@@ -1558,6 +1566,9 @@ describe('release scripts', () => {
     expect(publishedVerifier).toContain("from '@blade-ai/agent/state';");
     expect(publishedVerifier).toContain('SystemSource');
     expect(publishedVerifier).toContain('isValidSystemSource');
+    expect(publishedVerifier).toContain('AgentToolCallIdentity');
+    expect(publishedVerifier).toContain('modelResponseToAssistantMessage');
+    expect(publishedVerifier).toContain('toolResultToToolMessage');
     expect(publishedVerifier).toContain("from '@blade-ai/agent/tracing';");
     expect(publishedVerifier).toContain('AgentStorePort');
     expect(publishedVerifier).toContain('AgentTracePort');

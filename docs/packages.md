@@ -80,7 +80,11 @@ import {
   toolUpdateToAgentEvent,
 } from '@blade-ai/agent/loop';
 import { isOverflowRecoverable } from '@blade-ai/agent/recovery';
-import { isValidSystemSource } from '@blade-ai/agent/state';
+import {
+  isValidSystemSource,
+  modelResponseToAssistantMessage,
+  toolResultToToolMessage,
+} from '@blade-ai/agent/state';
 ```
 
 Kernel 通过 ports 访问外部能力：
@@ -95,7 +99,7 @@ Kernel 通过 ports 访问外部能力：
 - streaming loop 事务边界可通过 `@blade-ai/agent/epoch` 的 `ExecutionEpoch` 标识，adapter 可用它丢弃 retry/fallback 后迟到的事件或副作用
 - streaming loop 的 producer/consumer 事件桥、no-tool turn 决策、turn-limit 决策、工具执行计划、工具中断行为和工具 update 事件映射可通过 `@blade-ai/agent/loop` 的 `AsyncEventQueue` / `decideNoToolTurn()` / `decideTurnLimit()` / `planToolExecution()` / `resolveToolInterruptBehavior()` / `createInterruptAwareAbortSignal()` / `toolUpdateToAgentEvent()` 复用
 - reactive compaction 入口可通过 `@blade-ai/agent/recovery` 的 `isOverflowRecoverable()` 判断模型错误是否属于可恢复的上下文溢出
-- 受控 system 消息来源可通过 `@blade-ai/agent/state` 的 `isValidSystemSource()` 归一化
+- 受控 system 消息来源可通过 `@blade-ai/agent/state` 的 `isValidSystemSource()` 归一化；同一 subpath 也提供 `modelResponseToAssistantMessage()` 和 `toolResultToToolMessage()`，让 adapter 复用 kernel 的消息投影规则
 
 完整示例见 [`examples/agent-kernel.ts`](../examples/agent-kernel.ts)，它用一个内存 `ModelPort` 演示 `kernel.runTurn()` 的事件流。
 

@@ -1513,8 +1513,19 @@ if (!agentRecovery.isOverflowRecoverable(new Error('context_length_exceeded'))) 
 }
 assertRuntimeExport(agentState, 'isValidSystemSource');
 assertRuntimeExport(agentState, 'VALID_SYSTEM_SOURCES');
+assertRuntimeExport(agentState, 'modelResponseToAssistantMessage');
+assertRuntimeExport(agentState, 'toolResultToToolMessage');
 if (!agentState.isValidSystemSource('catalog') || agentState.isValidSystemSource('unknown')) {
   throw new Error('@blade-ai/agent/state system source guard returned an unexpected result');
+}
+if (agentState.modelResponseToAssistantMessage({ content: 'ok' }).role !== 'assistant') {
+  throw new Error('@blade-ai/agent/state assistant message projection returned an unexpected result');
+}
+if (agentState.toolResultToToolMessage(
+  { id: 'call_read', name: 'Read', output: { ok: true } },
+  { id: 'fallback', name: 'Fallback' },
+).toolCallId !== 'call_read') {
+  throw new Error('@blade-ai/agent/state tool message projection returned an unexpected result');
 }
 assertRuntimeExport(agentSdk, 'createSession');
 assertRuntimeExport(agentSdk, 'defineTool');
@@ -1697,11 +1708,16 @@ import type {
 } from '@blade-ai/agent/ports';
 import { isOverflowRecoverable } from '@blade-ai/agent/recovery';
 import type {
+  AgentToolCallIdentity,
   AgentStoreAppendContext,
   AgentStorePort,
   SystemSource,
 } from '@blade-ai/agent/state';
-import { isValidSystemSource } from '@blade-ai/agent/state';
+import {
+  isValidSystemSource,
+  modelResponseToAssistantMessage,
+  toolResultToToolMessage,
+} from '@blade-ai/agent/state';
 import type {
   AgentTraceEvent,
   AgentTracePort,
@@ -1982,6 +1998,15 @@ const agentStorePort: AgentStorePort = {
 };
 const systemSource: SystemSource = 'catalog';
 const isCatalogSystemSource: boolean = isValidSystemSource(systemSource);
+const assistantMessageProjection = modelResponseToAssistantMessage({ content: 'hello' });
+const toolMessageProjection = toolResultToToolMessage(
+  { id: 'call_echo', name: 'Echo', output: 'hello' },
+  { id: 'fallback_echo', name: 'FallbackEcho' },
+);
+const toolCallIdentity: AgentToolCallIdentity = {
+  id: 'call_echo',
+  name: 'Echo',
+};
 const agentTraceEvent: AgentTraceEvent = {
   type: 'turn_start',
   input: 'hello',
@@ -2163,6 +2188,9 @@ void agentHookPort;
 void agentStoreContext;
 void agentStorePort;
 void isCatalogSystemSource;
+void assistantMessageProjection;
+void toolMessageProjection;
+void toolCallIdentity;
 void agentTraceEvent;
 void agentTracePort;
 void runtimeContext;

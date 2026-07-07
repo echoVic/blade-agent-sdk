@@ -1,5 +1,6 @@
 import type { ModelMessage } from '@blade-ai/ai';
 
+export * from './messageProjection.js';
 export * from './systemSource.js';
 
 export type AgentStoreMessageSource = 'input' | 'model' | 'tool';
