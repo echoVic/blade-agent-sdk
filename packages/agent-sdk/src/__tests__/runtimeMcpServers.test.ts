@@ -1,8 +1,8 @@
 import { existsSync } from 'node:fs';
 import { describe, expect, it, vi } from 'vitest';
 
-const mcpServersModulePath = '../../packages/agent-sdk/src/session/runtimeMcpServers.js';
-const mcpServersSourcePath = 'packages/agent-sdk/src/session/runtimeMcpServers.ts';
+const mcpServersModulePath = '../session/runtimeMcpServers.js';
+const mcpServersSourcePath = 'src/session/runtimeMcpServers.ts';
 
 describe('agent-sdk package-local runtime MCP server helpers', () => {
   it('detects in-process MCP server handles without session runtime state', async () => {
