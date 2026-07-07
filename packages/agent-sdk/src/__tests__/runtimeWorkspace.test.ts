@@ -1,8 +1,8 @@
 import { existsSync } from 'node:fs';
 import { describe, expect, it, vi } from 'vitest';
 
-const runtimeWorkspaceModulePath = '../../packages/agent-sdk/src/session/runtimeWorkspace.js';
-const runtimeWorkspaceSourcePath = 'packages/agent-sdk/src/session/runtimeWorkspace.ts';
+const runtimeWorkspaceModulePath = '../session/runtimeWorkspace.js';
+const runtimeWorkspaceSourcePath = 'src/session/runtimeWorkspace.ts';
 
 describe('agent-sdk package-local runtime workspace helpers', () => {
   it('prepares turn-scoped workspace updates without session runtime state', async () => {
