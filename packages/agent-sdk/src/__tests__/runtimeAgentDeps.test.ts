@@ -1,8 +1,8 @@
 import { existsSync } from 'node:fs';
 import { describe, expect, it, vi } from 'vitest';
 
-const runtimeAgentDepsModulePath = '../../packages/agent-sdk/src/session/runtimeAgentDeps.js';
-const runtimeAgentDepsSourcePath = 'packages/agent-sdk/src/session/runtimeAgentDeps.ts';
+const runtimeAgentDepsModulePath = '../session/runtimeAgentDeps.js';
+const runtimeAgentDepsSourcePath = 'src/session/runtimeAgentDeps.ts';
 
 describe('agent-sdk package-local runtime agent dependency helpers', () => {
   it('projects agent runtime dependencies without session runtime state', async () => {
