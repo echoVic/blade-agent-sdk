@@ -223,12 +223,29 @@ function collectExportSubpaths(exportsValue) {
   return Object.keys(exportsValue);
 }
 
+function collectExportEntries(exportsValue) {
+  if (!exportsValue || typeof exportsValue !== 'object' || Array.isArray(exportsValue)) {
+    return [];
+  }
+  return Object.entries(exportsValue);
+}
+
 function isDistArtifactTarget(target) {
   return target.startsWith('./dist/');
 }
 
 function isPackageJsonExportTarget(path, target) {
   return path.startsWith('export "./package.json"') && target === './package.json';
+}
+
+function isPackageJsonExportEntry(subpath, exportValue) {
+  return (
+    subpath === './package.json' &&
+    exportValue &&
+    typeof exportValue === 'object' &&
+    !Array.isArray(exportValue) &&
+    exportValue.default === './package.json'
+  );
 }
 
 const violations = [];
@@ -271,6 +288,20 @@ for (const rule of manifestRules) {
     const target = manifest[field];
     if (typeof target === 'string' && !isDistArtifactTarget(target)) {
       violations.push(`${rule.packageJson}: ${field} target "${target}" must point at ./dist artifacts`);
+    }
+  }
+
+  for (const [subpath, exportValue] of collectExportEntries(manifest.exports)) {
+    if (isPackageJsonExportEntry(subpath, exportValue)) continue;
+    if (!exportValue || typeof exportValue !== 'object' || Array.isArray(exportValue)) {
+      violations.push(`${rule.packageJson}: export "${subpath}" must be a condition object`);
+      continue;
+    }
+    if (typeof exportValue.types !== 'string') {
+      violations.push(`${rule.packageJson}: export "${subpath}" must declare a types condition`);
+    }
+    if (typeof exportValue.import !== 'string') {
+      violations.push(`${rule.packageJson}: export "${subpath}" must declare an import condition`);
     }
   }
 
