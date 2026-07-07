@@ -2288,7 +2288,7 @@ async function verifyAgentBrowserBundle(consumerDir) {
       "import { AgentKernel as AgentKernelFromSubpath } from '@blade-ai/agent/kernel';",
       "import { AsyncEventQueue, createInterruptAwareAbortSignal, decideNoToolTurn, decideTurnLimit, planToolExecution, resolveToolInterruptBehavior, toolUpdateToAgentEvent, ToolKind } from '@blade-ai/agent/loop';",
       "import { isOverflowRecoverable } from '@blade-ai/agent/recovery';",
-      "import { modelResponseToAssistantMessage, toolResultToToolMessage } from '@blade-ai/agent/state';",
+      "import { VALID_SYSTEM_SOURCES, isValidSystemSource, modelResponseToAssistantMessage, toolResultToToolMessage } from '@blade-ai/agent/state';",
       'const fakeModel = {',
       '  async generate() {',
       "    return { content: 'ok', finishReason: 'stop' };",
@@ -2312,9 +2312,11 @@ async function verifyAgentBrowserBundle(consumerDir) {
       'interruptSignal.cleanup();',
       "const toolEvent = toolUpdateToAgentEvent({ type: 'tool_ready', toolCall: { id: 'read-1', type: 'function', function: { name: 'Read', arguments: '{}' } } }, { get: () => ({ kind: ToolKind.ReadOnly }) });",
       "const overflow = isOverflowRecoverable(new Error('context_length_exceeded'));",
+      "const systemSource = VALID_SYSTEM_SOURCES[0];",
+      'const isSystemSource = isValidSystemSource(systemSource);',
       "const assistantMessage = modelResponseToAssistantMessage({ content: 'ok' });",
       "const toolMessage = toolResultToToolMessage({ id: 'call_read', name: 'Read', output: 'ok' }, { id: 'fallback', name: 'Fallback' });",
-      "console.log('agent browser bundle', kernel.constructor.name, kernelFromSubpath.constructor.name, budget.constructor.name, epoch.constructor.name, queue.constructor.name, decision.action, turnLimit.action, toolPlan.mode, interruptBehavior, toolEvent?.type, overflow, assistantMessage.role, toolMessage.role);",
+      "console.log('agent browser bundle', kernel.constructor.name, kernelFromSubpath.constructor.name, budget.constructor.name, epoch.constructor.name, queue.constructor.name, decision.action, turnLimit.action, toolPlan.mode, interruptBehavior, toolEvent?.type, overflow, systemSource, isSystemSource, assistantMessage.role, toolMessage.role);",
     ].join('\n'),
   );
 

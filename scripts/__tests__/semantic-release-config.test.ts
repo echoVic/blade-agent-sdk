@@ -440,6 +440,8 @@ describe('package provenance metadata', () => {
     expect(agentBrowserBundleSource).toContain('new TokenBudget');
     expect(agentBrowserBundleSource).toContain('isOverflowRecoverable');
     expect(agentBrowserBundleSource).toContain("from '@blade-ai/agent/state';");
+    expect(agentBrowserBundleSource).toContain('VALID_SYSTEM_SOURCES');
+    expect(agentBrowserBundleSource).toContain('isValidSystemSource');
     expect(agentBrowserBundleSource).toContain('modelResponseToAssistantMessage');
     expect(agentBrowserBundleSource).toContain('toolResultToToolMessage');
     expect(agentBrowserBundleSource).toContain('agent browser bundle');
@@ -1690,6 +1692,8 @@ describe('release scripts', () => {
     expect(publishedAgentBrowserBundleSource).toContain('new TokenBudget');
     expect(publishedAgentBrowserBundleSource).toContain('isOverflowRecoverable');
     expect(publishedAgentBrowserBundleSource).toContain("from '@blade-ai/agent/state';");
+    expect(publishedAgentBrowserBundleSource).toContain('VALID_SYSTEM_SOURCES');
+    expect(publishedAgentBrowserBundleSource).toContain('isValidSystemSource');
     expect(publishedAgentBrowserBundleSource).toContain('modelResponseToAssistantMessage');
     expect(publishedAgentBrowserBundleSource).toContain('toolResultToToolMessage');
     expect(publishedAgentBrowserBundleSource).toContain('agent browser bundle');
