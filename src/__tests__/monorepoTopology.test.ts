@@ -498,6 +498,9 @@ describe('monorepo topology', () => {
     )
       ? readFileSync('packages/agent-sdk/src/session/runtimeCapabilities.ts', 'utf-8')
       : '';
+    const runtimeControlsSource = existsSync('packages/agent-sdk/src/session/runtimeControls.ts')
+      ? readFileSync('packages/agent-sdk/src/session/runtimeControls.ts', 'utf-8')
+      : '';
     const runtimeMcpCapabilitiesSource = existsSync(
       'packages/agent-sdk/src/session/runtimeMcpCapabilities.ts',
     )
@@ -1029,6 +1032,23 @@ describe('monorepo topology', () => {
     );
     expect(packageLocalRuntimeInstanceSource).not.toContain(
       'this.subagentLocationsNeedRefresh = true',
+    );
+    expect(existsSync('packages/agent-sdk/src/session/runtimeControls.ts')).toBe(true);
+    expect(runtimeControlsSource).not.toContain('../../../../src/');
+    expect(runtimeControlsSource).toContain('createPackageLocalRuntimeControlOperations');
+    expect(runtimeControlsSource).toContain('buildSessionModelConfig');
+    expect(runtimeControlsSource).toContain('getPackageLocalRuntimeContextCwd');
+    expect(packageLocalRuntimeInstanceSource).toContain('controlOperations');
+    expect(packageLocalRuntimeInstanceSource).not.toContain('buildSessionModelConfig');
+    expect(packageLocalRuntimeInstanceSource).not.toContain(
+      'this.bladeConfig.models = [modelConfig]',
+    );
+    expect(runtimeControlsSource).toContain('options.resetExecutionPipeline();');
+    expect(packageLocalRuntimeInstanceSource).toContain(
+      'resetExecutionPipeline: () => this.executionPipelineOperations.reset()',
+    );
+    expect(packageLocalRuntimeInstanceSource).not.toContain(
+      'this.options.maxTurns = maxTurns',
     );
     expect(packageLocalRuntimeInstanceSource).toContain('createPermissionHandler');
     expect(packageLocalRuntimeInstanceSource).toContain('PackageLocalRuntimePermissionHookPort');

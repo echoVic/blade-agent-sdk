@@ -64,7 +64,6 @@ import {
   getPackageLocalRuntimeContextCwd,
   resolvePackageLocalRuntimeStorageRoot,
 } from './runtimeContext.js';
-import { buildSessionModelConfig } from './config.js';
 import type { PackageLocalRuntimeWorkspaceOperations } from './runtimeWorkspace.js';
 import type { PackageLocalRuntimeSessionLifecycleOperations } from './runtimeSessionLifecycle.js';
 import { createPackageLocalRuntimeSessionOperations } from './runtimeSessionOperations.js';
@@ -105,6 +104,10 @@ import {
   createPackageLocalRuntimeCapabilityInitializationOperations,
   type PackageLocalRuntimeCapabilityInitializationOperations,
 } from './runtimeCapabilities.js';
+import {
+  createPackageLocalRuntimeControlOperations,
+  type PackageLocalRuntimeControlOperations,
+} from './runtimeControls.js';
 import type { SessionTraceManager } from './traces.js';
 import type { SessionSnapshot } from './store.js';
 
@@ -330,6 +333,7 @@ export class PackageLocalSessionRuntime {
   private readonly forkOperations: PackageLocalRuntimeForkOperations;
   private readonly traceManager: SessionTraceManager;
   private readonly capabilityInitializationOperations: PackageLocalRuntimeCapabilityInitializationOperations;
+  private readonly controlOperations: PackageLocalRuntimeControlOperations;
 
   constructor(options: PackageLocalSessionRuntimeOptions) {
     this.sessionId = options.sessionId;
@@ -469,6 +473,19 @@ export class PackageLocalSessionRuntime {
         initializeRuntimeCapabilities: () => this.initializeRuntimeCapabilities(),
         initializeSubagents: () => this.initializeSubagents(),
       });
+    this.controlOperations = createPackageLocalRuntimeControlOperations({
+      options: this.options,
+      bladeConfig: this.bladeConfig,
+      setDefaultContext: (context) => {
+        this.defaultContext = context;
+      },
+      setProjectPath: (projectPath) => {
+        this.projectPath = projectPath;
+      },
+      resetExecutionPipeline: () => this.executionPipelineOperations.reset(),
+      markSubagentLocationsDirty: () =>
+        this.capabilityInitializationOperations.markSubagentLocationsDirty(),
+    });
   }
 
   getConfiguredMcpServers(): Record<string, McpServerConfig | SdkMcpServerHandle> {
@@ -521,25 +538,19 @@ export class PackageLocalSessionRuntime {
   }
 
   setDefaultContext(context: RuntimeContext): void {
-    this.defaultContext = context;
-    this.projectPath = getPackageLocalRuntimeContextCwd(context);
-    this.capabilityInitializationOperations.markSubagentLocationsDirty();
+    this.controlOperations.setDefaultContext(context);
   }
 
   setPermissionMode(mode: Parameters<ISession['setPermissionMode']>[0]): void {
-    this.options.permissionMode = mode;
-    this.executionPipelineOperations.reset();
+    this.controlOperations.setPermissionMode(mode);
   }
 
   async setModel(model: Parameters<ISession['setModel']>[0]): Promise<void> {
-    this.options.model = model;
-    const modelConfig = buildSessionModelConfig(this.options);
-    this.bladeConfig.models = [modelConfig];
-    this.bladeConfig.currentModelId = modelConfig.id;
+    await this.controlOperations.setModel(model);
   }
 
   setMaxTurns(maxTurns: Parameters<ISession['setMaxTurns']>[0]): void {
-    this.options.maxTurns = maxTurns;
+    this.controlOperations.setMaxTurns(maxTurns);
   }
 
   async fork(options?: ForkSessionOptions): Promise<ISession> {
