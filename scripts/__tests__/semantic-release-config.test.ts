@@ -420,24 +420,28 @@ describe('package provenance metadata', () => {
 
   it('browser-bundles the packed runtime-independent agent package', () => {
     const packageVerifier = readFileSync(resolve('scripts/verify-packages.mjs'), 'utf8');
+    const agentBrowserBundleSource = readFunctionSource(packageVerifier, 'verifyAgentBrowserBundle');
 
     expect(packageVerifier).toContain('function verifyAgentBrowserBundle');
     expect(packageVerifier).toContain('consumer-agent-browser-entry.ts');
-    expect(packageVerifier).toContain("from '@blade-ai/agent';");
-    expect(packageVerifier).toContain("from '@blade-ai/agent/kernel';");
-    expect(packageVerifier).toContain("from '@blade-ai/agent/loop';");
-    expect(packageVerifier).toContain('AsyncEventQueue');
-    expect(packageVerifier).toContain('decideNoToolTurn');
-    expect(packageVerifier).toContain('decideTurnLimit');
-    expect(packageVerifier).toContain('planToolExecution');
-    expect(packageVerifier).toContain('resolveToolInterruptBehavior');
-    expect(packageVerifier).toContain('createInterruptAwareAbortSignal');
-    expect(packageVerifier).toContain('toolUpdateToAgentEvent');
-    expect(packageVerifier).toContain('ToolKind');
-    expect(packageVerifier).toContain("from '@blade-ai/agent/recovery';");
-    expect(packageVerifier).toContain('isOverflowRecoverable');
-    expect(packageVerifier).toContain('agent browser bundle');
-    expect(packageVerifier).toContain('assertNoBrowserDisallowedMarkers(agentBundleOutput)');
+    expect(agentBrowserBundleSource).toContain("from '@blade-ai/agent';");
+    expect(agentBrowserBundleSource).toContain("from '@blade-ai/agent/kernel';");
+    expect(agentBrowserBundleSource).toContain("from '@blade-ai/agent/loop';");
+    expect(agentBrowserBundleSource).toContain('AsyncEventQueue');
+    expect(agentBrowserBundleSource).toContain('decideNoToolTurn');
+    expect(agentBrowserBundleSource).toContain('decideTurnLimit');
+    expect(agentBrowserBundleSource).toContain('planToolExecution');
+    expect(agentBrowserBundleSource).toContain('resolveToolInterruptBehavior');
+    expect(agentBrowserBundleSource).toContain('createInterruptAwareAbortSignal');
+    expect(agentBrowserBundleSource).toContain('toolUpdateToAgentEvent');
+    expect(agentBrowserBundleSource).toContain('ToolKind');
+    expect(agentBrowserBundleSource).toContain("from '@blade-ai/agent/recovery';");
+    expect(agentBrowserBundleSource).toContain('isOverflowRecoverable');
+    expect(agentBrowserBundleSource).toContain("from '@blade-ai/agent/state';");
+    expect(agentBrowserBundleSource).toContain('modelResponseToAssistantMessage');
+    expect(agentBrowserBundleSource).toContain('toolResultToToolMessage');
+    expect(agentBrowserBundleSource).toContain('agent browser bundle');
+    expect(agentBrowserBundleSource).toContain('assertNoBrowserDisallowedMarkers(agentBundleOutput)');
   });
 });
 
@@ -1658,29 +1662,36 @@ describe('release scripts', () => {
 
   it('browser-bundles the published runtime-independent agent package from the temporary consumer', () => {
     const publishedVerifier = readFileSync(resolve('scripts/verify-published.mjs'), 'utf8');
+    const publishedAgentBrowserBundleSource = readFunctionSource(
+      publishedVerifier,
+      'verifyPublishedAgentBrowserBundleSmoke',
+    );
     const readme = readFileSync(resolve('README.md'), 'utf8');
     const checklist = readFileSync(resolve('docs/production-checklist.md'), 'utf8');
     const roadmap = readFileSync(resolve('docs/roadmap/production-agent-sdk-monorepo.md'), 'utf8');
 
     expect(publishedVerifier).toContain('verifyPublishedAgentBrowserBundleSmoke');
     expect(publishedVerifier).toContain('consumer-agent-browser-entry.ts');
-    expect(publishedVerifier).toContain("from '@blade-ai/agent';");
-    expect(publishedVerifier).toContain("from '@blade-ai/agent/budget';");
-    expect(publishedVerifier).toContain("from '@blade-ai/agent/kernel';");
-    expect(publishedVerifier).toContain("from '@blade-ai/agent/loop';");
-    expect(publishedVerifier).toContain('AsyncEventQueue');
-    expect(publishedVerifier).toContain('decideNoToolTurn');
-    expect(publishedVerifier).toContain('decideTurnLimit');
-    expect(publishedVerifier).toContain('planToolExecution');
-    expect(publishedVerifier).toContain('resolveToolInterruptBehavior');
-    expect(publishedVerifier).toContain('createInterruptAwareAbortSignal');
-    expect(publishedVerifier).toContain('toolUpdateToAgentEvent');
-    expect(publishedVerifier).toContain('ToolKind');
-    expect(publishedVerifier).toContain("from '@blade-ai/agent/recovery';");
-    expect(publishedVerifier).toContain('new TokenBudget');
-    expect(publishedVerifier).toContain('isOverflowRecoverable');
-    expect(publishedVerifier).toContain('agent browser bundle');
-    expect(publishedVerifier).toContain('consumer-agent-browser-bundle.js');
+    expect(publishedAgentBrowserBundleSource).toContain("from '@blade-ai/agent';");
+    expect(publishedAgentBrowserBundleSource).toContain("from '@blade-ai/agent/budget';");
+    expect(publishedAgentBrowserBundleSource).toContain("from '@blade-ai/agent/kernel';");
+    expect(publishedAgentBrowserBundleSource).toContain("from '@blade-ai/agent/loop';");
+    expect(publishedAgentBrowserBundleSource).toContain('AsyncEventQueue');
+    expect(publishedAgentBrowserBundleSource).toContain('decideNoToolTurn');
+    expect(publishedAgentBrowserBundleSource).toContain('decideTurnLimit');
+    expect(publishedAgentBrowserBundleSource).toContain('planToolExecution');
+    expect(publishedAgentBrowserBundleSource).toContain('resolveToolInterruptBehavior');
+    expect(publishedAgentBrowserBundleSource).toContain('createInterruptAwareAbortSignal');
+    expect(publishedAgentBrowserBundleSource).toContain('toolUpdateToAgentEvent');
+    expect(publishedAgentBrowserBundleSource).toContain('ToolKind');
+    expect(publishedAgentBrowserBundleSource).toContain("from '@blade-ai/agent/recovery';");
+    expect(publishedAgentBrowserBundleSource).toContain('new TokenBudget');
+    expect(publishedAgentBrowserBundleSource).toContain('isOverflowRecoverable');
+    expect(publishedAgentBrowserBundleSource).toContain("from '@blade-ai/agent/state';");
+    expect(publishedAgentBrowserBundleSource).toContain('modelResponseToAssistantMessage');
+    expect(publishedAgentBrowserBundleSource).toContain('toolResultToToolMessage');
+    expect(publishedAgentBrowserBundleSource).toContain('agent browser bundle');
+    expect(publishedAgentBrowserBundleSource).toContain('consumer-agent-browser-bundle.js');
     expect(readme).toContain('@blade-ai/agent` browser bundle smoke');
     expect(checklist).toContain('@blade-ai/agent` browser bundle smoke');
     expect(roadmap).toContain('published runtime-independent agent browser bundle');
