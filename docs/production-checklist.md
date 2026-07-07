@@ -83,7 +83,7 @@ pnpm run test:live:session-glm
 
 ## Release Rehearsal
 
-`pnpm run verify` 会先执行无 token 的静态 release gate，校验 semantic-release 配置、root private orchestrator 发布安全、三包 publish metadata、publishable source package version placeholders、source package LICENSE artifacts、`publishConfig.provenance: true`、CI workflow 的 `contents: read` 最小权限、release workflow 的精确发布权限、release workflow 的 verify-before-release 顺序，以及 OIDC trusted publishing 设置：
+`pnpm run verify` 会先执行无 token 的静态 release gate，校验 semantic-release 配置、root private orchestrator 发布安全、三包 publish metadata、publishable source package version placeholders、source package LICENSE artifacts、`publishConfig.provenance: true`、CI workflow 的 `contents: read` 最小权限、docs workflow 的 GitHub Pages 最小权限、release workflow 的精确发布权限、release workflow 的 verify-before-release 顺序，以及 OIDC trusted publishing 设置：
 
 ```bash
 pnpm run verify:release
@@ -116,6 +116,8 @@ dry-run 不发布 npm 包。它通常需要 GitHub token 环境，适合维护�
 release workflow 必须保持 `contents: write`、`issues: write`、`pull-requests: write` 和 `id-token: write` 这组精确权限；不要增加不需要的 `actions`、`packages` 或 OIDC 之外的额外写权限。它还必须保持 `concurrency.group: release-main` 和 `cancel-in-progress: false`，让连续 push 到 `main` 的发布任务串行排队，并避免取消已经进入 publish / post-publish verification 的任务。
 
 CI workflow 必须显式保持 `permissions: { contents: read }`，普通验证任务不需要写入仓库、issues、pull requests 或 OIDC token。
+
+docs workflow 必须显式保持 `permissions: { contents: read, pages: write, id-token: write }`，只允许 GitHub Pages artifact 部署所需权限。
 
 不要绕过 `pnpm run verify` 直接发布。不要在 trusted publishing 流程中依赖长期 `NPM_TOKEN`。
 

@@ -453,6 +453,20 @@ function verifyCiWorkflow() {
   }
 }
 
+function verifyDocsWorkflow() {
+  const workflow = parse(readFileSync(resolve('.github/workflows/deploy-docs.yml'), 'utf8'));
+  const expectedPermissions = {
+    contents: 'read',
+    pages: 'write',
+    'id-token': 'write',
+  };
+
+  assertDeepEqual(workflow.permissions, expectedPermissions, 'docs workflow permissions');
+  if (JSON.stringify(workflow.permissions) !== JSON.stringify(expectedPermissions)) {
+    fail('docs workflow must grant only GitHub Pages deployment permissions');
+  }
+}
+
 function verifyWorkflowDependencyInstalls() {
   const workflowPaths = [
     '.github/workflows/ci.yml',
@@ -492,6 +506,7 @@ verifyPnpmWorkspaceSupplyChainPolicy();
 await verifyPreparedReleaseManifestVersions();
 verifyReleaseWorkflow();
 verifyCiWorkflow();
+verifyDocsWorkflow();
 verifyWorkflowDependencyInstalls();
 
 console.log('release configuration verification passed');

@@ -1785,4 +1785,20 @@ describe('ci workflow', () => {
     expect(releaseVerifier).toContain('ci workflow permissions');
     expect(releaseVerifier).toContain('ci workflow must grant only contents: read');
   });
+
+  it('keeps docs deployment workflow permissions least-privilege', () => {
+    const workflow = parse(
+      readFileSync(resolve('.github/workflows/deploy-docs.yml'), 'utf8')
+    );
+    const releaseVerifier = readFileSync(resolve('scripts/verify-release-config.mjs'), 'utf8');
+
+    expect(workflow.permissions).toEqual({
+      contents: 'read',
+      pages: 'write',
+      'id-token': 'write',
+    });
+    expect(releaseVerifier).toContain('verifyDocsWorkflow');
+    expect(releaseVerifier).toContain('docs workflow permissions');
+    expect(releaseVerifier).toContain('docs workflow must grant only GitHub Pages deployment permissions');
+  });
 });
