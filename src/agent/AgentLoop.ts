@@ -32,6 +32,7 @@ import { buildAgentLoopTokenUsageInfo } from './loop/tokenUsage.js';
 import { buildAgentToolResultContent } from './loop/toolResultContent.js';
 import type { FunctionToolCall } from './loop/types.js';
 import type { ConversationState } from './state/ConversationState.js';
+import { markToolInjectedSystemMessages } from './state/toolInjectedMessages.js';
 import type { TurnState } from './state/TurnState.js';
 import type { TokenBudget } from './TokenBudget.js';
 import type { LoopResult, TurnLimitResponse } from './types.js';
@@ -117,12 +118,6 @@ export interface AgentLoopConfig {
   tokenBudget?: TokenBudget;
   prepareTurnState: (turn: number) => TurnState;
   hooks?: AgentLoopHooks;
-}
-
-// ===== 辅助 =====
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
 // ===== 核心循环 =====
@@ -528,19 +523,7 @@ export async function* agentLoop(
       });
 
       if (result.newMessages && result.newMessages.length > 0) {
-        convState.append(
-          ...result.newMessages.map((message) => ({
-            ...message,
-            ...(message.role === 'system'
-              ? {
-                  metadata: {
-                    ...(isRecord(message.metadata) ? message.metadata : {}),
-                    _systemSource: 'tool_injection' as const,
-                  },
-                }
-              : {}),
-          })),
-        );
+        convState.append(...markToolInjectedSystemMessages(result.newMessages));
       }
     }
 

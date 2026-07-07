@@ -345,6 +345,7 @@ describe('monorepo topology', () => {
       'packages/agent/src/recovery/isOverflowRecoverable.ts',
       'packages/agent/src/state/index.ts',
       'packages/agent/src/state/systemSource.ts',
+      'packages/agent/src/state/toolInjectedMessages.ts',
       'packages/agent/src/tracing/index.ts',
     ]) {
       expect(existsSync(file), file).toBe(true);
@@ -357,6 +358,7 @@ describe('monorepo topology', () => {
     expect(existsSync('packages/agent/src/__tests__/loopResult.test.ts')).toBe(true);
     expect(existsSync('packages/agent/src/__tests__/tokenUsageProjection.test.ts')).toBe(true);
     expect(existsSync('packages/agent/src/__tests__/toolResultContent.test.ts')).toBe(true);
+    expect(existsSync('packages/agent/src/__tests__/toolInjectedMessages.test.ts')).toBe(true);
     expect(existsSync('packages/agent/src/__tests__/repairToolCallParamsBehavior.test.ts')).toBe(
       true,
     );
@@ -384,10 +386,12 @@ describe('monorepo topology', () => {
     expect(rootAgentLoopSource).toContain('buildAgentLoopToolExitResult');
     expect(rootAgentLoopSource).toContain('buildAgentLoopTokenUsageInfo');
     expect(rootAgentLoopSource).toContain('buildAgentToolResultContent');
+    expect(rootAgentLoopSource).toContain('markToolInjectedSystemMessages');
     expect(rootAgentLoopSource).not.toContain('function buildAbortResult');
     expect(rootAgentLoopSource).not.toContain('return {\n        success: true,');
     expect(rootAgentLoopSource).not.toContain('const usage: TokenUsageInfo =');
     expect(rootAgentLoopSource).not.toContain('let toolResultContent =');
+    expect(rootAgentLoopSource).not.toContain("_systemSource: 'tool_injection' as const");
     expect(rootAgentLoopSource).not.toContain('shouldExitLoop: true,\n            targetMode:');
     expect(rootAgentLoopSource).not.toContain('message: \'Token budget exhausted\'');
     expect(rootAgentLoopSource).not.toContain(
@@ -395,6 +399,7 @@ describe('monorepo topology', () => {
     );
     expect(agentRecoverySource).toContain("from './isOverflowRecoverable.js'");
     expect(agentStateSource).toContain("from './systemSource.js'");
+    expect(agentStateSource).toContain("from './toolInjectedMessages.js'");
   });
 
   it('publishes agent kernel modules as explicit subpath exports', () => {
