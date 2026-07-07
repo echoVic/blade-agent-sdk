@@ -347,6 +347,9 @@ describe('package provenance metadata', () => {
     expect(packageVerifier).toContain("assertRuntimeExport(agent, 'ExecutionEpoch')");
     expect(packageVerifier).toContain("assertRuntimeExport(agentEpoch, 'ExecutionEpoch')");
     expect(packageVerifier).toContain("assertRuntimeExport(agentKernel, 'AgentKernel')");
+    expect(packageVerifier).toContain("assertRuntimeExport(agentState, 'isValidSystemSource')");
+    expect(packageVerifier).toContain("assertRuntimeExport(agentState, 'VALID_SYSTEM_SOURCES')");
+    expect(packageVerifier).toContain("agentState.isValidSystemSource('catalog')");
     expect(packageVerifier).toContain("assertRuntimeExport(agentSdk, 'createSession')");
     expect(packageVerifier).toContain("assertRuntimeExport(agentSdk, 'defineTool')");
     expect(packageVerifier).toContain("assertNoRuntimeExport(agentSdk, 'getBuiltinTools')");
@@ -735,11 +738,13 @@ describe('release scripts', () => {
     expect(publishedVerifier).toContain("assertRuntimeExport(agentBudget, 'TokenBudget')");
     expect(publishedVerifier).toContain("assertRuntimeExport(agent, 'ExecutionEpoch')");
     expect(publishedVerifier).toContain("assertRuntimeExport(agentEpoch, 'ExecutionEpoch')");
+    expect(publishedVerifier).toContain("assertRuntimeExport(agentState, 'isValidSystemSource')");
+    expect(publishedVerifier).toContain("assertRuntimeExport(agentState, 'VALID_SYSTEM_SOURCES')");
+    expect(publishedVerifier).toContain("agentState.isValidSystemSource('catalog')");
     expect(publishedVerifier).toContain("import * as agentPorts from '@blade-ai/agent/ports';");
     expect(publishedVerifier).toContain("import * as agentState from '@blade-ai/agent/state';");
     expect(publishedVerifier).toContain("import * as agentTracing from '@blade-ai/agent/tracing';");
     expect(publishedVerifier).toContain("@blade-ai/agent/ports should remain type-only at runtime");
-    expect(publishedVerifier).toContain("@blade-ai/agent/state should remain type-only at runtime");
     expect(publishedVerifier).toContain("@blade-ai/agent/tracing should remain type-only at runtime");
     expect(publishedVerifier).toContain("assertRuntimeExport(agentSdk, 'createSession')");
     expect(publishedVerifier).toContain("assertNoRuntimeExport(agentSdk, 'getBuiltinTools')");
@@ -1505,6 +1510,8 @@ describe('release scripts', () => {
     expect(publishedVerifier).toContain("from '@blade-ai/agent/ports';");
     expect(publishedVerifier).toContain("from '@blade-ai/agent/protocol';");
     expect(publishedVerifier).toContain("from '@blade-ai/agent/state';");
+    expect(publishedVerifier).toContain('SystemSource');
+    expect(publishedVerifier).toContain('isValidSystemSource');
     expect(publishedVerifier).toContain("from '@blade-ai/agent/tracing';");
     expect(publishedVerifier).toContain('AgentStorePort');
     expect(publishedVerifier).toContain('AgentTracePort');

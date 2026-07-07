@@ -1490,6 +1490,11 @@ assertRuntimeExport(agent, 'ExecutionEpoch');
 assertRuntimeExport(agentBudget, 'TokenBudget');
 assertRuntimeExport(agentEpoch, 'ExecutionEpoch');
 assertRuntimeExport(agentKernel, 'AgentKernel');
+assertRuntimeExport(agentState, 'isValidSystemSource');
+assertRuntimeExport(agentState, 'VALID_SYSTEM_SOURCES');
+if (!agentState.isValidSystemSource('catalog') || agentState.isValidSystemSource('unknown')) {
+  throw new Error('@blade-ai/agent/state system source guard returned an unexpected result');
+}
 assertRuntimeExport(agentSdk, 'createSession');
 assertRuntimeExport(agentSdk, 'defineTool');
 assertNoRuntimeExport(agentSdk, 'getBuiltinTools');
@@ -1521,9 +1526,6 @@ if (Object.keys(agentProtocol).length !== 0) {
 }
 if (Object.keys(agentPorts).length !== 0) {
   throw new Error('@blade-ai/agent/ports should remain type-only at runtime');
-}
-if (Object.keys(agentState).length !== 0) {
-  throw new Error('@blade-ai/agent/state should remain type-only at runtime');
 }
 if (Object.keys(agentTracing).length !== 0) {
   throw new Error('@blade-ai/agent/tracing should remain type-only at runtime');
@@ -1657,7 +1659,9 @@ import type {
 import type {
   AgentStoreAppendContext,
   AgentStorePort,
+  SystemSource,
 } from '@blade-ai/agent/state';
+import { isValidSystemSource } from '@blade-ai/agent/state';
 import type {
   AgentTraceEvent,
   AgentTracePort,
@@ -1890,6 +1894,8 @@ const agentStoreContext: AgentStoreAppendContext = {
 const agentStorePort: AgentStorePort = {
   appendMessage() {},
 };
+const systemSource: SystemSource = 'catalog';
+const isCatalogSystemSource: boolean = isValidSystemSource(systemSource);
 const agentTraceEvent: AgentTraceEvent = {
   type: 'turn_start',
   input: 'hello',
@@ -2063,6 +2069,7 @@ void agentPermissionPort;
 void agentHookPort;
 void agentStoreContext;
 void agentStorePort;
+void isCatalogSystemSource;
 void agentTraceEvent;
 void agentTracePort;
 void runtimeContext;

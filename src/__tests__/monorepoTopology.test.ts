@@ -330,14 +330,17 @@ describe('monorepo topology', () => {
       'packages/agent/src/protocol/index.ts',
       'packages/agent/src/ports/index.ts',
       'packages/agent/src/state/index.ts',
+      'packages/agent/src/state/systemSource.ts',
       'packages/agent/src/tracing/index.ts',
     ]) {
       expect(existsSync(file), file).toBe(true);
     }
 
     const agentIndexSource = readFileSync('packages/agent/src/index.ts', 'utf-8');
+    const agentStateSource = readFileSync('packages/agent/src/state/index.ts', 'utf-8');
 
     expect(agentIndexSource).not.toContain('class AgentKernel');
+    expect(agentStateSource).toContain("from './systemSource.js'");
   });
 
   it('publishes agent kernel modules as explicit subpath exports', () => {
