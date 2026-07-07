@@ -651,6 +651,10 @@ async function verifyPublishedPackageFileScope({ consumerDir }) {
       );
     }
 
+    for (const filePath of files) {
+      assertAllowedPackageArtifact(requirement.packageName, filePath);
+    }
+
     assertNoCliProductFiles(requirement.packageName, files);
   }
   console.log('[verify-published] temporary consumer published package file scope passed');
@@ -663,6 +667,14 @@ function isTypeScriptSourceArtifact(filePath) {
 function isTypeScriptBuildConfigArtifact(filePath) {
   const fileName = filePath.split('/').at(-1) ?? filePath;
   return /^tsconfig(?:\.[^/]+)?\.json$/.test(fileName) || /^tsup\.config\.[cm]?[jt]s$/.test(fileName);
+}
+
+function assertAllowedPackageArtifact(packageName, filePath) {
+  const alwaysAllowed = new Set(['package.json', 'README.md', 'LICENSE']);
+  if (alwaysAllowed.has(filePath) || filePath.startsWith('dist/')) return;
+  if (packageName === '@blade-ai/agent-sdk' && filePath.startsWith('vendor/ripgrep/')) return;
+
+  throw new Error(`${packageName} installed package includes an unexpected package artifact: ${filePath}`);
 }
 
 async function calculateDirectorySizeBytes(directory) {

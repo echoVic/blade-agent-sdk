@@ -564,6 +564,10 @@ function verifyTarballContents(spec, tarballPath) {
     throw new Error(`${spec.name} tarball includes TypeScript source artifacts: ${typescriptArtifactEntry}`);
   }
 
+  for (const entry of entries) {
+    assertAllowedPackageArtifact(spec.name, entry);
+  }
+
   assertNoCliProductFiles(spec.name, entries);
 }
 
@@ -575,6 +579,31 @@ function isTypeScriptBuildConfigArtifact(entry) {
   const normalized = entry.startsWith('package/') ? entry.slice('package/'.length) : entry;
   const fileName = normalized.split('/').at(-1) ?? normalized;
   return /^tsconfig(?:\.[^/]+)?\.json$/.test(fileName) || /^tsup\.config\.[cm]?[jt]s$/.test(fileName);
+}
+
+function assertAllowedPackageArtifact(packageName, entry) {
+  const alwaysAllowed = new Set([
+    'package',
+    'package/',
+    'package/package.json',
+    'package/README.md',
+    'package/LICENSE',
+    'package/dist',
+    'package/dist/',
+  ]);
+  if (alwaysAllowed.has(entry) || entry.startsWith('package/dist/')) return;
+  if (
+    packageName === '@blade-ai/agent-sdk' &&
+    (entry === 'package/vendor' ||
+      entry === 'package/vendor/' ||
+      entry === 'package/vendor/ripgrep' ||
+      entry === 'package/vendor/ripgrep/' ||
+      entry.startsWith('package/vendor/ripgrep/'))
+  ) {
+    return;
+  }
+
+  throw new Error(`${packageName} tarball includes an unexpected package artifact: ${entry}`);
 }
 
 function assertNoCliProductFiles(packageName, entries) {

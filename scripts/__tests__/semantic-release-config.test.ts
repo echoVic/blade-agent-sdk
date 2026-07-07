@@ -973,6 +973,24 @@ describe('release scripts', () => {
     expect(roadmap).toContain('TypeScript artifact-scope gate');
   });
 
+  it('verifies packed and published package artifact allowlists', () => {
+    const packageVerifier = readFileSync(resolve('scripts/verify-packages.mjs'), 'utf8');
+    const publishedVerifier = readFileSync(resolve('scripts/verify-published.mjs'), 'utf8');
+    const readme = readFileSync(resolve('README.md'), 'utf8');
+    const checklist = readFileSync(resolve('docs/production-checklist.md'), 'utf8');
+    const roadmap = readFileSync(resolve('docs/roadmap/production-agent-sdk-monorepo.md'), 'utf8');
+
+    expect(packageVerifier).toContain('assertAllowedPackageArtifact');
+    expect(packageVerifier).toContain('tarball includes an unexpected package artifact');
+    expect(packageVerifier).toContain("'package/vendor/ripgrep/'");
+    expect(publishedVerifier).toContain('assertAllowedPackageArtifact');
+    expect(publishedVerifier).toContain('installed package includes an unexpected package artifact');
+    expect(publishedVerifier).toContain("'vendor/ripgrep/'");
+    expect(readme).toContain('package artifact allowlist');
+    expect(checklist).toContain('package artifact allowlist');
+    expect(roadmap).toContain('package artifact allowlist gate');
+  });
+
   it('verifies published package manifest entry targets from the temporary consumer install', () => {
     const publishedVerifier = readFileSync(resolve('scripts/verify-published.mjs'), 'utf8');
     const checklist = readFileSync(resolve('docs/production-checklist.md'), 'utf8');
