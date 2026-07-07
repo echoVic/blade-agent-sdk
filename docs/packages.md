@@ -70,6 +70,7 @@ const model = createOpenAICompatibleModelPort({
 import { AgentKernel } from '@blade-ai/agent';
 import { TokenBudget } from '@blade-ai/agent/budget';
 import { ExecutionEpoch } from '@blade-ai/agent/epoch';
+import { isOverflowRecoverable } from '@blade-ai/agent/recovery';
 import { isValidSystemSource } from '@blade-ai/agent/state';
 ```
 
@@ -83,6 +84,7 @@ Kernel 通过 ports 访问外部能力：
 - trace port 由调用方注入
 - token budget 可通过 `@blade-ai/agent/budget` 注入，并通过 `budget_warning` / `budget_exhausted` 事件观察
 - streaming loop 事务边界可通过 `@blade-ai/agent/epoch` 的 `ExecutionEpoch` 标识，adapter 可用它丢弃 retry/fallback 后迟到的事件或副作用
+- reactive compaction 入口可通过 `@blade-ai/agent/recovery` 的 `isOverflowRecoverable()` 判断模型错误是否属于可恢复的上下文溢出
 - 受控 system 消息来源可通过 `@blade-ai/agent/state` 的 `isValidSystemSource()` 归一化
 
 完整示例见 [`examples/agent-kernel.ts`](../examples/agent-kernel.ts)，它用一个内存 `ModelPort` 演示 `kernel.runTurn()` 的事件流。

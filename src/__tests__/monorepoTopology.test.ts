@@ -322,13 +322,15 @@ describe('monorepo topology', () => {
     expect(permissionsSource).toContain('createCompositePermissionHandler');
   });
 
-  it('organizes the agent package around kernel, budget, protocol, ports, state, and tracing modules', () => {
+  it('organizes the agent package around kernel, budget, protocol, ports, recovery, state, and tracing modules', () => {
     for (const file of [
       'packages/agent/src/kernel/AgentKernel.ts',
       'packages/agent/src/budget/TokenBudget.ts',
       'packages/agent/src/epoch/ExecutionEpoch.ts',
       'packages/agent/src/protocol/index.ts',
       'packages/agent/src/ports/index.ts',
+      'packages/agent/src/recovery/index.ts',
+      'packages/agent/src/recovery/isOverflowRecoverable.ts',
       'packages/agent/src/state/index.ts',
       'packages/agent/src/state/systemSource.ts',
       'packages/agent/src/tracing/index.ts',
@@ -337,9 +339,11 @@ describe('monorepo topology', () => {
     }
 
     const agentIndexSource = readFileSync('packages/agent/src/index.ts', 'utf-8');
+    const agentRecoverySource = readFileSync('packages/agent/src/recovery/index.ts', 'utf-8');
     const agentStateSource = readFileSync('packages/agent/src/state/index.ts', 'utf-8');
 
     expect(agentIndexSource).not.toContain('class AgentKernel');
+    expect(agentRecoverySource).toContain("from './isOverflowRecoverable.js'");
     expect(agentStateSource).toContain("from './systemSource.js'");
   });
 
@@ -368,6 +372,10 @@ describe('monorepo topology', () => {
         types: './dist/ports/index.d.ts',
         import: './dist/ports/index.js',
       },
+      './recovery': {
+        types: './dist/recovery/index.d.ts',
+        import: './dist/recovery/index.js',
+      },
       './state': {
         types: './dist/state/index.d.ts',
         import: './dist/state/index.js',
@@ -382,6 +390,7 @@ describe('monorepo topology', () => {
     expect(agentBuildConfig).toContain('epoch/ExecutionEpoch');
     expect(agentBuildConfig).toContain('protocol/index');
     expect(agentBuildConfig).toContain('ports/index');
+    expect(agentBuildConfig).toContain('recovery/index');
     expect(agentBuildConfig).toContain('state/index');
     expect(agentBuildConfig).toContain('tracing/index');
   });
