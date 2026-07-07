@@ -973,6 +973,57 @@ describe('agent-sdk package-local session runtime shell', () => {
     ]);
   });
 
+  it('refreshes subagent locations after default context changes during capability initialization', async () => {
+    const calls: unknown[] = [];
+    let runtime: PackageLocalSessionRuntime;
+    runtime = new PackageLocalSessionRuntime({
+      sessionId: 'session-1',
+      options: {
+        ...options,
+        storagePath: '/workspace/.blade/sessions',
+      },
+      bladeConfig,
+      defaultContext: {
+        capabilities: {
+          filesystem: {
+            roots: ['/project-old'],
+            cwd: '/project-old',
+          },
+        },
+      },
+      subagentRegistry: {
+        setLogger() {},
+        setProjectDir(projectDir) {
+          calls.push(['setProjectDir', projectDir]);
+        },
+        loadFromStandardLocations(projectDir, storageRoot) {
+          calls.push(['loadFromStandardLocations', projectDir, storageRoot]);
+          if (projectDir === '/project-old') {
+            runtime.setDefaultContext({
+              capabilities: {
+                filesystem: {
+                  roots: ['/project-new'],
+                  cwd: '/project-new',
+                },
+              },
+            });
+          }
+        },
+        register() {},
+      },
+    });
+
+    await runtime.ensureRuntimeCapabilitiesInitialized();
+    await runtime.ensureRuntimeCapabilitiesInitialized();
+
+    expect(calls).toEqual([
+      ['setProjectDir', '/project-old'],
+      ['loadFromStandardLocations', '/project-old', '/workspace/.blade'],
+      ['setProjectDir', '/project-new'],
+      ['loadFromStandardLocations', '/project-new', '/workspace/.blade'],
+    ]);
+  });
+
   it('retries runtime capability initialization after a failed attempt', async () => {
     const registerAll = vi.fn();
     const providerFailure = new Error('builtin provider unavailable');

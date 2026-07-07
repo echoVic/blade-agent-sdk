@@ -430,6 +430,7 @@ Status:
 - One hundred fourteenth adapter increment complete: default-context project path derivation now updates with `setDefaultContext()`. Package-local subagent initialization reads the current runtime project path through a getter, so standard subagent location discovery follows the latest session-first workspace context instead of the construction-time cwd.
 - One hundred fifteenth adapter increment complete: default-context changes now refresh package-local subagent standard-location discovery after runtime capabilities have already been initialized. The runtime keeps the broader capability initialization cache intact, but marks subagent locations dirty after `setDefaultContext()` so the next kernel turn sees the latest session-first workspace cwd.
 - One hundred sixteenth adapter increment complete: package-local runtime capability initialization can now recover from failed attempts. A rejected initialization clears the cached promise and initialized marker, allowing the next kernel turn to retry builtin/custom/MCP/subagent/hook setup instead of replaying a stale failure forever.
+- One hundred seventeenth adapter increment complete: default-context changes during in-flight runtime capability initialization now also mark subagent standard-location discovery dirty. If subagent discovery already ran with the old cwd before initialization settles, the next ensure pass refreshes it with the latest session-first workspace context instead of missing the update window.
 
 ### Phase 5: Production Verification Chain
 

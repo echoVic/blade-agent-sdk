@@ -516,7 +516,7 @@ export class PackageLocalSessionRuntime {
   setDefaultContext(context: RuntimeContext): void {
     this.defaultContext = context;
     this.projectPath = getPackageLocalRuntimeContextCwd(context);
-    if (this.runtimeCapabilitiesInitialized) {
+    if (this.runtimeCapabilitiesInitialized || this.runtimeCapabilitiesInitialization) {
       this.subagentLocationsNeedRefresh = true;
     }
   }
