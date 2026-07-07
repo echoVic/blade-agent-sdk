@@ -4,8 +4,8 @@ import {
   buildSessionModelConfig,
   getDefaultProviderBaseUrl,
   mapSessionProviderType,
-} from '../../packages/agent-sdk/src/session/config.js';
-import type { SessionOptions } from '../../packages/agent-sdk/src/session/types.js';
+} from '../session/config.js';
+import type { SessionOptions } from '../session/types.js';
 
 describe('agent-sdk package-local session config builder', () => {
   it('builds model and blade config from session options without root Session helpers', () => {
