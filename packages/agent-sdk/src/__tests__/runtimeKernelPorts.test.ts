@@ -1,8 +1,8 @@
 import { existsSync } from 'node:fs';
 import { describe, expect, it, vi } from 'vitest';
 
-const kernelPortsModulePath = '../../packages/agent-sdk/src/session/runtimeKernelPorts.js';
-const kernelPortsSourcePath = 'packages/agent-sdk/src/session/runtimeKernelPorts.ts';
+const kernelPortsModulePath = '../session/runtimeKernelPorts.js';
+const kernelPortsSourcePath = 'src/session/runtimeKernelPorts.ts';
 
 describe('agent-sdk package-local runtime kernel port helpers', () => {
   it('creates kernel ports through a package-local factory without runtime state', async () => {
