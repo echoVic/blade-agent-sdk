@@ -493,6 +493,11 @@ describe('monorepo topology', () => {
     )
       ? readFileSync('packages/agent-sdk/src/session/runtimeSessionCapabilities.ts', 'utf-8')
       : '';
+    const runtimeCapabilitiesSource = existsSync(
+      'packages/agent-sdk/src/session/runtimeCapabilities.ts',
+    )
+      ? readFileSync('packages/agent-sdk/src/session/runtimeCapabilities.ts', 'utf-8')
+      : '';
     const runtimeMcpCapabilitiesSource = existsSync(
       'packages/agent-sdk/src/session/runtimeMcpCapabilities.ts',
     )
@@ -999,6 +1004,31 @@ describe('monorepo topology', () => {
     );
     expect(packageLocalRuntimeInstanceSource).not.toContain(
       'Object.entries(this.options.agents ?? {})',
+    );
+    expect(existsSync('packages/agent-sdk/src/session/runtimeCapabilities.ts')).toBe(true);
+    expect(runtimeCapabilitiesSource).not.toContain('../../../../src/');
+    expect(runtimeCapabilitiesSource).toContain(
+      'createPackageLocalRuntimeCapabilityInitializationOperations',
+    );
+    expect(runtimeCapabilitiesSource).toContain(
+      'runtimeCapabilitiesInitialization',
+    );
+    expect(runtimeCapabilitiesSource).toContain('subagentLocationsNeedRefresh');
+    expect(packageLocalRuntimeInstanceSource).toContain('capabilityInitializationOperations');
+    expect(packageLocalRuntimeInstanceSource).not.toContain(
+      'private runtimeCapabilitiesInitialization',
+    );
+    expect(packageLocalRuntimeInstanceSource).not.toContain(
+      'private runtimeCapabilitiesInitialized',
+    );
+    expect(packageLocalRuntimeInstanceSource).not.toContain(
+      'private subagentLocationsNeedRefresh',
+    );
+    expect(packageLocalRuntimeInstanceSource).not.toContain(
+      'this.runtimeCapabilitiesInitialization ??=',
+    );
+    expect(packageLocalRuntimeInstanceSource).not.toContain(
+      'this.subagentLocationsNeedRefresh = true',
     );
     expect(packageLocalRuntimeInstanceSource).toContain('createPermissionHandler');
     expect(packageLocalRuntimeInstanceSource).toContain('PackageLocalRuntimePermissionHookPort');

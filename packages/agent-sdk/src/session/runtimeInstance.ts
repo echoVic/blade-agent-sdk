@@ -101,6 +101,10 @@ import type {
 import { createPackageLocalRuntimeTurnOperations } from './runtimeTurn.js';
 import type { PackageLocalRuntimeForkOperations } from './runtimeForking.js';
 import { createPackageLocalRuntimeSessionCapabilityOperations } from './runtimeSessionCapabilities.js';
+import {
+  createPackageLocalRuntimeCapabilityInitializationOperations,
+  type PackageLocalRuntimeCapabilityInitializationOperations,
+} from './runtimeCapabilities.js';
 import type { SessionTraceManager } from './traces.js';
 import type { SessionSnapshot } from './store.js';
 
@@ -325,9 +329,7 @@ export class PackageLocalSessionRuntime {
   private readonly traceOperations: PackageLocalRuntimeTraceOperations;
   private readonly forkOperations: PackageLocalRuntimeForkOperations;
   private readonly traceManager: SessionTraceManager;
-  private runtimeCapabilitiesInitialization?: Promise<void>;
-  private runtimeCapabilitiesInitialized = false;
-  private subagentLocationsNeedRefresh = false;
+  private readonly capabilityInitializationOperations: PackageLocalRuntimeCapabilityInitializationOperations;
 
   constructor(options: PackageLocalSessionRuntimeOptions) {
     this.sessionId = options.sessionId;
@@ -462,6 +464,11 @@ export class PackageLocalSessionRuntime {
     this.traceManager = turnOperations.traceManager;
     this.kernelTurnStreamOperations = turnOperations.kernelTurnStream;
     this.traceOperations = turnOperations.traceOperations;
+    this.capabilityInitializationOperations =
+      createPackageLocalRuntimeCapabilityInitializationOperations({
+        initializeRuntimeCapabilities: () => this.initializeRuntimeCapabilities(),
+        initializeSubagents: () => this.initializeSubagents(),
+      });
   }
 
   getConfiguredMcpServers(): Record<string, McpServerConfig | SdkMcpServerHandle> {
@@ -516,9 +523,7 @@ export class PackageLocalSessionRuntime {
   setDefaultContext(context: RuntimeContext): void {
     this.defaultContext = context;
     this.projectPath = getPackageLocalRuntimeContextCwd(context);
-    if (this.runtimeCapabilitiesInitialized || this.runtimeCapabilitiesInitialization) {
-      this.subagentLocationsNeedRefresh = true;
-    }
+    this.capabilityInitializationOperations.markSubagentLocationsDirty();
   }
 
   setPermissionMode(mode: Parameters<ISession['setPermissionMode']>[0]): void {
@@ -566,21 +571,7 @@ export class PackageLocalSessionRuntime {
   }
 
   async ensureRuntimeCapabilitiesInitialized(): Promise<void> {
-    this.runtimeCapabilitiesInitialization ??= this.initializeRuntimeCapabilities()
-      .then(() => {
-        this.runtimeCapabilitiesInitialized = true;
-      })
-      .catch((error: unknown) => {
-        this.runtimeCapabilitiesInitialization = undefined;
-        this.runtimeCapabilitiesInitialized = false;
-        throw error;
-      });
-    await this.runtimeCapabilitiesInitialization;
-
-    if (this.subagentLocationsNeedRefresh) {
-      this.subagentLocationsNeedRefresh = false;
-      this.initializeSubagents();
-    }
+    await this.capabilityInitializationOperations.ensureInitialized();
   }
 
   private async initializeRuntimeCapabilities(): Promise<void> {
