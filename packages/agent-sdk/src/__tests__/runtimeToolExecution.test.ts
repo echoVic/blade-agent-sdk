@@ -1,16 +1,41 @@
 import { describe, expect, it, vi } from 'vitest';
-import { createContextSnapshot } from '../../../runtime/index.js';
-import { SessionId } from '../../../types/branded.js';
-import { executeToolCalls } from '../executeToolCalls.js';
+import type { ContextSnapshot } from '../runtime/types.js';
+import {
+  executePackageLocalToolCalls,
+  type PackageLocalToolExecutionPipelinePort,
+} from '../session/runtimeToolExecution.js';
+import type { ToolResult } from '../tools/types/index.js';
 
-describe('executeToolCalls', () => {
-  it('should forward the turn-scoped context snapshot into tool execution', async () => {
+function snapshot(): ContextSnapshot {
+  return {
+    sessionId: 'session-1',
+    turnId: 'turn-1',
+    context: {
+      capabilities: {
+        filesystem: {
+          roots: ['/snapshot-root'],
+          cwd: '/snapshot-root',
+        },
+      },
+    },
+    filesystemRoots: ['/snapshot-root'],
+    cwd: '/snapshot-root',
+    environment: {},
+  };
+}
+
+describe('agent-sdk package-local runtime tool execution', () => {
+  it('forwards the turn-scoped context snapshot into tool execution', async () => {
     const execute = vi.fn(async () => ({
-      success: true,
+      success: true as const,
       llmContent: 'ok',
     }));
+    const pipeline: PackageLocalToolExecutionPipelinePort = {
+      execute,
+      getRegistry: () => ({ get: () => undefined }),
+    };
 
-    await executeToolCalls({
+    await executePackageLocalToolCalls({
       plan: {
         mode: 'serial',
         calls: [
@@ -24,23 +49,11 @@ describe('executeToolCalls', () => {
           },
         ],
       },
-      executionPipeline: {
-        execute,
-        getRegistry: () => ({
-          get: () => undefined,
-        }),
-      } as never,
+      executionPipeline: pipeline,
       executionContext: {
-        sessionId: SessionId('session-1'),
+        sessionId: 'session-1',
         userId: 'user-1',
-        contextSnapshot: createContextSnapshot(SessionId('session-1'), 'turn-1', {
-          capabilities: {
-            filesystem: {
-              roots: ['/snapshot-root'],
-              cwd: '/snapshot-root',
-            },
-          },
-        }),
+        contextSnapshot: snapshot(),
       },
     });
 
@@ -56,16 +69,15 @@ describe('executeToolCalls', () => {
     );
   });
 
-  it('should ignore an already-aborted outer signal for block-interrupt tools', async () => {
+  it('ignores an already-aborted outer signal for block-interrupt tools', async () => {
     const controller = new AbortController();
     controller.abort();
-
     const execute = vi.fn(async () => ({
-      success: true,
+      success: true as const,
       llmContent: 'ok',
     }));
 
-    await executeToolCalls({
+    await executePackageLocalToolCalls({
       plan: {
         mode: 'serial',
         calls: [
@@ -84,9 +96,9 @@ describe('executeToolCalls', () => {
         getRegistry: () => ({
           get: () => ({ kind: 'execute', interruptBehavior: 'block' }),
         }),
-      } as never,
+      },
       executionContext: {
-        sessionId: SessionId('session-1'),
+        sessionId: 'session-1',
         userId: 'user-1',
       },
       signal: controller.signal,
@@ -103,10 +115,10 @@ describe('executeToolCalls', () => {
     );
   });
 
-  it('emits a unified ready-progress-message-effect-result-completed update sequence for each tool call', async () => {
+  it('emits a unified ready-progress-message-effect-result-completed update sequence', async () => {
     const updates: string[] = [];
 
-    await executeToolCalls({
+    await executePackageLocalToolCalls({
       plan: {
         mode: 'serial',
         calls: [
@@ -121,27 +133,27 @@ describe('executeToolCalls', () => {
         ],
       },
       executionPipeline: {
-        execute: vi.fn(async (_toolName, _params, context) => {
-          await context?.onProgress?.('Scanning');
-          await context?.updateOutput?.('Scan complete');
+        execute: vi.fn(async (_toolName, _params, context): Promise<ToolResult> => {
+          await context.onProgress?.('Scanning');
+          await context.updateOutput?.('Scan complete');
           return {
-            success: true,
+            success: true as const,
             llmContent: 'ok',
             effects: [
               {
-                type: 'runtimePatch',
+                type: 'runtimePatch' as const,
                 patch: {
-                  scope: 'turn',
-                  source: 'tool',
+                  scope: 'turn' as const,
+                  source: 'tool' as const,
                   toolDiscovery: {
                     discover: ['Read'],
                   },
                 },
               },
               {
-                type: 'contextPatch',
+                type: 'contextPatch' as const,
                 patch: {
-                  scope: 'turn',
+                  scope: 'turn' as const,
                   context: {
                     metadata: {
                       key: 'value',
@@ -150,15 +162,15 @@ describe('executeToolCalls', () => {
                 },
               },
               {
-                type: 'newMessages',
-                messages: [{ role: 'assistant', content: 'injected' }],
+                type: 'newMessages' as const,
+                messages: [{ role: 'assistant' as const, content: 'injected' }],
               },
               {
-                type: 'permissionUpdates',
+                type: 'permissionUpdates' as const,
                 updates: [
                   {
-                    type: 'addRules',
-                    behavior: 'allow',
+                    type: 'addRules' as const,
+                    behavior: 'allow' as const,
                     rules: [{ toolName: 'Read', ruleContent: 'sig:read' }],
                   },
                 ],
@@ -166,12 +178,10 @@ describe('executeToolCalls', () => {
             ],
           };
         }),
-        getRegistry: () => ({
-          get: () => undefined,
-        }),
-      } as never,
+        getRegistry: () => ({ get: () => undefined }),
+      },
       executionContext: {
-        sessionId: SessionId('session-1'),
+        sessionId: 'session-1',
         userId: 'user-1',
       },
       hooks: {
