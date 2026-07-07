@@ -1,10 +1,10 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
   createPackageLocalRuntimeControlOperations,
-} from '../../packages/agent-sdk/src/session/runtimeControls.js';
-import type { RuntimeContext } from '../../packages/agent-sdk/src/runtime/types.js';
-import { PermissionMode, type BladeConfig } from '../../packages/agent-sdk/src/types/common.js';
-import type { SessionOptions } from '../../packages/agent-sdk/src/session/types.js';
+} from '../session/runtimeControls.js';
+import type { RuntimeContext } from '../runtime/types.js';
+import { PermissionMode, type BladeConfig } from '../types/common.js';
+import type { SessionOptions } from '../session/types.js';
 
 describe('agent-sdk package-local runtime control helpers', () => {
   it('updates session control state through package-local operations', async () => {
