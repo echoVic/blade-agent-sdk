@@ -2,9 +2,9 @@ import { existsSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 
 const runtimeSessionOperationsModulePath =
-  '../../packages/agent-sdk/src/session/runtimeSessionOperations.js';
+  '../session/runtimeSessionOperations.js';
 const runtimeSessionOperationsSourcePath =
-  'packages/agent-sdk/src/session/runtimeSessionOperations.ts';
+  'src/session/runtimeSessionOperations.ts';
 
 describe('agent-sdk package-local runtime session operations', () => {
   it('bundles session lifecycle and workspace turn operations behind injected ports', async () => {
