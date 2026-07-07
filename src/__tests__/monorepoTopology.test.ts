@@ -1254,9 +1254,20 @@ describe('monorepo topology', () => {
     expect(runtimeTurnSource).toContain('createPackageLocalRuntimeTraceRuntime');
     expect(runtimeTurnSource).toContain('createPackageLocalRuntimeKernelTurnStreamOperations');
     expect(packageLocalRuntimeInstanceSource).toContain('createPackageLocalRuntimeTurnOperations');
-    expect(packageLocalRuntimeInstanceSource).toContain('turnOperations.traceManager');
+    expect(packageLocalRuntimeInstanceSource).toContain(
+      'private readonly turnOperations: PackageLocalRuntimeTurnOperations',
+    );
     expect(packageLocalRuntimeInstanceSource).toContain('turnOperations.kernelTurnStream');
     expect(packageLocalRuntimeInstanceSource).toContain('turnOperations.traceOperations');
+    expect(packageLocalRuntimeInstanceSource).not.toContain(
+      'private readonly traceManager',
+    );
+    expect(packageLocalRuntimeInstanceSource).not.toContain(
+      'private readonly traceOperations',
+    );
+    expect(packageLocalRuntimeInstanceSource).not.toContain(
+      'private readonly kernelTurnStreamOperations',
+    );
     expect(packageLocalRuntimeInstanceSource).not.toContain(
       'createPackageLocalRuntimeTraceRuntime({',
     );
@@ -1266,7 +1277,6 @@ describe('monorepo topology', () => {
     expect(packageLocalRuntimeInstanceSource).not.toContain(
       'createPackageLocalRuntimeTraceOperations({',
     );
-    expect(packageLocalRuntimeInstanceSource).toContain('traceOperations');
     expect(packageLocalRuntimeInstanceSource).not.toContain('new SessionTraceManager({');
     expect(packageLocalRuntimeInstanceSource).not.toContain('this.traceManager.getLastTrace()');
     expect(packageLocalRuntimeInstanceSource).not.toContain('this.traceManager.getTraces()');
@@ -1459,7 +1469,7 @@ describe('monorepo topology', () => {
     expect(runtimeKernelTurnStreamSource).toContain('PackageLocalRuntimeAgentKernelStreamOptions');
     expect(runtimeKernelTurnStreamSource).toContain('streamWithPackageLocalRuntimeTraceCollector');
     expect(runtimeKernelTurnStreamSource).toContain('projectPackageLocalKernelEventToStreamMessages');
-    expect(packageLocalRuntimeInstanceSource).toContain('kernelTurnStreamOperations');
+    expect(packageLocalRuntimeInstanceSource).toContain('turnOperations.kernelTurnStream');
     expect(packageLocalRuntimeInstanceSource).not.toContain(
       'createPackageLocalRuntimeKernelTurnStreamOperations({',
     );

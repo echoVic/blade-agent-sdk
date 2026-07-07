@@ -66,7 +66,6 @@ import {
 import type {
   PackageLocalRuntimeAgentKernelOptions,
   PackageLocalRuntimeAgentKernelStreamOptions,
-  PackageLocalRuntimeKernelTurnStreamOperations,
 } from './runtimeKernelTurnStream.js';
 import type {
   PackageLocalRuntimeKernelModelResolverPort,
@@ -88,10 +87,10 @@ import {
   createPackageLocalRuntimeGuardOperations,
   type PackageLocalRuntimeGuardOperations,
 } from './runtimeGuards.js';
-import type {
-  PackageLocalRuntimeTraceOperations,
-} from './runtimeTraceManager.js';
-import { createPackageLocalRuntimeTurnOperations } from './runtimeTurn.js';
+import {
+  createPackageLocalRuntimeTurnOperations,
+  type PackageLocalRuntimeTurnOperations,
+} from './runtimeTurn.js';
 import {
   createPackageLocalRuntimeSessionCapabilityOperations,
   type PackageLocalRuntimeSessionCapabilityOperations,
@@ -104,7 +103,6 @@ import {
   createPackageLocalRuntimeControlOperations,
   type PackageLocalRuntimeControlOperations,
 } from './runtimeControls.js';
-import type { SessionTraceManager } from './traces.js';
 
 export type { PackageLocalRuntimeKernelStreamProjectionOptions } from './kernelStreamProjection.js';
 export {
@@ -191,15 +189,13 @@ export class PackageLocalSessionRuntime {
   private readonly mcpOperations: PackageLocalRuntimeMcpOperations;
   private readonly executionOperations: PackageLocalRuntimeExecutionOperations;
   private readonly kernelOperations: PackageLocalRuntimeKernelOperations;
-  private readonly kernelTurnStreamOperations: PackageLocalRuntimeKernelTurnStreamOperations;
+  private readonly turnOperations: PackageLocalRuntimeTurnOperations;
   private readonly toolOperations: PackageLocalRuntimeToolOperations<
     PackageLocalRuntimeNamedTool,
     PackageLocalRuntimeToolSource
   >;
   private readonly guardOperations: PackageLocalRuntimeGuardOperations;
   private readonly sessionCapabilityOperations: PackageLocalRuntimeSessionCapabilityOperations;
-  private readonly traceOperations: PackageLocalRuntimeTraceOperations;
-  private readonly traceManager: SessionTraceManager;
   private readonly capabilityInitializationOperations: PackageLocalRuntimeCapabilityInitializationOperations;
   private readonly controlOperations: PackageLocalRuntimeControlOperations;
 
@@ -307,7 +303,7 @@ export class PackageLocalSessionRuntime {
       getProjectPath: () => this.projectPath,
       storageRoot: this.storageRoot,
     });
-    const turnOperations = createPackageLocalRuntimeTurnOperations({
+    this.turnOperations = createPackageLocalRuntimeTurnOperations({
       sessionId: this.sessionId,
       observability: options.options.observability,
       model: options.options.model,
@@ -319,9 +315,6 @@ export class PackageLocalSessionRuntime {
       kernelModelResolver: this.kernelModelResolver,
       createAgentKernel: this.kernelOperations.agentKernel.createFromResolved,
     });
-    this.traceManager = turnOperations.traceManager;
-    this.kernelTurnStreamOperations = turnOperations.kernelTurnStream;
-    this.traceOperations = turnOperations.traceOperations;
     const capabilityOperations = createPackageLocalRuntimeCapabilityOperations({
       registerConfiguredMcpServers: () => this.registerConfiguredMcpServers(),
       registerCustomTools: () => this.registerCustomTools(),
@@ -406,11 +399,11 @@ export class PackageLocalSessionRuntime {
   }
 
   getLastTrace(): AgentTrace | undefined {
-    return this.traceOperations.getLastTrace();
+    return this.turnOperations.traceOperations.getLastTrace();
   }
 
   getTraces(): AgentTrace[] {
-    return this.traceOperations.getTraces();
+    return this.turnOperations.traceOperations.getTraces();
   }
 
   async mcpConnect(serverName: string): Promise<void> {
@@ -506,7 +499,7 @@ export class PackageLocalSessionRuntime {
   async *streamAgentKernelTurn(
     options: PackageLocalRuntimeAgentKernelStreamOptions,
   ): AsyncGenerator<StreamMessage> {
-    yield* this.kernelTurnStreamOperations.stream(options);
+    yield* this.turnOperations.kernelTurnStream.stream(options);
   }
 
 }
