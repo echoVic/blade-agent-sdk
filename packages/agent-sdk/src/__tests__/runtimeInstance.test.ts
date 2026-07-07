@@ -4,14 +4,14 @@ import {
   isPackageLocalSdkMcpServerHandle,
   PackageLocalSessionRuntime,
   resolvePackageLocalRuntimeStorageRoot,
-} from '../../packages/agent-sdk/src/session/runtimeInstance.js';
-import type { PackageLocalRuntimeExecutionPipelineCreateOptions } from '../../packages/agent-sdk/src/session/runtimeExecutionPipeline.js';
-import type { SessionOptions } from '../../packages/agent-sdk/src/session/types.js';
-import type { TraceRecorder } from '../../packages/agent-sdk/src/observability/TraceRecorder.js';
-import { HookEvent } from '../../packages/agent-sdk/src/types/constants.js';
-import { PermissionMode, type BladeConfig } from '../../packages/agent-sdk/src/types/common.js';
-import type { PermissionHandlerRequest } from '../../packages/agent-sdk/src/types/permissions.js';
-import { ToolKind } from '../../packages/agent-sdk/src/tools/types/ToolKind.js';
+} from '../session/runtimeInstance.js';
+import type { PackageLocalRuntimeExecutionPipelineCreateOptions } from '../session/runtimeExecutionPipeline.js';
+import type { SessionOptions } from '../session/types.js';
+import type { TraceRecorder } from '../observability/TraceRecorder.js';
+import { HookEvent } from '../types/constants.js';
+import { PermissionMode, type BladeConfig } from '../types/common.js';
+import type { PermissionHandlerRequest } from '../types/permissions.js';
+import { ToolKind } from '../tools/types/ToolKind.js';
 
 const options: SessionOptions = {
   provider: {
