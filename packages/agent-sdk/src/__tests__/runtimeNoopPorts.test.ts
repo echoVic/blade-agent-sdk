@@ -1,8 +1,8 @@
 import { existsSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 
-const noopModulePath = '../../packages/agent-sdk/src/session/runtimeNoopPorts.js';
-const noopSourcePath = 'packages/agent-sdk/src/session/runtimeNoopPorts.ts';
+const noopModulePath = '../session/runtimeNoopPorts.js';
+const noopSourcePath = 'src/session/runtimeNoopPorts.ts';
 
 describe('agent-sdk package-local runtime noop ports', () => {
   it('provides inert default ports outside the session runtime class', async () => {
