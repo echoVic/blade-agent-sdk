@@ -3,6 +3,7 @@ import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { dirname, join, normalize, relative, resolve, sep } from 'node:path';
 
 const rootDir = process.cwd();
+const allowedPublicExportConditions = new Set(['types', 'browser', 'import']);
 
 const rules = [
   {
@@ -336,6 +337,11 @@ for (const rule of manifestRules) {
     }
     if (typeof exportValue.types === 'string' && !isTypesConditionFirst(exportValue)) {
       violations.push(`${rule.packageJson}: export "${subpath}" must declare the types condition first`);
+    }
+    for (const condition of Object.keys(exportValue)) {
+      if (!allowedPublicExportConditions.has(condition)) {
+        violations.push(`${rule.packageJson}: export "${subpath}" condition "${condition}" is not allowed`);
+      }
     }
   }
 

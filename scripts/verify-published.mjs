@@ -22,6 +22,7 @@ const dependencySections = [
   'peerDependencies',
 ];
 const exactVersionPattern = /^\d+\.\d+\.\d+(?:[-+][0-9A-Za-z-.]+)?$/;
+const allowedPublicExportConditions = new Set(['types', 'browser', 'import']);
 const expectedPublishedPackageMetadata = {
   author: 'echoVic',
   type: 'module',
@@ -780,6 +781,14 @@ function assertManifestTypesConditionFirst({ packageName, exportName, exportValu
   }
 }
 
+function assertManifestExportConditionsAllowed({ packageName, exportName, exportValue, label }) {
+  for (const condition of Object.keys(exportValue)) {
+    if (!allowedPublicExportConditions.has(condition)) {
+      throw new Error(`${packageName} ${label} export ${exportName} condition "${condition}" is not allowed`);
+    }
+  }
+}
+
 function verifyPublishedManifestExports({ packageName, manifest }) {
   const exportsMap = manifest.exports;
   const rootExport = getManifestRootExportConditions(exportsMap);
@@ -816,6 +825,12 @@ function verifyPublishedManifestExports({ packageName, manifest }) {
       );
     }
     assertManifestTypesConditionFirst({
+      packageName,
+      exportName,
+      exportValue,
+      label: 'installed manifest',
+    });
+    assertManifestExportConditionsAllowed({
       packageName,
       exportName,
       exportValue,

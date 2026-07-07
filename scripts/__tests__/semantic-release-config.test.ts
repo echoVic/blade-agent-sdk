@@ -1058,6 +1058,23 @@ describe('release scripts', () => {
     expect(roadmap).toContain('types-first export condition order gate');
   });
 
+  it('mirrors source public export condition allowlists in packed and published verifiers', () => {
+    const packageVerifier = readFileSync(resolve('scripts/verify-packages.mjs'), 'utf8');
+    const publishedVerifier = readFileSync(resolve('scripts/verify-published.mjs'), 'utf8');
+    const readme = readFileSync(resolve('README.md'), 'utf8');
+    const checklist = readFileSync(resolve('docs/production-checklist.md'), 'utf8');
+    const roadmap = readFileSync(resolve('docs/roadmap/production-agent-sdk-monorepo.md'), 'utf8');
+
+    for (const verifier of [packageVerifier, publishedVerifier]) {
+      expect(verifier).toContain('allowedPublicExportConditions');
+      expect(verifier).toContain("new Set(['types', 'browser', 'import'])");
+      expect(verifier).toContain('is not allowed');
+    }
+    expect(readme).toContain('public export condition allowlist');
+    expect(checklist).toContain('public export condition allowlist');
+    expect(roadmap).toContain('public export condition allowlist gate');
+  });
+
   it('verifies packed SDK browser export conditions before publication', () => {
     const packageVerifier = readFileSync(resolve('scripts/verify-packages.mjs'), 'utf8');
     const readme = readFileSync(resolve('README.md'), 'utf8');
