@@ -14,7 +14,7 @@ pnpm add @blade-ai/agent
 
 ```ts
 import { AgentKernel } from '@blade-ai/agent';
-import { TokenBudget } from '@blade-ai/agent';
+import { TokenBudget } from '@blade-ai/agent/budget';
 
 const kernel = new AgentKernel({
   model,

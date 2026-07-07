@@ -116,6 +116,8 @@ const packageSpecs = [
       'package/LICENSE',
       'package/dist/index.js',
       'package/dist/index.d.ts',
+      'package/dist/budget/TokenBudget.js',
+      'package/dist/budget/TokenBudget.d.ts',
       'package/dist/kernel/AgentKernel.js',
       'package/dist/kernel/AgentKernel.d.ts',
       'package/dist/protocol/index.js',
@@ -129,6 +131,7 @@ const packageSpecs = [
     ],
     imports: [
       '@blade-ai/agent',
+      '@blade-ai/agent/budget',
       '@blade-ai/agent/kernel',
       '@blade-ai/agent/protocol',
       '@blade-ai/agent/ports',
@@ -1411,6 +1414,7 @@ import * as aiOpenAICompatible from '@blade-ai/ai/providers/openai-compatible';
 import * as aiVercel from '@blade-ai/ai/providers/vercel';
 import * as aiRetry from '@blade-ai/ai/retry';
 import * as agent from '@blade-ai/agent';
+import * as agentBudget from '@blade-ai/agent/budget';
 import * as agentKernel from '@blade-ai/agent/kernel';
 import * as agentProtocol from '@blade-ai/agent/protocol';
 import * as agentPorts from '@blade-ai/agent/ports';
@@ -1467,6 +1471,8 @@ assertRuntimeExport(aiVercel, 'createVercelModelPort');
 assertRuntimeExport(aiRetry, 'DEFAULT_RETRY_CONFIG');
 assertRuntimeExport(aiRetry, 'withRetry');
 assertRuntimeExport(agent, 'AgentKernel');
+assertRuntimeExport(agent, 'TokenBudget');
+assertRuntimeExport(agentBudget, 'TokenBudget');
 assertRuntimeExport(agentKernel, 'AgentKernel');
 assertRuntimeExport(agentSdk, 'createSession');
 assertRuntimeExport(agentSdk, 'defineTool');
@@ -1612,6 +1618,10 @@ import type { VercelLanguageModelOptions } from '@blade-ai/ai/providers/vercel';
 import { createVercelModelPort } from '@blade-ai/ai/providers/vercel';
 import type { AgentStreamEvent } from '@blade-ai/agent';
 import { AgentKernel } from '@blade-ai/agent';
+import type {
+  TokenBudgetConfig,
+  TokenBudgetSnapshot,
+} from '@blade-ai/agent/budget';
 import type {
   AgentKernelOptions,
   AgentTurnInput,
@@ -1804,6 +1814,19 @@ const fakeModel: ModelPort = {
 };
 
 const kernel = new AgentKernel({ model: fakeModel, modelCallMode: 'stream' });
+const tokenBudgetConfig: TokenBudgetConfig = { maxTotalTokens: 100 };
+const tokenBudgetSnapshot: TokenBudgetSnapshot = {
+  totalInputTokens: 1,
+  totalBillableInputTokens: 1,
+  totalOutputTokens: 1,
+  totalCacheWriteTokens: 0,
+  totalCacheReadTokens: 0,
+  totalCacheMissTokens: 1,
+  totalTokens: 2,
+  estimatedCost: 0,
+  budgetRemaining: 98,
+  budgetPercent: 0.02,
+};
 const agentKernelOptions: AgentKernelOptions = { model: fakeModel };
 const kernelFromSubpath: AgentKernel = new AgentKernelFromSubpath(agentKernelOptions);
 const agentTurnInput: AgentTurnInput = { input: 'hello', turnId: 'turn-id' };
@@ -2009,6 +2032,8 @@ void retryableNetworkError;
 void deepseekOptions;
 void deepseekCost;
 void useKernel;
+void tokenBudgetConfig;
+void tokenBudgetSnapshot;
 void kernelFromSubpath;
 void agentTurnInput;
 void agentProtocolEvent;

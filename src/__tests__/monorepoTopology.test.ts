@@ -319,9 +319,10 @@ describe('monorepo topology', () => {
     expect(permissionsSource).toContain('createCompositePermissionHandler');
   });
 
-  it('organizes the agent package around kernel, protocol, ports, state, and tracing modules', () => {
+  it('organizes the agent package around kernel, budget, protocol, ports, state, and tracing modules', () => {
     for (const file of [
       'packages/agent/src/kernel/AgentKernel.ts',
+      'packages/agent/src/budget/TokenBudget.ts',
       'packages/agent/src/protocol/index.ts',
       'packages/agent/src/ports/index.ts',
       'packages/agent/src/state/index.ts',
@@ -344,6 +345,10 @@ describe('monorepo topology', () => {
         types: './dist/kernel/AgentKernel.d.ts',
         import: './dist/kernel/AgentKernel.js',
       },
+      './budget': {
+        types: './dist/budget/TokenBudget.d.ts',
+        import: './dist/budget/TokenBudget.js',
+      },
       './protocol': {
         types: './dist/protocol/index.d.ts',
         import: './dist/protocol/index.js',
@@ -362,6 +367,7 @@ describe('monorepo topology', () => {
       },
     });
     expect(agentBuildConfig).toContain('kernel/AgentKernel');
+    expect(agentBuildConfig).toContain('budget/TokenBudget');
     expect(agentBuildConfig).toContain('protocol/index');
     expect(agentBuildConfig).toContain('ports/index');
     expect(agentBuildConfig).toContain('state/index');

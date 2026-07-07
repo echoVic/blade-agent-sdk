@@ -29,6 +29,10 @@
       "types": "./dist/kernel/AgentKernel.d.ts",
       "import": "./dist/kernel/AgentKernel.js"
     },
+    "./budget": {
+      "types": "./dist/budget/TokenBudget.d.ts",
+      "import": "./dist/budget/TokenBudget.js"
+    },
     "./protocol": {
       "types": "./dist/protocol/index.d.ts",
       "import": "./dist/protocol/index.js"
