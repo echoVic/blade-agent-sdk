@@ -8,7 +8,7 @@ import {
   type Memory,
   type MemoryInput,
   type MemoryStore,
-} from '../../packages/agent-sdk/src/local/memory.js';
+} from '../local/memory.js';
 
 const tempDirs: string[] = [];
 
