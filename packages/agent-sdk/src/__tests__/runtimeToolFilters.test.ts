@@ -1,14 +1,11 @@
-import { existsSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
-
-const toolFiltersModulePath = '../../packages/agent-sdk/src/session/runtimeToolFilters.js';
-const toolFiltersSourcePath = 'packages/agent-sdk/src/session/runtimeToolFilters.ts';
+import {
+  createPackageLocalRuntimeToolFilterOperations,
+  filterPackageLocalRuntimeTools,
+} from '../session/runtimeToolFilters.js';
 
 describe('agent-sdk package-local runtime tool filtering helpers', () => {
-  it('applies allowlist and denylist policy without session runtime state', async () => {
-    expect(existsSync(toolFiltersSourcePath)).toBe(true);
-
-    const { filterPackageLocalRuntimeTools } = await import(toolFiltersModulePath);
+  it('applies allowlist and denylist policy without session runtime state', () => {
     const tools = [{ name: 'read' }, { name: 'write' }, { name: 'search' }];
 
     expect(filterPackageLocalRuntimeTools(tools, {})).toEqual(tools);
@@ -26,9 +23,7 @@ describe('agent-sdk package-local runtime tool filtering helpers', () => {
     ).toEqual([{ name: 'read' }, { name: 'write' }]);
   });
 
-  it('creates filter operations that retain explicit allowlist policy', async () => {
-    const { createPackageLocalRuntimeToolFilterOperations } =
-      await import(toolFiltersModulePath);
+  it('creates filter operations that retain explicit allowlist policy', () => {
     const tools = [{ name: 'read' }, { name: 'write' }, { name: 'search' }];
 
     expect(
