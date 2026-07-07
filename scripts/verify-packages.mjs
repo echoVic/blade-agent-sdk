@@ -16,6 +16,12 @@ const browserDisallowedMarkers = [
 ];
 const requiredPackageKeywords = ['agent', 'sdk', 'llm'];
 const mitPermissionGrant = 'Permission is hereby granted, free of charge';
+const dependencySections = [
+  'dependencies',
+  'optionalDependencies',
+  'peerDependencies',
+];
+const exactVersionPattern = /^\d+\.\d+\.\d+(?:[-+][0-9A-Za-z-.]+)?$/;
 const forbiddenPackageLifecycleScripts = new Set([
   'preinstall',
   'install',
@@ -673,6 +679,7 @@ function verifyPackedManifest(spec, tarballPath, tempDir) {
   if (serialized.includes('workspace:')) {
     throw new Error(`${spec.name} packed manifest still contains workspace protocol dependencies`);
   }
+  verifyPackedManifestDependencyVersions(spec.name, manifest);
   verifyPackedPackageMetadata(spec, manifest);
   assertNoCliProductManifest(spec.name, manifest);
   assertPackedManifestTarget({
@@ -690,6 +697,28 @@ function verifyPackedManifest(spec, tarballPath, tempDir) {
     exportsMap: manifest.exports,
   });
   verifyPackedSdkBrowserExportConditions(spec.name, manifest);
+}
+
+function verifyPackedManifestDependencyVersions(packageName, manifest) {
+  for (const section of dependencySections) {
+    for (const [dependencyName, dependencyVersion] of Object.entries(manifest[section] ?? {})) {
+      const version = String(dependencyVersion);
+      const isInternalDependency = dependencyName.startsWith('@blade-ai/');
+      if (isInternalDependency) {
+        continue;
+      }
+      if (version === '0.0.0') {
+        throw new Error(
+          `${packageName} packed manifest must not contain 0.0.0 placeholder versions in ${section}.${dependencyName}`,
+        );
+      }
+      if (!exactVersionPattern.test(version)) {
+        throw new Error(
+          `${packageName} packed manifest dependency ${section}.${dependencyName} must use an exact dependency version, got ${version}`,
+        );
+      }
+    }
+  }
 }
 
 function assertNoPackageLifecycleScripts(packageName, manifest, label) {

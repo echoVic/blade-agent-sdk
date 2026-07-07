@@ -535,6 +535,21 @@ describe('release scripts', () => {
     expect(roadmap).toContain('packed package manifest hygiene gate');
   });
 
+  it('verifies packed package manifest dependency versions before publication', () => {
+    const packageVerifier = readFileSync(resolve('scripts/verify-packages.mjs'), 'utf8');
+    const readme = readFileSync(resolve('README.md'), 'utf8');
+    const checklist = readFileSync(resolve('docs/production-checklist.md'), 'utf8');
+    const roadmap = readFileSync(resolve('docs/roadmap/production-agent-sdk-monorepo.md'), 'utf8');
+
+    expect(packageVerifier).toContain('verifyPackedManifestDependencyVersions');
+    expect(packageVerifier).toContain('packed manifest must not contain 0.0.0 placeholder versions');
+    expect(packageVerifier).toContain('packed manifest dependency');
+    expect(packageVerifier).toContain('must use an exact dependency version');
+    expect(readme).toContain('packed package dependency-version gate');
+    expect(checklist).toContain('packed package dependency-version gate');
+    expect(roadmap).toContain('packed package dependency-version gate');
+  });
+
   it('rejects npm lifecycle scripts from source, packed, and published package manifests', () => {
     const releaseVerifier = readFileSync(resolve('scripts/verify-release-config.mjs'), 'utf8');
     const packageVerifier = readFileSync(resolve('scripts/verify-packages.mjs'), 'utf8');
