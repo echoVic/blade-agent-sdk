@@ -6,7 +6,7 @@ import {
   createModePermissionHandler,
   createPathSafetyPermissionHandler,
   createRuleBasedPermissionHandler,
-} from '../../packages/agent-sdk/src/index.js';
+} from '../index.js';
 
 function createRequest(
   overrides: Partial<Parameters<ReturnType<typeof createModePermissionHandler>>[0]> = {},
