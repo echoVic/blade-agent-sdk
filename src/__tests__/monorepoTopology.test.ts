@@ -1004,7 +1004,9 @@ describe('monorepo topology', () => {
       'createPackageLocalRuntimeSessionToolRegistrationOperations',
     );
     expect(runtimeToolFiltersSource).toContain('allowedTools !== undefined');
-    expect(packageLocalRuntimeInstanceSource).toContain('toolFilterOperations');
+    expect(packageLocalRuntimeInstanceSource).toContain(
+      'private readonly toolOperations: PackageLocalRuntimeToolOperations',
+    );
     expect(packageLocalRuntimeInstanceSource).toContain(
       'createPackageLocalRuntimeToolOperations',
     );
@@ -1065,17 +1067,24 @@ describe('monorepo topology', () => {
     expect(packageLocalRuntimeInstanceSource).not.toContain(
       'createPackageLocalRuntimeSessionToolRegistrationOperations({',
     );
-    expect(packageLocalRuntimeInstanceSource).toContain('sessionToolRegistrationOperations');
     expect(packageLocalRuntimeInstanceSource).toContain('toolOperations.registration');
     expect(packageLocalRuntimeInstanceSource).toContain('toolOperations.sessionRegistration');
     expect(packageLocalRuntimeInstanceSource).toContain('toolOperations.filter');
+    expect(packageLocalRuntimeInstanceSource).not.toContain(
+      'private readonly toolRegistrationOperations',
+    );
+    expect(packageLocalRuntimeInstanceSource).not.toContain(
+      'private readonly sessionToolRegistrationOperations',
+    );
+    expect(packageLocalRuntimeInstanceSource).not.toContain(
+      'private readonly toolFilterOperations',
+    );
     expect(packageLocalRuntimeInstanceSource).not.toContain(
       'registerPackageLocalRuntimeCustomTools({',
     );
     expect(packageLocalRuntimeInstanceSource).not.toContain(
       'registerPackageLocalRuntimeBuiltinTools({',
     );
-    expect(packageLocalRuntimeInstanceSource).toContain('toolRegistrationOperations');
     expect(packageLocalRuntimeInstanceSource).toContain('registerCustomTools');
     expect(packageLocalRuntimeInstanceSource).toContain('PackageLocalRuntimeCustomToolFactoryPort');
     expect(packageLocalRuntimeInstanceSource).not.toContain('filteredTools.length === 0');

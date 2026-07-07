@@ -79,12 +79,10 @@ import type { PackageLocalRuntimeMcpServerCapability } from './runtimeMcpCapabil
 import type { PackageLocalRuntimeMcpOperations } from './runtimeMcp.js';
 import { createPackageLocalRuntimeConnectionOperations } from './runtimeConnectionOperations.js';
 import type { PackageLocalRuntimeSubagentOperations } from './runtimeSubagents.js';
-import type { PackageLocalRuntimeToolFilterOperations } from './runtimeToolFilters.js';
-import type {
-  PackageLocalRuntimeToolRegistrationOperations,
-  PackageLocalRuntimeSessionToolRegistrationOperations,
-} from './runtimeToolRegistration.js';
-import { createPackageLocalRuntimeToolOperations } from './runtimeTools.js';
+import {
+  createPackageLocalRuntimeToolOperations,
+  type PackageLocalRuntimeToolOperations,
+} from './runtimeTools.js';
 import type {
   PackageLocalRuntimePermissionHookPort,
   PackageLocalRuntimePermissionOperations,
@@ -192,12 +190,10 @@ export class PackageLocalSessionRuntime {
   private readonly executionOperations: PackageLocalRuntimeExecutionOperations;
   private readonly kernelOperations: PackageLocalRuntimeKernelOperations;
   private readonly kernelTurnStreamOperations: PackageLocalRuntimeKernelTurnStreamOperations;
-  private readonly toolRegistrationOperations: PackageLocalRuntimeToolRegistrationOperations<
+  private readonly toolOperations: PackageLocalRuntimeToolOperations<
     PackageLocalRuntimeNamedTool,
     PackageLocalRuntimeToolSource
   >;
-  private readonly sessionToolRegistrationOperations: PackageLocalRuntimeSessionToolRegistrationOperations;
-  private readonly toolFilterOperations: PackageLocalRuntimeToolFilterOperations;
   private readonly permissionOperations: PackageLocalRuntimePermissionOperations;
   private readonly hookOperations: PackageLocalRuntimeHookOperations;
   private readonly subagentOperations: PackageLocalRuntimeSubagentOperations;
@@ -278,7 +274,7 @@ export class PackageLocalSessionRuntime {
       sessionStore: this.sessionStore,
       hookRuntime: this.hookRuntime,
     });
-    const toolOperations = createPackageLocalRuntimeToolOperations({
+    this.toolOperations = createPackageLocalRuntimeToolOperations({
       allowedTools: this.options.allowedTools,
       disallowedTools: this.options.disallowedTools,
       definitions: this.options.tools,
@@ -292,9 +288,6 @@ export class PackageLocalSessionRuntime {
         this.registerTools(tools, source);
       },
     });
-    this.toolRegistrationOperations = toolOperations.registration;
-    this.sessionToolRegistrationOperations = toolOperations.sessionRegistration;
-    this.toolFilterOperations = toolOperations.filter;
     const guardOperations = createPackageLocalRuntimeGuardOperations({
       hooks: this.hookCallbacks,
       hookManager: this.hookManager,
@@ -449,22 +442,22 @@ export class PackageLocalSessionRuntime {
   }
 
   filterTools<TTool extends PackageLocalRuntimeNamedTool>(tools: TTool[]): TTool[] {
-    return this.toolFilterOperations.filter(tools);
+    return this.toolOperations.filter.filter(tools);
   }
 
   registerTools<TTool extends PackageLocalRuntimeNamedTool>(
     tools: TTool[],
     source: PackageLocalRuntimeToolSource,
   ): void {
-    this.toolRegistrationOperations.registerTools(tools, source);
+    this.toolOperations.registration.registerTools(tools, source);
   }
 
   registerCustomTools(): void {
-    this.sessionToolRegistrationOperations.registerCustomTools();
+    this.toolOperations.sessionRegistration.registerCustomTools();
   }
 
   async registerBuiltinTools(): Promise<void> {
-    await this.sessionToolRegistrationOperations.registerBuiltinTools();
+    await this.toolOperations.sessionRegistration.registerBuiltinTools();
   }
 
   initializeSubagents(): void {
