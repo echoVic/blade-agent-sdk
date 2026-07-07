@@ -97,7 +97,7 @@ import {
 } from './runtimeSessionCapabilities.js';
 import {
   createPackageLocalRuntimeCapabilityOperations,
-  type PackageLocalRuntimeCapabilityInitializationOperations,
+  type PackageLocalRuntimeCapabilityOperations,
 } from './runtimeCapabilities.js';
 import {
   createPackageLocalRuntimeControlOperations,
@@ -196,7 +196,7 @@ export class PackageLocalSessionRuntime {
   >;
   private readonly guardOperations: PackageLocalRuntimeGuardOperations;
   private readonly sessionCapabilityOperations: PackageLocalRuntimeSessionCapabilityOperations;
-  private readonly capabilityInitializationOperations: PackageLocalRuntimeCapabilityInitializationOperations;
+  private readonly capabilityOperations: PackageLocalRuntimeCapabilityOperations;
   private readonly controlOperations: PackageLocalRuntimeControlOperations;
 
   constructor(options: PackageLocalSessionRuntimeOptions) {
@@ -315,14 +315,13 @@ export class PackageLocalSessionRuntime {
       kernelModelResolver: this.kernelModelResolver,
       createAgentKernel: this.kernelOperations.agentKernel.createFromResolved,
     });
-    const capabilityOperations = createPackageLocalRuntimeCapabilityOperations({
+    this.capabilityOperations = createPackageLocalRuntimeCapabilityOperations({
       registerConfiguredMcpServers: () => this.registerConfiguredMcpServers(),
       registerCustomTools: () => this.registerCustomTools(),
       registerBuiltinTools: () => this.registerBuiltinTools(),
       initializeSubagents: () => this.initializeSubagents(),
       initializeHooks: () => this.initializeHooks(),
     });
-    this.capabilityInitializationOperations = capabilityOperations.initialization;
     this.controlOperations = createPackageLocalRuntimeControlOperations({
       options: this.options,
       bladeConfig: this.bladeConfig,
@@ -334,7 +333,7 @@ export class PackageLocalSessionRuntime {
       },
       resetExecutionPipeline: () => this.executionOperations.pipeline.reset(),
       markSubagentLocationsDirty: () =>
-        this.capabilityInitializationOperations.markSubagentLocationsDirty(),
+        this.capabilityOperations.initialization.markSubagentLocationsDirty(),
     });
   }
 
@@ -423,7 +422,7 @@ export class PackageLocalSessionRuntime {
   }
 
   async ensureRuntimeCapabilitiesInitialized(): Promise<void> {
-    await this.capabilityInitializationOperations.ensureInitialized();
+    await this.capabilityOperations.initialization.ensureInitialized();
   }
 
   async refreshMcpTools(serverNames: string[]): Promise<void> {

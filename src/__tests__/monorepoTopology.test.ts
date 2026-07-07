@@ -1145,11 +1145,16 @@ describe('monorepo topology', () => {
       'runtimeCapabilitiesInitialization',
     );
     expect(runtimeCapabilitiesSource).toContain('subagentLocationsNeedRefresh');
-    expect(packageLocalRuntimeInstanceSource).toContain('capabilityInitializationOperations');
     expect(packageLocalRuntimeInstanceSource).toContain(
       'createPackageLocalRuntimeCapabilityOperations',
     );
+    expect(packageLocalRuntimeInstanceSource).toContain(
+      'private readonly capabilityOperations: PackageLocalRuntimeCapabilityOperations',
+    );
     expect(packageLocalRuntimeInstanceSource).toContain('capabilityOperations.initialization');
+    expect(packageLocalRuntimeInstanceSource).not.toContain(
+      'private readonly capabilityInitializationOperations',
+    );
     expect(packageLocalRuntimeInstanceSource).not.toContain('capabilityStartupOperations');
     expect(packageLocalRuntimeInstanceSource).not.toContain(
       'createPackageLocalRuntimeCapabilityInitializationOperations({',
