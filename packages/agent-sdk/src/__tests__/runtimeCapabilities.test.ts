@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import {
   createPackageLocalRuntimeCapabilityOperations,
   createPackageLocalRuntimeCapabilityStartupOperations,
-} from '../../packages/agent-sdk/src/session/runtimeCapabilities.js';
+} from '../session/runtimeCapabilities.js';
 
 describe('agent-sdk package-local runtime capability startup helpers', () => {
   it('runs runtime capability startup steps in dependency order', async () => {
