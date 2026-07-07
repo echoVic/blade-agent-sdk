@@ -332,6 +332,7 @@ describe('monorepo topology', () => {
       'packages/agent/src/loop/decideNoToolTurn.ts',
       'packages/agent/src/loop/decideTurnLimit.ts',
       'packages/agent/src/loop/planToolExecution.ts',
+      'packages/agent/src/loop/repairToolCallParams.ts',
       'packages/agent/src/loop/toolBehavior.ts',
       'packages/agent/src/loop/toolInterruptBehavior.ts',
       'packages/agent/src/loop/toolUpdateToAgentEvent.ts',
@@ -350,6 +351,9 @@ describe('monorepo topology', () => {
     expect(existsSync('packages/agent/src/__tests__/AsyncEventQueueBehavior.test.ts')).toBe(true);
     expect(existsSync('packages/agent/src/__tests__/loopDecisionsBehavior.test.ts')).toBe(true);
     expect(existsSync('packages/agent/src/__tests__/planToolExecutionBehavior.test.ts')).toBe(true);
+    expect(existsSync('packages/agent/src/__tests__/repairToolCallParamsBehavior.test.ts')).toBe(
+      true,
+    );
 
     const agentIndexSource = readFileSync('packages/agent/src/index.ts', 'utf-8');
     const agentLoopSource = readFileSync('packages/agent/src/loop/index.ts', 'utf-8');
@@ -361,6 +365,7 @@ describe('monorepo topology', () => {
     expect(agentLoopSource).toContain("from './decideNoToolTurn.js'");
     expect(agentLoopSource).toContain("from './decideTurnLimit.js'");
     expect(agentLoopSource).toContain("from './planToolExecution.js'");
+    expect(agentLoopSource).toContain("from './repairToolCallParams.js'");
     expect(agentLoopSource).toContain("from './toolInterruptBehavior.js'");
     expect(agentLoopSource).toContain("from './toolUpdateToAgentEvent.js'");
     expect(agentRecoverySource).toContain("from './isOverflowRecoverable.js'");

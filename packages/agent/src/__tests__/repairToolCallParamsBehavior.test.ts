@@ -1,11 +1,6 @@
-import { describe, expect, it, vi } from 'vitest';
-import type { JsonObject } from '../../../types/common.js';
-
-vi.mock('nanoid', () => ({
-  nanoid: () => 'generated-subagent-id',
-}));
-
-import { repairToolCallParams } from '../repairToolCallParams.js';
+import type { JsonObject } from '@blade-ai/ai';
+import { describe, expect, it } from 'vitest';
+import { repairToolCallParams } from '../loop/index.js';
 
 describe('repairToolCallParams', () => {
   it('adds a generated subagent_session_id for Task calls when missing', async () => {
@@ -21,6 +16,7 @@ describe('repairToolCallParams', () => {
         },
       },
       params,
+      { createId: () => 'generated-subagent-id' },
     );
 
     expect(params.subagent_session_id).toBe('generated-subagent-id');
