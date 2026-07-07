@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { SessionLifecycleState } from '../../packages/agent-sdk/src/session/lifecycle.js';
-import { PendingTurnBuffer } from '../../packages/agent-sdk/src/session/pendingTurn.js';
-import { SessionTurnController } from '../../packages/agent-sdk/src/session/turn.js';
-import { TurnAbortController } from '../../packages/agent-sdk/src/session/turnAbort.js';
-import type { RuntimeContext } from '../../packages/agent-sdk/src/runtime/types.js';
+import type { RuntimeContext } from '../runtime/types.js';
+import { SessionLifecycleState } from '../session/lifecycle.js';
+import { PendingTurnBuffer } from '../session/pendingTurn.js';
+import { SessionTurnController } from '../session/turn.js';
+import { TurnAbortController } from '../session/turnAbort.js';
 
 function createTurnController(defaultContext: RuntimeContext = {}) {
   const pendingTurns = new PendingTurnBuffer();
