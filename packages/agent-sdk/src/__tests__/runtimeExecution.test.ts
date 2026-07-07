@@ -1,9 +1,9 @@
 import { existsSync } from 'node:fs';
 import { describe, expect, it, vi } from 'vitest';
-import { PermissionMode } from '../../packages/agent-sdk/src/types/common.js';
+import { PermissionMode } from '../types/common.js';
 
-const runtimeExecutionModulePath = '../../packages/agent-sdk/src/session/runtimeExecution.js';
-const runtimeExecutionSourcePath = 'packages/agent-sdk/src/session/runtimeExecution.ts';
+const runtimeExecutionModulePath = '../session/runtimeExecution.js';
+const runtimeExecutionSourcePath = 'src/session/runtimeExecution.ts';
 
 describe('agent-sdk package-local runtime execution operations', () => {
   it('bundles execution pipeline and agent runtime dependency operations behind injected ports', async () => {
