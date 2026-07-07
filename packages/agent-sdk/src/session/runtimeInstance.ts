@@ -283,7 +283,7 @@ export class PackageLocalSessionRuntime {
   readonly bladeConfig: BladeConfig;
   defaultContext: RuntimeContext;
   readonly storageRoot?: string;
-  readonly projectPath?: string;
+  projectPath?: string;
   readonly hookCallbacks: Partial<Record<SessionHookEvent, HookCallback[]>>;
   readonly sessionStore: PackageLocalRuntimeSessionStorePort;
   readonly workspace: PackageLocalRuntimeWorkspacePort;
@@ -440,6 +440,7 @@ export class PackageLocalSessionRuntime {
       subagentRegistry: this.subagentRegistry,
       logger: this.logger,
       projectPath: this.projectPath,
+      getProjectPath: () => this.projectPath,
       storageRoot: this.storageRoot,
     });
     this.subagentOperations = sessionCapabilityOperations.subagents;
@@ -512,6 +513,7 @@ export class PackageLocalSessionRuntime {
 
   setDefaultContext(context: RuntimeContext): void {
     this.defaultContext = context;
+    this.projectPath = getPackageLocalRuntimeContextCwd(context);
   }
 
   setPermissionMode(mode: Parameters<ISession['setPermissionMode']>[0]): void {

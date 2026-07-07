@@ -26,6 +26,7 @@ export function createPackageLocalRuntimeSessionCapabilityOperations(
       subagentRegistry: options.subagentRegistry,
       logger: options.logger,
       projectPath: options.projectPath,
+      getProjectPath: options.getProjectPath,
       storageRoot: options.storageRoot,
       agents: options.options.agents,
     }),

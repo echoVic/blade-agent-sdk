@@ -14,6 +14,7 @@ export interface PackageLocalRuntimeSubagentInitializationOptions {
   subagentRegistry: PackageLocalRuntimeSubagentRegistryPort;
   logger: unknown;
   projectPath?: string;
+  getProjectPath?: () => string | undefined;
   storageRoot?: string;
   agents?: SessionOptions['agents'];
 }
@@ -39,9 +40,10 @@ export function packageLocalSubagentConfigFromDefinition(
 export function initializePackageLocalRuntimeSubagents(
   options: PackageLocalRuntimeSubagentInitializationOptions,
 ): void {
+  const projectPath = options.getProjectPath?.() ?? options.projectPath;
   options.subagentRegistry.setLogger(options.logger);
-  options.subagentRegistry.setProjectDir(options.projectPath);
-  options.subagentRegistry.loadFromStandardLocations(options.projectPath, options.storageRoot);
+  options.subagentRegistry.setProjectDir(projectPath);
+  options.subagentRegistry.loadFromStandardLocations(projectPath, options.storageRoot);
 
   for (const [name, definition] of Object.entries(options.agents ?? {})) {
     options.subagentRegistry.register(packageLocalSubagentConfigFromDefinition(name, definition), {

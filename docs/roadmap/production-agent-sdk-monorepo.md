@@ -427,6 +427,7 @@ Status:
 - One hundred eleventh adapter increment complete: package-local session control methods now synchronize with the default kernel runtime. `setModel()` updates the runtime `BladeConfig` before the next kernel turn resolves its model, and `setPermissionMode()` / `setMaxTurns()` flow through the same runtime control port instead of only mutating the facade-side session options.
 - One hundred twelfth adapter increment complete: package-local permission-mode changes now invalidate the cached execution pipeline. After `setPermissionMode()` the next tool execution pipeline is rebuilt with the current mode, preventing session-first permission policy changes from being hidden behind a stale runtime cache.
 - One hundred thirteenth adapter increment complete: `setDefaultContext()` now synchronizes from the package-local session facade into the default kernel runtime. Agent runtime dependency projection reads the current default context through a runtime getter, so session-first context changes are visible to runtime-managed helpers instead of being frozen at session construction.
+- One hundred fourteenth adapter increment complete: default-context project path derivation now updates with `setDefaultContext()`. Package-local subagent initialization reads the current runtime project path through a getter, so standard subagent location discovery follows the latest session-first workspace context instead of the construction-time cwd.
 
 ### Phase 5: Production Verification Chain
 
