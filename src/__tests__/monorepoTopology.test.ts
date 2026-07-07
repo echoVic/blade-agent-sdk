@@ -616,6 +616,9 @@ describe('monorepo topology', () => {
     )
       ? readFileSync('packages/agent-sdk/src/session/runtimeToolExecution.ts', 'utf-8')
       : '';
+    const rootRunToolCallSource = existsSync('src/agent/loop/runToolCall.ts')
+      ? readFileSync('src/agent/loop/runToolCall.ts', 'utf-8')
+      : '';
     const streamingToolExecutorSource = existsSync(
       'packages/agent-sdk/src/session/streamingToolExecutor.ts',
     )
@@ -1391,6 +1394,11 @@ describe('monorepo topology', () => {
     expect(runtimeToolExecutionSource).not.toContain('../../../../src/');
     expect(runtimeToolExecutionSource).toContain('executePackageLocalToolCalls');
     expect(runtimeToolExecutionSource).toContain('runPackageLocalToolCall');
+    expect(rootRunToolCallSource).toContain('runPackageLocalToolCall');
+    expect(rootRunToolCallSource).toContain('emitPackageLocalToolExecutionUpdate');
+    expect(rootRunToolCallSource).not.toContain('repairToolCallParams');
+    expect(rootRunToolCallSource).not.toContain('normalizeToolEffects');
+    expect(rootRunToolCallSource).not.toContain('createInterruptAwareAbortSignal');
     expect(existsSync('packages/agent-sdk/src/session/streamingToolExecutor.ts')).toBe(true);
     expect(existsSync('packages/agent-sdk/src/__tests__/streamingToolExecutor.test.ts')).toBe(
       true,
