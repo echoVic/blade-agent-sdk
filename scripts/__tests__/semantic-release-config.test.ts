@@ -795,9 +795,14 @@ describe('release scripts', () => {
     expect(publishedVerifier).toContain('installed manifest version mismatch');
     expect(publishedVerifier).toContain('installed manifest must not contain workspace: dependencies');
     expect(publishedVerifier).toContain('installed manifest must not contain 0.0.0 placeholder versions');
+    expect(publishedVerifier).toContain('verifyPublishedManifestDependencyVersions');
+    expect(publishedVerifier).toContain('installed manifest dependency');
+    expect(publishedVerifier).toContain('must use an exact dependency version');
     expect(publishedVerifier).toContain('internal dependency');
     expect(publishedVerifier).toContain('must match published version');
+    expect(checklist).toContain('published package dependency-version gate');
     expect(checklist).toContain('published package manifests');
+    expect(roadmap).toContain('published package dependency-version gate');
     expect(roadmap).toContain('published package manifest gate');
   });
 

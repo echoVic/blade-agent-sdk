@@ -16,6 +16,12 @@ const publishablePackages = [
   '@blade-ai/agent',
   '@blade-ai/agent-sdk',
 ];
+const dependencySections = [
+  'dependencies',
+  'optionalDependencies',
+  'peerDependencies',
+];
+const exactVersionPattern = /^\d+\.\d+\.\d+(?:[-+][0-9A-Za-z-.]+)?$/;
 const expectedPublishedPackageMetadata = {
   author: 'echoVic',
   type: 'module',
@@ -503,6 +509,7 @@ async function verifyPublishedPackageManifests({ consumerDir, version }) {
     if (serializedManifest.includes('0.0.0')) {
       throw new Error(`${requirement.packageName} installed manifest must not contain 0.0.0 placeholder versions`);
     }
+    verifyPublishedManifestDependencyVersions(requirement.packageName, manifest, version);
     verifyPublishedPackageMetadata(requirement, manifest);
     assertNoCliProductManifest(requirement.packageName, manifest);
     assertPublishedManifestTarget({
@@ -521,21 +528,29 @@ async function verifyPublishedPackageManifests({ consumerDir, version }) {
     });
     verifyPublishedSdkBrowserExportConditions(requirement.packageName, manifest);
 
-    for (const dependencyBlock of [
-      manifest.dependencies,
-      manifest.peerDependencies,
-      manifest.optionalDependencies,
-    ]) {
-      for (const [dependencyName, dependencyVersion] of Object.entries(dependencyBlock ?? {})) {
-        if (publishablePackages.includes(dependencyName) && dependencyVersion !== version) {
+  }
+  console.log('[verify-published] temporary consumer published package manifests passed');
+}
+
+function verifyPublishedManifestDependencyVersions(packageName, manifest, version) {
+  for (const section of dependencySections) {
+    for (const [dependencyName, dependencyVersion] of Object.entries(manifest[section] ?? {})) {
+      const installedVersion = String(dependencyVersion);
+      if (publishablePackages.includes(dependencyName)) {
+        if (installedVersion !== version) {
           throw new Error(
-            `${requirement.packageName} internal dependency ${dependencyName} must match published version ${version}, got ${dependencyVersion}`,
+            `${packageName} internal dependency ${dependencyName} must match published version ${version}, got ${installedVersion}`,
           );
         }
+        continue;
+      }
+      if (!exactVersionPattern.test(installedVersion)) {
+        throw new Error(
+          `${packageName} installed manifest dependency ${section}.${dependencyName} must use an exact dependency version, got ${installedVersion}`,
+        );
       }
     }
   }
-  console.log('[verify-published] temporary consumer published package manifests passed');
 }
 
 function assertNoPackageLifecycleScripts(packageName, manifest, label) {
