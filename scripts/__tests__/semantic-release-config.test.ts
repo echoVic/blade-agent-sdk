@@ -243,6 +243,8 @@ describe('package provenance metadata', () => {
     expect(packageVerifier).toContain("import { createOpenAICompatibleModelPort } from '@blade-ai/ai';");
     expect(packageVerifier).toContain("import { AgentKernel } from '@blade-ai/agent';");
     expect(packageVerifier).toContain("from '@blade-ai/agent/budget';");
+    expect(packageVerifier).toContain('session budget declarations must use the explicit @blade-ai/agent/budget subpath');
+    expect(packageVerifier).toContain('session budget declarations must expose TokenBudgetSnapshot from @blade-ai/agent/budget');
     expect(packageVerifier).toContain("from '@blade-ai/agent/kernel';");
     expect(packageVerifier).toContain("from '@blade-ai/agent/protocol';");
     expect(packageVerifier).toContain("from '@blade-ai/agent/ports';");

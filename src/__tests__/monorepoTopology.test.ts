@@ -113,6 +113,7 @@ describe('monorepo topology', () => {
     expect(buildConfig.include).toEqual(['src/**/*']);
     expect(buildConfig.compilerOptions?.paths).toMatchObject({
       '@blade-ai/agent': ['../agent/dist/index.d.ts'],
+      '@blade-ai/agent/budget': ['../agent/dist/budget/TokenBudget.d.ts'],
       '@blade-ai/ai': ['../ai/dist/index.d.ts'],
       '@blade-ai/ai/deepseek': ['../ai/dist/deepseek/index.d.ts'],
       '@blade-ai/ai/providers/vercel': ['../ai/dist/providers/vercel/index.d.ts'],
@@ -142,6 +143,8 @@ describe('monorepo topology', () => {
     const publicDts = readJson('packages/agent-sdk/tsconfig.public-dts.json');
 
     expect(publicDts.compilerOptions?.paths).toMatchObject({
+      '@blade-ai/agent': ['../agent/dist/index.d.ts'],
+      '@blade-ai/agent/budget': ['../agent/dist/budget/TokenBudget.d.ts'],
       '@blade-ai/ai': ['../ai/dist/index.d.ts'],
       '@blade-ai/ai/deepseek': ['../ai/dist/deepseek/index.d.ts'],
     });
@@ -624,6 +627,7 @@ describe('monorepo topology', () => {
     const sessionFactorySource = readFileSync('packages/agent-sdk/src/session/factory.ts', 'utf-8');
     const sessionLifecycleSource = readFileSync('packages/agent-sdk/src/session/Session.ts', 'utf-8');
     const sessionStoreSource = readFileSync('packages/agent-sdk/src/session/store.ts', 'utf-8');
+    const sessionTypesSource = readFileSync('packages/agent-sdk/src/session/types.ts', 'utf-8');
 
     expect(sessionSource).not.toContain("export * from '../../../../src/session/index.js'");
     expect(sessionSource).not.toContain("../../../../src/session/Session.js");
@@ -1570,6 +1574,9 @@ describe('monorepo topology', () => {
     expect(sessionStoreSource).not.toContain('../../../../src/context/storage');
     expect(sessionSource).toContain("from './types.js'");
     expect(sessionSource).toContain('createDefaultSessionRuntimeFactory');
+    expect(sessionTypesSource).toContain("from '@blade-ai/agent/budget'");
+    expect(sessionTypesSource).not.toContain("from '@blade-ai/agent';");
+    expect(sessionTypesSource).not.toContain('AgentTokenBudgetSnapshot');
   });
 
   it('resolves workspace packages from source during type checking', () => {
@@ -1581,6 +1588,7 @@ describe('monorepo topology', () => {
     });
     expect(sdkTsconfig.compilerOptions?.paths).toMatchObject({
       '@blade-ai/agent': ['../agent/src/index.ts'],
+      '@blade-ai/agent/budget': ['../agent/src/budget/TokenBudget.ts'],
       '@blade-ai/ai': ['../ai/src/index.ts'],
     });
     expect(sdkTsconfig.compilerOptions?.paths).not.toHaveProperty('@/*');

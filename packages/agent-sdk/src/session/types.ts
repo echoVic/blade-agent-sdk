@@ -1,4 +1,5 @@
-import type { AgentTokenBudgetSnapshot } from '@blade-ai/agent';
+import type { TokenBudgetConfig, TokenBudgetSnapshot } from '@blade-ai/agent/budget';
+export type { TokenBudgetConfig, TokenBudgetSnapshot } from '@blade-ai/agent/budget';
 import type { AgentTrace, ObservabilityOptions } from '../observability/types.js';
 import type {
   ContextSnapshot,
@@ -23,17 +24,6 @@ import type { CanUseTool, PermissionHandler, PermissionUpdate } from '../types/p
 export type SessionId = string;
 export type SessionMessageRole = 'system' | 'user' | 'assistant' | 'tool';
 export type UserMessageContent = string | SessionContentPart[];
-
-export interface TokenBudgetConfig {
-  maxTotalTokens?: number;
-  warningThresholdPercent?: number;
-  costPerInputToken?: number;
-  costPerOutputToken?: number;
-  costPerCacheWriteToken?: number;
-  costPerCacheReadToken?: number;
-}
-
-export type TokenBudgetSnapshot = AgentTokenBudgetSnapshot;
 
 export type ToolSourceKind = 'builtin' | 'custom' | 'mcp' | 'session';
 export type ToolTrustLevel = 'trusted' | 'workspace' | 'remote';

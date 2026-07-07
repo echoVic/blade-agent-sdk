@@ -201,6 +201,16 @@ const packageSpecs = [
         message: 'session declarations must not expose retired package-local legacy runtime helpers',
       },
       {
+        file: 'package/dist/session/types.d.ts',
+        forbidden: "from '@blade-ai/agent'",
+        message: 'session budget declarations must use the explicit @blade-ai/agent/budget subpath',
+      },
+      {
+        file: 'package/dist/session/types.d.ts',
+        forbidden: 'AgentTokenBudgetSnapshot',
+        message: 'session budget declarations must expose TokenBudgetSnapshot from @blade-ai/agent/budget',
+      },
+      {
         file: 'package/dist/session/index.js',
         forbidden: '../../../../src/session/Session',
         message: 'session runtime entry must not import the legacy root Session directly',

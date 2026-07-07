@@ -7,6 +7,8 @@
     "emitDeclarationOnly": true,
     "declarationMap": false,
     "paths": {
+      "@blade-ai/agent": ["../agent/dist/index.d.ts"],
+      "@blade-ai/agent/budget": ["../agent/dist/budget/TokenBudget.d.ts"],
       "@blade-ai/ai": ["../ai/dist/index.d.ts"],
       "@blade-ai/ai/chat": ["../ai/dist/chat/index.d.ts"],
       "@blade-ai/ai/deepseek": ["../ai/dist/deepseek/index.d.ts"],

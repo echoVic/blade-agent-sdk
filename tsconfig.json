@@ -23,6 +23,7 @@
     "types": ["node"],
     "paths": {
       "@blade-ai/agent": ["./packages/agent/src/index.ts"],
+      "@blade-ai/agent/budget": ["./packages/agent/src/budget/TokenBudget.ts"],
       "@blade-ai/ai": ["./packages/ai/src/index.ts"],
       "@blade-ai/ai/chat": ["./packages/ai/src/chat/index.ts"],
       "@blade-ai/ai/deepseek": ["./packages/ai/src/deepseek/index.ts"],
