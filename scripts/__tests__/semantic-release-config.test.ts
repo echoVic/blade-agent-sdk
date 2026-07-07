@@ -723,8 +723,12 @@ describe('release scripts', () => {
     expect(publishedVerifier).toContain("importSnippet: \"import { createSession } from '@blade-ai/agent-sdk';\"");
     expect(publishedVerifier).toContain('published README must document direct installation');
     expect(publishedVerifier).toContain('published README must document direct import usage');
+    expect(publishedVerifier).toContain("sourceReadmePath: 'packages/ai/README.md'");
+    expect(publishedVerifier).toContain('published README must match the package README exactly');
     expect(checklist).toContain('published package READMEs');
+    expect(checklist).toContain('published README 与 package README 完全一致');
     expect(roadmap).toContain('published package README gate');
+    expect(roadmap).toContain('published README 与 package README 完全一致');
   });
 
   it('verifies packed package READMEs before publication', () => {
@@ -744,9 +748,14 @@ describe('release scripts', () => {
     expect(packageVerifier).toContain("importSnippet: \"import { createSession } from '@blade-ai/agent-sdk';\"");
     expect(packageVerifier).toContain('packed README must document direct installation');
     expect(packageVerifier).toContain('packed README must document direct import usage');
+    expect(packageVerifier).toContain("sourceReadmePath: 'packages/ai/README.md'");
+    expect(packageVerifier).toContain('packed README must match the package README exactly');
     expect(readme).toContain('packed package READMEs');
+    expect(readme).toContain('packed README 与 package README 完全一致');
     expect(checklist).toContain('packed package READMEs');
+    expect(checklist).toContain('packed README 与 package README 完全一致');
     expect(roadmap).toContain('packed package README gate');
+    expect(roadmap).toContain('packed README 与 package README 完全一致');
   });
 
   it('verifies packed and published package license artifacts', () => {

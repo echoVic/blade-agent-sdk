@@ -58,18 +58,21 @@ const packedReadmeRequirements = [
   {
     packageName: '@blade-ai/ai',
     readmePath: 'package/README.md',
+    sourceReadmePath: 'packages/ai/README.md',
     installCommand: 'pnpm add @blade-ai/ai',
     importSnippet: "import { createOpenAICompatibleModelPort } from '@blade-ai/ai';",
   },
   {
     packageName: '@blade-ai/agent',
     readmePath: 'package/README.md',
+    sourceReadmePath: 'packages/agent/README.md',
     installCommand: 'pnpm add @blade-ai/agent',
     importSnippet: "import { AgentKernel } from '@blade-ai/agent';",
   },
   {
     packageName: '@blade-ai/agent-sdk',
     readmePath: 'package/README.md',
+    sourceReadmePath: 'packages/agent-sdk/README.md',
     installCommand: 'pnpm add @blade-ai/agent-sdk',
     importSnippet: "import { createSession } from '@blade-ai/agent-sdk';",
   },
@@ -637,6 +640,7 @@ function verifyPackedReadmes(spec, tarballPath, tempDir) {
   const extractDir = join(tempDir, `readme-${spec.name.replaceAll(/[^a-z0-9]+/gi, '-')}`);
   run('mkdir', ['-p', extractDir]);
   run('tar', ['-xzf', tarballPath, '-C', extractDir, requirement.readmePath]);
+  const sourceReadme = readFileSync(resolve(repoRoot, requirement.sourceReadmePath), 'utf8');
   const readme = readFileSync(join(extractDir, requirement.readmePath), 'utf8');
 
   if (!readme.includes(requirement.packageName)) {
@@ -647,6 +651,9 @@ function verifyPackedReadmes(spec, tarballPath, tempDir) {
   }
   if (!readme.includes(requirement.importSnippet)) {
     throw new Error(`${spec.name} packed README must document direct import usage`);
+  }
+  if (readme !== sourceReadme) {
+    throw new Error(`${spec.name} packed README must match the package README exactly`);
   }
 }
 

@@ -73,18 +73,21 @@ const publishedReadmeRequirements = [
   {
     packageName: '@blade-ai/ai',
     readmePath: 'node_modules/@blade-ai/ai/README.md',
+    sourceReadmePath: 'packages/ai/README.md',
     installCommand: 'pnpm add @blade-ai/ai',
     importSnippet: "import { createOpenAICompatibleModelPort } from '@blade-ai/ai';",
   },
   {
     packageName: '@blade-ai/agent',
     readmePath: 'node_modules/@blade-ai/agent/README.md',
+    sourceReadmePath: 'packages/agent/README.md',
     installCommand: 'pnpm add @blade-ai/agent',
     importSnippet: "import { AgentKernel } from '@blade-ai/agent';",
   },
   {
     packageName: '@blade-ai/agent-sdk',
     readmePath: 'node_modules/@blade-ai/agent-sdk/README.md',
+    sourceReadmePath: 'packages/agent-sdk/README.md',
     installCommand: 'pnpm add @blade-ai/agent-sdk',
     importSnippet: "import { createSession } from '@blade-ai/agent-sdk';",
   },
@@ -1232,6 +1235,7 @@ function verifyPublishedSdkBrowserExportConditions(packageName, manifest) {
 
 async function verifyPublishedReadmes({ consumerDir }) {
   for (const requirement of publishedReadmeRequirements) {
+    const sourceReadme = await readFile(resolve(requirement.sourceReadmePath), 'utf8');
     const readme = await readFile(join(consumerDir, requirement.readmePath), 'utf8');
 
     if (!readme.includes(requirement.packageName)) {
@@ -1242,6 +1246,9 @@ async function verifyPublishedReadmes({ consumerDir }) {
     }
     if (!readme.includes(requirement.importSnippet)) {
       throw new Error(`${requirement.packageName} published README must document direct import usage`);
+    }
+    if (readme !== sourceReadme) {
+      throw new Error(`${requirement.packageName} published README must match the package README exactly`);
     }
   }
   console.log('[verify-published] temporary consumer published package READMEs passed');
