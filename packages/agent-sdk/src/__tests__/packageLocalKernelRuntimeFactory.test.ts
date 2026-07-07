@@ -1,9 +1,9 @@
 import { describe, expect, it, vi } from 'vitest';
-import { createPackageLocalKernelSessionRuntimeFactory } from '../../packages/agent-sdk/src/session/packageLocalKernelRuntimeFactory.js';
-import { PackageLocalSession } from '../../packages/agent-sdk/src/session/sessionInstance.js';
-import type { KernelStreamBridgeRuntime } from '../../packages/agent-sdk/src/session/kernelStreamBridge.js';
-import type { PackageLocalSessionRuntimeContext } from '../../packages/agent-sdk/src/session/packageLocalRuntimeFactory.js';
-import type { SessionOptions, StreamMessage } from '../../packages/agent-sdk/src/session/types.js';
+import type { KernelStreamBridgeRuntime } from '../session/kernelStreamBridge.js';
+import { createPackageLocalKernelSessionRuntimeFactory } from '../session/packageLocalKernelRuntimeFactory.js';
+import type { PackageLocalSessionRuntimeContext } from '../session/packageLocalRuntimeFactory.js';
+import { PackageLocalSession } from '../session/sessionInstance.js';
+import type { SessionOptions, StreamMessage } from '../session/types.js';
 
 const options: SessionOptions = {
   provider: {
