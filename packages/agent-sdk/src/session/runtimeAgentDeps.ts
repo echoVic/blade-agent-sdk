@@ -32,6 +32,7 @@ export interface PackageLocalAgentRuntimeDepsOperations {
 export interface PackageLocalAgentRuntimeDepsOperationsOptions
   extends Omit<PackageLocalAgentRuntimeDepsOptions, 'executionPipeline'> {
   createExecutionPipeline(): unknown;
+  getDefaultContext?: () => RuntimeContext;
 }
 
 export function createPackageLocalAgentRuntimeDepsOperations(
@@ -41,7 +42,7 @@ export function createPackageLocalAgentRuntimeDepsOperations(
     get() {
       return createPackageLocalAgentRuntimeDeps({
         executionPipeline: options.createExecutionPipeline(),
-        defaultContext: options.defaultContext,
+        defaultContext: options.getDefaultContext?.() ?? options.defaultContext,
         mcpRegistry: options.mcpRegistry,
         subagentRegistry: options.subagentRegistry,
         backgroundAgentManager: options.backgroundAgentManager,

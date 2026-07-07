@@ -162,6 +162,27 @@ describe('agent-sdk package-local Session instance', () => {
     expect(streamTurn).toHaveBeenCalledTimes(1);
   });
 
+  it('forwards default context changes into the package-local runtime port', () => {
+    const setDefaultContext = vi.fn();
+    const session = new PackageLocalSession({
+      sessionId: 'session-1',
+      options,
+      streamTurn: async function* () {},
+      createTurnId: () => 'turn-1',
+      runtime: { setDefaultContext },
+    });
+
+    const nextContext = {
+      environment: {
+        cwd: '/workspace/next',
+      },
+    };
+    session.setDefaultContext(nextContext);
+
+    expect(session.getDefaultContext()).toEqual(nextContext);
+    expect(setDefaultContext).toHaveBeenCalledWith(nextContext);
+  });
+
   it('fails MCP actions with a clear runtime capability error when no MCP runtime is configured', async () => {
     const session = new PackageLocalSession({
       sessionId: 'session-1',

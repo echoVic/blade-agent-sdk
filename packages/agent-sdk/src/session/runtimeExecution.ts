@@ -28,6 +28,7 @@ export function createPackageLocalRuntimeExecutionOperations(
     agentDeps: createPackageLocalAgentRuntimeDepsOperations({
       createExecutionPipeline: () => pipeline.get(),
       defaultContext: options.defaultContext,
+      getDefaultContext: options.getDefaultContext,
       mcpRegistry: options.mcpRegistry,
       subagentRegistry: options.subagentRegistry,
       backgroundAgentManager: options.backgroundAgentManager,

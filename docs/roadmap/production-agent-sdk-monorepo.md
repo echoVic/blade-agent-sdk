@@ -426,6 +426,7 @@ Status:
 - One hundred tenth adapter increment complete: the default package-local session runtime now owns a lightweight hook runtime that converts configured `UserPromptSubmit` callbacks into an `AgentHookPort.beforeModel()` rewrite for the first model step. Session-first `createSession({ hooks })` can now rewrite the prompt on the default kernel path without relying on the legacy root `HookRuntime`.
 - One hundred eleventh adapter increment complete: package-local session control methods now synchronize with the default kernel runtime. `setModel()` updates the runtime `BladeConfig` before the next kernel turn resolves its model, and `setPermissionMode()` / `setMaxTurns()` flow through the same runtime control port instead of only mutating the facade-side session options.
 - One hundred twelfth adapter increment complete: package-local permission-mode changes now invalidate the cached execution pipeline. After `setPermissionMode()` the next tool execution pipeline is rebuilt with the current mode, preventing session-first permission policy changes from being hidden behind a stale runtime cache.
+- One hundred thirteenth adapter increment complete: `setDefaultContext()` now synchronizes from the package-local session facade into the default kernel runtime. Agent runtime dependency projection reads the current default context through a runtime getter, so session-first context changes are visible to runtime-managed helpers instead of being frozen at session construction.
 
 ### Phase 5: Production Verification Chain
 

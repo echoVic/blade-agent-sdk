@@ -45,6 +45,7 @@ export interface PackageLocalSessionOptions {
 
 export interface PackageLocalSessionRuntimePort {
   loadMessages?: () => Promise<SessionMessage[]> | SessionMessage[];
+  setDefaultContext?: ISession['setDefaultContext'];
   setPermissionMode?: ISession['setPermissionMode'];
   setModel?: ISession['setModel'];
   setMaxTurns?: ISession['setMaxTurns'];
@@ -140,6 +141,7 @@ export class PackageLocalSession implements ISession {
 
   setDefaultContext(context: RuntimeContext): void {
     this.lifecycle.assertOpen();
+    this.runtime?.setDefaultContext?.(context);
     this.defaultContext = context;
   }
 

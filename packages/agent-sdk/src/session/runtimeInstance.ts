@@ -281,7 +281,7 @@ export class PackageLocalSessionRuntime {
   readonly sessionId: SessionId;
   readonly options: SessionOptions;
   readonly bladeConfig: BladeConfig;
-  readonly defaultContext: RuntimeContext;
+  defaultContext: RuntimeContext;
   readonly storageRoot?: string;
   readonly projectPath?: string;
   readonly hookCallbacks: Partial<Record<SessionHookEvent, HookCallback[]>>;
@@ -384,6 +384,7 @@ export class PackageLocalSessionRuntime {
       toolCatalog: this.toolCatalog,
       executionPipelineFactory: this.executionPipelineFactory,
       defaultContext: this.defaultContext,
+      getDefaultContext: () => this.defaultContext,
       mcpRegistry: this.mcpRegistry,
       subagentRegistry: this.subagentRegistry,
       backgroundAgentManager: this.backgroundAgentManager,
@@ -507,6 +508,10 @@ export class PackageLocalSessionRuntime {
 
   async mcpListTools(): Promise<McpToolInfo[]> {
     return this.mcpCapabilityOperations.listTools();
+  }
+
+  setDefaultContext(context: RuntimeContext): void {
+    this.defaultContext = context;
   }
 
   setPermissionMode(mode: Parameters<ISession['setPermissionMode']>[0]): void {

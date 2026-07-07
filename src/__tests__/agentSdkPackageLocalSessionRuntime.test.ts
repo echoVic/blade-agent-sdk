@@ -1114,6 +1114,31 @@ describe('agent-sdk package-local session runtime shell', () => {
     expect(create).toHaveBeenCalledTimes(1);
   });
 
+  it('projects updated default context through package-local agent runtime dependencies', () => {
+    const runtime = new PackageLocalSessionRuntime({
+      sessionId: 'session-1',
+      options,
+      bladeConfig,
+      defaultContext: {
+        environment: {
+          cwd: '/workspace/initial',
+        },
+      },
+    });
+
+    runtime.setDefaultContext({
+      environment: {
+        cwd: '/workspace/updated',
+      },
+    });
+
+    expect(runtime.getAgentRuntimeDeps().defaultContext).toEqual({
+      environment: {
+        cwd: '/workspace/updated',
+      },
+    });
+  });
+
   it('creates kernel ports through an injected package-local factory', () => {
     const toolPort = {
       list: vi.fn(async () => []),
