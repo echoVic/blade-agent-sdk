@@ -13,6 +13,7 @@ import type {
 } from '../ports/index.js';
 import type {
   AgentStreamEvent,
+  AgentTokenBudgetPort,
   AgentToolCall,
   AgentToolResult,
 } from '../protocol/index.js';
@@ -41,6 +42,7 @@ export interface AgentKernelOptions {
   trace?: AgentTracePort;
   store?: AgentStorePort;
   hooks?: AgentHookPort;
+  tokenBudget?: AgentTokenBudgetPort;
   maxSteps?: number;
 }
 
@@ -160,6 +162,7 @@ export class AgentKernel {
     if (modelCallMode === 'generate' && response.usage) {
       yield { type: 'usage', usage: response.usage };
       await this.recordTrace({ type: 'usage', usage: response.usage });
+      yield* this.recordTokenBudget(response.usage);
     }
     await this.appendStoreMessage(this.responseToAssistantMessage(response), {
       turnId: turn.turnId,
@@ -307,6 +310,7 @@ export class AgentKernel {
         usage = event.usage;
         yield { type: 'usage', usage: event.usage };
         await this.recordTrace({ type: 'usage', usage: event.usage });
+        yield* this.recordTokenBudget(event.usage);
         continue;
       }
 
@@ -363,5 +367,31 @@ export class AgentKernel {
       ...(tools && tools.length > 0 ? { tools } : {}),
       signal,
     };
+  }
+
+  private async *recordTokenBudget(
+    usage: NonNullable<ModelResponse['usage']>,
+  ): AsyncGenerator<AgentStreamEvent> {
+    if (!this.options.tokenBudget) {
+      return;
+    }
+
+    await this.options.tokenBudget.record(usage);
+    if (this.options.tokenBudget.isExhausted()) {
+      yield {
+        type: 'budget_exhausted',
+        snapshot: this.options.tokenBudget.getSnapshot(),
+      };
+      return;
+    }
+    if (
+      this.options.tokenBudget.isWarning() ||
+      this.options.tokenBudget.isApproachingLimit()
+    ) {
+      yield {
+        type: 'budget_warning',
+        snapshot: this.options.tokenBudget.getSnapshot(),
+      };
+    }
   }
 }

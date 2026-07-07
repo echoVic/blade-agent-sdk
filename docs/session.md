@@ -266,11 +266,11 @@ interface StreamOptions {
 }
 ```
 
-`stream()` 默认通过 `@blade-ai/agent` 的运行时无关 `AgentKernel` 执行，同时保持 `send()` + `stream()` 的 session-first API。kernel runtime 会复用 session 的模型配置、工具定义与执行端口、HookRuntime、ContextManager 和 trace recorder。工具调用会继续以 `tool_use` / `tool_result` 事件流出，工具产生的权限更新会继续以 `tool_permission_updates` 事件流出并写入 trace，并在 `session.messages` 中保留 assistant `tool_calls` 与 tool `tool_call_id` / `name` 历史。kernel trace 的 usage 会使用与 stream `usage` 事件一致的 `maxContextTokens`。如果 `send()` 传入的 `AbortSignal` 在模型执行前已取消，kernel 路径会发出带 `ABORTED` code 的 `error` 事件、保留已消费的 user message，并把 trace 标记为 `aborted`。
+`stream()` 默认通过 `@blade-ai/agent` 的运行时无关 `AgentKernel` 执行，同时保持 `send()` + `stream()` 的 session-first API。kernel runtime 会复用 session 的模型配置、工具定义与执行端口、HookRuntime、ContextManager、token budget 和 trace recorder。工具调用会继续以 `tool_use` / `tool_result` 事件流出，工具产生的权限更新会继续以 `tool_permission_updates` 事件流出并写入 trace，预算阈值会以 `budget_warning` / `budget_exhausted` 事件流出，并在 `session.messages` 中保留 assistant `tool_calls` 与 tool `tool_call_id` / `name` 历史。kernel trace 的 usage 会使用与 stream `usage` 事件一致的 `maxContextTokens`。如果 `send()` 传入的 `AbortSignal` 在模型执行前已取消，kernel 路径会发出带 `ABORTED` code 的 `error` 事件、保留已消费的 user message，并把 trace 标记为 `aborted`。
 
 ### StreamMessage 类型
 
-`stream()` 产出的是 **判别联合类型**（Discriminated Union），共 15 种：
+`stream()` 产出的是 **判别联合类型**（Discriminated Union），共 17 种：
 
 ```ts
 type StreamMessage =
@@ -287,6 +287,8 @@ type StreamMessage =
   | { type: 'tool_permission_updates'; id: string; name: string; updates: PermissionUpdate[]; sessionId: string }
   | { type: 'tool_result'; id: string; name: string; output: unknown; isError?: boolean; sessionId: string }
   | { type: 'usage'; usage: TokenUsage; sessionId: string }
+  | { type: 'budget_warning'; snapshot: TokenBudgetSnapshot; sessionId: string }
+  | { type: 'budget_exhausted'; snapshot: TokenBudgetSnapshot; sessionId: string }
   | { type: 'result'; subtype: 'success' | 'error'; content?: string; error?: string; sessionId: string }
   | { type: 'error'; message: string; code?: string; sessionId: string };
 ```
@@ -306,6 +308,8 @@ type StreamMessage =
 | `tool_permission_updates` | 工具请求的权限更新                           |
 | `tool_result` | 工具执行结果返回                                  |
 | `usage`       | Token 用量统计                                |
+| `budget_warning` | Token 或成本预算达到 warning / approaching-limit 阈值 |
+| `budget_exhausted` | Token 或成本预算达到硬限制                         |
 | `result`      | 最终结果（`subtype` 为 `'success'` 或 `'error'`） |
 | `error`       | 流处理过程中发生的错误                               |
 

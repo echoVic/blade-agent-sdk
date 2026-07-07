@@ -1,3 +1,4 @@
+import type { AgentTokenBudgetSnapshot } from '@blade-ai/agent';
 import type { AgentTrace, ObservabilityOptions } from '../observability/types.js';
 import type {
   ContextSnapshot,
@@ -31,6 +32,8 @@ export interface TokenBudgetConfig {
   costPerCacheWriteToken?: number;
   costPerCacheReadToken?: number;
 }
+
+export type TokenBudgetSnapshot = AgentTokenBudgetSnapshot;
 
 export type ToolSourceKind = 'builtin' | 'custom' | 'mcp' | 'session';
 export type ToolTrustLevel = 'trusted' | 'workspace' | 'remote';
@@ -168,6 +171,8 @@ export type StreamMessage =
       sessionId: SessionId;
     }
   | { type: 'usage'; usage: TokenUsage; sessionId: SessionId }
+  | { type: 'budget_warning'; snapshot: TokenBudgetSnapshot; sessionId: SessionId }
+  | { type: 'budget_exhausted'; snapshot: TokenBudgetSnapshot; sessionId: SessionId }
   | {
       type: 'result';
       subtype: 'success' | 'error';

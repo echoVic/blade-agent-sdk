@@ -97,6 +97,7 @@ export type {
   SessionToolCall,
   SubagentInfo,
   TokenBudgetConfig,
+  TokenBudgetSnapshot,
   ToolCallRecord,
   UserMessageContent,
 } from '../session/index.js';

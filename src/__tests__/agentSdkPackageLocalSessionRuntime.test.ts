@@ -1460,6 +1460,45 @@ describe('agent-sdk package-local session runtime shell', () => {
     });
   });
 
+  it('injects session token budget config into created agent kernels', () => {
+    const model = createModelPort();
+    const kernel = {
+      id: 'kernel',
+      async *runTurn() {},
+    };
+    const kernelFactory = {
+      create: vi.fn(() => kernel),
+    };
+    const runtime = new PackageLocalSessionRuntime({
+      sessionId: 'session-1',
+      options: {
+        ...options,
+        tokenBudget: {
+          maxTotalTokens: 100,
+          warningThresholdPercent: 0.5,
+        },
+      },
+      bladeConfig,
+      defaultContext: {},
+      kernelFactory,
+    });
+
+    expect(runtime.createAgentKernel({ model })).toBe(kernel);
+
+    expect(kernelFactory.create).toHaveBeenCalledWith({
+      model,
+      store: expect.any(Object),
+      hooks: expect.any(Object),
+      tokenBudget: expect.objectContaining({
+        record: expect.any(Function),
+        isWarning: expect.any(Function),
+        isApproachingLimit: expect.any(Function),
+        isExhausted: expect.any(Function),
+        getSnapshot: expect.any(Function),
+      }),
+    });
+  });
+
   it('resolves the session kernel model through an injected package-local resolver', () => {
     const resolvedModel = createModelPort();
     const kernel = {

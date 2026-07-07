@@ -59,6 +59,22 @@ export function projectPackageLocalKernelEventToStreamMessages(
           sessionId: options.sessionId,
         },
       ];
+    case 'budget_warning':
+      return [
+        {
+          type: 'budget_warning',
+          snapshot: event.snapshot,
+          sessionId: options.sessionId,
+        },
+      ];
+    case 'budget_exhausted':
+      return [
+        {
+          type: 'budget_exhausted',
+          snapshot: event.snapshot,
+          sessionId: options.sessionId,
+        },
+      ];
     case 'result':
       return [
         { type: 'turn_end', turn: 1, sessionId: options.sessionId },

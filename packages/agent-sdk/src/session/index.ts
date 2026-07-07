@@ -66,6 +66,7 @@ export type {
   StreamOptions,
   SubagentInfo,
   TokenBudgetConfig,
+  TokenBudgetSnapshot,
   ToolCallRecord,
   ToolCatalogSourcePolicy,
   ToolDefinition,

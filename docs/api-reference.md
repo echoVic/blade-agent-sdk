@@ -56,7 +56,7 @@
 | `PermissionMode` | `DEFAULT` / `AUTO_EDIT` / `YOLO` / `PLAN` |
 | `HookEvent` | `SessionStart` / `SessionEnd` / `UserPromptSubmit` / `PermissionRequest` / `PreToolUse` / `PostToolUse` / `PostToolUseFailure` / `TaskCompleted` / `Stop` / `SubagentStart` / `SubagentStop` / `Notification` / `Compaction` / `StopFailure` / `PreCompact` / `PostCompact` / `Elicitation` / `ElicitationResult` / `ConfigChange` / `CwdChanged` / `FileChanged` / `InstructionsLoaded` |
 | `ToolKind` | `READONLY` / `WRITE` / `EXECUTE` |
-| `StreamMessageType` | `TURN_START` / `TURN_END` / `CONTENT` / `THINKING` / `TOOL_USE` / `TOOL_PROGRESS` / `TOOL_MESSAGE` / `TOOL_RUNTIME_PATCH` / `TOOL_CONTEXT_PATCH` / `TOOL_NEW_MESSAGES` / `TOOL_PERMISSION_UPDATES` / `TOOL_RESULT` / `USAGE` / `RESULT` / `ERROR` |
+| `StreamMessageType` | `TURN_START` / `TURN_END` / `CONTENT` / `THINKING` / `TOOL_USE` / `TOOL_PROGRESS` / `TOOL_MESSAGE` / `TOOL_RUNTIME_PATCH` / `TOOL_CONTEXT_PATCH` / `TOOL_NEW_MESSAGES` / `TOOL_PERMISSION_UPDATES` / `TOOL_RESULT` / `USAGE` / `BUDGET_WARNING` / `BUDGET_EXHAUSTED` / `RESULT` / `ERROR` |
 | `MessageRole` | `SYSTEM` / `USER` / `ASSISTANT` / `TOOL` |
 | `PermissionDecision` | `ALLOW` / `DENY` / `ASK` |
 
@@ -70,7 +70,7 @@
 | `SessionOptions` | Session 创建选项 |
 | `SendOptions` | send() 选项 |
 | `StreamOptions` | stream() 选项 |
-| `StreamMessage` | 流式消息联合类型（15 种） |
+| `StreamMessage` | 流式消息联合类型（17 种） |
 | `PromptResult` | prompt() 返回结果 |
 | `ResumeOptions` | resume 选项 |
 | `ForkOptions` | fork 选项 |

@@ -96,10 +96,18 @@ describe('agent-sdk package-local runtime agent kernel helpers', () => {
         maxContextTokens: 128000,
       },
     };
+    const tokenBudget = {
+      record: vi.fn(),
+      isWarning: vi.fn(() => false),
+      isApproachingLimit: vi.fn(() => false),
+      isExhausted: vi.fn(() => false),
+      getSnapshot: vi.fn(),
+    };
 
     const created = createPackageLocalRuntimeAgentKernel({
       options: {
         maxSteps: 7,
+        tokenBudget,
       },
       kernelModel,
       kernelFactory,
@@ -123,6 +131,7 @@ describe('agent-sdk package-local runtime agent kernel helpers', () => {
       hooks: hookPort,
       trace: tracePort,
       tools: toolPort,
+      tokenBudget,
       maxSteps: 7,
     });
   });

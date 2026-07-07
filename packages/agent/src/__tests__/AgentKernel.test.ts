@@ -143,6 +143,56 @@ describe('AgentKernel', () => {
     ]);
   });
 
+  it('records usage into an injected token budget and emits budget warnings', async () => {
+    const usage = {
+      promptTokens: 80,
+      completionTokens: 20,
+      totalTokens: 100,
+    };
+    const generate = vi.fn(async (_request: ModelRequest): Promise<ModelResponse> => ({
+      content: 'Budgeted answer',
+      usage,
+      finishReason: 'stop',
+    }));
+    const model: ModelPort = {
+      generate,
+      stream: async function* () {},
+    };
+    const snapshot = {
+      totalInputTokens: 80,
+      totalBillableInputTokens: 80,
+      totalOutputTokens: 20,
+      totalCacheWriteTokens: 0,
+      totalCacheReadTokens: 0,
+      totalCacheMissTokens: 80,
+      totalTokens: 100,
+      estimatedCost: 0,
+      budgetRemaining: 0,
+      budgetPercent: 1,
+    };
+    const tokenBudget = {
+      record: vi.fn(),
+      isWarning: vi.fn(() => true),
+      isApproachingLimit: vi.fn(() => false),
+      isExhausted: vi.fn(() => false),
+      getSnapshot: vi.fn(() => snapshot),
+    };
+    const kernel = new AgentKernel({ model, tokenBudget });
+
+    const events = [];
+    for await (const event of kernel.runTurn({ input: 'Use budget' })) {
+      events.push(event);
+    }
+
+    expect(tokenBudget.record).toHaveBeenCalledWith(usage);
+    expect(events).toEqual([
+      { type: 'content', delta: 'Budgeted answer' },
+      { type: 'usage', usage },
+      { type: 'budget_warning', snapshot },
+      { type: 'result', content: 'Budgeted answer', finishReason: 'stop' },
+    ]);
+  });
+
   it('executes model tool calls and follows up with tool results', async () => {
     const generate = vi.fn(async (_request: ModelRequest): Promise<ModelResponse> => {
       if (generate.mock.calls.length === 1) {

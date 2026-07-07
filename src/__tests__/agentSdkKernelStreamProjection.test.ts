@@ -107,6 +107,51 @@ describe('agent-sdk kernel stream projection', () => {
       },
     ]);
 
+    const budgetSnapshot = {
+      totalInputTokens: 60,
+      totalBillableInputTokens: 50,
+      totalOutputTokens: 20,
+      totalCacheWriteTokens: 0,
+      totalCacheReadTokens: 10,
+      totalCacheMissTokens: 50,
+      totalTokens: 80,
+      estimatedCost: 0.091,
+      budgetRemaining: 20,
+      budgetPercent: 0.8,
+    };
+
+    expect(
+      projectPackageLocalKernelEventToStreamMessages(
+        {
+          type: 'budget_warning',
+          snapshot: budgetSnapshot,
+        },
+        { sessionId: 'session-1', maxContextTokens: 4096, includeThinking: false },
+      ),
+    ).toEqual([
+      {
+        type: 'budget_warning',
+        snapshot: budgetSnapshot,
+        sessionId: 'session-1',
+      },
+    ]);
+
+    expect(
+      projectPackageLocalKernelEventToStreamMessages(
+        {
+          type: 'budget_exhausted',
+          snapshot: budgetSnapshot,
+        },
+        { sessionId: 'session-1', maxContextTokens: 4096, includeThinking: false },
+      ),
+    ).toEqual([
+      {
+        type: 'budget_exhausted',
+        snapshot: budgetSnapshot,
+        sessionId: 'session-1',
+      },
+    ]);
+
     expect(
       projectPackageLocalKernelEventToStreamMessages(
         { type: 'result', content: 'done' },

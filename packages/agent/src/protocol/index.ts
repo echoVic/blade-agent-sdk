@@ -48,6 +48,27 @@ export interface AgentToolResult {
   effects?: readonly AgentToolEffect[];
 }
 
+export interface AgentTokenBudgetSnapshot {
+  totalInputTokens: number;
+  totalBillableInputTokens: number;
+  totalOutputTokens: number;
+  totalCacheWriteTokens: number;
+  totalCacheReadTokens: number;
+  totalCacheMissTokens: number;
+  totalTokens: number;
+  estimatedCost: number;
+  budgetRemaining: number | null;
+  budgetPercent: number | null;
+}
+
+export interface AgentTokenBudgetPort {
+  record(usage: ModelUsageInfo): Promise<void> | void;
+  isWarning(): boolean;
+  isApproachingLimit(): boolean;
+  isExhausted(): boolean;
+  getSnapshot(): AgentTokenBudgetSnapshot;
+}
+
 export type AgentStreamEvent =
   | { type: 'content'; delta: string }
   | { type: 'thinking'; delta: string }
@@ -59,5 +80,7 @@ export type AgentStreamEvent =
     }
   | { type: 'tool_result'; result: AgentToolResult }
   | { type: 'usage'; usage: ModelUsageInfo }
+  | { type: 'budget_warning'; snapshot: AgentTokenBudgetSnapshot }
+  | { type: 'budget_exhausted'; snapshot: AgentTokenBudgetSnapshot }
   | { type: 'result'; content: string; finishReason?: string }
   | { type: 'error'; message: string; code?: string };

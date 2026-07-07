@@ -1,5 +1,10 @@
 import type { ModelPort } from '@blade-ai/ai';
-import type { AgentModelRequestDefaults, AgentStreamEvent, AgentToolCall } from '@blade-ai/agent';
+import type {
+  AgentModelRequestDefaults,
+  AgentStreamEvent,
+  AgentTokenBudgetPort,
+  AgentToolCall,
+} from '@blade-ai/agent';
 import type { TraceRecorder } from '../observability/TraceRecorder.js';
 import type { ExecutionContext } from '../tools/types/index.js';
 import type { BladeConfig } from '../types/common.js';
@@ -36,6 +41,7 @@ export interface PackageLocalRuntimeAgentKernelOptions
     toolCall: AgentToolCall,
     signal?: AbortSignal,
   ) => ExecutionContext;
+  tokenBudget?: AgentTokenBudgetPort;
   maxSteps?: number;
 }
 

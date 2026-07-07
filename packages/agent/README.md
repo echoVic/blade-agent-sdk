@@ -14,15 +14,18 @@ pnpm add @blade-ai/agent
 
 ```ts
 import { AgentKernel } from '@blade-ai/agent';
+import { TokenBudget } from '@blade-ai/agent';
 
 const kernel = new AgentKernel({
   model,
   tools,
   permissions,
+  tokenBudget: new TokenBudget({ maxTotalTokens: 128_000 }),
 });
 
 for await (const event of kernel.runTurn({ input: 'hello' })) {
-  // handle content, tool_use, tool_result, usage, result, error
+  // handle content, tool_use, tool_result, usage,
+  // budget_warning, budget_exhausted, result, error
 }
 ```
 

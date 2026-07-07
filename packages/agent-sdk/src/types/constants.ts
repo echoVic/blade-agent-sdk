@@ -61,6 +61,8 @@ export const StreamMessageType = {
   TOOL_PERMISSION_UPDATES: 'tool_permission_updates',
   TOOL_RESULT: 'tool_result',
   USAGE: 'usage',
+  BUDGET_WARNING: 'budget_warning',
+  BUDGET_EXHAUSTED: 'budget_exhausted',
   RESULT: 'result',
   ERROR: 'error',
 } as const;

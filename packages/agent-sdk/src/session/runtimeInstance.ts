@@ -1,9 +1,11 @@
-import type {
-  AgentHookPort,
-  AgentStorePort,
-  AgentToolCall,
-  AgentToolPort,
-  AgentTracePort,
+import {
+  TokenBudget,
+  type AgentHookPort,
+  type AgentStorePort,
+  type AgentTokenBudgetPort,
+  type AgentToolCall,
+  type AgentToolPort,
+  type AgentTracePort,
 } from '@blade-ai/agent';
 import type { ContextSnapshot, RuntimeContext } from '../runtime/types.js';
 import type { BladeConfig, McpServerConfig } from '../types/common.js';
@@ -51,6 +53,7 @@ import {
 import type {
   PackageLocalRuntimeAgentKernelFactoryPort,
   PackageLocalRuntimeAgentKernelPort,
+  PackageLocalRuntimeResolvedAgentKernelCreationOptions,
 } from './runtimeAgentKernels.js';
 import type {
   PackageLocalAgentRuntimeDeps,
@@ -190,6 +193,7 @@ export class PackageLocalSessionRuntime {
   private readonly executionOperations: PackageLocalRuntimeExecutionOperations;
   private readonly kernelOperations: PackageLocalRuntimeKernelOperations;
   private readonly turnOperations: PackageLocalRuntimeTurnOperations;
+  private readonly tokenBudget?: TokenBudget;
   private readonly toolOperations: PackageLocalRuntimeToolOperations<
     PackageLocalRuntimeNamedTool,
     PackageLocalRuntimeToolSource
@@ -204,6 +208,9 @@ export class PackageLocalSessionRuntime {
     this.options = options.options;
     this.bladeConfig = options.bladeConfig;
     this.defaultContext = options.defaultContext;
+    this.tokenBudget = this.options.tokenBudget
+      ? new TokenBudget(this.options.tokenBudget)
+      : undefined;
     const bootstrap = createPackageLocalRuntimeBootstrap(options);
     this.storageRoot = bootstrap.initialState.storageRoot;
     this.projectPath = bootstrap.initialState.projectPath;
@@ -311,7 +318,11 @@ export class PackageLocalSessionRuntime {
       bladeConfig: this.bladeConfig,
       hookRuntime: this.hookRuntime,
       kernelModelResolver: this.kernelModelResolver,
-      createAgentKernel: this.kernelOperations.agentKernel.createFromResolved,
+      createAgentKernel: (agentKernelOptions, kernelModel) =>
+        this.kernelOperations.agentKernel.createFromResolved(
+          this.withSessionTokenBudget(agentKernelOptions),
+          kernelModel,
+        ),
     });
     this.capabilityOperations = createPackageLocalRuntimeCapabilityOperations({
       registerConfiguredMcpServers: () => this.registerConfiguredMcpServers(),
@@ -490,7 +501,9 @@ export class PackageLocalSessionRuntime {
   createAgentKernel(
     options: PackageLocalRuntimeAgentKernelOptions = {},
   ): PackageLocalRuntimeAgentKernelPort {
-    return this.kernelOperations.agentKernel.createFromOptions(options);
+    return this.kernelOperations.agentKernel.createFromOptions(
+      this.withSessionTokenBudget(options),
+    );
   }
 
   async *streamAgentKernelTurn(
@@ -499,4 +512,16 @@ export class PackageLocalSessionRuntime {
     yield* this.turnOperations.kernelTurnStream.stream(options);
   }
 
+  private withSessionTokenBudget<
+    TOptions extends PackageLocalRuntimeResolvedAgentKernelCreationOptions,
+  >(options: TOptions): TOptions & { tokenBudget?: AgentTokenBudgetPort } {
+    if (options.tokenBudget || !this.tokenBudget) {
+      return options;
+    }
+
+    return {
+      ...options,
+      tokenBudget: this.tokenBudget,
+    };
+  }
 }

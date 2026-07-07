@@ -4,6 +4,7 @@ import type {
   AgentKernelOptions,
   AgentStorePort,
   AgentStreamEvent,
+  AgentTokenBudgetPort,
   AgentToolPort,
   AgentTracePort,
 } from '@blade-ai/agent';
@@ -21,6 +22,7 @@ export type { PackageLocalRuntimeResolvedKernelModel } from './runtimeKernelMode
 
 export interface PackageLocalRuntimeAgentKernelCreationOptions {
   maxSteps?: number;
+  tokenBudget?: AgentTokenBudgetPort;
 }
 
 export interface PackageLocalRuntimeAgentKernelTurn {
@@ -234,6 +236,7 @@ export function createPackageLocalRuntimeAgentKernel(
     hooks: options.ports.hooks,
     ...(options.ports.trace ? { trace: options.ports.trace } : {}),
     ...(options.ports.tools ? { tools: options.ports.tools } : {}),
+    ...(options.options.tokenBudget ? { tokenBudget: options.options.tokenBudget } : {}),
     ...(options.options.maxSteps !== undefined ? { maxSteps: options.options.maxSteps } : {}),
   });
 }
