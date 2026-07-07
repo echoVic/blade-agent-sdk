@@ -1496,6 +1496,14 @@ assertRuntimeExport(agent, 'AgentKernel');
 assertRuntimeExport(agent, 'TokenBudget');
 assertRuntimeExport(agent, 'ExecutionEpoch');
 assertRuntimeExport(agentBudget, 'TokenBudget');
+const totalOnlyBudget = new agentBudget.TokenBudget({
+  maxTotalTokens: 100,
+  warningThresholdPercent: 0.5,
+});
+totalOnlyBudget.record({ totalTokens: 75 });
+if (totalOnlyBudget.getSnapshot().totalTokens !== 75 || !totalOnlyBudget.isWarning()) {
+  throw new Error('@blade-ai/agent/budget total-only usage returned an unexpected result');
+}
 assertRuntimeExport(agentEpoch, 'ExecutionEpoch');
 assertRuntimeExport(agentKernel, 'AgentKernel');
 assertRuntimeExport(agentLoop, 'AsyncEventQueue');
@@ -1826,6 +1834,9 @@ const chatUsage: ChatUsageInfo = {
   completionTokens: 1,
   totalTokens: 2,
 };
+const totalOnlyChatUsage: ChatUsageInfo = {
+  totalTokens: 2,
+};
 const chatResponse: ChatResponse = {
   content: 'ok',
   usage: chatUsage,
@@ -1839,6 +1850,9 @@ const modelSubpathMessage: ModelMessage = { role: 'user', content: 'hello' };
 const modelSubpathUsage: ModelSubpathUsageInfo = {
   promptTokens: 1,
   completionTokens: 1,
+  totalTokens: 2,
+};
+const totalOnlyModelUsage: ModelSubpathUsageInfo = {
   totalTokens: 2,
 };
 const modelSubpathRequest: ModelSubpathRequest = {
@@ -2172,9 +2186,11 @@ void compatibleModelFromSubpath;
 void vercelModel;
 void chatConfig;
 void chatMessage;
+void totalOnlyChatUsage;
 void chatResponse;
 void chatStreamChunk;
 void modelSubpathRequest;
+void totalOnlyModelUsage;
 void modelSubpathStreamEvent;
 void retryContext;
 void retryEvent;

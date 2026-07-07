@@ -42,6 +42,9 @@ const kernel = new AgentKernel({
   tokenBudget: new TokenBudget({ maxTotalTokens: 128_000 }),
 });
 
+// TokenBudget uses UsageInfo.totalTokens when a provider omits
+// prompt/completion token breakdowns.
+
 for await (const event of kernel.runTurn({ input: 'hello' })) {
   // handle content, tool_use, tool_result, usage,
   // budget_warning, budget_exhausted, result, error

@@ -19,13 +19,21 @@ import type {
 describe('@blade-ai/ai model protocol types', () => {
   it('defines the provider-agnostic model port used by the agent kernel', () => {
     expectTypeOf<UsageInfo>().toMatchTypeOf<{
-      promptTokens: number;
-      completionTokens: number;
+      promptTokens?: number;
+      completionTokens?: number;
       totalTokens: number;
       reasoningTokens?: number;
       cacheReadInputTokens?: number;
       billableInputTokens?: number;
     }>();
+    const totalOnlyUsage: UsageInfo = { totalTokens: 12 };
+    const breakdownUsage: UsageInfo = {
+      promptTokens: 5,
+      completionTokens: 7,
+      totalTokens: 12,
+    };
+    void totalOnlyUsage;
+    void breakdownUsage;
 
     expectTypeOf<ModelToolCall>().toMatchTypeOf<{
       id: string;
@@ -82,8 +90,8 @@ describe('@blade-ai/ai model protocol types', () => {
     expectTypeOf<RootModelOutputFormat>().toEqualTypeOf<ModelOutputFormat>();
     expectTypeOf<ModelUsageInfo>().toEqualTypeOf<UsageInfo>();
     expectTypeOf<RootUsageInfo>().toMatchTypeOf<{
-      promptTokens: number;
-      completionTokens: number;
+      promptTokens?: number;
+      completionTokens?: number;
       totalTokens: number;
     }>();
   });

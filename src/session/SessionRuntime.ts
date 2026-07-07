@@ -370,8 +370,8 @@ export class SessionRuntime {
     maxContextTokens: number,
   ): TokenUsage {
     return {
-      inputTokens: usage.promptTokens,
-      outputTokens: usage.completionTokens,
+      inputTokens: usage.promptTokens ?? 0,
+      outputTokens: usage.completionTokens ?? 0,
       totalTokens: usage.totalTokens,
       maxContextTokens,
       ...(usage.cacheReadInputTokens !== undefined

@@ -32,11 +32,19 @@ describe('@blade-ai/ai chat protocol types', () => {
     }>();
 
     expectTypeOf<UsageInfo>().toMatchTypeOf<{
-      promptTokens: number;
-      completionTokens: number;
+      promptTokens?: number;
+      completionTokens?: number;
       totalTokens: number;
       reasoningTokens?: number;
     }>();
+    const totalOnlyUsage: UsageInfo = { totalTokens: 12 };
+    const breakdownUsage: UsageInfo = {
+      promptTokens: 5,
+      completionTokens: 7,
+      totalTokens: 12,
+    };
+    void totalOnlyUsage;
+    void breakdownUsage;
 
     expectTypeOf<ChatResponse>().toMatchTypeOf<{
       content: string;

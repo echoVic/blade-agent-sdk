@@ -94,8 +94,8 @@ function toTokenUsage(
   maxContextTokens: number,
 ): TokenUsage {
   return {
-    inputTokens: eventUsage.promptTokens,
-    outputTokens: eventUsage.completionTokens,
+    inputTokens: eventUsage.promptTokens ?? 0,
+    outputTokens: eventUsage.completionTokens ?? 0,
     totalTokens: eventUsage.totalTokens,
     maxContextTokens,
   };

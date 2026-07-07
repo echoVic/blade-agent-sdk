@@ -50,4 +50,32 @@ describe('TokenBudget', () => {
       budgetPercent: 1,
     });
   });
+
+  it('uses totalTokens when providers omit token breakdowns', () => {
+    const budget = new TokenBudget({
+      maxTotalTokens: 100,
+      warningThresholdPercent: 0.5,
+    });
+
+    budget.record({ totalTokens: 75 });
+
+    expect(budget.isWarning()).toBe(true);
+    expect(budget.isExhausted()).toBe(false);
+    expect(budget.getSnapshot()).toMatchObject({
+      totalInputTokens: 0,
+      totalOutputTokens: 0,
+      totalTokens: 75,
+      budgetRemaining: 25,
+      budgetPercent: 0.75,
+    });
+
+    budget.record({ totalTokens: 25 });
+
+    expect(budget.isExhausted()).toBe(true);
+    expect(budget.getSnapshot()).toMatchObject({
+      totalTokens: 100,
+      budgetRemaining: 0,
+      budgetPercent: 1,
+    });
+  });
 });

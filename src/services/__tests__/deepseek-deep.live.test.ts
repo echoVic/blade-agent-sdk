@@ -319,9 +319,9 @@ describeLive('DeepSeek V4 Pro 深度集成测试', () => {
       const { usage } = response;
       expect(usage).toBeDefined();
       if (!usage) throw new Error('Expected usage to be returned');
-      expect(usage.promptTokens).toBeGreaterThan(0);
-      expect(usage.completionTokens).toBeGreaterThan(0);
-      expect(usage.totalTokens).toBe(usage.promptTokens + usage.completionTokens);
+      expect(usage.promptTokens ?? 0).toBeGreaterThan(0);
+      expect(usage.completionTokens ?? 0).toBeGreaterThan(0);
+      expect(usage.totalTokens).toBe((usage.promptTokens ?? 0) + (usage.completionTokens ?? 0));
 
       // DeepSeek 返回 cache 信息
       // 注意：首次请求可能没有 cacheReadInputTokens

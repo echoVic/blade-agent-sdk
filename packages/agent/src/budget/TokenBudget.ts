@@ -31,6 +31,7 @@ export class TokenBudget implements AgentTokenBudgetPort {
   private cacheWriteTokens = 0;
   private cacheReadTokens = 0;
   private cacheMissTokens = 0;
+  private unattributedTokens = 0;
   private readonly config: ResolvedTokenBudgetConfig;
 
   constructor(config: TokenBudgetConfig = {}) {
@@ -47,10 +48,13 @@ export class TokenBudget implements AgentTokenBudgetPort {
   record(usage: ModelUsageInfo): void {
     const inputDelta = usage.promptTokens ?? 0;
     const outputDelta = usage.completionTokens ?? 0;
+    const attributedDelta = inputDelta + outputDelta;
+    const totalDelta = usage.totalTokens ?? attributedDelta;
     const billableInputDelta =
       usage.billableInputTokens ?? usage.cacheMissInputTokens ?? inputDelta;
 
     this.inputTokens += inputDelta;
+    this.unattributedTokens += Math.max(totalDelta - attributedDelta, 0);
     this.billableInputTokens += billableInputDelta;
     this.outputTokens += outputDelta;
     this.cacheWriteTokens += usage.cacheCreationInputTokens ?? 0;
@@ -115,9 +119,10 @@ export class TokenBudget implements AgentTokenBudgetPort {
     this.cacheWriteTokens = 0;
     this.cacheReadTokens = 0;
     this.cacheMissTokens = 0;
+    this.unattributedTokens = 0;
   }
 
   private get totalTokens(): number {
-    return this.inputTokens + this.outputTokens;
+    return this.inputTokens + this.outputTokens + this.unattributedTokens;
   }
 }

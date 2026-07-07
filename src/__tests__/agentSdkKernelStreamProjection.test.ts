@@ -107,6 +107,29 @@ describe('agent-sdk kernel stream projection', () => {
       },
     ]);
 
+    expect(
+      projectPackageLocalKernelEventToStreamMessages(
+        {
+          type: 'usage',
+          usage: {
+            totalTokens: 12,
+          },
+        },
+        { sessionId: 'session-1', maxContextTokens: 4096, includeThinking: false },
+      ),
+    ).toEqual([
+      {
+        type: 'usage',
+        usage: {
+          inputTokens: 0,
+          outputTokens: 0,
+          totalTokens: 12,
+          maxContextTokens: 4096,
+        },
+        sessionId: 'session-1',
+      },
+    ]);
+
     const budgetSnapshot = {
       totalInputTokens: 60,
       totalBillableInputTokens: 50,

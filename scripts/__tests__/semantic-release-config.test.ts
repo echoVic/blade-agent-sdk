@@ -240,6 +240,8 @@ describe('package provenance metadata', () => {
     expect(packageVerifier).toContain('tsconfig.json');
     expect(packageVerifier).toContain('tsc');
     expect(packageVerifier).toContain('--noEmit');
+    expect(packageVerifier).toContain('totalOnlyModelUsage');
+    expect(packageVerifier).toContain('totalOnlyChatUsage');
     expect(packageVerifier).toContain("import { createOpenAICompatibleModelPort } from '@blade-ai/ai';");
     expect(packageVerifier).toContain("import { AgentKernel } from '@blade-ai/agent';");
     expect(packageVerifier).toContain("from '@blade-ai/agent/budget';");
@@ -347,6 +349,8 @@ describe('package provenance metadata', () => {
     expect(packageVerifier).toContain("'package/dist/epoch/ExecutionEpoch.js'");
     expect(packageVerifier).toContain("'package/dist/epoch/ExecutionEpoch.d.ts'");
     expect(packageVerifier).toContain("assertRuntimeExport(agent, 'ExecutionEpoch')");
+    expect(packageVerifier).toContain('totalOnlyBudget.record({ totalTokens: 75 })');
+    expect(packageVerifier).toContain("@blade-ai/agent/budget total-only usage returned an unexpected result");
     expect(packageVerifier).toContain("assertRuntimeExport(agentEpoch, 'ExecutionEpoch')");
     expect(packageVerifier).toContain("assertRuntimeExport(agentKernel, 'AgentKernel')");
     expect(packageVerifier).toContain("assertRuntimeExport(agentLoop, 'AsyncEventQueue')");
@@ -779,6 +783,8 @@ describe('release scripts', () => {
     expect(publishedVerifier).toContain("import * as agentBudget from '@blade-ai/agent/budget';");
     expect(publishedVerifier).toContain("import * as agentEpoch from '@blade-ai/agent/epoch';");
     expect(publishedVerifier).toContain("assertRuntimeExport(agentBudget, 'TokenBudget')");
+    expect(publishedVerifier).toContain('totalOnlyBudget.record({ totalTokens: 75 })');
+    expect(publishedVerifier).toContain("@blade-ai/agent/budget total-only usage returned an unexpected result");
     expect(publishedVerifier).toContain("assertRuntimeExport(agent, 'ExecutionEpoch')");
     expect(publishedVerifier).toContain("assertRuntimeExport(agentEpoch, 'ExecutionEpoch')");
     expect(publishedVerifier).toContain("assertRuntimeExport(agentLoop, 'AsyncEventQueue')");
@@ -1563,6 +1569,8 @@ describe('release scripts', () => {
     expect(publishedVerifier).toContain("from '@blade-ai/ai/deepseek';");
     expect(publishedVerifier).toContain("from '@blade-ai/ai/providers/openai-compatible';");
     expect(publishedVerifier).toContain("from '@blade-ai/ai/providers/vercel';");
+    expect(publishedVerifier).toContain('totalOnlyModelUsage');
+    expect(publishedVerifier).toContain('totalOnlyChatUsage');
     expect(publishedVerifier).toContain("from '@blade-ai/agent/budget';");
     expect(publishedVerifier).toContain("from '@blade-ai/agent/epoch';");
     expect(publishedVerifier).toContain("from '@blade-ai/agent/kernel';");

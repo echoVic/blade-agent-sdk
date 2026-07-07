@@ -99,8 +99,8 @@ export interface ChatConfig {
 }
 
 export interface UsageInfo {
-  promptTokens: number;
-  completionTokens: number;
+  promptTokens?: number;
+  completionTokens?: number;
   totalTokens: number;
   reasoningTokens?: number;
   cacheCreationInputTokens?: number;
