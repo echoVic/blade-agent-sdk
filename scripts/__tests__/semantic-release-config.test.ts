@@ -425,6 +425,7 @@ describe('package provenance metadata', () => {
     expect(packageVerifier).toContain('function verifyAgentBrowserBundle');
     expect(packageVerifier).toContain('consumer-agent-browser-entry.ts');
     expect(agentBrowserBundleSource).toContain("from '@blade-ai/agent';");
+    expect(agentBrowserBundleSource).toContain("from '@blade-ai/agent/budget';");
     expect(agentBrowserBundleSource).toContain("from '@blade-ai/agent/kernel';");
     expect(agentBrowserBundleSource).toContain("from '@blade-ai/agent/loop';");
     expect(agentBrowserBundleSource).toContain('AsyncEventQueue');
@@ -436,6 +437,7 @@ describe('package provenance metadata', () => {
     expect(agentBrowserBundleSource).toContain('toolUpdateToAgentEvent');
     expect(agentBrowserBundleSource).toContain('ToolKind');
     expect(agentBrowserBundleSource).toContain("from '@blade-ai/agent/recovery';");
+    expect(agentBrowserBundleSource).toContain('new TokenBudget');
     expect(agentBrowserBundleSource).toContain('isOverflowRecoverable');
     expect(agentBrowserBundleSource).toContain("from '@blade-ai/agent/state';");
     expect(agentBrowserBundleSource).toContain('modelResponseToAssistantMessage');

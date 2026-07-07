@@ -2283,6 +2283,7 @@ async function verifyAgentBrowserBundle(consumerDir) {
     entry,
     [
       "import { AgentKernel } from '@blade-ai/agent';",
+      "import { TokenBudget } from '@blade-ai/agent/budget';",
       "import { ExecutionEpoch } from '@blade-ai/agent/epoch';",
       "import { AgentKernel as AgentKernelFromSubpath } from '@blade-ai/agent/kernel';",
       "import { AsyncEventQueue, createInterruptAwareAbortSignal, decideNoToolTurn, decideTurnLimit, planToolExecution, resolveToolInterruptBehavior, toolUpdateToAgentEvent, ToolKind } from '@blade-ai/agent/loop';",
@@ -2297,6 +2298,7 @@ async function verifyAgentBrowserBundle(consumerDir) {
       '  },',
       '};',
       'const kernel = new AgentKernel({ model: fakeModel });',
+      'const budget = new TokenBudget({ maxTotalTokens: 10 });',
       'const epoch = new ExecutionEpoch();',
       'const queue = new AsyncEventQueue();',
       "queue.enqueue('event');",
@@ -2312,7 +2314,7 @@ async function verifyAgentBrowserBundle(consumerDir) {
       "const overflow = isOverflowRecoverable(new Error('context_length_exceeded'));",
       "const assistantMessage = modelResponseToAssistantMessage({ content: 'ok' });",
       "const toolMessage = toolResultToToolMessage({ id: 'call_read', name: 'Read', output: 'ok' }, { id: 'fallback', name: 'Fallback' });",
-      "console.log('agent browser bundle', kernel.constructor.name, kernelFromSubpath.constructor.name, epoch.constructor.name, queue.constructor.name, decision.action, turnLimit.action, toolPlan.mode, interruptBehavior, toolEvent?.type, overflow, assistantMessage.role, toolMessage.role);",
+      "console.log('agent browser bundle', kernel.constructor.name, kernelFromSubpath.constructor.name, budget.constructor.name, epoch.constructor.name, queue.constructor.name, decision.action, turnLimit.action, toolPlan.mode, interruptBehavior, toolEvent?.type, overflow, assistantMessage.role, toolMessage.role);",
     ].join('\n'),
   );
 
