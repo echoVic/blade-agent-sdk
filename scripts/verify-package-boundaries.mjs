@@ -303,7 +303,9 @@ for (const rule of manifestRules) {
   }
 
   const rootExport = getRootExportConditions(manifest.exports);
-  if (rootExport) {
+  if (!rootExport) {
+    violations.push(`${rule.packageJson}: exports must declare a root "." condition object`);
+  } else {
     if (typeof manifest.main === 'string' && typeof rootExport.import === 'string' && manifest.main !== rootExport.import) {
       violations.push(
         `${rule.packageJson}: main target "${manifest.main}" must match root export import target "${rootExport.import}"`,

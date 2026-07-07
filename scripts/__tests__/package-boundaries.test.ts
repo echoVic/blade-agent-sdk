@@ -394,6 +394,36 @@ describe('package boundary verifier', () => {
     );
   });
 
+  it('rejects publish manifests without a root export condition object', () => {
+    const cwd = createBoundaryFixture();
+    writeJson(join(cwd, 'packages', 'agent-sdk', 'package.json'), {
+      name: '@blade-ai/agent-sdk',
+      main: './dist/index.js',
+      types: './dist/index.d.ts',
+      exports: {
+        './tools': {
+          types: './dist/tools/index.d.ts',
+          import: './dist/tools/index.js',
+        },
+        './package.json': {
+          default: './package.json',
+        },
+      },
+      dependencies: {},
+    });
+
+    const result = spawnSync(process.execPath, [
+      resolve('scripts/verify-package-boundaries.mjs'),
+    ], {
+      cwd,
+      encoding: 'utf8',
+    });
+
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain('packages/agent-sdk/package.json');
+    expect(result.stderr).toContain('exports must declare a root "." condition object');
+  });
+
   it('rejects CLI product entrypoints in the session SDK manifest', () => {
     const cwd = createBoundaryFixture();
     writeJson(join(cwd, 'packages', 'agent-sdk', 'package.json'), {
