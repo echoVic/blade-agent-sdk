@@ -1527,6 +1527,13 @@ if (agentState.toolResultToToolMessage(
 ).toolCallId !== 'call_read') {
   throw new Error('@blade-ai/agent/state tool message projection returned an unexpected result');
 }
+assertRuntimeExport(agentTracing, 'createBufferedAgentTracePort');
+const agentTrace = agentTracing.createBufferedAgentTracePort({ maxEvents: 1 });
+agentTrace.record({ type: 'turn_start', input: 'packed trace smoke' });
+agentTrace.record({ type: 'turn_end', content: 'ok', finishReason: 'stop' });
+if (agentTrace.getEvents().length !== 1 || agentTrace.getEvents()[0]?.type !== 'turn_end') {
+  throw new Error('@blade-ai/agent/tracing buffered trace port returned an unexpected result');
+}
 assertRuntimeExport(agentSdk, 'createSession');
 assertRuntimeExport(agentSdk, 'defineTool');
 assertNoRuntimeExport(agentSdk, 'getBuiltinTools');
@@ -1558,9 +1565,6 @@ if (Object.keys(agentProtocol).length !== 0) {
 }
 if (Object.keys(agentPorts).length !== 0) {
   throw new Error('@blade-ai/agent/ports should remain type-only at runtime');
-}
-if (Object.keys(agentTracing).length !== 0) {
-  throw new Error('@blade-ai/agent/tracing should remain type-only at runtime');
 }
 `,
   );
@@ -1721,7 +1725,10 @@ import {
 import type {
   AgentTraceEvent,
   AgentTracePort,
+  BufferedAgentTracePort,
+  BufferedAgentTracePortOptions,
 } from '@blade-ai/agent/tracing';
+import { createBufferedAgentTracePort } from '@blade-ai/agent/tracing';
 import type { SessionOptions, StreamMessage } from '@blade-ai/agent-sdk';
 import { createSession, defineTool, ToolKind } from '@blade-ai/agent-sdk';
 import type {
@@ -2014,6 +2021,13 @@ const agentTraceEvent: AgentTraceEvent = {
 const agentTracePort: AgentTracePort = {
   record() {},
 };
+const bufferedAgentTracePortOptions: BufferedAgentTracePortOptions = {
+  maxEvents: 1,
+};
+const bufferedAgentTracePort: BufferedAgentTracePort = createBufferedAgentTracePort(
+  bufferedAgentTracePortOptions,
+);
+bufferedAgentTracePort.record(agentTraceEvent);
 
 async function useKernel(): Promise<void> {
   for await (const event of kernel.runTurn({ input: 'hello' })) {
@@ -2193,6 +2207,8 @@ void toolMessageProjection;
 void toolCallIdentity;
 void agentTraceEvent;
 void agentTracePort;
+void bufferedAgentTracePortOptions;
+void bufferedAgentTracePort;
 void runtimeContext;
 void coreToolDefinition;
 void corePermissionHandler;
@@ -2289,6 +2305,7 @@ async function verifyAgentBrowserBundle(consumerDir) {
       "import { AsyncEventQueue, createInterruptAwareAbortSignal, decideNoToolTurn, decideTurnLimit, planToolExecution, resolveToolInterruptBehavior, toolUpdateToAgentEvent, ToolKind } from '@blade-ai/agent/loop';",
       "import { isOverflowRecoverable } from '@blade-ai/agent/recovery';",
       "import { VALID_SYSTEM_SOURCES, isValidSystemSource, modelResponseToAssistantMessage, toolResultToToolMessage } from '@blade-ai/agent/state';",
+      "import { createBufferedAgentTracePort } from '@blade-ai/agent/tracing';",
       'const fakeModel = {',
       '  async generate() {',
       "    return { content: 'ok', finishReason: 'stop' };",
@@ -2316,7 +2333,11 @@ async function verifyAgentBrowserBundle(consumerDir) {
       'const isSystemSource = isValidSystemSource(systemSource);',
       "const assistantMessage = modelResponseToAssistantMessage({ content: 'ok' });",
       "const toolMessage = toolResultToToolMessage({ id: 'call_read', name: 'Read', output: 'ok' }, { id: 'fallback', name: 'Fallback' });",
-      "console.log('agent browser bundle', kernel.constructor.name, kernelFromSubpath.constructor.name, budget.constructor.name, epoch.constructor.name, queue.constructor.name, decision.action, turnLimit.action, toolPlan.mode, interruptBehavior, toolEvent?.type, overflow, systemSource, isSystemSource, assistantMessage.role, toolMessage.role);",
+      'const trace = createBufferedAgentTracePort({ maxEvents: 1 });',
+      "trace.record({ type: 'turn_start', input: 'browser trace smoke' });",
+      "trace.record({ type: 'turn_end', content: 'ok', finishReason: 'stop' });",
+      'const traceEvent = trace.getEvents()[0];',
+      "console.log('agent browser bundle', kernel.constructor.name, kernelFromSubpath.constructor.name, budget.constructor.name, epoch.constructor.name, queue.constructor.name, decision.action, turnLimit.action, toolPlan.mode, interruptBehavior, toolEvent?.type, overflow, systemSource, isSystemSource, assistantMessage.role, toolMessage.role, traceEvent?.type);",
     ].join('\n'),
   );
 
@@ -2346,6 +2367,9 @@ async function verifyAgentBrowserBundle(consumerDir) {
   }
   if (!browserRunOutput.includes('assistant tool')) {
     throw new Error('Agent browser bundle message projection smoke did not execute');
+  }
+  if (!browserRunOutput.includes('turn_end')) {
+    throw new Error('Agent browser bundle tracing smoke did not execute');
   }
   assertNoBrowserDisallowedMarkers(agentBundleOutput);
 }

@@ -21,6 +21,7 @@ import {
   modelResponseToAssistantMessage,
   toolResultToToolMessage,
 } from '@blade-ai/agent/state';
+import { createBufferedAgentTracePort } from '@blade-ai/agent/tracing';
 import {
   AsyncEventQueue,
   createInterruptAwareAbortSignal,
@@ -37,6 +38,7 @@ const kernel = new AgentKernel({
   model,
   tools,
   permissions,
+  trace: createBufferedAgentTracePort({ maxEvents: 100 }),
   tokenBudget: new TokenBudget({ maxTotalTokens: 128_000 }),
 });
 

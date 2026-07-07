@@ -28,3 +28,40 @@ export type AgentTraceEvent =
 export interface AgentTracePort {
   record(event: AgentTraceEvent): Promise<void> | void;
 }
+
+export interface BufferedAgentTracePort extends AgentTracePort {
+  getEvents(): AgentTraceEvent[];
+  clear(): void;
+}
+
+export interface BufferedAgentTracePortOptions {
+  maxEvents?: number;
+}
+
+export function createBufferedAgentTracePort(
+  options: BufferedAgentTracePortOptions = {},
+): BufferedAgentTracePort {
+  const maxEvents = options.maxEvents ?? Number.POSITIVE_INFINITY;
+  if (!Number.isInteger(maxEvents) && maxEvents !== Number.POSITIVE_INFINITY) {
+    throw new RangeError('maxEvents must be a non-negative integer');
+  }
+  if (maxEvents < 0) {
+    throw new RangeError('maxEvents must be a non-negative integer');
+  }
+  const events: AgentTraceEvent[] = [];
+
+  return {
+    record(event) {
+      events.push(event);
+      while (events.length > maxEvents) {
+        events.shift();
+      }
+    },
+    getEvents() {
+      return [...events];
+    },
+    clear() {
+      events.length = 0;
+    },
+  };
+}
