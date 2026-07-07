@@ -12,7 +12,7 @@ import { FallbackTriggeredError } from '../services/RetryPolicy.js';
 import type { ExecutionPipeline } from '../tools/execution/ExecutionPipeline.js';
 import type { ToolResult } from '../tools/types/index.js';
 import type { JsonObject } from '../types/common.js';
-import type { AgentEvent, TokenUsageInfo } from './AgentEvent.js';
+import type { AgentEvent } from './AgentEvent.js';
 import { AGENT_TURN_SAFETY_LIMIT } from './constants.js';
 import { ExecutionEpoch } from './ExecutionEpoch.js';
 import { isOverflowRecoverable } from './isOverflowRecoverable.js';
@@ -28,6 +28,7 @@ import {
 import { planToolExecution } from './loop/planToolExecution.js';
 import { runTurn } from './loop/runTurn.js';
 import type { ToolExecutionUpdate } from './loop/runToolCall.js';
+import { buildAgentLoopTokenUsageInfo } from './loop/tokenUsage.js';
 import type { FunctionToolCall } from './loop/types.js';
 import type { ConversationState } from './state/ConversationState.js';
 import type { TurnState } from './state/TurnState.js';
@@ -346,16 +347,11 @@ export async function* agentLoop(
       }
       lastPromptTokens = turnResult.usage.promptTokens;
 
-      const usage: TokenUsageInfo = {
-        inputTokens: turnResult.usage.promptTokens ?? 0,
-        outputTokens: turnResult.usage.completionTokens ?? 0,
+      const usage = buildAgentLoopTokenUsageInfo({
+        modelUsage: turnResult.usage,
         totalTokens,
         maxContextTokens: turnMaxContextTokens,
-        cacheReadInputTokens: turnResult.usage.cacheReadInputTokens,
-        cacheMissInputTokens: turnResult.usage.cacheMissInputTokens,
-        billableInputTokens: turnResult.usage.billableInputTokens,
-        reasoningTokens: turnResult.usage.reasoningTokens,
-      };
+      });
       yield { type: 'token_usage', usage };
     }
 
