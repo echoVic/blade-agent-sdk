@@ -663,6 +663,7 @@ function verifyPackedManifest(spec, tarballPath, tempDir) {
   const extractDir = join(tempDir, `extract-${spec.name.replaceAll(/[^a-z0-9]+/gi, '-')}`);
   run('mkdir', ['-p', extractDir]);
   run('tar', ['-xzf', tarballPath, '-C', extractDir]);
+  const tarballEntries = new Set(listTarball(tarballPath));
   const manifestPath = join(extractDir, 'package/package.json');
   const manifest = JSON.parse(readFileSync(manifestPath, 'utf8'));
 
@@ -694,6 +695,12 @@ function verifyPackedManifest(spec, tarballPath, tempDir) {
     condition: 'import',
     target: manifest.main,
   });
+  assertPackedManifestTargetExists({
+    packageName: spec.name,
+    label: 'main',
+    target: manifest.main,
+    tarballEntries,
+  });
   assertPackedManifestTarget({
     packageName: spec.name,
     label: 'types',
@@ -705,9 +712,16 @@ function verifyPackedManifest(spec, tarballPath, tempDir) {
     condition: 'types',
     target: manifest.types,
   });
+  assertPackedManifestTargetExists({
+    packageName: spec.name,
+    label: 'types',
+    target: manifest.types,
+    tarballEntries,
+  });
   verifyPackedManifestExports({
     packageName: spec.name,
     manifest,
+    tarballEntries,
   });
   verifyPackedSdkBrowserExportConditions(spec.name, manifest);
 }
@@ -854,6 +868,14 @@ function assertManifestTargetExtension({ packageName, label, condition, target }
   }
 }
 
+function assertPackedManifestTargetExists({ packageName, label, target, tarballEntries }) {
+  if (typeof target !== 'string') return;
+  const normalizedTarget = target.startsWith('./') ? target.slice(2) : target;
+  if (!tarballEntries.has(`package/${normalizedTarget}`)) {
+    throw new Error(`${packageName} ${label} packed manifest target does not exist in the tarball: ${target}`);
+  }
+}
+
 function assertManifestExportSubpathShape({ packageName, exportName, label }) {
   if (exportName !== '.' && !exportName.startsWith('./')) {
     throw new Error(`${packageName} ${label} export subpath "${exportName}" must be "." or start with "./"`);
@@ -908,7 +930,7 @@ function assertManifestBrowserConditionBeforeImport({ packageName, exportName, e
   }
 }
 
-function verifyPackedManifestExports({ packageName, manifest }) {
+function verifyPackedManifestExports({ packageName, manifest, tarballEntries }) {
   const exportsMap = manifest.exports;
   const rootExport = getManifestRootExportConditions(exportsMap);
   if (!rootExport) {
@@ -978,6 +1000,12 @@ function verifyPackedManifestExports({ packageName, manifest }) {
         label: `exports.${exportName}.${condition}`,
         condition,
         target,
+      });
+      assertPackedManifestTargetExists({
+        packageName,
+        label: `exports.${exportName}.${condition}`,
+        target,
+        tarballEntries,
       });
       continue;
     }

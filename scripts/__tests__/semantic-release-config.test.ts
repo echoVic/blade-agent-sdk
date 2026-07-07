@@ -1128,6 +1128,24 @@ describe('release scripts', () => {
     expect(roadmap).toContain('public export subpath shape gate');
   });
 
+  it('verifies packed and published package manifest target existence', () => {
+    const packageVerifier = readFileSync(resolve('scripts/verify-packages.mjs'), 'utf8');
+    const publishedVerifier = readFileSync(resolve('scripts/verify-published.mjs'), 'utf8');
+    const readme = readFileSync(resolve('README.md'), 'utf8');
+    const checklist = readFileSync(resolve('docs/production-checklist.md'), 'utf8');
+    const roadmap = readFileSync(resolve('docs/roadmap/production-agent-sdk-monorepo.md'), 'utf8');
+
+    expect(packageVerifier).toContain('assertPackedManifestTargetExists');
+    expect(packageVerifier).toContain('packed manifest target does not exist in the tarball');
+    expect(packageVerifier).toContain('tarballEntries.has(`package/${normalizedTarget}`)');
+    expect(publishedVerifier).toContain('assertPublishedManifestTargetExists');
+    expect(publishedVerifier).toContain('installed manifest target does not exist in the package');
+    expect(publishedVerifier).toContain('installedFiles.has(normalizedTarget)');
+    expect(readme).toContain('manifest target existence checks');
+    expect(checklist).toContain('manifest target existence checks');
+    expect(roadmap).toContain('manifest target existence gate');
+  });
+
   it('verifies packed SDK browser export conditions before publication', () => {
     const packageVerifier = readFileSync(resolve('scripts/verify-packages.mjs'), 'utf8');
     const readme = readFileSync(resolve('README.md'), 'utf8');

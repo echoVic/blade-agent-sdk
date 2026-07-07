@@ -484,6 +484,8 @@ async function verifyPublishedServerDeclarationParity({ consumerDir }) {
 
 async function verifyPublishedPackageManifests({ consumerDir, version }) {
   for (const requirement of publishedManifestRequirements) {
+    const packageDir = join(consumerDir, dirname(requirement.manifestPath));
+    const installedFiles = await listInstalledPackageFiles(packageDir);
     const manifest = JSON.parse(
       await readFile(join(consumerDir, requirement.manifestPath), 'utf8'),
     );
@@ -524,6 +526,12 @@ async function verifyPublishedPackageManifests({ consumerDir, version }) {
       condition: 'import',
       target: manifest.main,
     });
+    assertPublishedManifestTargetExists({
+      packageName: requirement.packageName,
+      label: 'main',
+      target: manifest.main,
+      installedFiles,
+    });
     assertPublishedManifestTarget({
       packageName: requirement.packageName,
       label: 'types',
@@ -535,9 +543,16 @@ async function verifyPublishedPackageManifests({ consumerDir, version }) {
       condition: 'types',
       target: manifest.types,
     });
+    assertPublishedManifestTargetExists({
+      packageName: requirement.packageName,
+      label: 'types',
+      target: manifest.types,
+      installedFiles,
+    });
     verifyPublishedManifestExports({
       packageName: requirement.packageName,
       manifest,
+      installedFiles,
     });
     verifyPublishedSdkBrowserExportConditions(requirement.packageName, manifest);
 
@@ -777,6 +792,23 @@ function assertManifestTargetExtension({ packageName, label, condition, target }
   }
 }
 
+async function listInstalledPackageFiles(packageDir) {
+  const files = (await run('find', [packageDir, '-type', 'f']))
+    .split('\n')
+    .filter(Boolean)
+    .map((filePath) => relative(packageDir, filePath))
+    .map((filePath) => filePath.replaceAll('\\', '/'));
+  return new Set(files);
+}
+
+function assertPublishedManifestTargetExists({ packageName, label, target, installedFiles }) {
+  if (typeof target !== 'string') return;
+  const normalizedTarget = target.startsWith('./') ? target.slice(2) : target;
+  if (!installedFiles.has(normalizedTarget)) {
+    throw new Error(`${packageName} ${label} installed manifest target does not exist in the package: ${target}`);
+  }
+}
+
 function assertManifestExportSubpathShape({ packageName, exportName, label }) {
   if (exportName !== '.' && !exportName.startsWith('./')) {
     throw new Error(`${packageName} ${label} export subpath "${exportName}" must be "." or start with "./"`);
@@ -831,7 +863,7 @@ function assertManifestBrowserConditionBeforeImport({ packageName, exportName, e
   }
 }
 
-function verifyPublishedManifestExports({ packageName, manifest }) {
+function verifyPublishedManifestExports({ packageName, manifest, installedFiles }) {
   const exportsMap = manifest.exports;
   const rootExport = getManifestRootExportConditions(exportsMap);
   if (!rootExport) {
@@ -901,6 +933,12 @@ function verifyPublishedManifestExports({ packageName, manifest }) {
         label: `exports.${exportName}.${condition}`,
         condition,
         target,
+      });
+      assertPublishedManifestTargetExists({
+        packageName,
+        label: `exports.${exportName}.${condition}`,
+        target,
+        installedFiles,
       });
       continue;
     }
