@@ -30,6 +30,7 @@ import { planToolExecution } from './loop/planToolExecution.js';
 import { runTurn } from './loop/runTurn.js';
 import type { ToolExecutionUpdate } from './loop/runToolCall.js';
 import { buildAgentLoopTokenUsageInfo } from './loop/tokenUsage.js';
+import { createAgentLoopTokenUsageTracker } from './loop/tokenUsageTracker.js';
 import { buildAgentToolResultContent } from './loop/toolResultContent.js';
 import { createAgentToolResultTracker } from './loop/toolResultTracker.js';
 import type { FunctionToolCall } from './loop/types.js';
@@ -150,8 +151,7 @@ export async function* agentLoop(
   let turnsCount = 0;
   const toolResultTracker = createAgentToolResultTracker<ToolResult>();
   const recoveryAttemptTracker = createAgentRecoveryAttemptTracker();
-  let totalTokens = 0;
-  let lastPromptTokens: number | undefined;
+  const tokenUsageTracker = createAgentLoopTokenUsageTracker();
   /** 当前回合需要重试（不自增 turnsCount、不发 turn_end） */
   let retryCurrentTurn = false;
   let epoch: ExecutionEpoch | null = null;
@@ -175,7 +175,7 @@ export async function* agentLoop(
       const beforeTurnStream = turnHooks.beforeTurn({
         turn: turnsCount,
         messages: convState.toArray(),
-        lastPromptTokens,
+        lastPromptTokens: tokenUsageTracker.lastPromptTokens,
       });
       while (true) {
         const { value, done } = await beforeTurnStream.next();
@@ -325,14 +325,11 @@ export async function* agentLoop(
 
     // Token usage
     if (turnResult.usage) {
-      if (turnResult.usage.totalTokens) {
-        totalTokens += turnResult.usage.totalTokens;
-      }
-      lastPromptTokens = turnResult.usage.promptTokens;
+      tokenUsageTracker.record(turnResult.usage);
 
       const usage = buildAgentLoopTokenUsageInfo({
         modelUsage: turnResult.usage,
-        totalTokens,
+        totalTokens: tokenUsageTracker.totalTokens,
         maxContextTokens: turnMaxContextTokens,
       });
       yield { type: 'token_usage', usage };
@@ -352,7 +349,7 @@ export async function* agentLoop(
           turnsCount,
           toolCallsCount: toolResultTracker.toolCallsCount,
           startTime,
-          tokensUsed: totalTokens,
+          tokensUsed: tokenUsageTracker.totalTokens,
           tokenBudgetSnapshot: tokenBudget.getSnapshot(),
         }) as LoopResult;
       }
@@ -364,7 +361,7 @@ export async function* agentLoop(
           turnsCount,
           toolCallsCount: toolResultTracker.toolCallsCount,
           startTime,
-          tokensUsed: totalTokens,
+          tokensUsed: tokenUsageTracker.totalTokens,
           tokenBudgetSnapshot: tokenBudget.getSnapshot(),
         }) as LoopResult;
       }
@@ -411,7 +408,7 @@ export async function* agentLoop(
         turnsCount,
         toolCallsCount: toolResultTracker.toolCallsCount,
         startTime,
-        tokensUsed: totalTokens,
+        tokensUsed: tokenUsageTracker.totalTokens,
         tokenBudgetSnapshot: tokenBudget?.getSnapshot(),
       }) as LoopResult;
     }
@@ -533,7 +530,7 @@ export async function* agentLoop(
         contextMessages: convState.getContextMessages(),
         toolCallsCount: toolResultTracker.toolCallsCount,
         startTime,
-        totalTokens,
+        totalTokens: tokenUsageTracker.totalTokens,
         onTurnLimitReached: turnHooks?.onTurnLimitReached,
         onTurnLimitCompact: turnHooks?.onTurnLimitCompact,
       });
