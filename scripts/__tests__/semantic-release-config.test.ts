@@ -941,6 +941,20 @@ describe('release scripts', () => {
     expect(roadmap).toContain('packed SDK browser export condition gate');
   });
 
+  it('verifies packed package file scope before publication', () => {
+    const packageVerifier = readFileSync(resolve('scripts/verify-packages.mjs'), 'utf8');
+    const readme = readFileSync(resolve('README.md'), 'utf8');
+    const checklist = readFileSync(resolve('docs/production-checklist.md'), 'utf8');
+    const roadmap = readFileSync(resolve('docs/roadmap/production-agent-sdk-monorepo.md'), 'utf8');
+
+    expect(packageVerifier).toContain('tarball includes source files');
+    expect(packageVerifier).toContain("entry.includes('/src/')");
+    expect(packageVerifier).toContain("entry.startsWith('package/src/')");
+    expect(readme).toContain('packed package file scope');
+    expect(checklist).toContain('packed package file scope');
+    expect(roadmap).toContain('packed package file-scope gate');
+  });
+
   it('verifies published package manifest entry targets from the temporary consumer install', () => {
     const publishedVerifier = readFileSync(resolve('scripts/verify-published.mjs'), 'utf8');
     const checklist = readFileSync(resolve('docs/production-checklist.md'), 'utf8');

@@ -552,6 +552,11 @@ function verifyTarballContents(spec, tarballPath) {
     throw new Error(`${spec.name} tarball includes a test file: ${testEntry}`);
   }
 
+  const sourceEntry = entries.find((entry) => entry.includes('/src/') || entry.startsWith('package/src/'));
+  if (sourceEntry) {
+    throw new Error(`${spec.name} tarball includes source files: ${sourceEntry}`);
+  }
+
   assertNoCliProductFiles(spec.name, entries);
 }
 
