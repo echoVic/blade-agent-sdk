@@ -1,11 +1,11 @@
 import { describe, expect, it, vi } from 'vitest';
-import { createPackageLocalSessionRuntimeFactory } from '../../packages/agent-sdk/src/session/packageLocalRuntimeFactory.js';
-import { PackageLocalSession } from '../../packages/agent-sdk/src/session/sessionInstance.js';
+import { createPackageLocalSessionRuntimeFactory } from '../session/packageLocalRuntimeFactory.js';
+import { PackageLocalSession } from '../session/sessionInstance.js';
 import type {
   ISession,
   SessionOptions,
   StreamMessage,
-} from '../../packages/agent-sdk/src/session/types.js';
+} from '../session/types.js';
 
 const options: SessionOptions = {
   provider: {
