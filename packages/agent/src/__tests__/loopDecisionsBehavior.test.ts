@@ -1,9 +1,12 @@
+import type { Message } from '@blade-ai/ai/chat';
 import { describe, expect, it, vi } from 'vitest';
-import type { Message } from '../../../services/ChatServiceInterface.js';
-import { decideNoToolTurn, RETRY_PROMPT } from '../decideNoToolTurn.js';
-import { decideTurnLimit } from '../decideTurnLimit.js';
-import { planToolExecution } from '../planToolExecution.js';
-import type { FunctionToolCall } from '../types.js';
+import {
+  type AgentFunctionToolCall,
+  decideNoToolTurn,
+  decideTurnLimit,
+  planToolExecution,
+  RETRY_PROMPT,
+} from '../loop/index.js';
 
 describe('agent loop decisions', () => {
   describe('decideNoToolTurn', () => {
@@ -52,7 +55,7 @@ describe('agent loop decisions', () => {
   });
 
   describe('planToolExecution', () => {
-    const toolCall = (name: string): FunctionToolCall => ({
+    const toolCall = (name: string): AgentFunctionToolCall => ({
       id: `${name}-call`,
       type: 'function',
       function: { name, arguments: '{}' },
