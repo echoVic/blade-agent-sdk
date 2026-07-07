@@ -1,6 +1,6 @@
 import type { ModelPort, ModelRequest, ModelResponse } from '@blade-ai/ai';
 import { describe, expect, it, vi } from 'vitest';
-import { createPackageLocalAgentKernelFactory } from '../../packages/agent-sdk/src/session/kernelFactory.js';
+import { createPackageLocalAgentKernelFactory } from '../session/kernelFactory.js';
 
 describe('agent-sdk package-local agent kernel factory', () => {
   it('creates real AgentKernel instances that run turns through the model port', async () => {
