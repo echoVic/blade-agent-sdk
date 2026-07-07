@@ -20,6 +20,7 @@ import { createAgentRecoveryAttemptTracker } from './recoveryAttemptTracker.js';
 import { decideNoToolTurn } from './loop/decideNoToolTurn.js';
 import { decideTurnLimit } from './loop/decideTurnLimit.js';
 import { executeToolCalls } from './loop/executeToolCalls.js';
+import { createAgentLoopClock } from './loop/loopClock.js';
 import {
   buildAgentLoopAbortResult,
   buildAgentLoopBudgetExhaustedResult,
@@ -148,7 +149,7 @@ export async function* agentLoop(
 
   const effectiveMaxTurns = isYoloMode ? AGENT_TURN_SAFETY_LIMIT : maxTurns;
 
-  const startTime = Date.now();
+  const loopClock = createAgentLoopClock();
   const turnCounter = createAgentLoopTurnCounter();
   const toolResultTracker = createAgentToolResultTracker<ToolResult>();
   const recoveryAttemptTracker = createAgentRecoveryAttemptTracker();
@@ -164,9 +165,10 @@ export async function* agentLoop(
     if (signal?.aborted) {
       yield { type: 'agent_end' };
       return buildAgentLoopAbortResult({
-        turnsCount: turnCounter.turnsCount,
-        toolCallsCount: toolResultTracker.toolCallsCount,
-        startTime,
+        ...loopClock.resultTiming({
+          turnsCount: turnCounter.turnsCount,
+          toolCallsCount: toolResultTracker.toolCallsCount,
+        }),
       });
     }
 
@@ -192,9 +194,10 @@ export async function* agentLoop(
     if (signal?.aborted) {
       yield { type: 'agent_end' };
       return buildAgentLoopAbortResult({
-        turnsCount: turnCounter.previousCompletedTurnCount,
-        toolCallsCount: toolResultTracker.toolCallsCount,
-        startTime,
+        ...loopClock.resultTiming({
+          turnsCount: turnCounter.previousCompletedTurnCount,
+          toolCallsCount: toolResultTracker.toolCallsCount,
+        }),
       });
     }
 
@@ -345,9 +348,10 @@ export async function* agentLoop(
         yield { type: 'agent_end' };
         return buildAgentLoopBudgetExhaustedResult({
           reason: 'diminishing_returns',
-          turnsCount,
-          toolCallsCount: toolResultTracker.toolCallsCount,
-          startTime,
+          ...loopClock.resultTiming({
+            turnsCount,
+            toolCallsCount: toolResultTracker.toolCallsCount,
+          }),
           tokensUsed: tokenUsageTracker.totalTokens,
           tokenBudgetSnapshot: tokenBudget.getSnapshot(),
         }) as LoopResult;
@@ -357,9 +361,10 @@ export async function* agentLoop(
         yield { type: 'agent_end' };
         return buildAgentLoopBudgetExhaustedResult({
           reason: 'exhausted',
-          turnsCount,
-          toolCallsCount: toolResultTracker.toolCallsCount,
-          startTime,
+          ...loopClock.resultTiming({
+            turnsCount,
+            toolCallsCount: toolResultTracker.toolCallsCount,
+          }),
           tokensUsed: tokenUsageTracker.totalTokens,
           tokenBudgetSnapshot: tokenBudget.getSnapshot(),
         }) as LoopResult;
@@ -369,9 +374,10 @@ export async function* agentLoop(
     if (signal?.aborted) {
       yield { type: 'agent_end' };
       return buildAgentLoopAbortResult({
-        turnsCount: turnCounter.previousCompletedTurnCount,
-        toolCallsCount: toolResultTracker.toolCallsCount,
-        startTime,
+        ...loopClock.resultTiming({
+          turnsCount: turnCounter.previousCompletedTurnCount,
+          toolCallsCount: toolResultTracker.toolCallsCount,
+        }),
       });
     }
 
@@ -404,9 +410,10 @@ export async function* agentLoop(
       yield { type: 'agent_end' };
       return buildAgentLoopSuccessResult({
         finalMessage: turnResult.content,
-        turnsCount,
-        toolCallsCount: toolResultTracker.toolCallsCount,
-        startTime,
+        ...loopClock.resultTiming({
+          turnsCount,
+          toolCallsCount: toolResultTracker.toolCallsCount,
+        }),
         tokensUsed: tokenUsageTracker.totalTokens,
         tokenBudgetSnapshot: tokenBudget?.getSnapshot(),
       }) as LoopResult;
@@ -449,9 +456,10 @@ export async function* agentLoop(
       if (signal?.aborted) {
         yield { type: 'agent_end' };
         return buildAgentLoopAbortResult({
-          turnsCount,
-          toolCallsCount: toolResultTracker.toolCallsCount,
-          startTime,
+          ...loopClock.resultTiming({
+            turnsCount,
+            toolCallsCount: toolResultTracker.toolCallsCount,
+          }),
         });
       }
 
@@ -486,9 +494,10 @@ export async function* agentLoop(
         return buildAgentLoopToolExitResult({
           success: result.success,
           finalMessage,
-          turnsCount,
-          toolCallsCount: toolResultTracker.toolCallsCount,
-          startTime,
+          ...loopClock.resultTiming({
+            turnsCount,
+            toolCallsCount: toolResultTracker.toolCallsCount,
+          }),
           targetMode: result.metadata?.targetMode,
         }) as LoopResult;
       }
@@ -515,9 +524,10 @@ export async function* agentLoop(
     if (signal?.aborted) {
       yield { type: 'agent_end' };
       return buildAgentLoopAbortResult({
-        turnsCount,
-        toolCallsCount: toolResultTracker.toolCallsCount,
-        startTime,
+        ...loopClock.resultTiming({
+          turnsCount,
+          toolCallsCount: toolResultTracker.toolCallsCount,
+        }),
       });
     }
 
@@ -528,7 +538,7 @@ export async function* agentLoop(
         turnsCount,
         contextMessages: convState.getContextMessages(),
         toolCallsCount: toolResultTracker.toolCallsCount,
-        startTime,
+        startTime: loopClock.startTime,
         totalTokens: tokenUsageTracker.totalTokens,
         onTurnLimitReached: turnHooks?.onTurnLimitReached,
         onTurnLimitCompact: turnHooks?.onTurnLimitCompact,
