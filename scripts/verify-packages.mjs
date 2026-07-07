@@ -16,6 +16,14 @@ const browserDisallowedMarkers = [
 ];
 const requiredPackageKeywords = ['agent', 'sdk', 'llm'];
 const mitPermissionGrant = 'Permission is hereby granted, free of charge';
+const forbiddenPackageLifecycleScripts = new Set([
+  'preinstall',
+  'install',
+  'postinstall',
+  'prepare',
+  'prepublish',
+  'prepublishOnly',
+]);
 const expectedPackedPackageMetadata = {
   author: 'echoVic',
   type: 'module',
@@ -661,6 +669,7 @@ function verifyPackedManifest(spec, tarballPath, tempDir) {
   if ('devDependencies' in manifest) {
     throw new Error(`${spec.name} packed manifest must not contain devDependencies`);
   }
+  assertNoPackageLifecycleScripts(spec.name, manifest, 'packed manifest');
   if (serialized.includes('workspace:')) {
     throw new Error(`${spec.name} packed manifest still contains workspace protocol dependencies`);
   }
@@ -681,6 +690,14 @@ function verifyPackedManifest(spec, tarballPath, tempDir) {
     exportsMap: manifest.exports,
   });
   verifyPackedSdkBrowserExportConditions(spec.name, manifest);
+}
+
+function assertNoPackageLifecycleScripts(packageName, manifest, label) {
+  for (const scriptName of Object.keys(manifest.scripts ?? {})) {
+    if (forbiddenPackageLifecycleScripts.has(scriptName)) {
+      throw new Error(`${packageName} ${label} must not define npm lifecycle script "${scriptName}"`);
+    }
+  }
 }
 
 function verifyPackedPackageMetadata(spec, manifest) {

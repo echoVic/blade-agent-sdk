@@ -26,6 +26,14 @@ const allowedDependencyBuildScripts = {
   esbuild: true,
   'node-pty': true,
 };
+const forbiddenPackageLifecycleScripts = new Set([
+  'preinstall',
+  'install',
+  'postinstall',
+  'prepare',
+  'prepublish',
+  'prepublishOnly',
+]);
 const publishablePackages = [
   {
     dir: 'packages/ai',
@@ -162,6 +170,7 @@ function verifyPackageMetadata() {
     if ('devDependencies' in manifest) {
       fail(`${pkg.name} source manifest must not contain devDependencies`);
     }
+    assertNoPackageLifecycleScripts(pkg.name, manifest, 'source manifest');
     if (manifest.description !== pkg.description) {
       fail(`${pkg.name} must declare package description`);
     }
@@ -210,6 +219,14 @@ function verifyPackageMetadata() {
     }
     if (!readme.includes(pkg.importSnippet)) {
       fail(`${pkg.name} README must document direct import usage`);
+    }
+  }
+}
+
+function assertNoPackageLifecycleScripts(packageName, manifest, label) {
+  for (const scriptName of Object.keys(manifest.scripts ?? {})) {
+    if (forbiddenPackageLifecycleScripts.has(scriptName)) {
+      fail(`${packageName} ${label} must not define npm lifecycle script "${scriptName}"`);
     }
   }
 }

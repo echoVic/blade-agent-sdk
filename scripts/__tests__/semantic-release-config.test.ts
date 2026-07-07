@@ -535,6 +535,45 @@ describe('release scripts', () => {
     expect(roadmap).toContain('packed package manifest hygiene gate');
   });
 
+  it('rejects npm lifecycle scripts from source, packed, and published package manifests', () => {
+    const releaseVerifier = readFileSync(resolve('scripts/verify-release-config.mjs'), 'utf8');
+    const packageVerifier = readFileSync(resolve('scripts/verify-packages.mjs'), 'utf8');
+    const publishedVerifier = readFileSync(resolve('scripts/verify-published.mjs'), 'utf8');
+    const readme = readFileSync(resolve('README.md'), 'utf8');
+    const checklist = readFileSync(resolve('docs/production-checklist.md'), 'utf8');
+    const roadmap = readFileSync(resolve('docs/roadmap/production-agent-sdk-monorepo.md'), 'utf8');
+    const forbiddenLifecycleScripts = [
+      'preinstall',
+      'install',
+      'postinstall',
+      'prepare',
+      'prepublish',
+      'prepublishOnly',
+    ];
+
+    for (const packagePath of [
+      'packages/ai/package.json',
+      'packages/agent/package.json',
+      'packages/agent-sdk/package.json',
+    ]) {
+      const packageJson = JSON.parse(readFileSync(resolve(packagePath), 'utf8'));
+      for (const scriptName of forbiddenLifecycleScripts) {
+        expect(packageJson.scripts ?? {}).not.toHaveProperty(scriptName);
+      }
+    }
+
+    for (const verifier of [releaseVerifier, packageVerifier, publishedVerifier]) {
+      expect(verifier).toContain('forbiddenPackageLifecycleScripts');
+      expect(verifier).toContain('npm lifecycle script');
+      for (const scriptName of forbiddenLifecycleScripts) {
+        expect(verifier).toContain(scriptName);
+      }
+    }
+    expect(readme).toContain('package lifecycle script gate');
+    expect(checklist).toContain('package lifecycle script gate');
+    expect(roadmap).toContain('package lifecycle script gate');
+  });
+
   it('requires npm provenance in publishable package metadata', () => {
     const releaseVerifier = readFileSync(resolve('scripts/verify-release-config.mjs'), 'utf8');
 

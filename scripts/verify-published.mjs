@@ -87,6 +87,14 @@ const browserDisallowedMarkers = [
   '@modelcontextprotocol',
   'node-pty',
 ];
+const forbiddenPackageLifecycleScripts = new Set([
+  'preinstall',
+  'install',
+  'postinstall',
+  'prepare',
+  'prepublish',
+  'prepublishOnly',
+]);
 const requiredPackageKeywords = ['agent', 'sdk', 'llm'];
 const mitPermissionGrant = 'Permission is hereby granted, free of charge';
 const publishedLicenseRequirements = [
@@ -488,6 +496,7 @@ async function verifyPublishedPackageManifests({ consumerDir, version }) {
     if ('devDependencies' in manifest) {
       throw new Error(`${requirement.packageName} installed manifest must not contain devDependencies`);
     }
+    assertNoPackageLifecycleScripts(requirement.packageName, manifest, 'installed manifest');
     if (serializedManifest.includes('workspace:')) {
       throw new Error(`${requirement.packageName} installed manifest must not contain workspace: dependencies`);
     }
@@ -527,6 +536,14 @@ async function verifyPublishedPackageManifests({ consumerDir, version }) {
     }
   }
   console.log('[verify-published] temporary consumer published package manifests passed');
+}
+
+function assertNoPackageLifecycleScripts(packageName, manifest, label) {
+  for (const scriptName of Object.keys(manifest.scripts ?? {})) {
+    if (forbiddenPackageLifecycleScripts.has(scriptName)) {
+      throw new Error(`${packageName} ${label} must not define npm lifecycle script "${scriptName}"`);
+    }
+  }
 }
 
 function verifyPublishedPackageMetadata(requirement, manifest) {
