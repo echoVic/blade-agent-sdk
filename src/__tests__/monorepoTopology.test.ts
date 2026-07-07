@@ -330,6 +330,7 @@ describe('monorepo topology', () => {
       'packages/agent/src/loop/index.ts',
       'packages/agent/src/loop/AsyncEventQueue.ts',
       'packages/agent/src/loop/decideNoToolTurn.ts',
+      'packages/agent/src/loop/decideTurnLimit.ts',
       'packages/agent/src/protocol/index.ts',
       'packages/agent/src/ports/index.ts',
       'packages/agent/src/recovery/index.ts',
@@ -349,6 +350,7 @@ describe('monorepo topology', () => {
     expect(agentIndexSource).not.toContain('class AgentKernel');
     expect(agentLoopSource).toContain("from './AsyncEventQueue.js'");
     expect(agentLoopSource).toContain("from './decideNoToolTurn.js'");
+    expect(agentLoopSource).toContain("from './decideTurnLimit.js'");
     expect(agentRecoverySource).toContain("from './isOverflowRecoverable.js'");
     expect(agentStateSource).toContain("from './systemSource.js'");
   });
