@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { ModelPort } from '@blade-ai/ai';
-import { createPackageLocalKernelModelResolver } from '../../packages/agent-sdk/src/session/kernelModelResolver.js';
-import type { BladeConfig } from '../../packages/agent-sdk/src/types/common.js';
+import { createPackageLocalKernelModelResolver } from '../session/kernelModelResolver.js';
+import type { BladeConfig } from '../types/common.js';
 
 const modelPort: ModelPort = {
   async generate() {
