@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import {
   createSessionTraceFinalizer,
   SessionTraceManager,
-} from '../../packages/agent-sdk/src/session/traces.js';
+} from '../session/traces.js';
 
 function createFinishedTrace(sessionId: string, marker: string) {
   const manager = new SessionTraceManager({
