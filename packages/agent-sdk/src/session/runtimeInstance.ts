@@ -366,6 +366,10 @@ export class PackageLocalSessionRuntime {
       sessionId: this.sessionId,
       sessionStore: this.sessionStore,
       workspace: this.workspace,
+      hookRuntime: this.hookRuntime,
+      model: this.options.model,
+      provider: this.options.provider.type,
+      closeRuntimeResources: () => this.mcpServerLifecycleOperations.close(),
     });
     this.sessionLifecycleOperations = sessionOperations.lifecycle;
     this.workspaceOperations = sessionOperations.workspace;
@@ -505,12 +509,7 @@ export class PackageLocalSessionRuntime {
   }
 
   async runSessionStart(isResume: boolean): Promise<void> {
-    await this.hookRuntime.runSessionStart?.({
-      isResume,
-      ...(isResume ? { resumeSessionId: this.sessionId } : {}),
-      model: this.options.model,
-      provider: this.options.provider.type,
-    });
+    await this.sessionLifecycleOperations.runSessionStart(isResume);
   }
 
   prepareTurn(snapshot: ContextSnapshot): void {
@@ -518,11 +517,7 @@ export class PackageLocalSessionRuntime {
   }
 
   async close(): Promise<void> {
-    try {
-      await this.hookRuntime.runSessionEnd?.({ reason: 'other' });
-    } finally {
-      await this.mcpServerLifecycleOperations.close();
-    }
+    await this.sessionLifecycleOperations.close();
   }
 
   async mcpCapabilities(): Promise<PackageLocalRuntimeMcpServerCapability[]> {

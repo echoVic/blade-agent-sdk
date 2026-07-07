@@ -748,6 +748,10 @@ describe('monorepo topology', () => {
     expect(runtimeSessionLifecycleSource).toContain(
       'createPackageLocalRuntimeSessionLifecycleOperations',
     );
+    expect(runtimeSessionLifecycleSource).toContain('runSessionStart(isResume)');
+    expect(runtimeSessionLifecycleSource).toContain('closeRuntimeResources');
+    expect(packageLocalRuntimeInstanceSource).not.toContain('this.hookRuntime.runSessionStart');
+    expect(packageLocalRuntimeInstanceSource).not.toContain('this.hookRuntime.runSessionEnd');
     expect(existsSync('packages/agent-sdk/src/session/runtimeSessionOperations.ts')).toBe(true);
     expect(runtimeSessionOperationsSource).not.toContain('../../../../src/');
     expect(runtimeSessionOperationsSource).toContain(

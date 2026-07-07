@@ -53,4 +53,50 @@ describe('agent-sdk package-local runtime session lifecycle helpers', () => {
       'load:existing-session',
     ]);
   });
+
+  it('runs session start/end hooks and always closes runtime resources', async () => {
+    const { createPackageLocalRuntimeSessionLifecycleOperations } = await import(
+      runtimeSessionLifecycleModulePath
+    );
+    const hookRuntime = {
+      runSessionStart: vi.fn(),
+      runSessionEnd: vi.fn(),
+    };
+    const closeRuntimeResources = vi.fn();
+
+    const operations = createPackageLocalRuntimeSessionLifecycleOperations({
+      sessionId: 'session-1',
+      sessionStore: {
+        createSession: vi.fn(),
+        loadSession: vi.fn(),
+        loadMessages: vi.fn(),
+      },
+      hookRuntime,
+      model: 'model-a',
+      provider: 'openai-compatible',
+      closeRuntimeResources,
+    });
+
+    await operations.runSessionStart(false);
+    await operations.runSessionStart(true);
+    await operations.close();
+
+    expect(hookRuntime.runSessionStart).toHaveBeenNthCalledWith(1, {
+      isResume: false,
+      model: 'model-a',
+      provider: 'openai-compatible',
+    });
+    expect(hookRuntime.runSessionStart).toHaveBeenNthCalledWith(2, {
+      isResume: true,
+      resumeSessionId: 'session-1',
+      model: 'model-a',
+      provider: 'openai-compatible',
+    });
+    expect(hookRuntime.runSessionEnd).toHaveBeenCalledWith({ reason: 'other' });
+    expect(closeRuntimeResources).toHaveBeenCalledTimes(1);
+
+    hookRuntime.runSessionEnd.mockRejectedValueOnce(new Error('hook failed'));
+    await expect(operations.close()).rejects.toThrow('hook failed');
+    expect(closeRuntimeResources).toHaveBeenCalledTimes(2);
+  });
 });

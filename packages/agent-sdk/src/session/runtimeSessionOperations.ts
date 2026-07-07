@@ -26,6 +26,10 @@ export function createPackageLocalRuntimeSessionOperations<TMessage>(
     lifecycle: createPackageLocalRuntimeSessionLifecycleOperations({
       sessionId: options.sessionId,
       sessionStore: options.sessionStore,
+      hookRuntime: options.hookRuntime,
+      model: options.model,
+      provider: options.provider,
+      closeRuntimeResources: options.closeRuntimeResources,
     }),
     workspace: createPackageLocalRuntimeWorkspaceOperations({
       workspace: options.workspace,
