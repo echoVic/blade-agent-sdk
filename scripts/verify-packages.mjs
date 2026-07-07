@@ -557,7 +557,24 @@ function verifyTarballContents(spec, tarballPath) {
     throw new Error(`${spec.name} tarball includes source files: ${sourceEntry}`);
   }
 
+  const typescriptArtifactEntry = entries.find(
+    (entry) => isTypeScriptSourceArtifact(entry) || isTypeScriptBuildConfigArtifact(entry),
+  );
+  if (typescriptArtifactEntry) {
+    throw new Error(`${spec.name} tarball includes TypeScript source artifacts: ${typescriptArtifactEntry}`);
+  }
+
   assertNoCliProductFiles(spec.name, entries);
+}
+
+function isTypeScriptSourceArtifact(entry) {
+  return /\.(?:ts|tsx|mts|cts)$/.test(entry) && !/\.d\.[cm]?ts$/.test(entry);
+}
+
+function isTypeScriptBuildConfigArtifact(entry) {
+  const normalized = entry.startsWith('package/') ? entry.slice('package/'.length) : entry;
+  const fileName = normalized.split('/').at(-1) ?? normalized;
+  return /^tsconfig(?:\.[^/]+)?\.json$/.test(fileName) || /^tsup\.config\.[cm]?[jt]s$/.test(fileName);
 }
 
 function assertNoCliProductFiles(packageName, entries) {

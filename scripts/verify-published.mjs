@@ -642,9 +642,27 @@ async function verifyPublishedPackageFileScope({ consumerDir }) {
       throw new Error(`${requirement.packageName} installed package includes source files: ${sourceEntry}`);
     }
 
+    const typescriptArtifactEntry = files.find(
+      (filePath) => isTypeScriptSourceArtifact(filePath) || isTypeScriptBuildConfigArtifact(filePath),
+    );
+    if (typescriptArtifactEntry) {
+      throw new Error(
+        `${requirement.packageName} installed package includes TypeScript source artifacts: ${typescriptArtifactEntry}`,
+      );
+    }
+
     assertNoCliProductFiles(requirement.packageName, files);
   }
   console.log('[verify-published] temporary consumer published package file scope passed');
+}
+
+function isTypeScriptSourceArtifact(filePath) {
+  return /\.(?:ts|tsx|mts|cts)$/.test(filePath) && !/\.d\.[cm]?ts$/.test(filePath);
+}
+
+function isTypeScriptBuildConfigArtifact(filePath) {
+  const fileName = filePath.split('/').at(-1) ?? filePath;
+  return /^tsconfig(?:\.[^/]+)?\.json$/.test(fileName) || /^tsup\.config\.[cm]?[jt]s$/.test(fileName);
 }
 
 async function calculateDirectorySizeBytes(directory) {
