@@ -1,12 +1,12 @@
 import { existsSync } from 'node:fs';
 import { describe, expect, it, vi } from 'vitest';
-import type { RuntimeContext } from '../../packages/agent-sdk/src/runtime/types.js';
-import type { BladeConfig } from '../../packages/agent-sdk/src/types/common.js';
-import type { SessionOptions } from '../../packages/agent-sdk/src/session/types.js';
-import { HookEvent } from '../../packages/agent-sdk/src/types/constants.js';
+import type { RuntimeContext } from '../runtime/types.js';
+import type { SessionOptions } from '../session/types.js';
+import type { BladeConfig } from '../types/common.js';
+import { HookEvent } from '../types/constants.js';
 
-const bootstrapModulePath = '../../packages/agent-sdk/src/session/runtimeBootstrap.js';
-const bootstrapSourcePath = 'packages/agent-sdk/src/session/runtimeBootstrap.ts';
+const bootstrapModulePath = '../session/runtimeBootstrap.js';
+const bootstrapSourcePath = 'src/session/runtimeBootstrap.ts';
 
 describe('agent-sdk package-local runtime bootstrap helpers', () => {
   it('derives initial state and resolved runtime ports without constructing a session runtime', async () => {
