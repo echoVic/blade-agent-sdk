@@ -6,7 +6,7 @@ import {
   createTool,
   defineTool,
   toolFromDefinition,
-} from '../../packages/agent-sdk/src/tools/index.js';
+} from '../tools/index.js';
 
 describe('agent-sdk tools entry', () => {
   it('creates executable tools from package-local authoring helpers', async () => {
