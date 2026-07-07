@@ -708,6 +708,8 @@ describe('release scripts', () => {
     expect(publishedVerifier).toContain('@blade-ai/ai@${version}');
     expect(publishedVerifier).toContain('@blade-ai/agent@${version}');
     expect(publishedVerifier).toContain('@blade-ai/agent-sdk@${version}');
+    expect(publishedVerifier).toContain("import * as agentBudget from '@blade-ai/agent/budget';");
+    expect(publishedVerifier).toContain("assertRuntimeExport(agentBudget, 'TokenBudget')");
     expect(publishedVerifier).toContain("assertRuntimeExport(agentSdk, 'createSession')");
     expect(publishedVerifier).toContain("assertNoRuntimeExport(agentSdk, 'getBuiltinTools')");
     expect(publishedVerifier).toContain("assertNoRuntimeExport(agentSdk, 'createSdkMcpServer')");
@@ -1453,9 +1455,12 @@ describe('release scripts', () => {
 
     expect(publishedVerifier).toContain("from '@blade-ai/ai/model';");
     expect(publishedVerifier).toContain("from '@blade-ai/ai/providers/openai-compatible';");
+    expect(publishedVerifier).toContain("from '@blade-ai/agent/budget';");
     expect(publishedVerifier).toContain("from '@blade-ai/agent/kernel';");
     expect(publishedVerifier).toContain("from '@blade-ai/agent/ports';");
     expect(publishedVerifier).toContain("from '@blade-ai/agent/protocol';");
+    expect(publishedVerifier).toContain('TokenBudgetConfig');
+    expect(publishedVerifier).toContain('TokenBudgetSnapshot');
     expect(publishedVerifier).toContain("from '@blade-ai/agent-sdk/session';");
     expect(publishedVerifier).toContain("from '@blade-ai/agent-sdk/tools';");
     expect(publishedVerifier).toContain("from '@blade-ai/agent-sdk/core';");
@@ -1547,7 +1552,9 @@ describe('release scripts', () => {
     expect(publishedVerifier).toContain('verifyPublishedAgentBrowserBundleSmoke');
     expect(publishedVerifier).toContain('consumer-agent-browser-entry.ts');
     expect(publishedVerifier).toContain("from '@blade-ai/agent';");
+    expect(publishedVerifier).toContain("from '@blade-ai/agent/budget';");
     expect(publishedVerifier).toContain("from '@blade-ai/agent/kernel';");
+    expect(publishedVerifier).toContain('new TokenBudget');
     expect(publishedVerifier).toContain('agent browser bundle');
     expect(publishedVerifier).toContain('consumer-agent-browser-bundle.js');
     expect(readme).toContain('@blade-ai/agent` browser bundle smoke');

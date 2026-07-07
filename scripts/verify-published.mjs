@@ -338,6 +338,7 @@ async function verifyPublishedInstallSmoke({ version, packageMetadataByName }) {
 import * as aiOpenAICompatible from '@blade-ai/ai/providers/openai-compatible';
 import * as aiRetry from '@blade-ai/ai/retry';
 import * as agent from '@blade-ai/agent';
+import * as agentBudget from '@blade-ai/agent/budget';
 import * as agentKernel from '@blade-ai/agent/kernel';
 import * as agentProtocol from '@blade-ai/agent/protocol';
 import * as agentSdk from '@blade-ai/agent-sdk';
@@ -379,6 +380,7 @@ assertRuntimeExport(ai, 'createOpenAICompatibleModelPort');
 assertRuntimeExport(aiOpenAICompatible, 'createOpenAICompatibleModelPort');
 assertRuntimeExport(aiRetry, 'DEFAULT_RETRY_CONFIG');
 assertRuntimeExport(agent, 'AgentKernel');
+assertRuntimeExport(agentBudget, 'TokenBudget');
 assertRuntimeExport(agentKernel, 'AgentKernel');
 assertRuntimeExport(agentSdk, 'createSession');
 assertRuntimeExport(agentSdk, 'defineTool');
@@ -1484,6 +1486,7 @@ async function verifyPublishedAgentBrowserBundleSmoke({ consumerDir }) {
     entryPath,
     [
       "import { AgentKernel } from '@blade-ai/agent';",
+      "import { TokenBudget } from '@blade-ai/agent/budget';",
       "import { AgentKernel as AgentKernelFromSubpath } from '@blade-ai/agent/kernel';",
       'const fakeModel = {',
       '  async generate() {',
@@ -1493,9 +1496,10 @@ async function verifyPublishedAgentBrowserBundleSmoke({ consumerDir }) {
       "    yield { type: 'done', response: { content: 'ok', finishReason: 'stop' } };",
       '  },',
       '};',
+      'const budget = new TokenBudget({ maxTotalTokens: 10 });',
       'const kernel = new AgentKernel({ model: fakeModel });',
       'const kernelFromSubpath = new AgentKernelFromSubpath({ model: fakeModel });',
-      "console.log('agent browser bundle', kernel.constructor.name, kernelFromSubpath.constructor.name);",
+      "console.log('agent browser bundle', kernel.constructor.name, kernelFromSubpath.constructor.name, budget.constructor.name);",
     ].join('\n'),
   );
 
@@ -1550,6 +1554,10 @@ import type { ModelResponse, ModelStreamEvent } from '@blade-ai/ai';
 import type { ModelResponse as ModelSubpathResponse } from '@blade-ai/ai/model';
 import type { OpenAICompatibleModelPortOptions } from '@blade-ai/ai/providers/openai-compatible';
 import type { AgentKernelOptions } from '@blade-ai/agent';
+import type {
+  TokenBudgetConfig,
+  TokenBudgetSnapshot,
+} from '@blade-ai/agent/budget';
 import type { AgentTurnInput } from '@blade-ai/agent/kernel';
 import type { AgentToolPort } from '@blade-ai/agent/ports';
 import type { AgentToolCall } from '@blade-ai/agent/protocol';
@@ -1601,6 +1609,19 @@ const openaiCompatibleOptions: OpenAICompatibleModelPortOptions = {
 const kernelOptions: AgentKernelOptions = {
   model: modelPort,
   maxSteps: 2,
+};
+const tokenBudgetConfig: TokenBudgetConfig = { maxTotalTokens: 100 };
+const tokenBudgetSnapshot: TokenBudgetSnapshot = {
+  totalInputTokens: 1,
+  totalBillableInputTokens: 1,
+  totalOutputTokens: 1,
+  totalCacheWriteTokens: 0,
+  totalCacheReadTokens: 0,
+  totalCacheMissTokens: 1,
+  totalTokens: 2,
+  estimatedCost: 0,
+  budgetRemaining: 98,
+  budgetPercent: 0.02,
 };
 
 const turnInput: AgentTurnInput = {
@@ -1693,6 +1714,8 @@ const runtimeContext: RuntimeContext = {};
 void modelSubpathResponse;
 void openaiCompatibleOptions;
 void kernelOptions;
+void tokenBudgetConfig;
+void tokenBudgetSnapshot;
 void turnInput;
 void toolPort;
 void sessionOptions;
