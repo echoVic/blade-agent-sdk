@@ -349,6 +349,7 @@ describe('monorepo topology', () => {
     expect(existsSync('packages/agent/src/__tests__/toolUpdateToAgentEvent.test.ts')).toBe(true);
     expect(existsSync('packages/agent/src/__tests__/AsyncEventQueueBehavior.test.ts')).toBe(true);
     expect(existsSync('packages/agent/src/__tests__/loopDecisionsBehavior.test.ts')).toBe(true);
+    expect(existsSync('packages/agent/src/__tests__/planToolExecutionBehavior.test.ts')).toBe(true);
 
     const agentIndexSource = readFileSync('packages/agent/src/index.ts', 'utf-8');
     const agentLoopSource = readFileSync('packages/agent/src/loop/index.ts', 'utf-8');

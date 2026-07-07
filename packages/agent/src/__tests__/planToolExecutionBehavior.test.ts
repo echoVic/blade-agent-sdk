@@ -1,10 +1,15 @@
 import { describe, expect, it } from 'vitest';
-import { PermissionMode } from '../../../types/common.js';
-import { planToolExecution } from '../planToolExecution.js';
-import type { FunctionToolCall } from '../types.js';
-import { type ToolBehavior, ToolKind } from '../../../tools/types/ToolKind.js';
+import {
+  type AgentFunctionToolCall,
+  planToolExecution,
+  type ToolBehavior,
+  ToolKind,
+} from '../loop/index.js';
 
-const makeCall = (name: string, args: Record<string, unknown> = {}): FunctionToolCall => ({
+const makeCall = (
+  name: string,
+  args: Record<string, unknown> = {},
+): AgentFunctionToolCall => ({
   id: `${name}-call`,
   type: 'function',
   function: {
@@ -70,7 +75,7 @@ describe('planToolExecution', () => {
     const plan = planToolExecution(
       [makeCall('Read'), makeCall('Glob')],
       mockRegistry,
-      PermissionMode.PLAN,
+      'plan',
     );
 
     expect(plan.mode).toBe('serial');
