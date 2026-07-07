@@ -108,7 +108,7 @@ describe('package entrypoints', () => {
       'verify:examples': 'tsc -p examples/tsconfig.json --noEmit',
       'verify:packages': 'pnpm --filter @blade-ai/ai run build && pnpm --filter @blade-ai/agent run build && pnpm --filter @blade-ai/agent-sdk run build && node scripts/verify-packages.mjs',
       'verify:release': 'node scripts/verify-release-config.mjs',
-      'test:packages': 'pnpm --filter @blade-ai/ai exec vitest run --passWithNoTests && pnpm --filter @blade-ai/agent exec vitest run --passWithNoTests && pnpm --filter @blade-ai/agent-sdk exec vitest run',
+      'test:packages': 'pnpm --filter @blade-ai/ai exec vitest run && pnpm --filter @blade-ai/agent exec vitest run && pnpm --filter @blade-ai/agent-sdk exec vitest run',
       'test:unit': 'vitest run --exclude "src/__tests__/integration.test.ts" --exclude "src/__tests__/*.live.test.ts" --exclude "src/services/__tests__/*.live.test.ts" --exclude "src/services/__tests__/deepseek-deep.live.test.ts"',
       'test:integration': 'vitest run src/__tests__/integration.test.ts',
     });
@@ -116,6 +116,7 @@ describe('package entrypoints', () => {
     expect(existsSync(join(process.cwd(), 'scripts/verify-release-config.mjs'))).toBe(true);
     expect(rootPackageJson.scripts.verify).toContain('pnpm run verify:entrypoints');
     expect(rootPackageJson.scripts.verify).toContain('pnpm run test:packages');
+    expect(rootPackageJson.scripts['test:packages']).not.toContain('--passWithNoTests');
   });
 
   it('throws clear errors from browser runtime stubs', async () => {

@@ -30,7 +30,7 @@
     "verify:packages": "pnpm --filter @blade-ai/ai run build && pnpm --filter @blade-ai/agent run build && pnpm --filter @blade-ai/agent-sdk run build && node scripts/verify-packages.mjs",
     "verify:release": "node scripts/verify-release-config.mjs",
     "verify:published": "node scripts/verify-published.mjs",
-    "test:packages": "pnpm --filter @blade-ai/ai exec vitest run --passWithNoTests && pnpm --filter @blade-ai/agent exec vitest run --passWithNoTests && pnpm --filter @blade-ai/agent-sdk exec vitest run",
+    "test:packages": "pnpm --filter @blade-ai/ai exec vitest run && pnpm --filter @blade-ai/agent exec vitest run && pnpm --filter @blade-ai/agent-sdk exec vitest run",
     "release": "semantic-release",
     "release:dry": "semantic-release --dry-run --no-ci",
     "docs:dev": "vitepress dev docs",
