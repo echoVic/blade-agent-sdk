@@ -52,6 +52,38 @@ describe('AgentKernel', () => {
     ]);
   });
 
+  it('keeps model turns running when trace recording fails', async () => {
+    const generate = vi.fn(async (_request: ModelRequest): Promise<ModelResponse> => ({
+      content: 'Trace failures are isolated',
+      finishReason: 'stop',
+    }));
+    const model: ModelPort = {
+      generate,
+      stream: async function* () {},
+    };
+    const trace: AgentTracePort = {
+      record: vi.fn(() => {
+        throw new Error('trace sink unavailable');
+      }),
+    };
+    const kernel = new AgentKernel({ model, trace });
+
+    const events = [];
+    for await (const event of kernel.runTurn({ input: 'Keep going' })) {
+      events.push(event);
+    }
+
+    expect(trace.record).toHaveBeenCalled();
+    expect(events).toEqual([
+      { type: 'content', delta: 'Trace failures are isolated' },
+      {
+        type: 'result',
+        content: 'Trace failures are isolated',
+        finishReason: 'stop',
+      },
+    ]);
+  });
+
   it('applies model request defaults to generated model requests', async () => {
     const generate = vi.fn(async (_request: ModelRequest): Promise<ModelResponse> => ({
       content: 'Configured answer',

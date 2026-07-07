@@ -242,7 +242,11 @@ export class AgentKernel {
   }
 
   private async recordTrace(event: AgentTraceEvent): Promise<void> {
-    await this.options.trace?.record(event);
+    try {
+      await this.options.trace?.record(event);
+    } catch {
+      // Trace ports are observability adapters; failures must not interrupt turns.
+    }
   }
 
   private async generateModel(
