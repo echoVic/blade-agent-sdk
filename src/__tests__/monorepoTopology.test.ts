@@ -1202,8 +1202,16 @@ describe('monorepo topology', () => {
     expect(packageLocalRuntimeInstanceSource).toContain(
       'createPackageLocalRuntimeGuardOperations',
     );
-    expect(packageLocalRuntimeInstanceSource).toContain('permissionOperations');
     expect(packageLocalRuntimeInstanceSource).toContain('guardOperations.permissions');
+    expect(packageLocalRuntimeInstanceSource).toContain(
+      'private readonly guardOperations: PackageLocalRuntimeGuardOperations',
+    );
+    expect(packageLocalRuntimeInstanceSource).not.toContain(
+      'private readonly permissionOperations',
+    );
+    expect(packageLocalRuntimeInstanceSource).not.toContain(
+      'private readonly hookOperations',
+    );
     expect(packageLocalRuntimeInstanceSource).not.toContain(
       'createPackageLocalRuntimePermissionHandler({',
     );
@@ -1220,7 +1228,6 @@ describe('monorepo topology', () => {
     expect(runtimeHooksSource).toContain('initializePackageLocalRuntimeHooks');
     expect(runtimeHooksSource).toContain('createPackageLocalRuntimeHookOperations');
     expect(runtimeHooksSource).toContain('streamWithPackageLocalRuntimeTraceCollector');
-    expect(packageLocalRuntimeInstanceSource).toContain('hookOperations');
     expect(packageLocalRuntimeInstanceSource).toContain('guardOperations.hooks');
     expect(packageLocalRuntimeInstanceSource).not.toContain(
       'createPackageLocalRuntimeHookOperations({',

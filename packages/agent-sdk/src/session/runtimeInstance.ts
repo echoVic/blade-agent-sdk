@@ -38,7 +38,6 @@ import type {
   PackageLocalRuntimeWorkspacePort,
 } from './runtimePorts.js';
 import type {
-  PackageLocalRuntimeHookOperations,
   PackageLocalRuntimeHookManagerPort,
   PackageLocalRuntimeHookRuntimePort,
 } from './runtimeHooks.js';
@@ -85,9 +84,11 @@ import {
 } from './runtimeTools.js';
 import type {
   PackageLocalRuntimePermissionHookPort,
-  PackageLocalRuntimePermissionOperations,
 } from './runtimePermissions.js';
-import { createPackageLocalRuntimeGuardOperations } from './runtimeGuards.js';
+import {
+  createPackageLocalRuntimeGuardOperations,
+  type PackageLocalRuntimeGuardOperations,
+} from './runtimeGuards.js';
 import type {
   PackageLocalRuntimeTraceOperations,
 } from './runtimeTraceManager.js';
@@ -194,8 +195,7 @@ export class PackageLocalSessionRuntime {
     PackageLocalRuntimeNamedTool,
     PackageLocalRuntimeToolSource
   >;
-  private readonly permissionOperations: PackageLocalRuntimePermissionOperations;
-  private readonly hookOperations: PackageLocalRuntimeHookOperations;
+  private readonly guardOperations: PackageLocalRuntimeGuardOperations;
   private readonly subagentOperations: PackageLocalRuntimeSubagentOperations;
   private readonly traceOperations: PackageLocalRuntimeTraceOperations;
   private readonly forkOperations: PackageLocalRuntimeForkOperations;
@@ -288,15 +288,13 @@ export class PackageLocalSessionRuntime {
         this.registerTools(tools, source);
       },
     });
-    const guardOperations = createPackageLocalRuntimeGuardOperations({
+    this.guardOperations = createPackageLocalRuntimeGuardOperations({
       hooks: this.hookCallbacks,
       hookManager: this.hookManager,
       permissionHooks: this.permissionHooks,
       permissionHandler: this.options.permissionHandler,
       canUseTool: this.options.canUseTool,
     });
-    this.permissionOperations = guardOperations.permissions;
-    this.hookOperations = guardOperations.hooks;
     const sessionCapabilityOperations = createPackageLocalRuntimeSessionCapabilityOperations({
       sessionId: this.sessionId,
       options: this.options,
@@ -465,11 +463,11 @@ export class PackageLocalSessionRuntime {
   }
 
   createPermissionHandler(): PermissionHandler | undefined {
-    return this.permissionOperations.createPermissionHandler();
+    return this.guardOperations.permissions.createPermissionHandler();
   }
 
   initializeHooks(): void {
-    this.hookOperations.initialize();
+    this.guardOperations.hooks.initialize();
   }
 
   createExecutionPipeline(): unknown {
