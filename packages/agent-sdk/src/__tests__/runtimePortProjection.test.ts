@@ -2,8 +2,8 @@ import { existsSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 
 const projectionModulePath =
-  '../../packages/agent-sdk/src/session/runtimePortProjection.js';
-const projectionSourcePath = 'packages/agent-sdk/src/session/runtimePortProjection.ts';
+  '../session/runtimePortProjection.js';
+const projectionSourcePath = 'src/session/runtimePortProjection.ts';
 
 describe('agent-sdk package-local runtime port projection helpers', () => {
   it('projects resolved ports and option factories without constructing a session runtime', async () => {
