@@ -335,7 +335,11 @@ async function verifyPublishedInstallSmoke({ version, packageMetadataByName }) {
     await writeFile(
       runtimeSmokePath,
       `import * as ai from '@blade-ai/ai';
+import * as aiChat from '@blade-ai/ai/chat';
+import * as aiDeepseek from '@blade-ai/ai/deepseek';
+import * as aiModel from '@blade-ai/ai/model';
 import * as aiOpenAICompatible from '@blade-ai/ai/providers/openai-compatible';
+import * as aiVercel from '@blade-ai/ai/providers/vercel';
 import * as aiRetry from '@blade-ai/ai/retry';
 import * as agent from '@blade-ai/agent';
 import * as agentBudget from '@blade-ai/agent/budget';
@@ -380,8 +384,11 @@ function assertRuntimeExportParity(leftModule, rightModule, leftName, rightName)
 }
 
 assertRuntimeExport(ai, 'createOpenAICompatibleModelPort');
+assertRuntimeExport(aiDeepseek, 'normalizeDeepSeekModel');
 assertRuntimeExport(aiOpenAICompatible, 'createOpenAICompatibleModelPort');
 assertRuntimeExport(aiRetry, 'DEFAULT_RETRY_CONFIG');
+assertRuntimeExport(aiRetry, 'withRetry');
+assertRuntimeExport(aiVercel, 'createVercelModelPort');
 assertRuntimeExport(agent, 'AgentKernel');
 assertRuntimeExport(agentBudget, 'TokenBudget');
 assertRuntimeExport(agentKernel, 'AgentKernel');
@@ -404,6 +411,12 @@ assertRuntimeExportParity(agentSdk, agentSdkServer, 'root', 'server');
 assertRuntimeExport(agentSdkSession, 'createSession');
 assertRuntimeExport(agentSdkTools, 'ToolKind');
 
+if (Object.keys(aiChat).length !== 0) {
+  throw new Error('@blade-ai/ai/chat should remain type-only at runtime');
+}
+if (Object.keys(aiModel).length !== 0) {
+  throw new Error('@blade-ai/ai/model should remain type-only at runtime');
+}
 if (Object.keys(agentProtocol).length !== 0) {
   throw new Error('@blade-ai/agent/protocol should remain type-only at runtime');
 }
@@ -1563,8 +1576,33 @@ async function verifyPublishedTypesSmoke({ consumerDir }) {
     `import type { ModelPort } from '@blade-ai/ai';
 import type { ModelRequest } from '@blade-ai/ai';
 import type { ModelResponse, ModelStreamEvent } from '@blade-ai/ai';
-import type { ModelResponse as ModelSubpathResponse } from '@blade-ai/ai/model';
+import type {
+  ChatConfig,
+  ChatResponse,
+  Message as ChatMessage,
+  StreamChunk as ChatStreamChunk,
+  UsageInfo as ChatUsageInfo,
+} from '@blade-ai/ai/chat';
+import type {
+  ModelMessage,
+  ModelRequest as ModelSubpathRequest,
+  ModelResponse as ModelSubpathResponse,
+  ModelStreamEvent as ModelSubpathStreamEvent,
+  UsageInfo as ModelSubpathUsageInfo,
+} from '@blade-ai/ai/model';
+import type {
+  QuerySource,
+  RetryConfig,
+  RetryContext,
+  RetryEvent,
+} from '@blade-ai/ai/retry';
+import { DEFAULT_RETRY_CONFIG, isRetryableError, withRetry } from '@blade-ai/ai/retry';
+import type { DeepSeekCostBreakdown, DeepSeekProviderOptions } from '@blade-ai/ai/deepseek';
+import { calculateDeepSeekCost, normalizeDeepSeekModel } from '@blade-ai/ai/deepseek';
 import type { OpenAICompatibleModelPortOptions } from '@blade-ai/ai/providers/openai-compatible';
+import { createOpenAICompatibleModelPort } from '@blade-ai/ai/providers/openai-compatible';
+import type { VercelLanguageModelOptions } from '@blade-ai/ai/providers/vercel';
+import { createVercelModelPort } from '@blade-ai/ai/providers/vercel';
 import type { AgentKernelOptions } from '@blade-ai/agent';
 import type {
   TokenBudgetConfig,
@@ -1625,6 +1663,80 @@ const openaiCompatibleOptions: OpenAICompatibleModelPortOptions = {
   baseUrl: 'https://example.test/v1',
   model: 'glm-5.2',
 };
+const compatibleModelFromSubpath: ModelPort = createOpenAICompatibleModelPort(openaiCompatibleOptions);
+
+const vercelOptions: VercelLanguageModelOptions = {
+  provider: 'openai-compatible',
+  providerId: 'glm',
+  apiKey: 'test-key',
+  baseUrl: 'https://example.test/v1',
+  model: 'glm-5.2',
+};
+const vercelModel: ModelPort = createVercelModelPort(vercelOptions);
+
+const deepseekOptions: DeepSeekProviderOptions = {
+  thinking: { type: 'enabled' },
+  strictTools: true,
+};
+const normalizedDeepSeekModel: string = normalizeDeepSeekModel('deepseek-chat');
+const deepseekCost: DeepSeekCostBreakdown | undefined = calculateDeepSeekCost({
+  promptTokens: 1,
+  completionTokens: 1,
+  totalTokens: 2,
+}, normalizedDeepSeekModel);
+
+const chatConfig: ChatConfig = {
+  provider: 'openai-compatible',
+  apiKey: 'test-key',
+  baseUrl: 'https://example.test/v1',
+  model: 'glm-5.2',
+};
+const chatMessage: ChatMessage = { role: 'user', content: 'hello' };
+const chatUsage: ChatUsageInfo = {
+  promptTokens: 1,
+  completionTokens: 1,
+  totalTokens: 2,
+};
+const chatResponse: ChatResponse = {
+  content: 'ok',
+  usage: chatUsage,
+};
+const chatStreamChunk: ChatStreamChunk = {
+  content: 'ok',
+  usage: chatUsage,
+};
+
+const modelSubpathMessage: ModelMessage = { role: 'user', content: 'hello' };
+const modelSubpathUsage: ModelSubpathUsageInfo = {
+  promptTokens: 1,
+  completionTokens: 1,
+  totalTokens: 2,
+};
+const modelSubpathRequest: ModelSubpathRequest = {
+  messages: [modelSubpathMessage],
+};
+const modelSubpathStreamEvent: ModelSubpathStreamEvent = {
+  type: 'done',
+  response: modelSubpathResponse,
+  finishReason: 'stop',
+};
+
+const retrySource: QuerySource = 'main_thread';
+const retryConfig: RetryConfig = {
+  ...DEFAULT_RETRY_CONFIG,
+  querySource: retrySource,
+};
+const retryContext: RetryContext = {};
+const retryEvent: RetryEvent = {
+  type: 'retry_attempt',
+  attempt: 1,
+  maxRetries: retryConfig.maxRetries,
+  delayMs: 0,
+  error: { message: 'retry me', status: 503 },
+  querySource: retrySource,
+};
+const withRetryRef: typeof withRetry = withRetry;
+const retryableNetworkError: boolean = isRetryableError({ status: 503 });
 
 const kernelOptions: AgentKernelOptions = {
   model: modelPort,
@@ -1748,6 +1860,23 @@ const runtimeContext: RuntimeContext = {};
 
 void modelSubpathResponse;
 void openaiCompatibleOptions;
+void compatibleModelFromSubpath;
+void vercelOptions;
+void vercelModel;
+void deepseekOptions;
+void normalizedDeepSeekModel;
+void deepseekCost;
+void chatConfig;
+void chatMessage;
+void chatResponse;
+void chatStreamChunk;
+void modelSubpathRequest;
+void modelSubpathStreamEvent;
+void retryConfig;
+void retryContext;
+void retryEvent;
+void withRetryRef;
+void retryableNetworkError;
 void kernelOptions;
 void tokenBudgetConfig;
 void tokenBudgetSnapshot;

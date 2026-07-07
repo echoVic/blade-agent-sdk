@@ -708,6 +708,15 @@ describe('release scripts', () => {
     expect(publishedVerifier).toContain('@blade-ai/ai@${version}');
     expect(publishedVerifier).toContain('@blade-ai/agent@${version}');
     expect(publishedVerifier).toContain('@blade-ai/agent-sdk@${version}');
+    expect(publishedVerifier).toContain("import * as aiChat from '@blade-ai/ai/chat';");
+    expect(publishedVerifier).toContain("import * as aiDeepseek from '@blade-ai/ai/deepseek';");
+    expect(publishedVerifier).toContain("import * as aiModel from '@blade-ai/ai/model';");
+    expect(publishedVerifier).toContain("import * as aiVercel from '@blade-ai/ai/providers/vercel';");
+    expect(publishedVerifier).toContain("assertRuntimeExport(aiDeepseek, 'normalizeDeepSeekModel')");
+    expect(publishedVerifier).toContain("assertRuntimeExport(aiVercel, 'createVercelModelPort')");
+    expect(publishedVerifier).toContain("assertRuntimeExport(aiRetry, 'withRetry')");
+    expect(publishedVerifier).toContain("@blade-ai/ai/chat should remain type-only at runtime");
+    expect(publishedVerifier).toContain("@blade-ai/ai/model should remain type-only at runtime");
     expect(publishedVerifier).toContain("import * as agentBudget from '@blade-ai/agent/budget';");
     expect(publishedVerifier).toContain("assertRuntimeExport(agentBudget, 'TokenBudget')");
     expect(publishedVerifier).toContain("import * as agentPorts from '@blade-ai/agent/ports';");
@@ -1424,6 +1433,14 @@ describe('release scripts', () => {
     expect(publishedVerifier).toContain('tsc');
     expect(publishedVerifier).toContain('--noEmit');
     expect(publishedVerifier).toContain("import type { ModelPort } from '@blade-ai/ai';");
+    expect(publishedVerifier).toContain("from '@blade-ai/ai/chat';");
+    expect(publishedVerifier).toContain("from '@blade-ai/ai/retry';");
+    expect(publishedVerifier).toContain("from '@blade-ai/ai/deepseek';");
+    expect(publishedVerifier).toContain("from '@blade-ai/ai/providers/vercel';");
+    expect(publishedVerifier).toContain('ChatConfig');
+    expect(publishedVerifier).toContain('RetryConfig');
+    expect(publishedVerifier).toContain('DeepSeekProviderOptions');
+    expect(publishedVerifier).toContain('VercelLanguageModelOptions');
     expect(publishedVerifier).toContain("import type { AgentKernelOptions } from '@blade-ai/agent';");
     expect(publishedVerifier).toContain("import type { SessionOptions } from '@blade-ai/agent-sdk';");
     expect(readme).toContain('TypeScript public declarations');
@@ -1460,7 +1477,11 @@ describe('release scripts', () => {
     const roadmap = readFileSync(resolve('docs/roadmap/production-agent-sdk-monorepo.md'), 'utf8');
 
     expect(publishedVerifier).toContain("from '@blade-ai/ai/model';");
+    expect(publishedVerifier).toContain("from '@blade-ai/ai/chat';");
+    expect(publishedVerifier).toContain("from '@blade-ai/ai/retry';");
+    expect(publishedVerifier).toContain("from '@blade-ai/ai/deepseek';");
     expect(publishedVerifier).toContain("from '@blade-ai/ai/providers/openai-compatible';");
+    expect(publishedVerifier).toContain("from '@blade-ai/ai/providers/vercel';");
     expect(publishedVerifier).toContain("from '@blade-ai/agent/budget';");
     expect(publishedVerifier).toContain("from '@blade-ai/agent/kernel';");
     expect(publishedVerifier).toContain("from '@blade-ai/agent/ports';");
