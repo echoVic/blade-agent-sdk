@@ -518,9 +518,21 @@ async function verifyPublishedPackageManifests({ consumerDir, version }) {
       label: 'main',
       target: manifest.main,
     });
+    assertManifestTargetExtension({
+      packageName: requirement.packageName,
+      label: 'main',
+      condition: 'import',
+      target: manifest.main,
+    });
     assertPublishedManifestTarget({
       packageName: requirement.packageName,
       label: 'types',
+      target: manifest.types,
+    });
+    assertManifestTargetExtension({
+      packageName: requirement.packageName,
+      label: 'types',
+      condition: 'types',
       target: manifest.types,
     });
     verifyPublishedManifestExports({
@@ -753,6 +765,18 @@ function assertPublishedManifestTarget({ packageName, label, target }) {
   }
 }
 
+function assertManifestTargetExtension({ packageName, label, condition, target }) {
+  if (typeof target !== 'string') return;
+  if (target === './package.json') return;
+
+  if (condition === 'types' && !target.endsWith('.d.ts')) {
+    throw new Error(`${packageName} ${label} target ${target} must point at a .d.ts declaration artifact`);
+  }
+  if ((condition === 'import' || condition === 'browser') && !target.endsWith('.js')) {
+    throw new Error(`${packageName} ${label} target ${target} must point at a .js runtime artifact`);
+  }
+}
+
 function getManifestRootExportConditions(exportsMap) {
   if (!exportsMap || typeof exportsMap !== 'object' || Array.isArray(exportsMap)) {
     return null;
@@ -856,6 +880,12 @@ function verifyPublishedManifestExports({ packageName, manifest }) {
       assertPublishedManifestTarget({
         packageName,
         label: `exports.${exportName}.${condition}`,
+        target,
+      });
+      assertManifestTargetExtension({
+        packageName,
+        label: `exports.${exportName}.${condition}`,
+        condition,
         target,
       });
       continue;

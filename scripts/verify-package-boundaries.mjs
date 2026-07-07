@@ -235,6 +235,14 @@ function isDistArtifactTarget(target) {
   return target.startsWith('./dist/');
 }
 
+function isDeclarationArtifactTarget(target) {
+  return target.endsWith('.d.ts');
+}
+
+function isRuntimeArtifactTarget(target) {
+  return target.endsWith('.js');
+}
+
 function isPackageJsonExportTarget(path, target) {
   return path.startsWith('export "./package.json"') && target === './package.json';
 }
@@ -269,6 +277,19 @@ function isBrowserConditionBeforeImport(exportValue) {
   const browserIndex = conditions.indexOf('browser');
   const importIndex = conditions.indexOf('import');
   return browserIndex === -1 || importIndex === -1 || browserIndex < importIndex;
+}
+
+function verifyManifestTargetExtension({ packageJson, label, condition, target }) {
+  if (typeof target !== 'string') return null;
+  if (target === './package.json') return null;
+
+  if (condition === 'types' && !isDeclarationArtifactTarget(target)) {
+    return `${packageJson}: ${label} target "${target}" must point at a .d.ts declaration artifact`;
+  }
+  if ((condition === 'import' || condition === 'browser') && !isRuntimeArtifactTarget(target)) {
+    return `${packageJson}: ${label} target "${target}" must point at a .js runtime artifact`;
+  }
+  return null;
 }
 
 const violations = [];
@@ -312,6 +333,15 @@ for (const rule of manifestRules) {
     if (typeof target === 'string' && !isDistArtifactTarget(target)) {
       violations.push(`${rule.packageJson}: ${field} target "${target}" must point at ./dist artifacts`);
     }
+    const extensionViolation = verifyManifestTargetExtension({
+      packageJson: rule.packageJson,
+      label: field,
+      condition: field === 'types' ? 'types' : 'import',
+      target,
+    });
+    if (extensionViolation) {
+      violations.push(extensionViolation);
+    }
   }
 
   const rootExport = getRootExportConditions(manifest.exports);
@@ -351,6 +381,15 @@ for (const rule of manifestRules) {
     for (const condition of Object.keys(exportValue)) {
       if (!allowedPublicExportConditions.has(condition)) {
         violations.push(`${rule.packageJson}: export "${subpath}" condition "${condition}" is not allowed`);
+      }
+      const extensionViolation = verifyManifestTargetExtension({
+        packageJson: rule.packageJson,
+        label: `export "${subpath}" ${condition}`,
+        condition,
+        target: exportValue[condition],
+      });
+      if (extensionViolation) {
+        violations.push(extensionViolation);
       }
     }
   }

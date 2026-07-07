@@ -1092,6 +1092,25 @@ describe('release scripts', () => {
     expect(roadmap).toContain('browser-before-import export condition order gate');
   });
 
+  it('mirrors source manifest target extension checks in packed and published verifiers', () => {
+    const packageVerifier = readFileSync(resolve('scripts/verify-packages.mjs'), 'utf8');
+    const publishedVerifier = readFileSync(resolve('scripts/verify-published.mjs'), 'utf8');
+    const readme = readFileSync(resolve('README.md'), 'utf8');
+    const checklist = readFileSync(resolve('docs/production-checklist.md'), 'utf8');
+    const roadmap = readFileSync(resolve('docs/roadmap/production-agent-sdk-monorepo.md'), 'utf8');
+
+    for (const verifier of [packageVerifier, publishedVerifier]) {
+      expect(verifier).toContain('assertManifestTargetExtension');
+      expect(verifier).toContain("condition === 'types'");
+      expect(verifier).toContain("condition === 'import' || condition === 'browser'");
+      expect(verifier).toContain('must point at a .d.ts declaration artifact');
+      expect(verifier).toContain('must point at a .js runtime artifact');
+    }
+    expect(readme).toContain('manifest target extension checks');
+    expect(checklist).toContain('manifest target extension checks');
+    expect(roadmap).toContain('manifest target extension gate');
+  });
+
   it('verifies packed SDK browser export conditions before publication', () => {
     const packageVerifier = readFileSync(resolve('scripts/verify-packages.mjs'), 'utf8');
     const readme = readFileSync(resolve('README.md'), 'utf8');

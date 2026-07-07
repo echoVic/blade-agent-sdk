@@ -468,6 +468,45 @@ describe('package boundary verifier', () => {
     expect(result.stderr).toContain('export "./server" must declare the browser condition before import');
   });
 
+  it('rejects manifest targets with the wrong runtime artifact extension', () => {
+    const cwd = createBoundaryFixture();
+    writeJson(join(cwd, 'packages', 'agent-sdk', 'package.json'), {
+      name: '@blade-ai/agent-sdk',
+      main: './dist/index.d.ts',
+      types: './dist/index.js',
+      exports: {
+        '.': {
+          types: './dist/index.js',
+          browser: './dist/browser/index.d.ts',
+          import: './dist/index.d.ts',
+        },
+        './package.json': {
+          default: './package.json',
+        },
+      },
+      dependencies: {},
+    });
+
+    const result = spawnSync(process.execPath, [
+      resolve('scripts/verify-package-boundaries.mjs'),
+    ], {
+      cwd,
+      encoding: 'utf8',
+    });
+
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain('packages/agent-sdk/package.json');
+    expect(result.stderr).toContain('main target "./dist/index.d.ts" must point at a .js runtime artifact');
+    expect(result.stderr).toContain('types target "./dist/index.js" must point at a .d.ts declaration artifact');
+    expect(result.stderr).toContain(
+      'export "." types target "./dist/index.js" must point at a .d.ts declaration artifact',
+    );
+    expect(result.stderr).toContain(
+      'export "." browser target "./dist/browser/index.d.ts" must point at a .js runtime artifact',
+    );
+    expect(result.stderr).toContain('export "." import target "./dist/index.d.ts" must point at a .js runtime artifact');
+  });
+
   it('rejects root entry fields that drift from the root export conditions', () => {
     const cwd = createBoundaryFixture();
     writeJson(join(cwd, 'packages', 'agent-sdk', 'package.json'), {
