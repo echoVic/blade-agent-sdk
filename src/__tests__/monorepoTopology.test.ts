@@ -1274,9 +1274,12 @@ describe('monorepo topology', () => {
     expect(packageLocalRuntimeInstanceSource).toContain(
       'createPackageLocalRuntimeKernelOperations',
     );
+    expect(packageLocalRuntimeInstanceSource).toContain(
+      'private readonly kernelOperations: PackageLocalRuntimeKernelOperations',
+    );
     expect(packageLocalRuntimeInstanceSource).toContain('kernelOperations.ports');
     expect(packageLocalRuntimeInstanceSource).toContain('kernelOperations.agentKernel');
-    expect(packageLocalRuntimeInstanceSource).toContain('kernelPortOperations');
+    expect(packageLocalRuntimeInstanceSource).not.toContain('kernelPortOperations');
     expect(packageLocalRuntimeInstanceSource).not.toContain(
       'createPackageLocalRuntimeKernelPortOperations({',
     );
@@ -1316,7 +1319,7 @@ describe('monorepo topology', () => {
       'createPackageLocalRuntimeAgentKernelOperations',
     );
     expect(runtimeAgentKernelsSource).toContain('resolvePackageLocalRuntimeKernelModel');
-    expect(packageLocalRuntimeInstanceSource).toContain('agentKernelOperations');
+    expect(packageLocalRuntimeInstanceSource).not.toContain('agentKernelOperations');
     expect(packageLocalRuntimeInstanceSource).not.toContain(
       'createPackageLocalRuntimeAgentKernelOperations({',
     );

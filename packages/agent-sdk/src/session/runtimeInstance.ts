@@ -50,7 +50,6 @@ import {
   type PackageLocalRuntimeExecutionOperations,
 } from './runtimeExecution.js';
 import type {
-  PackageLocalRuntimeAgentKernelOperations,
   PackageLocalRuntimeAgentKernelFactoryPort,
   PackageLocalRuntimeAgentKernelPort,
 } from './runtimeAgentKernels.js';
@@ -60,9 +59,11 @@ import type {
 } from './runtimeAgentDeps.js';
 import type {
   PackageLocalRuntimeKernelPortFactoryPort,
-  PackageLocalRuntimeKernelPortOperations,
 } from './runtimeKernelPorts.js';
-import { createPackageLocalRuntimeKernelOperations } from './runtimeKernel.js';
+import {
+  createPackageLocalRuntimeKernelOperations,
+  type PackageLocalRuntimeKernelOperations,
+} from './runtimeKernel.js';
 import type {
   PackageLocalRuntimeAgentKernelOptions,
   PackageLocalRuntimeAgentKernelStreamOptions,
@@ -194,8 +195,7 @@ export class PackageLocalSessionRuntime {
   private readonly sessionOperations: PackageLocalRuntimeSessionOperations<SessionMessage>;
   private readonly mcpOperations: PackageLocalRuntimeMcpOperations;
   private readonly executionOperations: PackageLocalRuntimeExecutionOperations;
-  private readonly kernelPortOperations: PackageLocalRuntimeKernelPortOperations;
-  private readonly agentKernelOperations: PackageLocalRuntimeAgentKernelOperations;
+  private readonly kernelOperations: PackageLocalRuntimeKernelOperations;
   private readonly kernelTurnStreamOperations: PackageLocalRuntimeKernelTurnStreamOperations;
   private readonly toolRegistrationOperations: PackageLocalRuntimeToolRegistrationOperations<
     PackageLocalRuntimeNamedTool,
@@ -274,7 +274,7 @@ export class PackageLocalSessionRuntime {
       backgroundAgentManager: this.backgroundAgentManager,
       hookRuntime: this.hookRuntime,
     });
-    const kernelOperations = createPackageLocalRuntimeKernelOperations({
+    this.kernelOperations = createPackageLocalRuntimeKernelOperations({
       bladeConfig: this.bladeConfig,
       kernelModelResolver: this.kernelModelResolver,
       kernelFactory: this.kernelFactory,
@@ -285,8 +285,6 @@ export class PackageLocalSessionRuntime {
       sessionStore: this.sessionStore,
       hookRuntime: this.hookRuntime,
     });
-    this.kernelPortOperations = kernelOperations.ports;
-    this.agentKernelOperations = kernelOperations.agentKernel;
     const toolOperations = createPackageLocalRuntimeToolOperations({
       allowedTools: this.options.allowedTools,
       disallowedTools: this.options.disallowedTools,
@@ -337,7 +335,7 @@ export class PackageLocalSessionRuntime {
       bladeConfig: this.bladeConfig,
       hookRuntime: this.hookRuntime,
       kernelModelResolver: this.kernelModelResolver,
-      createAgentKernel: this.agentKernelOperations.createFromResolved,
+      createAgentKernel: this.kernelOperations.agentKernel.createFromResolved,
     });
     this.traceManager = turnOperations.traceManager;
     this.kernelTurnStreamOperations = turnOperations.kernelTurnStream;
@@ -502,25 +500,25 @@ export class PackageLocalSessionRuntime {
       signal?: AbortSignal,
     ) => ExecutionContext,
   ): AgentToolPort {
-    return this.kernelPortOperations.createToolPort(createExecutionContext);
+    return this.kernelOperations.ports.createToolPort(createExecutionContext);
   }
 
   getKernelStorePort(): AgentStorePort {
-    return this.kernelPortOperations.createStorePort();
+    return this.kernelOperations.ports.createStorePort();
   }
 
   getKernelTracePort(recorder: TraceRecorder, maxContextTokens?: number): AgentTracePort {
-    return this.kernelPortOperations.createTracePort(recorder, maxContextTokens);
+    return this.kernelOperations.ports.createTracePort(recorder, maxContextTokens);
   }
 
   getKernelHookPort(): AgentHookPort {
-    return this.kernelPortOperations.createHookPort();
+    return this.kernelOperations.ports.createHookPort();
   }
 
   createAgentKernel(
     options: PackageLocalRuntimeAgentKernelOptions = {},
   ): PackageLocalRuntimeAgentKernelPort {
-    return this.agentKernelOperations.createFromOptions(options);
+    return this.kernelOperations.agentKernel.createFromOptions(options);
   }
 
   async *streamAgentKernelTurn(
