@@ -1618,6 +1618,9 @@ async function verifyPublishedAgentBrowserBundleSmoke({ consumerDir }) {
   if (!output.includes('catalog true')) {
     throw new Error('Published agent browser bundle system-source smoke did not execute');
   }
+  if (!output.includes('assistant tool')) {
+    throw new Error('Published agent browser bundle message projection smoke did not execute');
+  }
   console.log('[verify-published] temporary consumer agent browser bundle smoke passed');
 }
 

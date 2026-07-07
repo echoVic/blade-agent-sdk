@@ -2338,6 +2338,9 @@ async function verifyAgentBrowserBundle(consumerDir) {
   if (!browserRunOutput.includes('catalog true')) {
     throw new Error('Agent browser bundle system-source smoke did not execute');
   }
+  if (!browserRunOutput.includes('assistant tool')) {
+    throw new Error('Agent browser bundle message projection smoke did not execute');
+  }
   assertNoBrowserDisallowedMarkers(agentBundleOutput);
 }
 
