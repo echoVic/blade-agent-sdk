@@ -898,9 +898,15 @@ describe('monorepo topology', () => {
     expect(packageLocalRuntimeInstanceSource).toContain(
       'createPackageLocalRuntimeSessionCapabilityOperations',
     );
+    expect(packageLocalRuntimeInstanceSource).toContain(
+      'private readonly sessionCapabilityOperations: PackageLocalRuntimeSessionCapabilityOperations',
+    );
     expect(packageLocalRuntimeInstanceSource).toContain('sessionCapabilityOperations.subagents');
     expect(packageLocalRuntimeInstanceSource).toContain('sessionCapabilityOperations.fork');
-    expect(packageLocalRuntimeInstanceSource).toContain('forkOperations');
+    expect(packageLocalRuntimeInstanceSource).not.toContain(
+      'private readonly subagentOperations',
+    );
+    expect(packageLocalRuntimeInstanceSource).not.toContain('private readonly forkOperations');
     expect(packageLocalRuntimeInstanceSource).not.toContain(
       'createPackageLocalRuntimeForkOperations({',
     );
@@ -1111,7 +1117,7 @@ describe('monorepo topology', () => {
     expect(packageLocalRuntimeInstanceSource).not.toContain(
       'createPackageLocalRuntimeSubagentOperations({',
     );
-    expect(packageLocalRuntimeInstanceSource).toContain('subagentOperations');
+    expect(packageLocalRuntimeInstanceSource).toContain('sessionCapabilityOperations.subagents');
     expect(packageLocalRuntimeInstanceSource).not.toContain(
       'initializePackageLocalRuntimeSubagents({',
     );

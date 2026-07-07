@@ -77,7 +77,6 @@ import type { PackageLocalRuntimeSessionOperations } from './runtimeSessionOpera
 import type { PackageLocalRuntimeMcpServerCapability } from './runtimeMcpCapabilities.js';
 import type { PackageLocalRuntimeMcpOperations } from './runtimeMcp.js';
 import { createPackageLocalRuntimeConnectionOperations } from './runtimeConnectionOperations.js';
-import type { PackageLocalRuntimeSubagentOperations } from './runtimeSubagents.js';
 import {
   createPackageLocalRuntimeToolOperations,
   type PackageLocalRuntimeToolOperations,
@@ -93,8 +92,10 @@ import type {
   PackageLocalRuntimeTraceOperations,
 } from './runtimeTraceManager.js';
 import { createPackageLocalRuntimeTurnOperations } from './runtimeTurn.js';
-import type { PackageLocalRuntimeForkOperations } from './runtimeForking.js';
-import { createPackageLocalRuntimeSessionCapabilityOperations } from './runtimeSessionCapabilities.js';
+import {
+  createPackageLocalRuntimeSessionCapabilityOperations,
+  type PackageLocalRuntimeSessionCapabilityOperations,
+} from './runtimeSessionCapabilities.js';
 import {
   createPackageLocalRuntimeCapabilityOperations,
   type PackageLocalRuntimeCapabilityInitializationOperations,
@@ -196,9 +197,8 @@ export class PackageLocalSessionRuntime {
     PackageLocalRuntimeToolSource
   >;
   private readonly guardOperations: PackageLocalRuntimeGuardOperations;
-  private readonly subagentOperations: PackageLocalRuntimeSubagentOperations;
+  private readonly sessionCapabilityOperations: PackageLocalRuntimeSessionCapabilityOperations;
   private readonly traceOperations: PackageLocalRuntimeTraceOperations;
-  private readonly forkOperations: PackageLocalRuntimeForkOperations;
   private readonly traceManager: SessionTraceManager;
   private readonly capabilityInitializationOperations: PackageLocalRuntimeCapabilityInitializationOperations;
   private readonly controlOperations: PackageLocalRuntimeControlOperations;
@@ -295,7 +295,7 @@ export class PackageLocalSessionRuntime {
       permissionHandler: this.options.permissionHandler,
       canUseTool: this.options.canUseTool,
     });
-    const sessionCapabilityOperations = createPackageLocalRuntimeSessionCapabilityOperations({
+    this.sessionCapabilityOperations = createPackageLocalRuntimeSessionCapabilityOperations({
       sessionId: this.sessionId,
       options: this.options,
       sessionStore: this.sessionStore,
@@ -307,8 +307,6 @@ export class PackageLocalSessionRuntime {
       getProjectPath: () => this.projectPath,
       storageRoot: this.storageRoot,
     });
-    this.subagentOperations = sessionCapabilityOperations.subagents;
-    this.forkOperations = sessionCapabilityOperations.fork;
     const turnOperations = createPackageLocalRuntimeTurnOperations({
       sessionId: this.sessionId,
       observability: options.options.observability,
@@ -404,7 +402,7 @@ export class PackageLocalSessionRuntime {
   }
 
   async fork(options?: ForkSessionOptions): Promise<ISession> {
-    return this.forkOperations.fork(options);
+    return this.sessionCapabilityOperations.fork.fork(options);
   }
 
   getLastTrace(): AgentTrace | undefined {
@@ -459,7 +457,7 @@ export class PackageLocalSessionRuntime {
   }
 
   initializeSubagents(): void {
-    this.subagentOperations.initialize();
+    this.sessionCapabilityOperations.subagents.initialize();
   }
 
   createPermissionHandler(): PermissionHandler | undefined {
