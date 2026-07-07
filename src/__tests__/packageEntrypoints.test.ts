@@ -116,6 +116,9 @@ describe('package entrypoints', () => {
     expect(existsSync(join(process.cwd(), 'packages/agent-sdk/src/__tests__/sessionContent.test.ts'))).toBe(true);
     expect(existsSync(join(process.cwd(), 'packages/agent-sdk/src/__tests__/sessionConfig.test.ts'))).toBe(true);
     expect(existsSync(join(process.cwd(), 'packages/agent-sdk/src/__tests__/sessionPendingTurn.test.ts'))).toBe(true);
+    expect(existsSync(join(process.cwd(), 'packages/agent-sdk/src/__tests__/sessionLifecycleState.test.ts'))).toBe(
+      true,
+    );
   });
 
   it('keeps the server entry as an explicit facade instead of a root wildcard forwarder', () => {

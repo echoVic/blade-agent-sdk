@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { SessionLifecycleState } from '../../packages/agent-sdk/src/session/lifecycle.js';
-import { PendingTurnBuffer } from '../../packages/agent-sdk/src/session/pendingTurn.js';
-import { TurnAbortController } from '../../packages/agent-sdk/src/session/turnAbort.js';
-import type { ContextSnapshot } from '../../packages/agent-sdk/src/runtime/types.js';
+import type { ContextSnapshot } from '../runtime/types.js';
+import { SessionLifecycleState } from '../session/lifecycle.js';
+import { PendingTurnBuffer } from '../session/pendingTurn.js';
+import { TurnAbortController } from '../session/turnAbort.js';
 
 function snapshot(): ContextSnapshot {
   return {
