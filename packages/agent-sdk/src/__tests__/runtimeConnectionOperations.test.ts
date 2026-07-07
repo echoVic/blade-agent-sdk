@@ -2,9 +2,9 @@ import { existsSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 
 const connectionModulePath =
-  '../../packages/agent-sdk/src/session/runtimeConnectionOperations.js';
+  '../session/runtimeConnectionOperations.js';
 const connectionSourcePath =
-  'packages/agent-sdk/src/session/runtimeConnectionOperations.ts';
+  'src/session/runtimeConnectionOperations.ts';
 
 describe('agent-sdk package-local runtime connection operations', () => {
   it('bundles session lifecycle with MCP operations without session runtime state', async () => {
