@@ -1,11 +1,11 @@
 import type { AgentStreamEvent } from '@blade-ai/agent';
 import { describe, expect, it, vi } from 'vitest';
-import type { TraceRecorder } from '../../packages/agent-sdk/src/observability/TraceRecorder.js';
+import type { TraceRecorder } from '../observability/TraceRecorder.js';
 import {
   createPackageLocalRuntimeKernelTurnStreamOperations,
   streamPackageLocalAgentKernelTurn,
   streamPackageLocalRuntimeAgentKernelTurn,
-} from '../../packages/agent-sdk/src/session/runtimeKernelTurnStream.js';
+} from '../session/runtimeKernelTurnStream.js';
 
 describe('agent-sdk package-local kernel turn stream helper', () => {
   it('projects kernel events and finalizes successful traces with retained usage', async () => {
