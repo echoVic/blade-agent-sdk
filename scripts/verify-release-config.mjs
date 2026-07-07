@@ -19,6 +19,7 @@ const dependencySections = [
   'optionalDependencies',
   'peerDependencies',
 ];
+const trustedPublishingNpmCliCommand = 'npm install -g npm@11.5.1 --ignore-scripts';
 const exactVersionPattern = /^\d+\.\d+\.\d+(?:[-+][0-9A-Za-z-.]+)?$/;
 const allowedDependencyBuildScripts = {
   '@vscode/ripgrep': true,
@@ -295,6 +296,7 @@ function verifyReleaseWorkflow() {
   const captureTagStepIndex = steps.indexOf(captureTagStep);
   const postPublishStep = steps.find((step) => step.name === 'Verify published artifacts');
   const postPublishStepIndex = steps.indexOf(postPublishStep);
+  const trustedPublishingNpmCliStep = commands.find((command) => command.startsWith('npm install -g npm@'));
 
   assertDeepEqual(workflow.on?.push?.branches, ['main'], 'release workflow push branches');
   assertDeepEqual(workflow.concurrency, {
@@ -310,17 +312,20 @@ function verifyReleaseWorkflow() {
   if (workflow.concurrency?.['cancel-in-progress'] !== false) {
     fail('release workflow must not cancel an in-flight publish');
   }
+  if (!trustedPublishingNpmCliStep?.includes('--ignore-scripts')) {
+    fail('release workflow trusted-publishing npm CLI upgrade must ignore lifecycle scripts');
+  }
+  if (trustedPublishingNpmCliStep !== trustedPublishingNpmCliCommand) {
+    fail('release workflow must pin the trusted-publishing npm CLI to npm@11.5.1');
+  }
   assertDeepEqual(commands, [
-    'npm install -g npm@11.5.1',
+    trustedPublishingNpmCliCommand,
     'pnpm install --frozen-lockfile --ignore-scripts',
     'pnpm run verify',
     captureTagStep?.run,
     'pnpm exec semantic-release',
     postPublishStep?.run,
   ], 'release workflow commands');
-  if (!commands.includes('npm install -g npm@11.5.1')) {
-    fail('release workflow must pin the trusted-publishing npm CLI to npm@11.5.1');
-  }
   if (setupNodeStep?.with?.['registry-url'] !== 'https://registry.npmjs.org') {
     fail('release workflow setup-node must target the npm registry');
   }

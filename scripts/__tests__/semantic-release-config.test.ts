@@ -1204,7 +1204,7 @@ describe('release workflow', () => {
     );
 
     expect(commands).toEqual([
-      'npm install -g npm@11.5.1',
+      'npm install -g npm@11.5.1 --ignore-scripts',
       'pnpm install --frozen-lockfile --ignore-scripts',
       'pnpm run verify',
       expect.stringContaining('PREVIOUS_RELEASE_TAG='),
@@ -1233,9 +1233,21 @@ describe('release workflow', () => {
     const commands = steps.map((step: { run?: string }) => step.run).filter(Boolean);
     const releaseVerifier = readFileSync(resolve('scripts/verify-release-config.mjs'), 'utf8');
 
-    expect(commands).toContain('npm install -g npm@11.5.1');
+    expect(commands).toContain('npm install -g npm@11.5.1 --ignore-scripts');
     expect(commands).not.toContain('npm install -g npm@^11.5.1');
     expect(releaseVerifier).toContain('release workflow must pin the trusted-publishing npm CLI to npm@11.5.1');
+  });
+
+  it('disables lifecycle scripts while upgrading the trusted-publishing npm CLI', () => {
+    const workflow = parse(
+      readFileSync(resolve('.github/workflows/release.yml'), 'utf8')
+    );
+    const steps = workflow.jobs.release.steps;
+    const commands = steps.map((step: { run?: string }) => step.run).filter(Boolean);
+    const releaseVerifier = readFileSync(resolve('scripts/verify-release-config.mjs'), 'utf8');
+
+    expect(commands).toContain('npm install -g npm@11.5.1 --ignore-scripts');
+    expect(releaseVerifier).toContain('release workflow trusted-publishing npm CLI upgrade must ignore lifecycle scripts');
   });
 
   it('pins the release workflow Node version to the package engine floor in the verifier', () => {
