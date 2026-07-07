@@ -332,6 +332,8 @@ describe('monorepo topology', () => {
       'packages/agent/src/loop/decideNoToolTurn.ts',
       'packages/agent/src/loop/decideTurnLimit.ts',
       'packages/agent/src/loop/planToolExecution.ts',
+      'packages/agent/src/loop/toolBehavior.ts',
+      'packages/agent/src/loop/toolInterruptBehavior.ts',
       'packages/agent/src/protocol/index.ts',
       'packages/agent/src/ports/index.ts',
       'packages/agent/src/recovery/index.ts',
@@ -353,6 +355,7 @@ describe('monorepo topology', () => {
     expect(agentLoopSource).toContain("from './decideNoToolTurn.js'");
     expect(agentLoopSource).toContain("from './decideTurnLimit.js'");
     expect(agentLoopSource).toContain("from './planToolExecution.js'");
+    expect(agentLoopSource).toContain("from './toolInterruptBehavior.js'");
     expect(agentRecoverySource).toContain("from './isOverflowRecoverable.js'");
     expect(agentStateSource).toContain("from './systemSource.js'");
   });

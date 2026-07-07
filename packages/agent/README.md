@@ -16,7 +16,15 @@ pnpm add @blade-ai/agent
 import { AgentKernel } from '@blade-ai/agent';
 import { TokenBudget } from '@blade-ai/agent/budget';
 import { ExecutionEpoch } from '@blade-ai/agent/epoch';
-import { AsyncEventQueue, decideNoToolTurn, decideTurnLimit, planToolExecution, ToolKind } from '@blade-ai/agent/loop';
+import {
+  AsyncEventQueue,
+  createInterruptAwareAbortSignal,
+  decideNoToolTurn,
+  decideTurnLimit,
+  planToolExecution,
+  resolveToolInterruptBehavior,
+  ToolKind,
+} from '@blade-ai/agent/loop';
 import { isOverflowRecoverable } from '@blade-ai/agent/recovery';
 import { isValidSystemSource } from '@blade-ai/agent/state';
 
@@ -51,6 +59,12 @@ planToolExecution(
   [{ id: 'read-1', type: 'function', function: { name: 'Read', arguments: '{}' } }],
   { get: () => ({ kind: ToolKind.ReadOnly }) },
 );
+resolveToolInterruptBehavior(
+  { get: () => ({ kind: ToolKind.Execute, interruptBehavior: 'cancel' }) },
+  'Bash',
+  {},
+);
+createInterruptAwareAbortSignal({ interruptBehavior: 'cancel' }).cleanup();
 
 isOverflowRecoverable(new Error('context_length_exceeded')); // true
 isValidSystemSource('catalog'); // true
