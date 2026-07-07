@@ -1,9 +1,9 @@
 import type { ModelPort } from '@blade-ai/ai';
 import type { AgentModelRequestDefaults } from '@blade-ai/agent';
 import { describe, expect, it, vi } from 'vitest';
-import { resolvePackageLocalRuntimeKernelModel } from '../../packages/agent-sdk/src/session/runtimeKernelModels.js';
-import type { PackageLocalRuntimeKernelModelResolverPort } from '../../packages/agent-sdk/src/session/runtimeKernelModels.js';
-import type { BladeConfig } from '../../packages/agent-sdk/src/types/common.js';
+import { resolvePackageLocalRuntimeKernelModel } from '../session/runtimeKernelModels.js';
+import type { PackageLocalRuntimeKernelModelResolverPort } from '../session/runtimeKernelModels.js';
+import type { BladeConfig } from '../types/common.js';
 
 const modelPort: ModelPort = {
   async generate() {
