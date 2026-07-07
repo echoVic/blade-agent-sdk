@@ -376,6 +376,14 @@ for (const rule of manifestRules) {
 
   for (const field of ['main', 'types']) {
     const target = manifest[field];
+    if (typeof target !== 'string') {
+      if (field === 'main') {
+        violations.push(`${rule.packageJson}: main field must declare a package root runtime entry`);
+      } else {
+        violations.push(`${rule.packageJson}: types field must declare a package root declaration entry`);
+      }
+      continue;
+    }
     if (typeof target === 'string' && !isDistArtifactTarget(target)) {
       violations.push(`${rule.packageJson}: ${field} target "${target}" must point at ./dist artifacts`);
     }
