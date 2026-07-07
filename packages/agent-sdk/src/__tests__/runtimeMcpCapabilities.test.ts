@@ -3,7 +3,7 @@ import {
   listPackageLocalRuntimeMcpTools,
   projectPackageLocalRuntimeMcpServerStatus,
   type PackageLocalRuntimeMcpServerCapability,
-} from '../../packages/agent-sdk/src/session/runtimeMcpCapabilities.js';
+} from '../session/runtimeMcpCapabilities.js';
 
 describe('agent-sdk package-local MCP capability helpers', () => {
   const connectedAt = new Date('2026-07-06T00:00:00.000Z');
@@ -97,7 +97,7 @@ describe('agent-sdk package-local MCP capability helpers', () => {
 
   it('creates reusable MCP capability operations without session runtime state', async () => {
     const { createPackageLocalRuntimeMcpCapabilityOperations } = await import(
-      '../../packages/agent-sdk/src/session/runtimeMcpCapabilities.js'
+      '../session/runtimeMcpCapabilities.js'
     );
     const mcpRegistry = {
       getCapabilities: vi.fn(async () => capabilities),
