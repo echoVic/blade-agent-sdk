@@ -17,6 +17,7 @@ import { AGENT_TURN_SAFETY_LIMIT } from './constants.js';
 import { ExecutionEpoch } from './ExecutionEpoch.js';
 import { isOverflowRecoverable } from './isOverflowRecoverable.js';
 import { createAgentRecoveryAttemptTracker } from './recoveryAttemptTracker.js';
+import { buildAgentLoopAssistantMessageProjection } from './loop/assistantMessage.js';
 import { decideNoToolTurn } from './loop/decideNoToolTurn.js';
 import { decideTurnLimit } from './loop/decideTurnLimit.js';
 import { executeToolCalls } from './loop/executeToolCalls.js';
@@ -419,20 +420,13 @@ export async function* agentLoop(
       }) as LoopResult;
     }
 
-    // 写入 assistant 消息
-    convState.append({
-      role: 'assistant',
-      content: turnResult.content || '',
-      reasoningContent: turnResult.reasoningContent,
-      tool_calls: turnResult.toolCalls,
-    });
-
-    await messageHooks?.onAssistant?.({
-      content: turnResult.content || '',
-      reasoningContent: turnResult.reasoningContent,
-      toolCalls: turnResult.toolCalls,
+    const assistantMessageProjection = buildAgentLoopAssistantMessageProjection({
+      response: turnResult,
       turn: turnsCount,
     });
+    convState.append(assistantMessageProjection.message);
+
+    await messageHooks?.onAssistant?.(assistantMessageProjection.hookPayload);
 
     // 工具执行：流式已执行 or 非流式在此执行
     let executionResults = streamingExecutionResults;

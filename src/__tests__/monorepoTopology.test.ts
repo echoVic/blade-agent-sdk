@@ -329,6 +329,7 @@ describe('monorepo topology', () => {
       'packages/agent/src/epoch/ExecutionEpoch.ts',
       'packages/agent/src/loop/index.ts',
       'packages/agent/src/loop/AsyncEventQueue.ts',
+      'packages/agent/src/loop/assistantMessage.ts',
       'packages/agent/src/loop/decideNoToolTurn.ts',
       'packages/agent/src/loop/decideTurnLimit.ts',
       'packages/agent/src/loop/planToolExecution.ts',
@@ -357,6 +358,7 @@ describe('monorepo topology', () => {
     }
 
     expect(existsSync('packages/agent/src/__tests__/toolUpdateToAgentEvent.test.ts')).toBe(true);
+    expect(existsSync('packages/agent/src/__tests__/assistantMessage.test.ts')).toBe(true);
     expect(existsSync('packages/agent/src/__tests__/AsyncEventQueueBehavior.test.ts')).toBe(true);
     expect(existsSync('packages/agent/src/__tests__/loopDecisionsBehavior.test.ts')).toBe(true);
     expect(existsSync('packages/agent/src/__tests__/planToolExecutionBehavior.test.ts')).toBe(true);
@@ -381,6 +383,7 @@ describe('monorepo topology', () => {
 
     expect(agentIndexSource).not.toContain('class AgentKernel');
     expect(agentLoopSource).toContain("from './AsyncEventQueue.js'");
+    expect(agentLoopSource).toContain("from './assistantMessage.js'");
     expect(agentLoopSource).toContain("from './decideNoToolTurn.js'");
     expect(agentLoopSource).toContain("from './decideTurnLimit.js'");
     expect(agentLoopSource).toContain("from './planToolExecution.js'");
@@ -399,6 +402,7 @@ describe('monorepo topology', () => {
     expect(rootAgentLoopSource).toContain('buildAgentLoopSuccessResult');
     expect(rootAgentLoopSource).toContain('buildAgentLoopToolExitResult');
     expect(rootAgentLoopSource).toContain('createAgentLoopClock');
+    expect(rootAgentLoopSource).toContain('buildAgentLoopAssistantMessageProjection');
     expect(rootAgentLoopSource).toContain('buildAgentLoopTokenUsageInfo');
     expect(rootAgentLoopSource).toContain('createAgentLoopTokenUsageTracker');
     expect(rootAgentLoopSource).toContain('buildAgentToolResultContent');
@@ -412,6 +416,7 @@ describe('monorepo topology', () => {
     expect(rootAgentLoopSource).not.toContain('let totalTokens = 0');
     expect(rootAgentLoopSource).not.toContain('let lastPromptTokens');
     expect(rootAgentLoopSource).not.toContain('const startTime = Date.now()');
+    expect(rootAgentLoopSource).not.toContain("role: 'assistant',\n      content: turnResult.content || ''");
     expect(rootAgentLoopSource).not.toContain('let turnsCount = 0');
     expect(rootAgentLoopSource).not.toContain('let retryCurrentTurn');
     expect(rootAgentLoopSource).not.toContain('turnsCount++');
