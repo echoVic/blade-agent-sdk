@@ -2,9 +2,9 @@ import { existsSync } from 'node:fs';
 import { describe, expect, it, vi } from 'vitest';
 
 const runtimeSessionLifecycleModulePath =
-  '../../packages/agent-sdk/src/session/runtimeSessionLifecycle.js';
+  '../session/runtimeSessionLifecycle.js';
 const runtimeSessionLifecycleSourcePath =
-  'packages/agent-sdk/src/session/runtimeSessionLifecycle.ts';
+  'src/session/runtimeSessionLifecycle.ts';
 
 describe('agent-sdk package-local runtime session lifecycle helpers', () => {
   it('creates, loads with fallback materialization, and reads messages without runtime state', async () => {

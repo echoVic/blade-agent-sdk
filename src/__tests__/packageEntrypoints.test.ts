@@ -92,6 +92,7 @@ describe('package entrypoints', () => {
     expect(existsSync(join(process.cwd(), 'packages/agent-sdk/src/__tests__/runtimeNoopPorts.test.ts'))).toBe(true);
     expect(existsSync(join(process.cwd(), 'packages/agent-sdk/src/__tests__/runtimePortProjection.test.ts'))).toBe(true);
     expect(existsSync(join(process.cwd(), 'packages/agent-sdk/src/__tests__/runtimeBootstrap.test.ts'))).toBe(true);
+    expect(existsSync(join(process.cwd(), 'packages/agent-sdk/src/__tests__/runtimeSessionLifecycle.test.ts'))).toBe(true);
   });
 
   it('keeps the server entry as an explicit facade instead of a root wildcard forwarder', () => {
