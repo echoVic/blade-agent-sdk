@@ -314,7 +314,14 @@ function verifyManifestTargetExists({ packageJson, packageJsonPath, label, targe
   if (typeof target !== 'string') return null;
   if (target === './package.json') return null;
 
+  const packageDir = dirname(packageJsonPath);
   const resolvedTarget = resolvePackageTarget(packageJsonPath, target);
+  if (!isWithin(resolvedTarget, packageDir)) {
+    return `${packageJson}: ${label} target "${target}" source manifest target must not escape the package`;
+  }
+  if (!isWithin(resolvedTarget, resolve(packageDir, 'dist'))) {
+    return `${packageJson}: ${label} target "${target}" source manifest target must stay inside package dist output`;
+  }
   if (!existsSync(resolvedTarget)) {
     return `${packageJson}: ${label} target "${target}" source manifest target does not exist in package build output`;
   }

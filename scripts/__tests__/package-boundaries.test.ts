@@ -27,7 +27,10 @@ function createBoundaryFixture(options: {
   const cwd = mkdtempSync(join(tmpdir(), 'blade-boundaries-'));
   for (const packageName of ['ai', 'agent', 'agent-sdk']) {
     mkdirSync(join(cwd, 'packages', packageName, 'src'), { recursive: true });
+    mkdirSync(join(cwd, 'packages', packageName, 'dist'), { recursive: true });
     writeFileSync(join(cwd, 'packages', packageName, 'src', 'index.ts'), 'export {};\n');
+    writeFileSync(join(cwd, 'packages', packageName, 'dist', 'index.js'), 'export {};\n');
+    writeFileSync(join(cwd, 'packages', packageName, 'dist', 'index.d.ts'), 'export {};\n');
   }
 
   writeJson(join(cwd, 'packages', 'ai', 'package.json'), {
@@ -505,6 +508,40 @@ describe('package boundary verifier', () => {
       'export "." browser target "./dist/browser/index.d.ts" must point at a .js runtime artifact',
     );
     expect(result.stderr).toContain('export "." import target "./dist/index.d.ts" must point at a .js runtime artifact');
+  });
+
+  it('rejects source manifest targets that escape the package directory', () => {
+    const cwd = createBoundaryFixture();
+    writeFileSync(join(cwd, 'packages', 'shared.js'), 'export {};\n');
+    writeFileSync(join(cwd, 'packages', 'shared.d.ts'), 'export {};\n');
+    writeJson(join(cwd, 'packages', 'agent-sdk', 'package.json'), {
+      name: '@blade-ai/agent-sdk',
+      main: './dist/../../shared.js',
+      types: './dist/../../shared.d.ts',
+      exports: {
+        '.': {
+          types: './dist/../../shared.d.ts',
+          import: './dist/../../shared.js',
+        },
+        './package.json': {
+          default: './package.json',
+        },
+      },
+      dependencies: {},
+    });
+
+    const result = spawnSync(process.execPath, [
+      resolve('scripts/verify-package-boundaries.mjs'),
+    ], {
+      cwd,
+      encoding: 'utf8',
+    });
+
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain('packages/agent-sdk/package.json');
+    expect(result.stderr).toContain('main target "./dist/../../shared.js"');
+    expect(result.stderr).toContain('types target "./dist/../../shared.d.ts"');
+    expect(result.stderr).toContain('source manifest target must not escape the package');
   });
 
   it('rejects root entry fields that drift from the root export conditions', () => {
