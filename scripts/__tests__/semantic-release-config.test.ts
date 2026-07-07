@@ -247,6 +247,7 @@ describe('package provenance metadata', () => {
     expect(packageVerifier).toContain('session budget declarations must use the explicit @blade-ai/agent/budget subpath');
     expect(packageVerifier).toContain('session budget declarations must expose TokenBudgetSnapshot from @blade-ai/agent/budget');
     expect(packageVerifier).toContain("from '@blade-ai/agent/kernel';");
+    expect(packageVerifier).toContain("from '@blade-ai/agent/loop';");
     expect(packageVerifier).toContain("from '@blade-ai/agent/protocol';");
     expect(packageVerifier).toContain("from '@blade-ai/agent/ports';");
     expect(packageVerifier).toContain("from '@blade-ai/agent/recovery';");
@@ -348,6 +349,7 @@ describe('package provenance metadata', () => {
     expect(packageVerifier).toContain("assertRuntimeExport(agent, 'ExecutionEpoch')");
     expect(packageVerifier).toContain("assertRuntimeExport(agentEpoch, 'ExecutionEpoch')");
     expect(packageVerifier).toContain("assertRuntimeExport(agentKernel, 'AgentKernel')");
+    expect(packageVerifier).toContain("assertRuntimeExport(agentLoop, 'AsyncEventQueue')");
     expect(packageVerifier).toContain("assertRuntimeExport(agentRecovery, 'isOverflowRecoverable')");
     expect(packageVerifier).toContain("agentRecovery.isOverflowRecoverable(new Error('context_length_exceeded'))");
     expect(packageVerifier).toContain("assertRuntimeExport(agentState, 'isValidSystemSource')");
@@ -411,6 +413,8 @@ describe('package provenance metadata', () => {
     expect(packageVerifier).toContain('consumer-agent-browser-entry.ts');
     expect(packageVerifier).toContain("from '@blade-ai/agent';");
     expect(packageVerifier).toContain("from '@blade-ai/agent/kernel';");
+    expect(packageVerifier).toContain("from '@blade-ai/agent/loop';");
+    expect(packageVerifier).toContain('AsyncEventQueue');
     expect(packageVerifier).toContain("from '@blade-ai/agent/recovery';");
     expect(packageVerifier).toContain('isOverflowRecoverable');
     expect(packageVerifier).toContain('agent browser bundle');
@@ -743,6 +747,7 @@ describe('release scripts', () => {
     expect(publishedVerifier).toContain("assertRuntimeExport(agentBudget, 'TokenBudget')");
     expect(publishedVerifier).toContain("assertRuntimeExport(agent, 'ExecutionEpoch')");
     expect(publishedVerifier).toContain("assertRuntimeExport(agentEpoch, 'ExecutionEpoch')");
+    expect(publishedVerifier).toContain("assertRuntimeExport(agentLoop, 'AsyncEventQueue')");
     expect(publishedVerifier).toContain("assertRuntimeExport(agentRecovery, 'isOverflowRecoverable')");
     expect(publishedVerifier).toContain("agentRecovery.isOverflowRecoverable(new Error('context_length_exceeded'))");
     expect(publishedVerifier).toContain("assertRuntimeExport(agentState, 'isValidSystemSource')");
@@ -1514,6 +1519,8 @@ describe('release scripts', () => {
     expect(publishedVerifier).toContain("from '@blade-ai/agent/budget';");
     expect(publishedVerifier).toContain("from '@blade-ai/agent/epoch';");
     expect(publishedVerifier).toContain("from '@blade-ai/agent/kernel';");
+    expect(publishedVerifier).toContain("from '@blade-ai/agent/loop';");
+    expect(publishedVerifier).toContain('AsyncEventQueue');
     expect(publishedVerifier).toContain("from '@blade-ai/agent/ports';");
     expect(publishedVerifier).toContain("from '@blade-ai/agent/protocol';");
     expect(publishedVerifier).toContain("from '@blade-ai/agent/recovery';");
@@ -1619,6 +1626,8 @@ describe('release scripts', () => {
     expect(publishedVerifier).toContain("from '@blade-ai/agent';");
     expect(publishedVerifier).toContain("from '@blade-ai/agent/budget';");
     expect(publishedVerifier).toContain("from '@blade-ai/agent/kernel';");
+    expect(publishedVerifier).toContain("from '@blade-ai/agent/loop';");
+    expect(publishedVerifier).toContain('AsyncEventQueue');
     expect(publishedVerifier).toContain("from '@blade-ai/agent/recovery';");
     expect(publishedVerifier).toContain('new TokenBudget');
     expect(publishedVerifier).toContain('isOverflowRecoverable');

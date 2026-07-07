@@ -1,6 +1,7 @@
 export * from './kernel/AgentKernel.js';
 export * from './budget/TokenBudget.js';
 export * from './epoch/ExecutionEpoch.js';
+export * from './loop/index.js';
 export * from './ports/index.js';
 export * from './protocol/index.js';
 export * from './recovery/index.js';

@@ -348,6 +348,7 @@ import * as agent from '@blade-ai/agent';
 import * as agentBudget from '@blade-ai/agent/budget';
 import * as agentEpoch from '@blade-ai/agent/epoch';
 import * as agentKernel from '@blade-ai/agent/kernel';
+import * as agentLoop from '@blade-ai/agent/loop';
 import * as agentPorts from '@blade-ai/agent/ports';
 import * as agentProtocol from '@blade-ai/agent/protocol';
 import * as agentRecovery from '@blade-ai/agent/recovery';
@@ -408,6 +409,7 @@ assertRuntimeExport(agent, 'ExecutionEpoch');
 assertRuntimeExport(agentBudget, 'TokenBudget');
 assertRuntimeExport(agentEpoch, 'ExecutionEpoch');
 assertRuntimeExport(agentKernel, 'AgentKernel');
+assertRuntimeExport(agentLoop, 'AsyncEventQueue');
 assertRuntimeExport(agentRecovery, 'isOverflowRecoverable');
 if (!agentRecovery.isOverflowRecoverable(new Error('context_length_exceeded'))) {
   throw new Error('@blade-ai/agent/recovery overflow guard returned an unexpected result');
@@ -1536,6 +1538,7 @@ async function verifyPublishedAgentBrowserBundleSmoke({ consumerDir }) {
       "import { TokenBudget } from '@blade-ai/agent/budget';",
       "import { ExecutionEpoch } from '@blade-ai/agent/epoch';",
       "import { AgentKernel as AgentKernelFromSubpath } from '@blade-ai/agent/kernel';",
+      "import { AsyncEventQueue } from '@blade-ai/agent/loop';",
       "import { isOverflowRecoverable } from '@blade-ai/agent/recovery';",
       'const fakeModel = {',
       '  async generate() {',
@@ -1548,9 +1551,12 @@ async function verifyPublishedAgentBrowserBundleSmoke({ consumerDir }) {
       'const budget = new TokenBudget({ maxTotalTokens: 10 });',
       'const epoch = new ExecutionEpoch();',
       'const kernel = new AgentKernel({ model: fakeModel });',
+      'const queue = new AsyncEventQueue();',
+      "queue.enqueue('event');",
+      'queue.close();',
       'const kernelFromSubpath = new AgentKernelFromSubpath({ model: fakeModel });',
       "const overflow = isOverflowRecoverable(new Error('context_length_exceeded'));",
-      "console.log('agent browser bundle', kernel.constructor.name, kernelFromSubpath.constructor.name, budget.constructor.name, epoch.constructor.name, overflow);",
+      "console.log('agent browser bundle', kernel.constructor.name, kernelFromSubpath.constructor.name, budget.constructor.name, epoch.constructor.name, queue.constructor.name, overflow);",
     ].join('\n'),
   );
 
@@ -1636,6 +1642,7 @@ import type {
   TokenBudgetSnapshot,
 } from '@blade-ai/agent/budget';
 import type { AgentTurnInput } from '@blade-ai/agent/kernel';
+import { AsyncEventQueue } from '@blade-ai/agent/loop';
 import type { AgentToolPort } from '@blade-ai/agent/ports';
 import type { AgentToolCall } from '@blade-ai/agent/protocol';
 import { isOverflowRecoverable } from '@blade-ai/agent/recovery';
@@ -1812,6 +1819,9 @@ const agentStoreAppendContext: AgentStoreAppendContext = {
 const agentStorePort: AgentStorePort = {
   appendMessage() {},
 };
+const queue = new AsyncEventQueue<string>();
+queue.enqueue('turn_start');
+queue.close();
 const overflowIsRecoverable: boolean = isOverflowRecoverable(
   new Error('context_length_exceeded'),
 );
@@ -1917,6 +1927,7 @@ void withRetryRef;
 void retryableNetworkError;
 void kernelOptions;
 void executionEpochIsInvalid;
+void queue;
 void overflowIsRecoverable;
 void tokenBudgetConfig;
 void tokenBudgetSnapshot;

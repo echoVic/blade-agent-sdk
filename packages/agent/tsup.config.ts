@@ -6,6 +6,7 @@ export default defineConfig({
     'kernel/AgentKernel': 'src/kernel/AgentKernel.ts',
     'budget/TokenBudget': 'src/budget/TokenBudget.ts',
     'epoch/ExecutionEpoch': 'src/epoch/ExecutionEpoch.ts',
+    'loop/index': 'src/loop/index.ts',
     'protocol/index': 'src/protocol/index.ts',
     'ports/index': 'src/ports/index.ts',
     'recovery/index': 'src/recovery/index.ts',

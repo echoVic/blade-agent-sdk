@@ -322,11 +322,13 @@ describe('monorepo topology', () => {
     expect(permissionsSource).toContain('createCompositePermissionHandler');
   });
 
-  it('organizes the agent package around kernel, budget, protocol, ports, recovery, state, and tracing modules', () => {
+  it('organizes the agent package around kernel, budget, loop, protocol, ports, recovery, state, and tracing modules', () => {
     for (const file of [
       'packages/agent/src/kernel/AgentKernel.ts',
       'packages/agent/src/budget/TokenBudget.ts',
       'packages/agent/src/epoch/ExecutionEpoch.ts',
+      'packages/agent/src/loop/index.ts',
+      'packages/agent/src/loop/AsyncEventQueue.ts',
       'packages/agent/src/protocol/index.ts',
       'packages/agent/src/ports/index.ts',
       'packages/agent/src/recovery/index.ts',
@@ -339,10 +341,12 @@ describe('monorepo topology', () => {
     }
 
     const agentIndexSource = readFileSync('packages/agent/src/index.ts', 'utf-8');
+    const agentLoopSource = readFileSync('packages/agent/src/loop/index.ts', 'utf-8');
     const agentRecoverySource = readFileSync('packages/agent/src/recovery/index.ts', 'utf-8');
     const agentStateSource = readFileSync('packages/agent/src/state/index.ts', 'utf-8');
 
     expect(agentIndexSource).not.toContain('class AgentKernel');
+    expect(agentLoopSource).toContain("from './AsyncEventQueue.js'");
     expect(agentRecoverySource).toContain("from './isOverflowRecoverable.js'");
     expect(agentStateSource).toContain("from './systemSource.js'");
   });
@@ -355,6 +359,10 @@ describe('monorepo topology', () => {
       './kernel': {
         types: './dist/kernel/AgentKernel.d.ts',
         import: './dist/kernel/AgentKernel.js',
+      },
+      './loop': {
+        types: './dist/loop/index.d.ts',
+        import: './dist/loop/index.js',
       },
       './budget': {
         types: './dist/budget/TokenBudget.d.ts',
@@ -386,6 +394,7 @@ describe('monorepo topology', () => {
       },
     });
     expect(agentBuildConfig).toContain('kernel/AgentKernel');
+    expect(agentBuildConfig).toContain('loop/index');
     expect(agentBuildConfig).toContain('budget/TokenBudget');
     expect(agentBuildConfig).toContain('epoch/ExecutionEpoch');
     expect(agentBuildConfig).toContain('protocol/index');
