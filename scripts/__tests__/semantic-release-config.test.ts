@@ -772,16 +772,23 @@ describe('release scripts', () => {
     expect(packageVerifier).toContain("'package/LICENSE'");
     expect(packageVerifier).toContain('verifyPackedLicenseArtifacts');
     expect(packageVerifier).toContain('packed LICENSE must include the MIT permission grant');
+    expect(packageVerifier).toContain("readFileSync(resolve(repoRoot, 'LICENSE'), 'utf8')");
+    expect(packageVerifier).toContain('packed LICENSE must match the root LICENSE exactly');
     expect(publishedVerifier).toContain('verifyPublishedLicenseArtifacts');
     expect(publishedVerifier).toContain("node_modules/@blade-ai/ai/LICENSE");
     expect(publishedVerifier).toContain("node_modules/@blade-ai/agent/LICENSE");
     expect(publishedVerifier).toContain("node_modules/@blade-ai/agent-sdk/LICENSE");
     expect(publishedVerifier).toContain('published LICENSE must include the MIT permission grant');
+    expect(publishedVerifier).toContain("readFile(resolve('LICENSE'), 'utf8')");
+    expect(publishedVerifier).toContain('published LICENSE must match the root LICENSE exactly');
     expect(readme).toContain('packed package license artifacts');
     expect(readme).toContain('published package license artifacts');
+    expect(readme).toContain('LICENSE 与根 LICENSE 完全一致');
     expect(checklist).toContain('packed package license artifacts');
     expect(checklist).toContain('published package license artifacts');
+    expect(checklist).toContain('LICENSE 与根 LICENSE 完全一致');
     expect(roadmap).toContain('package license artifact gate');
+    expect(roadmap).toContain('LICENSE 与根 LICENSE 完全一致');
   });
 
   it('verifies installed published package manifests from the temporary consumer install', () => {

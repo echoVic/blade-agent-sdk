@@ -1248,11 +1248,15 @@ async function verifyPublishedReadmes({ consumerDir }) {
 }
 
 async function verifyPublishedLicenseArtifacts({ consumerDir }) {
+  const rootLicense = await readFile(resolve('LICENSE'), 'utf8');
   for (const requirement of publishedLicenseRequirements) {
     const license = await readFile(join(consumerDir, requirement.licensePath), 'utf8');
 
     if (!license.includes(mitPermissionGrant)) {
       throw new Error(`${requirement.packageName} published LICENSE must include the MIT permission grant`);
+    }
+    if (license !== rootLicense) {
+      throw new Error(`${requirement.packageName} published LICENSE must match the root LICENSE exactly`);
     }
   }
   console.log('[verify-published] temporary consumer published package license artifacts passed');

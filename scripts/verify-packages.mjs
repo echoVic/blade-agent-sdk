@@ -654,10 +654,14 @@ function verifyPackedLicenseArtifacts(spec, tarballPath, tempDir) {
   const extractDir = join(tempDir, `license-${spec.name.replaceAll(/[^a-z0-9]+/gi, '-')}`);
   run('mkdir', ['-p', extractDir]);
   run('tar', ['-xzf', tarballPath, '-C', extractDir, 'package/LICENSE']);
+  const rootLicense = readFileSync(resolve(repoRoot, 'LICENSE'), 'utf8');
   const license = readFileSync(join(extractDir, 'package/LICENSE'), 'utf8');
 
   if (!license.includes(mitPermissionGrant)) {
     throw new Error(`${spec.name} packed LICENSE must include the MIT permission grant`);
+  }
+  if (license !== rootLicense) {
+    throw new Error(`${spec.name} packed LICENSE must match the root LICENSE exactly`);
   }
 }
 

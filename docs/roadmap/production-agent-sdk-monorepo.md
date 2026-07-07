@@ -795,6 +795,7 @@ Status:
 - Thirty-fourth release-automation increment complete: the trusted-publishing npm CLI upgrade now runs with `--ignore-scripts`, and `pnpm run verify:release` rejects npm CLI upgrade steps that would allow lifecycle scripts before package publication. This extends the workflow supply-chain policy beyond workspace installs to the publish-time tool bootstrap itself.
 - Thirty-fifth release-automation increment complete: `pnpm run verify:release` now requires the release workflow checkout step to use `fetch-depth: 0`, preserving full git history and tags for semantic-release release notes, tag discovery, and post-publish version comparison.
 - npm-facing manifest hygiene gate complete: release preparation now removes `private` and `devDependencies` metadata from publishable package manifests, while `verify:release` and `verify:published` reject prepared or installed manifests that expose those fields. This keeps source workspace metadata separate from npm-facing package metadata.
+- package license artifact gate complete: packed and post-publish license verification now compares each package `LICENSE` artifact with the repository root `LICENSE` byte-for-byte after confirming the MIT permission grant, so npm-visible package metadata cannot drift from the source license. The README and production checklist document that LICENSE 与根 LICENSE 完全一致.
 
 Commit:
 
