@@ -1,8 +1,8 @@
 import { existsSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 
-const runtimeForkingModulePath = '../../packages/agent-sdk/src/session/runtimeForking.js';
-const runtimeForkingSourcePath = 'packages/agent-sdk/src/session/runtimeForking.ts';
+const runtimeForkingModulePath = '../session/runtimeForking.js';
+const runtimeForkingSourcePath = 'src/session/runtimeForking.ts';
 
 describe('agent-sdk package-local runtime fork helpers', () => {
   it('materializes fork state and creates child sessions without runtime state', async () => {
