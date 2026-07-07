@@ -31,14 +31,17 @@ export interface PackageLocalRuntimeExecutionPipelineOptions {
 export interface PackageLocalRuntimeExecutionPipelineOperationsOptions
   extends Omit<PackageLocalRuntimeExecutionPipelineOptions, 'permissionHandler'> {
   createPermissionHandler(): PermissionHandler | undefined;
+  getPermissionMode?: () => PermissionMode | undefined;
 }
 
 export interface PackageLocalRuntimeExecutionPipelineCache {
   get(): unknown;
+  reset(): void;
 }
 
 export interface PackageLocalRuntimeExecutionPipelineOperations {
   get(): unknown;
+  reset(): void;
 }
 
 export function createPackageLocalRuntimeExecutionPipeline(
@@ -77,6 +80,10 @@ export function createPackageLocalRuntimeExecutionPipelineCache(
       created = true;
       return pipeline;
     },
+    reset(): void {
+      created = false;
+      pipeline = undefined;
+    },
   };
 }
 
@@ -86,6 +93,7 @@ export function createPackageLocalRuntimeExecutionPipelineOperations(
   return createPackageLocalRuntimeExecutionPipelineCache(() =>
     createPackageLocalRuntimeExecutionPipeline({
       ...options,
+      permissionMode: options.getPermissionMode?.() ?? options.permissionMode,
       permissionHandler: options.createPermissionHandler(),
     }),
   );

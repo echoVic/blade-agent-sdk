@@ -378,6 +378,7 @@ export class PackageLocalSessionRuntime {
     const executionOperations = createPackageLocalRuntimeExecutionOperations({
       bladeConfig: this.bladeConfig,
       permissionMode: this.options.permissionMode,
+      getPermissionMode: () => this.options.permissionMode,
       createPermissionHandler: () => this.createPermissionHandler(),
       logger: this.logger,
       toolCatalog: this.toolCatalog,
@@ -510,6 +511,7 @@ export class PackageLocalSessionRuntime {
 
   setPermissionMode(mode: Parameters<ISession['setPermissionMode']>[0]): void {
     this.options.permissionMode = mode;
+    this.executionPipelineOperations.reset();
   }
 
   async setModel(model: Parameters<ISession['setModel']>[0]): Promise<void> {

@@ -5,6 +5,7 @@ import {
   PackageLocalSessionRuntime,
   resolvePackageLocalRuntimeStorageRoot,
 } from '../../packages/agent-sdk/src/session/runtimeInstance.js';
+import type { PackageLocalRuntimeExecutionPipelineCreateOptions } from '../../packages/agent-sdk/src/session/runtimeExecutionPipeline.js';
 import type { SessionOptions } from '../../packages/agent-sdk/src/session/types.js';
 import type { TraceRecorder } from '../../packages/agent-sdk/src/observability/TraceRecorder.js';
 import { HookEvent } from '../../packages/agent-sdk/src/types/constants.js';
@@ -1031,6 +1032,34 @@ describe('agent-sdk package-local session runtime shell', () => {
       toolCatalog,
     });
     expect(createOptions?.permissionHandler).toEqual(expect.any(Function));
+  });
+
+  it('rebuilds the execution pipeline after package-local permission mode changes', () => {
+    const pipelines = [{ id: 'default-pipeline' }, { id: 'yolo-pipeline' }];
+    const createdOptions: PackageLocalRuntimeExecutionPipelineCreateOptions[] = [];
+    const create = vi.fn((createOptions: PackageLocalRuntimeExecutionPipelineCreateOptions) => {
+      createdOptions.push(createOptions);
+      return pipelines[createdOptions.length - 1];
+    });
+    const runtime = new PackageLocalSessionRuntime({
+      sessionId: 'session-1',
+      options: {
+        ...options,
+        permissionMode: PermissionMode.DEFAULT,
+      },
+      bladeConfig,
+      defaultContext: {},
+      executionPipelineFactory: { create },
+    });
+
+    expect(runtime.createExecutionPipeline()).toBe(pipelines[0]);
+    runtime.setPermissionMode(PermissionMode.YOLO);
+    expect(runtime.createExecutionPipeline()).toBe(pipelines[1]);
+    expect(create).toHaveBeenCalledTimes(2);
+    expect(createdOptions.map((createOptions) => createOptions.permissionMode)).toEqual([
+      PermissionMode.DEFAULT,
+      PermissionMode.YOLO,
+    ]);
   });
 
   it('projects package-local agent runtime dependencies through injected ports', () => {
