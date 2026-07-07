@@ -789,6 +789,15 @@ function assertManifestExportConditionsAllowed({ packageName, exportName, export
   }
 }
 
+function assertManifestBrowserConditionBeforeImport({ packageName, exportName, exportValue, label }) {
+  const conditions = Object.keys(exportValue);
+  const browserIndex = conditions.indexOf('browser');
+  const importIndex = conditions.indexOf('import');
+  if (browserIndex !== -1 && importIndex !== -1 && browserIndex > importIndex) {
+    throw new Error(`${packageName} ${label} export ${exportName} must declare the browser condition before import`);
+  }
+}
+
 function verifyPublishedManifestExports({ packageName, manifest }) {
   const exportsMap = manifest.exports;
   const rootExport = getManifestRootExportConditions(exportsMap);
@@ -831,6 +840,12 @@ function verifyPublishedManifestExports({ packageName, manifest }) {
       label: 'installed manifest',
     });
     assertManifestExportConditionsAllowed({
+      packageName,
+      exportName,
+      exportValue,
+      label: 'installed manifest',
+    });
+    assertManifestBrowserConditionBeforeImport({
       packageName,
       exportName,
       exportValue,

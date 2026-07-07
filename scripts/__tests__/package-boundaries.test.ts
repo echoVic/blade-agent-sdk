@@ -431,6 +431,43 @@ describe('package boundary verifier', () => {
     expect(result.stderr).toContain('export "./server" condition "node" is not allowed');
   });
 
+  it('rejects browser export conditions that appear after import', () => {
+    const cwd = createBoundaryFixture();
+    writeJson(join(cwd, 'packages', 'agent-sdk', 'package.json'), {
+      name: '@blade-ai/agent-sdk',
+      main: './dist/index.js',
+      types: './dist/index.d.ts',
+      exports: {
+        '.': {
+          types: './dist/index.d.ts',
+          import: './dist/index.js',
+          browser: './dist/browser/index.js',
+        },
+        './server': {
+          types: './dist/server/index.d.ts',
+          import: './dist/server/index.js',
+          browser: './dist/browser/server-only-stub.js',
+        },
+        './package.json': {
+          default: './package.json',
+        },
+      },
+      dependencies: {},
+    });
+
+    const result = spawnSync(process.execPath, [
+      resolve('scripts/verify-package-boundaries.mjs'),
+    ], {
+      cwd,
+      encoding: 'utf8',
+    });
+
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain('packages/agent-sdk/package.json');
+    expect(result.stderr).toContain('export "." must declare the browser condition before import');
+    expect(result.stderr).toContain('export "./server" must declare the browser condition before import');
+  });
+
   it('rejects root entry fields that drift from the root export conditions', () => {
     const cwd = createBoundaryFixture();
     writeJson(join(cwd, 'packages', 'agent-sdk', 'package.json'), {

@@ -264,6 +264,13 @@ function isTypesConditionFirst(exportValue) {
   return Object.keys(exportValue).at(0) === 'types';
 }
 
+function isBrowserConditionBeforeImport(exportValue) {
+  const conditions = Object.keys(exportValue);
+  const browserIndex = conditions.indexOf('browser');
+  const importIndex = conditions.indexOf('import');
+  return browserIndex === -1 || importIndex === -1 || browserIndex < importIndex;
+}
+
 const violations = [];
 
 for (const rule of manifestRules) {
@@ -337,6 +344,9 @@ for (const rule of manifestRules) {
     }
     if (typeof exportValue.types === 'string' && !isTypesConditionFirst(exportValue)) {
       violations.push(`${rule.packageJson}: export "${subpath}" must declare the types condition first`);
+    }
+    if (!isBrowserConditionBeforeImport(exportValue)) {
+      violations.push(`${rule.packageJson}: export "${subpath}" must declare the browser condition before import`);
     }
     for (const condition of Object.keys(exportValue)) {
       if (!allowedPublicExportConditions.has(condition)) {
