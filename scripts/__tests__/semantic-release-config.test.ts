@@ -1283,6 +1283,7 @@ describe('release scripts', () => {
 
     expect(boundaryVerifier).toContain('verifyManifestTargetExists');
     expect(boundaryVerifier).toContain('source manifest target does not exist in package build output');
+    expect(boundaryVerifier).toContain('source manifest target must not point at source files');
     expect(boundaryVerifier).toContain('source manifest target must stay package-relative');
     expect(boundaryVerifier).toContain('source manifest target must not escape the package');
     expect(boundaryVerifier).toContain('source manifest target must stay inside package dist output');
@@ -1293,10 +1294,11 @@ describe('release scripts', () => {
     expect(publishedVerifier).toContain('assertPublishedManifestTargetExists');
     expect(publishedVerifier).toContain('installed manifest target does not exist in the package');
     expect(publishedVerifier).toContain('installedFiles.has(normalizedTarget)');
-    expect(readme).toContain('source manifest target relativity, containment, and existence checks');
+    expect(readme).toContain('source manifest target source-file rejection, relativity, containment, and existence checks');
     expect(readme).toContain('manifest target existence checks');
-    expect(checklist).toContain('source manifest target relativity, containment, and existence checks');
+    expect(checklist).toContain('source manifest target source-file rejection, relativity, containment, and existence checks');
     expect(checklist).toContain('manifest target existence checks');
+    expect(roadmap).toContain('source manifest target source-file gate');
     expect(roadmap).toContain('source manifest target relativity gate');
     expect(roadmap).toContain('source manifest target containment gate');
     expect(roadmap).toContain('source manifest target existence gate');

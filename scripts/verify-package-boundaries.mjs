@@ -249,6 +249,10 @@ function isDistArtifactTarget(target) {
   return target.startsWith('./dist/');
 }
 
+function isSourceArtifactTarget(target) {
+  return target.startsWith('./src/') || target.includes('/src/');
+}
+
 function isDeclarationArtifactTarget(target) {
   return target.endsWith('.d.ts');
 }
@@ -315,6 +319,9 @@ function verifyManifestTargetExists({ packageJson, packageJsonPath, label, targe
   if (target === './package.json') return null;
   if (!target.startsWith('./')) {
     return `${packageJson}: ${label} target "${target}" source manifest target must stay package-relative`;
+  }
+  if (isSourceArtifactTarget(target)) {
+    return `${packageJson}: ${label} target "${target}" source manifest target must not point at source files`;
   }
 
   const packageDir = dirname(packageJsonPath);

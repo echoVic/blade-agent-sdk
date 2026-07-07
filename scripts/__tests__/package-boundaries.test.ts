@@ -327,6 +327,38 @@ describe('package boundary verifier', () => {
     expect(result.stderr).toContain('must point at ./dist artifacts');
   });
 
+  it('rejects source manifest targets that point at source files', () => {
+    const cwd = createBoundaryFixture();
+    writeJson(join(cwd, 'packages', 'agent-sdk', 'package.json'), {
+      name: '@blade-ai/agent-sdk',
+      main: './src/index.ts',
+      types: './src/index.ts',
+      exports: {
+        '.': {
+          types: './src/index.ts',
+          import: './src/index.ts',
+        },
+        './package.json': {
+          default: './package.json',
+        },
+      },
+      dependencies: {},
+    });
+
+    const result = spawnSync(process.execPath, [
+      resolve('scripts/verify-package-boundaries.mjs'),
+    ], {
+      cwd,
+      encoding: 'utf8',
+    });
+
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain('packages/agent-sdk/package.json');
+    expect(result.stderr).toContain('main target "./src/index.ts"');
+    expect(result.stderr).toContain('export "." import target "./src/index.ts"');
+    expect(result.stderr).toContain('source manifest target must not point at source files');
+  });
+
   it('rejects publish exports without paired types and import conditions', () => {
     const cwd = createBoundaryFixture();
     writeJson(join(cwd, 'packages', 'agent-sdk', 'package.json'), {
