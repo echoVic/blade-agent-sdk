@@ -1174,14 +1174,14 @@ function getManifestRootExportConditions(exportsMap) {
   return rootExport;
 }
 
-function isPackageJsonManifestExport(exportName, exportValue) {
+function isExactPackageJsonManifestExport(exportName, exportValue) {
   return (
     exportName === './package.json' &&
-    ((typeof exportValue === 'string' && exportValue === './package.json') ||
-      (exportValue &&
-        typeof exportValue === 'object' &&
-        !Array.isArray(exportValue) &&
-        exportValue.default === './package.json'))
+    exportValue &&
+    typeof exportValue === 'object' &&
+    !Array.isArray(exportValue) &&
+    Object.keys(exportValue).length === 1 &&
+    exportValue.default === './package.json'
   );
 }
 
@@ -1225,6 +1225,9 @@ function verifyPackedManifestExports({ packageName, manifest, tarballEntries }) 
     );
   }
   if (!exportsMap || typeof exportsMap !== 'object') return;
+  if (!isExactPackageJsonManifestExport('./package.json', exportsMap['./package.json'])) {
+    throw new Error(`${packageName} packed manifest metadata export must be exactly {"default":"./package.json"}`);
+  }
 
   for (const [exportName, exportValue] of Object.entries(exportsMap)) {
     assertManifestExportSubpathShape({
@@ -1232,7 +1235,7 @@ function verifyPackedManifestExports({ packageName, manifest, tarballEntries }) 
       exportName,
       label: 'packed manifest',
     });
-    if (isPackageJsonManifestExport(exportName, exportValue)) continue;
+    if (isExactPackageJsonManifestExport(exportName, exportValue)) continue;
     if (typeof exportValue === 'string') {
       throw new Error(
         `${packageName} packed manifest export ${exportName} must declare paired types and import conditions`,

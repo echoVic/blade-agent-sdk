@@ -1314,6 +1314,23 @@ describe('release scripts', () => {
     expect(roadmap).toContain('manifest target existence gate');
   });
 
+  it('mirrors exact package metadata export checks in packed and published verifiers', () => {
+    const boundaryVerifier = readFileSync(resolve('scripts/verify-package-boundaries.mjs'), 'utf8');
+    const packageVerifier = readFileSync(resolve('scripts/verify-packages.mjs'), 'utf8');
+    const publishedVerifier = readFileSync(resolve('scripts/verify-published.mjs'), 'utf8');
+    const readme = readFileSync(resolve('README.md'), 'utf8');
+    const checklist = readFileSync(resolve('docs/production-checklist.md'), 'utf8');
+    const roadmap = readFileSync(resolve('docs/roadmap/production-agent-sdk-monorepo.md'), 'utf8');
+
+    for (const verifier of [boundaryVerifier, packageVerifier, publishedVerifier]) {
+      expect(verifier).toContain('isExactPackageJsonManifestExport');
+      expect(verifier).toContain('metadata export must be exactly {"default":"./package.json"}');
+    }
+    expect(readme).toContain('exact package metadata export shape');
+    expect(checklist).toContain('exact package metadata export shape');
+    expect(roadmap).toContain('exact package metadata export gate');
+  });
+
   it('verifies packed and published runtime external dependencies are declared', () => {
     const packageVerifier = readFileSync(resolve('scripts/verify-packages.mjs'), 'utf8');
     const publishedVerifier = readFileSync(resolve('scripts/verify-published.mjs'), 'utf8');

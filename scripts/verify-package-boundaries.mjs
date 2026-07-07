@@ -265,12 +265,13 @@ function isPackageJsonExportTarget(path, target) {
   return path.startsWith('export "./package.json"') && target === './package.json';
 }
 
-function isPackageJsonExportEntry(subpath, exportValue) {
+function isExactPackageJsonManifestExport(subpath, exportValue) {
   return (
     subpath === './package.json' &&
     exportValue &&
     typeof exportValue === 'object' &&
     !Array.isArray(exportValue) &&
+    Object.keys(exportValue).length === 1 &&
     exportValue.default === './package.json'
   );
 }
@@ -422,8 +423,10 @@ for (const rule of manifestRules) {
       );
     }
   }
-  if (!isPackageJsonExportEntry('./package.json', manifest.exports?.['./package.json'])) {
+  if (manifest.exports?.['./package.json'] === undefined) {
     violations.push(`${rule.packageJson}: must expose "./package.json" metadata export`);
+  } else if (!isExactPackageJsonManifestExport('./package.json', manifest.exports['./package.json'])) {
+    violations.push(`${rule.packageJson}: metadata export must be exactly {"default":"./package.json"}`);
   }
 
   for (const [subpath, exportValue] of collectExportEntries(manifest.exports)) {
@@ -431,7 +434,7 @@ for (const rule of manifestRules) {
     if (subpathViolation) {
       violations.push(subpathViolation);
     }
-    if (isPackageJsonExportEntry(subpath, exportValue)) continue;
+    if (isExactPackageJsonManifestExport(subpath, exportValue)) continue;
     if (!exportValue || typeof exportValue !== 'object' || Array.isArray(exportValue)) {
       violations.push(`${rule.packageJson}: export "${subpath}" must be a condition object`);
       continue;
