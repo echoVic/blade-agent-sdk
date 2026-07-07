@@ -1,10 +1,8 @@
 import { describe, expect, it, vi } from 'vitest';
-import { createKernelStreamTurnBridge } from '../../packages/agent-sdk/src/session/kernelStreamBridge.js';
-import type { ActiveSessionTurn } from '../../packages/agent-sdk/src/session/turn.js';
-import type {
-  PackageLocalSessionStreamContext,
-} from '../../packages/agent-sdk/src/session/sessionInstance.js';
-import type { SessionOptions, StreamMessage } from '../../packages/agent-sdk/src/session/types.js';
+import { createKernelStreamTurnBridge } from '../session/kernelStreamBridge.js';
+import type { ActiveSessionTurn } from '../session/turn.js';
+import type { PackageLocalSessionStreamContext } from '../session/sessionInstance.js';
+import type { SessionOptions, StreamMessage } from '../session/types.js';
 
 const sessionOptions: SessionOptions = {
   provider: {
