@@ -336,6 +336,7 @@ describe('monorepo topology', () => {
       'packages/agent/src/loop/loopResult.ts',
       'packages/agent/src/loop/tokenUsage.ts',
       'packages/agent/src/loop/toolResultContent.ts',
+      'packages/agent/src/loop/toolResultTracker.ts',
       'packages/agent/src/loop/toolBehavior.ts',
       'packages/agent/src/loop/toolInterruptBehavior.ts',
       'packages/agent/src/loop/toolUpdateToAgentEvent.ts',
@@ -358,6 +359,7 @@ describe('monorepo topology', () => {
     expect(existsSync('packages/agent/src/__tests__/loopResult.test.ts')).toBe(true);
     expect(existsSync('packages/agent/src/__tests__/tokenUsageProjection.test.ts')).toBe(true);
     expect(existsSync('packages/agent/src/__tests__/toolResultContent.test.ts')).toBe(true);
+    expect(existsSync('packages/agent/src/__tests__/toolResultTracker.test.ts')).toBe(true);
     expect(existsSync('packages/agent/src/__tests__/toolInjectedMessages.test.ts')).toBe(true);
     expect(existsSync('packages/agent/src/__tests__/repairToolCallParamsBehavior.test.ts')).toBe(
       true,
@@ -378,6 +380,7 @@ describe('monorepo topology', () => {
     expect(agentLoopSource).toContain("from './loopResult.js'");
     expect(agentLoopSource).toContain("from './tokenUsage.js'");
     expect(agentLoopSource).toContain("from './toolResultContent.js'");
+    expect(agentLoopSource).toContain("from './toolResultTracker.js'");
     expect(agentLoopSource).toContain("from './toolInterruptBehavior.js'");
     expect(agentLoopSource).toContain("from './toolUpdateToAgentEvent.js'");
     expect(rootAgentLoopSource).toContain('buildAgentLoopAbortResult');
@@ -386,11 +389,15 @@ describe('monorepo topology', () => {
     expect(rootAgentLoopSource).toContain('buildAgentLoopToolExitResult');
     expect(rootAgentLoopSource).toContain('buildAgentLoopTokenUsageInfo');
     expect(rootAgentLoopSource).toContain('buildAgentToolResultContent');
+    expect(rootAgentLoopSource).toContain('createAgentToolResultTracker');
     expect(rootAgentLoopSource).toContain('markToolInjectedSystemMessages');
     expect(rootAgentLoopSource).not.toContain('function buildAbortResult');
     expect(rootAgentLoopSource).not.toContain('return {\n        success: true,');
     expect(rootAgentLoopSource).not.toContain('const usage: TokenUsageInfo =');
     expect(rootAgentLoopSource).not.toContain('let toolResultContent =');
+    expect(rootAgentLoopSource).not.toContain('const TOOL_RESULT_BUFFER = 50');
+    expect(rootAgentLoopSource).not.toContain('const recentToolResults');
+    expect(rootAgentLoopSource).not.toContain('const recordToolResult');
     expect(rootAgentLoopSource).not.toContain("_systemSource: 'tool_injection' as const");
     expect(rootAgentLoopSource).not.toContain('shouldExitLoop: true,\n            targetMode:');
     expect(rootAgentLoopSource).not.toContain('message: \'Token budget exhausted\'');
