@@ -5,17 +5,17 @@ import {
   prompt,
   resumeSession,
   setSessionRuntimeFactory,
-} from '../../packages/agent-sdk/src/session/index.js';
+} from '../session/index.js';
 import {
   forkSession as runForkLifecycle,
   resumeSession as runResumeLifecycle,
-} from '../../packages/agent-sdk/src/session/Session.js';
-import { createDefaultSessionRuntimeFactory } from '../../packages/agent-sdk/src/session/runtimeFactory.js';
-import { PackageLocalSession } from '../../packages/agent-sdk/src/session/sessionInstance.js';
+} from '../session/Session.js';
+import { createDefaultSessionRuntimeFactory } from '../session/runtimeFactory.js';
+import { PackageLocalSession } from '../session/sessionInstance.js';
 import type {
   ISession,
   SessionOptions,
-} from '../../packages/agent-sdk/src/session/index.js';
+} from '../session/index.js';
 
 const options: SessionOptions = {
   provider: {
