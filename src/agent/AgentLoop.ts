@@ -35,6 +35,7 @@ import { buildAgentLoopTokenUsageInfo } from './loop/tokenUsage.js';
 import { createAgentLoopTokenUsageTracker } from './loop/tokenUsageTracker.js';
 import { buildAgentLoopToolMessage } from './loop/toolMessage.js';
 import { createAgentToolResultTracker } from './loop/toolResultTracker.js';
+import { buildAgentLoopToolStartEvent } from './loop/toolStartEvent.js';
 import { createAgentLoopTurnCounter } from './loop/turnCounter.js';
 import type { FunctionToolCall } from './loop/types.js';
 import type { ConversationState } from './state/ConversationState.js';
@@ -442,9 +443,10 @@ export async function* agentLoop(
       );
 
       for (const toolCall of executionPlan.calls) {
-        const toolDef = executionPipeline.getRegistry().get(toolCall.function.name);
-        const toolKind = toolDef?.kind as 'readonly' | 'write' | 'execute' | undefined;
-        yield { type: 'tool_start', toolCall, toolKind };
+        yield buildAgentLoopToolStartEvent({
+          toolCall,
+          registry: executionPipeline.getRegistry(),
+        });
       }
 
       if (signal?.aborted) {
