@@ -2,9 +2,9 @@ import { existsSync } from 'node:fs';
 import { describe, expect, it, vi } from 'vitest';
 
 const runtimeSessionCapabilitiesModulePath =
-  '../../packages/agent-sdk/src/session/runtimeSessionCapabilities.js';
+  '../session/runtimeSessionCapabilities.js';
 const runtimeSessionCapabilitiesSourcePath =
-  'packages/agent-sdk/src/session/runtimeSessionCapabilities.ts';
+  'src/session/runtimeSessionCapabilities.ts';
 
 describe('agent-sdk package-local runtime session capability operations', () => {
   it('bundles subagent initialization and session forking around session options', async () => {
