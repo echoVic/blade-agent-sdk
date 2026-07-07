@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import {
   createSdkMcpServer,
   tool,
-} from '../../packages/agent-sdk/src/local/mcp.js';
+} from '../local/mcp.js';
 
 describe('agent-sdk local MCP facade', () => {
   it('creates in-process MCP handles from package-local tool definitions', async () => {
