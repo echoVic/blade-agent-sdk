@@ -705,6 +705,11 @@ function verifyPackedManifestDependencyVersions(packageName, manifest) {
       const version = String(dependencyVersion);
       const isInternalDependency = dependencyName.startsWith('@blade-ai/');
       if (isInternalDependency) {
+        if (version !== '0.0.0' && !exactVersionPattern.test(version)) {
+          throw new Error(
+            `${packageName} packed manifest internal dependency ${section}.${dependencyName} must use 0.0.0 during local pack or an exact dependency version, got ${version}`,
+          );
+        }
         continue;
       }
       if (version === '0.0.0') {

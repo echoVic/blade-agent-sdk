@@ -543,6 +543,8 @@ describe('release scripts', () => {
 
     expect(packageVerifier).toContain('verifyPackedManifestDependencyVersions');
     expect(packageVerifier).toContain('packed manifest must not contain 0.0.0 placeholder versions');
+    expect(packageVerifier).toContain('packed manifest internal dependency');
+    expect(packageVerifier).toContain('must use 0.0.0 during local pack or an exact dependency version');
     expect(packageVerifier).toContain('packed manifest dependency');
     expect(packageVerifier).toContain('must use an exact dependency version');
     expect(readme).toContain('packed package dependency-version gate');
