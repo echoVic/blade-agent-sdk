@@ -105,10 +105,8 @@ import { createPackageLocalRuntimeTurnOperations } from './runtimeTurn.js';
 import type { PackageLocalRuntimeForkOperations } from './runtimeForking.js';
 import { createPackageLocalRuntimeSessionCapabilityOperations } from './runtimeSessionCapabilities.js';
 import {
-  createPackageLocalRuntimeCapabilityInitializationOperations,
+  createPackageLocalRuntimeCapabilityOperations,
   type PackageLocalRuntimeCapabilityInitializationOperations,
-  createPackageLocalRuntimeCapabilityStartupOperations,
-  type PackageLocalRuntimeCapabilityStartupOperations,
 } from './runtimeCapabilities.js';
 import {
   createPackageLocalRuntimeControlOperations,
@@ -222,7 +220,6 @@ export class PackageLocalSessionRuntime {
   private readonly forkOperations: PackageLocalRuntimeForkOperations;
   private readonly traceManager: SessionTraceManager;
   private readonly capabilityInitializationOperations: PackageLocalRuntimeCapabilityInitializationOperations;
-  private readonly capabilityStartupOperations: PackageLocalRuntimeCapabilityStartupOperations;
   private readonly controlOperations: PackageLocalRuntimeControlOperations;
 
   constructor(options: PackageLocalSessionRuntimeOptions) {
@@ -365,19 +362,14 @@ export class PackageLocalSessionRuntime {
     this.traceManager = turnOperations.traceManager;
     this.kernelTurnStreamOperations = turnOperations.kernelTurnStream;
     this.traceOperations = turnOperations.traceOperations;
-    this.capabilityStartupOperations = createPackageLocalRuntimeCapabilityStartupOperations({
+    const capabilityOperations = createPackageLocalRuntimeCapabilityOperations({
       registerConfiguredMcpServers: () => this.registerConfiguredMcpServers(),
       registerCustomTools: () => this.registerCustomTools(),
       registerBuiltinTools: () => this.registerBuiltinTools(),
       initializeSubagents: () => this.initializeSubagents(),
       initializeHooks: () => this.initializeHooks(),
     });
-    this.capabilityInitializationOperations =
-      createPackageLocalRuntimeCapabilityInitializationOperations({
-        initializeRuntimeCapabilities: () =>
-          this.capabilityStartupOperations.initializeRuntimeCapabilities(),
-        initializeSubagents: () => this.initializeSubagents(),
-      });
+    this.capabilityInitializationOperations = capabilityOperations.initialization;
     this.controlOperations = createPackageLocalRuntimeControlOperations({
       options: this.options,
       bladeConfig: this.bladeConfig,

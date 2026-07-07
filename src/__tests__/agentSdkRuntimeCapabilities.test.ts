@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
+  createPackageLocalRuntimeCapabilityOperations,
   createPackageLocalRuntimeCapabilityStartupOperations,
 } from '../../packages/agent-sdk/src/session/runtimeCapabilities.js';
 
@@ -62,5 +63,39 @@ describe('agent-sdk package-local runtime capability startup helpers', () => {
     expect(registerBuiltinTools).not.toHaveBeenCalled();
     expect(initializeSubagents).not.toHaveBeenCalled();
     expect(initializeHooks).not.toHaveBeenCalled();
+  });
+
+  it('builds startup and initialization operations as one capability bundle', async () => {
+    const calls: string[] = [];
+    const operations = createPackageLocalRuntimeCapabilityOperations({
+      registerConfiguredMcpServers() {
+        calls.push('mcp');
+      },
+      registerCustomTools() {
+        calls.push('custom');
+      },
+      registerBuiltinTools() {
+        calls.push('builtin');
+      },
+      initializeSubagents() {
+        calls.push('subagents');
+      },
+      initializeHooks() {
+        calls.push('hooks');
+      },
+    });
+
+    await operations.initialization.ensureInitialized();
+    operations.initialization.markSubagentLocationsDirty();
+    await operations.initialization.ensureInitialized();
+
+    expect(calls).toEqual([
+      'mcp',
+      'custom',
+      'builtin',
+      'subagents',
+      'hooks',
+      'subagents',
+    ]);
   });
 });

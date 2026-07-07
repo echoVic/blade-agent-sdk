@@ -20,6 +20,11 @@ export interface PackageLocalRuntimeCapabilityInitializationOperations {
   markSubagentLocationsDirty(): void;
 }
 
+export interface PackageLocalRuntimeCapabilityOperations {
+  startup: PackageLocalRuntimeCapabilityStartupOperations;
+  initialization: PackageLocalRuntimeCapabilityInitializationOperations;
+}
+
 export function createPackageLocalRuntimeCapabilityStartupOperations(
   options: PackageLocalRuntimeCapabilityStartupOperationsOptions,
 ): PackageLocalRuntimeCapabilityStartupOperations {
@@ -31,6 +36,20 @@ export function createPackageLocalRuntimeCapabilityStartupOperations(
       options.initializeSubagents();
       options.initializeHooks();
     },
+  };
+}
+
+export function createPackageLocalRuntimeCapabilityOperations(
+  options: PackageLocalRuntimeCapabilityStartupOperationsOptions,
+): PackageLocalRuntimeCapabilityOperations {
+  const startup = createPackageLocalRuntimeCapabilityStartupOperations(options);
+
+  return {
+    startup,
+    initialization: createPackageLocalRuntimeCapabilityInitializationOperations({
+      initializeRuntimeCapabilities: () => startup.initializeRuntimeCapabilities(),
+      initializeSubagents: options.initializeSubagents,
+    }),
   };
 }
 
