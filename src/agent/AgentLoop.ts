@@ -33,6 +33,7 @@ import { buildAgentLoopTokenUsageInfo } from './loop/tokenUsage.js';
 import { createAgentLoopTokenUsageTracker } from './loop/tokenUsageTracker.js';
 import { buildAgentToolResultContent } from './loop/toolResultContent.js';
 import { createAgentToolResultTracker } from './loop/toolResultTracker.js';
+import { createAgentLoopTurnCounter } from './loop/turnCounter.js';
 import type { FunctionToolCall } from './loop/types.js';
 import type { ConversationState } from './state/ConversationState.js';
 import { markToolInjectedSystemMessages } from './state/toolInjectedMessages.js';
@@ -148,12 +149,10 @@ export async function* agentLoop(
   const effectiveMaxTurns = isYoloMode ? AGENT_TURN_SAFETY_LIMIT : maxTurns;
 
   const startTime = Date.now();
-  let turnsCount = 0;
+  const turnCounter = createAgentLoopTurnCounter();
   const toolResultTracker = createAgentToolResultTracker<ToolResult>();
   const recoveryAttemptTracker = createAgentRecoveryAttemptTracker();
   const tokenUsageTracker = createAgentLoopTokenUsageTracker();
-  /** 当前回合需要重试（不自增 turnsCount、不发 turn_end） */
-  let retryCurrentTurn = false;
   let epoch: ExecutionEpoch | null = null;
 
   yield { type: 'agent_start' };
@@ -165,15 +164,15 @@ export async function* agentLoop(
     if (signal?.aborted) {
       yield { type: 'agent_end' };
       return buildAgentLoopAbortResult({
-        turnsCount,
+        turnsCount: turnCounter.turnsCount,
         toolCallsCount: toolResultTracker.toolCallsCount,
         startTime,
       });
     }
 
-    if (!retryCurrentTurn && turnHooks?.beforeTurn) {
+    if (turnCounter.shouldRunBeforeTurn() && turnHooks?.beforeTurn) {
       const beforeTurnStream = turnHooks.beforeTurn({
-        turn: turnsCount,
+        turn: turnCounter.turnsCount,
         messages: convState.toArray(),
         lastPromptTokens: tokenUsageTracker.lastPromptTokens,
       });
@@ -184,16 +183,16 @@ export async function* agentLoop(
       }
     }
 
-    if (!retryCurrentTurn) {
-      turnsCount++;
+    const turnStart = turnCounter.beginTurn();
+    const turnsCount = turnStart.turn;
+    if (turnStart.started) {
       yield { type: 'turn_start', turn: turnsCount, maxTurns: effectiveMaxTurns };
     }
-    retryCurrentTurn = false;
 
     if (signal?.aborted) {
       yield { type: 'agent_end' };
       return buildAgentLoopAbortResult({
-        turnsCount: turnsCount - 1,
+        turnsCount: turnCounter.previousCompletedTurnCount,
         toolCallsCount: toolResultTracker.toolCallsCount,
         startTime,
       });
@@ -294,7 +293,7 @@ export async function* agentLoop(
         yield { type: 'recovery', phase: 'retrying', reason: 'reactive_compact' };
         epoch?.invalidate();
         // 显式"重试当前轮"：不减 turnsCount，不发 turn_end
-        retryCurrentTurn = true;
+        turnCounter.requestRetry();
         yield { type: 'turn_retry', turn: turnsCount, reason: 'reactive_compact' };
         continue;
       }
@@ -370,7 +369,7 @@ export async function* agentLoop(
     if (signal?.aborted) {
       yield { type: 'agent_end' };
       return buildAgentLoopAbortResult({
-        turnsCount: turnsCount - 1,
+        turnsCount: turnCounter.previousCompletedTurnCount,
         toolCallsCount: toolResultTracker.toolCallsCount,
         startTime,
       });
@@ -545,7 +544,7 @@ export async function* agentLoop(
           convState.append(limitDecision.continueMessage);
         }
       }
-      turnsCount = 0;
+      turnCounter.reset();
     }
   }
 }

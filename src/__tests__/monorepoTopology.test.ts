@@ -338,6 +338,7 @@ describe('monorepo topology', () => {
       'packages/agent/src/loop/tokenUsageTracker.ts',
       'packages/agent/src/loop/toolResultContent.ts',
       'packages/agent/src/loop/toolResultTracker.ts',
+      'packages/agent/src/loop/turnCounter.ts',
       'packages/agent/src/loop/toolBehavior.ts',
       'packages/agent/src/loop/toolInterruptBehavior.ts',
       'packages/agent/src/loop/toolUpdateToAgentEvent.ts',
@@ -363,6 +364,7 @@ describe('monorepo topology', () => {
     expect(existsSync('packages/agent/src/__tests__/tokenUsageTracker.test.ts')).toBe(true);
     expect(existsSync('packages/agent/src/__tests__/toolResultContent.test.ts')).toBe(true);
     expect(existsSync('packages/agent/src/__tests__/toolResultTracker.test.ts')).toBe(true);
+    expect(existsSync('packages/agent/src/__tests__/turnCounter.test.ts')).toBe(true);
     expect(existsSync('packages/agent/src/__tests__/toolInjectedMessages.test.ts')).toBe(true);
     expect(existsSync('packages/agent/src/__tests__/recoveryAttemptTracker.test.ts')).toBe(true);
     expect(existsSync('packages/agent/src/__tests__/repairToolCallParamsBehavior.test.ts')).toBe(
@@ -386,6 +388,7 @@ describe('monorepo topology', () => {
     expect(agentLoopSource).toContain("from './tokenUsageTracker.js'");
     expect(agentLoopSource).toContain("from './toolResultContent.js'");
     expect(agentLoopSource).toContain("from './toolResultTracker.js'");
+    expect(agentLoopSource).toContain("from './turnCounter.js'");
     expect(agentLoopSource).toContain("from './toolInterruptBehavior.js'");
     expect(agentLoopSource).toContain("from './toolUpdateToAgentEvent.js'");
     expect(rootAgentLoopSource).toContain('buildAgentLoopAbortResult');
@@ -396,6 +399,7 @@ describe('monorepo topology', () => {
     expect(rootAgentLoopSource).toContain('createAgentLoopTokenUsageTracker');
     expect(rootAgentLoopSource).toContain('buildAgentToolResultContent');
     expect(rootAgentLoopSource).toContain('createAgentToolResultTracker');
+    expect(rootAgentLoopSource).toContain('createAgentLoopTurnCounter');
     expect(rootAgentLoopSource).toContain('createAgentRecoveryAttemptTracker');
     expect(rootAgentLoopSource).toContain('markToolInjectedSystemMessages');
     expect(rootAgentLoopSource).not.toContain('function buildAbortResult');
@@ -403,6 +407,10 @@ describe('monorepo topology', () => {
     expect(rootAgentLoopSource).not.toContain('const usage: TokenUsageInfo =');
     expect(rootAgentLoopSource).not.toContain('let totalTokens = 0');
     expect(rootAgentLoopSource).not.toContain('let lastPromptTokens');
+    expect(rootAgentLoopSource).not.toContain('let turnsCount = 0');
+    expect(rootAgentLoopSource).not.toContain('let retryCurrentTurn');
+    expect(rootAgentLoopSource).not.toContain('turnsCount++');
+    expect(rootAgentLoopSource).not.toContain('turnsCount = 0');
     expect(rootAgentLoopSource).not.toContain('let toolResultContent =');
     expect(rootAgentLoopSource).not.toContain('const TOOL_RESULT_BUFFER = 50');
     expect(rootAgentLoopSource).not.toContain('const recentToolResults');
