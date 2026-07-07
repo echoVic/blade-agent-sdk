@@ -1,7 +1,6 @@
 {
   "name": "@blade-ai/agent-sdk",
   "version": "1.0.12",
-  "private": false,
   "description": "Session-first Blade Agent SDK",
   "author": "echoVic",
   "license": "MIT",
@@ -107,11 +106,6 @@
   "optionalDependencies": {
     "@vscode/ripgrep": "1.17.1",
     "node-pty": "1.0.0"
-  },
-  "devDependencies": {
-    "tsup": "8.5.1",
-    "typescript": "6.0.3",
-    "vitest": "3.2.4"
   },
   "publishConfig": {
     "access": "public",

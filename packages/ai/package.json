@@ -1,7 +1,6 @@
 {
   "name": "@blade-ai/ai",
   "version": "0.0.0",
-  "private": false,
   "description": "Provider-agnostic AI model interfaces for Blade Agent",
   "author": "echoVic",
   "license": "MIT",
@@ -81,11 +80,6 @@
     "@ai-sdk/openai-compatible": "2.0.41",
     "@types/json-schema": "7.0.15",
     "ai": "6.0.168"
-  },
-  "devDependencies": {
-    "tsup": "8.5.1",
-    "typescript": "6.0.3",
-    "vitest": "3.2.4"
   },
   "publishConfig": {
     "access": "public",

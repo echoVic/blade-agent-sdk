@@ -655,6 +655,12 @@ function verifyPackedManifest(spec, tarballPath, tempDir) {
     throw new Error(`Packed manifest name mismatch for ${spec.name}: ${manifest.name}`);
   }
   const serialized = JSON.stringify(manifest);
+  if ('private' in manifest) {
+    throw new Error(`${spec.name} packed manifest must not contain private metadata`);
+  }
+  if ('devDependencies' in manifest) {
+    throw new Error(`${spec.name} packed manifest must not contain devDependencies`);
+  }
   if (serialized.includes('workspace:')) {
     throw new Error(`${spec.name} packed manifest still contains workspace protocol dependencies`);
   }

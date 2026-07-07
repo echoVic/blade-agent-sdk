@@ -65,17 +65,19 @@ describe('package provenance metadata', () => {
     expect(releaseVerifier).toContain('root package.json must not declare published files');
   });
 
-  it('declares the GitHub repository URL and public npm publish config on every publishable package', () => {
+  it('declares clean source metadata and public npm publish config on every publishable package', () => {
     const packagePaths = [
       'packages/ai/package.json',
       'packages/agent/package.json',
       'packages/agent-sdk/package.json',
     ];
+    const releaseVerifier = readFileSync(resolve('scripts/verify-release-config.mjs'), 'utf8');
 
     for (const packagePath of packagePaths) {
       const packageJson = JSON.parse(readFileSync(resolve(packagePath), 'utf8'));
 
-      expect(packageJson.private).toBe(false);
+      expect(packageJson.private).toBeUndefined();
+      expect(packageJson.devDependencies).toBeUndefined();
       expect(packageJson.repository).toEqual({
         type: 'git',
         url: 'https://github.com/echoVic/blade-agent-sdk',
@@ -86,6 +88,9 @@ describe('package provenance metadata', () => {
         registry: 'https://registry.npmjs.org/',
       });
     }
+
+    expect(releaseVerifier).toContain('must not contain private metadata');
+    expect(releaseVerifier).toContain('must not contain devDependencies');
   });
 
   it('keeps publishable package metadata and README files npm-friendly', () => {
@@ -515,6 +520,19 @@ describe('release scripts', () => {
     expect(readme).toContain('npm-facing manifest hygiene');
     expect(checklist).toContain('npm-facing manifest hygiene');
     expect(roadmap).toContain('npm-facing manifest hygiene gate');
+  });
+
+  it('verifies packed package manifests omit private and dev dependency metadata', () => {
+    const packageVerifier = readFileSync(resolve('scripts/verify-packages.mjs'), 'utf8');
+    const readme = readFileSync(resolve('README.md'), 'utf8');
+    const checklist = readFileSync(resolve('docs/production-checklist.md'), 'utf8');
+    const roadmap = readFileSync(resolve('docs/roadmap/production-agent-sdk-monorepo.md'), 'utf8');
+
+    expect(packageVerifier).toContain('packed manifest must not contain private metadata');
+    expect(packageVerifier).toContain('packed manifest must not contain devDependencies');
+    expect(readme).toContain('packed package manifest hygiene');
+    expect(checklist).toContain('packed package manifest hygiene');
+    expect(roadmap).toContain('packed package manifest hygiene gate');
   });
 
   it('requires npm provenance in publishable package metadata', () => {

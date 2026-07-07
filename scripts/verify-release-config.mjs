@@ -156,8 +156,11 @@ function verifyPackageMetadata() {
     if (manifest.name !== pkg.name) {
       fail(`${pkg.dir}/package.json name must be ${pkg.name}`);
     }
-    if (manifest.private !== false) {
-      fail(`${pkg.name} must be publishable`);
+    if ('private' in manifest) {
+      fail(`${pkg.name} source manifest must not contain private metadata`);
+    }
+    if ('devDependencies' in manifest) {
+      fail(`${pkg.name} source manifest must not contain devDependencies`);
     }
     if (manifest.description !== pkg.description) {
       fail(`${pkg.name} must declare package description`);
