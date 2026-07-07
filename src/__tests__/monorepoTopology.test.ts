@@ -616,8 +616,16 @@ describe('monorepo topology', () => {
     )
       ? readFileSync('packages/agent-sdk/src/session/runtimeToolExecution.ts', 'utf-8')
       : '';
+    const runtimeRunTurnSource = existsSync(
+      'packages/agent-sdk/src/session/runtimeRunTurn.ts',
+    )
+      ? readFileSync('packages/agent-sdk/src/session/runtimeRunTurn.ts', 'utf-8')
+      : '';
     const rootRunToolCallSource = existsSync('src/agent/loop/runToolCall.ts')
       ? readFileSync('src/agent/loop/runToolCall.ts', 'utf-8')
+      : '';
+    const rootRunTurnSource = existsSync('src/agent/loop/runTurn.ts')
+      ? readFileSync('src/agent/loop/runTurn.ts', 'utf-8')
       : '';
     const streamingToolExecutorSource = existsSync(
       'packages/agent-sdk/src/session/streamingToolExecutor.ts',
@@ -1399,6 +1407,17 @@ describe('monorepo topology', () => {
     expect(rootRunToolCallSource).not.toContain('repairToolCallParams');
     expect(rootRunToolCallSource).not.toContain('normalizeToolEffects');
     expect(rootRunToolCallSource).not.toContain('createInterruptAwareAbortSignal');
+    expect(existsSync('packages/agent-sdk/src/session/runtimeRunTurn.ts')).toBe(true);
+    expect(runtimeRunTurnSource).not.toContain('../../../src/');
+    expect(runtimeRunTurnSource).toContain('runPackageLocalTurn');
+    expect(runtimeRunTurnSource).toContain('PackageLocalStreamingToolExecutor');
+    expect(runtimeRunTurnSource).toContain('streamPackageLocalChatResponse');
+    expect(runtimeRunTurnSource).toContain('toolUpdateToAgentEvent');
+    expect(rootRunTurnSource).toContain('runPackageLocalTurn');
+    expect(rootRunTurnSource).not.toContain('runStreamingWithTools');
+    expect(rootRunTurnSource).not.toContain('new AsyncEventQueue');
+    expect(rootRunTurnSource).not.toContain('new StreamingToolExecutor');
+    expect(rootRunTurnSource).not.toContain('chatWithRetryEvents');
     expect(existsSync('packages/agent-sdk/src/session/streamingToolExecutor.ts')).toBe(true);
     expect(existsSync('packages/agent-sdk/src/__tests__/streamingToolExecutor.test.ts')).toBe(
       true,
