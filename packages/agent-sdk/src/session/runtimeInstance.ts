@@ -74,17 +74,11 @@ import { createPackageLocalRuntimeInitialState } from './runtimeState.js';
 import type { PackageLocalRuntimeWorkspaceOperations } from './runtimeWorkspace.js';
 import type { PackageLocalRuntimeSessionLifecycleOperations } from './runtimeSessionLifecycle.js';
 import { createPackageLocalRuntimeSessionOperations } from './runtimeSessionOperations.js';
-import type {
-  PackageLocalRuntimeMcpServerConfigOperations,
-  PackageLocalRuntimeMcpServerRegistrationOperations,
-  PackageLocalRuntimeMcpServerLifecycleOperations,
-} from './runtimeMcpServers.js';
-import type {
-  PackageLocalRuntimeMcpCapabilityOperations,
-  PackageLocalRuntimeMcpServerCapability,
-} from './runtimeMcpCapabilities.js';
-import type { PackageLocalRuntimeMcpToolRefreshOperations } from './runtimeMcpTools.js';
-import { createPackageLocalRuntimeMcpOperations } from './runtimeMcp.js';
+import type { PackageLocalRuntimeMcpServerCapability } from './runtimeMcpCapabilities.js';
+import {
+  createPackageLocalRuntimeMcpOperations,
+  type PackageLocalRuntimeMcpOperations,
+} from './runtimeMcp.js';
 import { resolvePackageLocalRuntimePorts } from './runtimeNoopPorts.js';
 import type { PackageLocalRuntimeSubagentOperations } from './runtimeSubagents.js';
 import type { PackageLocalRuntimeToolFilterOperations } from './runtimeToolFilters.js';
@@ -197,11 +191,7 @@ export class PackageLocalSessionRuntime {
   readonly kernelModelResolver: PackageLocalRuntimeKernelModelResolverPort;
   private readonly sessionLifecycleOperations: PackageLocalRuntimeSessionLifecycleOperations<SessionMessage>;
   private readonly workspaceOperations: PackageLocalRuntimeWorkspaceOperations;
-  private readonly mcpCapabilityOperations: PackageLocalRuntimeMcpCapabilityOperations;
-  private readonly mcpServerConfigOperations: PackageLocalRuntimeMcpServerConfigOperations;
-  private readonly mcpServerRegistrationOperations: PackageLocalRuntimeMcpServerRegistrationOperations;
-  private readonly mcpServerLifecycleOperations: PackageLocalRuntimeMcpServerLifecycleOperations;
-  private readonly mcpToolRefreshOperations: PackageLocalRuntimeMcpToolRefreshOperations;
+  private readonly mcpOperations: PackageLocalRuntimeMcpOperations;
   private readonly executionPipelineOperations: PackageLocalRuntimeExecutionPipelineOperations;
   private readonly agentRuntimeDepsOperations: PackageLocalAgentRuntimeDepsOperations;
   private readonly kernelPortOperations: PackageLocalRuntimeKernelPortOperations;
@@ -259,11 +249,11 @@ export class PackageLocalSessionRuntime {
       hookRuntime: this.hookRuntime,
       model: this.options.model,
       provider: this.options.provider.type,
-      closeRuntimeResources: () => this.mcpServerLifecycleOperations.close(),
+      closeRuntimeResources: () => this.mcpOperations.servers.lifecycle.close(),
     });
     this.sessionLifecycleOperations = sessionOperations.lifecycle;
     this.workspaceOperations = sessionOperations.workspace;
-    const mcpOperations = createPackageLocalRuntimeMcpOperations({
+    this.mcpOperations = createPackageLocalRuntimeMcpOperations({
       mcpRegistry: this.mcpRegistry,
       configuredServers: this.options.mcpServers,
       logger: this.logger,
@@ -271,12 +261,6 @@ export class PackageLocalSessionRuntime {
       filterTools: (tools) => this.filterTools(tools),
       refreshMcpTools: (serverNames) => this.refreshMcpTools(serverNames),
     });
-    this.mcpCapabilityOperations = mcpOperations.capabilities;
-    const mcpServerOperations = mcpOperations.servers;
-    this.mcpServerConfigOperations = mcpServerOperations.config;
-    this.mcpServerRegistrationOperations = mcpServerOperations.registration;
-    this.mcpServerLifecycleOperations = mcpServerOperations.lifecycle;
-    this.mcpToolRefreshOperations = mcpOperations.tools;
     const executionOperations = createPackageLocalRuntimeExecutionOperations({
       bladeConfig: this.bladeConfig,
       permissionMode: this.options.permissionMode,
@@ -386,7 +370,7 @@ export class PackageLocalSessionRuntime {
   }
 
   getConfiguredMcpServers(): Record<string, McpServerConfig | SdkMcpServerHandle> {
-    return this.mcpServerConfigOperations.getConfigured();
+    return this.mcpOperations.servers.config.getConfigured();
   }
 
   async ensureSessionCreated(): Promise<void> {
@@ -414,15 +398,15 @@ export class PackageLocalSessionRuntime {
   }
 
   async mcpCapabilities(): Promise<PackageLocalRuntimeMcpServerCapability[]> {
-    return this.mcpCapabilityOperations.getCapabilities();
+    return this.mcpOperations.capabilities.getCapabilities();
   }
 
   async mcpServerStatus(): Promise<McpServerStatus[]> {
-    return this.mcpCapabilityOperations.getServerStatus();
+    return this.mcpOperations.capabilities.getServerStatus();
   }
 
   async mcpListTools(): Promise<McpToolInfo[]> {
-    return this.mcpCapabilityOperations.listTools();
+    return this.mcpOperations.capabilities.listTools();
   }
 
   setDefaultContext(context: RuntimeContext): void {
@@ -454,19 +438,19 @@ export class PackageLocalSessionRuntime {
   }
 
   async mcpConnect(serverName: string): Promise<void> {
-    await this.mcpServerLifecycleOperations.connect(serverName);
+    await this.mcpOperations.servers.lifecycle.connect(serverName);
   }
 
   async mcpDisconnect(serverName: string): Promise<void> {
-    await this.mcpServerLifecycleOperations.disconnect(serverName);
+    await this.mcpOperations.servers.lifecycle.disconnect(serverName);
   }
 
   async mcpReconnect(serverName: string): Promise<void> {
-    await this.mcpServerLifecycleOperations.reconnect(serverName);
+    await this.mcpOperations.servers.lifecycle.reconnect(serverName);
   }
 
   async registerConfiguredMcpServers(): Promise<void> {
-    await this.mcpServerRegistrationOperations.registerConfigured();
+    await this.mcpOperations.servers.registration.registerConfigured();
   }
 
   async ensureRuntimeCapabilitiesInitialized(): Promise<void> {
@@ -474,7 +458,7 @@ export class PackageLocalSessionRuntime {
   }
 
   async refreshMcpTools(serverNames: string[]): Promise<void> {
-    await this.mcpToolRefreshOperations.refresh(serverNames);
+    await this.mcpOperations.tools.refresh(serverNames);
   }
 
   filterTools<TTool extends PackageLocalRuntimeNamedTool>(tools: TTool[]): TTool[] {
