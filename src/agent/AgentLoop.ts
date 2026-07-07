@@ -33,7 +33,7 @@ import { runTurn } from './loop/runTurn.js';
 import type { ToolExecutionUpdate } from './loop/runToolCall.js';
 import { buildAgentLoopTokenUsageInfo } from './loop/tokenUsage.js';
 import { createAgentLoopTokenUsageTracker } from './loop/tokenUsageTracker.js';
-import { buildAgentToolResultContent } from './loop/toolResultContent.js';
+import { buildAgentLoopToolMessage } from './loop/toolMessage.js';
 import { createAgentToolResultTracker } from './loop/toolResultTracker.js';
 import { createAgentLoopTurnCounter } from './loop/turnCounter.js';
 import type { FunctionToolCall } from './loop/types.js';
@@ -501,12 +501,7 @@ export async function* agentLoop(
         await toolHooks?.afterExec?.({ toolCall, result, toolUseUuid });
       }
 
-      convState.append({
-        role: 'tool',
-        tool_call_id: toolCall.id,
-        name: toolCall.function.name,
-        content: buildAgentToolResultContent(result),
-      });
+      convState.append(buildAgentLoopToolMessage({ toolCall, result }));
 
       if (result.newMessages && result.newMessages.length > 0) {
         convState.append(...markToolInjectedSystemMessages(result.newMessages));
