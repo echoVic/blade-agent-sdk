@@ -74,15 +74,10 @@ import type {
 } from './runtimeKernelModels.js';
 import { createPackageLocalRuntimeBootstrap } from './runtimeBootstrap.js';
 import { projectPackageLocalRuntimePortFields } from './runtimePortProjection.js';
-import {
-  createPackageLocalRuntimeSessionOperations,
-  type PackageLocalRuntimeSessionOperations,
-} from './runtimeSessionOperations.js';
+import type { PackageLocalRuntimeSessionOperations } from './runtimeSessionOperations.js';
 import type { PackageLocalRuntimeMcpServerCapability } from './runtimeMcpCapabilities.js';
-import {
-  createPackageLocalRuntimeMcpOperations,
-  type PackageLocalRuntimeMcpOperations,
-} from './runtimeMcp.js';
+import type { PackageLocalRuntimeMcpOperations } from './runtimeMcp.js';
+import { createPackageLocalRuntimeConnectionOperations } from './runtimeConnectionOperations.js';
 import type { PackageLocalRuntimeSubagentOperations } from './runtimeSubagents.js';
 import type { PackageLocalRuntimeToolFilterOperations } from './runtimeToolFilters.js';
 import type {
@@ -241,16 +236,13 @@ export class PackageLocalSessionRuntime {
     this.kernelPortFactory = runtimePortFields.kernelPortFactory;
     this.kernelFactory = runtimePortFields.kernelFactory;
     this.kernelModelResolver = runtimePortFields.kernelModelResolver;
-    this.sessionOperations = createPackageLocalRuntimeSessionOperations({
+    const connectionOperations = createPackageLocalRuntimeConnectionOperations({
       sessionId: this.sessionId,
       sessionStore: this.sessionStore,
       workspace: this.workspace,
       hookRuntime: this.hookRuntime,
       model: this.options.model,
       provider: this.options.provider.type,
-      closeRuntimeResources: () => this.mcpOperations.servers.lifecycle.close(),
-    });
-    this.mcpOperations = createPackageLocalRuntimeMcpOperations({
       mcpRegistry: this.mcpRegistry,
       configuredServers: this.options.mcpServers,
       logger: this.logger,
@@ -258,6 +250,8 @@ export class PackageLocalSessionRuntime {
       filterTools: (tools) => this.filterTools(tools),
       refreshMcpTools: (serverNames) => this.refreshMcpTools(serverNames),
     });
+    this.sessionOperations = connectionOperations.session;
+    this.mcpOperations = connectionOperations.mcp;
     this.executionOperations = createPackageLocalRuntimeExecutionOperations({
       bladeConfig: this.bladeConfig,
       permissionMode: this.options.permissionMode,

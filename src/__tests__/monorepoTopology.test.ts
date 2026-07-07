@@ -601,6 +601,11 @@ describe('monorepo topology', () => {
     )
       ? readFileSync('packages/agent-sdk/src/session/runtimePortProjection.ts', 'utf-8')
       : '';
+    const runtimeConnectionOperationsSource = existsSync(
+      'packages/agent-sdk/src/session/runtimeConnectionOperations.ts',
+    )
+      ? readFileSync('packages/agent-sdk/src/session/runtimeConnectionOperations.ts', 'utf-8')
+      : '';
     const runtimeSubagentsSource = existsSync('packages/agent-sdk/src/session/runtimeSubagents.ts')
       ? readFileSync('packages/agent-sdk/src/session/runtimeSubagents.ts', 'utf-8')
       : '';
@@ -730,6 +735,26 @@ describe('monorepo topology', () => {
     expect(packageLocalRuntimeInstanceSource).not.toContain(
       'this.hookCallbacks = options.options.hooks ?? {}',
     );
+    expect(existsSync('packages/agent-sdk/src/session/runtimeConnectionOperations.ts')).toBe(true);
+    expect(runtimeConnectionOperationsSource).not.toContain('../../../../src/');
+    expect(runtimeConnectionOperationsSource).toContain(
+      'createPackageLocalRuntimeConnectionOperations',
+    );
+    expect(runtimeConnectionOperationsSource).toContain(
+      'createPackageLocalRuntimeSessionOperations',
+    );
+    expect(runtimeConnectionOperationsSource).toContain(
+      'createPackageLocalRuntimeMcpOperations',
+    );
+    expect(packageLocalRuntimeInstanceSource).toContain(
+      'createPackageLocalRuntimeConnectionOperations',
+    );
+    expect(packageLocalRuntimeInstanceSource).not.toContain(
+      'createPackageLocalRuntimeSessionOperations({',
+    );
+    expect(packageLocalRuntimeInstanceSource).not.toContain(
+      'createPackageLocalRuntimeMcpOperations({',
+    );
     expect(existsSync('packages/agent-sdk/src/session/runtimeContext.ts')).toBe(true);
     expect(runtimeContextSource).not.toContain('../../../../src/');
     expect(runtimeContextSource).toContain('resolvePackageLocalRuntimeStorageRoot');
@@ -758,7 +783,10 @@ describe('monorepo topology', () => {
     expect(packageLocalRuntimeInstanceSource).toContain(
       'private readonly mcpOperations: PackageLocalRuntimeMcpOperations',
     );
-    expect(packageLocalRuntimeInstanceSource).toContain(
+    expect(runtimeConnectionOperationsSource).toContain(
+      'createPackageLocalRuntimeMcpOperations',
+    );
+    expect(packageLocalRuntimeInstanceSource).not.toContain(
       'createPackageLocalRuntimeMcpOperations',
     );
     expect(packageLocalRuntimeInstanceSource).toContain('mcpOperations.capabilities');
@@ -831,7 +859,10 @@ describe('monorepo topology', () => {
     expect(runtimeSessionOperationsSource).toContain(
       'createPackageLocalRuntimeWorkspaceOperations',
     );
-    expect(packageLocalRuntimeInstanceSource).toContain(
+    expect(runtimeConnectionOperationsSource).toContain(
+      'createPackageLocalRuntimeSessionOperations',
+    );
+    expect(packageLocalRuntimeInstanceSource).not.toContain(
       'createPackageLocalRuntimeSessionOperations',
     );
     expect(packageLocalRuntimeInstanceSource).toContain(
