@@ -100,6 +100,7 @@ describe('package entrypoints', () => {
     expect(existsSync(join(process.cwd(), 'packages/agent-sdk/src/__tests__/runtimeTools.test.ts'))).toBe(true);
     expect(existsSync(join(process.cwd(), 'packages/agent-sdk/src/__tests__/runtimeWorkspace.test.ts'))).toBe(true);
     expect(existsSync(join(process.cwd(), 'packages/agent-sdk/src/__tests__/runtimePermissions.test.ts'))).toBe(true);
+    expect(existsSync(join(process.cwd(), 'packages/agent-sdk/src/__tests__/runtimeMcp.test.ts'))).toBe(true);
   });
 
   it('keeps the server entry as an explicit facade instead of a root wildcard forwarder', () => {

@@ -1,8 +1,8 @@
 import { existsSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 
-const runtimeMcpModulePath = '../../packages/agent-sdk/src/session/runtimeMcp.js';
-const runtimeMcpSourcePath = 'packages/agent-sdk/src/session/runtimeMcp.ts';
+const runtimeMcpModulePath = '../session/runtimeMcp.js';
+const runtimeMcpSourcePath = 'src/session/runtimeMcp.ts';
 
 describe('agent-sdk package-local runtime MCP operations', () => {
   it('bundles capabilities, server operations, and tool refresh behind injected ports', async () => {
