@@ -336,10 +336,24 @@ function verifyReleaseWorkflow() {
   const trustedPublishingNpmCliStep = commands.find((command) => command.startsWith('npm install -g npm@'));
 
   assertDeepEqual(workflow.on?.push?.branches, ['main'], 'release workflow push branches');
+  assertDeepEqual(workflow.permissions, {
+    contents: 'write',
+    issues: 'write',
+    'pull-requests': 'write',
+    'id-token': 'write',
+  }, 'release workflow permissions');
   assertDeepEqual(workflow.concurrency, {
     group: 'release-main',
     'cancel-in-progress': false,
   }, 'release workflow concurrency');
+  if (JSON.stringify(workflow.permissions) !== JSON.stringify({
+    contents: 'write',
+    issues: 'write',
+    'pull-requests': 'write',
+    'id-token': 'write',
+  })) {
+    fail('release workflow must grant only the required publish permissions');
+  }
   if (workflow.permissions?.['id-token'] !== 'write') {
     fail('release workflow must grant id-token: write for trusted publishing');
   }

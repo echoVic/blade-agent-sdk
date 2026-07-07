@@ -1554,18 +1554,21 @@ describe('release scripts', () => {
 });
 
 describe('release workflow', () => {
-  it('runs after pushes to main and grants the release permissions', () => {
+  it('runs after pushes to main and grants only the release permissions', () => {
     const workflow = parse(
       readFileSync(resolve('.github/workflows/release.yml'), 'utf8')
     );
+    const releaseVerifier = readFileSync(resolve('scripts/verify-release-config.mjs'), 'utf8');
 
     expect(workflow.on.push.branches).toEqual(['main']);
-    expect(workflow.permissions).toMatchObject({
+    expect(workflow.permissions).toEqual({
       contents: 'write',
       issues: 'write',
       'pull-requests': 'write',
       'id-token': 'write',
     });
+    expect(releaseVerifier).toContain('release workflow permissions');
+    expect(releaseVerifier).toContain('release workflow must grant only the required publish permissions');
   });
 
   it('serializes main-branch release jobs without cancelling in-flight publishes', () => {
