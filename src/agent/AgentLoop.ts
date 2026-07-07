@@ -19,6 +19,7 @@ import { isOverflowRecoverable } from './isOverflowRecoverable.js';
 import { decideNoToolTurn } from './loop/decideNoToolTurn.js';
 import { decideTurnLimit } from './loop/decideTurnLimit.js';
 import { executeToolCalls } from './loop/executeToolCalls.js';
+import { buildAgentLoopAbortResult } from './loop/loopResult.js';
 import { planToolExecution } from './loop/planToolExecution.js';
 import { runTurn } from './loop/runTurn.js';
 import type { ToolExecutionUpdate } from './loop/runToolCall.js';
@@ -171,7 +172,11 @@ export async function* agentLoop(
 
     if (signal?.aborted) {
       yield { type: 'agent_end' };
-      return buildAbortResult(turnsCount, totalToolCalls, startTime);
+      return buildAgentLoopAbortResult({
+        turnsCount,
+        toolCallsCount: totalToolCalls,
+        startTime,
+      });
     }
 
     if (!retryCurrentTurn && turnHooks?.beforeTurn) {
@@ -195,7 +200,11 @@ export async function* agentLoop(
 
     if (signal?.aborted) {
       yield { type: 'agent_end' };
-      return buildAbortResult(turnsCount - 1, totalToolCalls, startTime);
+      return buildAgentLoopAbortResult({
+        turnsCount: turnsCount - 1,
+        toolCallsCount: totalToolCalls,
+        startTime,
+      });
     }
 
     const turnState = config.prepareTurnState(turnsCount);
@@ -391,7 +400,11 @@ export async function* agentLoop(
 
     if (signal?.aborted) {
       yield { type: 'agent_end' };
-      return buildAbortResult(turnsCount - 1, totalToolCalls, startTime);
+      return buildAgentLoopAbortResult({
+        turnsCount: turnsCount - 1,
+        toolCallsCount: totalToolCalls,
+        startTime,
+      });
     }
 
     if (turnResult.reasoningContent && !signal?.aborted) {
@@ -470,7 +483,11 @@ export async function* agentLoop(
 
       if (signal?.aborted) {
         yield { type: 'agent_end' };
-        return buildAbortResult(turnsCount, totalToolCalls, startTime);
+        return buildAgentLoopAbortResult({
+          turnsCount,
+          toolCallsCount: totalToolCalls,
+          startTime,
+        });
       }
 
       executionResults = await executeToolCalls({
@@ -558,7 +575,11 @@ export async function* agentLoop(
 
     if (signal?.aborted) {
       yield { type: 'agent_end' };
-      return buildAbortResult(turnsCount, totalToolCalls, startTime);
+      return buildAgentLoopAbortResult({
+        turnsCount,
+        toolCallsCount: totalToolCalls,
+        startTime,
+      });
     }
 
     // 轮次上限
@@ -587,25 +608,4 @@ export async function* agentLoop(
       turnsCount = 0;
     }
   }
-}
-
-// ===== 辅助函数 =====
-
-function buildAbortResult(
-  turnsCount: number,
-  toolCallsCount: number,
-  startTime: number
-): LoopResult {
-  return {
-    success: false,
-    error: {
-      type: 'aborted',
-      message: '任务已被用户中止',
-    },
-    metadata: {
-      turnsCount,
-      toolCallsCount,
-      duration: Date.now() - startTime,
-    },
-  };
 }
