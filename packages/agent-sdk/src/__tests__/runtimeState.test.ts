@@ -1,11 +1,11 @@
 import { describe, expect, it, vi } from 'vitest';
-import type { RuntimeContext } from '../../packages/agent-sdk/src/runtime/types.js';
-import type { BladeConfig } from '../../packages/agent-sdk/src/types/common.js';
-import type { SessionOptions } from '../../packages/agent-sdk/src/session/types.js';
-import { HookEvent } from '../../packages/agent-sdk/src/types/constants.js';
+import type { RuntimeContext } from '../runtime/types.js';
+import type { BladeConfig } from '../types/common.js';
+import type { SessionOptions } from '../session/types.js';
+import { HookEvent } from '../types/constants.js';
 import {
   createPackageLocalRuntimeInitialState,
-} from '../../packages/agent-sdk/src/session/runtimeState.js';
+} from '../session/runtimeState.js';
 
 describe('agent-sdk package-local runtime initial state helpers', () => {
   it('derives storage root, project path, and hook callbacks without runtime class state', () => {
