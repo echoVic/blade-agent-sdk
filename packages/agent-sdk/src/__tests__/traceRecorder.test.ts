@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { TraceRecorder } from '../../packages/agent-sdk/src/observability/TraceRecorder.js';
-import { HookEvent } from '../../packages/agent-sdk/src/types/constants.js';
+import { TraceRecorder } from '../observability/TraceRecorder.js';
+import { HookEvent } from '../types/constants.js';
 
 describe('agent-sdk package TraceRecorder', () => {
   it('records session, turn, tool, usage, result, and hook events into one trace', () => {
