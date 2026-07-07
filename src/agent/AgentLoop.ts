@@ -29,6 +29,7 @@ import { planToolExecution } from './loop/planToolExecution.js';
 import { runTurn } from './loop/runTurn.js';
 import type { ToolExecutionUpdate } from './loop/runToolCall.js';
 import { buildAgentLoopTokenUsageInfo } from './loop/tokenUsage.js';
+import { buildAgentToolResultContent } from './loop/toolResultContent.js';
 import type { FunctionToolCall } from './loop/types.js';
 import type { ConversationState } from './state/ConversationState.js';
 import type { TurnState } from './state/TurnState.js';
@@ -519,22 +520,11 @@ export async function* agentLoop(
         await toolHooks?.afterExec?.({ toolCall, result, toolUseUuid });
       }
 
-      // 写入 tool 消息
-      let toolResultContent = result.success
-        ? result.llmContent || ''
-        : result.error?.message || '执行失败';
-
-      if (typeof toolResultContent === 'object' && toolResultContent !== null) {
-        toolResultContent = JSON.stringify(toolResultContent, null, 2);
-      }
-
       convState.append({
         role: 'tool',
         tool_call_id: toolCall.id,
         name: toolCall.function.name,
-        content: typeof toolResultContent === 'string'
-          ? toolResultContent
-          : JSON.stringify(toolResultContent),
+        content: buildAgentToolResultContent(result),
       });
 
       if (result.newMessages && result.newMessages.length > 0) {
