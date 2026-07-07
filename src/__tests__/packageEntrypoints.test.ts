@@ -68,6 +68,7 @@ describe('package entrypoints', () => {
   it('keeps security-sensitive agent-sdk runtime tests package-local', () => {
     expect(existsSync(join(process.cwd(), 'packages/agent-sdk/src/__tests__/publicFacades.test.ts'))).toBe(true);
     expect(existsSync(join(process.cwd(), 'packages/agent-sdk/src/__tests__/runtimeToolFilters.test.ts'))).toBe(true);
+    expect(existsSync(join(process.cwd(), 'packages/agent-sdk/src/__tests__/runtimeTraceManager.test.ts'))).toBe(true);
   });
 
   it('keeps the server entry as an explicit facade instead of a root wildcard forwarder', () => {

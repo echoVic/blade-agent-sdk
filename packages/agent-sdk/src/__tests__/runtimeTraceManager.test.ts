@@ -3,9 +3,9 @@ import {
   createPackageLocalRuntimeTraceOperations,
   createPackageLocalRuntimeTraceManager,
   createPackageLocalRuntimeTraceRuntime,
-} from '../../packages/agent-sdk/src/session/runtimeTraceManager.js';
-import type { AgentTrace } from '../../packages/agent-sdk/src/observability/types.js';
-import { PermissionMode } from '../../packages/agent-sdk/src/types/common.js';
+} from '../session/runtimeTraceManager.js';
+import type { AgentTrace } from '../observability/types.js';
+import { PermissionMode } from '../types/common.js';
 
 describe('agent-sdk package-local runtime trace manager helper', () => {
   it('creates session trace metadata from runtime model, provider, and default permission mode', () => {
