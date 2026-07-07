@@ -4,7 +4,7 @@ import {
   getSandboxService,
   SandboxExecutor,
   SandboxService,
-} from '../../packages/agent-sdk/src/local/sandbox.js';
+} from '../local/sandbox.js';
 
 describe('agent-sdk local sandbox adapter', () => {
   beforeEach(() => {
