@@ -1586,6 +1586,32 @@ describe('release workflow', () => {
     expect(releaseVerifier).toContain('release workflow must not cancel an in-flight publish');
   });
 
+  it('keeps release workflow manual trigger and job shape covered by the release verifier', () => {
+    const workflow = parse(
+      readFileSync(resolve('.github/workflows/release.yml'), 'utf8')
+    );
+    const releaseJob = workflow.jobs.release;
+    const steps = releaseJob.steps;
+    const checkoutStep = steps.find((step: { uses?: string }) =>
+      step.uses?.startsWith('actions/checkout@')
+    );
+    const setupNodeStep = steps.find((step: { uses?: string }) =>
+      step.uses?.startsWith('actions/setup-node@')
+    );
+    const releaseVerifier = readFileSync(resolve('scripts/verify-release-config.mjs'), 'utf8');
+
+    expect(workflow.on.workflow_dispatch).toEqual(null);
+    expect(releaseJob['runs-on']).toBe('ubuntu-latest');
+    expect(releaseJob['timeout-minutes']).toBe(20);
+    expect(checkoutStep.uses).toBe('actions/checkout@v5');
+    expect(setupNodeStep.with).toMatchObject({ cache: 'pnpm' });
+    expect(releaseVerifier).toContain('release workflow must support manual workflow_dispatch runs');
+    expect(releaseVerifier).toContain('release workflow must run on ubuntu-latest');
+    expect(releaseVerifier).toContain('release workflow must keep a 20 minute timeout');
+    expect(releaseVerifier).toContain('release workflow must use actions/checkout@v5');
+    expect(releaseVerifier).toContain('release workflow setup-node must cache pnpm');
+  });
+
   it('requires release checkout to fetch full history for tags and release notes', () => {
     const workflow = parse(
       readFileSync(resolve('.github/workflows/release.yml'), 'utf8')

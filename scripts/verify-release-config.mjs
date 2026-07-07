@@ -322,6 +322,7 @@ async function verifyPreparedReleaseManifestVersions() {
 
 function verifyReleaseWorkflow() {
   const workflow = parse(readFileSync(resolve('.github/workflows/release.yml'), 'utf8'));
+  const releaseJob = workflow.jobs?.release;
   const steps = workflow.jobs?.release?.steps ?? [];
   const commands = steps.map((step) => step.run).filter(Boolean);
   const checkoutStep = steps.find((step) => step.uses?.startsWith('actions/checkout@'));
@@ -336,6 +337,9 @@ function verifyReleaseWorkflow() {
   const trustedPublishingNpmCliStep = commands.find((command) => command.startsWith('npm install -g npm@'));
 
   assertDeepEqual(workflow.on?.push?.branches, ['main'], 'release workflow push branches');
+  if (!('workflow_dispatch' in (workflow.on ?? {}))) {
+    fail('release workflow must support manual workflow_dispatch runs');
+  }
   assertDeepEqual(workflow.permissions, {
     contents: 'write',
     issues: 'write',
@@ -363,6 +367,15 @@ function verifyReleaseWorkflow() {
   if (workflow.concurrency?.['cancel-in-progress'] !== false) {
     fail('release workflow must not cancel an in-flight publish');
   }
+  if (releaseJob?.['runs-on'] !== 'ubuntu-latest') {
+    fail('release workflow must run on ubuntu-latest');
+  }
+  if (releaseJob?.['timeout-minutes'] !== 20) {
+    fail('release workflow must keep a 20 minute timeout');
+  }
+  if (checkoutStep?.uses !== 'actions/checkout@v5') {
+    fail('release workflow must use actions/checkout@v5');
+  }
   if (checkoutStep?.with?.['fetch-depth'] !== 0) {
     fail('release workflow checkout must fetch full git history');
   }
@@ -385,6 +398,9 @@ function verifyReleaseWorkflow() {
   }
   if (setupNodeStep?.with?.['node-version'] !== '22.14') {
     fail('release workflow Node version must match the package engine floor');
+  }
+  if (setupNodeStep?.with?.cache !== 'pnpm') {
+    fail('release workflow setup-node must cache pnpm');
   }
   if (setupPnpmStep?.with?.version !== '11.7.0') {
     fail('release workflow must pin pnpm/action-setup to pnpm 11.7.0');
