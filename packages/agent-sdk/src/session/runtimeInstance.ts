@@ -73,6 +73,7 @@ import type {
   PackageLocalRuntimeKernelModelResolverPort,
 } from './runtimeKernelModels.js';
 import { createPackageLocalRuntimeBootstrap } from './runtimeBootstrap.js';
+import { projectPackageLocalRuntimePortFields } from './runtimePortProjection.js';
 import {
   createPackageLocalRuntimeSessionOperations,
   type PackageLocalRuntimeSessionOperations,
@@ -220,23 +221,26 @@ export class PackageLocalSessionRuntime {
     this.storageRoot = bootstrap.initialState.storageRoot;
     this.projectPath = bootstrap.initialState.projectPath;
     this.hookCallbacks = bootstrap.initialState.hookCallbacks;
-    const runtimePorts = bootstrap.ports;
-    this.sessionStore = runtimePorts.sessionStore;
-    this.workspace = runtimePorts.workspace;
-    this.mcpRegistry = runtimePorts.mcpRegistry;
-    this.toolCatalog = runtimePorts.toolCatalog;
-    this.logger = runtimePorts.logger;
-    this.customToolFactory = options.customToolFactory;
-    this.builtinToolProvider = options.builtinToolProvider;
-    this.subagentRegistry = runtimePorts.subagentRegistry;
-    this.permissionHooks = runtimePorts.permissionHooks;
-    this.hookRuntime = runtimePorts.hookRuntime;
-    this.hookManager = runtimePorts.hookManager;
-    this.backgroundAgentManager = runtimePorts.backgroundAgentManager;
-    this.executionPipelineFactory = runtimePorts.executionPipelineFactory;
-    this.kernelPortFactory = runtimePorts.kernelPortFactory;
-    this.kernelFactory = runtimePorts.kernelFactory;
-    this.kernelModelResolver = runtimePorts.kernelModelResolver;
+    const runtimePortFields = projectPackageLocalRuntimePortFields({
+      ports: bootstrap.ports,
+      options,
+    });
+    this.sessionStore = runtimePortFields.sessionStore;
+    this.workspace = runtimePortFields.workspace;
+    this.mcpRegistry = runtimePortFields.mcpRegistry;
+    this.toolCatalog = runtimePortFields.toolCatalog;
+    this.logger = runtimePortFields.logger;
+    this.customToolFactory = runtimePortFields.customToolFactory;
+    this.builtinToolProvider = runtimePortFields.builtinToolProvider;
+    this.subagentRegistry = runtimePortFields.subagentRegistry;
+    this.permissionHooks = runtimePortFields.permissionHooks;
+    this.hookRuntime = runtimePortFields.hookRuntime;
+    this.hookManager = runtimePortFields.hookManager;
+    this.backgroundAgentManager = runtimePortFields.backgroundAgentManager;
+    this.executionPipelineFactory = runtimePortFields.executionPipelineFactory;
+    this.kernelPortFactory = runtimePortFields.kernelPortFactory;
+    this.kernelFactory = runtimePortFields.kernelFactory;
+    this.kernelModelResolver = runtimePortFields.kernelModelResolver;
     this.sessionOperations = createPackageLocalRuntimeSessionOperations({
       sessionId: this.sessionId,
       sessionStore: this.sessionStore,

@@ -596,6 +596,11 @@ describe('monorepo topology', () => {
     const runtimeBootstrapSource = existsSync('packages/agent-sdk/src/session/runtimeBootstrap.ts')
       ? readFileSync('packages/agent-sdk/src/session/runtimeBootstrap.ts', 'utf-8')
       : '';
+    const runtimePortProjectionSource = existsSync(
+      'packages/agent-sdk/src/session/runtimePortProjection.ts',
+    )
+      ? readFileSync('packages/agent-sdk/src/session/runtimePortProjection.ts', 'utf-8')
+      : '';
     const runtimeSubagentsSource = existsSync('packages/agent-sdk/src/session/runtimeSubagents.ts')
       ? readFileSync('packages/agent-sdk/src/session/runtimeSubagents.ts', 'utf-8')
       : '';
@@ -692,6 +697,16 @@ describe('monorepo topology', () => {
     expect(runtimeBootstrapSource).toContain('resolvePackageLocalRuntimePorts');
     expect(packageLocalRuntimeInstanceSource).toContain('createPackageLocalRuntimeBootstrap');
     expect(packageLocalRuntimeInstanceSource).not.toContain('resolvePackageLocalRuntimePorts');
+    expect(existsSync('packages/agent-sdk/src/session/runtimePortProjection.ts')).toBe(true);
+    expect(runtimePortProjectionSource).not.toContain('../../../../src/');
+    expect(runtimePortProjectionSource).toContain('projectPackageLocalRuntimePortFields');
+    expect(packageLocalRuntimeInstanceSource).toContain('projectPackageLocalRuntimePortFields');
+    expect(packageLocalRuntimeInstanceSource).not.toContain(
+      'this.sessionStore = runtimePorts.sessionStore',
+    );
+    expect(packageLocalRuntimeInstanceSource).not.toContain(
+      'this.kernelModelResolver = runtimePorts.kernelModelResolver',
+    );
     expect(packageLocalRuntimeInstanceSource).not.toContain('const noopPorts');
     expect(packageLocalRuntimeInstanceSource).not.toContain('?? noopPorts.');
     expect(packageLocalRuntimeInstanceSource).not.toContain(
