@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { TurnAbortController } from '../../packages/agent-sdk/src/session/turnAbort.js';
+import { TurnAbortController } from '../session/turnAbort.js';
 
 describe('agent-sdk session turn abort controller', () => {
   it('creates a local turn signal and clears it during cleanup', () => {
