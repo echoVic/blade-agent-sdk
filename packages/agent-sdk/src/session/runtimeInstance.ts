@@ -107,6 +107,8 @@ import { createPackageLocalRuntimeSessionCapabilityOperations } from './runtimeS
 import {
   createPackageLocalRuntimeCapabilityInitializationOperations,
   type PackageLocalRuntimeCapabilityInitializationOperations,
+  createPackageLocalRuntimeCapabilityStartupOperations,
+  type PackageLocalRuntimeCapabilityStartupOperations,
 } from './runtimeCapabilities.js';
 import {
   createPackageLocalRuntimeControlOperations,
@@ -220,6 +222,7 @@ export class PackageLocalSessionRuntime {
   private readonly forkOperations: PackageLocalRuntimeForkOperations;
   private readonly traceManager: SessionTraceManager;
   private readonly capabilityInitializationOperations: PackageLocalRuntimeCapabilityInitializationOperations;
+  private readonly capabilityStartupOperations: PackageLocalRuntimeCapabilityStartupOperations;
   private readonly controlOperations: PackageLocalRuntimeControlOperations;
 
   constructor(options: PackageLocalSessionRuntimeOptions) {
@@ -362,9 +365,17 @@ export class PackageLocalSessionRuntime {
     this.traceManager = turnOperations.traceManager;
     this.kernelTurnStreamOperations = turnOperations.kernelTurnStream;
     this.traceOperations = turnOperations.traceOperations;
+    this.capabilityStartupOperations = createPackageLocalRuntimeCapabilityStartupOperations({
+      registerConfiguredMcpServers: () => this.registerConfiguredMcpServers(),
+      registerCustomTools: () => this.registerCustomTools(),
+      registerBuiltinTools: () => this.registerBuiltinTools(),
+      initializeSubagents: () => this.initializeSubagents(),
+      initializeHooks: () => this.initializeHooks(),
+    });
     this.capabilityInitializationOperations =
       createPackageLocalRuntimeCapabilityInitializationOperations({
-        initializeRuntimeCapabilities: () => this.initializeRuntimeCapabilities(),
+        initializeRuntimeCapabilities: () =>
+          this.capabilityStartupOperations.initializeRuntimeCapabilities(),
         initializeSubagents: () => this.initializeSubagents(),
       });
     this.controlOperations = createPackageLocalRuntimeControlOperations({
@@ -468,14 +479,6 @@ export class PackageLocalSessionRuntime {
 
   async ensureRuntimeCapabilitiesInitialized(): Promise<void> {
     await this.capabilityInitializationOperations.ensureInitialized();
-  }
-
-  private async initializeRuntimeCapabilities(): Promise<void> {
-    await this.registerConfiguredMcpServers();
-    this.registerCustomTools();
-    await this.registerBuiltinTools();
-    this.initializeSubagents();
-    this.initializeHooks();
   }
 
   async refreshMcpTools(serverNames: string[]): Promise<void> {

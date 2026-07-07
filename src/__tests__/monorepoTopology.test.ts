@@ -1053,10 +1053,17 @@ describe('monorepo topology', () => {
       'createPackageLocalRuntimeCapabilityInitializationOperations',
     );
     expect(runtimeCapabilitiesSource).toContain(
+      'createPackageLocalRuntimeCapabilityStartupOperations',
+    );
+    expect(runtimeCapabilitiesSource).toContain(
       'runtimeCapabilitiesInitialization',
     );
     expect(runtimeCapabilitiesSource).toContain('subagentLocationsNeedRefresh');
     expect(packageLocalRuntimeInstanceSource).toContain('capabilityInitializationOperations');
+    expect(packageLocalRuntimeInstanceSource).toContain('capabilityStartupOperations');
+    expect(packageLocalRuntimeInstanceSource).not.toContain(
+      'private async initializeRuntimeCapabilities',
+    );
     expect(packageLocalRuntimeInstanceSource).not.toContain(
       'private runtimeCapabilitiesInitialization',
     );

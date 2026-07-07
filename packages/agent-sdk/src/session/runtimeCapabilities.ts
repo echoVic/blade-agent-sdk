@@ -3,9 +3,35 @@ export interface PackageLocalRuntimeCapabilityInitializationOptions {
   initializeSubagents(): void;
 }
 
+export interface PackageLocalRuntimeCapabilityStartupOperationsOptions {
+  registerConfiguredMcpServers(): Promise<void> | void;
+  registerCustomTools(): void;
+  registerBuiltinTools(): Promise<void> | void;
+  initializeSubagents(): void;
+  initializeHooks(): void;
+}
+
+export interface PackageLocalRuntimeCapabilityStartupOperations {
+  initializeRuntimeCapabilities(): Promise<void>;
+}
+
 export interface PackageLocalRuntimeCapabilityInitializationOperations {
   ensureInitialized(): Promise<void>;
   markSubagentLocationsDirty(): void;
+}
+
+export function createPackageLocalRuntimeCapabilityStartupOperations(
+  options: PackageLocalRuntimeCapabilityStartupOperationsOptions,
+): PackageLocalRuntimeCapabilityStartupOperations {
+  return {
+    async initializeRuntimeCapabilities() {
+      await options.registerConfiguredMcpServers();
+      options.registerCustomTools();
+      await options.registerBuiltinTools();
+      options.initializeSubagents();
+      options.initializeHooks();
+    },
+  };
 }
 
 export function createPackageLocalRuntimeCapabilityInitializationOperations(
