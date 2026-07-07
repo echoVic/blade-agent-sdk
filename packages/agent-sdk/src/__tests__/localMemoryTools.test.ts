@@ -3,13 +3,13 @@ import {
   createMemoryReadTool,
   createMemoryWriteTool,
   getBuiltinTools,
-} from '../../packages/agent-sdk/src/local/builtin-tools.js';
+} from '../local/builtin-tools.js';
 import {
   MemoryManager,
   type Memory,
   type MemoryInput,
   type MemoryStore,
-} from '../../packages/agent-sdk/src/local/memory.js';
+} from '../local/memory.js';
 
 class InMemoryStore implements MemoryStore {
   private readonly records = new Map<string, Memory>();
