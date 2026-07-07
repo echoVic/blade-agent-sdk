@@ -2,8 +2,8 @@ import { existsSync } from 'node:fs';
 import { describe, expect, it, vi } from 'vitest';
 
 const toolRegistrationModulePath =
-  '../../packages/agent-sdk/src/session/runtimeToolRegistration.js';
-const toolRegistrationSourcePath = 'packages/agent-sdk/src/session/runtimeToolRegistration.ts';
+  '../session/runtimeToolRegistration.js';
+const toolRegistrationSourcePath = 'src/session/runtimeToolRegistration.ts';
 
 describe('agent-sdk package-local runtime tool registration helpers', () => {
   it('registers custom tools through factory and registration ports without runtime state', async () => {
