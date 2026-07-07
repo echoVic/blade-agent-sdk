@@ -1111,6 +1111,23 @@ describe('release scripts', () => {
     expect(roadmap).toContain('manifest target extension gate');
   });
 
+  it('mirrors source public export subpath shape checks in packed and published verifiers', () => {
+    const packageVerifier = readFileSync(resolve('scripts/verify-packages.mjs'), 'utf8');
+    const publishedVerifier = readFileSync(resolve('scripts/verify-published.mjs'), 'utf8');
+    const readme = readFileSync(resolve('README.md'), 'utf8');
+    const checklist = readFileSync(resolve('docs/production-checklist.md'), 'utf8');
+    const roadmap = readFileSync(resolve('docs/roadmap/production-agent-sdk-monorepo.md'), 'utf8');
+
+    for (const verifier of [packageVerifier, publishedVerifier]) {
+      expect(verifier).toContain('assertManifestExportSubpathShape');
+      expect(verifier).toContain('must be "." or start with "./"');
+      expect(verifier).toContain('must not contain parent directory segments');
+    }
+    expect(readme).toContain('public export subpath shape checks');
+    expect(checklist).toContain('public export subpath shape checks');
+    expect(roadmap).toContain('public export subpath shape gate');
+  });
+
   it('verifies packed SDK browser export conditions before publication', () => {
     const packageVerifier = readFileSync(resolve('scripts/verify-packages.mjs'), 'utf8');
     const readme = readFileSync(resolve('README.md'), 'utf8');

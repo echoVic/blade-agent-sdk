@@ -572,6 +572,45 @@ describe('package boundary verifier', () => {
     expect(result.stderr).toContain('exports must declare a root "." condition object');
   });
 
+  it('rejects public export subpaths with invalid package shapes', () => {
+    const cwd = createBoundaryFixture();
+    writeJson(join(cwd, 'packages', 'agent-sdk', 'package.json'), {
+      name: '@blade-ai/agent-sdk',
+      main: './dist/index.js',
+      types: './dist/index.d.ts',
+      exports: {
+        '.': {
+          types: './dist/index.d.ts',
+          import: './dist/index.js',
+        },
+        server: {
+          types: './dist/server/index.d.ts',
+          import: './dist/server/index.js',
+        },
+        './../private': {
+          types: './dist/private/index.d.ts',
+          import: './dist/private/index.js',
+        },
+        './package.json': {
+          default: './package.json',
+        },
+      },
+      dependencies: {},
+    });
+
+    const result = spawnSync(process.execPath, [
+      resolve('scripts/verify-package-boundaries.mjs'),
+    ], {
+      cwd,
+      encoding: 'utf8',
+    });
+
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain('packages/agent-sdk/package.json');
+    expect(result.stderr).toContain('export subpath "server" must be "." or start with "./"');
+    expect(result.stderr).toContain('export subpath "./../private" must not contain parent directory segments');
+  });
+
   it('rejects CLI product entrypoints in the session SDK manifest', () => {
     const cwd = createBoundaryFixture();
     writeJson(join(cwd, 'packages', 'agent-sdk', 'package.json'), {

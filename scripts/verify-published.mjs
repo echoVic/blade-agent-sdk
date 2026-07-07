@@ -777,6 +777,15 @@ function assertManifestTargetExtension({ packageName, label, condition, target }
   }
 }
 
+function assertManifestExportSubpathShape({ packageName, exportName, label }) {
+  if (exportName !== '.' && !exportName.startsWith('./')) {
+    throw new Error(`${packageName} ${label} export subpath "${exportName}" must be "." or start with "./"`);
+  }
+  if (exportName.split('/').includes('..')) {
+    throw new Error(`${packageName} ${label} export subpath "${exportName}" must not contain parent directory segments`);
+  }
+}
+
 function getManifestRootExportConditions(exportsMap) {
   if (!exportsMap || typeof exportsMap !== 'object' || Array.isArray(exportsMap)) {
     return null;
@@ -841,6 +850,11 @@ function verifyPublishedManifestExports({ packageName, manifest }) {
   if (!exportsMap || typeof exportsMap !== 'object') return;
 
   for (const [exportName, exportValue] of Object.entries(exportsMap)) {
+    assertManifestExportSubpathShape({
+      packageName,
+      exportName,
+      label: 'installed manifest',
+    });
     if (isPackageJsonManifestExport(exportName, exportValue)) continue;
     if (typeof exportValue === 'string') {
       throw new Error(

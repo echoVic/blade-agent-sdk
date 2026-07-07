@@ -231,6 +231,20 @@ function collectExportEntries(exportsValue) {
   return Object.entries(exportsValue);
 }
 
+function hasParentDirectorySegment(subpath) {
+  return subpath.split('/').includes('..');
+}
+
+function verifyExportSubpathShape(packageJson, subpath) {
+  if (subpath !== '.' && !subpath.startsWith('./')) {
+    return `${packageJson}: export subpath "${subpath}" must be "." or start with "./"`;
+  }
+  if (hasParentDirectorySegment(subpath)) {
+    return `${packageJson}: export subpath "${subpath}" must not contain parent directory segments`;
+  }
+  return null;
+}
+
 function isDistArtifactTarget(target) {
   return target.startsWith('./dist/');
 }
@@ -361,6 +375,10 @@ for (const rule of manifestRules) {
   }
 
   for (const [subpath, exportValue] of collectExportEntries(manifest.exports)) {
+    const subpathViolation = verifyExportSubpathShape(rule.packageJson, subpath);
+    if (subpathViolation) {
+      violations.push(subpathViolation);
+    }
     if (isPackageJsonExportEntry(subpath, exportValue)) continue;
     if (!exportValue || typeof exportValue !== 'object' || Array.isArray(exportValue)) {
       violations.push(`${rule.packageJson}: export "${subpath}" must be a condition object`);
