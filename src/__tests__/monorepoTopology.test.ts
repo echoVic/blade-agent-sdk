@@ -1115,7 +1115,7 @@ describe('monorepo topology', () => {
     );
     expect(runtimeControlsSource).toContain('options.resetExecutionPipeline();');
     expect(packageLocalRuntimeInstanceSource).toContain(
-      'resetExecutionPipeline: () => this.executionPipelineOperations.reset()',
+      'resetExecutionPipeline: () => this.executionOperations.pipeline.reset()',
     );
     expect(packageLocalRuntimeInstanceSource).not.toContain(
       'this.options.maxTurns = maxTurns',
@@ -1218,9 +1218,13 @@ describe('monorepo topology', () => {
     expect(packageLocalRuntimeInstanceSource).toContain(
       'createPackageLocalRuntimeExecutionOperations',
     );
-    expect(packageLocalRuntimeInstanceSource).toContain('executionPipelineOperations');
+    expect(packageLocalRuntimeInstanceSource).toContain(
+      'private readonly executionOperations: PackageLocalRuntimeExecutionOperations',
+    );
     expect(packageLocalRuntimeInstanceSource).toContain('executionOperations.pipeline');
     expect(packageLocalRuntimeInstanceSource).toContain('executionOperations.agentDeps');
+    expect(packageLocalRuntimeInstanceSource).not.toContain('executionPipelineOperations');
+    expect(packageLocalRuntimeInstanceSource).not.toContain('agentRuntimeDepsOperations');
     expect(packageLocalRuntimeInstanceSource).not.toContain(
       'createPackageLocalRuntimeExecutionPipelineOperations({',
     );
@@ -1245,7 +1249,6 @@ describe('monorepo topology', () => {
     expect(runtimeAgentDepsSource).not.toContain('../../../../src/');
     expect(runtimeAgentDepsSource).toContain('createPackageLocalAgentRuntimeDeps');
     expect(runtimeAgentDepsSource).toContain('createPackageLocalAgentRuntimeDepsOperations');
-    expect(packageLocalRuntimeInstanceSource).toContain('agentRuntimeDepsOperations');
     expect(packageLocalRuntimeInstanceSource).not.toContain(
       'createPackageLocalAgentRuntimeDepsOperations({',
     );

@@ -43,10 +43,12 @@ import type {
   PackageLocalRuntimeHookRuntimePort,
 } from './runtimeHooks.js';
 import type {
-  PackageLocalRuntimeExecutionPipelineOperations,
   PackageLocalRuntimeExecutionPipelineFactoryPort,
 } from './runtimeExecutionPipeline.js';
-import { createPackageLocalRuntimeExecutionOperations } from './runtimeExecution.js';
+import {
+  createPackageLocalRuntimeExecutionOperations,
+  type PackageLocalRuntimeExecutionOperations,
+} from './runtimeExecution.js';
 import type {
   PackageLocalRuntimeAgentKernelOperations,
   PackageLocalRuntimeAgentKernelFactoryPort,
@@ -54,7 +56,6 @@ import type {
 } from './runtimeAgentKernels.js';
 import type {
   PackageLocalAgentRuntimeDeps,
-  PackageLocalAgentRuntimeDepsOperations,
   PackageLocalRuntimeBackgroundAgentManagerPort,
 } from './runtimeAgentDeps.js';
 import type {
@@ -192,8 +193,7 @@ export class PackageLocalSessionRuntime {
   readonly kernelModelResolver: PackageLocalRuntimeKernelModelResolverPort;
   private readonly sessionOperations: PackageLocalRuntimeSessionOperations<SessionMessage>;
   private readonly mcpOperations: PackageLocalRuntimeMcpOperations;
-  private readonly executionPipelineOperations: PackageLocalRuntimeExecutionPipelineOperations;
-  private readonly agentRuntimeDepsOperations: PackageLocalAgentRuntimeDepsOperations;
+  private readonly executionOperations: PackageLocalRuntimeExecutionOperations;
   private readonly kernelPortOperations: PackageLocalRuntimeKernelPortOperations;
   private readonly agentKernelOperations: PackageLocalRuntimeAgentKernelOperations;
   private readonly kernelTurnStreamOperations: PackageLocalRuntimeKernelTurnStreamOperations;
@@ -259,7 +259,7 @@ export class PackageLocalSessionRuntime {
       filterTools: (tools) => this.filterTools(tools),
       refreshMcpTools: (serverNames) => this.refreshMcpTools(serverNames),
     });
-    const executionOperations = createPackageLocalRuntimeExecutionOperations({
+    this.executionOperations = createPackageLocalRuntimeExecutionOperations({
       bladeConfig: this.bladeConfig,
       permissionMode: this.options.permissionMode,
       getPermissionMode: () => this.options.permissionMode,
@@ -274,8 +274,6 @@ export class PackageLocalSessionRuntime {
       backgroundAgentManager: this.backgroundAgentManager,
       hookRuntime: this.hookRuntime,
     });
-    this.executionPipelineOperations = executionOperations.pipeline;
-    this.agentRuntimeDepsOperations = executionOperations.agentDeps;
     const kernelOperations = createPackageLocalRuntimeKernelOperations({
       bladeConfig: this.bladeConfig,
       kernelModelResolver: this.kernelModelResolver,
@@ -361,7 +359,7 @@ export class PackageLocalSessionRuntime {
       setProjectPath: (projectPath) => {
         this.projectPath = projectPath;
       },
-      resetExecutionPipeline: () => this.executionPipelineOperations.reset(),
+      resetExecutionPipeline: () => this.executionOperations.pipeline.reset(),
       markSubagentLocationsDirty: () =>
         this.capabilityInitializationOperations.markSubagentLocationsDirty(),
     });
@@ -491,11 +489,11 @@ export class PackageLocalSessionRuntime {
   }
 
   createExecutionPipeline(): unknown {
-    return this.executionPipelineOperations.get();
+    return this.executionOperations.pipeline.get();
   }
 
   getAgentRuntimeDeps(): PackageLocalAgentRuntimeDeps {
-    return this.agentRuntimeDepsOperations.get();
+    return this.executionOperations.agentDeps.get();
   }
 
   getKernelToolPort(
