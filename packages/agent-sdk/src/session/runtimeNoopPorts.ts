@@ -14,7 +14,7 @@ import type {
   PackageLocalRuntimeSubagentRegistryPort,
   PackageLocalRuntimeToolCatalogPort,
   PackageLocalRuntimeWorkspacePort,
-} from './runtimeInstance.js';
+} from './runtimePorts.js';
 
 export interface PackageLocalRuntimeNoopPorts {
   sessionStore: PackageLocalRuntimeSessionStorePort;

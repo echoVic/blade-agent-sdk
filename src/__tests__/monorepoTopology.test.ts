@@ -463,6 +463,9 @@ describe('monorepo topology', () => {
       'packages/agent-sdk/src/session/runtimeInstance.ts',
       'utf-8',
     );
+    const runtimePortsSource = existsSync('packages/agent-sdk/src/session/runtimePorts.ts')
+      ? readFileSync('packages/agent-sdk/src/session/runtimePorts.ts', 'utf-8')
+      : '';
     const kernelStreamBridgeSource = readFileSync(
       'packages/agent-sdk/src/session/kernelStreamBridge.ts',
       'utf-8',
@@ -656,6 +659,22 @@ describe('monorepo topology', () => {
     expect(packageLocalRuntimeFactorySource).toContain('createPackageLocalSessionRuntimeFactory');
     expect(packageLocalRuntimeInstanceSource).not.toContain('../../../../src/');
     expect(packageLocalRuntimeInstanceSource).toContain('class PackageLocalSessionRuntime');
+    expect(existsSync('packages/agent-sdk/src/session/runtimePorts.ts')).toBe(true);
+    expect(runtimePortsSource).not.toContain('../../../../src/');
+    expect(runtimePortsSource).toContain('interface PackageLocalSessionRuntimeOptions');
+    expect(runtimePortsSource).toContain('interface PackageLocalRuntimeMcpRegistryPort');
+    expect(runtimePortsSource).toContain('interface PackageLocalRuntimeToolCatalogPort');
+    expect(runtimePortsSource).toContain('interface PackageLocalRuntimeSubagentRegistryPort');
+    expect(packageLocalRuntimeInstanceSource).toContain("from './runtimePorts.js'");
+    expect(packageLocalRuntimeInstanceSource).not.toContain(
+      'export interface PackageLocalRuntimeSessionStorePort',
+    );
+    expect(packageLocalRuntimeInstanceSource).not.toContain(
+      'export interface PackageLocalRuntimeMcpRegistryPort',
+    );
+    expect(packageLocalRuntimeInstanceSource).not.toContain(
+      'export interface PackageLocalRuntimeToolCatalogPort',
+    );
     expect(existsSync('packages/agent-sdk/src/session/runtimeNoopPorts.ts')).toBe(true);
     expect(runtimeNoopPortsSource).not.toContain('../../../../src/');
     expect(runtimeNoopPortsSource).toContain('createPackageLocalRuntimeNoopPorts');
@@ -829,7 +848,7 @@ describe('monorepo topology', () => {
     expect(packageLocalRuntimeInstanceSource).not.toContain('this.workspace.updateWorkspace({');
     expect(packageLocalRuntimeInstanceSource).not.toContain('...snapshot.environment');
     expect(packageLocalRuntimeInstanceSource).toContain('close');
-    expect(packageLocalRuntimeInstanceSource).toContain('PackageLocalRuntimeMcpRegistryPort');
+    expect(runtimePortsSource).toContain('PackageLocalRuntimeMcpRegistryPort');
     expect(runtimeMcpServersSource).toContain('closePackageLocalRuntimeMcpServers');
     expect(packageLocalRuntimeInstanceSource).not.toContain('closePackageLocalRuntimeMcpServers({');
     expect(packageLocalRuntimeInstanceSource).not.toContain('this.mcpRegistry.disconnectAll()');
@@ -839,7 +858,7 @@ describe('monorepo topology', () => {
     expect(packageLocalRuntimeInstanceSource).toContain('mcpConnect');
     expect(packageLocalRuntimeInstanceSource).toContain('mcpDisconnect');
     expect(packageLocalRuntimeInstanceSource).toContain('mcpReconnect');
-    expect(packageLocalRuntimeInstanceSource).toContain('ensureServerRegistered');
+    expect(runtimePortsSource).toContain('ensureServerRegistered');
     expect(packageLocalRuntimeInstanceSource).not.toContain('ensurePackageLocalMcpServerRegistered');
     expect(packageLocalRuntimeInstanceSource).not.toContain(
       "callPackageLocalMcpRegistryAction(this.mcpRegistry, 'connectServer', serverName)",
@@ -915,8 +934,8 @@ describe('monorepo topology', () => {
     expect(packageLocalRuntimeInstanceSource).toContain('PackageLocalRuntimeToolCatalogPort');
     expect(packageLocalRuntimeInstanceSource).toContain('PackageLocalRuntimeToolSource');
     expect(packageLocalRuntimeInstanceSource).toContain('registerConfiguredMcpServers');
-    expect(packageLocalRuntimeInstanceSource).toContain('registerInProcessServer');
-    expect(packageLocalRuntimeInstanceSource).toContain('registerServer');
+    expect(runtimePortsSource).toContain('registerInProcessServer');
+    expect(runtimePortsSource).toContain('registerServer');
     expect(packageLocalRuntimeInstanceSource).toContain('mcpServerRegistrationOperations');
     expect(packageLocalRuntimeInstanceSource).not.toContain(
       'registerPackageLocalConfiguredMcpServers({',
@@ -929,9 +948,9 @@ describe('monorepo topology', () => {
     expect(packageLocalRuntimeInstanceSource).toContain('mcpServerOperations.registration');
     expect(packageLocalRuntimeInstanceSource).not.toContain('Object.entries(configuredServers)');
     expect(packageLocalRuntimeInstanceSource).not.toContain('if (config.disabled)');
-    expect(packageLocalRuntimeInstanceSource).toContain('getAvailableToolsByServerNames');
-    expect(packageLocalRuntimeInstanceSource).toContain('registerMcpTool');
-    expect(packageLocalRuntimeInstanceSource).toContain('removeMcpTools');
+    expect(runtimePortsSource).toContain('getAvailableToolsByServerNames');
+    expect(runtimePortsSource).toContain('registerMcpTool');
+    expect(runtimePortsSource).toContain('removeMcpTools');
     expect(existsSync('packages/agent-sdk/src/session/runtimeMcpTools.ts')).toBe(true);
     expect(runtimeMcpToolsSource).not.toContain('../../../../src/');
     expect(runtimeMcpToolsSource).toContain('getPackageLocalMcpToolSourceId');

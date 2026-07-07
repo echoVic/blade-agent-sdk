@@ -5,9 +5,11 @@ import { createPackageLocalKernelModelResolver } from './kernelModelResolver.js'
 import { createPackageLocalKernelSessionRuntimeFactory } from './packageLocalKernelRuntimeFactory.js';
 import {
   PackageLocalSessionRuntime,
-  type PackageLocalSessionRuntimeOptions,
-  type PackageLocalRuntimeSessionStorePort,
 } from './runtimeInstance.js';
+import type {
+  PackageLocalSessionRuntimeOptions,
+  PackageLocalRuntimeSessionStorePort,
+} from './runtimePorts.js';
 import { createPackageLocalRuntimeHookRuntime } from './runtimeHooks.js';
 import { JsonlSessionStore } from './store.js';
 import type { SessionRuntimeFactory } from './factory.js';
