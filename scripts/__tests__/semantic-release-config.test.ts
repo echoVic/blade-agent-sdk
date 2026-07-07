@@ -67,20 +67,30 @@ describe('package provenance metadata', () => {
 
   it('declares clean source metadata and public npm publish config on every publishable package', () => {
     const packagePaths = [
-      'packages/ai/package.json',
-      'packages/agent/package.json',
-      'packages/agent-sdk/package.json',
+      {
+        manifestPath: 'packages/ai/package.json',
+        repositoryDirectory: 'packages/ai',
+      },
+      {
+        manifestPath: 'packages/agent/package.json',
+        repositoryDirectory: 'packages/agent',
+      },
+      {
+        manifestPath: 'packages/agent-sdk/package.json',
+        repositoryDirectory: 'packages/agent-sdk',
+      },
     ];
     const releaseVerifier = readFileSync(resolve('scripts/verify-release-config.mjs'), 'utf8');
 
-    for (const packagePath of packagePaths) {
-      const packageJson = JSON.parse(readFileSync(resolve(packagePath), 'utf8'));
+    for (const pkg of packagePaths) {
+      const packageJson = JSON.parse(readFileSync(resolve(pkg.manifestPath), 'utf8'));
 
       expect(packageJson.private).toBeUndefined();
       expect(packageJson.devDependencies).toBeUndefined();
       expect(packageJson.repository).toEqual({
         type: 'git',
         url: 'https://github.com/echoVic/blade-agent-sdk',
+        directory: pkg.repositoryDirectory,
       });
       expect(packageJson.publishConfig).toEqual({
         access: 'public',
@@ -850,12 +860,15 @@ describe('release scripts', () => {
     expect(publishedVerifier).toContain('installed manifest homepage mismatch');
     expect(publishedVerifier).toContain('installed manifest bugs mismatch');
     expect(publishedVerifier).toContain('installed manifest repository mismatch');
+    expect(publishedVerifier).toContain("directory: 'packages/ai'");
+    expect(publishedVerifier).toContain("directory: 'packages/agent'");
+    expect(publishedVerifier).toContain("directory: 'packages/agent-sdk'");
     expect(publishedVerifier).toContain("license: 'MIT'");
     expect(publishedVerifier).toContain("homepage: 'https://github.com/echoVic/blade-agent-sdk#readme'");
     expect(publishedVerifier).toContain("url: 'https://github.com/echoVic/blade-agent-sdk/issues'");
     expect(publishedVerifier).toContain("url: 'https://github.com/echoVic/blade-agent-sdk'");
-    expect(checklist).toContain('published package npm metadata');
-    expect(roadmap).toContain('published package npm metadata gate');
+    expect(checklist).toContain('published package repository directory metadata');
+    expect(roadmap).toContain('published package repository directory metadata gate');
   });
 
   it('verifies packed package npm metadata before publication', () => {
@@ -869,13 +882,14 @@ describe('release scripts', () => {
     expect(packageVerifier).toContain('packed manifest homepage mismatch');
     expect(packageVerifier).toContain('packed manifest bugs mismatch');
     expect(packageVerifier).toContain('packed manifest repository mismatch');
+    expect(packageVerifier).toContain('directory: spec.dir');
     expect(packageVerifier).toContain("license: 'MIT'");
     expect(packageVerifier).toContain("homepage: 'https://github.com/echoVic/blade-agent-sdk#readme'");
     expect(packageVerifier).toContain("url: 'https://github.com/echoVic/blade-agent-sdk/issues'");
     expect(packageVerifier).toContain("url: 'https://github.com/echoVic/blade-agent-sdk'");
-    expect(readme).toContain('packed package npm metadata');
-    expect(checklist).toContain('packed package npm metadata');
-    expect(roadmap).toContain('package npm metadata gate');
+    expect(readme).toContain('packed package repository directory metadata');
+    expect(checklist).toContain('packed package repository directory metadata');
+    expect(roadmap).toContain('package repository directory metadata gate');
   });
 
   it('verifies packed and published package description metadata', () => {

@@ -53,6 +53,10 @@ const publishedManifestRequirements = [
     description: 'Provider-agnostic AI model interfaces for Blade Agent',
     maxInstalledBytes: 256 * 1024,
     ...expectedPublishedPackageMetadata,
+    repository: {
+      ...expectedPublishedPackageMetadata.repository,
+      directory: 'packages/ai',
+    },
   },
   {
     packageName: '@blade-ai/agent',
@@ -60,6 +64,10 @@ const publishedManifestRequirements = [
     description: 'Runtime-independent Blade Agent kernel contracts',
     maxInstalledBytes: 128 * 1024,
     ...expectedPublishedPackageMetadata,
+    repository: {
+      ...expectedPublishedPackageMetadata.repository,
+      directory: 'packages/agent',
+    },
   },
   {
     packageName: '@blade-ai/agent-sdk',
@@ -67,6 +75,10 @@ const publishedManifestRequirements = [
     description: 'Session-first Blade Agent SDK',
     maxInstalledBytes: 1024 * 1024,
     ...expectedPublishedPackageMetadata,
+    repository: {
+      ...expectedPublishedPackageMetadata.repository,
+      directory: 'packages/agent-sdk',
+    },
   },
 ];
 const publishedReadmeRequirements = [

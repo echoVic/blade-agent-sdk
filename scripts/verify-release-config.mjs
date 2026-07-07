@@ -210,6 +210,7 @@ function verifyPackageMetadata() {
     assertDeepEqual(manifest.repository, {
       type: 'git',
       url: 'https://github.com/echoVic/blade-agent-sdk',
+      directory: pkg.dir,
     }, `${pkg.name} repository`);
     if (!readme.includes(pkg.name)) {
       fail(`${pkg.name} README must name the package`);

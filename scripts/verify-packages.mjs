@@ -1058,7 +1058,10 @@ function verifyPackedPackageMetadata(spec, manifest) {
     },
     {
       field: 'repository',
-      expected: expectedPackedPackageMetadata.repository,
+      expected: {
+        ...expectedPackedPackageMetadata.repository,
+        directory: spec.dir,
+      },
       message: 'packed manifest repository mismatch',
     },
   ];
