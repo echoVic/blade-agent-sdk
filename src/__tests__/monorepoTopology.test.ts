@@ -808,9 +808,13 @@ describe('monorepo topology', () => {
     expect(packageLocalRuntimeInstanceSource).toContain(
       'createPackageLocalRuntimeSessionOperations',
     );
-    expect(packageLocalRuntimeInstanceSource).toContain('sessionLifecycleOperations');
+    expect(packageLocalRuntimeInstanceSource).toContain(
+      'private readonly sessionOperations: PackageLocalRuntimeSessionOperations<SessionMessage>',
+    );
     expect(packageLocalRuntimeInstanceSource).toContain('sessionOperations.lifecycle');
     expect(packageLocalRuntimeInstanceSource).toContain('sessionOperations.workspace');
+    expect(packageLocalRuntimeInstanceSource).not.toContain('sessionLifecycleOperations');
+    expect(packageLocalRuntimeInstanceSource).not.toContain('workspaceOperations');
     expect(packageLocalRuntimeInstanceSource).not.toContain(
       'createPackageLocalRuntimeSessionLifecycleOperations({',
     );
@@ -861,7 +865,9 @@ describe('monorepo topology', () => {
     expect(runtimeWorkspaceSource).toContain(
       'createPackageLocalRuntimeWorkspaceOperations',
     );
-    expect(packageLocalRuntimeInstanceSource).toContain('workspaceOperations');
+    expect(packageLocalRuntimeInstanceSource).toContain(
+      'this.sessionOperations.workspace.prepareTurn',
+    );
     expect(packageLocalRuntimeInstanceSource).not.toContain(
       'createPackageLocalRuntimeWorkspaceOperations({',
     );

@@ -71,9 +71,10 @@ import type {
   PackageLocalRuntimeKernelModelResolverPort,
 } from './runtimeKernelModels.js';
 import { createPackageLocalRuntimeInitialState } from './runtimeState.js';
-import type { PackageLocalRuntimeWorkspaceOperations } from './runtimeWorkspace.js';
-import type { PackageLocalRuntimeSessionLifecycleOperations } from './runtimeSessionLifecycle.js';
-import { createPackageLocalRuntimeSessionOperations } from './runtimeSessionOperations.js';
+import {
+  createPackageLocalRuntimeSessionOperations,
+  type PackageLocalRuntimeSessionOperations,
+} from './runtimeSessionOperations.js';
 import type { PackageLocalRuntimeMcpServerCapability } from './runtimeMcpCapabilities.js';
 import {
   createPackageLocalRuntimeMcpOperations,
@@ -189,8 +190,7 @@ export class PackageLocalSessionRuntime {
   readonly kernelPortFactory: PackageLocalRuntimeKernelPortFactoryPort;
   readonly kernelFactory: PackageLocalRuntimeAgentKernelFactoryPort;
   readonly kernelModelResolver: PackageLocalRuntimeKernelModelResolverPort;
-  private readonly sessionLifecycleOperations: PackageLocalRuntimeSessionLifecycleOperations<SessionMessage>;
-  private readonly workspaceOperations: PackageLocalRuntimeWorkspaceOperations;
+  private readonly sessionOperations: PackageLocalRuntimeSessionOperations<SessionMessage>;
   private readonly mcpOperations: PackageLocalRuntimeMcpOperations;
   private readonly executionPipelineOperations: PackageLocalRuntimeExecutionPipelineOperations;
   private readonly agentRuntimeDepsOperations: PackageLocalAgentRuntimeDepsOperations;
@@ -242,7 +242,7 @@ export class PackageLocalSessionRuntime {
     this.kernelPortFactory = runtimePorts.kernelPortFactory;
     this.kernelFactory = runtimePorts.kernelFactory;
     this.kernelModelResolver = runtimePorts.kernelModelResolver;
-    const sessionOperations = createPackageLocalRuntimeSessionOperations({
+    this.sessionOperations = createPackageLocalRuntimeSessionOperations({
       sessionId: this.sessionId,
       sessionStore: this.sessionStore,
       workspace: this.workspace,
@@ -251,8 +251,6 @@ export class PackageLocalSessionRuntime {
       provider: this.options.provider.type,
       closeRuntimeResources: () => this.mcpOperations.servers.lifecycle.close(),
     });
-    this.sessionLifecycleOperations = sessionOperations.lifecycle;
-    this.workspaceOperations = sessionOperations.workspace;
     this.mcpOperations = createPackageLocalRuntimeMcpOperations({
       mcpRegistry: this.mcpRegistry,
       configuredServers: this.options.mcpServers,
@@ -374,27 +372,27 @@ export class PackageLocalSessionRuntime {
   }
 
   async ensureSessionCreated(): Promise<void> {
-    await this.sessionLifecycleOperations.ensureSessionCreated();
+    await this.sessionOperations.lifecycle.ensureSessionCreated();
   }
 
   async ensureSessionLoaded(): Promise<void> {
-    await this.sessionLifecycleOperations.ensureSessionLoaded();
+    await this.sessionOperations.lifecycle.ensureSessionLoaded();
   }
 
   async loadMessages(): Promise<SessionMessage[]> {
-    return this.sessionLifecycleOperations.loadMessages();
+    return this.sessionOperations.lifecycle.loadMessages();
   }
 
   async runSessionStart(isResume: boolean): Promise<void> {
-    await this.sessionLifecycleOperations.runSessionStart(isResume);
+    await this.sessionOperations.lifecycle.runSessionStart(isResume);
   }
 
   prepareTurn(snapshot: ContextSnapshot): void {
-    this.workspaceOperations.prepareTurn(snapshot);
+    this.sessionOperations.workspace.prepareTurn(snapshot);
   }
 
   async close(): Promise<void> {
-    await this.sessionLifecycleOperations.close();
+    await this.sessionOperations.lifecycle.close();
   }
 
   async mcpCapabilities(): Promise<PackageLocalRuntimeMcpServerCapability[]> {
