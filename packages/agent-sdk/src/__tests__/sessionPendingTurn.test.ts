@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { PendingTurnBuffer } from '../../packages/agent-sdk/src/session/pendingTurn.js';
-import type { ContextSnapshot } from '../../packages/agent-sdk/src/runtime/types.js';
+import type { ContextSnapshot } from '../runtime/types.js';
+import { PendingTurnBuffer } from '../session/pendingTurn.js';
 
 function snapshot(id = 'snapshot-1'): ContextSnapshot {
   return {
