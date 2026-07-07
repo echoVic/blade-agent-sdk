@@ -1,12 +1,12 @@
 import { describe, expect, it, vi } from 'vitest';
-import type { AgentTrace } from '../../packages/agent-sdk/src/observability/types.js';
-import { PackageLocalSession } from '../../packages/agent-sdk/src/session/sessionInstance.js';
+import type { AgentTrace } from '../observability/types.js';
+import { PackageLocalSession } from '../session/sessionInstance.js';
 import type {
   ISession,
   SessionOptions,
   StreamMessage,
-} from '../../packages/agent-sdk/src/session/types.js';
-import { PermissionMode } from '../../packages/agent-sdk/src/types/common.js';
+} from '../session/types.js';
+import { PermissionMode } from '../types/common.js';
 
 const options: SessionOptions = {
   provider: {
