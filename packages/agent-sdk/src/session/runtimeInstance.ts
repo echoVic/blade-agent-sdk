@@ -70,10 +70,7 @@ import type {
 import type {
   PackageLocalRuntimeKernelModelResolverPort,
 } from './runtimeKernelModels.js';
-import {
-  getPackageLocalRuntimeContextCwd,
-  resolvePackageLocalRuntimeStorageRoot,
-} from './runtimeContext.js';
+import { createPackageLocalRuntimeInitialState } from './runtimeState.js';
 import type { PackageLocalRuntimeWorkspaceOperations } from './runtimeWorkspace.js';
 import type { PackageLocalRuntimeSessionLifecycleOperations } from './runtimeSessionLifecycle.js';
 import { createPackageLocalRuntimeSessionOperations } from './runtimeSessionOperations.js';
@@ -230,11 +227,14 @@ export class PackageLocalSessionRuntime {
     this.options = options.options;
     this.bladeConfig = options.bladeConfig;
     this.defaultContext = options.defaultContext;
-    this.storageRoot =
-      options.bladeConfig.storageRoot ??
-      resolvePackageLocalRuntimeStorageRoot(options.options.storagePath);
-    this.projectPath = getPackageLocalRuntimeContextCwd(options.defaultContext);
-    this.hookCallbacks = options.options.hooks ?? {};
+    const initialState = createPackageLocalRuntimeInitialState({
+      options: options.options,
+      bladeConfig: options.bladeConfig,
+      defaultContext: options.defaultContext,
+    });
+    this.storageRoot = initialState.storageRoot;
+    this.projectPath = initialState.projectPath;
+    this.hookCallbacks = initialState.hookCallbacks;
     const runtimePorts = resolvePackageLocalRuntimePorts(options);
     this.sessionStore = runtimePorts.sessionStore;
     this.workspace = runtimePorts.workspace;

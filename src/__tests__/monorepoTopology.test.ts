@@ -466,6 +466,9 @@ describe('monorepo topology', () => {
     const runtimePortsSource = existsSync('packages/agent-sdk/src/session/runtimePorts.ts')
       ? readFileSync('packages/agent-sdk/src/session/runtimePorts.ts', 'utf-8')
       : '';
+    const runtimeStateSource = existsSync('packages/agent-sdk/src/session/runtimeState.ts')
+      ? readFileSync('packages/agent-sdk/src/session/runtimeState.ts', 'utf-8')
+      : '';
     const kernelStreamBridgeSource = readFileSync(
       'packages/agent-sdk/src/session/kernelStreamBridge.ts',
       'utf-8',
@@ -686,12 +689,25 @@ describe('monorepo topology', () => {
       'this.hookManager = options.hookManager ?? this.hookRuntime',
     );
     expect(packageLocalRuntimeInstanceSource).not.toContain('function createNoopRuntime');
-    expect(packageLocalRuntimeInstanceSource).toContain('resolvePackageLocalRuntimeStorageRoot');
+    expect(existsSync('packages/agent-sdk/src/session/runtimeState.ts')).toBe(true);
+    expect(runtimeStateSource).not.toContain('../../../../src/');
+    expect(runtimeStateSource).toContain('createPackageLocalRuntimeInitialState');
+    expect(runtimeStateSource).toContain('resolvePackageLocalRuntimeStorageRoot');
+    expect(runtimeStateSource).toContain('getPackageLocalRuntimeContextCwd');
+    expect(packageLocalRuntimeInstanceSource).toContain('createPackageLocalRuntimeInitialState');
+    expect(packageLocalRuntimeInstanceSource).not.toContain(
+      'resolvePackageLocalRuntimeStorageRoot(options.options.storagePath)',
+    );
+    expect(packageLocalRuntimeInstanceSource).not.toContain(
+      'getPackageLocalRuntimeContextCwd(options.defaultContext)',
+    );
+    expect(packageLocalRuntimeInstanceSource).not.toContain(
+      'this.hookCallbacks = options.options.hooks ?? {}',
+    );
     expect(existsSync('packages/agent-sdk/src/session/runtimeContext.ts')).toBe(true);
     expect(runtimeContextSource).not.toContain('../../../../src/');
     expect(runtimeContextSource).toContain('resolvePackageLocalRuntimeStorageRoot');
     expect(runtimeContextSource).toContain('getPackageLocalRuntimeContextCwd');
-    expect(packageLocalRuntimeInstanceSource).toContain('getPackageLocalRuntimeContextCwd');
     expect(packageLocalRuntimeInstanceSource).not.toContain('function getRuntimeContextCwd');
     expect(packageLocalRuntimeInstanceSource).toContain('isPackageLocalSdkMcpServerHandle');
     expect(existsSync('packages/agent-sdk/src/session/runtimeMcpServers.ts')).toBe(true);
