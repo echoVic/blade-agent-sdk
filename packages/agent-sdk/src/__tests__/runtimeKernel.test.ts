@@ -7,14 +7,14 @@ import type {
 } from '@blade-ai/agent';
 import { existsSync } from 'node:fs';
 import { describe, expect, it, vi } from 'vitest';
-import type { TraceRecorder } from '../../packages/agent-sdk/src/observability/TraceRecorder.js';
-import type { PackageLocalRuntimeAgentKernelFactoryPort } from '../../packages/agent-sdk/src/session/runtimeAgentKernels.js';
-import type { PackageLocalRuntimeKernelModelResolverPort } from '../../packages/agent-sdk/src/session/runtimeKernelModels.js';
-import type { PackageLocalRuntimeKernelPortFactoryPort } from '../../packages/agent-sdk/src/session/runtimeKernelPorts.js';
-import type { BladeConfig } from '../../packages/agent-sdk/src/types/common.js';
+import type { TraceRecorder } from '../observability/TraceRecorder.js';
+import type { PackageLocalRuntimeAgentKernelFactoryPort } from '../session/runtimeAgentKernels.js';
+import type { PackageLocalRuntimeKernelModelResolverPort } from '../session/runtimeKernelModels.js';
+import type { PackageLocalRuntimeKernelPortFactoryPort } from '../session/runtimeKernelPorts.js';
+import type { BladeConfig } from '../types/common.js';
 
-const runtimeKernelModulePath = '../../packages/agent-sdk/src/session/runtimeKernel.js';
-const runtimeKernelSourcePath = 'packages/agent-sdk/src/session/runtimeKernel.ts';
+const runtimeKernelModulePath = '../session/runtimeKernel.js';
+const runtimeKernelSourcePath = 'src/session/runtimeKernel.ts';
 
 const modelPort: ModelPort = {
   async generate() {
