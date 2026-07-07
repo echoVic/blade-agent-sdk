@@ -412,7 +412,9 @@ assertRuntimeExport(agentKernel, 'AgentKernel');
 assertRuntimeExport(agentLoop, 'AsyncEventQueue');
 assertRuntimeExport(agentLoop, 'decideNoToolTurn');
 assertRuntimeExport(agentLoop, 'decideTurnLimit');
+assertRuntimeExport(agentLoop, 'planToolExecution');
 assertRuntimeExport(agentLoop, 'RETRY_PROMPT');
+assertRuntimeExport(agentLoop, 'ToolKind');
 assertRuntimeExport(agentRecovery, 'isOverflowRecoverable');
 if (!agentRecovery.isOverflowRecoverable(new Error('context_length_exceeded'))) {
   throw new Error('@blade-ai/agent/recovery overflow guard returned an unexpected result');
@@ -1541,7 +1543,7 @@ async function verifyPublishedAgentBrowserBundleSmoke({ consumerDir }) {
       "import { TokenBudget } from '@blade-ai/agent/budget';",
       "import { ExecutionEpoch } from '@blade-ai/agent/epoch';",
       "import { AgentKernel as AgentKernelFromSubpath } from '@blade-ai/agent/kernel';",
-      "import { AsyncEventQueue, decideNoToolTurn, decideTurnLimit } from '@blade-ai/agent/loop';",
+      "import { AsyncEventQueue, decideNoToolTurn, decideTurnLimit, planToolExecution, ToolKind } from '@blade-ai/agent/loop';",
       "import { isOverflowRecoverable } from '@blade-ai/agent/recovery';",
       'const fakeModel = {',
       '  async generate() {',
@@ -1560,8 +1562,9 @@ async function verifyPublishedAgentBrowserBundleSmoke({ consumerDir }) {
       'const kernelFromSubpath = new AgentKernelFromSubpath({ model: fakeModel });',
       "const decision = await decideNoToolTurn('All done', [], 1);",
       "const turnLimit = await decideTurnLimit({ maxTurns: 1, turnsCount: 1, contextMessages: [], toolCallsCount: 0, startTime: Date.now(), totalTokens: 0 });",
+      "const toolPlan = planToolExecution([{ id: 'read-1', type: 'function', function: { name: 'Read', arguments: '{}' } }], { get: () => ({ kind: ToolKind.ReadOnly }) });",
       "const overflow = isOverflowRecoverable(new Error('context_length_exceeded'));",
-      "console.log('agent browser bundle', kernel.constructor.name, kernelFromSubpath.constructor.name, budget.constructor.name, epoch.constructor.name, queue.constructor.name, decision.action, turnLimit.action, overflow);",
+      "console.log('agent browser bundle', kernel.constructor.name, kernelFromSubpath.constructor.name, budget.constructor.name, epoch.constructor.name, queue.constructor.name, decision.action, turnLimit.action, toolPlan.mode, overflow);",
     ].join('\n'),
   );
 
@@ -1647,7 +1650,12 @@ import type {
   TokenBudgetSnapshot,
 } from '@blade-ai/agent/budget';
 import type { AgentTurnInput } from '@blade-ai/agent/kernel';
-import { AsyncEventQueue, decideNoToolTurn, decideTurnLimit } from '@blade-ai/agent/loop';
+import { AsyncEventQueue, decideNoToolTurn, decideTurnLimit, planToolExecution, ToolKind as AgentLoopToolKind } from '@blade-ai/agent/loop';
+import type {
+  AgentFunctionToolCall,
+  ToolBehavior as AgentLoopToolBehavior,
+  ToolExecutionPlan,
+} from '@blade-ai/agent/loop';
 import type { AgentToolPort } from '@blade-ai/agent/ports';
 import type { AgentToolCall } from '@blade-ai/agent/protocol';
 import { isOverflowRecoverable } from '@blade-ai/agent/recovery';
@@ -1836,6 +1844,20 @@ const turnLimitDecision = await decideTurnLimit({
   startTime: Date.now(),
   totalTokens: 0,
 });
+const plannedToolCall: AgentFunctionToolCall = {
+  id: 'read-1',
+  type: 'function',
+  function: { name: 'Read', arguments: '{}' },
+};
+const readonlyToolBehavior: Partial<AgentLoopToolBehavior> = {
+  kind: AgentLoopToolKind.ReadOnly,
+  isReadOnly: true,
+  isConcurrencySafe: true,
+};
+const toolExecutionPlan: ToolExecutionPlan = planToolExecution(
+  [plannedToolCall],
+  { get: () => ({ kind: AgentLoopToolKind.ReadOnly, resolveBehavior: () => readonlyToolBehavior }) },
+);
 const overflowIsRecoverable: boolean = isOverflowRecoverable(
   new Error('context_length_exceeded'),
 );
@@ -1944,6 +1966,7 @@ void executionEpochIsInvalid;
 void queue;
 void noToolDecision;
 void turnLimitDecision;
+void toolExecutionPlan;
 void overflowIsRecoverable;
 void tokenBudgetConfig;
 void tokenBudgetSnapshot;

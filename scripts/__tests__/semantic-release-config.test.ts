@@ -352,7 +352,9 @@ describe('package provenance metadata', () => {
     expect(packageVerifier).toContain("assertRuntimeExport(agentLoop, 'AsyncEventQueue')");
     expect(packageVerifier).toContain("assertRuntimeExport(agentLoop, 'decideNoToolTurn')");
     expect(packageVerifier).toContain("assertRuntimeExport(agentLoop, 'decideTurnLimit')");
+    expect(packageVerifier).toContain("assertRuntimeExport(agentLoop, 'planToolExecution')");
     expect(packageVerifier).toContain("assertRuntimeExport(agentLoop, 'RETRY_PROMPT')");
+    expect(packageVerifier).toContain("assertRuntimeExport(agentLoop, 'ToolKind')");
     expect(packageVerifier).toContain("assertRuntimeExport(agentRecovery, 'isOverflowRecoverable')");
     expect(packageVerifier).toContain("agentRecovery.isOverflowRecoverable(new Error('context_length_exceeded'))");
     expect(packageVerifier).toContain("assertRuntimeExport(agentState, 'isValidSystemSource')");
@@ -420,6 +422,8 @@ describe('package provenance metadata', () => {
     expect(packageVerifier).toContain('AsyncEventQueue');
     expect(packageVerifier).toContain('decideNoToolTurn');
     expect(packageVerifier).toContain('decideTurnLimit');
+    expect(packageVerifier).toContain('planToolExecution');
+    expect(packageVerifier).toContain('ToolKind');
     expect(packageVerifier).toContain("from '@blade-ai/agent/recovery';");
     expect(packageVerifier).toContain('isOverflowRecoverable');
     expect(packageVerifier).toContain('agent browser bundle');
@@ -755,7 +759,9 @@ describe('release scripts', () => {
     expect(publishedVerifier).toContain("assertRuntimeExport(agentLoop, 'AsyncEventQueue')");
     expect(publishedVerifier).toContain("assertRuntimeExport(agentLoop, 'decideNoToolTurn')");
     expect(publishedVerifier).toContain("assertRuntimeExport(agentLoop, 'decideTurnLimit')");
+    expect(publishedVerifier).toContain("assertRuntimeExport(agentLoop, 'planToolExecution')");
     expect(publishedVerifier).toContain("assertRuntimeExport(agentLoop, 'RETRY_PROMPT')");
+    expect(publishedVerifier).toContain("assertRuntimeExport(agentLoop, 'ToolKind')");
     expect(publishedVerifier).toContain("assertRuntimeExport(agentRecovery, 'isOverflowRecoverable')");
     expect(publishedVerifier).toContain("agentRecovery.isOverflowRecoverable(new Error('context_length_exceeded'))");
     expect(publishedVerifier).toContain("assertRuntimeExport(agentState, 'isValidSystemSource')");
@@ -1531,6 +1537,8 @@ describe('release scripts', () => {
     expect(publishedVerifier).toContain('AsyncEventQueue');
     expect(publishedVerifier).toContain('decideNoToolTurn');
     expect(publishedVerifier).toContain('decideTurnLimit');
+    expect(publishedVerifier).toContain('planToolExecution');
+    expect(publishedVerifier).toContain('ToolKind');
     expect(publishedVerifier).toContain("from '@blade-ai/agent/ports';");
     expect(publishedVerifier).toContain("from '@blade-ai/agent/protocol';");
     expect(publishedVerifier).toContain("from '@blade-ai/agent/recovery';");
@@ -1640,6 +1648,8 @@ describe('release scripts', () => {
     expect(publishedVerifier).toContain('AsyncEventQueue');
     expect(publishedVerifier).toContain('decideNoToolTurn');
     expect(publishedVerifier).toContain('decideTurnLimit');
+    expect(publishedVerifier).toContain('planToolExecution');
+    expect(publishedVerifier).toContain('ToolKind');
     expect(publishedVerifier).toContain("from '@blade-ai/agent/recovery';");
     expect(publishedVerifier).toContain('new TokenBudget');
     expect(publishedVerifier).toContain('isOverflowRecoverable');
