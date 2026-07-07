@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { PromptStreamAccumulator } from '../../packages/agent-sdk/src/session/promptStreamAccumulator.js';
-import type { StreamMessage } from '../../packages/agent-sdk/src/session/types.js';
+import { PromptStreamAccumulator } from '../session/promptStreamAccumulator.js';
+import type { StreamMessage } from '../session/types.js';
 
 function feed(messages: StreamMessage[]): PromptStreamAccumulator {
   const accumulator = new PromptStreamAccumulator();
