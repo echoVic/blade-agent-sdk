@@ -781,7 +781,7 @@ describe('monorepo topology', () => {
     expect(runtimeMcpSource).toContain('createPackageLocalRuntimeMcpServerOperations');
     expect(runtimeMcpSource).toContain('createPackageLocalRuntimeMcpToolRefreshOperations');
     expect(packageLocalRuntimeInstanceSource).toContain(
-      'private readonly mcpOperations: PackageLocalRuntimeMcpOperations',
+      'private readonly connectionOperations: PackageLocalRuntimeConnectionOperations<SessionMessage>',
     );
     expect(runtimeConnectionOperationsSource).toContain(
       'createPackageLocalRuntimeMcpOperations',
@@ -789,9 +789,12 @@ describe('monorepo topology', () => {
     expect(packageLocalRuntimeInstanceSource).not.toContain(
       'createPackageLocalRuntimeMcpOperations',
     );
-    expect(packageLocalRuntimeInstanceSource).toContain('mcpOperations.capabilities');
-    expect(packageLocalRuntimeInstanceSource).toContain('mcpOperations.servers');
-    expect(packageLocalRuntimeInstanceSource).toContain('mcpOperations.tools');
+    expect(packageLocalRuntimeInstanceSource).toContain('connectionOperations.mcp.capabilities');
+    expect(packageLocalRuntimeInstanceSource).toContain('connectionOperations.mcp.servers');
+    expect(packageLocalRuntimeInstanceSource).toContain('connectionOperations.mcp.tools');
+    expect(packageLocalRuntimeInstanceSource).not.toContain(
+      'private readonly mcpOperations',
+    );
     expect(packageLocalRuntimeInstanceSource).not.toContain('mcpCapabilityOperations');
     expect(packageLocalRuntimeInstanceSource).not.toContain('mcpServerConfigOperations');
     expect(packageLocalRuntimeInstanceSource).not.toContain('mcpServerRegistrationOperations');
@@ -821,7 +824,7 @@ describe('monorepo topology', () => {
     expect(runtimeMcpServersSource).toContain(
       'createPackageLocalRuntimeMcpServerLifecycleOperations',
     );
-    expect(packageLocalRuntimeInstanceSource).toContain('this.mcpOperations.servers.lifecycle');
+    expect(packageLocalRuntimeInstanceSource).toContain('this.connectionOperations.mcp.servers.lifecycle');
     expect(packageLocalRuntimeInstanceSource).not.toContain(
       'createPackageLocalRuntimeMcpServerLifecycleOperations({',
     );
@@ -865,11 +868,11 @@ describe('monorepo topology', () => {
     expect(packageLocalRuntimeInstanceSource).not.toContain(
       'createPackageLocalRuntimeSessionOperations',
     );
-    expect(packageLocalRuntimeInstanceSource).toContain(
-      'private readonly sessionOperations: PackageLocalRuntimeSessionOperations<SessionMessage>',
+    expect(packageLocalRuntimeInstanceSource).toContain('connectionOperations.session.lifecycle');
+    expect(packageLocalRuntimeInstanceSource).toContain('connectionOperations.session.workspace');
+    expect(packageLocalRuntimeInstanceSource).not.toContain(
+      'private readonly sessionOperations',
     );
-    expect(packageLocalRuntimeInstanceSource).toContain('sessionOperations.lifecycle');
-    expect(packageLocalRuntimeInstanceSource).toContain('sessionOperations.workspace');
     expect(packageLocalRuntimeInstanceSource).not.toContain('sessionLifecycleOperations');
     expect(packageLocalRuntimeInstanceSource).not.toContain('workspaceOperations');
     expect(packageLocalRuntimeInstanceSource).not.toContain(
@@ -929,7 +932,7 @@ describe('monorepo topology', () => {
       'createPackageLocalRuntimeWorkspaceOperations',
     );
     expect(packageLocalRuntimeInstanceSource).toContain(
-      'this.sessionOperations.workspace.prepareTurn',
+      'this.connectionOperations.session.workspace.prepareTurn',
     );
     expect(packageLocalRuntimeInstanceSource).not.toContain(
       'createPackageLocalRuntimeWorkspaceOperations({',
@@ -972,7 +975,7 @@ describe('monorepo topology', () => {
     expect(runtimeMcpCapabilitiesSource).toContain(
       'createPackageLocalRuntimeMcpCapabilityOperations',
     );
-    expect(packageLocalRuntimeInstanceSource).toContain('mcpOperations.capabilities');
+    expect(packageLocalRuntimeInstanceSource).toContain('connectionOperations.mcp.capabilities');
     expect(packageLocalRuntimeInstanceSource).not.toContain(
       'createPackageLocalRuntimeMcpCapabilityOperations({',
     );
@@ -1037,7 +1040,7 @@ describe('monorepo topology', () => {
     expect(packageLocalRuntimeInstanceSource).not.toContain('private async registerRemoteMcpServer');
     expect(packageLocalRuntimeInstanceSource).toContain('PackageLocalRuntimeLoggerPort');
     expect(packageLocalRuntimeInstanceSource).toContain('refreshMcpTools');
-    expect(packageLocalRuntimeInstanceSource).toContain('this.mcpOperations.servers.registration');
+    expect(packageLocalRuntimeInstanceSource).toContain('this.connectionOperations.mcp.servers.registration');
     expect(packageLocalRuntimeInstanceSource).not.toContain('Object.entries(configuredServers)');
     expect(packageLocalRuntimeInstanceSource).not.toContain('if (config.disabled)');
     expect(runtimePortsSource).toContain('getAvailableToolsByServerNames');
@@ -1048,7 +1051,7 @@ describe('monorepo topology', () => {
     expect(runtimeMcpToolsSource).toContain('getPackageLocalMcpToolSourceId');
     expect(runtimeMcpToolsSource).toContain('refreshPackageLocalRuntimeMcpTools');
     expect(runtimeMcpToolsSource).toContain('createPackageLocalRuntimeMcpToolRefreshOperations');
-    expect(packageLocalRuntimeInstanceSource).toContain('this.mcpOperations.tools');
+    expect(packageLocalRuntimeInstanceSource).toContain('this.connectionOperations.mcp.tools');
     expect(packageLocalRuntimeInstanceSource).not.toContain(
       'createPackageLocalRuntimeMcpToolRefreshOperations({',
     );

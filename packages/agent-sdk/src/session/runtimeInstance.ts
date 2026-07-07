@@ -72,10 +72,11 @@ import type {
 } from './runtimeKernelModels.js';
 import { createPackageLocalRuntimeBootstrap } from './runtimeBootstrap.js';
 import { projectPackageLocalRuntimePortFields } from './runtimePortProjection.js';
-import type { PackageLocalRuntimeSessionOperations } from './runtimeSessionOperations.js';
 import type { PackageLocalRuntimeMcpServerCapability } from './runtimeMcpCapabilities.js';
-import type { PackageLocalRuntimeMcpOperations } from './runtimeMcp.js';
-import { createPackageLocalRuntimeConnectionOperations } from './runtimeConnectionOperations.js';
+import {
+  createPackageLocalRuntimeConnectionOperations,
+  type PackageLocalRuntimeConnectionOperations,
+} from './runtimeConnectionOperations.js';
 import {
   createPackageLocalRuntimeToolOperations,
   type PackageLocalRuntimeToolOperations,
@@ -185,8 +186,7 @@ export class PackageLocalSessionRuntime {
   readonly kernelPortFactory: PackageLocalRuntimeKernelPortFactoryPort;
   readonly kernelFactory: PackageLocalRuntimeAgentKernelFactoryPort;
   readonly kernelModelResolver: PackageLocalRuntimeKernelModelResolverPort;
-  private readonly sessionOperations: PackageLocalRuntimeSessionOperations<SessionMessage>;
-  private readonly mcpOperations: PackageLocalRuntimeMcpOperations;
+  private readonly connectionOperations: PackageLocalRuntimeConnectionOperations<SessionMessage>;
   private readonly executionOperations: PackageLocalRuntimeExecutionOperations;
   private readonly kernelOperations: PackageLocalRuntimeKernelOperations;
   private readonly turnOperations: PackageLocalRuntimeTurnOperations;
@@ -228,7 +228,7 @@ export class PackageLocalSessionRuntime {
     this.kernelPortFactory = runtimePortFields.kernelPortFactory;
     this.kernelFactory = runtimePortFields.kernelFactory;
     this.kernelModelResolver = runtimePortFields.kernelModelResolver;
-    const connectionOperations = createPackageLocalRuntimeConnectionOperations({
+    this.connectionOperations = createPackageLocalRuntimeConnectionOperations({
       sessionId: this.sessionId,
       sessionStore: this.sessionStore,
       workspace: this.workspace,
@@ -242,8 +242,6 @@ export class PackageLocalSessionRuntime {
       filterTools: (tools) => this.filterTools(tools),
       refreshMcpTools: (serverNames) => this.refreshMcpTools(serverNames),
     });
-    this.sessionOperations = connectionOperations.session;
-    this.mcpOperations = connectionOperations.mcp;
     this.executionOperations = createPackageLocalRuntimeExecutionOperations({
       bladeConfig: this.bladeConfig,
       permissionMode: this.options.permissionMode,
@@ -338,43 +336,43 @@ export class PackageLocalSessionRuntime {
   }
 
   getConfiguredMcpServers(): Record<string, McpServerConfig | SdkMcpServerHandle> {
-    return this.mcpOperations.servers.config.getConfigured();
+    return this.connectionOperations.mcp.servers.config.getConfigured();
   }
 
   async ensureSessionCreated(): Promise<void> {
-    await this.sessionOperations.lifecycle.ensureSessionCreated();
+    await this.connectionOperations.session.lifecycle.ensureSessionCreated();
   }
 
   async ensureSessionLoaded(): Promise<void> {
-    await this.sessionOperations.lifecycle.ensureSessionLoaded();
+    await this.connectionOperations.session.lifecycle.ensureSessionLoaded();
   }
 
   async loadMessages(): Promise<SessionMessage[]> {
-    return this.sessionOperations.lifecycle.loadMessages();
+    return this.connectionOperations.session.lifecycle.loadMessages();
   }
 
   async runSessionStart(isResume: boolean): Promise<void> {
-    await this.sessionOperations.lifecycle.runSessionStart(isResume);
+    await this.connectionOperations.session.lifecycle.runSessionStart(isResume);
   }
 
   prepareTurn(snapshot: ContextSnapshot): void {
-    this.sessionOperations.workspace.prepareTurn(snapshot);
+    this.connectionOperations.session.workspace.prepareTurn(snapshot);
   }
 
   async close(): Promise<void> {
-    await this.sessionOperations.lifecycle.close();
+    await this.connectionOperations.session.lifecycle.close();
   }
 
   async mcpCapabilities(): Promise<PackageLocalRuntimeMcpServerCapability[]> {
-    return this.mcpOperations.capabilities.getCapabilities();
+    return this.connectionOperations.mcp.capabilities.getCapabilities();
   }
 
   async mcpServerStatus(): Promise<McpServerStatus[]> {
-    return this.mcpOperations.capabilities.getServerStatus();
+    return this.connectionOperations.mcp.capabilities.getServerStatus();
   }
 
   async mcpListTools(): Promise<McpToolInfo[]> {
-    return this.mcpOperations.capabilities.listTools();
+    return this.connectionOperations.mcp.capabilities.listTools();
   }
 
   setDefaultContext(context: RuntimeContext): void {
@@ -406,19 +404,19 @@ export class PackageLocalSessionRuntime {
   }
 
   async mcpConnect(serverName: string): Promise<void> {
-    await this.mcpOperations.servers.lifecycle.connect(serverName);
+    await this.connectionOperations.mcp.servers.lifecycle.connect(serverName);
   }
 
   async mcpDisconnect(serverName: string): Promise<void> {
-    await this.mcpOperations.servers.lifecycle.disconnect(serverName);
+    await this.connectionOperations.mcp.servers.lifecycle.disconnect(serverName);
   }
 
   async mcpReconnect(serverName: string): Promise<void> {
-    await this.mcpOperations.servers.lifecycle.reconnect(serverName);
+    await this.connectionOperations.mcp.servers.lifecycle.reconnect(serverName);
   }
 
   async registerConfiguredMcpServers(): Promise<void> {
-    await this.mcpOperations.servers.registration.registerConfigured();
+    await this.connectionOperations.mcp.servers.registration.registerConfigured();
   }
 
   async ensureRuntimeCapabilitiesInitialized(): Promise<void> {
@@ -426,7 +424,7 @@ export class PackageLocalSessionRuntime {
   }
 
   async refreshMcpTools(serverNames: string[]): Promise<void> {
-    await this.mcpOperations.tools.refresh(serverNames);
+    await this.connectionOperations.mcp.tools.refresh(serverNames);
   }
 
   filterTools<TTool extends PackageLocalRuntimeNamedTool>(tools: TTool[]): TTool[] {
