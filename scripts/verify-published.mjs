@@ -566,6 +566,10 @@ async function verifyPublishedPackageManifests({ consumerDir, version }) {
       packageName: requirement.packageName,
       packageDir,
     });
+    await verifyPublishedDeclarationRelativeReferences({
+      packageName: requirement.packageName,
+      packageDir,
+    });
 
   }
   console.log('[verify-published] temporary consumer published package manifests passed');
@@ -598,6 +602,25 @@ async function verifyPublishedRuntimeRelativeImports({ packageName, packageDir }
       if (!isInsideDirectory(resolvedImport, packageDir)) {
         throw new Error(
           `${packageName} installed runtime relative import escapes the package: ${relativePackagePath(packageDir, filePath)} -> ${specifier}`,
+        );
+      }
+    }
+  }
+}
+
+async function verifyPublishedDeclarationRelativeReferences({ packageName, packageDir }) {
+  for (const filePath of await listDeclarationFiles(packageDir)) {
+    const source = await readFile(filePath, 'utf8');
+    for (const specifier of collectDeclarationRelativeSpecifiers(source)) {
+      const resolvedReference = await resolveDeclarationRelativeReference(filePath, specifier);
+      if (!resolvedReference) {
+        throw new Error(
+          `${packageName} installed declaration relative reference does not resolve: ${relativePackagePath(packageDir, filePath)} -> ${specifier}`,
+        );
+      }
+      if (!isInsideDirectory(resolvedReference, packageDir)) {
+        throw new Error(
+          `${packageName} installed declaration relative reference escapes the package: ${relativePackagePath(packageDir, filePath)} -> ${specifier}`,
         );
       }
     }
@@ -653,12 +676,19 @@ async function listRuntimeJavaScriptFiles(packageDir) {
     .filter(Boolean);
 }
 
+async function listDeclarationFiles(packageDir) {
+  return (await run('find', [join(packageDir, 'dist'), '-type', 'f', '-name', '*.d.ts']))
+    .split('\n')
+    .filter(Boolean);
+}
+
 function collectImportSpecifiers(source) {
   const specifiers = new Set();
   const patterns = [
     /\bimport\s*["']([^"']+)["']/g,
     /\bimport\s*(?:[\w*{}\s,]+from\s*)["']([^"']+)["']/g,
     /\bexport\s*(?:[\w*{}\s,]+from\s*|\*\s+from\s*)["']([^"']+)["']/g,
+    /\bexport\s+\*\s+as\s+\w+\s+from\s*["']([^"']+)["']/g,
     /\bimport\s*\(\s*["']([^"']+)["']\s*\)/g,
   ];
 
@@ -669,6 +699,17 @@ function collectImportSpecifiers(source) {
   }
 
   return specifiers;
+}
+
+function collectDeclarationRelativeSpecifiers(source) {
+  const specifiers = collectImportSpecifiers(source);
+  const referencePathPattern = /\/\/\/\s*<reference\s+path=["']([^"']+)["']\s*\/>/g;
+
+  for (const match of source.matchAll(referencePathPattern)) {
+    specifiers.add(match[1]);
+  }
+
+  return [...specifiers].filter((specifier) => specifier.startsWith('.'));
 }
 
 function getExternalPackageName(specifier) {
@@ -702,6 +743,26 @@ async function resolveRuntimeRelativeImport(fromFile, specifier) {
 
   for (const filePath of candidates) {
     if (!filePath.endsWith('.js')) continue;
+    try {
+      const fileStat = await stat(filePath);
+      if (fileStat.isFile()) return filePath;
+    } catch {
+      // Try the next candidate.
+    }
+  }
+  return null;
+}
+
+async function resolveDeclarationRelativeReference(fromFile, specifier) {
+  const candidate = resolve(dirname(fromFile), specifier);
+  const candidates = [
+    candidate.endsWith('.js') ? `${candidate.slice(0, -3)}.d.ts` : candidate,
+    candidate.endsWith('.d.ts') ? candidate : `${candidate}.d.ts`,
+    join(candidate, 'index.d.ts'),
+  ];
+
+  for (const filePath of candidates) {
+    if (!filePath.endsWith('.d.ts')) continue;
     try {
       const fileStat = await stat(filePath);
       if (fileStat.isFile()) return filePath;

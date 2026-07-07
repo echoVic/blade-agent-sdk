@@ -771,6 +771,30 @@ function verifyPackedRuntimeRelativeImports(spec, tarballPath, tempDir) {
   }
 }
 
+function verifyPackedDeclarationRelativeReferences(spec, tarballPath, tempDir) {
+  const extractDir = join(tempDir, `declaration-relative-${spec.name.replaceAll(/[^a-z0-9]+/gi, '-')}`);
+  run('mkdir', ['-p', extractDir]);
+  run('tar', ['-xzf', tarballPath, '-C', extractDir]);
+  const packageDir = join(extractDir, 'package');
+
+  for (const filePath of listDeclarationFiles(packageDir)) {
+    const source = readFileSync(filePath, 'utf8');
+    for (const specifier of collectDeclarationRelativeSpecifiers(source)) {
+      const resolvedReference = resolveDeclarationRelativeReference(filePath, specifier);
+      if (!resolvedReference) {
+        throw new Error(
+          `${spec.name} packed declaration relative reference does not resolve: ${relativePackagePath(packageDir, filePath)} -> ${specifier}`,
+        );
+      }
+      if (!isInsideDirectory(resolvedReference, packageDir)) {
+        throw new Error(
+          `${spec.name} packed declaration relative reference escapes the package: ${relativePackagePath(packageDir, filePath)} -> ${specifier}`,
+        );
+      }
+    }
+  }
+}
+
 function verifyPackedManifestDependencyVersions(packageName, manifest) {
   for (const section of dependencySections) {
     for (const [dependencyName, dependencyVersion] of Object.entries(manifest[section] ?? {})) {
@@ -826,12 +850,19 @@ function listRuntimeJavaScriptFiles(packageDir) {
     .filter(Boolean);
 }
 
+function listDeclarationFiles(packageDir) {
+  return run('find', [join(packageDir, 'dist'), '-type', 'f', '-name', '*.d.ts'])
+    .split('\n')
+    .filter(Boolean);
+}
+
 function collectImportSpecifiers(source) {
   const specifiers = new Set();
   const patterns = [
     /\bimport\s*["']([^"']+)["']/g,
     /\bimport\s*(?:[\w*{}\s,]+from\s*)["']([^"']+)["']/g,
     /\bexport\s*(?:[\w*{}\s,]+from\s*|\*\s+from\s*)["']([^"']+)["']/g,
+    /\bexport\s+\*\s+as\s+\w+\s+from\s*["']([^"']+)["']/g,
     /\bimport\s*\(\s*["']([^"']+)["']\s*\)/g,
   ];
 
@@ -842,6 +873,17 @@ function collectImportSpecifiers(source) {
   }
 
   return specifiers;
+}
+
+function collectDeclarationRelativeSpecifiers(source) {
+  const specifiers = collectImportSpecifiers(source);
+  const referencePathPattern = /\/\/\/\s*<reference\s+path=["']([^"']+)["']\s*\/>/g;
+
+  for (const match of source.matchAll(referencePathPattern)) {
+    specifiers.add(match[1]);
+  }
+
+  return [...specifiers].filter((specifier) => specifier.startsWith('.'));
 }
 
 function getExternalPackageName(specifier) {
@@ -873,6 +915,16 @@ function resolveRuntimeRelativeImport(fromFile, specifier) {
     join(candidate, 'index.js'),
   ];
   return candidates.find((filePath) => filePath.endsWith('.js') && existsSync(filePath) && statSync(filePath).isFile()) ?? null;
+}
+
+function resolveDeclarationRelativeReference(fromFile, specifier) {
+  const candidate = resolve(dirname(fromFile), specifier);
+  const candidates = [
+    candidate.endsWith('.js') ? `${candidate.slice(0, -3)}.d.ts` : candidate,
+    candidate.endsWith('.d.ts') ? candidate : `${candidate}.d.ts`,
+    join(candidate, 'index.d.ts'),
+  ];
+  return candidates.find((filePath) => filePath.endsWith('.d.ts') && existsSync(filePath) && statSync(filePath).isFile()) ?? null;
 }
 
 function relativePackagePath(packageDir, filePath) {
@@ -2033,6 +2085,7 @@ try {
     verifyPackedManifest(spec, tarballPath, tempDir);
     verifyPackedRuntimeExternalDependencies(spec, tarballPath, tempDir);
     verifyPackedRuntimeRelativeImports(spec, tarballPath, tempDir);
+    verifyPackedDeclarationRelativeReferences(spec, tarballPath, tempDir);
     verifyForbiddenFileContents(spec, tarballPath, tempDir);
     verifyNoEagerLegacySessionRuntime(spec, tarballPath, tempDir);
     tarballs.set(spec.name, tarballPath);
