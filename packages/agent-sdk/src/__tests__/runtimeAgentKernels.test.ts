@@ -13,14 +13,14 @@ import {
   createPackageLocalRuntimeAgentKernelOperations,
   createPackageLocalRuntimeResolvedAgentKernelCreator,
   projectPackageLocalRuntimeAgentKernelPorts,
-} from '../../packages/agent-sdk/src/session/runtimeAgentKernels.js';
+} from '../session/runtimeAgentKernels.js';
 import type {
   PackageLocalRuntimeAgentKernelFactoryPort,
   PackageLocalRuntimeResolvedKernelModel,
-} from '../../packages/agent-sdk/src/session/runtimeAgentKernels.js';
-import type { PackageLocalRuntimeKernelModelResolverPort } from '../../packages/agent-sdk/src/session/runtimeKernelModels.js';
-import type { TraceRecorder } from '../../packages/agent-sdk/src/observability/TraceRecorder.js';
-import type { BladeConfig } from '../../packages/agent-sdk/src/types/common.js';
+} from '../session/runtimeAgentKernels.js';
+import type { PackageLocalRuntimeKernelModelResolverPort } from '../session/runtimeKernelModels.js';
+import type { TraceRecorder } from '../observability/TraceRecorder.js';
+import type { BladeConfig } from '../types/common.js';
 
 const modelPort: ModelPort = {
   async generate() {
