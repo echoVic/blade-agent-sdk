@@ -1771,4 +1771,15 @@ describe('ci workflow', () => {
     expect(releaseVerifier).toContain('ci workflow must run on Node 22');
     expect(releaseVerifier).toContain('ci workflow must pin pnpm/action-setup to pnpm 11.7.0');
   });
+
+  it('keeps CI workflow token permissions least-privilege', () => {
+    const workflow = parse(
+      readFileSync(resolve('.github/workflows/ci.yml'), 'utf8')
+    );
+    const releaseVerifier = readFileSync(resolve('scripts/verify-release-config.mjs'), 'utf8');
+
+    expect(workflow.permissions).toEqual({ contents: 'read' });
+    expect(releaseVerifier).toContain('ci workflow permissions');
+    expect(releaseVerifier).toContain('ci workflow must grant only contents: read');
+  });
 });

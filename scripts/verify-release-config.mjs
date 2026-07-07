@@ -420,11 +420,17 @@ function verifyCiWorkflow() {
   const commands = steps.map((step) => step.run).filter(Boolean);
   const setupPnpmStep = steps.find((step) => step.uses?.startsWith('pnpm/action-setup@'));
 
+  assertDeepEqual(verifyJob ? workflow.permissions : undefined, {
+    contents: 'read',
+  }, 'ci workflow permissions');
   assertDeepEqual(verifyJob?.strategy?.matrix?.['node-version'], ['22'], 'ci workflow node versions');
   assertDeepEqual(commands, [
     'pnpm install --frozen-lockfile --ignore-scripts',
     'pnpm run verify',
   ], 'ci workflow commands');
+  if (JSON.stringify(workflow.permissions) !== JSON.stringify({ contents: 'read' })) {
+    fail('ci workflow must grant only contents: read');
+  }
   if (setupPnpmStep?.with?.version !== '11.7.0') {
     fail('ci workflow must pin pnpm/action-setup to pnpm 11.7.0');
   }
