@@ -1,13 +1,12 @@
 import { mkdtempSync } from 'node:fs';
+import { mkdir, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { PersistentStore } from '../context/storage/PersistentStore.js';
-import { SessionId } from '../types/branded.js';
 import {
   JsonlSessionStore,
   NoopSessionStore,
-} from '../../packages/agent-sdk/src/session/store.js';
+} from '../session/store.js';
 
 function createWorkspaceRoot(): string {
   return mkdtempSync(join(tmpdir(), 'agent-sdk-session-store-test-'));
@@ -18,46 +17,149 @@ function expectDefined<T>(value: T | null | undefined): asserts value is T {
   expect(value).not.toBeUndefined();
 }
 
+async function writeSessionEvents(
+  workspaceRoot: string,
+  sessionId: string,
+  events: Record<string, unknown>[],
+): Promise<void> {
+  const sessionsRoot = join(workspaceRoot, 'sessions');
+  await mkdir(sessionsRoot, { recursive: true });
+  await writeFile(
+    join(sessionsRoot, `${sessionId}.jsonl`),
+    `${events.map((event) => JSON.stringify(event)).join('\n')}\n`,
+    'utf-8',
+  );
+}
+
 describe('agent-sdk package-local session store', () => {
   it('reconstructs unified JSONL session state without root session store imports', async () => {
     const workspaceRoot = createWorkspaceRoot();
-    const persistentStore = new PersistentStore(workspaceRoot);
     const sessionStore = new JsonlSessionStore(workspaceRoot);
+    const sessionId = 'agent-sdk-session-store';
+    const userMessageId = 'message-user';
+    const assistantMessageId = 'message-assistant';
+    const toolResultMessageId = 'message-tool-result';
+    const summaryMessageId = 'message-summary';
+    const now = '2026-01-01T00:00:00.000Z';
 
-    const sessionId = SessionId('agent-sdk-session-store');
-    const userMessageId = await persistentStore.saveMessage(sessionId, 'user', 'hello');
-    const assistantMessageId = await persistentStore.saveMessage(
-      sessionId,
-      'assistant',
-      '',
-      userMessageId,
+    await writeSessionEvents(workspaceRoot, sessionId, [
       {
-        reasoningContent: 'Need a tool.',
-        toolCalls: [
-          {
-            id: 'call-search',
-            type: 'function',
-            function: {
-              name: 'Search',
-              arguments: '{"query":"needle"}',
-            },
-          },
-        ],
+        type: 'session_created',
+        timestamp: now,
+        data: {
+          sessionId,
+          rootId: sessionId,
+          status: 'running',
+          createdAt: now,
+          updatedAt: now,
+        },
       },
-    );
-    await persistentStore.saveToolResult(
-      sessionId,
-      'call-search',
-      'Search',
-      { result: 'found' },
-      'call-search',
-    );
-    await persistentStore.saveCompaction(
-      sessionId,
-      'Compacted summary',
-      { trigger: 'manual', preTokens: 10 },
-      assistantMessageId,
-    );
+      {
+        type: 'message_created',
+        timestamp: now,
+        data: {
+          messageId: userMessageId,
+          role: 'user',
+          createdAt: now,
+        },
+      },
+      {
+        type: 'part_created',
+        timestamp: now,
+        data: {
+          partId: 'part-user-text',
+          messageId: userMessageId,
+          partType: 'text',
+          payload: { text: 'hello' },
+          createdAt: now,
+        },
+      },
+      {
+        type: 'message_created',
+        timestamp: now,
+        data: {
+          messageId: assistantMessageId,
+          role: 'assistant',
+          parentMessageId: userMessageId,
+          createdAt: now,
+        },
+      },
+      {
+        type: 'part_created',
+        timestamp: now,
+        data: {
+          partId: 'part-reasoning',
+          messageId: assistantMessageId,
+          partType: 'reasoning',
+          payload: { text: 'Need a tool.' },
+          createdAt: now,
+        },
+      },
+      {
+        type: 'part_created',
+        timestamp: now,
+        data: {
+          partId: 'call-search',
+          messageId: assistantMessageId,
+          partType: 'tool_call',
+          payload: {
+            toolCallId: 'call-search',
+            toolName: 'Search',
+            input: { query: 'needle' },
+          },
+          createdAt: now,
+        },
+      },
+      {
+        type: 'message_created',
+        timestamp: now,
+        data: {
+          messageId: toolResultMessageId,
+          role: 'tool',
+          parentMessageId: assistantMessageId,
+          createdAt: now,
+        },
+      },
+      {
+        type: 'part_created',
+        timestamp: now,
+        data: {
+          partId: 'call-search',
+          messageId: toolResultMessageId,
+          partType: 'tool_result',
+          payload: {
+            toolCallId: 'call-search',
+            toolName: 'Search',
+            output: { result: 'found' },
+          },
+          createdAt: now,
+        },
+      },
+      {
+        type: 'message_created',
+        timestamp: now,
+        data: {
+          messageId: summaryMessageId,
+          role: 'system',
+          parentMessageId: assistantMessageId,
+          createdAt: now,
+        },
+      },
+      {
+        type: 'part_created',
+        timestamp: now,
+        data: {
+          partId: 'part-summary',
+          messageId: summaryMessageId,
+          partType: 'summary',
+          payload: {
+            text: 'Compacted summary',
+            metadata: { trigger: 'manual', preTokens: 10, _systemSource: 'compaction_summary' },
+          },
+          createdAt: now,
+        },
+      },
+    ]);
 
     const state = await sessionStore.loadState(sessionId);
     const forked = await sessionStore.forkState(sessionId, { messageId: assistantMessageId });

@@ -142,6 +142,7 @@ describe('package entrypoints', () => {
       true,
     );
     expect(existsSync(join(process.cwd(), 'packages/agent-sdk/src/__tests__/sessionFactory.test.ts'))).toBe(true);
+    expect(existsSync(join(process.cwd(), 'packages/agent-sdk/src/__tests__/sessionStore.test.ts'))).toBe(true);
   });
 
   it('keeps the server entry as an explicit facade instead of a root wildcard forwarder', () => {
