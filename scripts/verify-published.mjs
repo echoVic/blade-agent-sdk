@@ -340,7 +340,10 @@ import * as aiRetry from '@blade-ai/ai/retry';
 import * as agent from '@blade-ai/agent';
 import * as agentBudget from '@blade-ai/agent/budget';
 import * as agentKernel from '@blade-ai/agent/kernel';
+import * as agentPorts from '@blade-ai/agent/ports';
 import * as agentProtocol from '@blade-ai/agent/protocol';
+import * as agentState from '@blade-ai/agent/state';
+import * as agentTracing from '@blade-ai/agent/tracing';
 import * as agentSdk from '@blade-ai/agent-sdk';
 import * as agentSdkBrowser from '@blade-ai/agent-sdk/browser';
 import * as agentSdkCore from '@blade-ai/agent-sdk/core';
@@ -403,6 +406,15 @@ assertRuntimeExport(agentSdkTools, 'ToolKind');
 
 if (Object.keys(agentProtocol).length !== 0) {
   throw new Error('@blade-ai/agent/protocol should remain type-only at runtime');
+}
+if (Object.keys(agentPorts).length !== 0) {
+  throw new Error('@blade-ai/agent/ports should remain type-only at runtime');
+}
+if (Object.keys(agentState).length !== 0) {
+  throw new Error('@blade-ai/agent/state should remain type-only at runtime');
+}
+if (Object.keys(agentTracing).length !== 0) {
+  throw new Error('@blade-ai/agent/tracing should remain type-only at runtime');
 }
 `,
     );
@@ -1561,6 +1573,14 @@ import type {
 import type { AgentTurnInput } from '@blade-ai/agent/kernel';
 import type { AgentToolPort } from '@blade-ai/agent/ports';
 import type { AgentToolCall } from '@blade-ai/agent/protocol';
+import type {
+  AgentStoreAppendContext,
+  AgentStorePort,
+} from '@blade-ai/agent/state';
+import type {
+  AgentTraceEvent,
+  AgentTracePort,
+} from '@blade-ai/agent/tracing';
 import type { SessionOptions } from '@blade-ai/agent-sdk';
 import type { StreamMessage } from '@blade-ai/agent-sdk';
 import type { ToolDefinition } from '@blade-ai/agent-sdk';
@@ -1640,6 +1660,21 @@ const toolPort: AgentToolPort = {
     };
   },
 };
+const agentStoreAppendContext: AgentStoreAppendContext = {
+  source: 'input',
+  step: 0,
+};
+const agentStorePort: AgentStorePort = {
+  appendMessage() {},
+};
+const agentTraceEvent: AgentTraceEvent = {
+  type: 'turn_end',
+  content: 'ok',
+  finishReason: 'stop',
+};
+const agentTracePort: AgentTracePort = {
+  record() {},
+};
 
 const sessionOptions: SessionOptions = {
   model: 'glm-5.2',
@@ -1718,6 +1753,10 @@ void tokenBudgetConfig;
 void tokenBudgetSnapshot;
 void turnInput;
 void toolPort;
+void agentStoreAppendContext;
+void agentStorePort;
+void agentTraceEvent;
+void agentTracePort;
 void sessionOptions;
 void streamMessage;
 void toolDefinition;
