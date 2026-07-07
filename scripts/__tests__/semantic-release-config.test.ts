@@ -1831,4 +1831,40 @@ describe('ci workflow', () => {
     expect(releaseVerifier).toContain('docs workflow commands');
     expect(releaseVerifier).toContain('docs workflow must upload docs/.vitepress/dist');
   });
+
+  it('keeps docs deployment trigger and deploy job covered by the release verifier', () => {
+    const workflow = parse(
+      readFileSync(resolve('.github/workflows/deploy-docs.yml'), 'utf8')
+    );
+    const deployJob = workflow.jobs.deploy;
+    const deployStep = deployJob.steps.find((step: { uses?: string }) =>
+      step.uses?.startsWith('actions/deploy-pages@')
+    );
+    const releaseVerifier = readFileSync(resolve('scripts/verify-release-config.mjs'), 'utf8');
+
+    expect(workflow.on.push.branches).toEqual(['main']);
+    expect(workflow.on.push.paths).toEqual([
+      'docs/**',
+      '.github/workflows/deploy-docs.yml',
+    ]);
+    expect(workflow.on.workflow_dispatch).toEqual(null);
+    expect(workflow.concurrency).toEqual({
+      group: 'pages',
+      'cancel-in-progress': false,
+    });
+    expect(deployJob.needs).toBe('build');
+    expect(deployJob.environment).toEqual({
+      name: 'github-pages',
+      url: '${{ steps.deployment.outputs.page_url }}',
+    });
+    expect(deployStep).toMatchObject({
+      id: 'deployment',
+      uses: 'actions/deploy-pages@v4',
+    });
+    expect(releaseVerifier).toContain('docs workflow push paths');
+    expect(releaseVerifier).toContain('docs workflow concurrency');
+    expect(releaseVerifier).toContain('docs workflow must deploy only after the build job');
+    expect(releaseVerifier).toContain('docs workflow must deploy to the github-pages environment');
+    expect(releaseVerifier).toContain('docs workflow must use actions/deploy-pages@v4');
+  });
 });

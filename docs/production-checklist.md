@@ -83,7 +83,7 @@ pnpm run test:live:session-glm
 
 ## Release Rehearsal
 
-`pnpm run verify` 会先执行无 token 的静态 release gate，校验 semantic-release 配置、root private orchestrator 发布安全、三包 publish metadata、publishable source package version placeholders、source package LICENSE artifacts、`publishConfig.provenance: true`、CI workflow 的 `contents: read` 最小权限、docs workflow 的 GitHub Pages 最小权限、docs workflow toolchain pins、`docs/.vitepress/dist` artifact path、release workflow 的精确发布权限、release workflow 的 verify-before-release 顺序，以及 OIDC trusted publishing 设置：
+`pnpm run verify` 会先执行无 token 的静态 release gate，校验 semantic-release 配置、root private orchestrator 发布安全、三包 publish metadata、publishable source package version placeholders、source package LICENSE artifacts、`publishConfig.provenance: true`、CI workflow 的 `contents: read` 最小权限、docs workflow 的 GitHub Pages 最小权限、docs workflow trigger / concurrency / deploy job、docs workflow toolchain pins、`docs/.vitepress/dist` artifact path、release workflow 的精确发布权限、release workflow 的 verify-before-release 顺序，以及 OIDC trusted publishing 设置：
 
 ```bash
 pnpm run verify:release
@@ -117,7 +117,7 @@ release workflow 必须保持 `contents: write`、`issues: write`、`pull-reques
 
 CI workflow 必须显式保持 `permissions: { contents: read }`，普通验证任务不需要写入仓库、issues、pull requests 或 OIDC token。
 
-docs workflow 必须显式保持 `permissions: { contents: read, pages: write, id-token: write }`，只允许 GitHub Pages artifact 部署所需权限。它还必须保持 Node `22`、`pnpm/action-setup` `11.7.0`、`pnpm install --frozen-lockfile --ignore-scripts`、`pnpm run docs:build` 和 `docs/.vitepress/dist` artifact path，避免文档部署链路绕开发版工具链或上传错误目录。
+docs workflow 必须显式保持 `permissions: { contents: read, pages: write, id-token: write }`，只允许 GitHub Pages artifact 部署所需权限。它还必须保持 main 分支 docs-only push paths、manual `workflow_dispatch`、`concurrency.group: pages`、`cancel-in-progress: false`、Node `22`、`pnpm/action-setup` `11.7.0`、`pnpm install --frozen-lockfile --ignore-scripts`、`pnpm run docs:build`、`docs/.vitepress/dist` artifact path，以及依赖 build job 的 `actions/deploy-pages@v4` deploy job，避免文档部署链路绕开发版工具链、上传错误目录或并发取消正在发布的 Pages artifact。
 
 不要绕过 `pnpm run verify` 直接发布。不要在 trusted publishing 流程中依赖长期 `NPM_TOKEN`。
 

@@ -455,20 +455,40 @@ function verifyCiWorkflow() {
 
 function verifyDocsWorkflow() {
   const workflow = parse(readFileSync(resolve('.github/workflows/deploy-docs.yml'), 'utf8'));
+  const deployJob = workflow.jobs?.deploy;
   const steps = workflow.jobs?.build?.steps ?? [];
   const commands = steps.map((step) => step.run).filter(Boolean);
   const setupPnpmStep = steps.find((step) => step.uses?.startsWith('pnpm/action-setup@'));
   const setupNodeStep = steps.find((step) => step.uses?.startsWith('actions/setup-node@'));
   const uploadStep = steps.find((step) => step.uses?.startsWith('actions/upload-pages-artifact@'));
+  const deployStep = deployJob?.steps?.find((step) => step.uses?.startsWith('actions/deploy-pages@'));
   const expectedPermissions = {
     contents: 'read',
     pages: 'write',
     'id-token': 'write',
   };
 
+  assertDeepEqual(workflow.on?.push?.branches, ['main'], 'docs workflow push branches');
+  assertDeepEqual(workflow.on?.push?.paths, [
+    'docs/**',
+    '.github/workflows/deploy-docs.yml',
+  ], 'docs workflow push paths');
+  if (!('workflow_dispatch' in (workflow.on ?? {}))) {
+    fail('docs workflow must support manual workflow_dispatch runs');
+  }
   assertDeepEqual(workflow.permissions, expectedPermissions, 'docs workflow permissions');
+  assertDeepEqual(workflow.concurrency, {
+    group: 'pages',
+    'cancel-in-progress': false,
+  }, 'docs workflow concurrency');
   if (JSON.stringify(workflow.permissions) !== JSON.stringify(expectedPermissions)) {
     fail('docs workflow must grant only GitHub Pages deployment permissions');
+  }
+  if (workflow.concurrency?.group !== 'pages') {
+    fail('docs workflow must serialize GitHub Pages deployments');
+  }
+  if (workflow.concurrency?.['cancel-in-progress'] !== false) {
+    fail('docs workflow must not cancel an in-flight GitHub Pages deployment');
   }
   assertDeepEqual(commands, [
     'pnpm install --frozen-lockfile --ignore-scripts',
@@ -482,6 +502,19 @@ function verifyDocsWorkflow() {
   }
   if (uploadStep?.with?.path !== 'docs/.vitepress/dist') {
     fail('docs workflow must upload docs/.vitepress/dist');
+  }
+  if (deployJob?.needs !== 'build') {
+    fail('docs workflow must deploy only after the build job');
+  }
+  assertDeepEqual(deployJob?.environment, {
+    name: 'github-pages',
+    url: '${{ steps.deployment.outputs.page_url }}',
+  }, 'docs workflow deploy environment');
+  if (deployJob?.environment?.name !== 'github-pages') {
+    fail('docs workflow must deploy to the github-pages environment');
+  }
+  if (deployStep?.id !== 'deployment' || deployStep?.uses !== 'actions/deploy-pages@v4') {
+    fail('docs workflow must use actions/deploy-pages@v4');
   }
 }
 
