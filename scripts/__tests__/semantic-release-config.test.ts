@@ -1284,6 +1284,7 @@ describe('release scripts', () => {
     expect(boundaryVerifier).toContain('verifyManifestTargetExists');
     expect(boundaryVerifier).toContain('main field must declare a package root runtime entry');
     expect(boundaryVerifier).toContain('types field must declare a package root declaration entry');
+    expect(boundaryVerifier).toContain('must expose "./package.json" metadata export');
     expect(boundaryVerifier).toContain('source manifest target does not exist in package build output');
     expect(boundaryVerifier).toContain('source manifest target must not point at source files');
     expect(boundaryVerifier).toContain('source manifest target must stay package-relative');
@@ -1297,11 +1298,14 @@ describe('release scripts', () => {
     expect(publishedVerifier).toContain('installed manifest target does not exist in the package');
     expect(publishedVerifier).toContain('installedFiles.has(normalizedTarget)');
     expect(readme).toContain('manifest root entry fields');
+    expect(readme).toContain('package metadata export');
     expect(readme).toContain('source manifest target source-file rejection, relativity, containment, and existence checks');
     expect(readme).toContain('manifest target existence checks');
     expect(checklist).toContain('manifest root entry fields');
+    expect(checklist).toContain('package metadata export');
     expect(checklist).toContain('source manifest target source-file rejection, relativity, containment, and existence checks');
     expect(checklist).toContain('manifest target existence checks');
+    expect(roadmap).toContain('source package metadata export gate');
     expect(roadmap).toContain('source manifest root entry fields gate');
     expect(roadmap).toContain('source manifest target source-file gate');
     expect(roadmap).toContain('source manifest target relativity gate');

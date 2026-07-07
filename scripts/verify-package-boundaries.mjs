@@ -422,6 +422,9 @@ for (const rule of manifestRules) {
       );
     }
   }
+  if (!isPackageJsonExportEntry('./package.json', manifest.exports?.['./package.json'])) {
+    violations.push(`${rule.packageJson}: must expose "./package.json" metadata export`);
+  }
 
   for (const [subpath, exportValue] of collectExportEntries(manifest.exports)) {
     const subpathViolation = verifyExportSubpathShape(rule.packageJson, subpath);
