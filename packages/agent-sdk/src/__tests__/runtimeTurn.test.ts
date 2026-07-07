@@ -1,10 +1,10 @@
 import type { AgentStreamEvent } from '@blade-ai/agent';
 import { existsSync } from 'node:fs';
 import { describe, expect, it, vi } from 'vitest';
-import type { BladeConfig } from '../../packages/agent-sdk/src/types/common.js';
+import type { BladeConfig } from '../types/common.js';
 
-const runtimeTurnModulePath = '../../packages/agent-sdk/src/session/runtimeTurn.js';
-const runtimeTurnSourcePath = 'packages/agent-sdk/src/session/runtimeTurn.ts';
+const runtimeTurnModulePath = '../session/runtimeTurn.js';
+const runtimeTurnSourcePath = 'src/session/runtimeTurn.ts';
 
 describe('agent-sdk package-local runtime turn operations', () => {
   it('bundles trace runtime and kernel turn streaming around one trace manager', async () => {
