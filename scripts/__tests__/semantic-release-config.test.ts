@@ -1786,6 +1786,38 @@ describe('ci workflow', () => {
     expect(releaseVerifier).toContain('ci workflow must grant only contents: read');
   });
 
+  it('keeps CI workflow trigger and job shape covered by the release verifier', () => {
+    const workflow = parse(
+      readFileSync(resolve('.github/workflows/ci.yml'), 'utf8')
+    );
+    const verifyJob = workflow.jobs.verify;
+    const checkoutStep = verifyJob.steps.find((step: { uses?: string }) =>
+      step.uses?.startsWith('actions/checkout@')
+    );
+    const setupNodeStep = verifyJob.steps.find((step: { uses?: string }) =>
+      step.uses?.startsWith('actions/setup-node@')
+    );
+    const releaseVerifier = readFileSync(resolve('scripts/verify-release-config.mjs'), 'utf8');
+
+    expect(workflow.on.push.branches).toEqual([
+      'main',
+      'master',
+      'refactor/**',
+      'codex/**',
+    ]);
+    expect(workflow.on.pull_request).toBeNull();
+    expect(verifyJob['runs-on']).toBe('ubuntu-latest');
+    expect(verifyJob['timeout-minutes']).toBe(20);
+    expect(checkoutStep.uses).toBe('actions/checkout@v5');
+    expect(setupNodeStep.with).toMatchObject({ cache: 'pnpm' });
+    expect(releaseVerifier).toContain('ci workflow push branches');
+    expect(releaseVerifier).toContain('ci workflow must run on pull requests');
+    expect(releaseVerifier).toContain('ci workflow must run on ubuntu-latest');
+    expect(releaseVerifier).toContain('ci workflow must keep a 20 minute timeout');
+    expect(releaseVerifier).toContain('ci workflow must use actions/checkout@v5');
+    expect(releaseVerifier).toContain('ci workflow setup-node must cache pnpm');
+  });
+
   it('keeps docs deployment workflow permissions least-privilege', () => {
     const workflow = parse(
       readFileSync(resolve('.github/workflows/deploy-docs.yml'), 'utf8')

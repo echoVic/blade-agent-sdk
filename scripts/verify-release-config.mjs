@@ -432,11 +432,28 @@ function verifyCiWorkflow() {
   const verifyJob = workflow.jobs?.verify;
   const steps = verifyJob?.steps ?? [];
   const commands = steps.map((step) => step.run).filter(Boolean);
+  const checkoutStep = steps.find((step) => step.uses?.startsWith('actions/checkout@'));
   const setupPnpmStep = steps.find((step) => step.uses?.startsWith('pnpm/action-setup@'));
+  const setupNodeStep = steps.find((step) => step.uses?.startsWith('actions/setup-node@'));
 
+  assertDeepEqual(workflow.on?.push?.branches, [
+    'main',
+    'master',
+    'refactor/**',
+    'codex/**',
+  ], 'ci workflow push branches');
+  if (!('pull_request' in (workflow.on ?? {}))) {
+    fail('ci workflow must run on pull requests');
+  }
   assertDeepEqual(verifyJob ? workflow.permissions : undefined, {
     contents: 'read',
   }, 'ci workflow permissions');
+  if (verifyJob?.['runs-on'] !== 'ubuntu-latest') {
+    fail('ci workflow must run on ubuntu-latest');
+  }
+  if (verifyJob?.['timeout-minutes'] !== 20) {
+    fail('ci workflow must keep a 20 minute timeout');
+  }
   assertDeepEqual(verifyJob?.strategy?.matrix?.['node-version'], ['22'], 'ci workflow node versions');
   assertDeepEqual(commands, [
     'pnpm install --frozen-lockfile --ignore-scripts',
@@ -447,6 +464,12 @@ function verifyCiWorkflow() {
   }
   if (setupPnpmStep?.with?.version !== '11.7.0') {
     fail('ci workflow must pin pnpm/action-setup to pnpm 11.7.0');
+  }
+  if (checkoutStep?.uses !== 'actions/checkout@v5') {
+    fail('ci workflow must use actions/checkout@v5');
+  }
+  if (setupNodeStep?.with?.cache !== 'pnpm') {
+    fail('ci workflow setup-node must cache pnpm');
   }
   if (!verifyJob?.strategy?.matrix?.['node-version']?.includes('22')) {
     fail('ci workflow must run on Node 22');

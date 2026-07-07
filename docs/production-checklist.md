@@ -83,7 +83,7 @@ pnpm run test:live:session-glm
 
 ## Release Rehearsal
 
-`pnpm run verify` 会先执行无 token 的静态 release gate，校验 semantic-release 配置、root private orchestrator 发布安全、三包 publish metadata、publishable source package version placeholders、source package LICENSE artifacts、`publishConfig.provenance: true`、CI workflow 的 `contents: read` 最小权限、docs workflow 的 GitHub Pages 最小权限、docs workflow trigger / concurrency / deploy job、docs workflow toolchain pins、`docs/.vitepress/dist` artifact path、release workflow 的精确发布权限、release workflow 的 verify-before-release 顺序，以及 OIDC trusted publishing 设置：
+`pnpm run verify` 会先执行无 token 的静态 release gate，校验 semantic-release 配置、root private orchestrator 发布安全、三包 publish metadata、publishable source package version placeholders、source package LICENSE artifacts、`publishConfig.provenance: true`、CI workflow 的 `contents: read` 最小权限、CI workflow trigger / runner / timeout / checkout / cache、docs workflow 的 GitHub Pages 最小权限、docs workflow trigger / concurrency / deploy job、docs workflow toolchain pins、`docs/.vitepress/dist` artifact path、release workflow 的精确发布权限、release workflow 的 verify-before-release 顺序，以及 OIDC trusted publishing 设置：
 
 ```bash
 pnpm run verify:release
@@ -115,7 +115,7 @@ dry-run 不发布 npm 包。它通常需要 GitHub token 环境，适合维护�
 
 release workflow 必须保持 `contents: write`、`issues: write`、`pull-requests: write` 和 `id-token: write` 这组精确权限；不要增加不需要的 `actions`、`packages` 或 OIDC 之外的额外写权限。它还必须保持 `concurrency.group: release-main` 和 `cancel-in-progress: false`，让连续 push 到 `main` 的发布任务串行排队，并避免取消已经进入 publish / post-publish verification 的任务。
 
-CI workflow 必须显式保持 `permissions: { contents: read }`，普通验证任务不需要写入仓库、issues、pull requests 或 OIDC token。
+CI workflow 必须显式保持 `permissions: { contents: read }`，普通验证任务不需要写入仓库、issues、pull requests 或 OIDC token。它还必须保持 main / master / refactor / codex 分支和 pull request 触发、`ubuntu-latest` runner、20 分钟超时、`actions/checkout@v5`、Node `22`、`pnpm/action-setup` `11.7.0`、pnpm cache、`pnpm install --frozen-lockfile --ignore-scripts` 和完整 `pnpm run verify`，让普通 PR 与分支验证持续覆盖生产发布前的同一条质量链路。
 
 docs workflow 必须显式保持 `permissions: { contents: read, pages: write, id-token: write }`，只允许 GitHub Pages artifact 部署所需权限。它还必须保持 main 分支 docs-only push paths、manual `workflow_dispatch`、`concurrency.group: pages`、`cancel-in-progress: false`、Node `22`、`pnpm/action-setup` `11.7.0`、`pnpm install --frozen-lockfile --ignore-scripts`、`pnpm run docs:build`、`docs/.vitepress/dist` artifact path，以及依赖 build job 的 `actions/deploy-pages@v4` deploy job，避免文档部署链路绕开发版工具链、上传错误目录或并发取消正在发布的 Pages artifact。
 
