@@ -326,6 +326,8 @@ export class PackageLocalSessionRuntime {
   private readonly forkOperations: PackageLocalRuntimeForkOperations;
   private readonly traceManager: SessionTraceManager;
   private runtimeCapabilitiesInitialization?: Promise<void>;
+  private runtimeCapabilitiesInitialized = false;
+  private subagentLocationsNeedRefresh = false;
 
   constructor(options: PackageLocalSessionRuntimeOptions) {
     this.sessionId = options.sessionId;
@@ -514,6 +516,9 @@ export class PackageLocalSessionRuntime {
   setDefaultContext(context: RuntimeContext): void {
     this.defaultContext = context;
     this.projectPath = getPackageLocalRuntimeContextCwd(context);
+    if (this.runtimeCapabilitiesInitialized) {
+      this.subagentLocationsNeedRefresh = true;
+    }
   }
 
   setPermissionMode(mode: Parameters<ISession['setPermissionMode']>[0]): void {
@@ -561,8 +566,15 @@ export class PackageLocalSessionRuntime {
   }
 
   async ensureRuntimeCapabilitiesInitialized(): Promise<void> {
-    this.runtimeCapabilitiesInitialization ??= this.initializeRuntimeCapabilities();
+    this.runtimeCapabilitiesInitialization ??= this.initializeRuntimeCapabilities().then(() => {
+      this.runtimeCapabilitiesInitialized = true;
+    });
     await this.runtimeCapabilitiesInitialization;
+
+    if (this.subagentLocationsNeedRefresh) {
+      this.subagentLocationsNeedRefresh = false;
+      this.initializeSubagents();
+    }
   }
 
   private async initializeRuntimeCapabilities(): Promise<void> {

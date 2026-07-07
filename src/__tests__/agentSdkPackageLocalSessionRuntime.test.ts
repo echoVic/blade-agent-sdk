@@ -925,6 +925,54 @@ describe('agent-sdk package-local session runtime shell', () => {
     ]);
   });
 
+  it('refreshes initialized subagent locations after default context changes', async () => {
+    const calls: unknown[] = [];
+    const runtime = new PackageLocalSessionRuntime({
+      sessionId: 'session-1',
+      options: {
+        ...options,
+        storagePath: '/workspace/.blade/sessions',
+      },
+      bladeConfig,
+      defaultContext: {
+        capabilities: {
+          filesystem: {
+            roots: ['/project-old'],
+            cwd: '/project-old',
+          },
+        },
+      },
+      subagentRegistry: {
+        setLogger() {},
+        setProjectDir(projectDir) {
+          calls.push(['setProjectDir', projectDir]);
+        },
+        loadFromStandardLocations(projectDir, storageRoot) {
+          calls.push(['loadFromStandardLocations', projectDir, storageRoot]);
+        },
+        register() {},
+      },
+    });
+
+    await runtime.ensureRuntimeCapabilitiesInitialized();
+    runtime.setDefaultContext({
+      capabilities: {
+        filesystem: {
+          roots: ['/project-new'],
+          cwd: '/project-new',
+        },
+      },
+    });
+    await runtime.ensureRuntimeCapabilitiesInitialized();
+
+    expect(calls).toEqual([
+      ['setProjectDir', '/project-old'],
+      ['loadFromStandardLocations', '/project-old', '/workspace/.blade'],
+      ['setProjectDir', '/project-new'],
+      ['loadFromStandardLocations', '/project-new', '/workspace/.blade'],
+    ]);
+  });
+
   it('owns permission handler composition with permission hooks before canUseTool', async () => {
     const abortController = new AbortController();
     const canUseTool = vi.fn(async () => ({ behavior: 'allow' as const }));
