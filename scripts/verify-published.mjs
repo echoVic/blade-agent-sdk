@@ -286,8 +286,8 @@ async function verifyPublishedInstallSmoke({ version, packageMetadataByName }) {
     `@blade-ai/ai@${version}`,
     `@blade-ai/agent@${version}`,
     `@blade-ai/agent-sdk@${version}`,
-    'typescript@^6.0.3',
-    'esbuild@^0.28.1',
+    'typescript@6.0.3',
+    'esbuild@0.28.1',
   ];
   const npmInstallCommandLabel = `npm install ${packageSpecs.join(' ')}`;
 

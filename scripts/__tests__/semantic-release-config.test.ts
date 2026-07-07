@@ -1266,9 +1266,13 @@ describe('release scripts', () => {
     const publishedVerifier = readFileSync(resolve('scripts/verify-published.mjs'), 'utf8');
     const readme = readFileSync(resolve('README.md'), 'utf8');
     const checklist = readFileSync(resolve('docs/production-checklist.md'), 'utf8');
+    const roadmap = readFileSync(resolve('docs/roadmap/production-agent-sdk-monorepo.md'), 'utf8');
 
     expect(publishedVerifier).toContain("import { bundleWithEsbuildRetry } from './esbuild-bundle.mjs';");
-    expect(publishedVerifier).toContain('esbuild@^0.28.1');
+    expect(publishedVerifier).toContain('typescript@6.0.3');
+    expect(publishedVerifier).toContain('esbuild@0.28.1');
+    expect(publishedVerifier).not.toContain('typescript@^6.0.3');
+    expect(publishedVerifier).not.toContain('esbuild@^0.28.1');
     expect(publishedVerifier).toContain('verifyPublishedBrowserBundleSmoke');
     expect(publishedVerifier).toContain('consumer-browser-entry.ts');
     expect(publishedVerifier).toContain("from '@blade-ai/agent-sdk';");
@@ -1285,6 +1289,9 @@ describe('release scripts', () => {
     expect(publishedVerifier).toContain('server-only for getBuiltinTools');
     expect(readme).toContain('browser bundle smoke');
     expect(checklist).toContain('browser bundle smoke');
+    expect(readme).toContain('post-publish temporary consumer toolchain pin gate');
+    expect(checklist).toContain('post-publish temporary consumer toolchain pin gate');
+    expect(roadmap).toContain('post-publish temporary consumer toolchain pin gate');
   });
 
   it('browser-bundles the published runtime-independent agent package from the temporary consumer', () => {
