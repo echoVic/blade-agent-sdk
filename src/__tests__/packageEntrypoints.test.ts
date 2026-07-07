@@ -114,6 +114,9 @@ describe('package entrypoints', () => {
     expect(
       existsSync(join(process.cwd(), 'packages/agent-sdk/src/__tests__/packageLocalKernelRuntimeFactory.test.ts')),
     ).toBe(true);
+    expect(existsSync(join(process.cwd(), 'packages/agent-sdk/src/__tests__/defaultKernelRuntimeFactory.test.ts'))).toBe(
+      true,
+    );
     expect(existsSync(join(process.cwd(), 'packages/agent-sdk/src/__tests__/runtimeKernelTurnStream.test.ts'))).toBe(
       true,
     );

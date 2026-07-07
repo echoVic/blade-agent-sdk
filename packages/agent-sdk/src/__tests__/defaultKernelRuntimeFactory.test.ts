@@ -4,12 +4,12 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { AgentKernelOptions } from '@blade-ai/agent';
 import type { ModelPort } from '@blade-ai/ai';
-import { createDefaultKernelSessionRuntimeFactory } from '../../packages/agent-sdk/src/session/defaultKernelRuntimeFactory.js';
-import { JsonlSessionStore } from '../../packages/agent-sdk/src/session/store.js';
-import { PackageLocalSession } from '../../packages/agent-sdk/src/session/sessionInstance.js';
-import type { SessionOptions, StreamMessage } from '../../packages/agent-sdk/src/session/types.js';
-import type { ToolDefinition } from '../../packages/agent-sdk/src/tools/types/index.js';
-import { HookEvent } from '../../packages/agent-sdk/src/types/constants.js';
+import { createDefaultKernelSessionRuntimeFactory } from '../session/defaultKernelRuntimeFactory.js';
+import { PackageLocalSession } from '../session/sessionInstance.js';
+import { JsonlSessionStore } from '../session/store.js';
+import type { SessionOptions, StreamMessage } from '../session/types.js';
+import type { ToolDefinition } from '../tools/types/index.js';
+import { HookEvent } from '../types/constants.js';
 
 const model: ModelPort = {
   async generate() {
