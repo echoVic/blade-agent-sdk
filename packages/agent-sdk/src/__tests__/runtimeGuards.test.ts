@@ -1,11 +1,11 @@
 import { existsSync } from 'node:fs';
 import { describe, expect, it, vi } from 'vitest';
-import type { JsonObject } from '../../packages/agent-sdk/src/types/common.js';
-import type { PermissionHandlerRequest } from '../../packages/agent-sdk/src/types/permissions.js';
-import { ToolKind } from '../../packages/agent-sdk/src/tools/types/ToolKind.js';
+import type { JsonObject } from '../types/common.js';
+import type { PermissionHandlerRequest } from '../types/permissions.js';
+import { ToolKind } from '../tools/types/ToolKind.js';
 
-const runtimeGuardsModulePath = '../../packages/agent-sdk/src/session/runtimeGuards.js';
-const runtimeGuardsSourcePath = 'packages/agent-sdk/src/session/runtimeGuards.ts';
+const runtimeGuardsModulePath = '../session/runtimeGuards.js';
+const runtimeGuardsSourcePath = 'src/session/runtimeGuards.ts';
 
 function permissionRequest(input: JsonObject): PermissionHandlerRequest {
   return {
