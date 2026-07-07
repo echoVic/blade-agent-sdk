@@ -306,6 +306,21 @@ function verifyManifestTargetExtension({ packageJson, label, condition, target }
   return null;
 }
 
+function resolvePackageTarget(packageJsonPath, target) {
+  return normalize(resolve(dirname(packageJsonPath), target));
+}
+
+function verifyManifestTargetExists({ packageJson, packageJsonPath, label, target }) {
+  if (typeof target !== 'string') return null;
+  if (target === './package.json') return null;
+
+  const resolvedTarget = resolvePackageTarget(packageJsonPath, target);
+  if (!existsSync(resolvedTarget)) {
+    return `${packageJson}: ${label} target "${target}" source manifest target does not exist in package build output`;
+  }
+  return null;
+}
+
 const violations = [];
 
 for (const rule of manifestRules) {
@@ -355,6 +370,15 @@ for (const rule of manifestRules) {
     });
     if (extensionViolation) {
       violations.push(extensionViolation);
+    }
+    const existenceViolation = verifyManifestTargetExists({
+      packageJson: rule.packageJson,
+      packageJsonPath,
+      label: field,
+      target,
+    });
+    if (existenceViolation) {
+      violations.push(existenceViolation);
     }
   }
 
@@ -408,6 +432,15 @@ for (const rule of manifestRules) {
       });
       if (extensionViolation) {
         violations.push(extensionViolation);
+      }
+      const existenceViolation = verifyManifestTargetExists({
+        packageJson: rule.packageJson,
+        packageJsonPath,
+        label: `export "${subpath}" ${condition}`,
+        target: exportValue[condition],
+      });
+      if (existenceViolation) {
+        violations.push(existenceViolation);
       }
     }
   }
