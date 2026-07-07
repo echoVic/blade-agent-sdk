@@ -746,6 +746,31 @@ function verifyPackedRuntimeExternalDependencies(spec, tarballPath, tempDir) {
   }
 }
 
+function verifyPackedRuntimeRelativeImports(spec, tarballPath, tempDir) {
+  const extractDir = join(tempDir, `runtime-relative-${spec.name.replaceAll(/[^a-z0-9]+/gi, '-')}`);
+  run('mkdir', ['-p', extractDir]);
+  run('tar', ['-xzf', tarballPath, '-C', extractDir]);
+  const packageDir = join(extractDir, 'package');
+
+  for (const filePath of listRuntimeJavaScriptFiles(packageDir)) {
+    const source = readFileSync(filePath, 'utf8');
+    for (const specifier of collectImportSpecifiers(source)) {
+      if (!specifier.startsWith('.')) continue;
+      const resolvedImport = resolveRuntimeRelativeImport(filePath, specifier);
+      if (!resolvedImport) {
+        throw new Error(
+          `${spec.name} packed runtime relative import does not resolve: ${relativePackagePath(packageDir, filePath)} -> ${specifier}`,
+        );
+      }
+      if (!isInsideDirectory(resolvedImport, packageDir)) {
+        throw new Error(
+          `${spec.name} packed runtime relative import escapes the package: ${relativePackagePath(packageDir, filePath)} -> ${specifier}`,
+        );
+      }
+    }
+  }
+}
+
 function verifyPackedManifestDependencyVersions(packageName, manifest) {
   for (const section of dependencySections) {
     for (const [dependencyName, dependencyVersion] of Object.entries(manifest[section] ?? {})) {
@@ -780,13 +805,9 @@ function getDeclaredRuntimeDependencies(manifest) {
 }
 
 function collectRuntimeExternalImports(packageDir) {
-  const distDir = join(packageDir, 'dist');
-  const files = run('find', [distDir, '-type', 'f', '-name', '*.js'])
-    .split('\n')
-    .filter(Boolean);
   const dependencies = new Set();
 
-  for (const filePath of files) {
+  for (const filePath of listRuntimeJavaScriptFiles(packageDir)) {
     const source = readFileSync(filePath, 'utf8');
     for (const specifier of collectImportSpecifiers(source)) {
       const dependencyName = getExternalPackageName(specifier);
@@ -797,6 +818,12 @@ function collectRuntimeExternalImports(packageDir) {
   }
 
   return dependencies;
+}
+
+function listRuntimeJavaScriptFiles(packageDir) {
+  return run('find', [join(packageDir, 'dist'), '-type', 'f', '-name', '*.js'])
+    .split('\n')
+    .filter(Boolean);
 }
 
 function collectImportSpecifiers(source) {
@@ -836,6 +863,26 @@ function getExternalPackageName(specifier) {
     return normalizedSpecifier.split('/').slice(0, 2).join('/');
   }
   return normalizedSpecifier.split('/')[0];
+}
+
+function resolveRuntimeRelativeImport(fromFile, specifier) {
+  const candidate = resolve(dirname(fromFile), specifier);
+  const candidates = [
+    candidate,
+    `${candidate}.js`,
+    join(candidate, 'index.js'),
+  ];
+  return candidates.find((filePath) => filePath.endsWith('.js') && existsSync(filePath) && statSync(filePath).isFile()) ?? null;
+}
+
+function relativePackagePath(packageDir, filePath) {
+  return filePath.slice(`${packageDir}/`.length);
+}
+
+function isInsideDirectory(filePath, directory) {
+  const resolvedFilePath = resolve(filePath);
+  const resolvedDirectory = resolve(directory);
+  return resolvedFilePath === resolvedDirectory || resolvedFilePath.startsWith(`${resolvedDirectory}/`);
 }
 
 function assertNoPackageLifecycleScripts(packageName, manifest, label) {
@@ -1985,6 +2032,7 @@ try {
     verifyPackedLicenseArtifacts(spec, tarballPath, tempDir);
     verifyPackedManifest(spec, tarballPath, tempDir);
     verifyPackedRuntimeExternalDependencies(spec, tarballPath, tempDir);
+    verifyPackedRuntimeRelativeImports(spec, tarballPath, tempDir);
     verifyForbiddenFileContents(spec, tarballPath, tempDir);
     verifyNoEagerLegacySessionRuntime(spec, tarballPath, tempDir);
     tarballs.set(spec.name, tarballPath);

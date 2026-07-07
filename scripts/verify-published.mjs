@@ -2,7 +2,7 @@ import { execFile } from 'node:child_process';
 import { mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import { builtinModules } from 'node:module';
 import { tmpdir } from 'node:os';
-import { dirname, join, relative } from 'node:path';
+import { dirname, join, relative, resolve } from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
 import { pathToFileURL } from 'node:url';
 import { promisify } from 'node:util';
@@ -562,6 +562,10 @@ async function verifyPublishedPackageManifests({ consumerDir, version }) {
       packageDir,
       manifest,
     });
+    await verifyPublishedRuntimeRelativeImports({
+      packageName: requirement.packageName,
+      packageDir,
+    });
 
   }
   console.log('[verify-published] temporary consumer published package manifests passed');
@@ -577,6 +581,26 @@ async function verifyPublishedRuntimeExternalDependencies({ packageName, package
     throw new Error(
       `${packageName} installed runtime import is not declared in package dependencies: ${dependencyName}`,
     );
+  }
+}
+
+async function verifyPublishedRuntimeRelativeImports({ packageName, packageDir }) {
+  for (const filePath of await listRuntimeJavaScriptFiles(packageDir)) {
+    const source = await readFile(filePath, 'utf8');
+    for (const specifier of collectImportSpecifiers(source)) {
+      if (!specifier.startsWith('.')) continue;
+      const resolvedImport = await resolveRuntimeRelativeImport(filePath, specifier);
+      if (!resolvedImport) {
+        throw new Error(
+          `${packageName} installed runtime relative import does not resolve: ${relativePackagePath(packageDir, filePath)} -> ${specifier}`,
+        );
+      }
+      if (!isInsideDirectory(resolvedImport, packageDir)) {
+        throw new Error(
+          `${packageName} installed runtime relative import escapes the package: ${relativePackagePath(packageDir, filePath)} -> ${specifier}`,
+        );
+      }
+    }
   }
 }
 
@@ -608,13 +632,9 @@ function getDeclaredRuntimeDependencies(manifest) {
 }
 
 async function collectRuntimeExternalImports(packageDir) {
-  const distDir = join(packageDir, 'dist');
-  const files = (await run('find', [distDir, '-type', 'f', '-name', '*.js']))
-    .split('\n')
-    .filter(Boolean);
   const dependencies = new Set();
 
-  for (const filePath of files) {
+  for (const filePath of await listRuntimeJavaScriptFiles(packageDir)) {
     const source = await readFile(filePath, 'utf8');
     for (const specifier of collectImportSpecifiers(source)) {
       const dependencyName = getExternalPackageName(specifier);
@@ -625,6 +645,12 @@ async function collectRuntimeExternalImports(packageDir) {
   }
 
   return dependencies;
+}
+
+async function listRuntimeJavaScriptFiles(packageDir) {
+  return (await run('find', [join(packageDir, 'dist'), '-type', 'f', '-name', '*.js']))
+    .split('\n')
+    .filter(Boolean);
 }
 
 function collectImportSpecifiers(source) {
@@ -664,6 +690,36 @@ function getExternalPackageName(specifier) {
     return normalizedSpecifier.split('/').slice(0, 2).join('/');
   }
   return normalizedSpecifier.split('/')[0];
+}
+
+async function resolveRuntimeRelativeImport(fromFile, specifier) {
+  const candidate = resolve(dirname(fromFile), specifier);
+  const candidates = [
+    candidate,
+    `${candidate}.js`,
+    join(candidate, 'index.js'),
+  ];
+
+  for (const filePath of candidates) {
+    if (!filePath.endsWith('.js')) continue;
+    try {
+      const fileStat = await stat(filePath);
+      if (fileStat.isFile()) return filePath;
+    } catch {
+      // Try the next candidate.
+    }
+  }
+  return null;
+}
+
+function relativePackagePath(packageDir, filePath) {
+  return filePath.slice(`${packageDir}/`.length);
+}
+
+function isInsideDirectory(filePath, directory) {
+  const resolvedFilePath = resolve(filePath);
+  const resolvedDirectory = resolve(directory);
+  return resolvedFilePath === resolvedDirectory || resolvedFilePath.startsWith(`${resolvedDirectory}/`);
 }
 
 function assertNoPackageLifecycleScripts(packageName, manifest, label) {
