@@ -510,6 +510,38 @@ describe('package boundary verifier', () => {
     expect(result.stderr).toContain('export "." import target "./dist/index.d.ts" must point at a .js runtime artifact');
   });
 
+  it('rejects source manifest targets that are not package-relative', () => {
+    const cwd = createBoundaryFixture();
+    writeJson(join(cwd, 'packages', 'agent-sdk', 'package.json'), {
+      name: '@blade-ai/agent-sdk',
+      main: 'dist/index.js',
+      types: 'dist/index.d.ts',
+      exports: {
+        '.': {
+          types: 'dist/index.d.ts',
+          import: 'dist/index.js',
+        },
+        './package.json': {
+          default: './package.json',
+        },
+      },
+      dependencies: {},
+    });
+
+    const result = spawnSync(process.execPath, [
+      resolve('scripts/verify-package-boundaries.mjs'),
+    ], {
+      cwd,
+      encoding: 'utf8',
+    });
+
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain('packages/agent-sdk/package.json');
+    expect(result.stderr).toContain('main target "dist/index.js"');
+    expect(result.stderr).toContain('types target "dist/index.d.ts"');
+    expect(result.stderr).toContain('source manifest target must stay package-relative');
+  });
+
   it('rejects source manifest targets that escape the package directory', () => {
     const cwd = createBoundaryFixture();
     writeFileSync(join(cwd, 'packages', 'shared.js'), 'export {};\n');

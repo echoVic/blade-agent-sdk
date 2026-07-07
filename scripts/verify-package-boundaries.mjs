@@ -313,6 +313,9 @@ function resolvePackageTarget(packageJsonPath, target) {
 function verifyManifestTargetExists({ packageJson, packageJsonPath, label, target }) {
   if (typeof target !== 'string') return null;
   if (target === './package.json') return null;
+  if (!target.startsWith('./')) {
+    return `${packageJson}: ${label} target "${target}" source manifest target must stay package-relative`;
+  }
 
   const packageDir = dirname(packageJsonPath);
   const resolvedTarget = resolvePackageTarget(packageJsonPath, target);
