@@ -708,6 +708,13 @@ describe('release scripts', () => {
     expect(publishedVerifier).toContain('@blade-ai/ai@${version}');
     expect(publishedVerifier).toContain('@blade-ai/agent@${version}');
     expect(publishedVerifier).toContain('@blade-ai/agent-sdk@${version}');
+    expect(publishedVerifier).toContain("import aiPackage from '@blade-ai/ai/package.json'");
+    expect(publishedVerifier).toContain("import agentPackage from '@blade-ai/agent/package.json'");
+    expect(publishedVerifier).toContain("import agentSdkPackage from '@blade-ai/agent-sdk/package.json'");
+    expect(publishedVerifier).toContain('function assertPackageName');
+    expect(publishedVerifier).toContain("assertPackageName(aiPackage, '@blade-ai/ai')");
+    expect(publishedVerifier).toContain("assertPackageName(agentPackage, '@blade-ai/agent')");
+    expect(publishedVerifier).toContain("assertPackageName(agentSdkPackage, '@blade-ai/agent-sdk')");
     expect(publishedVerifier).toContain("import * as aiChat from '@blade-ai/ai/chat';");
     expect(publishedVerifier).toContain("import * as aiDeepseek from '@blade-ai/ai/deepseek';");
     expect(publishedVerifier).toContain("import * as aiModel from '@blade-ai/ai/model';");
