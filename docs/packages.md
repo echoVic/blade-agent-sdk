@@ -68,6 +68,7 @@ const model = createOpenAICompatibleModelPort({
 
 ```ts
 import { AgentKernel } from '@blade-ai/agent';
+import { TokenBudget } from '@blade-ai/agent/budget';
 ```
 
 Kernel 通过 ports 访问外部能力：
@@ -78,6 +79,7 @@ Kernel 通过 ports 访问外部能力：
 - store port 由调用方注入
 - hook port 由调用方注入
 - trace port 由调用方注入
+- token budget 可通过 `@blade-ai/agent/budget` 注入，并通过 `budget_warning` / `budget_exhausted` 事件观察
 
 完整示例见 [`examples/agent-kernel.ts`](../examples/agent-kernel.ts)，它用一个内存 `ModelPort` 演示 `kernel.runTurn()` 的事件流。
 

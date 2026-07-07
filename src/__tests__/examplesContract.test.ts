@@ -30,6 +30,7 @@ describe('examples and quickstart documentation', () => {
   it('keeps examples on publishable package facades instead of legacy root aliases', () => {
     expect(examplesTsconfig.compilerOptions.paths).not.toHaveProperty('@/*');
     expect(examplesTsconfig.compilerOptions.paths).toMatchObject({
+      '@blade-ai/agent/budget': ['../packages/agent/src/budget/TokenBudget.ts'],
       '@blade-ai/agent/kernel': ['../packages/agent/src/kernel/AgentKernel.ts'],
       '@blade-ai/agent/ports': ['../packages/agent/src/ports/index.ts'],
       '@blade-ai/agent/protocol': ['../packages/agent/src/protocol/index.ts'],
@@ -70,9 +71,14 @@ describe('examples and quickstart documentation', () => {
     expect(aiExample).toContain("import { createOpenAICompatibleModelPort } from '@blade-ai/ai';");
     expect(aiExample).toContain('model.generate');
     expect(agentExample).toContain("import { AgentKernel } from '@blade-ai/agent';");
+    expect(agentExample).toContain("import { TokenBudget } from '@blade-ai/agent/budget';");
+    expect(agentExample).toContain('tokenBudget: new TokenBudget');
+    expect(agentExample).toContain("event.type === 'budget_warning'");
+    expect(agentExample).toContain("event.type === 'budget_exhausted'");
     expect(agentExample).toContain('kernel.runTurn');
     expect(packageGuide).toContain('examples/ai-model-port.ts');
     expect(packageGuide).toContain('examples/agent-kernel.ts');
+    expect(packageGuide).toContain('@blade-ai/agent/budget');
   });
 
   it('documents the session-first quickstart and links it from the docs site', () => {

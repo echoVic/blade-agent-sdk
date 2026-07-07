@@ -852,6 +852,7 @@ Status:
 - Twelfth documentation increment complete: the README, package guide, architecture guide, production checklist, provider guide, and package README now document the provider-helper split: `@blade-ai/agent-sdk` root remains session-first, while DeepSeek cost/cache/long-context/runtime helpers are imported from `@blade-ai/ai/deepseek`.
 - Thirteenth documentation increment complete: the README and package guide now document `@blade-ai/agent-sdk/server` as an explicit server-only facade that composes session/core/tools/subagent exports without wildcard-forwarding through root, matching the packed and post-publish verifier guardrails.
 - Fourteenth documentation increment complete: the README and package guide now clarify that `@blade-ai/agent-sdk/server` stays aligned with the root entry's server-safe runtime/type surface while remaining independently auditable as an explicit facade.
+- Fifteenth documentation increment complete: the package-boundary examples now type-check `@blade-ai/agent/budget` through the examples path map, and `examples/agent-kernel.ts` demonstrates injecting `TokenBudget` plus handling `budget_warning` / `budget_exhausted` events. The package guide documents the explicit budget subpath alongside the runtime-independent `AgentKernel` import.
 
 Commit:
 

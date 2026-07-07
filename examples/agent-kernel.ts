@@ -5,6 +5,7 @@ import type {
   ModelStreamEvent,
 } from '@blade-ai/ai';
 import { AgentKernel } from '@blade-ai/agent';
+import { TokenBudget } from '@blade-ai/agent/budget';
 
 function createEchoResponse(request: ModelRequest): ModelResponse {
   const lastUserMessage = [...request.messages].reverse().find((message) => message.role === 'user');
@@ -40,6 +41,10 @@ async function main(): Promise<void> {
     model: echoModel,
     modelCallMode: 'stream',
     maxSteps: 1,
+    tokenBudget: new TokenBudget({
+      maxTotalTokens: 3,
+      warningThresholdPercent: 0.5,
+    }),
   });
 
   for await (const event of kernel.runTurn({ input: 'hello kernel' })) {
@@ -49,6 +54,14 @@ async function main(): Promise<void> {
 
     if (event.type === 'usage') {
       console.error('\nusage', event.usage);
+    }
+
+    if (event.type === 'budget_warning') {
+      console.error('\nbudget warning', event.snapshot);
+    }
+
+    if (event.type === 'budget_exhausted') {
+      console.error('\nbudget exhausted', event.snapshot);
     }
 
     if (event.type === 'result') {
