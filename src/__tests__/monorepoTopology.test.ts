@@ -373,7 +373,12 @@ describe('monorepo topology', () => {
     expect(agentLoopSource).toContain("from './toolInterruptBehavior.js'");
     expect(agentLoopSource).toContain("from './toolUpdateToAgentEvent.js'");
     expect(rootAgentLoopSource).toContain('buildAgentLoopAbortResult');
+    expect(rootAgentLoopSource).toContain('buildAgentLoopBudgetExhaustedResult');
     expect(rootAgentLoopSource).not.toContain('function buildAbortResult');
+    expect(rootAgentLoopSource).not.toContain('message: \'Token budget exhausted\'');
+    expect(rootAgentLoopSource).not.toContain(
+      'message: \'Stopped due to diminishing returns: consecutive turns produced very few tokens\'',
+    );
     expect(agentRecoverySource).toContain("from './isOverflowRecoverable.js'");
     expect(agentStateSource).toContain("from './systemSource.js'");
   });

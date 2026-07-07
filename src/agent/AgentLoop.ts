@@ -19,7 +19,10 @@ import { isOverflowRecoverable } from './isOverflowRecoverable.js';
 import { decideNoToolTurn } from './loop/decideNoToolTurn.js';
 import { decideTurnLimit } from './loop/decideTurnLimit.js';
 import { executeToolCalls } from './loop/executeToolCalls.js';
-import { buildAgentLoopAbortResult } from './loop/loopResult.js';
+import {
+  buildAgentLoopAbortResult,
+  buildAgentLoopBudgetExhaustedResult,
+} from './loop/loopResult.js';
 import { planToolExecution } from './loop/planToolExecution.js';
 import { runTurn } from './loop/runTurn.js';
 import type { ToolExecutionUpdate } from './loop/runToolCall.js';
@@ -363,38 +366,26 @@ export async function* agentLoop(
 
       if (tokenBudget.isDiminishingReturns()) {
         yield { type: 'agent_end' };
-        return {
-          success: false,
-          error: {
-            type: 'budget_exhausted',
-            message: 'Stopped due to diminishing returns: consecutive turns produced very few tokens',
-          },
-          metadata: {
-            turnsCount,
-            toolCallsCount: totalToolCalls,
-            duration: Date.now() - startTime,
-            tokensUsed: totalTokens,
-            tokenBudgetSnapshot: tokenBudget.getSnapshot(),
-          },
-        };
+        return buildAgentLoopBudgetExhaustedResult({
+          reason: 'diminishing_returns',
+          turnsCount,
+          toolCallsCount: totalToolCalls,
+          startTime,
+          tokensUsed: totalTokens,
+          tokenBudgetSnapshot: tokenBudget.getSnapshot(),
+        }) as LoopResult;
       }
 
       if (tokenBudget.isExhausted()) {
         yield { type: 'agent_end' };
-        return {
-          success: false,
-          error: {
-            type: 'budget_exhausted',
-            message: 'Token budget exhausted',
-          },
-          metadata: {
-            turnsCount,
-            toolCallsCount: totalToolCalls,
-            duration: Date.now() - startTime,
-            tokensUsed: totalTokens,
-            tokenBudgetSnapshot: tokenBudget.getSnapshot(),
-          },
-        };
+        return buildAgentLoopBudgetExhaustedResult({
+          reason: 'exhausted',
+          turnsCount,
+          toolCallsCount: totalToolCalls,
+          startTime,
+          tokensUsed: totalTokens,
+          tokenBudgetSnapshot: tokenBudget.getSnapshot(),
+        }) as LoopResult;
       }
     }
 

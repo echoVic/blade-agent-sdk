@@ -11,11 +11,32 @@ export interface AgentLoopAbortResult {
   };
 }
 
+export interface AgentLoopBudgetExhaustedResult {
+  success: false;
+  error: {
+    type: 'budget_exhausted';
+    message: string;
+  };
+  metadata: {
+    turnsCount: number;
+    toolCallsCount: number;
+    duration: number;
+    tokensUsed: number;
+    tokenBudgetSnapshot: unknown;
+  };
+}
+
 export interface AgentLoopResultTiming {
   turnsCount: number;
   toolCallsCount: number;
   startTime: number;
   now?: number;
+}
+
+export interface AgentLoopBudgetExhaustedResultInput extends AgentLoopResultTiming {
+  reason: 'exhausted' | 'diminishing_returns';
+  tokensUsed: number;
+  tokenBudgetSnapshot: unknown;
 }
 
 function getLoopDuration(input: Pick<AgentLoopResultTiming, 'startTime' | 'now'>): number {
@@ -33,6 +54,27 @@ export function buildAgentLoopAbortResult(input: AgentLoopResultTiming): AgentLo
       turnsCount: input.turnsCount,
       toolCallsCount: input.toolCallsCount,
       duration: getLoopDuration(input),
+    },
+  };
+}
+
+export function buildAgentLoopBudgetExhaustedResult(
+  input: AgentLoopBudgetExhaustedResultInput,
+): AgentLoopBudgetExhaustedResult {
+  return {
+    success: false,
+    error: {
+      type: 'budget_exhausted',
+      message: input.reason === 'diminishing_returns'
+        ? 'Stopped due to diminishing returns: consecutive turns produced very few tokens'
+        : 'Token budget exhausted',
+    },
+    metadata: {
+      turnsCount: input.turnsCount,
+      toolCallsCount: input.toolCallsCount,
+      duration: getLoopDuration(input),
+      tokensUsed: input.tokensUsed,
+      tokenBudgetSnapshot: input.tokenBudgetSnapshot,
     },
   };
 }
