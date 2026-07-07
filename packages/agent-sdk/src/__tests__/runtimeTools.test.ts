@@ -1,8 +1,8 @@
 import { existsSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 
-const runtimeToolsModulePath = '../../packages/agent-sdk/src/session/runtimeTools.js';
-const runtimeToolsSourcePath = 'packages/agent-sdk/src/session/runtimeTools.ts';
+const runtimeToolsModulePath = '../session/runtimeTools.js';
+const runtimeToolsSourcePath = 'src/session/runtimeTools.ts';
 
 describe('agent-sdk package-local runtime tool operations', () => {
   it('bundles filter, catalog registration, and session registration behind injected ports', async () => {
