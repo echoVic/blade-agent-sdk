@@ -107,7 +107,7 @@ dry-run 不发布 npm 包。它通常需要 GitHub token 环境，适合维护�
 
 推送到 `main` 后，`.github/workflows/release.yml` 会执行：
 
-1. 使用 exact `npm@11.5.1 --ignore-scripts` 升级 trusted-publishing npm CLI，再用 frozen lockfile 安装依赖，并忽略依赖生命周期脚本：`pnpm install --frozen-lockfile --ignore-scripts`。
+1. 以 `fetch-depth: 0` checkout 完整 git 历史和 tags，使用 exact `npm@11.5.1 --ignore-scripts` 升级 trusted-publishing npm CLI，再用 frozen lockfile 安装依赖，并忽略依赖生命周期脚本：`pnpm install --frozen-lockfile --ignore-scripts`。
 2. 运行 `pnpm run verify`。
 3. 运行 `pnpm exec semantic-release`。
 4. 使用 GitHub OIDC trusted publishing 和 npm provenance 发布 `@blade-ai/ai`、`@blade-ai/agent`、`@blade-ai/agent-sdk`。

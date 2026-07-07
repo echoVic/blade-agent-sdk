@@ -233,7 +233,7 @@ release workflow 使用 `concurrency.group: release-main` 和 `cancel-in-progres
 
 GitHub Release notes 会在 conventional commit 摘要后追加三包发布清单，列出 `@blade-ai/ai`、`@blade-ai/agent`、`@blade-ai/agent-sdk` 的同版本发布结果和 session-first 安装命令。
 
-`pnpm run verify:release` 会在不触发网络发版的情况下静态校验 `semantic-release` 配置、root private orchestrator 发布安全、三包 publish metadata、direct dependencies 使用 exact versions、`pnpm-workspace.yaml` 的 dependency build-script allowlist、`publishConfig.provenance: true`、workflow 使用 `pnpm install --frozen-lockfile --ignore-scripts`、release workflow 的 exact npm trusted-publishing CLI 与 lifecycle-script suppression、verify-before-release 顺序、package README 直接安装/import 示例、package LICENSE artifact，以及 OIDC trusted publishing 设置。`pnpm run verify:packages` 会在发布前检查 packed package READMEs 和 packed package license artifacts，确保 tarball 中的 `README.md` 仍包含包名、直接安装命令和最小 import 示例，并且 `LICENSE` 保留 MIT 授权文本。
+`pnpm run verify:release` 会在不触发网络发版的情况下静态校验 `semantic-release` 配置、root private orchestrator 发布安全、三包 publish metadata、direct dependencies 使用 exact versions、`pnpm-workspace.yaml` 的 dependency build-script allowlist、`publishConfig.provenance: true`、workflow 使用 `pnpm install --frozen-lockfile --ignore-scripts`、release workflow 的 full-history checkout、exact npm trusted-publishing CLI 与 lifecycle-script suppression、verify-before-release 顺序、package README 直接安装/import 示例、package LICENSE artifact，以及 OIDC trusted publishing 设置。`pnpm run verify:packages` 会在发布前检查 packed package READMEs 和 packed package license artifacts，确保 tarball 中的 `README.md` 仍包含包名、直接安装命令和最小 import 示例，并且 `LICENSE` 保留 MIT 授权文本。
 
 - `feat:` 触发 minor 版本
 - `fix:` 触发 patch 版本

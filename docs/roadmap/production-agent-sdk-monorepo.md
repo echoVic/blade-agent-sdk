@@ -752,6 +752,7 @@ Status:
 - Thirty-second release-automation increment complete: `pnpm run verify:release` now requires the release workflow to serialize main-branch publishing through `concurrency.group: release-main` while keeping `cancel-in-progress: false`. This prevents overlapping semantic-release publish jobs without cancelling an in-flight npm publish or post-publish verifier.
 - Thirty-third release-automation increment complete: the release workflow now upgrades trusted publishing with exact `npm@11.5.1`, and `pnpm run verify:release` rejects range-based npm CLI upgrades. This keeps the most sensitive publish-time tool pinned just like direct dependencies, pnpm, and the Node engine floor.
 - Thirty-fourth release-automation increment complete: the trusted-publishing npm CLI upgrade now runs with `--ignore-scripts`, and `pnpm run verify:release` rejects npm CLI upgrade steps that would allow lifecycle scripts before package publication. This extends the workflow supply-chain policy beyond workspace installs to the publish-time tool bootstrap itself.
+- Thirty-fifth release-automation increment complete: `pnpm run verify:release` now requires the release workflow checkout step to use `fetch-depth: 0`, preserving full git history and tags for semantic-release release notes, tag discovery, and post-publish version comparison.
 
 Commit:
 

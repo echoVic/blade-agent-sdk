@@ -1187,6 +1187,20 @@ describe('release workflow', () => {
     expect(releaseVerifier).toContain('release workflow must not cancel an in-flight publish');
   });
 
+  it('requires release checkout to fetch full history for tags and release notes', () => {
+    const workflow = parse(
+      readFileSync(resolve('.github/workflows/release.yml'), 'utf8')
+    );
+    const steps = workflow.jobs.release.steps;
+    const checkoutStep = steps.find((step: { uses?: string }) =>
+      step.uses?.startsWith('actions/checkout@')
+    );
+    const releaseVerifier = readFileSync(resolve('scripts/verify-release-config.mjs'), 'utf8');
+
+    expect(checkoutStep.with).toMatchObject({ 'fetch-depth': 0 });
+    expect(releaseVerifier).toContain('release workflow checkout must fetch full git history');
+  });
+
   it('verifies the package before running semantic-release with trusted publishing', () => {
     const workflow = parse(
       readFileSync(resolve('.github/workflows/release.yml'), 'utf8')

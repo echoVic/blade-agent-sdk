@@ -288,6 +288,7 @@ function verifyReleaseWorkflow() {
   const workflow = parse(readFileSync(resolve('.github/workflows/release.yml'), 'utf8'));
   const steps = workflow.jobs?.release?.steps ?? [];
   const commands = steps.map((step) => step.run).filter(Boolean);
+  const checkoutStep = steps.find((step) => step.uses?.startsWith('actions/checkout@'));
   const setupPnpmStep = steps.find((step) => step.uses?.startsWith('pnpm/action-setup@'));
   const setupNodeStep = steps.find((step) => step.uses?.startsWith('actions/setup-node@'));
   const releaseStep = steps.find((step) => step.run?.includes('semantic-release'));
@@ -311,6 +312,9 @@ function verifyReleaseWorkflow() {
   }
   if (workflow.concurrency?.['cancel-in-progress'] !== false) {
     fail('release workflow must not cancel an in-flight publish');
+  }
+  if (checkoutStep?.with?.['fetch-depth'] !== 0) {
+    fail('release workflow checkout must fetch full git history');
   }
   if (!trustedPublishingNpmCliStep?.includes('--ignore-scripts')) {
     fail('release workflow trusted-publishing npm CLI upgrade must ignore lifecycle scripts');
