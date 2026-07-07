@@ -570,6 +570,11 @@ async function verifyPublishedPackageManifests({ consumerDir, version }) {
       packageName: requirement.packageName,
       packageDir,
     });
+    await verifyPublishedDeclarationExternalDependencies({
+      packageName: requirement.packageName,
+      packageDir,
+      manifest,
+    });
 
   }
   console.log('[verify-published] temporary consumer published package manifests passed');
@@ -627,6 +632,19 @@ async function verifyPublishedDeclarationRelativeReferences({ packageName, packa
   }
 }
 
+async function verifyPublishedDeclarationExternalDependencies({ packageName, packageDir, manifest }) {
+  const declaredDependencies = getDeclaredRuntimeDependencies(manifest);
+
+  for (const dependencyName of await collectDeclarationExternalReferences(packageDir)) {
+    if (dependencyName === manifest.name || isDeclaredDeclarationDependency(dependencyName, declaredDependencies)) {
+      continue;
+    }
+    throw new Error(
+      `${packageName} installed declaration reference is not declared in package dependencies: ${dependencyName}`,
+    );
+  }
+}
+
 function verifyPublishedManifestDependencyVersions(packageName, manifest, version) {
   for (const section of dependencySections) {
     for (const [dependencyName, dependencyVersion] of Object.entries(manifest[section] ?? {})) {
@@ -670,6 +688,36 @@ async function collectRuntimeExternalImports(packageDir) {
   return dependencies;
 }
 
+async function collectDeclarationExternalReferences(packageDir) {
+  const dependencies = new Set();
+
+  for (const filePath of await listDeclarationFiles(packageDir)) {
+    const source = await readFile(filePath, 'utf8');
+    for (const specifier of collectDeclarationSpecifiers(source)) {
+      const dependencyName = getExternalPackageName(specifier);
+      if (dependencyName) {
+        dependencies.add(dependencyName);
+      }
+    }
+  }
+
+  return dependencies;
+}
+
+function isDeclaredDeclarationDependency(dependencyName, declaredDependencies) {
+  return declarationDependencyCandidateNames(dependencyName).some((candidateName) =>
+    declaredDependencies.has(candidateName),
+  );
+}
+
+function declarationDependencyCandidateNames(dependencyName) {
+  if (dependencyName.startsWith('@')) {
+    const [scope, name] = dependencyName.slice(1).split('/');
+    return [dependencyName, `@types/${scope}__${name}`];
+  }
+  return [dependencyName, `@types/${dependencyName}`];
+}
+
 async function listRuntimeJavaScriptFiles(packageDir) {
   return (await run('find', [join(packageDir, 'dist'), '-type', 'f', '-name', '*.js']))
     .split('\n')
@@ -702,14 +750,24 @@ function collectImportSpecifiers(source) {
 }
 
 function collectDeclarationRelativeSpecifiers(source) {
+  const specifiers = collectDeclarationSpecifiers(source);
+
+  return [...specifiers].filter((specifier) => specifier.startsWith('.'));
+}
+
+function collectDeclarationSpecifiers(source) {
   const specifiers = collectImportSpecifiers(source);
   const referencePathPattern = /\/\/\/\s*<reference\s+path=["']([^"']+)["']\s*\/>/g;
+  const referenceTypesPattern = /\/\/\/\s*<reference\s+types=["']([^"']+)["']\s*\/>/g;
 
   for (const match of source.matchAll(referencePathPattern)) {
     specifiers.add(match[1]);
   }
+  for (const match of source.matchAll(referenceTypesPattern)) {
+    specifiers.add(match[1]);
+  }
 
-  return [...specifiers].filter((specifier) => specifier.startsWith('.'));
+  return specifiers;
 }
 
 function getExternalPackageName(specifier) {

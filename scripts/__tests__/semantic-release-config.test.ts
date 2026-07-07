@@ -1200,6 +1200,28 @@ describe('release scripts', () => {
     expect(roadmap).toContain('declaration relative reference resolution gate');
   });
 
+  it('verifies packed and published declaration external dependencies are declared', () => {
+    const packageVerifier = readFileSync(resolve('scripts/verify-packages.mjs'), 'utf8');
+    const publishedVerifier = readFileSync(resolve('scripts/verify-published.mjs'), 'utf8');
+    const readme = readFileSync(resolve('README.md'), 'utf8');
+    const checklist = readFileSync(resolve('docs/production-checklist.md'), 'utf8');
+    const roadmap = readFileSync(resolve('docs/roadmap/production-agent-sdk-monorepo.md'), 'utf8');
+
+    expect(packageVerifier).toContain('verifyPackedDeclarationExternalDependencies');
+    expect(packageVerifier).toContain('packed declaration reference is not declared in package dependencies');
+    expect(packageVerifier).toContain('collectDeclarationExternalReferences');
+    expect(packageVerifier).toContain('declarationDependencyCandidateNames');
+    expect(packageVerifier).toContain('@types/${dependencyName}');
+    expect(publishedVerifier).toContain('verifyPublishedDeclarationExternalDependencies');
+    expect(publishedVerifier).toContain('installed declaration reference is not declared in package dependencies');
+    expect(publishedVerifier).toContain('collectDeclarationExternalReferences');
+    expect(publishedVerifier).toContain('declarationDependencyCandidateNames');
+    expect(publishedVerifier).toContain('@types/${dependencyName}');
+    expect(readme).toContain('declaration external dependency declaration checks');
+    expect(checklist).toContain('declaration external dependency declaration checks');
+    expect(roadmap).toContain('declaration external dependency declaration gate');
+  });
+
   it('verifies packed SDK browser export conditions before publication', () => {
     const packageVerifier = readFileSync(resolve('scripts/verify-packages.mjs'), 'utf8');
     const readme = readFileSync(resolve('README.md'), 'utf8');

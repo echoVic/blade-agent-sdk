@@ -795,6 +795,24 @@ function verifyPackedDeclarationRelativeReferences(spec, tarballPath, tempDir) {
   }
 }
 
+function verifyPackedDeclarationExternalDependencies(spec, tarballPath, tempDir) {
+  const extractDir = join(tempDir, `declaration-external-${spec.name.replaceAll(/[^a-z0-9]+/gi, '-')}`);
+  run('mkdir', ['-p', extractDir]);
+  run('tar', ['-xzf', tarballPath, '-C', extractDir]);
+  const packageDir = join(extractDir, 'package');
+  const manifest = JSON.parse(readFileSync(join(packageDir, 'package.json'), 'utf8'));
+  const declaredDependencies = getDeclaredRuntimeDependencies(manifest);
+
+  for (const dependencyName of collectDeclarationExternalReferences(packageDir)) {
+    if (dependencyName === manifest.name || isDeclaredDeclarationDependency(dependencyName, declaredDependencies)) {
+      continue;
+    }
+    throw new Error(
+      `${spec.name} packed declaration reference is not declared in package dependencies: ${dependencyName}`,
+    );
+  }
+}
+
 function verifyPackedManifestDependencyVersions(packageName, manifest) {
   for (const section of dependencySections) {
     for (const [dependencyName, dependencyVersion] of Object.entries(manifest[section] ?? {})) {
@@ -844,6 +862,36 @@ function collectRuntimeExternalImports(packageDir) {
   return dependencies;
 }
 
+function collectDeclarationExternalReferences(packageDir) {
+  const dependencies = new Set();
+
+  for (const filePath of listDeclarationFiles(packageDir)) {
+    const source = readFileSync(filePath, 'utf8');
+    for (const specifier of collectDeclarationSpecifiers(source)) {
+      const dependencyName = getExternalPackageName(specifier);
+      if (dependencyName) {
+        dependencies.add(dependencyName);
+      }
+    }
+  }
+
+  return dependencies;
+}
+
+function isDeclaredDeclarationDependency(dependencyName, declaredDependencies) {
+  return declarationDependencyCandidateNames(dependencyName).some((candidateName) =>
+    declaredDependencies.has(candidateName),
+  );
+}
+
+function declarationDependencyCandidateNames(dependencyName) {
+  if (dependencyName.startsWith('@')) {
+    const [scope, name] = dependencyName.slice(1).split('/');
+    return [dependencyName, `@types/${scope}__${name}`];
+  }
+  return [dependencyName, `@types/${dependencyName}`];
+}
+
 function listRuntimeJavaScriptFiles(packageDir) {
   return run('find', [join(packageDir, 'dist'), '-type', 'f', '-name', '*.js'])
     .split('\n')
@@ -876,14 +924,24 @@ function collectImportSpecifiers(source) {
 }
 
 function collectDeclarationRelativeSpecifiers(source) {
+  const specifiers = collectDeclarationSpecifiers(source);
+
+  return [...specifiers].filter((specifier) => specifier.startsWith('.'));
+}
+
+function collectDeclarationSpecifiers(source) {
   const specifiers = collectImportSpecifiers(source);
   const referencePathPattern = /\/\/\/\s*<reference\s+path=["']([^"']+)["']\s*\/>/g;
+  const referenceTypesPattern = /\/\/\/\s*<reference\s+types=["']([^"']+)["']\s*\/>/g;
 
   for (const match of source.matchAll(referencePathPattern)) {
     specifiers.add(match[1]);
   }
+  for (const match of source.matchAll(referenceTypesPattern)) {
+    specifiers.add(match[1]);
+  }
 
-  return [...specifiers].filter((specifier) => specifier.startsWith('.'));
+  return specifiers;
 }
 
 function getExternalPackageName(specifier) {
@@ -2086,6 +2144,7 @@ try {
     verifyPackedRuntimeExternalDependencies(spec, tarballPath, tempDir);
     verifyPackedRuntimeRelativeImports(spec, tarballPath, tempDir);
     verifyPackedDeclarationRelativeReferences(spec, tarballPath, tempDir);
+    verifyPackedDeclarationExternalDependencies(spec, tarballPath, tempDir);
     verifyForbiddenFileContents(spec, tarballPath, tempDir);
     verifyNoEagerLegacySessionRuntime(spec, tarballPath, tempDir);
     tarballs.set(spec.name, tarballPath);
