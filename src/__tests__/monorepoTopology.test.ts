@@ -698,6 +698,8 @@ describe('monorepo topology', () => {
       'buildAgentRecoveryExhaustedProjectionInputFromTracker',
     );
     expect(rootAgentLoopSource).not.toContain('recoveryAttemptTracker.attempt');
+    expect(rootAgentLoopSource).toContain('startAgentRecoveryAttempt');
+    expect(rootAgentLoopSource).not.toContain('recoveryAttemptTracker.startAttempt(');
     expect(rootAgentLoopSource).toContain('buildAgentLoopRunTurnInputFromLoopState');
     expect(rootAgentLoopSource).not.toContain('buildAgentLoopRunTurnToolHooksInput');
     expect(rootAgentLoopSource).not.toContain('onBeforeExec: toolHooks?.beforeExec');

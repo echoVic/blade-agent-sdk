@@ -23,6 +23,7 @@ import {
   createAgentRecoveryAttemptTracker,
   hasAgentRecoveryAttemptExhausted,
   shouldAttemptAgentRecovery,
+  startAgentRecoveryAttempt,
 } from './recoveryAttemptTracker.js';
 import {
   buildAgentModelFallbackEvent,
@@ -361,7 +362,10 @@ export async function* agentLoop(
         tracker: recoveryAttemptTracker,
         turn: turnsCount,
       })) {
-        const recoveryAttempt = recoveryAttemptTracker.startAttempt(turnsCount);
+        const recoveryAttempt = startAgentRecoveryAttempt({
+          tracker: recoveryAttemptTracker,
+          turn: turnsCount,
+        });
         const recoveryStarted = buildAgentRecoveryProjection(
           buildAgentRecoveryProjectionInput({
             kind: 'started',

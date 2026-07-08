@@ -17,6 +17,11 @@ export interface AgentRecoveryExhaustedProjectionInputFromTrackerInput {
   turn: number;
 }
 
+export interface StartAgentRecoveryAttemptInput {
+  tracker: Pick<AgentRecoveryAttemptTracker, 'startAttempt'>;
+  turn: number;
+}
+
 export function createAgentRecoveryAttemptTracker(): AgentRecoveryAttemptTracker {
   let attemptedTurn: number | null = null;
   let attempt = 0;
@@ -57,6 +62,10 @@ export function consumeAgentRecoveryResetAttempt(
   tracker: Pick<AgentRecoveryAttemptTracker, 'consumeResetAttempt'>,
 ): boolean {
   return tracker.consumeResetAttempt() !== null;
+}
+
+export function startAgentRecoveryAttempt(input: StartAgentRecoveryAttemptInput): number {
+  return input.tracker.startAttempt(input.turn);
 }
 
 export function buildAgentRecoveryExhaustedProjectionInputFromTracker(

@@ -5,6 +5,7 @@ import {
   createAgentRecoveryAttemptTracker,
   hasAgentRecoveryAttemptExhausted,
   shouldAttemptAgentRecovery,
+  startAgentRecoveryAttempt,
 } from '../recovery/recoveryAttemptTracker.js';
 
 describe('agent recovery attempt tracker', () => {
@@ -36,6 +37,17 @@ describe('agent recovery attempt tracker', () => {
 
     expect(tracker.attempt).toBe(1);
     expect(tracker.canAttempt(3)).toBe(false);
+  });
+
+  it('starts recovery attempts through the package helper', () => {
+    const tracker = createAgentRecoveryAttemptTracker();
+
+    expect(startAgentRecoveryAttempt({ tracker, turn: 3 })).toBe(1);
+    expect(startAgentRecoveryAttempt({ tracker, turn: 3 })).toBe(1);
+    expect(startAgentRecoveryAttempt({ tracker, turn: 4 })).toBe(2);
+
+    expect(tracker.attempt).toBe(2);
+    expect(tracker.hasAttemptedTurn(4)).toBe(true);
   });
 
   it('increments attempts across consecutive failed turns until reset is consumed', () => {
