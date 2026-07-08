@@ -453,6 +453,7 @@ describe('monorepo topology', () => {
     expect(rootAgentLoopSource).toContain('buildAgentLoopToolStartEvents');
     expect(rootAgentLoopSource).toContain('buildAgentLoopTurnStateProjection');
     expect(rootAgentLoopSource).toContain('buildAgentLoopEffectiveMaxTurns');
+    expect(rootAgentLoopSource).toContain('buildAgentLoopTurnLimitDecisionInput');
     expect(rootAgentLoopSource).toContain('buildAgentLoopTurnLimitContinuation');
     expect(rootAgentLoopSource).toContain('buildAgentLoopTurnLimitStopCompletion');
     expect(rootAgentLoopSource).toContain('shouldApplyAgentLoopTurnLimitContinuation');
@@ -500,6 +501,7 @@ describe('monorepo topology', () => {
     expect(rootAgentLoopSource).not.toContain('return limitDecision.result');
     expect(rootAgentLoopSource).not.toContain('limitDecision.compactedMessages');
     expect(rootAgentLoopSource).not.toContain('limitDecision.continueMessage');
+    expect(rootAgentLoopSource).not.toContain('const limitDecision = await decideTurnLimit({');
     expect(rootAgentLoopSource).not.toContain('turnLimitContinuation.shouldReplaceMessages');
     expect(rootAgentLoopSource).not.toContain("{\n          type: 'model_fallback'");
     expect(rootAgentLoopSource).not.toContain("{ type: 'tool_result'");

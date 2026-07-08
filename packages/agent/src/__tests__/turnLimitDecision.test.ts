@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   AGENT_LOOP_TURN_SAFETY_LIMIT,
   buildAgentLoopTurnLimitContinuation,
+  buildAgentLoopTurnLimitDecisionInput,
   buildAgentLoopTurnLimitStopCompletion,
   buildAgentLoopEffectiveMaxTurns,
   decideTurnLimit,
@@ -67,6 +68,23 @@ describe('decideTurnLimit', () => {
         isYoloMode: true,
       }),
     ).toBe(false);
+  });
+
+  it('projects turn-limit decision input from loop state and hooks', async () => {
+    const onTurnLimitReached = async () => ({ continue: false });
+    const onTurnLimitCompact = async () => ({ success: false });
+
+    expect(
+      buildAgentLoopTurnLimitDecisionInput({
+        ...baseInput,
+        onTurnLimitReached,
+        onTurnLimitCompact,
+      }),
+    ).toEqual({
+      ...baseInput,
+      onTurnLimitReached,
+      onTurnLimitCompact,
+    });
   });
 
   it('stops with a max-turns error when no handler is provided', async () => {

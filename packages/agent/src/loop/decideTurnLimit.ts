@@ -94,6 +94,21 @@ export function shouldCheckAgentLoopTurnLimit(
   return input.turnsCount >= input.effectiveMaxTurns && !input.isYoloMode;
 }
 
+export function buildAgentLoopTurnLimitDecisionInput(
+  input: DecideTurnLimitInput,
+): DecideTurnLimitInput {
+  return {
+    maxTurns: input.maxTurns,
+    turnsCount: input.turnsCount,
+    contextMessages: input.contextMessages,
+    toolCallsCount: input.toolCallsCount,
+    startTime: input.startTime,
+    totalTokens: input.totalTokens,
+    onTurnLimitReached: input.onTurnLimitReached,
+    onTurnLimitCompact: input.onTurnLimitCompact,
+  };
+}
+
 export function shouldStopAgentLoopForTurnLimitDecision(
   decision: TurnLimitDecision,
 ): decision is TurnLimitStopDecision {

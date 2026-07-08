@@ -1,6 +1,7 @@
 export {
   AGENT_LOOP_TURN_SAFETY_LIMIT,
   buildAgentLoopTurnLimitContinuation,
+  buildAgentLoopTurnLimitDecisionInput,
   buildAgentLoopTurnLimitStopCompletion,
   buildAgentLoopEffectiveMaxTurns,
   decideTurnLimit,
