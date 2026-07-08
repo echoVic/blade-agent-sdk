@@ -58,6 +58,7 @@ import { executeToolCalls } from './loop/executeToolCalls.js';
 import {
   buildAgentLoopStartEvent,
   buildAgentLoopToolTurnCompletion,
+  buildAgentLoopToolTurnCompletionInput,
   buildAgentLoopTurnRetryEvent,
   buildAgentLoopTurnRetryEventInput,
   buildAgentLoopTurnStartEvent,
@@ -665,7 +666,9 @@ export async function* agentLoop(
       convState.append(...buildAgentLoopToolResultAppendMessages(toolResultContinuation));
     }
 
-    const toolTurnCompletion = buildAgentLoopToolTurnCompletion({ turn: turnsCount });
+    const toolTurnCompletion = buildAgentLoopToolTurnCompletion(
+      buildAgentLoopToolTurnCompletionInput({ turn: turnsCount }),
+    );
     for (const event of toolTurnCompletion.events) {
       yield event;
     }

@@ -2,6 +2,7 @@ export {
   buildAgentLoopEndEvent,
   buildAgentLoopStartEvent,
   buildAgentLoopToolTurnCompletion,
+  buildAgentLoopToolTurnCompletionInput,
   buildAgentLoopTurnEndEvent,
   buildAgentLoopTurnRetryEvent,
   buildAgentLoopTurnRetryEventInput,

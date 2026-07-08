@@ -3,6 +3,7 @@ import {
   buildAgentLoopEndEvent,
   buildAgentLoopStartEvent,
   buildAgentLoopToolTurnCompletion,
+  buildAgentLoopToolTurnCompletionInput,
   buildAgentLoopTurnEndEvent,
   buildAgentLoopTurnRetryEvent,
   buildAgentLoopTurnRetryEventInput,
@@ -48,6 +49,12 @@ describe('agent loop lifecycle event builders', () => {
   it('builds tool-turn completion events with stable tool-call status', () => {
     expect(buildAgentLoopToolTurnCompletion({ turn: 6 })).toEqual({
       events: [{ type: 'turn_end', turn: 6, hasToolCalls: true }],
+    });
+  });
+
+  it('projects tool-turn completion input from the current turn', () => {
+    expect(buildAgentLoopToolTurnCompletionInput({ turn: 6 })).toEqual({
+      turn: 6,
     });
   });
 

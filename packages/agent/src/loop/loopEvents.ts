@@ -84,6 +84,14 @@ export function buildAgentLoopTurnEndEvent(
   };
 }
 
+export function buildAgentLoopToolTurnCompletionInput(
+  input: AgentLoopToolTurnCompletionInput,
+): AgentLoopToolTurnCompletionInput {
+  return {
+    turn: input.turn,
+  };
+}
+
 export function buildAgentLoopToolTurnCompletion(
   input: AgentLoopToolTurnCompletionInput,
 ): AgentLoopToolTurnCompletion {
