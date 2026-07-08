@@ -1,5 +1,9 @@
 import type { ModelUsageInfo } from '@blade-ai/ai';
 import {
+  buildAgentLoopEndEvent,
+  type AgentLoopEndEvent,
+} from './loopEvents.js';
+import {
   buildAgentLoopBudgetExhaustedResult,
   type AgentLoopBudgetExhaustedResult,
   type AgentLoopResultTiming,
@@ -66,6 +70,12 @@ export interface AgentLoopTokenBudgetStopDecision<TSnapshot = unknown>
   result: AgentLoopBudgetExhaustedResult;
 }
 
+export interface AgentLoopTokenBudgetStopCompletion<TSnapshot = unknown> {
+  action: 'stop';
+  events: [...AgentLoopBudgetWarningEvent<TSnapshot>[], AgentLoopEndEvent];
+  result: AgentLoopBudgetExhaustedResult;
+}
+
 export function buildAgentLoopTokenUsageInfo(
   input: BuildAgentLoopTokenUsageInfoInput,
 ): AgentLoopTokenUsageInfo {
@@ -103,6 +113,16 @@ export function shouldStopAgentLoopForTokenBudget<TSnapshot>(
   decision: ApplyAgentLoopTokenBudgetResult<TSnapshot>,
 ): decision is AgentLoopTokenBudgetStopDecision<TSnapshot> {
   return decision.result !== undefined;
+}
+
+export function buildAgentLoopTokenBudgetStopCompletion<TSnapshot>(
+  decision: AgentLoopTokenBudgetStopDecision<TSnapshot>,
+): AgentLoopTokenBudgetStopCompletion<TSnapshot> {
+  return {
+    action: 'stop',
+    events: [...decision.events, buildAgentLoopEndEvent()],
+    result: decision.result,
+  };
 }
 
 export async function applyAgentLoopTokenBudget<TSnapshot>(

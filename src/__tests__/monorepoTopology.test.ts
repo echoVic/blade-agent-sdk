@@ -421,7 +421,6 @@ describe('monorepo topology', () => {
     expect(rootAgentLoopSource).toContain('buildAgentLoopAbortCompletion');
     expect(rootAgentLoopSource).toContain('shouldAbortAgentLoop');
     expect(rootAgentLoopSource).toContain('buildAgentLoopStartEvent');
-    expect(rootAgentLoopSource).toContain('buildAgentLoopEndEvent');
     expect(rootAgentLoopSource).toContain('buildAgentLoopTurnStartEvent');
     expect(rootAgentLoopSource).toContain('buildAgentLoopToolTurnCompletion');
     expect(rootAgentLoopSource).toContain('buildAgentLoopTurnRetryEvent');
@@ -441,6 +440,7 @@ describe('monorepo topology', () => {
     expect(rootAgentLoopSource).toContain('buildAgentLoopTokenUsageInfo');
     expect(rootAgentLoopSource).toContain('buildAgentLoopTokenUsageEvent');
     expect(rootAgentLoopSource).toContain('applyAgentLoopTokenBudget');
+    expect(rootAgentLoopSource).toContain('buildAgentLoopTokenBudgetStopCompletion');
     expect(rootAgentLoopSource).toContain('shouldStopAgentLoopForTokenBudget');
     expect(rootAgentLoopSource).toContain('createAgentLoopTokenUsageTracker');
     expect(rootAgentLoopSource).toContain('shouldRecordAgentLoopTokenUsage');
@@ -463,6 +463,7 @@ describe('monorepo topology', () => {
     expect(rootAgentLoopSource).toContain('shouldEmitAgentRecoveryEvent');
     expect(rootAgentLoopSource).not.toContain('function buildAbortResult');
     expect(rootAgentLoopSource).not.toContain('buildAgentLoopAbortResult');
+    expect(rootAgentLoopSource).not.toContain('buildAgentLoopEndEvent');
     expect(rootAgentLoopSource).not.toContain('buildAgentLoopTurnEndEvent');
     expect(rootAgentLoopSource).not.toContain('if (signal?.aborted)');
     expect(rootAgentLoopSource).not.toContain('return {\n        success: true,');
@@ -485,6 +486,7 @@ describe('monorepo topology', () => {
     expect(rootAgentLoopSource).not.toContain('tokenBudget.isDiminishingReturns');
     expect(rootAgentLoopSource).not.toContain('tokenBudget.isExhausted');
     expect(rootAgentLoopSource).not.toContain('if (budgetDecision.result)');
+    expect(rootAgentLoopSource).not.toContain('return budgetDecision.result');
     expect(rootAgentLoopSource).not.toContain("limitDecision.action === 'stop'");
     expect(rootAgentLoopSource).not.toContain('return limitDecision.result');
     expect(rootAgentLoopSource).not.toContain('limitDecision.compactedMessages');

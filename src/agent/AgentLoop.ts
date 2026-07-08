@@ -51,7 +51,6 @@ import {
 } from './loop/decideTurnLimit.js';
 import { executeToolCalls } from './loop/executeToolCalls.js';
 import {
-  buildAgentLoopEndEvent,
   buildAgentLoopStartEvent,
   buildAgentLoopToolTurnCompletion,
   buildAgentLoopTurnRetryEvent,
@@ -79,6 +78,7 @@ import { runTurn } from './loop/runTurn.js';
 import type { ToolExecutionUpdate } from './loop/runToolCall.js';
 import {
   applyAgentLoopTokenBudget,
+  buildAgentLoopTokenBudgetStopCompletion,
   buildAgentLoopTokenUsageEvent,
   buildAgentLoopTokenUsageInfo,
   shouldStopAgentLoopForTokenBudget,
@@ -419,12 +419,15 @@ export async function* agentLoop(
         toolCallsCount: toolResultTracker.toolCallsCount,
       }),
     });
+    if (shouldStopAgentLoopForTokenBudget(budgetDecision)) {
+      const budgetStopCompletion = buildAgentLoopTokenBudgetStopCompletion(budgetDecision);
+      for (const event of budgetStopCompletion.events) {
+        yield event;
+      }
+      return budgetStopCompletion.result as LoopResult;
+    }
     for (const budgetEvent of budgetDecision.events) {
       yield budgetEvent;
-    }
-    if (shouldStopAgentLoopForTokenBudget(budgetDecision)) {
-      yield buildAgentLoopEndEvent();
-      return budgetDecision.result as LoopResult;
     }
 
     if (shouldAbortAgentLoop(signal)) {

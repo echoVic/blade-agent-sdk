@@ -1,10 +1,12 @@
 export {
   applyAgentLoopTokenBudget,
   buildAgentLoopBudgetWarningEvent,
+  buildAgentLoopTokenBudgetStopCompletion,
   buildAgentLoopTokenUsageEvent,
   buildAgentLoopTokenUsageInfo,
   shouldStopAgentLoopForTokenBudget,
   type AgentLoopTokenBudgetLike,
+  type AgentLoopTokenBudgetStopCompletion,
   type AgentLoopTokenBudgetStopDecision,
   type AgentLoopBudgetWarningEvent,
   type AgentLoopBudgetWarningEventInput,

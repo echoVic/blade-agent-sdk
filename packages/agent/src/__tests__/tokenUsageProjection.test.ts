@@ -2,9 +2,11 @@ import { describe, expect, it, vi } from 'vitest';
 import {
   applyAgentLoopTokenBudget,
   buildAgentLoopBudgetWarningEvent,
+  buildAgentLoopTokenBudgetStopCompletion,
   buildAgentLoopTokenUsageEvent,
   buildAgentLoopTokenUsageInfo,
   shouldStopAgentLoopForTokenBudget,
+  type AgentLoopTokenBudgetStopDecision,
 } from '../loop/tokenUsage.js';
 
 describe('agent loop token usage projection', () => {
@@ -141,6 +143,36 @@ describe('agent loop token usage projection', () => {
         },
       }),
     ).toBe(true);
+  });
+
+  it('builds token-budget stop completion after any budget warning events', () => {
+    const snapshot = { totalTokens: 100 };
+    const stopDecision: AgentLoopTokenBudgetStopDecision<typeof snapshot> = {
+      events: [{ type: 'budget_warning' as const, snapshot }],
+      result: {
+        success: false,
+        error: {
+          type: 'budget_exhausted' as const,
+          message: 'Token budget exhausted',
+        },
+        metadata: {
+          turnsCount: 1,
+          toolCallsCount: 0,
+          duration: 40,
+          tokensUsed: 100,
+          tokenBudgetSnapshot: snapshot,
+        },
+      },
+    };
+
+    expect(buildAgentLoopTokenBudgetStopCompletion(stopDecision)).toEqual({
+      action: 'stop',
+      events: [
+        { type: 'budget_warning', snapshot },
+        { type: 'agent_end' },
+      ],
+      result: stopDecision.result,
+    });
   });
 
   it('records usage and emits a token budget warning when warning thresholds are crossed', async () => {
