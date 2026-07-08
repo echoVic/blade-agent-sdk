@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   assertAgentLoopTurnResponse,
+  applyAgentLoopAssistantMessageProjection,
   buildAgentLoopAssistantMessageProjection,
 } from '../loop/assistantMessage.js';
 
@@ -52,6 +53,34 @@ describe('agent loop assistant message projection', () => {
         content: '',
         turn: 1,
       },
+    });
+  });
+
+  it('applies an assistant message projection to conversation state', () => {
+    const appendedMessages: unknown[] = [];
+    const projection = buildAgentLoopAssistantMessageProjection({
+      response: {
+        content: 'I will inspect the file.',
+        reasoningContent: 'Need evidence first.',
+      },
+      turn: 3,
+    });
+
+    const applied = applyAgentLoopAssistantMessageProjection({
+      conversation: {
+        append: (...messages) => {
+          appendedMessages.push(...messages);
+        },
+      },
+      projection,
+    });
+
+    expect(applied).toBe(projection);
+    expect(appendedMessages).toEqual([projection.message]);
+    expect(applied.hookPayload).toEqual({
+      content: 'I will inspect the file.',
+      reasoningContent: 'Need evidence first.',
+      turn: 3,
     });
   });
 

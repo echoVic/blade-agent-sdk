@@ -16,9 +16,18 @@ export interface AgentLoopAssistantMessageProjection {
   hookPayload: AgentLoopAssistantMessageHookPayload;
 }
 
+export interface AgentLoopAssistantMessageConversationLike {
+  append(...messages: Message[]): void;
+}
+
 export interface AgentLoopAssistantMessageProjectionInput {
   response: Pick<ChatResponse, 'content' | 'reasoningContent' | 'toolCalls'>;
   turn: number;
+}
+
+export interface ApplyAgentLoopAssistantMessageProjectionInput {
+  conversation: AgentLoopAssistantMessageConversationLike;
+  projection: AgentLoopAssistantMessageProjection;
 }
 
 export function assertAgentLoopTurnResponse<TResponse>(
@@ -57,4 +66,11 @@ export function buildAgentLoopAssistantMessageProjection(
       turn: input.turn,
     },
   };
+}
+
+export function applyAgentLoopAssistantMessageProjection(
+  input: ApplyAgentLoopAssistantMessageProjectionInput,
+): AgentLoopAssistantMessageProjection {
+  input.conversation.append(input.projection.message);
+  return input.projection;
 }

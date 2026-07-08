@@ -712,6 +712,10 @@ describe('monorepo topology', () => {
     expect(rootAgentLoopSource).not.toContain('buildAgentLoopTurnStateProjection({');
     expect(rootAgentLoopSource).toContain('applyAgentLoopNoToolContinuation');
     expect(rootAgentLoopSource).not.toContain('convState.append(noToolContinuation.message)');
+    expect(rootAgentLoopSource).toContain('applyAgentLoopAssistantMessageProjection');
+    expect(rootAgentLoopSource).not.toContain(
+      'convState.append(assistantMessageProjection.message)',
+    );
     expect(rootAgentLoopSource).toContain('buildAgentLoopRunTurnInputFromLoopState');
     expect(rootAgentLoopSource).not.toContain('buildAgentLoopRunTurnToolHooksInput');
     expect(rootAgentLoopSource).not.toContain('onBeforeExec: toolHooks?.beforeExec');

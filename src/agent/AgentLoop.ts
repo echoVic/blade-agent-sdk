@@ -34,6 +34,7 @@ import {
   consumeAgentRecoveryCompactStream,
 } from './recoveryEvents.js';
 import {
+  applyAgentLoopAssistantMessageProjection,
   assertAgentLoopTurnResponse,
   buildAgentLoopAssistantMessageProjection,
 } from './loop/assistantMessage.js';
@@ -577,11 +578,13 @@ export async function* agentLoop(
       return noToolSuccessDecision.result as LoopResult;
     }
 
-    const assistantMessageProjection = buildAgentLoopAssistantMessageProjection({
-      response: turnResult,
-      turn: turnsCount,
+    const assistantMessageProjection = applyAgentLoopAssistantMessageProjection({
+      conversation: convState,
+      projection: buildAgentLoopAssistantMessageProjection({
+        response: turnResult,
+        turn: turnsCount,
+      }),
     });
-    convState.append(assistantMessageProjection.message);
 
     await messageHooks?.onAssistant?.(assistantMessageProjection.hookPayload);
 
