@@ -459,6 +459,7 @@ describe('monorepo topology', () => {
     expect(rootAgentLoopSource).toContain('buildAgentLoopTurnLimitContinuation');
     expect(rootAgentLoopSource).toContain('buildAgentLoopTurnLimitStopCompletion');
     expect(rootAgentLoopSource).toContain('shouldApplyAgentLoopTurnLimitContinuation');
+    expect(rootAgentLoopSource).toContain('buildAgentLoopExecuteToolCallsInput');
     expect(rootAgentLoopSource).toContain('selectAgentFunctionToolCalls');
     expect(rootAgentLoopSource).toContain('shouldStopAgentLoopForTurnLimitDecision');
     expect(rootAgentLoopSource).toContain('createAgentLoopTurnCounter');
@@ -530,6 +531,7 @@ describe('monorepo topology', () => {
     expect(rootAgentLoopSource).not.toContain('beforeTurnStream.next()');
     expect(rootAgentLoopSource).not.toContain('const turnGen = runTurn({');
     expect(rootAgentLoopSource).not.toContain('turnGen.next()');
+    expect(rootAgentLoopSource).not.toContain('executionResults = await executeToolCalls({');
     expect(rootAgentLoopSource).not.toContain('turnsCount++');
     expect(rootAgentLoopSource).not.toContain('turnsCount = 0');
     expect(rootAgentLoopSource).not.toContain('let toolResultContent =');

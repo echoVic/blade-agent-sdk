@@ -39,6 +39,50 @@ export interface ToolExecutionPlan {
   groups?: AgentFunctionToolCall[][];
 }
 
+export interface AgentLoopExecuteToolCallsInput<
+  TExecutionPipeline,
+  TExecutionContext,
+  TLogger,
+  THooks,
+> {
+  plan: ToolExecutionPlan;
+  executionPipeline: TExecutionPipeline;
+  executionContext: TExecutionContext;
+  logger?: TLogger;
+  permissionMode?: ToolExecutionPermissionMode;
+  signal?: AbortSignal;
+  hooks: THooks;
+}
+
+export function buildAgentLoopExecuteToolCallsInput<
+  TExecutionPipeline,
+  TExecutionContext,
+  TLogger,
+  THooks,
+>(
+  input: AgentLoopExecuteToolCallsInput<
+    TExecutionPipeline,
+    TExecutionContext,
+    TLogger,
+    THooks
+  >,
+): AgentLoopExecuteToolCallsInput<
+  TExecutionPipeline,
+  TExecutionContext,
+  TLogger,
+  THooks
+> {
+  return {
+    plan: input.plan,
+    executionPipeline: input.executionPipeline,
+    executionContext: input.executionContext,
+    logger: input.logger,
+    permissionMode: input.permissionMode,
+    signal: input.signal,
+    hooks: input.hooks,
+  };
+}
+
 export function shouldRunAgentLoopNonStreamingToolExecution<TExecutionResult>(
   executionResults: readonly TExecutionResult[] | undefined,
 ): executionResults is undefined {

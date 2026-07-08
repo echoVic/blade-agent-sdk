@@ -74,6 +74,7 @@ import {
   shouldExitAgentLoopForToolDecision,
 } from './loop/loopResult.js';
 import {
+  buildAgentLoopExecuteToolCallsInput,
   planToolExecution,
   selectAgentFunctionToolCalls,
   shouldRunAgentLoopNonStreamingToolExecution,
@@ -558,18 +559,20 @@ export async function* agentLoop(
         return abortCompletion.result;
       }
 
-      executionResults = await executeToolCalls({
-        plan: executionPlan,
-        executionPipeline,
-        executionContext: turnStateProjection.executionContext,
-        logger: config.logger,
-        permissionMode: turnStateProjection.permissionMode,
-        signal,
-        hooks: {
-          onBeforeToolExec: toolHooks?.beforeExec,
-          onUpdate: toolHooks?.onUpdate,
-        },
-      });
+      executionResults = await executeToolCalls(
+        buildAgentLoopExecuteToolCallsInput({
+          plan: executionPlan,
+          executionPipeline,
+          executionContext: turnStateProjection.executionContext,
+          logger: config.logger,
+          permissionMode: turnStateProjection.permissionMode,
+          signal,
+          hooks: {
+            onBeforeToolExec: toolHooks?.beforeExec,
+            onUpdate: toolHooks?.onUpdate,
+          },
+        }),
+      );
     }
 
     // 处理结果

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   type AgentFunctionToolCall,
+  buildAgentLoopExecuteToolCallsInput,
   planToolExecution,
   shouldEmitAgentLoopNonStreamingToolResultEffects,
   shouldRunAgentLoopNonStreamingToolExecution,
@@ -189,5 +190,37 @@ describe('planToolExecution', () => {
         },
       ]),
     ).toBe(false);
+  });
+
+  it('projects non-streaming tool execution input without owning execution side effects', () => {
+    const plan = planToolExecution([makeCall('Read')], mockRegistry);
+    const executionPipeline = { name: 'pipeline' };
+    const executionContext = { cwd: '/tmp/project' };
+    const logger = { debug: () => undefined };
+    const signal = new AbortController().signal;
+    const hooks = {
+      onBeforeToolExec: async () => null,
+      onUpdate: () => undefined,
+    };
+
+    expect(
+      buildAgentLoopExecuteToolCallsInput({
+        plan,
+        executionPipeline,
+        executionContext,
+        logger,
+        permissionMode: 'default',
+        signal,
+        hooks,
+      }),
+    ).toEqual({
+      plan,
+      executionPipeline,
+      executionContext,
+      logger,
+      permissionMode: 'default',
+      signal,
+      hooks,
+    });
   });
 });
