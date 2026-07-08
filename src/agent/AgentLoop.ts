@@ -17,10 +17,11 @@ import {
   ExecutionEpoch,
   shouldStopAgentLoopToolResultProcessing,
 } from './ExecutionEpoch.js';
-import { isOverflowRecoverable } from './isOverflowRecoverable.js';
 import {
   consumeAgentRecoveryResetAttempt,
   createAgentRecoveryAttemptTracker,
+  hasAgentRecoveryAttemptExhausted,
+  shouldAttemptAgentRecovery,
 } from './recoveryAttemptTracker.js';
 import { buildAgentModelFallbackEvent, buildAgentRecoveryProjection } from './recoveryEvents.js';
 import {
@@ -284,22 +285,28 @@ export async function* agentLoop(
       }
 
       // 反应式压缩：context 溢出时尝试恢复
-      if (
-        isOverflowRecoverable(llmError)
-        && recoveryHooks?.reactiveCompact
-        && recoveryAttemptTracker.canAttempt(turnsCount)
-      ) {
+      const reactiveCompact = recoveryHooks?.reactiveCompact;
+      const onRecoveryStateChange = recoveryHooks?.onStateChange;
+      if (shouldAttemptAgentRecovery({
+        error: llmError,
+        hasReactiveCompact: Boolean(reactiveCompact),
+        tracker: recoveryAttemptTracker,
+        turn: turnsCount,
+      })) {
         const recoveryAttempt = recoveryAttemptTracker.startAttempt(turnsCount);
         const recoveryStarted = buildAgentRecoveryProjection({
           kind: 'started',
           turn: turnsCount,
           attempt: recoveryAttempt,
         });
-        recoveryHooks.onStateChange?.(recoveryStarted.stateChange);
+        onRecoveryStateChange?.(recoveryStarted.stateChange);
         if (recoveryStarted.event) {
           yield recoveryStarted.event;
         }
-        const compactStream = recoveryHooks.reactiveCompact({ messages: convState.toArray() });
+        const compactStream = reactiveCompact?.({ messages: convState.toArray() });
+        if (!compactStream) {
+          throw llmError;
+        }
         let recovered = false;
         while (true) {
           const { value, done } = await compactStream.next();
@@ -315,7 +322,7 @@ export async function* agentLoop(
             turn: turnsCount,
             attempt: recoveryAttempt,
           });
-          recoveryHooks.onStateChange?.(recoveryFailed.stateChange);
+          onRecoveryStateChange?.(recoveryFailed.stateChange);
           if (recoveryFailed.event) {
             yield recoveryFailed.event;
           }
@@ -326,7 +333,7 @@ export async function* agentLoop(
           turn: turnsCount,
           attempt: recoveryAttempt,
         });
-        recoveryHooks.onStateChange?.(recoveryRetrying.stateChange);
+        onRecoveryStateChange?.(recoveryRetrying.stateChange);
         if (recoveryRetrying.event) {
           yield recoveryRetrying.event;
         }
@@ -337,7 +344,11 @@ export async function* agentLoop(
         continue;
       }
 
-      if (isOverflowRecoverable(llmError) && recoveryAttemptTracker.hasAttemptedTurn(turnsCount)) {
+      if (hasAgentRecoveryAttemptExhausted({
+        error: llmError,
+        tracker: recoveryAttemptTracker,
+        turn: turnsCount,
+      })) {
         const recoveryExhausted = buildAgentRecoveryProjection({
           kind: 'exhausted',
           turn: turnsCount,

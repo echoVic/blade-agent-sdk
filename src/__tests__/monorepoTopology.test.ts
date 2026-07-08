@@ -503,6 +503,11 @@ describe('monorepo topology', () => {
     expect(rootAgentLoopSource).not.toContain('let recoveryAttemptedTurn');
     expect(rootAgentLoopSource).not.toContain('let recoveryAttempt = 0');
     expect(rootAgentLoopSource).not.toContain('consumeResetAttempt() !== null');
+    expect(rootAgentLoopSource).not.toContain('isOverflowRecoverable(llmError)');
+    expect(rootAgentLoopSource).not.toContain('recoveryAttemptTracker.canAttempt(turnsCount)');
+    expect(rootAgentLoopSource).not.toContain(
+      'recoveryAttemptTracker.hasAttemptedTurn(turnsCount)',
+    );
     expect(rootAgentLoopSource).not.toContain("reason: 'reactive_compact_failed'");
     expect(rootAgentLoopSource).not.toContain("reason: 'reactive_compact_retry'");
     expect(rootAgentLoopSource).not.toContain("reason: 'recovery_exhausted'");

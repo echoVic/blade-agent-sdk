@@ -1,3 +1,5 @@
+import { isOverflowRecoverable } from './isOverflowRecoverable.js';
+
 export interface AgentRecoveryAttemptTracker {
   readonly attempt: number;
   canAttempt(turn: number): boolean;
@@ -46,4 +48,30 @@ export function consumeAgentRecoveryResetAttempt(
   tracker: Pick<AgentRecoveryAttemptTracker, 'consumeResetAttempt'>,
 ): boolean {
   return tracker.consumeResetAttempt() !== null;
+}
+
+export function shouldAttemptAgentRecovery({
+  error,
+  hasReactiveCompact,
+  tracker,
+  turn,
+}: {
+  error: unknown;
+  hasReactiveCompact: boolean;
+  tracker: Pick<AgentRecoveryAttemptTracker, 'canAttempt'>;
+  turn: number;
+}): boolean {
+  return isOverflowRecoverable(error) && hasReactiveCompact && tracker.canAttempt(turn);
+}
+
+export function hasAgentRecoveryAttemptExhausted({
+  error,
+  tracker,
+  turn,
+}: {
+  error: unknown;
+  tracker: Pick<AgentRecoveryAttemptTracker, 'hasAttemptedTurn'>;
+  turn: number;
+}): boolean {
+  return isOverflowRecoverable(error) && tracker.hasAttemptedTurn(turn);
 }

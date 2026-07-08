@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest';
 import {
   consumeAgentRecoveryResetAttempt,
   createAgentRecoveryAttemptTracker,
+  hasAgentRecoveryAttemptExhausted,
+  shouldAttemptAgentRecovery,
 } from '../recovery/recoveryAttemptTracker.js';
 
 describe('agent recovery attempt tracker', () => {
@@ -71,5 +73,72 @@ describe('agent recovery attempt tracker', () => {
     expect(tracker.attempt).toBe(0);
     expect(tracker.canAttempt(2)).toBe(true);
     expect(consumeAgentRecoveryResetAttempt(tracker)).toBe(false);
+  });
+
+  it('allows reactive recovery only for recoverable errors with a compact hook and remaining attempts', () => {
+    const tracker = createAgentRecoveryAttemptTracker();
+
+    expect(
+      shouldAttemptAgentRecovery({
+        error: new Error('maximum context length exceeded'),
+        hasReactiveCompact: true,
+        tracker,
+        turn: 4,
+      }),
+    ).toBe(true);
+
+    tracker.startAttempt(4);
+
+    expect(
+      shouldAttemptAgentRecovery({
+        error: new Error('maximum context length exceeded'),
+        hasReactiveCompact: true,
+        tracker,
+        turn: 4,
+      }),
+    ).toBe(false);
+    expect(
+      shouldAttemptAgentRecovery({
+        error: new Error('plain provider failure'),
+        hasReactiveCompact: true,
+        tracker,
+        turn: 5,
+      }),
+    ).toBe(false);
+    expect(
+      shouldAttemptAgentRecovery({
+        error: new Error('maximum context length exceeded'),
+        hasReactiveCompact: false,
+        tracker,
+        turn: 5,
+      }),
+    ).toBe(false);
+  });
+
+  it('reports recovery exhaustion only for recoverable errors already attempted on the turn', () => {
+    const tracker = createAgentRecoveryAttemptTracker();
+    tracker.startAttempt(3);
+
+    expect(
+      hasAgentRecoveryAttemptExhausted({
+        error: new Error('too many tokens'),
+        tracker,
+        turn: 3,
+      }),
+    ).toBe(true);
+    expect(
+      hasAgentRecoveryAttemptExhausted({
+        error: new Error('too many tokens'),
+        tracker,
+        turn: 4,
+      }),
+    ).toBe(false);
+    expect(
+      hasAgentRecoveryAttemptExhausted({
+        error: new Error('plain provider failure'),
+        tracker,
+        turn: 3,
+      }),
+    ).toBe(false);
   });
 });
