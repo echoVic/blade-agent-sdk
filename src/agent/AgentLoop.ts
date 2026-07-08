@@ -95,7 +95,7 @@ import {
   buildAgentLoopTokenBudgetStopCompletion,
   buildAgentLoopTokenUsageEvent,
   buildAgentLoopTokenUsageInfo,
-  buildAgentLoopTokenUsageInfoInputFromTurnProjection,
+  buildAgentLoopTokenUsageInfoInputFromLoopState,
   shouldStopAgentLoopForTokenBudget,
 } from './loop/tokenUsage.js';
 import {
@@ -461,9 +461,9 @@ export async function* agentLoop(
       tokenUsageTracker.record(turnResult.usage);
 
       const usage = buildAgentLoopTokenUsageInfo(
-        buildAgentLoopTokenUsageInfoInputFromTurnProjection({
+        buildAgentLoopTokenUsageInfoInputFromLoopState({
           modelUsage: turnResult.usage,
-          totalTokens: tokenUsageTracker.totalTokens,
+          tokenUsageTracker,
           turnStateProjection,
         }),
       );

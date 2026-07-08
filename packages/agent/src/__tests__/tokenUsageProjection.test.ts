@@ -9,6 +9,7 @@ import {
   buildAgentLoopTokenUsageEvent,
   buildAgentLoopTokenUsageInfo,
   buildAgentLoopTokenUsageInfoInput,
+  buildAgentLoopTokenUsageInfoInputFromLoopState,
   buildAgentLoopTokenUsageInfoInputFromTurnProjection,
   shouldStopAgentLoopForTokenBudget,
   type AgentLoopTokenBudgetStopDecision,
@@ -78,6 +79,38 @@ describe('agent loop token usage projection', () => {
       buildAgentLoopTokenUsageInfoInputFromTurnProjection({
         modelUsage,
         totalTokens: 40,
+        turnStateProjection: {
+          turnState,
+          maxContextTokens: turnState.maxContextTokens,
+          executionContext: turnState.executionContext,
+          permissionMode: turnState.permissionMode,
+        },
+      }),
+    ).toEqual({
+      modelUsage,
+      totalTokens: 40,
+      maxContextTokens: 128000,
+    });
+  });
+
+  it('projects token usage info input from loop state objects', () => {
+    const modelUsage = {
+      promptTokens: 11,
+      completionTokens: 7,
+      totalTokens: 18,
+    };
+    const turnState = {
+      maxContextTokens: 128000,
+      executionContext: { cwd: '/tmp/project' },
+      permissionMode: 'default' as const,
+    };
+
+    expect(
+      buildAgentLoopTokenUsageInfoInputFromLoopState({
+        modelUsage,
+        tokenUsageTracker: {
+          totalTokens: 40,
+        },
         turnStateProjection: {
           turnState,
           maxContextTokens: turnState.maxContextTokens,

@@ -8,6 +8,7 @@ export {
   buildAgentLoopTokenUsageEvent,
   buildAgentLoopTokenUsageInfo,
   buildAgentLoopTokenUsageInfoInput,
+  buildAgentLoopTokenUsageInfoInputFromLoopState,
   buildAgentLoopTokenUsageInfoInputFromTurnProjection,
   shouldStopAgentLoopForTokenBudget,
   type AgentLoopTokenBudgetLike,
@@ -25,6 +26,8 @@ export {
   type AgentLoopTokenBudgetToolResultTrackerLike,
   type ApplyAgentLoopTokenBudgetInput,
   type ApplyAgentLoopTokenBudgetResult,
+  type AgentLoopTokenUsageInfoTokenUsageTrackerLike,
+  type BuildAgentLoopTokenUsageInfoLoopStateInput,
   type BuildAgentLoopTokenUsageInfoInput,
   type BuildAgentLoopTokenUsageInfoTurnProjectionInput,
 } from '../../../packages/agent/src/loop/tokenUsage.js';

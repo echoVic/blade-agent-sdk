@@ -56,6 +56,18 @@ export interface BuildAgentLoopTokenUsageInfoTurnProjectionInput<
   turnStateProjection: AgentLoopTurnStateProjection<TTurnState>;
 }
 
+export interface AgentLoopTokenUsageInfoTokenUsageTrackerLike {
+  readonly totalTokens: number;
+}
+
+export interface BuildAgentLoopTokenUsageInfoLoopStateInput<
+  TTurnState extends AgentLoopTurnStateFields,
+> {
+  modelUsage: ModelUsageInfo;
+  tokenUsageTracker: AgentLoopTokenUsageInfoTokenUsageTrackerLike;
+  turnStateProjection: AgentLoopTurnStateProjection<TTurnState>;
+}
+
 export interface AgentLoopTokenBudgetLike<TSnapshot = unknown> {
   record(usage: ModelUsageInfo): Promise<void> | void;
   isWarning(): boolean;
@@ -150,6 +162,18 @@ export function buildAgentLoopTokenUsageInfoInputFromTurnProjection<
     modelUsage: input.modelUsage,
     totalTokens: input.totalTokens,
     maxContextTokens: input.turnStateProjection.maxContextTokens,
+  });
+}
+
+export function buildAgentLoopTokenUsageInfoInputFromLoopState<
+  TTurnState extends AgentLoopTurnStateFields,
+>(
+  input: BuildAgentLoopTokenUsageInfoLoopStateInput<TTurnState>,
+): BuildAgentLoopTokenUsageInfoInput {
+  return buildAgentLoopTokenUsageInfoInputFromTurnProjection({
+    modelUsage: input.modelUsage,
+    totalTokens: input.tokenUsageTracker.totalTokens,
+    turnStateProjection: input.turnStateProjection,
   });
 }
 
