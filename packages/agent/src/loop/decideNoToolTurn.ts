@@ -83,6 +83,15 @@ export interface AgentLoopNoToolContinuation {
   events: [AgentLoopTurnEndEvent];
 }
 
+export interface AgentLoopNoToolContinuationConversationLike {
+  append(...messages: Message[]): void;
+}
+
+export interface ApplyAgentLoopNoToolContinuationInput {
+  conversation: AgentLoopNoToolContinuationConversationLike;
+  continuation: AgentLoopNoToolContinuation;
+}
+
 export interface AgentLoopToolCallResponseLike {
   toolCalls?: readonly unknown[];
 }
@@ -142,6 +151,13 @@ export function buildAgentLoopNoToolContinuation(
     warning: input.decision.action === 'continue_with_reminder' ? input.decision.warning : undefined,
     events: [buildAgentLoopTurnEndEvent({ turn: input.turn, hasToolCalls: false })],
   };
+}
+
+export function applyAgentLoopNoToolContinuation(
+  input: ApplyAgentLoopNoToolContinuationInput,
+): AgentLoopNoToolContinuation {
+  input.conversation.append(input.continuation.message);
+  return input.continuation;
 }
 
 export function buildAgentLoopNoToolCompletePayload(

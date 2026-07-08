@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from 'vitest';
 import {
   DEFAULT_CONTINUE_REMINDER,
   RETRY_PROMPT,
+  applyAgentLoopNoToolContinuation,
   buildAgentLoopNoToolDecisionInput,
   buildAgentLoopNoToolDecisionInputFromConversation,
   buildAgentLoopNoToolContent,
@@ -68,6 +69,29 @@ describe('decideNoToolTurn', () => {
       warning: 'keep-working',
       events: [{ type: 'turn_end', turn: 3, hasToolCalls: false }],
     });
+  });
+
+  it('applies a no-tool continuation to conversation state', () => {
+    const appendedMessages: Message[] = [];
+    const message: Message = { role: 'user', content: DEFAULT_CONTINUE_REMINDER };
+    const continuation = buildAgentLoopNoToolContinuation({
+      decision: { action: 'continue_with_reminder', message, warning: 'keep-working' },
+      turn: 3,
+    });
+
+    const applied = applyAgentLoopNoToolContinuation({
+      conversation: {
+        append: (...messages) => {
+          appendedMessages.push(...messages);
+        },
+      },
+      continuation,
+    });
+
+    expect(applied).toBe(continuation);
+    expect(appendedMessages).toEqual([message]);
+    expect(applied.events).toEqual([{ type: 'turn_end', turn: 3, hasToolCalls: false }]);
+    expect(applied.warning).toBe('keep-working');
   });
 
   it('projects a no-tool completion payload for message hooks', () => {

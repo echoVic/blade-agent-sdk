@@ -38,6 +38,7 @@ import {
   buildAgentLoopAssistantMessageProjection,
 } from './loop/assistantMessage.js';
 import {
+  applyAgentLoopNoToolContinuation,
   buildAgentLoopNoToolContent,
   buildAgentLoopNoToolCompletePayload,
   buildAgentLoopNoToolContinuation,
@@ -543,11 +544,13 @@ export async function* agentLoop(
         }),
       );
       if (shouldContinueAgentLoopAfterNoToolDecision(noToolDecision)) {
-        const noToolContinuation = buildAgentLoopNoToolContinuation({
-          decision: noToolDecision,
-          turn: turnsCount,
+        const noToolContinuation = applyAgentLoopNoToolContinuation({
+          conversation: convState,
+          continuation: buildAgentLoopNoToolContinuation({
+            decision: noToolDecision,
+            turn: turnsCount,
+          }),
         });
-        convState.append(noToolContinuation.message);
         for (const event of noToolContinuation.events) {
           yield event;
         }
