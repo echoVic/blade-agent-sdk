@@ -5,6 +5,7 @@ import {
   buildAgentLoopTokenBudgetStopCompletion,
   buildAgentLoopTokenUsageEvent,
   buildAgentLoopTokenUsageInfo,
+  buildAgentLoopTokenUsageInfoInput,
   shouldStopAgentLoopForTokenBudget,
   type AgentLoopTokenBudgetStopDecision,
 } from '../loop/tokenUsage.js';
@@ -34,6 +35,26 @@ describe('agent loop token usage projection', () => {
       cacheMissInputTokens: 8,
       billableInputTokens: 8,
       reasoningTokens: 2,
+    });
+  });
+
+  it('projects token usage info input from model usage and loop limits', () => {
+    const modelUsage = {
+      promptTokens: 11,
+      completionTokens: 7,
+      totalTokens: 18,
+    };
+
+    expect(
+      buildAgentLoopTokenUsageInfoInput({
+        modelUsage,
+        totalTokens: 40,
+        maxContextTokens: 128000,
+      }),
+    ).toEqual({
+      modelUsage,
+      totalTokens: 40,
+      maxContextTokens: 128000,
     });
   });
 

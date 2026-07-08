@@ -91,6 +91,16 @@ export function buildAgentLoopTokenUsageInfo(
   };
 }
 
+export function buildAgentLoopTokenUsageInfoInput(
+  input: BuildAgentLoopTokenUsageInfoInput,
+): BuildAgentLoopTokenUsageInfoInput {
+  return {
+    modelUsage: input.modelUsage,
+    totalTokens: input.totalTokens,
+    maxContextTokens: input.maxContextTokens,
+  };
+}
+
 export function buildAgentLoopTokenUsageEvent(
   input: AgentLoopTokenUsageEventInput,
 ): AgentLoopTokenUsageEvent {

@@ -4,6 +4,7 @@ export {
   buildAgentLoopTokenBudgetStopCompletion,
   buildAgentLoopTokenUsageEvent,
   buildAgentLoopTokenUsageInfo,
+  buildAgentLoopTokenUsageInfoInput,
   shouldStopAgentLoopForTokenBudget,
   type AgentLoopTokenBudgetLike,
   type AgentLoopTokenBudgetStopCompletion,

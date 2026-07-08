@@ -445,6 +445,8 @@ describe('monorepo topology', () => {
     expect(rootAgentLoopSource).toContain('buildAgentLoopAfterExecHookPayload');
     expect(rootAgentLoopSource).toContain('buildAgentLoopToolResultAppendMessages');
     expect(rootAgentLoopSource).toContain('buildAgentLoopTokenUsageInfo');
+    expect(rootAgentLoopSource).toContain('buildAgentLoopTokenUsageInfoInput');
+    expect(rootAgentLoopSource).not.toContain('buildAgentLoopTokenUsageInfo({');
     expect(rootAgentLoopSource).toContain('buildAgentLoopTokenUsageEvent');
     expect(rootAgentLoopSource).toContain('applyAgentLoopTokenBudget');
     expect(rootAgentLoopSource).toContain('buildAgentLoopTokenBudgetStopCompletion');

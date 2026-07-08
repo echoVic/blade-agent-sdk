@@ -90,6 +90,7 @@ import {
   buildAgentLoopTokenBudgetStopCompletion,
   buildAgentLoopTokenUsageEvent,
   buildAgentLoopTokenUsageInfo,
+  buildAgentLoopTokenUsageInfoInput,
   shouldStopAgentLoopForTokenBudget,
 } from './loop/tokenUsage.js';
 import {
@@ -454,11 +455,13 @@ export async function* agentLoop(
     if (shouldRecordAgentLoopTokenUsage(turnResult.usage)) {
       tokenUsageTracker.record(turnResult.usage);
 
-      const usage = buildAgentLoopTokenUsageInfo({
-        modelUsage: turnResult.usage,
-        totalTokens: tokenUsageTracker.totalTokens,
-        maxContextTokens: turnStateProjection.maxContextTokens,
-      });
+      const usage = buildAgentLoopTokenUsageInfo(
+        buildAgentLoopTokenUsageInfoInput({
+          modelUsage: turnResult.usage,
+          totalTokens: tokenUsageTracker.totalTokens,
+          maxContextTokens: turnStateProjection.maxContextTokens,
+        }),
+      );
       yield buildAgentLoopTokenUsageEvent({ usage });
     }
 
