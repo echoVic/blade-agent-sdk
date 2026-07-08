@@ -93,6 +93,7 @@ import { createAgentToolResultTracker } from './loop/toolResultTracker.js';
 import { buildAgentLoopToolStartEvents } from './loop/toolStartEvent.js';
 import { buildAgentLoopTurnStateProjection } from './loop/turnState.js';
 import {
+  consumeAgentLoopBeforeTurnStream,
   createAgentLoopTurnCounter,
   shouldEmitAgentLoopTurnStart,
   shouldRunAgentLoopBeforeTurnHook,
@@ -243,11 +244,7 @@ export async function* agentLoop(
         messages: convState.toArray(),
         lastPromptTokens: tokenUsageTracker.lastPromptTokens,
       });
-      while (true) {
-        const { value, done } = await beforeTurnStream.next();
-        if (done) break;
-        yield value;
-      }
+      yield* consumeAgentLoopBeforeTurnStream(beforeTurnStream);
     }
 
     const turnStart = turnCounter.beginTurn();

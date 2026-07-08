@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  consumeAgentLoopBeforeTurnStream,
   createAgentLoopTurnCounter,
   shouldEmitAgentLoopTurnStart,
   shouldRunAgentLoopBeforeTurnHook,
@@ -68,5 +69,28 @@ describe('agent loop turn counter', () => {
     expect(counter.previousCompletedTurnCount).toBe(0);
     expect(counter.shouldRunBeforeTurn()).toBe(true);
     expect(counter.beginTurn()).toEqual({ started: true, turn: 1 });
+  });
+
+  it('consumes before-turn hook stream events and preserves the final return value', async () => {
+    async function* beforeTurnStream(): AsyncGenerator<string, boolean> {
+      yield 'before-turn-event-1';
+      yield 'before-turn-event-2';
+      return false;
+    }
+
+    const consumed = consumeAgentLoopBeforeTurnStream(beforeTurnStream());
+
+    await expect(consumed.next()).resolves.toEqual({
+      value: 'before-turn-event-1',
+      done: false,
+    });
+    await expect(consumed.next()).resolves.toEqual({
+      value: 'before-turn-event-2',
+      done: false,
+    });
+    await expect(consumed.next()).resolves.toEqual({
+      value: false,
+      done: true,
+    });
   });
 });

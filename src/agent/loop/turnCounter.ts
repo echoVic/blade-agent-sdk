@@ -1,4 +1,5 @@
 export {
+  consumeAgentLoopBeforeTurnStream,
   createAgentLoopTurnCounter,
   shouldEmitAgentLoopTurnStart,
   shouldRunAgentLoopBeforeTurnHook,

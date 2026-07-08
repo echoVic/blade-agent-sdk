@@ -23,6 +23,18 @@ export function shouldRunAgentLoopBeforeTurnHook<BeforeTurnHook>(
   return beforeTurnHook !== undefined && beforeTurnHook !== null && counter.shouldRunBeforeTurn();
 }
 
+export async function* consumeAgentLoopBeforeTurnStream<Event, ReturnValue>(
+  stream: AsyncGenerator<Event, ReturnValue>,
+): AsyncGenerator<Event, ReturnValue> {
+  while (true) {
+    const { value, done } = await stream.next();
+    if (done) {
+      return value;
+    }
+    yield value;
+  }
+}
+
 export function createAgentLoopTurnCounter(): AgentLoopTurnCounter {
   let turnsCount = 0;
   let retryCurrentTurn = false;
