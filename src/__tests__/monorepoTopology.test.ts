@@ -437,6 +437,7 @@ describe('monorepo topology', () => {
     expect(rootAgentLoopSource).toContain('buildAgentLoopToolStartEvent');
     expect(rootAgentLoopSource).toContain('buildAgentLoopToolResultEvent');
     expect(rootAgentLoopSource).toContain('buildAgentLoopTurnStateProjection');
+    expect(rootAgentLoopSource).toContain('buildAgentLoopEffectiveMaxTurns');
     expect(rootAgentLoopSource).toContain('selectAgentFunctionToolCalls');
     expect(rootAgentLoopSource).toContain('createAgentLoopTurnCounter');
     expect(rootAgentLoopSource).toContain('createAgentRecoveryAttemptTracker');
@@ -510,6 +511,10 @@ describe('monorepo topology', () => {
     );
     expect(rootAgentLoopSource).not.toContain(
       'const turnExecutionContext = turnState.executionContext',
+    );
+    expect(rootAgentLoopSource).not.toContain("import { AGENT_TURN_SAFETY_LIMIT } from './constants.js'");
+    expect(rootAgentLoopSource).not.toContain(
+      'const effectiveMaxTurns = isYoloMode ? AGENT_TURN_SAFETY_LIMIT : maxTurns',
     );
     expect(agentRecoverySource).toContain("from './isOverflowRecoverable.js'");
     expect(agentRecoverySource).toContain("from './recoveryAttemptTracker.js'");

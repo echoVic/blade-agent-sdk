@@ -13,14 +13,13 @@ import type { ExecutionPipeline } from '../tools/execution/ExecutionPipeline.js'
 import type { ToolResult } from '../tools/types/index.js';
 import type { JsonObject } from '../types/common.js';
 import type { AgentEvent } from './AgentEvent.js';
-import { AGENT_TURN_SAFETY_LIMIT } from './constants.js';
 import { ExecutionEpoch } from './ExecutionEpoch.js';
 import { isOverflowRecoverable } from './isOverflowRecoverable.js';
 import { createAgentRecoveryAttemptTracker } from './recoveryAttemptTracker.js';
 import { buildAgentModelFallbackEvent, buildAgentRecoveryProjection } from './recoveryEvents.js';
 import { buildAgentLoopAssistantMessageProjection } from './loop/assistantMessage.js';
 import { buildAgentLoopNoToolContent, decideNoToolTurn } from './loop/decideNoToolTurn.js';
-import { decideTurnLimit } from './loop/decideTurnLimit.js';
+import { buildAgentLoopEffectiveMaxTurns, decideTurnLimit } from './loop/decideTurnLimit.js';
 import { executeToolCalls } from './loop/executeToolCalls.js';
 import {
   buildAgentLoopEndEvent,
@@ -163,7 +162,7 @@ export async function* agentLoop(
   const recoveryHooks = hooks?.recovery;
   const stopHooks = hooks?.stop;
 
-  const effectiveMaxTurns = isYoloMode ? AGENT_TURN_SAFETY_LIMIT : maxTurns;
+  const effectiveMaxTurns = buildAgentLoopEffectiveMaxTurns({ maxTurns, isYoloMode });
 
   const loopClock = createAgentLoopClock();
   const turnCounter = createAgentLoopTurnCounter();

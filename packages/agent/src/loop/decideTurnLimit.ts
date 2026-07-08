@@ -1,5 +1,7 @@
 import type { Message } from '@blade-ai/ai/chat';
 
+export const AGENT_LOOP_TURN_SAFETY_LIMIT = 100;
+
 export interface TurnLimitResponse {
   continue: boolean;
   reason?: string;
@@ -48,6 +50,17 @@ export interface DecideTurnLimitInput {
   totalTokens: number;
   onTurnLimitReached?: TurnLimitReachedHandler;
   onTurnLimitCompact?: TurnLimitCompactHandler;
+}
+
+export interface BuildAgentLoopEffectiveMaxTurnsInput {
+  maxTurns: number;
+  isYoloMode: boolean;
+}
+
+export function buildAgentLoopEffectiveMaxTurns(
+  input: BuildAgentLoopEffectiveMaxTurnsInput,
+): number {
+  return input.isYoloMode ? AGENT_LOOP_TURN_SAFETY_LIMIT : input.maxTurns;
 }
 
 export async function decideTurnLimit(

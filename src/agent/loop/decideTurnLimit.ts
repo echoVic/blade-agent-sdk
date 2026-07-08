@@ -1,5 +1,8 @@
 export {
+  AGENT_LOOP_TURN_SAFETY_LIMIT,
+  buildAgentLoopEffectiveMaxTurns,
   decideTurnLimit,
+  type BuildAgentLoopEffectiveMaxTurnsInput,
   type DecideTurnLimitInput,
   type TurnLimitDecision,
   type TurnLimitResponse,

@@ -1,6 +1,10 @@
 import type { Message } from '@blade-ai/ai/chat';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { decideTurnLimit } from '../loop/index.js';
+import {
+  AGENT_LOOP_TURN_SAFETY_LIMIT,
+  buildAgentLoopEffectiveMaxTurns,
+  decideTurnLimit,
+} from '../loop/index.js';
 
 describe('decideTurnLimit', () => {
   beforeEach(() => {
@@ -19,6 +23,16 @@ describe('decideTurnLimit', () => {
     startTime: 1_000,
     totalTokens: 321,
   };
+
+  it('uses the configured max turns outside YOLO mode', () => {
+    expect(buildAgentLoopEffectiveMaxTurns({ maxTurns: 7, isYoloMode: false })).toBe(7);
+  });
+
+  it('uses the agent safety limit in YOLO mode', () => {
+    expect(buildAgentLoopEffectiveMaxTurns({ maxTurns: 7, isYoloMode: true })).toBe(
+      AGENT_LOOP_TURN_SAFETY_LIMIT,
+    );
+  });
 
   it('stops with a max-turns error when no handler is provided', async () => {
     vi.setSystemTime(1_250);
