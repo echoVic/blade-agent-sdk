@@ -788,6 +788,10 @@ describe('monorepo topology', () => {
     expect(rootAgentLoopSource).toContain('buildAgentRecoveryProjection');
     expect(rootAgentLoopSource).toContain('buildAgentRecoveryProjectionInput');
     expect(rootAgentLoopSource).toContain('buildAgentRecoveryEffects');
+    expect(rootAgentLoopSource).toContain('runAgentRecoveryStateChangeHooks');
+    expect(rootAgentLoopSource).not.toContain('const onRecoveryStateChange');
+    expect(rootAgentLoopSource).not.toContain('onRecoveryStateChange?.(');
+    expect(rootAgentLoopSource).not.toContain('recoveryHooks?.onStateChange?.(');
     expect(rootAgentLoopSource).toContain('consumeAgentRecoveryCompactStream');
     expect(rootAgentLoopSource).not.toContain('function buildAbortResult');
     expect(rootAgentLoopSource).not.toContain('buildAgentLoopAbortResult');

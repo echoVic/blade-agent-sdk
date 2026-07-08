@@ -96,6 +96,17 @@ export interface AgentRecoveryEffects {
   events: AgentRecoveryEvent[];
 }
 
+export interface AgentRecoveryStateChangeHookContainer {
+  recovery?: {
+    onStateChange?: (stateChange: AgentRecoveryStateChange) => Promise<void> | void;
+  } | null;
+}
+
+export interface RunAgentRecoveryStateChangeHooksInput {
+  effects: AgentRecoveryEffects;
+  hooks?: AgentRecoveryStateChangeHookContainer | null;
+}
+
 export type AgentRecoveryProjectionWithEvent = AgentRecoveryProjection & {
   event: AgentRecoveryEvent;
 };
@@ -184,6 +195,16 @@ export function buildAgentRecoveryEffects(
     stateChanges: [projection.stateChange],
     events: shouldEmitAgentRecoveryEvent(projection) ? [projection.event] : [],
   };
+}
+
+export async function runAgentRecoveryStateChangeHooks(
+  input: RunAgentRecoveryStateChangeHooksInput,
+): Promise<AgentRecoveryEffects> {
+  for (const stateChange of input.effects.stateChanges) {
+    await input.hooks?.recovery?.onStateChange?.(stateChange);
+  }
+
+  return input.effects;
 }
 
 export function buildAgentReactiveCompactHookPayload<TMessage>(

@@ -32,6 +32,7 @@ import {
   buildAgentRecoveryProjectionInput,
   buildAgentRecoveryProjection,
   consumeAgentRecoveryCompactStream,
+  runAgentRecoveryStateChangeHooks,
 } from './recoveryEvents.js';
 import {
   applyAgentLoopAssistantMessageProjection,
@@ -348,7 +349,6 @@ export async function* agentLoop(
 
       // 反应式压缩：context 溢出时尝试恢复
       const reactiveCompact = recoveryHooks?.reactiveCompact;
-      const onRecoveryStateChange = recoveryHooks?.onStateChange;
       if (shouldAttemptAgentRecovery({
         error: llmError,
         hasReactiveCompact: Boolean(reactiveCompact),
@@ -367,9 +367,7 @@ export async function* agentLoop(
           }),
         );
         const recoveryStartedEffects = buildAgentRecoveryEffects(recoveryStarted);
-        for (const stateChange of recoveryStartedEffects.stateChanges) {
-          onRecoveryStateChange?.(stateChange);
-        }
+        await runAgentRecoveryStateChangeHooks({ effects: recoveryStartedEffects, hooks });
         for (const event of recoveryStartedEffects.events) {
           yield event;
         }
@@ -389,9 +387,7 @@ export async function* agentLoop(
             }),
           );
           const recoveryFailedEffects = buildAgentRecoveryEffects(recoveryFailed);
-          for (const stateChange of recoveryFailedEffects.stateChanges) {
-            onRecoveryStateChange?.(stateChange);
-          }
+          await runAgentRecoveryStateChangeHooks({ effects: recoveryFailedEffects, hooks });
           for (const event of recoveryFailedEffects.events) {
             yield event;
           }
@@ -405,9 +401,7 @@ export async function* agentLoop(
           }),
         );
         const recoveryRetryingEffects = buildAgentRecoveryEffects(recoveryRetrying);
-        for (const stateChange of recoveryRetryingEffects.stateChanges) {
-          onRecoveryStateChange?.(stateChange);
-        }
+        await runAgentRecoveryStateChangeHooks({ effects: recoveryRetryingEffects, hooks });
         for (const event of recoveryRetryingEffects.events) {
           yield event;
         }
@@ -435,9 +429,7 @@ export async function* agentLoop(
           }),
         );
         const recoveryExhaustedEffects = buildAgentRecoveryEffects(recoveryExhausted);
-        for (const stateChange of recoveryExhaustedEffects.stateChanges) {
-          recoveryHooks?.onStateChange?.(stateChange);
-        }
+        await runAgentRecoveryStateChangeHooks({ effects: recoveryExhaustedEffects, hooks });
         for (const event of recoveryExhaustedEffects.events) {
           yield event;
         }
@@ -455,9 +447,7 @@ export async function* agentLoop(
         }),
       );
       const recoveryResetEffects = buildAgentRecoveryEffects(recoveryReset);
-      for (const stateChange of recoveryResetEffects.stateChanges) {
-        recoveryHooks?.onStateChange?.(stateChange);
-      }
+      await runAgentRecoveryStateChangeHooks({ effects: recoveryResetEffects, hooks });
     }
 
     // Token usage

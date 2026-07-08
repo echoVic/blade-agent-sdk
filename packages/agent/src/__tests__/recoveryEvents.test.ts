@@ -7,6 +7,7 @@ import {
   buildAgentRecoveryProjectionInput,
   buildAgentRecoveryProjection,
   consumeAgentRecoveryCompactStream,
+  runAgentRecoveryStateChangeHooks,
   shouldEmitAgentRecoveryEvent,
 } from '../recovery/recoveryEvents.js';
 
@@ -199,6 +200,31 @@ describe('agent recovery event projection', () => {
       ],
       events: [],
     });
+  });
+
+  it('runs recovery state-change hooks from the session hook container', async () => {
+    const effects = buildAgentRecoveryEffects(
+      buildAgentRecoveryProjection({
+        kind: 'retrying',
+        turn: 4,
+        attempt: 2,
+      }),
+    );
+    const calls: unknown[] = [];
+
+    const applied = await runAgentRecoveryStateChangeHooks({
+      effects,
+      hooks: {
+        recovery: {
+          onStateChange: async (stateChange) => {
+            calls.push(stateChange);
+          },
+        },
+      },
+    });
+
+    expect(applied).toBe(effects);
+    expect(calls).toEqual(effects.stateChanges);
   });
 
   it('wraps model fallback metadata as a public agent event', () => {

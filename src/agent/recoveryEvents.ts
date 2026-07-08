@@ -6,6 +6,7 @@ export {
   buildAgentRecoveryProjectionInput,
   buildAgentRecoveryProjection,
   consumeAgentRecoveryCompactStream,
+  runAgentRecoveryStateChangeHooks,
   shouldEmitAgentRecoveryEvent,
   type AgentReactiveCompactHookPayload,
   type AgentReactiveCompactConversationLike,
@@ -21,6 +22,8 @@ export {
   type AgentRecoveryProjectionInput,
   type AgentRecoveryProjectionKind,
   type AgentRecoveryStateChange,
+  type AgentRecoveryStateChangeHookContainer,
   type AgentRecoveryStatePhase,
   type AgentRecoveryStateReason,
+  type RunAgentRecoveryStateChangeHooksInput,
 } from '../../packages/agent/src/recovery/recoveryEvents.js';
