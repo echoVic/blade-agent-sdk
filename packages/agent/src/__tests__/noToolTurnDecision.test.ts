@@ -12,6 +12,7 @@ import {
   buildAgentLoopNoToolStopHooksInput,
   decideAgentLoopNoToolTurn,
   decideNoToolTurn,
+  runAgentLoopNoToolCompleteHook,
   shouldContinueAgentLoopAfterNoToolDecision,
   shouldHandleAgentLoopNoToolTurn,
 } from '../loop/index.js';
@@ -104,6 +105,28 @@ describe('decideNoToolTurn', () => {
       content: 'All done',
       turn: 5,
     });
+  });
+
+  it('runs no-tool completion hooks from the session hook container', async () => {
+    const calls: unknown[] = [];
+
+    const payload = await runAgentLoopNoToolCompleteHook({
+      content: 'All done',
+      turn: 5,
+      hooks: {
+        message: {
+          onComplete: async (hookPayload) => {
+            calls.push(hookPayload);
+          },
+        },
+      },
+    });
+
+    expect(payload).toEqual({
+      content: 'All done',
+      turn: 5,
+    });
+    expect(calls).toEqual([payload]);
   });
 
   it('projects object-style no-tool decision input and runs the decision wrapper', async () => {

@@ -42,10 +42,10 @@ import {
 import {
   applyAgentLoopNoToolContinuation,
   buildAgentLoopNoToolContent,
-  buildAgentLoopNoToolCompletePayload,
   buildAgentLoopNoToolContinuation,
   buildAgentLoopNoToolDecisionInputFromConversation,
   decideAgentLoopNoToolTurn,
+  runAgentLoopNoToolCompleteHook,
   shouldContinueAgentLoopAfterNoToolDecision,
   shouldHandleAgentLoopNoToolTurn,
 } from './loop/decideNoToolTurn.js';
@@ -243,7 +243,6 @@ export async function* agentLoop(
   } = config;
 
   const turnHooks = hooks?.turn;
-  const messageHooks = hooks?.message;
   const recoveryHooks = hooks?.recovery;
   const stopHooks = hooks?.stop;
 
@@ -553,9 +552,11 @@ export async function* agentLoop(
         continue;
       }
 
-      await messageHooks?.onComplete?.(
-        buildAgentLoopNoToolCompletePayload({ content, turn: turnsCount }),
-      );
+      await runAgentLoopNoToolCompleteHook({
+        content,
+        turn: turnsCount,
+        hooks,
+      });
 
       const noToolSuccessDecision = buildAgentLoopNoToolSuccessDecision(
         buildAgentLoopNoToolSuccessDecisionInputFromLoopState({

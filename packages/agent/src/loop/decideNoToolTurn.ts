@@ -76,6 +76,12 @@ export interface AgentLoopNoToolCompletePayload {
   turn: number;
 }
 
+export interface AgentLoopNoToolCompleteHookContainer {
+  message?: {
+    onComplete?: (payload: AgentLoopNoToolCompletePayload) => Promise<void> | void;
+  } | null;
+}
+
 export interface AgentLoopNoToolContinuation {
   action: 'continue';
   message: Message;
@@ -90,6 +96,11 @@ export interface AgentLoopNoToolContinuationConversationLike {
 export interface ApplyAgentLoopNoToolContinuationInput {
   conversation: AgentLoopNoToolContinuationConversationLike;
   continuation: AgentLoopNoToolContinuation;
+}
+
+export interface RunAgentLoopNoToolCompleteHookInput
+  extends AgentLoopNoToolCompletePayloadInput {
+  hooks?: AgentLoopNoToolCompleteHookContainer | null;
 }
 
 export interface AgentLoopToolCallResponseLike {
@@ -167,6 +178,14 @@ export function buildAgentLoopNoToolCompletePayload(
     content: input.content,
     turn: input.turn,
   };
+}
+
+export async function runAgentLoopNoToolCompleteHook(
+  input: RunAgentLoopNoToolCompleteHookInput,
+): Promise<AgentLoopNoToolCompletePayload> {
+  const payload = buildAgentLoopNoToolCompletePayload(input);
+  await input.hooks?.message?.onComplete?.(payload);
+  return payload;
 }
 
 function isIncompleteIntent(content: string): boolean {
