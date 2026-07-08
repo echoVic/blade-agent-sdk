@@ -84,7 +84,7 @@ export interface AgentLoopExecuteToolCallsInput<
   logger?: TLogger;
   permissionMode?: ToolExecutionPermissionMode;
   signal?: AbortSignal;
-  hooks: THooks;
+  hooks?: THooks;
 }
 
 export interface AgentLoopExecuteToolCallsProjectionInput<
@@ -95,18 +95,25 @@ export interface AgentLoopExecuteToolCallsProjectionInput<
   TExecutionPipeline,
   TLogger,
   THooks,
+  TBeforeExec = unknown,
+  TOnUpdate = unknown,
 > {
   plan: ToolExecutionPlan;
   executionPipeline: TExecutionPipeline;
   turnStateProjection: AgentLoopTurnStateProjection<TTurnState>;
   logger?: TLogger;
   signal?: AbortSignal;
-  hooks: THooks;
+  hooks?: THooks;
+  hookContainer?: AgentLoopExecuteToolCallsHookContainerInput<TBeforeExec, TOnUpdate> | null;
 }
 
 export interface AgentLoopExecuteToolCallsHooksInput<TBeforeExec, TOnUpdate> {
   beforeExec?: TBeforeExec;
   onUpdate?: TOnUpdate;
+}
+
+export interface AgentLoopExecuteToolCallsHookContainerInput<TBeforeExec, TOnUpdate> {
+  tool?: AgentLoopExecuteToolCallsHooksInput<TBeforeExec, TOnUpdate> | null;
 }
 
 export interface AgentLoopExecuteToolCallsHooks<TBeforeExec, TOnUpdate> {
@@ -121,6 +128,20 @@ export function buildAgentLoopExecuteToolCallsHooksInput<TBeforeExec, TOnUpdate>
     onBeforeToolExec: input.beforeExec,
     onUpdate: input.onUpdate,
   };
+}
+
+export function buildAgentLoopExecuteToolCallsHooksInputFromHookContainer<
+  TBeforeExec,
+  TOnUpdate,
+>(
+  input: {
+    hooks?: AgentLoopExecuteToolCallsHookContainerInput<TBeforeExec, TOnUpdate> | null;
+  },
+): AgentLoopExecuteToolCallsHooks<TBeforeExec, TOnUpdate> {
+  return buildAgentLoopExecuteToolCallsHooksInput({
+    beforeExec: input.hooks?.tool?.beforeExec,
+    onUpdate: input.hooks?.tool?.onUpdate,
+  });
 }
 
 export function buildAgentLoopExecuteToolCallsInput<
@@ -160,18 +181,22 @@ export function buildAgentLoopExecuteToolCallsInputFromTurnProjection<
   TExecutionPipeline,
   TLogger,
   THooks,
+  TBeforeExec = unknown,
+  TOnUpdate = unknown,
 >(
   input: AgentLoopExecuteToolCallsProjectionInput<
     TTurnState,
     TExecutionPipeline,
     TLogger,
-    THooks
+    THooks,
+    TBeforeExec,
+    TOnUpdate
   >,
 ): AgentLoopExecuteToolCallsInput<
   TExecutionPipeline,
   AgentLoopTurnStateProjection<TTurnState>['executionContext'],
   TLogger,
-  THooks
+  THooks | AgentLoopExecuteToolCallsHooks<TBeforeExec, TOnUpdate> | undefined
 > {
   return buildAgentLoopExecuteToolCallsInput({
     plan: input.plan,
@@ -180,7 +205,11 @@ export function buildAgentLoopExecuteToolCallsInputFromTurnProjection<
     logger: input.logger,
     permissionMode: input.turnStateProjection.permissionMode,
     signal: input.signal,
-    hooks: input.hooks,
+    hooks: input.hookContainer
+      ? buildAgentLoopExecuteToolCallsHooksInputFromHookContainer({
+        hooks: input.hookContainer,
+      })
+      : input.hooks,
   });
 }
 

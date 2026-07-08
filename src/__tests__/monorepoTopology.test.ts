@@ -638,7 +638,10 @@ describe('monorepo topology', () => {
     expect(rootAgentLoopSource).toContain(
       'buildAgentLoopExecuteToolCallsInputFromTurnProjection',
     );
-    expect(rootAgentLoopSource).toContain('buildAgentLoopExecuteToolCallsHooksInput');
+    expect(rootAgentLoopSource).not.toContain('buildAgentLoopExecuteToolCallsHooksInput');
+    expect(rootAgentLoopSource).not.toContain(
+      'buildAgentLoopExecuteToolCallsHooksInputFromHookContainer',
+    );
     expect(rootAgentLoopSource).not.toContain('onBeforeToolExec: toolHooks?.beforeExec');
     const executeToolCallsInputStart = rootAgentLoopSource.indexOf(
       'buildAgentLoopExecuteToolCallsInputFromTurnProjection({',
@@ -660,6 +663,10 @@ describe('monorepo topology', () => {
     expect(executeToolCallsInputSource).not.toContain(
       'permissionMode: turnStateProjection.permissionMode',
     );
+    expect(executeToolCallsInputSource).toContain('hookContainer: hooks');
+    expect(executeToolCallsInputSource).not.toContain('hooks: {');
+    expect(executeToolCallsInputSource).not.toContain('beforeExec: toolHooks?.beforeExec');
+    expect(executeToolCallsInputSource).not.toContain('onUpdate: toolHooks?.onUpdate');
     expect(rootAgentLoopSource).toContain(
       'buildAgentLoopToolExecutionPlanInputFromExecutionPipelineProjection',
     );

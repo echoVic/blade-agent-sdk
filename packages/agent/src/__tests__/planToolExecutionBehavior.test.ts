@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   buildAgentLoopExecuteToolCallsHooksInput,
+  buildAgentLoopExecuteToolCallsHooksInputFromHookContainer,
   type AgentFunctionToolCall,
   buildAgentLoopExecuteToolCallsInput,
   buildAgentLoopExecuteToolCallsInputFromTurnProjection,
@@ -320,10 +321,8 @@ describe('planToolExecution', () => {
     };
     const logger = { debug: () => undefined };
     const signal = new AbortController().signal;
-    const hooks = {
-      onBeforeToolExec: async () => null,
-      onUpdate: () => undefined,
-    };
+    const beforeExec = async () => null;
+    const onUpdate = () => undefined;
 
     expect(
       buildAgentLoopExecuteToolCallsInputFromTurnProjection({
@@ -337,7 +336,12 @@ describe('planToolExecution', () => {
         },
         logger,
         signal,
-        hooks,
+        hookContainer: {
+          tool: {
+            beforeExec,
+            onUpdate,
+          },
+        },
       }),
     ).toEqual({
       plan,
@@ -346,7 +350,10 @@ describe('planToolExecution', () => {
       logger,
       permissionMode: turnState.permissionMode,
       signal,
-      hooks,
+      hooks: {
+        onBeforeToolExec: beforeExec,
+        onUpdate,
+      },
     });
   });
 
@@ -358,6 +365,25 @@ describe('planToolExecution', () => {
       buildAgentLoopExecuteToolCallsHooksInput({
         beforeExec,
         onUpdate,
+      }),
+    ).toEqual({
+      onBeforeToolExec: beforeExec,
+      onUpdate,
+    });
+  });
+
+  it('projects non-streaming tool execution hooks from a session hook container', () => {
+    const beforeExec = async () => null;
+    const onUpdate = () => undefined;
+
+    expect(
+      buildAgentLoopExecuteToolCallsHooksInputFromHookContainer({
+        hooks: {
+          tool: {
+            beforeExec,
+            onUpdate,
+          },
+        },
       }),
     ).toEqual({
       onBeforeToolExec: beforeExec,

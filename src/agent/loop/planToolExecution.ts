@@ -1,5 +1,6 @@
 export {
   buildAgentLoopExecuteToolCallsHooksInput,
+  buildAgentLoopExecuteToolCallsHooksInputFromHookContainer,
   buildAgentLoopExecuteToolCallsInput,
   buildAgentLoopExecuteToolCallsInputFromTurnProjection,
   buildAgentLoopToolExecutionPlanInput,
@@ -12,6 +13,7 @@ export {
   shouldRunAgentLoopNonStreamingToolExecution,
   type AgentLoopExecuteToolCallsInput,
   type AgentLoopExecuteToolCallsProjectionInput,
+  type AgentLoopExecuteToolCallsHookContainerInput,
   type AgentLoopExecuteToolCallsHooks,
   type AgentLoopExecuteToolCallsHooksInput,
   type AgentLoopToolExecutionPlanExecutionPipelineProjectionInput,
