@@ -1,3 +1,8 @@
+import type {
+  AgentLoopTurnStateFields,
+  AgentLoopTurnStateProjection,
+} from './turnState.js';
+
 export interface AgentLoopTurnStreamOutcome<TTurnResult, TStreamingExecutionResult> {
   chatResponse: TTurnResult;
   streamingExecutionResults?: TStreamingExecutionResult[];
@@ -26,6 +31,24 @@ export interface AgentLoopRunTurnInput<
   epoch: TEpoch;
   executionContext: TExecutionContext;
   permissionMode?: TPermissionMode;
+  logger?: TLogger;
+  toolHooks: TToolHooks;
+}
+
+export interface AgentLoopRunTurnProjectionInput<
+  TTurnState extends AgentLoopTurnStateFields,
+  TMessages,
+  TExecutionPipeline,
+  TEpoch,
+  TLogger,
+  TToolHooks,
+> {
+  turnStateProjection: AgentLoopTurnStateProjection<TTurnState>;
+  messages: TMessages;
+  executionPipeline: TExecutionPipeline;
+  streaming?: boolean;
+  signal?: AbortSignal;
+  epoch: TEpoch;
   logger?: TLogger;
   toolHooks: TToolHooks;
 }
@@ -122,6 +145,46 @@ export function buildAgentLoopRunTurnInput<
     logger: input.logger,
     toolHooks: input.toolHooks,
   };
+}
+
+export function buildAgentLoopRunTurnInputFromTurnProjection<
+  TTurnState extends AgentLoopTurnStateFields,
+  TMessages,
+  TExecutionPipeline,
+  TEpoch,
+  TLogger,
+  TToolHooks,
+>(
+  input: AgentLoopRunTurnProjectionInput<
+    TTurnState,
+    TMessages,
+    TExecutionPipeline,
+    TEpoch,
+    TLogger,
+    TToolHooks
+  >,
+): AgentLoopRunTurnInput<
+  TTurnState,
+  TMessages,
+  TExecutionPipeline,
+  TEpoch,
+  AgentLoopTurnStateProjection<TTurnState>['executionContext'],
+  AgentLoopTurnStateProjection<TTurnState>['permissionMode'],
+  TLogger,
+  TToolHooks
+> {
+  return buildAgentLoopRunTurnInput({
+    turnState: input.turnStateProjection.turnState,
+    messages: input.messages,
+    executionPipeline: input.executionPipeline,
+    streaming: input.streaming,
+    signal: input.signal,
+    epoch: input.epoch,
+    executionContext: input.turnStateProjection.executionContext,
+    permissionMode: input.turnStateProjection.permissionMode,
+    logger: input.logger,
+    toolHooks: input.toolHooks,
+  });
 }
 
 export async function* consumeAgentLoopTurnStream<

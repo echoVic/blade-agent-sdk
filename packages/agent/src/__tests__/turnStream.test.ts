@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   buildAgentLoopRunTurnInput,
+  buildAgentLoopRunTurnInputFromTurnProjection,
   buildAgentLoopRunTurnToolHooksInput,
   consumeAgentLoopTurnStream,
 } from '../loop/turnStream.js';
@@ -40,6 +41,52 @@ describe('agent loop turn stream consumption', () => {
       epoch,
       executionContext,
       permissionMode: 'acceptEdits',
+      logger,
+      toolHooks,
+    });
+  });
+
+  it('projects run-turn input from a turn state projection', () => {
+    const turnState = {
+      id: 'turn-state',
+      maxContextTokens: 128000,
+      executionContext: { cwd: '/tmp/project' },
+      permissionMode: 'acceptEdits',
+    };
+    const messages = [{ role: 'user', content: 'hello' }] as const;
+    const executionPipeline = { name: 'pipeline' };
+    const signal = new AbortController().signal;
+    const epoch = { id: 'epoch' };
+    const logger = { debug: () => undefined };
+    const toolHooks = {
+      onUpdate: () => undefined,
+    };
+
+    expect(
+      buildAgentLoopRunTurnInputFromTurnProjection({
+        turnStateProjection: {
+          turnState,
+          maxContextTokens: turnState.maxContextTokens,
+          executionContext: turnState.executionContext,
+          permissionMode: turnState.permissionMode,
+        },
+        messages,
+        executionPipeline,
+        streaming: true,
+        signal,
+        epoch,
+        logger,
+        toolHooks,
+      }),
+    ).toEqual({
+      turnState,
+      messages,
+      executionPipeline,
+      streaming: true,
+      signal,
+      epoch,
+      executionContext: turnState.executionContext,
+      permissionMode: turnState.permissionMode,
       logger,
       toolHooks,
     });
