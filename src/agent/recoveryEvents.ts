@@ -1,6 +1,7 @@
 export {
   buildAgentModelFallbackEvent,
   buildAgentRecoveryCompactStreamFromHookContainer,
+  buildAgentRecoveryCompactResultEffects,
   buildAgentRecoveryCompactFailedEffects,
   buildAgentReactiveCompactHookPayload,
   buildAgentReactiveCompactHookPayloadFromConversation,
@@ -23,6 +24,8 @@ export {
   type AgentReactiveCompactHookPayloadConversationInput,
   type BuildAgentRecoveryCompactStreamFromHookContainerInput,
   type EmitAgentRecoveryEffectsInput,
+  type AgentRecoveryCompactResultEffects,
+  type AgentRecoveryCompactResultEffectsInput,
   type AgentRecoveryCompactStreamResult,
   type AgentModelFallbackEvent,
   type AgentModelFallbackEventInput,

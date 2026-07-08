@@ -120,6 +120,16 @@ export interface AgentRecoveryAttemptEffectsInput {
   attempt: number;
 }
 
+export interface AgentRecoveryCompactResultEffectsInput
+  extends AgentRecoveryAttemptEffectsInput {
+  result: AgentRecoveryCompactStreamResult;
+}
+
+export interface AgentRecoveryCompactResultEffects {
+  recovered: boolean;
+  effects: AgentRecoveryEffects;
+}
+
 export interface AgentRecoveryExhaustedEffectsInput {
   kind: 'exhausted';
   turn: number;
@@ -286,6 +296,17 @@ export function buildAgentRecoveryRetryingEffects(
       }),
     ),
   );
+}
+
+export function buildAgentRecoveryCompactResultEffects(
+  input: AgentRecoveryCompactResultEffectsInput,
+): AgentRecoveryCompactResultEffects {
+  return {
+    recovered: input.result.recovered,
+    effects: input.result.recovered
+      ? buildAgentRecoveryRetryingEffects(input)
+      : buildAgentRecoveryCompactFailedEffects(input),
+  };
 }
 
 export function buildAgentRecoveryExhaustedEffects(

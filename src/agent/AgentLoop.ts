@@ -27,11 +27,10 @@ import {
 } from './recoveryAttemptTracker.js';
 import {
   buildAgentModelFallbackEvent,
-  buildAgentRecoveryCompactFailedEffects,
+  buildAgentRecoveryCompactResultEffects,
   buildAgentRecoveryCompactStreamFromHookContainer,
   buildAgentRecoveryExhaustedEffects,
   buildAgentRecoveryResetEffects,
-  buildAgentRecoveryRetryingEffects,
   consumeAgentRecoveryCompactStream,
   emitAgentRecoveryEffects,
   hasAgentReactiveCompactHook,
@@ -366,19 +365,15 @@ export async function* agentLoop(
           throw llmError;
         }
         const compactStreamResult = yield* consumeAgentRecoveryCompactStream(compactStream);
-        if (!compactStreamResult.recovered) {
-          const recoveryFailedEffects = buildAgentRecoveryCompactFailedEffects({
-            turn: turnsCount,
-            attempt: recoveryAttempt,
-          });
-          yield* emitAgentRecoveryEffects({ effects: recoveryFailedEffects, hooks });
-          throw llmError;
-        }
-        const recoveryRetryingEffects = buildAgentRecoveryRetryingEffects({
+        const compactRecovery = buildAgentRecoveryCompactResultEffects({
+          result: compactStreamResult,
           turn: turnsCount,
           attempt: recoveryAttempt,
         });
-        yield* emitAgentRecoveryEffects({ effects: recoveryRetryingEffects, hooks });
+        yield* emitAgentRecoveryEffects({ effects: compactRecovery.effects, hooks });
+        if (!compactRecovery.recovered) {
+          throw llmError;
+        }
         epoch?.invalidate();
         // 显式"重试当前轮"：不减 turnsCount，不发 turn_end
         requestAgentLoopTurnRetry({ counter: turnCounter });

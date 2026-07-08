@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   buildAgentModelFallbackEvent,
   buildAgentRecoveryCompactStreamFromHookContainer,
+  buildAgentRecoveryCompactResultEffects,
   buildAgentReactiveCompactHookPayload,
   buildAgentReactiveCompactHookPayloadFromConversation,
   buildAgentRecoveryEffects,
@@ -280,6 +281,62 @@ describe('agent recovery event projection', () => {
           reason: 'reactive_compact',
         },
       ],
+    });
+  });
+
+  it('builds compact-result recovery effects for failed and recovered compaction', () => {
+    expect(
+      buildAgentRecoveryCompactResultEffects({
+        result: { recovered: false },
+        turn: 9,
+        attempt: 6,
+      }),
+    ).toEqual({
+      recovered: false,
+      effects: {
+        stateChanges: [
+          {
+            turn: 9,
+            phase: 'failed',
+            reason: 'reactive_compact_failed',
+            attempt: 6,
+          },
+        ],
+        events: [
+          {
+            type: 'recovery',
+            phase: 'failed',
+            reason: 'reactive_compact',
+          },
+        ],
+      },
+    });
+
+    expect(
+      buildAgentRecoveryCompactResultEffects({
+        result: { recovered: true },
+        turn: 9,
+        attempt: 6,
+      }),
+    ).toEqual({
+      recovered: true,
+      effects: {
+        stateChanges: [
+          {
+            turn: 9,
+            phase: 'retrying',
+            reason: 'reactive_compact_retry',
+            attempt: 6,
+          },
+        ],
+        events: [
+          {
+            type: 'recovery',
+            phase: 'retrying',
+            reason: 'reactive_compact',
+          },
+        ],
+      },
     });
   });
 

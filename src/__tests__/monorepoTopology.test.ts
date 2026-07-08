@@ -798,8 +798,9 @@ describe('monorepo topology', () => {
     );
     expect(rootAgentLoopSource).toContain('buildAgentRecoveryResetEffects');
     expect(rootAgentLoopSource).not.toContain('buildAgentRecoveryStartedEffects');
-    expect(rootAgentLoopSource).toContain('buildAgentRecoveryCompactFailedEffects');
-    expect(rootAgentLoopSource).toContain('buildAgentRecoveryRetryingEffects');
+    expect(rootAgentLoopSource).toContain('buildAgentRecoveryCompactResultEffects');
+    expect(rootAgentLoopSource).not.toContain('buildAgentRecoveryCompactFailedEffects');
+    expect(rootAgentLoopSource).not.toContain('buildAgentRecoveryRetryingEffects');
     expect(rootAgentLoopSource).toContain('buildAgentRecoveryExhaustedEffects');
     expect(rootAgentLoopSource).toContain('emitAgentRecoveryEffects');
     expect(rootAgentLoopSource).not.toContain('runAgentRecoveryStateChangeHooks');
@@ -932,6 +933,7 @@ describe('monorepo topology', () => {
     expect(rootAgentLoopSource).not.toContain('hooks?.recovery?.reactiveCompact');
     expect(rootAgentLoopSource).not.toContain('recoveryHooks?.reactiveCompact');
     expect(rootAgentLoopSource).not.toContain('reactiveCompact?.({ messages: convState.toArray() })');
+    expect(rootAgentLoopSource).not.toContain('compactStreamResult.recovered');
     expect(rootAgentLoopSource).not.toContain('consumeResetAttempt() !== null');
     expect(rootAgentLoopSource).not.toContain('isOverflowRecoverable(llmError)');
     expect(rootAgentLoopSource).not.toContain('recoveryAttemptTracker.canAttempt(turnsCount)');
