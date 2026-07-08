@@ -35,6 +35,7 @@ import {
   buildAgentLoopAbortResult,
   buildAgentLoopBudgetExhaustedResult,
   buildAgentLoopSuccessResult,
+  buildAgentLoopToolExitFinalMessage,
   buildAgentLoopToolExitResult,
 } from './loop/loopResult.js';
 import { planToolExecution } from './loop/planToolExecution.js';
@@ -502,8 +503,7 @@ export async function* agentLoop(
       toolResultTracker.record(result);
 
       if (result.metadata?.shouldExitLoop) {
-        const finalMessage =
-          typeof result.llmContent === 'string' ? result.llmContent : '循环已退出';
+        const finalMessage = buildAgentLoopToolExitFinalMessage(result);
         if (!streamingExecutionResults) {
           yield buildAgentLoopToolResultEvent({ toolCall, result });
         }

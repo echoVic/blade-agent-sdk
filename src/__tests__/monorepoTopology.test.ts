@@ -420,6 +420,7 @@ describe('monorepo topology', () => {
     expect(rootAgentLoopSource).toContain('buildAgentLoopResponseEvents');
     expect(rootAgentLoopSource).toContain('buildAgentLoopBudgetExhaustedResult');
     expect(rootAgentLoopSource).toContain('buildAgentLoopSuccessResult');
+    expect(rootAgentLoopSource).toContain('buildAgentLoopToolExitFinalMessage');
     expect(rootAgentLoopSource).toContain('buildAgentLoopToolExitResult');
     expect(rootAgentLoopSource).toContain('createAgentLoopClock');
     expect(rootAgentLoopSource).toContain('buildAgentLoopAssistantMessageProjection');
@@ -475,6 +476,7 @@ describe('monorepo topology', () => {
     expect(rootAgentLoopSource).not.toContain("phase: 'reset',\n        attempt: 0");
     expect(rootAgentLoopSource).not.toContain("_systemSource: 'tool_injection' as const");
     expect(rootAgentLoopSource).not.toContain('shouldExitLoop: true,\n            targetMode:');
+    expect(rootAgentLoopSource).not.toContain('循环已退出');
     expect(rootAgentLoopSource).not.toContain('message: \'Token budget exhausted\'');
     expect(rootAgentLoopSource).not.toContain(
       'message: \'Stopped due to diminishing returns: consecutive turns produced very few tokens\'',

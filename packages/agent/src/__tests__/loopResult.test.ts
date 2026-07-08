@@ -3,6 +3,7 @@ import {
   buildAgentLoopAbortResult,
   buildAgentLoopBudgetExhaustedResult,
   buildAgentLoopSuccessResult,
+  buildAgentLoopToolExitFinalMessage,
   buildAgentLoopToolExitResult,
 } from '../loop/loopResult.js';
 
@@ -128,5 +129,13 @@ describe('agent loop result builders', () => {
         targetMode: 'default',
       },
     });
+  });
+
+  it('projects tool-requested exit final messages from tool results', () => {
+    expect(buildAgentLoopToolExitFinalMessage({ llmContent: 'approved' })).toBe('approved');
+    expect(buildAgentLoopToolExitFinalMessage({ llmContent: { status: 'done' } })).toBe(
+      '循环已退出',
+    );
+    expect(buildAgentLoopToolExitFinalMessage({})).toBe('循环已退出');
   });
 });

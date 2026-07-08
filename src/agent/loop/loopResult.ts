@@ -2,6 +2,7 @@ export {
   buildAgentLoopAbortResult,
   buildAgentLoopBudgetExhaustedResult,
   buildAgentLoopSuccessResult,
+  buildAgentLoopToolExitFinalMessage,
   buildAgentLoopToolExitResult,
   type AgentLoopAbortResult,
   type AgentLoopBudgetExhaustedResult,
@@ -9,6 +10,7 @@ export {
   type AgentLoopSuccessResult,
   type AgentLoopSuccessResultInput,
   type AgentLoopToolExitResult,
+  type AgentLoopToolExitFinalMessageInput,
   type AgentLoopToolExitResultInput,
   type AgentLoopResultTiming,
 } from '../../../packages/agent/src/loop/loopResult.js';

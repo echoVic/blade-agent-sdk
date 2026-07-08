@@ -75,6 +75,10 @@ export interface AgentLoopToolExitResultInput extends AgentLoopResultTiming {
   targetMode: unknown;
 }
 
+export interface AgentLoopToolExitFinalMessageInput {
+  llmContent?: unknown;
+}
+
 function getLoopDuration(input: Pick<AgentLoopResultTiming, 'startTime' | 'now'>): number {
   return (input.now ?? Date.now()) - input.startTime;
 }
@@ -124,6 +128,12 @@ export function buildAgentLoopToolExitResult(
       targetMode: input.targetMode,
     },
   };
+}
+
+export function buildAgentLoopToolExitFinalMessage(
+  input: AgentLoopToolExitFinalMessageInput,
+): string {
+  return typeof input.llmContent === 'string' ? input.llmContent : '循环已退出';
 }
 
 export function buildAgentLoopBudgetExhaustedResult(
