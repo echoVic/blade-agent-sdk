@@ -11,6 +11,24 @@ export interface AgentLoopTokenUsageInfo {
   reasoningTokens?: number;
 }
 
+export interface AgentLoopTokenUsageEvent {
+  type: 'token_usage';
+  usage: AgentLoopTokenUsageInfo;
+}
+
+export interface AgentLoopTokenUsageEventInput {
+  usage: AgentLoopTokenUsageInfo;
+}
+
+export interface AgentLoopBudgetWarningEvent<TSnapshot = unknown> {
+  type: 'budget_warning';
+  snapshot: TSnapshot;
+}
+
+export interface AgentLoopBudgetWarningEventInput<TSnapshot = unknown> {
+  snapshot: TSnapshot;
+}
+
 export interface BuildAgentLoopTokenUsageInfoInput {
   modelUsage: ModelUsageInfo;
   totalTokens: number;
@@ -29,5 +47,23 @@ export function buildAgentLoopTokenUsageInfo(
     cacheMissInputTokens: input.modelUsage.cacheMissInputTokens,
     billableInputTokens: input.modelUsage.billableInputTokens,
     reasoningTokens: input.modelUsage.reasoningTokens,
+  };
+}
+
+export function buildAgentLoopTokenUsageEvent(
+  input: AgentLoopTokenUsageEventInput,
+): AgentLoopTokenUsageEvent {
+  return {
+    type: 'token_usage',
+    usage: input.usage,
+  };
+}
+
+export function buildAgentLoopBudgetWarningEvent<TSnapshot>(
+  input: AgentLoopBudgetWarningEventInput<TSnapshot>,
+): AgentLoopBudgetWarningEvent<TSnapshot> {
+  return {
+    type: 'budget_warning',
+    snapshot: input.snapshot,
   };
 }

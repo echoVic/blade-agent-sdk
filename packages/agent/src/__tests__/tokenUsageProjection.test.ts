@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { buildAgentLoopTokenUsageInfo } from '../loop/tokenUsage.js';
+import {
+  buildAgentLoopBudgetWarningEvent,
+  buildAgentLoopTokenUsageEvent,
+  buildAgentLoopTokenUsageInfo,
+} from '../loop/tokenUsage.js';
 
 describe('agent loop token usage projection', () => {
   it('builds token usage info from model usage and loop totals', () => {
@@ -45,6 +49,36 @@ describe('agent loop token usage projection', () => {
       cacheMissInputTokens: undefined,
       billableInputTokens: undefined,
       reasoningTokens: undefined,
+    });
+  });
+
+  it('wraps token usage info as a public agent event', () => {
+    const usage = buildAgentLoopTokenUsageInfo({
+      modelUsage: {
+        promptTokens: 4,
+        completionTokens: 6,
+        totalTokens: 10,
+      },
+      totalTokens: 20,
+      maxContextTokens: 100,
+    });
+
+    expect(buildAgentLoopTokenUsageEvent({ usage })).toEqual({
+      type: 'token_usage',
+      usage,
+    });
+  });
+
+  it('wraps token budget snapshots as public warning events', () => {
+    const snapshot = {
+      totalTokens: 80,
+      budgetRemaining: 20,
+      budgetPercent: 0.8,
+    };
+
+    expect(buildAgentLoopBudgetWarningEvent({ snapshot })).toEqual({
+      type: 'budget_warning',
+      snapshot,
     });
   });
 });

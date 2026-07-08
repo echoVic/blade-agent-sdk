@@ -425,6 +425,8 @@ describe('monorepo topology', () => {
     expect(rootAgentLoopSource).toContain('buildAgentLoopAssistantMessageProjection');
     expect(rootAgentLoopSource).toContain('buildAgentLoopToolMessage');
     expect(rootAgentLoopSource).toContain('buildAgentLoopTokenUsageInfo');
+    expect(rootAgentLoopSource).toContain('buildAgentLoopTokenUsageEvent');
+    expect(rootAgentLoopSource).toContain('buildAgentLoopBudgetWarningEvent');
     expect(rootAgentLoopSource).toContain('createAgentLoopTokenUsageTracker');
     expect(rootAgentLoopSource).toContain('createAgentToolResultTracker');
     expect(rootAgentLoopSource).toContain('buildAgentLoopToolStartEvent');
@@ -442,6 +444,8 @@ describe('monorepo topology', () => {
     expect(rootAgentLoopSource).not.toContain("{ type: 'thinking'");
     expect(rootAgentLoopSource).not.toContain("{ type: 'stream_end'");
     expect(rootAgentLoopSource).not.toContain('const usage: TokenUsageInfo =');
+    expect(rootAgentLoopSource).not.toContain("{ type: 'token_usage'");
+    expect(rootAgentLoopSource).not.toContain("{ type: 'budget_warning'");
     expect(rootAgentLoopSource).not.toContain('let totalTokens = 0');
     expect(rootAgentLoopSource).not.toContain('let lastPromptTokens');
     expect(rootAgentLoopSource).not.toContain('const startTime = Date.now()');

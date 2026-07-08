@@ -40,7 +40,11 @@ import {
 import { planToolExecution } from './loop/planToolExecution.js';
 import { runTurn } from './loop/runTurn.js';
 import type { ToolExecutionUpdate } from './loop/runToolCall.js';
-import { buildAgentLoopTokenUsageInfo } from './loop/tokenUsage.js';
+import {
+  buildAgentLoopBudgetWarningEvent,
+  buildAgentLoopTokenUsageEvent,
+  buildAgentLoopTokenUsageInfo,
+} from './loop/tokenUsage.js';
 import { createAgentLoopTokenUsageTracker } from './loop/tokenUsageTracker.js';
 import { buildAgentLoopToolMessage } from './loop/toolMessage.js';
 import { createAgentToolResultTracker } from './loop/toolResultTracker.js';
@@ -353,14 +357,14 @@ export async function* agentLoop(
         totalTokens: tokenUsageTracker.totalTokens,
         maxContextTokens: turnMaxContextTokens,
       });
-      yield { type: 'token_usage', usage };
+      yield buildAgentLoopTokenUsageEvent({ usage });
     }
 
     if (tokenBudget && turnResult.usage) {
       tokenBudget.record(turnResult.usage);
 
       if (tokenBudget.isWarning() || tokenBudget.isApproachingLimit()) {
-        yield { type: 'budget_warning', snapshot: tokenBudget.getSnapshot() };
+        yield buildAgentLoopBudgetWarningEvent({ snapshot: tokenBudget.getSnapshot() });
       }
 
       if (tokenBudget.isDiminishingReturns()) {
