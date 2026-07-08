@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { createAgentLoopTokenUsageTracker } from '../loop/tokenUsageTracker.js';
+import {
+  createAgentLoopTokenUsageTracker,
+  shouldRecordAgentLoopTokenUsage,
+} from '../loop/tokenUsageTracker.js';
 
 describe('agent loop token usage tracker', () => {
   it('starts with no accumulated tokens or prompt token memory', () => {
@@ -7,6 +10,12 @@ describe('agent loop token usage tracker', () => {
 
     expect(tracker.totalTokens).toBe(0);
     expect(tracker.lastPromptTokens).toBeUndefined();
+  });
+
+  it('records token usage only when provider usage is present', () => {
+    expect(shouldRecordAgentLoopTokenUsage()).toBe(false);
+    expect(shouldRecordAgentLoopTokenUsage({})).toBe(true);
+    expect(shouldRecordAgentLoopTokenUsage({ promptTokens: 0, totalTokens: 0 })).toBe(true);
   });
 
   it('accumulates total tokens and remembers the latest prompt tokens', () => {

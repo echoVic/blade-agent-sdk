@@ -9,6 +9,12 @@ export interface AgentLoopTokenUsageTracker {
   record(usage: AgentLoopTokenUsageRecord): void;
 }
 
+export function shouldRecordAgentLoopTokenUsage(
+  usage?: AgentLoopTokenUsageRecord,
+): usage is AgentLoopTokenUsageRecord {
+  return usage !== undefined;
+}
+
 export function createAgentLoopTokenUsageTracker(): AgentLoopTokenUsageTracker {
   let totalTokens = 0;
   let lastPromptTokens: number | undefined;

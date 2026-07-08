@@ -71,7 +71,10 @@ import {
   buildAgentLoopToolInjectedMessages,
   shouldAppendAgentLoopToolInjectedMessages,
 } from './loop/toolInjectedMessages.js';
-import { createAgentLoopTokenUsageTracker } from './loop/tokenUsageTracker.js';
+import {
+  createAgentLoopTokenUsageTracker,
+  shouldRecordAgentLoopTokenUsage,
+} from './loop/tokenUsageTracker.js';
 import { buildAgentLoopToolMessage } from './loop/toolMessage.js';
 import { createAgentToolResultTracker } from './loop/toolResultTracker.js';
 import { buildAgentLoopToolStartEvent } from './loop/toolStartEvent.js';
@@ -384,7 +387,7 @@ export async function* agentLoop(
     }
 
     // Token usage
-    if (turnResult.usage) {
+    if (shouldRecordAgentLoopTokenUsage(turnResult.usage)) {
       tokenUsageTracker.record(turnResult.usage);
 
       const usage = buildAgentLoopTokenUsageInfo({

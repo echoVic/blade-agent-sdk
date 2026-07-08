@@ -436,6 +436,7 @@ describe('monorepo topology', () => {
     expect(rootAgentLoopSource).toContain('buildAgentLoopTokenUsageEvent');
     expect(rootAgentLoopSource).toContain('applyAgentLoopTokenBudget');
     expect(rootAgentLoopSource).toContain('createAgentLoopTokenUsageTracker');
+    expect(rootAgentLoopSource).toContain('shouldRecordAgentLoopTokenUsage');
     expect(rootAgentLoopSource).toContain('createAgentToolResultTracker');
     expect(rootAgentLoopSource).toContain('buildAgentLoopToolStartEvent');
     expect(rootAgentLoopSource).toContain('buildAgentLoopToolResultEvent');
@@ -471,6 +472,7 @@ describe('monorepo topology', () => {
     expect(rootAgentLoopSource).not.toContain("{ type: 'tool_result'");
     expect(rootAgentLoopSource).not.toContain('let totalTokens = 0');
     expect(rootAgentLoopSource).not.toContain('let lastPromptTokens');
+    expect(rootAgentLoopSource).not.toContain('if (turnResult.usage)');
     expect(rootAgentLoopSource).not.toContain('const startTime = Date.now()');
     expect(rootAgentLoopSource).not.toContain("turnResult.content || ''");
     expect(rootAgentLoopSource).not.toContain("role: 'assistant',\n      content: turnResult.content || ''");
