@@ -339,12 +339,7 @@ export async function* agentLoop(
           signal,
           epoch,
           logger: config.logger,
-          toolHooks: {
-            beforeExec: toolHooks?.beforeExec,
-            afterExec: toolHooks?.afterExec,
-            afterExecEpochDiscard: toolHooks?.afterExecEpochDiscard,
-            onUpdate: toolHooks?.onUpdate,
-          },
+          hooks,
         }),
       );
       const turnStreamResult = yield* consumeAgentLoopTurnStream(turnGen);

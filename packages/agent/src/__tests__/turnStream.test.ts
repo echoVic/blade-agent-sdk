@@ -3,6 +3,7 @@ import {
   buildAgentLoopRunTurnInput,
   buildAgentLoopRunTurnInputFromLoopState,
   buildAgentLoopRunTurnInputFromTurnProjection,
+  buildAgentLoopRunTurnToolHooksInputFromHookContainer,
   buildAgentLoopRunTurnToolHooksInput,
   consumeAgentLoopTurnStream,
 } from '../loop/turnStream.js';
@@ -126,11 +127,13 @@ describe('agent loop turn stream consumption', () => {
         signal,
         epoch,
         logger,
-        toolHooks: {
-          beforeExec,
-          afterExec,
-          afterExecEpochDiscard,
-          onUpdate,
+        hooks: {
+          tool: {
+            beforeExec,
+            afterExec,
+            afterExecEpochDiscard,
+            onUpdate,
+          },
         },
       }),
     ).toEqual({
@@ -164,6 +167,31 @@ describe('agent loop turn stream consumption', () => {
         afterExec,
         afterExecEpochDiscard,
         onUpdate,
+      }),
+    ).toEqual({
+      onBeforeExec: beforeExec,
+      onAfterExec: afterExec,
+      onAfterExecEpochDiscard: afterExecEpochDiscard,
+      onUpdate,
+    });
+  });
+
+  it('projects run-turn tool hooks from a session hook container', () => {
+    const beforeExec = () => Promise.resolve(null);
+    const afterExec = () => Promise.resolve();
+    const afterExecEpochDiscard = () => Promise.resolve();
+    const onUpdate = () => undefined;
+
+    expect(
+      buildAgentLoopRunTurnToolHooksInputFromHookContainer({
+        hooks: {
+          tool: {
+            beforeExec,
+            afterExec,
+            afterExecEpochDiscard,
+            onUpdate,
+          },
+        },
       }),
     ).toEqual({
       onBeforeExec: beforeExec,

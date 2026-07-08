@@ -728,6 +728,9 @@ describe('monorepo topology', () => {
     );
     expect(rootAgentLoopSource).toContain('buildAgentLoopRunTurnInputFromLoopState');
     expect(rootAgentLoopSource).not.toContain('buildAgentLoopRunTurnToolHooksInput');
+    expect(rootAgentLoopSource).not.toContain(
+      'buildAgentLoopRunTurnToolHooksInputFromHookContainer',
+    );
     expect(rootAgentLoopSource).not.toContain('onBeforeExec: toolHooks?.beforeExec');
     const runTurnInputStart = rootAgentLoopSource.indexOf(
       'buildAgentLoopRunTurnInputFromLoopState',
@@ -749,6 +752,13 @@ describe('monorepo topology', () => {
     );
     expect(runTurnInputSource).not.toContain(
       'permissionMode: turnStateProjection.permissionMode',
+    );
+    expect(runTurnInputSource).toContain('hooks,');
+    expect(runTurnInputSource).not.toContain('toolHooks: {');
+    expect(runTurnInputSource).not.toContain('beforeExec: toolHooks?.beforeExec');
+    expect(runTurnInputSource).not.toContain('afterExec: toolHooks?.afterExec');
+    expect(runTurnInputSource).not.toContain(
+      'afterExecEpochDiscard: toolHooks?.afterExecEpochDiscard',
     );
     expect(rootAgentLoopSource).toContain('consumeAgentLoopTurnStream');
     expect(rootAgentLoopSource).toContain('createAgentRecoveryAttemptTracker');

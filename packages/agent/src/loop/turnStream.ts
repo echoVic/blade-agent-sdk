@@ -75,6 +75,12 @@ export interface AgentLoopRunTurnLoopStateInput<
   signal?: AbortSignal;
   epoch: TEpoch;
   logger?: TLogger;
+  hooks?: AgentLoopRunTurnHookContainerInput<
+    TBeforeExec,
+    TAfterExec,
+    TAfterExecEpochDiscard,
+    TOnUpdate
+  > | null;
   toolHooks?: AgentLoopRunTurnToolHooksInput<
     TBeforeExec,
     TAfterExec,
@@ -93,6 +99,20 @@ export interface AgentLoopRunTurnToolHooksInput<
   afterExec?: TAfterExec;
   afterExecEpochDiscard?: TAfterExecEpochDiscard;
   onUpdate?: TOnUpdate;
+}
+
+export interface AgentLoopRunTurnHookContainerInput<
+  TBeforeExec,
+  TAfterExec,
+  TAfterExecEpochDiscard,
+  TOnUpdate,
+> {
+  tool?: AgentLoopRunTurnToolHooksInput<
+    TBeforeExec,
+    TAfterExec,
+    TAfterExecEpochDiscard,
+    TOnUpdate
+  > | null;
 }
 
 export interface AgentLoopRunTurnToolHooks<
@@ -131,6 +151,34 @@ export function buildAgentLoopRunTurnToolHooksInput<
     onAfterExecEpochDiscard: input.afterExecEpochDiscard,
     onUpdate: input.onUpdate,
   };
+}
+
+export function buildAgentLoopRunTurnToolHooksInputFromHookContainer<
+  TBeforeExec,
+  TAfterExec,
+  TAfterExecEpochDiscard,
+  TOnUpdate,
+>(
+  input: {
+    hooks?: AgentLoopRunTurnHookContainerInput<
+      TBeforeExec,
+      TAfterExec,
+      TAfterExecEpochDiscard,
+      TOnUpdate
+    > | null;
+  },
+): AgentLoopRunTurnToolHooks<
+  TBeforeExec,
+  TAfterExec,
+  TAfterExecEpochDiscard,
+  TOnUpdate
+> {
+  return buildAgentLoopRunTurnToolHooksInput({
+    beforeExec: input.hooks?.tool?.beforeExec,
+    afterExec: input.hooks?.tool?.afterExec,
+    afterExecEpochDiscard: input.hooks?.tool?.afterExecEpochDiscard,
+    onUpdate: input.hooks?.tool?.onUpdate,
+  });
 }
 
 export function buildAgentLoopRunTurnInput<
@@ -262,12 +310,14 @@ export function buildAgentLoopRunTurnInputFromLoopState<
     signal: input.signal,
     epoch: input.epoch,
     logger: input.logger,
-    toolHooks: buildAgentLoopRunTurnToolHooksInput({
-      beforeExec: input.toolHooks?.beforeExec,
-      afterExec: input.toolHooks?.afterExec,
-      afterExecEpochDiscard: input.toolHooks?.afterExecEpochDiscard,
-      onUpdate: input.toolHooks?.onUpdate,
-    }),
+    toolHooks: input.hooks
+      ? buildAgentLoopRunTurnToolHooksInputFromHookContainer({ hooks: input.hooks })
+      : buildAgentLoopRunTurnToolHooksInput({
+        beforeExec: input.toolHooks?.beforeExec,
+        afterExec: input.toolHooks?.afterExec,
+        afterExecEpochDiscard: input.toolHooks?.afterExecEpochDiscard,
+        onUpdate: input.toolHooks?.onUpdate,
+      }),
   });
 }
 
