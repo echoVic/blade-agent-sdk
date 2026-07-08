@@ -35,6 +35,13 @@ export interface AgentLoopNoToolContentInput {
   content?: string;
 }
 
+export interface AgentLoopNoToolDecisionInput {
+  content: string;
+  messages: readonly Message[];
+  turn: number;
+  onStopCheck?: StopCheck;
+}
+
 export interface AgentLoopNoToolContinuationInput {
   decision: NoToolTurnContinuationDecision;
   turn: number;
@@ -69,6 +76,17 @@ export function shouldHandleAgentLoopNoToolTurn(
 
 export function buildAgentLoopNoToolContent(input: AgentLoopNoToolContentInput): string {
   return input.content || '';
+}
+
+export function buildAgentLoopNoToolDecisionInput(
+  input: AgentLoopNoToolDecisionInput,
+): AgentLoopNoToolDecisionInput {
+  return {
+    content: input.content,
+    messages: input.messages,
+    turn: input.turn,
+    onStopCheck: input.onStopCheck,
+  };
 }
 
 export function shouldContinueAgentLoopAfterNoToolDecision(
@@ -139,4 +157,10 @@ export async function decideNoToolTurn(
     message: { role: 'user', content: reminder },
     warning: stopResult.warning,
   };
+}
+
+export async function decideAgentLoopNoToolTurn(
+  input: AgentLoopNoToolDecisionInput,
+): Promise<NoToolTurnDecision> {
+  return decideNoToolTurn(input.content, input.messages, input.turn, input.onStopCheck);
 }

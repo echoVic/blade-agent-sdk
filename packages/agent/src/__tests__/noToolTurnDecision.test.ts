@@ -3,9 +3,11 @@ import { describe, expect, it, vi } from 'vitest';
 import {
   DEFAULT_CONTINUE_REMINDER,
   RETRY_PROMPT,
+  buildAgentLoopNoToolDecisionInput,
   buildAgentLoopNoToolContent,
   buildAgentLoopNoToolCompletePayload,
   buildAgentLoopNoToolContinuation,
+  decideAgentLoopNoToolTurn,
   decideNoToolTurn,
   shouldContinueAgentLoopAfterNoToolDecision,
   shouldHandleAgentLoopNoToolTurn,
@@ -76,6 +78,27 @@ describe('decideNoToolTurn', () => {
       content: 'All done',
       turn: 5,
     });
+  });
+
+  it('projects object-style no-tool decision input and runs the decision wrapper', async () => {
+    const messages: Message[] = [{ role: 'user', content: 'continue' }];
+    const onStopCheck = vi.fn(async () => ({ shouldStop: true }));
+
+    const input = buildAgentLoopNoToolDecisionInput({
+      content: 'All done',
+      messages,
+      turn: 7,
+      onStopCheck,
+    });
+
+    expect(input).toEqual({
+      content: 'All done',
+      messages,
+      turn: 7,
+      onStopCheck,
+    });
+    await expect(decideAgentLoopNoToolTurn(input)).resolves.toEqual({ action: 'finish' });
+    expect(onStopCheck).toHaveBeenCalledWith({ content: 'All done', turn: 7 });
   });
 
   it.each([

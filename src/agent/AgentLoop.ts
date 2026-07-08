@@ -38,7 +38,8 @@ import {
   buildAgentLoopNoToolContent,
   buildAgentLoopNoToolCompletePayload,
   buildAgentLoopNoToolContinuation,
-  decideNoToolTurn,
+  buildAgentLoopNoToolDecisionInput,
+  decideAgentLoopNoToolTurn,
   shouldContinueAgentLoopAfterNoToolDecision,
   shouldHandleAgentLoopNoToolTurn,
 } from './loop/decideNoToolTurn.js';
@@ -474,11 +475,13 @@ export async function* agentLoop(
     // 无 tool calls → 正常结束或重试
     if (shouldHandleAgentLoopNoToolTurn(turnResult)) {
       const content = buildAgentLoopNoToolContent({ content: turnResult.content });
-      const noToolDecision = await decideNoToolTurn(
-        content,
-        convState.toArray(),
-        turnsCount,
-        stopHooks?.check,
+      const noToolDecision = await decideAgentLoopNoToolTurn(
+        buildAgentLoopNoToolDecisionInput({
+          content,
+          messages: convState.toArray(),
+          turn: turnsCount,
+          onStopCheck: stopHooks?.check,
+        }),
       );
       if (shouldContinueAgentLoopAfterNoToolDecision(noToolDecision)) {
         const noToolContinuation = buildAgentLoopNoToolContinuation({
