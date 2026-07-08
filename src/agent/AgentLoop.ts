@@ -27,11 +27,12 @@ import {
 } from './recoveryAttemptTracker.js';
 import {
   buildAgentModelFallbackEvent,
-  buildAgentReactiveCompactHookPayloadFromConversation,
+  buildAgentRecoveryCompactStreamFromHookContainer,
   buildAgentRecoveryEffects,
   buildAgentRecoveryProjectionInput,
   buildAgentRecoveryProjection,
   consumeAgentRecoveryCompactStream,
+  hasAgentReactiveCompactHook,
   runAgentRecoveryStateChangeHooks,
 } from './recoveryEvents.js';
 import {
@@ -241,8 +242,6 @@ export async function* agentLoop(
     hooks,
   } = config;
 
-  const recoveryHooks = hooks?.recovery;
-
   const effectiveMaxTurns = buildAgentLoopEffectiveMaxTurns({ maxTurns, isYoloMode });
 
   const loopClock = createAgentLoopClock();
@@ -346,10 +345,9 @@ export async function* agentLoop(
       }
 
       // 反应式压缩：context 溢出时尝试恢复
-      const reactiveCompact = recoveryHooks?.reactiveCompact;
       if (shouldAttemptAgentRecovery({
         error: llmError,
-        hasReactiveCompact: Boolean(reactiveCompact),
+        hasReactiveCompact: hasAgentReactiveCompactHook({ hooks }),
         tracker: recoveryAttemptTracker,
         turn: turnsCount,
       })) {
@@ -369,9 +367,10 @@ export async function* agentLoop(
         for (const event of recoveryStartedEffects.events) {
           yield event;
         }
-        const compactStream = reactiveCompact?.(
-          buildAgentReactiveCompactHookPayloadFromConversation({ conversation: convState }),
-        );
+        const compactStream = buildAgentRecoveryCompactStreamFromHookContainer({
+          conversation: convState,
+          hooks,
+        });
         if (!compactStream) {
           throw llmError;
         }

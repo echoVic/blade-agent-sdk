@@ -58,6 +58,25 @@ export interface AgentReactiveCompactHookPayloadConversationInput<TMessage> {
   conversation: AgentReactiveCompactConversationLike<TMessage>;
 }
 
+export type AgentReactiveCompactHook<TMessage, Event> = (
+  payload: AgentReactiveCompactHookPayload<TMessage>,
+) => AsyncGenerator<Event, boolean | undefined>;
+
+export interface AgentReactiveCompactHookContainer<TMessage, Event> {
+  recovery?: {
+    reactiveCompact?: AgentReactiveCompactHook<TMessage, Event> | null;
+  } | null;
+}
+
+export interface HasAgentReactiveCompactHookInput<TMessage, Event> {
+  hooks?: AgentReactiveCompactHookContainer<TMessage, Event> | null;
+}
+
+export interface BuildAgentRecoveryCompactStreamFromHookContainerInput<TMessage, Event>
+  extends HasAgentReactiveCompactHookInput<TMessage, Event> {
+  conversation: AgentReactiveCompactConversationLike<TMessage>;
+}
+
 export type AgentRecoveryProjectionInput =
   | {
       kind: Exclude<AgentRecoveryProjectionKind, 'reset'>;
@@ -221,6 +240,22 @@ export function buildAgentReactiveCompactHookPayloadFromConversation<TMessage>(
   return buildAgentReactiveCompactHookPayload({
     messages: input.conversation.toArray(),
   });
+}
+
+export function hasAgentReactiveCompactHook<TMessage, Event>(
+  input: HasAgentReactiveCompactHookInput<TMessage, Event>,
+): boolean {
+  return typeof input.hooks?.recovery?.reactiveCompact === 'function';
+}
+
+export function buildAgentRecoveryCompactStreamFromHookContainer<TMessage, Event>(
+  input: BuildAgentRecoveryCompactStreamFromHookContainerInput<TMessage, Event>,
+): AsyncGenerator<Event, boolean | undefined> | undefined {
+  return input.hooks?.recovery?.reactiveCompact?.(
+    buildAgentReactiveCompactHookPayloadFromConversation({
+      conversation: input.conversation,
+    }),
+  );
 }
 
 export async function* consumeAgentRecoveryCompactStream<Event>(

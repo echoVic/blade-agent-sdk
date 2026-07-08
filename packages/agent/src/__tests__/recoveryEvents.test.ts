@@ -1,12 +1,14 @@
 import { describe, expect, it } from 'vitest';
 import {
   buildAgentModelFallbackEvent,
+  buildAgentRecoveryCompactStreamFromHookContainer,
   buildAgentReactiveCompactHookPayload,
   buildAgentReactiveCompactHookPayloadFromConversation,
   buildAgentRecoveryEffects,
   buildAgentRecoveryProjectionInput,
   buildAgentRecoveryProjection,
   consumeAgentRecoveryCompactStream,
+  hasAgentReactiveCompactHook,
   runAgentRecoveryStateChangeHooks,
   shouldEmitAgentRecoveryEvent,
 } from '../recovery/recoveryEvents.js';
@@ -257,6 +259,61 @@ describe('agent recovery event projection', () => {
     expect(buildAgentReactiveCompactHookPayloadFromConversation({ conversation })).toEqual({
       messages,
     });
+  });
+
+  it('builds reactive compact streams from the session recovery hook container', async () => {
+    const messages = [{ role: 'user' as const, content: 'large context' }];
+    const calls: unknown[] = [];
+
+    async function* reactiveCompact(payload: {
+      messages: readonly { role: 'user'; content: string }[];
+    }): AsyncGenerator<{ type: string; phase: string }, boolean | undefined> {
+      calls.push(payload);
+      yield { type: 'compact_progress', phase: 'start' };
+      return true;
+    }
+
+    const stream = buildAgentRecoveryCompactStreamFromHookContainer({
+      conversation: {
+        toArray: () => messages,
+      },
+      hooks: {
+        recovery: {
+          reactiveCompact,
+        },
+      },
+    });
+
+    expect(stream).toBeDefined();
+    expect(await stream?.next()).toEqual({
+      done: false,
+      value: { type: 'compact_progress', phase: 'start' },
+    });
+    expect(await stream?.next()).toEqual({
+      done: true,
+      value: true,
+    });
+    expect(calls).toEqual([{ messages }]);
+  });
+
+  it('detects reactive compact hooks from the session recovery hook container', () => {
+    async function* reactiveCompact(): AsyncGenerator<never, boolean | undefined> {
+      yield* [] as never[];
+      return true;
+    }
+
+    expect(
+      hasAgentReactiveCompactHook({
+        hooks: {
+          recovery: {
+            reactiveCompact,
+          },
+        },
+      }),
+    ).toBe(true);
+
+    expect(hasAgentReactiveCompactHook({ hooks: { recovery: {} } })).toBe(false);
+    expect(hasAgentReactiveCompactHook({ hooks: null })).toBe(false);
   });
 
   it('passes through reactive compact stream events and returns recovered state', async () => {
