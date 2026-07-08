@@ -22,6 +22,13 @@ import { buildAgentLoopAssistantMessageProjection } from './loop/assistantMessag
 import { decideNoToolTurn } from './loop/decideNoToolTurn.js';
 import { decideTurnLimit } from './loop/decideTurnLimit.js';
 import { executeToolCalls } from './loop/executeToolCalls.js';
+import {
+  buildAgentLoopEndEvent,
+  buildAgentLoopStartEvent,
+  buildAgentLoopTurnEndEvent,
+  buildAgentLoopTurnRetryEvent,
+  buildAgentLoopTurnStartEvent,
+} from './loop/loopEvents.js';
 import { createAgentLoopClock } from './loop/loopClock.js';
 import {
   buildAgentLoopAbortResult,
@@ -159,14 +166,14 @@ export async function* agentLoop(
   const tokenUsageTracker = createAgentLoopTokenUsageTracker();
   let epoch: ExecutionEpoch | null = null;
 
-  yield { type: 'agent_start' };
+  yield buildAgentLoopStartEvent();
 
   // === Agentic Loop ===
   while (true) {
     epoch = new ExecutionEpoch();
 
     if (signal?.aborted) {
-      yield { type: 'agent_end' };
+      yield buildAgentLoopEndEvent();
       return buildAgentLoopAbortResult({
         ...loopClock.resultTiming({
           turnsCount: turnCounter.turnsCount,
@@ -191,11 +198,11 @@ export async function* agentLoop(
     const turnStart = turnCounter.beginTurn();
     const turnsCount = turnStart.turn;
     if (turnStart.started) {
-      yield { type: 'turn_start', turn: turnsCount, maxTurns: effectiveMaxTurns };
+      yield buildAgentLoopTurnStartEvent({ turn: turnsCount, maxTurns: effectiveMaxTurns });
     }
 
     if (signal?.aborted) {
-      yield { type: 'agent_end' };
+      yield buildAgentLoopEndEvent();
       return buildAgentLoopAbortResult({
         ...loopClock.resultTiming({
           turnsCount: turnCounter.previousCompletedTurnCount,
@@ -306,7 +313,7 @@ export async function* agentLoop(
         epoch?.invalidate();
         // 显式"重试当前轮"：不减 turnsCount，不发 turn_end
         turnCounter.requestRetry();
-        yield { type: 'turn_retry', turn: turnsCount, reason: 'reactive_compact' };
+        yield buildAgentLoopTurnRetryEvent({ turn: turnsCount, reason: 'reactive_compact' });
         continue;
       }
 
@@ -356,7 +363,7 @@ export async function* agentLoop(
       }
 
       if (tokenBudget.isDiminishingReturns()) {
-        yield { type: 'agent_end' };
+        yield buildAgentLoopEndEvent();
         return buildAgentLoopBudgetExhaustedResult({
           reason: 'diminishing_returns',
           ...loopClock.resultTiming({
@@ -369,7 +376,7 @@ export async function* agentLoop(
       }
 
       if (tokenBudget.isExhausted()) {
-        yield { type: 'agent_end' };
+        yield buildAgentLoopEndEvent();
         return buildAgentLoopBudgetExhaustedResult({
           reason: 'exhausted',
           ...loopClock.resultTiming({
@@ -383,7 +390,7 @@ export async function* agentLoop(
     }
 
     if (signal?.aborted) {
-      yield { type: 'agent_end' };
+      yield buildAgentLoopEndEvent();
       return buildAgentLoopAbortResult({
         ...loopClock.resultTiming({
           turnsCount: turnCounter.previousCompletedTurnCount,
@@ -411,14 +418,14 @@ export async function* agentLoop(
       );
       if (noToolDecision.action === 'retry' || noToolDecision.action === 'continue_with_reminder') {
         convState.append(noToolDecision.message);
-        yield { type: 'turn_end', turn: turnsCount, hasToolCalls: false };
+        yield buildAgentLoopTurnEndEvent({ turn: turnsCount, hasToolCalls: false });
         continue;
       }
 
       await messageHooks?.onComplete?.({ content, turn: turnsCount });
 
-      yield { type: 'turn_end', turn: turnsCount, hasToolCalls: false };
-      yield { type: 'agent_end' };
+      yield buildAgentLoopTurnEndEvent({ turn: turnsCount, hasToolCalls: false });
+      yield buildAgentLoopEndEvent();
       return buildAgentLoopSuccessResult({
         finalMessage: turnResult.content,
         ...loopClock.resultTiming({
@@ -459,7 +466,7 @@ export async function* agentLoop(
       }
 
       if (signal?.aborted) {
-        yield { type: 'agent_end' };
+        yield buildAgentLoopEndEvent();
         return buildAgentLoopAbortResult({
           ...loopClock.resultTiming({
             turnsCount,
@@ -494,8 +501,8 @@ export async function* agentLoop(
         if (!streamingExecutionResults) {
           yield { type: 'tool_result', toolCall, result };
         }
-        yield { type: 'turn_end', turn: turnsCount, hasToolCalls: true };
-        yield { type: 'agent_end' };
+        yield buildAgentLoopTurnEndEvent({ turn: turnsCount, hasToolCalls: true });
+        yield buildAgentLoopEndEvent();
         return buildAgentLoopToolExitResult({
           success: result.success,
           finalMessage,
@@ -519,10 +526,10 @@ export async function* agentLoop(
       }
     }
 
-    yield { type: 'turn_end', turn: turnsCount, hasToolCalls: true };
+    yield buildAgentLoopTurnEndEvent({ turn: turnsCount, hasToolCalls: true });
 
     if (signal?.aborted) {
-      yield { type: 'agent_end' };
+      yield buildAgentLoopEndEvent();
       return buildAgentLoopAbortResult({
         ...loopClock.resultTiming({
           turnsCount,
@@ -544,7 +551,7 @@ export async function* agentLoop(
         onTurnLimitCompact: turnHooks?.onTurnLimitCompact,
       });
       if (limitDecision.action === 'stop') {
-        yield { type: 'agent_end' };
+        yield buildAgentLoopEndEvent();
         return limitDecision.result;
       }
 
