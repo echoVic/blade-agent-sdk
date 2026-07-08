@@ -73,7 +73,7 @@ import {
   buildAgentLoopAbortCompletion,
   buildAgentLoopAbortCompletionInputFromLoopState,
   buildAgentLoopNoToolSuccessDecision,
-  buildAgentLoopNoToolSuccessDecisionInputFromTiming,
+  buildAgentLoopNoToolSuccessDecisionInputFromLoopState,
   buildAgentLoopToolExitDecision,
   buildAgentLoopToolExitDecisionInputFromTiming,
   shouldAbortAgentLoop,
@@ -544,14 +544,13 @@ export async function* agentLoop(
       );
 
       const noToolSuccessDecision = buildAgentLoopNoToolSuccessDecision(
-        buildAgentLoopNoToolSuccessDecisionInputFromTiming({
+        buildAgentLoopNoToolSuccessDecisionInputFromLoopState({
           finalMessage: content,
-          timing: loopClock.resultTiming({
-            turnsCount,
-            toolCallsCount: toolResultTracker.toolCallsCount,
-          }),
-          tokensUsed: tokenUsageTracker.totalTokens,
-          tokenBudgetSnapshot: tokenBudget?.getSnapshot(),
+          loopClock,
+          turnsCount,
+          toolResultTracker,
+          tokenUsageTracker,
+          tokenBudget,
         }),
       );
       for (const event of noToolSuccessDecision.events) {

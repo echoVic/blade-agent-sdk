@@ -90,6 +90,31 @@ export interface AgentLoopNoToolSuccessTimingInput {
   tokenBudgetSnapshot: unknown;
 }
 
+export interface AgentLoopNoToolSuccessTimingSource {
+  resultTiming(input: { turnsCount: number; toolCallsCount: number }): AgentLoopResultTiming;
+}
+
+export interface AgentLoopNoToolSuccessToolResultTrackerLike {
+  readonly toolCallsCount: number;
+}
+
+export interface AgentLoopNoToolSuccessTokenUsageTrackerLike {
+  readonly totalTokens: number;
+}
+
+export interface AgentLoopNoToolSuccessTokenBudgetLike<TSnapshot = unknown> {
+  getSnapshot(): TSnapshot;
+}
+
+export interface AgentLoopNoToolSuccessLoopStateInput<TSnapshot = unknown> {
+  finalMessage: string | undefined;
+  loopClock: AgentLoopNoToolSuccessTimingSource;
+  turnsCount: number;
+  toolResultTracker: AgentLoopNoToolSuccessToolResultTrackerLike;
+  tokenUsageTracker: AgentLoopNoToolSuccessTokenUsageTrackerLike;
+  tokenBudget?: AgentLoopNoToolSuccessTokenBudgetLike<TSnapshot>;
+}
+
 export interface AgentLoopBudgetExhaustedResultInput extends AgentLoopResultTiming {
   reason: 'exhausted' | 'diminishing_returns';
   tokensUsed: number;
@@ -286,6 +311,20 @@ export function buildAgentLoopNoToolSuccessDecisionInputFromTiming(
     now: input.timing.now,
     tokensUsed: input.tokensUsed,
     tokenBudgetSnapshot: input.tokenBudgetSnapshot,
+  });
+}
+
+export function buildAgentLoopNoToolSuccessDecisionInputFromLoopState<TSnapshot = unknown>(
+  input: AgentLoopNoToolSuccessLoopStateInput<TSnapshot>,
+): AgentLoopSuccessResultInput {
+  return buildAgentLoopNoToolSuccessDecisionInputFromTiming({
+    finalMessage: input.finalMessage,
+    timing: input.loopClock.resultTiming({
+      turnsCount: input.turnsCount,
+      toolCallsCount: input.toolResultTracker.toolCallsCount,
+    }),
+    tokensUsed: input.tokenUsageTracker.totalTokens,
+    tokenBudgetSnapshot: input.tokenBudget?.getSnapshot(),
   });
 }
 

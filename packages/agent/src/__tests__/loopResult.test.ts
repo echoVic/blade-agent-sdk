@@ -8,6 +8,7 @@ import {
   buildAgentLoopBudgetExhaustedResult,
   buildAgentLoopNoToolSuccessDecision,
   buildAgentLoopNoToolSuccessDecisionInput,
+  buildAgentLoopNoToolSuccessDecisionInputFromLoopState,
   buildAgentLoopNoToolSuccessDecisionInputFromTiming,
   buildAgentLoopSuccessResult,
   buildAgentLoopToolExitDecision,
@@ -289,6 +290,73 @@ describe('agent loop result builders', () => {
       now: 1125,
       tokensUsed: 84,
       tokenBudgetSnapshot: snapshot,
+    });
+  });
+
+  it('projects no-tool success decision input from loop state objects', () => {
+    const snapshot = { usedTokens: 84, maxTokens: 200 };
+
+    expect(
+      buildAgentLoopNoToolSuccessDecisionInputFromLoopState({
+        finalMessage: 'finished',
+        loopClock: {
+          resultTiming: ({ turnsCount, toolCallsCount }) => ({
+            turnsCount,
+            toolCallsCount,
+            startTime: 1000,
+            now: 1125,
+          }),
+        },
+        turnsCount: 4,
+        toolResultTracker: {
+          toolCallsCount: 6,
+        },
+        tokenUsageTracker: {
+          totalTokens: 84,
+        },
+        tokenBudget: {
+          getSnapshot: () => snapshot,
+        },
+      }),
+    ).toEqual({
+      finalMessage: 'finished',
+      turnsCount: 4,
+      toolCallsCount: 6,
+      startTime: 1000,
+      now: 1125,
+      tokensUsed: 84,
+      tokenBudgetSnapshot: snapshot,
+    });
+  });
+
+  it('projects no-tool success decision input without a token budget snapshot', () => {
+    expect(
+      buildAgentLoopNoToolSuccessDecisionInputFromLoopState({
+        finalMessage: undefined,
+        loopClock: {
+          resultTiming: ({ turnsCount, toolCallsCount }) => ({
+            turnsCount,
+            toolCallsCount,
+            startTime: 2000,
+            now: 2050,
+          }),
+        },
+        turnsCount: 1,
+        toolResultTracker: {
+          toolCallsCount: 0,
+        },
+        tokenUsageTracker: {
+          totalTokens: 12,
+        },
+      }),
+    ).toEqual({
+      finalMessage: undefined,
+      turnsCount: 1,
+      toolCallsCount: 0,
+      startTime: 2000,
+      now: 2050,
+      tokensUsed: 12,
+      tokenBudgetSnapshot: undefined,
     });
   });
 
