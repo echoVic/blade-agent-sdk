@@ -65,6 +65,22 @@ export interface AgentLoopAfterExecHookPayload<TResult> {
   toolUseUuid: string | null;
 }
 
+export interface AgentLoopToolResultAfterExecHookContainer<TResult> {
+  tool?: {
+    afterExec?: (payload: AgentLoopAfterExecHookPayload<TResult>) => Promise<void> | void;
+  } | null;
+}
+
+export interface RunAgentLoopToolResultAfterExecHookInput<
+  TResult extends AgentLoopToolMessageInput['result'] & AgentLoopToolInjectedMessagesInput<Message>,
+> {
+  continuation: AgentLoopToolResultContinuation<TResult>;
+  hooks?: AgentLoopToolResultAfterExecHookContainer<TResult> | null;
+  toolCall: AgentFunctionToolCall;
+  result: TResult;
+  toolUseUuid: string | null;
+}
+
 export function buildAgentLoopToolResultContinuation<
   TResult extends AgentLoopToolMessageInput['result'] & AgentLoopToolInjectedMessagesInput<Message>,
   TStreamingExecutionResult,
@@ -112,5 +128,23 @@ export function applyAgentLoopToolResultContinuation<
   input: ApplyAgentLoopToolResultContinuationInput<TResult>,
 ): AgentLoopToolResultContinuation<TResult> {
   input.conversation.append(...buildAgentLoopToolResultAppendMessages(input.continuation));
+  return input.continuation;
+}
+
+export async function runAgentLoopToolResultAfterExecHook<
+  TResult extends AgentLoopToolMessageInput['result'] & AgentLoopToolInjectedMessagesInput<Message>,
+>(
+  input: RunAgentLoopToolResultAfterExecHookInput<TResult>,
+): Promise<AgentLoopToolResultContinuation<TResult>> {
+  if (input.continuation.shouldRunAfterExecHook) {
+    await input.hooks?.tool?.afterExec?.(
+      buildAgentLoopAfterExecHookPayload({
+        toolCall: input.toolCall,
+        result: input.result,
+        toolUseUuid: input.toolUseUuid,
+      }),
+    );
+  }
+
   return input.continuation;
 }

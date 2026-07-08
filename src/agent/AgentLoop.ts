@@ -110,8 +110,8 @@ import {
 } from './loop/tokenUsageTracker.js';
 import {
   applyAgentLoopToolResultContinuation,
-  buildAgentLoopAfterExecHookPayload,
   buildAgentLoopToolResultContinuation,
+  runAgentLoopToolResultAfterExecHook,
 } from './loop/toolResultContinuation.js';
 import {
   createAgentToolResultTracker,
@@ -242,7 +242,6 @@ export async function* agentLoop(
   } = config;
 
   const turnHooks = hooks?.turn;
-  const toolHooks = hooks?.tool;
   const messageHooks = hooks?.message;
   const recoveryHooks = hooks?.recovery;
   const stopHooks = hooks?.stop;
@@ -662,11 +661,13 @@ export async function* agentLoop(
       for (const event of toolResultContinuation.events) {
         yield event;
       }
-      if (toolResultContinuation.shouldRunAfterExecHook) {
-        await toolHooks?.afterExec?.(
-          buildAgentLoopAfterExecHookPayload({ toolCall, result, toolUseUuid }),
-        );
-      }
+      await runAgentLoopToolResultAfterExecHook({
+        continuation: toolResultContinuation,
+        hooks,
+        toolCall,
+        result,
+        toolUseUuid,
+      });
 
       applyAgentLoopToolResultContinuation({
         conversation: convState,

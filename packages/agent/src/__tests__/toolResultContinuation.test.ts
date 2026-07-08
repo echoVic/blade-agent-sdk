@@ -4,6 +4,7 @@ import {
   buildAgentLoopAfterExecHookPayload,
   buildAgentLoopToolResultAppendMessages,
   buildAgentLoopToolResultContinuation,
+  runAgentLoopToolResultAfterExecHook,
 } from '../loop/index.js';
 
 const toolCall = {
@@ -154,5 +155,70 @@ describe('agent loop tool result continuation projection', () => {
         metadata: { _systemSource: 'tool_injection' },
       },
     ]);
+  });
+
+  it('runs after-exec hooks for non-streaming tool-result continuations', async () => {
+    const calls: unknown[] = [];
+    const result = {
+      success: true,
+      llmContent: 'done',
+    };
+    const continuation = buildAgentLoopToolResultContinuation({
+      toolCall,
+      result,
+      streamingExecutionResults: undefined,
+    });
+
+    const applied = await runAgentLoopToolResultAfterExecHook({
+      continuation,
+      hooks: {
+        tool: {
+          afterExec: async (payload) => {
+            calls.push(payload);
+          },
+        },
+      },
+      toolCall,
+      result,
+      toolUseUuid: 'tool-use-1',
+    });
+
+    expect(applied).toBe(continuation);
+    expect(calls).toEqual([
+      {
+        toolCall,
+        result,
+        toolUseUuid: 'tool-use-1',
+      },
+    ]);
+  });
+
+  it('skips after-exec hooks when streaming execution already emitted effects', async () => {
+    const calls: unknown[] = [];
+    const result = {
+      success: true,
+      llmContent: 'done',
+    };
+    const continuation = buildAgentLoopToolResultContinuation({
+      toolCall,
+      result,
+      streamingExecutionResults: [{ toolCall, result, toolUseUuid: null }],
+    });
+
+    await runAgentLoopToolResultAfterExecHook({
+      continuation,
+      hooks: {
+        tool: {
+          afterExec: async (payload) => {
+            calls.push(payload);
+          },
+        },
+      },
+      toolCall,
+      result,
+      toolUseUuid: null,
+    });
+
+    expect(calls).toEqual([]);
   });
 });
