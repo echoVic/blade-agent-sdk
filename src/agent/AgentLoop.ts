@@ -83,7 +83,7 @@ import {
 } from './loop/loopResult.js';
 import {
   buildAgentLoopExecuteToolCallsHooksInput,
-  buildAgentLoopExecuteToolCallsInput,
+  buildAgentLoopExecuteToolCallsInputFromTurnProjection,
   buildAgentLoopToolExecutionPlanInput,
   planAgentLoopToolExecution,
   selectAgentFunctionToolCalls,
@@ -613,12 +613,11 @@ export async function* agentLoop(
       }
 
       executionResults = await executeToolCalls(
-        buildAgentLoopExecuteToolCallsInput({
+        buildAgentLoopExecuteToolCallsInputFromTurnProjection({
           plan: executionPlan,
           executionPipeline,
-          executionContext: turnStateProjection.executionContext,
+          turnStateProjection,
           logger: config.logger,
-          permissionMode: turnStateProjection.permissionMode,
           signal,
           hooks: buildAgentLoopExecuteToolCallsHooksInput({
             beforeExec: toolHooks?.beforeExec,

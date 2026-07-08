@@ -1,4 +1,8 @@
 import type { JsonObject } from '@blade-ai/ai';
+import type {
+  AgentLoopTurnStateFields,
+  AgentLoopTurnStateProjection,
+} from './turnState.js';
 import {
   resolveToolBehaviorSafely,
   ToolKind,
@@ -60,6 +64,23 @@ export interface AgentLoopExecuteToolCallsInput<
   hooks: THooks;
 }
 
+export interface AgentLoopExecuteToolCallsProjectionInput<
+  TTurnState extends AgentLoopTurnStateFields<
+    ToolExecutionPermissionMode | undefined,
+    unknown
+  >,
+  TExecutionPipeline,
+  TLogger,
+  THooks,
+> {
+  plan: ToolExecutionPlan;
+  executionPipeline: TExecutionPipeline;
+  turnStateProjection: AgentLoopTurnStateProjection<TTurnState>;
+  logger?: TLogger;
+  signal?: AbortSignal;
+  hooks: THooks;
+}
+
 export interface AgentLoopExecuteToolCallsHooksInput<TBeforeExec, TOnUpdate> {
   beforeExec?: TBeforeExec;
   onUpdate?: TOnUpdate;
@@ -106,6 +127,38 @@ export function buildAgentLoopExecuteToolCallsInput<
     signal: input.signal,
     hooks: input.hooks,
   };
+}
+
+export function buildAgentLoopExecuteToolCallsInputFromTurnProjection<
+  TTurnState extends AgentLoopTurnStateFields<
+    ToolExecutionPermissionMode | undefined,
+    unknown
+  >,
+  TExecutionPipeline,
+  TLogger,
+  THooks,
+>(
+  input: AgentLoopExecuteToolCallsProjectionInput<
+    TTurnState,
+    TExecutionPipeline,
+    TLogger,
+    THooks
+  >,
+): AgentLoopExecuteToolCallsInput<
+  TExecutionPipeline,
+  AgentLoopTurnStateProjection<TTurnState>['executionContext'],
+  TLogger,
+  THooks
+> {
+  return buildAgentLoopExecuteToolCallsInput({
+    plan: input.plan,
+    executionPipeline: input.executionPipeline,
+    executionContext: input.turnStateProjection.executionContext,
+    logger: input.logger,
+    permissionMode: input.turnStateProjection.permissionMode,
+    signal: input.signal,
+    hooks: input.hooks,
+  });
 }
 
 export function buildAgentLoopToolExecutionPlanInput(

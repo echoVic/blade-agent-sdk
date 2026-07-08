@@ -3,6 +3,7 @@ import {
   buildAgentLoopExecuteToolCallsHooksInput,
   type AgentFunctionToolCall,
   buildAgentLoopExecuteToolCallsInput,
+  buildAgentLoopExecuteToolCallsInputFromTurnProjection,
   buildAgentLoopToolExecutionPlanInput,
   planAgentLoopToolExecution,
   planToolExecution,
@@ -241,6 +242,46 @@ describe('planToolExecution', () => {
       executionContext,
       logger,
       permissionMode: 'default',
+      signal,
+      hooks,
+    });
+  });
+
+  it('projects non-streaming tool execution input from a turn state projection', () => {
+    const plan = planToolExecution([makeCall('Read')], mockRegistry);
+    const executionPipeline = { name: 'pipeline' };
+    const turnState = {
+      maxContextTokens: 128000,
+      executionContext: { cwd: '/tmp/project' },
+      permissionMode: 'default' as const,
+    };
+    const logger = { debug: () => undefined };
+    const signal = new AbortController().signal;
+    const hooks = {
+      onBeforeToolExec: async () => null,
+      onUpdate: () => undefined,
+    };
+
+    expect(
+      buildAgentLoopExecuteToolCallsInputFromTurnProjection({
+        plan,
+        executionPipeline,
+        turnStateProjection: {
+          turnState,
+          maxContextTokens: turnState.maxContextTokens,
+          executionContext: turnState.executionContext,
+          permissionMode: turnState.permissionMode,
+        },
+        logger,
+        signal,
+        hooks,
+      }),
+    ).toEqual({
+      plan,
+      executionPipeline,
+      executionContext: turnState.executionContext,
+      logger,
+      permissionMode: turnState.permissionMode,
       signal,
       hooks,
     });

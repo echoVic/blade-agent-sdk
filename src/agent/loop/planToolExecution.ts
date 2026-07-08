@@ -1,6 +1,7 @@
 export {
   buildAgentLoopExecuteToolCallsHooksInput,
   buildAgentLoopExecuteToolCallsInput,
+  buildAgentLoopExecuteToolCallsInputFromTurnProjection,
   buildAgentLoopToolExecutionPlanInput,
   planAgentLoopToolExecution,
   planToolExecution,
@@ -8,6 +9,7 @@ export {
   shouldEmitAgentLoopNonStreamingToolResultEffects,
   shouldRunAgentLoopNonStreamingToolExecution,
   type AgentLoopExecuteToolCallsInput,
+  type AgentLoopExecuteToolCallsProjectionInput,
   type AgentLoopExecuteToolCallsHooks,
   type AgentLoopExecuteToolCallsHooksInput,
   type AgentLoopToolExecutionPlanInput,

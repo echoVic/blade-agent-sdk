@@ -490,9 +490,31 @@ describe('monorepo topology', () => {
     expect(rootAgentLoopSource).toContain('buildAgentLoopTurnLimitContinuation');
     expect(rootAgentLoopSource).toContain('buildAgentLoopTurnLimitStopCompletion');
     expect(rootAgentLoopSource).toContain('shouldApplyAgentLoopTurnLimitContinuation');
-    expect(rootAgentLoopSource).toContain('buildAgentLoopExecuteToolCallsInput');
+    expect(rootAgentLoopSource).toContain(
+      'buildAgentLoopExecuteToolCallsInputFromTurnProjection',
+    );
     expect(rootAgentLoopSource).toContain('buildAgentLoopExecuteToolCallsHooksInput');
     expect(rootAgentLoopSource).not.toContain('onBeforeToolExec: toolHooks?.beforeExec');
+    const executeToolCallsInputStart = rootAgentLoopSource.indexOf(
+      'buildAgentLoopExecuteToolCallsInputFromTurnProjection({',
+    );
+    const executeToolCallsInputEnd = rootAgentLoopSource.indexOf(
+      'for (const { toolCall, result, toolUseUuid }',
+      executeToolCallsInputStart,
+    );
+    const executeToolCallsInputSource = rootAgentLoopSource.slice(
+      executeToolCallsInputStart,
+      executeToolCallsInputEnd,
+    );
+    expect(rootAgentLoopSource).not.toMatch(
+      /buildAgentLoopExecuteToolCallsInput\(\{\s+plan: executionPlan/,
+    );
+    expect(executeToolCallsInputSource).not.toContain(
+      'executionContext: turnStateProjection.executionContext',
+    );
+    expect(executeToolCallsInputSource).not.toContain(
+      'permissionMode: turnStateProjection.permissionMode',
+    );
     expect(rootAgentLoopSource).toContain('buildAgentLoopToolExecutionPlanInput');
     expect(rootAgentLoopSource).toContain('planAgentLoopToolExecution');
     expect(rootAgentLoopSource).toContain('selectAgentFunctionToolCalls');
