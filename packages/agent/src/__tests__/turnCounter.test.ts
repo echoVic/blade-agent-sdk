@@ -3,6 +3,7 @@ import {
   beginAgentLoopTurn,
   buildAgentLoopBeforeTurnHookPayload,
   buildAgentLoopBeforeTurnHookPayloadFromConversation,
+  buildAgentLoopBeforeTurnHookPayloadFromLoopState,
   consumeAgentLoopBeforeTurnStream,
   createAgentLoopTurnCounter,
   requestAgentLoopTurnRetry,
@@ -168,6 +169,32 @@ describe('agent loop turn counter', () => {
         counter,
         conversation,
         lastPromptTokens: 42,
+      }),
+    ).toEqual({
+      turn: 2,
+      messages,
+      lastPromptTokens: 42,
+    });
+  });
+
+  it('projects before-turn hook payloads from loop state objects', () => {
+    const messages = [{ role: 'user' as const, content: 'hello' }];
+    const counter = createAgentLoopTurnCounter();
+    const conversation = {
+      toArray: () => messages,
+    };
+    const tokenUsageTracker = {
+      lastPromptTokens: 42,
+    };
+
+    counter.beginTurn();
+    counter.beginTurn();
+
+    expect(
+      buildAgentLoopBeforeTurnHookPayloadFromLoopState({
+        counter,
+        conversation,
+        tokenUsageTracker,
       }),
     ).toEqual({
       turn: 2,

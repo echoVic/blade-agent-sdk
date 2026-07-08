@@ -28,6 +28,16 @@ export interface AgentLoopBeforeTurnHookPayloadConversationInput<TMessage> {
   lastPromptTokens?: number;
 }
 
+export interface AgentLoopBeforeTurnTokenUsageTrackerLike {
+  readonly lastPromptTokens: number | undefined;
+}
+
+export interface AgentLoopBeforeTurnHookPayloadLoopStateInput<TMessage> {
+  counter: Pick<AgentLoopTurnCounter, 'turnsCount'>;
+  conversation: AgentLoopBeforeTurnConversationLike<TMessage>;
+  tokenUsageTracker: AgentLoopBeforeTurnTokenUsageTrackerLike;
+}
+
 export interface BeginAgentLoopTurnInput {
   counter: Pick<AgentLoopTurnCounter, 'beginTurn'>;
 }
@@ -73,6 +83,16 @@ export function buildAgentLoopBeforeTurnHookPayloadFromConversation<TMessage>(
     turn: input.counter.turnsCount,
     messages: input.conversation.toArray(),
     lastPromptTokens: input.lastPromptTokens,
+  });
+}
+
+export function buildAgentLoopBeforeTurnHookPayloadFromLoopState<TMessage>(
+  input: AgentLoopBeforeTurnHookPayloadLoopStateInput<TMessage>,
+): AgentLoopBeforeTurnHookPayload<TMessage> {
+  return buildAgentLoopBeforeTurnHookPayloadFromConversation({
+    counter: input.counter,
+    conversation: input.conversation,
+    lastPromptTokens: input.tokenUsageTracker.lastPromptTokens,
   });
 }
 
