@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import {
   applyAgentLoopTokenBudget,
   buildAgentLoopBudgetWarningEvent,
+  buildAgentLoopTokenBudgetInput,
   buildAgentLoopTokenBudgetStopCompletion,
   buildAgentLoopTokenUsageEvent,
   buildAgentLoopTokenUsageInfo,
@@ -141,6 +142,39 @@ describe('agent loop token usage projection', () => {
       }),
     ).toEqual({ events: [] });
     expect(tokenBudget.record).not.toHaveBeenCalled();
+  });
+
+  it('projects token budget handling input from usage and loop timing', () => {
+    const usage = { promptTokens: 9, completionTokens: 3, totalTokens: 12 };
+    const snapshot = { totalTokens: 92 };
+    const tokenBudget = {
+      record: vi.fn(),
+      isWarning: vi.fn(() => false),
+      isApproachingLimit: vi.fn(() => false),
+      isDiminishingReturns: vi.fn(() => false),
+      isExhausted: vi.fn(() => false),
+      getSnapshot: vi.fn(() => snapshot),
+    };
+
+    expect(
+      buildAgentLoopTokenBudgetInput({
+        tokenBudget,
+        modelUsage: usage,
+        tokensUsed: 92,
+        turnsCount: 2,
+        toolCallsCount: 4,
+        startTime: 100,
+        now: 140,
+      }),
+    ).toEqual({
+      tokenBudget,
+      modelUsage: usage,
+      tokensUsed: 92,
+      turnsCount: 2,
+      toolCallsCount: 4,
+      startTime: 100,
+      now: 140,
+    });
   });
 
   it('stops the loop only when the token budget decision has a result', () => {

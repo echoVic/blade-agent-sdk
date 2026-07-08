@@ -119,6 +119,20 @@ export function buildAgentLoopBudgetWarningEvent<TSnapshot>(
   };
 }
 
+export function buildAgentLoopTokenBudgetInput<TSnapshot>(
+  input: ApplyAgentLoopTokenBudgetInput<TSnapshot>,
+): ApplyAgentLoopTokenBudgetInput<TSnapshot> {
+  return {
+    tokenBudget: input.tokenBudget,
+    modelUsage: input.modelUsage,
+    tokensUsed: input.tokensUsed,
+    turnsCount: input.turnsCount,
+    toolCallsCount: input.toolCallsCount,
+    startTime: input.startTime,
+    now: input.now,
+  };
+}
+
 export function shouldStopAgentLoopForTokenBudget<TSnapshot>(
   decision: ApplyAgentLoopTokenBudgetResult<TSnapshot>,
 ): decision is AgentLoopTokenBudgetStopDecision<TSnapshot> {

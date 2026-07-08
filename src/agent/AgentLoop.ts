@@ -89,6 +89,7 @@ import { runTurn } from './loop/runTurn.js';
 import type { ToolExecutionUpdate } from './loop/runToolCall.js';
 import {
   applyAgentLoopTokenBudget,
+  buildAgentLoopTokenBudgetInput,
   buildAgentLoopTokenBudgetStopCompletion,
   buildAgentLoopTokenUsageEvent,
   buildAgentLoopTokenUsageInfo,
@@ -471,15 +472,17 @@ export async function* agentLoop(
       yield buildAgentLoopTokenUsageEvent({ usage });
     }
 
-    const budgetDecision = await applyAgentLoopTokenBudget({
-      tokenBudget,
-      modelUsage: turnResult.usage,
-      tokensUsed: tokenUsageTracker.totalTokens,
-      ...loopClock.resultTiming({
-        turnsCount,
-        toolCallsCount: toolResultTracker.toolCallsCount,
+    const budgetDecision = await applyAgentLoopTokenBudget(
+      buildAgentLoopTokenBudgetInput({
+        tokenBudget,
+        modelUsage: turnResult.usage,
+        tokensUsed: tokenUsageTracker.totalTokens,
+        ...loopClock.resultTiming({
+          turnsCount,
+          toolCallsCount: toolResultTracker.toolCallsCount,
+        }),
       }),
-    });
+    );
     if (shouldStopAgentLoopForTokenBudget(budgetDecision)) {
       const budgetStopCompletion = buildAgentLoopTokenBudgetStopCompletion(budgetDecision);
       for (const event of budgetStopCompletion.events) {

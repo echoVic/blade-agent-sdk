@@ -1,6 +1,7 @@
 export {
   applyAgentLoopTokenBudget,
   buildAgentLoopBudgetWarningEvent,
+  buildAgentLoopTokenBudgetInput,
   buildAgentLoopTokenBudgetStopCompletion,
   buildAgentLoopTokenUsageEvent,
   buildAgentLoopTokenUsageInfo,
