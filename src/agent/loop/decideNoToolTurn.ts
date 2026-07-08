@@ -6,5 +6,6 @@ export {
   type AgentLoopNoToolContentInput,
   type AgentLoopToolCallResponseLike,
   type NoToolTurnDecision,
+  shouldContinueAgentLoopAfterNoToolDecision,
   shouldHandleAgentLoopNoToolTurn,
 } from '../../../packages/agent/src/loop/decideNoToolTurn.js';

@@ -21,6 +21,7 @@ import { buildAgentLoopAssistantMessageProjection } from './loop/assistantMessag
 import {
   buildAgentLoopNoToolContent,
   decideNoToolTurn,
+  shouldContinueAgentLoopAfterNoToolDecision,
   shouldHandleAgentLoopNoToolTurn,
 } from './loop/decideNoToolTurn.js';
 import { buildAgentLoopEffectiveMaxTurns, decideTurnLimit } from './loop/decideTurnLimit.js';
@@ -406,7 +407,7 @@ export async function* agentLoop(
         turnsCount,
         stopHooks?.check,
       );
-      if (noToolDecision.action === 'retry' || noToolDecision.action === 'continue_with_reminder') {
+      if (shouldContinueAgentLoopAfterNoToolDecision(noToolDecision)) {
         convState.append(noToolDecision.message);
         yield buildAgentLoopTurnEndEvent({ turn: turnsCount, hasToolCalls: false });
         continue;

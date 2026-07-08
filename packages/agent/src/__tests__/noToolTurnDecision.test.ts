@@ -5,6 +5,7 @@ import {
   RETRY_PROMPT,
   buildAgentLoopNoToolContent,
   decideNoToolTurn,
+  shouldContinueAgentLoopAfterNoToolDecision,
   shouldHandleAgentLoopNoToolTurn,
 } from '../loop/index.js';
 
@@ -29,6 +30,22 @@ describe('decideNoToolTurn', () => {
     expect(buildAgentLoopNoToolContent({ content: 'All done' })).toBe('All done');
     expect(buildAgentLoopNoToolContent({ content: '' })).toBe('');
     expect(buildAgentLoopNoToolContent({ content: undefined })).toBe('');
+  });
+
+  it('continues the loop only for retry or reminder no-tool decisions', () => {
+    expect(
+      shouldContinueAgentLoopAfterNoToolDecision({
+        action: 'retry',
+        message: { role: 'user', content: RETRY_PROMPT },
+      }),
+    ).toBe(true);
+    expect(
+      shouldContinueAgentLoopAfterNoToolDecision({
+        action: 'continue_with_reminder',
+        message: { role: 'user', content: DEFAULT_CONTINUE_REMINDER },
+      }),
+    ).toBe(true);
+    expect(shouldContinueAgentLoopAfterNoToolDecision({ action: 'finish' })).toBe(false);
   });
 
   it.each([

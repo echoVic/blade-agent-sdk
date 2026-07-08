@@ -43,6 +43,12 @@ export function buildAgentLoopNoToolContent(input: AgentLoopNoToolContentInput):
   return input.content || '';
 }
 
+export function shouldContinueAgentLoopAfterNoToolDecision(
+  decision: NoToolTurnDecision,
+): decision is Extract<NoToolTurnDecision, { message: Message }> {
+  return decision.action === 'retry' || decision.action === 'continue_with_reminder';
+}
+
 function isIncompleteIntent(content: string): boolean {
   return INCOMPLETE_INTENT_PATTERNS.some((pattern) => pattern.test(content));
 }

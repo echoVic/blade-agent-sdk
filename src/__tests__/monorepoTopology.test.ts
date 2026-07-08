@@ -423,6 +423,7 @@ describe('monorepo topology', () => {
     expect(rootAgentLoopSource).toContain('buildAgentLoopTurnRetryEvent');
     expect(rootAgentLoopSource).toContain('buildAgentLoopNoToolContent');
     expect(rootAgentLoopSource).toContain('shouldHandleAgentLoopNoToolTurn');
+    expect(rootAgentLoopSource).toContain('shouldContinueAgentLoopAfterNoToolDecision');
     expect(rootAgentLoopSource).toContain('buildAgentLoopResponseEvents');
     expect(rootAgentLoopSource).toContain('buildAgentLoopSuccessResult');
     expect(rootAgentLoopSource).toContain('buildAgentLoopToolExitDecision');
@@ -482,6 +483,9 @@ describe('monorepo topology', () => {
     expect(rootAgentLoopSource).not.toContain('turnResult.toolCalls.filter');
     expect(rootAgentLoopSource).not.toContain(
       '!turnResult.toolCalls || turnResult.toolCalls.length === 0',
+    );
+    expect(rootAgentLoopSource).not.toContain(
+      "noToolDecision.action === 'retry' || noToolDecision.action === 'continue_with_reminder'",
     );
     expect(rootAgentLoopSource).not.toContain("tc.type === 'function'");
     expect(rootAgentLoopSource).not.toContain('as AgentEvent');
