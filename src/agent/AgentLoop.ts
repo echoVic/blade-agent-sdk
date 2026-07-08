@@ -80,6 +80,7 @@ import {
   shouldExitAgentLoopForToolDecision,
 } from './loop/loopResult.js';
 import {
+  buildAgentLoopExecuteToolCallsHooksInput,
   buildAgentLoopExecuteToolCallsInput,
   buildAgentLoopToolExecutionPlanInput,
   planAgentLoopToolExecution,
@@ -618,10 +619,10 @@ export async function* agentLoop(
           logger: config.logger,
           permissionMode: turnStateProjection.permissionMode,
           signal,
-          hooks: {
-            onBeforeToolExec: toolHooks?.beforeExec,
+          hooks: buildAgentLoopExecuteToolCallsHooksInput({
+            beforeExec: toolHooks?.beforeExec,
             onUpdate: toolHooks?.onUpdate,
-          },
+          }),
         }),
       );
     }

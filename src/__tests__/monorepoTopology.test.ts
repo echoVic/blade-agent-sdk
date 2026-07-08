@@ -473,6 +473,8 @@ describe('monorepo topology', () => {
     expect(rootAgentLoopSource).toContain('buildAgentLoopTurnLimitStopCompletion');
     expect(rootAgentLoopSource).toContain('shouldApplyAgentLoopTurnLimitContinuation');
     expect(rootAgentLoopSource).toContain('buildAgentLoopExecuteToolCallsInput');
+    expect(rootAgentLoopSource).toContain('buildAgentLoopExecuteToolCallsHooksInput');
+    expect(rootAgentLoopSource).not.toContain('onBeforeToolExec: toolHooks?.beforeExec');
     expect(rootAgentLoopSource).toContain('buildAgentLoopToolExecutionPlanInput');
     expect(rootAgentLoopSource).toContain('planAgentLoopToolExecution');
     expect(rootAgentLoopSource).toContain('selectAgentFunctionToolCalls');

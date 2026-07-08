@@ -60,6 +60,25 @@ export interface AgentLoopExecuteToolCallsInput<
   hooks: THooks;
 }
 
+export interface AgentLoopExecuteToolCallsHooksInput<TBeforeExec, TOnUpdate> {
+  beforeExec?: TBeforeExec;
+  onUpdate?: TOnUpdate;
+}
+
+export interface AgentLoopExecuteToolCallsHooks<TBeforeExec, TOnUpdate> {
+  onBeforeToolExec?: TBeforeExec;
+  onUpdate?: TOnUpdate;
+}
+
+export function buildAgentLoopExecuteToolCallsHooksInput<TBeforeExec, TOnUpdate>(
+  input: AgentLoopExecuteToolCallsHooksInput<TBeforeExec, TOnUpdate>,
+): AgentLoopExecuteToolCallsHooks<TBeforeExec, TOnUpdate> {
+  return {
+    onBeforeToolExec: input.beforeExec,
+    onUpdate: input.onUpdate,
+  };
+}
+
 export function buildAgentLoopExecuteToolCallsInput<
   TExecutionPipeline,
   TExecutionContext,

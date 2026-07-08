@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  buildAgentLoopExecuteToolCallsHooksInput,
   type AgentFunctionToolCall,
   buildAgentLoopExecuteToolCallsInput,
   buildAgentLoopToolExecutionPlanInput,
@@ -242,6 +243,21 @@ describe('planToolExecution', () => {
       permissionMode: 'default',
       signal,
       hooks,
+    });
+  });
+
+  it('projects non-streaming tool execution hooks from session hook names', () => {
+    const beforeExec = async () => null;
+    const onUpdate = () => undefined;
+
+    expect(
+      buildAgentLoopExecuteToolCallsHooksInput({
+        beforeExec,
+        onUpdate,
+      }),
+    ).toEqual({
+      onBeforeToolExec: beforeExec,
+      onUpdate,
     });
   });
 });

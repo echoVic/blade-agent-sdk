@@ -1,4 +1,5 @@
 export {
+  buildAgentLoopExecuteToolCallsHooksInput,
   buildAgentLoopExecuteToolCallsInput,
   buildAgentLoopToolExecutionPlanInput,
   planAgentLoopToolExecution,
@@ -7,6 +8,8 @@ export {
   shouldEmitAgentLoopNonStreamingToolResultEffects,
   shouldRunAgentLoopNonStreamingToolExecution,
   type AgentLoopExecuteToolCallsInput,
+  type AgentLoopExecuteToolCallsHooks,
+  type AgentLoopExecuteToolCallsHooksInput,
   type AgentLoopToolExecutionPlanInput,
   type AgentFunctionToolCall,
   type AgentToolCallCandidate,
