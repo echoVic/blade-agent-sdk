@@ -38,6 +38,7 @@ import {
   buildAgentLoopEffectiveMaxTurns,
   decideTurnLimit,
   shouldCheckAgentLoopTurnLimit,
+  shouldStopAgentLoopForTurnLimitDecision,
 } from './loop/decideTurnLimit.js';
 import { executeToolCalls } from './loop/executeToolCalls.js';
 import {
@@ -578,7 +579,7 @@ export async function* agentLoop(
         onTurnLimitReached: turnHooks?.onTurnLimitReached,
         onTurnLimitCompact: turnHooks?.onTurnLimitCompact,
       });
-      if (limitDecision.action === 'stop') {
+      if (shouldStopAgentLoopForTurnLimitDecision(limitDecision)) {
         yield buildAgentLoopEndEvent();
         return limitDecision.result;
       }

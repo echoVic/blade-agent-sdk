@@ -5,6 +5,7 @@ import {
   buildAgentLoopEffectiveMaxTurns,
   decideTurnLimit,
   shouldCheckAgentLoopTurnLimit,
+  shouldStopAgentLoopForTurnLimitDecision,
 } from '../loop/index.js';
 
 describe('decideTurnLimit', () => {
@@ -154,5 +155,16 @@ describe('decideTurnLimit', () => {
         },
       },
     });
+  });
+
+  it('stops the loop only for turn-limit stop decisions', async () => {
+    const stopDecision = await decideTurnLimit(baseInput);
+    expect(shouldStopAgentLoopForTurnLimitDecision(stopDecision)).toBe(true);
+
+    const continueDecision = await decideTurnLimit({
+      ...baseInput,
+      onTurnLimitReached: async () => ({ continue: true }),
+    });
+    expect(shouldStopAgentLoopForTurnLimitDecision(continueDecision)).toBe(false);
   });
 });

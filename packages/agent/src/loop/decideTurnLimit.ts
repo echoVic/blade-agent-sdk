@@ -41,6 +41,8 @@ export type TurnLimitDecision =
       continueMessage?: Message;
     };
 
+export type TurnLimitStopDecision = Extract<TurnLimitDecision, { action: 'stop' }>;
+
 export interface DecideTurnLimitInput {
   maxTurns: number;
   turnsCount: number;
@@ -73,6 +75,12 @@ export function shouldCheckAgentLoopTurnLimit(
   input: ShouldCheckAgentLoopTurnLimitInput,
 ): boolean {
   return input.turnsCount >= input.effectiveMaxTurns && !input.isYoloMode;
+}
+
+export function shouldStopAgentLoopForTurnLimitDecision(
+  decision: TurnLimitDecision,
+): decision is TurnLimitStopDecision {
+  return decision.action === 'stop';
 }
 
 export async function decideTurnLimit(
