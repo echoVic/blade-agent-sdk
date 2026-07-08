@@ -38,6 +38,22 @@ export interface AgentLoopBeforeTurnHookPayloadLoopStateInput<TMessage> {
   tokenUsageTracker: AgentLoopBeforeTurnTokenUsageTrackerLike;
 }
 
+export type AgentLoopBeforeTurnHook<TMessage, TEvent, TReturn> = (
+  payload: AgentLoopBeforeTurnHookPayload<TMessage>,
+) => AsyncGenerator<TEvent, TReturn>;
+
+export interface AgentLoopBeforeTurnHookContainer<TMessage, TEvent, TReturn> {
+  turn?: {
+    beforeTurn?: AgentLoopBeforeTurnHook<TMessage, TEvent, TReturn>;
+  } | null;
+}
+
+export interface RunAgentLoopBeforeTurnHookInput<TMessage, TEvent, TReturn>
+  extends AgentLoopBeforeTurnHookPayloadLoopStateInput<TMessage> {
+  counter: Pick<AgentLoopTurnCounter, 'turnsCount' | 'shouldRunBeforeTurn'>;
+  hooks?: AgentLoopBeforeTurnHookContainer<TMessage, TEvent, TReturn> | null;
+}
+
 export interface BeginAgentLoopTurnInput {
   counter: Pick<AgentLoopTurnCounter, 'beginTurn'>;
 }
@@ -113,6 +129,19 @@ export async function* consumeAgentLoopBeforeTurnStream<Event, ReturnValue>(
     }
     yield value;
   }
+}
+
+export async function* runAgentLoopBeforeTurnHook<TMessage, TEvent, TReturn>(
+  input: RunAgentLoopBeforeTurnHookInput<TMessage, TEvent, TReturn>,
+): AsyncGenerator<TEvent, TReturn | undefined> {
+  const beforeTurnHook = input.hooks?.turn?.beforeTurn;
+  if (!shouldRunAgentLoopBeforeTurnHook(input.counter, beforeTurnHook)) {
+    return undefined;
+  }
+
+  return yield* consumeAgentLoopBeforeTurnStream(
+    beforeTurnHook(buildAgentLoopBeforeTurnHookPayloadFromLoopState(input)),
+  );
 }
 
 export function createAgentLoopTurnCounter(): AgentLoopTurnCounter {

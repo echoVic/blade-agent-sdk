@@ -7,9 +7,12 @@ export {
   createAgentLoopTurnCounter,
   requestAgentLoopTurnRetry,
   resetAgentLoopTurnCounter,
+  runAgentLoopBeforeTurnHook,
   shouldEmitAgentLoopTurnStart,
   shouldRunAgentLoopBeforeTurnHook,
   type BeginAgentLoopTurnInput,
+  type AgentLoopBeforeTurnHook,
+  type AgentLoopBeforeTurnHookContainer,
   type AgentLoopBeforeTurnHookPayload,
   type AgentLoopBeforeTurnConversationLike,
   type AgentLoopBeforeTurnHookPayloadConversationInput,
@@ -19,4 +22,5 @@ export {
   type AgentLoopTurnStart,
   type RequestAgentLoopTurnRetryInput,
   type ResetAgentLoopTurnCounterInput,
+  type RunAgentLoopBeforeTurnHookInput,
 } from '../../../packages/agent/src/loop/turnCounter.js';

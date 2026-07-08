@@ -125,13 +125,11 @@ import {
 import { buildAgentLoopTurnStateProjectionFromPreparation } from './loop/turnState.js';
 import {
   beginAgentLoopTurn,
-  buildAgentLoopBeforeTurnHookPayloadFromLoopState,
-  consumeAgentLoopBeforeTurnStream,
   createAgentLoopTurnCounter,
   requestAgentLoopTurnRetry,
   resetAgentLoopTurnCounter,
+  runAgentLoopBeforeTurnHook,
   shouldEmitAgentLoopTurnStart,
-  shouldRunAgentLoopBeforeTurnHook,
 } from './loop/turnCounter.js';
 import {
   buildAgentLoopRunTurnInputFromLoopState,
@@ -276,17 +274,12 @@ export async function* agentLoop(
       return abortCompletion.result;
     }
 
-    const beforeTurnHook = turnHooks?.beforeTurn;
-    if (shouldRunAgentLoopBeforeTurnHook(turnCounter, beforeTurnHook)) {
-      const beforeTurnStream = beforeTurnHook(
-        buildAgentLoopBeforeTurnHookPayloadFromLoopState({
-          counter: turnCounter,
-          conversation: convState,
-          tokenUsageTracker,
-        }),
-      );
-      yield* consumeAgentLoopBeforeTurnStream(beforeTurnStream);
-    }
+    yield* runAgentLoopBeforeTurnHook({
+      counter: turnCounter,
+      conversation: convState,
+      tokenUsageTracker,
+      hooks,
+    });
 
     const turnStart = beginAgentLoopTurn({ counter: turnCounter });
     const turnsCount = turnStart.turn;

@@ -8,6 +8,7 @@ import {
   createAgentLoopTurnCounter,
   requestAgentLoopTurnRetry,
   resetAgentLoopTurnCounter,
+  runAgentLoopBeforeTurnHook,
   shouldEmitAgentLoopTurnStart,
   shouldRunAgentLoopBeforeTurnHook,
 } from '../loop/turnCounter.js';
@@ -136,6 +137,55 @@ describe('agent loop turn counter', () => {
       value: false,
       done: true,
     });
+  });
+
+  it('runs before-turn hooks from the session hook container', async () => {
+    const messages = [{ role: 'user' as const, content: 'hello' }];
+    const counter = createAgentLoopTurnCounter();
+    const calls: unknown[] = [];
+
+    counter.beginTurn();
+    counter.beginTurn();
+
+    const stream = runAgentLoopBeforeTurnHook({
+      counter,
+      conversation: {
+        toArray: () => messages,
+      },
+      tokenUsageTracker: {
+        lastPromptTokens: 42,
+      },
+      hooks: {
+        turn: {
+          beforeTurn: async function* (payload) {
+            calls.push(payload);
+            yield 'before-turn-event-1';
+            yield 'before-turn-event-2';
+            return 'hook-finished';
+          },
+        },
+      },
+    });
+
+    await expect(stream.next()).resolves.toEqual({
+      value: 'before-turn-event-1',
+      done: false,
+    });
+    await expect(stream.next()).resolves.toEqual({
+      value: 'before-turn-event-2',
+      done: false,
+    });
+    await expect(stream.next()).resolves.toEqual({
+      value: 'hook-finished',
+      done: true,
+    });
+    expect(calls).toEqual([
+      {
+        turn: 2,
+        messages,
+        lastPromptTokens: 42,
+      },
+    ]);
   });
 
   it('projects before-turn hook payloads with messages and prompt-token context', () => {

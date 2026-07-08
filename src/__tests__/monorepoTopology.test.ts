@@ -709,7 +709,8 @@ describe('monorepo topology', () => {
     expect(rootAgentLoopSource).toContain('resetAgentLoopTurnCounter');
     expect(rootAgentLoopSource).not.toContain('turnCounter.reset(');
     expect(rootAgentLoopSource).toContain('shouldEmitAgentLoopTurnStart');
-    expect(rootAgentLoopSource).toContain('buildAgentLoopBeforeTurnHookPayloadFromLoopState');
+    expect(rootAgentLoopSource).toContain('runAgentLoopBeforeTurnHook');
+    expect(rootAgentLoopSource).not.toContain('buildAgentLoopBeforeTurnHookPayloadFromLoopState');
     expect(rootAgentLoopSource).not.toContain(
       'buildAgentLoopBeforeTurnHookPayloadFromConversation',
     );
@@ -717,8 +718,8 @@ describe('monorepo topology', () => {
     expect(rootAgentLoopSource).not.toMatch(
       /buildAgentLoopBeforeTurnHookPayload\(\{\s+turn: turnCounter\.turnsCount,\s+messages: convState\.toArray\(\)/,
     );
-    expect(rootAgentLoopSource).toContain('shouldRunAgentLoopBeforeTurnHook');
-    expect(rootAgentLoopSource).toContain('consumeAgentLoopBeforeTurnStream');
+    expect(rootAgentLoopSource).not.toContain('shouldRunAgentLoopBeforeTurnHook');
+    expect(rootAgentLoopSource).not.toContain('consumeAgentLoopBeforeTurnStream');
     expect(rootAgentLoopSource).toContain(
       'buildAgentRecoveryExhaustedProjectionInputFromTracker',
     );
