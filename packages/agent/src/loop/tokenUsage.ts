@@ -61,6 +61,11 @@ export interface ApplyAgentLoopTokenBudgetResult<TSnapshot = unknown> {
   result?: AgentLoopBudgetExhaustedResult;
 }
 
+export interface AgentLoopTokenBudgetStopDecision<TSnapshot = unknown>
+  extends ApplyAgentLoopTokenBudgetResult<TSnapshot> {
+  result: AgentLoopBudgetExhaustedResult;
+}
+
 export function buildAgentLoopTokenUsageInfo(
   input: BuildAgentLoopTokenUsageInfoInput,
 ): AgentLoopTokenUsageInfo {
@@ -92,6 +97,12 @@ export function buildAgentLoopBudgetWarningEvent<TSnapshot>(
     type: 'budget_warning',
     snapshot: input.snapshot,
   };
+}
+
+export function shouldStopAgentLoopForTokenBudget<TSnapshot>(
+  decision: ApplyAgentLoopTokenBudgetResult<TSnapshot>,
+): decision is AgentLoopTokenBudgetStopDecision<TSnapshot> {
+  return decision.result !== undefined;
 }
 
 export async function applyAgentLoopTokenBudget<TSnapshot>(

@@ -66,6 +66,7 @@ import {
   applyAgentLoopTokenBudget,
   buildAgentLoopTokenUsageEvent,
   buildAgentLoopTokenUsageInfo,
+  shouldStopAgentLoopForTokenBudget,
 } from './loop/tokenUsage.js';
 import {
   buildAgentLoopToolInjectedMessages,
@@ -410,7 +411,7 @@ export async function* agentLoop(
     for (const budgetEvent of budgetDecision.events) {
       yield budgetEvent;
     }
-    if (budgetDecision.result) {
+    if (shouldStopAgentLoopForTokenBudget(budgetDecision)) {
       yield buildAgentLoopEndEvent();
       return budgetDecision.result as LoopResult;
     }

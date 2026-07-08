@@ -4,6 +4,7 @@ import {
   buildAgentLoopBudgetWarningEvent,
   buildAgentLoopTokenUsageEvent,
   buildAgentLoopTokenUsageInfo,
+  shouldStopAgentLoopForTokenBudget,
 } from '../loop/tokenUsage.js';
 
 describe('agent loop token usage projection', () => {
@@ -117,6 +118,29 @@ describe('agent loop token usage projection', () => {
       }),
     ).toEqual({ events: [] });
     expect(tokenBudget.record).not.toHaveBeenCalled();
+  });
+
+  it('stops the loop only when the token budget decision has a result', () => {
+    expect(shouldStopAgentLoopForTokenBudget({ events: [] })).toBe(false);
+    expect(
+      shouldStopAgentLoopForTokenBudget({
+        events: [],
+        result: {
+          success: false,
+          error: {
+            type: 'budget_exhausted',
+            message: 'Token budget exhausted',
+          },
+          metadata: {
+            turnsCount: 1,
+            toolCallsCount: 0,
+            duration: 40,
+            tokensUsed: 100,
+            tokenBudgetSnapshot: { totalTokens: 100 },
+          },
+        },
+      }),
+    ).toBe(true);
   });
 
   it('records usage and emits a token budget warning when warning thresholds are crossed', async () => {
