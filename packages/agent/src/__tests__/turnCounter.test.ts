@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  buildAgentLoopBeforeTurnHookPayload,
   consumeAgentLoopBeforeTurnStream,
   createAgentLoopTurnCounter,
   shouldEmitAgentLoopTurnStart,
@@ -91,6 +92,22 @@ describe('agent loop turn counter', () => {
     await expect(consumed.next()).resolves.toEqual({
       value: false,
       done: true,
+    });
+  });
+
+  it('projects before-turn hook payloads with messages and prompt-token context', () => {
+    const messages = [{ role: 'user' as const, content: 'hello' }];
+
+    expect(
+      buildAgentLoopBeforeTurnHookPayload({
+        turn: 3,
+        messages,
+        lastPromptTokens: 42,
+      }),
+    ).toEqual({
+      turn: 3,
+      messages,
+      lastPromptTokens: 42,
     });
   });
 });

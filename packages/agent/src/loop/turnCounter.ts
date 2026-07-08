@@ -12,8 +12,24 @@ export interface AgentLoopTurnCounter {
   reset(): void;
 }
 
+export interface AgentLoopBeforeTurnHookPayload<TMessage> {
+  turn: number;
+  messages: readonly TMessage[];
+  lastPromptTokens?: number;
+}
+
 export function shouldEmitAgentLoopTurnStart(turnStart: AgentLoopTurnStart): boolean {
   return turnStart.started;
+}
+
+export function buildAgentLoopBeforeTurnHookPayload<TMessage>(
+  input: AgentLoopBeforeTurnHookPayload<TMessage>,
+): AgentLoopBeforeTurnHookPayload<TMessage> {
+  return {
+    turn: input.turn,
+    messages: input.messages,
+    lastPromptTokens: input.lastPromptTokens,
+  };
 }
 
 export function shouldRunAgentLoopBeforeTurnHook<BeforeTurnHook>(

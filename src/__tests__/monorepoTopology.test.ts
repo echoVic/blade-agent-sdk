@@ -460,6 +460,7 @@ describe('monorepo topology', () => {
     expect(rootAgentLoopSource).toContain('shouldStopAgentLoopForTurnLimitDecision');
     expect(rootAgentLoopSource).toContain('createAgentLoopTurnCounter');
     expect(rootAgentLoopSource).toContain('shouldEmitAgentLoopTurnStart');
+    expect(rootAgentLoopSource).toContain('buildAgentLoopBeforeTurnHookPayload');
     expect(rootAgentLoopSource).toContain('shouldRunAgentLoopBeforeTurnHook');
     expect(rootAgentLoopSource).toContain('consumeAgentLoopBeforeTurnStream');
     expect(rootAgentLoopSource).toContain('consumeAgentLoopTurnStream');
@@ -571,6 +572,7 @@ describe('monorepo topology', () => {
     expect(rootAgentLoopSource).not.toContain('buildAgentLoopToolExitResult');
     expect(rootAgentLoopSource).not.toContain('let recoveryAttemptedTurn');
     expect(rootAgentLoopSource).not.toContain('let recoveryAttempt = 0');
+    expect(rootAgentLoopSource).not.toContain('beforeTurnHook({');
     expect(rootAgentLoopSource).not.toContain('consumeResetAttempt() !== null');
     expect(rootAgentLoopSource).not.toContain('isOverflowRecoverable(llmError)');
     expect(rootAgentLoopSource).not.toContain('recoveryAttemptTracker.canAttempt(turnsCount)');
