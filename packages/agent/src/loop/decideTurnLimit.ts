@@ -107,6 +107,15 @@ export interface AgentLoopTurnLimitDecisionLoopStateInput {
   hooks?: AgentLoopTurnLimitHooksInput | null;
 }
 
+export interface AgentLoopTurnLimitHookContainer {
+  turn?: AgentLoopTurnLimitHooksInput | null;
+}
+
+export interface AgentLoopTurnLimitDecisionHookContainerInput
+  extends Omit<AgentLoopTurnLimitDecisionLoopStateInput, 'hooks'> {
+  hooks?: AgentLoopTurnLimitHookContainer | null;
+}
+
 export interface BuildAgentLoopEffectiveMaxTurnsInput {
   maxTurns: number;
   isYoloMode: boolean;
@@ -173,6 +182,15 @@ export function buildAgentLoopTurnLimitDecisionInputFromLoopState(
       onTurnLimitReached: input.hooks?.onTurnLimitReached,
       onTurnLimitCompact: input.hooks?.onTurnLimitCompact,
     }),
+  });
+}
+
+export function buildAgentLoopTurnLimitDecisionInputFromHookContainer(
+  input: AgentLoopTurnLimitDecisionHookContainerInput,
+): DecideTurnLimitInput {
+  return buildAgentLoopTurnLimitDecisionInputFromLoopState({
+    ...input,
+    hooks: input.hooks?.turn,
   });
 }
 

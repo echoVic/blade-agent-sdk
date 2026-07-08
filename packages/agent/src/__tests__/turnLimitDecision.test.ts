@@ -5,6 +5,7 @@ import {
   applyAgentLoopTurnLimitContinuation,
   buildAgentLoopTurnLimitContinuation,
   buildAgentLoopTurnLimitDecisionInput,
+  buildAgentLoopTurnLimitDecisionInputFromHookContainer,
   buildAgentLoopTurnLimitDecisionInputFromLoopState,
   buildAgentLoopTurnLimitHooksInput,
   buildAgentLoopTurnLimitStopCompletion,
@@ -123,6 +124,46 @@ describe('decideTurnLimit', () => {
       toolCallsCount: 4,
       startTime: 1_000,
       totalTokens: 555,
+      onTurnLimitReached,
+      onTurnLimitCompact,
+    });
+  });
+
+  it('projects turn-limit decision input from loop state and session hook container', async () => {
+    const onTurnLimitReached = async () => ({ continue: false });
+    const onTurnLimitCompact = async () => ({ success: false });
+    const contextMessages: Message[] = [{ role: 'user', content: 'context' }];
+
+    expect(
+      buildAgentLoopTurnLimitDecisionInputFromHookContainer({
+        maxTurns: 8,
+        turnsCount: 8,
+        conversation: {
+          getContextMessages: () => contextMessages,
+        },
+        toolResultTracker: {
+          toolCallsCount: 6,
+        },
+        loopClock: {
+          startTime: 2_000,
+        },
+        tokenUsageTracker: {
+          totalTokens: 888,
+        },
+        hooks: {
+          turn: {
+            onTurnLimitReached,
+            onTurnLimitCompact,
+          },
+        },
+      }),
+    ).toEqual({
+      maxTurns: 8,
+      turnsCount: 8,
+      contextMessages,
+      toolCallsCount: 6,
+      startTime: 2_000,
+      totalTokens: 888,
       onTurnLimitReached,
       onTurnLimitCompact,
     });

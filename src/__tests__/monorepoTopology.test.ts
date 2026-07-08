@@ -610,15 +610,17 @@ describe('monorepo topology', () => {
     expect(rootAgentLoopSource).toContain('buildAgentLoopTurnStateProjection');
     expect(rootAgentLoopSource).toContain('buildAgentLoopEffectiveMaxTurns');
     expect(rootAgentLoopSource).toContain(
-      'buildAgentLoopTurnLimitDecisionInputFromLoopState',
+      'buildAgentLoopTurnLimitDecisionInputFromHookContainer',
     );
     expect(rootAgentLoopSource).not.toContain('buildAgentLoopTurnLimitHooksInput');
     expect(rootAgentLoopSource).not.toContain('onTurnLimitReached: turnHooks?.onTurnLimitReached');
+    expect(rootAgentLoopSource).not.toContain('const turnHooks = hooks?.turn');
+    expect(rootAgentLoopSource).not.toContain('hooks: turnHooks');
     expect(rootAgentLoopSource).not.toMatch(
       /buildAgentLoopTurnLimitDecisionInput\(\{\s+maxTurns: config\.maxTurns,\s+turnsCount,\s+contextMessages: convState\.getContextMessages\(\)/,
     );
     const turnLimitDecisionInputStart = rootAgentLoopSource.indexOf(
-      'buildAgentLoopTurnLimitDecisionInputFromLoopState({',
+      'buildAgentLoopTurnLimitDecisionInputFromHookContainer({',
     );
     const turnLimitDecisionInputEnd = rootAgentLoopSource.indexOf(
       'if (shouldStopAgentLoopForTurnLimitDecision',
