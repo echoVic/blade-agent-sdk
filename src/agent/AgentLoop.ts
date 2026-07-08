@@ -34,8 +34,8 @@ import {
   buildAgentRecoveryRetryingEffects,
   buildAgentRecoveryStartedEffects,
   consumeAgentRecoveryCompactStream,
+  emitAgentRecoveryEffects,
   hasAgentReactiveCompactHook,
-  runAgentRecoveryStateChangeHooks,
 } from './recoveryEvents.js';
 import {
   applyAgentLoopAssistantMessageProjection,
@@ -361,10 +361,7 @@ export async function* agentLoop(
           turn: turnsCount,
           attempt: recoveryAttempt,
         });
-        await runAgentRecoveryStateChangeHooks({ effects: recoveryStartedEffects, hooks });
-        for (const event of recoveryStartedEffects.events) {
-          yield event;
-        }
+        yield* emitAgentRecoveryEffects({ effects: recoveryStartedEffects, hooks });
         const compactStream = buildAgentRecoveryCompactStreamFromHookContainer({
           conversation: convState,
           hooks,
@@ -378,20 +375,14 @@ export async function* agentLoop(
             turn: turnsCount,
             attempt: recoveryAttempt,
           });
-          await runAgentRecoveryStateChangeHooks({ effects: recoveryFailedEffects, hooks });
-          for (const event of recoveryFailedEffects.events) {
-            yield event;
-          }
+          yield* emitAgentRecoveryEffects({ effects: recoveryFailedEffects, hooks });
           throw llmError;
         }
         const recoveryRetryingEffects = buildAgentRecoveryRetryingEffects({
           turn: turnsCount,
           attempt: recoveryAttempt,
         });
-        await runAgentRecoveryStateChangeHooks({ effects: recoveryRetryingEffects, hooks });
-        for (const event of recoveryRetryingEffects.events) {
-          yield event;
-        }
+        yield* emitAgentRecoveryEffects({ effects: recoveryRetryingEffects, hooks });
         epoch?.invalidate();
         // 显式"重试当前轮"：不减 turnsCount，不发 turn_end
         requestAgentLoopTurnRetry({ counter: turnCounter });
@@ -415,10 +406,7 @@ export async function* agentLoop(
             tracker: recoveryAttemptTracker,
           }),
         );
-        await runAgentRecoveryStateChangeHooks({ effects: recoveryExhaustedEffects, hooks });
-        for (const event of recoveryExhaustedEffects.events) {
-          yield event;
-        }
+        yield* emitAgentRecoveryEffects({ effects: recoveryExhaustedEffects, hooks });
       }
       throw llmError;
     }
@@ -427,7 +415,7 @@ export async function* agentLoop(
 
     if (consumeAgentRecoveryResetAttempt(recoveryAttemptTracker)) {
       const recoveryResetEffects = buildAgentRecoveryResetEffects({ turn: turnsCount });
-      await runAgentRecoveryStateChangeHooks({ effects: recoveryResetEffects, hooks });
+      yield* emitAgentRecoveryEffects({ effects: recoveryResetEffects, hooks });
     }
 
     // Token usage

@@ -800,7 +800,8 @@ describe('monorepo topology', () => {
     expect(rootAgentLoopSource).toContain('buildAgentRecoveryCompactFailedEffects');
     expect(rootAgentLoopSource).toContain('buildAgentRecoveryRetryingEffects');
     expect(rootAgentLoopSource).toContain('buildAgentRecoveryExhaustedEffects');
-    expect(rootAgentLoopSource).toContain('runAgentRecoveryStateChangeHooks');
+    expect(rootAgentLoopSource).toContain('emitAgentRecoveryEffects');
+    expect(rootAgentLoopSource).not.toContain('runAgentRecoveryStateChangeHooks');
     expect(rootAgentLoopSource).not.toContain('const onRecoveryStateChange');
     expect(rootAgentLoopSource).not.toContain('onRecoveryStateChange?.(');
     expect(rootAgentLoopSource).not.toContain('recoveryHooks?.onStateChange?.(');
@@ -952,6 +953,10 @@ describe('monorepo topology', () => {
     expect(rootAgentLoopSource).not.toContain('recoveryRetrying.stateChange');
     expect(rootAgentLoopSource).not.toContain('recoveryExhausted.stateChange');
     expect(rootAgentLoopSource).not.toContain('recoveryReset.stateChange');
+    expect(rootAgentLoopSource).not.toContain('for (const event of recovery');
+    expect(rootAgentLoopSource).not.toMatch(
+      /for \(const event of recovery[A-Za-z]+Effects\.events\)/,
+    );
     expect(rootAgentLoopSource).not.toContain('if (recoveryStarted.event)');
     expect(rootAgentLoopSource).not.toContain('if (recoveryFailed.event)');
     expect(rootAgentLoopSource).not.toContain('if (recoveryRetrying.event)');

@@ -13,6 +13,7 @@ import {
   buildAgentRecoveryRetryingEffects,
   buildAgentRecoveryStartedEffects,
   consumeAgentRecoveryCompactStream,
+  emitAgentRecoveryEffects,
   hasAgentReactiveCompactHook,
   runAgentRecoveryStateChangeHooks,
   shouldEmitAgentRecoveryEvent,
@@ -331,6 +332,57 @@ describe('agent recovery event projection', () => {
 
     expect(applied).toBe(effects);
     expect(calls).toEqual(effects.stateChanges);
+  });
+
+  it('emits recovery effects after applying state-change hooks', async () => {
+    const observed: string[] = [];
+    const effects = buildAgentRecoveryStartedEffects({ turn: 10, attempt: 2 });
+    const stream = emitAgentRecoveryEffects({
+      effects,
+      hooks: {
+        recovery: {
+          onStateChange(stateChange) {
+            observed.push(`hook:${stateChange.phase}:${stateChange.attempt}`);
+          },
+        },
+      },
+    });
+
+    await expect(stream.next()).resolves.toEqual({
+      done: false,
+      value: {
+        type: 'recovery',
+        phase: 'started',
+        reason: 'context_overflow',
+      },
+    });
+    observed.push('event:started');
+    await expect(stream.next()).resolves.toEqual({
+      done: true,
+      value: effects,
+    });
+    expect(observed).toEqual(['hook:started:2', 'event:started']);
+  });
+
+  it('applies state-change hooks without yielding events for reset effects', async () => {
+    const observed: string[] = [];
+    const effects = buildAgentRecoveryResetEffects({ turn: 11 });
+    const stream = emitAgentRecoveryEffects({
+      effects,
+      hooks: {
+        recovery: {
+          onStateChange(stateChange) {
+            observed.push(`hook:${stateChange.phase}:${stateChange.attempt}`);
+          },
+        },
+      },
+    });
+
+    await expect(stream.next()).resolves.toEqual({
+      done: true,
+      value: effects,
+    });
+    expect(observed).toEqual(['hook:reset:0']);
   });
 
   it('wraps model fallback metadata as a public agent event', () => {

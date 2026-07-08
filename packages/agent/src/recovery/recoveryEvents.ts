@@ -141,6 +141,8 @@ export interface RunAgentRecoveryStateChangeHooksInput {
   hooks?: AgentRecoveryStateChangeHookContainer | null;
 }
 
+export type EmitAgentRecoveryEffectsInput = RunAgentRecoveryStateChangeHooksInput;
+
 export type AgentRecoveryProjectionWithEvent = AgentRecoveryProjection & {
   event: AgentRecoveryEvent;
 };
@@ -302,6 +304,17 @@ export async function runAgentRecoveryStateChangeHooks(
   }
 
   return input.effects;
+}
+
+export async function* emitAgentRecoveryEffects(
+  input: EmitAgentRecoveryEffectsInput,
+): AsyncGenerator<AgentRecoveryEvent, AgentRecoveryEffects> {
+  const effects = await runAgentRecoveryStateChangeHooks(input);
+  for (const event of effects.events) {
+    yield event;
+  }
+
+  return effects;
 }
 
 export function buildAgentReactiveCompactHookPayload<TMessage>(
