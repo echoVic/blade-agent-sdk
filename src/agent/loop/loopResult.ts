@@ -1,6 +1,7 @@
 export {
   buildAgentLoopAbortCompletion,
   buildAgentLoopAbortCompletionInput,
+  buildAgentLoopAbortCompletionInputFromTiming,
   buildAgentLoopAbortResult,
   buildAgentLoopBudgetExhaustedResult,
   buildAgentLoopNoToolSuccessDecision,
@@ -14,6 +15,7 @@ export {
   shouldAbortAgentLoop,
   type AgentLoopAbortResult,
   type AgentLoopAbortCompletion,
+  type AgentLoopAbortCompletionTimingInput,
   type AgentLoopBudgetExhaustedResult,
   type AgentLoopBudgetExhaustedResultInput,
   type AgentLoopNoToolSuccessDecision,

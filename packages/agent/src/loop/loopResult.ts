@@ -65,6 +65,10 @@ export interface AgentLoopResultTiming {
   now?: number;
 }
 
+export interface AgentLoopAbortCompletionTimingInput {
+  timing: AgentLoopResultTiming;
+}
+
 export interface AgentLoopBudgetExhaustedResultInput extends AgentLoopResultTiming {
   reason: 'exhausted' | 'diminishing_returns';
   tokensUsed: number;
@@ -181,6 +185,12 @@ export function buildAgentLoopAbortCompletionInput(
     startTime: input.startTime,
     now: input.now,
   };
+}
+
+export function buildAgentLoopAbortCompletionInputFromTiming(
+  input: AgentLoopAbortCompletionTimingInput,
+): AgentLoopResultTiming {
+  return buildAgentLoopAbortCompletionInput(input.timing);
 }
 
 export function buildAgentLoopAbortCompletion(

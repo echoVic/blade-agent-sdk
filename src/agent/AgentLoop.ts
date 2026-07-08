@@ -73,7 +73,7 @@ import {
 import { createAgentLoopClock } from './loop/loopClock.js';
 import {
   buildAgentLoopAbortCompletion,
-  buildAgentLoopAbortCompletionInput,
+  buildAgentLoopAbortCompletionInputFromTiming,
   buildAgentLoopNoToolSuccessDecision,
   buildAgentLoopNoToolSuccessDecisionInput,
   buildAgentLoopToolExitDecision,
@@ -255,8 +255,8 @@ export async function* agentLoop(
 
     if (shouldAbortAgentLoop(signal)) {
       const abortCompletion = buildAgentLoopAbortCompletion(
-        buildAgentLoopAbortCompletionInput({
-          ...loopClock.resultTiming({
+        buildAgentLoopAbortCompletionInputFromTiming({
+          timing: loopClock.resultTiming({
             turnsCount: turnCounter.turnsCount,
             toolCallsCount: toolResultTracker.toolCallsCount,
           }),
@@ -293,8 +293,8 @@ export async function* agentLoop(
 
     if (shouldAbortAgentLoop(signal)) {
       const abortCompletion = buildAgentLoopAbortCompletion(
-        buildAgentLoopAbortCompletionInput({
-          ...loopClock.resultTiming({
+        buildAgentLoopAbortCompletionInputFromTiming({
+          timing: loopClock.resultTiming({
             turnsCount: turnCounter.previousCompletedTurnCount,
             toolCallsCount: toolResultTracker.toolCallsCount,
           }),
@@ -501,8 +501,8 @@ export async function* agentLoop(
 
     if (shouldAbortAgentLoop(signal)) {
       const abortCompletion = buildAgentLoopAbortCompletion(
-        buildAgentLoopAbortCompletionInput({
-          ...loopClock.resultTiming({
+        buildAgentLoopAbortCompletionInputFromTiming({
+          timing: loopClock.resultTiming({
             turnsCount: turnCounter.previousCompletedTurnCount,
             toolCallsCount: toolResultTracker.toolCallsCount,
           }),
@@ -601,8 +601,8 @@ export async function* agentLoop(
 
       if (shouldAbortAgentLoop(signal)) {
         const abortCompletion = buildAgentLoopAbortCompletion(
-          buildAgentLoopAbortCompletionInput({
-            ...loopClock.resultTiming({
+          buildAgentLoopAbortCompletionInputFromTiming({
+            timing: loopClock.resultTiming({
               turnsCount,
               toolCallsCount: toolResultTracker.toolCallsCount,
             }),
@@ -680,8 +680,8 @@ export async function* agentLoop(
 
     if (shouldAbortAgentLoop(signal)) {
       const abortCompletion = buildAgentLoopAbortCompletion(
-        buildAgentLoopAbortCompletionInput({
-          ...loopClock.resultTiming({
+        buildAgentLoopAbortCompletionInputFromTiming({
+          timing: loopClock.resultTiming({
             turnsCount,
             toolCallsCount: toolResultTracker.toolCallsCount,
           }),
