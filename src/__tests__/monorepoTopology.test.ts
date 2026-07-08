@@ -621,7 +621,12 @@ describe('monorepo topology', () => {
     expect(rootAgentLoopSource).toContain('consumeAgentLoopTurnStream');
     expect(rootAgentLoopSource).toContain('createAgentRecoveryAttemptTracker');
     expect(rootAgentLoopSource).toContain('buildAgentModelFallbackEvent');
-    expect(rootAgentLoopSource).toContain('buildAgentReactiveCompactHookPayload');
+    expect(rootAgentLoopSource).toContain(
+      'buildAgentReactiveCompactHookPayloadFromConversation',
+    );
+    expect(rootAgentLoopSource).not.toMatch(
+      /buildAgentReactiveCompactHookPayload\(\{\s+messages: convState\.toArray\(\)/,
+    );
     expect(rootAgentLoopSource).toContain('buildAgentRecoveryProjection');
     expect(rootAgentLoopSource).toContain('buildAgentRecoveryProjectionInput');
     expect(rootAgentLoopSource).toContain('buildAgentRecoveryEffects');

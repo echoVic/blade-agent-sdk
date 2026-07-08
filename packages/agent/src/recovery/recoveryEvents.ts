@@ -50,6 +50,14 @@ export interface AgentReactiveCompactHookPayload<TMessage> {
   messages: readonly TMessage[];
 }
 
+export interface AgentReactiveCompactConversationLike<TMessage> {
+  toArray(): readonly TMessage[];
+}
+
+export interface AgentReactiveCompactHookPayloadConversationInput<TMessage> {
+  conversation: AgentReactiveCompactConversationLike<TMessage>;
+}
+
 export type AgentRecoveryProjectionInput =
   | {
       kind: Exclude<AgentRecoveryProjectionKind, 'reset'>;
@@ -184,6 +192,14 @@ export function buildAgentReactiveCompactHookPayload<TMessage>(
   return {
     messages: input.messages,
   };
+}
+
+export function buildAgentReactiveCompactHookPayloadFromConversation<TMessage>(
+  input: AgentReactiveCompactHookPayloadConversationInput<TMessage>,
+): AgentReactiveCompactHookPayload<TMessage> {
+  return buildAgentReactiveCompactHookPayload({
+    messages: input.conversation.toArray(),
+  });
 }
 
 export async function* consumeAgentRecoveryCompactStream<Event>(

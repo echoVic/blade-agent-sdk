@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   buildAgentModelFallbackEvent,
   buildAgentReactiveCompactHookPayload,
+  buildAgentReactiveCompactHookPayloadFromConversation,
   buildAgentRecoveryEffects,
   buildAgentRecoveryProjectionInput,
   buildAgentRecoveryProjection,
@@ -217,6 +218,17 @@ describe('agent recovery event projection', () => {
     const messages = [{ role: 'user' as const, content: 'large context' }];
 
     expect(buildAgentReactiveCompactHookPayload({ messages })).toEqual({
+      messages,
+    });
+  });
+
+  it('projects reactive compact hook payloads from conversation state', () => {
+    const messages = [{ role: 'user' as const, content: 'large context' }];
+    const conversation = {
+      toArray: () => messages,
+    };
+
+    expect(buildAgentReactiveCompactHookPayloadFromConversation({ conversation })).toEqual({
       messages,
     });
   });

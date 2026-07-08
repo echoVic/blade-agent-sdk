@@ -25,7 +25,7 @@ import {
 } from './recoveryAttemptTracker.js';
 import {
   buildAgentModelFallbackEvent,
-  buildAgentReactiveCompactHookPayload,
+  buildAgentReactiveCompactHookPayloadFromConversation,
   buildAgentRecoveryEffects,
   buildAgentRecoveryProjectionInput,
   buildAgentRecoveryProjection,
@@ -373,7 +373,7 @@ export async function* agentLoop(
           yield event;
         }
         const compactStream = reactiveCompact?.(
-          buildAgentReactiveCompactHookPayload({ messages: convState.toArray() }),
+          buildAgentReactiveCompactHookPayloadFromConversation({ conversation: convState }),
         );
         if (!compactStream) {
           throw llmError;
