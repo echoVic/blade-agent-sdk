@@ -60,6 +60,18 @@ export interface AgentLoopToolExecutionPlanProjectionInput<
   turnStateProjection: AgentLoopTurnStateProjection<TTurnState>;
 }
 
+export interface AgentLoopToolExecutionPlanExecutionPipelineProjectionInput<
+  TTurnState extends AgentLoopTurnStateFields<
+    ToolExecutionPermissionMode | undefined,
+    unknown
+  >,
+  TExecutionPipeline extends { getRegistry(): ToolExecutionRegistryLike },
+> {
+  calls: AgentFunctionToolCall[];
+  executionPipeline: TExecutionPipeline;
+  turnStateProjection: AgentLoopTurnStateProjection<TTurnState>;
+}
+
 export interface AgentLoopExecuteToolCallsInput<
   TExecutionPipeline,
   TExecutionContext,
@@ -194,6 +206,25 @@ export function buildAgentLoopToolExecutionPlanInputFromTurnProjection<
     calls: input.calls,
     registry: input.registry,
     permissionMode: input.turnStateProjection.permissionMode,
+  });
+}
+
+export function buildAgentLoopToolExecutionPlanInputFromExecutionPipelineProjection<
+  TTurnState extends AgentLoopTurnStateFields<
+    ToolExecutionPermissionMode | undefined,
+    unknown
+  >,
+  TExecutionPipeline extends { getRegistry(): ToolExecutionRegistryLike },
+>(
+  input: AgentLoopToolExecutionPlanExecutionPipelineProjectionInput<
+    TTurnState,
+    TExecutionPipeline
+  >,
+): AgentLoopToolExecutionPlanInput {
+  return buildAgentLoopToolExecutionPlanInputFromTurnProjection({
+    calls: input.calls,
+    registry: input.executionPipeline.getRegistry(),
+    turnStateProjection: input.turnStateProjection,
   });
 }
 

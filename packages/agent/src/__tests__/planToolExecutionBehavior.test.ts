@@ -5,6 +5,7 @@ import {
   buildAgentLoopExecuteToolCallsInput,
   buildAgentLoopExecuteToolCallsInputFromTurnProjection,
   buildAgentLoopToolExecutionPlanInput,
+  buildAgentLoopToolExecutionPlanInputFromExecutionPipelineProjection,
   buildAgentLoopToolExecutionPlanInputFromTurnProjection,
   planAgentLoopToolExecution,
   planToolExecution,
@@ -136,6 +137,38 @@ describe('planToolExecution', () => {
     });
     expect(planAgentLoopToolExecution(input)).toEqual(
       planToolExecution(calls, mockRegistry, 'plan'),
+    );
+  });
+
+  it('projects tool execution planning input from execution pipeline and turn state projection', () => {
+    const calls = [makeCall('Read'), makeCall('Edit')];
+    const turnState = {
+      maxContextTokens: 128000,
+      executionContext: { cwd: '/tmp/project' },
+      permissionMode: 'autoEdit' as const,
+    };
+    const executionPipeline = {
+      getRegistry: () => mockRegistry,
+    };
+
+    const input = buildAgentLoopToolExecutionPlanInputFromExecutionPipelineProjection({
+      calls,
+      executionPipeline,
+      turnStateProjection: {
+        turnState,
+        maxContextTokens: turnState.maxContextTokens,
+        executionContext: turnState.executionContext,
+        permissionMode: turnState.permissionMode,
+      },
+    });
+
+    expect(input).toEqual({
+      calls,
+      registry: mockRegistry,
+      permissionMode: 'autoEdit',
+    });
+    expect(planAgentLoopToolExecution(input)).toEqual(
+      planToolExecution(calls, mockRegistry, 'autoEdit'),
     );
   });
 
