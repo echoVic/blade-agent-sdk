@@ -347,6 +347,7 @@ describe('monorepo topology', () => {
       'packages/agent/src/loop/toolStartEvent.ts',
       'packages/agent/src/loop/turnState.ts',
       'packages/agent/src/loop/turnCounter.ts',
+      'packages/agent/src/loop/turnStream.ts',
       'packages/agent/src/loop/toolBehavior.ts',
       'packages/agent/src/loop/toolInterruptBehavior.ts',
       'packages/agent/src/loop/toolUpdateToAgentEvent.ts',
@@ -382,6 +383,7 @@ describe('monorepo topology', () => {
     expect(existsSync('packages/agent/src/__tests__/toolStartEvent.test.ts')).toBe(true);
     expect(existsSync('packages/agent/src/__tests__/turnStateProjection.test.ts')).toBe(true);
     expect(existsSync('packages/agent/src/__tests__/turnCounter.test.ts')).toBe(true);
+    expect(existsSync('packages/agent/src/__tests__/turnStream.test.ts')).toBe(true);
     expect(existsSync('packages/agent/src/__tests__/toolInjectedMessages.test.ts')).toBe(true);
     expect(existsSync('packages/agent/src/__tests__/recoveryAttemptTracker.test.ts')).toBe(true);
     expect(existsSync('packages/agent/src/__tests__/recoveryEvents.test.ts')).toBe(true);
@@ -457,6 +459,7 @@ describe('monorepo topology', () => {
     expect(rootAgentLoopSource).toContain('shouldEmitAgentLoopTurnStart');
     expect(rootAgentLoopSource).toContain('shouldRunAgentLoopBeforeTurnHook');
     expect(rootAgentLoopSource).toContain('consumeAgentLoopBeforeTurnStream');
+    expect(rootAgentLoopSource).toContain('consumeAgentLoopTurnStream');
     expect(rootAgentLoopSource).toContain('createAgentRecoveryAttemptTracker');
     expect(rootAgentLoopSource).toContain('buildAgentModelFallbackEvent');
     expect(rootAgentLoopSource).toContain('buildAgentRecoveryProjection');
@@ -515,6 +518,7 @@ describe('monorepo topology', () => {
     expect(rootAgentLoopSource).not.toContain('if (turnStart.started)');
     expect(rootAgentLoopSource).not.toContain('turnCounter.shouldRunBeforeTurn() &&');
     expect(rootAgentLoopSource).not.toContain('beforeTurnStream.next()');
+    expect(rootAgentLoopSource).not.toContain('turnGen.next()');
     expect(rootAgentLoopSource).not.toContain('turnsCount++');
     expect(rootAgentLoopSource).not.toContain('turnsCount = 0');
     expect(rootAgentLoopSource).not.toContain('let toolResultContent =');

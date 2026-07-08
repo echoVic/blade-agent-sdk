@@ -98,6 +98,7 @@ import {
   shouldEmitAgentLoopTurnStart,
   shouldRunAgentLoopBeforeTurnHook,
 } from './loop/turnCounter.js';
+import { consumeAgentLoopTurnStream } from './loop/turnStream.js';
 import type { FunctionToolCall } from './loop/types.js';
 import type { ConversationState } from './state/ConversationState.js';
 import type { TurnState } from './state/TurnState.js';
@@ -296,15 +297,9 @@ export async function* agentLoop(
           onUpdate: toolHooks?.onUpdate,
         },
       });
-      while (true) {
-        const { value, done } = await turnGen.next();
-        if (done) {
-          turnResult = value.chatResponse;
-          streamingExecutionResults = value.streamingExecutionResults;
-          break;
-        }
-        yield value;
-      }
+      const turnStreamResult = yield* consumeAgentLoopTurnStream(turnGen);
+      turnResult = turnStreamResult.turnResult;
+      streamingExecutionResults = turnStreamResult.streamingExecutionResults;
     } catch (llmError) {
       if (llmError instanceof FallbackTriggeredError) {
         epoch?.invalidate();
