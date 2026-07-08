@@ -18,6 +18,7 @@ import {
   shouldStopAgentLoopToolResultProcessing,
 } from './ExecutionEpoch.js';
 import {
+  buildAgentRecoveryExhaustedProjectionInputFromTracker,
   consumeAgentRecoveryResetAttempt,
   createAgentRecoveryAttemptTracker,
   hasAgentRecoveryAttemptExhausted,
@@ -431,10 +432,9 @@ export async function* agentLoop(
         turn: turnsCount,
       })) {
         const recoveryExhausted = buildAgentRecoveryProjection(
-          buildAgentRecoveryProjectionInput({
-            kind: 'exhausted',
+          buildAgentRecoveryExhaustedProjectionInputFromTracker({
             turn: turnsCount,
-            attempt: recoveryAttemptTracker.attempt,
+            tracker: recoveryAttemptTracker,
           }),
         );
         const recoveryExhaustedEffects = buildAgentRecoveryEffects(recoveryExhausted);

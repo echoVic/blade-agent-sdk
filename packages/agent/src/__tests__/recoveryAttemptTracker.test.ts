@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  buildAgentRecoveryExhaustedProjectionInputFromTracker,
   consumeAgentRecoveryResetAttempt,
   createAgentRecoveryAttemptTracker,
   hasAgentRecoveryAttemptExhausted,
@@ -140,5 +141,22 @@ describe('agent recovery attempt tracker', () => {
         turn: 3,
       }),
     ).toBe(false);
+  });
+
+  it('projects recovery exhaustion input from tracker state', () => {
+    const tracker = createAgentRecoveryAttemptTracker();
+    tracker.startAttempt(4);
+    tracker.startAttempt(5);
+
+    expect(
+      buildAgentRecoveryExhaustedProjectionInputFromTracker({
+        tracker,
+        turn: 5,
+      }),
+    ).toEqual({
+      kind: 'exhausted',
+      turn: 5,
+      attempt: 2,
+    });
   });
 });
