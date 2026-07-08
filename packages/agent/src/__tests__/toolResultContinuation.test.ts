@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  applyAgentLoopToolResultContinuation,
   buildAgentLoopAfterExecHookPayload,
   buildAgentLoopToolResultAppendMessages,
   buildAgentLoopToolResultContinuation,
@@ -104,6 +105,43 @@ describe('agent loop tool result continuation projection', () => {
     });
 
     expect(buildAgentLoopToolResultAppendMessages(continuation)).toEqual([
+      {
+        role: 'tool',
+        tool_call_id: 'call_read',
+        name: 'Read',
+        content: 'done',
+      },
+      {
+        role: 'system',
+        content: 'fresh context',
+        metadata: { _systemSource: 'tool_injection' },
+      },
+    ]);
+  });
+
+  it('applies tool-result continuation messages to conversation state', () => {
+    const appendedMessages: unknown[] = [];
+    const continuation = buildAgentLoopToolResultContinuation({
+      toolCall,
+      result: {
+        success: true,
+        llmContent: 'done',
+        newMessages: [{ role: 'system' as const, content: 'fresh context' }],
+      },
+      streamingExecutionResults: undefined,
+    });
+
+    const applied = applyAgentLoopToolResultContinuation({
+      conversation: {
+        append: (...messages) => {
+          appendedMessages.push(...messages);
+        },
+      },
+      continuation,
+    });
+
+    expect(applied).toBe(continuation);
+    expect(appendedMessages).toEqual([
       {
         role: 'tool',
         tool_call_id: 'call_read',

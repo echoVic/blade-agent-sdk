@@ -510,7 +510,10 @@ describe('monorepo topology', () => {
     expect(rootAgentLoopSource).toContain('buildAgentLoopAssistantMessageProjection');
     expect(rootAgentLoopSource).toContain('buildAgentLoopToolResultContinuation');
     expect(rootAgentLoopSource).toContain('buildAgentLoopAfterExecHookPayload');
-    expect(rootAgentLoopSource).toContain('buildAgentLoopToolResultAppendMessages');
+    expect(rootAgentLoopSource).toContain('applyAgentLoopToolResultContinuation');
+    expect(rootAgentLoopSource).not.toContain(
+      'convState.append(...buildAgentLoopToolResultAppendMessages(toolResultContinuation))',
+    );
     expect(rootAgentLoopSource).toContain('buildAgentLoopTokenUsageInfo');
     expect(rootAgentLoopSource).toContain(
       'buildAgentLoopTokenUsageInfoInputFromLoopState',

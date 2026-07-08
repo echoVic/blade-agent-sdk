@@ -42,6 +42,17 @@ export interface AgentLoopToolResultAppendMessagesInput {
   injectedMessages: Message[];
 }
 
+export interface AgentLoopToolResultContinuationConversationLike {
+  append(...messages: Message[]): void;
+}
+
+export interface ApplyAgentLoopToolResultContinuationInput<
+  TResult extends AgentLoopToolMessageInput['result'] & AgentLoopToolInjectedMessagesInput<Message>,
+> {
+  conversation: AgentLoopToolResultContinuationConversationLike;
+  continuation: AgentLoopToolResultContinuation<TResult>;
+}
+
 export interface AgentLoopAfterExecHookPayloadInput<TResult> {
   toolCall: AgentFunctionToolCall;
   result: TResult;
@@ -93,4 +104,13 @@ export function buildAgentLoopToolResultAppendMessages(
   input: AgentLoopToolResultAppendMessagesInput,
 ): Message[] {
   return [input.toolMessage, ...input.injectedMessages];
+}
+
+export function applyAgentLoopToolResultContinuation<
+  TResult extends AgentLoopToolMessageInput['result'] & AgentLoopToolInjectedMessagesInput<Message>,
+>(
+  input: ApplyAgentLoopToolResultContinuationInput<TResult>,
+): AgentLoopToolResultContinuation<TResult> {
+  input.conversation.append(...buildAgentLoopToolResultAppendMessages(input.continuation));
+  return input.continuation;
 }

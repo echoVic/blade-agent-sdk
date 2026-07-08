@@ -109,8 +109,8 @@ import {
   shouldRecordAgentLoopTokenUsage,
 } from './loop/tokenUsageTracker.js';
 import {
+  applyAgentLoopToolResultContinuation,
   buildAgentLoopAfterExecHookPayload,
-  buildAgentLoopToolResultAppendMessages,
   buildAgentLoopToolResultContinuation,
 } from './loop/toolResultContinuation.js';
 import {
@@ -676,7 +676,10 @@ export async function* agentLoop(
         );
       }
 
-      convState.append(...buildAgentLoopToolResultAppendMessages(toolResultContinuation));
+      applyAgentLoopToolResultContinuation({
+        conversation: convState,
+        continuation: toolResultContinuation,
+      });
     }
 
     const toolTurnCompletion = buildAgentLoopToolTurnCompletion(
