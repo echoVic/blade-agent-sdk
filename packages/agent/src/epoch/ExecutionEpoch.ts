@@ -25,3 +25,13 @@ export class ExecutionEpoch {
     this.valid = false;
   }
 }
+
+export interface AgentLoopToolResultEpochLike {
+  isValid: boolean;
+}
+
+export function shouldStopAgentLoopToolResultProcessing(
+  epoch: AgentLoopToolResultEpochLike | null | undefined,
+): boolean {
+  return Boolean(epoch && !epoch.isValid);
+}

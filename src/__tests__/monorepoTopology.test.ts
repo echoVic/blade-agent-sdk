@@ -530,6 +530,7 @@ describe('monorepo topology', () => {
     expect(rootAgentLoopSource).not.toContain(
       'turnsCount >= effectiveMaxTurns && !isYoloMode',
     );
+    expect(rootAgentLoopSource).not.toContain('epoch && !epoch.isValid');
     expect(agentRecoverySource).toContain("from './isOverflowRecoverable.js'");
     expect(agentRecoverySource).toContain("from './recoveryAttemptTracker.js'");
     expect(agentRecoverySource).toContain("from './recoveryEvents.js'");

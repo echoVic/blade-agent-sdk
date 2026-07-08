@@ -13,7 +13,10 @@ import type { ExecutionPipeline } from '../tools/execution/ExecutionPipeline.js'
 import type { ToolResult } from '../tools/types/index.js';
 import type { JsonObject } from '../types/common.js';
 import type { AgentEvent } from './AgentEvent.js';
-import { ExecutionEpoch } from './ExecutionEpoch.js';
+import {
+  ExecutionEpoch,
+  shouldStopAgentLoopToolResultProcessing,
+} from './ExecutionEpoch.js';
 import { isOverflowRecoverable } from './isOverflowRecoverable.js';
 import { createAgentRecoveryAttemptTracker } from './recoveryAttemptTracker.js';
 import { buildAgentModelFallbackEvent, buildAgentRecoveryProjection } from './recoveryEvents.js';
@@ -485,7 +488,7 @@ export async function* agentLoop(
 
     // 处理结果
     for (const { toolCall, result, toolUseUuid } of executionResults) {
-      if (epoch && !epoch.isValid) break;
+      if (shouldStopAgentLoopToolResultProcessing(epoch)) break;
 
       toolResultTracker.record(result);
 
