@@ -351,6 +351,7 @@ describe('monorepo topology', () => {
       'packages/agent/src/recovery/index.ts',
       'packages/agent/src/recovery/isOverflowRecoverable.ts',
       'packages/agent/src/recovery/recoveryAttemptTracker.ts',
+      'packages/agent/src/recovery/recoveryEvents.ts',
       'packages/agent/src/state/index.ts',
       'packages/agent/src/state/systemSource.ts',
       'packages/agent/src/state/toolInjectedMessages.ts',
@@ -375,6 +376,7 @@ describe('monorepo topology', () => {
     expect(existsSync('packages/agent/src/__tests__/turnCounter.test.ts')).toBe(true);
     expect(existsSync('packages/agent/src/__tests__/toolInjectedMessages.test.ts')).toBe(true);
     expect(existsSync('packages/agent/src/__tests__/recoveryAttemptTracker.test.ts')).toBe(true);
+    expect(existsSync('packages/agent/src/__tests__/recoveryEvents.test.ts')).toBe(true);
     expect(existsSync('packages/agent/src/__tests__/repairToolCallParamsBehavior.test.ts')).toBe(
       true,
     );
@@ -416,6 +418,7 @@ describe('monorepo topology', () => {
     expect(rootAgentLoopSource).toContain('buildAgentLoopToolStartEvent');
     expect(rootAgentLoopSource).toContain('createAgentLoopTurnCounter');
     expect(rootAgentLoopSource).toContain('createAgentRecoveryAttemptTracker');
+    expect(rootAgentLoopSource).toContain('buildAgentRecoveryProjection');
     expect(rootAgentLoopSource).toContain('markToolInjectedSystemMessages');
     expect(rootAgentLoopSource).not.toContain('function buildAbortResult');
     expect(rootAgentLoopSource).not.toContain('return {\n        success: true,');
@@ -439,6 +442,10 @@ describe('monorepo topology', () => {
     expect(rootAgentLoopSource).not.toContain('const recordToolResult');
     expect(rootAgentLoopSource).not.toContain('let recoveryAttemptedTurn');
     expect(rootAgentLoopSource).not.toContain('let recoveryAttempt = 0');
+    expect(rootAgentLoopSource).not.toContain("reason: 'reactive_compact_failed'");
+    expect(rootAgentLoopSource).not.toContain("reason: 'reactive_compact_retry'");
+    expect(rootAgentLoopSource).not.toContain("reason: 'recovery_exhausted'");
+    expect(rootAgentLoopSource).not.toContain("phase: 'reset',\n        attempt: 0");
     expect(rootAgentLoopSource).not.toContain("_systemSource: 'tool_injection' as const");
     expect(rootAgentLoopSource).not.toContain('shouldExitLoop: true,\n            targetMode:');
     expect(rootAgentLoopSource).not.toContain('message: \'Token budget exhausted\'');
@@ -447,6 +454,7 @@ describe('monorepo topology', () => {
     );
     expect(agentRecoverySource).toContain("from './isOverflowRecoverable.js'");
     expect(agentRecoverySource).toContain("from './recoveryAttemptTracker.js'");
+    expect(agentRecoverySource).toContain("from './recoveryEvents.js'");
     expect(agentStateSource).toContain("from './systemSource.js'");
     expect(agentStateSource).toContain("from './toolInjectedMessages.js'");
   });
