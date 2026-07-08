@@ -453,6 +453,7 @@ describe('monorepo topology', () => {
     expect(rootAgentLoopSource).toContain('createAgentRecoveryAttemptTracker');
     expect(rootAgentLoopSource).toContain('buildAgentModelFallbackEvent');
     expect(rootAgentLoopSource).toContain('buildAgentRecoveryProjection');
+    expect(rootAgentLoopSource).toContain('shouldEmitAgentRecoveryEvent');
     expect(rootAgentLoopSource).not.toContain('function buildAbortResult');
     expect(rootAgentLoopSource).not.toContain('if (signal?.aborted)');
     expect(rootAgentLoopSource).not.toContain('return {\n        success: true,');
@@ -531,6 +532,10 @@ describe('monorepo topology', () => {
     expect(rootAgentLoopSource).not.toContain("reason: 'reactive_compact_retry'");
     expect(rootAgentLoopSource).not.toContain("reason: 'recovery_exhausted'");
     expect(rootAgentLoopSource).not.toContain("phase: 'reset',\n        attempt: 0");
+    expect(rootAgentLoopSource).not.toContain('if (recoveryStarted.event)');
+    expect(rootAgentLoopSource).not.toContain('if (recoveryFailed.event)');
+    expect(rootAgentLoopSource).not.toContain('if (recoveryRetrying.event)');
+    expect(rootAgentLoopSource).not.toContain('if (recoveryExhausted.event)');
     expect(rootAgentLoopSource).not.toContain("_systemSource: 'tool_injection' as const");
     expect(rootAgentLoopSource).not.toContain('shouldExitLoop: true,\n            targetMode:');
     expect(rootAgentLoopSource).not.toContain('循环已退出');

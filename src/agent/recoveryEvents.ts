@@ -1,11 +1,13 @@
 export {
   buildAgentModelFallbackEvent,
   buildAgentRecoveryProjection,
+  shouldEmitAgentRecoveryEvent,
   type AgentModelFallbackEvent,
   type AgentModelFallbackEventInput,
   type AgentRecoveryEvent,
   type AgentRecoveryEventReason,
   type AgentRecoveryProjection,
+  type AgentRecoveryProjectionWithEvent,
   type AgentRecoveryProjectionInput,
   type AgentRecoveryProjectionKind,
   type AgentRecoveryStateChange,

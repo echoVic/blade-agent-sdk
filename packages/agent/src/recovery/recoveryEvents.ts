@@ -58,6 +58,10 @@ export interface AgentRecoveryProjection {
   event?: AgentRecoveryEvent;
 }
 
+export type AgentRecoveryProjectionWithEvent = AgentRecoveryProjection & {
+  event: AgentRecoveryEvent;
+};
+
 export function buildAgentRecoveryProjection(
   input: AgentRecoveryProjectionInput,
 ): AgentRecoveryProjection {
@@ -127,6 +131,12 @@ export function buildAgentRecoveryProjection(
         },
       };
   }
+}
+
+export function shouldEmitAgentRecoveryEvent(
+  projection: AgentRecoveryProjection,
+): projection is AgentRecoveryProjectionWithEvent {
+  return projection.event !== undefined;
 }
 
 export function buildAgentModelFallbackEvent(

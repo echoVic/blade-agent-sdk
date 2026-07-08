@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   buildAgentModelFallbackEvent,
   buildAgentRecoveryProjection,
+  shouldEmitAgentRecoveryEvent,
 } from '../recovery/recoveryEvents.js';
 
 describe('agent recovery event projection', () => {
@@ -106,6 +107,27 @@ describe('agent recovery event projection', () => {
         attempt: 0,
       },
     });
+  });
+
+  it('emits public recovery events only for projections with events', () => {
+    expect(
+      shouldEmitAgentRecoveryEvent(
+        buildAgentRecoveryProjection({
+          kind: 'started',
+          turn: 2,
+          attempt: 1,
+        }),
+      ),
+    ).toBe(true);
+
+    expect(
+      shouldEmitAgentRecoveryEvent(
+        buildAgentRecoveryProjection({
+          kind: 'reset',
+          turn: 2,
+        }),
+      ),
+    ).toBe(false);
   });
 
   it('wraps model fallback metadata as a public agent event', () => {

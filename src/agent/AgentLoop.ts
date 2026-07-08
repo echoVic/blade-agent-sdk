@@ -23,7 +23,11 @@ import {
   hasAgentRecoveryAttemptExhausted,
   shouldAttemptAgentRecovery,
 } from './recoveryAttemptTracker.js';
-import { buildAgentModelFallbackEvent, buildAgentRecoveryProjection } from './recoveryEvents.js';
+import {
+  buildAgentModelFallbackEvent,
+  buildAgentRecoveryProjection,
+  shouldEmitAgentRecoveryEvent,
+} from './recoveryEvents.js';
 import {
   assertAgentLoopTurnResponse,
   buildAgentLoopAssistantMessageProjection,
@@ -319,7 +323,7 @@ export async function* agentLoop(
           attempt: recoveryAttempt,
         });
         onRecoveryStateChange?.(recoveryStarted.stateChange);
-        if (recoveryStarted.event) {
+        if (shouldEmitAgentRecoveryEvent(recoveryStarted)) {
           yield recoveryStarted.event;
         }
         const compactStream = reactiveCompact?.({ messages: convState.toArray() });
@@ -342,7 +346,7 @@ export async function* agentLoop(
             attempt: recoveryAttempt,
           });
           onRecoveryStateChange?.(recoveryFailed.stateChange);
-          if (recoveryFailed.event) {
+          if (shouldEmitAgentRecoveryEvent(recoveryFailed)) {
             yield recoveryFailed.event;
           }
           throw llmError;
@@ -353,7 +357,7 @@ export async function* agentLoop(
           attempt: recoveryAttempt,
         });
         onRecoveryStateChange?.(recoveryRetrying.stateChange);
-        if (recoveryRetrying.event) {
+        if (shouldEmitAgentRecoveryEvent(recoveryRetrying)) {
           yield recoveryRetrying.event;
         }
         epoch?.invalidate();
@@ -374,7 +378,7 @@ export async function* agentLoop(
           attempt: recoveryAttemptTracker.attempt,
         });
         recoveryHooks?.onStateChange?.(recoveryExhausted.stateChange);
-        if (recoveryExhausted.event) {
+        if (shouldEmitAgentRecoveryEvent(recoveryExhausted)) {
           yield recoveryExhausted.event;
         }
       }
