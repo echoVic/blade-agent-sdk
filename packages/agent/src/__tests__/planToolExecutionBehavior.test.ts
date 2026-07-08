@@ -5,6 +5,7 @@ import {
   buildAgentLoopExecuteToolCallsInput,
   buildAgentLoopExecuteToolCallsInputFromTurnProjection,
   buildAgentLoopToolExecutionPlanInput,
+  buildAgentLoopToolExecutionPlanInputFromTurnProjection,
   planAgentLoopToolExecution,
   planToolExecution,
   shouldEmitAgentLoopNonStreamingToolResultEffects,
@@ -106,6 +107,35 @@ describe('planToolExecution', () => {
     });
     expect(planAgentLoopToolExecution(input)).toEqual(
       planToolExecution(calls, mockRegistry, 'default'),
+    );
+  });
+
+  it('projects tool execution planning input from a turn state projection', () => {
+    const calls = [makeCall('Read'), makeCall('Edit')];
+    const turnState = {
+      maxContextTokens: 128000,
+      executionContext: { cwd: '/tmp/project' },
+      permissionMode: 'plan' as const,
+    };
+
+    const input = buildAgentLoopToolExecutionPlanInputFromTurnProjection({
+      calls,
+      registry: mockRegistry,
+      turnStateProjection: {
+        turnState,
+        maxContextTokens: turnState.maxContextTokens,
+        executionContext: turnState.executionContext,
+        permissionMode: turnState.permissionMode,
+      },
+    });
+
+    expect(input).toEqual({
+      calls,
+      registry: mockRegistry,
+      permissionMode: 'plan',
+    });
+    expect(planAgentLoopToolExecution(input)).toEqual(
+      planToolExecution(calls, mockRegistry, 'plan'),
     );
   });
 

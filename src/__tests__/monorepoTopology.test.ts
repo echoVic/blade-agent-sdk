@@ -515,9 +515,28 @@ describe('monorepo topology', () => {
     expect(executeToolCallsInputSource).not.toContain(
       'permissionMode: turnStateProjection.permissionMode',
     );
-    expect(rootAgentLoopSource).toContain('buildAgentLoopToolExecutionPlanInput');
+    expect(rootAgentLoopSource).toContain(
+      'buildAgentLoopToolExecutionPlanInputFromTurnProjection',
+    );
     expect(rootAgentLoopSource).toContain('planAgentLoopToolExecution');
     expect(rootAgentLoopSource).toContain('selectAgentFunctionToolCalls');
+    const toolExecutionPlanInputStart = rootAgentLoopSource.indexOf(
+      'buildAgentLoopToolExecutionPlanInputFromTurnProjection({',
+    );
+    const toolExecutionPlanInputEnd = rootAgentLoopSource.indexOf(
+      'for (const event of buildAgentLoopToolStartEvents',
+      toolExecutionPlanInputStart,
+    );
+    const toolExecutionPlanInputSource = rootAgentLoopSource.slice(
+      toolExecutionPlanInputStart,
+      toolExecutionPlanInputEnd,
+    );
+    expect(rootAgentLoopSource).not.toMatch(
+      /buildAgentLoopToolExecutionPlanInput\(\{\s+calls: functionCalls/,
+    );
+    expect(toolExecutionPlanInputSource).not.toContain(
+      'permissionMode: turnStateProjection.permissionMode',
+    );
     expect(rootAgentLoopSource).toContain('shouldStopAgentLoopForTurnLimitDecision');
     expect(rootAgentLoopSource).toContain('createAgentLoopTurnCounter');
     expect(rootAgentLoopSource).toContain('shouldEmitAgentLoopTurnStart');

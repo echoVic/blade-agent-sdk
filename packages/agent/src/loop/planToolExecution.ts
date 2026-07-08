@@ -49,6 +49,17 @@ export interface AgentLoopToolExecutionPlanInput {
   permissionMode?: ToolExecutionPermissionMode;
 }
 
+export interface AgentLoopToolExecutionPlanProjectionInput<
+  TTurnState extends AgentLoopTurnStateFields<
+    ToolExecutionPermissionMode | undefined,
+    unknown
+  >,
+> {
+  calls: AgentFunctionToolCall[];
+  registry: ToolExecutionRegistryLike;
+  turnStateProjection: AgentLoopTurnStateProjection<TTurnState>;
+}
+
 export interface AgentLoopExecuteToolCallsInput<
   TExecutionPipeline,
   TExecutionContext,
@@ -169,6 +180,21 @@ export function buildAgentLoopToolExecutionPlanInput(
     registry: input.registry,
     permissionMode: input.permissionMode,
   };
+}
+
+export function buildAgentLoopToolExecutionPlanInputFromTurnProjection<
+  TTurnState extends AgentLoopTurnStateFields<
+    ToolExecutionPermissionMode | undefined,
+    unknown
+  >,
+>(
+  input: AgentLoopToolExecutionPlanProjectionInput<TTurnState>,
+): AgentLoopToolExecutionPlanInput {
+  return buildAgentLoopToolExecutionPlanInput({
+    calls: input.calls,
+    registry: input.registry,
+    permissionMode: input.turnStateProjection.permissionMode,
+  });
 }
 
 export function shouldRunAgentLoopNonStreamingToolExecution<TExecutionResult>(
