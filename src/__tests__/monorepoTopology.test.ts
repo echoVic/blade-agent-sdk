@@ -428,6 +428,7 @@ describe('monorepo topology', () => {
     expect(rootAgentLoopSource).toContain('buildAgentLoopResponseEventsInput');
     expect(rootAgentLoopSource).toContain('buildAgentLoopResponseEvents');
     expect(rootAgentLoopSource).toContain('buildAgentLoopSuccessResult');
+    expect(rootAgentLoopSource).toContain('buildAgentLoopToolExitDecisionInput');
     expect(rootAgentLoopSource).toContain('buildAgentLoopToolExitDecision');
     expect(rootAgentLoopSource).toContain('shouldExitAgentLoopForToolDecision');
     expect(rootAgentLoopSource).toContain('createAgentLoopClock');
@@ -513,6 +514,9 @@ describe('monorepo topology', () => {
     expect(rootAgentLoopSource).not.toContain('const toolKind = toolDef?.kind');
     expect(rootAgentLoopSource).not.toContain('turnResult.toolCalls.filter');
     expect(rootAgentLoopSource).not.toContain('if (!executionResults)');
+    expect(rootAgentLoopSource).not.toContain(
+      'hasStreamingExecutionResults: streamingExecutionResults !== undefined,\n        ...loopClock.resultTiming',
+    );
     expect(rootAgentLoopSource).not.toContain(
       '!turnResult.toolCalls || turnResult.toolCalls.length === 0',
     );

@@ -64,6 +64,7 @@ import {
   buildAgentLoopAbortResult,
   buildAgentLoopSuccessResult,
   buildAgentLoopToolExitDecision,
+  buildAgentLoopToolExitDecisionInput,
   shouldAbortAgentLoop,
   shouldExitAgentLoopForToolDecision,
 } from './loop/loopResult.js';
@@ -529,15 +530,17 @@ export async function* agentLoop(
 
       toolResultTracker.record(result);
 
-      const toolExitDecision = buildAgentLoopToolExitDecision({
-        toolCall,
-        result,
-        hasStreamingExecutionResults: streamingExecutionResults !== undefined,
-        ...loopClock.resultTiming({
-          turnsCount,
-          toolCallsCount: toolResultTracker.toolCallsCount,
+      const toolExitDecision = buildAgentLoopToolExitDecision(
+        buildAgentLoopToolExitDecisionInput({
+          toolCall,
+          result,
+          streamingExecutionResults,
+          ...loopClock.resultTiming({
+            turnsCount,
+            toolCallsCount: toolResultTracker.toolCallsCount,
+          }),
         }),
-      });
+      );
       if (shouldExitAgentLoopForToolDecision(toolExitDecision)) {
         for (const event of toolExitDecision.events) {
           yield event;

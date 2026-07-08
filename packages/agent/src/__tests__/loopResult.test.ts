@@ -4,6 +4,7 @@ import {
   buildAgentLoopBudgetExhaustedResult,
   buildAgentLoopSuccessResult,
   buildAgentLoopToolExitDecision,
+  buildAgentLoopToolExitDecisionInput,
   buildAgentLoopToolExitFinalMessage,
   buildAgentLoopToolExitResult,
   shouldAbortAgentLoop,
@@ -164,6 +165,62 @@ describe('agent loop result builders', () => {
         now: 140,
       }),
     ).toEqual({ action: 'continue', events: [] });
+  });
+
+  it('builds tool-exit decision input from tool results and non-streaming loop state', () => {
+    const toolCall = {
+      id: 'call_1',
+      type: 'function' as const,
+      function: { name: 'ExitPlanMode', arguments: '{}' },
+    };
+    const result = {
+      success: true,
+      metadata: { shouldExitLoop: true },
+    };
+
+    expect(
+      buildAgentLoopToolExitDecisionInput({
+        toolCall,
+        result,
+        streamingExecutionResults: undefined,
+        turnsCount: 2,
+        toolCallsCount: 3,
+        startTime: 100,
+        now: 140,
+      }),
+    ).toEqual({
+      toolCall,
+      result,
+      hasStreamingExecutionResults: false,
+      turnsCount: 2,
+      toolCallsCount: 3,
+      startTime: 100,
+      now: 140,
+    });
+  });
+
+  it('marks tool-exit decision input as streaming when results were already emitted', () => {
+    const toolCall = {
+      id: 'call_1',
+      type: 'function' as const,
+      function: { name: 'ExitPlanMode', arguments: '{}' },
+    };
+    const result = {
+      success: true,
+      metadata: { shouldExitLoop: true },
+    };
+
+    expect(
+      buildAgentLoopToolExitDecisionInput({
+        toolCall,
+        result,
+        streamingExecutionResults: [{ toolCall, result, toolUseUuid: null }],
+        turnsCount: 2,
+        toolCallsCount: 3,
+        startTime: 100,
+        now: 140,
+      }).hasStreamingExecutionResults,
+    ).toBe(true);
   });
 
   it('exits the loop only for tool-exit decisions', () => {
