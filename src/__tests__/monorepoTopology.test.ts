@@ -405,6 +405,7 @@ describe('monorepo topology', () => {
     expect(agentLoopSource).toContain("from './tokenUsage.js'");
     expect(agentLoopSource).toContain("from './tokenUsageTracker.js'");
     expect(agentLoopSource).toContain("from './toolMessage.js'");
+    expect(agentLoopSource).toContain("from './toolInjectedMessages.js'");
     expect(agentLoopSource).toContain("from './toolResultContent.js'");
     expect(agentLoopSource).toContain("from './toolResultTracker.js'");
     expect(agentLoopSource).toContain("from './toolStartEvent.js'");
@@ -426,6 +427,7 @@ describe('monorepo topology', () => {
     expect(rootAgentLoopSource).toContain('createAgentLoopClock');
     expect(rootAgentLoopSource).toContain('buildAgentLoopAssistantMessageProjection');
     expect(rootAgentLoopSource).toContain('buildAgentLoopToolMessage');
+    expect(rootAgentLoopSource).toContain('buildAgentLoopToolInjectedMessages');
     expect(rootAgentLoopSource).toContain('buildAgentLoopTokenUsageInfo');
     expect(rootAgentLoopSource).toContain('buildAgentLoopTokenUsageEvent');
     expect(rootAgentLoopSource).toContain('buildAgentLoopBudgetWarningEvent');
@@ -438,7 +440,6 @@ describe('monorepo topology', () => {
     expect(rootAgentLoopSource).toContain('createAgentRecoveryAttemptTracker');
     expect(rootAgentLoopSource).toContain('buildAgentModelFallbackEvent');
     expect(rootAgentLoopSource).toContain('buildAgentRecoveryProjection');
-    expect(rootAgentLoopSource).toContain('markToolInjectedSystemMessages');
     expect(rootAgentLoopSource).not.toContain('function buildAbortResult');
     expect(rootAgentLoopSource).not.toContain('return {\n        success: true,');
     expect(rootAgentLoopSource).not.toContain("{ type: 'agent_start' }");
@@ -473,6 +474,8 @@ describe('monorepo topology', () => {
     expect(rootAgentLoopSource).not.toContain('const TOOL_RESULT_BUFFER = 50');
     expect(rootAgentLoopSource).not.toContain('const recentToolResults');
     expect(rootAgentLoopSource).not.toContain('const recordToolResult');
+    expect(rootAgentLoopSource).not.toContain('result.newMessages && result.newMessages.length > 0');
+    expect(rootAgentLoopSource).not.toContain('markToolInjectedSystemMessages');
     expect(rootAgentLoopSource).not.toContain('let recoveryAttemptedTurn');
     expect(rootAgentLoopSource).not.toContain('let recoveryAttempt = 0');
     expect(rootAgentLoopSource).not.toContain("reason: 'reactive_compact_failed'");

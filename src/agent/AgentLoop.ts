@@ -46,6 +46,7 @@ import {
   buildAgentLoopTokenUsageEvent,
   buildAgentLoopTokenUsageInfo,
 } from './loop/tokenUsage.js';
+import { buildAgentLoopToolInjectedMessages } from './loop/toolInjectedMessages.js';
 import { createAgentLoopTokenUsageTracker } from './loop/tokenUsageTracker.js';
 import { buildAgentLoopToolMessage } from './loop/toolMessage.js';
 import { createAgentToolResultTracker } from './loop/toolResultTracker.js';
@@ -54,7 +55,6 @@ import { buildAgentLoopToolResultEvent } from './loop/toolUpdateToAgentEvent.js'
 import { createAgentLoopTurnCounter } from './loop/turnCounter.js';
 import type { FunctionToolCall } from './loop/types.js';
 import type { ConversationState } from './state/ConversationState.js';
-import { markToolInjectedSystemMessages } from './state/toolInjectedMessages.js';
 import type { TurnState } from './state/TurnState.js';
 import type { TokenBudget } from './TokenBudget.js';
 import type { LoopResult, TurnLimitResponse } from './types.js';
@@ -525,8 +525,11 @@ export async function* agentLoop(
 
       convState.append(buildAgentLoopToolMessage({ toolCall, result }));
 
-      if (result.newMessages && result.newMessages.length > 0) {
-        convState.append(...markToolInjectedSystemMessages(result.newMessages));
+      const injectedMessages = buildAgentLoopToolInjectedMessages({
+        newMessages: result.newMessages,
+      });
+      if (injectedMessages.length > 0) {
+        convState.append(...injectedMessages);
       }
     }
 

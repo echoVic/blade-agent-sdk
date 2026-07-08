@@ -12,6 +12,7 @@ export * from './loopClock.js';
 export * from './loopResult.js';
 export * from './tokenUsage.js';
 export * from './tokenUsageTracker.js';
+export * from './toolInjectedMessages.js';
 export * from './toolMessage.js';
 export * from './toolResultContent.js';
 export * from './toolResultTracker.js';

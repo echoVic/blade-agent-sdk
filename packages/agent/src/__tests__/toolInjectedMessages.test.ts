@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { buildAgentLoopToolInjectedMessages } from '../loop/index.js';
 import { markToolInjectedSystemMessages } from '../state/toolInjectedMessages.js';
 
 describe('tool-injected message projection', () => {
@@ -41,6 +42,27 @@ describe('tool-injected message projection', () => {
         content: 'system context',
         metadata: { _systemSource: 'tool_injection' },
       },
+    ]);
+  });
+
+  it('projects tool result newMessages for agent loop storage', () => {
+    expect(buildAgentLoopToolInjectedMessages({ newMessages: undefined })).toEqual([]);
+    expect(buildAgentLoopToolInjectedMessages({ newMessages: [] })).toEqual([]);
+
+    expect(
+      buildAgentLoopToolInjectedMessages({
+        newMessages: [
+          { role: 'system', content: 'tool context' },
+          { role: 'user', content: 'follow-up context' },
+        ],
+      }),
+    ).toEqual([
+      {
+        role: 'system',
+        content: 'tool context',
+        metadata: { _systemSource: 'tool_injection' },
+      },
+      { role: 'user', content: 'follow-up context' },
     ]);
   });
 });
