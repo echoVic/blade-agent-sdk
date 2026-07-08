@@ -100,6 +100,7 @@ import {
 } from './loop/tokenUsage.js';
 import {
   createAgentLoopTokenUsageTracker,
+  recordAgentLoopTokenUsage,
   shouldRecordAgentLoopTokenUsage,
 } from './loop/tokenUsageTracker.js';
 import {
@@ -461,7 +462,7 @@ export async function* agentLoop(
 
     // Token usage
     if (shouldRecordAgentLoopTokenUsage(turnResult.usage)) {
-      tokenUsageTracker.record(turnResult.usage);
+      recordAgentLoopTokenUsage({ tracker: tokenUsageTracker, usage: turnResult.usage });
 
       const usage = buildAgentLoopTokenUsageInfo(
         buildAgentLoopTokenUsageInfoInputFromLoopState({

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   createAgentLoopTokenUsageTracker,
+  recordAgentLoopTokenUsage,
   shouldRecordAgentLoopTokenUsage,
 } from '../loop/tokenUsageTracker.js';
 
@@ -23,6 +24,22 @@ describe('agent loop token usage tracker', () => {
 
     tracker.record({ promptTokens: 10, totalTokens: 14 });
     tracker.record({ promptTokens: 7, totalTokens: 11 });
+
+    expect(tracker.totalTokens).toBe(25);
+    expect(tracker.lastPromptTokens).toBe(7);
+  });
+
+  it('records token usage through the loop helper', () => {
+    const tracker = createAgentLoopTokenUsageTracker();
+
+    recordAgentLoopTokenUsage({
+      tracker,
+      usage: { promptTokens: 10, totalTokens: 14 },
+    });
+    recordAgentLoopTokenUsage({
+      tracker,
+      usage: { promptTokens: 7, totalTokens: 11 },
+    });
 
     expect(tracker.totalTokens).toBe(25);
     expect(tracker.lastPromptTokens).toBe(7);

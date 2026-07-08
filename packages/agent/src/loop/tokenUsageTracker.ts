@@ -9,6 +9,11 @@ export interface AgentLoopTokenUsageTracker {
   record(usage: AgentLoopTokenUsageRecord): void;
 }
 
+export interface RecordAgentLoopTokenUsageInput {
+  tracker: AgentLoopTokenUsageTracker;
+  usage: AgentLoopTokenUsageRecord;
+}
+
 export function shouldRecordAgentLoopTokenUsage(
   usage?: AgentLoopTokenUsageRecord,
 ): usage is AgentLoopTokenUsageRecord {
@@ -33,4 +38,8 @@ export function createAgentLoopTokenUsageTracker(): AgentLoopTokenUsageTracker {
       lastPromptTokens = usage.promptTokens;
     },
   };
+}
+
+export function recordAgentLoopTokenUsage(input: RecordAgentLoopTokenUsageInput): void {
+  input.tracker.record(input.usage);
 }
