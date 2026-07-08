@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   buildAgentModelFallbackEvent,
+  buildAgentReactiveCompactHookPayload,
   buildAgentRecoveryEffects,
   buildAgentRecoveryProjection,
   consumeAgentRecoveryCompactStream,
@@ -184,6 +185,14 @@ describe('agent recovery event projection', () => {
       type: 'model_fallback',
       originalModel: 'deepseek-chat',
       fallbackModel: 'deepseek-reasoner',
+    });
+  });
+
+  it('projects reactive compact hook payloads with conversation messages', () => {
+    const messages = [{ role: 'user' as const, content: 'large context' }];
+
+    expect(buildAgentReactiveCompactHookPayload({ messages })).toEqual({
+      messages,
     });
   });
 

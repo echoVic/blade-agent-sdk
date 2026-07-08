@@ -466,6 +466,7 @@ describe('monorepo topology', () => {
     expect(rootAgentLoopSource).toContain('consumeAgentLoopTurnStream');
     expect(rootAgentLoopSource).toContain('createAgentRecoveryAttemptTracker');
     expect(rootAgentLoopSource).toContain('buildAgentModelFallbackEvent');
+    expect(rootAgentLoopSource).toContain('buildAgentReactiveCompactHookPayload');
     expect(rootAgentLoopSource).toContain('buildAgentRecoveryProjection');
     expect(rootAgentLoopSource).toContain('buildAgentRecoveryEffects');
     expect(rootAgentLoopSource).toContain('consumeAgentRecoveryCompactStream');
@@ -573,6 +574,7 @@ describe('monorepo topology', () => {
     expect(rootAgentLoopSource).not.toContain('let recoveryAttemptedTurn');
     expect(rootAgentLoopSource).not.toContain('let recoveryAttempt = 0');
     expect(rootAgentLoopSource).not.toContain('beforeTurnHook({');
+    expect(rootAgentLoopSource).not.toContain('reactiveCompact?.({ messages: convState.toArray() })');
     expect(rootAgentLoopSource).not.toContain('consumeResetAttempt() !== null');
     expect(rootAgentLoopSource).not.toContain('isOverflowRecoverable(llmError)');
     expect(rootAgentLoopSource).not.toContain('recoveryAttemptTracker.canAttempt(turnsCount)');

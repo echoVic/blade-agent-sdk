@@ -1,9 +1,11 @@
 export {
   buildAgentModelFallbackEvent,
+  buildAgentReactiveCompactHookPayload,
   buildAgentRecoveryEffects,
   buildAgentRecoveryProjection,
   consumeAgentRecoveryCompactStream,
   shouldEmitAgentRecoveryEvent,
+  type AgentReactiveCompactHookPayload,
   type AgentRecoveryCompactStreamResult,
   type AgentModelFallbackEvent,
   type AgentModelFallbackEventInput,

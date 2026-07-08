@@ -46,6 +46,10 @@ export interface AgentRecoveryCompactStreamResult {
   recovered: boolean;
 }
 
+export interface AgentReactiveCompactHookPayload<TMessage> {
+  messages: readonly TMessage[];
+}
+
 export type AgentRecoveryProjectionInput =
   | {
       kind: Exclude<AgentRecoveryProjectionKind, 'reset'>;
@@ -154,6 +158,14 @@ export function buildAgentRecoveryEffects(
   return {
     stateChanges: [projection.stateChange],
     events: shouldEmitAgentRecoveryEvent(projection) ? [projection.event] : [],
+  };
+}
+
+export function buildAgentReactiveCompactHookPayload<TMessage>(
+  input: AgentReactiveCompactHookPayload<TMessage>,
+): AgentReactiveCompactHookPayload<TMessage> {
+  return {
+    messages: input.messages,
   };
 }
 
