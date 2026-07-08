@@ -1,4 +1,8 @@
 import type { Message } from '@blade-ai/ai/chat';
+import {
+  buildAgentLoopTurnEndEvent,
+  type AgentLoopTurnEndEvent,
+} from './loopEvents.js';
 
 const INCOMPLETE_INTENT_PATTERNS = [
   /：\s*$/,
@@ -25,8 +29,22 @@ export type NoToolTurnDecision =
   | { action: 'continue_with_reminder'; message: Message; warning?: string }
   | { action: 'finish' };
 
+export type NoToolTurnContinuationDecision = Extract<NoToolTurnDecision, { message: Message }>;
+
 export interface AgentLoopNoToolContentInput {
   content?: string;
+}
+
+export interface AgentLoopNoToolContinuationInput {
+  decision: NoToolTurnContinuationDecision;
+  turn: number;
+}
+
+export interface AgentLoopNoToolContinuation {
+  action: 'continue';
+  message: Message;
+  warning?: string;
+  events: [AgentLoopTurnEndEvent];
 }
 
 export interface AgentLoopToolCallResponseLike {
@@ -45,8 +63,19 @@ export function buildAgentLoopNoToolContent(input: AgentLoopNoToolContentInput):
 
 export function shouldContinueAgentLoopAfterNoToolDecision(
   decision: NoToolTurnDecision,
-): decision is Extract<NoToolTurnDecision, { message: Message }> {
+): decision is NoToolTurnContinuationDecision {
   return decision.action === 'retry' || decision.action === 'continue_with_reminder';
+}
+
+export function buildAgentLoopNoToolContinuation(
+  input: AgentLoopNoToolContinuationInput,
+): AgentLoopNoToolContinuation {
+  return {
+    action: 'continue',
+    message: input.decision.message,
+    warning: input.decision.action === 'continue_with_reminder' ? input.decision.warning : undefined,
+    events: [buildAgentLoopTurnEndEvent({ turn: input.turn, hasToolCalls: false })],
+  };
 }
 
 function isIncompleteIntent(content: string): boolean {

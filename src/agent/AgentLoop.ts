@@ -35,6 +35,7 @@ import {
 } from './loop/assistantMessage.js';
 import {
   buildAgentLoopNoToolContent,
+  buildAgentLoopNoToolContinuation,
   decideNoToolTurn,
   shouldContinueAgentLoopAfterNoToolDecision,
   shouldHandleAgentLoopNoToolTurn,
@@ -454,8 +455,14 @@ export async function* agentLoop(
         stopHooks?.check,
       );
       if (shouldContinueAgentLoopAfterNoToolDecision(noToolDecision)) {
-        convState.append(noToolDecision.message);
-        yield buildAgentLoopTurnEndEvent({ turn: turnsCount, hasToolCalls: false });
+        const noToolContinuation = buildAgentLoopNoToolContinuation({
+          decision: noToolDecision,
+          turn: turnsCount,
+        });
+        convState.append(noToolContinuation.message);
+        for (const event of noToolContinuation.events) {
+          yield event;
+        }
         continue;
       }
 

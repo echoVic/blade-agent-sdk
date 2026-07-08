@@ -4,6 +4,7 @@ import {
   DEFAULT_CONTINUE_REMINDER,
   RETRY_PROMPT,
   buildAgentLoopNoToolContent,
+  buildAgentLoopNoToolContinuation,
   decideNoToolTurn,
   shouldContinueAgentLoopAfterNoToolDecision,
   shouldHandleAgentLoopNoToolTurn,
@@ -46,6 +47,22 @@ describe('decideNoToolTurn', () => {
       }),
     ).toBe(true);
     expect(shouldContinueAgentLoopAfterNoToolDecision({ action: 'finish' })).toBe(false);
+  });
+
+  it('projects a no-tool continuation into the message append and turn-end event', () => {
+    const message: Message = { role: 'user', content: DEFAULT_CONTINUE_REMINDER };
+
+    expect(
+      buildAgentLoopNoToolContinuation({
+        decision: { action: 'continue_with_reminder', message, warning: 'keep-working' },
+        turn: 3,
+      }),
+    ).toEqual({
+      action: 'continue',
+      message,
+      warning: 'keep-working',
+      events: [{ type: 'turn_end', turn: 3, hasToolCalls: false }],
+    });
   });
 
   it.each([
