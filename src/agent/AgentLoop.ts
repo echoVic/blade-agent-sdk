@@ -119,7 +119,7 @@ import {
   buildAgentLoopToolStartEvents,
   buildAgentLoopToolStartEventsInputFromExecutionPipeline,
 } from './loop/toolStartEvent.js';
-import { buildAgentLoopTurnStateProjection } from './loop/turnState.js';
+import { buildAgentLoopTurnStateProjectionFromPreparation } from './loop/turnState.js';
 import {
   beginAgentLoopTurn,
   buildAgentLoopBeforeTurnHookPayloadFromLoopState,
@@ -313,8 +313,9 @@ export async function* agentLoop(
       return abortCompletion.result;
     }
 
-    const turnStateProjection = buildAgentLoopTurnStateProjection({
-      turnState: config.prepareTurnState(turnsCount),
+    const turnStateProjection = buildAgentLoopTurnStateProjectionFromPreparation({
+      prepareTurnState: config.prepareTurnState,
+      turn: turnsCount,
     });
 
     // === runTurn：单回合 LLM 调用 + 流式事件 ===

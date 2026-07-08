@@ -705,6 +705,11 @@ describe('monorepo topology', () => {
     );
     expect(rootAgentLoopSource).not.toContain('turnCounter.previousCompletedTurnCount');
     expect(rootAgentLoopSource).not.toContain('turnCounter.turnsCount');
+    expect(rootAgentLoopSource).toContain(
+      'buildAgentLoopTurnStateProjectionFromPreparation',
+    );
+    expect(rootAgentLoopSource).not.toContain('config.prepareTurnState(');
+    expect(rootAgentLoopSource).not.toContain('buildAgentLoopTurnStateProjection({');
     expect(rootAgentLoopSource).toContain('buildAgentLoopRunTurnInputFromLoopState');
     expect(rootAgentLoopSource).not.toContain('buildAgentLoopRunTurnToolHooksInput');
     expect(rootAgentLoopSource).not.toContain('onBeforeExec: toolHooks?.beforeExec');

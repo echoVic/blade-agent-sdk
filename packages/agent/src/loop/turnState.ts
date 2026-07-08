@@ -19,6 +19,13 @@ export interface AgentLoopTurnStateProjectionInput<
   turnState: TTurnState;
 }
 
+export interface AgentLoopTurnStatePreparationInput<
+  TTurnState extends AgentLoopTurnStateFields = AgentLoopTurnStateFields,
+> {
+  prepareTurnState(turn: number): TTurnState;
+  turn: number;
+}
+
 export function buildAgentLoopTurnStateProjection<
   TTurnState extends AgentLoopTurnStateFields,
 >(
@@ -30,4 +37,14 @@ export function buildAgentLoopTurnStateProjection<
     permissionMode: input.turnState.permissionMode,
     executionContext: input.turnState.executionContext,
   };
+}
+
+export function buildAgentLoopTurnStateProjectionFromPreparation<
+  TTurnState extends AgentLoopTurnStateFields,
+>(
+  input: AgentLoopTurnStatePreparationInput<TTurnState>,
+): AgentLoopTurnStateProjection<TTurnState> {
+  return buildAgentLoopTurnStateProjection({
+    turnState: input.prepareTurnState(input.turn),
+  });
 }
