@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   buildAgentLoopAbortCompletion,
+  buildAgentLoopAbortCompletionInput,
   buildAgentLoopAbortResult,
   buildAgentLoopBudgetExhaustedResult,
   buildAgentLoopNoToolSuccessDecision,
@@ -65,6 +66,22 @@ describe('agent loop result builders', () => {
           duration: 75,
         },
       },
+    });
+  });
+
+  it('projects abort completion input from loop timing', () => {
+    expect(
+      buildAgentLoopAbortCompletionInput({
+        turnsCount: 2,
+        toolCallsCount: 3,
+        startTime: 100,
+        now: 175,
+      }),
+    ).toEqual({
+      turnsCount: 2,
+      toolCallsCount: 3,
+      startTime: 100,
+      now: 175,
     });
   });
 

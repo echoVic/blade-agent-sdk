@@ -1,5 +1,6 @@
 export {
   buildAgentLoopAbortCompletion,
+  buildAgentLoopAbortCompletionInput,
   buildAgentLoopAbortResult,
   buildAgentLoopBudgetExhaustedResult,
   buildAgentLoopNoToolSuccessDecision,

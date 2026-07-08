@@ -172,6 +172,17 @@ export function buildAgentLoopAbortResult(input: AgentLoopResultTiming): AgentLo
   };
 }
 
+export function buildAgentLoopAbortCompletionInput(
+  input: AgentLoopResultTiming,
+): AgentLoopResultTiming {
+  return {
+    turnsCount: input.turnsCount,
+    toolCallsCount: input.toolCallsCount,
+    startTime: input.startTime,
+    now: input.now,
+  };
+}
+
 export function buildAgentLoopAbortCompletion(
   input: AgentLoopResultTiming,
 ): AgentLoopAbortCompletion {

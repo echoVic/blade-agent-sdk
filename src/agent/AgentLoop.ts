@@ -70,6 +70,7 @@ import {
 import { createAgentLoopClock } from './loop/loopClock.js';
 import {
   buildAgentLoopAbortCompletion,
+  buildAgentLoopAbortCompletionInput,
   buildAgentLoopNoToolSuccessDecision,
   buildAgentLoopToolExitDecision,
   buildAgentLoopToolExitDecisionInput,
@@ -246,12 +247,14 @@ export async function* agentLoop(
     epoch = new ExecutionEpoch();
 
     if (shouldAbortAgentLoop(signal)) {
-      const abortCompletion = buildAgentLoopAbortCompletion({
-        ...loopClock.resultTiming({
-          turnsCount: turnCounter.turnsCount,
-          toolCallsCount: toolResultTracker.toolCallsCount,
+      const abortCompletion = buildAgentLoopAbortCompletion(
+        buildAgentLoopAbortCompletionInput({
+          ...loopClock.resultTiming({
+            turnsCount: turnCounter.turnsCount,
+            toolCallsCount: toolResultTracker.toolCallsCount,
+          }),
         }),
-      });
+      );
       for (const event of abortCompletion.events) {
         yield event;
       }
@@ -282,12 +285,14 @@ export async function* agentLoop(
     }
 
     if (shouldAbortAgentLoop(signal)) {
-      const abortCompletion = buildAgentLoopAbortCompletion({
-        ...loopClock.resultTiming({
-          turnsCount: turnCounter.previousCompletedTurnCount,
-          toolCallsCount: toolResultTracker.toolCallsCount,
+      const abortCompletion = buildAgentLoopAbortCompletion(
+        buildAgentLoopAbortCompletionInput({
+          ...loopClock.resultTiming({
+            turnsCount: turnCounter.previousCompletedTurnCount,
+            toolCallsCount: toolResultTracker.toolCallsCount,
+          }),
         }),
-      });
+      );
       for (const event of abortCompletion.events) {
         yield event;
       }
@@ -486,12 +491,14 @@ export async function* agentLoop(
     }
 
     if (shouldAbortAgentLoop(signal)) {
-      const abortCompletion = buildAgentLoopAbortCompletion({
-        ...loopClock.resultTiming({
-          turnsCount: turnCounter.previousCompletedTurnCount,
-          toolCallsCount: toolResultTracker.toolCallsCount,
+      const abortCompletion = buildAgentLoopAbortCompletion(
+        buildAgentLoopAbortCompletionInput({
+          ...loopClock.resultTiming({
+            turnsCount: turnCounter.previousCompletedTurnCount,
+            toolCallsCount: toolResultTracker.toolCallsCount,
+          }),
         }),
-      });
+      );
       for (const event of abortCompletion.events) {
         yield event;
       }
@@ -581,12 +588,14 @@ export async function* agentLoop(
       }
 
       if (shouldAbortAgentLoop(signal)) {
-        const abortCompletion = buildAgentLoopAbortCompletion({
-          ...loopClock.resultTiming({
-            turnsCount,
-            toolCallsCount: toolResultTracker.toolCallsCount,
+        const abortCompletion = buildAgentLoopAbortCompletion(
+          buildAgentLoopAbortCompletionInput({
+            ...loopClock.resultTiming({
+              turnsCount,
+              toolCallsCount: toolResultTracker.toolCallsCount,
+            }),
           }),
-        });
+        );
         for (const event of abortCompletion.events) {
           yield event;
         }
@@ -656,12 +665,14 @@ export async function* agentLoop(
     }
 
     if (shouldAbortAgentLoop(signal)) {
-      const abortCompletion = buildAgentLoopAbortCompletion({
-        ...loopClock.resultTiming({
-          turnsCount,
-          toolCallsCount: toolResultTracker.toolCallsCount,
+      const abortCompletion = buildAgentLoopAbortCompletion(
+        buildAgentLoopAbortCompletionInput({
+          ...loopClock.resultTiming({
+            turnsCount,
+            toolCallsCount: toolResultTracker.toolCallsCount,
+          }),
         }),
-      });
+      );
       for (const event of abortCompletion.events) {
         yield event;
       }
