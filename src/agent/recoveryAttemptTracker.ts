@@ -1,4 +1,5 @@
 export {
+  buildAgentRecoveryExhaustedEffectsFromTracker,
   buildAgentRecoveryExhaustedProjectionInputFromTracker,
   consumeAgentRecoveryResetAttempt,
   consumeAgentRecoveryResetEffects,

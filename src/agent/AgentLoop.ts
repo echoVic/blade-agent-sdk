@@ -18,7 +18,7 @@ import {
   shouldStopAgentLoopToolResultProcessing,
 } from './ExecutionEpoch.js';
 import {
-  buildAgentRecoveryExhaustedProjectionInputFromTracker,
+  buildAgentRecoveryExhaustedEffectsFromTracker,
   consumeAgentRecoveryResetEffects,
   createAgentRecoveryAttemptTracker,
   hasAgentRecoveryAttemptExhausted,
@@ -29,7 +29,6 @@ import {
   buildAgentModelFallbackEvent,
   buildAgentRecoveryCompactResultEffects,
   buildAgentRecoveryCompactStreamFromHookContainer,
-  buildAgentRecoveryExhaustedEffects,
   consumeAgentRecoveryCompactStream,
   emitAgentRecoveryEffects,
   hasAgentReactiveCompactHook,
@@ -390,12 +389,10 @@ export async function* agentLoop(
         tracker: recoveryAttemptTracker,
         turn: turnsCount,
       })) {
-        const recoveryExhaustedEffects = buildAgentRecoveryExhaustedEffects(
-          buildAgentRecoveryExhaustedProjectionInputFromTracker({
-            turn: turnsCount,
-            tracker: recoveryAttemptTracker,
-          }),
-        );
+        const recoveryExhaustedEffects = buildAgentRecoveryExhaustedEffectsFromTracker({
+          turn: turnsCount,
+          tracker: recoveryAttemptTracker,
+        });
         yield* emitAgentRecoveryEffects({ effects: recoveryExhaustedEffects, hooks });
       }
       throw llmError;

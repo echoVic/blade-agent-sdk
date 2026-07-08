@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  buildAgentRecoveryExhaustedEffectsFromTracker,
   buildAgentRecoveryExhaustedProjectionInputFromTracker,
   consumeAgentRecoveryResetAttempt,
   consumeAgentRecoveryResetEffects,
@@ -220,6 +221,35 @@ describe('agent recovery attempt tracker', () => {
       kind: 'exhausted',
       turn: 5,
       attempt: 2,
+    });
+  });
+
+  it('builds recovery exhausted effects from tracker state', () => {
+    const tracker = createAgentRecoveryAttemptTracker();
+    tracker.startAttempt(4);
+    tracker.startAttempt(5);
+
+    expect(
+      buildAgentRecoveryExhaustedEffectsFromTracker({
+        tracker,
+        turn: 5,
+      }),
+    ).toEqual({
+      stateChanges: [
+        {
+          turn: 5,
+          phase: 'failed',
+          reason: 'recovery_exhausted',
+          attempt: 2,
+        },
+      ],
+      events: [
+        {
+          type: 'recovery',
+          phase: 'failed',
+          reason: 'recovery_exhausted',
+        },
+      ],
     });
   });
 });

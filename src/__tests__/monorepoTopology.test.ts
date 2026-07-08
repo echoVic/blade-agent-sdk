@@ -727,7 +727,8 @@ describe('monorepo topology', () => {
     );
     expect(rootAgentLoopSource).not.toContain('shouldRunAgentLoopBeforeTurnHook');
     expect(rootAgentLoopSource).not.toContain('consumeAgentLoopBeforeTurnStream');
-    expect(rootAgentLoopSource).toContain(
+    expect(rootAgentLoopSource).toContain('buildAgentRecoveryExhaustedEffectsFromTracker');
+    expect(rootAgentLoopSource).not.toContain(
       'buildAgentRecoveryExhaustedProjectionInputFromTracker',
     );
     expect(rootAgentLoopSource).not.toContain('recoveryAttemptTracker.attempt');
@@ -802,7 +803,11 @@ describe('monorepo topology', () => {
     expect(rootAgentLoopSource).toContain('buildAgentRecoveryCompactResultEffects');
     expect(rootAgentLoopSource).not.toContain('buildAgentRecoveryCompactFailedEffects');
     expect(rootAgentLoopSource).not.toContain('buildAgentRecoveryRetryingEffects');
-    expect(rootAgentLoopSource).toContain('buildAgentRecoveryExhaustedEffects');
+    expect(rootAgentLoopSource).toContain('buildAgentRecoveryExhaustedEffectsFromTracker');
+    expect(rootAgentLoopSource).not.toContain(
+      'buildAgentRecoveryExhaustedProjectionInputFromTracker',
+    );
+    expect(rootAgentLoopSource).not.toContain('buildAgentRecoveryExhaustedEffects(');
     expect(rootAgentLoopSource).toContain('emitAgentRecoveryEffects');
     expect(rootAgentLoopSource).not.toContain('runAgentRecoveryStateChangeHooks');
     expect(rootAgentLoopSource).not.toContain('const onRecoveryStateChange');
