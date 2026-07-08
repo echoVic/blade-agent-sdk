@@ -1,7 +1,49 @@
 import { describe, expect, it } from 'vitest';
-import { consumeAgentLoopTurnStream } from '../loop/turnStream.js';
+import {
+  buildAgentLoopRunTurnInput,
+  consumeAgentLoopTurnStream,
+} from '../loop/turnStream.js';
 
 describe('agent loop turn stream consumption', () => {
+  it('projects root run-turn input without owning runtime side effects', () => {
+    const turnState = { id: 'turn-state' };
+    const messages = [{ role: 'user', content: 'hello' }] as const;
+    const executionPipeline = { name: 'pipeline' };
+    const signal = new AbortController().signal;
+    const epoch = { id: 'epoch' };
+    const executionContext = { cwd: '/tmp/project' };
+    const logger = { debug: () => undefined };
+    const toolHooks = {
+      onUpdate: () => undefined,
+    };
+
+    expect(
+      buildAgentLoopRunTurnInput({
+        turnState,
+        messages,
+        executionPipeline,
+        streaming: true,
+        signal,
+        epoch,
+        executionContext,
+        permissionMode: 'acceptEdits',
+        logger,
+        toolHooks,
+      }),
+    ).toEqual({
+      turnState,
+      messages,
+      executionPipeline,
+      streaming: true,
+      signal,
+      epoch,
+      executionContext,
+      permissionMode: 'acceptEdits',
+      logger,
+      toolHooks,
+    });
+  });
+
   it('passes through run-turn events and projects the terminal outcome', async () => {
     async function* runTurnStream(): AsyncGenerator<
       { type: 'stream_delta'; content: string },

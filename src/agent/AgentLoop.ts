@@ -106,7 +106,10 @@ import {
   shouldEmitAgentLoopTurnStart,
   shouldRunAgentLoopBeforeTurnHook,
 } from './loop/turnCounter.js';
-import { consumeAgentLoopTurnStream } from './loop/turnStream.js';
+import {
+  buildAgentLoopRunTurnInput,
+  consumeAgentLoopTurnStream,
+} from './loop/turnStream.js';
 import type { FunctionToolCall } from './loop/types.js';
 import type { ConversationState } from './state/ConversationState.js';
 import type { TurnState } from './state/TurnState.js';
@@ -290,23 +293,25 @@ export async function* agentLoop(
     }> | undefined;
 
     try {
-      const turnGen = runTurn({
-        turnState: turnStateProjection.turnState,
-        messages: convState.toArray(),
-        executionPipeline,
-        streaming,
-        signal,
-        epoch,
-        executionContext: turnStateProjection.executionContext,
-        permissionMode: turnStateProjection.permissionMode,
-        logger: config.logger,
-        toolHooks: {
-          onBeforeExec: toolHooks?.beforeExec,
-          onAfterExec: toolHooks?.afterExec,
-          onAfterExecEpochDiscard: toolHooks?.afterExecEpochDiscard,
-          onUpdate: toolHooks?.onUpdate,
-        },
-      });
+      const turnGen = runTurn(
+        buildAgentLoopRunTurnInput({
+          turnState: turnStateProjection.turnState,
+          messages: convState.toArray(),
+          executionPipeline,
+          streaming,
+          signal,
+          epoch,
+          executionContext: turnStateProjection.executionContext,
+          permissionMode: turnStateProjection.permissionMode,
+          logger: config.logger,
+          toolHooks: {
+            onBeforeExec: toolHooks?.beforeExec,
+            onAfterExec: toolHooks?.afterExec,
+            onAfterExecEpochDiscard: toolHooks?.afterExecEpochDiscard,
+            onUpdate: toolHooks?.onUpdate,
+          },
+        }),
+      );
       const turnStreamResult = yield* consumeAgentLoopTurnStream(turnGen);
       turnResult = turnStreamResult.turnResult;
       streamingExecutionResults = turnStreamResult.streamingExecutionResults;
