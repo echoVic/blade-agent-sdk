@@ -27,6 +27,7 @@ import {
 } from './recoveryAttemptTracker.js';
 import {
   buildAgentModelFallbackEvent,
+  buildAgentRecoveryCompactFailedEffects,
   buildAgentRecoveryCompactStreamFromHookContainer,
   buildAgentRecoveryEffects,
   buildAgentRecoveryProjectionInput,
@@ -374,14 +375,10 @@ export async function* agentLoop(
         }
         const compactStreamResult = yield* consumeAgentRecoveryCompactStream(compactStream);
         if (!compactStreamResult.recovered) {
-          const recoveryFailed = buildAgentRecoveryProjection(
-            buildAgentRecoveryProjectionInput({
-              kind: 'compact_failed',
-              turn: turnsCount,
-              attempt: recoveryAttempt,
-            }),
-          );
-          const recoveryFailedEffects = buildAgentRecoveryEffects(recoveryFailed);
+          const recoveryFailedEffects = buildAgentRecoveryCompactFailedEffects({
+            turn: turnsCount,
+            attempt: recoveryAttempt,
+          });
           await runAgentRecoveryStateChangeHooks({ effects: recoveryFailedEffects, hooks });
           for (const event of recoveryFailedEffects.events) {
             yield event;

@@ -7,6 +7,7 @@ import {
   buildAgentRecoveryEffects,
   buildAgentRecoveryProjectionInput,
   buildAgentRecoveryProjection,
+  buildAgentRecoveryCompactFailedEffects,
   buildAgentRecoveryResetEffects,
   buildAgentRecoveryStartedEffects,
   consumeAgentRecoveryCompactStream,
@@ -234,6 +235,26 @@ describe('agent recovery event projection', () => {
           type: 'recovery',
           phase: 'started',
           reason: 'context_overflow',
+        },
+      ],
+    });
+  });
+
+  it('builds compact-failed recovery effects from the current turn and attempt', () => {
+    expect(buildAgentRecoveryCompactFailedEffects({ turn: 7, attempt: 4 })).toEqual({
+      stateChanges: [
+        {
+          turn: 7,
+          phase: 'failed',
+          reason: 'reactive_compact_failed',
+          attempt: 4,
+        },
+      ],
+      events: [
+        {
+          type: 'recovery',
+          phase: 'failed',
+          reason: 'reactive_compact',
         },
       ],
     });

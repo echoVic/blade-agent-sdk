@@ -1,6 +1,7 @@
 export {
   buildAgentModelFallbackEvent,
   buildAgentRecoveryCompactStreamFromHookContainer,
+  buildAgentRecoveryCompactFailedEffects,
   buildAgentReactiveCompactHookPayload,
   buildAgentReactiveCompactHookPayloadFromConversation,
   buildAgentRecoveryEffects,
