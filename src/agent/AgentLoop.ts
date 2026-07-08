@@ -121,6 +121,7 @@ import {
 } from './loop/turnCounter.js';
 import {
   buildAgentLoopRunTurnInput,
+  buildAgentLoopRunTurnToolHooksInput,
   consumeAgentLoopTurnStream,
 } from './loop/turnStream.js';
 import type { FunctionToolCall } from './loop/types.js';
@@ -326,12 +327,12 @@ export async function* agentLoop(
           executionContext: turnStateProjection.executionContext,
           permissionMode: turnStateProjection.permissionMode,
           logger: config.logger,
-          toolHooks: {
-            onBeforeExec: toolHooks?.beforeExec,
-            onAfterExec: toolHooks?.afterExec,
-            onAfterExecEpochDiscard: toolHooks?.afterExecEpochDiscard,
+          toolHooks: buildAgentLoopRunTurnToolHooksInput({
+            beforeExec: toolHooks?.beforeExec,
+            afterExec: toolHooks?.afterExec,
+            afterExecEpochDiscard: toolHooks?.afterExecEpochDiscard,
             onUpdate: toolHooks?.onUpdate,
-          },
+          }),
         }),
       );
       const turnStreamResult = yield* consumeAgentLoopTurnStream(turnGen);

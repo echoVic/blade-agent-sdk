@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   buildAgentLoopRunTurnInput,
+  buildAgentLoopRunTurnToolHooksInput,
   consumeAgentLoopTurnStream,
 } from '../loop/turnStream.js';
 
@@ -41,6 +42,27 @@ describe('agent loop turn stream consumption', () => {
       permissionMode: 'acceptEdits',
       logger,
       toolHooks,
+    });
+  });
+
+  it('projects run-turn tool hooks from session hook names', () => {
+    const beforeExec = () => Promise.resolve(null);
+    const afterExec = () => Promise.resolve();
+    const afterExecEpochDiscard = () => Promise.resolve();
+    const onUpdate = () => undefined;
+
+    expect(
+      buildAgentLoopRunTurnToolHooksInput({
+        beforeExec,
+        afterExec,
+        afterExecEpochDiscard,
+        onUpdate,
+      }),
+    ).toEqual({
+      onBeforeExec: beforeExec,
+      onAfterExec: afterExec,
+      onAfterExecEpochDiscard: afterExecEpochDiscard,
+      onUpdate,
     });
   });
 

@@ -30,6 +30,56 @@ export interface AgentLoopRunTurnInput<
   toolHooks: TToolHooks;
 }
 
+export interface AgentLoopRunTurnToolHooksInput<
+  TBeforeExec,
+  TAfterExec,
+  TAfterExecEpochDiscard,
+  TOnUpdate,
+> {
+  beforeExec?: TBeforeExec;
+  afterExec?: TAfterExec;
+  afterExecEpochDiscard?: TAfterExecEpochDiscard;
+  onUpdate?: TOnUpdate;
+}
+
+export interface AgentLoopRunTurnToolHooks<
+  TBeforeExec,
+  TAfterExec,
+  TAfterExecEpochDiscard,
+  TOnUpdate,
+> {
+  onBeforeExec?: TBeforeExec;
+  onAfterExec?: TAfterExec;
+  onAfterExecEpochDiscard?: TAfterExecEpochDiscard;
+  onUpdate?: TOnUpdate;
+}
+
+export function buildAgentLoopRunTurnToolHooksInput<
+  TBeforeExec,
+  TAfterExec,
+  TAfterExecEpochDiscard,
+  TOnUpdate,
+>(
+  input: AgentLoopRunTurnToolHooksInput<
+    TBeforeExec,
+    TAfterExec,
+    TAfterExecEpochDiscard,
+    TOnUpdate
+  >,
+): AgentLoopRunTurnToolHooks<
+  TBeforeExec,
+  TAfterExec,
+  TAfterExecEpochDiscard,
+  TOnUpdate
+> {
+  return {
+    onBeforeExec: input.beforeExec,
+    onAfterExec: input.afterExec,
+    onAfterExecEpochDiscard: input.afterExecEpochDiscard,
+    onUpdate: input.onUpdate,
+  };
+}
+
 export function buildAgentLoopRunTurnInput<
   TTurnState,
   TMessages,

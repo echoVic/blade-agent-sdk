@@ -483,6 +483,8 @@ describe('monorepo topology', () => {
     expect(rootAgentLoopSource).toContain('shouldRunAgentLoopBeforeTurnHook');
     expect(rootAgentLoopSource).toContain('consumeAgentLoopBeforeTurnStream');
     expect(rootAgentLoopSource).toContain('buildAgentLoopRunTurnInput');
+    expect(rootAgentLoopSource).toContain('buildAgentLoopRunTurnToolHooksInput');
+    expect(rootAgentLoopSource).not.toContain('onBeforeExec: toolHooks?.beforeExec');
     expect(rootAgentLoopSource).toContain('consumeAgentLoopTurnStream');
     expect(rootAgentLoopSource).toContain('createAgentRecoveryAttemptTracker');
     expect(rootAgentLoopSource).toContain('buildAgentModelFallbackEvent');
