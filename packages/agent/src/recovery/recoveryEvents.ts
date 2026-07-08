@@ -115,6 +115,10 @@ export interface AgentRecoveryEffects {
   events: AgentRecoveryEvent[];
 }
 
+export interface AgentRecoveryResetEffectsInput {
+  turn: number;
+}
+
 export interface AgentRecoveryStateChangeHookContainer {
   recovery?: {
     onStateChange?: (stateChange: AgentRecoveryStateChange) => Promise<void> | void;
@@ -214,6 +218,19 @@ export function buildAgentRecoveryEffects(
     stateChanges: [projection.stateChange],
     events: shouldEmitAgentRecoveryEvent(projection) ? [projection.event] : [],
   };
+}
+
+export function buildAgentRecoveryResetEffects(
+  input: AgentRecoveryResetEffectsInput,
+): AgentRecoveryEffects {
+  return buildAgentRecoveryEffects(
+    buildAgentRecoveryProjection(
+      buildAgentRecoveryProjectionInput({
+        kind: 'reset',
+        turn: input.turn,
+      }),
+    ),
+  );
 }
 
 export async function runAgentRecoveryStateChangeHooks(

@@ -31,6 +31,7 @@ import {
   buildAgentRecoveryEffects,
   buildAgentRecoveryProjectionInput,
   buildAgentRecoveryProjection,
+  buildAgentRecoveryResetEffects,
   consumeAgentRecoveryCompactStream,
   hasAgentReactiveCompactHook,
   runAgentRecoveryStateChangeHooks,
@@ -437,13 +438,7 @@ export async function* agentLoop(
     turnResult = assertAgentLoopTurnResponse(turnResult);
 
     if (consumeAgentRecoveryResetAttempt(recoveryAttemptTracker)) {
-      const recoveryReset = buildAgentRecoveryProjection(
-        buildAgentRecoveryProjectionInput({
-          kind: 'reset',
-          turn: turnsCount,
-        }),
-      );
-      const recoveryResetEffects = buildAgentRecoveryEffects(recoveryReset);
+      const recoveryResetEffects = buildAgentRecoveryResetEffects({ turn: turnsCount });
       await runAgentRecoveryStateChangeHooks({ effects: recoveryResetEffects, hooks });
     }
 

@@ -7,6 +7,7 @@ import {
   buildAgentRecoveryEffects,
   buildAgentRecoveryProjectionInput,
   buildAgentRecoveryProjection,
+  buildAgentRecoveryResetEffects,
   consumeAgentRecoveryCompactStream,
   hasAgentReactiveCompactHook,
   runAgentRecoveryStateChangeHooks,
@@ -196,6 +197,19 @@ describe('agent recovery event projection', () => {
       stateChanges: [
         {
           turn: 4,
+          phase: 'reset',
+          attempt: 0,
+        },
+      ],
+      events: [],
+    });
+  });
+
+  it('builds reset recovery effects from the current turn', () => {
+    expect(buildAgentRecoveryResetEffects({ turn: 5 })).toEqual({
+      stateChanges: [
+        {
+          turn: 5,
           phase: 'reset',
           attempt: 0,
         },

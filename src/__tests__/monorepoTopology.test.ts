@@ -798,6 +798,7 @@ describe('monorepo topology', () => {
     expect(rootAgentLoopSource).toContain('buildAgentRecoveryProjection');
     expect(rootAgentLoopSource).toContain('buildAgentRecoveryProjectionInput');
     expect(rootAgentLoopSource).toContain('buildAgentRecoveryEffects');
+    expect(rootAgentLoopSource).toContain('buildAgentRecoveryResetEffects');
     expect(rootAgentLoopSource).toContain('runAgentRecoveryStateChangeHooks');
     expect(rootAgentLoopSource).not.toContain('const onRecoveryStateChange');
     expect(rootAgentLoopSource).not.toContain('onRecoveryStateChange?.(');
@@ -937,6 +938,7 @@ describe('monorepo topology', () => {
     expect(rootAgentLoopSource).not.toContain("reason: 'reactive_compact_failed'");
     expect(rootAgentLoopSource).not.toContain("reason: 'reactive_compact_retry'");
     expect(rootAgentLoopSource).not.toContain("reason: 'recovery_exhausted'");
+    expect(rootAgentLoopSource).not.toContain("kind: 'reset'");
     expect(rootAgentLoopSource).not.toContain("phase: 'reset',\n        attempt: 0");
     expect(rootAgentLoopSource).not.toContain('shouldEmitAgentRecoveryEvent');
     expect(rootAgentLoopSource).not.toContain('recoveryStarted.stateChange');
