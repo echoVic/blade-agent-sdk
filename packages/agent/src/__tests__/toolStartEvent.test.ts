@@ -1,7 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import type { AgentFunctionToolCall } from '../loop/planToolExecution.js';
+import type { AgentFunctionToolCall, ToolExecutionPlan } from '../loop/planToolExecution.js';
 import type { ToolExecutionRegistryLike } from '../loop/toolBehavior.js';
-import { buildAgentLoopToolStartEvent } from '../loop/toolStartEvent.js';
+import {
+  buildAgentLoopToolStartEvent,
+  buildAgentLoopToolStartEvents,
+} from '../loop/toolStartEvent.js';
 
 const toolCall: AgentFunctionToolCall = {
   id: 'call_read',
@@ -45,5 +48,37 @@ describe('agent loop tool start event projection', () => {
       toolCall,
       toolKind: undefined,
     });
+  });
+
+  it('builds planned tool_start events for every execution-plan call', () => {
+    const writeCall: AgentFunctionToolCall = {
+      id: 'call_write',
+      type: 'function',
+      function: { name: 'Write', arguments: '{"file":"README.md"}' },
+    };
+    const plan: ToolExecutionPlan = {
+      mode: 'mixed',
+      calls: [toolCall, writeCall],
+    };
+    const registry = {
+      get: (name: string) => {
+        if (name === 'Read') return { kind: 'readonly' as const };
+        if (name === 'Write') return { kind: 'write' as const };
+        return undefined;
+      },
+    } satisfies ToolExecutionRegistryLike;
+
+    expect(buildAgentLoopToolStartEvents({ plan, registry })).toEqual([
+      {
+        type: 'tool_start',
+        toolCall,
+        toolKind: 'readonly',
+      },
+      {
+        type: 'tool_start',
+        toolCall: writeCall,
+        toolKind: 'write',
+      },
+    ]);
   });
 });

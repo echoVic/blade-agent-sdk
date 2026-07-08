@@ -445,7 +445,7 @@ describe('monorepo topology', () => {
     expect(rootAgentLoopSource).toContain('createAgentLoopTokenUsageTracker');
     expect(rootAgentLoopSource).toContain('shouldRecordAgentLoopTokenUsage');
     expect(rootAgentLoopSource).toContain('createAgentToolResultTracker');
-    expect(rootAgentLoopSource).toContain('buildAgentLoopToolStartEvent');
+    expect(rootAgentLoopSource).toContain('buildAgentLoopToolStartEvents');
     expect(rootAgentLoopSource).toContain('buildAgentLoopTurnStateProjection');
     expect(rootAgentLoopSource).toContain('buildAgentLoopEffectiveMaxTurns');
     expect(rootAgentLoopSource).toContain('buildAgentLoopTurnLimitContinuation');
@@ -543,6 +543,8 @@ describe('monorepo topology', () => {
       'buildAgentLoopTurnEndEvent({ turn: turnsCount, hasToolCalls: true })',
     );
     expect(rootAgentLoopSource).not.toContain("tc.type === 'function'");
+    expect(rootAgentLoopSource).not.toContain('for (const toolCall of executionPlan.calls)');
+    expect(rootAgentLoopSource).not.toContain('buildAgentLoopToolStartEvent({');
     expect(rootAgentLoopSource).not.toContain('as AgentEvent');
     expect(rootAgentLoopSource).not.toContain('const TOOL_RESULT_BUFFER = 50');
     expect(rootAgentLoopSource).not.toContain('const recentToolResults');

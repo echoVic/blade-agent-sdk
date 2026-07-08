@@ -90,7 +90,7 @@ import {
 } from './loop/tokenUsageTracker.js';
 import { buildAgentLoopToolResultContinuation } from './loop/toolResultContinuation.js';
 import { createAgentToolResultTracker } from './loop/toolResultTracker.js';
-import { buildAgentLoopToolStartEvent } from './loop/toolStartEvent.js';
+import { buildAgentLoopToolStartEvents } from './loop/toolStartEvent.js';
 import { buildAgentLoopTurnStateProjection } from './loop/turnState.js';
 import {
   createAgentLoopTurnCounter,
@@ -525,11 +525,11 @@ export async function* agentLoop(
         turnStateProjection.permissionMode,
       );
 
-      for (const toolCall of executionPlan.calls) {
-        yield buildAgentLoopToolStartEvent({
-          toolCall,
-          registry: executionPipeline.getRegistry(),
-        });
+      for (const event of buildAgentLoopToolStartEvents({
+        plan: executionPlan,
+        registry: executionPipeline.getRegistry(),
+      })) {
+        yield event;
       }
 
       if (shouldAbortAgentLoop(signal)) {
