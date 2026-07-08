@@ -7,6 +7,7 @@ import {
   buildAgentLoopNoToolContent,
   buildAgentLoopNoToolCompletePayload,
   buildAgentLoopNoToolContinuation,
+  buildAgentLoopNoToolStopHooksInput,
   decideAgentLoopNoToolTurn,
   decideNoToolTurn,
   shouldContinueAgentLoopAfterNoToolDecision,
@@ -99,6 +100,14 @@ describe('decideNoToolTurn', () => {
     });
     await expect(decideAgentLoopNoToolTurn(input)).resolves.toEqual({ action: 'finish' });
     expect(onStopCheck).toHaveBeenCalledWith({ content: 'All done', turn: 7 });
+  });
+
+  it('projects no-tool stop hooks from the session stop hook container', () => {
+    const check = vi.fn(async () => ({ shouldStop: true }));
+
+    expect(buildAgentLoopNoToolStopHooksInput({ check })).toEqual({
+      onStopCheck: check,
+    });
   });
 
   it.each([

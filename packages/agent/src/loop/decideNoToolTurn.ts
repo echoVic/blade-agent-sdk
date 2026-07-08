@@ -19,7 +19,7 @@ export const DEFAULT_CONTINUE_REMINDER =
   + 'Continue with the last task that you were asked to work on.\n'
   + '</system-reminder>';
 
-type StopCheck = (ctx: {
+export type StopCheck = (ctx: {
   content: string;
   turn: number;
 }) => Promise<{ shouldStop: boolean; continueReason?: string; warning?: string }>;
@@ -39,6 +39,14 @@ export interface AgentLoopNoToolDecisionInput {
   content: string;
   messages: readonly Message[];
   turn: number;
+  onStopCheck?: StopCheck;
+}
+
+export interface AgentLoopNoToolStopHooksInput {
+  check?: StopCheck;
+}
+
+export interface AgentLoopNoToolStopHooks {
   onStopCheck?: StopCheck;
 }
 
@@ -86,6 +94,14 @@ export function buildAgentLoopNoToolDecisionInput(
     messages: input.messages,
     turn: input.turn,
     onStopCheck: input.onStopCheck,
+  };
+}
+
+export function buildAgentLoopNoToolStopHooksInput(
+  input: AgentLoopNoToolStopHooksInput,
+): AgentLoopNoToolStopHooks {
+  return {
+    onStopCheck: input.check,
   };
 }
 
