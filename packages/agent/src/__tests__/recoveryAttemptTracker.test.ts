@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { createAgentRecoveryAttemptTracker } from '../recovery/recoveryAttemptTracker.js';
+import {
+  consumeAgentRecoveryResetAttempt,
+  createAgentRecoveryAttemptTracker,
+} from '../recovery/recoveryAttemptTracker.js';
 
 describe('agent recovery attempt tracker', () => {
   it('starts without an active recovery attempt', () => {
@@ -52,5 +55,21 @@ describe('agent recovery attempt tracker', () => {
 
     expect(tracker.startAttempt(1)).toBe(1);
     expect(tracker.hasAttemptedTurn(1)).toBe(true);
+  });
+
+  it('reports no reset when there is no consumed recovery attempt', () => {
+    const tracker = createAgentRecoveryAttemptTracker();
+
+    expect(consumeAgentRecoveryResetAttempt(tracker)).toBe(false);
+  });
+
+  it('consumes and reports a reset after a recovery attempt', () => {
+    const tracker = createAgentRecoveryAttemptTracker();
+    tracker.startAttempt(2);
+
+    expect(consumeAgentRecoveryResetAttempt(tracker)).toBe(true);
+    expect(tracker.attempt).toBe(0);
+    expect(tracker.canAttempt(2)).toBe(true);
+    expect(consumeAgentRecoveryResetAttempt(tracker)).toBe(false);
   });
 });

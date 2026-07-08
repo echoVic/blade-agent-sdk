@@ -41,3 +41,9 @@ export function createAgentRecoveryAttemptTracker(): AgentRecoveryAttemptTracker
     },
   };
 }
+
+export function consumeAgentRecoveryResetAttempt(
+  tracker: Pick<AgentRecoveryAttemptTracker, 'consumeResetAttempt'>,
+): boolean {
+  return tracker.consumeResetAttempt() !== null;
+}

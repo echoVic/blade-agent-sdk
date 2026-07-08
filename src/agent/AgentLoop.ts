@@ -18,7 +18,10 @@ import {
   shouldStopAgentLoopToolResultProcessing,
 } from './ExecutionEpoch.js';
 import { isOverflowRecoverable } from './isOverflowRecoverable.js';
-import { createAgentRecoveryAttemptTracker } from './recoveryAttemptTracker.js';
+import {
+  consumeAgentRecoveryResetAttempt,
+  createAgentRecoveryAttemptTracker,
+} from './recoveryAttemptTracker.js';
 import { buildAgentModelFallbackEvent, buildAgentRecoveryProjection } from './recoveryEvents.js';
 import {
   assertAgentLoopTurnResponse,
@@ -350,7 +353,7 @@ export async function* agentLoop(
 
     turnResult = assertAgentLoopTurnResponse(turnResult);
 
-    if (recoveryAttemptTracker.consumeResetAttempt() !== null) {
+    if (consumeAgentRecoveryResetAttempt(recoveryAttemptTracker)) {
       const recoveryReset = buildAgentRecoveryProjection({
         kind: 'reset',
         turn: turnsCount,
