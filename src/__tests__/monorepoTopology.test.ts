@@ -438,7 +438,8 @@ describe('monorepo topology', () => {
     expect(rootAgentLoopSource).toContain('buildAgentLoopToolTurnCompletion');
     expect(rootAgentLoopSource).toContain('buildAgentLoopToolTurnCompletionInput');
     expect(rootAgentLoopSource).not.toContain('buildAgentLoopToolTurnCompletion({');
-    expect(rootAgentLoopSource).toContain('buildAgentLoopTurnRetryEvent');
+    expect(rootAgentLoopSource).toContain('buildAgentLoopReactiveCompactRetryEvent');
+    expect(rootAgentLoopSource).not.toContain('buildAgentLoopTurnRetryEvent');
     expect(rootAgentLoopSource).toContain('buildAgentLoopNoToolContent');
     expect(rootAgentLoopSource).toContain('buildAgentLoopNoToolContinuation');
     expect(rootAgentLoopSource).toContain('runAgentLoopNoToolCompleteHook');
@@ -821,7 +822,7 @@ describe('monorepo topology', () => {
     expect(rootAgentLoopSource).not.toContain('if (signal?.aborted)');
     expect(rootAgentLoopSource).toContain('buildAgentLoopTurnStartEventInput');
     expect(rootAgentLoopSource).not.toContain('yield buildAgentLoopTurnStartEvent({');
-    expect(rootAgentLoopSource).toContain('buildAgentLoopTurnRetryEventInput');
+    expect(rootAgentLoopSource).not.toContain('buildAgentLoopTurnRetryEventInput');
     expect(rootAgentLoopSource).not.toContain('yield buildAgentLoopTurnRetryEvent({');
     expect(rootAgentLoopSource).not.toContain('return {\n        success: true,');
     expect(rootAgentLoopSource).not.toContain('return buildAgentLoopSuccessResult');
@@ -954,6 +955,7 @@ describe('monorepo topology', () => {
     expect(rootAgentLoopSource).not.toContain("kind: 'retrying'");
     expect(rootAgentLoopSource).not.toContain("reason: 'reactive_compact_failed'");
     expect(rootAgentLoopSource).not.toContain("reason: 'reactive_compact_retry'");
+    expect(rootAgentLoopSource).not.toContain("reason: 'reactive_compact'");
     expect(rootAgentLoopSource).not.toContain("reason: 'recovery_exhausted'");
     expect(rootAgentLoopSource).not.toContain("kind: 'reset'");
     expect(rootAgentLoopSource).not.toContain("phase: 'reset',\n        attempt: 0");

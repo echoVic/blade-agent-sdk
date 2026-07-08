@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   buildAgentLoopEndEvent,
+  buildAgentLoopReactiveCompactRetryEvent,
   buildAgentLoopStartEvent,
   buildAgentLoopToolTurnCompletion,
   buildAgentLoopToolTurnCompletionInput,
@@ -60,6 +61,14 @@ describe('agent loop lifecycle event builders', () => {
 
   it('builds retry events for reactive compaction', () => {
     expect(buildAgentLoopTurnRetryEvent({ turn: 5, reason: 'reactive_compact' })).toEqual({
+      type: 'turn_retry',
+      turn: 5,
+      reason: 'reactive_compact',
+    });
+  });
+
+  it('builds reactive compact retry events from the current turn', () => {
+    expect(buildAgentLoopReactiveCompactRetryEvent({ turn: 5 })).toEqual({
       type: 'turn_retry',
       turn: 5,
       reason: 'reactive_compact',

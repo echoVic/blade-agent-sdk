@@ -1,5 +1,6 @@
 export {
   buildAgentLoopEndEvent,
+  buildAgentLoopReactiveCompactRetryEvent,
   buildAgentLoopStartEvent,
   buildAgentLoopToolTurnCompletion,
   buildAgentLoopToolTurnCompletionInput,
@@ -9,6 +10,7 @@ export {
   buildAgentLoopTurnStartEvent,
   buildAgentLoopTurnStartEventInput,
   type AgentLoopEndEvent,
+  type AgentLoopReactiveCompactRetryEventInput,
   type AgentLoopStartEvent,
   type AgentLoopToolTurnCompletion,
   type AgentLoopToolTurnCompletionInput,

@@ -39,6 +39,10 @@ export interface AgentLoopTurnRetryEventInput {
   reason: 'reactive_compact';
 }
 
+export interface AgentLoopReactiveCompactRetryEventInput {
+  turn: number;
+}
+
 export interface AgentLoopToolTurnCompletionInput {
   turn: number;
 }
@@ -117,4 +121,15 @@ export function buildAgentLoopTurnRetryEvent(
     turn: input.turn,
     reason: input.reason,
   };
+}
+
+export function buildAgentLoopReactiveCompactRetryEvent(
+  input: AgentLoopReactiveCompactRetryEventInput,
+): AgentLoopTurnRetryEvent {
+  return buildAgentLoopTurnRetryEvent(
+    buildAgentLoopTurnRetryEventInput({
+      turn: input.turn,
+      reason: 'reactive_compact',
+    }),
+  );
 }
