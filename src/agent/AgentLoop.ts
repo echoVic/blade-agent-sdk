@@ -18,7 +18,11 @@ import { isOverflowRecoverable } from './isOverflowRecoverable.js';
 import { createAgentRecoveryAttemptTracker } from './recoveryAttemptTracker.js';
 import { buildAgentModelFallbackEvent, buildAgentRecoveryProjection } from './recoveryEvents.js';
 import { buildAgentLoopAssistantMessageProjection } from './loop/assistantMessage.js';
-import { buildAgentLoopNoToolContent, decideNoToolTurn } from './loop/decideNoToolTurn.js';
+import {
+  buildAgentLoopNoToolContent,
+  decideNoToolTurn,
+  shouldHandleAgentLoopNoToolTurn,
+} from './loop/decideNoToolTurn.js';
 import { buildAgentLoopEffectiveMaxTurns, decideTurnLimit } from './loop/decideTurnLimit.js';
 import { executeToolCalls } from './loop/executeToolCalls.js';
 import {
@@ -394,7 +398,7 @@ export async function* agentLoop(
     }
 
     // 无 tool calls → 正常结束或重试
-    if (!turnResult.toolCalls || turnResult.toolCalls.length === 0) {
+    if (shouldHandleAgentLoopNoToolTurn(turnResult)) {
       const content = buildAgentLoopNoToolContent({ content: turnResult.content });
       const noToolDecision = await decideNoToolTurn(
         content,

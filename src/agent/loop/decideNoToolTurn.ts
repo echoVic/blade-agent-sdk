@@ -4,5 +4,7 @@ export {
   buildAgentLoopNoToolContent,
   decideNoToolTurn,
   type AgentLoopNoToolContentInput,
+  type AgentLoopToolCallResponseLike,
   type NoToolTurnDecision,
+  shouldHandleAgentLoopNoToolTurn,
 } from '../../../packages/agent/src/loop/decideNoToolTurn.js';

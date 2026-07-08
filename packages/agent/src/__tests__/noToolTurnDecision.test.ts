@@ -5,9 +5,26 @@ import {
   RETRY_PROMPT,
   buildAgentLoopNoToolContent,
   decideNoToolTurn,
+  shouldHandleAgentLoopNoToolTurn,
 } from '../loop/index.js';
 
 describe('decideNoToolTurn', () => {
+  it('detects responses that should follow the no-tool branch', () => {
+    expect(shouldHandleAgentLoopNoToolTurn({})).toBe(true);
+    expect(shouldHandleAgentLoopNoToolTurn({ toolCalls: [] })).toBe(true);
+    expect(
+      shouldHandleAgentLoopNoToolTurn({
+        toolCalls: [
+          {
+            id: 'call_1',
+            type: 'function',
+            function: { name: 'Read', arguments: '{}' },
+          },
+        ],
+      }),
+    ).toBe(false);
+  });
+
   it('normalizes missing no-tool response content to an empty string', () => {
     expect(buildAgentLoopNoToolContent({ content: 'All done' })).toBe('All done');
     expect(buildAgentLoopNoToolContent({ content: '' })).toBe('');

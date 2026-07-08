@@ -422,6 +422,7 @@ describe('monorepo topology', () => {
     expect(rootAgentLoopSource).toContain('buildAgentLoopTurnEndEvent');
     expect(rootAgentLoopSource).toContain('buildAgentLoopTurnRetryEvent');
     expect(rootAgentLoopSource).toContain('buildAgentLoopNoToolContent');
+    expect(rootAgentLoopSource).toContain('shouldHandleAgentLoopNoToolTurn');
     expect(rootAgentLoopSource).toContain('buildAgentLoopResponseEvents');
     expect(rootAgentLoopSource).toContain('buildAgentLoopSuccessResult');
     expect(rootAgentLoopSource).toContain('buildAgentLoopToolExitDecision');
@@ -479,6 +480,9 @@ describe('monorepo topology', () => {
     expect(rootAgentLoopSource).not.toContain('const toolDef = executionPipeline.getRegistry().get');
     expect(rootAgentLoopSource).not.toContain('const toolKind = toolDef?.kind');
     expect(rootAgentLoopSource).not.toContain('turnResult.toolCalls.filter');
+    expect(rootAgentLoopSource).not.toContain(
+      '!turnResult.toolCalls || turnResult.toolCalls.length === 0',
+    );
     expect(rootAgentLoopSource).not.toContain("tc.type === 'function'");
     expect(rootAgentLoopSource).not.toContain('as AgentEvent');
     expect(rootAgentLoopSource).not.toContain('const TOOL_RESULT_BUFFER = 50');

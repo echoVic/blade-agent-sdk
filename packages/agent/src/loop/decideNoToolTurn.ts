@@ -29,6 +29,16 @@ export interface AgentLoopNoToolContentInput {
   content?: string;
 }
 
+export interface AgentLoopToolCallResponseLike {
+  toolCalls?: readonly unknown[];
+}
+
+export function shouldHandleAgentLoopNoToolTurn(
+  response: AgentLoopToolCallResponseLike,
+): boolean {
+  return !response.toolCalls || response.toolCalls.length === 0;
+}
+
 export function buildAgentLoopNoToolContent(input: AgentLoopNoToolContentInput): string {
   return input.content || '';
 }
