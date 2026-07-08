@@ -2,6 +2,7 @@ import type { Message } from '@blade-ai/ai/chat';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   AGENT_LOOP_TURN_SAFETY_LIMIT,
+  applyAgentLoopTurnLimitContinuation,
   buildAgentLoopTurnLimitContinuation,
   buildAgentLoopTurnLimitDecisionInput,
   buildAgentLoopTurnLimitDecisionInputFromLoopState,
@@ -333,5 +334,44 @@ describe('decideTurnLimit', () => {
         buildAgentLoopTurnLimitContinuation(await decideTurnLimit(baseInput)),
       ),
     ).toBe(false);
+  });
+
+  it('applies turn-limit continuation state updates to conversation state', async () => {
+    const operations: unknown[] = [];
+    const compactedMessages: Message[] = [{ role: 'assistant', content: 'summary' }];
+    const continueMessage: Message = { role: 'user', content: 'continue' };
+    const continuation = buildAgentLoopTurnLimitContinuation(
+      await decideTurnLimit({
+        ...baseInput,
+        onTurnLimitReached: async () => ({ continue: true }),
+        onTurnLimitCompact: async () => ({
+          success: true,
+          compactedMessages,
+          continueMessage,
+        }),
+      }),
+    );
+
+    if (!shouldApplyAgentLoopTurnLimitContinuation(continuation)) {
+      throw new Error('expected an applicable turn-limit continuation');
+    }
+
+    const applied = applyAgentLoopTurnLimitContinuation({
+      conversation: {
+        replaceContent: (messages) => {
+          operations.push(['replaceContent', messages]);
+        },
+        append: (...messages) => {
+          operations.push(['append', messages]);
+        },
+      },
+      continuation,
+    });
+
+    expect(applied).toBe(continuation);
+    expect(operations).toEqual([
+      ['replaceContent', compactedMessages],
+      ['append', [continueMessage]],
+    ]);
   });
 });

@@ -80,6 +80,11 @@ export interface AgentLoopTurnLimitConversationLike {
   getContextMessages(): Message[];
 }
 
+export interface AgentLoopTurnLimitContinuationConversationLike {
+  replaceContent(messages: Message[]): void;
+  append(...messages: Message[]): void;
+}
+
 export interface AgentLoopTurnLimitToolResultTrackerLike {
   readonly toolCallsCount: number;
 }
@@ -111,6 +116,11 @@ export interface ShouldCheckAgentLoopTurnLimitInput {
   turnsCount: number;
   effectiveMaxTurns: number;
   isYoloMode: boolean;
+}
+
+export interface ApplyAgentLoopTurnLimitContinuationInput {
+  conversation: AgentLoopTurnLimitContinuationConversationLike;
+  continuation: AgentLoopApplicableTurnLimitContinuation;
 }
 
 export function buildAgentLoopEffectiveMaxTurns(
@@ -204,6 +214,14 @@ export function shouldApplyAgentLoopTurnLimitContinuation(
   continuation: AgentLoopTurnLimitContinuation,
 ): continuation is AgentLoopApplicableTurnLimitContinuation {
   return continuation.shouldReplaceMessages;
+}
+
+export function applyAgentLoopTurnLimitContinuation(
+  input: ApplyAgentLoopTurnLimitContinuationInput,
+): AgentLoopApplicableTurnLimitContinuation {
+  input.conversation.replaceContent(input.continuation.compactedMessages);
+  input.conversation.append(...input.continuation.appendMessages);
+  return input.continuation;
 }
 
 export async function decideTurnLimit(

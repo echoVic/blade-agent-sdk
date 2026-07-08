@@ -1,5 +1,6 @@
 export {
   AGENT_LOOP_TURN_SAFETY_LIMIT,
+  applyAgentLoopTurnLimitContinuation,
   buildAgentLoopTurnLimitContinuation,
   buildAgentLoopTurnLimitDecisionInput,
   buildAgentLoopTurnLimitDecisionInputFromLoopState,
@@ -10,8 +11,10 @@ export {
   shouldApplyAgentLoopTurnLimitContinuation,
   shouldCheckAgentLoopTurnLimit,
   shouldStopAgentLoopForTurnLimitDecision,
+  type ApplyAgentLoopTurnLimitContinuationInput,
   type AgentLoopApplicableTurnLimitContinuation,
   type AgentLoopTurnLimitClockLike,
+  type AgentLoopTurnLimitContinuationConversationLike,
   type AgentLoopTurnLimitConversationLike,
   type AgentLoopTurnLimitDecisionLoopStateInput,
   type AgentLoopTurnLimitHooksInput,

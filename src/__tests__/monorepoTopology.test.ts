@@ -628,6 +628,13 @@ describe('monorepo topology', () => {
     expect(rootAgentLoopSource).toContain('buildAgentLoopTurnLimitContinuation');
     expect(rootAgentLoopSource).toContain('buildAgentLoopTurnLimitStopCompletion');
     expect(rootAgentLoopSource).toContain('shouldApplyAgentLoopTurnLimitContinuation');
+    expect(rootAgentLoopSource).toContain('applyAgentLoopTurnLimitContinuation');
+    expect(rootAgentLoopSource).not.toContain(
+      'convState.replaceContent(turnLimitContinuation.compactedMessages)',
+    );
+    expect(rootAgentLoopSource).not.toContain(
+      'convState.append(...turnLimitContinuation.appendMessages)',
+    );
     expect(rootAgentLoopSource).toContain(
       'buildAgentLoopExecuteToolCallsInputFromTurnProjection',
     );

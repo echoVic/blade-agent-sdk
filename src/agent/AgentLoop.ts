@@ -49,9 +49,10 @@ import {
   shouldHandleAgentLoopNoToolTurn,
 } from './loop/decideNoToolTurn.js';
 import {
+  applyAgentLoopTurnLimitContinuation,
   buildAgentLoopEffectiveMaxTurns,
-  buildAgentLoopTurnLimitDecisionInputFromLoopState,
   buildAgentLoopTurnLimitContinuation,
+  buildAgentLoopTurnLimitDecisionInputFromLoopState,
   buildAgentLoopTurnLimitStopCompletion,
   decideTurnLimit,
   shouldApplyAgentLoopTurnLimitContinuation,
@@ -726,8 +727,10 @@ export async function* agentLoop(
 
       const turnLimitContinuation = buildAgentLoopTurnLimitContinuation(limitDecision);
       if (shouldApplyAgentLoopTurnLimitContinuation(turnLimitContinuation)) {
-        convState.replaceContent(turnLimitContinuation.compactedMessages);
-        convState.append(...turnLimitContinuation.appendMessages);
+        applyAgentLoopTurnLimitContinuation({
+          conversation: convState,
+          continuation: turnLimitContinuation,
+        });
       }
       resetAgentLoopTurnCounter({ counter: turnCounter });
     }
