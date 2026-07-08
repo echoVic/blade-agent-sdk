@@ -39,8 +39,7 @@ import {
   buildAgentLoopNoToolContent,
   buildAgentLoopNoToolCompletePayload,
   buildAgentLoopNoToolContinuation,
-  buildAgentLoopNoToolDecisionInput,
-  buildAgentLoopNoToolStopHooksInput,
+  buildAgentLoopNoToolDecisionInputFromConversation,
   decideAgentLoopNoToolTurn,
   shouldContinueAgentLoopAfterNoToolDecision,
   shouldHandleAgentLoopNoToolTurn,
@@ -525,13 +524,12 @@ export async function* agentLoop(
     // 无 tool calls → 正常结束或重试
     if (shouldHandleAgentLoopNoToolTurn(turnResult)) {
       const content = buildAgentLoopNoToolContent({ content: turnResult.content });
-      const stopCheck = stopHooks?.check;
       const noToolDecision = await decideAgentLoopNoToolTurn(
-        buildAgentLoopNoToolDecisionInput({
+        buildAgentLoopNoToolDecisionInputFromConversation({
           content,
-          messages: convState.toArray(),
+          conversation: convState,
           turn: turnsCount,
-          ...buildAgentLoopNoToolStopHooksInput({ check: stopCheck }),
+          check: stopHooks?.check,
         }),
       );
       if (shouldContinueAgentLoopAfterNoToolDecision(noToolDecision)) {

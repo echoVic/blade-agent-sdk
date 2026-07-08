@@ -4,6 +4,7 @@ import {
   DEFAULT_CONTINUE_REMINDER,
   RETRY_PROMPT,
   buildAgentLoopNoToolDecisionInput,
+  buildAgentLoopNoToolDecisionInputFromConversation,
   buildAgentLoopNoToolContent,
   buildAgentLoopNoToolCompletePayload,
   buildAgentLoopNoToolContinuation,
@@ -100,6 +101,28 @@ describe('decideNoToolTurn', () => {
     });
     await expect(decideAgentLoopNoToolTurn(input)).resolves.toEqual({ action: 'finish' });
     expect(onStopCheck).toHaveBeenCalledWith({ content: 'All done', turn: 7 });
+  });
+
+  it('projects no-tool decision input from conversation state and stop hooks', () => {
+    const messages: Message[] = [{ role: 'user', content: 'continue' }];
+    const check = vi.fn(async () => ({ shouldStop: true }));
+    const conversation = {
+      toArray: () => messages,
+    };
+
+    expect(
+      buildAgentLoopNoToolDecisionInputFromConversation({
+        content: 'All done',
+        conversation,
+        turn: 7,
+        check,
+      }),
+    ).toEqual({
+      content: 'All done',
+      messages,
+      turn: 7,
+      onStopCheck: check,
+    });
   });
 
   it('projects no-tool stop hooks from the session stop hook container', () => {
