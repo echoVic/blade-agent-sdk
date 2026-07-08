@@ -32,12 +32,20 @@ export interface RequestAgentLoopTurnRetryInput {
   counter: Pick<AgentLoopTurnCounter, 'requestRetry'>;
 }
 
+export interface ResetAgentLoopTurnCounterInput {
+  counter: Pick<AgentLoopTurnCounter, 'reset'>;
+}
+
 export function shouldEmitAgentLoopTurnStart(turnStart: AgentLoopTurnStart): boolean {
   return turnStart.started;
 }
 
 export function requestAgentLoopTurnRetry(input: RequestAgentLoopTurnRetryInput): void {
   input.counter.requestRetry();
+}
+
+export function resetAgentLoopTurnCounter(input: ResetAgentLoopTurnCounterInput): void {
+  input.counter.reset();
 }
 
 export function buildAgentLoopBeforeTurnHookPayload<TMessage>(

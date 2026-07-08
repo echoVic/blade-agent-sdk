@@ -5,6 +5,7 @@ import {
   consumeAgentLoopBeforeTurnStream,
   createAgentLoopTurnCounter,
   requestAgentLoopTurnRetry,
+  resetAgentLoopTurnCounter,
   shouldEmitAgentLoopTurnStart,
   shouldRunAgentLoopBeforeTurnHook,
 } from '../loop/turnCounter.js';
@@ -79,6 +80,20 @@ describe('agent loop turn counter', () => {
     counter.beginTurn();
     counter.requestRetry();
     counter.reset();
+
+    expect(counter.turnsCount).toBe(0);
+    expect(counter.previousCompletedTurnCount).toBe(0);
+    expect(counter.shouldRunBeforeTurn()).toBe(true);
+    expect(counter.beginTurn()).toEqual({ started: true, turn: 1 });
+  });
+
+  it('resets turn counting through the loop helper', () => {
+    const counter = createAgentLoopTurnCounter();
+
+    counter.beginTurn();
+    counter.beginTurn();
+    counter.requestRetry();
+    resetAgentLoopTurnCounter({ counter });
 
     expect(counter.turnsCount).toBe(0);
     expect(counter.previousCompletedTurnCount).toBe(0);

@@ -4,6 +4,7 @@ export {
   consumeAgentLoopBeforeTurnStream,
   createAgentLoopTurnCounter,
   requestAgentLoopTurnRetry,
+  resetAgentLoopTurnCounter,
   shouldEmitAgentLoopTurnStart,
   shouldRunAgentLoopBeforeTurnHook,
   type AgentLoopBeforeTurnHookPayload,
@@ -12,4 +13,5 @@ export {
   type AgentLoopTurnCounter,
   type AgentLoopTurnStart,
   type RequestAgentLoopTurnRetryInput,
+  type ResetAgentLoopTurnCounterInput,
 } from '../../../packages/agent/src/loop/turnCounter.js';

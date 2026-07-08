@@ -122,6 +122,7 @@ import {
   consumeAgentLoopBeforeTurnStream,
   createAgentLoopTurnCounter,
   requestAgentLoopTurnRetry,
+  resetAgentLoopTurnCounter,
   shouldEmitAgentLoopTurnStart,
   shouldRunAgentLoopBeforeTurnHook,
 } from './loop/turnCounter.js';
@@ -709,7 +710,7 @@ export async function* agentLoop(
         convState.replaceContent(turnLimitContinuation.compactedMessages);
         convState.append(...turnLimitContinuation.appendMessages);
       }
-      turnCounter.reset();
+      resetAgentLoopTurnCounter({ counter: turnCounter });
     }
   }
 }
