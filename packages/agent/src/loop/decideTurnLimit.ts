@@ -76,6 +76,32 @@ export interface AgentLoopTurnLimitHooksInput {
   onTurnLimitCompact?: TurnLimitCompactHandler;
 }
 
+export interface AgentLoopTurnLimitConversationLike {
+  getContextMessages(): Message[];
+}
+
+export interface AgentLoopTurnLimitToolResultTrackerLike {
+  readonly toolCallsCount: number;
+}
+
+export interface AgentLoopTurnLimitClockLike {
+  readonly startTime: number;
+}
+
+export interface AgentLoopTurnLimitTokenUsageTrackerLike {
+  readonly totalTokens: number;
+}
+
+export interface AgentLoopTurnLimitDecisionLoopStateInput {
+  maxTurns: number;
+  turnsCount: number;
+  conversation: AgentLoopTurnLimitConversationLike;
+  toolResultTracker: AgentLoopTurnLimitToolResultTrackerLike;
+  loopClock: AgentLoopTurnLimitClockLike;
+  tokenUsageTracker: AgentLoopTurnLimitTokenUsageTrackerLike;
+  hooks?: AgentLoopTurnLimitHooksInput | null;
+}
+
 export interface BuildAgentLoopEffectiveMaxTurnsInput {
   maxTurns: number;
   isYoloMode: boolean;
@@ -121,6 +147,23 @@ export function buildAgentLoopTurnLimitHooksInput(
     onTurnLimitReached: input.onTurnLimitReached,
     onTurnLimitCompact: input.onTurnLimitCompact,
   };
+}
+
+export function buildAgentLoopTurnLimitDecisionInputFromLoopState(
+  input: AgentLoopTurnLimitDecisionLoopStateInput,
+): DecideTurnLimitInput {
+  return buildAgentLoopTurnLimitDecisionInput({
+    maxTurns: input.maxTurns,
+    turnsCount: input.turnsCount,
+    contextMessages: input.conversation.getContextMessages(),
+    toolCallsCount: input.toolResultTracker.toolCallsCount,
+    startTime: input.loopClock.startTime,
+    totalTokens: input.tokenUsageTracker.totalTokens,
+    ...buildAgentLoopTurnLimitHooksInput({
+      onTurnLimitReached: input.hooks?.onTurnLimitReached,
+      onTurnLimitCompact: input.hooks?.onTurnLimitCompact,
+    }),
+  });
 }
 
 export function shouldStopAgentLoopForTurnLimitDecision(

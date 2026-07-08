@@ -528,9 +528,35 @@ describe('monorepo topology', () => {
     );
     expect(rootAgentLoopSource).toContain('buildAgentLoopTurnStateProjection');
     expect(rootAgentLoopSource).toContain('buildAgentLoopEffectiveMaxTurns');
-    expect(rootAgentLoopSource).toContain('buildAgentLoopTurnLimitDecisionInput');
-    expect(rootAgentLoopSource).toContain('buildAgentLoopTurnLimitHooksInput');
+    expect(rootAgentLoopSource).toContain(
+      'buildAgentLoopTurnLimitDecisionInputFromLoopState',
+    );
+    expect(rootAgentLoopSource).not.toContain('buildAgentLoopTurnLimitHooksInput');
     expect(rootAgentLoopSource).not.toContain('onTurnLimitReached: turnHooks?.onTurnLimitReached');
+    expect(rootAgentLoopSource).not.toMatch(
+      /buildAgentLoopTurnLimitDecisionInput\(\{\s+maxTurns: config\.maxTurns,\s+turnsCount,\s+contextMessages: convState\.getContextMessages\(\)/,
+    );
+    const turnLimitDecisionInputStart = rootAgentLoopSource.indexOf(
+      'buildAgentLoopTurnLimitDecisionInputFromLoopState({',
+    );
+    const turnLimitDecisionInputEnd = rootAgentLoopSource.indexOf(
+      'if (shouldStopAgentLoopForTurnLimitDecision',
+      turnLimitDecisionInputStart,
+    );
+    const turnLimitDecisionInputSource = rootAgentLoopSource.slice(
+      turnLimitDecisionInputStart,
+      turnLimitDecisionInputEnd,
+    );
+    expect(turnLimitDecisionInputSource).not.toContain(
+      'contextMessages: convState.getContextMessages()',
+    );
+    expect(turnLimitDecisionInputSource).not.toContain(
+      'toolCallsCount: toolResultTracker.toolCallsCount',
+    );
+    expect(turnLimitDecisionInputSource).not.toContain('startTime: loopClock.startTime');
+    expect(turnLimitDecisionInputSource).not.toContain(
+      'totalTokens: tokenUsageTracker.totalTokens',
+    );
     expect(rootAgentLoopSource).toContain('buildAgentLoopTurnLimitContinuation');
     expect(rootAgentLoopSource).toContain('buildAgentLoopTurnLimitStopCompletion');
     expect(rootAgentLoopSource).toContain('shouldApplyAgentLoopTurnLimitContinuation');

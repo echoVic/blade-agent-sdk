@@ -46,8 +46,7 @@ import {
 } from './loop/decideNoToolTurn.js';
 import {
   buildAgentLoopEffectiveMaxTurns,
-  buildAgentLoopTurnLimitDecisionInput,
-  buildAgentLoopTurnLimitHooksInput,
+  buildAgentLoopTurnLimitDecisionInputFromLoopState,
   buildAgentLoopTurnLimitContinuation,
   buildAgentLoopTurnLimitStopCompletion,
   decideTurnLimit,
@@ -690,20 +689,15 @@ export async function* agentLoop(
 
     // 轮次上限
     if (shouldCheckAgentLoopTurnLimit({ turnsCount, effectiveMaxTurns, isYoloMode })) {
-      const onTurnLimitReached = turnHooks?.onTurnLimitReached;
-      const onTurnLimitCompact = turnHooks?.onTurnLimitCompact;
       const limitDecision = await decideTurnLimit(
-        buildAgentLoopTurnLimitDecisionInput({
+        buildAgentLoopTurnLimitDecisionInputFromLoopState({
           maxTurns: config.maxTurns,
           turnsCount,
-          contextMessages: convState.getContextMessages(),
-          toolCallsCount: toolResultTracker.toolCallsCount,
-          startTime: loopClock.startTime,
-          totalTokens: tokenUsageTracker.totalTokens,
-          ...buildAgentLoopTurnLimitHooksInput({
-            onTurnLimitReached,
-            onTurnLimitCompact,
-          }),
+          conversation: convState,
+          toolResultTracker,
+          loopClock,
+          tokenUsageTracker,
+          hooks: turnHooks,
         }),
       );
       if (shouldStopAgentLoopForTurnLimitDecision(limitDecision)) {

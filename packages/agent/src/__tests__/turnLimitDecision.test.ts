@@ -4,6 +4,7 @@ import {
   AGENT_LOOP_TURN_SAFETY_LIMIT,
   buildAgentLoopTurnLimitContinuation,
   buildAgentLoopTurnLimitDecisionInput,
+  buildAgentLoopTurnLimitDecisionInputFromLoopState,
   buildAgentLoopTurnLimitHooksInput,
   buildAgentLoopTurnLimitStopCompletion,
   buildAgentLoopEffectiveMaxTurns,
@@ -83,6 +84,44 @@ describe('decideTurnLimit', () => {
       }),
     ).toEqual({
       ...baseInput,
+      onTurnLimitReached,
+      onTurnLimitCompact,
+    });
+  });
+
+  it('projects turn-limit decision input from loop state objects', async () => {
+    const onTurnLimitReached = async () => ({ continue: false });
+    const onTurnLimitCompact = async () => ({ success: false });
+    const contextMessages: Message[] = [{ role: 'user', content: 'context' }];
+
+    expect(
+      buildAgentLoopTurnLimitDecisionInputFromLoopState({
+        maxTurns: 5,
+        turnsCount: 5,
+        conversation: {
+          getContextMessages: () => contextMessages,
+        },
+        toolResultTracker: {
+          toolCallsCount: 4,
+        },
+        loopClock: {
+          startTime: 1_000,
+        },
+        tokenUsageTracker: {
+          totalTokens: 555,
+        },
+        hooks: {
+          onTurnLimitReached,
+          onTurnLimitCompact,
+        },
+      }),
+    ).toEqual({
+      maxTurns: 5,
+      turnsCount: 5,
+      contextMessages,
+      toolCallsCount: 4,
+      startTime: 1_000,
+      totalTokens: 555,
       onTurnLimitReached,
       onTurnLimitCompact,
     });
