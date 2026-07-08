@@ -1,5 +1,6 @@
 import { isOverflowRecoverable } from './isOverflowRecoverable.js';
 import {
+  buildAgentRecoveryResetEffects,
   buildAgentRecoveryStartedEffects,
   type AgentRecoveryEffects,
   type AgentRecoveryExhaustedEffectsInput,
@@ -26,6 +27,11 @@ export interface StartAgentRecoveryAttemptInput {
 export interface StartedAgentRecoveryAttempt {
   attempt: number;
   effects: AgentRecoveryEffects;
+}
+
+export interface ConsumeAgentRecoveryResetEffectsInput {
+  tracker: Pick<AgentRecoveryAttemptTracker, 'consumeResetAttempt'>;
+  turn: number;
 }
 
 export function createAgentRecoveryAttemptTracker(): AgentRecoveryAttemptTracker {
@@ -68,6 +74,14 @@ export function consumeAgentRecoveryResetAttempt(
   tracker: Pick<AgentRecoveryAttemptTracker, 'consumeResetAttempt'>,
 ): boolean {
   return tracker.consumeResetAttempt() !== null;
+}
+
+export function consumeAgentRecoveryResetEffects(
+  input: ConsumeAgentRecoveryResetEffectsInput,
+): AgentRecoveryEffects | null {
+  return consumeAgentRecoveryResetAttempt(input.tracker)
+    ? buildAgentRecoveryResetEffects({ turn: input.turn })
+    : null;
 }
 
 export function startAgentRecoveryAttempt(input: StartAgentRecoveryAttemptInput): number {

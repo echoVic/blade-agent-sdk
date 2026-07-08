@@ -19,7 +19,7 @@ import {
 } from './ExecutionEpoch.js';
 import {
   buildAgentRecoveryExhaustedProjectionInputFromTracker,
-  consumeAgentRecoveryResetAttempt,
+  consumeAgentRecoveryResetEffects,
   createAgentRecoveryAttemptTracker,
   hasAgentRecoveryAttemptExhausted,
   shouldAttemptAgentRecovery,
@@ -30,7 +30,6 @@ import {
   buildAgentRecoveryCompactResultEffects,
   buildAgentRecoveryCompactStreamFromHookContainer,
   buildAgentRecoveryExhaustedEffects,
-  buildAgentRecoveryResetEffects,
   consumeAgentRecoveryCompactStream,
   emitAgentRecoveryEffects,
   hasAgentReactiveCompactHook,
@@ -404,8 +403,11 @@ export async function* agentLoop(
 
     turnResult = assertAgentLoopTurnResponse(turnResult);
 
-    if (consumeAgentRecoveryResetAttempt(recoveryAttemptTracker)) {
-      const recoveryResetEffects = buildAgentRecoveryResetEffects({ turn: turnsCount });
+    const recoveryResetEffects = consumeAgentRecoveryResetEffects({
+      tracker: recoveryAttemptTracker,
+      turn: turnsCount,
+    });
+    if (recoveryResetEffects) {
       yield* emitAgentRecoveryEffects({ effects: recoveryResetEffects, hooks });
     }
 

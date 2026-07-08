@@ -1,6 +1,7 @@
 export {
   buildAgentRecoveryExhaustedProjectionInputFromTracker,
   consumeAgentRecoveryResetAttempt,
+  consumeAgentRecoveryResetEffects,
   createAgentRecoveryAttemptTracker,
   hasAgentRecoveryAttemptExhausted,
   shouldAttemptAgentRecovery,
@@ -8,6 +9,7 @@ export {
   startAgentRecoveryAttemptWithStartedEffects,
   type AgentRecoveryExhaustedProjectionInputFromTrackerInput,
   type AgentRecoveryAttemptTracker,
+  type ConsumeAgentRecoveryResetEffectsInput,
   type StartedAgentRecoveryAttempt,
   type StartAgentRecoveryAttemptInput,
 } from '../../packages/agent/src/recovery/recoveryAttemptTracker.js';

@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   buildAgentRecoveryExhaustedProjectionInputFromTracker,
   consumeAgentRecoveryResetAttempt,
+  consumeAgentRecoveryResetEffects,
   createAgentRecoveryAttemptTracker,
   hasAgentRecoveryAttemptExhausted,
   shouldAttemptAgentRecovery,
@@ -114,6 +115,28 @@ describe('agent recovery attempt tracker', () => {
     expect(tracker.attempt).toBe(0);
     expect(tracker.canAttempt(2)).toBe(true);
     expect(consumeAgentRecoveryResetAttempt(tracker)).toBe(false);
+  });
+
+  it('consumes reset attempts with reset effects for the current turn', () => {
+    const tracker = createAgentRecoveryAttemptTracker();
+
+    expect(consumeAgentRecoveryResetEffects({ tracker, turn: 7 })).toBeNull();
+
+    tracker.startAttempt(6);
+
+    expect(consumeAgentRecoveryResetEffects({ tracker, turn: 7 })).toEqual({
+      stateChanges: [
+        {
+          turn: 7,
+          phase: 'reset',
+          attempt: 0,
+        },
+      ],
+      events: [],
+    });
+    expect(tracker.attempt).toBe(0);
+    expect(tracker.canAttempt(6)).toBe(true);
+    expect(consumeAgentRecoveryResetEffects({ tracker, turn: 8 })).toBeNull();
   });
 
   it('allows reactive recovery only for recoverable errors with a compact hook and remaining attempts', () => {
