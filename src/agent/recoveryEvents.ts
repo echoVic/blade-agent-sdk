@@ -1,5 +1,8 @@
 export {
+  buildAgentModelFallbackEvent,
   buildAgentRecoveryProjection,
+  type AgentModelFallbackEvent,
+  type AgentModelFallbackEventInput,
   type AgentRecoveryEvent,
   type AgentRecoveryEventReason,
   type AgentRecoveryProjection,

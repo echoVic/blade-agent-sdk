@@ -17,7 +17,7 @@ import { AGENT_TURN_SAFETY_LIMIT } from './constants.js';
 import { ExecutionEpoch } from './ExecutionEpoch.js';
 import { isOverflowRecoverable } from './isOverflowRecoverable.js';
 import { createAgentRecoveryAttemptTracker } from './recoveryAttemptTracker.js';
-import { buildAgentRecoveryProjection } from './recoveryEvents.js';
+import { buildAgentModelFallbackEvent, buildAgentRecoveryProjection } from './recoveryEvents.js';
 import { buildAgentLoopAssistantMessageProjection } from './loop/assistantMessage.js';
 import { decideNoToolTurn } from './loop/decideNoToolTurn.js';
 import { decideTurnLimit } from './loop/decideTurnLimit.js';
@@ -260,11 +260,10 @@ export async function* agentLoop(
     } catch (llmError) {
       if (llmError instanceof FallbackTriggeredError) {
         epoch?.invalidate();
-        yield {
-          type: 'model_fallback',
+        yield buildAgentModelFallbackEvent({
           originalModel: llmError.originalModel,
           fallbackModel: llmError.fallbackModel,
-        };
+        });
         throw llmError;
       }
 

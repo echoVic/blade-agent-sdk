@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { buildAgentRecoveryProjection } from '../recovery/recoveryEvents.js';
+import {
+  buildAgentModelFallbackEvent,
+  buildAgentRecoveryProjection,
+} from '../recovery/recoveryEvents.js';
 
 describe('agent recovery event projection', () => {
   it('projects recovery start state and stream event', () => {
@@ -102,6 +105,19 @@ describe('agent recovery event projection', () => {
         phase: 'reset',
         attempt: 0,
       },
+    });
+  });
+
+  it('wraps model fallback metadata as a public agent event', () => {
+    expect(
+      buildAgentModelFallbackEvent({
+        originalModel: 'deepseek-chat',
+        fallbackModel: 'deepseek-reasoner',
+      }),
+    ).toEqual({
+      type: 'model_fallback',
+      originalModel: 'deepseek-chat',
+      fallbackModel: 'deepseek-reasoner',
     });
   });
 });

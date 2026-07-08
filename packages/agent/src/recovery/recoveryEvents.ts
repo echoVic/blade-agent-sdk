@@ -31,6 +31,17 @@ export interface AgentRecoveryEvent {
   reason: AgentRecoveryEventReason;
 }
 
+export interface AgentModelFallbackEvent {
+  type: 'model_fallback';
+  originalModel: string;
+  fallbackModel: string;
+}
+
+export interface AgentModelFallbackEventInput {
+  originalModel: string;
+  fallbackModel: string;
+}
+
 export type AgentRecoveryProjectionInput =
   | {
       kind: Exclude<AgentRecoveryProjectionKind, 'reset'>;
@@ -116,4 +127,14 @@ export function buildAgentRecoveryProjection(
         },
       };
   }
+}
+
+export function buildAgentModelFallbackEvent(
+  input: AgentModelFallbackEventInput,
+): AgentModelFallbackEvent {
+  return {
+    type: 'model_fallback',
+    originalModel: input.originalModel,
+    fallbackModel: input.fallbackModel,
+  };
 }
