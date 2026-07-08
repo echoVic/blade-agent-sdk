@@ -344,6 +344,7 @@ describe('monorepo topology', () => {
       'packages/agent/src/loop/toolResultContent.ts',
       'packages/agent/src/loop/toolResultTracker.ts',
       'packages/agent/src/loop/toolStartEvent.ts',
+      'packages/agent/src/loop/turnState.ts',
       'packages/agent/src/loop/turnCounter.ts',
       'packages/agent/src/loop/toolBehavior.ts',
       'packages/agent/src/loop/toolInterruptBehavior.ts',
@@ -377,6 +378,7 @@ describe('monorepo topology', () => {
     expect(existsSync('packages/agent/src/__tests__/toolResultContent.test.ts')).toBe(true);
     expect(existsSync('packages/agent/src/__tests__/toolResultTracker.test.ts')).toBe(true);
     expect(existsSync('packages/agent/src/__tests__/toolStartEvent.test.ts')).toBe(true);
+    expect(existsSync('packages/agent/src/__tests__/turnStateProjection.test.ts')).toBe(true);
     expect(existsSync('packages/agent/src/__tests__/turnCounter.test.ts')).toBe(true);
     expect(existsSync('packages/agent/src/__tests__/toolInjectedMessages.test.ts')).toBe(true);
     expect(existsSync('packages/agent/src/__tests__/recoveryAttemptTracker.test.ts')).toBe(true);
@@ -409,6 +411,7 @@ describe('monorepo topology', () => {
     expect(agentLoopSource).toContain("from './toolResultContent.js'");
     expect(agentLoopSource).toContain("from './toolResultTracker.js'");
     expect(agentLoopSource).toContain("from './toolStartEvent.js'");
+    expect(agentLoopSource).toContain("from './turnState.js'");
     expect(agentLoopSource).toContain("from './turnCounter.js'");
     expect(agentLoopSource).toContain("from './toolInterruptBehavior.js'");
     expect(agentLoopSource).toContain("from './toolUpdateToAgentEvent.js'");
@@ -433,6 +436,7 @@ describe('monorepo topology', () => {
     expect(rootAgentLoopSource).toContain('createAgentToolResultTracker');
     expect(rootAgentLoopSource).toContain('buildAgentLoopToolStartEvent');
     expect(rootAgentLoopSource).toContain('buildAgentLoopToolResultEvent');
+    expect(rootAgentLoopSource).toContain('buildAgentLoopTurnStateProjection');
     expect(rootAgentLoopSource).toContain('selectAgentFunctionToolCalls');
     expect(rootAgentLoopSource).toContain('createAgentLoopTurnCounter');
     expect(rootAgentLoopSource).toContain('createAgentRecoveryAttemptTracker');
@@ -496,6 +500,16 @@ describe('monorepo topology', () => {
     expect(rootAgentLoopSource).not.toContain('message: \'Token budget exhausted\'');
     expect(rootAgentLoopSource).not.toContain(
       'message: \'Stopped due to diminishing returns: consecutive turns produced very few tokens\'',
+    );
+    expect(rootAgentLoopSource).not.toContain('const _turnTools = turnState.tools');
+    expect(rootAgentLoopSource).not.toContain(
+      'const turnMaxContextTokens = turnState.maxContextTokens',
+    );
+    expect(rootAgentLoopSource).not.toContain(
+      'const turnPermissionMode = turnState.permissionMode',
+    );
+    expect(rootAgentLoopSource).not.toContain(
+      'const turnExecutionContext = turnState.executionContext',
     );
     expect(agentRecoverySource).toContain("from './isOverflowRecoverable.js'");
     expect(agentRecoverySource).toContain("from './recoveryAttemptTracker.js'");

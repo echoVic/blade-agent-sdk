@@ -50,6 +50,7 @@ import { buildAgentLoopToolMessage } from './loop/toolMessage.js';
 import { createAgentToolResultTracker } from './loop/toolResultTracker.js';
 import { buildAgentLoopToolStartEvent } from './loop/toolStartEvent.js';
 import { buildAgentLoopToolResultEvent } from './loop/toolUpdateToAgentEvent.js';
+import { buildAgentLoopTurnStateProjection } from './loop/turnState.js';
 import { createAgentLoopTurnCounter } from './loop/turnCounter.js';
 import type { FunctionToolCall } from './loop/types.js';
 import type { ConversationState } from './state/ConversationState.js';
@@ -216,11 +217,9 @@ export async function* agentLoop(
       });
     }
 
-    const turnState = config.prepareTurnState(turnsCount);
-    const _turnTools = turnState.tools;
-    const turnMaxContextTokens = turnState.maxContextTokens;
-    const turnPermissionMode = turnState.permissionMode;
-    const turnExecutionContext = turnState.executionContext;
+    const turnStateProjection = buildAgentLoopTurnStateProjection({
+      turnState: config.prepareTurnState(turnsCount),
+    });
 
     // === runTurn：单回合 LLM 调用 + 流式事件 ===
     let turnResult: ChatResponse | undefined;
@@ -232,14 +231,14 @@ export async function* agentLoop(
 
     try {
       const turnGen = runTurn({
-        turnState,
+        turnState: turnStateProjection.turnState,
         messages: convState.toArray(),
         executionPipeline,
         streaming,
         signal,
         epoch,
-        executionContext: turnExecutionContext,
-        permissionMode: turnPermissionMode,
+        executionContext: turnStateProjection.executionContext,
+        permissionMode: turnStateProjection.permissionMode,
         logger: config.logger,
         toolHooks: {
           onBeforeExec: toolHooks?.beforeExec,
@@ -354,7 +353,7 @@ export async function* agentLoop(
       const usage = buildAgentLoopTokenUsageInfo({
         modelUsage: turnResult.usage,
         totalTokens: tokenUsageTracker.totalTokens,
-        maxContextTokens: turnMaxContextTokens,
+        maxContextTokens: turnStateProjection.maxContextTokens,
       });
       yield buildAgentLoopTokenUsageEvent({ usage });
     }
@@ -441,7 +440,7 @@ export async function* agentLoop(
       const executionPlan = planToolExecution(
         functionCalls,
         executionPipeline.getRegistry(),
-        turnPermissionMode,
+        turnStateProjection.permissionMode,
       );
 
       for (const toolCall of executionPlan.calls) {
@@ -464,9 +463,9 @@ export async function* agentLoop(
       executionResults = await executeToolCalls({
         plan: executionPlan,
         executionPipeline,
-        executionContext: turnExecutionContext,
+        executionContext: turnStateProjection.executionContext,
         logger: config.logger,
-        permissionMode: turnPermissionMode,
+        permissionMode: turnStateProjection.permissionMode,
         signal,
         hooks: {
           onBeforeToolExec: toolHooks?.beforeExec,
