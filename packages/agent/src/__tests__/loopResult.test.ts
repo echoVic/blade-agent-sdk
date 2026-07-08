@@ -7,6 +7,7 @@ import {
   buildAgentLoopToolExitFinalMessage,
   buildAgentLoopToolExitResult,
   shouldAbortAgentLoop,
+  shouldExitAgentLoopForToolDecision,
 } from '../loop/loopResult.js';
 
 describe('agent loop result builders', () => {
@@ -163,6 +164,30 @@ describe('agent loop result builders', () => {
         now: 140,
       }),
     ).toEqual({ action: 'continue', events: [] });
+  });
+
+  it('exits the loop only for tool-exit decisions', () => {
+    expect(shouldExitAgentLoopForToolDecision({ action: 'continue', events: [] })).toBe(false);
+
+    const decision = buildAgentLoopToolExitDecision({
+      toolCall: {
+        id: 'call_1',
+        type: 'function',
+        function: { name: 'ExitPlanMode', arguments: '{}' },
+      },
+      result: {
+        success: true,
+        llmContent: 'approved',
+        metadata: { shouldExitLoop: true },
+      },
+      hasStreamingExecutionResults: true,
+      turnsCount: 3,
+      toolCallsCount: 4,
+      startTime: 100,
+      now: 150,
+    });
+
+    expect(shouldExitAgentLoopForToolDecision(decision)).toBe(true);
   });
 
   it('builds a non-streaming tool exit decision with result and terminal events', () => {

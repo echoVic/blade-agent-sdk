@@ -428,6 +428,7 @@ describe('monorepo topology', () => {
     expect(rootAgentLoopSource).toContain('buildAgentLoopResponseEvents');
     expect(rootAgentLoopSource).toContain('buildAgentLoopSuccessResult');
     expect(rootAgentLoopSource).toContain('buildAgentLoopToolExitDecision');
+    expect(rootAgentLoopSource).toContain('shouldExitAgentLoopForToolDecision');
     expect(rootAgentLoopSource).toContain('createAgentLoopClock');
     expect(rootAgentLoopSource).toContain('buildAgentLoopAssistantMessageProjection');
     expect(rootAgentLoopSource).toContain('buildAgentLoopToolMessage');
@@ -508,6 +509,7 @@ describe('monorepo topology', () => {
     expect(rootAgentLoopSource).not.toContain('markToolInjectedSystemMessages');
     expect(rootAgentLoopSource).not.toContain('injectedMessages.length > 0');
     expect(rootAgentLoopSource).not.toContain('result.metadata?.shouldExitLoop');
+    expect(rootAgentLoopSource).not.toContain("toolExitDecision.action === 'exit'");
     expect(rootAgentLoopSource).not.toContain('buildAgentLoopToolExitFinalMessage');
     expect(rootAgentLoopSource).not.toContain('buildAgentLoopToolExitResult');
     expect(rootAgentLoopSource).not.toContain('let recoveryAttemptedTurn');

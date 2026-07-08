@@ -54,6 +54,7 @@ import {
   buildAgentLoopSuccessResult,
   buildAgentLoopToolExitDecision,
   shouldAbortAgentLoop,
+  shouldExitAgentLoopForToolDecision,
 } from './loop/loopResult.js';
 import {
   planToolExecution,
@@ -530,7 +531,7 @@ export async function* agentLoop(
           toolCallsCount: toolResultTracker.toolCallsCount,
         }),
       });
-      if (toolExitDecision.action === 'exit') {
+      if (shouldExitAgentLoopForToolDecision(toolExitDecision)) {
         for (const event of toolExitDecision.events) {
           yield event;
         }

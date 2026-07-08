@@ -124,6 +124,10 @@ export type AgentLoopToolExitDecision<TResult = AgentLoopToolExitDecisionResultL
       result: AgentLoopToolExitResult;
     };
 
+export type AgentLoopToolExitDecisionExit<
+  TResult = AgentLoopToolExitDecisionResultLike,
+> = Extract<AgentLoopToolExitDecision<TResult>, { action: 'exit' }>;
+
 function getLoopDuration(input: Pick<AgentLoopResultTiming, 'startTime' | 'now'>): number {
   return (input.now ?? Date.now()) - input.startTime;
 }
@@ -183,6 +187,12 @@ export function buildAgentLoopToolExitFinalMessage(
   input: AgentLoopToolExitFinalMessageInput,
 ): string {
   return typeof input.llmContent === 'string' ? input.llmContent : '循环已退出';
+}
+
+export function shouldExitAgentLoopForToolDecision<TResult>(
+  decision: AgentLoopToolExitDecision<TResult>,
+): decision is AgentLoopToolExitDecisionExit<TResult> {
+  return decision.action === 'exit';
 }
 
 export function buildAgentLoopBudgetExhaustedResult(
