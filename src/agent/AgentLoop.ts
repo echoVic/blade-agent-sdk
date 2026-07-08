@@ -75,7 +75,7 @@ import {
   buildAgentLoopAbortCompletion,
   buildAgentLoopAbortCompletionInputFromTiming,
   buildAgentLoopNoToolSuccessDecision,
-  buildAgentLoopNoToolSuccessDecisionInput,
+  buildAgentLoopNoToolSuccessDecisionInputFromTiming,
   buildAgentLoopToolExitDecision,
   buildAgentLoopToolExitDecisionInput,
   shouldAbortAgentLoop,
@@ -553,9 +553,9 @@ export async function* agentLoop(
       );
 
       const noToolSuccessDecision = buildAgentLoopNoToolSuccessDecision(
-        buildAgentLoopNoToolSuccessDecisionInput({
+        buildAgentLoopNoToolSuccessDecisionInputFromTiming({
           finalMessage: content,
-          ...loopClock.resultTiming({
+          timing: loopClock.resultTiming({
             turnsCount,
             toolCallsCount: toolResultTracker.toolCallsCount,
           }),

@@ -7,6 +7,7 @@ import {
   buildAgentLoopBudgetExhaustedResult,
   buildAgentLoopNoToolSuccessDecision,
   buildAgentLoopNoToolSuccessDecisionInput,
+  buildAgentLoopNoToolSuccessDecisionInputFromTiming,
   buildAgentLoopSuccessResult,
   buildAgentLoopToolExitDecision,
   buildAgentLoopToolExitDecisionInput,
@@ -225,6 +226,32 @@ describe('agent loop result builders', () => {
         toolCallsCount: 6,
         startTime: 1000,
         now: 1125,
+        tokensUsed: 84,
+        tokenBudgetSnapshot: snapshot,
+      }),
+    ).toEqual({
+      finalMessage: 'finished',
+      turnsCount: 4,
+      toolCallsCount: 6,
+      startTime: 1000,
+      now: 1125,
+      tokensUsed: 84,
+      tokenBudgetSnapshot: snapshot,
+    });
+  });
+
+  it('projects no-tool success decision input from an explicit timing payload', () => {
+    const snapshot = { usedTokens: 84, maxTokens: 200 };
+
+    expect(
+      buildAgentLoopNoToolSuccessDecisionInputFromTiming({
+        finalMessage: 'finished',
+        timing: {
+          turnsCount: 4,
+          toolCallsCount: 6,
+          startTime: 1000,
+          now: 1125,
+        },
         tokensUsed: 84,
         tokenBudgetSnapshot: snapshot,
       }),

@@ -69,6 +69,13 @@ export interface AgentLoopAbortCompletionTimingInput {
   timing: AgentLoopResultTiming;
 }
 
+export interface AgentLoopNoToolSuccessTimingInput {
+  finalMessage: string | undefined;
+  timing: AgentLoopResultTiming;
+  tokensUsed: number;
+  tokenBudgetSnapshot: unknown;
+}
+
 export interface AgentLoopBudgetExhaustedResultInput extends AgentLoopResultTiming {
   reason: 'exhausted' | 'diminishing_returns';
   tokensUsed: number;
@@ -231,6 +238,20 @@ export function buildAgentLoopNoToolSuccessDecisionInput(
     tokensUsed: input.tokensUsed,
     tokenBudgetSnapshot: input.tokenBudgetSnapshot,
   };
+}
+
+export function buildAgentLoopNoToolSuccessDecisionInputFromTiming(
+  input: AgentLoopNoToolSuccessTimingInput,
+): AgentLoopSuccessResultInput {
+  return buildAgentLoopNoToolSuccessDecisionInput({
+    finalMessage: input.finalMessage,
+    turnsCount: input.timing.turnsCount,
+    toolCallsCount: input.timing.toolCallsCount,
+    startTime: input.timing.startTime,
+    now: input.timing.now,
+    tokensUsed: input.tokensUsed,
+    tokenBudgetSnapshot: input.tokenBudgetSnapshot,
+  });
 }
 
 export function buildAgentLoopNoToolSuccessDecision(
