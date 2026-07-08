@@ -29,6 +29,7 @@ import {
   buildAgentLoopTurnRetryEvent,
   buildAgentLoopTurnStartEvent,
 } from './loop/loopEvents.js';
+import { buildAgentLoopResponseEvents } from './loop/responseEvents.js';
 import { createAgentLoopClock } from './loop/loopClock.js';
 import {
   buildAgentLoopAbortResult,
@@ -399,12 +400,13 @@ export async function* agentLoop(
       });
     }
 
-    if (turnResult.reasoningContent && !signal?.aborted) {
-      yield { type: 'thinking', content: turnResult.reasoningContent };
-    }
-
-    if (turnResult.content?.trim() && !signal?.aborted && !streamingExecutionResults) {
-      yield { type: 'stream_end' };
+    for (const responseEvent of buildAgentLoopResponseEvents({
+      reasoningContent: turnResult.reasoningContent,
+      content: turnResult.content,
+      aborted: Boolean(signal?.aborted),
+      hasStreamingExecutionResults: streamingExecutionResults !== undefined,
+    })) {
+      yield responseEvent;
     }
 
     // 无 tool calls → 正常结束或重试
