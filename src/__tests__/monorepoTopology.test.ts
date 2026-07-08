@@ -497,6 +497,7 @@ describe('monorepo topology', () => {
     expect(rootAgentLoopSource).not.toContain('const recordToolResult');
     expect(rootAgentLoopSource).not.toContain('result.newMessages && result.newMessages.length > 0');
     expect(rootAgentLoopSource).not.toContain('markToolInjectedSystemMessages');
+    expect(rootAgentLoopSource).not.toContain('injectedMessages.length > 0');
     expect(rootAgentLoopSource).not.toContain('result.metadata?.shouldExitLoop');
     expect(rootAgentLoopSource).not.toContain('buildAgentLoopToolExitFinalMessage');
     expect(rootAgentLoopSource).not.toContain('buildAgentLoopToolExitResult');

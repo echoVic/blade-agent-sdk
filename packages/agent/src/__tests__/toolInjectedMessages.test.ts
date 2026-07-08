@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { buildAgentLoopToolInjectedMessages } from '../loop/index.js';
+import {
+  buildAgentLoopToolInjectedMessages,
+  shouldAppendAgentLoopToolInjectedMessages,
+} from '../loop/index.js';
 import { markToolInjectedSystemMessages } from '../state/toolInjectedMessages.js';
 
 describe('tool-injected message projection', () => {
@@ -64,5 +67,14 @@ describe('tool-injected message projection', () => {
       },
       { role: 'user', content: 'follow-up context' },
     ]);
+  });
+
+  it('selects append behavior only when projected tool-injected messages are present', () => {
+    expect(shouldAppendAgentLoopToolInjectedMessages([])).toBe(false);
+    expect(
+      shouldAppendAgentLoopToolInjectedMessages([
+        { role: 'system' },
+      ]),
+    ).toBe(true);
   });
 });

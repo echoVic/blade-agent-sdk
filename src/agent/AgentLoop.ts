@@ -62,7 +62,10 @@ import {
   buildAgentLoopTokenUsageEvent,
   buildAgentLoopTokenUsageInfo,
 } from './loop/tokenUsage.js';
-import { buildAgentLoopToolInjectedMessages } from './loop/toolInjectedMessages.js';
+import {
+  buildAgentLoopToolInjectedMessages,
+  shouldAppendAgentLoopToolInjectedMessages,
+} from './loop/toolInjectedMessages.js';
 import { createAgentLoopTokenUsageTracker } from './loop/tokenUsageTracker.js';
 import { buildAgentLoopToolMessage } from './loop/toolMessage.js';
 import { createAgentToolResultTracker } from './loop/toolResultTracker.js';
@@ -532,7 +535,7 @@ export async function* agentLoop(
       const injectedMessages = buildAgentLoopToolInjectedMessages({
         newMessages: result.newMessages,
       });
-      if (injectedMessages.length > 0) {
+      if (shouldAppendAgentLoopToolInjectedMessages(injectedMessages)) {
         convState.append(...injectedMessages);
       }
     }

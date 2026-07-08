@@ -16,3 +16,9 @@ export function buildAgentLoopToolInjectedMessages<TMessage extends ToolInjected
 
   return markToolInjectedSystemMessages(input.newMessages);
 }
+
+export function shouldAppendAgentLoopToolInjectedMessages(
+  messages: readonly ToolInjectedMessageLike[],
+): boolean {
+  return messages.length > 0;
+}
