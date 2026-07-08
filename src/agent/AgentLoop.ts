@@ -24,7 +24,11 @@ import {
   shouldContinueAgentLoopAfterNoToolDecision,
   shouldHandleAgentLoopNoToolTurn,
 } from './loop/decideNoToolTurn.js';
-import { buildAgentLoopEffectiveMaxTurns, decideTurnLimit } from './loop/decideTurnLimit.js';
+import {
+  buildAgentLoopEffectiveMaxTurns,
+  decideTurnLimit,
+  shouldCheckAgentLoopTurnLimit,
+} from './loop/decideTurnLimit.js';
 import { executeToolCalls } from './loop/executeToolCalls.js';
 import {
   buildAgentLoopEndEvent,
@@ -528,7 +532,7 @@ export async function* agentLoop(
     }
 
     // 轮次上限
-    if (turnsCount >= effectiveMaxTurns && !isYoloMode) {
+    if (shouldCheckAgentLoopTurnLimit({ turnsCount, effectiveMaxTurns, isYoloMode })) {
       const limitDecision = await decideTurnLimit({
         maxTurns: config.maxTurns,
         turnsCount,

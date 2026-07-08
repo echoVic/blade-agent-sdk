@@ -4,6 +4,7 @@ import {
   AGENT_LOOP_TURN_SAFETY_LIMIT,
   buildAgentLoopEffectiveMaxTurns,
   decideTurnLimit,
+  shouldCheckAgentLoopTurnLimit,
 } from '../loop/index.js';
 
 describe('decideTurnLimit', () => {
@@ -32,6 +33,36 @@ describe('decideTurnLimit', () => {
     expect(buildAgentLoopEffectiveMaxTurns({ maxTurns: 7, isYoloMode: true })).toBe(
       AGENT_LOOP_TURN_SAFETY_LIMIT,
     );
+  });
+
+  it('checks the turn limit once the effective max turns are reached outside YOLO mode', () => {
+    expect(
+      shouldCheckAgentLoopTurnLimit({
+        turnsCount: 3,
+        effectiveMaxTurns: 3,
+        isYoloMode: false,
+      }),
+    ).toBe(true);
+  });
+
+  it('does not check the turn limit before the effective max turns are reached', () => {
+    expect(
+      shouldCheckAgentLoopTurnLimit({
+        turnsCount: 2,
+        effectiveMaxTurns: 3,
+        isYoloMode: false,
+      }),
+    ).toBe(false);
+  });
+
+  it('does not check the turn limit in YOLO mode even after the safety limit is reached', () => {
+    expect(
+      shouldCheckAgentLoopTurnLimit({
+        turnsCount: AGENT_LOOP_TURN_SAFETY_LIMIT,
+        effectiveMaxTurns: AGENT_LOOP_TURN_SAFETY_LIMIT,
+        isYoloMode: true,
+      }),
+    ).toBe(false);
   });
 
   it('stops with a max-turns error when no handler is provided', async () => {

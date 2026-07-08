@@ -524,6 +524,9 @@ describe('monorepo topology', () => {
     expect(rootAgentLoopSource).not.toContain(
       'const effectiveMaxTurns = isYoloMode ? AGENT_TURN_SAFETY_LIMIT : maxTurns',
     );
+    expect(rootAgentLoopSource).not.toContain(
+      'turnsCount >= effectiveMaxTurns && !isYoloMode',
+    );
     expect(agentRecoverySource).toContain("from './isOverflowRecoverable.js'");
     expect(agentRecoverySource).toContain("from './recoveryAttemptTracker.js'");
     expect(agentRecoverySource).toContain("from './recoveryEvents.js'");

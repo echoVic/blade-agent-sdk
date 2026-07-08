@@ -57,10 +57,22 @@ export interface BuildAgentLoopEffectiveMaxTurnsInput {
   isYoloMode: boolean;
 }
 
+export interface ShouldCheckAgentLoopTurnLimitInput {
+  turnsCount: number;
+  effectiveMaxTurns: number;
+  isYoloMode: boolean;
+}
+
 export function buildAgentLoopEffectiveMaxTurns(
   input: BuildAgentLoopEffectiveMaxTurnsInput,
 ): number {
   return input.isYoloMode ? AGENT_LOOP_TURN_SAFETY_LIMIT : input.maxTurns;
+}
+
+export function shouldCheckAgentLoopTurnLimit(
+  input: ShouldCheckAgentLoopTurnLimitInput,
+): boolean {
+  return input.turnsCount >= input.effectiveMaxTurns && !input.isYoloMode;
 }
 
 export async function decideTurnLimit(
