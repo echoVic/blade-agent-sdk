@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { buildAgentLoopToolResultContinuation } from '../loop/index.js';
+import {
+  buildAgentLoopAfterExecHookPayload,
+  buildAgentLoopToolResultContinuation,
+} from '../loop/index.js';
 
 const toolCall = {
   id: 'call_read',
@@ -66,6 +69,25 @@ describe('agent loop tool result continuation projection', () => {
         content: 'permission denied',
       },
       injectedMessages: [],
+    });
+  });
+
+  it('projects after-exec hook payloads from tool execution results', () => {
+    const result = {
+      success: true,
+      llmContent: 'done',
+    };
+
+    expect(
+      buildAgentLoopAfterExecHookPayload({
+        toolCall,
+        result,
+        toolUseUuid: null,
+      }),
+    ).toEqual({
+      toolCall,
+      result,
+      toolUseUuid: null,
     });
   });
 });

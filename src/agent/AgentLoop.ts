@@ -89,7 +89,10 @@ import {
   createAgentLoopTokenUsageTracker,
   shouldRecordAgentLoopTokenUsage,
 } from './loop/tokenUsageTracker.js';
-import { buildAgentLoopToolResultContinuation } from './loop/toolResultContinuation.js';
+import {
+  buildAgentLoopAfterExecHookPayload,
+  buildAgentLoopToolResultContinuation,
+} from './loop/toolResultContinuation.js';
 import { createAgentToolResultTracker } from './loop/toolResultTracker.js';
 import { buildAgentLoopToolStartEvents } from './loop/toolStartEvent.js';
 import { buildAgentLoopTurnStateProjection } from './loop/turnState.js';
@@ -587,7 +590,9 @@ export async function* agentLoop(
         yield event;
       }
       if (toolResultContinuation.shouldRunAfterExecHook) {
-        await toolHooks?.afterExec?.({ toolCall, result, toolUseUuid });
+        await toolHooks?.afterExec?.(
+          buildAgentLoopAfterExecHookPayload({ toolCall, result, toolUseUuid }),
+        );
       }
 
       convState.append(toolResultContinuation.toolMessage);

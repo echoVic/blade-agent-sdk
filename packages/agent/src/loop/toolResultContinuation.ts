@@ -37,6 +37,18 @@ export interface AgentLoopToolResultContinuation<
   injectedMessages: Message[];
 }
 
+export interface AgentLoopAfterExecHookPayloadInput<TResult> {
+  toolCall: AgentFunctionToolCall;
+  result: TResult;
+  toolUseUuid: string | null;
+}
+
+export interface AgentLoopAfterExecHookPayload<TResult> {
+  toolCall: AgentFunctionToolCall;
+  result: TResult;
+  toolUseUuid: string | null;
+}
+
 export function buildAgentLoopToolResultContinuation<
   TResult extends AgentLoopToolMessageInput['result'] & AgentLoopToolInjectedMessagesInput<Message>,
   TStreamingExecutionResult,
@@ -59,5 +71,15 @@ export function buildAgentLoopToolResultContinuation<
     injectedMessages: buildAgentLoopToolInjectedMessages({
       newMessages: input.result.newMessages,
     }),
+  };
+}
+
+export function buildAgentLoopAfterExecHookPayload<TResult>(
+  input: AgentLoopAfterExecHookPayloadInput<TResult>,
+): AgentLoopAfterExecHookPayload<TResult> {
+  return {
+    toolCall: input.toolCall,
+    result: input.result,
+    toolUseUuid: input.toolUseUuid,
   };
 }
