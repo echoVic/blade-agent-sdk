@@ -39,6 +39,12 @@ export interface ToolExecutionPlan {
   groups?: AgentFunctionToolCall[][];
 }
 
+export function shouldRunAgentLoopNonStreamingToolExecution<TExecutionResult>(
+  executionResults: readonly TExecutionResult[] | undefined,
+): executionResults is undefined {
+  return executionResults === undefined;
+}
+
 function isAgentFunctionToolCall(call: unknown): call is AgentFunctionToolCall {
   if (!call || typeof call !== 'object') {
     return false;

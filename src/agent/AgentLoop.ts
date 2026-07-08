@@ -54,7 +54,11 @@ import {
   buildAgentLoopSuccessResult,
   buildAgentLoopToolExitDecision,
 } from './loop/loopResult.js';
-import { planToolExecution, selectAgentFunctionToolCalls } from './loop/planToolExecution.js';
+import {
+  planToolExecution,
+  selectAgentFunctionToolCalls,
+  shouldRunAgentLoopNonStreamingToolExecution,
+} from './loop/planToolExecution.js';
 import { runTurn } from './loop/runTurn.js';
 import type { ToolExecutionUpdate } from './loop/runToolCall.js';
 import {
@@ -464,7 +468,7 @@ export async function* agentLoop(
     // 工具执行：流式已执行 or 非流式在此执行
     let executionResults = streamingExecutionResults;
 
-    if (!executionResults) {
+    if (shouldRunAgentLoopNonStreamingToolExecution(executionResults)) {
       const functionCalls = selectAgentFunctionToolCalls(turnResult.toolCalls);
       const executionPlan = planToolExecution(
         functionCalls,

@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   type AgentFunctionToolCall,
   planToolExecution,
+  shouldRunAgentLoopNonStreamingToolExecution,
   type ToolBehavior,
   ToolKind,
 } from '../loop/index.js';
@@ -159,5 +160,19 @@ describe('planToolExecution', () => {
       ['{"command":"ls -la"}', '{}'],
       ['{"command":"npm install"}'],
     ]);
+  });
+
+  it('runs non-streaming tool execution only when streaming results are absent', () => {
+    expect(shouldRunAgentLoopNonStreamingToolExecution(undefined)).toBe(true);
+    expect(shouldRunAgentLoopNonStreamingToolExecution([])).toBe(false);
+    expect(
+      shouldRunAgentLoopNonStreamingToolExecution([
+        {
+          toolCall: makeCall('Read'),
+          result: { success: true, llmContent: 'ok' },
+          toolUseUuid: null,
+        },
+      ]),
+    ).toBe(false);
   });
 });
