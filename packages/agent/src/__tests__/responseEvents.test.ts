@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { buildAgentLoopResponseEvents } from '../loop/responseEvents.js';
+import {
+  buildAgentLoopResponseEvents,
+  buildAgentLoopResponseEventsInput,
+} from '../loop/responseEvents.js';
 
 describe('agent loop response event projection', () => {
   it('emits thinking content before the stream closes for a text response', () => {
@@ -46,5 +49,45 @@ describe('agent loop response event projection', () => {
         hasStreamingExecutionResults: false,
       }),
     ).toEqual([]);
+  });
+
+  it('builds response event input from a model response and loop state', () => {
+    const signal = new AbortController().signal;
+
+    expect(
+      buildAgentLoopResponseEventsInput({
+        response: {
+          reasoningContent: 'thinking',
+          content: 'answer',
+        },
+        signal,
+        streamingExecutionResults: undefined,
+      }),
+    ).toEqual({
+      reasoningContent: 'thinking',
+      content: 'answer',
+      aborted: false,
+      hasStreamingExecutionResults: false,
+    });
+  });
+
+  it('marks response event input as aborted and streaming-tool handled', () => {
+    const controller = new AbortController();
+    controller.abort();
+
+    expect(
+      buildAgentLoopResponseEventsInput({
+        response: {
+          content: 'answer',
+        },
+        signal: controller.signal,
+        streamingExecutionResults: [{ toolCall: 'placeholder' }],
+      }),
+    ).toEqual({
+      reasoningContent: undefined,
+      content: 'answer',
+      aborted: true,
+      hasStreamingExecutionResults: true,
+    });
   });
 });

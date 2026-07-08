@@ -425,6 +425,7 @@ describe('monorepo topology', () => {
     expect(rootAgentLoopSource).toContain('buildAgentLoopNoToolContent');
     expect(rootAgentLoopSource).toContain('shouldHandleAgentLoopNoToolTurn');
     expect(rootAgentLoopSource).toContain('shouldContinueAgentLoopAfterNoToolDecision');
+    expect(rootAgentLoopSource).toContain('buildAgentLoopResponseEventsInput');
     expect(rootAgentLoopSource).toContain('buildAgentLoopResponseEvents');
     expect(rootAgentLoopSource).toContain('buildAgentLoopSuccessResult');
     expect(rootAgentLoopSource).toContain('buildAgentLoopToolExitDecision');
@@ -487,6 +488,10 @@ describe('monorepo topology', () => {
     expect(rootAgentLoopSource).not.toContain('let totalTokens = 0');
     expect(rootAgentLoopSource).not.toContain('let lastPromptTokens');
     expect(rootAgentLoopSource).not.toContain('if (turnResult.usage)');
+    expect(rootAgentLoopSource).not.toContain('aborted: Boolean(signal?.aborted)');
+    expect(rootAgentLoopSource).not.toContain(
+      'hasStreamingExecutionResults: streamingExecutionResults !== undefined,\n    }))',
+    );
     expect(rootAgentLoopSource).not.toContain('const startTime = Date.now()');
     expect(rootAgentLoopSource).not.toContain("turnResult.content || ''");
     expect(rootAgentLoopSource).not.toContain("role: 'assistant',\n      content: turnResult.content || ''");

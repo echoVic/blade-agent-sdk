@@ -16,6 +16,35 @@ export interface AgentLoopResponseEventsInput {
   hasStreamingExecutionResults: boolean;
 }
 
+export interface BuildAgentLoopResponseEventsInputArgs<
+  Response extends {
+    reasoningContent?: string;
+    content?: string;
+  },
+  StreamingExecutionResult,
+> {
+  response: Response;
+  signal?: AbortSignal;
+  streamingExecutionResults: readonly StreamingExecutionResult[] | undefined;
+}
+
+export function buildAgentLoopResponseEventsInput<
+  Response extends {
+    reasoningContent?: string;
+    content?: string;
+  },
+  StreamingExecutionResult,
+>(
+  input: BuildAgentLoopResponseEventsInputArgs<Response, StreamingExecutionResult>,
+): AgentLoopResponseEventsInput {
+  return {
+    reasoningContent: input.response.reasoningContent,
+    content: input.response.content,
+    aborted: Boolean(input.signal?.aborted),
+    hasStreamingExecutionResults: input.streamingExecutionResults !== undefined,
+  };
+}
+
 export function buildAgentLoopResponseEvents(
   input: AgentLoopResponseEventsInput,
 ): AgentLoopResponseEvent[] {

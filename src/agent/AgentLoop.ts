@@ -55,7 +55,10 @@ import {
   buildAgentLoopTurnRetryEvent,
   buildAgentLoopTurnStartEvent,
 } from './loop/loopEvents.js';
-import { buildAgentLoopResponseEvents } from './loop/responseEvents.js';
+import {
+  buildAgentLoopResponseEvents,
+  buildAgentLoopResponseEventsInput,
+} from './loop/responseEvents.js';
 import { createAgentLoopClock } from './loop/loopClock.js';
 import {
   buildAgentLoopAbortResult,
@@ -430,12 +433,13 @@ export async function* agentLoop(
       });
     }
 
-    for (const responseEvent of buildAgentLoopResponseEvents({
-      reasoningContent: turnResult.reasoningContent,
-      content: turnResult.content,
-      aborted: Boolean(signal?.aborted),
-      hasStreamingExecutionResults: streamingExecutionResults !== undefined,
-    })) {
+    for (const responseEvent of buildAgentLoopResponseEvents(
+      buildAgentLoopResponseEventsInput({
+        response: turnResult,
+        signal,
+        streamingExecutionResults,
+      }),
+    )) {
       yield responseEvent;
     }
 
