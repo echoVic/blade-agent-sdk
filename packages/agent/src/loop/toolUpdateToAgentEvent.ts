@@ -100,14 +100,18 @@ export type AgentLoopToolEvent =
       updates: unknown;
     };
 
-export interface AgentLoopToolResultEventInput {
+export interface AgentLoopToolResultEventInput<TResult = unknown> {
   toolCall: AgentFunctionToolCall;
-  result: unknown;
+  result: TResult;
 }
 
-export function buildAgentLoopToolResultEvent(
-  input: AgentLoopToolResultEventInput,
-): Extract<AgentLoopToolEvent, { type: 'tool_result' }> {
+export function buildAgentLoopToolResultEvent<TResult>(
+  input: AgentLoopToolResultEventInput<TResult>,
+): {
+  type: 'tool_result';
+  toolCall: AgentFunctionToolCall;
+  result: TResult;
+} {
   return {
     type: 'tool_result',
     toolCall: input.toolCall,

@@ -72,7 +72,6 @@ import {
 import {
   planToolExecution,
   selectAgentFunctionToolCalls,
-  shouldEmitAgentLoopNonStreamingToolResultEffects,
   shouldRunAgentLoopNonStreamingToolExecution,
 } from './loop/planToolExecution.js';
 import { runTurn } from './loop/runTurn.js';
@@ -83,18 +82,14 @@ import {
   buildAgentLoopTokenUsageInfo,
   shouldStopAgentLoopForTokenBudget,
 } from './loop/tokenUsage.js';
-import {
-  buildAgentLoopToolInjectedMessages,
-  shouldAppendAgentLoopToolInjectedMessages,
-} from './loop/toolInjectedMessages.js';
+import { shouldAppendAgentLoopToolInjectedMessages } from './loop/toolInjectedMessages.js';
 import {
   createAgentLoopTokenUsageTracker,
   shouldRecordAgentLoopTokenUsage,
 } from './loop/tokenUsageTracker.js';
-import { buildAgentLoopToolMessage } from './loop/toolMessage.js';
+import { buildAgentLoopToolResultContinuation } from './loop/toolResultContinuation.js';
 import { createAgentToolResultTracker } from './loop/toolResultTracker.js';
 import { buildAgentLoopToolStartEvent } from './loop/toolStartEvent.js';
-import { buildAgentLoopToolResultEvent } from './loop/toolUpdateToAgentEvent.js';
 import { buildAgentLoopTurnStateProjection } from './loop/turnState.js';
 import {
   createAgentLoopTurnCounter,
@@ -557,18 +552,22 @@ export async function* agentLoop(
         return toolExitDecision.result as LoopResult;
       }
 
-      if (shouldEmitAgentLoopNonStreamingToolResultEffects(streamingExecutionResults)) {
-        yield buildAgentLoopToolResultEvent({ toolCall, result });
+      const toolResultContinuation = buildAgentLoopToolResultContinuation({
+        toolCall,
+        result,
+        streamingExecutionResults,
+      });
+      for (const event of toolResultContinuation.events) {
+        yield event;
+      }
+      if (toolResultContinuation.shouldRunAfterExecHook) {
         await toolHooks?.afterExec?.({ toolCall, result, toolUseUuid });
       }
 
-      convState.append(buildAgentLoopToolMessage({ toolCall, result }));
+      convState.append(toolResultContinuation.toolMessage);
 
-      const injectedMessages = buildAgentLoopToolInjectedMessages({
-        newMessages: result.newMessages,
-      });
-      if (shouldAppendAgentLoopToolInjectedMessages(injectedMessages)) {
-        convState.append(...injectedMessages);
+      if (shouldAppendAgentLoopToolInjectedMessages(toolResultContinuation.injectedMessages)) {
+        convState.append(...toolResultContinuation.injectedMessages);
       }
     }
 

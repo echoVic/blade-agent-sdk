@@ -341,6 +341,7 @@ describe('monorepo topology', () => {
       'packages/agent/src/loop/tokenUsage.ts',
       'packages/agent/src/loop/tokenUsageTracker.ts',
       'packages/agent/src/loop/toolMessage.ts',
+      'packages/agent/src/loop/toolResultContinuation.ts',
       'packages/agent/src/loop/toolResultContent.ts',
       'packages/agent/src/loop/toolResultTracker.ts',
       'packages/agent/src/loop/toolStartEvent.ts',
@@ -375,6 +376,7 @@ describe('monorepo topology', () => {
     expect(existsSync('packages/agent/src/__tests__/tokenUsageProjection.test.ts')).toBe(true);
     expect(existsSync('packages/agent/src/__tests__/tokenUsageTracker.test.ts')).toBe(true);
     expect(existsSync('packages/agent/src/__tests__/toolMessage.test.ts')).toBe(true);
+    expect(existsSync('packages/agent/src/__tests__/toolResultContinuation.test.ts')).toBe(true);
     expect(existsSync('packages/agent/src/__tests__/toolResultContent.test.ts')).toBe(true);
     expect(existsSync('packages/agent/src/__tests__/toolResultTracker.test.ts')).toBe(true);
     expect(existsSync('packages/agent/src/__tests__/toolStartEvent.test.ts')).toBe(true);
@@ -408,6 +410,7 @@ describe('monorepo topology', () => {
     expect(agentLoopSource).toContain("from './tokenUsageTracker.js'");
     expect(agentLoopSource).toContain("from './toolMessage.js'");
     expect(agentLoopSource).toContain("from './toolInjectedMessages.js'");
+    expect(agentLoopSource).toContain("from './toolResultContinuation.js'");
     expect(agentLoopSource).toContain("from './toolResultContent.js'");
     expect(agentLoopSource).toContain("from './toolResultTracker.js'");
     expect(agentLoopSource).toContain("from './toolStartEvent.js'");
@@ -434,9 +437,7 @@ describe('monorepo topology', () => {
     expect(rootAgentLoopSource).toContain('shouldExitAgentLoopForToolDecision');
     expect(rootAgentLoopSource).toContain('createAgentLoopClock');
     expect(rootAgentLoopSource).toContain('buildAgentLoopAssistantMessageProjection');
-    expect(rootAgentLoopSource).toContain('buildAgentLoopToolMessage');
-    expect(rootAgentLoopSource).toContain('buildAgentLoopToolInjectedMessages');
-    expect(rootAgentLoopSource).toContain('shouldEmitAgentLoopNonStreamingToolResultEffects');
+    expect(rootAgentLoopSource).toContain('buildAgentLoopToolResultContinuation');
     expect(rootAgentLoopSource).toContain('buildAgentLoopTokenUsageInfo');
     expect(rootAgentLoopSource).toContain('buildAgentLoopTokenUsageEvent');
     expect(rootAgentLoopSource).toContain('applyAgentLoopTokenBudget');
@@ -445,7 +446,6 @@ describe('monorepo topology', () => {
     expect(rootAgentLoopSource).toContain('shouldRecordAgentLoopTokenUsage');
     expect(rootAgentLoopSource).toContain('createAgentToolResultTracker');
     expect(rootAgentLoopSource).toContain('buildAgentLoopToolStartEvent');
-    expect(rootAgentLoopSource).toContain('buildAgentLoopToolResultEvent');
     expect(rootAgentLoopSource).toContain('buildAgentLoopTurnStateProjection');
     expect(rootAgentLoopSource).toContain('buildAgentLoopEffectiveMaxTurns');
     expect(rootAgentLoopSource).toContain('buildAgentLoopTurnLimitContinuation');
@@ -511,6 +511,10 @@ describe('monorepo topology', () => {
     expect(rootAgentLoopSource).not.toContain('turnsCount = 0');
     expect(rootAgentLoopSource).not.toContain('let toolResultContent =');
     expect(rootAgentLoopSource).not.toContain('buildAgentToolResultContent');
+    expect(rootAgentLoopSource).not.toContain('buildAgentLoopToolMessage');
+    expect(rootAgentLoopSource).not.toContain('buildAgentLoopToolInjectedMessages');
+    expect(rootAgentLoopSource).not.toContain('buildAgentLoopToolResultEvent');
+    expect(rootAgentLoopSource).not.toContain('shouldEmitAgentLoopNonStreamingToolResultEffects');
     expect(rootAgentLoopSource).not.toContain("role: 'tool',\n        tool_call_id: toolCall.id");
     expect(rootAgentLoopSource).not.toContain('const toolDef = executionPipeline.getRegistry().get');
     expect(rootAgentLoopSource).not.toContain('const toolKind = toolDef?.kind');
