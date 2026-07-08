@@ -6,6 +6,7 @@ import {
   buildAgentLoopToolExitDecision,
   buildAgentLoopToolExitFinalMessage,
   buildAgentLoopToolExitResult,
+  shouldAbortAgentLoop,
 } from '../loop/loopResult.js';
 
 describe('agent loop result builders', () => {
@@ -29,6 +30,12 @@ describe('agent loop result builders', () => {
         duration: 75,
       },
     });
+  });
+
+  it('treats only explicitly aborted signals as loop abort requests', () => {
+    expect(shouldAbortAgentLoop()).toBe(false);
+    expect(shouldAbortAgentLoop({ aborted: false })).toBe(false);
+    expect(shouldAbortAgentLoop({ aborted: true })).toBe(true);
   });
 
   it('builds a token-budget exhausted result with usage metadata', () => {

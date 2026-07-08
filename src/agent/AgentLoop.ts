@@ -53,6 +53,7 @@ import {
   buildAgentLoopAbortResult,
   buildAgentLoopSuccessResult,
   buildAgentLoopToolExitDecision,
+  shouldAbortAgentLoop,
 } from './loop/loopResult.js';
 import {
   planToolExecution,
@@ -203,7 +204,7 @@ export async function* agentLoop(
   while (true) {
     epoch = new ExecutionEpoch();
 
-    if (signal?.aborted) {
+    if (shouldAbortAgentLoop(signal)) {
       yield buildAgentLoopEndEvent();
       return buildAgentLoopAbortResult({
         ...loopClock.resultTiming({
@@ -232,7 +233,7 @@ export async function* agentLoop(
       yield buildAgentLoopTurnStartEvent({ turn: turnsCount, maxTurns: effectiveMaxTurns });
     }
 
-    if (signal?.aborted) {
+    if (shouldAbortAgentLoop(signal)) {
       yield buildAgentLoopEndEvent();
       return buildAgentLoopAbortResult({
         ...loopClock.resultTiming({
@@ -408,7 +409,7 @@ export async function* agentLoop(
       return budgetDecision.result as LoopResult;
     }
 
-    if (signal?.aborted) {
+    if (shouldAbortAgentLoop(signal)) {
       yield buildAgentLoopEndEvent();
       return buildAgentLoopAbortResult({
         ...loopClock.resultTiming({
@@ -483,7 +484,7 @@ export async function* agentLoop(
         });
       }
 
-      if (signal?.aborted) {
+      if (shouldAbortAgentLoop(signal)) {
         yield buildAgentLoopEndEvent();
         return buildAgentLoopAbortResult({
           ...loopClock.resultTiming({
@@ -546,7 +547,7 @@ export async function* agentLoop(
 
     yield buildAgentLoopTurnEndEvent({ turn: turnsCount, hasToolCalls: true });
 
-    if (signal?.aborted) {
+    if (shouldAbortAgentLoop(signal)) {
       yield buildAgentLoopEndEvent();
       return buildAgentLoopAbortResult({
         ...loopClock.resultTiming({

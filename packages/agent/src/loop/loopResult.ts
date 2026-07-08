@@ -128,6 +128,10 @@ function getLoopDuration(input: Pick<AgentLoopResultTiming, 'startTime' | 'now'>
   return (input.now ?? Date.now()) - input.startTime;
 }
 
+export function shouldAbortAgentLoop(signal?: Pick<AbortSignal, 'aborted'>): boolean {
+  return signal?.aborted === true;
+}
+
 export function buildAgentLoopAbortResult(input: AgentLoopResultTiming): AgentLoopAbortResult {
   return {
     success: false,

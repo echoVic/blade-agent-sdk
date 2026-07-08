@@ -5,6 +5,7 @@ export {
   buildAgentLoopToolExitDecision,
   buildAgentLoopToolExitFinalMessage,
   buildAgentLoopToolExitResult,
+  shouldAbortAgentLoop,
   type AgentLoopAbortResult,
   type AgentLoopBudgetExhaustedResult,
   type AgentLoopBudgetExhaustedResultInput,
