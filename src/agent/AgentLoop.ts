@@ -44,7 +44,7 @@ import {
   applyAgentLoopNoToolContinuation,
   buildAgentLoopNoToolContent,
   buildAgentLoopNoToolContinuation,
-  buildAgentLoopNoToolDecisionInputFromConversation,
+  buildAgentLoopNoToolDecisionInputFromHookContainer,
   decideAgentLoopNoToolTurn,
   runAgentLoopNoToolCompleteHook,
   shouldContinueAgentLoopAfterNoToolDecision,
@@ -243,7 +243,6 @@ export async function* agentLoop(
 
   const turnHooks = hooks?.turn;
   const recoveryHooks = hooks?.recovery;
-  const stopHooks = hooks?.stop;
 
   const effectiveMaxTurns = buildAgentLoopEffectiveMaxTurns({ maxTurns, isYoloMode });
 
@@ -514,11 +513,11 @@ export async function* agentLoop(
     if (shouldHandleAgentLoopNoToolTurn(turnResult)) {
       const content = buildAgentLoopNoToolContent({ content: turnResult.content });
       const noToolDecision = await decideAgentLoopNoToolTurn(
-        buildAgentLoopNoToolDecisionInputFromConversation({
+        buildAgentLoopNoToolDecisionInputFromHookContainer({
           content,
           conversation: convState,
           turn: turnsCount,
-          check: stopHooks?.check,
+          hooks,
         }),
       );
       if (shouldContinueAgentLoopAfterNoToolDecision(noToolDecision)) {

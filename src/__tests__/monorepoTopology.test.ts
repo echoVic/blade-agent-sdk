@@ -444,11 +444,16 @@ describe('monorepo topology', () => {
     expect(rootAgentLoopSource).toContain('runAgentLoopNoToolCompleteHook');
     expect(rootAgentLoopSource).not.toContain('buildAgentLoopNoToolCompletePayload');
     expect(rootAgentLoopSource).toContain(
+      'buildAgentLoopNoToolDecisionInputFromHookContainer',
+    );
+    expect(rootAgentLoopSource).not.toContain(
       'buildAgentLoopNoToolDecisionInputFromConversation',
     );
     expect(rootAgentLoopSource).not.toContain('buildAgentLoopNoToolStopHooksInput');
     expect(rootAgentLoopSource).not.toContain('const stopCheck = stopHooks?.check');
     expect(rootAgentLoopSource).not.toContain('onStopCheck: stopHooks?.check');
+    expect(rootAgentLoopSource).not.toContain('const stopHooks = hooks?.stop');
+    expect(rootAgentLoopSource).not.toContain('check: stopHooks?.check');
     expect(rootAgentLoopSource).not.toMatch(
       /buildAgentLoopNoToolDecisionInput\(\{\s+content,\s+messages: convState\.toArray\(\)/,
     );

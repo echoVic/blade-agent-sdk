@@ -53,8 +53,21 @@ export interface AgentLoopNoToolDecisionConversationInput {
   check?: StopCheck;
 }
 
+export interface AgentLoopNoToolDecisionHookContainerInput {
+  content: string;
+  conversation: AgentLoopNoToolConversationLike;
+  turn: number;
+  hooks?: AgentLoopNoToolStopHookContainer | null;
+}
+
 export interface AgentLoopNoToolStopHooksInput {
   check?: StopCheck;
+}
+
+export interface AgentLoopNoToolStopHookContainer {
+  stop?: {
+    check?: StopCheck;
+  } | null;
 }
 
 export interface AgentLoopNoToolStopHooks {
@@ -136,6 +149,17 @@ export function buildAgentLoopNoToolDecisionInputFromConversation(
     messages: input.conversation.toArray(),
     turn: input.turn,
     ...buildAgentLoopNoToolStopHooksInput({ check: input.check }),
+  });
+}
+
+export function buildAgentLoopNoToolDecisionInputFromHookContainer(
+  input: AgentLoopNoToolDecisionHookContainerInput,
+): AgentLoopNoToolDecisionInput {
+  return buildAgentLoopNoToolDecisionInputFromConversation({
+    content: input.content,
+    conversation: input.conversation,
+    turn: input.turn,
+    check: input.hooks?.stop?.check,
   });
 }
 
