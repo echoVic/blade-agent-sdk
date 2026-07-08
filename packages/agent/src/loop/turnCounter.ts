@@ -16,6 +16,13 @@ export function shouldEmitAgentLoopTurnStart(turnStart: AgentLoopTurnStart): boo
   return turnStart.started;
 }
 
+export function shouldRunAgentLoopBeforeTurnHook<BeforeTurnHook>(
+  counter: Pick<AgentLoopTurnCounter, 'shouldRunBeforeTurn'>,
+  beforeTurnHook: BeforeTurnHook | null | undefined,
+): beforeTurnHook is NonNullable<BeforeTurnHook> {
+  return beforeTurnHook !== undefined && beforeTurnHook !== null && counter.shouldRunBeforeTurn();
+}
+
 export function createAgentLoopTurnCounter(): AgentLoopTurnCounter {
   let turnsCount = 0;
   let retryCurrentTurn = false;

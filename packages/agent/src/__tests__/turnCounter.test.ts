@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   createAgentLoopTurnCounter,
   shouldEmitAgentLoopTurnStart,
+  shouldRunAgentLoopBeforeTurnHook,
 } from '../loop/turnCounter.js';
 
 describe('agent loop turn counter', () => {
@@ -28,6 +29,19 @@ describe('agent loop turn counter', () => {
   it('emits turn-start events only for newly started turns', () => {
     expect(shouldEmitAgentLoopTurnStart({ started: true, turn: 1 })).toBe(true);
     expect(shouldEmitAgentLoopTurnStart({ started: false, turn: 1 })).toBe(false);
+  });
+
+  it('runs before-turn hooks only when the counter allows it and a hook exists', () => {
+    const counter = createAgentLoopTurnCounter();
+    const hook = () => undefined;
+
+    expect(shouldRunAgentLoopBeforeTurnHook(counter, hook)).toBe(true);
+    expect(shouldRunAgentLoopBeforeTurnHook(counter, undefined)).toBe(false);
+
+    counter.beginTurn();
+    counter.requestRetry();
+
+    expect(shouldRunAgentLoopBeforeTurnHook(counter, hook)).toBe(false);
   });
 
   it('retries the current turn without rerunning before-turn hooks or incrementing', () => {
