@@ -120,6 +120,12 @@ export interface AgentRecoveryAttemptEffectsInput {
   attempt: number;
 }
 
+export interface AgentRecoveryExhaustedEffectsInput {
+  kind: 'exhausted';
+  turn: number;
+  attempt: number;
+}
+
 export interface AgentRecoveryResetEffectsInput {
   turn: number;
 }
@@ -277,6 +283,14 @@ export function buildAgentRecoveryRetryingEffects(
         attempt: input.attempt,
       }),
     ),
+  );
+}
+
+export function buildAgentRecoveryExhaustedEffects(
+  input: AgentRecoveryExhaustedEffectsInput,
+): AgentRecoveryEffects {
+  return buildAgentRecoveryEffects(
+    buildAgentRecoveryProjection(buildAgentRecoveryProjectionInput(input)),
   );
 }
 

@@ -795,12 +795,11 @@ describe('monorepo topology', () => {
     expect(rootAgentLoopSource).not.toMatch(
       /buildAgentReactiveCompactHookPayload\(\{\s+messages: convState\.toArray\(\)/,
     );
-    expect(rootAgentLoopSource).toContain('buildAgentRecoveryProjection');
-    expect(rootAgentLoopSource).toContain('buildAgentRecoveryEffects');
     expect(rootAgentLoopSource).toContain('buildAgentRecoveryResetEffects');
     expect(rootAgentLoopSource).toContain('buildAgentRecoveryStartedEffects');
     expect(rootAgentLoopSource).toContain('buildAgentRecoveryCompactFailedEffects');
     expect(rootAgentLoopSource).toContain('buildAgentRecoveryRetryingEffects');
+    expect(rootAgentLoopSource).toContain('buildAgentRecoveryExhaustedEffects');
     expect(rootAgentLoopSource).toContain('runAgentRecoveryStateChangeHooks');
     expect(rootAgentLoopSource).not.toContain('const onRecoveryStateChange');
     expect(rootAgentLoopSource).not.toContain('onRecoveryStateChange?.(');
@@ -937,6 +936,8 @@ describe('monorepo topology', () => {
     expect(rootAgentLoopSource).not.toContain(
       'recoveryAttemptTracker.hasAttemptedTurn(turnsCount)',
     );
+    expect(rootAgentLoopSource).not.toContain('buildAgentRecoveryProjection(');
+    expect(rootAgentLoopSource).not.toContain('buildAgentRecoveryEffects(');
     expect(rootAgentLoopSource).not.toContain("kind: 'started'");
     expect(rootAgentLoopSource).not.toContain("kind: 'compact_failed'");
     expect(rootAgentLoopSource).not.toContain("kind: 'retrying'");

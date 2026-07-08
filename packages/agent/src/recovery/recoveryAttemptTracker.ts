@@ -1,8 +1,5 @@
 import { isOverflowRecoverable } from './isOverflowRecoverable.js';
-import {
-  buildAgentRecoveryProjectionInput,
-  type AgentRecoveryProjectionInput,
-} from './recoveryEvents.js';
+import type { AgentRecoveryExhaustedEffectsInput } from './recoveryEvents.js';
 
 export interface AgentRecoveryAttemptTracker {
   readonly attempt: number;
@@ -70,12 +67,12 @@ export function startAgentRecoveryAttempt(input: StartAgentRecoveryAttemptInput)
 
 export function buildAgentRecoveryExhaustedProjectionInputFromTracker(
   input: AgentRecoveryExhaustedProjectionInputFromTrackerInput,
-): AgentRecoveryProjectionInput {
-  return buildAgentRecoveryProjectionInput({
+): AgentRecoveryExhaustedEffectsInput {
+  return {
     kind: 'exhausted',
     turn: input.turn,
     attempt: input.tracker.attempt,
-  });
+  };
 }
 
 export function shouldAttemptAgentRecovery({

@@ -5,6 +5,7 @@ import {
   buildAgentReactiveCompactHookPayload,
   buildAgentReactiveCompactHookPayloadFromConversation,
   buildAgentRecoveryEffects,
+  buildAgentRecoveryExhaustedEffects,
   buildAgentRecoveryProjectionInput,
   buildAgentRecoveryProjection,
   buildAgentRecoveryCompactFailedEffects,
@@ -276,6 +277,32 @@ describe('agent recovery event projection', () => {
           type: 'recovery',
           phase: 'retrying',
           reason: 'reactive_compact',
+        },
+      ],
+    });
+  });
+
+  it('builds exhausted recovery effects from an exhausted projection input', () => {
+    expect(
+      buildAgentRecoveryExhaustedEffects({
+        kind: 'exhausted',
+        turn: 9,
+        attempt: 6,
+      }),
+    ).toEqual({
+      stateChanges: [
+        {
+          turn: 9,
+          phase: 'failed',
+          reason: 'recovery_exhausted',
+          attempt: 6,
+        },
+      ],
+      events: [
+        {
+          type: 'recovery',
+          phase: 'failed',
+          reason: 'recovery_exhausted',
         },
       ],
     });

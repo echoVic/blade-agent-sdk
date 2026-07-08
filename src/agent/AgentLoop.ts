@@ -29,8 +29,7 @@ import {
   buildAgentModelFallbackEvent,
   buildAgentRecoveryCompactFailedEffects,
   buildAgentRecoveryCompactStreamFromHookContainer,
-  buildAgentRecoveryEffects,
-  buildAgentRecoveryProjection,
+  buildAgentRecoveryExhaustedEffects,
   buildAgentRecoveryResetEffects,
   buildAgentRecoveryRetryingEffects,
   buildAgentRecoveryStartedEffects,
@@ -410,13 +409,12 @@ export async function* agentLoop(
         tracker: recoveryAttemptTracker,
         turn: turnsCount,
       })) {
-        const recoveryExhausted = buildAgentRecoveryProjection(
+        const recoveryExhaustedEffects = buildAgentRecoveryExhaustedEffects(
           buildAgentRecoveryExhaustedProjectionInputFromTracker({
             turn: turnsCount,
             tracker: recoveryAttemptTracker,
           }),
         );
-        const recoveryExhaustedEffects = buildAgentRecoveryEffects(recoveryExhausted);
         await runAgentRecoveryStateChangeHooks({ effects: recoveryExhaustedEffects, hooks });
         for (const event of recoveryExhaustedEffects.events) {
           yield event;
