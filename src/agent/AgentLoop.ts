@@ -23,7 +23,7 @@ import {
   createAgentRecoveryAttemptTracker,
   hasAgentRecoveryAttemptExhausted,
   shouldAttemptAgentRecovery,
-  startAgentRecoveryAttempt,
+  startAgentRecoveryAttemptWithStartedEffects,
 } from './recoveryAttemptTracker.js';
 import {
   buildAgentModelFallbackEvent,
@@ -32,7 +32,6 @@ import {
   buildAgentRecoveryExhaustedEffects,
   buildAgentRecoveryResetEffects,
   buildAgentRecoveryRetryingEffects,
-  buildAgentRecoveryStartedEffects,
   consumeAgentRecoveryCompactStream,
   emitAgentRecoveryEffects,
   hasAgentReactiveCompactHook,
@@ -353,15 +352,12 @@ export async function* agentLoop(
         tracker: recoveryAttemptTracker,
         turn: turnsCount,
       })) {
-        const recoveryAttempt = startAgentRecoveryAttempt({
+        const recoveryStarted = startAgentRecoveryAttemptWithStartedEffects({
           tracker: recoveryAttemptTracker,
           turn: turnsCount,
         });
-        const recoveryStartedEffects = buildAgentRecoveryStartedEffects({
-          turn: turnsCount,
-          attempt: recoveryAttempt,
-        });
-        yield* emitAgentRecoveryEffects({ effects: recoveryStartedEffects, hooks });
+        const recoveryAttempt = recoveryStarted.attempt;
+        yield* emitAgentRecoveryEffects({ effects: recoveryStarted.effects, hooks });
         const compactStream = buildAgentRecoveryCompactStreamFromHookContainer({
           conversation: convState,
           hooks,

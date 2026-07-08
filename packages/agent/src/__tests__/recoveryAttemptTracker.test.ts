@@ -6,6 +6,7 @@ import {
   hasAgentRecoveryAttemptExhausted,
   shouldAttemptAgentRecovery,
   startAgentRecoveryAttempt,
+  startAgentRecoveryAttemptWithStartedEffects,
 } from '../recovery/recoveryAttemptTracker.js';
 
 describe('agent recovery attempt tracker', () => {
@@ -48,6 +49,33 @@ describe('agent recovery attempt tracker', () => {
 
     expect(tracker.attempt).toBe(2);
     expect(tracker.hasAttemptedTurn(4)).toBe(true);
+  });
+
+  it('starts recovery attempts with started effects for the current turn', () => {
+    const tracker = createAgentRecoveryAttemptTracker();
+
+    expect(startAgentRecoveryAttemptWithStartedEffects({ tracker, turn: 6 })).toEqual({
+      attempt: 1,
+      effects: {
+        stateChanges: [
+          {
+            turn: 6,
+            phase: 'started',
+            reason: 'context_overflow',
+            attempt: 1,
+          },
+        ],
+        events: [
+          {
+            type: 'recovery',
+            phase: 'started',
+            reason: 'context_overflow',
+          },
+        ],
+      },
+    });
+    expect(tracker.attempt).toBe(1);
+    expect(tracker.hasAttemptedTurn(6)).toBe(true);
   });
 
   it('increments attempts across consecutive failed turns until reset is consumed', () => {
