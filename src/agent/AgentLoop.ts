@@ -121,8 +121,7 @@ import {
   shouldRunAgentLoopBeforeTurnHook,
 } from './loop/turnCounter.js';
 import {
-  buildAgentLoopRunTurnInputFromTurnProjection,
-  buildAgentLoopRunTurnToolHooksInput,
+  buildAgentLoopRunTurnInputFromLoopState,
   consumeAgentLoopTurnStream,
 } from './loop/turnStream.js';
 import type { FunctionToolCall } from './loop/types.js';
@@ -318,20 +317,20 @@ export async function* agentLoop(
 
     try {
       const turnGen = runTurn(
-        buildAgentLoopRunTurnInputFromTurnProjection({
+        buildAgentLoopRunTurnInputFromLoopState({
           turnStateProjection,
-          messages: convState.toArray(),
+          conversation: convState,
           executionPipeline,
           streaming,
           signal,
           epoch,
           logger: config.logger,
-          toolHooks: buildAgentLoopRunTurnToolHooksInput({
+          toolHooks: {
             beforeExec: toolHooks?.beforeExec,
             afterExec: toolHooks?.afterExec,
             afterExecEpochDiscard: toolHooks?.afterExecEpochDiscard,
             onUpdate: toolHooks?.onUpdate,
-          }),
+          },
         }),
       );
       const turnStreamResult = yield* consumeAgentLoopTurnStream(turnGen);

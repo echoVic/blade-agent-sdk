@@ -1,9 +1,12 @@
 export {
   buildAgentLoopRunTurnInput,
+  buildAgentLoopRunTurnInputFromLoopState,
   buildAgentLoopRunTurnInputFromTurnProjection,
   buildAgentLoopRunTurnToolHooksInput,
   consumeAgentLoopTurnStream,
+  type AgentLoopRunTurnConversationLike,
   type AgentLoopRunTurnInput,
+  type AgentLoopRunTurnLoopStateInput,
   type AgentLoopRunTurnProjectionInput,
   type AgentLoopRunTurnToolHooks,
   type AgentLoopRunTurnToolHooksInput,

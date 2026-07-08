@@ -53,6 +53,36 @@ export interface AgentLoopRunTurnProjectionInput<
   toolHooks: TToolHooks;
 }
 
+export interface AgentLoopRunTurnConversationLike<TMessages> {
+  toArray(): TMessages;
+}
+
+export interface AgentLoopRunTurnLoopStateInput<
+  TTurnState extends AgentLoopTurnStateFields,
+  TMessages,
+  TExecutionPipeline,
+  TEpoch,
+  TLogger,
+  TBeforeExec,
+  TAfterExec,
+  TAfterExecEpochDiscard,
+  TOnUpdate,
+> {
+  turnStateProjection: AgentLoopTurnStateProjection<TTurnState>;
+  conversation: AgentLoopRunTurnConversationLike<TMessages>;
+  executionPipeline: TExecutionPipeline;
+  streaming?: boolean;
+  signal?: AbortSignal;
+  epoch: TEpoch;
+  logger?: TLogger;
+  toolHooks?: AgentLoopRunTurnToolHooksInput<
+    TBeforeExec,
+    TAfterExec,
+    TAfterExecEpochDiscard,
+    TOnUpdate
+  > | null;
+}
+
 export interface AgentLoopRunTurnToolHooksInput<
   TBeforeExec,
   TAfterExec,
@@ -184,6 +214,60 @@ export function buildAgentLoopRunTurnInputFromTurnProjection<
     permissionMode: input.turnStateProjection.permissionMode,
     logger: input.logger,
     toolHooks: input.toolHooks,
+  });
+}
+
+export function buildAgentLoopRunTurnInputFromLoopState<
+  TTurnState extends AgentLoopTurnStateFields,
+  TMessages,
+  TExecutionPipeline,
+  TEpoch,
+  TLogger,
+  TBeforeExec,
+  TAfterExec,
+  TAfterExecEpochDiscard,
+  TOnUpdate,
+>(
+  input: AgentLoopRunTurnLoopStateInput<
+    TTurnState,
+    TMessages,
+    TExecutionPipeline,
+    TEpoch,
+    TLogger,
+    TBeforeExec,
+    TAfterExec,
+    TAfterExecEpochDiscard,
+    TOnUpdate
+  >,
+): AgentLoopRunTurnInput<
+  TTurnState,
+  TMessages,
+  TExecutionPipeline,
+  TEpoch,
+  AgentLoopTurnStateProjection<TTurnState>['executionContext'],
+  AgentLoopTurnStateProjection<TTurnState>['permissionMode'],
+  TLogger,
+  AgentLoopRunTurnToolHooks<
+    TBeforeExec,
+    TAfterExec,
+    TAfterExecEpochDiscard,
+    TOnUpdate
+  >
+> {
+  return buildAgentLoopRunTurnInputFromTurnProjection({
+    turnStateProjection: input.turnStateProjection,
+    messages: input.conversation.toArray(),
+    executionPipeline: input.executionPipeline,
+    streaming: input.streaming,
+    signal: input.signal,
+    epoch: input.epoch,
+    logger: input.logger,
+    toolHooks: buildAgentLoopRunTurnToolHooksInput({
+      beforeExec: input.toolHooks?.beforeExec,
+      afterExec: input.toolHooks?.afterExec,
+      afterExecEpochDiscard: input.toolHooks?.afterExecEpochDiscard,
+      onUpdate: input.toolHooks?.onUpdate,
+    }),
   });
 }
 

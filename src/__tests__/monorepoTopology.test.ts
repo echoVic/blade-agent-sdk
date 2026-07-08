@@ -621,11 +621,11 @@ describe('monorepo topology', () => {
     );
     expect(rootAgentLoopSource).toContain('shouldRunAgentLoopBeforeTurnHook');
     expect(rootAgentLoopSource).toContain('consumeAgentLoopBeforeTurnStream');
-    expect(rootAgentLoopSource).toContain('buildAgentLoopRunTurnInputFromTurnProjection');
-    expect(rootAgentLoopSource).toContain('buildAgentLoopRunTurnToolHooksInput');
+    expect(rootAgentLoopSource).toContain('buildAgentLoopRunTurnInputFromLoopState');
+    expect(rootAgentLoopSource).not.toContain('buildAgentLoopRunTurnToolHooksInput');
     expect(rootAgentLoopSource).not.toContain('onBeforeExec: toolHooks?.beforeExec');
     const runTurnInputStart = rootAgentLoopSource.indexOf(
-      'buildAgentLoopRunTurnInputFromTurnProjection',
+      'buildAgentLoopRunTurnInputFromLoopState',
     );
     const runTurnInputEnd = rootAgentLoopSource.indexOf(
       'const turnStreamResult',
@@ -638,6 +638,7 @@ describe('monorepo topology', () => {
     expect(rootAgentLoopSource).not.toMatch(
       /buildAgentLoopRunTurnInput\(\{\s+turnState: turnStateProjection\.turnState/,
     );
+    expect(runTurnInputSource).not.toContain('messages: convState.toArray()');
     expect(runTurnInputSource).not.toContain(
       'executionContext: turnStateProjection.executionContext',
     );
