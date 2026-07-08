@@ -124,6 +124,16 @@ export interface BuildAgentLoopToolExitDecisionInputArgs<
   streamingExecutionResults: readonly TStreamingExecutionResult[] | undefined;
 }
 
+export interface AgentLoopToolExitTimingInput<
+  TResult extends AgentLoopToolExitDecisionResultLike,
+  TStreamingExecutionResult,
+> {
+  toolCall: AgentFunctionToolCall;
+  result: TResult;
+  streamingExecutionResults: readonly TStreamingExecutionResult[] | undefined;
+  timing: AgentLoopResultTiming;
+}
+
 export type AgentLoopToolExitDecisionEvent<TResult = AgentLoopToolExitDecisionResultLike> =
   | {
       type: 'tool_result';
@@ -310,6 +320,23 @@ export function buildAgentLoopToolExitDecisionInput<
     startTime: input.startTime,
     now: input.now,
   };
+}
+
+export function buildAgentLoopToolExitDecisionInputFromTiming<
+  TResult extends AgentLoopToolExitDecisionResultLike,
+  TStreamingExecutionResult,
+>(
+  input: AgentLoopToolExitTimingInput<TResult, TStreamingExecutionResult>,
+): AgentLoopToolExitDecisionInput<TResult> {
+  return buildAgentLoopToolExitDecisionInput({
+    toolCall: input.toolCall,
+    result: input.result,
+    streamingExecutionResults: input.streamingExecutionResults,
+    turnsCount: input.timing.turnsCount,
+    toolCallsCount: input.timing.toolCallsCount,
+    startTime: input.timing.startTime,
+    now: input.timing.now,
+  });
 }
 
 export function buildAgentLoopBudgetExhaustedResult(

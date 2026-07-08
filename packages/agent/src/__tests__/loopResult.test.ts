@@ -11,6 +11,7 @@ import {
   buildAgentLoopSuccessResult,
   buildAgentLoopToolExitDecision,
   buildAgentLoopToolExitDecisionInput,
+  buildAgentLoopToolExitDecisionInputFromTiming,
   buildAgentLoopToolExitFinalMessage,
   buildAgentLoopToolExitResult,
   shouldAbortAgentLoop,
@@ -345,6 +346,41 @@ describe('agent loop result builders', () => {
       toolCallsCount: 3,
       startTime: 100,
       now: 140,
+    });
+  });
+
+  it('projects tool-exit decision input from an explicit timing payload', () => {
+    const toolCall = {
+      id: 'call_1',
+      type: 'function' as const,
+      function: { name: 'Exit', arguments: '{}' },
+    };
+    const result = {
+      success: true,
+      llmContent: 'approved',
+      metadata: { shouldExitLoop: true, targetMode: 'default' },
+    };
+
+    expect(
+      buildAgentLoopToolExitDecisionInputFromTiming({
+        toolCall,
+        result,
+        streamingExecutionResults: [{ toolCall, result }],
+        timing: {
+          turnsCount: 5,
+          toolCallsCount: 8,
+          startTime: 500,
+          now: 620,
+        },
+      }),
+    ).toEqual({
+      toolCall,
+      result,
+      hasStreamingExecutionResults: true,
+      turnsCount: 5,
+      toolCallsCount: 8,
+      startTime: 500,
+      now: 620,
     });
   });
 

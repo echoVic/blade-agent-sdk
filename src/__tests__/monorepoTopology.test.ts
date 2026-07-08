@@ -454,8 +454,11 @@ describe('monorepo topology', () => {
     expect(rootAgentLoopSource).not.toMatch(
       /buildAgentLoopNoToolSuccessDecisionInput\(\{\s+finalMessage:[\s\S]*\.\.\.loopClock\.resultTiming/,
     );
-    expect(rootAgentLoopSource).toContain('buildAgentLoopToolExitDecisionInput');
+    expect(rootAgentLoopSource).toContain('buildAgentLoopToolExitDecisionInputFromTiming');
     expect(rootAgentLoopSource).toContain('buildAgentLoopToolExitDecision');
+    expect(rootAgentLoopSource).not.toMatch(
+      /buildAgentLoopToolExitDecisionInput\(\{\s+toolCall,\s+result,\s+streamingExecutionResults,[\s\S]*\.\.\.loopClock\.resultTiming/,
+    );
     expect(rootAgentLoopSource).toContain('shouldExitAgentLoopForToolDecision');
     expect(rootAgentLoopSource).toContain('createAgentLoopClock');
     expect(rootAgentLoopSource).toContain('buildAgentLoopAssistantMessageProjection');
