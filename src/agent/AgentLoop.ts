@@ -38,7 +38,7 @@ import {
   buildAgentLoopToolExitFinalMessage,
   buildAgentLoopToolExitResult,
 } from './loop/loopResult.js';
-import { planToolExecution } from './loop/planToolExecution.js';
+import { planToolExecution, selectAgentFunctionToolCalls } from './loop/planToolExecution.js';
 import { runTurn } from './loop/runTurn.js';
 import type { ToolExecutionUpdate } from './loop/runToolCall.js';
 import {
@@ -456,9 +456,7 @@ export async function* agentLoop(
     let executionResults = streamingExecutionResults;
 
     if (!executionResults) {
-      const functionCalls = turnResult.toolCalls.filter(
-        (tc): tc is FunctionToolCall => tc.type === 'function',
-      );
+      const functionCalls = selectAgentFunctionToolCalls(turnResult.toolCalls);
       const executionPlan = planToolExecution(
         functionCalls,
         executionPipeline.getRegistry(),

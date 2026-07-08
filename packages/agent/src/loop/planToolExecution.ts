@@ -25,12 +25,42 @@ export interface AgentFunctionToolCall {
   };
 }
 
+export interface AgentToolCallCandidate {
+  id?: unknown;
+  type?: unknown;
+  function?: unknown;
+}
+
 export type ToolExecutionPermissionMode = 'default' | 'autoEdit' | 'yolo' | 'plan';
 
 export interface ToolExecutionPlan {
   mode: 'parallel' | 'serial' | 'mixed';
   calls: AgentFunctionToolCall[];
   groups?: AgentFunctionToolCall[][];
+}
+
+function isAgentFunctionToolCall(call: unknown): call is AgentFunctionToolCall {
+  if (!call || typeof call !== 'object') {
+    return false;
+  }
+
+  const candidate = call as AgentToolCallCandidate;
+  if (typeof candidate.id !== 'string' || candidate.type !== 'function') {
+    return false;
+  }
+
+  if (!candidate.function || typeof candidate.function !== 'object') {
+    return false;
+  }
+
+  const functionCall = candidate.function as { name?: unknown; arguments?: unknown };
+  return typeof functionCall.name === 'string' && typeof functionCall.arguments === 'string';
+}
+
+export function selectAgentFunctionToolCalls(
+  calls: readonly unknown[] | undefined,
+): AgentFunctionToolCall[] {
+  return (calls ?? []).filter(isAgentFunctionToolCall);
 }
 
 export function planToolExecution(

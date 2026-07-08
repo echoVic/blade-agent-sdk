@@ -1,6 +1,8 @@
 export {
   planToolExecution,
+  selectAgentFunctionToolCalls,
   type AgentFunctionToolCall,
+  type AgentToolCallCandidate,
   type ToolBehavior,
   type ToolExecutionPermissionMode,
   type ToolExecutionPlan,

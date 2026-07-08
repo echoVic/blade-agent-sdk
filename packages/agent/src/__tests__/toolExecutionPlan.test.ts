@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   type AgentFunctionToolCall,
   planToolExecution,
+  selectAgentFunctionToolCalls,
   type ToolBehavior,
   ToolKind,
 } from '../loop/index.js';
@@ -54,6 +55,19 @@ const registry = {
 };
 
 describe('planToolExecution', () => {
+  it('selects only executable function tool calls before planning', () => {
+    const functionCall = makeCall('Read');
+
+    expect(
+      selectAgentFunctionToolCalls([
+        functionCall,
+        { id: 'custom-call', type: 'custom', function: { name: 'Nope', arguments: '{}' } },
+        { id: 'missing-function', type: 'function' },
+        { id: 'bad-args', type: 'function', function: { name: 'Read', arguments: 12 } },
+      ]),
+    ).toEqual([functionCall]);
+  });
+
   it('groups readonly calls for parallel execution before serial mutating calls', () => {
     const plan = planToolExecution(
       [
