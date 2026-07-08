@@ -173,6 +173,26 @@ export interface AgentLoopToolExitTimingInput<
   timing: AgentLoopResultTiming;
 }
 
+export interface AgentLoopToolExitTimingSource {
+  resultTiming(input: { turnsCount: number; toolCallsCount: number }): AgentLoopResultTiming;
+}
+
+export interface AgentLoopToolExitToolResultTrackerLike {
+  readonly toolCallsCount: number;
+}
+
+export interface AgentLoopToolExitLoopStateInput<
+  TResult extends AgentLoopToolExitDecisionResultLike,
+  TStreamingExecutionResult,
+> {
+  toolCall: AgentFunctionToolCall;
+  result: TResult;
+  streamingExecutionResults: readonly TStreamingExecutionResult[] | undefined;
+  loopClock: AgentLoopToolExitTimingSource;
+  turnsCount: number;
+  toolResultTracker: AgentLoopToolExitToolResultTrackerLike;
+}
+
 export type AgentLoopToolExitDecisionEvent<TResult = AgentLoopToolExitDecisionResultLike> =
   | {
       type: 'tool_result';
@@ -400,6 +420,23 @@ export function buildAgentLoopToolExitDecisionInputFromTiming<
     toolCallsCount: input.timing.toolCallsCount,
     startTime: input.timing.startTime,
     now: input.timing.now,
+  });
+}
+
+export function buildAgentLoopToolExitDecisionInputFromLoopState<
+  TResult extends AgentLoopToolExitDecisionResultLike,
+  TStreamingExecutionResult,
+>(
+  input: AgentLoopToolExitLoopStateInput<TResult, TStreamingExecutionResult>,
+): AgentLoopToolExitDecisionInput<TResult> {
+  return buildAgentLoopToolExitDecisionInputFromTiming({
+    toolCall: input.toolCall,
+    result: input.result,
+    streamingExecutionResults: input.streamingExecutionResults,
+    timing: input.loopClock.resultTiming({
+      turnsCount: input.turnsCount,
+      toolCallsCount: input.toolResultTracker.toolCallsCount,
+    }),
   });
 }
 

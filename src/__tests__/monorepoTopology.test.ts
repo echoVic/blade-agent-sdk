@@ -484,10 +484,26 @@ describe('monorepo topology', () => {
     );
     expect(noToolSuccessInputSource).not.toContain('tokenUsageTracker.totalTokens');
     expect(noToolSuccessInputSource).not.toContain('tokenBudget?.getSnapshot()');
-    expect(rootAgentLoopSource).toContain('buildAgentLoopToolExitDecisionInputFromTiming');
+    expect(rootAgentLoopSource).toContain('buildAgentLoopToolExitDecisionInputFromLoopState');
+    expect(rootAgentLoopSource).not.toContain('buildAgentLoopToolExitDecisionInputFromTiming');
     expect(rootAgentLoopSource).toContain('buildAgentLoopToolExitDecision');
     expect(rootAgentLoopSource).not.toMatch(
       /buildAgentLoopToolExitDecisionInput\(\{\s+toolCall,\s+result,\s+streamingExecutionResults,[\s\S]*\.\.\.loopClock\.resultTiming/,
+    );
+    const toolExitDecisionInputStart = rootAgentLoopSource.indexOf(
+      'buildAgentLoopToolExitDecisionInputFromLoopState({',
+    );
+    const toolExitDecisionInputEnd = rootAgentLoopSource.indexOf(
+      'if (shouldExitAgentLoopForToolDecision',
+      toolExitDecisionInputStart,
+    );
+    const toolExitDecisionInputSource = rootAgentLoopSource.slice(
+      toolExitDecisionInputStart,
+      toolExitDecisionInputEnd,
+    );
+    expect(toolExitDecisionInputSource).not.toContain('loopClock.resultTiming');
+    expect(toolExitDecisionInputSource).not.toContain(
+      'toolCallsCount: toolResultTracker.toolCallsCount',
     );
     expect(rootAgentLoopSource).toContain('shouldExitAgentLoopForToolDecision');
     expect(rootAgentLoopSource).toContain('createAgentLoopClock');

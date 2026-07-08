@@ -13,6 +13,7 @@ import {
   buildAgentLoopSuccessResult,
   buildAgentLoopToolExitDecision,
   buildAgentLoopToolExitDecisionInput,
+  buildAgentLoopToolExitDecisionInputFromLoopState,
   buildAgentLoopToolExitDecisionInputFromTiming,
   buildAgentLoopToolExitFinalMessage,
   buildAgentLoopToolExitResult,
@@ -464,6 +465,48 @@ describe('agent loop result builders', () => {
           toolCallsCount: 8,
           startTime: 500,
           now: 620,
+        },
+      }),
+    ).toEqual({
+      toolCall,
+      result,
+      hasStreamingExecutionResults: true,
+      turnsCount: 5,
+      toolCallsCount: 8,
+      startTime: 500,
+      now: 620,
+    });
+  });
+
+  it('projects tool-exit decision input from loop state objects', () => {
+    const toolCall = {
+      id: 'call_1',
+      type: 'function' as const,
+      function: { name: 'Exit', arguments: '{}' },
+    };
+    const result = {
+      success: true,
+      llmContent: 'approved',
+      metadata: { shouldExitLoop: true, targetMode: 'default' },
+    };
+    const streamingExecutionResults = [{ toolCall, result }];
+
+    expect(
+      buildAgentLoopToolExitDecisionInputFromLoopState({
+        toolCall,
+        result,
+        streamingExecutionResults,
+        loopClock: {
+          resultTiming: ({ turnsCount, toolCallsCount }) => ({
+            turnsCount,
+            toolCallsCount,
+            startTime: 500,
+            now: 620,
+          }),
+        },
+        turnsCount: 5,
+        toolResultTracker: {
+          toolCallsCount: 8,
         },
       }),
     ).toEqual({
