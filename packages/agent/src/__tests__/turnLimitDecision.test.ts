@@ -5,6 +5,7 @@ import {
   buildAgentLoopTurnLimitContinuation,
   buildAgentLoopEffectiveMaxTurns,
   decideTurnLimit,
+  shouldApplyAgentLoopTurnLimitContinuation,
   shouldCheckAgentLoopTurnLimit,
   shouldStopAgentLoopForTurnLimitDecision,
 } from '../loop/index.js';
@@ -207,5 +208,29 @@ describe('decideTurnLimit', () => {
       compactedMessages: [],
       appendMessages: [],
     });
+  });
+
+  it('applies turn-limit continuation only when messages should be replaced', async () => {
+    const compactedMessages: Message[] = [{ role: 'assistant', content: 'summary' }];
+    const decision = await decideTurnLimit({
+      ...baseInput,
+      onTurnLimitReached: async () => ({ continue: true }),
+      onTurnLimitCompact: async () => ({
+        success: true,
+        compactedMessages,
+      }),
+    });
+
+    expect(
+      shouldApplyAgentLoopTurnLimitContinuation(
+        buildAgentLoopTurnLimitContinuation(decision),
+      ),
+    ).toBe(true);
+
+    expect(
+      shouldApplyAgentLoopTurnLimitContinuation(
+        buildAgentLoopTurnLimitContinuation(await decideTurnLimit(baseInput)),
+      ),
+    ).toBe(false);
   });
 });

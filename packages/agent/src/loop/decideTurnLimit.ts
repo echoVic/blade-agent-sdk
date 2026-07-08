@@ -49,6 +49,10 @@ export interface AgentLoopTurnLimitContinuation {
   appendMessages: Message[];
 }
 
+export type AgentLoopApplicableTurnLimitContinuation = AgentLoopTurnLimitContinuation & {
+  shouldReplaceMessages: true;
+};
+
 export interface DecideTurnLimitInput {
   maxTurns: number;
   turnsCount: number;
@@ -105,6 +109,12 @@ export function buildAgentLoopTurnLimitContinuation(
     compactedMessages: decision.compactedMessages,
     appendMessages: decision.continueMessage ? [decision.continueMessage] : [],
   };
+}
+
+export function shouldApplyAgentLoopTurnLimitContinuation(
+  continuation: AgentLoopTurnLimitContinuation,
+): continuation is AgentLoopApplicableTurnLimitContinuation {
+  return continuation.shouldReplaceMessages;
 }
 
 export async function decideTurnLimit(

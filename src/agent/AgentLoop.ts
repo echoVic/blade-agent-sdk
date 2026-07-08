@@ -42,6 +42,7 @@ import {
   buildAgentLoopEffectiveMaxTurns,
   buildAgentLoopTurnLimitContinuation,
   decideTurnLimit,
+  shouldApplyAgentLoopTurnLimitContinuation,
   shouldCheckAgentLoopTurnLimit,
   shouldStopAgentLoopForTurnLimitDecision,
 } from './loop/decideTurnLimit.js';
@@ -590,7 +591,7 @@ export async function* agentLoop(
       }
 
       const turnLimitContinuation = buildAgentLoopTurnLimitContinuation(limitDecision);
-      if (turnLimitContinuation.shouldReplaceMessages) {
+      if (shouldApplyAgentLoopTurnLimitContinuation(turnLimitContinuation)) {
         convState.replaceContent(turnLimitContinuation.compactedMessages);
         convState.append(...turnLimitContinuation.appendMessages);
       }

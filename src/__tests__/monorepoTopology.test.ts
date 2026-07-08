@@ -446,6 +446,7 @@ describe('monorepo topology', () => {
     expect(rootAgentLoopSource).toContain('buildAgentLoopTurnStateProjection');
     expect(rootAgentLoopSource).toContain('buildAgentLoopEffectiveMaxTurns');
     expect(rootAgentLoopSource).toContain('buildAgentLoopTurnLimitContinuation');
+    expect(rootAgentLoopSource).toContain('shouldApplyAgentLoopTurnLimitContinuation');
     expect(rootAgentLoopSource).toContain('selectAgentFunctionToolCalls');
     expect(rootAgentLoopSource).toContain('shouldStopAgentLoopForTurnLimitDecision');
     expect(rootAgentLoopSource).toContain('createAgentLoopTurnCounter');
@@ -478,6 +479,7 @@ describe('monorepo topology', () => {
     expect(rootAgentLoopSource).not.toContain("limitDecision.action === 'stop'");
     expect(rootAgentLoopSource).not.toContain('limitDecision.compactedMessages');
     expect(rootAgentLoopSource).not.toContain('limitDecision.continueMessage');
+    expect(rootAgentLoopSource).not.toContain('turnLimitContinuation.shouldReplaceMessages');
     expect(rootAgentLoopSource).not.toContain("{\n          type: 'model_fallback'");
     expect(rootAgentLoopSource).not.toContain("{ type: 'tool_result'");
     expect(rootAgentLoopSource).not.toContain('let totalTokens = 0');
