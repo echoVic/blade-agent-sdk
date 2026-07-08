@@ -1,7 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import type { AgentFunctionToolCall } from '../loop/planToolExecution.js';
 import type { ToolExecutionRegistryLike } from '../loop/toolBehavior.js';
-import { toolUpdateToAgentEvent } from '../loop/toolUpdateToAgentEvent.js';
+import {
+  buildAgentLoopToolResultEvent,
+  toolUpdateToAgentEvent,
+} from '../loop/toolUpdateToAgentEvent.js';
 
 const toolCall: AgentFunctionToolCall = {
   id: 'tc-1',
@@ -36,6 +39,16 @@ describe('toolUpdateToAgentEvent', () => {
       registry,
     );
     expect(event).toEqual({ type: 'tool_result', toolCall, result });
+  });
+
+  it('wraps non-streaming tool outcomes as public tool_result events', () => {
+    const result = { success: true as const, llmContent: 'ok' };
+
+    expect(buildAgentLoopToolResultEvent({ toolCall, result })).toEqual({
+      type: 'tool_result',
+      toolCall,
+      result,
+    });
   });
 
   it('maps tool_progress / tool_message', () => {

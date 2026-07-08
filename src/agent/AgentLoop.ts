@@ -49,6 +49,7 @@ import { createAgentLoopTokenUsageTracker } from './loop/tokenUsageTracker.js';
 import { buildAgentLoopToolMessage } from './loop/toolMessage.js';
 import { createAgentToolResultTracker } from './loop/toolResultTracker.js';
 import { buildAgentLoopToolStartEvent } from './loop/toolStartEvent.js';
+import { buildAgentLoopToolResultEvent } from './loop/toolUpdateToAgentEvent.js';
 import { createAgentLoopTurnCounter } from './loop/turnCounter.js';
 import type { FunctionToolCall } from './loop/types.js';
 import type { ConversationState } from './state/ConversationState.js';
@@ -504,7 +505,7 @@ export async function* agentLoop(
         const finalMessage =
           typeof result.llmContent === 'string' ? result.llmContent : '循环已退出';
         if (!streamingExecutionResults) {
-          yield { type: 'tool_result', toolCall, result };
+          yield buildAgentLoopToolResultEvent({ toolCall, result });
         }
         yield buildAgentLoopTurnEndEvent({ turn: turnsCount, hasToolCalls: true });
         yield buildAgentLoopEndEvent();
@@ -520,7 +521,7 @@ export async function* agentLoop(
       }
 
       if (!streamingExecutionResults) {
-        yield { type: 'tool_result', toolCall, result };
+        yield buildAgentLoopToolResultEvent({ toolCall, result });
         await toolHooks?.afterExec?.({ toolCall, result, toolUseUuid });
       }
 

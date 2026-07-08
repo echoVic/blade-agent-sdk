@@ -430,6 +430,7 @@ describe('monorepo topology', () => {
     expect(rootAgentLoopSource).toContain('createAgentLoopTokenUsageTracker');
     expect(rootAgentLoopSource).toContain('createAgentToolResultTracker');
     expect(rootAgentLoopSource).toContain('buildAgentLoopToolStartEvent');
+    expect(rootAgentLoopSource).toContain('buildAgentLoopToolResultEvent');
     expect(rootAgentLoopSource).toContain('createAgentLoopTurnCounter');
     expect(rootAgentLoopSource).toContain('createAgentRecoveryAttemptTracker');
     expect(rootAgentLoopSource).toContain('buildAgentModelFallbackEvent');
@@ -448,6 +449,7 @@ describe('monorepo topology', () => {
     expect(rootAgentLoopSource).not.toContain("{ type: 'token_usage'");
     expect(rootAgentLoopSource).not.toContain("{ type: 'budget_warning'");
     expect(rootAgentLoopSource).not.toContain("{\n          type: 'model_fallback'");
+    expect(rootAgentLoopSource).not.toContain("{ type: 'tool_result'");
     expect(rootAgentLoopSource).not.toContain('let totalTokens = 0');
     expect(rootAgentLoopSource).not.toContain('let lastPromptTokens');
     expect(rootAgentLoopSource).not.toContain('const startTime = Date.now()');

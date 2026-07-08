@@ -100,6 +100,21 @@ export type AgentLoopToolEvent =
       updates: unknown;
     };
 
+export interface AgentLoopToolResultEventInput {
+  toolCall: AgentFunctionToolCall;
+  result: unknown;
+}
+
+export function buildAgentLoopToolResultEvent(
+  input: AgentLoopToolResultEventInput,
+): Extract<AgentLoopToolEvent, { type: 'tool_result' }> {
+  return {
+    type: 'tool_result',
+    toolCall: input.toolCall,
+    result: input.result,
+  };
+}
+
 export function toolUpdateToAgentEvent(
   update: AgentLoopToolExecutionUpdate,
   registry: ToolExecutionRegistryLike,
@@ -110,11 +125,10 @@ export function toolUpdateToAgentEvent(
       return { type: 'tool_start', toolCall: update.toolCall, toolKind: toolDef?.kind };
     }
     case 'tool_result':
-      return {
-        type: 'tool_result',
+      return buildAgentLoopToolResultEvent({
         toolCall: update.outcome.toolCall,
         result: update.outcome.result,
-      };
+      });
     case 'tool_progress':
       return {
         type: 'tool_progress',
