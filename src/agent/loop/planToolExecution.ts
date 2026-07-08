@@ -1,10 +1,13 @@
 export {
   buildAgentLoopExecuteToolCallsInput,
+  buildAgentLoopToolExecutionPlanInput,
+  planAgentLoopToolExecution,
   planToolExecution,
   selectAgentFunctionToolCalls,
   shouldEmitAgentLoopNonStreamingToolResultEffects,
   shouldRunAgentLoopNonStreamingToolExecution,
   type AgentLoopExecuteToolCallsInput,
+  type AgentLoopToolExecutionPlanInput,
   type AgentFunctionToolCall,
   type AgentToolCallCandidate,
   type ToolBehavior,

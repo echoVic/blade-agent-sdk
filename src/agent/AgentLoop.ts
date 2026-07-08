@@ -75,7 +75,8 @@ import {
 } from './loop/loopResult.js';
 import {
   buildAgentLoopExecuteToolCallsInput,
-  planToolExecution,
+  buildAgentLoopToolExecutionPlanInput,
+  planAgentLoopToolExecution,
   selectAgentFunctionToolCalls,
   shouldRunAgentLoopNonStreamingToolExecution,
 } from './loop/planToolExecution.js';
@@ -533,10 +534,12 @@ export async function* agentLoop(
 
     if (shouldRunAgentLoopNonStreamingToolExecution(executionResults)) {
       const functionCalls = selectAgentFunctionToolCalls(turnResult.toolCalls);
-      const executionPlan = planToolExecution(
-        functionCalls,
-        executionPipeline.getRegistry(),
-        turnStateProjection.permissionMode,
+      const executionPlan = planAgentLoopToolExecution(
+        buildAgentLoopToolExecutionPlanInput({
+          calls: functionCalls,
+          registry: executionPipeline.getRegistry(),
+          permissionMode: turnStateProjection.permissionMode,
+        }),
       );
 
       for (const event of buildAgentLoopToolStartEvents({

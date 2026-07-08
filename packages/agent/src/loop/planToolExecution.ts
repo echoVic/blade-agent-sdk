@@ -39,6 +39,12 @@ export interface ToolExecutionPlan {
   groups?: AgentFunctionToolCall[][];
 }
 
+export interface AgentLoopToolExecutionPlanInput {
+  calls: AgentFunctionToolCall[];
+  registry: ToolExecutionRegistryLike;
+  permissionMode?: ToolExecutionPermissionMode;
+}
+
 export interface AgentLoopExecuteToolCallsInput<
   TExecutionPipeline,
   TExecutionContext,
@@ -80,6 +86,16 @@ export function buildAgentLoopExecuteToolCallsInput<
     permissionMode: input.permissionMode,
     signal: input.signal,
     hooks: input.hooks,
+  };
+}
+
+export function buildAgentLoopToolExecutionPlanInput(
+  input: AgentLoopToolExecutionPlanInput,
+): AgentLoopToolExecutionPlanInput {
+  return {
+    calls: input.calls,
+    registry: input.registry,
+    permissionMode: input.permissionMode,
   };
 }
 
@@ -181,6 +197,12 @@ export function planToolExecution(
     calls: [...readonlyCalls, ...nonReadonlyCalls],
     groups,
   };
+}
+
+export function planAgentLoopToolExecution(
+  input: AgentLoopToolExecutionPlanInput,
+): ToolExecutionPlan {
+  return planToolExecution(input.calls, input.registry, input.permissionMode);
 }
 
 function parseToolArguments(argumentsText: string): JsonObject | undefined {

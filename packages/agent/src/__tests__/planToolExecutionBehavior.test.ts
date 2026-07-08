@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest';
 import {
   type AgentFunctionToolCall,
   buildAgentLoopExecuteToolCallsInput,
+  buildAgentLoopToolExecutionPlanInput,
+  planAgentLoopToolExecution,
   planToolExecution,
   shouldEmitAgentLoopNonStreamingToolResultEffects,
   shouldRunAgentLoopNonStreamingToolExecution,
@@ -84,6 +86,25 @@ describe('planToolExecution', () => {
     expect(plan.mode).toBe('serial');
     expect(plan.calls.map((call) => call.function.name)).toEqual(['Read', 'Glob']);
     expect(plan.groups).toBeUndefined();
+  });
+
+  it('projects object-style tool execution planning input and runs the planning wrapper', () => {
+    const calls = [makeCall('Read'), makeCall('Edit')];
+
+    const input = buildAgentLoopToolExecutionPlanInput({
+      calls,
+      registry: mockRegistry,
+      permissionMode: 'default',
+    });
+
+    expect(input).toEqual({
+      calls,
+      registry: mockRegistry,
+      permissionMode: 'default',
+    });
+    expect(planAgentLoopToolExecution(input)).toEqual(
+      planToolExecution(calls, mockRegistry, 'default'),
+    );
   });
 
   it('returns parallel mode for all readonly calls', () => {
