@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   buildAgentLoopAbortCompletion,
   buildAgentLoopAbortCompletionInput,
+  buildAgentLoopAbortCompletionInputFromLoopState,
   buildAgentLoopAbortCompletionInputFromTiming,
   buildAgentLoopAbortResult,
   buildAgentLoopBudgetExhaustedResult,
@@ -97,6 +98,30 @@ describe('agent loop result builders', () => {
           toolCallsCount: 3,
           startTime: 100,
           now: 175,
+        },
+      }),
+    ).toEqual({
+      turnsCount: 2,
+      toolCallsCount: 3,
+      startTime: 100,
+      now: 175,
+    });
+  });
+
+  it('projects abort completion input from loop state objects', () => {
+    expect(
+      buildAgentLoopAbortCompletionInputFromLoopState({
+        loopClock: {
+          resultTiming: ({ turnsCount, toolCallsCount }) => ({
+            turnsCount,
+            toolCallsCount,
+            startTime: 100,
+            now: 175,
+          }),
+        },
+        turnsCount: 2,
+        toolResultTracker: {
+          toolCallsCount: 3,
         },
       }),
     ).toEqual({

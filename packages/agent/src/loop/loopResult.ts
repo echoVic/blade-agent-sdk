@@ -69,6 +69,20 @@ export interface AgentLoopAbortCompletionTimingInput {
   timing: AgentLoopResultTiming;
 }
 
+export interface AgentLoopAbortCompletionTimingSource {
+  resultTiming(input: { turnsCount: number; toolCallsCount: number }): AgentLoopResultTiming;
+}
+
+export interface AgentLoopAbortCompletionToolResultTrackerLike {
+  readonly toolCallsCount: number;
+}
+
+export interface AgentLoopAbortCompletionLoopStateInput {
+  loopClock: AgentLoopAbortCompletionTimingSource;
+  turnsCount: number;
+  toolResultTracker: AgentLoopAbortCompletionToolResultTrackerLike;
+}
+
 export interface AgentLoopNoToolSuccessTimingInput {
   finalMessage: string | undefined;
   timing: AgentLoopResultTiming;
@@ -208,6 +222,17 @@ export function buildAgentLoopAbortCompletionInputFromTiming(
   input: AgentLoopAbortCompletionTimingInput,
 ): AgentLoopResultTiming {
   return buildAgentLoopAbortCompletionInput(input.timing);
+}
+
+export function buildAgentLoopAbortCompletionInputFromLoopState(
+  input: AgentLoopAbortCompletionLoopStateInput,
+): AgentLoopResultTiming {
+  return buildAgentLoopAbortCompletionInputFromTiming({
+    timing: input.loopClock.resultTiming({
+      turnsCount: input.turnsCount,
+      toolCallsCount: input.toolResultTracker.toolCallsCount,
+    }),
+  });
 }
 
 export function buildAgentLoopAbortCompletion(

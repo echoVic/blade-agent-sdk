@@ -1,6 +1,7 @@
 export {
   buildAgentLoopAbortCompletion,
   buildAgentLoopAbortCompletionInput,
+  buildAgentLoopAbortCompletionInputFromLoopState,
   buildAgentLoopAbortCompletionInputFromTiming,
   buildAgentLoopAbortResult,
   buildAgentLoopBudgetExhaustedResult,
@@ -17,7 +18,10 @@ export {
   shouldAbortAgentLoop,
   type AgentLoopAbortResult,
   type AgentLoopAbortCompletion,
+  type AgentLoopAbortCompletionLoopStateInput,
   type AgentLoopAbortCompletionTimingInput,
+  type AgentLoopAbortCompletionTimingSource,
+  type AgentLoopAbortCompletionToolResultTrackerLike,
   type AgentLoopBudgetExhaustedResult,
   type AgentLoopBudgetExhaustedResultInput,
   type AgentLoopNoToolSuccessTimingInput,
