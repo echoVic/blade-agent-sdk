@@ -62,6 +62,11 @@ export interface AgentRecoveryProjection {
   event?: AgentRecoveryEvent;
 }
 
+export interface AgentRecoveryEffects {
+  stateChanges: [AgentRecoveryStateChange];
+  events: AgentRecoveryEvent[];
+}
+
 export type AgentRecoveryProjectionWithEvent = AgentRecoveryProjection & {
   event: AgentRecoveryEvent;
 };
@@ -141,6 +146,15 @@ export function shouldEmitAgentRecoveryEvent(
   projection: AgentRecoveryProjection,
 ): projection is AgentRecoveryProjectionWithEvent {
   return projection.event !== undefined;
+}
+
+export function buildAgentRecoveryEffects(
+  projection: AgentRecoveryProjection,
+): AgentRecoveryEffects {
+  return {
+    stateChanges: [projection.stateChange],
+    events: shouldEmitAgentRecoveryEvent(projection) ? [projection.event] : [],
+  };
 }
 
 export async function* consumeAgentRecoveryCompactStream<Event>(

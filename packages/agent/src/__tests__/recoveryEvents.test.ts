@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   buildAgentModelFallbackEvent,
+  buildAgentRecoveryEffects,
   buildAgentRecoveryProjection,
   consumeAgentRecoveryCompactStream,
   shouldEmitAgentRecoveryEvent,
@@ -129,6 +130,48 @@ describe('agent recovery event projection', () => {
         }),
       ),
     ).toBe(false);
+  });
+
+  it('builds recovery effects with state changes and optional stream events', () => {
+    const retryingProjection = buildAgentRecoveryProjection({
+      kind: 'retrying',
+      turn: 4,
+      attempt: 2,
+    });
+
+    expect(buildAgentRecoveryEffects(retryingProjection)).toEqual({
+      stateChanges: [
+        {
+          turn: 4,
+          phase: 'retrying',
+          reason: 'reactive_compact_retry',
+          attempt: 2,
+        },
+      ],
+      events: [
+        {
+          type: 'recovery',
+          phase: 'retrying',
+          reason: 'reactive_compact',
+        },
+      ],
+    });
+
+    const resetProjection = buildAgentRecoveryProjection({
+      kind: 'reset',
+      turn: 4,
+    });
+
+    expect(buildAgentRecoveryEffects(resetProjection)).toEqual({
+      stateChanges: [
+        {
+          turn: 4,
+          phase: 'reset',
+          attempt: 0,
+        },
+      ],
+      events: [],
+    });
   });
 
   it('wraps model fallback metadata as a public agent event', () => {

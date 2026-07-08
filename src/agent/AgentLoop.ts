@@ -25,9 +25,9 @@ import {
 } from './recoveryAttemptTracker.js';
 import {
   buildAgentModelFallbackEvent,
+  buildAgentRecoveryEffects,
   buildAgentRecoveryProjection,
   consumeAgentRecoveryCompactStream,
-  shouldEmitAgentRecoveryEvent,
 } from './recoveryEvents.js';
 import {
   assertAgentLoopTurnResponse,
@@ -333,9 +333,12 @@ export async function* agentLoop(
           turn: turnsCount,
           attempt: recoveryAttempt,
         });
-        onRecoveryStateChange?.(recoveryStarted.stateChange);
-        if (shouldEmitAgentRecoveryEvent(recoveryStarted)) {
-          yield recoveryStarted.event;
+        const recoveryStartedEffects = buildAgentRecoveryEffects(recoveryStarted);
+        for (const stateChange of recoveryStartedEffects.stateChanges) {
+          onRecoveryStateChange?.(stateChange);
+        }
+        for (const event of recoveryStartedEffects.events) {
+          yield event;
         }
         const compactStream = reactiveCompact?.({ messages: convState.toArray() });
         if (!compactStream) {
@@ -348,9 +351,12 @@ export async function* agentLoop(
             turn: turnsCount,
             attempt: recoveryAttempt,
           });
-          onRecoveryStateChange?.(recoveryFailed.stateChange);
-          if (shouldEmitAgentRecoveryEvent(recoveryFailed)) {
-            yield recoveryFailed.event;
+          const recoveryFailedEffects = buildAgentRecoveryEffects(recoveryFailed);
+          for (const stateChange of recoveryFailedEffects.stateChanges) {
+            onRecoveryStateChange?.(stateChange);
+          }
+          for (const event of recoveryFailedEffects.events) {
+            yield event;
           }
           throw llmError;
         }
@@ -359,9 +365,12 @@ export async function* agentLoop(
           turn: turnsCount,
           attempt: recoveryAttempt,
         });
-        onRecoveryStateChange?.(recoveryRetrying.stateChange);
-        if (shouldEmitAgentRecoveryEvent(recoveryRetrying)) {
-          yield recoveryRetrying.event;
+        const recoveryRetryingEffects = buildAgentRecoveryEffects(recoveryRetrying);
+        for (const stateChange of recoveryRetryingEffects.stateChanges) {
+          onRecoveryStateChange?.(stateChange);
+        }
+        for (const event of recoveryRetryingEffects.events) {
+          yield event;
         }
         epoch?.invalidate();
         // 显式"重试当前轮"：不减 turnsCount，不发 turn_end
@@ -380,9 +389,12 @@ export async function* agentLoop(
           turn: turnsCount,
           attempt: recoveryAttemptTracker.attempt,
         });
-        recoveryHooks?.onStateChange?.(recoveryExhausted.stateChange);
-        if (shouldEmitAgentRecoveryEvent(recoveryExhausted)) {
-          yield recoveryExhausted.event;
+        const recoveryExhaustedEffects = buildAgentRecoveryEffects(recoveryExhausted);
+        for (const stateChange of recoveryExhaustedEffects.stateChanges) {
+          recoveryHooks?.onStateChange?.(stateChange);
+        }
+        for (const event of recoveryExhaustedEffects.events) {
+          yield event;
         }
       }
       throw llmError;
@@ -395,7 +407,10 @@ export async function* agentLoop(
         kind: 'reset',
         turn: turnsCount,
       });
-      recoveryHooks?.onStateChange?.(recoveryReset.stateChange);
+      const recoveryResetEffects = buildAgentRecoveryEffects(recoveryReset);
+      for (const stateChange of recoveryResetEffects.stateChanges) {
+        recoveryHooks?.onStateChange?.(stateChange);
+      }
     }
 
     // Token usage
