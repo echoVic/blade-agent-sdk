@@ -484,6 +484,8 @@ describe('monorepo topology', () => {
     expect(rootAgentLoopSource).not.toContain('buildAgentLoopEndEvent');
     expect(rootAgentLoopSource).not.toContain('buildAgentLoopTurnEndEvent');
     expect(rootAgentLoopSource).not.toContain('if (signal?.aborted)');
+    expect(rootAgentLoopSource).toContain('buildAgentLoopTurnStartEventInput');
+    expect(rootAgentLoopSource).not.toContain('yield buildAgentLoopTurnStartEvent({');
     expect(rootAgentLoopSource).not.toContain('return {\n        success: true,');
     expect(rootAgentLoopSource).not.toContain('return buildAgentLoopSuccessResult');
     expect(rootAgentLoopSource).not.toContain("{ type: 'agent_start' }");

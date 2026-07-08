@@ -60,6 +60,7 @@ import {
   buildAgentLoopToolTurnCompletion,
   buildAgentLoopTurnRetryEvent,
   buildAgentLoopTurnStartEvent,
+  buildAgentLoopTurnStartEventInput,
 } from './loop/loopEvents.js';
 import {
   buildAgentLoopResponseEvents,
@@ -270,7 +271,12 @@ export async function* agentLoop(
     const turnStart = turnCounter.beginTurn();
     const turnsCount = turnStart.turn;
     if (shouldEmitAgentLoopTurnStart(turnStart)) {
-      yield buildAgentLoopTurnStartEvent({ turn: turnsCount, maxTurns: effectiveMaxTurns });
+      yield buildAgentLoopTurnStartEvent(
+        buildAgentLoopTurnStartEventInput({
+          turn: turnsCount,
+          maxTurns: effectiveMaxTurns,
+        }),
+      );
     }
 
     if (shouldAbortAgentLoop(signal)) {

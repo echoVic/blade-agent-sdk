@@ -5,6 +5,7 @@ import {
   buildAgentLoopToolTurnCompletion,
   buildAgentLoopTurnEndEvent,
   buildAgentLoopTurnRetryEvent,
+  buildAgentLoopTurnStartEventInput,
   buildAgentLoopTurnStartEvent,
 } from '../loop/loopEvents.js';
 
@@ -17,6 +18,13 @@ describe('agent loop lifecycle event builders', () => {
   it('builds turn start events with the effective max turn count', () => {
     expect(buildAgentLoopTurnStartEvent({ turn: 2, maxTurns: 8 })).toEqual({
       type: 'turn_start',
+      turn: 2,
+      maxTurns: 8,
+    });
+  });
+
+  it('projects turn start event input with turn and effective max turn count', () => {
+    expect(buildAgentLoopTurnStartEventInput({ turn: 2, maxTurns: 8 })).toEqual({
       turn: 2,
       maxTurns: 8,
     });

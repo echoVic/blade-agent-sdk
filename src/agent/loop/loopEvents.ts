@@ -5,6 +5,7 @@ export {
   buildAgentLoopTurnEndEvent,
   buildAgentLoopTurnRetryEvent,
   buildAgentLoopTurnStartEvent,
+  buildAgentLoopTurnStartEventInput,
   type AgentLoopEndEvent,
   type AgentLoopStartEvent,
   type AgentLoopToolTurnCompletion,

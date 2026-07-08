@@ -55,6 +55,15 @@ export function buildAgentLoopEndEvent(): AgentLoopEndEvent {
   return { type: 'agent_end' };
 }
 
+export function buildAgentLoopTurnStartEventInput(
+  input: AgentLoopTurnStartEventInput,
+): AgentLoopTurnStartEventInput {
+  return {
+    turn: input.turn,
+    maxTurns: input.maxTurns,
+  };
+}
+
 export function buildAgentLoopTurnStartEvent(
   input: AgentLoopTurnStartEventInput,
 ): AgentLoopTurnStartEvent {
