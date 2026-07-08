@@ -3,10 +3,17 @@ import { describe, expect, it, vi } from 'vitest';
 import {
   DEFAULT_CONTINUE_REMINDER,
   RETRY_PROMPT,
+  buildAgentLoopNoToolContent,
   decideNoToolTurn,
 } from '../loop/index.js';
 
 describe('decideNoToolTurn', () => {
+  it('normalizes missing no-tool response content to an empty string', () => {
+    expect(buildAgentLoopNoToolContent({ content: 'All done' })).toBe('All done');
+    expect(buildAgentLoopNoToolContent({ content: '' })).toBe('');
+    expect(buildAgentLoopNoToolContent({ content: undefined })).toBe('');
+  });
+
   it.each([
     '让我先检查一下：',
     '让我开始修复：',

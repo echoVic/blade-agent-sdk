@@ -417,6 +417,7 @@ describe('monorepo topology', () => {
     expect(rootAgentLoopSource).toContain('buildAgentLoopTurnStartEvent');
     expect(rootAgentLoopSource).toContain('buildAgentLoopTurnEndEvent');
     expect(rootAgentLoopSource).toContain('buildAgentLoopTurnRetryEvent');
+    expect(rootAgentLoopSource).toContain('buildAgentLoopNoToolContent');
     expect(rootAgentLoopSource).toContain('buildAgentLoopResponseEvents');
     expect(rootAgentLoopSource).toContain('buildAgentLoopBudgetExhaustedResult');
     expect(rootAgentLoopSource).toContain('buildAgentLoopSuccessResult');
@@ -455,6 +456,7 @@ describe('monorepo topology', () => {
     expect(rootAgentLoopSource).not.toContain('let totalTokens = 0');
     expect(rootAgentLoopSource).not.toContain('let lastPromptTokens');
     expect(rootAgentLoopSource).not.toContain('const startTime = Date.now()');
+    expect(rootAgentLoopSource).not.toContain("turnResult.content || ''");
     expect(rootAgentLoopSource).not.toContain("role: 'assistant',\n      content: turnResult.content || ''");
     expect(rootAgentLoopSource).not.toContain('let turnsCount = 0');
     expect(rootAgentLoopSource).not.toContain('let retryCurrentTurn');

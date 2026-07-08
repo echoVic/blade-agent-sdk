@@ -25,6 +25,14 @@ export type NoToolTurnDecision =
   | { action: 'continue_with_reminder'; message: Message; warning?: string }
   | { action: 'finish' };
 
+export interface AgentLoopNoToolContentInput {
+  content?: string;
+}
+
+export function buildAgentLoopNoToolContent(input: AgentLoopNoToolContentInput): string {
+  return input.content || '';
+}
+
 function isIncompleteIntent(content: string): boolean {
   return INCOMPLETE_INTENT_PATTERNS.some((pattern) => pattern.test(content));
 }
