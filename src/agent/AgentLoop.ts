@@ -30,9 +30,9 @@ import {
   buildAgentRecoveryCompactFailedEffects,
   buildAgentRecoveryCompactStreamFromHookContainer,
   buildAgentRecoveryEffects,
-  buildAgentRecoveryProjectionInput,
   buildAgentRecoveryProjection,
   buildAgentRecoveryResetEffects,
+  buildAgentRecoveryRetryingEffects,
   buildAgentRecoveryStartedEffects,
   consumeAgentRecoveryCompactStream,
   hasAgentReactiveCompactHook,
@@ -385,14 +385,10 @@ export async function* agentLoop(
           }
           throw llmError;
         }
-        const recoveryRetrying = buildAgentRecoveryProjection(
-          buildAgentRecoveryProjectionInput({
-            kind: 'retrying',
-            turn: turnsCount,
-            attempt: recoveryAttempt,
-          }),
-        );
-        const recoveryRetryingEffects = buildAgentRecoveryEffects(recoveryRetrying);
+        const recoveryRetryingEffects = buildAgentRecoveryRetryingEffects({
+          turn: turnsCount,
+          attempt: recoveryAttempt,
+        });
         await runAgentRecoveryStateChangeHooks({ effects: recoveryRetryingEffects, hooks });
         for (const event of recoveryRetryingEffects.events) {
           yield event;

@@ -8,6 +8,7 @@ export {
   buildAgentRecoveryProjectionInput,
   buildAgentRecoveryProjection,
   buildAgentRecoveryResetEffects,
+  buildAgentRecoveryRetryingEffects,
   buildAgentRecoveryStartedEffects,
   consumeAgentRecoveryCompactStream,
   hasAgentReactiveCompactHook,

@@ -266,6 +266,20 @@ export function buildAgentRecoveryCompactFailedEffects(
   );
 }
 
+export function buildAgentRecoveryRetryingEffects(
+  input: AgentRecoveryAttemptEffectsInput,
+): AgentRecoveryEffects {
+  return buildAgentRecoveryEffects(
+    buildAgentRecoveryProjection(
+      buildAgentRecoveryProjectionInput({
+        kind: 'retrying',
+        turn: input.turn,
+        attempt: input.attempt,
+      }),
+    ),
+  );
+}
+
 export async function runAgentRecoveryStateChangeHooks(
   input: RunAgentRecoveryStateChangeHooksInput,
 ): Promise<AgentRecoveryEffects> {
