@@ -677,6 +677,8 @@ describe('monorepo topology', () => {
     );
     expect(rootAgentLoopSource).toContain('shouldStopAgentLoopForTurnLimitDecision');
     expect(rootAgentLoopSource).toContain('createAgentLoopTurnCounter');
+    expect(rootAgentLoopSource).toContain('beginAgentLoopTurn');
+    expect(rootAgentLoopSource).not.toContain('turnCounter.beginTurn(');
     expect(rootAgentLoopSource).toContain('requestAgentLoopTurnRetry');
     expect(rootAgentLoopSource).not.toContain('turnCounter.requestRetry(');
     expect(rootAgentLoopSource).toContain('resetAgentLoopTurnCounter');

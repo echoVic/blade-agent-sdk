@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  beginAgentLoopTurn,
   buildAgentLoopBeforeTurnHookPayload,
   buildAgentLoopBeforeTurnHookPayloadFromConversation,
   consumeAgentLoopBeforeTurnStream,
@@ -27,6 +28,18 @@ describe('agent loop turn counter', () => {
     expect(counter.previousCompletedTurnCount).toBe(0);
 
     expect(counter.beginTurn()).toEqual({ started: true, turn: 2 });
+    expect(counter.turnsCount).toBe(2);
+    expect(counter.previousCompletedTurnCount).toBe(1);
+  });
+
+  it('starts turns through the loop helper', () => {
+    const counter = createAgentLoopTurnCounter();
+
+    expect(beginAgentLoopTurn({ counter })).toEqual({ started: true, turn: 1 });
+    expect(counter.turnsCount).toBe(1);
+    expect(counter.previousCompletedTurnCount).toBe(0);
+
+    expect(beginAgentLoopTurn({ counter })).toEqual({ started: true, turn: 2 });
     expect(counter.turnsCount).toBe(2);
     expect(counter.previousCompletedTurnCount).toBe(1);
   });

@@ -1,4 +1,5 @@
 export {
+  beginAgentLoopTurn,
   buildAgentLoopBeforeTurnHookPayload,
   buildAgentLoopBeforeTurnHookPayloadFromConversation,
   consumeAgentLoopBeforeTurnStream,
@@ -7,6 +8,7 @@ export {
   resetAgentLoopTurnCounter,
   shouldEmitAgentLoopTurnStart,
   shouldRunAgentLoopBeforeTurnHook,
+  type BeginAgentLoopTurnInput,
   type AgentLoopBeforeTurnHookPayload,
   type AgentLoopBeforeTurnConversationLike,
   type AgentLoopBeforeTurnHookPayloadConversationInput,

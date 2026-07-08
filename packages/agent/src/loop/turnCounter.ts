@@ -28,6 +28,10 @@ export interface AgentLoopBeforeTurnHookPayloadConversationInput<TMessage> {
   lastPromptTokens?: number;
 }
 
+export interface BeginAgentLoopTurnInput {
+  counter: Pick<AgentLoopTurnCounter, 'beginTurn'>;
+}
+
 export interface RequestAgentLoopTurnRetryInput {
   counter: Pick<AgentLoopTurnCounter, 'requestRetry'>;
 }
@@ -38,6 +42,10 @@ export interface ResetAgentLoopTurnCounterInput {
 
 export function shouldEmitAgentLoopTurnStart(turnStart: AgentLoopTurnStart): boolean {
   return turnStart.started;
+}
+
+export function beginAgentLoopTurn(input: BeginAgentLoopTurnInput): AgentLoopTurnStart {
+  return input.counter.beginTurn();
 }
 
 export function requestAgentLoopTurnRetry(input: RequestAgentLoopTurnRetryInput): void {
