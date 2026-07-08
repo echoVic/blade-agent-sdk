@@ -21,6 +21,13 @@ export interface AgentLoopToolStartEventsInput {
   registry: ToolExecutionRegistryLike;
 }
 
+export interface AgentLoopToolStartEventsExecutionPipelineInput<
+  TExecutionPipeline extends { getRegistry(): ToolExecutionRegistryLike },
+> {
+  plan: ToolExecutionPlan;
+  executionPipeline: TExecutionPipeline;
+}
+
 export function buildAgentLoopToolStartEventsInput(
   input: AgentLoopToolStartEventsInput,
 ): AgentLoopToolStartEventsInput {
@@ -28,6 +35,17 @@ export function buildAgentLoopToolStartEventsInput(
     plan: input.plan,
     registry: input.registry,
   };
+}
+
+export function buildAgentLoopToolStartEventsInputFromExecutionPipeline<
+  TExecutionPipeline extends { getRegistry(): ToolExecutionRegistryLike },
+>(
+  input: AgentLoopToolStartEventsExecutionPipelineInput<TExecutionPipeline>,
+): AgentLoopToolStartEventsInput {
+  return buildAgentLoopToolStartEventsInput({
+    plan: input.plan,
+    registry: input.executionPipeline.getRegistry(),
+  });
 }
 
 export function buildAgentLoopToolStartEvent(

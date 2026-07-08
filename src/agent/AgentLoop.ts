@@ -112,7 +112,7 @@ import {
 import { createAgentToolResultTracker } from './loop/toolResultTracker.js';
 import {
   buildAgentLoopToolStartEvents,
-  buildAgentLoopToolStartEventsInput,
+  buildAgentLoopToolStartEventsInputFromExecutionPipeline,
 } from './loop/toolStartEvent.js';
 import { buildAgentLoopTurnStateProjection } from './loop/turnState.js';
 import {
@@ -589,9 +589,9 @@ export async function* agentLoop(
       );
 
       for (const event of buildAgentLoopToolStartEvents(
-        buildAgentLoopToolStartEventsInput({
+        buildAgentLoopToolStartEventsInputFromExecutionPipeline({
           plan: executionPlan,
-          registry: executionPipeline.getRegistry(),
+          executionPipeline,
         }),
       )) {
         yield event;

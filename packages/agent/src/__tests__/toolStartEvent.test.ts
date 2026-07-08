@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { AgentFunctionToolCall, ToolExecutionPlan } from '../loop/planToolExecution.js';
 import type { ToolExecutionRegistryLike } from '../loop/toolBehavior.js';
 import {
+  buildAgentLoopToolStartEventsInputFromExecutionPipeline,
   buildAgentLoopToolStartEventsInput,
   buildAgentLoopToolStartEvent,
   buildAgentLoopToolStartEvents,
@@ -93,6 +94,29 @@ describe('agent loop tool start event projection', () => {
     } satisfies ToolExecutionRegistryLike;
 
     expect(buildAgentLoopToolStartEventsInput({ plan, registry })).toEqual({
+      plan,
+      registry,
+    });
+  });
+
+  it('projects planned tool_start event input from an execution pipeline', () => {
+    const plan: ToolExecutionPlan = {
+      mode: 'serial',
+      calls: [toolCall],
+    };
+    const registry = {
+      get: () => ({ kind: 'readonly' as const }),
+    } satisfies ToolExecutionRegistryLike;
+    const executionPipeline = {
+      getRegistry: () => registry,
+    };
+
+    expect(
+      buildAgentLoopToolStartEventsInputFromExecutionPipeline({
+        plan,
+        executionPipeline,
+      }),
+    ).toEqual({
       plan,
       registry,
     });
