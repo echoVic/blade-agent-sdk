@@ -59,6 +59,7 @@ import {
   buildAgentLoopStartEvent,
   buildAgentLoopToolTurnCompletion,
   buildAgentLoopTurnRetryEvent,
+  buildAgentLoopTurnRetryEventInput,
   buildAgentLoopTurnStartEvent,
   buildAgentLoopTurnStartEventInput,
 } from './loop/loopEvents.js';
@@ -402,7 +403,12 @@ export async function* agentLoop(
         epoch?.invalidate();
         // 显式"重试当前轮"：不减 turnsCount，不发 turn_end
         turnCounter.requestRetry();
-        yield buildAgentLoopTurnRetryEvent({ turn: turnsCount, reason: 'reactive_compact' });
+        yield buildAgentLoopTurnRetryEvent(
+          buildAgentLoopTurnRetryEventInput({
+            turn: turnsCount,
+            reason: 'reactive_compact',
+          }),
+        );
         continue;
       }
 

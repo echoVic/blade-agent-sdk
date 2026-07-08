@@ -5,6 +5,7 @@ import {
   buildAgentLoopToolTurnCompletion,
   buildAgentLoopTurnEndEvent,
   buildAgentLoopTurnRetryEvent,
+  buildAgentLoopTurnRetryEventInput,
   buildAgentLoopTurnStartEventInput,
   buildAgentLoopTurnStartEvent,
 } from '../loop/loopEvents.js';
@@ -53,6 +54,13 @@ describe('agent loop lifecycle event builders', () => {
   it('builds retry events for reactive compaction', () => {
     expect(buildAgentLoopTurnRetryEvent({ turn: 5, reason: 'reactive_compact' })).toEqual({
       type: 'turn_retry',
+      turn: 5,
+      reason: 'reactive_compact',
+    });
+  });
+
+  it('projects retry event input for reactive compaction', () => {
+    expect(buildAgentLoopTurnRetryEventInput({ turn: 5, reason: 'reactive_compact' })).toEqual({
       turn: 5,
       reason: 'reactive_compact',
     });

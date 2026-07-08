@@ -92,6 +92,15 @@ export function buildAgentLoopToolTurnCompletion(
   };
 }
 
+export function buildAgentLoopTurnRetryEventInput(
+  input: AgentLoopTurnRetryEventInput,
+): AgentLoopTurnRetryEventInput {
+  return {
+    turn: input.turn,
+    reason: input.reason,
+  };
+}
+
 export function buildAgentLoopTurnRetryEvent(
   input: AgentLoopTurnRetryEventInput,
 ): AgentLoopTurnRetryEvent {
