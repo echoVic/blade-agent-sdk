@@ -77,7 +77,10 @@ import { createAgentToolResultTracker } from './loop/toolResultTracker.js';
 import { buildAgentLoopToolStartEvent } from './loop/toolStartEvent.js';
 import { buildAgentLoopToolResultEvent } from './loop/toolUpdateToAgentEvent.js';
 import { buildAgentLoopTurnStateProjection } from './loop/turnState.js';
-import { createAgentLoopTurnCounter } from './loop/turnCounter.js';
+import {
+  createAgentLoopTurnCounter,
+  shouldEmitAgentLoopTurnStart,
+} from './loop/turnCounter.js';
 import type { FunctionToolCall } from './loop/types.js';
 import type { ConversationState } from './state/ConversationState.js';
 import type { TurnState } from './state/TurnState.js';
@@ -229,7 +232,7 @@ export async function* agentLoop(
 
     const turnStart = turnCounter.beginTurn();
     const turnsCount = turnStart.turn;
-    if (turnStart.started) {
+    if (shouldEmitAgentLoopTurnStart(turnStart)) {
       yield buildAgentLoopTurnStartEvent({ turn: turnsCount, maxTurns: effectiveMaxTurns });
     }
 

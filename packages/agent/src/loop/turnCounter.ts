@@ -12,6 +12,10 @@ export interface AgentLoopTurnCounter {
   reset(): void;
 }
 
+export function shouldEmitAgentLoopTurnStart(turnStart: AgentLoopTurnStart): boolean {
+  return turnStart.started;
+}
+
 export function createAgentLoopTurnCounter(): AgentLoopTurnCounter {
   let turnsCount = 0;
   let retryCurrentTurn = false;

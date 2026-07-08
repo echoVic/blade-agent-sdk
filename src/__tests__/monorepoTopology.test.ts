@@ -443,6 +443,7 @@ describe('monorepo topology', () => {
     expect(rootAgentLoopSource).toContain('buildAgentLoopEffectiveMaxTurns');
     expect(rootAgentLoopSource).toContain('selectAgentFunctionToolCalls');
     expect(rootAgentLoopSource).toContain('createAgentLoopTurnCounter');
+    expect(rootAgentLoopSource).toContain('shouldEmitAgentLoopTurnStart');
     expect(rootAgentLoopSource).toContain('createAgentRecoveryAttemptTracker');
     expect(rootAgentLoopSource).toContain('buildAgentModelFallbackEvent');
     expect(rootAgentLoopSource).toContain('buildAgentRecoveryProjection');
@@ -478,6 +479,7 @@ describe('monorepo topology', () => {
     );
     expect(rootAgentLoopSource).not.toContain('let turnsCount = 0');
     expect(rootAgentLoopSource).not.toContain('let retryCurrentTurn');
+    expect(rootAgentLoopSource).not.toContain('if (turnStart.started)');
     expect(rootAgentLoopSource).not.toContain('turnsCount++');
     expect(rootAgentLoopSource).not.toContain('turnsCount = 0');
     expect(rootAgentLoopSource).not.toContain('let toolResultContent =');

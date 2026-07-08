@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { createAgentLoopTurnCounter } from '../loop/turnCounter.js';
+import {
+  createAgentLoopTurnCounter,
+  shouldEmitAgentLoopTurnStart,
+} from '../loop/turnCounter.js';
 
 describe('agent loop turn counter', () => {
   it('starts before the first turn and allows before-turn hooks', () => {
@@ -20,6 +23,11 @@ describe('agent loop turn counter', () => {
     expect(counter.beginTurn()).toEqual({ started: true, turn: 2 });
     expect(counter.turnsCount).toBe(2);
     expect(counter.previousCompletedTurnCount).toBe(1);
+  });
+
+  it('emits turn-start events only for newly started turns', () => {
+    expect(shouldEmitAgentLoopTurnStart({ started: true, turn: 1 })).toBe(true);
+    expect(shouldEmitAgentLoopTurnStart({ started: false, turn: 1 })).toBe(false);
   });
 
   it('retries the current turn without rerunning before-turn hooks or incrementing', () => {
