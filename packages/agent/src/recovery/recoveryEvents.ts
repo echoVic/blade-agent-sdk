@@ -115,6 +115,11 @@ export interface AgentRecoveryEffects {
   events: AgentRecoveryEvent[];
 }
 
+export interface AgentRecoveryAttemptEffectsInput {
+  turn: number;
+  attempt: number;
+}
+
 export interface AgentRecoveryResetEffectsInput {
   turn: number;
 }
@@ -228,6 +233,20 @@ export function buildAgentRecoveryResetEffects(
       buildAgentRecoveryProjectionInput({
         kind: 'reset',
         turn: input.turn,
+      }),
+    ),
+  );
+}
+
+export function buildAgentRecoveryStartedEffects(
+  input: AgentRecoveryAttemptEffectsInput,
+): AgentRecoveryEffects {
+  return buildAgentRecoveryEffects(
+    buildAgentRecoveryProjection(
+      buildAgentRecoveryProjectionInput({
+        kind: 'started',
+        turn: input.turn,
+        attempt: input.attempt,
       }),
     ),
   );

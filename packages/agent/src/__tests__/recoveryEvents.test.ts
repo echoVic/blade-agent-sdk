@@ -8,6 +8,7 @@ import {
   buildAgentRecoveryProjectionInput,
   buildAgentRecoveryProjection,
   buildAgentRecoveryResetEffects,
+  buildAgentRecoveryStartedEffects,
   consumeAgentRecoveryCompactStream,
   hasAgentReactiveCompactHook,
   runAgentRecoveryStateChangeHooks,
@@ -215,6 +216,26 @@ describe('agent recovery event projection', () => {
         },
       ],
       events: [],
+    });
+  });
+
+  it('builds started recovery effects from the current turn and attempt', () => {
+    expect(buildAgentRecoveryStartedEffects({ turn: 6, attempt: 3 })).toEqual({
+      stateChanges: [
+        {
+          turn: 6,
+          phase: 'started',
+          reason: 'context_overflow',
+          attempt: 3,
+        },
+      ],
+      events: [
+        {
+          type: 'recovery',
+          phase: 'started',
+          reason: 'context_overflow',
+        },
+      ],
     });
   });
 

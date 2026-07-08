@@ -32,6 +32,7 @@ import {
   buildAgentRecoveryProjectionInput,
   buildAgentRecoveryProjection,
   buildAgentRecoveryResetEffects,
+  buildAgentRecoveryStartedEffects,
   consumeAgentRecoveryCompactStream,
   hasAgentReactiveCompactHook,
   runAgentRecoveryStateChangeHooks,
@@ -356,14 +357,10 @@ export async function* agentLoop(
           tracker: recoveryAttemptTracker,
           turn: turnsCount,
         });
-        const recoveryStarted = buildAgentRecoveryProjection(
-          buildAgentRecoveryProjectionInput({
-            kind: 'started',
-            turn: turnsCount,
-            attempt: recoveryAttempt,
-          }),
-        );
-        const recoveryStartedEffects = buildAgentRecoveryEffects(recoveryStarted);
+        const recoveryStartedEffects = buildAgentRecoveryStartedEffects({
+          turn: turnsCount,
+          attempt: recoveryAttempt,
+        });
         await runAgentRecoveryStateChangeHooks({ effects: recoveryStartedEffects, hooks });
         for (const event of recoveryStartedEffects.events) {
           yield event;
