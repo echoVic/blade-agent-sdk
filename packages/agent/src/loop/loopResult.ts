@@ -209,6 +209,20 @@ export function buildAgentLoopSuccessResult(
   };
 }
 
+export function buildAgentLoopNoToolSuccessDecisionInput(
+  input: AgentLoopSuccessResultInput,
+): AgentLoopSuccessResultInput {
+  return {
+    finalMessage: input.finalMessage,
+    turnsCount: input.turnsCount,
+    toolCallsCount: input.toolCallsCount,
+    startTime: input.startTime,
+    now: input.now,
+    tokensUsed: input.tokensUsed,
+    tokenBudgetSnapshot: input.tokenBudgetSnapshot,
+  };
+}
+
 export function buildAgentLoopNoToolSuccessDecision(
   input: AgentLoopSuccessResultInput,
 ): AgentLoopNoToolSuccessDecision {

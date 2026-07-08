@@ -4,6 +4,7 @@ export {
   buildAgentLoopAbortResult,
   buildAgentLoopBudgetExhaustedResult,
   buildAgentLoopNoToolSuccessDecision,
+  buildAgentLoopNoToolSuccessDecisionInput,
   buildAgentLoopSuccessResult,
   buildAgentLoopToolExitDecision,
   buildAgentLoopToolExitDecisionInput,

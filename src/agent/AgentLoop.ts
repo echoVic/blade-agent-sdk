@@ -72,6 +72,7 @@ import {
   buildAgentLoopAbortCompletion,
   buildAgentLoopAbortCompletionInput,
   buildAgentLoopNoToolSuccessDecision,
+  buildAgentLoopNoToolSuccessDecisionInput,
   buildAgentLoopToolExitDecision,
   buildAgentLoopToolExitDecisionInput,
   shouldAbortAgentLoop,
@@ -542,15 +543,17 @@ export async function* agentLoop(
         buildAgentLoopNoToolCompletePayload({ content, turn: turnsCount }),
       );
 
-      const noToolSuccessDecision = buildAgentLoopNoToolSuccessDecision({
-        finalMessage: content,
-        ...loopClock.resultTiming({
-          turnsCount,
-          toolCallsCount: toolResultTracker.toolCallsCount,
+      const noToolSuccessDecision = buildAgentLoopNoToolSuccessDecision(
+        buildAgentLoopNoToolSuccessDecisionInput({
+          finalMessage: content,
+          ...loopClock.resultTiming({
+            turnsCount,
+            toolCallsCount: toolResultTracker.toolCallsCount,
+          }),
+          tokensUsed: tokenUsageTracker.totalTokens,
+          tokenBudgetSnapshot: tokenBudget?.getSnapshot(),
         }),
-        tokensUsed: tokenUsageTracker.totalTokens,
-        tokenBudgetSnapshot: tokenBudget?.getSnapshot(),
-      });
+      );
       for (const event of noToolSuccessDecision.events) {
         yield event;
       }
