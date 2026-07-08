@@ -26,6 +26,7 @@ import {
 import {
   buildAgentModelFallbackEvent,
   buildAgentRecoveryProjection,
+  consumeAgentRecoveryCompactStream,
   shouldEmitAgentRecoveryEvent,
 } from './recoveryEvents.js';
 import {
@@ -333,16 +334,8 @@ export async function* agentLoop(
         if (!compactStream) {
           throw llmError;
         }
-        let recovered = false;
-        while (true) {
-          const { value, done } = await compactStream.next();
-          if (done) {
-            recovered = value;
-            break;
-          }
-          yield value;
-        }
-        if (!recovered) {
+        const compactStreamResult = yield* consumeAgentRecoveryCompactStream(compactStream);
+        if (!compactStreamResult.recovered) {
           const recoveryFailed = buildAgentRecoveryProjection({
             kind: 'compact_failed',
             turn: turnsCount,

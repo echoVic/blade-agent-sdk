@@ -42,6 +42,10 @@ export interface AgentModelFallbackEventInput {
   fallbackModel: string;
 }
 
+export interface AgentRecoveryCompactStreamResult {
+  recovered: boolean;
+}
+
 export type AgentRecoveryProjectionInput =
   | {
       kind: Exclude<AgentRecoveryProjectionKind, 'reset'>;
@@ -137,6 +141,13 @@ export function shouldEmitAgentRecoveryEvent(
   projection: AgentRecoveryProjection,
 ): projection is AgentRecoveryProjectionWithEvent {
   return projection.event !== undefined;
+}
+
+export async function* consumeAgentRecoveryCompactStream<Event>(
+  stream: AsyncGenerator<Event, boolean | undefined>,
+): AsyncGenerator<Event, AgentRecoveryCompactStreamResult> {
+  const recovered = yield* stream;
+  return { recovered: recovered === true };
 }
 
 export function buildAgentModelFallbackEvent(

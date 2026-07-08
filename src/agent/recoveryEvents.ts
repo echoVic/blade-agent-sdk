@@ -1,7 +1,9 @@
 export {
   buildAgentModelFallbackEvent,
   buildAgentRecoveryProjection,
+  consumeAgentRecoveryCompactStream,
   shouldEmitAgentRecoveryEvent,
+  type AgentRecoveryCompactStreamResult,
   type AgentModelFallbackEvent,
   type AgentModelFallbackEventInput,
   type AgentRecoveryEvent,

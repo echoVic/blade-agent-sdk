@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   buildAgentModelFallbackEvent,
   buildAgentRecoveryProjection,
+  consumeAgentRecoveryCompactStream,
   shouldEmitAgentRecoveryEvent,
 } from '../recovery/recoveryEvents.js';
 
@@ -140,6 +141,51 @@ describe('agent recovery event projection', () => {
       type: 'model_fallback',
       originalModel: 'deepseek-chat',
       fallbackModel: 'deepseek-reasoner',
+    });
+  });
+
+  it('passes through reactive compact stream events and returns recovered state', async () => {
+    async function* compactStream(): AsyncGenerator<
+      { type: string; phase: string },
+      boolean | undefined
+    > {
+      yield { type: 'compact_progress', phase: 'start' };
+      yield { type: 'compact_progress', phase: 'finish' };
+      return true;
+    }
+
+    const events: unknown[] = [];
+    const stream = consumeAgentRecoveryCompactStream(compactStream());
+    let result: Awaited<ReturnType<typeof stream.next>> | undefined;
+
+    while (true) {
+      result = await stream.next();
+      if (result.done) break;
+      events.push(result.value);
+    }
+
+    expect(events).toEqual([
+      { type: 'compact_progress', phase: 'start' },
+      { type: 'compact_progress', phase: 'finish' },
+    ]);
+    expect(result.value).toEqual({ recovered: true });
+  });
+
+  it('normalizes missing reactive compact recovery returns as unrecovered', async () => {
+    async function* compactStream(): AsyncGenerator<
+      { type: string; phase: string },
+      boolean | undefined
+    > {
+      yield { type: 'compact_progress', phase: 'start' };
+      return undefined;
+    }
+
+    const stream = consumeAgentRecoveryCompactStream(compactStream());
+    await stream.next();
+
+    expect(await stream.next()).toEqual({
+      done: true,
+      value: { recovered: false },
     });
   });
 });
