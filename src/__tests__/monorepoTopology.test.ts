@@ -519,11 +519,28 @@ describe('monorepo topology', () => {
     );
     expect(rootAgentLoopSource).toContain('buildAgentLoopTokenUsageEvent');
     expect(rootAgentLoopSource).toContain('applyAgentLoopTokenBudget');
-    expect(rootAgentLoopSource).toContain('buildAgentLoopTokenBudgetInputFromTiming');
+    expect(rootAgentLoopSource).toContain('buildAgentLoopTokenBudgetInputFromLoopState');
+    expect(rootAgentLoopSource).not.toContain('buildAgentLoopTokenBudgetInputFromTiming');
     expect(rootAgentLoopSource).not.toContain('applyAgentLoopTokenBudget({');
     expect(rootAgentLoopSource).not.toMatch(
       /buildAgentLoopTokenBudgetInput\(\{\s+tokenBudget,\s+modelUsage:[\s\S]*\.\.\.loopClock\.resultTiming/,
     );
+    const tokenBudgetInputStart = rootAgentLoopSource.indexOf(
+      'buildAgentLoopTokenBudgetInputFromLoopState({',
+    );
+    const tokenBudgetInputEnd = rootAgentLoopSource.indexOf(
+      'if (shouldStopAgentLoopForTokenBudget',
+      tokenBudgetInputStart,
+    );
+    const tokenBudgetInputSource = rootAgentLoopSource.slice(
+      tokenBudgetInputStart,
+      tokenBudgetInputEnd,
+    );
+    expect(tokenBudgetInputSource).not.toContain('loopClock.resultTiming');
+    expect(tokenBudgetInputSource).not.toContain(
+      'toolCallsCount: toolResultTracker.toolCallsCount',
+    );
+    expect(tokenBudgetInputSource).not.toContain('tokenUsageTracker.totalTokens');
     expect(rootAgentLoopSource).toContain('buildAgentLoopTokenBudgetStopCompletion');
     expect(rootAgentLoopSource).toContain('shouldStopAgentLoopForTokenBudget');
     expect(rootAgentLoopSource).toContain('createAgentLoopTokenUsageTracker');

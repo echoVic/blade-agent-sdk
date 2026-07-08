@@ -79,6 +79,27 @@ export interface AgentLoopTokenBudgetTimingInput<TSnapshot = unknown> {
   timing: AgentLoopResultTiming;
 }
 
+export interface AgentLoopTokenBudgetTimingSource {
+  resultTiming(input: { turnsCount: number; toolCallsCount: number }): AgentLoopResultTiming;
+}
+
+export interface AgentLoopTokenBudgetToolResultTrackerLike {
+  readonly toolCallsCount: number;
+}
+
+export interface AgentLoopTokenBudgetTokenUsageTrackerLike {
+  readonly totalTokens: number;
+}
+
+export interface AgentLoopTokenBudgetLoopStateInput<TSnapshot = unknown> {
+  tokenBudget?: AgentLoopTokenBudgetLike<TSnapshot>;
+  modelUsage?: ModelUsageInfo;
+  loopClock: AgentLoopTokenBudgetTimingSource;
+  turnsCount: number;
+  toolResultTracker: AgentLoopTokenBudgetToolResultTrackerLike;
+  tokenUsageTracker: AgentLoopTokenBudgetTokenUsageTrackerLike;
+}
+
 export interface ApplyAgentLoopTokenBudgetResult<TSnapshot = unknown> {
   events: AgentLoopBudgetWarningEvent<TSnapshot>[];
   result?: AgentLoopBudgetExhaustedResult;
@@ -175,6 +196,20 @@ export function buildAgentLoopTokenBudgetInputFromTiming<TSnapshot>(
     toolCallsCount: input.timing.toolCallsCount,
     startTime: input.timing.startTime,
     now: input.timing.now,
+  });
+}
+
+export function buildAgentLoopTokenBudgetInputFromLoopState<TSnapshot>(
+  input: AgentLoopTokenBudgetLoopStateInput<TSnapshot>,
+): ApplyAgentLoopTokenBudgetInput<TSnapshot> {
+  return buildAgentLoopTokenBudgetInputFromTiming({
+    tokenBudget: input.tokenBudget,
+    modelUsage: input.modelUsage,
+    tokensUsed: input.tokenUsageTracker.totalTokens,
+    timing: input.loopClock.resultTiming({
+      turnsCount: input.turnsCount,
+      toolCallsCount: input.toolResultTracker.toolCallsCount,
+    }),
   });
 }
 
