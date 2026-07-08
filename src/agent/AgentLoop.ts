@@ -62,7 +62,7 @@ import {
 import { createAgentLoopClock } from './loop/loopClock.js';
 import {
   buildAgentLoopAbortResult,
-  buildAgentLoopSuccessResult,
+  buildAgentLoopNoToolSuccessDecision,
   buildAgentLoopToolExitDecision,
   buildAgentLoopToolExitDecisionInput,
   shouldAbortAgentLoop,
@@ -461,9 +461,7 @@ export async function* agentLoop(
 
       await messageHooks?.onComplete?.({ content, turn: turnsCount });
 
-      yield buildAgentLoopTurnEndEvent({ turn: turnsCount, hasToolCalls: false });
-      yield buildAgentLoopEndEvent();
-      return buildAgentLoopSuccessResult({
+      const noToolSuccessDecision = buildAgentLoopNoToolSuccessDecision({
         finalMessage: content,
         ...loopClock.resultTiming({
           turnsCount,
@@ -471,7 +469,11 @@ export async function* agentLoop(
         }),
         tokensUsed: tokenUsageTracker.totalTokens,
         tokenBudgetSnapshot: tokenBudget?.getSnapshot(),
-      }) as LoopResult;
+      });
+      for (const event of noToolSuccessDecision.events) {
+        yield event;
+      }
+      return noToolSuccessDecision.result as LoopResult;
     }
 
     const assistantMessageProjection = buildAgentLoopAssistantMessageProjection({

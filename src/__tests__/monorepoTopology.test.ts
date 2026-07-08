@@ -427,7 +427,7 @@ describe('monorepo topology', () => {
     expect(rootAgentLoopSource).toContain('shouldContinueAgentLoopAfterNoToolDecision');
     expect(rootAgentLoopSource).toContain('buildAgentLoopResponseEventsInput');
     expect(rootAgentLoopSource).toContain('buildAgentLoopResponseEvents');
-    expect(rootAgentLoopSource).toContain('buildAgentLoopSuccessResult');
+    expect(rootAgentLoopSource).toContain('buildAgentLoopNoToolSuccessDecision');
     expect(rootAgentLoopSource).toContain('buildAgentLoopToolExitDecisionInput');
     expect(rootAgentLoopSource).toContain('buildAgentLoopToolExitDecision');
     expect(rootAgentLoopSource).toContain('shouldExitAgentLoopForToolDecision');
@@ -462,6 +462,7 @@ describe('monorepo topology', () => {
     expect(rootAgentLoopSource).not.toContain('function buildAbortResult');
     expect(rootAgentLoopSource).not.toContain('if (signal?.aborted)');
     expect(rootAgentLoopSource).not.toContain('return {\n        success: true,');
+    expect(rootAgentLoopSource).not.toContain('return buildAgentLoopSuccessResult');
     expect(rootAgentLoopSource).not.toContain("{ type: 'agent_start' }");
     expect(rootAgentLoopSource).not.toContain("{ type: 'agent_end' }");
     expect(rootAgentLoopSource).not.toContain("{ type: 'turn_start'");

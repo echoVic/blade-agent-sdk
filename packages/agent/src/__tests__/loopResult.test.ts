@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   buildAgentLoopAbortResult,
   buildAgentLoopBudgetExhaustedResult,
+  buildAgentLoopNoToolSuccessDecision,
   buildAgentLoopSuccessResult,
   buildAgentLoopToolExitDecision,
   buildAgentLoopToolExitDecisionInput,
@@ -113,6 +114,39 @@ describe('agent loop result builders', () => {
         duration: 75,
         tokensUsed: 42,
         tokenBudgetSnapshot: snapshot,
+      },
+    });
+  });
+
+  it('builds a no-tool success decision with terminal events and usage metadata', () => {
+    const snapshot = { usedTokens: 84, maxTokens: 200 };
+
+    expect(
+      buildAgentLoopNoToolSuccessDecision({
+        finalMessage: 'finished',
+        turnsCount: 4,
+        toolCallsCount: 6,
+        startTime: 1000,
+        now: 1125,
+        tokensUsed: 84,
+        tokenBudgetSnapshot: snapshot,
+      }),
+    ).toEqual({
+      action: 'finish',
+      events: [
+        { type: 'turn_end', turn: 4, hasToolCalls: false },
+        { type: 'agent_end' },
+      ],
+      result: {
+        success: true,
+        finalMessage: 'finished',
+        metadata: {
+          turnsCount: 4,
+          toolCallsCount: 6,
+          duration: 125,
+          tokensUsed: 84,
+          tokenBudgetSnapshot: snapshot,
+        },
       },
     });
   });

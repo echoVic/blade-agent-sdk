@@ -137,6 +137,12 @@ export type AgentLoopToolExitDecisionExit<
   TResult = AgentLoopToolExitDecisionResultLike,
 > = Extract<AgentLoopToolExitDecision<TResult>, { action: 'exit' }>;
 
+export interface AgentLoopNoToolSuccessDecision {
+  action: 'finish';
+  events: [AgentLoopTurnEndEvent, AgentLoopEndEvent];
+  result: AgentLoopSuccessResult;
+}
+
 function getLoopDuration(input: Pick<AgentLoopResultTiming, 'startTime' | 'now'>): number {
   return (input.now ?? Date.now()) - input.startTime;
 }
@@ -173,6 +179,19 @@ export function buildAgentLoopSuccessResult(
       tokensUsed: input.tokensUsed,
       tokenBudgetSnapshot: input.tokenBudgetSnapshot,
     },
+  };
+}
+
+export function buildAgentLoopNoToolSuccessDecision(
+  input: AgentLoopSuccessResultInput,
+): AgentLoopNoToolSuccessDecision {
+  return {
+    action: 'finish',
+    events: [
+      buildAgentLoopTurnEndEvent({ turn: input.turnsCount, hasToolCalls: false }),
+      buildAgentLoopEndEvent(),
+    ],
+    result: buildAgentLoopSuccessResult(input),
   };
 }
 
