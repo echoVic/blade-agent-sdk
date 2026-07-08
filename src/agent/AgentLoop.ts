@@ -36,6 +36,7 @@ import {
 } from './loop/decideNoToolTurn.js';
 import {
   buildAgentLoopEffectiveMaxTurns,
+  buildAgentLoopTurnLimitContinuation,
   decideTurnLimit,
   shouldCheckAgentLoopTurnLimit,
   shouldStopAgentLoopForTurnLimitDecision,
@@ -584,11 +585,10 @@ export async function* agentLoop(
         return limitDecision.result;
       }
 
-      if (limitDecision.compactedMessages) {
-        convState.replaceContent(limitDecision.compactedMessages);
-        if (limitDecision.continueMessage) {
-          convState.append(limitDecision.continueMessage);
-        }
+      const turnLimitContinuation = buildAgentLoopTurnLimitContinuation(limitDecision);
+      if (turnLimitContinuation.shouldReplaceMessages) {
+        convState.replaceContent(turnLimitContinuation.compactedMessages);
+        convState.append(...turnLimitContinuation.appendMessages);
       }
       turnCounter.reset();
     }

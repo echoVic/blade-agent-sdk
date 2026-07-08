@@ -43,6 +43,12 @@ export type TurnLimitDecision =
 
 export type TurnLimitStopDecision = Extract<TurnLimitDecision, { action: 'stop' }>;
 
+export interface AgentLoopTurnLimitContinuation {
+  shouldReplaceMessages: boolean;
+  compactedMessages: Message[];
+  appendMessages: Message[];
+}
+
 export interface DecideTurnLimitInput {
   maxTurns: number;
   turnsCount: number;
@@ -81,6 +87,24 @@ export function shouldStopAgentLoopForTurnLimitDecision(
   decision: TurnLimitDecision,
 ): decision is TurnLimitStopDecision {
   return decision.action === 'stop';
+}
+
+export function buildAgentLoopTurnLimitContinuation(
+  decision: TurnLimitDecision,
+): AgentLoopTurnLimitContinuation {
+  if (decision.action !== 'compact_and_continue' || !decision.compactedMessages) {
+    return {
+      shouldReplaceMessages: false,
+      compactedMessages: [],
+      appendMessages: [],
+    };
+  }
+
+  return {
+    shouldReplaceMessages: true,
+    compactedMessages: decision.compactedMessages,
+    appendMessages: decision.continueMessage ? [decision.continueMessage] : [],
+  };
 }
 
 export async function decideTurnLimit(

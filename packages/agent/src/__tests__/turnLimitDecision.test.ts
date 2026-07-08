@@ -2,6 +2,7 @@ import type { Message } from '@blade-ai/ai/chat';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   AGENT_LOOP_TURN_SAFETY_LIMIT,
+  buildAgentLoopTurnLimitContinuation,
   buildAgentLoopEffectiveMaxTurns,
   decideTurnLimit,
   shouldCheckAgentLoopTurnLimit,
@@ -166,5 +167,45 @@ describe('decideTurnLimit', () => {
       onTurnLimitReached: async () => ({ continue: true }),
     });
     expect(shouldStopAgentLoopForTurnLimitDecision(continueDecision)).toBe(false);
+  });
+
+  it('builds state updates for compact-and-continue turn-limit decisions', async () => {
+    const compactedMessages: Message[] = [{ role: 'assistant', content: 'summary' }];
+    const continueMessage: Message = { role: 'user', content: 'continue' };
+
+    const decision = await decideTurnLimit({
+      ...baseInput,
+      onTurnLimitReached: async () => ({ continue: true }),
+      onTurnLimitCompact: async () => ({
+        success: true,
+        compactedMessages,
+        continueMessage,
+      }),
+    });
+
+    expect(buildAgentLoopTurnLimitContinuation(decision)).toEqual({
+      shouldReplaceMessages: true,
+      compactedMessages,
+      appendMessages: [continueMessage],
+    });
+  });
+
+  it('builds no state updates for turn-limit decisions without compacted messages', async () => {
+    await expect(
+      decideTurnLimit({
+        ...baseInput,
+        onTurnLimitReached: async () => ({ continue: true }),
+      }).then(buildAgentLoopTurnLimitContinuation),
+    ).resolves.toEqual({
+      shouldReplaceMessages: false,
+      compactedMessages: [],
+      appendMessages: [],
+    });
+
+    await expect(decideTurnLimit(baseInput).then(buildAgentLoopTurnLimitContinuation)).resolves.toEqual({
+      shouldReplaceMessages: false,
+      compactedMessages: [],
+      appendMessages: [],
+    });
   });
 });
