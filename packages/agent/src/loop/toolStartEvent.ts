@@ -21,6 +21,15 @@ export interface AgentLoopToolStartEventsInput {
   registry: ToolExecutionRegistryLike;
 }
 
+export function buildAgentLoopToolStartEventsInput(
+  input: AgentLoopToolStartEventsInput,
+): AgentLoopToolStartEventsInput {
+  return {
+    plan: input.plan,
+    registry: input.registry,
+  };
+}
+
 export function buildAgentLoopToolStartEvent(
   input: AgentLoopToolStartEventInput,
 ): AgentLoopToolStartEvent {

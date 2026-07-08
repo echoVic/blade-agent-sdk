@@ -99,7 +99,10 @@ import {
   buildAgentLoopToolResultContinuation,
 } from './loop/toolResultContinuation.js';
 import { createAgentToolResultTracker } from './loop/toolResultTracker.js';
-import { buildAgentLoopToolStartEvents } from './loop/toolStartEvent.js';
+import {
+  buildAgentLoopToolStartEvents,
+  buildAgentLoopToolStartEventsInput,
+} from './loop/toolStartEvent.js';
 import { buildAgentLoopTurnStateProjection } from './loop/turnState.js';
 import {
   buildAgentLoopBeforeTurnHookPayload,
@@ -542,10 +545,12 @@ export async function* agentLoop(
         }),
       );
 
-      for (const event of buildAgentLoopToolStartEvents({
-        plan: executionPlan,
-        registry: executionPipeline.getRegistry(),
-      })) {
+      for (const event of buildAgentLoopToolStartEvents(
+        buildAgentLoopToolStartEventsInput({
+          plan: executionPlan,
+          registry: executionPipeline.getRegistry(),
+        }),
+      )) {
         yield event;
       }
 

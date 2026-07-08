@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { AgentFunctionToolCall, ToolExecutionPlan } from '../loop/planToolExecution.js';
 import type { ToolExecutionRegistryLike } from '../loop/toolBehavior.js';
 import {
+  buildAgentLoopToolStartEventsInput,
   buildAgentLoopToolStartEvent,
   buildAgentLoopToolStartEvents,
 } from '../loop/toolStartEvent.js';
@@ -80,5 +81,20 @@ describe('agent loop tool start event projection', () => {
         toolKind: 'write',
       },
     ]);
+  });
+
+  it('projects planned tool_start event input without owning registry side effects', () => {
+    const plan: ToolExecutionPlan = {
+      mode: 'serial',
+      calls: [toolCall],
+    };
+    const registry = {
+      get: () => ({ kind: 'readonly' as const }),
+    } satisfies ToolExecutionRegistryLike;
+
+    expect(buildAgentLoopToolStartEventsInput({ plan, registry })).toEqual({
+      plan,
+      registry,
+    });
   });
 });

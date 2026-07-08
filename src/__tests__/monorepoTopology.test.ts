@@ -453,6 +453,7 @@ describe('monorepo topology', () => {
     expect(rootAgentLoopSource).toContain('shouldRecordAgentLoopTokenUsage');
     expect(rootAgentLoopSource).toContain('createAgentToolResultTracker');
     expect(rootAgentLoopSource).toContain('buildAgentLoopToolStartEvents');
+    expect(rootAgentLoopSource).toContain('buildAgentLoopToolStartEventsInput');
     expect(rootAgentLoopSource).toContain('buildAgentLoopTurnStateProjection');
     expect(rootAgentLoopSource).toContain('buildAgentLoopEffectiveMaxTurns');
     expect(rootAgentLoopSource).toContain('buildAgentLoopTurnLimitDecisionInput');
@@ -542,6 +543,7 @@ describe('monorepo topology', () => {
     expect(rootAgentLoopSource).not.toContain('buildAgentLoopToolMessage');
     expect(rootAgentLoopSource).not.toContain('buildAgentLoopToolInjectedMessages');
     expect(rootAgentLoopSource).not.toContain('buildAgentLoopToolResultEvent');
+    expect(rootAgentLoopSource).not.toContain('for (const event of buildAgentLoopToolStartEvents({');
     expect(rootAgentLoopSource).not.toContain('shouldEmitAgentLoopNonStreamingToolResultEffects');
     expect(rootAgentLoopSource).not.toContain("role: 'tool',\n        tool_call_id: toolCall.id");
     expect(rootAgentLoopSource).not.toContain('const toolDef = executionPipeline.getRegistry().get');
