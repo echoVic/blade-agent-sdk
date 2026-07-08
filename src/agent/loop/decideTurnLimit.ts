@@ -1,6 +1,7 @@
 export {
   AGENT_LOOP_TURN_SAFETY_LIMIT,
   buildAgentLoopTurnLimitContinuation,
+  buildAgentLoopTurnLimitStopCompletion,
   buildAgentLoopEffectiveMaxTurns,
   decideTurnLimit,
   shouldApplyAgentLoopTurnLimitContinuation,
@@ -8,6 +9,7 @@ export {
   shouldStopAgentLoopForTurnLimitDecision,
   type AgentLoopApplicableTurnLimitContinuation,
   type AgentLoopTurnLimitContinuation,
+  type AgentLoopTurnLimitStopCompletion,
   type BuildAgentLoopEffectiveMaxTurnsInput,
   type DecideTurnLimitInput,
   type ShouldCheckAgentLoopTurnLimitInput,

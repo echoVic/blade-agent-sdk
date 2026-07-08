@@ -1,4 +1,5 @@
 import type { Message } from '@blade-ai/ai/chat';
+import { buildAgentLoopEndEvent, type AgentLoopEndEvent } from './loopEvents.js';
 
 export const AGENT_LOOP_TURN_SAFETY_LIMIT = 100;
 
@@ -42,6 +43,12 @@ export type TurnLimitDecision =
     };
 
 export type TurnLimitStopDecision = Extract<TurnLimitDecision, { action: 'stop' }>;
+
+export interface AgentLoopTurnLimitStopCompletion {
+  action: 'stop';
+  events: [AgentLoopEndEvent];
+  result: TurnLimitStopResult;
+}
 
 export interface AgentLoopTurnLimitContinuation {
   shouldReplaceMessages: boolean;
@@ -91,6 +98,16 @@ export function shouldStopAgentLoopForTurnLimitDecision(
   decision: TurnLimitDecision,
 ): decision is TurnLimitStopDecision {
   return decision.action === 'stop';
+}
+
+export function buildAgentLoopTurnLimitStopCompletion(
+  decision: TurnLimitStopDecision,
+): AgentLoopTurnLimitStopCompletion {
+  return {
+    action: 'stop',
+    events: [buildAgentLoopEndEvent()],
+    result: decision.result,
+  };
 }
 
 export function buildAgentLoopTurnLimitContinuation(

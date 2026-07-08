@@ -43,6 +43,7 @@ import {
 import {
   buildAgentLoopEffectiveMaxTurns,
   buildAgentLoopTurnLimitContinuation,
+  buildAgentLoopTurnLimitStopCompletion,
   decideTurnLimit,
   shouldApplyAgentLoopTurnLimitContinuation,
   shouldCheckAgentLoopTurnLimit,
@@ -614,8 +615,11 @@ export async function* agentLoop(
         onTurnLimitCompact: turnHooks?.onTurnLimitCompact,
       });
       if (shouldStopAgentLoopForTurnLimitDecision(limitDecision)) {
-        yield buildAgentLoopEndEvent();
-        return limitDecision.result;
+        const turnLimitStopCompletion = buildAgentLoopTurnLimitStopCompletion(limitDecision);
+        for (const event of turnLimitStopCompletion.events) {
+          yield event;
+        }
+        return turnLimitStopCompletion.result;
       }
 
       const turnLimitContinuation = buildAgentLoopTurnLimitContinuation(limitDecision);

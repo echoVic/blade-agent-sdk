@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   AGENT_LOOP_TURN_SAFETY_LIMIT,
   buildAgentLoopTurnLimitContinuation,
+  buildAgentLoopTurnLimitStopCompletion,
   buildAgentLoopEffectiveMaxTurns,
   decideTurnLimit,
   shouldApplyAgentLoopTurnLimitContinuation,
@@ -168,6 +169,33 @@ describe('decideTurnLimit', () => {
       onTurnLimitReached: async () => ({ continue: true }),
     });
     expect(shouldStopAgentLoopForTurnLimitDecision(continueDecision)).toBe(false);
+  });
+
+  it('builds terminal completion for turn-limit stop decisions', async () => {
+    vi.setSystemTime(1_250);
+
+    const stopDecision = await decideTurnLimit(baseInput);
+    if (!shouldStopAgentLoopForTurnLimitDecision(stopDecision)) {
+      throw new Error('expected a turn-limit stop decision');
+    }
+
+    expect(buildAgentLoopTurnLimitStopCompletion(stopDecision)).toEqual({
+      action: 'stop',
+      events: [{ type: 'agent_end' }],
+      result: {
+        success: false,
+        error: {
+          type: 'max_turns_exceeded',
+          message: '达到最大轮次限制 (3)',
+        },
+        metadata: {
+          turnsCount: 3,
+          toolCallsCount: 2,
+          duration: 250,
+          tokensUsed: 321,
+        },
+      },
+    });
   });
 
   it('builds state updates for compact-and-continue turn-limit decisions', async () => {
