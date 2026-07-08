@@ -84,13 +84,13 @@ import {
   buildAgentLoopTokenUsageInfo,
   shouldStopAgentLoopForTokenBudget,
 } from './loop/tokenUsage.js';
-import { shouldAppendAgentLoopToolInjectedMessages } from './loop/toolInjectedMessages.js';
 import {
   createAgentLoopTokenUsageTracker,
   shouldRecordAgentLoopTokenUsage,
 } from './loop/tokenUsageTracker.js';
 import {
   buildAgentLoopAfterExecHookPayload,
+  buildAgentLoopToolResultAppendMessages,
   buildAgentLoopToolResultContinuation,
 } from './loop/toolResultContinuation.js';
 import { createAgentToolResultTracker } from './loop/toolResultTracker.js';
@@ -595,11 +595,7 @@ export async function* agentLoop(
         );
       }
 
-      convState.append(toolResultContinuation.toolMessage);
-
-      if (shouldAppendAgentLoopToolInjectedMessages(toolResultContinuation.injectedMessages)) {
-        convState.append(...toolResultContinuation.injectedMessages);
-      }
+      convState.append(...buildAgentLoopToolResultAppendMessages(toolResultContinuation));
     }
 
     const toolTurnCompletion = buildAgentLoopToolTurnCompletion({ turn: turnsCount });

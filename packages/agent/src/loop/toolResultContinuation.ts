@@ -37,6 +37,11 @@ export interface AgentLoopToolResultContinuation<
   injectedMessages: Message[];
 }
 
+export interface AgentLoopToolResultAppendMessagesInput {
+  toolMessage: Message;
+  injectedMessages: Message[];
+}
+
 export interface AgentLoopAfterExecHookPayloadInput<TResult> {
   toolCall: AgentFunctionToolCall;
   result: TResult;
@@ -82,4 +87,10 @@ export function buildAgentLoopAfterExecHookPayload<TResult>(
     result: input.result,
     toolUseUuid: input.toolUseUuid,
   };
+}
+
+export function buildAgentLoopToolResultAppendMessages(
+  input: AgentLoopToolResultAppendMessagesInput,
+): Message[] {
+  return [input.toolMessage, ...input.injectedMessages];
 }
