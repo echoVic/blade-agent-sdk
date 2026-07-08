@@ -18,6 +18,16 @@ export interface AgentLoopBeforeTurnHookPayload<TMessage> {
   lastPromptTokens?: number;
 }
 
+export interface AgentLoopBeforeTurnConversationLike<TMessage> {
+  toArray(): readonly TMessage[];
+}
+
+export interface AgentLoopBeforeTurnHookPayloadConversationInput<TMessage> {
+  counter: Pick<AgentLoopTurnCounter, 'turnsCount'>;
+  conversation: AgentLoopBeforeTurnConversationLike<TMessage>;
+  lastPromptTokens?: number;
+}
+
 export function shouldEmitAgentLoopTurnStart(turnStart: AgentLoopTurnStart): boolean {
   return turnStart.started;
 }
@@ -30,6 +40,16 @@ export function buildAgentLoopBeforeTurnHookPayload<TMessage>(
     messages: input.messages,
     lastPromptTokens: input.lastPromptTokens,
   };
+}
+
+export function buildAgentLoopBeforeTurnHookPayloadFromConversation<TMessage>(
+  input: AgentLoopBeforeTurnHookPayloadConversationInput<TMessage>,
+): AgentLoopBeforeTurnHookPayload<TMessage> {
+  return buildAgentLoopBeforeTurnHookPayload({
+    turn: input.counter.turnsCount,
+    messages: input.conversation.toArray(),
+    lastPromptTokens: input.lastPromptTokens,
+  });
 }
 
 export function shouldRunAgentLoopBeforeTurnHook<BeforeTurnHook>(

@@ -115,7 +115,7 @@ import {
 } from './loop/toolStartEvent.js';
 import { buildAgentLoopTurnStateProjection } from './loop/turnState.js';
 import {
-  buildAgentLoopBeforeTurnHookPayload,
+  buildAgentLoopBeforeTurnHookPayloadFromConversation,
   consumeAgentLoopBeforeTurnStream,
   createAgentLoopTurnCounter,
   shouldEmitAgentLoopTurnStart,
@@ -270,9 +270,9 @@ export async function* agentLoop(
     const beforeTurnHook = turnHooks?.beforeTurn;
     if (shouldRunAgentLoopBeforeTurnHook(turnCounter, beforeTurnHook)) {
       const beforeTurnStream = beforeTurnHook(
-        buildAgentLoopBeforeTurnHookPayload({
-          turn: turnCounter.turnsCount,
-          messages: convState.toArray(),
+        buildAgentLoopBeforeTurnHookPayloadFromConversation({
+          counter: turnCounter,
+          conversation: convState,
           lastPromptTokens: tokenUsageTracker.lastPromptTokens,
         }),
       );
