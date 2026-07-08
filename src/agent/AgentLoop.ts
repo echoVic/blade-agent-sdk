@@ -37,6 +37,7 @@ import {
   applyAgentLoopAssistantMessageProjection,
   assertAgentLoopTurnResponse,
   buildAgentLoopAssistantMessageProjection,
+  runAgentLoopAssistantMessageHook,
 } from './loop/assistantMessage.js';
 import {
   applyAgentLoopNoToolContinuation,
@@ -580,7 +581,10 @@ export async function* agentLoop(
       }),
     });
 
-    await messageHooks?.onAssistant?.(assistantMessageProjection.hookPayload);
+    await runAgentLoopAssistantMessageHook({
+      projection: assistantMessageProjection,
+      hooks,
+    });
 
     // 工具执行：流式已执行 or 非流式在此执行
     let executionResults = streamingExecutionResults;

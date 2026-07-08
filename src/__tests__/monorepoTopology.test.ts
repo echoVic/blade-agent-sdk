@@ -508,6 +508,8 @@ describe('monorepo topology', () => {
     expect(rootAgentLoopSource).toContain('shouldExitAgentLoopForToolDecision');
     expect(rootAgentLoopSource).toContain('createAgentLoopClock');
     expect(rootAgentLoopSource).toContain('buildAgentLoopAssistantMessageProjection');
+    expect(rootAgentLoopSource).toContain('runAgentLoopAssistantMessageHook');
+    expect(rootAgentLoopSource).not.toContain('messageHooks?.onAssistant');
     expect(rootAgentLoopSource).toContain('buildAgentLoopToolResultContinuation');
     expect(rootAgentLoopSource).toContain('runAgentLoopToolResultAfterExecHook');
     expect(rootAgentLoopSource).not.toContain('buildAgentLoopAfterExecHookPayload');

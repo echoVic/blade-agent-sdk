@@ -3,6 +3,7 @@ import {
   assertAgentLoopTurnResponse,
   applyAgentLoopAssistantMessageProjection,
   buildAgentLoopAssistantMessageProjection,
+  runAgentLoopAssistantMessageHook,
 } from '../loop/assistantMessage.js';
 
 describe('agent loop assistant message projection', () => {
@@ -82,6 +83,37 @@ describe('agent loop assistant message projection', () => {
       reasoningContent: 'Need evidence first.',
       turn: 3,
     });
+  });
+
+  it('runs assistant message hooks from the session hook container', async () => {
+    const calls: unknown[] = [];
+    const projection = buildAgentLoopAssistantMessageProjection({
+      response: {
+        content: 'I will inspect the file.',
+        reasoningContent: 'Need evidence first.',
+      },
+      turn: 3,
+    });
+
+    const applied = await runAgentLoopAssistantMessageHook({
+      projection,
+      hooks: {
+        message: {
+          onAssistant: async (payload) => {
+            calls.push(payload);
+          },
+        },
+      },
+    });
+
+    expect(applied).toBe(projection);
+    expect(calls).toEqual([
+      {
+        content: 'I will inspect the file.',
+        reasoningContent: 'Need evidence first.',
+        turn: 3,
+      },
+    ]);
   });
 
   it('returns the chat response when a turn produced one', () => {
