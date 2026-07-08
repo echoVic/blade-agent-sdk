@@ -421,8 +421,7 @@ describe('monorepo topology', () => {
     expect(rootAgentLoopSource).toContain('buildAgentLoopNoToolContent');
     expect(rootAgentLoopSource).toContain('buildAgentLoopResponseEvents');
     expect(rootAgentLoopSource).toContain('buildAgentLoopSuccessResult');
-    expect(rootAgentLoopSource).toContain('buildAgentLoopToolExitFinalMessage');
-    expect(rootAgentLoopSource).toContain('buildAgentLoopToolExitResult');
+    expect(rootAgentLoopSource).toContain('buildAgentLoopToolExitDecision');
     expect(rootAgentLoopSource).toContain('createAgentLoopClock');
     expect(rootAgentLoopSource).toContain('buildAgentLoopAssistantMessageProjection');
     expect(rootAgentLoopSource).toContain('buildAgentLoopToolMessage');
@@ -482,6 +481,9 @@ describe('monorepo topology', () => {
     expect(rootAgentLoopSource).not.toContain('const recordToolResult');
     expect(rootAgentLoopSource).not.toContain('result.newMessages && result.newMessages.length > 0');
     expect(rootAgentLoopSource).not.toContain('markToolInjectedSystemMessages');
+    expect(rootAgentLoopSource).not.toContain('result.metadata?.shouldExitLoop');
+    expect(rootAgentLoopSource).not.toContain('buildAgentLoopToolExitFinalMessage');
+    expect(rootAgentLoopSource).not.toContain('buildAgentLoopToolExitResult');
     expect(rootAgentLoopSource).not.toContain('let recoveryAttemptedTurn');
     expect(rootAgentLoopSource).not.toContain('let recoveryAttempt = 0');
     expect(rootAgentLoopSource).not.toContain("reason: 'reactive_compact_failed'");

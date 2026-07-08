@@ -3,6 +3,7 @@ import {
   buildAgentLoopAbortResult,
   buildAgentLoopBudgetExhaustedResult,
   buildAgentLoopSuccessResult,
+  buildAgentLoopToolExitDecision,
   buildAgentLoopToolExitFinalMessage,
   buildAgentLoopToolExitResult,
 } from '../loop/loopResult.js';
@@ -137,5 +138,92 @@ describe('agent loop result builders', () => {
       '循环已退出',
     );
     expect(buildAgentLoopToolExitFinalMessage({})).toBe('循环已退出');
+  });
+
+  it('continues when a tool result does not request loop exit', () => {
+    expect(
+      buildAgentLoopToolExitDecision({
+        toolCall: {
+          id: 'call_1',
+          type: 'function',
+          function: { name: 'Read', arguments: '{}' },
+        },
+        result: { success: true, llmContent: 'keep going' },
+        hasStreamingExecutionResults: false,
+        turnsCount: 2,
+        toolCallsCount: 3,
+        startTime: 100,
+        now: 140,
+      }),
+    ).toEqual({ action: 'continue', events: [] });
+  });
+
+  it('builds a non-streaming tool exit decision with result and terminal events', () => {
+    const toolCall = {
+      id: 'call_1',
+      type: 'function' as const,
+      function: { name: 'ExitPlanMode', arguments: '{}' },
+    };
+    const result = {
+      success: true,
+      llmContent: 'approved',
+      metadata: { shouldExitLoop: true, targetMode: 'default' },
+    };
+
+    expect(
+      buildAgentLoopToolExitDecision({
+        toolCall,
+        result,
+        hasStreamingExecutionResults: false,
+        turnsCount: 5,
+        toolCallsCount: 8,
+        startTime: 500,
+        now: 620,
+      }),
+    ).toEqual({
+      action: 'exit',
+      events: [
+        { type: 'tool_result', toolCall, result },
+        { type: 'turn_end', turn: 5, hasToolCalls: true },
+        { type: 'agent_end' },
+      ],
+      result: {
+        success: true,
+        finalMessage: 'approved',
+        metadata: {
+          turnsCount: 5,
+          toolCallsCount: 8,
+          duration: 120,
+          shouldExitLoop: true,
+          targetMode: 'default',
+        },
+      },
+    });
+  });
+
+  it('omits the duplicate tool_result event for streaming tool exit decisions', () => {
+    const decision = buildAgentLoopToolExitDecision({
+      toolCall: {
+        id: 'call_1',
+        type: 'function',
+        function: { name: 'ExitPlanMode', arguments: '{}' },
+      },
+      result: {
+        success: false,
+        llmContent: { rejected: true },
+        metadata: { shouldExitLoop: true },
+      },
+      hasStreamingExecutionResults: true,
+      turnsCount: 1,
+      toolCallsCount: 1,
+      startTime: 10,
+      now: 20,
+    });
+
+    expect(decision.action).toBe('exit');
+    expect(decision.events.map((event) => event.type)).toEqual(['turn_end', 'agent_end']);
+    if (decision.action === 'exit') {
+      expect(decision.result.finalMessage).toBe('循环已退出');
+    }
   });
 });

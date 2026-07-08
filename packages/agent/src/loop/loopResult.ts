@@ -1,3 +1,11 @@
+import type { AgentFunctionToolCall } from './planToolExecution.js';
+import {
+  buildAgentLoopEndEvent,
+  buildAgentLoopTurnEndEvent,
+  type AgentLoopEndEvent,
+  type AgentLoopTurnEndEvent,
+} from './loopEvents.js';
+
 export interface AgentLoopAbortResult {
   success: false;
   error: {
@@ -79,6 +87,43 @@ export interface AgentLoopToolExitFinalMessageInput {
   llmContent?: unknown;
 }
 
+export interface AgentLoopToolExitDecisionResultLike {
+  success: boolean;
+  llmContent?: unknown;
+  metadata?: {
+    shouldExitLoop?: boolean;
+    targetMode?: unknown;
+  };
+}
+
+export interface AgentLoopToolExitDecisionInput<
+  TResult extends AgentLoopToolExitDecisionResultLike = AgentLoopToolExitDecisionResultLike,
+> extends AgentLoopResultTiming {
+  toolCall: AgentFunctionToolCall;
+  result: TResult;
+  hasStreamingExecutionResults: boolean;
+}
+
+export type AgentLoopToolExitDecisionEvent<TResult = AgentLoopToolExitDecisionResultLike> =
+  | {
+      type: 'tool_result';
+      toolCall: AgentFunctionToolCall;
+      result: TResult;
+    }
+  | AgentLoopTurnEndEvent
+  | AgentLoopEndEvent;
+
+export type AgentLoopToolExitDecision<TResult = AgentLoopToolExitDecisionResultLike> =
+  | {
+      action: 'continue';
+      events: [];
+    }
+  | {
+      action: 'exit';
+      events: AgentLoopToolExitDecisionEvent<TResult>[];
+      result: AgentLoopToolExitResult;
+    };
+
 function getLoopDuration(input: Pick<AgentLoopResultTiming, 'startTime' | 'now'>): number {
   return (input.now ?? Date.now()) - input.startTime;
 }
@@ -154,5 +199,42 @@ export function buildAgentLoopBudgetExhaustedResult(
       tokensUsed: input.tokensUsed,
       tokenBudgetSnapshot: input.tokenBudgetSnapshot,
     },
+  };
+}
+
+export function buildAgentLoopToolExitDecision<
+  TResult extends AgentLoopToolExitDecisionResultLike,
+>(
+  input: AgentLoopToolExitDecisionInput<TResult>,
+): AgentLoopToolExitDecision<TResult> {
+  if (!input.result.metadata?.shouldExitLoop) {
+    return { action: 'continue', events: [] };
+  }
+
+  const events: AgentLoopToolExitDecisionEvent<TResult>[] = [];
+  if (!input.hasStreamingExecutionResults) {
+    events.push({
+      type: 'tool_result',
+      toolCall: input.toolCall,
+      result: input.result,
+    });
+  }
+  events.push(
+    buildAgentLoopTurnEndEvent({ turn: input.turnsCount, hasToolCalls: true }),
+    buildAgentLoopEndEvent(),
+  );
+
+  return {
+    action: 'exit',
+    events,
+    result: buildAgentLoopToolExitResult({
+      success: input.result.success,
+      finalMessage: buildAgentLoopToolExitFinalMessage(input.result),
+      turnsCount: input.turnsCount,
+      toolCallsCount: input.toolCallsCount,
+      startTime: input.startTime,
+      now: input.now,
+      targetMode: input.result.metadata?.targetMode,
+    }),
   };
 }
