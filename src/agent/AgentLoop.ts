@@ -107,7 +107,10 @@ import {
   buildAgentLoopToolResultAppendMessages,
   buildAgentLoopToolResultContinuation,
 } from './loop/toolResultContinuation.js';
-import { createAgentToolResultTracker } from './loop/toolResultTracker.js';
+import {
+  createAgentToolResultTracker,
+  recordAgentToolResult,
+} from './loop/toolResultTracker.js';
 import {
   buildAgentLoopToolStartEvents,
   buildAgentLoopToolStartEventsInputFromExecutionPipeline,
@@ -621,7 +624,7 @@ export async function* agentLoop(
     for (const { toolCall, result, toolUseUuid } of executionResults) {
       if (shouldStopAgentLoopToolResultProcessing(epoch)) break;
 
-      toolResultTracker.record(result);
+      recordAgentToolResult({ tracker: toolResultTracker, result });
 
       const toolExitDecision = buildAgentLoopToolExitDecision(
         buildAgentLoopToolExitDecisionInputFromLoopState({

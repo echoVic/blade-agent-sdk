@@ -8,6 +8,11 @@ export interface CreateAgentToolResultTrackerOptions {
   maxRecentResults?: number;
 }
 
+export interface RecordAgentToolResultInput<TToolResult = unknown> {
+  tracker: AgentToolResultTracker<TToolResult>;
+  result: TToolResult;
+}
+
 export function createAgentToolResultTracker<TToolResult = unknown>(
   options: CreateAgentToolResultTrackerOptions = {},
 ): AgentToolResultTracker<TToolResult> {
@@ -35,4 +40,10 @@ export function createAgentToolResultTracker<TToolResult = unknown>(
       }
     },
   };
+}
+
+export function recordAgentToolResult<TToolResult>(
+  input: RecordAgentToolResultInput<TToolResult>,
+): void {
+  input.tracker.record(input.result);
 }

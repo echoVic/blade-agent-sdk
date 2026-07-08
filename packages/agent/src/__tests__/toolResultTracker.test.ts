@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { createAgentToolResultTracker } from '../loop/toolResultTracker.js';
+import {
+  createAgentToolResultTracker,
+  recordAgentToolResult,
+} from '../loop/toolResultTracker.js';
 
 describe('agent tool result tracker', () => {
   it('starts with zero tool calls and no recent results', () => {
@@ -14,6 +17,16 @@ describe('agent tool result tracker', () => {
 
     tracker.record({ id: 1 });
     tracker.record({ id: 2 });
+
+    expect(tracker.toolCallsCount).toBe(2);
+    expect(tracker.recentToolResults).toEqual([{ id: 1 }, { id: 2 }]);
+  });
+
+  it('records tool results through the loop helper', () => {
+    const tracker = createAgentToolResultTracker<{ id: number }>();
+
+    recordAgentToolResult({ tracker, result: { id: 1 } });
+    recordAgentToolResult({ tracker, result: { id: 2 } });
 
     expect(tracker.toolCallsCount).toBe(2);
     expect(tracker.recentToolResults).toEqual([{ id: 1 }, { id: 2 }]);

@@ -566,6 +566,8 @@ describe('monorepo topology', () => {
     expect(rootAgentLoopSource).toContain('createAgentLoopTokenUsageTracker');
     expect(rootAgentLoopSource).toContain('shouldRecordAgentLoopTokenUsage');
     expect(rootAgentLoopSource).toContain('createAgentToolResultTracker');
+    expect(rootAgentLoopSource).toContain('recordAgentToolResult');
+    expect(rootAgentLoopSource).not.toContain('toolResultTracker.record(');
     expect(rootAgentLoopSource).toContain('buildAgentLoopToolStartEvents');
     expect(rootAgentLoopSource).toContain(
       'buildAgentLoopToolStartEventsInputFromExecutionPipeline',
