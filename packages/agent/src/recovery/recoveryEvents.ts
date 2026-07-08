@@ -61,6 +61,23 @@ export type AgentRecoveryProjectionInput =
       turn: number;
     };
 
+export function buildAgentRecoveryProjectionInput(
+  input: AgentRecoveryProjectionInput,
+): AgentRecoveryProjectionInput {
+  if (input.kind === 'reset') {
+    return {
+      kind: input.kind,
+      turn: input.turn,
+    };
+  }
+
+  return {
+    kind: input.kind,
+    turn: input.turn,
+    attempt: input.attempt,
+  };
+}
+
 export interface AgentRecoveryProjection {
   stateChange: AgentRecoveryStateChange;
   event?: AgentRecoveryEvent;

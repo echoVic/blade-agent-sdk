@@ -27,6 +27,7 @@ import {
   buildAgentModelFallbackEvent,
   buildAgentReactiveCompactHookPayload,
   buildAgentRecoveryEffects,
+  buildAgentRecoveryProjectionInput,
   buildAgentRecoveryProjection,
   consumeAgentRecoveryCompactStream,
 } from './recoveryEvents.js';
@@ -340,11 +341,13 @@ export async function* agentLoop(
         turn: turnsCount,
       })) {
         const recoveryAttempt = recoveryAttemptTracker.startAttempt(turnsCount);
-        const recoveryStarted = buildAgentRecoveryProjection({
-          kind: 'started',
-          turn: turnsCount,
-          attempt: recoveryAttempt,
-        });
+        const recoveryStarted = buildAgentRecoveryProjection(
+          buildAgentRecoveryProjectionInput({
+            kind: 'started',
+            turn: turnsCount,
+            attempt: recoveryAttempt,
+          }),
+        );
         const recoveryStartedEffects = buildAgentRecoveryEffects(recoveryStarted);
         for (const stateChange of recoveryStartedEffects.stateChanges) {
           onRecoveryStateChange?.(stateChange);
@@ -360,11 +363,13 @@ export async function* agentLoop(
         }
         const compactStreamResult = yield* consumeAgentRecoveryCompactStream(compactStream);
         if (!compactStreamResult.recovered) {
-          const recoveryFailed = buildAgentRecoveryProjection({
-            kind: 'compact_failed',
-            turn: turnsCount,
-            attempt: recoveryAttempt,
-          });
+          const recoveryFailed = buildAgentRecoveryProjection(
+            buildAgentRecoveryProjectionInput({
+              kind: 'compact_failed',
+              turn: turnsCount,
+              attempt: recoveryAttempt,
+            }),
+          );
           const recoveryFailedEffects = buildAgentRecoveryEffects(recoveryFailed);
           for (const stateChange of recoveryFailedEffects.stateChanges) {
             onRecoveryStateChange?.(stateChange);
@@ -374,11 +379,13 @@ export async function* agentLoop(
           }
           throw llmError;
         }
-        const recoveryRetrying = buildAgentRecoveryProjection({
-          kind: 'retrying',
-          turn: turnsCount,
-          attempt: recoveryAttempt,
-        });
+        const recoveryRetrying = buildAgentRecoveryProjection(
+          buildAgentRecoveryProjectionInput({
+            kind: 'retrying',
+            turn: turnsCount,
+            attempt: recoveryAttempt,
+          }),
+        );
         const recoveryRetryingEffects = buildAgentRecoveryEffects(recoveryRetrying);
         for (const stateChange of recoveryRetryingEffects.stateChanges) {
           onRecoveryStateChange?.(stateChange);
@@ -398,11 +405,13 @@ export async function* agentLoop(
         tracker: recoveryAttemptTracker,
         turn: turnsCount,
       })) {
-        const recoveryExhausted = buildAgentRecoveryProjection({
-          kind: 'exhausted',
-          turn: turnsCount,
-          attempt: recoveryAttemptTracker.attempt,
-        });
+        const recoveryExhausted = buildAgentRecoveryProjection(
+          buildAgentRecoveryProjectionInput({
+            kind: 'exhausted',
+            turn: turnsCount,
+            attempt: recoveryAttemptTracker.attempt,
+          }),
+        );
         const recoveryExhaustedEffects = buildAgentRecoveryEffects(recoveryExhausted);
         for (const stateChange of recoveryExhaustedEffects.stateChanges) {
           recoveryHooks?.onStateChange?.(stateChange);
@@ -417,10 +426,12 @@ export async function* agentLoop(
     turnResult = assertAgentLoopTurnResponse(turnResult);
 
     if (consumeAgentRecoveryResetAttempt(recoveryAttemptTracker)) {
-      const recoveryReset = buildAgentRecoveryProjection({
-        kind: 'reset',
-        turn: turnsCount,
-      });
+      const recoveryReset = buildAgentRecoveryProjection(
+        buildAgentRecoveryProjectionInput({
+          kind: 'reset',
+          turn: turnsCount,
+        }),
+      );
       const recoveryResetEffects = buildAgentRecoveryEffects(recoveryReset);
       for (const stateChange of recoveryResetEffects.stateChanges) {
         recoveryHooks?.onStateChange?.(stateChange);

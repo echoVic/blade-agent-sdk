@@ -2,6 +2,7 @@ export {
   buildAgentModelFallbackEvent,
   buildAgentReactiveCompactHookPayload,
   buildAgentRecoveryEffects,
+  buildAgentRecoveryProjectionInput,
   buildAgentRecoveryProjection,
   consumeAgentRecoveryCompactStream,
   shouldEmitAgentRecoveryEvent,

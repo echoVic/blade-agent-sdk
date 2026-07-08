@@ -476,6 +476,7 @@ describe('monorepo topology', () => {
     expect(rootAgentLoopSource).toContain('buildAgentModelFallbackEvent');
     expect(rootAgentLoopSource).toContain('buildAgentReactiveCompactHookPayload');
     expect(rootAgentLoopSource).toContain('buildAgentRecoveryProjection');
+    expect(rootAgentLoopSource).toContain('buildAgentRecoveryProjectionInput');
     expect(rootAgentLoopSource).toContain('buildAgentRecoveryEffects');
     expect(rootAgentLoopSource).toContain('consumeAgentRecoveryCompactStream');
     expect(rootAgentLoopSource).not.toContain('function buildAbortResult');
@@ -511,6 +512,7 @@ describe('monorepo topology', () => {
     expect(rootAgentLoopSource).not.toContain('const limitDecision = await decideTurnLimit({');
     expect(rootAgentLoopSource).not.toContain('turnLimitContinuation.shouldReplaceMessages');
     expect(rootAgentLoopSource).not.toContain("{\n          type: 'model_fallback'");
+    expect(rootAgentLoopSource).not.toContain('buildAgentRecoveryProjection({');
     expect(rootAgentLoopSource).not.toContain("{ type: 'tool_result'");
     expect(rootAgentLoopSource).not.toContain('let totalTokens = 0');
     expect(rootAgentLoopSource).not.toContain('let lastPromptTokens');

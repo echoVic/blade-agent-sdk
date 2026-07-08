@@ -3,12 +3,37 @@ import {
   buildAgentModelFallbackEvent,
   buildAgentReactiveCompactHookPayload,
   buildAgentRecoveryEffects,
+  buildAgentRecoveryProjectionInput,
   buildAgentRecoveryProjection,
   consumeAgentRecoveryCompactStream,
   shouldEmitAgentRecoveryEvent,
 } from '../recovery/recoveryEvents.js';
 
 describe('agent recovery event projection', () => {
+  it('projects object-style recovery projection input for event and reset cases', () => {
+    expect(
+      buildAgentRecoveryProjectionInput({
+        kind: 'started',
+        turn: 3,
+        attempt: 2,
+      }),
+    ).toEqual({
+      kind: 'started',
+      turn: 3,
+      attempt: 2,
+    });
+
+    expect(
+      buildAgentRecoveryProjectionInput({
+        kind: 'reset',
+        turn: 4,
+      }),
+    ).toEqual({
+      kind: 'reset',
+      turn: 4,
+    });
+  });
+
   it('projects recovery start state and stream event', () => {
     expect(
       buildAgentRecoveryProjection({
