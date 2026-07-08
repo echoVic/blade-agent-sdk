@@ -121,6 +121,7 @@ import {
   buildAgentLoopBeforeTurnHookPayloadFromConversation,
   consumeAgentLoopBeforeTurnStream,
   createAgentLoopTurnCounter,
+  requestAgentLoopTurnRetry,
   shouldEmitAgentLoopTurnStart,
   shouldRunAgentLoopBeforeTurnHook,
 } from './loop/turnCounter.js';
@@ -412,7 +413,7 @@ export async function* agentLoop(
         }
         epoch?.invalidate();
         // 显式"重试当前轮"：不减 turnsCount，不发 turn_end
-        turnCounter.requestRetry();
+        requestAgentLoopTurnRetry({ counter: turnCounter });
         yield buildAgentLoopTurnRetryEvent(
           buildAgentLoopTurnRetryEventInput({
             turn: turnsCount,

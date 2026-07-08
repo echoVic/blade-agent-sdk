@@ -4,6 +4,7 @@ import {
   buildAgentLoopBeforeTurnHookPayloadFromConversation,
   consumeAgentLoopBeforeTurnStream,
   createAgentLoopTurnCounter,
+  requestAgentLoopTurnRetry,
   shouldEmitAgentLoopTurnStart,
   shouldRunAgentLoopBeforeTurnHook,
 } from '../loop/turnCounter.js';
@@ -52,6 +53,18 @@ describe('agent loop turn counter', () => {
 
     counter.beginTurn();
     counter.requestRetry();
+
+    expect(counter.shouldRunBeforeTurn()).toBe(false);
+    expect(counter.beginTurn()).toEqual({ started: false, turn: 1 });
+    expect(counter.turnsCount).toBe(1);
+    expect(counter.shouldRunBeforeTurn()).toBe(true);
+  });
+
+  it('requests current-turn retry through the loop helper', () => {
+    const counter = createAgentLoopTurnCounter();
+
+    counter.beginTurn();
+    requestAgentLoopTurnRetry({ counter });
 
     expect(counter.shouldRunBeforeTurn()).toBe(false);
     expect(counter.beginTurn()).toEqual({ started: false, turn: 1 });
