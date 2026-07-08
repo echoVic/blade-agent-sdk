@@ -73,6 +73,7 @@ import {
 import { createAgentLoopClock } from './loop/loopClock.js';
 import {
   buildAgentLoopAbortCompletion,
+  buildAgentLoopAbortCompletionInputFromCounterState,
   buildAgentLoopAbortCompletionInputFromLoopState,
   buildAgentLoopNoToolSuccessDecision,
   buildAgentLoopNoToolSuccessDecisionInputFromLoopState,
@@ -261,9 +262,10 @@ export async function* agentLoop(
 
     if (shouldAbortAgentLoop(signal)) {
       const abortCompletion = buildAgentLoopAbortCompletion(
-        buildAgentLoopAbortCompletionInputFromLoopState({
+        buildAgentLoopAbortCompletionInputFromCounterState({
           loopClock,
-          turnsCount: turnCounter.turnsCount,
+          turnCounter,
+          turnCountSource: 'current',
           toolResultTracker,
         }),
       );
@@ -298,9 +300,10 @@ export async function* agentLoop(
 
     if (shouldAbortAgentLoop(signal)) {
       const abortCompletion = buildAgentLoopAbortCompletion(
-        buildAgentLoopAbortCompletionInputFromLoopState({
+        buildAgentLoopAbortCompletionInputFromCounterState({
           loopClock,
-          turnsCount: turnCounter.previousCompletedTurnCount,
+          turnCounter,
+          turnCountSource: 'previous_completed',
           toolResultTracker,
         }),
       );
@@ -504,9 +507,10 @@ export async function* agentLoop(
 
     if (shouldAbortAgentLoop(signal)) {
       const abortCompletion = buildAgentLoopAbortCompletion(
-        buildAgentLoopAbortCompletionInputFromLoopState({
+        buildAgentLoopAbortCompletionInputFromCounterState({
           loopClock,
-          turnsCount: turnCounter.previousCompletedTurnCount,
+          turnCounter,
+          turnCountSource: 'previous_completed',
           toolResultTracker,
         }),
       );

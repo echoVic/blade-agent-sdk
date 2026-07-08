@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   buildAgentLoopAbortCompletion,
   buildAgentLoopAbortCompletionInput,
+  buildAgentLoopAbortCompletionInputFromCounterState,
   buildAgentLoopAbortCompletionInputFromLoopState,
   buildAgentLoopAbortCompletionInputFromTiming,
   buildAgentLoopAbortResult,
@@ -17,6 +18,7 @@ import {
   buildAgentLoopToolExitDecisionInputFromTiming,
   buildAgentLoopToolExitFinalMessage,
   buildAgentLoopToolExitResult,
+  type AgentLoopAbortCompletionTimingSource,
   shouldAbortAgentLoop,
   shouldExitAgentLoopForToolDecision,
 } from '../loop/loopResult.js';
@@ -129,6 +131,51 @@ describe('agent loop result builders', () => {
     ).toEqual({
       turnsCount: 2,
       toolCallsCount: 3,
+      startTime: 100,
+      now: 175,
+    });
+  });
+
+  it('projects abort completion input from counter state objects', () => {
+    const counter = {
+      turnsCount: 3,
+      previousCompletedTurnCount: 2,
+    };
+    const loopClock: AgentLoopAbortCompletionTimingSource = {
+      resultTiming: ({ turnsCount, toolCallsCount }) => ({
+        turnsCount,
+        toolCallsCount,
+        startTime: 100,
+        now: 175,
+      }),
+    };
+    const toolResultTracker = {
+      toolCallsCount: 4,
+    };
+
+    expect(
+      buildAgentLoopAbortCompletionInputFromCounterState({
+        loopClock,
+        turnCounter: counter,
+        turnCountSource: 'current',
+        toolResultTracker,
+      }),
+    ).toEqual({
+      turnsCount: 3,
+      toolCallsCount: 4,
+      startTime: 100,
+      now: 175,
+    });
+    expect(
+      buildAgentLoopAbortCompletionInputFromCounterState({
+        loopClock,
+        turnCounter: counter,
+        turnCountSource: 'previous_completed',
+        toolResultTracker,
+      }),
+    ).toEqual({
+      turnsCount: 2,
+      toolCallsCount: 4,
       startTime: 100,
       now: 175,
     });

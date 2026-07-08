@@ -700,6 +700,11 @@ describe('monorepo topology', () => {
     expect(rootAgentLoopSource).not.toContain('recoveryAttemptTracker.attempt');
     expect(rootAgentLoopSource).toContain('startAgentRecoveryAttempt');
     expect(rootAgentLoopSource).not.toContain('recoveryAttemptTracker.startAttempt(');
+    expect(rootAgentLoopSource).toContain(
+      'buildAgentLoopAbortCompletionInputFromCounterState',
+    );
+    expect(rootAgentLoopSource).not.toContain('turnCounter.previousCompletedTurnCount');
+    expect(rootAgentLoopSource).not.toContain('turnCounter.turnsCount');
     expect(rootAgentLoopSource).toContain('buildAgentLoopRunTurnInputFromLoopState');
     expect(rootAgentLoopSource).not.toContain('buildAgentLoopRunTurnToolHooksInput');
     expect(rootAgentLoopSource).not.toContain('onBeforeExec: toolHooks?.beforeExec');

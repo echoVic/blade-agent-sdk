@@ -77,9 +77,23 @@ export interface AgentLoopAbortCompletionToolResultTrackerLike {
   readonly toolCallsCount: number;
 }
 
+export type AgentLoopAbortCompletionTurnCountSource = 'current' | 'previous_completed';
+
 export interface AgentLoopAbortCompletionLoopStateInput {
   loopClock: AgentLoopAbortCompletionTimingSource;
   turnsCount: number;
+  toolResultTracker: AgentLoopAbortCompletionToolResultTrackerLike;
+}
+
+export interface AgentLoopAbortCompletionTurnCounterLike {
+  readonly turnsCount: number;
+  readonly previousCompletedTurnCount: number;
+}
+
+export interface AgentLoopAbortCompletionCounterStateInput {
+  loopClock: AgentLoopAbortCompletionTimingSource;
+  turnCounter: AgentLoopAbortCompletionTurnCounterLike;
+  turnCountSource: AgentLoopAbortCompletionTurnCountSource;
   toolResultTracker: AgentLoopAbortCompletionToolResultTrackerLike;
 }
 
@@ -277,6 +291,19 @@ export function buildAgentLoopAbortCompletionInputFromLoopState(
       turnsCount: input.turnsCount,
       toolCallsCount: input.toolResultTracker.toolCallsCount,
     }),
+  });
+}
+
+export function buildAgentLoopAbortCompletionInputFromCounterState(
+  input: AgentLoopAbortCompletionCounterStateInput,
+): AgentLoopResultTiming {
+  return buildAgentLoopAbortCompletionInputFromLoopState({
+    loopClock: input.loopClock,
+    turnsCount:
+      input.turnCountSource === 'current'
+        ? input.turnCounter.turnsCount
+        : input.turnCounter.previousCompletedTurnCount,
+    toolResultTracker: input.toolResultTracker,
   });
 }
 
