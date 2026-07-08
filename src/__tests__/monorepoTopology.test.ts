@@ -469,6 +469,8 @@ describe('monorepo topology', () => {
     expect(rootAgentLoopSource).toContain('buildAgentLoopTurnStateProjection');
     expect(rootAgentLoopSource).toContain('buildAgentLoopEffectiveMaxTurns');
     expect(rootAgentLoopSource).toContain('buildAgentLoopTurnLimitDecisionInput');
+    expect(rootAgentLoopSource).toContain('buildAgentLoopTurnLimitHooksInput');
+    expect(rootAgentLoopSource).not.toContain('onTurnLimitReached: turnHooks?.onTurnLimitReached');
     expect(rootAgentLoopSource).toContain('buildAgentLoopTurnLimitContinuation');
     expect(rootAgentLoopSource).toContain('buildAgentLoopTurnLimitStopCompletion');
     expect(rootAgentLoopSource).toContain('shouldApplyAgentLoopTurnLimitContinuation');

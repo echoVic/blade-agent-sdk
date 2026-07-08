@@ -25,8 +25,8 @@ export interface TurnLimitStopResult {
   };
 }
 
-type TurnLimitReachedHandler = (data: { turnsCount: number }) => Promise<TurnLimitResponse>;
-type TurnLimitCompactHandler = (ctx: {
+export type TurnLimitReachedHandler = (data: { turnsCount: number }) => Promise<TurnLimitResponse>;
+export type TurnLimitCompactHandler = (ctx: {
   contextMessages: Message[];
 }) => Promise<{
   success: boolean;
@@ -71,6 +71,11 @@ export interface DecideTurnLimitInput {
   onTurnLimitCompact?: TurnLimitCompactHandler;
 }
 
+export interface AgentLoopTurnLimitHooksInput {
+  onTurnLimitReached?: TurnLimitReachedHandler;
+  onTurnLimitCompact?: TurnLimitCompactHandler;
+}
+
 export interface BuildAgentLoopEffectiveMaxTurnsInput {
   maxTurns: number;
   isYoloMode: boolean;
@@ -104,6 +109,15 @@ export function buildAgentLoopTurnLimitDecisionInput(
     toolCallsCount: input.toolCallsCount,
     startTime: input.startTime,
     totalTokens: input.totalTokens,
+    onTurnLimitReached: input.onTurnLimitReached,
+    onTurnLimitCompact: input.onTurnLimitCompact,
+  };
+}
+
+export function buildAgentLoopTurnLimitHooksInput(
+  input: AgentLoopTurnLimitHooksInput,
+): AgentLoopTurnLimitHooksInput {
+  return {
     onTurnLimitReached: input.onTurnLimitReached,
     onTurnLimitCompact: input.onTurnLimitCompact,
   };

@@ -4,6 +4,7 @@ import {
   AGENT_LOOP_TURN_SAFETY_LIMIT,
   buildAgentLoopTurnLimitContinuation,
   buildAgentLoopTurnLimitDecisionInput,
+  buildAgentLoopTurnLimitHooksInput,
   buildAgentLoopTurnLimitStopCompletion,
   buildAgentLoopEffectiveMaxTurns,
   decideTurnLimit,
@@ -82,6 +83,21 @@ describe('decideTurnLimit', () => {
       }),
     ).toEqual({
       ...baseInput,
+      onTurnLimitReached,
+      onTurnLimitCompact,
+    });
+  });
+
+  it('projects turn-limit hooks from the session turn hook container', () => {
+    const onTurnLimitReached = async () => ({ continue: false });
+    const onTurnLimitCompact = async () => ({ success: false });
+
+    expect(
+      buildAgentLoopTurnLimitHooksInput({
+        onTurnLimitReached,
+        onTurnLimitCompact,
+      }),
+    ).toEqual({
       onTurnLimitReached,
       onTurnLimitCompact,
     });
