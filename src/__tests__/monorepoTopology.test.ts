@@ -420,7 +420,6 @@ describe('monorepo topology', () => {
     expect(rootAgentLoopSource).toContain('buildAgentLoopTurnRetryEvent');
     expect(rootAgentLoopSource).toContain('buildAgentLoopNoToolContent');
     expect(rootAgentLoopSource).toContain('buildAgentLoopResponseEvents');
-    expect(rootAgentLoopSource).toContain('buildAgentLoopBudgetExhaustedResult');
     expect(rootAgentLoopSource).toContain('buildAgentLoopSuccessResult');
     expect(rootAgentLoopSource).toContain('buildAgentLoopToolExitFinalMessage');
     expect(rootAgentLoopSource).toContain('buildAgentLoopToolExitResult');
@@ -430,7 +429,7 @@ describe('monorepo topology', () => {
     expect(rootAgentLoopSource).toContain('buildAgentLoopToolInjectedMessages');
     expect(rootAgentLoopSource).toContain('buildAgentLoopTokenUsageInfo');
     expect(rootAgentLoopSource).toContain('buildAgentLoopTokenUsageEvent');
-    expect(rootAgentLoopSource).toContain('buildAgentLoopBudgetWarningEvent');
+    expect(rootAgentLoopSource).toContain('applyAgentLoopTokenBudget');
     expect(rootAgentLoopSource).toContain('createAgentLoopTokenUsageTracker');
     expect(rootAgentLoopSource).toContain('createAgentToolResultTracker');
     expect(rootAgentLoopSource).toContain('buildAgentLoopToolStartEvent');
@@ -452,6 +451,13 @@ describe('monorepo topology', () => {
     expect(rootAgentLoopSource).not.toContain('const usage: TokenUsageInfo =');
     expect(rootAgentLoopSource).not.toContain("{ type: 'token_usage'");
     expect(rootAgentLoopSource).not.toContain("{ type: 'budget_warning'");
+    expect(rootAgentLoopSource).not.toContain('buildAgentLoopBudgetWarningEvent');
+    expect(rootAgentLoopSource).not.toContain('buildAgentLoopBudgetExhaustedResult');
+    expect(rootAgentLoopSource).not.toContain('tokenBudget.record');
+    expect(rootAgentLoopSource).not.toContain('tokenBudget.isWarning');
+    expect(rootAgentLoopSource).not.toContain('tokenBudget.isApproachingLimit');
+    expect(rootAgentLoopSource).not.toContain('tokenBudget.isDiminishingReturns');
+    expect(rootAgentLoopSource).not.toContain('tokenBudget.isExhausted');
     expect(rootAgentLoopSource).not.toContain("{\n          type: 'model_fallback'");
     expect(rootAgentLoopSource).not.toContain("{ type: 'tool_result'");
     expect(rootAgentLoopSource).not.toContain('let totalTokens = 0');

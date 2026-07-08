@@ -33,7 +33,6 @@ import { buildAgentLoopResponseEvents } from './loop/responseEvents.js';
 import { createAgentLoopClock } from './loop/loopClock.js';
 import {
   buildAgentLoopAbortResult,
-  buildAgentLoopBudgetExhaustedResult,
   buildAgentLoopSuccessResult,
   buildAgentLoopToolExitFinalMessage,
   buildAgentLoopToolExitResult,
@@ -42,7 +41,7 @@ import { planToolExecution, selectAgentFunctionToolCalls } from './loop/planTool
 import { runTurn } from './loop/runTurn.js';
 import type { ToolExecutionUpdate } from './loop/runToolCall.js';
 import {
-  buildAgentLoopBudgetWarningEvent,
+  applyAgentLoopTokenBudget,
   buildAgentLoopTokenUsageEvent,
   buildAgentLoopTokenUsageInfo,
 } from './loop/tokenUsage.js';
@@ -361,38 +360,21 @@ export async function* agentLoop(
       yield buildAgentLoopTokenUsageEvent({ usage });
     }
 
-    if (tokenBudget && turnResult.usage) {
-      tokenBudget.record(turnResult.usage);
-
-      if (tokenBudget.isWarning() || tokenBudget.isApproachingLimit()) {
-        yield buildAgentLoopBudgetWarningEvent({ snapshot: tokenBudget.getSnapshot() });
-      }
-
-      if (tokenBudget.isDiminishingReturns()) {
-        yield buildAgentLoopEndEvent();
-        return buildAgentLoopBudgetExhaustedResult({
-          reason: 'diminishing_returns',
-          ...loopClock.resultTiming({
-            turnsCount,
-            toolCallsCount: toolResultTracker.toolCallsCount,
-          }),
-          tokensUsed: tokenUsageTracker.totalTokens,
-          tokenBudgetSnapshot: tokenBudget.getSnapshot(),
-        }) as LoopResult;
-      }
-
-      if (tokenBudget.isExhausted()) {
-        yield buildAgentLoopEndEvent();
-        return buildAgentLoopBudgetExhaustedResult({
-          reason: 'exhausted',
-          ...loopClock.resultTiming({
-            turnsCount,
-            toolCallsCount: toolResultTracker.toolCallsCount,
-          }),
-          tokensUsed: tokenUsageTracker.totalTokens,
-          tokenBudgetSnapshot: tokenBudget.getSnapshot(),
-        }) as LoopResult;
-      }
+    const budgetDecision = await applyAgentLoopTokenBudget({
+      tokenBudget,
+      modelUsage: turnResult.usage,
+      tokensUsed: tokenUsageTracker.totalTokens,
+      ...loopClock.resultTiming({
+        turnsCount,
+        toolCallsCount: toolResultTracker.toolCallsCount,
+      }),
+    });
+    for (const budgetEvent of budgetDecision.events) {
+      yield budgetEvent;
+    }
+    if (budgetDecision.result) {
+      yield buildAgentLoopEndEvent();
+      return budgetDecision.result as LoopResult;
     }
 
     if (signal?.aborted) {

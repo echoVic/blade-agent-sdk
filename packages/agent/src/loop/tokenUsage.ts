@@ -1,4 +1,9 @@
 import type { ModelUsageInfo } from '@blade-ai/ai';
+import {
+  buildAgentLoopBudgetExhaustedResult,
+  type AgentLoopBudgetExhaustedResult,
+  type AgentLoopResultTiming,
+} from './loopResult.js';
 
 export interface AgentLoopTokenUsageInfo {
   inputTokens: number;
@@ -35,6 +40,27 @@ export interface BuildAgentLoopTokenUsageInfoInput {
   maxContextTokens: number;
 }
 
+export interface AgentLoopTokenBudgetLike<TSnapshot = unknown> {
+  record(usage: ModelUsageInfo): Promise<void> | void;
+  isWarning(): boolean;
+  isApproachingLimit(): boolean;
+  isDiminishingReturns?(): boolean;
+  isExhausted(): boolean;
+  getSnapshot(): TSnapshot;
+}
+
+export interface ApplyAgentLoopTokenBudgetInput<TSnapshot = unknown>
+  extends AgentLoopResultTiming {
+  tokenBudget?: AgentLoopTokenBudgetLike<TSnapshot>;
+  modelUsage?: ModelUsageInfo;
+  tokensUsed: number;
+}
+
+export interface ApplyAgentLoopTokenBudgetResult<TSnapshot = unknown> {
+  events: AgentLoopBudgetWarningEvent<TSnapshot>[];
+  result?: AgentLoopBudgetExhaustedResult;
+}
+
 export function buildAgentLoopTokenUsageInfo(
   input: BuildAgentLoopTokenUsageInfoInput,
 ): AgentLoopTokenUsageInfo {
@@ -66,4 +92,52 @@ export function buildAgentLoopBudgetWarningEvent<TSnapshot>(
     type: 'budget_warning',
     snapshot: input.snapshot,
   };
+}
+
+export async function applyAgentLoopTokenBudget<TSnapshot>(
+  input: ApplyAgentLoopTokenBudgetInput<TSnapshot>,
+): Promise<ApplyAgentLoopTokenBudgetResult<TSnapshot>> {
+  const { tokenBudget, modelUsage } = input;
+  if (!tokenBudget || !modelUsage) {
+    return { events: [] };
+  }
+
+  await tokenBudget.record(modelUsage);
+
+  const events: AgentLoopBudgetWarningEvent<TSnapshot>[] = [];
+  if (tokenBudget.isWarning() || tokenBudget.isApproachingLimit()) {
+    events.push(buildAgentLoopBudgetWarningEvent({ snapshot: tokenBudget.getSnapshot() }));
+  }
+
+  if (tokenBudget.isDiminishingReturns?.()) {
+    return {
+      events,
+      result: buildAgentLoopBudgetExhaustedResult({
+        reason: 'diminishing_returns',
+        turnsCount: input.turnsCount,
+        toolCallsCount: input.toolCallsCount,
+        startTime: input.startTime,
+        now: input.now,
+        tokensUsed: input.tokensUsed,
+        tokenBudgetSnapshot: tokenBudget.getSnapshot(),
+      }),
+    };
+  }
+
+  if (tokenBudget.isExhausted()) {
+    return {
+      events,
+      result: buildAgentLoopBudgetExhaustedResult({
+        reason: 'exhausted',
+        turnsCount: input.turnsCount,
+        toolCallsCount: input.toolCallsCount,
+        startTime: input.startTime,
+        now: input.now,
+        tokensUsed: input.tokensUsed,
+        tokenBudgetSnapshot: tokenBudget.getSnapshot(),
+      }),
+    };
+  }
+
+  return { events };
 }

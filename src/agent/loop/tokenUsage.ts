@@ -1,11 +1,15 @@
 export {
+  applyAgentLoopTokenBudget,
   buildAgentLoopBudgetWarningEvent,
   buildAgentLoopTokenUsageEvent,
   buildAgentLoopTokenUsageInfo,
+  type AgentLoopTokenBudgetLike,
   type AgentLoopBudgetWarningEvent,
   type AgentLoopBudgetWarningEventInput,
   type AgentLoopTokenUsageEvent,
   type AgentLoopTokenUsageEventInput,
   type AgentLoopTokenUsageInfo,
+  type ApplyAgentLoopTokenBudgetInput,
+  type ApplyAgentLoopTokenBudgetResult,
   type BuildAgentLoopTokenUsageInfoInput,
 } from '../../../packages/agent/src/loop/tokenUsage.js';
