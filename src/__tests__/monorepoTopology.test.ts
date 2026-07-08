@@ -423,7 +423,7 @@ describe('monorepo topology', () => {
     expect(rootAgentLoopSource).toContain('buildAgentLoopStartEvent');
     expect(rootAgentLoopSource).toContain('buildAgentLoopEndEvent');
     expect(rootAgentLoopSource).toContain('buildAgentLoopTurnStartEvent');
-    expect(rootAgentLoopSource).toContain('buildAgentLoopTurnEndEvent');
+    expect(rootAgentLoopSource).toContain('buildAgentLoopToolTurnCompletion');
     expect(rootAgentLoopSource).toContain('buildAgentLoopTurnRetryEvent');
     expect(rootAgentLoopSource).toContain('buildAgentLoopNoToolContent');
     expect(rootAgentLoopSource).toContain('buildAgentLoopNoToolContinuation');
@@ -461,6 +461,7 @@ describe('monorepo topology', () => {
     expect(rootAgentLoopSource).toContain('consumeAgentRecoveryCompactStream');
     expect(rootAgentLoopSource).toContain('shouldEmitAgentRecoveryEvent');
     expect(rootAgentLoopSource).not.toContain('function buildAbortResult');
+    expect(rootAgentLoopSource).not.toContain('buildAgentLoopTurnEndEvent');
     expect(rootAgentLoopSource).not.toContain('if (signal?.aborted)');
     expect(rootAgentLoopSource).not.toContain('return {\n        success: true,');
     expect(rootAgentLoopSource).not.toContain('return buildAgentLoopSuccessResult');
@@ -532,6 +533,9 @@ describe('monorepo topology', () => {
     expect(rootAgentLoopSource).not.toContain('convState.append(noToolDecision.message)');
     expect(rootAgentLoopSource).not.toContain(
       'buildAgentLoopTurnEndEvent({ turn: turnsCount, hasToolCalls: false })',
+    );
+    expect(rootAgentLoopSource).not.toContain(
+      'buildAgentLoopTurnEndEvent({ turn: turnsCount, hasToolCalls: true })',
     );
     expect(rootAgentLoopSource).not.toContain("tc.type === 'function'");
     expect(rootAgentLoopSource).not.toContain('as AgentEvent');

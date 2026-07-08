@@ -39,6 +39,14 @@ export interface AgentLoopTurnRetryEventInput {
   reason: 'reactive_compact';
 }
 
+export interface AgentLoopToolTurnCompletionInput {
+  turn: number;
+}
+
+export interface AgentLoopToolTurnCompletion {
+  events: [AgentLoopTurnEndEvent];
+}
+
 export function buildAgentLoopStartEvent(): AgentLoopStartEvent {
   return { type: 'agent_start' };
 }
@@ -64,6 +72,14 @@ export function buildAgentLoopTurnEndEvent(
     type: 'turn_end',
     turn: input.turn,
     hasToolCalls: input.hasToolCalls,
+  };
+}
+
+export function buildAgentLoopToolTurnCompletion(
+  input: AgentLoopToolTurnCompletionInput,
+): AgentLoopToolTurnCompletion {
+  return {
+    events: [buildAgentLoopTurnEndEvent({ turn: input.turn, hasToolCalls: true })],
   };
 }
 

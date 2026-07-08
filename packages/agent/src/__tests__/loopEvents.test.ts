@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   buildAgentLoopEndEvent,
   buildAgentLoopStartEvent,
+  buildAgentLoopToolTurnCompletion,
   buildAgentLoopTurnEndEvent,
   buildAgentLoopTurnRetryEvent,
   buildAgentLoopTurnStartEvent,
@@ -32,6 +33,12 @@ describe('agent loop lifecycle event builders', () => {
       type: 'turn_end',
       turn: 4,
       hasToolCalls: false,
+    });
+  });
+
+  it('builds tool-turn completion events with stable tool-call status', () => {
+    expect(buildAgentLoopToolTurnCompletion({ turn: 6 })).toEqual({
+      events: [{ type: 'turn_end', turn: 6, hasToolCalls: true }],
     });
   });
 

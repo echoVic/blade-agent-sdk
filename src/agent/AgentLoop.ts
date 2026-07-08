@@ -52,7 +52,7 @@ import { executeToolCalls } from './loop/executeToolCalls.js';
 import {
   buildAgentLoopEndEvent,
   buildAgentLoopStartEvent,
-  buildAgentLoopTurnEndEvent,
+  buildAgentLoopToolTurnCompletion,
   buildAgentLoopTurnRetryEvent,
   buildAgentLoopTurnStartEvent,
 } from './loop/loopEvents.js';
@@ -571,7 +571,10 @@ export async function* agentLoop(
       }
     }
 
-    yield buildAgentLoopTurnEndEvent({ turn: turnsCount, hasToolCalls: true });
+    const toolTurnCompletion = buildAgentLoopToolTurnCompletion({ turn: turnsCount });
+    for (const event of toolTurnCompletion.events) {
+      yield event;
+    }
 
     if (shouldAbortAgentLoop(signal)) {
       yield buildAgentLoopEndEvent();
