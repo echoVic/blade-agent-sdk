@@ -35,6 +35,7 @@ import {
 } from './loop/assistantMessage.js';
 import {
   buildAgentLoopNoToolContent,
+  buildAgentLoopNoToolCompletePayload,
   buildAgentLoopNoToolContinuation,
   decideNoToolTurn,
   shouldContinueAgentLoopAfterNoToolDecision,
@@ -481,7 +482,9 @@ export async function* agentLoop(
         continue;
       }
 
-      await messageHooks?.onComplete?.({ content, turn: turnsCount });
+      await messageHooks?.onComplete?.(
+        buildAgentLoopNoToolCompletePayload({ content, turn: turnsCount }),
+      );
 
       const noToolSuccessDecision = buildAgentLoopNoToolSuccessDecision({
         finalMessage: content,

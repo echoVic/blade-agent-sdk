@@ -40,6 +40,16 @@ export interface AgentLoopNoToolContinuationInput {
   turn: number;
 }
 
+export interface AgentLoopNoToolCompletePayloadInput {
+  content: string;
+  turn: number;
+}
+
+export interface AgentLoopNoToolCompletePayload {
+  content: string;
+  turn: number;
+}
+
 export interface AgentLoopNoToolContinuation {
   action: 'continue';
   message: Message;
@@ -75,6 +85,15 @@ export function buildAgentLoopNoToolContinuation(
     message: input.decision.message,
     warning: input.decision.action === 'continue_with_reminder' ? input.decision.warning : undefined,
     events: [buildAgentLoopTurnEndEvent({ turn: input.turn, hasToolCalls: false })],
+  };
+}
+
+export function buildAgentLoopNoToolCompletePayload(
+  input: AgentLoopNoToolCompletePayloadInput,
+): AgentLoopNoToolCompletePayload {
+  return {
+    content: input.content,
+    turn: input.turn,
   };
 }
 

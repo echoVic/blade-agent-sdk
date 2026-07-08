@@ -4,6 +4,7 @@ import {
   DEFAULT_CONTINUE_REMINDER,
   RETRY_PROMPT,
   buildAgentLoopNoToolContent,
+  buildAgentLoopNoToolCompletePayload,
   buildAgentLoopNoToolContinuation,
   decideNoToolTurn,
   shouldContinueAgentLoopAfterNoToolDecision,
@@ -62,6 +63,18 @@ describe('decideNoToolTurn', () => {
       message,
       warning: 'keep-working',
       events: [{ type: 'turn_end', turn: 3, hasToolCalls: false }],
+    });
+  });
+
+  it('projects a no-tool completion payload for message hooks', () => {
+    expect(
+      buildAgentLoopNoToolCompletePayload({
+        content: 'All done',
+        turn: 5,
+      }),
+    ).toEqual({
+      content: 'All done',
+      turn: 5,
     });
   });
 
