@@ -471,6 +471,9 @@ describe('monorepo topology', () => {
     expect(rootAgentLoopSource).not.toContain('const startTime = Date.now()');
     expect(rootAgentLoopSource).not.toContain("turnResult.content || ''");
     expect(rootAgentLoopSource).not.toContain("role: 'assistant',\n      content: turnResult.content || ''");
+    expect(rootAgentLoopSource).not.toContain(
+      'Agent loop completed without a chat response',
+    );
     expect(rootAgentLoopSource).not.toContain('let turnsCount = 0');
     expect(rootAgentLoopSource).not.toContain('let retryCurrentTurn');
     expect(rootAgentLoopSource).not.toContain('turnsCount++');

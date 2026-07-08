@@ -21,6 +21,16 @@ export interface AgentLoopAssistantMessageProjectionInput {
   turn: number;
 }
 
+export function assertAgentLoopTurnResponse<TResponse>(
+  response: TResponse | undefined,
+): TResponse {
+  if (!response) {
+    throw new Error('Agent loop completed without a chat response');
+  }
+
+  return response;
+}
+
 export function buildAgentLoopAssistantMessageProjection(
   input: AgentLoopAssistantMessageProjectionInput,
 ): AgentLoopAssistantMessageProjection {

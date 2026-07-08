@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { buildAgentLoopAssistantMessageProjection } from '../loop/assistantMessage.js';
+import {
+  assertAgentLoopTurnResponse,
+  buildAgentLoopAssistantMessageProjection,
+} from '../loop/assistantMessage.js';
 
 describe('agent loop assistant message projection', () => {
   it('builds the stored assistant message and hook payload from a tool-call response', () => {
@@ -50,5 +53,19 @@ describe('agent loop assistant message projection', () => {
         turn: 1,
       },
     });
+  });
+
+  it('returns the chat response when a turn produced one', () => {
+    const response = {
+      content: 'done',
+    };
+
+    expect(assertAgentLoopTurnResponse(response)).toBe(response);
+  });
+
+  it('throws a stable invariant error when a turn completed without a chat response', () => {
+    expect(() => assertAgentLoopTurnResponse(undefined)).toThrow(
+      'Agent loop completed without a chat response',
+    );
   });
 });

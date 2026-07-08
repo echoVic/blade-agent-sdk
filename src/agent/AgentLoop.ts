@@ -17,7 +17,10 @@ import { ExecutionEpoch } from './ExecutionEpoch.js';
 import { isOverflowRecoverable } from './isOverflowRecoverable.js';
 import { createAgentRecoveryAttemptTracker } from './recoveryAttemptTracker.js';
 import { buildAgentModelFallbackEvent, buildAgentRecoveryProjection } from './recoveryEvents.js';
-import { buildAgentLoopAssistantMessageProjection } from './loop/assistantMessage.js';
+import {
+  assertAgentLoopTurnResponse,
+  buildAgentLoopAssistantMessageProjection,
+} from './loop/assistantMessage.js';
 import {
   buildAgentLoopNoToolContent,
   decideNoToolTurn,
@@ -342,9 +345,7 @@ export async function* agentLoop(
       throw llmError;
     }
 
-    if (!turnResult) {
-      throw new Error('Agent loop completed without a chat response');
-    }
+    turnResult = assertAgentLoopTurnResponse(turnResult);
 
     if (recoveryAttemptTracker.consumeResetAttempt() !== null) {
       const recoveryReset = buildAgentRecoveryProjection({

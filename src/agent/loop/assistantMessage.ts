@@ -1,4 +1,5 @@
 export {
+  assertAgentLoopTurnResponse,
   buildAgentLoopAssistantMessageProjection,
   type AgentLoopAssistantMessageHookPayload,
   type AgentLoopAssistantMessageProjection,
