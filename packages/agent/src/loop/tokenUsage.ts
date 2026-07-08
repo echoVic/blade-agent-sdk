@@ -60,6 +60,13 @@ export interface ApplyAgentLoopTokenBudgetInput<TSnapshot = unknown>
   tokensUsed: number;
 }
 
+export interface AgentLoopTokenBudgetTimingInput<TSnapshot = unknown> {
+  tokenBudget?: AgentLoopTokenBudgetLike<TSnapshot>;
+  modelUsage?: ModelUsageInfo;
+  tokensUsed: number;
+  timing: AgentLoopResultTiming;
+}
+
 export interface ApplyAgentLoopTokenBudgetResult<TSnapshot = unknown> {
   events: AgentLoopBudgetWarningEvent<TSnapshot>[];
   result?: AgentLoopBudgetExhaustedResult;
@@ -131,6 +138,20 @@ export function buildAgentLoopTokenBudgetInput<TSnapshot>(
     startTime: input.startTime,
     now: input.now,
   };
+}
+
+export function buildAgentLoopTokenBudgetInputFromTiming<TSnapshot>(
+  input: AgentLoopTokenBudgetTimingInput<TSnapshot>,
+): ApplyAgentLoopTokenBudgetInput<TSnapshot> {
+  return buildAgentLoopTokenBudgetInput({
+    tokenBudget: input.tokenBudget,
+    modelUsage: input.modelUsage,
+    tokensUsed: input.tokensUsed,
+    turnsCount: input.timing.turnsCount,
+    toolCallsCount: input.timing.toolCallsCount,
+    startTime: input.timing.startTime,
+    now: input.timing.now,
+  });
 }
 
 export function shouldStopAgentLoopForTokenBudget<TSnapshot>(

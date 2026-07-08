@@ -93,7 +93,7 @@ import { runTurn } from './loop/runTurn.js';
 import type { ToolExecutionUpdate } from './loop/runToolCall.js';
 import {
   applyAgentLoopTokenBudget,
-  buildAgentLoopTokenBudgetInput,
+  buildAgentLoopTokenBudgetInputFromTiming,
   buildAgentLoopTokenBudgetStopCompletion,
   buildAgentLoopTokenUsageEvent,
   buildAgentLoopTokenUsageInfo,
@@ -478,11 +478,11 @@ export async function* agentLoop(
     }
 
     const budgetDecision = await applyAgentLoopTokenBudget(
-      buildAgentLoopTokenBudgetInput({
+      buildAgentLoopTokenBudgetInputFromTiming({
         tokenBudget,
         modelUsage: turnResult.usage,
         tokensUsed: tokenUsageTracker.totalTokens,
-        ...loopClock.resultTiming({
+        timing: loopClock.resultTiming({
           turnsCount,
           toolCallsCount: toolResultTracker.toolCallsCount,
         }),

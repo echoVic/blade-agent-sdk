@@ -3,6 +3,7 @@ import {
   applyAgentLoopTokenBudget,
   buildAgentLoopBudgetWarningEvent,
   buildAgentLoopTokenBudgetInput,
+  buildAgentLoopTokenBudgetInputFromTiming,
   buildAgentLoopTokenBudgetStopCompletion,
   buildAgentLoopTokenUsageEvent,
   buildAgentLoopTokenUsageInfo,
@@ -165,6 +166,41 @@ describe('agent loop token usage projection', () => {
         toolCallsCount: 4,
         startTime: 100,
         now: 140,
+      }),
+    ).toEqual({
+      tokenBudget,
+      modelUsage: usage,
+      tokensUsed: 92,
+      turnsCount: 2,
+      toolCallsCount: 4,
+      startTime: 100,
+      now: 140,
+    });
+  });
+
+  it('projects token budget handling input from an explicit timing payload', () => {
+    const usage = { promptTokens: 9, completionTokens: 3, totalTokens: 12 };
+    const snapshot = { totalTokens: 92 };
+    const tokenBudget = {
+      record: vi.fn(),
+      isWarning: vi.fn(() => false),
+      isApproachingLimit: vi.fn(() => false),
+      isDiminishingReturns: vi.fn(() => false),
+      isExhausted: vi.fn(() => false),
+      getSnapshot: vi.fn(() => snapshot),
+    };
+
+    expect(
+      buildAgentLoopTokenBudgetInputFromTiming({
+        tokenBudget,
+        modelUsage: usage,
+        tokensUsed: 92,
+        timing: {
+          turnsCount: 2,
+          toolCallsCount: 4,
+          startTime: 100,
+          now: 140,
+        },
       }),
     ).toEqual({
       tokenBudget,
