@@ -418,7 +418,7 @@ describe('monorepo topology', () => {
     expect(agentLoopSource).toContain("from './turnCounter.js'");
     expect(agentLoopSource).toContain("from './toolInterruptBehavior.js'");
     expect(agentLoopSource).toContain("from './toolUpdateToAgentEvent.js'");
-    expect(rootAgentLoopSource).toContain('buildAgentLoopAbortResult');
+    expect(rootAgentLoopSource).toContain('buildAgentLoopAbortCompletion');
     expect(rootAgentLoopSource).toContain('shouldAbortAgentLoop');
     expect(rootAgentLoopSource).toContain('buildAgentLoopStartEvent');
     expect(rootAgentLoopSource).toContain('buildAgentLoopEndEvent');
@@ -461,6 +461,7 @@ describe('monorepo topology', () => {
     expect(rootAgentLoopSource).toContain('consumeAgentRecoveryCompactStream');
     expect(rootAgentLoopSource).toContain('shouldEmitAgentRecoveryEvent');
     expect(rootAgentLoopSource).not.toContain('function buildAbortResult');
+    expect(rootAgentLoopSource).not.toContain('buildAgentLoopAbortResult');
     expect(rootAgentLoopSource).not.toContain('buildAgentLoopTurnEndEvent');
     expect(rootAgentLoopSource).not.toContain('if (signal?.aborted)');
     expect(rootAgentLoopSource).not.toContain('return {\n        success: true,');

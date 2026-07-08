@@ -122,6 +122,12 @@ export type AgentLoopToolExitDecisionEvent<TResult = AgentLoopToolExitDecisionRe
   | AgentLoopTurnEndEvent
   | AgentLoopEndEvent;
 
+export interface AgentLoopAbortCompletion {
+  action: 'abort';
+  events: [AgentLoopEndEvent];
+  result: AgentLoopAbortResult;
+}
+
 export type AgentLoopToolExitDecision<TResult = AgentLoopToolExitDecisionResultLike> =
   | {
       action: 'continue';
@@ -163,6 +169,16 @@ export function buildAgentLoopAbortResult(input: AgentLoopResultTiming): AgentLo
       toolCallsCount: input.toolCallsCount,
       duration: getLoopDuration(input),
     },
+  };
+}
+
+export function buildAgentLoopAbortCompletion(
+  input: AgentLoopResultTiming,
+): AgentLoopAbortCompletion {
+  return {
+    action: 'abort',
+    events: [buildAgentLoopEndEvent()],
+    result: buildAgentLoopAbortResult(input),
   };
 }
 

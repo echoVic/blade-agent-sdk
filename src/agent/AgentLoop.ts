@@ -62,7 +62,7 @@ import {
 } from './loop/responseEvents.js';
 import { createAgentLoopClock } from './loop/loopClock.js';
 import {
-  buildAgentLoopAbortResult,
+  buildAgentLoopAbortCompletion,
   buildAgentLoopNoToolSuccessDecision,
   buildAgentLoopToolExitDecision,
   buildAgentLoopToolExitDecisionInput,
@@ -223,13 +223,16 @@ export async function* agentLoop(
     epoch = new ExecutionEpoch();
 
     if (shouldAbortAgentLoop(signal)) {
-      yield buildAgentLoopEndEvent();
-      return buildAgentLoopAbortResult({
+      const abortCompletion = buildAgentLoopAbortCompletion({
         ...loopClock.resultTiming({
           turnsCount: turnCounter.turnsCount,
           toolCallsCount: toolResultTracker.toolCallsCount,
         }),
       });
+      for (const event of abortCompletion.events) {
+        yield event;
+      }
+      return abortCompletion.result;
     }
 
     const beforeTurnHook = turnHooks?.beforeTurn;
@@ -253,13 +256,16 @@ export async function* agentLoop(
     }
 
     if (shouldAbortAgentLoop(signal)) {
-      yield buildAgentLoopEndEvent();
-      return buildAgentLoopAbortResult({
+      const abortCompletion = buildAgentLoopAbortCompletion({
         ...loopClock.resultTiming({
           turnsCount: turnCounter.previousCompletedTurnCount,
           toolCallsCount: toolResultTracker.toolCallsCount,
         }),
       });
+      for (const event of abortCompletion.events) {
+        yield event;
+      }
+      return abortCompletion.result;
     }
 
     const turnStateProjection = buildAgentLoopTurnStateProjection({
@@ -421,13 +427,16 @@ export async function* agentLoop(
     }
 
     if (shouldAbortAgentLoop(signal)) {
-      yield buildAgentLoopEndEvent();
-      return buildAgentLoopAbortResult({
+      const abortCompletion = buildAgentLoopAbortCompletion({
         ...loopClock.resultTiming({
           turnsCount: turnCounter.previousCompletedTurnCount,
           toolCallsCount: toolResultTracker.toolCallsCount,
         }),
       });
+      for (const event of abortCompletion.events) {
+        yield event;
+      }
+      return abortCompletion.result;
     }
 
     for (const responseEvent of buildAgentLoopResponseEvents(
@@ -505,13 +514,16 @@ export async function* agentLoop(
       }
 
       if (shouldAbortAgentLoop(signal)) {
-        yield buildAgentLoopEndEvent();
-        return buildAgentLoopAbortResult({
+        const abortCompletion = buildAgentLoopAbortCompletion({
           ...loopClock.resultTiming({
             turnsCount,
             toolCallsCount: toolResultTracker.toolCallsCount,
           }),
         });
+        for (const event of abortCompletion.events) {
+          yield event;
+        }
+        return abortCompletion.result;
       }
 
       executionResults = await executeToolCalls({
@@ -577,13 +589,16 @@ export async function* agentLoop(
     }
 
     if (shouldAbortAgentLoop(signal)) {
-      yield buildAgentLoopEndEvent();
-      return buildAgentLoopAbortResult({
+      const abortCompletion = buildAgentLoopAbortCompletion({
         ...loopClock.resultTiming({
           turnsCount,
           toolCallsCount: toolResultTracker.toolCallsCount,
         }),
       });
+      for (const event of abortCompletion.events) {
+        yield event;
+      }
+      return abortCompletion.result;
     }
 
     // 轮次上限

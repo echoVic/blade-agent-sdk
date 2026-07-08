@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  buildAgentLoopAbortCompletion,
   buildAgentLoopAbortResult,
   buildAgentLoopBudgetExhaustedResult,
   buildAgentLoopNoToolSuccessDecision,
@@ -39,6 +40,32 @@ describe('agent loop result builders', () => {
     expect(shouldAbortAgentLoop()).toBe(false);
     expect(shouldAbortAgentLoop({ aborted: false })).toBe(false);
     expect(shouldAbortAgentLoop({ aborted: true })).toBe(true);
+  });
+
+  it('builds abort completion with terminal events and deterministic result metadata', () => {
+    expect(
+      buildAgentLoopAbortCompletion({
+        turnsCount: 2,
+        toolCallsCount: 3,
+        startTime: 100,
+        now: 175,
+      }),
+    ).toEqual({
+      action: 'abort',
+      events: [{ type: 'agent_end' }],
+      result: {
+        success: false,
+        error: {
+          type: 'aborted',
+          message: '任务已被用户中止',
+        },
+        metadata: {
+          turnsCount: 2,
+          toolCallsCount: 3,
+          duration: 75,
+        },
+      },
+    });
   });
 
   it('builds a token-budget exhausted result with usage metadata', () => {
