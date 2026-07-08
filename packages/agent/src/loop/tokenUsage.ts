@@ -8,6 +8,10 @@ import {
   type AgentLoopBudgetExhaustedResult,
   type AgentLoopResultTiming,
 } from './loopResult.js';
+import type {
+  AgentLoopTurnStateFields,
+  AgentLoopTurnStateProjection,
+} from './turnState.js';
 
 export interface AgentLoopTokenUsageInfo {
   inputTokens: number;
@@ -42,6 +46,14 @@ export interface BuildAgentLoopTokenUsageInfoInput {
   modelUsage: ModelUsageInfo;
   totalTokens: number;
   maxContextTokens: number;
+}
+
+export interface BuildAgentLoopTokenUsageInfoTurnProjectionInput<
+  TTurnState extends AgentLoopTurnStateFields,
+> {
+  modelUsage: ModelUsageInfo;
+  totalTokens: number;
+  turnStateProjection: AgentLoopTurnStateProjection<TTurnState>;
 }
 
 export interface AgentLoopTokenBudgetLike<TSnapshot = unknown> {
@@ -106,6 +118,18 @@ export function buildAgentLoopTokenUsageInfoInput(
     totalTokens: input.totalTokens,
     maxContextTokens: input.maxContextTokens,
   };
+}
+
+export function buildAgentLoopTokenUsageInfoInputFromTurnProjection<
+  TTurnState extends AgentLoopTurnStateFields,
+>(
+  input: BuildAgentLoopTokenUsageInfoTurnProjectionInput<TTurnState>,
+): BuildAgentLoopTokenUsageInfoInput {
+  return buildAgentLoopTokenUsageInfoInput({
+    modelUsage: input.modelUsage,
+    totalTokens: input.totalTokens,
+    maxContextTokens: input.turnStateProjection.maxContextTokens,
+  });
 }
 
 export function buildAgentLoopTokenUsageEvent(

@@ -466,8 +466,27 @@ describe('monorepo topology', () => {
     expect(rootAgentLoopSource).toContain('buildAgentLoopAfterExecHookPayload');
     expect(rootAgentLoopSource).toContain('buildAgentLoopToolResultAppendMessages');
     expect(rootAgentLoopSource).toContain('buildAgentLoopTokenUsageInfo');
-    expect(rootAgentLoopSource).toContain('buildAgentLoopTokenUsageInfoInput');
+    expect(rootAgentLoopSource).toContain(
+      'buildAgentLoopTokenUsageInfoInputFromTurnProjection',
+    );
     expect(rootAgentLoopSource).not.toContain('buildAgentLoopTokenUsageInfo({');
+    const tokenUsageInfoInputStart = rootAgentLoopSource.indexOf(
+      'buildAgentLoopTokenUsageInfoInputFromTurnProjection({',
+    );
+    const tokenUsageInfoInputEnd = rootAgentLoopSource.indexOf(
+      'yield buildAgentLoopTokenUsageEvent',
+      tokenUsageInfoInputStart,
+    );
+    const tokenUsageInfoInputSource = rootAgentLoopSource.slice(
+      tokenUsageInfoInputStart,
+      tokenUsageInfoInputEnd,
+    );
+    expect(rootAgentLoopSource).not.toMatch(
+      /buildAgentLoopTokenUsageInfoInput\(\{\s+modelUsage: turnResult\.usage/,
+    );
+    expect(tokenUsageInfoInputSource).not.toContain(
+      'maxContextTokens: turnStateProjection.maxContextTokens',
+    );
     expect(rootAgentLoopSource).toContain('buildAgentLoopTokenUsageEvent');
     expect(rootAgentLoopSource).toContain('applyAgentLoopTokenBudget');
     expect(rootAgentLoopSource).toContain('buildAgentLoopTokenBudgetInputFromTiming');
