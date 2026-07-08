@@ -1,6 +1,7 @@
 export {
   planToolExecution,
   selectAgentFunctionToolCalls,
+  shouldEmitAgentLoopNonStreamingToolResultEffects,
   shouldRunAgentLoopNonStreamingToolExecution,
   type AgentFunctionToolCall,
   type AgentToolCallCandidate,

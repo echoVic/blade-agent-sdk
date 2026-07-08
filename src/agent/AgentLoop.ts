@@ -59,6 +59,7 @@ import {
 import {
   planToolExecution,
   selectAgentFunctionToolCalls,
+  shouldEmitAgentLoopNonStreamingToolResultEffects,
   shouldRunAgentLoopNonStreamingToolExecution,
 } from './loop/planToolExecution.js';
 import { runTurn } from './loop/runTurn.js';
@@ -538,7 +539,7 @@ export async function* agentLoop(
         return toolExitDecision.result as LoopResult;
       }
 
-      if (!streamingExecutionResults) {
+      if (shouldEmitAgentLoopNonStreamingToolResultEffects(streamingExecutionResults)) {
         yield buildAgentLoopToolResultEvent({ toolCall, result });
         await toolHooks?.afterExec?.({ toolCall, result, toolUseUuid });
       }

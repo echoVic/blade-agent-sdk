@@ -45,6 +45,12 @@ export function shouldRunAgentLoopNonStreamingToolExecution<TExecutionResult>(
   return executionResults === undefined;
 }
 
+export function shouldEmitAgentLoopNonStreamingToolResultEffects<TExecutionResult>(
+  streamingExecutionResults: readonly TExecutionResult[] | undefined,
+): streamingExecutionResults is undefined {
+  return streamingExecutionResults === undefined;
+}
+
 function isAgentFunctionToolCall(call: unknown): call is AgentFunctionToolCall {
   if (!call || typeof call !== 'object') {
     return false;

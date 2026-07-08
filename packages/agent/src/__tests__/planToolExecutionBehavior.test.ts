@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   type AgentFunctionToolCall,
   planToolExecution,
+  shouldEmitAgentLoopNonStreamingToolResultEffects,
   shouldRunAgentLoopNonStreamingToolExecution,
   type ToolBehavior,
   ToolKind,
@@ -167,6 +168,20 @@ describe('planToolExecution', () => {
     expect(shouldRunAgentLoopNonStreamingToolExecution([])).toBe(false);
     expect(
       shouldRunAgentLoopNonStreamingToolExecution([
+        {
+          toolCall: makeCall('Read'),
+          result: { success: true, llmContent: 'ok' },
+          toolUseUuid: null,
+        },
+      ]),
+    ).toBe(false);
+  });
+
+  it('emits tool result effects only when streaming execution results are absent', () => {
+    expect(shouldEmitAgentLoopNonStreamingToolResultEffects(undefined)).toBe(true);
+    expect(shouldEmitAgentLoopNonStreamingToolResultEffects([])).toBe(false);
+    expect(
+      shouldEmitAgentLoopNonStreamingToolResultEffects([
         {
           toolCall: makeCall('Read'),
           result: { success: true, llmContent: 'ok' },
