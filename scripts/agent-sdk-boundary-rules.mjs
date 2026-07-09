@@ -141,6 +141,19 @@ export const agentSdkSessionFactoryDeclarationBoundaryRules = [
   },
 ];
 
+export const agentSdkSessionConfigDeclarationBoundaryRules = [
+  {
+    file: 'dist/session/config.d.ts',
+    forbidden: './Session.js',
+    message: 'session config declarations must be emitted from package-local session config source',
+  },
+  {
+    file: 'dist/session/config.d.ts',
+    forbidden: '../../../../src/types/common',
+    message: 'session config declarations must use package-local core config types',
+  },
+];
+
 export function toLocalForbiddenDeclarationRules(rules) {
   return rules.map((rule) => ({
     forbidden: rule.forbidden,

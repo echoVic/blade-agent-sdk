@@ -7,6 +7,7 @@ import {
   agentSdkRootDeclarationEntryOwnershipRules,
   agentSdkRootPublicDeclarationBoundaryRules,
   agentSdkServerFacadeBoundaryRules,
+  agentSdkSessionConfigDeclarationBoundaryRules,
   agentSdkSessionFactoryDeclarationBoundaryRules,
   agentSdkSessionPublicDeclarationBoundaryRules,
   toLocalForbiddenDeclarationRules,
@@ -278,16 +279,7 @@ console.log('local session factory declaration boundary passed');
 
 assertNoForbiddenDeclarationSymbols(
   readFileSync(join(packageRoot, 'dist/session/config.d.ts'), 'utf8'),
-  [
-    {
-      forbidden: './Session.js',
-      message: 'local session config declarations must be emitted from package-local session config source',
-    },
-    {
-      forbidden: '../../../../src/types/common',
-      message: 'local session config declarations must use package-local core config types',
-    },
-  ],
+  toLocalForbiddenDeclarationRules(agentSdkSessionConfigDeclarationBoundaryRules),
   'local session config declaration boundary',
 );
 console.log('local session config declaration boundary passed');

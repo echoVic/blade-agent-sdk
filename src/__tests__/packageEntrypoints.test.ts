@@ -330,6 +330,29 @@ describe('package entrypoints', () => {
     expect(publishedVerifier).toContain('agentSdkSessionFactoryDeclarationBoundaryRules');
   });
 
+  it('shares session config declaration boundary rules across local packed and published verifiers', () => {
+    const sharedRulesPath = 'scripts/agent-sdk-boundary-rules.mjs';
+
+    expect(existsSync(join(process.cwd(), sharedRulesPath)), sharedRulesPath).toBe(true);
+
+    const sharedRules = readFileSync(sharedRulesPath, 'utf-8');
+    const entrypointVerifier = readFileSync('scripts/verify-entrypoints.mjs', 'utf-8');
+    const packageVerifier = readFileSync('scripts/verify-packages.mjs', 'utf-8');
+    const publishedVerifier = readFileSync('scripts/verify-published.mjs', 'utf-8');
+
+    expect(sharedRules).toContain('agentSdkSessionConfigDeclarationBoundaryRules');
+    expect(sharedRules).toContain('dist/session/config.d.ts');
+    expect(sharedRules).toContain('./Session.js');
+    expect(sharedRules).toContain('../../../../src/types/common');
+    expect(sharedRules).toContain('session config declarations must be emitted from package-local session config source');
+    expect(sharedRules).toContain('session config declarations must use package-local core config types');
+    expect(entrypointVerifier).toContain('agentSdkSessionConfigDeclarationBoundaryRules');
+    expect(entrypointVerifier).toContain('toLocalForbiddenDeclarationRules(agentSdkSessionConfigDeclarationBoundaryRules)');
+    expect(packageVerifier).toContain('toPackedForbiddenFileRules(agentSdkSessionConfigDeclarationBoundaryRules)');
+    expect(publishedVerifier).toContain('verifyPublishedSessionConfigDeclarationBoundary');
+    expect(publishedVerifier).toContain('agentSdkSessionConfigDeclarationBoundaryRules');
+  });
+
   it('runs the browser bundle check through the esbuild JS API', () => {
     const verifier = readFileSync('scripts/verify-entrypoints.mjs', 'utf-8');
     const helper = readFileSync('scripts/esbuild-bundle.mjs', 'utf-8');
@@ -395,8 +418,7 @@ describe('package entrypoints', () => {
     expect(verifier).toContain('local session entry Session boundary passed');
     expect(verifier).toContain('toLocalForbiddenDeclarationRules(agentSdkSessionFactoryDeclarationBoundaryRules)');
     expect(verifier).toContain('local session factory declaration boundary passed');
-    expect(verifier).toContain('local session config declarations must be emitted from package-local session config source');
-    expect(verifier).toContain('local session config declarations must use package-local core config types');
+    expect(verifier).toContain('toLocalForbiddenDeclarationRules(agentSdkSessionConfigDeclarationBoundaryRules)');
     expect(verifier).toContain('local session config declaration boundary passed');
     expect(verifier).toContain('local session store declarations must be emitted from package-local session store source');
     expect(verifier).toContain('local session store declarations must not point back at legacy root session store');

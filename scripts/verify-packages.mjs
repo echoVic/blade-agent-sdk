@@ -10,6 +10,7 @@ import {
   agentSdkRootDeclarationEntryOwnershipRules,
   agentSdkRootPublicDeclarationBoundaryRules,
   agentSdkServerFacadeBoundaryRules,
+  agentSdkSessionConfigDeclarationBoundaryRules,
   agentSdkSessionFactoryDeclarationBoundaryRules,
   agentSdkSessionPublicDeclarationBoundaryRules,
   toPackedForbiddenFileContents,
@@ -228,16 +229,7 @@ const packageSpecs = [
         message: 'package-local Session declarations must expose local session contracts only',
       },
       ...toPackedForbiddenFileRules(agentSdkSessionFactoryDeclarationBoundaryRules),
-      {
-        file: 'package/dist/session/config.d.ts',
-        forbidden: './Session.js',
-        message: 'session config declarations must be emitted from package-local session config source',
-      },
-      {
-        file: 'package/dist/session/config.d.ts',
-        forbidden: '../../../../src/types/common',
-        message: 'session config declarations must use package-local core config types',
-      },
+      ...toPackedForbiddenFileRules(agentSdkSessionConfigDeclarationBoundaryRules),
       {
         file: 'package/dist/session/store.d.ts',
         forbidden: '../context/storage',
