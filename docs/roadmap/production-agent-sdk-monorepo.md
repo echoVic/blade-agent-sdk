@@ -946,6 +946,7 @@ Status:
 - Two-hundred-sixty-eighth verification-chain increment complete: `pnpm run verify:entrypoints` now compares local dist runtime export key sets for `@blade-ai/agent-sdk` root and `@blade-ai/agent-sdk/server`, catching explicit server facade drift before packed and published temporary consumers.
 - Two-hundred-sixty-ninth verification-chain increment complete: `pnpm run verify:entrypoints` now compares local dist declaration named export sets for `@blade-ai/agent-sdk` root and `@blade-ai/agent-sdk/server`, catching explicit server facade type drift before packed and published temporary consumers.
 - Two-hundred-seventieth verification-chain increment complete: `pnpm run verify:entrypoints` now rejects local dist `@blade-ai/agent-sdk/core` declarations that expose server-only session APIs or Node-local tool/MCP APIs, moving the browser-safe core declaration boundary earlier than packed and published temporary consumers.
+- Two-hundred-seventy-first verification-chain increment complete: `pnpm run verify:entrypoints` now rejects local dist `@blade-ai/agent-sdk` root declarations that expose Node-local adapters or provider-specific DeepSeek helpers, keeping the session-first root public type surface aligned with the explicit `local` and `@blade-ai/ai/deepseek` package boundaries before pack and publication.
 
 Commit:
 

@@ -206,6 +206,46 @@ assertNoForbiddenDeclarationSymbols(
 );
 console.log('local core declaration browser-safe boundary passed');
 
+assertNoForbiddenDeclarationSymbols(
+  readFileSync(join(packageRoot, 'dist/index.d.ts'), 'utf8'),
+  [
+    {
+      forbidden: 'getBuiltinTools',
+      message: 'local root declarations must keep Node-local builtin tools behind @blade-ai/agent-sdk/local',
+    },
+    {
+      forbidden: 'createSdkMcpServer',
+      message: 'local root declarations must keep Node-local MCP helpers behind @blade-ai/agent-sdk/local',
+    },
+    {
+      forbidden: 'FileSystemMemoryStore',
+      message: 'local root declarations must keep filesystem memory adapters behind @blade-ai/agent-sdk/local',
+    },
+    {
+      forbidden: 'SandboxExecutor',
+      message: 'local root declarations must keep sandbox adapters behind @blade-ai/agent-sdk/local',
+    },
+    {
+      forbidden: 'normalizeDeepSeekModel',
+      message: 'local root declarations must keep provider-specific DeepSeek helpers in @blade-ai/ai/deepseek',
+    },
+    {
+      forbidden: 'calculateDeepSeekCost',
+      message: 'local root declarations must keep provider-specific DeepSeek helpers in @blade-ai/ai/deepseek',
+    },
+    {
+      forbidden: 'DeepSeekCostTracker',
+      message: 'local root declarations must keep provider-specific DeepSeek helpers in @blade-ai/ai/deepseek',
+    },
+    {
+      forbidden: 'DEEPSEEK_DEFAULT_MODEL',
+      message: 'local root declarations must keep provider-specific DeepSeek helpers in @blade-ai/ai/deepseek',
+    },
+  ],
+  'local root declaration public boundary',
+);
+console.log('local root declaration public boundary passed');
+
 verifyBrowserSafeDist('dist/browser/index.js');
 verifyBrowserSafeDist('dist/browser/server-only-stub.js');
 verifyBrowserSafeDist('dist/core/index.js');

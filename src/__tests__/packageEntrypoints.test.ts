@@ -235,6 +235,12 @@ describe('package entrypoints', () => {
     expect(verifier).toContain('local core declarations must stay browser-safe and not expose Node-local tool APIs');
     expect(verifier).toContain('local core declarations must stay browser-safe and not expose Node-local MCP APIs');
     expect(verifier).toContain('local core declaration browser-safe boundary passed');
+    expect(verifier).toContain('local root declarations must keep Node-local builtin tools behind @blade-ai/agent-sdk/local');
+    expect(verifier).toContain('local root declarations must keep Node-local MCP helpers behind @blade-ai/agent-sdk/local');
+    expect(verifier).toContain('local root declarations must keep filesystem memory adapters behind @blade-ai/agent-sdk/local');
+    expect(verifier).toContain('local root declarations must keep sandbox adapters behind @blade-ai/agent-sdk/local');
+    expect(verifier).toContain('local root declarations must keep provider-specific DeepSeek helpers in @blade-ai/ai/deepseek');
+    expect(verifier).toContain('local root declaration public boundary passed');
     expect(verifier).toContain("from '@blade-ai/agent-sdk/browser';");
     expect(verifier).toContain("from '@blade-ai/agent-sdk/session/internal';");
     expect(verifier).toContain('server-only for bundled createSession');
