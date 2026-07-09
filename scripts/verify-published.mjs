@@ -46,6 +46,10 @@ const expectedPublishedSdkBrowserExports = {
   './session': './dist/browser/server-only-stub.js',
   './local': './dist/browser/server-only-stub.js',
 };
+const publishedSdkBrowserSafeEntries = [
+  'node_modules/@blade-ai/agent-sdk/dist/browser/index.js',
+  'node_modules/@blade-ai/agent-sdk/dist/core/index.js',
+];
 const publishedManifestRequirements = [
   {
     packageName: '@blade-ai/ai',
@@ -492,6 +496,7 @@ if (Object.keys(agentPorts).length !== 0) {
     await verifyPublishedServerEntryBoundary({ consumerDir });
     await verifyPublishedServerDeclarationParity({ consumerDir });
     await verifyPublishedCoreDeclarationBoundary({ consumerDir });
+    await verifyPublishedSdkBrowserSafeStaticClosures({ consumerDir });
     await verifyPublishedBrowserBundleSmoke({ consumerDir });
     await verifyPublishedAgentBrowserBundleSmoke({ consumerDir });
     console.log(`[verify-published] temporary consumer smoke passed: ${npmInstallCommandLabel}`);
@@ -1330,6 +1335,71 @@ function verifyPublishedSdkBrowserExportConditions(packageName, manifest) {
   }
 }
 
+async function pathExists(filePath) {
+  try {
+    await stat(filePath);
+    return true;
+  } catch (error) {
+    if (error?.code === 'ENOENT') return false;
+    throw error;
+  }
+}
+
+async function resolvePublishedRelativeImport(fromFile, specifier, packageDir) {
+  if (!specifier.startsWith('.')) return null;
+
+  const candidate = resolve(dirname(fromFile), specifier);
+  const candidates = [
+    candidate,
+    `${candidate}.js`,
+    join(candidate, 'index.js'),
+  ];
+  let resolved;
+  for (const filePath of candidates) {
+    if (await pathExists(filePath)) {
+      resolved = filePath;
+      break;
+    }
+  }
+  if (!resolved) return null;
+
+  const packageRelativePath = relative(packageDir, resolved);
+  if (packageRelativePath.startsWith('..')) {
+    throw new Error(`Published import escapes package directory: ${fromFile} -> ${specifier}`);
+  }
+  return resolved;
+}
+
+async function collectPublishedStaticImports(entryFile, packageDir, seen = new Set()) {
+  if (seen.has(entryFile)) return seen;
+  seen.add(entryFile);
+
+  const source = await readFile(entryFile, 'utf8');
+  const staticImportPattern = /\b(?:import|export)\s+(?:[\w*{}\s,]+from\s*)?["']([^"']+)["']/g;
+  for (const match of source.matchAll(staticImportPattern)) {
+    const child = await resolvePublishedRelativeImport(entryFile, match[1], packageDir);
+    if (child) {
+      await collectPublishedStaticImports(child, packageDir, seen);
+    }
+  }
+  return seen;
+}
+
+async function verifyPublishedSdkBrowserSafeStaticClosures({ consumerDir }) {
+  const packageDir = join(consumerDir, 'node_modules/@blade-ai/agent-sdk');
+
+  for (const entry of publishedSdkBrowserSafeEntries) {
+    const entryFile = join(consumerDir, entry);
+    if (!(await pathExists(entryFile))) {
+      throw new Error(`@blade-ai/agent-sdk published SDK browser-safe static import closure entry is missing: ${entry}`);
+    }
+
+    for (const filePath of await collectPublishedStaticImports(entryFile, packageDir)) {
+      await assertNoBrowserDisallowedMarkers(filePath, 'published SDK browser-safe static import closure');
+    }
+  }
+}
+
 async function verifyPublishedReadmes({ consumerDir }) {
   for (const requirement of publishedReadmeRequirements) {
     const sourceReadme = await readFile(resolve(requirement.sourceReadmePath), 'utf8');
@@ -1474,11 +1544,11 @@ async function verifyPublishedServerEntryBoundary({ consumerDir }) {
   }
 }
 
-async function assertNoBrowserDisallowedMarkers(bundlePath) {
-  const source = await readFile(bundlePath, 'utf8');
+async function assertNoBrowserDisallowedMarkers(filePath, context = 'Published browser bundle') {
+  const source = await readFile(filePath, 'utf8');
   for (const marker of browserDisallowedMarkers) {
     if (source.includes(marker)) {
-      throw new Error(`Published browser bundle includes Node-only marker: ${marker}`);
+      throw new Error(`${context} includes Node-only marker ${marker}: ${filePath}`);
     }
   }
 }

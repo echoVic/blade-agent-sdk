@@ -1531,6 +1531,23 @@ describe('release scripts', () => {
     expect(roadmap).toContain('published SDK browser export condition gate');
   });
 
+  it('verifies published SDK browser-safe static import closures from the temporary consumer install', () => {
+    const publishedVerifier = readFileSync(resolve('scripts/verify-published.mjs'), 'utf8');
+    const readme = readFileSync(resolve('README.md'), 'utf8');
+    const checklist = readFileSync(resolve('docs/production-checklist.md'), 'utf8');
+    const roadmap = readFileSync(resolve('docs/roadmap/production-agent-sdk-monorepo.md'), 'utf8');
+
+    expect(publishedVerifier).toContain('function verifyPublishedSdkBrowserSafeStaticClosures');
+    expect(publishedVerifier).toContain('node_modules/@blade-ai/agent-sdk/dist/browser/index.js');
+    expect(publishedVerifier).toContain('node_modules/@blade-ai/agent-sdk/dist/core/index.js');
+    expect(publishedVerifier).toContain('collectPublishedStaticImports');
+    expect(publishedVerifier).toContain('assertNoBrowserDisallowedMarkers');
+    expect(publishedVerifier).toContain('published SDK browser-safe static import closure');
+    expect(readme).toContain('published SDK browser-safe static import closures');
+    expect(checklist).toContain('published SDK browser-safe static import closures');
+    expect(roadmap).toContain('published SDK browser-safe static import closure gate');
+  });
+
   it('verifies published package installed file scope from the temporary consumer install', () => {
     const publishedVerifier = readFileSync(resolve('scripts/verify-published.mjs'), 'utf8');
     const checklist = readFileSync(resolve('docs/production-checklist.md'), 'utf8');
