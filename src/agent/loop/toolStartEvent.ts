@@ -7,4 +7,4 @@ export {
   type AgentLoopToolStartEventInput,
   type AgentLoopToolStartEventsExecutionPipelineInput,
   type AgentLoopToolStartEventsInput,
-} from '../../../packages/agent/src/loop/toolStartEvent.js';
+} from '@blade-ai/agent/loop';

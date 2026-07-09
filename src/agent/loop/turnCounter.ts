@@ -29,4 +29,4 @@ export {
   type RequestAgentLoopTurnRetryInput,
   type ResetAgentLoopTurnCounterInput,
   type RunAgentLoopBeforeTurnHookInput,
-} from '../../../packages/agent/src/loop/turnCounter.js';
+} from '@blade-ai/agent/loop';

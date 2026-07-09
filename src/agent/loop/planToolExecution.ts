@@ -39,4 +39,4 @@ export {
   type ToolExecutionRegistryLike,
   ToolKind,
   type ToolInterruptBehavior,
-} from '../../../packages/agent/src/loop/planToolExecution.js';
+} from '@blade-ai/agent/loop';

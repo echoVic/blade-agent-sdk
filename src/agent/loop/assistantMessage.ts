@@ -12,4 +12,4 @@ export {
   type ApplyAgentLoopAssistantMessageProjectionInput,
   type HandleAgentLoopAssistantMessageInput,
   type RunAgentLoopAssistantMessageHookInput,
-} from '../../../packages/agent/src/loop/assistantMessage.js';
+} from '@blade-ai/agent/loop';

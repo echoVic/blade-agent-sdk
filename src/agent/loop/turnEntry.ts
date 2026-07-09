@@ -3,4 +3,4 @@ export {
   type AgentLoopTurnEntryEvent,
   type AgentLoopTurnEntryHandling,
   type HandleAgentLoopTurnEntryInput,
-} from '../../../packages/agent/src/loop/turnEntry.js';
+} from '@blade-ai/agent/loop';

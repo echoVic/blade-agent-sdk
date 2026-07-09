@@ -5,4 +5,4 @@ export {
   type AgentLoopTurnStatePreparationInput,
   type AgentLoopTurnStateProjection,
   type AgentLoopTurnStateProjectionInput,
-} from '../../../packages/agent/src/loop/turnState.js';
+} from '@blade-ai/agent/loop';

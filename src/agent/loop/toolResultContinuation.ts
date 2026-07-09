@@ -21,4 +21,4 @@ export {
   type HandleAgentLoopToolResultInput,
   type HandleAgentLoopToolResultsInput,
   type RunAgentLoopToolResultAfterExecHookInput,
-} from '../../../packages/agent/src/loop/toolResultContinuation.js';
+} from '@blade-ai/agent/loop';

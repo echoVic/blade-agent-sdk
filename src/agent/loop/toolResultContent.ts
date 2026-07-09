@@ -1,4 +1,4 @@
 export {
   buildAgentToolResultContent,
   type AgentToolResultContentInput,
-} from '../../../packages/agent/src/loop/toolResultContent.js';
+} from '@blade-ai/agent/loop';

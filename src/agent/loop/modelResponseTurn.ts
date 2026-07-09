@@ -3,4 +3,4 @@ export {
   type AgentLoopModelResponseEvent,
   type AgentLoopModelResponseHandling,
   type HandleAgentLoopModelResponseInput,
-} from '../../../packages/agent/src/loop/modelResponseTurn.js';
+} from '@blade-ai/agent/loop';

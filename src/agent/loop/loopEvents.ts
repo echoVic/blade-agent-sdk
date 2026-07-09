@@ -20,4 +20,4 @@ export {
   type AgentLoopTurnRetryEventInput,
   type AgentLoopTurnStartEvent,
   type AgentLoopTurnStartEventInput,
-} from '../../../packages/agent/src/loop/loopEvents.js';
+} from '@blade-ai/agent/loop';

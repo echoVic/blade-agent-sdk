@@ -1,4 +1,4 @@
 export {
   buildAgentLoopToolMessage,
   type AgentLoopToolMessageInput,
-} from '../../../packages/agent/src/loop/toolMessage.js';
+} from '@blade-ai/agent/loop';

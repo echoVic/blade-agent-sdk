@@ -57,4 +57,4 @@ export {
   type AgentLoopResultTiming,
   type BuildAgentLoopToolExitDecisionInputArgs,
   type HandleAgentLoopAbortIfRequestedInput,
-} from '../../../packages/agent/src/loop/loopResult.js';
+} from '@blade-ai/agent/loop';

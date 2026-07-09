@@ -1062,13 +1062,46 @@ describe('monorepo topology', () => {
 
   it('keeps root loop forwarders on public package subpaths', () => {
     const rootTsconfig = readJson('tsconfig.json');
-    const rootAgentLoopForwarderSource = readFileSync('src/agent/loop/agentLoop.ts', 'utf-8');
+    const rootLoopForwarders = [
+      'src/agent/loop/AsyncEventQueue.ts',
+      'src/agent/loop/agentLoop.ts',
+      'src/agent/loop/assistantMessage.ts',
+      'src/agent/loop/decideNoToolTurn.ts',
+      'src/agent/loop/decideTurnLimit.ts',
+      'src/agent/loop/loopClock.ts',
+      'src/agent/loop/loopEvents.ts',
+      'src/agent/loop/loopResult.ts',
+      'src/agent/loop/modelResponseTurn.ts',
+      'src/agent/loop/planToolExecution.ts',
+      'src/agent/loop/repairToolCallParams.ts',
+      'src/agent/loop/responseEvents.ts',
+      'src/agent/loop/runTurnWithRecovery.ts',
+      'src/agent/loop/tokenUsage.ts',
+      'src/agent/loop/tokenUsageTracker.ts',
+      'src/agent/loop/toolExecutionTurn.ts',
+      'src/agent/loop/toolInjectedMessages.ts',
+      'src/agent/loop/toolInterruptBehavior.ts',
+      'src/agent/loop/toolMessage.ts',
+      'src/agent/loop/toolResponseTurn.ts',
+      'src/agent/loop/toolResultContent.ts',
+      'src/agent/loop/toolResultContinuation.ts',
+      'src/agent/loop/toolResultTracker.ts',
+      'src/agent/loop/toolStartEvent.ts',
+      'src/agent/loop/turnCounter.ts',
+      'src/agent/loop/turnCycle.ts',
+      'src/agent/loop/turnEntry.ts',
+      'src/agent/loop/turnState.ts',
+      'src/agent/loop/turnStream.ts',
+    ] as const;
 
     expect(rootTsconfig.compilerOptions?.paths).toMatchObject({
       '@blade-ai/agent/loop': ['./packages/agent/src/loop/index.ts'],
     });
-    expect(rootAgentLoopForwarderSource).toContain("from '@blade-ai/agent/loop'");
-    expect(rootAgentLoopForwarderSource).not.toContain('../../../packages/agent/src');
+    for (const file of rootLoopForwarders) {
+      const source = readFileSync(file, 'utf-8');
+      expect(source, file).toContain("from '@blade-ai/agent/loop'");
+      expect(source, file).not.toContain('../../../packages/agent/src');
+    }
   });
 
   it('publishes agent kernel modules as explicit subpath exports', () => {

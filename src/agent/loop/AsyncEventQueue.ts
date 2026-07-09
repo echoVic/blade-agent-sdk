@@ -1,1 +1,1 @@
-export { AsyncEventQueue } from '../../../packages/agent/src/loop/AsyncEventQueue.js';
+export { AsyncEventQueue } from '@blade-ai/agent/loop';

@@ -4,4 +4,4 @@ export {
   type AgentLoopRunTurnWithRecoveryEvent,
   type AgentLoopRunTurnWithRecoveryHandling,
   type HandleAgentLoopRunTurnWithRecoveryInput,
-} from '../../../packages/agent/src/loop/runTurnWithRecovery.js';
+} from '@blade-ai/agent/loop';

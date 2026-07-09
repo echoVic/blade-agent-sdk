@@ -14,4 +14,4 @@ export {
   type AgentLoopRunTurnToolHooksInput,
   type AgentLoopTurnStreamOutcome,
   type AgentLoopTurnStreamResult,
-} from '../../../packages/agent/src/loop/turnStream.js';
+} from '@blade-ai/agent/loop';
