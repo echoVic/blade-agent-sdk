@@ -46,8 +46,7 @@ import {
 import { runTurn } from './loop/runTurn.js';
 import type { ToolExecutionUpdate } from './loop/runToolCall.js';
 import {
-  emitAgentLoopTokenUsageEventIfPresent,
-  handleAgentLoopTokenBudgetCheck,
+  handleAgentLoopPostUsageGateWithEmissions,
 } from './loop/tokenUsage.js';
 import {
   createAgentLoopTokenUsageTracker,
@@ -277,35 +276,19 @@ export async function* agentLoop(
       hooks,
     });
 
-    // Token usage
-    yield* emitAgentLoopTokenUsageEventIfPresent({
+    const postUsageGate = yield* handleAgentLoopPostUsageGateWithEmissions({
+      tokenBudget,
       modelUsage: turnResult.usage,
       tokenUsageTracker,
       turnStateProjection,
-    });
-
-    const budgetCheck = yield* handleAgentLoopTokenBudgetCheck({
-      tokenBudget,
-      modelUsage: turnResult.usage,
       loopClock,
       turnsCount,
       toolResultTracker,
-      tokenUsageTracker,
-    });
-    if (budgetCheck.action === 'stop') {
-      return budgetCheck.result as LoopResult;
-    }
-
-    const abortAfterBudget = yield* handleAgentLoopAbortIfRequested({
-      kind: 'counter_state',
       signal,
-      loopClock,
       turnCounter,
-      turnCountSource: 'previous_completed',
-      toolResultTracker,
     });
-    if (abortAfterBudget.action === 'abort') {
-      return abortAfterBudget.result as LoopResult;
+    if (postUsageGate.action === 'stop' || postUsageGate.action === 'abort') {
+      return postUsageGate.result as LoopResult;
     }
 
     yield* emitAgentLoopResponseEventsFromTurnResult({

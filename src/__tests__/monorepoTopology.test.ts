@@ -512,7 +512,8 @@ describe('monorepo topology', () => {
     expect(rootAgentLoopSource).not.toContain(
       'convState.append(...buildAgentLoopToolResultAppendMessages(toolResultContinuation))',
     );
-    expect(rootAgentLoopSource).toContain('emitAgentLoopTokenUsageEventIfPresent');
+    expect(rootAgentLoopSource).toContain('handleAgentLoopPostUsageGateWithEmissions');
+    expect(rootAgentLoopSource).not.toContain('emitAgentLoopTokenUsageEventIfPresent');
     expect(rootAgentLoopSource).not.toContain('buildAgentLoopTokenUsageInfo');
     expect(rootAgentLoopSource).not.toContain(
       'buildAgentLoopTokenUsageInfoInputFromLoopState',
@@ -530,7 +531,11 @@ describe('monorepo topology', () => {
     expect(rootAgentLoopSource).not.toContain('tokenUsageTracker.totalTokens');
     expect(rootAgentLoopSource).not.toContain('buildAgentLoopTokenUsageEvent');
     expect(rootAgentLoopSource).not.toContain('yield buildAgentLoopTokenUsageEvent');
-    expect(rootAgentLoopSource).toContain('handleAgentLoopTokenBudgetCheck');
+    expect(rootAgentLoopSource).not.toContain('handleAgentLoopTokenBudgetCheck');
+    expect(rootAgentLoopSource).not.toContain('const budgetCheck');
+    expect(rootAgentLoopSource).not.toContain("budgetCheck.action === 'stop'");
+    expect(rootAgentLoopSource).not.toContain('const abortAfterBudget');
+    expect(rootAgentLoopSource).not.toContain("abortAfterBudget.action === 'abort'");
     expect(rootAgentLoopSource).not.toContain('runAgentLoopTokenBudgetCheck');
     expect(rootAgentLoopSource).not.toContain('shouldStopAgentLoopForTokenBudgetCheck');
     expect(rootAgentLoopSource).not.toContain('applyAgentLoopTokenBudget');

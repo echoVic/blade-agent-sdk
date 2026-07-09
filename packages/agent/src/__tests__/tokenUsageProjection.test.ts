@@ -12,6 +12,7 @@ import {
   buildAgentLoopTokenUsageInfoInputFromLoopState,
   buildAgentLoopTokenUsageInfoInputFromTurnProjection,
   emitAgentLoopTokenUsageEventIfPresent,
+  handleAgentLoopPostUsageGateWithEmissions,
   handleAgentLoopTokenBudgetCheck,
   runAgentLoopTokenBudgetCheck,
   shouldStopAgentLoopForTokenBudget,
@@ -709,6 +710,220 @@ describe('agent loop token usage projection', () => {
             duration: 40,
             tokensUsed: 95,
             tokenBudgetSnapshot: stopSnapshot,
+          },
+        },
+      },
+    });
+  });
+
+  it('handles post-usage gates by yielding usage and warning events before continuing', async () => {
+    const usage = { promptTokens: 9, completionTokens: 3, totalTokens: 12 };
+    const snapshot = { totalTokens: 92, budgetRemaining: 8, budgetPercent: 0.92 };
+    const tokenBudget = {
+      record: vi.fn(),
+      isWarning: vi.fn(() => true),
+      isApproachingLimit: vi.fn(() => false),
+      isDiminishingReturns: vi.fn(() => false),
+      isExhausted: vi.fn(() => false),
+      getSnapshot: vi.fn(() => snapshot),
+    };
+    let totalTokens = 0;
+
+    const handled = await collectGenerator(
+      handleAgentLoopPostUsageGateWithEmissions({
+        tokenBudget,
+        modelUsage: usage,
+        tokenUsageTracker: {
+          get totalTokens() {
+            return totalTokens;
+          },
+          record(usageRecord) {
+            totalTokens += usageRecord.totalTokens ?? 0;
+          },
+        },
+        turnStateProjection: {
+          turnState: {
+            maxContextTokens: 128000,
+            executionContext: undefined,
+          },
+          maxContextTokens: 128000,
+          executionContext: undefined,
+          permissionMode: undefined,
+        },
+        loopClock: {
+          resultTiming: ({ turnsCount, toolCallsCount }) => ({
+            turnsCount,
+            toolCallsCount,
+            startTime: 100,
+            now: 140,
+          }),
+        },
+        turnsCount: 2,
+        toolResultTracker: {
+          toolCallsCount: 4,
+        },
+        signal: { aborted: false },
+        turnCounter: {
+          turnsCount: 2,
+          previousCompletedTurnCount: 2,
+        },
+      }),
+    );
+
+    expect(handled).toEqual({
+      events: [
+        {
+          type: 'token_usage',
+          usage: {
+            inputTokens: 9,
+            outputTokens: 3,
+            totalTokens: 12,
+            maxContextTokens: 128000,
+            cacheReadInputTokens: undefined,
+            cacheMissInputTokens: undefined,
+            billableInputTokens: undefined,
+            reasoningTokens: undefined,
+          },
+        },
+        { type: 'budget_warning', snapshot },
+      ],
+      result: { action: 'continue' },
+    });
+    expect(tokenBudget.record).toHaveBeenCalledWith(usage);
+  });
+
+  it('handles post-usage gates by returning budget stop results before abort checks', async () => {
+    const warningSnapshot = { totalTokens: 90, budgetRemaining: 10, budgetPercent: 0.9 };
+    const stopSnapshot = { totalTokens: 95, budgetRemaining: 5, budgetPercent: 0.95 };
+    const tokenBudget = {
+      record: vi.fn(),
+      isWarning: vi.fn(() => false),
+      isApproachingLimit: vi.fn(() => true),
+      isDiminishingReturns: vi.fn(() => true),
+      isExhausted: vi.fn(() => true),
+      getSnapshot: vi
+        .fn()
+        .mockReturnValueOnce(warningSnapshot)
+        .mockReturnValueOnce(stopSnapshot),
+    };
+    let totalTokens = 95;
+
+    const handled = await collectGenerator(
+      handleAgentLoopPostUsageGateWithEmissions({
+        tokenBudget,
+        modelUsage: { completionTokens: 1, totalTokens: 1 },
+        tokenUsageTracker: {
+          get totalTokens() {
+            return totalTokens;
+          },
+          record(usageRecord) {
+            totalTokens += usageRecord.totalTokens ?? 0;
+          },
+        },
+        turnStateProjection: {
+          turnState: {
+            maxContextTokens: 128000,
+            executionContext: undefined,
+          },
+          maxContextTokens: 128000,
+          executionContext: undefined,
+          permissionMode: undefined,
+        },
+        loopClock: {
+          resultTiming: ({ turnsCount, toolCallsCount }) => ({
+            turnsCount,
+            toolCallsCount,
+            startTime: 100,
+            now: 140,
+          }),
+        },
+        turnsCount: 3,
+        toolResultTracker: {
+          toolCallsCount: 7,
+        },
+        signal: { aborted: true },
+        turnCounter: {
+          turnsCount: 3,
+          previousCompletedTurnCount: 3,
+        },
+      }),
+    );
+
+    expect(handled.events.map((event) => event.type)).toEqual([
+      'token_usage',
+      'budget_warning',
+      'agent_end',
+    ]);
+    expect(handled.result).toEqual({
+      action: 'stop',
+      result: {
+        success: false,
+        error: {
+          type: 'budget_exhausted',
+          message: 'Stopped due to diminishing returns: consecutive turns produced very few tokens',
+        },
+        metadata: {
+          turnsCount: 3,
+          toolCallsCount: 7,
+          duration: 40,
+          tokensUsed: 96,
+          tokenBudgetSnapshot: stopSnapshot,
+        },
+      },
+    });
+  });
+
+  it('handles post-usage gates by returning abort results after budget continuation', async () => {
+    const handled = await collectGenerator(
+      handleAgentLoopPostUsageGateWithEmissions({
+        modelUsage: undefined,
+        tokenUsageTracker: {
+          totalTokens: 12,
+          record: vi.fn(),
+        },
+        turnStateProjection: {
+          turnState: {
+            maxContextTokens: 128000,
+            executionContext: undefined,
+          },
+          maxContextTokens: 128000,
+          executionContext: undefined,
+          permissionMode: undefined,
+        },
+        loopClock: {
+          resultTiming: ({ turnsCount, toolCallsCount }) => ({
+            turnsCount,
+            toolCallsCount,
+            startTime: 100,
+            now: 145,
+          }),
+        },
+        turnsCount: 4,
+        toolResultTracker: {
+          toolCallsCount: 6,
+        },
+        signal: { aborted: true },
+        turnCounter: {
+          turnsCount: 4,
+          previousCompletedTurnCount: 4,
+        },
+      }),
+    );
+
+    expect(handled).toEqual({
+      events: [{ type: 'agent_end' }],
+      result: {
+        action: 'abort',
+        result: {
+          success: false,
+          error: {
+            type: 'aborted',
+            message: '任务已被用户中止',
+          },
+          metadata: {
+            turnsCount: 4,
+            toolCallsCount: 6,
+            duration: 45,
           },
         },
       },

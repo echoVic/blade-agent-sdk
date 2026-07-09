@@ -5,7 +5,11 @@ import {
 } from './loopEvents.js';
 import {
   buildAgentLoopBudgetExhaustedResult,
+  handleAgentLoopAbortIfRequested,
+  type AgentLoopAbortIfRequestedEvent,
+  type AgentLoopAbortResult,
   type AgentLoopBudgetExhaustedResult,
+  type AgentLoopAbortCompletionTurnCounterLike,
   type AgentLoopResultTiming,
 } from './loopResult.js';
 import type {
@@ -84,6 +88,21 @@ export interface EmitAgentLoopTokenUsageEventIfPresentInput<
   modelUsage?: ModelUsageInfo;
   tokenUsageTracker: AgentLoopTokenUsageEventTokenUsageTrackerLike;
   turnStateProjection: AgentLoopTurnStateProjection<TTurnState>;
+}
+
+export interface AgentLoopPostUsageGateInput<
+  TTurnState extends AgentLoopTurnStateFields,
+  TSnapshot = unknown,
+> {
+  tokenBudget?: AgentLoopTokenBudgetLike<TSnapshot>;
+  modelUsage?: ModelUsageInfo;
+  tokenUsageTracker: AgentLoopTokenUsageEventTokenUsageTrackerLike;
+  turnStateProjection: AgentLoopTurnStateProjection<TTurnState>;
+  loopClock: AgentLoopTokenBudgetTimingSource;
+  turnsCount: number;
+  toolResultTracker: AgentLoopTokenBudgetToolResultTrackerLike;
+  signal?: Pick<AbortSignal, 'aborted'>;
+  turnCounter: AgentLoopAbortCompletionTurnCounterLike;
 }
 
 export interface AgentLoopTokenBudgetLike<TSnapshot = unknown> {
@@ -166,6 +185,24 @@ export type AgentLoopTokenBudgetCheckHandling =
   | {
       action: 'stop';
       result: AgentLoopBudgetExhaustedResult;
+    };
+
+export type AgentLoopPostUsageGateEvent<TSnapshot = unknown> =
+  | AgentLoopTokenUsageEvent
+  | AgentLoopTokenBudgetCheckEvent<TSnapshot>
+  | AgentLoopAbortIfRequestedEvent;
+
+export type AgentLoopPostUsageGateHandling =
+  | {
+      action: 'continue';
+    }
+  | {
+      action: 'stop';
+      result: AgentLoopBudgetExhaustedResult;
+    }
+  | {
+      action: 'abort';
+      result: AgentLoopAbortResult;
     };
 
 export function buildAgentLoopTokenUsageInfo(
@@ -358,6 +395,38 @@ export async function* handleAgentLoopTokenBudgetCheck<TSnapshot>(
       action: 'stop',
       result: budgetCheck.result,
     };
+  }
+
+  return { action: 'continue' };
+}
+
+export async function* handleAgentLoopPostUsageGateWithEmissions<
+  TTurnState extends AgentLoopTurnStateFields,
+  TSnapshot = unknown,
+>(
+  input: AgentLoopPostUsageGateInput<TTurnState, TSnapshot>,
+): AsyncGenerator<AgentLoopPostUsageGateEvent<TSnapshot>, AgentLoopPostUsageGateHandling> {
+  yield* emitAgentLoopTokenUsageEventIfPresent({
+    modelUsage: input.modelUsage,
+    tokenUsageTracker: input.tokenUsageTracker,
+    turnStateProjection: input.turnStateProjection,
+  });
+
+  const budgetCheck = yield* handleAgentLoopTokenBudgetCheck(input);
+  if (budgetCheck.action === 'stop') {
+    return budgetCheck;
+  }
+
+  const abortCheck = yield* handleAgentLoopAbortIfRequested({
+    kind: 'counter_state',
+    signal: input.signal,
+    loopClock: input.loopClock,
+    turnCounter: input.turnCounter,
+    turnCountSource: 'previous_completed',
+    toolResultTracker: input.toolResultTracker,
+  });
+  if (abortCheck.action === 'abort') {
+    return abortCheck;
   }
 
   return { action: 'continue' };
