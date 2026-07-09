@@ -949,6 +949,7 @@ Status:
 - Two-hundred-seventy-first verification-chain increment complete: `pnpm run verify:entrypoints` now rejects local dist `@blade-ai/agent-sdk` root declarations that expose Node-local adapters or provider-specific DeepSeek helpers, keeping the session-first root public type surface aligned with the explicit `local` and `@blade-ai/ai/deepseek` package boundaries before pack and publication.
 - Two-hundred-seventy-second verification-chain increment complete: `pnpm run verify:entrypoints` now rejects local dist `@blade-ai/agent-sdk/server` runtime and declaration entries that point back at the root facade, keeping the explicit server facade boundary local-build verified before packed and published temporary consumers.
 - Two-hundred-seventy-third verification-chain increment complete: `pnpm run verify:entrypoints` now rejects local dist `@blade-ai/agent-sdk/session` public type declarations that expose retired legacy runtime flags or budget declarations that drift from the explicit `@blade-ai/agent/budget` subpath, catching session-first type-surface regressions before packed and published temporary consumers.
+- Two-hundred-seventy-fourth verification-chain increment complete: `pnpm run verify:entrypoints` now rejects local dist `@blade-ai/agent-sdk/session` runtime factory declarations that expose `fork()` or `prompt()`, keeping the factory contract limited to create/resume primitives before packed and published temporary consumers.
 
 Commit:
 

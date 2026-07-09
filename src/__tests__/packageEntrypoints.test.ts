@@ -248,6 +248,8 @@ describe('package entrypoints', () => {
     expect(verifier).toContain('local session budget declarations must use the explicit @blade-ai/agent/budget subpath');
     expect(verifier).toContain('local session budget declarations must expose TokenBudgetSnapshot from @blade-ai/agent/budget');
     expect(verifier).toContain('local session declaration public boundary passed');
+    expect(verifier).toContain('local session runtime factory declarations must expose only create/resume primitives');
+    expect(verifier).toContain('local session factory declaration boundary passed');
     expect(verifier).toContain('local server runtime entry must be an explicit package-local facade');
     expect(verifier).toContain('local server declarations must be an explicit package-local facade');
     expect(verifier).toContain('local server facade boundary passed');

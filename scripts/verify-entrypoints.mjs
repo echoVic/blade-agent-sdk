@@ -279,6 +279,22 @@ assertNoForbiddenDeclarationSymbols(
 console.log('local session declaration public boundary passed');
 
 assertNoForbiddenDeclarationSymbols(
+  readFileSync(join(packageRoot, 'dist/session/factory.d.ts'), 'utf8'),
+  [
+    {
+      forbidden: 'fork(options',
+      message: 'local session runtime factory declarations must expose only create/resume primitives',
+    },
+    {
+      forbidden: 'prompt(message',
+      message: 'local session runtime factory declarations must expose only create/resume primitives',
+    },
+  ],
+  'local session factory declaration boundary',
+);
+console.log('local session factory declaration boundary passed');
+
+assertNoForbiddenDeclarationSymbols(
   readFileSync(join(packageRoot, 'dist/server/index.js'), 'utf8'),
   [
     {
