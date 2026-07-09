@@ -234,6 +234,17 @@ function hasSourceEntryForDistTarget(packageJsonPath, target) {
   return existsSync(resolvedEntry);
 }
 
+function verifyManifestTargetSourceEntry({ packageJson, packageJsonPath, label, target }) {
+  if (typeof target !== 'string') return null;
+  if (target === './package.json') return null;
+  if (!target.startsWith('./dist/')) return null;
+
+  if (!hasSourceEntryForDistTarget(packageJsonPath, target)) {
+    return `${packageJson}: ${label} target "${target}" source manifest target must be backed by a tsup source entry`;
+  }
+  return null;
+}
+
 function collectExportTargets(exportsValue, path = 'export') {
   if (typeof exportsValue === 'string') {
     return [{ path, target: exportsValue }];
@@ -366,11 +377,17 @@ function verifyManifestTargetExists({ packageJson, packageJsonPath, label, targe
   if (!isWithin(resolvedTarget, resolve(packageDir, 'dist'))) {
     return `${packageJson}: ${label} target "${target}" source manifest target must stay inside package dist output`;
   }
+  const sourceEntryViolation = verifyManifestTargetSourceEntry({
+    packageJson,
+    packageJsonPath,
+    label,
+    target,
+  });
+  if (sourceEntryViolation) {
+    return sourceEntryViolation;
+  }
   if (!existsSync(resolvedTarget)) {
-    if (hasSourceEntryForDistTarget(packageJsonPath, target)) {
-      return null;
-    }
-    return `${packageJson}: ${label} target "${target}" source manifest target does not exist in package build output`;
+    return null;
   }
   return null;
 }

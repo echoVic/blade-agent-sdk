@@ -1282,10 +1282,11 @@ describe('release scripts', () => {
     const roadmap = readFileSync(resolve('docs/roadmap/production-agent-sdk-monorepo.md'), 'utf8');
 
     expect(boundaryVerifier).toContain('verifyManifestTargetExists');
+    expect(boundaryVerifier).toContain('verifyManifestTargetSourceEntry');
     expect(boundaryVerifier).toContain('main field must declare a package root runtime entry');
     expect(boundaryVerifier).toContain('types field must declare a package root declaration entry');
     expect(boundaryVerifier).toContain('must expose "./package.json" metadata export');
-    expect(boundaryVerifier).toContain('source manifest target does not exist in package build output');
+    expect(boundaryVerifier).toContain('source manifest target must be backed by a tsup source entry');
     expect(boundaryVerifier).toContain('source manifest target must not point at source files');
     expect(boundaryVerifier).toContain('source manifest target must stay package-relative');
     expect(boundaryVerifier).toContain('source manifest target must not escape the package');
@@ -1299,18 +1300,18 @@ describe('release scripts', () => {
     expect(publishedVerifier).toContain('installedFiles.has(normalizedTarget)');
     expect(readme).toContain('manifest root entry fields');
     expect(readme).toContain('package metadata export');
-    expect(readme).toContain('source manifest target source-file rejection, relativity, containment, and existence checks');
+    expect(readme).toContain('source manifest target source-file rejection, relativity, containment, and source-backed checks');
     expect(readme).toContain('manifest target existence checks');
     expect(checklist).toContain('manifest root entry fields');
     expect(checklist).toContain('package metadata export');
-    expect(checklist).toContain('source manifest target source-file rejection, relativity, containment, and existence checks');
+    expect(checklist).toContain('source manifest target source-file rejection, relativity, containment, and source-backed checks');
     expect(checklist).toContain('manifest target existence checks');
     expect(roadmap).toContain('source package metadata export gate');
     expect(roadmap).toContain('source manifest root entry fields gate');
     expect(roadmap).toContain('source manifest target source-file gate');
     expect(roadmap).toContain('source manifest target relativity gate');
     expect(roadmap).toContain('source manifest target containment gate');
-    expect(roadmap).toContain('source manifest target existence gate');
+    expect(roadmap).toContain('source-backed manifest target gate');
     expect(roadmap).toContain('manifest target existence gate');
   });
 
