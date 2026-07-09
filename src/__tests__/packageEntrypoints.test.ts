@@ -259,6 +259,30 @@ describe('package entrypoints', () => {
     expect(publishedVerifier).toContain('agentSdkServerFacadeBoundaryRules');
   });
 
+  it('shares browser-safe core declaration boundary rules across local packed and published verifiers', () => {
+    const sharedRulesPath = 'scripts/agent-sdk-boundary-rules.mjs';
+
+    expect(existsSync(join(process.cwd(), sharedRulesPath)), sharedRulesPath).toBe(true);
+
+    const sharedRules = readFileSync(sharedRulesPath, 'utf-8');
+    const entrypointVerifier = readFileSync('scripts/verify-entrypoints.mjs', 'utf-8');
+    const packageVerifier = readFileSync('scripts/verify-packages.mjs', 'utf-8');
+    const publishedVerifier = readFileSync('scripts/verify-published.mjs', 'utf-8');
+
+    expect(sharedRules).toContain('agentSdkCoreDeclarationBrowserSafeRules');
+    expect(sharedRules).toContain('dist/core/index.d.ts');
+    expect(sharedRules).toContain('createSession');
+    expect(sharedRules).toContain('resumeSession');
+    expect(sharedRules).toContain('forkSession');
+    expect(sharedRules).toContain('getBuiltinTools');
+    expect(sharedRules).toContain('createSdkMcpServer');
+    expect(sharedRules).toContain('core declarations must stay browser-safe');
+    expect(entrypointVerifier).toContain('agentSdkCoreDeclarationBrowserSafeRules');
+    expect(packageVerifier).toContain('toPackedForbiddenFileRules(agentSdkCoreDeclarationBrowserSafeRules)');
+    expect(publishedVerifier).toContain('toInstalledForbiddenFileRules(');
+    expect(publishedVerifier).toContain('agentSdkCoreDeclarationBrowserSafeRules');
+  });
+
   it('runs the browser bundle check through the esbuild JS API', () => {
     const verifier = readFileSync('scripts/verify-entrypoints.mjs', 'utf-8');
     const helper = readFileSync('scripts/esbuild-bundle.mjs', 'utf-8');
@@ -308,9 +332,7 @@ describe('package entrypoints', () => {
     expect(verifier).toContain('Declaration export mismatch between local root and local server');
     expect(verifier).toContain('declarations missing from local server');
     expect(verifier).toContain('declarations extra in local server');
-    expect(verifier).toContain('local core declarations must stay browser-safe and not expose server-only session APIs');
-    expect(verifier).toContain('local core declarations must stay browser-safe and not expose Node-local tool APIs');
-    expect(verifier).toContain('local core declarations must stay browser-safe and not expose Node-local MCP APIs');
+    expect(verifier).toContain('toLocalForbiddenDeclarationRules(agentSdkCoreDeclarationBrowserSafeRules)');
     expect(verifier).toContain('local core declaration browser-safe boundary passed');
     expect(verifier).toContain('toLocalForbiddenDeclarationRules(agentSdkRootPublicDeclarationBoundaryRules)');
     expect(verifier).toContain('local root declaration public boundary passed');

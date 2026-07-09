@@ -266,14 +266,20 @@ describe('package provenance metadata', () => {
 
   it('rejects server-only contracts from browser-safe core declarations', () => {
     const packageVerifier = readFileSync(resolve('scripts/verify-packages.mjs'), 'utf8');
+    const publishedVerifier = readFileSync(resolve('scripts/verify-published.mjs'), 'utf8');
+    const sharedRules = readFileSync(resolve('scripts/agent-sdk-boundary-rules.mjs'), 'utf8');
 
-    expect(packageVerifier).toContain("file: 'package/dist/core/index.d.ts'");
-    expect(packageVerifier).toContain("forbidden: 'createSession'");
-    expect(packageVerifier).toContain("forbidden: 'resumeSession'");
-    expect(packageVerifier).toContain("forbidden: 'forkSession'");
-    expect(packageVerifier).toContain("forbidden: 'getBuiltinTools'");
-    expect(packageVerifier).toContain("forbidden: 'createSdkMcpServer'");
-    expect(packageVerifier).toContain('core declarations must stay browser-safe');
+    expect(packageVerifier).toContain('toPackedForbiddenFileRules(agentSdkCoreDeclarationBrowserSafeRules)');
+    expect(publishedVerifier).toContain('toInstalledForbiddenFileRules(');
+    expect(publishedVerifier).toContain('agentSdkCoreDeclarationBrowserSafeRules');
+    expect(sharedRules).toContain('agentSdkCoreDeclarationBrowserSafeRules');
+    expect(sharedRules).toContain("file: 'dist/core/index.d.ts'");
+    expect(sharedRules).toContain("forbidden: 'createSession'");
+    expect(sharedRules).toContain("forbidden: 'resumeSession'");
+    expect(sharedRules).toContain("forbidden: 'forkSession'");
+    expect(sharedRules).toContain("forbidden: 'getBuiltinTools'");
+    expect(sharedRules).toContain("forbidden: 'createSdkMcpServer'");
+    expect(sharedRules).toContain('core declarations must stay browser-safe');
   });
 
   it('rejects node-local adapters from root package declarations', () => {
@@ -1699,15 +1705,19 @@ describe('release scripts', () => {
 
   it('rejects server-only contracts from published browser-safe core declarations', () => {
     const publishedVerifier = readFileSync(resolve('scripts/verify-published.mjs'), 'utf8');
+    const sharedRules = readFileSync(resolve('scripts/agent-sdk-boundary-rules.mjs'), 'utf8');
 
     expect(publishedVerifier).toContain('verifyPublishedCoreDeclarationBoundary');
-    expect(publishedVerifier).toContain("node_modules/@blade-ai/agent-sdk/dist/core/index.d.ts");
-    expect(publishedVerifier).toContain("forbidden: 'createSession'");
-    expect(publishedVerifier).toContain("forbidden: 'resumeSession'");
-    expect(publishedVerifier).toContain("forbidden: 'forkSession'");
-    expect(publishedVerifier).toContain("forbidden: 'getBuiltinTools'");
-    expect(publishedVerifier).toContain("forbidden: 'createSdkMcpServer'");
-    expect(publishedVerifier).toContain('published core declarations must stay browser-safe');
+    expect(publishedVerifier).toContain('toInstalledForbiddenFileRules(');
+    expect(publishedVerifier).toContain('agentSdkCoreDeclarationBrowserSafeRules');
+    expect(sharedRules).toContain('agentSdkCoreDeclarationBrowserSafeRules');
+    expect(sharedRules).toContain("file: 'dist/core/index.d.ts'");
+    expect(sharedRules).toContain("forbidden: 'createSession'");
+    expect(sharedRules).toContain("forbidden: 'resumeSession'");
+    expect(sharedRules).toContain("forbidden: 'forkSession'");
+    expect(sharedRules).toContain("forbidden: 'getBuiltinTools'");
+    expect(sharedRules).toContain("forbidden: 'createSdkMcpServer'");
+    expect(sharedRules).toContain('core declarations must stay browser-safe');
   });
 
   it('rejects node-local adapters from published root package declarations', () => {

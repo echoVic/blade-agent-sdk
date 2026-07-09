@@ -6,6 +6,7 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { stringify } from 'yaml';
 import {
+  agentSdkCoreDeclarationBrowserSafeRules,
   agentSdkRootDeclarationEntryOwnershipRules,
   agentSdkRootPublicDeclarationBoundaryRules,
   agentSdkServerFacadeBoundaryRules,
@@ -326,31 +327,7 @@ const packageSpecs = [
       },
       ...toPackedForbiddenFileContents('package/dist/index.d.ts', agentSdkRootPublicDeclarationBoundaryRules),
       ...toPackedForbiddenFileRules(agentSdkServerFacadeBoundaryRules),
-      {
-        file: 'package/dist/core/index.d.ts',
-        forbidden: 'createSession',
-        message: 'core declarations must stay browser-safe and not expose server-only session APIs',
-      },
-      {
-        file: 'package/dist/core/index.d.ts',
-        forbidden: 'resumeSession',
-        message: 'core declarations must stay browser-safe and not expose server-only session APIs',
-      },
-      {
-        file: 'package/dist/core/index.d.ts',
-        forbidden: 'forkSession',
-        message: 'core declarations must stay browser-safe and not expose server-only session APIs',
-      },
-      {
-        file: 'package/dist/core/index.d.ts',
-        forbidden: 'getBuiltinTools',
-        message: 'core declarations must stay browser-safe and not expose Node-local tool APIs',
-      },
-      {
-        file: 'package/dist/core/index.d.ts',
-        forbidden: 'createSdkMcpServer',
-        message: 'core declarations must stay browser-safe and not expose Node-local MCP APIs',
-      },
+      ...toPackedForbiddenFileRules(agentSdkCoreDeclarationBrowserSafeRules),
       {
         file: 'package/dist/local/index.d.ts',
         forbidden: '../mcp/index.js',

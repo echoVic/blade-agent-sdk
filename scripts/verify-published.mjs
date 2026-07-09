@@ -8,6 +8,7 @@ import { pathToFileURL } from 'node:url';
 import { promisify } from 'node:util';
 import ssri from 'ssri';
 import {
+  agentSdkCoreDeclarationBrowserSafeRules,
   agentSdkServerFacadeBoundaryRules,
   toInstalledForbiddenFileRules,
 } from './agent-sdk-boundary-rules.mjs';
@@ -1442,37 +1443,15 @@ async function verifyPublishedLicenseArtifacts({ consumerDir }) {
 }
 
 async function verifyPublishedCoreDeclarationBoundary({ consumerDir }) {
-  const declarationPath = join(
-    consumerDir,
-    'node_modules/@blade-ai/agent-sdk/dist/core/index.d.ts',
+  const rules = toInstalledForbiddenFileRules(
+    join(consumerDir, 'node_modules/@blade-ai/agent-sdk'),
+    agentSdkCoreDeclarationBrowserSafeRules,
   );
-  const declarationSource = await readFile(declarationPath, 'utf8');
-  const forbiddenCoreDeclarations = [
-    {
-      forbidden: 'createSession',
-      message: 'published core declarations must stay browser-safe and not expose server-only session APIs',
-    },
-    {
-      forbidden: 'resumeSession',
-      message: 'published core declarations must stay browser-safe and not expose server-only session APIs',
-    },
-    {
-      forbidden: 'forkSession',
-      message: 'published core declarations must stay browser-safe and not expose server-only session APIs',
-    },
-    {
-      forbidden: 'getBuiltinTools',
-      message: 'published core declarations must stay browser-safe and not expose Node-local tool APIs',
-    },
-    {
-      forbidden: 'createSdkMcpServer',
-      message: 'published core declarations must stay browser-safe and not expose Node-local MCP APIs',
-    },
-  ];
 
-  for (const rule of forbiddenCoreDeclarations) {
-    if (declarationSource.includes(rule.forbidden)) {
-      throw new Error(`${declarationPath}: ${rule.message}`);
+  for (const rule of rules) {
+    const source = await readFile(rule.path, 'utf8');
+    if (source.includes(rule.forbidden)) {
+      throw new Error(`${rule.path}: ${rule.message}`);
     }
   }
 }

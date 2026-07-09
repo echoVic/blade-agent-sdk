@@ -3,6 +3,7 @@ import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'no
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
+  agentSdkCoreDeclarationBrowserSafeRules,
   agentSdkRootDeclarationEntryOwnershipRules,
   agentSdkRootPublicDeclarationBoundaryRules,
   agentSdkServerFacadeBoundaryRules,
@@ -186,28 +187,7 @@ console.log('local root server declaration export parity', rootDeclarationCount,
 
 assertNoForbiddenDeclarationSymbols(
   readFileSync(join(packageRoot, 'dist/core/index.d.ts'), 'utf8'),
-  [
-    {
-      forbidden: 'createSession',
-      message: 'local core declarations must stay browser-safe and not expose server-only session APIs',
-    },
-    {
-      forbidden: 'resumeSession',
-      message: 'local core declarations must stay browser-safe and not expose server-only session APIs',
-    },
-    {
-      forbidden: 'forkSession',
-      message: 'local core declarations must stay browser-safe and not expose server-only session APIs',
-    },
-    {
-      forbidden: 'getBuiltinTools',
-      message: 'local core declarations must stay browser-safe and not expose Node-local tool APIs',
-    },
-    {
-      forbidden: 'createSdkMcpServer',
-      message: 'local core declarations must stay browser-safe and not expose Node-local MCP APIs',
-    },
-  ],
+  toLocalForbiddenDeclarationRules(agentSdkCoreDeclarationBrowserSafeRules),
   'local core declaration browser-safe boundary',
 );
 console.log('local core declaration browser-safe boundary passed');

@@ -67,6 +67,34 @@ export const agentSdkServerFacadeBoundaryRules = [
   },
 ];
 
+export const agentSdkCoreDeclarationBrowserSafeRules = [
+  {
+    file: 'dist/core/index.d.ts',
+    forbidden: 'createSession',
+    message: 'core declarations must stay browser-safe and not expose server-only session APIs',
+  },
+  {
+    file: 'dist/core/index.d.ts',
+    forbidden: 'resumeSession',
+    message: 'core declarations must stay browser-safe and not expose server-only session APIs',
+  },
+  {
+    file: 'dist/core/index.d.ts',
+    forbidden: 'forkSession',
+    message: 'core declarations must stay browser-safe and not expose server-only session APIs',
+  },
+  {
+    file: 'dist/core/index.d.ts',
+    forbidden: 'getBuiltinTools',
+    message: 'core declarations must stay browser-safe and not expose Node-local tool APIs',
+  },
+  {
+    file: 'dist/core/index.d.ts',
+    forbidden: 'createSdkMcpServer',
+    message: 'core declarations must stay browser-safe and not expose Node-local MCP APIs',
+  },
+];
+
 export function toLocalForbiddenDeclarationRules(rules) {
   return rules.map((rule) => ({
     forbidden: rule.forbidden,
