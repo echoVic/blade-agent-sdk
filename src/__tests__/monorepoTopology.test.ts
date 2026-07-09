@@ -675,7 +675,8 @@ describe('monorepo topology', () => {
     );
     expect(rootAgentLoopSource).not.toContain('shouldRunAgentLoopBeforeTurnHook');
     expect(rootAgentLoopSource).not.toContain('consumeAgentLoopBeforeTurnStream');
-    expect(rootAgentLoopSource).toContain('handleAgentRunTurnErrorWithEmissions');
+    expect(rootAgentLoopSource).toContain('handleAgentLoopRunTurnWithRecovery');
+    expect(rootAgentLoopSource).not.toContain('handleAgentRunTurnErrorWithEmissions');
     expect(rootAgentLoopSource).not.toContain(
       'emitAgentRecoveryExhaustedEffectsIfAttempted',
     );
@@ -716,43 +717,25 @@ describe('monorepo topology', () => {
     expect(rootAgentLoopSource).not.toContain(
       'convState.append(assistantMessageProjection.message)',
     );
-    expect(rootAgentLoopSource).toContain('buildAgentLoopRunTurnInputFromLoopState');
+    expect(rootAgentLoopSource).not.toContain('buildAgentLoopRunTurnInputFromLoopState');
     expect(rootAgentLoopSource).not.toContain('buildAgentLoopRunTurnToolHooksInput');
     expect(rootAgentLoopSource).not.toContain(
       'buildAgentLoopRunTurnToolHooksInputFromHookContainer',
     );
     expect(rootAgentLoopSource).not.toContain('onBeforeExec: toolHooks?.beforeExec');
-    const runTurnInputStart = rootAgentLoopSource.indexOf(
-      'buildAgentLoopRunTurnInputFromLoopState',
-    );
-    const runTurnInputEnd = rootAgentLoopSource.indexOf(
-      'const turnStreamResult',
-      runTurnInputStart,
-    );
-    const runTurnInputSource = rootAgentLoopSource.slice(
-      runTurnInputStart,
-      runTurnInputEnd,
-    );
     expect(rootAgentLoopSource).not.toMatch(
       /buildAgentLoopRunTurnInput\(\{\s+turnState: turnStateProjection\.turnState/,
     );
-    expect(runTurnInputSource).not.toContain('messages: convState.toArray()');
-    expect(runTurnInputSource).not.toContain(
+    expect(rootAgentLoopSource).not.toContain('messages: convState.toArray()');
+    expect(rootAgentLoopSource).not.toContain(
       'executionContext: turnStateProjection.executionContext',
     );
-    expect(runTurnInputSource).not.toContain(
+    expect(rootAgentLoopSource).not.toContain(
       'permissionMode: turnStateProjection.permissionMode',
     );
-    expect(runTurnInputSource).toContain('hooks,');
-    expect(runTurnInputSource).not.toContain('toolHooks: {');
-    expect(runTurnInputSource).not.toContain('beforeExec: toolHooks?.beforeExec');
-    expect(runTurnInputSource).not.toContain('afterExec: toolHooks?.afterExec');
-    expect(runTurnInputSource).not.toContain(
-      'afterExecEpochDiscard: toolHooks?.afterExecEpochDiscard',
-    );
-    expect(rootAgentLoopSource).toContain('consumeAgentLoopTurnStream');
+    expect(rootAgentLoopSource).not.toContain('consumeAgentLoopTurnStream');
     expect(rootAgentLoopSource).toContain('createAgentRecoveryAttemptTracker');
-    expect(rootAgentLoopSource).toContain('handleAgentRunTurnErrorWithEmissions');
+    expect(rootAgentLoopSource).not.toContain('handleAgentRunTurnErrorWithEmissions');
     expect(rootAgentLoopSource).not.toContain('handleAgentModelFallbackWithEmissions');
     expect(rootAgentLoopSource).not.toContain('buildAgentModelFallbackEvent');
     expect(rootAgentLoopSource).not.toContain('llmError instanceof FallbackTriggeredError');
@@ -765,7 +748,7 @@ describe('monorepo topology', () => {
     expect(rootAgentLoopSource).not.toMatch(
       /buildAgentReactiveCompactHookPayload\(\{\s+messages: convState\.toArray\(\)/,
     );
-    expect(rootAgentLoopSource).toContain('handleAgentRunTurnSuccessWithEmissions');
+    expect(rootAgentLoopSource).not.toContain('handleAgentRunTurnSuccessWithEmissions');
     expect(rootAgentLoopSource).not.toContain('emitAgentRecoveryResetEffects');
     expect(rootAgentLoopSource).not.toContain('consumeAgentRecoveryResetEffects');
     expect(rootAgentLoopSource).not.toContain('buildAgentRecoveryResetEffects');
@@ -923,10 +906,10 @@ describe('monorepo topology', () => {
     expect(rootAgentLoopSource).not.toContain('let recoveryAttemptedTurn');
     expect(rootAgentLoopSource).not.toContain('let recoveryAttempt = 0');
     expect(rootAgentLoopSource).not.toContain('beforeTurnHook({');
-    expect(rootAgentLoopSource).toContain(
+    expect(rootAgentLoopSource).not.toContain(
       'handleAgentRunTurnErrorWithEmissions',
     );
-    expect(rootAgentLoopSource).toContain(
+    expect(rootAgentLoopSource).not.toContain(
       'handleAgentRunTurnSuccessWithEmissions',
     );
     expect(rootAgentLoopSource).not.toContain('assertAgentLoopTurnResponse');

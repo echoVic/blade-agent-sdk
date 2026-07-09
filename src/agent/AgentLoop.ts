@@ -7,7 +7,7 @@
  */
 
 import type { InternalLogger } from '../logging/Logger.js';
-import type { ChatResponse, Message, ToolCall } from '../services/ChatServiceInterface.js';
+import type { Message, ToolCall } from '../services/ChatServiceInterface.js';
 import type { ExecutionPipeline } from '../tools/execution/ExecutionPipeline.js';
 import type { ToolResult } from '../tools/types/index.js';
 import type { JsonObject } from '../types/common.js';
@@ -17,8 +17,6 @@ import {
 } from './ExecutionEpoch.js';
 import {
   createAgentRecoveryAttemptTracker,
-  handleAgentRunTurnErrorWithEmissions,
-  handleAgentRunTurnSuccessWithEmissions,
 } from './recoveryAttemptTracker.js';
 import {
   handleAgentLoopAssistantMessage,
@@ -36,6 +34,9 @@ import { createAgentLoopClock } from './loop/loopClock.js';
 import { runTurn } from './loop/runTurn.js';
 import type { ToolExecutionUpdate } from './loop/runToolCall.js';
 import {
+  handleAgentLoopRunTurnWithRecovery,
+} from './loop/runTurnWithRecovery.js';
+import {
   handleAgentLoopPostUsageGateWithEmissions,
 } from './loop/tokenUsage.js';
 import {
@@ -51,10 +52,6 @@ import {
 import {
   createAgentLoopTurnCounter,
 } from './loop/turnCounter.js';
-import {
-  buildAgentLoopRunTurnInputFromLoopState,
-  consumeAgentLoopTurnStream,
-} from './loop/turnStream.js';
 import type { FunctionToolCall } from './loop/types.js';
 import type { ConversationState } from './state/ConversationState.js';
 import type { TurnState } from './state/TurnState.js';
@@ -191,51 +188,27 @@ export async function* agentLoop(
     }
     const { turnsCount, turnStateProjection } = turnEntry;
 
-    // === runTurn：单回合 LLM 调用 + 流式事件 ===
-    let turnResult: ChatResponse | undefined;
-    let streamingExecutionResults: Array<{
-      toolCall: FunctionToolCall;
-      result: ToolResult;
-      toolUseUuid: string | null;
-    }> | undefined;
-
-    try {
-      const turnGen = runTurn(
-        buildAgentLoopRunTurnInputFromLoopState({
-          turnStateProjection,
-          conversation: convState,
-          executionPipeline,
-          streaming,
-          signal,
-          epoch,
-          logger: config.logger,
-          hooks,
-        }),
-      );
-      const turnStreamResult = yield* consumeAgentLoopTurnStream(turnGen);
-      turnResult = turnStreamResult.turnResult;
-      streamingExecutionResults = turnStreamResult.streamingExecutionResults;
-    } catch (llmError) {
-      const errorHandling = yield* handleAgentRunTurnErrorWithEmissions({
-        error: llmError,
-        tracker: recoveryAttemptTracker,
-        turn: turnsCount,
-        conversation: convState,
-        hooks,
-        epoch,
-        counter: turnCounter,
-      });
-      if (errorHandling.action === 'retry') {
-        continue;
-      }
-    }
-
-    turnResult = yield* handleAgentRunTurnSuccessWithEmissions({
-      response: turnResult,
+    const runTurnHandling = yield* handleAgentLoopRunTurnWithRecovery({
+      turnStateProjection,
+      conversation: convState,
+      executionPipeline,
+      streaming,
+      signal,
+      epoch,
+      logger: config.logger,
+      hooks,
       tracker: recoveryAttemptTracker,
       turn: turnsCount,
-      hooks,
+      counter: turnCounter,
+      runTurn,
     });
+    if (runTurnHandling.action === 'retry') {
+      continue;
+    }
+    const {
+      turnResult,
+      streamingExecutionResults,
+    } = runTurnHandling;
 
     const postUsageGate = yield* handleAgentLoopPostUsageGateWithEmissions({
       tokenBudget,

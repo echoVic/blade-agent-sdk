@@ -8,6 +8,7 @@ export * from './toolInterruptBehavior.js';
 export * from './toolUpdateToAgentEvent.js';
 export * from './loopEvents.js';
 export * from './responseEvents.js';
+export * from './runTurnWithRecovery.js';
 export * from './loopClock.js';
 export * from './loopResult.js';
 export * from './tokenUsage.js';
