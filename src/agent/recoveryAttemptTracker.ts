@@ -8,6 +8,7 @@ export {
   emitAgentRecoveryExhaustedEffectsFromTracker,
   emitAgentRecoveryResetEffects,
   hasAgentRecoveryAttemptExhausted,
+  handleAgentRunTurnErrorWithEmissions,
   handleAgentReactiveCompactRecoveryWithEmissions,
   runAgentRecoveryCompactAttemptWithEmissions,
   shouldAttemptAgentRecovery,
@@ -19,6 +20,7 @@ export {
   type AgentRecoveryExhaustedProjectionInputFromTrackerInput,
   type AgentReactiveCompactRecoveryEpochLike,
   type AgentReactiveCompactRecoveryHandling,
+  type AgentRunTurnErrorHandling,
   type AgentRecoveryAttemptTracker,
   type AgentRecoveryCompactAttemptEmissionsResult,
   type ConsumeAgentRecoveryResetEffectsInput,
@@ -31,5 +33,6 @@ export {
   type StartAgentRecoveryAttemptWithEmittedCompactStreamInput,
   type StartAgentRecoveryAttemptWithCompactStreamInput,
   type StartAgentRecoveryAttemptInput,
+  type HandleAgentRunTurnErrorWithEmissionsInput,
   type HandleAgentReactiveCompactRecoveryWithEmissionsInput,
 } from '../../packages/agent/src/recovery/recoveryAttemptTracker.js';

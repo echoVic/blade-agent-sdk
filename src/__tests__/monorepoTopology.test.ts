@@ -647,7 +647,8 @@ describe('monorepo topology', () => {
     );
     expect(rootAgentLoopSource).not.toContain('shouldRunAgentLoopBeforeTurnHook');
     expect(rootAgentLoopSource).not.toContain('consumeAgentLoopBeforeTurnStream');
-    expect(rootAgentLoopSource).toContain(
+    expect(rootAgentLoopSource).toContain('handleAgentRunTurnErrorWithEmissions');
+    expect(rootAgentLoopSource).not.toContain(
       'emitAgentRecoveryExhaustedEffectsIfAttempted',
     );
     expect(rootAgentLoopSource).not.toContain(
@@ -723,7 +724,8 @@ describe('monorepo topology', () => {
     );
     expect(rootAgentLoopSource).toContain('consumeAgentLoopTurnStream');
     expect(rootAgentLoopSource).toContain('createAgentRecoveryAttemptTracker');
-    expect(rootAgentLoopSource).toContain('handleAgentModelFallbackWithEmissions');
+    expect(rootAgentLoopSource).toContain('handleAgentRunTurnErrorWithEmissions');
+    expect(rootAgentLoopSource).not.toContain('handleAgentModelFallbackWithEmissions');
     expect(rootAgentLoopSource).not.toContain('buildAgentModelFallbackEvent');
     expect(rootAgentLoopSource).not.toContain('llmError instanceof FallbackTriggeredError');
     expect(rootAgentLoopSource).not.toContain(
@@ -755,7 +757,7 @@ describe('monorepo topology', () => {
     expect(rootAgentLoopSource).not.toContain('buildAgentRecoveryCompactResultEffects');
     expect(rootAgentLoopSource).not.toContain('buildAgentRecoveryCompactFailedEffects');
     expect(rootAgentLoopSource).not.toContain('buildAgentRecoveryRetryingEffects');
-    expect(rootAgentLoopSource).toContain(
+    expect(rootAgentLoopSource).not.toContain(
       'emitAgentRecoveryExhaustedEffectsIfAttempted',
     );
     expect(rootAgentLoopSource).not.toContain(
@@ -893,7 +895,16 @@ describe('monorepo topology', () => {
     expect(rootAgentLoopSource).not.toContain('let recoveryAttempt = 0');
     expect(rootAgentLoopSource).not.toContain('beforeTurnHook({');
     expect(rootAgentLoopSource).toContain(
+      'handleAgentRunTurnErrorWithEmissions',
+    );
+    expect(rootAgentLoopSource).not.toContain(
       'handleAgentReactiveCompactRecoveryWithEmissions',
+    );
+    expect(rootAgentLoopSource).not.toContain(
+      'handleAgentModelFallbackWithEmissions',
+    );
+    expect(rootAgentLoopSource).not.toContain(
+      'emitAgentRecoveryExhaustedEffectsIfAttempted',
     );
     expect(rootAgentLoopSource).not.toContain(
       'shouldAttemptAgentRecoveryFromHookContainer',

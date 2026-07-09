@@ -1,3 +1,4 @@
+import { FallbackTriggeredError } from '@blade-ai/ai/retry';
 import { describe, expect, it } from 'vitest';
 import {
   buildAgentRecoveryExhaustedEffectsFromTracker,
@@ -9,6 +10,7 @@ import {
   emitAgentRecoveryExhaustedEffectsIfAttempted,
   emitAgentRecoveryResetEffects,
   hasAgentRecoveryAttemptExhausted,
+  handleAgentRunTurnErrorWithEmissions,
   handleAgentReactiveCompactRecoveryWithEmissions,
   runAgentRecoveryCompactAttemptWithEmissions,
   shouldAttemptAgentRecovery,
@@ -898,5 +900,108 @@ describe('agent recovery attempt tracker', () => {
 
     expect(handled.events).toEqual([]);
     expect(handled.result).toEqual({ action: 'unhandled' });
+  });
+
+  it('handles run-turn fallback errors with model fallback emission and rethrow', async () => {
+    const operations: string[] = [];
+    const error = new FallbackTriggeredError('glm-5.2', 'deepseek-chat');
+    const stream = handleAgentRunTurnErrorWithEmissions({
+      error,
+      turn: 4,
+      tracker: createAgentRecoveryAttemptTracker(),
+      conversation: { toArray: () => [] },
+      hooks: {},
+      epoch: {
+        invalidate: () => {
+          operations.push('invalidate');
+        },
+      },
+      counter: {
+        requestRetry: () => {
+          operations.push('request_retry');
+        },
+      },
+    });
+
+    await expect(stream.next()).resolves.toEqual({
+      done: false,
+      value: {
+        type: 'model_fallback',
+        originalModel: 'glm-5.2',
+        fallbackModel: 'deepseek-chat',
+      },
+    });
+    await expect(stream.next()).rejects.toBe(error);
+    expect(operations).toEqual(['invalidate']);
+  });
+
+  it('handles run-turn reactive compact recovery and returns retry', async () => {
+    const operations: string[] = [];
+    const handled = await collectGenerator(
+      handleAgentRunTurnErrorWithEmissions({
+        error: new Error('maximum context length exceeded'),
+        turn: 4,
+        tracker: createAgentRecoveryAttemptTracker(),
+        conversation: {
+          toArray: () => [{ role: 'user' as const, content: 'large context' }],
+        },
+        hooks: {
+          recovery: {
+            reactiveCompact: async function* reactiveCompact() {
+              yield { type: 'compact_progress' as const, phase: 'start' };
+              return true;
+            },
+          },
+        },
+        epoch: {
+          invalidate: () => {
+            operations.push('invalidate');
+          },
+        },
+        counter: {
+          requestRetry: () => {
+            operations.push('request_retry');
+          },
+        },
+      }),
+    );
+
+    expect(handled.events).toEqual([
+      { type: 'recovery', phase: 'started', reason: 'context_overflow' },
+      { type: 'compact_progress', phase: 'start' },
+      { type: 'recovery', phase: 'retrying', reason: 'reactive_compact' },
+      { type: 'turn_retry', turn: 4, reason: 'reactive_compact' },
+    ]);
+    expect(handled.result).toEqual({ action: 'retry' });
+    expect(operations).toEqual(['invalidate', 'request_retry']);
+  });
+
+  it('handles run-turn exhausted recovery emission before rethrow', async () => {
+    const tracker = createAgentRecoveryAttemptTracker();
+    tracker.startAttempt(4);
+    const error = new Error('maximum context length exceeded');
+    const stream = handleAgentRunTurnErrorWithEmissions({
+      error,
+      turn: 4,
+      tracker,
+      conversation: { toArray: () => [] },
+      hooks: {},
+      epoch: null,
+      counter: {
+        requestRetry: () => {
+          throw new Error('turn should not retry');
+        },
+      },
+    });
+
+    await expect(stream.next()).resolves.toEqual({
+      done: false,
+      value: {
+        type: 'recovery',
+        phase: 'failed',
+        reason: 'recovery_exhausted',
+      },
+    });
+    await expect(stream.next()).rejects.toBe(error);
   });
 });

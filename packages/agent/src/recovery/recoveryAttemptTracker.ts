@@ -12,10 +12,12 @@ import {
   consumeAgentRecoveryCompactStreamWithEmittedResultEffects,
   emitAgentRecoveryEffects,
   hasAgentReactiveCompactHook,
+  handleAgentModelFallbackWithEmissions,
   type AgentRecoveryEffects,
   type AgentRecoveryCompactResultEffects,
   type AgentRecoveryEvent,
   type AgentRecoveryExhaustedEffectsInput,
+  type AgentModelFallbackEvent,
   type AgentReactiveCompactConversationLike,
   type AgentReactiveCompactHookContainer,
   type AgentRecoveryStateChangeHookContainer,
@@ -129,6 +131,18 @@ export type AgentReactiveCompactRecoveryHandling =
   | {
       action: 'retry';
     };
+
+export interface HandleAgentRunTurnErrorWithEmissionsInput<TMessage, Event>
+  extends HandleAgentReactiveCompactRecoveryWithEmissionsInput<TMessage, Event> {
+  tracker: Pick<
+    AgentRecoveryAttemptTracker,
+    'attempt' | 'canAttempt' | 'hasAttemptedTurn' | 'startAttempt'
+  >;
+}
+
+export interface AgentRunTurnErrorHandling {
+  action: 'retry';
+}
 
 export function createAgentRecoveryAttemptTracker(): AgentRecoveryAttemptTracker {
   let attemptedTurn: number | null = null;
@@ -313,6 +327,34 @@ export async function* handleAgentReactiveCompactRecoveryWithEmissions<
   }
 
   return { action: 'retry' };
+}
+
+export async function* handleAgentRunTurnErrorWithEmissions<TMessage, Event>(
+  input: HandleAgentRunTurnErrorWithEmissionsInput<TMessage, Event>,
+): AsyncGenerator<
+  AgentModelFallbackEvent | AgentRecoveryEvent | Event | AgentLoopTurnRetryEvent,
+  AgentRunTurnErrorHandling
+> {
+  yield* handleAgentModelFallbackWithEmissions({
+    error: input.error,
+    epoch: input.epoch,
+  });
+
+  const reactiveCompactRecovery = yield* handleAgentReactiveCompactRecoveryWithEmissions(input);
+  if (reactiveCompactRecovery.action === 'retry') {
+    return { action: 'retry' };
+  }
+  if (reactiveCompactRecovery.action === 'failed') {
+    throw input.error;
+  }
+
+  yield* emitAgentRecoveryExhaustedEffectsIfAttempted({
+    error: input.error,
+    turn: input.turn,
+    tracker: input.tracker,
+    hooks: input.hooks,
+  });
+  throw input.error;
 }
 
 export function buildAgentRecoveryExhaustedProjectionInputFromTracker(

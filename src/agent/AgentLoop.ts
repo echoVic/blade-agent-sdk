@@ -18,11 +18,9 @@ import {
 } from './ExecutionEpoch.js';
 import {
   createAgentRecoveryAttemptTracker,
-  emitAgentRecoveryExhaustedEffectsIfAttempted,
   emitAgentRecoveryResetEffects,
-  handleAgentReactiveCompactRecoveryWithEmissions,
+  handleAgentRunTurnErrorWithEmissions,
 } from './recoveryAttemptTracker.js';
-import { handleAgentModelFallbackWithEmissions } from './recoveryEvents.js';
 import {
   assertAgentLoopTurnResponse,
   handleAgentLoopAssistantMessage,
@@ -259,13 +257,7 @@ export async function* agentLoop(
       turnResult = turnStreamResult.turnResult;
       streamingExecutionResults = turnStreamResult.streamingExecutionResults;
     } catch (llmError) {
-      yield* handleAgentModelFallbackWithEmissions({
-        error: llmError,
-        epoch,
-      });
-
-      // 反应式压缩：context 溢出时尝试恢复
-      const reactiveCompactRecovery = yield* handleAgentReactiveCompactRecoveryWithEmissions({
+      const errorHandling = yield* handleAgentRunTurnErrorWithEmissions({
         error: llmError,
         tracker: recoveryAttemptTracker,
         turn: turnsCount,
@@ -274,20 +266,9 @@ export async function* agentLoop(
         epoch,
         counter: turnCounter,
       });
-      if (reactiveCompactRecovery.action === 'failed') {
-        throw llmError;
-      }
-      if (reactiveCompactRecovery.action === 'retry') {
+      if (errorHandling.action === 'retry') {
         continue;
       }
-
-      yield* emitAgentRecoveryExhaustedEffectsIfAttempted({
-        error: llmError,
-        turn: turnsCount,
-        tracker: recoveryAttemptTracker,
-        hooks,
-      });
-      throw llmError;
     }
 
     turnResult = assertAgentLoopTurnResponse(turnResult);
