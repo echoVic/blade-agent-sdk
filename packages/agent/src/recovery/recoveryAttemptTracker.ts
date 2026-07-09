@@ -1,5 +1,10 @@
 import { isOverflowRecoverable } from './isOverflowRecoverable.js';
 import {
+  applyAgentLoopReactiveCompactRetry,
+  type AgentLoopTurnCounter,
+} from '../loop/turnCounter.js';
+import type { AgentLoopTurnRetryEvent } from '../loop/loopEvents.js';
+import {
   buildAgentRecoveryCompactStreamFromHookContainer,
   buildAgentRecoveryExhaustedEffects,
   buildAgentRecoveryResetEffects,
@@ -93,6 +98,37 @@ export interface ShouldAttemptAgentRecoveryFromHookContainerInput<TMessage, Even
   tracker: Pick<AgentRecoveryAttemptTracker, 'canAttempt'>;
   turn: number;
 }
+
+export interface AgentReactiveCompactRecoveryEpochLike {
+  invalidate(): void;
+}
+
+export interface HandleAgentReactiveCompactRecoveryWithEmissionsInput<
+  TMessage,
+  Event,
+> {
+  error: unknown;
+  hooks?:
+    | (AgentReactiveCompactHookContainer<TMessage, Event> &
+        AgentRecoveryStateChangeHookContainer)
+    | null;
+  tracker: Pick<AgentRecoveryAttemptTracker, 'canAttempt' | 'startAttempt'>;
+  turn: number;
+  conversation: AgentReactiveCompactConversationLike<TMessage>;
+  counter: Pick<AgentLoopTurnCounter, 'requestRetry'>;
+  epoch?: AgentReactiveCompactRecoveryEpochLike | null;
+}
+
+export type AgentReactiveCompactRecoveryHandling =
+  | {
+      action: 'unhandled';
+    }
+  | {
+      action: 'failed';
+    }
+  | {
+      action: 'retry';
+    };
 
 export function createAgentRecoveryAttemptTracker(): AgentRecoveryAttemptTracker {
   let attemptedTurn: number | null = null;
@@ -234,6 +270,49 @@ export async function* runAgentRecoveryCompactAttemptWithEmissions<TMessage, Eve
     startedEffects: started.effects,
     compactResultEffects,
   };
+}
+
+export async function* handleAgentReactiveCompactRecoveryWithEmissions<
+  TMessage,
+  Event,
+>(
+  input: HandleAgentReactiveCompactRecoveryWithEmissionsInput<TMessage, Event>,
+): AsyncGenerator<
+  AgentRecoveryEvent | Event | AgentLoopTurnRetryEvent,
+  AgentReactiveCompactRecoveryHandling
+> {
+  if (
+    !shouldAttemptAgentRecoveryFromHookContainer({
+      error: input.error,
+      hooks: input.hooks,
+      tracker: input.tracker,
+      turn: input.turn,
+    })
+  ) {
+    return { action: 'unhandled' };
+  }
+
+  const compactRecovery = yield* runAgentRecoveryCompactAttemptWithEmissions({
+    tracker: input.tracker,
+    turn: input.turn,
+    conversation: input.conversation,
+    hooks: input.hooks,
+  });
+
+  if (!compactRecovery.recovered) {
+    return { action: 'failed' };
+  }
+
+  input.epoch?.invalidate();
+  const retryContinuation = applyAgentLoopReactiveCompactRetry({
+    counter: input.counter,
+    turn: input.turn,
+  });
+  for (const event of retryContinuation.events) {
+    yield event;
+  }
+
+  return { action: 'retry' };
 }
 
 export function buildAgentRecoveryExhaustedProjectionInputFromTracker(

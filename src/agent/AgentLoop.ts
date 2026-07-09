@@ -20,8 +20,7 @@ import {
   createAgentRecoveryAttemptTracker,
   emitAgentRecoveryExhaustedEffectsIfAttempted,
   emitAgentRecoveryResetEffects,
-  runAgentRecoveryCompactAttemptWithEmissions,
-  shouldAttemptAgentRecoveryFromHookContainer,
+  handleAgentReactiveCompactRecoveryWithEmissions,
 } from './recoveryAttemptTracker.js';
 import { handleAgentModelFallbackWithEmissions } from './recoveryEvents.js';
 import {
@@ -62,7 +61,6 @@ import {
 import { createAgentToolResultTracker } from './loop/toolResultTracker.js';
 import { buildAgentLoopTurnStateProjectionFromPreparation } from './loop/turnState.js';
 import {
-  applyAgentLoopReactiveCompactRetry,
   createAgentLoopTurnCounter,
   handleAgentLoopTurnStart,
   runAgentLoopBeforeTurnHook,
@@ -267,30 +265,19 @@ export async function* agentLoop(
       });
 
       // 反应式压缩：context 溢出时尝试恢复
-      if (shouldAttemptAgentRecoveryFromHookContainer({
+      const reactiveCompactRecovery = yield* handleAgentReactiveCompactRecoveryWithEmissions({
         error: llmError,
-        hooks,
         tracker: recoveryAttemptTracker,
         turn: turnsCount,
-      })) {
-        const compactRecovery = yield* runAgentRecoveryCompactAttemptWithEmissions({
-          tracker: recoveryAttemptTracker,
-          turn: turnsCount,
-          conversation: convState,
-          hooks,
-        });
-        if (!compactRecovery.recovered) {
-          throw llmError;
-        }
-        epoch?.invalidate();
-        // 显式"重试当前轮"：不减 turnsCount，不发 turn_end
-        const retryContinuation = applyAgentLoopReactiveCompactRetry({
-          counter: turnCounter,
-          turn: turnsCount,
-        });
-        for (const event of retryContinuation.events) {
-          yield event;
-        }
+        conversation: convState,
+        hooks,
+        epoch,
+        counter: turnCounter,
+      });
+      if (reactiveCompactRecovery.action === 'failed') {
+        throw llmError;
+      }
+      if (reactiveCompactRecovery.action === 'retry') {
         continue;
       }
 

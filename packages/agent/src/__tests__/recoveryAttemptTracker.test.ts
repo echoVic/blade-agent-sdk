@@ -9,6 +9,7 @@ import {
   emitAgentRecoveryExhaustedEffectsIfAttempted,
   emitAgentRecoveryResetEffects,
   hasAgentRecoveryAttemptExhausted,
+  handleAgentReactiveCompactRecoveryWithEmissions,
   runAgentRecoveryCompactAttemptWithEmissions,
   shouldAttemptAgentRecovery,
   shouldAttemptAgentRecoveryFromHookContainer,
@@ -17,6 +18,20 @@ import {
   startAgentRecoveryAttemptWithCompactStream,
   startAgentRecoveryAttemptWithStartedEffects,
 } from '../recovery/recoveryAttemptTracker.js';
+
+async function collectGenerator<TEvent, TResult>(
+  generator: AsyncGenerator<TEvent, TResult>,
+): Promise<{ events: TEvent[]; result: TResult }> {
+  const events: TEvent[] = [];
+
+  while (true) {
+    const next = await generator.next();
+    if (next.done) {
+      return { events, result: next.value };
+    }
+    events.push(next.value);
+  }
+}
 
 describe('agent recovery attempt tracker', () => {
   it('starts without an active recovery attempt', () => {
@@ -751,5 +766,137 @@ describe('agent recovery attempt tracker', () => {
       done: true,
     });
     expect(stateChanges).toEqual([]);
+  });
+
+  it('handles reactive compact recovery with retry emissions and retry state updates', async () => {
+    const tracker = createAgentRecoveryAttemptTracker();
+    const operations: string[] = [];
+    const stateChanges: unknown[] = [];
+
+    const handled = await collectGenerator(
+      handleAgentReactiveCompactRecoveryWithEmissions({
+        error: new Error('maximum context length exceeded'),
+        turn: 4,
+        tracker,
+        conversation: {
+          toArray: () => [{ role: 'user' as const, content: 'large context' }],
+        },
+        hooks: {
+          recovery: {
+            onStateChange: (stateChange) => {
+              stateChanges.push(stateChange);
+            },
+            reactiveCompact: async function* reactiveCompact({ messages }) {
+              operations.push(`compact:${messages.length}`);
+              yield { type: 'compact_progress' as const, phase: 'start' };
+              return true;
+            },
+          },
+        },
+        epoch: {
+          invalidate: () => {
+            operations.push('invalidate');
+          },
+        },
+        counter: {
+          requestRetry: () => {
+            operations.push('request_retry');
+          },
+        },
+      }),
+    );
+
+    expect(handled.events).toEqual([
+      { type: 'recovery', phase: 'started', reason: 'context_overflow' },
+      { type: 'compact_progress', phase: 'start' },
+      { type: 'recovery', phase: 'retrying', reason: 'reactive_compact' },
+      { type: 'turn_retry', turn: 4, reason: 'reactive_compact' },
+    ]);
+    expect(handled.result).toEqual({ action: 'retry' });
+    expect(operations).toEqual(['compact:1', 'invalidate', 'request_retry']);
+    expect(stateChanges).toEqual([
+      {
+        turn: 4,
+        phase: 'started',
+        reason: 'context_overflow',
+        attempt: 1,
+      },
+      {
+        turn: 4,
+        phase: 'retrying',
+        reason: 'reactive_compact_retry',
+        attempt: 1,
+      },
+    ]);
+  });
+
+  it('handles reactive compact recovery failures without retrying the turn', async () => {
+    const tracker = createAgentRecoveryAttemptTracker();
+    const operations: string[] = [];
+
+    const handled = await collectGenerator(
+      handleAgentReactiveCompactRecoveryWithEmissions({
+        error: new Error('maximum context length exceeded'),
+        turn: 4,
+        tracker,
+        conversation: {
+          toArray: () => [{ role: 'user' as const, content: 'large context' }],
+        },
+        hooks: {
+          recovery: {
+            reactiveCompact: async function* reactiveCompact() {
+              yield { type: 'compact_progress' as const, phase: 'start' };
+              return false;
+            },
+          },
+        },
+        epoch: {
+          invalidate: () => {
+            operations.push('invalidate');
+          },
+        },
+        counter: {
+          requestRetry: () => {
+            operations.push('request_retry');
+          },
+        },
+      }),
+    );
+
+    expect(handled.events).toEqual([
+      { type: 'recovery', phase: 'started', reason: 'context_overflow' },
+      { type: 'compact_progress', phase: 'start' },
+      { type: 'recovery', phase: 'failed', reason: 'reactive_compact' },
+    ]);
+    expect(handled.result).toEqual({ action: 'failed' });
+    expect(operations).toEqual([]);
+  });
+
+  it('skips reactive compact recovery when the error is not eligible', async () => {
+    const tracker = createAgentRecoveryAttemptTracker();
+    const handled = await collectGenerator(
+      handleAgentReactiveCompactRecoveryWithEmissions({
+        error: new Error('plain provider failure'),
+        turn: 4,
+        tracker,
+        conversation: {
+          toArray: () => [],
+        },
+        hooks: {},
+        epoch: {
+          invalidate: () => {
+            throw new Error('epoch should not be invalidated');
+          },
+        },
+        counter: {
+          requestRetry: () => {
+            throw new Error('turn should not retry');
+          },
+        },
+      }),
+    );
+
+    expect(handled.events).toEqual([]);
+    expect(handled.result).toEqual({ action: 'unhandled' });
   });
 });

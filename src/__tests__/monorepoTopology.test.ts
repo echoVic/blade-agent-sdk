@@ -630,7 +630,7 @@ describe('monorepo topology', () => {
     expect(rootAgentLoopSource).toContain('handleAgentLoopTurnStart');
     expect(rootAgentLoopSource).not.toContain('beginAgentLoopTurn');
     expect(rootAgentLoopSource).not.toContain('turnCounter.beginTurn(');
-    expect(rootAgentLoopSource).toContain('applyAgentLoopReactiveCompactRetry');
+    expect(rootAgentLoopSource).not.toContain('applyAgentLoopReactiveCompactRetry');
     expect(rootAgentLoopSource).not.toContain('requestAgentLoopTurnRetry');
     expect(rootAgentLoopSource).not.toContain('turnCounter.requestRetry(');
     expect(rootAgentLoopSource).not.toContain('resetAgentLoopTurnCounter');
@@ -661,7 +661,7 @@ describe('monorepo topology', () => {
       'buildAgentRecoveryExhaustedProjectionInputFromTracker',
     );
     expect(rootAgentLoopSource).not.toContain('recoveryAttemptTracker.attempt');
-    expect(rootAgentLoopSource).toContain(
+    expect(rootAgentLoopSource).not.toContain(
       'runAgentRecoveryCompactAttemptWithEmissions',
     );
     expect(rootAgentLoopSource).not.toContain(
@@ -739,7 +739,7 @@ describe('monorepo topology', () => {
     expect(rootAgentLoopSource).not.toContain('consumeAgentRecoveryResetEffects');
     expect(rootAgentLoopSource).not.toContain('buildAgentRecoveryResetEffects');
     expect(rootAgentLoopSource).not.toContain('buildAgentRecoveryStartedEffects');
-    expect(rootAgentLoopSource).toContain(
+    expect(rootAgentLoopSource).not.toContain(
       'runAgentRecoveryCompactAttemptWithEmissions',
     );
     expect(rootAgentLoopSource).not.toContain(
@@ -893,8 +893,15 @@ describe('monorepo topology', () => {
     expect(rootAgentLoopSource).not.toContain('let recoveryAttempt = 0');
     expect(rootAgentLoopSource).not.toContain('beforeTurnHook({');
     expect(rootAgentLoopSource).toContain(
+      'handleAgentReactiveCompactRecoveryWithEmissions',
+    );
+    expect(rootAgentLoopSource).not.toContain(
       'shouldAttemptAgentRecoveryFromHookContainer',
     );
+    expect(rootAgentLoopSource).not.toContain(
+      'runAgentRecoveryCompactAttemptWithEmissions',
+    );
+    expect(rootAgentLoopSource).not.toContain('applyAgentLoopReactiveCompactRetry');
     expect(rootAgentLoopSource).not.toContain('hasAgentReactiveCompactHook');
     expect(rootAgentLoopSource).not.toContain(
       'buildAgentRecoveryCompactStreamFromHookContainer({',
