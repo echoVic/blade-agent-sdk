@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   buildAgentLoopResponseEvents,
   buildAgentLoopResponseEventsInput,
+  emitAgentLoopResponseEventsFromTurnResult,
 } from '../loop/responseEvents.js';
 
 describe('agent loop response event projection', () => {
@@ -88,6 +89,52 @@ describe('agent loop response event projection', () => {
       content: 'answer',
       aborted: true,
       hasStreamingExecutionResults: true,
+    });
+  });
+
+  it('emits response events from a turn result in order', async () => {
+    const responseStream = emitAgentLoopResponseEventsFromTurnResult({
+      response: {
+        reasoningContent: 'thinking',
+        content: 'answer',
+      },
+      signal: undefined,
+      streamingExecutionResults: undefined,
+    });
+
+    await expect(responseStream.next()).resolves.toEqual({
+      value: { type: 'thinking', content: 'thinking' },
+      done: false,
+    });
+    await expect(responseStream.next()).resolves.toEqual({
+      value: { type: 'stream_end' },
+      done: false,
+    });
+    await expect(responseStream.next()).resolves.toEqual({
+      value: [
+        { type: 'thinking', content: 'thinking' },
+        { type: 'stream_end' },
+      ],
+      done: true,
+    });
+  });
+
+  it('does not emit response events from an aborted turn result', async () => {
+    const controller = new AbortController();
+    controller.abort();
+
+    const responseStream = emitAgentLoopResponseEventsFromTurnResult({
+      response: {
+        reasoningContent: 'thinking',
+        content: 'answer',
+      },
+      signal: controller.signal,
+      streamingExecutionResults: undefined,
+    });
+
+    await expect(responseStream.next()).resolves.toEqual({
+      value: [],
+      done: true,
     });
   });
 });

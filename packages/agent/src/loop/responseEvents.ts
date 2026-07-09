@@ -28,6 +28,14 @@ export interface BuildAgentLoopResponseEventsInputArgs<
   streamingExecutionResults: readonly StreamingExecutionResult[] | undefined;
 }
 
+export interface EmitAgentLoopResponseEventsFromTurnResultInput<
+  Response extends {
+    reasoningContent?: string;
+    content?: string;
+  },
+  StreamingExecutionResult,
+> extends BuildAgentLoopResponseEventsInputArgs<Response, StreamingExecutionResult> {}
+
 export function buildAgentLoopResponseEventsInput<
   Response extends {
     reasoningContent?: string;
@@ -62,5 +70,24 @@ export function buildAgentLoopResponseEvents(
     events.push({ type: 'stream_end' });
   }
 
+  return events;
+}
+
+export async function* emitAgentLoopResponseEventsFromTurnResult<
+  Response extends {
+    reasoningContent?: string;
+    content?: string;
+  },
+  StreamingExecutionResult,
+>(
+  input: EmitAgentLoopResponseEventsFromTurnResultInput<
+    Response,
+    StreamingExecutionResult
+  >,
+): AsyncGenerator<AgentLoopResponseEvent, AgentLoopResponseEvent[]> {
+  const events = buildAgentLoopResponseEvents(buildAgentLoopResponseEventsInput(input));
+  for (const event of events) {
+    yield event;
+  }
   return events;
 }

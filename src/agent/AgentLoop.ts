@@ -60,10 +60,7 @@ import {
   buildAgentLoopTurnStartEvent,
   buildAgentLoopTurnStartEventInput,
 } from './loop/loopEvents.js';
-import {
-  buildAgentLoopResponseEvents,
-  buildAgentLoopResponseEventsInput,
-} from './loop/responseEvents.js';
+import { emitAgentLoopResponseEventsFromTurnResult } from './loop/responseEvents.js';
 import { createAgentLoopClock } from './loop/loopClock.js';
 import {
   buildAgentLoopAbortCompletion,
@@ -411,15 +408,11 @@ export async function* agentLoop(
       return abortCompletion.result;
     }
 
-    for (const responseEvent of buildAgentLoopResponseEvents(
-      buildAgentLoopResponseEventsInput({
-        response: turnResult,
-        signal,
-        streamingExecutionResults,
-      }),
-    )) {
-      yield responseEvent;
-    }
+    yield* emitAgentLoopResponseEventsFromTurnResult({
+      response: turnResult,
+      signal,
+      streamingExecutionResults,
+    });
 
     // 无 tool calls → 正常结束或重试
     if (shouldHandleAgentLoopNoToolTurn(turnResult)) {

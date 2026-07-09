@@ -461,8 +461,9 @@ describe('monorepo topology', () => {
     expect(rootAgentLoopSource).toContain('decideAgentLoopNoToolTurn');
     expect(rootAgentLoopSource).toContain('shouldHandleAgentLoopNoToolTurn');
     expect(rootAgentLoopSource).toContain('shouldContinueAgentLoopAfterNoToolDecision');
-    expect(rootAgentLoopSource).toContain('buildAgentLoopResponseEventsInput');
-    expect(rootAgentLoopSource).toContain('buildAgentLoopResponseEvents');
+    expect(rootAgentLoopSource).toContain('emitAgentLoopResponseEventsFromTurnResult');
+    expect(rootAgentLoopSource).not.toContain('buildAgentLoopResponseEventsInput');
+    expect(rootAgentLoopSource).not.toContain('buildAgentLoopResponseEvents');
     expect(rootAgentLoopSource).toContain('buildAgentLoopNoToolSuccessDecision');
     expect(rootAgentLoopSource).toContain(
       'buildAgentLoopNoToolSuccessDecisionInputFromLoopState',
