@@ -233,6 +233,27 @@ describe('package boundary verifier', () => {
     expect(result.stderr).toContain('Legacy root source');
   });
 
+  it('rejects legacy root source imports that deep-link into package source', () => {
+    const cwd = createBoundaryFixture();
+    mkdirSync(join(cwd, 'src'), { recursive: true });
+    writeFileSync(
+      join(cwd, 'src', 'legacy.ts'),
+      "export * from '../packages/agent/src/index.js';\n",
+    );
+
+    const result = spawnSync(process.execPath, [
+      resolve('scripts/verify-package-boundaries.mjs'),
+    ], {
+      cwd,
+      encoding: 'utf8',
+    });
+
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain('src/legacy.ts');
+    expect(result.stderr).toContain('../packages/agent/src/index.js');
+    expect(result.stderr).toContain('must import package public subpaths');
+  });
+
   it('rejects ai source imports from its own public facade', () => {
     const cwd = createBoundaryFixture();
     mkdirSync(join(cwd, 'packages', 'ai', 'src', 'model'), { recursive: true });

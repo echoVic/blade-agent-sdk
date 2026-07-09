@@ -402,6 +402,19 @@ function verifyManifestTargetExists({ packageJson, packageJsonPath, label, targe
   return null;
 }
 
+function resolvesInsidePackageSource(file, specifier) {
+  if (!specifier.startsWith('.')) return null;
+
+  const resolved = normalize(resolve(dirname(file), specifier));
+  for (const rule of rules) {
+    const packageSourceDir = resolve(rootDir, rule.sourceDir);
+    if (isWithin(resolved, packageSourceDir)) {
+      return rule.sourceDir;
+    }
+  }
+  return null;
+}
+
 const violations = [];
 
 for (const rule of manifestRules) {
@@ -615,6 +628,12 @@ for (const rule of rootSourceRules) {
         if (pattern.test(specifier)) {
           violations.push(`${displayPath}: disallowed import "${specifier}" - ${reason}`);
         }
+      }
+      const packageSourceDir = resolvesInsidePackageSource(file, specifier);
+      if (packageSourceDir) {
+        violations.push(
+          `${displayPath}: disallowed import "${specifier}" reaches ${packageSourceDir} - Legacy root source must import package public subpaths instead of package source files`,
+        );
       }
     }
   }

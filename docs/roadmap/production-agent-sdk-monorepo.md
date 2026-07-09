@@ -91,7 +91,7 @@ Current guardrails:
 - `pnpm run verify:boundaries` scans package source imports and fails if `@blade-ai/ai` depends on agent/session SDK layers, or if `@blade-ai/agent` imports Node-local runtime modules, MCP SDKs, or `@blade-ai/agent-sdk`.
 - The same boundary verifier also checks package manifests so `@blade-ai/agent` cannot declare MCP SDKs, provider runtime SDKs, or local filesystem/terminal/storage dependencies.
 - Package source relative imports and exports must include explicit runtime file extensions, keeping the emitted ESM package graph aligned with Node and bundler resolution.
-- `pnpm run verify:boundaries` also scans legacy root `src/` compatibility modules for `@/` path aliases, keeping the old single-package alias from leaking back into the monorepo boundary.
+- `pnpm run verify:boundaries` also scans legacy root `src/` compatibility modules for `@/` path aliases and direct `packages/*/src` deep-links, keeping the old single-package alias and package source traversal from leaking back into the monorepo boundary.
 - Package manifests for `@blade-ai/ai`, `@blade-ai/agent`, and `@blade-ai/agent-sdk` must not expose CLI product capabilities through `bin`, `./cli`, or `cli` keywords; future Pi-style coding-agent / CLI product behavior belongs in a separate package.
 - `pnpm run verify:release` keeps the workspace root as a private non-publishable orchestrator, rejects root `publishConfig` / `files` metadata, and fails any semantic-release npm plugin configuration that would publish the root package instead of the three package roots.
 - `pnpm run test:live:glm` builds `@blade-ai/ai` and verifies one non-streaming plus one streaming request against a GLM/OpenAI-compatible endpoint using `.env` credentials.
