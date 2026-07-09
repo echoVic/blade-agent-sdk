@@ -1418,6 +1418,7 @@ describe('release scripts', () => {
     expect(packageVerifier).toContain("'.': './dist/browser/index.js'");
     expect(packageVerifier).toContain("'./server': './dist/browser/server-only-stub.js'");
     expect(packageVerifier).toContain("'./session': './dist/browser/server-only-stub.js'");
+    expect(packageVerifier).toContain("'./session/internal': './dist/browser/server-only-stub.js'");
     expect(packageVerifier).toContain("'./local': './dist/browser/server-only-stub.js'");
     expect(packageVerifier).toContain('packed SDK export');
     expect(packageVerifier).toContain('browser condition mismatch');
@@ -1522,6 +1523,7 @@ describe('release scripts', () => {
     expect(publishedVerifier).toContain("'.': './dist/browser/index.js'");
     expect(publishedVerifier).toContain("'./server': './dist/browser/server-only-stub.js'");
     expect(publishedVerifier).toContain("'./session': './dist/browser/server-only-stub.js'");
+    expect(publishedVerifier).toContain("'./session/internal': './dist/browser/server-only-stub.js'");
     expect(publishedVerifier).toContain("'./local': './dist/browser/server-only-stub.js'");
     expect(publishedVerifier).toContain('published SDK export');
     expect(publishedVerifier).toContain('browser condition mismatch');

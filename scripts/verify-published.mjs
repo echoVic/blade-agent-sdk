@@ -44,6 +44,7 @@ const expectedPublishedSdkBrowserExports = {
   '.': './dist/browser/index.js',
   './server': './dist/browser/server-only-stub.js',
   './session': './dist/browser/server-only-stub.js',
+  './session/internal': './dist/browser/server-only-stub.js',
   './local': './dist/browser/server-only-stub.js',
 };
 const publishedSdkBrowserSafeEntries = [
