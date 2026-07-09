@@ -201,6 +201,39 @@ function extractTsupEntries(source) {
   return entries;
 }
 
+function collectBuildEntryMap(packageJsonPath) {
+  const packageDir = dirname(packageJsonPath);
+  const configPath = join(packageDir, 'tsup.config.ts');
+  if (!existsSync(configPath)) return null;
+
+  const entries = extractTsupEntries(readFileSync(configPath, 'utf-8'));
+  if (!entries || entries.length === 0) return null;
+
+  return new Map(entries.map((entry) => [entry.name, entry.path]));
+}
+
+function distTargetToBuildEntryName(target) {
+  if (!target.startsWith('./dist/')) return null;
+
+  const distPath = target.slice('./dist/'.length);
+  if (distPath.endsWith('.d.ts')) return distPath.slice(0, -'.d.ts'.length);
+  if (distPath.endsWith('.js')) return distPath.slice(0, -'.js'.length);
+  return null;
+}
+
+function hasSourceEntryForDistTarget(packageJsonPath, target) {
+  const entryName = distTargetToBuildEntryName(target);
+  if (!entryName) return false;
+
+  const buildEntries = collectBuildEntryMap(packageJsonPath);
+  const entryPath = buildEntries?.get(entryName);
+  if (!entryPath) return false;
+
+  const packageDir = dirname(packageJsonPath);
+  const resolvedEntry = normalize(resolve(packageDir, entryPath));
+  return existsSync(resolvedEntry);
+}
+
 function collectExportTargets(exportsValue, path = 'export') {
   if (typeof exportsValue === 'string') {
     return [{ path, target: exportsValue }];
@@ -334,6 +367,9 @@ function verifyManifestTargetExists({ packageJson, packageJsonPath, label, targe
     return `${packageJson}: ${label} target "${target}" source manifest target must stay inside package dist output`;
   }
   if (!existsSync(resolvedTarget)) {
+    if (hasSourceEntryForDistTarget(packageJsonPath, target)) {
+      return null;
+    }
     return `${packageJson}: ${label} target "${target}" source manifest target does not exist in package build output`;
   }
   return null;

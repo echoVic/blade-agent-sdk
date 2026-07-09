@@ -359,6 +359,45 @@ describe('package boundary verifier', () => {
     expect(result.stderr).toContain('source manifest target must not point at source files');
   });
 
+  it('accepts new dist export targets when matching source build entries exist before build output', () => {
+    const cwd = createBoundaryFixture();
+    mkdirSync(join(cwd, 'packages', 'agent-sdk', 'src', 'session'), { recursive: true });
+    writeFileSync(join(cwd, 'packages', 'agent-sdk', 'src', 'session', 'internal.ts'), 'export {};\n');
+    writeTsupConfig(join(cwd, 'packages', 'agent-sdk', 'tsup.config.ts'), {
+      index: 'src/index.ts',
+      'session/internal': 'src/session/internal.ts',
+    });
+    writeJson(join(cwd, 'packages', 'agent-sdk', 'package.json'), {
+      name: '@blade-ai/agent-sdk',
+      main: './dist/index.js',
+      types: './dist/index.d.ts',
+      exports: {
+        '.': {
+          types: './dist/index.d.ts',
+          import: './dist/index.js',
+        },
+        './session/internal': {
+          types: './dist/session/internal.d.ts',
+          import: './dist/session/internal.js',
+        },
+        './package.json': {
+          default: './package.json',
+        },
+      },
+      dependencies: {},
+    });
+
+    const result = spawnSync(process.execPath, [
+      resolve('scripts/verify-package-boundaries.mjs'),
+    ], {
+      cwd,
+      encoding: 'utf8',
+    });
+
+    expect(result.status).toBe(0);
+    expect(result.stderr).not.toContain('does not exist in package build output');
+  });
+
   it('rejects publish exports without paired types and import conditions', () => {
     const cwd = createBoundaryFixture();
     writeJson(join(cwd, 'packages', 'agent-sdk', 'package.json'), {
