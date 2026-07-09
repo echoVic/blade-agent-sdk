@@ -248,6 +248,9 @@ describe('package entrypoints', () => {
     expect(verifier).toContain('local session budget declarations must use the explicit @blade-ai/agent/budget subpath');
     expect(verifier).toContain('local session budget declarations must expose TokenBudgetSnapshot from @blade-ai/agent/budget');
     expect(verifier).toContain('local session declaration public boundary passed');
+    expect(verifier).toContain('local session runtime entry must not import the legacy root Session directly');
+    expect(verifier).toContain('local session declarations must expose package-local Session contracts only');
+    expect(verifier).toContain('local session entry Session boundary passed');
     expect(verifier).toContain('local session runtime factory declarations must expose only create/resume primitives');
     expect(verifier).toContain('local session factory declaration boundary passed');
     expect(verifier).toContain('local session config declarations must be emitted from package-local session config source');
