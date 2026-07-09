@@ -2,7 +2,7 @@ import type { JSONSchema7 } from 'json-schema';
 import {
   streamPackageLocalChatResponse,
   type PackageLocalStreamDelta,
-} from '../../../packages/agent-sdk/src/session/streamChatResponse.js';
+} from '@blade-ai/agent-sdk/session/internal';
 import { type InternalLogger, LogCategory, NOOP_LOGGER } from '../../logging/Logger.js';
 import type {
   ChatResponse,

@@ -3,7 +3,7 @@ import {
   runPackageLocalToolCall,
   type PackageLocalRunToolCallInput,
   type PackageLocalToolExecutionHooks,
-} from '../../../packages/agent-sdk/src/session/runtimeToolExecution.js';
+} from '@blade-ai/agent-sdk/session/internal';
 import type { JsonObject } from '../../types/common.js';
 import { type InternalLogger, LogCategory, NOOP_LOGGER } from '../../logging/Logger.js';
 import type { ContextSnapshot } from '../../runtime/index.js';

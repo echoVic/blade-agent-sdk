@@ -28,6 +28,7 @@
       "@blade-ai/agent/loop": ["./packages/agent/src/loop/index.ts"],
       "@blade-ai/agent/recovery": ["./packages/agent/src/recovery/index.ts"],
       "@blade-ai/agent/state": ["./packages/agent/src/state/index.ts"],
+      "@blade-ai/agent-sdk/session/internal": ["./packages/agent-sdk/src/session/internal.ts"],
       "@blade-ai/ai": ["./packages/ai/src/index.ts"],
       "@blade-ai/ai/chat": ["./packages/ai/src/chat/index.ts"],
       "@blade-ai/ai/deepseek": ["./packages/ai/src/deepseek/index.ts"],

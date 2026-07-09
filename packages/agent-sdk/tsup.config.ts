@@ -24,6 +24,7 @@ export default defineConfig({
     'local/index': 'src/local/index.ts',
     'server/index': 'src/server/index.ts',
     'session/index': 'src/session/index.ts',
+    'session/internal': 'src/session/internal.ts',
     'tools/index': 'src/tools/index.ts',
   },
   format: ['esm'],

@@ -4,7 +4,7 @@ import {
   type PackageLocalRunTurnInput,
   type PackageLocalRunTurnToolHooks,
   type PackageLocalTurnOutcome,
-} from '../../../packages/agent-sdk/src/session/runtimeRunTurn.js';
+} from '@blade-ai/agent-sdk/session/internal';
 import type { InternalLogger } from '../../logging/Logger.js';
 import type {
   ChatResponse,

@@ -1,7 +1,7 @@
 import {
   executePackageLocalToolCalls,
   type PackageLocalExecuteToolCallsInput,
-} from '../../../packages/agent-sdk/src/session/runtimeToolExecution.js';
+} from '@blade-ai/agent-sdk/session/internal';
 import type { InternalLogger } from '../../logging/Logger.js';
 import type { ExecutionPipeline } from '../../tools/execution/ExecutionPipeline.js';
 import type { PermissionMode } from '../../types/common.js';

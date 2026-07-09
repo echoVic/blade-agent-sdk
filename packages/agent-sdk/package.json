@@ -44,6 +44,11 @@
       "browser": "./dist/browser/server-only-stub.js",
       "import": "./dist/session/index.js"
     },
+    "./session/internal": {
+      "types": "./dist/session/internal.d.ts",
+      "browser": "./dist/browser/server-only-stub.js",
+      "import": "./dist/session/internal.js"
+    },
     "./tools": {
       "types": "./dist/tools/index.d.ts",
       "import": "./dist/tools/index.js"

@@ -1111,6 +1111,41 @@ describe('monorepo topology', () => {
     expect(source).not.toContain('packages/agent/src');
   });
 
+  it('keeps root legacy loop adapters on the agent-sdk session internal subpath', () => {
+    const rootTsconfig = readJson('tsconfig.json');
+    const sdkPackage = readJson('packages/agent-sdk/package.json');
+    const sdkTsupConfig = readFileSync('packages/agent-sdk/tsup.config.ts', 'utf-8');
+    const rootVitestConfig = readFileSync('vitest.config.ts', 'utf-8');
+    const rootLegacyLoopAdapters = [
+      'src/agent/StreamingToolExecutor.ts',
+      'src/agent/loop/runToolCall.ts',
+      'src/agent/loop/executeToolCalls.ts',
+      'src/agent/loop/streamChatResponse.ts',
+      'src/agent/loop/runTurn.ts',
+    ] as const;
+
+    expect(existsSync('packages/agent-sdk/src/session/internal.ts')).toBe(true);
+    expect(sdkPackage.exports?.['./session/internal']).toEqual({
+      types: './dist/session/internal.d.ts',
+      browser: './dist/browser/server-only-stub.js',
+      import: './dist/session/internal.js',
+    });
+    expect(sdkTsupConfig).toContain("'session/internal': 'src/session/internal.ts'");
+    expect(rootTsconfig.compilerOptions?.paths).toMatchObject({
+      '@blade-ai/agent-sdk/session/internal': [
+        './packages/agent-sdk/src/session/internal.ts',
+      ],
+    });
+    expect(rootVitestConfig).toContain("'@blade-ai/agent-sdk/session/internal'");
+    expect(rootVitestConfig).toContain('packages/agent-sdk/src/session/internal.ts');
+
+    for (const file of rootLegacyLoopAdapters) {
+      const source = readFileSync(file, 'utf-8');
+      expect(source, file).toContain("from '@blade-ai/agent-sdk/session/internal'");
+      expect(source, file).not.toContain('packages/agent-sdk/src');
+    }
+  });
+
   it('keeps root recovery, state, and epoch forwarders on public package subpaths', () => {
     const rootTsconfig = readJson('tsconfig.json');
     const rootAgentForwarders = [
