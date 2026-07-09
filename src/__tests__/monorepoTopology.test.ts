@@ -329,6 +329,7 @@ describe('monorepo topology', () => {
       'packages/agent/src/epoch/ExecutionEpoch.ts',
       'packages/agent/src/loop/index.ts',
       'packages/agent/src/loop/AsyncEventQueue.ts',
+      'packages/agent/src/loop/agentLoop.ts',
       'packages/agent/src/loop/assistantMessage.ts',
       'packages/agent/src/loop/decideNoToolTurn.ts',
       'packages/agent/src/loop/decideTurnLimit.ts',
@@ -367,6 +368,7 @@ describe('monorepo topology', () => {
     }
 
     expect(existsSync('packages/agent/src/__tests__/toolUpdateToAgentEvent.test.ts')).toBe(true);
+    expect(existsSync('packages/agent/src/__tests__/agentLoop.test.ts')).toBe(true);
     expect(existsSync('packages/agent/src/__tests__/assistantMessage.test.ts')).toBe(true);
     expect(existsSync('packages/agent/src/__tests__/AsyncEventQueueBehavior.test.ts')).toBe(true);
     expect(existsSync('packages/agent/src/__tests__/loopDecisionsBehavior.test.ts')).toBe(true);
@@ -401,6 +403,7 @@ describe('monorepo topology', () => {
 
     expect(agentIndexSource).not.toContain('class AgentKernel');
     expect(agentLoopSource).toContain("from './AsyncEventQueue.js'");
+    expect(agentLoopSource).toContain("from './agentLoop.js'");
     expect(agentLoopSource).toContain("from './assistantMessage.js'");
     expect(agentLoopSource).toContain("from './decideNoToolTurn.js'");
     expect(agentLoopSource).toContain("from './decideTurnLimit.js'");
@@ -426,7 +429,8 @@ describe('monorepo topology', () => {
     expect(agentLoopSource).toContain("from './turnEntry.js'");
     expect(agentLoopSource).toContain("from './toolInterruptBehavior.js'");
     expect(agentLoopSource).toContain("from './toolUpdateToAgentEvent.js'");
-    expect(rootAgentLoopSource).toContain('handleAgentLoopTurnCycleWithEmissions');
+    expect(rootAgentLoopSource).toContain('handleAgentLoopWithEmissions');
+    expect(rootAgentLoopSource).not.toContain('handleAgentLoopTurnCycleWithEmissions');
     expect(rootAgentLoopSource).not.toContain('handleAgentLoopTurnEntryWithEmissions');
     expect(rootAgentLoopSource).not.toContain('handleAgentLoopRunTurnWithRecovery');
     expect(rootAgentLoopSource).not.toContain('handleAgentLoopModelResponseWithEmissions');
@@ -450,7 +454,7 @@ describe('monorepo topology', () => {
       /buildAgentLoopAbortCompletionInputFromLoopState\(\{\s+timing: loopClock\.resultTiming/,
     );
     expect(rootAgentLoopSource).not.toContain('shouldAbortAgentLoop');
-    expect(rootAgentLoopSource).toContain('buildAgentLoopStartEvent');
+    expect(rootAgentLoopSource).not.toContain('buildAgentLoopStartEvent');
     expect(rootAgentLoopSource).not.toContain('buildAgentLoopTurnStartEvent');
     expect(rootAgentLoopSource).not.toContain('handleAgentLoopToolResponseWithEmissions');
     expect(rootAgentLoopSource).not.toContain('handleAgentLoopToolTurnTail');
@@ -528,7 +532,7 @@ describe('monorepo topology', () => {
     expect(rootAgentLoopSource).not.toContain("toolExecutionResults.action === 'exit'");
     expect(rootAgentLoopSource).not.toContain('const toolTurnTail');
     expect(rootAgentLoopSource).not.toContain("toolTurnTail.action === 'stop'");
-    expect(rootAgentLoopSource).toContain('createAgentLoopClock');
+    expect(rootAgentLoopSource).not.toContain('createAgentLoopClock');
     expect(rootAgentLoopSource).not.toContain('handleAgentLoopAssistantMessage');
     expect(rootAgentLoopSource).not.toContain('buildAgentLoopAssistantMessageProjection');
     expect(rootAgentLoopSource).not.toContain('runAgentLoopAssistantMessageHook');
@@ -588,11 +592,11 @@ describe('monorepo topology', () => {
     expect(rootAgentLoopSource).not.toContain('tokenUsageTracker.totalTokens');
     expect(rootAgentLoopSource).not.toContain('buildAgentLoopTokenBudgetStopCompletion');
     expect(rootAgentLoopSource).not.toContain('shouldStopAgentLoopForTokenBudget(');
-    expect(rootAgentLoopSource).toContain('createAgentLoopTokenUsageTracker');
+    expect(rootAgentLoopSource).not.toContain('createAgentLoopTokenUsageTracker');
     expect(rootAgentLoopSource).not.toContain('recordAgentLoopTokenUsage');
     expect(rootAgentLoopSource).not.toContain('tokenUsageTracker.record(');
     expect(rootAgentLoopSource).not.toContain('shouldRecordAgentLoopTokenUsage');
-    expect(rootAgentLoopSource).toContain('createAgentToolResultTracker');
+    expect(rootAgentLoopSource).not.toContain('createAgentToolResultTracker');
     expect(rootAgentLoopSource).not.toContain('recordAgentToolResult');
     expect(rootAgentLoopSource).not.toContain('toolResultTracker.record(');
     expect(rootAgentLoopSource).not.toContain(
@@ -615,7 +619,7 @@ describe('monorepo topology', () => {
     );
     expect(rootAgentLoopSource).not.toContain('registry: executionPipeline.getRegistry()');
     expect(rootAgentLoopSource).not.toContain('buildAgentLoopTurnStateProjection');
-    expect(rootAgentLoopSource).toContain('buildAgentLoopEffectiveMaxTurns');
+    expect(rootAgentLoopSource).not.toContain('buildAgentLoopEffectiveMaxTurns');
     expect(rootAgentLoopSource).not.toContain(
       'buildAgentLoopTurnLimitDecisionInputFromHookContainer',
     );
@@ -677,7 +681,7 @@ describe('monorepo topology', () => {
     );
     expect(rootAgentLoopSource).not.toContain('registry: executionPipeline.getRegistry()');
     expect(rootAgentLoopSource).not.toContain('shouldStopAgentLoopForTurnLimitDecision');
-    expect(rootAgentLoopSource).toContain('createAgentLoopTurnCounter');
+    expect(rootAgentLoopSource).not.toContain('createAgentLoopTurnCounter');
     expect(rootAgentLoopSource).not.toContain('handleAgentLoopTurnStart');
     expect(rootAgentLoopSource).not.toContain('beginAgentLoopTurn');
     expect(rootAgentLoopSource).not.toContain('turnCounter.beginTurn(');
@@ -757,7 +761,7 @@ describe('monorepo topology', () => {
       'permissionMode: turnStateProjection.permissionMode',
     );
     expect(rootAgentLoopSource).not.toContain('consumeAgentLoopTurnStream');
-    expect(rootAgentLoopSource).toContain('createAgentRecoveryAttemptTracker');
+    expect(rootAgentLoopSource).not.toContain('createAgentRecoveryAttemptTracker');
     expect(rootAgentLoopSource).not.toContain('handleAgentRunTurnErrorWithEmissions');
     expect(rootAgentLoopSource).not.toContain('handleAgentModelFallbackWithEmissions');
     expect(rootAgentLoopSource).not.toContain('buildAgentModelFallbackEvent');
