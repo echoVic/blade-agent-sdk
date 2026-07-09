@@ -23,12 +23,11 @@ import {
   createAgentRecoveryAttemptTracker,
   hasAgentRecoveryAttemptExhausted,
   shouldAttemptAgentRecovery,
-  startAgentRecoveryAttemptWithStartedEffects,
+  startAgentRecoveryAttemptWithCompactStream,
 } from './recoveryAttemptTracker.js';
 import {
   buildAgentModelFallbackEvent,
   buildAgentRecoveryCompactResultEffects,
-  buildAgentRecoveryCompactStreamFromHookContainer,
   consumeAgentRecoveryCompactStream,
   emitAgentRecoveryEffects,
   hasAgentReactiveCompactHook,
@@ -347,20 +346,20 @@ export async function* agentLoop(
         tracker: recoveryAttemptTracker,
         turn: turnsCount,
       })) {
-        const recoveryStarted = startAgentRecoveryAttemptWithStartedEffects({
+        const recoveryStarted = startAgentRecoveryAttemptWithCompactStream({
           tracker: recoveryAttemptTracker,
           turn: turnsCount,
-        });
-        const recoveryAttempt = recoveryStarted.attempt;
-        yield* emitAgentRecoveryEffects({ effects: recoveryStarted.effects, hooks });
-        const compactStream = buildAgentRecoveryCompactStreamFromHookContainer({
           conversation: convState,
           hooks,
         });
-        if (!compactStream) {
+        const recoveryAttempt = recoveryStarted.attempt;
+        yield* emitAgentRecoveryEffects({ effects: recoveryStarted.effects, hooks });
+        if (!recoveryStarted.compactStream) {
           throw llmError;
         }
-        const compactStreamResult = yield* consumeAgentRecoveryCompactStream(compactStream);
+        const compactStreamResult = yield* consumeAgentRecoveryCompactStream(
+          recoveryStarted.compactStream,
+        );
         const compactRecovery = buildAgentRecoveryCompactResultEffects({
           result: compactStreamResult,
           turn: turnsCount,

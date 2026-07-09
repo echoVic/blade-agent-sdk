@@ -8,6 +8,7 @@ import {
   hasAgentRecoveryAttemptExhausted,
   shouldAttemptAgentRecovery,
   startAgentRecoveryAttempt,
+  startAgentRecoveryAttemptWithCompactStream,
   startAgentRecoveryAttemptWithStartedEffects,
 } from '../recovery/recoveryAttemptTracker.js';
 
@@ -78,6 +79,57 @@ describe('agent recovery attempt tracker', () => {
     });
     expect(tracker.attempt).toBe(1);
     expect(tracker.hasAttemptedTurn(6)).toBe(true);
+  });
+
+  it('starts recovery attempts with started effects and a compact stream', async () => {
+    const tracker = createAgentRecoveryAttemptTracker();
+    const messages = [{ role: 'user' as const, content: 'large context' }];
+    const calls: unknown[] = [];
+
+    async function* reactiveCompact(payload: {
+      messages: readonly { role: 'user'; content: string }[];
+    }): AsyncGenerator<{ type: string; phase: string }, boolean | undefined> {
+      calls.push(payload);
+      yield { type: 'compact_progress', phase: 'start' };
+      return true;
+    }
+
+    const started = startAgentRecoveryAttemptWithCompactStream({
+      tracker,
+      turn: 6,
+      conversation: {
+        toArray: () => messages,
+      },
+      hooks: {
+        recovery: {
+          reactiveCompact,
+        },
+      },
+    });
+
+    expect(started.attempt).toBe(1);
+    expect(started.effects).toEqual({
+      stateChanges: [
+        {
+          turn: 6,
+          phase: 'started',
+          reason: 'context_overflow',
+          attempt: 1,
+        },
+      ],
+      events: [
+        {
+          type: 'recovery',
+          phase: 'started',
+          reason: 'context_overflow',
+        },
+      ],
+    });
+    expect(await started.compactStream?.next()).toEqual({
+      done: false,
+      value: { type: 'compact_progress', phase: 'start' },
+    });
+    expect(calls).toEqual([{ messages }]);
   });
 
   it('increments attempts across consecutive failed turns until reset is consumed', () => {

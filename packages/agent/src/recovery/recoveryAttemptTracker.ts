@@ -1,10 +1,13 @@
 import { isOverflowRecoverable } from './isOverflowRecoverable.js';
 import {
+  buildAgentRecoveryCompactStreamFromHookContainer,
   buildAgentRecoveryExhaustedEffects,
   buildAgentRecoveryResetEffects,
   buildAgentRecoveryStartedEffects,
   type AgentRecoveryEffects,
   type AgentRecoveryExhaustedEffectsInput,
+  type AgentReactiveCompactConversationLike,
+  type AgentReactiveCompactHookContainer,
 } from './recoveryEvents.js';
 
 export interface AgentRecoveryAttemptTracker {
@@ -28,6 +31,17 @@ export interface StartAgentRecoveryAttemptInput {
 export interface StartedAgentRecoveryAttempt {
   attempt: number;
   effects: AgentRecoveryEffects;
+}
+
+export interface StartAgentRecoveryAttemptWithCompactStreamInput<TMessage, Event>
+  extends StartAgentRecoveryAttemptInput {
+  conversation: AgentReactiveCompactConversationLike<TMessage>;
+  hooks?: AgentReactiveCompactHookContainer<TMessage, Event> | null;
+}
+
+export interface StartedAgentRecoveryCompactAttempt<Event>
+  extends StartedAgentRecoveryAttempt {
+  compactStream?: AsyncGenerator<Event, boolean | undefined>;
 }
 
 export interface ConsumeAgentRecoveryResetEffectsInput {
@@ -98,6 +112,19 @@ export function startAgentRecoveryAttemptWithStartedEffects(
     effects: buildAgentRecoveryStartedEffects({
       turn: input.turn,
       attempt,
+    }),
+  };
+}
+
+export function startAgentRecoveryAttemptWithCompactStream<TMessage, Event>(
+  input: StartAgentRecoveryAttemptWithCompactStreamInput<TMessage, Event>,
+): StartedAgentRecoveryCompactAttempt<Event> {
+  const started = startAgentRecoveryAttemptWithStartedEffects(input);
+  return {
+    ...started,
+    compactStream: buildAgentRecoveryCompactStreamFromHookContainer({
+      conversation: input.conversation,
+      hooks: input.hooks,
     }),
   };
 }

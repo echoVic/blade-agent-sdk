@@ -734,7 +734,8 @@ describe('monorepo topology', () => {
       'buildAgentRecoveryExhaustedProjectionInputFromTracker',
     );
     expect(rootAgentLoopSource).not.toContain('recoveryAttemptTracker.attempt');
-    expect(rootAgentLoopSource).toContain('startAgentRecoveryAttemptWithStartedEffects');
+    expect(rootAgentLoopSource).toContain('startAgentRecoveryAttemptWithCompactStream');
+    expect(rootAgentLoopSource).not.toContain('startAgentRecoveryAttemptWithStartedEffects');
     expect(rootAgentLoopSource).not.toContain('startAgentRecoveryAttempt({');
     expect(rootAgentLoopSource).not.toContain('recoveryAttemptTracker.startAttempt(');
     expect(rootAgentLoopSource).toContain(
@@ -790,7 +791,7 @@ describe('monorepo topology', () => {
     expect(rootAgentLoopSource).toContain('consumeAgentLoopTurnStream');
     expect(rootAgentLoopSource).toContain('createAgentRecoveryAttemptTracker');
     expect(rootAgentLoopSource).toContain('buildAgentModelFallbackEvent');
-    expect(rootAgentLoopSource).toContain(
+    expect(rootAgentLoopSource).not.toContain(
       'buildAgentRecoveryCompactStreamFromHookContainer',
     );
     expect(rootAgentLoopSource).not.toContain(
@@ -934,7 +935,7 @@ describe('monorepo topology', () => {
     expect(rootAgentLoopSource).not.toContain('let recoveryAttempt = 0');
     expect(rootAgentLoopSource).not.toContain('beforeTurnHook({');
     expect(rootAgentLoopSource).toContain('hasAgentReactiveCompactHook({ hooks })');
-    expect(rootAgentLoopSource).toContain(
+    expect(rootAgentLoopSource).not.toContain(
       'buildAgentRecoveryCompactStreamFromHookContainer({',
     );
     expect(rootAgentLoopSource).not.toContain('const recoveryHooks = hooks?.recovery');
