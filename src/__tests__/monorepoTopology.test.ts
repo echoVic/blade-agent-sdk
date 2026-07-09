@@ -420,8 +420,10 @@ describe('monorepo topology', () => {
     expect(agentLoopSource).toContain("from './turnCounter.js'");
     expect(agentLoopSource).toContain("from './toolInterruptBehavior.js'");
     expect(agentLoopSource).toContain("from './toolUpdateToAgentEvent.js'");
-    expect(rootAgentLoopSource).toContain('buildAgentLoopAbortCompletion');
-    expect(rootAgentLoopSource).toContain('buildAgentLoopAbortCompletionInputFromLoopState');
+    expect(rootAgentLoopSource).toContain('handleAgentLoopAbortIfRequested');
+    expect(rootAgentLoopSource).not.toContain('buildAgentLoopAbortCompletion');
+    expect(rootAgentLoopSource).not.toContain('buildAgentLoopAbortCompletionInputFromLoopState');
+    expect(rootAgentLoopSource).not.toContain('buildAgentLoopAbortCompletionInputFromCounterState');
     expect(rootAgentLoopSource).not.toContain('buildAgentLoopAbortCompletionInputFromTiming');
     expect(rootAgentLoopSource).not.toMatch(
       /buildAgentLoopAbortCompletion\(\{\s+\.\.\.loopClock\.resultTiming/,
@@ -432,7 +434,7 @@ describe('monorepo topology', () => {
     expect(rootAgentLoopSource).not.toMatch(
       /buildAgentLoopAbortCompletionInputFromLoopState\(\{\s+timing: loopClock\.resultTiming/,
     );
-    expect(rootAgentLoopSource).toContain('shouldAbortAgentLoop');
+    expect(rootAgentLoopSource).not.toContain('shouldAbortAgentLoop');
     expect(rootAgentLoopSource).toContain('buildAgentLoopStartEvent');
     expect(rootAgentLoopSource).toContain('buildAgentLoopTurnStartEvent');
     expect(rootAgentLoopSource).toContain('handleAgentLoopToolTurnTail');
@@ -664,7 +666,7 @@ describe('monorepo topology', () => {
     expect(rootAgentLoopSource).not.toContain('startAgentRecoveryAttemptWithStartedEffects');
     expect(rootAgentLoopSource).not.toContain('startAgentRecoveryAttempt({');
     expect(rootAgentLoopSource).not.toContain('recoveryAttemptTracker.startAttempt(');
-    expect(rootAgentLoopSource).toContain(
+    expect(rootAgentLoopSource).not.toContain(
       'buildAgentLoopAbortCompletionInputFromCounterState',
     );
     expect(rootAgentLoopSource).not.toContain('turnCounter.previousCompletedTurnCount');

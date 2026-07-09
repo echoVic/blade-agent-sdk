@@ -18,10 +18,25 @@ import {
   buildAgentLoopToolExitDecisionInputFromTiming,
   buildAgentLoopToolExitFinalMessage,
   buildAgentLoopToolExitResult,
+  handleAgentLoopAbortIfRequested,
   type AgentLoopAbortCompletionTimingSource,
   shouldAbortAgentLoop,
   shouldExitAgentLoopForToolDecision,
 } from '../loop/loopResult.js';
+
+async function collectGenerator<TEvent, TResult>(
+  generator: AsyncGenerator<TEvent, TResult>,
+): Promise<{ events: TEvent[]; result: TResult }> {
+  const events: TEvent[] = [];
+
+  while (true) {
+    const next = await generator.next();
+    if (next.done) {
+      return { events, result: next.value };
+    }
+    events.push(next.value);
+  }
+}
 
 describe('agent loop result builders', () => {
   it('builds an abort result with deterministic loop metadata', () => {
@@ -178,6 +193,77 @@ describe('agent loop result builders', () => {
       toolCallsCount: 4,
       startTime: 100,
       now: 175,
+    });
+  });
+
+  it('continues abort handling without touching loop timing when signal is inactive', async () => {
+    const handled = await collectGenerator(
+      handleAgentLoopAbortIfRequested({
+        kind: 'counter_state',
+        signal: { aborted: false },
+        loopClock: {
+          resultTiming: () => {
+            throw new Error('timing should not be read without an abort');
+          },
+        },
+        turnCounter: {
+          turnsCount: 3,
+          previousCompletedTurnCount: 2,
+        },
+        turnCountSource: 'current',
+        toolResultTracker: {
+          toolCallsCount: 4,
+        },
+      }),
+    );
+
+    expect(handled).toEqual({
+      events: [],
+      result: { action: 'continue' },
+    });
+  });
+
+  it('handles requested aborts from counter state with terminal events and metadata', async () => {
+    const handled = await collectGenerator(
+      handleAgentLoopAbortIfRequested({
+        kind: 'counter_state',
+        signal: { aborted: true },
+        loopClock: {
+          resultTiming: ({ turnsCount, toolCallsCount }) => ({
+            turnsCount,
+            toolCallsCount,
+            startTime: 100,
+            now: 175,
+          }),
+        },
+        turnCounter: {
+          turnsCount: 3,
+          previousCompletedTurnCount: 2,
+        },
+        turnCountSource: 'previous_completed',
+        toolResultTracker: {
+          toolCallsCount: 4,
+        },
+      }),
+    );
+
+    expect(handled).toEqual({
+      events: [{ type: 'agent_end' }],
+      result: {
+        action: 'abort',
+        result: {
+          success: false,
+          error: {
+            type: 'aborted',
+            message: '任务已被用户中止',
+          },
+          metadata: {
+            turnsCount: 2,
+            toolCallsCount: 4,
+            duration: 75,
+          },
+        },
+      },
     });
   });
 

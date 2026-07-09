@@ -17,8 +17,11 @@ export {
   buildAgentLoopToolExitDecisionInputFromTiming,
   buildAgentLoopToolExitFinalMessage,
   buildAgentLoopToolExitResult,
+  handleAgentLoopAbortIfRequested,
   shouldExitAgentLoopForToolDecision,
   shouldAbortAgentLoop,
+  type AgentLoopAbortHandling,
+  type AgentLoopAbortIfRequestedEvent,
   type AgentLoopAbortResult,
   type AgentLoopAbortCompletion,
   type AgentLoopAbortCompletionCounterStateInput,
@@ -53,4 +56,5 @@ export {
   type AgentLoopToolExitResultInput,
   type AgentLoopResultTiming,
   type BuildAgentLoopToolExitDecisionInputArgs,
+  type HandleAgentLoopAbortIfRequestedInput,
 } from '../../../packages/agent/src/loop/loopResult.js';

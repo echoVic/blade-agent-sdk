@@ -46,10 +46,7 @@ import {
 import { emitAgentLoopResponseEventsFromTurnResult } from './loop/responseEvents.js';
 import { createAgentLoopClock } from './loop/loopClock.js';
 import {
-  buildAgentLoopAbortCompletion,
-  buildAgentLoopAbortCompletionInputFromCounterState,
-  buildAgentLoopAbortCompletionInputFromLoopState,
-  shouldAbortAgentLoop,
+  handleAgentLoopAbortIfRequested,
 } from './loop/loopResult.js';
 import {
   prepareAgentLoopNonStreamingToolExecution,
@@ -201,19 +198,16 @@ export async function* agentLoop(
   while (true) {
     epoch = new ExecutionEpoch();
 
-    if (shouldAbortAgentLoop(signal)) {
-      const abortCompletion = buildAgentLoopAbortCompletion(
-        buildAgentLoopAbortCompletionInputFromCounterState({
-          loopClock,
-          turnCounter,
-          turnCountSource: 'current',
-          toolResultTracker,
-        }),
-      );
-      for (const event of abortCompletion.events) {
-        yield event;
-      }
-      return abortCompletion.result;
+    const abortBeforeTurn = yield* handleAgentLoopAbortIfRequested({
+      kind: 'counter_state',
+      signal,
+      loopClock,
+      turnCounter,
+      turnCountSource: 'current',
+      toolResultTracker,
+    });
+    if (abortBeforeTurn.action === 'abort') {
+      return abortBeforeTurn.result as LoopResult;
     }
 
     yield* runAgentLoopBeforeTurnHook({
@@ -234,19 +228,16 @@ export async function* agentLoop(
       );
     }
 
-    if (shouldAbortAgentLoop(signal)) {
-      const abortCompletion = buildAgentLoopAbortCompletion(
-        buildAgentLoopAbortCompletionInputFromCounterState({
-          loopClock,
-          turnCounter,
-          turnCountSource: 'previous_completed',
-          toolResultTracker,
-        }),
-      );
-      for (const event of abortCompletion.events) {
-        yield event;
-      }
-      return abortCompletion.result;
+    const abortAfterTurnStart = yield* handleAgentLoopAbortIfRequested({
+      kind: 'counter_state',
+      signal,
+      loopClock,
+      turnCounter,
+      turnCountSource: 'previous_completed',
+      toolResultTracker,
+    });
+    if (abortAfterTurnStart.action === 'abort') {
+      return abortAfterTurnStart.result as LoopResult;
     }
 
     const turnStateProjection = buildAgentLoopTurnStateProjectionFromPreparation({
@@ -358,19 +349,16 @@ export async function* agentLoop(
       yield budgetEvent;
     }
 
-    if (shouldAbortAgentLoop(signal)) {
-      const abortCompletion = buildAgentLoopAbortCompletion(
-        buildAgentLoopAbortCompletionInputFromCounterState({
-          loopClock,
-          turnCounter,
-          turnCountSource: 'previous_completed',
-          toolResultTracker,
-        }),
-      );
-      for (const event of abortCompletion.events) {
-        yield event;
-      }
-      return abortCompletion.result;
+    const abortAfterBudget = yield* handleAgentLoopAbortIfRequested({
+      kind: 'counter_state',
+      signal,
+      loopClock,
+      turnCounter,
+      turnCountSource: 'previous_completed',
+      toolResultTracker,
+    });
+    if (abortAfterBudget.action === 'abort') {
+      return abortAfterBudget.result as LoopResult;
     }
 
     yield* emitAgentLoopResponseEventsFromTurnResult({
@@ -429,18 +417,15 @@ export async function* agentLoop(
         yield event;
       }
 
-      if (shouldAbortAgentLoop(signal)) {
-        const abortCompletion = buildAgentLoopAbortCompletion(
-          buildAgentLoopAbortCompletionInputFromLoopState({
-            loopClock,
-            turnsCount,
-            toolResultTracker,
-          }),
-        );
-        for (const event of abortCompletion.events) {
-          yield event;
-        }
-        return abortCompletion.result;
+      const abortBeforeToolExecution = yield* handleAgentLoopAbortIfRequested({
+        kind: 'loop_state',
+        signal,
+        loopClock,
+        turnsCount,
+        toolResultTracker,
+      });
+      if (abortBeforeToolExecution.action === 'abort') {
+        return abortBeforeToolExecution.result as LoopResult;
       }
 
       executionResults = await executeToolCalls(nonStreamingToolExecution.executeInput);

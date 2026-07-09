@@ -97,6 +97,27 @@ export interface AgentLoopAbortCompletionCounterStateInput {
   toolResultTracker: AgentLoopAbortCompletionToolResultTrackerLike;
 }
 
+export type HandleAgentLoopAbortIfRequestedInput =
+  | (AgentLoopAbortCompletionCounterStateInput & {
+      kind: 'counter_state';
+      signal?: Pick<AbortSignal, 'aborted'>;
+    })
+  | (AgentLoopAbortCompletionLoopStateInput & {
+      kind: 'loop_state';
+      signal?: Pick<AbortSignal, 'aborted'>;
+    });
+
+export type AgentLoopAbortIfRequestedEvent = AgentLoopEndEvent;
+
+export type AgentLoopAbortHandling =
+  | {
+      action: 'continue';
+    }
+  | {
+      action: 'abort';
+      result: AgentLoopAbortResult;
+    };
+
 export interface AgentLoopNoToolSuccessTimingInput {
   finalMessage: string | undefined;
   timing: AgentLoopResultTiming;
@@ -314,6 +335,27 @@ export function buildAgentLoopAbortCompletion(
     action: 'abort',
     events: [buildAgentLoopEndEvent()],
     result: buildAgentLoopAbortResult(input),
+  };
+}
+
+export async function* handleAgentLoopAbortIfRequested(
+  input: HandleAgentLoopAbortIfRequestedInput,
+): AsyncGenerator<AgentLoopAbortIfRequestedEvent, AgentLoopAbortHandling> {
+  if (!shouldAbortAgentLoop(input.signal)) {
+    return { action: 'continue' };
+  }
+
+  const abortCompletion = buildAgentLoopAbortCompletion(
+    input.kind === 'counter_state'
+      ? buildAgentLoopAbortCompletionInputFromCounterState(input)
+      : buildAgentLoopAbortCompletionInputFromLoopState(input),
+  );
+  for (const event of abortCompletion.events) {
+    yield event;
+  }
+  return {
+    action: 'abort',
+    result: abortCompletion.result,
   };
 }
 
