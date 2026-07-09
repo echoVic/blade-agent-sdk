@@ -430,6 +430,71 @@ function resolvesInsidePackageSource(file, specifier) {
   return null;
 }
 
+function sourceFileCandidates(resolvedPath) {
+  const cleanPath = resolvedPath.split(/[?#]/, 1)[0];
+  const replacements = [
+    [/\.js$/i, '.ts'],
+    [/\.js$/i, '.tsx'],
+    [/\.mjs$/i, '.mts'],
+    [/\.cjs$/i, '.cts'],
+    [/\.jsx$/i, '.tsx'],
+  ];
+  const candidates = [cleanPath];
+  for (const [pattern, replacement] of replacements) {
+    if (pattern.test(cleanPath)) {
+      candidates.push(cleanPath.replace(pattern, replacement));
+    }
+  }
+  if (!/\.[A-Za-z0-9]+$/.test(cleanPath)) {
+    candidates.push(
+      `${cleanPath}.ts`,
+      `${cleanPath}.tsx`,
+      `${cleanPath}.mts`,
+      `${cleanPath}.cts`,
+      join(cleanPath, 'index.ts'),
+      join(cleanPath, 'index.tsx'),
+      join(cleanPath, 'index.mts'),
+      join(cleanPath, 'index.cts'),
+    );
+  }
+  return candidates;
+}
+
+function resolveRelativeSourceFile(file, specifier, packageSourceDir) {
+  if (!specifier.startsWith('.')) return null;
+
+  const resolved = normalize(resolve(dirname(file), specifier));
+  if (!isWithin(resolved, packageSourceDir)) return null;
+
+  for (const candidate of sourceFileCandidates(resolved)) {
+    if (isWithin(candidate, packageSourceDir) && existsSync(candidate) && statSync(candidate).isFile()) {
+      return candidate;
+    }
+  }
+  return null;
+}
+
+function collectStaticImportClosure(entryFiles, packageSourceDir) {
+  const seen = new Set();
+  const pending = [...entryFiles];
+
+  while (pending.length > 0) {
+    const file = pending.pop();
+    if (!file || seen.has(file)) continue;
+    seen.add(file);
+
+    const source = readFileSync(file, 'utf-8');
+    for (const specifier of extractSpecifiers(source)) {
+      const resolved = resolveRelativeSourceFile(file, specifier, packageSourceDir);
+      if (resolved && !seen.has(resolved)) {
+        pending.push(resolved);
+      }
+    }
+  }
+
+  return [...seen];
+}
+
 const violations = [];
 
 for (const rule of manifestRules) {
@@ -655,17 +720,20 @@ for (const rule of rootSourceRules) {
 }
 
 for (const rule of scopedSourceRules) {
+  const packageSourceDir = resolve(rootDir, 'packages/agent-sdk/src');
   for (const ruleSourceDir of rule.sourceDirs) {
     const sourceDir = resolve(rootDir, ruleSourceDir);
     if (!existsSync(sourceDir)) continue;
 
-    for (const file of listSourceFiles(sourceDir)) {
+    for (const file of collectStaticImportClosure(listSourceFiles(sourceDir), packageSourceDir)) {
       const source = readFileSync(file, 'utf-8');
       const displayPath = relative(rootDir, file);
       for (const specifier of extractSpecifiers(source)) {
         for (const [pattern, reason] of rule.disallowedSpecifiers) {
           if (pattern.test(specifier)) {
-            violations.push(`${displayPath}: disallowed import "${specifier}" - ${reason}`);
+            violations.push(
+              `${displayPath}: disallowed import "${specifier}" - ${rule.name} static closure ${reason}`,
+            );
           }
         }
       }
