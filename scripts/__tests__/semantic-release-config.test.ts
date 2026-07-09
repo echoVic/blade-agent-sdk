@@ -406,6 +406,7 @@ describe('package provenance metadata', () => {
     expect(packageVerifier).toContain('function verifyConsumerBrowserBundle');
     expect(packageVerifier).toContain('consumer-browser-entry.ts');
     expect(packageVerifier).toContain("from '@blade-ai/agent-sdk/session';");
+    expect(packageVerifier).toContain("from '@blade-ai/agent-sdk/session/internal';");
     expect(packageVerifier).toContain("from '@blade-ai/agent-sdk/server';");
     expect(packageVerifier).toContain("from '@blade-ai/agent-sdk/local';");
     expect(packageVerifier).toContain('await bundleWithEsbuildRetry({');
@@ -418,6 +419,7 @@ describe('package provenance metadata', () => {
     expect(packageVerifier).not.toContain("resolve(repoRoot, 'node_modules/.bin/esbuild')");
     expect(packageVerifier).toContain('assertNoBrowserDisallowedMarkers');
     expect(packageVerifier).toContain('server-only for createSession');
+    expect(packageVerifier).toContain('server-only for internal createSession');
     expect(packageVerifier).toContain('server-only for resumeSession');
     expect(packageVerifier).toContain('server-only for getBuiltinTools');
   });
@@ -1740,6 +1742,7 @@ describe('release scripts', () => {
     expect(publishedVerifier).toContain('consumer-browser-entry.ts');
     expect(publishedVerifier).toContain("from '@blade-ai/agent-sdk';");
     expect(publishedVerifier).toContain("from '@blade-ai/agent-sdk/session';");
+    expect(publishedVerifier).toContain("from '@blade-ai/agent-sdk/session/internal';");
     expect(publishedVerifier).toContain("from '@blade-ai/agent-sdk/server';");
     expect(publishedVerifier).toContain("from '@blade-ai/agent-sdk/local';");
     expect(publishedVerifier).toContain("from '@blade-ai/agent-sdk/core';");
@@ -1749,6 +1752,7 @@ describe('release scripts', () => {
     expect(publishedVerifier).toContain("conditions: ['browser']");
     expect(publishedVerifier).toContain('assertNoBrowserDisallowedMarkers');
     expect(publishedVerifier).toContain('server-only for createSession');
+    expect(publishedVerifier).toContain('server-only for internal createSession');
     expect(publishedVerifier).toContain('server-only for getBuiltinTools');
     expect(readme).toContain('browser bundle smoke');
     expect(checklist).toContain('browser bundle smoke');

@@ -2305,11 +2305,13 @@ async function verifyConsumerBrowserBundle(consumerDir) {
       "import { StreamMessageType } from '@blade-ai/agent-sdk/core';",
       "import { ToolKind } from '@blade-ai/agent-sdk/tools';",
       "import { resumeSession } from '@blade-ai/agent-sdk/session';",
+      "import { createSession as createInternalSession } from '@blade-ai/agent-sdk/session/internal';",
       "import { createSession as createServerSession } from '@blade-ai/agent-sdk/server';",
       "import { getBuiltinTools } from '@blade-ai/agent-sdk/local';",
       "console.log(PermissionMode.DEFAULT, StreamMessageType.CONTENT, ToolKind.ReadOnly);",
       "try { createSession({} as never); } catch (error) { console.log((error as Error).message); }",
       "try { resumeSession('session-id' as never); } catch (error) { console.log((error as Error).message); }",
+      "try { createInternalSession({} as never); } catch (error) { console.log(`server-only for internal createSession: ${(error as Error).message}`); }",
       "try { createServerSession({} as never); } catch (error) { console.log((error as Error).message); }",
       "try { getBuiltinTools(); } catch (error) { console.log((error as Error).message); }",
     ].join('\n'),
@@ -2329,6 +2331,9 @@ async function verifyConsumerBrowserBundle(consumerDir) {
   const browserRunOutput = run(process.execPath, [output], { cwd: consumerDir });
   if (!browserRunOutput.includes('server-only for createSession')) {
     throw new Error('Browser bundle does not include the createSession server-only stub message');
+  }
+  if (!browserRunOutput.includes('server-only for internal createSession')) {
+    throw new Error('Browser bundle does not include the internal createSession server-only stub message');
   }
   if (!browserRunOutput.includes('server-only for resumeSession')) {
     throw new Error('Browser bundle does not include the resumeSession server-only stub message');

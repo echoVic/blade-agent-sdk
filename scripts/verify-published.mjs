@@ -1564,6 +1564,7 @@ async function verifyPublishedBrowserBundleSmoke({ consumerDir }) {
 import { PermissionMode as CorePermissionMode } from '@blade-ai/agent-sdk/core';
 import { createSession as serverCreateSession } from '@blade-ai/agent-sdk/server';
 import { resumeSession } from '@blade-ai/agent-sdk/session';
+import { createSession as internalCreateSession } from '@blade-ai/agent-sdk/session/internal';
 import { getBuiltinTools } from '@blade-ai/agent-sdk/local';
 import { defineTool, ToolKind } from '@blade-ai/agent-sdk/tools';
 
@@ -1595,6 +1596,8 @@ const noopTool = defineTool({
 console.log(PermissionMode.DEFAULT, CorePermissionMode.DEFAULT, ToolKind.READ, noopTool.name);
 assertServerOnly(() => rootCreateSession({}), 'server-only for createSession');
 assertServerOnly(() => serverCreateSession({}), 'server-only for createSession');
+assertServerOnly(() => internalCreateSession({}), 'server-only for createSession');
+console.log('server-only for internal createSession');
 assertServerOnly(() => resumeSession('session-id'), 'server-only for resumeSession');
 assertServerOnly(() => getBuiltinTools(), 'server-only for getBuiltinTools');
 `,
@@ -1622,6 +1625,7 @@ assertServerOnly(() => getBuiltinTools(), 'server-only for getBuiltinTools');
   const output = await run(process.execPath, [bundlePath], { cwd: consumerDir });
   for (const expected of [
     'server-only for createSession',
+    'server-only for internal createSession',
     'server-only for resumeSession',
     'server-only for getBuiltinTools',
   ]) {
