@@ -113,6 +113,7 @@ try {
     [
       "import { createSession, PermissionMode } from '@blade-ai/agent-sdk';",
       "console.log(PermissionMode.DEFAULT, typeof createSession);",
+      "try { createSession({}); } catch (error) { console.log(`server-only for bundled createSession: ${error.message}`); }",
     ].join('\n'),
     'utf8',
   );
@@ -128,6 +129,9 @@ try {
     logLevel: 'silent',
   });
   assertNoDisallowedImports(output);
+  const browserBundleOutput = run(process.execPath, [output], { cwd: packageRoot });
+  assertIncludes(browserBundleOutput, 'default function', 'browser bundle root import');
+  assertIncludes(browserBundleOutput, 'server-only for bundled createSession', 'browser bundle root stub');
 } finally {
   rmSync(tempDir, { recursive: true, force: true });
 }
