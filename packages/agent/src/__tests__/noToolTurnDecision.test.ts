@@ -13,6 +13,7 @@ import {
   buildAgentLoopNoToolStopHooksInput,
   decideAgentLoopNoToolTurn,
   decideNoToolTurn,
+  handleAgentLoopNoToolTurn,
   runAgentLoopNoToolCompleteHook,
   shouldContinueAgentLoopAfterNoToolDecision,
   shouldHandleAgentLoopNoToolTurn,
@@ -128,6 +129,137 @@ describe('decideNoToolTurn', () => {
       turn: 5,
     });
     expect(calls).toEqual([payload]);
+  });
+
+  it('handles no-tool continuation decisions with append-before-return ordering', async () => {
+    const operations: unknown[] = [];
+    const check = vi.fn(async () => {
+      operations.push({ type: 'stop_check' });
+      return {
+        shouldStop: false,
+        continueReason: 'Keep using the existing roadmap.',
+        warning: 'still-working',
+      };
+    });
+    const messages: Message[] = [{ role: 'user', content: 'continue' }];
+
+    const handling = await handleAgentLoopNoToolTurn({
+      response: { content: 'I will continue' },
+      conversation: {
+        toArray: () => {
+          operations.push({ type: 'to_array' });
+          return messages;
+        },
+        append: (...appendedMessages) => {
+          operations.push({ type: 'append', messages: appendedMessages });
+        },
+      },
+      turn: 4,
+      hooks: {
+        stop: {
+          check,
+        },
+      },
+      loopClock: {
+        resultTiming: ({ turnsCount, toolCallsCount }) => ({
+          turnsCount,
+          toolCallsCount,
+          startTime: 1000,
+          now: 1100,
+        }),
+      },
+      toolResultTracker: { toolCallsCount: 2 },
+      tokenUsageTracker: { totalTokens: 21 },
+    });
+
+    expect(handling.action).toBe('continue');
+    if (handling.action === 'continue') {
+      expect(handling.content).toBe('I will continue');
+      expect(handling.continuation.warning).toBe('still-working');
+      expect(handling.continuation.message.content).toContain(
+        'Keep using the existing roadmap.',
+      );
+      expect(handling.continuation.events).toEqual([
+        { type: 'turn_end', turn: 4, hasToolCalls: false },
+      ]);
+      expect(operations).toEqual([
+        { type: 'to_array' },
+        { type: 'stop_check' },
+        { type: 'append', messages: [handling.continuation.message] },
+      ]);
+    }
+  });
+
+  it('handles no-tool finish decisions with hook-before-success ordering', async () => {
+    const operations: unknown[] = [];
+    const snapshot = { usedTokens: 21, maxTokens: 100 };
+
+    const handling = await handleAgentLoopNoToolTurn({
+      response: {},
+      conversation: {
+        toArray: () => {
+          operations.push({ type: 'to_array' });
+          return [];
+        },
+        append: (...messages) => {
+          operations.push({ type: 'append', messages });
+        },
+      },
+      turn: 5,
+      hooks: {
+        message: {
+          onComplete: async (payload) => {
+            operations.push({ type: 'complete_hook', payload });
+          },
+        },
+      },
+      loopClock: {
+        resultTiming: ({ turnsCount, toolCallsCount }) => {
+          operations.push({ type: 'timing', turnsCount, toolCallsCount });
+          return {
+            turnsCount,
+            toolCallsCount,
+            startTime: 2000,
+            now: 2075,
+          };
+        },
+      },
+      toolResultTracker: { toolCallsCount: 3 },
+      tokenUsageTracker: { totalTokens: 21 },
+      tokenBudget: {
+        getSnapshot: () => snapshot,
+      },
+    });
+
+    expect(handling).toEqual({
+      action: 'finish',
+      content: '',
+      decision: { action: 'finish' },
+      completionPayload: { content: '', turn: 5 },
+      successDecision: {
+        action: 'finish',
+        events: [
+          { type: 'turn_end', turn: 5, hasToolCalls: false },
+          { type: 'agent_end' },
+        ],
+        result: {
+          success: true,
+          finalMessage: '',
+          metadata: {
+            turnsCount: 5,
+            toolCallsCount: 3,
+            duration: 75,
+            tokensUsed: 21,
+            tokenBudgetSnapshot: snapshot,
+          },
+        },
+      },
+    });
+    expect(operations).toEqual([
+      { type: 'to_array' },
+      { type: 'complete_hook', payload: { content: '', turn: 5 } },
+      { type: 'timing', turnsCount: 5, toolCallsCount: 3 },
+    ]);
   });
 
   it('projects object-style no-tool decision input and runs the decision wrapper', async () => {

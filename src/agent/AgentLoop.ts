@@ -30,13 +30,7 @@ import {
   handleAgentLoopAssistantMessage,
 } from './loop/assistantMessage.js';
 import {
-  applyAgentLoopNoToolContinuation,
-  buildAgentLoopNoToolContent,
-  buildAgentLoopNoToolContinuation,
-  buildAgentLoopNoToolDecisionInputFromHookContainer,
-  decideAgentLoopNoToolTurn,
-  runAgentLoopNoToolCompleteHook,
-  shouldContinueAgentLoopAfterNoToolDecision,
+  handleAgentLoopNoToolTurn,
   shouldHandleAgentLoopNoToolTurn,
 } from './loop/decideNoToolTurn.js';
 import {
@@ -64,8 +58,6 @@ import {
   buildAgentLoopAbortCompletion,
   buildAgentLoopAbortCompletionInputFromCounterState,
   buildAgentLoopAbortCompletionInputFromLoopState,
-  buildAgentLoopNoToolSuccessDecision,
-  buildAgentLoopNoToolSuccessDecisionInputFromLoopState,
   buildAgentLoopToolExitDecision,
   buildAgentLoopToolExitDecisionInputFromLoopState,
   shouldAbortAgentLoop,
@@ -414,49 +406,27 @@ export async function* agentLoop(
 
     // 无 tool calls → 正常结束或重试
     if (shouldHandleAgentLoopNoToolTurn(turnResult)) {
-      const content = buildAgentLoopNoToolContent({ content: turnResult.content });
-      const noToolDecision = await decideAgentLoopNoToolTurn(
-        buildAgentLoopNoToolDecisionInputFromHookContainer({
-          content,
-          conversation: convState,
-          turn: turnsCount,
-          hooks,
-        }),
-      );
-      if (shouldContinueAgentLoopAfterNoToolDecision(noToolDecision)) {
-        const noToolContinuation = applyAgentLoopNoToolContinuation({
-          conversation: convState,
-          continuation: buildAgentLoopNoToolContinuation({
-            decision: noToolDecision,
-            turn: turnsCount,
-          }),
-        });
-        for (const event of noToolContinuation.events) {
+      const noToolHandling = await handleAgentLoopNoToolTurn({
+        response: turnResult,
+        conversation: convState,
+        turn: turnsCount,
+        hooks,
+        loopClock,
+        toolResultTracker,
+        tokenUsageTracker,
+        tokenBudget,
+      });
+      if (noToolHandling.action === 'continue') {
+        for (const event of noToolHandling.continuation.events) {
           yield event;
         }
         continue;
       }
 
-      await runAgentLoopNoToolCompleteHook({
-        content,
-        turn: turnsCount,
-        hooks,
-      });
-
-      const noToolSuccessDecision = buildAgentLoopNoToolSuccessDecision(
-        buildAgentLoopNoToolSuccessDecisionInputFromLoopState({
-          finalMessage: content,
-          loopClock,
-          turnsCount,
-          toolResultTracker,
-          tokenUsageTracker,
-          tokenBudget,
-        }),
-      );
-      for (const event of noToolSuccessDecision.events) {
+      for (const event of noToolHandling.successDecision.events) {
         yield event;
       }
-      return noToolSuccessDecision.result as LoopResult;
+      return noToolHandling.successDecision.result as LoopResult;
     }
 
     await handleAgentLoopAssistantMessage({

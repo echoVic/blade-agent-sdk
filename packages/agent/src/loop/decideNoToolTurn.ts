@@ -3,6 +3,15 @@ import {
   buildAgentLoopTurnEndEvent,
   type AgentLoopTurnEndEvent,
 } from './loopEvents.js';
+import {
+  buildAgentLoopNoToolSuccessDecision,
+  buildAgentLoopNoToolSuccessDecisionInputFromLoopState,
+  type AgentLoopNoToolSuccessDecision,
+  type AgentLoopNoToolSuccessTimingSource,
+  type AgentLoopNoToolSuccessTokenBudgetLike,
+  type AgentLoopNoToolSuccessTokenUsageTrackerLike,
+  type AgentLoopNoToolSuccessToolResultTrackerLike,
+} from './loopResult.js';
 
 const INCOMPLETE_INTENT_PATTERNS = [
   /：\s*$/,
@@ -120,6 +129,36 @@ export interface AgentLoopToolCallResponseLike {
   toolCalls?: readonly unknown[];
 }
 
+export interface AgentLoopNoToolTurnResponseLike {
+  content?: string;
+}
+
+export interface HandleAgentLoopNoToolTurnInput<TSnapshot = unknown> {
+  response: AgentLoopNoToolTurnResponseLike;
+  conversation: AgentLoopNoToolConversationLike & AgentLoopNoToolContinuationConversationLike;
+  turn: number;
+  hooks?: (AgentLoopNoToolStopHookContainer & AgentLoopNoToolCompleteHookContainer) | null;
+  loopClock: AgentLoopNoToolSuccessTimingSource;
+  toolResultTracker: AgentLoopNoToolSuccessToolResultTrackerLike;
+  tokenUsageTracker: AgentLoopNoToolSuccessTokenUsageTrackerLike;
+  tokenBudget?: AgentLoopNoToolSuccessTokenBudgetLike<TSnapshot>;
+}
+
+export type AgentLoopNoToolTurnHandling =
+  | {
+      action: 'continue';
+      content: string;
+      decision: NoToolTurnContinuationDecision;
+      continuation: AgentLoopNoToolContinuation;
+    }
+  | {
+      action: 'finish';
+      content: string;
+      decision: Extract<NoToolTurnDecision, { action: 'finish' }>;
+      completionPayload: AgentLoopNoToolCompletePayload;
+      successDecision: AgentLoopNoToolSuccessDecision;
+    };
+
 export function shouldHandleAgentLoopNoToolTurn(
   response: AgentLoopToolCallResponseLike,
 ): boolean {
@@ -210,6 +249,58 @@ export async function runAgentLoopNoToolCompleteHook(
   const payload = buildAgentLoopNoToolCompletePayload(input);
   await input.hooks?.message?.onComplete?.(payload);
   return payload;
+}
+
+export async function handleAgentLoopNoToolTurn(
+  input: HandleAgentLoopNoToolTurnInput,
+): Promise<AgentLoopNoToolTurnHandling> {
+  const content = buildAgentLoopNoToolContent({ content: input.response.content });
+  const decision = await decideAgentLoopNoToolTurn(
+    buildAgentLoopNoToolDecisionInputFromHookContainer({
+      content,
+      conversation: input.conversation,
+      turn: input.turn,
+      hooks: input.hooks,
+    }),
+  );
+
+  if (shouldContinueAgentLoopAfterNoToolDecision(decision)) {
+    return {
+      action: 'continue',
+      content,
+      decision,
+      continuation: applyAgentLoopNoToolContinuation({
+        conversation: input.conversation,
+        continuation: buildAgentLoopNoToolContinuation({
+          decision,
+          turn: input.turn,
+        }),
+      }),
+    };
+  }
+
+  const completionPayload = await runAgentLoopNoToolCompleteHook({
+    content,
+    turn: input.turn,
+    hooks: input.hooks,
+  });
+
+  return {
+    action: 'finish',
+    content,
+    decision,
+    completionPayload,
+    successDecision: buildAgentLoopNoToolSuccessDecision(
+      buildAgentLoopNoToolSuccessDecisionInputFromLoopState({
+        finalMessage: content,
+        loopClock: input.loopClock,
+        turnsCount: input.turn,
+        toolResultTracker: input.toolResultTracker,
+        tokenUsageTracker: input.tokenUsageTracker,
+        tokenBudget: input.tokenBudget,
+      }),
+    ),
+  };
 }
 
 function isIncompleteIntent(content: string): boolean {
