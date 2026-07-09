@@ -954,6 +954,7 @@ Status:
 - Two-hundred-seventy-sixth verification-chain increment complete: `pnpm run verify:entrypoints` now rejects local dist `@blade-ai/agent-sdk/session` runtime entries and `Session` declarations that point back at the legacy root `Session`, keeping session-first package-local contracts guarded before packed and published temporary consumers.
 - Two-hundred-seventy-seventh verification-chain increment complete: `pnpm run verify:entrypoints` now rejects local dist `@blade-ai/agent-sdk/tools` runtime and declaration entries that point back at legacy root tool factories or catalogs, keeping package-local tool contracts guarded before packed and published temporary consumers.
 - Two-hundred-seventy-eighth verification-chain increment complete: `pnpm run verify:entrypoints` now rejects local dist `@blade-ai/agent-sdk/local` runtime and declaration entries that point back at legacy MCP, memory, sandbox, or builtin-tool adapters, keeping Node-local capabilities behind package-local local adapters before packed and published temporary consumers.
+- Two-hundred-seventy-ninth verification-chain increment complete: `pnpm run verify:entrypoints` now also rejects local dist `@blade-ai/agent-sdk/local` memory declarations that expose legacy memory-store method signatures, keeping the local memory API package-local before packed and published temporary consumers.
 
 Commit:
 

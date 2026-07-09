@@ -435,6 +435,18 @@ assertNoForbiddenDeclarationSymbols(
       forbidden: 'getBuiltinTools(...args: unknown[])',
       message: 'local builtin tool declarations must use package-local builtin tool API',
     },
+    {
+      forbidden: 'read(id: string)',
+      message: 'local memory declarations must use package-local memory API',
+    },
+    {
+      forbidden: 'write(input: MemoryInput)',
+      message: 'local memory declarations must use package-local memory API',
+    },
+    {
+      forbidden: 'delete(id: string): Promise<boolean>',
+      message: 'local memory declarations must use package-local memory API',
+    },
   ],
   'local adapter declaration boundary',
 );
