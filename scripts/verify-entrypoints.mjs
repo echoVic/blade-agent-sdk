@@ -480,6 +480,22 @@ assertNoForbiddenDeclarationSymbols(
 console.log('local adapter entry boundary passed');
 
 assertNoForbiddenDeclarationSymbols(
+  readFileSync(join(packageRoot, 'dist/types/permissions.d.ts'), 'utf8'),
+  [
+    {
+      forbidden: 'SensitiveFileDetector',
+      message: 'local permission declarations must be emitted from package-local permission source',
+    },
+    {
+      forbidden: './ToolEffects.js',
+      message: 'local permission declarations must use package-local tool contracts',
+    },
+  ],
+  'local permission declaration boundary',
+);
+console.log('local permission declaration boundary passed');
+
+assertNoForbiddenDeclarationSymbols(
   readFileSync(join(packageRoot, 'dist/server/index.js'), 'utf8'),
   [
     {
