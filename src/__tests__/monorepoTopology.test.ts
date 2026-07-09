@@ -405,6 +405,7 @@ describe('monorepo topology', () => {
     expect(agentLoopSource).toContain("from './planToolExecution.js'");
     expect(agentLoopSource).toContain("from './repairToolCallParams.js'");
     expect(agentLoopSource).toContain("from './loopEvents.js'");
+    expect(agentLoopSource).toContain("from './modelResponseTurn.js'");
     expect(agentLoopSource).toContain("from './responseEvents.js'");
     expect(agentLoopSource).toContain("from './loopClock.js'");
     expect(agentLoopSource).toContain("from './loopResult.js'");
@@ -445,7 +446,8 @@ describe('monorepo topology', () => {
     expect(rootAgentLoopSource).not.toContain('buildAgentLoopToolTurnCompletion({');
     expect(rootAgentLoopSource).not.toContain('buildAgentLoopReactiveCompactRetryEvent');
     expect(rootAgentLoopSource).not.toContain('buildAgentLoopTurnRetryEvent');
-    expect(rootAgentLoopSource).toContain('handleAgentLoopResponseNoToolGateWithEmissions');
+    expect(rootAgentLoopSource).toContain('handleAgentLoopModelResponseWithEmissions');
+    expect(rootAgentLoopSource).not.toContain('handleAgentLoopResponseNoToolGateWithEmissions');
     expect(rootAgentLoopSource).not.toContain('handleAgentLoopNoToolTurnWithEmissions');
     expect(rootAgentLoopSource).not.toContain('handleAgentLoopNoToolTurn({');
     expect(rootAgentLoopSource).not.toContain('noToolHandling.continuation.events');
@@ -510,7 +512,7 @@ describe('monorepo topology', () => {
     );
     expect(rootAgentLoopSource).not.toContain('shouldExitAgentLoopForToolDecision');
     expect(rootAgentLoopSource).toContain('createAgentLoopClock');
-    expect(rootAgentLoopSource).toContain('handleAgentLoopAssistantMessage');
+    expect(rootAgentLoopSource).not.toContain('handleAgentLoopAssistantMessage');
     expect(rootAgentLoopSource).not.toContain('buildAgentLoopAssistantMessageProjection');
     expect(rootAgentLoopSource).not.toContain('runAgentLoopAssistantMessageHook');
     expect(rootAgentLoopSource).not.toContain('messageHooks?.onAssistant');
@@ -525,7 +527,7 @@ describe('monorepo topology', () => {
     expect(rootAgentLoopSource).not.toContain(
       'convState.append(...buildAgentLoopToolResultAppendMessages(toolResultContinuation))',
     );
-    expect(rootAgentLoopSource).toContain('handleAgentLoopPostUsageGateWithEmissions');
+    expect(rootAgentLoopSource).not.toContain('handleAgentLoopPostUsageGateWithEmissions');
     expect(rootAgentLoopSource).not.toContain('emitAgentLoopTokenUsageEventIfPresent');
     expect(rootAgentLoopSource).not.toContain('buildAgentLoopTokenUsageInfo');
     expect(rootAgentLoopSource).not.toContain(
@@ -547,6 +549,10 @@ describe('monorepo topology', () => {
     expect(rootAgentLoopSource).not.toContain('handleAgentLoopTokenBudgetCheck');
     expect(rootAgentLoopSource).not.toContain('const budgetCheck');
     expect(rootAgentLoopSource).not.toContain("budgetCheck.action === 'stop'");
+    expect(rootAgentLoopSource).not.toContain('const postUsageGate');
+    expect(rootAgentLoopSource).not.toContain("postUsageGate.action === 'stop'");
+    expect(rootAgentLoopSource).not.toContain('const responseNoToolGate');
+    expect(rootAgentLoopSource).not.toContain("responseNoToolGate.action === 'finish'");
     expect(rootAgentLoopSource).not.toContain('const abortAfterBudget');
     expect(rootAgentLoopSource).not.toContain("abortAfterBudget.action === 'abort'");
     expect(rootAgentLoopSource).not.toContain('runAgentLoopTokenBudgetCheck');

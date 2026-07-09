@@ -19,12 +19,6 @@ import {
   createAgentRecoveryAttemptTracker,
 } from './recoveryAttemptTracker.js';
 import {
-  handleAgentLoopAssistantMessage,
-} from './loop/assistantMessage.js';
-import {
-  handleAgentLoopResponseNoToolGateWithEmissions,
-} from './loop/decideNoToolTurn.js';
-import {
   buildAgentLoopEffectiveMaxTurns,
   handleAgentLoopToolTurnTail,
 } from './loop/decideTurnLimit.js';
@@ -37,8 +31,8 @@ import {
   handleAgentLoopRunTurnWithRecovery,
 } from './loop/runTurnWithRecovery.js';
 import {
-  handleAgentLoopPostUsageGateWithEmissions,
-} from './loop/tokenUsage.js';
+  handleAgentLoopModelResponseWithEmissions,
+} from './loop/modelResponseTurn.js';
 import {
   createAgentLoopTokenUsageTracker,
 } from './loop/tokenUsageTracker.js';
@@ -210,46 +204,29 @@ export async function* agentLoop(
       streamingExecutionResults,
     } = runTurnHandling;
 
-    const postUsageGate = yield* handleAgentLoopPostUsageGateWithEmissions({
+    const modelResponseHandling = yield* handleAgentLoopModelResponseWithEmissions({
       tokenBudget,
-      modelUsage: turnResult.usage,
-      tokenUsageTracker,
+      response: turnResult,
+      streamingExecutionResults,
+      conversation: convState,
       turnStateProjection,
       loopClock,
       turnsCount,
       toolResultTracker,
+      tokenUsageTracker,
       signal,
       turnCounter,
-    });
-    if (postUsageGate.action === 'stop' || postUsageGate.action === 'abort') {
-      return postUsageGate.result as LoopResult;
-    }
-
-    const responseNoToolGate = yield* handleAgentLoopResponseNoToolGateWithEmissions({
-      response: turnResult,
-      signal,
-      streamingExecutionResults,
-      conversation: convState,
-      turn: turnsCount,
       hooks,
-      loopClock,
-      toolResultTracker,
-      tokenUsageTracker,
-      tokenBudget,
     });
-    if (responseNoToolGate.action === 'continue_loop') {
+    if (modelResponseHandling.action === 'abort' || modelResponseHandling.action === 'stop') {
+      return modelResponseHandling.result as LoopResult;
+    }
+    if (modelResponseHandling.action === 'continue_loop') {
       continue;
     }
-    if (responseNoToolGate.action === 'finish') {
-      return responseNoToolGate.result as LoopResult;
+    if (modelResponseHandling.action === 'finish') {
+      return modelResponseHandling.result as LoopResult;
     }
-
-    await handleAgentLoopAssistantMessage({
-      conversation: convState,
-      response: turnResult,
-      turn: turnsCount,
-      hooks,
-    });
 
     const toolExecutionResults =
       yield* handleAgentLoopToolExecutionResultsWithEmissions({
