@@ -1,6 +1,6 @@
-import type { MessageId, SessionId } from '@/types/branded.js';
 import type { IBackgroundAgentManager } from '../../agent/types.js';
 import type { ContextSnapshot } from '../../runtime/index.js';
+import type { MessageId, SessionId } from '../../types/branded.js';
 import type { BladeConfig, JsonObject, PermissionMode } from '../../types/common.js';
 import type { ToolCatalog } from '../catalog/index.js';
 import type { ToolRegistry } from '../registry/ToolRegistry.js';

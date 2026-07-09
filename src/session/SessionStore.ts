@@ -1,9 +1,9 @@
 import * as fs from 'node:fs/promises';
-import { JSONLStore } from '@/context/storage/JSONLStore.js';
 import {
   getSessionFilePathFromStorageRoot,
   normalizeSessionStorageRoot,
-} from '@/context/storage/pathUtils.js';
+} from '../context/storage/pathUtils.js';
+import { JSONLStore } from '../context/storage/JSONLStore.js';
 import type { PartInfo, SessionEvent, SessionInfo } from '../context/types.js';
 import type { ContentPart, Message, ToolCall } from '../services/ChatServiceInterface.js';
 import { cloneJsonValue, cloneMessage } from '../services/messageUtils.js';

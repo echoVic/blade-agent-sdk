@@ -29,6 +29,21 @@ function readJson(path: string): PackageJson {
 }
 
 describe('monorepo topology', () => {
+  it('keeps legacy root source free of workspace path aliases', () => {
+    const files = [
+      'src/session/SessionStore.ts',
+      'src/tools/types/ExecutionTypes.ts',
+    ];
+
+    for (const file of files) {
+      const source = readFileSync(file, 'utf-8');
+
+      expect(source, `${file} should use explicit relative imports`).not.toMatch(
+        /(?:from|import)\s*\(?['"]@\//,
+      );
+    }
+  });
+
   it('declares packages workspace and keeps root as a private orchestrator', () => {
     const root = readJson('package.json');
     const workspace = readFileSync('pnpm-workspace.yaml', 'utf-8');
