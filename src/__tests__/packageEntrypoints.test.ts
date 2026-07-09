@@ -201,8 +201,12 @@ describe('package entrypoints', () => {
     expect(verifier).toContain("from '@blade-ai/agent';");
     expect(verifier).toContain("from '@blade-ai/agent/kernel';");
     expect(verifier).toContain("from '@blade-ai/agent/loop';");
+    expect(verifier).toContain("from '@blade-ai/agent/protocol';");
+    expect(verifier).toContain("from '@blade-ai/agent/ports';");
     expect(verifier).toContain("from '@blade-ai/agent/state';");
     expect(verifier).toContain("console.log('local agent browser bundle'");
+    expect(verifier).toContain('local agent protocol runtime empty');
+    expect(verifier).toContain('local agent ports runtime empty');
     expect(verifier).toContain('local agent browser bundle core runtime smoke did not execute');
     expect(verifier).toContain('local agent browser bundle loop/recovery smoke did not execute');
     expect(verifier).toContain('local agent browser bundle message projection smoke did not execute');

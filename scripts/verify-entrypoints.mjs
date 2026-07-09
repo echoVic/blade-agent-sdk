@@ -160,6 +160,8 @@ try {
       "import { ExecutionEpoch } from '@blade-ai/agent/epoch';",
       "import { AgentKernel as AgentKernelFromSubpath } from '@blade-ai/agent/kernel';",
       "import { AsyncEventQueue, createInterruptAwareAbortSignal, decideNoToolTurn, decideTurnLimit, planToolExecution, resolveToolInterruptBehavior, toolUpdateToAgentEvent, ToolKind } from '@blade-ai/agent/loop';",
+      "import * as agentProtocol from '@blade-ai/agent/protocol';",
+      "import * as agentPorts from '@blade-ai/agent/ports';",
       "import { isOverflowRecoverable } from '@blade-ai/agent/recovery';",
       "import { VALID_SYSTEM_SOURCES, isValidSystemSource, modelResponseToAssistantMessage, toolResultToToolMessage } from '@blade-ai/agent/state';",
       "import { createBufferedAgentTracePort } from '@blade-ai/agent/tracing';",
@@ -200,6 +202,8 @@ try {
       "trace.record({ type: 'turn_end', content: 'ok', finishReason: 'stop' });",
       'const traceEvent = trace.getEvents()[0];',
       "console.log('local agent browser bundle', kernelReady, subpathKernelReady, budgetReady, epochReady, queueReady, decision.action, turnLimit.action, toolPlan.mode, interruptBehavior, toolEvent?.type, overflow, systemSource, isSystemSource, assistantMessage.role, toolMessage.role, traceEvent?.type);",
+      "console.log('local agent protocol runtime empty', Object.keys(agentProtocol).length);",
+      "console.log('local agent ports runtime empty', Object.keys(agentPorts).length);",
     ].join('\n'),
     'utf8',
   );
@@ -241,6 +245,16 @@ try {
     agentBundleOutput,
     'turn_end',
     'local agent browser bundle tracing smoke did not execute',
+  );
+  assertIncludes(
+    agentBundleOutput,
+    'local agent protocol runtime empty 0',
+    'local agent protocol runtime empty',
+  );
+  assertIncludes(
+    agentBundleOutput,
+    'local agent ports runtime empty 0',
+    'local agent ports runtime empty',
   );
 } finally {
   rmSync(tempDir, { recursive: true, force: true });
