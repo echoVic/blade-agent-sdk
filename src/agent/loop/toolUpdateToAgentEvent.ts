@@ -6,7 +6,7 @@ import type { FunctionToolCall } from './types.js';
 import {
   buildAgentLoopToolResultEvent as buildPackageAgentLoopToolResultEvent,
   toolUpdateToAgentEvent as mapToolUpdateToAgentEvent,
-} from '../../../packages/agent/src/loop/toolUpdateToAgentEvent.js';
+} from '@blade-ai/agent/loop';
 
 export function toolUpdateToAgentEvent(
   update: ToolExecutionUpdate,

@@ -1104,6 +1104,13 @@ describe('monorepo topology', () => {
     }
   });
 
+  it('keeps the root tool-update adapter on the public loop package subpath', () => {
+    const source = readFileSync('src/agent/loop/toolUpdateToAgentEvent.ts', 'utf-8');
+
+    expect(source).toContain("from '@blade-ai/agent/loop'");
+    expect(source).not.toContain('packages/agent/src');
+  });
+
   it('keeps root recovery, state, and epoch forwarders on public package subpaths', () => {
     const rootTsconfig = readJson('tsconfig.json');
     const rootAgentForwarders = [
