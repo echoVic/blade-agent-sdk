@@ -354,6 +354,7 @@ describe('monorepo topology', () => {
       'packages/agent/src/loop/toolInterruptBehavior.ts',
       'packages/agent/src/loop/toolUpdateToAgentEvent.ts',
       'src/agent/loop/adapterContracts.ts',
+      'src/agent/loop/rootAgentLoopAdapter.ts',
       'packages/agent/src/protocol/index.ts',
       'packages/agent/src/ports/index.ts',
       'packages/agent/src/recovery/index.ts',
@@ -400,6 +401,10 @@ describe('monorepo topology', () => {
     const agentLoopSource = readFileSync('packages/agent/src/loop/index.ts', 'utf-8');
     const rootAgentLoopSource = readFileSync('src/agent/AgentLoop.ts', 'utf-8');
     const rootAdapterContractsSource = readFileSync('src/agent/loop/adapterContracts.ts', 'utf-8');
+    const rootAgentLoopAdapterSource = readFileSync(
+      'src/agent/loop/rootAgentLoopAdapter.ts',
+      'utf-8',
+    );
     const agentRecoverySource = readFileSync('packages/agent/src/recovery/index.ts', 'utf-8');
     const agentStateSource = readFileSync('packages/agent/src/state/index.ts', 'utf-8');
 
@@ -437,10 +442,16 @@ describe('monorepo topology', () => {
     expect(agentLoopSource).toContain("from './turnEntry.js'");
     expect(agentLoopSource).toContain("from './toolInterruptBehavior.js'");
     expect(agentLoopSource).toContain("from './toolUpdateToAgentEvent.js'");
-    expect(rootAgentLoopSource).toContain('handleAgentLoopWithEmissions');
+    expect(rootAgentLoopSource).toContain("from './loop/rootAgentLoopAdapter.js'");
+    expect(rootAgentLoopSource).not.toContain('handleAgentLoopWithEmissions');
+    expect(rootAgentLoopAdapterSource).toContain('handleAgentLoopWithEmissions');
     expect(rootAgentLoopSource).toContain("from './loop/adapterContracts.js'");
     expect(rootAdapterContractsSource).toContain('AgentLoopAdapterConfig');
     expect(rootAdapterContractsSource).toContain('AgentLoopAdapterHooks');
+    expect(rootAgentLoopSource).not.toContain('NOOP_LOGGER');
+    expect(rootAgentLoopSource).not.toContain('ExecutionEpoch');
+    expect(rootAgentLoopSource).not.toContain('executeToolCalls');
+    expect(rootAgentLoopSource).not.toContain('runTurn');
     expect(rootAgentLoopSource).not.toContain('export interface AgentLoopHooks');
     expect(rootAgentLoopSource).not.toContain('export interface AgentLoopConfig');
     expect(rootAgentLoopSource).not.toContain('handleAgentLoopTurnCycleWithEmissions');
