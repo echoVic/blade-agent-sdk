@@ -250,6 +250,12 @@ describe('package entrypoints', () => {
     expect(verifier).toContain('local session declaration public boundary passed');
     expect(verifier).toContain('local session runtime factory declarations must expose only create/resume primitives');
     expect(verifier).toContain('local session factory declaration boundary passed');
+    expect(verifier).toContain('local session config declarations must be emitted from package-local session config source');
+    expect(verifier).toContain('local session config declarations must use package-local core config types');
+    expect(verifier).toContain('local session config declaration boundary passed');
+    expect(verifier).toContain('local session store declarations must be emitted from package-local session store source');
+    expect(verifier).toContain('local session store declarations must not point back at legacy root session store');
+    expect(verifier).toContain('local session store declaration boundary passed');
     expect(verifier).toContain('local server runtime entry must be an explicit package-local facade');
     expect(verifier).toContain('local server declarations must be an explicit package-local facade');
     expect(verifier).toContain('local server facade boundary passed');
