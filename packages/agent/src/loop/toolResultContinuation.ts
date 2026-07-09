@@ -14,6 +14,20 @@ import {
 import {
   buildAgentLoopToolResultEvent,
 } from './toolUpdateToAgentEvent.js';
+import {
+  buildAgentLoopToolExitDecision,
+  buildAgentLoopToolExitDecisionInputFromLoopState,
+  shouldExitAgentLoopForToolDecision,
+  type AgentLoopToolExitDecisionEvent,
+  type AgentLoopToolExitDecisionExit,
+  type AgentLoopToolExitDecisionResultLike,
+  type AgentLoopToolExitTimingSource,
+  type AgentLoopToolExitToolResultTrackerLike,
+} from './loopResult.js';
+import {
+  recordAgentToolResult,
+  type AgentToolResultTracker,
+} from './toolResultTracker.js';
 
 export interface AgentLoopToolResultContinuationInput<
   TResult extends AgentLoopToolMessageInput['result'] & AgentLoopToolInjectedMessagesInput<Message>,
@@ -81,6 +95,43 @@ export interface RunAgentLoopToolResultAfterExecHookInput<
   toolUseUuid: string | null;
 }
 
+export interface HandleAgentLoopToolResultInput<
+  TResult extends AgentLoopToolMessageInput['result']
+    & AgentLoopToolInjectedMessagesInput<Message>
+    & AgentLoopToolExitDecisionResultLike,
+  TStreamingExecutionResult,
+> {
+  toolCall: AgentFunctionToolCall;
+  result: TResult;
+  toolUseUuid: string | null;
+  streamingExecutionResults: readonly TStreamingExecutionResult[] | undefined;
+  loopClock: AgentLoopToolExitTimingSource;
+  turnsCount: number;
+  toolResultTracker: AgentToolResultTracker<TResult> & AgentLoopToolExitToolResultTrackerLike;
+  conversation: AgentLoopToolResultContinuationConversationLike;
+  hooks?: AgentLoopToolResultAfterExecHookContainer<TResult> | null;
+}
+
+export type AgentLoopToolResultHandling<
+  TResult extends AgentLoopToolMessageInput['result'] & AgentLoopToolInjectedMessagesInput<Message>,
+> =
+  | {
+      action: 'continue';
+      continuation: AgentLoopToolResultContinuation<TResult>;
+    }
+  | {
+      action: 'exit';
+      exitDecision: AgentLoopToolExitDecisionExit<TResult>;
+    };
+
+export type AgentLoopToolResultHandlingEvent<
+  TResult extends AgentLoopToolMessageInput['result']
+    & AgentLoopToolInjectedMessagesInput<Message>
+    & AgentLoopToolExitDecisionResultLike,
+> =
+  | AgentLoopToolResultContinuation<TResult>['events'][number]
+  | AgentLoopToolExitDecisionEvent<TResult>;
+
 export function buildAgentLoopToolResultContinuation<
   TResult extends AgentLoopToolMessageInput['result'] & AgentLoopToolInjectedMessagesInput<Message>,
   TStreamingExecutionResult,
@@ -147,4 +198,66 @@ export async function runAgentLoopToolResultAfterExecHook<
   }
 
   return input.continuation;
+}
+
+export async function* handleAgentLoopToolResult<
+  TResult extends AgentLoopToolMessageInput['result']
+    & AgentLoopToolInjectedMessagesInput<Message>
+    & AgentLoopToolExitDecisionResultLike,
+  TStreamingExecutionResult,
+>(
+  input: HandleAgentLoopToolResultInput<TResult, TStreamingExecutionResult>,
+): AsyncGenerator<
+  AgentLoopToolResultHandlingEvent<TResult>,
+  AgentLoopToolResultHandling<TResult>
+> {
+  recordAgentToolResult({ tracker: input.toolResultTracker, result: input.result });
+
+  const exitDecision = buildAgentLoopToolExitDecision(
+    buildAgentLoopToolExitDecisionInputFromLoopState({
+      toolCall: input.toolCall,
+      result: input.result,
+      streamingExecutionResults: input.streamingExecutionResults,
+      loopClock: input.loopClock,
+      turnsCount: input.turnsCount,
+      toolResultTracker: input.toolResultTracker,
+    }),
+  );
+
+  if (shouldExitAgentLoopForToolDecision(exitDecision)) {
+    for (const event of exitDecision.events) {
+      yield event;
+    }
+    return {
+      action: 'exit',
+      exitDecision,
+    };
+  }
+
+  const continuation = buildAgentLoopToolResultContinuation({
+    toolCall: input.toolCall,
+    result: input.result,
+    streamingExecutionResults: input.streamingExecutionResults,
+  });
+  for (const event of continuation.events) {
+    yield event;
+  }
+
+  await runAgentLoopToolResultAfterExecHook({
+    continuation,
+    hooks: input.hooks,
+    toolCall: input.toolCall,
+    result: input.result,
+    toolUseUuid: input.toolUseUuid,
+  });
+
+  applyAgentLoopToolResultContinuation({
+    conversation: input.conversation,
+    continuation,
+  });
+
+  return {
+    action: 'continue',
+    continuation,
+  };
 }

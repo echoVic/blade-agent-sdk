@@ -4,6 +4,7 @@ import {
   buildAgentLoopAfterExecHookPayload,
   buildAgentLoopToolResultAppendMessages,
   buildAgentLoopToolResultContinuation,
+  handleAgentLoopToolResult,
   runAgentLoopToolResultAfterExecHook,
 } from '../loop/index.js';
 
@@ -12,6 +13,20 @@ const toolCall = {
   type: 'function' as const,
   function: { name: 'Read', arguments: '{"file":"README.md"}' },
 };
+
+async function collectGenerator<TEvent, TResult>(
+  generator: AsyncGenerator<TEvent, TResult>,
+): Promise<{ events: TEvent[]; result: TResult }> {
+  const events: TEvent[] = [];
+
+  while (true) {
+    const next = await generator.next();
+    if (next.done) {
+      return { events, result: next.value };
+    }
+    events.push(next.value);
+  }
+}
 
 describe('agent loop tool result continuation projection', () => {
   it('projects non-streaming tool results into result effects and storage messages', () => {
@@ -220,5 +235,173 @@ describe('agent loop tool result continuation projection', () => {
     });
 
     expect(calls).toEqual([]);
+  });
+
+  it('handles continuing tool results with event-before-hook-before-append ordering', async () => {
+    const operations: unknown[] = [];
+    const result = {
+      success: true,
+      llmContent: 'done',
+      newMessages: [{ role: 'system' as const, content: 'fresh context' }],
+    };
+
+    const handled = await collectGenerator(
+      handleAgentLoopToolResult({
+        toolCall,
+        result,
+        toolUseUuid: 'tool-use-1',
+        streamingExecutionResults: undefined,
+        loopClock: {
+          resultTiming: ({ turnsCount, toolCallsCount }) => {
+            operations.push({ type: 'timing', turnsCount, toolCallsCount });
+            return {
+              turnsCount,
+              toolCallsCount,
+              startTime: 1000,
+              now: 1040,
+            };
+          },
+        },
+        turnsCount: 3,
+        toolResultTracker: {
+          toolCallsCount: 0,
+          recentToolResults: [],
+          record(recordedResult) {
+            operations.push({ type: 'record', result: recordedResult });
+          },
+        },
+        conversation: {
+          append: (...messages) => {
+            operations.push({ type: 'append', messages });
+          },
+        },
+        hooks: {
+          tool: {
+            afterExec: async (payload) => {
+              operations.push({ type: 'hook', payload });
+            },
+          },
+        },
+      }),
+    );
+
+    expect(handled.events).toEqual([{ type: 'tool_result', toolCall, result }]);
+    expect(handled.result.action).toBe('continue');
+    if (handled.result.action === 'continue') {
+      expect(handled.result.continuation.toolMessage).toEqual({
+        role: 'tool',
+        tool_call_id: 'call_read',
+        name: 'Read',
+        content: 'done',
+      });
+    }
+    expect(operations).toEqual([
+      { type: 'record', result },
+      { type: 'timing', turnsCount: 3, toolCallsCount: 0 },
+      {
+        type: 'hook',
+        payload: {
+          toolCall,
+          result,
+          toolUseUuid: 'tool-use-1',
+        },
+      },
+      {
+        type: 'append',
+        messages: [
+          {
+            role: 'tool',
+            tool_call_id: 'call_read',
+            name: 'Read',
+            content: 'done',
+          },
+          {
+            role: 'system',
+            content: 'fresh context',
+            metadata: { _systemSource: 'tool_injection' },
+          },
+        ],
+      },
+    ]);
+  });
+
+  it('handles exit tool results without continuation hooks or appends', async () => {
+    const operations: unknown[] = [];
+    const result = {
+      success: true,
+      llmContent: 'leaving plan mode',
+      metadata: {
+        shouldExitLoop: true,
+        targetMode: 'default',
+      },
+    };
+
+    const handled = await collectGenerator(
+      handleAgentLoopToolResult({
+        toolCall,
+        result,
+        toolUseUuid: null,
+        streamingExecutionResults: undefined,
+        loopClock: {
+          resultTiming: ({ turnsCount, toolCallsCount }) => {
+            operations.push({ type: 'timing', turnsCount, toolCallsCount });
+            return {
+              turnsCount,
+              toolCallsCount,
+              startTime: 2000,
+              now: 2050,
+            };
+          },
+        },
+        turnsCount: 4,
+        toolResultTracker: {
+          toolCallsCount: 1,
+          recentToolResults: [],
+          record(recordedResult) {
+            operations.push({ type: 'record', result: recordedResult });
+          },
+        },
+        conversation: {
+          append: (...messages) => {
+            operations.push({ type: 'append', messages });
+          },
+        },
+        hooks: {
+          tool: {
+            afterExec: async (payload) => {
+              operations.push({ type: 'hook', payload });
+            },
+          },
+        },
+      }),
+    );
+
+    expect(handled.events).toEqual([
+      { type: 'tool_result', toolCall, result },
+      { type: 'turn_end', turn: 4, hasToolCalls: true },
+      { type: 'agent_end' },
+    ]);
+    expect(handled.result).toEqual({
+      action: 'exit',
+      exitDecision: {
+        action: 'exit',
+        events: handled.events,
+        result: {
+          success: true,
+          finalMessage: 'leaving plan mode',
+          metadata: {
+            turnsCount: 4,
+            toolCallsCount: 1,
+            duration: 50,
+            shouldExitLoop: true,
+            targetMode: 'default',
+          },
+        },
+      },
+    });
+    expect(operations).toEqual([
+      { type: 'record', result },
+      { type: 'timing', turnsCount: 4, toolCallsCount: 1 },
+    ]);
   });
 });

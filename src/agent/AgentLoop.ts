@@ -58,10 +58,7 @@ import {
   buildAgentLoopAbortCompletion,
   buildAgentLoopAbortCompletionInputFromCounterState,
   buildAgentLoopAbortCompletionInputFromLoopState,
-  buildAgentLoopToolExitDecision,
-  buildAgentLoopToolExitDecisionInputFromLoopState,
   shouldAbortAgentLoop,
-  shouldExitAgentLoopForToolDecision,
 } from './loop/loopResult.js';
 import {
   prepareAgentLoopNonStreamingToolExecution,
@@ -78,14 +75,9 @@ import {
   createAgentLoopTokenUsageTracker,
 } from './loop/tokenUsageTracker.js';
 import {
-  applyAgentLoopToolResultContinuation,
-  buildAgentLoopToolResultContinuation,
-  runAgentLoopToolResultAfterExecHook,
+  handleAgentLoopToolResult,
 } from './loop/toolResultContinuation.js';
-import {
-  createAgentToolResultTracker,
-  recordAgentToolResult,
-} from './loop/toolResultTracker.js';
+import { createAgentToolResultTracker } from './loop/toolResultTracker.js';
 import { buildAgentLoopTurnStateProjectionFromPreparation } from './loop/turnState.js';
 import {
   applyAgentLoopReactiveCompactRetry,
@@ -468,45 +460,20 @@ export async function* agentLoop(
     for (const { toolCall, result, toolUseUuid } of executionResults) {
       if (shouldStopAgentLoopToolResultProcessing(epoch)) break;
 
-      recordAgentToolResult({ tracker: toolResultTracker, result });
-
-      const toolExitDecision = buildAgentLoopToolExitDecision(
-        buildAgentLoopToolExitDecisionInputFromLoopState({
-          toolCall,
-          result,
-          streamingExecutionResults,
-          loopClock,
-          turnsCount,
-          toolResultTracker,
-        }),
-      );
-      if (shouldExitAgentLoopForToolDecision(toolExitDecision)) {
-        for (const event of toolExitDecision.events) {
-          yield event;
-        }
-        return toolExitDecision.result as LoopResult;
-      }
-
-      const toolResultContinuation = buildAgentLoopToolResultContinuation({
-        toolCall,
-        result,
-        streamingExecutionResults,
-      });
-      for (const event of toolResultContinuation.events) {
-        yield event;
-      }
-      await runAgentLoopToolResultAfterExecHook({
-        continuation: toolResultContinuation,
-        hooks,
+      const toolResultHandling = yield* handleAgentLoopToolResult({
         toolCall,
         result,
         toolUseUuid,
-      });
-
-      applyAgentLoopToolResultContinuation({
+        streamingExecutionResults,
+        loopClock,
+        turnsCount,
+        toolResultTracker,
         conversation: convState,
-        continuation: toolResultContinuation,
+        hooks,
       });
+      if (toolResultHandling.action === 'exit') {
+        return toolResultHandling.exitDecision.result as LoopResult;
+      }
     }
 
     const toolTurnCompletion = buildAgentLoopToolTurnCompletion(
