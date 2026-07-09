@@ -180,6 +180,34 @@ export interface HandleAgentLoopNonStreamingToolExecutionGateInput<
   toolResultTracker: AgentLoopAbortCompletionToolResultTrackerLike;
 }
 
+export interface HandleAgentLoopNonStreamingToolExecutionInput<
+  TTurnState extends AgentLoopTurnStateFields<
+    ToolExecutionPermissionMode | undefined,
+    unknown
+  >,
+  TExecutionPipeline extends { getRegistry(): ToolExecutionRegistryLike },
+  TExecutionResult,
+  TLogger = unknown,
+  TBeforeExec = unknown,
+  TOnUpdate = unknown,
+> extends HandleAgentLoopNonStreamingToolExecutionGateInput<
+    TTurnState,
+    TExecutionPipeline,
+    TExecutionResult,
+    TLogger,
+    TBeforeExec,
+    TOnUpdate
+  > {
+  executeToolCalls(
+    input: AgentLoopExecuteToolCallsInput<
+      TExecutionPipeline,
+      AgentLoopTurnStateProjection<TTurnState>['executionContext'],
+      TLogger,
+      AgentLoopExecuteToolCallsHooks<TBeforeExec, TOnUpdate> | undefined
+    >,
+  ): Promise<readonly TExecutionResult[]> | readonly TExecutionResult[];
+}
+
 export type AgentLoopNonStreamingToolExecutionPreparation<
   TExecutionPipeline,
   TExecutionContext,
@@ -228,6 +256,16 @@ export type AgentLoopNonStreamingToolExecutionGateHandling<
         TLogger,
         AgentLoopExecuteToolCallsHooks<TBeforeExec, TOnUpdate> | undefined
       >;
+    }
+  | {
+      action: 'abort';
+      result: AgentLoopAbortResult;
+    };
+
+export type AgentLoopNonStreamingToolExecutionHandling<TExecutionResult> =
+  | {
+      action: 'continue';
+      executionResults: readonly TExecutionResult[];
     }
   | {
       action: 'abort';
@@ -574,6 +612,50 @@ export async function* handleAgentLoopNonStreamingToolExecutionGateWithEmissions
   return {
     action: 'execute',
     executeInput: preparation.executeInput,
+  };
+}
+
+export async function* handleAgentLoopNonStreamingToolExecutionWithEmissions<
+  TTurnState extends AgentLoopTurnStateFields<
+    ToolExecutionPermissionMode | undefined,
+    unknown
+  >,
+  TExecutionPipeline extends { getRegistry(): ToolExecutionRegistryLike },
+  TExecutionResult,
+  TLogger = unknown,
+  TBeforeExec = unknown,
+  TOnUpdate = unknown,
+>(
+  input: HandleAgentLoopNonStreamingToolExecutionInput<
+    TTurnState,
+    TExecutionPipeline,
+    TExecutionResult,
+    TLogger,
+    TBeforeExec,
+    TOnUpdate
+  >,
+): AsyncGenerator<
+  AgentLoopNonStreamingToolExecutionGateEvent,
+  AgentLoopNonStreamingToolExecutionHandling<TExecutionResult>
+> {
+  const gate = yield* handleAgentLoopNonStreamingToolExecutionGateWithEmissions(input);
+  if (gate.action === 'abort') {
+    return {
+      action: 'abort',
+      result: gate.result,
+    };
+  }
+
+  if (gate.action === 'skip') {
+    return {
+      action: 'continue',
+      executionResults: gate.executionResults,
+    };
+  }
+
+  return {
+    action: 'continue',
+    executionResults: await input.executeToolCalls(gate.executeInput),
   };
 }
 

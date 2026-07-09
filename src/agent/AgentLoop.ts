@@ -37,7 +37,7 @@ import {
   handleAgentLoopAbortIfRequested,
 } from './loop/loopResult.js';
 import {
-  handleAgentLoopNonStreamingToolExecutionGateWithEmissions,
+  handleAgentLoopNonStreamingToolExecutionWithEmissions,
 } from './loop/planToolExecution.js';
 import { runTurn } from './loop/runTurn.js';
 import type { ToolExecutionUpdate } from './loop/runToolCall.js';
@@ -322,8 +322,8 @@ export async function* agentLoop(
       }>
       | undefined = streamingExecutionResults;
 
-    const nonStreamingToolExecutionGate =
-      yield* handleAgentLoopNonStreamingToolExecutionGateWithEmissions({
+    const nonStreamingToolExecution =
+      yield* handleAgentLoopNonStreamingToolExecutionWithEmissions({
         executionResults,
         response: turnResult,
         executionPipeline,
@@ -334,14 +334,12 @@ export async function* agentLoop(
         loopClock,
         turnsCount,
         toolResultTracker,
+        executeToolCalls,
       });
-    if (nonStreamingToolExecutionGate.action === 'abort') {
-      return nonStreamingToolExecutionGate.result as LoopResult;
-    } else if (nonStreamingToolExecutionGate.action === 'skip') {
-      executionResults = nonStreamingToolExecutionGate.executionResults;
-    } else {
-      executionResults = await executeToolCalls(nonStreamingToolExecutionGate.executeInput);
+    if (nonStreamingToolExecution.action === 'abort') {
+      return nonStreamingToolExecution.result as LoopResult;
     }
+    executionResults = nonStreamingToolExecution.executionResults;
 
     const toolResultsHandling = yield* handleAgentLoopToolResults({
       executionResults,

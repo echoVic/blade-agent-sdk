@@ -568,11 +568,15 @@ describe('monorepo topology', () => {
     expect(rootAgentLoopSource).not.toContain('recordAgentToolResult');
     expect(rootAgentLoopSource).not.toContain('toolResultTracker.record(');
     expect(rootAgentLoopSource).toContain(
+      'handleAgentLoopNonStreamingToolExecutionWithEmissions',
+    );
+    expect(rootAgentLoopSource).not.toContain(
       'handleAgentLoopNonStreamingToolExecutionGateWithEmissions',
     );
     expect(rootAgentLoopSource).not.toContain('prepareAgentLoopNonStreamingToolExecution');
     expect(rootAgentLoopSource).not.toContain('shouldRunAgentLoopNonStreamingToolExecution');
     expect(rootAgentLoopSource).not.toContain('abortBeforeToolExecution');
+    expect(rootAgentLoopSource).not.toContain('executeInput');
     expect(rootAgentLoopSource).not.toContain('buildAgentLoopToolStartEvents');
     expect(rootAgentLoopSource).not.toContain(
       'buildAgentLoopToolStartEventsInputFromExecutionPipeline',

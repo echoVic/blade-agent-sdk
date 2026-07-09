@@ -9,6 +9,7 @@ import {
   buildAgentLoopToolExecutionPlanInputFromExecutionPipelineProjection,
   buildAgentLoopToolExecutionPlanInputFromTurnProjection,
   handleAgentLoopNonStreamingToolExecutionGateWithEmissions,
+  handleAgentLoopNonStreamingToolExecutionWithEmissions,
   planAgentLoopToolExecution,
   planToolExecution,
   prepareAgentLoopNonStreamingToolExecution,
@@ -628,6 +629,137 @@ describe('planToolExecution', () => {
           duration: 30,
         },
       },
+    });
+  });
+
+  it('handles non-streaming tool execution with an injected executor after start events', async () => {
+    const readCall = makeCall('Read');
+    const executedResults = [
+      {
+        toolCall: readCall,
+        result: { success: true, llmContent: 'read complete' },
+        toolUseUuid: 'tool-use-1',
+      },
+    ];
+    const operations: unknown[] = [];
+
+    const generator = handleAgentLoopNonStreamingToolExecutionWithEmissions({
+      executionResults: undefined,
+      response: {
+        toolCalls: [readCall],
+      },
+      executionPipeline: {
+        getRegistry: () => mockRegistry,
+      },
+      turnStateProjection: {
+        turnState: {
+          maxContextTokens: 128000,
+          executionContext: { cwd: '/tmp/project' },
+          permissionMode: 'default' as const,
+        },
+        maxContextTokens: 128000,
+        executionContext: { cwd: '/tmp/project' },
+        permissionMode: 'default' as const,
+      },
+      signal: undefined,
+      loopClock: {
+        resultTiming: () => {
+          throw new Error('non-aborted execution should not inspect abort timing');
+        },
+      },
+      turnsCount: 5,
+      toolResultTracker: { toolCallsCount: 0 },
+      executeToolCalls: async (executeInput) => {
+        operations.push({ type: 'execute', executeInput });
+        return executedResults;
+      },
+    });
+
+    expect(await generator.next()).toEqual({
+      done: false,
+      value: { type: 'tool_start', toolCall: readCall, toolKind: ToolKind.ReadOnly },
+    });
+    expect(operations).toEqual([]);
+
+    const final = await generator.next();
+
+    expect(final).toEqual({
+      done: true,
+      value: {
+        action: 'continue',
+        executionResults: executedResults,
+      },
+    });
+    expect(operations).toEqual([
+      {
+        type: 'execute',
+        executeInput: {
+          plan: {
+            mode: 'serial',
+            calls: [readCall],
+            groups: undefined,
+          },
+          executionPipeline: {
+            getRegistry: expect.any(Function),
+          },
+          executionContext: { cwd: '/tmp/project' },
+          logger: undefined,
+          permissionMode: 'default',
+          signal: undefined,
+          hooks: undefined,
+        },
+      },
+    ]);
+  });
+
+  it('handles non-streaming tool execution with an injected executor by reusing streaming results', async () => {
+    const streamingExecutionResults = [
+      {
+        toolCall: makeCall('Read'),
+        result: { success: true, llmContent: 'already streamed' },
+        toolUseUuid: null,
+      },
+    ];
+
+    const handled = await collectGenerator(
+      handleAgentLoopNonStreamingToolExecutionWithEmissions({
+        executionResults: streamingExecutionResults,
+        response: {
+          toolCalls: [makeCall('Edit')],
+        },
+        executionPipeline: {
+          getRegistry: () => {
+            throw new Error('registry should not be read for streaming results');
+          },
+        },
+        turnStateProjection: {
+          turnState: {
+            maxContextTokens: 128000,
+            executionContext: { cwd: '/tmp/project' },
+            permissionMode: 'default' as const,
+          },
+          maxContextTokens: 128000,
+          executionContext: { cwd: '/tmp/project' },
+          permissionMode: 'default' as const,
+        },
+        signal: undefined,
+        loopClock: {
+          resultTiming: () => {
+            throw new Error('streaming result reuse should not inspect abort timing');
+          },
+        },
+        turnsCount: 6,
+        toolResultTracker: { toolCallsCount: 0 },
+        executeToolCalls: async () => {
+          throw new Error('executor should not run when streaming results exist');
+        },
+      }),
+    );
+
+    expect(handled.events).toEqual([]);
+    expect(handled.result).toEqual({
+      action: 'continue',
+      executionResults: streamingExecutionResults,
     });
   });
 });
