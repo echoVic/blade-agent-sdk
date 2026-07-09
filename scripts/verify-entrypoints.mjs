@@ -2,7 +2,11 @@ import { spawnSync } from 'node:child_process';
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { agentSdkRootDeclarationEntryOwnershipRules, toLocalForbiddenDeclarationRules } from './agent-sdk-boundary-rules.mjs';
+import {
+  agentSdkRootDeclarationEntryOwnershipRules,
+  agentSdkRootPublicDeclarationBoundaryRules,
+  toLocalForbiddenDeclarationRules,
+} from './agent-sdk-boundary-rules.mjs';
 import { bundleWithEsbuildRetry } from './esbuild-bundle.mjs';
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
@@ -209,40 +213,7 @@ console.log('local core declaration browser-safe boundary passed');
 
 assertNoForbiddenDeclarationSymbols(
   readFileSync(join(packageRoot, 'dist/index.d.ts'), 'utf8'),
-  [
-    {
-      forbidden: 'getBuiltinTools',
-      message: 'local root declarations must keep Node-local builtin tools behind @blade-ai/agent-sdk/local',
-    },
-    {
-      forbidden: 'createSdkMcpServer',
-      message: 'local root declarations must keep Node-local MCP helpers behind @blade-ai/agent-sdk/local',
-    },
-    {
-      forbidden: 'FileSystemMemoryStore',
-      message: 'local root declarations must keep filesystem memory adapters behind @blade-ai/agent-sdk/local',
-    },
-    {
-      forbidden: 'SandboxExecutor',
-      message: 'local root declarations must keep sandbox adapters behind @blade-ai/agent-sdk/local',
-    },
-    {
-      forbidden: 'normalizeDeepSeekModel',
-      message: 'local root declarations must keep provider-specific DeepSeek helpers in @blade-ai/ai/deepseek',
-    },
-    {
-      forbidden: 'calculateDeepSeekCost',
-      message: 'local root declarations must keep provider-specific DeepSeek helpers in @blade-ai/ai/deepseek',
-    },
-    {
-      forbidden: 'DeepSeekCostTracker',
-      message: 'local root declarations must keep provider-specific DeepSeek helpers in @blade-ai/ai/deepseek',
-    },
-    {
-      forbidden: 'DEEPSEEK_DEFAULT_MODEL',
-      message: 'local root declarations must keep provider-specific DeepSeek helpers in @blade-ai/ai/deepseek',
-    },
-  ],
+  toLocalForbiddenDeclarationRules(agentSdkRootPublicDeclarationBoundaryRules),
   'local root declaration public boundary',
 );
 console.log('local root declaration public boundary passed');

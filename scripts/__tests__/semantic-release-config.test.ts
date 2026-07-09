@@ -278,24 +278,30 @@ describe('package provenance metadata', () => {
 
   it('rejects node-local adapters from root package declarations', () => {
     const packageVerifier = readFileSync(resolve('scripts/verify-packages.mjs'), 'utf8');
+    const sharedRules = readFileSync(resolve('scripts/agent-sdk-boundary-rules.mjs'), 'utf8');
 
-    expect(packageVerifier).toContain("file: 'package/dist/index.d.ts'");
-    expect(packageVerifier).toContain("forbidden: 'getBuiltinTools'");
-    expect(packageVerifier).toContain("forbidden: 'createSdkMcpServer'");
-    expect(packageVerifier).toContain("forbidden: 'FileSystemMemoryStore'");
-    expect(packageVerifier).toContain("forbidden: 'SandboxExecutor'");
-    expect(packageVerifier).toContain('root declarations must keep Node-local builtin tools behind @blade-ai/agent-sdk/local');
+    expect(packageVerifier).toContain(
+      "toPackedForbiddenFileContents('package/dist/index.d.ts', agentSdkRootPublicDeclarationBoundaryRules)",
+    );
+    expect(sharedRules).toContain("forbidden: 'getBuiltinTools'");
+    expect(sharedRules).toContain("forbidden: 'createSdkMcpServer'");
+    expect(sharedRules).toContain("forbidden: 'FileSystemMemoryStore'");
+    expect(sharedRules).toContain("forbidden: 'SandboxExecutor'");
+    expect(sharedRules).toContain('root declarations must keep Node-local builtin tools behind @blade-ai/agent-sdk/local');
   });
 
   it('rejects provider-specific helpers from root package declarations', () => {
     const packageVerifier = readFileSync(resolve('scripts/verify-packages.mjs'), 'utf8');
+    const sharedRules = readFileSync(resolve('scripts/agent-sdk-boundary-rules.mjs'), 'utf8');
 
-    expect(packageVerifier).toContain("file: 'package/dist/index.d.ts'");
-    expect(packageVerifier).toContain("forbidden: 'normalizeDeepSeekModel'");
-    expect(packageVerifier).toContain("forbidden: 'calculateDeepSeekCost'");
-    expect(packageVerifier).toContain("forbidden: 'DeepSeekCostTracker'");
-    expect(packageVerifier).toContain("forbidden: 'DEEPSEEK_DEFAULT_MODEL'");
-    expect(packageVerifier).toContain('root declarations must keep provider-specific DeepSeek helpers in @blade-ai/ai/deepseek');
+    expect(packageVerifier).toContain(
+      "toPackedForbiddenFileContents('package/dist/index.d.ts', agentSdkRootPublicDeclarationBoundaryRules)",
+    );
+    expect(sharedRules).toContain("forbidden: 'normalizeDeepSeekModel'");
+    expect(sharedRules).toContain("forbidden: 'calculateDeepSeekCost'");
+    expect(sharedRules).toContain("forbidden: 'DeepSeekCostTracker'");
+    expect(sharedRules).toContain("forbidden: 'DEEPSEEK_DEFAULT_MODEL'");
+    expect(sharedRules).toContain('root declarations must keep provider-specific DeepSeek helpers in @blade-ai/ai/deepseek');
   });
 
   it('rejects server entry wildcard forwarding through the root facade', () => {

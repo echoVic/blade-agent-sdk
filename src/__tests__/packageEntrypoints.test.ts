@@ -196,17 +196,43 @@ describe('package entrypoints', () => {
     expect(sharedRules).toContain('./tools/core/createTool.js');
     expect(sharedRules).toContain('./tools/catalog/index.js');
     expect(sharedRules).toContain('public-index.js');
-    expect(entrypointVerifier).toContain(
-      "import { agentSdkRootDeclarationEntryOwnershipRules, toLocalForbiddenDeclarationRules } from './agent-sdk-boundary-rules.mjs';",
-    );
+    expect(entrypointVerifier).toContain("from './agent-sdk-boundary-rules.mjs';");
+    expect(entrypointVerifier).toContain('agentSdkRootDeclarationEntryOwnershipRules');
+    expect(entrypointVerifier).toContain('toLocalForbiddenDeclarationRules');
     expect(entrypointVerifier).toContain(
       'toLocalForbiddenDeclarationRules(agentSdkRootDeclarationEntryOwnershipRules)',
     );
-    expect(packageVerifier).toContain(
-      "import { agentSdkRootDeclarationEntryOwnershipRules, toPackedForbiddenFileContents } from './agent-sdk-boundary-rules.mjs';",
-    );
+    expect(packageVerifier).toContain("from './agent-sdk-boundary-rules.mjs';");
+    expect(packageVerifier).toContain('agentSdkRootDeclarationEntryOwnershipRules');
+    expect(packageVerifier).toContain('toPackedForbiddenFileContents');
     expect(packageVerifier).toContain(
       "toPackedForbiddenFileContents('package/dist/index.d.ts', agentSdkRootDeclarationEntryOwnershipRules)",
+    );
+  });
+
+  it('shares root public declaration boundary rules between local and packed verifiers', () => {
+    const sharedRulesPath = 'scripts/agent-sdk-boundary-rules.mjs';
+
+    expect(existsSync(join(process.cwd(), sharedRulesPath)), sharedRulesPath).toBe(true);
+
+    const sharedRules = readFileSync(sharedRulesPath, 'utf-8');
+    const entrypointVerifier = readFileSync('scripts/verify-entrypoints.mjs', 'utf-8');
+    const packageVerifier = readFileSync('scripts/verify-packages.mjs', 'utf-8');
+
+    expect(sharedRules).toContain('agentSdkRootPublicDeclarationBoundaryRules');
+    expect(sharedRules).toContain('getBuiltinTools');
+    expect(sharedRules).toContain('createSdkMcpServer');
+    expect(sharedRules).toContain('FileSystemMemoryStore');
+    expect(sharedRules).toContain('SandboxExecutor');
+    expect(sharedRules).toContain('normalizeDeepSeekModel');
+    expect(sharedRules).toContain('calculateDeepSeekCost');
+    expect(sharedRules).toContain('DeepSeekCostTracker');
+    expect(sharedRules).toContain('DEEPSEEK_DEFAULT_MODEL');
+    expect(entrypointVerifier).toContain(
+      'toLocalForbiddenDeclarationRules(agentSdkRootPublicDeclarationBoundaryRules)',
+    );
+    expect(packageVerifier).toContain(
+      "toPackedForbiddenFileContents('package/dist/index.d.ts', agentSdkRootPublicDeclarationBoundaryRules)",
     );
   });
 
@@ -263,11 +289,7 @@ describe('package entrypoints', () => {
     expect(verifier).toContain('local core declarations must stay browser-safe and not expose Node-local tool APIs');
     expect(verifier).toContain('local core declarations must stay browser-safe and not expose Node-local MCP APIs');
     expect(verifier).toContain('local core declaration browser-safe boundary passed');
-    expect(verifier).toContain('local root declarations must keep Node-local builtin tools behind @blade-ai/agent-sdk/local');
-    expect(verifier).toContain('local root declarations must keep Node-local MCP helpers behind @blade-ai/agent-sdk/local');
-    expect(verifier).toContain('local root declarations must keep filesystem memory adapters behind @blade-ai/agent-sdk/local');
-    expect(verifier).toContain('local root declarations must keep sandbox adapters behind @blade-ai/agent-sdk/local');
-    expect(verifier).toContain('local root declarations must keep provider-specific DeepSeek helpers in @blade-ai/ai/deepseek');
+    expect(verifier).toContain('toLocalForbiddenDeclarationRules(agentSdkRootPublicDeclarationBoundaryRules)');
     expect(verifier).toContain('local root declaration public boundary passed');
     expect(verifier).toContain('toLocalForbiddenDeclarationRules(agentSdkRootDeclarationEntryOwnershipRules)');
     expect(verifier).toContain('local root declaration entry ownership boundary passed');

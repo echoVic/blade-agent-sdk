@@ -5,7 +5,11 @@ import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { stringify } from 'yaml';
-import { agentSdkRootDeclarationEntryOwnershipRules, toPackedForbiddenFileContents } from './agent-sdk-boundary-rules.mjs';
+import {
+  agentSdkRootDeclarationEntryOwnershipRules,
+  agentSdkRootPublicDeclarationBoundaryRules,
+  toPackedForbiddenFileContents,
+} from './agent-sdk-boundary-rules.mjs';
 import { bundleWithEsbuildRetry } from './esbuild-bundle.mjs';
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
@@ -318,46 +322,7 @@ const packageSpecs = [
         forbidden: '../agent/subagents',
         message: 'root declarations must use package-local subagent compatibility exports',
       },
-      {
-        file: 'package/dist/index.d.ts',
-        forbidden: 'getBuiltinTools',
-        message: 'root declarations must keep Node-local builtin tools behind @blade-ai/agent-sdk/local',
-      },
-      {
-        file: 'package/dist/index.d.ts',
-        forbidden: 'createSdkMcpServer',
-        message: 'root declarations must keep Node-local MCP helpers behind @blade-ai/agent-sdk/local',
-      },
-      {
-        file: 'package/dist/index.d.ts',
-        forbidden: 'FileSystemMemoryStore',
-        message: 'root declarations must keep filesystem memory adapters behind @blade-ai/agent-sdk/local',
-      },
-      {
-        file: 'package/dist/index.d.ts',
-        forbidden: 'SandboxExecutor',
-        message: 'root declarations must keep sandbox adapters behind @blade-ai/agent-sdk/local',
-      },
-      {
-        file: 'package/dist/index.d.ts',
-        forbidden: 'normalizeDeepSeekModel',
-        message: 'root declarations must keep provider-specific DeepSeek helpers in @blade-ai/ai/deepseek',
-      },
-      {
-        file: 'package/dist/index.d.ts',
-        forbidden: 'calculateDeepSeekCost',
-        message: 'root declarations must keep provider-specific DeepSeek helpers in @blade-ai/ai/deepseek',
-      },
-      {
-        file: 'package/dist/index.d.ts',
-        forbidden: 'DeepSeekCostTracker',
-        message: 'root declarations must keep provider-specific DeepSeek helpers in @blade-ai/ai/deepseek',
-      },
-      {
-        file: 'package/dist/index.d.ts',
-        forbidden: 'DEEPSEEK_DEFAULT_MODEL',
-        message: 'root declarations must keep provider-specific DeepSeek helpers in @blade-ai/ai/deepseek',
-      },
+      ...toPackedForbiddenFileContents('package/dist/index.d.ts', agentSdkRootPublicDeclarationBoundaryRules),
       {
         file: 'package/dist/server/index.js',
         forbidden: '../index.js',
