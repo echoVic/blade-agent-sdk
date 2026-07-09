@@ -227,6 +227,10 @@ describe('package entrypoints', () => {
     expect(verifier).toContain('Runtime export mismatch between local root and local server');
     expect(verifier).toContain('missing from local server');
     expect(verifier).toContain('extra in local server');
+    expect(verifier).toContain('local root server declaration export parity');
+    expect(verifier).toContain('Declaration export mismatch between local root and local server');
+    expect(verifier).toContain('declarations missing from local server');
+    expect(verifier).toContain('declarations extra in local server');
     expect(verifier).toContain("from '@blade-ai/agent-sdk/browser';");
     expect(verifier).toContain("from '@blade-ai/agent-sdk/session/internal';");
     expect(verifier).toContain('server-only for bundled createSession');
