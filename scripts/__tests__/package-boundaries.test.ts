@@ -212,6 +212,27 @@ describe('package boundary verifier', () => {
     expect(result.stderr).toContain('Session SDK source must not import its own public facade');
   });
 
+  it('rejects legacy root source imports that use workspace path aliases', () => {
+    const cwd = createBoundaryFixture();
+    mkdirSync(join(cwd, 'src'), { recursive: true });
+    writeFileSync(
+      join(cwd, 'src', 'legacy.ts'),
+      "import type { SessionId } from '@/types/branded.js';\nexport type LegacySessionId = SessionId;\n",
+    );
+
+    const result = spawnSync(process.execPath, [
+      resolve('scripts/verify-package-boundaries.mjs'),
+    ], {
+      cwd,
+      encoding: 'utf8',
+    });
+
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain('src/legacy.ts');
+    expect(result.stderr).toContain('@/types/branded.js');
+    expect(result.stderr).toContain('Legacy root source');
+  });
+
   it('rejects ai source imports from its own public facade', () => {
     const cwd = createBoundaryFixture();
     mkdirSync(join(cwd, 'packages', 'ai', 'src', 'model'), { recursive: true });

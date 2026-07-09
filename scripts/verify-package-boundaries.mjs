@@ -96,6 +96,16 @@ const buildEntryRules = rules.map((rule) => ({
   sourceDir: rule.sourceDir,
 }));
 
+const rootSourceRules = [
+  {
+    name: 'legacy root source',
+    sourceDir: 'src',
+    disallowedSpecifiers: [
+      [/^@\//, 'Legacy root source must use explicit relative imports instead of workspace path aliases'],
+    ],
+  },
+];
+
 const importPattern = /\b(?:import|export)\s+(?:type\s+)?(?:[^'"]*?\s+from\s+)?['"]([^'"]+)['"]|import\s*\(\s*['"]([^'"]+)['"]\s*\)/g;
 
 function listSourceFiles(dir) {
@@ -587,6 +597,23 @@ for (const rule of rules) {
         const resolved = normalize(resolve(dirname(file), specifier));
         if (!isWithin(resolved, packageSourceDir)) {
           violations.push(`${displayPath}: relative import "${specifier}" leaves ${rule.sourceDir}`);
+        }
+      }
+    }
+  }
+}
+
+for (const rule of rootSourceRules) {
+  const sourceDir = resolve(rootDir, rule.sourceDir);
+  if (!existsSync(sourceDir)) continue;
+
+  for (const file of listSourceFiles(sourceDir)) {
+    const source = readFileSync(file, 'utf-8');
+    const displayPath = relative(rootDir, file);
+    for (const specifier of extractSpecifiers(source)) {
+      for (const [pattern, reason] of rule.disallowedSpecifiers) {
+        if (pattern.test(specifier)) {
+          violations.push(`${displayPath}: disallowed import "${specifier}" - ${reason}`);
         }
       }
     }
