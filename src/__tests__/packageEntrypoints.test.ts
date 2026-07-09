@@ -203,6 +203,10 @@ describe('package entrypoints', () => {
     expect(verifier).toContain('local ai chat runtime empty');
     expect(verifier).toContain('local ai model runtime empty');
     expect(verifier).toContain('local ai provider runtime exports');
+    expect(verifier).toContain("from '@blade-ai/ai/package.json' with { type: 'json' };");
+    expect(verifier).toContain("from '@blade-ai/agent/package.json' with { type: 'json' };");
+    expect(verifier).toContain("from '@blade-ai/agent-sdk/package.json' with { type: 'json' };");
+    expect(verifier).toContain('local package metadata @blade-ai/ai @blade-ai/agent @blade-ai/agent-sdk');
     expect(verifier).toContain("from '@blade-ai/agent-sdk/browser';");
     expect(verifier).toContain("from '@blade-ai/agent-sdk/session/internal';");
     expect(verifier).toContain('server-only for bundled createSession');

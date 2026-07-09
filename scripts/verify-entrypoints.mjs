@@ -109,6 +109,7 @@ try {
   const entry = join(tempDir, 'client-entry.ts');
   const output = join(tempDir, 'bundle.js');
   const aiEntry = join(tempDir, 'ai-entry.mjs');
+  const metadataEntry = join(tempDir, 'metadata-entry.mjs');
   const agentEntry = join(tempDir, 'agent-client-entry.ts');
   const agentOutput = join(tempDir, 'agent-bundle.js');
   writeFileSync(
@@ -179,6 +180,23 @@ try {
   assertIncludes(aiOutput, 'local ai retry runtime export object', 'local ai retry runtime export');
   assertIncludes(aiOutput, 'local ai chat runtime empty 0', 'local ai chat runtime empty');
   assertIncludes(aiOutput, 'local ai model runtime empty 0', 'local ai model runtime empty');
+
+  writeFileSync(
+    metadataEntry,
+    [
+      "import aiPackage from '@blade-ai/ai/package.json' with { type: 'json' };",
+      "import agentPackage from '@blade-ai/agent/package.json' with { type: 'json' };",
+      "import agentSdkPackage from '@blade-ai/agent-sdk/package.json' with { type: 'json' };",
+      "console.log('local package metadata', aiPackage.name, agentPackage.name, agentSdkPackage.name);",
+    ].join('\n'),
+    'utf8',
+  );
+  const metadataOutput = run(process.execPath, [metadataEntry], { cwd: packageRoot });
+  assertIncludes(
+    metadataOutput,
+    'local package metadata @blade-ai/ai @blade-ai/agent @blade-ai/agent-sdk',
+    'local package metadata subpath imports',
+  );
 
   writeFileSync(
     agentEntry,
