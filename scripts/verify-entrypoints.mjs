@@ -247,6 +247,38 @@ assertNoForbiddenDeclarationSymbols(
 console.log('local root declaration public boundary passed');
 
 assertNoForbiddenDeclarationSymbols(
+  readFileSync(join(packageRoot, 'dist/session/types.d.ts'), 'utf8'),
+  [
+    {
+      forbidden: "runtime?: 'kernel' | 'legacy'",
+      message: 'local session declarations must not expose retired legacy stream runtime options',
+    },
+    {
+      forbidden: 'experimentalKernel',
+      message: 'local session declarations must not expose retired experimental kernel flags',
+    },
+    {
+      forbidden: 'legacyStream',
+      message: 'local session declarations must not expose retired legacy stream helpers',
+    },
+    {
+      forbidden: 'packageLocalLegacy',
+      message: 'local session declarations must not expose retired package-local legacy runtime helpers',
+    },
+    {
+      forbidden: "from '@blade-ai/agent'",
+      message: 'local session budget declarations must use the explicit @blade-ai/agent/budget subpath',
+    },
+    {
+      forbidden: 'AgentTokenBudgetSnapshot',
+      message: 'local session budget declarations must expose TokenBudgetSnapshot from @blade-ai/agent/budget',
+    },
+  ],
+  'local session declaration public boundary',
+);
+console.log('local session declaration public boundary passed');
+
+assertNoForbiddenDeclarationSymbols(
   readFileSync(join(packageRoot, 'dist/server/index.js'), 'utf8'),
   [
     {
