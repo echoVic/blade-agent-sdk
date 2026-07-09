@@ -193,6 +193,16 @@ describe('package entrypoints', () => {
     expect(helper).toContain('resetService();');
     expect(helper).toContain('The service was stopped');
     expect(verifier).toContain('browserBundleOutput');
+    expect(verifier).toContain("from '@blade-ai/ai';");
+    expect(verifier).toContain("from '@blade-ai/ai/chat';");
+    expect(verifier).toContain("from '@blade-ai/ai/model';");
+    expect(verifier).toContain("from '@blade-ai/ai/deepseek';");
+    expect(verifier).toContain("from '@blade-ai/ai/providers/openai-compatible';");
+    expect(verifier).toContain("from '@blade-ai/ai/providers/vercel';");
+    expect(verifier).toContain("from '@blade-ai/ai/retry';");
+    expect(verifier).toContain('local ai chat runtime empty');
+    expect(verifier).toContain('local ai model runtime empty');
+    expect(verifier).toContain('local ai provider runtime exports');
     expect(verifier).toContain("from '@blade-ai/agent-sdk/browser';");
     expect(verifier).toContain("from '@blade-ai/agent-sdk/session/internal';");
     expect(verifier).toContain('server-only for bundled createSession');

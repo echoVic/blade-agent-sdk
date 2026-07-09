@@ -108,6 +108,7 @@ const tempDir = mkdtempSync(join(packageRoot, '.tmp-entrypoints-'));
 try {
   const entry = join(tempDir, 'client-entry.ts');
   const output = join(tempDir, 'bundle.js');
+  const aiEntry = join(tempDir, 'ai-entry.mjs');
   const agentEntry = join(tempDir, 'agent-client-entry.ts');
   const agentOutput = join(tempDir, 'agent-bundle.js');
   writeFileSync(
@@ -151,6 +152,33 @@ try {
   assertIncludes(browserBundleOutput, 'server-only for bundled internal createSession', 'browser bundle internal session stub');
   assertIncludes(browserBundleOutput, 'server-only for bundled server createSession', 'browser bundle server stub');
   assertIncludes(browserBundleOutput, 'server-only for bundled getBuiltinTools', 'browser bundle local stub');
+
+  writeFileSync(
+    aiEntry,
+    [
+      "import * as ai from '@blade-ai/ai';",
+      "import * as aiChat from '@blade-ai/ai/chat';",
+      "import * as aiModel from '@blade-ai/ai/model';",
+      "import * as aiDeepseek from '@blade-ai/ai/deepseek';",
+      "import * as aiOpenAICompatible from '@blade-ai/ai/providers/openai-compatible';",
+      "import * as aiVercel from '@blade-ai/ai/providers/vercel';",
+      "import * as aiRetry from '@blade-ai/ai/retry';",
+      "console.log('local ai provider runtime exports', typeof ai.createOpenAICompatibleModelPort, typeof aiDeepseek.normalizeDeepSeekModel, typeof aiOpenAICompatible.createOpenAICompatibleModelPort, typeof aiVercel.createVercelModelPort, typeof aiRetry.withRetry);",
+      "console.log('local ai retry runtime export', typeof aiRetry.DEFAULT_RETRY_CONFIG);",
+      "console.log('local ai chat runtime empty', Object.keys(aiChat).length);",
+      "console.log('local ai model runtime empty', Object.keys(aiModel).length);",
+    ].join('\n'),
+    'utf8',
+  );
+  const aiOutput = run(process.execPath, [aiEntry], { cwd: packageRoot });
+  assertIncludes(
+    aiOutput,
+    'local ai provider runtime exports function function function function function',
+    'local ai provider runtime exports',
+  );
+  assertIncludes(aiOutput, 'local ai retry runtime export object', 'local ai retry runtime export');
+  assertIncludes(aiOutput, 'local ai chat runtime empty 0', 'local ai chat runtime empty');
+  assertIncludes(aiOutput, 'local ai model runtime empty 0', 'local ai model runtime empty');
 
   writeFileSync(
     agentEntry,
