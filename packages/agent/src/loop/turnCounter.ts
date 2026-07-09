@@ -1,3 +1,8 @@
+import {
+  buildAgentLoopReactiveCompactRetryEvent,
+  type AgentLoopTurnRetryEvent,
+} from './loopEvents.js';
+
 export interface AgentLoopTurnStart {
   started: boolean;
   turn: number;
@@ -62,6 +67,15 @@ export interface RequestAgentLoopTurnRetryInput {
   counter: Pick<AgentLoopTurnCounter, 'requestRetry'>;
 }
 
+export interface ApplyAgentLoopReactiveCompactRetryInput {
+  counter: Pick<AgentLoopTurnCounter, 'requestRetry'>;
+  turn: number;
+}
+
+export interface AgentLoopReactiveCompactRetryContinuation {
+  events: [AgentLoopTurnRetryEvent];
+}
+
 export interface ResetAgentLoopTurnCounterInput {
   counter: Pick<AgentLoopTurnCounter, 'reset'>;
 }
@@ -76,6 +90,15 @@ export function beginAgentLoopTurn(input: BeginAgentLoopTurnInput): AgentLoopTur
 
 export function requestAgentLoopTurnRetry(input: RequestAgentLoopTurnRetryInput): void {
   input.counter.requestRetry();
+}
+
+export function applyAgentLoopReactiveCompactRetry(
+  input: ApplyAgentLoopReactiveCompactRetryInput,
+): AgentLoopReactiveCompactRetryContinuation {
+  requestAgentLoopTurnRetry({ counter: input.counter });
+  return {
+    events: [buildAgentLoopReactiveCompactRetryEvent({ turn: input.turn })],
+  };
 }
 
 export function resetAgentLoopTurnCounter(input: ResetAgentLoopTurnCounterInput): void {

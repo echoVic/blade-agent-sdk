@@ -1,4 +1,5 @@
 export {
+  applyAgentLoopReactiveCompactRetry,
   beginAgentLoopTurn,
   buildAgentLoopBeforeTurnHookPayload,
   buildAgentLoopBeforeTurnHookPayloadFromConversation,
@@ -10,6 +11,8 @@ export {
   runAgentLoopBeforeTurnHook,
   shouldEmitAgentLoopTurnStart,
   shouldRunAgentLoopBeforeTurnHook,
+  type AgentLoopReactiveCompactRetryContinuation,
+  type ApplyAgentLoopReactiveCompactRetryInput,
   type BeginAgentLoopTurnInput,
   type AgentLoopBeforeTurnHook,
   type AgentLoopBeforeTurnHookContainer,

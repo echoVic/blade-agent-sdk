@@ -438,7 +438,7 @@ describe('monorepo topology', () => {
     expect(rootAgentLoopSource).toContain('buildAgentLoopToolTurnCompletion');
     expect(rootAgentLoopSource).toContain('buildAgentLoopToolTurnCompletionInput');
     expect(rootAgentLoopSource).not.toContain('buildAgentLoopToolTurnCompletion({');
-    expect(rootAgentLoopSource).toContain('buildAgentLoopReactiveCompactRetryEvent');
+    expect(rootAgentLoopSource).not.toContain('buildAgentLoopReactiveCompactRetryEvent');
     expect(rootAgentLoopSource).not.toContain('buildAgentLoopTurnRetryEvent');
     expect(rootAgentLoopSource).toContain('buildAgentLoopNoToolContent');
     expect(rootAgentLoopSource).toContain('buildAgentLoopNoToolContinuation');
@@ -712,7 +712,8 @@ describe('monorepo topology', () => {
     expect(rootAgentLoopSource).toContain('createAgentLoopTurnCounter');
     expect(rootAgentLoopSource).toContain('beginAgentLoopTurn');
     expect(rootAgentLoopSource).not.toContain('turnCounter.beginTurn(');
-    expect(rootAgentLoopSource).toContain('requestAgentLoopTurnRetry');
+    expect(rootAgentLoopSource).toContain('applyAgentLoopReactiveCompactRetry');
+    expect(rootAgentLoopSource).not.toContain('requestAgentLoopTurnRetry');
     expect(rootAgentLoopSource).not.toContain('turnCounter.requestRetry(');
     expect(rootAgentLoopSource).toContain('resetAgentLoopTurnCounter');
     expect(rootAgentLoopSource).not.toContain('turnCounter.reset(');

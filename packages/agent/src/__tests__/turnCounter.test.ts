@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  applyAgentLoopReactiveCompactRetry,
   beginAgentLoopTurn,
   buildAgentLoopBeforeTurnHookPayload,
   buildAgentLoopBeforeTurnHookPayloadFromConversation,
@@ -82,6 +83,26 @@ describe('agent loop turn counter', () => {
     counter.beginTurn();
     requestAgentLoopTurnRetry({ counter });
 
+    expect(counter.shouldRunBeforeTurn()).toBe(false);
+    expect(counter.beginTurn()).toEqual({ started: false, turn: 1 });
+    expect(counter.turnsCount).toBe(1);
+    expect(counter.shouldRunBeforeTurn()).toBe(true);
+  });
+
+  it('applies reactive compact retry as a counter update with a retry event', () => {
+    const counter = createAgentLoopTurnCounter();
+
+    counter.beginTurn();
+
+    expect(applyAgentLoopReactiveCompactRetry({ counter, turn: 1 })).toEqual({
+      events: [
+        {
+          type: 'turn_retry',
+          turn: 1,
+          reason: 'reactive_compact',
+        },
+      ],
+    });
     expect(counter.shouldRunBeforeTurn()).toBe(false);
     expect(counter.beginTurn()).toEqual({ started: false, turn: 1 });
     expect(counter.turnsCount).toBe(1);

@@ -65,7 +65,6 @@ import {
   buildAgentLoopStartEvent,
   buildAgentLoopToolTurnCompletion,
   buildAgentLoopToolTurnCompletionInput,
-  buildAgentLoopReactiveCompactRetryEvent,
   buildAgentLoopTurnStartEvent,
   buildAgentLoopTurnStartEventInput,
 } from './loop/loopEvents.js';
@@ -123,9 +122,9 @@ import {
 } from './loop/toolStartEvent.js';
 import { buildAgentLoopTurnStateProjectionFromPreparation } from './loop/turnState.js';
 import {
+  applyAgentLoopReactiveCompactRetry,
   beginAgentLoopTurn,
   createAgentLoopTurnCounter,
-  requestAgentLoopTurnRetry,
   resetAgentLoopTurnCounter,
   runAgentLoopBeforeTurnHook,
   shouldEmitAgentLoopTurnStart,
@@ -373,8 +372,13 @@ export async function* agentLoop(
         }
         epoch?.invalidate();
         // 显式"重试当前轮"：不减 turnsCount，不发 turn_end
-        requestAgentLoopTurnRetry({ counter: turnCounter });
-        yield buildAgentLoopReactiveCompactRetryEvent({ turn: turnsCount });
+        const retryContinuation = applyAgentLoopReactiveCompactRetry({
+          counter: turnCounter,
+          turn: turnsCount,
+        });
+        for (const event of retryContinuation.events) {
+          yield event;
+        }
         continue;
       }
 
