@@ -4,6 +4,13 @@ import type {
   AgentLoopTurnStateProjection,
 } from './turnState.js';
 import {
+  handleAgentLoopAbortIfRequested,
+  type AgentLoopAbortCompletionTimingSource,
+  type AgentLoopAbortCompletionToolResultTrackerLike,
+  type AgentLoopAbortIfRequestedEvent,
+  type AgentLoopAbortResult,
+} from './loopResult.js';
+import {
   buildAgentLoopToolStartEvents,
   buildAgentLoopToolStartEventsInputFromExecutionPipeline,
   type AgentLoopToolStartEvent,
@@ -150,6 +157,29 @@ export interface PrepareAgentLoopNonStreamingToolExecutionInput<
   hooks?: AgentLoopExecuteToolCallsHookContainerInput<TBeforeExec, TOnUpdate> | null;
 }
 
+export interface HandleAgentLoopNonStreamingToolExecutionGateInput<
+  TTurnState extends AgentLoopTurnStateFields<
+    ToolExecutionPermissionMode | undefined,
+    unknown
+  >,
+  TExecutionPipeline extends { getRegistry(): ToolExecutionRegistryLike },
+  TExecutionResult,
+  TLogger = unknown,
+  TBeforeExec = unknown,
+  TOnUpdate = unknown,
+> extends PrepareAgentLoopNonStreamingToolExecutionInput<
+    TTurnState,
+    TExecutionPipeline,
+    TExecutionResult,
+    TLogger,
+    TBeforeExec,
+    TOnUpdate
+  > {
+  loopClock: AgentLoopAbortCompletionTimingSource;
+  turnsCount: number;
+  toolResultTracker: AgentLoopAbortCompletionToolResultTrackerLike;
+}
+
 export type AgentLoopNonStreamingToolExecutionPreparation<
   TExecutionPipeline,
   TExecutionContext,
@@ -173,6 +203,35 @@ export type AgentLoopNonStreamingToolExecutionPreparation<
         TLogger,
         AgentLoopExecuteToolCallsHooks<TBeforeExec, TOnUpdate> | undefined
       >;
+    };
+
+export type AgentLoopNonStreamingToolExecutionGateEvent = AgentLoopToolStartEvent
+  | AgentLoopAbortIfRequestedEvent;
+
+export type AgentLoopNonStreamingToolExecutionGateHandling<
+  TExecutionPipeline,
+  TExecutionContext,
+  TExecutionResult,
+  TLogger,
+  TBeforeExec,
+  TOnUpdate,
+> =
+  | {
+      action: 'skip';
+      executionResults: readonly TExecutionResult[];
+    }
+  | {
+      action: 'execute';
+      executeInput: AgentLoopExecuteToolCallsInput<
+        TExecutionPipeline,
+        TExecutionContext,
+        TLogger,
+        AgentLoopExecuteToolCallsHooks<TBeforeExec, TOnUpdate> | undefined
+      >;
+    }
+  | {
+      action: 'abort';
+      result: AgentLoopAbortResult;
     };
 
 export function buildAgentLoopExecuteToolCallsHooksInput<TBeforeExec, TOnUpdate>(
@@ -449,6 +508,72 @@ export function prepareAgentLoopNonStreamingToolExecution<
       signal: input.signal,
       hookContainer: input.hooks,
     }),
+  };
+}
+
+export async function* handleAgentLoopNonStreamingToolExecutionGateWithEmissions<
+  TTurnState extends AgentLoopTurnStateFields<
+    ToolExecutionPermissionMode | undefined,
+    unknown
+  >,
+  TExecutionPipeline extends { getRegistry(): ToolExecutionRegistryLike },
+  TExecutionResult,
+  TLogger = unknown,
+  TBeforeExec = unknown,
+  TOnUpdate = unknown,
+>(
+  input: HandleAgentLoopNonStreamingToolExecutionGateInput<
+    TTurnState,
+    TExecutionPipeline,
+    TExecutionResult,
+    TLogger,
+    TBeforeExec,
+    TOnUpdate
+  >,
+): AsyncGenerator<
+  AgentLoopNonStreamingToolExecutionGateEvent,
+  AgentLoopNonStreamingToolExecutionGateHandling<
+    TExecutionPipeline,
+    AgentLoopTurnStateProjection<TTurnState>['executionContext'],
+    TExecutionResult,
+    TLogger,
+    TBeforeExec,
+    TOnUpdate
+  >
+> {
+  if (!shouldRunAgentLoopNonStreamingToolExecution(input.executionResults)) {
+    return {
+      action: 'skip',
+      executionResults: input.executionResults,
+    };
+  }
+
+  const preparation = prepareAgentLoopNonStreamingToolExecution({
+    ...input,
+    executionResults: undefined,
+  });
+
+  for (const event of preparation.events) {
+    yield event;
+  }
+
+  const abortBeforeToolExecution = yield* handleAgentLoopAbortIfRequested({
+    kind: 'loop_state',
+    signal: input.signal,
+    loopClock: input.loopClock,
+    turnsCount: input.turnsCount,
+    toolResultTracker: input.toolResultTracker,
+  });
+  if (abortBeforeToolExecution.action === 'abort') {
+    return {
+      action: 'abort',
+      result: abortBeforeToolExecution.result,
+    };
+  }
+
+  return {
+    action: 'execute',
+    executeInput: preparation.executeInput,
   };
 }
 

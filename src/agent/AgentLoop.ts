@@ -37,8 +37,7 @@ import {
   handleAgentLoopAbortIfRequested,
 } from './loop/loopResult.js';
 import {
-  prepareAgentLoopNonStreamingToolExecution,
-  shouldRunAgentLoopNonStreamingToolExecution,
+  handleAgentLoopNonStreamingToolExecutionGateWithEmissions,
 } from './loop/planToolExecution.js';
 import { runTurn } from './loop/runTurn.js';
 import type { ToolExecutionUpdate } from './loop/runToolCall.js';
@@ -315,10 +314,16 @@ export async function* agentLoop(
     });
 
     // 工具执行：流式已执行 or 非流式在此执行
-    let executionResults = streamingExecutionResults;
+    let executionResults:
+      | ReadonlyArray<{
+        toolCall: FunctionToolCall;
+        result: ToolResult;
+        toolUseUuid: string | null;
+      }>
+      | undefined = streamingExecutionResults;
 
-    if (shouldRunAgentLoopNonStreamingToolExecution(executionResults)) {
-      const nonStreamingToolExecution = prepareAgentLoopNonStreamingToolExecution({
+    const nonStreamingToolExecutionGate =
+      yield* handleAgentLoopNonStreamingToolExecutionGateWithEmissions({
         executionResults,
         response: turnResult,
         executionPipeline,
@@ -326,24 +331,16 @@ export async function* agentLoop(
         logger: config.logger,
         signal,
         hooks,
-      });
-
-      for (const event of nonStreamingToolExecution.events) {
-        yield event;
-      }
-
-      const abortBeforeToolExecution = yield* handleAgentLoopAbortIfRequested({
-        kind: 'loop_state',
-        signal,
         loopClock,
         turnsCount,
         toolResultTracker,
       });
-      if (abortBeforeToolExecution.action === 'abort') {
-        return abortBeforeToolExecution.result as LoopResult;
-      }
-
-      executionResults = await executeToolCalls(nonStreamingToolExecution.executeInput);
+    if (nonStreamingToolExecutionGate.action === 'abort') {
+      return nonStreamingToolExecutionGate.result as LoopResult;
+    } else if (nonStreamingToolExecutionGate.action === 'skip') {
+      executionResults = nonStreamingToolExecutionGate.executionResults;
+    } else {
+      executionResults = await executeToolCalls(nonStreamingToolExecutionGate.executeInput);
     }
 
     const toolResultsHandling = yield* handleAgentLoopToolResults({

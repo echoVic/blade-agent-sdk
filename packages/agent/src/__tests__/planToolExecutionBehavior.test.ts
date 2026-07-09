@@ -8,6 +8,7 @@ import {
   buildAgentLoopToolExecutionPlanInput,
   buildAgentLoopToolExecutionPlanInputFromExecutionPipelineProjection,
   buildAgentLoopToolExecutionPlanInputFromTurnProjection,
+  handleAgentLoopNonStreamingToolExecutionGateWithEmissions,
   planAgentLoopToolExecution,
   planToolExecution,
   prepareAgentLoopNonStreamingToolExecution,
@@ -28,6 +29,20 @@ const makeCall = (
     arguments: JSON.stringify(args),
   },
 });
+
+async function collectGenerator<TEvent, TResult>(
+  generator: AsyncGenerator<TEvent, TResult>,
+): Promise<{ events: TEvent[]; result: TResult }> {
+  const events: TEvent[] = [];
+
+  while (true) {
+    const next = await generator.next();
+    if (next.done) {
+      return { events, result: next.value };
+    }
+    events.push(next.value);
+  }
+}
 
 const toolKinds = new Map<
   string,
@@ -506,6 +521,113 @@ describe('planToolExecution', () => {
     ).toEqual({
       onBeforeToolExec: beforeExec,
       onUpdate,
+    });
+  });
+
+  it('handles non-streaming tool execution gates by skipping when streaming results exist', async () => {
+    const streamingExecutionResults = [
+      {
+        toolCall: makeCall('Read'),
+        result: { success: true, llmContent: 'ok' },
+        toolUseUuid: null,
+      },
+    ];
+
+    const handled = await collectGenerator(
+      handleAgentLoopNonStreamingToolExecutionGateWithEmissions({
+        executionResults: streamingExecutionResults,
+        response: {
+          toolCalls: [makeCall('Edit')],
+        },
+        executionPipeline: {
+          getRegistry: () => {
+            throw new Error('registry should not be read for streaming results');
+          },
+        },
+        turnStateProjection: {
+          turnState: {
+            maxContextTokens: 128000,
+            executionContext: { cwd: '/tmp/project' },
+            permissionMode: 'default' as const,
+          },
+          maxContextTokens: 128000,
+          executionContext: { cwd: '/tmp/project' },
+          permissionMode: 'default' as const,
+        },
+        signal: undefined,
+        loopClock: {
+          resultTiming: () => {
+            throw new Error('skip gates should not inspect abort timing');
+          },
+        },
+        turnsCount: 3,
+        toolResultTracker: { toolCallsCount: 0 },
+      }),
+    );
+
+    expect(handled.events).toEqual([]);
+    expect(handled.result).toEqual({
+      action: 'skip',
+      executionResults: streamingExecutionResults,
+    });
+  });
+
+  it('handles non-streaming tool execution gates by emitting starts before aborting execution', async () => {
+    const readCall = makeCall('Read');
+    const signalController = new AbortController();
+    signalController.abort();
+
+    const handled = await collectGenerator(
+      handleAgentLoopNonStreamingToolExecutionGateWithEmissions({
+        executionResults: undefined,
+        response: {
+          toolCalls: [readCall],
+        },
+        executionPipeline: {
+          getRegistry: () => mockRegistry,
+        },
+        turnStateProjection: {
+          turnState: {
+            maxContextTokens: 128000,
+            executionContext: { cwd: '/tmp/project' },
+            permissionMode: 'default' as const,
+          },
+          maxContextTokens: 128000,
+          executionContext: { cwd: '/tmp/project' },
+          permissionMode: 'default' as const,
+        },
+        signal: signalController.signal,
+        loopClock: {
+          resultTiming: ({ turnsCount, toolCallsCount }) => ({
+            turnsCount,
+            toolCallsCount,
+            startTime: 1000,
+            now: 1030,
+          }),
+        },
+        turnsCount: 4,
+        toolResultTracker: { toolCallsCount: 2 },
+      }),
+    );
+
+    expect(handled.events).toEqual([
+      { type: 'tool_start', toolCall: readCall, toolKind: ToolKind.ReadOnly },
+      { type: 'agent_end' },
+    ]);
+    expect(handled.result).toEqual({
+      action: 'abort',
+      result: {
+        success: false,
+        error: {
+          type: 'aborted',
+          message: '任务已被用户中止',
+        },
+        metadata: {
+          turnsCount: 4,
+          toolCallsCount: 2,
+          duration: 30,
+        },
+      },
     });
   });
 });
