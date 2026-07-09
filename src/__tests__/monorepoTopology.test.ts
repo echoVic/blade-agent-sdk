@@ -443,7 +443,8 @@ describe('monorepo topology', () => {
     expect(rootAgentLoopSource).not.toContain('buildAgentLoopToolTurnCompletion({');
     expect(rootAgentLoopSource).not.toContain('buildAgentLoopReactiveCompactRetryEvent');
     expect(rootAgentLoopSource).not.toContain('buildAgentLoopTurnRetryEvent');
-    expect(rootAgentLoopSource).toContain('handleAgentLoopNoToolTurnWithEmissions');
+    expect(rootAgentLoopSource).toContain('handleAgentLoopResponseNoToolGateWithEmissions');
+    expect(rootAgentLoopSource).not.toContain('handleAgentLoopNoToolTurnWithEmissions');
     expect(rootAgentLoopSource).not.toContain('handleAgentLoopNoToolTurn({');
     expect(rootAgentLoopSource).not.toContain('noToolHandling.continuation.events');
     expect(rootAgentLoopSource).not.toContain('noToolHandling.successDecision.events');
@@ -466,9 +467,9 @@ describe('monorepo topology', () => {
       /buildAgentLoopNoToolDecisionInput\(\{\s+content,\s+messages: convState\.toArray\(\)/,
     );
     expect(rootAgentLoopSource).not.toContain('decideAgentLoopNoToolTurn');
-    expect(rootAgentLoopSource).toContain('shouldHandleAgentLoopNoToolTurn');
+    expect(rootAgentLoopSource).not.toContain('shouldHandleAgentLoopNoToolTurn');
     expect(rootAgentLoopSource).not.toContain('shouldContinueAgentLoopAfterNoToolDecision');
-    expect(rootAgentLoopSource).toContain('emitAgentLoopResponseEventsFromTurnResult');
+    expect(rootAgentLoopSource).not.toContain('emitAgentLoopResponseEventsFromTurnResult');
     expect(rootAgentLoopSource).not.toContain('buildAgentLoopResponseEventsInput');
     expect(rootAgentLoopSource).not.toContain('buildAgentLoopResponseEvents');
     expect(rootAgentLoopSource).not.toContain('buildAgentLoopNoToolSuccessDecision');

@@ -5,6 +5,10 @@ import {
   type AgentLoopTurnEndEvent,
 } from './loopEvents.js';
 import {
+  emitAgentLoopResponseEventsFromTurnResult,
+  type AgentLoopResponseEvent,
+} from './responseEvents.js';
+import {
   type AgentLoopSuccessResult,
   buildAgentLoopNoToolSuccessDecision,
   buildAgentLoopNoToolSuccessDecisionInputFromLoopState,
@@ -146,6 +150,18 @@ export interface HandleAgentLoopNoToolTurnInput<TSnapshot = unknown> {
   tokenBudget?: AgentLoopNoToolSuccessTokenBudgetLike<TSnapshot>;
 }
 
+export interface HandleAgentLoopResponseNoToolGateInput<
+  TSnapshot = unknown,
+  StreamingExecutionResult = unknown,
+> extends HandleAgentLoopNoToolTurnInput<TSnapshot> {
+  response: AgentLoopNoToolTurnResponseLike &
+    AgentLoopToolCallResponseLike & {
+      reasoningContent?: string;
+    };
+  signal?: AbortSignal;
+  streamingExecutionResults: readonly StreamingExecutionResult[] | undefined;
+}
+
 export type AgentLoopNoToolTurnHandling =
   | {
       action: 'continue';
@@ -166,6 +182,22 @@ export type AgentLoopNoToolTurnEvent = AgentLoopTurnEndEvent | AgentLoopEndEvent
 export type AgentLoopNoToolTurnEmissionHandling =
   | {
       action: 'continue';
+    }
+  | {
+      action: 'finish';
+      result: AgentLoopSuccessResult;
+    };
+
+export type AgentLoopResponseNoToolGateEvent =
+  | AgentLoopResponseEvent
+  | AgentLoopNoToolTurnEvent;
+
+export type AgentLoopResponseNoToolGateHandling =
+  | {
+      action: 'continue_tool';
+    }
+  | {
+      action: 'continue_loop';
     }
   | {
       action: 'finish';
@@ -334,6 +366,30 @@ export async function* handleAgentLoopNoToolTurnWithEmissions(
     action: 'finish',
     result: handling.successDecision.result,
   };
+}
+
+export async function* handleAgentLoopResponseNoToolGateWithEmissions<
+  TSnapshot = unknown,
+  StreamingExecutionResult = unknown,
+>(
+  input: HandleAgentLoopResponseNoToolGateInput<TSnapshot, StreamingExecutionResult>,
+): AsyncGenerator<AgentLoopResponseNoToolGateEvent, AgentLoopResponseNoToolGateHandling> {
+  yield* emitAgentLoopResponseEventsFromTurnResult({
+    response: input.response,
+    signal: input.signal,
+    streamingExecutionResults: input.streamingExecutionResults,
+  });
+
+  if (!shouldHandleAgentLoopNoToolTurn(input.response)) {
+    return { action: 'continue_tool' };
+  }
+
+  const noToolHandling = yield* handleAgentLoopNoToolTurnWithEmissions(input);
+  if (noToolHandling.action === 'continue') {
+    return { action: 'continue_loop' };
+  }
+
+  return noToolHandling;
 }
 
 function isIncompleteIntent(content: string): boolean {

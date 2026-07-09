@@ -14,6 +14,7 @@ import {
   decideAgentLoopNoToolTurn,
   decideNoToolTurn,
   handleAgentLoopNoToolTurn,
+  handleAgentLoopResponseNoToolGateWithEmissions,
   handleAgentLoopNoToolTurnWithEmissions,
   runAgentLoopNoToolCompleteHook,
   shouldContinueAgentLoopAfterNoToolDecision,
@@ -393,6 +394,160 @@ describe('decideNoToolTurn', () => {
       { type: 'complete_hook', payload: { content: 'All done', turn: 5 } },
       { type: 'timing', turnsCount: 5, toolCallsCount: 3 },
     ]);
+  });
+
+  it('handles response no-tool gates by continuing to tool handling for tool calls', async () => {
+    const handled = await collectGenerator(
+      handleAgentLoopResponseNoToolGateWithEmissions({
+        response: {
+          content: 'I will call a tool',
+          reasoningContent: 'Need the file first.',
+          toolCalls: [
+            {
+              id: 'call_1',
+              type: 'function',
+              function: { name: 'Read', arguments: '{}' },
+            },
+          ],
+        },
+        streamingExecutionResults: undefined,
+        signal: undefined,
+        conversation: {
+          toArray: () => {
+            throw new Error('tool-call responses should not inspect no-tool history');
+          },
+          append: () => {
+            throw new Error('tool-call responses should not append no-tool messages');
+          },
+        },
+        turn: 6,
+        hooks: {},
+        loopClock: {
+          resultTiming: () => {
+            throw new Error('tool-call responses should not build no-tool results');
+          },
+        },
+        toolResultTracker: { toolCallsCount: 2 },
+        tokenUsageTracker: { totalTokens: 21 },
+      }),
+    );
+
+    expect(handled.events).toEqual([
+      { type: 'thinking', content: 'Need the file first.' },
+      { type: 'stream_end' },
+    ]);
+    expect(handled.result).toEqual({ action: 'continue_tool' });
+  });
+
+  it('handles response no-tool gates by emitting response events before no-tool continuation', async () => {
+    const operations: unknown[] = [];
+
+    const handled = await collectGenerator(
+      handleAgentLoopResponseNoToolGateWithEmissions({
+        response: {
+          content: 'I will continue',
+          reasoningContent: 'Need one more step.',
+        },
+        streamingExecutionResults: undefined,
+        signal: undefined,
+        conversation: {
+          toArray: () => {
+            operations.push({ type: 'to_array' });
+            return [{ role: 'user', content: 'continue' }];
+          },
+          append: (...messages) => {
+            operations.push({ type: 'append', messages });
+          },
+        },
+        turn: 4,
+        hooks: {
+          stop: {
+            check: async () => {
+              operations.push({ type: 'stop_check' });
+              return {
+                shouldStop: false,
+                continueReason: 'Keep moving.',
+              };
+            },
+          },
+        },
+        loopClock: {
+          resultTiming: () => {
+            throw new Error('continuations should not build finish timing');
+          },
+        },
+        toolResultTracker: { toolCallsCount: 2 },
+        tokenUsageTracker: { totalTokens: 21 },
+      }),
+    );
+
+    expect(handled.events).toEqual([
+      { type: 'thinking', content: 'Need one more step.' },
+      { type: 'stream_end' },
+      { type: 'turn_end', turn: 4, hasToolCalls: false },
+    ]);
+    expect(handled.result).toEqual({ action: 'continue_loop' });
+    expect(operations).toEqual([
+      { type: 'to_array' },
+      { type: 'stop_check' },
+      {
+        type: 'append',
+        messages: [
+          {
+            role: 'user',
+            content: '\n\n<system-reminder>\nKeep moving.\n</system-reminder>',
+          },
+        ],
+      },
+    ]);
+  });
+
+  it('handles response no-tool gates by returning finish results after response events', async () => {
+    const handled = await collectGenerator(
+      handleAgentLoopResponseNoToolGateWithEmissions({
+        response: { content: 'All done' },
+        streamingExecutionResults: undefined,
+        signal: undefined,
+        conversation: {
+          toArray: () => [],
+          append: () => {
+            throw new Error('finish responses should not append continuation messages');
+          },
+        },
+        turn: 5,
+        hooks: {},
+        loopClock: {
+          resultTiming: ({ turnsCount, toolCallsCount }) => ({
+            turnsCount,
+            toolCallsCount,
+            startTime: 2000,
+            now: 2075,
+          }),
+        },
+        toolResultTracker: { toolCallsCount: 3 },
+        tokenUsageTracker: { totalTokens: 21 },
+      }),
+    );
+
+    expect(handled.events).toEqual([
+      { type: 'stream_end' },
+      { type: 'turn_end', turn: 5, hasToolCalls: false },
+      { type: 'agent_end' },
+    ]);
+    expect(handled.result).toEqual({
+      action: 'finish',
+      result: {
+        success: true,
+        finalMessage: 'All done',
+        metadata: {
+          turnsCount: 5,
+          toolCallsCount: 3,
+          duration: 75,
+          tokensUsed: 21,
+          tokenBudgetSnapshot: undefined,
+        },
+      },
+    });
   });
 
   it('projects object-style no-tool decision input and runs the decision wrapper', async () => {

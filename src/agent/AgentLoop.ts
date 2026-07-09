@@ -25,8 +25,7 @@ import {
   handleAgentLoopAssistantMessage,
 } from './loop/assistantMessage.js';
 import {
-  handleAgentLoopNoToolTurnWithEmissions,
-  shouldHandleAgentLoopNoToolTurn,
+  handleAgentLoopResponseNoToolGateWithEmissions,
 } from './loop/decideNoToolTurn.js';
 import {
   buildAgentLoopEffectiveMaxTurns,
@@ -34,7 +33,6 @@ import {
 } from './loop/decideTurnLimit.js';
 import { executeToolCalls } from './loop/executeToolCalls.js';
 import { buildAgentLoopStartEvent } from './loop/loopEvents.js';
-import { emitAgentLoopResponseEventsFromTurnResult } from './loop/responseEvents.js';
 import { createAgentLoopClock } from './loop/loopClock.js';
 import {
   handleAgentLoopAbortIfRequested,
@@ -291,29 +289,23 @@ export async function* agentLoop(
       return postUsageGate.result as LoopResult;
     }
 
-    yield* emitAgentLoopResponseEventsFromTurnResult({
+    const responseNoToolGate = yield* handleAgentLoopResponseNoToolGateWithEmissions({
       response: turnResult,
       signal,
       streamingExecutionResults,
+      conversation: convState,
+      turn: turnsCount,
+      hooks,
+      loopClock,
+      toolResultTracker,
+      tokenUsageTracker,
+      tokenBudget,
     });
-
-    // 无 tool calls → 正常结束或重试
-    if (shouldHandleAgentLoopNoToolTurn(turnResult)) {
-      const noToolHandling = yield* handleAgentLoopNoToolTurnWithEmissions({
-        response: turnResult,
-        conversation: convState,
-        turn: turnsCount,
-        hooks,
-        loopClock,
-        toolResultTracker,
-        tokenUsageTracker,
-        tokenBudget,
-      });
-      if (noToolHandling.action === 'continue') {
-        continue;
-      }
-
-      return noToolHandling.result as LoopResult;
+    if (responseNoToolGate.action === 'continue_loop') {
+      continue;
+    }
+    if (responseNoToolGate.action === 'finish') {
+      return responseNoToolGate.result as LoopResult;
     }
 
     await handleAgentLoopAssistantMessage({
