@@ -7,6 +7,7 @@ import {
   buildAgentLoopBeforeTurnHookPayloadFromLoopState,
   consumeAgentLoopBeforeTurnStream,
   createAgentLoopTurnCounter,
+  handleAgentLoopTurnStart,
   requestAgentLoopTurnRetry,
   resetAgentLoopTurnCounter,
   runAgentLoopBeforeTurnHook,
@@ -50,6 +51,32 @@ describe('agent loop turn counter', () => {
   it('emits turn-start events only for newly started turns', () => {
     expect(shouldEmitAgentLoopTurnStart({ started: true, turn: 1 })).toBe(true);
     expect(shouldEmitAgentLoopTurnStart({ started: false, turn: 1 })).toBe(false);
+  });
+
+  it('handles turn starts with a public turn_start event for newly started turns', () => {
+    const counter = createAgentLoopTurnCounter();
+
+    expect(handleAgentLoopTurnStart({ counter, maxTurns: 8 })).toEqual({
+      turn: 1,
+      turnStart: { started: true, turn: 1 },
+      events: [{ type: 'turn_start', turn: 1, maxTurns: 8 }],
+    });
+    expect(counter.turnsCount).toBe(1);
+  });
+
+  it('handles retry turn starts without emitting a duplicate turn_start event', () => {
+    const counter = createAgentLoopTurnCounter();
+
+    counter.beginTurn();
+    counter.requestRetry();
+
+    expect(handleAgentLoopTurnStart({ counter, maxTurns: 8 })).toEqual({
+      turn: 1,
+      turnStart: { started: false, turn: 1 },
+      events: [],
+    });
+    expect(counter.turnsCount).toBe(1);
+    expect(counter.shouldRunBeforeTurn()).toBe(true);
   });
 
   it('runs before-turn hooks only when the counter allows it and a hook exists', () => {

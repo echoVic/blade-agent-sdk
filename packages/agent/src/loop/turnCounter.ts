@@ -1,5 +1,8 @@
 import {
   buildAgentLoopReactiveCompactRetryEvent,
+  buildAgentLoopTurnStartEvent,
+  buildAgentLoopTurnStartEventInput,
+  type AgentLoopTurnStartEvent,
   type AgentLoopTurnRetryEvent,
 } from './loopEvents.js';
 
@@ -63,6 +66,16 @@ export interface BeginAgentLoopTurnInput {
   counter: Pick<AgentLoopTurnCounter, 'beginTurn'>;
 }
 
+export interface HandleAgentLoopTurnStartInput extends BeginAgentLoopTurnInput {
+  maxTurns: number;
+}
+
+export interface AgentLoopTurnStartHandling {
+  turn: number;
+  turnStart: AgentLoopTurnStart;
+  events: AgentLoopTurnStartEvent[];
+}
+
 export interface RequestAgentLoopTurnRetryInput {
   counter: Pick<AgentLoopTurnCounter, 'requestRetry'>;
 }
@@ -86,6 +99,26 @@ export function shouldEmitAgentLoopTurnStart(turnStart: AgentLoopTurnStart): boo
 
 export function beginAgentLoopTurn(input: BeginAgentLoopTurnInput): AgentLoopTurnStart {
   return input.counter.beginTurn();
+}
+
+export function handleAgentLoopTurnStart(
+  input: HandleAgentLoopTurnStartInput,
+): AgentLoopTurnStartHandling {
+  const turnStart = beginAgentLoopTurn(input);
+  return {
+    turn: turnStart.turn,
+    turnStart,
+    events: shouldEmitAgentLoopTurnStart(turnStart)
+      ? [
+          buildAgentLoopTurnStartEvent(
+            buildAgentLoopTurnStartEventInput({
+              turn: turnStart.turn,
+              maxTurns: input.maxTurns,
+            }),
+          ),
+        ]
+      : [],
+  };
 }
 
 export function requestAgentLoopTurnRetry(input: RequestAgentLoopTurnRetryInput): void {

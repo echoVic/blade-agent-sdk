@@ -38,11 +38,7 @@ import {
   handleAgentLoopToolTurnTail,
 } from './loop/decideTurnLimit.js';
 import { executeToolCalls } from './loop/executeToolCalls.js';
-import {
-  buildAgentLoopStartEvent,
-  buildAgentLoopTurnStartEvent,
-  buildAgentLoopTurnStartEventInput,
-} from './loop/loopEvents.js';
+import { buildAgentLoopStartEvent } from './loop/loopEvents.js';
 import { emitAgentLoopResponseEventsFromTurnResult } from './loop/responseEvents.js';
 import { createAgentLoopClock } from './loop/loopClock.js';
 import {
@@ -69,10 +65,9 @@ import { createAgentToolResultTracker } from './loop/toolResultTracker.js';
 import { buildAgentLoopTurnStateProjectionFromPreparation } from './loop/turnState.js';
 import {
   applyAgentLoopReactiveCompactRetry,
-  beginAgentLoopTurn,
   createAgentLoopTurnCounter,
+  handleAgentLoopTurnStart,
   runAgentLoopBeforeTurnHook,
-  shouldEmitAgentLoopTurnStart,
 } from './loop/turnCounter.js';
 import {
   buildAgentLoopRunTurnInputFromLoopState,
@@ -217,15 +212,13 @@ export async function* agentLoop(
       hooks,
     });
 
-    const turnStart = beginAgentLoopTurn({ counter: turnCounter });
+    const turnStart = handleAgentLoopTurnStart({
+      counter: turnCounter,
+      maxTurns: effectiveMaxTurns,
+    });
     const turnsCount = turnStart.turn;
-    if (shouldEmitAgentLoopTurnStart(turnStart)) {
-      yield buildAgentLoopTurnStartEvent(
-        buildAgentLoopTurnStartEventInput({
-          turn: turnsCount,
-          maxTurns: effectiveMaxTurns,
-        }),
-      );
+    for (const event of turnStart.events) {
+      yield event;
     }
 
     const abortAfterTurnStart = yield* handleAgentLoopAbortIfRequested({

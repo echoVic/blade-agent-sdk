@@ -436,7 +436,7 @@ describe('monorepo topology', () => {
     );
     expect(rootAgentLoopSource).not.toContain('shouldAbortAgentLoop');
     expect(rootAgentLoopSource).toContain('buildAgentLoopStartEvent');
-    expect(rootAgentLoopSource).toContain('buildAgentLoopTurnStartEvent');
+    expect(rootAgentLoopSource).not.toContain('buildAgentLoopTurnStartEvent');
     expect(rootAgentLoopSource).toContain('handleAgentLoopToolTurnTail');
     expect(rootAgentLoopSource).not.toContain('buildAgentLoopToolTurnCompletion');
     expect(rootAgentLoopSource).not.toContain('buildAgentLoopToolTurnCompletionInput');
@@ -623,14 +623,15 @@ describe('monorepo topology', () => {
     expect(rootAgentLoopSource).not.toContain('registry: executionPipeline.getRegistry()');
     expect(rootAgentLoopSource).not.toContain('shouldStopAgentLoopForTurnLimitDecision');
     expect(rootAgentLoopSource).toContain('createAgentLoopTurnCounter');
-    expect(rootAgentLoopSource).toContain('beginAgentLoopTurn');
+    expect(rootAgentLoopSource).toContain('handleAgentLoopTurnStart');
+    expect(rootAgentLoopSource).not.toContain('beginAgentLoopTurn');
     expect(rootAgentLoopSource).not.toContain('turnCounter.beginTurn(');
     expect(rootAgentLoopSource).toContain('applyAgentLoopReactiveCompactRetry');
     expect(rootAgentLoopSource).not.toContain('requestAgentLoopTurnRetry');
     expect(rootAgentLoopSource).not.toContain('turnCounter.requestRetry(');
     expect(rootAgentLoopSource).not.toContain('resetAgentLoopTurnCounter');
     expect(rootAgentLoopSource).not.toContain('turnCounter.reset(');
-    expect(rootAgentLoopSource).toContain('shouldEmitAgentLoopTurnStart');
+    expect(rootAgentLoopSource).not.toContain('shouldEmitAgentLoopTurnStart');
     expect(rootAgentLoopSource).toContain('runAgentLoopBeforeTurnHook');
     expect(rootAgentLoopSource).not.toContain('buildAgentLoopBeforeTurnHookPayloadFromLoopState');
     expect(rootAgentLoopSource).not.toContain(
@@ -773,7 +774,7 @@ describe('monorepo topology', () => {
     expect(rootAgentLoopSource).not.toContain('buildAgentLoopEndEvent');
     expect(rootAgentLoopSource).not.toContain('buildAgentLoopTurnEndEvent');
     expect(rootAgentLoopSource).not.toContain('if (signal?.aborted)');
-    expect(rootAgentLoopSource).toContain('buildAgentLoopTurnStartEventInput');
+    expect(rootAgentLoopSource).not.toContain('buildAgentLoopTurnStartEventInput');
     expect(rootAgentLoopSource).not.toContain('yield buildAgentLoopTurnStartEvent({');
     expect(rootAgentLoopSource).not.toContain('buildAgentLoopTurnRetryEventInput');
     expect(rootAgentLoopSource).not.toContain('yield buildAgentLoopTurnRetryEvent({');
