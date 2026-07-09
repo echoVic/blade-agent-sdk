@@ -193,7 +193,11 @@ describe('package entrypoints', () => {
     expect(helper).toContain('resetService();');
     expect(helper).toContain('The service was stopped');
     expect(verifier).toContain('browserBundleOutput');
+    expect(verifier).toContain("from '@blade-ai/agent-sdk/browser';");
+    expect(verifier).toContain("from '@blade-ai/agent-sdk/session/internal';");
     expect(verifier).toContain('server-only for bundled createSession');
+    expect(verifier).toContain('server-only for bundled resumeSession');
+    expect(verifier).toContain('server-only for bundled getBuiltinTools');
     expect(verifier).not.toContain("'pnpm', [\n    'exec',\n    'esbuild'");
     expect(verifier).not.toContain("resolve(repoRoot, 'node_modules/.bin/esbuild')");
   });

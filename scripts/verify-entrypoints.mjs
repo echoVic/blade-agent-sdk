@@ -112,8 +112,20 @@ try {
     entry,
     [
       "import { createSession, PermissionMode } from '@blade-ai/agent-sdk';",
-      "console.log(PermissionMode.DEFAULT, typeof createSession);",
+      "import { createSession as createBrowserSession, PermissionMode as BrowserPermissionMode, StreamMessageType as BrowserStreamMessageType } from '@blade-ai/agent-sdk/browser';",
+      "import { StreamMessageType } from '@blade-ai/agent-sdk/core';",
+      "import { ToolKind } from '@blade-ai/agent-sdk/tools';",
+      "import { resumeSession } from '@blade-ai/agent-sdk/session';",
+      "import { createSession as createInternalSession } from '@blade-ai/agent-sdk/session/internal';",
+      "import { createSession as createServerSession } from '@blade-ai/agent-sdk/server';",
+      "import { getBuiltinTools } from '@blade-ai/agent-sdk/local';",
+      "console.log(PermissionMode.DEFAULT, BrowserPermissionMode.DEFAULT, StreamMessageType.CONTENT, BrowserStreamMessageType.CONTENT, ToolKind.ReadOnly, typeof createSession);",
       "try { createSession({}); } catch (error) { console.log(`server-only for bundled createSession: ${error.message}`); }",
+      "try { createBrowserSession({}); } catch (error) { console.log(`server-only for bundled browser createSession: ${error.message}`); }",
+      "try { resumeSession('session-id'); } catch (error) { console.log(`server-only for bundled resumeSession: ${error.message}`); }",
+      "try { createInternalSession({}); } catch (error) { console.log(`server-only for bundled internal createSession: ${error.message}`); }",
+      "try { createServerSession({}); } catch (error) { console.log(`server-only for bundled server createSession: ${error.message}`); }",
+      "try { getBuiltinTools(); } catch (error) { console.log(`server-only for bundled getBuiltinTools: ${error.message}`); }",
     ].join('\n'),
     'utf8',
   );
@@ -130,8 +142,13 @@ try {
   });
   assertNoDisallowedImports(output);
   const browserBundleOutput = run(process.execPath, [output], { cwd: packageRoot });
-  assertIncludes(browserBundleOutput, 'default function', 'browser bundle root import');
+  assertIncludes(browserBundleOutput, 'default default content content readonly function', 'browser bundle root import');
   assertIncludes(browserBundleOutput, 'server-only for bundled createSession', 'browser bundle root stub');
+  assertIncludes(browserBundleOutput, 'server-only for bundled browser createSession', 'browser bundle browser stub');
+  assertIncludes(browserBundleOutput, 'server-only for bundled resumeSession', 'browser bundle session stub');
+  assertIncludes(browserBundleOutput, 'server-only for bundled internal createSession', 'browser bundle internal session stub');
+  assertIncludes(browserBundleOutput, 'server-only for bundled server createSession', 'browser bundle server stub');
+  assertIncludes(browserBundleOutput, 'server-only for bundled getBuiltinTools', 'browser bundle local stub');
 } finally {
   rmSync(tempDir, { recursive: true, force: true });
 }
