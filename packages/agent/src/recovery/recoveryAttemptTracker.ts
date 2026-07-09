@@ -6,6 +6,7 @@ import {
   buildAgentRecoveryStartedEffects,
   consumeAgentRecoveryCompactStreamWithEmittedResultEffects,
   emitAgentRecoveryEffects,
+  hasAgentReactiveCompactHook,
   type AgentRecoveryEffects,
   type AgentRecoveryCompactResultEffects,
   type AgentRecoveryEvent,
@@ -78,6 +79,13 @@ export interface ConsumeAgentRecoveryResetEffectsInput {
 export interface EmitAgentRecoveryResetEffectsInput
   extends ConsumeAgentRecoveryResetEffectsInput {
   hooks?: AgentRecoveryStateChangeHookContainer | null;
+}
+
+export interface ShouldAttemptAgentRecoveryFromHookContainerInput<TMessage, Event> {
+  error: unknown;
+  hooks?: AgentReactiveCompactHookContainer<TMessage, Event> | null;
+  tracker: Pick<AgentRecoveryAttemptTracker, 'canAttempt'>;
+  turn: number;
 }
 
 export function createAgentRecoveryAttemptTracker(): AgentRecoveryAttemptTracker {
@@ -261,6 +269,20 @@ export function shouldAttemptAgentRecovery({
   turn: number;
 }): boolean {
   return isOverflowRecoverable(error) && hasReactiveCompact && tracker.canAttempt(turn);
+}
+
+export function shouldAttemptAgentRecoveryFromHookContainer<TMessage, Event>({
+  error,
+  hooks,
+  tracker,
+  turn,
+}: ShouldAttemptAgentRecoveryFromHookContainerInput<TMessage, Event>): boolean {
+  return shouldAttemptAgentRecovery({
+    error,
+    hasReactiveCompact: hasAgentReactiveCompactHook({ hooks }),
+    tracker,
+    turn,
+  });
 }
 
 export function hasAgentRecoveryAttemptExhausted({

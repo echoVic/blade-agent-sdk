@@ -10,6 +10,7 @@ import {
   hasAgentRecoveryAttemptExhausted,
   runAgentRecoveryCompactAttemptWithEmissions,
   shouldAttemptAgentRecovery,
+  shouldAttemptAgentRecoveryFromHookContainer,
   startAgentRecoveryAttempt,
   startAgentRecoveryAttemptWithEmittedCompactStream,
   startAgentRecoveryAttemptWithCompactStream,
@@ -489,6 +490,52 @@ describe('agent recovery attempt tracker', () => {
         hasReactiveCompact: false,
         tracker,
         turn: 5,
+      }),
+    ).toBe(false);
+  });
+
+  it('allows reactive recovery from a hook container only when compact hooks are present', () => {
+    const tracker = createAgentRecoveryAttemptTracker();
+
+    expect(
+      shouldAttemptAgentRecoveryFromHookContainer({
+        error: new Error('maximum context length exceeded'),
+        hooks: {
+          recovery: {
+            reactiveCompact: async function* reactiveCompact() {
+              yield { type: 'compact_progress', phase: 'unused' };
+              return true;
+            },
+          },
+        },
+        tracker,
+        turn: 4,
+      }),
+    ).toBe(true);
+    expect(
+      shouldAttemptAgentRecoveryFromHookContainer({
+        error: new Error('maximum context length exceeded'),
+        hooks: {},
+        tracker,
+        turn: 5,
+      }),
+    ).toBe(false);
+
+    tracker.startAttempt(4);
+
+    expect(
+      shouldAttemptAgentRecoveryFromHookContainer({
+        error: new Error('maximum context length exceeded'),
+        hooks: {
+          recovery: {
+            reactiveCompact: async function* reactiveCompact() {
+              yield { type: 'compact_progress', phase: 'unused' };
+              return true;
+            },
+          },
+        },
+        tracker,
+        turn: 4,
       }),
     ).toBe(false);
   });

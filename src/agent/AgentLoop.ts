@@ -23,12 +23,9 @@ import {
   emitAgentRecoveryResetEffects,
   hasAgentRecoveryAttemptExhausted,
   runAgentRecoveryCompactAttemptWithEmissions,
-  shouldAttemptAgentRecovery,
+  shouldAttemptAgentRecoveryFromHookContainer,
 } from './recoveryAttemptTracker.js';
-import {
-  buildAgentModelFallbackEvent,
-  hasAgentReactiveCompactHook,
-} from './recoveryEvents.js';
+import { buildAgentModelFallbackEvent } from './recoveryEvents.js';
 import {
   applyAgentLoopAssistantMessageProjection,
   assertAgentLoopTurnResponse,
@@ -337,9 +334,9 @@ export async function* agentLoop(
       }
 
       // 反应式压缩：context 溢出时尝试恢复
-      if (shouldAttemptAgentRecovery({
+      if (shouldAttemptAgentRecoveryFromHookContainer({
         error: llmError,
-        hasReactiveCompact: hasAgentReactiveCompactHook({ hooks }),
+        hooks,
         tracker: recoveryAttemptTracker,
         turn: turnsCount,
       })) {
