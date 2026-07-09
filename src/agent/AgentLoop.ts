@@ -26,10 +26,8 @@ import {
 } from './recoveryAttemptTracker.js';
 import { buildAgentModelFallbackEvent } from './recoveryEvents.js';
 import {
-  applyAgentLoopAssistantMessageProjection,
   assertAgentLoopTurnResponse,
-  buildAgentLoopAssistantMessageProjection,
-  runAgentLoopAssistantMessageHook,
+  handleAgentLoopAssistantMessage,
 } from './loop/assistantMessage.js';
 import {
   applyAgentLoopNoToolContinuation,
@@ -461,16 +459,10 @@ export async function* agentLoop(
       return noToolSuccessDecision.result as LoopResult;
     }
 
-    const assistantMessageProjection = applyAgentLoopAssistantMessageProjection({
+    await handleAgentLoopAssistantMessage({
       conversation: convState,
-      projection: buildAgentLoopAssistantMessageProjection({
-        response: turnResult,
-        turn: turnsCount,
-      }),
-    });
-
-    await runAgentLoopAssistantMessageHook({
-      projection: assistantMessageProjection,
+      response: turnResult,
+      turn: turnsCount,
       hooks,
     });
 

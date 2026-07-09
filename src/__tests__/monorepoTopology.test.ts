@@ -515,8 +515,9 @@ describe('monorepo topology', () => {
     );
     expect(rootAgentLoopSource).toContain('shouldExitAgentLoopForToolDecision');
     expect(rootAgentLoopSource).toContain('createAgentLoopClock');
-    expect(rootAgentLoopSource).toContain('buildAgentLoopAssistantMessageProjection');
-    expect(rootAgentLoopSource).toContain('runAgentLoopAssistantMessageHook');
+    expect(rootAgentLoopSource).toContain('handleAgentLoopAssistantMessage');
+    expect(rootAgentLoopSource).not.toContain('buildAgentLoopAssistantMessageProjection');
+    expect(rootAgentLoopSource).not.toContain('runAgentLoopAssistantMessageHook');
     expect(rootAgentLoopSource).not.toContain('messageHooks?.onAssistant');
     expect(rootAgentLoopSource).toContain('buildAgentLoopToolResultContinuation');
     expect(rootAgentLoopSource).toContain('runAgentLoopToolResultAfterExecHook');
@@ -748,7 +749,7 @@ describe('monorepo topology', () => {
     expect(rootAgentLoopSource).not.toContain('buildAgentLoopTurnStateProjection({');
     expect(rootAgentLoopSource).toContain('applyAgentLoopNoToolContinuation');
     expect(rootAgentLoopSource).not.toContain('convState.append(noToolContinuation.message)');
-    expect(rootAgentLoopSource).toContain('applyAgentLoopAssistantMessageProjection');
+    expect(rootAgentLoopSource).not.toContain('applyAgentLoopAssistantMessageProjection');
     expect(rootAgentLoopSource).not.toContain(
       'convState.append(assistantMessageProjection.message)',
     );

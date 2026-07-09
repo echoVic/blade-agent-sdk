@@ -2,6 +2,7 @@ export {
   applyAgentLoopAssistantMessageProjection,
   assertAgentLoopTurnResponse,
   buildAgentLoopAssistantMessageProjection,
+  handleAgentLoopAssistantMessage,
   runAgentLoopAssistantMessageHook,
   type AgentLoopAssistantMessageConversationLike,
   type AgentLoopAssistantMessageHookContainer,
@@ -9,5 +10,6 @@ export {
   type AgentLoopAssistantMessageProjection,
   type AgentLoopAssistantMessageProjectionInput,
   type ApplyAgentLoopAssistantMessageProjectionInput,
+  type HandleAgentLoopAssistantMessageInput,
   type RunAgentLoopAssistantMessageHookInput,
 } from '../../../packages/agent/src/loop/assistantMessage.js';

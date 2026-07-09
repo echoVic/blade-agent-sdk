@@ -43,6 +43,12 @@ export interface RunAgentLoopAssistantMessageHookInput {
   hooks?: AgentLoopAssistantMessageHookContainer | null;
 }
 
+export interface HandleAgentLoopAssistantMessageInput
+  extends AgentLoopAssistantMessageProjectionInput {
+  conversation: AgentLoopAssistantMessageConversationLike;
+  hooks?: AgentLoopAssistantMessageHookContainer | null;
+}
+
 export function assertAgentLoopTurnResponse<TResponse>(
   response: TResponse | undefined,
 ): TResponse {
@@ -93,4 +99,21 @@ export async function runAgentLoopAssistantMessageHook(
 ): Promise<AgentLoopAssistantMessageProjection> {
   await input.hooks?.message?.onAssistant?.(input.projection.hookPayload);
   return input.projection;
+}
+
+export async function handleAgentLoopAssistantMessage(
+  input: HandleAgentLoopAssistantMessageInput,
+): Promise<AgentLoopAssistantMessageProjection> {
+  const projection = applyAgentLoopAssistantMessageProjection({
+    conversation: input.conversation,
+    projection: buildAgentLoopAssistantMessageProjection({
+      response: input.response,
+      turn: input.turn,
+    }),
+  });
+
+  return runAgentLoopAssistantMessageHook({
+    projection,
+    hooks: input.hooks,
+  });
 }

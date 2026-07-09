@@ -3,6 +3,7 @@ import {
   assertAgentLoopTurnResponse,
   applyAgentLoopAssistantMessageProjection,
   buildAgentLoopAssistantMessageProjection,
+  handleAgentLoopAssistantMessage,
   runAgentLoopAssistantMessageHook,
 } from '../loop/assistantMessage.js';
 
@@ -113,6 +114,57 @@ describe('agent loop assistant message projection', () => {
         reasoningContent: 'Need evidence first.',
         turn: 3,
       },
+    ]);
+  });
+
+  it('handles assistant message projection, append, and hook dispatch together', async () => {
+    const operations: unknown[] = [];
+    const toolCalls = [
+      {
+        id: 'call_read',
+        type: 'function' as const,
+        function: { name: 'Read', arguments: '{"file":"README.md"}' },
+      },
+    ];
+
+    const projection = await handleAgentLoopAssistantMessage({
+      response: {
+        content: 'I will inspect the file.',
+        reasoningContent: 'Need evidence first.',
+        toolCalls,
+      },
+      turn: 3,
+      conversation: {
+        append: (...messages) => {
+          operations.push({ type: 'append', messages });
+        },
+      },
+      hooks: {
+        message: {
+          onAssistant: async (payload) => {
+            operations.push({ type: 'hook', payload });
+          },
+        },
+      },
+    });
+
+    expect(projection).toEqual({
+      message: {
+        role: 'assistant',
+        content: 'I will inspect the file.',
+        reasoningContent: 'Need evidence first.',
+        tool_calls: toolCalls,
+      },
+      hookPayload: {
+        content: 'I will inspect the file.',
+        reasoningContent: 'Need evidence first.',
+        toolCalls,
+        turn: 3,
+      },
+    });
+    expect(operations).toEqual([
+      { type: 'append', messages: [projection.message] },
+      { type: 'hook', payload: projection.hookPayload },
     ]);
   });
 
