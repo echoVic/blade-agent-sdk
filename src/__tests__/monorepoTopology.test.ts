@@ -415,6 +415,7 @@ describe('monorepo topology', () => {
     expect(agentLoopSource).toContain("from './toolInjectedMessages.js'");
     expect(agentLoopSource).toContain("from './toolResultContinuation.js'");
     expect(agentLoopSource).toContain("from './toolResultContent.js'");
+    expect(agentLoopSource).toContain("from './toolResponseTurn.js'");
     expect(agentLoopSource).toContain("from './toolResultTracker.js'");
     expect(agentLoopSource).toContain("from './toolStartEvent.js'");
     expect(agentLoopSource).toContain("from './turnState.js'");
@@ -440,7 +441,8 @@ describe('monorepo topology', () => {
     expect(rootAgentLoopSource).not.toContain('shouldAbortAgentLoop');
     expect(rootAgentLoopSource).toContain('buildAgentLoopStartEvent');
     expect(rootAgentLoopSource).not.toContain('buildAgentLoopTurnStartEvent');
-    expect(rootAgentLoopSource).toContain('handleAgentLoopToolTurnTail');
+    expect(rootAgentLoopSource).toContain('handleAgentLoopToolResponseWithEmissions');
+    expect(rootAgentLoopSource).not.toContain('handleAgentLoopToolTurnTail');
     expect(rootAgentLoopSource).not.toContain('buildAgentLoopToolTurnCompletion');
     expect(rootAgentLoopSource).not.toContain('buildAgentLoopToolTurnCompletionInput');
     expect(rootAgentLoopSource).not.toContain('buildAgentLoopToolTurnCompletion({');
@@ -493,7 +495,7 @@ describe('monorepo topology', () => {
     );
     expect(rootAgentLoopSource).not.toContain('tokenUsageTracker.totalTokens');
     expect(rootAgentLoopSource).not.toContain('tokenBudget?.getSnapshot()');
-    expect(rootAgentLoopSource).toContain(
+    expect(rootAgentLoopSource).not.toContain(
       'handleAgentLoopToolExecutionResultsWithEmissions',
     );
     expect(rootAgentLoopSource).not.toContain('handleAgentLoopToolResults');
@@ -511,6 +513,10 @@ describe('monorepo topology', () => {
       /buildAgentLoopToolExitDecisionInput\(\{\s+toolCall,\s+result,\s+streamingExecutionResults,[\s\S]*\.\.\.loopClock\.resultTiming/,
     );
     expect(rootAgentLoopSource).not.toContain('shouldExitAgentLoopForToolDecision');
+    expect(rootAgentLoopSource).not.toContain('const toolExecutionResults');
+    expect(rootAgentLoopSource).not.toContain("toolExecutionResults.action === 'exit'");
+    expect(rootAgentLoopSource).not.toContain('const toolTurnTail');
+    expect(rootAgentLoopSource).not.toContain("toolTurnTail.action === 'stop'");
     expect(rootAgentLoopSource).toContain('createAgentLoopClock');
     expect(rootAgentLoopSource).not.toContain('handleAgentLoopAssistantMessage');
     expect(rootAgentLoopSource).not.toContain('buildAgentLoopAssistantMessageProjection');

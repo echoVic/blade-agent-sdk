@@ -17,6 +17,7 @@ export * from './tokenUsageTracker.js';
 export * from './toolInjectedMessages.js';
 export * from './toolExecutionTurn.js';
 export * from './toolMessage.js';
+export * from './toolResponseTurn.js';
 export * from './toolResultContinuation.js';
 export * from './toolResultContent.js';
 export * from './toolResultTracker.js';

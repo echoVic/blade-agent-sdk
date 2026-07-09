@@ -20,7 +20,6 @@ import {
 } from './recoveryAttemptTracker.js';
 import {
   buildAgentLoopEffectiveMaxTurns,
-  handleAgentLoopToolTurnTail,
 } from './loop/decideTurnLimit.js';
 import { executeToolCalls } from './loop/executeToolCalls.js';
 import { buildAgentLoopStartEvent } from './loop/loopEvents.js';
@@ -37,8 +36,8 @@ import {
   createAgentLoopTokenUsageTracker,
 } from './loop/tokenUsageTracker.js';
 import {
-  handleAgentLoopToolExecutionResultsWithEmissions,
-} from './loop/toolExecutionTurn.js';
+  handleAgentLoopToolResponseWithEmissions,
+} from './loop/toolResponseTurn.js';
 import { createAgentToolResultTracker } from './loop/toolResultTracker.js';
 import {
   handleAgentLoopTurnEntryWithEmissions,
@@ -228,8 +227,8 @@ export async function* agentLoop(
       return modelResponseHandling.result as LoopResult;
     }
 
-    const toolExecutionResults =
-      yield* handleAgentLoopToolExecutionResultsWithEmissions({
+    const toolResponseHandling =
+      yield* handleAgentLoopToolResponseWithEmissions({
         executionResults: streamingExecutionResults,
         response: turnResult,
         executionPipeline,
@@ -244,29 +243,17 @@ export async function* agentLoop(
         epoch,
         streamingExecutionResults,
         hooks,
+        maxTurns: config.maxTurns,
+        effectiveMaxTurns,
+        isYoloMode,
+        tokenUsageTracker,
+        turnCounter,
       });
-    if (toolExecutionResults.action === 'abort') {
-      return toolExecutionResults.result as LoopResult;
+    if (toolResponseHandling.action === 'abort' || toolResponseHandling.action === 'stop') {
+      return toolResponseHandling.result as LoopResult;
     }
-    if (toolExecutionResults.action === 'exit') {
-      return toolExecutionResults.exitDecision.result as LoopResult;
-    }
-
-    const toolTurnTail = yield* handleAgentLoopToolTurnTail({
-      signal,
-      loopClock,
-      turnsCount,
-      maxTurns: config.maxTurns,
-      effectiveMaxTurns,
-      isYoloMode,
-      conversation: convState,
-      toolResultTracker,
-      tokenUsageTracker,
-      turnCounter,
-      hooks,
-    });
-    if (toolTurnTail.action === 'abort' || toolTurnTail.action === 'stop') {
-      return toolTurnTail.result as LoopResult;
+    if (toolResponseHandling.action === 'exit') {
+      return toolResponseHandling.exitDecision.result as LoopResult;
     }
   }
 }
