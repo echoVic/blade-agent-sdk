@@ -241,6 +241,9 @@ describe('package entrypoints', () => {
     expect(verifier).toContain('local root declarations must keep sandbox adapters behind @blade-ai/agent-sdk/local');
     expect(verifier).toContain('local root declarations must keep provider-specific DeepSeek helpers in @blade-ai/ai/deepseek');
     expect(verifier).toContain('local root declaration public boundary passed');
+    expect(verifier).toContain('local root declarations must be emitted from package-local root entry source');
+    expect(verifier).toContain('local root declarations must reference final public entrypoints, not overlay sources');
+    expect(verifier).toContain('local root declaration entry ownership boundary passed');
     expect(verifier).toContain('local root runtime must use package-local subagent compatibility exports');
     expect(verifier).toContain('local root declarations must use package-local subagent compatibility exports');
     expect(verifier).toContain('local root subagent compatibility boundary passed');

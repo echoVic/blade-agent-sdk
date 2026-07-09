@@ -957,6 +957,7 @@ Status:
 - Two-hundred-seventy-ninth verification-chain increment complete: `pnpm run verify:entrypoints` now also rejects local dist `@blade-ai/agent-sdk/local` memory declarations that expose legacy memory-store method signatures, keeping the local memory API package-local before packed and published temporary consumers.
 - Two-hundred-eightieth verification-chain increment complete: `pnpm run verify:entrypoints` now rejects local dist `@blade-ai/agent-sdk` permission declarations that point back at legacy `SensitiveFileDetector` or `ToolEffects` dependencies, moving the permission declaration ownership gate earlier than packed and published temporary consumers.
 - Two-hundred-eighty-first verification-chain increment complete: `pnpm run verify:entrypoints` now rejects local dist `@blade-ai/agent-sdk` root runtime and declaration entries that point back at legacy subagent modules, keeping root subagent compatibility exports package-local before packed and published temporary consumers.
+- Two-hundred-eighty-second verification-chain increment complete: `pnpm run verify:entrypoints` now rejects local dist `@blade-ai/agent-sdk` root declarations that point back at legacy tool-call, tool factory, catalog, or temporary overlay declaration sources, keeping the session-first root type surface emitted from final package-local public entrypoints before packed and published temporary consumers.
 
 Commit:
 
