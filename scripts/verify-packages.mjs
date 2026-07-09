@@ -54,6 +54,10 @@ const expectedPackedSdkBrowserExports = {
   './session': './dist/browser/server-only-stub.js',
   './local': './dist/browser/server-only-stub.js',
 };
+const packedSdkBrowserSafeEntries = [
+  'package/dist/browser/index.js',
+  'package/dist/core/index.js',
+];
 const packedReadmeRequirements = [
   {
     packageName: '@blade-ai/ai',
@@ -1359,7 +1363,7 @@ function collectPackedStaticImports(entryFile, packageDir, seen = new Set()) {
   seen.add(entryFile);
 
   const source = readFileSync(entryFile, 'utf8');
-  const staticImportPattern = /\bimport\s+(?:[\w*{}\s,]+from\s*)?["']([^"']+)["']/g;
+  const staticImportPattern = /\b(?:import|export)\s+(?:[\w*{}\s,]+from\s*)?["']([^"']+)["']/g;
   for (const match of source.matchAll(staticImportPattern)) {
     const child = resolvePackedRelativeImport(entryFile, match[1], packageDir);
     if (child) {
@@ -2261,11 +2265,31 @@ void useSession;
   });
 }
 
-function assertNoBrowserDisallowedMarkers(filePath) {
+function verifyPackedSdkBrowserSafeStaticClosures(spec, tarballPath, tempDir) {
+  if (spec.name !== '@blade-ai/agent-sdk') return;
+
+  const extractDir = join(tempDir, 'sdk-browser-safe-static-closure');
+  const packageDir = join(extractDir, 'package');
+  run('mkdir', ['-p', extractDir]);
+  run('tar', ['-xzf', tarballPath, '-C', extractDir]);
+
+  for (const entry of packedSdkBrowserSafeEntries) {
+    const entryFile = join(extractDir, entry);
+    if (!existsSync(entryFile)) {
+      throw new Error(`${spec.name} packed SDK browser-safe static import closure entry is missing: ${entry}`);
+    }
+
+    for (const filePath of collectPackedStaticImports(entryFile, packageDir)) {
+      assertNoBrowserDisallowedMarkers(filePath, 'packed SDK browser-safe static import closure');
+    }
+  }
+}
+
+function assertNoBrowserDisallowedMarkers(filePath, context = 'Browser bundle') {
   const source = readFileSync(filePath, 'utf8');
   for (const marker of browserDisallowedMarkers) {
     if (source.includes(marker)) {
-      throw new Error(`Browser bundle includes Node-only marker ${marker}: ${filePath}`);
+      throw new Error(`${context} includes Node-only marker ${marker}: ${filePath}`);
     }
   }
 }
@@ -2415,6 +2439,7 @@ try {
     verifyPackedDeclarationExternalDependencies(spec, tarballPath, tempDir);
     verifyForbiddenFileContents(spec, tarballPath, tempDir);
     verifyNoEagerLegacySessionRuntime(spec, tarballPath, tempDir);
+    verifyPackedSdkBrowserSafeStaticClosures(spec, tarballPath, tempDir);
     tarballs.set(spec.name, tarballPath);
   }
 
