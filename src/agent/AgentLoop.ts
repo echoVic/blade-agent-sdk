@@ -6,7 +6,7 @@
  * 3. 使用 AsyncGenerator<AgentEvent, LoopResult> 统一输出
  */
 
-import type { InternalLogger } from '../logging/Logger.js';
+import { type InternalLogger, NOOP_LOGGER } from '../logging/Logger.js';
 import type { Message, ToolCall } from '../services/ChatServiceInterface.js';
 import type { ExecutionPipeline } from '../tools/execution/ExecutionPipeline.js';
 import type { ToolResult } from '../tools/types/index.js';
@@ -27,21 +27,12 @@ import { createAgentLoopClock } from './loop/loopClock.js';
 import { runTurn } from './loop/runTurn.js';
 import type { ToolExecutionUpdate } from './loop/runToolCall.js';
 import {
-  handleAgentLoopRunTurnWithRecovery,
-} from './loop/runTurnWithRecovery.js';
-import {
-  handleAgentLoopModelResponseWithEmissions,
-} from './loop/modelResponseTurn.js';
-import {
   createAgentLoopTokenUsageTracker,
 } from './loop/tokenUsageTracker.js';
 import {
-  handleAgentLoopToolResponseWithEmissions,
-} from './loop/toolResponseTurn.js';
+  handleAgentLoopTurnCycleWithEmissions,
+} from './loop/turnCycle.js';
 import { createAgentToolResultTracker } from './loop/toolResultTracker.js';
-import {
-  handleAgentLoopTurnEntryWithEmissions,
-} from './loop/turnEntry.js';
 import {
   createAgentLoopTurnCounter,
 } from './loop/turnCounter.js';
@@ -157,6 +148,7 @@ export async function* agentLoop(
   const toolResultTracker = createAgentToolResultTracker<ToolResult>();
   const recoveryAttemptTracker = createAgentRecoveryAttemptTracker();
   const tokenUsageTracker = createAgentLoopTokenUsageTracker();
+  const logger = config.logger ?? NOOP_LOGGER;
   let epoch: ExecutionEpoch | null = null;
 
   yield buildAgentLoopStartEvent();
@@ -165,95 +157,31 @@ export async function* agentLoop(
   while (true) {
     epoch = new ExecutionEpoch();
 
-    const turnEntry = yield* handleAgentLoopTurnEntryWithEmissions({
+    const turnCycle = yield* handleAgentLoopTurnCycleWithEmissions({
       signal,
       loopClock,
       turnCounter,
       effectiveMaxTurns,
+      maxTurns: config.maxTurns,
+      isYoloMode,
       toolResultTracker,
       conversation: convState,
       tokenUsageTracker,
-      hooks,
       prepareTurnState: config.prepareTurnState,
-    });
-    if (turnEntry.action === 'abort') {
-      return turnEntry.result as LoopResult;
-    }
-    const { turnsCount, turnStateProjection } = turnEntry;
-
-    const runTurnHandling = yield* handleAgentLoopRunTurnWithRecovery({
-      turnStateProjection,
-      conversation: convState,
       executionPipeline,
       streaming,
-      signal,
       epoch,
-      logger: config.logger,
+      logger,
       hooks,
       tracker: recoveryAttemptTracker,
-      turn: turnsCount,
-      counter: turnCounter,
-      runTurn,
-    });
-    if (runTurnHandling.action === 'retry') {
-      continue;
-    }
-    const {
-      turnResult,
-      streamingExecutionResults,
-    } = runTurnHandling;
-
-    const modelResponseHandling = yield* handleAgentLoopModelResponseWithEmissions({
       tokenBudget,
-      response: turnResult,
-      streamingExecutionResults,
-      conversation: convState,
-      turnStateProjection,
-      loopClock,
-      turnsCount,
-      toolResultTracker,
-      tokenUsageTracker,
-      signal,
-      turnCounter,
-      hooks,
+      runTurn,
+      executeToolCalls,
     });
-    if (modelResponseHandling.action === 'abort' || modelResponseHandling.action === 'stop') {
-      return modelResponseHandling.result as LoopResult;
-    }
-    if (modelResponseHandling.action === 'continue_loop') {
+    if (turnCycle.action === 'continue') {
       continue;
     }
-    if (modelResponseHandling.action === 'finish') {
-      return modelResponseHandling.result as LoopResult;
-    }
 
-    const toolResponseHandling =
-      yield* handleAgentLoopToolResponseWithEmissions({
-        executionResults: streamingExecutionResults,
-        response: turnResult,
-        executionPipeline,
-        turnStateProjection,
-        logger: config.logger,
-        signal,
-        loopClock,
-        turnsCount,
-        toolResultTracker,
-        executeToolCalls,
-        conversation: convState,
-        epoch,
-        streamingExecutionResults,
-        hooks,
-        maxTurns: config.maxTurns,
-        effectiveMaxTurns,
-        isYoloMode,
-        tokenUsageTracker,
-        turnCounter,
-      });
-    if (toolResponseHandling.action === 'abort' || toolResponseHandling.action === 'stop') {
-      return toolResponseHandling.result as LoopResult;
-    }
-    if (toolResponseHandling.action === 'exit') {
-      return toolResponseHandling.exitDecision.result as LoopResult;
-    }
+    return turnCycle.result as LoopResult;
   }
 }
