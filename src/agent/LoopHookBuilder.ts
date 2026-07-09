@@ -18,8 +18,8 @@ import {
 } from '../tools/types/index.js';
 import type { SessionId } from '../types/branded.js';
 import type { JsonValue } from '../types/common.js';
-import type { AgentLoopConfig, AgentLoopHooks } from './AgentLoop.js';
 import type { CompactionHandler, CompactionRuntimeContext } from './CompactionHandler.js';
+import type { AgentLoopConfig, AgentLoopHooks } from './loop/adapterContracts.js';
 import type { ModelManager } from './ModelManager.js';
 import type { RuntimePatchManager } from './RuntimePatchManager.js';
 import type { LoopState } from './state/LoopState.js';

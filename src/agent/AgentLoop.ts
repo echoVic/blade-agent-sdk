@@ -6,48 +6,20 @@
  * 3. 使用 AsyncGenerator<AgentEvent, LoopResult> 统一输出
  */
 
-import { type InternalLogger, NOOP_LOGGER } from '../logging/Logger.js';
-import type { Message, ToolCall } from '../services/ChatServiceInterface.js';
-import type { ExecutionPipeline } from '../tools/execution/ExecutionPipeline.js';
-import type { ToolResult } from '../tools/types/index.js';
+import { NOOP_LOGGER } from '../logging/Logger.js';
 import type { AgentEvent } from './AgentEvent.js';
 import {
   ExecutionEpoch,
 } from './ExecutionEpoch.js';
-import {
-  handleAgentLoopWithEmissions,
-  type AgentLoopAdapterConfig,
-  type AgentLoopAdapterHooks,
-} from './loop/agentLoop.js';
+import { handleAgentLoopWithEmissions } from './loop/agentLoop.js';
+import type { AgentLoopConfig } from './loop/adapterContracts.js';
 import { executeToolCalls } from './loop/executeToolCalls.js';
 import { runTurn } from './loop/runTurn.js';
-import type { ToolExecutionUpdate } from './loop/runToolCall.js';
-import type { FunctionToolCall } from './loop/types.js';
-import type { ConversationState } from './state/ConversationState.js';
-import type { TurnState } from './state/TurnState.js';
-import type { TokenBudget } from './TokenBudget.js';
-import type { LoopResult, TurnLimitResponse } from './types.js';
+import type { LoopResult } from './types.js';
 
 // ===== Loop 配置 =====
 
-export type AgentLoopHooks = AgentLoopAdapterHooks<
-  Message,
-  AgentEvent,
-  FunctionToolCall,
-  ToolCall,
-  ToolResult,
-  ToolExecutionUpdate,
-  TurnLimitResponse
->;
-
-export type AgentLoopConfig = AgentLoopAdapterConfig<
-  ConversationState,
-  TurnState,
-  ExecutionPipeline,
-  InternalLogger,
-  TokenBudget,
-  AgentLoopHooks
->;
+export type { AgentLoopConfig, AgentLoopHooks } from './loop/adapterContracts.js';
 
 // ===== 核心循环 =====
 

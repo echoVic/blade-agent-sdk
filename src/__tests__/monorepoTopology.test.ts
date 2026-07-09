@@ -353,6 +353,7 @@ describe('monorepo topology', () => {
       'packages/agent/src/loop/toolBehavior.ts',
       'packages/agent/src/loop/toolInterruptBehavior.ts',
       'packages/agent/src/loop/toolUpdateToAgentEvent.ts',
+      'src/agent/loop/adapterContracts.ts',
       'packages/agent/src/protocol/index.ts',
       'packages/agent/src/ports/index.ts',
       'packages/agent/src/recovery/index.ts',
@@ -398,6 +399,7 @@ describe('monorepo topology', () => {
     const agentIndexSource = readFileSync('packages/agent/src/index.ts', 'utf-8');
     const agentLoopSource = readFileSync('packages/agent/src/loop/index.ts', 'utf-8');
     const rootAgentLoopSource = readFileSync('src/agent/AgentLoop.ts', 'utf-8');
+    const rootAdapterContractsSource = readFileSync('src/agent/loop/adapterContracts.ts', 'utf-8');
     const agentRecoverySource = readFileSync('packages/agent/src/recovery/index.ts', 'utf-8');
     const agentStateSource = readFileSync('packages/agent/src/state/index.ts', 'utf-8');
 
@@ -436,8 +438,9 @@ describe('monorepo topology', () => {
     expect(agentLoopSource).toContain("from './toolInterruptBehavior.js'");
     expect(agentLoopSource).toContain("from './toolUpdateToAgentEvent.js'");
     expect(rootAgentLoopSource).toContain('handleAgentLoopWithEmissions');
-    expect(rootAgentLoopSource).toContain('type AgentLoopAdapterConfig');
-    expect(rootAgentLoopSource).toContain('type AgentLoopAdapterHooks');
+    expect(rootAgentLoopSource).toContain("from './loop/adapterContracts.js'");
+    expect(rootAdapterContractsSource).toContain('AgentLoopAdapterConfig');
+    expect(rootAdapterContractsSource).toContain('AgentLoopAdapterHooks');
     expect(rootAgentLoopSource).not.toContain('export interface AgentLoopHooks');
     expect(rootAgentLoopSource).not.toContain('export interface AgentLoopConfig');
     expect(rootAgentLoopSource).not.toContain('handleAgentLoopTurnCycleWithEmissions');
@@ -1038,6 +1041,12 @@ describe('monorepo topology', () => {
     expect(agentRecoverySource).toContain("from './recoveryEvents.js'");
     expect(agentStateSource).toContain("from './systemSource.js'");
     expect(agentStateSource).toContain("from './toolInjectedMessages.js'");
+  });
+
+  it('keeps loop hook builder from depending on the AgentLoop facade', () => {
+    const loopHookBuilderSource = readFileSync('src/agent/LoopHookBuilder.ts', 'utf-8');
+
+    expect(loopHookBuilderSource).not.toContain("from './AgentLoop.js'");
   });
 
   it('publishes agent kernel modules as explicit subpath exports', () => {
