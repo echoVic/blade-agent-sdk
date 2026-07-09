@@ -2302,14 +2302,16 @@ async function verifyConsumerBrowserBundle(consumerDir) {
     entry,
     [
       "import { createSession, PermissionMode } from '@blade-ai/agent-sdk';",
+      "import { createSession as createBrowserSession, PermissionMode as BrowserPermissionMode, StreamMessageType as BrowserStreamMessageType } from '@blade-ai/agent-sdk/browser';",
       "import { StreamMessageType } from '@blade-ai/agent-sdk/core';",
       "import { ToolKind } from '@blade-ai/agent-sdk/tools';",
       "import { resumeSession } from '@blade-ai/agent-sdk/session';",
       "import { createSession as createInternalSession } from '@blade-ai/agent-sdk/session/internal';",
       "import { createSession as createServerSession } from '@blade-ai/agent-sdk/server';",
       "import { getBuiltinTools } from '@blade-ai/agent-sdk/local';",
-      "console.log(PermissionMode.DEFAULT, StreamMessageType.CONTENT, ToolKind.ReadOnly);",
+      "console.log(PermissionMode.DEFAULT, BrowserPermissionMode.DEFAULT, StreamMessageType.CONTENT, BrowserStreamMessageType.CONTENT, ToolKind.ReadOnly);",
       "try { createSession({} as never); } catch (error) { console.log((error as Error).message); }",
+      "try { createBrowserSession({} as never); } catch (error) { console.log(`server-only for browser createSession: ${(error as Error).message}`); }",
       "try { resumeSession('session-id' as never); } catch (error) { console.log((error as Error).message); }",
       "try { createInternalSession({} as never); } catch (error) { console.log(`server-only for internal createSession: ${(error as Error).message}`); }",
       "try { createServerSession({} as never); } catch (error) { console.log((error as Error).message); }",
@@ -2331,6 +2333,9 @@ async function verifyConsumerBrowserBundle(consumerDir) {
   const browserRunOutput = run(process.execPath, [output], { cwd: consumerDir });
   if (!browserRunOutput.includes('server-only for createSession')) {
     throw new Error('Browser bundle does not include the createSession server-only stub message');
+  }
+  if (!browserRunOutput.includes('server-only for browser createSession')) {
+    throw new Error('Browser bundle does not include the browser createSession server-only stub message');
   }
   if (!browserRunOutput.includes('server-only for internal createSession')) {
     throw new Error('Browser bundle does not include the internal createSession server-only stub message');
