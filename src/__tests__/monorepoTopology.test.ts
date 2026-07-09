@@ -443,7 +443,10 @@ describe('monorepo topology', () => {
     expect(rootAgentLoopSource).not.toContain('buildAgentLoopToolTurnCompletion({');
     expect(rootAgentLoopSource).not.toContain('buildAgentLoopReactiveCompactRetryEvent');
     expect(rootAgentLoopSource).not.toContain('buildAgentLoopTurnRetryEvent');
-    expect(rootAgentLoopSource).toContain('handleAgentLoopNoToolTurn');
+    expect(rootAgentLoopSource).toContain('handleAgentLoopNoToolTurnWithEmissions');
+    expect(rootAgentLoopSource).not.toContain('handleAgentLoopNoToolTurn({');
+    expect(rootAgentLoopSource).not.toContain('noToolHandling.continuation.events');
+    expect(rootAgentLoopSource).not.toContain('noToolHandling.successDecision.events');
     expect(rootAgentLoopSource).not.toContain('buildAgentLoopNoToolContent');
     expect(rootAgentLoopSource).not.toContain('buildAgentLoopNoToolContinuation');
     expect(rootAgentLoopSource).not.toContain('runAgentLoopNoToolCompleteHook');

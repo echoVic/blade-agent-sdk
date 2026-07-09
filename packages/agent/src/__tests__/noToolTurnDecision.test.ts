@@ -14,10 +14,25 @@ import {
   decideAgentLoopNoToolTurn,
   decideNoToolTurn,
   handleAgentLoopNoToolTurn,
+  handleAgentLoopNoToolTurnWithEmissions,
   runAgentLoopNoToolCompleteHook,
   shouldContinueAgentLoopAfterNoToolDecision,
   shouldHandleAgentLoopNoToolTurn,
 } from '../loop/index.js';
+
+async function collectGenerator<TEvent, TResult>(
+  generator: AsyncGenerator<TEvent, TResult>,
+): Promise<{ events: TEvent[]; result: TResult }> {
+  const events: TEvent[] = [];
+
+  while (true) {
+    const next = await generator.next();
+    if (next.done) {
+      return { events, result: next.value };
+    }
+    events.push(next.value);
+  }
+}
 
 describe('decideNoToolTurn', () => {
   it('detects responses that should follow the no-tool branch', () => {
@@ -190,6 +205,60 @@ describe('decideNoToolTurn', () => {
     }
   });
 
+  it('handles no-tool continuation emissions and returns a continue action', async () => {
+    const operations: unknown[] = [];
+
+    const handled = await collectGenerator(
+      handleAgentLoopNoToolTurnWithEmissions({
+        response: { content: 'I will continue' },
+        conversation: {
+          toArray: () => {
+            operations.push({ type: 'to_array' });
+            return [{ role: 'user', content: 'continue' }];
+          },
+          append: (...messages) => {
+            operations.push({ type: 'append', messages });
+          },
+        },
+        turn: 4,
+        hooks: {
+          stop: {
+            check: async () => {
+              operations.push({ type: 'stop_check' });
+              return {
+                shouldStop: false,
+                continueReason: 'Keep using the existing roadmap.',
+              };
+            },
+          },
+        },
+        loopClock: {
+          resultTiming: () => {
+            throw new Error('finish timing should not be read for continuations');
+          },
+        },
+        toolResultTracker: { toolCallsCount: 2 },
+        tokenUsageTracker: { totalTokens: 21 },
+      }),
+    );
+
+    expect(handled.events).toEqual([{ type: 'turn_end', turn: 4, hasToolCalls: false }]);
+    expect(handled.result).toEqual({ action: 'continue' });
+    expect(operations).toEqual([
+      { type: 'to_array' },
+      { type: 'stop_check' },
+      {
+        type: 'append',
+        messages: [
+          {
+            role: 'user',
+            content: '\n\n<system-reminder>\nKeep using the existing roadmap.\n</system-reminder>',
+          },
+        ],
+      },
+    ]);
+  });
+
   it('handles no-tool finish decisions with hook-before-success ordering', async () => {
     const operations: unknown[] = [];
     const snapshot = { usedTokens: 21, maxTokens: 100 };
@@ -258,6 +327,70 @@ describe('decideNoToolTurn', () => {
     expect(operations).toEqual([
       { type: 'to_array' },
       { type: 'complete_hook', payload: { content: '', turn: 5 } },
+      { type: 'timing', turnsCount: 5, toolCallsCount: 3 },
+    ]);
+  });
+
+  it('handles no-tool finish emissions and returns the success result', async () => {
+    const operations: unknown[] = [];
+
+    const handled = await collectGenerator(
+      handleAgentLoopNoToolTurnWithEmissions({
+        response: { content: 'All done' },
+        conversation: {
+          toArray: () => {
+            operations.push({ type: 'to_array' });
+            return [];
+          },
+          append: (...messages) => {
+            operations.push({ type: 'append', messages });
+          },
+        },
+        turn: 5,
+        hooks: {
+          message: {
+            onComplete: async (payload) => {
+              operations.push({ type: 'complete_hook', payload });
+            },
+          },
+        },
+        loopClock: {
+          resultTiming: ({ turnsCount, toolCallsCount }) => {
+            operations.push({ type: 'timing', turnsCount, toolCallsCount });
+            return {
+              turnsCount,
+              toolCallsCount,
+              startTime: 2000,
+              now: 2075,
+            };
+          },
+        },
+        toolResultTracker: { toolCallsCount: 3 },
+        tokenUsageTracker: { totalTokens: 21 },
+      }),
+    );
+
+    expect(handled.events).toEqual([
+      { type: 'turn_end', turn: 5, hasToolCalls: false },
+      { type: 'agent_end' },
+    ]);
+    expect(handled.result).toEqual({
+      action: 'finish',
+      result: {
+        success: true,
+        finalMessage: 'All done',
+        metadata: {
+          turnsCount: 5,
+          toolCallsCount: 3,
+          duration: 75,
+          tokensUsed: 21,
+          tokenBudgetSnapshot: undefined,
+        },
+      },
+    });
+    expect(operations).toEqual([
+      { type: 'to_array' },
+      { type: 'complete_hook', payload: { content: 'All done', turn: 5 } },
       { type: 'timing', turnsCount: 5, toolCallsCount: 3 },
     ]);
   });

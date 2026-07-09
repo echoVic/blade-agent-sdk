@@ -30,7 +30,7 @@ import {
   handleAgentLoopAssistantMessage,
 } from './loop/assistantMessage.js';
 import {
-  handleAgentLoopNoToolTurn,
+  handleAgentLoopNoToolTurnWithEmissions,
   shouldHandleAgentLoopNoToolTurn,
 } from './loop/decideNoToolTurn.js';
 import {
@@ -355,7 +355,7 @@ export async function* agentLoop(
 
     // 无 tool calls → 正常结束或重试
     if (shouldHandleAgentLoopNoToolTurn(turnResult)) {
-      const noToolHandling = await handleAgentLoopNoToolTurn({
+      const noToolHandling = yield* handleAgentLoopNoToolTurnWithEmissions({
         response: turnResult,
         conversation: convState,
         turn: turnsCount,
@@ -366,16 +366,10 @@ export async function* agentLoop(
         tokenBudget,
       });
       if (noToolHandling.action === 'continue') {
-        for (const event of noToolHandling.continuation.events) {
-          yield event;
-        }
         continue;
       }
 
-      for (const event of noToolHandling.successDecision.events) {
-        yield event;
-      }
-      return noToolHandling.successDecision.result as LoopResult;
+      return noToolHandling.result as LoopResult;
     }
 
     await handleAgentLoopAssistantMessage({

@@ -1,9 +1,11 @@
 import type { Message } from '@blade-ai/ai/chat';
 import {
   buildAgentLoopTurnEndEvent,
+  type AgentLoopEndEvent,
   type AgentLoopTurnEndEvent,
 } from './loopEvents.js';
 import {
+  type AgentLoopSuccessResult,
   buildAgentLoopNoToolSuccessDecision,
   buildAgentLoopNoToolSuccessDecisionInputFromLoopState,
   type AgentLoopNoToolSuccessDecision,
@@ -159,6 +161,17 @@ export type AgentLoopNoToolTurnHandling =
       successDecision: AgentLoopNoToolSuccessDecision;
     };
 
+export type AgentLoopNoToolTurnEvent = AgentLoopTurnEndEvent | AgentLoopEndEvent;
+
+export type AgentLoopNoToolTurnEmissionHandling =
+  | {
+      action: 'continue';
+    }
+  | {
+      action: 'finish';
+      result: AgentLoopSuccessResult;
+    };
+
 export function shouldHandleAgentLoopNoToolTurn(
   response: AgentLoopToolCallResponseLike,
 ): boolean {
@@ -300,6 +313,26 @@ export async function handleAgentLoopNoToolTurn(
         tokenBudget: input.tokenBudget,
       }),
     ),
+  };
+}
+
+export async function* handleAgentLoopNoToolTurnWithEmissions(
+  input: HandleAgentLoopNoToolTurnInput,
+): AsyncGenerator<AgentLoopNoToolTurnEvent, AgentLoopNoToolTurnEmissionHandling> {
+  const handling = await handleAgentLoopNoToolTurn(input);
+  if (handling.action === 'continue') {
+    for (const event of handling.continuation.events) {
+      yield event;
+    }
+    return { action: 'continue' };
+  }
+
+  for (const event of handling.successDecision.events) {
+    yield event;
+  }
+  return {
+    action: 'finish',
+    result: handling.successDecision.result,
   };
 }
 
