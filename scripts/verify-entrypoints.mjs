@@ -99,6 +99,31 @@ const subpathOutput = run(process.execPath, [
 ]);
 assertIncludes(subpathOutput, 'default default function function function', 'subpath imports');
 
+const rootServerParityOutput = run(process.execPath, [
+  '-e',
+  [
+    "const root = await import('@blade-ai/agent-sdk');",
+    "const server = await import('@blade-ai/agent-sdk/server');",
+    'const rootKeys = Object.keys(root).sort();',
+    'const serverKeys = Object.keys(server).sort();',
+    'const missingFromServer = rootKeys.filter((key) => !serverKeys.includes(key));',
+    'const extraInServer = serverKeys.filter((key) => !rootKeys.includes(key));',
+    'if (missingFromServer.length > 0 || extraInServer.length > 0) {',
+    '  throw new Error([',
+    "    'Runtime export mismatch between local root and local server',",
+    "    missingFromServer.length > 0 ? `missing from local server: ${missingFromServer.join(', ')}` : undefined,",
+    "    extraInServer.length > 0 ? `extra in local server: ${extraInServer.join(', ')}` : undefined,",
+    '  ].filter(Boolean).join(\'; \'));',
+    '}',
+    "console.log('local root server runtime export parity', rootKeys.length, serverKeys.length);",
+  ].join(' '),
+]);
+assertIncludes(
+  rootServerParityOutput,
+  'local root server runtime export parity',
+  'local root/server runtime export parity',
+);
+
 verifyBrowserSafeDist('dist/browser/index.js');
 verifyBrowserSafeDist('dist/browser/server-only-stub.js');
 verifyBrowserSafeDist('dist/core/index.js');
