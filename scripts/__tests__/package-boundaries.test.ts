@@ -450,10 +450,15 @@ describe('package boundary verifier', () => {
 
   it('accepts new dist export targets when matching source build entries exist before build output', () => {
     const cwd = createBoundaryFixture();
+    mkdirSync(join(cwd, 'packages', 'agent-sdk', 'src', 'browser'), { recursive: true });
     mkdirSync(join(cwd, 'packages', 'agent-sdk', 'src', 'session'), { recursive: true });
+    writeFileSync(join(cwd, 'packages', 'agent-sdk', 'src', 'browser', 'index.ts'), 'export {};\n');
+    writeFileSync(join(cwd, 'packages', 'agent-sdk', 'src', 'browser', 'server-only-stub.ts'), 'export {};\n');
     writeFileSync(join(cwd, 'packages', 'agent-sdk', 'src', 'session', 'internal.ts'), 'export {};\n');
     writeTsupConfig(join(cwd, 'packages', 'agent-sdk', 'tsup.config.ts'), {
       index: 'src/index.ts',
+      'browser/index': 'src/browser/index.ts',
+      'browser/server-only-stub': 'src/browser/server-only-stub.ts',
       'session/internal': 'src/session/internal.ts',
     });
     writeJson(join(cwd, 'packages', 'agent-sdk', 'package.json'), {
@@ -463,10 +468,12 @@ describe('package boundary verifier', () => {
       exports: {
         '.': {
           types: './dist/index.d.ts',
+          browser: './dist/browser/index.js',
           import: './dist/index.js',
         },
         './session/internal': {
           types: './dist/session/internal.d.ts',
+          browser: './dist/browser/server-only-stub.js',
           import: './dist/session/internal.js',
         },
         './package.json': {
@@ -667,6 +674,52 @@ describe('package boundary verifier', () => {
     expect(result.stderr).toContain('packages/agent-sdk/package.json');
     expect(result.stderr).toContain('export "." must declare the browser condition before import');
     expect(result.stderr).toContain('export "./server" must declare the browser condition before import');
+  });
+
+  it('rejects source SDK browser export conditions that do not point at browser-safe entries', () => {
+    const cwd = createBoundaryFixture();
+    mkdirSync(join(cwd, 'packages', 'agent-sdk', 'src', 'browser'), { recursive: true });
+    mkdirSync(join(cwd, 'packages', 'agent-sdk', 'src', 'server'), { recursive: true });
+    writeFileSync(join(cwd, 'packages', 'agent-sdk', 'src', 'browser', 'index.ts'), 'export {};\n');
+    writeFileSync(join(cwd, 'packages', 'agent-sdk', 'src', 'server', 'index.ts'), 'export {};\n');
+    writeTsupConfig(join(cwd, 'packages', 'agent-sdk', 'tsup.config.ts'), {
+      index: 'src/index.ts',
+      'browser/index': 'src/browser/index.ts',
+      'server/index': 'src/server/index.ts',
+    });
+    writeJson(join(cwd, 'packages', 'agent-sdk', 'package.json'), {
+      name: '@blade-ai/agent-sdk',
+      main: './dist/index.js',
+      types: './dist/index.d.ts',
+      exports: {
+        '.': {
+          types: './dist/index.d.ts',
+          import: './dist/index.js',
+        },
+        './server': {
+          types: './dist/server/index.d.ts',
+          browser: './dist/browser/index.js',
+          import: './dist/server/index.js',
+        },
+        './package.json': {
+          default: './package.json',
+        },
+      },
+      dependencies: {},
+    });
+
+    const result = spawnSync(process.execPath, [
+      resolve('scripts/verify-package-boundaries.mjs'),
+    ], {
+      cwd,
+      encoding: 'utf8',
+    });
+
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain('export "." browser condition must point at ./dist/browser/index.js');
+    expect(result.stderr).toContain(
+      'export "./server" browser condition must point at ./dist/browser/server-only-stub.js',
+    );
   });
 
   it('rejects manifest targets with the wrong runtime artifact extension', () => {

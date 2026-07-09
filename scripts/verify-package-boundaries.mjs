@@ -96,6 +96,14 @@ const buildEntryRules = rules.map((rule) => ({
   sourceDir: rule.sourceDir,
 }));
 
+const expectedSdkBrowserExportTargets = {
+  '.': './dist/browser/index.js',
+  './server': './dist/browser/server-only-stub.js',
+  './session': './dist/browser/server-only-stub.js',
+  './session/internal': './dist/browser/server-only-stub.js',
+  './local': './dist/browser/server-only-stub.js',
+};
+
 const rootSourceRules = [
   {
     name: 'legacy root source',
@@ -417,6 +425,26 @@ function verifyManifestTargetExists({ packageJson, packageJsonPath, label, targe
   return null;
 }
 
+function verifySdkBrowserExportTargets({ packageJson, exportsValue }) {
+  const browserTargetViolations = [];
+  if (!exportsValue || typeof exportsValue !== 'object' || Array.isArray(exportsValue)) {
+    return browserTargetViolations;
+  }
+
+  for (const [subpath, expectedTarget] of Object.entries(expectedSdkBrowserExportTargets)) {
+    const exportValue = exportsValue[subpath];
+    if (exportValue === undefined && subpath !== '.') continue;
+    if (!exportValue || typeof exportValue !== 'object' || Array.isArray(exportValue)) continue;
+    if (exportValue.browser !== expectedTarget) {
+      browserTargetViolations.push(
+        `${packageJson}: export "${subpath}" browser condition must point at ${expectedTarget}`,
+      );
+    }
+  }
+
+  return browserTargetViolations;
+}
+
 function resolvesInsidePackageSource(file, specifier) {
   if (!specifier.startsWith('.')) return null;
 
@@ -630,6 +658,13 @@ for (const rule of manifestRules) {
         violations.push(existenceViolation);
       }
     }
+  }
+
+  if (rule.name === '@blade-ai/agent-sdk') {
+    violations.push(...verifySdkBrowserExportTargets({
+      packageJson: rule.packageJson,
+      exportsValue: manifest.exports,
+    }));
   }
 
   for (const { path, target } of collectExportTargets(manifest.exports)) {
