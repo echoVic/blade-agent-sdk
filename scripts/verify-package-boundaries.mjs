@@ -106,6 +106,21 @@ const rootSourceRules = [
   },
 ];
 
+const scopedSourceRules = [
+  {
+    name: 'Browser-safe SDK source',
+    sourceDirs: ['packages/agent-sdk/src/browser', 'packages/agent-sdk/src/core'],
+    disallowedSpecifiers: [
+      [/^node:/, 'Browser-safe SDK source must not import Node-only modules'],
+      [/^(?:fs|child_process|worker_threads)$/, 'Browser-safe SDK source must not import Node-only modules'],
+      [/^@modelcontextprotocol(?:\/|$)/, 'Browser-safe SDK source must not import MCP runtime modules'],
+      [/^undici$/, 'Browser-safe SDK source must not import server HTTP runtime modules'],
+      [/^@vscode\/ripgrep$/, 'Browser-safe SDK source must not import local filesystem tooling'],
+      [/^node-pty$/, 'Browser-safe SDK source must not import local terminal tooling'],
+    ],
+  },
+];
+
 const importPattern = /\b(?:import|export)\s+(?:type\s+)?(?:[^'"]*?\s+from\s+)?['"]([^'"]+)['"]|import\s*\(\s*['"]([^'"]+)['"]\s*\)/g;
 
 function listSourceFiles(dir) {
@@ -634,6 +649,25 @@ for (const rule of rootSourceRules) {
         violations.push(
           `${displayPath}: disallowed import "${specifier}" reaches ${packageSourceDir} - Legacy root source must import package public subpaths instead of package source files`,
         );
+      }
+    }
+  }
+}
+
+for (const rule of scopedSourceRules) {
+  for (const ruleSourceDir of rule.sourceDirs) {
+    const sourceDir = resolve(rootDir, ruleSourceDir);
+    if (!existsSync(sourceDir)) continue;
+
+    for (const file of listSourceFiles(sourceDir)) {
+      const source = readFileSync(file, 'utf-8');
+      const displayPath = relative(rootDir, file);
+      for (const specifier of extractSpecifiers(source)) {
+        for (const [pattern, reason] of rule.disallowedSpecifiers) {
+          if (pattern.test(specifier)) {
+            violations.push(`${displayPath}: disallowed import "${specifier}" - ${reason}`);
+          }
+        }
       }
     }
   }
