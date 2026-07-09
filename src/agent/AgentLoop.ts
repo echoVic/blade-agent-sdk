@@ -36,9 +36,6 @@ import { createAgentLoopClock } from './loop/loopClock.js';
 import {
   handleAgentLoopAbortIfRequested,
 } from './loop/loopResult.js';
-import {
-  handleAgentLoopNonStreamingToolExecutionWithEmissions,
-} from './loop/planToolExecution.js';
 import { runTurn } from './loop/runTurn.js';
 import type { ToolExecutionUpdate } from './loop/runToolCall.js';
 import {
@@ -48,8 +45,8 @@ import {
   createAgentLoopTokenUsageTracker,
 } from './loop/tokenUsageTracker.js';
 import {
-  handleAgentLoopToolResults,
-} from './loop/toolResultContinuation.js';
+  handleAgentLoopToolExecutionResultsWithEmissions,
+} from './loop/toolExecutionTurn.js';
 import { createAgentToolResultTracker } from './loop/toolResultTracker.js';
 import { buildAgentLoopTurnStateProjectionFromPreparation } from './loop/turnState.js';
 import {
@@ -313,46 +310,28 @@ export async function* agentLoop(
       hooks,
     });
 
-    // 工具执行：流式已执行 or 非流式在此执行
-    let executionResults:
-      | ReadonlyArray<{
-        toolCall: FunctionToolCall;
-        result: ToolResult;
-        toolUseUuid: string | null;
-      }>
-      | undefined = streamingExecutionResults;
-
-    const nonStreamingToolExecution =
-      yield* handleAgentLoopNonStreamingToolExecutionWithEmissions({
-        executionResults,
+    const toolExecutionResults =
+      yield* handleAgentLoopToolExecutionResultsWithEmissions({
+        executionResults: streamingExecutionResults,
         response: turnResult,
         executionPipeline,
         turnStateProjection,
         logger: config.logger,
         signal,
-        hooks,
         loopClock,
         turnsCount,
         toolResultTracker,
         executeToolCalls,
+        conversation: convState,
+        epoch,
+        streamingExecutionResults,
+        hooks,
       });
-    if (nonStreamingToolExecution.action === 'abort') {
-      return nonStreamingToolExecution.result as LoopResult;
+    if (toolExecutionResults.action === 'abort') {
+      return toolExecutionResults.result as LoopResult;
     }
-    executionResults = nonStreamingToolExecution.executionResults;
-
-    const toolResultsHandling = yield* handleAgentLoopToolResults({
-      executionResults,
-      epoch,
-      streamingExecutionResults,
-      loopClock,
-      turnsCount,
-      toolResultTracker,
-      conversation: convState,
-      hooks,
-    });
-    if (toolResultsHandling.action === 'exit') {
-      return toolResultsHandling.exitDecision.result as LoopResult;
+    if (toolExecutionResults.action === 'exit') {
+      return toolExecutionResults.exitDecision.result as LoopResult;
     }
 
     const toolTurnTail = yield* handleAgentLoopToolTurnTail({

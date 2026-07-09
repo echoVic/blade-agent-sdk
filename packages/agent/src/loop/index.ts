@@ -13,6 +13,7 @@ export * from './loopResult.js';
 export * from './tokenUsage.js';
 export * from './tokenUsageTracker.js';
 export * from './toolInjectedMessages.js';
+export * from './toolExecutionTurn.js';
 export * from './toolMessage.js';
 export * from './toolResultContinuation.js';
 export * from './toolResultContent.js';
