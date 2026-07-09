@@ -207,6 +207,12 @@ describe('package entrypoints', () => {
     expect(verifier).toContain("from '@blade-ai/agent/package.json' with { type: 'json' };");
     expect(verifier).toContain("from '@blade-ai/agent-sdk/package.json' with { type: 'json' };");
     expect(verifier).toContain('local package metadata @blade-ai/ai @blade-ai/agent @blade-ai/agent-sdk');
+    expect(verifier).toContain('declaration-entry.ts');
+    expect(verifier).toContain('declaration-tsconfig.json');
+    expect(verifier).toContain("import type { ModelPort } from '@blade-ai/ai/model';");
+    expect(verifier).toContain("import type { AgentKernelOptions } from '@blade-ai/agent';");
+    expect(verifier).toContain("import type { SessionOptions, StreamMessage } from '@blade-ai/agent-sdk';");
+    expect(verifier).toContain('local declaration consumer type-check passed');
     expect(verifier).toContain("from '@blade-ai/agent-sdk/browser';");
     expect(verifier).toContain("from '@blade-ai/agent-sdk/session/internal';");
     expect(verifier).toContain('server-only for bundled createSession');

@@ -110,6 +110,8 @@ try {
   const output = join(tempDir, 'bundle.js');
   const aiEntry = join(tempDir, 'ai-entry.mjs');
   const metadataEntry = join(tempDir, 'metadata-entry.mjs');
+  const declarationEntry = join(tempDir, 'declaration-entry.ts');
+  const declarationTsconfig = join(tempDir, 'declaration-tsconfig.json');
   const agentEntry = join(tempDir, 'agent-client-entry.ts');
   const agentOutput = join(tempDir, 'agent-bundle.js');
   writeFileSync(
@@ -197,6 +199,85 @@ try {
     'local package metadata @blade-ai/ai @blade-ai/agent @blade-ai/agent-sdk',
     'local package metadata subpath imports',
   );
+
+  writeFileSync(
+    declarationEntry,
+    [
+      "import type { ModelPort } from '@blade-ai/ai/model';",
+      "import type { AgentKernelOptions } from '@blade-ai/agent';",
+      "import type { SessionOptions, StreamMessage } from '@blade-ai/agent-sdk';",
+      '',
+      'const model: ModelPort = {',
+      '  async generate(request) {',
+      '    return {',
+      "      content: request.messages.map((message) => message.content).join('\\n'),",
+      "      finishReason: 'stop',",
+      '      usage: { totalTokens: 1 },',
+      '    };',
+      '  },',
+      '',
+      '  async *stream() {',
+      "    yield { type: 'content_delta', delta: 'ok' };",
+      "    yield { type: 'done', response: { content: 'ok', finishReason: 'stop' } };",
+      '  },',
+      '};',
+      '',
+      'const kernelOptions: AgentKernelOptions = {',
+      '  model,',
+      "  modelCallMode: 'stream',",
+      '  modelRequestDefaults: {',
+      "    model: 'glm-5.2',",
+      '    maxOutputTokens: 16,',
+      '  },',
+      '};',
+      '',
+      'const sessionOptions: SessionOptions = {',
+      '  provider: {',
+      "    type: 'openai-compatible',",
+      "    apiKey: 'test-key',",
+      "    baseUrl: 'https://example.invalid/v1',",
+      '  },',
+      "  model: 'glm-5.2',",
+      '  allowedTools: [],',
+      '  temperature: 0.2,',
+      '  maxOutputTokens: 16,',
+      '};',
+      '',
+      "const streamMessage: StreamMessage = { type: 'content', delta: 'ok', sessionId: 'session-id' };",
+      '',
+      'export const localDeclarationConsumer = {',
+      '  kernelOptions,',
+      '  sessionOptions,',
+      '  streamMessage,',
+      '} satisfies {',
+      '  kernelOptions: AgentKernelOptions;',
+      '  sessionOptions: SessionOptions;',
+      '  streamMessage: StreamMessage;',
+      '};',
+    ].join('\n'),
+    'utf8',
+  );
+  writeFileSync(
+    declarationTsconfig,
+    JSON.stringify(
+      {
+        compilerOptions: {
+          module: 'NodeNext',
+          moduleResolution: 'NodeNext',
+          target: 'ES2022',
+          strict: true,
+          skipLibCheck: true,
+          noEmit: true,
+        },
+        include: [declarationEntry],
+      },
+      null,
+      2,
+    ),
+    'utf8',
+  );
+  run('pnpm', ['exec', 'tsc', '--project', declarationTsconfig, '--pretty', 'false'], { cwd: packageRoot });
+  console.log('local declaration consumer type-check passed');
 
   writeFileSync(
     agentEntry,
