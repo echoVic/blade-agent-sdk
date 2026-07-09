@@ -11,10 +11,25 @@ import {
   buildAgentLoopTurnLimitStopCompletion,
   buildAgentLoopEffectiveMaxTurns,
   decideTurnLimit,
+  handleAgentLoopToolTurnTail,
   shouldApplyAgentLoopTurnLimitContinuation,
   shouldCheckAgentLoopTurnLimit,
   shouldStopAgentLoopForTurnLimitDecision,
 } from '../loop/index.js';
+
+async function collectGenerator<TEvent, TResult>(
+  generator: AsyncGenerator<TEvent, TResult>,
+): Promise<{ events: TEvent[]; result: TResult }> {
+  const events: TEvent[] = [];
+
+  while (true) {
+    const next = await generator.next();
+    if (next.done) {
+      return { events, result: next.value };
+    }
+    events.push(next.value);
+  }
+}
 
 describe('decideTurnLimit', () => {
   beforeEach(() => {
@@ -413,6 +428,196 @@ describe('decideTurnLimit', () => {
     expect(operations).toEqual([
       ['replaceContent', compactedMessages],
       ['append', [continueMessage]],
+    ]);
+  });
+
+  it('handles a tool-turn tail without turn-limit work when below the effective max turns', async () => {
+    const operations: unknown[] = [];
+
+    const handled = await collectGenerator(
+      handleAgentLoopToolTurnTail({
+        signal: { aborted: false },
+        loopClock: {
+          startTime: 1_000,
+          resultTiming: ({ turnsCount, toolCallsCount }) => ({
+            turnsCount,
+            toolCallsCount,
+            startTime: 1_000,
+            now: 1_050,
+          }),
+        },
+        turnsCount: 2,
+        maxTurns: 4,
+        effectiveMaxTurns: 4,
+        isYoloMode: false,
+        conversation: {
+          getContextMessages: () => {
+            operations.push('getContextMessages');
+            return [];
+          },
+          replaceContent: (messages) => {
+            operations.push(['replaceContent', messages]);
+          },
+          append: (...messages) => {
+            operations.push(['append', messages]);
+          },
+        },
+        toolResultTracker: { toolCallsCount: 3 },
+        tokenUsageTracker: { totalTokens: 42 },
+        turnCounter: {
+          reset: () => {
+            operations.push('reset');
+          },
+        },
+      }),
+    );
+
+    expect(handled.events).toEqual([{ type: 'turn_end', turn: 2, hasToolCalls: true }]);
+    expect(handled.result).toEqual({ action: 'continue' });
+    expect(operations).toEqual([]);
+  });
+
+  it('handles abort after tool-turn completion before turn-limit work', async () => {
+    const operations: unknown[] = [];
+
+    const handled = await collectGenerator(
+      handleAgentLoopToolTurnTail({
+        signal: { aborted: true },
+        loopClock: {
+          startTime: 1_000,
+          resultTiming: ({ turnsCount, toolCallsCount }) => {
+            operations.push(['timing', turnsCount, toolCallsCount]);
+            return {
+              turnsCount,
+              toolCallsCount,
+              startTime: 1_000,
+              now: 1_075,
+            };
+          },
+        },
+        turnsCount: 3,
+        maxTurns: 3,
+        effectiveMaxTurns: 3,
+        isYoloMode: false,
+        conversation: {
+          getContextMessages: () => {
+            operations.push('getContextMessages');
+            return [];
+          },
+          replaceContent: (messages) => {
+            operations.push(['replaceContent', messages]);
+          },
+          append: (...messages) => {
+            operations.push(['append', messages]);
+          },
+        },
+        toolResultTracker: { toolCallsCount: 5 },
+        tokenUsageTracker: { totalTokens: 42 },
+        turnCounter: {
+          reset: () => {
+            operations.push('reset');
+          },
+        },
+      }),
+    );
+
+    expect(handled.events).toEqual([
+      { type: 'turn_end', turn: 3, hasToolCalls: true },
+      { type: 'agent_end' },
+    ]);
+    expect(handled.result).toEqual({
+      action: 'abort',
+      result: {
+        success: false,
+        error: {
+          type: 'aborted',
+          message: '任务已被用户中止',
+        },
+        metadata: {
+          turnsCount: 3,
+          toolCallsCount: 5,
+          duration: 75,
+        },
+      },
+    });
+    expect(operations).toEqual([['timing', 3, 5]]);
+  });
+
+  it('handles turn-limit compact continuations and resets the turn counter', async () => {
+    const compactedMessages: Message[] = [{ role: 'assistant', content: 'summary' }];
+    const continueMessage: Message = { role: 'user', content: 'continue' };
+    const operations: unknown[] = [];
+
+    const handled = await collectGenerator(
+      handleAgentLoopToolTurnTail({
+        signal: { aborted: false },
+        loopClock: {
+          startTime: 1_000,
+          resultTiming: ({ turnsCount, toolCallsCount }) => ({
+            turnsCount,
+            toolCallsCount,
+            startTime: 1_000,
+            now: 1_100,
+          }),
+        },
+        turnsCount: 4,
+        maxTurns: 4,
+        effectiveMaxTurns: 4,
+        isYoloMode: false,
+        conversation: {
+          getContextMessages: () => {
+            operations.push('getContextMessages');
+            return [{ role: 'user', content: 'context' }];
+          },
+          replaceContent: (messages) => {
+            operations.push(['replaceContent', messages]);
+          },
+          append: (...messages) => {
+            operations.push(['append', messages]);
+          },
+        },
+        toolResultTracker: { toolCallsCount: 6 },
+        tokenUsageTracker: { totalTokens: 99 },
+        turnCounter: {
+          reset: () => {
+            operations.push('reset');
+          },
+        },
+        hooks: {
+          turn: {
+            onTurnLimitReached: async ({ turnsCount }) => {
+              operations.push(['reached', turnsCount]);
+              return { continue: true };
+            },
+            onTurnLimitCompact: async ({ contextMessages }) => {
+              operations.push(['compact', contextMessages]);
+              return {
+                success: true,
+                compactedMessages,
+                continueMessage,
+              };
+            },
+          },
+        },
+      }),
+    );
+
+    expect(handled.events).toEqual([{ type: 'turn_end', turn: 4, hasToolCalls: true }]);
+    expect(handled.result).toEqual({
+      action: 'continue',
+      turnLimitDecision: {
+        action: 'compact_and_continue',
+        compactedMessages,
+        continueMessage,
+      },
+    });
+    expect(operations).toEqual([
+      'getContextMessages',
+      ['reached', 4],
+      ['compact', [{ role: 'user', content: 'context' }]],
+      ['replaceContent', compactedMessages],
+      ['append', [continueMessage]],
+      'reset',
     ]);
   });
 });

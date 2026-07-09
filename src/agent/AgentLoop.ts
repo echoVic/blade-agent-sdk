@@ -34,21 +34,12 @@ import {
   shouldHandleAgentLoopNoToolTurn,
 } from './loop/decideNoToolTurn.js';
 import {
-  applyAgentLoopTurnLimitContinuation,
   buildAgentLoopEffectiveMaxTurns,
-  buildAgentLoopTurnLimitContinuation,
-  buildAgentLoopTurnLimitDecisionInputFromHookContainer,
-  buildAgentLoopTurnLimitStopCompletion,
-  decideTurnLimit,
-  shouldApplyAgentLoopTurnLimitContinuation,
-  shouldCheckAgentLoopTurnLimit,
-  shouldStopAgentLoopForTurnLimitDecision,
+  handleAgentLoopToolTurnTail,
 } from './loop/decideTurnLimit.js';
 import { executeToolCalls } from './loop/executeToolCalls.js';
 import {
   buildAgentLoopStartEvent,
-  buildAgentLoopToolTurnCompletion,
-  buildAgentLoopToolTurnCompletionInput,
   buildAgentLoopTurnStartEvent,
   buildAgentLoopTurnStartEventInput,
 } from './loop/loopEvents.js';
@@ -83,7 +74,6 @@ import {
   applyAgentLoopReactiveCompactRetry,
   beginAgentLoopTurn,
   createAgentLoopTurnCounter,
-  resetAgentLoopTurnCounter,
   runAgentLoopBeforeTurnHook,
   shouldEmitAgentLoopTurnStart,
 } from './loop/turnCounter.js';
@@ -476,56 +466,21 @@ export async function* agentLoop(
       }
     }
 
-    const toolTurnCompletion = buildAgentLoopToolTurnCompletion(
-      buildAgentLoopToolTurnCompletionInput({ turn: turnsCount }),
-    );
-    for (const event of toolTurnCompletion.events) {
-      yield event;
-    }
-
-    if (shouldAbortAgentLoop(signal)) {
-      const abortCompletion = buildAgentLoopAbortCompletion(
-        buildAgentLoopAbortCompletionInputFromLoopState({
-          loopClock,
-          turnsCount,
-          toolResultTracker,
-        }),
-      );
-      for (const event of abortCompletion.events) {
-        yield event;
-      }
-      return abortCompletion.result;
-    }
-
-    // 轮次上限
-    if (shouldCheckAgentLoopTurnLimit({ turnsCount, effectiveMaxTurns, isYoloMode })) {
-      const limitDecision = await decideTurnLimit(
-        buildAgentLoopTurnLimitDecisionInputFromHookContainer({
-          maxTurns: config.maxTurns,
-          turnsCount,
-          conversation: convState,
-          toolResultTracker,
-          loopClock,
-          tokenUsageTracker,
-          hooks,
-        }),
-      );
-      if (shouldStopAgentLoopForTurnLimitDecision(limitDecision)) {
-        const turnLimitStopCompletion = buildAgentLoopTurnLimitStopCompletion(limitDecision);
-        for (const event of turnLimitStopCompletion.events) {
-          yield event;
-        }
-        return turnLimitStopCompletion.result;
-      }
-
-      const turnLimitContinuation = buildAgentLoopTurnLimitContinuation(limitDecision);
-      if (shouldApplyAgentLoopTurnLimitContinuation(turnLimitContinuation)) {
-        applyAgentLoopTurnLimitContinuation({
-          conversation: convState,
-          continuation: turnLimitContinuation,
-        });
-      }
-      resetAgentLoopTurnCounter({ counter: turnCounter });
+    const toolTurnTail = yield* handleAgentLoopToolTurnTail({
+      signal,
+      loopClock,
+      turnsCount,
+      maxTurns: config.maxTurns,
+      effectiveMaxTurns,
+      isYoloMode,
+      conversation: convState,
+      toolResultTracker,
+      tokenUsageTracker,
+      turnCounter,
+      hooks,
+    });
+    if (toolTurnTail.action === 'abort' || toolTurnTail.action === 'stop') {
+      return toolTurnTail.result as LoopResult;
     }
   }
 }

@@ -1,5 +1,19 @@
 import type { Message } from '@blade-ai/ai/chat';
-import { buildAgentLoopEndEvent, type AgentLoopEndEvent } from './loopEvents.js';
+import {
+  buildAgentLoopEndEvent,
+  buildAgentLoopToolTurnCompletion,
+  buildAgentLoopToolTurnCompletionInput,
+  type AgentLoopEndEvent,
+  type AgentLoopTurnEndEvent,
+} from './loopEvents.js';
+import {
+  buildAgentLoopAbortCompletion,
+  buildAgentLoopAbortCompletionInputFromLoopState,
+  shouldAbortAgentLoop,
+  type AgentLoopAbortCompletionTimingSource,
+  type AgentLoopAbortResult,
+} from './loopResult.js';
+import { resetAgentLoopTurnCounter } from './turnCounter.js';
 
 export const AGENT_LOOP_TURN_SAFETY_LIMIT = 100;
 
@@ -93,6 +107,10 @@ export interface AgentLoopTurnLimitClockLike {
   readonly startTime: number;
 }
 
+export interface AgentLoopToolTurnTailClockLike
+  extends AgentLoopTurnLimitClockLike,
+    AgentLoopAbortCompletionTimingSource {}
+
 export interface AgentLoopTurnLimitTokenUsageTrackerLike {
   readonly totalTokens: number;
 }
@@ -131,6 +149,41 @@ export interface ApplyAgentLoopTurnLimitContinuationInput {
   conversation: AgentLoopTurnLimitContinuationConversationLike;
   continuation: AgentLoopApplicableTurnLimitContinuation;
 }
+
+export interface AgentLoopToolTurnTailTurnCounterLike {
+  reset(): void;
+}
+
+export interface HandleAgentLoopToolTurnTailInput {
+  signal?: Pick<AbortSignal, 'aborted'>;
+  loopClock: AgentLoopToolTurnTailClockLike;
+  turnsCount: number;
+  maxTurns: number;
+  effectiveMaxTurns: number;
+  isYoloMode: boolean;
+  conversation: AgentLoopTurnLimitConversationLike
+    & AgentLoopTurnLimitContinuationConversationLike;
+  toolResultTracker: AgentLoopTurnLimitToolResultTrackerLike;
+  tokenUsageTracker: AgentLoopTurnLimitTokenUsageTrackerLike;
+  turnCounter: AgentLoopToolTurnTailTurnCounterLike;
+  hooks?: AgentLoopTurnLimitHookContainer | null;
+}
+
+export type AgentLoopToolTurnTailEvent = AgentLoopTurnEndEvent | AgentLoopEndEvent;
+
+export type AgentLoopToolTurnTailHandling =
+  | {
+      action: 'continue';
+      turnLimitDecision?: TurnLimitDecision;
+    }
+  | {
+      action: 'abort';
+      result: AgentLoopAbortResult;
+    }
+  | {
+      action: 'stop';
+      result: TurnLimitStopResult;
+    };
 
 export function buildAgentLoopEffectiveMaxTurns(
   input: BuildAgentLoopEffectiveMaxTurnsInput,
@@ -309,5 +362,80 @@ export async function decideTurnLimit(
         tokensUsed: totalTokens,
       },
     },
+  };
+}
+
+export async function* handleAgentLoopToolTurnTail(
+  input: HandleAgentLoopToolTurnTailInput,
+): AsyncGenerator<AgentLoopToolTurnTailEvent, AgentLoopToolTurnTailHandling> {
+  const toolTurnCompletion = buildAgentLoopToolTurnCompletion(
+    buildAgentLoopToolTurnCompletionInput({ turn: input.turnsCount }),
+  );
+  for (const event of toolTurnCompletion.events) {
+    yield event;
+  }
+
+  if (shouldAbortAgentLoop(input.signal)) {
+    const abortCompletion = buildAgentLoopAbortCompletion(
+      buildAgentLoopAbortCompletionInputFromLoopState({
+        loopClock: input.loopClock,
+        turnsCount: input.turnsCount,
+        toolResultTracker: input.toolResultTracker,
+      }),
+    );
+    for (const event of abortCompletion.events) {
+      yield event;
+    }
+    return {
+      action: 'abort',
+      result: abortCompletion.result,
+    };
+  }
+
+  if (
+    !shouldCheckAgentLoopTurnLimit({
+      turnsCount: input.turnsCount,
+      effectiveMaxTurns: input.effectiveMaxTurns,
+      isYoloMode: input.isYoloMode,
+    })
+  ) {
+    return { action: 'continue' };
+  }
+
+  const limitDecision = await decideTurnLimit(
+    buildAgentLoopTurnLimitDecisionInputFromHookContainer({
+      maxTurns: input.maxTurns,
+      turnsCount: input.turnsCount,
+      conversation: input.conversation,
+      toolResultTracker: input.toolResultTracker,
+      loopClock: input.loopClock,
+      tokenUsageTracker: input.tokenUsageTracker,
+      hooks: input.hooks,
+    }),
+  );
+
+  if (shouldStopAgentLoopForTurnLimitDecision(limitDecision)) {
+    const turnLimitStopCompletion = buildAgentLoopTurnLimitStopCompletion(limitDecision);
+    for (const event of turnLimitStopCompletion.events) {
+      yield event;
+    }
+    return {
+      action: 'stop',
+      result: turnLimitStopCompletion.result,
+    };
+  }
+
+  const turnLimitContinuation = buildAgentLoopTurnLimitContinuation(limitDecision);
+  if (shouldApplyAgentLoopTurnLimitContinuation(turnLimitContinuation)) {
+    applyAgentLoopTurnLimitContinuation({
+      conversation: input.conversation,
+      continuation: turnLimitContinuation,
+    });
+  }
+  resetAgentLoopTurnCounter({ counter: input.turnCounter });
+
+  return {
+    action: 'continue',
+    turnLimitDecision: limitDecision,
   };
 }
