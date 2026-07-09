@@ -10,13 +10,14 @@ import { type InternalLogger, NOOP_LOGGER } from '../logging/Logger.js';
 import type { Message, ToolCall } from '../services/ChatServiceInterface.js';
 import type { ExecutionPipeline } from '../tools/execution/ExecutionPipeline.js';
 import type { ToolResult } from '../tools/types/index.js';
-import type { JsonObject } from '../types/common.js';
 import type { AgentEvent } from './AgentEvent.js';
 import {
   ExecutionEpoch,
 } from './ExecutionEpoch.js';
 import {
   handleAgentLoopWithEmissions,
+  type AgentLoopAdapterConfig,
+  type AgentLoopAdapterHooks,
 } from './loop/agentLoop.js';
 import { executeToolCalls } from './loop/executeToolCalls.js';
 import { runTurn } from './loop/runTurn.js';
@@ -29,86 +30,24 @@ import type { LoopResult, TurnLimitResponse } from './types.js';
 
 // ===== Loop 配置 =====
 
-/**
- * 按阶段分组的 hook 接口。
- * LoopHookBuilder 负责构建，AgentLoop 消费。
- */
-export interface AgentLoopHooks {
-  turn?: {
-    beforeTurn?: (ctx: {
-      turn: number;
-      messages: readonly Message[];
-      lastPromptTokens?: number;
-    }) => AsyncGenerator<AgentEvent, boolean>;
-    onTurnLimitReached?: (data: { turnsCount: number }) => Promise<TurnLimitResponse>;
-    onTurnLimitCompact?: (ctx: {
-      contextMessages: readonly Message[];
-    }) => Promise<{
-      success: boolean;
-      compactedMessages?: Message[];
-      continueMessage?: Message;
-    }>;
-  };
-  tool?: {
-    beforeExec?: (ctx: {
-      toolCall: FunctionToolCall;
-      params: JsonObject;
-    }) => Promise<string | null>;
-    afterExec?: (ctx: {
-      toolCall: FunctionToolCall;
-      result: ToolResult;
-      toolUseUuid: string | null;
-    }) => Promise<void>;
-    afterExecEpochDiscard?: (ctx: {
-      toolCall: FunctionToolCall;
-      toolUseUuid: string | null;
-      reason: string;
-    }) => Promise<void>;
-    onUpdate?: (update: ToolExecutionUpdate) => Promise<void> | void;
-  };
-  message?: {
-    onAssistant?: (ctx: {
-      content: string;
-      reasoningContent?: string;
-      toolCalls?: ToolCall[];
-      turn: number;
-    }) => Promise<void>;
-    onComplete?: (ctx: {
-      content: string;
-      turn: number;
-    }) => Promise<void>;
-  };
-  recovery?: {
-    reactiveCompact?: (ctx: {
-      messages: readonly Message[];
-    }) => AsyncGenerator<AgentEvent, boolean>;
-    onStateChange?: (ctx: {
-      turn: number;
-      phase: 'started' | 'retrying' | 'failed' | 'reset';
-      reason?: string;
-      attempt: number;
-    }) => void;
-  };
-  stop?: {
-    check?: (ctx: {
-      content: string;
-      turn: number;
-    }) => Promise<{ shouldStop: boolean; continueReason?: string; warning?: string }>;
-  };
-}
+export type AgentLoopHooks = AgentLoopAdapterHooks<
+  Message,
+  AgentEvent,
+  FunctionToolCall,
+  ToolCall,
+  ToolResult,
+  ToolExecutionUpdate,
+  TurnLimitResponse
+>;
 
-export interface AgentLoopConfig {
-  streaming?: boolean;
-  executionPipeline: ExecutionPipeline;
-  logger?: InternalLogger;
-  conversationState: ConversationState;
-  maxTurns: number;
-  isYoloMode: boolean;
-  signal?: AbortSignal;
-  tokenBudget?: TokenBudget;
-  prepareTurnState: (turn: number) => TurnState;
-  hooks?: AgentLoopHooks;
-}
+export type AgentLoopConfig = AgentLoopAdapterConfig<
+  ConversationState,
+  TurnState,
+  ExecutionPipeline,
+  InternalLogger,
+  TokenBudget,
+  AgentLoopHooks
+>;
 
 // ===== 核心循环 =====
 

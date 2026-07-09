@@ -404,6 +404,12 @@ describe('monorepo topology', () => {
     expect(agentIndexSource).not.toContain('class AgentKernel');
     expect(agentLoopSource).toContain("from './AsyncEventQueue.js'");
     expect(agentLoopSource).toContain("from './agentLoop.js'");
+    expect(readFileSync('packages/agent/src/loop/agentLoop.ts', 'utf-8')).toContain(
+      'export interface AgentLoopAdapterHooks',
+    );
+    expect(readFileSync('packages/agent/src/loop/agentLoop.ts', 'utf-8')).toContain(
+      'export interface AgentLoopAdapterConfig',
+    );
     expect(agentLoopSource).toContain("from './assistantMessage.js'");
     expect(agentLoopSource).toContain("from './decideNoToolTurn.js'");
     expect(agentLoopSource).toContain("from './decideTurnLimit.js'");
@@ -430,6 +436,10 @@ describe('monorepo topology', () => {
     expect(agentLoopSource).toContain("from './toolInterruptBehavior.js'");
     expect(agentLoopSource).toContain("from './toolUpdateToAgentEvent.js'");
     expect(rootAgentLoopSource).toContain('handleAgentLoopWithEmissions');
+    expect(rootAgentLoopSource).toContain('type AgentLoopAdapterConfig');
+    expect(rootAgentLoopSource).toContain('type AgentLoopAdapterHooks');
+    expect(rootAgentLoopSource).not.toContain('export interface AgentLoopHooks');
+    expect(rootAgentLoopSource).not.toContain('export interface AgentLoopConfig');
     expect(rootAgentLoopSource).not.toContain('handleAgentLoopTurnCycleWithEmissions');
     expect(rootAgentLoopSource).not.toContain('handleAgentLoopTurnEntryWithEmissions');
     expect(rootAgentLoopSource).not.toContain('handleAgentLoopRunTurnWithRecovery');

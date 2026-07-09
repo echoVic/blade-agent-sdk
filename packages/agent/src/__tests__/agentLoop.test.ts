@@ -2,6 +2,8 @@ import type { Message } from '@blade-ai/ai/chat';
 import { describe, expect, it } from 'vitest';
 import {
   handleAgentLoopWithEmissions,
+  type AgentLoopAdapterConfig,
+  type AgentLoopAdapterHooks,
   type AgentLoopRunTurnInput,
 } from '../loop/index.js';
 
@@ -20,6 +22,58 @@ async function collectGenerator<TEvent, TResult>(
 }
 
 describe('agent loop orchestration', () => {
+  it('exposes package-owned adapter hook and config contracts', () => {
+    interface TurnState {
+      maxContextTokens: number;
+      executionContext: { cwd: string };
+      permissionMode: 'default';
+    }
+
+    const hooks = {
+      message: {
+        onComplete: async (_payload) => undefined,
+      },
+      stop: {
+        check: async () => ({ shouldStop: true }),
+      },
+    } satisfies AgentLoopAdapterHooks<
+      Message,
+      { type: 'model_event' },
+      { id: string; type: 'function'; function: { name: string; arguments: string } },
+      { id: string; type: 'function'; function: { name: string; arguments: string } },
+      { success: boolean; llmContent?: string },
+      { type: 'tool_progress'; message: string },
+      { continue: boolean }
+    >;
+
+    const config = {
+      streaming: false,
+      executionPipeline: {
+        getRegistry: () => ({ get: () => undefined }),
+      },
+      conversationState: {
+        toArray: () => [{ role: 'user', content: 'hello' }],
+      },
+      maxTurns: 5,
+      isYoloMode: false,
+      prepareTurnState: () => ({
+        maxContextTokens: 128000,
+        executionContext: { cwd: '/tmp/project' },
+        permissionMode: 'default',
+      }),
+      hooks,
+    } satisfies AgentLoopAdapterConfig<
+      { toArray(): readonly Message[] },
+      TurnState,
+      { getRegistry(): { get(name: string): undefined } },
+      { debug(...args: unknown[]): void },
+      { getSnapshot(): unknown },
+      typeof hooks
+    >;
+
+    expect(config.hooks).toBe(hooks);
+  });
+
   it('runs the package-owned loop skeleton with injected runtime ports', async () => {
     const operations: unknown[] = [];
     const messages: Message[] = [{ role: 'user', content: 'finish this' }];

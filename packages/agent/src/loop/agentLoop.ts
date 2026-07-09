@@ -1,3 +1,4 @@
+import type { JsonObject } from '@blade-ai/ai';
 import type { ChatResponse, Message } from '@blade-ai/ai/chat';
 import { createAgentRecoveryAttemptTracker } from '../recovery/recoveryAttemptTracker.js';
 import { buildAgentLoopEffectiveMaxTurns } from './decideTurnLimit.js';
@@ -21,10 +22,106 @@ import type { AgentLoopToolExecutionResultLike } from './toolResultContinuation.
 import { createAgentLoopTurnCounter } from './turnCounter.js';
 import type { AgentLoopToolExitDecisionResultLike } from './loopResult.js';
 import type {
+  AgentFunctionToolCall,
   ToolExecutionPermissionMode,
   ToolExecutionRegistryLike,
 } from './planToolExecution.js';
 import type { AgentLoopTurnStateFields } from './turnState.js';
+
+export interface AgentLoopAdapterHooks<
+  TMessage extends Message,
+  TEvent,
+  TToolCall = AgentFunctionToolCall,
+  TAssistantToolCall = TToolCall,
+  TToolResult = unknown,
+  TToolExecutionUpdate = unknown,
+  TTurnLimitResponse = {
+    continue: boolean;
+    reason?: string;
+  },
+> {
+  turn?: {
+    beforeTurn?: (ctx: {
+      turn: number;
+      messages: readonly TMessage[];
+      lastPromptTokens?: number;
+    }) => AsyncGenerator<TEvent, boolean>;
+    onTurnLimitReached?: (data: { turnsCount: number }) => Promise<TTurnLimitResponse>;
+    onTurnLimitCompact?: (ctx: {
+      contextMessages: readonly TMessage[];
+    }) => Promise<{
+      success: boolean;
+      compactedMessages?: TMessage[];
+      continueMessage?: TMessage;
+    }>;
+  };
+  tool?: {
+    beforeExec?: (ctx: {
+      toolCall: TToolCall;
+      params: JsonObject;
+    }) => Promise<string | null>;
+    afterExec?: (ctx: {
+      toolCall: TToolCall;
+      result: TToolResult;
+      toolUseUuid: string | null;
+    }) => Promise<void>;
+    afterExecEpochDiscard?: (ctx: {
+      toolCall: TToolCall;
+      toolUseUuid: string | null;
+      reason: string;
+    }) => Promise<void>;
+    onUpdate?: (update: TToolExecutionUpdate) => Promise<void> | void;
+  };
+  message?: {
+    onAssistant?: (ctx: {
+      content: string;
+      reasoningContent?: string;
+      toolCalls?: TAssistantToolCall[];
+      turn: number;
+    }) => Promise<void>;
+    onComplete?: (ctx: {
+      content: string;
+      turn: number;
+    }) => Promise<void>;
+  };
+  recovery?: {
+    reactiveCompact?: (ctx: {
+      messages: readonly TMessage[];
+    }) => AsyncGenerator<TEvent, boolean>;
+    onStateChange?: (ctx: {
+      turn: number;
+      phase: 'started' | 'retrying' | 'failed' | 'reset';
+      reason?: string;
+      attempt: number;
+    }) => void;
+  };
+  stop?: {
+    check?: (ctx: {
+      content: string;
+      turn: number;
+    }) => Promise<{ shouldStop: boolean; continueReason?: string; warning?: string }>;
+  };
+}
+
+export interface AgentLoopAdapterConfig<
+  TConversation,
+  TTurnState,
+  TExecutionPipeline,
+  TLogger,
+  TTokenBudget,
+  THooks,
+> {
+  streaming?: boolean;
+  executionPipeline: TExecutionPipeline;
+  logger?: TLogger;
+  conversationState: TConversation;
+  maxTurns: number;
+  isYoloMode: boolean;
+  signal?: AbortSignal;
+  tokenBudget?: TTokenBudget;
+  prepareTurnState: (turn: number) => TTurnState;
+  hooks?: THooks;
+}
 
 export interface HandleAgentLoopInput<
   TMessage extends Message,
