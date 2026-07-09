@@ -4,8 +4,10 @@ import {
   buildAgentRecoveryExhaustedEffects,
   buildAgentRecoveryResetEffects,
   buildAgentRecoveryStartedEffects,
+  consumeAgentRecoveryCompactStreamWithEmittedResultEffects,
   emitAgentRecoveryEffects,
   type AgentRecoveryEffects,
+  type AgentRecoveryCompactResultEffects,
   type AgentRecoveryEvent,
   type AgentRecoveryExhaustedEffectsInput,
   type AgentReactiveCompactConversationLike,
@@ -59,6 +61,13 @@ export interface StartAgentRecoveryAttemptWithEmittedCompactStreamInput<TMessage
 export interface StartedAgentRecoveryCompactAttempt<Event>
   extends StartedAgentRecoveryAttempt {
   compactStream?: AsyncGenerator<Event, boolean | undefined>;
+}
+
+export interface AgentRecoveryCompactAttemptEmissionsResult {
+  attempt: number;
+  recovered: boolean;
+  startedEffects: AgentRecoveryEffects;
+  compactResultEffects?: AgentRecoveryCompactResultEffects;
 }
 
 export interface ConsumeAgentRecoveryResetEffectsInput {
@@ -180,6 +189,36 @@ export async function* startAgentRecoveryAttemptWithEmittedCompactStream<
   return {
     ...started,
     effects,
+  };
+}
+
+export async function* runAgentRecoveryCompactAttemptWithEmissions<TMessage, Event>(
+  input: StartAgentRecoveryAttemptWithEmittedCompactStreamInput<TMessage, Event>,
+): AsyncGenerator<
+  AgentRecoveryEvent | Event,
+  AgentRecoveryCompactAttemptEmissionsResult
+> {
+  const started = yield* startAgentRecoveryAttemptWithEmittedCompactStream(input);
+  if (!started.compactStream) {
+    return {
+      attempt: started.attempt,
+      recovered: false,
+      startedEffects: started.effects,
+    };
+  }
+
+  const compactResultEffects = yield* consumeAgentRecoveryCompactStreamWithEmittedResultEffects({
+    stream: started.compactStream,
+    turn: input.turn,
+    attempt: started.attempt,
+    hooks: input.hooks,
+  });
+
+  return {
+    attempt: started.attempt,
+    recovered: compactResultEffects.recovered,
+    startedEffects: started.effects,
+    compactResultEffects,
   };
 }
 

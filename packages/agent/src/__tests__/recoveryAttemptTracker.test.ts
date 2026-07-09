@@ -8,6 +8,7 @@ import {
   emitAgentRecoveryExhaustedEffectsFromTracker,
   emitAgentRecoveryResetEffects,
   hasAgentRecoveryAttemptExhausted,
+  runAgentRecoveryCompactAttemptWithEmissions,
   shouldAttemptAgentRecovery,
   startAgentRecoveryAttempt,
   startAgentRecoveryAttemptWithEmittedCompactStream,
@@ -212,6 +213,118 @@ describe('agent recovery attempt tracker', () => {
       value: { type: 'compact_progress', phase: 'start' },
     });
     expect(calls).toEqual([{ messages }]);
+  });
+
+  it('runs a recovery compact attempt with started, progress, and result emissions', async () => {
+    const tracker = createAgentRecoveryAttemptTracker();
+    const messages = [{ role: 'user' as const, content: 'large context' }];
+    const stateChanges: unknown[] = [];
+
+    async function* reactiveCompact(): AsyncGenerator<
+      { type: string; phase: string },
+      boolean | undefined
+    > {
+      yield { type: 'compact_progress', phase: 'start' };
+      return true;
+    }
+
+    const recoveryStream = runAgentRecoveryCompactAttemptWithEmissions({
+      tracker,
+      turn: 6,
+      conversation: {
+        toArray: () => messages,
+      },
+      hooks: {
+        recovery: {
+          reactiveCompact,
+          onStateChange: (stateChange) => {
+            stateChanges.push(stateChange);
+          },
+        },
+      },
+    });
+
+    await expect(recoveryStream.next()).resolves.toEqual({
+      value: {
+        type: 'recovery',
+        phase: 'started',
+        reason: 'context_overflow',
+      },
+      done: false,
+    });
+    await expect(recoveryStream.next()).resolves.toEqual({
+      value: { type: 'compact_progress', phase: 'start' },
+      done: false,
+    });
+    await expect(recoveryStream.next()).resolves.toEqual({
+      value: {
+        type: 'recovery',
+        phase: 'retrying',
+        reason: 'reactive_compact',
+      },
+      done: false,
+    });
+
+    const result = await recoveryStream.next();
+    expect(result.done).toBe(true);
+    if (!result.done) {
+      throw new Error('expected recovery compact attempt stream to finish');
+    }
+    expect(result.value).toEqual({
+      attempt: 1,
+      recovered: true,
+      startedEffects: {
+        stateChanges: [
+          {
+            turn: 6,
+            phase: 'started',
+            reason: 'context_overflow',
+            attempt: 1,
+          },
+        ],
+        events: [
+          {
+            type: 'recovery',
+            phase: 'started',
+            reason: 'context_overflow',
+          },
+        ],
+      },
+      compactResultEffects: {
+        recovered: true,
+        effects: {
+          stateChanges: [
+            {
+              turn: 6,
+              phase: 'retrying',
+              reason: 'reactive_compact_retry',
+              attempt: 1,
+            },
+          ],
+          events: [
+            {
+              type: 'recovery',
+              phase: 'retrying',
+              reason: 'reactive_compact',
+            },
+          ],
+        },
+      },
+    });
+    expect(stateChanges).toEqual([
+      {
+        turn: 6,
+        phase: 'started',
+        reason: 'context_overflow',
+        attempt: 1,
+      },
+      {
+        turn: 6,
+        phase: 'retrying',
+        reason: 'reactive_compact_retry',
+        attempt: 1,
+      },
+    ]);
   });
 
   it('increments attempts across consecutive failed turns until reset is consumed', () => {

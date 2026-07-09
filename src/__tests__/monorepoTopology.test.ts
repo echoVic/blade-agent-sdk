@@ -740,6 +740,9 @@ describe('monorepo topology', () => {
     );
     expect(rootAgentLoopSource).not.toContain('recoveryAttemptTracker.attempt');
     expect(rootAgentLoopSource).toContain(
+      'runAgentRecoveryCompactAttemptWithEmissions',
+    );
+    expect(rootAgentLoopSource).not.toContain(
       'startAgentRecoveryAttemptWithEmittedCompactStream',
     );
     expect(rootAgentLoopSource).not.toContain('startAgentRecoveryAttemptWithCompactStream');
@@ -813,10 +816,13 @@ describe('monorepo topology', () => {
     expect(rootAgentLoopSource).not.toContain('buildAgentRecoveryResetEffects');
     expect(rootAgentLoopSource).not.toContain('buildAgentRecoveryStartedEffects');
     expect(rootAgentLoopSource).toContain(
+      'runAgentRecoveryCompactAttemptWithEmissions',
+    );
+    expect(rootAgentLoopSource).not.toContain(
       'startAgentRecoveryAttemptWithEmittedCompactStream',
     );
     expect(rootAgentLoopSource).not.toContain('startAgentRecoveryAttemptWithCompactStream');
-    expect(rootAgentLoopSource).toContain(
+    expect(rootAgentLoopSource).not.toContain(
       'consumeAgentRecoveryCompactStreamWithEmittedResultEffects',
     );
     expect(rootAgentLoopSource).not.toContain(
