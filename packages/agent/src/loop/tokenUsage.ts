@@ -155,6 +155,19 @@ export type AgentLoopTokenBudgetCheckResult<TSnapshot = unknown> =
   | AgentLoopTokenBudgetContinueCompletion<TSnapshot>
   | AgentLoopTokenBudgetStopCompletion<TSnapshot>;
 
+export type AgentLoopTokenBudgetCheckEvent<TSnapshot = unknown> =
+  | AgentLoopBudgetWarningEvent<TSnapshot>
+  | AgentLoopEndEvent;
+
+export type AgentLoopTokenBudgetCheckHandling =
+  | {
+      action: 'continue';
+    }
+  | {
+      action: 'stop';
+      result: AgentLoopBudgetExhaustedResult;
+    };
+
 export function buildAgentLoopTokenUsageInfo(
   input: BuildAgentLoopTokenUsageInfoInput,
 ): AgentLoopTokenUsageInfo {
@@ -327,6 +340,27 @@ export async function runAgentLoopTokenBudgetCheck<TSnapshot>(
     action: 'continue',
     events: decision.events,
   };
+}
+
+export async function* handleAgentLoopTokenBudgetCheck<TSnapshot>(
+  input: AgentLoopTokenBudgetLoopStateInput<TSnapshot>,
+): AsyncGenerator<
+  AgentLoopTokenBudgetCheckEvent<TSnapshot>,
+  AgentLoopTokenBudgetCheckHandling
+> {
+  const budgetCheck = await runAgentLoopTokenBudgetCheck(input);
+  for (const event of budgetCheck.events) {
+    yield event;
+  }
+
+  if (shouldStopAgentLoopForTokenBudgetCheck(budgetCheck)) {
+    return {
+      action: 'stop',
+      result: budgetCheck.result,
+    };
+  }
+
+  return { action: 'continue' };
 }
 
 export async function applyAgentLoopTokenBudget<TSnapshot>(

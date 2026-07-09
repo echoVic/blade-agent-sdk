@@ -52,8 +52,7 @@ import { runTurn } from './loop/runTurn.js';
 import type { ToolExecutionUpdate } from './loop/runToolCall.js';
 import {
   emitAgentLoopTokenUsageEventIfPresent,
-  runAgentLoopTokenBudgetCheck,
-  shouldStopAgentLoopForTokenBudgetCheck,
+  handleAgentLoopTokenBudgetCheck,
 } from './loop/tokenUsage.js';
 import {
   createAgentLoopTokenUsageTracker,
@@ -324,7 +323,7 @@ export async function* agentLoop(
       turnStateProjection,
     });
 
-    const budgetCheck = await runAgentLoopTokenBudgetCheck({
+    const budgetCheck = yield* handleAgentLoopTokenBudgetCheck({
       tokenBudget,
       modelUsage: turnResult.usage,
       loopClock,
@@ -332,14 +331,8 @@ export async function* agentLoop(
       toolResultTracker,
       tokenUsageTracker,
     });
-    if (shouldStopAgentLoopForTokenBudgetCheck(budgetCheck)) {
-      for (const event of budgetCheck.events) {
-        yield event;
-      }
+    if (budgetCheck.action === 'stop') {
       return budgetCheck.result as LoopResult;
-    }
-    for (const budgetEvent of budgetCheck.events) {
-      yield budgetEvent;
     }
 
     const abortAfterBudget = yield* handleAgentLoopAbortIfRequested({

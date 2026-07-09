@@ -12,11 +12,26 @@ import {
   buildAgentLoopTokenUsageInfoInputFromLoopState,
   buildAgentLoopTokenUsageInfoInputFromTurnProjection,
   emitAgentLoopTokenUsageEventIfPresent,
+  handleAgentLoopTokenBudgetCheck,
   runAgentLoopTokenBudgetCheck,
   shouldStopAgentLoopForTokenBudget,
   shouldStopAgentLoopForTokenBudgetCheck,
   type AgentLoopTokenBudgetStopDecision,
 } from '../loop/tokenUsage.js';
+
+async function collectGenerator<TEvent, TResult>(
+  generator: AsyncGenerator<TEvent, TResult>,
+): Promise<{ events: TEvent[]; result: TResult }> {
+  const events: TEvent[] = [];
+
+  while (true) {
+    const next = await generator.next();
+    if (next.done) {
+      return { events, result: next.value };
+    }
+    events.push(next.value);
+  }
+}
 
 describe('agent loop token usage projection', () => {
   it('builds token usage info from model usage and loop totals', () => {
@@ -538,6 +553,47 @@ describe('agent loop token usage projection', () => {
     expect(tokenBudget.record).toHaveBeenCalledWith(usage);
   });
 
+  it('handles token budget checks by yielding warning events and continuing', async () => {
+    const usage = { promptTokens: 9, completionTokens: 3, totalTokens: 12 };
+    const snapshot = { totalTokens: 92, budgetRemaining: 8, budgetPercent: 0.92 };
+    const tokenBudget = {
+      record: vi.fn(),
+      isWarning: vi.fn(() => true),
+      isApproachingLimit: vi.fn(() => false),
+      isDiminishingReturns: vi.fn(() => false),
+      isExhausted: vi.fn(() => false),
+      getSnapshot: vi.fn(() => snapshot),
+    };
+
+    const handled = await collectGenerator(
+      handleAgentLoopTokenBudgetCheck({
+        tokenBudget,
+        modelUsage: usage,
+        loopClock: {
+          resultTiming: ({ turnsCount, toolCallsCount }) => ({
+            turnsCount,
+            toolCallsCount,
+            startTime: 100,
+            now: 140,
+          }),
+        },
+        turnsCount: 2,
+        toolResultTracker: {
+          toolCallsCount: 4,
+        },
+        tokenUsageTracker: {
+          totalTokens: 92,
+        },
+      }),
+    );
+
+    expect(handled).toEqual({
+      events: [{ type: 'budget_warning', snapshot }],
+      result: { action: 'continue' },
+    });
+    expect(tokenBudget.record).toHaveBeenCalledWith(usage);
+  });
+
   it('runs token budget checks from loop state and returns stop completions', async () => {
     const warningSnapshot = { totalTokens: 90, budgetRemaining: 10, budgetPercent: 0.9 };
     const stopSnapshot = { totalTokens: 95, budgetRemaining: 5, budgetPercent: 0.95 };
@@ -592,6 +648,68 @@ describe('agent loop token usage projection', () => {
           duration: 40,
           tokensUsed: 95,
           tokenBudgetSnapshot: stopSnapshot,
+        },
+      },
+    });
+  });
+
+  it('handles token budget checks by yielding terminal stop events and returning the stop result', async () => {
+    const warningSnapshot = { totalTokens: 90, budgetRemaining: 10, budgetPercent: 0.9 };
+    const stopSnapshot = { totalTokens: 95, budgetRemaining: 5, budgetPercent: 0.95 };
+    const tokenBudget = {
+      record: vi.fn(),
+      isWarning: vi.fn(() => false),
+      isApproachingLimit: vi.fn(() => true),
+      isDiminishingReturns: vi.fn(() => true),
+      isExhausted: vi.fn(() => true),
+      getSnapshot: vi
+        .fn()
+        .mockReturnValueOnce(warningSnapshot)
+        .mockReturnValueOnce(stopSnapshot),
+    };
+
+    const handled = await collectGenerator(
+      handleAgentLoopTokenBudgetCheck({
+        tokenBudget,
+        modelUsage: { completionTokens: 1, totalTokens: 1 },
+        loopClock: {
+          resultTiming: ({ turnsCount, toolCallsCount }) => ({
+            turnsCount,
+            toolCallsCount,
+            startTime: 100,
+            now: 140,
+          }),
+        },
+        turnsCount: 3,
+        toolResultTracker: {
+          toolCallsCount: 7,
+        },
+        tokenUsageTracker: {
+          totalTokens: 95,
+        },
+      }),
+    );
+
+    expect(handled).toEqual({
+      events: [
+        { type: 'budget_warning', snapshot: warningSnapshot },
+        { type: 'agent_end' },
+      ],
+      result: {
+        action: 'stop',
+        result: {
+          success: false,
+          error: {
+            type: 'budget_exhausted',
+            message: 'Stopped due to diminishing returns: consecutive turns produced very few tokens',
+          },
+          metadata: {
+            turnsCount: 3,
+            toolCallsCount: 7,
+            duration: 40,
+            tokensUsed: 95,
+            tokenBudgetSnapshot: stopSnapshot,
+          },
         },
       },
     });

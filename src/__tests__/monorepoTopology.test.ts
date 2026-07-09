@@ -527,8 +527,9 @@ describe('monorepo topology', () => {
     expect(rootAgentLoopSource).not.toContain('tokenUsageTracker.totalTokens');
     expect(rootAgentLoopSource).not.toContain('buildAgentLoopTokenUsageEvent');
     expect(rootAgentLoopSource).not.toContain('yield buildAgentLoopTokenUsageEvent');
-    expect(rootAgentLoopSource).toContain('runAgentLoopTokenBudgetCheck');
-    expect(rootAgentLoopSource).toContain('shouldStopAgentLoopForTokenBudgetCheck');
+    expect(rootAgentLoopSource).toContain('handleAgentLoopTokenBudgetCheck');
+    expect(rootAgentLoopSource).not.toContain('runAgentLoopTokenBudgetCheck');
+    expect(rootAgentLoopSource).not.toContain('shouldStopAgentLoopForTokenBudgetCheck');
     expect(rootAgentLoopSource).not.toContain('applyAgentLoopTokenBudget');
     expect(rootAgentLoopSource).not.toContain('buildAgentLoopTokenBudgetInputFromLoopState');
     expect(rootAgentLoopSource).not.toContain('buildAgentLoopTokenBudgetInputFromTiming');
