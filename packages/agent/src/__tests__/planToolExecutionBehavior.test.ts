@@ -10,6 +10,7 @@ import {
   buildAgentLoopToolExecutionPlanInputFromTurnProjection,
   planAgentLoopToolExecution,
   planToolExecution,
+  prepareAgentLoopNonStreamingToolExecution,
   shouldEmitAgentLoopNonStreamingToolResultEffects,
   shouldRunAgentLoopNonStreamingToolExecution,
   type ToolBehavior,
@@ -277,6 +278,123 @@ describe('planToolExecution', () => {
         },
       ]),
     ).toBe(false);
+  });
+
+  it('prepares non-streaming tool execution plan, start events, and execute input together', () => {
+    const operations: string[] = [];
+    const readCall = makeCall('Read');
+    const editCall = makeCall('Edit');
+    const ignoredCall = {
+      id: 'text-call',
+      type: 'text',
+      function: { name: 'Ignored', arguments: '{}' },
+    };
+    const executionPipeline = {
+      getRegistry: () => {
+        operations.push('getRegistry');
+        return mockRegistry;
+      },
+      name: 'pipeline',
+    };
+    const turnState = {
+      maxContextTokens: 128000,
+      executionContext: { cwd: '/tmp/project' },
+      permissionMode: 'autoEdit' as const,
+    };
+    const logger = { debug: () => undefined };
+    const signal = new AbortController().signal;
+    const beforeExec = async () => null;
+    const onUpdate = () => undefined;
+
+    const preparation = prepareAgentLoopNonStreamingToolExecution({
+      executionResults: undefined,
+      response: {
+        toolCalls: [editCall, ignoredCall, readCall],
+      },
+      executionPipeline,
+      turnStateProjection: {
+        turnState,
+        maxContextTokens: turnState.maxContextTokens,
+        executionContext: turnState.executionContext,
+        permissionMode: turnState.permissionMode,
+      },
+      logger,
+      signal,
+      hooks: {
+        tool: {
+          beforeExec,
+          onUpdate,
+        },
+      },
+    });
+
+    expect(preparation).toEqual({
+      action: 'execute',
+      functionCalls: [editCall, readCall],
+      executionPlan: {
+        mode: 'mixed',
+        calls: [readCall, editCall],
+        groups: [[readCall], [editCall]],
+      },
+      events: [
+        { type: 'tool_start', toolCall: readCall, toolKind: ToolKind.ReadOnly },
+        { type: 'tool_start', toolCall: editCall, toolKind: ToolKind.Write },
+      ],
+      executeInput: {
+        plan: {
+          mode: 'mixed',
+          calls: [readCall, editCall],
+          groups: [[readCall], [editCall]],
+        },
+        executionPipeline,
+        executionContext: turnState.executionContext,
+        logger,
+        permissionMode: turnState.permissionMode,
+        signal,
+        hooks: {
+          onBeforeToolExec: beforeExec,
+          onUpdate,
+        },
+      },
+    });
+    expect(operations).toEqual(['getRegistry', 'getRegistry']);
+  });
+
+  it('skips non-streaming preparation when streaming execution already produced results', () => {
+    const streamingExecutionResults = [
+      {
+        toolCall: makeCall('Read'),
+        result: { success: true, llmContent: 'ok' },
+        toolUseUuid: null,
+      },
+    ];
+
+    const preparation = prepareAgentLoopNonStreamingToolExecution({
+      executionResults: streamingExecutionResults,
+      response: {
+        toolCalls: [makeCall('Edit')],
+      },
+      executionPipeline: {
+        getRegistry: () => {
+          throw new Error('registry should not be read for streaming results');
+        },
+      },
+      turnStateProjection: {
+        turnState: {
+          maxContextTokens: 128000,
+          executionContext: { cwd: '/tmp/project' },
+          permissionMode: 'default' as const,
+        },
+        maxContextTokens: 128000,
+        executionContext: { cwd: '/tmp/project' },
+        permissionMode: 'default' as const,
+      },
+    });
+
+    expect(preparation).toEqual({
+      action: 'skip',
+      executionResults: streamingExecutionResults,
+    });
   });
 
   it('projects non-streaming tool execution input without owning execution side effects', () => {

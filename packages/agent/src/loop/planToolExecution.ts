@@ -4,6 +4,11 @@ import type {
   AgentLoopTurnStateProjection,
 } from './turnState.js';
 import {
+  buildAgentLoopToolStartEvents,
+  buildAgentLoopToolStartEventsInputFromExecutionPipeline,
+  type AgentLoopToolStartEvent,
+} from './toolStartEvent.js';
+import {
   resolveToolBehaviorSafely,
   ToolKind,
   type ToolBehavior,
@@ -120,6 +125,55 @@ export interface AgentLoopExecuteToolCallsHooks<TBeforeExec, TOnUpdate> {
   onBeforeToolExec?: TBeforeExec;
   onUpdate?: TOnUpdate;
 }
+
+export interface AgentLoopToolExecutionResponseLike {
+  toolCalls?: readonly unknown[];
+}
+
+export interface PrepareAgentLoopNonStreamingToolExecutionInput<
+  TTurnState extends AgentLoopTurnStateFields<
+    ToolExecutionPermissionMode | undefined,
+    unknown
+  >,
+  TExecutionPipeline extends { getRegistry(): ToolExecutionRegistryLike },
+  TExecutionResult,
+  TLogger = unknown,
+  TBeforeExec = unknown,
+  TOnUpdate = unknown,
+> {
+  executionResults: readonly TExecutionResult[] | undefined;
+  response: AgentLoopToolExecutionResponseLike;
+  executionPipeline: TExecutionPipeline;
+  turnStateProjection: AgentLoopTurnStateProjection<TTurnState>;
+  logger?: TLogger;
+  signal?: AbortSignal;
+  hooks?: AgentLoopExecuteToolCallsHookContainerInput<TBeforeExec, TOnUpdate> | null;
+}
+
+export type AgentLoopNonStreamingToolExecutionPreparation<
+  TExecutionPipeline,
+  TExecutionContext,
+  TExecutionResult,
+  TLogger,
+  TBeforeExec,
+  TOnUpdate,
+> =
+  | {
+      action: 'skip';
+      executionResults: readonly TExecutionResult[];
+    }
+  | {
+      action: 'execute';
+      functionCalls: AgentFunctionToolCall[];
+      executionPlan: ToolExecutionPlan;
+      events: AgentLoopToolStartEvent[];
+      executeInput: AgentLoopExecuteToolCallsInput<
+        TExecutionPipeline,
+        TExecutionContext,
+        TLogger,
+        AgentLoopExecuteToolCallsHooks<TBeforeExec, TOnUpdate> | undefined
+      >;
+    };
 
 export function buildAgentLoopExecuteToolCallsHooksInput<TBeforeExec, TOnUpdate>(
   input: AgentLoopExecuteToolCallsHooksInput<TBeforeExec, TOnUpdate>,
@@ -267,6 +321,135 @@ export function shouldEmitAgentLoopNonStreamingToolResultEffects<TExecutionResul
   streamingExecutionResults: readonly TExecutionResult[] | undefined,
 ): streamingExecutionResults is undefined {
   return streamingExecutionResults === undefined;
+}
+
+export function prepareAgentLoopNonStreamingToolExecution<
+  TTurnState extends AgentLoopTurnStateFields<
+    ToolExecutionPermissionMode | undefined,
+    unknown
+  >,
+  TExecutionPipeline extends { getRegistry(): ToolExecutionRegistryLike },
+  TLogger = unknown,
+  TBeforeExec = unknown,
+  TOnUpdate = unknown,
+>(
+  input: Omit<
+    PrepareAgentLoopNonStreamingToolExecutionInput<
+      TTurnState,
+      TExecutionPipeline,
+      never,
+      TLogger,
+      TBeforeExec,
+      TOnUpdate
+    >,
+    'executionResults'
+  > & { executionResults: undefined },
+): Extract<
+  AgentLoopNonStreamingToolExecutionPreparation<
+    TExecutionPipeline,
+    AgentLoopTurnStateProjection<TTurnState>['executionContext'],
+    never,
+    TLogger,
+    TBeforeExec,
+    TOnUpdate
+  >,
+  { action: 'execute' }
+>;
+export function prepareAgentLoopNonStreamingToolExecution<
+  TTurnState extends AgentLoopTurnStateFields<
+    ToolExecutionPermissionMode | undefined,
+    unknown
+  >,
+  TExecutionPipeline extends { getRegistry(): ToolExecutionRegistryLike },
+  TExecutionResult,
+  TLogger = unknown,
+  TBeforeExec = unknown,
+  TOnUpdate = unknown,
+>(
+  input: Omit<
+    PrepareAgentLoopNonStreamingToolExecutionInput<
+      TTurnState,
+      TExecutionPipeline,
+      TExecutionResult,
+      TLogger,
+      TBeforeExec,
+      TOnUpdate
+    >,
+    'executionResults'
+  > & { executionResults: readonly TExecutionResult[] },
+): Extract<
+  AgentLoopNonStreamingToolExecutionPreparation<
+    TExecutionPipeline,
+    AgentLoopTurnStateProjection<TTurnState>['executionContext'],
+    TExecutionResult,
+    TLogger,
+    TBeforeExec,
+    TOnUpdate
+  >,
+  { action: 'skip' }
+>;
+export function prepareAgentLoopNonStreamingToolExecution<
+  TTurnState extends AgentLoopTurnStateFields<
+    ToolExecutionPermissionMode | undefined,
+    unknown
+  >,
+  TExecutionPipeline extends { getRegistry(): ToolExecutionRegistryLike },
+  TExecutionResult,
+  TLogger = unknown,
+  TBeforeExec = unknown,
+  TOnUpdate = unknown,
+>(
+  input: PrepareAgentLoopNonStreamingToolExecutionInput<
+    TTurnState,
+    TExecutionPipeline,
+    TExecutionResult,
+    TLogger,
+    TBeforeExec,
+    TOnUpdate
+  >,
+): AgentLoopNonStreamingToolExecutionPreparation<
+  TExecutionPipeline,
+  AgentLoopTurnStateProjection<TTurnState>['executionContext'],
+  TExecutionResult,
+  TLogger,
+  TBeforeExec,
+  TOnUpdate
+> {
+  if (!shouldRunAgentLoopNonStreamingToolExecution(input.executionResults)) {
+    return {
+      action: 'skip',
+      executionResults: input.executionResults,
+    };
+  }
+
+  const functionCalls = selectAgentFunctionToolCalls(input.response.toolCalls);
+  const executionPlan = planAgentLoopToolExecution(
+    buildAgentLoopToolExecutionPlanInputFromExecutionPipelineProjection({
+      calls: functionCalls,
+      executionPipeline: input.executionPipeline,
+      turnStateProjection: input.turnStateProjection,
+    }),
+  );
+
+  return {
+    action: 'execute',
+    functionCalls,
+    executionPlan,
+    events: buildAgentLoopToolStartEvents(
+      buildAgentLoopToolStartEventsInputFromExecutionPipeline({
+        plan: executionPlan,
+        executionPipeline: input.executionPipeline,
+      }),
+    ),
+    executeInput: buildAgentLoopExecuteToolCallsInputFromTurnProjection({
+      plan: executionPlan,
+      executionPipeline: input.executionPipeline,
+      turnStateProjection: input.turnStateProjection,
+      logger: input.logger,
+      signal: input.signal,
+      hookContainer: input.hooks,
+    }),
+  };
 }
 
 function isAgentFunctionToolCall(call: unknown): call is AgentFunctionToolCall {

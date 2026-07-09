@@ -64,10 +64,7 @@ import {
   shouldExitAgentLoopForToolDecision,
 } from './loop/loopResult.js';
 import {
-  buildAgentLoopExecuteToolCallsInputFromTurnProjection,
-  buildAgentLoopToolExecutionPlanInputFromExecutionPipelineProjection,
-  planAgentLoopToolExecution,
-  selectAgentFunctionToolCalls,
+  prepareAgentLoopNonStreamingToolExecution,
   shouldRunAgentLoopNonStreamingToolExecution,
 } from './loop/planToolExecution.js';
 import { runTurn } from './loop/runTurn.js';
@@ -89,10 +86,6 @@ import {
   createAgentToolResultTracker,
   recordAgentToolResult,
 } from './loop/toolResultTracker.js';
-import {
-  buildAgentLoopToolStartEvents,
-  buildAgentLoopToolStartEventsInputFromExecutionPipeline,
-} from './loop/toolStartEvent.js';
 import { buildAgentLoopTurnStateProjectionFromPreparation } from './loop/turnState.js';
 import {
   applyAgentLoopReactiveCompactRetry,
@@ -440,21 +433,17 @@ export async function* agentLoop(
     let executionResults = streamingExecutionResults;
 
     if (shouldRunAgentLoopNonStreamingToolExecution(executionResults)) {
-      const functionCalls = selectAgentFunctionToolCalls(turnResult.toolCalls);
-      const executionPlan = planAgentLoopToolExecution(
-        buildAgentLoopToolExecutionPlanInputFromExecutionPipelineProjection({
-          calls: functionCalls,
-          executionPipeline,
-          turnStateProjection,
-        }),
-      );
+      const nonStreamingToolExecution = prepareAgentLoopNonStreamingToolExecution({
+        executionResults,
+        response: turnResult,
+        executionPipeline,
+        turnStateProjection,
+        logger: config.logger,
+        signal,
+        hooks,
+      });
 
-      for (const event of buildAgentLoopToolStartEvents(
-        buildAgentLoopToolStartEventsInputFromExecutionPipeline({
-          plan: executionPlan,
-          executionPipeline,
-        }),
-      )) {
+      for (const event of nonStreamingToolExecution.events) {
         yield event;
       }
 
@@ -472,16 +461,7 @@ export async function* agentLoop(
         return abortCompletion.result;
       }
 
-      executionResults = await executeToolCalls(
-        buildAgentLoopExecuteToolCallsInputFromTurnProjection({
-          plan: executionPlan,
-          executionPipeline,
-          turnStateProjection,
-          logger: config.logger,
-          signal,
-          hookContainer: hooks,
-        }),
-      );
+      executionResults = await executeToolCalls(nonStreamingToolExecution.executeInput);
     }
 
     // 处理结果
