@@ -6,6 +6,7 @@ import {
   consumeAgentRecoveryResetEffects,
   createAgentRecoveryAttemptTracker,
   emitAgentRecoveryExhaustedEffectsFromTracker,
+  emitAgentRecoveryExhaustedEffectsIfAttempted,
   emitAgentRecoveryResetEffects,
   hasAgentRecoveryAttemptExhausted,
   runAgentRecoveryCompactAttemptWithEmissions,
@@ -668,5 +669,87 @@ describe('agent recovery attempt tracker', () => {
         attempt: 1,
       },
     ]);
+  });
+
+  it('emits recovery exhausted effects only after an attempted recoverable turn', async () => {
+    const tracker = createAgentRecoveryAttemptTracker();
+    tracker.startAttempt(4);
+    const stateChanges: unknown[] = [];
+
+    const exhaustedStream = emitAgentRecoveryExhaustedEffectsIfAttempted({
+      error: new Error('maximum context length exceeded'),
+      turn: 4,
+      tracker,
+      hooks: {
+        recovery: {
+          onStateChange: (stateChange) => {
+            stateChanges.push(stateChange);
+          },
+        },
+      },
+    });
+
+    await expect(exhaustedStream.next()).resolves.toEqual({
+      value: {
+        type: 'recovery',
+        phase: 'failed',
+        reason: 'recovery_exhausted',
+      },
+      done: false,
+    });
+    const exhausted = await exhaustedStream.next();
+    expect(exhausted.done).toBe(true);
+    if (!exhausted.done) {
+      throw new Error('expected exhausted recovery stream to finish');
+    }
+    expect(exhausted.value).toEqual({
+      stateChanges: [
+        {
+          turn: 4,
+          phase: 'failed',
+          reason: 'recovery_exhausted',
+          attempt: 1,
+        },
+      ],
+      events: [
+        {
+          type: 'recovery',
+          phase: 'failed',
+          reason: 'recovery_exhausted',
+        },
+      ],
+    });
+    expect(stateChanges).toEqual([
+      {
+        turn: 4,
+        phase: 'failed',
+        reason: 'recovery_exhausted',
+        attempt: 1,
+      },
+    ]);
+  });
+
+  it('does not emit recovery exhausted effects before an attempted turn', async () => {
+    const tracker = createAgentRecoveryAttemptTracker();
+    const stateChanges: unknown[] = [];
+
+    const exhaustedStream = emitAgentRecoveryExhaustedEffectsIfAttempted({
+      error: new Error('maximum context length exceeded'),
+      turn: 4,
+      tracker,
+      hooks: {
+        recovery: {
+          onStateChange: (stateChange) => {
+            stateChanges.push(stateChange);
+          },
+        },
+      },
+    });
+
+    await expect(exhaustedStream.next()).resolves.toEqual({
+      value: null,
+      done: true,
+    });
+    expect(stateChanges).toEqual([]);
   });
 });

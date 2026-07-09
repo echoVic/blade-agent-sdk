@@ -34,6 +34,12 @@ export interface EmitAgentRecoveryExhaustedEffectsFromTrackerInput
   hooks?: AgentRecoveryStateChangeHookContainer | null;
 }
 
+export interface EmitAgentRecoveryExhaustedEffectsIfAttemptedInput
+  extends EmitAgentRecoveryExhaustedEffectsFromTrackerInput {
+  error: unknown;
+  tracker: Pick<AgentRecoveryAttemptTracker, 'attempt' | 'hasAttemptedTurn'>;
+}
+
 export interface StartAgentRecoveryAttemptInput {
   tracker: Pick<AgentRecoveryAttemptTracker, 'startAttempt'>;
   turn: number;
@@ -255,6 +261,22 @@ export async function* emitAgentRecoveryExhaustedEffectsFromTracker(
     effects: buildAgentRecoveryExhaustedEffectsFromTracker(input),
     hooks: input.hooks,
   });
+}
+
+export async function* emitAgentRecoveryExhaustedEffectsIfAttempted(
+  input: EmitAgentRecoveryExhaustedEffectsIfAttemptedInput,
+): AsyncGenerator<AgentRecoveryEvent, AgentRecoveryEffects | null> {
+  if (
+    !hasAgentRecoveryAttemptExhausted({
+      error: input.error,
+      tracker: input.tracker,
+      turn: input.turn,
+    })
+  ) {
+    return null;
+  }
+
+  return yield* emitAgentRecoveryExhaustedEffectsFromTracker(input);
 }
 
 export function shouldAttemptAgentRecovery({

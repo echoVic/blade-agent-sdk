@@ -19,9 +19,8 @@ import {
 } from './ExecutionEpoch.js';
 import {
   createAgentRecoveryAttemptTracker,
-  emitAgentRecoveryExhaustedEffectsFromTracker,
+  emitAgentRecoveryExhaustedEffectsIfAttempted,
   emitAgentRecoveryResetEffects,
-  hasAgentRecoveryAttemptExhausted,
   runAgentRecoveryCompactAttemptWithEmissions,
   shouldAttemptAgentRecoveryFromHookContainer,
 } from './recoveryAttemptTracker.js';
@@ -361,17 +360,12 @@ export async function* agentLoop(
         continue;
       }
 
-      if (hasAgentRecoveryAttemptExhausted({
+      yield* emitAgentRecoveryExhaustedEffectsIfAttempted({
         error: llmError,
-        tracker: recoveryAttemptTracker,
         turn: turnsCount,
-      })) {
-        yield* emitAgentRecoveryExhaustedEffectsFromTracker({
-          turn: turnsCount,
-          tracker: recoveryAttemptTracker,
-          hooks,
-        });
-      }
+        tracker: recoveryAttemptTracker,
+        hooks,
+      });
       throw llmError;
     }
 
