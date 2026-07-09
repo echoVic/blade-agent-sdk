@@ -210,8 +210,18 @@ describe('package entrypoints', () => {
     expect(verifier).toContain('declaration-entry.ts');
     expect(verifier).toContain('declaration-tsconfig.json');
     expect(verifier).toContain("import type { ModelPort } from '@blade-ai/ai/model';");
+    expect(verifier).toContain("import type { ChatConfig } from '@blade-ai/ai/chat';");
+    expect(verifier).toContain("import type { OpenAICompatibleModelPortOptions } from '@blade-ai/ai/providers/openai-compatible';");
+    expect(verifier).toContain("import type { VercelLanguageModelOptions } from '@blade-ai/ai/providers/vercel';");
+    expect(verifier).toContain("import type { RetryConfig } from '@blade-ai/ai/retry';");
     expect(verifier).toContain("import type { AgentKernelOptions } from '@blade-ai/agent';");
+    expect(verifier).toContain("import type { AgentToolPort } from '@blade-ai/agent/ports';");
+    expect(verifier).toContain("import type { AgentToolCall } from '@blade-ai/agent/protocol';");
+    expect(verifier).toContain("import type { AgentTraceEvent } from '@blade-ai/agent/tracing';");
     expect(verifier).toContain("import type { SessionOptions, StreamMessage } from '@blade-ai/agent-sdk';");
+    expect(verifier).toContain("import type { ISession } from '@blade-ai/agent-sdk/session';");
+    expect(verifier).toContain("import type { ToolDefinition } from '@blade-ai/agent-sdk/tools';");
+    expect(verifier).toContain("import type { RuntimeContext } from '@blade-ai/agent-sdk/core';");
     expect(verifier).toContain('local declaration consumer type-check passed');
     expect(verifier).toContain("from '@blade-ai/agent-sdk/browser';");
     expect(verifier).toContain("from '@blade-ai/agent-sdk/session/internal';");
