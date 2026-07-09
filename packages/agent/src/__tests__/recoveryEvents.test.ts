@@ -14,6 +14,7 @@ import {
   buildAgentRecoveryRetryingEffects,
   buildAgentRecoveryStartedEffects,
   consumeAgentRecoveryCompactStream,
+  consumeAgentRecoveryCompactStreamWithResultEffects,
   emitAgentRecoveryEffects,
   hasAgentReactiveCompactHook,
   runAgentRecoveryStateChangeHooks,
@@ -554,6 +555,50 @@ describe('agent recovery event projection', () => {
       { type: 'compact_progress', phase: 'finish' },
     ]);
     expect(result.value).toEqual({ recovered: true });
+  });
+
+  it('passes through reactive compact stream events and returns result effects', async () => {
+    async function* compactStream(): AsyncGenerator<
+      { type: string; phase: string },
+      boolean | undefined
+    > {
+      yield { type: 'compact_progress', phase: 'start' };
+      return true;
+    }
+
+    const stream = consumeAgentRecoveryCompactStreamWithResultEffects({
+      stream: compactStream(),
+      turn: 12,
+      attempt: 3,
+    });
+
+    await expect(stream.next()).resolves.toEqual({
+      value: { type: 'compact_progress', phase: 'start' },
+      done: false,
+    });
+    await expect(stream.next()).resolves.toEqual({
+      value: {
+        recovered: true,
+        effects: {
+          stateChanges: [
+            {
+              turn: 12,
+              phase: 'retrying',
+              reason: 'reactive_compact_retry',
+              attempt: 3,
+            },
+          ],
+          events: [
+            {
+              type: 'recovery',
+              phase: 'retrying',
+              reason: 'reactive_compact',
+            },
+          ],
+        },
+      },
+      done: true,
+    });
   });
 
   it('normalizes missing reactive compact recovery returns as unrecovered', async () => {

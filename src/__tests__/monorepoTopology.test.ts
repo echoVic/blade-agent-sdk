@@ -803,7 +803,10 @@ describe('monorepo topology', () => {
     expect(rootAgentLoopSource).toContain('consumeAgentRecoveryResetEffects');
     expect(rootAgentLoopSource).not.toContain('buildAgentRecoveryResetEffects');
     expect(rootAgentLoopSource).not.toContain('buildAgentRecoveryStartedEffects');
-    expect(rootAgentLoopSource).toContain('buildAgentRecoveryCompactResultEffects');
+    expect(rootAgentLoopSource).toContain(
+      'consumeAgentRecoveryCompactStreamWithResultEffects',
+    );
+    expect(rootAgentLoopSource).not.toContain('buildAgentRecoveryCompactResultEffects');
     expect(rootAgentLoopSource).not.toContain('buildAgentRecoveryCompactFailedEffects');
     expect(rootAgentLoopSource).not.toContain('buildAgentRecoveryRetryingEffects');
     expect(rootAgentLoopSource).toContain('buildAgentRecoveryExhaustedEffectsFromTracker');
@@ -816,7 +819,7 @@ describe('monorepo topology', () => {
     expect(rootAgentLoopSource).not.toContain('const onRecoveryStateChange');
     expect(rootAgentLoopSource).not.toContain('onRecoveryStateChange?.(');
     expect(rootAgentLoopSource).not.toContain('recoveryHooks?.onStateChange?.(');
-    expect(rootAgentLoopSource).toContain('consumeAgentRecoveryCompactStream');
+    expect(rootAgentLoopSource).not.toContain('consumeAgentRecoveryCompactStream(');
     expect(rootAgentLoopSource).not.toContain('function buildAbortResult');
     expect(rootAgentLoopSource).not.toContain('buildAgentLoopAbortResult');
     expect(rootAgentLoopSource).not.toContain('buildAgentLoopEndEvent');
