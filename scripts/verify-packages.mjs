@@ -10,6 +10,7 @@ import {
   agentSdkRootDeclarationEntryOwnershipRules,
   agentSdkRootPublicDeclarationBoundaryRules,
   agentSdkServerFacadeBoundaryRules,
+  agentSdkSessionPublicDeclarationBoundaryRules,
   toPackedForbiddenFileContents,
   toPackedForbiddenFileRules,
 } from './agent-sdk-boundary-rules.mjs';
@@ -204,36 +205,7 @@ const packageSpecs = [
         forbidden: './Session.js',
         message: 'session declarations must be emitted from package-local session entry source',
       },
-      {
-        file: 'package/dist/session/types.d.ts',
-        forbidden: "runtime?: 'kernel' | 'legacy'",
-        message: 'session declarations must not expose retired legacy stream runtime options',
-      },
-      {
-        file: 'package/dist/session/types.d.ts',
-        forbidden: 'experimentalKernel',
-        message: 'session declarations must not expose retired experimental kernel flags',
-      },
-      {
-        file: 'package/dist/session/types.d.ts',
-        forbidden: 'legacyStream',
-        message: 'session declarations must not expose retired legacy stream helpers',
-      },
-      {
-        file: 'package/dist/session/types.d.ts',
-        forbidden: 'packageLocalLegacy',
-        message: 'session declarations must not expose retired package-local legacy runtime helpers',
-      },
-      {
-        file: 'package/dist/session/types.d.ts',
-        forbidden: "from '@blade-ai/agent'",
-        message: 'session budget declarations must use the explicit @blade-ai/agent/budget subpath',
-      },
-      {
-        file: 'package/dist/session/types.d.ts',
-        forbidden: 'AgentTokenBudgetSnapshot',
-        message: 'session budget declarations must expose TokenBudgetSnapshot from @blade-ai/agent/budget',
-      },
+      ...toPackedForbiddenFileRules(agentSdkSessionPublicDeclarationBoundaryRules),
       {
         file: 'package/dist/session/index.js',
         forbidden: '../../../../src/session/Session',

@@ -283,6 +283,31 @@ describe('package entrypoints', () => {
     expect(publishedVerifier).toContain('agentSdkCoreDeclarationBrowserSafeRules');
   });
 
+  it('shares session public declaration boundary rules across local packed and published verifiers', () => {
+    const sharedRulesPath = 'scripts/agent-sdk-boundary-rules.mjs';
+
+    expect(existsSync(join(process.cwd(), sharedRulesPath)), sharedRulesPath).toBe(true);
+
+    const sharedRules = readFileSync(sharedRulesPath, 'utf-8');
+    const entrypointVerifier = readFileSync('scripts/verify-entrypoints.mjs', 'utf-8');
+    const packageVerifier = readFileSync('scripts/verify-packages.mjs', 'utf-8');
+    const publishedVerifier = readFileSync('scripts/verify-published.mjs', 'utf-8');
+
+    expect(sharedRules).toContain('agentSdkSessionPublicDeclarationBoundaryRules');
+    expect(sharedRules).toContain('dist/session/types.d.ts');
+    expect(sharedRules).toContain("runtime?: 'kernel' | 'legacy'");
+    expect(sharedRules).toContain('experimentalKernel');
+    expect(sharedRules).toContain('legacyStream');
+    expect(sharedRules).toContain('packageLocalLegacy');
+    expect(sharedRules).toContain("from '@blade-ai/agent'");
+    expect(sharedRules).toContain('AgentTokenBudgetSnapshot');
+    expect(sharedRules).toContain('session declarations must not expose retired legacy stream runtime options');
+    expect(entrypointVerifier).toContain('agentSdkSessionPublicDeclarationBoundaryRules');
+    expect(packageVerifier).toContain('toPackedForbiddenFileRules(agentSdkSessionPublicDeclarationBoundaryRules)');
+    expect(publishedVerifier).toContain('verifyPublishedSessionPublicDeclarationBoundary');
+    expect(publishedVerifier).toContain('agentSdkSessionPublicDeclarationBoundaryRules');
+  });
+
   it('runs the browser bundle check through the esbuild JS API', () => {
     const verifier = readFileSync('scripts/verify-entrypoints.mjs', 'utf-8');
     const helper = readFileSync('scripts/esbuild-bundle.mjs', 'utf-8');
@@ -341,12 +366,7 @@ describe('package entrypoints', () => {
     expect(verifier).toContain('local root runtime must use package-local subagent compatibility exports');
     expect(verifier).toContain('local root declarations must use package-local subagent compatibility exports');
     expect(verifier).toContain('local root subagent compatibility boundary passed');
-    expect(verifier).toContain('local session declarations must not expose retired legacy stream runtime options');
-    expect(verifier).toContain('local session declarations must not expose retired experimental kernel flags');
-    expect(verifier).toContain('local session declarations must not expose retired legacy stream helpers');
-    expect(verifier).toContain('local session declarations must not expose retired package-local legacy runtime helpers');
-    expect(verifier).toContain('local session budget declarations must use the explicit @blade-ai/agent/budget subpath');
-    expect(verifier).toContain('local session budget declarations must expose TokenBudgetSnapshot from @blade-ai/agent/budget');
+    expect(verifier).toContain('toLocalForbiddenDeclarationRules(agentSdkSessionPublicDeclarationBoundaryRules)');
     expect(verifier).toContain('local session declaration public boundary passed');
     expect(verifier).toContain('local session runtime entry must not import the legacy root Session directly');
     expect(verifier).toContain('local session declarations must expose package-local Session contracts only');

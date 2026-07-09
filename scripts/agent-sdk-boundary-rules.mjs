@@ -95,6 +95,39 @@ export const agentSdkCoreDeclarationBrowserSafeRules = [
   },
 ];
 
+export const agentSdkSessionPublicDeclarationBoundaryRules = [
+  {
+    file: 'dist/session/types.d.ts',
+    forbidden: "runtime?: 'kernel' | 'legacy'",
+    message: 'session declarations must not expose retired legacy stream runtime options',
+  },
+  {
+    file: 'dist/session/types.d.ts',
+    forbidden: 'experimentalKernel',
+    message: 'session declarations must not expose retired experimental kernel flags',
+  },
+  {
+    file: 'dist/session/types.d.ts',
+    forbidden: 'legacyStream',
+    message: 'session declarations must not expose retired legacy stream helpers',
+  },
+  {
+    file: 'dist/session/types.d.ts',
+    forbidden: 'packageLocalLegacy',
+    message: 'session declarations must not expose retired package-local legacy runtime helpers',
+  },
+  {
+    file: 'dist/session/types.d.ts',
+    forbidden: "from '@blade-ai/agent'",
+    message: 'session budget declarations must use the explicit @blade-ai/agent/budget subpath',
+  },
+  {
+    file: 'dist/session/types.d.ts',
+    forbidden: 'AgentTokenBudgetSnapshot',
+    message: 'session budget declarations must expose TokenBudgetSnapshot from @blade-ai/agent/budget',
+  },
+];
+
 export function toLocalForbiddenDeclarationRules(rules) {
   return rules.map((rule) => ({
     forbidden: rule.forbidden,

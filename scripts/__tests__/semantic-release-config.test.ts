@@ -234,6 +234,7 @@ describe('package provenance metadata', () => {
 
   it('type-checks public package contracts from the packed temporary consumer', () => {
     const packageVerifier = readFileSync(resolve('scripts/verify-packages.mjs'), 'utf8');
+    const sharedRules = readFileSync(resolve('scripts/agent-sdk-boundary-rules.mjs'), 'utf8');
 
     expect(packageVerifier).toContain('function verifyConsumerTypes');
     expect(packageVerifier).toContain('consumer-types.ts');
@@ -246,8 +247,9 @@ describe('package provenance metadata', () => {
     expect(packageVerifier).toContain("import { AgentKernel } from '@blade-ai/agent';");
     expect(packageVerifier).toContain("from '@blade-ai/agent/budget';");
     expect(packageVerifier).toContain("from '@blade-ai/agent/epoch';");
-    expect(packageVerifier).toContain('session budget declarations must use the explicit @blade-ai/agent/budget subpath');
-    expect(packageVerifier).toContain('session budget declarations must expose TokenBudgetSnapshot from @blade-ai/agent/budget');
+    expect(packageVerifier).toContain('toPackedForbiddenFileRules(agentSdkSessionPublicDeclarationBoundaryRules)');
+    expect(sharedRules).toContain('session budget declarations must use the explicit @blade-ai/agent/budget subpath');
+    expect(sharedRules).toContain('session budget declarations must expose TokenBudgetSnapshot from @blade-ai/agent/budget');
     expect(packageVerifier).toContain("from '@blade-ai/agent/kernel';");
     expect(packageVerifier).toContain("from '@blade-ai/agent/loop';");
     expect(packageVerifier).toContain("from '@blade-ai/agent/protocol';");

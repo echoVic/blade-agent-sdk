@@ -2554,6 +2554,7 @@ describe('monorepo topology', () => {
   it('fresh-builds every publishable package before package verification', () => {
     const root = readJson('package.json');
     const packageVerifierSource = readFileSync('scripts/verify-packages.mjs', 'utf-8');
+    const sharedRules = readFileSync('scripts/agent-sdk-boundary-rules.mjs', 'utf-8');
 
     expect(root.scripts?.['verify:packages']).toContain('pnpm --filter @blade-ai/ai run build');
     expect(root.scripts?.['verify:packages']).toContain('pnpm --filter @blade-ai/agent run build');
@@ -2567,10 +2568,11 @@ describe('monorepo topology', () => {
     expect(packageVerifierSource).toContain('verifyNoEagerLegacySessionRuntime');
     expect(packageVerifierSource).toContain('collectPackedStaticImports');
     expect(packageVerifierSource).toContain('package/dist/session/index.js');
-    expect(packageVerifierSource).toContain("runtime?: 'kernel' | 'legacy'");
-    expect(packageVerifierSource).toContain('experimentalKernel');
-    expect(packageVerifierSource).toContain('legacyStream');
-    expect(packageVerifierSource).toContain('packageLocalLegacy');
+    expect(packageVerifierSource).toContain('toPackedForbiddenFileRules(agentSdkSessionPublicDeclarationBoundaryRules)');
+    expect(sharedRules).toContain("runtime?: 'kernel' | 'legacy'");
+    expect(sharedRules).toContain('experimentalKernel');
+    expect(sharedRules).toContain('legacyStream');
+    expect(sharedRules).toContain('packageLocalLegacy');
     expect(packageVerifierSource).toContain('package/dist/agent/Agent.d.ts');
     expect(packageVerifierSource).toContain('package/dist/context/ContextManager.d.ts');
     expect(packageVerifierSource).toContain('package/dist/mcp/McpRegistry.d.ts');
