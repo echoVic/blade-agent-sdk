@@ -418,9 +418,11 @@ describe('monorepo topology', () => {
     expect(agentLoopSource).toContain("from './toolStartEvent.js'");
     expect(agentLoopSource).toContain("from './turnState.js'");
     expect(agentLoopSource).toContain("from './turnCounter.js'");
+    expect(agentLoopSource).toContain("from './turnEntry.js'");
     expect(agentLoopSource).toContain("from './toolInterruptBehavior.js'");
     expect(agentLoopSource).toContain("from './toolUpdateToAgentEvent.js'");
-    expect(rootAgentLoopSource).toContain('handleAgentLoopAbortIfRequested');
+    expect(rootAgentLoopSource).toContain('handleAgentLoopTurnEntryWithEmissions');
+    expect(rootAgentLoopSource).not.toContain('handleAgentLoopAbortIfRequested');
     expect(rootAgentLoopSource).not.toContain('buildAgentLoopAbortCompletion');
     expect(rootAgentLoopSource).not.toContain('buildAgentLoopAbortCompletionInputFromLoopState');
     expect(rootAgentLoopSource).not.toContain('buildAgentLoopAbortCompletionInputFromCounterState');
@@ -589,7 +591,7 @@ describe('monorepo topology', () => {
       /buildAgentLoopToolStartEventsInput\(\{\s+plan: executionPlan/,
     );
     expect(rootAgentLoopSource).not.toContain('registry: executionPipeline.getRegistry()');
-    expect(rootAgentLoopSource).toContain('buildAgentLoopTurnStateProjection');
+    expect(rootAgentLoopSource).not.toContain('buildAgentLoopTurnStateProjection');
     expect(rootAgentLoopSource).toContain('buildAgentLoopEffectiveMaxTurns');
     expect(rootAgentLoopSource).not.toContain(
       'buildAgentLoopTurnLimitDecisionInputFromHookContainer',
@@ -653,7 +655,7 @@ describe('monorepo topology', () => {
     expect(rootAgentLoopSource).not.toContain('registry: executionPipeline.getRegistry()');
     expect(rootAgentLoopSource).not.toContain('shouldStopAgentLoopForTurnLimitDecision');
     expect(rootAgentLoopSource).toContain('createAgentLoopTurnCounter');
-    expect(rootAgentLoopSource).toContain('handleAgentLoopTurnStart');
+    expect(rootAgentLoopSource).not.toContain('handleAgentLoopTurnStart');
     expect(rootAgentLoopSource).not.toContain('beginAgentLoopTurn');
     expect(rootAgentLoopSource).not.toContain('turnCounter.beginTurn(');
     expect(rootAgentLoopSource).not.toContain('applyAgentLoopReactiveCompactRetry');
@@ -662,7 +664,7 @@ describe('monorepo topology', () => {
     expect(rootAgentLoopSource).not.toContain('resetAgentLoopTurnCounter');
     expect(rootAgentLoopSource).not.toContain('turnCounter.reset(');
     expect(rootAgentLoopSource).not.toContain('shouldEmitAgentLoopTurnStart');
-    expect(rootAgentLoopSource).toContain('runAgentLoopBeforeTurnHook');
+    expect(rootAgentLoopSource).not.toContain('runAgentLoopBeforeTurnHook');
     expect(rootAgentLoopSource).not.toContain('buildAgentLoopBeforeTurnHookPayloadFromLoopState');
     expect(rootAgentLoopSource).not.toContain(
       'buildAgentLoopBeforeTurnHookPayloadFromConversation',
@@ -703,7 +705,7 @@ describe('monorepo topology', () => {
     );
     expect(rootAgentLoopSource).not.toContain('turnCounter.previousCompletedTurnCount');
     expect(rootAgentLoopSource).not.toContain('turnCounter.turnsCount');
-    expect(rootAgentLoopSource).toContain(
+    expect(rootAgentLoopSource).not.toContain(
       'buildAgentLoopTurnStateProjectionFromPreparation',
     );
     expect(rootAgentLoopSource).not.toContain('config.prepareTurnState(');

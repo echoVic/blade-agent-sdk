@@ -33,9 +33,6 @@ import {
 import { executeToolCalls } from './loop/executeToolCalls.js';
 import { buildAgentLoopStartEvent } from './loop/loopEvents.js';
 import { createAgentLoopClock } from './loop/loopClock.js';
-import {
-  handleAgentLoopAbortIfRequested,
-} from './loop/loopResult.js';
 import { runTurn } from './loop/runTurn.js';
 import type { ToolExecutionUpdate } from './loop/runToolCall.js';
 import {
@@ -48,11 +45,11 @@ import {
   handleAgentLoopToolExecutionResultsWithEmissions,
 } from './loop/toolExecutionTurn.js';
 import { createAgentToolResultTracker } from './loop/toolResultTracker.js';
-import { buildAgentLoopTurnStateProjectionFromPreparation } from './loop/turnState.js';
+import {
+  handleAgentLoopTurnEntryWithEmissions,
+} from './loop/turnEntry.js';
 import {
   createAgentLoopTurnCounter,
-  handleAgentLoopTurnStart,
-  runAgentLoopBeforeTurnHook,
 } from './loop/turnCounter.js';
 import {
   buildAgentLoopRunTurnInputFromLoopState,
@@ -178,50 +175,21 @@ export async function* agentLoop(
   while (true) {
     epoch = new ExecutionEpoch();
 
-    const abortBeforeTurn = yield* handleAgentLoopAbortIfRequested({
-      kind: 'counter_state',
+    const turnEntry = yield* handleAgentLoopTurnEntryWithEmissions({
       signal,
       loopClock,
       turnCounter,
-      turnCountSource: 'current',
+      effectiveMaxTurns,
       toolResultTracker,
-    });
-    if (abortBeforeTurn.action === 'abort') {
-      return abortBeforeTurn.result as LoopResult;
-    }
-
-    yield* runAgentLoopBeforeTurnHook({
-      counter: turnCounter,
       conversation: convState,
       tokenUsageTracker,
       hooks,
-    });
-
-    const turnStart = handleAgentLoopTurnStart({
-      counter: turnCounter,
-      maxTurns: effectiveMaxTurns,
-    });
-    const turnsCount = turnStart.turn;
-    for (const event of turnStart.events) {
-      yield event;
-    }
-
-    const abortAfterTurnStart = yield* handleAgentLoopAbortIfRequested({
-      kind: 'counter_state',
-      signal,
-      loopClock,
-      turnCounter,
-      turnCountSource: 'previous_completed',
-      toolResultTracker,
-    });
-    if (abortAfterTurnStart.action === 'abort') {
-      return abortAfterTurnStart.result as LoopResult;
-    }
-
-    const turnStateProjection = buildAgentLoopTurnStateProjectionFromPreparation({
       prepareTurnState: config.prepareTurnState,
-      turn: turnsCount,
     });
+    if (turnEntry.action === 'abort') {
+      return turnEntry.result as LoopResult;
+    }
+    const { turnsCount, turnStateProjection } = turnEntry;
 
     // === runTurn：单回合 LLM 调用 + 流式事件 ===
     let turnResult: ChatResponse | undefined;
