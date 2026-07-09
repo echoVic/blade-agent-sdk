@@ -397,6 +397,77 @@ assertNoForbiddenDeclarationSymbols(
 console.log('local tools entry boundary passed');
 
 assertNoForbiddenDeclarationSymbols(
+  readFileSync(join(packageRoot, 'dist/local/index.d.ts'), 'utf8'),
+  [
+    {
+      forbidden: '../mcp/index.js',
+      message: 'local declarations must be emitted from package-local local entry source',
+    },
+    {
+      forbidden: '../memory/index.js',
+      message: 'local declarations must be emitted from package-local local entry source',
+    },
+    {
+      forbidden: '../sandbox/index.js',
+      message: 'local declarations must be emitted from package-local local entry source',
+    },
+    {
+      forbidden: '../tools/builtin',
+      message: 'local declarations must be emitted from package-local local entry source',
+    },
+    {
+      forbidden: 'createSdkMcpServer(...args: unknown[])',
+      message: 'local MCP declarations must use package-local MCP API',
+    },
+    {
+      forbidden: 'tool(...args: unknown[])',
+      message: 'local MCP declarations must use package-local MCP API',
+    },
+    {
+      forbidden: 'constructor(...args: unknown[]): SandboxExecutor',
+      message: 'local sandbox declarations must use package-local sandbox API',
+    },
+    {
+      forbidden: 'constructor(...args: unknown[]): SandboxService',
+      message: 'local sandbox declarations must use package-local sandbox API',
+    },
+    {
+      forbidden: 'getBuiltinTools(...args: unknown[])',
+      message: 'local builtin tool declarations must use package-local builtin tool API',
+    },
+  ],
+  'local adapter declaration boundary',
+);
+
+assertNoForbiddenDeclarationSymbols(
+  readFileSync(join(packageRoot, 'dist/local/index.js'), 'utf8'),
+  [
+    {
+      forbidden: 'src/mcp',
+      message: 'local runtime entry must route through package-local local adapters',
+    },
+    {
+      forbidden: 'src/memory',
+      message: 'local runtime entry must route through package-local local adapters',
+    },
+    {
+      forbidden: 'src/sandbox',
+      message: 'local runtime entry must route through package-local local adapters',
+    },
+    {
+      forbidden: 'src/tools/builtin',
+      message: 'local runtime entry must route through package-local local adapters',
+    },
+    {
+      forbidden: 'src/tools/builtin/memory',
+      message: 'local memory tools must route through package-local local adapters',
+    },
+  ],
+  'local adapter runtime boundary',
+);
+console.log('local adapter entry boundary passed');
+
+assertNoForbiddenDeclarationSymbols(
   readFileSync(join(packageRoot, 'dist/server/index.js'), 'utf8'),
   [
     {
