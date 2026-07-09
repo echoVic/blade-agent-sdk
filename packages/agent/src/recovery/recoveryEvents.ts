@@ -1,3 +1,5 @@
+import { FallbackTriggeredError } from '@blade-ai/ai/retry';
+
 export type AgentRecoveryProjectionKind =
   | 'started'
   | 'compact_failed'
@@ -40,6 +42,19 @@ export interface AgentModelFallbackEvent {
 export interface AgentModelFallbackEventInput {
   originalModel: string;
   fallbackModel: string;
+}
+
+export interface AgentModelFallbackEpochLike {
+  invalidate(): void;
+}
+
+export interface HandleAgentModelFallbackWithEmissionsInput {
+  error: unknown;
+  epoch?: AgentModelFallbackEpochLike | null;
+}
+
+export interface AgentModelFallbackNotHandled {
+  handled: false;
 }
 
 export interface AgentRecoveryCompactStreamResult {
@@ -420,4 +435,19 @@ export function buildAgentModelFallbackEvent(
     originalModel: input.originalModel,
     fallbackModel: input.fallbackModel,
   };
+}
+
+export async function* handleAgentModelFallbackWithEmissions(
+  input: HandleAgentModelFallbackWithEmissionsInput,
+): AsyncGenerator<AgentModelFallbackEvent, AgentModelFallbackNotHandled> {
+  if (!(input.error instanceof FallbackTriggeredError)) {
+    return { handled: false };
+  }
+
+  input.epoch?.invalidate();
+  yield buildAgentModelFallbackEvent({
+    originalModel: input.error.originalModel,
+    fallbackModel: input.error.fallbackModel,
+  });
+  throw input.error;
 }

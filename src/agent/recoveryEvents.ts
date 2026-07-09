@@ -17,6 +17,7 @@ export {
   consumeAgentRecoveryCompactStreamWithResultEffects,
   emitAgentRecoveryEffects,
   hasAgentReactiveCompactHook,
+  handleAgentModelFallbackWithEmissions,
   runAgentRecoveryStateChangeHooks,
   shouldEmitAgentRecoveryEvent,
   type AgentReactiveCompactHook,
@@ -48,5 +49,8 @@ export {
   type AgentRecoveryStateChangeHookContainer,
   type AgentRecoveryStatePhase,
   type AgentRecoveryStateReason,
+  type AgentModelFallbackEpochLike,
+  type AgentModelFallbackNotHandled,
+  type HandleAgentModelFallbackWithEmissionsInput,
   type RunAgentRecoveryStateChangeHooksInput,
 } from '../../packages/agent/src/recovery/recoveryEvents.js';

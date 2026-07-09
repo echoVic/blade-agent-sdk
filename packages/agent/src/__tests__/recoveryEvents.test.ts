@@ -1,3 +1,4 @@
+import { FallbackTriggeredError } from '@blade-ai/ai/retry';
 import { describe, expect, it } from 'vitest';
 import {
   buildAgentModelFallbackEvent,
@@ -18,6 +19,7 @@ import {
   consumeAgentRecoveryCompactStreamWithResultEffects,
   emitAgentRecoveryEffects,
   hasAgentReactiveCompactHook,
+  handleAgentModelFallbackWithEmissions,
   runAgentRecoveryStateChangeHooks,
   shouldEmitAgentRecoveryEvent,
 } from '../recovery/recoveryEvents.js';
@@ -455,6 +457,48 @@ describe('agent recovery event projection', () => {
       originalModel: 'deepseek-chat',
       fallbackModel: 'deepseek-reasoner',
     });
+  });
+
+  it('handles model fallback errors with epoch invalidation, event emission, and rethrow', async () => {
+    const operations: unknown[] = [];
+    const error = new FallbackTriggeredError('glm-5.2', 'deepseek-chat');
+    const stream = handleAgentModelFallbackWithEmissions({
+      error,
+      epoch: {
+        invalidate: () => {
+          operations.push('invalidate');
+        },
+      },
+    });
+
+    await expect(stream.next()).resolves.toEqual({
+      done: false,
+      value: {
+        type: 'model_fallback',
+        originalModel: 'glm-5.2',
+        fallbackModel: 'deepseek-chat',
+      },
+    });
+    await expect(stream.next()).rejects.toBe(error);
+    expect(operations).toEqual(['invalidate']);
+  });
+
+  it('ignores non fallback errors without touching the epoch', async () => {
+    const operations: unknown[] = [];
+    const stream = handleAgentModelFallbackWithEmissions({
+      error: new Error('rate limit'),
+      epoch: {
+        invalidate: () => {
+          operations.push('invalidate');
+        },
+      },
+    });
+
+    await expect(stream.next()).resolves.toEqual({
+      done: true,
+      value: { handled: false },
+    });
+    expect(operations).toEqual([]);
   });
 
   it('projects reactive compact hook payloads with conversation messages', () => {

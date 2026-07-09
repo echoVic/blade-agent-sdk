@@ -8,7 +8,6 @@
 
 import type { InternalLogger } from '../logging/Logger.js';
 import type { ChatResponse, Message, ToolCall } from '../services/ChatServiceInterface.js';
-import { FallbackTriggeredError } from '../services/RetryPolicy.js';
 import type { ExecutionPipeline } from '../tools/execution/ExecutionPipeline.js';
 import type { ToolResult } from '../tools/types/index.js';
 import type { JsonObject } from '../types/common.js';
@@ -24,7 +23,7 @@ import {
   runAgentRecoveryCompactAttemptWithEmissions,
   shouldAttemptAgentRecoveryFromHookContainer,
 } from './recoveryAttemptTracker.js';
-import { buildAgentModelFallbackEvent } from './recoveryEvents.js';
+import { handleAgentModelFallbackWithEmissions } from './recoveryEvents.js';
 import {
   assertAgentLoopTurnResponse,
   handleAgentLoopAssistantMessage,
@@ -262,14 +261,10 @@ export async function* agentLoop(
       turnResult = turnStreamResult.turnResult;
       streamingExecutionResults = turnStreamResult.streamingExecutionResults;
     } catch (llmError) {
-      if (llmError instanceof FallbackTriggeredError) {
-        epoch?.invalidate();
-        yield buildAgentModelFallbackEvent({
-          originalModel: llmError.originalModel,
-          fallbackModel: llmError.fallbackModel,
-        });
-        throw llmError;
-      }
+      yield* handleAgentModelFallbackWithEmissions({
+        error: llmError,
+        epoch,
+      });
 
       // 反应式压缩：context 溢出时尝试恢复
       if (shouldAttemptAgentRecoveryFromHookContainer({

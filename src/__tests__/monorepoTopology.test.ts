@@ -723,7 +723,9 @@ describe('monorepo topology', () => {
     );
     expect(rootAgentLoopSource).toContain('consumeAgentLoopTurnStream');
     expect(rootAgentLoopSource).toContain('createAgentRecoveryAttemptTracker');
-    expect(rootAgentLoopSource).toContain('buildAgentModelFallbackEvent');
+    expect(rootAgentLoopSource).toContain('handleAgentModelFallbackWithEmissions');
+    expect(rootAgentLoopSource).not.toContain('buildAgentModelFallbackEvent');
+    expect(rootAgentLoopSource).not.toContain('llmError instanceof FallbackTriggeredError');
     expect(rootAgentLoopSource).not.toContain(
       'buildAgentRecoveryCompactStreamFromHookContainer',
     );
