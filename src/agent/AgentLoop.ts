@@ -86,11 +86,9 @@ import {
 import { runTurn } from './loop/runTurn.js';
 import type { ToolExecutionUpdate } from './loop/runToolCall.js';
 import {
-  applyAgentLoopTokenBudget,
-  buildAgentLoopTokenBudgetInputFromLoopState,
-  buildAgentLoopTokenBudgetStopCompletion,
   emitAgentLoopTokenUsageEventIfPresent,
-  shouldStopAgentLoopForTokenBudget,
+  runAgentLoopTokenBudgetCheck,
+  shouldStopAgentLoopForTokenBudgetCheck,
 } from './loop/tokenUsage.js';
 import {
   createAgentLoopTokenUsageTracker,
@@ -380,24 +378,21 @@ export async function* agentLoop(
       turnStateProjection,
     });
 
-    const budgetDecision = await applyAgentLoopTokenBudget(
-      buildAgentLoopTokenBudgetInputFromLoopState({
-        tokenBudget,
-        modelUsage: turnResult.usage,
-        loopClock,
-        turnsCount,
-        toolResultTracker,
-        tokenUsageTracker,
-      }),
-    );
-    if (shouldStopAgentLoopForTokenBudget(budgetDecision)) {
-      const budgetStopCompletion = buildAgentLoopTokenBudgetStopCompletion(budgetDecision);
-      for (const event of budgetStopCompletion.events) {
+    const budgetCheck = await runAgentLoopTokenBudgetCheck({
+      tokenBudget,
+      modelUsage: turnResult.usage,
+      loopClock,
+      turnsCount,
+      toolResultTracker,
+      tokenUsageTracker,
+    });
+    if (shouldStopAgentLoopForTokenBudgetCheck(budgetCheck)) {
+      for (const event of budgetCheck.events) {
         yield event;
       }
-      return budgetStopCompletion.result as LoopResult;
+      return budgetCheck.result as LoopResult;
     }
-    for (const budgetEvent of budgetDecision.events) {
+    for (const budgetEvent of budgetCheck.events) {
       yield budgetEvent;
     }
 

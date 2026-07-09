@@ -146,6 +146,15 @@ export interface AgentLoopTokenBudgetStopCompletion<TSnapshot = unknown> {
   result: AgentLoopBudgetExhaustedResult;
 }
 
+export interface AgentLoopTokenBudgetContinueCompletion<TSnapshot = unknown> {
+  action: 'continue';
+  events: AgentLoopBudgetWarningEvent<TSnapshot>[];
+}
+
+export type AgentLoopTokenBudgetCheckResult<TSnapshot = unknown> =
+  | AgentLoopTokenBudgetContinueCompletion<TSnapshot>
+  | AgentLoopTokenBudgetStopCompletion<TSnapshot>;
+
 export function buildAgentLoopTokenUsageInfo(
   input: BuildAgentLoopTokenUsageInfoInput,
 ): AgentLoopTokenUsageInfo {
@@ -295,6 +304,28 @@ export function buildAgentLoopTokenBudgetStopCompletion<TSnapshot>(
     action: 'stop',
     events: [...decision.events, buildAgentLoopEndEvent()],
     result: decision.result,
+  };
+}
+
+export function shouldStopAgentLoopForTokenBudgetCheck<TSnapshot>(
+  result: AgentLoopTokenBudgetCheckResult<TSnapshot>,
+): result is AgentLoopTokenBudgetStopCompletion<TSnapshot> {
+  return result.action === 'stop';
+}
+
+export async function runAgentLoopTokenBudgetCheck<TSnapshot>(
+  input: AgentLoopTokenBudgetLoopStateInput<TSnapshot>,
+): Promise<AgentLoopTokenBudgetCheckResult<TSnapshot>> {
+  const decision = await applyAgentLoopTokenBudget(
+    buildAgentLoopTokenBudgetInputFromLoopState(input),
+  );
+  if (shouldStopAgentLoopForTokenBudget(decision)) {
+    return buildAgentLoopTokenBudgetStopCompletion(decision);
+  }
+
+  return {
+    action: 'continue',
+    events: decision.events,
   };
 }
 
