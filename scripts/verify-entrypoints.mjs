@@ -246,6 +246,29 @@ assertNoForbiddenDeclarationSymbols(
 );
 console.log('local root declaration public boundary passed');
 
+assertNoForbiddenDeclarationSymbols(
+  readFileSync(join(packageRoot, 'dist/server/index.js'), 'utf8'),
+  [
+    {
+      forbidden: '../index.js',
+      message: 'local server runtime entry must be an explicit package-local facade',
+    },
+  ],
+  'local server runtime facade boundary',
+);
+
+assertNoForbiddenDeclarationSymbols(
+  readFileSync(join(packageRoot, 'dist/server/index.d.ts'), 'utf8'),
+  [
+    {
+      forbidden: '../index.js',
+      message: 'local server declarations must be an explicit package-local facade',
+    },
+  ],
+  'local server declaration facade boundary',
+);
+console.log('local server facade boundary passed');
+
 verifyBrowserSafeDist('dist/browser/index.js');
 verifyBrowserSafeDist('dist/browser/server-only-stub.js');
 verifyBrowserSafeDist('dist/core/index.js');

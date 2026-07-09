@@ -241,6 +241,9 @@ describe('package entrypoints', () => {
     expect(verifier).toContain('local root declarations must keep sandbox adapters behind @blade-ai/agent-sdk/local');
     expect(verifier).toContain('local root declarations must keep provider-specific DeepSeek helpers in @blade-ai/ai/deepseek');
     expect(verifier).toContain('local root declaration public boundary passed');
+    expect(verifier).toContain('local server runtime entry must be an explicit package-local facade');
+    expect(verifier).toContain('local server declarations must be an explicit package-local facade');
+    expect(verifier).toContain('local server facade boundary passed');
     expect(verifier).toContain("from '@blade-ai/agent-sdk/browser';");
     expect(verifier).toContain("from '@blade-ai/agent-sdk/session/internal';");
     expect(verifier).toContain('server-only for bundled createSession');
