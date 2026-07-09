@@ -52,6 +52,21 @@ export const agentSdkRootPublicDeclarationBoundaryRules = [
   },
 ];
 
+export const agentSdkServerFacadeBoundaryRules = [
+  {
+    file: 'dist/server/index.js',
+    forbidden: '../index.js',
+    message: 'server runtime entry must be an explicit package-local facade',
+    boundary: 'server runtime facade boundary',
+  },
+  {
+    file: 'dist/server/index.d.ts',
+    forbidden: '../index.js',
+    message: 'server declarations must be an explicit package-local facade',
+    boundary: 'server declaration facade boundary',
+  },
+];
+
 export function toLocalForbiddenDeclarationRules(rules) {
   return rules.map((rule) => ({
     forbidden: rule.forbidden,
@@ -62,6 +77,24 @@ export function toLocalForbiddenDeclarationRules(rules) {
 export function toPackedForbiddenFileContents(file, rules) {
   return rules.map((rule) => ({
     file,
+    forbidden: rule.forbidden,
+    message: rule.message,
+  }));
+}
+
+export function toPackedForbiddenFileRules(rules) {
+  return rules.map((rule) => ({
+    file: `package/${rule.file}`,
+    forbidden: rule.forbidden,
+    message: rule.message,
+  }));
+}
+
+export function toInstalledForbiddenFileRules(packageRoot, rules) {
+  const normalizedPackageRoot = packageRoot.replace(/\/$/, '');
+  return rules.map((rule) => ({
+    file: `package/${rule.file}`,
+    path: `${normalizedPackageRoot}/${rule.file}`,
     forbidden: rule.forbidden,
     message: rule.message,
   }));

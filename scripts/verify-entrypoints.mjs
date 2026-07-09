@@ -5,6 +5,7 @@ import { fileURLToPath } from 'node:url';
 import {
   agentSdkRootDeclarationEntryOwnershipRules,
   agentSdkRootPublicDeclarationBoundaryRules,
+  agentSdkServerFacadeBoundaryRules,
   toLocalForbiddenDeclarationRules,
 } from './agent-sdk-boundary-rules.mjs';
 import { bundleWithEsbuildRetry } from './esbuild-bundle.mjs';
@@ -497,27 +498,13 @@ assertNoForbiddenDeclarationSymbols(
 );
 console.log('local permission declaration boundary passed');
 
-assertNoForbiddenDeclarationSymbols(
-  readFileSync(join(packageRoot, 'dist/server/index.js'), 'utf8'),
-  [
-    {
-      forbidden: '../index.js',
-      message: 'local server runtime entry must be an explicit package-local facade',
-    },
-  ],
-  'local server runtime facade boundary',
-);
-
-assertNoForbiddenDeclarationSymbols(
-  readFileSync(join(packageRoot, 'dist/server/index.d.ts'), 'utf8'),
-  [
-    {
-      forbidden: '../index.js',
-      message: 'local server declarations must be an explicit package-local facade',
-    },
-  ],
-  'local server declaration facade boundary',
-);
+for (const rule of agentSdkServerFacadeBoundaryRules) {
+  assertNoForbiddenDeclarationSymbols(
+    readFileSync(join(packageRoot, rule.file), 'utf8'),
+    toLocalForbiddenDeclarationRules([rule]),
+    `local ${rule.boundary}`,
+  );
+}
 console.log('local server facade boundary passed');
 
 verifyBrowserSafeDist('dist/browser/index.js');

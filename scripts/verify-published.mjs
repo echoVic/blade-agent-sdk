@@ -7,6 +7,10 @@ import { setTimeout as delay } from 'node:timers/promises';
 import { pathToFileURL } from 'node:url';
 import { promisify } from 'node:util';
 import ssri from 'ssri';
+import {
+  agentSdkServerFacadeBoundaryRules,
+  toInstalledForbiddenFileRules,
+} from './agent-sdk-boundary-rules.mjs';
 import { bundleWithEsbuildRetry } from './esbuild-bundle.mjs';
 
 const execFileAsync = promisify(execFile);
@@ -1522,20 +1526,10 @@ async function verifyPublishedRootDeclarationBoundary({ consumerDir }) {
 }
 
 async function verifyPublishedServerEntryBoundary({ consumerDir }) {
-  const rules = [
-    {
-      file: 'package/dist/server/index.js',
-      path: join(consumerDir, 'node_modules/@blade-ai/agent-sdk/dist/server/index.js'),
-      forbidden: '../index.js',
-      message: 'server runtime entry must be an explicit package-local facade',
-    },
-    {
-      file: 'package/dist/server/index.d.ts',
-      path: join(consumerDir, 'node_modules/@blade-ai/agent-sdk/dist/server/index.d.ts'),
-      forbidden: '../index.js',
-      message: 'server declarations must be an explicit package-local facade',
-    },
-  ];
+  const rules = toInstalledForbiddenFileRules(
+    join(consumerDir, 'node_modules/@blade-ai/agent-sdk'),
+    agentSdkServerFacadeBoundaryRules,
+  );
 
   for (const rule of rules) {
     const source = await readFile(rule.path, 'utf8');

@@ -8,7 +8,9 @@ import { stringify } from 'yaml';
 import {
   agentSdkRootDeclarationEntryOwnershipRules,
   agentSdkRootPublicDeclarationBoundaryRules,
+  agentSdkServerFacadeBoundaryRules,
   toPackedForbiddenFileContents,
+  toPackedForbiddenFileRules,
 } from './agent-sdk-boundary-rules.mjs';
 import { bundleWithEsbuildRetry } from './esbuild-bundle.mjs';
 
@@ -323,16 +325,7 @@ const packageSpecs = [
         message: 'root declarations must use package-local subagent compatibility exports',
       },
       ...toPackedForbiddenFileContents('package/dist/index.d.ts', agentSdkRootPublicDeclarationBoundaryRules),
-      {
-        file: 'package/dist/server/index.js',
-        forbidden: '../index.js',
-        message: 'server runtime entry must be an explicit package-local facade',
-      },
-      {
-        file: 'package/dist/server/index.d.ts',
-        forbidden: '../index.js',
-        message: 'server declarations must be an explicit package-local facade',
-      },
+      ...toPackedForbiddenFileRules(agentSdkServerFacadeBoundaryRules),
       {
         file: 'package/dist/core/index.d.ts',
         forbidden: 'createSession',

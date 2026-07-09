@@ -307,13 +307,16 @@ describe('package provenance metadata', () => {
   it('rejects server entry wildcard forwarding through the root facade', () => {
     const packageVerifier = readFileSync(resolve('scripts/verify-packages.mjs'), 'utf8');
     const publishedVerifier = readFileSync(resolve('scripts/verify-published.mjs'), 'utf8');
+    const sharedRules = readFileSync(resolve('scripts/agent-sdk-boundary-rules.mjs'), 'utf8');
 
-    for (const verifier of [packageVerifier, publishedVerifier]) {
-      expect(verifier).toContain("file: 'package/dist/server/index.js'");
-      expect(verifier).toContain("file: 'package/dist/server/index.d.ts'");
-      expect(verifier).toContain('server runtime entry must be an explicit package-local facade');
-      expect(verifier).toContain('server declarations must be an explicit package-local facade');
-    }
+    expect(packageVerifier).toContain('toPackedForbiddenFileRules(agentSdkServerFacadeBoundaryRules)');
+    expect(publishedVerifier).toContain('toInstalledForbiddenFileRules(');
+    expect(publishedVerifier).toContain('agentSdkServerFacadeBoundaryRules');
+    expect(sharedRules).toContain('agentSdkServerFacadeBoundaryRules');
+    expect(sharedRules).toContain("file: 'dist/server/index.js'");
+    expect(sharedRules).toContain("file: 'dist/server/index.d.ts'");
+    expect(sharedRules).toContain('server runtime entry must be an explicit package-local facade');
+    expect(sharedRules).toContain('server declarations must be an explicit package-local facade');
   });
 
   it('type-checks server facade parity with the public root surface', () => {
