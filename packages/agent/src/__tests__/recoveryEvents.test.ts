@@ -14,6 +14,7 @@ import {
   buildAgentRecoveryRetryingEffects,
   buildAgentRecoveryStartedEffects,
   consumeAgentRecoveryCompactStream,
+  consumeAgentRecoveryCompactStreamWithEmittedResultEffects,
   consumeAgentRecoveryCompactStreamWithResultEffects,
   emitAgentRecoveryEffects,
   hasAgentReactiveCompactHook,
@@ -599,6 +600,74 @@ describe('agent recovery event projection', () => {
       },
       done: true,
     });
+  });
+
+  it('passes through reactive compact stream events and emits result effects', async () => {
+    async function* compactStream(): AsyncGenerator<
+      { type: string; phase: string },
+      boolean | undefined
+    > {
+      yield { type: 'compact_progress', phase: 'start' };
+      return true;
+    }
+
+    const stateChanges: unknown[] = [];
+    const stream = consumeAgentRecoveryCompactStreamWithEmittedResultEffects({
+      stream: compactStream(),
+      turn: 12,
+      attempt: 3,
+      hooks: {
+        recovery: {
+          onStateChange: (stateChange) => {
+            stateChanges.push(stateChange);
+          },
+        },
+      },
+    });
+
+    await expect(stream.next()).resolves.toEqual({
+      value: { type: 'compact_progress', phase: 'start' },
+      done: false,
+    });
+    await expect(stream.next()).resolves.toEqual({
+      value: {
+        type: 'recovery',
+        phase: 'retrying',
+        reason: 'reactive_compact',
+      },
+      done: false,
+    });
+    await expect(stream.next()).resolves.toEqual({
+      value: {
+        recovered: true,
+        effects: {
+          stateChanges: [
+            {
+              turn: 12,
+              phase: 'retrying',
+              reason: 'reactive_compact_retry',
+              attempt: 3,
+            },
+          ],
+          events: [
+            {
+              type: 'recovery',
+              phase: 'retrying',
+              reason: 'reactive_compact',
+            },
+          ],
+        },
+      },
+      done: true,
+    });
+    expect(stateChanges).toEqual([
+      {
+        turn: 12,
+        phase: 'retrying',
+        reason: 'reactive_compact_retry',
+        attempt: 3,
+      },
+    ]);
   });
 
   it('normalizes missing reactive compact recovery returns as unrecovered', async () => {

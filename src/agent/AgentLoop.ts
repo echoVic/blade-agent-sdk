@@ -27,7 +27,7 @@ import {
 } from './recoveryAttemptTracker.js';
 import {
   buildAgentModelFallbackEvent,
-  consumeAgentRecoveryCompactStreamWithResultEffects,
+  consumeAgentRecoveryCompactStreamWithEmittedResultEffects,
   emitAgentRecoveryEffects,
   hasAgentReactiveCompactHook,
 } from './recoveryEvents.js';
@@ -355,12 +355,12 @@ export async function* agentLoop(
         if (!recoveryStarted.compactStream) {
           throw llmError;
         }
-        const compactRecovery = yield* consumeAgentRecoveryCompactStreamWithResultEffects({
+        const compactRecovery = yield* consumeAgentRecoveryCompactStreamWithEmittedResultEffects({
           stream: recoveryStarted.compactStream,
           turn: turnsCount,
           attempt: recoveryStarted.attempt,
+          hooks,
         });
-        yield* emitAgentRecoveryEffects({ effects: compactRecovery.effects, hooks });
         if (!compactRecovery.recovered) {
           throw llmError;
         }

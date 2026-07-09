@@ -135,6 +135,11 @@ export interface ConsumeAgentRecoveryCompactStreamWithResultEffectsInput<Event>
   stream: AsyncGenerator<Event, boolean | undefined>;
 }
 
+export interface ConsumeAgentRecoveryCompactStreamWithEmittedResultEffectsInput<Event>
+  extends ConsumeAgentRecoveryCompactStreamWithResultEffectsInput<Event> {
+  hooks?: AgentRecoveryStateChangeHookContainer | null;
+}
+
 export interface AgentRecoveryExhaustedEffectsInput {
   kind: 'exhausted';
   turn: number;
@@ -391,6 +396,20 @@ export async function* consumeAgentRecoveryCompactStreamWithResultEffects<Event>
     turn: input.turn,
     attempt: input.attempt,
   });
+}
+
+export async function* consumeAgentRecoveryCompactStreamWithEmittedResultEffects<Event>(
+  input: ConsumeAgentRecoveryCompactStreamWithEmittedResultEffectsInput<Event>,
+): AsyncGenerator<Event | AgentRecoveryEvent, AgentRecoveryCompactResultEffects> {
+  const resultEffects = yield* consumeAgentRecoveryCompactStreamWithResultEffects(input);
+  const emittedEffects = yield* emitAgentRecoveryEffects({
+    effects: resultEffects.effects,
+    hooks: input.hooks,
+  });
+  return {
+    ...resultEffects,
+    effects: emittedEffects,
+  };
 }
 
 export function buildAgentModelFallbackEvent(

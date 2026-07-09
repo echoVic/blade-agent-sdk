@@ -804,6 +804,9 @@ describe('monorepo topology', () => {
     expect(rootAgentLoopSource).not.toContain('buildAgentRecoveryResetEffects');
     expect(rootAgentLoopSource).not.toContain('buildAgentRecoveryStartedEffects');
     expect(rootAgentLoopSource).toContain(
+      'consumeAgentRecoveryCompactStreamWithEmittedResultEffects',
+    );
+    expect(rootAgentLoopSource).not.toContain(
       'consumeAgentRecoveryCompactStreamWithResultEffects',
     );
     expect(rootAgentLoopSource).not.toContain('buildAgentRecoveryCompactResultEffects');
