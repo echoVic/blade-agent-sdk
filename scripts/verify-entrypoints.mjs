@@ -247,6 +247,29 @@ assertNoForbiddenDeclarationSymbols(
 console.log('local root declaration public boundary passed');
 
 assertNoForbiddenDeclarationSymbols(
+  readFileSync(join(packageRoot, 'dist/index.js'), 'utf8'),
+  [
+    {
+      forbidden: 'src/agent/subagents',
+      message: 'local root runtime must use package-local subagent compatibility exports',
+    },
+  ],
+  'local root subagent runtime boundary',
+);
+
+assertNoForbiddenDeclarationSymbols(
+  readFileSync(join(packageRoot, 'dist/index.d.ts'), 'utf8'),
+  [
+    {
+      forbidden: '../agent/subagents',
+      message: 'local root declarations must use package-local subagent compatibility exports',
+    },
+  ],
+  'local root subagent declaration boundary',
+);
+console.log('local root subagent compatibility boundary passed');
+
+assertNoForbiddenDeclarationSymbols(
   readFileSync(join(packageRoot, 'dist/session/types.d.ts'), 'utf8'),
   [
     {
