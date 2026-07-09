@@ -5,4 +5,4 @@ export {
   type AgentLoopEvent,
   type AgentLoopResult,
   type HandleAgentLoopInput,
-} from '../../../packages/agent/src/loop/agentLoop.js';
+} from '@blade-ai/agent/loop';

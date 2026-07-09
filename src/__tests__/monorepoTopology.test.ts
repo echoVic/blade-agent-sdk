@@ -1060,6 +1060,17 @@ describe('monorepo topology', () => {
     expect(loopHookBuilderSource).not.toContain("from './AgentLoop.js'");
   });
 
+  it('keeps root loop forwarders on public package subpaths', () => {
+    const rootTsconfig = readJson('tsconfig.json');
+    const rootAgentLoopForwarderSource = readFileSync('src/agent/loop/agentLoop.ts', 'utf-8');
+
+    expect(rootTsconfig.compilerOptions?.paths).toMatchObject({
+      '@blade-ai/agent/loop': ['./packages/agent/src/loop/index.ts'],
+    });
+    expect(rootAgentLoopForwarderSource).toContain("from '@blade-ai/agent/loop'");
+    expect(rootAgentLoopForwarderSource).not.toContain('../../../packages/agent/src');
+  });
+
   it('publishes agent kernel modules as explicit subpath exports', () => {
     const agentPackage = readJson('packages/agent/package.json');
     const agentBuildConfig = readFileSync('packages/agent/tsup.config.ts', 'utf-8');
