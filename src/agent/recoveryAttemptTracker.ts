@@ -37,4 +37,4 @@ export {
   type HandleAgentRunTurnErrorWithEmissionsInput,
   type HandleAgentRunTurnSuccessWithEmissionsInput,
   type HandleAgentReactiveCompactRecoveryWithEmissionsInput,
-} from '../../packages/agent/src/recovery/recoveryAttemptTracker.js';
+} from '@blade-ai/agent/recovery';

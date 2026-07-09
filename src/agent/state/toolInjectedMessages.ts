@@ -1,4 +1,4 @@
 export {
   markToolInjectedSystemMessages,
   type ToolInjectedMessageLike,
-} from '../../../packages/agent/src/state/toolInjectedMessages.js';
+} from '@blade-ai/agent/state';

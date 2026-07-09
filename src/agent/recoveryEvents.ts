@@ -53,4 +53,4 @@ export {
   type AgentModelFallbackNotHandled,
   type HandleAgentModelFallbackWithEmissionsInput,
   type RunAgentRecoveryStateChangeHooksInput,
-} from '../../packages/agent/src/recovery/recoveryEvents.js';
+} from '@blade-ai/agent/recovery';

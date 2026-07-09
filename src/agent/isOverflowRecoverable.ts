@@ -1,1 +1,1 @@
-export { isOverflowRecoverable } from '../../packages/agent/src/recovery/isOverflowRecoverable.js';
+export { isOverflowRecoverable } from '@blade-ai/agent/recovery';

@@ -1104,6 +1104,29 @@ describe('monorepo topology', () => {
     }
   });
 
+  it('keeps root recovery, state, and epoch forwarders on public package subpaths', () => {
+    const rootTsconfig = readJson('tsconfig.json');
+    const rootAgentForwarders = [
+      ['src/agent/recoveryEvents.ts', '@blade-ai/agent/recovery'],
+      ['src/agent/recoveryAttemptTracker.ts', '@blade-ai/agent/recovery'],
+      ['src/agent/isOverflowRecoverable.ts', '@blade-ai/agent/recovery'],
+      ['src/agent/ExecutionEpoch.ts', '@blade-ai/agent/epoch'],
+      ['src/agent/state/systemSource.ts', '@blade-ai/agent/state'],
+      ['src/agent/state/toolInjectedMessages.ts', '@blade-ai/agent/state'],
+    ] as const;
+
+    expect(rootTsconfig.compilerOptions?.paths).toMatchObject({
+      '@blade-ai/agent/epoch': ['./packages/agent/src/epoch/ExecutionEpoch.ts'],
+      '@blade-ai/agent/recovery': ['./packages/agent/src/recovery/index.ts'],
+      '@blade-ai/agent/state': ['./packages/agent/src/state/index.ts'],
+    });
+    for (const [file, publicSubpath] of rootAgentForwarders) {
+      const source = readFileSync(file, 'utf-8');
+      expect(source, file).toContain(`from '${publicSubpath}'`);
+      expect(source, file).not.toContain('packages/agent/src');
+    }
+  });
+
   it('publishes agent kernel modules as explicit subpath exports', () => {
     const agentPackage = readJson('packages/agent/package.json');
     const agentBuildConfig = readFileSync('packages/agent/tsup.config.ts', 'utf-8');
