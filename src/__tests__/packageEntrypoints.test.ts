@@ -182,6 +182,34 @@ describe('package entrypoints', () => {
     expect(existsSync(join(process.cwd(), 'scripts/verify-entrypoints.mjs'))).toBe(true);
   });
 
+  it('shares root declaration ownership rules between local and packed verifiers', () => {
+    const sharedRulesPath = 'scripts/agent-sdk-boundary-rules.mjs';
+
+    expect(existsSync(join(process.cwd(), sharedRulesPath)), sharedRulesPath).toBe(true);
+
+    const sharedRules = readFileSync(sharedRulesPath, 'utf-8');
+    const entrypointVerifier = readFileSync('scripts/verify-entrypoints.mjs', 'utf-8');
+    const packageVerifier = readFileSync('scripts/verify-packages.mjs', 'utf-8');
+
+    expect(sharedRules).toContain('agentSdkRootDeclarationEntryOwnershipRules');
+    expect(sharedRules).toContain('./agent/loop/runToolCall.js');
+    expect(sharedRules).toContain('./tools/core/createTool.js');
+    expect(sharedRules).toContain('./tools/catalog/index.js');
+    expect(sharedRules).toContain('public-index.js');
+    expect(entrypointVerifier).toContain(
+      "import { agentSdkRootDeclarationEntryOwnershipRules, toLocalForbiddenDeclarationRules } from './agent-sdk-boundary-rules.mjs';",
+    );
+    expect(entrypointVerifier).toContain(
+      'toLocalForbiddenDeclarationRules(agentSdkRootDeclarationEntryOwnershipRules)',
+    );
+    expect(packageVerifier).toContain(
+      "import { agentSdkRootDeclarationEntryOwnershipRules, toPackedForbiddenFileContents } from './agent-sdk-boundary-rules.mjs';",
+    );
+    expect(packageVerifier).toContain(
+      "toPackedForbiddenFileContents('package/dist/index.d.ts', agentSdkRootDeclarationEntryOwnershipRules)",
+    );
+  });
+
   it('runs the browser bundle check through the esbuild JS API', () => {
     const verifier = readFileSync('scripts/verify-entrypoints.mjs', 'utf-8');
     const helper = readFileSync('scripts/esbuild-bundle.mjs', 'utf-8');
@@ -241,8 +269,7 @@ describe('package entrypoints', () => {
     expect(verifier).toContain('local root declarations must keep sandbox adapters behind @blade-ai/agent-sdk/local');
     expect(verifier).toContain('local root declarations must keep provider-specific DeepSeek helpers in @blade-ai/ai/deepseek');
     expect(verifier).toContain('local root declaration public boundary passed');
-    expect(verifier).toContain('local root declarations must be emitted from package-local root entry source');
-    expect(verifier).toContain('local root declarations must reference final public entrypoints, not overlay sources');
+    expect(verifier).toContain('toLocalForbiddenDeclarationRules(agentSdkRootDeclarationEntryOwnershipRules)');
     expect(verifier).toContain('local root declaration entry ownership boundary passed');
     expect(verifier).toContain('local root runtime must use package-local subagent compatibility exports');
     expect(verifier).toContain('local root declarations must use package-local subagent compatibility exports');

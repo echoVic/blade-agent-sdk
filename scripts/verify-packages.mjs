@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { stringify } from 'yaml';
+import { agentSdkRootDeclarationEntryOwnershipRules, toPackedForbiddenFileContents } from './agent-sdk-boundary-rules.mjs';
 import { bundleWithEsbuildRetry } from './esbuild-bundle.mjs';
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
@@ -306,21 +307,7 @@ const packageSpecs = [
         forbidden: '../catalog/ToolCatalog.js',
         message: 'tools declarations must be emitted from package-local tools entry source',
       },
-      {
-        file: 'package/dist/index.d.ts',
-        forbidden: './agent/loop/runToolCall.js',
-        message: 'root declarations must be emitted from package-local root entry source',
-      },
-      {
-        file: 'package/dist/index.d.ts',
-        forbidden: './tools/core/createTool.js',
-        message: 'root declarations must be emitted from package-local root entry source',
-      },
-      {
-        file: 'package/dist/index.d.ts',
-        forbidden: './tools/catalog/index.js',
-        message: 'root declarations must be emitted from package-local root entry source',
-      },
+      ...toPackedForbiddenFileContents('package/dist/index.d.ts', agentSdkRootDeclarationEntryOwnershipRules),
       {
         file: 'package/dist/index.js',
         forbidden: 'src/agent/subagents',
@@ -330,11 +317,6 @@ const packageSpecs = [
         file: 'package/dist/index.d.ts',
         forbidden: '../agent/subagents',
         message: 'root declarations must use package-local subagent compatibility exports',
-      },
-      {
-        file: 'package/dist/index.d.ts',
-        forbidden: 'public-index.js',
-        message: 'root declarations must reference final public entrypoints, not overlay sources',
       },
       {
         file: 'package/dist/index.d.ts',

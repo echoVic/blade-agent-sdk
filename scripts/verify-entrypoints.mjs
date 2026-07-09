@@ -2,6 +2,7 @@ import { spawnSync } from 'node:child_process';
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { agentSdkRootDeclarationEntryOwnershipRules, toLocalForbiddenDeclarationRules } from './agent-sdk-boundary-rules.mjs';
 import { bundleWithEsbuildRetry } from './esbuild-bundle.mjs';
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
@@ -248,24 +249,7 @@ console.log('local root declaration public boundary passed');
 
 assertNoForbiddenDeclarationSymbols(
   readFileSync(join(packageRoot, 'dist/index.d.ts'), 'utf8'),
-  [
-    {
-      forbidden: './agent/loop/runToolCall.js',
-      message: 'local root declarations must be emitted from package-local root entry source',
-    },
-    {
-      forbidden: './tools/core/createTool.js',
-      message: 'local root declarations must be emitted from package-local root entry source',
-    },
-    {
-      forbidden: './tools/catalog/index.js',
-      message: 'local root declarations must be emitted from package-local root entry source',
-    },
-    {
-      forbidden: 'public-index.js',
-      message: 'local root declarations must reference final public entrypoints, not overlay sources',
-    },
-  ],
+  toLocalForbiddenDeclarationRules(agentSdkRootDeclarationEntryOwnershipRules),
   'local root declaration entry ownership boundary',
 );
 console.log('local root declaration entry ownership boundary passed');
