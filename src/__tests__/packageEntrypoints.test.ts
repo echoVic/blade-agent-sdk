@@ -353,6 +353,29 @@ describe('package entrypoints', () => {
     expect(publishedVerifier).toContain('agentSdkSessionConfigDeclarationBoundaryRules');
   });
 
+  it('shares session store declaration boundary rules across local packed and published verifiers', () => {
+    const sharedRulesPath = 'scripts/agent-sdk-boundary-rules.mjs';
+
+    expect(existsSync(join(process.cwd(), sharedRulesPath)), sharedRulesPath).toBe(true);
+
+    const sharedRules = readFileSync(sharedRulesPath, 'utf-8');
+    const entrypointVerifier = readFileSync('scripts/verify-entrypoints.mjs', 'utf-8');
+    const packageVerifier = readFileSync('scripts/verify-packages.mjs', 'utf-8');
+    const publishedVerifier = readFileSync('scripts/verify-published.mjs', 'utf-8');
+
+    expect(sharedRules).toContain('agentSdkSessionStoreDeclarationBoundaryRules');
+    expect(sharedRules).toContain('dist/session/store.d.ts');
+    expect(sharedRules).toContain('../context/storage');
+    expect(sharedRules).toContain('./SessionStore.js');
+    expect(sharedRules).toContain('session store declarations must be emitted from package-local session store source');
+    expect(sharedRules).toContain('session store declarations must not point back at legacy root session store');
+    expect(entrypointVerifier).toContain('agentSdkSessionStoreDeclarationBoundaryRules');
+    expect(entrypointVerifier).toContain('toLocalForbiddenDeclarationRules(agentSdkSessionStoreDeclarationBoundaryRules)');
+    expect(packageVerifier).toContain('toPackedForbiddenFileRules(agentSdkSessionStoreDeclarationBoundaryRules)');
+    expect(publishedVerifier).toContain('verifyPublishedSessionStoreDeclarationBoundary');
+    expect(publishedVerifier).toContain('agentSdkSessionStoreDeclarationBoundaryRules');
+  });
+
   it('runs the browser bundle check through the esbuild JS API', () => {
     const verifier = readFileSync('scripts/verify-entrypoints.mjs', 'utf-8');
     const helper = readFileSync('scripts/esbuild-bundle.mjs', 'utf-8');
@@ -420,8 +443,7 @@ describe('package entrypoints', () => {
     expect(verifier).toContain('local session factory declaration boundary passed');
     expect(verifier).toContain('toLocalForbiddenDeclarationRules(agentSdkSessionConfigDeclarationBoundaryRules)');
     expect(verifier).toContain('local session config declaration boundary passed');
-    expect(verifier).toContain('local session store declarations must be emitted from package-local session store source');
-    expect(verifier).toContain('local session store declarations must not point back at legacy root session store');
+    expect(verifier).toContain('toLocalForbiddenDeclarationRules(agentSdkSessionStoreDeclarationBoundaryRules)');
     expect(verifier).toContain('local session store declaration boundary passed');
     expect(verifier).toContain('local tools declarations must be emitted from package-local tools entry source');
     expect(verifier).toContain('local tools runtime must be emitted from package-local tools source');

@@ -10,6 +10,7 @@ import {
   agentSdkSessionConfigDeclarationBoundaryRules,
   agentSdkSessionFactoryDeclarationBoundaryRules,
   agentSdkSessionPublicDeclarationBoundaryRules,
+  agentSdkSessionStoreDeclarationBoundaryRules,
   toLocalForbiddenDeclarationRules,
 } from './agent-sdk-boundary-rules.mjs';
 import { bundleWithEsbuildRetry } from './esbuild-bundle.mjs';
@@ -286,16 +287,7 @@ console.log('local session config declaration boundary passed');
 
 assertNoForbiddenDeclarationSymbols(
   readFileSync(join(packageRoot, 'dist/session/store.d.ts'), 'utf8'),
-  [
-    {
-      forbidden: '../context/storage',
-      message: 'local session store declarations must be emitted from package-local session store source',
-    },
-    {
-      forbidden: './SessionStore.js',
-      message: 'local session store declarations must not point back at legacy root session store',
-    },
-  ],
+  toLocalForbiddenDeclarationRules(agentSdkSessionStoreDeclarationBoundaryRules),
   'local session store declaration boundary',
 );
 console.log('local session store declaration boundary passed');

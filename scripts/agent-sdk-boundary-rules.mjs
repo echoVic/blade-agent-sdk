@@ -154,6 +154,19 @@ export const agentSdkSessionConfigDeclarationBoundaryRules = [
   },
 ];
 
+export const agentSdkSessionStoreDeclarationBoundaryRules = [
+  {
+    file: 'dist/session/store.d.ts',
+    forbidden: '../context/storage',
+    message: 'session store declarations must be emitted from package-local session store source',
+  },
+  {
+    file: 'dist/session/store.d.ts',
+    forbidden: './SessionStore.js',
+    message: 'session store declarations must not point back at legacy root session store',
+  },
+];
+
 export function toLocalForbiddenDeclarationRules(rules) {
   return rules.map((rule) => ({
     forbidden: rule.forbidden,

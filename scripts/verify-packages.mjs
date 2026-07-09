@@ -13,6 +13,7 @@ import {
   agentSdkSessionConfigDeclarationBoundaryRules,
   agentSdkSessionFactoryDeclarationBoundaryRules,
   agentSdkSessionPublicDeclarationBoundaryRules,
+  agentSdkSessionStoreDeclarationBoundaryRules,
   toPackedForbiddenFileContents,
   toPackedForbiddenFileRules,
 } from './agent-sdk-boundary-rules.mjs';
@@ -230,16 +231,7 @@ const packageSpecs = [
       },
       ...toPackedForbiddenFileRules(agentSdkSessionFactoryDeclarationBoundaryRules),
       ...toPackedForbiddenFileRules(agentSdkSessionConfigDeclarationBoundaryRules),
-      {
-        file: 'package/dist/session/store.d.ts',
-        forbidden: '../context/storage',
-        message: 'session store declarations must be emitted from package-local session store source',
-      },
-      {
-        file: 'package/dist/session/store.d.ts',
-        forbidden: './SessionStore.js',
-        message: 'session store declarations must not point back at legacy root session store',
-      },
+      ...toPackedForbiddenFileRules(agentSdkSessionStoreDeclarationBoundaryRules),
       {
         file: 'package/dist/tools/index.d.ts',
         forbidden: './core/createTool.js',

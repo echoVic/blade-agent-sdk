@@ -13,6 +13,7 @@ import {
   agentSdkSessionConfigDeclarationBoundaryRules,
   agentSdkSessionFactoryDeclarationBoundaryRules,
   agentSdkSessionPublicDeclarationBoundaryRules,
+  agentSdkSessionStoreDeclarationBoundaryRules,
   toInstalledForbiddenFileRules,
 } from './agent-sdk-boundary-rules.mjs';
 import { bundleWithEsbuildRetry } from './esbuild-bundle.mjs';
@@ -508,6 +509,7 @@ if (Object.keys(agentPorts).length !== 0) {
     await verifyPublishedSessionPublicDeclarationBoundary({ consumerDir });
     await verifyPublishedSessionFactoryDeclarationBoundary({ consumerDir });
     await verifyPublishedSessionConfigDeclarationBoundary({ consumerDir });
+    await verifyPublishedSessionStoreDeclarationBoundary({ consumerDir });
     await verifyPublishedSdkBrowserSafeStaticClosures({ consumerDir });
     await verifyPublishedBrowserBundleSmoke({ consumerDir });
     await verifyPublishedAgentBrowserBundleSmoke({ consumerDir });
@@ -1494,6 +1496,20 @@ async function verifyPublishedSessionConfigDeclarationBoundary({ consumerDir }) 
   const rules = toInstalledForbiddenFileRules(
     join(consumerDir, 'node_modules/@blade-ai/agent-sdk'),
     agentSdkSessionConfigDeclarationBoundaryRules,
+  );
+
+  for (const rule of rules) {
+    const source = await readFile(rule.path, 'utf8');
+    if (source.includes(rule.forbidden)) {
+      throw new Error(`${rule.path}: ${rule.message}`);
+    }
+  }
+}
+
+async function verifyPublishedSessionStoreDeclarationBoundary({ consumerDir }) {
+  const rules = toInstalledForbiddenFileRules(
+    join(consumerDir, 'node_modules/@blade-ai/agent-sdk'),
+    agentSdkSessionStoreDeclarationBoundaryRules,
   );
 
   for (const rule of rules) {
