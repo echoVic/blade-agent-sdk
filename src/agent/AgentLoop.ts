@@ -14,7 +14,6 @@ import type { JsonObject } from '../types/common.js';
 import type { AgentEvent } from './AgentEvent.js';
 import {
   ExecutionEpoch,
-  shouldStopAgentLoopToolResultProcessing,
 } from './ExecutionEpoch.js';
 import {
   createAgentRecoveryAttemptTracker,
@@ -50,7 +49,7 @@ import {
   createAgentLoopTokenUsageTracker,
 } from './loop/tokenUsageTracker.js';
 import {
-  handleAgentLoopToolResult,
+  handleAgentLoopToolResults,
 } from './loop/toolResultContinuation.js';
 import { createAgentToolResultTracker } from './loop/toolResultTracker.js';
 import { buildAgentLoopTurnStateProjectionFromPreparation } from './loop/turnState.js';
@@ -347,24 +346,18 @@ export async function* agentLoop(
       executionResults = await executeToolCalls(nonStreamingToolExecution.executeInput);
     }
 
-    // 处理结果
-    for (const { toolCall, result, toolUseUuid } of executionResults) {
-      if (shouldStopAgentLoopToolResultProcessing(epoch)) break;
-
-      const toolResultHandling = yield* handleAgentLoopToolResult({
-        toolCall,
-        result,
-        toolUseUuid,
-        streamingExecutionResults,
-        loopClock,
-        turnsCount,
-        toolResultTracker,
-        conversation: convState,
-        hooks,
-      });
-      if (toolResultHandling.action === 'exit') {
-        return toolResultHandling.exitDecision.result as LoopResult;
-      }
+    const toolResultsHandling = yield* handleAgentLoopToolResults({
+      executionResults,
+      epoch,
+      streamingExecutionResults,
+      loopClock,
+      turnsCount,
+      toolResultTracker,
+      conversation: convState,
+      hooks,
+    });
+    if (toolResultsHandling.action === 'exit') {
+      return toolResultsHandling.exitDecision.result as LoopResult;
     }
 
     const toolTurnTail = yield* handleAgentLoopToolTurnTail({

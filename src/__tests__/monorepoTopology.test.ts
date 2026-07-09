@@ -489,7 +489,14 @@ describe('monorepo topology', () => {
     );
     expect(rootAgentLoopSource).not.toContain('tokenUsageTracker.totalTokens');
     expect(rootAgentLoopSource).not.toContain('tokenBudget?.getSnapshot()');
-    expect(rootAgentLoopSource).toContain('handleAgentLoopToolResult');
+    expect(rootAgentLoopSource).toContain('handleAgentLoopToolResults');
+    expect(rootAgentLoopSource).not.toContain('handleAgentLoopToolResult({');
+    expect(rootAgentLoopSource).not.toContain(
+      'shouldStopAgentLoopToolResultProcessing',
+    );
+    expect(rootAgentLoopSource).not.toContain(
+      'for (const { toolCall, result, toolUseUuid } of executionResults)',
+    );
     expect(rootAgentLoopSource).not.toContain('buildAgentLoopToolExitDecisionInputFromLoopState');
     expect(rootAgentLoopSource).not.toContain('buildAgentLoopToolExitDecisionInputFromTiming');
     expect(rootAgentLoopSource).not.toContain('buildAgentLoopToolExitDecision');

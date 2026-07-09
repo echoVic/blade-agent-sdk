@@ -4,6 +4,10 @@ import {
   type AgentFunctionToolCall,
 } from './planToolExecution.js';
 import {
+  shouldStopAgentLoopToolResultProcessing,
+  type AgentLoopToolResultEpochLike,
+} from '../epoch/ExecutionEpoch.js';
+import {
   buildAgentLoopToolInjectedMessages,
   type AgentLoopToolInjectedMessagesInput,
 } from './toolInjectedMessages.js';
@@ -112,6 +116,32 @@ export interface HandleAgentLoopToolResultInput<
   hooks?: AgentLoopToolResultAfterExecHookContainer<TResult> | null;
 }
 
+export interface AgentLoopToolExecutionResultLike<
+  TResult extends AgentLoopToolMessageInput['result']
+    & AgentLoopToolInjectedMessagesInput<Message>
+    & AgentLoopToolExitDecisionResultLike,
+> {
+  toolCall: AgentFunctionToolCall;
+  result: TResult;
+  toolUseUuid: string | null;
+}
+
+export interface HandleAgentLoopToolResultsInput<
+  TResult extends AgentLoopToolMessageInput['result']
+    & AgentLoopToolInjectedMessagesInput<Message>
+    & AgentLoopToolExitDecisionResultLike,
+  TStreamingExecutionResult,
+> {
+  executionResults: readonly AgentLoopToolExecutionResultLike<TResult>[];
+  epoch: AgentLoopToolResultEpochLike | null | undefined;
+  streamingExecutionResults: readonly TStreamingExecutionResult[] | undefined;
+  loopClock: AgentLoopToolExitTimingSource;
+  turnsCount: number;
+  toolResultTracker: AgentToolResultTracker<TResult> & AgentLoopToolExitToolResultTrackerLike;
+  conversation: AgentLoopToolResultContinuationConversationLike;
+  hooks?: AgentLoopToolResultAfterExecHookContainer<TResult> | null;
+}
+
 export type AgentLoopToolResultHandling<
   TResult extends AgentLoopToolMessageInput['result'] & AgentLoopToolInjectedMessagesInput<Message>,
 > =
@@ -131,6 +161,17 @@ export type AgentLoopToolResultHandlingEvent<
 > =
   | AgentLoopToolResultContinuation<TResult>['events'][number]
   | AgentLoopToolExitDecisionEvent<TResult>;
+
+export type AgentLoopToolResultsHandling<
+  TResult extends AgentLoopToolMessageInput['result'] & AgentLoopToolInjectedMessagesInput<Message>,
+> =
+  | {
+      action: 'continue';
+    }
+  | {
+      action: 'exit';
+      exitDecision: AgentLoopToolExitDecisionExit<TResult>;
+    };
 
 export function buildAgentLoopToolResultContinuation<
   TResult extends AgentLoopToolMessageInput['result'] & AgentLoopToolInjectedMessagesInput<Message>,
@@ -260,4 +301,42 @@ export async function* handleAgentLoopToolResult<
     action: 'continue',
     continuation,
   };
+}
+
+export async function* handleAgentLoopToolResults<
+  TResult extends AgentLoopToolMessageInput['result']
+    & AgentLoopToolInjectedMessagesInput<Message>
+    & AgentLoopToolExitDecisionResultLike,
+  TStreamingExecutionResult,
+>(
+  input: HandleAgentLoopToolResultsInput<TResult, TStreamingExecutionResult>,
+): AsyncGenerator<
+  AgentLoopToolResultHandlingEvent<TResult>,
+  AgentLoopToolResultsHandling<TResult>
+> {
+  for (const { toolCall, result, toolUseUuid } of input.executionResults) {
+    if (shouldStopAgentLoopToolResultProcessing(input.epoch)) {
+      break;
+    }
+
+    const toolResultHandling = yield* handleAgentLoopToolResult({
+      toolCall,
+      result,
+      toolUseUuid,
+      streamingExecutionResults: input.streamingExecutionResults,
+      loopClock: input.loopClock,
+      turnsCount: input.turnsCount,
+      toolResultTracker: input.toolResultTracker,
+      conversation: input.conversation,
+      hooks: input.hooks,
+    });
+    if (toolResultHandling.action === 'exit') {
+      return {
+        action: 'exit',
+        exitDecision: toolResultHandling.exitDecision,
+      };
+    }
+  }
+
+  return { action: 'continue' };
 }

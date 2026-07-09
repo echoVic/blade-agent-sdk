@@ -5,6 +5,7 @@ import {
   buildAgentLoopToolResultAppendMessages,
   buildAgentLoopToolResultContinuation,
   handleAgentLoopToolResult,
+  handleAgentLoopToolResults,
   runAgentLoopToolResultAfterExecHook,
 } from '../loop/index.js';
 
@@ -403,5 +404,185 @@ describe('agent loop tool result continuation projection', () => {
       { type: 'record', result },
       { type: 'timing', turnsCount: 4, toolCallsCount: 1 },
     ]);
+  });
+
+  it('handles tool-result batches until an exit decision short-circuits the batch', async () => {
+    const operations: Array<{
+      type: string;
+      result?: unknown;
+      payload?: unknown;
+      messages?: unknown;
+    }> = [];
+    const firstResult = {
+      success: true,
+      llmContent: 'first done',
+    };
+    const exitResult = {
+      success: true,
+      llmContent: 'leaving plan mode',
+      metadata: {
+        shouldExitLoop: true,
+        targetMode: 'default',
+      },
+    };
+    const skippedResult = {
+      success: true,
+      llmContent: 'should not run',
+    };
+    const exitCall = {
+      ...toolCall,
+      id: 'call_exit',
+      function: { name: 'ExitPlan', arguments: '{}' },
+    };
+    const skippedCall = {
+      ...toolCall,
+      id: 'call_skipped',
+      function: { name: 'Skipped', arguments: '{}' },
+    };
+
+    const handled = await collectGenerator(
+      handleAgentLoopToolResults({
+        executionResults: [
+          { toolCall, result: firstResult, toolUseUuid: 'tool-use-1' },
+          { toolCall: exitCall, result: exitResult, toolUseUuid: null },
+          { toolCall: skippedCall, result: skippedResult, toolUseUuid: null },
+        ],
+        epoch: { isValid: true },
+        streamingExecutionResults: undefined,
+        loopClock: {
+          resultTiming: ({ turnsCount, toolCallsCount }) => ({
+            turnsCount,
+            toolCallsCount,
+            startTime: 3000,
+            now: 3060,
+          }),
+        },
+        turnsCount: 6,
+        toolResultTracker: {
+          toolCallsCount: 0,
+          recentToolResults: [],
+          record(recordedResult) {
+            operations.push({ type: 'record', result: recordedResult });
+          },
+        },
+        conversation: {
+          append: (...messages) => {
+            operations.push({ type: 'append', messages });
+          },
+        },
+        hooks: {
+          tool: {
+            afterExec: async (payload) => {
+              operations.push({ type: 'hook', payload });
+            },
+          },
+        },
+      }),
+    );
+
+    expect(handled.events).toEqual([
+      { type: 'tool_result', toolCall, result: firstResult },
+      { type: 'tool_result', toolCall: exitCall, result: exitResult },
+      { type: 'turn_end', turn: 6, hasToolCalls: true },
+      { type: 'agent_end' },
+    ]);
+    expect(handled.result).toEqual({
+      action: 'exit',
+      exitDecision: {
+        action: 'exit',
+        events: [
+          { type: 'tool_result', toolCall: exitCall, result: exitResult },
+          { type: 'turn_end', turn: 6, hasToolCalls: true },
+          { type: 'agent_end' },
+        ],
+        result: {
+          success: true,
+          finalMessage: 'leaving plan mode',
+          metadata: {
+            turnsCount: 6,
+            toolCallsCount: 0,
+            duration: 60,
+            shouldExitLoop: true,
+            targetMode: 'default',
+          },
+        },
+      },
+    });
+    expect(operations.map((operation) => {
+      if (
+        typeof operation === 'object'
+        && operation !== null
+        && 'type' in operation
+        && operation.type === 'record'
+      ) {
+        return { type: 'record', result: operation.result };
+      }
+      return operation;
+    })).toEqual([
+      { type: 'record', result: firstResult },
+      {
+        type: 'hook',
+        payload: {
+          toolCall,
+          result: firstResult,
+          toolUseUuid: 'tool-use-1',
+        },
+      },
+      {
+        type: 'append',
+        messages: [
+          {
+            role: 'tool',
+            tool_call_id: 'call_read',
+            name: 'Read',
+            content: 'first done',
+          },
+        ],
+      },
+      { type: 'record', result: exitResult },
+    ]);
+  });
+
+  it('stops tool-result batches when the execution epoch was invalidated', async () => {
+    const operations: unknown[] = [];
+
+    const handled = await collectGenerator(
+      handleAgentLoopToolResults({
+        executionResults: [
+          {
+            toolCall,
+            result: {
+              success: true,
+              llmContent: 'should not be recorded',
+            },
+            toolUseUuid: null,
+          },
+        ],
+        epoch: { isValid: false },
+        streamingExecutionResults: undefined,
+        loopClock: {
+          resultTiming: () => {
+            throw new Error('invalidated epochs should not inspect timing');
+          },
+        },
+        turnsCount: 7,
+        toolResultTracker: {
+          toolCallsCount: 0,
+          recentToolResults: [],
+          record(recordedResult) {
+            operations.push({ type: 'record', result: recordedResult });
+          },
+        },
+        conversation: {
+          append: (...messages) => {
+            operations.push({ type: 'append', messages });
+          },
+        },
+      }),
+    );
+
+    expect(handled.events).toEqual([]);
+    expect(handled.result).toEqual({ action: 'continue' });
+    expect(operations).toEqual([]);
   });
 });
