@@ -108,6 +108,8 @@ const tempDir = mkdtempSync(join(packageRoot, '.tmp-entrypoints-'));
 try {
   const entry = join(tempDir, 'client-entry.ts');
   const output = join(tempDir, 'bundle.js');
+  const agentEntry = join(tempDir, 'agent-client-entry.ts');
+  const agentOutput = join(tempDir, 'agent-bundle.js');
   writeFileSync(
     entry,
     [
@@ -149,6 +151,97 @@ try {
   assertIncludes(browserBundleOutput, 'server-only for bundled internal createSession', 'browser bundle internal session stub');
   assertIncludes(browserBundleOutput, 'server-only for bundled server createSession', 'browser bundle server stub');
   assertIncludes(browserBundleOutput, 'server-only for bundled getBuiltinTools', 'browser bundle local stub');
+
+  writeFileSync(
+    agentEntry,
+    [
+      "import { AgentKernel } from '@blade-ai/agent';",
+      "import { TokenBudget } from '@blade-ai/agent/budget';",
+      "import { ExecutionEpoch } from '@blade-ai/agent/epoch';",
+      "import { AgentKernel as AgentKernelFromSubpath } from '@blade-ai/agent/kernel';",
+      "import { AsyncEventQueue, createInterruptAwareAbortSignal, decideNoToolTurn, decideTurnLimit, planToolExecution, resolveToolInterruptBehavior, toolUpdateToAgentEvent, ToolKind } from '@blade-ai/agent/loop';",
+      "import { isOverflowRecoverable } from '@blade-ai/agent/recovery';",
+      "import { VALID_SYSTEM_SOURCES, isValidSystemSource, modelResponseToAssistantMessage, toolResultToToolMessage } from '@blade-ai/agent/state';",
+      "import { createBufferedAgentTracePort } from '@blade-ai/agent/tracing';",
+      'const fakeModel = {',
+      '  async generate() {',
+      "    return { content: 'ok', finishReason: 'stop' };",
+      '  },',
+      '  async *stream() {',
+      "    yield { type: 'done', response: { content: 'ok', finishReason: 'stop' } };",
+      '  },',
+      '};',
+      'const kernel = new AgentKernel({ model: fakeModel });',
+      'const budget = new TokenBudget({ maxTotalTokens: 10 });',
+      'const epoch = new ExecutionEpoch();',
+      'const queue = new AsyncEventQueue();',
+      "queue.enqueue('event');",
+      'queue.close();',
+      'const kernelFromSubpath = new AgentKernelFromSubpath({ model: fakeModel });',
+      "const kernelReady = typeof kernel.runTurn === 'function';",
+      "const subpathKernelReady = typeof kernelFromSubpath.runTurn === 'function';",
+      "const budgetReady = typeof budget.getSnapshot === 'function';",
+      'const epochReady = epoch.isValid === true;',
+      "const queueReady = typeof queue[Symbol.asyncIterator] === 'function';",
+      "const decision = await decideNoToolTurn('All done', [], 1);",
+      "const turnLimit = await decideTurnLimit({ maxTurns: 1, turnsCount: 1, contextMessages: [], toolCallsCount: 0, startTime: Date.now(), totalTokens: 0 });",
+      "const toolPlan = planToolExecution([{ id: 'read-1', type: 'function', function: { name: 'Read', arguments: '{}' } }], { get: () => ({ kind: ToolKind.ReadOnly }) });",
+      "const interruptBehavior = resolveToolInterruptBehavior({ get: () => ({ kind: ToolKind.Execute, interruptBehavior: 'cancel' }) }, 'Bash', {});",
+      'const interruptSignal = createInterruptAwareAbortSignal({ interruptBehavior });',
+      'interruptSignal.cleanup();',
+      "const toolEvent = toolUpdateToAgentEvent({ type: 'tool_ready', toolCall: { id: 'read-1', type: 'function', function: { name: 'Read', arguments: '{}' } } }, { get: () => ({ kind: ToolKind.ReadOnly }) });",
+      "const overflow = isOverflowRecoverable(new Error('context_length_exceeded'));",
+      'const systemSource = VALID_SYSTEM_SOURCES[0];',
+      'const isSystemSource = isValidSystemSource(systemSource);',
+      "const assistantMessage = modelResponseToAssistantMessage({ content: 'ok' });",
+      "const toolMessage = toolResultToToolMessage({ id: 'call_read', name: 'Read', output: 'ok' }, { id: 'fallback', name: 'Fallback' });",
+      'const trace = createBufferedAgentTracePort({ maxEvents: 1 });',
+      "trace.record({ type: 'turn_start', input: 'browser trace smoke' });",
+      "trace.record({ type: 'turn_end', content: 'ok', finishReason: 'stop' });",
+      'const traceEvent = trace.getEvents()[0];',
+      "console.log('local agent browser bundle', kernelReady, subpathKernelReady, budgetReady, epochReady, queueReady, decision.action, turnLimit.action, toolPlan.mode, interruptBehavior, toolEvent?.type, overflow, systemSource, isSystemSource, assistantMessage.role, toolMessage.role, traceEvent?.type);",
+    ].join('\n'),
+    'utf8',
+  );
+
+  await bundleWithEsbuildRetry({
+    entryPoints: [agentEntry],
+    bundle: true,
+    platform: 'browser',
+    conditions: ['browser'],
+    format: 'esm',
+    outfile: agentOutput,
+    absWorkingDir: repoRoot,
+    logLevel: 'silent',
+  });
+  assertNoDisallowedImports(agentOutput);
+  const agentBundleOutput = run(process.execPath, [agentOutput], { cwd: packageRoot });
+  assertIncludes(agentBundleOutput, 'local agent browser bundle', 'local agent browser bundle smoke');
+  assertIncludes(
+    agentBundleOutput,
+    'true true true true true',
+    'local agent browser bundle core runtime smoke did not execute',
+  );
+  assertIncludes(
+    agentBundleOutput,
+    'finish stop serial cancel tool_start true',
+    'local agent browser bundle loop/recovery smoke did not execute',
+  );
+  assertIncludes(
+    agentBundleOutput,
+    'catalog true',
+    'local agent browser bundle system-source smoke did not execute',
+  );
+  assertIncludes(
+    agentBundleOutput,
+    'assistant tool',
+    'local agent browser bundle message projection smoke did not execute',
+  );
+  assertIncludes(
+    agentBundleOutput,
+    'turn_end',
+    'local agent browser bundle tracing smoke did not execute',
+  );
 } finally {
   rmSync(tempDir, { recursive: true, force: true });
 }
