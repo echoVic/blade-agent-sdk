@@ -12,6 +12,11 @@ import type {
   AgentLoopTurnStateFields,
   AgentLoopTurnStateProjection,
 } from './turnState.js';
+import {
+  recordAgentLoopTokenUsage,
+  shouldRecordAgentLoopTokenUsage,
+  type AgentLoopTokenUsageRecord,
+} from './tokenUsageTracker.js';
 
 export interface AgentLoopTokenUsageInfo {
   inputTokens: number;
@@ -65,6 +70,19 @@ export interface BuildAgentLoopTokenUsageInfoLoopStateInput<
 > {
   modelUsage: ModelUsageInfo;
   tokenUsageTracker: AgentLoopTokenUsageInfoTokenUsageTrackerLike;
+  turnStateProjection: AgentLoopTurnStateProjection<TTurnState>;
+}
+
+export interface AgentLoopTokenUsageEventTokenUsageTrackerLike
+  extends AgentLoopTokenUsageInfoTokenUsageTrackerLike {
+  record(usage: AgentLoopTokenUsageRecord): void;
+}
+
+export interface EmitAgentLoopTokenUsageEventIfPresentInput<
+  TTurnState extends AgentLoopTurnStateFields,
+> {
+  modelUsage?: ModelUsageInfo;
+  tokenUsageTracker: AgentLoopTokenUsageEventTokenUsageTrackerLike;
   turnStateProjection: AgentLoopTurnStateProjection<TTurnState>;
 }
 
@@ -184,6 +202,33 @@ export function buildAgentLoopTokenUsageEvent(
     type: 'token_usage',
     usage: input.usage,
   };
+}
+
+export async function* emitAgentLoopTokenUsageEventIfPresent<
+  TTurnState extends AgentLoopTurnStateFields,
+>(
+  input: EmitAgentLoopTokenUsageEventIfPresentInput<TTurnState>,
+): AsyncGenerator<AgentLoopTokenUsageEvent, AgentLoopTokenUsageEvent | null> {
+  if (!shouldRecordAgentLoopTokenUsage(input.modelUsage)) {
+    return null;
+  }
+
+  recordAgentLoopTokenUsage({
+    tracker: input.tokenUsageTracker,
+    usage: input.modelUsage,
+  });
+  const event = buildAgentLoopTokenUsageEvent({
+    usage: buildAgentLoopTokenUsageInfo(
+      buildAgentLoopTokenUsageInfoInputFromLoopState({
+        modelUsage: input.modelUsage,
+        tokenUsageTracker: input.tokenUsageTracker,
+        turnStateProjection: input.turnStateProjection,
+      }),
+    ),
+  });
+
+  yield event;
+  return event;
 }
 
 export function buildAgentLoopBudgetWarningEvent<TSnapshot>(

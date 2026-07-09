@@ -11,6 +11,7 @@ import {
   buildAgentLoopTokenUsageInfoInput,
   buildAgentLoopTokenUsageInfoInputFromLoopState,
   buildAgentLoopTokenUsageInfoInputFromTurnProjection,
+  emitAgentLoopTokenUsageEventIfPresent,
   shouldStopAgentLoopForTokenBudget,
   type AgentLoopTokenBudgetStopDecision,
 } from '../loop/tokenUsage.js';
@@ -159,6 +160,99 @@ describe('agent loop token usage projection', () => {
       type: 'token_usage',
       usage,
     });
+  });
+
+  it('records model usage and emits the accumulated token usage event', async () => {
+    const recordedUsages: unknown[] = [];
+    const tokenUsageTracker = {
+      totalTokens: 0,
+      record(usage: unknown) {
+        recordedUsages.push(usage);
+        this.totalTokens += 12;
+      },
+    };
+    const modelUsage = {
+      promptTokens: 9,
+      completionTokens: 3,
+      totalTokens: 12,
+    };
+
+    const usageStream = emitAgentLoopTokenUsageEventIfPresent({
+      modelUsage,
+      tokenUsageTracker,
+      turnStateProjection: {
+        turnState: {
+          maxContextTokens: 128000,
+          executionContext: { cwd: '/tmp/project' },
+          permissionMode: 'default' as const,
+        },
+        maxContextTokens: 128000,
+        executionContext: { cwd: '/tmp/project' },
+        permissionMode: 'default' as const,
+      },
+    });
+
+    await expect(usageStream.next()).resolves.toEqual({
+      value: {
+        type: 'token_usage',
+        usage: {
+          inputTokens: 9,
+          outputTokens: 3,
+          totalTokens: 12,
+          maxContextTokens: 128000,
+          cacheReadInputTokens: undefined,
+          cacheMissInputTokens: undefined,
+          billableInputTokens: undefined,
+          reasoningTokens: undefined,
+        },
+      },
+      done: false,
+    });
+    await expect(usageStream.next()).resolves.toEqual({
+      value: {
+        type: 'token_usage',
+        usage: {
+          inputTokens: 9,
+          outputTokens: 3,
+          totalTokens: 12,
+          maxContextTokens: 128000,
+          cacheReadInputTokens: undefined,
+          cacheMissInputTokens: undefined,
+          billableInputTokens: undefined,
+          reasoningTokens: undefined,
+        },
+      },
+      done: true,
+    });
+    expect(recordedUsages).toEqual([modelUsage]);
+  });
+
+  it('does not record or emit token usage when model usage is missing', async () => {
+    const tokenUsageTracker = {
+      totalTokens: 40,
+      record: vi.fn(),
+    };
+
+    const usageStream = emitAgentLoopTokenUsageEventIfPresent({
+      modelUsage: undefined,
+      tokenUsageTracker,
+      turnStateProjection: {
+        turnState: {
+          maxContextTokens: 128000,
+          executionContext: { cwd: '/tmp/project' },
+          permissionMode: 'default' as const,
+        },
+        maxContextTokens: 128000,
+        executionContext: { cwd: '/tmp/project' },
+        permissionMode: 'default' as const,
+      },
+    });
+
+    await expect(usageStream.next()).resolves.toEqual({
+      value: null,
+      done: true,
+    });
+    expect(tokenUsageTracker.record).not.toHaveBeenCalled();
   });
 
   it('wraps token budget snapshots as public warning events', () => {

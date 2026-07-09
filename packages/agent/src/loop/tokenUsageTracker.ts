@@ -10,7 +10,7 @@ export interface AgentLoopTokenUsageTracker {
 }
 
 export interface RecordAgentLoopTokenUsageInput {
-  tracker: AgentLoopTokenUsageTracker;
+  tracker: Pick<AgentLoopTokenUsageTracker, 'record'>;
   usage: AgentLoopTokenUsageRecord;
 }
 

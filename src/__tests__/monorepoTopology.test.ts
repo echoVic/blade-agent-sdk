@@ -528,33 +528,24 @@ describe('monorepo topology', () => {
     expect(rootAgentLoopSource).not.toContain(
       'convState.append(...buildAgentLoopToolResultAppendMessages(toolResultContinuation))',
     );
-    expect(rootAgentLoopSource).toContain('buildAgentLoopTokenUsageInfo');
-    expect(rootAgentLoopSource).toContain(
+    expect(rootAgentLoopSource).toContain('emitAgentLoopTokenUsageEventIfPresent');
+    expect(rootAgentLoopSource).not.toContain('buildAgentLoopTokenUsageInfo');
+    expect(rootAgentLoopSource).not.toContain(
       'buildAgentLoopTokenUsageInfoInputFromLoopState',
     );
     expect(rootAgentLoopSource).not.toContain(
       'buildAgentLoopTokenUsageInfoInputFromTurnProjection',
     );
     expect(rootAgentLoopSource).not.toContain('buildAgentLoopTokenUsageInfo({');
-    const tokenUsageInfoInputStart = rootAgentLoopSource.indexOf(
-      'buildAgentLoopTokenUsageInfoInputFromLoopState({',
-    );
-    const tokenUsageInfoInputEnd = rootAgentLoopSource.indexOf(
-      'yield buildAgentLoopTokenUsageEvent',
-      tokenUsageInfoInputStart,
-    );
-    const tokenUsageInfoInputSource = rootAgentLoopSource.slice(
-      tokenUsageInfoInputStart,
-      tokenUsageInfoInputEnd,
-    );
     expect(rootAgentLoopSource).not.toMatch(
       /buildAgentLoopTokenUsageInfoInput\(\{\s+modelUsage: turnResult\.usage/,
     );
-    expect(tokenUsageInfoInputSource).not.toContain(
+    expect(rootAgentLoopSource).not.toContain(
       'maxContextTokens: turnStateProjection.maxContextTokens',
     );
-    expect(tokenUsageInfoInputSource).not.toContain('tokenUsageTracker.totalTokens');
-    expect(rootAgentLoopSource).toContain('buildAgentLoopTokenUsageEvent');
+    expect(rootAgentLoopSource).not.toContain('tokenUsageTracker.totalTokens');
+    expect(rootAgentLoopSource).not.toContain('buildAgentLoopTokenUsageEvent');
+    expect(rootAgentLoopSource).not.toContain('yield buildAgentLoopTokenUsageEvent');
     expect(rootAgentLoopSource).toContain('applyAgentLoopTokenBudget');
     expect(rootAgentLoopSource).toContain('buildAgentLoopTokenBudgetInputFromLoopState');
     expect(rootAgentLoopSource).not.toContain('buildAgentLoopTokenBudgetInputFromTiming');
@@ -581,9 +572,9 @@ describe('monorepo topology', () => {
     expect(rootAgentLoopSource).toContain('buildAgentLoopTokenBudgetStopCompletion');
     expect(rootAgentLoopSource).toContain('shouldStopAgentLoopForTokenBudget');
     expect(rootAgentLoopSource).toContain('createAgentLoopTokenUsageTracker');
-    expect(rootAgentLoopSource).toContain('recordAgentLoopTokenUsage');
+    expect(rootAgentLoopSource).not.toContain('recordAgentLoopTokenUsage');
     expect(rootAgentLoopSource).not.toContain('tokenUsageTracker.record(');
-    expect(rootAgentLoopSource).toContain('shouldRecordAgentLoopTokenUsage');
+    expect(rootAgentLoopSource).not.toContain('shouldRecordAgentLoopTokenUsage');
     expect(rootAgentLoopSource).toContain('createAgentToolResultTracker');
     expect(rootAgentLoopSource).toContain('recordAgentToolResult');
     expect(rootAgentLoopSource).not.toContain('toolResultTracker.record(');
