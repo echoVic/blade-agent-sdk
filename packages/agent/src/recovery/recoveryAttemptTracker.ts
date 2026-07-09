@@ -26,6 +26,11 @@ export interface AgentRecoveryExhaustedProjectionInputFromTrackerInput {
   turn: number;
 }
 
+export interface EmitAgentRecoveryExhaustedEffectsFromTrackerInput
+  extends AgentRecoveryExhaustedProjectionInputFromTrackerInput {
+  hooks?: AgentRecoveryStateChangeHookContainer | null;
+}
+
 export interface StartAgentRecoveryAttemptInput {
   tracker: Pick<AgentRecoveryAttemptTracker, 'startAttempt'>;
   turn: number;
@@ -175,6 +180,15 @@ export function buildAgentRecoveryExhaustedEffectsFromTracker(
   return buildAgentRecoveryExhaustedEffects(
     buildAgentRecoveryExhaustedProjectionInputFromTracker(input),
   );
+}
+
+export async function* emitAgentRecoveryExhaustedEffectsFromTracker(
+  input: EmitAgentRecoveryExhaustedEffectsFromTrackerInput,
+): AsyncGenerator<AgentRecoveryEvent, AgentRecoveryEffects> {
+  return yield* emitAgentRecoveryEffects({
+    effects: buildAgentRecoveryExhaustedEffectsFromTracker(input),
+    hooks: input.hooks,
+  });
 }
 
 export function shouldAttemptAgentRecovery({

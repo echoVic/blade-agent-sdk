@@ -5,6 +5,7 @@ import {
   consumeAgentRecoveryResetAttempt,
   consumeAgentRecoveryResetEffects,
   createAgentRecoveryAttemptTracker,
+  emitAgentRecoveryExhaustedEffectsFromTracker,
   hasAgentRecoveryAttemptExhausted,
   shouldAttemptAgentRecovery,
   startAgentRecoveryAttempt,
@@ -383,5 +384,62 @@ describe('agent recovery attempt tracker', () => {
         },
       ],
     });
+  });
+
+  it('emits recovery exhausted effects from tracker state', async () => {
+    const tracker = createAgentRecoveryAttemptTracker();
+    tracker.startAttempt(4);
+    const stateChanges: unknown[] = [];
+
+    const exhaustedStream = emitAgentRecoveryExhaustedEffectsFromTracker({
+      turn: 5,
+      tracker,
+      hooks: {
+        recovery: {
+          onStateChange: (stateChange) => {
+            stateChanges.push(stateChange);
+          },
+        },
+      },
+    });
+
+    await expect(exhaustedStream.next()).resolves.toEqual({
+      value: {
+        type: 'recovery',
+        phase: 'failed',
+        reason: 'recovery_exhausted',
+      },
+      done: false,
+    });
+    const exhausted = await exhaustedStream.next();
+    expect(exhausted.done).toBe(true);
+    if (!exhausted.done) {
+      throw new Error('expected exhausted recovery stream to finish');
+    }
+    expect(exhausted.value).toEqual({
+      stateChanges: [
+        {
+          turn: 5,
+          phase: 'failed',
+          reason: 'recovery_exhausted',
+          attempt: 1,
+        },
+      ],
+      events: [
+        {
+          type: 'recovery',
+          phase: 'failed',
+          reason: 'recovery_exhausted',
+        },
+      ],
+    });
+    expect(stateChanges).toEqual([
+      {
+        turn: 5,
+        phase: 'failed',
+        reason: 'recovery_exhausted',
+        attempt: 1,
+      },
+    ]);
   });
 });
