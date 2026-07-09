@@ -259,6 +259,9 @@ describe('package entrypoints', () => {
     expect(verifier).toContain('local session store declarations must be emitted from package-local session store source');
     expect(verifier).toContain('local session store declarations must not point back at legacy root session store');
     expect(verifier).toContain('local session store declaration boundary passed');
+    expect(verifier).toContain('local tools declarations must be emitted from package-local tools entry source');
+    expect(verifier).toContain('local tools runtime must be emitted from package-local tools source');
+    expect(verifier).toContain('local tools entry boundary passed');
     expect(verifier).toContain('local server runtime entry must be an explicit package-local facade');
     expect(verifier).toContain('local server declarations must be an explicit package-local facade');
     expect(verifier).toContain('local server facade boundary passed');

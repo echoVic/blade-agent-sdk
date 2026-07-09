@@ -952,6 +952,7 @@ Status:
 - Two-hundred-seventy-fourth verification-chain increment complete: `pnpm run verify:entrypoints` now rejects local dist `@blade-ai/agent-sdk/session` runtime factory declarations that expose `fork()` or `prompt()`, keeping the factory contract limited to create/resume primitives before packed and published temporary consumers.
 - Two-hundred-seventy-fifth verification-chain increment complete: `pnpm run verify:entrypoints` now rejects local dist `@blade-ai/agent-sdk/session` config and store declarations that point back at legacy root session/config/storage modules, keeping package-local session support types guarded before packed and published temporary consumers.
 - Two-hundred-seventy-sixth verification-chain increment complete: `pnpm run verify:entrypoints` now rejects local dist `@blade-ai/agent-sdk/session` runtime entries and `Session` declarations that point back at the legacy root `Session`, keeping session-first package-local contracts guarded before packed and published temporary consumers.
+- Two-hundred-seventy-seventh verification-chain increment complete: `pnpm run verify:entrypoints` now rejects local dist `@blade-ai/agent-sdk/tools` runtime and declaration entries that point back at legacy root tool factories or catalogs, keeping package-local tool contracts guarded before packed and published temporary consumers.
 
 Commit:
 
