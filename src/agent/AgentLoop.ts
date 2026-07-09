@@ -18,9 +18,9 @@ import {
   shouldStopAgentLoopToolResultProcessing,
 } from './ExecutionEpoch.js';
 import {
-  consumeAgentRecoveryResetEffects,
   createAgentRecoveryAttemptTracker,
   emitAgentRecoveryExhaustedEffectsFromTracker,
+  emitAgentRecoveryResetEffects,
   hasAgentRecoveryAttemptExhausted,
   shouldAttemptAgentRecovery,
   startAgentRecoveryAttemptWithEmittedCompactStream,
@@ -28,7 +28,6 @@ import {
 import {
   buildAgentModelFallbackEvent,
   consumeAgentRecoveryCompactStreamWithEmittedResultEffects,
-  emitAgentRecoveryEffects,
   hasAgentReactiveCompactHook,
 } from './recoveryEvents.js';
 import {
@@ -391,13 +390,11 @@ export async function* agentLoop(
 
     turnResult = assertAgentLoopTurnResponse(turnResult);
 
-    const recoveryResetEffects = consumeAgentRecoveryResetEffects({
+    yield* emitAgentRecoveryResetEffects({
       tracker: recoveryAttemptTracker,
       turn: turnsCount,
+      hooks,
     });
-    if (recoveryResetEffects) {
-      yield* emitAgentRecoveryEffects({ effects: recoveryResetEffects, hooks });
-    }
 
     // Token usage
     if (shouldRecordAgentLoopTokenUsage(turnResult.usage)) {

@@ -6,6 +6,7 @@ import {
   consumeAgentRecoveryResetEffects,
   createAgentRecoveryAttemptTracker,
   emitAgentRecoveryExhaustedEffectsFromTracker,
+  emitAgentRecoveryResetEffects,
   hasAgentRecoveryAttemptExhausted,
   shouldAttemptAgentRecovery,
   startAgentRecoveryAttempt,
@@ -271,6 +272,72 @@ describe('agent recovery attempt tracker', () => {
     expect(tracker.attempt).toBe(0);
     expect(tracker.canAttempt(6)).toBe(true);
     expect(consumeAgentRecoveryResetEffects({ tracker, turn: 8 })).toBeNull();
+  });
+
+  it('emits reset effects when a recovery attempt is consumed', async () => {
+    const tracker = createAgentRecoveryAttemptTracker();
+    tracker.startAttempt(6);
+    const stateChanges: unknown[] = [];
+
+    const resetStream = emitAgentRecoveryResetEffects({
+      tracker,
+      turn: 7,
+      hooks: {
+        recovery: {
+          onStateChange: (stateChange) => {
+            stateChanges.push(stateChange);
+          },
+        },
+      },
+    });
+
+    const reset = await resetStream.next();
+    expect(reset.done).toBe(true);
+    if (!reset.done) {
+      throw new Error('expected reset recovery stream to finish without events');
+    }
+    expect(reset.value).toEqual({
+      stateChanges: [
+        {
+          turn: 7,
+          phase: 'reset',
+          attempt: 0,
+        },
+      ],
+      events: [],
+    });
+    expect(stateChanges).toEqual([
+      {
+        turn: 7,
+        phase: 'reset',
+        attempt: 0,
+      },
+    ]);
+    expect(tracker.attempt).toBe(0);
+    expect(tracker.canAttempt(6)).toBe(true);
+  });
+
+  it('does not emit reset effects when there is no recovery attempt', async () => {
+    const tracker = createAgentRecoveryAttemptTracker();
+    const stateChanges: unknown[] = [];
+
+    const resetStream = emitAgentRecoveryResetEffects({
+      tracker,
+      turn: 7,
+      hooks: {
+        recovery: {
+          onStateChange: (stateChange) => {
+            stateChanges.push(stateChange);
+          },
+        },
+      },
+    });
+
+    await expect(resetStream.next()).resolves.toEqual({
+      value: null,
+      done: true,
+    });
+    expect(stateChanges).toEqual([]);
   });
 
   it('allows reactive recovery only for recoverable errors with a compact hook and remaining attempts', () => {

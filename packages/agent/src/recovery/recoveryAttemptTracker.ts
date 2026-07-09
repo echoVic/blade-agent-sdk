@@ -66,6 +66,11 @@ export interface ConsumeAgentRecoveryResetEffectsInput {
   turn: number;
 }
 
+export interface EmitAgentRecoveryResetEffectsInput
+  extends ConsumeAgentRecoveryResetEffectsInput {
+  hooks?: AgentRecoveryStateChangeHookContainer | null;
+}
+
 export function createAgentRecoveryAttemptTracker(): AgentRecoveryAttemptTracker {
   let attemptedTurn: number | null = null;
   let attempt = 0;
@@ -114,6 +119,20 @@ export function consumeAgentRecoveryResetEffects(
   return consumeAgentRecoveryResetAttempt(input.tracker)
     ? buildAgentRecoveryResetEffects({ turn: input.turn })
     : null;
+}
+
+export async function* emitAgentRecoveryResetEffects(
+  input: EmitAgentRecoveryResetEffectsInput,
+): AsyncGenerator<AgentRecoveryEvent, AgentRecoveryEffects | null> {
+  const effects = consumeAgentRecoveryResetEffects(input);
+  if (!effects) {
+    return null;
+  }
+
+  return yield* emitAgentRecoveryEffects({
+    effects,
+    hooks: input.hooks,
+  });
 }
 
 export function startAgentRecoveryAttempt(input: StartAgentRecoveryAttemptInput): number {
