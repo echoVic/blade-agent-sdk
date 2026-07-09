@@ -10,6 +10,7 @@ import {
   agentSdkRootDeclarationEntryOwnershipRules,
   agentSdkRootPublicDeclarationBoundaryRules,
   agentSdkServerFacadeBoundaryRules,
+  agentSdkSessionFactoryDeclarationBoundaryRules,
   agentSdkSessionPublicDeclarationBoundaryRules,
   toPackedForbiddenFileContents,
   toPackedForbiddenFileRules,
@@ -226,16 +227,7 @@ const packageSpecs = [
         forbidden: '../../../../src/session/Session',
         message: 'package-local Session declarations must expose local session contracts only',
       },
-      {
-        file: 'package/dist/session/factory.d.ts',
-        forbidden: 'fork(options',
-        message: 'session runtime factory declarations must expose only create/resume primitives',
-      },
-      {
-        file: 'package/dist/session/factory.d.ts',
-        forbidden: 'prompt(message',
-        message: 'session runtime factory declarations must expose only create/resume primitives',
-      },
+      ...toPackedForbiddenFileRules(agentSdkSessionFactoryDeclarationBoundaryRules),
       {
         file: 'package/dist/session/config.d.ts',
         forbidden: './Session.js',

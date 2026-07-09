@@ -7,6 +7,7 @@ import {
   agentSdkRootDeclarationEntryOwnershipRules,
   agentSdkRootPublicDeclarationBoundaryRules,
   agentSdkServerFacadeBoundaryRules,
+  agentSdkSessionFactoryDeclarationBoundaryRules,
   agentSdkSessionPublicDeclarationBoundaryRules,
   toLocalForbiddenDeclarationRules,
 } from './agent-sdk-boundary-rules.mjs';
@@ -270,16 +271,7 @@ console.log('local session entry Session boundary passed');
 
 assertNoForbiddenDeclarationSymbols(
   readFileSync(join(packageRoot, 'dist/session/factory.d.ts'), 'utf8'),
-  [
-    {
-      forbidden: 'fork(options',
-      message: 'local session runtime factory declarations must expose only create/resume primitives',
-    },
-    {
-      forbidden: 'prompt(message',
-      message: 'local session runtime factory declarations must expose only create/resume primitives',
-    },
-  ],
+  toLocalForbiddenDeclarationRules(agentSdkSessionFactoryDeclarationBoundaryRules),
   'local session factory declaration boundary',
 );
 console.log('local session factory declaration boundary passed');

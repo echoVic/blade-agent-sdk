@@ -308,6 +308,28 @@ describe('package entrypoints', () => {
     expect(publishedVerifier).toContain('agentSdkSessionPublicDeclarationBoundaryRules');
   });
 
+  it('shares session factory declaration boundary rules across local packed and published verifiers', () => {
+    const sharedRulesPath = 'scripts/agent-sdk-boundary-rules.mjs';
+
+    expect(existsSync(join(process.cwd(), sharedRulesPath)), sharedRulesPath).toBe(true);
+
+    const sharedRules = readFileSync(sharedRulesPath, 'utf-8');
+    const entrypointVerifier = readFileSync('scripts/verify-entrypoints.mjs', 'utf-8');
+    const packageVerifier = readFileSync('scripts/verify-packages.mjs', 'utf-8');
+    const publishedVerifier = readFileSync('scripts/verify-published.mjs', 'utf-8');
+
+    expect(sharedRules).toContain('agentSdkSessionFactoryDeclarationBoundaryRules');
+    expect(sharedRules).toContain('dist/session/factory.d.ts');
+    expect(sharedRules).toContain('fork(options');
+    expect(sharedRules).toContain('prompt(message');
+    expect(sharedRules).toContain('session runtime factory declarations must expose only create/resume primitives');
+    expect(entrypointVerifier).toContain('agentSdkSessionFactoryDeclarationBoundaryRules');
+    expect(entrypointVerifier).toContain('toLocalForbiddenDeclarationRules(agentSdkSessionFactoryDeclarationBoundaryRules)');
+    expect(packageVerifier).toContain('toPackedForbiddenFileRules(agentSdkSessionFactoryDeclarationBoundaryRules)');
+    expect(publishedVerifier).toContain('verifyPublishedSessionFactoryDeclarationBoundary');
+    expect(publishedVerifier).toContain('agentSdkSessionFactoryDeclarationBoundaryRules');
+  });
+
   it('runs the browser bundle check through the esbuild JS API', () => {
     const verifier = readFileSync('scripts/verify-entrypoints.mjs', 'utf-8');
     const helper = readFileSync('scripts/esbuild-bundle.mjs', 'utf-8');
@@ -371,7 +393,7 @@ describe('package entrypoints', () => {
     expect(verifier).toContain('local session runtime entry must not import the legacy root Session directly');
     expect(verifier).toContain('local session declarations must expose package-local Session contracts only');
     expect(verifier).toContain('local session entry Session boundary passed');
-    expect(verifier).toContain('local session runtime factory declarations must expose only create/resume primitives');
+    expect(verifier).toContain('toLocalForbiddenDeclarationRules(agentSdkSessionFactoryDeclarationBoundaryRules)');
     expect(verifier).toContain('local session factory declaration boundary passed');
     expect(verifier).toContain('local session config declarations must be emitted from package-local session config source');
     expect(verifier).toContain('local session config declarations must use package-local core config types');

@@ -128,6 +128,19 @@ export const agentSdkSessionPublicDeclarationBoundaryRules = [
   },
 ];
 
+export const agentSdkSessionFactoryDeclarationBoundaryRules = [
+  {
+    file: 'dist/session/factory.d.ts',
+    forbidden: 'fork(options',
+    message: 'session runtime factory declarations must expose only create/resume primitives',
+  },
+  {
+    file: 'dist/session/factory.d.ts',
+    forbidden: 'prompt(message',
+    message: 'session runtime factory declarations must expose only create/resume primitives',
+  },
+];
+
 export function toLocalForbiddenDeclarationRules(rules) {
   return rules.map((rule) => ({
     forbidden: rule.forbidden,
