@@ -11,6 +11,7 @@ import {
   emitAgentRecoveryResetEffects,
   hasAgentRecoveryAttemptExhausted,
   handleAgentRunTurnErrorWithEmissions,
+  handleAgentRunTurnSuccessWithEmissions,
   handleAgentReactiveCompactRecoveryWithEmissions,
   runAgentRecoveryCompactAttemptWithEmissions,
   shouldAttemptAgentRecovery,
@@ -1003,5 +1004,79 @@ describe('agent recovery attempt tracker', () => {
       },
     });
     await expect(stream.next()).rejects.toBe(error);
+  });
+
+  it('handles run-turn success by returning the asserted response without reset effects', async () => {
+    const response = { content: 'done', usage: { totalTokens: 12 } };
+    const handled = await collectGenerator(
+      handleAgentRunTurnSuccessWithEmissions({
+        response,
+        tracker: createAgentRecoveryAttemptTracker(),
+        turn: 5,
+        hooks: {},
+      }),
+    );
+
+    expect(handled.events).toEqual([]);
+    expect(handled.result).toBe(response);
+  });
+
+  it('handles run-turn success recovery reset before returning the response', async () => {
+    const tracker = createAgentRecoveryAttemptTracker();
+    tracker.startAttempt(4);
+    const response = { content: 'recovered' };
+    const stateChanges: unknown[] = [];
+
+    const handled = await collectGenerator(
+      handleAgentRunTurnSuccessWithEmissions({
+        response,
+        tracker,
+        turn: 5,
+        hooks: {
+          recovery: {
+            onStateChange: (stateChange) => {
+              stateChanges.push(stateChange);
+            },
+          },
+        },
+      }),
+    );
+
+    expect(handled.events).toEqual([]);
+    expect(handled.result).toBe(response);
+    expect(stateChanges).toEqual([
+      {
+        turn: 5,
+        phase: 'reset',
+        attempt: 0,
+      },
+    ]);
+    expect(tracker.attempt).toBe(0);
+    expect(tracker.canAttempt(4)).toBe(true);
+  });
+
+  it('does not reset recovery attempts when run-turn success has no response', async () => {
+    const tracker = createAgentRecoveryAttemptTracker();
+    tracker.startAttempt(4);
+    const stateChanges: unknown[] = [];
+    const stream = handleAgentRunTurnSuccessWithEmissions({
+      response: undefined,
+      tracker,
+      turn: 5,
+      hooks: {
+        recovery: {
+          onStateChange: (stateChange) => {
+            stateChanges.push(stateChange);
+          },
+        },
+      },
+    });
+
+    await expect(stream.next()).rejects.toThrow(
+      'Agent loop completed without a chat response',
+    );
+    expect(stateChanges).toEqual([]);
+    expect(tracker.attempt).toBe(1);
+    expect(tracker.hasAttemptedTurn(4)).toBe(true);
   });
 });

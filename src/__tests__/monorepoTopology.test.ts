@@ -737,7 +737,8 @@ describe('monorepo topology', () => {
     expect(rootAgentLoopSource).not.toMatch(
       /buildAgentReactiveCompactHookPayload\(\{\s+messages: convState\.toArray\(\)/,
     );
-    expect(rootAgentLoopSource).toContain('emitAgentRecoveryResetEffects');
+    expect(rootAgentLoopSource).toContain('handleAgentRunTurnSuccessWithEmissions');
+    expect(rootAgentLoopSource).not.toContain('emitAgentRecoveryResetEffects');
     expect(rootAgentLoopSource).not.toContain('consumeAgentRecoveryResetEffects');
     expect(rootAgentLoopSource).not.toContain('buildAgentRecoveryResetEffects');
     expect(rootAgentLoopSource).not.toContain('buildAgentRecoveryStartedEffects');
@@ -897,6 +898,11 @@ describe('monorepo topology', () => {
     expect(rootAgentLoopSource).toContain(
       'handleAgentRunTurnErrorWithEmissions',
     );
+    expect(rootAgentLoopSource).toContain(
+      'handleAgentRunTurnSuccessWithEmissions',
+    );
+    expect(rootAgentLoopSource).not.toContain('assertAgentLoopTurnResponse');
+    expect(rootAgentLoopSource).not.toContain('emitAgentRecoveryResetEffects');
     expect(rootAgentLoopSource).not.toContain(
       'handleAgentReactiveCompactRecoveryWithEmissions',
     );

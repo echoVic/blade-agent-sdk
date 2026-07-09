@@ -4,6 +4,7 @@ import {
   type AgentLoopTurnCounter,
 } from '../loop/turnCounter.js';
 import type { AgentLoopTurnRetryEvent } from '../loop/loopEvents.js';
+import { assertAgentLoopTurnResponse } from '../loop/assistantMessage.js';
 import {
   buildAgentRecoveryCompactStreamFromHookContainer,
   buildAgentRecoveryExhaustedEffects,
@@ -142,6 +143,11 @@ export interface HandleAgentRunTurnErrorWithEmissionsInput<TMessage, Event>
 
 export interface AgentRunTurnErrorHandling {
   action: 'retry';
+}
+
+export interface HandleAgentRunTurnSuccessWithEmissionsInput<TResponse>
+  extends EmitAgentRecoveryResetEffectsInput {
+  response: TResponse | undefined;
 }
 
 export function createAgentRecoveryAttemptTracker(): AgentRecoveryAttemptTracker {
@@ -355,6 +361,20 @@ export async function* handleAgentRunTurnErrorWithEmissions<TMessage, Event>(
     hooks: input.hooks,
   });
   throw input.error;
+}
+
+export async function* handleAgentRunTurnSuccessWithEmissions<TResponse>(
+  input: HandleAgentRunTurnSuccessWithEmissionsInput<TResponse>,
+): AsyncGenerator<AgentRecoveryEvent, TResponse> {
+  const response = assertAgentLoopTurnResponse(input.response);
+
+  yield* emitAgentRecoveryResetEffects({
+    tracker: input.tracker,
+    turn: input.turn,
+    hooks: input.hooks,
+  });
+
+  return response;
 }
 
 export function buildAgentRecoveryExhaustedProjectionInputFromTracker(

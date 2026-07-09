@@ -18,11 +18,10 @@ import {
 } from './ExecutionEpoch.js';
 import {
   createAgentRecoveryAttemptTracker,
-  emitAgentRecoveryResetEffects,
   handleAgentRunTurnErrorWithEmissions,
+  handleAgentRunTurnSuccessWithEmissions,
 } from './recoveryAttemptTracker.js';
 import {
-  assertAgentLoopTurnResponse,
   handleAgentLoopAssistantMessage,
 } from './loop/assistantMessage.js';
 import {
@@ -271,9 +270,8 @@ export async function* agentLoop(
       }
     }
 
-    turnResult = assertAgentLoopTurnResponse(turnResult);
-
-    yield* emitAgentRecoveryResetEffects({
+    turnResult = yield* handleAgentRunTurnSuccessWithEmissions({
+      response: turnResult,
       tracker: recoveryAttemptTracker,
       turn: turnsCount,
       hooks,
