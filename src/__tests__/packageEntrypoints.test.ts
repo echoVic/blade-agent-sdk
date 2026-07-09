@@ -231,6 +231,10 @@ describe('package entrypoints', () => {
     expect(verifier).toContain('Declaration export mismatch between local root and local server');
     expect(verifier).toContain('declarations missing from local server');
     expect(verifier).toContain('declarations extra in local server');
+    expect(verifier).toContain('local core declarations must stay browser-safe and not expose server-only session APIs');
+    expect(verifier).toContain('local core declarations must stay browser-safe and not expose Node-local tool APIs');
+    expect(verifier).toContain('local core declarations must stay browser-safe and not expose Node-local MCP APIs');
+    expect(verifier).toContain('local core declaration browser-safe boundary passed');
     expect(verifier).toContain("from '@blade-ai/agent-sdk/browser';");
     expect(verifier).toContain("from '@blade-ai/agent-sdk/session/internal';");
     expect(verifier).toContain('server-only for bundled createSession');

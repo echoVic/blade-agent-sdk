@@ -81,6 +81,14 @@ function assertDeclarationExportParity(leftSource, rightSource) {
   return [leftExports.length, rightExports.length];
 }
 
+function assertNoForbiddenDeclarationSymbols(source, rules, label) {
+  for (const rule of rules) {
+    if (source.includes(rule.forbidden)) {
+      throw new Error(`${label}: ${rule.message}`);
+    }
+  }
+}
+
 function assertNoDisallowedImports(filePath) {
   const source = readFileSync(filePath, 'utf8');
   for (const pattern of disallowedRuntimeImports) {
@@ -169,6 +177,34 @@ const [rootDeclarationCount, serverDeclarationCount] = assertDeclarationExportPa
   readFileSync(join(packageRoot, 'dist/server/index.d.ts'), 'utf8'),
 );
 console.log('local root server declaration export parity', rootDeclarationCount, serverDeclarationCount);
+
+assertNoForbiddenDeclarationSymbols(
+  readFileSync(join(packageRoot, 'dist/core/index.d.ts'), 'utf8'),
+  [
+    {
+      forbidden: 'createSession',
+      message: 'local core declarations must stay browser-safe and not expose server-only session APIs',
+    },
+    {
+      forbidden: 'resumeSession',
+      message: 'local core declarations must stay browser-safe and not expose server-only session APIs',
+    },
+    {
+      forbidden: 'forkSession',
+      message: 'local core declarations must stay browser-safe and not expose server-only session APIs',
+    },
+    {
+      forbidden: 'getBuiltinTools',
+      message: 'local core declarations must stay browser-safe and not expose Node-local tool APIs',
+    },
+    {
+      forbidden: 'createSdkMcpServer',
+      message: 'local core declarations must stay browser-safe and not expose Node-local MCP APIs',
+    },
+  ],
+  'local core declaration browser-safe boundary',
+);
+console.log('local core declaration browser-safe boundary passed');
 
 verifyBrowserSafeDist('dist/browser/index.js');
 verifyBrowserSafeDist('dist/browser/server-only-stub.js');

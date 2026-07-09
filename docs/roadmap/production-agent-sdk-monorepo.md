@@ -945,6 +945,7 @@ Status:
 - Two-hundred-sixty-seventh verification-chain increment complete: the local TypeScript declaration consumer in `pnpm run verify:entrypoints` now also imports and instantiates representative subpath types from `@blade-ai/ai/chat`, provider, and retry entries; `@blade-ai/agent/ports`, `protocol`, and `tracing`; plus `@blade-ai/agent-sdk/core`, `session`, and `tools`. This brings local dist subpath declaration coverage closer to the packed and published consumer checks before tarballs are built.
 - Two-hundred-sixty-eighth verification-chain increment complete: `pnpm run verify:entrypoints` now compares local dist runtime export key sets for `@blade-ai/agent-sdk` root and `@blade-ai/agent-sdk/server`, catching explicit server facade drift before packed and published temporary consumers.
 - Two-hundred-sixty-ninth verification-chain increment complete: `pnpm run verify:entrypoints` now compares local dist declaration named export sets for `@blade-ai/agent-sdk` root and `@blade-ai/agent-sdk/server`, catching explicit server facade type drift before packed and published temporary consumers.
+- Two-hundred-seventieth verification-chain increment complete: `pnpm run verify:entrypoints` now rejects local dist `@blade-ai/agent-sdk/core` declarations that expose server-only session APIs or Node-local tool/MCP APIs, moving the browser-safe core declaration boundary earlier than packed and published temporary consumers.
 
 Commit:
 
