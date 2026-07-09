@@ -4,10 +4,13 @@ import {
   buildAgentRecoveryExhaustedEffects,
   buildAgentRecoveryResetEffects,
   buildAgentRecoveryStartedEffects,
+  emitAgentRecoveryEffects,
   type AgentRecoveryEffects,
+  type AgentRecoveryEvent,
   type AgentRecoveryExhaustedEffectsInput,
   type AgentReactiveCompactConversationLike,
   type AgentReactiveCompactHookContainer,
+  type AgentRecoveryStateChangeHookContainer,
 } from './recoveryEvents.js';
 
 export interface AgentRecoveryAttemptTracker {
@@ -37,6 +40,15 @@ export interface StartAgentRecoveryAttemptWithCompactStreamInput<TMessage, Event
   extends StartAgentRecoveryAttemptInput {
   conversation: AgentReactiveCompactConversationLike<TMessage>;
   hooks?: AgentReactiveCompactHookContainer<TMessage, Event> | null;
+}
+
+export interface StartAgentRecoveryAttemptWithEmittedCompactStreamInput<TMessage, Event>
+  extends StartAgentRecoveryAttemptInput {
+  conversation: AgentReactiveCompactConversationLike<TMessage>;
+  hooks?:
+    | (AgentReactiveCompactHookContainer<TMessage, Event> &
+        AgentRecoveryStateChangeHookContainer)
+    | null;
 }
 
 export interface StartedAgentRecoveryCompactAttempt<Event>
@@ -126,6 +138,24 @@ export function startAgentRecoveryAttemptWithCompactStream<TMessage, Event>(
       conversation: input.conversation,
       hooks: input.hooks,
     }),
+  };
+}
+
+export async function* startAgentRecoveryAttemptWithEmittedCompactStream<
+  TMessage,
+  Event,
+>(
+  input: StartAgentRecoveryAttemptWithEmittedCompactStreamInput<TMessage, Event>,
+): AsyncGenerator<AgentRecoveryEvent, StartedAgentRecoveryCompactAttempt<Event>> {
+  const started = startAgentRecoveryAttemptWithCompactStream(input);
+  const effects = yield* emitAgentRecoveryEffects({
+    effects: started.effects,
+    hooks: input.hooks,
+  });
+
+  return {
+    ...started,
+    effects,
   };
 }
 

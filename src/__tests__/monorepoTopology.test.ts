@@ -734,7 +734,10 @@ describe('monorepo topology', () => {
       'buildAgentRecoveryExhaustedProjectionInputFromTracker',
     );
     expect(rootAgentLoopSource).not.toContain('recoveryAttemptTracker.attempt');
-    expect(rootAgentLoopSource).toContain('startAgentRecoveryAttemptWithCompactStream');
+    expect(rootAgentLoopSource).toContain(
+      'startAgentRecoveryAttemptWithEmittedCompactStream',
+    );
+    expect(rootAgentLoopSource).not.toContain('startAgentRecoveryAttemptWithCompactStream');
     expect(rootAgentLoopSource).not.toContain('startAgentRecoveryAttemptWithStartedEffects');
     expect(rootAgentLoopSource).not.toContain('startAgentRecoveryAttempt({');
     expect(rootAgentLoopSource).not.toContain('recoveryAttemptTracker.startAttempt(');
@@ -803,6 +806,10 @@ describe('monorepo topology', () => {
     expect(rootAgentLoopSource).toContain('consumeAgentRecoveryResetEffects');
     expect(rootAgentLoopSource).not.toContain('buildAgentRecoveryResetEffects');
     expect(rootAgentLoopSource).not.toContain('buildAgentRecoveryStartedEffects');
+    expect(rootAgentLoopSource).toContain(
+      'startAgentRecoveryAttemptWithEmittedCompactStream',
+    );
+    expect(rootAgentLoopSource).not.toContain('startAgentRecoveryAttemptWithCompactStream');
     expect(rootAgentLoopSource).toContain(
       'consumeAgentRecoveryCompactStreamWithEmittedResultEffects',
     );

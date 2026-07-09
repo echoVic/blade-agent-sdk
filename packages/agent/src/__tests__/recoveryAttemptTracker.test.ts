@@ -8,6 +8,7 @@ import {
   hasAgentRecoveryAttemptExhausted,
   shouldAttemptAgentRecovery,
   startAgentRecoveryAttempt,
+  startAgentRecoveryAttemptWithEmittedCompactStream,
   startAgentRecoveryAttemptWithCompactStream,
   startAgentRecoveryAttemptWithStartedEffects,
 } from '../recovery/recoveryAttemptTracker.js';
@@ -126,6 +127,85 @@ describe('agent recovery attempt tracker', () => {
       ],
     });
     expect(await started.compactStream?.next()).toEqual({
+      done: false,
+      value: { type: 'compact_progress', phase: 'start' },
+    });
+    expect(calls).toEqual([{ messages }]);
+  });
+
+  it('starts recovery attempts with an emitted started event and a compact stream', async () => {
+    const tracker = createAgentRecoveryAttemptTracker();
+    const messages = [{ role: 'user' as const, content: 'large context' }];
+    const stateChanges: unknown[] = [];
+    const calls: unknown[] = [];
+
+    async function* reactiveCompact(payload: {
+      messages: readonly { role: 'user'; content: string }[];
+    }): AsyncGenerator<{ type: string; phase: string }, boolean | undefined> {
+      calls.push(payload);
+      yield { type: 'compact_progress', phase: 'start' };
+      return true;
+    }
+
+    const startedStream = startAgentRecoveryAttemptWithEmittedCompactStream({
+      tracker,
+      turn: 6,
+      conversation: {
+        toArray: () => messages,
+      },
+      hooks: {
+        recovery: {
+          reactiveCompact,
+          onStateChange: (stateChange) => {
+            stateChanges.push(stateChange);
+          },
+        },
+      },
+    });
+
+    await expect(startedStream.next()).resolves.toEqual({
+      value: {
+        type: 'recovery',
+        phase: 'started',
+        reason: 'context_overflow',
+      },
+      done: false,
+    });
+    const started = await startedStream.next();
+    expect(started.done).toBe(true);
+    if (!started.done) {
+      throw new Error('expected the emitted recovery start stream to finish');
+    }
+    expect(started.value).toEqual({
+      attempt: 1,
+      effects: {
+        stateChanges: [
+          {
+            turn: 6,
+            phase: 'started',
+            reason: 'context_overflow',
+            attempt: 1,
+          },
+        ],
+        events: [
+          {
+            type: 'recovery',
+            phase: 'started',
+            reason: 'context_overflow',
+          },
+        ],
+      },
+      compactStream: expect.anything(),
+    });
+    expect(stateChanges).toEqual([
+      {
+        turn: 6,
+        phase: 'started',
+        reason: 'context_overflow',
+        attempt: 1,
+      },
+    ]);
+    expect(await started.value.compactStream?.next()).toEqual({
       done: false,
       value: { type: 'compact_progress', phase: 'start' },
     });
