@@ -1713,6 +1713,37 @@ describe('monorepo topology', () => {
     }
   });
 
+  it('keeps root runtime off legacy epoch and state forwarders', () => {
+    const runtimeConsumers = [
+      [
+        'src/agent/loop/rootAgentLoopAdapter.ts',
+        '@blade-ai/agent/epoch',
+        /from ['"]\.\.\/ExecutionEpoch\.js['"]/,
+      ],
+      [
+        'src/agent/loop/runTurn.ts',
+        '@blade-ai/agent/epoch',
+        /from ['"]\.\.\/ExecutionEpoch\.js['"]/,
+      ],
+      [
+        'src/agent/LoopRunner.ts',
+        '@blade-ai/agent/state',
+        /from ['"]\.\/state\/systemSource\.js['"]/,
+      ],
+    ] as const;
+
+    for (const [file, publicSubpath, legacyImport] of runtimeConsumers) {
+      const source = readFileSync(file, 'utf-8');
+
+      expect(source, `${file} should import from ${publicSubpath}`).toContain(
+        `from '${publicSubpath}'`,
+      );
+      expect(source, `${file} should not import the legacy root forwarder`).not.toMatch(
+        legacyImport,
+      );
+    }
+  });
+
   it('publishes agent kernel modules as explicit subpath exports', () => {
     const agentPackage = readJson('packages/agent/package.json');
     const agentBuildConfig = readFileSync('packages/agent/tsup.config.ts', 'utf-8');

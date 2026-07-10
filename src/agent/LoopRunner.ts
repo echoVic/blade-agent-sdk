@@ -34,7 +34,7 @@ import type { ModelManager } from './ModelManager.js';
 import { RuntimePatchManager } from './RuntimePatchManager.js';
 import { LoopState } from './state/LoopState.js';
 import { ConversationState } from './state/ConversationState.js';
-import { isValidSystemSource } from './state/systemSource.js';
+import { isValidSystemSource } from '@blade-ai/agent/state';
 import type { LoopSkillState } from './state/TurnState.js';
 import type { TokenBudget } from '@blade-ai/agent/budget';
 import type {

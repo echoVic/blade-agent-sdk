@@ -1,6 +1,6 @@
 import { NOOP_LOGGER } from '../../logging/Logger.js';
 import type { AgentEvent } from '../AgentEvent.js';
-import { ExecutionEpoch } from '../ExecutionEpoch.js';
+import { ExecutionEpoch } from '@blade-ai/agent/epoch';
 import type { LoopResult } from '../types.js';
 import { handleAgentLoopWithEmissions } from './agentLoop.js';
 import type { AgentLoopConfig } from './adapterContracts.js';
