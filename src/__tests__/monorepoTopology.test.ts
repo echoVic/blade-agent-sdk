@@ -544,6 +544,17 @@ describe('monorepo topology', () => {
     }
   });
 
+  it('keeps root integration tests on public agent-sdk subpaths', () => {
+    const integrationTestSource = readFileSync('src/__tests__/integration.test.ts', 'utf-8');
+    const rootTsconfigSource = readFileSync('tsconfig.json', 'utf-8');
+    const vitestConfigSource = readFileSync('vitest.config.ts', 'utf-8');
+
+    expect(integrationTestSource).toContain("from '@blade-ai/agent-sdk/local'");
+    expect(integrationTestSource).not.toContain('../../packages/agent-sdk/src');
+    expect(rootTsconfigSource).toContain('"@blade-ai/agent-sdk/local"');
+    expect(vitestConfigSource).toContain("'@blade-ai/agent-sdk/local'");
+  });
+
   it('keeps package-local session runtime on explicit agent package subpaths', () => {
     const files = [
       'packages/agent-sdk/src/session/kernelFactory.ts',

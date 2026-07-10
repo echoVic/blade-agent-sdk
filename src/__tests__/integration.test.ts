@@ -34,7 +34,7 @@ import {
   type ProviderType,
   type StreamMessage,
 } from '../index.js';
-import { createSdkMcpServer, tool } from '../../packages/agent-sdk/src/local/index.js';
+import { createSdkMcpServer, tool } from '@blade-ai/agent-sdk/local';
 
 // @ts-expect-error dynamic mjs helper is loaded at runtime by integration tests.
 const { loadLiveGlmConfig } = await import('../../scripts/live-glm-config.mjs');

@@ -9,6 +9,7 @@ export default defineConfig({
   resolve: {
     alias: {
       '@': resolve(__dirname, 'src'),
+      '@blade-ai/agent-sdk/local': resolve(__dirname, 'packages/agent-sdk/src/local/index.ts'),
       '@blade-ai/agent-sdk/session/internal': resolve(__dirname, 'packages/agent-sdk/src/session/internal.ts'),
       '@blade-ai/ai/chat': resolve(__dirname, 'packages/ai/src/chat/index.ts'),
       '@blade-ai/ai/deepseek': resolve(__dirname, 'packages/ai/src/deepseek/index.ts'),
