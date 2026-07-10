@@ -234,7 +234,6 @@ describe('monorepo topology', () => {
       'src/agent/types.ts',
       'src/agent/loop/adapterContracts.ts',
       'src/agent/loop/runTurn.ts',
-      'src/agent/loop/streamChatResponse.ts',
       'src/agent/state/ConversationState.ts',
       'src/agent/state/LoopState.ts',
       'src/agent/state/TurnState.ts',
@@ -1650,10 +1649,10 @@ describe('monorepo topology', () => {
     ] as const;
     const retiredRootLoopAdapters = [
       'src/agent/loop/executeToolCalls.ts',
-      'src/agent/loop/streamChatResponse.ts',
     ] as const;
 
     expect(existsSync('packages/agent-sdk/src/session/internal.ts')).toBe(true);
+    expect(existsSync('src/agent/loop/streamChatResponse.ts')).toBe(false);
     expect(sdkPackage.exports?.['./session/internal']).toEqual({
       types: './dist/session/internal.d.ts',
       browser: './dist/browser/server-only-stub.js',
@@ -2014,9 +2013,6 @@ describe('monorepo topology', () => {
       'packages/agent-sdk/src/session/streamChatResponse.ts',
     )
       ? readFileSync('packages/agent-sdk/src/session/streamChatResponse.ts', 'utf-8')
-      : '';
-    const rootStreamChatResponseSource = existsSync('src/agent/loop/streamChatResponse.ts')
-      ? readFileSync('src/agent/loop/streamChatResponse.ts', 'utf-8')
       : '';
     const runtimeAgentKernelsSource = existsSync(
       'packages/agent-sdk/src/session/runtimeAgentKernels.ts',
@@ -2819,11 +2815,10 @@ describe('monorepo topology', () => {
     expect(streamingToolExecutorSource).toContain('runPackageLocalToolCall');
     expect(existsSync('packages/agent-sdk/src/session/streamChatResponse.ts')).toBe(true);
     expect(existsSync('packages/agent-sdk/src/__tests__/streamChatResponse.test.ts')).toBe(true);
+    expect(existsSync('src/agent/loop/streamChatResponse.ts')).toBe(false);
     expect(existsSync('src/agent/loop/__tests__/streamChatResponse.test.ts')).toBe(false);
     expect(streamChatResponseSource).not.toContain('../../../src/');
     expect(streamChatResponseSource).toContain('streamPackageLocalChatResponse');
-    expect(rootStreamChatResponseSource).not.toContain('streamPackageLocalChatResponse');
-    expect(rootStreamChatResponseSource).toContain('chatService.streamChat');
     expect(packageLocalRuntimeInstanceSource).toContain(
       'createPackageLocalRuntimeExecutionOperations',
     );
