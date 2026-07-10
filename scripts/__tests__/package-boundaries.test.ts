@@ -427,6 +427,29 @@ describe('package boundary verifier', () => {
     expect(result.stderr).toContain('@blade-ai/ai/deepseek');
   });
 
+  it('rejects legacy root agent imports from root DeepSeek provider helpers', () => {
+    const cwd = createBoundaryFixture();
+    mkdirSync(join(cwd, 'src', 'agent'), { recursive: true });
+    mkdirSync(join(cwd, 'src', 'services'), { recursive: true });
+    writeFileSync(join(cwd, 'src', 'services', 'deepseek.ts'), 'export const deepseek = {};\n');
+    writeFileSync(
+      join(cwd, 'src', 'agent', 'feature.ts'),
+      "import { deepseek } from '../services/deepseek.js';\nexport { deepseek };\n",
+    );
+
+    const result = spawnSync(process.execPath, [
+      resolve('scripts/verify-package-boundaries.mjs'),
+    ], {
+      cwd,
+      encoding: 'utf8',
+    });
+
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain('src/agent/feature.ts');
+    expect(result.stderr).toContain('../services/deepseek.js');
+    expect(result.stderr).toContain('@blade-ai/ai/deepseek');
+  });
+
   it('rejects ai source imports from its own public facade', () => {
     const cwd = createBoundaryFixture();
     mkdirSync(join(cwd, 'packages', 'ai', 'src', 'model'), { recursive: true });

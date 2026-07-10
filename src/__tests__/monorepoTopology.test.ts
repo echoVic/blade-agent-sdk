@@ -165,6 +165,13 @@ describe('monorepo topology', () => {
     expect(sessionModelPortSource).not.toContain("from '../services/deepseek.js'");
   });
 
+  it('keeps legacy root model management on ai provider helper subpaths', () => {
+    const modelManagerSource = readFileSync('src/agent/ModelManager.ts', 'utf-8');
+
+    expect(modelManagerSource).toContain("from '@blade-ai/ai/deepseek'");
+    expect(modelManagerSource).not.toContain("from '../services/deepseek.js'");
+  });
+
   it('keeps package-local session runtime on explicit agent package subpaths', () => {
     const files = [
       'packages/agent-sdk/src/session/kernelFactory.ts',

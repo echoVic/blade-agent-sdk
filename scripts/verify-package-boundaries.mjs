@@ -129,12 +129,12 @@ const rootSourceRules = [
 
 const rootScopedSourceRules = [
   {
-    name: 'legacy root session source',
-    sourceDirs: ['src/session'],
+    name: 'legacy root provider-helper consumers',
+    sourceDirs: ['src/session', 'src/agent'],
     disallowedSpecifiers: [
       [
         /(?:^|\/)services\/deepseek\.js$/,
-        'Legacy root session source must import DeepSeek provider helpers from @blade-ai/ai/deepseek',
+        'Legacy root provider-helper consumers must import DeepSeek provider helpers from @blade-ai/ai/deepseek',
       ],
     ],
   },
