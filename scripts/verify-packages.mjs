@@ -7,6 +7,7 @@ import { fileURLToPath } from 'node:url';
 import { stringify } from 'yaml';
 import {
   agentSdkCoreDeclarationBrowserSafeRules,
+  agentSdkEagerLegacySessionRuntimeClosureRules,
   agentSdkLocalAdapterBoundaryRules,
   agentSdkPermissionDeclarationBoundaryRules,
   agentSdkRootDeclarationEntryOwnershipRules,
@@ -1099,19 +1100,14 @@ function verifyNoEagerLegacySessionRuntime(spec, tarballPath, tempDir) {
   run('tar', ['-xzf', tarballPath, '-C', extractDir]);
 
   const eagerFiles = collectPackedStaticImports(join(extractDir, sessionEntry), packageDir);
-  const forbiddenMarkers = [
-    '../../src/session/Session.ts',
-    '../../src/session/SessionRuntime.ts',
-    '../../src/session/SessionStore.ts',
-  ];
 
   for (const filePath of eagerFiles) {
     const source = readFileSync(filePath, 'utf8');
     const relativeFilePath = filePath.slice(`${extractDir}/`.length);
-    for (const marker of forbiddenMarkers) {
-      if (source.includes(marker)) {
+    for (const rule of agentSdkEagerLegacySessionRuntimeClosureRules) {
+      if (source.includes(rule.forbidden)) {
         throw new Error(
-          `${spec.name} ${relativeFilePath}: public session entry eagerly includes legacy root session runtime marker ${marker}`,
+          `${spec.name} ${relativeFilePath}: public session entry eagerly includes legacy root session runtime marker ${rule.forbidden}`,
         );
       }
     }

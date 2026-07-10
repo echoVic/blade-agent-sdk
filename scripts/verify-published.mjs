@@ -9,6 +9,7 @@ import { promisify } from 'node:util';
 import ssri from 'ssri';
 import {
   agentSdkCoreDeclarationBrowserSafeRules,
+  agentSdkEagerLegacySessionRuntimeClosureRules,
   agentSdkLocalAdapterBoundaryRules,
   agentSdkPermissionDeclarationBoundaryRules,
   agentSdkRootDeclarationEntryOwnershipRules,
@@ -516,6 +517,7 @@ if (Object.keys(agentPorts).length !== 0) {
     await verifyPublishedCoreDeclarationBoundary({ consumerDir });
     await verifyPublishedSessionPublicDeclarationBoundary({ consumerDir });
     await verifyPublishedSessionEntrySessionBoundary({ consumerDir });
+    await verifyPublishedNoEagerLegacySessionRuntime({ consumerDir });
     await verifyPublishedSessionFactoryDeclarationBoundary({ consumerDir });
     await verifyPublishedSessionConfigDeclarationBoundary({ consumerDir });
     await verifyPublishedSessionStoreDeclarationBoundary({ consumerDir });
@@ -1514,6 +1516,27 @@ async function verifyPublishedSessionEntrySessionBoundary({ consumerDir }) {
     const source = await readFile(rule.path, 'utf8');
     if (source.includes(rule.forbidden)) {
       throw new Error(`${rule.path}: ${rule.message}`);
+    }
+  }
+}
+
+async function verifyPublishedNoEagerLegacySessionRuntime({ consumerDir }) {
+  const packageDir = join(consumerDir, 'node_modules/@blade-ai/agent-sdk');
+  const sessionEntry = join(packageDir, 'dist/session/index.js');
+
+  if (!(await pathExists(sessionEntry))) {
+    throw new Error('@blade-ai/agent-sdk published session entry is missing: dist/session/index.js');
+  }
+
+  for (const filePath of await collectPublishedStaticImports(sessionEntry, packageDir)) {
+    const source = await readFile(filePath, 'utf8');
+    const relativeFilePath = relative(consumerDir, filePath).replaceAll('\\', '/');
+    for (const rule of agentSdkEagerLegacySessionRuntimeClosureRules) {
+      if (source.includes(rule.forbidden)) {
+        throw new Error(
+          `@blade-ai/agent-sdk ${relativeFilePath}: public session entry eagerly includes legacy root session runtime marker ${rule.forbidden}`,
+        );
+      }
     }
   }
 }

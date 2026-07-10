@@ -370,6 +370,30 @@ describe('package entrypoints', () => {
     expect(publishedVerifier).toContain('agentSdkSessionEntrySessionBoundaryRules');
   });
 
+  it('shares eager legacy session runtime closure rules across packed and published verifiers', () => {
+    const sharedRulesPath = 'scripts/agent-sdk-boundary-rules.mjs';
+
+    expect(existsSync(join(process.cwd(), sharedRulesPath)), sharedRulesPath).toBe(true);
+
+    const sharedRules = readFileSync(sharedRulesPath, 'utf-8');
+    const packageVerifier = readFileSync('scripts/verify-packages.mjs', 'utf-8');
+    const publishedVerifier = readFileSync('scripts/verify-published.mjs', 'utf-8');
+
+    expect(sharedRules).toContain('agentSdkEagerLegacySessionRuntimeClosureRules');
+    expect(sharedRules).toContain('../../src/session/Session.ts');
+    expect(sharedRules).toContain('../../src/session/SessionRuntime.ts');
+    expect(sharedRules).toContain('../../src/session/SessionStore.ts');
+    expect(sharedRules).toContain('public session entry must not eagerly include legacy root session runtime');
+    expect(packageVerifier).toContain('agentSdkEagerLegacySessionRuntimeClosureRules');
+    expect(packageVerifier).not.toContain('const forbiddenMarkers = [');
+    expect(packageVerifier).toContain('for (const rule of agentSdkEagerLegacySessionRuntimeClosureRules)');
+    expect(packageVerifier).toContain('public session entry eagerly includes legacy root session runtime marker');
+    expect(packageVerifier).toContain('rule.forbidden');
+    expect(publishedVerifier).toContain('agentSdkEagerLegacySessionRuntimeClosureRules');
+    expect(publishedVerifier).toContain('verifyPublishedNoEagerLegacySessionRuntime');
+    expect(publishedVerifier).toContain('for (const rule of agentSdkEagerLegacySessionRuntimeClosureRules)');
+  });
+
   it('shares session factory declaration boundary rules across local packed and published verifiers', () => {
     const sharedRulesPath = 'scripts/agent-sdk-boundary-rules.mjs';
 

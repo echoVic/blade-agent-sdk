@@ -169,6 +169,21 @@ export const agentSdkSessionEntrySessionBoundaryRules = [
   },
 ];
 
+export const agentSdkEagerLegacySessionRuntimeClosureRules = [
+  {
+    forbidden: '../../src/session/Session.ts',
+    message: 'public session entry must not eagerly include legacy root session runtime',
+  },
+  {
+    forbidden: '../../src/session/SessionRuntime.ts',
+    message: 'public session entry must not eagerly include legacy root session runtime',
+  },
+  {
+    forbidden: '../../src/session/SessionStore.ts',
+    message: 'public session entry must not eagerly include legacy root session runtime',
+  },
+];
+
 export const agentSdkSessionFactoryDeclarationBoundaryRules = [
   {
     file: 'dist/session/factory.d.ts',
