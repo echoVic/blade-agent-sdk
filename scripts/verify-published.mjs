@@ -11,6 +11,7 @@ import {
   agentSdkCoreDeclarationBrowserSafeRules,
   agentSdkLocalAdapterBoundaryRules,
   agentSdkPermissionDeclarationBoundaryRules,
+  agentSdkRootPublicDeclarationBoundaryRules,
   agentSdkRootSubagentCompatibilityBoundaryRules,
   agentSdkServerFacadeBoundaryRules,
   agentSdkSessionConfigDeclarationBoundaryRules,
@@ -1601,49 +1602,19 @@ async function verifyPublishedRootSubagentCompatibilityBoundary({ consumerDir })
 }
 
 async function verifyPublishedRootDeclarationBoundary({ consumerDir }) {
-  const declarationPath = join(
-    consumerDir,
-    'node_modules/@blade-ai/agent-sdk/dist/index.d.ts',
+  const rules = toInstalledForbiddenFileRules(
+    join(consumerDir, 'node_modules/@blade-ai/agent-sdk'),
+    agentSdkRootPublicDeclarationBoundaryRules.map((rule) => ({
+      file: 'dist/index.d.ts',
+      forbidden: rule.forbidden,
+      message: `published ${rule.message}`,
+    })),
   );
-  const declarationSource = await readFile(declarationPath, 'utf8');
-  const forbiddenRootDeclarations = [
-    {
-      forbidden: 'getBuiltinTools',
-      message: 'published root declarations must keep Node-local builtin tools behind @blade-ai/agent-sdk/local',
-    },
-    {
-      forbidden: 'createSdkMcpServer',
-      message: 'published root declarations must keep Node-local MCP helpers behind @blade-ai/agent-sdk/local',
-    },
-    {
-      forbidden: 'FileSystemMemoryStore',
-      message: 'published root declarations must keep filesystem memory adapters behind @blade-ai/agent-sdk/local',
-    },
-    {
-      forbidden: 'SandboxExecutor',
-      message: 'published root declarations must keep sandbox adapters behind @blade-ai/agent-sdk/local',
-    },
-    {
-      forbidden: 'normalizeDeepSeekModel',
-      message: 'published root declarations must keep provider-specific DeepSeek helpers in @blade-ai/ai/deepseek',
-    },
-    {
-      forbidden: 'calculateDeepSeekCost',
-      message: 'published root declarations must keep provider-specific DeepSeek helpers in @blade-ai/ai/deepseek',
-    },
-    {
-      forbidden: 'DeepSeekCostTracker',
-      message: 'published root declarations must keep provider-specific DeepSeek helpers in @blade-ai/ai/deepseek',
-    },
-    {
-      forbidden: 'DEEPSEEK_DEFAULT_MODEL',
-      message: 'published root declarations must keep provider-specific DeepSeek helpers in @blade-ai/ai/deepseek',
-    },
-  ];
 
-  for (const rule of forbiddenRootDeclarations) {
-    if (declarationSource.includes(rule.forbidden)) {
-      throw new Error(`${declarationPath}: ${rule.message}`);
+  for (const rule of rules) {
+    const source = await readFile(rule.path, 'utf8');
+    if (source.includes(rule.forbidden)) {
+      throw new Error(`${rule.path}: ${rule.message}`);
     }
   }
 }
