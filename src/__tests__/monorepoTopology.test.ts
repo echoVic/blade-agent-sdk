@@ -134,6 +134,33 @@ describe('monorepo topology', () => {
     }
   });
 
+  it('keeps legacy root session runtime on explicit agent package subpaths', () => {
+    const rootTsconfig = readJson('tsconfig.json');
+    const files = [
+      'src/session/SessionRuntime.ts',
+      'src/session/SessionModelPort.ts',
+      'src/session/__tests__/SessionKernelAdapter.test.ts',
+      'src/session/__tests__/SessionKernelStoreAdapter.test.ts',
+      'src/session/__tests__/SessionKernelTraceAdapter.test.ts',
+    ];
+
+    expect(rootTsconfig.compilerOptions?.paths).toMatchObject({
+      '@blade-ai/agent/kernel': ['./packages/agent/src/kernel/AgentKernel.ts'],
+      '@blade-ai/agent/ports': ['./packages/agent/src/ports/index.ts'],
+      '@blade-ai/agent/protocol': ['./packages/agent/src/protocol/index.ts'],
+      '@blade-ai/agent/state': ['./packages/agent/src/state/index.ts'],
+      '@blade-ai/agent/tracing': ['./packages/agent/src/tracing/index.ts'],
+    });
+
+    for (const file of files) {
+      const source = readFileSync(file, 'utf-8');
+
+      expect(source, `${file} should not rely on the agent root barrel`).not.toContain(
+        "from '@blade-ai/agent'",
+      );
+    }
+  });
+
   it('keeps package-local session runtime on explicit agent package subpaths', () => {
     const files = [
       'packages/agent-sdk/src/session/kernelFactory.ts',

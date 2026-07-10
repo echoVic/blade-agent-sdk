@@ -1,6 +1,6 @@
 import type { ModelPort } from '@blade-ai/ai';
 import { createVercelModelPort } from '@blade-ai/ai/providers/vercel';
-import type { AgentModelRequestDefaults } from '@blade-ai/agent';
+import type { AgentModelRequestDefaults } from '@blade-ai/agent/kernel';
 import { withDeepSeekDefaults } from '../services/deepseek.js';
 import type { BladeConfig, ModelConfig } from '../types/common.js';
 import { isThinkingModel } from '../utils/modelDetection.js';

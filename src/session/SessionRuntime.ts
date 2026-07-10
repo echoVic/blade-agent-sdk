@@ -1,16 +1,14 @@
 import { basename, dirname } from 'node:path';
 import type { ModelPort } from '@blade-ai/ai';
-import {
-  AgentKernel,
-  type AgentHookPort,
-  type AgentModelRequestDefaults,
-  type AgentPermissionUpdate,
-  type AgentStreamEvent,
-  type AgentStorePort,
-  type AgentToolCall,
-  type AgentToolPort,
-  type AgentTracePort,
-} from '@blade-ai/agent';
+import { AgentKernel, type AgentModelRequestDefaults } from '@blade-ai/agent/kernel';
+import type { AgentHookPort, AgentToolPort } from '@blade-ai/agent/ports';
+import type {
+  AgentPermissionUpdate,
+  AgentStreamEvent,
+  AgentToolCall,
+} from '@blade-ai/agent/protocol';
+import type { AgentStorePort } from '@blade-ai/agent/state';
+import type { AgentTracePort } from '@blade-ai/agent/tracing';
 import type { AgentRuntimeDeps } from '../agent/Agent.js';
 import { AgentSessionStore } from '../agent/subagents/AgentSessionStore.js';
 import { BackgroundAgentManager } from '../agent/subagents/BackgroundAgentManager.js';

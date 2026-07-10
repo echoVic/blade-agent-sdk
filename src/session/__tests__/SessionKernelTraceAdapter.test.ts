@@ -1,4 +1,4 @@
-import type { AgentTraceEvent } from '@blade-ai/agent';
+import type { AgentTraceEvent } from '@blade-ai/agent/tracing';
 import { describe, expect, it } from 'vitest';
 import { TraceRecorder } from '../../observability/TraceRecorder.js';
 import { SessionId } from '../../types/branded.js';

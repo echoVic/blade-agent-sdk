@@ -1,5 +1,5 @@
 import type { ModelMessage } from '@blade-ai/ai';
-import type { AgentStoreAppendContext } from '@blade-ai/agent';
+import type { AgentStoreAppendContext } from '@blade-ai/agent/state';
 import { describe, expect, it, vi } from 'vitest';
 import { createKernelStorePort } from '../SessionKernelStoreAdapter.js';
 

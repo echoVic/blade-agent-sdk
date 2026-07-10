@@ -1,4 +1,4 @@
-import type { AgentToolCall } from '@blade-ai/agent';
+import type { AgentToolCall } from '@blade-ai/agent/protocol';
 import { describe, expect, it } from 'vitest';
 import { z } from 'zod';
 import { createTool } from '../../tools/core/createTool.js';
