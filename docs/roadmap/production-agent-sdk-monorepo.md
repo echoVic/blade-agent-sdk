@@ -95,6 +95,7 @@ Current guardrails:
 - `pnpm run verify:boundaries` treats `@blade-ai/agent-sdk` browser/core/errors/tools source as browser-safe and rejects Node-only, MCP, local filesystem, terminal, and server HTTP runtime imports anywhere in their package-local static import closure.
 - `pnpm run verify:entrypoints`, `pnpm run verify:packages`, and `pnpm run verify:published` walk the local, packed, and npm-installed browser-safe static import closures for `@blade-ai/agent-sdk` browser, core, errors, and tools entries.
 - `pnpm run verify:boundaries` requires `@blade-ai/agent-sdk` source manifest browser conditions to keep root/browser/core/errors/tools on browser-safe dist entries and server/local/session-only exports on `./dist/browser/server-only-stub.js`.
+- `pnpm run test:unit` scans README, package README, and VitePress docs for browser/client fenced code import examples, rejecting root/server/session/local `@blade-ai/agent-sdk` imports in client-facing sections.
 - Package manifests for `@blade-ai/ai`, `@blade-ai/agent`, and `@blade-ai/agent-sdk` must not expose CLI product capabilities through `bin`, `./cli`, or `cli` keywords; future Pi-style coding-agent / CLI product behavior belongs in a separate package.
 - Package export-map rules now share the same helper predicates across source, packed, and published verification: allowed public conditions, root export shape, metadata export shape, condition ordering, and public subpath shape are no longer duplicated across verifier scripts.
 - `pnpm run verify:release` keeps the workspace root as a private non-publishable orchestrator, rejects root `publishConfig` / `files` metadata, and fails any semantic-release npm plugin configuration that would publish the root package instead of the three package roots.
@@ -1222,6 +1223,7 @@ Status:
 - Thirteenth documentation increment complete: the README and package guide now document `@blade-ai/agent-sdk/server` as an explicit server-only facade that composes session/core/tools/subagent exports without wildcard-forwarding through root, matching the packed and post-publish verifier guardrails.
 - Fourteenth documentation increment complete: the README and package guide now clarify that `@blade-ai/agent-sdk/server` stays aligned with the root entry's server-safe runtime/type surface while remaining independently auditable as an explicit facade.
 - Fifteenth documentation increment complete: the package-boundary examples now type-check `@blade-ai/agent/budget` through the examples path map, and `examples/agent-kernel.ts` demonstrates injecting `TokenBudget` plus handling `budget_warning` / `budget_exhausted` events. The package guide documents the explicit budget subpath alongside the runtime-independent `AgentKernel` import.
+- Sixteenth documentation increment complete: root unit tests now include a docs browser/client import policy scanner. README, package README, and VitePress docs can continue showing session-first root imports for server/CLI sections, but browser/client fenced code sections must not recommend `@blade-ai/agent-sdk` root, server, session, or local imports.
 
 Commit:
 
