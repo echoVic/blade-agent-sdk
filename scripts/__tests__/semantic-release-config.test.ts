@@ -245,6 +245,8 @@ describe('package provenance metadata', () => {
     expect(packageVerifier).toContain('totalOnlyChatUsage');
     expect(packageVerifier).toContain("import { createOpenAICompatibleModelPort } from '@blade-ai/ai';");
     expect(packageVerifier).toContain("import { AgentKernel } from '@blade-ai/agent';");
+    expect(packageVerifier).toContain("import type { AgentStreamEvent } from '@blade-ai/agent/protocol';");
+    expect(packageVerifier).not.toContain("import type { AgentStreamEvent } from '@blade-ai/agent';");
     expect(packageVerifier).toContain("from '@blade-ai/agent/budget';");
     expect(packageVerifier).toContain("from '@blade-ai/agent/epoch';");
     expect(packageVerifier).toContain('toPackedForbiddenFileRules(agentSdkSessionPublicDeclarationBoundaryRules)');

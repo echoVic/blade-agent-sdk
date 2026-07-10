@@ -1400,7 +1400,6 @@ import type { OpenAICompatibleModelPortOptions } from '@blade-ai/ai/providers/op
 import { createOpenAICompatibleModelPort as createCompatibleModelPortFromSubpath } from '@blade-ai/ai/providers/openai-compatible';
 import type { VercelLanguageModelOptions } from '@blade-ai/ai/providers/vercel';
 import { createVercelModelPort } from '@blade-ai/ai/providers/vercel';
-import type { AgentStreamEvent } from '@blade-ai/agent';
 import { AgentKernel } from '@blade-ai/agent';
 import type {
   TokenBudgetConfig,
@@ -1430,8 +1429,8 @@ import type {
   ToolExecutionPlan,
   ToolInterruptBehavior,
 } from '@blade-ai/agent/loop';
+import type { AgentStreamEvent } from '@blade-ai/agent/protocol';
 import type {
-  AgentStreamEvent as AgentProtocolStreamEvent,
   AgentToolCall,
   AgentToolResult,
 } from '@blade-ai/agent/protocol';
@@ -1709,7 +1708,7 @@ const agentToolResult: AgentToolResult = {
   name: agentToolCall.name,
   output: 'hello',
 };
-const agentProtocolEvent: AgentProtocolStreamEvent = {
+const agentProtocolEvent: AgentStreamEvent = {
   type: 'tool_result',
   result: agentToolResult,
 };
