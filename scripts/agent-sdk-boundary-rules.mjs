@@ -167,6 +167,39 @@ export const agentSdkSessionStoreDeclarationBoundaryRules = [
   },
 ];
 
+export const agentSdkToolsEntryBoundaryRules = [
+  {
+    file: 'dist/tools/index.d.ts',
+    forbidden: './core/createTool.js',
+    message: 'tools declarations must be emitted from package-local tools entry source',
+  },
+  {
+    file: 'dist/tools/index.d.ts',
+    forbidden: './catalog/index.js',
+    message: 'tools declarations must be emitted from package-local tools entry source',
+  },
+  {
+    file: 'dist/tools/index.d.ts',
+    forbidden: '../core/createTool.js',
+    message: 'tools declarations must be emitted from package-local tools entry source',
+  },
+  {
+    file: 'dist/tools/index.d.ts',
+    forbidden: '../catalog/ToolCatalog.js',
+    message: 'tools declarations must be emitted from package-local tools entry source',
+  },
+  {
+    file: 'dist/tools/index.js',
+    forbidden: 'src/tools/core/createTool',
+    message: 'tools runtime must be emitted from package-local tools source',
+  },
+  {
+    file: 'dist/tools/index.js',
+    forbidden: 'src/tools/catalog/ToolCatalog',
+    message: 'tools runtime must be emitted from package-local tools source',
+  },
+];
+
 export function toLocalForbiddenDeclarationRules(rules) {
   return rules.map((rule) => ({
     forbidden: rule.forbidden,

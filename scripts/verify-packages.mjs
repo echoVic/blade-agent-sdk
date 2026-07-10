@@ -14,6 +14,7 @@ import {
   agentSdkSessionFactoryDeclarationBoundaryRules,
   agentSdkSessionPublicDeclarationBoundaryRules,
   agentSdkSessionStoreDeclarationBoundaryRules,
+  agentSdkToolsEntryBoundaryRules,
   toPackedForbiddenFileContents,
   toPackedForbiddenFileRules,
 } from './agent-sdk-boundary-rules.mjs';
@@ -232,36 +233,7 @@ const packageSpecs = [
       ...toPackedForbiddenFileRules(agentSdkSessionFactoryDeclarationBoundaryRules),
       ...toPackedForbiddenFileRules(agentSdkSessionConfigDeclarationBoundaryRules),
       ...toPackedForbiddenFileRules(agentSdkSessionStoreDeclarationBoundaryRules),
-      {
-        file: 'package/dist/tools/index.d.ts',
-        forbidden: './core/createTool.js',
-        message: 'tools declarations must be emitted from package-local tools entry source',
-      },
-      {
-        file: 'package/dist/tools/index.d.ts',
-        forbidden: './catalog/index.js',
-        message: 'tools declarations must be emitted from package-local tools entry source',
-      },
-      {
-        file: 'package/dist/tools/index.js',
-        forbidden: 'src/tools/core/createTool',
-        message: 'tools runtime must be emitted from package-local tools source',
-      },
-      {
-        file: 'package/dist/tools/index.js',
-        forbidden: 'src/tools/catalog/ToolCatalog',
-        message: 'tools runtime must be emitted from package-local tools source',
-      },
-      {
-        file: 'package/dist/tools/index.d.ts',
-        forbidden: '../core/createTool.js',
-        message: 'tools declarations must be emitted from package-local tools entry source',
-      },
-      {
-        file: 'package/dist/tools/index.d.ts',
-        forbidden: '../catalog/ToolCatalog.js',
-        message: 'tools declarations must be emitted from package-local tools entry source',
-      },
+      ...toPackedForbiddenFileRules(agentSdkToolsEntryBoundaryRules),
       ...toPackedForbiddenFileContents('package/dist/index.d.ts', agentSdkRootDeclarationEntryOwnershipRules),
       {
         file: 'package/dist/index.js',

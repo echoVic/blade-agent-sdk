@@ -11,6 +11,7 @@ import {
   agentSdkSessionFactoryDeclarationBoundaryRules,
   agentSdkSessionPublicDeclarationBoundaryRules,
   agentSdkSessionStoreDeclarationBoundaryRules,
+  agentSdkToolsEntryBoundaryRules,
   toLocalForbiddenDeclarationRules,
 } from './agent-sdk-boundary-rules.mjs';
 import { bundleWithEsbuildRetry } from './esbuild-bundle.mjs';
@@ -294,39 +295,17 @@ console.log('local session store declaration boundary passed');
 
 assertNoForbiddenDeclarationSymbols(
   readFileSync(join(packageRoot, 'dist/tools/index.d.ts'), 'utf8'),
-  [
-    {
-      forbidden: './core/createTool.js',
-      message: 'local tools declarations must be emitted from package-local tools entry source',
-    },
-    {
-      forbidden: './catalog/index.js',
-      message: 'local tools declarations must be emitted from package-local tools entry source',
-    },
-    {
-      forbidden: '../core/createTool.js',
-      message: 'local tools declarations must be emitted from package-local tools entry source',
-    },
-    {
-      forbidden: '../catalog/ToolCatalog.js',
-      message: 'local tools declarations must be emitted from package-local tools entry source',
-    },
-  ],
+  toLocalForbiddenDeclarationRules(
+    agentSdkToolsEntryBoundaryRules.filter((rule) => rule.file === 'dist/tools/index.d.ts'),
+  ),
   'local tools declaration entry boundary',
 );
 
 assertNoForbiddenDeclarationSymbols(
   readFileSync(join(packageRoot, 'dist/tools/index.js'), 'utf8'),
-  [
-    {
-      forbidden: 'src/tools/core/createTool',
-      message: 'local tools runtime must be emitted from package-local tools source',
-    },
-    {
-      forbidden: 'src/tools/catalog/ToolCatalog',
-      message: 'local tools runtime must be emitted from package-local tools source',
-    },
-  ],
+  toLocalForbiddenDeclarationRules(
+    agentSdkToolsEntryBoundaryRules.filter((rule) => rule.file === 'dist/tools/index.js'),
+  ),
   'local tools runtime entry boundary',
 );
 console.log('local tools entry boundary passed');

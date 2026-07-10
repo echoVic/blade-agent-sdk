@@ -376,6 +376,35 @@ describe('package entrypoints', () => {
     expect(publishedVerifier).toContain('agentSdkSessionStoreDeclarationBoundaryRules');
   });
 
+  it('shares tools entry boundary rules across local packed and published verifiers', () => {
+    const sharedRulesPath = 'scripts/agent-sdk-boundary-rules.mjs';
+
+    expect(existsSync(join(process.cwd(), sharedRulesPath)), sharedRulesPath).toBe(true);
+
+    const sharedRules = readFileSync(sharedRulesPath, 'utf-8');
+    const entrypointVerifier = readFileSync('scripts/verify-entrypoints.mjs', 'utf-8');
+    const packageVerifier = readFileSync('scripts/verify-packages.mjs', 'utf-8');
+    const publishedVerifier = readFileSync('scripts/verify-published.mjs', 'utf-8');
+
+    expect(sharedRules).toContain('agentSdkToolsEntryBoundaryRules');
+    expect(sharedRules).toContain('dist/tools/index.d.ts');
+    expect(sharedRules).toContain('dist/tools/index.js');
+    expect(sharedRules).toContain('./core/createTool.js');
+    expect(sharedRules).toContain('./catalog/index.js');
+    expect(sharedRules).toContain('../core/createTool.js');
+    expect(sharedRules).toContain('../catalog/ToolCatalog.js');
+    expect(sharedRules).toContain('src/tools/core/createTool');
+    expect(sharedRules).toContain('src/tools/catalog/ToolCatalog');
+    expect(sharedRules).toContain('tools declarations must be emitted from package-local tools entry source');
+    expect(sharedRules).toContain('tools runtime must be emitted from package-local tools source');
+    expect(entrypointVerifier).toContain('agentSdkToolsEntryBoundaryRules');
+    expect(entrypointVerifier).toContain("rule.file === 'dist/tools/index.d.ts'");
+    expect(entrypointVerifier).toContain("rule.file === 'dist/tools/index.js'");
+    expect(packageVerifier).toContain('toPackedForbiddenFileRules(agentSdkToolsEntryBoundaryRules)');
+    expect(publishedVerifier).toContain('verifyPublishedToolsEntryBoundary');
+    expect(publishedVerifier).toContain('agentSdkToolsEntryBoundaryRules');
+  });
+
   it('runs the browser bundle check through the esbuild JS API', () => {
     const verifier = readFileSync('scripts/verify-entrypoints.mjs', 'utf-8');
     const helper = readFileSync('scripts/esbuild-bundle.mjs', 'utf-8');
@@ -445,8 +474,9 @@ describe('package entrypoints', () => {
     expect(verifier).toContain('local session config declaration boundary passed');
     expect(verifier).toContain('toLocalForbiddenDeclarationRules(agentSdkSessionStoreDeclarationBoundaryRules)');
     expect(verifier).toContain('local session store declaration boundary passed');
-    expect(verifier).toContain('local tools declarations must be emitted from package-local tools entry source');
-    expect(verifier).toContain('local tools runtime must be emitted from package-local tools source');
+    expect(verifier).toContain('agentSdkToolsEntryBoundaryRules');
+    expect(verifier).toContain("rule.file === 'dist/tools/index.d.ts'");
+    expect(verifier).toContain("rule.file === 'dist/tools/index.js'");
     expect(verifier).toContain('local tools entry boundary passed');
     expect(verifier).toContain('local declarations must be emitted from package-local local entry source');
     expect(verifier).toContain('local runtime entry must route through package-local local adapters');
