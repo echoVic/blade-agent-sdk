@@ -28,7 +28,7 @@ import {
   type RetryContext,
   type RetryEvent,
   withRetry,
-} from '../services/RetryPolicy.js';
+} from '@blade-ai/ai/retry';
 import {
   optimizeDeepSeekCachePrefix,
   shouldOmitDeepSeekSamplingOptions,

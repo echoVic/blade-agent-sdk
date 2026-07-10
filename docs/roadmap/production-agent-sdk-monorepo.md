@@ -216,6 +216,7 @@ Status:
 
 - First extraction increment complete: retry policy now lives in `@blade-ai/ai/retry`.
 - The legacy root path `src/services/RetryPolicy.ts` re-exports the package implementation so existing runtime code keeps working during migration.
+- Root runtime and root retry tests now import retry contracts directly from `@blade-ai/ai/retry`, with topology guarding `src/services/RetryPolicy.ts` as a pure transition shim instead of an active runtime dependency.
 - `@blade-ai/ai` now publishes a `./retry` subpath with JS and declaration output.
 - Chat protocol types now live in `@blade-ai/ai/chat`, including `ChatConfig`, `Message`, `UsageInfo`, `StreamChunk`, `ChatResponse`, and `IChatService`.
 - The legacy root `src/services/ChatServiceInterface.ts` no longer exports chat protocol types and now only re-exports the root session runtime `createChatServiceAsync()` factory as a transition shim.

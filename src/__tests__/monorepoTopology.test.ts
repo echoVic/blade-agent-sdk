@@ -426,9 +426,31 @@ describe('monorepo topology', () => {
     );
     expect(sessionServiceSource).toContain('export class VercelAIChatService');
     expect(sessionServiceSource).toContain("from '@blade-ai/ai/providers/vercel'");
-    expect(sessionServiceSource).toContain("from '../services/RetryPolicy.js'");
+    expect(sessionServiceSource).toContain("from '@blade-ai/ai/retry'");
     expect(serviceTestSource).toContain("await import('../../session/VercelAIChatService.js')");
     expect(serviceTestSource).not.toContain("await import('../VercelAIChatService.js')");
+  });
+
+  it('keeps the legacy root retry policy as an ai package shim', () => {
+    const legacyRetrySource = readFileSync('src/services/RetryPolicy.ts', 'utf-8');
+    const retryConsumers = [
+      'src/session/VercelAIChatService.ts',
+      'src/services/__tests__/RetryPolicy.test.ts',
+      'src/agent/__tests__/AgentLoop.test.ts',
+    ];
+
+    expect(legacyRetrySource.trim()).toBe("export * from '@blade-ai/ai/retry';");
+
+    for (const file of retryConsumers) {
+      const source = readFileSync(file, 'utf-8');
+
+      expect(source, `${file} should import retry contracts from ai`).toContain(
+        "from '@blade-ai/ai/retry'",
+      );
+      expect(source, `${file} should not import the legacy root retry shim`).not.toMatch(
+        /from ['"][^'"]*services\/RetryPolicy\.js['"]|from ['"][^'"]*RetryPolicy\.js['"]/,
+      );
+    }
   });
 
   it('keeps package-local session runtime on explicit agent package subpaths', () => {

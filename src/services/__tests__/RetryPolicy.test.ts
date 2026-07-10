@@ -9,7 +9,7 @@ import {
   isStaleConnectionError,
   parseContextOverflowError,
   withRetry,
-} from '../RetryPolicy.js';
+} from '@blade-ai/ai/retry';
 import { assertDefined } from '../../__tests__/helpers/assertDefined.js';
 
 /**
