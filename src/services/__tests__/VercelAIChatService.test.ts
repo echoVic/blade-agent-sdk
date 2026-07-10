@@ -38,7 +38,7 @@ vi.mock('@blade-ai/ai/providers/vercel', () => ({
   createVercelModelPort: mockCreateVercelModelPort,
 }));
 
-const { VercelAIChatService } = await import('../VercelAIChatService.js');
+const { VercelAIChatService } = await import('../../session/VercelAIChatService.js');
 
 describe('VercelAIChatService', () => {
   beforeEach(() => {

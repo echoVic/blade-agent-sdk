@@ -1,6 +1,6 @@
 import type { ChatConfig, IChatService } from '@blade-ai/ai/chat';
 import { type InternalLogger, LogCategory, NOOP_LOGGER } from '../logging/Logger.js';
-import { VercelAIChatService } from '../services/VercelAIChatService.js';
+import { VercelAIChatService } from './VercelAIChatService.js';
 
 function getProviderHeaders(_providerId: string): Record<string, string> {
   return {};

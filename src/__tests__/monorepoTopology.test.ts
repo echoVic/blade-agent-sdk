@@ -331,7 +331,7 @@ describe('monorepo topology', () => {
 
   it('keeps root service implementation chat protocol types on the ai chat subpath', () => {
     const files = [
-      'src/services/VercelAIChatService.ts',
+      'src/session/VercelAIChatService.ts',
       'src/services/messageUtils.ts',
       'src/services/__tests__/deepseek-deep.live.test.ts',
     ];
@@ -380,7 +380,7 @@ describe('monorepo topology', () => {
     );
     expect(chatServiceInterfaceSource).not.toContain('VercelAIChatService');
     expect(chatServiceFactorySource).toContain('function createChatServiceAsync');
-    expect(chatServiceFactorySource).toContain("from '../services/VercelAIChatService.js'");
+    expect(chatServiceFactorySource).toContain("from './VercelAIChatService.js'");
     expect(
       chatServiceInterfaceSource,
       'legacy root service path must not be a chat protocol type source',
@@ -414,6 +414,21 @@ describe('monorepo topology', () => {
         'ChatServiceInterface.js',
       );
     }
+  });
+
+  it('keeps the legacy root Vercel chat service as a session implementation shim', () => {
+    const legacyServiceSource = readFileSync('src/services/VercelAIChatService.ts', 'utf-8');
+    const sessionServiceSource = readFileSync('src/session/VercelAIChatService.ts', 'utf-8');
+    const serviceTestSource = readFileSync('src/services/__tests__/VercelAIChatService.test.ts', 'utf-8');
+
+    expect(legacyServiceSource.trim()).toBe(
+      "export { VercelAIChatService } from '../session/VercelAIChatService.js';",
+    );
+    expect(sessionServiceSource).toContain('export class VercelAIChatService');
+    expect(sessionServiceSource).toContain("from '@blade-ai/ai/providers/vercel'");
+    expect(sessionServiceSource).toContain("from '../services/RetryPolicy.js'");
+    expect(serviceTestSource).toContain("await import('../../session/VercelAIChatService.js')");
+    expect(serviceTestSource).not.toContain("await import('../VercelAIChatService.js')");
   });
 
   it('keeps package-local session runtime on explicit agent package subpaths', () => {
