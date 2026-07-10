@@ -615,7 +615,9 @@ describe('package entrypoints', () => {
     expect(publicTypeContracts).toContain(
       "import type { ModelPort, ModelRequest, ModelResponse, ModelStreamEvent, UsageInfo as ModelUsageInfo } from '@blade-ai/ai/model';",
     );
-    expect(publicTypeContracts).toContain("import type { ChatConfig } from '@blade-ai/ai/chat';");
+    expect(publicTypeContracts).toContain(
+      "import type { ChatConfig, ChatResponse, Message as ChatMessage, StreamChunk as ChatStreamChunk, UsageInfo as ChatUsageInfo } from '@blade-ai/ai/chat';",
+    );
     expect(publicTypeContracts).toContain(
       "import type { OpenAICompatibleModelPortOptions } from '@blade-ai/ai/providers/openai-compatible';",
     );
@@ -770,7 +772,11 @@ describe('package entrypoints', () => {
     );
     expect(localVerifier).toContain('const modelRequest: ModelRequest');
     expect(localVerifier).toContain('const modelStreamEvent: ModelStreamEvent');
-    expect(helper).toContain("import type { ChatConfig } from '@blade-ai/ai/chat';");
+    expect(helper).toContain(
+      "import type { ChatConfig, ChatResponse, Message as ChatMessage, StreamChunk as ChatStreamChunk, UsageInfo as ChatUsageInfo } from '@blade-ai/ai/chat';",
+    );
+    expect(localVerifier).toContain('const chatMessage: ChatMessage');
+    expect(localVerifier).toContain('const chatStreamChunk: ChatStreamChunk');
     expect(helper).toContain("import type { RetryConfig } from '@blade-ai/ai/retry';");
     expect(helper).toContain(
       "import type { OpenAICompatibleModelPortOptions } from '@blade-ai/ai/providers/openai-compatible';",

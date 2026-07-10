@@ -1028,6 +1028,7 @@ Status:
 - Three-hundred-eighth verification-chain increment complete: the local entrypoint TypeScript declaration smoke now imports and instantiates `AgentTracePort`, `BufferedAgentTracePort`, and `BufferedAgentTracePortOptions` from the explicit `@blade-ai/agent/tracing` subpath. This moves agent tracing port type coverage into the local dist gate before packed tarball or post-publish verification runs.
 - Three-hundred-ninth verification-chain increment complete: the local entrypoint TypeScript declaration smoke now imports and instantiates `AgentTurnInput` from the explicit `@blade-ai/agent/kernel` subpath. This moves kernel turn-input type coverage into the local dist gate before packed tarball or post-publish verification runs.
 - Three-hundred-tenth verification-chain increment complete: the local entrypoint TypeScript declaration smoke now imports and instantiates `ModelRequest`, `ModelResponse`, `ModelStreamEvent`, and model `UsageInfo` from the explicit `@blade-ai/ai/model` subpath. This moves model protocol type coverage into the local dist gate before packed tarball or post-publish verification runs.
+- Three-hundred-eleventh verification-chain increment complete: the local entrypoint TypeScript declaration smoke now imports and instantiates `ChatResponse`, `Message`, `StreamChunk`, and chat `UsageInfo` from the explicit `@blade-ai/ai/chat` subpath. This moves chat protocol type coverage into the local dist gate before packed tarball or post-publish verification runs.
 
 Commit:
 
