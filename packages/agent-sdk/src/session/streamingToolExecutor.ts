@@ -111,7 +111,7 @@ export class PackageLocalStreamingToolExecutor {
     let hasDispatchedTools = false;
 
     try {
-      const stream = chatService.streamChat(messages, tools as never, signal);
+      const stream = chatService.streamChat(messages, tools, signal);
 
       for await (const chunk of stream) {
         chunkCount += 1;

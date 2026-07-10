@@ -509,11 +509,11 @@ describe('package boundary verifier', () => {
     expect(result.stderr).toContain('migration-only session internal subpath');
   });
 
-  it('rejects the root agent loop adapter importing the wrong bridge', () => {
+  it('rejects the retired root runTurn adapter as a session internal consumer', () => {
     const cwd = createBoundaryFixture();
     mkdirSync(join(cwd, 'src', 'agent', 'loop'), { recursive: true });
     writeFileSync(
-      join(cwd, 'src', 'agent', 'loop', 'rootAgentLoopAdapter.ts'),
+      join(cwd, 'src', 'agent', 'loop', 'runTurn.ts'),
       "import { runPackageLocalTurn } from '@blade-ai/agent-sdk/session/internal';\nexport { runPackageLocalTurn };\n",
     );
 
@@ -525,8 +525,29 @@ describe('package boundary verifier', () => {
     });
 
     expect(result.status).toBe(1);
+    expect(result.stderr).toContain('src/agent/loop/runTurn.ts');
+    expect(result.stderr).toContain('@blade-ai/agent-sdk/session/internal');
+    expect(result.stderr).toContain('migration-only session internal subpath');
+  });
+
+  it('rejects the root agent loop adapter importing the wrong bridge', () => {
+    const cwd = createBoundaryFixture();
+    mkdirSync(join(cwd, 'src', 'agent', 'loop'), { recursive: true });
+    writeFileSync(
+      join(cwd, 'src', 'agent', 'loop', 'rootAgentLoopAdapter.ts'),
+      "import { executePackageLocalToolCalls } from '@blade-ai/agent-sdk/session/internal';\nexport { executePackageLocalToolCalls };\n",
+    );
+
+    const result = spawnSync(process.execPath, [
+      resolve('scripts/verify-package-boundaries.mjs'),
+    ], {
+      cwd,
+      encoding: 'utf8',
+    });
+
+    expect(result.status).toBe(1);
     expect(result.stderr).toContain('src/agent/loop/rootAgentLoopAdapter.ts');
-    expect(result.stderr).toContain('runPackageLocalTurn');
+    expect(result.stderr).toContain('executePackageLocalToolCalls');
     expect(result.stderr).toContain('only import allowed session internal bridge');
   });
 

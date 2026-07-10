@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, expectTypeOf, it } from 'vitest';
 import type { AgentFunctionToolCall } from '../loop/planToolExecution.js';
 import type { ToolExecutionRegistryLike } from '../loop/toolBehavior.js';
 import {
@@ -49,6 +49,16 @@ describe('toolUpdateToAgentEvent', () => {
       toolCall,
       result,
     });
+  });
+
+  it('keeps the explicit generic parameter result-first', () => {
+    const result = { success: true as const, llmContent: 'typed' };
+    const event = buildAgentLoopToolResultEvent<typeof result>({
+      toolCall,
+      result,
+    });
+
+    expectTypeOf(event.result).toEqualTypeOf<typeof result>();
   });
 
   it('maps tool_progress / tool_message', () => {

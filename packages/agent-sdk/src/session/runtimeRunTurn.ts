@@ -7,11 +7,13 @@ import {
   AsyncEventQueue,
   type AgentLoopToolEvent,
   type AgentFunctionToolCall,
+  type AgentToolExecutionUpdatePayloads,
   toolUpdateToAgentEvent,
 } from '@blade-ai/agent/loop';
 import type { ExecutionEpoch } from '@blade-ai/agent/epoch';
 import type { JsonObject, PermissionMode } from '../types/common.js';
 import type {
+  ToolEffect,
   ToolResult,
 } from '../tools/types/index.js';
 import type {
@@ -78,6 +80,20 @@ export interface PackageLocalTurnOutcome {
   streamingExecutionResults?: PackageLocalStreamingExecutionResult[];
 }
 
+interface PackageLocalRunTurnToolEventPayloads extends AgentToolExecutionUpdatePayloads {
+  params: JsonObject;
+  runtimePatch: Extract<ToolEffect, { type: 'runtimePatch' }>['patch'];
+  contextPatch: Extract<ToolEffect, { type: 'contextPatch' }>['patch'];
+  newMessages: Extract<ToolEffect, { type: 'newMessages' }>['messages'];
+  permissionUpdates: Extract<ToolEffect, { type: 'permissionUpdates' }>['updates'];
+}
+
+type PackageLocalRunTurnToolEvent = AgentLoopToolEvent<
+  AgentFunctionToolCall,
+  ToolResult,
+  PackageLocalRunTurnToolEventPayloads
+>;
+
 export type PackageLocalRunTurnEvent =
   | { type: 'content_delta'; delta: string }
   | { type: 'thinking_delta'; delta: string }
@@ -92,7 +108,7 @@ export type PackageLocalRunTurnEvent =
         message: string;
       };
     }
-  | AgentLoopToolEvent;
+  | PackageLocalRunTurnToolEvent;
 
 export async function* runPackageLocalTurn(
   input: PackageLocalRunTurnInput,
@@ -201,7 +217,12 @@ async function* runPackageLocalStreamingTurnWithTools(
       },
       onToolExecutionUpdate: async (update) => {
         await toolHooks.onUpdate?.(update);
-        const agentEvent = toolUpdateToAgentEvent(update, registry);
+        const agentEvent = toolUpdateToAgentEvent<
+          AgentFunctionToolCall,
+          ToolResult,
+          PackageLocalRunTurnToolEventPayloads,
+          PackageLocalToolExecutionOutcome
+        >(update, registry);
         if (agentEvent) queue.enqueue(agentEvent);
       },
     }, epoch)

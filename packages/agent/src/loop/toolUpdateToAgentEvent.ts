@@ -16,58 +16,68 @@ export type AgentLoopToolExecutionUpdate = AgentToolExecutionUpdate<
   AgentLoopToolExecutionOutcome
 >;
 
-export type AgentLoopToolEvent =
+export type AgentLoopToolEvent<
+  TToolCall = AgentFunctionToolCall,
+  TResult = unknown,
+  TPayloads extends AgentToolExecutionUpdatePayloads = AgentToolExecutionUpdatePayloads,
+> =
   | {
       type: 'tool_start';
-      toolCall: AgentFunctionToolCall;
+      toolCall: TToolCall;
       toolKind?: ToolKind | string;
     }
   | {
       type: 'tool_result';
-      toolCall: AgentFunctionToolCall;
-      result: unknown;
+      toolCall: TToolCall;
+      result: TResult;
     }
   | {
       type: 'tool_progress';
-      toolCall: AgentFunctionToolCall;
+      toolCall: TToolCall;
       message: string;
     }
   | {
       type: 'tool_message';
-      toolCall: AgentFunctionToolCall;
+      toolCall: TToolCall;
       message: string;
     }
   | {
       type: 'tool_runtime_patch';
-      toolCall: AgentFunctionToolCall;
-      patch: unknown;
+      toolCall: TToolCall;
+      patch: TPayloads['runtimePatch'];
     }
   | {
       type: 'tool_context_patch';
-      toolCall: AgentFunctionToolCall;
-      patch: unknown;
+      toolCall: TToolCall;
+      patch: TPayloads['contextPatch'];
     }
   | {
       type: 'tool_new_messages';
-      toolCall: AgentFunctionToolCall;
-      messages: unknown;
+      toolCall: TToolCall;
+      messages: TPayloads['newMessages'];
     }
   | {
       type: 'tool_permission_updates';
-      toolCall: AgentFunctionToolCall;
-      updates: unknown;
+      toolCall: TToolCall;
+      updates: TPayloads['permissionUpdates'];
     };
 
-export interface AgentLoopToolResultEventInput<TResult = unknown> {
-  toolCall: AgentFunctionToolCall;
+export interface AgentLoopToolResultEventInput<
+  TResult = unknown,
+  TToolCall = AgentFunctionToolCall,
+> {
+  toolCall: TToolCall;
   result: TResult;
 }
 
-export function buildAgentLoopToolResultEvent<TResult>(
-  input: AgentLoopToolResultEventInput<TResult>,
+export function buildAgentLoopToolResultEvent<
+  TResult,
+  TToolCall = AgentFunctionToolCall,
+>(
+  input: AgentLoopToolResultEventInput<TResult, TToolCall>,
 ): {
   type: 'tool_result';
-  toolCall: AgentFunctionToolCall;
+  toolCall: TToolCall;
   result: TResult;
 } {
   return {
@@ -77,10 +87,15 @@ export function buildAgentLoopToolResultEvent<TResult>(
   };
 }
 
-export function toolUpdateToAgentEvent(
-  update: AgentLoopToolExecutionUpdate,
+export function toolUpdateToAgentEvent<
+  TToolCall extends AgentFunctionToolCall,
+  TResult,
+  TPayloads extends AgentToolExecutionUpdatePayloads,
+  TOutcome extends AgentToolExecutionOutcome<TToolCall, TResult>,
+>(
+  update: AgentToolExecutionUpdate<TToolCall, TResult, TPayloads, TOutcome>,
   registry: ToolExecutionRegistryLike,
-): AgentLoopToolEvent | null {
+): AgentLoopToolEvent<TToolCall, TResult, TPayloads> | null {
   switch (update.type) {
     case 'tool_ready': {
       const toolDef = registry.get(update.toolCall.function.name);

@@ -1,20 +1,16 @@
 import type {
   ChatResponse,
+  ChatToolDefinition,
   IChatService,
   Message,
   StreamToolCall,
 } from '@blade-ai/ai/chat';
-import type { JsonObject } from '../types/common.js';
 
 export interface PackageLocalStreamChatResponseLogger {
   warn(message: string): void;
 }
 
-export interface PackageLocalChatToolDefinition {
-  name: string;
-  description: string;
-  parameters: JsonObject;
-}
+export type PackageLocalChatToolDefinition = ChatToolDefinition;
 
 export type PackageLocalStreamDelta =
   | { type: 'content_delta'; delta: string }
@@ -100,7 +96,7 @@ export async function* streamPackageLocalChatResponse(
   const toolCallAccumulator = new Map<number, ToolCallAccumulatorEntry>();
 
   try {
-    const stream = chatService.streamChat(messages, tools as never, signal);
+    const stream = chatService.streamChat(messages, tools, signal);
     let chunkCount = 0;
 
     for await (const chunk of stream) {
@@ -139,7 +135,7 @@ export async function* streamPackageLocalChatResponse(
       && toolCallAccumulator.size === 0
     ) {
       logger?.warn('[Agent] 流式响应返回0个chunk，回退到非流式模式');
-      return chatService.chat(messages, tools as never, signal);
+      return chatService.chat(messages, tools, signal);
     }
 
     return {
@@ -151,7 +147,7 @@ export async function* streamPackageLocalChatResponse(
   } catch (error) {
     if (isPackageLocalStreamingNotSupportedError(error)) {
       logger?.warn('[Agent] 流式请求失败，降级到非流式模式');
-      return chatService.chat(messages, tools as never, signal);
+      return chatService.chat(messages, tools, signal);
     }
     throw error;
   }

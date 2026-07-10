@@ -1,5 +1,6 @@
-import type { Message, ToolCall } from '@blade-ai/ai/chat';
+import type { ChatResponse, Message, ToolCall } from '@blade-ai/ai/chat';
 import type { TokenBudget } from '@blade-ai/agent/budget';
+import type { ExecutionEpoch } from '@blade-ai/agent/epoch';
 import type { AgentFunctionToolCall as FunctionToolCall } from '@blade-ai/agent/loop';
 import type {
   ToolExecutionOutcomeOf as SdkToolExecutionOutcome,
@@ -65,6 +66,52 @@ export interface RunToolCallInput {
 export type RunToolCallPort = (
   input: RunToolCallInput,
 ) => Promise<ToolExecutionOutcome>;
+
+export interface RunTurnToolHooks {
+  onBeforeExec?: (ctx: {
+    toolCall: FunctionToolCall;
+    params: JsonObject;
+  }) => Promise<string | null>;
+  onAfterExec?: (ctx: {
+    toolCall: FunctionToolCall;
+    result: ToolResult;
+    toolUseUuid: string | null;
+  }) => Promise<void>;
+  onAfterExecEpochDiscard?: (ctx: {
+    toolCall: FunctionToolCall;
+    toolUseUuid: string | null;
+    reason: string;
+  }) => Promise<void>;
+  onUpdate?: (update: ToolExecutionUpdate) => Promise<void> | void;
+}
+
+export interface RunTurnInput {
+  turnState: TurnState;
+  messages: readonly Message[];
+  executionPipeline: ExecutionPipeline;
+  streaming?: boolean;
+  signal?: AbortSignal;
+  epoch: ExecutionEpoch;
+  executionContext: ToolExecutionContext;
+  permissionMode?: PermissionMode;
+  toolHooks: RunTurnToolHooks;
+  logger?: InternalLogger;
+}
+
+export interface StreamingExecutionResult {
+  toolCall: FunctionToolCall;
+  result: ToolResult;
+  toolUseUuid: string | null;
+}
+
+export interface TurnOutcome {
+  chatResponse: ChatResponse;
+  streamingExecutionResults?: StreamingExecutionResult[];
+}
+
+export type RunTurnPort = (
+  input: RunTurnInput,
+) => AsyncGenerator<AgentEvent, TurnOutcome>;
 
 export type AgentLoopHooks = AgentLoopAdapterHooks<
   Message,

@@ -233,7 +233,6 @@ describe('monorepo topology', () => {
       'src/agent/RuntimePatchManager.ts',
       'src/agent/types.ts',
       'src/agent/loop/adapterContracts.ts',
-      'src/agent/loop/runTurn.ts',
       'src/agent/state/ConversationState.ts',
       'src/agent/state/LoopState.ts',
       'src/agent/state/TurnState.ts',
@@ -284,7 +283,6 @@ describe('monorepo topology', () => {
     const rootFunctionToolCallConsumers = [
       'src/agent/loop/adapterContracts.ts',
       'src/agent/loop/executeToolCalls.ts',
-      'src/agent/loop/runTurn.ts',
       'src/agent/loop/toolUpdateToAgentEvent.ts',
     ];
 
@@ -1768,7 +1766,6 @@ describe('monorepo topology', () => {
       'src/agent/loop/executeToolCalls.ts',
       'utf-8',
     );
-    const rootRunTurnSource = readFileSync('src/agent/loop/runTurn.ts', 'utf-8');
 
     expect(existsSync('src/agent/loop/runToolCall.ts')).toBe(false);
     expect(rootAgentLoopAdapterSource).toMatch(
@@ -1787,7 +1784,7 @@ describe('monorepo topology', () => {
       'createRootRunToolCall(runPackageLocalToolCall)',
     );
     expect(rootAgentLoopAdapterSource).toContain(
-      'executionPipeline: createPackageLocalExecutionPipeline(input)',
+      'executionPipeline: createPackageLocalExecutionPipeline(',
     );
     const packageToolExecutionSource = readFileSync(
       'packages/agent-sdk/src/session/runtimeToolExecution.ts',
@@ -1811,10 +1808,33 @@ describe('monorepo topology', () => {
       ['src/index.ts', rootIndexSource],
       ['src/agent/loop/adapterContracts.ts', rootAdapterContractsSource],
       ['src/agent/loop/executeToolCalls.ts', rootExecutionSource],
-      ['src/agent/loop/runTurn.ts', rootRunTurnSource],
     ] as const) {
       expect(source, file).not.toContain('runToolCall.js');
     }
+  });
+
+  it('retires the root run-turn wrapper behind the root loop composition adapter', () => {
+    const rootAgentLoopAdapterSource = readFileSync(
+      'src/agent/loop/rootAgentLoopAdapter.ts',
+      'utf-8',
+    );
+    const rootAdapterContractsSource = readFileSync(
+      'src/agent/loop/adapterContracts.ts',
+      'utf-8',
+    );
+
+    expect(existsSync('src/agent/loop/runTurn.ts')).toBe(false);
+    expect(rootAgentLoopAdapterSource).toContain('runPackageLocalTurn');
+    expect(rootAgentLoopAdapterSource).toContain(
+      'createRootRunTurn(runPackageLocalTurn)',
+    );
+    expect(rootAgentLoopAdapterSource).toContain(
+      'executionPipeline: createPackageLocalExecutionPipeline(',
+    );
+    expect(rootAgentLoopAdapterSource).not.toContain("from './runTurn.js'");
+    expect(rootAgentLoopAdapterSource).not.toContain('as unknown as');
+    expect(rootAdapterContractsSource).toContain('export interface RunTurnInput');
+    expect(rootAdapterContractsSource).toContain('export type RunTurnPort');
   });
 
   it('keeps root legacy loop adapters on the agent-sdk session internal subpath', () => {
@@ -1823,11 +1843,16 @@ describe('monorepo topology', () => {
     const sdkTsupConfig = readFileSync('packages/agent-sdk/tsup.config.ts', 'utf-8');
     const rootVitestConfig = readFileSync('vitest.config.ts', 'utf-8');
     const rootLegacyLoopAdapters = [
-      ['src/agent/loop/rootAgentLoopAdapter.ts', 'runPackageLocalToolCall'],
-      ['src/agent/loop/runTurn.ts', 'runPackageLocalTurn'],
+      [
+        'src/agent/loop/rootAgentLoopAdapter.ts',
+        ['runPackageLocalTurn', 'runPackageLocalToolCall'],
+      ],
+    ] as const;
+    const rootNonInternalLoopAdapters = [
+      'src/agent/loop/executeToolCalls.ts',
     ] as const;
     const retiredRootLoopAdapters = [
-      'src/agent/loop/executeToolCalls.ts',
+      'src/agent/loop/runTurn.ts',
     ] as const;
 
     expect(existsSync('packages/agent-sdk/src/session/internal.ts')).toBe(true);
@@ -1877,17 +1902,23 @@ describe('monorepo topology', () => {
     expect(serverOnlyStubSource).toContain('runPackageLocalTurn');
     expect(serverOnlyStubSource).toContain('runPackageLocalToolCall');
 
-    for (const [file, bridgeName] of rootLegacyLoopAdapters) {
+    for (const [file, bridgeNames] of rootLegacyLoopAdapters) {
       const source = readFileSync(file, 'utf-8');
       expect(source, file).toContain("from '@blade-ai/agent-sdk/session/internal'");
-      expect(source, file).toContain(bridgeName);
+      for (const bridgeName of bridgeNames) {
+        expect(source, file).toContain(bridgeName);
+      }
+      expect(source, file).not.toContain('packages/agent-sdk/src');
+    }
+
+    for (const file of rootNonInternalLoopAdapters) {
+      const source = readFileSync(file, 'utf-8');
+      expect(source, file).not.toContain("from '@blade-ai/agent-sdk/session/internal'");
       expect(source, file).not.toContain('packages/agent-sdk/src');
     }
 
     for (const file of retiredRootLoopAdapters) {
-      const source = readFileSync(file, 'utf-8');
-      expect(source, file).not.toContain("from '@blade-ai/agent-sdk/session/internal'");
-      expect(source, file).not.toContain('packages/agent-sdk/src');
+      expect(existsSync(file), file).toBe(false);
     }
   });
 
@@ -1918,11 +1949,6 @@ describe('monorepo topology', () => {
     const runtimeConsumers = [
       [
         'src/agent/loop/rootAgentLoopAdapter.ts',
-        '@blade-ai/agent/epoch',
-        /from ['"]\.\.\/ExecutionEpoch\.js['"]/,
-      ],
-      [
-        'src/agent/loop/runTurn.ts',
         '@blade-ai/agent/epoch',
         /from ['"]\.\.\/ExecutionEpoch\.js['"]/,
       ],
@@ -2198,9 +2224,6 @@ describe('monorepo topology', () => {
       'src/agent/loop/rootAgentLoopAdapter.ts',
       'utf-8',
     );
-    const rootRunTurnSource = existsSync('src/agent/loop/runTurn.ts')
-      ? readFileSync('src/agent/loop/runTurn.ts', 'utf-8')
-      : '';
     const streamingToolExecutorSource = existsSync(
       'packages/agent-sdk/src/session/streamingToolExecutor.ts',
     )
@@ -2996,11 +3019,12 @@ describe('monorepo topology', () => {
     expect(runtimeRunTurnSource).toContain('PackageLocalStreamingToolExecutor');
     expect(runtimeRunTurnSource).toContain('streamPackageLocalChatResponse');
     expect(runtimeRunTurnSource).toContain('toolUpdateToAgentEvent');
-    expect(rootRunTurnSource).toContain('runPackageLocalTurn');
-    expect(rootRunTurnSource).not.toContain('runStreamingWithTools');
-    expect(rootRunTurnSource).not.toContain('new AsyncEventQueue');
-    expect(rootRunTurnSource).not.toContain('new StreamingToolExecutor');
-    expect(rootRunTurnSource).not.toContain('chatWithRetryEvents');
+    expect(existsSync('src/agent/loop/runTurn.ts')).toBe(false);
+    expect(rootToolCallCompositionSource).toContain('runPackageLocalTurn');
+    expect(rootToolCallCompositionSource).not.toContain('runStreamingWithTools');
+    expect(rootToolCallCompositionSource).not.toContain('new AsyncEventQueue');
+    expect(rootToolCallCompositionSource).not.toContain('new StreamingToolExecutor');
+    expect(rootToolCallCompositionSource).not.toContain('chatWithRetryEvents');
     expect(existsSync('packages/agent-sdk/src/session/streamingToolExecutor.ts')).toBe(true);
     expect(existsSync('packages/agent-sdk/src/__tests__/streamingToolExecutor.test.ts')).toBe(
       true,

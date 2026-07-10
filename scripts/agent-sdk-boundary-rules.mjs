@@ -4,6 +4,10 @@ export const agentSdkRootDeclarationEntryOwnershipRules = [
     message: 'root declarations must not reference the retired tool-call wrapper',
   },
   {
+    forbidden: './agent/loop/runTurn.js',
+    message: 'root declarations must not reference the retired run-turn wrapper',
+  },
+  {
     forbidden: './agent/loop/adapterContracts.js',
     message: 'root declarations must be emitted from package-local root entry source',
   },
