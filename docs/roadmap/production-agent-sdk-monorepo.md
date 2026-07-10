@@ -228,6 +228,7 @@ Status:
 - A topology guard now keeps the legacy root chat service interface factory-only and allowlists the remaining factory import and test mock sites, preventing root services from becoming a protocol type source again.
 - The root session runtime now owns `src/session/ChatServiceFactory.ts`; `src/services/ChatServiceInterface.ts` is a one-line shim, and runtime/live-test consumers import the session factory directly.
 - The root session runtime now owns `src/session/VercelAIChatService.ts`; `src/services/VercelAIChatService.ts` is a one-line shim, and the factory plus focused service tests import the session implementation directly.
+- The root runtime now owns `src/runtime/messageUtils.ts`; `src/services/messageUtils.ts` is a one-line shim, and session/agent/hook consumers import message clone helpers from the runtime layer directly.
 - Model execution protocol types now live in `@blade-ai/ai/model`, including `ModelPort`, `ModelRequest`, `ModelStreamEvent`, `ModelResponse`, `ModelToolCall`, and model-scoped `UsageInfo`.
 - The `@blade-ai/ai` root exports `Model*` protocol types and `ModelUsageInfo` while preserving the existing chat `UsageInfo` root export until the chat/runtime migration is complete.
 - The first provider runtime adapter now lives in `@blade-ai/ai/providers/openai-compatible`, exposing a `ModelPort` over Vercel AI SDK's OpenAI-compatible provider and normalizing text, reasoning, tool calls, usage, and stream events.

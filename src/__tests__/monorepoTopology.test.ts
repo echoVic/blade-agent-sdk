@@ -332,7 +332,7 @@ describe('monorepo topology', () => {
   it('keeps root service implementation chat protocol types on the ai chat subpath', () => {
     const files = [
       'src/session/VercelAIChatService.ts',
-      'src/services/messageUtils.ts',
+      'src/runtime/messageUtils.ts',
       'src/services/__tests__/deepseek-deep.live.test.ts',
     ];
 
@@ -360,6 +360,35 @@ describe('monorepo topology', () => {
         legacyChatServiceImports,
         `${file} should not import chat protocol types from root services`,
       ).toHaveLength(0);
+    }
+  });
+
+  it('keeps legacy root message utilities as a runtime shim', () => {
+    const legacyMessageUtilsSource = readFileSync('src/services/messageUtils.ts', 'utf-8');
+    const runtimeMessageUtilsSource = readFileSync('src/runtime/messageUtils.ts', 'utf-8');
+    const runtimeConsumers = [
+      'src/session/Session.ts',
+      'src/session/SessionStore.ts',
+      'src/hooks/HookRuntime.ts',
+      'src/agent/CompactionHandler.ts',
+    ];
+
+    expect(legacyMessageUtilsSource.trim()).toBe(
+      "export { cloneContentPart, cloneJsonValue, cloneMessage, cloneToolCall } from '../runtime/messageUtils.js';",
+    );
+    expect(runtimeMessageUtilsSource).toContain("from '@blade-ai/ai/chat'");
+    expect(runtimeMessageUtilsSource).toContain("from '../types/common.js'");
+    expect(runtimeMessageUtilsSource).toContain('export function cloneMessage');
+
+    for (const file of runtimeConsumers) {
+      const source = readFileSync(file, 'utf-8');
+
+      expect(source, `${file} should import message clone helpers from runtime`).toContain(
+        "from '../runtime/messageUtils.js'",
+      );
+      expect(source, `${file} should not import the legacy root message utils shim`).not.toContain(
+        '../services/messageUtils.js',
+      );
     }
   });
 

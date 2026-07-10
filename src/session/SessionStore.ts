@@ -6,7 +6,7 @@ import {
 import { JSONLStore } from '../context/storage/JSONLStore.js';
 import type { PartInfo, SessionEvent, SessionInfo } from '../context/types.js';
 import type { ContentPart, Message, ToolCall } from '@blade-ai/ai/chat';
-import { cloneJsonValue, cloneMessage } from '../services/messageUtils.js';
+import { cloneJsonValue, cloneMessage } from '../runtime/messageUtils.js';
 import type { JsonValue, MessageRole } from '../types/common.js';
 import { MessageId, type SessionId } from '../types/branded.js';
 

@@ -2,7 +2,7 @@ import { nanoid } from 'nanoid';
 import type { UserMessageContent } from '../agent/types.js';
 import type { RuntimeHookRegistration } from '../runtime/index.js';
 import type { ContentPart } from '@blade-ai/ai/chat';
-import { cloneContentPart } from '../services/messageUtils.js';
+import { cloneContentPart } from '../runtime/messageUtils.js';
 import type { ToolResult } from '../tools/types/index.js';
 import { ToolUseId, type SessionId } from '../types/branded.js';
 import type { JsonObject, JsonValue, PermissionMode } from '../types/common.js';
