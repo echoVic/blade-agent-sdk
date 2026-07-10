@@ -128,6 +128,31 @@ describe('package boundary verifier', () => {
     expect(result.stderr).toContain('must use an exact dependency version');
   });
 
+  it('rejects non-workspace internal dependency versions in source manifests', () => {
+    const cwd = createBoundaryFixture({
+      agentDependencies: {
+        '@blade-ai/ai': '0.0.0',
+      },
+      sdkDependencies: {
+        '@blade-ai/agent': '0.0.0',
+      },
+    });
+
+    const result = spawnSync(process.execPath, [
+      resolve('scripts/verify-package-boundaries.mjs'),
+    ], {
+      cwd,
+      encoding: 'utf8',
+    });
+
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain('packages/agent/package.json');
+    expect(result.stderr).toContain('dependencies "@blade-ai/ai"');
+    expect(result.stderr).toContain('packages/agent-sdk/package.json');
+    expect(result.stderr).toContain('dependencies "@blade-ai/agent"');
+    expect(result.stderr).toContain('internal @blade-ai dependencies must use workspace:*');
+  });
+
   it('rejects runtime-local dependencies declared by the agent kernel manifest', () => {
     const cwd = createBoundaryFixture({
       agentDependencies: {

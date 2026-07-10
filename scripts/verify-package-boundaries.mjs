@@ -463,12 +463,22 @@ function isPinnedDependencyVersion(versionSpec) {
   return isExactSemverVersion(versionSpec);
 }
 
+function isInternalBladeDependency(dependencyName) {
+  return /^@blade-ai\//.test(dependencyName);
+}
+
 function collectPinnedDependencyViolations(packageJson, manifest) {
   const dependencyViolations = [];
   for (const section of pinnedDependencySections) {
     const dependencies = manifest[section] ?? {};
     if (!dependencies || typeof dependencies !== 'object' || Array.isArray(dependencies)) continue;
     for (const [dependencyName, versionSpec] of Object.entries(dependencies)) {
+      if (isInternalBladeDependency(dependencyName) && versionSpec !== 'workspace:*') {
+        dependencyViolations.push(
+          `${packageJson}: ${section} "${dependencyName}" internal @blade-ai dependencies must use workspace:* (found "${versionSpec}")`,
+        );
+        continue;
+      }
       if (!isPinnedDependencyVersion(versionSpec)) {
         dependencyViolations.push(
           `${packageJson}: ${section} "${dependencyName}" must use an exact dependency version or workspace:* (found "${versionSpec}")`,
