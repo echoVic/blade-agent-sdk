@@ -1677,7 +1677,7 @@ import { createSession as serverCreateSession } from '@blade-ai/agent-sdk/server
 import { resumeSession } from '@blade-ai/agent-sdk/session';
 import { createSession as internalCreateSession } from '@blade-ai/agent-sdk/session/internal';
 import { getBuiltinTools } from '@blade-ai/agent-sdk/local';
-import { defineTool, ToolKind } from '@blade-ai/agent-sdk/tools';
+import { ToolCatalog, ToolKind, defineTool } from '@blade-ai/agent-sdk/tools';
 
 function assertServerOnly(action, expected) {
   try {
@@ -1695,6 +1695,7 @@ function assertServerOnly(action, expected) {
 const noopTool = defineTool({
   name: 'noop',
   description: 'Browser-safe tool contract smoke',
+  kind: ToolKind.ReadOnly,
   parameters: {
     type: 'object',
     properties: {},
@@ -1703,10 +1704,12 @@ const noopTool = defineTool({
     return 'ok';
   },
 });
+const browserSafeCatalog = new ToolCatalog();
 const sdkError = new ConfigError('browser-safe sdk error');
 
-console.log(PermissionMode.DEFAULT, BrowserPermissionMode.DEFAULT, CorePermissionMode.DEFAULT, BrowserStreamMessageType.CONTENT, ToolKind.READ, noopTool.name);
+console.log(PermissionMode.DEFAULT, BrowserPermissionMode.DEFAULT, CorePermissionMode.DEFAULT, BrowserStreamMessageType.CONTENT, ToolKind.ReadOnly, noopTool.name);
 console.log('browser-safe sdk error', sdkError instanceof SdkError, sdkError.code);
+console.log('browser-safe sdk tool', noopTool.name, noopTool.kind, browserSafeCatalog.getAll().length);
 for (const exportName of ['getBuiltinTools', 'createSdkMcpServer', 'FileSystemMemoryStore', 'MemoryManager', 'createMemoryReadTool', 'createMemoryWriteTool', 'tool']) {
   if (Object.hasOwn(rootBrowserFacade, exportName)) {
     throw new Error(\`Unexpected browser root local-only export \${exportName}\`);
@@ -1751,6 +1754,7 @@ assertServerOnly(() => getBuiltinTools(), 'server-only for getBuiltinTools');
     'server-only for resumeSession',
     'server-only for getBuiltinTools',
     'browser-safe sdk error true CONFIG_ERROR',
+    'browser-safe sdk tool noop readonly 0',
     'browser root local-only exports absent',
   ]) {
     if (!output.includes(expected)) {

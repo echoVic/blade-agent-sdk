@@ -440,6 +440,7 @@ describe('package provenance metadata', () => {
     expect(packageVerifier).toContain("import * as rootBrowserFacade from '@blade-ai/agent-sdk';");
     expect(packageVerifier).toContain("from '@blade-ai/agent-sdk/browser';");
     expect(packageVerifier).toContain("from '@blade-ai/agent-sdk/errors';");
+    expect(packageVerifier).toContain("import { ToolCatalog, ToolKind, defineTool } from '@blade-ai/agent-sdk/tools';");
     expect(packageVerifier).toContain("from '@blade-ai/agent-sdk/session';");
     expect(packageVerifier).toContain("from '@blade-ai/agent-sdk/session/internal';");
     expect(packageVerifier).toContain("from '@blade-ai/agent-sdk/server';");
@@ -459,6 +460,8 @@ describe('package provenance metadata', () => {
     expect(packageVerifier).toContain('server-only for resumeSession');
     expect(packageVerifier).toContain('server-only for getBuiltinTools');
     expect(packageVerifier).toContain('browser-safe sdk error');
+    expect(packageVerifier).toContain('browser-safe sdk tool');
+    expect(packageVerifier).toContain('Browser bundle does not include the browser-safe SDK tools runtime smoke');
     expect(packageVerifier).toContain('Unexpected browser root local-only export');
     expect(packageVerifier).toContain('browser root local-only exports absent');
   });
@@ -1873,7 +1876,7 @@ describe('release scripts', () => {
     expect(publishedVerifier).toContain("from '@blade-ai/agent-sdk/server';");
     expect(publishedVerifier).toContain("from '@blade-ai/agent-sdk/local';");
     expect(publishedVerifier).toContain("from '@blade-ai/agent-sdk/core';");
-    expect(publishedVerifier).toContain("from '@blade-ai/agent-sdk/tools';");
+    expect(publishedVerifier).toContain("import { ToolCatalog, ToolKind, defineTool } from '@blade-ai/agent-sdk/tools';");
     expect(publishedVerifier).toContain('await bundleWithEsbuildRetry({');
     expect(publishedVerifier).toContain("platform: 'browser'");
     expect(publishedVerifier).toContain("conditions: ['browser']");
@@ -1883,6 +1886,7 @@ describe('release scripts', () => {
     expect(publishedVerifier).toContain('server-only for internal createSession');
     expect(publishedVerifier).toContain('server-only for getBuiltinTools');
     expect(publishedVerifier).toContain('browser-safe sdk error');
+    expect(publishedVerifier).toContain('browser-safe sdk tool');
     expect(publishedVerifier).toContain('Unexpected browser root local-only export');
     expect(publishedVerifier).toContain('browser root local-only exports absent');
     expect(readme).toContain('browser bundle smoke');

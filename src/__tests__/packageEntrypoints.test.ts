@@ -587,7 +587,9 @@ describe('package entrypoints', () => {
     expect(helper).toContain('The service was stopped');
     expect(verifier).toContain('browserBundleOutput');
     expect(verifier).toContain("from '@blade-ai/agent-sdk/errors';");
+    expect(verifier).toContain("import { ToolCatalog, ToolKind, defineTool } from '@blade-ai/agent-sdk/tools';");
     expect(verifier).toContain('browser-safe sdk error true CONFIG_ERROR');
+    expect(verifier).toContain('browser-safe sdk tool');
     expect(verifier).toContain("verifyBrowserSafeDist('dist/errors/index.js')");
     expect(verifier).toContain("verifyBrowserSafeDist('dist/tools/index.js')");
     expect(verifier).toContain("from '@blade-ai/ai';");

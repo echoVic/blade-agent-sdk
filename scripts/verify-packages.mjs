@@ -1958,14 +1958,23 @@ async function verifyConsumerBrowserBundle(consumerDir) {
       "import { createSession as createBrowserSession, PermissionMode as BrowserPermissionMode, StreamMessageType as BrowserStreamMessageType } from '@blade-ai/agent-sdk/browser';",
       "import { StreamMessageType } from '@blade-ai/agent-sdk/core';",
       "import { ConfigError, SdkError } from '@blade-ai/agent-sdk/errors';",
-      "import { ToolKind } from '@blade-ai/agent-sdk/tools';",
+      "import { ToolCatalog, ToolKind, defineTool } from '@blade-ai/agent-sdk/tools';",
       "import { resumeSession } from '@blade-ai/agent-sdk/session';",
       "import { createSession as createInternalSession } from '@blade-ai/agent-sdk/session/internal';",
       "import { createSession as createServerSession } from '@blade-ai/agent-sdk/server';",
       "import { getBuiltinTools } from '@blade-ai/agent-sdk/local';",
       "const sdkError = new ConfigError('browser-safe sdk error');",
+      "const browserSafeTool = defineTool({",
+      "  name: 'browser_tool',",
+      "  description: 'Browser-safe tool contract smoke',",
+      "  kind: ToolKind.ReadOnly,",
+      "  parameters: { type: 'object', properties: {}, required: [] },",
+      "  async execute() { return 'ok'; },",
+      "});",
+      "const browserSafeCatalog = new ToolCatalog();",
       "console.log(PermissionMode.DEFAULT, BrowserPermissionMode.DEFAULT, StreamMessageType.CONTENT, BrowserStreamMessageType.CONTENT, ToolKind.ReadOnly);",
       "console.log('browser-safe sdk error', sdkError instanceof SdkError, sdkError.code);",
+      "console.log('browser-safe sdk tool', browserSafeTool.name, browserSafeTool.kind, browserSafeCatalog.getAll().length);",
       "for (const exportName of ['getBuiltinTools', 'createSdkMcpServer', 'FileSystemMemoryStore', 'MemoryManager', 'createMemoryReadTool', 'createMemoryWriteTool', 'tool']) {",
       "  if (Object.hasOwn(rootBrowserFacade, exportName)) {",
       "    throw new Error(`Unexpected browser root local-only export ${exportName}`);",
@@ -1998,6 +2007,9 @@ async function verifyConsumerBrowserBundle(consumerDir) {
   }
   if (!browserRunOutput.includes('browser-safe sdk error true CONFIG_ERROR')) {
     throw new Error('Browser bundle does not include the browser-safe SDK error runtime smoke');
+  }
+  if (!browserRunOutput.includes('browser-safe sdk tool browser_tool readonly 0')) {
+    throw new Error('Browser bundle does not include the browser-safe SDK tools runtime smoke');
   }
   if (!browserRunOutput.includes('server-only for browser createSession')) {
     throw new Error('Browser bundle does not include the browser createSession server-only stub message');
