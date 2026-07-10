@@ -127,6 +127,14 @@ const rootSourceRules = [
   },
 ];
 
+const allowedRootSessionInternalConsumers = new Set([
+  'src/agent/StreamingToolExecutor.ts',
+  'src/agent/loop/executeToolCalls.ts',
+  'src/agent/loop/runToolCall.ts',
+  'src/agent/loop/runTurn.ts',
+  'src/agent/loop/streamChatResponse.ts',
+]);
+
 const rootScopedSourceRules = [
   {
     name: 'legacy root provider-helper consumers',
@@ -777,6 +785,14 @@ for (const rule of rootSourceRules) {
       if (packageSourceDir) {
         violations.push(
           `${displayPath}: disallowed import "${specifier}" reaches ${packageSourceDir} - Legacy root source must import package public subpaths instead of package source files`,
+        );
+      }
+      if (
+        specifier === '@blade-ai/agent-sdk/session/internal'
+        && !allowedRootSessionInternalConsumers.has(displayPath)
+      ) {
+        violations.push(
+          `${displayPath}: disallowed import "${specifier}" - the migration-only session internal subpath is restricted to root legacy loop adapters`,
         );
       }
     }

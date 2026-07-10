@@ -404,6 +404,27 @@ describe('package boundary verifier', () => {
     expect(result.stderr).toContain('must import package public subpaths');
   });
 
+  it('rejects new legacy root consumers of the session internal migration subpath', () => {
+    const cwd = createBoundaryFixture();
+    mkdirSync(join(cwd, 'src', 'agent'), { recursive: true });
+    writeFileSync(
+      join(cwd, 'src', 'agent', 'feature.ts'),
+      "import { runPackageLocalTurn } from '@blade-ai/agent-sdk/session/internal';\nexport { runPackageLocalTurn };\n",
+    );
+
+    const result = spawnSync(process.execPath, [
+      resolve('scripts/verify-package-boundaries.mjs'),
+    ], {
+      cwd,
+      encoding: 'utf8',
+    });
+
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain('src/agent/feature.ts');
+    expect(result.stderr).toContain('@blade-ai/agent-sdk/session/internal');
+    expect(result.stderr).toContain('migration-only session internal subpath');
+  });
+
   it('rejects legacy root session imports from root DeepSeek provider helpers', () => {
     const cwd = createBoundaryFixture();
     mkdirSync(join(cwd, 'src', 'session'), { recursive: true });
