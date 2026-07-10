@@ -32,6 +32,11 @@ function createBoundaryFixture(options: {
     writeFileSync(join(cwd, 'packages', packageName, 'dist', 'index.js'), 'export {};\n');
     writeFileSync(join(cwd, 'packages', packageName, 'dist', 'index.d.ts'), 'export {};\n');
   }
+  mkdirSync(join(cwd, 'packages', 'agent-sdk', 'src', 'browser'), { recursive: true });
+  mkdirSync(join(cwd, 'packages', 'agent-sdk', 'dist', 'browser'), { recursive: true });
+  writeFileSync(join(cwd, 'packages', 'agent-sdk', 'src', 'browser', 'index.ts'), 'export {};\n');
+  writeFileSync(join(cwd, 'packages', 'agent-sdk', 'dist', 'browser', 'index.js'), 'export {};\n');
+  writeFileSync(join(cwd, 'packages', 'agent-sdk', 'dist', 'browser', 'index.d.ts'), 'export {};\n');
 
   writeJson(join(cwd, 'packages', 'ai', 'package.json'), {
     name: '@blade-ai/ai',
@@ -70,6 +75,7 @@ function createBoundaryFixture(options: {
     exports: {
       '.': {
         types: './dist/index.d.ts',
+        browser: './dist/browser/index.js',
         import: './dist/index.js',
       },
       './package.json': {
@@ -86,12 +92,42 @@ function createBoundaryFixture(options: {
   });
   writeTsupConfig(join(cwd, 'packages', 'agent-sdk', 'tsup.config.ts'), {
     index: 'src/index.ts',
+    'browser/index': 'src/browser/index.ts',
   });
 
   return cwd;
 }
 
 describe('package boundary verifier', () => {
+  it('rejects unpinned dependency ranges in source manifests', () => {
+    const cwd = createBoundaryFixture({
+      sdkDependencies: {
+        zod: '^3.25.76',
+      },
+    });
+    writeJson(join(cwd, 'package.json'), {
+      name: 'blade-agent-sdk-monorepo',
+      private: true,
+      devDependencies: {
+        typescript: '~6.0.3',
+      },
+    });
+
+    const result = spawnSync(process.execPath, [
+      resolve('scripts/verify-package-boundaries.mjs'),
+    ], {
+      cwd,
+      encoding: 'utf8',
+    });
+
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain('package.json');
+    expect(result.stderr).toContain('devDependencies "typescript"');
+    expect(result.stderr).toContain('packages/agent-sdk/package.json');
+    expect(result.stderr).toContain('dependencies "zod"');
+    expect(result.stderr).toContain('must use an exact dependency version');
+  });
+
   it('rejects runtime-local dependencies declared by the agent kernel manifest', () => {
     const cwd = createBoundaryFixture({
       agentDependencies: {

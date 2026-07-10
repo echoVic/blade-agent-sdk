@@ -4,6 +4,7 @@ import { dirname, join, normalize, relative, resolve, sep } from 'node:path';
 
 const rootDir = process.cwd();
 const allowedPublicExportConditions = new Set(['types', 'browser', 'import']);
+const pinnedDependencySections = ['dependencies', 'devDependencies', 'optionalDependencies'];
 
 const rules = [
   {
@@ -445,6 +446,39 @@ function verifySdkBrowserExportTargets({ packageJson, exportsValue }) {
   return browserTargetViolations;
 }
 
+function isExactSemverVersion(versionSpec) {
+  return /^[0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/.test(versionSpec);
+}
+
+function isPinnedDependencyVersion(versionSpec) {
+  if (typeof versionSpec !== 'string') return false;
+  if (versionSpec === 'workspace:*') return true;
+  if (versionSpec.startsWith('workspace:')) {
+    return isExactSemverVersion(versionSpec.slice('workspace:'.length));
+  }
+  if (versionSpec.startsWith('npm:')) {
+    const versionStart = versionSpec.lastIndexOf('@');
+    return versionStart > 'npm:'.length && isExactSemverVersion(versionSpec.slice(versionStart + 1));
+  }
+  return isExactSemverVersion(versionSpec);
+}
+
+function collectPinnedDependencyViolations(packageJson, manifest) {
+  const dependencyViolations = [];
+  for (const section of pinnedDependencySections) {
+    const dependencies = manifest[section] ?? {};
+    if (!dependencies || typeof dependencies !== 'object' || Array.isArray(dependencies)) continue;
+    for (const [dependencyName, versionSpec] of Object.entries(dependencies)) {
+      if (!isPinnedDependencyVersion(versionSpec)) {
+        dependencyViolations.push(
+          `${packageJson}: ${section} "${dependencyName}" must use an exact dependency version or workspace:* (found "${versionSpec}")`,
+        );
+      }
+    }
+  }
+  return dependencyViolations;
+}
+
 function resolvesInsidePackageSource(file, specifier) {
   if (!specifier.startsWith('.')) return null;
 
@@ -525,6 +559,12 @@ function collectStaticImportClosure(entryFiles, packageSourceDir) {
 
 const violations = [];
 
+const rootPackageJsonPath = resolve(rootDir, 'package.json');
+if (existsSync(rootPackageJsonPath)) {
+  const rootManifest = JSON.parse(readFileSync(rootPackageJsonPath, 'utf-8'));
+  violations.push(...collectPinnedDependencyViolations('package.json', rootManifest));
+}
+
 for (const rule of manifestRules) {
   const packageJsonPath = resolve(rootDir, rule.packageJson);
   if (!existsSync(packageJsonPath)) {
@@ -533,6 +573,7 @@ for (const rule of manifestRules) {
   }
 
   const manifest = JSON.parse(readFileSync(packageJsonPath, 'utf-8'));
+  violations.push(...collectPinnedDependencyViolations(rule.packageJson, manifest));
   if (rule.disallowBin && manifest.bin !== undefined) {
     violations.push(`${rule.packageJson}: bin field is not allowed - CLI product capabilities belong in a separate package`);
   }
