@@ -445,6 +445,31 @@ describe('package entrypoints', () => {
     expect(publishedVerifier).toContain('agentSdkLocalAdapterBoundaryRules');
   });
 
+  it('shares permission declaration boundary rules across local packed and published verifiers', () => {
+    const sharedRulesPath = 'scripts/agent-sdk-boundary-rules.mjs';
+
+    expect(existsSync(join(process.cwd(), sharedRulesPath)), sharedRulesPath).toBe(true);
+
+    const sharedRules = readFileSync(sharedRulesPath, 'utf-8');
+    const entrypointVerifier = readFileSync('scripts/verify-entrypoints.mjs', 'utf-8');
+    const packageVerifier = readFileSync('scripts/verify-packages.mjs', 'utf-8');
+    const publishedVerifier = readFileSync('scripts/verify-published.mjs', 'utf-8');
+
+    expect(sharedRules).toContain('agentSdkPermissionDeclarationBoundaryRules');
+    expect(sharedRules).toContain('dist/types/permissions.d.ts');
+    expect(sharedRules).toContain('SensitiveFileDetector');
+    expect(sharedRules).toContain('./ToolEffects.js');
+    expect(sharedRules).toContain('permission declarations must be emitted from package-local permission source');
+    expect(sharedRules).toContain('permission declarations must use package-local tool contracts');
+    expect(entrypointVerifier).toContain('agentSdkPermissionDeclarationBoundaryRules');
+    expect(entrypointVerifier).toContain(
+      'toLocalForbiddenDeclarationRules(agentSdkPermissionDeclarationBoundaryRules)',
+    );
+    expect(packageVerifier).toContain('toPackedForbiddenFileRules(agentSdkPermissionDeclarationBoundaryRules)');
+    expect(publishedVerifier).toContain('verifyPublishedPermissionDeclarationBoundary');
+    expect(publishedVerifier).toContain('agentSdkPermissionDeclarationBoundaryRules');
+  });
+
   it('runs the browser bundle check through the esbuild JS API', () => {
     const verifier = readFileSync('scripts/verify-entrypoints.mjs', 'utf-8');
     const helper = readFileSync('scripts/esbuild-bundle.mjs', 'utf-8');
@@ -522,8 +547,7 @@ describe('package entrypoints', () => {
     expect(verifier).toContain("rule.file === 'dist/local/index.d.ts'");
     expect(verifier).toContain("rule.file === 'dist/local/index.js'");
     expect(verifier).toContain('local adapter entry boundary passed');
-    expect(verifier).toContain('local permission declarations must be emitted from package-local permission source');
-    expect(verifier).toContain('local permission declarations must use package-local tool contracts');
+    expect(verifier).toContain('toLocalForbiddenDeclarationRules(agentSdkPermissionDeclarationBoundaryRules)');
     expect(verifier).toContain('local permission declaration boundary passed');
     expect(verifier).toContain('for (const rule of agentSdkServerFacadeBoundaryRules)');
     expect(verifier).toContain('toLocalForbiddenDeclarationRules([rule])');

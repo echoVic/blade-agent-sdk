@@ -288,6 +288,19 @@ export const agentSdkLocalAdapterBoundaryRules = [
   },
 ];
 
+export const agentSdkPermissionDeclarationBoundaryRules = [
+  {
+    file: 'dist/types/permissions.d.ts',
+    forbidden: 'SensitiveFileDetector',
+    message: 'permission declarations must be emitted from package-local permission source',
+  },
+  {
+    file: 'dist/types/permissions.d.ts',
+    forbidden: './ToolEffects.js',
+    message: 'permission declarations must use package-local tool contracts',
+  },
+];
+
 export function toLocalForbiddenDeclarationRules(rules) {
   return rules.map((rule) => ({
     forbidden: rule.forbidden,

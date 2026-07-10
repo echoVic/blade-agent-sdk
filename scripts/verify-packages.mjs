@@ -8,6 +8,7 @@ import { stringify } from 'yaml';
 import {
   agentSdkCoreDeclarationBrowserSafeRules,
   agentSdkLocalAdapterBoundaryRules,
+  agentSdkPermissionDeclarationBoundaryRules,
   agentSdkRootDeclarationEntryOwnershipRules,
   agentSdkRootPublicDeclarationBoundaryRules,
   agentSdkServerFacadeBoundaryRules,
@@ -250,16 +251,7 @@ const packageSpecs = [
       ...toPackedForbiddenFileRules(agentSdkServerFacadeBoundaryRules),
       ...toPackedForbiddenFileRules(agentSdkCoreDeclarationBrowserSafeRules),
       ...toPackedForbiddenFileRules(agentSdkLocalAdapterBoundaryRules),
-      {
-        file: 'package/dist/types/permissions.d.ts',
-        forbidden: 'SensitiveFileDetector',
-        message: 'permission declarations must be emitted from package-local permission source',
-      },
-      {
-        file: 'package/dist/types/permissions.d.ts',
-        forbidden: './ToolEffects.js',
-        message: 'permission declarations must use package-local tool contracts',
-      },
+      ...toPackedForbiddenFileRules(agentSdkPermissionDeclarationBoundaryRules),
     ],
     imports: [
       '@blade-ai/agent-sdk',
