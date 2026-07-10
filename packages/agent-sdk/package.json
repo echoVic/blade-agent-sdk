@@ -53,6 +53,10 @@
       "types": "./dist/tools/index.d.ts",
       "import": "./dist/tools/index.js"
     },
+    "./errors": {
+      "types": "./dist/errors/index.d.ts",
+      "import": "./dist/errors/index.js"
+    },
     "./local": {
       "types": "./dist/local/index.d.ts",
       "browser": "./dist/browser/server-only-stub.js",

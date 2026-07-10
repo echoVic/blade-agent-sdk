@@ -11,6 +11,7 @@
 | `@blade-ai/agent-sdk/session` | Node server / CLI | Session API 子入口 |
 | `@blade-ai/agent-sdk/core` | Browser-safe / Node | 类型、协议、事件、常量，不导入 Node-only runtime |
 | `@blade-ai/agent-sdk/browser` | Browser | Browser-safe 常量和 server-only stub |
+| `@blade-ai/agent-sdk/errors` | Browser-safe / Server / CLI | 公共错误层级：`SdkError`、`AbortError`、`ConfigError`、`PermissionDeniedError`、`ToolExecutionError` |
 | `@blade-ai/agent-sdk/tools` | Browser-safe / Node | 工具定义、工具类型、工具目录等不依赖本地执行器的 API |
 | `@blade-ai/agent-sdk/local` | Node server / CLI | 内置工具、MCP、memory、sandbox 等 Node 本地能力 |
 

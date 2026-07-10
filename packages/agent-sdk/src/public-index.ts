@@ -106,6 +106,14 @@ export {
   prompt,
   resumeSession,
 } from './session/public-index.js';
+export type { SdkErrorOptions } from './errors/index.js';
+export {
+  AbortError,
+  ConfigError,
+  PermissionDeniedError,
+  SdkError,
+  ToolExecutionError,
+} from './errors/index.js';
 export type {
   FunctionDeclaration,
   FunctionToolCall,

@@ -79,3 +79,11 @@ export {
   createPermissionHandlerFromCanUseTool,
   createRuleBasedPermissionHandler,
 } from '../types/permissions.js';
+export type { SdkErrorOptions } from '../errors/index.js';
+export {
+  AbortError,
+  ConfigError,
+  PermissionDeniedError,
+  SdkError,
+  ToolExecutionError,
+} from '../errors/index.js';

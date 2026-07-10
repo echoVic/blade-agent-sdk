@@ -391,6 +391,7 @@ import * as agentTracing from '@blade-ai/agent/tracing';
 import * as agentSdk from '@blade-ai/agent-sdk';
 import * as agentSdkBrowser from '@blade-ai/agent-sdk/browser';
 import * as agentSdkCore from '@blade-ai/agent-sdk/core';
+import * as agentSdkErrors from '@blade-ai/agent-sdk/errors';
 import * as agentSdkLocal from '@blade-ai/agent-sdk/local';
 import * as agentSdkServer from '@blade-ai/agent-sdk/server';
 import * as agentSdkSession from '@blade-ai/agent-sdk/session';
@@ -499,6 +500,8 @@ assertNoRuntimeExport(agentSdk, 'DeepSeekCostTracker');
 assertNoRuntimeExport(agentSdk, 'DEEPSEEK_DEFAULT_MODEL');
 assertRuntimeExport(agentSdkBrowser, 'PermissionMode');
 assertRuntimeExport(agentSdkCore, 'PermissionMode');
+assertRuntimeExport(agentSdkErrors, 'SdkError');
+assertRuntimeExport(agentSdkErrors, 'AbortError');
 assertRuntimeExport(agentSdkLocal, 'getBuiltinTools');
 assertRuntimeExport(agentSdkServer, 'createSession');
 assertRuntimeExport(agentSdkServer, 'subagentRegistry');
@@ -2208,6 +2211,9 @@ const builtinToolsOptions: BuiltinToolsOptions = {};
 const permissionMode: PermissionMode = CorePermissionMode.DEFAULT;
 const browserStreamMessage: BrowserStreamMessage = streamMessage;
 const browserPermissionMode: BrowserPermissionMode = BrowserPermissionMode.DEFAULT;
+const sdkErrorOptions: SdkErrorOptions = {
+  cause: new Error('typed cause'),
+};
 const runtimeContext: RuntimeContext = {};
 
 void modelSubpathResponse;
@@ -2270,6 +2276,7 @@ void builtinToolsOptions;
 void permissionMode;
 void browserStreamMessage;
 void browserPermissionMode;
+void sdkErrorOptions;
 void runtimeContext;
 `,
   );

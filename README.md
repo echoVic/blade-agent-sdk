@@ -12,6 +12,7 @@
 - 工具系统：内置 23 个标准工具，支持 `defineTool()`、`createTool()`、MCP 协议工具与 MCP 资源工具
 - 工具目录：`ToolCatalog` 统一管理内置、自定义、MCP 工具的来源追踪与信任分级
 - MCP：支持 `stdio`、`sse`、`http` 传输，也支持从 `@blade-ai/agent-sdk/local` 显式导入的进程内 `createSdkMcpServer()`
+- Error hierarchy：`@blade-ai/agent-sdk/errors` 提供 browser-safe / server-safe 的 `SdkError`、`AbortError`、`ConfigError`、`PermissionDeniedError` 和 `ToolExecutionError`
 - 协作能力：子 Agent（前台/后台）、`Task` / `TaskOutput` / `TaskStop` 工具，以及用户级和项目级 Skills
 - Memory 系统：`@blade-ai/agent-sdk/local` 提供 `MemoryManager` + `FileSystemMemoryStore`，可选的 `MemoryRead` / `MemoryWrite` 工具
 - 安全与治理：`permissionMode`、`canUseTool`、`permissionHandler`、Hooks、沙箱配置可组合使用
@@ -129,6 +130,7 @@ import { createSession } from '@blade-ai/agent-sdk';
 ```ts
 import { createSession } from '@blade-ai/agent-sdk/server';
 import { ToolKind } from '@blade-ai/agent-sdk/core';
+import { SdkError } from '@blade-ai/agent-sdk/errors';
 import { defineTool } from '@blade-ai/agent-sdk/tools';
 import { getBuiltinTools } from '@blade-ai/agent-sdk/local';
 ```
@@ -136,6 +138,8 @@ import { getBuiltinTools } from '@blade-ai/agent-sdk/local';
 `@blade-ai/agent-sdk/server` 是显式 server-only facade，直接组合 session/core/tools/subagent API，不通过 root wildcard 转发。它会保持与 root 的公开 server-safe runtime/type surface 对齐，同时发布产物里的 server 入口也能被 verifier 独立检查。
 
 `@blade-ai/agent-sdk/core` 只导出 browser-safe 的类型、协议和常量。浏览器环境误导入 root、`server`、`session` 或 `local` 入口时，会解析到 browser stub，并在调用 server-only API 时抛出清晰错误。
+
+`@blade-ai/agent-sdk/errors` 导出 browser-safe / server-safe 的公共错误层级，适合在应用边界做 `instanceof SdkError`、读取稳定 `code`，或序列化 `toJSON()` 诊断信息。
 
 `@blade-ai/agent-sdk` 可以嵌入你自己的 CLI 进程，但 `@blade-ai/ai`、`@blade-ai/agent` 和 `@blade-ai/agent-sdk` 都 does not publish a CLI product。不要依赖不存在的 `@blade-ai/agent-sdk/cli`；未来如果提供 Pi-style coding-agent / CLI 产品，应由独立包承载。
 

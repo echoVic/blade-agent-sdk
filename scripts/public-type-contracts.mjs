@@ -52,12 +52,14 @@ const sdkPublicTypeImportContracts = {
   localDeclaration: [
     "import type { SessionOptions, StreamMessage } from '@blade-ai/agent-sdk';",
     "import type { RuntimeContext } from '@blade-ai/agent-sdk/core';",
+    "import type { SdkErrorOptions } from '@blade-ai/agent-sdk/errors';",
     "import type { ISession } from '@blade-ai/agent-sdk/session';",
     "import type { ToolDefinition } from '@blade-ai/agent-sdk/tools';",
   ],
   packedConsumer: [
     "import type { SessionOptions, StreamMessage } from '@blade-ai/agent-sdk';",
     "import type { JsonObject as CoreJsonObject, PermissionHandler, RuntimeContext, StreamMessage as CoreStreamMessage, ToolDefinition as CoreToolDefinition } from '@blade-ai/agent-sdk/core';",
+    "import type { SdkErrorOptions } from '@blade-ai/agent-sdk/errors';",
     "import type { ISession as SubpathSession, ResumeOptions, SessionOptions as SubpathSessionOptions } from '@blade-ai/agent-sdk/session';",
     "import type { ToolDefinition as ToolsToolDefinition, ToolResult as ToolsToolResult } from '@blade-ai/agent-sdk/tools';",
     "import type { BuiltinToolsOptions } from '@blade-ai/agent-sdk/local';",
@@ -67,6 +69,7 @@ const sdkPublicTypeImportContracts = {
   publishedConsumer: [
     "import type { SessionOptions, StreamMessage, ToolDefinition } from '@blade-ai/agent-sdk';",
     "import type { StreamMessage as BrowserStreamMessage } from '@blade-ai/agent-sdk/browser';",
+    "import type { SdkErrorOptions } from '@blade-ai/agent-sdk/errors';",
     "import type { ISession } from '@blade-ai/agent-sdk/session';",
     "import type { ClaudeCodePermissionMode, ISession as ServerSession, PermissionsConfig as ServerPermissionsConfig, SubagentExecutionRunner, SubagentFrontmatter } from '@blade-ai/agent-sdk/server';",
     "import type { ToolDefinition as SubpathToolDefinition } from '@blade-ai/agent-sdk/tools';",

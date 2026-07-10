@@ -19,13 +19,19 @@ export type {
   ToolResult,
 } from '../core/index.js';
 export {
+  AbortError,
+  ConfigError,
   HookEvent,
   MessageRole,
+  PermissionDeniedError,
   PermissionDecision,
   PermissionMode,
+  SdkError,
   StreamMessageType,
+  ToolExecutionError,
   ToolKind,
 } from '../core/index.js';
+export type { SdkErrorOptions } from '../core/index.js';
 
 export {
   createSession,

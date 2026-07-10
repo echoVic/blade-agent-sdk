@@ -205,6 +205,8 @@ const packageSpecs = [
       'package/dist/browser/index.js',
       'package/dist/browser/server-only-stub.js',
       'package/dist/core/index.d.ts',
+      'package/dist/errors/index.js',
+      'package/dist/errors/index.d.ts',
       'package/dist/local/index.d.ts',
       'package/dist/tools/index.js',
       'package/dist/types/permissions.d.ts',
@@ -239,6 +241,7 @@ const packageSpecs = [
       '@blade-ai/agent-sdk',
       '@blade-ai/agent-sdk/core',
       '@blade-ai/agent-sdk/browser',
+      '@blade-ai/agent-sdk/errors',
       '@blade-ai/agent-sdk/server',
       '@blade-ai/agent-sdk/session',
       '@blade-ai/agent-sdk/session/internal',
@@ -1155,6 +1158,7 @@ import * as agentTracing from '@blade-ai/agent/tracing';
 import * as agentSdk from '@blade-ai/agent-sdk';
 import * as agentSdkCore from '@blade-ai/agent-sdk/core';
 import * as agentSdkBrowser from '@blade-ai/agent-sdk/browser';
+import * as agentSdkErrors from '@blade-ai/agent-sdk/errors';
 import * as agentSdkServer from '@blade-ai/agent-sdk/server';
 import * as agentSdkSession from '@blade-ai/agent-sdk/session';
 import * as agentSdkTools from '@blade-ai/agent-sdk/tools';
@@ -1264,6 +1268,8 @@ assertNoRuntimeExport(agentSdk, 'DeepSeekCostTracker');
 assertNoRuntimeExport(agentSdk, 'DEEPSEEK_DEFAULT_MODEL');
 assertRuntimeExport(agentSdkCore, 'PermissionMode');
 assertRuntimeExport(agentSdkBrowser, 'PermissionMode');
+assertRuntimeExport(agentSdkErrors, 'SdkError');
+assertRuntimeExport(agentSdkErrors, 'AbortError');
 assertRuntimeExport(agentSdkServer, 'createSession');
 assertRuntimeExport(agentSdkServer, 'subagentRegistry');
 assertRuntimeExportParity(agentSdk, agentSdkServer, 'root', 'server');
@@ -1769,6 +1775,9 @@ const coreToolDefinition: CoreToolDefinition<{ text: string }, string> = echoToo
 const corePermissionHandler: PermissionHandler = createModePermissionHandler(CorePermissionMode.DEFAULT);
 const coreDecision = PermissionDecision.ALLOW;
 const coreToolKind = CoreToolKind.ReadOnly;
+const sdkErrorOptions: SdkErrorOptions = {
+  cause: new Error('typed cause'),
+};
 
 const sessionOptionsFromSubpath: SubpathSessionOptions = sessionOptions;
 const resumeOptions: ResumeOptions = {
@@ -1881,6 +1890,7 @@ void coreToolDefinition;
 void corePermissionHandler;
 void coreDecision;
 void coreToolKind;
+void sdkErrorOptions;
 void resumeOptions;
 void createSessionFromSessionSubpathRef;
 void resumeSessionFromSessionSubpathRef;

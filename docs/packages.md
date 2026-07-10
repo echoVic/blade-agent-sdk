@@ -11,6 +11,7 @@ Blade Agent SDK 拆成三个 npm 包。日常应用仍然从 `@blade-ai/agent-sd
 | `@blade-ai/agent-sdk/session` | Server / CLI | Session API 子入口 |
 | `@blade-ai/agent-sdk/core` | Browser-safe / Server / CLI | 类型、协议、事件、常量 |
 | `@blade-ai/agent-sdk/browser` | Browser-safe | 浏览器安全常量和 server-only stub |
+| `@blade-ai/agent-sdk/errors` | Browser-safe / Server / CLI | 公共错误层级和稳定错误码 |
 | `@blade-ai/agent-sdk/tools` | Browser-safe / Server / CLI | 工具定义、工具类型、工具目录等不依赖本地执行器的 API |
 | `@blade-ai/agent-sdk/local` | Server / CLI | 内置工具、MCP、memory、sandbox、文件系统等 Node-only 能力 |
 
@@ -30,6 +31,7 @@ const session = await createSession({
 ```ts
 import { createSession } from '@blade-ai/agent-sdk/server';
 import { ToolKind } from '@blade-ai/agent-sdk/core';
+import { SdkError } from '@blade-ai/agent-sdk/errors';
 import { defineTool } from '@blade-ai/agent-sdk/tools';
 import { getBuiltinTools } from '@blade-ai/agent-sdk/local';
 ```
@@ -128,7 +130,7 @@ import type { ToolDefinition } from '@blade-ai/agent-sdk/tools';
 
 - 构建普通 Agent 应用：用 `@blade-ai/agent-sdk`
 - 构建 server 或 CLI：可以用 root，也可以用 `@blade-ai/agent-sdk/server`
-- 写 browser-safe 类型共享代码：用 `@blade-ai/agent-sdk/core` 和 `@blade-ai/agent-sdk/tools`
+- 写 browser-safe 类型共享代码：用 `@blade-ai/agent-sdk/core`、`@blade-ai/agent-sdk/errors` 和 `@blade-ai/agent-sdk/tools`
 - 使用本地工具、MCP、文件系统、sandbox：用 `@blade-ai/agent-sdk/local`
 - 写 provider adapter 或模型测试：用 `@blade-ai/ai`
 - 写 runtime-independent kernel adapter：用 `@blade-ai/agent`

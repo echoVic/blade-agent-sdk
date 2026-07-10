@@ -43,6 +43,10 @@ describe('package entrypoints', () => {
         types: './dist/tools/index.d.ts',
         import: './dist/tools/index.js',
       },
+      './errors': {
+        types: './dist/errors/index.d.ts',
+        import: './dist/errors/index.js',
+      },
       './local': {
         types: './dist/local/index.d.ts',
         browser: './dist/browser/server-only-stub.js',
@@ -58,11 +62,21 @@ describe('package entrypoints', () => {
       'packages/agent-sdk/src/browser/server-only-stub.ts',
       'packages/agent-sdk/src/server/index.ts',
       'packages/agent-sdk/src/tools/index.ts',
+      'packages/agent-sdk/src/errors/index.ts',
       'packages/agent-sdk/src/local/index.ts',
       'packages/agent-sdk/src/session/index.ts',
     ]) {
       expect(existsSync(join(process.cwd(), file)), file).toBe(true);
     }
+  });
+
+  it('keeps agent-sdk public error hierarchy package-local', () => {
+    expect(existsSync(join(process.cwd(), 'packages/agent-sdk/src/__tests__/errorsEntry.test.ts'))).toBe(true);
+    expect(existsSync(join(process.cwd(), 'packages/agent-sdk/src/errors/SdkError.ts'))).toBe(true);
+    expect(existsSync(join(process.cwd(), 'packages/agent-sdk/src/errors/AbortError.ts'))).toBe(true);
+    expect(existsSync(join(process.cwd(), 'packages/agent-sdk/src/errors/ConfigError.ts'))).toBe(true);
+    expect(existsSync(join(process.cwd(), 'packages/agent-sdk/src/errors/PermissionDeniedError.ts'))).toBe(true);
+    expect(existsSync(join(process.cwd(), 'packages/agent-sdk/src/errors/ToolExecutionError.ts'))).toBe(true);
   });
 
   it('keeps security-sensitive agent-sdk runtime tests package-local', () => {

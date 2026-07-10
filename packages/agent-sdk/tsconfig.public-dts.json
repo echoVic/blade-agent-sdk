@@ -29,6 +29,7 @@
   },
   "files": [
     "src/core/index.ts",
+    "src/errors/index.ts",
     "src/public-index.ts",
     "src/local/public-index.ts",
     "src/session/Session.ts",
