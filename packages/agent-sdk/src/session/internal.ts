@@ -7,7 +7,6 @@ export {
 } from './runtimeRunTurn.js';
 export {
   runPackageLocalToolCall,
-  type PackageLocalRunToolCallInput,
 } from './runtimeToolExecution.js';
 export {
   PackageLocalStreamingToolExecutor,
