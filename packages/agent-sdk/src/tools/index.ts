@@ -2,6 +2,10 @@ import { zodToJsonSchema } from 'zod-to-json-schema';
 import type { z } from 'zod';
 import type { JsonObject, JsonValue, PermissionMode } from '../types/common.js';
 import type {
+  BladeConfig,
+  ConfirmationDetails,
+  ConfirmationHandler,
+  ConfirmationResponse,
   ExecutionContext,
   FunctionDeclaration,
   FunctionToolCall,
@@ -593,6 +597,11 @@ export function validationErrorToToolResult(error: ToolValidationError): ToolRes
 }
 
 export type {
+  BladeConfig,
+  ConfirmationDetails,
+  ConfirmationHandler,
+  ConfirmationResponse,
+  ExecutionContext,
   FunctionDeclaration,
   FunctionToolCall,
   Tool,

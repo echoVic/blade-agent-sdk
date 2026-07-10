@@ -9,8 +9,35 @@ import {
   defineTool,
   toolFromDefinition,
 } from '../tools/index.js';
+import type {
+  ConfirmationHandler,
+  ExecutionContext,
+} from '../tools/index.js';
 
 describe('agent-sdk tools entry', () => {
+  it('exports package-owned execution context contracts', async () => {
+    const confirmationHandler: ConfirmationHandler = {
+      requestConfirmation: async () => ({ approved: true }),
+    };
+    const context: ExecutionContext = {
+      sessionId: 'session-tools-entry',
+      contextSnapshot: {
+        sessionId: 'session-tools-entry',
+        turnId: 'turn-tools-entry',
+        context: {},
+        filesystemRoots: ['/workspace'],
+        cwd: '/workspace',
+        environment: {},
+      },
+      confirmationHandler,
+    };
+
+    expect(context.contextSnapshot?.cwd).toBe('/workspace');
+    await expect(confirmationHandler.requestConfirmation({
+      message: 'Allow tool execution?',
+    })).resolves.toEqual({ approved: true });
+  });
+
   it('exports package-owned validation result normalization', () => {
     expect(toolsEntry).toHaveProperty('validationErrorToToolResult');
   });

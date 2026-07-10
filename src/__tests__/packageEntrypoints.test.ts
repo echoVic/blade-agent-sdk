@@ -665,7 +665,7 @@ describe('package entrypoints', () => {
     expect(publicTypeContracts).toContain("import type { SessionOptions, StreamMessage } from '@blade-ai/agent-sdk';");
     expect(publicTypeContracts).toContain("import type { ISession } from '@blade-ai/agent-sdk/session';");
     expect(publicTypeContracts).toContain(
-      "import type { ToolDefinition, ToolExecutionOutcome, ToolExecutionUpdate, ToolResult, ToolValidationError } from '@blade-ai/agent-sdk/tools';",
+      "import type { ConfirmationHandler as PublicToolsConfirmationHandler, ExecutionContext as PublicToolsExecutionContext, ToolDefinition, ToolExecutionOutcome, ToolExecutionUpdate, ToolResult, ToolValidationError } from '@blade-ai/agent-sdk/tools';",
     );
     expect(publicTypeContracts).toContain(
       "import { ToolKind as PublicToolsToolKind, createToolBehavior as createPublicToolBehavior } from '@blade-ai/agent-sdk/tools';",
@@ -675,6 +675,12 @@ describe('package entrypoints', () => {
     );
     expect(publicTypeContracts).toContain(
       'const publicToolBehavior: PublicToolBehavior = createPublicToolBehavior(PublicToolsToolKind.ReadOnly);',
+    );
+    expect(publicTypeContracts).toContain(
+      'const publicToolsConfirmationHandler: PublicToolsConfirmationHandler = {',
+    );
+    expect(publicTypeContracts).toContain(
+      'const publicToolsExecutionContext: PublicToolsExecutionContext = {',
     );
     expect(publicTypeContracts).toContain("import type { RuntimeContext } from '@blade-ai/agent-sdk/core';");
     expect(verifier).toContain('const sdkErrorOptions: SdkErrorOptions');
@@ -849,8 +855,10 @@ describe('package entrypoints', () => {
     expect(helper).toContain("import type { RuntimeContext } from '@blade-ai/agent-sdk/core';");
     expect(helper).toContain("import type { ISession } from '@blade-ai/agent-sdk/session';");
     expect(helper).toContain(
-      "import type { ToolDefinition, ToolExecutionOutcome, ToolExecutionUpdate, ToolResult, ToolValidationError } from '@blade-ai/agent-sdk/tools';",
+      "import type { ConfirmationHandler as PublicToolsConfirmationHandler, ExecutionContext as PublicToolsExecutionContext, ToolDefinition, ToolExecutionOutcome, ToolExecutionUpdate, ToolResult, ToolValidationError } from '@blade-ai/agent-sdk/tools';",
     );
+    expect(helper).toContain('PublicToolsConfirmationHandler');
+    expect(helper).toContain('PublicToolsExecutionContext');
     expect(helper).toContain("import type { BuiltinToolsOptions } from '@blade-ai/agent-sdk/local';");
     expect(helper).toContain("ClaudeCodePermissionMode");
     expect(helper).toContain("SubagentExecutionRunner");

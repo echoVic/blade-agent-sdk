@@ -1,6 +1,11 @@
 import type { z } from 'zod';
 import type { JsonObject, JsonValue, PermissionMode } from '../types/common.js';
 import type {
+  BladeConfig,
+  ConfirmationDetails,
+  ConfirmationHandler,
+  ConfirmationResponse,
+  ExecutionContext,
   FunctionDeclaration,
   FunctionToolCall,
   Tool,
@@ -85,6 +90,11 @@ export declare function validationErrorToToolResult(
 ): ToolResult;
 
 export type {
+  BladeConfig,
+  ConfirmationDetails,
+  ConfirmationHandler,
+  ConfirmationResponse,
+  ExecutionContext,
   FunctionDeclaration,
   FunctionToolCall,
   Tool,

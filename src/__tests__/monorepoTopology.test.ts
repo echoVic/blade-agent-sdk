@@ -1870,6 +1870,19 @@ describe('monorepo topology', () => {
     expect(rootAdapterContractsSource).toContain('export type RunTurnPort');
   });
 
+  it('keeps root execution context contracts on the agent-sdk tools package', () => {
+    const rootExecutionTypesSource = readFileSync(
+      'src/tools/types/ExecutionTypes.ts',
+      'utf-8',
+    );
+
+    expect(rootExecutionTypesSource).toContain("from '@blade-ai/agent-sdk/tools'");
+    expect(rootExecutionTypesSource).not.toContain('export interface ConfirmationDetails');
+    expect(rootExecutionTypesSource).not.toContain('export interface ConfirmationResponse');
+    expect(rootExecutionTypesSource).not.toContain('export interface ConfirmationHandler');
+    expect(rootExecutionTypesSource).toContain('ExecutionContext as SdkExecutionContext');
+  });
+
   it('keeps agent-core tool-start events on the closed ToolKind protocol', () => {
     const source = readFileSync(
       'packages/agent/src/loop/toolUpdateToAgentEvent.ts',
