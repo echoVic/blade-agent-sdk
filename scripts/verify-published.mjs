@@ -71,6 +71,10 @@ const expectedPublishedPackageMetadata = {
 };
 const expectedPublishedSdkBrowserExports = {
   '.': './dist/browser/index.js',
+  './browser': './dist/browser/index.js',
+  './core': './dist/core/index.js',
+  './errors': './dist/errors/index.js',
+  './tools': './dist/tools/index.js',
   './server': './dist/browser/server-only-stub.js',
   './session': './dist/browser/server-only-stub.js',
   './session/internal': './dist/browser/server-only-stub.js',

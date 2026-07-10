@@ -1519,6 +1519,10 @@ describe('release scripts', () => {
 
     expect(packageVerifier).toContain('verifyPackedSdkBrowserExportConditions');
     expect(packageVerifier).toContain("'.': './dist/browser/index.js'");
+    expect(packageVerifier).toContain("'./browser': './dist/browser/index.js'");
+    expect(packageVerifier).toContain("'./core': './dist/core/index.js'");
+    expect(packageVerifier).toContain("'./errors': './dist/errors/index.js'");
+    expect(packageVerifier).toContain("'./tools': './dist/tools/index.js'");
     expect(packageVerifier).toContain("'./server': './dist/browser/server-only-stub.js'");
     expect(packageVerifier).toContain("'./session': './dist/browser/server-only-stub.js'");
     expect(packageVerifier).toContain("'./session/internal': './dist/browser/server-only-stub.js'");
@@ -1627,6 +1631,10 @@ describe('release scripts', () => {
 
     expect(publishedVerifier).toContain('verifyPublishedSdkBrowserExportConditions');
     expect(publishedVerifier).toContain("'.': './dist/browser/index.js'");
+    expect(publishedVerifier).toContain("'./browser': './dist/browser/index.js'");
+    expect(publishedVerifier).toContain("'./core': './dist/core/index.js'");
+    expect(publishedVerifier).toContain("'./errors': './dist/errors/index.js'");
+    expect(publishedVerifier).toContain("'./tools': './dist/tools/index.js'");
     expect(publishedVerifier).toContain("'./server': './dist/browser/server-only-stub.js'");
     expect(publishedVerifier).toContain("'./session': './dist/browser/server-only-stub.js'");
     expect(publishedVerifier).toContain("'./session/internal': './dist/browser/server-only-stub.js'");

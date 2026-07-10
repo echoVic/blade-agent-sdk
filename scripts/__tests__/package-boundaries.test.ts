@@ -825,6 +825,74 @@ describe('package boundary verifier', () => {
     );
   });
 
+  it('requires browser-safe SDK subpaths to declare explicit browser conditions', () => {
+    const cwd = createBoundaryFixture();
+    for (const dir of ['browser', 'core', 'errors', 'tools']) {
+      mkdirSync(join(cwd, 'packages', 'agent-sdk', 'src', dir), { recursive: true });
+      writeFileSync(join(cwd, 'packages', 'agent-sdk', 'src', dir, 'index.ts'), 'export {};\n');
+    }
+    writeTsupConfig(join(cwd, 'packages', 'agent-sdk', 'tsup.config.ts'), {
+      index: 'src/index.ts',
+      'browser/index': 'src/browser/index.ts',
+      'core/index': 'src/core/index.ts',
+      'errors/index': 'src/errors/index.ts',
+      'tools/index': 'src/tools/index.ts',
+    });
+    writeJson(join(cwd, 'packages', 'agent-sdk', 'package.json'), {
+      name: '@blade-ai/agent-sdk',
+      main: './dist/index.js',
+      types: './dist/index.d.ts',
+      exports: {
+        '.': {
+          types: './dist/index.d.ts',
+          browser: './dist/browser/index.js',
+          import: './dist/index.js',
+        },
+        './browser': {
+          types: './dist/browser/index.d.ts',
+          import: './dist/browser/index.js',
+        },
+        './core': {
+          types: './dist/core/index.d.ts',
+          import: './dist/core/index.js',
+        },
+        './errors': {
+          types: './dist/errors/index.d.ts',
+          import: './dist/errors/index.js',
+        },
+        './tools': {
+          types: './dist/tools/index.d.ts',
+          import: './dist/tools/index.js',
+        },
+        './package.json': {
+          default: './package.json',
+        },
+      },
+      dependencies: {},
+    });
+
+    const result = spawnSync(process.execPath, [
+      resolve('scripts/verify-package-boundaries.mjs'),
+    ], {
+      cwd,
+      encoding: 'utf8',
+    });
+
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain(
+      'export "./browser" browser condition must point at ./dist/browser/index.js',
+    );
+    expect(result.stderr).toContain(
+      'export "./core" browser condition must point at ./dist/core/index.js',
+    );
+    expect(result.stderr).toContain(
+      'export "./errors" browser condition must point at ./dist/errors/index.js',
+    );
+    expect(result.stderr).toContain(
+      'export "./tools" browser condition must point at ./dist/tools/index.js',
+    );
+  });
+
   it('rejects manifest targets with the wrong runtime artifact extension', () => {
     const cwd = createBoundaryFixture();
     writeJson(join(cwd, 'packages', 'agent-sdk', 'package.json'), {

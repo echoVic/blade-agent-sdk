@@ -23,10 +23,12 @@ describe('package entrypoints', () => {
       },
       './core': {
         types: './dist/core/index.d.ts',
+        browser: './dist/core/index.js',
         import: './dist/core/index.js',
       },
       './browser': {
         types: './dist/browser/index.d.ts',
+        browser: './dist/browser/index.js',
         import: './dist/browser/index.js',
       },
       './server': {
@@ -41,10 +43,12 @@ describe('package entrypoints', () => {
       },
       './tools': {
         types: './dist/tools/index.d.ts',
+        browser: './dist/tools/index.js',
         import: './dist/tools/index.js',
       },
       './errors': {
         types: './dist/errors/index.d.ts',
+        browser: './dist/errors/index.js',
         import: './dist/errors/index.js',
       },
       './local': {
