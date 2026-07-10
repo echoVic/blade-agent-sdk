@@ -1629,8 +1629,14 @@ describe('monorepo topology', () => {
   it('keeps the root tool-update adapter on the public loop package subpath', () => {
     const source = readFileSync('src/agent/loop/toolUpdateToAgentEvent.ts', 'utf-8');
 
-    expect(source).toContain("from '@blade-ai/agent/loop'");
-    expect(source).not.toContain('packages/agent/src');
+    expect(source.trim()).toBe(
+      [
+        'export {',
+        '  buildAgentLoopToolResultEvent,',
+        '  toolUpdateToAgentEvent,',
+        "} from '@blade-ai/agent/loop';",
+      ].join('\n'),
+    );
   });
 
   it('keeps root legacy loop adapters on the agent-sdk session internal subpath', () => {
