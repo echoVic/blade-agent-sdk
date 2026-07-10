@@ -1,6 +1,10 @@
 import type { JsonObject } from '@blade-ai/ai';
 import type { AgentFunctionToolCall } from './planToolExecution.js';
-import type { ToolExecutionRegistryLike, ToolKind } from './toolBehavior.js';
+import {
+  isToolKind,
+  type ToolExecutionRegistryLike,
+  type ToolKind,
+} from './toolBehavior.js';
 import type {
   AgentToolExecutionOutcome,
   AgentToolExecutionUpdate,
@@ -24,7 +28,7 @@ export type AgentLoopToolEvent<
   | {
       type: 'tool_start';
       toolCall: TToolCall;
-      toolKind?: ToolKind | string;
+      toolKind?: ToolKind;
     }
   | {
       type: 'tool_result';
@@ -99,7 +103,11 @@ export function toolUpdateToAgentEvent<
   switch (update.type) {
     case 'tool_ready': {
       const toolDef = registry.get(update.toolCall.function.name);
-      return { type: 'tool_start', toolCall: update.toolCall, toolKind: toolDef?.kind };
+      return {
+        type: 'tool_start',
+        toolCall: update.toolCall,
+        toolKind: isToolKind(toolDef?.kind) ? toolDef.kind : undefined,
+      };
     }
     case 'tool_result':
       return buildAgentLoopToolResultEvent({

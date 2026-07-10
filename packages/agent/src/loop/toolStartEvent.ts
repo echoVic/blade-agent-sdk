@@ -1,6 +1,6 @@
 import type { AgentFunctionToolCall, ToolExecutionPlan } from './planToolExecution.js';
 import {
-  ToolKind,
+  isToolKind,
   type ToolExecutionRegistryLike,
   type ToolKind as ToolKindType,
 } from './toolBehavior.js';
@@ -56,7 +56,7 @@ export function buildAgentLoopToolStartEvent(
   return {
     type: 'tool_start',
     toolCall: input.toolCall,
-    toolKind: isPublicToolKind(toolDef?.kind) ? toolDef.kind : undefined,
+    toolKind: isToolKind(toolDef?.kind) ? toolDef.kind : undefined,
   };
 }
 
@@ -66,8 +66,4 @@ export function buildAgentLoopToolStartEvents(
   return input.plan.calls.map((toolCall) =>
     buildAgentLoopToolStartEvent({ toolCall, registry: input.registry }),
   );
-}
-
-function isPublicToolKind(kind: string | undefined): kind is ToolKindType {
-  return kind === ToolKind.ReadOnly || kind === ToolKind.Write || kind === ToolKind.Execute;
 }

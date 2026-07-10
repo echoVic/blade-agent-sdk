@@ -26,6 +26,12 @@
 | `defineTool` | tools | 定义工具（简单模式） |
 | `createTool` | tools | 创建工具（Zod 模式） |
 | `toolFromDefinition` | tools | 转换 ToolDefinition → Tool |
+| `createToolBehavior` | tools | 从 ToolKind 和 overrides 构造完整工具行为 |
+| `getStaticToolBehavior` | tools | 从工具静态字段解析完整行为 |
+| `resolveToolBehavior` | tools | 使用参数解析动态工具行为 |
+| `resolveToolBehaviorHint` | tools | 解析不依赖参数的行为提示 |
+| `resolveToolBehaviorSafely` | tools | 安全解析动态行为，异常时回退静态行为 |
+| `isReadOnlyKind` | tools | 判断 ToolKind 是否为 ReadOnly |
 | `getBuiltinTools` | local | 获取内置工具 |
 | `createMemoryReadTool` | local | 创建 opt-in MemoryRead 工具 |
 | `createMemoryWriteTool` | local | 创建 opt-in MemoryWrite 工具 |
@@ -56,7 +62,7 @@
 |------|------|
 | `PermissionMode` | `DEFAULT` / `AUTO_EDIT` / `YOLO` / `PLAN` |
 | `HookEvent` | `SessionStart` / `SessionEnd` / `UserPromptSubmit` / `PermissionRequest` / `PreToolUse` / `PostToolUse` / `PostToolUseFailure` / `TaskCompleted` / `Stop` / `SubagentStart` / `SubagentStop` / `Notification` / `Compaction` / `StopFailure` / `PreCompact` / `PostCompact` / `Elicitation` / `ElicitationResult` / `ConfigChange` / `CwdChanged` / `FileChanged` / `InstructionsLoaded` |
-| `ToolKind` | `READONLY` / `WRITE` / `EXECUTE` |
+| `ToolKind` | `ReadOnly` / `Write` / `Execute` |
 | `StreamMessageType` | `TURN_START` / `TURN_END` / `CONTENT` / `THINKING` / `TOOL_USE` / `TOOL_PROGRESS` / `TOOL_MESSAGE` / `TOOL_RUNTIME_PATCH` / `TOOL_CONTEXT_PATCH` / `TOOL_NEW_MESSAGES` / `TOOL_PERMISSION_UPDATES` / `TOOL_RESULT` / `USAGE` / `BUDGET_WARNING` / `BUDGET_EXHAUSTED` / `RESULT` / `ERROR` |
 | `MessageRole` | `SYSTEM` / `USER` / `ASSISTANT` / `TOOL` |
 | `PermissionDecision` | `ALLOW` / `DENY` / `ASK` |

@@ -14,6 +14,35 @@ import type { ExecutionContext } from '@blade-ai/agent-sdk/tools';
 
 `@blade-ai/agent` 只看到 runtime-independent `AgentToolPort`，不会依赖具体工具实现、MCP、文件系统或 shell。`@blade-ai/agent-sdk` 负责把 `ToolDefinition` 适配进 kernel。
 
+## 工具行为策略
+
+大多数工具只需要声明 `ToolKind`。需要为动态工具目录、权限预检或自定义执行器计算完整行为时，可以使用 browser-safe 的行为 helpers：
+
+```ts
+import {
+  ToolKind,
+  createToolBehavior,
+  resolveToolBehaviorSafely,
+} from '@blade-ai/agent-sdk/tools';
+
+const staticBehavior = createToolBehavior(ToolKind.Write, {
+  isDestructive: true,
+  interruptBehavior: 'block',
+});
+
+const resolvedBehavior = resolveToolBehaviorSafely(
+  {
+    kind: ToolKind.Execute,
+    resolveBehavior: (params: { dryRun?: boolean }) => ({
+      isDestructive: !params.dryRun,
+    }),
+  },
+  { dryRun: true },
+);
+```
+
+`createToolBehavior()` 补齐 `isReadOnly`、`isConcurrencySafe`、`isDestructive` 和 `interruptBehavior` 默认值。`resolveToolBehaviorSafely()` 会执行动态策略；策略抛错时回退到静态行为，避免权限或调度路径因用户回调异常而失效。
+
 ## 最小工具
 
 `defineTool()` 接受 JSON Schema，适合大多数应用工具。工具返回的 `llmContent` 给模型阅读，`data` 给业务代码消费，并且必须是 JSON 可序列化值。

@@ -27,6 +27,7 @@ import {
   createInterruptAwareAbortSignal,
   decideNoToolTurn,
   decideTurnLimit,
+  isToolKind,
   planToolExecution,
   resolveToolInterruptBehavior,
   toolUpdateToAgentEvent,
@@ -79,6 +80,7 @@ toolUpdateToAgentEvent(
   { type: 'tool_ready', toolCall: { id: 'read-1', type: 'function', function: { name: 'Read', arguments: '{}' } } },
   { get: () => ({ kind: ToolKind.ReadOnly }) },
 );
+isToolKind('readonly'); // true
 
 isOverflowRecoverable(new Error('context_length_exceeded')); // true
 isValidSystemSource('catalog'); // true

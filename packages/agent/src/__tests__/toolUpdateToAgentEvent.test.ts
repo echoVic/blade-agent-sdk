@@ -32,6 +32,19 @@ describe('toolUpdateToAgentEvent', () => {
     expect(event).toEqual({ type: 'tool_start', toolCall: unknown, toolKind: undefined });
   });
 
+  it('does not expose registry-specific tool kinds through the agent event protocol', () => {
+    const customRegistry = {
+      get: () => ({ kind: 'remote_destructive' }),
+    } satisfies ToolExecutionRegistryLike;
+
+    const event = toolUpdateToAgentEvent(
+      { type: 'tool_ready', toolCall },
+      customRegistry,
+    );
+
+    expect(event).toEqual({ type: 'tool_start', toolCall, toolKind: undefined });
+  });
+
   it('maps tool_result', () => {
     const result = { success: true as const, llmContent: 'ok' };
     const event = toolUpdateToAgentEvent(

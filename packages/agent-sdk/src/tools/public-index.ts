@@ -109,4 +109,12 @@ export type {
   ToolValidationError,
 };
 export { ToolErrorType } from './types/index.js';
-export { ToolKind } from './types/ToolKind.js';
+export {
+  createToolBehavior,
+  getStaticToolBehavior,
+  isReadOnlyKind,
+  resolveToolBehavior,
+  resolveToolBehaviorHint,
+  resolveToolBehaviorSafely,
+  ToolKind,
+} from './types/ToolKind.js';

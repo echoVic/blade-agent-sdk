@@ -81,6 +81,6 @@ function isReadOnlyKind(kind: ToolKind | string | undefined): boolean {
   return kind === ToolKind.ReadOnly;
 }
 
-function isToolKind(kind: ToolKind | string | undefined): kind is ToolKind {
+export function isToolKind(kind: ToolKind | string | undefined): kind is ToolKind {
   return kind === ToolKind.ReadOnly || kind === ToolKind.Write || kind === ToolKind.Execute;
 }

@@ -4,6 +4,7 @@ import * as toolsEntry from '../tools/index.js';
 import {
   ToolCatalog,
   ToolKind,
+  createToolBehavior,
   createTool,
   defineTool,
   toolFromDefinition,
@@ -12,6 +13,24 @@ import {
 describe('agent-sdk tools entry', () => {
   it('exports package-owned validation result normalization', () => {
     expect(toolsEntry).toHaveProperty('validationErrorToToolResult');
+  });
+
+  it('exports package-owned tool behavior helpers', () => {
+    expect(createToolBehavior).toBeTypeOf('function');
+    expect(createToolBehavior(ToolKind.ReadOnly)).toMatchObject({
+      kind: ToolKind.ReadOnly,
+      isReadOnly: true,
+      isConcurrencySafe: true,
+    });
+    for (const helper of [
+      'getStaticToolBehavior',
+      'isReadOnlyKind',
+      'resolveToolBehavior',
+      'resolveToolBehaviorHint',
+      'resolveToolBehaviorSafely',
+    ]) {
+      expect(toolsEntry, helper).toHaveProperty(helper);
+    }
   });
 
   it('creates executable tools from package-local authoring helpers', async () => {

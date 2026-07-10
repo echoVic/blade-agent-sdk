@@ -398,6 +398,18 @@ describe('monorepo topology', () => {
     expect(source).not.toContain('export function validationErrorToToolResult');
   });
 
+  it('keeps the legacy root tool kind contract as an agent-sdk tools shim', () => {
+    const source = readFileSync('src/tools/types/ToolKind.ts', 'utf-8');
+
+    expect(source).toContain("from '@blade-ai/agent-sdk/tools'");
+    expect(source).toContain('ToolKind');
+    expect(source).toContain('createToolBehavior');
+    expect(source).toMatch(/export type\s*\{[\s\S]*\bToolBehavior\b/);
+    expect(source).not.toContain('export enum ToolKind');
+    expect(source).not.toContain('export interface ToolBehavior');
+    expect(source).not.toContain('export function createToolBehavior');
+  });
+
   it('keeps root service implementation chat protocol types on the ai chat subpath', () => {
     const files = [
       'src/session/VercelAIChatService.ts',
@@ -1852,9 +1864,22 @@ describe('monorepo topology', () => {
     expect(rootAgentLoopAdapterSource).not.toContain('mapPackageLocalToolResult');
     expect(rootAgentLoopAdapterSource).not.toContain('mapPackageLocalToolExecutionUpdate');
     expect(rootAgentLoopAdapterSource).not.toContain('createPackageLocalRunTurnToolHooks');
+    expect(rootAgentLoopAdapterSource).not.toContain('mapPackageLocalToolKind');
+    expect(rootAgentLoopAdapterSource).not.toContain('mapPackageLocalRunTurnEvent');
     expect(rootAgentLoopAdapterSource).toContain('toolHooks: input.toolHooks');
+    expect(rootAgentLoopAdapterSource).toContain('yield next.value');
     expect(rootAdapterContractsSource).toContain('export interface RunTurnInput');
     expect(rootAdapterContractsSource).toContain('export type RunTurnPort');
+  });
+
+  it('keeps agent-core tool-start events on the closed ToolKind protocol', () => {
+    const source = readFileSync(
+      'packages/agent/src/loop/toolUpdateToAgentEvent.ts',
+      'utf-8',
+    );
+
+    expect(source).toContain('toolKind?: ToolKind;');
+    expect(source).not.toContain('toolKind?: ToolKind | string;');
   });
 
   it('keeps root legacy loop adapters on the agent-sdk session internal subpath', () => {

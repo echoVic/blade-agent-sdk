@@ -9,6 +9,7 @@ export * from './repairToolCallParams.js';
 export * from './toolInterruptBehavior.js';
 export * from './toolExecutionUpdate.js';
 export * from './toolUpdateToAgentEvent.js';
+export { isToolKind } from './toolBehavior.js';
 export * from './loopEvents.js';
 export * from './modelResponseTurn.js';
 export * from './responseEvents.js';

@@ -195,12 +195,13 @@ const subpathOutput = run(process.execPath, [
     "const tools = await import('@blade-ai/agent-sdk/tools');",
     "const local = await import('@blade-ai/agent-sdk/local');",
     "const validation = tools.validationErrorToToolResult({ message: 'invalid' });",
-    "console.log(core.PermissionMode.DEFAULT, browser.PermissionMode.DEFAULT, typeof server.createSession, typeof tools.defineTool, typeof local.getBuiltinTools, validation.error?.type);",
+    "const behavior = tools.createToolBehavior(tools.ToolKind.ReadOnly);",
+    "console.log(core.PermissionMode.DEFAULT, browser.PermissionMode.DEFAULT, typeof server.createSession, typeof tools.defineTool, typeof local.getBuiltinTools, validation.error?.type, behavior.kind, behavior.isReadOnly, behavior.isConcurrencySafe);",
   ].join(' '),
 ]);
 assertIncludes(
   subpathOutput,
-  'default default function function function validation_error',
+  'default default function function function validation_error readonly true true',
   'subpath imports',
 );
 
@@ -396,7 +397,7 @@ try {
       "import { createSession as createBrowserSession, PermissionMode as BrowserPermissionMode, StreamMessageType as BrowserStreamMessageType } from '@blade-ai/agent-sdk/browser';",
       "import { StreamMessageType } from '@blade-ai/agent-sdk/core';",
       "import { ConfigError, SdkError } from '@blade-ai/agent-sdk/errors';",
-      "import { ToolCatalog, ToolKind, defineTool, validationErrorToToolResult } from '@blade-ai/agent-sdk/tools';",
+      "import { ToolCatalog, ToolKind, createToolBehavior, defineTool, validationErrorToToolResult } from '@blade-ai/agent-sdk/tools';",
       "import { resumeSession } from '@blade-ai/agent-sdk/session';",
       "import { runPackageLocalTurn as runBrowserInternalTurn, runPackageLocalToolCall as runBrowserInternalToolCall } from '@blade-ai/agent-sdk/session/internal';",
       "import { createSession as createServerSession } from '@blade-ai/agent-sdk/server';",
@@ -411,10 +412,12 @@ try {
       "});",
       "const browserSafeCatalog = new ToolCatalog();",
       "const validationResult = validationErrorToToolResult({ message: 'invalid' });",
+      "const readonlyBehavior = createToolBehavior(ToolKind.ReadOnly);",
       "console.log(PermissionMode.DEFAULT, BrowserPermissionMode.DEFAULT, StreamMessageType.CONTENT, BrowserStreamMessageType.CONTENT, ToolKind.ReadOnly, typeof createSession);",
       "console.log('browser-safe sdk error', sdkError instanceof SdkError, sdkError.code);",
       "console.log('browser-safe sdk tool', browserSafeTool.name, browserSafeTool.kind, browserSafeCatalog.getAll().length);",
       "console.log('browser-safe sdk validation', validationResult.error?.type);",
+      "console.log('browser-safe sdk behavior', readonlyBehavior.kind, readonlyBehavior.isReadOnly, readonlyBehavior.isConcurrencySafe);",
       "try { createSession({}); } catch (error) { console.log(`server-only for bundled createSession: ${error.message}`); }",
       "try { createBrowserSession({}); } catch (error) { console.log(`server-only for bundled browser createSession: ${error.message}`); }",
       "try { resumeSession('session-id'); } catch (error) { console.log(`server-only for bundled resumeSession: ${error.message}`); }",
@@ -445,6 +448,11 @@ try {
     browserBundleOutput,
     'browser-safe sdk validation validation_error',
     'browser bundle validation import',
+  );
+  assertIncludes(
+    browserBundleOutput,
+    'browser-safe sdk behavior readonly true true',
+    'browser bundle tool behavior import',
   );
   assertIncludes(browserBundleOutput, 'server-only for bundled createSession', 'browser bundle root stub');
   assertIncludes(browserBundleOutput, 'server-only for bundled browser createSession', 'browser bundle browser stub');
@@ -749,7 +757,7 @@ try {
       "import { TokenBudget } from '@blade-ai/agent/budget';",
       "import { ExecutionEpoch } from '@blade-ai/agent/epoch';",
       "import { AgentKernel as AgentKernelFromSubpath } from '@blade-ai/agent/kernel';",
-      "import { AsyncEventQueue, createInterruptAwareAbortSignal, decideNoToolTurn, decideTurnLimit, planToolExecution, resolveToolInterruptBehavior, toolUpdateToAgentEvent, ToolKind } from '@blade-ai/agent/loop';",
+      "import { AsyncEventQueue, createInterruptAwareAbortSignal, decideNoToolTurn, decideTurnLimit, isToolKind, planToolExecution, resolveToolInterruptBehavior, toolUpdateToAgentEvent, ToolKind } from '@blade-ai/agent/loop';",
       "import * as agentProtocol from '@blade-ai/agent/protocol';",
       "import * as agentPorts from '@blade-ai/agent/ports';",
       "import { isOverflowRecoverable } from '@blade-ai/agent/recovery';",
@@ -782,6 +790,7 @@ try {
       'const interruptSignal = createInterruptAwareAbortSignal({ interruptBehavior });',
       'interruptSignal.cleanup();',
       "const toolEvent = toolUpdateToAgentEvent({ type: 'tool_ready', toolCall: { id: 'read-1', type: 'function', function: { name: 'Read', arguments: '{}' } } }, { get: () => ({ kind: ToolKind.ReadOnly }) });",
+      'const knownToolKind = isToolKind(ToolKind.ReadOnly);',
       "const overflow = isOverflowRecoverable(new Error('context_length_exceeded'));",
       'const systemSource = VALID_SYSTEM_SOURCES[0];',
       'const isSystemSource = isValidSystemSource(systemSource);',
@@ -791,7 +800,7 @@ try {
       "trace.record({ type: 'turn_start', input: 'browser trace smoke' });",
       "trace.record({ type: 'turn_end', content: 'ok', finishReason: 'stop' });",
       'const traceEvent = trace.getEvents()[0];',
-      "console.log('local agent browser bundle', kernelReady, subpathKernelReady, budgetReady, epochReady, queueReady, decision.action, turnLimit.action, toolPlan.mode, interruptBehavior, toolEvent?.type, overflow, systemSource, isSystemSource, assistantMessage.role, toolMessage.role, traceEvent?.type);",
+      "console.log('local agent browser bundle', kernelReady, subpathKernelReady, budgetReady, epochReady, queueReady, decision.action, turnLimit.action, toolPlan.mode, interruptBehavior, toolEvent?.type, knownToolKind, overflow, systemSource, isSystemSource, assistantMessage.role, toolMessage.role, traceEvent?.type);",
       "console.log('local agent protocol runtime empty', Object.keys(agentProtocol).length);",
       "console.log('local agent ports runtime empty', Object.keys(agentPorts).length);",
     ].join('\n'),
@@ -818,7 +827,7 @@ try {
   );
   assertIncludes(
     agentBundleOutput,
-    'finish stop serial cancel tool_start true',
+    'finish stop serial cancel tool_start true true',
     'local agent browser bundle loop/recovery smoke did not execute',
   );
   assertIncludes(

@@ -13,6 +13,7 @@ import type { TodoItem } from '../tools/builtin/todo/types.js';
 import type { ToolResult } from '../tools/types/ToolResult.js';
 import type { PermissionUpdate } from '../types/permissions.js';
 import type { TokenBudgetSnapshot } from '@blade-ai/agent/budget';
+import type { ToolKind } from '@blade-ai/agent/loop';
 
 // ===== Token 使用信息 =====
 
@@ -99,7 +100,7 @@ export interface ThinkingEvent {
 export interface ToolStartEvent {
   type: 'tool_start';
   toolCall: ToolCall;
-  toolKind?: 'readonly' | 'write' | 'execute';
+  toolKind?: ToolKind;
 }
 
 /** 工具执行结束 */

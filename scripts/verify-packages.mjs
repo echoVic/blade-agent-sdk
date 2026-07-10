@@ -1234,6 +1234,7 @@ assertRuntimeExport(agentLoop, 'planToolExecution');
 assertRuntimeExport(agentLoop, 'resolveToolInterruptBehavior');
 assertRuntimeExport(agentLoop, 'createInterruptAwareAbortSignal');
 assertRuntimeExport(agentLoop, 'toolUpdateToAgentEvent');
+assertRuntimeExport(agentLoop, 'isToolKind');
 assertRuntimeExport(agentLoop, 'RETRY_PROMPT');
 assertRuntimeExport(agentLoop, 'ToolKind');
 assertRuntimeExport(agentRecovery, 'isOverflowRecoverable');
@@ -1283,6 +1284,7 @@ assertRuntimeExportParity(agentSdk, agentSdkServer, 'root', 'server');
 assertRuntimeExport(agentSdkSession, 'createSession');
 assertRuntimeExport(agentSdkSession, 'resumeSession');
 assertRuntimeExport(agentSdkTools, 'ToolKind');
+assertRuntimeExport(agentSdkTools, 'createToolBehavior');
 assertRuntimeExport(agentSdkTools, 'validationErrorToToolResult');
 assertRuntimeExport(agentSdkLocal, 'getBuiltinTools');
 const packedValidationResult = agentSdkTools.validationErrorToToolResult({ message: 'invalid' });
@@ -1290,6 +1292,15 @@ if (packedValidationResult.error?.type !== 'validation_error') {
   throw new Error('@blade-ai/agent-sdk/tools validation normalization returned an unexpected result');
 }
 console.log('packed sdk validation validation_error');
+const packedReadonlyBehavior = agentSdkTools.createToolBehavior(agentSdkTools.ToolKind.ReadOnly);
+if (
+  packedReadonlyBehavior.kind !== 'readonly'
+  || !packedReadonlyBehavior.isReadOnly
+  || !packedReadonlyBehavior.isConcurrencySafe
+) {
+  throw new Error('@blade-ai/agent-sdk/tools behavior helper returned an unexpected result');
+}
+console.log('packed sdk behavior readonly true true');
 
 if (Object.keys(aiChat).length !== 0) {
   throw new Error('@blade-ai/ai/chat should remain type-only at runtime');
@@ -1964,7 +1975,7 @@ async function verifyConsumerBrowserBundle(consumerDir) {
       "import { createSession as createBrowserSession, PermissionMode as BrowserPermissionMode, StreamMessageType as BrowserStreamMessageType } from '@blade-ai/agent-sdk/browser';",
       "import { StreamMessageType } from '@blade-ai/agent-sdk/core';",
       "import { ConfigError, SdkError } from '@blade-ai/agent-sdk/errors';",
-      "import { ToolCatalog, ToolKind, defineTool, validationErrorToToolResult } from '@blade-ai/agent-sdk/tools';",
+      "import { ToolCatalog, ToolKind, createToolBehavior, defineTool, validationErrorToToolResult } from '@blade-ai/agent-sdk/tools';",
       "import { resumeSession } from '@blade-ai/agent-sdk/session';",
       "import { runPackageLocalTurn as runBrowserInternalTurn, runPackageLocalToolCall as runBrowserInternalToolCall } from '@blade-ai/agent-sdk/session/internal';",
       "import { createSession as createServerSession } from '@blade-ai/agent-sdk/server';",
@@ -1979,10 +1990,12 @@ async function verifyConsumerBrowserBundle(consumerDir) {
       "});",
       "const browserSafeCatalog = new ToolCatalog();",
       "const validationResult = validationErrorToToolResult({ message: 'invalid' });",
+      "const readonlyBehavior = createToolBehavior(ToolKind.ReadOnly);",
       "console.log(PermissionMode.DEFAULT, BrowserPermissionMode.DEFAULT, StreamMessageType.CONTENT, BrowserStreamMessageType.CONTENT, ToolKind.ReadOnly);",
       "console.log('browser-safe sdk error', sdkError instanceof SdkError, sdkError.code);",
       "console.log('browser-safe sdk tool', browserSafeTool.name, browserSafeTool.kind, browserSafeCatalog.getAll().length);",
       "console.log('browser-safe sdk validation', validationResult.error?.type);",
+      "console.log('browser-safe sdk behavior', readonlyBehavior.kind, readonlyBehavior.isReadOnly, readonlyBehavior.isConcurrencySafe);",
       "for (const exportName of ['getBuiltinTools', 'createSdkMcpServer', 'FileSystemMemoryStore', 'MemoryManager', 'createMemoryReadTool', 'createMemoryWriteTool', 'tool']) {",
       "  if (Object.hasOwn(rootBrowserFacade, exportName)) {",
       "    throw new Error(`Unexpected browser root local-only export ${exportName}`);",
@@ -2023,6 +2036,9 @@ async function verifyConsumerBrowserBundle(consumerDir) {
   if (!browserRunOutput.includes('browser-safe sdk validation validation_error')) {
     throw new Error('Browser bundle does not include the browser-safe SDK validation runtime smoke');
   }
+  if (!browserRunOutput.includes('browser-safe sdk behavior readonly true true')) {
+    throw new Error('Browser bundle does not include the browser-safe SDK tool behavior runtime smoke');
+  }
   if (!browserRunOutput.includes('server-only for browser createSession')) {
     throw new Error('Browser bundle does not include the browser createSession server-only stub message');
   }
@@ -2054,7 +2070,7 @@ async function verifyAgentBrowserBundle(consumerDir) {
       "import { TokenBudget } from '@blade-ai/agent/budget';",
       "import { ExecutionEpoch } from '@blade-ai/agent/epoch';",
       "import { AgentKernel as AgentKernelFromSubpath } from '@blade-ai/agent/kernel';",
-      "import { AsyncEventQueue, createInterruptAwareAbortSignal, decideNoToolTurn, decideTurnLimit, planToolExecution, resolveToolInterruptBehavior, toolUpdateToAgentEvent, ToolKind } from '@blade-ai/agent/loop';",
+      "import { AsyncEventQueue, createInterruptAwareAbortSignal, decideNoToolTurn, decideTurnLimit, isToolKind, planToolExecution, resolveToolInterruptBehavior, toolUpdateToAgentEvent, ToolKind } from '@blade-ai/agent/loop';",
       "import { isOverflowRecoverable } from '@blade-ai/agent/recovery';",
       "import { VALID_SYSTEM_SOURCES, isValidSystemSource, modelResponseToAssistantMessage, toolResultToToolMessage } from '@blade-ai/agent/state';",
       "import { createBufferedAgentTracePort } from '@blade-ai/agent/tracing';",
@@ -2080,6 +2096,7 @@ async function verifyAgentBrowserBundle(consumerDir) {
       "const interruptSignal = createInterruptAwareAbortSignal({ interruptBehavior });",
       'interruptSignal.cleanup();',
       "const toolEvent = toolUpdateToAgentEvent({ type: 'tool_ready', toolCall: { id: 'read-1', type: 'function', function: { name: 'Read', arguments: '{}' } } }, { get: () => ({ kind: ToolKind.ReadOnly }) });",
+      'const knownToolKind = isToolKind(ToolKind.ReadOnly);',
       "const overflow = isOverflowRecoverable(new Error('context_length_exceeded'));",
       "const systemSource = VALID_SYSTEM_SOURCES[0];",
       'const isSystemSource = isValidSystemSource(systemSource);',
@@ -2089,7 +2106,7 @@ async function verifyAgentBrowserBundle(consumerDir) {
       "trace.record({ type: 'turn_start', input: 'browser trace smoke' });",
       "trace.record({ type: 'turn_end', content: 'ok', finishReason: 'stop' });",
       'const traceEvent = trace.getEvents()[0];',
-      "console.log('agent browser bundle', kernel.constructor.name, kernelFromSubpath.constructor.name, budget.constructor.name, epoch.constructor.name, queue.constructor.name, decision.action, turnLimit.action, toolPlan.mode, interruptBehavior, toolEvent?.type, overflow, systemSource, isSystemSource, assistantMessage.role, toolMessage.role, traceEvent?.type);",
+      "console.log('agent browser bundle', kernel.constructor.name, kernelFromSubpath.constructor.name, budget.constructor.name, epoch.constructor.name, queue.constructor.name, decision.action, turnLimit.action, toolPlan.mode, interruptBehavior, toolEvent?.type, knownToolKind, overflow, systemSource, isSystemSource, assistantMessage.role, toolMessage.role, traceEvent?.type);",
     ].join('\n'),
   );
 
@@ -2111,7 +2128,7 @@ async function verifyAgentBrowserBundle(consumerDir) {
   if (!browserRunOutput.includes('AgentKernel AgentKernel TokenBudget _ExecutionEpoch AsyncEventQueue')) {
     throw new Error('Agent browser bundle core runtime smoke did not execute');
   }
-  if (!browserRunOutput.includes('finish stop serial cancel tool_start true')) {
+  if (!browserRunOutput.includes('finish stop serial cancel tool_start true true')) {
     throw new Error('Agent browser bundle loop/recovery smoke did not execute');
   }
   if (!browserRunOutput.includes('catalog true')) {

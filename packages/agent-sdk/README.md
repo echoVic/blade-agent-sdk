@@ -42,6 +42,8 @@ Use `@blade-ai/agent-sdk/errors` when you need stable error classes for `instanc
 import { SdkError, ToolExecutionError } from '@blade-ai/agent-sdk/errors';
 ```
 
+Advanced tool registries and execution adapters can import browser-safe behavior helpers such as `createToolBehavior()` and `resolveToolBehaviorSafely()` from `@blade-ai/agent-sdk/tools`.
+
 This package does not publish a CLI product and does not provide `@blade-ai/agent-sdk/cli`. A future Pi-style coding-agent or CLI product should live in a separate package instead of this session-first SDK facade.
 
 Full example: `examples/session-first-server.ts` in the repository.

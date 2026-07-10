@@ -3,7 +3,6 @@ import {
   runPackageLocalToolCall,
 } from '@blade-ai/agent-sdk/session/internal';
 import { LogCategory, NOOP_LOGGER } from '../../logging/Logger.js';
-import { ToolKind } from '../../tools/types/ToolKind.js';
 import type { AgentEvent } from '../AgentEvent.js';
 import { ExecutionEpoch } from '@blade-ai/agent/epoch';
 import type { LoopResult } from '../types.js';
@@ -21,11 +20,6 @@ type PackageLocalRunToolCall = typeof runPackageLocalToolCall;
 type PackageLocalRunToolCallInput = Parameters<PackageLocalRunToolCall>[0];
 type PackageLocalExecutionPipeline = PackageLocalRunToolCallInput['executionPipeline'];
 type PackageLocalRunTurn = typeof runPackageLocalTurn;
-type PackageLocalRunTurnStream = ReturnType<PackageLocalRunTurn>;
-type PackageLocalRunTurnEvent =
-  PackageLocalRunTurnStream extends AsyncGenerator<infer Event, unknown, unknown>
-    ? Event
-    : never;
 
 function createPackageLocalExecutionPipeline(
   rootExecutionPipeline: RunToolCallInput['executionPipeline'],
@@ -60,35 +54,6 @@ export function createRootRunToolCall(
   });
 }
 
-function mapPackageLocalToolKind(
-  toolKind: string | undefined,
-): ToolKind | undefined {
-  switch (toolKind) {
-    case ToolKind.ReadOnly:
-      return ToolKind.ReadOnly;
-    case ToolKind.Write:
-      return ToolKind.Write;
-    case ToolKind.Execute:
-      return ToolKind.Execute;
-    default:
-      return undefined;
-  }
-}
-
-function mapPackageLocalRunTurnEvent(
-  event: PackageLocalRunTurnEvent,
-): AgentEvent {
-  if (event.type === 'tool_start') {
-    return {
-      type: event.type,
-      toolCall: event.toolCall,
-      toolKind: mapPackageLocalToolKind(event.toolKind),
-    };
-  }
-
-  return event;
-}
-
 export function createRootRunTurn(
   packageLocalRunTurn: PackageLocalRunTurn = runPackageLocalTurn,
 ): RunTurnPort {
@@ -117,7 +82,7 @@ export function createRootRunTurn(
       if (next.done) {
         return next.value;
       }
-      yield mapPackageLocalRunTurnEvent(next.value);
+      yield next.value;
     }
   };
 }

@@ -597,14 +597,24 @@ describe('package entrypoints', () => {
     expect(verifier).toContain("from '@blade-ai/agent-sdk/errors';");
     expect(verifier).toContain('validationErrorToToolResult');
     expect(verifier).toContain('browser-safe sdk validation validation_error');
+    expect(verifier).toContain('createToolBehavior');
+    expect(verifier).toContain('browser-safe sdk behavior readonly true true');
     expect(packageVerifier).toContain(
       "assertRuntimeExport(agentSdkTools, 'validationErrorToToolResult')",
     );
     expect(packageVerifier).toContain('packed sdk validation validation_error');
+    expect(packageVerifier).toContain(
+      "assertRuntimeExport(agentSdkTools, 'createToolBehavior')",
+    );
+    expect(packageVerifier).toContain('packed sdk behavior readonly true true');
     expect(publishedVerifier).toContain(
       "assertRuntimeExport(agentSdkTools, 'validationErrorToToolResult')",
     );
     expect(publishedVerifier).toContain('published sdk validation validation_error');
+    expect(publishedVerifier).toContain(
+      "assertRuntimeExport(agentSdkTools, 'createToolBehavior')",
+    );
+    expect(publishedVerifier).toContain('published sdk behavior readonly true true');
     expect(verifier).toContain('browser-safe sdk error true CONFIG_ERROR');
     expect(verifier).toContain('browser-safe sdk tool');
     expect(verifier).toContain("verifyBrowserSafeDist('dist/errors/index.js')");
@@ -656,6 +666,15 @@ describe('package entrypoints', () => {
     expect(publicTypeContracts).toContain("import type { ISession } from '@blade-ai/agent-sdk/session';");
     expect(publicTypeContracts).toContain(
       "import type { ToolDefinition, ToolExecutionOutcome, ToolExecutionUpdate, ToolResult, ToolValidationError } from '@blade-ai/agent-sdk/tools';",
+    );
+    expect(publicTypeContracts).toContain(
+      "import { ToolKind as PublicToolsToolKind, createToolBehavior as createPublicToolBehavior } from '@blade-ai/agent-sdk/tools';",
+    );
+    expect(publicTypeContracts).toContain(
+      "import type { ToolBehavior as PublicToolBehavior } from '@blade-ai/agent-sdk/tools';",
+    );
+    expect(publicTypeContracts).toContain(
+      'const publicToolBehavior: PublicToolBehavior = createPublicToolBehavior(PublicToolsToolKind.ReadOnly);',
     );
     expect(publicTypeContracts).toContain("import type { RuntimeContext } from '@blade-ai/agent-sdk/core';");
     expect(verifier).toContain('const sdkErrorOptions: SdkErrorOptions');
@@ -719,6 +738,7 @@ describe('package entrypoints', () => {
     expect(verifier).toContain("from '@blade-ai/agent';");
     expect(verifier).toContain("from '@blade-ai/agent/kernel';");
     expect(verifier).toContain("from '@blade-ai/agent/loop';");
+    expect(verifier).toContain('isToolKind');
     expect(verifier).toContain("from '@blade-ai/agent/protocol';");
     expect(verifier).toContain("from '@blade-ai/agent/ports';");
     expect(verifier).toContain("from '@blade-ai/agent/state';");

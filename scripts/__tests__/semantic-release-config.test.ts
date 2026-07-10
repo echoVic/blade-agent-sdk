@@ -392,6 +392,7 @@ describe('package provenance metadata', () => {
     expect(packageVerifier).toContain("assertRuntimeExport(agentLoop, 'resolveToolInterruptBehavior')");
     expect(packageVerifier).toContain("assertRuntimeExport(agentLoop, 'createInterruptAwareAbortSignal')");
     expect(packageVerifier).toContain("assertRuntimeExport(agentLoop, 'toolUpdateToAgentEvent')");
+    expect(packageVerifier).toContain("assertRuntimeExport(agentLoop, 'isToolKind')");
     expect(packageVerifier).toContain("assertRuntimeExport(agentLoop, 'RETRY_PROMPT')");
     expect(packageVerifier).toContain("assertRuntimeExport(agentLoop, 'ToolKind')");
     expect(packageVerifier).toContain("assertRuntimeExport(agentRecovery, 'isOverflowRecoverable')");
@@ -410,6 +411,7 @@ describe('package provenance metadata', () => {
     expect(packageVerifier).toContain("assertNoRuntimeExport(agentSdk, 'normalizeDeepSeekModel')");
     expect(packageVerifier).toContain("assertNoRuntimeExport(agentSdk, 'DeepSeekCostTracker')");
     expect(packageVerifier).toContain("assertRuntimeExport(agentSdkTools, 'ToolKind')");
+    expect(packageVerifier).toContain("assertRuntimeExport(agentSdkTools, 'createToolBehavior')");
     expect(packageVerifier).toContain("throw new Error('@blade-ai/ai/chat should remain type-only at runtime')");
   });
 
@@ -440,7 +442,7 @@ describe('package provenance metadata', () => {
     expect(packageVerifier).toContain("import * as rootBrowserFacade from '@blade-ai/agent-sdk';");
     expect(packageVerifier).toContain("from '@blade-ai/agent-sdk/browser';");
     expect(packageVerifier).toContain("from '@blade-ai/agent-sdk/errors';");
-    expect(packageVerifier).toContain("import { ToolCatalog, ToolKind, defineTool, validationErrorToToolResult } from '@blade-ai/agent-sdk/tools';");
+    expect(packageVerifier).toContain("import { ToolCatalog, ToolKind, createToolBehavior, defineTool, validationErrorToToolResult } from '@blade-ai/agent-sdk/tools';");
     expect(packageVerifier).toContain("from '@blade-ai/agent-sdk/session';");
     expect(packageVerifier).toContain("from '@blade-ai/agent-sdk/session/internal';");
     expect(packageVerifier).toContain('runPackageLocalTurn as runBrowserInternalTurn');
@@ -486,6 +488,7 @@ describe('package provenance metadata', () => {
     expect(agentBrowserBundleSource).toContain('resolveToolInterruptBehavior');
     expect(agentBrowserBundleSource).toContain('createInterruptAwareAbortSignal');
     expect(agentBrowserBundleSource).toContain('toolUpdateToAgentEvent');
+    expect(agentBrowserBundleSource).toContain('isToolKind');
     expect(agentBrowserBundleSource).toContain('ToolKind');
     expect(agentBrowserBundleSource).toContain("from '@blade-ai/agent/recovery';");
     expect(agentBrowserBundleSource).toContain('new TokenBudget');
@@ -893,6 +896,7 @@ describe('release scripts', () => {
     expect(publishedVerifier).toContain("assertRuntimeExport(agentLoop, 'resolveToolInterruptBehavior')");
     expect(publishedVerifier).toContain("assertRuntimeExport(agentLoop, 'createInterruptAwareAbortSignal')");
     expect(publishedVerifier).toContain("assertRuntimeExport(agentLoop, 'toolUpdateToAgentEvent')");
+    expect(publishedVerifier).toContain("assertRuntimeExport(agentLoop, 'isToolKind')");
     expect(publishedVerifier).toContain("assertRuntimeExport(agentLoop, 'RETRY_PROMPT')");
     expect(publishedVerifier).toContain("assertRuntimeExport(agentLoop, 'ToolKind')");
     expect(publishedVerifier).toContain("assertRuntimeExport(agentRecovery, 'isOverflowRecoverable')");
@@ -1891,7 +1895,7 @@ describe('release scripts', () => {
     expect(publishedVerifier).toContain("from '@blade-ai/agent-sdk/server';");
     expect(publishedVerifier).toContain("from '@blade-ai/agent-sdk/local';");
     expect(publishedVerifier).toContain("from '@blade-ai/agent-sdk/core';");
-    expect(publishedVerifier).toContain("import { ToolCatalog, ToolKind, defineTool, validationErrorToToolResult } from '@blade-ai/agent-sdk/tools';");
+    expect(publishedVerifier).toContain("import { ToolCatalog, ToolKind, createToolBehavior, defineTool, validationErrorToToolResult } from '@blade-ai/agent-sdk/tools';");
     expect(publishedVerifier).toContain('await bundleWithEsbuildRetry({');
     expect(publishedVerifier).toContain("platform: 'browser'");
     expect(publishedVerifier).toContain("conditions: ['browser']");
@@ -1935,6 +1939,7 @@ describe('release scripts', () => {
     expect(publishedAgentBrowserBundleSource).toContain('resolveToolInterruptBehavior');
     expect(publishedAgentBrowserBundleSource).toContain('createInterruptAwareAbortSignal');
     expect(publishedAgentBrowserBundleSource).toContain('toolUpdateToAgentEvent');
+    expect(publishedAgentBrowserBundleSource).toContain('isToolKind');
     expect(publishedAgentBrowserBundleSource).toContain('ToolKind');
     expect(publishedAgentBrowserBundleSource).toContain("from '@blade-ai/agent/recovery';");
     expect(publishedAgentBrowserBundleSource).toContain('new TokenBudget');

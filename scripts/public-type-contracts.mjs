@@ -58,6 +58,8 @@ const sdkPublicTypeImportContracts = {
     "import type { SdkErrorOptions } from '@blade-ai/agent-sdk/errors';",
     "import type { ISession } from '@blade-ai/agent-sdk/session';",
     "import type { ToolDefinition, ToolExecutionOutcome, ToolExecutionUpdate, ToolResult, ToolValidationError } from '@blade-ai/agent-sdk/tools';",
+    "import { ToolKind as PublicToolsToolKind, createToolBehavior as createPublicToolBehavior } from '@blade-ai/agent-sdk/tools';",
+    "import type { ToolBehavior as PublicToolBehavior } from '@blade-ai/agent-sdk/tools';",
   ],
   packedConsumer: [
     "import type { SessionOptions, StreamMessage } from '@blade-ai/agent-sdk';",
@@ -65,6 +67,8 @@ const sdkPublicTypeImportContracts = {
     "import type { SdkErrorOptions } from '@blade-ai/agent-sdk/errors';",
     "import type { ISession as SubpathSession, ResumeOptions, SessionOptions as SubpathSessionOptions } from '@blade-ai/agent-sdk/session';",
     "import type { ToolDefinition as ToolsToolDefinition, ToolExecutionOutcome, ToolExecutionUpdate, ToolResult as ToolsToolResult, ToolValidationError as ToolsToolValidationError } from '@blade-ai/agent-sdk/tools';",
+    "import { ToolKind as PublicToolsToolKind, createToolBehavior as createPublicToolBehavior } from '@blade-ai/agent-sdk/tools';",
+    "import type { ToolBehavior as PublicToolBehavior } from '@blade-ai/agent-sdk/tools';",
     "import type { BuiltinToolsOptions } from '@blade-ai/agent-sdk/local';",
     "import type { ClaudeCodePermissionMode, ISession as ServerSession, PermissionsConfig as ServerPermissionsConfig, SubagentExecutionRunner, SubagentFrontmatter } from '@blade-ai/agent-sdk/server';",
     "import type { StreamMessage as BrowserStreamMessage } from '@blade-ai/agent-sdk/browser';",
@@ -76,12 +80,16 @@ const sdkPublicTypeImportContracts = {
     "import type { ISession } from '@blade-ai/agent-sdk/session';",
     "import type { ClaudeCodePermissionMode, ISession as ServerSession, PermissionsConfig as ServerPermissionsConfig, SubagentExecutionRunner, SubagentFrontmatter } from '@blade-ai/agent-sdk/server';",
     "import type { ToolDefinition as SubpathToolDefinition, ToolExecutionOutcome, ToolExecutionUpdate, ToolResult as SubpathToolResult, ToolValidationError as SubpathToolValidationError } from '@blade-ai/agent-sdk/tools';",
+    "import { ToolKind as PublicToolsToolKind, createToolBehavior as createPublicToolBehavior } from '@blade-ai/agent-sdk/tools';",
+    "import type { ToolBehavior as PublicToolBehavior } from '@blade-ai/agent-sdk/tools';",
     "import type { BuiltinToolsOptions } from '@blade-ai/agent-sdk/local';",
     "import type { PermissionMode, RuntimeContext } from '@blade-ai/agent-sdk/core';",
   ],
 };
 
 const toolExecutionOutcomeAugmentationContractLines = [
+  'const publicToolBehavior: PublicToolBehavior = createPublicToolBehavior(PublicToolsToolKind.ReadOnly);',
+  '',
   "declare module '@blade-ai/agent/loop' {",
   '  interface AgentLoopToolExecutionOutcome {',
   "    publicAgentOutcomeMarker?: 'agent-public-outcome';",

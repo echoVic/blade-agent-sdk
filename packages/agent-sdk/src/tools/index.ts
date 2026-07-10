@@ -28,7 +28,15 @@ import type {
   ToolValidationError,
 } from './types/index.js';
 import { ToolErrorType } from './types/index.js';
-import { createToolBehavior, isReadOnlyKind, ToolKind } from './types/ToolKind.js';
+import {
+  createToolBehavior,
+  getStaticToolBehavior,
+  isReadOnlyKind,
+  resolveToolBehavior,
+  resolveToolBehaviorHint,
+  resolveToolBehaviorSafely,
+  ToolKind,
+} from './types/ToolKind.js';
 
 export type ToolSourceKind = 'builtin' | 'custom' | 'mcp' | 'session';
 export type ToolTrustLevel = 'trusted' | 'workspace' | 'remote';
@@ -608,4 +616,13 @@ export type {
   ToolSuccessResult,
   ToolValidationError,
 };
-export { ToolErrorType, ToolKind };
+export {
+  createToolBehavior,
+  getStaticToolBehavior,
+  isReadOnlyKind,
+  resolveToolBehavior,
+  resolveToolBehaviorHint,
+  resolveToolBehaviorSafely,
+  ToolErrorType,
+  ToolKind,
+};
