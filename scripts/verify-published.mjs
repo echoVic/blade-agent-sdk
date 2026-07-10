@@ -11,6 +11,7 @@ import {
   agentSdkCoreDeclarationBrowserSafeRules,
   agentSdkLocalAdapterBoundaryRules,
   agentSdkPermissionDeclarationBoundaryRules,
+  agentSdkRootDeclarationEntryOwnershipRules,
   agentSdkRootPublicDeclarationBoundaryRules,
   agentSdkRootSubagentCompatibilityBoundaryRules,
   agentSdkServerFacadeBoundaryRules,
@@ -1604,7 +1605,10 @@ async function verifyPublishedRootSubagentCompatibilityBoundary({ consumerDir })
 async function verifyPublishedRootDeclarationBoundary({ consumerDir }) {
   const rules = toInstalledForbiddenFileRules(
     join(consumerDir, 'node_modules/@blade-ai/agent-sdk'),
-    agentSdkRootPublicDeclarationBoundaryRules.map((rule) => ({
+    [
+      ...agentSdkRootDeclarationEntryOwnershipRules,
+      ...agentSdkRootPublicDeclarationBoundaryRules,
+    ].map((rule) => ({
       file: 'dist/index.d.ts',
       forbidden: rule.forbidden,
       message: `published ${rule.message}`,

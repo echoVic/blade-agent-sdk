@@ -182,7 +182,7 @@ describe('package entrypoints', () => {
     expect(existsSync(join(process.cwd(), 'scripts/verify-entrypoints.mjs'))).toBe(true);
   });
 
-  it('shares root declaration ownership rules between local and packed verifiers', () => {
+  it('shares root declaration ownership rules across local packed and published verifiers', () => {
     const sharedRulesPath = 'scripts/agent-sdk-boundary-rules.mjs';
 
     expect(existsSync(join(process.cwd(), sharedRulesPath)), sharedRulesPath).toBe(true);
@@ -190,6 +190,7 @@ describe('package entrypoints', () => {
     const sharedRules = readFileSync(sharedRulesPath, 'utf-8');
     const entrypointVerifier = readFileSync('scripts/verify-entrypoints.mjs', 'utf-8');
     const packageVerifier = readFileSync('scripts/verify-packages.mjs', 'utf-8');
+    const publishedVerifier = readFileSync('scripts/verify-published.mjs', 'utf-8');
 
     expect(sharedRules).toContain('agentSdkRootDeclarationEntryOwnershipRules');
     expect(sharedRules).toContain('./agent/loop/runToolCall.js');
@@ -208,6 +209,8 @@ describe('package entrypoints', () => {
     expect(packageVerifier).toContain(
       "toPackedForbiddenFileContents('package/dist/index.d.ts', agentSdkRootDeclarationEntryOwnershipRules)",
     );
+    expect(publishedVerifier).toContain('agentSdkRootDeclarationEntryOwnershipRules');
+    expect(publishedVerifier).toContain('toInstalledForbiddenFileRules(');
   });
 
   it('shares root public declaration boundary rules across local packed and published verifiers', () => {
