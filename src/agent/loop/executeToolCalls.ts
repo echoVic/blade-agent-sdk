@@ -10,8 +10,9 @@ import type {
   ToolExecutionContext,
   ToolExecutionHooks,
   ToolExecutionOutcome,
+  ToolExecutionUpdate,
 } from './runToolCall.js';
-import { emitToolExecutionUpdate, runToolCall } from './runToolCall.js';
+import { runToolCall } from './runToolCall.js';
 
 export type {
   ToolExecutionContext,
@@ -42,10 +43,13 @@ async function executeToolCall(
   toolCall: AgentFunctionToolCall,
   input: ExecuteToolCallsInput,
 ): Promise<ToolExecutionOutcome> {
-  await emitToolExecutionUpdate(input.hooks, {
+  const readyUpdate: ToolExecutionUpdate = {
     type: 'tool_ready',
     toolCall,
-  });
+  };
+
+  await input.hooks?.onUpdate?.(readyUpdate);
+  await input.hooks?.onToolReady?.(toolCall);
 
   return runToolCall({
     toolCall,

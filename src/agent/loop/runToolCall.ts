@@ -115,30 +115,3 @@ export async function runToolCall(
     logger: input.logger ?? NOOP_LOGGER.child(LogCategory.AGENT),
   } as unknown as PackageLocalRunToolCallInput) as unknown as Promise<ToolExecutionOutcome>;
 }
-
-export async function emitToolExecutionUpdate(
-  hooks: ToolExecutionHooks | undefined,
-  update: ToolExecutionUpdate,
-): Promise<void> {
-  await hooks?.onUpdate?.(update);
-
-  switch (update.type) {
-    case 'tool_ready':
-      await hooks?.onToolReady?.(update.toolCall);
-      return;
-    case 'tool_started':
-    case 'tool_progress':
-    case 'tool_message':
-    case 'tool_runtime_patch':
-    case 'tool_context_patch':
-    case 'tool_new_messages':
-    case 'tool_permission_updates':
-      return;
-    case 'tool_result':
-      await hooks?.onAfterToolExec?.(update.outcome);
-      return;
-    case 'tool_completed':
-      await hooks?.onToolComplete?.(update.outcome.toolCall, update.outcome.result);
-      return;
-  }
-}

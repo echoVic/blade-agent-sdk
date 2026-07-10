@@ -1666,6 +1666,37 @@ describe('monorepo topology', () => {
     }
   });
 
+  it('keeps tool-ready compatibility dispatch explicit in the root legacy loop adapter', () => {
+    const rootExecutionSource = readFileSync(
+      'src/agent/loop/executeToolCalls.ts',
+      'utf-8',
+    );
+    const rootRunToolCallSource = readFileSync('src/agent/loop/runToolCall.ts', 'utf-8');
+
+    expect(rootRunToolCallSource).not.toContain('emitToolExecutionUpdate');
+    expect(rootRunToolCallSource).not.toContain('switch (update.type)');
+    expect(rootRunToolCallSource).not.toContain('await hooks?.onUpdate?.(update)');
+
+    expect(rootExecutionSource).not.toContain('emitToolExecutionUpdate');
+    expect(rootExecutionSource).toMatch(
+      /import type\s*\{[^}]*\bToolExecutionUpdate\b[^}]*\}\s*from '\.\/runToolCall\.js';/,
+    );
+    expect(rootExecutionSource).toContain('const readyUpdate: ToolExecutionUpdate = {');
+    expect(rootExecutionSource.match(/type: 'tool_\w+'/g)).toEqual(["type: 'tool_ready'"]);
+
+    const onUpdateIndex = rootExecutionSource.indexOf(
+      'await input.hooks?.onUpdate?.(readyUpdate);',
+    );
+    const onToolReadyIndex = rootExecutionSource.indexOf(
+      'await input.hooks?.onToolReady?.(toolCall);',
+    );
+    const runToolCallIndex = rootExecutionSource.indexOf('return runToolCall({');
+
+    expect(onUpdateIndex).toBeGreaterThan(-1);
+    expect(onToolReadyIndex).toBeGreaterThan(onUpdateIndex);
+    expect(runToolCallIndex).toBeGreaterThan(onToolReadyIndex);
+  });
+
   it('keeps root legacy loop adapters on the agent-sdk session internal subpath', () => {
     const rootTsconfig = readJson('tsconfig.json');
     const sdkPackage = readJson('packages/agent-sdk/package.json');
@@ -2823,7 +2854,7 @@ describe('monorepo topology', () => {
     expect(runtimeToolExecutionSource).toContain('runPackageLocalToolCall');
     expect(rootRunToolCallSource).toContain('runPackageLocalToolCall');
     expect(rootRunToolCallSource).not.toContain('emitPackageLocalToolExecutionUpdate');
-    expect(rootRunToolCallSource).toContain('hooks?.onUpdate?.(update)');
+    expect(rootRunToolCallSource).not.toContain('hooks?.onUpdate?.(update)');
     expect(rootRunToolCallSource).not.toContain('repairToolCallParams');
     expect(rootRunToolCallSource).not.toContain('normalizeToolEffects');
     expect(rootRunToolCallSource).not.toContain('createInterruptAwareAbortSignal');
