@@ -25,7 +25,7 @@ import {
   toInstalledForbiddenFileRules,
 } from './agent-sdk-boundary-rules.mjs';
 import { bundleWithEsbuildRetry } from './esbuild-bundle.mjs';
-import { createAgentPublicTypeImportBlock } from './public-type-contracts.mjs';
+import { createAgentPublicTypeImportBlock, createAiPublicTypeImportBlock } from './public-type-contracts.mjs';
 
 const execFileAsync = promisify(execFile);
 
@@ -1874,35 +1874,10 @@ async function verifyPublishedTypesSmoke({ consumerDir }) {
   );
   await writeFile(
     join(consumerDir, 'consumer-types.ts'),
-    `import type { ModelPort } from '@blade-ai/ai';
-import type { ModelRequest } from '@blade-ai/ai';
-import type { ModelResponse, ModelStreamEvent } from '@blade-ai/ai';
-import type {
-  ChatConfig,
-  ChatResponse,
-  Message as ChatMessage,
-  StreamChunk as ChatStreamChunk,
-  UsageInfo as ChatUsageInfo,
-} from '@blade-ai/ai/chat';
-import type {
-  ModelMessage,
-  ModelRequest as ModelSubpathRequest,
-  ModelResponse as ModelSubpathResponse,
-  ModelStreamEvent as ModelSubpathStreamEvent,
-  UsageInfo as ModelSubpathUsageInfo,
-} from '@blade-ai/ai/model';
-import type {
-  QuerySource,
-  RetryConfig,
-  RetryContext,
-  RetryEvent,
-} from '@blade-ai/ai/retry';
+    `${createAiPublicTypeImportBlock('publishedConsumer')}
 import { DEFAULT_RETRY_CONFIG, isRetryableError, withRetry } from '@blade-ai/ai/retry';
-import type { DeepSeekCostBreakdown, DeepSeekProviderOptions } from '@blade-ai/ai/deepseek';
 import { calculateDeepSeekCost, normalizeDeepSeekModel } from '@blade-ai/ai/deepseek';
-import type { OpenAICompatibleModelPortOptions } from '@blade-ai/ai/providers/openai-compatible';
 import { createOpenAICompatibleModelPort } from '@blade-ai/ai/providers/openai-compatible';
-import type { VercelLanguageModelOptions } from '@blade-ai/ai/providers/vercel';
 import { createVercelModelPort } from '@blade-ai/ai/providers/vercel';
 import { ExecutionEpoch } from '@blade-ai/agent/epoch';
 import type {

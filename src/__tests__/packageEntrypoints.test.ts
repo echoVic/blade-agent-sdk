@@ -588,11 +588,15 @@ describe('package entrypoints', () => {
     expect(verifier).toContain('local package metadata @blade-ai/ai @blade-ai/agent @blade-ai/agent-sdk');
     expect(verifier).toContain('declaration-entry.ts');
     expect(verifier).toContain('declaration-tsconfig.json');
-    expect(verifier).toContain("import type { ModelPort } from '@blade-ai/ai/model';");
-    expect(verifier).toContain("import type { ChatConfig } from '@blade-ai/ai/chat';");
-    expect(verifier).toContain("import type { OpenAICompatibleModelPortOptions } from '@blade-ai/ai/providers/openai-compatible';");
-    expect(verifier).toContain("import type { VercelLanguageModelOptions } from '@blade-ai/ai/providers/vercel';");
-    expect(verifier).toContain("import type { RetryConfig } from '@blade-ai/ai/retry';");
+    expect(publicTypeContracts).toContain("import type { ModelPort } from '@blade-ai/ai/model';");
+    expect(publicTypeContracts).toContain("import type { ChatConfig } from '@blade-ai/ai/chat';");
+    expect(publicTypeContracts).toContain(
+      "import type { OpenAICompatibleModelPortOptions } from '@blade-ai/ai/providers/openai-compatible';",
+    );
+    expect(publicTypeContracts).toContain(
+      "import type { VercelLanguageModelOptions } from '@blade-ai/ai/providers/vercel';",
+    );
+    expect(publicTypeContracts).toContain("import type { RetryConfig } from '@blade-ai/ai/retry';");
     expect(publicTypeContracts).toContain(
       "import type { AgentKernelOptions } from '@blade-ai/agent/kernel';",
     );
@@ -686,13 +690,13 @@ describe('package entrypoints', () => {
     const helper = readFileSync(helperPath, 'utf-8');
 
     expect(localVerifier).toContain(
-      "import { createAgentPublicTypeImportLines } from './public-type-contracts.mjs';",
+      "import { createAgentPublicTypeImportLines, createAiPublicTypeImportLines } from './public-type-contracts.mjs';",
     );
     expect(packageVerifier).toContain(
-      "import { createAgentPublicTypeImportBlock } from './public-type-contracts.mjs';",
+      "import { createAgentPublicTypeImportBlock, createAiPublicTypeImportBlock } from './public-type-contracts.mjs';",
     );
     expect(publishedVerifier).toContain(
-      "import { createAgentPublicTypeImportBlock } from './public-type-contracts.mjs';",
+      "import { createAgentPublicTypeImportBlock, createAiPublicTypeImportBlock } from './public-type-contracts.mjs';",
     );
     expect(localVerifier).toContain("...createAgentPublicTypeImportLines('localDeclaration')");
     expect(packageVerifier).toContain("$" + "{createAgentPublicTypeImportBlock('packedConsumer')}");
@@ -704,6 +708,38 @@ describe('package entrypoints', () => {
     expect(helper).toContain("import type { AgentKernelOptions } from '@blade-ai/agent/kernel';");
     expect(helper).toContain("import type { AgentStreamEvent } from '@blade-ai/agent/protocol';");
     expect(helper).not.toContain("from '@blade-ai/agent';");
+  });
+
+  it('centralizes ai public type contract imports across entrypoint verifiers', () => {
+    const helperPath = 'scripts/public-type-contracts.mjs';
+    const localVerifier = readFileSync('scripts/verify-entrypoints.mjs', 'utf-8');
+    const packageVerifier = readFileSync('scripts/verify-packages.mjs', 'utf-8');
+    const publishedVerifier = readFileSync('scripts/verify-published.mjs', 'utf-8');
+    const helper = readFileSync(helperPath, 'utf-8');
+
+    expect(localVerifier).toContain(
+      "import { createAgentPublicTypeImportLines, createAiPublicTypeImportLines } from './public-type-contracts.mjs';",
+    );
+    expect(packageVerifier).toContain(
+      "import { createAgentPublicTypeImportBlock, createAiPublicTypeImportBlock } from './public-type-contracts.mjs';",
+    );
+    expect(publishedVerifier).toContain(
+      "import { createAgentPublicTypeImportBlock, createAiPublicTypeImportBlock } from './public-type-contracts.mjs';",
+    );
+    expect(localVerifier).toContain("...createAiPublicTypeImportLines('localDeclaration')");
+    expect(packageVerifier).toContain("$" + "{createAiPublicTypeImportBlock('packedConsumer')}");
+    expect(publishedVerifier).toContain("$" + "{createAiPublicTypeImportBlock('publishedConsumer')}");
+
+    expect(helper).toContain('aiPublicTypeImportContracts');
+    expect(helper).toContain("import type { ModelPort } from '@blade-ai/ai/model';");
+    expect(helper).toContain("import type { ChatConfig } from '@blade-ai/ai/chat';");
+    expect(helper).toContain("import type { RetryConfig } from '@blade-ai/ai/retry';");
+    expect(helper).toContain(
+      "import type { OpenAICompatibleModelPortOptions } from '@blade-ai/ai/providers/openai-compatible';",
+    );
+    expect(helper).toContain("import type { VercelLanguageModelOptions } from '@blade-ai/ai/providers/vercel';");
+    expect(helper).toContain("import type { DeepSeekCostBreakdown, DeepSeekProviderOptions }");
+    expect(helper).toContain("from '@blade-ai/ai/deepseek';");
   });
 
   it('declares production verification scripts for package and release gates', () => {
