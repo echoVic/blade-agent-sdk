@@ -17,6 +17,14 @@ function readFunctionSource(source: string, functionName: string): string {
   return nextFunction === -1 ? source.slice(start) : source.slice(start, nextFunction);
 }
 
+function readConstArraySource(source: string, constName: string): string {
+  const match = source.match(new RegExp(`const ${constName} = \\[[\\s\\S]*?\\];`));
+  if (!match) {
+    throw new Error(`Missing const array ${constName}`);
+  }
+  return match[0];
+}
+
 describe('semantic-release configuration', () => {
   it('publishes only from main with v-prefixed tags', () => {
     const config = require('../../release.config.cjs');
@@ -1522,13 +1530,15 @@ describe('release scripts', () => {
 
   it('verifies packed SDK browser-safe static import closures before publication', () => {
     const packageVerifier = readFileSync(resolve('scripts/verify-packages.mjs'), 'utf8');
+    const browserSafeEntries = readConstArraySource(packageVerifier, 'packedSdkBrowserSafeEntries');
     const readme = readFileSync(resolve('README.md'), 'utf8');
     const checklist = readFileSync(resolve('docs/production-checklist.md'), 'utf8');
     const roadmap = readFileSync(resolve('docs/roadmap/production-agent-sdk-monorepo.md'), 'utf8');
 
     expect(packageVerifier).toContain('function verifyPackedSdkBrowserSafeStaticClosures');
-    expect(packageVerifier).toContain('package/dist/browser/index.js');
-    expect(packageVerifier).toContain('package/dist/core/index.js');
+    expect(browserSafeEntries).toContain('package/dist/browser/index.js');
+    expect(browserSafeEntries).toContain('package/dist/core/index.js');
+    expect(browserSafeEntries).toContain('package/dist/errors/index.js');
     expect(packageVerifier).toContain('collectPackedStaticImports');
     expect(packageVerifier).toContain('assertNoBrowserDisallowedMarkers');
     expect(packageVerifier).toContain('packed SDK browser-safe static import closure');
@@ -1627,13 +1637,15 @@ describe('release scripts', () => {
 
   it('verifies published SDK browser-safe static import closures from the temporary consumer install', () => {
     const publishedVerifier = readFileSync(resolve('scripts/verify-published.mjs'), 'utf8');
+    const browserSafeEntries = readConstArraySource(publishedVerifier, 'publishedSdkBrowserSafeEntries');
     const readme = readFileSync(resolve('README.md'), 'utf8');
     const checklist = readFileSync(resolve('docs/production-checklist.md'), 'utf8');
     const roadmap = readFileSync(resolve('docs/roadmap/production-agent-sdk-monorepo.md'), 'utf8');
 
     expect(publishedVerifier).toContain('function verifyPublishedSdkBrowserSafeStaticClosures');
-    expect(publishedVerifier).toContain('node_modules/@blade-ai/agent-sdk/dist/browser/index.js');
-    expect(publishedVerifier).toContain('node_modules/@blade-ai/agent-sdk/dist/core/index.js');
+    expect(browserSafeEntries).toContain('node_modules/@blade-ai/agent-sdk/dist/browser/index.js');
+    expect(browserSafeEntries).toContain('node_modules/@blade-ai/agent-sdk/dist/core/index.js');
+    expect(browserSafeEntries).toContain('node_modules/@blade-ai/agent-sdk/dist/errors/index.js');
     expect(publishedVerifier).toContain('collectPublishedStaticImports');
     expect(publishedVerifier).toContain('assertNoBrowserDisallowedMarkers');
     expect(publishedVerifier).toContain('published SDK browser-safe static import closure');

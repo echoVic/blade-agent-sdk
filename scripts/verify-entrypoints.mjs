@@ -370,6 +370,7 @@ console.log('local server facade boundary passed');
 verifyBrowserSafeDist('dist/browser/index.js');
 verifyBrowserSafeDist('dist/browser/server-only-stub.js');
 verifyBrowserSafeDist('dist/core/index.js');
+verifyBrowserSafeDist('dist/errors/index.js');
 verifyBrowserSafeDist('dist/tools/index.js');
 
 const tempDir = mkdtempSync(join(packageRoot, '.tmp-entrypoints-'));

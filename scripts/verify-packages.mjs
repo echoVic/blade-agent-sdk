@@ -88,6 +88,7 @@ const expectedPackedSdkBrowserExports = {
 const packedSdkBrowserSafeEntries = [
   'package/dist/browser/index.js',
   'package/dist/core/index.js',
+  'package/dist/errors/index.js',
 ];
 const packedReadmeRequirements = [
   {
