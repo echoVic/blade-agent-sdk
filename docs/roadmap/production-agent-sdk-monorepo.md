@@ -1024,6 +1024,7 @@ Status:
 - Three-hundred-fourth verification-chain increment complete: the local entrypoint TypeScript declaration smoke now also imports and type-checks `AgentStreamEvent` from the explicit `@blade-ai/agent/protocol` subpath. This moves protocol type coverage earlier than packed tarball verification while keeping the local root facade smoke focused on public runtime values.
 - Three-hundred-fifth verification-chain increment complete: the post-publish TypeScript declaration smoke now imports and instantiates `AgentToolResult` from the explicit `@blade-ai/agent/protocol` subpath. This brings npm-installed protocol result typing coverage in line with the packed temporary-consumer smoke while keeping verifier-only type checks on Pi-style agent subpaths.
 - Three-hundred-sixth verification-chain increment complete: the local entrypoint TypeScript declaration smoke now also imports and instantiates `AgentToolResult` from the explicit `@blade-ai/agent/protocol` subpath. This moves agent tool-result protocol typing coverage into the local dist gate before packed tarball or post-publish verification runs.
+- Three-hundred-seventh verification-chain increment complete: the local entrypoint TypeScript declaration smoke now instantiates `SdkErrorOptions` from `@blade-ai/agent-sdk/errors`, proving the browser-safe SDK error options type works in the local dist gate before packed tarball or post-publish verification runs.
 
 Commit:
 

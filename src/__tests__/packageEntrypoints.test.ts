@@ -637,6 +637,7 @@ describe('package entrypoints', () => {
     expect(publicTypeContracts).toContain("import type { ISession } from '@blade-ai/agent-sdk/session';");
     expect(publicTypeContracts).toContain("import type { ToolDefinition } from '@blade-ai/agent-sdk/tools';");
     expect(publicTypeContracts).toContain("import type { RuntimeContext } from '@blade-ai/agent-sdk/core';");
+    expect(verifier).toContain('const sdkErrorOptions: SdkErrorOptions');
     expect(verifier).toContain('local declaration consumer type-check passed');
     expect(verifier).toContain('local root server runtime export parity');
     expect(verifier).toContain('Runtime export mismatch between local root and local server');
