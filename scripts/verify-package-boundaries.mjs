@@ -130,6 +130,7 @@ const scopedSourceRules = [
       'packages/agent-sdk/src/browser',
       'packages/agent-sdk/src/core',
       'packages/agent-sdk/src/errors',
+      'packages/agent-sdk/src/tools',
     ],
     disallowedSpecifiers: [
       [/^node:/, 'Browser-safe SDK source must not import Node-only modules'],

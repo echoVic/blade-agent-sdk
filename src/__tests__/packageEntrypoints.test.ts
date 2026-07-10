@@ -589,6 +589,7 @@ describe('package entrypoints', () => {
     expect(verifier).toContain("from '@blade-ai/agent-sdk/errors';");
     expect(verifier).toContain('browser-safe sdk error true CONFIG_ERROR');
     expect(verifier).toContain("verifyBrowserSafeDist('dist/errors/index.js')");
+    expect(verifier).toContain("verifyBrowserSafeDist('dist/tools/index.js')");
     expect(verifier).toContain("from '@blade-ai/ai';");
     expect(verifier).toContain("from '@blade-ai/ai/chat';");
     expect(verifier).toContain("from '@blade-ai/ai/model';");

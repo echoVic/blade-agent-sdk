@@ -80,6 +80,7 @@ const publishedSdkBrowserSafeEntries = [
   'node_modules/@blade-ai/agent-sdk/dist/browser/index.js',
   'node_modules/@blade-ai/agent-sdk/dist/core/index.js',
   'node_modules/@blade-ai/agent-sdk/dist/errors/index.js',
+  'node_modules/@blade-ai/agent-sdk/dist/tools/index.js',
 ];
 const publishedManifestRequirements = [
   {

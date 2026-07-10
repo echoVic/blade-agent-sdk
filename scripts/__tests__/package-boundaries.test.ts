@@ -315,6 +315,27 @@ describe('package boundary verifier', () => {
     expect(result.stderr).toContain('Browser-safe SDK source');
   });
 
+  it('rejects node-only imports from agent-sdk tools source', () => {
+    const cwd = createBoundaryFixture();
+    mkdirSync(join(cwd, 'packages', 'agent-sdk', 'src', 'tools'), { recursive: true });
+    writeFileSync(
+      join(cwd, 'packages', 'agent-sdk', 'src', 'tools', 'index.ts'),
+      "import { readFile } from 'node:fs/promises';\nexport { readFile };\n",
+    );
+
+    const result = spawnSync(process.execPath, [
+      resolve('scripts/verify-package-boundaries.mjs'),
+    ], {
+      cwd,
+      encoding: 'utf8',
+    });
+
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain('packages/agent-sdk/src/tools/index.ts');
+    expect(result.stderr).toContain('node:fs/promises');
+    expect(result.stderr).toContain('Browser-safe SDK source');
+  });
+
   it('rejects node-only imports from the agent-sdk browser-safe static import closure', () => {
     const cwd = createBoundaryFixture();
     mkdirSync(join(cwd, 'packages', 'agent-sdk', 'src', 'core'), { recursive: true });

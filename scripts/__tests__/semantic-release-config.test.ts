@@ -1539,6 +1539,7 @@ describe('release scripts', () => {
     expect(browserSafeEntries).toContain('package/dist/browser/index.js');
     expect(browserSafeEntries).toContain('package/dist/core/index.js');
     expect(browserSafeEntries).toContain('package/dist/errors/index.js');
+    expect(browserSafeEntries).toContain('package/dist/tools/index.js');
     expect(packageVerifier).toContain('collectPackedStaticImports');
     expect(packageVerifier).toContain('assertNoBrowserDisallowedMarkers');
     expect(packageVerifier).toContain('packed SDK browser-safe static import closure');
@@ -1646,6 +1647,7 @@ describe('release scripts', () => {
     expect(browserSafeEntries).toContain('node_modules/@blade-ai/agent-sdk/dist/browser/index.js');
     expect(browserSafeEntries).toContain('node_modules/@blade-ai/agent-sdk/dist/core/index.js');
     expect(browserSafeEntries).toContain('node_modules/@blade-ai/agent-sdk/dist/errors/index.js');
+    expect(browserSafeEntries).toContain('node_modules/@blade-ai/agent-sdk/dist/tools/index.js');
     expect(publishedVerifier).toContain('collectPublishedStaticImports');
     expect(publishedVerifier).toContain('assertNoBrowserDisallowedMarkers');
     expect(publishedVerifier).toContain('published SDK browser-safe static import closure');
