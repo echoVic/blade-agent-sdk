@@ -23,6 +23,7 @@ import {
   toPackedForbiddenFileContents,
   toPackedForbiddenFileRules,
 } from './agent-sdk-boundary-rules.mjs';
+import { isExactDependencyVersion, isInternalBladeDependency } from './dependency-version-rules.mjs';
 import { bundleWithEsbuildRetry } from './esbuild-bundle.mjs';
 import {
   createAgentPublicTypeImportBlock,
@@ -46,7 +47,6 @@ const dependencySections = [
   'peerDependencies',
 ];
 const nodeBuiltinModules = new Set(builtinModules);
-const exactVersionPattern = /^\d+\.\d+\.\d+(?:[-+][0-9A-Za-z-.]+)?$/;
 const allowedPublicExportConditions = new Set(['types', 'browser', 'import']);
 const forbiddenPackageLifecycleScripts = new Set([
   'preinstall',
@@ -579,9 +579,9 @@ function verifyPackedManifestDependencyVersions(packageName, manifest) {
   for (const section of dependencySections) {
     for (const [dependencyName, dependencyVersion] of Object.entries(manifest[section] ?? {})) {
       const version = String(dependencyVersion);
-      const isInternalDependency = dependencyName.startsWith('@blade-ai/');
+      const isInternalDependency = isInternalBladeDependency(dependencyName);
       if (isInternalDependency) {
-        if (version !== '0.0.0' && !exactVersionPattern.test(version)) {
+        if (version !== '0.0.0' && !isExactDependencyVersion(version)) {
           throw new Error(
             `${packageName} packed manifest internal dependency ${section}.${dependencyName} must use 0.0.0 during local pack or an exact dependency version, got ${version}`,
           );
@@ -593,7 +593,7 @@ function verifyPackedManifestDependencyVersions(packageName, manifest) {
           `${packageName} packed manifest must not contain 0.0.0 placeholder versions in ${section}.${dependencyName}`,
         );
       }
-      if (!exactVersionPattern.test(version)) {
+      if (!isExactDependencyVersion(version)) {
         throw new Error(
           `${packageName} packed manifest dependency ${section}.${dependencyName} must use an exact dependency version, got ${version}`,
         );

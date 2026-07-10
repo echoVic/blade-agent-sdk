@@ -654,6 +654,26 @@ describe('release scripts', () => {
     expect(roadmap).toContain('packed package dependency-version gate');
   });
 
+  it('shares dependency version predicates across source packed and published verifiers', () => {
+    const helperPath = resolve('scripts/dependency-version-rules.mjs');
+    const sourceBoundaryVerifier = readFileSync(resolve('scripts/verify-package-boundaries.mjs'), 'utf8');
+    const packageVerifier = readFileSync(resolve('scripts/verify-packages.mjs'), 'utf8');
+    const publishedVerifier = readFileSync(resolve('scripts/verify-published.mjs'), 'utf8');
+
+    expect(existsSync(helperPath)).toBe(true);
+    const helper = readFileSync(helperPath, 'utf8');
+
+    expect(helper).toContain('function isExactDependencyVersion');
+    expect(helper).toContain('function isInternalBladeDependency');
+    expect(sourceBoundaryVerifier).toContain("from './dependency-version-rules.mjs';");
+    expect(packageVerifier).toContain("from './dependency-version-rules.mjs';");
+    expect(publishedVerifier).toContain("from './dependency-version-rules.mjs';");
+    expect(sourceBoundaryVerifier).not.toContain('function isExactSemverVersion');
+    expect(sourceBoundaryVerifier).not.toContain('function isInternalBladeDependency');
+    expect(packageVerifier).not.toContain('exactVersionPattern');
+    expect(publishedVerifier).not.toContain('exactVersionPattern');
+  });
+
   it('rejects npm lifecycle scripts from source, packed, and published package manifests', () => {
     const releaseVerifier = readFileSync(resolve('scripts/verify-release-config.mjs'), 'utf8');
     const packageVerifier = readFileSync(resolve('scripts/verify-packages.mjs'), 'utf8');

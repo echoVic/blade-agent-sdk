@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { dirname, join, normalize, relative, resolve, sep } from 'node:path';
+import { isExactDependencyVersion, isInternalBladeDependency } from './dependency-version-rules.mjs';
 
 const rootDir = process.cwd();
 const allowedPublicExportConditions = new Set(['types', 'browser', 'import']);
@@ -446,25 +447,17 @@ function verifySdkBrowserExportTargets({ packageJson, exportsValue }) {
   return browserTargetViolations;
 }
 
-function isExactSemverVersion(versionSpec) {
-  return /^[0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/.test(versionSpec);
-}
-
 function isPinnedDependencyVersion(versionSpec) {
   if (typeof versionSpec !== 'string') return false;
   if (versionSpec === 'workspace:*') return true;
   if (versionSpec.startsWith('workspace:')) {
-    return isExactSemverVersion(versionSpec.slice('workspace:'.length));
+    return isExactDependencyVersion(versionSpec.slice('workspace:'.length));
   }
   if (versionSpec.startsWith('npm:')) {
     const versionStart = versionSpec.lastIndexOf('@');
-    return versionStart > 'npm:'.length && isExactSemverVersion(versionSpec.slice(versionStart + 1));
+    return versionStart > 'npm:'.length && isExactDependencyVersion(versionSpec.slice(versionStart + 1));
   }
-  return isExactSemverVersion(versionSpec);
-}
-
-function isInternalBladeDependency(dependencyName) {
-  return /^@blade-ai\//.test(dependencyName);
+  return isExactDependencyVersion(versionSpec);
 }
 
 function collectPinnedDependencyViolations(packageJson, manifest) {

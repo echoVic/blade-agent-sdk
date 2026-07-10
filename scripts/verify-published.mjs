@@ -25,6 +25,7 @@ import {
   toInstalledForbiddenFileRules,
 } from './agent-sdk-boundary-rules.mjs';
 import { bundleWithEsbuildRetry } from './esbuild-bundle.mjs';
+import { isExactDependencyVersion } from './dependency-version-rules.mjs';
 import {
   createAgentPublicTypeImportBlock,
   createAiPublicTypeImportBlock,
@@ -45,7 +46,6 @@ const dependencySections = [
   'peerDependencies',
 ];
 const nodeBuiltinModules = new Set(builtinModules);
-const exactVersionPattern = /^\d+\.\d+\.\d+(?:[-+][0-9A-Za-z-.]+)?$/;
 const allowedPublicExportConditions = new Set(['types', 'browser', 'import']);
 const expectedPublishedPackageMetadata = {
   author: 'echoVic',
@@ -792,7 +792,7 @@ function verifyPublishedManifestDependencyVersions(packageName, manifest, versio
         }
         continue;
       }
-      if (!exactVersionPattern.test(installedVersion)) {
+      if (!isExactDependencyVersion(installedVersion)) {
         throw new Error(
           `${packageName} installed manifest dependency ${section}.${dependencyName} must use an exact dependency version, got ${installedVersion}`,
         );
