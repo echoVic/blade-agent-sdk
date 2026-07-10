@@ -632,7 +632,9 @@ describe('package entrypoints', () => {
     expect(publicTypeContracts).toContain(
       "import type { AgentToolCall, AgentToolResult } from '@blade-ai/agent/protocol';",
     );
-    expect(publicTypeContracts).toContain("import type { AgentTraceEvent } from '@blade-ai/agent/tracing';");
+    expect(publicTypeContracts).toContain(
+      "import type { AgentTraceEvent, AgentTracePort, BufferedAgentTracePort, BufferedAgentTracePortOptions } from '@blade-ai/agent/tracing';",
+    );
     expect(publicTypeContracts).toContain("import type { SessionOptions, StreamMessage } from '@blade-ai/agent-sdk';");
     expect(publicTypeContracts).toContain("import type { ISession } from '@blade-ai/agent-sdk/session';");
     expect(publicTypeContracts).toContain("import type { ToolDefinition } from '@blade-ai/agent-sdk/tools';");
@@ -734,7 +736,11 @@ describe('package entrypoints', () => {
     expect(helper).toContain(
       "import type { AgentToolCall, AgentToolResult } from '@blade-ai/agent/protocol';",
     );
+    expect(helper).toContain(
+      "import type { AgentTraceEvent, AgentTracePort, BufferedAgentTracePort, BufferedAgentTracePortOptions } from '@blade-ai/agent/tracing';",
+    );
     expect(localVerifier).toContain('const agentToolResult: AgentToolResult');
+    expect(localVerifier).toContain('const bufferedAgentTracePort: BufferedAgentTracePort');
     expect(helper).not.toContain("from '@blade-ai/agent';");
   });
 
