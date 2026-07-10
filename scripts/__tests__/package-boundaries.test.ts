@@ -446,6 +446,27 @@ describe('package boundary verifier', () => {
     expect(result.stderr).toContain('migration-only session internal subpath');
   });
 
+  it('rejects the retired root streamChatResponse adapter as a session internal consumer', () => {
+    const cwd = createBoundaryFixture();
+    mkdirSync(join(cwd, 'src', 'agent', 'loop'), { recursive: true });
+    writeFileSync(
+      join(cwd, 'src', 'agent', 'loop', 'streamChatResponse.ts'),
+      "import { streamPackageLocalChatResponse } from '@blade-ai/agent-sdk/session/internal';\nexport { streamPackageLocalChatResponse };\n",
+    );
+
+    const result = spawnSync(process.execPath, [
+      resolve('scripts/verify-package-boundaries.mjs'),
+    ], {
+      cwd,
+      encoding: 'utf8',
+    });
+
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain('src/agent/loop/streamChatResponse.ts');
+    expect(result.stderr).toContain('@blade-ai/agent-sdk/session/internal');
+    expect(result.stderr).toContain('migration-only session internal subpath');
+  });
+
   it('rejects legacy root session imports from root DeepSeek provider helpers', () => {
     const cwd = createBoundaryFixture();
     mkdirSync(join(cwd, 'src', 'session'), { recursive: true });

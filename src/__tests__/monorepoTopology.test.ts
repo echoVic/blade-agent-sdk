@@ -1643,11 +1643,11 @@ describe('monorepo topology', () => {
     const rootLegacyLoopAdapters = [
       'src/agent/StreamingToolExecutor.ts',
       'src/agent/loop/runToolCall.ts',
-      'src/agent/loop/streamChatResponse.ts',
       'src/agent/loop/runTurn.ts',
     ] as const;
     const retiredRootLoopAdapters = [
       'src/agent/loop/executeToolCalls.ts',
+      'src/agent/loop/streamChatResponse.ts',
     ] as const;
 
     expect(existsSync('packages/agent-sdk/src/session/internal.ts')).toBe(true);
@@ -1671,7 +1671,6 @@ describe('monorepo topology', () => {
     expect(internalEntrySource).toContain('runPackageLocalTurn');
     expect(internalEntrySource).toContain('executePackageLocalToolCalls');
     expect(internalEntrySource).toContain('runPackageLocalToolCall');
-    expect(internalEntrySource).toContain('streamPackageLocalChatResponse');
     expect(internalEntrySource).toContain('PackageLocalStreamingToolExecutor');
 
     for (const file of rootLegacyLoopAdapters) {
@@ -1974,6 +1973,9 @@ describe('monorepo topology', () => {
       'packages/agent-sdk/src/session/streamChatResponse.ts',
     )
       ? readFileSync('packages/agent-sdk/src/session/streamChatResponse.ts', 'utf-8')
+      : '';
+    const rootStreamChatResponseSource = existsSync('src/agent/loop/streamChatResponse.ts')
+      ? readFileSync('src/agent/loop/streamChatResponse.ts', 'utf-8')
       : '';
     const runtimeAgentKernelsSource = existsSync(
       'packages/agent-sdk/src/session/runtimeAgentKernels.ts',
@@ -2777,6 +2779,8 @@ describe('monorepo topology', () => {
     expect(existsSync('src/agent/loop/__tests__/streamChatResponse.test.ts')).toBe(false);
     expect(streamChatResponseSource).not.toContain('../../../src/');
     expect(streamChatResponseSource).toContain('streamPackageLocalChatResponse');
+    expect(rootStreamChatResponseSource).not.toContain('streamPackageLocalChatResponse');
+    expect(rootStreamChatResponseSource).toContain('chatService.streamChat');
     expect(packageLocalRuntimeInstanceSource).toContain(
       'createPackageLocalRuntimeExecutionOperations',
     );

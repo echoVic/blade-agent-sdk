@@ -14,10 +14,6 @@ export {
   type PackageLocalToolExecutionHooks,
 } from './runtimeToolExecution.js';
 export {
-  streamPackageLocalChatResponse,
-  type PackageLocalStreamDelta,
-} from './streamChatResponse.js';
-export {
   PackageLocalStreamingToolExecutor,
   type PackageLocalStreamingToolExecutorConfig,
 } from './streamingToolExecutor.js';
