@@ -127,6 +127,19 @@ const rootSourceRules = [
   },
 ];
 
+const rootScopedSourceRules = [
+  {
+    name: 'legacy root session source',
+    sourceDirs: ['src/session'],
+    disallowedSpecifiers: [
+      [
+        /(?:^|\/)services\/deepseek\.js$/,
+        'Legacy root session source must import DeepSeek provider helpers from @blade-ai/ai/deepseek',
+      ],
+    ],
+  },
+];
+
 const scopedSourceRules = [
   {
     name: 'Browser-safe SDK source',
@@ -765,6 +778,25 @@ for (const rule of rootSourceRules) {
         violations.push(
           `${displayPath}: disallowed import "${specifier}" reaches ${packageSourceDir} - Legacy root source must import package public subpaths instead of package source files`,
         );
+      }
+    }
+  }
+}
+
+for (const rule of rootScopedSourceRules) {
+  for (const ruleSourceDir of rule.sourceDirs) {
+    const sourceDir = resolve(rootDir, ruleSourceDir);
+    if (!existsSync(sourceDir)) continue;
+
+    for (const file of listSourceFiles(sourceDir)) {
+      const source = readFileSync(file, 'utf-8');
+      const displayPath = relative(rootDir, file);
+      for (const specifier of extractSpecifiers(source)) {
+        for (const [pattern, reason] of rule.disallowedSpecifiers) {
+          if (pattern.test(specifier)) {
+            violations.push(`${displayPath}: disallowed import "${specifier}" - ${reason}`);
+          }
+        }
       }
     }
   }
