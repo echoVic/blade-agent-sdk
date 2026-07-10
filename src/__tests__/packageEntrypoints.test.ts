@@ -586,6 +586,8 @@ describe('package entrypoints', () => {
     expect(helper).toContain('resetService();');
     expect(helper).toContain('The service was stopped');
     expect(verifier).toContain('browserBundleOutput');
+    expect(verifier).toContain("from '@blade-ai/agent-sdk/errors';");
+    expect(verifier).toContain('browser-safe sdk error true CONFIG_ERROR');
     expect(verifier).toContain("from '@blade-ai/ai';");
     expect(verifier).toContain("from '@blade-ai/ai/chat';");
     expect(verifier).toContain("from '@blade-ai/ai/model';");

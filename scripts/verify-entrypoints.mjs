@@ -388,12 +388,15 @@ try {
       "import { createSession, PermissionMode } from '@blade-ai/agent-sdk';",
       "import { createSession as createBrowserSession, PermissionMode as BrowserPermissionMode, StreamMessageType as BrowserStreamMessageType } from '@blade-ai/agent-sdk/browser';",
       "import { StreamMessageType } from '@blade-ai/agent-sdk/core';",
+      "import { ConfigError, SdkError } from '@blade-ai/agent-sdk/errors';",
       "import { ToolKind } from '@blade-ai/agent-sdk/tools';",
       "import { resumeSession } from '@blade-ai/agent-sdk/session';",
       "import { createSession as createInternalSession } from '@blade-ai/agent-sdk/session/internal';",
       "import { createSession as createServerSession } from '@blade-ai/agent-sdk/server';",
       "import { getBuiltinTools } from '@blade-ai/agent-sdk/local';",
+      "const sdkError = new ConfigError('browser-safe sdk error');",
       "console.log(PermissionMode.DEFAULT, BrowserPermissionMode.DEFAULT, StreamMessageType.CONTENT, BrowserStreamMessageType.CONTENT, ToolKind.ReadOnly, typeof createSession);",
+      "console.log('browser-safe sdk error', sdkError instanceof SdkError, sdkError.code);",
       "try { createSession({}); } catch (error) { console.log(`server-only for bundled createSession: ${error.message}`); }",
       "try { createBrowserSession({}); } catch (error) { console.log(`server-only for bundled browser createSession: ${error.message}`); }",
       "try { resumeSession('session-id'); } catch (error) { console.log(`server-only for bundled resumeSession: ${error.message}`); }",
@@ -417,6 +420,7 @@ try {
   assertNoDisallowedImports(output);
   const browserBundleOutput = run(process.execPath, [output], { cwd: packageRoot });
   assertIncludes(browserBundleOutput, 'default default content content readonly function', 'browser bundle root import');
+  assertIncludes(browserBundleOutput, 'browser-safe sdk error true CONFIG_ERROR', 'browser bundle errors import');
   assertIncludes(browserBundleOutput, 'server-only for bundled createSession', 'browser bundle root stub');
   assertIncludes(browserBundleOutput, 'server-only for bundled browser createSession', 'browser bundle browser stub');
   assertIncludes(browserBundleOutput, 'server-only for bundled resumeSession', 'browser bundle session stub');

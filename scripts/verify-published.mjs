@@ -1670,6 +1670,7 @@ async function verifyPublishedBrowserBundleSmoke({ consumerDir }) {
 import { createSession as rootCreateSession, PermissionMode } from '@blade-ai/agent-sdk';
 import { createSession as browserCreateSession, PermissionMode as BrowserPermissionMode, StreamMessageType as BrowserStreamMessageType } from '@blade-ai/agent-sdk/browser';
 import { PermissionMode as CorePermissionMode } from '@blade-ai/agent-sdk/core';
+import { ConfigError, SdkError } from '@blade-ai/agent-sdk/errors';
 import { createSession as serverCreateSession } from '@blade-ai/agent-sdk/server';
 import { resumeSession } from '@blade-ai/agent-sdk/session';
 import { createSession as internalCreateSession } from '@blade-ai/agent-sdk/session/internal';
@@ -1700,8 +1701,10 @@ const noopTool = defineTool({
     return 'ok';
   },
 });
+const sdkError = new ConfigError('browser-safe sdk error');
 
 console.log(PermissionMode.DEFAULT, BrowserPermissionMode.DEFAULT, CorePermissionMode.DEFAULT, BrowserStreamMessageType.CONTENT, ToolKind.READ, noopTool.name);
+console.log('browser-safe sdk error', sdkError instanceof SdkError, sdkError.code);
 for (const exportName of ['getBuiltinTools', 'createSdkMcpServer', 'FileSystemMemoryStore', 'MemoryManager', 'createMemoryReadTool', 'createMemoryWriteTool', 'tool']) {
   if (Object.hasOwn(rootBrowserFacade, exportName)) {
     throw new Error(\`Unexpected browser root local-only export \${exportName}\`);
@@ -1745,6 +1748,7 @@ assertServerOnly(() => getBuiltinTools(), 'server-only for getBuiltinTools');
     'server-only for internal createSession',
     'server-only for resumeSession',
     'server-only for getBuiltinTools',
+    'browser-safe sdk error true CONFIG_ERROR',
     'browser root local-only exports absent',
   ]) {
     if (!output.includes(expected)) {
