@@ -21,7 +21,7 @@ import type {
   SideQueryOptions,
   StreamChunk,
   ToolCall,
-} from './ChatServiceInterface.js';
+} from '@blade-ai/ai/chat';
 import {
   DEFAULT_RETRY_CONFIG,
   type RetryConfig,

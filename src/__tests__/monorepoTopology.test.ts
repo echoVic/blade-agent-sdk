@@ -323,6 +323,37 @@ describe('monorepo topology', () => {
     }
   });
 
+  it('keeps root service implementation chat protocol types on the ai chat subpath', () => {
+    const files = [
+      'src/services/VercelAIChatService.ts',
+      'src/services/messageUtils.ts',
+      'src/services/__tests__/deepseek-deep.live.test.ts',
+    ];
+
+    for (const file of files) {
+      const source = readFileSync(file, 'utf-8');
+      const legacyChatServiceImports =
+        source.match(/import[\s\S]*?from ['"][^'"]*ChatServiceInterface\.js['"];?/g) ?? [];
+
+      expect(source, `${file} should import chat protocol types from ai`).toContain(
+        "from '@blade-ai/ai/chat'",
+      );
+
+      if (file.endsWith('.live.test.ts')) {
+        expect(legacyChatServiceImports.join('\n'), `${file} should only keep the SDK factory`)
+          .toContain('createChatServiceAsync');
+        expect(legacyChatServiceImports.join('\n'), `${file} should not import Message from root`)
+          .not.toMatch(/\btype\s+Message\b/);
+        continue;
+      }
+
+      expect(
+        legacyChatServiceImports,
+        `${file} should not import chat protocol types from root services`,
+      ).toHaveLength(0);
+    }
+  });
+
   it('keeps package-local session runtime on explicit agent package subpaths', () => {
     const files = [
       'packages/agent-sdk/src/session/kernelFactory.ts',

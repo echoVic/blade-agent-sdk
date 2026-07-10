@@ -4,7 +4,7 @@
  * Extracted from Session.ts and SessionStore.ts to avoid duplication.
  */
 
-import type { ContentPart, Message, ToolCall } from './ChatServiceInterface.js';
+import type { ContentPart, Message, ToolCall } from '@blade-ai/ai/chat';
 import type { JsonValue } from '../types/common.js';
 
 /**
