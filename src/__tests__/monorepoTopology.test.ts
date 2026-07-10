@@ -1670,6 +1670,7 @@ describe('monorepo topology', () => {
     expect(internalEntrySource).not.toContain('export *');
     expect(internalEntrySource).toContain('runPackageLocalTurn');
     expect(internalEntrySource).not.toContain('executePackageLocalToolCalls');
+    expect(internalEntrySource).not.toContain('emitPackageLocalToolExecutionUpdate');
     expect(internalEntrySource).toContain('runPackageLocalToolCall');
     expect(internalEntrySource).toContain('PackageLocalStreamingToolExecutor');
 
@@ -2751,7 +2752,8 @@ describe('monorepo topology', () => {
     expect(runtimeToolExecutionSource).toContain('executePackageLocalToolCalls');
     expect(runtimeToolExecutionSource).toContain('runPackageLocalToolCall');
     expect(rootRunToolCallSource).toContain('runPackageLocalToolCall');
-    expect(rootRunToolCallSource).toContain('emitPackageLocalToolExecutionUpdate');
+    expect(rootRunToolCallSource).not.toContain('emitPackageLocalToolExecutionUpdate');
+    expect(rootRunToolCallSource).toContain('hooks?.onUpdate?.(update)');
     expect(rootRunToolCallSource).not.toContain('repairToolCallParams');
     expect(rootRunToolCallSource).not.toContain('normalizeToolEffects');
     expect(rootRunToolCallSource).not.toContain('createInterruptAwareAbortSignal');

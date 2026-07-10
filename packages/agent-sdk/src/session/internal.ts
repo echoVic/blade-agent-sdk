@@ -6,10 +6,8 @@ export {
   type PackageLocalTurnOutcome,
 } from './runtimeRunTurn.js';
 export {
-  emitPackageLocalToolExecutionUpdate,
   runPackageLocalToolCall,
   type PackageLocalRunToolCallInput,
-  type PackageLocalToolExecutionHooks,
 } from './runtimeToolExecution.js';
 export {
   PackageLocalStreamingToolExecutor,

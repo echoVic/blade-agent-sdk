@@ -1,8 +1,6 @@
 import {
-  emitPackageLocalToolExecutionUpdate,
   runPackageLocalToolCall,
   type PackageLocalRunToolCallInput,
-  type PackageLocalToolExecutionHooks,
 } from '@blade-ai/agent-sdk/session/internal';
 import type { AgentFunctionToolCall as FunctionToolCall } from '@blade-ai/agent/loop';
 import type { JsonObject } from '../../types/common.js';
@@ -121,8 +119,25 @@ export async function emitToolExecutionUpdate(
   hooks: ToolExecutionHooks | undefined,
   update: ToolExecutionUpdate,
 ): Promise<void> {
-  await emitPackageLocalToolExecutionUpdate(
-    hooks as unknown as PackageLocalToolExecutionHooks | undefined,
-    update as never,
-  );
+  await hooks?.onUpdate?.(update);
+
+  switch (update.type) {
+    case 'tool_ready':
+      await hooks?.onToolReady?.(update.toolCall);
+      return;
+    case 'tool_started':
+    case 'tool_progress':
+    case 'tool_message':
+    case 'tool_runtime_patch':
+    case 'tool_context_patch':
+    case 'tool_new_messages':
+    case 'tool_permission_updates':
+      return;
+    case 'tool_result':
+      await hooks?.onAfterToolExec?.(update.outcome);
+      return;
+    case 'tool_completed':
+      await hooks?.onToolComplete?.(update.outcome.toolCall, update.outcome.result);
+      return;
+  }
 }
