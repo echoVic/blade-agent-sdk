@@ -405,6 +405,46 @@ describe('package entrypoints', () => {
     expect(publishedVerifier).toContain('agentSdkToolsEntryBoundaryRules');
   });
 
+  it('shares local adapter boundary rules across local packed and published verifiers', () => {
+    const sharedRulesPath = 'scripts/agent-sdk-boundary-rules.mjs';
+
+    expect(existsSync(join(process.cwd(), sharedRulesPath)), sharedRulesPath).toBe(true);
+
+    const sharedRules = readFileSync(sharedRulesPath, 'utf-8');
+    const entrypointVerifier = readFileSync('scripts/verify-entrypoints.mjs', 'utf-8');
+    const packageVerifier = readFileSync('scripts/verify-packages.mjs', 'utf-8');
+    const publishedVerifier = readFileSync('scripts/verify-published.mjs', 'utf-8');
+
+    expect(sharedRules).toContain('agentSdkLocalAdapterBoundaryRules');
+    expect(sharedRules).toContain('dist/local/index.d.ts');
+    expect(sharedRules).toContain('dist/local/index.js');
+    expect(sharedRules).toContain('../mcp/index.js');
+    expect(sharedRules).toContain('../memory/index.js');
+    expect(sharedRules).toContain('../sandbox/index.js');
+    expect(sharedRules).toContain('../tools/builtin');
+    expect(sharedRules).toContain('createSdkMcpServer(...args: unknown[])');
+    expect(sharedRules).toContain('tool(...args: unknown[])');
+    expect(sharedRules).toContain('constructor(...args: unknown[]): SandboxExecutor');
+    expect(sharedRules).toContain('constructor(...args: unknown[]): SandboxService');
+    expect(sharedRules).toContain('getBuiltinTools(...args: unknown[])');
+    expect(sharedRules).toContain('read(id: string)');
+    expect(sharedRules).toContain('write(input: MemoryInput)');
+    expect(sharedRules).toContain('delete(id: string): Promise<boolean>');
+    expect(sharedRules).toContain('src/mcp');
+    expect(sharedRules).toContain('src/memory');
+    expect(sharedRules).toContain('src/sandbox');
+    expect(sharedRules).toContain('src/tools/builtin');
+    expect(sharedRules).toContain('src/tools/builtin/memory');
+    expect(sharedRules).toContain('local declarations must be emitted from package-local local entry source');
+    expect(sharedRules).toContain('local runtime entry must route through package-local local adapters');
+    expect(entrypointVerifier).toContain('agentSdkLocalAdapterBoundaryRules');
+    expect(entrypointVerifier).toContain("rule.file === 'dist/local/index.d.ts'");
+    expect(entrypointVerifier).toContain("rule.file === 'dist/local/index.js'");
+    expect(packageVerifier).toContain('toPackedForbiddenFileRules(agentSdkLocalAdapterBoundaryRules)');
+    expect(publishedVerifier).toContain('verifyPublishedLocalAdapterBoundary');
+    expect(publishedVerifier).toContain('agentSdkLocalAdapterBoundaryRules');
+  });
+
   it('runs the browser bundle check through the esbuild JS API', () => {
     const verifier = readFileSync('scripts/verify-entrypoints.mjs', 'utf-8');
     const helper = readFileSync('scripts/esbuild-bundle.mjs', 'utf-8');
@@ -478,9 +518,9 @@ describe('package entrypoints', () => {
     expect(verifier).toContain("rule.file === 'dist/tools/index.d.ts'");
     expect(verifier).toContain("rule.file === 'dist/tools/index.js'");
     expect(verifier).toContain('local tools entry boundary passed');
-    expect(verifier).toContain('local declarations must be emitted from package-local local entry source');
-    expect(verifier).toContain('local runtime entry must route through package-local local adapters');
-    expect(verifier).toContain('local memory declarations must use package-local memory API');
+    expect(verifier).toContain('agentSdkLocalAdapterBoundaryRules');
+    expect(verifier).toContain("rule.file === 'dist/local/index.d.ts'");
+    expect(verifier).toContain("rule.file === 'dist/local/index.js'");
     expect(verifier).toContain('local adapter entry boundary passed');
     expect(verifier).toContain('local permission declarations must be emitted from package-local permission source');
     expect(verifier).toContain('local permission declarations must use package-local tool contracts');

@@ -7,6 +7,7 @@ import { fileURLToPath } from 'node:url';
 import { stringify } from 'yaml';
 import {
   agentSdkCoreDeclarationBrowserSafeRules,
+  agentSdkLocalAdapterBoundaryRules,
   agentSdkRootDeclarationEntryOwnershipRules,
   agentSdkRootPublicDeclarationBoundaryRules,
   agentSdkServerFacadeBoundaryRules,
@@ -248,91 +249,7 @@ const packageSpecs = [
       ...toPackedForbiddenFileContents('package/dist/index.d.ts', agentSdkRootPublicDeclarationBoundaryRules),
       ...toPackedForbiddenFileRules(agentSdkServerFacadeBoundaryRules),
       ...toPackedForbiddenFileRules(agentSdkCoreDeclarationBrowserSafeRules),
-      {
-        file: 'package/dist/local/index.d.ts',
-        forbidden: '../mcp/index.js',
-        message: 'local declarations must be emitted from package-local local entry source',
-      },
-      {
-        file: 'package/dist/local/index.d.ts',
-        forbidden: 'createSdkMcpServer(...args: unknown[])',
-        message: 'local MCP declarations must use package-local MCP API',
-      },
-      {
-        file: 'package/dist/local/index.d.ts',
-        forbidden: 'tool(...args: unknown[])',
-        message: 'local MCP declarations must use package-local MCP API',
-      },
-      {
-        file: 'package/dist/local/index.d.ts',
-        forbidden: '../memory/index.js',
-        message: 'local declarations must be emitted from package-local local entry source',
-      },
-      {
-        file: 'package/dist/local/index.d.ts',
-        forbidden: '../sandbox/index.js',
-        message: 'local declarations must be emitted from package-local local entry source',
-      },
-      {
-        file: 'package/dist/local/index.d.ts',
-        forbidden: 'constructor(...args: unknown[]): SandboxExecutor',
-        message: 'local sandbox declarations must use package-local sandbox API',
-      },
-      {
-        file: 'package/dist/local/index.d.ts',
-        forbidden: 'constructor(...args: unknown[]): SandboxService',
-        message: 'local sandbox declarations must use package-local sandbox API',
-      },
-      {
-        file: 'package/dist/local/index.d.ts',
-        forbidden: '../tools/builtin',
-        message: 'local declarations must be emitted from package-local local entry source',
-      },
-      {
-        file: 'package/dist/local/index.d.ts',
-        forbidden: 'getBuiltinTools(...args: unknown[])',
-        message: 'local builtin tool declarations must use package-local builtin tool API',
-      },
-      {
-        file: 'package/dist/local/index.d.ts',
-        forbidden: 'read(id: string)',
-        message: 'local memory declarations must use package-local memory API',
-      },
-      {
-        file: 'package/dist/local/index.d.ts',
-        forbidden: 'write(input: MemoryInput)',
-        message: 'local memory declarations must use package-local memory API',
-      },
-      {
-        file: 'package/dist/local/index.d.ts',
-        forbidden: 'delete(id: string): Promise<boolean>',
-        message: 'local memory declarations must use package-local memory API',
-      },
-      {
-        file: 'package/dist/local/index.js',
-        forbidden: 'src/mcp',
-        message: 'local runtime entry must route through package-local local adapters',
-      },
-      {
-        file: 'package/dist/local/index.js',
-        forbidden: 'src/memory',
-        message: 'local runtime entry must route through package-local local adapters',
-      },
-      {
-        file: 'package/dist/local/index.js',
-        forbidden: 'src/sandbox',
-        message: 'local runtime entry must route through package-local local adapters',
-      },
-      {
-        file: 'package/dist/local/index.js',
-        forbidden: 'src/tools/builtin',
-        message: 'local runtime entry must route through package-local local adapters',
-      },
-      {
-        file: 'package/dist/local/index.js',
-        forbidden: 'src/tools/builtin/memory',
-        message: 'local memory tools must route through package-local local adapters',
-      },
+      ...toPackedForbiddenFileRules(agentSdkLocalAdapterBoundaryRules),
       {
         file: 'package/dist/types/permissions.d.ts',
         forbidden: 'SensitiveFileDetector',
