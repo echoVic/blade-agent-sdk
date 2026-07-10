@@ -136,6 +136,7 @@ describe('monorepo topology', () => {
 
   it('keeps legacy root session runtime on explicit agent package subpaths', () => {
     const rootTsconfig = readJson('tsconfig.json');
+    const sessionModelPortSource = readFileSync('src/session/SessionModelPort.ts', 'utf-8');
     const files = [
       'src/session/SessionRuntime.ts',
       'src/session/SessionModelPort.ts',
@@ -159,6 +160,9 @@ describe('monorepo topology', () => {
         "from '@blade-ai/agent'",
       );
     }
+
+    expect(sessionModelPortSource).toContain("from '@blade-ai/ai/deepseek'");
+    expect(sessionModelPortSource).not.toContain("from '../services/deepseek.js'");
   });
 
   it('keeps package-local session runtime on explicit agent package subpaths', () => {
