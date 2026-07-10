@@ -1668,6 +1668,10 @@ describe('monorepo topology', () => {
     expect(rootVitestConfig).toContain('packages/agent-sdk/src/session/internal.ts');
 
     const internalEntrySource = readFileSync('packages/agent-sdk/src/session/internal.ts', 'utf-8');
+    const serverOnlyStubSource = readFileSync(
+      'packages/agent-sdk/src/browser/server-only-stub.ts',
+      'utf-8',
+    );
 
     expect(internalEntrySource).not.toContain('export *');
     expect(internalEntrySource).toContain('runPackageLocalTurn');
@@ -1681,6 +1685,8 @@ describe('monorepo topology', () => {
     expect(internalEntrySource).not.toContain('PackageLocalRunToolCallInput');
     expect(internalEntrySource).not.toContain('PackageLocalStreamingToolExecutor');
     expect(internalEntrySource).not.toContain('PackageLocalStreamingToolExecutorConfig');
+    expect(serverOnlyStubSource).toContain('runPackageLocalTurn');
+    expect(serverOnlyStubSource).toContain('runPackageLocalToolCall');
 
     for (const file of rootLegacyLoopAdapters) {
       const source = readFileSync(file, 'utf-8');

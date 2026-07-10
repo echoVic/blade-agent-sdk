@@ -443,6 +443,8 @@ describe('package provenance metadata', () => {
     expect(packageVerifier).toContain("import { ToolCatalog, ToolKind, defineTool } from '@blade-ai/agent-sdk/tools';");
     expect(packageVerifier).toContain("from '@blade-ai/agent-sdk/session';");
     expect(packageVerifier).toContain("from '@blade-ai/agent-sdk/session/internal';");
+    expect(packageVerifier).toContain('runPackageLocalTurn as runBrowserInternalTurn');
+    expect(packageVerifier).toContain('runPackageLocalToolCall as runBrowserInternalToolCall');
     expect(packageVerifier).toContain("from '@blade-ai/agent-sdk/server';");
     expect(packageVerifier).toContain("from '@blade-ai/agent-sdk/local';");
     expect(packageVerifier).toContain('await bundleWithEsbuildRetry({');
@@ -456,7 +458,8 @@ describe('package provenance metadata', () => {
     expect(packageVerifier).toContain('assertNoBrowserDisallowedMarkers');
     expect(packageVerifier).toContain('server-only for createSession');
     expect(packageVerifier).toContain('server-only for browser createSession');
-    expect(packageVerifier).toContain('server-only for internal createSession');
+    expect(packageVerifier).toContain('server-only for internal runPackageLocalTurn');
+    expect(packageVerifier).toContain('server-only for internal runPackageLocalToolCall');
     expect(packageVerifier).toContain('server-only for resumeSession');
     expect(packageVerifier).toContain('server-only for getBuiltinTools');
     expect(packageVerifier).toContain('browser-safe sdk error');
@@ -1883,6 +1886,8 @@ describe('release scripts', () => {
     expect(publishedVerifier).toContain("from '@blade-ai/agent-sdk/errors';");
     expect(publishedVerifier).toContain("from '@blade-ai/agent-sdk/session';");
     expect(publishedVerifier).toContain("from '@blade-ai/agent-sdk/session/internal';");
+    expect(publishedVerifier).toContain('runPackageLocalTurn as runBrowserInternalTurn');
+    expect(publishedVerifier).toContain('runPackageLocalToolCall as runBrowserInternalToolCall');
     expect(publishedVerifier).toContain("from '@blade-ai/agent-sdk/server';");
     expect(publishedVerifier).toContain("from '@blade-ai/agent-sdk/local';");
     expect(publishedVerifier).toContain("from '@blade-ai/agent-sdk/core';");
@@ -1893,7 +1898,8 @@ describe('release scripts', () => {
     expect(publishedVerifier).toContain('assertNoBrowserDisallowedMarkers');
     expect(publishedVerifier).toContain('server-only for createSession');
     expect(publishedVerifier).toContain('server-only for browser createSession');
-    expect(publishedVerifier).toContain('server-only for internal createSession');
+    expect(publishedVerifier).toContain('server-only for internal runPackageLocalTurn');
+    expect(publishedVerifier).toContain('server-only for internal runPackageLocalToolCall');
     expect(publishedVerifier).toContain('server-only for getBuiltinTools');
     expect(publishedVerifier).toContain('browser-safe sdk error');
     expect(publishedVerifier).toContain('browser-safe sdk tool');
