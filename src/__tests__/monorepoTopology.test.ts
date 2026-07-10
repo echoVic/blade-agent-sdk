@@ -277,6 +277,30 @@ describe('monorepo topology', () => {
     }
   });
 
+  it('keeps root session chat protocol types on the ai chat subpath', () => {
+    const files = [
+      'src/session/Session.ts',
+      'src/session/SessionStore.ts',
+      'src/session/types.ts',
+      'src/session/__tests__/SessionContext.test.ts',
+      'src/session/__tests__/SessionPersistence.test.ts',
+      'src/session/__tests__/SessionStore.test.ts',
+    ];
+
+    for (const file of files) {
+      const source = readFileSync(file, 'utf-8');
+
+      expect(source, `${file} should import chat protocol types from ai`).toContain(
+        "from '@blade-ai/ai/chat'",
+      );
+      expect(
+        source.match(/import[\s\S]*?from ['"][^'"]*services\/ChatServiceInterface\.js['"];?/g)
+          ?? [],
+        `${file} should not import chat protocol types from root services`,
+      ).toHaveLength(0);
+    }
+  });
+
   it('keeps package-local session runtime on explicit agent package subpaths', () => {
     const files = [
       'packages/agent-sdk/src/session/kernelFactory.ts',

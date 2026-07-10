@@ -4,7 +4,7 @@ import { existsSync, mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { PersistentStore } from '../../context/storage/PersistentStore.js';
-import type { ContentPart } from '../../services/ChatServiceInterface.js';
+import type { ContentPart } from '@blade-ai/ai/chat';
 import { createSession, forkSession, resumeSession } from '../Session.js';
 import { SessionId } from '../../types/branded.js';
 

@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { PersistentStore } from '../../context/storage/PersistentStore.js';
 import { JsonlSessionStore } from '../SessionStore.js';
-import type { ContentPart } from '../../services/ChatServiceInterface.js';
+import type { ContentPart } from '@blade-ai/ai/chat';
 import { assertDefined } from '../../__tests__/helpers/assertDefined.js';
 import { SessionId } from '../../types/branded.js';
 
