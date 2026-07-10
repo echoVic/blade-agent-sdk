@@ -622,7 +622,7 @@ describe('package entrypoints', () => {
     );
     expect(publicTypeContracts).toContain("import type { RetryConfig } from '@blade-ai/ai/retry';");
     expect(publicTypeContracts).toContain(
-      "import type { AgentKernelOptions } from '@blade-ai/agent/kernel';",
+      "import type { AgentKernelOptions, AgentTurnInput } from '@blade-ai/agent/kernel';",
     );
     expect(publicTypeContracts).not.toContain("import type { AgentKernelOptions } from '@blade-ai/agent';");
     expect(publicTypeContracts).toContain(
@@ -731,7 +731,7 @@ describe('package entrypoints', () => {
     expect(helper).toContain('localDeclaration');
     expect(helper).toContain('packedConsumer');
     expect(helper).toContain('publishedConsumer');
-    expect(helper).toContain("import type { AgentKernelOptions } from '@blade-ai/agent/kernel';");
+    expect(helper).toContain("import type { AgentKernelOptions, AgentTurnInput } from '@blade-ai/agent/kernel';");
     expect(helper).toContain("import type { AgentStreamEvent } from '@blade-ai/agent/protocol';");
     expect(helper).toContain(
       "import type { AgentToolCall, AgentToolResult } from '@blade-ai/agent/protocol';",
@@ -740,6 +740,7 @@ describe('package entrypoints', () => {
       "import type { AgentTraceEvent, AgentTracePort, BufferedAgentTracePort, BufferedAgentTracePortOptions } from '@blade-ai/agent/tracing';",
     );
     expect(localVerifier).toContain('const agentToolResult: AgentToolResult');
+    expect(localVerifier).toContain('const agentTurnInput: AgentTurnInput');
     expect(localVerifier).toContain('const bufferedAgentTracePort: BufferedAgentTracePort');
     expect(helper).not.toContain("from '@blade-ai/agent';");
   });

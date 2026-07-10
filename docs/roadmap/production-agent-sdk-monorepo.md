@@ -1026,6 +1026,7 @@ Status:
 - Three-hundred-sixth verification-chain increment complete: the local entrypoint TypeScript declaration smoke now also imports and instantiates `AgentToolResult` from the explicit `@blade-ai/agent/protocol` subpath. This moves agent tool-result protocol typing coverage into the local dist gate before packed tarball or post-publish verification runs.
 - Three-hundred-seventh verification-chain increment complete: the local entrypoint TypeScript declaration smoke now instantiates `SdkErrorOptions` from `@blade-ai/agent-sdk/errors`, proving the browser-safe SDK error options type works in the local dist gate before packed tarball or post-publish verification runs.
 - Three-hundred-eighth verification-chain increment complete: the local entrypoint TypeScript declaration smoke now imports and instantiates `AgentTracePort`, `BufferedAgentTracePort`, and `BufferedAgentTracePortOptions` from the explicit `@blade-ai/agent/tracing` subpath. This moves agent tracing port type coverage into the local dist gate before packed tarball or post-publish verification runs.
+- Three-hundred-ninth verification-chain increment complete: the local entrypoint TypeScript declaration smoke now imports and instantiates `AgentTurnInput` from the explicit `@blade-ai/agent/kernel` subpath. This moves kernel turn-input type coverage into the local dist gate before packed tarball or post-publish verification runs.
 
 Commit:
 

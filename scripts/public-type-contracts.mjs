@@ -28,7 +28,7 @@ const aiPublicTypeImportContracts = {
 
 const agentPublicTypeImportContracts = {
   localDeclaration: [
-    "import type { AgentKernelOptions } from '@blade-ai/agent/kernel';",
+    "import type { AgentKernelOptions, AgentTurnInput } from '@blade-ai/agent/kernel';",
     "import type { AgentToolPort } from '@blade-ai/agent/ports';",
     "import type { AgentStreamEvent } from '@blade-ai/agent/protocol';",
     "import type { AgentToolCall, AgentToolResult } from '@blade-ai/agent/protocol';",
