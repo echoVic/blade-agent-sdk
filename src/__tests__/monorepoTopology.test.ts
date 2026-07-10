@@ -1663,6 +1663,15 @@ describe('monorepo topology', () => {
     expect(rootVitestConfig).toContain("'@blade-ai/agent-sdk/session/internal'");
     expect(rootVitestConfig).toContain('packages/agent-sdk/src/session/internal.ts');
 
+    const internalEntrySource = readFileSync('packages/agent-sdk/src/session/internal.ts', 'utf-8');
+
+    expect(internalEntrySource).not.toContain('export *');
+    expect(internalEntrySource).toContain('runPackageLocalTurn');
+    expect(internalEntrySource).toContain('executePackageLocalToolCalls');
+    expect(internalEntrySource).toContain('runPackageLocalToolCall');
+    expect(internalEntrySource).toContain('streamPackageLocalChatResponse');
+    expect(internalEntrySource).toContain('PackageLocalStreamingToolExecutor');
+
     for (const file of rootLegacyLoopAdapters) {
       const source = readFileSync(file, 'utf-8');
       expect(source, file).toContain("from '@blade-ai/agent-sdk/session/internal'");
