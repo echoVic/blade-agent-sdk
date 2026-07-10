@@ -1,9 +1,5 @@
 import {
   runPackageLocalTurn,
-  type PackageLocalRunTurnEvent,
-  type PackageLocalRunTurnInput,
-  type PackageLocalRunTurnToolHooks,
-  type PackageLocalTurnOutcome,
 } from '@blade-ai/agent-sdk/session/internal';
 import type { InternalLogger } from '../../logging/Logger.js';
 import type {
@@ -19,6 +15,18 @@ import type { ExecutionEpoch } from '../ExecutionEpoch.js';
 import type { AgentFunctionToolCall as FunctionToolCall } from '@blade-ai/agent/loop';
 import type { TurnState } from '../state/TurnState.js';
 import type { ToolExecutionContext, ToolExecutionUpdate } from './runToolCall.js';
+
+type RunPackageLocalTurnInput = Parameters<typeof runPackageLocalTurn>[0];
+type RunPackageLocalTurnStream = ReturnType<typeof runPackageLocalTurn>;
+type RunPackageLocalTurnEvent =
+  RunPackageLocalTurnStream extends AsyncGenerator<infer Event, unknown, unknown>
+    ? Event
+    : never;
+type RunPackageLocalTurnOutcome =
+  RunPackageLocalTurnStream extends AsyncGenerator<unknown, infer Outcome, unknown>
+    ? Outcome
+    : never;
+type RunPackageLocalTurnToolHooks = RunPackageLocalTurnInput['toolHooks'];
 
 export interface RunTurnToolHooks {
   onBeforeExec?: (ctx: {
@@ -67,13 +75,13 @@ export async function* runTurn(
 ): AsyncGenerator<AgentEvent, TurnOutcome> {
   const stream = runPackageLocalTurn({
     ...input,
-    toolHooks: input.toolHooks as PackageLocalRunTurnToolHooks,
-  } as unknown as PackageLocalRunTurnInput);
+    toolHooks: input.toolHooks as RunPackageLocalTurnToolHooks,
+  } as unknown as RunPackageLocalTurnInput);
 
   while (true) {
     const next = await stream.next();
     if (next.done) {
-      const outcome = next.value as PackageLocalTurnOutcome;
+      const outcome = next.value as RunPackageLocalTurnOutcome;
       return {
         chatResponse: outcome.chatResponse,
         streamingExecutionResults: outcome.streamingExecutionResults as
@@ -81,6 +89,6 @@ export async function* runTurn(
           | undefined,
       };
     }
-    yield next.value as Exclude<PackageLocalRunTurnEvent, null> as AgentEvent;
+    yield next.value as Exclude<RunPackageLocalTurnEvent, null> as AgentEvent;
   }
 }

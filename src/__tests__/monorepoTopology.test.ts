@@ -1669,6 +1669,10 @@ describe('monorepo topology', () => {
 
     expect(internalEntrySource).not.toContain('export *');
     expect(internalEntrySource).toContain('runPackageLocalTurn');
+    expect(internalEntrySource).not.toContain('PackageLocalRunTurnEvent');
+    expect(internalEntrySource).not.toContain('PackageLocalRunTurnInput');
+    expect(internalEntrySource).not.toContain('PackageLocalRunTurnToolHooks');
+    expect(internalEntrySource).not.toContain('PackageLocalTurnOutcome');
     expect(internalEntrySource).not.toContain('executePackageLocalToolCalls');
     expect(internalEntrySource).not.toContain('emitPackageLocalToolExecutionUpdate');
     expect(internalEntrySource).toContain('runPackageLocalToolCall');
