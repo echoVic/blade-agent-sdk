@@ -128,7 +128,7 @@ const rootSourceRules = [
 ];
 
 const allowedRootSessionInternalImports = new Map([
-  ['src/agent/loop/runToolCall.ts', new Set(['runPackageLocalToolCall'])],
+  ['src/agent/loop/rootAgentLoopAdapter.ts', new Set(['runPackageLocalToolCall'])],
   ['src/agent/loop/runTurn.ts', new Set(['runPackageLocalTurn'])],
 ]);
 

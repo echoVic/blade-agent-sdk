@@ -14,7 +14,7 @@ import type { AgentEvent } from '../AgentEvent.js';
 import type { ExecutionEpoch } from '@blade-ai/agent/epoch';
 import type { AgentFunctionToolCall as FunctionToolCall } from '@blade-ai/agent/loop';
 import type { TurnState } from '../state/TurnState.js';
-import type { ToolExecutionContext, ToolExecutionUpdate } from './runToolCall.js';
+import type { ToolExecutionContext, ToolExecutionUpdate } from './adapterContracts.js';
 
 type RunPackageLocalTurnInput = Parameters<typeof runPackageLocalTurn>[0];
 type RunPackageLocalTurnStream = ReturnType<typeof runPackageLocalTurn>;

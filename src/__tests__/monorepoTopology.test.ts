@@ -283,7 +283,7 @@ describe('monorepo topology', () => {
     const packagePlanToolSource = readFileSync('packages/agent/src/loop/planToolExecution.ts', 'utf-8');
     const rootFunctionToolCallConsumers = [
       'src/agent/loop/adapterContracts.ts',
-      'src/agent/loop/runToolCall.ts',
+      'src/agent/loop/executeToolCalls.ts',
       'src/agent/loop/runTurn.ts',
       'src/agent/loop/toolUpdateToAgentEvent.ts',
     ];
@@ -1677,7 +1677,10 @@ describe('monorepo topology', () => {
       'packages/agent-sdk/src/tools/types/index.ts',
       'utf-8',
     );
-    const rootRunToolCallSource = readFileSync('src/agent/loop/runToolCall.ts', 'utf-8');
+    const rootAdapterContractsSource = readFileSync(
+      'src/agent/loop/adapterContracts.ts',
+      'utf-8',
+    );
 
     expect(existsSync('packages/agent/src/loop/toolExecutionUpdate.ts')).toBe(true);
     expect(existsSync('packages/agent/src/__tests__/toolExecutionUpdate.test.ts')).toBe(true);
@@ -1705,23 +1708,23 @@ describe('monorepo topology', () => {
       /export type ToolExecutionUpdateOf[\s\S]*?=\s*AgentToolExecutionUpdate</,
     );
 
-    expect(rootRunToolCallSource).toMatch(
+    expect(rootAdapterContractsSource).toMatch(
       /ToolExecutionOutcomeOf as SdkToolExecutionOutcome/,
     );
-    expect(rootRunToolCallSource).toMatch(
+    expect(rootAdapterContractsSource).toMatch(
       /ToolExecutionUpdateOf as SdkToolExecutionUpdate/,
     );
-    expect(rootRunToolCallSource).toMatch(
+    expect(rootAdapterContractsSource).toMatch(
       /from '@blade-ai\/agent-sdk\/tools';/,
     );
-    expect(rootRunToolCallSource).not.toMatch(
+    expect(rootAdapterContractsSource).not.toMatch(
       /from '@blade-ai\/agent-sdk';/,
     );
     expect(rootTsconfig.compilerOptions?.paths).toMatchObject({
       '@blade-ai/agent-sdk/tools': ['./packages/agent-sdk/src/tools/index.ts'],
     });
-    expect(rootRunToolCallSource).not.toContain('export interface ToolExecutionOutcome');
-    expect(rootRunToolCallSource).not.toMatch(
+    expect(rootAdapterContractsSource).not.toContain('export interface ToolExecutionOutcome');
+    expect(rootAdapterContractsSource).not.toMatch(
       /export type ToolExecutionUpdate\s*=\s*\|/,
     );
   });
@@ -1731,15 +1734,9 @@ describe('monorepo topology', () => {
       'src/agent/loop/executeToolCalls.ts',
       'utf-8',
     );
-    const rootRunToolCallSource = readFileSync('src/agent/loop/runToolCall.ts', 'utf-8');
-
-    expect(rootRunToolCallSource).not.toContain('emitToolExecutionUpdate');
-    expect(rootRunToolCallSource).not.toContain('switch (update.type)');
-    expect(rootRunToolCallSource).not.toContain('await hooks?.onUpdate?.(update)');
-
     expect(rootExecutionSource).not.toContain('emitToolExecutionUpdate');
     expect(rootExecutionSource).toMatch(
-      /import type\s*\{[^}]*\bToolExecutionUpdate\b[^}]*\}\s*from '\.\/runToolCall\.js';/,
+      /import type\s*\{[^}]*\bToolExecutionUpdate\b[^}]*\}\s*from '\.\/adapterContracts\.js';/,
     );
     expect(rootExecutionSource).toContain('const readyUpdate: ToolExecutionUpdate = {');
     expect(rootExecutionSource.match(/type: 'tool_\w+'/g)).toEqual(["type: 'tool_ready'"]);
@@ -1757,14 +1754,77 @@ describe('monorepo topology', () => {
     expect(runToolCallIndex).toBeGreaterThan(onToolReadyIndex);
   });
 
+  it('retires the root tool-call wrapper behind the root loop composition adapter', () => {
+    const rootIndexSource = readFileSync('src/index.ts', 'utf-8');
+    const rootAdapterContractsSource = readFileSync(
+      'src/agent/loop/adapterContracts.ts',
+      'utf-8',
+    );
+    const rootAgentLoopAdapterSource = readFileSync(
+      'src/agent/loop/rootAgentLoopAdapter.ts',
+      'utf-8',
+    );
+    const rootExecutionSource = readFileSync(
+      'src/agent/loop/executeToolCalls.ts',
+      'utf-8',
+    );
+    const rootRunTurnSource = readFileSync('src/agent/loop/runTurn.ts', 'utf-8');
+
+    expect(existsSync('src/agent/loop/runToolCall.ts')).toBe(false);
+    expect(rootAgentLoopAdapterSource).toMatch(
+      /import\s*\{[^}]*\brunPackageLocalToolCall\b[^}]*\}\s*from '@blade-ai\/agent-sdk\/session\/internal';/,
+    );
+    expect(rootExecutionSource).toContain('export function createExecuteToolCalls(');
+    expect(rootExecutionSource).toContain('runToolCall: RunToolCallPort');
+    expect(rootExecutionSource).not.toContain("from '@blade-ai/agent-sdk/session/internal'");
+    expect(rootAgentLoopAdapterSource).toContain(
+      'logger: input.logger ?? NOOP_LOGGER.child(LogCategory.AGENT)',
+    );
+    expect(rootAgentLoopAdapterSource).toContain(
+      'createExecuteToolCalls(runToolCall)',
+    );
+    expect(rootAgentLoopAdapterSource).toContain(
+      'createRootRunToolCall(runPackageLocalToolCall)',
+    );
+    expect(rootAgentLoopAdapterSource).toContain(
+      'executionPipeline: createPackageLocalExecutionPipeline(input)',
+    );
+    const packageToolExecutionSource = readFileSync(
+      'packages/agent-sdk/src/session/runtimeToolExecution.ts',
+      'utf-8',
+    );
+    expect(packageToolExecutionSource).toContain('execute: (');
+    expect(packageToolExecutionSource).toContain(
+      'getRegistry: () => ToolExecutionRegistryLike;',
+    );
+    expect(packageToolExecutionSource).not.toMatch(/\n\s*execute\(/);
+    expect(packageToolExecutionSource).not.toMatch(/\n\s*getRegistry\(\)/);
+    expect(rootAgentLoopAdapterSource).not.toContain('as unknown as');
+    expect(rootExecutionSource).not.toContain('as unknown as');
+    expect(rootIndexSource).toContain(
+      "export type { ToolExecutionUpdate } from './agent/loop/adapterContracts.js';",
+    );
+    expect(rootAdapterContractsSource).not.toContain("from './executeToolCalls.js'");
+    expect(rootAdapterContractsSource).not.toContain("from './rootAgentLoopAdapter.js'");
+
+    for (const [file, source] of [
+      ['src/index.ts', rootIndexSource],
+      ['src/agent/loop/adapterContracts.ts', rootAdapterContractsSource],
+      ['src/agent/loop/executeToolCalls.ts', rootExecutionSource],
+      ['src/agent/loop/runTurn.ts', rootRunTurnSource],
+    ] as const) {
+      expect(source, file).not.toContain('runToolCall.js');
+    }
+  });
+
   it('keeps root legacy loop adapters on the agent-sdk session internal subpath', () => {
     const rootTsconfig = readJson('tsconfig.json');
     const sdkPackage = readJson('packages/agent-sdk/package.json');
     const sdkTsupConfig = readFileSync('packages/agent-sdk/tsup.config.ts', 'utf-8');
     const rootVitestConfig = readFileSync('vitest.config.ts', 'utf-8');
     const rootLegacyLoopAdapters = [
-      'src/agent/loop/runToolCall.ts',
-      'src/agent/loop/runTurn.ts',
+      ['src/agent/loop/rootAgentLoopAdapter.ts', 'runPackageLocalToolCall'],
+      ['src/agent/loop/runTurn.ts', 'runPackageLocalTurn'],
     ] as const;
     const retiredRootLoopAdapters = [
       'src/agent/loop/executeToolCalls.ts',
@@ -1792,6 +1852,16 @@ describe('monorepo topology', () => {
       'utf-8',
     );
 
+    expect(internalEntrySource.trim()).toBe(
+      [
+        'export {',
+        '  runPackageLocalTurn,',
+        "} from './runtimeRunTurn.js';",
+        'export {',
+        '  runPackageLocalToolCall,',
+        "} from './runtimeToolExecution.js';",
+      ].join('\n'),
+    );
     expect(internalEntrySource).not.toContain('export *');
     expect(internalEntrySource).toContain('runPackageLocalTurn');
     expect(internalEntrySource).not.toContain('PackageLocalRunTurnEvent');
@@ -1807,9 +1877,10 @@ describe('monorepo topology', () => {
     expect(serverOnlyStubSource).toContain('runPackageLocalTurn');
     expect(serverOnlyStubSource).toContain('runPackageLocalToolCall');
 
-    for (const file of rootLegacyLoopAdapters) {
+    for (const [file, bridgeName] of rootLegacyLoopAdapters) {
       const source = readFileSync(file, 'utf-8');
       expect(source, file).toContain("from '@blade-ai/agent-sdk/session/internal'");
+      expect(source, file).toContain(bridgeName);
       expect(source, file).not.toContain('packages/agent-sdk/src');
     }
 
@@ -2123,9 +2194,10 @@ describe('monorepo topology', () => {
     )
       ? readFileSync('packages/agent-sdk/src/session/runtimeRunTurn.ts', 'utf-8')
       : '';
-    const rootRunToolCallSource = existsSync('src/agent/loop/runToolCall.ts')
-      ? readFileSync('src/agent/loop/runToolCall.ts', 'utf-8')
-      : '';
+    const rootToolCallCompositionSource = readFileSync(
+      'src/agent/loop/rootAgentLoopAdapter.ts',
+      'utf-8',
+    );
     const rootRunTurnSource = existsSync('src/agent/loop/runTurn.ts')
       ? readFileSync('src/agent/loop/runTurn.ts', 'utf-8')
       : '';
@@ -2912,12 +2984,12 @@ describe('monorepo topology', () => {
     expect(runtimeToolExecutionSource).not.toContain('../../../../src/');
     expect(runtimeToolExecutionSource).toContain('executePackageLocalToolCalls');
     expect(runtimeToolExecutionSource).toContain('runPackageLocalToolCall');
-    expect(rootRunToolCallSource).toContain('runPackageLocalToolCall');
-    expect(rootRunToolCallSource).not.toContain('emitPackageLocalToolExecutionUpdate');
-    expect(rootRunToolCallSource).not.toContain('hooks?.onUpdate?.(update)');
-    expect(rootRunToolCallSource).not.toContain('repairToolCallParams');
-    expect(rootRunToolCallSource).not.toContain('normalizeToolEffects');
-    expect(rootRunToolCallSource).not.toContain('createInterruptAwareAbortSignal');
+    expect(rootToolCallCompositionSource).toContain('runPackageLocalToolCall');
+    expect(rootToolCallCompositionSource).not.toContain('emitPackageLocalToolExecutionUpdate');
+    expect(rootToolCallCompositionSource).not.toContain('hooks?.onUpdate?.(update)');
+    expect(rootToolCallCompositionSource).not.toContain('repairToolCallParams');
+    expect(rootToolCallCompositionSource).not.toContain('normalizeToolEffects');
+    expect(rootToolCallCompositionSource).not.toContain('createInterruptAwareAbortSignal');
     expect(existsSync('packages/agent-sdk/src/session/runtimeRunTurn.ts')).toBe(true);
     expect(runtimeRunTurnSource).not.toContain('../../../src/');
     expect(runtimeRunTurnSource).toContain('runPackageLocalTurn');

@@ -212,6 +212,7 @@ describe('package entrypoints', () => {
 
     expect(sharedRules).toContain('agentSdkRootDeclarationEntryOwnershipRules');
     expect(sharedRules).toContain('./agent/loop/runToolCall.js');
+    expect(sharedRules).toContain('./agent/loop/adapterContracts.js');
     expect(sharedRules).toContain('./tools/core/createTool.js');
     expect(sharedRules).toContain('./tools/catalog/index.js');
     expect(sharedRules).toContain('public-index.js');

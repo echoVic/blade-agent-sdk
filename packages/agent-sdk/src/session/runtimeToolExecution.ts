@@ -21,12 +21,12 @@ export type PackageLocalToolExecutionOutcome = ToolExecutionOutcomeOf<AgentFunct
 export type PackageLocalToolExecutionUpdate = ToolExecutionUpdateOf<AgentFunctionToolCall>;
 
 export interface PackageLocalToolExecutionPipelinePort {
-  execute(
+  execute: (
     toolName: string,
     params: JsonObject,
     context: ExecutionContext,
-  ): Promise<ToolResult>;
-  getRegistry(): ToolExecutionRegistryLike;
+  ) => Promise<ToolResult>;
+  getRegistry: () => ToolExecutionRegistryLike;
 }
 
 export interface PackageLocalToolExecutionContext
