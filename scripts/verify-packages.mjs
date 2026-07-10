@@ -14,6 +14,7 @@ import {
   agentSdkRootSubagentCompatibilityBoundaryRules,
   agentSdkServerFacadeBoundaryRules,
   agentSdkSessionConfigDeclarationBoundaryRules,
+  agentSdkSessionEntrySessionBoundaryRules,
   agentSdkSessionFactoryDeclarationBoundaryRules,
   agentSdkSessionPublicDeclarationBoundaryRules,
   agentSdkSessionStoreDeclarationBoundaryRules,
@@ -207,32 +208,8 @@ const packageSpecs = [
       'package/dist/mcp/McpRegistry.d.ts',
     ],
     forbiddenFileContents: [
-      {
-        file: 'package/dist/session/index.d.ts',
-        forbidden: './Session.js',
-        message: 'session declarations must be emitted from package-local session entry source',
-      },
+      ...toPackedForbiddenFileRules(agentSdkSessionEntrySessionBoundaryRules),
       ...toPackedForbiddenFileRules(agentSdkSessionPublicDeclarationBoundaryRules),
-      {
-        file: 'package/dist/session/index.js',
-        forbidden: '../../../../src/session/Session',
-        message: 'session runtime entry must not import the legacy root Session directly',
-      },
-      {
-        file: 'package/dist/session/index.js',
-        forbidden: 'from"../../../../src/session/Session',
-        message: 'session runtime entry must not import the legacy root Session directly',
-      },
-      {
-        file: 'package/dist/session/index.js',
-        forbidden: 'from "../../../../src/session/Session',
-        message: 'session runtime entry must not import the legacy root Session directly',
-      },
-      {
-        file: 'package/dist/session/Session.d.ts',
-        forbidden: '../../../../src/session/Session',
-        message: 'package-local Session declarations must expose local session contracts only',
-      },
       ...toPackedForbiddenFileRules(agentSdkSessionFactoryDeclarationBoundaryRules),
       ...toPackedForbiddenFileRules(agentSdkSessionConfigDeclarationBoundaryRules),
       ...toPackedForbiddenFileRules(agentSdkSessionStoreDeclarationBoundaryRules),

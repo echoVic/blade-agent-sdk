@@ -11,6 +11,7 @@ import {
   agentSdkRootSubagentCompatibilityBoundaryRules,
   agentSdkServerFacadeBoundaryRules,
   agentSdkSessionConfigDeclarationBoundaryRules,
+  agentSdkSessionEntrySessionBoundaryRules,
   agentSdkSessionFactoryDeclarationBoundaryRules,
   agentSdkSessionPublicDeclarationBoundaryRules,
   agentSdkSessionStoreDeclarationBoundaryRules,
@@ -240,31 +241,25 @@ console.log('local session declaration public boundary passed');
 
 assertNoForbiddenDeclarationSymbols(
   readFileSync(join(packageRoot, 'dist/session/index.js'), 'utf8'),
-  [
-    {
-      forbidden: '../../../../src/session/Session',
-      message: 'local session runtime entry must not import the legacy root Session directly',
-    },
-    {
-      forbidden: 'from"../../../../src/session/Session',
-      message: 'local session runtime entry must not import the legacy root Session directly',
-    },
-    {
-      forbidden: 'from "../../../../src/session/Session',
-      message: 'local session runtime entry must not import the legacy root Session directly',
-    },
-  ],
+  toLocalForbiddenDeclarationRules(
+    agentSdkSessionEntrySessionBoundaryRules.filter((rule) => rule.file === 'dist/session/index.js'),
+  ),
   'local session runtime entry boundary',
 );
 
 assertNoForbiddenDeclarationSymbols(
+  readFileSync(join(packageRoot, 'dist/session/index.d.ts'), 'utf8'),
+  toLocalForbiddenDeclarationRules(
+    agentSdkSessionEntrySessionBoundaryRules.filter((rule) => rule.file === 'dist/session/index.d.ts'),
+  ),
+  'local session declaration entry boundary',
+);
+
+assertNoForbiddenDeclarationSymbols(
   readFileSync(join(packageRoot, 'dist/session/Session.d.ts'), 'utf8'),
-  [
-    {
-      forbidden: '../../../../src/session/Session',
-      message: 'local session declarations must expose package-local Session contracts only',
-    },
-  ],
+  toLocalForbiddenDeclarationRules(
+    agentSdkSessionEntrySessionBoundaryRules.filter((rule) => rule.file === 'dist/session/Session.d.ts'),
+  ),
   'local session declaration Session boundary',
 );
 console.log('local session entry Session boundary passed');

@@ -333,6 +333,36 @@ describe('package entrypoints', () => {
     expect(publishedVerifier).toContain('agentSdkSessionPublicDeclarationBoundaryRules');
   });
 
+  it('shares session entry Session boundary rules across local packed and published verifiers', () => {
+    const sharedRulesPath = 'scripts/agent-sdk-boundary-rules.mjs';
+
+    expect(existsSync(join(process.cwd(), sharedRulesPath)), sharedRulesPath).toBe(true);
+
+    const sharedRules = readFileSync(sharedRulesPath, 'utf-8');
+    const entrypointVerifier = readFileSync('scripts/verify-entrypoints.mjs', 'utf-8');
+    const packageVerifier = readFileSync('scripts/verify-packages.mjs', 'utf-8');
+    const publishedVerifier = readFileSync('scripts/verify-published.mjs', 'utf-8');
+
+    expect(sharedRules).toContain('agentSdkSessionEntrySessionBoundaryRules');
+    expect(sharedRules).toContain('dist/session/index.d.ts');
+    expect(sharedRules).toContain('dist/session/index.js');
+    expect(sharedRules).toContain('dist/session/Session.d.ts');
+    expect(sharedRules).toContain('./Session.js');
+    expect(sharedRules).toContain('../../../../src/session/Session');
+    expect(sharedRules).toContain('from"../../../../src/session/Session');
+    expect(sharedRules).toContain('from "../../../../src/session/Session');
+    expect(sharedRules).toContain('session declarations must be emitted from package-local session entry source');
+    expect(sharedRules).toContain('session runtime entry must not import the legacy root Session directly');
+    expect(sharedRules).toContain('package-local Session declarations must expose local session contracts only');
+    expect(entrypointVerifier).toContain('agentSdkSessionEntrySessionBoundaryRules');
+    expect(entrypointVerifier).toContain("rule.file === 'dist/session/index.d.ts'");
+    expect(entrypointVerifier).toContain("rule.file === 'dist/session/index.js'");
+    expect(entrypointVerifier).toContain("rule.file === 'dist/session/Session.d.ts'");
+    expect(packageVerifier).toContain('toPackedForbiddenFileRules(agentSdkSessionEntrySessionBoundaryRules)');
+    expect(publishedVerifier).toContain('verifyPublishedSessionEntrySessionBoundary');
+    expect(publishedVerifier).toContain('agentSdkSessionEntrySessionBoundaryRules');
+  });
+
   it('shares session factory declaration boundary rules across local packed and published verifiers', () => {
     const sharedRulesPath = 'scripts/agent-sdk-boundary-rules.mjs';
 
@@ -556,8 +586,10 @@ describe('package entrypoints', () => {
     expect(verifier).toContain('local root subagent compatibility boundary passed');
     expect(verifier).toContain('toLocalForbiddenDeclarationRules(agentSdkSessionPublicDeclarationBoundaryRules)');
     expect(verifier).toContain('local session declaration public boundary passed');
-    expect(verifier).toContain('local session runtime entry must not import the legacy root Session directly');
-    expect(verifier).toContain('local session declarations must expose package-local Session contracts only');
+    expect(verifier).toContain('agentSdkSessionEntrySessionBoundaryRules');
+    expect(verifier).toContain("rule.file === 'dist/session/index.d.ts'");
+    expect(verifier).toContain("rule.file === 'dist/session/index.js'");
+    expect(verifier).toContain("rule.file === 'dist/session/Session.d.ts'");
     expect(verifier).toContain('local session entry Session boundary passed');
     expect(verifier).toContain('toLocalForbiddenDeclarationRules(agentSdkSessionFactoryDeclarationBoundaryRules)');
     expect(verifier).toContain('local session factory declaration boundary passed');
