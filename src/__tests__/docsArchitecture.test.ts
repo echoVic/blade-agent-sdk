@@ -39,4 +39,17 @@ describe('production architecture documentation', () => {
     expect(config).toContain("{ text: '架构说明', link: '/architecture' }");
     expect(config).toContain("{ text: '包与入口', link: '/packages' }");
   });
+
+  it('keeps roadmap wording aligned with retired root streaming adapters', () => {
+    const roadmap = readDoc('docs/roadmap/production-agent-sdk-monorepo.md');
+
+    expect(existsSync('src/agent/StreamingToolExecutor.ts')).toBe(false);
+    expect(existsSync('src/agent/loop/streamChatResponse.ts')).toBe(false);
+    expect(roadmap).not.toContain(
+      'the root `StreamingToolExecutor` path is now a compatibility wrapper',
+    );
+    expect(roadmap).not.toContain(
+      'the root `streamChatResponse()` path is now a compatibility wrapper',
+    );
+  });
 });
