@@ -110,6 +110,30 @@ describe('monorepo topology', () => {
     });
   });
 
+  it('keeps legacy session kernel adapters on explicit agent package subpaths', () => {
+    const adapterImports = [
+      [
+        'src/session/SessionKernelAdapter.ts',
+        ["from '@blade-ai/agent/ports'", "from '@blade-ai/agent/protocol'"],
+      ],
+      ['src/session/SessionKernelStoreAdapter.ts', ["from '@blade-ai/agent/state'"]],
+      ['src/session/SessionKernelTraceAdapter.ts', ["from '@blade-ai/agent/tracing'"]],
+      ['src/session/SessionKernelHookAdapter.ts', ["from '@blade-ai/agent/ports'"]],
+    ] as const;
+
+    for (const [file, requiredImports] of adapterImports) {
+      const source = readFileSync(file, 'utf-8');
+
+      expect(source, `${file} should not rely on the agent root barrel`).not.toContain(
+        "from '@blade-ai/agent'",
+      );
+
+      for (const requiredImport of requiredImports) {
+        expect(source, `${file} should import ${requiredImport}`).toContain(requiredImport);
+      }
+    }
+  });
+
   it('keeps package builds isolated from the root package config', () => {
     for (const dir of ['packages/ai', 'packages/agent', 'packages/agent-sdk']) {
       const pkg = readJson(join(dir, 'package.json'));

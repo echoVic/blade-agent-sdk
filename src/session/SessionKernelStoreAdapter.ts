@@ -1,5 +1,5 @@
 import type { JsonObject, ModelMessage, ModelToolCall } from '@blade-ai/ai';
-import type { AgentStoreAppendContext, AgentStorePort } from '@blade-ai/agent';
+import type { AgentStoreAppendContext, AgentStorePort } from '@blade-ai/agent/state';
 import type { ContextManager } from '../context/ContextManager.js';
 import type { JsonObject as SdkJsonObject } from '../types/common.js';
 

@@ -1,4 +1,5 @@
-import type { AgentToolCall, AgentToolPort, AgentToolResult } from '@blade-ai/agent';
+import type { AgentToolPort } from '@blade-ai/agent/ports';
+import type { AgentToolCall, AgentToolResult } from '@blade-ai/agent/protocol';
 import type { ExecutionPipeline } from '../tools/execution/ExecutionPipeline.js';
 import type { ToolRegistry } from '../tools/registry/ToolRegistry.js';
 import { normalizeToolEffects } from '../tools/types/ToolEffects.js';

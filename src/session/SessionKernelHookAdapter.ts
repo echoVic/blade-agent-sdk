@@ -1,5 +1,5 @@
 import type { ModelRequest } from '@blade-ai/ai';
-import type { AgentHookPort } from '@blade-ai/agent';
+import type { AgentHookPort } from '@blade-ai/agent/ports';
 import type { HookRuntime } from '../hooks/HookRuntime.js';
 
 export interface KernelHookPortOptions {
