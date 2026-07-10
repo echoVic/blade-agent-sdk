@@ -629,7 +629,9 @@ describe('package entrypoints', () => {
       "import type { AgentStreamEvent } from '@blade-ai/agent/protocol';",
     );
     expect(publicTypeContracts).toContain("import type { AgentToolPort } from '@blade-ai/agent/ports';");
-    expect(publicTypeContracts).toContain("import type { AgentToolCall } from '@blade-ai/agent/protocol';");
+    expect(publicTypeContracts).toContain(
+      "import type { AgentToolCall, AgentToolResult } from '@blade-ai/agent/protocol';",
+    );
     expect(publicTypeContracts).toContain("import type { AgentTraceEvent } from '@blade-ai/agent/tracing';");
     expect(publicTypeContracts).toContain("import type { SessionOptions, StreamMessage } from '@blade-ai/agent-sdk';");
     expect(publicTypeContracts).toContain("import type { ISession } from '@blade-ai/agent-sdk/session';");
@@ -728,6 +730,10 @@ describe('package entrypoints', () => {
     expect(helper).toContain('publishedConsumer');
     expect(helper).toContain("import type { AgentKernelOptions } from '@blade-ai/agent/kernel';");
     expect(helper).toContain("import type { AgentStreamEvent } from '@blade-ai/agent/protocol';");
+    expect(helper).toContain(
+      "import type { AgentToolCall, AgentToolResult } from '@blade-ai/agent/protocol';",
+    );
+    expect(localVerifier).toContain('const agentToolResult: AgentToolResult');
     expect(helper).not.toContain("from '@blade-ai/agent';");
   });
 
