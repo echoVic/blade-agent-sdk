@@ -7,12 +7,12 @@ import type { ConversationState } from '../state/ConversationState.js';
 import type { TurnState } from '../state/TurnState.js';
 import type { TokenBudget } from '@blade-ai/agent/budget';
 import type { TurnLimitResponse } from '../types.js';
+import type { AgentFunctionToolCall as FunctionToolCall } from '@blade-ai/agent/loop';
 import type {
   AgentLoopAdapterConfig,
   AgentLoopAdapterHooks,
 } from './agentLoop.js';
 import type { ToolExecutionUpdate } from './runToolCall.js';
-import type { FunctionToolCall } from './types.js';
 
 export type AgentLoopHooks = AgentLoopAdapterHooks<
   Message,

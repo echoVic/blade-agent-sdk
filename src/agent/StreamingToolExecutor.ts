@@ -13,9 +13,9 @@ import type { ExecutionPipeline } from '../tools/execution/ExecutionPipeline.js'
 import type { ToolResult } from '../tools/types/index.js';
 import type { JsonObject, PermissionMode } from '../types/common.js';
 import type { ExecutionEpoch } from './ExecutionEpoch.js';
+import type { AgentFunctionToolCall as FunctionToolCall } from '@blade-ai/agent/loop';
 import type { ToolExecutionOutcome } from './loop/executeToolCalls.js';
 import type { ToolExecutionContext, ToolExecutionUpdate } from './loop/runToolCall.js';
-import type { FunctionToolCall } from './loop/types.js';
 
 interface ToolExecutionHooks {
   onBeforeToolExec?: (ctx: {

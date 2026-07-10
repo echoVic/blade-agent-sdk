@@ -16,9 +16,9 @@ import type { PermissionMode } from '../../types/common.js';
 import type { JsonObject } from '../../types/common.js';
 import type { AgentEvent } from '../AgentEvent.js';
 import type { ExecutionEpoch } from '../ExecutionEpoch.js';
+import type { AgentFunctionToolCall as FunctionToolCall } from '@blade-ai/agent/loop';
 import type { TurnState } from '../state/TurnState.js';
 import type { ToolExecutionContext, ToolExecutionUpdate } from './runToolCall.js';
-import type { FunctionToolCall } from './types.js';
 
 export interface RunTurnToolHooks {
   onBeforeExec?: (ctx: {

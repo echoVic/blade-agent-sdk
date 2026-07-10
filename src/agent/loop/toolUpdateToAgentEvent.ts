@@ -2,8 +2,8 @@ import type { ToolRegistry } from '../../tools/registry/ToolRegistry.js';
 import type { ToolResult } from '../../tools/types/index.js';
 import type { AgentEvent } from '../AgentEvent.js';
 import type { ToolExecutionUpdate } from './runToolCall.js';
-import type { FunctionToolCall } from './types.js';
 import {
+  type AgentFunctionToolCall as FunctionToolCall,
   buildAgentLoopToolResultEvent as buildPackageAgentLoopToolResultEvent,
   toolUpdateToAgentEvent as mapToolUpdateToAgentEvent,
 } from '@blade-ai/agent/loop';

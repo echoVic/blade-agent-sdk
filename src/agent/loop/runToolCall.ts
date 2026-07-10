@@ -4,6 +4,7 @@ import {
   type PackageLocalRunToolCallInput,
   type PackageLocalToolExecutionHooks,
 } from '@blade-ai/agent-sdk/session/internal';
+import type { AgentFunctionToolCall as FunctionToolCall } from '@blade-ai/agent/loop';
 import type { JsonObject } from '../../types/common.js';
 import { type InternalLogger, LogCategory, NOOP_LOGGER } from '../../logging/Logger.js';
 import type { ContextSnapshot } from '../../runtime/index.js';
@@ -15,7 +16,6 @@ import type { ToolEffect, ToolResult } from '../../tools/types/index.js';
 import type { BladeConfig, PermissionMode } from '../../types/common.js';
 import type { SessionId } from '../../types/branded.js';
 import type { IBackgroundAgentManager } from '../types.js';
-import type { FunctionToolCall } from './types.js';
 
 export interface ToolExecutionOutcome {
   toolCall: FunctionToolCall;

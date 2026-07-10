@@ -236,7 +236,6 @@ describe('monorepo topology', () => {
       'src/agent/loop/adapterContracts.ts',
       'src/agent/loop/runTurn.ts',
       'src/agent/loop/streamChatResponse.ts',
-      'src/agent/loop/types.ts',
       'src/agent/state/ConversationState.ts',
       'src/agent/state/LoopState.ts',
       'src/agent/state/TurnState.ts',
@@ -278,6 +277,34 @@ describe('monorepo topology', () => {
         legacyChatServiceImports,
         `${file} should not import chat protocol types from root services`,
       ).toHaveLength(0);
+    }
+  });
+
+  it('keeps the legacy root function tool-call type as an agent loop alias', () => {
+    const legacyToolCallTypeSource = readFileSync('src/agent/loop/types.ts', 'utf-8');
+    const packagePlanToolSource = readFileSync('packages/agent/src/loop/planToolExecution.ts', 'utf-8');
+    const rootFunctionToolCallConsumers = [
+      'src/agent/StreamingToolExecutor.ts',
+      'src/agent/loop/adapterContracts.ts',
+      'src/agent/loop/runToolCall.ts',
+      'src/agent/loop/runTurn.ts',
+      'src/agent/loop/toolUpdateToAgentEvent.ts',
+    ];
+
+    expect(legacyToolCallTypeSource.trim()).toBe(
+      "export type { AgentFunctionToolCall as FunctionToolCall } from '@blade-ai/agent/loop';",
+    );
+    expect(packagePlanToolSource).toContain('export interface AgentFunctionToolCall');
+
+    for (const file of rootFunctionToolCallConsumers) {
+      const source = readFileSync(file, 'utf-8');
+
+      expect(source, `${file} should consume function tool-call protocol from agent loop`).toContain(
+        "from '@blade-ai/agent/loop'",
+      );
+      expect(source, `${file} should not import the legacy root loop type shim`).not.toMatch(
+        /from ['"][^'"]*loop\/types\.js['"]|from ['"]\.\/types\.js['"]/,
+      );
     }
   });
 
