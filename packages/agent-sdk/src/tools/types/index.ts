@@ -1,4 +1,9 @@
 import type { z } from 'zod';
+import type {
+  AgentToolExecutionOutcome,
+  AgentToolExecutionUpdate,
+  AgentToolExecutionUpdatePayloads,
+} from '@blade-ai/agent/loop';
 import type { ContextSnapshot, RuntimeContextPatch, RuntimePatch } from '../../runtime/types.js';
 import type { SessionMessage } from '../../session/types.js';
 import type {
@@ -343,58 +348,30 @@ export interface FunctionToolCall {
   };
 }
 
-export interface ToolExecutionOutcome {
-  toolCall: FunctionToolCall;
-  result: ToolResult;
-  toolUseUuid: string | null;
+interface SdkToolExecutionUpdatePayloads extends AgentToolExecutionUpdatePayloads {
+  params: JsonObject;
+  runtimePatch: Extract<ToolEffect, { type: 'runtimePatch' }>['patch'];
+  contextPatch: Extract<ToolEffect, { type: 'contextPatch' }>['patch'];
+  newMessages: Extract<ToolEffect, { type: 'newMessages' }>['messages'];
+  permissionUpdates: Extract<ToolEffect, { type: 'permissionUpdates' }>['updates'];
 }
 
-export type ToolExecutionUpdate =
-  | {
-      type: 'tool_ready';
-      toolCall: FunctionToolCall;
-    }
-  | {
-      type: 'tool_started';
-      toolCall: FunctionToolCall;
-      params: JsonObject;
-      toolUseUuid: string | null;
-    }
-  | {
-      type: 'tool_progress';
-      toolCall: FunctionToolCall;
-      message: string;
-    }
-  | {
-      type: 'tool_message';
-      toolCall: FunctionToolCall;
-      message: string;
-    }
-  | {
-      type: 'tool_runtime_patch';
-      toolCall: FunctionToolCall;
-      patch: Extract<ToolEffect, { type: 'runtimePatch' }>['patch'];
-    }
-  | {
-      type: 'tool_context_patch';
-      toolCall: FunctionToolCall;
-      patch: Extract<ToolEffect, { type: 'contextPatch' }>['patch'];
-    }
-  | {
-      type: 'tool_new_messages';
-      toolCall: FunctionToolCall;
-      messages: Extract<ToolEffect, { type: 'newMessages' }>['messages'];
-    }
-  | {
-      type: 'tool_permission_updates';
-      toolCall: FunctionToolCall;
-      updates: Extract<ToolEffect, { type: 'permissionUpdates' }>['updates'];
-    }
-  | {
-      type: 'tool_result';
-      outcome: ToolExecutionOutcome;
-    }
-  | {
-      type: 'tool_completed';
-      outcome: ToolExecutionOutcome;
-    };
+export interface ToolExecutionOutcome
+  extends AgentToolExecutionOutcome<FunctionToolCall, ToolResult> {}
+
+export type ToolExecutionOutcomeOf<TToolCall extends FunctionToolCall> =
+  AgentToolExecutionOutcome<TToolCall, ToolResult>;
+
+export type ToolExecutionUpdate = AgentToolExecutionUpdate<
+  FunctionToolCall,
+  ToolResult,
+  SdkToolExecutionUpdatePayloads,
+  ToolExecutionOutcome
+>;
+
+export type ToolExecutionUpdateOf<TToolCall extends FunctionToolCall> = AgentToolExecutionUpdate<
+  TToolCall,
+  ToolResult,
+  SdkToolExecutionUpdatePayloads,
+  ToolExecutionOutcomeOf<TToolCall>
+>;

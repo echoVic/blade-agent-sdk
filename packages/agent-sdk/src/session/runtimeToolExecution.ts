@@ -11,12 +11,14 @@ import type { JsonObject } from '../types/common.js';
 import {
   ToolErrorType,
   type ExecutionContext,
-  type FunctionToolCall,
   type ToolEffect,
-  type ToolExecutionOutcome,
-  type ToolExecutionUpdate,
+  type ToolExecutionOutcomeOf,
+  type ToolExecutionUpdateOf,
   type ToolResult,
 } from '../tools/types/index.js';
+
+export type PackageLocalToolExecutionOutcome = ToolExecutionOutcomeOf<AgentFunctionToolCall>;
+export type PackageLocalToolExecutionUpdate = ToolExecutionUpdateOf<AgentFunctionToolCall>;
 
 export interface PackageLocalToolExecutionPipelinePort {
   execute(
@@ -39,9 +41,9 @@ export interface PackageLocalToolExecutionHooks {
     params: JsonObject;
   }) => Promise<string | null>;
   onToolReady?: (toolCall: AgentFunctionToolCall) => void | Promise<void>;
-  onAfterToolExec?: (ctx: ToolExecutionOutcome) => void | Promise<void>;
+  onAfterToolExec?: (ctx: PackageLocalToolExecutionOutcome) => void | Promise<void>;
   onToolComplete?: (toolCall: AgentFunctionToolCall, result: ToolResult) => void | Promise<void>;
-  onUpdate?: (update: ToolExecutionUpdate) => void | Promise<void>;
+  onUpdate?: (update: PackageLocalToolExecutionUpdate) => void | Promise<void>;
 }
 
 export interface PackageLocalRunToolCallInput {
@@ -64,7 +66,7 @@ export interface PackageLocalExecuteToolCallsInput
 
 export async function executePackageLocalToolCalls(
   input: PackageLocalExecuteToolCallsInput,
-): Promise<ToolExecutionOutcome[]> {
+): Promise<PackageLocalToolExecutionOutcome[]> {
   return executeToolExecutionPlan({
     plan: input.plan,
     execute: (toolCall) => executePackageLocalToolCall(toolCall, input),
@@ -74,7 +76,7 @@ export async function executePackageLocalToolCalls(
 async function executePackageLocalToolCall(
   toolCall: AgentFunctionToolCall,
   input: PackageLocalExecuteToolCallsInput,
-): Promise<ToolExecutionOutcome> {
+): Promise<PackageLocalToolExecutionOutcome> {
   await emitPackageLocalToolExecutionUpdate(input.hooks, {
     type: 'tool_ready',
     toolCall,
@@ -93,8 +95,8 @@ async function executePackageLocalToolCall(
 
 export async function runPackageLocalToolCall(
   input: PackageLocalRunToolCallInput,
-): Promise<ToolExecutionOutcome> {
-  let outcome: ToolExecutionOutcome;
+): Promise<PackageLocalToolExecutionOutcome> {
+  let outcome: PackageLocalToolExecutionOutcome;
 
   try {
     const params = JSON.parse(input.toolCall.function.arguments) as JsonObject;
@@ -197,13 +199,13 @@ export async function runPackageLocalToolCall(
 
 export async function emitPackageLocalToolExecutionUpdate(
   hooks: PackageLocalToolExecutionHooks | undefined,
-  update: ToolExecutionUpdate,
+  update: PackageLocalToolExecutionUpdate,
 ): Promise<void> {
   await hooks?.onUpdate?.(update);
 
   switch (update.type) {
     case 'tool_ready':
-      await hooks?.onToolReady?.(update.toolCall as AgentFunctionToolCall);
+      await hooks?.onToolReady?.(update.toolCall);
       return;
     case 'tool_started':
     case 'tool_progress':
@@ -218,7 +220,7 @@ export async function emitPackageLocalToolExecutionUpdate(
       return;
     case 'tool_completed':
       await hooks?.onToolComplete?.(
-        update.outcome.toolCall as AgentFunctionToolCall,
+        update.outcome.toolCall,
         update.outcome.result,
       );
       return;
@@ -257,9 +259,9 @@ function normalizePackageLocalToolEffects(result: ToolResult): ToolEffect[] {
 }
 
 function mapPackageLocalToolEffectToExecutionUpdate(
-  toolCall: FunctionToolCall,
+  toolCall: AgentFunctionToolCall,
   effect: ToolEffect,
-): ToolExecutionUpdate {
+): PackageLocalToolExecutionUpdate {
   switch (effect.type) {
     case 'runtimePatch':
       return {

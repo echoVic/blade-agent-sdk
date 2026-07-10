@@ -8,16 +8,15 @@ import type { ExecutionEpoch } from '@blade-ai/agent/epoch';
 import { type AgentFunctionToolCall, planToolExecution } from '@blade-ai/agent/loop';
 import {
   ToolErrorType,
-  type FunctionToolCall,
-  type ToolExecutionOutcome,
-  type ToolExecutionUpdate,
   type ToolResult,
 } from '../tools/types/index.js';
 import type { JsonObject, PermissionMode } from '../types/common.js';
 import {
   runPackageLocalToolCall,
+  type PackageLocalToolExecutionOutcome,
   type PackageLocalToolExecutionContext,
   type PackageLocalToolExecutionPipelinePort,
+  type PackageLocalToolExecutionUpdate,
 } from './runtimeToolExecution.js';
 import {
   streamPackageLocalChatResponse,
@@ -50,19 +49,19 @@ export interface PackageLocalStreamingToolExecutorConfig {
   onContentDelta?: (delta: string) => void | Promise<void>;
   onThinkingDelta?: (delta: string) => void | Promise<void>;
   onStreamEnd?: () => void | Promise<void>;
-  onToolExecutionUpdate?: (update: ToolExecutionUpdate) => void | Promise<void>;
-  onToolReady?: (toolCall: FunctionToolCall) => void | Promise<void>;
+  onToolExecutionUpdate?: (update: PackageLocalToolExecutionUpdate) => void | Promise<void>;
+  onToolReady?: (toolCall: AgentFunctionToolCall) => void | Promise<void>;
   onToolComplete?: (
-    toolCall: FunctionToolCall,
+    toolCall: AgentFunctionToolCall,
     result: ToolResult,
   ) => void | Promise<void>;
   onAfterToolExec?: (ctx: {
-    toolCall: FunctionToolCall;
+    toolCall: AgentFunctionToolCall;
     result: ToolResult;
     toolUseUuid: string | null;
   }) => void | Promise<void>;
   onAfterToolExecEpochDiscard?: (ctx: {
-    toolCall: FunctionToolCall;
+    toolCall: AgentFunctionToolCall;
     toolUseUuid: string | null;
     reason: string;
   }) => Promise<void>;
@@ -98,12 +97,12 @@ export class PackageLocalStreamingToolExecutor {
     epoch?: ExecutionEpoch,
   ): Promise<{
     chatResponse: ChatResponse;
-    executionResults: ToolExecutionOutcome[];
+    executionResults: PackageLocalToolExecutionOutcome[];
   }> {
     const chatService = this.getChatService();
     const batchController = new AbortController();
     const toolCallAccumulator = new Map<number, ToolCallAccumulatorEntry>();
-    const executionResults: Array<ToolExecutionOutcome | undefined> = [];
+    const executionResults: Array<PackageLocalToolExecutionOutcome | undefined> = [];
     const inFlightExecutions = new Map<number, Promise<void>>();
     let fullContent = '';
     let fullReasoningContent = '';
@@ -209,7 +208,7 @@ export class PackageLocalStreamingToolExecutor {
           usage: streamUsage,
         },
         executionResults: executionResults.filter(
-          (result): result is ToolExecutionOutcome => result !== undefined,
+          (result): result is PackageLocalToolExecutionOutcome => result !== undefined,
         ),
       };
     } catch (error) {
@@ -229,7 +228,7 @@ export class PackageLocalStreamingToolExecutor {
 
   private async emitToolExecutionUpdate(
     executionConfig: PackageLocalStreamingToolExecutorConfig,
-    update: ToolExecutionUpdate,
+    update: PackageLocalToolExecutionUpdate,
     epoch?: ExecutionEpoch,
   ): Promise<void> {
     if (!this.isEpochActive(epoch)) return;
@@ -270,7 +269,7 @@ export class PackageLocalStreamingToolExecutor {
     epoch?: ExecutionEpoch,
   ): Promise<{
     chatResponse: ChatResponse;
-    executionResults: ToolExecutionOutcome[];
+    executionResults: PackageLocalToolExecutionOutcome[];
   }> {
     const stream = streamPackageLocalChatResponse(
       this.getChatService,
@@ -320,7 +319,7 @@ export class PackageLocalStreamingToolExecutor {
     // 复用 StreamingToolExecutor 自身的 epoch-aware executeToolCall()，
     // 而非走外部 executeToolCalls() 路径——确保 onAfterToolExecEpochDiscard 可达。
     const batchController = new AbortController();
-    const executionResults: Array<ToolExecutionOutcome | undefined> = [];
+    const executionResults: Array<PackageLocalToolExecutionOutcome | undefined> = [];
     const allCalls = executionPlan.calls;
     const MAX_CONCURRENCY = 5;
 
@@ -365,14 +364,14 @@ export class PackageLocalStreamingToolExecutor {
     return {
       chatResponse,
       executionResults: executionResults.filter(
-        (r): r is ToolExecutionOutcome => r !== undefined,
+        (r): r is PackageLocalToolExecutionOutcome => r !== undefined,
       ),
     };
   }
 
   private async dispatchReadyToolCalls(input: {
     accumulator: Map<number, ToolCallAccumulatorEntry>;
-    executionResults: Array<ToolExecutionOutcome | undefined>;
+    executionResults: Array<PackageLocalToolExecutionOutcome | undefined>;
     inFlightExecutions: Map<number, Promise<void>>;
     signal: AbortSignal | undefined;
     batchController: AbortController;
@@ -401,7 +400,7 @@ export class PackageLocalStreamingToolExecutor {
 
       if (input.batchController.signal.aborted) {
         entry.cancelled = true;
-        const outcome: ToolExecutionOutcome = {
+        const outcome: PackageLocalToolExecutionOutcome = {
           toolCall: this.toFunctionToolCall(entry.id, entry.name, entry.arguments),
           result: this.buildCascadeAbortResult(),
           toolUseUuid: null,
@@ -467,7 +466,7 @@ export class PackageLocalStreamingToolExecutor {
     signal: AbortSignal | undefined;
     batchController: AbortController;
     executionConfig: PackageLocalStreamingToolExecutorConfig;
-    executionResults: Array<ToolExecutionOutcome | undefined>;
+    executionResults: Array<PackageLocalToolExecutionOutcome | undefined>;
     epoch?: ExecutionEpoch;
   }): Promise<void> {
     // Layer 1 防御性 guard：epoch 失效后不启动新工具执行
@@ -478,7 +477,7 @@ export class PackageLocalStreamingToolExecutor {
     // Layer 1b 防御性 guard：batch 已 abort（如 Bash 失败）后，
     // 写 cascade-abort result 而非启动新工具执行，与主流式路径 dispatchReadyToolCalls 语义一致。
     if (input.batchController.signal.aborted) {
-      const outcome: ToolExecutionOutcome = {
+      const outcome: PackageLocalToolExecutionOutcome = {
         toolCall: input.toolCall,
         result: this.buildCascadeAbortResult(),
         toolUseUuid: null,

@@ -1,62 +1,20 @@
 import type { JsonObject } from '@blade-ai/ai';
 import type { AgentFunctionToolCall } from './planToolExecution.js';
 import type { ToolExecutionRegistryLike, ToolKind } from './toolBehavior.js';
+import type {
+  AgentToolExecutionOutcome,
+  AgentToolExecutionUpdate,
+  AgentToolExecutionUpdatePayloads,
+} from './toolExecutionUpdate.js';
 
-export interface AgentLoopToolExecutionOutcome {
-  toolCall: AgentFunctionToolCall;
-  result: unknown;
-  toolUseUuid: string | null;
-}
+export interface AgentLoopToolExecutionOutcome extends AgentToolExecutionOutcome {}
 
-export type AgentLoopToolExecutionUpdate =
-  | {
-      type: 'tool_ready';
-      toolCall: AgentFunctionToolCall;
-    }
-  | {
-      type: 'tool_started';
-      toolCall: AgentFunctionToolCall;
-      params: JsonObject;
-      toolUseUuid: string | null;
-    }
-  | {
-      type: 'tool_progress';
-      toolCall: AgentFunctionToolCall;
-      message: string;
-    }
-  | {
-      type: 'tool_message';
-      toolCall: AgentFunctionToolCall;
-      message: string;
-    }
-  | {
-      type: 'tool_runtime_patch';
-      toolCall: AgentFunctionToolCall;
-      patch: unknown;
-    }
-  | {
-      type: 'tool_context_patch';
-      toolCall: AgentFunctionToolCall;
-      patch: unknown;
-    }
-  | {
-      type: 'tool_new_messages';
-      toolCall: AgentFunctionToolCall;
-      messages: unknown;
-    }
-  | {
-      type: 'tool_permission_updates';
-      toolCall: AgentFunctionToolCall;
-      updates: unknown;
-    }
-  | {
-      type: 'tool_result';
-      outcome: AgentLoopToolExecutionOutcome;
-    }
-  | {
-      type: 'tool_completed';
-      outcome: AgentLoopToolExecutionOutcome;
-    };
+export type AgentLoopToolExecutionUpdate = AgentToolExecutionUpdate<
+  AgentFunctionToolCall,
+  unknown,
+  AgentToolExecutionUpdatePayloads & { params: JsonObject },
+  AgentLoopToolExecutionOutcome
+>;
 
 export type AgentLoopToolEvent =
   | {

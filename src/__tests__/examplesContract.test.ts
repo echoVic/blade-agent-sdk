@@ -33,6 +33,7 @@ describe('examples and quickstart documentation', () => {
       '@blade-ai/agent/budget': ['../packages/agent/src/budget/TokenBudget.ts'],
       '@blade-ai/agent/epoch': ['../packages/agent/src/epoch/ExecutionEpoch.ts'],
       '@blade-ai/agent/kernel': ['../packages/agent/src/kernel/AgentKernel.ts'],
+      '@blade-ai/agent/loop': ['../packages/agent/src/loop/index.ts'],
       '@blade-ai/agent/ports': ['../packages/agent/src/ports/index.ts'],
       '@blade-ai/agent/protocol': ['../packages/agent/src/protocol/index.ts'],
       '@blade-ai/agent/state': ['../packages/agent/src/state/index.ts'],

@@ -6,18 +6,17 @@ import type {
 import {
   AsyncEventQueue,
   type AgentLoopToolEvent,
-  type AgentLoopToolExecutionUpdate,
+  type AgentFunctionToolCall,
   toolUpdateToAgentEvent,
 } from '@blade-ai/agent/loop';
 import type { ExecutionEpoch } from '@blade-ai/agent/epoch';
 import type { JsonObject, PermissionMode } from '../types/common.js';
 import type {
-  FunctionToolCall,
-  ToolExecutionOutcome,
-  ToolExecutionUpdate,
   ToolResult,
 } from '../tools/types/index.js';
 import type {
+  PackageLocalToolExecutionOutcome,
+  PackageLocalToolExecutionUpdate,
   PackageLocalToolExecutionContext,
   PackageLocalToolExecutionPipelinePort,
 } from './runtimeToolExecution.js';
@@ -34,20 +33,20 @@ export interface PackageLocalRunTurnLogger {
 
 export interface PackageLocalRunTurnToolHooks {
   onBeforeExec?: (ctx: {
-    toolCall: FunctionToolCall;
+    toolCall: AgentFunctionToolCall;
     params: JsonObject;
   }) => Promise<string | null>;
   onAfterExec?: (ctx: {
-    toolCall: FunctionToolCall;
+    toolCall: AgentFunctionToolCall;
     result: ToolResult;
     toolUseUuid: string | null;
   }) => Promise<void>;
   onAfterExecEpochDiscard?: (ctx: {
-    toolCall: FunctionToolCall;
+    toolCall: AgentFunctionToolCall;
     toolUseUuid: string | null;
     reason: string;
   }) => Promise<void>;
-  onUpdate?: (update: ToolExecutionUpdate) => Promise<void> | void;
+  onUpdate?: (update: PackageLocalToolExecutionUpdate) => Promise<void> | void;
 }
 
 export interface PackageLocalRunTurnState {
@@ -69,7 +68,7 @@ export interface PackageLocalRunTurnInput {
 }
 
 export interface PackageLocalStreamingExecutionResult {
-  toolCall: FunctionToolCall;
+  toolCall: AgentFunctionToolCall;
   result: ToolResult;
   toolUseUuid: string | null;
 }
@@ -181,7 +180,7 @@ async function* runPackageLocalStreamingTurnWithTools(
   const registry = executionPipeline.getRegistry();
 
   let chatResponse: ChatResponse | undefined;
-  let streamingExecutionResults: ToolExecutionOutcome[] | undefined;
+  let streamingExecutionResults: PackageLocalToolExecutionOutcome[] | undefined;
   let executionError: unknown;
 
   const executionPromise = streamingExecutor
@@ -202,10 +201,7 @@ async function* runPackageLocalStreamingTurnWithTools(
       },
       onToolExecutionUpdate: async (update) => {
         await toolHooks.onUpdate?.(update);
-        const agentEvent = toolUpdateToAgentEvent(
-          update as AgentLoopToolExecutionUpdate,
-          registry,
-        );
+        const agentEvent = toolUpdateToAgentEvent(update, registry);
         if (agentEvent) queue.enqueue(agentEvent);
       },
     }, epoch)

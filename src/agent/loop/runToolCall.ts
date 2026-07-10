@@ -1,6 +1,10 @@
 import {
   runPackageLocalToolCall,
 } from '@blade-ai/agent-sdk/session/internal';
+import type {
+  ToolExecutionOutcomeOf as SdkToolExecutionOutcome,
+  ToolExecutionUpdateOf as SdkToolExecutionUpdate,
+} from '@blade-ai/agent-sdk/tools';
 import type { AgentFunctionToolCall as FunctionToolCall } from '@blade-ai/agent/loop';
 import type { JsonObject } from '../../types/common.js';
 import { type InternalLogger, LogCategory, NOOP_LOGGER } from '../../logging/Logger.js';
@@ -9,68 +13,16 @@ import type { ToolCatalog } from '../../tools/catalog/index.js';
 import type { ExecutionPipeline } from '../../tools/execution/ExecutionPipeline.js';
 import type { ToolRegistry } from '../../tools/registry/ToolRegistry.js';
 import type { ConfirmationHandler } from '../../tools/types/ExecutionTypes.js';
-import type { ToolEffect, ToolResult } from '../../tools/types/index.js';
+import type { ToolResult } from '../../tools/types/index.js';
 import type { BladeConfig, PermissionMode } from '../../types/common.js';
 import type { SessionId } from '../../types/branded.js';
 import type { IBackgroundAgentManager } from '../types.js';
 
 type PackageLocalRunToolCallInput = Parameters<typeof runPackageLocalToolCall>[0];
 
-export interface ToolExecutionOutcome {
-  toolCall: FunctionToolCall;
-  result: ToolResult;
-  toolUseUuid: string | null;
-}
+export type ToolExecutionOutcome = SdkToolExecutionOutcome<FunctionToolCall>;
 
-export type ToolExecutionUpdate =
-  | {
-      type: 'tool_ready';
-      toolCall: FunctionToolCall;
-    }
-  | {
-      type: 'tool_started';
-      toolCall: FunctionToolCall;
-      params: JsonObject;
-      toolUseUuid: string | null;
-    }
-  | {
-      type: 'tool_progress';
-      toolCall: FunctionToolCall;
-      message: string;
-    }
-  | {
-      type: 'tool_message';
-      toolCall: FunctionToolCall;
-      message: string;
-    }
-  | {
-      type: 'tool_runtime_patch';
-      toolCall: FunctionToolCall;
-      patch: Extract<ToolEffect, { type: 'runtimePatch' }>['patch'];
-    }
-  | {
-      type: 'tool_context_patch';
-      toolCall: FunctionToolCall;
-      patch: Extract<ToolEffect, { type: 'contextPatch' }>['patch'];
-    }
-  | {
-      type: 'tool_new_messages';
-      toolCall: FunctionToolCall;
-      messages: Extract<ToolEffect, { type: 'newMessages' }>['messages'];
-    }
-  | {
-      type: 'tool_permission_updates';
-      toolCall: FunctionToolCall;
-      updates: Extract<ToolEffect, { type: 'permissionUpdates' }>['updates'];
-    }
-  | {
-      type: 'tool_result';
-      outcome: ToolExecutionOutcome;
-    }
-  | {
-      type: 'tool_completed';
-      outcome: ToolExecutionOutcome;
-    };
+export type ToolExecutionUpdate = SdkToolExecutionUpdate<FunctionToolCall>;
 
 export interface ToolExecutionContext {
   sessionId: SessionId;

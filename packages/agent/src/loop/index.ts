@@ -7,6 +7,7 @@ export * from './executeToolExecutionPlan.js';
 export * from './planToolExecution.js';
 export * from './repairToolCallParams.js';
 export * from './toolInterruptBehavior.js';
+export * from './toolExecutionUpdate.js';
 export * from './toolUpdateToAgentEvent.js';
 export * from './loopEvents.js';
 export * from './modelResponseTurn.js';

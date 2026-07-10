@@ -1666,6 +1666,66 @@ describe('monorepo topology', () => {
     }
   });
 
+  it('centralizes tool execution update contracts in the public agent loop package', () => {
+    const rootTsconfig = readJson('tsconfig.json');
+    const loopIndexSource = readFileSync('packages/agent/src/loop/index.ts', 'utf-8');
+    const agentUpdateSource = readFileSync(
+      'packages/agent/src/loop/toolUpdateToAgentEvent.ts',
+      'utf-8',
+    );
+    const sdkToolTypesSource = readFileSync(
+      'packages/agent-sdk/src/tools/types/index.ts',
+      'utf-8',
+    );
+    const rootRunToolCallSource = readFileSync('src/agent/loop/runToolCall.ts', 'utf-8');
+
+    expect(existsSync('packages/agent/src/loop/toolExecutionUpdate.ts')).toBe(true);
+    expect(existsSync('packages/agent/src/__tests__/toolExecutionUpdate.test.ts')).toBe(true);
+    expect(loopIndexSource).toContain("export * from './toolExecutionUpdate.js';");
+    expect(agentUpdateSource).toMatch(
+      /export interface AgentLoopToolExecutionOutcome\s+extends\s+AgentToolExecutionOutcome/,
+    );
+    expect(agentUpdateSource).toMatch(
+      /export type AgentLoopToolExecutionUpdate\s*=\s*AgentToolExecutionUpdate/,
+    );
+
+    expect(sdkToolTypesSource).toMatch(
+      /import type\s*\{[^}]*\bAgentToolExecutionOutcome\b[^}]*\bAgentToolExecutionUpdate\b[^}]*\}\s*from '@blade-ai\/agent\/loop';/s,
+    );
+    expect(sdkToolTypesSource).toMatch(
+      /export interface ToolExecutionOutcome[\s\S]*?extends AgentToolExecutionOutcome</,
+    );
+    expect(sdkToolTypesSource).toMatch(
+      /export type ToolExecutionOutcomeOf[\s\S]*?=\s*AgentToolExecutionOutcome</,
+    );
+    expect(sdkToolTypesSource).toMatch(
+      /export type ToolExecutionUpdate\s*=\s*AgentToolExecutionUpdate</,
+    );
+    expect(sdkToolTypesSource).toMatch(
+      /export type ToolExecutionUpdateOf[\s\S]*?=\s*AgentToolExecutionUpdate</,
+    );
+
+    expect(rootRunToolCallSource).toMatch(
+      /ToolExecutionOutcomeOf as SdkToolExecutionOutcome/,
+    );
+    expect(rootRunToolCallSource).toMatch(
+      /ToolExecutionUpdateOf as SdkToolExecutionUpdate/,
+    );
+    expect(rootRunToolCallSource).toMatch(
+      /from '@blade-ai\/agent-sdk\/tools';/,
+    );
+    expect(rootRunToolCallSource).not.toMatch(
+      /from '@blade-ai\/agent-sdk';/,
+    );
+    expect(rootTsconfig.compilerOptions?.paths).toMatchObject({
+      '@blade-ai/agent-sdk/tools': ['./packages/agent-sdk/src/tools/index.ts'],
+    });
+    expect(rootRunToolCallSource).not.toContain('export interface ToolExecutionOutcome');
+    expect(rootRunToolCallSource).not.toMatch(
+      /export type ToolExecutionUpdate\s*=\s*\|/,
+    );
+  });
+
   it('keeps tool-ready compatibility dispatch explicit in the root legacy loop adapter', () => {
     const rootExecutionSource = readFileSync(
       'src/agent/loop/executeToolCalls.ts',
