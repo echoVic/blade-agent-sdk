@@ -9,7 +9,7 @@ const mockCreateChatServiceAsync = vi.fn(async (config: ChatConfig) => ({
   updateConfig: vi.fn(() => {}),
 }));
 
-vi.mock('../../services/ChatServiceInterface.js', () => ({
+vi.mock('../../session/ChatServiceFactory.js', () => ({
   createChatServiceAsync: mockCreateChatServiceAsync,
 }));
 

@@ -12,7 +12,7 @@ const mockCreateChatServiceAsync = vi.fn(async (_config: Record<string, unknown>
   sideQuery: mockSideQuery,
 }));
 
-vi.mock('../../services/ChatServiceInterface.js', () => ({
+vi.mock('../../session/ChatServiceFactory.js', () => ({
   createChatServiceAsync: mockCreateChatServiceAsync,
 }));
 

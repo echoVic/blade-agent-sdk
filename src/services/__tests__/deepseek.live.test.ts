@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { createChatServiceAsync } from '../ChatServiceInterface.js';
+import { createChatServiceAsync } from '../../session/ChatServiceFactory.js';
 import { createDeepSeekFimCompletion } from '../deepseek.js';
 
 const apiKey = process.env.DEEPSEEK_API_KEY ?? '';

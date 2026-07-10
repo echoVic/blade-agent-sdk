@@ -21,7 +21,7 @@ import type { JSONSchema7 } from 'json-schema';
 import { describe, expect, it } from 'vitest';
 import type { Message } from '@blade-ai/ai/chat';
 import type { ModelConfig } from '../../types/common.js';
-import { createChatServiceAsync } from '../ChatServiceInterface.js';
+import { createChatServiceAsync } from '../../session/ChatServiceFactory.js';
 import {
   calculateDeepSeekCost,
   createDeepSeekLongContextChunks,

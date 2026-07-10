@@ -204,8 +204,11 @@ describe('monorepo topology', () => {
       );
 
       if (file === 'src/context/CompactionService.ts') {
-        expect(legacyChatServiceImports.join('\n'), `${file} should only keep the SDK factory`)
-          .toContain('createChatServiceAsync');
+        expect(source, `${file} should import the session chat service factory`).toContain(
+          "from '../session/ChatServiceFactory.js'",
+        );
+        expect(legacyChatServiceImports, `${file} should not import the legacy factory shim`)
+          .toHaveLength(0);
         expect(legacyChatServiceImports.join('\n'), `${file} should not import Message from root`)
           .not.toMatch(/\btype\s+Message\b/);
         continue;
@@ -263,8 +266,11 @@ describe('monorepo topology', () => {
       );
 
       if (file === 'src/agent/ModelManager.ts') {
-        expect(legacyChatServiceImports.join('\n'), `${file} should only keep the SDK factory`)
-          .toContain('createChatServiceAsync');
+        expect(source, `${file} should import the session chat service factory`).toContain(
+          "from '../session/ChatServiceFactory.js'",
+        );
+        expect(legacyChatServiceImports, `${file} should not import the legacy factory shim`)
+          .toHaveLength(0);
         expect(legacyChatServiceImports.join('\n'), `${file} should not import IChatService from root`)
           .not.toMatch(/\btype\s+IChatService\b/);
         continue;
@@ -340,8 +346,11 @@ describe('monorepo topology', () => {
       );
 
       if (file.endsWith('.live.test.ts')) {
-        expect(legacyChatServiceImports.join('\n'), `${file} should only keep the SDK factory`)
-          .toContain('createChatServiceAsync');
+        expect(source, `${file} should import the session chat service factory`).toContain(
+          "from '../../session/ChatServiceFactory.js'",
+        );
+        expect(legacyChatServiceImports, `${file} should not import the legacy factory shim`)
+          .toHaveLength(0);
         expect(legacyChatServiceImports.join('\n'), `${file} should not import Message from root`)
           .not.toMatch(/\btype\s+Message\b/);
         continue;
@@ -354,8 +363,9 @@ describe('monorepo topology', () => {
     }
   });
 
-  it('keeps the legacy root chat service interface as factory-only compatibility', () => {
+  it('keeps the legacy root chat service interface as a session factory shim', () => {
     const chatServiceInterfaceSource = readFileSync('src/services/ChatServiceInterface.ts', 'utf-8');
+    const chatServiceFactorySource = readFileSync('src/session/ChatServiceFactory.ts', 'utf-8');
     const importSites = [
       ['src/agent/ModelManager.ts', 'import'],
       ['src/context/CompactionService.ts', 'import'],
@@ -365,7 +375,12 @@ describe('monorepo topology', () => {
       ['src/context/__tests__/CompactionService.test.ts', 'mock'],
     ] as const;
 
-    expect(chatServiceInterfaceSource).toContain('function createChatServiceAsync');
+    expect(chatServiceInterfaceSource.trim()).toBe(
+      "export { createChatServiceAsync } from '../session/ChatServiceFactory.js';",
+    );
+    expect(chatServiceInterfaceSource).not.toContain('VercelAIChatService');
+    expect(chatServiceFactorySource).toContain('function createChatServiceAsync');
+    expect(chatServiceFactorySource).toContain("from '../services/VercelAIChatService.js'");
     expect(
       chatServiceInterfaceSource,
       'legacy root service path must not be a chat protocol type source',
@@ -375,8 +390,8 @@ describe('monorepo topology', () => {
       const source = readFileSync(file, 'utf-8');
 
       if (mode === 'mock') {
-        expect(source, `${file} may only mock the factory export`).toContain(
-          'createChatServiceAsync',
+        expect(source, `${file} should mock the session factory export`).toContain(
+          '../session/ChatServiceFactory.js',
         );
         expect(
           source.match(/import[\s\S]*?from ['"][^'"]*ChatServiceInterface\.js['"];?/g) ?? [],
@@ -386,14 +401,17 @@ describe('monorepo topology', () => {
       }
 
       const imports =
-        source.match(/import[\s\S]*?from ['"][^'"]*ChatServiceInterface\.js['"];?/g) ?? [];
+        source.match(/import[\s\S]*?from ['"][^'"]*ChatServiceFactory\.js['"];?/g) ?? [];
 
-      expect(imports, `${file} should import the legacy factory exactly once`).toHaveLength(1);
+      expect(imports, `${file} should import the session factory exactly once`).toHaveLength(1);
       expect(imports[0], `${file} should only import createChatServiceAsync`).toMatch(
         /\{\s*createChatServiceAsync\s*\}/,
       );
       expect(imports[0], `${file} should not import chat protocol types`).not.toMatch(
         /\btype\s+(?:ChatConfig|ChatResponse|IChatService|Message|StreamChunk|UsageInfo)\b/,
+      );
+      expect(source, `${file} should not import the legacy chat service shim`).not.toContain(
+        'ChatServiceInterface.js',
       );
     }
   });
