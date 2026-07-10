@@ -594,6 +594,7 @@ describe('package entrypoints', () => {
     expect(verifier).toContain("import type { RetryConfig } from '@blade-ai/ai/retry';");
     expect(verifier).toContain("import type { AgentKernelOptions } from '@blade-ai/agent/kernel';");
     expect(verifier).not.toContain("import type { AgentKernelOptions } from '@blade-ai/agent';");
+    expect(verifier).toContain("import type { AgentStreamEvent } from '@blade-ai/agent/protocol';");
     expect(verifier).toContain("import type { AgentToolPort } from '@blade-ai/agent/ports';");
     expect(verifier).toContain("import type { AgentToolCall } from '@blade-ai/agent/protocol';");
     expect(verifier).toContain("import type { AgentTraceEvent } from '@blade-ai/agent/tracing';");
