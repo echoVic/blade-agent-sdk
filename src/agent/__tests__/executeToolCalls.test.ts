@@ -2,7 +2,6 @@ import { describe, expect, it, vi } from 'vitest';
 import type { AgentFunctionToolCall } from '@blade-ai/agent/loop';
 import type { InternalLogger } from '../../logging/Logger.js';
 import type { ExecutionPipeline } from '../../tools/execution/ExecutionPipeline.js';
-import type { ToolResult } from '../../tools/types/index.js';
 import { SessionId } from '../../types/branded.js';
 import type {
   RunToolCallInput,
@@ -158,7 +157,7 @@ describe('createExecuteToolCalls', () => {
 });
 
 describe('createRootRunToolCall', () => {
-  it('adapts the root pipeline and supplies a default logger', async () => {
+  it('forwards the root pipeline and context while supplying a default logger', async () => {
     type PackageLocalRunToolCall = NonNullable<Parameters<typeof createRootRunToolCall>[0]>;
     let received: Parameters<PackageLocalRunToolCall>[0] | undefined;
     const packageLocalRunToolCall: PackageLocalRunToolCall = vi.fn(async (input) => {
@@ -168,36 +167,19 @@ describe('createRootRunToolCall', () => {
     const rootPipeline = pipeline();
     const call = toolCall('adapter');
     const runToolCall = createRootRunToolCall(packageLocalRunToolCall);
+    const executionContext = {
+      sessionId: SessionId('session-adapter'),
+      userId: 'user-adapter',
+    };
 
     await runToolCall({
       toolCall: call,
       executionPipeline: rootPipeline,
-      executionContext: {
-        sessionId: SessionId('session-adapter'),
-        userId: 'user-adapter',
-      },
+      executionContext,
     });
 
-    expect(received?.executionPipeline).not.toBe(rootPipeline);
-    expect(received?.executionPipeline.getRegistry()).toBe(rootPipeline.getRegistry());
+    expect(received?.executionPipeline).toBe(rootPipeline);
+    expect(received?.executionContext).toBe(executionContext);
     expect(received?.logger).toBeDefined();
-
-    const dynamicSignal = new AbortController().signal;
-    const result: ToolResult = { success: true, llmContent: 'ok' };
-    vi.mocked(rootPipeline.execute).mockResolvedValue(result);
-    await expect(received?.executionPipeline.execute('tool', {}, {
-      sessionId: 'package-session',
-      userId: 'package-user',
-      signal: dynamicSignal,
-    })).resolves.toBe(result);
-    expect(rootPipeline.execute).toHaveBeenCalledWith(
-      'tool',
-      {},
-      expect.objectContaining({
-        sessionId: 'session-adapter',
-        userId: 'user-adapter',
-        signal: dynamicSignal,
-      }),
-    );
   });
 });

@@ -9,47 +9,21 @@ import type { LoopResult } from '../types.js';
 import { handleAgentLoopWithEmissions } from './agentLoop.js';
 import type {
   AgentLoopConfig,
-  RunToolCallInput,
   RunToolCallPort,
   RunTurnPort,
-  ToolExecutionContext,
 } from './adapterContracts.js';
 import { createExecuteToolCalls } from './executeToolCalls.js';
 
 type PackageLocalRunToolCall = typeof runPackageLocalToolCall;
-type PackageLocalRunToolCallInput = Parameters<PackageLocalRunToolCall>[0];
-type PackageLocalExecutionPipeline = PackageLocalRunToolCallInput['executionPipeline'];
 type PackageLocalRunTurn = typeof runPackageLocalTurn;
-
-function createPackageLocalExecutionPipeline(
-  rootExecutionPipeline: RunToolCallInput['executionPipeline'],
-  rootExecutionContext: ToolExecutionContext,
-): PackageLocalExecutionPipeline {
-  return {
-    execute: (toolName, params, context) => rootExecutionPipeline.execute(
-      toolName,
-      params,
-      {
-        ...rootExecutionContext,
-        signal: context.signal,
-        onProgress: context.onProgress,
-        updateOutput: context.updateOutput,
-        permissionMode: context.permissionMode,
-      },
-    ),
-    getRegistry: () => rootExecutionPipeline.getRegistry(),
-  };
-}
 
 export function createRootRunToolCall(
   packageLocalRunToolCall: PackageLocalRunToolCall = runPackageLocalToolCall,
 ): RunToolCallPort {
   return (input) => packageLocalRunToolCall({
     ...input,
-    executionPipeline: createPackageLocalExecutionPipeline(
-      input.executionPipeline,
-      input.executionContext,
-    ),
+    executionPipeline: input.executionPipeline,
+    executionContext: input.executionContext,
     logger: input.logger ?? NOOP_LOGGER.child(LogCategory.AGENT),
   });
 }
@@ -64,10 +38,7 @@ export function createRootRunTurn(
         tools: input.turnState.tools,
       },
       messages: input.messages,
-      executionPipeline: createPackageLocalExecutionPipeline(
-        input.executionPipeline,
-        input.executionContext,
-      ),
+      executionPipeline: input.executionPipeline,
       streaming: input.streaming,
       signal: input.signal,
       epoch: input.epoch,

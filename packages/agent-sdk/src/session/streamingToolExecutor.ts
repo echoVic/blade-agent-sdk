@@ -40,9 +40,11 @@ interface ToolExecutionHooks {
   }) => Promise<string | null>;
 }
 
-export interface PackageLocalStreamingToolExecutorConfig {
-  executionPipeline: PackageLocalToolExecutionPipelinePort;
-  executionContext: PackageLocalToolExecutionContext;
+export interface PackageLocalStreamingToolExecutorConfig<
+  TExecutionContext extends PackageLocalToolExecutionContext = PackageLocalToolExecutionContext,
+> {
+  executionPipeline: PackageLocalToolExecutionPipelinePort<TExecutionContext>;
+  executionContext: TExecutionContext;
   logger?: PackageLocalStreamingToolExecutorLogger;
   permissionMode?: PermissionMode;
   hooks?: ToolExecutionHooks;
@@ -75,7 +77,9 @@ interface ToolCallAccumulatorEntry {
   cancelled: boolean;
 }
 
-export class PackageLocalStreamingToolExecutor {
+export class PackageLocalStreamingToolExecutor<
+  TExecutionContext extends PackageLocalToolExecutionContext = PackageLocalToolExecutionContext,
+> {
   private readonly logger: PackageLocalStreamingToolExecutorLogger;
 
   constructor(
@@ -93,7 +97,7 @@ export class PackageLocalStreamingToolExecutor {
     messages: readonly Message[],
     tools: PackageLocalChatToolDefinition[],
     signal: AbortSignal | undefined,
-    executionConfig: PackageLocalStreamingToolExecutorConfig,
+    executionConfig: PackageLocalStreamingToolExecutorConfig<TExecutionContext>,
     epoch?: ExecutionEpoch,
   ): Promise<{
     chatResponse: ChatResponse;
@@ -227,7 +231,7 @@ export class PackageLocalStreamingToolExecutor {
   }
 
   private async emitToolExecutionUpdate(
-    executionConfig: PackageLocalStreamingToolExecutorConfig,
+    executionConfig: PackageLocalStreamingToolExecutorConfig<TExecutionContext>,
     update: PackageLocalToolExecutionUpdate,
     epoch?: ExecutionEpoch,
   ): Promise<void> {
@@ -265,7 +269,7 @@ export class PackageLocalStreamingToolExecutor {
     messages: readonly Message[],
     tools: PackageLocalChatToolDefinition[],
     signal: AbortSignal | undefined,
-    executionConfig: PackageLocalStreamingToolExecutorConfig,
+    executionConfig: PackageLocalStreamingToolExecutorConfig<TExecutionContext>,
     epoch?: ExecutionEpoch,
   ): Promise<{
     chatResponse: ChatResponse;
@@ -375,7 +379,7 @@ export class PackageLocalStreamingToolExecutor {
     inFlightExecutions: Map<number, Promise<void>>;
     signal: AbortSignal | undefined;
     batchController: AbortController;
-    executionConfig: PackageLocalStreamingToolExecutorConfig;
+    executionConfig: PackageLocalStreamingToolExecutorConfig<TExecutionContext>;
     forcePending: boolean;
     epoch?: ExecutionEpoch;
   }): Promise<boolean> {
@@ -465,7 +469,7 @@ export class PackageLocalStreamingToolExecutor {
     toolCall: AgentFunctionToolCall;
     signal: AbortSignal | undefined;
     batchController: AbortController;
-    executionConfig: PackageLocalStreamingToolExecutorConfig;
+    executionConfig: PackageLocalStreamingToolExecutorConfig<TExecutionContext>;
     executionResults: Array<PackageLocalToolExecutionOutcome | undefined>;
     epoch?: ExecutionEpoch;
   }): Promise<void> {

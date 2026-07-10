@@ -25,6 +25,47 @@ function snapshot(): ContextSnapshot {
 }
 
 describe('agent-sdk package-local runtime tool execution', () => {
+  it('preserves adapter-defined execution context extensions', async () => {
+    const adapterCapability = { source: 'root-adapter' };
+    const executionContext = {
+      sessionId: 'session-1',
+      userId: 'user-1',
+      adapterCapability,
+    } as const;
+    const execute = vi.fn(async (_toolName, _params, context) => ({
+      success: true as const,
+      llmContent: String(
+        (context as typeof executionContext).adapterCapability.source,
+      ),
+    }));
+
+    const [outcome] = await executePackageLocalToolCalls({
+      plan: {
+        mode: 'serial',
+        calls: [{
+          id: 'tool-1',
+          type: 'function',
+          function: { name: 'Read', arguments: '{}' },
+        }],
+      },
+      executionPipeline: {
+        execute,
+        getRegistry: () => ({ get: () => undefined }),
+      },
+      executionContext,
+    });
+
+    expect(execute).toHaveBeenCalledWith(
+      'Read',
+      {},
+      expect.objectContaining({ adapterCapability }),
+    );
+    expect(outcome.result).toMatchObject({
+      success: true,
+      llmContent: 'root-adapter',
+    });
+  });
+
   it('forwards the turn-scoped context snapshot into tool execution', async () => {
     const execute = vi.fn(async () => ({
       success: true as const,

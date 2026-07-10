@@ -1810,9 +1810,8 @@ describe('monorepo topology', () => {
     expect(rootAgentLoopAdapterSource).toContain(
       'createRootRunToolCall(runPackageLocalToolCall)',
     );
-    expect(rootAgentLoopAdapterSource).toContain(
-      'executionPipeline: createPackageLocalExecutionPipeline(',
-    );
+    expect(rootAgentLoopAdapterSource).not.toContain('createPackageLocalExecutionPipeline');
+    expect(rootAgentLoopAdapterSource.match(/executionPipeline: input\.executionPipeline/g)).toHaveLength(2);
     const packageToolExecutionSource = readFileSync(
       'packages/agent-sdk/src/session/runtimeToolExecution.ts',
       'utf-8',
@@ -1855,9 +1854,8 @@ describe('monorepo topology', () => {
     expect(rootAgentLoopAdapterSource).toContain(
       'createRootRunTurn(runPackageLocalTurn)',
     );
-    expect(rootAgentLoopAdapterSource).toContain(
-      'executionPipeline: createPackageLocalExecutionPipeline(',
-    );
+    expect(rootAgentLoopAdapterSource).not.toContain('createPackageLocalExecutionPipeline');
+    expect(rootAgentLoopAdapterSource).toContain('executionPipeline: input.executionPipeline');
     expect(rootAgentLoopAdapterSource).not.toContain("from './runTurn.js'");
     expect(rootAgentLoopAdapterSource).not.toContain('as unknown as');
     expect(rootAgentLoopAdapterSource).not.toContain('mapPackageLocalToolErrorType');

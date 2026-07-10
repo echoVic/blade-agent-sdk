@@ -56,14 +56,16 @@ export interface PackageLocalRunTurnState {
   tools: PackageLocalChatToolDefinition[];
 }
 
-export interface PackageLocalRunTurnInput {
+export interface PackageLocalRunTurnInput<
+  TExecutionContext extends PackageLocalToolExecutionContext = PackageLocalToolExecutionContext,
+> {
   turnState: PackageLocalRunTurnState;
   messages: readonly Message[];
-  executionPipeline: PackageLocalToolExecutionPipelinePort;
+  executionPipeline: PackageLocalToolExecutionPipelinePort<TExecutionContext>;
   streaming?: boolean;
   signal?: AbortSignal;
   epoch: ExecutionEpoch;
-  executionContext: PackageLocalToolExecutionContext;
+  executionContext: TExecutionContext;
   permissionMode?: PermissionMode;
   toolHooks: PackageLocalRunTurnToolHooks;
   logger?: PackageLocalRunTurnLogger;
@@ -110,8 +112,10 @@ export type PackageLocalRunTurnEvent =
     }
   | PackageLocalRunTurnToolEvent;
 
-export async function* runPackageLocalTurn(
-  input: PackageLocalRunTurnInput,
+export async function* runPackageLocalTurn<
+  TExecutionContext extends PackageLocalToolExecutionContext = PackageLocalToolExecutionContext,
+>(
+  input: PackageLocalRunTurnInput<TExecutionContext>,
 ): AsyncGenerator<PackageLocalRunTurnEvent, PackageLocalTurnOutcome> {
   const { turnState, messages, streaming, signal, logger } = input;
   const tools = turnState.tools;
@@ -169,8 +173,10 @@ export async function* runPackageLocalTurn(
   return { chatResponse };
 }
 
-async function* runPackageLocalStreamingTurnWithTools(
-  input: PackageLocalRunTurnInput,
+async function* runPackageLocalStreamingTurnWithTools<
+  TExecutionContext extends PackageLocalToolExecutionContext,
+>(
+  input: PackageLocalRunTurnInput<TExecutionContext>,
   tools: PackageLocalChatToolDefinition[],
 ): AsyncGenerator<PackageLocalRunTurnEvent, PackageLocalTurnOutcome> {
   const {
@@ -185,7 +191,7 @@ async function* runPackageLocalStreamingTurnWithTools(
     logger,
   } = input;
 
-  const streamingExecutor = new PackageLocalStreamingToolExecutor(
+  const streamingExecutor = new PackageLocalStreamingToolExecutor<TExecutionContext>(
     () => turnState.chatService,
     logger,
   );

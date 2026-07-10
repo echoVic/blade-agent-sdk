@@ -2,7 +2,6 @@ import { describe, expect, it, vi } from 'vitest';
 import { ExecutionEpoch } from '@blade-ai/agent/epoch';
 import type { InternalLogger } from '../../logging/Logger.js';
 import type { ExecutionPipeline } from '../../tools/execution/ExecutionPipeline.js';
-import type { ToolResult } from '../../tools/types/index.js';
 import { SessionId } from '../../types/branded.js';
 import type { TurnState } from '../state/TurnState.js';
 import type { RunTurnInput } from '../loop/adapterContracts.js';
@@ -54,7 +53,7 @@ async function collect<TEvent, TOutcome>(
 describe('createRootRunTurn', () => {
   it('adapts input and forwards package-local events and outcome', async () => {
     type PackageLocalRunTurn = NonNullable<Parameters<typeof createRootRunTurn>[0]>;
-    let received: Parameters<PackageLocalRunTurn>[0] | undefined;
+    let received: unknown;
     const call = {
       id: 'tool-1',
       type: 'function' as const,
@@ -98,6 +97,13 @@ describe('createRootRunTurn', () => {
     };
 
     const result = await collect(createRootRunTurn(packageLocalRunTurn)(input));
+    const adaptedInput = received as {
+      turnState: Pick<TurnState, 'chatService' | 'tools'>;
+      toolHooks: RunTurnInput['toolHooks'];
+      logger?: InternalLogger;
+      executionPipeline: unknown;
+      executionContext: unknown;
+    };
 
     expect(result.events).toEqual([
       { type: 'content_delta', delta: 'hello' },
@@ -115,33 +121,15 @@ describe('createRootRunTurn', () => {
         toolUseUuid: null,
       }],
     });
-    expect(received?.turnState).toEqual({
+    expect(adaptedInput.turnState).toEqual({
       chatService: input.turnState.chatService,
       tools: input.turnState.tools,
     });
-    expect(received?.toolHooks).toBe(hooks);
-    expect(received?.logger).toBe(logger);
-    expect(received?.executionPipeline).not.toBe(rootPipeline);
-    expect(received?.executionPipeline.getRegistry()).toBe(rootPipeline.getRegistry());
-
-    const dynamicSignal = new AbortController().signal;
-    const toolResult: ToolResult = { success: true, llmContent: 'ok' };
-    vi.mocked(rootPipeline.execute).mockResolvedValue(toolResult);
-    await expect(received?.executionPipeline.execute('Read', {}, {
-      sessionId: 'package-session',
-      userId: 'package-user',
-      signal: dynamicSignal,
-    })).resolves.toBe(toolResult);
-    expect(rootPipeline.execute).toHaveBeenCalledWith(
-      'Read',
-      {},
-      expect.objectContaining({
-        sessionId: 'session-one',
-        userId: 'user-one',
-        signal: dynamicSignal,
-      }),
-    );
-    await received?.toolHooks.onUpdate?.({
+    expect(adaptedInput.toolHooks).toBe(hooks);
+    expect(adaptedInput.logger).toBe(logger);
+    expect(adaptedInput.executionPipeline).toBe(rootPipeline);
+    expect(adaptedInput.executionContext).toBe(input.executionContext);
+    await adaptedInput.toolHooks.onUpdate?.({
       type: 'tool_progress',
       toolCall: call,
       message: 'working',

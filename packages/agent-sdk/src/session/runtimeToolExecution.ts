@@ -20,19 +20,20 @@ import {
 export type PackageLocalToolExecutionOutcome = ToolExecutionOutcomeOf<AgentFunctionToolCall>;
 export type PackageLocalToolExecutionUpdate = ToolExecutionUpdateOf<AgentFunctionToolCall>;
 
-export interface PackageLocalToolExecutionPipelinePort {
+export type PackageLocalToolExecutionContext = ExecutionContext & {
+  sessionId: string;
+  userId: string;
+};
+
+export interface PackageLocalToolExecutionPipelinePort<
+  TExecutionContext extends PackageLocalToolExecutionContext = PackageLocalToolExecutionContext,
+> {
   execute: (
     toolName: string,
     params: JsonObject,
-    context: ExecutionContext,
+    context: TExecutionContext,
   ) => Promise<ToolResult>;
   getRegistry: () => ToolExecutionRegistryLike;
-}
-
-export interface PackageLocalToolExecutionContext
-  extends Omit<ExecutionContext, 'sessionId' | 'userId'> {
-  sessionId: string;
-  userId: string;
 }
 
 export interface PackageLocalToolExecutionHooks {
@@ -46,10 +47,12 @@ export interface PackageLocalToolExecutionHooks {
   onUpdate?: (update: PackageLocalToolExecutionUpdate) => void | Promise<void>;
 }
 
-export interface PackageLocalRunToolCallInput {
+export interface PackageLocalRunToolCallInput<
+  TExecutionContext extends PackageLocalToolExecutionContext = PackageLocalToolExecutionContext,
+> {
   toolCall: AgentFunctionToolCall;
-  executionPipeline: PackageLocalToolExecutionPipelinePort;
-  executionContext: PackageLocalToolExecutionContext;
+  executionPipeline: PackageLocalToolExecutionPipelinePort<TExecutionContext>;
+  executionContext: TExecutionContext;
   permissionMode?: ExecutionContext['permissionMode'];
   signal?: AbortSignal;
   batchSignal?: AbortSignal;
@@ -59,13 +62,16 @@ export interface PackageLocalRunToolCallInput {
   };
 }
 
-export interface PackageLocalExecuteToolCallsInput
-  extends Omit<PackageLocalRunToolCallInput, 'toolCall' | 'batchSignal'> {
+export interface PackageLocalExecuteToolCallsInput<
+  TExecutionContext extends PackageLocalToolExecutionContext = PackageLocalToolExecutionContext,
+> extends Omit<PackageLocalRunToolCallInput<TExecutionContext>, 'toolCall' | 'batchSignal'> {
   plan: ToolExecutionPlan;
 }
 
-export async function executePackageLocalToolCalls(
-  input: PackageLocalExecuteToolCallsInput,
+export async function executePackageLocalToolCalls<
+  TExecutionContext extends PackageLocalToolExecutionContext = PackageLocalToolExecutionContext,
+>(
+  input: PackageLocalExecuteToolCallsInput<TExecutionContext>,
 ): Promise<PackageLocalToolExecutionOutcome[]> {
   return executeToolExecutionPlan({
     plan: input.plan,
@@ -73,9 +79,11 @@ export async function executePackageLocalToolCalls(
   });
 }
 
-async function executePackageLocalToolCall(
+async function executePackageLocalToolCall<
+  TExecutionContext extends PackageLocalToolExecutionContext,
+>(
   toolCall: AgentFunctionToolCall,
-  input: PackageLocalExecuteToolCallsInput,
+  input: PackageLocalExecuteToolCallsInput<TExecutionContext>,
 ): Promise<PackageLocalToolExecutionOutcome> {
   await emitPackageLocalToolExecutionUpdate(input.hooks, {
     type: 'tool_ready',
@@ -93,8 +101,10 @@ async function executePackageLocalToolCall(
   });
 }
 
-export async function runPackageLocalToolCall(
-  input: PackageLocalRunToolCallInput,
+export async function runPackageLocalToolCall<
+  TExecutionContext extends PackageLocalToolExecutionContext = PackageLocalToolExecutionContext,
+>(
+  input: PackageLocalRunToolCallInput<TExecutionContext>,
 ): Promise<PackageLocalToolExecutionOutcome> {
   let outcome: PackageLocalToolExecutionOutcome;
 
@@ -129,10 +139,7 @@ export async function runPackageLocalToolCall(
         input.toolCall.function.name,
         params,
         {
-          sessionId: input.executionContext.sessionId,
-          userId: input.executionContext.userId,
-          contextSnapshot: input.executionContext.contextSnapshot,
-          skillActivationPaths: input.executionContext.skillActivationPaths,
+          ...input.executionContext,
           signal: interruptSignal.signal,
           onProgress: (message) => {
             void emitPackageLocalToolExecutionUpdate(input.hooks, {
@@ -148,13 +155,7 @@ export async function runPackageLocalToolCall(
               message,
             });
           },
-          confirmationHandler: input.executionContext.confirmationHandler,
           permissionMode: input.permissionMode,
-          bladeConfig: input.executionContext.bladeConfig,
-          backgroundAgentManager: input.executionContext.backgroundAgentManager,
-          toolCatalog: input.executionContext.toolCatalog,
-          toolRegistry: input.executionContext.toolRegistry,
-          discoveredTools: input.executionContext.discoveredTools,
         },
       );
     } finally {
