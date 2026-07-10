@@ -674,6 +674,38 @@ describe('release scripts', () => {
     expect(publishedVerifier).not.toContain('exactVersionPattern');
   });
 
+  it('shares public package export-map predicates across source packed and published verifiers', () => {
+    const helperPath = resolve('scripts/package-export-rules.mjs');
+    const sourceBoundaryVerifier = readFileSync(resolve('scripts/verify-package-boundaries.mjs'), 'utf8');
+    const packageVerifier = readFileSync(resolve('scripts/verify-packages.mjs'), 'utf8');
+    const publishedVerifier = readFileSync(resolve('scripts/verify-published.mjs'), 'utf8');
+
+    expect(existsSync(helperPath)).toBe(true);
+    const helper = readFileSync(helperPath, 'utf8');
+
+    expect(helper).toContain('allowedPublicExportConditions');
+    expect(helper).toContain('function getManifestRootExportConditions');
+    expect(helper).toContain('function isExactPackageJsonManifestExport');
+    expect(helper).toContain('function isTypesConditionFirst');
+    expect(helper).toContain('function isBrowserConditionBeforeImport');
+    expect(helper).toContain('function verifyExportSubpathShape');
+    for (const verifier of [sourceBoundaryVerifier, packageVerifier, publishedVerifier]) {
+      expect(verifier).toContain("from './package-export-rules.mjs';");
+      expect(verifier).toContain('allowedPublicExportConditions');
+      expect(verifier).toContain('getManifestRootExportConditions');
+      expect(verifier).toContain('isExactPackageJsonManifestExport');
+      expect(verifier).toContain('isTypesConditionFirst');
+      expect(verifier).toContain('isBrowserConditionBeforeImport');
+      expect(verifier).toContain('verifyExportSubpathShape');
+      expect(verifier).not.toContain("new Set(['types', 'browser', 'import'])");
+      expect(verifier).not.toContain('function getManifestRootExportConditions');
+      expect(verifier).not.toContain('function getRootExportConditions');
+      expect(verifier).not.toContain('function isExactPackageJsonManifestExport');
+      expect(verifier).not.toContain('function isTypesConditionFirst');
+      expect(verifier).not.toContain('function isBrowserConditionBeforeImport');
+    }
+  });
+
   it('rejects npm lifecycle scripts from source, packed, and published package manifests', () => {
     const releaseVerifier = readFileSync(resolve('scripts/verify-release-config.mjs'), 'utf8');
     const packageVerifier = readFileSync(resolve('scripts/verify-packages.mjs'), 'utf8');
@@ -1240,15 +1272,17 @@ describe('release scripts', () => {
   it('mirrors source types-first export condition order in packed and published verifiers', () => {
     const packageVerifier = readFileSync(resolve('scripts/verify-packages.mjs'), 'utf8');
     const publishedVerifier = readFileSync(resolve('scripts/verify-published.mjs'), 'utf8');
+    const sharedExportRules = readFileSync(resolve('scripts/package-export-rules.mjs'), 'utf8');
     const readme = readFileSync(resolve('README.md'), 'utf8');
     const checklist = readFileSync(resolve('docs/production-checklist.md'), 'utf8');
     const roadmap = readFileSync(resolve('docs/roadmap/production-agent-sdk-monorepo.md'), 'utf8');
 
     for (const verifier of [packageVerifier, publishedVerifier]) {
       expect(verifier).toContain('assertManifestTypesConditionFirst');
-      expect(verifier).toContain('Object.keys(exportValue).at(0)');
+      expect(verifier).toContain('isTypesConditionFirst(exportValue)');
       expect(verifier).toContain('must declare the types condition first');
     }
+    expect(sharedExportRules).toContain('Object.keys(exportValue).at(0)');
     expect(readme).toContain('types-first export condition order');
     expect(checklist).toContain('types-first export condition order');
     expect(roadmap).toContain('types-first export condition order gate');
@@ -1257,15 +1291,16 @@ describe('release scripts', () => {
   it('mirrors source public export condition allowlists in packed and published verifiers', () => {
     const packageVerifier = readFileSync(resolve('scripts/verify-packages.mjs'), 'utf8');
     const publishedVerifier = readFileSync(resolve('scripts/verify-published.mjs'), 'utf8');
+    const sharedExportRules = readFileSync(resolve('scripts/package-export-rules.mjs'), 'utf8');
     const readme = readFileSync(resolve('README.md'), 'utf8');
     const checklist = readFileSync(resolve('docs/production-checklist.md'), 'utf8');
     const roadmap = readFileSync(resolve('docs/roadmap/production-agent-sdk-monorepo.md'), 'utf8');
 
     for (const verifier of [packageVerifier, publishedVerifier]) {
       expect(verifier).toContain('allowedPublicExportConditions');
-      expect(verifier).toContain("new Set(['types', 'browser', 'import'])");
       expect(verifier).toContain('is not allowed');
     }
+    expect(sharedExportRules).toContain("new Set(['types', 'browser', 'import'])");
     expect(readme).toContain('public export condition allowlist');
     expect(checklist).toContain('public export condition allowlist');
     expect(roadmap).toContain('public export condition allowlist gate');
@@ -1274,15 +1309,17 @@ describe('release scripts', () => {
   it('mirrors source browser-before-import condition order in packed and published verifiers', () => {
     const packageVerifier = readFileSync(resolve('scripts/verify-packages.mjs'), 'utf8');
     const publishedVerifier = readFileSync(resolve('scripts/verify-published.mjs'), 'utf8');
+    const sharedExportRules = readFileSync(resolve('scripts/package-export-rules.mjs'), 'utf8');
     const readme = readFileSync(resolve('README.md'), 'utf8');
     const checklist = readFileSync(resolve('docs/production-checklist.md'), 'utf8');
     const roadmap = readFileSync(resolve('docs/roadmap/production-agent-sdk-monorepo.md'), 'utf8');
 
     for (const verifier of [packageVerifier, publishedVerifier]) {
       expect(verifier).toContain('assertManifestBrowserConditionBeforeImport');
-      expect(verifier).toContain("conditions.indexOf('browser')");
+      expect(verifier).toContain('isBrowserConditionBeforeImport(exportValue)');
       expect(verifier).toContain('must declare the browser condition before import');
     }
+    expect(sharedExportRules).toContain("conditions.indexOf('browser')");
     expect(readme).toContain('browser-before-import export condition order');
     expect(checklist).toContain('browser-before-import export condition order');
     expect(roadmap).toContain('browser-before-import export condition order gate');
@@ -1310,15 +1347,17 @@ describe('release scripts', () => {
   it('mirrors source public export subpath shape checks in packed and published verifiers', () => {
     const packageVerifier = readFileSync(resolve('scripts/verify-packages.mjs'), 'utf8');
     const publishedVerifier = readFileSync(resolve('scripts/verify-published.mjs'), 'utf8');
+    const sharedExportRules = readFileSync(resolve('scripts/package-export-rules.mjs'), 'utf8');
     const readme = readFileSync(resolve('README.md'), 'utf8');
     const checklist = readFileSync(resolve('docs/production-checklist.md'), 'utf8');
     const roadmap = readFileSync(resolve('docs/roadmap/production-agent-sdk-monorepo.md'), 'utf8');
 
     for (const verifier of [packageVerifier, publishedVerifier]) {
       expect(verifier).toContain('assertManifestExportSubpathShape');
-      expect(verifier).toContain('must be "." or start with "./"');
-      expect(verifier).toContain('must not contain parent directory segments');
+      expect(verifier).toContain('verifyExportSubpathShape');
     }
+    expect(sharedExportRules).toContain('must be "." or start with "./"');
+    expect(sharedExportRules).toContain('must not contain parent directory segments');
     expect(readme).toContain('public export subpath shape checks');
     expect(checklist).toContain('public export subpath shape checks');
     expect(roadmap).toContain('public export subpath shape gate');

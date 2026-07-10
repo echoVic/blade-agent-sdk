@@ -26,6 +26,14 @@ import {
 import { isExactDependencyVersion, isInternalBladeDependency } from './dependency-version-rules.mjs';
 import { bundleWithEsbuildRetry } from './esbuild-bundle.mjs';
 import {
+  allowedPublicExportConditions,
+  getManifestRootExportConditions,
+  isBrowserConditionBeforeImport,
+  isExactPackageJsonManifestExport,
+  isTypesConditionFirst,
+  verifyExportSubpathShape,
+} from './package-export-rules.mjs';
+import {
   createAgentPublicTypeImportBlock,
   createAiPublicTypeImportBlock,
   createSdkPublicTypeImportBlock,
@@ -47,7 +55,6 @@ const dependencySections = [
   'peerDependencies',
 ];
 const nodeBuiltinModules = new Set(builtinModules);
-const allowedPublicExportConditions = new Set(['types', 'browser', 'import']);
 const forbiddenPackageLifecycleScripts = new Set([
   'preinstall',
   'install',
@@ -884,38 +891,17 @@ function assertPackedManifestTargetExists({ packageName, label, target, tarballE
 }
 
 function assertManifestExportSubpathShape({ packageName, exportName, label }) {
-  if (exportName !== '.' && !exportName.startsWith('./')) {
-    throw new Error(`${packageName} ${label} export subpath "${exportName}" must be "." or start with "./"`);
+  const violation = verifyExportSubpathShape({
+    prefix: `${packageName} ${label}`,
+    subpath: exportName,
+  });
+  if (violation) {
+    throw new Error(violation);
   }
-  if (exportName.split('/').includes('..')) {
-    throw new Error(`${packageName} ${label} export subpath "${exportName}" must not contain parent directory segments`);
-  }
-}
-
-function getManifestRootExportConditions(exportsMap) {
-  if (!exportsMap || typeof exportsMap !== 'object' || Array.isArray(exportsMap)) {
-    return null;
-  }
-  const rootExport = exportsMap['.'];
-  if (!rootExport || typeof rootExport !== 'object' || Array.isArray(rootExport)) {
-    return null;
-  }
-  return rootExport;
-}
-
-function isExactPackageJsonManifestExport(exportName, exportValue) {
-  return (
-    exportName === './package.json' &&
-    exportValue &&
-    typeof exportValue === 'object' &&
-    !Array.isArray(exportValue) &&
-    Object.keys(exportValue).length === 1 &&
-    exportValue.default === './package.json'
-  );
 }
 
 function assertManifestTypesConditionFirst({ packageName, exportName, exportValue, label }) {
-  if (Object.keys(exportValue).at(0) !== 'types') {
+  if (!isTypesConditionFirst(exportValue)) {
     throw new Error(`${packageName} ${label} export ${exportName} must declare the types condition first`);
   }
 }
@@ -929,10 +915,7 @@ function assertManifestExportConditionsAllowed({ packageName, exportName, export
 }
 
 function assertManifestBrowserConditionBeforeImport({ packageName, exportName, exportValue, label }) {
-  const conditions = Object.keys(exportValue);
-  const browserIndex = conditions.indexOf('browser');
-  const importIndex = conditions.indexOf('import');
-  if (browserIndex !== -1 && importIndex !== -1 && browserIndex > importIndex) {
+  if (!isBrowserConditionBeforeImport(exportValue)) {
     throw new Error(`${packageName} ${label} export ${exportName} must declare the browser condition before import`);
   }
 }

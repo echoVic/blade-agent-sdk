@@ -2,9 +2,16 @@
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { dirname, join, normalize, relative, resolve, sep } from 'node:path';
 import { isExactDependencyVersion, isInternalBladeDependency } from './dependency-version-rules.mjs';
+import {
+  allowedPublicExportConditions,
+  getManifestRootExportConditions,
+  isBrowserConditionBeforeImport,
+  isExactPackageJsonManifestExport,
+  isTypesConditionFirst,
+  verifyExportSubpathShape,
+} from './package-export-rules.mjs';
 
 const rootDir = process.cwd();
-const allowedPublicExportConditions = new Set(['types', 'browser', 'import']);
 const pinnedDependencySections = ['dependencies', 'devDependencies', 'optionalDependencies'];
 
 const rules = [
@@ -310,20 +317,6 @@ function collectExportEntries(exportsValue) {
   return Object.entries(exportsValue);
 }
 
-function hasParentDirectorySegment(subpath) {
-  return subpath.split('/').includes('..');
-}
-
-function verifyExportSubpathShape(packageJson, subpath) {
-  if (subpath !== '.' && !subpath.startsWith('./')) {
-    return `${packageJson}: export subpath "${subpath}" must be "." or start with "./"`;
-  }
-  if (hasParentDirectorySegment(subpath)) {
-    return `${packageJson}: export subpath "${subpath}" must not contain parent directory segments`;
-  }
-  return null;
-}
-
 function isDistArtifactTarget(target) {
   return target.startsWith('./dist/');
 }
@@ -342,39 +335,6 @@ function isRuntimeArtifactTarget(target) {
 
 function isPackageJsonExportTarget(path, target) {
   return path.startsWith('export "./package.json"') && target === './package.json';
-}
-
-function isExactPackageJsonManifestExport(subpath, exportValue) {
-  return (
-    subpath === './package.json' &&
-    exportValue &&
-    typeof exportValue === 'object' &&
-    !Array.isArray(exportValue) &&
-    Object.keys(exportValue).length === 1 &&
-    exportValue.default === './package.json'
-  );
-}
-
-function getRootExportConditions(exportsValue) {
-  if (!exportsValue || typeof exportsValue !== 'object' || Array.isArray(exportsValue)) {
-    return null;
-  }
-  const rootExport = exportsValue['.'];
-  if (!rootExport || typeof rootExport !== 'object' || Array.isArray(rootExport)) {
-    return null;
-  }
-  return rootExport;
-}
-
-function isTypesConditionFirst(exportValue) {
-  return Object.keys(exportValue).at(0) === 'types';
-}
-
-function isBrowserConditionBeforeImport(exportValue) {
-  const conditions = Object.keys(exportValue);
-  const browserIndex = conditions.indexOf('browser');
-  const importIndex = conditions.indexOf('import');
-  return browserIndex === -1 || importIndex === -1 || browserIndex < importIndex;
 }
 
 function verifyManifestTargetExtension({ packageJson, label, condition, target }) {
@@ -636,7 +596,7 @@ for (const rule of manifestRules) {
     }
   }
 
-  const rootExport = getRootExportConditions(manifest.exports);
+  const rootExport = getManifestRootExportConditions(manifest.exports);
   if (!rootExport) {
     violations.push(`${rule.packageJson}: exports must declare a root "." condition object`);
   } else {
@@ -658,7 +618,10 @@ for (const rule of manifestRules) {
   }
 
   for (const [subpath, exportValue] of collectExportEntries(manifest.exports)) {
-    const subpathViolation = verifyExportSubpathShape(rule.packageJson, subpath);
+    const subpathViolation = verifyExportSubpathShape({
+      prefix: `${rule.packageJson}:`,
+      subpath,
+    });
     if (subpathViolation) {
       violations.push(subpathViolation);
     }
