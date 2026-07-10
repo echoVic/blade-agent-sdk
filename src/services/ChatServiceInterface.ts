@@ -2,27 +2,6 @@ import type { ChatConfig, IChatService } from '@blade-ai/ai/chat';
 import { type InternalLogger, LogCategory, NOOP_LOGGER } from '../logging/Logger.js';
 import { VercelAIChatService } from './VercelAIChatService.js';
 
-export type {
-  AnthropicCacheControl,
-  ChatConfig,
-  ChatResponse,
-  ChatToolDefinition,
-  ContentPart,
-  IChatService,
-  ImageContentPart,
-  Message,
-  MessageRole,
-  OutputFormat,
-  ProviderOptions,
-  SideQueryOptions,
-  StreamChunk,
-  StreamDeltaToolCall,
-  StreamToolCall,
-  TextContentPart,
-  ToolCall,
-  UsageInfo,
-} from '@blade-ai/ai/chat';
-
 function getProviderHeaders(_providerId: string): Record<string, string> {
   return {};
 }

@@ -354,6 +354,50 @@ describe('monorepo topology', () => {
     }
   });
 
+  it('keeps the legacy root chat service interface as factory-only compatibility', () => {
+    const chatServiceInterfaceSource = readFileSync('src/services/ChatServiceInterface.ts', 'utf-8');
+    const importSites = [
+      ['src/agent/ModelManager.ts', 'import'],
+      ['src/context/CompactionService.ts', 'import'],
+      ['src/services/__tests__/deepseek.live.test.ts', 'import'],
+      ['src/services/__tests__/deepseek-deep.live.test.ts', 'import'],
+      ['src/agent/__tests__/ModelManager.setModel.test.ts', 'mock'],
+      ['src/context/__tests__/CompactionService.test.ts', 'mock'],
+    ] as const;
+
+    expect(chatServiceInterfaceSource).toContain('function createChatServiceAsync');
+    expect(
+      chatServiceInterfaceSource,
+      'legacy root service path must not be a chat protocol type source',
+    ).not.toMatch(/export\s+type\s+\{[\s\S]*?\}\s+from\s+['"]@blade-ai\/ai\/chat['"]/);
+
+    for (const [file, mode] of importSites) {
+      const source = readFileSync(file, 'utf-8');
+
+      if (mode === 'mock') {
+        expect(source, `${file} may only mock the factory export`).toContain(
+          'createChatServiceAsync',
+        );
+        expect(
+          source.match(/import[\s\S]*?from ['"][^'"]*ChatServiceInterface\.js['"];?/g) ?? [],
+          `${file} should not import chat protocol types from root services`,
+        ).toHaveLength(0);
+        continue;
+      }
+
+      const imports =
+        source.match(/import[\s\S]*?from ['"][^'"]*ChatServiceInterface\.js['"];?/g) ?? [];
+
+      expect(imports, `${file} should import the legacy factory exactly once`).toHaveLength(1);
+      expect(imports[0], `${file} should only import createChatServiceAsync`).toMatch(
+        /\{\s*createChatServiceAsync\s*\}/,
+      );
+      expect(imports[0], `${file} should not import chat protocol types`).not.toMatch(
+        /\btype\s+(?:ChatConfig|ChatResponse|IChatService|Message|StreamChunk|UsageInfo)\b/,
+      );
+    }
+  });
+
   it('keeps package-local session runtime on explicit agent package subpaths', () => {
     const files = [
       'packages/agent-sdk/src/session/kernelFactory.ts',

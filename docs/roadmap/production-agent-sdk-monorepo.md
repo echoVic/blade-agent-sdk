@@ -223,7 +223,8 @@ Status:
 - Root agent modules now import chat protocol types directly from `@blade-ai/ai/chat`, with a topology guard allowing `ModelManager` to keep only the SDK-local `createChatServiceAsync()` factory dependency on the legacy root service.
 - Root session modules now import chat protocol types directly from `@blade-ai/ai/chat`, with a topology guard rejecting legacy root service type imports from the session-first facade and JSONL session store.
 - Root hooks and tool result contracts now import chat protocol types directly from `@blade-ai/ai/chat`, leaving the legacy root chat service path reserved for SDK-local factory compatibility only.
-- Root chat service implementation helpers now import chat protocol types directly from `@blade-ai/ai/chat`; `src/services/ChatServiceInterface.ts` is limited to legacy type re-exports plus `createChatServiceAsync()` factory compatibility.
+- Root chat service implementation helpers now import chat protocol types directly from `@blade-ai/ai/chat`; `src/services/ChatServiceInterface.ts` is limited to `createChatServiceAsync()` factory compatibility and no longer re-exports chat protocol types.
+- A topology guard now keeps the legacy root chat service interface factory-only and allowlists the remaining factory import and test mock sites, preventing root services from becoming a protocol type source again.
 - Model execution protocol types now live in `@blade-ai/ai/model`, including `ModelPort`, `ModelRequest`, `ModelStreamEvent`, `ModelResponse`, `ModelToolCall`, and model-scoped `UsageInfo`.
 - The `@blade-ai/ai` root exports `Model*` protocol types and `ModelUsageInfo` while preserving the existing chat `UsageInfo` root export until the chat/runtime migration is complete.
 - The first provider runtime adapter now lives in `@blade-ai/ai/providers/openai-compatible`, exposing a `ModelPort` over Vercel AI SDK's OpenAI-compatible provider and normalizing text, reasoning, tool calls, usage, and stream events.
