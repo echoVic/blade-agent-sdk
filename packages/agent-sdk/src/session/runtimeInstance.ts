@@ -1,6 +1,5 @@
-import { TokenBudget } from '@blade-ai/agent/budget';
 import type { AgentHookPort, AgentToolPort } from '@blade-ai/agent/ports';
-import type { AgentTokenBudgetPort, AgentToolCall } from '@blade-ai/agent/protocol';
+import type { AgentToolCall } from '@blade-ai/agent/protocol';
 import type { AgentStorePort } from '@blade-ai/agent/state';
 import type { AgentTracePort } from '@blade-ai/agent/tracing';
 import type { ContextSnapshot, RuntimeContext } from '../runtime/types.js';
@@ -49,7 +48,6 @@ import {
 import type {
   PackageLocalRuntimeAgentKernelFactoryPort,
   PackageLocalRuntimeAgentKernelPort,
-  PackageLocalRuntimeResolvedAgentKernelCreationOptions,
 } from './runtimeAgentKernels.js';
 import type {
   PackageLocalAgentRuntimeDeps,
@@ -103,6 +101,10 @@ import {
   createPackageLocalRuntimeControlOperations,
   type PackageLocalRuntimeControlOperations,
 } from './runtimeControls.js';
+import {
+  createPackageLocalRuntimeTokenBudgetOperations,
+  type PackageLocalRuntimeTokenBudgetOperations,
+} from './runtimeTokenBudget.js';
 
 export type { PackageLocalRuntimeKernelStreamProjectionOptions } from './kernelStreamProjection.js';
 export {
@@ -189,7 +191,7 @@ export class PackageLocalSessionRuntime {
   private readonly executionOperations: PackageLocalRuntimeExecutionOperations;
   private readonly kernelOperations: PackageLocalRuntimeKernelOperations;
   private readonly turnOperations: PackageLocalRuntimeTurnOperations;
-  private readonly tokenBudget?: TokenBudget;
+  private readonly tokenBudgetOperations: PackageLocalRuntimeTokenBudgetOperations;
   private readonly toolOperations: PackageLocalRuntimeToolOperations<
     PackageLocalRuntimeNamedTool,
     PackageLocalRuntimeToolSource
@@ -204,9 +206,9 @@ export class PackageLocalSessionRuntime {
     this.options = options.options;
     this.bladeConfig = options.bladeConfig;
     this.defaultContext = options.defaultContext;
-    this.tokenBudget = this.options.tokenBudget
-      ? new TokenBudget(this.options.tokenBudget)
-      : undefined;
+    this.tokenBudgetOperations = createPackageLocalRuntimeTokenBudgetOperations(
+      this.options.tokenBudget,
+    );
     const bootstrap = createPackageLocalRuntimeBootstrap(options);
     this.storageRoot = bootstrap.initialState.storageRoot;
     this.projectPath = bootstrap.initialState.projectPath;
@@ -316,7 +318,7 @@ export class PackageLocalSessionRuntime {
       kernelModelResolver: this.kernelModelResolver,
       createAgentKernel: (agentKernelOptions, kernelModel) =>
         this.kernelOperations.agentKernel.createFromResolved(
-          this.withSessionTokenBudget(agentKernelOptions),
+          this.tokenBudgetOperations.apply(agentKernelOptions),
           kernelModel,
         ),
     });
@@ -498,7 +500,7 @@ export class PackageLocalSessionRuntime {
     options: PackageLocalRuntimeAgentKernelOptions = {},
   ): PackageLocalRuntimeAgentKernelPort {
     return this.kernelOperations.agentKernel.createFromOptions(
-      this.withSessionTokenBudget(options),
+      this.tokenBudgetOperations.apply(options),
     );
   }
 
@@ -508,16 +510,4 @@ export class PackageLocalSessionRuntime {
     yield* this.turnOperations.kernelTurnStream.stream(options);
   }
 
-  private withSessionTokenBudget<
-    TOptions extends PackageLocalRuntimeResolvedAgentKernelCreationOptions,
-  >(options: TOptions): TOptions & { tokenBudget?: AgentTokenBudgetPort } {
-    if (options.tokenBudget || !this.tokenBudget) {
-      return options;
-    }
-
-    return {
-      ...options,
-      tokenBudget: this.tokenBudget,
-    };
-  }
 }

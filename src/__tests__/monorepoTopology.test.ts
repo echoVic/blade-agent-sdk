@@ -2082,6 +2082,14 @@ describe('monorepo topology', () => {
     expect(runtimeBootstrapSource).toContain('resolvePackageLocalRuntimePorts');
     expect(packageLocalRuntimeInstanceSource).toContain('createPackageLocalRuntimeBootstrap');
     expect(packageLocalRuntimeInstanceSource).not.toContain('resolvePackageLocalRuntimePorts');
+    expect(existsSync('packages/agent-sdk/src/session/runtimeTokenBudget.ts')).toBe(true);
+    expect(packageLocalRuntimeInstanceSource).toContain(
+      'createPackageLocalRuntimeTokenBudgetOperations',
+    );
+    expect(packageLocalRuntimeInstanceSource).toContain('tokenBudgetOperations.apply');
+    expect(packageLocalRuntimeInstanceSource).not.toContain("from '@blade-ai/agent/budget'");
+    expect(packageLocalRuntimeInstanceSource).not.toContain('new TokenBudget');
+    expect(packageLocalRuntimeInstanceSource).not.toContain('withSessionTokenBudget');
     expect(existsSync('packages/agent-sdk/src/session/runtimePortProjection.ts')).toBe(true);
     expect(runtimePortProjectionSource).not.toContain('../../../../src/');
     expect(runtimePortProjectionSource).toContain('projectPackageLocalRuntimePortFields');
