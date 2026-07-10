@@ -4,6 +4,7 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
   agentSdkCoreDeclarationBrowserSafeRules,
+  agentSdkEagerLegacySessionRuntimeClosureRules,
   agentSdkLocalAdapterBoundaryRules,
   agentSdkPermissionDeclarationBoundaryRules,
   agentSdkRootDeclarationEntryOwnershipRules,
@@ -138,6 +139,19 @@ function verifyBrowserSafeDist(entryPath) {
   }
 }
 
+function verifyLocalNoEagerLegacySessionRuntime() {
+  for (const filePath of collectStaticImports('dist/session/index.js')) {
+    const source = readFileSync(filePath, 'utf8');
+    for (const rule of agentSdkEagerLegacySessionRuntimeClosureRules) {
+      if (source.includes(rule.forbidden)) {
+        throw new Error(
+          `${filePath}: public session entry eagerly includes legacy root session runtime marker ${rule.forbidden}`,
+        );
+      }
+    }
+  }
+}
+
 const browserRootOutput = run(process.execPath, [
   '--conditions=browser',
   '-e',
@@ -262,6 +276,7 @@ assertNoForbiddenDeclarationSymbols(
   ),
   'local session declaration Session boundary',
 );
+verifyLocalNoEagerLegacySessionRuntime();
 console.log('local session entry Session boundary passed');
 
 assertNoForbiddenDeclarationSymbols(
