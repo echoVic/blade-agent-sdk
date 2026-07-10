@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import type { UsageInfo } from '@blade-ai/ai/chat';
-import { TokenBudget } from '../TokenBudget.js';
+import type { ModelUsageInfo } from '@blade-ai/ai';
+import { TokenBudget } from '@blade-ai/agent/budget';
 
-function createUsage(overrides: Partial<UsageInfo> = {}): UsageInfo {
+function createUsage(overrides: Partial<ModelUsageInfo> = {}): ModelUsageInfo {
   return {
     promptTokens: 0,
     completionTokens: 0,

@@ -307,6 +307,7 @@ Status:
 - Agent package tool-call parameter repair increment complete: `repairToolCallParams()` now lives in `@blade-ai/agent/loop`, uses a runtime-independent injectable id generator for missing Task subagent session ids, parses stringified TodoWrite payloads before validation, and remains covered by package-local tests plus a temporary root forwarding path for the legacy loop during migration.
 - Agent package recovery/state/epoch public-subpath forwarding increment complete: legacy root recovery, state, and epoch forwarders now import through `@blade-ai/agent/recovery`, `@blade-ai/agent/state`, and `@blade-ai/agent/epoch` instead of traversing into `packages/agent/src`, and topology guards keep the root compatibility layer on published package subpaths.
 - Agent package tool-update adapter forwarding increment complete: the remaining root loop adapter now imports package-owned tool-update projection through `@blade-ai/agent/loop` instead of deep-linking into `packages/agent/src`, and topology guards keep `src/agent` free of package source traversal imports.
+- Agent package token budget ownership complete: `@blade-ai/agent/budget` now owns cache-aware accounting, warning/exhaustion checks, diminishing-returns detection, and compaction readiness; `src/agent/TokenBudget.ts` is a public-subpath shim, and root agent/session consumers import token budget contracts from `@blade-ai/agent/budget` directly.
 
 ### Phase 4: Rebuild `@blade-ai/agent-sdk`
 

@@ -1,4 +1,4 @@
-import type { TokenBudgetConfig } from '../agent/TokenBudget.js';
+import type { TokenBudgetConfig } from '@blade-ai/agent/budget';
 import type { UserMessageContent } from '../agent/types.js';
 import type { SdkMcpServerHandle } from '../mcp/SdkMcpServer.js';
 import type { AgentTrace, ObservabilityOptions } from '../observability/index.js';

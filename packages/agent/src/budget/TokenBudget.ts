@@ -3,6 +3,8 @@ import type { AgentTokenBudgetPort, AgentTokenBudgetSnapshot } from '../protocol
 
 const DEFAULT_WARNING_THRESHOLD = 0.8;
 const APPROACHING_LIMIT_THRESHOLD = 0.95;
+const DIMINISHING_RETURNS_MIN_TOKENS = 500;
+const DIMINISHING_RETURNS_CONSECUTIVE_TURNS = 3;
 
 export interface TokenBudgetConfig {
   maxTotalTokens?: number;
@@ -32,6 +34,7 @@ export class TokenBudget implements AgentTokenBudgetPort {
   private cacheReadTokens = 0;
   private cacheMissTokens = 0;
   private unattributedTokens = 0;
+  private recentOutputTokens: number[] = [];
   private readonly config: ResolvedTokenBudgetConfig;
 
   constructor(config: TokenBudgetConfig = {}) {
@@ -60,6 +63,11 @@ export class TokenBudget implements AgentTokenBudgetPort {
     this.cacheWriteTokens += usage.cacheCreationInputTokens ?? 0;
     this.cacheReadTokens += usage.cacheReadInputTokens ?? 0;
     this.cacheMissTokens += usage.cacheMissInputTokens ?? billableInputDelta;
+    this.recentOutputTokens.push(outputDelta);
+
+    if (this.recentOutputTokens.length > DIMINISHING_RETURNS_CONSECUTIVE_TURNS) {
+      this.recentOutputTokens.shift();
+    }
   }
 
   isWarning(): boolean {
@@ -81,6 +89,17 @@ export class TokenBudget implements AgentTokenBudgetPort {
       return false;
     }
     return this.totalTokens >= this.config.maxTotalTokens;
+  }
+
+  isDiminishingReturns(): boolean {
+    if (this.recentOutputTokens.length < DIMINISHING_RETURNS_CONSECUTIVE_TURNS) {
+      return false;
+    }
+    return this.recentOutputTokens.every((tokens) => tokens < DIMINISHING_RETURNS_MIN_TOKENS);
+  }
+
+  shouldCompact(): boolean {
+    return this.isWarning() && !this.isExhausted();
   }
 
   getSnapshot(): AgentTokenBudgetSnapshot {
@@ -120,6 +139,7 @@ export class TokenBudget implements AgentTokenBudgetPort {
     this.cacheReadTokens = 0;
     this.cacheMissTokens = 0;
     this.unattributedTokens = 0;
+    this.recentOutputTokens = [];
   }
 
   private get totalTokens(): number {

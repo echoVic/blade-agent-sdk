@@ -36,7 +36,7 @@ import { LoopState } from './state/LoopState.js';
 import { ConversationState } from './state/ConversationState.js';
 import { isValidSystemSource } from './state/systemSource.js';
 import type { LoopSkillState } from './state/TurnState.js';
-import type { TokenBudget } from './TokenBudget.js';
+import type { TokenBudget } from '@blade-ai/agent/budget';
 import type {
   AgentOptions,
   ChatContext,

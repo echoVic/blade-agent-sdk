@@ -9,7 +9,7 @@ export type {
   SubagentResult,
   SubagentSource,
 } from './agent/subagents/types.js';
-export type { TokenBudgetConfig, TokenBudgetSnapshot } from './agent/TokenBudget.js';
+export type { TokenBudgetConfig, TokenBudgetSnapshot } from '@blade-ai/agent/budget';
 export type { SdkErrorOptions } from './errors/index.js';
 // --- Error hierarchy ---
 export {

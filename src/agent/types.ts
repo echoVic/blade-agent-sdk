@@ -11,7 +11,7 @@ import type { OutputFormat, PermissionMode, PermissionsConfig, SandboxSettings }
 import type { CanUseTool, PermissionHandler } from '../types/permissions.js';
 import type { AgentSession } from './subagents/AgentSessionStore.js';
 import type { StartBackgroundAgentOptions } from './subagents/BackgroundAgentManager.js';
-import type { TokenBudgetConfig, TokenBudgetSnapshot } from './TokenBudget.js';
+import type { TokenBudgetConfig, TokenBudgetSnapshot } from '@blade-ai/agent/budget';
 
 /**
  * 用户消息内容类型

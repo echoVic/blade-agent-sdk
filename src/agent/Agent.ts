@@ -56,7 +56,7 @@ import {
     TokenBudget,
     type TokenBudgetConfig,
     type TokenBudgetSnapshot,
-} from './TokenBudget.js';
+} from '@blade-ai/agent/budget';
 import type {
     AgentOptions,
     ChatContext,

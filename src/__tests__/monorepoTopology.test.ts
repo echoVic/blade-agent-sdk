@@ -232,7 +232,6 @@ describe('monorepo topology', () => {
       'src/agent/ModelManager.ts',
       'src/agent/RuntimePatchManager.ts',
       'src/agent/StreamingToolExecutor.ts',
-      'src/agent/TokenBudget.ts',
       'src/agent/types.ts',
       'src/agent/loop/adapterContracts.ts',
       'src/agent/loop/runTurn.ts',
@@ -249,7 +248,6 @@ describe('monorepo topology', () => {
       'src/agent/__tests__/LoopRunner.test.ts',
       'src/agent/__tests__/LoopState.test.ts',
       'src/agent/__tests__/ModelManager.setModel.test.ts',
-      'src/agent/__tests__/TokenBudget.test.ts',
       'src/agent/__tests__/decideTurnLimit.singleWriter.test.ts',
       'src/agent/__tests__/skillActivationFiltering.test.ts',
       'src/agent/state/__tests__/ConversationState.test.ts',
@@ -280,6 +278,43 @@ describe('monorepo topology', () => {
         legacyChatServiceImports,
         `${file} should not import chat protocol types from root services`,
       ).toHaveLength(0);
+    }
+  });
+
+  it('keeps the legacy root token budget as an agent package shim', () => {
+    const tokenBudgetSource = readFileSync('src/agent/TokenBudget.ts', 'utf-8');
+    const packageTokenBudgetSource = readFileSync('packages/agent/src/budget/TokenBudget.ts', 'utf-8');
+    const rootTokenBudgetConsumers = [
+      'src/agent/Agent.ts',
+      'src/agent/AgentEvent.ts',
+      'src/agent/LoopHookBuilder.ts',
+      'src/agent/LoopRunner.ts',
+      'src/agent/loop/adapterContracts.ts',
+      'src/agent/types.ts',
+      'src/session/types.ts',
+      'src/index.ts',
+      'src/agent/__tests__/TokenBudget.test.ts',
+    ];
+
+    expect(tokenBudgetSource.trim()).toBe(
+      [
+        "export { TokenBudget } from '@blade-ai/agent/budget';",
+        "export type { TokenBudgetConfig, TokenBudgetSnapshot } from '@blade-ai/agent/budget';",
+      ].join('\n'),
+    );
+    expect(packageTokenBudgetSource).toContain('export class TokenBudget');
+    expect(packageTokenBudgetSource).toContain('isDiminishingReturns');
+    expect(packageTokenBudgetSource).toContain('shouldCompact');
+
+    for (const file of rootTokenBudgetConsumers) {
+      const source = readFileSync(file, 'utf-8');
+
+      expect(source, `${file} should consume token budget from the agent package`).toContain(
+        "from '@blade-ai/agent/budget'",
+      );
+      expect(source, `${file} should not import the legacy root token budget shim`).not.toMatch(
+        /from ['"][^'"]*TokenBudget\.js['"]/,
+      );
     }
   });
 

@@ -12,7 +12,7 @@ import type { Message, ToolCall } from '@blade-ai/ai/chat';
 import type { TodoItem } from '../tools/builtin/todo/types.js';
 import type { ToolResult } from '../tools/types/ToolResult.js';
 import type { PermissionUpdate } from '../types/permissions.js';
-import type { TokenBudgetSnapshot } from './TokenBudget.js';
+import type { TokenBudgetSnapshot } from '@blade-ai/agent/budget';
 
 // ===== Token 使用信息 =====
 

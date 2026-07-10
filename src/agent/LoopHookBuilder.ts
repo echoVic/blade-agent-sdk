@@ -23,7 +23,7 @@ import type { AgentLoopConfig, AgentLoopHooks } from './loop/adapterContracts.js
 import type { ModelManager } from './ModelManager.js';
 import type { RuntimePatchManager } from './RuntimePatchManager.js';
 import type { LoopState } from './state/LoopState.js';
-import type { TokenBudget } from './TokenBudget.js';
+import type { TokenBudget } from '@blade-ai/agent/budget';
 import type {
   ChatContext,
   LoopOptions,

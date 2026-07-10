@@ -78,4 +78,42 @@ describe('TokenBudget', () => {
       budgetPercent: 1,
     });
   });
+
+  it('detects diminishing returns after three consecutive low-output turns', () => {
+    const budget = new TokenBudget();
+
+    budget.record({ completionTokens: 400, totalTokens: 400 });
+    budget.record({ completionTokens: 250, totalTokens: 250 });
+
+    expect(budget.isDiminishingReturns()).toBe(false);
+
+    budget.record({ completionTokens: 499, totalTokens: 499 });
+
+    expect(budget.isDiminishingReturns()).toBe(true);
+
+    budget.record({ completionTokens: 500, totalTokens: 500 });
+
+    expect(budget.isDiminishingReturns()).toBe(false);
+
+    budget.reset();
+
+    expect(budget.isDiminishingReturns()).toBe(false);
+  });
+
+  it('requests compaction at the warning threshold before exhaustion', () => {
+    const budget = new TokenBudget({
+      maxTotalTokens: 100,
+      warningThresholdPercent: 0.8,
+    });
+
+    budget.record({ promptTokens: 60, completionTokens: 20, totalTokens: 80 });
+
+    expect(budget.isWarning()).toBe(true);
+    expect(budget.shouldCompact()).toBe(true);
+
+    budget.record({ promptTokens: 20, totalTokens: 20 });
+
+    expect(budget.isExhausted()).toBe(true);
+    expect(budget.shouldCompact()).toBe(false);
+  });
 });

@@ -5,7 +5,7 @@ import type { ToolResult } from '../../tools/types/index.js';
 import type { AgentEvent } from '../AgentEvent.js';
 import type { ConversationState } from '../state/ConversationState.js';
 import type { TurnState } from '../state/TurnState.js';
-import type { TokenBudget } from '../TokenBudget.js';
+import type { TokenBudget } from '@blade-ai/agent/budget';
 import type { TurnLimitResponse } from '../types.js';
 import type {
   AgentLoopAdapterConfig,
