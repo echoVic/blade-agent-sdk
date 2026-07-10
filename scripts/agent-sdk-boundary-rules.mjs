@@ -52,6 +52,19 @@ export const agentSdkRootPublicDeclarationBoundaryRules = [
   },
 ];
 
+export const agentSdkRootSubagentCompatibilityBoundaryRules = [
+  {
+    file: 'dist/index.js',
+    forbidden: 'src/agent/subagents',
+    message: 'root runtime must use package-local subagent compatibility exports',
+  },
+  {
+    file: 'dist/index.d.ts',
+    forbidden: '../agent/subagents',
+    message: 'root declarations must use package-local subagent compatibility exports',
+  },
+];
+
 export const agentSdkServerFacadeBoundaryRules = [
   {
     file: 'dist/server/index.js',

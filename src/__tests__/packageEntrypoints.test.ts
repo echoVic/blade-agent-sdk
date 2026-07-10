@@ -236,6 +236,31 @@ describe('package entrypoints', () => {
     );
   });
 
+  it('shares root subagent compatibility boundary rules across local packed and published verifiers', () => {
+    const sharedRulesPath = 'scripts/agent-sdk-boundary-rules.mjs';
+
+    expect(existsSync(join(process.cwd(), sharedRulesPath)), sharedRulesPath).toBe(true);
+
+    const sharedRules = readFileSync(sharedRulesPath, 'utf-8');
+    const entrypointVerifier = readFileSync('scripts/verify-entrypoints.mjs', 'utf-8');
+    const packageVerifier = readFileSync('scripts/verify-packages.mjs', 'utf-8');
+    const publishedVerifier = readFileSync('scripts/verify-published.mjs', 'utf-8');
+
+    expect(sharedRules).toContain('agentSdkRootSubagentCompatibilityBoundaryRules');
+    expect(sharedRules).toContain('dist/index.js');
+    expect(sharedRules).toContain('dist/index.d.ts');
+    expect(sharedRules).toContain('src/agent/subagents');
+    expect(sharedRules).toContain('../agent/subagents');
+    expect(sharedRules).toContain('root runtime must use package-local subagent compatibility exports');
+    expect(sharedRules).toContain('root declarations must use package-local subagent compatibility exports');
+    expect(entrypointVerifier).toContain('agentSdkRootSubagentCompatibilityBoundaryRules');
+    expect(entrypointVerifier).toContain("rule.file === 'dist/index.js'");
+    expect(entrypointVerifier).toContain("rule.file === 'dist/index.d.ts'");
+    expect(packageVerifier).toContain('toPackedForbiddenFileRules(agentSdkRootSubagentCompatibilityBoundaryRules)');
+    expect(publishedVerifier).toContain('verifyPublishedRootSubagentCompatibilityBoundary');
+    expect(publishedVerifier).toContain('agentSdkRootSubagentCompatibilityBoundaryRules');
+  });
+
   it('shares server facade boundary rules across local packed and published verifiers', () => {
     const sharedRulesPath = 'scripts/agent-sdk-boundary-rules.mjs';
 
@@ -525,8 +550,9 @@ describe('package entrypoints', () => {
     expect(verifier).toContain('local root declaration public boundary passed');
     expect(verifier).toContain('toLocalForbiddenDeclarationRules(agentSdkRootDeclarationEntryOwnershipRules)');
     expect(verifier).toContain('local root declaration entry ownership boundary passed');
-    expect(verifier).toContain('local root runtime must use package-local subagent compatibility exports');
-    expect(verifier).toContain('local root declarations must use package-local subagent compatibility exports');
+    expect(verifier).toContain('agentSdkRootSubagentCompatibilityBoundaryRules');
+    expect(verifier).toContain("rule.file === 'dist/index.js'");
+    expect(verifier).toContain("rule.file === 'dist/index.d.ts'");
     expect(verifier).toContain('local root subagent compatibility boundary passed');
     expect(verifier).toContain('toLocalForbiddenDeclarationRules(agentSdkSessionPublicDeclarationBoundaryRules)');
     expect(verifier).toContain('local session declaration public boundary passed');

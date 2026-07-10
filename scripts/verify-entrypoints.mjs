@@ -8,6 +8,7 @@ import {
   agentSdkPermissionDeclarationBoundaryRules,
   agentSdkRootDeclarationEntryOwnershipRules,
   agentSdkRootPublicDeclarationBoundaryRules,
+  agentSdkRootSubagentCompatibilityBoundaryRules,
   agentSdkServerFacadeBoundaryRules,
   agentSdkSessionConfigDeclarationBoundaryRules,
   agentSdkSessionFactoryDeclarationBoundaryRules,
@@ -215,23 +216,17 @@ console.log('local root declaration entry ownership boundary passed');
 
 assertNoForbiddenDeclarationSymbols(
   readFileSync(join(packageRoot, 'dist/index.js'), 'utf8'),
-  [
-    {
-      forbidden: 'src/agent/subagents',
-      message: 'local root runtime must use package-local subagent compatibility exports',
-    },
-  ],
+  toLocalForbiddenDeclarationRules(
+    agentSdkRootSubagentCompatibilityBoundaryRules.filter((rule) => rule.file === 'dist/index.js'),
+  ),
   'local root subagent runtime boundary',
 );
 
 assertNoForbiddenDeclarationSymbols(
   readFileSync(join(packageRoot, 'dist/index.d.ts'), 'utf8'),
-  [
-    {
-      forbidden: '../agent/subagents',
-      message: 'local root declarations must use package-local subagent compatibility exports',
-    },
-  ],
+  toLocalForbiddenDeclarationRules(
+    agentSdkRootSubagentCompatibilityBoundaryRules.filter((rule) => rule.file === 'dist/index.d.ts'),
+  ),
   'local root subagent declaration boundary',
 );
 console.log('local root subagent compatibility boundary passed');

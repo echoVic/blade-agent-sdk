@@ -11,6 +11,7 @@ import {
   agentSdkCoreDeclarationBrowserSafeRules,
   agentSdkLocalAdapterBoundaryRules,
   agentSdkPermissionDeclarationBoundaryRules,
+  agentSdkRootSubagentCompatibilityBoundaryRules,
   agentSdkServerFacadeBoundaryRules,
   agentSdkSessionConfigDeclarationBoundaryRules,
   agentSdkSessionFactoryDeclarationBoundaryRules,
@@ -506,6 +507,7 @@ if (Object.keys(agentPorts).length !== 0) {
     await run(process.execPath, [runtimeSmokePath], { cwd: consumerDir });
     await verifyPublishedTypesSmoke({ consumerDir });
     await verifyPublishedRootDeclarationBoundary({ consumerDir });
+    await verifyPublishedRootSubagentCompatibilityBoundary({ consumerDir });
     await verifyPublishedServerEntryBoundary({ consumerDir });
     await verifyPublishedServerDeclarationParity({ consumerDir });
     await verifyPublishedCoreDeclarationBoundary({ consumerDir });
@@ -1558,6 +1560,20 @@ async function verifyPublishedPermissionDeclarationBoundary({ consumerDir }) {
   const rules = toInstalledForbiddenFileRules(
     join(consumerDir, 'node_modules/@blade-ai/agent-sdk'),
     agentSdkPermissionDeclarationBoundaryRules,
+  );
+
+  for (const rule of rules) {
+    const source = await readFile(rule.path, 'utf8');
+    if (source.includes(rule.forbidden)) {
+      throw new Error(`${rule.path}: ${rule.message}`);
+    }
+  }
+}
+
+async function verifyPublishedRootSubagentCompatibilityBoundary({ consumerDir }) {
+  const rules = toInstalledForbiddenFileRules(
+    join(consumerDir, 'node_modules/@blade-ai/agent-sdk'),
+    agentSdkRootSubagentCompatibilityBoundaryRules,
   );
 
   for (const rule of rules) {
