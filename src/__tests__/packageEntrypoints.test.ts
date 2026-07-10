@@ -1,8 +1,8 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
+import * as packageRootEntry from '@blade-ai/agent-sdk';
+import * as packageServerEntry from '@blade-ai/agent-sdk/server';
 import { describe, expect, it } from 'vitest';
-import * as packageRootEntry from '../../packages/agent-sdk/src/index.js';
-import * as packageServerEntry from '../../packages/agent-sdk/src/server/index.js';
 
 const rootPackageJson = JSON.parse(readFileSync('package.json', 'utf-8')) as {
   scripts: Record<string, string>;

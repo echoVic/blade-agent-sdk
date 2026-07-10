@@ -555,6 +555,20 @@ describe('monorepo topology', () => {
     expect(vitestConfigSource).toContain("'@blade-ai/agent-sdk/local'");
   });
 
+  it('keeps root package entrypoint tests on public agent-sdk subpaths', () => {
+    const packageEntrypointsSource = readFileSync('src/__tests__/packageEntrypoints.test.ts', 'utf-8');
+    const rootTsconfigSource = readFileSync('tsconfig.json', 'utf-8');
+    const vitestConfigSource = readFileSync('vitest.config.ts', 'utf-8');
+
+    expect(packageEntrypointsSource).toContain("from '@blade-ai/agent-sdk'");
+    expect(packageEntrypointsSource).toContain("from '@blade-ai/agent-sdk/server'");
+    expect(packageEntrypointsSource).not.toContain('../../packages/agent-sdk/src');
+    expect(rootTsconfigSource).toContain('"@blade-ai/agent-sdk"');
+    expect(rootTsconfigSource).toContain('"@blade-ai/agent-sdk/server"');
+    expect(vitestConfigSource).toContain("'@blade-ai/agent-sdk'");
+    expect(vitestConfigSource).toContain("'@blade-ai/agent-sdk/server'");
+  });
+
   it('keeps package-local session runtime on explicit agent package subpaths', () => {
     const files = [
       'packages/agent-sdk/src/session/kernelFactory.ts',
