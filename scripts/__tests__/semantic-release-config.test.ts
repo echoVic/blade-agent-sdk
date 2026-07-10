@@ -1628,7 +1628,8 @@ describe('release scripts', () => {
     expect(publishedVerifier).toContain('RetryConfig');
     expect(publishedVerifier).toContain('DeepSeekProviderOptions');
     expect(publishedVerifier).toContain('VercelLanguageModelOptions');
-    expect(publishedVerifier).toContain("import type { AgentKernelOptions } from '@blade-ai/agent';");
+    expect(publishedVerifier).toContain("import type { AgentKernelOptions } from '@blade-ai/agent/kernel';");
+    expect(publishedVerifier).not.toContain("import type { AgentKernelOptions } from '@blade-ai/agent';");
     expect(publishedVerifier).toContain("import { ExecutionEpoch } from '@blade-ai/agent/epoch';");
     expect(publishedVerifier).toContain("import type { SessionOptions } from '@blade-ai/agent-sdk';");
     expect(readme).toContain('TypeScript public declarations');

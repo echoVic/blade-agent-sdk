@@ -471,7 +471,7 @@ try {
       "import type { OpenAICompatibleModelPortOptions } from '@blade-ai/ai/providers/openai-compatible';",
       "import type { VercelLanguageModelOptions } from '@blade-ai/ai/providers/vercel';",
       "import type { RetryConfig } from '@blade-ai/ai/retry';",
-      "import type { AgentKernelOptions } from '@blade-ai/agent';",
+      "import type { AgentKernelOptions } from '@blade-ai/agent/kernel';",
       "import type { AgentToolPort } from '@blade-ai/agent/ports';",
       "import type { AgentToolCall } from '@blade-ai/agent/protocol';",
       "import type { AgentTraceEvent } from '@blade-ai/agent/tracing';",

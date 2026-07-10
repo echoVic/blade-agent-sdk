@@ -1903,7 +1903,7 @@ import type { OpenAICompatibleModelPortOptions } from '@blade-ai/ai/providers/op
 import { createOpenAICompatibleModelPort } from '@blade-ai/ai/providers/openai-compatible';
 import type { VercelLanguageModelOptions } from '@blade-ai/ai/providers/vercel';
 import { createVercelModelPort } from '@blade-ai/ai/providers/vercel';
-import type { AgentKernelOptions } from '@blade-ai/agent';
+import type { AgentKernelOptions } from '@blade-ai/agent/kernel';
 import { ExecutionEpoch } from '@blade-ai/agent/epoch';
 import type {
   TokenBudgetConfig,
