@@ -336,6 +336,9 @@ function verifyReleaseWorkflow() {
   const postPublishStepIndex = steps.indexOf(postPublishStep);
   const trustedPublishingNpmCliStep = commands.find((command) => command.startsWith('npm install -g npm@'));
 
+  if (JSON.stringify(workflow).includes('NPM_TOKEN')) {
+    fail('release workflow must not expose NPM_TOKEN anywhere; use trusted publishing OIDC');
+  }
   assertDeepEqual(workflow.on?.push?.branches, ['main'], 'release workflow push branches');
   if (!('workflow_dispatch' in (workflow.on ?? {}))) {
     fail('release workflow must support manual workflow_dispatch runs');

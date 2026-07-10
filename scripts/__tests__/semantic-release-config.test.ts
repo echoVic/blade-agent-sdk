@@ -2097,6 +2097,17 @@ describe('release workflow', () => {
     expect(releaseVerifier).toContain('release workflow Node version must match the package engine floor');
   });
 
+  it('rejects long-lived npm tokens anywhere in the release workflow', () => {
+    const workflow = parse(
+      readFileSync(resolve('.github/workflows/release.yml'), 'utf8')
+    );
+    const releaseVerifier = readFileSync(resolve('scripts/verify-release-config.mjs'), 'utf8');
+
+    expect(JSON.stringify(workflow)).not.toContain('NPM_TOKEN');
+    expect(releaseVerifier).toContain("JSON.stringify(workflow).includes('NPM_TOKEN')");
+    expect(releaseVerifier).toContain('release workflow must not expose NPM_TOKEN anywhere');
+  });
+
   it('skips post-publish verification when semantic-release does not create a new tag', () => {
     const workflow = parse(
       readFileSync(resolve('.github/workflows/release.yml'), 'utf8')
