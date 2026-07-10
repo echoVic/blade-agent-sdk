@@ -25,7 +25,11 @@ import {
   toInstalledForbiddenFileRules,
 } from './agent-sdk-boundary-rules.mjs';
 import { bundleWithEsbuildRetry } from './esbuild-bundle.mjs';
-import { createAgentPublicTypeImportBlock, createAiPublicTypeImportBlock } from './public-type-contracts.mjs';
+import {
+  createAgentPublicTypeImportBlock,
+  createAiPublicTypeImportBlock,
+  createSdkPublicTypeImportBlock,
+} from './public-type-contracts.mjs';
 
 const execFileAsync = promisify(execFile);
 
@@ -1921,23 +1925,9 @@ import type {
   BufferedAgentTracePortOptions,
 } from '@blade-ai/agent/tracing';
 import { createBufferedAgentTracePort } from '@blade-ai/agent/tracing';
-import type { SessionOptions } from '@blade-ai/agent-sdk';
-import type { StreamMessage } from '@blade-ai/agent-sdk';
-import type { ToolDefinition } from '@blade-ai/agent-sdk';
-import type { StreamMessage as BrowserStreamMessage } from '@blade-ai/agent-sdk/browser';
+${createSdkPublicTypeImportBlock('publishedConsumer')}
 import { PermissionMode as BrowserPermissionMode } from '@blade-ai/agent-sdk/browser';
-import type { ISession } from '@blade-ai/agent-sdk/session';
-import type {
-  ClaudeCodePermissionMode,
-  ISession as ServerSession,
-  PermissionsConfig as ServerPermissionsConfig,
-  SubagentExecutionRunner,
-  SubagentFrontmatter,
-} from '@blade-ai/agent-sdk/server';
 import { subagentRegistry } from '@blade-ai/agent-sdk/server';
-import type { ToolDefinition as SubpathToolDefinition } from '@blade-ai/agent-sdk/tools';
-import type { BuiltinToolsOptions } from '@blade-ai/agent-sdk/local';
-import type { PermissionMode, RuntimeContext } from '@blade-ai/agent-sdk/core';
 import { PermissionMode as CorePermissionMode } from '@blade-ai/agent-sdk/core';
 
 const modelPort: ModelPort = {

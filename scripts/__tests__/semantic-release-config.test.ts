@@ -335,6 +335,7 @@ describe('package provenance metadata', () => {
   it('type-checks server facade parity with the public root surface', () => {
     const packageVerifier = readFileSync(resolve('scripts/verify-packages.mjs'), 'utf8');
     const publishedVerifier = readFileSync(resolve('scripts/verify-published.mjs'), 'utf8');
+    const publicTypeContracts = readFileSync(resolve('scripts/public-type-contracts.mjs'), 'utf8');
 
     for (const verifier of [packageVerifier, publishedVerifier]) {
       expect(verifier).toContain('function assertRuntimeExportParity');
@@ -344,11 +345,12 @@ describe('package provenance metadata', () => {
       expect(verifier).toContain("'node_modules/@blade-ai/agent-sdk/dist/server/index.d.ts'");
       expect(verifier).toContain("assertDeclarationExportParity(rootDeclaration, serverDeclaration, 'root', 'server')");
       expect(verifier).toContain('subagentRegistry');
-      expect(verifier).toContain('ClaudeCodePermissionMode');
-      expect(verifier).toContain('SubagentExecutionRunner');
-      expect(verifier).toContain('SubagentFrontmatter');
-      expect(verifier).toContain('PermissionsConfig');
     }
+
+    expect(publicTypeContracts).toContain('ClaudeCodePermissionMode');
+    expect(publicTypeContracts).toContain('SubagentExecutionRunner');
+    expect(publicTypeContracts).toContain('SubagentFrontmatter');
+    expect(publicTypeContracts).toContain('PermissionsConfig');
   });
 
   it('runtime-loads public value exports from the packed temporary consumer', () => {
@@ -1643,7 +1645,8 @@ describe('release scripts', () => {
     expect(publicTypeContracts).toContain("import type { AgentStreamEvent");
     expect(publishedVerifier).toContain('const agentProtocolEvent: AgentStreamEvent');
     expect(publishedVerifier).toContain("import { ExecutionEpoch } from '@blade-ai/agent/epoch';");
-    expect(publishedVerifier).toContain("import type { SessionOptions } from '@blade-ai/agent-sdk';");
+    expect(publicTypeContracts).toContain("import type { SessionOptions");
+    expect(publicTypeContracts).toContain("from '@blade-ai/agent-sdk';");
     expect(readme).toContain('TypeScript public declarations');
     expect(checklist).toContain('TypeScript public declarations');
   });

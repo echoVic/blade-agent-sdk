@@ -24,7 +24,11 @@ import {
   toPackedForbiddenFileRules,
 } from './agent-sdk-boundary-rules.mjs';
 import { bundleWithEsbuildRetry } from './esbuild-bundle.mjs';
-import { createAgentPublicTypeImportBlock, createAiPublicTypeImportBlock } from './public-type-contracts.mjs';
+import {
+  createAgentPublicTypeImportBlock,
+  createAiPublicTypeImportBlock,
+  createSdkPublicTypeImportBlock,
+} from './public-type-contracts.mjs';
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const browserDisallowedMarkers = [
@@ -1426,15 +1430,8 @@ import type {
   BufferedAgentTracePortOptions,
 } from '@blade-ai/agent/tracing';
 import { createBufferedAgentTracePort } from '@blade-ai/agent/tracing';
-import type { SessionOptions, StreamMessage } from '@blade-ai/agent-sdk';
+${createSdkPublicTypeImportBlock('packedConsumer')}
 import { createSession, defineTool, ToolKind } from '@blade-ai/agent-sdk';
-import type {
-  JsonObject as CoreJsonObject,
-  PermissionHandler,
-  RuntimeContext,
-  StreamMessage as CoreStreamMessage,
-  ToolDefinition as CoreToolDefinition,
-} from '@blade-ai/agent-sdk/core';
 import {
   createModePermissionHandler,
   PermissionDecision,
@@ -1442,37 +1439,19 @@ import {
   StreamMessageType as CoreStreamMessageType,
   ToolKind as CoreToolKind,
 } from '@blade-ai/agent-sdk/core';
-import type {
-  ISession as SubpathSession,
-  ResumeOptions,
-  SessionOptions as SubpathSessionOptions,
-} from '@blade-ai/agent-sdk/session';
 import {
   createSession as createSessionFromSessionSubpath,
   resumeSession as resumeSessionFromSessionSubpath,
 } from '@blade-ai/agent-sdk/session';
-import type {
-  ToolDefinition as ToolsToolDefinition,
-  ToolResult as ToolsToolResult,
-} from '@blade-ai/agent-sdk/tools';
 import {
   defineTool as defineToolFromToolsSubpath,
   ToolKind as ToolsToolKind,
 } from '@blade-ai/agent-sdk/tools';
-import type { BuiltinToolsOptions } from '@blade-ai/agent-sdk/local';
 import { getBuiltinTools } from '@blade-ai/agent-sdk/local';
-import type {
-  ClaudeCodePermissionMode,
-  ISession as ServerSession,
-  PermissionsConfig as ServerPermissionsConfig,
-  SubagentExecutionRunner,
-  SubagentFrontmatter,
-} from '@blade-ai/agent-sdk/server';
 import {
   createSession as createSessionFromServerSubpath,
   subagentRegistry,
 } from '@blade-ai/agent-sdk/server';
-import type { StreamMessage as BrowserStreamMessage } from '@blade-ai/agent-sdk/browser';
 import {
   PermissionMode as BrowserPermissionMode,
   createSession as createBrowserSession,

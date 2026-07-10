@@ -20,7 +20,11 @@ import {
   toLocalForbiddenDeclarationRules,
 } from './agent-sdk-boundary-rules.mjs';
 import { bundleWithEsbuildRetry } from './esbuild-bundle.mjs';
-import { createAgentPublicTypeImportLines, createAiPublicTypeImportLines } from './public-type-contracts.mjs';
+import {
+  createAgentPublicTypeImportLines,
+  createAiPublicTypeImportLines,
+  createSdkPublicTypeImportLines,
+} from './public-type-contracts.mjs';
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const packageRoot = existsSync(join(repoRoot, 'packages/agent-sdk/package.json'))
@@ -469,10 +473,7 @@ try {
     [
       ...createAiPublicTypeImportLines('localDeclaration'),
       ...createAgentPublicTypeImportLines('localDeclaration'),
-      "import type { SessionOptions, StreamMessage } from '@blade-ai/agent-sdk';",
-      "import type { RuntimeContext } from '@blade-ai/agent-sdk/core';",
-      "import type { ISession } from '@blade-ai/agent-sdk/session';",
-      "import type { ToolDefinition } from '@blade-ai/agent-sdk/tools';",
+      ...createSdkPublicTypeImportLines('localDeclaration'),
       '',
       'const model: ModelPort = {',
       '  async generate(request) {',

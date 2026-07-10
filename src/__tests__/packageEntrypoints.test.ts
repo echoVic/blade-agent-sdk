@@ -607,10 +607,10 @@ describe('package entrypoints', () => {
     expect(publicTypeContracts).toContain("import type { AgentToolPort } from '@blade-ai/agent/ports';");
     expect(publicTypeContracts).toContain("import type { AgentToolCall } from '@blade-ai/agent/protocol';");
     expect(publicTypeContracts).toContain("import type { AgentTraceEvent } from '@blade-ai/agent/tracing';");
-    expect(verifier).toContain("import type { SessionOptions, StreamMessage } from '@blade-ai/agent-sdk';");
-    expect(verifier).toContain("import type { ISession } from '@blade-ai/agent-sdk/session';");
-    expect(verifier).toContain("import type { ToolDefinition } from '@blade-ai/agent-sdk/tools';");
-    expect(verifier).toContain("import type { RuntimeContext } from '@blade-ai/agent-sdk/core';");
+    expect(publicTypeContracts).toContain("import type { SessionOptions, StreamMessage } from '@blade-ai/agent-sdk';");
+    expect(publicTypeContracts).toContain("import type { ISession } from '@blade-ai/agent-sdk/session';");
+    expect(publicTypeContracts).toContain("import type { ToolDefinition } from '@blade-ai/agent-sdk/tools';");
+    expect(publicTypeContracts).toContain("import type { RuntimeContext } from '@blade-ai/agent-sdk/core';");
     expect(verifier).toContain('local declaration consumer type-check passed');
     expect(verifier).toContain('local root server runtime export parity');
     expect(verifier).toContain('Runtime export mismatch between local root and local server');
@@ -689,15 +689,12 @@ describe('package entrypoints', () => {
     expect(existsSync(helperPath)).toBe(true);
     const helper = readFileSync(helperPath, 'utf-8');
 
-    expect(localVerifier).toContain(
-      "import { createAgentPublicTypeImportLines, createAiPublicTypeImportLines } from './public-type-contracts.mjs';",
-    );
-    expect(packageVerifier).toContain(
-      "import { createAgentPublicTypeImportBlock, createAiPublicTypeImportBlock } from './public-type-contracts.mjs';",
-    );
-    expect(publishedVerifier).toContain(
-      "import { createAgentPublicTypeImportBlock, createAiPublicTypeImportBlock } from './public-type-contracts.mjs';",
-    );
+    expect(localVerifier).toContain("from './public-type-contracts.mjs';");
+    expect(localVerifier).toContain('createAgentPublicTypeImportLines');
+    expect(packageVerifier).toContain("from './public-type-contracts.mjs';");
+    expect(packageVerifier).toContain('createAgentPublicTypeImportBlock');
+    expect(publishedVerifier).toContain("from './public-type-contracts.mjs';");
+    expect(publishedVerifier).toContain('createAgentPublicTypeImportBlock');
     expect(localVerifier).toContain("...createAgentPublicTypeImportLines('localDeclaration')");
     expect(packageVerifier).toContain("$" + "{createAgentPublicTypeImportBlock('packedConsumer')}");
     expect(publishedVerifier).toContain("$" + "{createAgentPublicTypeImportBlock('publishedConsumer')}");
@@ -717,15 +714,12 @@ describe('package entrypoints', () => {
     const publishedVerifier = readFileSync('scripts/verify-published.mjs', 'utf-8');
     const helper = readFileSync(helperPath, 'utf-8');
 
-    expect(localVerifier).toContain(
-      "import { createAgentPublicTypeImportLines, createAiPublicTypeImportLines } from './public-type-contracts.mjs';",
-    );
-    expect(packageVerifier).toContain(
-      "import { createAgentPublicTypeImportBlock, createAiPublicTypeImportBlock } from './public-type-contracts.mjs';",
-    );
-    expect(publishedVerifier).toContain(
-      "import { createAgentPublicTypeImportBlock, createAiPublicTypeImportBlock } from './public-type-contracts.mjs';",
-    );
+    expect(localVerifier).toContain("from './public-type-contracts.mjs';");
+    expect(localVerifier).toContain('createAiPublicTypeImportLines');
+    expect(packageVerifier).toContain("from './public-type-contracts.mjs';");
+    expect(packageVerifier).toContain('createAiPublicTypeImportBlock');
+    expect(publishedVerifier).toContain("from './public-type-contracts.mjs';");
+    expect(publishedVerifier).toContain('createAiPublicTypeImportBlock');
     expect(localVerifier).toContain("...createAiPublicTypeImportLines('localDeclaration')");
     expect(packageVerifier).toContain("$" + "{createAiPublicTypeImportBlock('packedConsumer')}");
     expect(publishedVerifier).toContain("$" + "{createAiPublicTypeImportBlock('publishedConsumer')}");
@@ -740,6 +734,31 @@ describe('package entrypoints', () => {
     expect(helper).toContain("import type { VercelLanguageModelOptions } from '@blade-ai/ai/providers/vercel';");
     expect(helper).toContain("import type { DeepSeekCostBreakdown, DeepSeekProviderOptions }");
     expect(helper).toContain("from '@blade-ai/ai/deepseek';");
+  });
+
+  it('centralizes agent-sdk public type contract imports across entrypoint verifiers', () => {
+    const helperPath = 'scripts/public-type-contracts.mjs';
+    const localVerifier = readFileSync('scripts/verify-entrypoints.mjs', 'utf-8');
+    const packageVerifier = readFileSync('scripts/verify-packages.mjs', 'utf-8');
+    const publishedVerifier = readFileSync('scripts/verify-published.mjs', 'utf-8');
+    const helper = readFileSync(helperPath, 'utf-8');
+
+    expect(localVerifier).toContain('createSdkPublicTypeImportLines');
+    expect(packageVerifier).toContain('createSdkPublicTypeImportBlock');
+    expect(publishedVerifier).toContain('createSdkPublicTypeImportBlock');
+    expect(localVerifier).toContain("...createSdkPublicTypeImportLines('localDeclaration')");
+    expect(packageVerifier).toContain("$" + "{createSdkPublicTypeImportBlock('packedConsumer')}");
+    expect(publishedVerifier).toContain("$" + "{createSdkPublicTypeImportBlock('publishedConsumer')}");
+
+    expect(helper).toContain('sdkPublicTypeImportContracts');
+    expect(helper).toContain("import type { SessionOptions, StreamMessage } from '@blade-ai/agent-sdk';");
+    expect(helper).toContain("import type { RuntimeContext } from '@blade-ai/agent-sdk/core';");
+    expect(helper).toContain("import type { ISession } from '@blade-ai/agent-sdk/session';");
+    expect(helper).toContain("import type { ToolDefinition } from '@blade-ai/agent-sdk/tools';");
+    expect(helper).toContain("import type { BuiltinToolsOptions } from '@blade-ai/agent-sdk/local';");
+    expect(helper).toContain("ClaudeCodePermissionMode");
+    expect(helper).toContain("SubagentExecutionRunner");
+    expect(helper).toContain("StreamMessage as BrowserStreamMessage");
   });
 
   it('declares production verification scripts for package and release gates', () => {
