@@ -1,5 +1,5 @@
 import type { RuntimeContextPatch, RuntimePatch } from '../../runtime/index.js';
-import type { Message } from '../../services/ChatServiceInterface.js';
+import type { Message } from '@blade-ai/ai/chat';
 import type { JsonValue } from '../../types/common.js';
 import type { ToolEffect } from './ToolEffects.js';
 import type { ToolResultMetadata } from './ToolMetadata.js';

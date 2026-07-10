@@ -1,5 +1,5 @@
 import type { RuntimeContextPatch, RuntimePatch } from '../../runtime/index.js';
-import type { Message } from '../../services/ChatServiceInterface.js';
+import type { Message } from '@blade-ai/ai/chat';
 import type { PermissionUpdate } from '../../types/permissions.js';
 
 export type ToolEffect =

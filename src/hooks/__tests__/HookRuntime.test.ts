@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import type { ContentPart } from '../../services/ChatServiceInterface.js';
+import type { ContentPart } from '@blade-ai/ai/chat';
 import type { ToolResult } from '../../tools/types/index.js';
 import { SessionId, ToolUseId } from '../../types/branded.js';
 import { PermissionMode } from '../../types/common.js';
