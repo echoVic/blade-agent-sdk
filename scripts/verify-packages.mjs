@@ -24,6 +24,7 @@ import {
   toPackedForbiddenFileRules,
 } from './agent-sdk-boundary-rules.mjs';
 import { bundleWithEsbuildRetry } from './esbuild-bundle.mjs';
+import { createAgentPublicTypeImportBlock } from './public-type-contracts.mjs';
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const browserDisallowedMarkers = [
@@ -1406,10 +1407,7 @@ import type {
   TokenBudgetSnapshot,
 } from '@blade-ai/agent/budget';
 import { ExecutionEpoch } from '@blade-ai/agent/epoch';
-import type {
-  AgentKernelOptions,
-  AgentTurnInput,
-} from '@blade-ai/agent/kernel';
+${createAgentPublicTypeImportBlock('packedConsumer')}
 import { AgentKernel as AgentKernelFromSubpath } from '@blade-ai/agent/kernel';
 import {
   AsyncEventQueue,
@@ -1429,15 +1427,9 @@ import type {
   ToolExecutionPlan,
   ToolInterruptBehavior,
 } from '@blade-ai/agent/loop';
-import type { AgentStreamEvent } from '@blade-ai/agent/protocol';
-import type {
-  AgentToolCall,
-  AgentToolResult,
-} from '@blade-ai/agent/protocol';
 import type {
   AgentHookPort,
   AgentPermissionPort,
-  AgentToolPort,
 } from '@blade-ai/agent/ports';
 import { isOverflowRecoverable } from '@blade-ai/agent/recovery';
 import type {
@@ -1452,7 +1444,6 @@ import {
   toolResultToToolMessage,
 } from '@blade-ai/agent/state';
 import type {
-  AgentTraceEvent,
   AgentTracePort,
   BufferedAgentTracePort,
   BufferedAgentTracePortOptions,

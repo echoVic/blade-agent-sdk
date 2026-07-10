@@ -25,6 +25,7 @@ import {
   toInstalledForbiddenFileRules,
 } from './agent-sdk-boundary-rules.mjs';
 import { bundleWithEsbuildRetry } from './esbuild-bundle.mjs';
+import { createAgentPublicTypeImportBlock } from './public-type-contracts.mjs';
 
 const execFileAsync = promisify(execFile);
 
@@ -1903,13 +1904,12 @@ import type { OpenAICompatibleModelPortOptions } from '@blade-ai/ai/providers/op
 import { createOpenAICompatibleModelPort } from '@blade-ai/ai/providers/openai-compatible';
 import type { VercelLanguageModelOptions } from '@blade-ai/ai/providers/vercel';
 import { createVercelModelPort } from '@blade-ai/ai/providers/vercel';
-import type { AgentKernelOptions } from '@blade-ai/agent/kernel';
 import { ExecutionEpoch } from '@blade-ai/agent/epoch';
 import type {
   TokenBudgetConfig,
   TokenBudgetSnapshot,
 } from '@blade-ai/agent/budget';
-import type { AgentTurnInput } from '@blade-ai/agent/kernel';
+${createAgentPublicTypeImportBlock('publishedConsumer')}
 import {
   AsyncEventQueue,
   createInterruptAwareAbortSignal,
@@ -1928,8 +1928,6 @@ import type {
   ToolExecutionPlan,
   ToolInterruptBehavior,
 } from '@blade-ai/agent/loop';
-import type { AgentToolPort } from '@blade-ai/agent/ports';
-import type { AgentToolCall } from '@blade-ai/agent/protocol';
 import { isOverflowRecoverable } from '@blade-ai/agent/recovery';
 import type {
   AgentToolCallIdentity,
@@ -1943,7 +1941,6 @@ import {
   toolResultToToolMessage,
 } from '@blade-ai/agent/state';
 import type {
-  AgentTraceEvent,
   AgentTracePort,
   BufferedAgentTracePort,
   BufferedAgentTracePortOptions,
@@ -2097,6 +2094,10 @@ const tokenBudgetSnapshot: TokenBudgetSnapshot = {
 
 const turnInput: AgentTurnInput = {
   input: 'hello',
+};
+const agentProtocolEvent: AgentStreamEvent = {
+  type: 'result',
+  content: 'ok',
 };
 
 const toolPort: AgentToolPort = {
@@ -2294,6 +2295,7 @@ void overflowIsRecoverable;
 void tokenBudgetConfig;
 void tokenBudgetSnapshot;
 void turnInput;
+void agentProtocolEvent;
 void toolPort;
 void agentStoreAppendContext;
 void agentStorePort;

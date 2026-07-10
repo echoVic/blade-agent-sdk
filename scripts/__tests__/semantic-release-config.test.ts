@@ -235,6 +235,7 @@ describe('package provenance metadata', () => {
   it('type-checks public package contracts from the packed temporary consumer', () => {
     const packageVerifier = readFileSync(resolve('scripts/verify-packages.mjs'), 'utf8');
     const sharedRules = readFileSync(resolve('scripts/agent-sdk-boundary-rules.mjs'), 'utf8');
+    const publicTypeContracts = readFileSync(resolve('scripts/public-type-contracts.mjs'), 'utf8');
 
     expect(packageVerifier).toContain('function verifyConsumerTypes');
     expect(packageVerifier).toContain('consumer-types.ts');
@@ -245,8 +246,10 @@ describe('package provenance metadata', () => {
     expect(packageVerifier).toContain('totalOnlyChatUsage');
     expect(packageVerifier).toContain("import { createOpenAICompatibleModelPort } from '@blade-ai/ai';");
     expect(packageVerifier).toContain("import { AgentKernel } from '@blade-ai/agent';");
-    expect(packageVerifier).toContain("import type { AgentStreamEvent } from '@blade-ai/agent/protocol';");
-    expect(packageVerifier).not.toContain("import type { AgentStreamEvent } from '@blade-ai/agent';");
+    expect(packageVerifier).toContain("${createAgentPublicTypeImportBlock('packedConsumer')}");
+    expect(publicTypeContracts).toContain("import type { AgentStreamEvent");
+    expect(publicTypeContracts).toContain("from '@blade-ai/agent/protocol';");
+    expect(publicTypeContracts).not.toContain("import type { AgentStreamEvent } from '@blade-ai/agent';");
     expect(packageVerifier).toContain("from '@blade-ai/agent/budget';");
     expect(packageVerifier).toContain("from '@blade-ai/agent/epoch';");
     expect(packageVerifier).toContain('toPackedForbiddenFileRules(agentSdkSessionPublicDeclarationBoundaryRules)');
@@ -1613,6 +1616,7 @@ describe('release scripts', () => {
 
   it('type-checks public declarations from the published temporary consumer', () => {
     const publishedVerifier = readFileSync(resolve('scripts/verify-published.mjs'), 'utf8');
+    const publicTypeContracts = readFileSync(resolve('scripts/public-type-contracts.mjs'), 'utf8');
     const readme = readFileSync(resolve('README.md'), 'utf8');
     const checklist = readFileSync(resolve('docs/production-checklist.md'), 'utf8');
 
@@ -1630,8 +1634,12 @@ describe('release scripts', () => {
     expect(publishedVerifier).toContain('RetryConfig');
     expect(publishedVerifier).toContain('DeepSeekProviderOptions');
     expect(publishedVerifier).toContain('VercelLanguageModelOptions');
-    expect(publishedVerifier).toContain("import type { AgentKernelOptions } from '@blade-ai/agent/kernel';");
-    expect(publishedVerifier).not.toContain("import type { AgentKernelOptions } from '@blade-ai/agent';");
+    expect(publishedVerifier).toContain("${createAgentPublicTypeImportBlock('publishedConsumer')}");
+    expect(publicTypeContracts).toContain("import type { AgentKernelOptions");
+    expect(publicTypeContracts).toContain("from '@blade-ai/agent/kernel';");
+    expect(publicTypeContracts).not.toContain("import type { AgentKernelOptions } from '@blade-ai/agent';");
+    expect(publicTypeContracts).toContain("import type { AgentStreamEvent");
+    expect(publishedVerifier).toContain('const agentProtocolEvent: AgentStreamEvent');
     expect(publishedVerifier).toContain("import { ExecutionEpoch } from '@blade-ai/agent/epoch';");
     expect(publishedVerifier).toContain("import type { SessionOptions } from '@blade-ai/agent-sdk';");
     expect(readme).toContain('TypeScript public declarations');

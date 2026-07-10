@@ -563,6 +563,7 @@ describe('package entrypoints', () => {
   it('runs the browser bundle check through the esbuild JS API', () => {
     const verifier = readFileSync('scripts/verify-entrypoints.mjs', 'utf-8');
     const helper = readFileSync('scripts/esbuild-bundle.mjs', 'utf-8');
+    const publicTypeContracts = readFileSync('scripts/public-type-contracts.mjs', 'utf-8');
 
     expect(verifier).toContain("import { bundleWithEsbuildRetry } from './esbuild-bundle.mjs';");
     expect(verifier).toContain('await bundleWithEsbuildRetry({');
@@ -592,12 +593,16 @@ describe('package entrypoints', () => {
     expect(verifier).toContain("import type { OpenAICompatibleModelPortOptions } from '@blade-ai/ai/providers/openai-compatible';");
     expect(verifier).toContain("import type { VercelLanguageModelOptions } from '@blade-ai/ai/providers/vercel';");
     expect(verifier).toContain("import type { RetryConfig } from '@blade-ai/ai/retry';");
-    expect(verifier).toContain("import type { AgentKernelOptions } from '@blade-ai/agent/kernel';");
-    expect(verifier).not.toContain("import type { AgentKernelOptions } from '@blade-ai/agent';");
-    expect(verifier).toContain("import type { AgentStreamEvent } from '@blade-ai/agent/protocol';");
-    expect(verifier).toContain("import type { AgentToolPort } from '@blade-ai/agent/ports';");
-    expect(verifier).toContain("import type { AgentToolCall } from '@blade-ai/agent/protocol';");
-    expect(verifier).toContain("import type { AgentTraceEvent } from '@blade-ai/agent/tracing';");
+    expect(publicTypeContracts).toContain(
+      "import type { AgentKernelOptions } from '@blade-ai/agent/kernel';",
+    );
+    expect(publicTypeContracts).not.toContain("import type { AgentKernelOptions } from '@blade-ai/agent';");
+    expect(publicTypeContracts).toContain(
+      "import type { AgentStreamEvent } from '@blade-ai/agent/protocol';",
+    );
+    expect(publicTypeContracts).toContain("import type { AgentToolPort } from '@blade-ai/agent/ports';");
+    expect(publicTypeContracts).toContain("import type { AgentToolCall } from '@blade-ai/agent/protocol';");
+    expect(publicTypeContracts).toContain("import type { AgentTraceEvent } from '@blade-ai/agent/tracing';");
     expect(verifier).toContain("import type { SessionOptions, StreamMessage } from '@blade-ai/agent-sdk';");
     expect(verifier).toContain("import type { ISession } from '@blade-ai/agent-sdk/session';");
     expect(verifier).toContain("import type { ToolDefinition } from '@blade-ai/agent-sdk/tools';");
@@ -669,6 +674,36 @@ describe('package entrypoints', () => {
     expect(verifier).toContain('local agent browser bundle message projection smoke did not execute');
     expect(verifier).not.toContain("'pnpm', [\n    'exec',\n    'esbuild'");
     expect(verifier).not.toContain("resolve(repoRoot, 'node_modules/.bin/esbuild')");
+  });
+
+  it('centralizes agent public type contract imports across entrypoint verifiers', () => {
+    const helperPath = 'scripts/public-type-contracts.mjs';
+    const localVerifier = readFileSync('scripts/verify-entrypoints.mjs', 'utf-8');
+    const packageVerifier = readFileSync('scripts/verify-packages.mjs', 'utf-8');
+    const publishedVerifier = readFileSync('scripts/verify-published.mjs', 'utf-8');
+
+    expect(existsSync(helperPath)).toBe(true);
+    const helper = readFileSync(helperPath, 'utf-8');
+
+    expect(localVerifier).toContain(
+      "import { createAgentPublicTypeImportLines } from './public-type-contracts.mjs';",
+    );
+    expect(packageVerifier).toContain(
+      "import { createAgentPublicTypeImportBlock } from './public-type-contracts.mjs';",
+    );
+    expect(publishedVerifier).toContain(
+      "import { createAgentPublicTypeImportBlock } from './public-type-contracts.mjs';",
+    );
+    expect(localVerifier).toContain("...createAgentPublicTypeImportLines('localDeclaration')");
+    expect(packageVerifier).toContain("$" + "{createAgentPublicTypeImportBlock('packedConsumer')}");
+    expect(publishedVerifier).toContain("$" + "{createAgentPublicTypeImportBlock('publishedConsumer')}");
+
+    expect(helper).toContain('localDeclaration');
+    expect(helper).toContain('packedConsumer');
+    expect(helper).toContain('publishedConsumer');
+    expect(helper).toContain("import type { AgentKernelOptions } from '@blade-ai/agent/kernel';");
+    expect(helper).toContain("import type { AgentStreamEvent } from '@blade-ai/agent/protocol';");
+    expect(helper).not.toContain("from '@blade-ai/agent';");
   });
 
   it('declares production verification scripts for package and release gates', () => {

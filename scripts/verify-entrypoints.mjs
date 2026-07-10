@@ -20,6 +20,7 @@ import {
   toLocalForbiddenDeclarationRules,
 } from './agent-sdk-boundary-rules.mjs';
 import { bundleWithEsbuildRetry } from './esbuild-bundle.mjs';
+import { createAgentPublicTypeImportLines } from './public-type-contracts.mjs';
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const packageRoot = existsSync(join(repoRoot, 'packages/agent-sdk/package.json'))
@@ -471,11 +472,7 @@ try {
       "import type { OpenAICompatibleModelPortOptions } from '@blade-ai/ai/providers/openai-compatible';",
       "import type { VercelLanguageModelOptions } from '@blade-ai/ai/providers/vercel';",
       "import type { RetryConfig } from '@blade-ai/ai/retry';",
-      "import type { AgentKernelOptions } from '@blade-ai/agent/kernel';",
-      "import type { AgentToolPort } from '@blade-ai/agent/ports';",
-      "import type { AgentStreamEvent } from '@blade-ai/agent/protocol';",
-      "import type { AgentToolCall } from '@blade-ai/agent/protocol';",
-      "import type { AgentTraceEvent } from '@blade-ai/agent/tracing';",
+      ...createAgentPublicTypeImportLines('localDeclaration'),
       "import type { SessionOptions, StreamMessage } from '@blade-ai/agent-sdk';",
       "import type { RuntimeContext } from '@blade-ai/agent-sdk/core';",
       "import type { ISession } from '@blade-ai/agent-sdk/session';",
