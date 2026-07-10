@@ -1,6 +1,6 @@
 const aiPublicTypeImportContracts = {
   localDeclaration: [
-    "import type { ModelPort } from '@blade-ai/ai/model';",
+    "import type { ModelPort, ModelRequest, ModelResponse, ModelStreamEvent, UsageInfo as ModelUsageInfo } from '@blade-ai/ai/model';",
     "import type { ChatConfig } from '@blade-ai/ai/chat';",
     "import type { OpenAICompatibleModelPortOptions } from '@blade-ai/ai/providers/openai-compatible';",
     "import type { VercelLanguageModelOptions } from '@blade-ai/ai/providers/vercel';",

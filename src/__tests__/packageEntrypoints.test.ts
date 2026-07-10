@@ -612,7 +612,9 @@ describe('package entrypoints', () => {
     expect(verifier).toContain('local package metadata @blade-ai/ai @blade-ai/agent @blade-ai/agent-sdk');
     expect(verifier).toContain('declaration-entry.ts');
     expect(verifier).toContain('declaration-tsconfig.json');
-    expect(publicTypeContracts).toContain("import type { ModelPort } from '@blade-ai/ai/model';");
+    expect(publicTypeContracts).toContain(
+      "import type { ModelPort, ModelRequest, ModelResponse, ModelStreamEvent, UsageInfo as ModelUsageInfo } from '@blade-ai/ai/model';",
+    );
     expect(publicTypeContracts).toContain("import type { ChatConfig } from '@blade-ai/ai/chat';");
     expect(publicTypeContracts).toContain(
       "import type { OpenAICompatibleModelPortOptions } from '@blade-ai/ai/providers/openai-compatible';",
@@ -763,7 +765,11 @@ describe('package entrypoints', () => {
     expect(publishedVerifier).toContain("$" + "{createAiPublicTypeImportBlock('publishedConsumer')}");
 
     expect(helper).toContain('aiPublicTypeImportContracts');
-    expect(helper).toContain("import type { ModelPort } from '@blade-ai/ai/model';");
+    expect(helper).toContain(
+      "import type { ModelPort, ModelRequest, ModelResponse, ModelStreamEvent, UsageInfo as ModelUsageInfo } from '@blade-ai/ai/model';",
+    );
+    expect(localVerifier).toContain('const modelRequest: ModelRequest');
+    expect(localVerifier).toContain('const modelStreamEvent: ModelStreamEvent');
     expect(helper).toContain("import type { ChatConfig } from '@blade-ai/ai/chat';");
     expect(helper).toContain("import type { RetryConfig } from '@blade-ai/ai/retry';");
     expect(helper).toContain(
