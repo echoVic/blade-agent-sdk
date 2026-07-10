@@ -1,4 +1,4 @@
-import type { AgentPermissionUpdate, AgentStreamEvent } from '@blade-ai/agent';
+import type { AgentPermissionUpdate, AgentStreamEvent } from '@blade-ai/agent/protocol';
 import type { TokenUsage } from '../types/common.js';
 import type { PermissionUpdate } from '../types/permissions.js';
 import type { SessionId, StreamMessage } from './types.js';

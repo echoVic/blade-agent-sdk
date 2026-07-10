@@ -7,9 +7,9 @@ import {
   AsyncEventQueue,
   type AgentLoopToolEvent,
   type AgentLoopToolExecutionUpdate,
-  type ExecutionEpoch,
   toolUpdateToAgentEvent,
-} from '@blade-ai/agent';
+} from '@blade-ai/agent/loop';
+import type { ExecutionEpoch } from '@blade-ai/agent/epoch';
 import type { JsonObject, PermissionMode } from '../types/common.js';
 import type {
   FunctionToolCall,

@@ -4,7 +4,8 @@ import type {
   Message,
   StreamToolCall,
 } from '@blade-ai/ai/chat';
-import { type AgentFunctionToolCall, type ExecutionEpoch, planToolExecution } from '@blade-ai/agent';
+import type { ExecutionEpoch } from '@blade-ai/agent/epoch';
+import { type AgentFunctionToolCall, planToolExecution } from '@blade-ai/agent/loop';
 import {
   ToolErrorType,
   type FunctionToolCall,

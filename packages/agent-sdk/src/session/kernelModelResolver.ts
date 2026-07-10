@@ -1,5 +1,5 @@
 import { createVercelModelPort, type VercelLanguageModelOptions } from '@blade-ai/ai/providers/vercel';
-import type { AgentModelRequestDefaults } from '@blade-ai/agent';
+import type { AgentModelRequestDefaults } from '@blade-ai/agent/kernel';
 import type { ModelPort } from '@blade-ai/ai';
 import type { BladeConfig, ModelConfig } from '../types/common.js';
 import type {

@@ -1,5 +1,5 @@
 import type { ModelPort } from '@blade-ai/ai';
-import type { AgentModelRequestDefaults } from '@blade-ai/agent';
+import type { AgentModelRequestDefaults } from '@blade-ai/agent/kernel';
 import type { BladeConfig } from '../types/common.js';
 
 export interface PackageLocalRuntimeKernelModelOptions {

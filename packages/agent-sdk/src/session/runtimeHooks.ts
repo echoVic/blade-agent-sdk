@@ -1,4 +1,4 @@
-import type { AgentHookPort } from '@blade-ai/agent';
+import type { AgentHookPort } from '@blade-ai/agent/ports';
 import type { ModelRequest } from '@blade-ai/ai';
 import { HookEvent } from '../types/constants.js';
 import type { HookCallback, SessionHookEvent } from './types.js';

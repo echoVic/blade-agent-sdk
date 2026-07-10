@@ -1,4 +1,4 @@
-import type { AgentTraceEvent, AgentTracePort } from '@blade-ai/agent';
+import type { AgentTraceEvent, AgentTracePort } from '@blade-ai/agent/tracing';
 import type { TraceRecorder } from '../observability/TraceRecorder.js';
 import type { TokenUsage } from '../types/common.js';
 

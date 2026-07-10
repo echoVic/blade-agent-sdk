@@ -1,11 +1,7 @@
-import type {
-  AgentStoreAppendContext,
-  AgentHookPort,
-  AgentStorePort,
-  AgentToolCall,
-  AgentToolPort,
-  AgentTracePort,
-} from '@blade-ai/agent';
+import type { AgentHookPort, AgentToolPort } from '@blade-ai/agent/ports';
+import type { AgentToolCall } from '@blade-ai/agent/protocol';
+import type { AgentStoreAppendContext, AgentStorePort } from '@blade-ai/agent/state';
+import type { AgentTracePort } from '@blade-ai/agent/tracing';
 import type { ModelMessage } from '@blade-ai/ai';
 import type { TraceRecorder } from '../observability/TraceRecorder.js';
 import type { ExecutionContext } from '../tools/types/index.js';

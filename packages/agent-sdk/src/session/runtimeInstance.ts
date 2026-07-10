@@ -1,12 +1,8 @@
-import {
-  TokenBudget,
-  type AgentHookPort,
-  type AgentStorePort,
-  type AgentTokenBudgetPort,
-  type AgentToolCall,
-  type AgentToolPort,
-  type AgentTracePort,
-} from '@blade-ai/agent';
+import { TokenBudget } from '@blade-ai/agent/budget';
+import type { AgentHookPort, AgentToolPort } from '@blade-ai/agent/ports';
+import type { AgentTokenBudgetPort, AgentToolCall } from '@blade-ai/agent/protocol';
+import type { AgentStorePort } from '@blade-ai/agent/state';
+import type { AgentTracePort } from '@blade-ai/agent/tracing';
 import type { ContextSnapshot, RuntimeContext } from '../runtime/types.js';
 import type { BladeConfig, McpServerConfig } from '../types/common.js';
 import type { PermissionHandler } from '../types/permissions.js';

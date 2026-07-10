@@ -1,10 +1,10 @@
 import type { ModelPort } from '@blade-ai/ai';
+import type { AgentModelRequestDefaults } from '@blade-ai/agent/kernel';
 import type {
-  AgentModelRequestDefaults,
   AgentStreamEvent,
   AgentTokenBudgetPort,
   AgentToolCall,
-} from '@blade-ai/agent';
+} from '@blade-ai/agent/protocol';
 import type { TraceRecorder } from '../observability/TraceRecorder.js';
 import type { ExecutionContext } from '../tools/types/index.js';
 import type { BladeConfig } from '../types/common.js';

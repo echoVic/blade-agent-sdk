@@ -134,6 +134,36 @@ describe('monorepo topology', () => {
     }
   });
 
+  it('keeps package-local session runtime on explicit agent package subpaths', () => {
+    const files = [
+      'packages/agent-sdk/src/session/kernelFactory.ts',
+      'packages/agent-sdk/src/session/kernelModelResolver.ts',
+      'packages/agent-sdk/src/session/kernelStreamBridge.ts',
+      'packages/agent-sdk/src/session/kernelStreamProjection.ts',
+      'packages/agent-sdk/src/session/kernelTracePort.ts',
+      'packages/agent-sdk/src/session/runtimeAgentKernels.ts',
+      'packages/agent-sdk/src/session/runtimeHooks.ts',
+      'packages/agent-sdk/src/session/runtimeInstance.ts',
+      'packages/agent-sdk/src/session/runtimeKernelModels.ts',
+      'packages/agent-sdk/src/session/runtimeKernelPorts.ts',
+      'packages/agent-sdk/src/session/runtimeKernelTraceFinalization.ts',
+      'packages/agent-sdk/src/session/runtimeKernelTurnStream.ts',
+      'packages/agent-sdk/src/session/runtimePorts.ts',
+      'packages/agent-sdk/src/session/runtimeRunTurn.ts',
+      'packages/agent-sdk/src/session/runtimeToolExecution.ts',
+      'packages/agent-sdk/src/session/store.ts',
+      'packages/agent-sdk/src/session/streamingToolExecutor.ts',
+    ];
+
+    for (const file of files) {
+      const source = readFileSync(file, 'utf-8');
+
+      expect(source, `${file} should not rely on the agent root barrel`).not.toContain(
+        "from '@blade-ai/agent'",
+      );
+    }
+  });
+
   it('keeps package builds isolated from the root package config', () => {
     for (const dir of ['packages/ai', 'packages/agent', 'packages/agent-sdk']) {
       const pkg = readJson(join(dir, 'package.json'));
@@ -2487,7 +2517,7 @@ describe('monorepo topology', () => {
     expect(existsSync('packages/agent-sdk/src/session/kernelFactory.ts')).toBe(true);
     expect(kernelFactorySource).not.toContain('../../../../src/');
     expect(kernelFactorySource).toContain('createPackageLocalAgentKernelFactory');
-    expect(kernelFactorySource).toContain("from '@blade-ai/agent'");
+    expect(kernelFactorySource).toContain("from '@blade-ai/agent/kernel'");
     expect(kernelFactorySource).toContain('AgentKernel');
     expect(kernelFactorySource).toContain('PackageLocalRuntimeAgentKernelFactoryPort');
     expect(sessionRuntimeFactorySource).not.toContain('../../../../src/session/Session.js');
@@ -2535,6 +2565,12 @@ describe('monorepo topology', () => {
       '@blade-ai/agent': ['../agent/src/index.ts'],
       '@blade-ai/agent/budget': ['../agent/src/budget/TokenBudget.ts'],
       '@blade-ai/agent/epoch': ['../agent/src/epoch/ExecutionEpoch.ts'],
+      '@blade-ai/agent/kernel': ['../agent/src/kernel/AgentKernel.ts'],
+      '@blade-ai/agent/loop': ['../agent/src/loop/index.ts'],
+      '@blade-ai/agent/ports': ['../agent/src/ports/index.ts'],
+      '@blade-ai/agent/protocol': ['../agent/src/protocol/index.ts'],
+      '@blade-ai/agent/state': ['../agent/src/state/index.ts'],
+      '@blade-ai/agent/tracing': ['../agent/src/tracing/index.ts'],
       '@blade-ai/ai': ['../ai/src/index.ts'],
     });
     expect(sdkTsconfig.compilerOptions?.paths).not.toHaveProperty('@/*');

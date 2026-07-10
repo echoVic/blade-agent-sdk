@@ -5,7 +5,7 @@ import {
   type AgentFunctionToolCall,
   type ToolExecutionPlan,
   type ToolExecutionRegistryLike,
-} from '@blade-ai/agent';
+} from '@blade-ai/agent/loop';
 import type { JsonObject } from '../types/common.js';
 import {
   ToolErrorType,

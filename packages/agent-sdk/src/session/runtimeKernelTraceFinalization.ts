@@ -1,4 +1,4 @@
-import type { AgentStreamEvent } from '@blade-ai/agent';
+import type { AgentStreamEvent } from '@blade-ai/agent/protocol';
 
 export interface PackageLocalKernelTraceFinalizationState {
   usage?: unknown;

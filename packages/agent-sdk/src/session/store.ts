@@ -1,6 +1,6 @@
 import * as fs from 'node:fs/promises';
 import { basename, join } from 'node:path';
-import type { AgentStoreAppendContext } from '@blade-ai/agent';
+import type { AgentStoreAppendContext } from '@blade-ai/agent/state';
 import type { ModelMessage } from '@blade-ai/ai';
 import { nanoid } from 'nanoid';
 import type { JsonObject, JsonValue, MessageRole } from '../types/common.js';

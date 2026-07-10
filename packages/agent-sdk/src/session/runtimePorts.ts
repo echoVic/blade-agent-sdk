@@ -1,5 +1,5 @@
 import type { ModelMessage } from '@blade-ai/ai';
-import type { AgentStoreAppendContext } from '@blade-ai/agent';
+import type { AgentStoreAppendContext } from '@blade-ai/agent/state';
 import type { RuntimeContext } from '../runtime/types.js';
 import type { SubagentConfig } from '../subagents/types.js';
 import type { BladeConfig, McpServerConfig } from '../types/common.js';
