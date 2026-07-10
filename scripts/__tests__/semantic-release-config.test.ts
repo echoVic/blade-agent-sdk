@@ -422,6 +422,7 @@ describe('package provenance metadata', () => {
     expect(packageVerifier).toContain("import { bundleWithEsbuildRetry } from './esbuild-bundle.mjs';");
     expect(packageVerifier).toContain('function verifyConsumerBrowserBundle');
     expect(packageVerifier).toContain('consumer-browser-entry.ts');
+    expect(packageVerifier).toContain("import * as rootBrowserFacade from '@blade-ai/agent-sdk';");
     expect(packageVerifier).toContain("from '@blade-ai/agent-sdk/browser';");
     expect(packageVerifier).toContain("from '@blade-ai/agent-sdk/session';");
     expect(packageVerifier).toContain("from '@blade-ai/agent-sdk/session/internal';");
@@ -441,6 +442,8 @@ describe('package provenance metadata', () => {
     expect(packageVerifier).toContain('server-only for internal createSession');
     expect(packageVerifier).toContain('server-only for resumeSession');
     expect(packageVerifier).toContain('server-only for getBuiltinTools');
+    expect(packageVerifier).toContain('Unexpected browser root local-only export');
+    expect(packageVerifier).toContain('browser root local-only exports absent');
   });
 
   it('browser-bundles the packed runtime-independent agent package', () => {
@@ -1769,6 +1772,7 @@ describe('release scripts', () => {
     expect(publishedVerifier).not.toContain('esbuild@^0.28.1');
     expect(publishedVerifier).toContain('verifyPublishedBrowserBundleSmoke');
     expect(publishedVerifier).toContain('consumer-browser-entry.ts');
+    expect(publishedVerifier).toContain("import * as rootBrowserFacade from '@blade-ai/agent-sdk';");
     expect(publishedVerifier).toContain("from '@blade-ai/agent-sdk';");
     expect(publishedVerifier).toContain("from '@blade-ai/agent-sdk/browser';");
     expect(publishedVerifier).toContain("from '@blade-ai/agent-sdk/session';");
@@ -1785,6 +1789,8 @@ describe('release scripts', () => {
     expect(publishedVerifier).toContain('server-only for browser createSession');
     expect(publishedVerifier).toContain('server-only for internal createSession');
     expect(publishedVerifier).toContain('server-only for getBuiltinTools');
+    expect(publishedVerifier).toContain('Unexpected browser root local-only export');
+    expect(publishedVerifier).toContain('browser root local-only exports absent');
     expect(readme).toContain('browser bundle smoke');
     expect(checklist).toContain('browser bundle smoke');
     expect(readme).toContain('post-publish temporary consumer toolchain pin gate');

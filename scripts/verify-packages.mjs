@@ -2012,6 +2012,7 @@ async function verifyConsumerBrowserBundle(consumerDir) {
   writeFileSync(
     entry,
     [
+      "import * as rootBrowserFacade from '@blade-ai/agent-sdk';",
       "import { createSession, PermissionMode } from '@blade-ai/agent-sdk';",
       "import { createSession as createBrowserSession, PermissionMode as BrowserPermissionMode, StreamMessageType as BrowserStreamMessageType } from '@blade-ai/agent-sdk/browser';",
       "import { StreamMessageType } from '@blade-ai/agent-sdk/core';",
@@ -2021,6 +2022,12 @@ async function verifyConsumerBrowserBundle(consumerDir) {
       "import { createSession as createServerSession } from '@blade-ai/agent-sdk/server';",
       "import { getBuiltinTools } from '@blade-ai/agent-sdk/local';",
       "console.log(PermissionMode.DEFAULT, BrowserPermissionMode.DEFAULT, StreamMessageType.CONTENT, BrowserStreamMessageType.CONTENT, ToolKind.ReadOnly);",
+      "for (const exportName of ['getBuiltinTools', 'createSdkMcpServer', 'FileSystemMemoryStore', 'MemoryManager', 'createMemoryReadTool', 'createMemoryWriteTool', 'tool']) {",
+      "  if (Object.hasOwn(rootBrowserFacade, exportName)) {",
+      "    throw new Error(`Unexpected browser root local-only export ${exportName}`);",
+      '  }',
+      '}',
+      "console.log('browser root local-only exports absent');",
       "try { createSession({} as never); } catch (error) { console.log((error as Error).message); }",
       "try { createBrowserSession({} as never); } catch (error) { console.log(`server-only for browser createSession: ${(error as Error).message}`); }",
       "try { resumeSession('session-id' as never); } catch (error) { console.log((error as Error).message); }",
@@ -2056,6 +2063,9 @@ async function verifyConsumerBrowserBundle(consumerDir) {
   }
   if (!browserRunOutput.includes('server-only for getBuiltinTools')) {
     throw new Error('Browser bundle does not include the getBuiltinTools server-only stub message');
+  }
+  if (!browserRunOutput.includes('browser root local-only exports absent')) {
+    throw new Error('Browser bundle did not prove browser root local-only exports are absent');
   }
   assertNoBrowserDisallowedMarkers(output);
 }
