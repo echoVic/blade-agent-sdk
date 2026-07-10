@@ -1919,11 +1919,6 @@ import {
   modelResponseToAssistantMessage,
   toolResultToToolMessage,
 } from '@blade-ai/agent/state';
-import type {
-  AgentTracePort,
-  BufferedAgentTracePort,
-  BufferedAgentTracePortOptions,
-} from '@blade-ai/agent/tracing';
 import { createBufferedAgentTracePort } from '@blade-ai/agent/tracing';
 ${createSdkPublicTypeImportBlock('publishedConsumer')}
 import { PermissionMode as BrowserPermissionMode } from '@blade-ai/agent-sdk/browser';

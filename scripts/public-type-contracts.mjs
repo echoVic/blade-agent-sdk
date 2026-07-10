@@ -38,13 +38,13 @@ const agentPublicTypeImportContracts = {
     "import type { AgentKernelOptions, AgentTurnInput } from '@blade-ai/agent/kernel';",
     "import type { AgentStreamEvent, AgentToolCall, AgentToolResult } from '@blade-ai/agent/protocol';",
     "import type { AgentToolPort } from '@blade-ai/agent/ports';",
-    "import type { AgentTraceEvent } from '@blade-ai/agent/tracing';",
+    "import type { AgentTraceEvent, AgentTracePort, BufferedAgentTracePort, BufferedAgentTracePortOptions } from '@blade-ai/agent/tracing';",
   ],
   publishedConsumer: [
     "import type { AgentKernelOptions, AgentTurnInput } from '@blade-ai/agent/kernel';",
     "import type { AgentStreamEvent, AgentToolCall, AgentToolResult } from '@blade-ai/agent/protocol';",
     "import type { AgentToolPort } from '@blade-ai/agent/ports';",
-    "import type { AgentTraceEvent } from '@blade-ai/agent/tracing';",
+    "import type { AgentTraceEvent, AgentTracePort, BufferedAgentTracePort, BufferedAgentTracePortOptions } from '@blade-ai/agent/tracing';",
   ],
 };
 

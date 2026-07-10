@@ -743,6 +743,11 @@ describe('package entrypoints', () => {
     expect(helper).toContain(
       "import type { AgentTraceEvent, AgentTracePort, BufferedAgentTracePort, BufferedAgentTracePortOptions } from '@blade-ai/agent/tracing';",
     );
+    expect(
+      helper.match(
+        /import type \{ AgentTraceEvent, AgentTracePort, BufferedAgentTracePort, BufferedAgentTracePortOptions \} from '@blade-ai\/agent\/tracing';/g,
+      )?.length,
+    ).toBe(3);
     expect(localVerifier).toContain('const agentToolResult: AgentToolResult');
     expect(localVerifier).toContain('const agentTurnInput: AgentTurnInput');
     expect(localVerifier).toContain('const bufferedAgentTracePort: BufferedAgentTracePort');
