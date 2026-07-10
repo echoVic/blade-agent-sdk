@@ -24,6 +24,7 @@ import {
   createAgentPublicTypeImportLines,
   createAiPublicTypeImportLines,
   createSdkPublicTypeImportLines,
+  createToolExecutionOutcomeAugmentationLines,
 } from './public-type-contracts.mjs';
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
@@ -491,6 +492,8 @@ try {
       ...createAiPublicTypeImportLines('localDeclaration'),
       ...createAgentPublicTypeImportLines('localDeclaration'),
       ...createSdkPublicTypeImportLines('localDeclaration'),
+      '',
+      ...createToolExecutionOutcomeAugmentationLines(),
       '',
       'const model: ModelPort = {',
       '  async generate(request) {',

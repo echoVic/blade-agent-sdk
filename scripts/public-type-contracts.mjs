@@ -29,6 +29,7 @@ const aiPublicTypeImportContracts = {
 const agentPublicTypeImportContracts = {
   localDeclaration: [
     "import type { AgentKernelOptions, AgentTurnInput } from '@blade-ai/agent/kernel';",
+    "import type { AgentFunctionToolCall, AgentLoopToolExecutionOutcome, AgentLoopToolExecutionUpdate } from '@blade-ai/agent/loop';",
     "import type { AgentToolPort } from '@blade-ai/agent/ports';",
     "import type { AgentStreamEvent } from '@blade-ai/agent/protocol';",
     "import type { AgentToolCall, AgentToolResult } from '@blade-ai/agent/protocol';",
@@ -36,12 +37,14 @@ const agentPublicTypeImportContracts = {
   ],
   packedConsumer: [
     "import type { AgentKernelOptions, AgentTurnInput } from '@blade-ai/agent/kernel';",
+    "import type { AgentFunctionToolCall, AgentLoopToolExecutionOutcome, AgentLoopToolExecutionUpdate } from '@blade-ai/agent/loop';",
     "import type { AgentStreamEvent, AgentToolCall, AgentToolResult } from '@blade-ai/agent/protocol';",
     "import type { AgentToolPort } from '@blade-ai/agent/ports';",
     "import type { AgentTraceEvent, AgentTracePort, BufferedAgentTracePort, BufferedAgentTracePortOptions } from '@blade-ai/agent/tracing';",
   ],
   publishedConsumer: [
     "import type { AgentKernelOptions, AgentTurnInput } from '@blade-ai/agent/kernel';",
+    "import type { AgentFunctionToolCall, AgentLoopToolExecutionOutcome, AgentLoopToolExecutionUpdate } from '@blade-ai/agent/loop';",
     "import type { AgentStreamEvent, AgentToolCall, AgentToolResult } from '@blade-ai/agent/protocol';",
     "import type { AgentToolPort } from '@blade-ai/agent/ports';",
     "import type { AgentTraceEvent, AgentTracePort, BufferedAgentTracePort, BufferedAgentTracePortOptions } from '@blade-ai/agent/tracing';",
@@ -54,14 +57,14 @@ const sdkPublicTypeImportContracts = {
     "import type { RuntimeContext } from '@blade-ai/agent-sdk/core';",
     "import type { SdkErrorOptions } from '@blade-ai/agent-sdk/errors';",
     "import type { ISession } from '@blade-ai/agent-sdk/session';",
-    "import type { ToolDefinition } from '@blade-ai/agent-sdk/tools';",
+    "import type { ToolDefinition, ToolExecutionOutcome, ToolExecutionUpdate } from '@blade-ai/agent-sdk/tools';",
   ],
   packedConsumer: [
     "import type { SessionOptions, StreamMessage } from '@blade-ai/agent-sdk';",
     "import type { JsonObject as CoreJsonObject, PermissionHandler, RuntimeContext, StreamMessage as CoreStreamMessage, ToolDefinition as CoreToolDefinition } from '@blade-ai/agent-sdk/core';",
     "import type { SdkErrorOptions } from '@blade-ai/agent-sdk/errors';",
     "import type { ISession as SubpathSession, ResumeOptions, SessionOptions as SubpathSessionOptions } from '@blade-ai/agent-sdk/session';",
-    "import type { ToolDefinition as ToolsToolDefinition, ToolResult as ToolsToolResult } from '@blade-ai/agent-sdk/tools';",
+    "import type { ToolDefinition as ToolsToolDefinition, ToolExecutionOutcome, ToolExecutionUpdate, ToolResult as ToolsToolResult } from '@blade-ai/agent-sdk/tools';",
     "import type { BuiltinToolsOptions } from '@blade-ai/agent-sdk/local';",
     "import type { ClaudeCodePermissionMode, ISession as ServerSession, PermissionsConfig as ServerPermissionsConfig, SubagentExecutionRunner, SubagentFrontmatter } from '@blade-ai/agent-sdk/server';",
     "import type { StreamMessage as BrowserStreamMessage } from '@blade-ai/agent-sdk/browser';",
@@ -72,11 +75,59 @@ const sdkPublicTypeImportContracts = {
     "import type { SdkErrorOptions } from '@blade-ai/agent-sdk/errors';",
     "import type { ISession } from '@blade-ai/agent-sdk/session';",
     "import type { ClaudeCodePermissionMode, ISession as ServerSession, PermissionsConfig as ServerPermissionsConfig, SubagentExecutionRunner, SubagentFrontmatter } from '@blade-ai/agent-sdk/server';",
-    "import type { ToolDefinition as SubpathToolDefinition } from '@blade-ai/agent-sdk/tools';",
+    "import type { ToolDefinition as SubpathToolDefinition, ToolExecutionOutcome, ToolExecutionUpdate } from '@blade-ai/agent-sdk/tools';",
     "import type { BuiltinToolsOptions } from '@blade-ai/agent-sdk/local';",
     "import type { PermissionMode, RuntimeContext } from '@blade-ai/agent-sdk/core';",
   ],
 };
+
+const toolExecutionOutcomeAugmentationContractLines = [
+  "declare module '@blade-ai/agent/loop' {",
+  '  interface AgentLoopToolExecutionOutcome {',
+  "    publicAgentOutcomeMarker?: 'agent-public-outcome';",
+  '  }',
+  '}',
+  '',
+  "declare module '@blade-ai/agent-sdk/tools' {",
+  '  interface ToolExecutionOutcome {',
+  "    publicSdkOutcomeMarker?: 'sdk-public-outcome';",
+  '  }',
+  '}',
+  '',
+  'const publicAgentToolCall: AgentFunctionToolCall = {',
+  "  id: 'public-agent-tool-call',",
+  "  type: 'function',",
+  "  function: { name: 'Read', arguments: '{}' },",
+  '};',
+  'const publicAgentToolOutcome: AgentLoopToolExecutionOutcome = {',
+  '  toolCall: publicAgentToolCall,',
+  "  result: { status: 'ok' },",
+  '  toolUseUuid: null,',
+  "  publicAgentOutcomeMarker: 'agent-public-outcome',",
+  '};',
+  'const publicAgentToolResultUpdate: AgentLoopToolExecutionUpdate = {',
+  "  type: 'tool_result',",
+  '  outcome: publicAgentToolOutcome,',
+  '};',
+  "const publicAgentOutcomeMarker: 'agent-public-outcome' | undefined =",
+  '  publicAgentToolResultUpdate.outcome.publicAgentOutcomeMarker;',
+  '',
+  'const publicSdkToolOutcome: ToolExecutionOutcome = {',
+  '  toolCall: {',
+  "    type: 'function',",
+  "    function: { name: 'Search', arguments: '{}' },",
+  '  },',
+  "  result: { success: true, llmContent: 'ok' },",
+  '  toolUseUuid: null,',
+  "  publicSdkOutcomeMarker: 'sdk-public-outcome',",
+  '};',
+  'const publicSdkToolResultUpdate: ToolExecutionUpdate = {',
+  "  type: 'tool_result',",
+  '  outcome: publicSdkToolOutcome,',
+  '};',
+  "const publicSdkOutcomeMarker: 'sdk-public-outcome' | undefined =",
+  '  publicSdkToolResultUpdate.outcome.publicSdkOutcomeMarker;',
+];
 
 function getAiPublicTypeImportLines(contractName) {
   const lines = aiPublicTypeImportContracts[contractName];
@@ -124,4 +175,12 @@ export function createAgentPublicTypeImportLines(contractName) {
 
 export function createAgentPublicTypeImportBlock(contractName) {
   return getAgentPublicTypeImportLines(contractName).join('\n');
+}
+
+export function createToolExecutionOutcomeAugmentationLines() {
+  return [...toolExecutionOutcomeAugmentationContractLines];
+}
+
+export function createToolExecutionOutcomeAugmentationBlock() {
+  return toolExecutionOutcomeAugmentationContractLines.join('\n');
 }

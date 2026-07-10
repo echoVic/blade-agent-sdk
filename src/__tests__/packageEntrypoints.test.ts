@@ -641,7 +641,9 @@ describe('package entrypoints', () => {
     );
     expect(publicTypeContracts).toContain("import type { SessionOptions, StreamMessage } from '@blade-ai/agent-sdk';");
     expect(publicTypeContracts).toContain("import type { ISession } from '@blade-ai/agent-sdk/session';");
-    expect(publicTypeContracts).toContain("import type { ToolDefinition } from '@blade-ai/agent-sdk/tools';");
+    expect(publicTypeContracts).toContain(
+      "import type { ToolDefinition, ToolExecutionOutcome, ToolExecutionUpdate } from '@blade-ai/agent-sdk/tools';",
+    );
     expect(publicTypeContracts).toContain("import type { RuntimeContext } from '@blade-ai/agent-sdk/core';");
     expect(verifier).toContain('const sdkErrorOptions: SdkErrorOptions');
     expect(verifier).toContain('local declaration consumer type-check passed');
@@ -813,11 +815,50 @@ describe('package entrypoints', () => {
     expect(helper).toContain("import type { SessionOptions, StreamMessage } from '@blade-ai/agent-sdk';");
     expect(helper).toContain("import type { RuntimeContext } from '@blade-ai/agent-sdk/core';");
     expect(helper).toContain("import type { ISession } from '@blade-ai/agent-sdk/session';");
-    expect(helper).toContain("import type { ToolDefinition } from '@blade-ai/agent-sdk/tools';");
+    expect(helper).toContain(
+      "import type { ToolDefinition, ToolExecutionOutcome, ToolExecutionUpdate } from '@blade-ai/agent-sdk/tools';",
+    );
     expect(helper).toContain("import type { BuiltinToolsOptions } from '@blade-ai/agent-sdk/local';");
     expect(helper).toContain("ClaudeCodePermissionMode");
     expect(helper).toContain("SubagentExecutionRunner");
     expect(helper).toContain("StreamMessage as BrowserStreamMessage");
+  });
+
+  it('wires public tool outcome declaration merging into all package consumers', () => {
+    const helper = readFileSync('scripts/public-type-contracts.mjs', 'utf-8');
+    const localVerifier = readFileSync('scripts/verify-entrypoints.mjs', 'utf-8');
+    const packageVerifier = readFileSync('scripts/verify-packages.mjs', 'utf-8');
+    const publishedVerifier = readFileSync('scripts/verify-published.mjs', 'utf-8');
+
+    expect(helper).toContain('createToolExecutionOutcomeAugmentationLines');
+    expect(helper).toContain('createToolExecutionOutcomeAugmentationBlock');
+    expect(helper).toContain("declare module '@blade-ai/agent/loop'");
+    expect(helper).toContain("declare module '@blade-ai/agent-sdk/tools'");
+    expect(helper).toContain('interface AgentLoopToolExecutionOutcome');
+    expect(helper).toContain('interface ToolExecutionOutcome');
+    expect(helper).toContain('const publicAgentToolResultUpdate: AgentLoopToolExecutionUpdate');
+    expect(helper).toContain('const publicSdkToolResultUpdate: ToolExecutionUpdate');
+    expect(helper).toContain("type: 'tool_result'");
+    expect(helper).toContain(
+      "import type { AgentFunctionToolCall, AgentLoopToolExecutionOutcome, AgentLoopToolExecutionUpdate } from '@blade-ai/agent/loop';",
+    );
+    expect(
+      helper.match(
+        /import type \{[^\n]*ToolExecutionOutcome[^\n]*ToolExecutionUpdate[^\n]*\} from '@blade-ai\/agent-sdk\/tools';/g,
+      )?.length,
+    ).toBe(3);
+
+    expect(localVerifier).toContain('createToolExecutionOutcomeAugmentationLines');
+    expect(localVerifier).toContain('...createToolExecutionOutcomeAugmentationLines()');
+    expect(packageVerifier).toContain('createToolExecutionOutcomeAugmentationBlock');
+    expect(packageVerifier).toContain('$' + '{createToolExecutionOutcomeAugmentationBlock()}');
+    expect(publishedVerifier).toContain('createToolExecutionOutcomeAugmentationBlock');
+    expect(publishedVerifier).toContain('$' + '{createToolExecutionOutcomeAugmentationBlock()}');
+
+    for (const verifier of [packageVerifier, publishedVerifier]) {
+      expect(verifier).not.toContain('  AgentFunctionToolCall,\n');
+      expect(verifier).not.toContain('  AgentLoopToolExecutionUpdate,\n');
+    }
   });
 
   it('declares production verification scripts for package and release gates', () => {

@@ -38,6 +38,7 @@ import {
   createAgentPublicTypeImportBlock,
   createAiPublicTypeImportBlock,
   createSdkPublicTypeImportBlock,
+  createToolExecutionOutcomeAugmentationBlock,
 } from './public-type-contracts.mjs';
 
 const execFileAsync = promisify(execFile);
@@ -1903,9 +1904,7 @@ import {
   ToolKind as AgentLoopToolKind,
 } from '@blade-ai/agent/loop';
 import type {
-  AgentFunctionToolCall,
   AgentLoopToolEvent,
-  AgentLoopToolExecutionUpdate,
   ToolBehavior as AgentLoopToolBehavior,
   ToolExecutionPlan,
   ToolInterruptBehavior,
@@ -1927,6 +1926,8 @@ ${createSdkPublicTypeImportBlock('publishedConsumer')}
 import { PermissionMode as BrowserPermissionMode } from '@blade-ai/agent-sdk/browser';
 import { subagentRegistry } from '@blade-ai/agent-sdk/server';
 import { PermissionMode as CorePermissionMode } from '@blade-ai/agent-sdk/core';
+
+${createToolExecutionOutcomeAugmentationBlock()}
 
 const modelPort: ModelPort = {
   async generate(request: ModelRequest): Promise<ModelResponse> {

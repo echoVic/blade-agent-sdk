@@ -37,6 +37,7 @@ import {
   createAgentPublicTypeImportBlock,
   createAiPublicTypeImportBlock,
   createSdkPublicTypeImportBlock,
+  createToolExecutionOutcomeAugmentationBlock,
 } from './public-type-contracts.mjs';
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
@@ -1396,9 +1397,7 @@ import {
   ToolKind as AgentLoopToolKind,
 } from '@blade-ai/agent/loop';
 import type {
-  AgentFunctionToolCall,
   AgentLoopToolEvent,
-  AgentLoopToolExecutionUpdate,
   ToolBehavior as AgentLoopToolBehavior,
   ToolExecutionPlan,
   ToolInterruptBehavior,
@@ -1446,6 +1445,8 @@ import {
   PermissionMode as BrowserPermissionMode,
   createSession as createBrowserSession,
 } from '@blade-ai/agent-sdk/browser';
+
+${createToolExecutionOutcomeAugmentationBlock()}
 
 const compatibleOptions: OpenAICompatibleModelPortOptions = {
   apiKey: 'test-key',
