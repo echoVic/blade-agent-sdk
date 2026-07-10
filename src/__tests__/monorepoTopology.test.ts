@@ -2958,6 +2958,8 @@ describe('monorepo topology', () => {
     expect(kernelFactorySource).toContain("from '@blade-ai/agent/kernel'");
     expect(kernelFactorySource).toContain('AgentKernel');
     expect(kernelFactorySource).toContain('PackageLocalRuntimeAgentKernelFactoryPort');
+    expect(kernelFactorySource).toContain("from './runtimeAgentKernels.js'");
+    expect(kernelFactorySource).not.toContain("from './runtimeInstance.js'");
     expect(sessionRuntimeFactorySource).not.toContain('../../../../src/session/Session.js');
     expect(sessionRuntimeFactorySource).toContain('interface DefaultSessionRuntimeFactoryOptions');
     expect(sessionRuntimeFactorySource).toContain('loadKernelRuntimeFactory');
