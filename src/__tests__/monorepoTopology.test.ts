@@ -231,7 +231,6 @@ describe('monorepo topology', () => {
       'src/agent/LoopRunner.ts',
       'src/agent/ModelManager.ts',
       'src/agent/RuntimePatchManager.ts',
-      'src/agent/StreamingToolExecutor.ts',
       'src/agent/types.ts',
       'src/agent/loop/adapterContracts.ts',
       'src/agent/loop/runTurn.ts',
@@ -284,7 +283,6 @@ describe('monorepo topology', () => {
     const legacyToolCallTypeSource = readFileSync('src/agent/loop/types.ts', 'utf-8');
     const packagePlanToolSource = readFileSync('packages/agent/src/loop/planToolExecution.ts', 'utf-8');
     const rootFunctionToolCallConsumers = [
-      'src/agent/StreamingToolExecutor.ts',
       'src/agent/loop/adapterContracts.ts',
       'src/agent/loop/runToolCall.ts',
       'src/agent/loop/runTurn.ts',
@@ -1641,7 +1639,6 @@ describe('monorepo topology', () => {
     const sdkTsupConfig = readFileSync('packages/agent-sdk/tsup.config.ts', 'utf-8');
     const rootVitestConfig = readFileSync('vitest.config.ts', 'utf-8');
     const rootLegacyLoopAdapters = [
-      'src/agent/StreamingToolExecutor.ts',
       'src/agent/loop/runToolCall.ts',
       'src/agent/loop/runTurn.ts',
     ] as const;
@@ -1677,7 +1674,7 @@ describe('monorepo topology', () => {
     expect(internalEntrySource).not.toContain('emitPackageLocalToolExecutionUpdate');
     expect(internalEntrySource).toContain('runPackageLocalToolCall');
     expect(internalEntrySource).not.toContain('PackageLocalRunToolCallInput');
-    expect(internalEntrySource).toContain('PackageLocalStreamingToolExecutor');
+    expect(internalEntrySource).not.toContain('PackageLocalStreamingToolExecutor');
     expect(internalEntrySource).not.toContain('PackageLocalStreamingToolExecutorConfig');
 
     for (const file of rootLegacyLoopAdapters) {
@@ -2778,6 +2775,7 @@ describe('monorepo topology', () => {
     expect(existsSync('packages/agent-sdk/src/__tests__/streamingToolExecutor.test.ts')).toBe(
       true,
     );
+    expect(existsSync('src/agent/StreamingToolExecutor.ts')).toBe(false);
     expect(existsSync('src/agent/__tests__/StreamingToolExecutor.test.ts')).toBe(false);
     expect(streamingToolExecutorSource).not.toContain('../../../src/');
     expect(streamingToolExecutorSource).toContain('PackageLocalStreamingToolExecutor');

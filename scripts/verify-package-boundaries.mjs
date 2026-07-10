@@ -128,7 +128,6 @@ const rootSourceRules = [
 ];
 
 const allowedRootSessionInternalConsumers = new Set([
-  'src/agent/StreamingToolExecutor.ts',
   'src/agent/loop/runToolCall.ts',
   'src/agent/loop/runTurn.ts',
 ]);
