@@ -1643,9 +1643,11 @@ describe('monorepo topology', () => {
     const rootLegacyLoopAdapters = [
       'src/agent/StreamingToolExecutor.ts',
       'src/agent/loop/runToolCall.ts',
-      'src/agent/loop/executeToolCalls.ts',
       'src/agent/loop/streamChatResponse.ts',
       'src/agent/loop/runTurn.ts',
+    ] as const;
+    const retiredRootLoopAdapters = [
+      'src/agent/loop/executeToolCalls.ts',
     ] as const;
 
     expect(existsSync('packages/agent-sdk/src/session/internal.ts')).toBe(true);
@@ -1675,6 +1677,12 @@ describe('monorepo topology', () => {
     for (const file of rootLegacyLoopAdapters) {
       const source = readFileSync(file, 'utf-8');
       expect(source, file).toContain("from '@blade-ai/agent-sdk/session/internal'");
+      expect(source, file).not.toContain('packages/agent-sdk/src');
+    }
+
+    for (const file of retiredRootLoopAdapters) {
+      const source = readFileSync(file, 'utf-8');
+      expect(source, file).not.toContain("from '@blade-ai/agent-sdk/session/internal'");
       expect(source, file).not.toContain('packages/agent-sdk/src');
     }
   });
