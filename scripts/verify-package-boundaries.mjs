@@ -127,9 +127,9 @@ const rootSourceRules = [
   },
 ];
 
-const allowedRootSessionInternalConsumers = new Set([
-  'src/agent/loop/runToolCall.ts',
-  'src/agent/loop/runTurn.ts',
+const allowedRootSessionInternalImports = new Map([
+  ['src/agent/loop/runToolCall.ts', new Set(['runPackageLocalToolCall'])],
+  ['src/agent/loop/runTurn.ts', new Set(['runPackageLocalTurn'])],
 ]);
 
 const rootScopedSourceRules = [
@@ -192,6 +192,28 @@ function extractSpecifiers(source) {
     if (specifier) specifiers.push(specifier);
   }
   return specifiers;
+}
+
+function extractNamedImportsFromSpecifier(source, specifier) {
+  const names = [];
+  const escapedSpecifier = specifier.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const namedImportPattern = new RegExp(
+    `\\b(?:import|export)\\s+(?:type\\s+)?\\{([\\s\\S]*?)\\}\\s+from\\s+['"]${escapedSpecifier}['"]`,
+    'g',
+  );
+
+  for (const match of source.matchAll(namedImportPattern)) {
+    for (const part of match[1].split(',')) {
+      const name = part
+        .trim()
+        .replace(/^type\s+/, '')
+        .split(/\s+as\s+/, 1)[0]
+        .trim();
+      if (name) names.push(name);
+    }
+  }
+
+  return names;
 }
 
 function isWithin(childPath, parentPath) {
@@ -786,11 +808,28 @@ for (const rule of rootSourceRules) {
       }
       if (
         specifier === '@blade-ai/agent-sdk/session/internal'
-        && !allowedRootSessionInternalConsumers.has(displayPath)
       ) {
-        violations.push(
-          `${displayPath}: disallowed import "${specifier}" - the migration-only session internal subpath is restricted to root legacy loop adapters`,
-        );
+        const allowedNames = allowedRootSessionInternalImports.get(displayPath);
+        if (!allowedNames) {
+          violations.push(
+            `${displayPath}: disallowed import "${specifier}" - the migration-only session internal subpath is restricted to root legacy loop adapters`,
+          );
+          continue;
+        }
+
+        const importedNames = extractNamedImportsFromSpecifier(source, specifier);
+        for (const importedName of importedNames) {
+          if (!allowedNames.has(importedName)) {
+            violations.push(
+              `${displayPath}: disallowed import "${importedName}" from "${specifier}" - root legacy loop adapters may only import allowed session internal bridge names`,
+            );
+          }
+        }
+        if (importedNames.length === 0) {
+          violations.push(
+            `${displayPath}: disallowed import "${specifier}" - root legacy loop adapters may only import allowed session internal bridge names`,
+          );
+        }
       }
     }
   }
