@@ -10,7 +10,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { type InternalLogger, LogCategory, NOOP_LOGGER } from '../../logging/Logger.js';
-import type { Message } from '../../services/ChatServiceInterface.js';
+import type { Message } from '@blade-ai/ai/chat';
 import { AgentId } from '../../types/branded.js';
 import type { AgentProgress } from '../types.js';
 

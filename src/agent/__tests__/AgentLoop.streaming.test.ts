@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import type { Message } from '../../services/ChatServiceInterface.js';
+import type { Message } from '@blade-ai/ai/chat';
 import type { ToolResult } from '../../tools/types/index.js';
 import type { AgentEvent } from '../AgentEvent.js';
 import type { AgentLoopConfig } from '../AgentLoop.js';

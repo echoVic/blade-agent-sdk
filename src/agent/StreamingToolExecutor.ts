@@ -8,7 +8,7 @@ import type {
   ChatResponse,
   IChatService,
   Message,
-} from '../services/ChatServiceInterface.js';
+} from '@blade-ai/ai/chat';
 import type { ExecutionPipeline } from '../tools/execution/ExecutionPipeline.js';
 import type { ToolResult } from '../tools/types/index.js';
 import type { JsonObject, PermissionMode } from '../types/common.js';

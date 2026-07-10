@@ -27,7 +27,7 @@ import {
 import type {
     IChatService,
     Message,
-} from '../services/ChatServiceInterface.js';
+} from '@blade-ai/ai/chat';
 import { discoverSkills } from '../skills/index.js';
 import { getBuiltinTools } from '../tools/builtin/index.js';
 import { ToolCatalog } from '../tools/catalog/ToolCatalog.js';

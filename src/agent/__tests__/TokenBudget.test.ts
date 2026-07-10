@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { UsageInfo } from '../../services/ChatServiceInterface.js';
+import type { UsageInfo } from '@blade-ai/ai/chat';
 import { TokenBudget } from '../TokenBudget.js';
 
 function createUsage(overrides: Partial<UsageInfo> = {}): UsageInfo {

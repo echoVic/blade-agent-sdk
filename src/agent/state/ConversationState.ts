@@ -1,4 +1,4 @@
-import type { Message } from '../../services/ChatServiceInterface.js';
+import type { Message } from '@blade-ai/ai/chat';
 
 /**
  * ConversationState — 消息单一事实源的封装边界。

@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import type { Message } from '../../services/ChatServiceInterface.js';
+import type { Message } from '@blade-ai/ai/chat';
 import { decideTurnLimit } from '../loop/decideTurnLimit.js';
 
 describe('decideTurnLimit — single-writer invariants', () => {

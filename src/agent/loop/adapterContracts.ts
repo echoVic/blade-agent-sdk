@@ -1,5 +1,5 @@
 import type { InternalLogger } from '../../logging/Logger.js';
-import type { Message, ToolCall } from '../../services/ChatServiceInterface.js';
+import type { Message, ToolCall } from '@blade-ai/ai/chat';
 import type { ExecutionPipeline } from '../../tools/execution/ExecutionPipeline.js';
 import type { ToolResult } from '../../tools/types/index.js';
 import type { AgentEvent } from '../AgentEvent.js';

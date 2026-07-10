@@ -10,7 +10,7 @@ import { CompactionService } from '../context/CompactionService.js';
 import type { ContextManager } from '../context/ContextManager.js';
 import type { HookRuntime } from '../hooks/HookRuntime.js';
 import type { InternalLogger } from '../logging/Logger.js';
-import type { Message } from '../services/ChatServiceInterface.js';
+import type { Message } from '@blade-ai/ai/chat';
 import type { ExecutionPipeline } from '../tools/execution/ExecutionPipeline.js';
 import {
   normalizeToolEffects,

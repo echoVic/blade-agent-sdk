@@ -218,6 +218,65 @@ describe('monorepo topology', () => {
     }
   });
 
+  it('keeps root agent chat protocol types on the ai chat subpath', () => {
+    const files = [
+      'src/agent/Agent.ts',
+      'src/agent/AgentEvent.ts',
+      'src/agent/AttachmentHandler.ts',
+      'src/agent/CompactionHandler.ts',
+      'src/agent/LoopHookBuilder.ts',
+      'src/agent/LoopRunner.ts',
+      'src/agent/ModelManager.ts',
+      'src/agent/RuntimePatchManager.ts',
+      'src/agent/StreamingToolExecutor.ts',
+      'src/agent/TokenBudget.ts',
+      'src/agent/types.ts',
+      'src/agent/loop/adapterContracts.ts',
+      'src/agent/loop/runTurn.ts',
+      'src/agent/loop/streamChatResponse.ts',
+      'src/agent/loop/types.ts',
+      'src/agent/state/ConversationState.ts',
+      'src/agent/state/LoopState.ts',
+      'src/agent/state/TurnState.ts',
+      'src/agent/subagents/AgentSessionStore.ts',
+      'src/agent/subagents/BackgroundAgentManager.ts',
+      'src/agent/__tests__/AgentLoop.test.ts',
+      'src/agent/__tests__/AgentLoop.streaming.test.ts',
+      'src/agent/__tests__/CompactionHandler.test.ts',
+      'src/agent/__tests__/LoopRunner.test.ts',
+      'src/agent/__tests__/LoopState.test.ts',
+      'src/agent/__tests__/ModelManager.setModel.test.ts',
+      'src/agent/__tests__/TokenBudget.test.ts',
+      'src/agent/__tests__/decideTurnLimit.singleWriter.test.ts',
+      'src/agent/__tests__/skillActivationFiltering.test.ts',
+      'src/agent/state/__tests__/ConversationState.test.ts',
+    ];
+
+    for (const file of files) {
+      const source = readFileSync(file, 'utf-8');
+      const legacyChatServiceImports =
+        source.match(/import[\s\S]*?from ['"][^'"]*services\/ChatServiceInterface\.js['"];?/g)
+        ?? [];
+
+      expect(source, `${file} should import chat protocol types from ai`).toContain(
+        "from '@blade-ai/ai/chat'",
+      );
+
+      if (file === 'src/agent/ModelManager.ts') {
+        expect(legacyChatServiceImports.join('\n'), `${file} should only keep the SDK factory`)
+          .toContain('createChatServiceAsync');
+        expect(legacyChatServiceImports.join('\n'), `${file} should not import IChatService from root`)
+          .not.toMatch(/\btype\s+IChatService\b/);
+        continue;
+      }
+
+      expect(
+        legacyChatServiceImports,
+        `${file} should not import chat protocol types from root services`,
+      ).toHaveLength(0);
+    }
+  });
+
   it('keeps package-local session runtime on explicit agent package subpaths', () => {
     const files = [
       'packages/agent-sdk/src/session/kernelFactory.ts',

@@ -1,4 +1,4 @@
-import type { ToolCall } from '../../services/ChatServiceInterface.js';
+import type { ToolCall } from '@blade-ai/ai/chat';
 
 export type FunctionToolCall = ToolCall & {
   type: 'function';

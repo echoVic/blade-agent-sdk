@@ -6,7 +6,8 @@
 
 import { ContextManager } from '../context/ContextManager.js';
 import { type InternalLogger, LogCategory, NOOP_LOGGER } from '../logging/Logger.js';
-import { createChatServiceAsync, type IChatService } from '../services/ChatServiceInterface.js';
+import type { IChatService } from '@blade-ai/ai/chat';
+import { createChatServiceAsync } from '../services/ChatServiceInterface.js';
 import { withDeepSeekDefaults } from '@blade-ai/ai/deepseek';
 import type { BladeConfig, ModelConfig, OutputFormat } from '../types/common.js';
 import { isThinkingModel } from '../utils/modelDetection.js';

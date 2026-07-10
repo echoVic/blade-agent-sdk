@@ -1,5 +1,5 @@
 import { describe, expect, it, vi, type Mock } from 'vitest';
-import type { Message } from '../../services/ChatServiceInterface.js';
+import type { Message } from '@blade-ai/ai/chat';
 import { CannotRetryError } from '../../services/RetryPolicy.js';
 import type { ToolResult } from '../../tools/types/index.js';
 import { SessionId } from '../../types/branded.js';

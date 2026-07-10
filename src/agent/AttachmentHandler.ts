@@ -1,7 +1,7 @@
 import { type InternalLogger, LogCategory, NOOP_LOGGER } from '../logging/Logger.js';
 import { AttachmentCollector } from '../prompts/processors/AttachmentCollector.js';
 import type { Attachment } from '../prompts/processors/types.js';
-import type { ContentPart } from '../services/ChatServiceInterface.js';
+import type { ContentPart } from '@blade-ai/ai/chat';
 import type { UserMessageContent } from './types.js';
 
 export class AttachmentHandler {

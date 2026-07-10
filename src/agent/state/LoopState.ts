@@ -1,5 +1,5 @@
 import type { ContextSnapshot } from '../../runtime/index.js';
-import type { IChatService } from '../../services/ChatServiceInterface.js';
+import type { IChatService } from '@blade-ai/ai/chat';
 import type { PermissionMode } from '../../types/common.js';
 import type { ConversationState } from './ConversationState.js';
 import type {

@@ -3,7 +3,7 @@ import type { ContextManager } from '../context/ContextManager.js';
 import { softCompact } from '../context/strategies/SoftCompactionStrategy.js';
 import { TokenCounter } from '../context/TokenCounter.js';
 import { type InternalLogger, LogCategory, NOOP_LOGGER } from '../logging/Logger.js';
-import type { IChatService } from '../services/ChatServiceInterface.js';
+import type { IChatService } from '@blade-ai/ai/chat';
 import { cloneMessage } from '../services/messageUtils.js';
 import type { SessionId } from '../types/branded.js';
 import type { CompactingEvent } from './AgentEvent.js';

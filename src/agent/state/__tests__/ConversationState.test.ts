@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { Message } from '../../../services/ChatServiceInterface.js';
+import type { Message } from '@blade-ai/ai/chat';
 import type { JsonObject } from '../../../types/common.js';
 import { ConversationState } from '../ConversationState.js';
 

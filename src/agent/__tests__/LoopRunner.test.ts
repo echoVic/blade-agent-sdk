@@ -3,7 +3,7 @@ import { z } from 'zod';
 import * as FileAnalyzerModule from '../../context/FileAnalyzer.js';
 import { HookRuntime } from '../../hooks/HookRuntime.js';
 import type { RuntimePatch } from '../../runtime/RuntimePatch.js';
-import type { Message } from '../../services/ChatServiceInterface.js';
+import type { Message } from '@blade-ai/ai/chat';
 import { ToolCatalog } from '../../tools/catalog/ToolCatalog.js';
 import { createTool } from '../../tools/core/createTool.js';
 import type { ExecutionPipeline } from '../../tools/execution/ExecutionPipeline.js';

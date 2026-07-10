@@ -8,7 +8,7 @@
  */
 
 import type { RuntimeContextPatch, RuntimePatch } from '../runtime/index.js';
-import type { Message, ToolCall } from '../services/ChatServiceInterface.js';
+import type { Message, ToolCall } from '@blade-ai/ai/chat';
 import type { TodoItem } from '../tools/builtin/todo/types.js';
 import type { ToolResult } from '../tools/types/ToolResult.js';
 import type { PermissionUpdate } from '../types/permissions.js';

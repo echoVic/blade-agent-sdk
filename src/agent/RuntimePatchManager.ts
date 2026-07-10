@@ -24,7 +24,7 @@ import {
   type RuntimePatchApplication,
   type RuntimePatchProvenance,
 } from '../runtime/index.js';
-import type { Message } from '../services/ChatServiceInterface.js';
+import type { Message } from '@blade-ai/ai/chat';
 import type { SkillActivationContext } from '../skills/index.js';
 import type { SessionId } from '../types/branded.js';
 import type { ToolDiscoveryEntry } from '../tools/exposure/index.js';

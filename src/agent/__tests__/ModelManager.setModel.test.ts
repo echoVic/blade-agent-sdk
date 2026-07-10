@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import type { ChatConfig } from '../../services/ChatServiceInterface.js';
+import type { ChatConfig } from '@blade-ai/ai/chat';
 import type { BladeConfig, ModelConfig } from '../../types/common.js';
 
 const mockCreateChatServiceAsync = vi.fn(async (config: ChatConfig) => ({

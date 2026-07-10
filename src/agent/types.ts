@@ -3,7 +3,7 @@
  */
 
 import type { ContextSnapshot } from '../runtime/index.js';
-import type { ContentPart, Message } from '../services/ChatServiceInterface.js';
+import type { ContentPart, Message } from '@blade-ai/ai/chat';
 import type { ToolCatalogSourcePolicy } from '../tools/catalog/index.js';
 import type { ConfirmationHandler } from '../tools/types/ExecutionTypes.js';
 import type { AgentId, SessionId } from '../types/branded.js';

@@ -8,7 +8,7 @@ import type {
   ChatResponse,
   IChatService,
   Message,
-} from '../../services/ChatServiceInterface.js';
+} from '@blade-ai/ai/chat';
 
 export async function* streamChatResponse(
   getChatService: () => IChatService,

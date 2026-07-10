@@ -9,7 +9,7 @@ import type { InternalLogger } from '../../logging/Logger.js';
 import type {
   ChatResponse,
   Message,
-} from '../../services/ChatServiceInterface.js';
+} from '@blade-ai/ai/chat';
 import type { ExecutionPipeline } from '../../tools/execution/ExecutionPipeline.js';
 import type { ToolResult } from '../../tools/types/index.js';
 import type { PermissionMode } from '../../types/common.js';

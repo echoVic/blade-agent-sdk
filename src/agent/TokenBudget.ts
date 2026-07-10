@@ -1,4 +1,4 @@
-import type { UsageInfo } from '../services/ChatServiceInterface.js';
+import type { UsageInfo } from '@blade-ai/ai/chat';
 
 /** Threshold at which a budget warning is emitted (80%). */
 const DEFAULT_WARNING_THRESHOLD = 0.8;
