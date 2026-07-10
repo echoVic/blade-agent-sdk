@@ -6,5 +6,4 @@ export {
 } from './runtimeToolExecution.js';
 export {
   PackageLocalStreamingToolExecutor,
-  type PackageLocalStreamingToolExecutorConfig,
 } from './streamingToolExecutor.js';

@@ -1678,6 +1678,7 @@ describe('monorepo topology', () => {
     expect(internalEntrySource).toContain('runPackageLocalToolCall');
     expect(internalEntrySource).not.toContain('PackageLocalRunToolCallInput');
     expect(internalEntrySource).toContain('PackageLocalStreamingToolExecutor');
+    expect(internalEntrySource).not.toContain('PackageLocalStreamingToolExecutorConfig');
 
     for (const file of rootLegacyLoopAdapters) {
       const source = readFileSync(file, 'utf-8');

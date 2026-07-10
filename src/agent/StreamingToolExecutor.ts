@@ -1,7 +1,6 @@
 import type { JSONSchema7 } from 'json-schema';
 import {
   PackageLocalStreamingToolExecutor,
-  type PackageLocalStreamingToolExecutorConfig,
 } from '@blade-ai/agent-sdk/session/internal';
 import { type InternalLogger, LogCategory, NOOP_LOGGER } from '../logging/Logger.js';
 import type {
@@ -16,6 +15,10 @@ import type { ExecutionEpoch } from './ExecutionEpoch.js';
 import type { AgentFunctionToolCall as FunctionToolCall } from '@blade-ai/agent/loop';
 import type { ToolExecutionOutcome } from './loop/executeToolCalls.js';
 import type { ToolExecutionContext, ToolExecutionUpdate } from './loop/runToolCall.js';
+
+type PackageLocalStreamingToolExecutorConfig = Parameters<
+  PackageLocalStreamingToolExecutor['collectAndExecute']
+>[3];
 
 interface ToolExecutionHooks {
   onBeforeToolExec?: (ctx: {
