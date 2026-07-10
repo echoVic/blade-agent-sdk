@@ -2064,6 +2064,11 @@ const agentProtocolEvent: AgentStreamEvent = {
   type: 'result',
   content: 'ok',
 };
+const agentToolResult: AgentToolResult = {
+  id: 'call_echo',
+  name: 'Echo',
+  output: 'ok',
+};
 
 const toolPort: AgentToolPort = {
   async list() {
@@ -2264,6 +2269,7 @@ void tokenBudgetConfig;
 void tokenBudgetSnapshot;
 void turnInput;
 void agentProtocolEvent;
+void agentToolResult;
 void toolPort;
 void agentStoreAppendContext;
 void agentStorePort;

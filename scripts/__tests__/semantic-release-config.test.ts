@@ -1729,7 +1729,9 @@ describe('release scripts', () => {
     expect(publicTypeContracts).toContain("from '@blade-ai/agent/kernel';");
     expect(publicTypeContracts).not.toContain("import type { AgentKernelOptions } from '@blade-ai/agent';");
     expect(publicTypeContracts).toContain("import type { AgentStreamEvent");
+    expect(publicTypeContracts).toContain('AgentToolResult');
     expect(publishedVerifier).toContain('const agentProtocolEvent: AgentStreamEvent');
+    expect(publishedVerifier).toContain('const agentToolResult: AgentToolResult');
     expect(publishedVerifier).toContain("import { ExecutionEpoch } from '@blade-ai/agent/epoch';");
     expect(publicTypeContracts).toContain("import type { SessionOptions");
     expect(publicTypeContracts).toContain("from '@blade-ai/agent-sdk';");

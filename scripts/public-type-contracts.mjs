@@ -42,7 +42,7 @@ const agentPublicTypeImportContracts = {
   ],
   publishedConsumer: [
     "import type { AgentKernelOptions, AgentTurnInput } from '@blade-ai/agent/kernel';",
-    "import type { AgentStreamEvent, AgentToolCall } from '@blade-ai/agent/protocol';",
+    "import type { AgentStreamEvent, AgentToolCall, AgentToolResult } from '@blade-ai/agent/protocol';",
     "import type { AgentToolPort } from '@blade-ai/agent/ports';",
     "import type { AgentTraceEvent } from '@blade-ai/agent/tracing';",
   ],
