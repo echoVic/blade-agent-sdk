@@ -19,6 +19,7 @@
  */
 import type { JSONSchema7 } from 'json-schema';
 import { describe, expect, it } from 'vitest';
+import type { ModelConfig } from '../../types/common.js';
 import type { Message } from '../ChatServiceInterface.js';
 import { createChatServiceAsync } from '../ChatServiceInterface.js';
 import {
@@ -807,14 +808,15 @@ describe('DeepSeek 离线逻辑测试', () => {
 
   describe('withDeepSeekDefaults', () => {
     it('填充默认值', () => {
-      const config = withDeepSeekDefaults({
+      const input: ModelConfig = {
         id: 'deepseek-v4-pro',
         name: 'DeepSeek V4 Pro',
         provider: 'deepseek',
         model: 'deepseek-v4-pro',
         apiKey: 'test',
         baseUrl: '',
-      });
+      };
+      const config = withDeepSeekDefaults(input);
 
       expect(config.maxContextTokens).toBe(1_000_000);
       expect(config.maxOutputTokens).toBe(384_000);
@@ -837,14 +839,15 @@ describe('DeepSeek 离线逻辑测试', () => {
     });
 
     it('reasoner 别名启用 thinking', () => {
-      const config = withDeepSeekDefaults({
+      const input: ModelConfig = {
         id: 'deepseek-reasoner',
         name: 'DeepSeek Reasoner',
         provider: 'deepseek',
         model: 'deepseek-reasoner',
         apiKey: 'test',
         baseUrl: '',
-      });
+      };
+      const config = withDeepSeekDefaults(input);
 
       expect(config.supportsThinking).toBe(true);
       expect(config.model).toBe('deepseek-v4-flash'); // 别名解析
