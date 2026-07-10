@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from 'vitest';
-import type { ContentPart, Message } from '../../services/ChatServiceInterface.js';
+import type { ContentPart, Message } from '@blade-ai/ai/chat';
 import { TokenCounter } from '../TokenCounter.js';
 
 describe('TokenCounter', () => {

@@ -1,4 +1,4 @@
-import type { Message } from '../../services/ChatServiceInterface.js';
+import type { Message } from '@blade-ai/ai/chat';
 
 export interface MicrocompactOptions {
   preserveRecentToolMessages?: number;

@@ -1,5 +1,5 @@
 import { encodingForModel } from 'js-tiktoken';
-import type { Message, ToolCall } from '../services/ChatServiceInterface.js';
+import type { Message, ToolCall } from '@blade-ai/ai/chat';
 
 interface Encoding {
   encode: (text: string) => number[];

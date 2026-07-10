@@ -1,7 +1,7 @@
 import { nanoid } from 'nanoid';
 import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
-import type { ContentPart, ToolCall } from '../../services/ChatServiceInterface.js';
+import type { ContentPart, ToolCall } from '@blade-ai/ai/chat';
 import { JsonlSessionStore } from '../../session/SessionStore.js';
 import { MessageId, SessionId } from '../../types/branded.js';
 import type { JsonObject, JsonValue, MessageRole } from '../../types/common.js';

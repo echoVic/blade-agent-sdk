@@ -1,6 +1,6 @@
 import * as crypto from 'node:crypto';
 import { nanoid } from 'nanoid';
-import type { Message, ToolCall as ChatToolCall } from '../services/ChatServiceInterface.js';
+import type { Message, ToolCall as ChatToolCall } from '@blade-ai/ai/chat';
 import {
   JsonlSessionStore,
   NoopSessionStore,

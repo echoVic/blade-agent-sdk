@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { Message } from '../../services/ChatServiceInterface.js';
+import type { Message } from '@blade-ai/ai/chat';
 
 const mockChat = vi.fn(async () => ({
   content: '<summary>ok</summary>',

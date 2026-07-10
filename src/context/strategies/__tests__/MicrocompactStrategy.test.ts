@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { Message } from '../../../services/ChatServiceInterface.js';
+import type { Message } from '@blade-ai/ai/chat';
 import { microcompact } from '../MicrocompactStrategy.js';
 
 describe('microcompact', () => {

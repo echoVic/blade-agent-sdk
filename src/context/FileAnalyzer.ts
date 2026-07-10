@@ -5,7 +5,7 @@
 
 import { readFile } from 'node:fs/promises';
 import { basename } from 'node:path';
-import type { Message, ToolCall } from '../services/ChatServiceInterface.js';
+import type { Message, ToolCall } from '@blade-ai/ai/chat';
 import type { JsonObject } from '../types/common.js';
 
 /**

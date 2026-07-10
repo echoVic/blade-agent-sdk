@@ -4,12 +4,10 @@
  */
 
 import { nanoid } from 'nanoid';
+import type { Message } from '@blade-ai/ai/chat';
 import { HookManager } from '../hooks/HookManager.js';
 import { NOOP_LOGGER } from '../logging/Logger.js';
-import {
-    createChatServiceAsync,
-    type Message,
-} from '../services/ChatServiceInterface.js';
+import { createChatServiceAsync } from '../services/ChatServiceInterface.js';
 import { SessionId } from '../types/branded.js';
 import { PermissionMode, type ProviderType } from '../types/common.js';
 import { FileAnalyzer, type FileContent } from './FileAnalyzer.js';
