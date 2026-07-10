@@ -609,6 +609,9 @@ describe('package entrypoints', () => {
     expect(verifier).toContain('Declaration export mismatch between local root and local server');
     expect(verifier).toContain('declarations missing from local server');
     expect(verifier).toContain('declarations extra in local server');
+    expect(verifier).toContain('local browser root local-only export boundary passed');
+    expect(verifier).toContain("assertNoRuntimeExport(browserRootModule, 'getBuiltinTools')");
+    expect(verifier).toContain("assertNoRuntimeExport(browserRootModule, 'createSdkMcpServer')");
     expect(verifier).toContain('toLocalForbiddenDeclarationRules(agentSdkCoreDeclarationBrowserSafeRules)');
     expect(verifier).toContain('local core declaration browser-safe boundary passed');
     expect(verifier).toContain('toLocalForbiddenDeclarationRules(agentSdkRootPublicDeclarationBoundaryRules)');

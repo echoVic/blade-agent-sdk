@@ -28,15 +28,8 @@ export {
 } from '../core/index.js';
 
 export {
-  createMemoryReadTool,
-  createMemoryWriteTool,
-  createSdkMcpServer,
   createSession,
-  FileSystemMemoryStore,
   forkSession,
-  getBuiltinTools,
-  MemoryManager,
   prompt,
   resumeSession,
-  tool,
 } from './server-only-stub.js';

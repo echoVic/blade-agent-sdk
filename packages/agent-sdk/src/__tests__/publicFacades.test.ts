@@ -100,4 +100,18 @@ describe('agent-sdk package-local public facades', () => {
     expect(browserEntry.PermissionMode.DEFAULT).toBe('default');
     expect(() => browserEntry.createSession({} as never)).toThrow(/server-only.*createSession/);
   });
+
+  it('keeps local-only adapter stubs out of the browser root facade', () => {
+    for (const exportName of [
+      'getBuiltinTools',
+      'createSdkMcpServer',
+      'FileSystemMemoryStore',
+      'MemoryManager',
+      'createMemoryReadTool',
+      'createMemoryWriteTool',
+      'tool',
+    ]) {
+      expect(browserEntry, exportName).not.toHaveProperty(exportName);
+    }
+  });
 });

@@ -1,7 +1,7 @@
 import { spawnSync } from 'node:child_process';
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import {
   agentSdkCoreDeclarationBrowserSafeRules,
   agentSdkEagerLegacySessionRuntimeClosureRules,
@@ -55,6 +55,12 @@ function run(command, args, options = {}) {
 function assertIncludes(text, expected, label) {
   if (!text.includes(expected)) {
     throw new Error(`${label} did not include expected text: ${expected}\nActual:\n${text}`);
+  }
+}
+
+function assertNoRuntimeExport(module, name) {
+  if (Object.hasOwn(module, name)) {
+    throw new Error(`Unexpected runtime export ${name}`);
   }
 }
 
@@ -163,6 +169,16 @@ const browserRootOutput = run(process.execPath, [
 ]);
 assertIncludes(browserRootOutput, 'default', 'browser root import');
 assertIncludes(browserRootOutput, 'server-only for createSession', 'browser root stub');
+
+const browserRootModule = await import(pathToFileURL(join(packageRoot, 'dist/browser/index.js')).href);
+assertNoRuntimeExport(browserRootModule, 'getBuiltinTools');
+assertNoRuntimeExport(browserRootModule, 'createSdkMcpServer');
+assertNoRuntimeExport(browserRootModule, 'FileSystemMemoryStore');
+assertNoRuntimeExport(browserRootModule, 'MemoryManager');
+assertNoRuntimeExport(browserRootModule, 'createMemoryReadTool');
+assertNoRuntimeExport(browserRootModule, 'createMemoryWriteTool');
+assertNoRuntimeExport(browserRootModule, 'tool');
+console.log('local browser root local-only export boundary passed');
 
 const subpathOutput = run(process.execPath, [
   '-e',
