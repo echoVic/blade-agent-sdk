@@ -126,7 +126,11 @@ const rootSourceRules = [
 const scopedSourceRules = [
   {
     name: 'Browser-safe SDK source',
-    sourceDirs: ['packages/agent-sdk/src/browser', 'packages/agent-sdk/src/core'],
+    sourceDirs: [
+      'packages/agent-sdk/src/browser',
+      'packages/agent-sdk/src/core',
+      'packages/agent-sdk/src/errors',
+    ],
     disallowedSpecifiers: [
       [/^node:/, 'Browser-safe SDK source must not import Node-only modules'],
       [/^(?:fs|child_process|worker_threads)$/, 'Browser-safe SDK source must not import Node-only modules'],
