@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import type { AgentKernelOptions } from '@blade-ai/agent';
+import type { AgentKernelOptions } from '@blade-ai/agent/kernel';
 import type { ModelPort } from '@blade-ai/ai';
 import { createDefaultKernelSessionRuntimeFactory } from '../session/defaultKernelRuntimeFactory.js';
 import { PackageLocalSession } from '../session/sessionInstance.js';

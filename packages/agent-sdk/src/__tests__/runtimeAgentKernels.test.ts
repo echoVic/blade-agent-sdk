@@ -1,10 +1,7 @@
 import type { ModelPort } from '@blade-ai/ai';
-import type {
-  AgentHookPort,
-  AgentStorePort,
-  AgentToolPort,
-  AgentTracePort,
-} from '@blade-ai/agent';
+import type { AgentHookPort, AgentToolPort } from '@blade-ai/agent/ports';
+import type { AgentStorePort } from '@blade-ai/agent/state';
+import type { AgentTracePort } from '@blade-ai/agent/tracing';
 import { describe, expect, it, vi } from 'vitest';
 import {
   createPackageLocalRuntimeAgentKernel,

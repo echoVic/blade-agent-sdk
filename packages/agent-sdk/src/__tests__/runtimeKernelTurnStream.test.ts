@@ -1,4 +1,4 @@
-import type { AgentStreamEvent } from '@blade-ai/agent';
+import type { AgentStreamEvent } from '@blade-ai/agent/protocol';
 import { describe, expect, it, vi } from 'vitest';
 import type { TraceRecorder } from '../observability/TraceRecorder.js';
 import {

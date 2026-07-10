@@ -191,6 +191,26 @@ describe('monorepo topology', () => {
     }
   });
 
+  it('keeps package-local runtime tests on explicit agent package subpaths', () => {
+    const files = [
+      'packages/agent-sdk/src/__tests__/defaultKernelRuntimeFactory.test.ts',
+      'packages/agent-sdk/src/__tests__/runtimeAgentKernels.test.ts',
+      'packages/agent-sdk/src/__tests__/runtimeKernel.test.ts',
+      'packages/agent-sdk/src/__tests__/runtimeKernelModels.test.ts',
+      'packages/agent-sdk/src/__tests__/runtimeKernelTraceFinalization.test.ts',
+      'packages/agent-sdk/src/__tests__/runtimeKernelTurnStream.test.ts',
+      'packages/agent-sdk/src/__tests__/runtimeTurn.test.ts',
+    ];
+
+    for (const file of files) {
+      const source = readFileSync(file, 'utf-8');
+
+      expect(source, `${file} should not rely on the agent root barrel`).not.toContain(
+        "from '@blade-ai/agent'",
+      );
+    }
+  });
+
   it('keeps package builds isolated from the root package config', () => {
     for (const dir of ['packages/ai', 'packages/agent', 'packages/agent-sdk']) {
       const pkg = readJson(join(dir, 'package.json'));

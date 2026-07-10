@@ -1,5 +1,5 @@
 import type { ModelPort } from '@blade-ai/ai';
-import type { AgentModelRequestDefaults } from '@blade-ai/agent';
+import type { AgentModelRequestDefaults } from '@blade-ai/agent/kernel';
 import { describe, expect, it, vi } from 'vitest';
 import { resolvePackageLocalRuntimeKernelModel } from '../session/runtimeKernelModels.js';
 import type { PackageLocalRuntimeKernelModelResolverPort } from '../session/runtimeKernelModels.js';
