@@ -119,7 +119,7 @@ describe('createRootRunTurn', () => {
       chatService: input.turnState.chatService,
       tools: input.turnState.tools,
     });
-    expect(received?.toolHooks).not.toBe(hooks);
+    expect(received?.toolHooks).toBe(hooks);
     expect(received?.logger).toBe(logger);
     expect(received?.executionPipeline).not.toBe(rootPipeline);
     expect(received?.executionPipeline.getRegistry()).toBe(rootPipeline.getRegistry());

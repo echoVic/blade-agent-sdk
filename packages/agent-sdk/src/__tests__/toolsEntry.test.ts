@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { z } from 'zod';
+import * as toolsEntry from '../tools/index.js';
 import {
   ToolCatalog,
   ToolKind,
@@ -9,6 +10,10 @@ import {
 } from '../tools/index.js';
 
 describe('agent-sdk tools entry', () => {
+  it('exports package-owned validation result normalization', () => {
+    expect(toolsEntry).toHaveProperty('validationErrorToToolResult');
+  });
+
   it('creates executable tools from package-local authoring helpers', async () => {
     const tool = createTool({
       name: 'Echo',

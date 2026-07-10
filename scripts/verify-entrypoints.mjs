@@ -194,10 +194,15 @@ const subpathOutput = run(process.execPath, [
     "const server = await import('@blade-ai/agent-sdk/server');",
     "const tools = await import('@blade-ai/agent-sdk/tools');",
     "const local = await import('@blade-ai/agent-sdk/local');",
-    "console.log(core.PermissionMode.DEFAULT, browser.PermissionMode.DEFAULT, typeof server.createSession, typeof tools.defineTool, typeof local.getBuiltinTools);",
+    "const validation = tools.validationErrorToToolResult({ message: 'invalid' });",
+    "console.log(core.PermissionMode.DEFAULT, browser.PermissionMode.DEFAULT, typeof server.createSession, typeof tools.defineTool, typeof local.getBuiltinTools, validation.error?.type);",
   ].join(' '),
 ]);
-assertIncludes(subpathOutput, 'default default function function function', 'subpath imports');
+assertIncludes(
+  subpathOutput,
+  'default default function function function validation_error',
+  'subpath imports',
+);
 
 const rootServerParityOutput = run(process.execPath, [
   '-e',
@@ -391,7 +396,7 @@ try {
       "import { createSession as createBrowserSession, PermissionMode as BrowserPermissionMode, StreamMessageType as BrowserStreamMessageType } from '@blade-ai/agent-sdk/browser';",
       "import { StreamMessageType } from '@blade-ai/agent-sdk/core';",
       "import { ConfigError, SdkError } from '@blade-ai/agent-sdk/errors';",
-      "import { ToolCatalog, ToolKind, defineTool } from '@blade-ai/agent-sdk/tools';",
+      "import { ToolCatalog, ToolKind, defineTool, validationErrorToToolResult } from '@blade-ai/agent-sdk/tools';",
       "import { resumeSession } from '@blade-ai/agent-sdk/session';",
       "import { runPackageLocalTurn as runBrowserInternalTurn, runPackageLocalToolCall as runBrowserInternalToolCall } from '@blade-ai/agent-sdk/session/internal';",
       "import { createSession as createServerSession } from '@blade-ai/agent-sdk/server';",
@@ -405,9 +410,11 @@ try {
       "  async execute() { return 'ok'; },",
       "});",
       "const browserSafeCatalog = new ToolCatalog();",
+      "const validationResult = validationErrorToToolResult({ message: 'invalid' });",
       "console.log(PermissionMode.DEFAULT, BrowserPermissionMode.DEFAULT, StreamMessageType.CONTENT, BrowserStreamMessageType.CONTENT, ToolKind.ReadOnly, typeof createSession);",
       "console.log('browser-safe sdk error', sdkError instanceof SdkError, sdkError.code);",
       "console.log('browser-safe sdk tool', browserSafeTool.name, browserSafeTool.kind, browserSafeCatalog.getAll().length);",
+      "console.log('browser-safe sdk validation', validationResult.error?.type);",
       "try { createSession({}); } catch (error) { console.log(`server-only for bundled createSession: ${error.message}`); }",
       "try { createBrowserSession({}); } catch (error) { console.log(`server-only for bundled browser createSession: ${error.message}`); }",
       "try { resumeSession('session-id'); } catch (error) { console.log(`server-only for bundled resumeSession: ${error.message}`); }",
@@ -434,6 +441,11 @@ try {
   assertIncludes(browserBundleOutput, 'default default content content readonly function', 'browser bundle root import');
   assertIncludes(browserBundleOutput, 'browser-safe sdk error true CONFIG_ERROR', 'browser bundle errors import');
   assertIncludes(browserBundleOutput, 'browser-safe sdk tool browser_tool readonly 0', 'browser bundle tools import');
+  assertIncludes(
+    browserBundleOutput,
+    'browser-safe sdk validation validation_error',
+    'browser bundle validation import',
+  );
   assertIncludes(browserBundleOutput, 'server-only for bundled createSession', 'browser bundle root stub');
   assertIncludes(browserBundleOutput, 'server-only for bundled browser createSession', 'browser bundle browser stub');
   assertIncludes(browserBundleOutput, 'server-only for bundled resumeSession', 'browser bundle session stub');

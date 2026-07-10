@@ -1283,7 +1283,13 @@ assertRuntimeExportParity(agentSdk, agentSdkServer, 'root', 'server');
 assertRuntimeExport(agentSdkSession, 'createSession');
 assertRuntimeExport(agentSdkSession, 'resumeSession');
 assertRuntimeExport(agentSdkTools, 'ToolKind');
+assertRuntimeExport(agentSdkTools, 'validationErrorToToolResult');
 assertRuntimeExport(agentSdkLocal, 'getBuiltinTools');
+const packedValidationResult = agentSdkTools.validationErrorToToolResult({ message: 'invalid' });
+if (packedValidationResult.error?.type !== 'validation_error') {
+  throw new Error('@blade-ai/agent-sdk/tools validation normalization returned an unexpected result');
+}
+console.log('packed sdk validation validation_error');
 
 if (Object.keys(aiChat).length !== 0) {
   throw new Error('@blade-ai/ai/chat should remain type-only at runtime');
@@ -1958,7 +1964,7 @@ async function verifyConsumerBrowserBundle(consumerDir) {
       "import { createSession as createBrowserSession, PermissionMode as BrowserPermissionMode, StreamMessageType as BrowserStreamMessageType } from '@blade-ai/agent-sdk/browser';",
       "import { StreamMessageType } from '@blade-ai/agent-sdk/core';",
       "import { ConfigError, SdkError } from '@blade-ai/agent-sdk/errors';",
-      "import { ToolCatalog, ToolKind, defineTool } from '@blade-ai/agent-sdk/tools';",
+      "import { ToolCatalog, ToolKind, defineTool, validationErrorToToolResult } from '@blade-ai/agent-sdk/tools';",
       "import { resumeSession } from '@blade-ai/agent-sdk/session';",
       "import { runPackageLocalTurn as runBrowserInternalTurn, runPackageLocalToolCall as runBrowserInternalToolCall } from '@blade-ai/agent-sdk/session/internal';",
       "import { createSession as createServerSession } from '@blade-ai/agent-sdk/server';",
@@ -1972,9 +1978,11 @@ async function verifyConsumerBrowserBundle(consumerDir) {
       "  async execute() { return 'ok'; },",
       "});",
       "const browserSafeCatalog = new ToolCatalog();",
+      "const validationResult = validationErrorToToolResult({ message: 'invalid' });",
       "console.log(PermissionMode.DEFAULT, BrowserPermissionMode.DEFAULT, StreamMessageType.CONTENT, BrowserStreamMessageType.CONTENT, ToolKind.ReadOnly);",
       "console.log('browser-safe sdk error', sdkError instanceof SdkError, sdkError.code);",
       "console.log('browser-safe sdk tool', browserSafeTool.name, browserSafeTool.kind, browserSafeCatalog.getAll().length);",
+      "console.log('browser-safe sdk validation', validationResult.error?.type);",
       "for (const exportName of ['getBuiltinTools', 'createSdkMcpServer', 'FileSystemMemoryStore', 'MemoryManager', 'createMemoryReadTool', 'createMemoryWriteTool', 'tool']) {",
       "  if (Object.hasOwn(rootBrowserFacade, exportName)) {",
       "    throw new Error(`Unexpected browser root local-only export ${exportName}`);",
@@ -2011,6 +2019,9 @@ async function verifyConsumerBrowserBundle(consumerDir) {
   }
   if (!browserRunOutput.includes('browser-safe sdk tool browser_tool readonly 0')) {
     throw new Error('Browser bundle does not include the browser-safe SDK tools runtime smoke');
+  }
+  if (!browserRunOutput.includes('browser-safe sdk validation validation_error')) {
+    throw new Error('Browser bundle does not include the browser-safe SDK validation runtime smoke');
   }
   if (!browserRunOutput.includes('server-only for browser createSession')) {
     throw new Error('Browser bundle does not include the browser createSession server-only stub message');

@@ -515,6 +515,12 @@ assertRuntimeExport(agentSdkServer, 'subagentRegistry');
 assertRuntimeExportParity(agentSdk, agentSdkServer, 'root', 'server');
 assertRuntimeExport(agentSdkSession, 'createSession');
 assertRuntimeExport(agentSdkTools, 'ToolKind');
+assertRuntimeExport(agentSdkTools, 'validationErrorToToolResult');
+const publishedValidationResult = agentSdkTools.validationErrorToToolResult({ message: 'invalid' });
+if (publishedValidationResult.error?.type !== 'validation_error') {
+  throw new Error('@blade-ai/agent-sdk/tools validation normalization returned an unexpected result');
+}
+console.log('published sdk validation validation_error');
 
 if (Object.keys(aiChat).length !== 0) {
   throw new Error('@blade-ai/ai/chat should remain type-only at runtime');
@@ -1682,7 +1688,7 @@ import { createSession as serverCreateSession } from '@blade-ai/agent-sdk/server
 import { resumeSession } from '@blade-ai/agent-sdk/session';
 import { runPackageLocalTurn as runBrowserInternalTurn, runPackageLocalToolCall as runBrowserInternalToolCall } from '@blade-ai/agent-sdk/session/internal';
 import { getBuiltinTools } from '@blade-ai/agent-sdk/local';
-import { ToolCatalog, ToolKind, defineTool } from '@blade-ai/agent-sdk/tools';
+import { ToolCatalog, ToolKind, defineTool, validationErrorToToolResult } from '@blade-ai/agent-sdk/tools';
 
 function assertServerOnly(action, expected) {
   try {
@@ -1711,10 +1717,12 @@ const noopTool = defineTool({
 });
 const browserSafeCatalog = new ToolCatalog();
 const sdkError = new ConfigError('browser-safe sdk error');
+const validationResult = validationErrorToToolResult({ message: 'invalid' });
 
 console.log(PermissionMode.DEFAULT, BrowserPermissionMode.DEFAULT, CorePermissionMode.DEFAULT, BrowserStreamMessageType.CONTENT, ToolKind.ReadOnly, noopTool.name);
 console.log('browser-safe sdk error', sdkError instanceof SdkError, sdkError.code);
 console.log('browser-safe sdk tool', noopTool.name, noopTool.kind, browserSafeCatalog.getAll().length);
+console.log('browser-safe sdk validation', validationResult.error?.type);
 for (const exportName of ['getBuiltinTools', 'createSdkMcpServer', 'FileSystemMemoryStore', 'MemoryManager', 'createMemoryReadTool', 'createMemoryWriteTool', 'tool']) {
   if (Object.hasOwn(rootBrowserFacade, exportName)) {
     throw new Error(\`Unexpected browser root local-only export \${exportName}\`);
@@ -1763,6 +1771,7 @@ assertServerOnly(() => getBuiltinTools(), 'server-only for getBuiltinTools');
     'server-only for getBuiltinTools',
     'browser-safe sdk error true CONFIG_ERROR',
     'browser-safe sdk tool noop readonly 0',
+    'browser-safe sdk validation validation_error',
     'browser root local-only exports absent',
   ]) {
     if (!output.includes(expected)) {

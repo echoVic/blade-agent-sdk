@@ -582,6 +582,8 @@ describe('package entrypoints', () => {
 
   it('runs the browser bundle check through the esbuild JS API', () => {
     const verifier = readFileSync('scripts/verify-entrypoints.mjs', 'utf-8');
+    const packageVerifier = readFileSync('scripts/verify-packages.mjs', 'utf-8');
+    const publishedVerifier = readFileSync('scripts/verify-published.mjs', 'utf-8');
     const helper = readFileSync('scripts/esbuild-bundle.mjs', 'utf-8');
     const publicTypeContracts = readFileSync('scripts/public-type-contracts.mjs', 'utf-8');
 
@@ -593,7 +595,16 @@ describe('package entrypoints', () => {
     expect(helper).toContain('The service was stopped');
     expect(verifier).toContain('browserBundleOutput');
     expect(verifier).toContain("from '@blade-ai/agent-sdk/errors';");
-    expect(verifier).toContain("import { ToolCatalog, ToolKind, defineTool } from '@blade-ai/agent-sdk/tools';");
+    expect(verifier).toContain('validationErrorToToolResult');
+    expect(verifier).toContain('browser-safe sdk validation validation_error');
+    expect(packageVerifier).toContain(
+      "assertRuntimeExport(agentSdkTools, 'validationErrorToToolResult')",
+    );
+    expect(packageVerifier).toContain('packed sdk validation validation_error');
+    expect(publishedVerifier).toContain(
+      "assertRuntimeExport(agentSdkTools, 'validationErrorToToolResult')",
+    );
+    expect(publishedVerifier).toContain('published sdk validation validation_error');
     expect(verifier).toContain('browser-safe sdk error true CONFIG_ERROR');
     expect(verifier).toContain('browser-safe sdk tool');
     expect(verifier).toContain("verifyBrowserSafeDist('dist/errors/index.js')");
@@ -644,7 +655,7 @@ describe('package entrypoints', () => {
     expect(publicTypeContracts).toContain("import type { SessionOptions, StreamMessage } from '@blade-ai/agent-sdk';");
     expect(publicTypeContracts).toContain("import type { ISession } from '@blade-ai/agent-sdk/session';");
     expect(publicTypeContracts).toContain(
-      "import type { ToolDefinition, ToolExecutionOutcome, ToolExecutionUpdate } from '@blade-ai/agent-sdk/tools';",
+      "import type { ToolDefinition, ToolExecutionOutcome, ToolExecutionUpdate, ToolResult, ToolValidationError } from '@blade-ai/agent-sdk/tools';",
     );
     expect(publicTypeContracts).toContain("import type { RuntimeContext } from '@blade-ai/agent-sdk/core';");
     expect(verifier).toContain('const sdkErrorOptions: SdkErrorOptions');
@@ -818,7 +829,7 @@ describe('package entrypoints', () => {
     expect(helper).toContain("import type { RuntimeContext } from '@blade-ai/agent-sdk/core';");
     expect(helper).toContain("import type { ISession } from '@blade-ai/agent-sdk/session';");
     expect(helper).toContain(
-      "import type { ToolDefinition, ToolExecutionOutcome, ToolExecutionUpdate } from '@blade-ai/agent-sdk/tools';",
+      "import type { ToolDefinition, ToolExecutionOutcome, ToolExecutionUpdate, ToolResult, ToolValidationError } from '@blade-ai/agent-sdk/tools';",
     );
     expect(helper).toContain("import type { BuiltinToolsOptions } from '@blade-ai/agent-sdk/local';");
     expect(helper).toContain("ClaudeCodePermissionMode");

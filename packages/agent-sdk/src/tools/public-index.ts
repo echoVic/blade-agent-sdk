@@ -17,8 +17,12 @@ import type {
   ToolExecutionUpdateOf,
   ToolExposureConfig,
   ToolExposureMode,
+  ToolFailureResult,
   ToolResult,
+  ToolResultMetadata,
   ToolSchema,
+  ToolSuccessResult,
+  ToolValidationError,
 } from './types/index.js';
 
 export type ToolSourceKind = 'builtin' | 'custom' | 'mcp' | 'session';
@@ -76,6 +80,10 @@ export declare function toolFromDefinition<TParams = JsonObject>(
   definition: ToolDefinition<TParams>,
 ): Tool<TParams>;
 
+export declare function validationErrorToToolResult(
+  error: ToolValidationError,
+): ToolResult;
+
 export type {
   FunctionDeclaration,
   FunctionToolCall,
@@ -93,8 +101,12 @@ export type {
   ToolExecutionUpdateOf,
   ToolExposureConfig,
   ToolExposureMode,
+  ToolFailureResult,
   ToolResult,
+  ToolResultMetadata,
   ToolSchema,
+  ToolSuccessResult,
+  ToolValidationError,
 };
 export { ToolErrorType } from './types/index.js';
 export { ToolKind } from './types/ToolKind.js';

@@ -369,7 +369,6 @@ describe('monorepo topology', () => {
       'src/hooks/HookRuntime.ts',
       'src/hooks/__tests__/HookRuntime.test.ts',
       'src/tools/types/ToolEffects.ts',
-      'src/tools/types/ToolResult.ts',
     ];
 
     for (const file of files) {
@@ -384,6 +383,19 @@ describe('monorepo topology', () => {
         `${file} should not import chat protocol types from root services`,
       ).toHaveLength(0);
     }
+  });
+
+  it('keeps the legacy root tool result contract as an agent-sdk tools shim', () => {
+    const source = readFileSync('src/tools/types/ToolResult.ts', 'utf-8');
+
+    expect(source).toContain("from '@blade-ai/agent-sdk/tools'");
+    expect(source).toContain('ToolErrorType');
+    expect(source).toContain('validationErrorToToolResult');
+    expect(source).toMatch(/export type\s*\{[\s\S]*\bToolResult\b/);
+    expect(source).not.toContain('export enum ToolErrorType');
+    expect(source).not.toContain('export interface ToolSuccessResult');
+    expect(source).not.toContain('export interface ToolFailureResult');
+    expect(source).not.toContain('export function validationErrorToToolResult');
   });
 
   it('keeps root service implementation chat protocol types on the ai chat subpath', () => {
@@ -1666,6 +1678,7 @@ describe('monorepo topology', () => {
 
   it('centralizes tool execution update contracts in the public agent loop package', () => {
     const rootTsconfig = readJson('tsconfig.json');
+    const rootVitestConfig = readFileSync('vitest.config.ts', 'utf-8');
     const loopIndexSource = readFileSync('packages/agent/src/loop/index.ts', 'utf-8');
     const agentUpdateSource = readFileSync(
       'packages/agent/src/loop/toolUpdateToAgentEvent.ts',
@@ -1721,6 +1734,8 @@ describe('monorepo topology', () => {
     expect(rootTsconfig.compilerOptions?.paths).toMatchObject({
       '@blade-ai/agent-sdk/tools': ['./packages/agent-sdk/src/tools/index.ts'],
     });
+    expect(rootVitestConfig).toContain("'@blade-ai/agent-sdk/tools'");
+    expect(rootVitestConfig).toContain('packages/agent-sdk/src/tools/index.ts');
     expect(rootAdapterContractsSource).not.toContain('export interface ToolExecutionOutcome');
     expect(rootAdapterContractsSource).not.toMatch(
       /export type ToolExecutionUpdate\s*=\s*\|/,
@@ -1833,6 +1848,11 @@ describe('monorepo topology', () => {
     );
     expect(rootAgentLoopAdapterSource).not.toContain("from './runTurn.js'");
     expect(rootAgentLoopAdapterSource).not.toContain('as unknown as');
+    expect(rootAgentLoopAdapterSource).not.toContain('mapPackageLocalToolErrorType');
+    expect(rootAgentLoopAdapterSource).not.toContain('mapPackageLocalToolResult');
+    expect(rootAgentLoopAdapterSource).not.toContain('mapPackageLocalToolExecutionUpdate');
+    expect(rootAgentLoopAdapterSource).not.toContain('createPackageLocalRunTurnToolHooks');
+    expect(rootAgentLoopAdapterSource).toContain('toolHooks: input.toolHooks');
     expect(rootAdapterContractsSource).toContain('export interface RunTurnInput');
     expect(rootAdapterContractsSource).toContain('export type RunTurnPort');
   });

@@ -19,9 +19,12 @@ import type {
   ToolExecutionUpdateOf,
   ToolExposureConfig,
   ToolExposureMode,
+  ToolFailureResult,
   ToolInvocation,
   ToolResult,
+  ToolResultMetadata,
   ToolSchema,
+  ToolSuccessResult,
   ToolValidationError,
 } from './types/index.js';
 import { ToolErrorType } from './types/index.js';
@@ -569,7 +572,7 @@ function zodToFunctionSchema<TSchema extends z.ZodSchema>(
   }) as FunctionDeclaration['parameters'];
 }
 
-function validationErrorToToolResult(error: ToolValidationError): ToolResult {
+export function validationErrorToToolResult(error: ToolValidationError): ToolResult {
   return {
     success: false,
     llmContent: error.llmContent ?? error.message,
@@ -598,7 +601,11 @@ export type {
   ToolExecutionUpdateOf,
   ToolExposureConfig,
   ToolExposureMode,
+  ToolFailureResult,
   ToolResult,
+  ToolResultMetadata,
   ToolSchema,
+  ToolSuccessResult,
+  ToolValidationError,
 };
 export { ToolErrorType, ToolKind };

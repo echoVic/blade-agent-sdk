@@ -440,7 +440,7 @@ describe('package provenance metadata', () => {
     expect(packageVerifier).toContain("import * as rootBrowserFacade from '@blade-ai/agent-sdk';");
     expect(packageVerifier).toContain("from '@blade-ai/agent-sdk/browser';");
     expect(packageVerifier).toContain("from '@blade-ai/agent-sdk/errors';");
-    expect(packageVerifier).toContain("import { ToolCatalog, ToolKind, defineTool } from '@blade-ai/agent-sdk/tools';");
+    expect(packageVerifier).toContain("import { ToolCatalog, ToolKind, defineTool, validationErrorToToolResult } from '@blade-ai/agent-sdk/tools';");
     expect(packageVerifier).toContain("from '@blade-ai/agent-sdk/session';");
     expect(packageVerifier).toContain("from '@blade-ai/agent-sdk/session/internal';");
     expect(packageVerifier).toContain('runPackageLocalTurn as runBrowserInternalTurn');
@@ -1891,7 +1891,7 @@ describe('release scripts', () => {
     expect(publishedVerifier).toContain("from '@blade-ai/agent-sdk/server';");
     expect(publishedVerifier).toContain("from '@blade-ai/agent-sdk/local';");
     expect(publishedVerifier).toContain("from '@blade-ai/agent-sdk/core';");
-    expect(publishedVerifier).toContain("import { ToolCatalog, ToolKind, defineTool } from '@blade-ai/agent-sdk/tools';");
+    expect(publishedVerifier).toContain("import { ToolCatalog, ToolKind, defineTool, validationErrorToToolResult } from '@blade-ai/agent-sdk/tools';");
     expect(publishedVerifier).toContain('await bundleWithEsbuildRetry({');
     expect(publishedVerifier).toContain("platform: 'browser'");
     expect(publishedVerifier).toContain("conditions: ['browser']");

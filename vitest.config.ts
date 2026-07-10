@@ -11,6 +11,7 @@ export default defineConfig({
       '@': resolve(__dirname, 'src'),
       '@blade-ai/agent-sdk/server': resolve(__dirname, 'packages/agent-sdk/src/server/index.ts'),
       '@blade-ai/agent-sdk/local': resolve(__dirname, 'packages/agent-sdk/src/local/index.ts'),
+      '@blade-ai/agent-sdk/tools': resolve(__dirname, 'packages/agent-sdk/src/tools/index.ts'),
       '@blade-ai/agent-sdk/session/internal': resolve(__dirname, 'packages/agent-sdk/src/session/internal.ts'),
       '@blade-ai/agent-sdk': resolve(__dirname, 'packages/agent-sdk/src/index.ts'),
       '@blade-ai/ai/chat': resolve(__dirname, 'packages/ai/src/chat/index.ts'),
