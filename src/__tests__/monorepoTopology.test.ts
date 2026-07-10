@@ -1669,7 +1669,7 @@ describe('monorepo topology', () => {
 
     expect(internalEntrySource).not.toContain('export *');
     expect(internalEntrySource).toContain('runPackageLocalTurn');
-    expect(internalEntrySource).toContain('executePackageLocalToolCalls');
+    expect(internalEntrySource).not.toContain('executePackageLocalToolCalls');
     expect(internalEntrySource).toContain('runPackageLocalToolCall');
     expect(internalEntrySource).toContain('PackageLocalStreamingToolExecutor');
 

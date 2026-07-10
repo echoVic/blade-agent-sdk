@@ -7,9 +7,7 @@ export {
 } from './runtimeRunTurn.js';
 export {
   emitPackageLocalToolExecutionUpdate,
-  executePackageLocalToolCalls,
   runPackageLocalToolCall,
-  type PackageLocalExecuteToolCallsInput,
   type PackageLocalRunToolCallInput,
   type PackageLocalToolExecutionHooks,
 } from './runtimeToolExecution.js';
