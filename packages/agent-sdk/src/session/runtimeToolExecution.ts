@@ -1,5 +1,6 @@
 import {
   createInterruptAwareAbortSignal,
+  executeToolExecutionPlan,
   repairToolCallParams,
   resolveToolInterruptBehavior,
   type AgentFunctionToolCall,
@@ -64,37 +65,10 @@ export interface PackageLocalExecuteToolCallsInput
 export async function executePackageLocalToolCalls(
   input: PackageLocalExecuteToolCallsInput,
 ): Promise<ToolExecutionOutcome[]> {
-  const { plan } = input;
-
-  if (plan.mode === 'serial') {
-    const results: ToolExecutionOutcome[] = [];
-    for (const toolCall of plan.calls) {
-      results.push(await executePackageLocalToolCall(toolCall, input));
-    }
-    return results;
-  }
-
-  if (plan.mode === 'mixed') {
-    const groups = plan.groups ?? plan.calls.map((toolCall) => [toolCall]);
-    const results: ToolExecutionOutcome[] = [];
-
-    for (const group of groups) {
-      const groupResults = await executePackageLocalToolCallsWithConcurrency(
-        group,
-        5,
-        (toolCall) => executePackageLocalToolCall(toolCall, input),
-      );
-      results.push(...groupResults);
-    }
-
-    return results;
-  }
-
-  return executePackageLocalToolCallsWithConcurrency(
-    plan.calls,
-    5,
-    (toolCall) => executePackageLocalToolCall(toolCall, input),
-  );
+  return executeToolExecutionPlan({
+    plan: input.plan,
+    execute: (toolCall) => executePackageLocalToolCall(toolCall, input),
+  });
 }
 
 async function executePackageLocalToolCall(
@@ -312,25 +286,4 @@ function mapPackageLocalToolEffectToExecutionUpdate(
         updates: effect.updates,
       };
   }
-}
-
-async function executePackageLocalToolCallsWithConcurrency(
-  calls: AgentFunctionToolCall[],
-  maxConcurrency: number,
-  executor: (toolCall: AgentFunctionToolCall) => Promise<ToolExecutionOutcome>,
-): Promise<ToolExecutionOutcome[]> {
-  const results = new Array<ToolExecutionOutcome>(calls.length);
-  let nextIndex = 0;
-
-  const workerCount = Math.min(maxConcurrency, calls.length);
-  const workers = Array.from({ length: workerCount }, async () => {
-    while (nextIndex < calls.length) {
-      const currentIndex = nextIndex;
-      nextIndex += 1;
-      results[currentIndex] = await executor(calls[currentIndex]);
-    }
-  });
-
-  await Promise.all(workers);
-  return results;
 }

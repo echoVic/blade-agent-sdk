@@ -3,6 +3,7 @@ export * from './agentLoop.js';
 export * from './assistantMessage.js';
 export * from './decideNoToolTurn.js';
 export * from './decideTurnLimit.js';
+export * from './executeToolExecutionPlan.js';
 export * from './planToolExecution.js';
 export * from './repairToolCallParams.js';
 export * from './toolInterruptBehavior.js';

@@ -1638,6 +1638,34 @@ describe('monorepo topology', () => {
     );
   });
 
+  it('centralizes tool execution plan scheduling in the public agent loop package', () => {
+    const loopIndexSource = readFileSync('packages/agent/src/loop/index.ts', 'utf-8');
+    const rootExecutionSource = readFileSync(
+      'src/agent/loop/executeToolCalls.ts',
+      'utf-8',
+    );
+    const packageExecutionSource = readFileSync(
+      'packages/agent-sdk/src/session/runtimeToolExecution.ts',
+      'utf-8',
+    );
+
+    expect(existsSync('packages/agent/src/loop/executeToolExecutionPlan.ts')).toBe(true);
+    expect(existsSync('packages/agent/src/__tests__/executeToolExecutionPlan.test.ts')).toBe(true);
+    expect(loopIndexSource).toContain("export * from './executeToolExecutionPlan.js';");
+
+    for (const [file, source] of [
+      ['src/agent/loop/executeToolCalls.ts', rootExecutionSource],
+      ['packages/agent-sdk/src/session/runtimeToolExecution.ts', packageExecutionSource],
+    ] as const) {
+      expect(source, file).toMatch(
+        /import\s*\{[^}]*\bexecuteToolExecutionPlan\b[^}]*\}\s*from '@blade-ai\/agent\/loop';/,
+      );
+      expect(source, file).not.toMatch(/plan\.mode\s*===/);
+      expect(source, file).not.toMatch(/async function \w*WithConcurrency\(/);
+      expect(source, file).not.toContain('workerCount');
+    }
+  });
+
   it('keeps root legacy loop adapters on the agent-sdk session internal subpath', () => {
     const rootTsconfig = readJson('tsconfig.json');
     const sdkPackage = readJson('packages/agent-sdk/package.json');
