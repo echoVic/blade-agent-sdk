@@ -66,6 +66,7 @@ export {
   PermissionMode,
   StreamMessageType,
 } from './core/index.js';
+export { getEnvironmentContext, getEnvironmentInfo, type EnvironmentInfo } from './local/environment.js';
 export type {
   AgentDefinition,
   AgentLogger,
