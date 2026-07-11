@@ -16,10 +16,14 @@ export type {
   LocalFileStat,
   LocalFileSystemPort,
   ReadToolOptions,
+  Snapshot,
+  SnapshotManagerOptions,
+  SnapshotMetadata,
 } from './file/index.js';
 export {
   createReadTool,
   FileAccessTracker,
+  SnapshotManager,
 } from './file/index.js';
 export type {
   SandboxCapabilities,
