@@ -11,3 +11,7 @@ export type {
 } from './snapshotManager.js';
 export { SnapshotManager } from './snapshotManager.js';
 export { isSensitivePath } from './sensitivePathCheck.js';
+export {
+  generateDiffSnippet,
+  generateDiffSnippetWithMatch,
+} from './diffUtils.js';
