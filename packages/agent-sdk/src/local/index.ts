@@ -25,6 +25,7 @@ export {
   FileAccessTracker,
   SnapshotManager,
 } from './file/index.js';
+export { isSensitivePath } from './file/sensitivePathCheck.js';
 export type {
   SandboxCapabilities,
   SandboxCheckResult,

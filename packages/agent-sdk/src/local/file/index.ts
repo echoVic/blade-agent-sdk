@@ -10,3 +10,4 @@ export type {
   SnapshotMetadata,
 } from './snapshotManager.js';
 export { SnapshotManager } from './snapshotManager.js';
+export { isSensitivePath } from './sensitivePathCheck.js';
