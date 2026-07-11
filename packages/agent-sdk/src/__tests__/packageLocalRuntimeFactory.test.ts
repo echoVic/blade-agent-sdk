@@ -129,4 +129,32 @@ describe('agent-sdk package-local runtime factory', () => {
     expect(createSessionRuntimePort).toHaveBeenCalledTimes(1);
     expect(fork).toHaveBeenCalledWith({ messageId: 'message-1' });
   });
+
+  it.each([
+    ['create', 'session-created'],
+    ['resume', 'session-resumed'],
+  ] as const)('cleans up resources when %s initialization fails', async (operation, sessionId) => {
+    const cleanup = vi.fn(async () => {});
+    const factory = createPackageLocalSessionRuntimeFactory({
+      createSessionId: () => 'session-created',
+      createTurnId: () => 'turn-created',
+      createStreamTurn: () => async function* () {},
+      async initialize() {
+        throw new Error('initialization failed');
+      },
+      cleanup,
+    });
+
+    const result = operation === 'create'
+      ? factory.create(options)
+      : factory.resume({ ...options, sessionId });
+
+    await expect(result).rejects.toThrow('initialization failed');
+    expect(cleanup).toHaveBeenCalledTimes(1);
+    expect(cleanup).toHaveBeenCalledWith({
+      sessionId,
+      options,
+      isResume: operation === 'resume',
+    });
+  });
 });

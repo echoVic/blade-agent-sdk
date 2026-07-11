@@ -8,6 +8,10 @@ describe('tool authoring documentation', () => {
     expect(existsSync(docPath), `${docPath} should exist`).toBe(true);
     const doc = readFileSync(docPath, 'utf8');
     const apiReference = readFileSync('docs/api-reference.md', 'utf8');
+    const toolsGuide = readFileSync('docs/tools.md', 'utf8');
+    const sessionGuide = readFileSync('docs/session.md', 'utf8');
+    const readme = readFileSync('README.md', 'utf8');
+    const packageReadme = readFileSync('packages/agent-sdk/README.md', 'utf8');
     const config = readFileSync('docs/.vitepress/config.ts', 'utf8');
 
     expect(doc).toContain('@blade-ai/agent-sdk/tools');
@@ -24,5 +28,11 @@ describe('tool authoring documentation', () => {
     expect(apiReference).toContain('createToolBehavior');
     expect(apiReference).toContain('resolveToolBehaviorSafely');
     expect(config).toContain("{ text: 'Tool Authoring', link: '/tool-authoring' }");
+    expect(toolsGuide).not.toContain('SDK 内置 23 个标准工具');
+    for (const content of [toolsGuide, sessionGuide, readme, packageReadme]) {
+      expect(content).toContain('不会自动注册 Node-local builtin tools');
+      expect(content).toContain('MemoryRead');
+      expect(content).toContain('MemoryWrite');
+    }
   });
 });

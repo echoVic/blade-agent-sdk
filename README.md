@@ -9,11 +9,11 @@
 - Session-first：`createSession()`、`resumeSession()`、`forkSession()`、`prompt()`
 - 流式 Agent 交互：`send()` + `stream()`，支持内容、thinking、tool use、tool result、usage、result 等 15 种事件类型
 - 多模型支持：`openai`、`anthropic`、`azure-openai`、`gemini`、`deepseek`、`openai-compatible`
-- 工具系统：内置 23 个标准工具，支持 `defineTool()`、`createTool()`、MCP 协议工具与 MCP 资源工具
+- 工具系统：支持 `defineTool()`、`createTool()`、显式 custom tools、MCP 协议工具与 MCP 资源工具；Node-local builtin suite 仍按 `/local` 迁移计划演进
 - 工具目录：`ToolCatalog` 统一管理内置、自定义、MCP 工具的来源追踪与信任分级
 - MCP：支持 `stdio`、`sse`、`http` 传输，也支持从 `@blade-ai/agent-sdk/local` 显式导入的进程内 `createSdkMcpServer()`
 - Error hierarchy：`@blade-ai/agent-sdk/errors` 提供 browser-safe / server-safe 的 `SdkError`、`AbortError`、`ConfigError`、`PermissionDeniedError` 和 `ToolExecutionError`
-- 协作能力：子 Agent（前台/后台）、`Task` / `TaskOutput` / `TaskStop` 工具，以及用户级和项目级 Skills
+- 协作能力：子 Agent 定义、用户级和项目级 Skills；Task-capable local provider 仍按 `/local` 迁移计划演进
 - Memory 系统：`@blade-ai/agent-sdk/local` 提供 `MemoryManager` + `FileSystemMemoryStore`，可选的 `MemoryRead` / `MemoryWrite` 工具
 - 安全与治理：`permissionMode`、`canUseTool`、`permissionHandler`、Hooks、沙箱配置可组合使用
 - Observability：可选 trace 记录，把 stream events、tool calls、usage、hooks 汇总为可调试的执行轨迹
@@ -55,6 +55,8 @@ import { createSession } from '@blade-ai/agent-sdk';
 ```
 
 大多数应用只需要 `@blade-ai/agent-sdk`。只有当你要自己组装模型层或 agent kernel 时，才直接依赖 `@blade-ai/ai` / `@blade-ai/agent`。
+
+当前 package-owned session runtime 不会自动注册 Node-local builtin tools。Root `createSession()` 默认只装配显式传入的 custom tools 和配置的 MCP tools；`@blade-ai/agent-sdk/local` 当前可选提供 `MemoryRead` / `MemoryWrite`，完整 Read/Edit/Bash/Task 本地工具套件仍在迁移中。
 
 ## 快速开始
 
@@ -132,7 +134,7 @@ import { createSession } from '@blade-ai/agent-sdk/server';
 import { ToolKind } from '@blade-ai/agent-sdk/core';
 import { SdkError } from '@blade-ai/agent-sdk/errors';
 import { defineTool } from '@blade-ai/agent-sdk/tools';
-import { getBuiltinTools } from '@blade-ai/agent-sdk/local';
+import { getBuiltinTools } from '@blade-ai/agent-sdk/local'; // opt-in MemoryRead / MemoryWrite
 ```
 
 `@blade-ai/agent-sdk/server` 是显式 server-only facade，直接组合 session/core/tools/subagent API，不通过 root wildcard 转发。它会保持与 root 的公开 server-safe runtime/type surface 对齐，同时发布产物里的 server 入口也能被 verifier 独立检查。

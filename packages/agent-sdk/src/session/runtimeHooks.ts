@@ -1,7 +1,9 @@
 import type { AgentHookPort } from '@blade-ai/agent/ports';
 import type { ModelRequest } from '@blade-ai/ai';
+import type { JsonObject, JsonValue, PermissionMode } from '../types/common.js';
+import type { ToolResult } from '../tools/types/index.js';
 import { HookEvent } from '../types/constants.js';
-import type { HookCallback, SessionHookEvent } from './types.js';
+import type { HookCallback, HookOutput, SessionHookEvent } from './types.js';
 
 export interface PackageLocalRuntimeHookManagerPort {
   enable(): void;
@@ -13,6 +15,41 @@ export interface PackageLocalRuntimeHookRuntimePort extends PackageLocalRuntimeH
   runSessionStart?(payload: PackageLocalSessionStartHookPayload): Promise<void> | void;
   runSessionEnd?(payload: PackageLocalSessionEndHookPayload): Promise<void> | void;
   runTaskCompleted?(payload: PackageLocalTaskCompletedHookPayload): Promise<void> | void;
+  applyPreToolUse?(
+    toolName: string,
+    input: JsonObject,
+    options?: PackageLocalToolHookOptions,
+  ): Promise<PackageLocalPreToolHookResult>;
+  applyPostToolUse?(
+    toolName: string,
+    input: JsonObject,
+    result: ToolResult,
+    options?: PackageLocalToolHookOptions,
+  ): Promise<PackageLocalPostToolHookResult>;
+  applyPostToolUseFailure?(
+    toolName: string,
+    input: JsonObject,
+    result: ToolResult,
+    options?: PackageLocalToolHookOptions,
+  ): Promise<PackageLocalPostToolHookResult>;
+}
+
+export interface PackageLocalToolHookOptions {
+  permissionMode?: PermissionMode;
+  abortSignal?: AbortSignal;
+}
+
+export interface PackageLocalPreToolHookResult {
+  updatedInput: JsonObject;
+  action?: 'skip' | 'abort';
+  reason?: string;
+  needsConfirmation?: boolean;
+}
+
+export interface PackageLocalPostToolHookResult {
+  result: ToolResult;
+  action?: 'abort';
+  reason?: string;
 }
 
 export interface PackageLocalRuntimeHooksInitializationOptions {
@@ -117,6 +154,58 @@ export function createPackageLocalRuntimeHookRuntime(
         },
       };
     },
+    async applyPreToolUse(toolName, input, hookOptions = {}) {
+      let updatedInput = { ...input };
+      for (const callback of options.hooks?.[HookEvent.PreToolUse] ?? []) {
+        const output = await runPackageLocalHookCallback({
+          event: HookEvent.PreToolUse,
+          sessionId: options.sessionId,
+          callback,
+          payload: {
+            toolName,
+            toolInput: updatedInput,
+            permissionMode: hookOptions.permissionMode,
+            abortSignal: hookOptions.abortSignal,
+          },
+          traceCollector,
+        });
+        if (output.action === 'abort' || output.action === 'skip') {
+          return {
+            updatedInput,
+            action: output.action,
+            reason: output.reason,
+          };
+        }
+        if (output.modifiedInput && isJsonObject(output.modifiedInput)) {
+          updatedInput = { ...updatedInput, ...output.modifiedInput };
+        }
+      }
+      return { updatedInput };
+    },
+    async applyPostToolUse(toolName, input, result, hookOptions = {}) {
+      return applyPackageLocalPostToolHooks({
+        event: HookEvent.PostToolUse,
+        toolName,
+        input,
+        result,
+        hookOptions,
+        sessionId: options.sessionId,
+        callbacks: options.hooks?.[HookEvent.PostToolUse] ?? [],
+        traceCollector,
+      });
+    },
+    async applyPostToolUseFailure(toolName, input, result, hookOptions = {}) {
+      return applyPackageLocalPostToolHooks({
+        event: HookEvent.PostToolUseFailure,
+        toolName,
+        input,
+        result,
+        hookOptions,
+        sessionId: options.sessionId,
+        callbacks: options.hooks?.[HookEvent.PostToolUseFailure] ?? [],
+        traceCollector,
+      });
+    },
     async runSessionStart(payload) {
       await runPackageLocalHookCallbacks({
         event: HookEvent.SessionStart,
@@ -159,31 +248,96 @@ async function runPackageLocalHookCallbacks(
   options: PackageLocalHookCallbackRunOptions,
 ): Promise<void> {
   for (const callback of options.callbacks) {
-    const payload = {
-      event: options.event,
-      sessionId: options.sessionId,
-      ...options.payload,
-    };
-    const spanId = options.traceCollector?.recordHookStart?.(options.event, payload);
-
-    try {
-      const output = await callback(payload);
-      if (spanId) {
-        options.traceCollector?.recordHookEnd?.(spanId, {
-          action: output.action,
-          reason: output.reason,
-        });
-      }
-      if (output.action === 'abort') {
-        throw new Error(output.reason || `${options.event} aborted by hook`);
-      }
-    } catch (error) {
-      if (spanId) {
-        options.traceCollector?.recordHookError?.(spanId, error);
-      }
-      throw error;
+    const output = await runPackageLocalHookCallback({
+      ...options,
+      callback,
+    });
+    if (output.action === 'abort') {
+      throw new Error(output.reason || `${options.event} aborted by hook`);
     }
   }
+}
+
+interface PackageLocalHookCallbackOptions extends Omit<
+  PackageLocalHookCallbackRunOptions,
+  'callbacks'
+> {
+  callback: HookCallback;
+}
+
+async function runPackageLocalHookCallback(
+  options: PackageLocalHookCallbackOptions,
+): Promise<HookOutput> {
+  const payload = {
+    event: options.event,
+    sessionId: options.sessionId,
+    ...options.payload,
+  };
+  const spanId = options.traceCollector?.recordHookStart?.(options.event, payload);
+  try {
+    const output = await options.callback(payload);
+    if (spanId) {
+      options.traceCollector?.recordHookEnd?.(spanId, {
+        action: output.action,
+        reason: output.reason,
+      });
+    }
+    return output;
+  } catch (error) {
+    if (spanId) options.traceCollector?.recordHookError?.(spanId, error);
+    throw error;
+  }
+}
+
+interface PackageLocalPostToolHookOptions {
+  event: typeof HookEvent.PostToolUse | typeof HookEvent.PostToolUseFailure;
+  toolName: string;
+  input: JsonObject;
+  result: ToolResult;
+  hookOptions: PackageLocalToolHookOptions;
+  sessionId: string;
+  callbacks: readonly HookCallback[];
+  traceCollector?: PackageLocalHookTraceCollector;
+}
+
+async function applyPackageLocalPostToolHooks(
+  options: PackageLocalPostToolHookOptions,
+): Promise<PackageLocalPostToolHookResult> {
+  let nextResult = options.result;
+  for (const callback of options.callbacks) {
+    const output = await runPackageLocalHookCallback({
+      event: options.event,
+      sessionId: options.sessionId,
+      callback,
+      payload: {
+        toolName: options.toolName,
+        toolInput: options.input,
+        toolOutput: nextResult.llmContent,
+        error: nextResult.success ? undefined : new Error(nextResult.error.message),
+        permissionMode: options.hookOptions.permissionMode,
+        abortSignal: options.hookOptions.abortSignal,
+      },
+      traceCollector: options.traceCollector,
+    });
+    if (output.action === 'abort') {
+      return { result: nextResult, action: 'abort', reason: output.reason };
+    }
+    if (output.modifiedOutput !== undefined) {
+      nextResult = {
+        ...nextResult,
+        llmContent: renderHookOutput(output.modifiedOutput),
+      };
+    }
+  }
+  return { result: nextResult };
+}
+
+function renderHookOutput(output: JsonValue): string | object {
+  return typeof output === 'string' ? output : JSON.stringify(output);
+}
+
+function isJsonObject(value: JsonObject | string): value is JsonObject {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
 interface PackageLocalUserPromptSubmitHookOptions {

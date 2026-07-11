@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
+  createPackageLocalRuntimeHookRuntime,
   createPackageLocalRuntimeHookOperations,
   initializePackageLocalRuntimeHooks,
   streamWithPackageLocalRuntimeTraceCollector,
@@ -92,6 +93,62 @@ describe('agent-sdk package-local runtime hook helpers', () => {
 
     expect(setTraceCollector).toHaveBeenNthCalledWith(1, collector);
     expect(setTraceCollector).toHaveBeenLastCalledWith(undefined);
+  });
+
+  it('passes each PreToolUse hook the input produced by the previous hook', async () => {
+    const secondHook = vi.fn(async () => ({
+      action: 'continue' as const,
+      modifiedInput: { stage: 'second' },
+    }));
+    const runtime = createPackageLocalRuntimeHookRuntime({
+      sessionId: 'hook-chain-session',
+      hooks: {
+        [HookEvent.PreToolUse]: [
+          async () => ({
+            action: 'continue',
+            modifiedInput: { stage: 'first' },
+          }),
+          secondHook,
+        ],
+      },
+    });
+
+    const result = await runtime.applyPreToolUse?.('chain_tool', { stage: 'initial' });
+
+    expect(secondHook).toHaveBeenCalledWith(expect.objectContaining({
+      toolInput: { stage: 'first' },
+    }));
+    expect(result?.updatedInput).toEqual({ stage: 'second' });
+  });
+
+  it('passes each PostToolUse hook the output produced by the previous hook', async () => {
+    const secondHook = vi.fn(async () => ({
+      action: 'continue' as const,
+      modifiedOutput: 'second output',
+    }));
+    const runtime = createPackageLocalRuntimeHookRuntime({
+      sessionId: 'hook-chain-session',
+      hooks: {
+        [HookEvent.PostToolUse]: [
+          async () => ({
+            action: 'continue',
+            modifiedOutput: 'first output',
+          }),
+          secondHook,
+        ],
+      },
+    });
+
+    const result = await runtime.applyPostToolUse?.(
+      'chain_tool',
+      {},
+      { success: true, llmContent: 'initial output' },
+    );
+
+    expect(secondHook).toHaveBeenCalledWith(expect.objectContaining({
+      toolOutput: 'first output',
+    }));
+    expect(result?.result.llmContent).toBe('second output');
   });
 });
 

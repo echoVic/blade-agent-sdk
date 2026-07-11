@@ -254,13 +254,13 @@ export class PackageLocalSessionRuntime {
       createPermissionHandler: () => this.createPermissionHandler(),
       logger: this.logger,
       toolCatalog: this.toolCatalog,
+      hookRuntime: this.hookRuntime,
       executionPipelineFactory: this.executionPipelineFactory,
       defaultContext: this.defaultContext,
       getDefaultContext: () => this.defaultContext,
       mcpRegistry: this.mcpRegistry,
       subagentRegistry: this.subagentRegistry,
       backgroundAgentManager: this.backgroundAgentManager,
-      hookRuntime: this.hookRuntime,
     });
     this.kernelOperations = createPackageLocalRuntimeKernelOperations({
       bladeConfig: this.bladeConfig,

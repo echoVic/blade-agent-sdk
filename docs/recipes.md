@@ -287,7 +287,7 @@ const session = await createSession({
 
 | 来源类型 | 说明 |
 |----------|------|
-| `builtin` | SDK 内置工具 |
+| `builtin` | 显式配置的 package-local builtin 工具 |
 | `custom` | `SessionOptions.tools` 中的自定义工具 |
 | `mcp` | MCP 服务器注册的工具 |
 | `session` | 运行时动态注册的工具 |
@@ -300,7 +300,7 @@ const session = await createSession({
 
 ## 子 Agent 协作
 
-利用内置子 Agent 和自定义 Agent 实现任务分解：
+利用默认子 Agent 定义和自定义 Agent 实现任务分解；模型调度需要显式 Task-capable local provider：
 
 ```ts
 const session = await createSession({
@@ -310,13 +310,13 @@ const session = await createSession({
     reviewer: {
       name: 'reviewer',
       description: '代码审查专家，负责审查变更的正确性和安全性',
-      allowedTools: ['Read', 'Glob', 'Grep'],
+      allowedTools: ['MyCustomTool'],
       model: 'claude-sonnet-4-20250514',
     },
     'test-writer': {
       name: 'test-writer',
       description: '专门负责编写和修复单元测试',
-      allowedTools: ['Read', 'Write', 'Edit', 'Bash', 'Glob', 'Grep'],
+      allowedTools: ['MyCustomTool'],
     },
   },
 });

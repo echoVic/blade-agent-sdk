@@ -10,8 +10,13 @@ import {
 } from './runtimeExecutionPipeline.js';
 
 export interface PackageLocalRuntimeExecutionOperationsOptions
-  extends Omit<PackageLocalAgentRuntimeDepsOperationsOptions, 'createExecutionPipeline'>,
-    PackageLocalRuntimeExecutionPipelineOperationsOptions {}
+  extends Omit<
+      PackageLocalAgentRuntimeDepsOperationsOptions,
+      'createExecutionPipeline' | 'hookRuntime'
+    >,
+    Omit<PackageLocalRuntimeExecutionPipelineOperationsOptions, 'hookRuntime'> {
+  hookRuntime: PackageLocalAgentRuntimeDepsOperationsOptions['hookRuntime'];
+}
 
 export interface PackageLocalRuntimeExecutionOperations {
   pipeline: PackageLocalRuntimeExecutionPipelineOperations;

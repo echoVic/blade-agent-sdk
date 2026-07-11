@@ -33,7 +33,7 @@ import {
   type PromptResult,
   type ProviderType,
   type StreamMessage,
-} from '../index.js';
+} from '@blade-ai/agent-sdk';
 import { createSdkMcpServer, tool } from '@blade-ai/agent-sdk/local';
 
 // @ts-expect-error dynamic mjs helper is loaded at runtime by integration tests.

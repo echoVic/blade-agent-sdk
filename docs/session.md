@@ -39,14 +39,14 @@ const options: SessionOptions = {
   systemPrompt: '你是一个严谨的代码审查助手，只使用中文回复。',
   maxTurns: 20,
 
-  allowedTools: ['Read', 'Glob', 'Grep', 'Edit', 'Write', 'Bash'],
-  disallowedTools: ['KillShell'],
+  allowedTools: ['MyCustomTool'],
+  disallowedTools: [],
   tools: [myCustomTool],
 
   permissionMode: PermissionMode.AUTO_EDIT,
   canUseTool: async (toolName, input, options) => {
-    if (toolName === 'Bash' && String(input.command).includes('rm')) {
-      return { behavior: 'deny', message: '禁止执行 rm 命令' };
+    if (toolName === 'MyCustomTool' && input.operation === 'dangerous') {
+      return { behavior: 'deny', message: '禁止危险操作' };
     }
     return { behavior: 'allow' };
   },
@@ -55,7 +55,7 @@ const options: SessionOptions = {
     researcher: {
       name: 'researcher',
       description: '专门用于代码库搜索和分析的子代理',
-      allowedTools: ['Read', 'Glob', 'Grep'],
+      allowedTools: ['MyCustomTool'],
       model: 'gpt-4o-mini',
     },
   },
@@ -525,7 +525,8 @@ console.log('圈复杂度:', analysis.cyclomaticComplexity);
 const result = await prompt('搜索所有包含 TODO 注释的文件', {
   provider: { type: 'openai', apiKey: process.env.OPENAI_API_KEY },
   model: 'gpt-4o',
-  allowedTools: ['Grep', 'Glob', 'Read'],
+  tools: [searchTodoTool],
+  allowedTools: ['SearchTodo'],
   defaultContext: {
     capabilities: {
       filesystem: { roots: ['/workspace/project'], cwd: '/workspace/project' },
@@ -869,6 +870,8 @@ interface SessionOptions {
 
 `allowedTools` 未设置时不限制工具；设置为 `[]` 时表示禁用所有工具。
 
+当前 package-owned root session 不会自动注册 Node-local builtin tools。默认可过滤的集合来自 `SessionOptions.tools` 显式注册的 custom tools 和已连接的 MCP tools；`MemoryRead` / `MemoryWrite` 由 `/local` helper opt-in 提供，完整 Read/Edit/Bash/Task 工具套件仍待迁移。
+
 ### ToolDefinition
 
 ```ts
@@ -955,18 +958,20 @@ const session = await createSession({
 ### 工具过滤
 
 ```ts
-// 仅允许只读工具
+// 仅允许一个显式注册的 custom tool
 const session = await createSession({
   provider: { type: 'anthropic', apiKey: process.env.ANTHROPIC_API_KEY },
   model: 'claude-sonnet-4-20250514',
-  allowedTools: ['Read', 'Glob', 'Grep', 'WebFetch', 'WebSearch'],
+  tools: [weatherTool, databaseQueryTool],
+  allowedTools: ['GetWeather'],
 });
 
-// 排除危险工具
+// 从显式注册集合中排除工具
 const session2 = await createSession({
   provider: { type: 'anthropic', apiKey: process.env.ANTHROPIC_API_KEY },
   model: 'claude-sonnet-4-20250514',
-  disallowedTools: ['Bash', 'KillShell', 'Write'],
+  tools: [weatherTool, databaseQueryTool],
+  disallowedTools: ['DatabaseQuery'],
 });
 ```
 
@@ -1068,7 +1073,7 @@ type PermissionResult =
 
 ## 子 Agent
 
-通过 `agents` 字段定义命名子代理，供内置任务工具（如 Task）在运行时调度：
+通过 `agents` 字段定义命名子代理。定义会注册到 session 专属 registry；要让模型调度它们，还需要后续 local-runtime migration 提供 Task-capable builtin provider，当前 root session 不会自动注入 `Task` 工具：
 
 ```ts
 interface AgentDefinition {
@@ -1096,7 +1101,7 @@ const session = await createSession({
     researcher: {
       name: 'researcher',
       description: '代码库搜索和分析专家，擅长查找文件、搜索代码模式',
-      allowedTools: ['Read', 'Glob', 'Grep', 'WebSearch'],
+      allowedTools: ['MyCustomTool'],
       model: 'claude-sonnet-4-20250514',
     },
     verification: {
@@ -1108,7 +1113,7 @@ const session = await createSession({
 3. 性能隐患
 4. 安全漏洞
 请用中文输出结构化的审查报告。`,
-      allowedTools: ['Read', 'Glob', 'Grep'],
+      allowedTools: ['MyCustomTool'],
     },
     planner: {
       name: 'planner',
@@ -1119,9 +1124,9 @@ const session = await createSession({
 });
 ```
 
-### 3 个内置子代理
+### 默认子代理定义
 
-SDK 默认提供以下内置子代理：
+Registry 默认提供以下子代理定义，但当前 package-owned root session 没有自动注册 `Task` 工具，因此它们不会仅凭 `createSession()` 就变成模型可调用能力：
 
 | 名称                  | 说明                                                    | 可用工具                                  |
 | ------------------- | ----------------------------------------------------- | ------------------------------------- |
@@ -1130,16 +1135,16 @@ SDK 默认提供以下内置子代理：
 | **Plan**            | 软件架构师，专门用于设计实施方案、识别关键文件、权衡技术选型                        | 全部                                    |
 
 ```ts
-// 内置代理无需额外配置，直接可用
+// 定义会加载；模型调度仍需要显式 Task-capable local provider
 const session = await createSession({
   provider: { type: 'anthropic', apiKey: process.env.ANTHROPIC_API_KEY },
   model: 'claude-sonnet-4-20250514',
-  // Explore、Plan、general-purpose 已自动注册
+  // Explore、Plan、general-purpose 定义已加载
 });
 ```
 
 ::: tip
-用户定义的子代理会与内置子代理并存。如果名称冲突，当前 session 的定义将覆盖内置或文件配置的同名 agent。
+用户定义的子代理会与默认定义并存。如果名称冲突，当前 session 的定义将覆盖默认或文件配置的同名 agent。是否能被模型调用取决于运行时是否显式提供 Task-capable local tool。
 :::
 
 ## 结构化输出

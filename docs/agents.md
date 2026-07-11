@@ -2,9 +2,9 @@
 
 Session 支持配置子 Agent，用于任务分解和并行执行。
 
-## 内置子 Agent
+## 默认子 Agent 定义
 
-SDK 内置 3 种子 Agent：
+Registry 默认加载 3 种子 Agent 定义。当前 root session 不自动注入 Task 工具；要让模型真正调度这些定义，需要显式提供 Task-capable local provider。
 
 | 名称 | 用途 | 默认省略环境上下文 |
 |------|------|------------------|
@@ -35,13 +35,13 @@ const session = await createSession({
       name: 'verification',
       description: '审查代码变更的正确性、风险和缺失测试',
       systemPrompt: '你是一位严格的代码审查专家，关注正确性、风险和测试缺口。',
-      allowedTools: ['Read', 'Glob', 'Grep'],
+      allowedTools: ['MyCustomTool'],
       model: 'gpt-4o',
     },
     'test-writer': {
       name: 'Test Writer',
       description: '专门负责编写测试的 Agent',
-      allowedTools: ['Read', 'Write', 'Edit', 'Bash', 'Glob', 'Grep'],
+      allowedTools: ['MyCustomTool'],
     },
   },
 });

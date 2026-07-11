@@ -313,7 +313,6 @@ describe('monorepo topology', () => {
       'src/agent/loop/adapterContracts.ts',
       'src/agent/types.ts',
       'src/session/types.ts',
-      'src/index.ts',
       'src/agent/__tests__/TokenBudget.test.ts',
     ];
 
@@ -825,6 +824,78 @@ describe('monorepo topology', () => {
     expect(localSource).toContain('createSdkMcpServer');
     expect(localSource).toContain('getBuiltinTools');
     expect(localSource).toContain('SandboxService');
+  });
+
+  it('keeps legacy root public facades as package-only forwarders', () => {
+    const rootTsconfig = readJson('tsconfig.json');
+    const rootVitestConfig = readFileSync('vitest.config.ts', 'utf-8');
+    const expectedForwarders = new Map([
+      ['src/index.ts', "export * from '@blade-ai/agent-sdk';"],
+      ['src/server/index.ts', "export * from '@blade-ai/agent-sdk/server';"],
+      ['src/browser/index.ts', "export * from '@blade-ai/agent-sdk/browser';"],
+      ['src/core/index.ts', "export * from '@blade-ai/agent-sdk/core';"],
+      ['src/local/index.ts', "export * from '@blade-ai/agent-sdk/local';"],
+    ]);
+
+    for (const [file, expectedSource] of expectedForwarders) {
+      expect(readFileSync(file, 'utf-8').trim(), file).toBe(expectedSource);
+    }
+
+    expect(existsSync('src/browser/server-only-stub.ts')).toBe(false);
+    expect(rootTsconfig.compilerOptions?.paths).toMatchObject({
+      '@blade-ai/agent-sdk/browser': ['./packages/agent-sdk/src/browser/index.ts'],
+      '@blade-ai/agent-sdk/core': ['./packages/agent-sdk/src/core/index.ts'],
+    });
+    expect(rootVitestConfig).toContain("'@blade-ai/agent-sdk/browser'");
+    expect(rootVitestConfig).toContain('packages/agent-sdk/src/browser/index.ts');
+    expect(rootVitestConfig).toContain("'@blade-ai/agent-sdk/core'");
+    expect(rootVitestConfig).toContain('packages/agent-sdk/src/core/index.ts');
+  });
+
+  it('runs live session coverage against the publishable sdk facade', () => {
+    for (const file of [
+      'src/__tests__/integration.test.ts',
+      'src/__tests__/deepseek-agent.live.test.ts',
+    ]) {
+      const source = readFileSync(file, 'utf-8');
+      expect(source, file).toContain("from '@blade-ai/agent-sdk';");
+      expect(source, file).not.toContain("from '../index.js';");
+    }
+  });
+
+  it('owns default session tool, hook, and MCP runtime assembly inside agent-sdk', () => {
+    const defaultKernelFactorySource = readFileSync(
+      'packages/agent-sdk/src/session/defaultKernelRuntimeFactory.ts',
+      'utf-8',
+    );
+    const defaultToolRuntimeSource = readFileSync(
+      'packages/agent-sdk/src/session/defaultToolRuntime.ts',
+      'utf-8',
+    );
+    const defaultMcpRuntimeSource = readFileSync(
+      'packages/agent-sdk/src/session/defaultMcpRuntime.ts',
+      'utf-8',
+    );
+    const packageFactoryTestSource = readFileSync(
+      'packages/agent-sdk/src/__tests__/defaultKernelRuntimeFactory.test.ts',
+      'utf-8',
+    );
+
+    expect(defaultKernelFactorySource).toContain('createDefaultToolRuntimePorts');
+    expect(defaultKernelFactorySource).toContain('createDefaultMcpRuntimeRegistry');
+    expect(defaultToolRuntimeSource).not.toContain('../../../../src/');
+    expect(defaultToolRuntimeSource).toContain('applyPreToolUse');
+    expect(defaultToolRuntimeSource).toContain('applyPostToolUse');
+    expect(defaultMcpRuntimeSource).not.toContain('../../../../src/');
+    expect(defaultMcpRuntimeSource).toContain("from '@modelcontextprotocol/sdk/client/index.js'");
+    expect(defaultMcpRuntimeSource).toContain('getAvailableToolsByServerNames');
+    expect(defaultMcpRuntimeSource).toContain('reconnectServer');
+    expect(packageFactoryTestSource).toContain(
+      'registers and executes session custom tools without injected tool runtime ports',
+    );
+    expect(packageFactoryTestSource).toContain(
+      'connects and executes in-process MCP tools without injected MCP ports',
+    );
   });
 
   it('owns the session-first root public entry source inside agent-sdk', () => {
@@ -1756,7 +1827,7 @@ describe('monorepo topology', () => {
   });
 
   it('retires root tool-call and batch adapters behind package-owned loop ports', () => {
-    const rootIndexSource = readFileSync('src/index.ts', 'utf-8');
+    const sdkRootIndexSource = readFileSync('packages/agent-sdk/src/index.ts', 'utf-8');
     const rootAdapterContractsSource = readFileSync(
       'src/agent/loop/adapterContracts.ts',
       'utf-8',
@@ -1787,9 +1858,8 @@ describe('monorepo topology', () => {
     expect(packageToolExecutionSource).not.toMatch(/\n\s*execute\(/);
     expect(packageToolExecutionSource).not.toMatch(/\n\s*getRegistry\(\)/);
     expect(rootAgentLoopAdapterSource).not.toContain('as unknown as');
-    expect(rootIndexSource).toContain(
-      "export type { ToolExecutionUpdate } from '@blade-ai/agent-sdk/tools';",
-    );
+    expect(sdkRootIndexSource).toContain('ToolExecutionUpdate,');
+    expect(sdkRootIndexSource).toContain("from './tools/index.js';");
     expect(rootAdapterContractsSource).not.toContain('RunToolCallPort');
     expect(rootAdapterContractsSource).not.toContain('ToolExecutionOutcome');
     expect(rootAdapterContractsSource).not.toContain("from './rootAgentLoopAdapter.js'");

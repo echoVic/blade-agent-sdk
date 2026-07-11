@@ -1,4 +1,5 @@
 import type { RuntimeContext } from '../runtime/types.js';
+import type { PackageLocalRuntimeHookRuntimePort } from './runtimeHooks.js';
 
 export interface PackageLocalRuntimeBackgroundAgentManagerPort {
   [operation: string]: unknown;
@@ -10,7 +11,7 @@ export interface PackageLocalAgentRuntimeDeps {
   mcpRegistry: unknown;
   subagentRegistry: unknown;
   backgroundAgentManager: PackageLocalRuntimeBackgroundAgentManagerPort;
-  hookRuntime: unknown;
+  hookRuntime: PackageLocalRuntimeHookRuntimePort;
   runtimeManaged: true;
   logger: unknown;
 }
@@ -21,7 +22,7 @@ export interface PackageLocalAgentRuntimeDepsOptions {
   mcpRegistry: unknown;
   subagentRegistry: unknown;
   backgroundAgentManager: PackageLocalRuntimeBackgroundAgentManagerPort;
-  hookRuntime: unknown;
+  hookRuntime: PackageLocalRuntimeHookRuntimePort;
   logger: unknown;
 }
 

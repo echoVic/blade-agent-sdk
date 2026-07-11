@@ -11,6 +11,9 @@ import type {
   PackageLocalRuntimeSessionStorePort,
 } from './runtimePorts.js';
 import { createPackageLocalRuntimeHookRuntime } from './runtimeHooks.js';
+import { createDefaultToolRuntimePorts } from './defaultToolRuntime.js';
+import { createPackageLocalRuntimeNoopPorts } from './runtimeNoopPorts.js';
+import { createDefaultMcpRuntimeRegistry } from './defaultMcpRuntime.js';
 import { JsonlSessionStore } from './store.js';
 import type { SessionRuntimeFactory } from './factory.js';
 import type { SessionId, SessionOptions } from './types.js';
@@ -80,8 +83,29 @@ export function createDefaultKernelSessionRuntimeFactory(
     createTurnId: options.createTurnId ?? nanoid,
     createRuntime(context) {
       const runtimePorts = resolveRuntimePorts(options.runtime, context);
+      const defaultToolRuntimePorts = createDefaultToolRuntimePorts();
+      const noopPorts = createPackageLocalRuntimeNoopPorts();
+      const defaultMcpRegistry = createDefaultMcpRuntimeRegistry();
+      const toolCatalog = runtimePorts.toolCatalog ?? defaultToolRuntimePorts.toolCatalog;
+      const canUseDefaultToolRuntime =
+        typeof (toolCatalog as { get?: unknown }).get === 'function'
+        && typeof (toolCatalog as { getAll?: unknown }).getAll === 'function';
       const resolvedRuntimePorts = {
         ...runtimePorts,
+        toolCatalog,
+        mcpRegistry: runtimePorts.mcpRegistry ?? defaultMcpRegistry,
+        customToolFactory:
+          runtimePorts.customToolFactory ?? defaultToolRuntimePorts.customToolFactory,
+        executionPipelineFactory:
+          runtimePorts.executionPipelineFactory
+          ?? (canUseDefaultToolRuntime
+            ? defaultToolRuntimePorts.executionPipelineFactory
+            : noopPorts.executionPipelineFactory),
+        kernelPortFactory:
+          runtimePorts.kernelPortFactory
+          ?? (canUseDefaultToolRuntime
+            ? defaultToolRuntimePorts.kernelPortFactory
+            : noopPorts.kernelPortFactory),
         hookRuntime: runtimePorts.hookRuntime ?? createPackageLocalRuntimeHookRuntime({
           sessionId: context.sessionId,
           hooks: context.options.hooks,

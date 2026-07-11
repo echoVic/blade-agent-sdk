@@ -9,7 +9,10 @@ import { PackageLocalSession } from '../session/sessionInstance.js';
 import { JsonlSessionStore } from '../session/store.js';
 import type { SessionOptions, StreamMessage } from '../session/types.js';
 import type { ToolDefinition } from '../tools/types/index.js';
-import { HookEvent } from '../types/constants.js';
+import { HookEvent, PermissionMode } from '../types/constants.js';
+import { createSdkMcpServer, tool } from '../local/mcp.js';
+import { createDefaultMcpRuntimeRegistry } from '../session/defaultMcpRuntime.js';
+import { z } from 'zod';
 
 const model: ModelPort = {
   async generate() {
@@ -52,6 +55,511 @@ function createWorkspaceRoot(): string {
 }
 
 describe('agent-sdk default kernel runtime factory', () => {
+  it('does not report MCP health without an enabled health monitor', async () => {
+    const handle = await createSdkMcpServer({
+      name: 'capability-health-mcp',
+      version: '1.0.0',
+      tools: [
+        tool('ping', 'Ping the local server', {}, async () => ({
+          content: [{ type: 'text', text: 'pong' }],
+        })),
+      ],
+    });
+    const registry = createDefaultMcpRuntimeRegistry();
+
+    await registry.registerInProcessServer?.('local', handle);
+
+    expect(await registry.getCapabilities()).toEqual([
+      expect.objectContaining({
+        name: 'local',
+        status: 'connected',
+        health: { enabled: false, status: 'disabled' },
+      }),
+    ]);
+    await registry.disconnectAll();
+  });
+
+  it('shares one in-flight MCP connection across concurrent callers', async () => {
+    const handle = await createSdkMcpServer({
+      name: 'concurrent-connect-mcp',
+      version: '1.0.0',
+      tools: [
+        tool('ping', 'Ping the local server', {}, async () => ({
+          content: [{ type: 'text', text: 'pong' }],
+        })),
+      ],
+    });
+    const createClientTransport = handle.createClientTransport;
+    let releaseReconnect: (() => void) | undefined;
+    const reconnectGate = new Promise<void>((resolve) => {
+      releaseReconnect = resolve;
+    });
+    let transportCount = 0;
+    handle.createClientTransport = async () => {
+      transportCount += 1;
+      if (transportCount > 1) await reconnectGate;
+      return createClientTransport();
+    };
+    const registry = createDefaultMcpRuntimeRegistry();
+
+    await registry.registerInProcessServer?.('local', handle);
+    await registry.disconnectServer?.('local');
+    const firstConnect = registry.connectServer?.('local');
+    const secondConnect = registry.connectServer?.('local');
+    await Promise.resolve();
+    releaseReconnect?.();
+    await Promise.allSettled([firstConnect, secondConnect]);
+
+    expect(transportCount).toBe(2);
+    await registry.disconnectAll();
+  });
+
+  it('clears stale MCP capabilities when the active transport closes unexpectedly', async () => {
+    const handle = await createSdkMcpServer({
+      name: 'transport-close-mcp',
+      version: '1.0.0',
+      tools: [
+        tool('ping', 'Ping the local server', {}, async () => ({
+          content: [{ type: 'text', text: 'pong' }],
+        })),
+      ],
+    });
+    const createClientTransport = handle.createClientTransport;
+    let activeTransport: Awaited<ReturnType<typeof createClientTransport>> | undefined;
+    handle.createClientTransport = async () => {
+      activeTransport = await createClientTransport();
+      return activeTransport;
+    };
+    const registry = createDefaultMcpRuntimeRegistry();
+
+    await registry.registerInProcessServer?.('local', handle);
+    await activeTransport?.close();
+    await Promise.resolve();
+
+    expect(await registry.getCapabilities()).toEqual([
+      expect.objectContaining({
+        name: 'local',
+        status: 'disconnected',
+        tools: [],
+      }),
+    ]);
+  });
+
+  it('connects and executes in-process MCP tools without injected MCP ports', async () => {
+    const handle = await createSdkMcpServer({
+      name: 'default-runtime-mcp',
+      version: '1.0.0',
+      tools: [
+        tool(
+          'lookup_release',
+          'Lookup a release code',
+          { project: z.string() },
+          async ({ project }) => ({
+            content: [{ type: 'text', text: `${project}: RELEASE-9` }],
+          }),
+        ),
+      ],
+    });
+    const generate = vi
+      .fn<ModelPort['generate']>()
+      .mockResolvedValueOnce({
+        content: '',
+        finishReason: 'tool_calls',
+        toolCalls: [
+          {
+            id: 'mcp-call',
+            name: 'lookup_release',
+            input: { project: 'blade' },
+          },
+        ],
+      })
+      .mockResolvedValueOnce({
+        content: 'RELEASE-9',
+        finishReason: 'stop',
+      });
+    const factory = createDefaultKernelSessionRuntimeFactory({
+      createSessionId: () => 'default-mcp-session',
+      createTurnId: () => 'default-mcp-turn',
+      runtime: {
+        kernelModelResolver: {
+          resolve() {
+            return {
+              model: { generate, async *stream() {} },
+              modelRequestDefaults: { model: 'default-mcp-model' },
+            };
+          },
+        },
+      },
+    });
+
+    const session = await factory.create({
+      ...options,
+      permissionMode: PermissionMode.YOLO,
+      mcpServers: { release: handle },
+    });
+
+    expect(await session.mcpListTools()).toEqual([
+      {
+        name: 'lookup_release',
+        description: 'Lookup a release code',
+        serverName: 'release',
+      },
+    ]);
+    await session.send('Find the Blade release');
+    const messages = await collect(session.stream());
+
+    expect(generate.mock.calls[0]?.[0].tools).toEqual([
+      expect.objectContaining({
+        name: 'lookup_release',
+        description: 'Lookup a release code',
+      }),
+    ]);
+    expect(messages).toContainEqual({
+      type: 'tool_result',
+      id: 'mcp-call',
+      name: 'lookup_release',
+      output: 'blade: RELEASE-9',
+      sessionId: 'default-mcp-session',
+    });
+    await session.close();
+  });
+
+  it('registers and executes session custom tools without injected tool runtime ports', async () => {
+    const execute = vi.fn(async ({ city }: { city: string }) => ({
+      success: true as const,
+      data: { city, temperature: 23 },
+      llmContent: `${city}: 23C`,
+    }));
+    const generate = vi
+      .fn<ModelPort['generate']>()
+      .mockResolvedValueOnce({
+        content: '',
+        finishReason: 'tool_calls',
+        toolCalls: [
+          {
+            id: 'weather-call',
+            name: 'get_weather',
+            input: { city: 'Beijing' },
+          },
+        ],
+      })
+      .mockResolvedValueOnce({
+        content: 'Beijing is 23C',
+        finishReason: 'stop',
+      });
+    const factory = createDefaultKernelSessionRuntimeFactory({
+      createSessionId: () => 'default-tool-session',
+      createTurnId: () => 'default-tool-turn',
+      runtime: {
+        kernelModelResolver: {
+          resolve() {
+            return {
+              model: { generate, async *stream() {} },
+              modelRequestDefaults: { model: 'default-tool-model' },
+            };
+          },
+        },
+      },
+    });
+    const customTool: ToolDefinition<{ city: string }> = {
+      name: 'get_weather',
+      description: 'Get the current weather for a city',
+      parameters: {
+        type: 'object',
+        properties: {
+          city: { type: 'string' },
+        },
+        required: ['city'],
+      },
+      execute,
+    };
+
+    const session = await factory.create({
+      ...options,
+      permissionMode: PermissionMode.YOLO,
+      tools: [customTool],
+      hooks: {
+        [HookEvent.PreToolUse]: [
+          async () => ({
+            action: 'continue',
+            modifiedInput: { city: 'Shanghai' },
+          }),
+        ],
+        [HookEvent.PostToolUse]: [
+          async () => ({
+            action: 'continue',
+            modifiedOutput: 'hooked weather result',
+          }),
+        ],
+      },
+    });
+    await session.send('What is the weather in Beijing?');
+
+    const messages = await collect(session.stream());
+
+    expect(generate.mock.calls[0]?.[0].tools).toEqual([
+      {
+        name: 'get_weather',
+        description: 'Get the current weather for a city',
+        parameters: customTool.parameters,
+      },
+    ]);
+    expect(execute).toHaveBeenCalledWith(
+      { city: 'Shanghai' },
+      expect.objectContaining({ signal: expect.any(AbortSignal) }),
+    );
+    expect(messages).toEqual(expect.arrayContaining([
+      {
+        type: 'tool_use',
+        id: 'weather-call',
+        name: 'get_weather',
+        input: { city: 'Beijing' },
+        sessionId: 'default-tool-session',
+      },
+      {
+        type: 'tool_result',
+        id: 'weather-call',
+        name: 'get_weather',
+        output: 'hooked weather result',
+        sessionId: 'default-tool-session',
+      },
+      {
+        type: 'result',
+        subtype: 'success',
+        content: 'Beijing is 23C',
+        sessionId: 'default-tool-session',
+      },
+    ]));
+  });
+
+  it('rechecks path safety after PreToolUse hooks rewrite tool input', async () => {
+    const execute = vi.fn(async ({ file_path }: { file_path: string }) => ({
+      success: true as const,
+      llmContent: file_path,
+    }));
+    const generate = vi
+      .fn<ModelPort['generate']>()
+      .mockResolvedValueOnce({
+        content: '',
+        finishReason: 'tool_calls',
+        toolCalls: [
+          {
+            id: 'path-call',
+            name: 'read_path',
+            input: { file_path: '/tmp/safe.txt' },
+          },
+        ],
+      })
+      .mockResolvedValueOnce({
+        content: 'path rejected',
+        finishReason: 'stop',
+      });
+    const factory = createDefaultKernelSessionRuntimeFactory({
+      createSessionId: () => 'path-safety-session',
+      createTurnId: () => 'path-safety-turn',
+      runtime: {
+        kernelModelResolver: {
+          resolve() {
+            return {
+              model: { generate, async *stream() {} },
+              modelRequestDefaults: { model: 'path-safety-model' },
+            };
+          },
+        },
+      },
+    });
+    const session = await factory.create({
+      ...options,
+      permissionMode: PermissionMode.YOLO,
+      tools: [{
+        name: 'read_path',
+        description: 'Read a path',
+        parameters: {
+          type: 'object',
+          properties: { file_path: { type: 'string' } },
+          required: ['file_path'],
+        },
+        execute,
+      }],
+      hooks: {
+        [HookEvent.PreToolUse]: [
+          async () => ({
+            action: 'continue',
+            modifiedInput: { file_path: '/etc/passwd' },
+          }),
+        ],
+      },
+    });
+
+    await session.send('Read the safe path');
+    const messages = await collect(session.stream());
+
+    expect(execute).not.toHaveBeenCalled();
+    expect(messages).toContainEqual(expect.objectContaining({
+      type: 'tool_result',
+      id: 'path-call',
+      name: 'read_path',
+      isError: true,
+      output: expect.stringContaining('Access to dangerous system paths denied'),
+    }));
+    await session.close();
+  });
+
+  it('does not execute tools after the turn signal aborts before tool execution', async () => {
+    const controller = new AbortController();
+    const execute = vi.fn(async () => ({
+      success: true as const,
+      llmContent: 'should not run',
+    }));
+    const generate = vi.fn<ModelPort['generate']>(async () => {
+      controller.abort('cancel before tool execution');
+      return {
+        content: '',
+        finishReason: 'tool_calls',
+        toolCalls: [{ id: 'abort-call', name: 'abort_tool', input: {} }],
+      };
+    });
+    const factory = createDefaultKernelSessionRuntimeFactory({
+      createSessionId: () => 'abort-session',
+      createTurnId: () => 'abort-turn',
+      runtime: {
+        kernelModelResolver: {
+          resolve() {
+            return {
+              model: { generate, async *stream() {} },
+              modelRequestDefaults: { model: 'abort-model' },
+            };
+          },
+        },
+      },
+    });
+    const session = await factory.create({
+      ...options,
+      permissionMode: PermissionMode.YOLO,
+      tools: [{
+        name: 'abort_tool',
+        description: 'Must not run after abort',
+        parameters: { type: 'object', properties: {} },
+        execute,
+      }],
+    });
+
+    await session.send('Abort the tool', { signal: controller.signal });
+    await collect(session.stream());
+
+    expect(execute).not.toHaveBeenCalled();
+    await session.close();
+  });
+
+  it('does not execute tools when permission resolution aborts the turn', async () => {
+    const controller = new AbortController();
+    const execute = vi.fn(async () => ({
+      success: true as const,
+      llmContent: 'should not run',
+    }));
+    const generate = vi
+      .fn<ModelPort['generate']>()
+      .mockResolvedValueOnce({
+        content: '',
+        finishReason: 'tool_calls',
+        toolCalls: [{ id: 'permission-abort-call', name: 'permission_abort_tool', input: {} }],
+      })
+      .mockResolvedValueOnce({ content: 'cancelled', finishReason: 'stop' });
+    const factory = createDefaultKernelSessionRuntimeFactory({
+      createSessionId: () => 'permission-abort-session',
+      createTurnId: () => 'permission-abort-turn',
+      runtime: {
+        kernelModelResolver: {
+          resolve() {
+            return {
+              model: { generate, async *stream() {} },
+              modelRequestDefaults: { model: 'permission-abort-model' },
+            };
+          },
+        },
+      },
+    });
+    const session = await factory.create({
+      ...options,
+      permissionMode: PermissionMode.YOLO,
+      permissionHandler: async () => {
+        controller.abort('cancel during permission');
+        return { behavior: 'allow' };
+      },
+      tools: [{
+        name: 'permission_abort_tool',
+        description: 'Must not run after permission abort',
+        parameters: { type: 'object', properties: {} },
+        execute,
+      }],
+    });
+
+    await session.send('Abort during permission', { signal: controller.signal });
+    await collect(session.stream());
+
+    expect(execute).not.toHaveBeenCalled();
+    await session.close();
+  });
+
+  it('runs PostToolUseFailure hooks when custom tool execution throws', async () => {
+    const failureHook = vi.fn(async () => ({
+      action: 'continue' as const,
+      modifiedOutput: 'failure handled by hook',
+    }));
+    const generate = vi
+      .fn<ModelPort['generate']>()
+      .mockResolvedValueOnce({
+        content: '',
+        finishReason: 'tool_calls',
+        toolCalls: [{ id: 'throw-call', name: 'throw_tool', input: {} }],
+      })
+      .mockResolvedValueOnce({ content: 'handled', finishReason: 'stop' });
+    const factory = createDefaultKernelSessionRuntimeFactory({
+      createSessionId: () => 'throw-session',
+      createTurnId: () => 'throw-turn',
+      runtime: {
+        kernelModelResolver: {
+          resolve() {
+            return {
+              model: { generate, async *stream() {} },
+              modelRequestDefaults: { model: 'throw-model' },
+            };
+          },
+        },
+      },
+    });
+    const session = await factory.create({
+      ...options,
+      permissionMode: PermissionMode.YOLO,
+      tools: [{
+        name: 'throw_tool',
+        description: 'Throws during execution',
+        parameters: { type: 'object', properties: {} },
+        async execute() {
+          throw new Error('tool exploded');
+        },
+      }],
+      hooks: {
+        [HookEvent.PostToolUseFailure]: [failureHook],
+      },
+    });
+
+    await session.send('Run the throwing tool');
+    const messages = await collect(session.stream());
+
+    expect(failureHook).toHaveBeenCalledWith(expect.objectContaining({
+      toolName: 'throw_tool',
+      error: expect.objectContaining({ message: expect.stringContaining('tool exploded') }),
+    }));
+    expect(messages).toContainEqual(expect.objectContaining({
+      type: 'tool_result',
+      id: 'throw-call',
+      isError: true,
+      output: 'failure handled by hook',
+    }));
+    await session.close();
+  });
+
   it('uses the package-local AgentKernel factory when no kernel factory is injected', async () => {
     const generate = vi.fn(async () => ({
       content: 'default kernel answer',

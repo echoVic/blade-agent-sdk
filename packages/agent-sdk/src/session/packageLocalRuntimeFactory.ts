@@ -57,6 +57,25 @@ export function createPackageLocalSessionRuntimeFactory(
     });
   }
 
+  async function initializeSession(
+    context: PackageLocalSessionRuntimeContext,
+  ): Promise<PackageLocalSession> {
+    try {
+      const initialState = await options.initialize?.(context);
+      return createSessionFor(context, initialState);
+    } catch (initializationError) {
+      try {
+        await options.cleanup?.(context);
+      } catch (cleanupError) {
+        throw new AggregateError(
+          [initializationError, cleanupError],
+          'Session initialization and cleanup both failed',
+        );
+      }
+      throw initializationError;
+    }
+  }
+
   return {
     async create(sessionOptions) {
       const context = {
@@ -64,8 +83,7 @@ export function createPackageLocalSessionRuntimeFactory(
         options: sessionOptions,
         isResume: false,
       };
-      const initialState = await options.initialize?.(context);
-      return createSessionFor(context, initialState);
+      return initializeSession(context);
     },
 
     async resume(resumeOptions: ResumeOptions) {
@@ -75,8 +93,7 @@ export function createPackageLocalSessionRuntimeFactory(
         options: sessionOptions,
         isResume: true,
       };
-      const initialState = await options.initialize?.(context);
-      return createSessionFor(context, initialState);
+      return initializeSession(context);
     },
   };
 }

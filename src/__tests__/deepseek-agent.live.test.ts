@@ -20,7 +20,7 @@ import {
   prompt,
   type StreamMessage,
   ToolErrorType,
-} from '../index.js';
+} from '@blade-ai/agent-sdk';
 
 // ─── 配置 ─────────────────────────────────────────────────
 const API_KEY = process.env.DEEPSEEK_API_KEY;

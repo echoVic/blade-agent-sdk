@@ -143,20 +143,20 @@ export function createRuleBasedPermissionHandler(
   return async (request) => {
     const signature = request.toolMeta.signature?.trim() || request.toolName;
 
-    if (deny.some((rule) => matchPermissionRule(signature, rule))) {
+    if (deny.some((rule) => matchesPermissionRule(signature, rule))) {
       return {
         behavior: 'deny',
         message: 'Denied by permission rule',
       };
     }
 
-    if (allow.some((rule) => matchPermissionRule(signature, rule))) {
+    if (allow.some((rule) => matchesPermissionRule(signature, rule))) {
       return {
         behavior: 'allow',
       };
     }
 
-    if (ask.some((rule) => matchPermissionRule(signature, rule))) {
+    if (ask.some((rule) => matchesPermissionRule(signature, rule))) {
       return {
         behavior: 'ask',
         message: 'Requires user confirmation',
@@ -202,7 +202,7 @@ export function createPathSafetyPermissionHandler(
     const hasExplicitAllow = Boolean(
       signature
       && (options.explicitAllowRules ?? []).some((rule) =>
-        matchPermissionRule(signature, rule),
+        matchesPermissionRule(signature, rule),
       ),
     );
 
@@ -349,7 +349,7 @@ function detectSensitivePath(filePath: string): SensitivePathMatch | undefined {
   return undefined;
 }
 
-function matchPermissionRule(signature: string, rule: string): boolean {
+export function matchesPermissionRule(signature: string, rule: string): boolean {
   if (rule === '*') {
     return true;
   }

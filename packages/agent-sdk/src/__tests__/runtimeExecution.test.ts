@@ -73,6 +73,7 @@ describe('agent-sdk package-local runtime execution operations', () => {
       permissionHandler: undefined,
       logger,
       toolCatalog,
+      hookRuntime,
     });
   });
 });

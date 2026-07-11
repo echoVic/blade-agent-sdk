@@ -923,14 +923,11 @@ describe('package entrypoints', () => {
 
   it('throws clear errors from browser runtime stubs', async () => {
     const browser = await import('../browser/index.js');
-    const serverOnly = await import('../browser/server-only-stub.js');
 
     expect(browser.PermissionMode.DEFAULT).toBe('default');
     expect(() => browser.createSession({} as never)).toThrow(/server-only.*createSession/);
-    expect(() => serverOnly.createPackageLocalAgentLoopPorts()).toThrow(
-      /server-only.*createPackageLocalAgentLoopPorts/,
-    );
-    expect(() => serverOnly.getBuiltinTools()).toThrow(/server-only.*getBuiltinTools/);
+    expect(browser).not.toHaveProperty('createPackageLocalAgentLoopPorts');
+    expect(browser).not.toHaveProperty('getBuiltinTools');
   });
 
   it('keeps browser-safe source entries away from Node-only and server runtime imports', () => {

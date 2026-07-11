@@ -4,6 +4,7 @@ import {
   type PermissionsConfig,
 } from '../types/common.js';
 import type { PermissionHandler } from '../types/permissions.js';
+import type { PackageLocalRuntimeHookRuntimePort } from './runtimeHooks.js';
 
 export interface PackageLocalRuntimeExecutionPipelineCreateOptions {
   permissionConfig: Required<PermissionsConfig>;
@@ -12,6 +13,7 @@ export interface PackageLocalRuntimeExecutionPipelineCreateOptions {
   permissionHandler: PermissionHandler | undefined;
   logger: unknown;
   toolCatalog: unknown;
+  hookRuntime?: PackageLocalRuntimeHookRuntimePort;
 }
 
 export interface PackageLocalRuntimeExecutionPipelineFactoryPort {
@@ -24,6 +26,7 @@ export interface PackageLocalRuntimeExecutionPipelineOptions {
   permissionHandler: PermissionHandler | undefined;
   logger: unknown;
   toolCatalog: unknown;
+  hookRuntime?: PackageLocalRuntimeHookRuntimePort;
   executionPipelineFactory: PackageLocalRuntimeExecutionPipelineFactoryPort;
   maxHistorySize?: number;
 }
@@ -61,6 +64,7 @@ export function createPackageLocalRuntimeExecutionPipeline(
     permissionHandler: options.permissionHandler,
     logger: options.logger,
     toolCatalog: options.toolCatalog,
+    hookRuntime: options.hookRuntime,
   });
 }
 

@@ -290,7 +290,7 @@ mcpServers: {
 | `disabled` | 未启用健康检查 |
 
 ::: info 工具排序
-MCP 服务器注册的工具在发送给 LLM 时排列在内置工具**之后**。每组内按名称字母序排列。这意味着内置工具在 LLM 上下文中具有更高的优先级。
+MCP 服务器注册的工具会与当前 session 显式注册的 tools 一起发送给 LLM，并在 MCP 组内按名称字母序排列。Root session 不保证存在 Node-local builtin tools；需要这类工具时由 `/local` provider 显式装配。
 :::
 
 ## 实战示例

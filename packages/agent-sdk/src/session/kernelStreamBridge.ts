@@ -37,6 +37,7 @@ function createKernelExecutionContext(
     sessionId: context.sessionId,
     contextSnapshot: turn.snapshot,
     signal,
+    permissionMode: context.options.permissionMode,
   });
 }
 

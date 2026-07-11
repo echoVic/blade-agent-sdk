@@ -41,6 +41,7 @@ export function createPackageLocalKernelSessionRuntimeFactory(
     createTurnId: options.createTurnId,
     async initialize(context) {
       const runtime = getRuntime(context);
+      await runtime.ensureRuntimeCapabilitiesInitialized?.();
       if (context.isResume) {
         await runtime.ensureSessionLoaded?.();
         await runtime.runSessionStart?.(true);
