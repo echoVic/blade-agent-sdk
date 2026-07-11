@@ -67,6 +67,7 @@ export {
   StreamMessageType,
 } from './core/index.js';
 export { getEnvironmentContext, getEnvironmentInfo, type EnvironmentInfo } from './local/environment.js';
+export { normalizePath, PathSecurity, checkRestricted, getRelativePath, isWithinWorkspace, validatePath } from './local/pathSecurity.js';
 export type {
   AgentDefinition,
   AgentLogger,
