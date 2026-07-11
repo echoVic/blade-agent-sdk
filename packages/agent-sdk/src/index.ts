@@ -146,3 +146,4 @@ export {
   ToolKind,
   toolFromDefinition,
 } from './tools/index.js';
+export { getPackageName, getVersion } from './local/packageInfo.js';

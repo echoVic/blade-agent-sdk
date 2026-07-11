@@ -1,9 +1,1 @@
-import packageJson from '../../package.json';
-
-export function getVersion(): string {
-  return packageJson.version;
-}
-
-export function getPackageName(): string {
-  return packageJson.name;
-}
+export { getPackageName, getVersion } from '@blade-ai/agent-sdk';
