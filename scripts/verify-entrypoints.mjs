@@ -399,7 +399,7 @@ try {
       "import { ConfigError, SdkError } from '@blade-ai/agent-sdk/errors';",
       "import { ToolCatalog, ToolKind, createToolBehavior, defineTool, validationErrorToToolResult } from '@blade-ai/agent-sdk/tools';",
       "import { resumeSession } from '@blade-ai/agent-sdk/session';",
-      "import { runPackageLocalTurn as runBrowserInternalTurn, runPackageLocalToolCall as runBrowserInternalToolCall } from '@blade-ai/agent-sdk/session/internal';",
+      "import { createPackageLocalAgentLoopPorts as createBrowserInternalAgentLoopPorts } from '@blade-ai/agent-sdk/session/internal';",
       "import { createSession as createServerSession } from '@blade-ai/agent-sdk/server';",
       "import { getBuiltinTools } from '@blade-ai/agent-sdk/local';",
       "const sdkError = new ConfigError('browser-safe sdk error');",
@@ -421,8 +421,7 @@ try {
       "try { createSession({}); } catch (error) { console.log(`server-only for bundled createSession: ${error.message}`); }",
       "try { createBrowserSession({}); } catch (error) { console.log(`server-only for bundled browser createSession: ${error.message}`); }",
       "try { resumeSession('session-id'); } catch (error) { console.log(`server-only for bundled resumeSession: ${error.message}`); }",
-      "try { runBrowserInternalTurn({}); } catch (error) { console.log(`server-only for bundled internal runPackageLocalTurn: ${error.message}`); }",
-      "try { runBrowserInternalToolCall({}); } catch (error) { console.log(`server-only for bundled internal runPackageLocalToolCall: ${error.message}`); }",
+      "try { createBrowserInternalAgentLoopPorts(); } catch (error) { console.log(`server-only for bundled internal createPackageLocalAgentLoopPorts: ${error.message}`); }",
       "try { createServerSession({}); } catch (error) { console.log(`server-only for bundled server createSession: ${error.message}`); }",
       "try { getBuiltinTools(); } catch (error) { console.log(`server-only for bundled getBuiltinTools: ${error.message}`); }",
     ].join('\n'),
@@ -457,8 +456,7 @@ try {
   assertIncludes(browserBundleOutput, 'server-only for bundled createSession', 'browser bundle root stub');
   assertIncludes(browserBundleOutput, 'server-only for bundled browser createSession', 'browser bundle browser stub');
   assertIncludes(browserBundleOutput, 'server-only for bundled resumeSession', 'browser bundle session stub');
-  assertIncludes(browserBundleOutput, 'server-only for bundled internal runPackageLocalTurn', 'browser bundle internal turn stub');
-  assertIncludes(browserBundleOutput, 'server-only for bundled internal runPackageLocalToolCall', 'browser bundle internal tool stub');
+  assertIncludes(browserBundleOutput, 'server-only for bundled internal createPackageLocalAgentLoopPorts', 'browser bundle internal loop ports stub');
   assertIncludes(browserBundleOutput, 'server-only for bundled server createSession', 'browser bundle server stub');
   assertIncludes(browserBundleOutput, 'server-only for bundled getBuiltinTools', 'browser bundle local stub');
 

@@ -445,8 +445,7 @@ export class PackageLocalStreamingToolExecutor<
   }
 
   /**
-   * 复刻 executeToolCalls.ts 的 executeWithConcurrency 语义：
-   * worker-pool 模式，最多 maxConcurrency 个并发 worker。
+   * Worker-pool execution with at most maxConcurrency concurrent workers.
    */
   private async executeWithConcurrencyLimit<T>(
     items: T[],

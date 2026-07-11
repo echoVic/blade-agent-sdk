@@ -1,5 +1,5 @@
 // --- Agent ---
-export type { ToolExecutionUpdate } from './agent/loop/adapterContracts.js';
+export type { ToolExecutionUpdate } from '@blade-ai/agent-sdk/tools';
 export { SubagentExecutor } from './agent/subagents/SubagentExecutor.js';
 export { SubagentRegistry } from './agent/subagents/SubagentRegistry.js';
 export type {

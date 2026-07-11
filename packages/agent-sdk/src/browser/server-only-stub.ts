@@ -24,12 +24,8 @@ export function getBuiltinTools(..._args: unknown[]): never {
   return serverOnly('getBuiltinTools');
 }
 
-export function runPackageLocalToolCall(..._args: unknown[]): never {
-  return serverOnly('runPackageLocalToolCall');
-}
-
-export function runPackageLocalTurn(..._args: unknown[]): never {
-  return serverOnly('runPackageLocalTurn');
+export function createPackageLocalAgentLoopPorts(..._args: unknown[]): never {
+  return serverOnly('createPackageLocalAgentLoopPorts');
 }
 
 export function createMemoryReadTool(..._args: unknown[]): never {

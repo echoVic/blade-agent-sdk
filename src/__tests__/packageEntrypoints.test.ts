@@ -735,10 +735,12 @@ describe('package entrypoints', () => {
     expect(verifier).toContain("from '@blade-ai/agent-sdk/browser';");
     expect(verifier).toContain("from '@blade-ai/agent-sdk/session/internal';");
     expect(verifier).toContain('server-only for bundled createSession');
-    expect(verifier).toContain('runPackageLocalTurn as runBrowserInternalTurn');
-    expect(verifier).toContain('runPackageLocalToolCall as runBrowserInternalToolCall');
-    expect(verifier).toContain('server-only for bundled internal runPackageLocalTurn');
-    expect(verifier).toContain('server-only for bundled internal runPackageLocalToolCall');
+    expect(verifier).toContain(
+      'createPackageLocalAgentLoopPorts as createBrowserInternalAgentLoopPorts',
+    );
+    expect(verifier).toContain(
+      'server-only for bundled internal createPackageLocalAgentLoopPorts',
+    );
     expect(verifier).toContain('server-only for bundled resumeSession');
     expect(verifier).toContain('server-only for bundled getBuiltinTools');
     expect(verifier).toContain("from '@blade-ai/agent';");
@@ -925,11 +927,8 @@ describe('package entrypoints', () => {
 
     expect(browser.PermissionMode.DEFAULT).toBe('default');
     expect(() => browser.createSession({} as never)).toThrow(/server-only.*createSession/);
-    expect(() => serverOnly.runPackageLocalToolCall({} as never)).toThrow(
-      /server-only.*runPackageLocalToolCall/,
-    );
-    expect(() => serverOnly.runPackageLocalTurn({} as never)).toThrow(
-      /server-only.*runPackageLocalTurn/,
+    expect(() => serverOnly.createPackageLocalAgentLoopPorts()).toThrow(
+      /server-only.*createPackageLocalAgentLoopPorts/,
     );
     expect(() => serverOnly.getBuiltinTools()).toThrow(/server-only.*getBuiltinTools/);
   });

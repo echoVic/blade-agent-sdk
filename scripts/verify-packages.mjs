@@ -1977,7 +1977,7 @@ async function verifyConsumerBrowserBundle(consumerDir) {
       "import { ConfigError, SdkError } from '@blade-ai/agent-sdk/errors';",
       "import { ToolCatalog, ToolKind, createToolBehavior, defineTool, validationErrorToToolResult } from '@blade-ai/agent-sdk/tools';",
       "import { resumeSession } from '@blade-ai/agent-sdk/session';",
-      "import { runPackageLocalTurn as runBrowserInternalTurn, runPackageLocalToolCall as runBrowserInternalToolCall } from '@blade-ai/agent-sdk/session/internal';",
+      "import { createPackageLocalAgentLoopPorts as createBrowserInternalAgentLoopPorts } from '@blade-ai/agent-sdk/session/internal';",
       "import { createSession as createServerSession } from '@blade-ai/agent-sdk/server';",
       "import { getBuiltinTools } from '@blade-ai/agent-sdk/local';",
       "const sdkError = new ConfigError('browser-safe sdk error');",
@@ -2005,8 +2005,7 @@ async function verifyConsumerBrowserBundle(consumerDir) {
       "try { createSession({} as never); } catch (error) { console.log((error as Error).message); }",
       "try { createBrowserSession({} as never); } catch (error) { console.log(`server-only for browser createSession: ${(error as Error).message}`); }",
       "try { resumeSession('session-id' as never); } catch (error) { console.log((error as Error).message); }",
-      "try { runBrowserInternalTurn({} as never); } catch (error) { console.log(`server-only for internal runPackageLocalTurn: ${(error as Error).message}`); }",
-      "try { runBrowserInternalToolCall({} as never); } catch (error) { console.log(`server-only for internal runPackageLocalToolCall: ${(error as Error).message}`); }",
+      "try { createBrowserInternalAgentLoopPorts(); } catch (error) { console.log(`server-only for internal createPackageLocalAgentLoopPorts: ${(error as Error).message}`); }",
       "try { createServerSession({} as never); } catch (error) { console.log((error as Error).message); }",
       "try { getBuiltinTools(); } catch (error) { console.log((error as Error).message); }",
     ].join('\n'),
@@ -2042,11 +2041,8 @@ async function verifyConsumerBrowserBundle(consumerDir) {
   if (!browserRunOutput.includes('server-only for browser createSession')) {
     throw new Error('Browser bundle does not include the browser createSession server-only stub message');
   }
-  if (!browserRunOutput.includes('server-only for internal runPackageLocalTurn')) {
-    throw new Error('Browser bundle does not include the internal runPackageLocalTurn server-only stub message');
-  }
-  if (!browserRunOutput.includes('server-only for internal runPackageLocalToolCall')) {
-    throw new Error('Browser bundle does not include the internal runPackageLocalToolCall server-only stub message');
+  if (!browserRunOutput.includes('server-only for internal createPackageLocalAgentLoopPorts')) {
+    throw new Error('Browser bundle does not include the internal createPackageLocalAgentLoopPorts server-only stub message');
   }
   if (!browserRunOutput.includes('server-only for resumeSession')) {
     throw new Error('Browser bundle does not include the resumeSession server-only stub message');

@@ -1697,7 +1697,7 @@ import { PermissionMode as CorePermissionMode } from '@blade-ai/agent-sdk/core';
 import { ConfigError, SdkError } from '@blade-ai/agent-sdk/errors';
 import { createSession as serverCreateSession } from '@blade-ai/agent-sdk/server';
 import { resumeSession } from '@blade-ai/agent-sdk/session';
-import { runPackageLocalTurn as runBrowserInternalTurn, runPackageLocalToolCall as runBrowserInternalToolCall } from '@blade-ai/agent-sdk/session/internal';
+	import { createPackageLocalAgentLoopPorts as createBrowserInternalAgentLoopPorts } from '@blade-ai/agent-sdk/session/internal';
 import { getBuiltinTools } from '@blade-ai/agent-sdk/local';
 import { ToolCatalog, ToolKind, createToolBehavior, defineTool, validationErrorToToolResult } from '@blade-ai/agent-sdk/tools';
 
@@ -1746,10 +1746,8 @@ assertServerOnly(() => rootCreateSession({}), 'server-only for createSession');
 assertServerOnly(() => browserCreateSession({}), 'server-only for createSession');
 console.log('server-only for browser createSession');
 assertServerOnly(() => serverCreateSession({}), 'server-only for createSession');
-assertServerOnly(() => runBrowserInternalTurn({}), 'server-only for runPackageLocalTurn');
-console.log('server-only for internal runPackageLocalTurn');
-assertServerOnly(() => runBrowserInternalToolCall({}), 'server-only for runPackageLocalToolCall');
-console.log('server-only for internal runPackageLocalToolCall');
+	assertServerOnly(() => createBrowserInternalAgentLoopPorts(), 'server-only for createPackageLocalAgentLoopPorts');
+	console.log('server-only for internal createPackageLocalAgentLoopPorts');
 assertServerOnly(() => resumeSession('session-id'), 'server-only for resumeSession');
 assertServerOnly(() => getBuiltinTools(), 'server-only for getBuiltinTools');
 `,
@@ -1778,8 +1776,7 @@ assertServerOnly(() => getBuiltinTools(), 'server-only for getBuiltinTools');
   for (const expected of [
     'server-only for createSession',
     'server-only for browser createSession',
-    'server-only for internal runPackageLocalTurn',
-    'server-only for internal runPackageLocalToolCall',
+	    'server-only for internal createPackageLocalAgentLoopPorts',
     'server-only for resumeSession',
     'server-only for getBuiltinTools',
     'browser-safe sdk error true CONFIG_ERROR',
