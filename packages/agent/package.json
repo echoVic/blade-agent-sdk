@@ -62,8 +62,8 @@
       "import": "./dist/tracing/index.js"
     },
     "./utils": {
-      "types": "./dist/utils/errorUtils.d.ts",
-      "import": "./dist/utils/errorUtils.js"
+      "types": "./dist/utils/index.d.ts",
+      "import": "./dist/utils/index.js"
     },
     "./package.json": {
       "default": "./package.json"

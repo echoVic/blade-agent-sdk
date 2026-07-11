@@ -12,7 +12,7 @@ export default defineConfig({
     'recovery/index': 'src/recovery/index.ts',
     'state/index': 'src/state/index.ts',
     'tracing/index': 'src/tracing/index.ts',
-    'utils/errorUtils': 'src/utils/errorUtils.ts',
+    'utils/index': 'src/utils/index.ts',
   },
   format: ['esm'],
   target: 'node22',
