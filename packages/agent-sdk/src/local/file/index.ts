@@ -15,3 +15,9 @@ export {
   generateDiffSnippet,
   generateDiffSnippetWithMatch,
 } from './diffUtils.js';
+export {
+  MatchStrategy,
+  flexibleMatch,
+  unescapeString,
+  type MatchResult,
+} from './editCorrector.js';

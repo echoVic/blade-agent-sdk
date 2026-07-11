@@ -30,6 +30,12 @@ export {
   generateDiffSnippet,
   generateDiffSnippetWithMatch,
 } from './file/diffUtils.js';
+export {
+  flexibleMatch,
+  MatchStrategy,
+  unescapeString,
+  type MatchResult,
+} from './file/editCorrector.js';
 export type {
   SandboxCapabilities,
   SandboxCheckResult,
