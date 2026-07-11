@@ -92,9 +92,10 @@ function getBuiltinTools(opts?: {
 }): Promise<Tool[]>
 ```
 
-Root `createSession()` 不会自动注册 Node-local builtin tools。只有显式传入 `memoryManager` 调用 `/local` helper 时，`MemoryRead` 和 `MemoryWrite` 才会出现在返回集合中；完整 Read/Edit/Write/Bash/Task 工具套件仍是后续 local-runtime migration，不属于当前发布包的默认能力。
+Root `createSession()` 不会自动注册 Node-local builtin tools。只有显式传入 `memoryManager` 调用 `/local` helper 时，`MemoryRead` 和 `MemoryWrite` 才会出现在返回集合中；返回的预构建 `Tool[]` 可以直接传给 `SessionOptions.tools`，不需要转换回 `ToolDefinition`。完整 Read/Edit/Write/Bash/Task 工具套件仍是后续 local-runtime migration，不属于当前发布包的默认能力。
 
 ```ts
+import { createSession } from '@blade-ai/agent-sdk';
 import {
   FileSystemMemoryStore,
   MemoryManager,
@@ -103,6 +104,12 @@ import {
 
 const tools = await getBuiltinTools({
   memoryManager: new MemoryManager(new FileSystemMemoryStore('/tmp/blade-memory')),
+});
+
+const session = await createSession({
+  provider: { type: 'openai', apiKey: process.env.OPENAI_API_KEY! },
+  model: 'gpt-4o-mini',
+  tools,
 });
 ```
 
@@ -132,6 +139,16 @@ const session2 = await createSession({
 ```
 
 ## 核心类型
+
+### SessionTool
+
+```ts
+type SessionTool = ToolDefinition | Tool;
+```
+
+`ToolDefinition` 会由 session runtime 转换为 `Tool`；通过 `createTool()` 或 `/local` adapter 得到的预构建 `Tool` 会直接注册，不会重复包装。
+
+通过 `SessionOptions.tools` 显式传入的两种形式都按 session `custom/workspace` 来源登记，不会因为工具由 `/local` helper 创建就自动提升为 `builtin/trusted`。需要按来源过滤时，应把这类显式注入工具视为 custom tools。
 
 ### ToolDefinition
 

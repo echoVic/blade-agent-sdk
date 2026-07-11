@@ -1,11 +1,117 @@
 import { existsSync } from 'node:fs';
 import { describe, expect, it, vi } from 'vitest';
+import { z } from 'zod';
+import {
+  createTool,
+  toolFromDefinition,
+  ToolKind,
+} from '../tools/index.js';
 
 const toolRegistrationModulePath =
   '../session/runtimeToolRegistration.js';
 const toolRegistrationSourcePath = 'src/session/runtimeToolRegistration.ts';
 
 describe('agent-sdk package-local runtime tool registration helpers', () => {
+  it('registers prebuilt tools directly while converting tool definitions', async () => {
+    expect(existsSync(toolRegistrationSourcePath)).toBe(true);
+
+    const { registerPackageLocalRuntimeCustomTools } = await import(toolRegistrationModulePath);
+    const prebuiltTool = createTool({
+      name: 'MemoryRead',
+      displayName: 'Memory Read',
+      kind: ToolKind.ReadOnly,
+      schema: z.object({}),
+      description: { short: 'Read memory' },
+      execute: async () => ({ success: true, llmContent: 'memory' }),
+    });
+    const definition = {
+      name: 'search_docs',
+      description: 'Search docs',
+      parameters: { type: 'object' as const },
+      async execute() {
+        return { success: true as const, llmContent: 'docs' };
+      },
+    };
+    const fromDefinition = vi.fn(toolFromDefinition);
+    const registerTools = vi.fn();
+
+    registerPackageLocalRuntimeCustomTools({
+      definitions: [prebuiltTool, definition],
+      customToolFactory: { fromDefinition },
+      registerTools,
+    });
+
+    expect(fromDefinition).toHaveBeenCalledOnce();
+    expect(fromDefinition).toHaveBeenCalledWith(definition);
+    expect(registerTools).toHaveBeenCalledWith(
+      [prebuiltTool, expect.objectContaining({ name: 'search_docs' })],
+      {
+        kind: 'custom',
+        trustLevel: 'workspace',
+        sourceId: 'session',
+      },
+    );
+  });
+
+  it('does not require a custom tool factory for prebuilt tools', async () => {
+    const { registerPackageLocalRuntimeCustomTools } = await import(toolRegistrationModulePath);
+    const prebuiltTool = createTool({
+      name: 'MemoryRead',
+      displayName: 'Memory Read',
+      kind: ToolKind.ReadOnly,
+      schema: z.object({}),
+      description: { short: 'Read memory' },
+      execute: async () => ({ success: true, llmContent: 'memory' }),
+    });
+    const registerTools = vi.fn();
+
+    registerPackageLocalRuntimeCustomTools({
+      definitions: [prebuiltTool],
+      registerTools,
+    });
+
+    expect(registerTools).toHaveBeenCalledWith(
+      [prebuiltTool],
+      {
+        kind: 'custom',
+        trustLevel: 'workspace',
+        sourceId: 'session',
+      },
+    );
+  });
+
+  it('converts tool definitions even when they expose runtime-like helper methods', async () => {
+    const { registerPackageLocalRuntimeCustomTools } = await import(toolRegistrationModulePath);
+    const overlappingDefinition = {
+      name: 'search_docs',
+      description: 'Search docs',
+      parameters: { type: 'object' as const },
+      getFunctionDeclaration() {
+        return { name: 'search_docs' };
+      },
+      build() {
+        return {};
+      },
+      async execute() {
+        return { success: true as const, llmContent: 'docs' };
+      },
+    };
+    const fromDefinition = vi.fn(toolFromDefinition);
+    const registerTools = vi.fn();
+
+    registerPackageLocalRuntimeCustomTools({
+      definitions: [overlappingDefinition],
+      customToolFactory: { fromDefinition },
+      registerTools,
+    });
+
+    expect(fromDefinition).toHaveBeenCalledWith(overlappingDefinition);
+    expect(registerTools).toHaveBeenCalledWith(
+      [expect.objectContaining({ name: 'search_docs' })],
+      expect.objectContaining({ kind: 'custom' }),
+    );
+  });
+
   it('registers custom tools through factory and registration ports without runtime state', async () => {
     expect(existsSync(toolRegistrationSourcePath)).toBe(true);
 

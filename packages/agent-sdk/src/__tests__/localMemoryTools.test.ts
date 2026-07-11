@@ -10,6 +10,7 @@ import {
   type MemoryInput,
   type MemoryStore,
 } from '../local/memory.js';
+import type { SessionOptions } from '../session/types.js';
 
 class InMemoryStore implements MemoryStore {
   private readonly records = new Map<string, Memory>();
@@ -46,7 +47,19 @@ describe('agent-sdk local memory tools', () => {
     const manager = new MemoryManager(new InMemoryStore());
 
     await expect(getBuiltinTools()).resolves.toEqual([]);
-    await expect(getBuiltinTools({ memoryManager: manager })).resolves.toMatchObject([
+    const tools = await getBuiltinTools({ memoryManager: manager });
+    const sessionOptions = {
+      provider: {
+        type: 'openai-compatible',
+        apiKey: 'test-key',
+        baseUrl: 'https://example.com/v1',
+      },
+      model: 'test-model',
+      tools,
+    } satisfies SessionOptions;
+
+    expect(sessionOptions.tools).toBe(tools);
+    expect(tools).toMatchObject([
       { name: 'MemoryRead' },
       { name: 'MemoryWrite' },
     ]);

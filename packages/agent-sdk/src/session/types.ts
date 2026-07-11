@@ -7,7 +7,7 @@ import type {
   RuntimeContextPatch,
   RuntimePatch,
 } from '../runtime/types.js';
-import type { ToolDefinition, ToolResult } from '../tools/types/index.js';
+import type { Tool, ToolDefinition, ToolResult } from '../tools/types/index.js';
 import type {
   JsonObject,
   JsonValue,
@@ -230,6 +230,8 @@ export interface AgentDefinition {
   model?: string;
 }
 
+export type SessionTool = ToolDefinition<never> | Tool;
+
 export interface SessionOptions {
   provider: ProviderConfig;
   model: string;
@@ -245,7 +247,7 @@ export interface SessionOptions {
   disallowedTools?: string[];
   toolSourcePolicy?: ToolCatalogSourcePolicy;
   mcpServers?: Record<string, McpServerConfig | SdkMcpServerHandle>;
-  tools?: ToolDefinition<never>[];
+  tools?: SessionTool[];
 
   permissionMode?: PermissionMode;
   permissionHandler?: PermissionHandler;

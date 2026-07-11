@@ -56,7 +56,7 @@ import { createSession } from '@blade-ai/agent-sdk';
 
 大多数应用只需要 `@blade-ai/agent-sdk`。只有当你要自己组装模型层或 agent kernel 时，才直接依赖 `@blade-ai/ai` / `@blade-ai/agent`。
 
-当前 package-owned session runtime 不会自动注册 Node-local builtin tools。Root `createSession()` 默认只装配显式传入的 custom tools 和配置的 MCP tools；`@blade-ai/agent-sdk/local` 当前可选提供 `MemoryRead` / `MemoryWrite`，完整 Read/Edit/Bash/Task 本地工具套件仍在迁移中。
+当前 package-owned session runtime 不会自动注册 Node-local builtin tools。Root `createSession()` 默认只装配显式传入的 custom tools、预构建 `Tool` 和配置的 MCP tools；`@blade-ai/agent-sdk/local` 当前可选提供 `MemoryRead` / `MemoryWrite`，其 `getBuiltinTools()` 结果可以直接传给 `SessionOptions.tools`。完整 Read/Edit/Bash/Task 本地工具套件仍在迁移中。
 
 ## 快速开始
 

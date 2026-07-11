@@ -1,10 +1,12 @@
-import type { SessionOptions } from './types.js';
+import type { Tool, ToolDefinition } from '../tools/types/index.js';
+import type { SessionOptions, SessionTool } from './types.js';
 
 export interface PackageLocalRuntimeNamedTool {
   name: string;
 }
 
-export type PackageLocalRuntimeToolDefinition = NonNullable<SessionOptions['tools']>[number];
+export type PackageLocalRuntimeConfiguredTool = NonNullable<SessionOptions['tools']>[number];
+export type PackageLocalRuntimeToolDefinition = Extract<SessionTool, ToolDefinition<never>>;
 
 export interface PackageLocalRuntimeCustomToolFactoryPort<
   TTool extends PackageLocalRuntimeNamedTool,
@@ -27,7 +29,7 @@ export interface PackageLocalRuntimeBuiltinToolSource {
 export interface PackageLocalRuntimeCustomToolRegistrationOptions<
   TTool extends PackageLocalRuntimeNamedTool,
 > {
-  definitions?: readonly PackageLocalRuntimeToolDefinition[];
+  definitions?: readonly (PackageLocalRuntimeToolDefinition | TTool)[];
   customToolFactory?: PackageLocalRuntimeCustomToolFactoryPort<TTool>;
   registerTools(tools: TTool[], source: PackageLocalRuntimeCustomToolSource): void;
 }
@@ -66,7 +68,7 @@ export interface PackageLocalRuntimeSessionToolRegistrationOperationsOptions<
   TTool extends PackageLocalRuntimeNamedTool,
   TMcpRegistry,
 > {
-  definitions?: readonly PackageLocalRuntimeToolDefinition[];
+  definitions?: readonly (PackageLocalRuntimeToolDefinition | TTool)[];
   customToolFactory?: PackageLocalRuntimeCustomToolFactoryPort<TTool>;
   sessionId: string;
   storageRoot?: string;
@@ -158,17 +160,35 @@ export function registerPackageLocalRuntimeCustomTools<
     return;
   }
 
-  if (!options.customToolFactory) {
-    throw new Error('Package-local custom tool factory port is required to register tools');
-  }
-
-  const customToolFactory = options.customToolFactory;
-  const tools = definitions.map((definition) => customToolFactory.fromDefinition(definition));
+  const tools = definitions.map((definition) => {
+    if (isPackageLocalRuntimeToolDefinition(definition)) {
+      if (!options.customToolFactory) {
+        throw new Error('Package-local custom tool factory port is required to register tools');
+      }
+      return options.customToolFactory.fromDefinition(definition);
+    }
+    return definition;
+  });
   options.registerTools(tools, {
     kind: 'custom',
     trustLevel: 'workspace',
     sourceId: 'session',
   });
+}
+
+function isPackageLocalRuntimeToolDefinition<TTool extends PackageLocalRuntimeNamedTool>(
+  value: PackageLocalRuntimeToolDefinition | TTool,
+): value is PackageLocalRuntimeToolDefinition {
+  if ('parameters' in value) {
+    return true;
+  }
+
+  const candidate = value as Partial<Tool>;
+  return !(
+    typeof candidate.getFunctionDeclaration === 'function'
+    && typeof candidate.build === 'function'
+    && typeof candidate.execute === 'function'
+  );
 }
 
 export async function registerPackageLocalRuntimeBuiltinTools<

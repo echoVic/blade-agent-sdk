@@ -154,6 +154,7 @@ export type {
   PackageLocalRuntimeSessionStorePort,
   PackageLocalRuntimeSubagentRegistryPort,
   PackageLocalRuntimeToolCatalogPort,
+  PackageLocalRuntimeConfiguredTool,
   PackageLocalRuntimeToolDefinition,
   PackageLocalRuntimeToolSource,
   PackageLocalRuntimeToolSourceKind,

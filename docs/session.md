@@ -862,7 +862,7 @@ const currentContext = session.getDefaultContext();
 
 ```ts
 interface SessionOptions {
-  tools?: ToolDefinition[];      // 追加自定义工具
+  tools?: Array<ToolDefinition | Tool>; // definition 或预构建工具
   allowedTools?: string[];       // 工具白名单（仅允许列出的工具）
   disallowedTools?: string[];    // 工具黑名单（排除列出的工具）
 }
@@ -870,7 +870,7 @@ interface SessionOptions {
 
 `allowedTools` 未设置时不限制工具；设置为 `[]` 时表示禁用所有工具。
 
-当前 package-owned root session 不会自动注册 Node-local builtin tools。默认可过滤的集合来自 `SessionOptions.tools` 显式注册的 custom tools 和已连接的 MCP tools；`MemoryRead` / `MemoryWrite` 由 `/local` helper opt-in 提供，完整 Read/Edit/Bash/Task 工具套件仍待迁移。
+当前 package-owned root session 不会自动注册 Node-local builtin tools。默认可过滤的集合来自 `SessionOptions.tools` 显式注册的 `ToolDefinition`、预构建 `Tool` 和已连接的 MCP tools；`MemoryRead` / `MemoryWrite` 由 `/local` helper opt-in 提供，其 `getBuiltinTools()` 结果可直接传给 `tools`。完整 Read/Edit/Bash/Task 工具套件仍待迁移。
 
 ### ToolDefinition
 

@@ -35,6 +35,7 @@ export type {
   SessionMessage,
   SessionMessageRole,
   SessionOptions,
+  SessionTool,
   SessionTextContentPart,
   SessionToolCall,
   StreamMessage,

@@ -1775,6 +1775,11 @@ const sessionOptions: SessionOptions = {
   },
 };
 
+declare const prebuiltTool: PublicTool;
+const sessionTool: SessionTool = prebuiltTool;
+const sessionOptionsWithPrebuiltTool: SessionOptions = { ...sessionOptions, tools: [sessionTool] };
+const subpathSessionTool: SubpathSessionTool = prebuiltTool;
+
 const coreJson: CoreJsonObject = { ok: true };
 const runtimeContext: RuntimeContext = {
   capabilities: {

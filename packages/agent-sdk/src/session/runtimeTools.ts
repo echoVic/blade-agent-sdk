@@ -10,9 +10,9 @@ import {
   type PackageLocalRuntimeCustomToolFactoryPort,
   type PackageLocalRuntimeCustomToolSource,
   type PackageLocalRuntimeBuiltinToolSource,
+  type PackageLocalRuntimeConfiguredTool,
   type PackageLocalRuntimeNamedTool,
   type PackageLocalRuntimeSessionToolRegistrationOperations,
-  type PackageLocalRuntimeToolDefinition,
   type PackageLocalRuntimeToolRegistrationCatalogPort,
   type PackageLocalRuntimeToolRegistrationOperations,
 } from './runtimeToolRegistration.js';
@@ -22,7 +22,7 @@ export interface PackageLocalRuntimeToolOperationsOptions<
   TSource,
   TMcpRegistry,
 > extends PackageLocalRuntimeToolFilterOptions {
-  definitions?: readonly PackageLocalRuntimeToolDefinition[];
+  definitions?: readonly (PackageLocalRuntimeConfiguredTool | TTool)[];
   customToolFactory?: PackageLocalRuntimeCustomToolFactoryPort<TTool>;
   sessionId: string;
   storageRoot?: string;

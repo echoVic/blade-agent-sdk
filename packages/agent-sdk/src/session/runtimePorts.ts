@@ -2,6 +2,7 @@ import type { ModelMessage } from '@blade-ai/ai';
 import type { AgentStoreAppendContext } from '@blade-ai/agent/state';
 import type { RuntimeContext } from '../runtime/types.js';
 import type { SubagentConfig } from '../subagents/types.js';
+import type { ToolDefinition } from '../tools/types/index.js';
 import type { BladeConfig, McpServerConfig } from '../types/common.js';
 import type {
   PackageLocalRuntimeAgentKernelFactoryPort,
@@ -138,7 +139,11 @@ export interface PackageLocalRuntimeLoggerPort {
   warn(...args: unknown[]): void;
 }
 
-export type PackageLocalRuntimeToolDefinition = NonNullable<SessionOptions['tools']>[number];
+export type PackageLocalRuntimeConfiguredTool = NonNullable<SessionOptions['tools']>[number];
+export type PackageLocalRuntimeToolDefinition = Extract<
+  PackageLocalRuntimeConfiguredTool,
+  ToolDefinition<never>
+>;
 export type PackageLocalRuntimeAgentDefinition = NonNullable<SessionOptions['agents']>[string];
 
 export interface PackageLocalRuntimeCustomToolFactoryPort {

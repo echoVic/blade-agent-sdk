@@ -2208,6 +2208,11 @@ const sessionOptions: SessionOptions = {
   },
 };
 
+declare const prebuiltTool: PublicTool;
+const sessionTool: SessionTool = prebuiltTool;
+const sessionOptionsWithPrebuiltTool: SessionOptions = { ...sessionOptions, tools: [sessionTool] };
+const publishedSessionTool: PublishedSessionTool = prebuiltTool;
+
 const streamMessage: StreamMessage = {
   type: 'content',
   delta: 'ok',

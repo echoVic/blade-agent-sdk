@@ -56,6 +56,13 @@
 | `SubagentRegistry` | subagents | 注册和发现子 Agent |
 | `SubagentExecutor` | subagents | 执行单个子 Agent |
 
+## 关键类型
+
+| 名称 | 说明 |
+|------|------|
+| `SessionOptions` | Session 创建选项；`tools` 接受 `ToolDefinition[]`、预构建 `Tool[]` 或两者混合 |
+| `SessionTool` | `ToolDefinition \| Tool`，用于显式组合 custom 与 `/local` 工具 |
+
 ## 常量 / 枚举
 
 | 名称 | 值 |

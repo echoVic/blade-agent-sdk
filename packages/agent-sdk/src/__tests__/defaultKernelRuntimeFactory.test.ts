@@ -11,6 +11,13 @@ import type { SessionOptions, StreamMessage } from '../session/types.js';
 import type { ToolDefinition } from '../tools/types/index.js';
 import { HookEvent, PermissionMode } from '../types/constants.js';
 import { createSdkMcpServer, tool } from '../local/mcp.js';
+import { getBuiltinTools } from '../local/builtin-tools.js';
+import {
+  MemoryManager,
+  type Memory,
+  type MemoryInput,
+  type MemoryStore,
+} from '../local/memory.js';
 import { createDefaultMcpRuntimeRegistry } from '../session/defaultMcpRuntime.js';
 import { z } from 'zod';
 
@@ -328,6 +335,92 @@ describe('agent-sdk default kernel runtime factory', () => {
         subtype: 'success',
         content: 'Beijing is 23C',
         sessionId: 'default-tool-session',
+      },
+    ]));
+  });
+
+  it('executes prebuilt local tools passed through session options', async () => {
+    const memory: Memory = {
+      name: 'project-context',
+      description: 'Repository conventions',
+      type: 'project',
+      body: 'Keep local tools explicitly composed.',
+      updatedAt: 1,
+    };
+    const memoryStore: MemoryStore = {
+      async save(input: MemoryInput) {
+        return { ...input, updatedAt: 1 };
+      },
+      async get(name: string) {
+        return name === memory.name ? memory : undefined;
+      },
+      async list() {
+        return [memory];
+      },
+      async delete() {},
+    };
+    const localTools = await getBuiltinTools({
+      memoryManager: new MemoryManager(memoryStore),
+    });
+    const generate = vi
+      .fn<ModelPort['generate']>()
+      .mockResolvedValueOnce({
+        content: '',
+        finishReason: 'tool_calls',
+        toolCalls: [
+          {
+            id: 'memory-read-call',
+            name: 'MemoryRead',
+            input: { operation: 'get', name: memory.name },
+          },
+        ],
+      })
+      .mockResolvedValueOnce({
+        content: 'Loaded project context',
+        finishReason: 'stop',
+      });
+    const factory = createDefaultKernelSessionRuntimeFactory({
+      createSessionId: () => 'local-tool-session',
+      createTurnId: () => 'local-tool-turn',
+      runtime: {
+        kernelModelResolver: {
+          resolve() {
+            return {
+              model: { generate, async *stream() {} },
+              modelRequestDefaults: { model: 'local-tool-model' },
+            };
+          },
+        },
+      },
+    });
+
+    const session = await factory.create({
+      ...options,
+      permissionMode: PermissionMode.YOLO,
+      tools: localTools,
+    });
+    await session.send('Load project context');
+    const messages = await collect(session.stream());
+
+    expect(generate.mock.calls[0]?.[0].tools).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ name: 'MemoryRead' }),
+        expect.objectContaining({ name: 'MemoryWrite' }),
+      ]),
+    );
+    expect(messages).toEqual(expect.arrayContaining([
+      {
+        type: 'tool_result',
+        id: 'memory-read-call',
+        name: 'MemoryRead',
+        output: memory,
+        sessionId: 'local-tool-session',
+      },
+      {
+        type: 'result',
+        subtype: 'success',
+        content: 'Loaded project context',
+        sessionId: 'local-tool-session',
       },
     ]));
   });
