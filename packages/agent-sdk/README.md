@@ -36,7 +36,7 @@ session.close();
 
 The root entry is intended for Node server usage and CLI process embedding. It keeps local adapters behind the explicit `@blade-ai/agent-sdk/local` subpath. Browser code should use browser-safe subpaths such as `@blade-ai/agent-sdk/core` and communicate with a server route for real agent execution.
 
-The package-owned session runtime 不会自动注册 Node-local builtin tools. Root sessions register explicit `ToolDefinition` values, prebuilt `Tool` values, and configured MCP tools. The current local baseline adds `MemoryRead` / `MemoryWrite` only when a memory manager is provided, and `getBuiltinTools()` can be passed directly to `createSession({ tools })`. The broader Read/Edit/Bash/Task suite remains a separate local-runtime migration.
+The package-owned session runtime 不会自动注册 Node-local builtin tools. Root sessions register explicit `ToolDefinition` values, prebuilt `Tool` values, and configured MCP tools. The current local baseline includes a package-owned `Read` tool and adds `MemoryRead` / `MemoryWrite` when a memory manager is provided; `getBuiltinTools()` can be passed directly to `createSession({ tools })`. Edit/Write/Bash/Task remain separate local-runtime migrations.
 
 Use `@blade-ai/agent-sdk/errors` when you need stable error classes for `instanceof`, error codes, or serialized diagnostics:
 

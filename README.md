@@ -56,7 +56,7 @@ import { createSession } from '@blade-ai/agent-sdk';
 
 大多数应用只需要 `@blade-ai/agent-sdk`。只有当你要自己组装模型层或 agent kernel 时，才直接依赖 `@blade-ai/ai` / `@blade-ai/agent`。
 
-当前 package-owned session runtime 不会自动注册 Node-local builtin tools。Root `createSession()` 默认只装配显式传入的 custom tools、预构建 `Tool` 和配置的 MCP tools；`@blade-ai/agent-sdk/local` 当前可选提供 `MemoryRead` / `MemoryWrite`，其 `getBuiltinTools()` 结果可以直接传给 `SessionOptions.tools`。完整 Read/Edit/Bash/Task 本地工具套件仍在迁移中。
+当前 package-owned session runtime 不会自动注册 Node-local builtin tools。Root `createSession()` 默认只装配显式传入的 custom tools、预构建 `Tool` 和配置的 MCP tools；`@blade-ai/agent-sdk/local` 的 `getBuiltinTools()` 当前默认提供 package-owned `Read`，传入 memory manager 时再追加 `MemoryRead` / `MemoryWrite`，返回结果可以直接传给 `SessionOptions.tools`。Edit/Write/Bash/Task 等本地工具仍在迁移中。
 
 ## 快速开始
 
@@ -134,7 +134,7 @@ import { createSession } from '@blade-ai/agent-sdk/server';
 import { ToolKind } from '@blade-ai/agent-sdk/core';
 import { SdkError } from '@blade-ai/agent-sdk/errors';
 import { defineTool } from '@blade-ai/agent-sdk/tools';
-import { getBuiltinTools } from '@blade-ai/agent-sdk/local'; // opt-in MemoryRead / MemoryWrite
+import { getBuiltinTools } from '@blade-ai/agent-sdk/local'; // Read + opt-in MemoryRead / MemoryWrite
 ```
 
 `@blade-ai/agent-sdk/server` 是显式 server-only facade，直接组合 session/core/tools/subagent API，不通过 root wildcard 转发。它会保持与 root 的公开 server-safe runtime/type surface 对齐，同时发布产物里的 server 入口也能被 verifier 独立检查。

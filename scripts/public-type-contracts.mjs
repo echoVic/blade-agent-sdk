@@ -74,6 +74,7 @@ const sdkPublicTypeImportContracts = {
     "import { ToolKind as PublicToolsToolKind, createToolBehavior as createPublicToolBehavior } from '@blade-ai/agent-sdk/tools';",
     "import type { ToolBehavior as PublicToolBehavior } from '@blade-ai/agent-sdk/tools';",
     "import type { BuiltinToolsOptions } from '@blade-ai/agent-sdk/local';",
+    "import type { FileAccessRecord, LocalFileSystemPort, ReadToolOptions } from '@blade-ai/agent-sdk/local';",
     "import type { ClaudeCodePermissionMode, ISession as ServerSession, PermissionsConfig as ServerPermissionsConfig, SubagentExecutionRunner, SubagentFrontmatter } from '@blade-ai/agent-sdk/server';",
     "import type { StreamMessage as BrowserStreamMessage } from '@blade-ai/agent-sdk/browser';",
   ],
@@ -89,6 +90,8 @@ const sdkPublicTypeImportContracts = {
     "import { ToolKind as PublicToolsToolKind, createToolBehavior as createPublicToolBehavior } from '@blade-ai/agent-sdk/tools';",
     "import type { ToolBehavior as PublicToolBehavior } from '@blade-ai/agent-sdk/tools';",
     "import type { BuiltinToolsOptions } from '@blade-ai/agent-sdk/local';",
+    "import type { FileAccessRecord, LocalFileSystemPort, ReadToolOptions } from '@blade-ai/agent-sdk/local';",
+    "import { FileAccessTracker, createReadTool } from '@blade-ai/agent-sdk/local';",
     "import type { PermissionMode, RuntimeContext } from '@blade-ai/agent-sdk/core';",
   ],
 };

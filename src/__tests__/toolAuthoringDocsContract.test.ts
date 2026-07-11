@@ -29,6 +29,7 @@ describe('tool authoring documentation', () => {
     expect(apiReference).toContain('resolveToolBehaviorSafely');
     expect(config).toContain("{ text: 'Tool Authoring', link: '/tool-authoring' }");
     expect(toolsGuide).not.toContain('SDK 内置 23 个标准工具');
+    expect(toolsGuide).toContain('createReadTool');
     for (const content of [toolsGuide, sessionGuide, readme, packageReadme]) {
       expect(content).toContain('不会自动注册 Node-local builtin tools');
       expect(content).toContain('MemoryRead');

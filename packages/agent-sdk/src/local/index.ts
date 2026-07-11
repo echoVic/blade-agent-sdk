@@ -11,6 +11,17 @@ export type {
 export { createSdkMcpServer, tool } from './mcp.js';
 export { FileSystemMemoryStore, MemoryManager } from './memory.js';
 export type {
+  FileAccessLogger,
+  FileAccessRecord,
+  LocalFileStat,
+  LocalFileSystemPort,
+  ReadToolOptions,
+} from './file/index.js';
+export {
+  createReadTool,
+  FileAccessTracker,
+} from './file/index.js';
+export type {
   SandboxCapabilities,
   SandboxCheckResult,
   SandboxExecutionContext,

@@ -32,7 +32,8 @@
 | `resolveToolBehaviorHint` | tools | 解析不依赖参数的行为提示 |
 | `resolveToolBehaviorSafely` | tools | 安全解析动态行为，异常时回退静态行为 |
 | `isReadOnlyKind` | tools | 判断 ToolKind 是否为 ReadOnly |
-| `getBuiltinTools` | local | 获取当前 package-local baseline（opt-in MemoryRead / MemoryWrite） |
+| `getBuiltinTools` | local | 获取当前 package-local baseline（Read + opt-in MemoryRead / MemoryWrite） |
+| `createReadTool` | local | 创建 package-owned Node-local 文件读取工具 |
 | `createMemoryReadTool` | local | 创建 opt-in MemoryRead 工具 |
 | `createMemoryWriteTool` | local | 创建 opt-in MemoryWrite 工具 |
 | `tool` | local | 定义 MCP 工具 |

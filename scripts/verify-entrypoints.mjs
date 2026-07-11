@@ -178,6 +178,8 @@ assertIncludes(browserRootOutput, 'server-only for createSession', 'browser root
 
 const browserRootModule = await import(pathToFileURL(join(packageRoot, 'dist/browser/index.js')).href);
 assertNoRuntimeExport(browserRootModule, 'getBuiltinTools');
+assertNoRuntimeExport(browserRootModule, 'createReadTool');
+assertNoRuntimeExport(browserRootModule, 'FileAccessTracker');
 assertNoRuntimeExport(browserRootModule, 'createSdkMcpServer');
 assertNoRuntimeExport(browserRootModule, 'FileSystemMemoryStore');
 assertNoRuntimeExport(browserRootModule, 'MemoryManager');
@@ -196,12 +198,12 @@ const subpathOutput = run(process.execPath, [
     "const local = await import('@blade-ai/agent-sdk/local');",
     "const validation = tools.validationErrorToToolResult({ message: 'invalid' });",
     "const behavior = tools.createToolBehavior(tools.ToolKind.ReadOnly);",
-    "console.log(core.PermissionMode.DEFAULT, browser.PermissionMode.DEFAULT, typeof server.createSession, typeof tools.defineTool, typeof local.getBuiltinTools, validation.error?.type, behavior.kind, behavior.isReadOnly, behavior.isConcurrencySafe);",
+    "console.log(core.PermissionMode.DEFAULT, browser.PermissionMode.DEFAULT, typeof server.createSession, typeof tools.defineTool, typeof local.getBuiltinTools, typeof local.createReadTool, typeof local.FileAccessTracker, validation.error?.type, behavior.kind, behavior.isReadOnly, behavior.isConcurrencySafe);",
   ].join(' '),
 ]);
 assertIncludes(
   subpathOutput,
-  'default default function function function validation_error readonly true true',
+  'default default function function function function function validation_error readonly true true',
   'subpath imports',
 );
 
@@ -401,7 +403,7 @@ try {
       "import { resumeSession } from '@blade-ai/agent-sdk/session';",
       "import { createPackageLocalAgentLoopPorts as createBrowserInternalAgentLoopPorts } from '@blade-ai/agent-sdk/session/internal';",
       "import { createSession as createServerSession } from '@blade-ai/agent-sdk/server';",
-      "import { getBuiltinTools } from '@blade-ai/agent-sdk/local';",
+      "import { FileAccessTracker, createReadTool, getBuiltinTools } from '@blade-ai/agent-sdk/local';",
       "const sdkError = new ConfigError('browser-safe sdk error');",
       "const browserSafeTool = defineTool({",
       "  name: 'browser_tool',",
@@ -424,6 +426,8 @@ try {
       "try { createBrowserInternalAgentLoopPorts(); } catch (error) { console.log(`server-only for bundled internal createPackageLocalAgentLoopPorts: ${error.message}`); }",
       "try { createServerSession({}); } catch (error) { console.log(`server-only for bundled server createSession: ${error.message}`); }",
       "try { getBuiltinTools(); } catch (error) { console.log(`server-only for bundled getBuiltinTools: ${error.message}`); }",
+      "try { createReadTool(); } catch (error) { console.log(`server-only for bundled createReadTool: ${error.message}`); }",
+      "try { FileAccessTracker.getInstance(); } catch (error) { console.log(`server-only for bundled FileAccessTracker: ${error.message}`); }",
     ].join('\n'),
     'utf8',
   );
@@ -459,6 +463,8 @@ try {
   assertIncludes(browserBundleOutput, 'server-only for bundled internal createPackageLocalAgentLoopPorts', 'browser bundle internal loop ports stub');
   assertIncludes(browserBundleOutput, 'server-only for bundled server createSession', 'browser bundle server stub');
   assertIncludes(browserBundleOutput, 'server-only for bundled getBuiltinTools', 'browser bundle local stub');
+  assertIncludes(browserBundleOutput, 'server-only for bundled createReadTool', 'browser bundle local file tool stub');
+  assertIncludes(browserBundleOutput, 'server-only for bundled FileAccessTracker', 'browser bundle file tracker stub');
 
   writeFileSync(
     aiEntry,

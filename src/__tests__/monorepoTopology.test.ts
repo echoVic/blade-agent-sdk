@@ -818,12 +818,27 @@ describe('monorepo topology', () => {
       'packages/agent-sdk/src/local/memoryWrite.ts',
       'packages/agent-sdk/src/local/sandbox.ts',
       'packages/agent-sdk/src/local/builtin-tools.ts',
+      'packages/agent-sdk/src/local/file/fileAccessTracker.ts',
+      'packages/agent-sdk/src/local/file/filesystem.ts',
+      'packages/agent-sdk/src/local/file/read.ts',
+      'packages/agent-sdk/src/local/file/index.ts',
     ]) {
       expect(existsSync(file), file).toBe(true);
     }
     expect(localSource).toContain('createSdkMcpServer');
     expect(localSource).toContain('getBuiltinTools');
     expect(localSource).toContain('SandboxService');
+    expect(localSource).toContain('createReadTool');
+    expect(localSource).toContain('FileAccessTracker');
+  });
+
+  it('keeps legacy root Read and file access tracking as local-package forwarders', () => {
+    expect(readFileSync('src/tools/builtin/file/read.ts', 'utf-8').trim()).toBe(
+      "import { createReadTool } from '@blade-ai/agent-sdk/local';\n\nexport { createReadTool };\nexport const readTool = createReadTool();",
+    );
+    expect(readFileSync('src/tools/builtin/file/FileAccessTracker.ts', 'utf-8')).toBe(
+      "export type {\n  FileAccessLogger,\n  FileAccessRecord,\n} from '@blade-ai/agent-sdk/local';\nexport { FileAccessTracker } from '@blade-ai/agent-sdk/local';\n",
+    );
   });
 
   it('keeps legacy root public facades as package-only forwarders', () => {

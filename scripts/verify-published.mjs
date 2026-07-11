@@ -501,6 +501,8 @@ assertRuntimeExport(agentSdk, 'defineTool');
 assertNoRuntimeExport(agentSdk, 'getBuiltinTools');
 assertNoRuntimeExport(agentSdk, 'createSdkMcpServer');
 assertNoRuntimeExport(agentSdk, 'FileSystemMemoryStore');
+assertNoRuntimeExport(agentSdk, 'createReadTool');
+assertNoRuntimeExport(agentSdk, 'FileAccessTracker');
 assertNoRuntimeExport(agentSdk, 'SandboxExecutor');
 assertNoRuntimeExport(agentSdk, 'normalizeDeepSeekModel');
 assertNoRuntimeExport(agentSdk, 'calculateDeepSeekCost');
@@ -511,6 +513,8 @@ assertRuntimeExport(agentSdkCore, 'PermissionMode');
 assertRuntimeExport(agentSdkErrors, 'SdkError');
 assertRuntimeExport(agentSdkErrors, 'AbortError');
 assertRuntimeExport(agentSdkLocal, 'getBuiltinTools');
+assertRuntimeExport(agentSdkLocal, 'createReadTool');
+assertRuntimeExport(agentSdkLocal, 'FileAccessTracker');
 assertRuntimeExport(agentSdkServer, 'createSession');
 assertRuntimeExport(agentSdkServer, 'subagentRegistry');
 assertRuntimeExportParity(agentSdk, agentSdkServer, 'root', 'server');
@@ -1698,7 +1702,7 @@ import { ConfigError, SdkError } from '@blade-ai/agent-sdk/errors';
 import { createSession as serverCreateSession } from '@blade-ai/agent-sdk/server';
 import { resumeSession } from '@blade-ai/agent-sdk/session';
 	import { createPackageLocalAgentLoopPorts as createBrowserInternalAgentLoopPorts } from '@blade-ai/agent-sdk/session/internal';
-import { getBuiltinTools } from '@blade-ai/agent-sdk/local';
+import { FileAccessTracker, createReadTool, getBuiltinTools } from '@blade-ai/agent-sdk/local';
 import { ToolCatalog, ToolKind, createToolBehavior, defineTool, validationErrorToToolResult } from '@blade-ai/agent-sdk/tools';
 
 function assertServerOnly(action, expected) {
@@ -1736,7 +1740,7 @@ console.log('browser-safe sdk error', sdkError instanceof SdkError, sdkError.cod
 console.log('browser-safe sdk tool', noopTool.name, noopTool.kind, browserSafeCatalog.getAll().length);
 console.log('browser-safe sdk validation', validationResult.error?.type);
 console.log('browser-safe sdk behavior', readonlyBehavior.kind, readonlyBehavior.isReadOnly, readonlyBehavior.isConcurrencySafe);
-for (const exportName of ['getBuiltinTools', 'createSdkMcpServer', 'FileSystemMemoryStore', 'MemoryManager', 'createMemoryReadTool', 'createMemoryWriteTool', 'tool']) {
+for (const exportName of ['getBuiltinTools', 'createReadTool', 'FileAccessTracker', 'createSdkMcpServer', 'FileSystemMemoryStore', 'MemoryManager', 'createMemoryReadTool', 'createMemoryWriteTool', 'tool']) {
   if (Object.hasOwn(rootBrowserFacade, exportName)) {
     throw new Error(\`Unexpected browser root local-only export \${exportName}\`);
   }
@@ -1750,6 +1754,8 @@ assertServerOnly(() => serverCreateSession({}), 'server-only for createSession')
 	console.log('server-only for internal createPackageLocalAgentLoopPorts');
 assertServerOnly(() => resumeSession('session-id'), 'server-only for resumeSession');
 assertServerOnly(() => getBuiltinTools(), 'server-only for getBuiltinTools');
+assertServerOnly(() => createReadTool(), 'server-only for createReadTool');
+assertServerOnly(() => FileAccessTracker.getInstance(), 'server-only for FileAccessTracker.getInstance');
 `,
   );
 
@@ -1779,6 +1785,8 @@ assertServerOnly(() => getBuiltinTools(), 'server-only for getBuiltinTools');
 	    'server-only for internal createPackageLocalAgentLoopPorts',
     'server-only for resumeSession',
     'server-only for getBuiltinTools',
+    'server-only for createReadTool',
+    'server-only for FileAccessTracker.getInstance',
     'browser-safe sdk error true CONFIG_ERROR',
     'browser-safe sdk tool noop readonly 0',
     'browser-safe sdk validation validation_error',
@@ -1886,6 +1894,16 @@ async function verifyPublishedAgentBrowserBundleSmoke({ consumerDir }) {
 }
 
 async function verifyPublishedTypesSmoke({ consumerDir }) {
+  const localDeclaration = await readFile(
+    join(consumerDir, 'node_modules/@blade-ai/agent-sdk/dist/local/index.d.ts'),
+    'utf8',
+  );
+  for (const marker of [/\bBuffer\b/, /\bNodeJS\./]) {
+    if (marker.test(localDeclaration)) {
+      throw new Error(`@blade-ai/agent-sdk/local public declaration exposes Node global ${marker}`);
+    }
+  }
+
   await writeFile(
     join(consumerDir, 'tsconfig.json'),
     JSON.stringify({
@@ -2252,6 +2270,24 @@ const serverSubagentRunner: SubagentExecutionRunner = async () => ({
 });
 const serverSubagentRegistryRef: typeof subagentRegistry = subagentRegistry;
 const builtinToolsOptions: BuiltinToolsOptions = {};
+const localFileSystem: LocalFileSystemPort = {
+  async exists() { return true; },
+  async stat() { return { size: 0, isDirectory: false, mtime: new Date(0) }; },
+  async readTextFile() { return ''; },
+  async readBinaryFile() { return new Uint8Array(); },
+};
+const readToolOptions: ReadToolOptions = { fileSystem: localFileSystem };
+const createReadToolRef: typeof createReadTool = createReadTool;
+const fileAccessTrackerRef: typeof FileAccessTracker = FileAccessTracker;
+// @ts-expect-error FileAccessTracker is singleton-only.
+const directFileAccessTracker = new FileAccessTracker();
+const fileAccessRecord: FileAccessRecord = {
+  filePath: '/tmp/example.txt',
+  accessTime: 1,
+  mtime: 1,
+  sessionId: 'session-id',
+  lastOperation: 'read',
+};
 const permissionMode: PermissionMode = CorePermissionMode.DEFAULT;
 const browserStreamMessage: BrowserStreamMessage = streamMessage;
 const browserPermissionMode: BrowserPermissionMode = BrowserPermissionMode.DEFAULT;
@@ -2318,6 +2354,11 @@ void serverSubagentFrontmatter;
 void serverSubagentRunner;
 void serverSubagentRegistryRef;
 void builtinToolsOptions;
+void readToolOptions;
+void createReadToolRef;
+void fileAccessTrackerRef;
+void directFileAccessTracker;
+void fileAccessRecord;
 void permissionMode;
 void browserStreamMessage;
 void browserPermissionMode;

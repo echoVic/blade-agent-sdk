@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import {
   FileSystemMemoryStore,
+  FileAccessTracker,
   MemoryManager,
+  createReadTool,
   SandboxExecutor,
   SandboxService,
   createMemoryReadTool,
@@ -18,7 +20,9 @@ describe('agent-sdk local entry', () => {
     expect(createSdkMcpServer).toBeTypeOf('function');
     expect(tool).toBeTypeOf('function');
     expect(FileSystemMemoryStore).toBeTypeOf('function');
+    expect(FileAccessTracker).toBeTypeOf('function');
     expect(MemoryManager).toBeTypeOf('function');
+    expect(createReadTool).toBeTypeOf('function');
     expect(SandboxExecutor).toBeTypeOf('function');
     expect(SandboxService).toBeTypeOf('function');
     expect(getSandboxExecutor).toBeTypeOf('function');

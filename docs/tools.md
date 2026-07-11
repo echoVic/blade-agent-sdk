@@ -84,7 +84,7 @@ function toolFromDefinition<TParams>(definition: ToolDefinition<TParams>): Tool<
 
 ## getBuiltinTools
 
-获取当前 package-local adapter 已迁移的内置工具。当前 baseline 只包含 opt-in 的 `MemoryRead` 和 `MemoryWrite`；没有传入 `memoryManager` 时返回空数组。
+获取当前 package-local adapter 已迁移的内置工具。当前 baseline 默认包含 `Read`；传入 `memoryManager` 时追加 `MemoryRead` 和 `MemoryWrite`。
 
 ```ts
 function getBuiltinTools(opts?: {
@@ -92,7 +92,7 @@ function getBuiltinTools(opts?: {
 }): Promise<Tool[]>
 ```
 
-Root `createSession()` 不会自动注册 Node-local builtin tools。只有显式传入 `memoryManager` 调用 `/local` helper 时，`MemoryRead` 和 `MemoryWrite` 才会出现在返回集合中；返回的预构建 `Tool[]` 可以直接传给 `SessionOptions.tools`，不需要转换回 `ToolDefinition`。完整 Read/Edit/Write/Bash/Task 工具套件仍是后续 local-runtime migration，不属于当前发布包的默认能力。
+Root `createSession()` 不会自动注册 Node-local builtin tools。`getBuiltinTools()` 返回的预构建 `Tool[]` 可以直接传给 `SessionOptions.tools`，不需要转换回 `ToolDefinition`。`Read` 要求 session context 显式提供 filesystem roots；`MemoryRead` 和 `MemoryWrite` 只有在传入 `memoryManager` 时才会出现。Edit/Write/Bash/Task 工具仍是后续 local-runtime migration。
 
 ```ts
 import { createSession } from '@blade-ai/agent-sdk';
@@ -110,6 +110,14 @@ const session = await createSession({
   provider: { type: 'openai', apiKey: process.env.OPENAI_API_KEY! },
   model: 'gpt-4o-mini',
   tools,
+  defaultContext: {
+    capabilities: {
+      filesystem: {
+        roots: [process.cwd()],
+        cwd: process.cwd(),
+      },
+    },
+  },
 });
 ```
 
@@ -117,6 +125,7 @@ const session = await createSession({
 
 | 工具名 | Kind | 启用条件 |
 | --- | --- | --- |
+| `Read` | readonly | `getBuiltinTools()`；执行时需要 filesystem capability |
 | `MemoryRead` | readonly | `getBuiltinTools({ memoryManager })` |
 | `MemoryWrite` | write | `getBuiltinTools({ memoryManager })` |
 
@@ -149,6 +158,8 @@ type SessionTool = ToolDefinition | Tool;
 `ToolDefinition` 会由 session runtime 转换为 `Tool`；通过 `createTool()` 或 `/local` adapter 得到的预构建 `Tool` 会直接注册，不会重复包装。
 
 通过 `SessionOptions.tools` 显式传入的两种形式都按 session `custom/workspace` 来源登记，不会因为工具由 `/local` helper 创建就自动提升为 `builtin/trusted`。需要按来源过滤时，应把这类显式注入工具视为 custom tools。
+
+需要单独构造文件读取工具时，可以从 `/local` 使用 `createReadTool()`。它支持 UTF-8 文本、offset/limit 行切片、二进制 base64 回退、abort 和共享 read-before-write tracking。
 
 ### ToolDefinition
 

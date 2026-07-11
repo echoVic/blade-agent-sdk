@@ -15,7 +15,7 @@ Blade Agent SDK 拆成三个 npm 包。日常应用仍然从 `@blade-ai/agent-sd
 | `@blade-ai/agent-sdk/tools` | Browser-safe / Server / CLI | 工具定义、工具类型、工具目录等不依赖本地执行器的 API |
 | `@blade-ai/agent-sdk/local` | Server / CLI | 内置工具、MCP、memory、sandbox、文件系统等 Node-only 能力 |
 
-当前 root session 不会自动注册 Node-local builtin tools。`/local` 的 package-owned baseline 目前只在传入 memory manager 时返回 `MemoryRead` / `MemoryWrite`；返回的预构建 `Tool[]` 可直接作为 `createSession({ tools })` 的显式输入。Read/Edit/Bash/Task 等完整本地工具套件仍待迁移。
+当前 root session 不会自动注册 Node-local builtin tools。`/local` 的 package-owned baseline 默认返回 `Read`，传入 memory manager 时追加 `MemoryRead` / `MemoryWrite`；返回的预构建 `Tool[]` 可直接作为 `createSession({ tools })` 的显式输入。Edit/Write/Bash/Task 等本地工具仍待迁移。
 
 最常见用法：
 

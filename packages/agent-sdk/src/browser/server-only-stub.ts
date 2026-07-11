@@ -36,6 +36,10 @@ export function createMemoryWriteTool(..._args: unknown[]): never {
   return serverOnly('createMemoryWriteTool');
 }
 
+export function createReadTool(..._args: unknown[]): never {
+  return serverOnly('createReadTool');
+}
+
 export function createSdkMcpServer(..._args: unknown[]): never {
   return serverOnly('createSdkMcpServer');
 }
@@ -53,5 +57,19 @@ export class FileSystemMemoryStore {
 export class MemoryManager {
   constructor(..._args: unknown[]) {
     serverOnly('MemoryManager');
+  }
+}
+
+export class FileAccessTracker {
+  constructor(..._args: unknown[]) {
+    serverOnly('FileAccessTracker');
+  }
+
+  static getInstance(..._args: unknown[]): never {
+    return serverOnly('FileAccessTracker.getInstance');
+  }
+
+  static resetInstance(): never {
+    return serverOnly('FileAccessTracker.resetInstance');
   }
 }

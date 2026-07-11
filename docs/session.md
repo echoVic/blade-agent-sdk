@@ -870,7 +870,7 @@ interface SessionOptions {
 
 `allowedTools` 未设置时不限制工具；设置为 `[]` 时表示禁用所有工具。
 
-当前 package-owned root session 不会自动注册 Node-local builtin tools。默认可过滤的集合来自 `SessionOptions.tools` 显式注册的 `ToolDefinition`、预构建 `Tool` 和已连接的 MCP tools；`MemoryRead` / `MemoryWrite` 由 `/local` helper opt-in 提供，其 `getBuiltinTools()` 结果可直接传给 `tools`。完整 Read/Edit/Bash/Task 工具套件仍待迁移。
+当前 package-owned root session 不会自动注册 Node-local builtin tools。默认可过滤的集合来自 `SessionOptions.tools` 显式注册的 `ToolDefinition`、预构建 `Tool` 和已连接的 MCP tools；`/local` 的 `getBuiltinTools()` 当前提供 `Read`，传入 memory manager 时追加 `MemoryRead` / `MemoryWrite`，其结果可直接传给 `tools`。`Read` 执行需要 `defaultContext` 或 turn context 中存在 filesystem capability。Edit/Write/Bash/Task 工具仍待迁移。
 
 ### ToolDefinition
 

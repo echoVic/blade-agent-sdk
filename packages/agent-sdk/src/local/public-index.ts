@@ -73,6 +73,59 @@ export interface MemoryStore {
   delete(name: string): Promise<void>;
 }
 
+export interface FileAccessRecord {
+  filePath: string;
+  accessTime: number;
+  mtime: number;
+  sessionId: string;
+  lastOperation: 'read' | 'edit' | 'write';
+}
+
+export interface FileAccessLogger {
+  debug(...args: unknown[]): void;
+  warn(...args: unknown[]): void;
+}
+
+export declare class FileAccessTracker {
+  private constructor();
+  static getInstance(logger?: FileAccessLogger): FileAccessTracker;
+  static resetInstance(): void;
+  setLogger(logger: FileAccessLogger): void;
+  recordFileRead(filePath: string, sessionId: string): Promise<void>;
+  recordFileEdit(
+    filePath: string,
+    sessionId: string,
+    operation?: 'edit' | 'write',
+  ): Promise<void>;
+  hasFileBeenRead(filePath: string, sessionId?: string): boolean;
+  checkFileModification(filePath: string): Promise<{ modified: boolean; message?: string }>;
+  checkExternalModification(filePath: string): Promise<{ isExternal: boolean; message?: string }>;
+  getFileRecord(filePath: string): FileAccessRecord | undefined;
+  clearFileRecord(filePath: string): void;
+  clearAll(): void;
+  clearSession(sessionId: string): void;
+  getTrackedFiles(): string[];
+  getTrackedFileCount(): number;
+}
+
+export interface LocalFileStat {
+  size: number;
+  isDirectory: boolean;
+  mtime: Date;
+}
+
+export interface LocalFileSystemPort {
+  exists(filePath: string): Promise<boolean>;
+  stat(filePath: string): Promise<LocalFileStat | undefined>;
+  readTextFile(filePath: string): Promise<string>;
+  readBinaryFile(filePath: string): Promise<Uint8Array>;
+}
+
+export interface ReadToolOptions {
+  fileSystem?: LocalFileSystemPort;
+  fileAccessTracker?: Pick<FileAccessTracker, 'recordFileRead'>;
+}
+
 export declare class FileSystemMemoryStore implements MemoryStore {
   constructor(dir?: string);
   save(input: MemoryInput): Promise<Memory>;
@@ -180,6 +233,7 @@ export declare function tool<TSchema extends Record<string, z.ZodTypeAny>>(
 ): SdkTool;
 export declare function getSandboxExecutor(...args: unknown[]): SandboxExecutor;
 export declare function getSandboxService(...args: unknown[]): SandboxService;
+export declare function createReadTool(options?: ReadToolOptions): Tool;
 export declare function getBuiltinTools(options?: BuiltinToolsOptions): Promise<Tool[]>;
 export declare function createMemoryReadTool(args: { manager: MemoryManager }): Tool;
 export declare function createMemoryWriteTool(args: { manager: MemoryManager }): Tool;

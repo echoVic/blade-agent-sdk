@@ -39,6 +39,14 @@ export const agentSdkRootPublicDeclarationBoundaryRules = [
     message: 'root declarations must keep filesystem memory adapters behind @blade-ai/agent-sdk/local',
   },
   {
+    forbidden: 'createReadTool',
+    message: 'root declarations must keep filesystem tools behind @blade-ai/agent-sdk/local',
+  },
+  {
+    forbidden: 'FileAccessTracker',
+    message: 'root declarations must keep filesystem tracking behind @blade-ai/agent-sdk/local',
+  },
+  {
     forbidden: 'SandboxExecutor',
     message: 'root declarations must keep sandbox adapters behind @blade-ai/agent-sdk/local',
   },
@@ -113,6 +121,11 @@ export const agentSdkCoreDeclarationBrowserSafeRules = [
     file: 'dist/core/index.d.ts',
     forbidden: 'createSdkMcpServer',
     message: 'core declarations must stay browser-safe and not expose Node-local MCP APIs',
+  },
+  {
+    file: 'dist/core/index.d.ts',
+    forbidden: 'createReadTool',
+    message: 'core declarations must stay browser-safe and not expose Node-local file tools',
   },
 ];
 
@@ -349,6 +362,16 @@ export const agentSdkLocalAdapterBoundaryRules = [
     file: 'dist/local/index.js',
     forbidden: 'src/tools/builtin/memory',
     message: 'local memory tools must route through package-local local adapters',
+  },
+  {
+    file: 'dist/local/index.js',
+    forbidden: 'src/services/FileSystemService',
+    message: 'local file tools must use package-local filesystem ports',
+  },
+  {
+    file: 'dist/local/index.js',
+    forbidden: 'src/tools/builtin/file',
+    message: 'local file tools must be emitted from package-local local sources',
   },
 ];
 

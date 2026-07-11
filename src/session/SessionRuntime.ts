@@ -395,7 +395,7 @@ export class SessionRuntime {
 
     this.initializeSubagents();
     await this.contextManager.initialize();
-    FileAccessTracker.getInstance(this.rootLogger);
+    FileAccessTracker.getInstance(this.rootLogger.child(LogCategory.TOOL));
     FileLockManager.getInstance(this.rootLogger);
     this.initializeHooks();
     await this.registerBuiltinTools();
