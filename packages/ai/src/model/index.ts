@@ -91,3 +91,7 @@ export interface ModelPort {
   stream(request: ModelRequest): AsyncIterable<ModelStreamEvent>;
   generate(request: ModelRequest): Promise<ModelResponse>;
 }
+
+// Model capability detection
+export type { ThinkingDetectionInput } from './detection.js';
+export { isThinkingModel } from './detection.js';
