@@ -17,6 +17,7 @@ export type {
   LocalFileSystemPort,
   ReadToolOptions,
   WriteToolOptions,
+  EditToolOptions,
   Snapshot,
   SnapshotManagerOptions,
   SnapshotMetadata,
@@ -24,6 +25,7 @@ export type {
 export {
   createReadTool,
   createWriteTool,
+  createEditTool,
   FileAccessTracker,
   SnapshotManager,
 } from './file/index.js';

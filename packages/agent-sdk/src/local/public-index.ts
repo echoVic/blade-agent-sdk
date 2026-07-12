@@ -234,6 +234,18 @@ export declare function tool<TSchema extends Record<string, z.ZodTypeAny>>(
 export declare function getSandboxExecutor(...args: unknown[]): SandboxExecutor;
 export declare function getSandboxService(...args: unknown[]): SandboxService;
 export declare function createReadTool(options?: ReadToolOptions): Tool;
+export interface WriteToolOptions {
+  fileSystem?: LocalFileSystemPort;
+  fileAccessTracker?: Pick<FileAccessTracker, 'recordFileEdit' | 'hasFileBeenRead'>;
+}
+export declare function createWriteTool(options?: WriteToolOptions): Tool;
+export interface EditToolOptions {
+  fileSystem?: LocalFileSystemPort & { writeTextFile: (filePath: string, content: string) => Promise<void> };
+  fileAccessTracker?: Pick<FileAccessTracker, 'recordFileEdit' | 'hasFileBeenRead'>;
+  snapshotManagerProvider?: (sessionId: string) => unknown;
+  sensitivePathCheck?: (filePath: string) => boolean;
+}
+export declare function createEditTool(options?: EditToolOptions): Tool;
 export declare function getBuiltinTools(options?: BuiltinToolsOptions): Promise<Tool[]>;
 export declare function createMemoryReadTool(args: { manager: MemoryManager }): Tool;
 export declare function createMemoryWriteTool(args: { manager: MemoryManager }): Tool;

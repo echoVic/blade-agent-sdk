@@ -1307,6 +1307,26 @@ Commit:
 
 - `fix(agent-sdk): harden package.json resolution and enforce root/local split`
 
+### Edit Tool Migration: Root → Package-Local
+
+Objective: Migrate the Edit file tool from root legacy to `@blade-ai/agent-sdk/local`, following the Read/Write tool migration pattern.
+
+Status:
+
+- Shrunk `src/tools/builtin/file/edit.ts` from 713 lines of production implementation to a 3-line forwarder shim (`import { createEditTool } from '@blade-ai/agent-sdk/local'` → re-export).
+- The production implementation already existed at `packages/agent-sdk/src/local/file/edit.ts` (432 lines, factory pattern with dependency injection).
+- Added `createEditTool`, `editTool`, and `EditToolOptions` to `packages/agent-sdk/src/local/file/index.ts` exports and `packages/agent-sdk/src/local/index.ts` re-exports.
+- Added `editTool` to `getBuiltinTools()` return array in `packages/agent-sdk/src/local/builtin-tools.ts`. Read, Write, and Edit now form the default builtin file-tool triple.
+- Added `createEditTool`, `WriteToolOptions`, and `EditToolOptions` declarations to `packages/agent-sdk/src/local/public-index.ts` for dist `.d.ts` coverage.
+- Updated `localFileTools.test.ts` and `localMemoryTools.test.ts` expectations to reflect Edit in the builtin tools set.
+- Root topology test verifies forwarder shim shape.
+
+Verification chain: all type-checks pass (root + 3 packages), boundary/entrypoint/package verifiers pass, 368 package tests + 1292 root unit tests pass.
+
+Commit:
+
+- `refactor(agent-sdk): migrate Edit tool to package-local`
+
 ## Completion Criteria
 
 The migration is complete only when all of the following are true:

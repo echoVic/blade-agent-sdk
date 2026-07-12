@@ -46,7 +46,7 @@ describe('agent-sdk local memory tools', () => {
   it('registers package-local memory tools only when a manager is provided', async () => {
     const manager = new MemoryManager(new InMemoryStore());
 
-    await expect(getBuiltinTools()).resolves.toMatchObject([{ name: 'Read' }, { name: 'Write' }]);
+    await expect(getBuiltinTools()).resolves.toMatchObject([{ name: 'Edit' }, { name: 'Read' }, { name: 'Write' }]);
     const tools = await getBuiltinTools({ memoryManager: manager });
     const sessionOptions = {
       provider: {
@@ -60,6 +60,7 @@ describe('agent-sdk local memory tools', () => {
 
     expect(sessionOptions.tools).toBe(tools);
     expect(tools).toMatchObject([
+      { name: 'Edit' },
       { name: 'Read' },
       { name: 'Write' },
       { name: 'MemoryRead' },
