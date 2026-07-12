@@ -2,6 +2,7 @@ import type { Tool } from '../tools/types/index.js';
 import { editTool, readTool, writeTool } from './file/index.js';
 import { globTool, grepTool } from './search/index.js';
 import { notebookEditTool } from './notebook/notebookEdit.js';
+import { askUserQuestionTool } from './system/askUserQuestion.js';
 import type { MemoryManager } from './memory.js';
 import { createMemoryReadTool } from './memoryRead.js';
 import { createMemoryWriteTool } from './memoryWrite.js';
@@ -23,6 +24,7 @@ export async function getBuiltinTools(options: BuiltinToolsOptions = {}): Promis
     grepTool,
     globTool,
     notebookEditTool,
+    askUserQuestionTool,
     ...(options.memoryManager
       ? [
           createMemoryReadTool({ manager: options.memoryManager }),
@@ -37,5 +39,6 @@ export { createWriteTool } from './file/index.js';
 export { createGrepTool } from './search/grep.js';
 export { createGlobTool } from './search/glob.js';
 export { createNotebookEditTool } from './notebook/notebookEdit.js';
+export { createAskUserQuestionTool } from './system/askUserQuestion.js';
 export { createMemoryReadTool } from './memoryRead.js';
 export { createMemoryWriteTool } from './memoryWrite.js';

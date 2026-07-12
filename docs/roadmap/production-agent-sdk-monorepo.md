@@ -1393,6 +1393,28 @@ Commit:
 
 - `refactor(agent-sdk): migrate NotebookEdit tool to package-local`
 
+### AskUserQuestion Tool Migration: Root → Package-Local
+
+Objective: Migrate the AskUserQuestion interactive tool (165 lines) from root legacy to `@blade-ai/agent-sdk/local`.
+
+Status:
+
+- Created `packages/agent-sdk/src/local/system/askUserQuestion.ts` (165 lines) from the root implementation, adapting imports to the package-local framework (`createTool`, `ToolErrorType`, `ToolKind` from `../../tools/index.js`, `ToolResult` from `../../tools/types/index.js`).
+- Replaced `lazySchema(() => askUserQuestionSchema)` with direct schema reference. Replaced `ToolSchemas.semanticBoolean()` with direct `z.boolean()`. Removed `lazySchema` and `ToolSchemas` root imports.
+- Converted from singleton export to factory pattern `export function createAskUserQuestionTool()` with a default `export const askUserQuestionTool = createAskUserQuestionTool()` instance.
+- The tool uses `context.confirmationHandler` from the package-local `ExecutionContext`, which was already available — no root-specific execution context was required.
+- Shrunk root `src/tools/builtin/system/askUserQuestion.ts` from 167 lines to a 3-line forwarder shim.
+- Added `askUserQuestionTool` to `getBuiltinTools()` return array. Default builtin tool set: AskUserQuestion, Edit, Glob, Grep, NotebookEdit, Read, Write.
+- Added `createAskUserQuestionTool` to `local/index.ts` exports, `builtin-tools.ts` module exports, and `public-index.ts` type declarations.
+- Created `localSystemTools.test.ts` (4 tests) covering builtin registration, factory creation, default instance, and build parameter acceptance.
+- Updated `localFileTools.test.ts` and `localMemoryTools.test.ts` expectations to reflect AskUserQuestion in the builtin tools set.
+
+Verification chain: all type-checks pass (root + 3 packages), boundary/entrypoint/package verifiers pass, 386 package + 1292 root unit tests pass.
+
+Commit:
+
+- `refactor(agent-sdk): migrate AskUserQuestion tool to package-local`
+
 ## Completion Criteria
 
 The migration is complete only when all of the following are true:
