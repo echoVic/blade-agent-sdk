@@ -31,6 +31,7 @@ export {
 } from './file/index.js';
 export { createGrepTool, grepTool } from './search/index.js';
 export { createGlobTool, globTool } from './search/index.js';
+export { createNotebookEditTool, notebookEditTool } from './notebook/notebookEdit.js';
 export { FileFilter, DEFAULT_EXCLUDE_DIRS } from './filePatterns.js';
 export { isSensitivePath } from './file/sensitivePathCheck.js';
 export {

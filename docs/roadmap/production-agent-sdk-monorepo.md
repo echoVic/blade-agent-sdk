@@ -1372,6 +1372,27 @@ Commit:
 
 - `refactor(agent-sdk): migrate Glob tool and FileFilter to package-local`
 
+### NotebookEdit Tool Migration: Root → Package-Local
+
+Objective: Migrate the NotebookEdit tool (207 lines) from root legacy to `@blade-ai/agent-sdk/local`.
+
+Status:
+
+- Created `packages/agent-sdk/src/local/notebook/notebookEdit.ts` (207 lines) from the root implementation, adapting imports to the package-local framework (`createTool`, `ToolErrorType`, `ToolKind` from `../../tools/index.js`, `ToolResult` from `../../tools/types/index.js`).
+- Replaced `lazySchema(() => z.object({...}))` with direct `z.object({...})` schema. Removed `lazySchema` and `ToolSchemas` root imports.
+- Converted from singleton export to factory pattern `export function createNotebookEditTool()` with a default `export const notebookEditTool = createNotebookEditTool()` instance.
+- Shrunk root `src/tools/builtin/notebook/notebookEdit.ts` from 209 lines to a 3-line forwarder shim.
+- Added `notebookEditTool` to `getBuiltinTools()` return array. Default builtin tool set: Edit, Read, Write, Grep, Glob, NotebookEdit.
+- Added `createNotebookEditTool` to `local/index.ts` exports, `builtin-tools.ts` module exports, and `public-index.ts` type declarations.
+- Created `localNotebookTools.test.ts` (4 tests) covering builtin registration, factory creation, default instance, and build parameter acceptance.
+- Updated `localFileTools.test.ts` and `localMemoryTools.test.ts` expectations to reflect NotebookEdit in the builtin tools set.
+
+Verification chain: all type-checks pass (root + 3 packages), boundary/entrypoint/package verifiers pass, 382 package + 1292 root unit tests pass.
+
+Commit:
+
+- `refactor(agent-sdk): migrate NotebookEdit tool to package-local`
+
 ## Completion Criteria
 
 The migration is complete only when all of the following are true:

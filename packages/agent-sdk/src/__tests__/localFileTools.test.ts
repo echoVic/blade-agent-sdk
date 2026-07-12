@@ -193,10 +193,10 @@ describe('agent-sdk local file tools', () => {
     });
   });
 
-  it('includes the package-local Read, Write, Edit, Grep, and Glob tools in the explicit builtin provider', async () => {
+  it('includes the package-local Read, Write, Edit, Grep, Glob, and NotebookEdit tools in the explicit builtin provider', async () => {
     const tools = await getBuiltinTools();
     const names = tools.map((t) => t.name).sort();
-    expect(names).toEqual(['Edit', 'Glob', 'Grep', 'Read', 'Write']);
+    expect(names).toEqual(['Edit', 'Glob', 'Grep', 'NotebookEdit', 'Read', 'Write']);
   });
 });
 
