@@ -832,9 +832,12 @@ describe('monorepo topology', () => {
     expect(localSource).toContain('FileAccessTracker');
   });
 
-  it('keeps legacy root Read and file access tracking as local-package forwarders', () => {
+  it('keeps legacy root Read, Write, and file access tracking as local-package forwarders', () => {
     expect(readFileSync('src/tools/builtin/file/read.ts', 'utf-8').trim()).toBe(
       "import { createReadTool } from '@blade-ai/agent-sdk/local';\n\nexport { createReadTool };\nexport const readTool = createReadTool();",
+    );
+    expect(readFileSync('src/tools/builtin/file/write.ts', 'utf-8').trim()).toBe(
+      "import { createWriteTool } from '@blade-ai/agent-sdk/local';\n\nexport { createWriteTool };\nexport const writeTool = createWriteTool();",
     );
     expect(readFileSync('src/tools/builtin/file/FileAccessTracker.ts', 'utf-8')).toBe(
       "export type {\n  FileAccessLogger,\n  FileAccessRecord,\n} from '@blade-ai/agent-sdk/local';\nexport { FileAccessTracker } from '@blade-ai/agent-sdk/local';\n",

@@ -82,6 +82,9 @@ describe('agent-sdk local file tools', () => {
     );
   });
 
+  const noopWriteTextFile = async (_path: string, _content: string): Promise<void> => {};
+  const noopMkdir = async (_path: string, _options?: { recursive?: boolean; mode?: number }): Promise<void> => {};
+
   it('accepts runtime-neutral binary bytes through the local filesystem port', async () => {
     const fileSystem: LocalFileSystemPort = {
       async exists() { return true; },
@@ -90,6 +93,8 @@ describe('agent-sdk local file tools', () => {
       },
       async readTextFile() { return ''; },
       async readBinaryFile() { return new Uint8Array([0, 1, 2]); },
+      writeTextFile: noopWriteTextFile,
+      mkdir: noopMkdir,
     };
 
     const result = await createReadTool({ fileSystem })
@@ -114,6 +119,8 @@ describe('agent-sdk local file tools', () => {
       },
       async readTextFile() { return ''; },
       async readBinaryFile() { return new Uint8Array([0, 1, 2]); },
+      writeTextFile: noopWriteTextFile,
+      mkdir: noopMkdir,
     };
 
     const result = await createReadTool({
@@ -138,6 +145,8 @@ describe('agent-sdk local file tools', () => {
       },
       async readTextFile() { return ''; },
       async readBinaryFile() { return new Uint8Array([65, 66, 67]); },
+      writeTextFile: noopWriteTextFile,
+      mkdir: noopMkdir,
     };
 
     const result = await createReadTool({
@@ -163,6 +172,8 @@ describe('agent-sdk local file tools', () => {
       },
       async readTextFile() { throw failure; },
       async readBinaryFile() { return new Uint8Array(); },
+      writeTextFile: noopWriteTextFile,
+      mkdir: noopMkdir,
     };
 
     const result = await createReadTool({
@@ -182,9 +193,111 @@ describe('agent-sdk local file tools', () => {
     });
   });
 
-  it('includes the package-local Read tool in the explicit builtin provider', async () => {
-    await expect(getBuiltinTools()).resolves.toMatchObject([
-      { name: 'Read' },
-    ]);
+  it('includes the package-local Read and Write tools in the explicit builtin provider', async () => {
+    const tools = await getBuiltinTools();
+    const names = tools.map((t) => t.name).sort();
+    expect(names).toEqual(['Read', 'Write']);
+  });
+});
+
+describe('agent-sdk local Write tool', () => {
+  it('writes a text file and returns metadata', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'agent-sdk-local-write-'));
+    const filePath = join(root, 'output.ts');
+    const content = 'export const x = 1;\n';
+
+    const { createWriteTool } = await import('../local/file/write.js');
+
+    const result = await createWriteTool()
+      .build({ file_path: filePath, content, encoding: 'utf8' })
+      .execute(new AbortController().signal, undefined, filesystemContext(root));
+
+    expect(result).toMatchObject({
+      success: true,
+      metadata: {
+        file_path: filePath,
+        summary: 'Wrote 2 lines to output.ts',
+      },
+    });
+  });
+
+  it('rejects writes when the runtime context has no filesystem capability', async () => {
+    const { createWriteTool } = await import('../local/file/write.js');
+
+    const result = await createWriteTool()
+      .build({ file_path: '/tmp/example.txt', content: 'hello', encoding: 'utf8' })
+      .execute(new AbortController().signal, undefined, {
+        sessionId: 'local-file-session',
+        contextSnapshot: {
+          sessionId: 'local-file-session',
+          turnId: 'local-file-turn',
+          context: {},
+          filesystemRoots: [],
+          cwd: undefined,
+          environment: {},
+        },
+      });
+
+    expect(result).toMatchObject({
+      success: false,
+      error: {
+        type: 'permission_denied',
+        message: 'No filesystem access in current context',
+      },
+    });
+  });
+
+  it('rejects relative paths before touching the filesystem', async () => {
+    const { createWriteTool } = await import('../local/file/write.js');
+    expect(() => createWriteTool().build({ file_path: 'relative.txt', content: 'hi' })).toThrow(
+      'File path must be absolute',
+    );
+  });
+
+  it('rejects writing to an unread file', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'agent-sdk-local-write-unread-'));
+    const filePath = join(root, 'untracked.ts');
+
+    // Create a file without tracking it in the access tracker
+    await writeFile(filePath, 'existing content\n', 'utf8');
+
+    const { createWriteTool } = await import('../local/file/write.js');
+
+    const result = await createWriteTool()
+      .build({ file_path: filePath, content: 'new content\n', encoding: 'utf8' })
+      .execute(new AbortController().signal, undefined, filesystemContext(root));
+
+    expect(result).toMatchObject({
+      success: false,
+      error: {
+        type: 'permission_denied',
+        message: `File not read: ${filePath}`,
+      },
+    });
+  });
+
+  it('creates directories automatically when create_directories is true', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'agent-sdk-local-write-dir-'));
+    const nestedDir = join(root, 'nested', 'path');
+    const filePath = join(nestedDir, 'output.txt');
+
+    const { createWriteTool } = await import('../local/file/write.js');
+
+    const result = await createWriteTool()
+      .build({ file_path: filePath, content: 'hello', encoding: 'utf8', create_directories: true })
+      .execute(new AbortController().signal, undefined, filesystemContext(root));
+
+    expect(result).toMatchObject({
+      success: true,
+      metadata: {
+        file_path: filePath,
+        create_directories: true,
+      },
+    });
+
+    // Verify the directory was created
+    const { readFile } = await import('node:fs/promises');
+    const written = await readFile(filePath, 'utf8');
+    expect(written).toBe('hello');
   });
 });

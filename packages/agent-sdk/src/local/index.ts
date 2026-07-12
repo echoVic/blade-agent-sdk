@@ -16,12 +16,14 @@ export type {
   LocalFileStat,
   LocalFileSystemPort,
   ReadToolOptions,
+  WriteToolOptions,
   Snapshot,
   SnapshotManagerOptions,
   SnapshotMetadata,
 } from './file/index.js';
 export {
   createReadTool,
+  createWriteTool,
   FileAccessTracker,
   SnapshotManager,
 } from './file/index.js';

@@ -4,6 +4,8 @@ export type { LocalFileStat, LocalFileSystemPort } from './filesystem.js';
 export { createNodeLocalFileSystem } from './filesystem.js';
 export type { ReadToolOptions } from './read.js';
 export { createReadTool, readTool } from './read.js';
+export type { WriteToolOptions } from './write.js';
+export { createWriteTool, writeTool } from './write.js';
 export type {
   Snapshot,
   SnapshotManagerOptions,

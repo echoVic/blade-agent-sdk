@@ -1,5 +1,5 @@
 import type { Tool } from '../tools/types/index.js';
-import { readTool } from './file/index.js';
+import { readTool, writeTool } from './file/index.js';
 import type { MemoryManager } from './memory.js';
 import { createMemoryReadTool } from './memoryRead.js';
 import { createMemoryWriteTool } from './memoryWrite.js';
@@ -16,6 +16,7 @@ export interface BuiltinToolsOptions {
 export async function getBuiltinTools(options: BuiltinToolsOptions = {}): Promise<Tool[]> {
   return [
     readTool,
+    writeTool,
     ...(options.memoryManager
       ? [
           createMemoryReadTool({ manager: options.memoryManager }),
@@ -26,5 +27,6 @@ export async function getBuiltinTools(options: BuiltinToolsOptions = {}): Promis
 }
 
 export { createReadTool } from './file/index.js';
+export { createWriteTool } from './file/index.js';
 export { createMemoryReadTool } from './memoryRead.js';
 export { createMemoryWriteTool } from './memoryWrite.js';
