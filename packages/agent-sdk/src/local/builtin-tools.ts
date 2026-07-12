@@ -1,5 +1,6 @@
 import type { Tool } from '../tools/types/index.js';
 import { editTool, readTool, writeTool } from './file/index.js';
+import { grepTool } from './search/grep.js';
 import type { MemoryManager } from './memory.js';
 import { createMemoryReadTool } from './memoryRead.js';
 import { createMemoryWriteTool } from './memoryWrite.js';
@@ -18,6 +19,7 @@ export async function getBuiltinTools(options: BuiltinToolsOptions = {}): Promis
     editTool,
     readTool,
     writeTool,
+    grepTool,
     ...(options.memoryManager
       ? [
           createMemoryReadTool({ manager: options.memoryManager }),
@@ -29,5 +31,6 @@ export async function getBuiltinTools(options: BuiltinToolsOptions = {}): Promis
 
 export { createReadTool } from './file/index.js';
 export { createWriteTool } from './file/index.js';
+export { createGrepTool } from './search/grep.js';
 export { createMemoryReadTool } from './memoryRead.js';
 export { createMemoryWriteTool } from './memoryWrite.js';

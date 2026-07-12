@@ -1327,6 +1327,28 @@ Commit:
 
 - `refactor(agent-sdk): migrate Edit tool to package-local`
 
+### Grep Tool Migration: Root → Package-Local
+
+Objective: Migrate the Grep search tool (951 lines) from root legacy to `@blade-ai/agent-sdk/local`, following the Read/Write/Edit builtin tool migration pattern.
+
+Status:
+
+- Created `packages/agent-sdk/src/local/search/grep.ts` (985 lines) from the root implementation, adapting all imports to use the package-local framework (`createTool`, `ToolKind`, `ExecutionContext`, `ToolResult` from `../../tools/index.js` and `../../tools/types/index.js`).
+- Inlined root dependencies: `DEFAULT_EXCLUDE_DIRS` constant, `getErrorMessage`/`getErrorName` helpers, and filesystem capability check replaced with inline context inspection.
+- Replaced `lazySchema(() => z.object({...}))` with direct `z.object({...})` schema and replaced `ToolSchemas.pattern()`/`ToolSchemas.nonNegativeInt()`/`ToolSchemas.positiveInt()` with direct Zod validators (`z.string().min(1)`, `z.number().int().min(0)`, `z.number().int().positive()`).
+- Converted from singleton `export const grepTool = createTool({...})` to factory pattern `export function createGrepTool()` with a default `export const grepTool = createGrepTool()` instance, matching Read/Write/Edit convention.
+- Shrunk root `src/tools/builtin/search/grep.ts` from 953 lines to a 3-line forwarder shim (`import { createGrepTool } from '@blade-ai/agent-sdk/local'` → re-export).
+- Added `grepTool` to `getBuiltinTools()` return array in `packages/agent-sdk/src/local/builtin-tools.ts`. Edit, Read, Write, and Grep now form the default builtin tool set.
+- Added `createGrepTool` to `packages/agent-sdk/src/local/index.ts` exports and `public-index.ts` type declarations.
+- Created `localSearchTools.test.ts` (5 tests) covering builtin registration, factory creation, default instance, kind validation, and build parameter acceptance.
+- Updated `localFileTools.test.ts` and `localMemoryTools.test.ts` expectations to reflect Grep in the builtin tools set.
+
+Verification chain: all type-checks pass (root + 3 packages), boundary/entrypoint/package verifiers pass, 373 package tests + 1292 root unit tests pass, lint 10 warnings.
+
+Commit:
+
+- `refactor(agent-sdk): migrate Grep tool to package-local`
+
 ## Completion Criteria
 
 The migration is complete only when all of the following are true:

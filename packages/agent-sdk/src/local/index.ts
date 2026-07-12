@@ -29,6 +29,7 @@ export {
   FileAccessTracker,
   SnapshotManager,
 } from './file/index.js';
+export { createGrepTool, grepTool } from './search/grep.js';
 export { isSensitivePath } from './file/sensitivePathCheck.js';
 export {
   generateDiffSnippet,

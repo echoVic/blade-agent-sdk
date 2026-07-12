@@ -246,6 +246,7 @@ export interface EditToolOptions {
   sensitivePathCheck?: (filePath: string) => boolean;
 }
 export declare function createEditTool(options?: EditToolOptions): Tool;
+export declare function createGrepTool(): Tool;
 export declare function getBuiltinTools(options?: BuiltinToolsOptions): Promise<Tool[]>;
 export declare function createMemoryReadTool(args: { manager: MemoryManager }): Tool;
 export declare function createMemoryWriteTool(args: { manager: MemoryManager }): Tool;
