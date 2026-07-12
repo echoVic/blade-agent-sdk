@@ -5,4 +5,4 @@ export {
   normalizePath,
   PathSecurity,
   validatePath,
-} from '@blade-ai/agent-sdk';
+} from '@blade-ai/agent-sdk/local';

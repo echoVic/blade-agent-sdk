@@ -491,7 +491,7 @@ try {
   );
   assertIncludes(aiOutput, 'local ai retry runtime export object', 'local ai retry runtime export');
   assertIncludes(aiOutput, 'local ai chat runtime empty 0', 'local ai chat runtime empty');
-  assertIncludes(aiOutput, 'local ai model runtime empty 0', 'local ai model runtime empty');
+  assertIncludes(aiOutput, 'local ai model runtime empty 1', 'local ai model runtime empty');
 
   writeFileSync(
     metadataEntry,

@@ -66,8 +66,6 @@ export {
   PermissionMode,
   StreamMessageType,
 } from './core/index.js';
-export { getEnvironmentContext, getEnvironmentInfo, type EnvironmentInfo } from './local/environment.js';
-export { normalizePath, PathSecurity, checkRestricted, getRelativePath, isWithinWorkspace, validatePath } from './local/pathSecurity.js';
 export type {
   AgentDefinition,
   AgentLogger,
@@ -148,4 +146,3 @@ export {
   ToolKind,
   toolFromDefinition,
 } from './tools/index.js';
-export { getPackageName, getVersion } from './local/packageInfo.js';

@@ -239,3 +239,32 @@ export declare function createMemoryReadTool(args: { manager: MemoryManager }): 
 export declare function createMemoryWriteTool(args: { manager: MemoryManager }): Tool;
 
 export type LocalAdapterValue = JsonValue;
+
+export declare function getVersion(): string;
+export declare function getPackageName(): string;
+
+export interface EnvironmentInfo {
+  workingDirectory?: string;
+  projectRoot?: string;
+  platform: string;
+  nodeVersion: string;
+  currentDate: string;
+  homeDirectory: string;
+}
+
+export declare function getEnvironmentInfo(workingDir?: string): EnvironmentInfo;
+export declare function getEnvironmentContext(workingDir?: string): string;
+
+export declare function normalizePath(inputPath: string, workspaceRoot: string): string;
+export declare function checkRestricted(absolutePath: string): void;
+export declare function validatePath(inputPath: string, workspaceRoot: string): Promise<string>;
+export declare function getRelativePath(absolutePath: string, workspaceRoot: string): string;
+export declare function isWithinWorkspace(absolutePath: string, workspaceRoot: string): boolean;
+
+export declare const PathSecurity: {
+  normalize: typeof normalizePath;
+  checkRestricted: typeof checkRestricted;
+  validatePath: typeof validatePath;
+  getRelativePath: typeof getRelativePath;
+  isWithinWorkspace: typeof isWithinWorkspace;
+};

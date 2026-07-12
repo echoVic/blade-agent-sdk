@@ -1,1 +1,1 @@
-export { getPackageName, getVersion } from '@blade-ai/agent-sdk';
+export { getPackageName, getVersion } from '@blade-ai/agent-sdk/local';

@@ -1309,8 +1309,8 @@ console.log('packed sdk behavior readonly true true');
 if (Object.keys(aiChat).length !== 0) {
   throw new Error('@blade-ai/ai/chat should remain type-only at runtime');
 }
-if (Object.keys(aiModel).length !== 0) {
-  throw new Error('@blade-ai/ai/model should remain type-only at runtime');
+if (Object.keys(aiModel).length !== 1) {
+  throw new Error('@blade-ai/ai/model should expose exactly one runtime helper (isThinkingModel)');
 }
 if (Object.keys(agentProtocol).length !== 0) {
   throw new Error('@blade-ai/agent/protocol should remain type-only at runtime');

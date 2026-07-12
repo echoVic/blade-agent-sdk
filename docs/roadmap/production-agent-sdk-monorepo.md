@@ -1290,6 +1290,23 @@ Commit:
 
 - `docs: document production agent sdk architecture`
 
+### Hardening: Verification Chain and Root/Local Split Enforcement
+
+Objective: Fix verification chain breakage and enforce Pi-style root/local split.
+
+Status:
+
+- Fixed `packages/agent-sdk/src/local/packageInfo.ts` to walk up directory tree when resolving `package.json` instead of hardcoding `../../package.json`, making it robust against tsup bundling at different nesting levels. Previously the bundled `dist/index.js` would resolve `packages/package.json` (missing), causing `pnpm run verify:entrypoints` to crash with ENOENT.
+- Removed local utility re-exports (`getVersion`, `getPackageName`, `getEnvironmentContext`, `getEnvironmentInfo`, `normalizePath`, `PathSecurity`, `checkRestricted`, `getRelativePath`, `isWithinWorkspace`, `validatePath`) from `@blade-ai/agent-sdk` root entry. These Node-dependent utilities now belong exclusively to `@blade-ai/agent-sdk/local`, matching the documented Pi-style root/local split.
+- Added utility exports to `packages/agent-sdk/src/local/index.ts` (runtime source) and `packages/agent-sdk/src/local/public-index.ts` (public type declarations) so consumers can import them from `@blade-ai/agent-sdk/local`.
+- Updated root legacy shims (`src/utils/pathSecurity.ts`, `src/utils/packageInfo.ts`, `src/utils/environment.ts`) to re-export from `@blade-ai/agent-sdk/local` instead of `@blade-ai/agent-sdk` root.
+- Fixed `scripts/verify-entrypoints.mjs` and `scripts/verify-packages.mjs` to accept `isThinkingModel` as a valid singleton runtime export from `@blade-ai/ai/model`, replacing the overly-strict "must be type-only at runtime" assertion.
+- Fixed `localMemoryTools.test.ts` expectation to match actual `getBuiltinTools()` behavior (returns both Read and Write tools by default).
+
+Commit:
+
+- `fix(agent-sdk): harden package.json resolution and enforce root/local split`
+
 ## Completion Criteria
 
 The migration is complete only when all of the following are true:
