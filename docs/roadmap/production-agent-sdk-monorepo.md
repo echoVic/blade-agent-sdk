@@ -1349,6 +1349,29 @@ Commit:
 
 - `refactor(agent-sdk): migrate Grep tool to package-local`
 
+### Glob Tool and FileFilter Migration: Root → Package-Local
+
+Objective: Migrate the Glob file-matching tool (422 lines) and its supporting `FileFilter` utility (311 lines) from root legacy to `@blade-ai/agent-sdk/local`.
+
+Status:
+
+- Migrated `src/utils/filePatterns.ts` (311 lines) to `packages/agent-sdk/src/local/filePatterns.ts`. Adapted the `splitPath` import to use `@blade-ai/agent/utils`. The `FileFilter` class, `DEFAULT_EXCLUDE_DIRS` constant, and all utility functions are now package-local. Shrunk root to a 1-line forwarder shim (`export { FileFilter, DEFAULT_EXCLUDE_DIRS } from '@blade-ai/agent-sdk/local'`).
+- Created `packages/agent-sdk/src/local/search/glob.ts` (442 lines) from the root implementation, adapting all imports to the package-local framework. Inlined root dependencies: `getErrorMessage`/`getErrorName`/`getErrorCode` helpers, filesystem capability check.
+- Replaced `lazySchema(() => z.object({...}))` with direct `z.object({...})` schema. Replaced `ToolSchemas.glob()` with `z.string().min(1)` and `ToolSchemas.semanticNumber().pipe(...)` with direct `z.number().int().min(1).max(1000)`.
+- Converted from singleton export to factory pattern `export function createGlobTool()` with a default `export const globTool = createGlobTool()` instance.
+- Created `packages/agent-sdk/src/local/search/index.ts` — a barrel re-exporting both Grep and Glob tools.
+- Shrunk root `src/tools/builtin/search/glob.ts` from 422 lines to a 3-line forwarder shim.
+- Added `globTool` to `getBuiltinTools()` return array. Default builtin tool set: Edit, Read, Write, Grep, Glob.
+- Added `createGlobTool` to `local/index.ts` exports, `builtin-tools.ts` module exports, and `public-index.ts` type declarations. Added `FileFilter`/`DEFAULT_EXCLUDE_DIRS` to `local/index.ts` re-exports.
+- Extended `localSearchTools.test.ts` from 5 to 10 tests covering both Grep and Glob tools (builtin registration, factory creation, default instance, kind validation, build parameter acceptance).
+- Updated `localFileTools.test.ts` and `localMemoryTools.test.ts` expectations to reflect Glob in the builtin tools set.
+
+Verification chain: all type-checks pass (root + 3 packages), boundary/entrypoint/package verifiers pass, 378 package tests + 1292 root unit tests pass.
+
+Commit:
+
+- `refactor(agent-sdk): migrate Glob tool and FileFilter to package-local`
+
 ## Completion Criteria
 
 The migration is complete only when all of the following are true:

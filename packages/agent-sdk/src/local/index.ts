@@ -29,7 +29,9 @@ export {
   FileAccessTracker,
   SnapshotManager,
 } from './file/index.js';
-export { createGrepTool, grepTool } from './search/grep.js';
+export { createGrepTool, grepTool } from './search/index.js';
+export { createGlobTool, globTool } from './search/index.js';
+export { FileFilter, DEFAULT_EXCLUDE_DIRS } from './filePatterns.js';
 export { isSensitivePath } from './file/sensitivePathCheck.js';
 export {
   generateDiffSnippet,
