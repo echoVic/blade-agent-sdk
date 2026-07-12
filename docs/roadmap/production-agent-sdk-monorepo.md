@@ -1415,6 +1415,27 @@ Commit:
 
 - `refactor(agent-sdk): migrate AskUserQuestion tool to package-local`
 
+### Plan Mode Tools Migration: Root → Package-Local
+
+Objective: Migrate both plan mode tools (EnterPlanMode 176 lines, ExitPlanMode 158 lines) from root legacy to `@blade-ai/agent-sdk/local` in a single slice.
+
+Status:
+
+- Created `packages/agent-sdk/src/local/plan/enterPlanMode.ts` (176 lines) and `packages/agent-sdk/src/local/plan/exitPlanMode.ts` (158 lines) from the root implementations, adapting imports to the package-local framework.
+- Replaced `lazySchema(() => z.object({...}))` with direct schema references. Both tools use `context.confirmationHandler` from the package-local `ExecutionContext` (already available). ExitPlanMode also uses `node:fs` and `node:path` for saving plan files (Node-only, correct for `/local`).
+- Converted from singleton exports to factory pattern (`createEnterPlanModeTool()`, `createExitPlanModeTool()`) with default instances.
+- Shrunk both root files to 3-line forwarder shims: `src/tools/builtin/plan/EnterPlanModeTool.ts` and `ExitPlanModeTool.ts`.
+- Added both tools to `getBuiltinTools()` return array. Default builtin tool set: 9 tools (AskUserQuestion, Edit, EnterPlanMode, ExitPlanMode, Glob, Grep, NotebookEdit, Read, Write).
+- Added factory functions to `local/index.ts`, `builtin-tools.ts` exports, and `public-index.ts` type declarations.
+- Created `localPlanTools.test.ts` (5 tests) covering builtin registration, factory creation, default instances, and build parameter acceptance for both tools.
+- Updated `localFileTools.test.ts` and `localMemoryTools.test.ts` expectations to reflect both plan mode tools.
+
+Verification chain: all type-checks pass (root + 3 packages), boundary/entrypoint/package verifiers pass, all package + root unit tests pass.
+
+Commit:
+
+- `refactor(agent-sdk): migrate EnterPlanMode and ExitPlanMode tools to package-local`
+
 ## Completion Criteria
 
 The migration is complete only when all of the following are true:

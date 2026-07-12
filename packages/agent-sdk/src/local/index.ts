@@ -33,6 +33,8 @@ export { createGrepTool, grepTool } from './search/index.js';
 export { createGlobTool, globTool } from './search/index.js';
 export { createNotebookEditTool, notebookEditTool } from './notebook/notebookEdit.js';
 export { createAskUserQuestionTool, askUserQuestionTool } from './system/askUserQuestion.js';
+export { createEnterPlanModeTool, enterPlanModeTool } from './plan/enterPlanMode.js';
+export { createExitPlanModeTool, exitPlanModeTool } from './plan/exitPlanMode.js';
 export { FileFilter, DEFAULT_EXCLUDE_DIRS } from './filePatterns.js';
 export { isSensitivePath } from './file/sensitivePathCheck.js';
 export {

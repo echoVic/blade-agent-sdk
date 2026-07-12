@@ -250,6 +250,8 @@ export declare function createGrepTool(): Tool;
 export declare function createGlobTool(): Tool;
 export declare function createNotebookEditTool(): Tool;
 export declare function createAskUserQuestionTool(): Tool;
+export declare function createEnterPlanModeTool(): Tool;
+export declare function createExitPlanModeTool(): Tool;
 export declare function getBuiltinTools(options?: BuiltinToolsOptions): Promise<Tool[]>;
 export declare function createMemoryReadTool(args: { manager: MemoryManager }): Tool;
 export declare function createMemoryWriteTool(args: { manager: MemoryManager }): Tool;
