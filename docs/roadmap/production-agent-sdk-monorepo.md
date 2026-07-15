@@ -1677,6 +1677,22 @@ Commit:
 
 - `refactor: retire dead errorFormatter.ts (inlined into createTool.ts)`
 
+### SensitiveFileDetector Migration: Root → @blade-ai/agent-sdk/local
+
+Objective: Migrate `src/tools/validation/SensitiveFileDetector.ts` (354 lines) to `@blade-ai/agent-sdk/local` — the last remaining file in the validation directory.
+
+Status:
+
+- Created `packages/agent-sdk/src/local/SensitiveFileDetector.ts` — exact copy of the root implementation (Node-only, uses `node:os` and `node:path`). No adaptations needed — the file was already self-contained with no root-specific dependencies.
+- Updated `src/types/permissions.ts` (the single consumer) to import `SensitiveFileDetector` and `SensitivityLevel` directly from `@blade-ai/agent-sdk/local`. This avoids the enum nominal type incompatibility that blocked the previous shim-only approach.
+- Shrunk root `SensitiveFileDetector.ts` from 354 lines to a forwarder shim re-exporting from the package.
+- This completes the retirement of ALL files in `src/tools/validation/` — the entire directory is now migrated or deleted.
+- Type-check: 0 errors. Full verify chain: green.
+
+Commit:
+
+- `refactor(agent-sdk): migrate SensitiveFileDetector to package-local`
+
 ## Completion Criteria
 
 The migration is complete only when all of the following are true:

@@ -88,3 +88,13 @@ export type { BuiltinToolsOptions } from './builtin-tools.js';
 export { getVersion, getPackageName } from './packageInfo.js';
 export { getEnvironmentContext, getEnvironmentInfo, type EnvironmentInfo } from './environment.js';
 export { normalizePath, PathSecurity, checkRestricted, getRelativePath, isWithinWorkspace, validatePath } from './pathSecurity.js';
+export {
+  SensitivityLevel,
+  check,
+  checkMultiple,
+  filterSensitive,
+  getSensitivePatterns,
+  getSensitivePaths,
+  SensitiveFileDetector,
+} from './SensitiveFileDetector.js';
+export type { SensitiveFileCheckResult } from './SensitiveFileDetector.js';

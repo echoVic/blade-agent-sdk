@@ -4,7 +4,7 @@ import { ToolKind as ToolKindValue } from '../tools/types/ToolKind.js';
 import {
   SensitiveFileDetector,
   SensitivityLevel,
-} from '../tools/validation/SensitiveFileDetector.js';
+} from '@blade-ai/agent-sdk/local';
 import type { JsonObject } from './common.js';
 import { PermissionMode, type PermissionsConfig } from './common.js';
 
