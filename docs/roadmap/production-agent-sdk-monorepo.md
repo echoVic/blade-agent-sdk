@@ -2057,6 +2057,21 @@ Commit:
 
 - `refactor(agent-sdk): migrate pathUtils to @blade-ai/agent-sdk/local`
 
+### Builtin Tools Import Cleanup: Direct Package Imports
+
+Objective: Update `src/tools/builtin/index.ts` to import `SessionId` and `MemoryManager` directly from `@blade-ai/agent-sdk/local` instead of through root shims — reducing shim indirection and cleaning the dependency chain.
+
+Status:
+
+- Changed `SessionId` import from `../../types/branded.js` (root shim) → `@blade-ai/agent-sdk/local` (direct package import).
+- Changed `MemoryManager` import from `../../memory/MemoryManager.js` (root shim) → `@blade-ai/agent-sdk/local` (direct package import).
+- Both imports already resolved to the package via root shims (branded.ts → Slice #38, MemoryManager.ts → Slice #34). This change removes the unnecessary intermediary.
+- Type-check: 0 errors. Full verify chain: green.
+
+Commit:
+
+- `refactor: use direct package imports for SessionId and MemoryManager in builtin tools`
+
 ### Root Dead Code Retirement: agent/constants.ts
 
 Objective: Inline `AGENT_TURN_SAFETY_LIMIT` constant (9 lines) into `LoopRunner.ts` — the only consumer.

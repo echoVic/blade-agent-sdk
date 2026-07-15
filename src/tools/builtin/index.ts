@@ -3,11 +3,11 @@
  */
 
 import type { McpRegistry } from '../../mcp/McpRegistry.js';
-import { SessionId } from '../../types/branded.js';
+import { SessionId } from '@blade-ai/agent-sdk/local';
 import type { Tool } from '../types/index.js';
 import { getBuiltinTools as getPackageBuiltinTools } from '@blade-ai/agent-sdk/local';
 import { SubagentRegistry } from '../../agent/subagents/SubagentRegistry.js';
-import type { MemoryManager } from '../../memory/MemoryManager.js';
+import type { MemoryManager } from '@blade-ai/agent-sdk/local';
 
 async function getMcpTools(mcpRegistry: McpRegistry): Promise<Tool[]> {
   try {
