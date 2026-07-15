@@ -1436,6 +1436,27 @@ Commit:
 
 - `refactor(agent-sdk): migrate EnterPlanMode and ExitPlanMode tools to package-local`
 
+### TodoWrite Tool Migration: Root → Package-Local
+
+Objective: Migrate the TodoWrite tool (163 lines) plus TodoManager (168 lines) and todo types from root legacy to `@blade-ai/agent-sdk/local` in a single slice.
+
+Status:
+
+- Created `packages/agent-sdk/src/local/todo/todoWrite.ts` (170 lines), `packages/agent-sdk/src/local/todo/TodoManager.ts` (173 lines), and `packages/agent-sdk/src/local/todo/types.ts` (39 lines) from the root implementations, adapting imports to the package-local framework.
+- Replaced `lazySchema(() => z.object({...}))` with direct schema reference. Replaced branded `SessionId` with plain `string`. Inlined `getErrorMessage` and `getErrorCode` helpers.
+- Converted to factory pattern `export function createTodoWriteTool(opts)` with a default `export const todoWriteTool = createTodoWriteTool({ sessionId: '' })` instance.
+- Shrunk all four root todo files to 1-3 line forwarder shims re-exporting from `@blade-ai/agent-sdk/local`.
+- Added `createTodoWriteTool({ sessionId, configDir })` to `getBuiltinTools()` return array with fallback sessionId. Default builtin tool set: 10 tools (AskUserQuestion, Edit, EnterPlanMode, ExitPlanMode, Glob, Grep, NotebookEdit, Read, TodoWrite, Write).
+- Added `createTodoWriteTool` to `builtin-tools.ts` module exports, `local/index.ts` runtime exports, and `public-index.ts` type declarations.
+- Created `localTodoTools.test.ts` (6 tests) covering builtin registration, factory creation, default instance, build parameter acceptance, TodoManager memory mode, and TodoManager persistence mode.
+- Updated `localFileTools.test.ts` and `localMemoryTools.test.ts` expectations to reflect TodoWrite in the builtin tools set.
+
+Verification chain: all type-checks pass (root + 3 packages), boundary/entrypoint/package verifiers pass, 397 package + 1323 root unit tests pass.
+
+Commit:
+
+- `refactor(agent-sdk): migrate TodoWrite tool to package-local`
+
 ## Completion Criteria
 
 The migration is complete only when all of the following are true:

@@ -8,6 +8,7 @@ import { exitPlanModeTool } from './plan/exitPlanMode.js';
 import type { MemoryManager } from './memory.js';
 import { createMemoryReadTool } from './memoryRead.js';
 import { createMemoryWriteTool } from './memoryWrite.js';
+import { createTodoWriteTool } from './todo/index.js';
 
 export interface BuiltinToolsOptions {
   memoryManager?: MemoryManager;
@@ -19,6 +20,7 @@ export interface BuiltinToolsOptions {
 }
 
 export async function getBuiltinTools(options: BuiltinToolsOptions = {}): Promise<Tool[]> {
+  const sessionId = String(options.sessionId ?? `session_${Date.now()}`);
   return [
     editTool,
     readTool,
@@ -29,6 +31,7 @@ export async function getBuiltinTools(options: BuiltinToolsOptions = {}): Promis
     askUserQuestionTool,
     enterPlanModeTool,
     exitPlanModeTool,
+    createTodoWriteTool({ sessionId, configDir: options.configDir }),
     ...(options.memoryManager
       ? [
           createMemoryReadTool({ manager: options.memoryManager }),
@@ -48,3 +51,4 @@ export { createEnterPlanModeTool } from './plan/enterPlanMode.js';
 export { createExitPlanModeTool } from './plan/exitPlanMode.js';
 export { createMemoryReadTool } from './memoryRead.js';
 export { createMemoryWriteTool } from './memoryWrite.js';
+export { createTodoWriteTool } from './todo/index.js';

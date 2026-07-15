@@ -252,6 +252,33 @@ export declare function createNotebookEditTool(): Tool;
 export declare function createAskUserQuestionTool(): Tool;
 export declare function createEnterPlanModeTool(): Tool;
 export declare function createExitPlanModeTool(): Tool;
+export interface CreateTodoWriteToolOptions {
+  sessionId: string;
+  configDir?: string;
+}
+export type TodoStatus = 'pending' | 'in_progress' | 'completed';
+export type TodoPriority = 'high' | 'medium' | 'low';
+export interface TodoItem {
+  id: string;
+  content: string;
+  status: TodoStatus;
+  activeForm: string;
+  priority: TodoPriority;
+  createdAt: string;
+  startedAt?: string;
+  completedAt?: string;
+}
+export interface TodoStats {
+  total: number;
+  completed: number;
+  inProgress: number;
+  pending: number;
+}
+export interface ValidationResult {
+  valid: boolean;
+  error?: string;
+}
+export declare function createTodoWriteTool(opts: CreateTodoWriteToolOptions): Tool;
 export declare function getBuiltinTools(options?: BuiltinToolsOptions): Promise<Tool[]>;
 export declare function createMemoryReadTool(args: { manager: MemoryManager }): Tool;
 export declare function createMemoryWriteTool(args: { manager: MemoryManager }): Tool;

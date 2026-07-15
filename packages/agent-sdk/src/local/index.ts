@@ -35,6 +35,9 @@ export { createNotebookEditTool, notebookEditTool } from './notebook/notebookEdi
 export { createAskUserQuestionTool, askUserQuestionTool } from './system/askUserQuestion.js';
 export { createEnterPlanModeTool, enterPlanModeTool } from './plan/enterPlanMode.js';
 export { createExitPlanModeTool, exitPlanModeTool } from './plan/exitPlanMode.js';
+export { createTodoWriteTool, todoWriteTool, TodoManager } from './todo/index.js';
+export { TodoItemSchema } from './todo/index.js';
+export type { CreateTodoWriteToolOptions, TodoItem, TodoPriority, TodoStats, TodoStatus, ValidationResult } from './todo/index.js';
 export { FileFilter, DEFAULT_EXCLUDE_DIRS } from './filePatterns.js';
 export { isSensitivePath } from './file/sensitivePathCheck.js';
 export {
