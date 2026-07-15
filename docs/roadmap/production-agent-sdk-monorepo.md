@@ -1800,6 +1800,21 @@ Commit:
 
 - `feat(agent-sdk): add ./errors export to package.json`
 
+### Root Dead Code Retirement: agent/constants.ts
+
+Objective: Inline `AGENT_TURN_SAFETY_LIMIT` constant (9 lines) into `LoopRunner.ts` — the only consumer.
+
+Status:
+
+- Inlined the `AGENT_TURN_SAFETY_LIMIT = 100` constant directly into `src/agent/LoopRunner.ts` (replaced both usages at lines 199-200 with literal `100`).
+- The `@blade-ai/agent` package already defines `AGENT_LOOP_TURN_SAFETY_LIMIT` — the root constant was a legacy duplicate.
+- Deleted `src/agent/constants.ts`. No test file existed.
+- Type-check: 0 errors. Full verify chain: green.
+
+Commit:
+
+- `refactor: inline AGENT_TURN_SAFETY_LIMIT into LoopRunner.ts`
+
 ## Completion Criteria
 
 The migration is complete only when all of the following are true:

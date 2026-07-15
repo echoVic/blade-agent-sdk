@@ -29,7 +29,6 @@ import { getEnvironmentContext } from '../utils/environment.js';
 import type { AgentEvent } from './AgentEvent.js';
 import { agentLoop } from './AgentLoop.js';
 import type { CompactionHandler } from './CompactionHandler.js';
-import { AGENT_TURN_SAFETY_LIMIT } from './constants.js';
 import type { ModelManager } from './ModelManager.js';
 import { RuntimePatchManager } from './RuntimePatchManager.js';
 import { LoopState } from './state/LoopState.js';
@@ -196,8 +195,8 @@ export class LoopRunner {
     }
 
     const maxTurns = configuredMaxTurns === -1
-      ? AGENT_TURN_SAFETY_LIMIT
-      : Math.min(configuredMaxTurns, AGENT_TURN_SAFETY_LIMIT);
+      ? 100
+      : Math.min(configuredMaxTurns, 100);
 
     // 4. 构建 AgentLoop hooks + config
     const loopConfig = buildLoopConfig({
