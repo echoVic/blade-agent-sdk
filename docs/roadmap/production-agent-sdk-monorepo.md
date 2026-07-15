@@ -2419,6 +2419,22 @@ Commit:
 
 - `refactor: unify HookEvent type — re-export from @blade-ai/agent-sdk/local`
 
+### MessageRole Unification + Constants Seed
+
+Objective: Add `MessageRole` runtime const to `@blade-ai/agent-sdk/local/constants.ts` and unify root `constants.ts` to re-export from package — same type unification pattern as HookEvent (Slice #62) and branded types (Slice #38).
+
+Status:
+
+- Added `MessageRole` const + derived type to `packages/agent-sdk/src/local/constants.ts` (4 runtime values: SYSTEM, USER, ASSISTANT, TOOL).
+- Exported `MessageRole` from `local/index.ts` — removed duplicate type export from `context.ts` (now canonical source is `constants.ts`).
+- Updated root `constants.ts` to re-export `MessageRole` from `@blade-ai/agent-sdk/local` — all files importing from root now get package's canonical const.
+- Root `constants.ts` now only defines `PermissionMode`, `StreamMessageType`, `PermissionDecision` (HookEvent + MessageRole delegated to package).
+- Type-check: 0 errors. Full verify chain: green.
+
+Commit:
+
+- `refactor: unify MessageRole type — re-export from @blade-ai/agent-sdk/local`
+
 ### Root Dead Code Retirement: agent/constants.ts
 
 Objective: Inline `AGENT_TURN_SAFETY_LIMIT` constant (9 lines) into `LoopRunner.ts` — the only consumer.

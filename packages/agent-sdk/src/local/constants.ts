@@ -24,3 +24,12 @@ export const HookEvent = {
 } as const;
 
 export type HookEvent = (typeof HookEvent)[keyof typeof HookEvent];
+
+export const MessageRole = {
+  SYSTEM: 'system',
+  USER: 'user',
+  ASSISTANT: 'assistant',
+  TOOL: 'tool',
+} as const;
+
+export type MessageRole = (typeof MessageRole)[keyof typeof MessageRole];

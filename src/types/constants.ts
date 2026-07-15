@@ -19,14 +19,7 @@ export type PermissionMode = (typeof PermissionMode)[keyof typeof PermissionMode
 
 export { HookEvent } from '@blade-ai/agent-sdk/local';
 
-export const MessageRole = {
-  SYSTEM: 'system',
-  USER: 'user',
-  ASSISTANT: 'assistant',
-  TOOL: 'tool',
-} as const;
-
-export type MessageRole = (typeof MessageRole)[keyof typeof MessageRole];
+export { MessageRole } from '@blade-ai/agent-sdk/local';
 
 export const StreamMessageType = {
   TURN_START: 'turn_start',

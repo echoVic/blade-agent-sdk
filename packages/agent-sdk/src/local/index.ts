@@ -111,7 +111,7 @@ export { AgentId, MessageId, SessionId, ToolUseId } from './branded.js';
 export * from './pathUtils.js';
 
 // Context seed types
-export type { CompressedContext, ContextMessage, MessageRole, ContextStorageOptions } from './context.js';
+export type { CompressedContext, ContextMessage, ContextStorageOptions } from './context.js';
 export type { JSONLEventType, PartInfo, PartType, MessageInfo, SessionEvent, SessionEventBase, SessionInfo } from './context.js';
 export type { ToolCall, SystemContext, SessionContext, ConversationContext, WorkspaceContext, ContextLayer, ContextData } from './context.js';
 export { CacheStore } from './CacheStore.js';
@@ -149,3 +149,4 @@ export type {
   HookTraceCollector,
 } from './observabilityTypes.js';
 export { HookEvent } from './constants.js';
+export { MessageRole } from './constants.js';
