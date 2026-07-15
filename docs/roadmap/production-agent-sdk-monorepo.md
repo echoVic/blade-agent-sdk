@@ -2287,6 +2287,22 @@ Commit:
 
 - `refactor(agent-sdk): migrate HookBus to @blade-ai/agent-sdk/local`
 
+### OutputParser Migration: Root → @blade-ai/agent-sdk/local
+
+Objective: Migrate `src/hooks/OutputParser.ts` (302 lines) to `@blade-ai/agent-sdk/local` — inlined 9 types (`JsonValue`, `HookExitCode`, `DecisionBehavior`, `HookType`, `Hook`, `HookOutput`, `ProcessResult`, `HookExecutionResult`, `CommandHook`) + `safeParseHookOutput` for full self-containment.
+
+Status:
+
+- Created `packages/agent-sdk/src/local/OutputParser.ts` — inlined all root-type imports + simplified `safeParseHookOutput`.
+- Imported `HookConfig` from `./HookConfig.js` (already in package, Slice #49).
+- Exported `OutputParser` from `local/index.ts`.
+- Shimmed root `OutputParser.ts` to forwarder — consumer `HookExecutor.ts` unchanged via transparent shim.
+- Type-check: 0 errors. Full verify chain: green.
+
+Commit:
+
+- `refactor(agent-sdk): migrate OutputParser to @blade-ai/agent-sdk/local`
+
 ### Root Dead Code Retirement: agent/constants.ts
 
 Objective: Inline `AGENT_TURN_SAFETY_LIMIT` constant (9 lines) into `LoopRunner.ts` — the only consumer.
