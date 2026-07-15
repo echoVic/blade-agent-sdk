@@ -1,5 +1,5 @@
-import type { Memory, MemoryInput } from '@blade-ai/agent-sdk/local';
-import type { MemoryStore } from '@blade-ai/agent-sdk/local';
+import type { Memory, MemoryInput } from './memory.js';
+import type { MemoryStore } from './MemoryStore.js';
 
 export class MemoryManager {
   constructor(private readonly store: MemoryStore) {}

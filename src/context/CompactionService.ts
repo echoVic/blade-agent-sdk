@@ -16,7 +16,7 @@ import {
     type MicrocompactOptions,
     type MicrocompactResult,
 } from './strategies/MicrocompactStrategy.js';
-import { TokenCounter } from './TokenCounter.js';
+import { TokenCounter } from '@blade-ai/agent-sdk/local';
 
 /**
  * 压缩选项

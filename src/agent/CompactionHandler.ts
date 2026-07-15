@@ -1,7 +1,7 @@
 import { CompactionService } from '../context/CompactionService.js';
 import type { ContextManager } from '../context/ContextManager.js';
 import { softCompact } from '../context/strategies/SoftCompactionStrategy.js';
-import { TokenCounter } from '../context/TokenCounter.js';
+import { TokenCounter } from '@blade-ai/agent-sdk/local';
 import { type InternalLogger, LogCategory, NOOP_LOGGER } from '../logging/Logger.js';
 import type { IChatService } from '@blade-ai/ai/chat';
 import { cloneMessage } from '../runtime/messageUtils.js';

@@ -1979,6 +1979,23 @@ Commit:
 
 - `refactor(agent-sdk): migrate MemoryManager to @blade-ai/agent-sdk/local — memory subsystem complete`
 
+### TokenCounter Migration: Root → @blade-ai/agent-sdk/local
+
+Objective: Migrate `src/context/TokenCounter.ts` (128 lines) — a pure token-counting utility — to `@blade-ai/agent-sdk/local`, continuing the context subsystem migration.
+
+Status:
+
+- Copied `TokenCounter.ts` to `packages/agent-sdk/src/local/TokenCounter.ts` — zero import changes needed (depends only on `js-tiktoken` and `@blade-ai/ai/chat`).
+- Updated 2 root consumers: `CompactionService.ts` (4 usages) and `CompactionHandler.ts` (1 usage) — both now import from `@blade-ai/agent-sdk/local`.
+- Shimmed root `TokenCounter.ts` to a 1-line forwarder re-exporting from the package.
+- Added `export { TokenCounter } from './TokenCounter.js'` to `local/index.ts`.
+- Fixed pre-existing boundary violation: `MemoryManager.ts` now uses relative imports (`./memory.js`, `./MemoryStore.js`) instead of the `@blade-ai/agent-sdk/local` facade.
+- Type-check: 0 errors (root + packages). Full verify chain: green.
+
+Commit:
+
+- `refactor(agent-sdk): migrate TokenCounter to @blade-ai/agent-sdk/local`
+
 ### Root Dead Code Retirement: agent/constants.ts
 
 Objective: Inline `AGENT_TURN_SAFETY_LIMIT` constant (9 lines) into `LoopRunner.ts` — the only consumer.
