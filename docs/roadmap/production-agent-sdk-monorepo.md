@@ -2333,6 +2333,20 @@ Commit:
 
 - `refactor(agent-sdk): migrate SdkMcpServer to @blade-ai/agent-sdk/local`
 
+### MCP Barrel Simplification: `src/mcp/index.ts` → `@blade-ai/agent-sdk/local`
+
+Objective: Update `src/mcp/index.ts` to re-export from `@blade-ai/agent-sdk/local` for migrated MCP files (types.ts, SdkMcpServer.ts) — reducing root barrel dependencies from 5 to 2 direct file references. Same barrel simplification pattern as errors (#32), memory (#34), builtin tools (#40).
+
+Status:
+
+- Updated `mcp/index.ts` — re-exports `McpConnectionStatus`, `McpToolCallResponse`, `McpToolDefinition` (from types.ts, Slice #55) and `tool`, `createSdkMcpServer`, `SdkTool`, `SdkMcpServerHandle`, `ToolResponse` (from SdkMcpServer.ts, Slice #56) directly from `@blade-ai/agent-sdk/local`.
+- Kept root-relative imports for remaining 4 unmigrated MCP files (`createMcpTool`, `HealthMonitor`, `McpClient`, `McpRegistry`).
+- Type-check: 0 errors. Full verify chain: green.
+
+Commit:
+
+- `refactor: simplify mcp barrel — re-export migrated files from @blade-ai/agent-sdk/local`
+
 ### Root Dead Code Retirement: agent/constants.ts
 
 Objective: Inline `AGENT_TURN_SAFETY_LIMIT` constant (9 lines) into `LoopRunner.ts` — the only consumer.
