@@ -1913,6 +1913,22 @@ Commit:
 
 - `refactor(agent-sdk): migrate SandboxExecutor to @blade-ai/agent-sdk/local`
 
+### SandboxService Deduplication: Root → @blade-ai/agent-sdk/local
+
+Objective: Shim `src/sandbox/SandboxService.ts` (366 lines) to re-export from `@blade-ai/agent-sdk/local` — the package already had `SandboxService` in `sandbox.ts` (164 lines) with identical exports, making root a duplicate.
+
+Status:
+
+- Verified all 4 exports match exactly between root and package: `SandboxExecutionContext`, `SandboxCheckResult`, `SandboxService` (class), `getSandboxService()`.
+- Shimmed root `SandboxService.ts` to a 6-line forwarder re-exporting from `@blade-ai/agent-sdk/local`.
+- Updated `sandbox/index.ts` barrel to consolidate both `SandboxExecutor` and `SandboxService` exports from the package (single import source).
+- The ENTIRE sandbox subsystem (`SandboxExecutor` + `SandboxService`) is now canonical in `@blade-ai/agent-sdk/local`. Root files are forwarder shims only.
+- Type-check: 0 errors. Full verify chain: green.
+
+Commit:
+
+- `refactor(agent-sdk): deduplicate SandboxService — shim root to re-export from package`
+
 ### Root Dead Code Retirement: agent/constants.ts
 
 Objective: Inline `AGENT_TURN_SAFETY_LIMIT` constant (9 lines) into `LoopRunner.ts` — the only consumer.
