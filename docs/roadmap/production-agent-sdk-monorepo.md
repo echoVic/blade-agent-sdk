@@ -1896,6 +1896,23 @@ Commit:
 
 - `refactor(agent-sdk): migrate FileLockManager to @blade-ai/agent-sdk/local`
 
+### SandboxExecutor Migration: Root → @blade-ai/agent-sdk/local
+
+Objective: Migrate `src/sandbox/SandboxExecutor.ts` (363 lines, 1 consumer) to `@blade-ai/agent-sdk/local` — the sandbox execution utility for Node environments (bubblewrap/seatbelt).
+
+Status:
+
+- Copied `SandboxExecutor.ts` to `packages/agent-sdk/src/local/SandboxExecutor.ts`, updating imports to use the package-local `InternalLogger` (from Slice #29) and `SandboxSettings` types (already in `packages/agent-sdk/src/types/common.ts`).
+- Consolidated duplicated code: the package already had a partial `SandboxExecutor` in `sandbox.ts` — removed the duplicate and imported from the new canonical file.
+- Updated root consumer (`SandboxService.ts`) and barrel (`sandbox/index.ts`) to import from `@blade-ai/agent-sdk/local`.
+- Shimmed root `SandboxExecutor.ts` to a 7-line forwarder re-exporting from the package.
+- Added `export * from './SandboxExecutor.js'` to `packages/agent-sdk/src/local/index.ts`.
+- Type-check: 0 errors. Full verify chain: green. Tests stable.
+
+Commit:
+
+- `refactor(agent-sdk): migrate SandboxExecutor to @blade-ai/agent-sdk/local`
+
 ### Root Dead Code Retirement: agent/constants.ts
 
 Objective: Inline `AGENT_TURN_SAFETY_LIMIT` constant (9 lines) into `LoopRunner.ts` — the only consumer.

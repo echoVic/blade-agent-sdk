@@ -1,3 +1,8 @@
-export { getSandboxExecutor, SandboxExecutor, type SandboxCapabilities, type SandboxExecutionOptions } from './SandboxExecutor.js';
+export {
+  getSandboxExecutor,
+  SandboxExecutor,
+  type SandboxCapabilities,
+  type SandboxExecutionOptions,
+} from '@blade-ai/agent-sdk/local';
 export { getSandboxService, SandboxService, type SandboxCheckResult, type SandboxExecutionContext } from './SandboxService.js';
 

@@ -1,5 +1,5 @@
 import type { SandboxSettings } from '../types/common.js';
-import { getSandboxExecutor } from './SandboxExecutor.js';
+import { getSandboxExecutor } from '@blade-ai/agent-sdk/local';
 
 export interface SandboxExecutionContext {
   command: string;

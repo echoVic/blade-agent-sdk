@@ -72,17 +72,14 @@ export {
   type MatchResult,
 } from './file/editCorrector.js';
 export type {
-  SandboxCapabilities,
   SandboxCheckResult,
   SandboxExecutionContext,
-  SandboxExecutionOptions,
 } from './sandbox.js';
 export {
-  getSandboxExecutor,
   getSandboxService,
-  SandboxExecutor,
   SandboxService,
 } from './sandbox.js';
+export * from './SandboxExecutor.js';
 export {
   createMemoryReadTool,
   createMemoryWriteTool,
