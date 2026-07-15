@@ -79,6 +79,12 @@ export interface SessionInfo {
   parentId?: string;
   relationType?: 'subagent';
   title?: string;
+  status?: 'running' | 'completed' | 'failed';
+  agentType?: string;
+  model?: string;
+  permission?: JsonValue;
+  createdAt: string;
+  updatedAt: string;
 }
 
 /** Message metadata carried by message_created events. */
@@ -88,6 +94,11 @@ export interface MessageInfo {
   parentMessageId?: string;
   createdAt: string;
   model?: string;
+  usage?: {
+    input_tokens: number;
+    output_tokens: number;
+  };
+  customMetadata?: JsonObject;
 }
 
 /** Part metadata carried by part_created / part_updated events. */

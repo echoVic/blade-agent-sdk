@@ -2144,6 +2144,22 @@ Commit:
 
 - `feat(agent-sdk): add SessionEvent type hierarchy to context seed types`
 
+### JSONLStore Migration: Root → @blade-ai/agent-sdk/local
+
+Objective: Migrate `src/context/storage/JSONLStore.ts` (231 lines) to `@blade-ai/agent-sdk/local` — unlocked by SessionEvent seed types from Slice #44.
+
+Status:
+
+- Copied `JSONLStore.ts` to `packages/agent-sdk/src/local/JSONLStore.ts` — changed 2 imports: `JsonValue` → `@blade-ai/ai`, `SessionEvent` → `./context.js`.
+- Shimmed root `JSONLStore.ts` to `export { JSONLStore } from '@blade-ai/agent-sdk/local';` — both consumers (`PersistentStore.ts`, `SessionStore.ts`) unchanged via transparent shim.
+- Fixed type unification: updated `SessionStore.ts` to import `SessionEvent`, `PartInfo`, `SessionInfo` from `@blade-ai/agent-sdk/local` (instead of root `context/types.js`) — resolves `unique symbol` scoping issue from branded types shim.
+- Fixed `SessionInfo` and `MessageInfo` in package `context.ts` with COMPLETE fields (added `status`, `agentType`, `model`, `permission`, `createdAt`, `updatedAt`, `usage`, `customMetadata` — 8 missing fields from partial Slice #44 extraction).
+- Type-check: 0 errors (root + packages). Full verify chain: green.
+
+Commit:
+
+- `refactor(agent-sdk): migrate JSONLStore to @blade-ai/agent-sdk/local`
+
 ### Root Dead Code Retirement: agent/constants.ts
 
 Objective: Inline `AGENT_TURN_SAFETY_LIMIT` constant (9 lines) into `LoopRunner.ts` — the only consumer.

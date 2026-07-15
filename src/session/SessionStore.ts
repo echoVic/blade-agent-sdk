@@ -4,7 +4,7 @@ import {
   normalizeSessionStorageRoot,
 } from '../context/storage/pathUtils.js';
 import { JSONLStore } from '../context/storage/JSONLStore.js';
-import type { PartInfo, SessionEvent, SessionInfo } from '../context/types.js';
+import type { PartInfo, SessionEvent, SessionInfo } from '@blade-ai/agent-sdk/local';
 import type { ContentPart, Message, ToolCall } from '@blade-ai/ai/chat';
 import { cloneJsonValue, cloneMessage } from '../runtime/messageUtils.js';
 import type { JsonValue, MessageRole } from '../types/common.js';
