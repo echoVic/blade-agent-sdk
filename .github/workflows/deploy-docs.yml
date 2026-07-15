@@ -4,8 +4,8 @@ on:
   push:
     branches: [main]
     paths:
-      - 'docs/**'
-      - '.github/workflows/deploy-docs.yml'
+      - docs/**
+      - .github/workflows/deploy-docs.yml
   workflow_dispatch:
 
 permissions:
@@ -19,31 +19,43 @@ concurrency:
 
 jobs:
   build:
+    name: Build
     runs-on: ubuntu-latest
+
     steps:
-      - uses: actions/checkout@v5
-        with:
-          fetch-depth: 0
-      - uses: pnpm/action-setup@v4
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
         with:
           version: '11.7.0'
-      - uses: actions/setup-node@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
         with:
           node-version: '22'
           cache: 'pnpm'
-      - run: pnpm install --frozen-lockfile --ignore-scripts
-      - run: pnpm run docs:build
-      - uses: actions/configure-pages@v4
-      - uses: actions/upload-pages-artifact@v3
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile --ignore-scripts
+
+      - name: Build docs
+        run: pnpm run docs:build
+
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v4
         with:
           path: docs/.vitepress/dist
 
   deploy:
+    name: Deploy
+    needs: build
+    runs-on: ubuntu-latest
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
-    needs: build
-    runs-on: ubuntu-latest
+
     steps:
       - name: Deploy to GitHub Pages
         id: deployment

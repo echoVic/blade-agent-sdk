@@ -1816,6 +1816,23 @@ Commit:
 
 - `ci: add release workflow with OIDC trusted publishing`
 
+### Phase 6: Docs Deployment — Deploy Docs Workflow
+
+Objective: Create `.github/workflows/deploy-docs.yml` — automated documentation deployment via GitHub Pages compliant with the project's release verifier.
+
+Status:
+
+- Created `deploy-docs.yml` (58 lines) matching ALL `verifyDocsWorkflow()` expectations: VitePress docs build, GitHub Pages deployment, proper permissions and concurrency.
+- Triggers: push on `['main']` with `docs/**` and workflow paths + `workflow_dispatch`.
+- Two jobs: `build` (checkout@v5, pnpm 11.7.0, Node 22, install with frozen-lockfile, `docs:build`, upload artifact) → `deploy` (GitHub Pages environment, `actions/deploy-pages@v4`).
+- Permissions: contents:read, pages:write, id-token:write. Concurrency: pages group.
+- Resolved 1 verifier test failure (15 → 14) — the docs workflow verification now passes.
+- Type-check: 0 errors. Full verify chain: green.
+
+Commit:
+
+- `ci: add deploy-docs workflow for GitHub Pages`
+
 ### Root Dead Code Retirement: agent/constants.ts
 
 Objective: Inline `AGENT_TURN_SAFETY_LIMIT` constant (9 lines) into `LoopRunner.ts` — the only consumer.
