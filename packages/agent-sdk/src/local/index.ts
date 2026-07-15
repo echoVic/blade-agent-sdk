@@ -179,3 +179,4 @@ export { StreamMessageType } from './constants.js';
 export { getContextCwd } from './runtimeUtils.js';
 export type { RuntimeContextPatch } from './RuntimeContextPatch.js';
 export { cloneContentPart, cloneJsonValue, cloneMessage, cloneToolCall } from './messageUtils.js';
+export { registerCleanup, gracefulShutdown, resetCleanupRegistry, type CleanupFn, type CleanupHandle, type GracefulShutdownOptions } from './CleanupRegistry.js';
