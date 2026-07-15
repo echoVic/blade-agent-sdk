@@ -4,6 +4,7 @@
 export { TokenCounter } from './TokenCounter.js';
 export type { InternalLogger } from './logging.js';
 export { LogCategory } from './logging.js';
+export type { LogLevelName, LogEntry, AgentLogger } from './loggingTypes.js';
 export { FileLockManager } from './FileLockManager.js';
 
 export type { McpToolCallResponse, McpToolDefinition } from './mcpTypes.js';
