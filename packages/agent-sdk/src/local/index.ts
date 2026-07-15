@@ -130,6 +130,7 @@ export type { MatcherConfig, MatchContext } from './Matcher.js';
 export { JSONLStore } from './JSONLStore.js';
 export { ContextMemoryStore } from './ContextMemoryStore.js';
 
+export { configureStreamDebug, streamDebug } from './StreamDebugLogger.js';
 export { HookExecutionGuard } from './HookExecutionGuard.js';
 export { HookBus } from './HookBus.js';
 export { OutputParser } from './OutputParser.js';

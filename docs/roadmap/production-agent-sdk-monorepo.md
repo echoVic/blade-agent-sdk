@@ -2347,6 +2347,21 @@ Commit:
 
 - `refactor: simplify mcp barrel — re-export migrated files from @blade-ai/agent-sdk/local`
 
+### StreamDebugLogger Migration: Root → @blade-ai/agent-sdk/local
+
+Objective: Migrate `src/logging/StreamDebugLogger.ts` (47 lines) to `@blade-ai/agent-sdk/local` — only 1 root import changed (`JsonObject` → `@blade-ai/ai`). Same pattern as SdkMcpServer (Slice #56).
+
+Status:
+
+- Created `packages/agent-sdk/src/local/StreamDebugLogger.ts` — changed import: `JsonObject` from `../types/common.js` → `@blade-ai/ai`.
+- Exported `configureStreamDebug`, `streamDebug` from `local/index.ts`.
+- Shimmed root `StreamDebugLogger.ts` to forwarder — no known consumers, all unchanged via transparent shim.
+- Type-check: 0 errors. Full verify chain: green.
+
+Commit:
+
+- `refactor(agent-sdk): migrate StreamDebugLogger to @blade-ai/agent-sdk/local`
+
 ### Root Dead Code Retirement: agent/constants.ts
 
 Objective: Inline `AGENT_TURN_SAFETY_LIMIT` constant (9 lines) into `LoopRunner.ts` — the only consumer.
