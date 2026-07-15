@@ -118,6 +118,10 @@ export { CacheStore } from './CacheStore.js';
 export { BashClassifier } from './BashClassifier.js';
 export type { BashCommandCategory, BashClassification } from './BashClassifier.js';
 
+// Hook Configuration
+export { DEFAULT_HOOK_CONFIG, mergeHookConfig, parseEnvConfig } from './HookConfig.js';
+export type { HookConfig } from './HookConfig.js';
+
 export { FileAnalyzer, analyzeFiles, readFilesContent, type FileContent, type FileReference } from './FileAnalyzer.js';
 // JSONL Store
 export { JSONLStore } from './JSONLStore.js';

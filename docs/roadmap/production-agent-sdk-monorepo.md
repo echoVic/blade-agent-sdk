@@ -2212,6 +2212,21 @@ Commit:
 
 - `refactor(agent-sdk): migrate BashClassifier to @blade-ai/agent-sdk/local`
 
+### HookConfig Migration: Root → @blade-ai/agent-sdk/local
+
+Objective: Migrate `src/hooks/HookConfig.ts` (118 lines) to `@blade-ai/agent-sdk/local` — the SECOND hooks subsystem file migrated. ZERO root imports in implementation (inlined `HookConfig` interface for self-containment).
+
+Status:
+
+- Created `packages/agent-sdk/src/local/HookConfig.ts` — inlined `HookConfig` interface to keep package file fully self-contained (like BashClassifier pattern).
+- Exported `DEFAULT_HOOK_CONFIG`, `mergeHookConfig`, `parseEnvConfig` (value exports) + `HookConfig` (type export) from `local/index.ts`.
+- Shimmed root `HookConfig.ts` to forwarder — all consumers unchanged via transparent shim.
+- Type-check: 0 errors. Full verify chain: green.
+
+Commit:
+
+- `refactor(agent-sdk): migrate HookConfig to @blade-ai/agent-sdk/local`
+
 ### Root Dead Code Retirement: agent/constants.ts
 
 Objective: Inline `AGENT_TURN_SAFETY_LIMIT` constant (9 lines) into `LoopRunner.ts` — the only consumer.
