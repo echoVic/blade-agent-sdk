@@ -27,11 +27,14 @@
  * ```
  */
 
+// Still root-only — not yet migrated
 export { injectSkillsMetadata } from './injectSkillsMetadata.js';
-export { discoverSkills, getSkillRegistry } from './SkillRegistry.js';
+
+// Migrated to @blade-ai/agent-sdk/local
+export { discoverSkills, getSkillRegistry } from '@blade-ai/agent-sdk/local';
 export {
   collectSkillActivationPaths,
   filterSkillsByActivation,
   isSkillAvailableInContext,
-} from './activation.js';
-export type { SkillActivationContext } from './types.js';
+} from '@blade-ai/agent-sdk/local';
+export type { SkillActivationContext } from '@blade-ai/agent-sdk/local';
