@@ -1562,6 +1562,26 @@ Commit:
 
 - `refactor(agent-sdk): migrate shell tools to package-local`
 
+### Task Tools Migration: Root → Package-Local
+
+Objective: Migrate the task tools (1,416 lines across 9 files) from root legacy to `@blade-ai/agent-sdk/local`.
+
+Status:
+
+- Created `packages/agent-sdk/src/local/task/` with `task.ts` (686 lines), `taskCreate.ts`, `taskGet.ts`, `taskList.ts`, `taskOutput.ts`, `taskStop.ts`, `taskUpdate.ts`, `TaskStore.ts`, and `index.ts` — 9 files total.
+- Defined `SubagentRegistryPort`, `SubagentExecutorPort`, `BackgroundAgentManagerPort` interfaces to decouple from root subagent infrastructure. Subagent services accessed via `context.subagentRegistry`, `context.subagentExecutor`, `context.backgroundAgentManager`.
+- Defined `SubagentConfig`, `SubagentContext`, `SubagentResult` types locally (copied from `src/agent/subagents/types.ts`).
+- Replaced `lazySchema()` with direct `z.object()` schemas. Replaced `ToolSchemas.flag()` with `z.boolean().default()`. Replaced branded `SessionId`/`AgentId` with plain `string`. Replaced `nanoid()` with `crypto.randomUUID()`. Replaced `HookManager.getInstance()` with context-accessed hooks. Defined `JsonValueSchema` locally.
+- Shrunk all 9 root task files to 1-line forwarder shims.
+- Task tools are factory functions (not singletons) requiring session-specific parameters — NOT added to default `getBuiltinTools()` return array (same behavior as root).
+- Added all task tool exports to `local/index.ts` runtime exports.
+- All 8 root task tests pass unchanged through the shim (taskTool.registry.test.ts, TaskStore.test.ts, taskTools.test.ts).
+- All 425 package + 1323 root unit tests pass. Full verify chain green.
+
+Commit:
+
+- `refactor(agent-sdk): migrate task tools to package-local`
+
 ## Completion Criteria
 
 The migration is complete only when all of the following are true:

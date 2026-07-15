@@ -1,0 +1,61 @@
+import { z } from 'zod';
+import { createTool, ToolErrorType } from '../../tools/index.js';
+import { ToolKind } from '../../tools/index.js';
+import { TaskStore } from './TaskStore.js';
+
+export function createTaskStopTool({ sessionId }: { sessionId: string }) {
+  return createTool({
+    name: 'TaskStop',
+    displayName: 'Stop Task',
+    kind: ToolKind.Write,
+    description: {
+      short: 'Stop a running background task',
+      long: 'Use this tool to stop a running background task (spawned via the Agent tool with run_in_background=true). This marks the task as completed and records the stop time.',
+    },
+    schema: z.object({
+      taskId: z.string().describe('The ID of the background task to stop'),
+    }),
+    execute: async ({ taskId }, context) => {
+      const agentManager = context.backgroundAgentManager as { getAgent?: (id: string) => unknown; killAgent?: (id: string) => boolean } | undefined;
+      if (agentManager?.getAgent?.(taskId)) {
+        const stopped = agentManager.killAgent?.(taskId);
+        const latestSession = agentManager.getAgent?.(taskId);
+        return {
+          success: true,
+          llmContent: latestSession ?? { taskId, status: stopped ? 'cancelled' : 'completed' },
+          metadata: {
+            summary: `停止后台 Agent: ${taskId}`,
+            task: latestSession,
+            stoppedBackgroundAgent: true,
+          },
+        };
+      }
+
+      const sid = context?.sessionId ?? sessionId;
+      const store = TaskStore.getInstance(sid);
+      const task = await store.get(taskId);
+      if (!task) {
+        return {
+          success: false,
+          llmContent: `Task #${taskId} not found`,
+          error: { type: ToolErrorType.VALIDATION_ERROR, message: `Task ${taskId} not found` },
+          metadata: {
+            summary: '未找到任务',
+          },
+        };
+      }
+      const updated = await store.update(taskId, {
+        status: 'completed',
+        metadata: { stoppedAt: new Date().toISOString() },
+      });
+      return {
+        success: true,
+        llmContent: updated ?? { taskId, status: 'completed' },
+        metadata: {
+          summary: `停止任务: ${taskId}`,
+          task: updated,
+        },
+      };
+    },
+  });
+}
