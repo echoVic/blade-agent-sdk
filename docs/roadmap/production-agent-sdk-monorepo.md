@@ -1753,6 +1753,21 @@ Commit:
 
 - `refactor: inline ConcurrencyScheduler into ExecutionPipeline.ts`
 
+### Root Dead Code Retirement: ToolInvocation.ts
+
+Objective: Inline `src/tools/core/ToolInvocation.ts` (97 lines, `UnifiedToolInvocation` class) into `createTool.ts` — the only consumer.
+
+Status:
+
+- Inlined `UnifiedToolInvocation` class into `src/tools/core/createTool.ts` as a file-private class.
+- Added missing type/value imports (`validationErrorToToolResult`, type alias) that were previously transitively provided by `ToolInvocation.ts`.
+- Deleted `src/tools/core/ToolInvocation.ts`. No test file existed.
+- Type-check: 0 errors. Full verify chain: green.
+
+Commit:
+
+- `refactor: inline ToolInvocation into createTool.ts`
+
 ## Completion Criteria
 
 The migration is complete only when all of the following are true:
