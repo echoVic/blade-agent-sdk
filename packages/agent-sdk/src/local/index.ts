@@ -34,6 +34,7 @@ export { createGlobTool, globTool } from './search/index.js';
 export { createNotebookEditTool, notebookEditTool } from './notebook/notebookEdit.js';
 export { createAskUserQuestionTool, askUserQuestionTool } from './system/askUserQuestion.js';
 export { discoverToolsTool } from './system/discoverTools.js';
+export { skillTool } from './system/skill.js';
 export { createListMcpResourcesTool, createReadMcpResourceTool } from './mcp-tools/index.js';
 export { webFetchTool, webSearchTool } from './web/index.js';
 export { getSearchCache, SearchCache, getAllProviders, getProviderCount } from './web/index.js';

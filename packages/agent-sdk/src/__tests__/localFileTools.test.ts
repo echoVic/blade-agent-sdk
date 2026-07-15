@@ -196,7 +196,7 @@ describe('agent-sdk local file tools', () => {
   it('includes the full package-local builtin tools provider', async () => {
     const tools = await getBuiltinTools();
     const names = tools.map((t) => t.name).sort();
-    expect(names).toEqual(['AskUserQuestion', 'DiscoverTools', 'Edit', 'EnterPlanMode', 'ExitPlanMode', 'Glob', 'Grep', 'NotebookEdit', 'Read', 'TodoWrite', 'WebFetch', 'WebSearch', 'Write']);
+    expect(names).toEqual(['AskUserQuestion', 'DiscoverTools', 'Edit', 'EnterPlanMode', 'ExitPlanMode', 'Glob', 'Grep', 'NotebookEdit', 'Read', 'Skill', 'TodoWrite', 'WebFetch', 'WebSearch', 'Write']);
   });
 });
 

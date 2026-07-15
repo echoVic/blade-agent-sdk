@@ -1517,6 +1517,30 @@ Commit:
 
 - `refactor(agent-sdk): migrate web tools to package-local`
 
+### Skill Tool Migration: Root → Package-Local
+
+Objective: Migrate the Skill tool (259 lines) from root legacy to `@blade-ai/agent-sdk/local`.
+
+Status:
+
+- Created `packages/agent-sdk/src/local/system/skill.ts` (340 lines including helpers) from the root implementation.
+- Defined `SkillRegistryPort` interface with `get`, `getAll`, `loadContent` methods to decouple from root's `SkillRegistry` class. Inlined `SkillMetadata`, `SkillContent`, `SkillSource`, `SkillRuntimeEffects`, `SkillHookSpec`, `RuntimeHookRegistration` types.
+- Replaced `lazySchema()` with direct `z.object()` schema. Replaced `getEffectiveProjectDir(context)` with `context.workingDirectory ?? context.cwd` lookup.
+- Implemented `isSkillAvailableInContext` using `picomatch` for proper glob matching against `skillMetadata.conditions.paths`, matching the root `src/skills/activation.ts` semantics. Collects candidate paths from both `context.referencedPaths` and `extractPathCandidatesFromArgs(context.args)`.
+- `compileRuntimeHooks` and `buildSkillInstructions` helpers preserved with package-local types.
+- Skill tool is a singleton (`skillTool`). Registry accessed via `context.skillRegistry` at execution time. Returns a helpful error when no registry is configured.
+- Shrunk root `src/tools/builtin/system/skill.ts` to 1-line forwarder shim.
+- Added `skillTool` to `getBuiltinTools()` default return array. Default builtin tool set: 14 tools (AskUserQuestion, DiscoverTools, Edit, EnterPlanMode, ExitPlanMode, Glob, Grep, NotebookEdit, Read, Skill, TodoWrite, WebFetch, WebSearch, Write).
+- Added `skillTool` to `builtin-tools.ts`, `local/index.ts` exports, and `public-index.ts` type declaration.
+- Created `localSkillTool.test.ts` (4 tests) covering builtin registration, metadata, build params, and no-registry error path.
+- Updated root `skill.test.ts` (3 tests) to pass `SkillRegistry` instance via `context.skillRegistry` instead of depending on global singleton.
+- Updated `localFileTools.test.ts` and `localMemoryTools.test.ts` expectations to reflect Skill in the builtin tools set.
+- All 419 package + 1323 root unit tests pass. Full verify chain green.
+
+Commit:
+
+- `refactor(agent-sdk): migrate Skill tool to package-local`
+
 ## Completion Criteria
 
 The migration is complete only when all of the following are true:

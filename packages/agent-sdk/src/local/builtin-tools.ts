@@ -4,6 +4,7 @@ import { globTool, grepTool } from './search/index.js';
 import { notebookEditTool } from './notebook/notebookEdit.js';
 import { askUserQuestionTool } from './system/askUserQuestion.js';
 import { discoverToolsTool } from './system/discoverTools.js';
+import { skillTool } from './system/skill.js';
 import { enterPlanModeTool } from './plan/enterPlanMode.js';
 import { exitPlanModeTool } from './plan/exitPlanMode.js';
 import type { MemoryManager } from './memory.js';
@@ -37,6 +38,7 @@ export async function getBuiltinTools(options: BuiltinToolsOptions = {}): Promis
     exitPlanModeTool,
     createTodoWriteTool({ sessionId, configDir: options.configDir }),
     discoverToolsTool,
+    skillTool,
     webFetchTool,
     webSearchTool,
     ...(options.includeMcpProtocolTools && options.mcpRegistry

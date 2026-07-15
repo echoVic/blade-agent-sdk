@@ -285,6 +285,7 @@ export interface McpResourceRegistry {
 }
 export declare function createListMcpResourcesTool(registry: McpResourceRegistry): Tool;
 export declare function createReadMcpResourceTool(registry: McpResourceRegistry): Tool;
+export declare const skillTool: Tool;
 export declare const webFetchTool: Tool;
 export declare const webSearchTool: Tool;
 export type WebSearchResult = {

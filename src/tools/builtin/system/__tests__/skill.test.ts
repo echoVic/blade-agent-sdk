@@ -21,9 +21,14 @@ async function createProjectSkill(
 async function executeSkill(
   params: Parameters<typeof skillTool.build>[0],
   context: Partial<ExecutionContext>,
+  skillRegistry?: unknown,
 ) {
   const invocation = skillTool.build(params);
-  return invocation.execute(new AbortController().signal, undefined, context);
+  const fullContext = {
+    ...context,
+    skillRegistry,
+  } as Record<string, unknown>;
+  return invocation.execute(new AbortController().signal, undefined, fullContext);
 }
 
 describe('Skill tool', () => {
@@ -67,7 +72,7 @@ Focus on source files.
       skillActivationPaths: ['docs/readme.md'],
     } satisfies Partial<ExecutionContext>;
 
-    const result = await executeSkill({ skill: 'src-only' }, context);
+    const result = await executeSkill({ skill: 'src-only' }, context, registry);
 
     expect(result.success).toBe(false);
     expect(result.error?.message).toContain('conditions are not satisfied');
@@ -104,6 +109,7 @@ Focus on source files.
     const result = await executeSkill(
       { skill: 'src-only', args: 'src/index.ts' },
       context,
+      registry,
     );
 
     expect(result.success).toBe(true);
@@ -143,6 +149,7 @@ Review code carefully.
     const result = await executeSkill(
       { skill: 'reviewer' },
       context,
+      registry,
     );
 
     expect(result.success).toBe(true);
