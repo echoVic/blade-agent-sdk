@@ -2272,6 +2272,21 @@ Commit:
 
 - `refactor(agent-sdk): migrate HookExecutionGuard to @blade-ai/agent-sdk/local`
 
+### HookBus Migration: Root → @blade-ai/agent-sdk/local
+
+Objective: Migrate `src/hooks/HookBus.ts` (25 lines) to `@blade-ai/agent-sdk/local` — inlined 7 types (`HookEvent`, `HookCallback`, `HookInput`, `HookOutput`, `JsonValue`, `JsonPrimitive`, `JsonObject`) for full self-containment.
+
+Status:
+
+- Created `packages/agent-sdk/src/local/HookBus.ts` — inlined all root-type imports for self-containment (HookEvent const + type, HookCallback/HookInput/HookOutput interfaces, Json types).
+- Exported `HookBus` from `local/index.ts`.
+- Shimmed root `HookBus.ts` to forwarder — all consumers unchanged via transparent shim.
+- Type-check: 0 errors. Full verify chain: green.
+
+Commit:
+
+- `refactor(agent-sdk): migrate HookBus to @blade-ai/agent-sdk/local`
+
 ### Root Dead Code Retirement: agent/constants.ts
 
 Objective: Inline `AGENT_TURN_SAFETY_LIMIT` constant (9 lines) into `LoopRunner.ts` — the only consumer.

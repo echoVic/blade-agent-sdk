@@ -131,3 +131,4 @@ export { JSONLStore } from './JSONLStore.js';
 export { ContextMemoryStore } from './ContextMemoryStore.js';
 
 export { HookExecutionGuard } from './HookExecutionGuard.js';
+export { HookBus } from './HookBus.js';
