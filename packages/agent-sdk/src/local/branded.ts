@@ -1,22 +1,33 @@
 /**
- * Branded types for the agent-sdk package.
+ * Branded types for the @blade-ai/agent-sdk package.
  *
- * Uses string-based structural branding instead of `unique symbol`.
- * This ensures root and package branded types are structurally compatible,
- * enabling gradual migration of root files to the package.
+ * Uses `unique symbol` branding (same mechanism as root branded types).
+ * When the root branded.ts becomes a forwarder shim, both will share
+ * the same __brand symbol via the package as the canonical source.
+ *
+ * NOTE: unique symbol is module-scoped. Root and package have separate
+ * __brand instances until root is shimmed to re-export from the package.
+ * This is by design — gradual migration toward the package as canonical.
  */
 
-/** Structural brand — same string = same type. */
-type Brand<T, B extends string> = T & { readonly _brand: B };
+declare const __brand: unique symbol;
 
-/** Session identifier. */
+type Brand<T, B extends string> = T & { readonly [__brand]: B };
+
+/** Session identifier (branded string). */
 export type SessionId = Brand<string, 'SessionId'>;
-
-/** Agent identifier. */
+/** Agent identifier (branded string). */
 export type AgentId = Brand<string, 'AgentId'>;
-
-/** Message identifier. */
+/** Message identifier (branded string). */
 export type MessageId = Brand<string, 'MessageId'>;
-
-/** Tool use identifier. */
+/** Tool use identifier (branded string). */
 export type ToolUseId = Brand<string, 'ToolUseId'>;
+
+/** Creates a SessionId from a string value. */
+export const SessionId = (value: string): SessionId => value as SessionId;
+/** Creates an AgentId from a string value. */
+export const AgentId = (value: string): AgentId => value as AgentId;
+/** Creates a MessageId from a string value. */
+export const MessageId = (value: string): MessageId => value as MessageId;
+/** Creates a ToolUseId from a string value. */
+export const ToolUseId = (value: string): ToolUseId => value as ToolUseId;

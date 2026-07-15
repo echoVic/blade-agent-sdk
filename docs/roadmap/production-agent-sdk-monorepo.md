@@ -2011,6 +2011,21 @@ Commit:
 
 - `feat(agent-sdk): add branded types (SessionId, AgentId, MessageId, ToolUseId) to local/branded.ts`
 
+### Branded Types Upgrade: unique symbol + Factory Functions
+
+Objective: Upgrade `packages/agent-sdk/src/local/branded.ts` to use `declare const __brand: unique symbol;` (matching root's branding mechanism) + factory functions (`SessionId()`, `AgentId()`, etc.) — establishing the CORRECT canonical implementation for branded types in the package.
+
+Status:
+
+- Rewrote `branded.ts` (1,472 bytes) with `unique symbol` branding + Brand&lt;T, B&gt; + all 4 branded types + factory functions — fully aligned with root's branding mechanism.
+- Updated `local/index.ts` export from `export type { ... }` to `export { ... }` — now exports both types AND factory functions (matching root's `export const SessionId = (value: string): SessionId => ...`).
+- Experiment confirmed: `unique symbol` is module-scoped — root and package have separate `__brand` instances until root is shimmed to re-export from the package. This is correct by design.
+- Type-check: 0 errors. Boundaries: passed.
+
+Commit:
+
+- `refactor(agent-sdk): upgrade branded.ts to unique symbol + factory functions`
+
 ### Root Dead Code Retirement: agent/constants.ts
 
 Objective: Inline `AGENT_TURN_SAFETY_LIMIT` constant (9 lines) into `LoopRunner.ts` — the only consumer.
