@@ -2303,6 +2303,21 @@ Commit:
 
 - `refactor(agent-sdk): migrate OutputParser to @blade-ai/agent-sdk/local`
 
+### MCP Types Migration: Root → @blade-ai/agent-sdk/local
+
+Objective: Migrate `src/mcp/types.ts` (38 lines) to `@blade-ai/agent-sdk/local/mcpTypes.ts` — the FIRST MCP subsystem file migrated. ZERO root imports (only depends on npm `json-schema`).
+
+Status:
+
+- Created `packages/agent-sdk/src/local/mcpTypes.ts` — exact copy, zero import changes.
+- Exported `McpConnectionStatus` (enum value), `McpToolDefinition`, `McpToolCallResponse` (types) from `local/index.ts`.
+- Shimmed root `types.ts` to forwarder — all consumers unchanged via transparent shim.
+- Type-check: 0 errors. Full verify chain: green.
+
+Commit:
+
+- `refactor(agent-sdk): migrate mcp types to @blade-ai/agent-sdk/local`
+
 ### Root Dead Code Retirement: agent/constants.ts
 
 Objective: Inline `AGENT_TURN_SAFETY_LIMIT` constant (9 lines) into `LoopRunner.ts` — the only consumer.

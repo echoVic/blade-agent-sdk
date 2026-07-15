@@ -6,9 +6,9 @@ export type { InternalLogger } from './logging.js';
 export { LogCategory } from './logging.js';
 export { FileLockManager } from './FileLockManager.js';
 
+export type { McpToolCallResponse, McpToolDefinition } from './mcpTypes.js';
+export { McpConnectionStatus } from './mcpTypes.js';
 export type {
-  McpToolCallResponse,
-  McpToolDefinition,
   McpToolResponse,
   SdkMcpServerHandle,
   SdkTool,
