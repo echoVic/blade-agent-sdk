@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { createTool, ToolErrorType, ToolKind } from '../tools/index.js';
-import type { MemoryManager } from './memory.js';
+import type { MemoryManager } from './MemoryManager.js';
 
 const memoryWriteSchema = z.discriminatedUnion('operation', [
   z.object({

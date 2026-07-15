@@ -8,7 +8,7 @@ import { skillTool } from './system/skill.js';
 import { bashTool, killShellTool } from './shell/index.js';
 import { enterPlanModeTool } from './plan/enterPlanMode.js';
 import { exitPlanModeTool } from './plan/exitPlanMode.js';
-import type { MemoryManager } from './memory.js';
+import type { MemoryManager } from './MemoryManager.js';
 import { createMemoryReadTool } from './memoryRead.js';
 import { createMemoryWriteTool } from './memoryWrite.js';
 import { createTodoWriteTool } from './todo/index.js';

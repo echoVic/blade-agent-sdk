@@ -13,7 +13,8 @@ export type {
   SdkTool,
 } from './mcp.js';
 export { createSdkMcpServer, tool } from './mcp.js';
-export { FileSystemMemoryStore, MemoryManager } from './memory.js';
+export { FileSystemMemoryStore } from './memory.js';
+export { MemoryManager } from './MemoryManager.js';
 export type { Memory, MemoryInput, MemoryType } from './memory.js';
 export type { MemoryStore } from './MemoryStore.js';
 export type {

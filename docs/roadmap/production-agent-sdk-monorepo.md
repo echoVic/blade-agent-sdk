@@ -1961,6 +1961,24 @@ Commit:
 
 - `refactor(agent-sdk): migrate MemoryTypes + MemoryStore to @blade-ai/agent-sdk/local`
 
+### MemoryManager Migration: Root → @blade-ai/agent-sdk/local — Memory Subsystem Complete
+
+Objective: Migrate `src/memory/MemoryManager.ts` (553 lines) — the last remaining root memory file — to `@blade-ai/agent-sdk/local`, completing the entire memory subsystem migration (second full subsystem after sandbox).
+
+Status:
+
+- Copied `MemoryManager.ts` to `packages/agent-sdk/src/local/MemoryManager.ts` — NO import changes needed because it already imported `Memory`, `MemoryInput`, and `MemoryStore` from `@blade-ai/agent-sdk/local` (updated in Slice #33).
+- Removed duplicate `MemoryManager` from `packages/agent-sdk/src/local/memory.ts` (the package already had a partial implementation).
+- Updated 3 internal package imports (`builtin-tools.ts`, `memoryRead.ts`, `memoryWrite.ts`) to import `MemoryManager` from `./MemoryManager.js`.
+- Updated `src/memory/index.ts` barrel to re-export from `@blade-ai/agent-sdk/local`.
+- Shimmed root `MemoryManager.ts` to a 1-line forwarder re-exporting from the package.
+- **Memory subsystem fully migrated**: MemoryTypes → `local/memory.ts`, MemoryStore → `local/MemoryStore.ts`, MemoryManager → `local/MemoryManager.ts`, FileSystemMemoryStore → `local/memory.ts`. All root memory files are forwarder shims.
+- Type-check: 0 errors (root + packages). Full verify chain: green. Tests stable.
+
+Commit:
+
+- `refactor(agent-sdk): migrate MemoryManager to @blade-ai/agent-sdk/local — memory subsystem complete`
+
 ### Root Dead Code Retirement: agent/constants.ts
 
 Objective: Inline `AGENT_TURN_SAFETY_LIMIT` constant (9 lines) into `LoopRunner.ts` — the only consumer.
