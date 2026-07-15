@@ -34,10 +34,4 @@ export const StreamMessageType = {
 
 export type StreamMessageType = (typeof StreamMessageType)[keyof typeof StreamMessageType];
 
-export const PermissionDecision = {
-  ALLOW: 'allow',
-  DENY: 'deny',
-  ASK: 'ask',
-} as const;
-
-export type PermissionDecision = (typeof PermissionDecision)[keyof typeof PermissionDecision];
+export { PermissionDecision } from '@blade-ai/agent-sdk/local';

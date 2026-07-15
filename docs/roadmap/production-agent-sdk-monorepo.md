@@ -2451,6 +2451,22 @@ Commit:
 
 - `refactor: unify PermissionMode constant — re-export from @blade-ai/agent-sdk/local`
 
+### PermissionDecision Unification
+
+Objective: Add `PermissionDecision` (3-value const: ALLOW, DENY, ASK) to `@blade-ai/agent-sdk/local/constants.ts` and unify root re-export — same constants unification pattern as #62-64.
+
+Status:
+
+- Added `PermissionDecision` const + derived type to `packages/agent-sdk/src/local/constants.ts`.
+- Exported from `local/index.ts` — confirmed no conflicts.
+- Updated root `constants.ts` to re-export from `@blade-ai/agent-sdk/local`.
+- Root `constants.ts` now only defines `StreamMessageType` (14 values) — 4 of 5 constants delegated to package.
+- Type-check: 0 errors. Full verify chain: green.
+
+Commit:
+
+- `refactor: unify PermissionDecision constant — re-export from @blade-ai/agent-sdk/local`
+
 ### Root Dead Code Retirement: agent/constants.ts
 
 Objective: Inline `AGENT_TURN_SAFETY_LIMIT` constant (9 lines) into `LoopRunner.ts` — the only consumer.

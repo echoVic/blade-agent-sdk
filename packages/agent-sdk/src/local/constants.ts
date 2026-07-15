@@ -42,3 +42,11 @@ export const PermissionMode = {
 } as const;
 
 export type PermissionMode = (typeof PermissionMode)[keyof typeof PermissionMode];
+
+export const PermissionDecision = {
+  ALLOW: 'allow',
+  DENY: 'deny',
+  ASK: 'ask',
+} as const;
+
+export type PermissionDecision = (typeof PermissionDecision)[keyof typeof PermissionDecision];
