@@ -1582,6 +1582,23 @@ Commit:
 
 - `refactor(agent-sdk): migrate task tools to package-local`
 
+### Root Builtin-Tools Index Simplification
+
+Objective: Simplify root `src/tools/builtin/index.ts` (106 lines → 51 lines) to delegate to package-local `getBuiltinTools()`, keeping only MCP protocol tool loading at the root level.
+
+Status:
+
+- Simplified root `src/tools/builtin/index.ts` from 106 lines to 51 lines. Root `getBuiltinTools()` now calls the package-local `getBuiltinTools()` and only adds MCP protocol tools (via `mcpRegistry.getAvailableTools()`) on top.
+- Extended package-local `getBuiltinTools()` to accept `subagentRegistry` and conditionally create all 7 task tools (task, taskCreate, taskGet, taskUpdate, taskList, taskStop, taskOutput) when a registry is provided.
+- Exported `SubagentRegistryPort` from `packages/agent-sdk/src/local/task/task.ts` so `builtin-tools.ts` can import it for type safety.
+- Changed `BuiltinToolsOptions.memoryManager` from `MemoryManager` to `unknown` to allow root → package type bridging without `as any` casts.
+- Root `getBuiltinTools()` no longer imports individual tool modules — it delegates entirely to the package-local function.
+- All 1323 root + 425 package tests pass. Full verify chain green.
+
+Commit:
+
+- `refactor(agent-sdk): simplify root builtin-tools index to delegate to package-local`
+
 ## Completion Criteria
 
 The migration is complete only when all of the following are true:

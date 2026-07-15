@@ -15,9 +15,19 @@ import { createTodoWriteTool } from './todo/index.js';
 import { createListMcpResourcesTool, createReadMcpResourceTool } from './mcp-tools/index.js';
 import type { McpResourceRegistry } from './mcp-tools/listMcpResources.js';
 import { webFetchTool, webSearchTool } from './web/index.js';
+import {
+  createTaskCreateTool,
+  createTaskGetTool,
+  createTaskListTool,
+  createTaskStopTool,
+  createTaskUpdateTool,
+  createTaskTool,
+  taskOutputTool,
+} from './task/index.js';
+import type { SubagentRegistryPort } from './task/task.js';
 
 export interface BuiltinToolsOptions {
-  memoryManager?: MemoryManager;
+  memoryManager?: unknown;
   sessionId?: unknown;
   configDir?: string;
   mcpRegistry?: unknown;
@@ -52,8 +62,19 @@ export async function getBuiltinTools(options: BuiltinToolsOptions = {}): Promis
       : []),
     ...(options.memoryManager
       ? [
-          createMemoryReadTool({ manager: options.memoryManager }),
-          createMemoryWriteTool({ manager: options.memoryManager }),
+          createMemoryReadTool({ manager: options.memoryManager as MemoryManager }),
+          createMemoryWriteTool({ manager: options.memoryManager as MemoryManager }),
+        ]
+      : []),
+    ...(options.subagentRegistry
+      ? [
+          createTaskTool({ registry: options.subagentRegistry as SubagentRegistryPort }),
+          taskOutputTool,
+          createTaskCreateTool({ sessionId }),
+          createTaskGetTool({ sessionId }),
+          createTaskUpdateTool({ sessionId }),
+          createTaskListTool({ sessionId }),
+          createTaskStopTool({ sessionId }),
         ]
       : []),
   ];

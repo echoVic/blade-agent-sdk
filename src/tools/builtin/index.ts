@@ -1,41 +1,13 @@
 /**
- * 内置工具模块
+ * 内置工具模块 — 委托到 @blade-ai/agent-sdk/local
  */
 
 import type { McpRegistry } from '../../mcp/McpRegistry.js';
 import { SessionId } from '../../types/branded.js';
 import type { Tool } from '../types/index.js';
-// 文件操作工具
-import { editTool, readTool, writeTool } from './file/index.js';
-// Notebook 工具
-import { notebookEditTool } from './notebook/index.js';
-// Plan 工具
-import { enterPlanModeTool, exitPlanModeTool } from './plan/index.js';
-// 搜索工具
-import { globTool, grepTool } from './search/index.js';
-// Shell 命令工具
-import { bashTool, killShellTool } from './shell/index.js';
-// System 工具
-import { askUserQuestionTool, discoverToolsTool, skillTool } from './system/index.js';
-// 任务管理工具
-import { createTaskTool, taskOutputTool } from './task/index.js';
-import {
-  createTaskCreateTool,
-  createTaskGetTool,
-  createTaskListTool,
-  createTaskStopTool,
-  createTaskUpdateTool,
-} from './task/index.js';
-// MCP 资源工具
-import { createListMcpResourcesTool, createReadMcpResourceTool } from './mcp/index.js';
-// Todo 工具
-import { createTodoWriteTool } from './todo/index.js';
-// Memory 工具
-import { createMemoryReadTool, createMemoryWriteTool } from './memory/index.js';
+import { getBuiltinTools as getPackageBuiltinTools } from '@blade-ai/agent-sdk/local';
 import { SubagentRegistry } from '../../agent/subagents/SubagentRegistry.js';
 import type { MemoryManager } from '../../memory/MemoryManager.js';
-// 网络工具
-import { webFetchTool, webSearchTool } from './web/index.js';
 
 async function getMcpTools(mcpRegistry: McpRegistry): Promise<Tool[]> {
   try {
@@ -46,9 +18,6 @@ async function getMcpTools(mcpRegistry: McpRegistry): Promise<Tool[]> {
   }
 }
 
-/**
- * 获取所有内置工具
- */
 export async function getBuiltinTools(opts?: {
   sessionId?: SessionId;
   configDir?: string;
@@ -58,49 +27,23 @@ export async function getBuiltinTools(opts?: {
   subagentRegistry?: SubagentRegistry;
 }): Promise<Tool[]> {
   const sessionId = opts?.sessionId ?? SessionId(`session_${Date.now()}`);
-  const configDir = opts?.configDir;
   const registry = opts?.subagentRegistry ?? new SubagentRegistry();
   if (!opts?.subagentRegistry) {
-    registry.loadFromStandardLocations(undefined, configDir);
+    registry.loadFromStandardLocations(undefined, opts?.configDir);
   }
 
-  const builtinTools: Tool[] = [
-    readTool,
-    editTool,
-    writeTool,
-    notebookEditTool,
-    globTool,
-    grepTool,
-    bashTool,
-    killShellTool,
-    webFetchTool,
-    webSearchTool,
-    createTaskTool({ registry }),
-    taskOutputTool,
-    createTaskCreateTool({ sessionId }),
-    createTaskGetTool({ sessionId }),
-    createTaskUpdateTool({ sessionId }),
-    createTaskListTool({ sessionId }),
-    createTaskStopTool({ sessionId }),
-    createTodoWriteTool({ sessionId, configDir }),
-    ...(opts?.memoryManager
-      ? [
-          createMemoryReadTool({ manager: opts.memoryManager }),
-          createMemoryWriteTool({ manager: opts.memoryManager }),
-        ]
-      : []),
-    enterPlanModeTool,
-    exitPlanModeTool,
-    askUserQuestionTool,
-    discoverToolsTool,
-    skillTool,
-    ...(opts?.mcpRegistry ? [createListMcpResourcesTool(opts.mcpRegistry), createReadMcpResourceTool(opts.mcpRegistry)] : []),
-  ] as unknown as Tool[];
+  const tools = await getPackageBuiltinTools({
+    sessionId,
+    configDir: opts?.configDir,
+    mcpRegistry: opts?.mcpRegistry,
+    includeMcpProtocolTools: opts?.includeMcpProtocolTools,
+    memoryManager: opts?.memoryManager,
+    subagentRegistry: registry,
+  }) as Tool[];
 
-  // 添加 MCP 协议工具
-  const mcpTools = opts?.mcpRegistry && opts.includeMcpProtocolTools !== false
+  const mcpTools = opts?.mcpRegistry && opts?.includeMcpProtocolTools !== false
     ? await getMcpTools(opts.mcpRegistry)
     : [];
 
-  return [...builtinTools, ...mcpTools];
+  return [...tools, ...mcpTools];
 }

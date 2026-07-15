@@ -56,7 +56,7 @@ interface SubagentResult {
   };
 }
 
-interface SubagentRegistryPort {
+export interface SubagentRegistryPort {
   getSubagent(name: string): SubagentConfig | undefined;
   getAllSubagents(): SubagentConfig[];
   loadFromStandardLocations(cwd?: string, configDir?: string): void;
