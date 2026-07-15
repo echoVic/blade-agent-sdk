@@ -1,4 +1,4 @@
-// Already migrated to @blade-ai/agent-sdk/local
+// All migrated to @blade-ai/agent-sdk/local
 export type {
   AgentTrace,
   HookTraceCollector,
@@ -11,5 +11,4 @@ export type {
   TraceStatus,
 } from '@blade-ai/agent-sdk/local';
 
-// Still root-only — not yet migrated
-export { TraceRecorder } from './TraceRecorder.js';
+export { TraceRecorder } from '@blade-ai/agent-sdk/local';
