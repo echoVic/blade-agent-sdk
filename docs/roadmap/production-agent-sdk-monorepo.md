@@ -1645,6 +1645,22 @@ Commit:
 
 - `refactor: retire dead lazySchema.ts (inlined into createTool.ts)`
 
+### Root Dead Code Retirement: zodToJson.ts
+
+Objective: Delete `src/tools/validation/zodToJson.ts` (15 lines) — the `zodToFunctionSchema` wrapper inlined directly into `createTool.ts`.
+
+Status:
+
+- Inlined `zodToFunctionSchema()` into `createTool.ts` (replaced with direct `zodToJsonSchema()` call from `zod-to-json-schema` npm package).
+- Updated `cachedFunctionSchema` type from `ReturnType<typeof zodToFunctionSchema>` to `JSONSchema7`.
+- Deleted `src/tools/validation/zodToJson.ts` and its test file `src/tools/validation/__tests__/zodToJson.test.ts`.
+- This leaves only `errorFormatter.ts` in the validation directory — the last remaining schema helper.
+- Type-check: 0 errors. Full verify chain: green.
+
+Commit:
+
+- `refactor: retire dead zodToJson.ts (inlined into createTool.ts)`
+
 ## Completion Criteria
 
 The migration is complete only when all of the following are true:

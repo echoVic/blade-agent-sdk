@@ -1,3 +1,4 @@
+import type { JSONSchema7 } from 'json-schema';
 import type { z } from 'zod';
 import type { JsonObject, JsonValue } from '../../types/common.js';
 import type {
@@ -9,8 +10,8 @@ import type {
   ToolResult,
 } from '../types/index.js';
 import { createToolBehavior, isReadOnlyKind, ToolKind } from '../types/ToolKind.js';
+import { zodToJsonSchema } from 'zod-to-json-schema';
 import { parseWithZod } from '../validation/errorFormatter.js';
-import { zodToFunctionSchema } from '../validation/zodToJson.js';
 import { UnifiedToolInvocation } from './ToolInvocation.js';
 
 /**
@@ -21,7 +22,7 @@ export function createTool<TSchema extends z.ZodSchema>(
 ): Tool<z.infer<TSchema>> {
   type TParams = z.infer<TSchema>;
   let cachedSchema: TSchema | undefined;
-  let cachedFunctionSchema: ReturnType<typeof zodToFunctionSchema> | undefined;
+  let cachedFunctionSchema: JSONSchema7 | undefined;
   let cachedStaticDescriptionText: string | undefined;
 
   const getSchema = (): TSchema => {
@@ -96,7 +97,7 @@ export function createTool<TSchema extends z.ZodSchema>(
      */
     getFunctionDeclaration() {
       if (!cachedFunctionSchema) {
-        cachedFunctionSchema = zodToFunctionSchema(getSchema());
+        cachedFunctionSchema = zodToJsonSchema(getSchema(), { target: 'jsonSchema7', $refStrategy: 'none' }) as JSONSchema7;
       }
       if (!cachedStaticDescriptionText) {
         cachedStaticDescriptionText = formatToolDescription(resolveDescription());
@@ -114,7 +115,7 @@ export function createTool<TSchema extends z.ZodSchema>(
      */
     getMetadata() {
       if (!cachedFunctionSchema) {
-        cachedFunctionSchema = zodToFunctionSchema(getSchema());
+        cachedFunctionSchema = zodToJsonSchema(getSchema(), { target: 'jsonSchema7', $refStrategy: 'none' }) as JSONSchema7;
       }
 
       return {
