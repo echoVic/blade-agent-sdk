@@ -172,6 +172,11 @@ export type {
   ToolResultMetadata,
 } from './toolMetadata.js';
 export { isGlobMetadata, isEditMetadata } from './toolMetadata.js';
+export {
+  getRuntimePatchEffect,
+  normalizeToolEffects,
+  normalizePermissionEffects,
+} from './toolEffects.js';
 
 // Skills types
 export type {
