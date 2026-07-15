@@ -158,6 +158,30 @@ export { HookBus } from './HookBus.js';
 export { OutputParser } from './OutputParser.js';
 export type { ToolResponse } from './SdkMcpServer.js';
 
+// Skills types
+export type {
+  SkillSourceKind,
+  SkillTrustLevel,
+  SkillShellPolicy,
+  SkillHookPolicy,
+  SkillActivationScope,
+  SkillSource,
+  SkillRuntimeEffects,
+  SkillActivationConditions,
+  SkillActivationContext,
+  SkillHookSpec,
+  SkillShellConfig,
+  SkillAssetEntry,
+  SkillAssetManifest,
+  SkillMetadata,
+  SkillContent,
+  SkillParseResult,
+  SkillSourceConfig,
+  SkillRegistryConfig,
+  SkillDiscoveryResult,
+} from './skillsTypes.js';
+export { defaultSkillSource } from './skillsTypes.js';
+
 // Observability
 export { TraceRecorder } from './TraceRecorder.js';
 export type {
