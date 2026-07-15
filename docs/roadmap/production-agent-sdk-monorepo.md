@@ -1709,6 +1709,21 @@ Commit:
 
 - `ci: add CI workflow with verify, build, and test gates`
 
+### Root Dead Code Retirement: ResultArtifactStore.ts
+
+Objective: Inline `src/tools/execution/ResultArtifactStore.ts` (46 lines) into `ExecutionPipeline.ts` — the only consumer.
+
+Status:
+
+- Inlined `ResultArtifactStore` class, `PersistedToolResultArtifact` interface, and `sanitizeSegment()` helper into `src/tools/execution/ExecutionPipeline.ts` as local definitions.
+- Added `node:fs/promises`, `node:os`, `node:path` imports to ExecutionPipeline.ts.
+- Deleted `src/tools/execution/ResultArtifactStore.ts`. No test file existed.
+- Type-check: 0 errors. Full verify chain: green.
+
+Commit:
+
+- `refactor: inline ResultArtifactStore into ExecutionPipeline.ts`
+
 ## Completion Criteria
 
 The migration is complete only when all of the following are true:

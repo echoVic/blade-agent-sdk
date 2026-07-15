@@ -1,3 +1,6 @@
+import * as fs from 'node:fs/promises';
+import * as os from 'node:os';
+import * as path from 'node:path';
 import type { HookRuntime } from '../../hooks/HookRuntime.js';
 import { type InternalLogger, LogCategory, NOOP_LOGGER } from '../../logging/Logger.js';
 import { SessionId, ToolUseId } from '../../types/branded.js';
@@ -40,7 +43,6 @@ import {
 import { type ConcurrencyLimits, ConcurrencyScheduler } from './ConcurrencyScheduler.js';
 import { DenialTracker } from './DenialTracker.js';
 import { FileLockManager } from './FileLockManager.js';
-import { ResultArtifactStore } from './ResultArtifactStore.js';
 
 function getString(params: JsonObject, key: string, defaultValue = ''): string {
   const value = params[key];
@@ -1286,4 +1288,48 @@ function toParamsRecord(
   return params && typeof params === 'object' && !Array.isArray(params)
     ? params as JsonObject
     : fallback;
+}
+
+// ── Inlined from ResultArtifactStore.ts ──
+
+interface PersistedToolResultArtifact {
+  path: string;
+}
+
+class ResultArtifactStore {
+  async persist(options: {
+    executionId: string;
+    toolName: string;
+    sessionId?: string;
+    context: ExecutionContext;
+    llmContent?: string;
+  }): Promise<PersistedToolResultArtifact> {
+    const baseDir = await this.resolveBaseDir(options.context);
+    await fs.mkdir(baseDir, { recursive: true });
+
+    const fileName = `${sanitizeSegment(options.sessionId ?? options.executionId)}-${sanitizeSegment(options.toolName)}-${Date.now()}.json`;
+    const artifactPath = path.join(baseDir, fileName);
+
+    await fs.writeFile(artifactPath, JSON.stringify({
+      toolName: options.toolName,
+      sessionId: options.sessionId,
+      llmContent: options.llmContent,
+      createdAt: new Date().toISOString(),
+    }, null, 2), 'utf8');
+
+    return { path: artifactPath };
+  }
+
+  private async resolveBaseDir(context: ExecutionContext): Promise<string> {
+    const cwd = context.contextSnapshot?.cwd;
+    if (cwd) {
+      return path.join(cwd, '.blade-tool-results');
+    }
+
+    return path.join(os.tmpdir(), 'blade-agent-sdk', 'tool-results');
+  }
+}
+
+function sanitizeSegment(value: string): string {
+  return value.replace(/[^a-zA-Z0-9._-]+/g, '-').slice(0, 64) || 'artifact';
 }
