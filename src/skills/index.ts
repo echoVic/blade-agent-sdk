@@ -27,7 +27,6 @@
  * ```
  */
 
-// Still root-only — not yet migrated
 export { injectSkillsMetadata } from './injectSkillsMetadata.js';
 
 // Migrated to @blade-ai/agent-sdk/local

@@ -199,6 +199,7 @@ export {
 
 // Skills registry
 export { SkillRegistry, getSkillRegistry, discoverSkills } from './skillsRegistry.js';
+export { injectSkillsMetadata } from './skillsInject.js';
 
 // Observability
 export { TraceRecorder } from './TraceRecorder.js';
