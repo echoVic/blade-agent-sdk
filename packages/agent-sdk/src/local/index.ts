@@ -2,8 +2,11 @@
 // Browser consumers should use @blade-ai/agent-sdk/core or a remote server API.
 
 export { TokenCounter } from './TokenCounter.js';
-export type { InternalLogger } from './logging.js';
-export { LogCategory } from './logging.js';
+export type { InternalLogger } from './Logger.js';
+export { LogCategory } from './Logger.js';
+export { LogLevel } from './Logger.js';
+export { createRootLogger } from './Logger.js';
+export { NOOP_LOGGER } from './Logger.js';
 export type { LogLevelName, LogEntry, AgentLogger } from './loggingTypes.js';
 export { FileLockManager } from './FileLockManager.js';
 
