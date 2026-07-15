@@ -6,4 +6,5 @@
 export type { BuildSystemPromptOptions, BuildSystemPromptResult } from './builder.js';
 export { buildSystemPrompt } from './builder.js';
 
-export { createPlanModeReminder, PLAN_MODE_SYSTEM_PROMPT } from './default.js';
+// Migrated to @blade-ai/agent-sdk/local
+export { createPlanModeReminder, PLAN_MODE_SYSTEM_PROMPT } from '@blade-ai/agent-sdk/local';
