@@ -1614,6 +1614,21 @@ Commit:
 
 - `refactor(agent-sdk): shrink root memory tools to forwarder shims`
 
+### Root Dead Code Retirement: zodSchemas.ts (ToolSchemas)
+
+Objective: Delete `src/tools/validation/zodSchemas.ts` (249 lines) and its test — the `ToolSchemas` helper, replaced by direct zod in all package-local tools.
+
+Status:
+
+- Verified 0 consumers across root and packages. All builtin tools replaced `ToolSchemas.command()`, `ToolSchemas.timeout()`, `ToolSchemas.flag()`, etc. with direct `z.string()`, `z.number()`, `z.boolean()` schemas during previous migration slices.
+- Deleted `src/tools/validation/zodSchemas.ts` (249 lines) and `src/tools/validation/__tests__/zodSchemas.test.ts`.
+- This removes the last centralized schema helper — the `@blade-ai/agent-sdk/local` tools use direct zod schemas natively.
+- Type-check: 0 errors. Full verify chain: green.
+
+Commit:
+
+- `refactor: retire dead zodSchemas.ts (replaced by direct zod in all tools)`
+
 ## Completion Criteria
 
 The migration is complete only when all of the following are true:
