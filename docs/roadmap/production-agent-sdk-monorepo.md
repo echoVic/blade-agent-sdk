@@ -1661,6 +1661,22 @@ Commit:
 
 - `refactor: retire dead zodToJson.ts (inlined into createTool.ts)`
 
+### Root Dead Code Retirement: errorFormatter.ts
+
+Objective: Inline `src/tools/validation/errorFormatter.ts` (196 lines) into `createTool.ts` — the last schema helper in the validation directory, replaced by direct local definitions.
+
+Status:
+
+- Inlined all 196 lines of `errorFormatter.ts` (`formatUnknown`, `ToolValidationError`, `translateZodIssue`, `formatZodError`, `parseWithZod`) as local helpers in `createTool.ts`.
+- Removed the `parseWithZod` import. Added imports for `isPlainObject` (lodash-es), `ZodError`/`ZodIssue` (zod), `SdkError`, and `ToolErrorType` to `createTool.ts`.
+- Deleted `src/tools/validation/errorFormatter.ts` and its test file.
+- This completes the retirement of ALL schema helper files in `src/tools/validation/` — only `SensitiveFileDetector.ts` (used by permissions) remains.
+- Type-check: 0 errors. Full verify chain: green.
+
+Commit:
+
+- `refactor: retire dead errorFormatter.ts (inlined into createTool.ts)`
+
 ## Completion Criteria
 
 The migration is complete only when all of the following are true:
