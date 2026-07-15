@@ -158,6 +158,20 @@ export { HookExecutionGuard } from './HookExecutionGuard.js';
 export { HookBus } from './HookBus.js';
 export { OutputParser } from './OutputParser.js';
 export type { ToolResponse } from './SdkMcpServer.js';
+export type {
+  ReadMetadata,
+  WriteMetadata,
+  EditMetadata,
+  EditErrorMetadata,
+  GlobMetadata,
+  GrepMetadata,
+  BashBackgroundMetadata,
+  BashForegroundMetadata,
+  WebSearchMetadata,
+  WebFetchMetadata,
+  ToolResultMetadata,
+} from './toolMetadata.js';
+export { isGlobMetadata, isEditMetadata } from './toolMetadata.js';
 
 // Skills types
 export type {
