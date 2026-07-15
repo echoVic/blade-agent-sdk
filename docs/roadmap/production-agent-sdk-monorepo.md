@@ -1879,6 +1879,23 @@ Commit:
 
 - `feat(agent): add hook protocol types to @blade-ai/agent/protocol`
 
+### FileLockManager Migration: Root → @blade-ai/agent-sdk/local
+
+Objective: Migrate `src/tools/execution/FileLockManager.ts` (242 lines, 2 consumers) to `@blade-ai/agent-sdk/local` — the file lock management utility used by both ExecutionPipeline and SessionRuntime.
+
+Status:
+
+- Created `packages/agent-sdk/src/local/logging.ts` with minimal `InternalLogger` interface and `LogCategory` constants — structurally compatible with root Logger, enabling the migration without creating a root→package dependency.
+- Copied `FileLockManager.ts` to `packages/agent-sdk/src/local/FileLockManager.ts`, updating the import from root logging to `'./logging.js'`.
+- Updated both root consumers: `ExecutionPipeline.ts` and `SessionRuntime.ts` now import `FileLockManager` from `@blade-ai/agent-sdk/local`.
+- Shimmed root `FileLockManager.ts` to a 1-line forwarder re-exporting from the package.
+- Added exports for `FileLockManager`, `InternalLogger`, and `LogCategory` to `packages/agent-sdk/src/local/index.ts`.
+- Type-check: 0 errors. 32 unit tests pass. Full verify chain: green.
+
+Commit:
+
+- `refactor(agent-sdk): migrate FileLockManager to @blade-ai/agent-sdk/local`
+
 ### Root Dead Code Retirement: agent/constants.ts
 
 Objective: Inline `AGENT_TURN_SAFETY_LIMIT` constant (9 lines) into `LoopRunner.ts` — the only consumer.

@@ -1,6 +1,10 @@
 // Node-local capabilities: builtin tools, MCP, memory, and sandbox adapters.
 // Browser consumers should use @blade-ai/agent-sdk/core or a remote server API.
 
+export type { InternalLogger } from './logging.js';
+export { LogCategory } from './logging.js';
+export { FileLockManager } from './FileLockManager.js';
+
 export type {
   McpToolCallResponse,
   McpToolDefinition,

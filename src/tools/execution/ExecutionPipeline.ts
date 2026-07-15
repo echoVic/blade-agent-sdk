@@ -40,7 +40,7 @@ import {
     ToolErrorType,
     validationErrorToToolResult,
 } from '../types/ToolResult.js';
-import { FileLockManager } from './FileLockManager.js';
+import { FileLockManager } from '@blade-ai/agent-sdk/local';
 
 function getString(params: JsonObject, key: string, defaultValue = ''): string {
   const value = params[key];
