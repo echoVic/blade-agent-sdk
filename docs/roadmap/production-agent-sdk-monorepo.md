@@ -1785,6 +1785,21 @@ Commit:
 
 - `refactor(agent-sdk): shim root error types to re-export from @blade-ai/agent-sdk/errors`
 
+### Production Readiness: Add ./errors Export to @blade-ai/agent-sdk
+
+Objective: Make the error shim (Slice #20) production-ready by adding `./errors` to the package.json exports — completing the error type system migration.
+
+Status:
+
+- Added `./errors` export to `packages/agent-sdk/package.json` pointing to `dist/errors/index.js` and `dist/errors/index.d.ts`.
+- The tsup build config already included `'errors/index': 'src/errors/index.ts'` as an entry point — the build infrastructure was already in place, only the export declaration was missing.
+- Root error shims (Slice #20) now work in both development (tsconfig paths) and production (package.json exports).
+- Type-check: 0 errors (root + packages). Full verify chain: green.
+
+Commit:
+
+- `feat(agent-sdk): add ./errors export to package.json`
+
 ## Completion Criteria
 
 The migration is complete only when all of the following are true:
