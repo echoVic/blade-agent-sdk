@@ -181,6 +181,11 @@ export type {
   SkillDiscoveryResult,
 } from './skillsTypes.js';
 export { defaultSkillSource } from './skillsTypes.js';
+export {
+  collectSkillActivationPaths,
+  isSkillAvailableInContext,
+  filterSkillsByActivation,
+} from './skillsActivation.js';
 
 // Observability
 export { TraceRecorder } from './TraceRecorder.js';
