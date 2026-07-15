@@ -1496,6 +1496,27 @@ Commit:
 
 - `refactor(agent-sdk): migrate MCP protocol tools to package-local`
 
+### Web Tools Migration: Root → Package-Local
+
+Objective: Migrate the web tools (WebFetch 600 lines, WebSearch 507 lines) plus SearchCache (236 lines) and searchProviders (469 lines) from root legacy to `@blade-ai/agent-sdk/local`.
+
+Status:
+
+- Created `packages/agent-sdk/src/local/web/` with `webFetch.ts`, `webSearch.ts`, `SearchCache.ts`, `searchProviders.ts`, and `index.ts` (~1,812 lines migrated).
+- Defined `WebSearchResult` in `searchProviders.ts` to break the circular dependency between `webSearch.ts` and `SearchCache.ts`.
+- Replaced `lazySchema()` with direct `z.object()` schemas. Replaced `ToolSchemas.*` helpers with direct `zod` primitives. Inlined `getErrorMessage`/`getErrorName` helpers. Defined `JsonValue`/`JsonObject` type aliases locally.
+- Both tools exported as singletons (`webFetchTool`, `webSearchTool`). SearchCache exposed via `getSearchCache()` singleton and `SearchCache` class.
+- Shrunk all 5 root web files to 1-line forwarder shims. Root `web/index.ts` forward exports `webFetchTool`, `webSearchTool`, `getSearchCache`, `getAllProviders`, `getProviderCount`; `web/searchProviders.ts` forward exports `getAllProviders`, `getProviderCount` plus `WebSearchResult` and `SearchProvider` types; `web/SearchCache.ts` forward exports `SearchCache` and `getSearchCache`.
+- Added `webFetchTool` and `webSearchTool` to `getBuiltinTools()` default return array. Default builtin tool set: 13 tools (AskUserQuestion, DiscoverTools, Edit, EnterPlanMode, ExitPlanMode, Glob, Grep, NotebookEdit, Read, TodoWrite, WebFetch, WebSearch, Write).
+- Added web tool exports to `local/index.ts` (runtime) and `public-index.ts` (type declarations including `WebSearchResult`, `SearchProvider`, `webFetchTool`, `webSearchTool`, `getSearchCache`, `getAllProviders`, `getProviderCount`).
+- Created `localWebTools.test.ts` (8 tests) covering builtin registration, metadata, build params, SearchCache singleton, cache set/get, and provider listing.
+- Updated `localFileTools.test.ts` and `localMemoryTools.test.ts` expectations to reflect WebFetch/WebSearch in the builtin tools set.
+- All 415 package + 1323 root unit tests pass. Full verify chain green.
+
+Commit:
+
+- `refactor(agent-sdk): migrate web tools to package-local`
+
 ## Completion Criteria
 
 The migration is complete only when all of the following are true:

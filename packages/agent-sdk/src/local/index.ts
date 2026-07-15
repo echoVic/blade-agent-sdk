@@ -35,6 +35,9 @@ export { createNotebookEditTool, notebookEditTool } from './notebook/notebookEdi
 export { createAskUserQuestionTool, askUserQuestionTool } from './system/askUserQuestion.js';
 export { discoverToolsTool } from './system/discoverTools.js';
 export { createListMcpResourcesTool, createReadMcpResourceTool } from './mcp-tools/index.js';
+export { webFetchTool, webSearchTool } from './web/index.js';
+export { getSearchCache, SearchCache, getAllProviders, getProviderCount } from './web/index.js';
+export type { WebSearchResult, SearchProvider, CacheConfig, CacheStats } from './web/index.js';
 export { createEnterPlanModeTool, enterPlanModeTool } from './plan/enterPlanMode.js';
 export { createExitPlanModeTool, exitPlanModeTool } from './plan/exitPlanMode.js';
 export { createTodoWriteTool, todoWriteTool, TodoManager } from './todo/index.js';

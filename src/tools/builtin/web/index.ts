@@ -1,4 +1,2 @@
-// Web 工具模块
-
-export { webFetchTool } from './webFetch.js';
-export { webSearchTool } from './webSearch.js';
+export { webFetchTool, webSearchTool } from '@blade-ai/agent-sdk/local';
+export { getSearchCache, getAllProviders, getProviderCount } from '@blade-ai/agent-sdk/local';

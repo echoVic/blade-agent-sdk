@@ -285,6 +285,28 @@ export interface McpResourceRegistry {
 }
 export declare function createListMcpResourcesTool(registry: McpResourceRegistry): Tool;
 export declare function createReadMcpResourceTool(registry: McpResourceRegistry): Tool;
+export declare const webFetchTool: Tool;
+export declare const webSearchTool: Tool;
+export type WebSearchResult = {
+  title: string;
+  url: string;
+  snippet: string;
+  display_url: string;
+  source: string;
+};
+export interface SearchProvider {
+  name: string;
+  endpoint: string;
+  method?: 'GET' | 'POST';
+  buildUrl: (query: string) => string;
+  buildBody?: (query: string) => Record<string, unknown>;
+  parseResponse: (data: unknown) => WebSearchResult[];
+  getHeaders: () => Record<string, string>;
+  searchFn?: (query: string) => Promise<WebSearchResult[]>;
+}
+export declare function getSearchCache(): unknown;
+export declare function getAllProviders(): SearchProvider[];
+export declare function getProviderCount(): number;
 export declare function getBuiltinTools(options?: BuiltinToolsOptions): Promise<Tool[]>;
 export declare function createMemoryReadTool(args: { manager: MemoryManager }): Tool;
 export declare function createMemoryWriteTool(args: { manager: MemoryManager }): Tool;
