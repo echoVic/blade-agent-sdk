@@ -1,6 +1,6 @@
-export { AbortError } from './AbortError.js';
-export { ConfigError } from './ConfigError.js';
-export { PermissionDeniedError } from './PermissionDeniedError.js';
-export type { SdkErrorOptions } from './SdkError.js';
-export { SdkError } from './SdkError.js';
-export { ToolExecutionError } from './ToolExecutionError.js';
+export { AbortError } from '@blade-ai/agent-sdk/errors';
+export { ConfigError } from '@blade-ai/agent-sdk/errors';
+export { PermissionDeniedError } from '@blade-ai/agent-sdk/errors';
+export type { SdkErrorOptions } from '@blade-ai/agent-sdk/errors';
+export { SdkError } from '@blade-ai/agent-sdk/errors';
+export { ToolExecutionError } from '@blade-ai/agent-sdk/errors';

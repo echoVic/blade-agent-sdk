@@ -1929,6 +1929,21 @@ Commit:
 
 - `refactor(agent-sdk): deduplicate SandboxService — shim root to re-export from package`
 
+### Error Barrel Simplification: Direct Package Re-exports
+
+Objective: Simplify `src/errors/index.ts` barrel to re-export directly from `@blade-ai/agent-sdk/errors` instead of chaining through individual shim files — cleaner architecture, proven tsconfig paths.
+
+Status:
+
+- Updated `src/errors/index.ts` to import all 6 error exports directly from `@blade-ai/agent-sdk/errors` instead of from individual shim files (`./AbortError.js`, etc.).
+- Individual shim files preserved for direct imports (files that bypass the barrel).
+- This removes the unnecessary intermediary chain: barrel → shim → package, replaced with barrel → package directly.
+- Type-check: 0 errors. Full verify chain: green.
+
+Commit:
+
+- `refactor: simplify errors barrel to re-export directly from @blade-ai/agent-sdk/errors`
+
 ### Root Dead Code Retirement: agent/constants.ts
 
 Objective: Inline `AGENT_TURN_SAFETY_LIMIT` constant (9 lines) into `LoopRunner.ts` — the only consumer.
