@@ -1768,6 +1768,23 @@ Commit:
 
 - `refactor: inline ToolInvocation into createTool.ts`
 
+### Error Types Migration: Root → @blade-ai/agent-sdk/errors
+
+Objective: Shim all 5 root error files to re-export from `@blade-ai/agent-sdk/errors` — the error types were already duplicated in the package with identical content.
+
+Status:
+
+- Verified all 5 root error files (AbortError, ConfigError, PermissionDeniedError, SdkError, ToolExecutionError) are BIT-FOR-BIT IDENTICAL to their `packages/agent-sdk/src/errors/` counterparts.
+- Shrunk all 5 root error files from full implementations (~95 lines total) to one-line forwarder shims re-exporting from `@blade-ai/agent-sdk/errors`.
+- Added `@blade-ai/agent-sdk/errors` TypeScript path mapping to root `tsconfig.json` (the subpath existed in the package source but was not mapped for resolution).
+- The root barrel (`errors/index.ts`) transitively re-exports through the shimmed files — no barrel changes needed.
+- This moves the entire error type system to its final package in a single slice.
+- Type-check: 0 errors. Full verify chain: green. No new test failures.
+
+Commit:
+
+- `refactor(agent-sdk): shim root error types to re-export from @blade-ai/agent-sdk/errors`
+
 ## Completion Criteria
 
 The migration is complete only when all of the following are true:

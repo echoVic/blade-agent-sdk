@@ -36,6 +36,7 @@
       "@blade-ai/agent-sdk/browser": ["./packages/agent-sdk/src/browser/index.ts"],
       "@blade-ai/agent-sdk/core": ["./packages/agent-sdk/src/core/index.ts"],
       "@blade-ai/agent-sdk/local": ["./packages/agent-sdk/src/local/index.ts"],
+      "@blade-ai/agent-sdk/errors": ["./packages/agent-sdk/src/errors/index.ts"],
       "@blade-ai/agent-sdk/server": ["./packages/agent-sdk/src/server/index.ts"],
       "@blade-ai/agent-sdk/session/internal": ["./packages/agent-sdk/src/session/internal.ts"],
       "@blade-ai/agent-sdk/tools": ["./packages/agent-sdk/src/tools/index.ts"],
