@@ -1724,6 +1724,20 @@ Commit:
 
 - `refactor: inline ResultArtifactStore into ExecutionPipeline.ts`
 
+### Root Dead Code Retirement: DenialTracker.ts
+
+Objective: Inline `src/tools/execution/DenialTracker.ts` (72 lines) into `ExecutionPipeline.ts` — the only consumer.
+
+Status:
+
+- Inlined `DenialRecord` interface and `DenialTracker` class into `src/tools/execution/ExecutionPipeline.ts` as local definitions. No new imports needed — the class has zero external dependencies.
+- Deleted `src/tools/execution/DenialTracker.ts`. No test file existed.
+- Type-check: 0 errors. Full verify chain: green.
+
+Commit:
+
+- `refactor: inline DenialTracker into ExecutionPipeline.ts`
+
 ## Completion Criteria
 
 The migration is complete only when all of the following are true:
