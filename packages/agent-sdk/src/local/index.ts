@@ -136,7 +136,8 @@ export { HookBus } from './HookBus.js';
 export { OutputParser } from './OutputParser.js';
 export type { ToolResponse } from './SdkMcpServer.js';
 
-// Observability types
+// Observability
+export { TraceRecorder } from './TraceRecorder.js';
 export type {
   TraceStatus,
   TraceSpanKind,

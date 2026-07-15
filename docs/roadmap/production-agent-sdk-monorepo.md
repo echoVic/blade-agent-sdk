@@ -2511,3 +2511,7 @@ The migration is complete only when all of the following are true:
 - CI verifies lint, type-check, build, unit, integration, package exports, browser safety, docs, and pack/install.
 - Pushes to `main` can publish automatically after gates pass.
 - Documentation describes the package boundaries and recommended usage.
+
+- `refactor(agent-sdk): migrate TraceRecorder to @blade-ai/agent-sdk/local`
+
+- `refactor(agent-sdk): migrate TraceRecorder to @blade-ai/agent-sdk/local`
