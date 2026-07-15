@@ -2405,6 +2405,20 @@ Commit:
 
 - `feat(agent-sdk): add constants seed with HookEvent to @blade-ai/agent-sdk/local`
 
+### HookEvent Type Unification: `src/types/constants.ts` → `@blade-ai/agent-sdk/local`
+
+Objective: Replace the root `HookEvent` definition in `src/types/constants.ts` with a re-export from `@blade-ai/agent-sdk/local` — eliminates `unique symbol` scoping for all HookEvent consumers. Same type unification pattern as branded types (Slice #38).
+
+Status:
+
+- Replaced 22 lines of HookEvent const + type definition in root `constants.ts` with `export { HookEvent } from '@blade-ai/agent-sdk/local';`.
+- All files importing HookEvent from `../types/constants.js` now get the package's canonical HookEvent — unifying the type across root and package.
+- Type-check: 0 errors. Full verify chain: green.
+
+Commit:
+
+- `refactor: unify HookEvent type — re-export from @blade-ai/agent-sdk/local`
+
 ### Root Dead Code Retirement: agent/constants.ts
 
 Objective: Inline `AGENT_TURN_SAFETY_LIMIT` constant (9 lines) into `LoopRunner.ts` — the only consumer.
