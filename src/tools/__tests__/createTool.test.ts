@@ -4,7 +4,8 @@ import { createTool, toolFromDefinition } from '../core/createTool.js';
 import type { ReadMetadata } from '../types/ToolMetadata.js';
 import type { ToolResult } from '../types/ToolResult.js';
 import { ToolKind } from '../types/ToolKind.js';
-import { lazySchema } from '../validation/lazySchema.js';
+
+const lazySchema = <TSchema extends z.ZodSchema>(factory: () => TSchema) => factory;
 
 describe('createTool', () => {
   it('exposes ToolResult as a success-discriminated generic union', () => {

@@ -10,7 +10,6 @@ import type {
 } from '../types/index.js';
 import { createToolBehavior, isReadOnlyKind, ToolKind } from '../types/ToolKind.js';
 import { parseWithZod } from '../validation/errorFormatter.js';
-import { resolveToolSchema } from '../validation/lazySchema.js';
 import { zodToFunctionSchema } from '../validation/zodToJson.js';
 import { UnifiedToolInvocation } from './ToolInvocation.js';
 
@@ -27,7 +26,7 @@ export function createTool<TSchema extends z.ZodSchema>(
 
   const getSchema = (): TSchema => {
     if (!cachedSchema) {
-      cachedSchema = resolveToolSchema(config.schema);
+      cachedSchema = (typeof config.schema === 'function' ? (config.schema as () => TSchema)() : config.schema);
     }
     return cachedSchema;
   };

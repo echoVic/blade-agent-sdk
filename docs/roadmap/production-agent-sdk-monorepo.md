@@ -1629,6 +1629,22 @@ Commit:
 
 - `refactor: retire dead zodSchemas.ts (replaced by direct zod in all tools)`
 
+### Root Dead Code Retirement: lazySchema.ts
+
+Objective: Delete `src/tools/validation/lazySchema.ts` (14 lines) — the `lazySchema`/`resolveToolSchema` wrappers replaced by direct inline logic in `createTool.ts`.
+
+Status:
+
+- Inlined `resolveToolSchema()` directly into `createTool.ts` (replaced with a one-line ternary: `typeof config.schema === 'function' ? (config.schema as () => TSchema)() : config.schema`).
+- Removed the `lazySchema` import from `createTool.ts`. Defined `lazySchema` locally in `src/tools/__tests__/createTool.test.ts` (1-line identity function) since the test still uses the pattern.
+- Deleted `src/tools/validation/lazySchema.ts`.
+- This removes the second-to-last schema helper from root — only `zodToJson.ts` and `errorFormatter.ts` remain (used by active `createTool.ts`).
+- Type-check: 0 errors. Full verify chain: green.
+
+Commit:
+
+- `refactor: retire dead lazySchema.ts (inlined into createTool.ts)`
+
 ## Completion Criteria
 
 The migration is complete only when all of the following are true:
