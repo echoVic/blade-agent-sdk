@@ -118,6 +118,7 @@ export * from './pathUtils.js';
 export type { CompressedContext, ContextMessage, ContextStorageOptions } from './context.js';
 export type { JSONLEventType, PartInfo, PartType, MessageInfo, SessionEvent, SessionEventBase, SessionInfo } from './context.js';
 export type { ToolCall, SystemContext, SessionContext, ConversationContext, WorkspaceContext, ContextLayer, ContextData } from './context.js';
+export type { ContextFilter, ContextManagerOptions } from './contextTypes.js';
 export { CacheStore } from './CacheStore.js';
 export { BashClassifier } from './BashClassifier.js';
 export type { BashCommandCategory, BashClassification } from './BashClassifier.js';
