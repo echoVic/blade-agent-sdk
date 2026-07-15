@@ -128,3 +128,79 @@ export type SessionEvent =
   | (SessionEventBase & { type: 'message_created'; data: MessageInfo })
   | (SessionEventBase & { type: 'part_created'; data: PartInfo })
   | (SessionEventBase & { type: 'part_updated'; data: PartInfo });
+
+/** A context-specific tool call record (different from @blade-ai/ai/chat ToolCall). */
+export interface ToolCall {
+  id: string;
+  name: string;
+  input: JsonValue;
+  output?: JsonValue;
+  timestamp: number;
+  status: 'pending' | 'success' | 'error';
+  error?: string;
+}
+
+/** System-level context (capabilities, tools, version). */
+export interface SystemContext {
+  role: string;
+  capabilities: string[];
+  tools: string[];
+  version: string;
+}
+
+/** Per-session context (preferences, configuration, timing). */
+export interface SessionContext {
+  sessionId: SessionId;
+  userId?: string;
+  preferences: JsonObject;
+  configuration: JsonObject;
+  startTime: number;
+}
+
+/** Conversation history context. */
+export interface ConversationContext {
+  messages: ContextMessage[];
+  summary?: string;
+  topics: string[];
+  lastActivity: number;
+}
+
+/** Tool invocation state context — NOT exported (private to the module). */
+interface ToolContext {
+  recentCalls: ToolCall[];
+  toolStates: JsonObject;
+  dependencies: Record<string, string[]>;
+}
+
+/** Workspace-level context (filesystem, git, environment). */
+export interface WorkspaceContext {
+  projectPath?: string;
+  currentFiles: string[];
+  recentFiles: string[];
+  gitInfo?: {
+    branch: string;
+    status: string;
+    lastCommit?: string;
+  };
+  environment: JsonObject;
+}
+
+/** Layered context model — single unified view of all context dimensions. */
+export interface ContextLayer {
+  system: SystemContext;
+  session: SessionContext;
+  conversation: ConversationContext;
+  tool: ToolContext;
+  workspace: WorkspaceContext;
+}
+
+/** The top-level context object passed through the system. */
+export interface ContextData {
+  layers: ContextLayer;
+  metadata: {
+    totalTokens: number;
+    priority: number;
+    relevanceScore?: number;
+    lastUpdated: number;
+  };
+}

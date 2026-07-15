@@ -2160,6 +2160,27 @@ Commit:
 
 - `refactor(agent-sdk): migrate JSONLStore to @blade-ai/agent-sdk/local`
 
+### ContextData Type Chain Seed: @blade-ai/agent-sdk/local/context.ts
+
+Objective: Add the complete `ContextData` type hierarchy (8 types) to `@blade-ai/agent-sdk/local/context.ts` — the last major context type dependency chain, unblocking `MemoryStore.ts` and other remaining context files.
+
+Status:
+
+- Added 8 types to `packages/agent-sdk/src/local/context.ts`:
+  - `ToolCall` — context-specific tool call record (different from `@blade-ai/ai/chat` ToolCall)
+  - `SystemContext`, `SessionContext`, `ConversationContext`, `WorkspaceContext` — component context interfaces
+  - `ToolContext` — private (not exported), internal to the module
+  - `ContextLayer` — composite of all 5 context dimensions
+  - `ContextData` — top-level context object with `layers` + `metadata`
+- Exported 7 public types from `local/index.ts` (excluding private `ToolContext`).
+- All dependencies already in package: `SessionId` (branded.ts), `JsonObject`/`JsonValue` (@blade-ai/ai), `ContextMessage` (context.ts).
+- Unblocks `MemoryStore.ts` (187L), `ContextManager.ts` (736L), `PersistentStore.ts` (875L) — the remaining context/storage files.
+- Type-check: 0 errors. Boundaries: passed. Package type-check: 0 errors.
+
+Commit:
+
+- `feat(agent-sdk): add ContextData type hierarchy to context seed types`
+
 ### Root Dead Code Retirement: agent/constants.ts
 
 Objective: Inline `AGENT_TURN_SAFETY_LIMIT` constant (9 lines) into `LoopRunner.ts` — the only consumer.

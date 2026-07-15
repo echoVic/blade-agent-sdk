@@ -113,6 +113,7 @@ export * from './pathUtils.js';
 // Context seed types
 export type { CompressedContext, ContextMessage, MessageRole, ContextStorageOptions } from './context.js';
 export type { JSONLEventType, PartInfo, PartType, MessageInfo, SessionEvent, SessionEventBase, SessionInfo } from './context.js';
+export type { ToolCall, SystemContext, SessionContext, ConversationContext, WorkspaceContext, ContextLayer, ContextData } from './context.js';
 export { CacheStore } from './CacheStore.js';
 
 export { FileAnalyzer, analyzeFiles, readFilesContent, type FileContent, type FileReference } from './FileAnalyzer.js';
