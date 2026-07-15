@@ -2181,6 +2181,22 @@ Commit:
 
 - `feat(agent-sdk): add ContextData type hierarchy to context seed types`
 
+### ContextMemoryStore Migration: Root → @blade-ai/agent-sdk/local
+
+Objective: Migrate `src/context/storage/MemoryStore.ts` (187 lines) to `@blade-ai/agent-sdk/local` — the LAST unblocked context storage file after ContextData seed (Slice #46).
+
+Status:
+
+- Created `packages/agent-sdk/src/local/ContextMemoryStore.ts` — renamed from `MemoryStore` to avoid naming collision with existing `MemoryStore.js` (memory subsystem interface, Slice #33).
+- Changed 2 imports: `JsonValue` → `@blade-ai/ai`, `ContextData/ContextMessage/ToolCall/WorkspaceContext` → `./context.js`.
+- Class renamed: `export class MemoryStore` → `export class ContextMemoryStore`.
+- Shimmed root `MemoryStore.ts` to `export { ContextMemoryStore as MemoryStore } from '@blade-ai/agent-sdk/local';` — consumer `ContextManager.ts` unchanged (imports `MemoryStore` which maps to `ContextMemoryStore` via alias).
+- Type-check: 0 errors. Full verify chain: green.
+
+Commit:
+
+- `refactor(agent-sdk): migrate MemoryStore→ContextMemoryStore to @blade-ai/agent-sdk/local`
+
 ### Root Dead Code Retirement: agent/constants.ts
 
 Objective: Inline `AGENT_TURN_SAFETY_LIMIT` constant (9 lines) into `LoopRunner.ts` — the only consumer.

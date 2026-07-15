@@ -119,3 +119,5 @@ export { CacheStore } from './CacheStore.js';
 export { FileAnalyzer, analyzeFiles, readFilesContent, type FileContent, type FileReference } from './FileAnalyzer.js';
 // JSONL Store
 export { JSONLStore } from './JSONLStore.js';
+export { ContextMemoryStore } from './ContextMemoryStore.js';
+
