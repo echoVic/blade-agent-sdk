@@ -4,8 +4,8 @@ import {
   createMemoryWriteTool,
   getBuiltinTools,
 } from '../local/builtin-tools.js';
+import { MemoryManager } from '../local/MemoryManager.js';
 import {
-  MemoryManager,
   type Memory,
   type MemoryInput,
   type MemoryStore,

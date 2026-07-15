@@ -2026,6 +2026,22 @@ Commit:
 
 - `refactor(agent-sdk): upgrade branded.ts to unique symbol + factory functions`
 
+### Branded Types Shim: Root branded.ts → @blade-ai/agent-sdk/local
+
+Objective: Shim root `src/types/branded.ts` to re-export from `@blade-ai/agent-sdk/local` — making the package the canonical source for ALL branded types. This ONE-FILE change unblocks the entire context/storage subsystem migration.
+
+Status:
+
+- Shimmed `src/types/branded.ts` from 14 lines (full implementation) to 1 line: `export { AgentId, MessageId, SessionId, ToolUseId } from '@blade-ai/agent-sdk/local';`.
+- All 207+ root consumers of `types/branded.js` now transparently get branded types from the package (with package's `unique symbol`).
+- Fixed 3 pre-existing test import errors: `defaultKernelRuntimeFactory.test.ts`, `localMemory.test.ts`, `localMemoryTools.test.ts` — all imported `MemoryManager` from `memory.js` (removed in Slice #34), now import from `MemoryManager.js`.
+- This unblocks the entire context/storage subsystem: `pathUtils.ts`, `JSONLStore.ts`, `PersistentStore.ts`, and others can now be migrated using the package's branded types.
+- Type-check: 0 errors (root + packages). Boundaries: passed.
+
+Commit:
+
+- `refactor: shim root branded.ts to re-export from @blade-ai/agent-sdk/local`
+
 ### Root Dead Code Retirement: agent/constants.ts
 
 Objective: Inline `AGENT_TURN_SAFETY_LIMIT` constant (9 lines) into `LoopRunner.ts` — the only consumer.

@@ -12,8 +12,8 @@ import type { ToolDefinition } from '../tools/types/index.js';
 import { HookEvent, PermissionMode } from '../types/constants.js';
 import { createSdkMcpServer, tool } from '../local/mcp.js';
 import { getBuiltinTools } from '../local/builtin-tools.js';
+import { MemoryManager } from '../local/MemoryManager.js';
 import {
-  MemoryManager,
   type Memory,
   type MemoryInput,
   type MemoryStore,
