@@ -2197,6 +2197,21 @@ Commit:
 
 - `refactor(agent-sdk): migrate MemoryStore→ContextMemoryStore to @blade-ai/agent-sdk/local`
 
+### BashClassifier Migration: Root → @blade-ai/agent-sdk/local
+
+Objective: Migrate `src/hooks/BashClassifier.ts` (102 lines) to `@blade-ai/agent-sdk/local` — the FIRST hooks subsystem file migrated. ZERO root imports, making it the cleanest possible migration (like TokenCounter/FileAnalyzer).
+
+Status:
+
+- Created `packages/agent-sdk/src/local/BashClassifier.ts` — identical content, ZERO import changes (no dependencies).
+- Exported `BashClassifier`, `BashCommandCategory`, `BashClassification` from `local/index.ts`.
+- Shimmed root `BashClassifier.ts` to forwarder — all consumers unchanged via transparent shim.
+- Type-check: 0 errors. Full verify chain: green.
+
+Commit:
+
+- `refactor(agent-sdk): migrate BashClassifier to @blade-ai/agent-sdk/local`
+
 ### Root Dead Code Retirement: agent/constants.ts
 
 Objective: Inline `AGENT_TURN_SAFETY_LIMIT` constant (9 lines) into `LoopRunner.ts` — the only consumer.

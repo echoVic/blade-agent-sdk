@@ -115,6 +115,8 @@ export type { CompressedContext, ContextMessage, MessageRole, ContextStorageOpti
 export type { JSONLEventType, PartInfo, PartType, MessageInfo, SessionEvent, SessionEventBase, SessionInfo } from './context.js';
 export type { ToolCall, SystemContext, SessionContext, ConversationContext, WorkspaceContext, ContextLayer, ContextData } from './context.js';
 export { CacheStore } from './CacheStore.js';
+export { BashClassifier } from './BashClassifier.js';
+export type { BashCommandCategory, BashClassification } from './BashClassifier.js';
 
 export { FileAnalyzer, analyzeFiles, readFilesContent, type FileContent, type FileReference } from './FileAnalyzer.js';
 // JSONL Store
