@@ -50,3 +50,23 @@ export const PermissionDecision = {
 } as const;
 
 export type PermissionDecision = (typeof PermissionDecision)[keyof typeof PermissionDecision];
+
+export const StreamMessageType = {
+  TURN_START: 'turn_start',
+  TURN_END: 'turn_end',
+  CONTENT: 'content',
+  THINKING: 'thinking',
+  TOOL_USE: 'tool_use',
+  TOOL_PROGRESS: 'tool_progress',
+  TOOL_MESSAGE: 'tool_message',
+  TOOL_RUNTIME_PATCH: 'tool_runtime_patch',
+  TOOL_CONTEXT_PATCH: 'tool_context_patch',
+  TOOL_NEW_MESSAGES: 'tool_new_messages',
+  TOOL_PERMISSION_UPDATES: 'tool_permission_updates',
+  TOOL_RESULT: 'tool_result',
+  USAGE: 'usage',
+  RESULT: 'result',
+  ERROR: 'error',
+} as const;
+
+export type StreamMessageType = (typeof StreamMessageType)[keyof typeof StreamMessageType];

@@ -2467,6 +2467,23 @@ Commit:
 
 - `refactor: unify PermissionDecision constant — re-export from @blade-ai/agent-sdk/local`
 
+### StreamMessageType Unification — Constants.ts Migration COMPLETE
+
+Objective: Add `StreamMessageType` (14-value const: TURN_START, CONTENT, THINKING, TOOL_USE, etc.) to `@blade-ai/agent-sdk/local/constants.ts` — the FINAL of 5 root constants. Completes the entire `src/types/constants.ts` migration to package.
+
+Status:
+
+- Added `StreamMessageType` const + derived type to `packages/agent-sdk/src/local/constants.ts` (5th and final constant).
+- Exported from `local/index.ts` — confirmed no conflicts.
+- Updated root `constants.ts` to re-export from `@blade-ai/agent-sdk/local`.
+- **Root `constants.ts` is now a pure re-export file — all 5 constants (HookEvent, MessageRole, PermissionMode, PermissionDecision, StreamMessageType) delegated to package.**
+- File shrunk from 82→82 lines (all re-exports now).
+- Type-check: 0 errors. Full verify chain: green.
+
+Commit:
+
+- `refactor: unify StreamMessageType constant — complete constants.ts migration to @blade-ai/agent-sdk/local`
+
 ### Root Dead Code Retirement: agent/constants.ts
 
 Objective: Inline `AGENT_TURN_SAFETY_LIMIT` constant (9 lines) into `LoopRunner.ts` — the only consumer.
