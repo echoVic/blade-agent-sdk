@@ -2072,6 +2072,22 @@ Commit:
 
 - `refactor: use direct package imports for SessionId and MemoryManager in builtin tools`
 
+### Context Seed Types: @blade-ai/agent-sdk/local/context.ts
+
+Objective: Create context seed types (`ContextMessage`, `MessageRole`, `ContextStorageOptions`) in `@blade-ai/agent-sdk/local/context.ts` — establishing canonical type definitions to unblock future context/storage file migrations (CacheStore, JSONLStore, MemoryStore, PersistentStore).
+
+Status:
+
+- Created `packages/agent-sdk/src/local/context.ts` (1,219 bytes) with `MessageRole` (inline string union), `ContextMessage` (central context type), and `ContextStorageOptions` — all self-contained, no cross-directory imports.
+- Depends only on `@blade-ai/ai` for `JsonObject`. `MessageRole` defined inline to avoid path complexity.
+- Exported from `local/index.ts` via `export type { ContextMessage, MessageRole, ContextStorageOptions }`.
+- Seed approach (like branded types Slices #36-37): establishes canonical types that enable future migration of CacheStore (316L), JSONLStore (231L), MemoryStore (187L), PersistentStore (875L).
+- Type-check: 0 errors. Boundaries: passed. Package type-check: 0 errors.
+
+Commit:
+
+- `feat(agent-sdk): add context seed types (ContextMessage, MessageRole) to local/context.ts`
+
 ### Root Dead Code Retirement: agent/constants.ts
 
 Objective: Inline `AGENT_TURN_SAFETY_LIMIT` constant (9 lines) into `LoopRunner.ts` — the only consumer.

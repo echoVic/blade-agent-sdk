@@ -109,3 +109,6 @@ export { AgentId, MessageId, SessionId, ToolUseId } from './branded.js';
 
 // Path utilities
 export * from './pathUtils.js';
+
+// Context seed types
+export type { ContextMessage, MessageRole, ContextStorageOptions } from './context.js';
