@@ -150,3 +150,4 @@ export type {
 } from './observabilityTypes.js';
 export { HookEvent } from './constants.js';
 export { MessageRole } from './constants.js';
+export { PermissionMode } from './constants.js';

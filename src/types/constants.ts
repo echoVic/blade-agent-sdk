@@ -8,14 +8,7 @@
  * 4. 运行时可枚举
  */
 
-export const PermissionMode = {
-  DEFAULT: 'default',
-  AUTO_EDIT: 'autoEdit',
-  YOLO: 'yolo',
-  PLAN: 'plan',
-} as const;
-
-export type PermissionMode = (typeof PermissionMode)[keyof typeof PermissionMode];
+export { PermissionMode } from '@blade-ai/agent-sdk/local';
 
 export { HookEvent } from '@blade-ai/agent-sdk/local';
 

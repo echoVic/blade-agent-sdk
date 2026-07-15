@@ -33,3 +33,12 @@ export const MessageRole = {
 } as const;
 
 export type MessageRole = (typeof MessageRole)[keyof typeof MessageRole];
+
+export const PermissionMode = {
+  DEFAULT: 'default',
+  AUTO_EDIT: 'autoEdit',
+  YOLO: 'yolo',
+  PLAN: 'plan',
+} as const;
+
+export type PermissionMode = (typeof PermissionMode)[keyof typeof PermissionMode];

@@ -2435,6 +2435,22 @@ Commit:
 
 - `refactor: unify MessageRole type — re-export from @blade-ai/agent-sdk/local`
 
+### PermissionMode Unification
+
+Objective: Add `PermissionMode` (5-value const: DEFAULT, AUTO_EDIT, YOLO, PLAN) to `@blade-ai/agent-sdk/local/constants.ts` and unify root re-export — same constants unification pattern as HookEvent (#62) and MessageRole (#63).
+
+Status:
+
+- Added `PermissionMode` const + derived type to `packages/agent-sdk/src/local/constants.ts`.
+- Exported from `local/index.ts` — confirmed no conflicts (not previously exported).
+- Updated root `constants.ts` to re-export `PermissionMode` from `@blade-ai/agent-sdk/local`.
+- Root `constants.ts` now only defines `StreamMessageType` (14 values) and `PermissionDecision` (3 values) — 3 of 5 constants now delegated to package.
+- Type-check: 0 errors. Full verify chain: green.
+
+Commit:
+
+- `refactor: unify PermissionMode constant — re-export from @blade-ai/agent-sdk/local`
+
 ### Root Dead Code Retirement: agent/constants.ts
 
 Objective: Inline `AGENT_TURN_SAFETY_LIMIT` constant (9 lines) into `LoopRunner.ts` — the only consumer.
