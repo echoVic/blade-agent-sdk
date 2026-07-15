@@ -1863,6 +1863,22 @@ Commit:
 
 - `refactor: retire dead docsBrowserImportPolicy.ts (0 consumers)`
 
+### Agent Protocol: Hook Protocol Types
+
+Objective: Add runtime-independent hook event types, input/output interfaces, and handler contracts to `@blade-ai/agent/protocol/hooks.ts` — establishing the canonical architectural home for hook protocol definitions.
+
+Status:
+
+- Created `packages/agent/src/protocol/hooks.ts` (167 lines) with HookEventName, HookInput, HookOutput, HookHandler, HookConfig, HookExecutionResult, and HookRegistry interface — all runtime-independent type definitions.
+- Exported from `packages/agent/src/protocol/index.ts` via `export type * from './hooks.js'`.
+- Depends only on `@blade-ai/ai` for JsonObject/JsonValue — satisfies the agent package's zero-Node-dependency constraint.
+- Seeds future root migration: root hook implementations will eventually reference these canonical types.
+- Type-check: 0 errors (root + packages). Full verify chain: green.
+
+Commit:
+
+- `feat(agent): add hook protocol types to @blade-ai/agent/protocol`
+
 ### Root Dead Code Retirement: agent/constants.ts
 
 Objective: Inline `AGENT_TURN_SAFETY_LIMIT` constant (9 lines) into `LoopRunner.ts` — the only consumer.

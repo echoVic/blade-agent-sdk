@@ -84,3 +84,6 @@ export type AgentStreamEvent =
   | { type: 'budget_exhausted'; snapshot: AgentTokenBudgetSnapshot }
   | { type: 'result'; content: string; finishReason?: string }
   | { type: 'error'; message: string; code?: string };
+
+// Hook protocol types
+export type * from './hooks.js';
