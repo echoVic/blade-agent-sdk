@@ -34,3 +34,17 @@ export interface ContextStorageOptions {
   /** Optional filesystem path for persistent storage. */
   persistentPath?: string;
 }
+
+/** Context data after compaction — summary + key points + recent messages. */
+export interface CompressedContext {
+  /** Human-readable summary of the compacted context. */
+  summary: string;
+  /** Key points extracted from the compacted context. */
+  keyPoints: string[];
+  /** The most recent messages preserved after compaction. */
+  recentMessages: ContextMessage[];
+  /** Optional summary of tool usage during the compacted period. */
+  toolSummary?: string;
+  /** Token count after compaction. */
+  tokenCount: number;
+}

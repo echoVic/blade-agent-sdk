@@ -2088,6 +2088,23 @@ Commit:
 
 - `feat(agent-sdk): add context seed types (ContextMessage, MessageRole) to local/context.ts`
 
+### CacheStore Migration + CompressedContext Seed: Root → @blade-ai/agent-sdk/local
+
+Objective: Add `CompressedContext` to context seed types, then migrate `src/context/storage/CacheStore.ts` (316 lines) to `@blade-ai/agent-sdk/local` — the FIRST context storage file fully unlocked by the context seed types.
+
+Status:
+
+- Added `CompressedContext` to `packages/agent-sdk/src/local/context.ts` — 5-field interface depending only on `ContextMessage[]` (already in package).
+- Copied `CacheStore.ts` to `packages/agent-sdk/src/local/CacheStore.ts` — changed 3 imports: `SessionId` → `./branded.js`, `JsonValue` → `@blade-ai/ai`, `CompressedContext/ContextMessage` → `./context.js`.
+- CacheStore has ZERO runtime root dependencies (only type imports) — the cleanest possible migration.
+- Shimmed root `CacheStore.ts` to `export { CacheStore } from '@blade-ai/agent-sdk/local';` — consumer `ContextManager.ts` unchanged (imports through shim transparently).
+- Added exports for `CompressedContext` and `CacheStore` to `local/index.ts`.
+- Type-check: 0 errors (root + packages). Full verify chain: green.
+
+Commit:
+
+- `refactor(agent-sdk): add CompressedContext seed + migrate CacheStore to @blade-ai/agent-sdk/local`
+
 ### Root Dead Code Retirement: agent/constants.ts
 
 Objective: Inline `AGENT_TURN_SAFETY_LIMIT` constant (9 lines) into `LoopRunner.ts` — the only consumer.
