@@ -2227,6 +2227,21 @@ Commit:
 
 - `refactor(agent-sdk): migrate HookConfig to @blade-ai/agent-sdk/local`
 
+### Matcher Migration: Root → @blade-ai/agent-sdk/local
+
+Objective: Migrate `src/hooks/Matcher.ts` (231 lines) to `@blade-ai/agent-sdk/local` — the THIRD hooks subsystem file migrated. Inlined `MatchContext` and `MatcherConfig` interfaces for self-containment.
+
+Status:
+
+- Created `packages/agent-sdk/src/local/Matcher.ts` — inlined `MatchContext` and `MatcherConfig` interfaces (not yet in package) to keep the file fully self-contained.
+- Exported `Matcher` (class) + `MatcherConfig`, `MatchContext` (types) from `local/index.ts`.
+- Shimmed root `Matcher.ts` to forwarder — consumer `HookManager.ts` unchanged via transparent shim.
+- Type-check: 0 errors. Full verify chain: green.
+
+Commit:
+
+- `refactor(agent-sdk): migrate Matcher to @blade-ai/agent-sdk/local`
+
 ### Root Dead Code Retirement: agent/constants.ts
 
 Objective: Inline `AGENT_TURN_SAFETY_LIMIT` constant (9 lines) into `LoopRunner.ts` — the only consumer.

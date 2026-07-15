@@ -123,6 +123,8 @@ export { DEFAULT_HOOK_CONFIG, mergeHookConfig, parseEnvConfig } from './HookConf
 export type { HookConfig } from './HookConfig.js';
 
 export { FileAnalyzer, analyzeFiles, readFilesContent, type FileContent, type FileReference } from './FileAnalyzer.js';
+export { Matcher } from './Matcher.js';
+export type { MatcherConfig, MatchContext } from './Matcher.js';
 // JSONL Store
 export { JSONLStore } from './JSONLStore.js';
 export { ContextMemoryStore } from './ContextMemoryStore.js';
