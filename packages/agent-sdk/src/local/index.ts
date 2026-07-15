@@ -187,6 +187,16 @@ export {
   filterSkillsByActivation,
 } from './skillsActivation.js';
 
+// Skills loader
+export {
+  processInlineCommands,
+  discoverSkillAssets,
+  loadSkillMetadata,
+  loadSkillContent,
+  discoverSkillScripts,
+  hasSkillFile,
+} from './skillsLoader.js';
+
 // Observability
 export { TraceRecorder } from './TraceRecorder.js';
 export type {
