@@ -1541,6 +1541,27 @@ Commit:
 
 - `refactor(agent-sdk): migrate Skill tool to package-local`
 
+### Shell Tools Migration: Root → Package-Local
+
+Objective: Migrate the shell tools (bash 551 lines, killShell 78 lines) plus BackgroundShellManager (223 lines) and OutputTruncator (237 lines) from root legacy to `@blade-ai/agent-sdk/local`.
+
+Status:
+
+- Created `packages/agent-sdk/src/local/shell/` with `bash.ts`, `killShell.ts`, `BackgroundShellManager.ts`, `OutputTruncator.ts`, and `index.ts` (~1,089 lines migrated).
+- Defined `BashClassifierPort` and `SandboxServicePort` interfaces to decouple bash from root's `BashClassifier` and `getSandboxService()` singletons. These services are accessed via `context.bashClassifier` and `context.sandboxService` at execution time, falling back gracefully when unavailable.
+- Replaced `lazySchema()` with direct `z.object()` schemas. Replaced `ToolSchemas.command()`, `ToolSchemas.timeout()`, `ToolSchemas.flag()`, `ToolSchemas.environment()` with direct `zod` primitives. Inlined `getErrorMessage`/`getErrorName` helpers. Replaced branded `SessionId` with plain `string`.
+- `BackgroundShellManager` and `OutputTruncator` required minimal changes — removed `SessionId` branded type, no other root dependencies.
+- Shrunk all 5 root shell files to 1-line forwarder shims.
+- Added `bashTool` and `killShellTool` to `getBuiltinTools()` default return array. Default builtin tool set: 16 tools (AskUserQuestion, Bash, DiscoverTools, Edit, EnterPlanMode, ExitPlanMode, Glob, Grep, KillShell, NotebookEdit, Read, Skill, TodoWrite, WebFetch, WebSearch, Write).
+- Added shell tool exports to `local/index.ts` runtime and `builtin-tools.ts` factory exports.
+- Created `localShellTools.test.ts` (6 tests) covering builtin registration, metadata, BackgroundShellManager singleton, and OutputTruncator behavior.
+- Updated `localFileTools.test.ts` and `localMemoryTools.test.ts` expectations to reflect Bash/KillShell in the builtin tools set.
+- All 425 package + 1323 root unit tests pass. Full verify chain green.
+
+Commit:
+
+- `refactor(agent-sdk): migrate shell tools to package-local`
+
 ## Completion Criteria
 
 The migration is complete only when all of the following are true:
