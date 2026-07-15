@@ -2257,6 +2257,21 @@ Commit:
 
 - `refactor(agent-sdk): migrate SecureProcessExecutor to @blade-ai/agent-sdk/local`
 
+### HookExecutionGuard Migration: Root → @blade-ai/agent-sdk/local
+
+Objective: Migrate `src/hooks/HookExecutionGuard.ts` (56 lines) to `@blade-ai/agent-sdk/local` — small file with only 1 import (`ToolUseId` from branded types).
+
+Status:
+
+- Created `packages/agent-sdk/src/local/HookExecutionGuard.ts` — changed 1 import: `ToolUseId` from `../types/branded.js` → `./branded.js`.
+- Exported `HookExecutionGuard` from `local/index.ts`.
+- Shimmed root `HookExecutionGuard.ts` to forwarder — consumer `HookManager.ts` unchanged via transparent shim.
+- Type-check: 0 errors. Full verify chain: green.
+
+Commit:
+
+- `refactor(agent-sdk): migrate HookExecutionGuard to @blade-ai/agent-sdk/local`
+
 ### Root Dead Code Retirement: agent/constants.ts
 
 Objective: Inline `AGENT_TURN_SAFETY_LIMIT` constant (9 lines) into `LoopRunner.ts` — the only consumer.

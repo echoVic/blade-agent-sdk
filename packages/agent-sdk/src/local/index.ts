@@ -130,3 +130,4 @@ export type { MatcherConfig, MatchContext } from './Matcher.js';
 export { JSONLStore } from './JSONLStore.js';
 export { ContextMemoryStore } from './ContextMemoryStore.js';
 
+export { HookExecutionGuard } from './HookExecutionGuard.js';
