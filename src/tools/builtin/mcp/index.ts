@@ -1,3 +1,1 @@
-export { createListMcpResourcesTool } from './listMcpResources.js';
-export { createReadMcpResourceTool } from './readMcpResource.js';
-
+export { createListMcpResourcesTool, createReadMcpResourceTool } from '@blade-ai/agent-sdk/local';

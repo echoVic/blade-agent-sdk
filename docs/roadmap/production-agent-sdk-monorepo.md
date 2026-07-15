@@ -1477,6 +1477,25 @@ Commit:
 
 - `refactor(agent-sdk): migrate DiscoverTools tool to package-local`
 
+### MCP Protocol Tools Migration: Root → Package-Local
+
+Objective: Migrate the MCP protocol tools (ListMcpResources 149 lines, ReadMcpResource 144 lines) from root legacy to `@blade-ai/agent-sdk/local`.
+
+Status:
+
+- Created `packages/agent-sdk/src/local/mcp-tools/listMcpResources.ts`, `readMcpResource.ts`, and `index.ts` from the root implementations.
+- Replaced `lazySchema()` with direct schema reference. Defined a lightweight `McpResourceRegistry` interface to decouple from root's `McpRegistry` class, using `unknown[]` and `unknown` return types for compatibility with the root's `JsonValue[]` return types.
+- Added type assertions (`as Array<{...}>`) where resource list elements are consumed.
+- Shrunk all three root mcp files (listMcpResources.ts, readMcpResource.ts, index.ts) to 1-line forwarder shims.
+- Added MCP tools to `getBuiltinTools()` conditionally — only included when `options.includeMcpProtocolTools && options.mcpRegistry` is provided. Default builtin tool set remains 11 tools; MCP tools are opt-in.
+- Added `createListMcpResourcesTool` and `createReadMcpResourceTool` to `builtin-tools.ts` factory exports, `local/index.ts` exports, and `public-index.ts` type declarations.
+- Created `localMcpTools.test.ts` (6 tests) covering: default exclusion from builtin, conditional inclusion, factory creation, missing registry error paths.
+- All 407 package + 1323 root unit tests pass. Full verify chain green.
+
+Commit:
+
+- `refactor(agent-sdk): migrate MCP protocol tools to package-local`
+
 ## Completion Criteria
 
 The migration is complete only when all of the following are true:

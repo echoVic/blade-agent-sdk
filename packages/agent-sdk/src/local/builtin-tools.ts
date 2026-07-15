@@ -10,6 +10,8 @@ import type { MemoryManager } from './memory.js';
 import { createMemoryReadTool } from './memoryRead.js';
 import { createMemoryWriteTool } from './memoryWrite.js';
 import { createTodoWriteTool } from './todo/index.js';
+import { createListMcpResourcesTool, createReadMcpResourceTool } from './mcp-tools/index.js';
+import type { McpResourceRegistry } from './mcp-tools/listMcpResources.js';
 
 export interface BuiltinToolsOptions {
   memoryManager?: MemoryManager;
@@ -34,6 +36,12 @@ export async function getBuiltinTools(options: BuiltinToolsOptions = {}): Promis
     exitPlanModeTool,
     createTodoWriteTool({ sessionId, configDir: options.configDir }),
     discoverToolsTool,
+    ...(options.includeMcpProtocolTools && options.mcpRegistry
+      ? [
+          createListMcpResourcesTool(options.mcpRegistry as McpResourceRegistry),
+          createReadMcpResourceTool(options.mcpRegistry as McpResourceRegistry),
+        ]
+      : []),
     ...(options.memoryManager
       ? [
           createMemoryReadTool({ manager: options.memoryManager }),
@@ -54,3 +62,4 @@ export { createExitPlanModeTool } from './plan/exitPlanMode.js';
 export { createMemoryReadTool } from './memoryRead.js';
 export { createMemoryWriteTool } from './memoryWrite.js';
 export { createTodoWriteTool } from './todo/index.js';
+export { createListMcpResourcesTool, createReadMcpResourceTool } from './mcp-tools/index.js';

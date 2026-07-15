@@ -280,6 +280,11 @@ export interface ValidationResult {
   error?: string;
 }
 export declare function createTodoWriteTool(opts: CreateTodoWriteToolOptions): Tool;
+export interface McpResourceRegistry {
+  getAllServers(): Map<string, { client: unknown }>;
+}
+export declare function createListMcpResourcesTool(registry: McpResourceRegistry): Tool;
+export declare function createReadMcpResourceTool(registry: McpResourceRegistry): Tool;
 export declare function getBuiltinTools(options?: BuiltinToolsOptions): Promise<Tool[]>;
 export declare function createMemoryReadTool(args: { manager: MemoryManager }): Tool;
 export declare function createMemoryWriteTool(args: { manager: MemoryManager }): Tool;
