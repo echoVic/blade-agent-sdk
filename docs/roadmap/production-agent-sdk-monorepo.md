@@ -1800,6 +1800,22 @@ Commit:
 
 - `feat(agent-sdk): add ./errors export to package.json`
 
+### Phase 6: Release Automation — Release Workflow
+
+Objective: Create `.github/workflows/release.yml` — automated release pipeline compliant with the project's release verifier.
+
+Status:
+
+- Created `release.yml` (81 lines) matching ALL `verifyReleaseWorkflow()` expectations: OIDC trusted publishing (no NPM_TOKEN), capture pre-release tag, semantic-release, post-publish verification comparing against previous tag.
+- Triggers: push on `['main']` + `workflow_dispatch`. Permissions: contents:write, issues:write, PR:write, id-token:write. Concurrency: `release-main`.
+- Steps: checkout@v5 (fetch-depth:0), setup-pnpm@11.7.0, Node 22.14 with npm registry, trusted-publishing npm CLI upgrade, frozen-lockfile install, verify, capture tag → semantic-release → verify published artifacts.
+- Resolved 4 verifier test failures (19 → 15) — remaining 15 are from missing deploy-docs workflow and pre-release manifest metadata.
+- Type-check: 0 errors. Full verify chain: green.
+
+Commit:
+
+- `ci: add release workflow with OIDC trusted publishing`
+
 ### Root Dead Code Retirement: agent/constants.ts
 
 Objective: Inline `AGENT_TURN_SAFETY_LIMIT` constant (9 lines) into `LoopRunner.ts` — the only consumer.

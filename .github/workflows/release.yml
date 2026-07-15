@@ -17,12 +17,12 @@ concurrency:
 
 jobs:
   release:
-    name: Publish package
+    name: Release
     runs-on: ubuntu-latest
     timeout-minutes: 20
 
     steps:
-      - name: Checkout repository
+      - name: Checkout
         uses: actions/checkout@v5
         with:
           fetch-depth: 0
@@ -36,8 +36,8 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '22.14'
+          registry-url: https://registry.npmjs.org
           cache: 'pnpm'
-          registry-url: 'https://registry.npmjs.org'
 
       - name: Upgrade npm for trusted publishing
         run: npm install -g npm@11.5.1 --ignore-scripts
@@ -50,9 +50,8 @@ jobs:
 
       - name: Capture latest release tag
         run: |
-          git fetch --tags --force
-          previous_release_tag="$(git describe --tags --abbrev=0 --match 'v*' 2>/dev/null || true)"
-          echo "PREVIOUS_RELEASE_TAG=$previous_release_tag" >> "$GITHUB_ENV"
+          PREVIOUS_RELEASE_TAG=$(git describe --tags --abbrev=0 --match 'v*' 2>/dev/null || echo '')
+          echo "PREVIOUS_RELEASE_TAG=$PREVIOUS_RELEASE_TAG" >> $GITHUB_ENV
 
       - name: Release
         run: pnpm exec semantic-release
@@ -62,13 +61,9 @@ jobs:
       - name: Verify published artifacts
         run: |
           git fetch --tags --force
-          published_version="$(git describe --tags --abbrev=0 --match 'v*' 2>/dev/null || true)"
-          if [ -z "$published_version" ]; then
-            echo "No v* release tag found; skipping post-publish verification."
-            exit 0
-          fi
+          published_version=$(git describe --tags --abbrev=0 --match 'v*')
           if [ "$published_version" = "$PREVIOUS_RELEASE_TAG" ]; then
-            echo "No new release tag detected; skipping post-publish verification."
+            echo "No new release tag created. Skipping published verification."
             exit 0
           fi
           pnpm run verify:published -- --version "$published_version"
