@@ -117,6 +117,7 @@ export type { ToolCall, SystemContext, SessionContext, ConversationContext, Work
 export { CacheStore } from './CacheStore.js';
 export { BashClassifier } from './BashClassifier.js';
 export type { BashCommandCategory, BashClassification } from './BashClassifier.js';
+export { SecureProcessExecutor } from './SecureProcessExecutor.js';
 
 // Hook Configuration
 export { DEFAULT_HOOK_CONFIG, mergeHookConfig, parseEnvConfig } from './HookConfig.js';
