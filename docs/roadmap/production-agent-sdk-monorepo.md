@@ -1944,6 +1944,23 @@ Commit:
 
 - `refactor: simplify errors barrel to re-export directly from @blade-ai/agent-sdk/errors`
 
+### MemoryStore + MemoryTypes Migration: Root → @blade-ai/agent-sdk/local
+
+Objective: Migrate `src/memory/MemoryTypes.ts` (44 lines) + `src/memory/MemoryStore.ts` (79 lines) to `@blade-ai/agent-sdk/local` in a single slice — using RELATIVE imports within `local/` to bypass the tsconfig wildcard path issue.
+
+Status:
+
+- Created `packages/agent-sdk/src/local/memory.ts` (44 lines) — pure type definitions (MemoryType, MemoryInput, Memory) with zero dependencies.
+- Created `packages/agent-sdk/src/local/MemoryStore.ts` (79 lines) — MemoryStore interface importing from `./memory.js` via RELATIVE import (avoids tsconfig wildcard resolution issue).
+- Updated 3 root consumers: `FileSystemMemoryStore.ts`, `MemoryManager.ts`, `memory/index.ts` barrel — all now import from `@blade-ai/agent-sdk/local`.
+- Shimmed both root files to one-line forwarders re-exporting from `@blade-ai/agent-sdk/local`.
+- Fixed pre-existing test import error in `localSandbox.test.ts` (broken by Slice #30 SandboxExecutor migration).
+- Type-check: 0 errors (root + packages). Full verify chain: green.
+
+Commit:
+
+- `refactor(agent-sdk): migrate MemoryTypes + MemoryStore to @blade-ai/agent-sdk/local`
+
 ### Root Dead Code Retirement: agent/constants.ts
 
 Objective: Inline `AGENT_TURN_SAFETY_LIMIT` constant (9 lines) into `LoopRunner.ts` — the only consumer.

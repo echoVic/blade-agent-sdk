@@ -2,8 +2,8 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 import { mkdir, readFile, unlink, writeFile } from 'node:fs/promises';
 import matter from 'gray-matter';
-import type { Memory, MemoryInput } from './MemoryTypes.js';
-import type { MemoryStore } from './MemoryStore.js';
+import type { Memory, MemoryInput } from '@blade-ai/agent-sdk/local';
+import type { MemoryStore } from '@blade-ai/agent-sdk/local';
 
 const INDEX_FILE = 'MEMORY.md';
 const SLUG_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;

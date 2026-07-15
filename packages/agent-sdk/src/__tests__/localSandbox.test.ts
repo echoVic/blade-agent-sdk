@@ -1,10 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import {
-  getSandboxExecutor,
   getSandboxService,
-  SandboxExecutor,
   SandboxService,
 } from '../local/sandbox.js';
+import {
+  getSandboxExecutor,
+  SandboxExecutor,
+} from '../local/SandboxExecutor.js';
 
 describe('agent-sdk local sandbox adapter', () => {
   beforeEach(() => {

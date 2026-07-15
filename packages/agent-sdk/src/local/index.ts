@@ -14,6 +14,8 @@ export type {
 } from './mcp.js';
 export { createSdkMcpServer, tool } from './mcp.js';
 export { FileSystemMemoryStore, MemoryManager } from './memory.js';
+export type { Memory, MemoryInput, MemoryType } from './memory.js';
+export type { MemoryStore } from './MemoryStore.js';
 export type {
   FileAccessLogger,
   FileAccessRecord,

@@ -2,6 +2,7 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 import { mkdir, readFile, unlink, writeFile } from 'node:fs/promises';
 import matter from 'gray-matter';
+import type { MemoryStore } from './MemoryStore.js';
 
 export type MemoryType = 'user' | 'feedback' | 'project' | 'reference';
 
@@ -20,12 +21,7 @@ export interface Memory {
   updatedAt: number;
 }
 
-export interface MemoryStore {
-  save(memory: MemoryInput): Promise<Memory>;
-  get(name: string): Promise<Memory | undefined>;
-  list(): Promise<Memory[]>;
-  delete(name: string): Promise<void>;
-}
+export type { MemoryStore } from './MemoryStore.js';
 
 const indexFile = 'MEMORY.md';
 const slugPattern = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
