@@ -40,7 +40,6 @@ import {
     ToolErrorType,
     validationErrorToToolResult,
 } from '../types/ToolResult.js';
-import { type ConcurrencyLimits, ConcurrencyScheduler } from './ConcurrencyScheduler.js';
 import { FileLockManager } from './FileLockManager.js';
 
 function getString(params: JsonObject, key: string, defaultValue = ''): string {
@@ -1398,5 +1397,133 @@ class DenialTracker {
     return records
       .map((r) => `- ${r.signature} (denied ${r.count}x: ${r.reason})`)
       .join('\n');
+  }
+}
+
+// ── Inlined from ConcurrencyScheduler.ts ──
+
+type PendingTask<T = unknown> = {
+  fn: () => Promise<T>;
+  resolve: (value: T | PromiseLike<T>) => void;
+  reject: (reason?: unknown) => void;
+};
+
+interface BucketState {
+  inFlight: number;
+  maxConcurrent: number;
+  queue: PendingTask[];
+}
+
+interface ConcurrencyLimits {
+  readonly?: number;
+  write?: number;
+  execute?: number;
+}
+
+const DEFAULT_LIMITS: Required<ConcurrencyLimits> = {
+  readonly: Number.POSITIVE_INFINITY,
+  write: Number.POSITIVE_INFINITY,
+  execute: 3,
+};
+
+class ConcurrencyScheduler {
+  private static instance: ConcurrencyScheduler | null = null;
+
+  private readonly buckets: Record<ToolKind, BucketState>;
+
+  constructor(limits: ConcurrencyLimits = {}) {
+    const merged = { ...DEFAULT_LIMITS, ...limits };
+    this.buckets = {
+      [ToolKind.ReadOnly]: {
+        inFlight: 0,
+        maxConcurrent: merged.readonly,
+        queue: [],
+      },
+      [ToolKind.Write]: {
+        inFlight: 0,
+        maxConcurrent: merged.write,
+        queue: [],
+      },
+      [ToolKind.Execute]: {
+        inFlight: 0,
+        maxConcurrent: merged.execute,
+        queue: [],
+      },
+    };
+  }
+
+  static getInstance(): ConcurrencyScheduler {
+    if (!ConcurrencyScheduler.instance) {
+      ConcurrencyScheduler.instance = new ConcurrencyScheduler();
+    }
+    return ConcurrencyScheduler.instance;
+  }
+
+  static resetInstance(): void {
+    ConcurrencyScheduler.instance = null;
+  }
+
+  schedule<T>(kind: ToolKind, fn: () => Promise<T>): Promise<T> {
+    const bucket = this.buckets[kind];
+    if (!bucket) {
+      return fn();
+    }
+
+    if (bucket.inFlight < bucket.maxConcurrent) {
+      return this.runImmediately(bucket, fn);
+    }
+
+    return new Promise<T>((resolve, reject) => {
+      bucket.queue.push({
+        fn: fn as () => Promise<unknown>,
+        resolve: resolve as (v: unknown) => void,
+        reject,
+      });
+    });
+  }
+
+  getStats(): Record<ToolKind, { inFlight: number; queued: number }> {
+    return {
+      [ToolKind.ReadOnly]: {
+        inFlight: this.buckets[ToolKind.ReadOnly].inFlight,
+        queued: this.buckets[ToolKind.ReadOnly].queue.length,
+      },
+      [ToolKind.Write]: {
+        inFlight: this.buckets[ToolKind.Write].inFlight,
+        queued: this.buckets[ToolKind.Write].queue.length,
+      },
+      [ToolKind.Execute]: {
+        inFlight: this.buckets[ToolKind.Execute].inFlight,
+        queued: this.buckets[ToolKind.Execute].queue.length,
+      },
+    };
+  }
+
+  private async runImmediately<T>(
+    bucket: BucketState,
+    fn: () => Promise<T>,
+  ): Promise<T> {
+    bucket.inFlight++;
+    try {
+      return await fn();
+    } finally {
+      bucket.inFlight--;
+      this.drain(bucket);
+    }
+  }
+
+  private drain(bucket: BucketState): void {
+    while (bucket.inFlight < bucket.maxConcurrent && bucket.queue.length > 0) {
+      const task = bucket.queue.shift();
+      if (!task) break;
+      bucket.inFlight++;
+      task
+        .fn()
+        .then(task.resolve, task.reject)
+        .finally(() => {
+          bucket.inFlight--;
+          this.drain(bucket);
+        });
+    }
   }
 }

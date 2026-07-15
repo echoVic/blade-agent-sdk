@@ -1738,6 +1738,21 @@ Commit:
 
 - `refactor: inline DenialTracker into ExecutionPipeline.ts`
 
+### Root Dead Code Retirement: ConcurrencyScheduler.ts
+
+Objective: Inline `src/tools/execution/ConcurrencyScheduler.ts` (143 lines) into `ExecutionPipeline.ts` — the only consumer.
+
+Status:
+
+- Inlined `ConcurrencyLimits` interface and `ConcurrencyScheduler` class (with `getInstance()` singleton pattern) into `src/tools/execution/ExecutionPipeline.ts` as local definitions. `ToolKind` already imported.
+- Deleted `src/tools/execution/ConcurrencyScheduler.ts` and its test file `src/tools/execution/__tests__/ConcurrencyScheduler.test.ts`.
+- The `ConcurrencyLimits` type resolves correctly within the exported `ExecutionPipelineConfig` via structural typing.
+- Type-check: 0 errors. Full verify chain: green.
+
+Commit:
+
+- `refactor: inline ConcurrencyScheduler into ExecutionPipeline.ts`
+
 ## Completion Criteria
 
 The migration is complete only when all of the following are true:
