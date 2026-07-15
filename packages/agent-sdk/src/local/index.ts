@@ -227,3 +227,5 @@ export { getFileSystemService, type FileSystemService } from './FileSystemServic
 // Prompts
 export { PLAN_MODE_SYSTEM_PROMPT, createPlanModeReminder } from './prompts.js';
 export type { LineRange, AtMention, AttachmentType, AttachmentMetadata, Attachment, CollectorOptions } from './promptProcessors.js';
+export type { BuildSystemPromptOptions, BuildSystemPromptResult } from './promptBuilder.js';
+export { buildSystemPrompt } from './promptBuilder.js';
