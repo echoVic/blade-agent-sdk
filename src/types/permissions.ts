@@ -1,4 +1,4 @@
-import type { ToolEffect } from '../tools/types/ToolEffects.js';
+import type { ToolEffect, PermissionRuleValue, PermissionUpdate, PermissionResult } from '@blade-ai/agent-sdk/local';
 import type { ToolKind } from '../tools/types/ToolKind.js';
 import { ToolKind as ToolKindValue } from '../tools/types/ToolKind.js';
 import {
@@ -8,38 +8,7 @@ import {
 import type { JsonObject } from './common.js';
 import { PermissionMode, type PermissionsConfig } from './common.js';
 
-export interface PermissionRuleValue {
-  toolName: string;
-  ruleContent?: string;
-}
-
-export type PermissionUpdate =
-  | {
-      type: 'addRules';
-      rules: PermissionRuleValue[];
-      behavior: 'allow' | 'deny';
-    }
-  | {
-      type: 'removeRules';
-      rules: PermissionRuleValue[];
-    };
-
-export type PermissionResult =
-  | {
-      behavior: 'allow';
-      updatedInput?: JsonObject;
-      effects?: ToolEffect[];
-      updatedPermissions?: PermissionUpdate[];
-    }
-  | {
-      behavior: 'deny';
-      message: string;
-      interrupt?: boolean;
-    }
-  | {
-      behavior: 'ask';
-      message?: string;
-    };
+export type { PermissionRuleValue, PermissionUpdate, PermissionResult };
 
 export interface CanUseToolOptions {
   signal: AbortSignal;

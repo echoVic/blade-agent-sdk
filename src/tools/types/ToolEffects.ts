@@ -1,24 +1,8 @@
 import type { RuntimeContextPatch, RuntimePatch } from '../../runtime/index.js';
 import type { Message } from '@blade-ai/ai/chat';
-import type { PermissionUpdate } from '../../types/permissions.js';
+import type { ToolEffect, PermissionUpdate } from '@blade-ai/agent-sdk/local';
 
-export type ToolEffect =
-  | {
-      type: 'runtimePatch';
-      patch: RuntimePatch;
-    }
-  | {
-      type: 'contextPatch';
-      patch: RuntimeContextPatch;
-    }
-  | {
-      type: 'newMessages';
-      messages: Message[];
-    }
-  | {
-      type: 'permissionUpdates';
-      updates: PermissionUpdate[];
-    };
+export type { ToolEffect };
 
 interface NormalizeToolEffectsInput {
   effects?: ToolEffect[];
