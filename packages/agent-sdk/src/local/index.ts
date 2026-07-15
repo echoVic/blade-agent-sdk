@@ -197,6 +197,9 @@ export {
   hasSkillFile,
 } from './skillsLoader.js';
 
+// Skills registry
+export { SkillRegistry, getSkillRegistry, discoverSkills } from './skillsRegistry.js';
+
 // Observability
 export { TraceRecorder } from './TraceRecorder.js';
 export type {
