@@ -33,6 +33,7 @@ export { createGrepTool, grepTool } from './search/index.js';
 export { createGlobTool, globTool } from './search/index.js';
 export { createNotebookEditTool, notebookEditTool } from './notebook/notebookEdit.js';
 export { createAskUserQuestionTool, askUserQuestionTool } from './system/askUserQuestion.js';
+export { discoverToolsTool } from './system/discoverTools.js';
 export { createEnterPlanModeTool, enterPlanModeTool } from './plan/enterPlanMode.js';
 export { createExitPlanModeTool, exitPlanModeTool } from './plan/exitPlanMode.js';
 export { createTodoWriteTool, todoWriteTool, TodoManager } from './todo/index.js';

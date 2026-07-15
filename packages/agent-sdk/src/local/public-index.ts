@@ -252,6 +252,7 @@ export declare function createNotebookEditTool(): Tool;
 export declare function createAskUserQuestionTool(): Tool;
 export declare function createEnterPlanModeTool(): Tool;
 export declare function createExitPlanModeTool(): Tool;
+export declare const discoverToolsTool: Tool;
 export interface CreateTodoWriteToolOptions {
   sessionId: string;
   configDir?: string;

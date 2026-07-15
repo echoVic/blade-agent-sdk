@@ -1457,6 +1457,26 @@ Commit:
 
 - `refactor(agent-sdk): migrate TodoWrite tool to package-local`
 
+### DiscoverTools Tool Migration: Root → Package-Local
+
+Objective: Migrate the DiscoverTools tool (88 lines) from root legacy to `@blade-ai/agent-sdk/local`.
+
+Status:
+
+- Created `packages/agent-sdk/src/local/system/discoverTools.ts` (88 lines) from the root implementation, adapting imports to the package-local framework.
+- Replaced `lazySchema(() => z.object({...}))` with direct schema reference. Replaced `ToolSchemas.semanticNumber()` with direct `z.number().int().min(1).max(10)`.
+- Shrunk root `src/tools/builtin/system/discoverTools.ts` from 88 lines to a 1-line forwarder shim.
+- Added `discoverToolsTool` to `getBuiltinTools()` return array. Default builtin tool set: 11 tools (AskUserQuestion, DiscoverTools, Edit, EnterPlanMode, ExitPlanMode, Glob, Grep, NotebookEdit, Read, TodoWrite, Write).
+- Added `discoverToolsTool` to `local/index.ts` exports and `public-index.ts` type declarations.
+- Created `localDiscoverTools.test.ts` (4 tests) covering builtin registration, default instance properties, build parameter acceptance, and no-registry error path.
+- Updated `localFileTools.test.ts` and `localMemoryTools.test.ts` expectations to reflect DiscoverTools in the builtin tools set.
+
+Verification chain: all type-checks pass (root + 3 packages), boundary/entrypoint/package verifiers pass, 401 package + 1323 root unit tests pass.
+
+Commit:
+
+- `refactor(agent-sdk): migrate DiscoverTools tool to package-local`
+
 ## Completion Criteria
 
 The migration is complete only when all of the following are true:

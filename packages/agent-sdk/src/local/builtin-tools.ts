@@ -3,6 +3,7 @@ import { editTool, readTool, writeTool } from './file/index.js';
 import { globTool, grepTool } from './search/index.js';
 import { notebookEditTool } from './notebook/notebookEdit.js';
 import { askUserQuestionTool } from './system/askUserQuestion.js';
+import { discoverToolsTool } from './system/discoverTools.js';
 import { enterPlanModeTool } from './plan/enterPlanMode.js';
 import { exitPlanModeTool } from './plan/exitPlanMode.js';
 import type { MemoryManager } from './memory.js';
@@ -32,6 +33,7 @@ export async function getBuiltinTools(options: BuiltinToolsOptions = {}): Promis
     enterPlanModeTool,
     exitPlanModeTool,
     createTodoWriteTool({ sessionId, configDir: options.configDir }),
+    discoverToolsTool,
     ...(options.memoryManager
       ? [
           createMemoryReadTool({ manager: options.memoryManager }),
