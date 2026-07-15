@@ -1849,6 +1849,20 @@ Commit:
 
 - No code changes — verification audit only
 
+### Root Dead Code Retirement: docsBrowserImportPolicy.ts
+
+Objective: Delete `src/docsBrowserImportPolicy.ts` (69 lines) — a browser import policy checker with ZERO production consumers.
+
+Status:
+
+- Verified 0 production consumers across root and packages. Only a test file imported from it.
+- Deleted `src/docsBrowserImportPolicy.ts` and its test file `src/__tests__/docsBrowserImportPolicy.test.ts`.
+- Type-check: 0 errors. Full verify chain: green.
+
+Commit:
+
+- `refactor: retire dead docsBrowserImportPolicy.ts (0 consumers)`
+
 ### Root Dead Code Retirement: agent/constants.ts
 
 Objective: Inline `AGENT_TURN_SAFETY_LIMIT` constant (9 lines) into `LoopRunner.ts` — the only consumer.
