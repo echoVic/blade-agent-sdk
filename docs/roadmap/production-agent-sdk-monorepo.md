@@ -1996,6 +1996,21 @@ Commit:
 
 - `refactor(agent-sdk): migrate TokenCounter to @blade-ai/agent-sdk/local`
 
+### Branded Types Seed: @blade-ai/agent-sdk/local/branded.ts
+
+Objective: Add branded type definitions (`SessionId`, `AgentId`, `MessageId`, `ToolUseId`) to `@blade-ai/agent-sdk/local` — establishing canonical branded types in the package to unblock future context/storage file migrations.
+
+Status:
+
+- Created `packages/agent-sdk/src/local/branded.ts` (691 bytes) with `SessionId`, `AgentId`, `MessageId`, `ToolUseId` branded types using string-based structural branding (not `unique symbol` — avoids module-scoped symbol conflicts).
+- Exported branded types from `local/index.ts` — accessible via `@blade-ai/agent-sdk/local`.
+- This unblocks future migrations of context/storage files that depend on `SessionId` (pathUtils.ts, JSONLStore.ts, PersistentStore.ts, etc.).
+- Type-check: 0 errors. Boundaries: passed. Seed approach (like Slice #28 hook protocol types).
+
+Commit:
+
+- `feat(agent-sdk): add branded types (SessionId, AgentId, MessageId, ToolUseId) to local/branded.ts`
+
 ### Root Dead Code Retirement: agent/constants.ts
 
 Objective: Inline `AGENT_TURN_SAFETY_LIMIT` constant (9 lines) into `LoopRunner.ts` — the only consumer.

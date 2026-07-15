@@ -103,3 +103,6 @@ export {
   SensitiveFileDetector,
 } from './SensitiveFileDetector.js';
 export type { SensitiveFileCheckResult } from './SensitiveFileDetector.js';
+
+// Branded types
+export type { AgentId, MessageId, SessionId, ToolUseId } from './branded.js';
