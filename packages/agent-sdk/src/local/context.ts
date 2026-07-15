@@ -8,7 +8,8 @@
  * These are pure interface/type definitions — no runtime dependencies.
  */
 
-import type { JsonObject } from '@blade-ai/ai';
+import type { JsonObject, JsonValue } from '@blade-ai/ai';
+import type { MessageId, SessionId } from './branded.js';
 
 /** Message role — valid sender identities in a conversation. */
 export type MessageRole = 'user' | 'assistant' | 'system' | 'tool';
@@ -48,3 +49,71 @@ export interface CompressedContext {
   /** Token count after compaction. */
   tokenCount: number;
 }
+
+// ── SessionEvent type hierarchy ──────────────────────────────────────────
+
+/** All possible part types in a session message. */
+export type PartType =
+  | 'text'
+  | 'reasoning'
+  | 'image'
+  | 'tool_call'
+  | 'tool_result'
+  | 'diff'
+  | 'patch'
+  | 'summary'
+  | 'subtask_ref';
+
+/** JSONL event type discriminator. */
+export type JSONLEventType =
+  | 'session_created'
+  | 'session_updated'
+  | 'message_created'
+  | 'part_created'
+  | 'part_updated';
+
+/** Session metadata carried by session_created events. */
+export interface SessionInfo {
+  sessionId: SessionId;
+  rootId: string;
+  parentId?: string;
+  relationType?: 'subagent';
+  title?: string;
+}
+
+/** Message metadata carried by message_created events. */
+export interface MessageInfo {
+  messageId: MessageId;
+  role: MessageRole;
+  parentMessageId?: string;
+  createdAt: string;
+  model?: string;
+}
+
+/** Part metadata carried by part_created / part_updated events. */
+export interface PartInfo {
+  partId: string;
+  messageId: MessageId;
+  partType: PartType;
+  payload: JsonValue;
+  createdAt: string;
+}
+
+/** Common fields shared by every JSONL event line. */
+export interface SessionEventBase {
+  id: string;
+  sessionId: SessionId;
+  timestamp: string;
+  type: JSONLEventType;
+  cwd?: string;
+  gitBranch?: string;
+  version: string;
+}
+
+/** Discriminated union of all possible JSONL session events. */
+export type SessionEvent =
+  | (SessionEventBase & { type: 'session_created'; data: SessionInfo })
+  | (SessionEventBase & { type: 'session_updated'; data: Partial<SessionInfo> })
+  | (SessionEventBase & { type: 'message_created'; data: MessageInfo })
+  | (SessionEventBase & { type: 'part_created'; data: PartInfo })
+  | (SessionEventBase & { type: 'part_updated'; data: PartInfo });

@@ -2123,6 +2123,27 @@ Commit:
 
 - `refactor(agent-sdk): migrate FileAnalyzer to @blade-ai/agent-sdk/local (zero import changes)`
 
+### SessionEvent Seed Types: @blade-ai/agent-sdk/local/context.ts
+
+Objective: Add the complete `SessionEvent` type hierarchy (9 types) to `@blade-ai/agent-sdk/local/context.ts` — unblocking `JSONLStore.ts` (231L) migration for the next slice.
+
+Status:
+
+- Added 9 types to `packages/agent-sdk/src/local/context.ts`:
+  - `PartType` — 9-member string union (exact from root)
+  - `JSONLEventType` — 5 JSONL event discriminators
+  - `SessionInfo`, `MessageInfo`, `PartInfo` — metadata interfaces
+  - `SessionEventBase` — common JSONL event fields (`sessionId: SessionId`, `timestamp`, `type: JSONLEventType`, etc.)
+  - `SessionEvent` — discriminated union with 5 members (`session_created`, `session_updated`, `message_created`, `part_created`, `part_updated`)
+- Dependencies: `SessionId`, `MessageId` from `./branded.js`, `MessageRole` inline, `JsonValue` from `@blade-ai/ai` — all already in package.
+- Exported all 7 new types from `local/index.ts`.
+- `JSONLStore.ts` (231L) can now import `SessionEvent` from `@blade-ai/agent-sdk/local` — ready for migration in next slice.
+- Type-check: 0 errors. Boundaries: passed. Package type-check: 0 errors.
+
+Commit:
+
+- `feat(agent-sdk): add SessionEvent type hierarchy to context seed types`
+
 ### Root Dead Code Retirement: agent/constants.ts
 
 Objective: Inline `AGENT_TURN_SAFETY_LIMIT` constant (9 lines) into `LoopRunner.ts` — the only consumer.
