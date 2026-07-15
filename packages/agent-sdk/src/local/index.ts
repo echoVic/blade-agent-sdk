@@ -135,6 +135,21 @@ export { JSONLStore } from './JSONLStore.js';
 export { ContextMemoryStore } from './ContextMemoryStore.js';
 
 export type { RuntimeContext } from './RuntimeContext.js';
+
+export type {
+  RuntimePatchScope,
+  RuntimePatchSkillInfo,
+  RuntimeToolPolicyPatch,
+  RuntimeModelOverride,
+  RuntimeHookEvent,
+  RuntimeHookRegistration,
+  RuntimeToolDiscoveryPatch,
+  RuntimePatchProvenance,
+  RuntimePatchApplication,
+  RuntimePatchSummary,
+  RuntimePatch,
+} from './RuntimePatch.js';
+export { summarizeRuntimePatchApplications } from './RuntimePatch.js';
 export { configureStreamDebug, streamDebug } from './StreamDebugLogger.js';
 export { HookExecutionGuard } from './HookExecutionGuard.js';
 export { HookBus } from './HookBus.js';
