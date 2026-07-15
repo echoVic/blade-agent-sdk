@@ -2377,6 +2377,20 @@ Commit:
 
 - `refactor(agent-sdk): migrate observability types to @blade-ai/agent-sdk/local`
 
+### Observability Barrel Simplification: `src/observability/index.ts` → `@blade-ai/agent-sdk/local`
+
+Objective: Update `src/observability/index.ts` to re-export migrated types from `@blade-ai/agent-sdk/local` instead of through the root shim. Reduces observability barrel root dependencies from 2 to 1 direct file reference. Same pattern as MCP barrel (#57).
+
+Status:
+
+- Updated `observability/index.ts` — re-exports all 9 migrated types (`AgentTrace`, `HookTraceCollector`, `ObservabilityOptions`, `TraceEvent`, `TracePayloadSummary`, `TraceSink`, `TraceSpan`, `TraceSpanKind`, `TraceStatus`) directly from `@blade-ai/agent-sdk/local`.
+- Kept `TraceRecorder` from root (not yet migrated).
+- Type-check: 0 errors. Full verify chain: green.
+
+Commit:
+
+- `refactor: simplify observability barrel — re-export migrated types from @blade-ai/agent-sdk/local`
+
 ### Root Dead Code Retirement: agent/constants.ts
 
 Objective: Inline `AGENT_TURN_SAFETY_LIMIT` constant (9 lines) into `LoopRunner.ts` — the only consumer.
