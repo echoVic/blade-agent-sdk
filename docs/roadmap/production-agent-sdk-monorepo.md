@@ -2318,6 +2318,21 @@ Commit:
 
 - `refactor(agent-sdk): migrate mcp types to @blade-ai/agent-sdk/local`
 
+### SdkMcpServer Migration: Root → @blade-ai/agent-sdk/local
+
+Objective: Migrate `src/mcp/SdkMcpServer.ts` (126 lines) to `@blade-ai/agent-sdk/local` — only 1 root import changed (`JsonObject` → `@blade-ai/ai`).
+
+Status:
+
+- Created `packages/agent-sdk/src/local/SdkMcpServer.ts` — changed 1 import: `JsonObject` from `../types/common.js` → `@blade-ai/ai`.
+- Original file exports 5 symbols: `createSdkMcpServer`, `tool` (already in package `mcp.js`), `SdkMcpServerHandle` (already in package types), `SdkTool` (already in package types), `ToolResponse` (NEW — added to `local/index.ts`).
+- Shimmed root `SdkMcpServer.ts` to forward all 5 exports transparently.
+- Type-check: 0 errors. Full verify chain: green.
+
+Commit:
+
+- `refactor(agent-sdk): migrate SdkMcpServer to @blade-ai/agent-sdk/local`
+
 ### Root Dead Code Retirement: agent/constants.ts
 
 Objective: Inline `AGENT_TURN_SAFETY_LIMIT` constant (9 lines) into `LoopRunner.ts` — the only consumer.
