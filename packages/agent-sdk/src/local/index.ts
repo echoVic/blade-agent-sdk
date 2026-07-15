@@ -135,6 +135,8 @@ export { JSONLStore } from './JSONLStore.js';
 export { ContextMemoryStore } from './ContextMemoryStore.js';
 
 export type { RuntimeContext } from './RuntimeContext.js';
+export type { ContextSnapshot } from './ContextSnapshot.js';
+export { hasFilesystemCapability, mergeContext, createContextSnapshot } from './ContextSnapshot.js';
 
 export type {
   RuntimePatchScope,
