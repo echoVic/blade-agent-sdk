@@ -1599,6 +1599,21 @@ Commit:
 
 - `refactor(agent-sdk): simplify root builtin-tools index to delegate to package-local`
 
+### Root Memory Tools Shrink
+
+Objective: Shrink root `src/tools/builtin/memory/memoryRead.ts` (123 lines) and `memoryWrite.ts` (80 lines) to forwarder shims — these were the last remaining root builtin tool files using `lazySchema`.
+
+Status:
+
+- Shrunk both root memory tool files to 1-line forwarder shims re-exporting from `@blade-ai/agent-sdk/local`. Root memory tools were already unused (the package-local `createMemoryReadTool`/`createMemoryWriteTool` are the authoritative versions).
+- Fixed `src/tools/builtin/memory/__tests__/memoryTools.test.ts` — added `as unknown` type assertions for `MemoryManager` cross-boundary compatibility.
+- This eliminates the last `lazySchema` import in the builtin tools tree.
+- Type-check: 0 errors. Full verify chain: green.
+
+Commit:
+
+- `refactor(agent-sdk): shrink root memory tools to forwarder shims`
+
 ## Completion Criteria
 
 The migration is complete only when all of the following are true:

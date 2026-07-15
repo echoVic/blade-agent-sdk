@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { getBuiltinTools } from '../../index.js';
 import { MemoryManager } from '../../../../memory/MemoryManager.js';
 import type { MemoryStore } from '../../../../memory/MemoryStore.js';
 import type { Memory, MemoryInput } from '../../../../memory/MemoryTypes.js';
 import { SessionId } from '../../../../types/branded.js';
+import { getBuiltinTools } from '../../index.js';
 import { createMemoryReadTool, createMemoryWriteTool } from '../index.js';
 
 class InMemoryStore implements MemoryStore {
@@ -40,7 +40,7 @@ describe('memory tools', () => {
   it('does not register memory tools by default', async () => {
     const tools = await getBuiltinTools({ sessionId: SessionId('memory-default') });
     expect(tools.map((tool) => tool.name)).not.toEqual(
-      expect.arrayContaining(['MemoryRead', 'MemoryWrite'])
+      expect.arrayContaining(['MemoryRead', 'MemoryWrite']),
     );
   });
 
@@ -52,13 +52,14 @@ describe('memory tools', () => {
     });
 
     expect(tools.map((tool) => tool.name)).toEqual(
-      expect.arrayContaining(['MemoryRead', 'MemoryWrite'])
+      expect.arrayContaining(['MemoryRead', 'MemoryWrite']),
     );
   });
 
   it('returns summaries for list and search operations', async () => {
     const manager = new MemoryManager(new InMemoryStore());
-    const readTool = createMemoryReadTool({ manager });
+    const readTool = // biome-ignore lint/suspicious/noExplicitAny: root-package bridge
+      createMemoryReadTool({ manager } as any);
 
     await manager.save({
       name: 'project-context',
@@ -93,17 +94,22 @@ describe('memory tools', () => {
 
   it('requires operation-specific parameters at schema level', () => {
     const manager = new MemoryManager(new InMemoryStore());
-    const readTool = createMemoryReadTool({ manager });
-    const writeTool = createMemoryWriteTool({ manager });
+    const readTool = // biome-ignore lint/suspicious/noExplicitAny: root-package bridge
+      createMemoryReadTool({ manager } as any);
+    const writeTool = // biome-ignore lint/suspicious/noExplicitAny: root-package bridge
+      createMemoryWriteTool({ manager } as any);
 
     expect(() => readTool.build({ operation: 'get' } as never)).toThrow();
     expect(() => readTool.build({ operation: 'search' } as never)).toThrow();
-    expect(() => writeTool.build({ operation: 'save', name: 'project-context' } as never)).toThrow();
+    expect(() =>
+      writeTool.build({ operation: 'save', name: 'project-context' } as never),
+    ).toThrow();
   });
 
   it('acknowledges delete requests without claiming a missing record was deleted', async () => {
     const manager = new MemoryManager(new InMemoryStore());
-    const writeTool = createMemoryWriteTool({ manager });
+    const writeTool = // biome-ignore lint/suspicious/noExplicitAny: root-package bridge
+      createMemoryWriteTool({ manager } as any);
 
     const result = await executeTool(writeTool, {
       operation: 'delete',
