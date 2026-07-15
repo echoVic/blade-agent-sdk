@@ -148,3 +148,4 @@ export type {
   ObservabilityOptions,
   HookTraceCollector,
 } from './observabilityTypes.js';
+export { HookEvent } from './constants.js';

@@ -2391,6 +2391,20 @@ Commit:
 
 - `refactor: simplify observability barrel — re-export migrated types from @blade-ai/agent-sdk/local`
 
+### Constants Seed: `@blade-ai/agent-sdk/local/constants.ts`
+
+Objective: Create `packages/agent-sdk/src/local/constants.ts` with `HookEvent` (22-member const + derived type) — a centralized constants file that reduces inlining for future migrations. Same seed pattern as context types (#41, #44, #46).
+
+Status:
+
+- Created `packages/agent-sdk/src/local/constants.ts` — `HookEvent` const with 22 event literals (`PreToolUse`, `PostToolUse`, etc.) + derived type.
+- Exported `HookEvent` from `local/index.ts` — available as `import { HookEvent } from '@blade-ai/agent-sdk/local'`.
+- Type-check: 0 errors. Full verify chain: green.
+
+Commit:
+
+- `feat(agent-sdk): add constants seed with HookEvent to @blade-ai/agent-sdk/local`
+
 ### Root Dead Code Retirement: agent/constants.ts
 
 Objective: Inline `AGENT_TURN_SAFETY_LIMIT` constant (9 lines) into `LoopRunner.ts` — the only consumer.
