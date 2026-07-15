@@ -2362,6 +2362,21 @@ Commit:
 
 - `refactor(agent-sdk): migrate StreamDebugLogger to @blade-ai/agent-sdk/local`
 
+### Observability Types Migration: Root → @blade-ai/agent-sdk/local
+
+Objective: Migrate `src/observability/types.ts` (62 lines) to `@blade-ai/agent-sdk/local/observabilityTypes.ts` — the FIRST observability subsystem file migrated. Reused `HookEvent` from package's `HookBus.ts` (Slice #53) to avoid duplication.
+
+Status:
+
+- Created `packages/agent-sdk/src/local/observabilityTypes.ts` — imported `HookEvent` from `./HookBus.js` (already inlined in package, Slice #53), changed `JsonValue` → `@blade-ai/ai`.
+- Exported all 9 observability types from `local/index.ts`.
+- Shimmed root `observability/types.ts` to forwarder — zero consumers, all unchanged via transparent shim.
+- Type-check: 0 errors. Full verify chain: green.
+
+Commit:
+
+- `refactor(agent-sdk): migrate observability types to @blade-ai/agent-sdk/local`
+
 ### Root Dead Code Retirement: agent/constants.ts
 
 Objective: Inline `AGENT_TURN_SAFETY_LIMIT` constant (9 lines) into `LoopRunner.ts` — the only consumer.

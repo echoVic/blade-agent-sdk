@@ -135,3 +135,16 @@ export { HookExecutionGuard } from './HookExecutionGuard.js';
 export { HookBus } from './HookBus.js';
 export { OutputParser } from './OutputParser.js';
 export type { ToolResponse } from './SdkMcpServer.js';
+
+// Observability types
+export type {
+  TraceStatus,
+  TraceSpanKind,
+  TracePayloadSummary,
+  TraceEvent,
+  TraceSpan,
+  AgentTrace,
+  TraceSink,
+  ObservabilityOptions,
+  HookTraceCollector,
+} from './observabilityTypes.js';
