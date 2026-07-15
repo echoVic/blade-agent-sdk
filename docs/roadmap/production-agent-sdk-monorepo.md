@@ -2105,6 +2105,24 @@ Commit:
 
 - `refactor(agent-sdk): add CompressedContext seed + migrate CacheStore to @blade-ai/agent-sdk/local`
 
+### FileAnalyzer Migration: Root → @blade-ai/agent-sdk/local
+
+Objective: Migrate `src/context/FileAnalyzer.ts` (350 lines) to `@blade-ai/agent-sdk/local` — the SIMPLEST migration yet: ZERO import changes needed (all imports resolve correctly in the package context).
+
+Status:
+
+- Copied `FileAnalyzer.ts` to `packages/agent-sdk/src/local/FileAnalyzer.ts` with ZERO import changes:
+  - `node:fs/promises`, `node:path` → correct for local/
+  - `@blade-ai/ai/chat` → package import, unchanged
+  - `../types/common.js` → resolves to package types/common.ts correctly
+- Exported all 5 symbols: `FileAnalyzer`, `analyzeFiles`, `readFilesContent`, `FileContent`, `FileReference` from `local/index.ts`.
+- Shimmed root `FileAnalyzer.ts` to forwarder — consumer `CompactionService.ts` and `RuntimePatchManager.ts` unchanged (transparent shim).
+- Type-check: 0 errors. Full verify chain: green.
+
+Commit:
+
+- `refactor(agent-sdk): migrate FileAnalyzer to @blade-ai/agent-sdk/local (zero import changes)`
+
 ### Root Dead Code Retirement: agent/constants.ts
 
 Objective: Inline `AGENT_TURN_SAFETY_LIMIT` constant (9 lines) into `LoopRunner.ts` — the only consumer.
