@@ -176,3 +176,4 @@ export { PermissionMode } from './constants.js';
 export { StreamMessageType } from './constants.js';
 export { getContextCwd } from './runtimeUtils.js';
 export type { RuntimeContextPatch } from './RuntimeContextPatch.js';
+export { cloneContentPart, cloneJsonValue, cloneMessage, cloneToolCall } from './messageUtils.js';

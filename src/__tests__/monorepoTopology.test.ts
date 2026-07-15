@@ -411,7 +411,6 @@ describe('monorepo topology', () => {
   it('keeps root service implementation chat protocol types on the ai chat subpath', () => {
     const files = [
       'src/session/VercelAIChatService.ts',
-      'src/runtime/messageUtils.ts',
       'src/services/__tests__/deepseek-deep.live.test.ts',
     ];
 
@@ -455,9 +454,9 @@ describe('monorepo topology', () => {
     expect(legacyMessageUtilsSource.trim()).toBe(
       "export { cloneContentPart, cloneJsonValue, cloneMessage, cloneToolCall } from '../runtime/messageUtils.js';",
     );
-    expect(runtimeMessageUtilsSource).toContain("from '@blade-ai/ai/chat'");
-    expect(runtimeMessageUtilsSource).toContain("from '../types/common.js'");
-    expect(runtimeMessageUtilsSource).toContain('export function cloneMessage');
+    expect(runtimeMessageUtilsSource).toContain("from '@blade-ai/agent-sdk/local'");
+    expect(runtimeMessageUtilsSource).toContain('cloneContentPart');
+    expect(runtimeMessageUtilsSource).toContain('cloneMessage');
 
     for (const file of runtimeConsumers) {
       const source = readFileSync(file, 'utf-8');
