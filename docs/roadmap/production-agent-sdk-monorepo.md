@@ -2042,6 +2042,21 @@ Commit:
 
 - `refactor: shim root branded.ts to re-export from @blade-ai/agent-sdk/local`
 
+### pathUtils Migration: Root → @blade-ai/agent-sdk/local
+
+Objective: Migrate `src/context/storage/pathUtils.ts` (130 lines) to `@blade-ai/agent-sdk/local` — previously blocked by `SessionId` branded type incompatibility, now unblocked by branded.ts unification (Slices #36-38).
+
+Status:
+
+- Copied `pathUtils.ts` to `packages/agent-sdk/src/local/pathUtils.ts`, changing the `SessionId` import from `../../types/branded.js` to `./branded.js` (now unified — root branded.ts forwards to package).
+- Added `export * from './pathUtils.js'` to `local/index.ts`.
+- Shimmed root `pathUtils.ts` to `export * from '@blade-ai/agent-sdk/local';` — consumer `PersistentStore.ts` requires NO changes (imports from `./pathUtils.js` which is now a shim).
+- Type-check: 0 errors (root + packages). Full verify chain: green.
+
+Commit:
+
+- `refactor(agent-sdk): migrate pathUtils to @blade-ai/agent-sdk/local`
+
 ### Root Dead Code Retirement: agent/constants.ts
 
 Objective: Inline `AGENT_TURN_SAFETY_LIMIT` constant (9 lines) into `LoopRunner.ts` — the only consumer.

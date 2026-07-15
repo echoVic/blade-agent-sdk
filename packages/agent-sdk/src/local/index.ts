@@ -106,3 +106,6 @@ export type { SensitiveFileCheckResult } from './SensitiveFileDetector.js';
 
 // Branded types + factory functions
 export { AgentId, MessageId, SessionId, ToolUseId } from './branded.js';
+
+// Path utilities
+export * from './pathUtils.js';
