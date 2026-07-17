@@ -11,10 +11,7 @@ import type {
   ToolCatalogSourcePolicy,
 } from '../catalog/ToolCatalog.js';
 
-export interface RuntimeToolPolicySnapshot {
-  allow?: string[];
-  deny?: string[];
-}
+export { type RuntimeToolPolicySnapshot } from '@blade-ai/agent-sdk/local';
 
 export interface ToolDiscoveryEntry {
   name: string;

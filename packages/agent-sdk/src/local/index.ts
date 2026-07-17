@@ -395,3 +395,4 @@ export type { KernelTracePortOptions } from './SessionKernelTraceAdapter.js';
 export type { BuildSystemPromptOptions, BuildSystemPromptResult } from './promptBuilder.js';
 export { buildSystemPrompt } from './promptBuilder.js';
 export type { Assert, Extends, IsEqual, KeysEqual } from './typeAssertions.js';
+export type { RuntimeToolPolicySnapshot } from './exposureTypes.js';
