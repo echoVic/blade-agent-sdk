@@ -11,3 +11,4 @@ export type {
   SubagentSource,
 } from './types.js';
 export { mapClaudeCodePermissionMode } from './types.js';
+export { builtinAgents } from './builtinAgents.js';
