@@ -44,6 +44,16 @@ export interface McpToolInfo {
   serverName: string;
 }
 
+export interface StreamOptions {
+  includeThinking?: boolean;
+}
+
+export interface SendOptions {
+  signal?: AbortSignal;
+  maxTurns?: number;
+  context?: unknown;
+}
+
 export interface ForkSessionOptions {
   messageId?: string;
 }

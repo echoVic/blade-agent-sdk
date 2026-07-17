@@ -138,15 +138,7 @@ export interface SessionOptions {
   observability?: ObservabilityOptions;
 }
 
-export interface SendOptions {
-  signal?: AbortSignal;
-  maxTurns?: number;
-  context?: RuntimeContext;
-}
-
-export interface StreamOptions {
-  includeThinking?: boolean;
-}
+export type { StreamOptions, SendOptions } from '@blade-ai/agent-sdk/local';
 
 export type { ModelInfo } from '@blade-ai/agent-sdk/local';
 
