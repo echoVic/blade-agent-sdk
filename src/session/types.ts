@@ -65,15 +65,7 @@ export type { StreamMessage };
 
 type _AssertStreamMessageComplete = Assert<IsEqual<StreamMessage['type'], StreamMessageType>>;
 
-export interface HookInput {
-  event: HookEvent;
-  toolName?: string;
-  toolInput?: JsonObject;
-  toolOutput?: string | object;
-  error?: Error;
-  sessionId: SessionId;
-  [key: string]: unknown;
-}
+export type { HookInput } from '@blade-ai/agent-sdk/local';
 
 export interface HookOutput {
   action: 'continue' | 'skip' | 'abort';

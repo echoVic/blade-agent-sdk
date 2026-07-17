@@ -69,3 +69,13 @@ export interface HookOutput {
   modifiedOutput?: JsonValue;
   reason?: string;
 }
+
+export interface HookInput {
+  event: unknown;
+  toolName?: string;
+  toolInput?: JsonObject;
+  toolOutput?: string | object;
+  error?: Error;
+  sessionId: string;
+  [key: string]: unknown;
+}
