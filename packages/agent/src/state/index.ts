@@ -3,6 +3,7 @@ import type { ModelMessage } from '@blade-ai/ai';
 export * from './messageProjection.js';
 export * from './systemSource.js';
 export * from './toolInjectedMessages.js';
+export { ConversationState } from './ConversationState.js';
 
 export type AgentStoreMessageSource = 'input' | 'model' | 'tool';
 
