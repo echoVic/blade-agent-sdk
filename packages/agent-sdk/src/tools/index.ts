@@ -596,6 +596,9 @@ export function validationErrorToToolResult(error: ToolValidationError): ToolRes
   };
 }
 
+// Tool Search Utilities
+export { normalizeSearchText, scoreToolSearchMatch, searchTools } from './toolSearch.js';
+
 export type {
   BladeConfig,
   ConfirmationDetails,
