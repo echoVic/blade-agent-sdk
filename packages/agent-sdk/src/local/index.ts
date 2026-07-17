@@ -374,6 +374,10 @@ export type { HealthCheckConfig } from './mcpHealth.js';
 export { createKernelStorePort } from './SessionKernelStoreAdapter.js';
 export type { KernelStorePortOptions, SessionMessageStore } from './SessionKernelStoreAdapter.js';
 
+// Session Model Port
+export { createSessionKernelModel, resolveSessionModelConfig } from './SessionModelPort.js';
+export type { SessionKernelModel } from './SessionModelPort.js';
+
 // Session Kernel Trace Adapter
 export { createKernelTracePort } from './SessionKernelTraceAdapter.js';
 export type { KernelTracePortOptions } from './SessionKernelTraceAdapter.js';
