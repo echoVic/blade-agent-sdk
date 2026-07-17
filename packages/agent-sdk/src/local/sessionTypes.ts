@@ -14,6 +14,12 @@ export interface ToolCallRecord {
   isError?: boolean;
 }
 
+export interface SubagentInfo {
+  parentSessionId: string;
+  subagentType: string;
+  depth: number;
+}
+
 export interface ModelInfo {
   id: string;
   name: string;

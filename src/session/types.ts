@@ -99,11 +99,7 @@ export type SessionHookEvent =
   | typeof HookEvent.SessionEnd
   | typeof HookEvent.TaskCompleted;
 
-export interface SubagentInfo {
-  parentSessionId: string;
-  subagentType: string;
-  depth: number;
-}
+export type { SubagentInfo } from '@blade-ai/agent-sdk/local';
 
 export interface AgentDefinition {
   name: string;
