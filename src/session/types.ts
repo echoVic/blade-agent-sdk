@@ -29,15 +29,7 @@ import type { Assert, IsEqual } from '../types/typeAssertions.js';
 
 export type { ExecutionContext, ProviderType, TokenUsage, ToolDefinition, ToolResult };
 
-export interface ProviderConfig {
-  type: ProviderType;
-  apiKey?: string;
-  baseUrl?: string;
-  headers?: Record<string, string>;
-  organization?: string;
-  apiVersion?: string;
-  projectId?: string;
-}
+export type { ProviderConfig };
 
 export type { ToolCallRecord };
 

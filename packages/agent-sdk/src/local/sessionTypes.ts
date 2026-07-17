@@ -31,3 +31,13 @@ export type StreamMessage =
   | { type: 'tool_message'; id: string; name: string; message: string; sessionId: string }
   | { type: 'tool_runtime_patch'; id: string; name: string; patch: unknown; sessionId: string }
   | { type: 'tool_context_patch'; id: string; name: string; patch: unknown; sessionId: string };
+
+export interface ProviderConfig {
+  type: string;
+  apiKey?: string;
+  baseUrl?: string;
+  headers?: Record<string, string>;
+  organization?: string;
+  apiVersion?: string;
+  projectId?: string;
+}
