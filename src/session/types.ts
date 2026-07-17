@@ -101,13 +101,7 @@ export type SessionHookEvent =
 
 export type { SubagentInfo } from '@blade-ai/agent-sdk/local';
 
-export interface AgentDefinition {
-  name: string;
-  description: string;
-  systemPrompt?: string;
-  allowedTools?: string[];
-  model?: string;
-}
+export type { AgentDefinition } from '@blade-ai/agent-sdk/local';
 
 export interface SessionOptions {
   provider: ProviderConfig;

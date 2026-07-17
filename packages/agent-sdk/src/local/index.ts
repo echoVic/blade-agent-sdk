@@ -1,19 +1,19 @@
-export type { PreparedPermissionMatcher, ToolExposureConfig, ToolExposureMode } from './toolDefinitionTypes.js';
+export type {  PreparedPermissionMatcher, ToolExposureConfig, ToolExposureMode } from './toolDefinitionTypes.js';
 // Node-local capabilities: builtin tools, MCP, memory, and sandbox adapters.
 // Browser consumers should use @blade-ai/agent-sdk/core or a remote server API.
 
 export { TokenCounter } from './TokenCounter.js';
-export type { InternalLogger } from './Logger.js';
+export type {  InternalLogger } from './Logger.js';
 export { LogCategory } from './Logger.js';
 export { LogLevel } from './Logger.js';
 export { createRootLogger } from './Logger.js';
 export { NOOP_LOGGER } from './Logger.js';
-export type { LogLevelName, LogEntry, AgentLogger } from './loggingTypes.js';
+export type {  LogLevelName, LogEntry, AgentLogger } from './loggingTypes.js';
 export { FileLockManager } from './FileLockManager.js';
 
-export type { McpToolCallResponse, McpToolDefinition } from './mcpTypes.js';
+export type {  McpToolCallResponse, McpToolDefinition } from './mcpTypes.js';
 export { McpConnectionStatus } from './mcpTypes.js';
-export type {
+export type { 
   McpToolResponse,
   SdkMcpServerHandle,
   SdkTool,
@@ -21,9 +21,9 @@ export type {
 export { createSdkMcpServer, tool } from './mcp.js';
 export { FileSystemMemoryStore } from './memory.js';
 export { MemoryManager } from './MemoryManager.js';
-export type { Memory, MemoryInput, MemoryType } from './memory.js';
-export type { MemoryStore } from './MemoryStore.js';
-export type {
+export type {  Memory, MemoryInput, MemoryType } from './memory.js';
+export type {  MemoryStore } from './MemoryStore.js';
+export type { 
   FileAccessLogger,
   FileAccessRecord,
   LocalFileStat,
@@ -62,12 +62,12 @@ export {
 export { createListMcpResourcesTool, createReadMcpResourceTool } from './mcp-tools/index.js';
 export { webFetchTool, webSearchTool } from './web/index.js';
 export { getSearchCache, SearchCache, getAllProviders, getProviderCount } from './web/index.js';
-export type { WebSearchResult, SearchProvider, CacheConfig, CacheStats } from './web/index.js';
+export type {  WebSearchResult, SearchProvider, CacheConfig, CacheStats } from './web/index.js';
 export { createEnterPlanModeTool, enterPlanModeTool } from './plan/enterPlanMode.js';
 export { createExitPlanModeTool, exitPlanModeTool } from './plan/exitPlanMode.js';
 export { createTodoWriteTool, todoWriteTool, TodoManager } from './todo/index.js';
 export { TodoItemSchema } from './todo/index.js';
-export type { CreateTodoWriteToolOptions, TodoItem, TodoPriority, TodoStats, TodoStatus, ValidationResult } from './todo/index.js';
+export type {  CreateTodoWriteToolOptions, TodoItem, TodoPriority, TodoStats, TodoStatus, ValidationResult } from './todo/index.js';
 export { FileFilter, DEFAULT_EXCLUDE_DIRS } from './filePatterns.js';
 export { isSensitivePath } from './file/sensitivePathCheck.js';
 export {
@@ -80,7 +80,7 @@ export {
   unescapeString,
   type MatchResult,
 } from './file/editCorrector.js';
-export type {
+export type { 
   SandboxCheckResult,
   SandboxExecutionContext,
 } from './sandbox.js';
@@ -94,7 +94,7 @@ export {
   createMemoryWriteTool,
   getBuiltinTools,
 } from './builtin-tools.js';
-export type { BuiltinToolsOptions } from './builtin-tools.js';
+export type {  BuiltinToolsOptions } from './builtin-tools.js';
 export { getVersion, getPackageName } from './packageInfo.js';
 export { getEnvironmentContext, getEnvironmentInfo, type EnvironmentInfo } from './environment.js';
 export { normalizePath, PathSecurity, checkRestricted, getRelativePath, isWithinWorkspace, validatePath } from './pathSecurity.js';
@@ -107,7 +107,7 @@ export {
   getSensitivePaths,
   SensitiveFileDetector,
 } from './SensitiveFileDetector.js';
-export type { SensitiveFileCheckResult } from './SensitiveFileDetector.js';
+export type {  SensitiveFileCheckResult } from './SensitiveFileDetector.js';
 
 // Branded types + factory functions
 export { AgentId, MessageId, SessionId, ToolUseId } from './branded.js';
@@ -116,10 +116,10 @@ export { AgentId, MessageId, SessionId, ToolUseId } from './branded.js';
 export * from './pathUtils.js';
 
 // Context seed types
-export type { CompressedContext, ContextMessage, ContextStorageOptions } from './context.js';
-export type { JSONLEventType, PartInfo, PartType, MessageInfo, SessionEvent, SessionEventBase, SessionInfo } from './context.js';
-export type { ToolCall, SystemContext, SessionContext, ConversationContext, WorkspaceContext, ContextLayer, ContextData } from './context.js';
-export type { ContextFilter, ContextManagerOptions } from './contextTypes.js';
+export type {  CompressedContext, ContextMessage, ContextStorageOptions } from './context.js';
+export type {  JSONLEventType, PartInfo, PartType, MessageInfo, SessionEvent, SessionEventBase, SessionInfo } from './context.js';
+export type {  ToolCall, SystemContext, SessionContext, ConversationContext, WorkspaceContext, ContextLayer, ContextData } from './context.js';
+export type {  ContextFilter, ContextManagerOptions } from './contextTypes.js';
 
 // Context Processors
 export { ContextCompressor } from './ContextCompressor.js';
@@ -127,21 +127,21 @@ export { ContextFilterProcessor } from './ContextFilterProcessor.js';
 
 // Context Compaction Strategies
 export { microcompact } from './microcompactStrategy.js';
-export type { MicrocompactOptions, MicrocompactResult } from './microcompactStrategy.js';
+export type {  MicrocompactOptions, MicrocompactResult } from './microcompactStrategy.js';
 export { softCompact } from './softCompactionStrategy.js';
-export type { SoftCompactionOptions, SoftCompactionResult } from './softCompactionStrategy.js';
+export type {  SoftCompactionOptions, SoftCompactionResult } from './softCompactionStrategy.js';
 
 export { CacheStore } from './CacheStore.js';
 export { BashClassifier } from './BashClassifier.js';
-export type { BashCommandCategory, BashClassification } from './BashClassifier.js';
+export type {  BashCommandCategory, BashClassification } from './BashClassifier.js';
 export { SecureProcessExecutor } from './SecureProcessExecutor.js';
 
 // Hook Configuration
 export { DEFAULT_HOOK_CONFIG, mergeHookConfig, parseEnvConfig } from './HookConfig.js';
-export type { HookConfig } from './HookConfig.js';
+export type {  HookConfig } from './HookConfig.js';
 
 // Hook Types
-export type {
+export type { 
   HookInputBase,
   HookInput,
   Hook,
@@ -212,16 +212,16 @@ export {
 
 export { FileAnalyzer, analyzeFiles, readFilesContent, type FileContent, type FileReference } from './FileAnalyzer.js';
 export { Matcher } from './Matcher.js';
-export type { MatcherConfig, MatchContext } from './Matcher.js';
+export type {  MatcherConfig, MatchContext } from './Matcher.js';
 // JSONL Store
 export { JSONLStore } from './JSONLStore.js';
 export { ContextMemoryStore } from './ContextMemoryStore.js';
 
-export type { RuntimeContext } from './RuntimeContext.js';
-export type { ContextSnapshot } from './ContextSnapshot.js';
+export type {  RuntimeContext } from './RuntimeContext.js';
+export type {  ContextSnapshot } from './ContextSnapshot.js';
 export { hasFilesystemCapability, mergeContext, createContextSnapshot } from './ContextSnapshot.js';
 
-export type {
+export type { 
   RuntimePatchScope,
   RuntimePatchSkillInfo,
   RuntimeToolPolicyPatch,
@@ -239,8 +239,8 @@ export { configureStreamDebug, streamDebug } from './StreamDebugLogger.js';
 export { HookExecutionGuard } from './HookExecutionGuard.js';
 export { HookBus } from './HookBus.js';
 export { OutputParser } from './OutputParser.js';
-export type { ToolResponse } from './SdkMcpServer.js';
-export type {
+export type {  ToolResponse } from './SdkMcpServer.js';
+export type { 
   ReadMetadata,
   WriteMetadata,
   EditMetadata,
@@ -261,7 +261,7 @@ export {
 } from './toolEffects.js';
 
 // Skills types
-export type {
+export type { 
   SkillSourceKind,
   SkillTrustLevel,
   SkillShellPolicy,
@@ -305,7 +305,7 @@ export { injectSkillsMetadata } from './skillsInject.js';
 
 // Observability
 export { TraceRecorder } from './TraceRecorder.js';
-export type {
+export type { 
   TraceStatus,
   TraceSpanKind,
   TracePayloadSummary,
@@ -322,14 +322,14 @@ export { PermissionDecision } from './constants.js';
 export { PermissionMode } from './constants.js';
 export { StreamMessageType } from './constants.js';
 export { getContextCwd } from './runtimeUtils.js';
-export type { RuntimeContextPatch } from './RuntimeContextPatch.js';
-export type {
+export type {  RuntimeContextPatch } from './RuntimeContextPatch.js';
+export type { 
   PermissionRuleValue,
   PermissionUpdate,
   ToolEffect,
   PermissionResult,
 } from './permissionTypes.js';
-export type {
+export type { 
   CanUseToolOptions,
   CanUseTool,
   PermissionHandlerRequest,
@@ -348,11 +348,11 @@ export { getFileSystemService, type FileSystemService } from './FileSystemServic
 
 // Prompts
 export { PLAN_MODE_SYSTEM_PROMPT, createPlanModeReminder } from './prompts.js';
-export type { LineRange, AtMention, AttachmentType, AttachmentMetadata, Attachment, CollectorOptions } from './promptProcessors.js';
+export type {  LineRange, AtMention, AttachmentType, AttachmentMetadata, Attachment, CollectorOptions } from './promptProcessors.js';
 export { AtMentionParser, extract, hasAtMentions, isValidPath, removeAtMentions } from './AtMentionParser.js';
 
 // OAuth Types
-export type {
+export type { 
   OAuthToken,
   OAuthConfig,
   AuthorizationOAuthConfig,
@@ -369,46 +369,46 @@ export { OAuthProvider } from './OAuthProvider.js';
 
 // MCP Health Types
 export { HealthStatus } from './mcpHealth.js';
-export type { HealthCheckConfig } from './mcpHealth.js';
+export type {  HealthCheckConfig } from './mcpHealth.js';
 
 // Session Kernel Store Adapter
 export { createKernelStorePort } from './SessionKernelStoreAdapter.js';
-export type { KernelStorePortOptions, SessionMessageStore } from './SessionKernelStoreAdapter.js';
+export type {  KernelStorePortOptions, SessionMessageStore } from './SessionKernelStoreAdapter.js';
 
 // Session Model Port
 export { createSessionKernelModel, resolveSessionModelConfig } from './SessionModelPort.js';
-export type { SessionKernelModel } from './SessionModelPort.js';
+export type {  SessionKernelModel } from './SessionModelPort.js';
 
 // Session Kernel Hook Adapter
 export { createKernelHookPort } from './SessionKernelHookAdapter.js';
-export type { HookRuntimeLike, KernelHookPortOptions } from './SessionKernelHookAdapter.js';
+export type {  HookRuntimeLike, KernelHookPortOptions } from './SessionKernelHookAdapter.js';
 
 // MCP Capability Projector
 export { projectMcpCapabilities } from './McpCapabilityProjector.js';
 
 // MCP Server Types
-export type { McpClientLike, McpServerInfo } from './mcpServerTypes.js';
+export type {  McpClientLike, McpServerInfo } from './mcpServerTypes.js';
 
 // Kernel Adapter Types
-export type { ExecutionPipelineLike, ToolRegistryLike } from './kernelAdapterTypes.js';
+export type {  ExecutionPipelineLike, ToolRegistryLike } from './kernelAdapterTypes.js';
 
 // Agent State Types
-export type { BackgroundAgentManagerLike, ConfirmationHandlerLike, ToolCatalogLike } from './turnStateTypes.js';
+export type {  BackgroundAgentManagerLike, ConfirmationHandlerLike, ToolCatalogLike } from './turnStateTypes.js';
 
 // Agent Types
-export type { AgentProgress, ChatContext, IBackgroundAgentController, IBackgroundAgentManager, IBackgroundAgentReader, TurnLimitResponse, UserMessageContent } from './agentTypes.js';
+export type {  AgentProgress, ChatContext, IBackgroundAgentController, IBackgroundAgentManager, IBackgroundAgentReader, TurnLimitResponse, UserMessageContent } from './agentTypes.js';
 
 // Session Types
-export type { ModelInfo, PromptResult, ProviderConfig, StreamMessage, SubagentInfo, ToolCallRecord } from './sessionTypes.js';
+export type { AgentDefinition,  ModelInfo, PromptResult, ProviderConfig, StreamMessage, SubagentInfo, ToolCallRecord } from './sessionTypes.js';
 
 // Tool Catalog Types
-export type { ToolCatalogSourcePolicy, ToolSourceKind, ToolTrustLevel } from './toolCatalogTypes.js';
-export type { McpCapabilitySource, McpServerCapability, McpServerInfoForCapability, McpToolCapability } from './McpCapabilityProjector.js';
+export type {  ToolCatalogSourcePolicy, ToolSourceKind, ToolTrustLevel } from './toolCatalogTypes.js';
+export type {  McpCapabilitySource, McpServerCapability, McpServerInfoForCapability, McpToolCapability } from './McpCapabilityProjector.js';
 
 // Session Kernel Trace Adapter
 export { createKernelTracePort } from './SessionKernelTraceAdapter.js';
-export type { KernelTracePortOptions } from './SessionKernelTraceAdapter.js';
-export type { BuildSystemPromptOptions, BuildSystemPromptResult } from './promptBuilder.js';
+export type {  KernelTracePortOptions } from './SessionKernelTraceAdapter.js';
+export type {  BuildSystemPromptOptions, BuildSystemPromptResult } from './promptBuilder.js';
 export { buildSystemPrompt } from './promptBuilder.js';
-export type { Assert, Extends, IsEqual, KeysEqual } from './typeAssertions.js';
-export type { RuntimeToolPolicySnapshot } from './exposureTypes.js';
+export type {  Assert, Extends, IsEqual, KeysEqual } from './typeAssertions.js';
+export type {  RuntimeToolPolicySnapshot } from './exposureTypes.js';

@@ -20,6 +20,14 @@ export interface SubagentInfo {
   depth: number;
 }
 
+export interface AgentDefinition {
+  name: string;
+  description: string;
+  systemPrompt?: string;
+  allowedTools?: string[];
+  model?: string;
+}
+
 export interface ModelInfo {
   id: string;
   name: string;
