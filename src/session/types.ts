@@ -152,11 +152,7 @@ export type { ModelInfo } from '@blade-ai/agent-sdk/local';
 
 export type { McpServerStatus } from '@blade-ai/agent-sdk/local';
 
-export interface McpToolInfo {
-  name: string;
-  description: string;
-  serverName: string;
-}
+export type { McpToolInfo } from '@blade-ai/agent-sdk/local';
 
 export interface ForkSessionOptions {
   messageId?: string;

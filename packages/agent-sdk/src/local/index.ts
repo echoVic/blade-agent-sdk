@@ -397,7 +397,7 @@ export type {  BackgroundAgentManagerLike, ConfirmationHandlerLike, ToolCatalogL
 export type {  AgentProgress, ChatContext, IBackgroundAgentController, IBackgroundAgentManager, IBackgroundAgentReader, TurnLimitResponse, UserMessageContent } from './agentTypes.js';
 
 // Session Types
-export type { McpServerStatus, HookCallback, HookInput, HookOutput, AgentDefinition, ModelInfo, PromptResult, ProviderConfig, StreamMessage, SubagentInfo, ToolCallRecord } from './sessionTypes.js';
+export type { McpServerStatus, McpToolInfo, HookCallback, HookInput, HookOutput, AgentDefinition, ModelInfo, PromptResult, ProviderConfig, StreamMessage, SubagentInfo, ToolCallRecord } from './sessionTypes.js';
 
 // Tool Catalog Types
 export type {  ToolCatalogSourcePolicy, ToolSourceKind, ToolTrustLevel } from './toolCatalogTypes.js';

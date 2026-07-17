@@ -38,6 +38,12 @@ export interface McpServerStatus {
   error?: string;
 }
 
+export interface McpToolInfo {
+  name: string;
+  description: string;
+  serverName: string;
+}
+
 export interface ModelInfo {
   id: string;
   name: string;
