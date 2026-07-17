@@ -3,7 +3,7 @@
  * Zero root class dependencies.
  */
 
-import type { JsonValue } from '../types/common.js';
+import type { JsonValue, TokenUsage } from '../types/common.js';
 
 export interface ToolCallRecord {
   id: string;
@@ -12,4 +12,11 @@ export interface ToolCallRecord {
   output: string | object;
   duration: number;
   isError?: boolean;
+}
+
+export interface PromptResult {
+  result: string;
+  toolCalls: ToolCallRecord[];
+  usage: TokenUsage;
+  duration: number;
 }
