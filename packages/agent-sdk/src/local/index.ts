@@ -397,6 +397,9 @@ export type { BackgroundAgentManagerLike, ConfirmationHandlerLike, ToolCatalogLi
 // Agent Types
 export type { AgentProgress, ChatContext, IBackgroundAgentController, IBackgroundAgentManager, IBackgroundAgentReader, TurnLimitResponse, UserMessageContent } from './agentTypes.js';
 
+// Session Types
+export type { ToolCallRecord } from './sessionTypes.js';
+
 // Tool Catalog Types
 export type { ToolCatalogSourcePolicy, ToolSourceKind, ToolTrustLevel } from './toolCatalogTypes.js';
 export type { McpCapabilitySource, McpServerCapability, McpServerInfoForCapability, McpToolCapability } from './McpCapabilityProjector.js';

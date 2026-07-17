@@ -9,7 +9,7 @@ import type {
   RuntimePatch,
 } from '../runtime/index.js';
 import type { Message } from '@blade-ai/ai/chat';
-import type { ToolCatalogSourcePolicy } from '@blade-ai/agent-sdk/local';
+import type { ToolCallRecord, ToolCatalogSourcePolicy } from '@blade-ai/agent-sdk/local';
 import type { ExecutionContext, ToolDefinition, ToolResult } from '../tools/types/index.js';
 import type { SessionId } from '../types/branded.js';
 import type {
@@ -39,14 +39,7 @@ export interface ProviderConfig {
   projectId?: string;
 }
 
-export interface ToolCallRecord {
-  id: string;
-  name: string;
-  input: JsonValue;
-  output: string | object;
-  duration: number;
-  isError?: boolean;
-}
+export type { ToolCallRecord };
 
 export interface PromptResult {
   result: string;
