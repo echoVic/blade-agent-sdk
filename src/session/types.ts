@@ -9,7 +9,7 @@ import type {
   RuntimePatch,
 } from '../runtime/index.js';
 import type { Message } from '@blade-ai/ai/chat';
-import type { ToolCatalogSourcePolicy } from '../tools/catalog/index.js';
+import type { ToolCatalogSourcePolicy } from '@blade-ai/agent-sdk/local';
 import type { ExecutionContext, ToolDefinition, ToolResult } from '../tools/types/index.js';
 import type { SessionId } from '../types/branded.js';
 import type {
