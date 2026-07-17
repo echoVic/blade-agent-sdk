@@ -3,6 +3,8 @@
  * Zero root dependencies.
  */
 
+import type { JSONSchema7 } from 'json-schema';
+
 export type ToolExposureMode = 'eager' | 'deferred' | 'discoverable-only';
 
 export interface ToolExposureConfig {
@@ -14,4 +16,10 @@ export interface ToolExposureConfig {
 export interface PreparedPermissionMatcher {
   signatureContent?: string;
   abstractRule?: string;
+}
+
+export interface FunctionDeclaration {
+  name: string;
+  description: string;
+  parameters: JSONSchema7;
 }
