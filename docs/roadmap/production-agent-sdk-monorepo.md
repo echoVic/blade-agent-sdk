@@ -82,7 +82,7 @@ Dependency direction:
 
 ---
 
-## Migration Progress — 104 Slices Completed
+## Migration Progress — 105 Slices Completed
 
 ### Subsystems at 100% (Complete)
 
@@ -118,7 +118,7 @@ Dependency direction:
 | Area | Files | Complexity |
 |---|---|---|
 | **Hooks** | HookExecutor (1243L), HookRuntime (753L), HookManager (1623L) | Blocked by agent/session types; types/schemas migrated in #96 |
-| **MCP** | HealthMonitor, createMcpTool, McpClient, McpRegistry | Internal circular deps (auth, health check) |
+| **MCP** | HealthMonitor, createMcpTool, McpClient, McpRegistry | Internal circular deps (auth types/storage shimmed in #104-105) |
 | **Context** | ContextManager (736L), CompactionService, PersistentStore (875L) | Blocked by session/hooks; strategies migrated in #97, processors in #98 |
 | **Tools/types** | ExecutionTypes (58L), ToolDefinition (138L) | Blocked by agent/tools catalog; toolSearch migrated in #99 |
 | **Agent/Session** | Many files | Deeply coupled to session infrastructure |

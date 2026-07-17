@@ -359,6 +359,9 @@ export type {
   OAuthCredentials,
   OAuthTokenResponse,
 } from './oauthTypes.js';
+
+// OAuth Storage
+export { OAuthTokenStorage } from './OAuthTokenStorage.js';
 export type { BuildSystemPromptOptions, BuildSystemPromptResult } from './promptBuilder.js';
 export { buildSystemPrompt } from './promptBuilder.js';
 export type { Assert, Extends, IsEqual, KeysEqual } from './typeAssertions.js';
