@@ -12,7 +12,6 @@ export type {
   ExecutionContext,
   FunctionDeclaration,
   Tool,
-  ToolBehavior,
   ToolConfig,
   ToolDefinition,
   ToolDescription,
@@ -25,4 +24,5 @@ export type {
   ToolSchema,
 } from './types/index.js';
 export { ToolErrorType } from './types/index.js';
-export { ToolKind } from './types/ToolKind.js';
+export { ToolKind, createToolBehavior, getStaticToolBehavior, isReadOnlyKind, resolveToolBehavior, resolveToolBehaviorHint, resolveToolBehaviorSafely } from '@blade-ai/agent-sdk/tools';
+export type { ToolBehavior } from '@blade-ai/agent-sdk/tools';
