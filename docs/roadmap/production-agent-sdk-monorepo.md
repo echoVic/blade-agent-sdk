@@ -118,9 +118,9 @@ Dependency direction:
 | Area | Files | Complexity |
 |---|---|---|
 | **Hooks** | HookExecutor (1243L), HookRuntime (753L), HookManager (1623L) | Blocked by agent/session types; types/schemas migrated in #96 |
-| **MCP** | HealthMonitor, createMcpTool, McpClient, McpRegistry | Internal circular deps; auth fully shimmed (#104-#106+#108), health types extracted (#109) |
+| **MCP** | HealthMonitor, createMcpTool, McpClient, McpRegistry | Internal circular deps; auth fully shimmed (#104-#108), health types extracted (#109), capability projector decoupled (#117) |
 | **Context** | ContextManager (736L), CompactionService, PersistentStore (875L) | Blocked by session/hooks; strategies migrated in #97, processors in #98 |
-| **Tools/types** | ExecutionTypes (58L), ToolDefinition (138L) | Blocked by agent/tools catalog; toolSearch migrated in #99 |
+| **Tools/types** | ExecutionTypes (58L), ToolDefinition (138L) | Type adapters between root and package; blocked by agent/tools catalog |
 | **Agent/Session** | Many files | Deeply coupled to session infrastructure |
 
 ### Verification Status
