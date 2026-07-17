@@ -3,8 +3,8 @@ import { ToolRegistry } from '../registry/ToolRegistry.js';
 import { searchTools } from '../search/toolSearch.js';
 import type { FunctionDeclaration, Tool } from '../types/index.js';
 
-export type ToolSourceKind = 'builtin' | 'custom' | 'mcp' | 'session';
-export type ToolTrustLevel = 'trusted' | 'workspace' | 'remote';
+import type { ToolSourceKind, ToolTrustLevel, ToolCatalogSourcePolicy } from '@blade-ai/agent-sdk/local';
+export type { ToolSourceKind, ToolTrustLevel, ToolCatalogSourcePolicy };
 
 export interface ToolSourceInfo {
   kind: ToolSourceKind;
@@ -15,11 +15,6 @@ export interface ToolSourceInfo {
 export interface ToolCatalogEntry {
   tool: Tool;
   source: ToolSourceInfo;
-}
-
-export interface ToolCatalogSourcePolicy {
-  allowedSources?: ToolSourceKind[];
-  allowedTrustLevels?: ToolTrustLevel[];
 }
 
 /**
