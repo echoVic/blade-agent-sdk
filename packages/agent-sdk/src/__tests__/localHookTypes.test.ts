@@ -8,6 +8,8 @@ import {
   type PreToolHookResult,
   type PostToolHookResult,
   type StopHookResult,
+  // Values
+  DecisionBehavior,
   // Schemas
   getHookSchemas,
   safeParseHookOutput,
@@ -64,30 +66,29 @@ describe('Hook Types exports', () => {
 
   it('produces shape-compatible HookOutput', () => {
     const output: HookOutput = {
-      continue: true,
-      permissionDecision: 'allow',
+      suppressOutput: true,
       systemMessage: 'test',
-      decision: 'allow',
-      reason: 'ok',
+      decision: { behavior: DecisionBehavior.Approve },
     };
-    expect(output.continue).toBe(true);
-    expect(output.permissionDecision).toBe('allow');
+    expect(output.suppressOutput).toBe(true);
+    expect(output.systemMessage).toBe('test');
   });
 
   it('produces shape-compatible PreToolHookResult', () => {
     const result: PreToolHookResult = {
-      continue: true,
-      permissionDecision: 'allow',
+      decision: 'allow',
+      reason: 'approved by policy',
     };
-    expect(result.continue).toBe(true);
+    expect(result.decision).toBe('allow');
   });
 
   it('produces shape-compatible PostToolHookResult', () => {
     const result: PostToolHookResult = {
-      continue: true,
       additionalContext: 'context string',
+      warning: 'caution',
     };
-    expect(result.continue).toBe(true);
+    expect(result.additionalContext).toBe('context string');
+    expect(result.warning).toBe('caution');
   });
 
   it('produces shape-compatible StopHookResult', () => {

@@ -119,6 +119,13 @@ export type { CompressedContext, ContextMessage, ContextStorageOptions } from '.
 export type { JSONLEventType, PartInfo, PartType, MessageInfo, SessionEvent, SessionEventBase, SessionInfo } from './context.js';
 export type { ToolCall, SystemContext, SessionContext, ConversationContext, WorkspaceContext, ContextLayer, ContextData } from './context.js';
 export type { ContextFilter, ContextManagerOptions } from './contextTypes.js';
+
+// Context Compaction Strategies
+export { microcompact } from './microcompactStrategy.js';
+export type { MicrocompactOptions, MicrocompactResult } from './microcompactStrategy.js';
+export { softCompact } from './softCompactionStrategy.js';
+export type { SoftCompactionOptions, SoftCompactionResult } from './softCompactionStrategy.js';
+
 export { CacheStore } from './CacheStore.js';
 export { BashClassifier } from './BashClassifier.js';
 export type { BashCommandCategory, BashClassification } from './BashClassifier.js';
