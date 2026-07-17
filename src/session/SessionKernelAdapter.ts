@@ -1,15 +1,14 @@
 import type { AgentToolPort } from '@blade-ai/agent/ports';
 import type { AgentToolCall, AgentToolResult } from '@blade-ai/agent/protocol';
-import type { ExecutionPipeline } from '../tools/execution/ExecutionPipeline.js';
-import type { ToolRegistry } from '../tools/registry/ToolRegistry.js';
+import type { ExecutionPipelineLike, ToolRegistryLike } from '@blade-ai/agent-sdk/local';
 import { normalizeToolEffects } from '../tools/types/ToolEffects.js';
-import type { ExecutionContext } from '../tools/types/index.js';
+import type { ExecutionContext } from '@blade-ai/agent-sdk';
 import type { ToolResult } from '../tools/types/ToolResult.js';
 import type { JsonObject, JsonValue } from '../types/common.js';
 
 export interface KernelToolPortOptions {
-  registry: ToolRegistry;
-  pipeline: ExecutionPipeline;
+  registry: ToolRegistryLike;
+  pipeline: ExecutionPipelineLike;
   createExecutionContext: (toolCall: AgentToolCall, signal?: AbortSignal) => ExecutionContext;
 }
 

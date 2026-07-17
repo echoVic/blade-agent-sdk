@@ -387,6 +387,9 @@ export { projectMcpCapabilities } from './McpCapabilityProjector.js';
 
 // MCP Server Types
 export type { McpClientLike, McpServerInfo } from './mcpServerTypes.js';
+
+// Kernel Adapter Types
+export type { ExecutionPipelineLike, ToolRegistryLike } from './kernelAdapterTypes.js';
 export type { McpCapabilitySource, McpServerCapability, McpServerInfoForCapability, McpToolCapability } from './McpCapabilityProjector.js';
 
 // Session Kernel Trace Adapter
