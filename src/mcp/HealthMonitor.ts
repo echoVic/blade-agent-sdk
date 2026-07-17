@@ -7,30 +7,12 @@ import { EventEmitter } from 'node:events';
 import { getErrorMessage } from '../utils/errorUtils.js';
 import type { McpClient } from './McpClient.js';
 import { McpConnectionStatus } from './types.js';
+import { HealthStatus } from '@blade-ai/agent-sdk/local';
+import type { HealthCheckConfig } from '@blade-ai/agent-sdk/local';
 
-/**
- * 健康检查配置
- */
-export interface HealthCheckConfig {
-  /** 检查间隔（毫秒），默认 30 秒 */
-  interval?: number;
-  /** 超时时间（毫秒），默认 10 秒 */
-  timeout?: number;
-  /** 是否启用，默认 false */
-  enabled?: boolean;
-  /** 连续失败多少次后触发重连，默认 3 次 */
-  failureThreshold?: number;
-}
-
-/**
- * 健康状态
- */
-export enum HealthStatus {
-  HEALTHY = 'healthy',
-  DEGRADED = 'degraded', // 有失败但未达到阈值
-  UNHEALTHY = 'unhealthy', // 达到失败阈值
-  CHECKING = 'checking',
-}
+// Re-export for consumers still importing from this file
+export { HealthStatus } from '@blade-ai/agent-sdk/local';
+export type { HealthCheckConfig } from '@blade-ai/agent-sdk/local';
 
 /**
  * 健康检查结果
