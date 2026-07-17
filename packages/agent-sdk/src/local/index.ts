@@ -120,6 +120,10 @@ export type { JSONLEventType, PartInfo, PartType, MessageInfo, SessionEvent, Ses
 export type { ToolCall, SystemContext, SessionContext, ConversationContext, WorkspaceContext, ContextLayer, ContextData } from './context.js';
 export type { ContextFilter, ContextManagerOptions } from './contextTypes.js';
 
+// Context Processors
+export { ContextCompressor } from './ContextCompressor.js';
+export { ContextFilterProcessor } from './ContextFilterProcessor.js';
+
 // Context Compaction Strategies
 export { microcompact } from './microcompactStrategy.js';
 export type { MicrocompactOptions, MicrocompactResult } from './microcompactStrategy.js';
