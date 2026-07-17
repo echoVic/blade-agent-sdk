@@ -3,7 +3,8 @@
  * Zero root dependencies. May import from @blade-ai/ai and @blade-ai/agent.
  */
 
-import type { ContentPart } from '@blade-ai/ai/chat';
+import type { ContentPart, Message } from '@blade-ai/ai/chat';
+import type { ConfirmationHandler } from '@blade-ai/agent-sdk/tools';
 
 export type UserMessageContent = string | ContentPart[];
 
@@ -20,11 +21,6 @@ export interface AgentProgress {
   updatedAt: number;
 }
 
-/**
- * Minimal interface for background agent control.
- * Uses unknown for root-specific type parameters to avoid depending
- * on root classes. Original uses StartBackgroundAgentOptions and AgentId.
- */
 export interface IBackgroundAgentController {
   killAgent(agentId: string): boolean;
   cancelCurrentWork(agentId: string): boolean;
@@ -33,12 +29,22 @@ export interface IBackgroundAgentController {
   sendMessage(agentId: string, message: string): boolean;
 }
 
-/**
- * Minimal interface for background agent reading.
- * Uses string for AgentId and unknown for AgentSession.
- */
 export interface IBackgroundAgentReader {
   getAgent(agentId: string): unknown;
   isRunning(agentId: string): boolean;
   waitForCompletion(agentId: string, timeout?: number): Promise<unknown>;
+}
+
+export interface ChatContext {
+  messages: Message[];
+  userId: string;
+  sessionId: string;
+  snapshot?: unknown;
+  signal?: AbortSignal;
+  confirmationHandler?: ConfirmationHandler;
+  permissionMode?: string;
+  systemPrompt?: string;
+  subagentInfo?: unknown;
+  omitEnvironment?: boolean;
+  backgroundAgentManager?: unknown;
 }

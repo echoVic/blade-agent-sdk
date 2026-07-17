@@ -12,7 +12,7 @@ import type { CanUseTool, PermissionHandler } from '../types/permissions.js';
 import type { AgentSession } from './subagents/AgentSessionStore.js';
 import type { StartBackgroundAgentOptions } from './subagents/BackgroundAgentManager.js';
 import type { TokenBudgetConfig, TokenBudgetSnapshot } from '@blade-ai/agent/budget';
-import type { AgentProgress, IBackgroundAgentController, IBackgroundAgentReader, TurnLimitResponse, UserMessageContent } from '@blade-ai/agent-sdk/local';
+import type { AgentProgress, ChatContext, IBackgroundAgentController, IBackgroundAgentReader, TurnLimitResponse, UserMessageContent } from '@blade-ai/agent-sdk/local';
 
 /**
  * 用户消息内容类型
@@ -54,25 +54,7 @@ interface SubagentInfoForContext {
 /**
  * 聊天上下文接口
  *
- * 职责：保存会话相关的数据和状态
- * - 消息历史、会话标识、用户标识等数据
- * - 会话级别的 UI 交互处理器（如 confirmationHandler）
- *
- * 不包含：循环过程中的事件回调（这些应该放在 LoopOptions）
- */
-export interface ChatContext {
-  messages: Message[];
-  userId: string;
-  sessionId: SessionId;
-  snapshot?: ContextSnapshot;
-  signal?: AbortSignal;
-  confirmationHandler?: ConfirmationHandler; // 会话级别的确认处理器
-  permissionMode?: PermissionMode; // 当前权限模式（用于 Plan 模式判断）
-  systemPrompt?: string; // 动态传入的系统提示词（无状态设计）
-  subagentInfo?: SubagentInfoForContext; // 子代理信息（用于 JSONL 写入）
-  omitEnvironment?: boolean;
-  backgroundAgentManager?: IBackgroundAgentManager;
-}
+export type { ChatContext };
 
 /**
  * Agent 创建选项 - 仅包含运行时参数
