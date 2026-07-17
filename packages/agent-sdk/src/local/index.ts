@@ -1,3 +1,4 @@
+export type { ToolExposureMode } from './toolDefinitionTypes.js';
 // Node-local capabilities: builtin tools, MCP, memory, and sandbox adapters.
 // Browser consumers should use @blade-ai/agent-sdk/core or a remote server API.
 

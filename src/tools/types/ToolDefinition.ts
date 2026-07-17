@@ -41,7 +41,7 @@ export type ToolSchema<TSchema extends z.ZodSchema = z.ZodSchema> = TSchema | ((
 
 export type ToolDescriptionResolver<TParams = JsonObject> = (params?: TParams) => ToolDescription;
 
-export type ToolExposureMode = 'eager' | 'deferred' | 'discoverable-only';
+export type { ToolExposureMode } from '@blade-ai/agent-sdk/local';
 
 export interface ToolExposureConfig {
   mode?: ToolExposureMode;
