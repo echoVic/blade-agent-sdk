@@ -382,6 +382,10 @@ export type { SessionKernelModel } from './SessionModelPort.js';
 export { createKernelHookPort } from './SessionKernelHookAdapter.js';
 export type { HookRuntimeLike, KernelHookPortOptions } from './SessionKernelHookAdapter.js';
 
+// MCP Capability Projector
+export { projectMcpCapabilities } from './McpCapabilityProjector.js';
+export type { McpCapabilitySource, McpServerCapability, McpServerInfoForCapability, McpToolCapability } from './McpCapabilityProjector.js';
+
 // Session Kernel Trace Adapter
 export { createKernelTracePort } from './SessionKernelTraceAdapter.js';
 export type { KernelTracePortOptions } from './SessionKernelTraceAdapter.js';
