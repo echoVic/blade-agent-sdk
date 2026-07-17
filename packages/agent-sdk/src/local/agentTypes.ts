@@ -32,3 +32,13 @@ export interface IBackgroundAgentController {
   resumeAgent(agentId: string, newPrompt: string, ...args: unknown[]): string | undefined;
   sendMessage(agentId: string, message: string): boolean;
 }
+
+/**
+ * Minimal interface for background agent reading.
+ * Uses string for AgentId and unknown for AgentSession.
+ */
+export interface IBackgroundAgentReader {
+  getAgent(agentId: string): unknown;
+  isRunning(agentId: string): boolean;
+  waitForCompletion(agentId: string, timeout?: number): Promise<unknown>;
+}
