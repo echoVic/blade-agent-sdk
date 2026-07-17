@@ -12,7 +12,7 @@ import type { CanUseTool, PermissionHandler } from '../types/permissions.js';
 import type { AgentSession } from './subagents/AgentSessionStore.js';
 import type { StartBackgroundAgentOptions } from './subagents/BackgroundAgentManager.js';
 import type { TokenBudgetConfig, TokenBudgetSnapshot } from '@blade-ai/agent/budget';
-import type { AgentProgress, ChatContext, IBackgroundAgentController, IBackgroundAgentReader, TurnLimitResponse, UserMessageContent } from '@blade-ai/agent-sdk/local';
+import type { AgentProgress, ChatContext, IBackgroundAgentController, IBackgroundAgentManager, IBackgroundAgentReader, TurnLimitResponse, UserMessageContent } from '@blade-ai/agent-sdk/local';
 
 /**
  * 用户消息内容类型
@@ -40,7 +40,7 @@ export type { IBackgroundAgentController };<｜end▁of▁thinking｜>export typ
 
 export type { IBackgroundAgentController };
 
-export interface IBackgroundAgentManager extends IBackgroundAgentReader, IBackgroundAgentController {}
+export type { IBackgroundAgentManager };
 
 /**
  * 子代理信息（用于 JSONL 写入）

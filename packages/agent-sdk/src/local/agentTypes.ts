@@ -35,6 +35,8 @@ export interface IBackgroundAgentReader {
   waitForCompletion(agentId: string, timeout?: number): Promise<unknown>;
 }
 
+export interface IBackgroundAgentManager extends IBackgroundAgentReader, IBackgroundAgentController {}
+
 export interface ChatContext {
   messages: Message[];
   userId: string;
