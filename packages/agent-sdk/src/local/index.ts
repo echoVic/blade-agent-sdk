@@ -369,6 +369,10 @@ export { OAuthProvider } from './OAuthProvider.js';
 // MCP Health Types
 export { HealthStatus } from './mcpHealth.js';
 export type { HealthCheckConfig } from './mcpHealth.js';
+
+// Session Kernel Trace Adapter
+export { createKernelTracePort } from './SessionKernelTraceAdapter.js';
+export type { KernelTracePortOptions } from './SessionKernelTraceAdapter.js';
 export type { BuildSystemPromptOptions, BuildSystemPromptResult } from './promptBuilder.js';
 export { buildSystemPrompt } from './promptBuilder.js';
 export type { Assert, Extends, IsEqual, KeysEqual } from './typeAssertions.js';
