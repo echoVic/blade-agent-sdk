@@ -12,6 +12,7 @@ import type { CanUseTool, PermissionHandler } from '../types/permissions.js';
 import type { AgentSession } from './subagents/AgentSessionStore.js';
 import type { StartBackgroundAgentOptions } from './subagents/BackgroundAgentManager.js';
 import type { TokenBudgetConfig, TokenBudgetSnapshot } from '@blade-ai/agent/budget';
+import type { TurnLimitResponse } from '@blade-ai/agent-sdk/local';
 
 /**
  * 用户消息内容类型
@@ -135,10 +136,7 @@ export interface LoopOptions {
 /**
  * 轮次限制响应
  */
-export interface TurnLimitResponse {
-  continue: boolean;
-  reason?: string;
-}
+export type { TurnLimitResponse };
 
 export interface LoopResult {
   success: boolean;
