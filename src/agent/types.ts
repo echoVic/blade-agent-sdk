@@ -12,7 +12,7 @@ import type { CanUseTool, PermissionHandler } from '../types/permissions.js';
 import type { AgentSession } from './subagents/AgentSessionStore.js';
 import type { StartBackgroundAgentOptions } from './subagents/BackgroundAgentManager.js';
 import type { TokenBudgetConfig, TokenBudgetSnapshot } from '@blade-ai/agent/budget';
-import type { AgentProgress, TurnLimitResponse } from '@blade-ai/agent-sdk/local';
+import type { AgentProgress, IBackgroundAgentController, TurnLimitResponse } from '@blade-ai/agent-sdk/local';
 
 /**
  * 用户消息内容类型
@@ -40,13 +40,7 @@ export interface IBackgroundAgentReader {
   waitForCompletion(agentId: AgentId, timeout?: number): Promise<AgentSession | undefined>;
 }
 
-export interface IBackgroundAgentController {
-  killAgent(agentId: AgentId): boolean;
-  cancelCurrentWork(agentId: AgentId): boolean;
-  startBackgroundAgent(options: StartBackgroundAgentOptions): string;
-  resumeAgent(agentId: AgentId, newPrompt: string, ...args: unknown[]): string | undefined;
-  sendMessage(agentId: AgentId, message: string): boolean;
-}
+export type { IBackgroundAgentController };
 
 export interface IBackgroundAgentManager extends IBackgroundAgentReader, IBackgroundAgentController {}
 
