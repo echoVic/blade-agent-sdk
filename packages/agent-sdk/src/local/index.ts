@@ -349,6 +349,16 @@ export { getFileSystemService, type FileSystemService } from './FileSystemServic
 export { PLAN_MODE_SYSTEM_PROMPT, createPlanModeReminder } from './prompts.js';
 export type { LineRange, AtMention, AttachmentType, AttachmentMetadata, Attachment, CollectorOptions } from './promptProcessors.js';
 export { AtMentionParser, extract, hasAtMentions, isValidPath, removeAtMentions } from './AtMentionParser.js';
+
+// OAuth Types
+export type {
+  OAuthToken,
+  OAuthConfig,
+  AuthorizationOAuthConfig,
+  RefreshableOAuthConfig,
+  OAuthCredentials,
+  OAuthTokenResponse,
+} from './oauthTypes.js';
 export type { BuildSystemPromptOptions, BuildSystemPromptResult } from './promptBuilder.js';
 export { buildSystemPrompt } from './promptBuilder.js';
 export type { Assert, Extends, IsEqual, KeysEqual } from './typeAssertions.js';
