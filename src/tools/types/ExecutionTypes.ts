@@ -2,12 +2,10 @@ import type {
   ConfirmationHandler,
   ExecutionContext as SdkExecutionContext,
 } from '@blade-ai/agent-sdk/tools';
-import type { IBackgroundAgentManager } from '../../agent/types.js';
+import type { BackgroundAgentManagerLike, ToolCatalogLike, ToolRegistryLike } from '@blade-ai/agent-sdk/local';
 import type { ContextSnapshot } from '../../runtime/index.js';
 import type { MessageId, SessionId } from '../../types/branded.js';
 import type { BladeConfig, JsonObject } from '../../types/common.js';
-import type { ToolCatalog } from '../catalog/index.js';
-import type { ToolRegistry } from '../registry/ToolRegistry.js';
 import type { ToolResult } from './ToolResult.js';
 
 export type {
@@ -35,9 +33,9 @@ export interface ExecutionContext extends Omit<
   contextSnapshot?: ContextSnapshot;
   confirmationHandler?: ConfirmationHandler;
   bladeConfig?: BladeConfig;
-  backgroundAgentManager?: IBackgroundAgentManager;
-  toolRegistry?: ToolRegistry;
-  toolCatalog?: ToolCatalog;
+  backgroundAgentManager?: BackgroundAgentManagerLike;
+  toolRegistry?: ToolRegistryLike;
+  toolCatalog?: ToolCatalogLike;
 }
 
 export function getEffectiveProjectDir(context: ExecutionContext): string | undefined {
