@@ -29,6 +29,15 @@ export interface AgentDefinition {
   model?: string;
 }
 
+export interface McpServerStatus {
+  name: string;
+  status: 'connected' | 'disconnected' | 'connecting' | 'error';
+  toolCount: number;
+  tools?: string[];
+  connectedAt?: Date;
+  error?: string;
+}
+
 export interface ModelInfo {
   id: string;
   name: string;

@@ -150,14 +150,7 @@ export interface StreamOptions {
 
 export type { ModelInfo } from '@blade-ai/agent-sdk/local';
 
-export interface McpServerStatus {
-  name: string;
-  status: 'connected' | 'disconnected' | 'connecting' | 'error';
-  toolCount: number;
-  tools?: string[];
-  connectedAt?: Date;
-  error?: string;
-}
+export type { McpServerStatus } from '@blade-ai/agent-sdk/local';
 
 export interface McpToolInfo {
   name: string;
