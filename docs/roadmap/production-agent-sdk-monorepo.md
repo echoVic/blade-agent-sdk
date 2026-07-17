@@ -130,3 +130,19 @@ Dependency direction:
 - ✅ 120 conventional commits
 - ⚠️ `pnpm run verify` shows 22 pre-existing lint warnings (not migration-related)
 - ⚠️ Test suite has 22 pre-existing test file failures (not migration-related)
+
+### Migration Audit (After Slices #96-#120)
+
+**Shimmed root files:** 25 files marked `⚠️ MIGRATED`
+**Non-shimmed root files:** 67 files with real code
+**Total root reduction:** ~3,955 lines
+**Packages populated:**
+- `@blade-ai/ai` — model abstraction, chat, providers, streams
+- `@blade-ai/agent` — ConversationState, kernel, state, budget, recovery, tracing, protocol, ports
+- `@blade-ai/agent-sdk` — 20+ capabilities (hooks, context, tools, MCP, skills, OAuth, memory, session adapters, types)
+
+**Remaining coupled subsystems:**
+- Agent loop (Agent.ts 22K, LoopRunner 14K, LoopHookBuilder 14K)
+- MCP (McpClient 631L, McpRegistry 533L, HealthMonitor 285L, createMcpTool 355L)
+- Context (ContextManager 20K, CompactionService 17K, PersistentStore)
+- Hooks (HookExecutor 1.2K, HookRuntime 753L, HookManager 1.6K)
