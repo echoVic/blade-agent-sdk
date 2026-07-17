@@ -5,7 +5,7 @@ import type {
   ToolExecutionUpdateOf as SdkToolExecutionUpdate,
 } from '@blade-ai/agent-sdk/tools';
 import type { InternalLogger } from '../../logging/Logger.js';
-import type { ExecutionPipeline } from '../../tools/execution/ExecutionPipeline.js';
+import type { ExecutionPipelineLike } from '@blade-ai/agent-sdk/local';
 import type { ToolResult } from '../../tools/types/index.js';
 import type { AgentEvent } from '../AgentEvent.js';
 import type { ConversationState } from '../state/ConversationState.js';
@@ -31,7 +31,7 @@ export type AgentLoopHooks = AgentLoopAdapterHooks<
 export type AgentLoopConfig = AgentLoopAdapterConfig<
   ConversationState,
   TurnState,
-  ExecutionPipeline,
+  ExecutionPipelineLike,
   InternalLogger,
   TokenBudget,
   AgentLoopHooks
