@@ -370,6 +370,10 @@ export { OAuthProvider } from './OAuthProvider.js';
 export { HealthStatus } from './mcpHealth.js';
 export type { HealthCheckConfig } from './mcpHealth.js';
 
+// Session Kernel Store Adapter
+export { createKernelStorePort } from './SessionKernelStoreAdapter.js';
+export type { KernelStorePortOptions, SessionMessageStore } from './SessionKernelStoreAdapter.js';
+
 // Session Kernel Trace Adapter
 export { createKernelTracePort } from './SessionKernelTraceAdapter.js';
 export type { KernelTracePortOptions } from './SessionKernelTraceAdapter.js';
