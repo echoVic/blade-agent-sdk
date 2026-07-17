@@ -395,7 +395,7 @@ export type { ExecutionPipelineLike, ToolRegistryLike } from './kernelAdapterTyp
 export type { BackgroundAgentManagerLike, ConfirmationHandlerLike, ToolCatalogLike } from './turnStateTypes.js';
 
 // Agent Types
-export type { TurnLimitResponse } from './agentTypes.js';
+export type { AgentProgress, TurnLimitResponse } from './agentTypes.js';
 
 // Tool Catalog Types
 export type { ToolCatalogSourcePolicy, ToolSourceKind, ToolTrustLevel } from './toolCatalogTypes.js';

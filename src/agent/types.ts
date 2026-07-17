@@ -12,7 +12,7 @@ import type { CanUseTool, PermissionHandler } from '../types/permissions.js';
 import type { AgentSession } from './subagents/AgentSessionStore.js';
 import type { StartBackgroundAgentOptions } from './subagents/BackgroundAgentManager.js';
 import type { TokenBudgetConfig, TokenBudgetSnapshot } from '@blade-ai/agent/budget';
-import type { TurnLimitResponse } from '@blade-ai/agent-sdk/local';
+import type { AgentProgress, TurnLimitResponse } from '@blade-ai/agent-sdk/local';
 
 /**
  * 用户消息内容类型
@@ -32,13 +32,7 @@ export type UserMessageContent = string | ContentPart[];
  * - IBackgroundAgentManager: 完整接口（SessionRuntime 注入）
  */
 
-export interface AgentProgress {
-  toolUseCount: number;
-  tokenCount: number;
-  lastActivity?: string;
-  summary?: string;
-  updatedAt: number;
-}
+export type { AgentProgress };
 
 export interface IBackgroundAgentReader {
   getAgent(agentId: AgentId): AgentSession | undefined;
