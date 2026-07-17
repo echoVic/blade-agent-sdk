@@ -378,6 +378,10 @@ export type { KernelStorePortOptions, SessionMessageStore } from './SessionKerne
 export { createSessionKernelModel, resolveSessionModelConfig } from './SessionModelPort.js';
 export type { SessionKernelModel } from './SessionModelPort.js';
 
+// Session Kernel Hook Adapter
+export { createKernelHookPort } from './SessionKernelHookAdapter.js';
+export type { HookRuntimeLike, KernelHookPortOptions } from './SessionKernelHookAdapter.js';
+
 // Session Kernel Trace Adapter
 export { createKernelTracePort } from './SessionKernelTraceAdapter.js';
 export type { KernelTracePortOptions } from './SessionKernelTraceAdapter.js';
