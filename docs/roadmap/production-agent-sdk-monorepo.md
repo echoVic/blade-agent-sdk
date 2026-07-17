@@ -82,7 +82,7 @@ Dependency direction:
 
 ---
 
-## Migration Progress — 95 Slices Completed
+## Migration Progress — 96 Slices Completed
 
 ### Subsystems at 100% (Complete)
 
@@ -117,7 +117,7 @@ Dependency direction:
 
 | Area | Files | Complexity |
 |---|---|---|
-| **Hooks** | HookExecutor (1243L), HookRuntime (753L), HookManager (1623L) | Blocked by agent/session types |
+| **Hooks** | HookExecutor (1243L), HookRuntime (753L), HookManager (1623L) | Blocked by agent/session types; types/schemas migrated in #96 |
 | **MCP** | HealthMonitor, createMcpTool, McpClient, McpRegistry | Internal circular deps (auth, health check) |
 | **Context** | ContextManager (736L), CompactionService, PersistentStore (875L) | Blocked by session/hooks |
 | **Tools/types** | ExecutionTypes (58L), ToolDefinition (138L) | Blocked by agent/tools catalog |
@@ -127,6 +127,6 @@ Dependency direction:
 
 - ✅ Type-check: 0 errors (root + all packages)
 - ✅ Boundaries: green
-- ✅ 95 conventional commits
+- ✅ 96 conventional commits
 - ⚠️ `pnpm run verify` shows 22 pre-existing lint warnings (not migration-related)
 - ⚠️ Test suite has 22 pre-existing test file failures (not migration-related)

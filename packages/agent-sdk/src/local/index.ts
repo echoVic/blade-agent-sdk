@@ -128,6 +128,76 @@ export { SecureProcessExecutor } from './SecureProcessExecutor.js';
 export { DEFAULT_HOOK_CONFIG, mergeHookConfig, parseEnvConfig } from './HookConfig.js';
 export type { HookConfig } from './HookConfig.js';
 
+// Hook Types
+export type {
+  HookInputBase,
+  HookInput,
+  Hook,
+  HookOutput,
+  HookSpecificOutput,
+  HookMatcher,
+  HookExecutionContext,
+  HookExecutionResult,
+  PreToolUseInput,
+  PostToolUseInput,
+  StopInput,
+  PostToolUseFailureInput,
+  PermissionRequestInput,
+  UserPromptSubmitInput,
+  SessionStartInput,
+  SessionEndInput,
+  SubagentStartInput,
+  SubagentStopInput,
+  TaskCompletedInput,
+  NotificationInput,
+  CompactionInput,
+  StopFailureInput,
+  PreCompactInput,
+  PostCompactInput,
+  ElicitationInput,
+  ElicitationResultInput,
+  ConfigChangeInput,
+  CwdChangedInput,
+  FileChangedInput,
+  InstructionsLoadedInput,
+  CommandHook,
+  ProcessResult,
+  PreToolHookResult,
+  PostToolHookResult,
+  StopHookResult,
+  PostToolUseFailureHookResult,
+  PermissionRequestHookResult,
+  UserPromptSubmitHookResult,
+  SessionStartHookResult,
+  SessionEndHookResult,
+  SubagentStartHookResult,
+  SubagentStopHookResult,
+  TaskCompletedHookResult,
+  NotificationHookResult,
+  CompactionHookResult,
+  StopFailureHookResult,
+  PreCompactHookResult,
+  PostCompactHookResult,
+  ElicitationHookResult,
+  ElicitationResultHookResult,
+  ConfigChangeHookResult,
+  CwdChangedHookResult,
+  FileChangedHookResult,
+  InstructionsLoadedHookResult,
+} from './hookTypes.js';
+export {
+  DecisionBehavior,
+  HookType,
+  HookExitCode,
+} from './hookTypes.js';
+
+// Hook Schemas
+export {
+  getHookSchemas,
+  safeParseHookOutput,
+  JsonValueSchema,
+} from './hookSchemas.js';
+
 export { FileAnalyzer, analyzeFiles, readFilesContent, type FileContent, type FileReference } from './FileAnalyzer.js';
 export { Matcher } from './Matcher.js';
 export type { MatcherConfig, MatchContext } from './Matcher.js';
