@@ -3,7 +3,7 @@
  * Zero root class dependencies.
  */
 
-import type { JsonValue, TokenUsage } from '../types/common.js';
+import type { JsonObject, JsonValue, TokenUsage } from '../types/common.js';
 
 export interface ToolCallRecord {
   id: string;
@@ -61,4 +61,11 @@ export interface ProviderConfig {
   organization?: string;
   apiVersion?: string;
   projectId?: string;
+}
+
+export interface HookOutput {
+  action: 'continue' | 'skip' | 'abort';
+  modifiedInput?: JsonObject | string;
+  modifiedOutput?: JsonValue;
+  reason?: string;
 }
