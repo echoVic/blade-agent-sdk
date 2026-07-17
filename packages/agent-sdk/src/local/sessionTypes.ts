@@ -44,6 +44,17 @@ export interface McpToolInfo {
   serverName: string;
 }
 
+export interface ForkSessionOptions {
+  messageId?: string;
+}
+
+export interface ForkSessionResult {
+  sessionId: string;
+  parentSessionId: string;
+  messageCount: number;
+  forkedAt?: string;
+}
+
 export interface ModelInfo {
   id: string;
   name: string;

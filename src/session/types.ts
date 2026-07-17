@@ -154,16 +154,7 @@ export type { McpServerStatus } from '@blade-ai/agent-sdk/local';
 
 export type { McpToolInfo } from '@blade-ai/agent-sdk/local';
 
-export interface ForkSessionOptions {
-  messageId?: string;
-}
-
-export interface ForkSessionResult {
-  sessionId: SessionId;
-  parentSessionId: string;
-  messageCount: number;
-  forkedAt?: string;
-}
+export type { ForkSessionOptions, ForkSessionResult } from '@blade-ai/agent-sdk/local';
 
 export interface ISession extends AsyncDisposable {
   readonly sessionId: SessionId;
