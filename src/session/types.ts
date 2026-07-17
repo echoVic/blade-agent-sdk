@@ -79,7 +79,7 @@ export interface HookOutput {
   reason?: string;
 }
 
-export type HookCallback = (input: HookInput) => Promise<HookOutput>;
+export type { HookCallback } from '@blade-ai/agent-sdk/local';
 
 export type SessionHookEvent =
   | typeof HookEvent.PreToolUse

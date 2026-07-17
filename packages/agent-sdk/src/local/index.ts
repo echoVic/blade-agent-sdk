@@ -144,8 +144,7 @@ export type {  HookConfig } from './HookConfig.js';
 export type { 
   HookInputBase,
     Hook,
-  HookOutput,
-  HookSpecificOutput,
+    HookSpecificOutput,
   HookMatcher,
   HookExecutionContext,
   HookExecutionResult,
@@ -398,7 +397,7 @@ export type {  BackgroundAgentManagerLike, ConfirmationHandlerLike, ToolCatalogL
 export type {  AgentProgress, ChatContext, IBackgroundAgentController, IBackgroundAgentManager, IBackgroundAgentReader, TurnLimitResponse, UserMessageContent } from './agentTypes.js';
 
 // Session Types
-export type { HookInput, AgentDefinition,  ModelInfo, PromptResult, ProviderConfig, StreamMessage, SubagentInfo, ToolCallRecord } from './sessionTypes.js';
+export type { HookCallback, HookInput, HookOutput, AgentDefinition,  ModelInfo, PromptResult, ProviderConfig, StreamMessage, SubagentInfo, ToolCallRecord } from './sessionTypes.js';
 
 // Tool Catalog Types
 export type {  ToolCatalogSourcePolicy, ToolSourceKind, ToolTrustLevel } from './toolCatalogTypes.js';

@@ -4,6 +4,7 @@
  */
 
 import type { JsonObject, JsonValue, TokenUsage } from '../types/common.js';
+import { DecisionBehavior } from './hookTypes.js';
 
 export interface ToolCallRecord {
   id: string;
@@ -64,11 +65,16 @@ export interface ProviderConfig {
 }
 
 export interface HookOutput {
-  action: 'continue' | 'skip' | 'abort';
+  action?: 'continue' | 'skip' | 'abort';
   modifiedInput?: JsonObject | string;
   modifiedOutput?: JsonValue;
   reason?: string;
+  systemMessage?: string;
+  suppressOutput?: boolean;
+  decision?: { behavior?: DecisionBehavior };
 }
+
+export type HookCallback = (input: HookInput) => Promise<HookOutput>;
 
 export interface HookInput {
   event: unknown;
