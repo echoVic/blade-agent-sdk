@@ -4,6 +4,7 @@ export { tool, createSdkMcpServer, type SdkTool, type SdkMcpServerHandle, type T
 
 // Still root-only — not yet migrated
 export { createMcpTool } from './createMcpTool.js';
-export { HealthMonitor, HealthStatus, type HealthCheckConfig } from './HealthMonitor.js';
+export { HealthMonitor } from './HealthMonitor.js';
+export { HealthStatus, type HealthCheckConfig } from '@blade-ai/agent-sdk/local';
 export { ErrorType, McpClient } from './McpClient.js';
 export { McpRegistry, type McpServerInfo } from './McpRegistry.js';
