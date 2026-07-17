@@ -1,7 +1,11 @@
 /**
  * Agent type definitions extracted from root agent/types.ts.
- * Zero root dependencies.
+ * Zero root dependencies. May import from @blade-ai/ai and @blade-ai/agent.
  */
+
+import type { ContentPart } from '@blade-ai/ai/chat';
+
+export type UserMessageContent = string | ContentPart[];
 
 export interface TurnLimitResponse {
   continue: boolean;

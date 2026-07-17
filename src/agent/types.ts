@@ -12,13 +12,13 @@ import type { CanUseTool, PermissionHandler } from '../types/permissions.js';
 import type { AgentSession } from './subagents/AgentSessionStore.js';
 import type { StartBackgroundAgentOptions } from './subagents/BackgroundAgentManager.js';
 import type { TokenBudgetConfig, TokenBudgetSnapshot } from '@blade-ai/agent/budget';
-import type { AgentProgress, IBackgroundAgentController, TurnLimitResponse } from '@blade-ai/agent-sdk/local';
+import type { AgentProgress, IBackgroundAgentController, TurnLimitResponse, UserMessageContent } from '@blade-ai/agent-sdk/local';
 
 /**
  * 用户消息内容类型
  * 支持纯文本或多模态内容（文本 + 图片）
  */
-export type UserMessageContent = string | ContentPart[];
+export type { UserMessageContent };
 
 /**
  * 后台 Agent 管理器的最小接口
