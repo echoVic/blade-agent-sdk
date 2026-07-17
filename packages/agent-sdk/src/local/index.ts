@@ -384,6 +384,9 @@ export type { HookRuntimeLike, KernelHookPortOptions } from './SessionKernelHook
 
 // MCP Capability Projector
 export { projectMcpCapabilities } from './McpCapabilityProjector.js';
+
+// MCP Server Types
+export type { McpClientLike, McpServerInfo } from './mcpServerTypes.js';
 export type { McpCapabilitySource, McpServerCapability, McpServerInfoForCapability, McpToolCapability } from './McpCapabilityProjector.js';
 
 // Session Kernel Trace Adapter
