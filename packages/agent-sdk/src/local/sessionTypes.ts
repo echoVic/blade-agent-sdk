@@ -14,6 +14,13 @@ export interface ToolCallRecord {
   isError?: boolean;
 }
 
+export interface ModelInfo {
+  id: string;
+  name: string;
+  provider: string;
+  maxContextTokens?: number;
+}
+
 export interface PromptResult {
   result: string;
   toolCalls: ToolCallRecord[];

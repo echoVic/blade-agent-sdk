@@ -166,12 +166,7 @@ export interface StreamOptions {
   includeThinking?: boolean;
 }
 
-export interface ModelInfo {
-  id: string;
-  name: string;
-  provider: string;
-  maxContextTokens?: number;
-}
+export type { ModelInfo } from '@blade-ai/agent-sdk/local';
 
 export interface McpServerStatus {
   name: string;

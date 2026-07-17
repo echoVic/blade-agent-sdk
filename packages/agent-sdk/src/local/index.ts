@@ -399,7 +399,7 @@ export type { BackgroundAgentManagerLike, ConfirmationHandlerLike, ToolCatalogLi
 export type { AgentProgress, ChatContext, IBackgroundAgentController, IBackgroundAgentManager, IBackgroundAgentReader, TurnLimitResponse, UserMessageContent } from './agentTypes.js';
 
 // Session Types
-export type { PromptResult, ProviderConfig, StreamMessage, ToolCallRecord } from './sessionTypes.js';
+export type { ModelInfo, PromptResult, ProviderConfig, StreamMessage, ToolCallRecord } from './sessionTypes.js';
 
 // Tool Catalog Types
 export type { ToolCatalogSourcePolicy, ToolSourceKind, ToolTrustLevel } from './toolCatalogTypes.js';
