@@ -6,11 +6,6 @@ import type { ExecutionContext } from './ExecutionTypes.js';
 import type { ToolBehavior, ToolKind } from './ToolKind.js';
 import type { ToolResult, ToolValidationError } from './ToolResult.js';
 
-export interface FunctionDeclaration {
-  name: string;
-  description: string;
-  parameters: JSONSchema7;
-}
 
 export interface ToolInvocation<TParams = JsonObject, TResult = ToolResult> {
   readonly toolName: string;
@@ -41,18 +36,9 @@ export type ToolSchema<TSchema extends z.ZodSchema = z.ZodSchema> = TSchema | ((
 
 export type ToolDescriptionResolver<TParams = JsonObject> = (params?: TParams) => ToolDescription;
 
-export type { PreparedPermissionMatcher, ToolExposureConfig, ToolExposureMode } from '@blade-ai/agent-sdk/local';
+export type { FunctionDeclaration, PreparedPermissionMatcher, ToolExposureConfig, ToolExposureMode } from '@blade-ai/agent-sdk/local';
 
-export interface ToolExposureConfig {
-  mode?: ToolExposureMode;
-  alwaysLoad?: boolean;
-  discoveryHint?: string;
-}
 
-export interface PreparedPermissionMatcher {
-  signatureContent?: string;
-  abstractRule?: string;
-}
 
 export interface ToolDefinition<TParams = JsonObject, TData extends JsonValue = JsonValue> {
   name: string;
