@@ -1,12 +1,9 @@
 import type { JSONSchema7 } from 'json-schema';
 import type { ContextSnapshot } from '../../runtime/index.js';
 import type { IChatService, Message } from '@blade-ai/ai/chat';
-import type { ToolCatalog } from '../../tools/catalog/index.js';
-import type { ToolRegistry } from '../../tools/registry/ToolRegistry.js';
-import type { ConfirmationHandler } from '../../tools/types/ExecutionTypes.js';
+import type { BackgroundAgentManagerLike, ConfirmationHandlerLike, ToolCatalogLike, ToolRegistryLike } from '@blade-ai/agent-sdk/local';
 import type { SessionId } from '../../types/branded.js';
 import type { BladeConfig, PermissionMode } from '../../types/common.js';
-import type { IBackgroundAgentManager } from '../types.js';
 
 export type LlmToolDefinition = {
   name: string;
@@ -34,11 +31,11 @@ export interface LoopExecutionContext {
   userId: string;
   contextSnapshot?: ContextSnapshot;
   skillActivationPaths?: string[];
-  confirmationHandler?: ConfirmationHandler;
+  confirmationHandler?: ConfirmationHandlerLike;
   bladeConfig?: BladeConfig;
-  backgroundAgentManager?: IBackgroundAgentManager;
-  toolRegistry?: ToolRegistry;
-  toolCatalog?: ToolCatalog;
+  backgroundAgentManager?: BackgroundAgentManagerLike;
+  toolRegistry?: ToolRegistryLike;
+  toolCatalog?: ToolCatalogLike;
   discoveredTools?: string[];
 }
 

@@ -390,6 +390,9 @@ export type { McpClientLike, McpServerInfo } from './mcpServerTypes.js';
 
 // Kernel Adapter Types
 export type { ExecutionPipelineLike, ToolRegistryLike } from './kernelAdapterTypes.js';
+
+// Agent State Types
+export type { BackgroundAgentManagerLike, ConfirmationHandlerLike, ToolCatalogLike } from './turnStateTypes.js';
 export type { McpCapabilitySource, McpServerCapability, McpServerInfoForCapability, McpToolCapability } from './McpCapabilityProjector.js';
 
 // Session Kernel Trace Adapter
