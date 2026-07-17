@@ -20,3 +20,14 @@ export interface PromptResult {
   usage: TokenUsage;
   duration: number;
 }
+
+export type StreamMessage =
+  | { type: 'turn_start'; turn: number; sessionId: string }
+  | { type: 'turn_end'; turn: number; sessionId: string }
+  | { type: 'content'; delta: string; sessionId: string }
+  | { type: 'thinking'; delta: string; sessionId: string }
+  | { type: 'tool_use'; id: string; name: string; input: JsonValue; sessionId: string }
+  | { type: 'tool_progress'; id: string; name: string; message: string; sessionId: string }
+  | { type: 'tool_message'; id: string; name: string; message: string; sessionId: string }
+  | { type: 'tool_runtime_patch'; id: string; name: string; patch: unknown; sessionId: string }
+  | { type: 'tool_context_patch'; id: string; name: string; patch: unknown; sessionId: string };

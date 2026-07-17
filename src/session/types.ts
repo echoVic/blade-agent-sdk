@@ -45,34 +45,7 @@ export type { PromptResult };
 }
 
 export type StreamMessage =
-  | { type: 'turn_start'; turn: number; sessionId: SessionId }
-  | { type: 'turn_end'; turn: number; sessionId: SessionId }
-  | { type: 'content'; delta: string; sessionId: SessionId }
-  | { type: 'thinking'; delta: string; sessionId: SessionId }
-  | { type: 'tool_use'; id: string; name: string; input: JsonValue; sessionId: SessionId }
-  | { type: 'tool_progress'; id: string; name: string; message: string; sessionId: SessionId }
-  | { type: 'tool_message'; id: string; name: string; message: string; sessionId: SessionId }
-  | {
-      type: 'tool_runtime_patch';
-      id: string;
-      name: string;
-      patch: RuntimePatch;
-      sessionId: SessionId;
-    }
-  | {
-      type: 'tool_context_patch';
-      id: string;
-      name: string;
-      patch: RuntimeContextPatch;
-      sessionId: SessionId;
-    }
-  | {
-      type: 'tool_new_messages';
-      id: string;
-      name: string;
-      messages: Message[];
-      sessionId: SessionId;
-    }
+export type { StreamMessage };
   | {
       type: 'tool_permission_updates';
       id: string;
