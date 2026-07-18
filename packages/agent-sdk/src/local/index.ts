@@ -426,3 +426,4 @@ export {  PlanExecutor } from './planExecutor.js';
 export {  LoopState } from './loopState.js';
 export {  AttachmentCollector } from './attachmentCollector.js';
 export {  SubagentRegistry } from './subagentRegistry.js';
+export {  AgentSessionStore } from './agentSessionStore.js';
