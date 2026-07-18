@@ -37,6 +37,10 @@
       "types": "./dist/model/index.d.ts",
       "import": "./dist/model/index.js"
     },
+    "./providers": {
+      "types": "./dist/providers/index.d.ts",
+      "import": "./dist/providers/index.js"
+    },
     "./providers/openai-compatible": {
       "types": "./dist/providers/openai-compatible/index.d.ts",
       "import": "./dist/providers/openai-compatible/index.js"
