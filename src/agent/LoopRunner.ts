@@ -28,7 +28,7 @@ import {
 import { getEnvironmentContext } from '../utils/environment.js';
 import type { AgentEvent } from './AgentEvent.js';
 import { agentLoop } from './AgentLoop.js';
-import { isRecord } from '@blade-ai/agent-sdk/local';
+import { hasPersistableUserContent, isRecord } from '@blade-ai/agent-sdk/local';
 import type { CompactionHandler } from './CompactionHandler.js';
 import type { ModelManager } from './ModelManager.js';
 import { RuntimePatchManager } from './RuntimePatchManager.js';
@@ -53,13 +53,6 @@ function syncContextMessages(context: ChatContext, convState: ConversationState)
   context.messages = convState.getContextMessages();
 }
 
-function hasPersistableUserContent(message: UserMessageContent): boolean {
-  if (typeof message === 'string') {
-    return message.trim() !== '';
-  }
-
-  return message.some((part) => part.type === 'image_url' || part.text.trim() !== '');
-}
 
 export class LoopRunner {
   readonly runtimePatchManager: RuntimePatchManager;

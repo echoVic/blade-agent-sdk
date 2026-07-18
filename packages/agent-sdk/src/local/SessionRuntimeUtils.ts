@@ -512,3 +512,14 @@ export function inferAffectedPaths(params: unknown): string[] {
 export function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
+
+/**
+ * Checks whether user message content contains persistable data
+ * (non-empty text or image_url parts).
+ */
+export function hasPersistableUserContent(message: { type: string; text: string }[]): boolean {
+  if (!Array.isArray(message)) {
+    return false;
+  }
+  return message.some((part) => part.type === 'image_url' || (part.text ?? '').trim() !== '');
+}
