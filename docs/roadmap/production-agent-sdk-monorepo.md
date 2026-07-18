@@ -82,7 +82,7 @@ Dependency direction:
 
 ---
 
-## Migration Progress — 173 Slices Completed
+## Migration Progress — 174 Slices Completed
 
 ### Subsystems at 100% (Complete)
 
@@ -127,7 +127,7 @@ Dependency direction:
 
 - ✅ Type-check: 0 errors (root + all packages)
 - ✅ Boundaries: green
-- ✅ 173 conventional commits
+- ✅ 174 conventional commits
 - ⚠️ `pnpm run verify` shows 22 pre-existing lint warnings (not migration-related)
 - ⚠️ Test suite has 22 pre-existing test file failures (not migration-related)
 
@@ -403,6 +403,16 @@ Dependency direction:
 **Dependencies:** All method types from agent-sdk or packages: `SessionState` (sessionTypes.ts #172 → self), `SessionSnapshot` (sessionTypes.ts #171 → self), `SessionSummary` (sessionTypes.ts #171 → self), `SessionId` (branded → SHIMMED), `Message` (@blade-ai/ai/chat)
 **Barrel export:** Added `SessionStore` to existing barrel in local/index.ts
 **Notes:** First storage contract interface migrated to agent-sdk; all 5 dependency types from same file or packages; zero root dependencies; enables future SessionStore implementation migration; 24 slices completed (#150-#173)
+
+### Slice #174 — SessionAgentKernelOptions + StreamOptions Extraction
+
+**Capability:** SessionAgentKernelOptions + SessionAgentKernelStreamOptions interfaces (agent loop kernel configuration) — appended to existing agent-sdk/local/sessionTypes.ts (230L → 255L, +25L)
+**Target:** `@blade-ai/agent-sdk/local` (via `sessionTypes.ts`)
+**Root file: Not changed** — types coexist in root SessionRuntime.ts (safe)
+**Dependencies:** All field types from packages or shimmed: `ModelPort` (@blade-ai/ai), `AgentModelRequestDefaults` (@blade-ai/agent/kernel), `TraceRecorder` (TraceRecorder.js → SHIMMED), `ExecutionContext` (tools/types/ExecutionTypes.js → SHIMMED), `AgentToolCall` (@blade-ai/agent/protocol), `AgentEvent` (agentEvent.js #160 → self)
+**Import fixes:** `ExecutionContext` → `../tools/types/ExecutionTypes.js` (not types/common), `AgentToolCall` → `@blade-ai/agent/protocol` (not agent/loop)
+**Barrel export:** Added both types to existing barrel in local/index.ts
+**Notes:** First kernel configuration interfaces in agent-sdk; all dependency paths discovered through type-check iteration; 25 slices completed (#150-#174)
 
 **Notes:** Sixth tools file migrated (#150-#155); all 5 core tools subdirectories now have files in agent-sdk (types, registry, catalog, exposure, core); completes the horizontal tool subsystem migration
 

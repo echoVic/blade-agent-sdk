@@ -4,10 +4,16 @@
  */
 
 import type { JsonObject, JsonValue, TokenUsage } from '../types/common.js';
+import type { ExecutionContext } from '../tools/types/ExecutionTypes.js';
 import { DecisionBehavior } from './hookTypes.js';
 import type { MessageId, SessionId } from './branded.js';
 import type { SessionInfo } from './context.js';
 import type { Message } from '@blade-ai/ai/chat';
+import type { ModelPort } from '@blade-ai/ai';
+import type { AgentModelRequestDefaults } from '@blade-ai/agent/kernel';
+import type { TraceRecorder } from './TraceRecorder.js';
+import type { AgentToolCall } from '@blade-ai/agent/protocol';
+import type { AgentEvent } from './agentEvent.js';
 
 export interface ToolCallRecord {
   id: string;
@@ -217,4 +223,31 @@ export interface SessionStore {
   ): Promise<SessionSnapshot | null>;
   listSessions(): Promise<string[]>;
   getSessionSummary(sessionId: SessionId): Promise<SessionSummary | null>;
+}
+
+/**
+ * SessionAgentKernelOptions — Agent 内核启动选项
+ *
+ * 配置 agent loop 运行时的模型、追踪、执行上下文。
+ */
+export interface SessionAgentKernelOptions {
+  model?: ModelPort;
+  modelId?: string;
+  modelRequestDefaults?: AgentModelRequestDefaults;
+  traceRecorder?: TraceRecorder;
+  createExecutionContext?: (
+    toolCall: AgentToolCall,
+    signal?: AbortSignal,
+  ) => ExecutionContext;
+  maxSteps?: number;
+}
+
+/**
+ * SessionAgentKernelStreamOptions — 流式 Agent 内核启动选项
+ *
+ * 扩展 SessionAgentKernelOptions，增加 Agent 事件回调。
+ */
+export interface SessionAgentKernelStreamOptions
+  extends SessionAgentKernelOptions {
+  onAgentEvent?: (event: AgentEvent) => void;
 }
