@@ -82,7 +82,7 @@ Dependency direction:
 
 ---
 
-## Migration Progress — 179 Slices Completed
+## Migration Progress — 180 Slices Completed
 
 ### Subsystems at 100% (Complete)
 
@@ -127,7 +127,7 @@ Dependency direction:
 
 - ✅ Type-check: 0 errors (root + all packages)
 - ✅ Boundaries: green
-- ✅ 179 conventional commits
+- ✅ 180 conventional commits
 - ⚠️ `pnpm run verify` shows 22 pre-existing lint warnings (not migration-related)
 - ⚠️ Test suite has 22 pre-existing test file failures (not migration-related)
 
@@ -477,7 +477,16 @@ After 29 slices (#150-#178), approximately 4,160 lines migrated from root to `@b
 - Session: Session.ts (~800L), SessionRuntime.ts (~700L), SessionStore.ts (~620L)
 - Context: CompactionService.ts (539L), ContextManager.ts (736L), PersistentStore.ts (875L)
 - Hooks: HookRuntime.ts (753L)
-**Total slices completed:** 179 (#150-#179)
+**Total slices completed:** 180 (#150-#180)
+
+### Slice #180 — Fix Pre-Existing Syntax Errors in session/types.ts
+
+**Capability:** Code quality — removed 2 pre-existing syntax errors in root `src/session/types.ts`
+- Removed orphaned `}` (artifact from incomplete type refactoring)
+- Removed duplicate `export type { StreamMessage }` (conflicted with inline union definition)
+- Preserved the inline `StreamMessage` union type definition
+- File now clean and tractable for future migration
+**Notes:** Phase 2 Strategy 4; 31 slices completed (#150-#180)
 
 **Notes:** Sixth tools file migrated (#150-#155); all 5 core tools subdirectories now have files in agent-sdk (types, registry, catalog, exposure, core); completes the horizontal tool subsystem migration
 

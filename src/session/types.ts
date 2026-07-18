@@ -34,10 +34,8 @@ export type { ProviderConfig };
 export type { ToolCallRecord };
 
 export type { PromptResult };
-}
 
 export type StreamMessage =
-export type { StreamMessage };
   | {
       type: 'tool_permission_updates';
       id: string;
