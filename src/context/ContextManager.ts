@@ -10,7 +10,7 @@ import {
 } from '../session/SessionStore.js';
 import { SessionId } from '../types/branded.js';
 import type { JsonObject, JsonValue } from '../types/common.js';
-import { isJsonObject } from '@blade-ai/agent-sdk/local';
+import { isJsonObject, isUsageMetadata } from '@blade-ai/agent-sdk/local';
 import { ContextCompressor } from './processors/ContextCompressor.js';
 import { ContextFilter } from './processors/ContextFilter.js';
 import { CacheStore } from './storage/CacheStore.js';
@@ -28,14 +28,6 @@ import type {
 } from './types.js';
 
 type SessionConfiguration = JsonObject & { sessionId?: SessionId };
-
-function isUsageMetadata(
-  value: unknown,
-): value is { input_tokens: number; output_tokens: number } {
-  return isJsonObject(value)
-    && typeof value.input_tokens === 'number'
-    && typeof value.output_tokens === 'number';
-}
 
 function isChatToolCall(value: unknown): value is ChatToolCall {
   return isJsonObject(value)

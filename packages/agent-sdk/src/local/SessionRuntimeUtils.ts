@@ -145,3 +145,15 @@ export function isSessionToolCall(value: unknown): value is NonNullable<Message[
 export function isJsonObject(value: unknown): value is JsonObject {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
+
+/**
+ * Type guard: checks if a value has the shape of usage metadata
+ * with input_tokens and output_tokens number fields.
+ */
+export function isUsageMetadata(
+  value: unknown,
+): value is { input_tokens: number; output_tokens: number } {
+  return isJsonObject(value)
+    && typeof value.input_tokens === 'number'
+    && typeof value.output_tokens === 'number';
+}
