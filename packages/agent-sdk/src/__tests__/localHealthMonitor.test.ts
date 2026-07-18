@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { HealthMonitor } from '../local/HealthMonitor.js';
-import type { McpClientLike } from '../local/mcpTypes.js';
+import type { McpClientLike, McpToolCallResponse } from '../local/mcpTypes.js';
 import { McpConnectionStatus } from '../local/mcpTypes.js';
 import { HealthStatus } from '../local/mcpHealth.js';
 
@@ -15,6 +15,9 @@ class MockMcpClient implements McpClientLike {
   }
   connect(): Promise<void> {
     return Promise.resolve();
+  }
+  callTool(_name: string, _params: Record<string, unknown>): Promise<McpToolCallResponse> {
+    return Promise.resolve({ content: [], isError: false });
   }
 }
 

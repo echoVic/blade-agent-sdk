@@ -82,7 +82,7 @@ Dependency direction:
 
 ---
 
-## Migration Progress — 147 Slices Completed
+## Migration Progress — 148 Slices Completed
 
 ### Subsystems at 100% (Complete)
 
@@ -127,7 +127,7 @@ Dependency direction:
 
 - ✅ Type-check: 0 errors (root + all packages)
 - ✅ Boundaries: green
-- ✅ 147 conventional commits
+- ✅ 148 conventional commits
 - ⚠️ `pnpm run verify` shows 22 pre-existing lint warnings (not migration-related)
 - ⚠️ Test suite has 22 pre-existing test file failures (not migration-related)
 
@@ -143,7 +143,7 @@ Dependency direction:
 
 **Remaining coupled subsystems:**
 - Agent loop (Agent.ts 22K, LoopRunner 14K, LoopHookBuilder 14K)
-- MCP (McpRegistry 533L, createMcpTool 355L)
+- MCP (McpRegistry 533L)
 - Context (ContextManager 20K, CompactionService 17K, PersistentStore)
 - Hooks (HookRuntime 753L)
 
@@ -185,3 +185,13 @@ Dependency direction:
 **New test:** `packages/agent-sdk/src/__tests__/localMcpClient.test.ts` (3 tests: instantiation, ErrorType enum, EventEmitter)
 **Import adjustments:** `toError` from `@blade-ai/agent/utils`; `getPackageName/getVersion` from `./packageInfo.js`; `OAuthProvider`/`OAuthTokenStorage` from local files; `types.js` → `mcpTypes.js`
 **Notes:** Uses `@modelcontextprotocol/sdk`, `node:events`, `process.env` — Node-only, appropriate for `/local`
+
+### Slice #148 — createMcpTool Migration
+
+**Capability:** JSON Schema → Zod conversion for MCP tools; MCP tool definition → Blade Tool factory
+**Target:** `@blade-ai/agent-sdk/local`
+**Root file shimmed:** `src/mcp/createMcpTool.ts` → re-export from `@blade-ai/agent-sdk/local`
+**Pre-requisite:** Added `callTool` to `McpClientLike` interface; McpClient migrated (#147)
+**New test:** `packages/agent-sdk/src/__tests__/localCreateMcpTool.test.ts` (1 test)
+**Import adjustments:** `createTool` from agent-sdk's `../tools/index.js`; `ToolKind` from `../tools/types/ToolKind.js`; `ToolErrorType` from `../tools/types/index.js`; `McpClientLike`/`McpToolDefinition` from `./mcpTypes.js`; `getErrorMessage` from `@blade-ai/agent/utils`; replaced `z.discriminatedUnion` with `z.union` for oneOf fallback
+**Notes:** JSON Schema → Zod converter is platform-agnostic (no Node APIs); the agent-sdk already had a simpler `createMcpTool` in `defaultMcpRuntime.ts` but this version adds schema validation
