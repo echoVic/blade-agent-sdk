@@ -251,3 +251,24 @@ export interface SessionAgentKernelStreamOptions
   extends SessionAgentKernelOptions {
   onAgentEvent?: (event: AgentEvent) => void;
 }
+
+/**
+ * ResumeOptions — 恢复会话选项
+ *
+ * 包含恢复已有 Session 所需的会话 ID。
+ * Session.ts 中使用：extends SessionOptions + sessionId。
+ */
+export interface ResumeOptions {
+  sessionId: SessionId;
+}
+
+/**
+ * ForkOptions — 派生会话选项
+ *
+ * 包含派生子会话所需的父会话 ID 和可选派生消息 ID。
+ * Session.ts 中使用：extends ResumeOptions + messageId。
+ */
+export interface ForkOptions {
+  sessionId: SessionId;
+  messageId?: string;
+}
