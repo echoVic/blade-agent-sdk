@@ -82,7 +82,7 @@ Dependency direction:
 
 ---
 
-## Migration Progress — 153 Slices Completed
+## Migration Progress — 154 Slices Completed
 
 ### Subsystems at 100% (Complete)
 
@@ -127,7 +127,7 @@ Dependency direction:
 
 - ✅ Type-check: 0 errors (root + all packages)
 - ✅ Boundaries: green
-- ✅ 153 conventional commits
+- ✅ 154 conventional commits
 - ⚠️ `pnpm run verify` shows 22 pre-existing lint warnings (not migration-related)
 - ⚠️ Test suite has 22 pre-existing test file failures (not migration-related)
 
@@ -240,3 +240,12 @@ Dependency direction:
 **New test:** `packages/agent-sdk/src/__tests__/localToolCatalog.test.ts` (8 tests: instantiation, register, entries with source info, unregister, declarations, search, MCP registration, MCP removal by server name)
 **Import adjustments:** `../search/toolSearch.js` → `../toolSearch.js` (flat directory); `@blade-ai/agent-sdk/local` → `../public-index.js` (types are in tools barrel, not local)
 **Notes:** Unlocks ToolExposurePlanner; fourth tools file migrated (#150-#153); tools subsystem now has first 4 non-trivial files in agent-sdk
+
+### Slice #154 — ToolExposurePlanner Migration
+
+**Capability:** Tool exposure planning (declaration generation, exposure mode resolution, runtime policy filtering, allow/deny selectors, discoverable tool entries)
+**Target:** `@blade-ai/agent-sdk/tools/exposure`
+**Root file shimmed:** `src/tools/exposure/ToolExposurePlanner.ts` → re-export from `@blade-ai/agent-sdk/tools/exposure`
+**New test:** `packages/agent-sdk/src/__tests__/localToolExposurePlanner.test.ts` (5 tests: instantiation, eager plan, deny policy, deferred mode, discovered tools)
+**Import adjustments:** `resolveToolBehaviorHint` → `../types/ToolKind.js`; `RuntimeToolPolicySnapshot` → separate import+re-export pattern; `tool.exposure` → `tool.exposure?.` (null safety); `displayName` → `tool.displayName ?? tool.name` (agent-sdk optional property)
+**Notes:** Fifth tools file migrated (#150-#154); completed another tools/exposure directory (after types, registry, catalog); remaining tools: createTool (644L), builtin/index (49L)
