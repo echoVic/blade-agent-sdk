@@ -82,7 +82,7 @@ Dependency direction:
 
 ---
 
-## Migration Progress — 174 Slices Completed
+## Migration Progress — 175 Slices Completed
 
 ### Subsystems at 100% (Complete)
 
@@ -127,7 +127,7 @@ Dependency direction:
 
 - ✅ Type-check: 0 errors (root + all packages)
 - ✅ Boundaries: green
-- ✅ 174 conventional commits
+- ✅ 175 conventional commits
 - ⚠️ `pnpm run verify` shows 22 pre-existing lint warnings (not migration-related)
 - ⚠️ Test suite has 22 pre-existing test file failures (not migration-related)
 
@@ -413,6 +413,15 @@ Dependency direction:
 **Import fixes:** `ExecutionContext` → `../tools/types/ExecutionTypes.js` (not types/common), `AgentToolCall` → `@blade-ai/agent/protocol` (not agent/loop)
 **Barrel export:** Added both types to existing barrel in local/index.ts
 **Notes:** First kernel configuration interfaces in agent-sdk; all dependency paths discovered through type-check iteration; 25 slices completed (#150-#174)
+
+### Slice #175 — CompactionRuntimeContext Type Extraction
+
+**Capability:** CompactionRuntimeContext interface (2-field compaction runtime context: sessionId, projectDir) — created in new agent-sdk/local/compactionTypes.ts (11L)
+**Target:** `@blade-ai/agent-sdk/local` (via `compactionTypes.ts`)
+**Root file: Not changed** — type coexists in root CompactionHandler.ts (safe: 277L file)
+**Dependencies:** `SessionId` (branded → SHIMMED), `string` (primitive) — zero root dependencies
+**Barrel export:** Added `CompactionRuntimeContext` to local/index.ts
+**Notes:** Simplest type extraction yet — only 2 fields, zero root dependencies; simplest slice in the entire migration; 26 slices completed (#150-#175)
 
 **Notes:** Sixth tools file migrated (#150-#155); all 5 core tools subdirectories now have files in agent-sdk (types, registry, catalog, exposure, core); completes the horizontal tool subsystem migration
 
