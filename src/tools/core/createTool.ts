@@ -11,7 +11,7 @@ import type {
   ToolValidationError as _ToolValidationError,
 } from '../types/index.js';
 import { ToolErrorType, validationErrorToToolResult } from '../types/index.js';
-import { isPathLikeKey } from '@blade-ai/agent-sdk/local';
+import { formatUnknown, isPathLikeKey } from '@blade-ai/agent-sdk/local';
 import { createToolBehavior, isReadOnlyKind, ToolKind } from '../types/ToolKind.js';
 import { zodToJsonSchema } from 'zod-to-json-schema';
 import { isPlainObject } from 'lodash-es';
@@ -367,17 +367,6 @@ type ZodIssueExtra = ZodIssue & {
   keys?: unknown;
   type?: unknown;
 };
-
-function formatUnknown(value: unknown): string {
-  if (value === undefined) return 'undefined';
-  if (typeof value === 'string') return value;
-  try {
-    const json = JSON.stringify(value);
-    return json === undefined ? String(value) : json;
-  } catch {
-    return String(value);
-  }
-}
 
 class ToolValidationError extends SdkError {
   constructor(

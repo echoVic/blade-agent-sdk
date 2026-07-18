@@ -317,3 +317,17 @@ export function isPathLikeKey(key: string): boolean {
     || key === 'file'
     || key === 'directory';
 }
+
+/**
+ * Converts an unknown value to a string for error display.
+ */
+export function formatUnknown(value: unknown): string {
+  if (value === undefined) return 'undefined';
+  if (typeof value === 'string') return value;
+  try {
+    const json = JSON.stringify(value);
+    return json === undefined ? String(value) : json;
+  } catch {
+    return String(value);
+  }
+}
