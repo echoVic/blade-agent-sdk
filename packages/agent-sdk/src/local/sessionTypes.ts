@@ -201,3 +201,20 @@ export interface SessionState extends SessionSnapshot {
   toolCalls: SessionToolCallState[];
   subagentRefs: SessionSubagentRef[];
 }
+
+/**
+ * SessionStore — 会话存储契约
+ *
+ * 定义会话的持久化存储接口。
+ * 实现类：NoopSessionStore, JsonlSessionStore
+ */
+export interface SessionStore {
+  loadState(sessionId: SessionId): Promise<SessionState | null>;
+  loadMessages(sessionId: SessionId): Promise<Message[]>;
+  forkState(
+    sessionId: SessionId,
+    options?: { messageId?: string },
+  ): Promise<SessionSnapshot | null>;
+  listSessions(): Promise<string[]>;
+  getSessionSummary(sessionId: SessionId): Promise<SessionSummary | null>;
+}

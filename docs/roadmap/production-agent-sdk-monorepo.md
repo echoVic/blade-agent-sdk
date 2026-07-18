@@ -82,7 +82,7 @@ Dependency direction:
 
 ---
 
-## Migration Progress — 172 Slices Completed
+## Migration Progress — 173 Slices Completed
 
 ### Subsystems at 100% (Complete)
 
@@ -127,7 +127,7 @@ Dependency direction:
 
 - ✅ Type-check: 0 errors (root + all packages)
 - ✅ Boundaries: green
-- ✅ 172 conventional commits
+- ✅ 173 conventional commits
 - ⚠️ `pnpm run verify` shows 22 pre-existing lint warnings (not migration-related)
 - ⚠️ Test suite has 22 pre-existing test file failures (not migration-related)
 
@@ -394,6 +394,15 @@ Dependency direction:
 **Dependencies:** All fields from shimmed sources or packages: `Message` (@blade-ai/ai/chat), `JsonValue` (types/common → SHIMMED), `MessageId` (branded → SHIMMED), `SessionInfo` (context.ts → SHIMMED), `SessionSnapshot` (sessionTypes.ts #171 → self), primitives (string, number)
 **Barrel export:** Added 4 new types (SessionState, SessionTimelineEntry, SessionToolCallState, SessionSubagentRef) to existing barrel
 **Notes:** Most substantial session type extraction yet — 4 interfaces at once; all dependencies resolved through agent-sdk/local files; zero root dependencies; 23 slices completed (#150-#172)
+
+### Slice #173 — SessionStore Contract Interface
+
+**Capability:** SessionStore interface (5-method session storage contract: loadState, loadMessages, forkState, listSessions, getSessionSummary) — appended to existing agent-sdk/local/sessionTypes.ts (215L → 230L, +15L)
+**Target:** `@blade-ai/agent-sdk/local` (via `sessionTypes.ts`)
+**Root file: Not changed** — interface coexists in root SessionStore.ts (safe: 620L file)
+**Dependencies:** All method types from agent-sdk or packages: `SessionState` (sessionTypes.ts #172 → self), `SessionSnapshot` (sessionTypes.ts #171 → self), `SessionSummary` (sessionTypes.ts #171 → self), `SessionId` (branded → SHIMMED), `Message` (@blade-ai/ai/chat)
+**Barrel export:** Added `SessionStore` to existing barrel in local/index.ts
+**Notes:** First storage contract interface migrated to agent-sdk; all 5 dependency types from same file or packages; zero root dependencies; enables future SessionStore implementation migration; 24 slices completed (#150-#173)
 
 **Notes:** Sixth tools file migrated (#150-#155); all 5 core tools subdirectories now have files in agent-sdk (types, registry, catalog, exposure, core); completes the horizontal tool subsystem migration
 
