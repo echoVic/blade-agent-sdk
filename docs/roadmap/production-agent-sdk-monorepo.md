@@ -82,7 +82,7 @@ Dependency direction:
 
 ---
 
-## Migration Progress — 163 Slices Completed
+## Migration Progress — 164 Slices Completed
 
 ### Subsystems at 100% (Complete)
 
@@ -127,7 +127,7 @@ Dependency direction:
 
 - ✅ Type-check: 0 errors (root + all packages)
 - ✅ Boundaries: green
-- ✅ 163 conventional commits
+- ✅ 164 conventional commits
 - ⚠️ `pnpm run verify` shows 22 pre-existing lint warnings (not migration-related)
 - ⚠️ Test suite has 22 pre-existing test file failures (not migration-related)
 
@@ -319,6 +319,14 @@ Dependency direction:
 **New test:** `packages/agent-sdk/src/__tests__/localLoopState.test.ts` (7 tests: instantiation, buildTurnState, getTools, recovery start/reset, active skill, context snapshot)
 **Import adjustments:** `ContextSnapshot` → `./ContextSnapshot.js`, `ConversationState` → `import type` from `@blade-ai/agent`, `PermissionMode` → `../types/common.js`, loop types → `./turnState.js`
 **Notes:** Fourth full agent file migration (#160-#163); largest runtime class migrated to agent subsystem (133L, 15 methods); 7/7 tests pass; all 5 imports from agent-sdk local or packages, zero root dependencies
+
+### Slice #164 — AttachmentCollector Migration (504L)
+
+**Capability:** AttachmentCollector class (504L) — file collection from @ mentions, glob pattern support, directory tree rendering, file caching — migrated to agent-sdk/local/attachmentCollector.ts
+**Target:** `@blade-ai/agent-sdk/local` (via `attachmentCollector.ts`)
+**Root file shimmed:** `src/prompts/processors/AttachmentCollector.ts` → re-export shim
+**Import adjustments:** All 6 imports resolved: `fast-glob` (external), `fs/promises+path` (Node-only, allowed in agent-sdk), `Logger` → `./Logger.js`, `splitPath` → `@blade-ai/agent/utils`, `PathSecurity` → `./pathSecurity.js`, `AtMentionParser` → `./AtMentionParser.js`, `Attachment/CollectorOptions` types → `./promptProcessors.js`
+**Notes:** Largest tractable file migration yet (504L); Node-only implementation (fs, fast-glob); first prompts/processors file migrated; zero type errors after fixing splitPath import; marks expansion beyond agent/ directory
 
 **Notes:** Sixth tools file migrated (#150-#155); all 5 core tools subdirectories now have files in agent-sdk (types, registry, catalog, exposure, core); completes the horizontal tool subsystem migration
 

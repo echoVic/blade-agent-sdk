@@ -424,3 +424,4 @@ export type {  AgentEvent, AgentStartEvent, AgentEndEvent, TurnStartEvent, TurnE
 export type {  LlmToolDefinition, LoopSkillState, LoopRecoveryState, LoopExecutionContext, TurnState } from './turnState.js';
 export {  PlanExecutor } from './planExecutor.js';
 export {  LoopState } from './loopState.js';
+export {  AttachmentCollector } from './attachmentCollector.js';
