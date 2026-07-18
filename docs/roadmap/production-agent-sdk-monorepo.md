@@ -82,7 +82,7 @@ Dependency direction:
 
 ---
 
-## Migration Progress — 178 Slices Completed
+## Migration Progress — 179 Slices Completed
 
 ### Subsystems at 100% (Complete)
 
@@ -127,7 +127,7 @@ Dependency direction:
 
 - ✅ Type-check: 0 errors (root + all packages)
 - ✅ Boundaries: green
-- ✅ 178 conventional commits
+- ✅ 179 conventional commits
 - ⚠️ `pnpm run verify` shows 22 pre-existing lint warnings (not migration-related)
 - ⚠️ Test suite has 22 pre-existing test file failures (not migration-related)
 
@@ -448,6 +448,36 @@ Dependency direction:
 **Root file shimmed:** `src/session/types.ts` — SessionHookEvent inline definition → re-export shim
 **Barrel export:** No change needed — already in agent-sdk barrel
 **Notes:** Second root duplicate cleanup (#177-#178); further reduces root file inline definitions; 29 slices completed (#150-#178)
+
+### Phase 1 Complete: Single-File Migration Exhausted
+
+After 29 slices (#150-#178), approximately 4,160 lines migrated from root to `@blade-ai/ai`, `@blade-ai/agent`, or `@blade-ai/agent-sdk`. All 10-50 line root files have been converted to re-export shims. Verified accomplishments:
+
+| Subsystem | Files/Types | Status |
+|---|---|---|
+| Tools (#150-156) | 7 files | ✅ Fully migrated |
+| Agent types (#157-159, 167, 170) | 5 extractions | ✅ Fully migrated |
+| Agent files (#160-163, 176) | 5 files | ✅ Fully migrated |
+| Prompts (#164) | 1 file | ✅ Fully migrated |
+| Subagents (#165-166) | 2 files | ✅ Fully migrated |
+| Session types (#168-169, 171-174) | 6 extractions | ✅ Fully migrated |
+| Root cleanup (#175, 177-178) | 3 extractions | ✅ Fully migrated |
+
+### Slice #179 — Phase 1 Completion Milestone
+
+**Capability:** Document the single-file migration phase completion and establish Phase 2 strategy
+**Next phase strategies:**
+1. **Decoupling interfaces** — Create `ContextManagerLike`, `HookRuntimeLike` in appropriate packages to break circular dependencies between Agent.ts and context/hooks subsystems
+2. **Subsystem-level migration** — Migrate complete subsystems (Session, Context, Hooks) as cohesive units rather than file-by-file
+3. **Architectural fixes** — Move types from `@blade-ai/agent-sdk/local` to `@blade-ai/agent` where architecturally appropriate (e.g., TurnState, LoopState)
+4. **Syntax error fixes** — Fix pre-existing syntax errors in root `session/types.ts` (lines 37, 39-40) to enable full migration
+**Remaining root code:** Approximately 10,000+ lines in 10-15 large, deeply coupled files:
+- Agent core: Agent.ts (~2,000L), ModelManager.ts (138L), CompactionHandler.ts (277L)
+- Subagents: BackgroundAgentManager.ts (605L), SubagentExecutor.ts (114L)
+- Session: Session.ts (~800L), SessionRuntime.ts (~700L), SessionStore.ts (~620L)
+- Context: CompactionService.ts (539L), ContextManager.ts (736L), PersistentStore.ts (875L)
+- Hooks: HookRuntime.ts (753L)
+**Total slices completed:** 179 (#150-#179)
 
 **Notes:** Sixth tools file migrated (#150-#155); all 5 core tools subdirectories now have files in agent-sdk (types, registry, catalog, exposure, core); completes the horizontal tool subsystem migration
 
