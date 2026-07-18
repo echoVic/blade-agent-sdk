@@ -237,6 +237,7 @@ export { configureStreamDebug, streamDebug } from './StreamDebugLogger.js';
 export { HookExecutionGuard } from './HookExecutionGuard.js';
 export { HookBus } from './HookBus.js';
 export { OutputParser } from './OutputParser.js';
+export { HookExecutor } from './HookExecutor.js';
 export type {  ToolResponse } from './SdkMcpServer.js';
 export type { 
   ReadMetadata,
