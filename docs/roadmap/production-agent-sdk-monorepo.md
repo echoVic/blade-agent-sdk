@@ -82,7 +82,7 @@ Dependency direction:
 
 ---
 
-## Migration Progress — 181 Slices Completed
+## Migration Progress — 182 Slices Completed
 
 ### Subsystems at 100% (Complete)
 
@@ -127,7 +127,7 @@ Dependency direction:
 
 - ✅ Type-check: 0 errors (root + all packages)
 - ✅ Boundaries: green
-- ✅ 181 conventional commits
+- ✅ 182 conventional commits
 - ⚠️ `pnpm run verify` shows 22 pre-existing lint warnings (not migration-related)
 - ⚠️ Test suite has 22 pre-existing test file failures (not migration-related)
 
@@ -496,6 +496,14 @@ After 29 slices (#150-#178), approximately 4,160 lines migrated from root to `@b
 **Decoupling effect:** Decouples Agent.ts consumers from the concrete ModelManager in root; enables future ModelManager migration (#182+)
 **Barrel export:** Added `ModelManagerLike` to `local/index.ts`
 **Notes:** First Phase 2 decoupling interface achieved; breaks the ContextManager → ModelManager → Agent.ts dependency chain; 32 slices completed (#150-#181)
+
+### Slice #182 — ModelManagerLike Enhancement (2 new methods)
+
+**Capability:** Enhanced ModelManagerLike with `resolveModelConfig` and `getChatService` — the 2 methods Agent.ts (lines 193, 196, 204, 292) actually calls, derived from ModelManager.ts public API analysis
+**Dependencies:** `IChatService` (@blade-ai/ai/chat — PACKAGE), `ModelConfig` (types/common → SHIMMED) — zero root dependencies
+**Excludes:** `getContextManager()` prevents ContextManager dependency (not shimmed)
+**Findings:** ModelManagerLike now covers 5 of 7 methods Agent.ts uses; remaining 2 (getContextManager, getPersistentStore) require Phase 2 decoupling of Context subsystem
+**Notes:** 33 slices completed (#150-#182)
 
 **Notes:** Sixth tools file migrated (#150-#155); all 5 core tools subdirectories now have files in agent-sdk (types, registry, catalog, exposure, core); completes the horizontal tool subsystem migration
 
