@@ -61,6 +61,11 @@
       "browser": "./dist/tools/builtin/index.js",
       "import": "./dist/tools/builtin/index.js"
     },
+    "./tools/public": {
+      "types": "./dist/tools/public.d.ts",
+      "browser": "./dist/tools/public.js",
+      "import": "./dist/tools/public.js"
+    },
     "./errors": {
       "types": "./dist/errors/index.d.ts",
       "browser": "./dist/errors/index.js",
@@ -70,6 +75,11 @@
       "types": "./dist/local/index.d.ts",
       "browser": "./dist/browser/server-only-stub.js",
       "import": "./dist/local/index.js"
+    },
+    "./local/public": {
+      "types": "./dist/local/public.d.ts",
+      "browser": "./dist/browser/server-only-stub.js",
+      "import": "./dist/local/public.js"
     },
     "./subagents": {
       "types": "./dist/subagents/index.d.ts",
