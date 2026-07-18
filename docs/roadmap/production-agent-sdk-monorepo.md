@@ -82,7 +82,7 @@ Dependency direction:
 
 ---
 
-## Migration Progress — 158 Slices Completed
+## Migration Progress — 159 Slices Completed
 
 ### Subsystems at 100% (Complete)
 
@@ -127,7 +127,7 @@ Dependency direction:
 
 - ✅ Type-check: 0 errors (root + all packages)
 - ✅ Boundaries: green
-- ✅ 158 conventional commits
+- ✅ 159 conventional commits
 - ⚠️ `pnpm run verify` shows 22 pre-existing lint warnings (not migration-related)
 - ⚠️ Test suite has 22 pre-existing test file failures (not migration-related)
 
@@ -275,6 +275,15 @@ Dependency direction:
 **Dependencies resolved:** `AgentId` → branded.ts ✅, `Message` → @blade-ai/ai/chat ✅, `AgentSessionStatus` → #157 ✅, `AgentProgress` → agentTypes.ts (already in agent-sdk) ✅
 **New test:** None (pure type extraction — verified via type-check)
 **Strategic impact:** Breaks circular dependency between `agent/types.ts` (imports `AgentSession`) and `AgentSessionStore.ts` (imports `AgentProgress`); `agent/types.ts` now has only 1 remaining non-shimmed import: `StartBackgroundAgentOptions` from `BackgroundAgentManager`
+
+### Slice #159 — Agent Loop Types Extraction
+
+**Capability:** Extract self-contained agent loop types (`AgentOptions`, `LoopOptions`, `LoopResult`, `PlanApprovalResult`) and runtime type guard (`isPlanApprovalResult`) to agent-sdk/local/agentLoopTypes.ts
+**Target:** `@blade-ai/agent-sdk/local` (via `agentLoopTypes.ts`)
+**Root file updated:** `src/agent/types.ts` — 5 inline definitions replaced with re-exports from `@blade-ai/agent-sdk/local`
+**New test:** `packages/agent-sdk/src/__tests__/localAgentLoopTypes.test.ts` (4 tests: PlanApprovalResult detection, undefined, no targetMode, no metadata)
+**Dependencies:** All 12 type imports from packages or already-shimmed agent-sdk sources; zero root-specific dependencies
+**Notes:** First slice with runtime code in the agent subsystem migration (type guard function); AgentOptions has PermissionsConfig, PermissionMode, ToolCatalogSourcePolicy, TokenBudgetConfig dependencies — all resolved via agent-sdk; reduces `agent/types.ts` from 149L to ~100L
 
 **Notes:** Sixth tools file migrated (#150-#155); all 5 core tools subdirectories now have files in agent-sdk (types, registry, catalog, exposure, core); completes the horizontal tool subsystem migration
 

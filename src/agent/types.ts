@@ -60,90 +60,13 @@ export type { ChatContext };
  * Agent 创建选项 - 仅包含运行时参数
  * Agent 的配置来自 Store (通过 getConfig() 获取 BladeConfig)
  */
-export interface AgentOptions {
-  // 运行时参数
-  systemPrompt?: string; // 完全替换系统提示
-  appendSystemPrompt?: string; // 追加系统提示
-  permissions?: Partial<PermissionsConfig>; // 运行时覆盖权限
-  permissionMode?: PermissionMode;
-  maxTurns?: number; // 最大对话轮次 (-1=无限制, 0=禁用对话, N>0=限制轮次)
-  toolWhitelist?: string[]; // 工具白名单（仅允许指定工具）
-  toolSourcePolicy?: ToolCatalogSourcePolicy; // 工具来源/信任级别过滤
-  modelId?: string;
+export type { AgentOptions } from '@blade-ai/agent-sdk/local';
 
-  // 权限控制
-  permissionHandler?: PermissionHandler;
-  canUseTool?: CanUseTool;
+export type { LoopOptions } from '@blade-ai/agent-sdk/local';
 
-  // MCP 配置
-  mcpConfig?: string[]; // CLI 参数：MCP 配置文件路径或 JSON 字符串数组
-  strictMcpConfig?: boolean; // CLI 参数：严格模式，仅使用 --mcp-config 指定的配置
-
-  // 结构化输出
-  outputFormat?: OutputFormat; // JSON Schema 结构化输出格式
-
-  // 沙箱配置
-  sandbox?: SandboxSettings; // 命令执行沙箱设置
-
-  // Token 预算
-  tokenBudget?: TokenBudgetConfig;
-
-}
-
-// ===== Agentic Loop Types =====
-
-export interface LoopOptions {
-  maxTurns?: number;
-  autoCompact?: boolean;
-  signal?: AbortSignal;
-  onTurnLimitReached?: (data: { turnsCount: number }) => Promise<TurnLimitResponse>;
-  /** 进度回调，每次 tool call 完成后触发 */
-  onProgress?: (progress: AgentProgress) => void;
-}
-
-/**
- * 轮次限制响应
- */
-export type { TurnLimitResponse };
-
-export interface LoopResult {
-  success: boolean;
-  finalMessage?: string;
-  error?: {
-    type:
-      | 'canceled'
-      | 'max_turns_exceeded'
-      | 'api_error'
-      | 'loop_detected'
-      | 'aborted'
-      | 'chat_disabled'
-      | 'budget_exhausted';
-    message: string;
-    details?: unknown;
-  };
-  metadata?: {
-    turnsCount: number;
-    toolCallsCount: number;
-    duration: number;
-    tokensUsed?: number; // Token 使用量
-    configuredMaxTurns?: number;
-    actualMaxTurns?: number;
-    hitSafetyLimit?: boolean;
-    shouldExitLoop?: boolean; // ExitPlanMode 或用户拒绝时设置此标记以退出循环
-    targetMode?: PermissionMode; // Plan 模式批准后的目标权限模式
-    planContent?: string; // Plan 模式批准后的方案内容
-    tokenBudgetSnapshot?: TokenBudgetSnapshot;
-  };
-}
+export type { LoopResult } from '@blade-ai/agent-sdk/local';
 
 /** Plan 审批通过后的 LoopResult 子类型 */
-export interface PlanApprovalResult extends LoopResult {
-  metadata: LoopResult['metadata'] & {
-    targetMode: PermissionMode;
-    planContent?: string;
-  };
-}
+export type { PlanApprovalResult } from '@blade-ai/agent-sdk/local';
 
-export function isPlanApprovalResult(r: LoopResult | undefined): r is PlanApprovalResult {
-  return !!r?.metadata?.targetMode;
-}
+export { isPlanApprovalResult } from '@blade-ai/agent-sdk/local';
