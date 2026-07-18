@@ -82,7 +82,7 @@ Dependency direction:
 
 ---
 
-## Migration Progress — 148 Slices Completed
+## Migration Progress — 149 Slices Completed
 
 ### Subsystems at 100% (Complete)
 
@@ -127,7 +127,7 @@ Dependency direction:
 
 - ✅ Type-check: 0 errors (root + all packages)
 - ✅ Boundaries: green
-- ✅ 148 conventional commits
+- ✅ 149 conventional commits
 - ⚠️ `pnpm run verify` shows 22 pre-existing lint warnings (not migration-related)
 - ⚠️ Test suite has 22 pre-existing test file failures (not migration-related)
 
@@ -143,7 +143,6 @@ Dependency direction:
 
 **Remaining coupled subsystems:**
 - Agent loop (Agent.ts 22K, LoopRunner 14K, LoopHookBuilder 14K)
-- MCP (McpRegistry 533L)
 - Context (ContextManager 20K, CompactionService 17K, PersistentStore)
 - Hooks (HookRuntime 753L)
 
@@ -195,3 +194,13 @@ Dependency direction:
 **New test:** `packages/agent-sdk/src/__tests__/localCreateMcpTool.test.ts` (1 test)
 **Import adjustments:** `createTool` from agent-sdk's `../tools/index.js`; `ToolKind` from `../tools/types/ToolKind.js`; `ToolErrorType` from `../tools/types/index.js`; `McpClientLike`/`McpToolDefinition` from `./mcpTypes.js`; `getErrorMessage` from `@blade-ai/agent/utils`; replaced `z.discriminatedUnion` with `z.union` for oneOf fallback
 **Notes:** JSON Schema → Zod converter is platform-agnostic (no Node APIs); the agent-sdk already had a simpler `createMcpTool` in `defaultMcpRuntime.ts` but this version adds schema validation
+
+### Slice #149 — McpRegistry Migration (MCP Complete!)
+
+**Capability:** MCP server registry, connection lifecycle, tool discovery, `per-session` instances
+**Target:** `@blade-ai/agent-sdk/local`
+**Root file shimmed:** `src/mcp/McpRegistry.ts` → re-export from `@blade-ai/agent-sdk/local`
+**Fixes:** Added `inProcessHandle` to `McpClientOptions` (regression from #147); removed duplicate `McpServerInfo` type from barrel (already exported from `mcpServerTypes.js`)
+**Type adjustments:** Adapted `new McpClient(...)` calls from legacy 5-arg to new 3-arg signature; `types.js` → `mcpTypes.js`; `toError` from `@blade-ai/agent/utils`
+**New test:** `packages/agent-sdk/src/__tests__/localMcpRegistry.test.ts` (3 tests: instantiation, statistics, empty server list)
+**Milestone:** 🎉 **MCP subsystem fully migrated** — all 6 files (HealthMonitor #146, McpClient #147, createMcpTool #148, McpRegistry #149, + SdkMcpServer/auth/types shimmed earlier) now live in `@blade-ai/agent-sdk/local`

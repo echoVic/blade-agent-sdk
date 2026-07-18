@@ -135,6 +135,8 @@ export interface McpClientOptions {
   enableOAuth?: boolean;
   /** OAuth Token 存储实例 */
   oauthTokenStorage?: OAuthTokenStorage;
+  /** In-process MCP server handle (for same-process transports) */
+  inProcessHandle?: import('./SdkMcpServer.js').SdkMcpServerHandle;
 }
 
 /**
@@ -187,6 +189,9 @@ export class McpClient extends EventEmitter {
     if (!options.disableHealthCheck) {
       this.healthMonitor = new HealthMonitor(this, options.healthCheckConfig);
     }
+
+    // In-process handle
+    this.inProcessHandle = options.inProcessHandle;
 
     // Matches McpClientLike interface implicitly
   }

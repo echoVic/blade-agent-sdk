@@ -242,6 +242,7 @@ export { HookManager } from './HookManager.js';
 export { McpClient, ErrorType } from './McpClient.js';
 export type { McpClientOptions } from './McpClient.js';
 export { createMcpTool } from './createMcpTool.js';
+export { McpRegistry } from './McpRegistry.js';
 export type {  ToolResponse } from './SdkMcpServer.js';
 export type { 
   ReadMetadata,
