@@ -4,7 +4,7 @@
  */
 
 import type { ContentPart, Message } from '@blade-ai/ai/chat';
-import type { ConfirmationHandler } from '@blade-ai/agent-sdk/tools';
+import type { ConfirmationHandler } from '../tools/types/index.js';
 
 export type UserMessageContent = string | ContentPart[];
 

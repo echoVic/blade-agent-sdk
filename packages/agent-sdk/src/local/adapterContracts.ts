@@ -3,7 +3,7 @@ import type { TokenBudget } from '@blade-ai/agent/budget';
 import type { AgentFunctionToolCall as FunctionToolCall } from '@blade-ai/agent/loop';
 import type {
   ToolExecutionUpdateOf as SdkToolExecutionUpdate,
-} from '@blade-ai/agent-sdk/tools';
+} from '../tools/types/index.js';
 import type { InternalLogger } from './Logger.js';
 import type { ExecutionPipelineLike } from './kernelAdapterTypes.js';
 import type { ToolResult } from '../tools/types/index.js';

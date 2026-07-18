@@ -1,6 +1,6 @@
 import type { AgentTraceEvent, AgentTracePort } from '@blade-ai/agent/tracing';
 import type { TraceRecorder } from './TraceRecorder.js';
-import type { TokenUsage } from '@blade-ai/agent-sdk';
+import type { TokenUsage } from '../types/common.js';
 
 export interface KernelTracePortOptions {
   recorder: TraceRecorder;

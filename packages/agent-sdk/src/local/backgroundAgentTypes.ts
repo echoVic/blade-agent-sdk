@@ -1,4 +1,4 @@
-import type { SubagentConfig } from '@blade-ai/agent-sdk';
+import type { SubagentConfig } from '../subagents/types.js';
 import type { BladeConfig, PermissionMode } from '../types/common.js';
 import type { SubagentRegistry } from './subagentRegistry.js';
 import type { AgentId } from './branded.js';
