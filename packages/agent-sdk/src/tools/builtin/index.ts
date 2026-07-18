@@ -5,8 +5,7 @@
 import type { McpRegistry } from '../../local/McpRegistry.js';
 import { SessionId } from '../../local/branded.js';
 import type { Tool } from '../types/index.js';
-import { getBuiltinTools as getPackageBuiltinTools } from '@blade-ai/agent-sdk/local';
-import type { MemoryManager } from '@blade-ai/agent-sdk/local';
+import type { MemoryManager } from '../../local/MemoryManager.js';
 import type { SubagentRegistryLike } from '../../local/subagentTypes.js';
 
 async function getMcpTools(mcpRegistry: McpRegistry): Promise<Tool[]> {
@@ -28,7 +27,7 @@ export async function getBuiltinTools(opts?: {
 }): Promise<Tool[]> {
   const sessionId = opts?.sessionId ?? SessionId(`session_${Date.now()}`);
 
-  const tools = await getPackageBuiltinTools({
+  const tools = await getBuiltinTools({
     sessionId,
     configDir: opts?.configDir,
     mcpRegistry: opts?.mcpRegistry,
