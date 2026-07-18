@@ -82,7 +82,7 @@ Dependency direction:
 
 ---
 
-## Migration Progress — 180 Slices Completed
+## Migration Progress — 181 Slices Completed
 
 ### Subsystems at 100% (Complete)
 
@@ -127,7 +127,7 @@ Dependency direction:
 
 - ✅ Type-check: 0 errors (root + all packages)
 - ✅ Boundaries: green
-- ✅ 180 conventional commits
+- ✅ 181 conventional commits
 - ⚠️ `pnpm run verify` shows 22 pre-existing lint warnings (not migration-related)
 - ⚠️ Test suite has 22 pre-existing test file failures (not migration-related)
 
@@ -487,6 +487,15 @@ After 29 slices (#150-#178), approximately 4,160 lines migrated from root to `@b
 - Preserved the inline `StreamMessage` union type definition
 - File now clean and tractable for future migration
 **Notes:** Phase 2 Strategy 4; 31 slices completed (#150-#180)
+
+### Slice #181 — ModelManagerLike Decoupling Interface
+
+**Capability:** ModelManagerLike interface (3-method model manager contract: applyModelConfig, switchModelIfNeeded, setModel) — created in agent-sdk/local/modelTypes.ts (25L)
+**Target:** `@blade-ai/agent-sdk/local` (via `modelTypes.ts`)
+**Dependencies:** `ModelConfig` (types/common → SHIMMED), primitives (string, Promise<void>) — zero root dependencies
+**Decoupling effect:** Decouples Agent.ts consumers from the concrete ModelManager in root; enables future ModelManager migration (#182+)
+**Barrel export:** Added `ModelManagerLike` to `local/index.ts`
+**Notes:** First Phase 2 decoupling interface achieved; breaks the ContextManager → ModelManager → Agent.ts dependency chain; 32 slices completed (#150-#181)
 
 **Notes:** Sixth tools file migrated (#150-#155); all 5 core tools subdirectories now have files in agent-sdk (types, registry, catalog, exposure, core); completes the horizontal tool subsystem migration
 
