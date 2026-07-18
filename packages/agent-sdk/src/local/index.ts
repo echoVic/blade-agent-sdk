@@ -403,7 +403,7 @@ export type {  BackgroundAgentManagerLike, ConfirmationHandlerLike, ToolCatalogL
 export type {  AgentProgress, ChatContext, IBackgroundAgentController, IBackgroundAgentManager, IBackgroundAgentReader, TurnLimitResponse, UserMessageContent } from './agentTypes.js';
 
 // Session Types
-export type { StreamOptions, SendOptions, McpServerStatus, McpToolInfo, ForkSessionOptions, ForkSessionResult, HookCallback, HookInput, HookOutput, AgentDefinition, ModelInfo, PromptResult, ProviderConfig, StreamMessage, SubagentInfo, ToolCallRecord, SessionSummary, SessionSnapshot } from './sessionTypes.js';
+export type { StreamOptions, SendOptions, McpServerStatus, McpToolInfo, ForkSessionOptions, ForkSessionResult, HookCallback, HookInput, HookOutput, AgentDefinition, ModelInfo, PromptResult, ProviderConfig, StreamMessage, SubagentInfo, ToolCallRecord, SessionSummary, SessionSnapshot, SessionTimelineEntry, SessionToolCallState, SessionSubagentRef, SessionState } from './sessionTypes.js';
 
 // Tool Catalog Types
 export type {  ToolCatalogSourcePolicy, ToolSourceKind, ToolTrustLevel } from './toolCatalogTypes.js';

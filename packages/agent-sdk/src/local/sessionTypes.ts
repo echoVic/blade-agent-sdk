@@ -5,7 +5,8 @@
 
 import type { JsonObject, JsonValue, TokenUsage } from '../types/common.js';
 import { DecisionBehavior } from './hookTypes.js';
-import type { SessionId } from './branded.js';
+import type { MessageId, SessionId } from './branded.js';
+import type { SessionInfo } from './context.js';
 import type { Message } from '@blade-ai/ai/chat';
 
 export interface ToolCallRecord {
@@ -148,4 +149,55 @@ export interface SessionSnapshot {
   messageIds: string[];
   lastActivity: number;
   summary?: string;
+}
+
+/**
+ * SessionTimelineEntry — 会话时间线条目
+ */
+export interface SessionTimelineEntry {
+  id: string;
+  parentMessageId?: string;
+  createdAt: number;
+  message: Message;
+}
+
+/**
+ * SessionToolCallState — 工具调用运行时状态
+ */
+export interface SessionToolCallState {
+  id: string;
+  name: string;
+  input: JsonValue;
+  output?: JsonValue;
+  messageId?: string;
+  timestamp: number;
+  status: 'pending' | 'success' | 'error';
+  error?: string;
+}
+
+/**
+ * SessionSubagentRef — 子代理引用追踪
+ */
+export interface SessionSubagentRef {
+  messageId: MessageId;
+  childSessionId: string;
+  agentType: string;
+  status: 'running' | 'completed' | 'failed' | 'cancelled';
+  summary?: string;
+  startedAt?: string;
+  finishedAt?: string | null;
+}
+
+/**
+ * SessionState — 完整会话状态
+ *
+ * 扩展 SessionSnapshot，包含时间线、工具调用状态、子代理引用。
+ */
+export interface SessionState extends SessionSnapshot {
+  createdAt: number;
+  sessionInfo: Partial<SessionInfo>;
+  timeline: SessionTimelineEntry[];
+  summaryMessageIds: string[];
+  toolCalls: SessionToolCallState[];
+  subagentRefs: SessionSubagentRef[];
 }
