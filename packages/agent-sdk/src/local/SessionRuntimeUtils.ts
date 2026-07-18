@@ -197,3 +197,50 @@ export function buildHookInput(
     ...payload,
   };
 }
+
+import type { JsonValue } from '@blade-ai/ai';
+
+/**
+ * Extracts the MIME type from a URL.
+ * Supports data: URLs (extracts declared MIME type) and remote URLs
+ * (infers from file extension like .png, .jpg, etc.).
+ */
+export function extractMimeType(url: string): string | undefined {
+  // data: URLs — extract the declared MIME type
+  const dataMatch = /^data:([^;,]+)[;,]/.exec(url);
+  if (dataMatch) {
+    return dataMatch[1];
+  }
+
+  // Remote URLs — attempt to infer MIME type from file extension
+  const extMatch = /\.(\w+)(?:[?#]|$)/.exec(url);
+  if (extMatch) {
+    const ext = (extMatch[1] ?? '').toLowerCase();
+    const mimeMap: Record<string, string> = {
+      png: 'image/png',
+      jpg: 'image/jpeg',
+      jpeg: 'image/jpeg',
+      gif: 'image/gif',
+      webp: 'image/webp',
+      svg: 'image/svg+xml',
+      bmp: 'image/bmp',
+    };
+    if (mimeMap[ext]) {
+      return mimeMap[ext];
+    }
+  }
+
+  return undefined;
+}
+
+/**
+ * Parses tool call arguments from a string, attempting JSON parsing first.
+ * Returns the parsed value or the original string if parsing fails.
+ */
+export function parseToolCallArguments(value: string): JsonValue {
+  try {
+    return JSON.parse(value) as JsonValue;
+  } catch {
+    return value;
+  }
+}

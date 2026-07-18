@@ -435,4 +435,4 @@ export type {  SubagentRegistryLike, SubagentExecutorLike } from './subagentType
 export type {  ModelManagerLike } from './modelTypes.js';
 export type {  AgentLoopConfig, AgentLoopHooks } from './adapterContracts.js';
 export {  createChatServiceAsync } from './chatServiceFactory.js';
-export { buildHookInput, isChatToolCall, isChatToolCallArray, isJsonObject, isSdkMcpServerHandle, isSessionToolCall, isSessionToolCallArray, isUsageMetadata, resolveStorageRoot, serverNameFromTool, toSubagentConfig, toSessionPermissionUpdates, toSessionUsage } from './SessionRuntimeUtils.js';
+export { buildHookInput, extractMimeType, isChatToolCall, isChatToolCallArray, isJsonObject, isSdkMcpServerHandle, isSessionToolCall, isSessionToolCallArray, isUsageMetadata, resolveStorageRoot, serverNameFromTool, toSubagentConfig, toSessionPermissionUpdates, toSessionUsage } from './SessionRuntimeUtils.js';

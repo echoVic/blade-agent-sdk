@@ -5,6 +5,7 @@ import type { ContentPart, ToolCall } from '@blade-ai/ai/chat';
 import { JsonlSessionStore } from '../../session/SessionStore.js';
 import { MessageId, SessionId } from '../../types/branded.js';
 import type { JsonObject, JsonValue, MessageRole } from '../../types/common.js';
+import { extractMimeType } from '@blade-ai/agent-sdk/local';
 import type {
   ContextData,
   ConversationContext,
@@ -21,34 +22,6 @@ import {
   listProjectDirectories,
   normalizeSessionStorageRoot
 } from './pathUtils.js';
-
-function extractMimeType(url: string): string | undefined {
-  // data: URLs — extract the declared MIME type
-  const dataMatch = /^data:([^;,]+)[;,]/.exec(url);
-  if (dataMatch) {
-    return dataMatch[1];
-  }
-
-  // Remote URLs — attempt to infer MIME type from file extension
-  const extMatch = /\.(\w+)(?:[?#]|$)/.exec(url);
-  if (extMatch) {
-    const ext = (extMatch[1] ?? '').toLowerCase();
-    const mimeMap: Record<string, string> = {
-      png: 'image/png',
-      jpg: 'image/jpeg',
-      jpeg: 'image/jpeg',
-      gif: 'image/gif',
-      webp: 'image/webp',
-      svg: 'image/svg+xml',
-      bmp: 'image/bmp',
-    };
-    if (mimeMap[ext]) {
-      return mimeMap[ext];
-    }
-  }
-
-  return undefined;
-}
 
 function parseToolCallArguments(value: string): JsonValue {
   try {
