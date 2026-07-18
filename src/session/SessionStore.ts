@@ -4,7 +4,7 @@ import {
   normalizeSessionStorageRoot,
 } from '../context/storage/pathUtils.js';
 import { JSONLStore } from '../context/storage/JSONLStore.js';
-import type { PartInfo, SessionEvent, SessionInfo } from '@blade-ai/agent-sdk/local';
+import type { PartInfo, SessionEvent, SessionInfo, SessionSnapshot, SessionState, SessionSummary } from '@blade-ai/agent-sdk/local';
 import type { ContentPart, Message, ToolCall } from '@blade-ai/ai/chat';
 import { cloneJsonValue, cloneMessage } from '../runtime/messageUtils.js';
 import type { JsonValue, MessageRole } from '../types/common.js';
@@ -36,31 +36,6 @@ interface SessionSubagentRef {
   summary?: string;
   startedAt?: string;
   finishedAt?: string | null;
-}
-
-export interface SessionSummary {
-  sessionId: SessionId;
-  lastActivity: number;
-  messageCount: number;
-  topics: string[];
-  summaryText?: string;
-}
-
-export interface SessionSnapshot {
-  sessionId: SessionId;
-  messages: Message[];
-  messageIds: string[];
-  lastActivity: number;
-  summary?: string;
-}
-
-export interface SessionState extends SessionSnapshot {
-  createdAt: number;
-  sessionInfo: Partial<SessionInfo>;
-  timeline: SessionTimelineEntry[];
-  summaryMessageIds: string[];
-  toolCalls: SessionToolCallState[];
-  subagentRefs: SessionSubagentRef[];
 }
 
 export interface SessionStore {
