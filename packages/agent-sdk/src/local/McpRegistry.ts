@@ -309,6 +309,20 @@ export class McpRegistry extends EventEmitter {
       .filter((tool): tool is Tool => tool !== null);
   }
 
+  getAllServers(): string[] {
+    return Array.from(this.servers.keys());
+  }
+
+  async reconnectServer(name: string): Promise<void> {
+    await this.disconnectServer(name);
+    await this.connectServer(name);
+  }
+
+  getServerStatus(name: string): McpConnectionStatus {
+    const statuses = this.getServerStatuses();
+    return statuses.get(name) ?? McpConnectionStatus.DISCONNECTED;
+  }
+
   /**
    * 获取所有服务器状态
    */
