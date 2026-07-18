@@ -34,7 +34,7 @@ import { getBuiltinTools } from '../tools/builtin/index.js';
 import { ToolCatalog } from '../tools/catalog/ToolCatalog.js';
 import { toolFromDefinition } from '../tools/core/createTool.js';
 import { ExecutionPipeline } from '../tools/execution/ExecutionPipeline.js';
-import { FileLockManager, serverNameFromTool } from '@blade-ai/agent-sdk/local';
+import { FileLockManager, serverNameFromTool, toSessionPermissionUpdates } from '@blade-ai/agent-sdk/local';
 import { ToolRegistry } from '../tools/registry/ToolRegistry.js';
 import type { ExecutionContext, Tool } from '../tools/types/index.js';
 import type { BladeConfig, McpServerConfig, PermissionsConfig } from '../types/common.js';
@@ -645,22 +645,4 @@ export class SessionRuntime {
   }
 }
 
-function toSessionPermissionUpdates(updates: readonly AgentPermissionUpdate[]): PermissionUpdate[] {
-  return updates.map((update) => {
-    const rules = update.rules.map((rule) => ({
-      toolName: rule.toolName,
-      ...(rule.ruleContent !== undefined ? { ruleContent: rule.ruleContent } : {}),
-    }));
 
-    return update.type === 'addRules'
-      ? {
-          type: 'addRules' as const,
-          behavior: update.behavior,
-          rules,
-        }
-      : {
-          type: 'removeRules' as const,
-          rules,
-        };
-  });
-}
