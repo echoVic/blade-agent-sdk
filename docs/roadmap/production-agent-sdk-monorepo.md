@@ -82,7 +82,7 @@ Dependency direction:
 
 ---
 
-## Migration Progress — 151 Slices Completed
+## Migration Progress — 152 Slices Completed
 
 ### Subsystems at 100% (Complete)
 
@@ -127,7 +127,7 @@ Dependency direction:
 
 - ✅ Type-check: 0 errors (root + all packages)
 - ✅ Boundaries: green
-- ✅ 151 conventional commits
+- ✅ 152 conventional commits
 - ⚠️ `pnpm run verify` shows 22 pre-existing lint warnings (not migration-related)
 - ⚠️ Test suite has 22 pre-existing test file failures (not migration-related)
 
@@ -222,3 +222,12 @@ Dependency direction:
 **New test:** `packages/agent-sdk/src/__tests__/localToolDefinition.test.ts` (3 tests: type exports, ToolDescriptionResolver, ToolInvocation)
 **Import adjustments:** `@blade-ai/agent-sdk/local` → `../../local/toolDefinitionTypes.js`; `./ToolResult.js` → `../index.js`; all others unchanged (same relative paths from agent-sdk)
 **Notes:** Pure type definitions (no runtime code); split re-export from single `export type` to import+re-export pattern to make types available in file scope; second tools/types file migrated (#150 + #151) — progress toward tools subsystem completion
+
+### Slice #152 — ToolRegistry Migration
+
+**Capability:** Runtime tool registry (Map-based, alias support, category/tag indexing, MCP tool management, function declaration generation, permission-mode filtering)
+**Target:** `@blade-ai/agent-sdk/tools/registry`
+**Root file shimmed:** `src/tools/registry/ToolRegistry.ts` → re-export from `@blade-ai/agent-sdk/tools/registry`
+**New test:** `packages/agent-sdk/src/__tests__/localToolRegistry.test.ts` (8 tests: instantiation, register/retrieve, duplicate throw, unregister, tag query, category query, search, statistics)
+**Import adjustments:** `../../utils/errorUtils.js` → `@blade-ai/agent/utils`; `../search/toolSearch.js` → `../toolSearch.js`; `resolveToolBehaviorHint` → `../types/ToolKind.js`; `PermissionMode` enum values: `Default`→`DEFAULT`, `AcceptEdits`→`AUTO_EDIT`, `Bypass`→`YOLO`, `Plan`→`PLAN`
+**Notes:** First non-type tools file migrated to agent-sdk; 409L of runtime code with registration, querying, function declarations, MCP tool management; opens path for ToolCatalog (#153)
