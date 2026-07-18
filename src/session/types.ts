@@ -67,17 +67,7 @@ type _AssertStreamMessageComplete = Assert<IsEqual<StreamMessage['type'], Stream
 
 export type { HookInput } from '@blade-ai/agent-sdk/local';
 
-export interface HookOutput {
-  action: 'continue' | 'skip' | 'abort';
-  /**
-   * For PreToolUse hooks: a JsonObject to merge into tool input params.
-   * For UserPromptSubmit hooks: either a JsonObject with a `userPrompt`
-   * key, or a bare string (legacy form) that replaces the prompt text.
-   */
-  modifiedInput?: JsonObject | string;
-  modifiedOutput?: JsonValue;
-  reason?: string;
-}
+export type { HookOutput } from '@blade-ai/agent-sdk/local';
 
 export type { HookCallback } from '@blade-ai/agent-sdk/local';
 

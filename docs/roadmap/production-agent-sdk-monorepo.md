@@ -82,7 +82,7 @@ Dependency direction:
 
 ---
 
-## Migration Progress — 176 Slices Completed
+## Migration Progress — 177 Slices Completed
 
 ### Subsystems at 100% (Complete)
 
@@ -127,7 +127,7 @@ Dependency direction:
 
 - ✅ Type-check: 0 errors (root + all packages)
 - ✅ Boundaries: green
-- ✅ 176 conventional commits
+- ✅ 177 conventional commits
 - ⚠️ `pnpm run verify` shows 22 pre-existing lint warnings (not migration-related)
 - ⚠️ Test suite has 22 pre-existing test file failures (not migration-related)
 
@@ -432,6 +432,14 @@ Dependency direction:
 **Error fixes:** `ExecutionPipelineLike` self-reference → `./kernelAdapterTypes.js`; `./agentLoop.js` → `@blade-ai/agent/loop`
 **Barrel export:** Added `AgentLoopConfig, AgentLoopHooks` to barrel
 **Notes:** First agent/loop/ file fully migrated; all 12 imports from packages or shimmed sources; 27 slices completed (#150-#176)
+
+### Slice #177 — HookOutput Root Shim
+
+**Capability:** HookOutput type migration — replaced inline interface definition in root `src/session/types.ts` (11L) with re-export from `@blade-ai/agent-sdk/local`
+**Target:** `@blade-ai/agent-sdk/local` (already contained HookOutput at sessionTypes.ts:112)
+**Root file shimmed:** `src/session/types.ts` — HookOutput inline definition (lines 71-81) → re-export shim
+**Barrel export:** No change needed — HookOutput already in barrel from sessionTypes.js
+**Notes:** First root file shim for an already-migrated type; reduces root duplicate definitions; 28 slices completed (#150-#177)
 
 **Notes:** Sixth tools file migrated (#150-#155); all 5 core tools subdirectories now have files in agent-sdk (types, registry, catalog, exposure, core); completes the horizontal tool subsystem migration
 
