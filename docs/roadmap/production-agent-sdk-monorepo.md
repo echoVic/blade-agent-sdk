@@ -82,7 +82,7 @@ Dependency direction:
 
 ---
 
-## Migration Progress — 150 Slices Completed
+## Migration Progress — 151 Slices Completed
 
 ### Subsystems at 100% (Complete)
 
@@ -127,7 +127,7 @@ Dependency direction:
 
 - ✅ Type-check: 0 errors (root + all packages)
 - ✅ Boundaries: green
-- ✅ 150 conventional commits
+- ✅ 151 conventional commits
 - ⚠️ `pnpm run verify` shows 22 pre-existing lint warnings (not migration-related)
 - ⚠️ Test suite has 22 pre-existing test file failures (not migration-related)
 
@@ -213,3 +213,12 @@ Dependency direction:
 **New test:** `packages/agent-sdk/src/__tests__/localExecutionTypes.test.ts` (3 tests: utility function, undefined cwd, type shape)
 **Import adjustments:** `@blade-ai/agent-sdk/tools` → `../public-index.js`; `@blade-ai/agent-sdk/local` → `../../local/index.js`; `../../runtime/index.js` → `../../local/ContextSnapshot.js`; `../../types/branded.js` → `../../local/branded.js`; `./ToolResult.js` → `../index.js`; `../../types/common.js` → `../../types/common.js` (same)
 **Notes:** Pure type definitions with one small runtime utility; first tools/types migration — opens path for ToolDefinition, ToolCatalog, ToolRegistry
+
+### Slice #151 — ToolDefinition Migration
+
+**Capability:** Core tool type definitions (`Tool`, `ToolConfig`, `ToolDefinition`, `ToolInvocation`, `ToolDescription`, `ToolSchema`, `ToolDescriptionResolver`)
+**Target:** `@blade-ai/agent-sdk/tools/types`
+**Root file shimmed:** `src/tools/types/ToolDefinition.ts` → re-export from `@blade-ai/agent-sdk/tools/types`
+**New test:** `packages/agent-sdk/src/__tests__/localToolDefinition.test.ts` (3 tests: type exports, ToolDescriptionResolver, ToolInvocation)
+**Import adjustments:** `@blade-ai/agent-sdk/local` → `../../local/toolDefinitionTypes.js`; `./ToolResult.js` → `../index.js`; all others unchanged (same relative paths from agent-sdk)
+**Notes:** Pure type definitions (no runtime code); split re-export from single `export type` to import+re-export pattern to make types available in file scope; second tools/types file migrated (#150 + #151) — progress toward tools subsystem completion
