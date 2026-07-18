@@ -9,13 +9,17 @@ const mockDeepSeekModelFactory = vi.fn((model: string) => ({ provider: 'deepseek
 const mockCreateDeepSeek = vi.fn((_options?: Record<string, unknown>) => mockDeepSeekModelFactory);
 const mockModelPortGenerate = vi.fn();
 const mockModelPortStream = vi.fn();
-const mockCreateOpenAICompatibleModelPort = vi.fn(() => ({
-  generate: mockModelPortGenerate,
-  stream: mockModelPortStream,
+const { mockCreateOpenAICompatibleModelPort } = vi.hoisted(() => ({
+  mockCreateOpenAICompatibleModelPort: vi.fn(() => ({
+    generate: mockModelPortGenerate,
+    stream: mockModelPortStream,
+  })),
 }));
-const mockCreateVercelModelPort = vi.fn(() => ({
-  generate: mockModelPortGenerate,
-  stream: mockModelPortStream,
+const { mockCreateVercelModelPort } = vi.hoisted(() => ({
+  mockCreateVercelModelPort: vi.fn(() => ({
+    generate: mockModelPortGenerate,
+    stream: mockModelPortStream,
+  })),
 }));
 
 vi.mock('@ai-sdk/openai', () => ({
