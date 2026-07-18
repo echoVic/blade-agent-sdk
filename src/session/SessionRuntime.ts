@@ -34,7 +34,7 @@ import { getBuiltinTools } from '../tools/builtin/index.js';
 import { ToolCatalog } from '../tools/catalog/ToolCatalog.js';
 import { toolFromDefinition } from '../tools/core/createTool.js';
 import { ExecutionPipeline } from '../tools/execution/ExecutionPipeline.js';
-import { FileLockManager, resolveStorageRoot, serverNameFromTool, toSubagentConfig, toSessionPermissionUpdates } from '@blade-ai/agent-sdk/local';
+import { FileLockManager, isSdkMcpServerHandle, resolveStorageRoot, serverNameFromTool, toSubagentConfig, toSessionPermissionUpdates } from '@blade-ai/agent-sdk/local';
 import { ToolRegistry } from '../tools/registry/ToolRegistry.js';
 import type { ExecutionContext, Tool } from '../tools/types/index.js';
 import type { BladeConfig, McpServerConfig, PermissionsConfig } from '../types/common.js';
@@ -61,12 +61,6 @@ import { createKernelHookPort } from './SessionKernelHookAdapter.js';
 import { createKernelToolPort } from './SessionKernelAdapter.js';
 import { createKernelStorePort } from './SessionKernelStoreAdapter.js';
 import { createKernelTracePort } from './SessionKernelTraceAdapter.js';
-
-function isSdkMcpServerHandle(
-  config: McpServerConfig | SdkMcpServerHandle
-): config is SdkMcpServerHandle {
-  return 'createClientTransport' in config && 'server' in config;
-}
 
 interface ResolvedSessionKernelModel {
   model: ModelPort;

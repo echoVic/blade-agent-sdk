@@ -71,3 +71,15 @@ export function toSubagentConfig(name: string, definition: AgentDefinition) {
     source: 'session' as const,
   };
 }
+
+import type { McpServerConfig } from '../types/common.js';
+import type { SdkMcpServerHandle } from './SdkMcpServer.js';
+
+/**
+ * Type guard: checks if an MCP server config is a local SDK server handle.
+ */
+export function isSdkMcpServerHandle(
+  config: McpServerConfig | SdkMcpServerHandle
+): config is SdkMcpServerHandle {
+  return 'createClientTransport' in config && 'server' in config;
+}
