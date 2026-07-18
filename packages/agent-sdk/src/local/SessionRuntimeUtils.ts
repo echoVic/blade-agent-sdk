@@ -474,3 +474,34 @@ export function translateZodIssue(issue: ZodIssue): string {
       return issue.message || '验证失败';
   }
 }
+/**
+ * Infers file-system paths from tool parameters.
+ * Selects values whose keys look like path descriptors and values from
+ * array fields named 'paths' or 'files'.
+ */
+export function inferAffectedPaths(params: unknown): string[] {
+  if (!params || typeof params !== 'object') {
+    return [];
+  }
+
+  const candidates = new Set<string>();
+  for (const [key, value] of Object.entries(params as JsonObject)) {
+    if (typeof value === 'string' && isPathLikeKey(key)) {
+      const normalized = value.trim();
+      if (normalized) {
+        candidates.add(normalized);
+      }
+      continue;
+    }
+
+    if (Array.isArray(value) && (key === 'paths' || key === 'files')) {
+      for (const item of value) {
+        if (typeof item === 'string' && item.trim() !== '') {
+          candidates.add(item.trim());
+        }
+      }
+    }
+  }
+
+  return [...candidates];
+}

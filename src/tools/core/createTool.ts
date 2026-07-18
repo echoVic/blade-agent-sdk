@@ -11,7 +11,7 @@ import type {
   ToolValidationError as _ToolValidationError,
 } from '../types/index.js';
 import { ToolErrorType, validationErrorToToolResult } from '../types/index.js';
-import { formatToolDescription, formatUnknown, isPathLikeKey, translateZodIssue } from '@blade-ai/agent-sdk/local';
+import { formatToolDescription, formatUnknown, inferAffectedPaths, isPathLikeKey, translateZodIssue } from '@blade-ai/agent-sdk/local';
 import { createToolBehavior, isReadOnlyKind, ToolKind } from '../types/ToolKind.js';
 import { zodToJsonSchema } from 'zod-to-json-schema';
 import { isPlainObject } from 'lodash-es';
@@ -274,33 +274,6 @@ export function toolFromDefinition<TParams = JsonObject>(
       return staticBehavior;
     },
   };
-}
-
-function inferAffectedPaths(params: unknown): string[] {
-  if (!params || typeof params !== 'object') {
-    return [];
-  }
-
-  const candidates = new Set<string>();
-  for (const [key, value] of Object.entries(params as JsonObject)) {
-    if (typeof value === 'string' && isPathLikeKey(key)) {
-      const normalized = value.trim();
-      if (normalized) {
-        candidates.add(normalized);
-      }
-      continue;
-    }
-
-    if (Array.isArray(value) && (key === 'paths' || key === 'files')) {
-      for (const item of value) {
-        if (typeof item === 'string' && item.trim() !== '') {
-          candidates.add(item.trim());
-        }
-      }
-    }
-  }
-
-  return [...candidates];
 }
 
 
