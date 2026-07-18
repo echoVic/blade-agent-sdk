@@ -18,9 +18,11 @@ const kernelModelGenerate = vi.fn(async (): Promise<ModelResponse> => ({
   },
   finishReason: 'stop',
 }));
-const createVercelModelPort = vi.fn(() => ({
-  generate: kernelModelGenerate,
-  stream: async function* () {},
+const { createVercelModelPort } = vi.hoisted(() => ({
+  createVercelModelPort: vi.fn(() => ({
+    generate: kernelModelGenerate,
+    stream: async function* () {},
+  })),
 }));
 
 const createAgent = vi.fn(async () => ({
