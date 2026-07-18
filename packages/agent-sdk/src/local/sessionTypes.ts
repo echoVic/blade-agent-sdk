@@ -5,6 +5,8 @@
 
 import type { JsonObject, JsonValue, TokenUsage } from '../types/common.js';
 import { DecisionBehavior } from './hookTypes.js';
+import type { SessionId } from './branded.js';
+import type { Message } from '@blade-ai/ai/chat';
 
 export interface ToolCallRecord {
   id: string;
@@ -120,4 +122,30 @@ export interface HookInput {
   error?: Error;
   sessionId: string;
   [key: string]: unknown;
+}
+
+/**
+ * SessionSummary — 会话摘要
+ *
+ * 用于列表视图，不包含完整消息内容。
+ */
+export interface SessionSummary {
+  sessionId: SessionId;
+  lastActivity: number;
+  messageCount: number;
+  topics: string[];
+  summaryText?: string;
+}
+
+/**
+ * SessionSnapshot — 会话快照
+ *
+ * 包含完整消息内容，用于恢复会话。
+ */
+export interface SessionSnapshot {
+  sessionId: SessionId;
+  messages: Message[];
+  messageIds: string[];
+  lastActivity: number;
+  summary?: string;
 }

@@ -82,7 +82,7 @@ Dependency direction:
 
 ---
 
-## Migration Progress — 170 Slices Completed
+## Migration Progress — 171 Slices Completed
 
 ### Subsystems at 100% (Complete)
 
@@ -127,7 +127,7 @@ Dependency direction:
 
 - ✅ Type-check: 0 errors (root + all packages)
 - ✅ Boundaries: green
-- ✅ 170 conventional commits
+- ✅ 171 conventional commits
 - ⚠️ `pnpm run verify` shows 22 pre-existing lint warnings (not migration-related)
 - ⚠️ Test suite has 22 pre-existing test file failures (not migration-related)
 
@@ -376,6 +376,15 @@ Dependency direction:
 **Root file updated:** `src/agent/types.ts` — re-export barrel now includes `StartBackgroundAgentOptions`
 **Dependencies:** All 9 interface fields from shimmed sources or packages: `SubagentConfig` (@blade-ai/agent-sdk), `BladeConfig/PermissionMode` (types/common → SHIMMED), `SubagentRegistry` (subagentRegistry #165 → SHIMMED), `AgentId` (branded → SHIMMED), `Message` (@blade-ai/ai/chat), `ContextSnapshot` (runtime → SHIMMED)
 **Notes:** Zero root dependencies — all 9 field types resolved; further decouples subagent chain by moving start options type to agent-sdk; 21 slices completed (#150-#170)
+
+### Slice #171 — SessionSummary + SessionSnapshot Type Extraction
+
+**Capability:** SessionSummary and SessionSnapshot interfaces (session metadata + full session snapshot) — appended to existing agent-sdk/local/sessionTypes.ts
+**Target:** `@blade-ai/agent-sdk/local` (via `sessionTypes.ts`)
+**Root file: Not changed** — types coexist in root SessionStore.ts (safe: 620L file, risky to modify inline definitions)
+**Dependencies:** All fields from shimmed sources or packages: `SessionId` (branded → SHIMMED), `Message` (@blade-ai/ai/chat), primitives (number, string, string[])
+**Barrel export:** Added `SessionSummary, SessionSnapshot` to existing `local/index.ts` sessionTypes barrel
+**Notes:** Zero root dependencies — all 5 field types from shimmed/packages; merged into existing sessionTypes.ts (123L → 155L); no root file modification (safe); 22 slices completed (#150-#171)
 
 **Notes:** Sixth tools file migrated (#150-#155); all 5 core tools subdirectories now have files in agent-sdk (types, registry, catalog, exposure, core); completes the horizontal tool subsystem migration
 
