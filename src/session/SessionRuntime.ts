@@ -34,7 +34,7 @@ import { getBuiltinTools } from '../tools/builtin/index.js';
 import { ToolCatalog } from '../tools/catalog/ToolCatalog.js';
 import { toolFromDefinition } from '../tools/core/createTool.js';
 import { ExecutionPipeline } from '../tools/execution/ExecutionPipeline.js';
-import { FileLockManager, isSdkMcpServerHandle, resolveStorageRoot, serverNameFromTool, toSubagentConfig, toSessionPermissionUpdates } from '@blade-ai/agent-sdk/local';
+import { FileLockManager, isSdkMcpServerHandle, resolveStorageRoot, serverNameFromTool, toSubagentConfig, toSessionPermissionUpdates, toSessionUsage } from '@blade-ai/agent-sdk/local';
 import { ToolRegistry } from '../tools/registry/ToolRegistry.js';
 import type { ExecutionContext, Tool } from '../tools/types/index.js';
 import type { BladeConfig, McpServerConfig, PermissionsConfig } from '../types/common.js';
@@ -292,7 +292,7 @@ export class SessionRuntime {
       case 'usage':
         yield {
           type: 'usage',
-          usage: this.toSessionUsage(event.usage, maxContextTokens),
+          usage: toSessionUsage(event.usage, maxContextTokens),
           sessionId: this.sessionId,
         };
         break;
@@ -316,28 +316,6 @@ export class SessionRuntime {
       default:
         break;
     }
-  }
-
-  private toSessionUsage(
-    usage: Extract<AgentStreamEvent, { type: 'usage' }>['usage'],
-    maxContextTokens: number,
-  ): TokenUsage {
-    return {
-      inputTokens: usage.promptTokens ?? 0,
-      outputTokens: usage.completionTokens ?? 0,
-      totalTokens: usage.totalTokens,
-      maxContextTokens,
-      ...(usage.cacheReadInputTokens !== undefined
-        ? { cacheReadInputTokens: usage.cacheReadInputTokens }
-        : {}),
-      ...(usage.cacheMissInputTokens !== undefined
-        ? { cacheMissInputTokens: usage.cacheMissInputTokens }
-        : {}),
-      ...(usage.billableInputTokens !== undefined
-        ? { billableInputTokens: usage.billableInputTokens }
-        : {}),
-      ...(usage.reasoningTokens !== undefined ? { reasoningTokens: usage.reasoningTokens } : {}),
-    };
   }
 
   async initialize(): Promise<void> {

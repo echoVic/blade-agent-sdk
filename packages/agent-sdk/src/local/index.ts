@@ -435,4 +435,4 @@ export type {  SubagentRegistryLike, SubagentExecutorLike } from './subagentType
 export type {  ModelManagerLike } from './modelTypes.js';
 export type {  AgentLoopConfig, AgentLoopHooks } from './adapterContracts.js';
 export {  createChatServiceAsync } from './chatServiceFactory.js';
-export { isSdkMcpServerHandle, resolveStorageRoot, serverNameFromTool, toSubagentConfig, toSessionPermissionUpdates } from './SessionRuntimeUtils.js';
+export { isSdkMcpServerHandle, resolveStorageRoot, serverNameFromTool, toSubagentConfig, toSessionPermissionUpdates, toSessionUsage } from './SessionRuntimeUtils.js';

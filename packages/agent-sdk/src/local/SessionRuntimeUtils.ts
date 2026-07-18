@@ -83,3 +83,31 @@ export function isSdkMcpServerHandle(
 ): config is SdkMcpServerHandle {
   return 'createClientTransport' in config && 'server' in config;
 }
+
+import type { AgentStreamEvent } from '@blade-ai/agent/protocol';
+import type { TokenUsage } from '../core/index.js';
+
+/**
+ * Converts a usage event from the agent stream into a typed TokenUsage object.
+ */
+export function toSessionUsage(
+  usage: Extract<AgentStreamEvent, { type: 'usage' }>['usage'],
+  maxContextTokens: number,
+): TokenUsage {
+  return {
+    inputTokens: usage.promptTokens ?? 0,
+    outputTokens: usage.completionTokens ?? 0,
+    totalTokens: usage.totalTokens,
+    maxContextTokens,
+    ...(usage.cacheReadInputTokens !== undefined
+      ? { cacheReadInputTokens: usage.cacheReadInputTokens }
+      : {}),
+    ...(usage.cacheMissInputTokens !== undefined
+      ? { cacheMissInputTokens: usage.cacheMissInputTokens }
+      : {}),
+    ...(usage.billableInputTokens !== undefined
+      ? { billableInputTokens: usage.billableInputTokens }
+      : {}),
+    ...(usage.reasoningTokens !== undefined ? { reasoningTokens: usage.reasoningTokens } : {}),
+  };
+}
