@@ -82,7 +82,7 @@ Dependency direction:
 
 ---
 
-## Migration Progress — 149 Slices Completed
+## Migration Progress — 150 Slices Completed
 
 ### Subsystems at 100% (Complete)
 
@@ -127,7 +127,7 @@ Dependency direction:
 
 - ✅ Type-check: 0 errors (root + all packages)
 - ✅ Boundaries: green
-- ✅ 149 conventional commits
+- ✅ 150 conventional commits
 - ⚠️ `pnpm run verify` shows 22 pre-existing lint warnings (not migration-related)
 - ⚠️ Test suite has 22 pre-existing test file failures (not migration-related)
 
@@ -204,3 +204,12 @@ Dependency direction:
 **Type adjustments:** Adapted `new McpClient(...)` calls from legacy 5-arg to new 3-arg signature; `types.js` → `mcpTypes.js`; `toError` from `@blade-ai/agent/utils`
 **New test:** `packages/agent-sdk/src/__tests__/localMcpRegistry.test.ts` (3 tests: instantiation, statistics, empty server list)
 **Milestone:** 🎉 **MCP subsystem fully migrated** — all 6 files (HealthMonitor #146, McpClient #147, createMcpTool #148, McpRegistry #149, + SdkMcpServer/auth/types shimmed earlier) now live in `@blade-ai/agent-sdk/local`
+
+### Slice #150 — ExecutionTypes Migration
+
+**Capability:** Tool execution context types (`ExecutionContext`, `ExecutionHistoryEntry`) and `getEffectiveProjectDir` utility
+**Target:** `@blade-ai/agent-sdk/tools/types`
+**Root file shimmed:** `src/tools/types/ExecutionTypes.ts` → re-export from `@blade-ai/agent-sdk/tools/types`
+**New test:** `packages/agent-sdk/src/__tests__/localExecutionTypes.test.ts` (3 tests: utility function, undefined cwd, type shape)
+**Import adjustments:** `@blade-ai/agent-sdk/tools` → `../public-index.js`; `@blade-ai/agent-sdk/local` → `../../local/index.js`; `../../runtime/index.js` → `../../local/ContextSnapshot.js`; `../../types/branded.js` → `../../local/branded.js`; `./ToolResult.js` → `../index.js`; `../../types/common.js` → `../../types/common.js` (same)
+**Notes:** Pure type definitions with one small runtime utility; first tools/types migration — opens path for ToolDefinition, ToolCatalog, ToolRegistry
