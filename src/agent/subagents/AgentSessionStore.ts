@@ -17,7 +17,7 @@ import type { AgentProgress } from '../types.js';
 /**
  * Agent 会话状态
  */
-export type AgentSessionStatus = 'running' | 'completed' | 'failed' | 'cancelled';
+export type { AgentSessionStatus } from '@blade-ai/agent-sdk/local';
 
 /**
  * Agent 会话数据

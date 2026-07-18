@@ -82,7 +82,7 @@ Dependency direction:
 
 ---
 
-## Migration Progress — 156 Slices Completed
+## Migration Progress — 157 Slices Completed
 
 ### Subsystems at 100% (Complete)
 
@@ -127,7 +127,7 @@ Dependency direction:
 
 - ✅ Type-check: 0 errors (root + all packages)
 - ✅ Boundaries: green
-- ✅ 156 conventional commits
+- ✅ 157 conventional commits
 - ⚠️ `pnpm run verify` shows 22 pre-existing lint warnings (not migration-related)
 - ⚠️ Test suite has 22 pre-existing test file failures (not migration-related)
 
@@ -257,6 +257,15 @@ Dependency direction:
 **New test:** `packages/agent-sdk/src/__tests__/localGetBuiltinTools.test.ts` (1 test, interface compatibility)
 **Breaking change:** Agent-sdk implementation no longer creates a default `SubagentRegistry` — callers must provide one via `opts.subagentRegistry`
 **Milestone:** 🎉 **Tools subsystem fully migrated** — all 7 non-trivial files (#150-#156) now live in `@blade-ai/agent-sdk/tools/*`
+
+### Slice #157 — AgentSessionStatus Type Extraction
+
+**Capability:** Extract `AgentSessionStatus` type (zero-dependency string union: `'running' | 'completed' | 'failed' | 'cancelled'`) to agent-sdk, breaking circular dependency between `agent/types.ts` and `AgentSessionStore.ts`
+**Target:** `@blade-ai/agent-sdk/local` (via `agentSessionTypes.ts`)
+**Root file updated:** `src/agent/subagents/AgentSessionStore.ts` — local type definition replaced with re-export from `@blade-ai/agent-sdk/local`
+**New file:** `packages/agent-sdk/src/local/agentSessionTypes.ts` (4 lines)
+**New test:** None (pure type extraction — no runtime behavior)
+**Notes:** First agent-subsystem type migration; uses same pattern as type extractions (#150, #151); opens path for further agent type migration (#158: `AgentSession` interface extraction)
 
 **Notes:** Sixth tools file migrated (#150-#155); all 5 core tools subdirectories now have files in agent-sdk (types, registry, catalog, exposure, core); completes the horizontal tool subsystem migration
 
