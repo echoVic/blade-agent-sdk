@@ -45,6 +45,10 @@
       "types": "./dist/protocol/index.d.ts",
       "import": "./dist/protocol/index.js"
     },
+    "./protocol/hooks": {
+      "types": "./dist/protocol/hooks.d.ts",
+      "import": "./dist/protocol/hooks.js"
+    },
     "./ports": {
       "types": "./dist/ports/index.d.ts",
       "import": "./dist/ports/index.js"
