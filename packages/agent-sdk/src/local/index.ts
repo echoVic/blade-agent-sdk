@@ -423,3 +423,4 @@ export {  isPlanApprovalResult } from './agentLoopTypes.js';
 export type {  AgentEvent, AgentStartEvent, AgentEndEvent, TurnStartEvent, TurnEndEvent, TurnRetryEvent, ContentDeltaEvent, ThinkingDeltaEvent, StreamEndEvent, ContentEvent, ThinkingEvent, ToolStartEvent, ToolResultEvent, ToolProgressEvent, ToolMessageEvent, ToolRuntimePatchEvent, ToolContextPatchEvent, ToolNewMessagesEvent, ToolPermissionUpdatesEvent, TokenUsageEvent, TokenUsageInfo, BudgetWarningEvent, CompactingEvent, TodoUpdateEvent, ApiRetryEvent, ModelFallbackEvent, RecoveryEvent, ErrorEvent } from './agentEvent.js';
 export type {  LlmToolDefinition, LoopSkillState, LoopRecoveryState, LoopExecutionContext, TurnState } from './turnState.js';
 export {  PlanExecutor } from './planExecutor.js';
+export {  LoopState } from './loopState.js';

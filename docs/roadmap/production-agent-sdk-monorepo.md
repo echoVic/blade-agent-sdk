@@ -82,7 +82,7 @@ Dependency direction:
 
 ---
 
-## Migration Progress — 162 Slices Completed
+## Migration Progress — 163 Slices Completed
 
 ### Subsystems at 100% (Complete)
 
@@ -127,7 +127,7 @@ Dependency direction:
 
 - ✅ Type-check: 0 errors (root + all packages)
 - ✅ Boundaries: green
-- ✅ 162 conventional commits
+- ✅ 163 conventional commits
 - ⚠️ `pnpm run verify` shows 22 pre-existing lint warnings (not migration-related)
 - ⚠️ Test suite has 22 pre-existing test file failures (not migration-related)
 
@@ -310,6 +310,15 @@ Dependency direction:
 **Root file shimmed:** `src/agent/state/TurnState.ts` → re-export shim
 **Import adjustments:** All 6 import groups resolved to agent-sdk local files: `ContextSnapshot` → `./ContextSnapshot.js`, `ToolRegistryLike` → `./kernelAdapterTypes.js`, `BackgroundAgentManagerLike/ConfirmationHandlerLike/ToolCatalogLike` → `./turnStateTypes.js`, `SessionId` → `./branded.js`, `BladeConfig/PermissionMode` → `../types/common.js`
 **Notes:** Third full agent file migration (#160-#162); all 6 imports from agent-sdk local or packages; zero root dependencies; fastest slice — all imports pre-verified, zero type errors on first attempt
+
+### Slice #163 — LoopState Runtime Class Migration
+
+**Capability:** LoopState runtime class (15 methods: buildTurnState, getTools, getChatService, recovery lifecycle, skill management, context snapshot) — 133 lines migrated to agent-sdk/local/loopState.ts
+**Target:** `@blade-ai/agent-sdk/local` (via `loopState.ts`)
+**Root file shimmed:** `src/agent/state/LoopState.ts` → re-export shim
+**New test:** `packages/agent-sdk/src/__tests__/localLoopState.test.ts` (7 tests: instantiation, buildTurnState, getTools, recovery start/reset, active skill, context snapshot)
+**Import adjustments:** `ContextSnapshot` → `./ContextSnapshot.js`, `ConversationState` → `import type` from `@blade-ai/agent`, `PermissionMode` → `../types/common.js`, loop types → `./turnState.js`
+**Notes:** Fourth full agent file migration (#160-#163); largest runtime class migrated to agent subsystem (133L, 15 methods); 7/7 tests pass; all 5 imports from agent-sdk local or packages, zero root dependencies
 
 **Notes:** Sixth tools file migrated (#150-#155); all 5 core tools subdirectories now have files in agent-sdk (types, registry, catalog, exposure, core); completes the horizontal tool subsystem migration
 
