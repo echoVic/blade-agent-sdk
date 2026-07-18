@@ -306,3 +306,14 @@ export function stringifyContent(value: unknown): string {
     return String(value);
   }
 }
+
+/**
+ * Checks whether a key looks like a file path key.
+ */
+export function isPathLikeKey(key: string): boolean {
+  return key === 'path'
+    || key.endsWith('_path')
+    || key.endsWith('Path')
+    || key === 'file'
+    || key === 'directory';
+}

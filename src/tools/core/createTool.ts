@@ -11,6 +11,7 @@ import type {
   ToolValidationError as _ToolValidationError,
 } from '../types/index.js';
 import { ToolErrorType, validationErrorToToolResult } from '../types/index.js';
+import { isPathLikeKey } from '@blade-ai/agent-sdk/local';
 import { createToolBehavior, isReadOnlyKind, ToolKind } from '../types/ToolKind.js';
 import { zodToJsonSchema } from 'zod-to-json-schema';
 import { isPlainObject } from 'lodash-es';
@@ -324,13 +325,6 @@ function inferAffectedPaths(params: unknown): string[] {
   return [...candidates];
 }
 
-function isPathLikeKey(key: string): boolean {
-  return key === 'path'
-    || key.endsWith('_path')
-    || key.endsWith('Path')
-    || key === 'file'
-    || key === 'directory';
-}
 
 /**
  * 定义工具的便捷函数
