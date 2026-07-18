@@ -82,7 +82,7 @@ Dependency direction:
 
 ---
 
-## Migration Progress — 152 Slices Completed
+## Migration Progress — 153 Slices Completed
 
 ### Subsystems at 100% (Complete)
 
@@ -127,7 +127,7 @@ Dependency direction:
 
 - ✅ Type-check: 0 errors (root + all packages)
 - ✅ Boundaries: green
-- ✅ 152 conventional commits
+- ✅ 153 conventional commits
 - ⚠️ `pnpm run verify` shows 22 pre-existing lint warnings (not migration-related)
 - ⚠️ Test suite has 22 pre-existing test file failures (not migration-related)
 
@@ -231,3 +231,12 @@ Dependency direction:
 **New test:** `packages/agent-sdk/src/__tests__/localToolRegistry.test.ts` (8 tests: instantiation, register/retrieve, duplicate throw, unregister, tag query, category query, search, statistics)
 **Import adjustments:** `../../utils/errorUtils.js` → `@blade-ai/agent/utils`; `../search/toolSearch.js` → `../toolSearch.js`; `resolveToolBehaviorHint` → `../types/ToolKind.js`; `PermissionMode` enum values: `Default`→`DEFAULT`, `AcceptEdits`→`AUTO_EDIT`, `Bypass`→`YOLO`, `Plan`→`PLAN`
 **Notes:** First non-type tools file migrated to agent-sdk; 409L of runtime code with registration, querying, function declarations, MCP tool management; opens path for ToolCatalog (#153)
+
+### Slice #153 — ToolCatalog Migration
+
+**Capability:** Tool catalog with source tracking (ToolSourceInfo/kind/trustLevel), registry delegation, MCP tool registration/removal, function declaration generation, permission-mode filtering
+**Target:** `@blade-ai/agent-sdk/tools/catalog`
+**Root file shimmed:** `src/tools/catalog/ToolCatalog.ts` → re-export from `@blade-ai/agent-sdk/tools/catalog`
+**New test:** `packages/agent-sdk/src/__tests__/localToolCatalog.test.ts` (8 tests: instantiation, register, entries with source info, unregister, declarations, search, MCP registration, MCP removal by server name)
+**Import adjustments:** `../search/toolSearch.js` → `../toolSearch.js` (flat directory); `@blade-ai/agent-sdk/local` → `../public-index.js` (types are in tools barrel, not local)
+**Notes:** Unlocks ToolExposurePlanner; fourth tools file migrated (#150-#153); tools subsystem now has first 4 non-trivial files in agent-sdk
