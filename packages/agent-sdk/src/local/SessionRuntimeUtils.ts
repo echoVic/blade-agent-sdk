@@ -55,3 +55,19 @@ export function resolveStorageRoot(storagePath?: string): string | undefined {
     ? dirname(storagePath)
     : storagePath;
 }
+
+import type { AgentDefinition } from './sessionTypes.js';
+
+/**
+ * Converts an AgentDefinition to a subagent configuration object.
+ */
+export function toSubagentConfig(name: string, definition: AgentDefinition) {
+  return {
+    name: definition.name || name,
+    description: definition.description,
+    systemPrompt: definition.systemPrompt,
+    tools: definition.allowedTools,
+    model: definition.model ?? 'inherit',
+    source: 'session' as const,
+  };
+}
