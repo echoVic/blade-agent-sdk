@@ -82,7 +82,7 @@ Dependency direction:
 
 ---
 
-## Migration Progress — 167 Slices Completed
+## Migration Progress — 168 Slices Completed
 
 ### Subsystems at 100% (Complete)
 
@@ -127,7 +127,7 @@ Dependency direction:
 
 - ✅ Type-check: 0 errors (root + all packages)
 - ✅ Boundaries: green
-- ✅ 167 conventional commits
+- ✅ 168 conventional commits
 - ⚠️ `pnpm run verify` shows 22 pre-existing lint warnings (not migration-related)
 - ⚠️ Test suite has 22 pre-existing test file failures (not migration-related)
 
@@ -352,6 +352,14 @@ Dependency direction:
 **Removed:** Unused `StartBackgroundAgentOptions` import (last root-exclusive dependency in the file)
 **Exports:** `UserMessageContent`, `AgentProgress`, `IBackgroundAgentReader/Controller/Manager`, `ChatContext`, `TurnLimitResponse`, `AgentOptions`, `LoopOptions`, `LoopResult`, `PlanApprovalResult`, `isPlanApprovalResult` — all from `@blade-ai/agent-sdk/local`
 **Notes:** Zero imports — file is now a pure re-export barrel; marks the AGENT TYPES subsystem as fully migrated to agent-sdk; all 167 slices completed
+
+### Slice #168 — VercelAIChatService Migration (521L)
+
+**Capability:** VercelAIChatService class (521L) — Vercel AI SDK model port adapter, streaming/non-streaming chat, tool call handling, message formatting, multi-model provider support — migrated to agent-sdk/local/vercelAIChatService.ts
+**Target:** `@blade-ai/agent-sdk/local` (via `vercelAIChatService.ts`)
+**Root file shimmed:** `src/session/VercelAIChatService.ts` → re-export shim
+**Import adjustments:** Only 2 root-specific imports adjusted: `Logger` → `./Logger.js`, `JsonObject/JsonValue` → `../types/common.js`; all other imports from packages (@blade-ai/ai/providers, JSONSchema7)
+**Notes:** LARGEST migration in the entire project (521L); first session subsystem file migrated; unlocks ModelManager.ts and ChatServiceFactory.ts; all package imports resolved through @blade-ai/ai; marks entry into session subsystem migration phase
 
 **Notes:** Sixth tools file migrated (#150-#155); all 5 core tools subdirectories now have files in agent-sdk (types, registry, catalog, exposure, core); completes the horizontal tool subsystem migration
 
