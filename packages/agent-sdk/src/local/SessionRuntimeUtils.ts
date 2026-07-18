@@ -40,3 +40,18 @@ export function toSessionPermissionUpdates(updates: readonly AgentPermissionUpda
         };
   });
 }
+import { basename, dirname } from 'node:path';
+
+/**
+ * Resolves a storage root path from a storage path.
+ * If the storage path ends with 'sessions', returns the parent directory.
+ */
+export function resolveStorageRoot(storagePath?: string): string | undefined {
+  if (!storagePath) {
+    return undefined;
+  }
+
+  return basename(storagePath) === 'sessions'
+    ? dirname(storagePath)
+    : storagePath;
+}

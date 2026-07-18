@@ -34,7 +34,7 @@ import { getBuiltinTools } from '../tools/builtin/index.js';
 import { ToolCatalog } from '../tools/catalog/ToolCatalog.js';
 import { toolFromDefinition } from '../tools/core/createTool.js';
 import { ExecutionPipeline } from '../tools/execution/ExecutionPipeline.js';
-import { FileLockManager, serverNameFromTool, toSessionPermissionUpdates } from '@blade-ai/agent-sdk/local';
+import { FileLockManager, resolveStorageRoot, serverNameFromTool, toSessionPermissionUpdates } from '@blade-ai/agent-sdk/local';
 import { ToolRegistry } from '../tools/registry/ToolRegistry.js';
 import type { ExecutionContext, Tool } from '../tools/types/index.js';
 import type { BladeConfig, McpServerConfig, PermissionsConfig } from '../types/common.js';
@@ -66,16 +66,6 @@ function isSdkMcpServerHandle(
   config: McpServerConfig | SdkMcpServerHandle
 ): config is SdkMcpServerHandle {
   return 'createClientTransport' in config && 'server' in config;
-}
-
-function resolveStorageRoot(storagePath?: string): string | undefined {
-  if (!storagePath) {
-    return undefined;
-  }
-
-  return basename(storagePath) === 'sessions'
-    ? dirname(storagePath)
-    : storagePath;
 }
 
 function toSubagentConfig(name: string, definition: AgentDefinition) {
