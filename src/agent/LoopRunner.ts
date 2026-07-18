@@ -28,6 +28,7 @@ import {
 import { getEnvironmentContext } from '../utils/environment.js';
 import type { AgentEvent } from './AgentEvent.js';
 import { agentLoop } from './AgentLoop.js';
+import { isRecord } from '@blade-ai/agent-sdk/local';
 import type { CompactionHandler } from './CompactionHandler.js';
 import type { ModelManager } from './ModelManager.js';
 import { RuntimePatchManager } from './RuntimePatchManager.js';
@@ -47,9 +48,6 @@ import { buildLoopConfig } from './LoopHookBuilder.js';
 
 // ===== Module-level helpers =====
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
-}
 
 function syncContextMessages(context: ChatContext, convState: ConversationState): void {
   context.messages = convState.getContextMessages();
