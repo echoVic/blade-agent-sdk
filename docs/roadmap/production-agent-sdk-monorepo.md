@@ -82,7 +82,7 @@ Dependency direction:
 
 ---
 
-## Migration Progress — 154 Slices Completed
+## Migration Progress — 155 Slices Completed
 
 ### Subsystems at 100% (Complete)
 
@@ -127,7 +127,7 @@ Dependency direction:
 
 - ✅ Type-check: 0 errors (root + all packages)
 - ✅ Boundaries: green
-- ✅ 154 conventional commits
+- ✅ 155 conventional commits
 - ⚠️ `pnpm run verify` shows 22 pre-existing lint warnings (not migration-related)
 - ⚠️ Test suite has 22 pre-existing test file failures (not migration-related)
 
@@ -239,7 +239,16 @@ Dependency direction:
 **Root file shimmed:** `src/tools/catalog/ToolCatalog.ts` → re-export from `@blade-ai/agent-sdk/tools/catalog`
 **New test:** `packages/agent-sdk/src/__tests__/localToolCatalog.test.ts` (8 tests: instantiation, register, entries with source info, unregister, declarations, search, MCP registration, MCP removal by server name)
 **Import adjustments:** `../search/toolSearch.js` → `../toolSearch.js` (flat directory); `@blade-ai/agent-sdk/local` → `../public-index.js` (types are in tools barrel, not local)
-**Notes:** Unlocks ToolExposurePlanner; fourth tools file migrated (#150-#153); tools subsystem now has first 4 non-trivial files in agent-sdk
+**Notes:** Fifth tools file migrated (#150-#154); completed another tools/exposure directory (after types, registry, catalog); remaining tools: createTool (644L), builtin/index (49L)
+
+### Slice #155 — createTool Migration
+
+**Capability:** Tool factory function (Zod schema parsing, JSON Schema generation, validation, error handling, `UnifiedToolInvocation`, `parseWithZod`, `formatZodError`, `translateZodIssue`) — the largest tools migration at 644 lines
+**Target:** `@blade-ai/agent-sdk/tools/core`
+**Root file shimmed:** `src/tools/core/createTool.ts` → re-export from `@blade-ai/agent-sdk/tools/core`
+**New test:** `packages/agent-sdk/src/__tests__/localCreateTool.test.ts` (6 tests: creation, function declaration, describe, build+execute, direct execute, error handling)
+**Import adjustments:** `validationErrorToToolResult` → `../index.js` (tools barrel, not types barrel); `getFunctionDeclaration()` parameters cast: `JSONSchema7 → FunctionDeclaration['parameters']`; `getMetadata()` return cast: `as ReturnType<Tool['getMetadata']>` (agent-sdk has optional `displayName?` and `schema: JsonObject | JsonSchemaObject`)
+**Notes:** Sixth tools file migrated (#150-#155); all 5 core tools subdirectories now have files in agent-sdk (types, registry, catalog, exposure, core); completes the horizontal tool subsystem migration
 
 ### Slice #154 — ToolExposurePlanner Migration
 
