@@ -82,7 +82,7 @@ Dependency direction:
 
 ---
 
-## Migration Progress — 159 Slices Completed
+## Migration Progress — 160 Slices Completed
 
 ### Subsystems at 100% (Complete)
 
@@ -127,7 +127,7 @@ Dependency direction:
 
 - ✅ Type-check: 0 errors (root + all packages)
 - ✅ Boundaries: green
-- ✅ 159 conventional commits
+- ✅ 160 conventional commits
 - ⚠️ `pnpm run verify` shows 22 pre-existing lint warnings (not migration-related)
 - ⚠️ Test suite has 22 pre-existing test file failures (not migration-related)
 
@@ -284,6 +284,15 @@ Dependency direction:
 **New test:** `packages/agent-sdk/src/__tests__/localAgentLoopTypes.test.ts` (4 tests: PlanApprovalResult detection, undefined, no targetMode, no metadata)
 **Dependencies:** All 12 type imports from packages or already-shimmed agent-sdk sources; zero root-specific dependencies
 **Notes:** First slice with runtime code in the agent subsystem migration (type guard function); AgentOptions has PermissionsConfig, PermissionMode, ToolCatalogSourcePolicy, TokenBudgetConfig dependencies — all resolved via agent-sdk; reduces `agent/types.ts` from 149L to ~100L
+
+### Slice #160 — AgentEvent.ts Full File Migration
+
+**Capability:** Complete AgentEvent event type system (26 event interfaces + AgentEvent union type + TokenUsageInfo) — 249 lines migrated from root to agent-sdk/local/agentEvent.ts
+**Target:** `@blade-ai/agent-sdk/local` (via `agentEvent.ts`)
+**Root file shimmed:** `src/agent/AgentEvent.ts` → full re-export shim (27 type exports)
+**New barrel export:** All 27 AgentEvent types added to local/index.ts
+**Import adjustments:** `RuntimePatch/RuntimeContextPatch` → `./RuntimePatch.js`, `./RuntimeContextPatch.js`; `TodoItem` → `./todo/types.js`; `ToolResult` → `../tools/index.js`; `PermissionUpdate` → `../types/permissions.js`
+**Notes:** First full agent file migration (#160); all 7 imports resolved to agent-sdk local files or external packages; zero root-specific dependencies; pure type file (no runtime code); marks transition from type extraction (#157-#159) to complete file migration in the agent subsystem
 
 **Notes:** Sixth tools file migrated (#150-#155); all 5 core tools subdirectories now have files in agent-sdk (types, registry, catalog, exposure, core); completes the horizontal tool subsystem migration
 
