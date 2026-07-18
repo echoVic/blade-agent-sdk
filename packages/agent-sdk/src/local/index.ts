@@ -430,6 +430,7 @@ export {  AgentSessionStore } from './agentSessionStore.js';
 export {  VercelAIChatService } from './vercelAIChatService.js';
 export type {  StartBackgroundAgentOptions } from './backgroundAgentTypes.js';
 export type {  CompactionRuntimeContext, CompactionHandlerLike } from './compactionTypes.js';
+export type {  SubagentRegistryLike, SubagentExecutorLike } from './subagentTypes.js';
 export type {  ModelManagerLike } from './modelTypes.js';
 export type {  AgentLoopConfig, AgentLoopHooks } from './adapterContracts.js';
 export {  createChatServiceAsync } from './chatServiceFactory.js';
