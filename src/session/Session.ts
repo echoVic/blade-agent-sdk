@@ -11,7 +11,7 @@ import {
 } from '../runtime/index.js';
 import type { ContentPart, Message } from '@blade-ai/ai/chat';
 import { cloneMessage } from '../runtime/messageUtils.js';
-import { SessionId } from '../types/branded.js';
+import { isJsonObject, isSessionToolCall, isSessionToolCallArray } from '@blade-ai/agent-sdk/local';
 import {
   type BladeConfig,
   type JsonObject,
@@ -783,24 +783,3 @@ export async function prompt(
   }
 }
 
-function isSessionToolCallArray(value: unknown): value is NonNullable<Message['tool_calls']> {
-  return Array.isArray(value) && value.every(isSessionToolCall);
-}
-
-function isSessionToolCall(value: unknown): value is NonNullable<Message['tool_calls']>[number] {
-  if (!isJsonObject(value)) {
-    return false;
-  }
-  const fn = value.function;
-  return (
-    typeof value.id === 'string'
-    && value.type === 'function'
-    && isJsonObject(fn)
-    && typeof fn.name === 'string'
-    && typeof fn.arguments === 'string'
-  );
-}
-
-function isJsonObject(value: unknown): value is JsonObject {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
-}

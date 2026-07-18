@@ -111,3 +111,37 @@ export function toSessionUsage(
     ...(usage.reasoningTokens !== undefined ? { reasoningTokens: usage.reasoningTokens } : {}),
   };
 }
+
+import type { Message } from '@blade-ai/ai/chat';
+import type { JsonObject } from '@blade-ai/ai';
+
+/**
+ * Type guard: checks if a value is a valid tool call array.
+ */
+export function isSessionToolCallArray(value: unknown): value is NonNullable<Message['tool_calls']> {
+  return Array.isArray(value) && value.every(isSessionToolCall);
+}
+
+/**
+ * Type guard: checks if a value is a valid individual tool call.
+ */
+export function isSessionToolCall(value: unknown): value is NonNullable<Message['tool_calls']>[number] {
+  if (!isJsonObject(value)) {
+    return false;
+  }
+  const fn = value.function;
+  return (
+    typeof value.id === 'string'
+    && value.type === 'function'
+    && isJsonObject(fn)
+    && typeof fn.name === 'string'
+    && typeof fn.arguments === 'string'
+  );
+}
+
+/**
+ * Type guard: checks if a value is a plain JSON object.
+ */
+export function isJsonObject(value: unknown): value is JsonObject {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
