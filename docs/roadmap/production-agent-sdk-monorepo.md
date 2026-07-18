@@ -515,3 +515,31 @@ After 29 slices (#150-#178), approximately 4,160 lines migrated from root to `@b
 **New test:** `packages/agent-sdk/src/__tests__/localToolExposurePlanner.test.ts` (5 tests: instantiation, eager plan, deny policy, deferred mode, discovered tools)
 **Import adjustments:** `resolveToolBehaviorHint` → `../types/ToolKind.js`; `RuntimeToolPolicySnapshot` → separate import+re-export pattern; `tool.exposure` → `tool.exposure?.` (null safety); `displayName` → `tool.displayName ?? tool.name` (agent-sdk optional property)
 **Notes:** Fifth tools file migrated (#150-#154); completed another tools/exposure directory (after types, registry, catalog); remaining tools: createTool (644L), builtin/index (49L)
+
+## 🏆 Milestone — Zero Production Test Failures (#245)
+
+**Date:** 2026-07-18 | **Slices:** #150–#245 (96 total)
+
+### Recovery Journey
+
+| Phase | Slices | Description |
+|---|---|---|
+| Phase 1 | #193–#238 | 45 MIGRATED shim restorations from git |
+| Phase 2 | #239, #240, #242 | 3 subpath export root cause fixes (SdkError, tools/builtin, ToolRegistry) |
+| Phase 3 | #242–#244 | 3 mock hoisting fixes (vi.hoisted) |
+| Quality | #190–#191 | 2 boundary violation fixes (0 self-ref) |
+
+### Final Test Suite State
+
+| Metric | Peak (#238) | After #244 | Change |
+|---|---|---|---|
+| Failing files | 28 | 0 (production) | ↓28 |
+| Failing tests | 90 | 0 (production) | ↓90 |
+| Passing tests | 991 | 1203 | ↑212 |
+| Release scripts | 3 files / 53 tests | 3 files / 53 tests | Unchanged (pre-existing) |
+
+### Remaining Work
+
+- Root still retains ~10,000L of unmigrated production code (Agent.ts, Session.ts, SessionRuntime.ts, etc.)
+- Future phases needed: root code migration to @blade-ai/agent and @blade-ai/agent-sdk
+- Release script tests are pre-existing failures (semantic-release-config) — not migration-related
