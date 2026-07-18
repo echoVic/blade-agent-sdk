@@ -5,6 +5,7 @@ import {
 } from '../context/storage/pathUtils.js';
 import { JSONLStore } from '../context/storage/JSONLStore.js';
 import type { PartInfo, SessionEvent, SessionInfo, SessionSnapshot, SessionState, SessionSummary } from '@blade-ai/agent-sdk/local';
+import { toTimestamp, toMessageContent, upsertContentPart } from '@blade-ai/agent-sdk/local';
 import type { ContentPart, Message, ToolCall } from '@blade-ai/ai/chat';
 import { cloneJsonValue, cloneMessage } from '../runtime/messageUtils.js';
 import type { JsonValue, MessageRole } from '../types/common.js';
@@ -81,24 +82,7 @@ interface MessageRecord {
   message: Message;
 }
 
-function toTimestamp(value: string | undefined, fallback: string): number {
-  return new Date(value ?? fallback).getTime();
-}
 
-/**
- * Collapse a ContentPart[] down to `Message['content']`.
- * Single text-only part is returned as a plain string for backward compat.
- *
- * NOTE: no cloning — this operates on the internal builder state.
- * The final export to `SessionState` is protected by `cloneMessage`.
- */
-function toMessageContent(parts: ContentPart[]): Message['content'] {
-  if (parts.length === 1 && parts[0]?.type === 'text') {
-    return parts[0].text;
-  }
-
-  return [...parts];
-}
 
 /**
  * Insert or replace a content part in the per-message part list.
@@ -108,23 +92,6 @@ function toMessageContent(parts: ContentPart[]): Message['content'] {
  * is only used to fill the mutable builder record.  The boundary clone
  * happens later in `cloneMessage` when the record is exported.
  */
-function upsertContentPart(
-  contentParts: Map<string, Array<{ partId: string; content: ContentPart }>>,
-  messageId: MessageId,
-  partId: string,
-  content: ContentPart,
-): ContentPart[] {
-  const existing = contentParts.get(messageId) ?? [];
-  const index = existing.findIndex((part) => part.partId === partId);
-
-  if (index === -1) {
-    existing.push({ partId, content });
-  } else {
-    existing[index] = { partId, content };
-  }
-
-  contentParts.set(messageId, existing);
-  return existing.map((part) => part.content);
 }
 
 function stringifyContent(value: unknown): string {

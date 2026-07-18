@@ -244,3 +244,47 @@ export function parseToolCallArguments(value: string): JsonValue {
     return value;
   }
 }
+
+import type { ContentPart } from '@blade-ai/ai/chat';
+import type { MessageId } from './branded.js';
+
+/**
+ * Converts a date string to a Unix timestamp in milliseconds.
+ */
+export function toTimestamp(value: string | undefined, fallback: string): number {
+  return new Date(value ?? fallback).getTime();
+}
+
+/**
+ * Collapses a ContentPart[] down to Message['content'].
+ * Single text-only part is returned as a plain string for backward compat.
+ */
+export function toMessageContent(parts: ContentPart[]): Message['content'] {
+  if (parts.length === 1 && parts[0]?.type === 'text') {
+    return parts[0].text;
+  }
+
+  return [...parts];
+}
+
+/**
+ * Inserts or replaces a content part in the per-message part list.
+ */
+export function upsertContentPart(
+  contentParts: Map<string, Array<{ partId: string; content: ContentPart }>>,
+  messageId: MessageId,
+  partId: string,
+  content: ContentPart,
+): ContentPart[] {
+  const existing = contentParts.get(messageId) ?? [];
+  const index = existing.findIndex((part) => part.partId === partId);
+
+  if (index === -1) {
+    existing.push({ partId, content });
+  } else {
+    existing[index] = { partId, content };
+  }
+
+  contentParts.set(messageId, existing);
+  return [...existing.map((p) => p.content)];
+}
