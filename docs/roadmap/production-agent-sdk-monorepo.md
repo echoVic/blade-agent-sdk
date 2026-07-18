@@ -82,7 +82,7 @@ Dependency direction:
 
 ---
 
-## Migration Progress — 146 Slices Completed
+## Migration Progress — 147 Slices Completed
 
 ### Subsystems at 100% (Complete)
 
@@ -127,7 +127,7 @@ Dependency direction:
 
 - ✅ Type-check: 0 errors (root + all packages)
 - ✅ Boundaries: green
-- ✅ 146 conventional commits
+- ✅ 147 conventional commits
 - ⚠️ `pnpm run verify` shows 22 pre-existing lint warnings (not migration-related)
 - ⚠️ Test suite has 22 pre-existing test file failures (not migration-related)
 
@@ -143,7 +143,7 @@ Dependency direction:
 
 **Remaining coupled subsystems:**
 - Agent loop (Agent.ts 22K, LoopRunner 14K, LoopHookBuilder 14K)
-- MCP (McpClient 631L, McpRegistry 533L, createMcpTool 355L)
+- MCP (McpRegistry 533L, createMcpTool 355L)
 - Context (ContextManager 20K, CompactionService 17K, PersistentStore)
 - Hooks (HookRuntime 753L)
 
@@ -175,3 +175,13 @@ Dependency direction:
 **New test:** `packages/agent-sdk/src/__tests__/localHealthMonitor.test.ts` (3 tests: instantiation, initial status, statistics shape)
 **Type adjustments:** Replaced `McpClient` (root class) with `McpClientLike` (agent-sdk interface); changed self-referencing `@blade-ai/agent-sdk/local` imports to relative paths
 **Notes:** Extends Node `EventEmitter` — Node-only, appropriate for `/local`
+
+### Slice #147 — McpClient Migration
+
+**Capability:** MCP client with connection management, OAuth, health monitoring, retry, error classification
+**Target:** `@blade-ai/agent-sdk/local`
+**Root file shimmed:** `src/mcp/McpClient.ts` → re-export from `@blade-ai/agent-sdk/local`
+**Pre-requisite:** HealthMonitor decoupled via `McpClientLike` interface (#146)
+**New test:** `packages/agent-sdk/src/__tests__/localMcpClient.test.ts` (3 tests: instantiation, ErrorType enum, EventEmitter)
+**Import adjustments:** `toError` from `@blade-ai/agent/utils`; `getPackageName/getVersion` from `./packageInfo.js`; `OAuthProvider`/`OAuthTokenStorage` from local files; `types.js` → `mcpTypes.js`
+**Notes:** Uses `@modelcontextprotocol/sdk`, `node:events`, `process.env` — Node-only, appropriate for `/local`
