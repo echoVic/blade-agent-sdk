@@ -178,3 +178,22 @@ export function isChatToolCall(value: unknown): value is ChatToolCall {
 export function isChatToolCallArray(value: unknown): value is ChatToolCall[] {
   return Array.isArray(value) && value.every(isChatToolCall);
 }
+
+import { HookEvent } from './constants.js';
+import type { SessionId } from './branded.js';
+import type { HookInput } from '../session/types.js';
+
+/**
+ * Builds a HookInput object from hook event data.
+ */
+export function buildHookInput(
+  sessionId: SessionId,
+  event: HookEvent,
+  payload: Record<string, unknown>,
+): HookInput {
+  return {
+    event,
+    sessionId,
+    ...payload,
+  };
+}

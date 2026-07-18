@@ -9,6 +9,7 @@ import type { JsonObject, JsonValue, PermissionMode } from '../types/common.js';
 import { HookEvent } from '../types/constants.js';
 import type { PermissionResult } from '../types/permissions.js';
 import type { HookCallback, HookInput } from '../session/types.js';
+import { buildHookInput, isJsonObject } from '@blade-ai/agent-sdk/local';
 import type { HookTraceCollector } from '../observability/index.js';
 import { HookManager } from './HookManager.js';
 import { HookBus } from './HookBus.js';
@@ -34,22 +35,6 @@ export interface PostToolUseRuntimeResult {
   result: ToolResult;
   action?: 'continue' | 'abort';
   reason?: string;
-}
-
-function isRecord(value: unknown): value is JsonObject {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
-}
-
-function buildHookInput(
-  sessionId: SessionId,
-  event: HookEvent,
-  payload: Record<string, unknown>,
-): HookInput {
-  return {
-    event,
-    sessionId,
-    ...payload,
-  };
 }
 
 export class HookRuntime {
