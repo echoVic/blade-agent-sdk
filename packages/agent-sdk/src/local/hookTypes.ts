@@ -5,7 +5,7 @@
  */
 
 import type { ToolResult } from '../tools/types/index.js';
-import type { SessionId } from './branded.js';
+import type { SessionId, ToolUseId } from './branded.js';
 import type { JsonObject, JsonValue, PermissionMode } from '../types/common.js';
 import type { HookEvent } from './constants.js';
 import type { Assert, Extends } from './typeAssertions.js';
@@ -1211,4 +1211,29 @@ export interface MatchContext {
 
   /** 命令 */
   command?: string;
+}
+
+/**
+ * PreToolUseRuntimeResult — 工具使用前 Hook 运行时结果
+ *
+ * 从 HookRuntime.ts applyPreToolUse 返回的结果类型。
+ */
+export interface PreToolUseRuntimeResult {
+  toolUseId: ToolUseId;
+  updatedInput: JsonObject;
+  action?: 'continue' | 'skip' | 'abort';
+  reason?: string;
+  needsConfirmation?: boolean;
+}
+
+/**
+ * PostToolUseRuntimeResult — 工具使用后 Hook 运行时结果
+ *
+ * 从 HookRuntime.ts applyPostToolUse/applyPostToolUseFailure 返回的结果类型。
+ */
+export interface PostToolUseRuntimeResult {
+  toolUseId: ToolUseId;
+  result: ToolResult;
+  action?: 'continue' | 'abort';
+  reason?: string;
 }
