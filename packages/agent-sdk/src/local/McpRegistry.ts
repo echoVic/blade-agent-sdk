@@ -452,4 +452,25 @@ export class McpRegistry extends EventEmitter {
       isDiscovering: this.isDiscovering,
     };
   }
+
+  getToolsByServer(serverName: string): Tool[] {
+    const result: Tool[] = [];
+    const serverInfo = this.servers.get(serverName);
+    if (!serverInfo) {
+      return result;
+    }
+    for (const toolDef of serverInfo.tools) {
+      try {
+        const tool = createMcpTool(
+          serverInfo.client,
+          serverName,
+          toolDef,
+        );
+        result.push(tool);
+      } catch (_error) {
+        // skip invalid tool
+      }
+    }
+    return result;
+  }
 }
