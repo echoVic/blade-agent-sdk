@@ -10,7 +10,7 @@ import {
 } from '../session/SessionStore.js';
 import { SessionId } from '../types/branded.js';
 import type { JsonObject, JsonValue } from '../types/common.js';
-import { isJsonObject, isUsageMetadata } from '@blade-ai/agent-sdk/local';
+import { isChatToolCall, isChatToolCallArray, isJsonObject, isUsageMetadata } from '@blade-ai/agent-sdk/local';
 import { ContextCompressor } from './processors/ContextCompressor.js';
 import { ContextFilter } from './processors/ContextFilter.js';
 import { CacheStore } from './storage/CacheStore.js';
@@ -28,19 +28,6 @@ import type {
 } from './types.js';
 
 type SessionConfiguration = JsonObject & { sessionId?: SessionId };
-
-function isChatToolCall(value: unknown): value is ChatToolCall {
-  return isJsonObject(value)
-    && typeof value.id === 'string'
-    && value.type === 'function'
-    && isJsonObject(value.function)
-    && typeof value.function.name === 'string'
-    && typeof value.function.arguments === 'string';
-}
-
-function isChatToolCallArray(value: unknown): value is ChatToolCall[] {
-  return Array.isArray(value) && value.every(isChatToolCall);
-}
 
 /**
  * 上下文管理器 - 统一管理所有上下文相关操作

@@ -157,3 +157,24 @@ export function isUsageMetadata(
     && typeof value.input_tokens === 'number'
     && typeof value.output_tokens === 'number';
 }
+
+import type { ToolCall as ChatToolCall } from '@blade-ai/ai/chat';
+
+/**
+ * Type guard: checks if a value is a valid ChatToolCall.
+ */
+export function isChatToolCall(value: unknown): value is ChatToolCall {
+  return isJsonObject(value)
+    && typeof value.id === 'string'
+    && value.type === 'function'
+    && isJsonObject(value.function)
+    && typeof value.function.name === 'string'
+    && typeof value.function.arguments === 'string';
+}
+
+/**
+ * Type guard: checks if a value is an array of ChatToolCall items.
+ */
+export function isChatToolCallArray(value: unknown): value is ChatToolCall[] {
+  return Array.isArray(value) && value.every(isChatToolCall);
+}
