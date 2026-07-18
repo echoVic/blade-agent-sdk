@@ -23,9 +23,11 @@ const mockKernelModelGenerate = vi.fn(async () => ({
   finishReason: 'stop',
 }));
 const mockKernelModelStream = vi.fn(async function* () {});
-const mockCreateVercelModelPort = vi.fn(() => ({
-  generate: mockKernelModelGenerate,
-  stream: mockKernelModelStream,
+const { mockCreateVercelModelPort } = vi.hoisted(() => ({
+  mockCreateVercelModelPort: vi.fn(() => ({
+    generate: mockKernelModelGenerate,
+    stream: mockKernelModelStream,
+  })),
 }));
 
 vi.mock('../../mcp/McpClient.js', () => ({
