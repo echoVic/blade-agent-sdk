@@ -34,7 +34,7 @@ import { getBuiltinTools } from '../tools/builtin/index.js';
 import { ToolCatalog } from '../tools/catalog/ToolCatalog.js';
 import { toolFromDefinition } from '../tools/core/createTool.js';
 import { ExecutionPipeline } from '../tools/execution/ExecutionPipeline.js';
-import { FileLockManager } from '@blade-ai/agent-sdk/local';
+import { FileLockManager, serverNameFromTool } from '@blade-ai/agent-sdk/local';
 import { ToolRegistry } from '../tools/registry/ToolRegistry.js';
 import type { ExecutionContext, Tool } from '../tools/types/index.js';
 import type { BladeConfig, McpServerConfig, PermissionsConfig } from '../types/common.js';
@@ -643,16 +643,6 @@ export class SessionRuntime {
       async () => ({ behavior: 'ask' } satisfies PermissionResult),
     ]);
   }
-}
-
-function serverNameFromTool(tool: Tool): string {
-  const taggedServer = tool.tags.find((tag) => tag === tag.toLowerCase() && tag.length > 0);
-  if (taggedServer) {
-    return taggedServer;
-  }
-
-  const match = tool.name.match(/^mcp__([^_]+)__/);
-  return match?.[1] ?? 'mcp';
 }
 
 function toSessionPermissionUpdates(updates: readonly AgentPermissionUpdate[]): PermissionUpdate[] {
