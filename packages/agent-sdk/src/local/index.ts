@@ -417,3 +417,4 @@ export { buildSystemPrompt } from './promptBuilder.js';
 export type {  Assert, Extends, IsEqual, KeysEqual } from './typeAssertions.js';
 export type {  RuntimeToolPolicySnapshot } from './exposureTypes.js';
 export type {  AgentSessionStatus } from './agentSessionTypes.js';
+export type {  AgentSession } from './agentSessionTypes.js';

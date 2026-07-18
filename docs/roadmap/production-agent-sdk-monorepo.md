@@ -82,7 +82,7 @@ Dependency direction:
 
 ---
 
-## Migration Progress — 157 Slices Completed
+## Migration Progress — 158 Slices Completed
 
 ### Subsystems at 100% (Complete)
 
@@ -127,7 +127,7 @@ Dependency direction:
 
 - ✅ Type-check: 0 errors (root + all packages)
 - ✅ Boundaries: green
-- ✅ 157 conventional commits
+- ✅ 158 conventional commits
 - ⚠️ `pnpm run verify` shows 22 pre-existing lint warnings (not migration-related)
 - ⚠️ Test suite has 22 pre-existing test file failures (not migration-related)
 
@@ -266,6 +266,15 @@ Dependency direction:
 **New file:** `packages/agent-sdk/src/local/agentSessionTypes.ts` (4 lines)
 **New test:** None (pure type extraction — no runtime behavior)
 **Notes:** First agent-subsystem type migration; uses same pattern as type extractions (#150, #151); opens path for further agent type migration (#158: `AgentSession` interface extraction)
+
+### Slice #158 — AgentSession Interface Extraction
+
+**Capability:** Extract `AgentSession` interface (13 properties: id, subagentType, description, prompt, messages, status, result, stats, createdAt, lastActiveAt, completedAt, parentSessionId, outputFile, progress) to agent-sdk/local
+**Target:** `@blade-ai/agent-sdk/local` (via `agentSessionTypes.ts`, extends #157)
+**Root file updated:** `src/agent/subagents/AgentSessionStore.ts` — interface definition replaced with re-export from `@blade-ai/agent-sdk/local`
+**Dependencies resolved:** `AgentId` → branded.ts ✅, `Message` → @blade-ai/ai/chat ✅, `AgentSessionStatus` → #157 ✅, `AgentProgress` → agentTypes.ts (already in agent-sdk) ✅
+**New test:** None (pure type extraction — verified via type-check)
+**Strategic impact:** Breaks circular dependency between `agent/types.ts` (imports `AgentSession`) and `AgentSessionStore.ts` (imports `AgentProgress`); `agent/types.ts` now has only 1 remaining non-shimmed import: `StartBackgroundAgentOptions` from `BackgroundAgentManager`
 
 **Notes:** Sixth tools file migrated (#150-#155); all 5 core tools subdirectories now have files in agent-sdk (types, registry, catalog, exposure, core); completes the horizontal tool subsystem migration
 
