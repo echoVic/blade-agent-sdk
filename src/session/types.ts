@@ -71,15 +71,7 @@ export type { HookOutput } from '@blade-ai/agent-sdk/local';
 
 export type { HookCallback } from '@blade-ai/agent-sdk/local';
 
-export type SessionHookEvent =
-  | typeof HookEvent.PreToolUse
-  | typeof HookEvent.PostToolUse
-  | typeof HookEvent.PostToolUseFailure
-  | typeof HookEvent.PermissionRequest
-  | typeof HookEvent.UserPromptSubmit
-  | typeof HookEvent.SessionStart
-  | typeof HookEvent.SessionEnd
-  | typeof HookEvent.TaskCompleted;
+export type { SessionHookEvent } from '@blade-ai/agent-sdk/local';
 
 export type { SubagentInfo } from '@blade-ai/agent-sdk/local';
 

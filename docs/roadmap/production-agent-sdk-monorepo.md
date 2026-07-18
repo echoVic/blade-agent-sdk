@@ -82,7 +82,7 @@ Dependency direction:
 
 ---
 
-## Migration Progress — 177 Slices Completed
+## Migration Progress — 178 Slices Completed
 
 ### Subsystems at 100% (Complete)
 
@@ -127,7 +127,7 @@ Dependency direction:
 
 - ✅ Type-check: 0 errors (root + all packages)
 - ✅ Boundaries: green
-- ✅ 177 conventional commits
+- ✅ 178 conventional commits
 - ⚠️ `pnpm run verify` shows 22 pre-existing lint warnings (not migration-related)
 - ⚠️ Test suite has 22 pre-existing test file failures (not migration-related)
 
@@ -440,6 +440,14 @@ Dependency direction:
 **Root file shimmed:** `src/session/types.ts` — HookOutput inline definition (lines 71-81) → re-export shim
 **Barrel export:** No change needed — HookOutput already in barrel from sessionTypes.js
 **Notes:** First root file shim for an already-migrated type; reduces root duplicate definitions; 28 slices completed (#150-#177)
+
+### Slice #178 — SessionHookEvent Root Shim
+
+**Capability:** SessionHookEvent type migration — replaced inline union type definition (8 HookEvent references) in root `src/session/types.ts` with re-export from `@blade-ai/agent-sdk/local`
+**Target:** `@blade-ai/agent-sdk/local` (SessionHookEvent already in agent-sdk via public barrel)
+**Root file shimmed:** `src/session/types.ts` — SessionHookEvent inline definition → re-export shim
+**Barrel export:** No change needed — already in agent-sdk barrel
+**Notes:** Second root duplicate cleanup (#177-#178); further reduces root file inline definitions; 29 slices completed (#150-#178)
 
 **Notes:** Sixth tools file migrated (#150-#155); all 5 core tools subdirectories now have files in agent-sdk (types, registry, catalog, exposure, core); completes the horizontal tool subsystem migration
 
