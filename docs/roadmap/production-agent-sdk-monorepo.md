@@ -82,7 +82,7 @@ Dependency direction:
 
 ---
 
-## Migration Progress — 169 Slices Completed
+## Migration Progress — 170 Slices Completed
 
 ### Subsystems at 100% (Complete)
 
@@ -127,7 +127,7 @@ Dependency direction:
 
 - ✅ Type-check: 0 errors (root + all packages)
 - ✅ Boundaries: green
-- ✅ 169 conventional commits
+- ✅ 170 conventional commits
 - ⚠️ `pnpm run verify` shows 22 pre-existing lint warnings (not migration-related)
 - ⚠️ Test suite has 22 pre-existing test file failures (not migration-related)
 
@@ -368,6 +368,14 @@ Dependency direction:
 **Root file shimmed:** `src/session/ChatServiceFactory.ts` → re-export shim
 **Import adjustments:** Only 2 imports adjusted: `Logger` → `./Logger.js`, `VercelAIChatService` → `./vercelAIChatService.js`; all 3 imports resolved (ChatConfig/IChatService from @blade-ai/ai, both local paths from agent-sdk)
 **Notes:** Second session subsystem file migrated (#168-#169); unlocks ModelManager.ts by providing chatServiceFactory from agent-sdk; zero type errors; 41L → 5L shim
+
+### Slice #170 — StartBackgroundAgentOptions Type Extraction
+
+**Capability:** StartBackgroundAgentOptions interface (9-field subagent launch config) — extracted to agent-sdk/local/backgroundAgentTypes.ts
+**Target:** `@blade-ai/agent-sdk/local` (via `backgroundAgentTypes.ts`)
+**Root file updated:** `src/agent/types.ts` — re-export barrel now includes `StartBackgroundAgentOptions`
+**Dependencies:** All 9 interface fields from shimmed sources or packages: `SubagentConfig` (@blade-ai/agent-sdk), `BladeConfig/PermissionMode` (types/common → SHIMMED), `SubagentRegistry` (subagentRegistry #165 → SHIMMED), `AgentId` (branded → SHIMMED), `Message` (@blade-ai/ai/chat), `ContextSnapshot` (runtime → SHIMMED)
+**Notes:** Zero root dependencies — all 9 field types resolved; further decouples subagent chain by moving start options type to agent-sdk; 21 slices completed (#150-#170)
 
 **Notes:** Sixth tools file migrated (#150-#155); all 5 core tools subdirectories now have files in agent-sdk (types, registry, catalog, exposure, core); completes the horizontal tool subsystem migration
 

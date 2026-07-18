@@ -17,6 +17,7 @@ export type {
   LoopOptions,
   LoopResult,
   PlanApprovalResult,
+  StartBackgroundAgentOptions,
 } from '@blade-ai/agent-sdk/local';
 
 export { isPlanApprovalResult } from '@blade-ai/agent-sdk/local';

@@ -428,4 +428,5 @@ export {  AttachmentCollector } from './attachmentCollector.js';
 export {  SubagentRegistry } from './subagentRegistry.js';
 export {  AgentSessionStore } from './agentSessionStore.js';
 export {  VercelAIChatService } from './vercelAIChatService.js';
+export type {  StartBackgroundAgentOptions } from './backgroundAgentTypes.js';
 export {  createChatServiceAsync } from './chatServiceFactory.js';
