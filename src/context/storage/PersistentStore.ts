@@ -5,7 +5,7 @@ import type { ContentPart, ToolCall } from '@blade-ai/ai/chat';
 import { JsonlSessionStore } from '../../session/SessionStore.js';
 import { MessageId, SessionId } from '../../types/branded.js';
 import type { JsonObject, JsonValue, MessageRole } from '../../types/common.js';
-import { extractMimeType } from '@blade-ai/agent-sdk/local';
+import { extractMimeType, parseToolCallArguments } from '@blade-ai/agent-sdk/local';
 import type {
   ContextData,
   ConversationContext,
@@ -23,13 +23,6 @@ import {
   normalizeSessionStorageRoot
 } from './pathUtils.js';
 
-function parseToolCallArguments(value: string): JsonValue {
-  try {
-    return JSON.parse(value) as JsonValue;
-  } catch {
-    return value;
-  }
-}
 
 /**
  * 持久化存储实现 - JSONL 格式
