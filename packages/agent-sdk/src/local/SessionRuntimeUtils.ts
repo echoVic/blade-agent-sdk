@@ -331,3 +331,29 @@ export function formatUnknown(value: unknown): string {
     return String(value);
   }
 }
+
+/**
+ * Formats a tool description from its component parts.
+ */
+export function formatToolDescription(description: {
+  short: string;
+  long?: string;
+  usageNotes?: string[];
+  important?: string[];
+}): string {
+  let fullDescription = description.short;
+
+  if (description.long) {
+    fullDescription += `\n\n${description.long}`;
+  }
+
+  if (description.usageNotes && description.usageNotes.length > 0) {
+    fullDescription += `\n\nUsage Notes:\n${description.usageNotes.map((note) => `- ${note}`).join('\n')}`;
+  }
+
+  if (description.important && description.important.length > 0) {
+    fullDescription += `\n\nImportant:\n${description.important.map((note) => `\u26a0\ufe0f ${note}`).join('\n')}`;
+  }
+
+  return fullDescription;
+}

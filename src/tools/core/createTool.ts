@@ -11,7 +11,7 @@ import type {
   ToolValidationError as _ToolValidationError,
 } from '../types/index.js';
 import { ToolErrorType, validationErrorToToolResult } from '../types/index.js';
-import { formatUnknown, isPathLikeKey } from '@blade-ai/agent-sdk/local';
+import { formatToolDescription, formatUnknown, isPathLikeKey } from '@blade-ai/agent-sdk/local';
 import { createToolBehavior, isReadOnlyKind, ToolKind } from '../types/ToolKind.js';
 import { zodToJsonSchema } from 'zod-to-json-schema';
 import { isPlainObject } from 'lodash-es';
@@ -187,28 +187,6 @@ export function createTool<TSchema extends z.ZodSchema>(
       : undefined,
   };
 }
-
-function formatToolDescription(description: {
-  short: string;
-  long?: string;
-  usageNotes?: string[];
-  important?: string[];
-}): string {
-  let fullDescription = description.short;
-
-  if (description.long) {
-    fullDescription += `\n\n${description.long}`;
-  }
-
-  if (description.usageNotes && description.usageNotes.length > 0) {
-    fullDescription += `\n\nUsage Notes:\n${description.usageNotes.map((note) => `- ${note}`).join('\n')}`;
-  }
-
-  if (description.important && description.important.length > 0) {
-    fullDescription += `\n\nImportant:\n${description.important.map((note) => `⚠️ ${note}`).join('\n')}`;
-  }
-
-  return fullDescription;
 }
 
 /**
