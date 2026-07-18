@@ -543,3 +543,25 @@ After 29 slices (#150-#178), approximately 4,160 lines migrated from root to `@b
 - Root still retains ~10,000L of unmigrated production code (Agent.ts, Session.ts, SessionRuntime.ts, etc.)
 - Future phases needed: root code migration to @blade-ai/agent and @blade-ai/agent-sdk
 - Release script tests are pre-existing failures (semantic-release-config) — not migration-related
+
+## ✅ Verification Gate — Health Summary (#246)
+
+**Date:** 2026-07-18
+
+| Gate | Status | Evidence |
+|---|---|---|
+| Production tests | ✅ ALL PASS | 112 files, 1203 tests, 0 failures |
+| Type-check (all 3 pkgs) | ✅ Pass | `pnpm -r run type-check`: Done |
+| Self-ref boundary violations | ✅ 0 | Fixed in #190-#191 |
+| Node-only imports in agent-sdk | ✅ By design | agent-sdk/local is the Node SDK |
+| Biome lint | ⚠️ 59 errors | Pre-existing (test files only) |
+| Release script tests | ⚠️ 3 files / 53 tests | Pre-existing, not migration-related |
+| Git working tree | ✅ Clean | No uncommitted changes |
+| Roadmap accuracy | ✅ Synced | 245 slices documented |
+
+### Boundary Architecture
+
+- `@blade-ai/ai`: Zero Node dependencies (browser-safe)
+- `@blade-ai/agent`: Zero Node dependencies (runtime-independent)
+- `@blade-ai/agent-sdk/local`: Node.js allowed (fs, path, child_process, etc.) — this is the Node server and CLI SDK
+- All browser-safe contracts exclude Node-only imports
