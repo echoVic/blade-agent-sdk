@@ -36,3 +36,15 @@ export interface McpToolCallResponse {
   }>;
   isError?: boolean;
 }
+
+/**
+ * Minimal McpClient interface for health monitoring.
+ * Avoids coupling HealthMonitor to the concrete McpClient class.
+ */
+export interface McpClientLike {
+  readonly connectionStatus: McpConnectionStatus;
+  readonly availableTools: ReadonlyArray<{ name: string; description: string }>;
+  readonly server: { name: string; version: string } | null;
+  disconnect(): Promise<void>;
+  connect(): Promise<void>;
+}

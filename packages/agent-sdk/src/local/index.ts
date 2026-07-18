@@ -239,6 +239,8 @@ export { HookBus } from './HookBus.js';
 export { OutputParser } from './OutputParser.js';
 export { HookExecutor } from './HookExecutor.js';
 export { HookManager } from './HookManager.js';
+export { HealthMonitor } from './HealthMonitor.js';
+export type { HealthCheckResult } from './HealthMonitor.js';
 export type {  ToolResponse } from './SdkMcpServer.js';
 export type { 
   ReadMetadata,

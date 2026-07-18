@@ -82,7 +82,7 @@ Dependency direction:
 
 ---
 
-## Migration Progress — 145 Slices Completed
+## Migration Progress — 146 Slices Completed
 
 ### Subsystems at 100% (Complete)
 
@@ -127,7 +127,7 @@ Dependency direction:
 
 - ✅ Type-check: 0 errors (root + all packages)
 - ✅ Boundaries: green
-- ✅ 145 conventional commits
+- ✅ 146 conventional commits
 - ⚠️ `pnpm run verify` shows 22 pre-existing lint warnings (not migration-related)
 - ⚠️ Test suite has 22 pre-existing test file failures (not migration-related)
 
@@ -143,7 +143,7 @@ Dependency direction:
 
 **Remaining coupled subsystems:**
 - Agent loop (Agent.ts 22K, LoopRunner 14K, LoopHookBuilder 14K)
-- MCP (McpClient 631L, McpRegistry 533L, HealthMonitor 285L, createMcpTool 355L)
+- MCP (McpClient 631L, McpRegistry 533L, createMcpTool 355L)
 - Context (ContextManager 20K, CompactionService 17K, PersistentStore)
 - Hooks (HookRuntime 753L)
 
@@ -165,3 +165,13 @@ Dependency direction:
 **Pre-requisite:** Added 3 missing methods to HookExecutor (`executeCwdChangedHooks`, `executeFileChangedHooks`, `executeInstructionsLoadedHooks`)
 **Type adjustments:** Aligned 10 hook input types to match agent-sdk stricter definitions (was_successful→success, task_summary→result_summary+task_id, strategy→trigger+messages_before, error_type→reason, elicitation_id→server_name, added source/was_cancelled)
 **Notes:** `reloadConfig` uses `node:fs/promises` (Node-only, appropriate for `/local`)
+
+### Slice #146 — HealthMonitor Migration
+
+**Capability:** MCP connection health monitoring with auto-reconnection
+**Target:** `@blade-ai/agent-sdk/local`
+**Root file shimmed:** `src/mcp/HealthMonitor.ts` → re-export from `@blade-ai/agent-sdk/local`
+**Pre-requisite:** Defined `McpClientLike` interface in `mcpTypes.ts` to decouple from concrete `McpClient`
+**New test:** `packages/agent-sdk/src/__tests__/localHealthMonitor.test.ts` (3 tests: instantiation, initial status, statistics shape)
+**Type adjustments:** Replaced `McpClient` (root class) with `McpClientLike` (agent-sdk interface); changed self-referencing `@blade-ai/agent-sdk/local` imports to relative paths
+**Notes:** Extends Node `EventEmitter` — Node-only, appropriate for `/local`
