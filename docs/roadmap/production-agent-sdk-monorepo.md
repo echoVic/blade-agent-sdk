@@ -82,7 +82,7 @@ Dependency direction:
 
 ---
 
-## Migration Progress — 166 Slices Completed
+## Migration Progress — 167 Slices Completed
 
 ### Subsystems at 100% (Complete)
 
@@ -127,7 +127,7 @@ Dependency direction:
 
 - ✅ Type-check: 0 errors (root + all packages)
 - ✅ Boundaries: green
-- ✅ 166 conventional commits
+- ✅ 167 conventional commits
 - ⚠️ `pnpm run verify` shows 22 pre-existing lint warnings (not migration-related)
 - ⚠️ Test suite has 22 pre-existing test file failures (not migration-related)
 
@@ -343,6 +343,15 @@ Dependency direction:
 **Root file shimmed:** `src/agent/subagents/AgentSessionStore.ts` → re-export shim
 **Import adjustments:** All 6 imports resolved; `Logger` → `./Logger.js`, `AgentId` → `./branded.js`, `AgentProgress` → `./agentTypes.js`; fixed `AgentSession`/`AgentSessionStatus` with `import type` + `export type` pattern (isolatedModules constraint)
 **Notes:** Third subagent migrated (#164-#166: AttachmentCollector, SubagentRegistry, AgentSessionStore); required isolatedModules import pattern fix for re-exports within same file; further reduces root subagents footprint
+
+### Slice #167 — agent/types.ts Fully Shimmed (79L → 22L)
+
+**Capability:** Complete conversion of `agent/types.ts` from an import-heavy barrel (79L with 13 imports) to a pure re-export shim (22L, 0 imports)
+**Target:** All types now re-exported from `@blade-ai/agent-sdk/local` (12 types + 1 runtime function)
+**Root file shimmed:** `src/agent/types.ts` — 79L → 22L pure re-export shim
+**Removed:** Unused `StartBackgroundAgentOptions` import (last root-exclusive dependency in the file)
+**Exports:** `UserMessageContent`, `AgentProgress`, `IBackgroundAgentReader/Controller/Manager`, `ChatContext`, `TurnLimitResponse`, `AgentOptions`, `LoopOptions`, `LoopResult`, `PlanApprovalResult`, `isPlanApprovalResult` — all from `@blade-ai/agent-sdk/local`
+**Notes:** Zero imports — file is now a pure re-export barrel; marks the AGENT TYPES subsystem as fully migrated to agent-sdk; all 167 slices completed
 
 **Notes:** Sixth tools file migrated (#150-#155); all 5 core tools subdirectories now have files in agent-sdk (types, registry, catalog, exposure, core); completes the horizontal tool subsystem migration
 
