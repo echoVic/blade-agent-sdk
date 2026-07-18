@@ -421,3 +421,4 @@ export type {  AgentSession } from './agentSessionTypes.js';
 export type {  AgentOptions, LoopOptions, LoopResult, PlanApprovalResult } from './agentLoopTypes.js';
 export {  isPlanApprovalResult } from './agentLoopTypes.js';
 export type {  AgentEvent, AgentStartEvent, AgentEndEvent, TurnStartEvent, TurnEndEvent, TurnRetryEvent, ContentDeltaEvent, ThinkingDeltaEvent, StreamEndEvent, ContentEvent, ThinkingEvent, ToolStartEvent, ToolResultEvent, ToolProgressEvent, ToolMessageEvent, ToolRuntimePatchEvent, ToolContextPatchEvent, ToolNewMessagesEvent, ToolPermissionUpdatesEvent, TokenUsageEvent, TokenUsageInfo, BudgetWarningEvent, CompactingEvent, TodoUpdateEvent, ApiRetryEvent, ModelFallbackEvent, RecoveryEvent, ErrorEvent } from './agentEvent.js';
+export {  PlanExecutor } from './planExecutor.js';

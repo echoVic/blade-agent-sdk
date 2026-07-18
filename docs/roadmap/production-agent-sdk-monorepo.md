@@ -82,7 +82,7 @@ Dependency direction:
 
 ---
 
-## Migration Progress — 160 Slices Completed
+## Migration Progress — 161 Slices Completed
 
 ### Subsystems at 100% (Complete)
 
@@ -127,7 +127,7 @@ Dependency direction:
 
 - ✅ Type-check: 0 errors (root + all packages)
 - ✅ Boundaries: green
-- ✅ 160 conventional commits
+- ✅ 161 conventional commits
 - ⚠️ `pnpm run verify` shows 22 pre-existing lint warnings (not migration-related)
 - ⚠️ Test suite has 22 pre-existing test file failures (not migration-related)
 
@@ -293,6 +293,15 @@ Dependency direction:
 **New barrel export:** All 27 AgentEvent types added to local/index.ts
 **Import adjustments:** `RuntimePatch/RuntimeContextPatch` → `./RuntimePatch.js`, `./RuntimeContextPatch.js`; `TodoItem` → `./todo/types.js`; `ToolResult` → `../tools/index.js`; `PermissionUpdate` → `../types/permissions.js`
 **Notes:** First full agent file migration (#160); all 7 imports resolved to agent-sdk local files or external packages; zero root-specific dependencies; pure type file (no runtime code); marks transition from type extraction (#157-#159) to complete file migration in the agent subsystem
+
+### Slice #161 — PlanExecutor Runtime Class Migration
+
+**Capability:** PlanExecutor class (plan mode execution flow: injectPlanReminder, buildPlanSystemPrompt, runPlanLoop, runPlanLoopStream) — 99 lines migrated to agent-sdk/local/planExecutor.ts
+**Target:** `@blade-ai/agent-sdk/local` (via `planExecutor.ts`)
+**Root file shimmed:** `src/agent/PlanExecutor.ts` → simple re-export shim
+**New test:** `packages/agent-sdk/src/__tests__/localPlanExecutor.test.ts` (4 tests: instantiation, string reminder injection, content part injection, non-text prepend)
+**Import adjustments:** `buildSystemPrompt` → `./promptBuilder.js`, `createPlanModeReminder` → `./prompts.js`, `Logger` → `./Logger.js`, `AgentEvent` → `./agentEvent.js`, `ChatContext/UserMessageContent` → `./agentTypes.js`, `LoopOptions/LoopResult` → `./agentLoopTypes.js`
+**Notes:** Second full agent file migration (#160-#161); first runtime class in agent subsystem; 4/4 tests pass; all 5 import groups resolved to agent-sdk local files
 
 **Notes:** Sixth tools file migrated (#150-#155); all 5 core tools subdirectories now have files in agent-sdk (types, registry, catalog, exposure, core); completes the horizontal tool subsystem migration
 
