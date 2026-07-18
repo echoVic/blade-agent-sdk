@@ -1,15 +1,56 @@
-/**
- * Tool Execution Types
- *
- * ⚠️ MIGRATED: This file is a re-export shim.
- * The implementation now lives in @blade-ai/agent-sdk/tools/types.
- */
+import type {
+  ConfirmationHandler,
+  ExecutionContext as SdkExecutionContext,
+} from '@blade-ai/agent-sdk/tools';
+import type { BackgroundAgentManagerLike, ToolCatalogLike, ToolRegistryLike } from '@blade-ai/agent-sdk/local';
+import type { ContextSnapshot } from '../../runtime/index.js';
+import type { MessageId, SessionId } from '../../types/branded.js';
+import type { BladeConfig, JsonObject } from '../../types/common.js';
+import type { ToolResult } from './ToolResult.js';
 
-export { getEffectiveProjectDir } from '@blade-ai/agent-sdk/tools/types';
 export type {
   ConfirmationDetails,
   ConfirmationHandler,
   ConfirmationResponse,
-  ExecutionContext,
-  ExecutionHistoryEntry,
-} from '@blade-ai/agent-sdk/tools/types';
+} from '@blade-ai/agent-sdk/tools';
+
+/**
+ * 执行上下文
+ */
+export interface ExecutionContext extends Omit<
+  SdkExecutionContext,
+  | 'sessionId'
+  | 'messageId'
+  | 'contextSnapshot'
+  | 'confirmationHandler'
+  | 'bladeConfig'
+  | 'backgroundAgentManager'
+  | 'toolRegistry'
+  | 'toolCatalog'
+> {
+  sessionId?: SessionId;
+  messageId?: MessageId;
+  contextSnapshot?: ContextSnapshot;
+  confirmationHandler?: ConfirmationHandler;
+  bladeConfig?: BladeConfig;
+  backgroundAgentManager?: BackgroundAgentManagerLike;
+  toolRegistry?: ToolRegistryLike;
+  toolCatalog?: ToolCatalogLike;
+}
+
+export function getEffectiveProjectDir(context: ExecutionContext): string | undefined {
+  return context.contextSnapshot?.cwd;
+}
+
+/**
+ * 执行历史记录
+ */
+export interface ExecutionHistoryEntry {
+  executionId: string;
+  toolName: string;
+  params: JsonObject;
+  result: ToolResult;
+  startTime: number;
+  endTime: number;
+  context: ExecutionContext;
+}
