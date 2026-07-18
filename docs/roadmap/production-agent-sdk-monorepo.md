@@ -82,7 +82,7 @@ Dependency direction:
 
 ---
 
-## Migration Progress — 175 Slices Completed
+## Migration Progress — 176 Slices Completed
 
 ### Subsystems at 100% (Complete)
 
@@ -127,7 +127,7 @@ Dependency direction:
 
 - ✅ Type-check: 0 errors (root + all packages)
 - ✅ Boundaries: green
-- ✅ 175 conventional commits
+- ✅ 176 conventional commits
 - ⚠️ `pnpm run verify` shows 22 pre-existing lint warnings (not migration-related)
 - ⚠️ Test suite has 22 pre-existing test file failures (not migration-related)
 
@@ -422,6 +422,16 @@ Dependency direction:
 **Dependencies:** `SessionId` (branded → SHIMMED), `string` (primitive) — zero root dependencies
 **Barrel export:** Added `CompactionRuntimeContext` to local/index.ts
 **Notes:** Simplest type extraction yet — only 2 fields, zero root dependencies; simplest slice in the entire migration; 26 slices completed (#150-#175)
+
+### Slice #176 — AdapterContracts Migration (38L)
+
+**Capability:** Adapter contracts (AgentLoopConfig, AgentLoopHooks type aliases) — migrated from root src/agent/loop/ to agent-sdk/local/adapterContracts.ts
+**Target:** `@blade-ai/agent-sdk/local` (via `adapterContracts.ts`)
+**Root file shimmed:** `src/agent/loop/adapterContracts.ts` — 38L → 5L shim
+**Import adjustments:** All 12 imports resolved; 6 root-specific imports adjusted to agent-sdk paths: `Logger` → `./Logger.js`, `ToolResult` → `../tools/types/index.js`, `AgentEvent` → `./agentEvent.js`, `ConversationState` → `@blade-ai/agent`, `TurnState` → `./turnState.js`, `TurnLimitResponse` → `./agentTypes.js`
+**Error fixes:** `ExecutionPipelineLike` self-reference → `./kernelAdapterTypes.js`; `./agentLoop.js` → `@blade-ai/agent/loop`
+**Barrel export:** Added `AgentLoopConfig, AgentLoopHooks` to barrel
+**Notes:** First agent/loop/ file fully migrated; all 12 imports from packages or shimmed sources; 27 slices completed (#150-#176)
 
 **Notes:** Sixth tools file migrated (#150-#155); all 5 core tools subdirectories now have files in agent-sdk (types, registry, catalog, exposure, core); completes the horizontal tool subsystem migration
 
