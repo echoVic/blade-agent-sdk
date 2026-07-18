@@ -10,6 +10,7 @@ import {
 } from '../session/SessionStore.js';
 import { SessionId } from '../types/branded.js';
 import type { JsonObject, JsonValue } from '../types/common.js';
+import { isJsonObject } from '@blade-ai/agent-sdk/local';
 import { ContextCompressor } from './processors/ContextCompressor.js';
 import { ContextFilter } from './processors/ContextFilter.js';
 import { CacheStore } from './storage/CacheStore.js';
@@ -27,10 +28,6 @@ import type {
 } from './types.js';
 
 type SessionConfiguration = JsonObject & { sessionId?: SessionId };
-
-function isJsonObject(value: unknown): value is JsonObject {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
-}
 
 function isUsageMetadata(
   value: unknown,
