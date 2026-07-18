@@ -17,6 +17,7 @@ import { ContextManager } from '../context/ContextManager.js';
 import { HookManager } from '../hooks/HookManager.js';
 import { HookRuntime } from '../hooks/HookRuntime.js';
 import type { InternalLogger } from '../logging/Logger.js';
+import type { SessionAgentKernelOptions, SessionAgentKernelStreamOptions } from '@blade-ai/agent-sdk/local';
 import { LogCategory } from '../logging/Logger.js';
 import type { TraceRecorder } from '../observability/TraceRecorder.js';
 import { projectMcpCapabilities, type McpServerCapability } from '../mcp/McpCapabilityProjector.js';
@@ -88,24 +89,6 @@ function toSubagentConfig(name: string, definition: AgentDefinition) {
   };
 }
 
-export interface SessionAgentKernelOptions {
-  model?: ModelPort;
-  modelId?: string;
-  modelRequestDefaults?: AgentModelRequestDefaults;
-  traceRecorder?: TraceRecorder;
-  createExecutionContext?: (
-    toolCall: AgentToolCall,
-    signal?: AbortSignal,
-  ) => ExecutionContext;
-  maxSteps?: number;
-}
-
-export interface SessionAgentKernelStreamOptions extends SessionAgentKernelOptions {
-  input: string;
-  turnId?: string;
-  signal?: AbortSignal;
-  includeThinking?: boolean;
-}
 
 interface ResolvedSessionKernelModel {
   model: ModelPort;
