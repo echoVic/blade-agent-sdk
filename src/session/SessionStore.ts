@@ -5,7 +5,7 @@ import {
 } from '../context/storage/pathUtils.js';
 import { JSONLStore } from '../context/storage/JSONLStore.js';
 import type { PartInfo, SessionEvent, SessionInfo, SessionSnapshot, SessionState, SessionSummary } from '@blade-ai/agent-sdk/local';
-import { toTimestamp, toMessageContent, upsertContentPart } from '@blade-ai/agent-sdk/local';
+import { stringifyContent, toTimestamp, toMessageContent, upsertContentPart } from '@blade-ai/agent-sdk/local';
 import type { ContentPart, Message, ToolCall } from '@blade-ai/ai/chat';
 import { cloneJsonValue, cloneMessage } from '../runtime/messageUtils.js';
 import type { JsonValue, MessageRole } from '../types/common.js';
@@ -94,19 +94,6 @@ interface MessageRecord {
  */
 }
 
-function stringifyContent(value: unknown): string {
-  if (value === null || value === undefined) {
-    return '';
-  }
-  if (typeof value === 'string') {
-    return value;
-  }
-  try {
-    return JSON.stringify(value);
-  } catch {
-    return String(value);
-  }
-}
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);

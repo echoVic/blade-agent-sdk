@@ -288,3 +288,21 @@ export function upsertContentPart(
   contentParts.set(messageId, existing);
   return [...existing.map((p) => p.content)];
 }
+
+/**
+ * Converts an unknown value to a string representation.
+ * Uses JSON.stringify for objects, String() as fallback.
+ */
+export function stringifyContent(value: unknown): string {
+  if (value === null || value === undefined) {
+    return '';
+  }
+  if (typeof value === 'string') {
+    return value;
+  }
+  try {
+    return JSON.stringify(value);
+  } catch {
+    return String(value);
+  }
+}
