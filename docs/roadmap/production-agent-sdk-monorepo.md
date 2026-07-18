@@ -82,7 +82,7 @@ Dependency direction:
 
 ---
 
-## Migration Progress — 144 Slices Completed
+## Migration Progress — 145 Slices Completed
 
 ### Subsystems at 100% (Complete)
 
@@ -127,7 +127,7 @@ Dependency direction:
 
 - ✅ Type-check: 0 errors (root + all packages)
 - ✅ Boundaries: green
-- ✅ 144 conventional commits
+- ✅ 145 conventional commits
 - ⚠️ `pnpm run verify` shows 22 pre-existing lint warnings (not migration-related)
 - ⚠️ Test suite has 22 pre-existing test file failures (not migration-related)
 
@@ -145,7 +145,7 @@ Dependency direction:
 - Agent loop (Agent.ts 22K, LoopRunner 14K, LoopHookBuilder 14K)
 - MCP (McpClient 631L, McpRegistry 533L, HealthMonitor 285L, createMcpTool 355L)
 - Context (ContextManager 20K, CompactionService 17K, PersistentStore)
-- Hooks (HookRuntime 753L, HookManager 1.6K)
+- Hooks (HookRuntime 753L)
 
 ### Slice #144 — HookExecutor Migration
 
@@ -155,3 +155,13 @@ Dependency direction:
 **New test:** `packages/agent-sdk/src/__tests__/localHookExecutor.test.ts` (2 tests)
 **Type adjustments:** Aligned return types to match agent-sdk's stricter `HookSpecificOutput` union (property names, required fields)
 **Notes:** `HookRuntime` remains blocked by `UserMessageContent`/`HookCallback`/`HookInput` session types
+
+### Slice #145 — HookManager Migration
+
+**Capability:** Hook configuration management, singleton orchestration of HookExecutor
+**Target:** `@blade-ai/agent-sdk/local`
+**Root file shimmed:** `src/hooks/HookManager.ts` → re-export from `@blade-ai/agent-sdk/local`
+**New test:** `packages/agent-sdk/src/__tests__/localHookManager.test.ts` (3 tests: instantiation, singleton, default disabled)
+**Pre-requisite:** Added 3 missing methods to HookExecutor (`executeCwdChangedHooks`, `executeFileChangedHooks`, `executeInstructionsLoadedHooks`)
+**Type adjustments:** Aligned 10 hook input types to match agent-sdk stricter definitions (was_successful→success, task_summary→result_summary+task_id, strategy→trigger+messages_before, error_type→reason, elicitation_id→server_name, added source/was_cancelled)
+**Notes:** `reloadConfig` uses `node:fs/promises` (Node-only, appropriate for `/local`)

@@ -935,6 +935,141 @@ export class HookExecutor {
   }
 
   /**
+   * 执行 CwdChanged Hooks (串行)
+   *
+   * 任何一个 hook 返回 proceed: false 就立即返回
+   */
+  async executeCwdChangedHooks(
+    hooks: Hook[],
+    input: HookInput,
+    context: HookExecutionContext
+  ): Promise<CwdChangedHookResult> {
+    if (hooks.length === 0) {
+      return { proceed: true };
+    }
+
+    const warnings: string[] = [];
+
+    for (const hook of hooks) {
+      try {
+        const result = await this.executeHook(hook, input, context);
+
+        if (!result.success) {
+          if (result.warning) {
+            warnings.push(result.warning);
+          }
+          continue;
+        }
+
+        const specific = result.output?.hookSpecificOutput;
+        if (specific && 'proceed' in (specific as Record<string, unknown>) && (specific as Record<string, unknown>).proceed === false) {
+          return {
+            proceed: false,
+            warning: warnings.length > 0 ? warnings.join('\n') : undefined,
+          };
+        }
+      } catch (err) {
+        const errorMsg = err instanceof Error ? err.message : String(err);
+        warnings.push(`Hook failed: ${errorMsg}`);
+      }
+    }
+
+    return {
+      proceed: true,
+      warning: warnings.length > 0 ? warnings.join('\n') : undefined,
+    };
+  }
+
+  /**
+   * 执行 FileChanged Hooks (串行)
+   *
+   * 检查 action 字段，最后一个非默认值生效
+   */
+  async executeFileChangedHooks(
+    hooks: Hook[],
+    input: HookInput,
+    context: HookExecutionContext
+  ): Promise<FileChangedHookResult> {
+    if (hooks.length === 0) {
+      return { action: 'reload' };
+    }
+
+    const warnings: string[] = [];
+    let action: 'reload' | 'ignore' = 'reload';
+
+    for (const hook of hooks) {
+      try {
+        const result = await this.executeHook(hook, input, context);
+
+        if (!result.success) {
+          if (result.warning) {
+            warnings.push(result.warning);
+          }
+          continue;
+        }
+
+        const specific = result.output?.hookSpecificOutput;
+        if (specific && 'action' in (specific as Record<string, unknown>) && (specific as Record<string, unknown>).action) {
+          action = (specific as Record<string, unknown>).action as 'reload' | 'ignore';
+        }
+      } catch (err) {
+        const errorMsg = err instanceof Error ? err.message : String(err);
+        warnings.push(`Hook failed: ${errorMsg}`);
+      }
+    }
+
+    return {
+      action,
+      warning: warnings.length > 0 ? warnings.join('\n') : undefined,
+    };
+  }
+
+  /**
+   * 执行 InstructionsLoaded Hooks (串行)
+   *
+   * 累积 modified_instructions（最后一个生效）
+   */
+  async executeInstructionsLoadedHooks(
+    hooks: Hook[],
+    input: HookInput,
+    context: HookExecutionContext
+  ): Promise<InstructionsLoadedHookResult> {
+    if (hooks.length === 0) {
+      return { proceed: true };
+    }
+
+    const warnings: string[] = [];
+    let modified_instructions: string | undefined;
+
+    for (const hook of hooks) {
+      try {
+        const result = await this.executeHook(hook, input, context);
+
+        if (!result.success) {
+          if (result.warning) {
+            warnings.push(result.warning);
+          }
+          continue;
+        }
+
+        const specific = result.output?.hookSpecificOutput;
+        if (specific && 'modified_instructions' in (specific as Record<string, unknown>) && (specific as Record<string, unknown>).modified_instructions) {
+          modified_instructions = (specific as Record<string, unknown>).modified_instructions as string;
+        }
+      } catch (err) {
+        const errorMsg = err instanceof Error ? err.message : String(err);
+        warnings.push(`Hook failed: ${errorMsg}`);
+      }
+    }
+
+    return {
+      proceed: true,
+      modified_instructions,
+      warning: warnings.length > 0 ? warnings.join('\n') : undefined,
+    };
+  }
+
+  /**
    * 执行单个 Hook
    */
   private async executeHook(
