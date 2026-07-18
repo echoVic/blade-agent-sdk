@@ -82,7 +82,7 @@ Dependency direction:
 
 ---
 
-## Migration Progress — 161 Slices Completed
+## Migration Progress — 162 Slices Completed
 
 ### Subsystems at 100% (Complete)
 
@@ -127,7 +127,7 @@ Dependency direction:
 
 - ✅ Type-check: 0 errors (root + all packages)
 - ✅ Boundaries: green
-- ✅ 161 conventional commits
+- ✅ 162 conventional commits
 - ⚠️ `pnpm run verify` shows 22 pre-existing lint warnings (not migration-related)
 - ⚠️ Test suite has 22 pre-existing test file failures (not migration-related)
 
@@ -302,6 +302,14 @@ Dependency direction:
 **New test:** `packages/agent-sdk/src/__tests__/localPlanExecutor.test.ts` (4 tests: instantiation, string reminder injection, content part injection, non-text prepend)
 **Import adjustments:** `buildSystemPrompt` → `./promptBuilder.js`, `createPlanModeReminder` → `./prompts.js`, `Logger` → `./Logger.js`, `AgentEvent` → `./agentEvent.js`, `ChatContext/UserMessageContent` → `./agentTypes.js`, `LoopOptions/LoopResult` → `./agentLoopTypes.js`
 **Notes:** Second full agent file migration (#160-#161); first runtime class in agent subsystem; 4/4 tests pass; all 5 import groups resolved to agent-sdk local files
+
+### Slice #162 — TurnState Type Migration
+
+**Capability:** TurnState type system (LlmToolDefinition, LoopSkillState, LoopRecoveryState, LoopExecutionContext, TurnState) — 53 lines migrated to agent-sdk/local/turnState.ts
+**Target:** `@blade-ai/agent-sdk/local` (via `turnState.ts`)
+**Root file shimmed:** `src/agent/state/TurnState.ts` → re-export shim
+**Import adjustments:** All 6 import groups resolved to agent-sdk local files: `ContextSnapshot` → `./ContextSnapshot.js`, `ToolRegistryLike` → `./kernelAdapterTypes.js`, `BackgroundAgentManagerLike/ConfirmationHandlerLike/ToolCatalogLike` → `./turnStateTypes.js`, `SessionId` → `./branded.js`, `BladeConfig/PermissionMode` → `../types/common.js`
+**Notes:** Third full agent file migration (#160-#162); all 6 imports from agent-sdk local or packages; zero root dependencies; fastest slice — all imports pre-verified, zero type errors on first attempt
 
 **Notes:** Sixth tools file migrated (#150-#155); all 5 core tools subdirectories now have files in agent-sdk (types, registry, catalog, exposure, core); completes the horizontal tool subsystem migration
 
