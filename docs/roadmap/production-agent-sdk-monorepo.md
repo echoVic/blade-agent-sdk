@@ -82,7 +82,7 @@ Dependency direction:
 
 ---
 
-## Migration Progress — 164 Slices Completed
+## Migration Progress — 165 Slices Completed
 
 ### Subsystems at 100% (Complete)
 
@@ -127,7 +127,7 @@ Dependency direction:
 
 - ✅ Type-check: 0 errors (root + all packages)
 - ✅ Boundaries: green
-- ✅ 164 conventional commits
+- ✅ 165 conventional commits
 - ⚠️ `pnpm run verify` shows 22 pre-existing lint warnings (not migration-related)
 - ⚠️ Test suite has 22 pre-existing test file failures (not migration-related)
 
@@ -327,6 +327,14 @@ Dependency direction:
 **Root file shimmed:** `src/prompts/processors/AttachmentCollector.ts` → re-export shim
 **Import adjustments:** All 6 imports resolved: `fast-glob` (external), `fs/promises+path` (Node-only, allowed in agent-sdk), `Logger` → `./Logger.js`, `splitPath` → `@blade-ai/agent/utils`, `PathSecurity` → `./pathSecurity.js`, `AtMentionParser` → `./AtMentionParser.js`, `Attachment/CollectorOptions` types → `./promptProcessors.js`
 **Notes:** Largest tractable file migration yet (504L); Node-only implementation (fs, fast-glob); first prompts/processors file migrated; zero type errors after fixing splitPath import; marks expansion beyond agent/ directory
+
+### Slice #165 — SubagentRegistry Migration (309L)
+
+**Capability:** SubagentRegistry class (309L) — subagent registration, YAML frontmatter parsing, LLM-readable description generation, builtin/user/project/session source management — migrated to agent-sdk/local/subagentRegistry.ts
+**Target:** `@blade-ai/agent-sdk/local` (via `subagentRegistry.ts`)
+**Root file shimmed:** `src/agent/subagents/SubagentRegistry.ts` → re-export shim
+**Import adjustments:** All 7 imports resolved: `fs/path/yaml` (Node-only, allowed), `Logger` → `./Logger.js`, `builtinAgents` → `../subagents/builtinAgents.js`, `SubagentConfig/Frontmatter/Source + mapClaudeCodePermissionMode` → `../subagents/types.js`
+**Notes:** Largest agent subagent file migrated; all imports resolved to agent-sdk or external packages; zero type errors; Node-only dependencies (fs, path, yaml) allowed in agent-sdk; further unlocks agent/session cross-dependencies
 
 **Notes:** Sixth tools file migrated (#150-#155); all 5 core tools subdirectories now have files in agent-sdk (types, registry, catalog, exposure, core); completes the horizontal tool subsystem migration
 

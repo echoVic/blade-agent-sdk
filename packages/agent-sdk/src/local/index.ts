@@ -425,3 +425,4 @@ export type {  LlmToolDefinition, LoopSkillState, LoopRecoveryState, LoopExecuti
 export {  PlanExecutor } from './planExecutor.js';
 export {  LoopState } from './loopState.js';
 export {  AttachmentCollector } from './attachmentCollector.js';
+export {  SubagentRegistry } from './subagentRegistry.js';
