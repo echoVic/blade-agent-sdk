@@ -19,6 +19,7 @@ import {
     NOOP_LOGGER,
 } from '../logging/Logger.js';
 import { McpRegistry } from '../mcp/McpRegistry.js';
+import { serverNameFromTool } from '@blade-ai/agent-sdk/local';
 import { buildSystemPrompt } from '../prompts/index.js';
 import {
     getContextCwd,
@@ -575,7 +576,7 @@ export class Agent {
       this.toolCatalog.registerMcpTool(tool, {
         kind: 'mcp',
         trustLevel: 'remote',
-        sourceId: resolveAgentMcpSourceId(tool),
+        sourceId: serverNameFromTool(tool),
       });
     }
   }
@@ -658,14 +659,4 @@ export class Agent {
   private error(message: string, error?: unknown): void {
     this.logger.error(`[MainAgent] ${message}`, error || '');
   }
-}
-
-function resolveAgentMcpSourceId(tool: Tool): string {
-  const taggedServer = tool.tags.find((tag) => tag === tag.toLowerCase() && tag.length > 0);
-  if (taggedServer) {
-    return taggedServer;
-  }
-
-  const match = tool.name.match(/^mcp__([^_]+)__/);
-  return match?.[1] ?? 'mcp';
 }
