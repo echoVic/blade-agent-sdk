@@ -40,12 +40,7 @@ import {
     ToolErrorType,
     validationErrorToToolResult,
 } from '../types/ToolResult.js';
-import { FileLockManager } from '@blade-ai/agent-sdk/local';
-
-function getString(params: JsonObject, key: string, defaultValue = ''): string {
-  const value = params[key];
-  return typeof value === 'string' ? value : defaultValue;
-}
+import { FileLockManager, getString } from '@blade-ai/agent-sdk/local';
 
 function buildPermissionSignature(
   toolName: string,

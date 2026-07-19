@@ -246,6 +246,15 @@ export function parseToolCallArguments(value: string): JsonValue {
 }
 
 /**
+ * Extracts a typed string from a JSON object parameter bag.
+ * Returns the value if it is a string; otherwise returns the default.
+ */
+export function getString(params: JsonObject, key: string, defaultValue = ''): string {
+  const value = params[key];
+  return typeof value === 'string' ? value : defaultValue;
+}
+
+/**
  * Converts a string or object to a JSON-safe value.
  * Strings pass through unchanged; objects are serialized via JSON round-trip;
  * fallback returns String(value) on serialization failure.

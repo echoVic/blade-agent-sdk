@@ -1,7 +1,32 @@
 import { describe, expect, it } from 'vitest';
-import { toJsonValue } from '../local/SessionRuntimeUtils.js';
+import { getString, toJsonValue } from '../local/SessionRuntimeUtils.js';
 
 describe('SessionRuntimeUtils', () => {
+  describe('getString', () => {
+    it('returns a matching string value', () => {
+      expect(getString({ key: 'hello' }, 'key')).toBe('hello');
+    });
+
+    it('returns the default when key is missing', () => {
+      expect(getString({}, 'key')).toBe('');
+    });
+
+    it('returns the default for non-string values', () => {
+      expect(getString({ key: 42 }, 'key')).toBe('');
+      expect(getString({ key: true }, 'key')).toBe('');
+      expect(getString({ key: null }, 'key')).toBe('');
+    });
+
+    it('uses a custom default value', () => {
+      expect(getString({}, 'key', 'fallback')).toBe('fallback');
+      expect(getString({ key: 42 }, 'key', 'fallback')).toBe('fallback');
+    });
+
+    it('returns empty string for missing keys', () => {
+      expect(getString({ present: 'hello' }, 'absent')).toBe('');
+    });
+  });
+
   describe('toJsonValue', () => {
     it('passes strings through unchanged', () => {
       expect(toJsonValue('hello')).toBe('hello');
