@@ -653,6 +653,19 @@ After 29 slices (#150-#178), approximately 4,160 lines migrated from root to `@b
 **Root type-check:** 145→143 errors (2 resolved)
 **Impact:** 263L eliminated; total 1,502L across 10 files this session
 
+### Slice #290 — Shim SdkError.ts and builtinAgents.ts to Re-Export from Packages
+
+**Capability:** `SdkError`, `SdkErrorOptions`, `builtinAgents` — error class and builtin subagent list
+**Target:** `@blade-ai/agent-sdk` (SdkError) + `@blade-ai/agent-sdk/subagents` (builtinAgents)
+**Root files shimmed:**
+- `src/errors/SdkError.ts` — 22L → 2-line re-export (byte-for-byte identical; already re-exported via `errors/index.js` barrel)
+- `src/agent/subagents/builtinAgents.ts` — 104L → 1-line re-export (byte-for-byte identical)
+**Infrastructure:** Added `@blade-ai/agent-sdk/subagents` to root `tsconfig.json` paths
+**Consumer:** `createTool.ts` (uses SdkError), `SubagentRegistry.ts` (uses builtinAgents) — unchanged
+**Tests:** 6 builtinAgents tests pass (package)
+**Verification:** `pnpm -r run type-check` zero errors, 0 self-ref boundary violations
+**Impact:** 126L eliminated; total 1,628L across 12 files this session
+
 ## 🏆 Milestone — Zero Production Test Failures (#245)
 
 **Date:** 2026-07-18 | **Slices:** #150–#245 (96 total)

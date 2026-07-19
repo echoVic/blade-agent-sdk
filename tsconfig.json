@@ -40,6 +40,7 @@
       "@blade-ai/agent-sdk/server": ["./packages/agent-sdk/src/server/index.ts"],
       "@blade-ai/agent-sdk/session/internal": ["./packages/agent-sdk/src/session/internal.ts"],
       "@blade-ai/agent-sdk/tools": ["./packages/agent-sdk/src/tools/index.ts"],
+      "@blade-ai/agent-sdk/subagents": ["./packages/agent-sdk/src/subagents/index.ts"],
       "@blade-ai/ai": ["./packages/ai/src/index.ts"],
       "@blade-ai/ai/chat": ["./packages/ai/src/chat/index.ts"],
       "@blade-ai/ai/deepseek": ["./packages/ai/src/deepseek/index.ts"],
