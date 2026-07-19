@@ -437,3 +437,5 @@ export type {  AgentLoopConfig, AgentLoopHooks } from './adapterContracts.js';
 export {  createChatServiceAsync } from './chatServiceFactory.js';
 export { buildHookInput, defaultReasonMessage, extractMimeType, formatToolDescription, formatUnknown, getString, hasPersistableUserContent, inferAffectedPaths, isChatToolCall, isChatToolCallArray, isJsonObject, isPathLikeKey, isRecord, isSdkMcpServerHandle, isSessionToolCall, isSessionToolCallArray, isUsageMetadata, matchesMcpServer, parseToolCallArguments, resolveStorageRoot, sanitizeSegment, serverNameFromTool, stringifyContent, syncContextMessages, toJsonValue, toMessageContent, toParamsRecord, toSessionPermissionUpdates, toSessionUsage, toSubagentConfig, toTimestamp, translateZodIssue, upsertContentPart } from './SessionRuntimeUtils.js';
 export type { ConfirmationReasonSource } from './SessionRuntimeUtils.js';
+export { buildPermissionSignature, combineConfirmationReasons } from './ConfirmationUtils.js';
+export type { ConfirmationReasonEntry } from './ConfirmationUtils.js';

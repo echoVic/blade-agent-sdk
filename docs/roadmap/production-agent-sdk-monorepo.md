@@ -676,6 +676,17 @@ After 29 slices (#150-#178), approximately 4,160 lines migrated from root to `@b
 **Verification:** `pnpm -r run type-check` zero errors, 30 tests pass (5 new + 25 existing), 0 self-ref boundary violations
 **Notes:** 32nd utility function extracted; ExecutionPipeline.ts slimmed by 15 lines across 4 extractions (#280, #282, #284, #291)
 
+### Slice #292 — Extract ConfirmationUtils Module (buildPermissionSignature, combineConfirmationReasons, ConfirmationReasonEntry)
+
+**Capability:** `ConfirmationUtils` — tool execution confirmation reasoning utilities
+**Target:** `@blade-ai/agent-sdk/local` (new file: `ConfirmationUtils.ts`)
+**Root file:** `src/tools/execution/ExecutionPipeline.ts` — removed 32 lines (2 functions + 1 interface)
+**Package exports:** `buildPermissionSignature`, `combineConfirmationReasons`, `ConfirmationReasonEntry`
+**New file:** `packages/agent-sdk/src/local/ConfirmationUtils.ts` (57L) — dedicated module for confirmation utilities
+**New test:** 8 tests in `localConfirmationUtils.test.ts` (5 combineConfirmationReasons + 3 buildPermissionSignature)
+**Verification:** `pnpm -r run type-check` zero errors, 8 new tests pass, 0 self-ref boundary violations
+**Impact:** First dedicated capability module (not just utility extraction); groups 3 related confirmation primitives; ExecutionPipeline.ts slimmed by 47 lines across 5 extractions (#280+282+284+291+292)
+
 ## 🏆 Milestone — Zero Production Test Failures (#245)
 
 **Date:** 2026-07-18 | **Slices:** #150–#245 (96 total)
@@ -719,6 +730,7 @@ After 29 slices (#150-#178), approximately 4,160 lines migrated from root to `@b
 | Node-only imports in agent-sdk | ✅ By design | agent-sdk/local is the Node SDK |
 | agent-sdk build | ✅ Pass | `pnpm --filter @blade-ai/agent-sdk run build`: Done |
 | SessionRuntimeUtils tests | ✅ 30 tests | `localSessionRuntimeUtils.test.ts` (5 defaultReason + 5 getString + 4 matchesMcp + 5 sanitize + 2 syncContext + 4 toParams + 5 toJson) |
+| ConfirmationUtils tests | ✅ 8 tests | `localConfirmationUtils.test.ts` (5 combine + 3 buildPermission) |
 | ContextCompressor tests | ✅ 10 tests | Root tests pass via shim |
 | OAuth tests | ✅ 14 tests | 8 OAuthProvider + 6 OAuthTokenStorage (package) |
 | AtMentionParser tests | ✅ 37 tests | 17 package + 20 root via shim |

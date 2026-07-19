@@ -40,17 +40,8 @@ import {
     ToolErrorType,
     validationErrorToToolResult,
 } from '../types/ToolResult.js';
-import { defaultReasonMessage, FileLockManager, getString, sanitizeSegment, toParamsRecord } from '@blade-ai/agent-sdk/local';
-import type { ConfirmationReasonSource } from '@blade-ai/agent-sdk/local';
-
-function buildPermissionSignature(
-  toolName: string,
-  params: JsonObject,
-  tool?: Pick<Tool, 'preparePermissionMatcher'>,
-): string {
-  const signatureContent = tool?.preparePermissionMatcher?.(params)?.signatureContent;
-  return signatureContent ? `${toolName}:${signatureContent}` : toolName;
-}
+import { buildPermissionSignature, combineConfirmationReasons, defaultReasonMessage, FileLockManager, getString, sanitizeSegment, toParamsRecord } from '@blade-ai/agent-sdk/local';
+import type { ConfirmationReasonEntry, ConfirmationReasonSource } from '@blade-ai/agent-sdk/local';
 
 interface PipelineExecutionState {
   toolName: string;
@@ -77,10 +68,7 @@ interface PipelineExecutionState {
 import type { ConfirmationReasonSource } from '@blade-ai/agent-sdk/local';
 export type { ConfirmationReasonSource };
 
-export interface ConfirmationReasonEntry {
-  source: ConfirmationReasonSource;
-  message: string;
-}
+export type { ConfirmationReasonEntry } from '@blade-ai/agent-sdk/local';
 
 /**
  * 执行管道
@@ -1231,29 +1219,6 @@ export interface ExecutionStats {
   averageDuration: number;
   toolUsage: Map<string, number>;
   recentExecutions: ExecutionHistoryEntry[];
-}
-
-function combineConfirmationReasons(
-  entries: ConfirmationReasonEntry[],
-): string | undefined {
-  if (entries.length === 0) return undefined;
-  const rank: Record<ConfirmationReasonSource, number> = {
-    tool: 0,
-    rule: 1,
-    path: 2,
-    hook: 3,
-    handler: 4,
-  };
-  const seen = new Set<string>();
-  const sorted = [...entries]
-    .sort((a, b) => rank[a.source] - rank[b.source])
-    .filter((entry) => {
-      const key = `${entry.source}::${entry.message}`;
-      if (seen.has(key)) return false;
-      seen.add(key);
-      return Boolean(entry.message);
-    });
-  return sorted.map((entry) => entry.message).join('\n') || undefined;
 }
 
 function addConfirmationReason(
