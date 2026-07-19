@@ -593,6 +593,17 @@ After 29 slices (#150-#178), approximately 4,160 lines migrated from root to `@b
 **Verification:** `pnpm -r run type-check` zero errors, 23 tests pass (4 new + 19 existing), 0 self-ref boundary violations
 **Notes:** 30th utility function extracted from root to agent-sdk/local; ExecutionPipeline.ts shrank by 6 additional lines (13 total across slices #280, #282, #284)
 
+### Slice #285 — Shim AtMentionParser.ts to Re-Export from @blade-ai/agent-sdk/local
+
+**Capability:** `AtMentionParser`, `extract`, `hasAtMentions`, `isValidPath`, `removeAtMentions` — @ file mention parser
+**Target:** `@blade-ai/agent-sdk/local`
+**Root file shimmed:** `src/prompts/processors/AtMentionParser.ts` — reduced from 157L implementation to 1-line re-export
+**Package:** `packages/agent-sdk/src/local/AtMentionParser.ts` — near-identical implementation (only import path differs)
+**Consumers:** `AttachmentCollector.ts` — unchanged (uses `AtMentionParser.hasAtMentions()` and `AtMentionParser.extract()`)
+**Tests:** Package 17 tests pass, root 20 tests pass via shim — 37 total
+**Verification:** `pnpm -r run type-check` zero errors, 0 self-ref boundary violations
+**Impact:** 157L root code eliminated; third full-file shim in Phase 3 (after toolSearch 90L, ConversationState 101L)
+
 ## 🏆 Milestone — Zero Production Test Failures (#245)
 
 **Date:** 2026-07-18 | **Slices:** #150–#245 (96 total)
@@ -624,18 +635,19 @@ After 29 slices (#150-#178), approximately 4,160 lines migrated from root to `@b
 - Root type-check: 143 pre-existing type conflicts (dual declarations between root and package copies)
 - Root test suite: 27 failing files due to type conflicts — not migration regressions
 
-## ✅ Verification Gate — Health Summary (#284)
+## ✅ Verification Gate — Health Summary (#285)
 
 **Date:** 2026-07-19
 
 | Gate | Status | Evidence |
 |---|---|---|
 | Package type-check (all 3) | ✅ Pass | `pnpm -r run type-check`: Done |
-| Root type-check | ⚠️ 144 errors | Pre-existing (ToolRegistry/Tool types, ports mismatches) |
+| Root type-check | ⚠️ 145 errors | Pre-existing (ToolRegistry/Tool types, ports mismatches) |
 | Self-ref boundary violations | ✅ 0 | `pnpm run verify:boundaries` → 0 self-ref |
 | Node-only imports in agent-sdk | ✅ By design | agent-sdk/local is the Node SDK |
 | agent-sdk build | ✅ Pass | `pnpm --filter @blade-ai/agent-sdk run build`: Done |
-| SessionRuntimeUtils tests | ✅ 23 tests | `localSessionRuntimeUtils.test.ts` (5 getString + 4 matchesMcpServer + 5 sanitizeSegment + 4 toParamsRecord + 5 toJsonValue) |
+| SessionRuntimeUtils tests | ✅ 23 tests | `localSessionRuntimeUtils.test.ts` (5 + 4 + 5 + 4 + 5) |
+| AtMentionParser tests | ✅ 37 tests | 17 package + 20 root via shim |
 | ConversationState tests | ✅ 34 tests | 21 root + 13 package |
 | agent-sdk tests | ⚠️ 2 files / 5 tests | Pre-existing (ToolExposurePlanner, Memory) |
 | Root tests | ⚠️ 27 files / 54 tests | Pre-existing type conflicts and esbuild transforms |
