@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { getString, matchesMcpServer, sanitizeSegment, toJsonValue, toParamsRecord } from '../local/SessionRuntimeUtils.js';
+import { getString, matchesMcpServer, sanitizeSegment, syncContextMessages, toJsonValue, toParamsRecord } from '../local/SessionRuntimeUtils.js';
 import type { Tool } from '../tools/types/index.js';
+import type { ChatContext } from '../local/agentTypes.js';
+import type { ConversationState } from '@blade-ai/agent/state';
 
 describe('SessionRuntimeUtils', () => {
   describe('getString', () => {
@@ -74,6 +76,32 @@ describe('SessionRuntimeUtils', () => {
     it('handles session IDs and tool names', () => {
       expect(sanitizeSegment('session_abc-123')).toBe('session_abc-123');
       expect(sanitizeSegment('read@file/v1')).toBe('read-file-v1');
+    });
+  });
+
+  describe('syncContextMessages', () => {
+    it('sets context.messages from conversation state', () => {
+      const messages = [{ role: 'user', content: 'hello' } as const];
+      const convState = {
+        getContextMessages: () => messages,
+      } as ConversationState;
+      const context = { messages: [] } as unknown as ChatContext;
+
+      syncContextMessages(context, convState);
+
+      expect(context.messages).toBe(messages);
+    });
+
+    it('overwrites existing context messages', () => {
+      const newMessages = [{ role: 'assistant', content: 'hi' } as const];
+      const convState = {
+        getContextMessages: () => newMessages,
+      } as ConversationState;
+      const context = { messages: [{ role: 'user', content: 'old' }] } as unknown as ChatContext;
+
+      syncContextMessages(context, convState);
+
+      expect(context.messages).toBe(newMessages);
     });
   });
 

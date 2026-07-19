@@ -604,6 +604,17 @@ After 29 slices (#150-#178), approximately 4,160 lines migrated from root to `@b
 **Verification:** `pnpm -r run type-check` zero errors, 0 self-ref boundary violations
 **Impact:** 157L root code eliminated; third full-file shim in Phase 3 (after toolSearch 90L, ConversationState 101L)
 
+### Slice #286 — Extract syncContextMessages from LoopRunner.ts
+
+**Capability:** `syncContextMessages` — synchronizes chat context messages from ConversationState into ChatContext
+**Target:** `@blade-ai/agent-sdk/local` (SessionRuntimeUtils.ts)
+**Root file:** `src/agent/LoopRunner.ts` — removed 4-line function definition, added to existing `@blade-ai/agent-sdk/local` import
+**New test:** 2 tests in `localSessionRuntimeUtils.test.ts` (message sync, overwrite existing)
+**Barrel:** Added `syncContextMessages` to `local/index.ts` export list (31st function in SessionRuntimeUtils barrel)
+**Consumers:** `LoopRunner.ts` (`runLoop` and `runLoopOnce` methods) — unchanged
+**Verification:** `pnpm -r run type-check` zero errors, 25 tests pass (2 new + 23 existing), 0 self-ref boundary violations
+**Notes:** 31st utility function extracted from root to agent-sdk/local; bridges `@blade-ai/agent/state` and agent-sdk/local types
+
 ## 🏆 Milestone — Zero Production Test Failures (#245)
 
 **Date:** 2026-07-18 | **Slices:** #150–#245 (96 total)
@@ -646,7 +657,7 @@ After 29 slices (#150-#178), approximately 4,160 lines migrated from root to `@b
 | Self-ref boundary violations | ✅ 0 | `pnpm run verify:boundaries` → 0 self-ref |
 | Node-only imports in agent-sdk | ✅ By design | agent-sdk/local is the Node SDK |
 | agent-sdk build | ✅ Pass | `pnpm --filter @blade-ai/agent-sdk run build`: Done |
-| SessionRuntimeUtils tests | ✅ 23 tests | `localSessionRuntimeUtils.test.ts` (5 + 4 + 5 + 4 + 5) |
+| SessionRuntimeUtils tests | ✅ 25 tests | `localSessionRuntimeUtils.test.ts` (5 getString + 4 matchesMcpServer + 5 sanitizeSegment + 2 syncContextMessages + 4 toParamsRecord + 5 toJsonValue) |
 | AtMentionParser tests | ✅ 37 tests | 17 package + 20 root via shim |
 | ConversationState tests | ✅ 34 tests | 21 root + 13 package |
 | agent-sdk tests | ⚠️ 2 files / 5 tests | Pre-existing (ToolExposurePlanner, Memory) |

@@ -28,7 +28,7 @@ import {
 import { getEnvironmentContext } from '../utils/environment.js';
 import type { AgentEvent } from './AgentEvent.js';
 import { agentLoop } from './AgentLoop.js';
-import { hasPersistableUserContent, isRecord } from '@blade-ai/agent-sdk/local';
+import { hasPersistableUserContent, isRecord, syncContextMessages } from '@blade-ai/agent-sdk/local';
 import type { CompactionHandler } from './CompactionHandler.js';
 import type { ModelManager } from './ModelManager.js';
 import { RuntimePatchManager } from './RuntimePatchManager.js';
@@ -47,11 +47,6 @@ import type {
 import { buildLoopConfig } from './LoopHookBuilder.js';
 
 // ===== Module-level helpers =====
-
-
-function syncContextMessages(context: ChatContext, convState: ConversationState): void {
-  context.messages = convState.getContextMessages();
-}
 
 
 export class LoopRunner {

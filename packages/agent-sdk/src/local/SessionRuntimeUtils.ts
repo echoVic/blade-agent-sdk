@@ -25,6 +25,7 @@ export function matchesMcpServer(tool: Tool, serverName: string): boolean {
 }
 
 import type { AgentPermissionUpdate } from '@blade-ai/agent/protocol';
+import type { ConversationState } from '@blade-ai/agent/state';
 import type { PermissionUpdate } from '../types/permissions.js';
 
 /**
@@ -122,6 +123,7 @@ export function toSessionUsage(
 }
 
 import type { Message } from '@blade-ai/ai/chat';
+import type { ChatContext } from './agentTypes.js';
 import type { JsonObject } from '@blade-ai/ai';
 
 /**
@@ -573,4 +575,12 @@ export function hasPersistableUserContent(message: { type: string; text: string 
     return false;
   }
   return message.some((part) => part.type === 'image_url' || (part.text ?? '').trim() !== '');
+}
+
+/**
+ * Synchronizes context messages from a ConversationState into a ChatContext.
+ * Used to keep the chat context in sync with the conversation state.
+ */
+export function syncContextMessages(context: ChatContext, convState: ConversationState): void {
+  context.messages = convState.getContextMessages();
 }
