@@ -8,6 +8,7 @@
 
 import { CompactionService } from '../context/CompactionService.js';
 import type { ContextManager } from '../context/ContextManager.js';
+import { toJsonValue } from '@blade-ai/agent-sdk/local';
 import type { HookRuntime } from '../hooks/HookRuntime.js';
 import type { InternalLogger } from '../logging/Logger.js';
 import type { Message } from '@blade-ai/ai/chat';
@@ -17,7 +18,6 @@ import {
   type ToolEffect,
 } from '../tools/types/index.js';
 import type { SessionId } from '../types/branded.js';
-import type { JsonValue } from '../types/common.js';
 import type { CompactionHandler, CompactionRuntimeContext } from './CompactionHandler.js';
 import type { AgentLoopConfig, AgentLoopHooks } from './loop/adapterContracts.js';
 import type { ModelManager } from './ModelManager.js';
@@ -63,15 +63,6 @@ async function persistToJsonl(
     }
   } catch (error) {
     logger.warn('[LoopHookBuilder] JSONL persistence failed:', error);
-  }
-}
-
-function toJsonValue(value: string | object): JsonValue {
-  if (typeof value === 'string') return value;
-  try {
-    return JSON.parse(JSON.stringify(value)) as JsonValue;
-  } catch {
-    return String(value);
   }
 }
 

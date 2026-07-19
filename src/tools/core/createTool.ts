@@ -187,7 +187,6 @@ export function createTool<TSchema extends z.ZodSchema>(
       : undefined,
   };
 }
-}
 
 /**
  * 从 ToolDefinition 创建 Tool 实例

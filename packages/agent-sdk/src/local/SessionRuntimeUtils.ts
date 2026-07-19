@@ -245,6 +245,20 @@ export function parseToolCallArguments(value: string): JsonValue {
   }
 }
 
+/**
+ * Converts a string or object to a JSON-safe value.
+ * Strings pass through unchanged; objects are serialized via JSON round-trip;
+ * fallback returns String(value) on serialization failure.
+ */
+export function toJsonValue(value: string | object): JsonValue {
+  if (typeof value === 'string') return value;
+  try {
+    return JSON.parse(JSON.stringify(value)) as JsonValue;
+  } catch {
+    return String(value);
+  }
+}
+
 import type { ContentPart } from '@blade-ai/ai/chat';
 import type { MessageId } from './branded.js';
 

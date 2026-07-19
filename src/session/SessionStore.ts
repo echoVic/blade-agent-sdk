@@ -84,17 +84,6 @@ interface MessageRecord {
 
 
 
-/**
- * Insert or replace a content part in the per-message part list.
- *
- * No cloning is performed — the `content` argument is always a freshly
- * constructed object literal at every call site, and the returned array
- * is only used to fill the mutable builder record.  The boundary clone
- * happens later in `cloneMessage` when the record is exported.
- */
-}
-
-
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
