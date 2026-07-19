@@ -639,6 +639,20 @@ After 29 slices (#150-#178), approximately 4,160 lines migrated from root to `@b
 **Verification:** `pnpm -r run type-check` zero errors, 0 self-ref boundary violations
 **Impact:** 545L root code eliminated in one slice (414L dead + 131L active); total 1,239L eliminated across 6 full-file shims this session
 
+### Slice #289 — Shim 4 SessionKernel Adapters to Re-Export from @blade-ai/agent-sdk/local
+
+**Capability:** SessionKernel adapters — bridges from SessionRuntime to AgentKernel port interfaces
+**Target:** `@blade-ai/agent-sdk/local`
+**Root files shimmed (4):**
+- `SessionKernelTraceAdapter.ts` 91L → 2-line (byte-for-byte identical)
+- `SessionKernelHookAdapter.ts` 52L → 2-line (package uses HookRuntimeLike vs root HookRuntime)
+- `SessionKernelStoreAdapter.ts` 55L → 2-line (package uses SessionMessageStore vs root ContextManager)
+- `SessionModelPort.ts` 65L → 2-line (minor import path diffs)
+**Consumer:** `SessionRuntime.ts` — unchanged
+**Tests:** 4 package + 6 root = 10 total
+**Root type-check:** 145→143 errors (2 resolved)
+**Impact:** 263L eliminated; total 1,502L across 10 files this session
+
 ## 🏆 Milestone — Zero Production Test Failures (#245)
 
 **Date:** 2026-07-18 | **Slices:** #150–#245 (96 total)
@@ -677,7 +691,7 @@ After 29 slices (#150-#178), approximately 4,160 lines migrated from root to `@b
 | Gate | Status | Evidence |
 |---|---|---|
 | Package type-check (all 3) | ✅ Pass | `pnpm -r run type-check`: Done |
-| Root type-check | ⚠️ 145 errors | Pre-existing (ToolRegistry/Tool types, ports mismatches) |
+| Root type-check | ⚠️ 143 errors | Pre-existing (ToolRegistry/Tool types, ports mismatches); down from 145 (#289) |
 | Self-ref boundary violations | ✅ 0 | `pnpm run verify:boundaries` → 0 self-ref |
 | Node-only imports in agent-sdk | ✅ By design | agent-sdk/local is the Node SDK |
 | agent-sdk build | ✅ Pass | `pnpm --filter @blade-ai/agent-sdk run build`: Done |
