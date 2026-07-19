@@ -615,6 +615,17 @@ After 29 slices (#150-#178), approximately 4,160 lines migrated from root to `@b
 **Verification:** `pnpm -r run type-check` zero errors, 25 tests pass (2 new + 23 existing), 0 self-ref boundary violations
 **Notes:** 31st utility function extracted from root to agent-sdk/local; bridges `@blade-ai/agent/state` and agent-sdk/local types
 
+### Slice #287 — Shim ContextCompressor.ts to Re-Export from @blade-ai/agent-sdk/local
+
+**Capability:** `ContextCompressor` — context window compression/decompression for LLM conversations
+**Target:** `@blade-ai/agent-sdk/local`
+**Root file shimmed:** `src/context/processors/ContextCompressor.ts` — reduced from 346L implementation to 1-line re-export
+**Package:** `packages/agent-sdk/src/local/ContextCompressor.ts` — byte-for-byte identical (only import path `../types.js` → `./context.js` differs)
+**Consumer:** `ContextManager.ts` (`new ContextCompressor()`) — unchanged
+**Tests:** Root 10 tests pass via shim
+**Verification:** `pnpm -r run type-check` zero errors, 0 self-ref boundary violations
+**Impact:** 346L root code eliminated; largest single-file shim in Phase 3 (surpasses ConversationState 101L, AtMentionParser 157L, toolSearch 90L)
+
 ## 🏆 Milestone — Zero Production Test Failures (#245)
 
 **Date:** 2026-07-18 | **Slices:** #150–#245 (96 total)
@@ -658,6 +669,7 @@ After 29 slices (#150-#178), approximately 4,160 lines migrated from root to `@b
 | Node-only imports in agent-sdk | ✅ By design | agent-sdk/local is the Node SDK |
 | agent-sdk build | ✅ Pass | `pnpm --filter @blade-ai/agent-sdk run build`: Done |
 | SessionRuntimeUtils tests | ✅ 25 tests | `localSessionRuntimeUtils.test.ts` (5 getString + 4 matchesMcpServer + 5 sanitizeSegment + 2 syncContextMessages + 4 toParamsRecord + 5 toJsonValue) |
+| ContextCompressor tests | ✅ 10 tests | Root tests pass via shim |
 | AtMentionParser tests | ✅ 37 tests | 17 package + 20 root via shim |
 | ConversationState tests | ✅ 34 tests | 21 root + 13 package |
 | agent-sdk tests | ⚠️ 2 files / 5 tests | Pre-existing (ToolExposurePlanner, Memory) |
