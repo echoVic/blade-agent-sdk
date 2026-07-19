@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { getString, sanitizeSegment, toJsonValue } from '../local/SessionRuntimeUtils.js';
+import { getString, matchesMcpServer, sanitizeSegment, toJsonValue } from '../local/SessionRuntimeUtils.js';
+import type { Tool } from '../tools/types/index.js';
 
 describe('SessionRuntimeUtils', () => {
   describe('getString', () => {
@@ -24,6 +25,31 @@ describe('SessionRuntimeUtils', () => {
 
     it('returns empty string for missing keys', () => {
       expect(getString({ present: 'hello' }, 'absent')).toBe('');
+    });
+  });
+
+  describe('matchesMcpServer', () => {
+    const makeTool = (name: string, tags: string[]): Tool =>
+      ({ name, tags } as unknown as Tool);
+
+    it('matches by tag', () => {
+      const tool = makeTool('my_tool', ['github', 'other']);
+      expect(matchesMcpServer(tool, 'github')).toBe(true);
+    });
+
+    it('matches by legacy name prefix', () => {
+      const tool = makeTool('mcp__github__list_repos', []);
+      expect(matchesMcpServer(tool, 'github')).toBe(true);
+    });
+
+    it('returns false for non-matching server', () => {
+      const tool = makeTool('my_tool', ['gitlab']);
+      expect(matchesMcpServer(tool, 'github')).toBe(false);
+    });
+
+    it('returns false for tool with no tags and standard name', () => {
+      const tool = makeTool('standard_tool', []);
+      expect(matchesMcpServer(tool, 'github')).toBe(false);
     });
   });
 

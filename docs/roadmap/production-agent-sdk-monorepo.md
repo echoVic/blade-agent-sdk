@@ -571,6 +571,17 @@ After 29 slices (#150-#178), approximately 4,160 lines migrated from root to `@b
 **Verification:** `pnpm -r run type-check` zero errors, 15 tests pass (5 new + 10 existing), 0 self-ref boundary violations
 **Notes:** 28th utility function extracted from root to agent-sdk/local; ExecutionPipeline.ts shrank by 3 lines
 
+### Slice #283 — Extract matchesMcpServer from ToolCatalog.ts
+
+**Capability:** `matchesMcpServer` — checks if a tool belongs to an MCP server (by tag or legacy `mcp__<server>__` name prefix)
+**Target:** `@blade-ai/agent-sdk/local` (SessionRuntimeUtils.ts)
+**Root file:** `src/tools/catalog/ToolCatalog.ts` — removed 3-line function definition, added import from `@blade-ai/agent-sdk/local`
+**New test:** 4 tests in `localSessionRuntimeUtils.test.ts` (tag match, legacy prefix match, non-match, no tags test)
+**Barrel:** Added `matchesMcpServer` to `local/index.ts` export list (29th function in SessionRuntimeUtils barrel)
+**Consumers:** `ToolCatalog.ts` (`removeMcpTools()` method) — unchanged, same signature
+**Verification:** `pnpm -r run type-check` zero errors, 19 tests pass (4 new + 15 existing), 0 self-ref boundary violations
+**Notes:** 29th utility function extracted from root to agent-sdk/local; ToolCatalog.ts shrank by 4 lines
+
 ## 🏆 Milestone — Zero Production Test Failures (#245)
 
 **Date:** 2026-07-18 | **Slices:** #150–#245 (96 total)
@@ -602,7 +613,7 @@ After 29 slices (#150-#178), approximately 4,160 lines migrated from root to `@b
 - Root type-check: 143 pre-existing type conflicts (dual declarations between root and package copies)
 - Root test suite: 27 failing files due to type conflicts — not migration regressions
 
-## ✅ Verification Gate — Health Summary (#282)
+## ✅ Verification Gate — Health Summary (#283)
 
 **Date:** 2026-07-19
 
@@ -613,7 +624,7 @@ After 29 slices (#150-#178), approximately 4,160 lines migrated from root to `@b
 | Self-ref boundary violations | ✅ 0 | `pnpm run verify:boundaries` → 0 self-ref |
 | Node-only imports in agent-sdk | ✅ By design | agent-sdk/local is the Node SDK |
 | agent-sdk build | ✅ Pass | `pnpm --filter @blade-ai/agent-sdk run build`: Done |
-| SessionRuntimeUtils tests | ✅ 15 tests | `localSessionRuntimeUtils.test.ts` (5 getString + 5 sanitizeSegment + 5 toJsonValue) |
+| SessionRuntimeUtils tests | ✅ 19 tests | `localSessionRuntimeUtils.test.ts` (5 getString + 4 matchesMcpServer + 5 sanitizeSegment + 5 toJsonValue) |
 | ConversationState root tests | ✅ 21 tests | Via shim import — all pass |
 | ConversationState package tests | ✅ 13 tests | `@blade-ai/agent` — all pass |
 | agent-sdk tests | ⚠️ 2 files / 5 tests | Pre-existing (ToolExposurePlanner, Memory) |

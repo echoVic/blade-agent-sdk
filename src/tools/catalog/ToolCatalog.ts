@@ -5,6 +5,7 @@ import type { FunctionDeclaration, Tool } from '../types/index.js';
 
 import type { ToolSourceKind, ToolTrustLevel, ToolCatalogSourcePolicy } from '@blade-ai/agent-sdk/local';
 export type { ToolSourceKind, ToolTrustLevel, ToolCatalogSourcePolicy };
+import { matchesMcpServer } from '@blade-ai/agent-sdk/local';
 
 export interface ToolSourceInfo {
   kind: ToolSourceKind;
@@ -26,11 +27,6 @@ export interface ToolCatalogReadView {
   getAll(): Tool[];
   getEntries?(): ToolCatalogEntry[];
   getFunctionDeclarationsByMode?(mode?: PermissionMode): FunctionDeclaration[];
-}
-
-function matchesMcpServer(tool: Tool, serverName: string): boolean {
-  const legacyPrefix = `mcp__${serverName}__`;
-  return tool.tags.includes(serverName) || tool.name.startsWith(legacyPrefix);
 }
 
 export class ToolCatalog implements ToolCatalogReadView {

@@ -15,6 +15,15 @@ export function serverNameFromTool(tool: Tool): string {
   return match?.[1] ?? 'mcp';
 }
 
+/**
+ * Checks whether a tool belongs to a specific MCP server.
+ * Matches by tool tag or legacy name prefix `mcp__<server>__`.
+ */
+export function matchesMcpServer(tool: Tool, serverName: string): boolean {
+  const legacyPrefix = `mcp__${serverName}__`;
+  return tool.tags.includes(serverName) || tool.name.startsWith(legacyPrefix);
+}
+
 import type { AgentPermissionUpdate } from '@blade-ai/agent/protocol';
 import type { PermissionUpdate } from '../types/permissions.js';
 
