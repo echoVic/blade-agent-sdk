@@ -1,10 +1,32 @@
 import { describe, expect, it } from 'vitest';
-import { getString, matchesMcpServer, sanitizeSegment, syncContextMessages, toJsonValue, toParamsRecord } from '../local/SessionRuntimeUtils.js';
+import { defaultReasonMessage, getString, matchesMcpServer, sanitizeSegment, syncContextMessages, toJsonValue, toParamsRecord } from '../local/SessionRuntimeUtils.js';
 import type { Tool } from '../tools/types/index.js';
 import type { ChatContext } from '../local/agentTypes.js';
 import type { ConversationState } from '@blade-ai/agent/state';
 
 describe('SessionRuntimeUtils', () => {
+  describe('defaultReasonMessage', () => {
+    it('returns tool-specific message', () => {
+      expect(defaultReasonMessage('tool')).toBe('Tool-specific confirmation required');
+    });
+
+    it('returns rule message', () => {
+      expect(defaultReasonMessage('rule')).toBe('User confirmation required');
+    });
+
+    it('returns path message', () => {
+      expect(defaultReasonMessage('path')).toBe('Path safety confirmation required');
+    });
+
+    it('returns hook message', () => {
+      expect(defaultReasonMessage('hook')).toBe('Hook requires confirmation');
+    });
+
+    it('returns handler message', () => {
+      expect(defaultReasonMessage('handler')).toBe('User confirmation required');
+    });
+  });
+
   describe('getString', () => {
     it('returns a matching string value', () => {
       expect(getString({ key: 'hello' }, 'key')).toBe('hello');

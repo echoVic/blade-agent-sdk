@@ -666,6 +666,16 @@ After 29 slices (#150-#178), approximately 4,160 lines migrated from root to `@b
 **Verification:** `pnpm -r run type-check` zero errors, 0 self-ref boundary violations
 **Impact:** 126L eliminated; total 1,628L across 12 files this session
 
+### Slice #291 — Extract defaultReasonMessage and ConfirmationReasonSource from ExecutionPipeline.ts
+
+**Capability:** `defaultReasonMessage` — maps confirmation reason source to human-readable default message; `ConfirmationReasonSource` — union type for tool confirmation sources
+**Target:** `@blade-ai/agent-sdk/local` (SessionRuntimeUtils.ts)
+**Root file:** `src/tools/execution/ExecutionPipeline.ts` — removed 8-line function, converted `ConfirmationReasonSource` type to re-export from package
+**New test:** 5 tests in `localSessionRuntimeUtils.test.ts` (one per source value)
+**Barrel:** Added `defaultReasonMessage` (32nd function) + `ConfirmationReasonSource` type to `local/index.ts`
+**Verification:** `pnpm -r run type-check` zero errors, 30 tests pass (5 new + 25 existing), 0 self-ref boundary violations
+**Notes:** 32nd utility function extracted; ExecutionPipeline.ts slimmed by 15 lines across 4 extractions (#280, #282, #284, #291)
+
 ## 🏆 Milestone — Zero Production Test Failures (#245)
 
 **Date:** 2026-07-18 | **Slices:** #150–#245 (96 total)
@@ -708,7 +718,7 @@ After 29 slices (#150-#178), approximately 4,160 lines migrated from root to `@b
 | Self-ref boundary violations | ✅ 0 | `pnpm run verify:boundaries` → 0 self-ref |
 | Node-only imports in agent-sdk | ✅ By design | agent-sdk/local is the Node SDK |
 | agent-sdk build | ✅ Pass | `pnpm --filter @blade-ai/agent-sdk run build`: Done |
-| SessionRuntimeUtils tests | ✅ 25 tests | `localSessionRuntimeUtils.test.ts` (5 getString + 4 matchesMcpServer + 5 sanitizeSegment + 2 syncContextMessages + 4 toParamsRecord + 5 toJsonValue) |
+| SessionRuntimeUtils tests | ✅ 30 tests | `localSessionRuntimeUtils.test.ts` (5 defaultReason + 5 getString + 4 matchesMcp + 5 sanitize + 2 syncContext + 4 toParams + 5 toJson) |
 | ContextCompressor tests | ✅ 10 tests | Root tests pass via shim |
 | OAuth tests | ✅ 14 tests | 8 OAuthProvider + 6 OAuthTokenStorage (package) |
 | AtMentionParser tests | ✅ 37 tests | 17 package + 20 root via shim |

@@ -40,7 +40,8 @@ import {
     ToolErrorType,
     validationErrorToToolResult,
 } from '../types/ToolResult.js';
-import { FileLockManager, getString, sanitizeSegment, toParamsRecord } from '@blade-ai/agent-sdk/local';
+import { defaultReasonMessage, FileLockManager, getString, sanitizeSegment, toParamsRecord } from '@blade-ai/agent-sdk/local';
+import type { ConfirmationReasonSource } from '@blade-ai/agent-sdk/local';
 
 function buildPermissionSignature(
   toolName: string,
@@ -73,7 +74,8 @@ interface PipelineExecutionState {
  * Confirmation reason source.
  * Ranked for display: deny > tool > rule > path > handler.
  */
-export type ConfirmationReasonSource = 'tool' | 'rule' | 'path' | 'handler' | 'hook';
+import type { ConfirmationReasonSource } from '@blade-ai/agent-sdk/local';
+export type { ConfirmationReasonSource };
 
 export interface ConfirmationReasonEntry {
   source: ConfirmationReasonSource;
@@ -1262,16 +1264,6 @@ function addConfirmationReason(
   const msg = message || defaultReasonMessage(source);
   state.confirmationReasons.push({ source, message: msg });
   state.confirmationReason = combineConfirmationReasons(state.confirmationReasons);
-}
-
-function defaultReasonMessage(source: ConfirmationReasonSource): string {
-  switch (source) {
-    case 'tool': return 'Tool-specific confirmation required';
-    case 'rule': return 'User confirmation required';
-    case 'path': return 'Path safety confirmation required';
-    case 'hook': return 'Hook requires confirmation';
-    case 'handler': return 'User confirmation required';
-  }
 }
 
 // ── Inlined from ResultArtifactStore.ts ──

@@ -584,3 +584,17 @@ export function hasPersistableUserContent(message: { type: string; text: string 
 export function syncContextMessages(context: ChatContext, convState: ConversationState): void {
   context.messages = convState.getContextMessages();
 }
+
+/** Sources that can trigger a tool confirmation reason. */
+export type ConfirmationReasonSource = 'tool' | 'rule' | 'path' | 'handler' | 'hook';
+
+/** Returns a human-readable default message for a confirmation reason source. */
+export function defaultReasonMessage(source: ConfirmationReasonSource): string {
+  switch (source) {
+    case 'tool': return 'Tool-specific confirmation required';
+    case 'rule': return 'User confirmation required';
+    case 'path': return 'Path safety confirmation required';
+    case 'hook': return 'Hook requires confirmation';
+    case 'handler': return 'User confirmation required';
+  }
+}
