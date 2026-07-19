@@ -527,6 +527,17 @@ After 29 slices (#150-#178), approximately 4,160 lines migrated from root to `@b
 **Verification:** `pnpm -r run type-check` zero errors (all 3 packages), `git diff --check` clean, agent-sdk build succeeds, 0 self-ref boundary violations
 **Notes:** 26th utility function extracted from root to agent-sdk/local (#269-#278); LoopHookBuilder.ts shrank by 8 lines
 
+### Slice #279 — Shim root toolSearch.ts to Re-Export from @blade-ai/agent-sdk/tools
+
+**Capability:** `searchTools`, `normalizeSearchText`, `scoreToolSearchMatch` — tool search functions
+**Target:** `@blade-ai/agent-sdk/tools`
+**Root file shimmed:** `src/tools/search/toolSearch.ts` — reduced from 90L implementation to 1-line re-export
+**New test:** `src/tools/search/__tests__/toolSearchShim.test.ts` (3 tests: verify each function is re-exported and callable)
+**Package:** `packages/agent-sdk/src/tools/toolSearch.ts` already had identical implementation (with null-safe accessors)
+**Consumers:** `ToolCatalog.ts` and `ToolRegistry.ts` — unchanged (same function signatures, structural TypeScript types)
+**Verification:** `pnpm -r run type-check` zero errors, agent-sdk 12 toolSearch tests pass, 0 self-ref boundary violations
+**Impact:** 90L root code eliminated; first full-file tools shim in Phase 3
+
 ## 🏆 Milestone — Zero Production Test Failures (#245)
 
 **Date:** 2026-07-18 | **Slices:** #150–#245 (96 total)
@@ -558,7 +569,7 @@ After 29 slices (#150-#178), approximately 4,160 lines migrated from root to `@b
 - Root type-check: 143 pre-existing type conflicts (dual declarations between root and package copies)
 - Root test suite: 27 failing files due to type conflicts — not migration regressions
 
-## ✅ Verification Gate — Health Summary (#278)
+## ✅ Verification Gate — Health Summary (#279)
 
 **Date:** 2026-07-19
 
@@ -571,10 +582,10 @@ After 29 slices (#150-#178), approximately 4,160 lines migrated from root to `@b
 | agent-sdk build | ✅ Pass | `pnpm --filter @blade-ai/agent-sdk run build`: Done |
 | agent-sdk tests | ⚠️ 2 files / 5 tests | Pre-existing (ToolExposurePlanner, Memory) — not migration-related |
 | Root tests | ⚠️ 27 files / 54 tests | Pre-existing type conflicts and esbuild transforms |
-| Syntax errors in root | ✅ 0 | Fixed 2 orphan braces in SessionStore.ts, createTool.ts (this slice) |
+| Root toolSearch shim | ✅ 3 tests | Shim verification test passes |
+| Syntax errors in root | ✅ 0 | Fixed in #278 |
 | Biome lint | ⚠️ 59 errors | Pre-existing (test files only) |
 | Release script tests | ⚠️ 3 files / 53 tests | Pre-existing, not migration-related |
-| Git working tree | ⚠️ 6 files modified | Slice #278 in progress (pre-commit) |
 
 ### Boundary Architecture
 
