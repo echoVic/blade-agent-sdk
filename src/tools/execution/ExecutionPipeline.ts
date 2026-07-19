@@ -40,7 +40,7 @@ import {
     ToolErrorType,
     validationErrorToToolResult,
 } from '../types/ToolResult.js';
-import { FileLockManager, getString } from '@blade-ai/agent-sdk/local';
+import { FileLockManager, getString, sanitizeSegment } from '@blade-ai/agent-sdk/local';
 
 function buildPermissionSignature(
   toolName: string,
@@ -1321,10 +1321,6 @@ class ResultArtifactStore {
 
     return path.join(os.tmpdir(), 'blade-agent-sdk', 'tool-results');
   }
-}
-
-function sanitizeSegment(value: string): string {
-  return value.replace(/[^a-zA-Z0-9._-]+/g, '-').slice(0, 64) || 'artifact';
 }
 
 // ── Inlined from DenialTracker.ts ──

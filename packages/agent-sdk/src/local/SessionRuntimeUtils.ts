@@ -255,6 +255,15 @@ export function getString(params: JsonObject, key: string, defaultValue = ''): s
 }
 
 /**
+ * Sanitizes a string segment for use as a filename component.
+ * Replaces non-alphanumeric characters with hyphens, truncates to 64 chars,
+ * and falls back to 'artifact' if the result would be empty.
+ */
+export function sanitizeSegment(value: string): string {
+  return value.replace(/[^a-zA-Z0-9._-]+/g, '-').slice(0, 64) || 'artifact';
+}
+
+/**
  * Converts a string or object to a JSON-safe value.
  * Strings pass through unchanged; objects are serialized via JSON round-trip;
  * fallback returns String(value) on serialization failure.

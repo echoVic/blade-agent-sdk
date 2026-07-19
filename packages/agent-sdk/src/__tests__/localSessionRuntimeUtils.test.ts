@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { getString, toJsonValue } from '../local/SessionRuntimeUtils.js';
+import { getString, sanitizeSegment, toJsonValue } from '../local/SessionRuntimeUtils.js';
 
 describe('SessionRuntimeUtils', () => {
   describe('getString', () => {
@@ -24,6 +24,30 @@ describe('SessionRuntimeUtils', () => {
 
     it('returns empty string for missing keys', () => {
       expect(getString({ present: 'hello' }, 'absent')).toBe('');
+    });
+  });
+
+  describe('sanitizeSegment', () => {
+    it('preserves alphanumeric chars, dots, hyphens, and underscores', () => {
+      expect(sanitizeSegment('hello-world_123.test')).toBe('hello-world_123.test');
+    });
+
+    it('replaces spaces and special chars with hyphens', () => {
+      expect(sanitizeSegment('hello world!')).toBe('hello-world-');
+    });
+
+    it('truncates strings longer than 64 characters', () => {
+      const input = 'a'.repeat(100);
+      expect(sanitizeSegment(input)).toBe('a'.repeat(64));
+    });
+
+    it('falls back to "artifact" for empty string input', () => {
+      expect(sanitizeSegment('')).toBe('artifact');
+    });
+
+    it('handles session IDs and tool names', () => {
+      expect(sanitizeSegment('session_abc-123')).toBe('session_abc-123');
+      expect(sanitizeSegment('read@file/v1')).toBe('read-file-v1');
     });
   });
 
