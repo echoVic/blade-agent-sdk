@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { getString, matchesMcpServer, sanitizeSegment, toJsonValue } from '../local/SessionRuntimeUtils.js';
+import { getString, matchesMcpServer, sanitizeSegment, toJsonValue, toParamsRecord } from '../local/SessionRuntimeUtils.js';
 import type { Tool } from '../tools/types/index.js';
 
 describe('SessionRuntimeUtils', () => {
@@ -110,6 +110,31 @@ describe('SessionRuntimeUtils', () => {
       // Date serializes to ISO string via JSON.stringify
       expect(typeof result).toBe('string');
       expect(result).toBe('2024-01-01T00:00:00.000Z');
+    });
+  });
+
+  describe('toParamsRecord', () => {
+    it('returns plain objects as-is', () => {
+      const obj = { key: 'value' };
+      expect(toParamsRecord(obj, {})).toBe(obj);
+    });
+
+    it('returns fallback for arrays', () => {
+      const fallback = { default: true };
+      expect(toParamsRecord([1, 2, 3], fallback)).toBe(fallback);
+    });
+
+    it('returns fallback for primitives', () => {
+      const fallback = { default: true };
+      expect(toParamsRecord('string', fallback)).toBe(fallback);
+      expect(toParamsRecord(42, fallback)).toBe(fallback);
+      expect(toParamsRecord(true, fallback)).toBe(fallback);
+    });
+
+    it('returns fallback for null and undefined', () => {
+      const fallback = { default: true };
+      expect(toParamsRecord(null, fallback)).toBe(fallback);
+      expect(toParamsRecord(undefined, fallback)).toBe(fallback);
     });
   });
 });

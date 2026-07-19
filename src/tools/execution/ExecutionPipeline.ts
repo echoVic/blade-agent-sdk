@@ -40,7 +40,7 @@ import {
     ToolErrorType,
     validationErrorToToolResult,
 } from '../types/ToolResult.js';
-import { FileLockManager, getString, sanitizeSegment } from '@blade-ai/agent-sdk/local';
+import { FileLockManager, getString, sanitizeSegment, toParamsRecord } from '@blade-ai/agent-sdk/local';
 
 function buildPermissionSignature(
   toolName: string,
@@ -1272,15 +1272,6 @@ function defaultReasonMessage(source: ConfirmationReasonSource): string {
     case 'hook': return 'Hook requires confirmation';
     case 'handler': return 'User confirmation required';
   }
-}
-
-function toParamsRecord(
-  params: unknown,
-  fallback: JsonObject,
-): JsonObject {
-  return params && typeof params === 'object' && !Array.isArray(params)
-    ? params as JsonObject
-    : fallback;
 }
 
 // ── Inlined from ResultArtifactStore.ts ──

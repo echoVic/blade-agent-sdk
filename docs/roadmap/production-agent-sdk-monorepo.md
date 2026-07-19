@@ -582,6 +582,17 @@ After 29 slices (#150-#178), approximately 4,160 lines migrated from root to `@b
 **Verification:** `pnpm -r run type-check` zero errors, 19 tests pass (4 new + 15 existing), 0 self-ref boundary violations
 **Notes:** 29th utility function extracted from root to agent-sdk/local; ToolCatalog.ts shrank by 4 lines
 
+### Slice #284 — Extract toParamsRecord from ExecutionPipeline.ts
+
+**Capability:** `toParamsRecord` — coerces unknown value to JsonObject record with fallback for non-objects
+**Target:** `@blade-ai/agent-sdk/local` (SessionRuntimeUtils.ts)
+**Root file:** `src/tools/execution/ExecutionPipeline.ts` — removed 6-line function definition, added to existing `@blade-ai/agent-sdk/local` import
+**New test:** 4 tests in `localSessionRuntimeUtils.test.ts` (plain object passthrough, array fallback, primitive fallback, null/undefined fallback)
+**Barrel:** Added `toParamsRecord` to `local/index.ts` export list (30th function in SessionRuntimeUtils barrel)
+**Consumers:** `ExecutionPipeline.ts` (2 call sites in permission-related logic) — unchanged, same signature
+**Verification:** `pnpm -r run type-check` zero errors, 23 tests pass (4 new + 19 existing), 0 self-ref boundary violations
+**Notes:** 30th utility function extracted from root to agent-sdk/local; ExecutionPipeline.ts shrank by 6 additional lines (13 total across slices #280, #282, #284)
+
 ## 🏆 Milestone — Zero Production Test Failures (#245)
 
 **Date:** 2026-07-18 | **Slices:** #150–#245 (96 total)
@@ -613,7 +624,7 @@ After 29 slices (#150-#178), approximately 4,160 lines migrated from root to `@b
 - Root type-check: 143 pre-existing type conflicts (dual declarations between root and package copies)
 - Root test suite: 27 failing files due to type conflicts — not migration regressions
 
-## ✅ Verification Gate — Health Summary (#283)
+## ✅ Verification Gate — Health Summary (#284)
 
 **Date:** 2026-07-19
 
@@ -624,13 +635,14 @@ After 29 slices (#150-#178), approximately 4,160 lines migrated from root to `@b
 | Self-ref boundary violations | ✅ 0 | `pnpm run verify:boundaries` → 0 self-ref |
 | Node-only imports in agent-sdk | ✅ By design | agent-sdk/local is the Node SDK |
 | agent-sdk build | ✅ Pass | `pnpm --filter @blade-ai/agent-sdk run build`: Done |
-| SessionRuntimeUtils tests | ✅ 19 tests | `localSessionRuntimeUtils.test.ts` (5 getString + 4 matchesMcpServer + 5 sanitizeSegment + 5 toJsonValue) |
-| ConversationState root tests | ✅ 21 tests | Via shim import — all pass |
-| ConversationState package tests | ✅ 13 tests | `@blade-ai/agent` — all pass |
+| SessionRuntimeUtils tests | ✅ 23 tests | `localSessionRuntimeUtils.test.ts` (5 getString + 4 matchesMcpServer + 5 sanitizeSegment + 4 toParamsRecord + 5 toJsonValue) |
+| ConversationState tests | ✅ 34 tests | 21 root + 13 package |
 | agent-sdk tests | ⚠️ 2 files / 5 tests | Pre-existing (ToolExposurePlanner, Memory) |
 | Root tests | ⚠️ 27 files / 54 tests | Pre-existing type conflicts and esbuild transforms |
 | Root toolSearch shim | ✅ 3 tests | Shim verification test passes |
 | Syntax errors in root | ✅ 0 | Fixed in #278 |
+| Biome lint | ⚠️ 59 errors | Pre-existing (test files only) |
+| Release script tests | ⚠️ 3 files / 53 tests | Pre-existing, not migration-related |
 | Biome lint | ⚠️ 59 errors | Pre-existing (test files only) |
 | Release script tests | ⚠️ 3 files / 53 tests | Pre-existing, not migration-related |
 

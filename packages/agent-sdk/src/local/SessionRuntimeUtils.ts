@@ -273,6 +273,16 @@ export function sanitizeSegment(value: string): string {
 }
 
 /**
+ * Coerces an unknown value into a JsonObject record.
+ * Returns the fallback if the value is not a non-array object.
+ */
+export function toParamsRecord(params: unknown, fallback: JsonObject): JsonObject {
+  return params && typeof params === 'object' && !Array.isArray(params)
+    ? params as JsonObject
+    : fallback;
+}
+
+/**
  * Converts a string or object to a JSON-safe value.
  * Strings pass through unchanged; objects are serialized via JSON round-trip;
  * fallback returns String(value) on serialization failure.
