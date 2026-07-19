@@ -626,6 +626,19 @@ After 29 slices (#150-#178), approximately 4,160 lines migrated from root to `@b
 **Verification:** `pnpm -r run type-check` zero errors, 0 self-ref boundary violations
 **Impact:** 346L root code eliminated; largest single-file shim in Phase 3 (surpasses ConversationState 101L, AtMentionParser 157L, toolSearch 90L)
 
+### Slice #288 — Shim OAuthProvider and OAuthTokenStorage to Re-Export from @blade-ai/agent-sdk/local
+
+**Capability:** `OAuthProvider` and `OAuthTokenStorage` — OAuth 2.0 authentication flow with PKCE and token persistence
+**Target:** `@blade-ai/agent-sdk/local`
+**Root files shimmed:**
+- `src/mcp/auth/OAuthProvider.ts` — 414L → 1-line re-export (dead code; already consumed via `auth/index.js` → `@blade-ai/agent-sdk/local`)
+- `src/mcp/auth/OAuthTokenStorage.ts` — 131L → 1-line re-export (used by `McpClient.ts`)
+**Package:** Both files byte-for-byte identical to root (only import paths differ)
+**Consumer:** `McpClient.ts` imports `OAuthTokenStorage` directly, `OAuthProvider` via `auth/index.js` shim
+**Tests:** 14 package tests pass (8 OAuthProvider + 6 OAuthTokenStorage)
+**Verification:** `pnpm -r run type-check` zero errors, 0 self-ref boundary violations
+**Impact:** 545L root code eliminated in one slice (414L dead + 131L active); total 1,239L eliminated across 6 full-file shims this session
+
 ## 🏆 Milestone — Zero Production Test Failures (#245)
 
 **Date:** 2026-07-18 | **Slices:** #150–#245 (96 total)
@@ -670,6 +683,7 @@ After 29 slices (#150-#178), approximately 4,160 lines migrated from root to `@b
 | agent-sdk build | ✅ Pass | `pnpm --filter @blade-ai/agent-sdk run build`: Done |
 | SessionRuntimeUtils tests | ✅ 25 tests | `localSessionRuntimeUtils.test.ts` (5 getString + 4 matchesMcpServer + 5 sanitizeSegment + 2 syncContextMessages + 4 toParamsRecord + 5 toJsonValue) |
 | ContextCompressor tests | ✅ 10 tests | Root tests pass via shim |
+| OAuth tests | ✅ 14 tests | 8 OAuthProvider + 6 OAuthTokenStorage (package) |
 | AtMentionParser tests | ✅ 37 tests | 17 package + 20 root via shim |
 | ConversationState tests | ✅ 34 tests | 21 root + 13 package |
 | agent-sdk tests | ⚠️ 2 files / 5 tests | Pre-existing (ToolExposurePlanner, Memory) |
