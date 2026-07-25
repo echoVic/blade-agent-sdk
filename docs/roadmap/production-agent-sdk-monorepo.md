@@ -82,7 +82,7 @@ Dependency direction:
 
 ---
 
-## Migration Progress — 241 Slices Completed
+## Migration Progress — 293 Slices Completed
 
 ### Subsystems at 100% (Complete)
 
@@ -686,6 +686,17 @@ After 29 slices (#150-#178), approximately 4,160 lines migrated from root to `@b
 **New test:** 8 tests in `localConfirmationUtils.test.ts` (5 combineConfirmationReasons + 3 buildPermissionSignature)
 **Verification:** `pnpm -r run type-check` zero errors, 8 new tests pass, 0 self-ref boundary violations
 **Impact:** First dedicated capability module (not just utility extraction); groups 3 related confirmation primitives; ExecutionPipeline.ts slimmed by 47 lines across 5 extractions (#280+282+284+291+292)
+
+### Slice #293 — Shim OutputParser.ts to Re-Export from @blade-ai/agent-sdk/local
+
+**Capability:** `OutputParser` — parses hook command outputs (JSON + exit codes)
+**Target:** `@blade-ai/agent-sdk/local`
+**Root file shimmed:** `src/hooks/OutputParser.ts` — reduced from 302L implementation to 1-line re-export
+**Package:** `packages/agent-sdk/src/local/OutputParser.ts` — self-contained with inlined types (380L)
+**Consumer:** `HookExecutor.ts` — unchanged (uses `new OutputParser()` and `.parse()`)
+**Tests:** Root 18 tests pass via shim
+**Verification:** `pnpm -r run type-check` zero errors, `pnpm run type-check` zero new errors beyond pre-existing 143, 0 self-ref boundary violations
+**Impact:** 302L root code eliminated; OutputParser class + types already available in package with inlined type definitions
 
 ## 🏆 Milestone — Zero Production Test Failures (#245)
 
