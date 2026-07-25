@@ -82,7 +82,7 @@ Dependency direction:
 
 ---
 
-## Migration Progress — 293 Slices Completed
+## Migration Progress — 294 Slices Completed
 
 ### Subsystems at 100% (Complete)
 
@@ -697,6 +697,21 @@ After 29 slices (#150-#178), approximately 4,160 lines migrated from root to `@b
 **Tests:** Root 18 tests pass via shim
 **Verification:** `pnpm -r run type-check` zero errors, `pnpm run type-check` zero new errors beyond pre-existing 143, 0 self-ref boundary violations
 **Impact:** 302L root code eliminated; OutputParser class + types already available in package with inlined type definitions
+
+### Slice #294 — Migrate HookRuntime to @blade-ai/agent-sdk/local
+
+**Capability:** `HookRuntime` — session-level hook execution facade (pre/post tool use, user prompt submit, stop check)
+**Target:** `@blade-ai/agent-sdk/local`
+**Root file shimmed:** `src/hooks/HookRuntime.ts` — reduced from 738L implementation to 2-line re-export
+**Package:** `packages/agent-sdk/src/local/HookRuntime.ts` (711L) — migrated with API changes
+**Barrel:** Added `HookRuntime` export to `packages/agent-sdk/src/local/index.ts`
+**Fixes:**
+- Added missing `executePreToolUseHooks` integration to `applyPreToolUse` (was only doing callback hooks)
+- Updated `HookRuntimeLike` interface in `SessionKernelHookAdapter.ts` to match new return types
+- Updated test assertions to match package API signatures (method names changed: `executePreToolHooks` → `executePreToolUseHooks`, parameter structures changed from positional args to params objects)
+**Tests:** 3 root HookRuntime tests pass (updated to match package API), all 66 hook tests pass
+**Verification:** `pnpm -r run type-check` zero errors, root type-check 143 errors (no new), 0 self-ref boundary violations
+**Impact:** 738L root code eliminated; completes HookRuntime migration to package
 
 ## 🏆 Milestone — Zero Production Test Failures (#245)
 

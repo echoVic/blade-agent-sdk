@@ -1,7 +1,7 @@
 import type { ModelRequest } from '@blade-ai/ai';
 import type { AgentHookPort } from '@blade-ai/agent/ports';
 export interface HookRuntimeLike {
-  applyUserPromptSubmit(content: unknown, options: { abortSignal?: AbortSignal }): Promise<string>;
+  applyUserPromptSubmit(content: unknown, options?: { abortSignal?: AbortSignal }): Promise<unknown>;
 }
 
 export interface KernelHookPortOptions {

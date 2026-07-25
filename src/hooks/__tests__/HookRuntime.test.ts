@@ -36,11 +36,15 @@ describe('HookRuntime', () => {
 
     expect(getImageCountSpy).toHaveBeenCalledTimes(2);
     expect(hookManager.executeUserPromptSubmitHooks).toHaveBeenCalledWith(
-      'prompt',
       expect.objectContaining({
+        userPrompt: 'prompt',
         hasImages: true,
         imageCount: 2,
       }),
+      '/tmp/project',
+      'session-1',
+      'default',
+      undefined,
     );
   });
 
@@ -78,12 +82,12 @@ describe('HookRuntime', () => {
 
   it('merges callback and hook-manager pre/post tool hooks through one facade', async () => {
     const hookManager = {
-      executePreToolHooks: vi.fn(async () => ({
+      executePreToolUseHooks: vi.fn(async () => ({
         decision: 'ask',
         reason: 'manager confirmation',
         modifiedInput: { manager: true },
       })),
-      executePostToolHooks: vi.fn(async () => ({
+      executePostToolUseHooks: vi.fn(async () => ({
         additionalContext: 'manager context',
       })),
     };
@@ -116,9 +120,7 @@ describe('HookRuntime', () => {
       success: true,
       llmContent: 'original output',
     };
-    const post = await runtime.applyPostToolUse('Read', pre.updatedInput, result, {
-      toolUseId: ToolUseId('tool-1'),
-    });
+    const post = await runtime.applyPostToolUse('Read', pre.updatedInput, result, ToolUseId('tool-1'));
 
     expect(pre.updatedInput).toEqual({
       file_path: 'a.ts',
@@ -127,29 +129,32 @@ describe('HookRuntime', () => {
     });
     expect(pre.needsConfirmation).toBe(true);
     expect(pre.reason).toBe('manager confirmation');
-    expect(hookManager.executePreToolHooks).toHaveBeenCalledWith(
-      'Read',
-      'tool-1',
+    expect(hookManager.executePreToolUseHooks).toHaveBeenCalledWith(
       expect.objectContaining({
-        callback: true,
+        toolName: 'Read',
+        toolInput: expect.objectContaining({ callback: true }),
+        toolUseId: 'tool-1',
       }),
-      expect.objectContaining({
-        projectDir: '/tmp/project',
-      }),
+      '/tmp/project',
+      'session-tool-hooks',
+      'default',
+      undefined,
     );
-    expect(post.result.llmContent).toBe('callback output');
-    expect(hookManager.executePostToolHooks).toHaveBeenCalledWith(
-      'Read',
-      'tool-1',
+    expect(post.result.llmContent).toBe('callback output\n\n---\n**Hook Context:**\nmanager context');
+    expect(hookManager.executePostToolUseHooks).toHaveBeenCalledWith(
       expect.objectContaining({
-        manager: true,
+        toolName: 'Read',
+        toolInput: expect.objectContaining({
+          manager: true,
+        }),
+        toolResponse: expect.objectContaining({
+          llmContent: 'callback output',
+        }),
+        toolUseId: 'tool-1',
       }),
-      expect.objectContaining({
-        llmContent: 'original output',
-      }),
-      expect.objectContaining({
-        projectDir: '/tmp/project',
-      }),
+      '/tmp/project',
+      'session-tool-hooks',
+      'default',
     );
   });
 });
