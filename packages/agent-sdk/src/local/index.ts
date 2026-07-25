@@ -375,6 +375,8 @@ export { OAuthProvider } from './OAuthProvider.js';
 // MCP Health Types
 export { HealthStatus } from './mcpHealth.js';
 export type {  HealthCheckConfig } from './mcpHealth.js';
+export { HealthMonitor } from './HealthMonitor.js';
+export type {  HealthCheckResult } from './HealthMonitor.js';
 
 // Session Kernel Store Adapter
 export { createKernelStorePort } from './SessionKernelStoreAdapter.js';

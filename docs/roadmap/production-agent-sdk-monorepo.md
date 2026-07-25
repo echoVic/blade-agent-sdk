@@ -82,7 +82,7 @@ Dependency direction:
 
 ---
 
-## Migration Progress — 294 Slices Completed
+## Migration Progress — 295 Slices Completed
 
 ### Subsystems at 100% (Complete)
 
@@ -712,6 +712,19 @@ After 29 slices (#150-#178), approximately 4,160 lines migrated from root to `@b
 **Tests:** 3 root HookRuntime tests pass (updated to match package API), all 66 hook tests pass
 **Verification:** `pnpm -r run type-check` zero errors, root type-check 143 errors (no new), 0 self-ref boundary violations
 **Impact:** 738L root code eliminated; completes HookRuntime migration to package
+
+### Slice #295 — Migrate HealthMonitor to @blade-ai/agent-sdk/local
+
+**Capability:** `HealthMonitor` — MCP connection health monitoring with periodic checks and auto-reconnect
+**Target:** `@blade-ai/agent-sdk/local`
+**Root file shimmed:** `src/mcp/HealthMonitor.ts` — reduced from 267L implementation to 3-line re-export
+**Package:** `packages/agent-sdk/src/local/HealthMonitor.ts` (266L) — already existed, uses McpClientLike interface
+**Barrel:** Added `HealthMonitor` class and `HealthCheckResult` type to `packages/agent-sdk/src/local/index.ts`
+**Fixes:**
+- Changed `McpClientLike.callTool` second param from `Record<string, unknown>` to `Record<string, unknown> | undefined` for compatibility with root McpClient's optional `JsonObject` param
+**Tests:** 11 root HealthMonitor tests pass via shim
+**Verification:** `pnpm -r run type-check` zero errors, root type-check 143 errors (no new), 0 self-ref boundary violations
+**Impact:** 267L root code eliminated
 
 ## 🏆 Milestone — Zero Production Test Failures (#245)
 

@@ -47,5 +47,5 @@ export interface McpClientLike {
   readonly server: { name: string; version: string } | null;
   disconnect(): Promise<void>;
   connect(): Promise<void>;
-  callTool(name: string, params: Record<string, unknown>): Promise<McpToolCallResponse>;
+  callTool(name: string, params?: Record<string, unknown>): Promise<McpToolCallResponse>;
 }

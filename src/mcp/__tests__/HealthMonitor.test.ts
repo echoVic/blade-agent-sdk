@@ -1,6 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { HealthMonitor, HealthStatus, type HealthCheckConfig } from '../HealthMonitor.js';
-import type { McpClient } from '../McpClient.js';
 import { McpConnectionStatus } from '../types.js';
 
 const createMockClient = (status: McpConnectionStatus = McpConnectionStatus.CONNECTED) => ({
@@ -11,7 +10,8 @@ const createMockClient = (status: McpConnectionStatus = McpConnectionStatus.CONN
 });
 
 function createMonitor(client: ReturnType<typeof createMockClient>, config: HealthCheckConfig) {
-  return new HealthMonitor(client as unknown as McpClient, config);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  return new HealthMonitor(client as any, config);
 }
 
 describe('HealthMonitor', () => {
