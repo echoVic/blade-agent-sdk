@@ -82,7 +82,7 @@ Dependency direction:
 
 ---
 
-## Migration Progress — 296 Slices Completed
+## Migration Progress — 297 Slices Completed
 
 ### Subsystems at 100% (Complete)
 
@@ -737,6 +737,17 @@ After 29 slices (#150-#178), approximately 4,160 lines migrated from root to `@b
 **Tests:** 12 root VercelAIChatService tests pass via shim
 **Verification:** `pnpm -r run type-check` zero errors, `pnpm run type-check` 143 pre-existing errors (0 new), 0 self-ref boundary violations
 **Impact:** 521L root code eliminated; second chat/service shim in this phase (after OutputParser #293)
+
+### Slice #297 — Shim AttachmentCollector.ts to Re-Export from @blade-ai/agent-sdk/local
+
+**Capability:** `AttachmentCollector` — collects file/directory content from @ mentions in user messages, with caching, path security, and line range support
+**Target:** `@blade-ai/agent-sdk/local`
+**Root file shimmed:** `src/prompts/processors/AttachmentCollector.ts` — reduced from 504L implementation to 1-line re-export
+**Package:** `packages/agent-sdk/src/local/attachmentCollector.ts` (504L) — already existed, byte-for-byte identical except import paths (Logger, splitPath, PathSecurity, types)
+**Barrel:** Already exported in `packages/agent-sdk/src/local/index.ts` (no change needed)
+**Consumer:** `src/agent/AttachmentHandler.ts` — unchanged (imports via `../prompts/processors/AttachmentCollector.js`, resolves through shim)
+**Verification:** `pnpm -r run type-check` zero errors, `pnpm run type-check` 143 pre-existing errors (0 new), 0 self-ref boundary violations
+**Impact:** 504L root code eliminated; third prompt/processor shim (after AtMentionParser #285, ContextCompressor #287)
 
 ## 🏆 Milestone — Zero Production Test Failures (#245)
 
