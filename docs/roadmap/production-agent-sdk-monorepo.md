@@ -82,7 +82,7 @@ Dependency direction:
 
 ---
 
-## Migration Progress — 295 Slices Completed
+## Migration Progress — 296 Slices Completed
 
 ### Subsystems at 100% (Complete)
 
@@ -725,6 +725,18 @@ After 29 slices (#150-#178), approximately 4,160 lines migrated from root to `@b
 **Tests:** 11 root HealthMonitor tests pass via shim
 **Verification:** `pnpm -r run type-check` zero errors, root type-check 143 errors (no new), 0 self-ref boundary violations
 **Impact:** 267L root code eliminated
+
+### Slice #296 — Shim VercelAIChatService.ts to Re-Export from @blade-ai/agent-sdk/local
+
+**Capability:** `VercelAIChatService` — Vercel AI SDK chat service implementation (ModelPort-based chat, stream, retry, side query)
+**Target:** `@blade-ai/agent-sdk/local`
+**Root file shimmed:** `src/session/VercelAIChatService.ts` — reduced from 521L implementation to 1-line re-export
+**Package:** `packages/agent-sdk/src/local/VercelAIChatService.ts` (521L) — already existed, byte-for-byte identical except Logger import path
+**Barrel:** Already exported in `packages/agent-sdk/src/local/index.ts` (no change needed)
+**Consumer:** `src/session/ChatServiceFactory.ts` — unchanged (imports via `./VercelAIChatService.js`, resolves through shim)
+**Tests:** 12 root VercelAIChatService tests pass via shim
+**Verification:** `pnpm -r run type-check` zero errors, `pnpm run type-check` 143 pre-existing errors (0 new), 0 self-ref boundary violations
+**Impact:** 521L root code eliminated; second chat/service shim in this phase (after OutputParser #293)
 
 ## 🏆 Milestone — Zero Production Test Failures (#245)
 
