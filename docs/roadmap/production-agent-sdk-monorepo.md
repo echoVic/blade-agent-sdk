@@ -82,7 +82,7 @@ Dependency direction:
 
 ---
 
-## Migration Progress — 299 Slices Completed
+## Migration Progress — 300 Slices Completed
 
 ### Subsystems at 100% (Complete)
 
@@ -773,6 +773,20 @@ After 29 slices (#150-#178), approximately 4,160 lines migrated from root to `@b
 **Verification:** `pnpm -r run type-check` zero errors; root type-check **129 errors (down 13 from 142)** — all 13 AgentSessionStore `Cannot find name 'AgentSession'` errors resolved, 0 new; boundary verifier unchanged (120 pre-existing, 0 new); `git diff --check` clean
 **Impact:** 271L root code eliminated; subagents subsystem now 3/5 files migrated (builtinAgents #290, SubagentRegistry #298, AgentSessionStore #299); root type-check cumulative improvement 143 → 129 across #298-#299
 **Remaining work (next slices):** `Session.ts` missing `SessionId` import (blocks 6 session test files); AgentEvent.ts (249L pure types, next near-identical shim candidate); boundary verifier browser-safe closure (120 pre-existing violations)
+
+### Slice #300 — Shim AgentEvent.ts to Re-Export from @blade-ai/agent-sdk/local
+
+**Capability:** `AgentEvent` — 27-type agent event system (agent_start → turn_start → [content/thinking/tool events] → turn_end → agent_end lifecycle, plus TokenUsageInfo) (249L)
+**Target:** `@blade-ai/agent-sdk/local`
+**Root file shimmed:** `src/agent/AgentEvent.ts` — reduced from 249L implementation to 28-line type re-export
+**Package:** `packages/agent-sdk/src/local/agentEvent.ts` (249L) — byte-for-byte identical except import paths (RuntimePatch, RuntimeContextPatch, TodoItem, ToolResult)
+**Barrel:** Already exported in `packages/agent-sdk/src/local/index.ts` (all 27 types, no change needed)
+**Consumers:** `Agent.ts`, `LoopRunner.ts`, `PlanExecutor.ts`, `CompactionHandler.ts`, `rootAgentLoopAdapter.ts` — all type-only imports, unchanged
+**Tests:** 102 tests pass across 4 root files (AgentLoop, AgentLoop.streaming, PlanExecutor, Agent.stream); monorepoTopology 14 pre-existing failures unchanged (stale assertions expecting inline package imports in shim files)
+**Verification:** `pnpm -r run type-check` zero errors; root type-check 129 errors (0 new); boundary verifier unchanged (120 pre-existing, 0 new); `git diff --check` clean
+**Impact:** 249L root code eliminated; AgentEvent type identity now unified with package local consumers (planExecutor, adapterContracts, sessionTypes); root agent/event subsystem fully migrated (types #167, events #300)
+**Notes:** Pure type file — no runtime behavior change; monorepoTopology stale assertions (14) tracked for a future test-maintenance slice
+**Remaining work (next slices):** `Session.ts` missing `SessionId` import (blocks 6 session test files); LoopState.ts (133L, next near-identical shim candidate); boundary verifier browser-safe closure (120 pre-existing violations)
 
 ## 🏆 Milestone — Zero Production Test Failures (#245)
 
