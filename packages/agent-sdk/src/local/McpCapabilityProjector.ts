@@ -23,11 +23,12 @@ export interface McpServerInfoForCapability {
 /**
  * Minimal interface for an MCP registry needed by the capability projector.
  * Decouples from the McpRegistry class to break the circular dependency chain.
- * Uses `Iterable` so both Map-returning registries (root McpRegistry
- * `Map<string, McpServerInfo>`) and iterator-based sources satisfy it.
+ * Matches the canonical McpRegistry API: `getAllServers()` returns server
+ * names and `getServer(name)` returns per-server info.
  */
 export interface McpCapabilitySource {
-  getAllServers(): Iterable<[string, McpServerInfoForCapability]>;
+  getAllServers(): string[];
+  getServer(name: string): McpServerInfoForCapability | undefined;
 }
 
 export interface McpToolCapability {
@@ -87,26 +88,32 @@ function mapHealthStatus(
 }
 
 export function projectMcpCapabilities(registry: McpCapabilitySource): McpServerCapability[] {
-  return Array.from(registry.getAllServers()).map(([name, serverInfo]) => ({
-    name,
-    status: mapConnectionStatus(serverInfo.status),
-    connectedAt: serverInfo.connectedAt,
-    error: serverInfo.lastError?.message,
-    auth: {
-      enabled: serverInfo.config.oauth?.enabled ?? false,
-      provider: serverInfo.config.oauth?.provider,
-    },
-    health: {
-      enabled: serverInfo.config.healthCheck?.enabled ?? false,
-      status: mapHealthStatus(
-        serverInfo.client.healthCheck?.getStatus(),
-        serverInfo.config.healthCheck?.enabled ?? false,
-      ),
-    },
-    tools: serverInfo.tools.map((tool) => ({
-      name: tool.name,
-      description: tool.description,
-      inputSchema: tool.inputSchema,
-    })),
-  }));
+  const capabilities: McpServerCapability[] = [];
+  for (const name of registry.getAllServers()) {
+    const serverInfo = registry.getServer(name);
+    if (!serverInfo) continue;
+    capabilities.push({
+      name,
+      status: mapConnectionStatus(serverInfo.status),
+      connectedAt: serverInfo.connectedAt,
+      error: serverInfo.lastError?.message,
+      auth: {
+        enabled: serverInfo.config.oauth?.enabled ?? false,
+        provider: serverInfo.config.oauth?.provider,
+      },
+      health: {
+        enabled: serverInfo.config.healthCheck?.enabled ?? false,
+        status: mapHealthStatus(
+          serverInfo.client.healthCheck?.getStatus(),
+          serverInfo.config.healthCheck?.enabled ?? false,
+        ),
+      },
+      tools: serverInfo.tools.map((tool) => ({
+        name: tool.name,
+        description: tool.description,
+        inputSchema: tool.inputSchema,
+      })),
+    });
+  }
+  return capabilities;
 }

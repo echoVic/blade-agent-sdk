@@ -16,7 +16,8 @@ describe('agent-sdk local MCP tools', () => {
 
   it('includes MCP tools when includeMcpProtocolTools and mcpRegistry are provided', async () => {
     const mockRegistry = {
-      getAllServers: () => new Map(),
+      getAllServers: () => [],
+      getServer: () => undefined,
     };
     const tools = await getBuiltinTools({
       includeMcpProtocolTools: true,
@@ -29,7 +30,8 @@ describe('agent-sdk local MCP tools', () => {
 
   it('creates a ListMcpResources tool via factory', () => {
     const tool = createListMcpResourcesTool({
-      getAllServers: () => new Map(),
+      getAllServers: () => [],
+      getServer: () => undefined,
     });
     expect(tool.name).toBe('ListMcpResources');
     expect(tool.kind).toBe(ToolKind.ReadOnly);
@@ -37,7 +39,8 @@ describe('agent-sdk local MCP tools', () => {
 
   it('creates a ReadMcpResource tool via factory', () => {
     const tool = createReadMcpResourceTool({
-      getAllServers: () => new Map(),
+      getAllServers: () => [],
+      getServer: () => undefined,
     });
     expect(tool.name).toBe('ReadMcpResource');
     expect(tool.kind).toBe(ToolKind.ReadOnly);
@@ -45,7 +48,8 @@ describe('agent-sdk local MCP tools', () => {
 
   it('ListMcpResources returns empty result with no servers', async () => {
     const tool = createListMcpResourcesTool({
-      getAllServers: () => new Map(),
+      getAllServers: () => [],
+      getServer: () => undefined,
     });
     const invocation = tool.build({});
     const result = await invocation.execute(
@@ -59,7 +63,8 @@ describe('agent-sdk local MCP tools', () => {
 
   it('ReadMcpResource returns error with no servers', async () => {
     const tool = createReadMcpResourceTool({
-      getAllServers: () => new Map(),
+      getAllServers: () => [],
+      getServer: () => undefined,
     });
     const invocation = tool.build({ uri: 'file:///test' });
     const result = await invocation.execute(

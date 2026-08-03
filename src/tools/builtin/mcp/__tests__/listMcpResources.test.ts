@@ -2,21 +2,25 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createListMcpResourcesTool } from '../listMcpResources.js';
 import type { McpRegistry } from '../../../../mcp/McpRegistry.js';
 
-const mockGetAllServers = vi.fn(() => new Map());
+const mockGetAllServers = vi.fn<() => string[]>(() => []);
+const mockGetServer = vi.fn<(name: string) => { client: unknown } | undefined>(() => undefined);
 
 const mockRegistry = {
   getAllServers: mockGetAllServers,
-} as Pick<McpRegistry, 'getAllServers'> as McpRegistry;
+  getServer: mockGetServer,
+} as Pick<McpRegistry, 'getAllServers' | 'getServer'> as McpRegistry;
 
 const listMcpResourcesTool = createListMcpResourcesTool(mockRegistry);
 
 describe('listMcpResourcesTool', () => {
   beforeEach(() => {
     mockGetAllServers.mockClear();
+    mockGetServer.mockClear();
   });
 
   afterEach(() => {
     mockGetAllServers.mockClear();
+    mockGetServer.mockClear();
   });
 
   describe('tool metadata', () => {
@@ -31,7 +35,7 @@ describe('listMcpResourcesTool', () => {
 
   describe('execute', () => {
     it('should return no servers message when no servers connected', async () => {
-      mockGetAllServers.mockReturnValue(new Map());
+      mockGetAllServers.mockReturnValue([]);
 
       const result = await listMcpResourcesTool.execute({});
 
@@ -44,7 +48,8 @@ describe('listMcpResourcesTool', () => {
       const mockClient = {
         listResources: vi.fn(() => Promise.resolve([])),
       };
-      mockGetAllServers.mockReturnValue(new Map([['test-server', { client: mockClient }]]));
+      mockGetAllServers.mockReturnValue(['test-server']);
+      mockGetServer.mockReturnValue({ client: mockClient });
 
       const result = await listMcpResourcesTool.execute({});
 
@@ -61,7 +66,8 @@ describe('listMcpResourcesTool', () => {
           ])
         ),
       };
-      mockGetAllServers.mockReturnValue(new Map([['test-server', { client: mockClient }]]));
+      mockGetAllServers.mockReturnValue(['test-server']);
+      mockGetServer.mockReturnValue({ client: mockClient });
 
       const result = await listMcpResourcesTool.execute({});
 
@@ -79,11 +85,9 @@ describe('listMcpResourcesTool', () => {
       const mockClient2 = {
         listResources: vi.fn(() => Promise.resolve([{ uri: 'file:///test2.txt', name: 'Test 2' }])),
       };
-      mockGetAllServers.mockReturnValue(
-        new Map([
-          ['server1', { client: mockClient1 }],
-          ['server2', { client: mockClient2 }],
-        ])
+      mockGetAllServers.mockReturnValue(['server1', 'server2']);
+      mockGetServer.mockImplementation((name: string) =>
+        name === 'server1' ? { client: mockClient1 } : { client: mockClient2 },
       );
 
       const result = await listMcpResourcesTool.execute({ serverName: 'server1' });
@@ -94,7 +98,8 @@ describe('listMcpResourcesTool', () => {
     });
 
     it('should skip servers without client', async () => {
-      mockGetAllServers.mockReturnValue(new Map([['no-client-server', { client: null }]]));
+      mockGetAllServers.mockReturnValue(['no-client-server']);
+      mockGetServer.mockReturnValue({ client: null });
 
       const result = await listMcpResourcesTool.execute({});
 
@@ -106,7 +111,8 @@ describe('listMcpResourcesTool', () => {
       const mockClient = {
         listResources: vi.fn(() => Promise.reject(new Error('Connection failed'))),
       };
-      mockGetAllServers.mockReturnValue(new Map([['failing-server', { client: mockClient }]]));
+      mockGetAllServers.mockReturnValue(['failing-server']);
+      mockGetServer.mockReturnValue({ client: mockClient });
 
       const result = await listMcpResourcesTool.execute({});
 

@@ -30,7 +30,7 @@ const { mockCreateVercelModelPort } = vi.hoisted(() => ({
   })),
 }));
 
-vi.mock('../../mcp/McpClient.js', () => ({
+vi.mock('../../../packages/agent-sdk/src/local/McpClient.js', () => ({
   McpClient: class MockMcpClient {
     availableTools = [
       {
@@ -44,10 +44,26 @@ vi.mock('../../mcp/McpClient.js', () => ({
         },
       },
     ];
-    connect = mockConnect;
-    disconnect = mockDisconnect;
-    on = mockOn;
+    private handlers = new Map<string, ((...args: unknown[]) => void)[]>();
+    connect = async () => {
+      await mockConnect();
+      for (const handler of this.handlers.get('connected') ?? []) {
+        handler('test');
+      }
+    };
+    disconnect = async () => {
+      await mockDisconnect();
+      for (const handler of this.handlers.get('disconnected') ?? []) {
+        handler();
+      }
+    };
+    on = (event: string, handler: (...args: unknown[]) => void) => {
+      const list = this.handlers.get(event) ?? [];
+      list.push(handler);
+      this.handlers.set(event, list);
+    };
   },
+  ErrorType: {},
 }));
 
 vi.mock('@blade-ai/ai/providers/vercel', () => ({

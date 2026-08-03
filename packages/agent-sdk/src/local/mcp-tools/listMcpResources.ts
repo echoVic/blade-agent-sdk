@@ -7,9 +7,10 @@ interface McpResourceServerHandle {
 }
 
 export interface McpResourceRegistry {
-  getAllServers(): Map<string, {
+  getAllServers(): string[];
+  getServer(name: string): {
     client: McpResourceServerHandle | null;
-  }>;
+  } | undefined;
 }
 
 interface McpResource {
@@ -49,9 +50,9 @@ access their contents.`,
 
     async execute(params: ListMcpResourcesParams) {
       try {
-        const servers = registry.getAllServers();
+        const serverNames = registry.getAllServers();
 
-        if (servers.size === 0) {
+        if (serverNames.length === 0) {
           return {
             success: true,
             llmContent: 'No MCP servers are currently connected.',
@@ -66,12 +67,13 @@ access their contents.`,
         const allResources: McpResource[] = [];
         const errors: string[] = [];
 
-        for (const [serverName, serverInfo] of servers) {
+        for (const serverName of serverNames) {
           if (params.serverName && serverName !== params.serverName) {
             continue;
           }
 
-          if (!serverInfo.client) {
+          const serverInfo = registry.getServer(serverName);
+          if (!serverInfo?.client) {
             continue;
           }
 

@@ -5,13 +5,16 @@ const mockConnect = vi.fn(() => Promise.resolve());
 const mockDisconnect = vi.fn(() => Promise.resolve());
 const mockOn = vi.fn(() => {});
 
-vi.mock('../McpClient.js', () => ({
+// Since #316/#317 the canonical McpClient lives in @blade-ai/agent-sdk/local;
+// mock that module so the package McpRegistry uses the stubbed client.
+vi.mock('../../../packages/agent-sdk/src/local/McpClient.js', () => ({
   McpClient: class MockMcpClient {
     availableTools = [];
     connect = mockConnect;
     disconnect = mockDisconnect;
     on = mockOn;
   },
+  ErrorType: {},
 }));
 
 describe('McpRegistry', () => {
@@ -41,8 +44,8 @@ describe('McpRegistry', () => {
       const config = { command: 'test-server' };
       await registry.registerServer('test', config);
 
-      const serverInfo = registry.getServerStatus('test');
-      expect(serverInfo).not.toBeNull();
+      const serverInfo = registry.getServer('test');
+      expect(serverInfo).toBeDefined();
       expect(serverInfo?.config).toEqual(config);
     });
 
@@ -73,8 +76,8 @@ describe('McpRegistry', () => {
 
       await registry.unregisterServer('test');
 
-      const serverInfo = registry.getServerStatus('test');
-      expect(serverInfo).toBeNull();
+      const serverInfo = registry.getServer('test');
+      expect(serverInfo).toBeUndefined();
     });
 
     it('should emit serverUnregistered event', async () => {
@@ -123,30 +126,30 @@ describe('McpRegistry', () => {
       await registry.registerServer('server2', { command: 'cmd2' });
 
       const servers = registry.getAllServers();
-      expect(servers.size).toBe(2);
-      expect(servers.has('server1')).toBe(true);
-      expect(servers.has('server2')).toBe(true);
+      expect(servers).toHaveLength(2);
+      expect(servers).toContain('server1');
+      expect(servers).toContain('server2');
     });
 
-    it('should return empty map when no servers registered', () => {
+    it('should return empty list when no servers registered', () => {
       const servers = registry.getAllServers();
-      expect(servers.size).toBe(0);
+      expect(servers).toHaveLength(0);
     });
   });
 
-  describe('getServerStatus', () => {
+  describe('getServer', () => {
     it('should return server info for registered server', async () => {
       const config = { command: 'test-server' };
       await registry.registerServer('test', config);
 
-      const serverInfo = registry.getServerStatus('test');
-      expect(serverInfo).not.toBeNull();
+      const serverInfo = registry.getServer('test');
+      expect(serverInfo).toBeDefined();
       expect(serverInfo?.config).toEqual(config);
     });
 
-    it('should return null for non-existent server', () => {
-      const serverInfo = registry.getServerStatus('non-existent');
-      expect(serverInfo).toBeNull();
+    it('should return undefined for non-existent server', () => {
+      const serverInfo = registry.getServer('non-existent');
+      expect(serverInfo).toBeUndefined();
     });
   });
 
@@ -177,7 +180,7 @@ describe('McpRegistry', () => {
       await registry.disconnectAll();
 
       const servers = registry.getAllServers();
-      expect(servers.size).toBe(0);
+      expect(servers).toHaveLength(0);
     });
   });
 

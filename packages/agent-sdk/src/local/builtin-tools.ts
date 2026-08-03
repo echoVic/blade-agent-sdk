@@ -13,7 +13,6 @@ import { createMemoryReadTool } from './memoryRead.js';
 import { createMemoryWriteTool } from './memoryWrite.js';
 import { createTodoWriteTool } from './todo/index.js';
 import { createListMcpResourcesTool, createReadMcpResourceTool } from './mcp-tools/index.js';
-import type { McpResourceRegistry } from './mcp-tools/listMcpResources.js';
 import { webFetchTool, webSearchTool } from './web/index.js';
 import {
   createTaskCreateTool,
@@ -25,12 +24,13 @@ import {
   taskOutputTool,
 } from './task/index.js';
 import type { SubagentRegistryPort } from './task/task.js';
+import type { McpResourceRegistry } from './mcp-tools/listMcpResources.js';
 
 export interface BuiltinToolsOptions {
   memoryManager?: unknown;
   sessionId?: unknown;
   configDir?: string;
-  mcpRegistry?: unknown;
+  mcpRegistry?: McpResourceRegistry;
   includeMcpProtocolTools?: boolean;
   subagentRegistry?: unknown;
 }
@@ -56,8 +56,8 @@ export async function getBuiltinTools(options: BuiltinToolsOptions = {}): Promis
     webSearchTool,
     ...(options.includeMcpProtocolTools && options.mcpRegistry
       ? [
-          createListMcpResourcesTool(options.mcpRegistry as McpResourceRegistry),
-          createReadMcpResourceTool(options.mcpRegistry as McpResourceRegistry),
+          createListMcpResourcesTool(options.mcpRegistry),
+          createReadMcpResourceTool(options.mcpRegistry),
         ]
       : []),
     ...(options.memoryManager

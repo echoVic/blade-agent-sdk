@@ -5,7 +5,7 @@ const mockConnect = vi.fn(() => Promise.resolve());
 const mockDisconnect = vi.fn(() => Promise.resolve());
 const mockOn = vi.fn(() => {});
 
-vi.mock('../../mcp/McpClient.js', () => ({
+vi.mock('../../../packages/agent-sdk/src/local/McpClient.js', () => ({
   McpClient: class MockMcpClient {
     availableTools = [
       { name: 'test_tool', description: 'A test tool' },
@@ -14,6 +14,7 @@ vi.mock('../../mcp/McpClient.js', () => ({
     disconnect = mockDisconnect;
     on = mockOn;
   },
+  ErrorType: {},
 }));
 
 describe('Session MCP Methods', () => {
@@ -33,16 +34,17 @@ describe('Session MCP Methods', () => {
   describe('mcpServerStatus', () => {
     it('should return empty array when no servers registered', () => {
       const servers = registry.getAllServers();
-      expect(servers.size).toBe(0);
+      expect(servers).toHaveLength(0);
     });
 
     it('should return server status after registration', async () => {
       await registry.registerServer('test-server', { command: 'test' });
 
       const servers = registry.getAllServers();
-      expect(servers.size).toBe(1);
+      expect(servers).toHaveLength(1);
+      expect(servers).toContain('test-server');
 
-      const serverInfo = servers.get('test-server');
+      const serverInfo = registry.getServer('test-server');
       expect(serverInfo).toBeDefined();
       expect(serverInfo?.status).toBeDefined();
     });

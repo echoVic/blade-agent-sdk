@@ -82,7 +82,7 @@ Dependency direction:
 
 ---
 
-## Migration Progress — 316 Slices Completed
+## Migration Progress — 317 Slices Completed
 
 ### Subsystems at 100% (Complete)
 
@@ -1019,6 +1019,26 @@ After 29 slices (#150-#178), approximately 4,160 lines migrated from root to `@b
 **Verification:** `pnpm -r run type-check` zero errors; root type-check 96 errors (0 new); `verify:boundaries` PASS; `verify:entrypoints` PASS; 51 mcp tests pass; full suite 4 pre-existing failing files unchanged; `git diff --check` clean
 **Impact:** 631L root code eliminated — the LARGEST root file migrated this session; MCP client now canonical in package with unified constructor; unblocks McpRegistry (#317) and createMcpTool (#318) re-shims
 **Remaining work (next slices):** `McpRegistry.ts` (533L — constructor alignment done, connect-flow diffs remain); `createMcpTool.ts` (355L — schema conversion divergence); `session/types.ts` re-shim; package Tool declaration consolidation; `HookExecutor.ts`/`HookManager.ts`
+
+### Slice #317 — Shim McpRegistry.ts to Re-Export from @blade-ai/agent-sdk/local
+
+**Capability:** `McpRegistry` — MCP server registry, connection lifecycle, tool discovery, per-session instances (533L)
+**Target:** `@blade-ai/agent-sdk/local`
+**Root file shimmed:** `src/mcp/McpRegistry.ts` — reduced from 533L implementation to 2-line re-export
+**Package capability port:** Added `getAvailableToolsByServerNames(serverNames)` (cross-server tool collection with name-conflict prefixing) to package McpRegistry — required by Agent.ts + SessionRuntime, missing from the package API
+**Registry-interface alignment (3 phantom interfaces — matched NO implementation):**
+- `McpCapabilitySource`: `getAllServers(): Iterable<[string, info]>` → `string[]` + `getServer(name)` (matches the canonical McpRegistry API; the old Iterable form matched neither root Map nor package string[])
+- `McpResourceRegistry` (mcp-tools/listMcpResources + readMcpResource): `Map<string, ...>` → `string[]` + `getServer(name)` — bodies updated from `for (const [name, info] of servers)` to `for (const name of serverNames)` + `getServer`
+- `BuiltinToolsOptions.mcpRegistry`: `unknown` → `McpResourceRegistry` — removed 2 `as McpResourceRegistry` casts in builtin-tools.ts (the cast papered over the mismatch)
+**Consumer/test alignment:**
+- `tools/builtin/index.ts`: `getAvailableTools()` → `getConnectedTools()` (package method name)
+- `McpRegistry.test.ts` (19 tests): mock path → package McpClient module; `getAllServers` Map assertions → `string[]`; `getServerStatus` info assertions → `getServer`
+- `Session.mcp.test.ts` (9 tests): mock path → package McpClient + event-emitting mock (package flow sets tools via client `connected`/`disconnected` events)
+- `SessionRuntime.test.ts` (2 MCP tests): mock path → package McpClient + event-emitting mock
+- `listMcpResources.test.ts` / `readMcpResource.test.ts` / package `localMcpTools.test.ts`: Map-based registry mocks → `string[]` + `getServer`
+**Verification:** `pnpm -r run type-check` zero errors; root type-check 96 errors (0 new); `verify:boundaries` PASS; `verify:entrypoints` PASS; 28 mcp tests + 13 package mcp tests pass; full suite back to 4 pre-existing failing files; `git diff --check` clean
+**Impact:** 533L root code eliminated; **MCP subsystem fully migrated** (HealthMonitor #295, McpClient #316, McpRegistry #317, + earlier); package McpRegistry API now canonical with 3 phantom consumer interfaces aligned to reality; removed 2 casts
+**Remaining work (next slices):** `createMcpTool.ts` (355L — schema conversion divergence); `session/types.ts` re-shim (StreamMessage union); package Tool declaration consolidation; `HookExecutor.ts`/`HookManager.ts`; `ExecutionPipeline.ts` (1468L) + context core (PersistentStore 841L, ContextManager 712L)
 
 ## 🏆 Milestone — Zero Production Test Failures (#245)
 

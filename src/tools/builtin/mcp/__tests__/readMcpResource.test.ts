@@ -2,21 +2,25 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { createReadMcpResourceTool } from '../readMcpResource.js';
 import type { McpRegistry } from '../../../../mcp/McpRegistry.js';
 
-const mockGetAllServers = vi.fn(() => new Map());
+const mockGetAllServers = vi.fn<() => string[]>(() => []);
+const mockGetServer = vi.fn<(name: string) => { client: unknown } | undefined>(() => undefined);
 
 const mockRegistry = {
   getAllServers: mockGetAllServers,
-} as Pick<McpRegistry, 'getAllServers'> as McpRegistry;
+  getServer: mockGetServer,
+} as Pick<McpRegistry, 'getAllServers' | 'getServer'> as McpRegistry;
 
 const readMcpResourceTool = createReadMcpResourceTool(mockRegistry);
 
 describe('readMcpResourceTool', () => {
   beforeEach(() => {
     mockGetAllServers.mockClear();
+    mockGetServer.mockClear();
   });
 
   afterEach(() => {
     mockGetAllServers.mockClear();
+    mockGetServer.mockClear();
   });
 
   describe('tool metadata', () => {
@@ -31,7 +35,7 @@ describe('readMcpResourceTool', () => {
 
   describe('execute', () => {
     it('should return error when no servers connected', async () => {
-      mockGetAllServers.mockReturnValue(new Map());
+      mockGetAllServers.mockReturnValue([]);
 
       const result = await readMcpResourceTool.execute({ uri: 'file:///test.txt' });
 
@@ -49,7 +53,8 @@ describe('readMcpResourceTool', () => {
           })
         ),
       };
-      mockGetAllServers.mockReturnValue(new Map([['test-server', { client: mockClient }]]));
+      mockGetAllServers.mockReturnValue(['test-server']);
+      mockGetServer.mockReturnValue({ client: mockClient });
 
       const result = await readMcpResourceTool.execute({ uri: 'file:///test.txt' });
 
@@ -69,7 +74,8 @@ describe('readMcpResourceTool', () => {
           })
         ),
       };
-      mockGetAllServers.mockReturnValue(new Map([['test-server', { client: mockClient }]]));
+      mockGetAllServers.mockReturnValue(['test-server']);
+      mockGetServer.mockReturnValue({ client: mockClient });
 
       const result = await readMcpResourceTool.execute({ uri: 'file:///image.png' });
 
@@ -85,11 +91,9 @@ describe('readMcpResourceTool', () => {
       const mockClient2 = {
         readResource: vi.fn(() => Promise.resolve({ uri: 'test', text: 'from server2' })),
       };
-      mockGetAllServers.mockReturnValue(
-        new Map([
-          ['server1', { client: mockClient1 }],
-          ['server2', { client: mockClient2 }],
-        ])
+      mockGetAllServers.mockReturnValue(['server1', 'server2']);
+      mockGetServer.mockImplementation((name: string) =>
+        name === 'server1' ? { client: mockClient1 } : { client: mockClient2 },
       );
 
       const result = await readMcpResourceTool.execute({
@@ -106,7 +110,8 @@ describe('readMcpResourceTool', () => {
       const mockClient = {
         readResource: vi.fn(() => Promise.reject(new Error('Resource not found'))),
       };
-      mockGetAllServers.mockReturnValue(new Map([['test-server', { client: mockClient }]]));
+      mockGetAllServers.mockReturnValue(['test-server']);
+      mockGetServer.mockReturnValue({ client: mockClient });
 
       const result = await readMcpResourceTool.execute({ uri: 'file:///missing.txt' });
 
@@ -118,7 +123,8 @@ describe('readMcpResourceTool', () => {
       const mockClient = {
         readResource: vi.fn(() => Promise.reject(new Error('Resource not found'))),
       };
-      mockGetAllServers.mockReturnValue(new Map([['my-server', { client: mockClient }]]));
+      mockGetAllServers.mockReturnValue(['my-server']);
+      mockGetServer.mockReturnValue({ client: mockClient });
 
       const result = await readMcpResourceTool.execute({
         uri: 'file:///missing.txt',
@@ -130,7 +136,8 @@ describe('readMcpResourceTool', () => {
     });
 
     it('should skip servers without client', async () => {
-      mockGetAllServers.mockReturnValue(new Map([['no-client-server', { client: null }]]));
+      mockGetAllServers.mockReturnValue(['no-client-server']);
+      mockGetServer.mockReturnValue({ client: null });
 
       const result = await readMcpResourceTool.execute({ uri: 'file:///test.txt' });
 
@@ -145,11 +152,9 @@ describe('readMcpResourceTool', () => {
       const mockClient2 = {
         readResource: vi.fn(() => Promise.resolve({ uri: 'test', text: 'success' })),
       };
-      mockGetAllServers.mockReturnValue(
-        new Map([
-          ['server1', { client: mockClient1 }],
-          ['server2', { client: mockClient2 }],
-        ])
+      mockGetAllServers.mockReturnValue(['server1', 'server2']);
+      mockGetServer.mockImplementation((name: string) =>
+        name === 'server1' ? { client: mockClient1 } : { client: mockClient2 },
       );
 
       const result = await readMcpResourceTool.execute({ uri: 'file:///test.txt' });
@@ -178,7 +183,8 @@ describe('readMcpResourceTool', () => {
           })
         ),
       };
-      mockGetAllServers.mockReturnValue(new Map([['test-server', { client: mockClient }]]));
+      mockGetAllServers.mockReturnValue(['test-server']);
+      mockGetServer.mockReturnValue({ client: mockClient });
 
       const result = await readMcpResourceTool.execute({ uri: 'file:///test.txt' });
 

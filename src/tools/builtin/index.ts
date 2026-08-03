@@ -11,7 +11,7 @@ import type { MemoryManager } from '@blade-ai/agent-sdk/local';
 
 async function getMcpTools(mcpRegistry: McpRegistry): Promise<Tool[]> {
   try {
-    return await mcpRegistry.getAvailableTools();
+    return await mcpRegistry.getConnectedTools();
   } catch (error) {
     console.warn('MCP协议工具加载失败:', error);
     return [];

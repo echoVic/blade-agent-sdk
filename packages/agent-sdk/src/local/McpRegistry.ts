@@ -282,6 +282,48 @@ export class McpRegistry extends EventEmitter {
   }
 
   /**
+   * 获取指定服务器集合的工具列表（含跨服务器名称冲突前缀处理）
+   */
+  getAvailableToolsByServerNames(serverNames: string[]): Tool[] {
+    const tools: Tool[] = [];
+    const nameConflicts = new Map<string, number>();
+    const targetNames = new Set(serverNames);
+
+    // 第一遍：检测冲突
+    for (const [serverName, serverInfo] of this.servers) {
+      if (!targetNames.has(serverName)) {
+        continue;
+      }
+      if (serverInfo.status === McpConnectionStatus.CONNECTED) {
+        for (const mcpTool of serverInfo.tools) {
+          const count = nameConflicts.get(mcpTool.name) || 0;
+          nameConflicts.set(mcpTool.name, count + 1);
+        }
+      }
+    }
+
+    // 第二遍：创建工具（冲突时添加服务器名前缀）
+    for (const [serverName, serverInfo] of this.servers) {
+      if (!targetNames.has(serverName)) {
+        continue;
+      }
+      if (serverInfo.status === McpConnectionStatus.CONNECTED) {
+        for (const mcpTool of serverInfo.tools) {
+          const hasConflict = (nameConflicts.get(mcpTool.name) || 0) > 1;
+          const toolName = hasConflict
+            ? `${serverName}__${mcpTool.name}`
+            : mcpTool.name;
+
+          const tool = createMcpTool(serverInfo.client, serverName, mcpTool, toolName);
+          tools.push(tool);
+        }
+      }
+    }
+
+    return tools;
+  }
+
+  /**
    * 获取指定服务器的工具列表
    */
   getServerTools(serverName: string): Tool[] {
