@@ -82,7 +82,7 @@ Dependency direction:
 
 ---
 
-## Migration Progress — 328 Slices Completed
+## Migration Progress — 329 Slices Completed
 
 ### Subsystems at 100% (Complete)
 
@@ -1180,6 +1180,24 @@ After 29 slices (#150-#178), approximately 4,160 lines migrated from root to `@b
 **Verification:** `pnpm -r run type-check` zero errors; root type-check 69 errors (0 new, exact baseline match); `verify:boundaries` PASS; `verify:entrypoints` PASS; `verify:packages` PASS; 178 agent/session tests pass (2 pre-existing hook failures); full suite 4 pre-existing failing files unchanged; `git diff --check` clean
 **Impact:** 173L root code eliminated; attachment processing now package-canonical
 **Remaining work (next slices):** ExecutionContext consolidation (SessionId unification prerequisite — multi-slice); monorepoTopology test-maintenance (14 stale shim-era assertions); `ExecutionPipeline.ts` (1468L) + context core; Session.ts (784L) + SessionRuntime.ts (598L) + SessionStore.ts (538L); Agent.ts (662L) + LoopRunner (404L) + BackgroundAgentManager (605L)
+
+### Slice #329 — MonorepoTopology Test-Maintenance（14 个 stale shim 断言全部修复）
+
+**Capability:** Verification-chain maintenance — update the monorepo topology test suite to reflect the shim-era architecture (root files are now pure re-export shims, so "should import X from package" assertions must accept the shim target)
+**Root file updated:** `src/__tests__/monorepoTopology.test.ts` — 14 stale assertions fixed across 11 test functions:
+- Chat-protocol tests (4): `toContain("from '@blade-ai/ai/chat'")` → `toMatch(/...ai/chat|...agent-sdk/local|...agent/)` (accepts shim targets; ConversationState shims to `@blade-ai/agent/state`)
+- Session kernel adapters: required-import check accepts `@blade-ai/agent-sdk/local` shim target
+- Session runtime: `SessionModelPort` deepseek assertion accepts shim target
+- Function tool-call + token budget: consumer checks accept shim target
+- Message utils: `HookRuntime` consumer accepts shim target
+- Vercel service: asserts the 1-line shim form + verifies the class lives in the package `vercelAIChatService.ts`
+- Retry policy: consumer check accepts shim target
+- Agent-package organization: `AgentLoopAdapterConfig`/`AgentLoopAdapterHooks` assertions moved to the package `agentLoop.ts`
+- Tool-execution-update contracts: root adapter shim assertions updated (no longer defines the contracts)
+- Session stream contract: `includeThinking` check moved to the package session types
+**Verification:** root type-check 69 errors (0 new); `git diff --check` clean; lint 0 warnings; **monorepoTopology 14 failing → 0 (74/74 pass)**
+**Impact:** root test suite **4 → 3 failing files** (61 → 47 failing tests, 1229 → 1243 passing); the topology suite now accurately documents the shim-era architecture; remaining 3 failing files are semantic-release-config (43, pre-existing), SandboxService (2, pre-existing), SessionRuntime (2, pre-existing hook-related)
+**Remaining work (next slices):** ExecutionContext consolidation (SessionId unification prerequisite — multi-slice); `ExecutionPipeline.ts` (1468L) + context core (PersistentStore 841L, ContextManager 712L, CompactionService 539L); Session.ts (784L) + SessionRuntime.ts (598L) + SessionStore.ts (538L); Agent.ts (662L) + LoopRunner (404L) + BackgroundAgentManager (605L)
 
 ## 🏆 Milestone — Zero Production Test Failures (#245)
 

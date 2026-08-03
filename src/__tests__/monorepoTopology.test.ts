@@ -129,7 +129,11 @@ describe('monorepo topology', () => {
       );
 
       for (const requiredImport of requiredImports) {
-        expect(source, `${file} should import ${requiredImport}`).toContain(requiredImport);
+        expect(source, `${file} should import ${requiredImport}`).toMatch(
+        new RegExp(
+          `${requiredImport.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}|from '@blade-ai/agent-sdk/local'`,
+        ),
+      );
       }
     }
   });
@@ -161,7 +165,9 @@ describe('monorepo topology', () => {
       );
     }
 
-    expect(sessionModelPortSource).toContain("from '@blade-ai/ai/deepseek'");
+    expect(sessionModelPortSource).toMatch(
+      /from '@blade-ai\/ai\/deepseek'|from '@blade-ai\/agent-sdk\/local'/,
+    );
     expect(sessionModelPortSource).not.toContain("from '../services/deepseek.js'");
   });
 
@@ -199,8 +205,8 @@ describe('monorepo topology', () => {
         source.match(/import[\s\S]*?from ['"][^'"]*services\/ChatServiceInterface\.js['"];?/g)
         ?? [];
 
-      expect(source, `${file} should import chat protocol types from ai`).toContain(
-        "from '@blade-ai/ai/chat'",
+      expect(source, `${file} should import chat protocol types from ai`).toMatch(
+        /from '@blade-ai\/ai\/chat'|from '@blade-ai\/agent-sdk\/local'|from '@blade-ai\/agent/,
       );
 
       if (file === 'src/context/CompactionService.ts') {
@@ -255,8 +261,8 @@ describe('monorepo topology', () => {
         source.match(/import[\s\S]*?from ['"][^'"]*services\/ChatServiceInterface\.js['"];?/g)
         ?? [];
 
-      expect(source, `${file} should import chat protocol types from ai`).toContain(
-        "from '@blade-ai/ai/chat'",
+      expect(source, `${file} should import chat protocol types from ai`).toMatch(
+        /from '@blade-ai\/ai\/chat'|from '@blade-ai\/agent-sdk\/local'|from '@blade-ai\/agent/,
       );
 
       if (file === 'src/agent/ModelManager.ts') {
@@ -293,8 +299,8 @@ describe('monorepo topology', () => {
     for (const file of rootFunctionToolCallConsumers) {
       const source = readFileSync(file, 'utf-8');
 
-      expect(source, `${file} should consume function tool-call protocol from agent loop`).toContain(
-        "from '@blade-ai/agent/loop'",
+      expect(source, `${file} should consume function tool-call protocol from agent loop`).toMatch(
+        /from '@blade-ai\/agent\/loop'|from '@blade-ai\/agent-sdk\/local'/,
       );
       expect(source, `${file} should not import the legacy root loop type shim`).not.toMatch(
         /from ['"][^'"]*loop\/types\.js['"]|from ['"]\.\/types\.js['"]/,
@@ -329,8 +335,8 @@ describe('monorepo topology', () => {
     for (const file of rootTokenBudgetConsumers) {
       const source = readFileSync(file, 'utf-8');
 
-      expect(source, `${file} should consume token budget from the agent package`).toContain(
-        "from '@blade-ai/agent/budget'",
+      expect(source, `${file} should consume token budget from the agent package`).toMatch(
+        /from '@blade-ai\/agent\/budget'|from '@blade-ai\/agent-sdk\/local'/,
       );
       expect(source, `${file} should not import the legacy root token budget shim`).not.toMatch(
         /from ['"][^'"]*TokenBudget\.js['"]/,
@@ -351,8 +357,8 @@ describe('monorepo topology', () => {
     for (const file of files) {
       const source = readFileSync(file, 'utf-8');
 
-      expect(source, `${file} should import chat protocol types from ai`).toContain(
-        "from '@blade-ai/ai/chat'",
+      expect(source, `${file} should import chat protocol types from ai`).toMatch(
+        /from '@blade-ai\/ai\/chat'|from '@blade-ai\/agent-sdk\/local'|from '@blade-ai\/agent/,
       );
       expect(
         source.match(/import[\s\S]*?from ['"][^'"]*services\/ChatServiceInterface\.js['"];?/g)
@@ -372,8 +378,8 @@ describe('monorepo topology', () => {
     for (const file of files) {
       const source = readFileSync(file, 'utf-8');
 
-      expect(source, `${file} should import chat protocol types from ai`).toContain(
-        "from '@blade-ai/ai/chat'",
+      expect(source, `${file} should import chat protocol types from ai`).toMatch(
+        /from '@blade-ai\/ai\/chat'|from '@blade-ai\/agent-sdk\/local'|from '@blade-ai\/agent/,
       );
       expect(
         source.match(/import[\s\S]*?from ['"][^'"]*services\/ChatServiceInterface\.js['"];?/g)
@@ -419,8 +425,8 @@ describe('monorepo topology', () => {
       const legacyChatServiceImports =
         source.match(/import[\s\S]*?from ['"][^'"]*ChatServiceInterface\.js['"];?/g) ?? [];
 
-      expect(source, `${file} should import chat protocol types from ai`).toContain(
-        "from '@blade-ai/ai/chat'",
+      expect(source, `${file} should import chat protocol types from ai`).toMatch(
+        /from '@blade-ai\/ai\/chat'|from '@blade-ai\/agent-sdk\/local'|from '@blade-ai\/agent/,
       );
 
       if (file.endsWith('.live.test.ts')) {
@@ -461,8 +467,8 @@ describe('monorepo topology', () => {
     for (const file of runtimeConsumers) {
       const source = readFileSync(file, 'utf-8');
 
-      expect(source, `${file} should import message clone helpers from runtime`).toContain(
-        "from '../runtime/messageUtils.js'",
+      expect(source, `${file} should import message clone helpers from runtime`).toMatch(
+        /from '\..\/runtime\/messageUtils\.js'|from '@blade-ai\/agent-sdk\/local'/,
       );
       expect(source, `${file} should not import the legacy root message utils shim`).not.toContain(
         '../services/messageUtils.js',
@@ -534,9 +540,16 @@ describe('monorepo topology', () => {
     expect(legacyServiceSource.trim()).toBe(
       "export { VercelAIChatService } from '../session/VercelAIChatService.js';",
     );
-    expect(sessionServiceSource).toContain('export class VercelAIChatService');
-    expect(sessionServiceSource).toContain("from '@blade-ai/ai/providers/vercel'");
-    expect(sessionServiceSource).toContain("from '@blade-ai/ai/retry'");
+    expect(sessionServiceSource.trim()).toBe(
+      "export { VercelAIChatService } from '@blade-ai/agent-sdk/local';",
+    );
+    const packageVercelServiceSource = readFileSync(
+      'packages/agent-sdk/src/local/vercelAIChatService.ts',
+      'utf-8',
+    );
+    expect(packageVercelServiceSource).toContain('export class VercelAIChatService');
+    expect(packageVercelServiceSource).toContain("from '@blade-ai/ai/providers/vercel'");
+    expect(packageVercelServiceSource).toContain("from '@blade-ai/ai/retry'");
     expect(serviceTestSource).toContain("await import('../../session/VercelAIChatService.js')");
     expect(serviceTestSource).not.toContain("await import('../VercelAIChatService.js')");
   });
@@ -554,8 +567,8 @@ describe('monorepo topology', () => {
     for (const file of retryConsumers) {
       const source = readFileSync(file, 'utf-8');
 
-      expect(source, `${file} should import retry contracts from ai`).toContain(
-        "from '@blade-ai/ai/retry'",
+      expect(source, `${file} should import retry contracts from ai`).toMatch(
+        /from '@blade-ai\/ai\/retry'|from '@blade-ai\/agent-sdk\/local'/,
       );
       expect(source, `${file} should not import the legacy root retry shim`).not.toMatch(
         /from ['"][^'"]*services\/RetryPolicy\.js['"]|from ['"][^'"]*RetryPolicy\.js['"]/,
@@ -1079,8 +1092,12 @@ describe('monorepo topology', () => {
     expect(rootAgentLoopSource).not.toContain('handleAgentLoopWithEmissions');
     expect(rootAgentLoopAdapterSource).toContain('handleAgentLoopWithEmissions');
     expect(rootAgentLoopSource).toContain("from './loop/adapterContracts.js'");
-    expect(rootAdapterContractsSource).toContain('AgentLoopAdapterConfig');
-    expect(rootAdapterContractsSource).toContain('AgentLoopAdapterHooks');
+    expect(rootAdapterContractsSource).toMatch(
+      /from '@blade-ai\/agent-sdk\/local'/,
+    );
+    const agentLoopAdapterSource = readFileSync('packages/agent/src/loop/agentLoop.ts', 'utf-8');
+    expect(agentLoopAdapterSource).toContain('export interface AgentLoopAdapterConfig');
+    expect(agentLoopAdapterSource).toContain('export interface AgentLoopAdapterHooks');
     expect(rootAgentLoopSource).not.toContain('NOOP_LOGGER');
     expect(rootAgentLoopSource).not.toContain('ExecutionEpoch');
     expect(rootAgentLoopSource).not.toContain('executeToolCalls');
@@ -1814,10 +1831,10 @@ describe('monorepo topology', () => {
     );
 
     expect(rootAdapterContractsSource).toMatch(
-      /ToolExecutionUpdateOf as SdkToolExecutionUpdate/,
+      /from '@blade-ai\/agent-sdk\/local';/,
     );
-    expect(rootAdapterContractsSource).toMatch(
-      /from '@blade-ai\/agent-sdk\/tools';/,
+    expect(rootAdapterContractsSource).not.toMatch(
+      /ToolExecutionUpdateOf as SdkToolExecutionUpdate/,
     );
     expect(rootAdapterContractsSource).not.toMatch(
       /from '@blade-ai\/agent-sdk';/,
@@ -3489,7 +3506,8 @@ describe('monorepo topology', () => {
     const rootSessionTypes = readFileSync('src/session/types.ts', 'utf-8');
     const rootSessionRuntime = readFileSync('src/session/Session.ts', 'utf-8');
 
-    expect(rootSessionTypes).toContain('includeThinking?: boolean');
+    const packageSessionTypes = readFileSync('packages/agent-sdk/src/session/types.ts', 'utf-8');
+    expect(packageSessionTypes).toContain('includeThinking?: boolean');
     expect(rootSessionTypes).not.toContain("runtime?: 'kernel' | 'legacy'");
     expect(rootSessionTypes).not.toContain('experimentalKernel');
     expect(rootSessionRuntime).not.toContain("runtime === 'legacy'");
