@@ -82,7 +82,7 @@ Dependency direction:
 
 ---
 
-## Migration Progress — 302 Slices Completed
+## Migration Progress — 303 Slices Completed
 
 ### Subsystems at 100% (Complete)
 
@@ -822,6 +822,19 @@ After 29 slices (#150-#178), approximately 4,160 lines migrated from root to `@b
 **Impact:** 99L root code eliminated; agent/plan subsystem migrated (PlanExecutor was the last standalone agent file after #161)
 **Notes:** Package `as any` cast is pre-existing (ChatContext.snapshot typed `unknown`); a future slice could tighten `ChatContext.snapshot` to `ContextSnapshot` — touching many consumers
 **Remaining work (next slices):** `Session.ts` missing `SessionId` import (blocks 6 session test files); LoopState.ts (133L, next near-identical shim candidate); boundary verifier browser-safe closure (120 pre-existing violations)
+
+### Slice #303 — Shim LoopState.ts to Re-Export from @blade-ai/agent-sdk/local
+
+**Capability:** `LoopState` — loop runtime state class (15 methods: buildTurnState, getTools, getChatService, recovery lifecycle, skill management, context snapshot) (133L)
+**Target:** `@blade-ai/agent-sdk/local`
+**Root file shimmed:** `src/agent/state/LoopState.ts` — reduced from 133L implementation to 1-line re-export
+**Package:** `packages/agent-sdk/src/local/loopState.ts` (133L) — byte-for-byte identical except import paths (ContextSnapshot, ConversationState, PermissionMode, turnState)
+**Barrel:** Already exported in `packages/agent-sdk/src/local/index.ts` (no change needed)
+**Consumers:** `LoopRunner.ts`, `RuntimePatchManager.ts`, `LoopHookBuilder.ts`, `turnCounter.ts`, `tokenUsage.ts`, `turnStream.ts`, `decideTurnLimit.ts`, `loopResult.ts` — unchanged (class construction + type references)
+**Tests:** 30 tests pass (LoopState + LoopRunner)
+**Verification:** `pnpm -r run type-check` zero errors; root type-check 119 errors (0 new); boundary verifier unchanged (120 pre-existing, 0 new); `git diff --check` clean
+**Impact:** 133L root code eliminated; agent/state subsystem now 4/5 files migrated (ConversationState #281, TurnState #301, LoopState #303, + systemSource); LoopState class identity unified between root loop consumers and package
+**Remaining work (next slices):** `Session.ts` missing `SessionId` import (blocks 6 session test files); `Session.ts` full migration (785L, 11+ type errors); boundary verifier browser-safe closure (120 pre-existing violations)
 
 ## 🏆 Milestone — Zero Production Test Failures (#245)
 
