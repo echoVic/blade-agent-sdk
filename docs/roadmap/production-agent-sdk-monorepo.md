@@ -82,7 +82,7 @@ Dependency direction:
 
 ---
 
-## Migration Progress — 320 Slices Completed
+## Migration Progress — 321 Slices Completed
 
 ### Subsystems at 100% (Complete)
 
@@ -1078,6 +1078,20 @@ After 29 slices (#150-#178), approximately 4,160 lines migrated from root to `@b
 **Verification:** `pnpm -r run type-check` zero errors; root type-check **83 → 70 (down 13, 0 new)**; `verify:boundaries` PASS; 61 session tests pass (2 pre-existing hook failures); full suite 4 pre-existing failing files unchanged; `git diff --check` clean; session/types.ts lint 0 warnings
 **Impact:** session/types.ts is now fully type-clean — every name used in the session contracts resolves from the package subpaths; Session.ts (784L) migration path is now type-clear
 **Remaining work (next slices):** `HookExecutor.ts` (1243L) + `HookManager.ts` (1623L) (large diffs vs package — hooks subsystem final push); package Tool declaration consolidation (blocks remaining tools re-shims); `ExecutionPipeline.ts` (1468L) + context core (PersistentStore 841L, ContextManager 712L, CompactionService 539L); Session.ts (784L) + SessionRuntime.ts (598L)
+
+### Slice #321 — Shim FileSystemMemoryStore.ts to Re-Export from @blade-ai/agent-sdk/local
+
+**Capability:** `FileSystemMemoryStore` — file-backed memory store (MEMORY.md index, markdown frontmatter entries, slug validation) (139L)
+**Target:** `@blade-ai/agent-sdk/local`
+**Root file shimmed:** `src/memory/FileSystemMemoryStore.ts` — reduced from 139L implementation to 1-line re-export
+**Package:** `packages/agent-sdk/src/local/memory.ts` (139L) — the class was ALREADY migrated into the package (memory subsystem migration) and exported from the barrel; the root file was an un-shimmed duplicate
+**Barrel:** Already exported in `packages/agent-sdk/src/local/index.ts` (no change needed)
+**Consumer:** `src/memory/index.ts` barrel — unchanged
+**Tests:** 8 memory tests pass (FileSystemMemoryStore + memoryTools)
+**Verification:** `pnpm -r run type-check` zero errors; root type-check 70 errors (0 new); `verify:boundaries` PASS; full suite 4 pre-existing failing files unchanged; `git diff --check` clean
+**Impact:** 139L root code eliminated; memory subsystem now fully package-canonical (MemoryStore #33-era, MemoryManager, FileSystemMemoryStore #321); root memory/ holds only shims
+**Notes:** Attempted HookTypes and ToolCatalog shims this round but REVERTED both: (1) HookTypes surfaces the hooks HookInput union vs session HookInput name collision + 24 consumer errors — the full hooks migration; (2) ToolCatalog's package public version is self-contained (own maps) while root consumers require registry-sharing delegation semantics — the package Tool declaration consolidation must resolve this first. Both documented as blockers for future slices.
+**Remaining work (next slices):** hooks subsystem (HookExecutor/HookManager/HookTypes — needs the HookInput collision resolution); package Tool declaration consolidation (self-contained vs delegation ToolCatalog semantics — blocks tools re-shims); `ExecutionPipeline.ts` (1468L) + context core; Session.ts (784L) + SessionRuntime.ts (598L)
 
 ## 🏆 Milestone — Zero Production Test Failures (#245)
 
