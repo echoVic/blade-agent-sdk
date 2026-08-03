@@ -198,10 +198,10 @@ export class ToolRegistry {
       }
 
       if (mode === PermissionMode.PLAN) {
-        if (!behavior.isDestructive) {
+        // PLAN 模式仅暴露只读工具（防止 LLM 尝试调用被拒工具）
+        if (behavior.isReadOnly) {
           declarations.push(tool.getFunctionDeclaration());
         }
-        continue;
       }
     }
 

@@ -600,6 +600,10 @@ export function validationErrorToToolResult(error: ToolValidationError): ToolRes
 // Tool Search Utilities
 export { normalizeSearchText, scoreToolSearchMatch, searchTools } from './toolSearch.js';
 
+// Tool Registry
+export { ToolRegistry } from './registry/ToolRegistry.js';
+export type { RegistryStats } from './registry/ToolRegistry.js';
+
 // Tool Exposure Planner
 export { ToolExposurePlanner } from './exposure/ToolExposurePlanner.js';
 export type {

@@ -82,7 +82,7 @@ Dependency direction:
 
 ---
 
-## Migration Progress — 324 Slices Completed
+## Migration Progress — 325 Slices Completed
 
 ### Subsystems at 100% (Complete)
 
@@ -1133,6 +1133,18 @@ After 29 slices (#150-#178), approximately 4,160 lines migrated from root to `@b
 **Verification:** `pnpm -r run type-check` zero errors; root type-check 69 errors (0 new); `verify:boundaries` PASS; `verify:entrypoints` PASS; `verify:packages` PASS; 67 hook/compaction tests pass; full suite 4 pre-existing failing files unchanged; `git diff --check` clean
 **Impact:** 1623L root code eliminated — the LARGEST single-file shim of the migration; 🎉 **HOOKS SUBSYSTEM 100% MIGRATED** (OutputParser #293, HookRuntime #294, HookSchemas #309, HookTypes #322, HookExecutor #323, HookManager #324); root hooks/ holds only shims
 **Remaining work (next slices):** package Tool declaration consolidation (blocks tools re-shims — ToolCatalog delegation semantics); `ExecutionPipeline.ts` (1468L) + context core (PersistentStore 841L, ContextManager 712L, CompactionService 539L); Session.ts (784L) + SessionRuntime.ts (598L); Agent.ts (662L) + LoopRunner (404L) + BackgroundAgentManager (605L)
+
+### Slice #325 — Fix Package PLAN-Mode Tool Filter + Shim ToolRegistry.ts (409L)
+
+**Capability:** `ToolRegistry` — runtime tool registry (registration, aliases, category/tag indexing, permission-mode filtering, function declarations) (409L)
+**Target:** `@blade-ai/agent-sdk/tools`
+**Package API addition:** Wired `ToolRegistry` (class) + `RegistryStats` (type) into the public `@blade-ai/agent-sdk/tools` index from `./registry/ToolRegistry.js` — never publicly exported before (no collision: the tools index has no inline ToolRegistry)
+**Package bugfix (TDD-verified):** the package `getFunctionDeclarationsByMode(PLAN)` filtered with `!behavior.isDestructive` — but PLAN mode must expose ONLY readonly tools (per the design doc: "PLAN 模式：仅暴露只读工具"). The root 10-test suite (readonly filtering + stable ordering) caught the divergence; fixed to `behavior.isReadOnly`.
+**Root file shimmed:** `src/tools/registry/ToolRegistry.ts` — reduced from 409L implementation to 2-line re-export
+**Root-only methods dropped (zero consumers verified):** `getReadOnlyFunctionDeclarations`, `getReadOnlyTools`, `getCategories`, `getTags`, `getStats` (package has `getStatistics`; no real call sites — the getStats() greps matched other classes' methods)
+**Verification:** `pnpm -r run type-check` zero errors; root type-check 69 errors (0 new); `verify:boundaries` PASS; `verify:entrypoints` PASS; `verify:packages` PASS; 10 ToolRegistry tests pass; full suite 4 pre-existing failing files unchanged; `git diff --check` clean
+**Impact:** 409L root code eliminated; tools/registry subsystem re-migrated (#152 → restored → #325); ToolRegistry now part of the public tools surface with corrected PLAN-mode semantics
+**Remaining work (next slices):** `createTool.ts` (474L) + `ToolCatalog.ts` (123L — delegation-semantics blocker: package public ToolCatalog is self-contained; needs the Tool declaration consolidation); `ExecutionTypes.ts` (56L — ExecutionContext dup); `ExecutionPipeline.ts` (1468L) + context core; Session.ts (784L) + SessionRuntime.ts (598L); Agent.ts (662L) + LoopRunner (404L) + BackgroundAgentManager (605L)
 
 ## 🏆 Milestone — Zero Production Test Failures (#245)
 
