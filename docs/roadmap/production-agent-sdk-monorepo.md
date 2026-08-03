@@ -82,7 +82,7 @@ Dependency direction:
 
 ---
 
-## Migration Progress — 321 Slices Completed
+## Migration Progress — 322 Slices Completed
 
 ### Subsystems at 100% (Complete)
 
@@ -1092,6 +1092,19 @@ After 29 slices (#150-#178), approximately 4,160 lines migrated from root to `@b
 **Impact:** 139L root code eliminated; memory subsystem now fully package-canonical (MemoryStore #33-era, MemoryManager, FileSystemMemoryStore #321); root memory/ holds only shims
 **Notes:** Attempted HookTypes and ToolCatalog shims this round but REVERTED both: (1) HookTypes surfaces the hooks HookInput union vs session HookInput name collision + 24 consumer errors — the full hooks migration; (2) ToolCatalog's package public version is self-contained (own maps) while root consumers require registry-sharing delegation semantics — the package Tool declaration consolidation must resolve this first. Both documented as blockers for future slices.
 **Remaining work (next slices):** hooks subsystem (HookExecutor/HookManager/HookTypes — needs the HookInput collision resolution); package Tool declaration consolidation (self-contained vs delegation ToolCatalog semantics — blocks tools re-shims); `ExecutionPipeline.ts` (1468L) + context core; Session.ts (784L) + SessionRuntime.ts (598L)
+
+### Slice #322 — Resolve HookInput/HookOutput Name Collision + Shim HookTypes.ts (1214L) 🏆
+
+**Capability:** Hook types system — full 1214L type file migrated via the largest single-file shim this session (surpasses HookSchemas 564L #309)
+**Root file shimmed:** `src/hooks/types/HookTypes.ts` — reduced from 1214L implementation to 63-name re-export (4 enums + 59 types)
+**Root cause (the #321 blocker):** the package barrel exported `HookInput`/`HookOutput` from `sessionTypes.js` (SESSION-level: action/modifiedInput shapes), shadowing the `hookTypes.js` versions (hook-event union / decision shapes). Root HookTypes needs the hook-types versions — the barrel's collision broke the shim with 24 consumer errors.
+**Collision resolution (3 files):**
+- `local/index.ts`: removed `HookInput`/`HookOutput` from the sessionTypes export block (line 409); added them to the hookTypes export block (lines 146-147)
+- `src/session/types.ts`: `HookCallback`/`HookInput`/`HookOutput` imports moved from `@blade-ai/agent-sdk/local` to `@blade-ai/agent-sdk/session` (their correct home — the session subpath has its own session-level versions)
+- Bonus fix: a pre-existing `SessionRuntime.ts` HookCallback dual-declaration error resolved (70 → 69)
+**Verification:** `pnpm -r run type-check` zero errors; root type-check **70 → 69 (down 1, 0 new)**; `verify:boundaries` PASS; `verify:entrypoints` PASS; `verify:packages` PASS; 66 hook tests + 80 session/hook tests pass (2 pre-existing hook failures); full suite 4 pre-existing failing files unchanged; `git diff --check` clean
+**Impact:** 1214L root code eliminated — the largest single-file shim of the migration; hooks TYPES fully package-canonical; hook-type identity unified between root consumers (HookExecutor/HookManager) and package — the type-level prerequisite for the HookExecutor/HookManager migration is now clear
+**Remaining work (next slices):** `HookExecutor.ts` (1243L) + `HookManager.ts` (1623L) — the last hooks runtime files (diff alignment remains); package Tool declaration consolidation (self-contained vs delegation ToolCatalog — blocks tools re-shims); `ExecutionPipeline.ts` (1468L) + context core; Session.ts (784L) + SessionRuntime.ts (598L)
 
 ## 🏆 Milestone — Zero Production Test Failures (#245)
 
