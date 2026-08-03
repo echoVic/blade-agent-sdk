@@ -1,4 +1,5 @@
 import { existsSync } from 'node:fs';
+import { SessionId } from '../local/branded.js';
 import { describe, expect, it } from 'vitest';
 
 const runtimeForkingModulePath = '../session/runtimeForking.js';
@@ -27,7 +28,7 @@ describe('agent-sdk package-local runtime fork helpers', () => {
 
     await expect(
       forkPackageLocalRuntimeSession({
-        sessionId: 'session-1',
+        sessionId: SessionId('session-1'),
         options,
         forkOptions: {
           messageId: 'message-1',
@@ -76,7 +77,7 @@ describe('agent-sdk package-local runtime fork helpers', () => {
 
     await expect(
       forkPackageLocalRuntimeSession({
-        sessionId: 'session-1',
+        sessionId: SessionId('session-1'),
         options,
         sessionStore: {
           async forkState() {
@@ -91,7 +92,7 @@ describe('agent-sdk package-local runtime fork helpers', () => {
 
     await expect(
       forkPackageLocalRuntimeSession({
-        sessionId: 'missing-session',
+        sessionId: SessionId('missing-session'),
         options,
         sessionStore: {
           async forkState() {
@@ -108,7 +109,7 @@ describe('agent-sdk package-local runtime fork helpers', () => {
 
     await expect(
       forkPackageLocalRuntimeSession({
-        sessionId: 'session-1',
+        sessionId: SessionId('session-1'),
         options,
         sessionStore: {
           async forkState() {
@@ -147,7 +148,7 @@ describe('agent-sdk package-local runtime fork helpers', () => {
     const calls: unknown[] = [];
 
     const operations = createPackageLocalRuntimeForkOperations({
-      sessionId: 'session-1',
+      sessionId: SessionId('session-1'),
       options,
       sessionStore: {
         async forkState(sessionId: string, forkOptions: unknown) {

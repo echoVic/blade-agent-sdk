@@ -16,6 +16,7 @@ import {
   type PackageLocalRuntimeToolRegistrationCatalogPort,
   type PackageLocalRuntimeToolRegistrationOperations,
 } from './runtimeToolRegistration.js';
+import type { SessionId } from './types.js';
 
 export interface PackageLocalRuntimeToolOperationsOptions<
   TTool extends PackageLocalRuntimeNamedTool,
@@ -24,7 +25,7 @@ export interface PackageLocalRuntimeToolOperationsOptions<
 > extends PackageLocalRuntimeToolFilterOptions {
   definitions?: readonly (PackageLocalRuntimeConfiguredTool | TTool)[];
   customToolFactory?: PackageLocalRuntimeCustomToolFactoryPort<TTool>;
-  sessionId: string;
+  sessionId: SessionId;
   storageRoot?: string;
   mcpRegistry: TMcpRegistry;
   builtinToolProvider?: PackageLocalRuntimeBuiltinToolProviderPort<TTool, TMcpRegistry>;

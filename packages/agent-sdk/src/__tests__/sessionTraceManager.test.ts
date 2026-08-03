@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
+import { SessionId } from '../local/branded.js';
 import {
   createSessionTraceFinalizer,
   SessionTraceManager,
@@ -6,7 +7,7 @@ import {
 
 function createFinishedTrace(sessionId: string, marker: string) {
   const manager = new SessionTraceManager({
-    sessionId,
+    sessionId: SessionId(sessionId),
     observability: {
       enabled: true,
       capturePayloads: true,
@@ -23,7 +24,7 @@ function createFinishedTrace(sessionId: string, marker: string) {
 describe('agent-sdk session trace manager', () => {
   it('does not create a recorder when observability is disabled', () => {
     const manager = new SessionTraceManager({
-      sessionId: 'session-1',
+      sessionId: SessionId('session-1'),
       observability: undefined,
       metadata: {},
     });
@@ -35,7 +36,7 @@ describe('agent-sdk session trace manager', () => {
 
   it('creates a trace recorder with session metadata and an initial user prompt event', () => {
     const manager = new SessionTraceManager({
-      sessionId: 'session-1',
+      sessionId: SessionId('session-1'),
       observability: {
         enabled: true,
         capturePayloads: true,
@@ -63,7 +64,7 @@ describe('agent-sdk session trace manager', () => {
 
   it('keeps only the configured number of remembered traces', () => {
     const manager = new SessionTraceManager({
-      sessionId: 'session-1',
+      sessionId: SessionId('session-1'),
       observability: {
         enabled: true,
         maxTraces: 2,
@@ -89,7 +90,7 @@ describe('agent-sdk session trace manager', () => {
     });
     const onSinkError = vi.fn();
     const manager = new SessionTraceManager({
-      sessionId: 'session-1',
+      sessionId: SessionId('session-1'),
       observability: {
         enabled: true,
         sink,
@@ -108,7 +109,7 @@ describe('agent-sdk session trace manager', () => {
 
   it('treats trace finalization as a no-op when no recorder exists', async () => {
     const manager = new SessionTraceManager({
-      sessionId: 'session-1',
+      sessionId: SessionId('session-1'),
       observability: undefined,
       metadata: {},
     });
@@ -141,7 +142,7 @@ describe('agent-sdk session trace manager', () => {
   it('finishes, remembers, and notifies a trace only once', async () => {
     const sink = vi.fn();
     const manager = new SessionTraceManager({
-      sessionId: 'session-1',
+      sessionId: SessionId('session-1'),
       observability: {
         enabled: true,
         capturePayloads: true,
@@ -169,7 +170,7 @@ describe('agent-sdk session trace manager', () => {
     });
     const onSinkError = vi.fn();
     const manager = new SessionTraceManager({
-      sessionId: 'session-1',
+      sessionId: SessionId('session-1'),
       observability: {
         enabled: true,
         sink,

@@ -1,5 +1,5 @@
 import type { Tool, ToolDefinition } from '../tools/types/index.js';
-import type { SessionOptions, SessionTool } from './types.js';
+import type { SessionId, SessionOptions, SessionTool } from './types.js';
 
 export interface PackageLocalRuntimeNamedTool {
   name: string;
@@ -35,7 +35,7 @@ export interface PackageLocalRuntimeCustomToolRegistrationOptions<
 }
 
 export interface PackageLocalRuntimeBuiltinToolContext<TMcpRegistry> {
-  sessionId: string;
+  sessionId: SessionId;
   configDir: string | undefined;
   mcpRegistry: TMcpRegistry;
   includeMcpProtocolTools: false;
@@ -52,7 +52,7 @@ export interface PackageLocalRuntimeBuiltinToolRegistrationOptions<
   TTool extends PackageLocalRuntimeNamedTool,
   TMcpRegistry,
 > {
-  sessionId: string;
+  sessionId: SessionId;
   storageRoot?: string;
   mcpRegistry: TMcpRegistry;
   builtinToolProvider?: PackageLocalRuntimeBuiltinToolProviderPort<TTool, TMcpRegistry>;
@@ -70,7 +70,7 @@ export interface PackageLocalRuntimeSessionToolRegistrationOperationsOptions<
 > {
   definitions?: readonly (PackageLocalRuntimeToolDefinition | TTool)[];
   customToolFactory?: PackageLocalRuntimeCustomToolFactoryPort<TTool>;
-  sessionId: string;
+  sessionId: SessionId;
   storageRoot?: string;
   mcpRegistry: TMcpRegistry;
   builtinToolProvider?: PackageLocalRuntimeBuiltinToolProviderPort<TTool, TMcpRegistry>;

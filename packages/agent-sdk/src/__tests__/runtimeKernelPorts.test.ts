@@ -1,4 +1,5 @@
 import { existsSync } from 'node:fs';
+import { SessionId } from '../local/branded.js';
 import { describe, expect, it, vi } from 'vitest';
 
 const kernelPortsModulePath = '../session/runtimeKernelPorts.js';
@@ -42,7 +43,7 @@ describe('agent-sdk package-local runtime kernel port helpers', () => {
     expect(
       createPackageLocalRuntimeKernelStorePort({
         kernelPortFactory: factory,
-        sessionId: 'session-1',
+        sessionId: SessionId('session-1'),
         sessionStore,
       }),
     ).toBe(storePort);
@@ -66,7 +67,7 @@ describe('agent-sdk package-local runtime kernel port helpers', () => {
       createExecutionContext,
     });
     expect(factory.createStorePort).toHaveBeenCalledWith({
-      sessionId: 'session-1',
+      sessionId: SessionId('session-1'),
       sessionStore,
     });
     expect(factory.createTracePort).toHaveBeenCalledWith({
@@ -102,7 +103,7 @@ describe('agent-sdk package-local runtime kernel port helpers', () => {
       kernelPortFactory: factory,
       toolCatalog,
       createExecutionPipeline,
-      sessionId: 'session-1',
+      sessionId: SessionId('session-1'),
       sessionStore,
       hookRuntime,
     });
@@ -119,7 +120,7 @@ describe('agent-sdk package-local runtime kernel port helpers', () => {
       createExecutionContext,
     });
     expect(factory.createStorePort).toHaveBeenCalledWith({
-      sessionId: 'session-1',
+      sessionId: SessionId('session-1'),
       sessionStore,
     });
     expect(factory.createTracePort).toHaveBeenCalledWith({

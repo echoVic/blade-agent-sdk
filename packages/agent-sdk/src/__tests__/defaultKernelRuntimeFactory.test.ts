@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
+import { SessionId } from '../local/branded.js';
 import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -185,7 +186,7 @@ describe('agent-sdk default kernel runtime factory', () => {
         finishReason: 'stop',
       });
     const factory = createDefaultKernelSessionRuntimeFactory({
-      createSessionId: () => 'default-mcp-session',
+      createSessionId: () => SessionId('default-mcp-session'),
       createTurnId: () => 'default-mcp-turn',
       runtime: {
         kernelModelResolver: {
@@ -226,7 +227,7 @@ describe('agent-sdk default kernel runtime factory', () => {
       id: 'mcp-call',
       name: 'lookup_release',
       output: 'blade: RELEASE-9',
-      sessionId: 'default-mcp-session',
+      sessionId: SessionId('default-mcp-session'),
     });
     await session.close();
   });
@@ -255,7 +256,7 @@ describe('agent-sdk default kernel runtime factory', () => {
         finishReason: 'stop',
       });
     const factory = createDefaultKernelSessionRuntimeFactory({
-      createSessionId: () => 'default-tool-session',
+      createSessionId: () => SessionId('default-tool-session'),
       createTurnId: () => 'default-tool-turn',
       runtime: {
         kernelModelResolver: {
@@ -321,20 +322,20 @@ describe('agent-sdk default kernel runtime factory', () => {
         id: 'weather-call',
         name: 'get_weather',
         input: { city: 'Beijing' },
-        sessionId: 'default-tool-session',
+        sessionId: SessionId('default-tool-session'),
       },
       {
         type: 'tool_result',
         id: 'weather-call',
         name: 'get_weather',
         output: 'hooked weather result',
-        sessionId: 'default-tool-session',
+        sessionId: SessionId('default-tool-session'),
       },
       {
         type: 'result',
         subtype: 'success',
         content: 'Beijing is 23C',
-        sessionId: 'default-tool-session',
+        sessionId: SessionId('default-tool-session'),
       },
     ]));
   });
@@ -380,7 +381,7 @@ describe('agent-sdk default kernel runtime factory', () => {
         finishReason: 'stop',
       });
     const factory = createDefaultKernelSessionRuntimeFactory({
-      createSessionId: () => 'local-tool-session',
+      createSessionId: () => SessionId('local-tool-session'),
       createTurnId: () => 'local-tool-turn',
       runtime: {
         kernelModelResolver: {
@@ -414,13 +415,13 @@ describe('agent-sdk default kernel runtime factory', () => {
         id: 'memory-read-call',
         name: 'MemoryRead',
         output: memory,
-        sessionId: 'local-tool-session',
+        sessionId: SessionId('local-tool-session'),
       },
       {
         type: 'result',
         subtype: 'success',
         content: 'Loaded project context',
-        sessionId: 'local-tool-session',
+        sessionId: SessionId('local-tool-session'),
       },
     ]));
   });
@@ -448,7 +449,7 @@ describe('agent-sdk default kernel runtime factory', () => {
         finishReason: 'stop',
       });
     const factory = createDefaultKernelSessionRuntimeFactory({
-      createSessionId: () => 'path-safety-session',
+      createSessionId: () => SessionId('path-safety-session'),
       createTurnId: () => 'path-safety-turn',
       runtime: {
         kernelModelResolver: {
@@ -513,7 +514,7 @@ describe('agent-sdk default kernel runtime factory', () => {
       };
     });
     const factory = createDefaultKernelSessionRuntimeFactory({
-      createSessionId: () => 'abort-session',
+      createSessionId: () => SessionId('abort-session'),
       createTurnId: () => 'abort-turn',
       runtime: {
         kernelModelResolver: {
@@ -559,7 +560,7 @@ describe('agent-sdk default kernel runtime factory', () => {
       })
       .mockResolvedValueOnce({ content: 'cancelled', finishReason: 'stop' });
     const factory = createDefaultKernelSessionRuntimeFactory({
-      createSessionId: () => 'permission-abort-session',
+      createSessionId: () => SessionId('permission-abort-session'),
       createTurnId: () => 'permission-abort-turn',
       runtime: {
         kernelModelResolver: {
@@ -608,7 +609,7 @@ describe('agent-sdk default kernel runtime factory', () => {
       })
       .mockResolvedValueOnce({ content: 'handled', finishReason: 'stop' });
     const factory = createDefaultKernelSessionRuntimeFactory({
-      createSessionId: () => 'throw-session',
+      createSessionId: () => SessionId('throw-session'),
       createTurnId: () => 'throw-turn',
       runtime: {
         kernelModelResolver: {
@@ -668,7 +669,7 @@ describe('agent-sdk default kernel runtime factory', () => {
       async *stream() {},
     };
     const factory = createDefaultKernelSessionRuntimeFactory({
-      createSessionId: () => 'default-kernel-session',
+      createSessionId: () => SessionId('default-kernel-session'),
       createTurnId: () => 'default-kernel-turn',
       runtime: {
         kernelModelResolver: {
@@ -691,8 +692,8 @@ describe('agent-sdk default kernel runtime factory', () => {
     await session.send('hello from default kernel');
 
     await expect(collect(session.stream())).resolves.toEqual([
-      { type: 'turn_start', turn: 1, sessionId: 'default-kernel-session' },
-      { type: 'content', delta: 'default kernel answer', sessionId: 'default-kernel-session' },
+      { type: 'turn_start', turn: 1, sessionId: SessionId('default-kernel-session') },
+      { type: 'content', delta: 'default kernel answer', sessionId: SessionId('default-kernel-session') },
       {
         type: 'usage',
         usage: {
@@ -701,14 +702,14 @@ describe('agent-sdk default kernel runtime factory', () => {
           totalTokens: 7,
           maxContextTokens: 8192,
         },
-        sessionId: 'default-kernel-session',
+        sessionId: SessionId('default-kernel-session'),
       },
-      { type: 'turn_end', turn: 1, sessionId: 'default-kernel-session' },
+      { type: 'turn_end', turn: 1, sessionId: SessionId('default-kernel-session') },
       {
         type: 'result',
         subtype: 'success',
         content: 'default kernel answer',
-        sessionId: 'default-kernel-session',
+        sessionId: SessionId('default-kernel-session'),
       },
     ]);
     expect(generate).toHaveBeenCalledWith({
@@ -724,7 +725,7 @@ describe('agent-sdk default kernel runtime factory', () => {
   it('applies setModel to the package-local kernel runtime before resolving turns', async () => {
     const resolvedModels: string[] = [];
     const factory = createDefaultKernelSessionRuntimeFactory({
-      createSessionId: () => 'model-switch-session',
+      createSessionId: () => SessionId('model-switch-session'),
       createTurnId: () => 'model-switch-turn',
       runtime: {
         kernelModelResolver: {
@@ -760,7 +761,7 @@ describe('agent-sdk default kernel runtime factory', () => {
       type: 'result',
       subtype: 'success',
       content: 'model-b',
-      sessionId: 'model-switch-session',
+      sessionId: SessionId('model-switch-session'),
     });
     expect(resolvedModels).toEqual(['model-b']);
   });
@@ -770,7 +771,7 @@ describe('agent-sdk default kernel runtime factory', () => {
     const turns: Array<{ input: string; turnId?: string; signal?: AbortSignal }> = [];
     const disconnectAll = vi.fn();
     const factory = createDefaultKernelSessionRuntimeFactory({
-      createSessionId: () => 'kernel-session',
+      createSessionId: () => SessionId('kernel-session'),
       createTurnId: () => 'kernel-turn',
       runtime: {
         mcpRegistry: {
@@ -832,8 +833,8 @@ describe('agent-sdk default kernel runtime factory', () => {
     expect(session.getDefaultContext()).toEqual(options.defaultContext);
     await session.send('hello', { maxTurns: 5 });
     await expect(collect(session.stream())).resolves.toEqual([
-      { type: 'turn_start', turn: 1, sessionId: 'kernel-session' },
-      { type: 'content', delta: 'echo:hello', sessionId: 'kernel-session' },
+      { type: 'turn_start', turn: 1, sessionId: SessionId('kernel-session') },
+      { type: 'content', delta: 'echo:hello', sessionId: SessionId('kernel-session') },
       {
         type: 'usage',
         usage: {
@@ -842,10 +843,10 @@ describe('agent-sdk default kernel runtime factory', () => {
           totalTokens: 3,
           maxContextTokens: 4096,
         },
-        sessionId: 'kernel-session',
+        sessionId: SessionId('kernel-session'),
       },
-      { type: 'turn_end', turn: 1, sessionId: 'kernel-session' },
-      { type: 'result', subtype: 'success', content: 'done', sessionId: 'kernel-session' },
+      { type: 'turn_end', turn: 1, sessionId: SessionId('kernel-session') },
+      { type: 'result', subtype: 'success', content: 'done', sessionId: SessionId('kernel-session') },
     ]);
     await session.close();
 
@@ -877,7 +878,7 @@ describe('agent-sdk default kernel runtime factory', () => {
       async *stream() {},
     };
     const factory = createDefaultKernelSessionRuntimeFactory({
-      createSessionId: () => 'hook-session',
+      createSessionId: () => SessionId('hook-session'),
       createTurnId: () => 'hook-turn',
       runtime: {
         kernelModelResolver: {
@@ -918,7 +919,7 @@ describe('agent-sdk default kernel runtime factory', () => {
       action: 'continue' as const,
     }));
     const factory = createDefaultKernelSessionRuntimeFactory({
-      createSessionId: () => 'start-hook-session',
+      createSessionId: () => SessionId('start-hook-session'),
       createTurnId: () => 'start-hook-turn',
       runtime: {
         kernelModelResolver: {
@@ -943,7 +944,7 @@ describe('agent-sdk default kernel runtime factory', () => {
     expect(sessionStart).toHaveBeenCalledWith(
       expect.objectContaining({
         event: HookEvent.SessionStart,
-        sessionId: 'start-hook-session',
+        sessionId: SessionId('start-hook-session'),
         isResume: false,
         model: 'test-model',
         provider: 'openai-compatible',
@@ -956,7 +957,7 @@ describe('agent-sdk default kernel runtime factory', () => {
       action: 'continue' as const,
     }));
     const factory = createDefaultKernelSessionRuntimeFactory({
-      createSessionId: () => 'end-hook-session',
+      createSessionId: () => SessionId('end-hook-session'),
       createTurnId: () => 'end-hook-turn',
       runtime: {
         kernelModelResolver: {
@@ -982,7 +983,7 @@ describe('agent-sdk default kernel runtime factory', () => {
     expect(sessionEnd).toHaveBeenCalledWith(
       expect.objectContaining({
         event: HookEvent.SessionEnd,
-        sessionId: 'end-hook-session',
+        sessionId: SessionId('end-hook-session'),
         reason: 'other',
       }),
     );
@@ -1012,7 +1013,7 @@ describe('agent-sdk default kernel runtime factory', () => {
       },
     };
     const factory = createDefaultKernelSessionRuntimeFactory({
-      createSessionId: () => 'capability-session',
+      createSessionId: () => SessionId('capability-session'),
       createTurnId: () => 'capability-turn',
       runtime: {
         mcpRegistry: {
@@ -1137,7 +1138,7 @@ describe('agent-sdk default kernel runtime factory', () => {
     const disconnectServer = vi.fn(async () => {});
     const reconnectServer = vi.fn(async () => {});
     const factory = createDefaultKernelSessionRuntimeFactory({
-      createSessionId: () => 'mcp-session',
+      createSessionId: () => SessionId('mcp-session'),
       createTurnId: () => 'mcp-turn',
       runtime: {
         mcpRegistry: {
@@ -1194,7 +1195,7 @@ describe('agent-sdk default kernel runtime factory', () => {
     const workspaceRoot = createWorkspaceRoot();
     const store = new JsonlSessionStore(workspaceRoot);
     const sourceSnapshot = await store.writeForkState('parent-session', {
-      sessionId: 'root-session',
+      sessionId: SessionId('root-session'),
       messages: [
         { id: 'message-1', role: 'user', content: 'hello' },
         { id: 'message-2', role: 'assistant', content: 'hi' },
@@ -1204,7 +1205,7 @@ describe('agent-sdk default kernel runtime factory', () => {
       lastActivity: Date.now(),
     });
     const factory = createDefaultKernelSessionRuntimeFactory({
-      createSessionId: () => 'forked-session',
+      createSessionId: () => SessionId('forked-session'),
       createTurnId: () => 'forked-turn',
       runtime: {
         kernelModelResolver: {
@@ -1223,7 +1224,7 @@ describe('agent-sdk default kernel runtime factory', () => {
     const source = await factory.resume({
       ...options,
       storagePath: workspaceRoot,
-      sessionId: 'parent-session',
+      sessionId: SessionId('parent-session'),
     });
     const forked = await source.fork({ messageId: 'message-2' });
     const forkedState = await store.loadState(forked.sessionId);
@@ -1233,7 +1234,7 @@ describe('agent-sdk default kernel runtime factory', () => {
     expect(forkedState?.messageIds).toEqual(['message-1', 'message-2']);
     expect(forkedState?.messages.map((message) => message.content)).toEqual(['hello', 'hi']);
     expect(forkedState?.sessionInfo).toMatchObject({
-      sessionId: 'forked-session',
+      sessionId: SessionId('forked-session'),
       parentId: 'parent-session',
     });
   });
@@ -1250,7 +1251,7 @@ describe('agent-sdk default kernel runtime factory', () => {
       async *stream() {},
     };
     const factory = createDefaultKernelSessionRuntimeFactory({
-      createSessionId: () => 'persisted-session',
+      createSessionId: () => SessionId('persisted-session'),
       createTurnId: () => 'persisted-turn',
       runtime: {
         kernelModelResolver: {
@@ -1273,7 +1274,7 @@ describe('agent-sdk default kernel runtime factory', () => {
     await collect(session.stream());
 
     await expect(store.loadState('persisted-session')).resolves.toMatchObject({
-      sessionId: 'persisted-session',
+      sessionId: SessionId('persisted-session'),
       messages: [
         {
           role: 'user',
@@ -1315,7 +1316,7 @@ describe('agent-sdk default kernel runtime factory', () => {
       async *stream() {},
     };
     const factory = createDefaultKernelSessionRuntimeFactory({
-      createSessionId: () => 'fresh-session',
+      createSessionId: () => SessionId('fresh-session'),
       createTurnId: () => 'fresh-turn',
       runtime: {
         kernelModelResolver: {
@@ -1379,7 +1380,7 @@ describe('agent-sdk default kernel runtime factory', () => {
       async *stream() {},
     };
     const factory = createDefaultKernelSessionRuntimeFactory({
-      createSessionId: () => 'traced-session',
+      createSessionId: () => SessionId('traced-session'),
       createTurnId: () => 'traced-turn',
       runtime: {
         kernelModelResolver: {
@@ -1409,7 +1410,7 @@ describe('agent-sdk default kernel runtime factory', () => {
 
     const trace = session.getLastTrace();
     expect(trace).toMatchObject({
-      sessionId: 'traced-session',
+      sessionId: SessionId('traced-session'),
       status: 'success',
       metadata: {
         model: 'test-model',
@@ -1445,7 +1446,7 @@ describe('agent-sdk default kernel runtime factory', () => {
   it('persists create and resume lifecycle through the package-local JSONL store', async () => {
     const workspaceRoot = createWorkspaceRoot();
     const factory = createDefaultKernelSessionRuntimeFactory({
-      createSessionId: () => 'empty-session',
+      createSessionId: () => SessionId('empty-session'),
       createTurnId: () => 'unused-turn',
       runtime: {
         kernelModelResolver: {
@@ -1467,23 +1468,23 @@ describe('agent-sdk default kernel runtime factory', () => {
     const resumed = await factory.resume({
       ...options,
       storagePath: workspaceRoot,
-      sessionId: 'missing-session',
+      sessionId: SessionId('missing-session'),
     });
 
     await expect(store.loadState(created.sessionId)).resolves.toMatchObject({
-      sessionId: 'empty-session',
+      sessionId: SessionId('empty-session'),
       messages: [],
       messageIds: [],
       sessionInfo: {
-        sessionId: 'empty-session',
+        sessionId: SessionId('empty-session'),
       },
     });
     await expect(store.loadState(resumed.sessionId)).resolves.toMatchObject({
-      sessionId: 'missing-session',
+      sessionId: SessionId('missing-session'),
       messages: [],
       messageIds: [],
       sessionInfo: {
-        sessionId: 'missing-session',
+        sessionId: SessionId('missing-session'),
       },
     });
   });
@@ -1492,7 +1493,7 @@ describe('agent-sdk default kernel runtime factory', () => {
     const workspaceRoot = createWorkspaceRoot();
     const store = new JsonlSessionStore(workspaceRoot);
     await store.writeForkState('history-session', {
-      sessionId: 'root-session',
+      sessionId: SessionId('root-session'),
       messages: [
         { id: 'message-1', role: 'user', content: 'remember me' },
         { id: 'message-2', role: 'assistant', content: 'remembered' },
@@ -1501,7 +1502,7 @@ describe('agent-sdk default kernel runtime factory', () => {
       lastActivity: Date.now(),
     });
     const factory = createDefaultKernelSessionRuntimeFactory({
-      createSessionId: () => 'unused-session',
+      createSessionId: () => SessionId('unused-session'),
       createTurnId: () => 'unused-turn',
       runtime: {
         kernelModelResolver: {
@@ -1518,7 +1519,7 @@ describe('agent-sdk default kernel runtime factory', () => {
     const session = await factory.resume({
       ...options,
       storagePath: workspaceRoot,
-      sessionId: 'history-session',
+      sessionId: SessionId('history-session'),
     });
 
     expect(session.messages).toEqual([

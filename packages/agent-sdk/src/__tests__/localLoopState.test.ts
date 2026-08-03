@@ -1,10 +1,11 @@
 import { describe, expect, it } from 'vitest';
+import { SessionId } from '../local/branded.js';
 import { LoopState } from '../local/loopState.js';
 import type { LoopExecutionContext, TurnState } from '../local/turnState.js';
 
 function makeContext(): LoopExecutionContext {
   return {
-    sessionId: 'session_1' as any,
+    sessionId: SessionId('session_1') as any,
     userId: 'user_1',
   };
 }

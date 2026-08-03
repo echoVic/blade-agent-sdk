@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { SessionId } from '../local/branded.js';
 import type { ContextSnapshot } from '../runtime/types.js';
 import { SessionLifecycleState } from '../session/lifecycle.js';
 import { PendingTurnBuffer } from '../session/pendingTurn.js';
@@ -6,7 +7,7 @@ import { TurnAbortController } from '../session/turnAbort.js';
 
 function snapshot(): ContextSnapshot {
   return {
-    sessionId: 'session-1',
+    sessionId: SessionId('session-1'),
     turnId: 'turn-1',
     context: {},
     filesystemRoots: [],

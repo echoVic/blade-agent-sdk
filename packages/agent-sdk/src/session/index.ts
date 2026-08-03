@@ -55,7 +55,6 @@ export type {
   SendOptions,
   SessionContentPart,
   SessionHookEvent,
-  SessionId,
   SessionImageContentPart,
   SessionMessage,
   SessionMessageRole,
@@ -96,3 +95,8 @@ export async function prompt(
 ): Promise<PromptResult> {
   return runPromptLifecycle(sessionRuntimeFactory, message, options);
 }
+
+// Branded session identifier + constructor (canonical in local/branded.js).
+// Exported as a VALUE so session-layer consumers can construct branded ids
+// without reaching into @blade-ai/agent-sdk/local.
+export { SessionId } from '../local/branded.js';

@@ -1,4 +1,5 @@
 import { existsSync } from 'node:fs';
+import { SessionId } from '../local/branded.js';
 import { describe, expect, it, vi } from 'vitest';
 
 const runtimeWorkspaceModulePath = '../session/runtimeWorkspace.js';
@@ -16,7 +17,7 @@ describe('agent-sdk package-local runtime workspace helpers', () => {
     preparePackageLocalRuntimeWorkspaceTurn({
       workspace,
       snapshot: {
-        sessionId: 'session-1',
+        sessionId: SessionId('session-1'),
         turnId: 'turn-1',
         context: {},
         filesystemRoots: ['/workspace'],
@@ -31,7 +32,7 @@ describe('agent-sdk package-local runtime workspace helpers', () => {
     preparePackageLocalRuntimeWorkspaceTurn({
       workspace,
       snapshot: {
-        sessionId: 'session-1',
+        sessionId: SessionId('session-1'),
         turnId: 'turn-2',
         context: {},
         filesystemRoots: [],
@@ -69,7 +70,7 @@ describe('agent-sdk package-local runtime workspace helpers', () => {
     });
 
     operations.prepareTurn({
-      sessionId: 'session-ops',
+      sessionId: SessionId('session-ops'),
       turnId: 'turn-ops',
       context: {},
       filesystemRoots: ['/repo'],

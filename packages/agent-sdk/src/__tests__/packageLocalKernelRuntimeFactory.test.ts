@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
+import { SessionId } from '../local/branded.js';
 import type { KernelStreamBridgeRuntime } from '../session/kernelStreamBridge.js';
 import { createPackageLocalKernelSessionRuntimeFactory } from '../session/packageLocalKernelRuntimeFactory.js';
 import type { PackageLocalSessionRuntimeContext } from '../session/packageLocalRuntimeFactory.js';
@@ -55,7 +56,7 @@ describe('agent-sdk package-local kernel runtime factory', () => {
     const contexts: PackageLocalSessionRuntimeContext[] = [];
     const cleanup = vi.fn();
     const factory = createPackageLocalKernelSessionRuntimeFactory({
-      createSessionId: () => 'session-created',
+      createSessionId: () => SessionId('session-created'),
       createTurnId: () => 'turn:session-created',
       createRuntime: createRuntime(contexts),
       cleanup,
@@ -67,14 +68,14 @@ describe('agent-sdk package-local kernel runtime factory', () => {
     expect(session.sessionId).toBe('session-created');
     await session.send('hello', { maxTurns: 4 });
     await expect(collect(session.stream())).resolves.toEqual([
-      { type: 'content', delta: 'session:session-created', sessionId: 'session-created' },
-      { type: 'result', subtype: 'success', content: 'done', sessionId: 'session-created' },
+      { type: 'content', delta: 'session:session-created', sessionId: SessionId('session-created') },
+      { type: 'result', subtype: 'success', content: 'done', sessionId: SessionId('session-created') },
     ]);
     await session.close();
 
     expect(contexts).toEqual([
       {
-        sessionId: 'session-created',
+        sessionId: SessionId('session-created'),
         options,
         isResume: false,
       },
@@ -92,18 +93,18 @@ describe('agent-sdk package-local kernel runtime factory', () => {
       createRuntime: createRuntime(contexts),
     });
 
-    const session = await factory.resume({ ...options, sessionId: 'session-resumed' });
+    const session = await factory.resume({ ...options, sessionId: SessionId('session-resumed') });
 
     expect(session).toBeInstanceOf(PackageLocalSession);
     expect(session.sessionId).toBe('session-resumed');
     await session.send('hello', { maxTurns: 4 });
     await expect(collect(session.stream())).resolves.toMatchObject([
-      { type: 'content', delta: 'session:session-resumed', sessionId: 'session-resumed' },
-      { type: 'result', content: 'done', sessionId: 'session-resumed' },
+      { type: 'content', delta: 'session:session-resumed', sessionId: SessionId('session-resumed') },
+      { type: 'result', content: 'done', sessionId: SessionId('session-resumed') },
     ]);
     expect(contexts).toEqual([
       {
-        sessionId: 'session-resumed',
+        sessionId: SessionId('session-resumed'),
         options,
         isResume: true,
       },

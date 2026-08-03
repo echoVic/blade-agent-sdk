@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { SessionId } from '../local/branded.js';
 import { z } from 'zod';
 import * as toolsEntry from '../tools/index.js';
 import {
@@ -20,9 +21,9 @@ describe('agent-sdk tools entry', () => {
       requestConfirmation: async () => ({ approved: true }),
     };
     const context: ExecutionContext = {
-      sessionId: 'session-tools-entry',
+      sessionId: SessionId('session-tools-entry'),
       contextSnapshot: {
-        sessionId: 'session-tools-entry',
+        sessionId: SessionId('session-tools-entry'),
         turnId: 'turn-tools-entry',
         context: {},
         filesystemRoots: ['/workspace'],

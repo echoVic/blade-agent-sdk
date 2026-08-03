@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { SessionId } from '../local/branded.js';
 import {
   createSession,
   resetSessionRuntimeFactory,
@@ -21,7 +22,7 @@ describe('agent-sdk default session factory', () => {
     resetSessionRuntimeFactory();
 
     const created = await createSession(options);
-    const resumed = await resumeSession({ ...options, sessionId: 'existing-session' });
+    const resumed = await resumeSession({ ...options, sessionId: SessionId('existing-session') });
 
     expect(created).toBeInstanceOf(PackageLocalSession);
     expect(created.sessionId).not.toBe('created-legacy');

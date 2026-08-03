@@ -1,4 +1,5 @@
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { SessionId } from '../local/branded.js';
 import { constants as fsConstants } from 'node:fs';
 import { access } from 'node:fs/promises';
 import { join } from 'node:path';
@@ -32,7 +33,7 @@ async function pathExists(filePath: string): Promise<boolean> {
 
 function buildOptions(overrides: Partial<SnapshotManagerOptions> = {}): SnapshotManagerOptions {
   return {
-    sessionId: 'package-session',
+    sessionId: SessionId('package-session'),
     ...overrides,
   };
 }
@@ -43,7 +44,7 @@ describe('package-local SnapshotManager', () => {
     const filePath = join(workspace, 'example.ts');
     await writeFile(filePath, 'console.log("hi")\n', 'utf8');
 
-    const manager = new SnapshotManager(buildOptions({ sessionId: 'session-noop' }));
+    const manager = new SnapshotManager(buildOptions({ sessionId: SessionId('session-noop') }));
 
     await manager.initialize();
     const metadata = await manager.createSnapshot(filePath, 'message-1');
@@ -63,7 +64,7 @@ describe('package-local SnapshotManager', () => {
     await writeFile(filePath, 'export const value = 1;\n', 'utf8');
 
     const manager = new SnapshotManager(
-      buildOptions({ sessionId: 'session-files', storageRoot }),
+      buildOptions({ sessionId: SessionId('session-files'), storageRoot }),
     );
 
     await manager.initialize();
@@ -92,7 +93,7 @@ describe('package-local SnapshotManager', () => {
 
     await writeFile(filePath, 'v1\n', 'utf8');
     const manager = new SnapshotManager(
-      buildOptions({ sessionId: 'session-versions', storageRoot }),
+      buildOptions({ sessionId: SessionId('session-versions'), storageRoot }),
     );
     await manager.initialize();
 
@@ -116,7 +117,7 @@ describe('package-local SnapshotManager', () => {
 
     await writeFile(filePath, 'original\n', 'utf8');
     const manager = new SnapshotManager(
-      buildOptions({ sessionId: 'session-restore', storageRoot }),
+      buildOptions({ sessionId: SessionId('session-restore'), storageRoot }),
     );
     await manager.initialize();
 
@@ -135,7 +136,7 @@ describe('package-local SnapshotManager', () => {
 
     await writeFile(filePath, 'first\n', 'utf8');
     const manager = new SnapshotManager(
-      buildOptions({ sessionId: 'session-list', storageRoot }),
+      buildOptions({ sessionId: SessionId('session-list'), storageRoot }),
     );
     await manager.initialize();
 
@@ -153,7 +154,7 @@ describe('package-local SnapshotManager', () => {
     const filePath = join(workspace, 'example.ts');
 
     const manager = new SnapshotManager(
-      buildOptions({ sessionId: 'session-cleanup', storageRoot, maxSnapshots: 2 }),
+      buildOptions({ sessionId: SessionId('session-cleanup'), storageRoot, maxSnapshots: 2 }),
     );
     await manager.initialize();
 
@@ -168,7 +169,7 @@ describe('package-local SnapshotManager', () => {
   });
 
   it('getSessionId returns the session id', () => {
-    const manager = new SnapshotManager(buildOptions({ sessionId: 'session-id-check' }));
+    const manager = new SnapshotManager(buildOptions({ sessionId: SessionId('session-id-check') }));
     expect(manager.getSessionId()).toBe('session-id-check');
   });
 });

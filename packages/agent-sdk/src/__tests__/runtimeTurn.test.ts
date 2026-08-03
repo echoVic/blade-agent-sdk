@@ -1,4 +1,5 @@
 import type { AgentStreamEvent } from '@blade-ai/agent/protocol';
+import { SessionId } from '../local/branded.js';
 import { existsSync } from 'node:fs';
 import { describe, expect, it, vi } from 'vitest';
 import type { BladeConfig } from '../types/common.js';
@@ -43,7 +44,7 @@ describe('agent-sdk package-local runtime turn operations', () => {
     }));
 
     const operations = createPackageLocalRuntimeTurnOperations({
-      sessionId: 'session-turn',
+      sessionId: SessionId('session-turn'),
       observability: {
         enabled: true,
       },
@@ -77,7 +78,7 @@ describe('agent-sdk package-local runtime turn operations', () => {
         totalTokens: 5,
         maxContextTokens: 512,
       },
-      sessionId: 'session-turn',
+      sessionId: SessionId('session-turn'),
     });
     expect(
       operations.traceOperations

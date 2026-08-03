@@ -1,4 +1,5 @@
 import { mkdtemp, writeFile } from 'node:fs/promises';
+import { SessionId } from '../local/branded.js';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
@@ -8,9 +9,9 @@ import type { LocalFileSystemPort } from '../local/file/filesystem.js';
 
 function filesystemContext(root: string) {
   return {
-    sessionId: 'local-file-session',
+    sessionId: SessionId('local-file-session'),
     contextSnapshot: {
-      sessionId: 'local-file-session',
+      sessionId: SessionId('local-file-session'),
       turnId: 'local-file-turn',
       context: {
         capabilities: {
@@ -56,9 +57,9 @@ describe('agent-sdk local file tools', () => {
     const result = await createReadTool()
       .build({ file_path: '/tmp/example.txt', encoding: 'utf8' })
       .execute(new AbortController().signal, undefined, {
-        sessionId: 'local-file-session',
+        sessionId: SessionId('local-file-session'),
         contextSnapshot: {
-          sessionId: 'local-file-session',
+          sessionId: SessionId('local-file-session'),
           turnId: 'local-file-turn',
           context: {},
           filesystemRoots: [],
@@ -227,9 +228,9 @@ describe('agent-sdk local Write tool', () => {
     const result = await createWriteTool()
       .build({ file_path: '/tmp/example.txt', content: 'hello', encoding: 'utf8' })
       .execute(new AbortController().signal, undefined, {
-        sessionId: 'local-file-session',
+        sessionId: SessionId('local-file-session'),
         contextSnapshot: {
-          sessionId: 'local-file-session',
+          sessionId: SessionId('local-file-session'),
           turnId: 'local-file-turn',
           context: {},
           filesystemRoots: [],

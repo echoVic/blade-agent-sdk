@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
+import { SessionId } from '../local/branded.js';
 import {
   createPackageLocalRuntimeTraceOperations,
   createPackageLocalRuntimeTraceManager,
@@ -10,7 +11,7 @@ import { PermissionMode } from '../types/common.js';
 describe('agent-sdk package-local runtime trace manager helper', () => {
   it('creates session trace metadata from runtime model, provider, and default permission mode', () => {
     const manager = createPackageLocalRuntimeTraceManager({
-      sessionId: 'session-1',
+      sessionId: SessionId('session-1'),
       observability: {
         enabled: true,
         capturePayloads: true,
@@ -37,7 +38,7 @@ describe('agent-sdk package-local runtime trace manager helper', () => {
       warn: vi.fn(),
     };
     const manager = createPackageLocalRuntimeTraceManager({
-      sessionId: 'session-1',
+      sessionId: SessionId('session-1'),
       observability: {
         enabled: true,
         sink: async () => {
@@ -65,7 +66,7 @@ describe('agent-sdk package-local runtime trace manager helper', () => {
   it('creates reusable trace access operations without session runtime state', () => {
     const firstTrace: AgentTrace = {
       id: 'trace-1',
-      sessionId: 'session-1',
+      sessionId: SessionId('session-1'),
       status: 'success',
       startedAt: '2026-07-06T00:00:00.000Z',
       spans: [],
@@ -73,7 +74,7 @@ describe('agent-sdk package-local runtime trace manager helper', () => {
     };
     const lastTrace: AgentTrace = {
       id: 'trace-2',
-      sessionId: 'session-1',
+      sessionId: SessionId('session-1'),
       status: 'success',
       startedAt: '2026-07-06T00:00:01.000Z',
       spans: [],
@@ -97,7 +98,7 @@ describe('agent-sdk package-local runtime trace manager helper', () => {
 
   it('creates trace runtime bundle with manager and access operations', () => {
     const runtime = createPackageLocalRuntimeTraceRuntime({
-      sessionId: 'session-runtime',
+      sessionId: SessionId('session-runtime'),
       observability: {
         enabled: true,
       },

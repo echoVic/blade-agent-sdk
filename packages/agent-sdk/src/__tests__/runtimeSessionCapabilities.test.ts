@@ -1,4 +1,5 @@
 import { existsSync } from 'node:fs';
+import { SessionId } from '../local/branded.js';
 import { describe, expect, it, vi } from 'vitest';
 
 const runtimeSessionCapabilitiesModulePath =
@@ -21,13 +22,13 @@ describe('agent-sdk package-local runtime session capability operations', () => 
     };
     const logger = { warn: vi.fn() };
     const snapshot = {
-      sessionId: 'session-1',
+      sessionId: SessionId('session-1'),
       messages: [],
       metadata: {},
     };
     const materializedSnapshot = {
       ...snapshot,
-      sessionId: 'fork-1',
+      sessionId: SessionId('fork-1'),
     };
     const forkedSession = { id: 'fork-1' };
     const sessionStore = {
@@ -51,7 +52,7 @@ describe('agent-sdk package-local runtime session capability operations', () => 
     };
 
     const operations = createPackageLocalRuntimeSessionCapabilityOperations({
-      sessionId: 'session-1',
+      sessionId: SessionId('session-1'),
       options,
       sessionStore,
       createForkSessionId,

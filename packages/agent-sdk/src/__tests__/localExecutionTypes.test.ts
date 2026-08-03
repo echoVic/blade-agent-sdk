@@ -1,11 +1,12 @@
 import { describe, expect, it } from 'vitest';
+import { SessionId } from '../local/branded.js';
 import { getEffectiveProjectDir } from '../tools/types/ExecutionTypes.js';
 import type { ExecutionContext, ExecutionHistoryEntry } from '../tools/types/ExecutionTypes.js';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const mockSnapshot: any = {
   cwd: '/home/user/project',
-  sessionId: 's1',
+  sessionId: SessionId('s1'),
   turnId: 't1',
   context: {},
   filesystemRoots: [],
@@ -35,7 +36,7 @@ describe('ExecutionTypes (agent-sdk)', () => {
       result: { success: true, llmContent: 'ok' },
       startTime: 0,
       endTime: 100,
-      context: { sessionId: 'session-1' as any },
+      context: { sessionId: SessionId('session-1') as any },
     };
     expect(entry.executionId).toBe('exec-1');
   });

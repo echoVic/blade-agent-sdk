@@ -82,7 +82,7 @@ Dependency direction:
 
 ---
 
-## Migration Progress — 331 Slices Completed
+## Migration Progress — 332 Slices Completed
 
 ### Subsystems at 100% (Complete)
 
@@ -1216,6 +1216,17 @@ After 29 slices (#150-#178), approximately 4,160 lines migrated from root to `@b
 **Verification:** `pnpm -r run type-check` zero errors; root type-check 69 errors (0 new); `verify:boundaries` PASS; `verify:entrypoints` PASS; `verify:packages` PASS; SessionRuntime.test.ts 16/16 pass; `git diff --check` clean
 **Impact:** root test suite **2 → 1 failing files** (45 → 43 failing tests — the 2 hook failures eliminated; remaining pre-existing: semantic-release-config 43 release scripts); kernel-turn UserPromptSubmit hook integration is now verified end-to-end against the canonical package API
 **Remaining work (next slices):** ExecutionContext consolidation (SessionId unification prerequisite — multi-slice); `ExecutionPipeline.ts` (1468L) + context core (PersistentStore 841L, ContextManager 712L, CompactionService 539L); Session.ts (784L) + SessionRuntime.ts (598L) + SessionStore.ts (538L); Agent.ts (662L) + LoopRunner (404L) + BackgroundAgentManager (605L)
+
+### Slice #332 — Unify the Session Layer's SessionId to the Branded Type (Part 1)
+
+**Capability:** `SessionId` — the session layer's session identifier type, now the canonical branded `SessionId = Brand<string, 'SessionId'>` from `local/branded.ts` (previously a plain `SessionId = string` in `session/types.ts`). This is the prerequisite for the ExecutionContext consolidation (#328 revert), which requires ONE branded sessionId species across the package.
+**Type unification (TDD):** `packages/agent-sdk/src/session/types.ts` now re-exports the branded `SessionId` (fixed via the known import-type-into-scope pattern). Production ripple fixed: `runtimeHooks.ts` (4 option interfaces), `runtimeToolRegistration.ts` (3 interfaces + the generic `PackageLocalRuntimeBuiltinToolContext<TMcpRegistry>` whose plain `sessionId: string` broke method bivariance vs the branded non-generic context — the runtimeInstance.ts:285 error), `runtimeTools.ts` (1 interface). All package tests updated to construct ids via the `SessionId(...)` value constructor (142 errors → 0; 40 test files touched mechanically).
+**Public API addition:** `@blade-ai/agent-sdk/session` now exports the `SessionId` VALUE constructor (from `local/branded.js`) in both `index.ts` (runtime + d.ts) and `public-index.ts` (overlaid public d.ts) — previously type-only, so session-layer consumers could not construct branded ids without reaching into `@blade-ai/agent-sdk/local`.
+**Verifier consumers updated:** `verify-entrypoints.mjs` declaration-entry and `verify-packages.mjs` consumer-types now build session ids with `SessionId('...')` / `SessionIdValue('...')` (the two consumer type-checks caught the branding — exactly the contract enforcement the verifiers exist for).
+**Focused test:** `packages/agent-sdk/src/__tests__/sessionIdUnification.test.ts` — compile-time assertions (`Assert<IsEqual<SessionId, ReturnType<typeof SessionId>>>`, `Assert<IsEqual<StreamMessage['sessionId'], SessionId>>`) pin that the session layer exposes the branded type and that StreamMessage carries it, plus 3 runtime behavior tests (constructor is a string, branded ids flow through stream messages, assignable to plain string positions).
+**Verification:** `pnpm -r run type-check` 3/3 zero errors; root type-check 69 errors (0 new); `verify:boundaries` PASS; `verify:entrypoints` PASS; `verify:packages` PASS; `verify:release` PASS; `verify:examples` PASS; package suite 623 passing (+3 new, 5 pre-existing failures unchanged); root suite 1247 passing / 43 pre-existing failures unchanged; `git diff --check` clean
+**Impact:** the session layer and the session subpath public API now speak ONE branded `SessionId`; the ExecutionContext consolidation's type prerequisite is satisfied (remaining internal `sessionId: string` port parameters are assignable-compatible and will be swept in part 2)
+**Remaining work (next slices):** SessionId unification part 2 (sweep the remaining assignable-compatible `sessionId: string` port params in store.ts / runtimeToolExecution.ts / runtimeSessionLifecycle.ts / runtimePorts.ts) then ExecutionContext consolidation; `ExecutionPipeline.ts` (1468L) + context core (PersistentStore 841L, ContextManager 712L, CompactionService 539L); Session.ts (784L) + SessionRuntime.ts (598L) + SessionStore.ts (538L); Agent.ts (662L) + LoopRunner (404L) + BackgroundAgentManager (605L)
 
 ## 🏆 Milestone — Zero Production Test Failures (#245)
 

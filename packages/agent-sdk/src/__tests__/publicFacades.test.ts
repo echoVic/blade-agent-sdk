@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { SessionId } from '../local/branded.js';
 import {
   createSession,
   resetSessionRuntimeFactory,
@@ -12,7 +13,7 @@ import type {
   StreamMessage,
 } from '../session/index.js';
 
-function createFakeSession(sessionId = 'pkg-session'): ISession {
+function createFakeSession(sessionId: SessionId = SessionId('pkg-session')): ISession {
   const messages: SessionMessage[] = [];
   let defaultContext: RuntimeContext = {};
 
@@ -55,7 +56,7 @@ function createFakeSession(sessionId = 'pkg-session'): ISession {
       return [];
     },
     async fork() {
-      return createFakeSession(`${sessionId}-fork`);
+      return createFakeSession(SessionId(`${sessionId}-fork`));
     },
     getLastTrace() {
       return undefined;

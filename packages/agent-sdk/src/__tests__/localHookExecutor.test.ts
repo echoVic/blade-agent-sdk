@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { SessionId } from '../local/branded.js';
 import { HookExecutor } from '../local/HookExecutor.js';
 import { HookType, type CommandHook, type HookExecutionContext, type StopInput } from '../local/hookTypes.js';
 
@@ -25,7 +26,7 @@ describe('HookExecutor (agent-sdk)', () => {
       },
       {
         projectDir: '/test',
-        sessionId: 'session-1' as any,
+        sessionId: SessionId('session-1') as any,
         permissionMode: 'default',
         config: {
           timeoutBehavior: 'ignore',
@@ -69,7 +70,7 @@ describe('HookExecutor stop hooks (agent-sdk)', () => {
 
   const execContext: HookExecutionContext = {
     projectDir: '/test',
-    sessionId: 'session-1' as unknown as HookExecutionContext['sessionId'],
+    sessionId: SessionId('session-1') as unknown as HookExecutionContext['sessionId'],
     permissionMode: 'default',
     config: {
       timeoutBehavior: 'ignore',

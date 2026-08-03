@@ -1,4 +1,5 @@
 import { mkdtempSync } from 'node:fs';
+import { SessionId } from '../local/branded.js';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -212,7 +213,7 @@ describe('agent-sdk package-local session store', () => {
     expect(forkedState.messageIds).toEqual([userMessageId, assistantMessageId]);
     expect(forkedState.messages).toEqual(forked.messages);
     expect(forkedState.sessionInfo).toMatchObject({
-      sessionId: 'forked-session',
+      sessionId: SessionId('forked-session'),
       parentId: sessionId,
     });
   });
@@ -233,7 +234,7 @@ describe('agent-sdk package-local session store', () => {
     const sessionStore = new JsonlSessionStore(workspaceRoot);
 
     const written = await sessionStore.writeForkState('anonymous-fork', {
-      sessionId: 'parent-session',
+      sessionId: SessionId('parent-session'),
       messages: [{ role: 'user', content: 'hello without an id' }],
       messageIds: [],
       lastActivity: Date.now(),

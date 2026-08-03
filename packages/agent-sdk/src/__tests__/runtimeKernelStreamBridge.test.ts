@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
+import { SessionId } from '../local/branded.js';
 import { createKernelStreamTurnBridge } from '../session/kernelStreamBridge.js';
 import type { ActiveSessionTurn } from '../session/turn.js';
 import type { PackageLocalSessionStreamContext } from '../session/sessionInstance.js';
@@ -36,7 +37,7 @@ describe('agent-sdk kernel stream bridge', () => {
         maxTurns: 4,
       },
       snapshot: {
-        sessionId: 'session-1',
+        sessionId: SessionId('session-1'),
         turnId: 'turn-1',
         context: {},
         filesystemRoots: ['/workspace'],
@@ -49,13 +50,13 @@ describe('agent-sdk kernel stream bridge', () => {
       cleanup: vi.fn(),
     };
     const context: PackageLocalSessionStreamContext = {
-      sessionId: 'session-1',
+      sessionId: SessionId('session-1'),
       options: sessionOptions,
     };
     const emittedMessages: StreamMessage[] = [
-      { type: 'turn_start', turn: 1, sessionId: 'session-1' },
-      { type: 'content', delta: 'done', sessionId: 'session-1' },
-      { type: 'result', subtype: 'success', content: 'done', sessionId: 'session-1' },
+      { type: 'turn_start', turn: 1, sessionId: SessionId('session-1') },
+      { type: 'content', delta: 'done', sessionId: SessionId('session-1') },
+      { type: 'result', subtype: 'success', content: 'done', sessionId: SessionId('session-1') },
     ];
     const prepareTurn = vi.fn();
     const streamAgentKernelTurn = vi.fn(async function* (options) {
@@ -65,7 +66,7 @@ describe('agent-sdk kernel stream bridge', () => {
       expect(options.includeThinking).toBe(true);
       expect(options.maxSteps).toBe(4);
       expect(options.createExecutionContext({ id: 'call-1', name: 'Read', input: {} })).toEqual({
-        sessionId: 'session-1',
+        sessionId: SessionId('session-1'),
         contextSnapshot: turn.snapshot,
         signal: undefined,
       });

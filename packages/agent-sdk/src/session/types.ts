@@ -21,7 +21,8 @@ import type {
 import type { HookEvent } from '../types/constants.js';
 import type { CanUseTool, PermissionHandler, PermissionUpdate } from '../types/permissions.js';
 
-export type SessionId = string;
+import type { SessionId } from '../local/branded.js';
+export type { SessionId };
 export type SessionMessageRole = 'system' | 'user' | 'assistant' | 'tool';
 export type UserMessageContent = string | SessionContentPart[];
 

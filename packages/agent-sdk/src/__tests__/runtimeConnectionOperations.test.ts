@@ -1,4 +1,5 @@
 import { existsSync } from 'node:fs';
+import { SessionId } from '../local/branded.js';
 import { describe, expect, it } from 'vitest';
 
 const connectionModulePath =
@@ -21,7 +22,7 @@ describe('agent-sdk package-local runtime connection operations', () => {
       },
     };
     const operations = createPackageLocalRuntimeConnectionOperations({
-      sessionId: 'session-1',
+      sessionId: SessionId('session-1'),
       sessionStore: {
         createSession(sessionId: string) {
           calls.push(['create', sessionId]);

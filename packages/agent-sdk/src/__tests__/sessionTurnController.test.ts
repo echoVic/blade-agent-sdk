@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { SessionId } from '../local/branded.js';
 import type { RuntimeContext } from '../runtime/types.js';
 import { SessionLifecycleState } from '../session/lifecycle.js';
 import { PendingTurnBuffer } from '../session/pendingTurn.js';
@@ -11,7 +12,7 @@ function createTurnController(defaultContext: RuntimeContext = {}) {
   const lifecycle = new SessionLifecycleState({ pendingTurns, turnAbort });
   let turnIndex = 0;
   const turns = new SessionTurnController({
-    sessionId: 'session-1',
+    sessionId: SessionId('session-1'),
     pendingTurns,
     turnAbort,
     lifecycle,
@@ -66,7 +67,7 @@ describe('agent-sdk session turn controller', () => {
     expect(pending.message).toBe('hello');
     expect(pending.sendOptions?.maxTurns).toBe(3);
     expect(pending.snapshot).toEqual({
-      sessionId: 'session-1',
+      sessionId: SessionId('session-1'),
       turnId: 'turn-1',
       context: {
         capabilities: {

@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
+import { SessionId } from '../local/branded.js';
 import {
   createPackageLocalRuntimeHookRuntime,
   createPackageLocalRuntimeHookOperations,
@@ -101,7 +102,7 @@ describe('agent-sdk package-local runtime hook helpers', () => {
       modifiedInput: { stage: 'second' },
     }));
     const runtime = createPackageLocalRuntimeHookRuntime({
-      sessionId: 'hook-chain-session',
+      sessionId: SessionId('hook-chain-session'),
       hooks: {
         [HookEvent.PreToolUse]: [
           async () => ({
@@ -127,7 +128,7 @@ describe('agent-sdk package-local runtime hook helpers', () => {
       modifiedOutput: 'second output',
     }));
     const runtime = createPackageLocalRuntimeHookRuntime({
-      sessionId: 'hook-chain-session',
+      sessionId: SessionId('hook-chain-session'),
       hooks: {
         [HookEvent.PostToolUse]: [
           async () => ({

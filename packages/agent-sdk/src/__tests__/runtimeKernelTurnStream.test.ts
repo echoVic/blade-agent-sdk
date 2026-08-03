@@ -1,4 +1,5 @@
 import type { AgentStreamEvent } from '@blade-ai/agent/protocol';
+import { SessionId } from '../local/branded.js';
 import { describe, expect, it, vi } from 'vitest';
 import type { TraceRecorder } from '../observability/TraceRecorder.js';
 import {
@@ -34,7 +35,7 @@ describe('agent-sdk package-local kernel turn stream helper', () => {
 
     const messages = [];
     for await (const message of streamPackageLocalAgentKernelTurn({
-      sessionId: 'session-1',
+      sessionId: SessionId('session-1'),
       streamOptions: {
         input: 'hi',
       },
@@ -52,8 +53,8 @@ describe('agent-sdk package-local kernel turn stream helper', () => {
     }
 
     expect(messages).toEqual([
-      { type: 'turn_start', turn: 1, sessionId: 'session-1' },
-      { type: 'content', delta: 'hello', sessionId: 'session-1' },
+      { type: 'turn_start', turn: 1, sessionId: SessionId('session-1') },
+      { type: 'content', delta: 'hello', sessionId: SessionId('session-1') },
       {
         type: 'usage',
         usage: {
@@ -62,14 +63,14 @@ describe('agent-sdk package-local kernel turn stream helper', () => {
           totalTokens: 8,
           maxContextTokens: 99,
         },
-        sessionId: 'session-1',
+        sessionId: SessionId('session-1'),
       },
-      { type: 'turn_end', turn: 1, sessionId: 'session-1' },
+      { type: 'turn_end', turn: 1, sessionId: SessionId('session-1') },
       {
         type: 'result',
         subtype: 'success',
         content: 'hello',
-        sessionId: 'session-1',
+        sessionId: SessionId('session-1'),
       },
     ]);
     expect(traceRecorder.finish).toHaveBeenCalledWith('success', {
@@ -90,7 +91,7 @@ describe('agent-sdk package-local kernel turn stream helper', () => {
 
     const messages = [];
     for await (const message of streamPackageLocalAgentKernelTurn({
-      sessionId: 'session-task',
+      sessionId: SessionId('session-task'),
       streamOptions: {
         input: 'summarize the repo',
         turnId: 'turn-task',
@@ -119,7 +120,7 @@ describe('agent-sdk package-local kernel turn stream helper', () => {
       type: 'result',
       subtype: 'success',
       content: 'repo summary',
-      sessionId: 'session-task',
+      sessionId: SessionId('session-task'),
     });
     expect(runTaskCompleted).toHaveBeenCalledWith({
       taskId: 'turn-task',
@@ -145,7 +146,7 @@ describe('agent-sdk package-local kernel turn stream helper', () => {
 
     const messages = [];
     for await (const message of streamPackageLocalAgentKernelTurn({
-      sessionId: 'session-task-hook-failure',
+      sessionId: SessionId('session-task-hook-failure'),
       streamOptions: {
         input: 'summarize the repo',
         turnId: 'turn-task-hook-failure',
@@ -171,7 +172,7 @@ describe('agent-sdk package-local kernel turn stream helper', () => {
       type: 'result',
       subtype: 'success',
       content: 'repo summary',
-      sessionId: 'session-task-hook-failure',
+      sessionId: SessionId('session-task-hook-failure'),
     });
     expect(traceRecorder.finish).toHaveBeenCalledWith('success', {
       content: 'repo summary',
@@ -200,7 +201,7 @@ describe('agent-sdk package-local kernel turn stream helper', () => {
 
     const messages = [];
     for await (const message of streamPackageLocalAgentKernelTurn({
-      sessionId: 'session-task-hook-suppressed',
+      sessionId: SessionId('session-task-hook-suppressed'),
       streamOptions: {
         input: 'summarize the repo',
         turnId: 'turn-task-hook-suppressed',
@@ -229,7 +230,7 @@ describe('agent-sdk package-local kernel turn stream helper', () => {
       type: 'result',
       subtype: 'success',
       content: 'repo summary',
-      sessionId: 'session-task-hook-suppressed',
+      sessionId: SessionId('session-task-hook-suppressed'),
     });
     expect(traceRecorder.addEvent).toHaveBeenCalledWith('hook_error', {
       event: 'TaskCompleted',
@@ -256,7 +257,7 @@ describe('agent-sdk package-local kernel turn stream helper', () => {
 
     const messages = [];
     for await (const message of streamPackageLocalAgentKernelTurn({
-      sessionId: 'session-task-hook-trace-failure',
+      sessionId: SessionId('session-task-hook-trace-failure'),
       streamOptions: {
         input: 'summarize the repo',
         turnId: 'turn-task-hook-trace-failure',
@@ -282,7 +283,7 @@ describe('agent-sdk package-local kernel turn stream helper', () => {
       type: 'result',
       subtype: 'success',
       content: 'repo summary',
-      sessionId: 'session-task-hook-trace-failure',
+      sessionId: SessionId('session-task-hook-trace-failure'),
     });
     expect(traceRecorder.finish).toHaveBeenCalledWith('success', {
       content: 'repo summary',
@@ -301,7 +302,7 @@ describe('agent-sdk package-local kernel turn stream helper', () => {
 
     const messages = [];
     for await (const message of streamPackageLocalAgentKernelTurn({
-      sessionId: 'session-task-error',
+      sessionId: SessionId('session-task-error'),
       streamOptions: {
         input: 'fail the repo summary',
         turnId: 'turn-task-error',
@@ -335,7 +336,7 @@ describe('agent-sdk package-local kernel turn stream helper', () => {
       type: 'error',
       message: 'model failed',
       code: 'MODEL_FAILED',
-      sessionId: 'session-task-error',
+      sessionId: SessionId('session-task-error'),
     });
     expect(runTaskCompleted).toHaveBeenCalledWith({
       taskId: 'turn-task-error',
@@ -361,7 +362,7 @@ describe('agent-sdk package-local kernel turn stream helper', () => {
 
     const messages = [];
     for await (const message of streamPackageLocalAgentKernelTurn({
-      sessionId: 'session-error-hook-failure',
+      sessionId: SessionId('session-error-hook-failure'),
       streamOptions: {
         input: 'fail the repo summary',
         turnId: 'turn-error-hook-failure',
@@ -391,7 +392,7 @@ describe('agent-sdk package-local kernel turn stream helper', () => {
       type: 'error',
       message: 'model failed',
       code: 'MODEL_FAILED',
-      sessionId: 'session-error-hook-failure',
+      sessionId: SessionId('session-error-hook-failure'),
     });
     expect(traceRecorder.finish).toHaveBeenCalledWith('error', {
       error: 'model failed',
@@ -418,7 +419,7 @@ describe('agent-sdk package-local kernel turn stream helper', () => {
     let activeCollector: unknown;
 
     const stream = streamPackageLocalAgentKernelTurn({
-      sessionId: 'session-1',
+      sessionId: SessionId('session-1'),
       streamOptions: {
         input: 'hi',
         turnId: 'turn-1',
@@ -484,7 +485,7 @@ describe('agent-sdk package-local kernel turn stream helper', () => {
     let activeCollector: unknown;
 
     const stream = streamPackageLocalAgentKernelTurn({
-      sessionId: 'session-hook-failure',
+      sessionId: SessionId('session-hook-failure'),
       streamOptions: {
         input: 'summarize before failure',
         turnId: 'turn-hook-failure',
@@ -561,7 +562,7 @@ describe('agent-sdk package-local kernel turn stream helper', () => {
 
     const messages = [];
     for await (const message of streamPackageLocalRuntimeAgentKernelTurn({
-      sessionId: 'session-1',
+      sessionId: SessionId('session-1'),
       streamOptions: {
         input: 'hello',
         modelId: 'glm-5.2',
@@ -610,7 +611,7 @@ describe('agent-sdk package-local kernel turn stream helper', () => {
         totalTokens: 6,
         maxContextTokens: 42,
       },
-      sessionId: 'session-1',
+      sessionId: SessionId('session-1'),
     });
     expect(traceRecorder.finish).toHaveBeenCalledWith('success', {
       content: 'done',
@@ -650,7 +651,7 @@ describe('agent-sdk package-local kernel turn stream helper', () => {
       },
     }));
     const operations = createPackageLocalRuntimeKernelTurnStreamOperations({
-      sessionId: 'session-ops',
+      sessionId: SessionId('session-ops'),
       bladeConfig: {
         models: [],
         currentModelId: 'default-model',
@@ -696,7 +697,7 @@ describe('agent-sdk package-local kernel turn stream helper', () => {
     expect(messages).toContainEqual({
       type: 'content',
       delta: 'hi',
-      sessionId: 'session-ops',
+      sessionId: SessionId('session-ops'),
     });
     expect(traceRecorder.finish).toHaveBeenCalledWith('success', {
       content: 'hi',

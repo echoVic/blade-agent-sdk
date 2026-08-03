@@ -3,6 +3,7 @@ import type { ModelRequest } from '@blade-ai/ai';
 import type { JsonObject, JsonValue, PermissionMode } from '../types/common.js';
 import type { ToolResult } from '../tools/types/index.js';
 import { HookEvent } from '../types/constants.js';
+import type { SessionId } from '../local/branded.js';
 import type { HookCallback, HookOutput, SessionHookEvent } from './types.js';
 
 export interface PackageLocalRuntimeHookManagerPort {
@@ -74,7 +75,7 @@ export interface PackageLocalHookTraceCollector {
 }
 
 export interface PackageLocalRuntimeHookRuntimeOptions {
-  sessionId: string;
+  sessionId: SessionId;
   hooks?: Partial<Record<SessionHookEvent, HookCallback[]>>;
 }
 
@@ -238,7 +239,7 @@ export function createPackageLocalRuntimeHookRuntime(
 
 interface PackageLocalHookCallbackRunOptions {
   event: SessionHookEvent;
-  sessionId: string;
+  sessionId: SessionId;
   callbacks: readonly HookCallback[];
   payload: object;
   traceCollector?: PackageLocalHookTraceCollector;
@@ -295,7 +296,7 @@ interface PackageLocalPostToolHookOptions {
   input: JsonObject;
   result: ToolResult;
   hookOptions: PackageLocalToolHookOptions;
-  sessionId: string;
+  sessionId: SessionId;
   callbacks: readonly HookCallback[];
   traceCollector?: PackageLocalHookTraceCollector;
 }
@@ -342,7 +343,7 @@ function isJsonObject(value: JsonObject | string): value is JsonObject {
 
 interface PackageLocalUserPromptSubmitHookOptions {
   request: ModelRequest;
-  sessionId: string;
+  sessionId: SessionId;
   callbacks: readonly HookCallback[];
   traceCollector?: PackageLocalHookTraceCollector;
 }

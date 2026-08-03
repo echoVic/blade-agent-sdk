@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it } from 'vitest';
+import { SessionId } from '../local/branded.js';
 import { access, mkdtemp, rm } from 'node:fs/promises';
 import { constants as fsConstants } from 'node:fs';
 import { join } from 'node:path';
@@ -37,7 +38,7 @@ describe('agent-sdk local todo tools', () => {
   });
 
   it('creates a TodoWrite tool via factory function', () => {
-    const tool = createTodoWriteTool({ sessionId: 'test-session' });
+    const tool = createTodoWriteTool({ sessionId: SessionId('test-session') });
     expect(tool.name).toBe('TodoWrite');
     expect(tool.kind).toBe(ToolKind.ReadOnly);
   });
@@ -48,7 +49,7 @@ describe('agent-sdk local todo tools', () => {
   });
 
   it('TodoWrite tool accepts valid build params', () => {
-    const tool = createTodoWriteTool({ sessionId: 'test-session' });
+    const tool = createTodoWriteTool({ sessionId: SessionId('test-session') });
     const invocation = tool.build({
       todos: [
         {

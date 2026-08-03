@@ -1,4 +1,5 @@
 import { existsSync } from 'node:fs';
+import { SessionId } from '../local/branded.js';
 import { describe, expect, it } from 'vitest';
 
 const projectionModulePath = '../session/kernelStreamProjection.js';
@@ -13,23 +14,23 @@ describe('agent-sdk kernel stream projection', () => {
     expect(
       projectPackageLocalKernelEventToStreamMessages(
         { type: 'content', delta: 'hello' },
-        { sessionId: 'session-1', maxContextTokens: 4096, includeThinking: false },
+        { sessionId: SessionId('session-1'), maxContextTokens: 4096, includeThinking: false },
       ),
-    ).toEqual([{ type: 'content', delta: 'hello', sessionId: 'session-1' }]);
+    ).toEqual([{ type: 'content', delta: 'hello', sessionId: SessionId('session-1') }]);
 
     expect(
       projectPackageLocalKernelEventToStreamMessages(
         { type: 'thinking', delta: 'hidden' },
-        { sessionId: 'session-1', maxContextTokens: 4096, includeThinking: false },
+        { sessionId: SessionId('session-1'), maxContextTokens: 4096, includeThinking: false },
       ),
     ).toEqual([]);
 
     expect(
       projectPackageLocalKernelEventToStreamMessages(
         { type: 'thinking', delta: 'visible' },
-        { sessionId: 'session-1', maxContextTokens: 4096, includeThinking: true },
+        { sessionId: SessionId('session-1'), maxContextTokens: 4096, includeThinking: true },
       ),
-    ).toEqual([{ type: 'thinking', delta: 'visible', sessionId: 'session-1' }]);
+    ).toEqual([{ type: 'thinking', delta: 'visible', sessionId: SessionId('session-1') }]);
 
     expect(
       projectPackageLocalKernelEventToStreamMessages(
@@ -52,7 +53,7 @@ describe('agent-sdk kernel stream projection', () => {
             },
           ],
         },
-        { sessionId: 'session-1', maxContextTokens: 4096, includeThinking: false },
+        { sessionId: SessionId('session-1'), maxContextTokens: 4096, includeThinking: false },
       ),
     ).toEqual([
       {
@@ -70,7 +71,7 @@ describe('agent-sdk kernel stream projection', () => {
             rules: [{ toolName: 'Bash' }],
           },
         ],
-        sessionId: 'session-1',
+        sessionId: SessionId('session-1'),
       },
     ]);
 
@@ -88,7 +89,7 @@ describe('agent-sdk kernel stream projection', () => {
             billableInputTokens: 11,
           },
         },
-        { sessionId: 'session-1', maxContextTokens: 4096, includeThinking: false },
+        { sessionId: SessionId('session-1'), maxContextTokens: 4096, includeThinking: false },
       ),
     ).toEqual([
       {
@@ -103,7 +104,7 @@ describe('agent-sdk kernel stream projection', () => {
           cacheMissInputTokens: 4,
           billableInputTokens: 11,
         },
-        sessionId: 'session-1',
+        sessionId: SessionId('session-1'),
       },
     ]);
 
@@ -115,7 +116,7 @@ describe('agent-sdk kernel stream projection', () => {
             totalTokens: 12,
           },
         },
-        { sessionId: 'session-1', maxContextTokens: 4096, includeThinking: false },
+        { sessionId: SessionId('session-1'), maxContextTokens: 4096, includeThinking: false },
       ),
     ).toEqual([
       {
@@ -126,7 +127,7 @@ describe('agent-sdk kernel stream projection', () => {
           totalTokens: 12,
           maxContextTokens: 4096,
         },
-        sessionId: 'session-1',
+        sessionId: SessionId('session-1'),
       },
     ]);
 
@@ -149,13 +150,13 @@ describe('agent-sdk kernel stream projection', () => {
           type: 'budget_warning',
           snapshot: budgetSnapshot,
         },
-        { sessionId: 'session-1', maxContextTokens: 4096, includeThinking: false },
+        { sessionId: SessionId('session-1'), maxContextTokens: 4096, includeThinking: false },
       ),
     ).toEqual([
       {
         type: 'budget_warning',
         snapshot: budgetSnapshot,
-        sessionId: 'session-1',
+        sessionId: SessionId('session-1'),
       },
     ]);
 
@@ -165,24 +166,24 @@ describe('agent-sdk kernel stream projection', () => {
           type: 'budget_exhausted',
           snapshot: budgetSnapshot,
         },
-        { sessionId: 'session-1', maxContextTokens: 4096, includeThinking: false },
+        { sessionId: SessionId('session-1'), maxContextTokens: 4096, includeThinking: false },
       ),
     ).toEqual([
       {
         type: 'budget_exhausted',
         snapshot: budgetSnapshot,
-        sessionId: 'session-1',
+        sessionId: SessionId('session-1'),
       },
     ]);
 
     expect(
       projectPackageLocalKernelEventToStreamMessages(
         { type: 'result', content: 'done' },
-        { sessionId: 'session-1', maxContextTokens: 4096, includeThinking: false },
+        { sessionId: SessionId('session-1'), maxContextTokens: 4096, includeThinking: false },
       ),
     ).toEqual([
-      { type: 'turn_end', turn: 1, sessionId: 'session-1' },
-      { type: 'result', subtype: 'success', content: 'done', sessionId: 'session-1' },
+      { type: 'turn_end', turn: 1, sessionId: SessionId('session-1') },
+      { type: 'result', subtype: 'success', content: 'done', sessionId: SessionId('session-1') },
     ]);
   });
 });

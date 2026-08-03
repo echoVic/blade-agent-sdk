@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
+import { SessionId } from '../local/branded.js';
 import type { ModelPort } from '@blade-ai/ai';
 import {
   isPackageLocalSdkMcpServerHandle,
@@ -41,7 +42,7 @@ describe('agent-sdk package-local session runtime shell', () => {
     expect(resolvePackageLocalRuntimeStorageRoot(undefined)).toBeUndefined();
 
     const runtime = new PackageLocalSessionRuntime({
-      sessionId: 'session-1',
+      sessionId: SessionId('session-1'),
       options: {
         ...options,
         storagePath: '/workspace/.blade/sessions',
@@ -90,7 +91,7 @@ describe('agent-sdk package-local session runtime shell', () => {
   it('owns session create and load lifecycle through an injected store port', async () => {
     const calls: string[] = [];
     const runtime = new PackageLocalSessionRuntime({
-      sessionId: 'session-1',
+      sessionId: SessionId('session-1'),
       options,
       bladeConfig,
       defaultContext: {},
@@ -113,7 +114,7 @@ describe('agent-sdk package-local session runtime shell', () => {
     await runtime.ensureSessionLoaded();
 
     const resumedRuntime = new PackageLocalSessionRuntime({
-      sessionId: 'existing-session',
+      sessionId: SessionId('existing-session'),
       options,
       bladeConfig,
       defaultContext: {},
@@ -133,7 +134,7 @@ describe('agent-sdk package-local session runtime shell', () => {
   it('owns turn workspace preparation through an injected workspace port', () => {
     const updates: unknown[] = [];
     const runtime = new PackageLocalSessionRuntime({
-      sessionId: 'session-1',
+      sessionId: SessionId('session-1'),
       options,
       bladeConfig,
       defaultContext: {},
@@ -145,7 +146,7 @@ describe('agent-sdk package-local session runtime shell', () => {
     });
 
     runtime.prepareTurn({
-      sessionId: 'session-1',
+      sessionId: SessionId('session-1'),
       turnId: 'turn-1',
       context: {},
       filesystemRoots: ['/workspace'],
@@ -157,7 +158,7 @@ describe('agent-sdk package-local session runtime shell', () => {
     });
 
     runtime.prepareTurn({
-      sessionId: 'session-1',
+      sessionId: SessionId('session-1'),
       turnId: 'turn-2',
       context: {},
       filesystemRoots: [],
@@ -187,7 +188,7 @@ describe('agent-sdk package-local session runtime shell', () => {
   it('owns close lifecycle through an injected MCP registry port', async () => {
     const disconnectAll = vi.fn(async () => {});
     const runtime = new PackageLocalSessionRuntime({
-      sessionId: 'session-1',
+      sessionId: SessionId('session-1'),
       options,
       bladeConfig,
       defaultContext: {},
@@ -230,7 +231,7 @@ describe('agent-sdk package-local session runtime shell', () => {
     ];
     const getCapabilities = vi.fn(async () => capabilities);
     const runtime = new PackageLocalSessionRuntime({
-      sessionId: 'session-1',
+      sessionId: SessionId('session-1'),
       options,
       bladeConfig,
       defaultContext: {},
@@ -256,7 +257,7 @@ describe('agent-sdk package-local session runtime shell', () => {
 
   it('owns MCP tool list projection through package-local capabilities', async () => {
     const runtime = new PackageLocalSessionRuntime({
-      sessionId: 'session-1',
+      sessionId: SessionId('session-1'),
       options,
       bladeConfig,
       defaultContext: {},
@@ -324,7 +325,7 @@ describe('agent-sdk package-local session runtime shell', () => {
       args: ['server.js'],
     };
     const runtime = new PackageLocalSessionRuntime({
-      sessionId: 'session-1',
+      sessionId: SessionId('session-1'),
       options: {
         ...options,
         mcpServers: {
@@ -403,7 +404,7 @@ describe('agent-sdk package-local session runtime shell', () => {
       tags: ['server-a'],
     };
     const runtime = new PackageLocalSessionRuntime({
-      sessionId: 'session-1',
+      sessionId: SessionId('session-1'),
       options: {
         ...options,
         allowedTools: ['read', 'mcp__server-b__write'],
@@ -465,7 +466,7 @@ describe('agent-sdk package-local session runtime shell', () => {
     };
     const failure = new Error('boom');
     const runtime = new PackageLocalSessionRuntime({
-      sessionId: 'session-1',
+      sessionId: SessionId('session-1'),
       options: {
         ...options,
         mcpServers: {
@@ -534,7 +535,7 @@ describe('agent-sdk package-local session runtime shell', () => {
     ];
 
     const disabledRuntime = new PackageLocalSessionRuntime({
-      sessionId: 'session-1',
+      sessionId: SessionId('session-1'),
       options: {
         ...options,
         allowedTools: [],
@@ -545,7 +546,7 @@ describe('agent-sdk package-local session runtime shell', () => {
     expect(disabledRuntime.filterTools(tools)).toEqual([]);
 
     const allowlistRuntime = new PackageLocalSessionRuntime({
-      sessionId: 'session-1',
+      sessionId: SessionId('session-1'),
       options: {
         ...options,
         allowedTools: ['read', 'write'],
@@ -557,7 +558,7 @@ describe('agent-sdk package-local session runtime shell', () => {
     expect(allowlistRuntime.filterTools(tools)).toEqual([{ name: 'read' }]);
 
     const denylistRuntime = new PackageLocalSessionRuntime({
-      sessionId: 'session-1',
+      sessionId: SessionId('session-1'),
       options: {
         ...options,
         disallowedTools: ['search'],
@@ -571,7 +572,7 @@ describe('agent-sdk package-local session runtime shell', () => {
   it('owns filtered tool registration through an injected tool catalog port', () => {
     const registerAll = vi.fn();
     const runtime = new PackageLocalSessionRuntime({
-      sessionId: 'session-1',
+      sessionId: SessionId('session-1'),
       options: {
         ...options,
         allowedTools: ['read', 'write'],
@@ -613,7 +614,7 @@ describe('agent-sdk package-local session runtime shell', () => {
   it('skips tool catalog registration when filtering removes every tool', () => {
     const registerAll = vi.fn();
     const runtime = new PackageLocalSessionRuntime({
-      sessionId: 'session-1',
+      sessionId: SessionId('session-1'),
       options: {
         ...options,
         allowedTools: [],
@@ -650,7 +651,7 @@ describe('agent-sdk package-local session runtime shell', () => {
     ];
     const factoryCalls: unknown[] = [];
     const runtime = new PackageLocalSessionRuntime({
-      sessionId: 'session-1',
+      sessionId: SessionId('session-1'),
       options: {
         ...options,
         allowedTools: ['custom-read'],
@@ -692,7 +693,7 @@ describe('agent-sdk package-local session runtime shell', () => {
     const registerAll = vi.fn();
     const fromDefinition = vi.fn();
     const runtime = new PackageLocalSessionRuntime({
-      sessionId: 'session-1',
+      sessionId: SessionId('session-1'),
       options,
       bladeConfig,
       defaultContext: {},
@@ -720,7 +721,7 @@ describe('agent-sdk package-local session runtime shell', () => {
       getCapabilities: vi.fn(async () => []),
     };
     const runtime = new PackageLocalSessionRuntime({
-      sessionId: 'session-1',
+      sessionId: SessionId('session-1'),
       options: {
         ...options,
         storagePath: '/workspace/.blade/sessions',
@@ -751,7 +752,7 @@ describe('agent-sdk package-local session runtime shell', () => {
 
     expect(providerCalls).toEqual([
       {
-        sessionId: 'session-1',
+        sessionId: SessionId('session-1'),
         configDir: '/workspace/.blade',
         mcpRegistry,
         includeMcpProtocolTools: false,
@@ -771,7 +772,7 @@ describe('agent-sdk package-local session runtime shell', () => {
   it('skips builtin tool catalog registration when no builtin tools survive filtering', async () => {
     const registerAll = vi.fn();
     const runtime = new PackageLocalSessionRuntime({
-      sessionId: 'session-1',
+      sessionId: SessionId('session-1'),
       options: {
         ...options,
         allowedTools: [],
@@ -799,7 +800,7 @@ describe('agent-sdk package-local session runtime shell', () => {
     const logger = { warn: vi.fn(), debug: vi.fn(), child: vi.fn(() => logger) };
     const calls: unknown[] = [];
     const runtime = new PackageLocalSessionRuntime({
-      sessionId: 'session-1',
+      sessionId: SessionId('session-1'),
       options: {
         ...options,
         storagePath: '/workspace/.blade/sessions',
@@ -882,7 +883,7 @@ describe('agent-sdk package-local session runtime shell', () => {
   it('uses updated default context project paths when initializing subagents', () => {
     const calls: unknown[] = [];
     const runtime = new PackageLocalSessionRuntime({
-      sessionId: 'session-1',
+      sessionId: SessionId('session-1'),
       options: {
         ...options,
         storagePath: '/workspace/.blade/sessions',
@@ -928,7 +929,7 @@ describe('agent-sdk package-local session runtime shell', () => {
   it('refreshes initialized subagent locations after default context changes', async () => {
     const calls: unknown[] = [];
     const runtime = new PackageLocalSessionRuntime({
-      sessionId: 'session-1',
+      sessionId: SessionId('session-1'),
       options: {
         ...options,
         storagePath: '/workspace/.blade/sessions',
@@ -977,7 +978,7 @@ describe('agent-sdk package-local session runtime shell', () => {
     const calls: unknown[] = [];
     let runtime: PackageLocalSessionRuntime;
     runtime = new PackageLocalSessionRuntime({
-      sessionId: 'session-1',
+      sessionId: SessionId('session-1'),
       options: {
         ...options,
         storagePath: '/workspace/.blade/sessions',
@@ -1029,7 +1030,7 @@ describe('agent-sdk package-local session runtime shell', () => {
     const providerFailure = new Error('builtin provider unavailable');
     let providerCalls = 0;
     const runtime = new PackageLocalSessionRuntime({
-      sessionId: 'session-1',
+      sessionId: SessionId('session-1'),
       options,
       bladeConfig,
       defaultContext: {},
@@ -1065,7 +1066,7 @@ describe('agent-sdk package-local session runtime shell', () => {
     const canUseTool = vi.fn(async () => ({ behavior: 'allow' as const }));
     const hookCalls: unknown[] = [];
     const runtime = new PackageLocalSessionRuntime({
-      sessionId: 'session-1',
+      sessionId: SessionId('session-1'),
       options: {
         ...options,
         canUseTool,
@@ -1135,7 +1136,7 @@ describe('agent-sdk package-local session runtime shell', () => {
   it('owns hook manager initialization through an injected hook manager port', () => {
     const enable = vi.fn();
     const runtimeWithoutHooks = new PackageLocalSessionRuntime({
-      sessionId: 'session-1',
+      sessionId: SessionId('session-1'),
       options,
       bladeConfig,
       defaultContext: {},
@@ -1146,7 +1147,7 @@ describe('agent-sdk package-local session runtime shell', () => {
     expect(enable).not.toHaveBeenCalled();
 
     const runtimeWithHooks = new PackageLocalSessionRuntime({
-      sessionId: 'session-2',
+      sessionId: SessionId('session-2'),
       options: {
         ...options,
         hooks: {
@@ -1176,7 +1177,7 @@ describe('agent-sdk package-local session runtime shell', () => {
     };
     const logger = { warn: vi.fn(), debug: vi.fn() };
     const runtime = new PackageLocalSessionRuntime({
-      sessionId: 'session-1',
+      sessionId: SessionId('session-1'),
       options: {
         ...options,
         permissionMode: PermissionMode.YOLO,
@@ -1223,7 +1224,7 @@ describe('agent-sdk package-local session runtime shell', () => {
       return pipelines[createdOptions.length - 1];
     });
     const runtime = new PackageLocalSessionRuntime({
-      sessionId: 'session-1',
+      sessionId: SessionId('session-1'),
       options: {
         ...options,
         permissionMode: PermissionMode.DEFAULT,
@@ -1270,7 +1271,7 @@ describe('agent-sdk package-local session runtime shell', () => {
     const logger = { warn: vi.fn(), debug: vi.fn() };
     const create = vi.fn(() => pipeline);
     const runtime = new PackageLocalSessionRuntime({
-      sessionId: 'session-1',
+      sessionId: SessionId('session-1'),
       options,
       bladeConfig,
       defaultContext: context,
@@ -1297,7 +1298,7 @@ describe('agent-sdk package-local session runtime shell', () => {
 
   it('projects updated default context through package-local agent runtime dependencies', () => {
     const runtime = new PackageLocalSessionRuntime({
-      sessionId: 'session-1',
+      sessionId: SessionId('session-1'),
       options,
       bladeConfig,
       defaultContext: {
@@ -1362,7 +1363,7 @@ describe('agent-sdk package-local session runtime shell', () => {
       createHookPort: vi.fn(() => hookPort),
     };
     const runtime = new PackageLocalSessionRuntime({
-      sessionId: 'session-1',
+      sessionId: SessionId('session-1'),
       options,
       bladeConfig,
       defaultContext: {},
@@ -1384,7 +1385,7 @@ describe('agent-sdk package-local session runtime shell', () => {
       createExecutionContext,
     });
     expect(kernelPortFactory.createStorePort).toHaveBeenCalledWith({
-      sessionId: 'session-1',
+      sessionId: SessionId('session-1'),
       sessionStore,
     });
     expect(kernelPortFactory.createTracePort).toHaveBeenCalledWith({
@@ -1418,7 +1419,7 @@ describe('agent-sdk package-local session runtime shell', () => {
       create: vi.fn(() => kernel),
     };
     const runtime = new PackageLocalSessionRuntime({
-      sessionId: 'session-1',
+      sessionId: SessionId('session-1'),
       options,
       bladeConfig,
       defaultContext: {},
@@ -1470,7 +1471,7 @@ describe('agent-sdk package-local session runtime shell', () => {
       create: vi.fn(() => kernel),
     };
     const runtime = new PackageLocalSessionRuntime({
-      sessionId: 'session-1',
+      sessionId: SessionId('session-1'),
       options: {
         ...options,
         tokenBudget: {
@@ -1518,7 +1519,7 @@ describe('agent-sdk package-local session runtime shell', () => {
       })),
     };
     const runtime = new PackageLocalSessionRuntime({
-      sessionId: 'session-1',
+      sessionId: SessionId('session-1'),
       options,
       bladeConfig,
       defaultContext: {},
@@ -1566,7 +1567,7 @@ describe('agent-sdk package-local session runtime shell', () => {
       create: vi.fn(() => kernel),
     };
     const runtime = new PackageLocalSessionRuntime({
-      sessionId: 'session-1',
+      sessionId: SessionId('session-1'),
       options,
       bladeConfig,
       defaultContext: {},
@@ -1607,9 +1608,9 @@ describe('agent-sdk package-local session runtime shell', () => {
       maxSteps: 3,
     });
     expect(messages).toEqual([
-      { type: 'turn_start', turn: 1, sessionId: 'session-1' },
-      { type: 'content', delta: 'hello', sessionId: 'session-1' },
-      { type: 'thinking', delta: 'thought', sessionId: 'session-1' },
+      { type: 'turn_start', turn: 1, sessionId: SessionId('session-1') },
+      { type: 'content', delta: 'hello', sessionId: SessionId('session-1') },
+      { type: 'thinking', delta: 'thought', sessionId: SessionId('session-1') },
       {
         type: 'usage',
         usage: {
@@ -1618,10 +1619,10 @@ describe('agent-sdk package-local session runtime shell', () => {
           totalTokens: 10,
           maxContextTokens: 8192,
         },
-        sessionId: 'session-1',
+        sessionId: SessionId('session-1'),
       },
-      { type: 'turn_end', turn: 1, sessionId: 'session-1' },
-      { type: 'result', subtype: 'success', content: 'done', sessionId: 'session-1' },
+      { type: 'turn_end', turn: 1, sessionId: SessionId('session-1') },
+      { type: 'result', subtype: 'success', content: 'done', sessionId: SessionId('session-1') },
     ]);
   });
 });

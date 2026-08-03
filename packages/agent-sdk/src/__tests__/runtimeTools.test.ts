@@ -1,4 +1,5 @@
 import { existsSync } from 'node:fs';
+import { SessionId } from '../local/branded.js';
 import { describe, expect, it } from 'vitest';
 
 const runtimeToolsModulePath = '../session/runtimeTools.js';
@@ -30,13 +31,13 @@ describe('agent-sdk package-local runtime tool operations', () => {
           };
         },
       },
-      sessionId: 'session-1',
+      sessionId: SessionId('session-1'),
       storageRoot: '/tmp/blade',
       mcpRegistry,
       builtinToolProvider: {
         async getTools(context: unknown) {
           expect(context).toEqual({
-            sessionId: 'session-1',
+            sessionId: SessionId('session-1'),
             configDir: '/tmp/blade',
             mcpRegistry,
             includeMcpProtocolTools: false,

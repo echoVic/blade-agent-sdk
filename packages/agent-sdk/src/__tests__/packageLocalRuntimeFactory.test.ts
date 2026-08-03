@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
+import { SessionId } from '../local/branded.js';
 import { createPackageLocalSessionRuntimeFactory } from '../session/packageLocalRuntimeFactory.js';
 import { PackageLocalSession } from '../session/sessionInstance.js';
 import type {
@@ -29,7 +30,7 @@ describe('agent-sdk package-local runtime factory', () => {
     const cleanup = vi.fn();
     const createStreamTurn = vi.fn((context) => {
       expect(context).toMatchObject({
-        sessionId: 'session-created',
+        sessionId: SessionId('session-created'),
         options,
         isResume: false,
       });
@@ -38,12 +39,12 @@ describe('agent-sdk package-local runtime factory', () => {
           type: 'result',
           subtype: 'success',
           content: 'created',
-          sessionId: 'session-created',
+          sessionId: SessionId('session-created'),
         } satisfies StreamMessage;
       };
     });
     const factory = createPackageLocalSessionRuntimeFactory({
-      createSessionId: () => 'session-created',
+      createSessionId: () => SessionId('session-created'),
       createTurnId: () => 'turn-created',
       createStreamTurn,
       cleanup,
@@ -59,12 +60,12 @@ describe('agent-sdk package-local runtime factory', () => {
         type: 'result',
         subtype: 'success',
         content: 'created',
-        sessionId: 'session-created',
+        sessionId: SessionId('session-created'),
       },
     ]);
     await session.close();
     expect(cleanup).toHaveBeenCalledWith({
-      sessionId: 'session-created',
+      sessionId: SessionId('session-created'),
       options,
       isResume: false,
     });
@@ -78,7 +79,7 @@ describe('agent-sdk package-local runtime factory', () => {
       createTurnId: () => 'turn-resumed',
       createStreamTurn: vi.fn((context) => {
         expect(context).toMatchObject({
-          sessionId: 'session-resumed',
+          sessionId: SessionId('session-resumed'),
           isResume: true,
         });
         return async function* () {
@@ -86,13 +87,13 @@ describe('agent-sdk package-local runtime factory', () => {
             type: 'result',
             subtype: 'success',
             content: 'resumed',
-            sessionId: 'session-resumed',
+            sessionId: SessionId('session-resumed'),
           } satisfies StreamMessage;
         };
       }),
     });
 
-    const session = await factory.resume({ ...options, sessionId: 'session-resumed' });
+    const session = await factory.resume({ ...options, sessionId: SessionId('session-resumed') });
 
     expect(session).toBeInstanceOf(PackageLocalSession);
     expect(session.sessionId).toBe('session-resumed');
@@ -101,23 +102,23 @@ describe('agent-sdk package-local runtime factory', () => {
       {
         type: 'result',
         content: 'resumed',
-        sessionId: 'session-resumed',
+        sessionId: SessionId('session-resumed'),
       },
     ]);
   });
 
   it('wires package-local runtime ports into created sessions', async () => {
-    const forked = { sessionId: 'forked-session' } as ISession;
+    const forked = { sessionId: SessionId('forked-session') } as ISession;
     const fork = vi.fn(async () => forked);
     const createSessionRuntimePort = vi.fn((context) => {
       expect(context).toMatchObject({
-        sessionId: 'session-created',
+        sessionId: SessionId('session-created'),
         isResume: false,
       });
       return { fork };
     });
     const factory = createPackageLocalSessionRuntimeFactory({
-      createSessionId: () => 'session-created',
+      createSessionId: () => SessionId('session-created'),
       createTurnId: () => 'turn-created',
       createStreamTurn: () => async function* () {},
       createSessionRuntimePort,
@@ -136,7 +137,7 @@ describe('agent-sdk package-local runtime factory', () => {
   ] as const)('cleans up resources when %s initialization fails', async (operation, sessionId) => {
     const cleanup = vi.fn(async () => {});
     const factory = createPackageLocalSessionRuntimeFactory({
-      createSessionId: () => 'session-created',
+      createSessionId: () => SessionId('session-created'),
       createTurnId: () => 'turn-created',
       createStreamTurn: () => async function* () {},
       async initialize() {
@@ -147,7 +148,7 @@ describe('agent-sdk package-local runtime factory', () => {
 
     const result = operation === 'create'
       ? factory.create(options)
-      : factory.resume({ ...options, sessionId });
+      : factory.resume({ ...options, sessionId: SessionId(sessionId) });
 
     await expect(result).rejects.toThrow('initialization failed');
     expect(cleanup).toHaveBeenCalledTimes(1);

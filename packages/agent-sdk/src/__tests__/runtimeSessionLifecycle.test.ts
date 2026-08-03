@@ -1,4 +1,5 @@
 import { existsSync } from 'node:fs';
+import { SessionId } from '../local/branded.js';
 import { describe, expect, it, vi } from 'vitest';
 
 const runtimeSessionLifecycleModulePath =
@@ -30,7 +31,7 @@ describe('agent-sdk package-local runtime session lifecycle helpers', () => {
     };
 
     const operations = createPackageLocalRuntimeSessionLifecycleOperations({
-      sessionId: 'session-1',
+      sessionId: SessionId('session-1'),
       sessionStore,
     });
 
@@ -39,7 +40,7 @@ describe('agent-sdk package-local runtime session lifecycle helpers', () => {
     await expect(operations.loadMessages()).resolves.toBe(messages);
 
     const resumedOperations = createPackageLocalRuntimeSessionLifecycleOperations({
-      sessionId: 'existing-session',
+      sessionId: SessionId('existing-session'),
       sessionStore,
     });
 
@@ -65,7 +66,7 @@ describe('agent-sdk package-local runtime session lifecycle helpers', () => {
     const closeRuntimeResources = vi.fn();
 
     const operations = createPackageLocalRuntimeSessionLifecycleOperations({
-      sessionId: 'session-1',
+      sessionId: SessionId('session-1'),
       sessionStore: {
         createSession: vi.fn(),
         loadSession: vi.fn(),

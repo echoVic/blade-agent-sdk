@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { SessionId } from '../local/branded.js';
 import {
   createSession,
   forkSession,
@@ -26,7 +27,7 @@ const options: SessionOptions = {
   model: 'test-model',
 };
 
-function createFakeSession(id: string): ISession {
+function createFakeSession(id: SessionId): ISession {
   return {
     sessionId: id,
     messages: [],
@@ -46,7 +47,7 @@ function createFakeSession(id: string): ISession {
     mcpDisconnect: async () => {},
     mcpReconnect: async () => {},
     mcpListTools: async () => [],
-    fork: async () => createFakeSession(`forked:${id}`),
+    fork: async () => createFakeSession(SessionId(`forked:${id}`)),
     getLastTrace: () => undefined,
     getTraces: () => [],
     [Symbol.asyncDispose]: async () => {},
@@ -56,12 +57,12 @@ function createFakeSession(id: string): ISession {
 describe('agent-sdk session runtime factory', () => {
   it('builds the default lifecycle around the package-local kernel runtime factory', async () => {
     const factory = createDefaultSessionRuntimeFactory({
-      createSessionId: () => 'kernel-default-session',
+      createSessionId: () => SessionId('kernel-default-session'),
       createTurnId: () => 'kernel-default-turn',
     });
 
     const created = await factory.create(options);
-    const resumed = await factory.resume({ ...options, sessionId: 'old' });
+    const resumed = await factory.resume({ ...options, sessionId: SessionId('old') });
 
     expect(created).toBeInstanceOf(PackageLocalSession);
     expect(created.sessionId).toBe('kernel-default-session');
@@ -76,18 +77,18 @@ describe('agent-sdk session runtime factory', () => {
       loadKernelRuntimeFactory: async () => ({
         async create(receivedOptions: SessionOptions) {
           calls.push(`kernel-create:${receivedOptions.model}`);
-          return createFakeSession('kernel-created');
+          return createFakeSession(SessionId('kernel-created'));
         },
         async resume(receivedOptions: SessionOptions & { sessionId: string }) {
           calls.push(`kernel-resume:${receivedOptions.sessionId}`);
-          return createFakeSession(`kernel-resumed:${receivedOptions.sessionId}`);
+          return createFakeSession(SessionId(`kernel-resumed:${receivedOptions.sessionId}`));
         },
       }),
     });
 
-    await expect(factory.create(options)).resolves.toMatchObject({ sessionId: 'kernel-created' });
-    await expect(factory.resume({ ...options, sessionId: 'old' })).resolves.toMatchObject({
-      sessionId: 'kernel-resumed:old',
+    await expect(factory.create(options)).resolves.toMatchObject({ sessionId: SessionId('kernel-created') });
+    await expect(factory.resume({ ...options, sessionId: SessionId('old') })).resolves.toMatchObject({
+      sessionId: SessionId('kernel-resumed:old'),
     });
     expect(calls).toEqual(['kernel-create:test-model', 'kernel-resume:old']);
   });
@@ -95,7 +96,7 @@ describe('agent-sdk session runtime factory', () => {
   it('routes create and resume through the package-local session factory', async () => {
     const calls: string[] = [];
     let createCalls = 0;
-    const fakePromptSession = createFakeSession('prompted');
+    const fakePromptSession = createFakeSession(SessionId('prompted'));
     fakePromptSession.send = async (message) => {
       calls.push(`send:${message}`);
     };
@@ -104,28 +105,28 @@ describe('agent-sdk session runtime factory', () => {
         type: 'result',
         subtype: 'success',
         content: 'factory prompt',
-        sessionId: 'prompted',
+        sessionId: SessionId('prompted'),
       };
     };
     const restore = setSessionRuntimeFactory({
       async create(receivedOptions) {
         calls.push(`create:${receivedOptions.model}`);
         createCalls += 1;
-        return createCalls === 1 ? createFakeSession('created') : fakePromptSession;
+        return createCalls === 1 ? createFakeSession(SessionId('created')) : fakePromptSession;
       },
       async resume(receivedOptions) {
         calls.push(`resume:${receivedOptions.sessionId}`);
-        return createFakeSession(`resumed:${receivedOptions.sessionId}`);
+        return createFakeSession(SessionId(`resumed:${receivedOptions.sessionId}`));
       },
     });
 
     try {
-      await expect(createSession(options)).resolves.toMatchObject({ sessionId: 'created' });
-      await expect(resumeSession({ ...options, sessionId: 'old' })).resolves.toMatchObject({
-        sessionId: 'resumed:old',
+      await expect(createSession(options)).resolves.toMatchObject({ sessionId: SessionId('created') });
+      await expect(resumeSession({ ...options, sessionId: SessionId('old') })).resolves.toMatchObject({
+        sessionId: SessionId('resumed:old'),
       });
-      await expect(forkSession({ ...options, sessionId: 'old', messageId: 'm1' })).resolves.toMatchObject({
-        sessionId: 'forked:resumed:old',
+      await expect(forkSession({ ...options, sessionId: SessionId('old'), messageId: 'm1' })).resolves.toMatchObject({
+        sessionId: SessionId('forked:resumed:old'),
       });
       await expect(prompt('hello', options)).resolves.toMatchObject({
         result: 'factory prompt',
@@ -145,27 +146,27 @@ describe('agent-sdk session runtime factory', () => {
 
   it('implements prompt from package-local session lifecycle instead of delegating to runtime prompt', async () => {
     const calls: string[] = [];
-    const fakeSession = createFakeSession('created');
+    const fakeSession = createFakeSession(SessionId('created'));
     fakeSession.send = async (message) => {
       calls.push(`send:${message}`);
     };
     fakeSession.stream = async function* () {
       calls.push('stream');
-      yield { type: 'turn_start', turn: 1, sessionId: 'created' };
-      yield { type: 'content', delta: 'hello ', sessionId: 'created' };
+      yield { type: 'turn_start', turn: 1, sessionId: SessionId('created') };
+      yield { type: 'content', delta: 'hello ', sessionId: SessionId('created') };
       yield {
         type: 'tool_use',
         id: 'tool-1',
         name: 'lookup',
         input: { query: 'blade' },
-        sessionId: 'created',
+        sessionId: SessionId('created'),
       };
       yield {
         type: 'tool_result',
         id: 'tool-1',
         name: 'lookup',
         output: 'found',
-        sessionId: 'created',
+        sessionId: SessionId('created'),
       };
       yield {
         type: 'usage',
@@ -175,9 +176,9 @@ describe('agent-sdk session runtime factory', () => {
           totalTokens: 5,
           maxContextTokens: 128000,
         },
-        sessionId: 'created',
+        sessionId: SessionId('created'),
       };
-      yield { type: 'result', subtype: 'success', content: 'hello world', sessionId: 'created' };
+      yield { type: 'result', subtype: 'success', content: 'hello world', sessionId: SessionId('created') };
     };
     fakeSession.close = async () => {
       calls.push('close');
@@ -221,8 +222,8 @@ describe('agent-sdk session runtime factory', () => {
 
   it('implements forkSession from package-local resume and live session fork lifecycle', async () => {
     const calls: string[] = [];
-    const sourceSession = createFakeSession('source');
-    const forkedSession = createFakeSession('forked:source');
+    const sourceSession = createFakeSession(SessionId('source'));
+    const forkedSession = createFakeSession(SessionId('forked:source'));
     sourceSession.fork = async (forkOptions) => {
       calls.push(`session-fork:${forkOptions?.messageId ?? ''}`);
       return forkedSession;
@@ -243,7 +244,7 @@ describe('agent-sdk session runtime factory', () => {
 
     try {
       await expect(
-        forkSession({ ...options, sessionId: 'old', messageId: 'm1' }),
+        forkSession({ ...options, sessionId: SessionId('old'), messageId: 'm1' }),
       ).resolves.toBe(forkedSession);
     } finally {
       restore();
@@ -253,9 +254,9 @@ describe('agent-sdk session runtime factory', () => {
   });
 
   it('preserves prompt stream errors when session cleanup also fails', async () => {
-    const fakeSession = createFakeSession('created');
+    const fakeSession = createFakeSession(SessionId('created'));
     fakeSession.stream = async function* () {
-      yield { type: 'error', message: 'model failed', sessionId: 'created' };
+      yield { type: 'error', message: 'model failed', sessionId: SessionId('created') };
     };
     fakeSession.close = async () => {
       throw new Error('close failed');
@@ -278,7 +279,7 @@ describe('agent-sdk session runtime factory', () => {
   });
 
   it('preserves fork errors when source session cleanup also fails', async () => {
-    const sourceSession = createFakeSession('source');
+    const sourceSession = createFakeSession(SessionId('source'));
     sourceSession.fork = async () => {
       throw new Error('fork failed');
     };
@@ -296,7 +297,7 @@ describe('agent-sdk session runtime factory', () => {
     });
 
     try {
-      await expect(forkSession({ ...options, sessionId: 'old' })).rejects.toThrow('fork failed');
+      await expect(forkSession({ ...options, sessionId: SessionId('old') })).rejects.toThrow('fork failed');
     } finally {
       restore();
     }
@@ -310,17 +311,17 @@ describe('agent-sdk session runtime factory', () => {
       },
       async resume() {
         calls.push('resume');
-        return createFakeSession('resumed');
+        return createFakeSession(SessionId('resumed'));
       },
     };
 
     await expect(
-      runResumeLifecycle(runtime, { ...options, sessionId: 'old', persistSession: false }),
+      runResumeLifecycle(runtime, { ...options, sessionId: SessionId('old'), persistSession: false }),
     ).rejects.toThrow(
       'resumeSession() requires session persistence. Remove persistSession: false or use createSession().',
     );
     await expect(
-      runForkLifecycle(runtime, { ...options, sessionId: 'old', persistSession: false }),
+      runForkLifecycle(runtime, { ...options, sessionId: SessionId('old'), persistSession: false }),
     ).rejects.toThrow(
       'forkSession() requires session persistence. Remove persistSession: false and call session.fork() on a live session instead.',
     );

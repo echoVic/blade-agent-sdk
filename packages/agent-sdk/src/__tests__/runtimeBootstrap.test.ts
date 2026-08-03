@@ -1,4 +1,5 @@
 import { existsSync } from 'node:fs';
+import { SessionId } from '../local/branded.js';
 import { describe, expect, it, vi } from 'vitest';
 import type { RuntimeContext } from '../runtime/types.js';
 import type { SessionOptions } from '../session/types.js';
@@ -51,7 +52,7 @@ describe('agent-sdk package-local runtime bootstrap helpers', () => {
     };
 
     const bootstrap = createPackageLocalRuntimeBootstrap({
-      sessionId: 'session-1',
+      sessionId: SessionId('session-1'),
       options,
       bladeConfig,
       defaultContext,

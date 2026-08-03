@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
+import { SessionId } from '../local/branded.js';
 import type { AgentTrace } from '../observability/types.js';
 import { PackageLocalSession } from '../session/sessionInstance.js';
 import type {
@@ -42,7 +43,7 @@ describe('agent-sdk package-local Session instance', () => {
       expect(turn.message).toBe('hello');
       expect(turn.sendOptions?.maxTurns).toBe(4);
       expect(turn.snapshot).toMatchObject({
-        sessionId: 'session-1',
+        sessionId: SessionId('session-1'),
         context: {
           capabilities: {
             filesystem: {
@@ -57,16 +58,16 @@ describe('agent-sdk package-local Session instance', () => {
         },
       });
       expect(streamOptions).toEqual({ includeThinking: true });
-      yield { type: 'content', delta: 'ok', sessionId: 'session-1' } satisfies StreamMessage;
+      yield { type: 'content', delta: 'ok', sessionId: SessionId('session-1') } satisfies StreamMessage;
       yield {
         type: 'result',
         subtype: 'success',
         content: 'ok',
-        sessionId: 'session-1',
+        sessionId: SessionId('session-1'),
       } satisfies StreamMessage;
     });
     const session = new PackageLocalSession({
-      sessionId: 'session-1',
+      sessionId: SessionId('session-1'),
       options,
       streamTurn,
       createTurnId: () => 'turn-1',
@@ -88,8 +89,8 @@ describe('agent-sdk package-local Session instance', () => {
     });
 
     await expect(collect(session.stream({ includeThinking: true }))).resolves.toEqual([
-      { type: 'content', delta: 'ok', sessionId: 'session-1' },
-      { type: 'result', subtype: 'success', content: 'ok', sessionId: 'session-1' },
+      { type: 'content', delta: 'ok', sessionId: SessionId('session-1') },
+      { type: 'result', subtype: 'success', content: 'ok', sessionId: SessionId('session-1') },
     ]);
     await expect(collect(session.stream())).rejects.toThrow(
       'No pending message. Call send() before stream().',
@@ -100,18 +101,18 @@ describe('agent-sdk package-local Session instance', () => {
   it('passes session context to the injected stream runner', async () => {
     const streamTurn = vi.fn(async function* (_turn, _streamOptions, sessionContext) {
       expect(sessionContext).toEqual({
-        sessionId: 'session-1',
+        sessionId: SessionId('session-1'),
         options,
       });
       yield {
         type: 'result',
         subtype: 'success',
         content: 'ok',
-        sessionId: 'session-1',
+        sessionId: SessionId('session-1'),
       } satisfies StreamMessage;
     });
     const session = new PackageLocalSession({
-      sessionId: 'session-1',
+      sessionId: SessionId('session-1'),
       options,
       streamTurn,
       createTurnId: () => 'turn-1',
@@ -135,11 +136,11 @@ describe('agent-sdk package-local Session instance', () => {
         type: 'result',
         subtype: 'success',
         content: 'ok',
-        sessionId: 'session-1',
+        sessionId: SessionId('session-1'),
       } satisfies StreamMessage;
     });
     const session = new PackageLocalSession({
-      sessionId: 'session-1',
+      sessionId: SessionId('session-1'),
       options,
       streamTurn,
       createTurnId: () => 'turn-1',
@@ -165,7 +166,7 @@ describe('agent-sdk package-local Session instance', () => {
   it('forwards default context changes into the package-local runtime port', () => {
     const setDefaultContext = vi.fn();
     const session = new PackageLocalSession({
-      sessionId: 'session-1',
+      sessionId: SessionId('session-1'),
       options,
       streamTurn: async function* () {},
       createTurnId: () => 'turn-1',
@@ -185,7 +186,7 @@ describe('agent-sdk package-local Session instance', () => {
 
   it('fails MCP actions with a clear runtime capability error when no MCP runtime is configured', async () => {
     const session = new PackageLocalSession({
-      sessionId: 'session-1',
+      sessionId: SessionId('session-1'),
       options,
       streamTurn: async function* () {},
       createTurnId: () => 'turn-1',
@@ -203,10 +204,10 @@ describe('agent-sdk package-local Session instance', () => {
   });
 
   it('routes fork through a package-local runtime port without requiring a delegate', async () => {
-    const forked = { sessionId: 'forked-session' } as ISession;
+    const forked = { sessionId: SessionId('forked-session') } as ISession;
     const fork = vi.fn(async () => forked);
     const session = new PackageLocalSession({
-      sessionId: 'session-1',
+      sessionId: SessionId('session-1'),
       options,
       streamTurn: async function* () {},
       createTurnId: () => 'turn-1',
@@ -219,7 +220,7 @@ describe('agent-sdk package-local Session instance', () => {
 
   it('fails fork with a clear runtime capability error when no fork runtime is configured', async () => {
     const session = new PackageLocalSession({
-      sessionId: 'session-1',
+      sessionId: SessionId('session-1'),
       options,
       streamTurn: async function* () {},
       createTurnId: () => 'turn-1',
@@ -233,7 +234,7 @@ describe('agent-sdk package-local Session instance', () => {
   it('reads traces from a package-local runtime port without requiring a delegate', () => {
     const trace: AgentTrace = {
       id: 'trace-1',
-      sessionId: 'session-1',
+      sessionId: SessionId('session-1'),
       status: 'success',
       startedAt: '2026-01-01T00:00:00.000Z',
       endedAt: '2026-01-01T00:00:01.000Z',
@@ -243,7 +244,7 @@ describe('agent-sdk package-local Session instance', () => {
     const getLastTrace = vi.fn(() => trace);
     const getTraces = vi.fn(() => [trace]);
     const session = new PackageLocalSession({
-      sessionId: 'session-1',
+      sessionId: SessionId('session-1'),
       options,
       streamTurn: async function* () {},
       createTurnId: () => 'turn-1',
@@ -259,7 +260,7 @@ describe('agent-sdk package-local Session instance', () => {
   it('centralizes lifecycle close and abort behavior', async () => {
     const cleanup = vi.fn();
     const session = new PackageLocalSession({
-      sessionId: 'session-1',
+      sessionId: SessionId('session-1'),
       options,
       streamTurn: async function* () {},
       createTurnId: () => 'turn-1',

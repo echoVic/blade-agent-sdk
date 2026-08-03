@@ -1,4 +1,5 @@
 import { existsSync } from 'node:fs';
+import { SessionId } from '../local/branded.js';
 import { describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
 import {
@@ -194,13 +195,13 @@ describe('agent-sdk package-local runtime tool registration helpers', () => {
     const registered: unknown[] = [];
 
     await registerPackageLocalRuntimeBuiltinTools({
-      sessionId: 'session-1',
+      sessionId: SessionId('session-1'),
       storageRoot: '/tmp/blade',
       mcpRegistry,
       builtinToolProvider: {
         async getTools(context: unknown) {
           expect(context).toEqual({
-            sessionId: 'session-1',
+            sessionId: SessionId('session-1'),
             configDir: '/tmp/blade',
             mcpRegistry,
             includeMcpProtocolTools: false,
@@ -283,13 +284,13 @@ describe('agent-sdk package-local runtime tool registration helpers', () => {
           };
         },
       },
-      sessionId: 'session-1',
+      sessionId: SessionId('session-1'),
       storageRoot: '/tmp/blade',
       mcpRegistry,
       builtinToolProvider: {
         async getTools(context: unknown) {
           expect(context).toEqual({
-            sessionId: 'session-1',
+            sessionId: SessionId('session-1'),
             configDir: '/tmp/blade',
             mcpRegistry,
             includeMcpProtocolTools: false,

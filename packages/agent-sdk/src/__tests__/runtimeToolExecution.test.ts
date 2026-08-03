@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
+import { SessionId } from '../local/branded.js';
 import type { ContextSnapshot } from '../runtime/types.js';
 import {
   executePackageLocalToolCalls,
@@ -8,7 +9,7 @@ import type { ToolResult } from '../tools/types/index.js';
 
 function snapshot(): ContextSnapshot {
   return {
-    sessionId: 'session-1',
+    sessionId: SessionId('session-1'),
     turnId: 'turn-1',
     context: {
       capabilities: {
@@ -28,7 +29,7 @@ describe('agent-sdk package-local runtime tool execution', () => {
   it('preserves adapter-defined execution context extensions', async () => {
     const adapterCapability = { source: 'root-adapter' };
     const executionContext = {
-      sessionId: 'session-1',
+      sessionId: SessionId('session-1'),
       userId: 'user-1',
       adapterCapability,
     } as const;
@@ -92,7 +93,7 @@ describe('agent-sdk package-local runtime tool execution', () => {
       },
       executionPipeline: pipeline,
       executionContext: {
-        sessionId: 'session-1',
+        sessionId: SessionId('session-1'),
         userId: 'user-1',
         contextSnapshot: snapshot(),
       },
@@ -139,7 +140,7 @@ describe('agent-sdk package-local runtime tool execution', () => {
         }),
       },
       executionContext: {
-        sessionId: 'session-1',
+        sessionId: SessionId('session-1'),
         userId: 'user-1',
       },
       signal: controller.signal,
@@ -222,7 +223,7 @@ describe('agent-sdk package-local runtime tool execution', () => {
         getRegistry: () => ({ get: () => undefined }),
       },
       executionContext: {
-        sessionId: 'session-1',
+        sessionId: SessionId('session-1'),
         userId: 'user-1',
       },
       hooks: {

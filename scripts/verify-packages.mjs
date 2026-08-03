@@ -1464,6 +1464,7 @@ import {
 import {
   createSession as createSessionFromSessionSubpath,
   resumeSession as resumeSessionFromSessionSubpath,
+  SessionId as SessionIdValue,
 } from '@blade-ai/agent-sdk/session';
 import {
   defineTool as defineToolFromToolsSubpath,
@@ -1809,7 +1810,7 @@ const runtimeContext: RuntimeContext = {
 const coreStreamMessage: CoreStreamMessage = {
   type: CoreStreamMessageType.CONTENT,
   delta: 'ok',
-  sessionId: 'session-id',
+  sessionId: SessionIdValue('session-id'),
 };
 const coreToolDefinition: CoreToolDefinition<{ text: string }, string> = echoTool;
 const corePermissionHandler: PermissionHandler = createModePermissionHandler(CorePermissionMode.DEFAULT);
@@ -1822,7 +1823,7 @@ const sdkErrorOptions: SdkErrorOptions = {
 const sessionOptionsFromSubpath: SubpathSessionOptions = sessionOptions;
 const resumeOptions: ResumeOptions = {
   ...sessionOptionsFromSubpath,
-  sessionId: 'session-id',
+  sessionId: SessionIdValue('session-id'),
 };
 const createSessionFromSessionSubpathRef: typeof createSession = createSessionFromSessionSubpath;
 const resumeSessionFromSessionSubpathRef: (options: ResumeOptions) => Promise<SubpathSession> =

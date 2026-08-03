@@ -14,7 +14,7 @@ function makeContextData(
   return {
     layers: {
       system: { role: 'assistant', capabilities: [], tools: [], version: '1.0' },
-      session: { sessionId: 's1' as SessionId, preferences: {}, configuration: {}, startTime: Date.now() },
+      session: { sessionId: SessionId('s1') as SessionId, preferences: {}, configuration: {}, startTime: Date.now() },
       conversation: { messages, topics: [], lastActivity: Date.now() },
       tool: { recentCalls: toolCalls, toolStates: {}, dependencies: {} },
       workspace: { currentFiles: [], recentFiles: [], environment: {} },

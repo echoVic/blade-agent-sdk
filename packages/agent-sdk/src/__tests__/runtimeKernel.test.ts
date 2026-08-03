@@ -1,4 +1,5 @@
 import type { ModelPort } from '@blade-ai/ai';
+import { SessionId } from '../local/branded.js';
 import type { AgentHookPort, AgentToolPort } from '@blade-ai/agent/ports';
 import type { AgentStorePort } from '@blade-ai/agent/state';
 import type { AgentTracePort } from '@blade-ai/agent/tracing';
@@ -88,7 +89,7 @@ describe('agent-sdk package-local runtime kernel operations', () => {
       kernelPortFactory,
       toolCatalog,
       createExecutionPipeline,
-      sessionId: 'session-1',
+      sessionId: SessionId('session-1'),
       sessionStore,
       hookRuntime,
     });
@@ -113,7 +114,7 @@ describe('agent-sdk package-local runtime kernel operations', () => {
       modelId: 'secondary',
     });
     expect(kernelPortFactory.createStorePort).toHaveBeenCalledWith({
-      sessionId: 'session-1',
+      sessionId: SessionId('session-1'),
       sessionStore,
     });
     expect(kernelPortFactory.createHookPort).toHaveBeenCalledWith({ hookRuntime });
