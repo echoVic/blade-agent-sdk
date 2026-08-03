@@ -82,7 +82,7 @@ Dependency direction:
 
 ---
 
-## Migration Progress — 301 Slices Completed
+## Migration Progress — 302 Slices Completed
 
 ### Subsystems at 100% (Complete)
 
@@ -806,6 +806,21 @@ After 29 slices (#150-#178), approximately 4,160 lines migrated from root to `@b
 **Verification:** `pnpm -r run type-check` zero errors; root type-check **120 errors (down 9 from 129)**; boundary verifier unchanged (120 pre-existing, 0 new); `git diff --check` clean
 **Impact:** 56L root code eliminated; TurnState identity unified (root consumers were passing TurnState values across the dual declaration); Like interfaces now match real class APIs — unblocks future ToolRegistry/ToolCatalog shims
 **Notes:** `LoopRunner.ts(364)` error persists (renamed target `IBackgroundAgentManager` → `BackgroundAgentManagerLike`; root `context.backgroundAgentManager` is typed `unknown` — pre-existing loose typing in root code)
+**Remaining work (next slices):** `Session.ts` missing `SessionId` import (blocks 6 session test files); LoopState.ts (133L, next near-identical shim candidate); boundary verifier browser-safe closure (120 pre-existing violations)
+
+### Slice #302 — Shim PlanExecutor.ts to Re-Export from @blade-ai/agent-sdk/local
+
+**Capability:** `PlanExecutor` — Plan-mode prompt injection and loop management (injectPlanReminder, buildPlanSystemPrompt, runPlanLoop, runPlanLoopStream) (99L)
+**Target:** `@blade-ai/agent-sdk/local`
+**Root file shimmed:** `src/agent/PlanExecutor.ts` — reduced from 99L implementation to 1-line re-export
+**Package:** `packages/agent-sdk/src/local/planExecutor.ts` (99L) — identical except import paths (Logger, promptBuilder, prompts, agentEvent, agentTypes, agentLoopTypes) and `(context?.snapshot as any)?.cwd` cast (package `ChatContext.snapshot` is `unknown`)
+**Barrel:** Already exported in `packages/agent-sdk/src/local/index.ts` (no change needed)
+**Consumers:** `Agent.ts`, `LoopRunner.ts` — unchanged (class construction, structural identity)
+**Type-error fix:** Resolves `PlanExecutor.ts(63)` `Property 'cwd' does not exist on type '{}'` (root ChatContext.snapshot typed `{}` vs package `unknown` + cast)
+**Tests:** 63 tests pass across 3 files (PlanExecutor 6, AgentLoop, LoopRunner 29)
+**Verification:** `pnpm -r run type-check` zero errors; root type-check **119 errors (down 1 from 120)**; boundary verifier unchanged (120 pre-existing, 0 new); `git diff --check` clean
+**Impact:** 99L root code eliminated; agent/plan subsystem migrated (PlanExecutor was the last standalone agent file after #161)
+**Notes:** Package `as any` cast is pre-existing (ChatContext.snapshot typed `unknown`); a future slice could tighten `ChatContext.snapshot` to `ContextSnapshot` — touching many consumers
 **Remaining work (next slices):** `Session.ts` missing `SessionId` import (blocks 6 session test files); LoopState.ts (133L, next near-identical shim candidate); boundary verifier browser-safe closure (120 pre-existing violations)
 
 ## 🏆 Milestone — Zero Production Test Failures (#245)
