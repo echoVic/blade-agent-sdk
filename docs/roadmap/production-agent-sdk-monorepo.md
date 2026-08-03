@@ -82,7 +82,7 @@ Dependency direction:
 
 ---
 
-## Migration Progress — 339 Slices Completed
+## Migration Progress — 340 Slices Completed
 
 ### Subsystems at 100% (Complete)
 
@@ -1304,6 +1304,16 @@ After 29 slices (#150-#178), approximately 4,160 lines migrated from root to `@b
 **Verification:** `pnpm -r run type-check` 3/3 zero errors; root type-check 58 errors (0 new); `verify:boundaries` PASS; `verify:entrypoints` PASS; `verify:packages` PASS; `verify:release` PASS; `verify:examples` PASS; root suite 1248 passing (SessionStore/SessionRuntime/ContextManager/PersistentStore/BackgroundAgentManager/Session persistence suites all pass) / 43 pre-existing failures unchanged; package suite 641 passing (+3 new, 5 pre-existing failures unchanged); `git diff --check` clean
 **Impact:** the session persistence capability is fully package-owned; the last root dependency of the context core is now a shim — ContextManager and PersistentStore can be migrated next without dragging the store along.
 **Remaining work (next slices):** `ExecutionPipeline.ts` (1468L); context core (ContextManager 712L, PersistentStore 841L); Session.ts (784L) + SessionRuntime.ts (598L); Agent.ts (662L) + LoopRunner (404L) + BackgroundAgentManager (605L)
+
+### Slice #340 — Port the JSONL PersistentStore into @blade-ai/agent-sdk/local (841L)
+
+**Capability:** `PersistentStore`/`NoopPersistentStore` — the durable project-scoped session store (`{storageRoot}/projects/{escaped-path}/{sessionId}.jsonl`): initialize/createSession/saveMessage/saveToolUse/saveToolResult/saveCompaction/saveContext/loadSession/loadConversation/listSessions/getSessionSummary/deleteSession/cleanupOldSessions/getStorageStats/checkStorageHealth/listAllProjects. Formerly root `src/context/storage/PersistentStore.ts` (841L) — the largest context-core file. Unblocked by #339 (its `JsonlSessionStore` dep is now a shim); all other deps were package-owned (`JSONLStore`, `pathUtils` incl. `detectGitBranch`/`listProjectDirectories`, `extractMimeType`/`parseToolCallArguments` in `SessionRuntimeUtils`, `ContextData`/`ConversationContext`/`MessageInfo`/`PartInfo`/`SessionContext`/`SessionEvent`/`SessionInfo` in `local/context.ts`, branded `MessageId`/`SessionId`).
+**Package capability port:** `local/persistentStore.ts` (841L) — faithful copy with import rewrites. Exported from `local/index.ts` (`PersistentStore`, `NoopPersistentStore`).
+**Root file shimmed:** `src/context/storage/PersistentStore.ts` (841L → 4L) re-exports from `@blade-ai/agent-sdk/local`; root consumers (ContextManager) unchanged.
+**Focused test:** `packages/agent-sdk/src/__tests__/persistentStorePort.test.ts` — 3 runtime tests on temp dirs (persist/load/list/stats/delete round-trip via `saveMessage(sessionId, 'user', ...)`, NoopPersistentStore inertness, `checkStorageHealth` availability/writability).
+**Verification:** `pnpm -r run type-check` 3/3 zero errors; root type-check 58 errors (0 new); `verify:boundaries` PASS; `verify:entrypoints` PASS; `verify:packages` PASS; `verify:release` PASS; `verify:examples` PASS; root suite 1248 passing (ContextManager/Agent/Session suites all pass) / 43 pre-existing failures unchanged; package suite 644 passing (+3 new, 5 pre-existing failures unchanged); `git diff --check` clean
+**Impact:** the context-core persistence layer is fully package-owned; root `src/context/storage/` now holds only shims. **ContextManager (712L) is the last real context-core file** and its remaining deps are all shims — the next slice can migrate it.
+**Remaining work (next slices):** `ExecutionPipeline.ts` (1468L); context core (ContextManager 712L); Session.ts (784L) + SessionRuntime.ts (598L); Agent.ts (662L) + LoopRunner (404L) + BackgroundAgentManager (605L)
 
 ## 🏆 Milestone — Zero Production Test Failures (#245)
 

@@ -144,6 +144,11 @@ export type {
 } from './compactionService.js';
 
 export { CacheStore } from './CacheStore.js';
+
+// JSONL persistent store (slice #340 — ported from root
+// src/context/storage/PersistentStore.ts)
+export { NoopPersistentStore, PersistentStore } from './persistentStore.js';
+
 export { BashClassifier } from './BashClassifier.js';
 export type {  BashCommandCategory, BashClassification } from './BashClassifier.js';
 export { SecureProcessExecutor } from './SecureProcessExecutor.js';
