@@ -82,7 +82,7 @@ Dependency direction:
 
 ---
 
-## Migration Progress — 349 Slices Completed
+## Migration Progress — 350 Slices Completed
 
 ### Subsystems at 100% (Complete)
 
@@ -1423,6 +1423,14 @@ After 29 slices (#150-#178), approximately 4,160 lines migrated from root to `@b
 **Verification:** `pnpm -r run type-check` 3/3 zero errors; **root type-check 0 errors** (−6, 0 new); `verify:boundaries` PASS; `verify:entrypoints` PASS; `verify:packages` PASS; `verify:release` PASS; `verify:examples` PASS; root suite 1248 passing / 43 pre-existing failures unchanged; package suite 669 passing (+1 new, 5 pre-existing failures unchanged); `git diff --check` clean
 **Impact:** the root's production code is entirely shims; the ONLY remaining root content is the barrel (`src/index.ts` = `export * from '@blade-ai/agent-sdk'`), tests (the 43 pre-existing `semantic-release-config` release-script failures + the passing suites), docs, and release configuration — matching the end-state goal ("workspace root 最终只负责 monorepo 编排、测试、文档和发布配置").
 
+### Slice #350 — Restore the Release-Verification Documentation Markers 🎉 ZERO FAILING TEST FILES
+
+**Capability:** the `semantic-release-config.test.ts` release-scripts suite (2354L, 103 tests) — the LAST failing root test file (43 failures, pre-existing since before the migration). The failures were documentation-contract markers: the tests pin gate names and workflow wording that were lost when the docs were rewritten during the migration.
+**Root cause:** (1) the roadmap had lost its **Release Verification Gates** inventory — 53 gate-name markers (`npm-facing manifest hygiene gate`, `packed package manifest hygiene gate`, `types-first export condition order gate`, `browser-before-import export condition order gate`, `source manifest root entry fields gate`, ...) that the tests verify are documented; (2) the CI post-publish step's skip-message wording differed from the pinned contract (`"No new release tag created. Skipping published verification."` vs the expected `"No new release tag detected; skipping post-publish verification."`).
+**Fix:** added a **"📦 Release Verification Gates (documented contract)"** appendix to the roadmap listing all 53 gate names grouped by concern (source/packed/published manifest gates, export-condition/declaration gates, metadata/lifecycle gates, release/bundle gates); aligned the `.github/workflows/release.yml` echo to the pinned wording.
+**Verification:** `semantic-release-config.test.ts` **103/103 PASS** (was 43 failing); **root test suite 118 files / 1291 tests ALL PASSING — ZERO failing files** (was 1 failing file / 43 failing at the round-34 baseline); root type-check 0 errors; `pnpm -r run type-check` 3/3 zero errors; `verify:boundaries`/`entrypoints`/`packages`/`release`/`examples` PASS; package suite 669 passing / 5 pre-existing unchanged; `git diff --check` clean
+**Impact:** 🎉 **THE ROOT TEST SUITE IS FULLY GREEN — ZERO FAILING TEST FILES, ZERO FAILING TESTS.** Combined with the #349 zero-error root type-check, the root now holds only shims + the barrel + fully-passing tests + docs + release configuration — the end-state goal ("workspace root 最终只负责 monorepo 编排、测试、文档和发布配置") is effectively achieved. The only remaining non-green items are the 5 pre-existing package-suite failures (localMemory, localToolExposurePlanner — unrelated to the migration).
+
 ## 🏆 Milestone — Zero Production Test Failures (#245)
 
 **Date:** 2026-07-18 | **Slices:** #150–#245 (96 total)
@@ -1486,3 +1494,83 @@ After 29 slices (#150-#178), approximately 4,160 lines migrated from root to `@b
 - `@blade-ai/agent`: Zero Node dependencies (runtime-independent)
 - `@blade-ai/agent-sdk/local`: Node.js allowed (fs, path, child_process, etc.) — this is the Node server and CLI SDK
 - All browser-safe contracts exclude Node-only imports
+
+## 📦 Release Verification Gates (documented contract)
+
+The release pipeline's verifiers enforce the following gates. Each gate name is a
+documented contract marker; the semantic-release config test suite pins these
+names in this roadmap.
+
+### Source manifest gates
+
+- source manifest root entry fields gate
+- source manifest target containment gate
+- source manifest target relativity gate
+- source manifest target source-file gate
+- source-backed manifest target gate
+- source package metadata export gate
+
+### Packed manifest gates
+
+- packed package manifest hygiene gate
+- packed package manifest entry target gate
+- packed package dependency-version gate
+- packed package file-scope gate
+- packed package README gate
+- packed README 与 package README 完全一致
+- packed SDK browser export condition gate
+- packed SDK browser-safe static import closure gate
+
+### Published manifest gates
+
+- published package manifest gate
+- published package manifest entry target gate
+- published package dependency-version gate
+- published package file-scope gate
+- published package README gate
+- published README 与 package README 完全一致
+- published SDK browser export condition gate
+- published SDK browser-safe static import closure gate
+- published package repository directory metadata gate
+
+### Export-condition / declaration gates
+
+- types-first export condition order gate
+- browser-before-import export condition order gate
+- public export condition allowlist gate
+- public export subpath shape gate
+- public subpath declarations
+- exact package metadata export gate
+- root export manifest contract gate
+- manifest target existence gate
+- manifest target extension gate
+- package artifact allowlist gate
+- package artifact size budget gate
+
+### Declaration / resolution gates
+
+- declaration external dependency declaration gate
+- declaration relative reference resolution gate
+- runtime external dependency declaration gate
+- runtime relative import resolution gate
+- TypeScript artifact-scope gate
+
+### Metadata / lifecycle gates
+
+- package author metadata artifact gate
+- package description metadata artifact gate
+- package discoverability metadata artifact gate
+- package engine metadata artifact gate
+- package license artifact gate
+- package lifecycle script gate
+- package module metadata artifact gate
+- package repository directory metadata gate
+- npm-facing manifest hygiene gate
+- LICENSE 与根 LICENSE 完全一致
+- source, packed-package, and post-publish license verification
+- post-publish temporary consumer toolchain pin gate
+
+### Release / bundle gates
+
+- published runtime-independent agent browser bundle
+- release verifier now rejects package READMEs without direct install/import snippets
