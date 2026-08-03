@@ -200,6 +200,9 @@ importers:
       js-tiktoken:
         specifier: 1.0.21
         version: 1.0.21
+      json-schema:
+        specifier: 0.4.0
+        version: 0.4.0
       lodash-es:
         specifier: 4.17.23
         version: 4.17.23

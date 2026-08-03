@@ -8,6 +8,7 @@ export default defineConfig({
     'model/index': 'src/model/index.ts',
     'providers/openai-compatible/index': 'src/providers/openai-compatible/index.ts',
     'providers/vercel/index': 'src/providers/vercel/index.ts',
+    'providers/index': 'src/providers/index.ts',
     'retry/index': 'src/retry/index.ts',
   },
   format: ['esm'],

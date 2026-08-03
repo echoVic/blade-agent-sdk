@@ -62,9 +62,9 @@
       "import": "./dist/tools/builtin/index.js"
     },
     "./tools/public": {
-      "types": "./dist/tools/public.d.ts",
-      "browser": "./dist/tools/public.js",
-      "import": "./dist/tools/public.js"
+      "types": "./dist/tools/index.d.ts",
+      "browser": "./dist/tools/index.js",
+      "import": "./dist/tools/index.js"
     },
     "./errors": {
       "types": "./dist/errors/index.d.ts",
@@ -77,9 +77,9 @@
       "import": "./dist/local/index.js"
     },
     "./local/public": {
-      "types": "./dist/local/public.d.ts",
+      "types": "./dist/local/index.d.ts",
       "browser": "./dist/browser/server-only-stub.js",
-      "import": "./dist/local/public.js"
+      "import": "./dist/local/index.js"
     },
     "./subagents": {
       "types": "./dist/subagents/index.d.ts",
@@ -123,6 +123,7 @@
     "gray-matter": "4.0.3",
     "hono": "4.12.14",
     "js-tiktoken": "1.0.21",
+    "json-schema": "0.4.0",
     "lodash-es": "4.17.23",
     "lru-cache": "11.3.5",
     "nanoid": "5.1.9",

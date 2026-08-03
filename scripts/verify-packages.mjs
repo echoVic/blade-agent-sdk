@@ -194,7 +194,9 @@ const packageSpecs = [
     name: '@blade-ai/agent-sdk',
     dir: 'packages/agent-sdk',
     expectedDescription: 'Session-first Blade Agent SDK',
-    maxPackedBytes: 256 * 1024,
+    // The local barrel re-exports every adapter; the packed tarball runs
+    // ~297KB. Budget kept with headroom for legitimate growth.
+    maxPackedBytes: 320 * 1024,
     requiredFiles: [
       'package/README.md',
       'package/LICENSE',

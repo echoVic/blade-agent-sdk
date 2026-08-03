@@ -196,6 +196,24 @@ function extractSpecifiers(source) {
   return specifiers;
 }
 
+/**
+ * Extracts only runtime (non-type-only) import specifiers.
+ * `import type`/`export type` statements are erased at compile time and never
+ * reach a browser bundle, so they must not pull their targets into the
+ * browser-safe static import closure. Mixed imports (`import { type A, B }`)
+ * are kept conservatively since at least one binding is runtime.
+ */
+function extractRuntimeSpecifiers(source) {
+  const specifiers = [];
+  const runtimePattern =
+    /\b(?:import|export)\s+(?:(type)\s+)?[^'"]*?\s+from\s+['"]([^'"]+)['"]|import\s*\(\s*['"]([^'"]+)['"]\s*\)/g;
+  for (const match of source.matchAll(runtimePattern)) {
+    if (match[1]) continue; // `import type ... from` / `export type ... from`
+    specifiers.push(match[2] ?? match[3]);
+  }
+  return specifiers;
+}
+
 function extractNamedImportsFromSpecifier(source, specifier) {
   const names = [];
   const escapedSpecifier = specifier.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -560,7 +578,7 @@ function collectStaticImportClosure(entryFiles, packageSourceDir) {
     seen.add(file);
 
     const source = readFileSync(file, 'utf-8');
-    for (const specifier of extractSpecifiers(source)) {
+    for (const specifier of extractRuntimeSpecifiers(source)) {
       const resolved = resolveRelativeSourceFile(file, specifier, packageSourceDir);
       if (resolved && !seen.has(resolved)) {
         pending.push(resolved);

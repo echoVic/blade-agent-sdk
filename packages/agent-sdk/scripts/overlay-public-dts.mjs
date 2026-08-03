@@ -1,4 +1,4 @@
-import { copyFileSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { copyFileSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 const dist = join(process.cwd(), 'dist');
@@ -27,6 +27,25 @@ for (const [sourcePath, targetPath] of overlays) {
   writeFileSync(target, rewritten);
   rmSync(source, { force: true });
 }
+
+// Any other emitted declaration that referenced a public-index module (whose
+// artifact is overlaid into index.d.ts and removed above) must be rewritten to
+// the overlay target, otherwise the packed declarations would dangle.
+function rewriteDeclarationReferences(dir) {
+  for (const entry of readdirSync(dir)) {
+    const fullPath = join(dir, entry);
+    if (statSync(fullPath).isDirectory()) {
+      rewriteDeclarationReferences(fullPath);
+      continue;
+    }
+    if (!fullPath.endsWith('.d.ts')) continue;
+    const source = readFileSync(fullPath, 'utf8');
+    if (source.includes('public-index.js')) {
+      writeFileSync(fullPath, source.replaceAll('public-index.js', 'index.js'));
+    }
+  }
+}
+rewriteDeclarationReferences(dist);
 
 for (const sourceMapPath of publicDeclarationMaps) {
   rmSync(join(dist, sourceMapPath), { force: true });
