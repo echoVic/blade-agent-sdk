@@ -194,9 +194,13 @@ export class HookRuntime {
     toolName: string,
     input: JsonObject,
     result: ToolResult,
-    toolUseId?: ToolUseId,
+    options: {
+      toolUseId?: ToolUseId;
+      permissionMode?: PermissionMode;
+      abortSignal?: AbortSignal;
+    } = {},
   ): Promise<PostToolUseRuntimeResult> {
-    const toolUseId_ = toolUseId ?? ToolUseId(`tool_${nanoid()}`);
+    const toolUseId_ = options.toolUseId ?? ToolUseId(`tool_${nanoid()}`);
 
     let nextResult = result;
 
@@ -239,9 +243,16 @@ export class HookRuntime {
     toolName: string,
     input: JsonObject,
     result: ToolResult,
-    toolUseId?: ToolUseId,
+    options: {
+      toolUseId?: ToolUseId;
+      permissionMode?: PermissionMode;
+      errorType?: string;
+      isInterrupt?: boolean;
+      isTimeout?: boolean;
+      abortSignal?: AbortSignal;
+    } = {},
   ): Promise<PostToolUseRuntimeResult> {
-    const toolUseId_ = toolUseId ?? ToolUseId(`tool_${nanoid()}`);
+    const toolUseId_ = options.toolUseId ?? ToolUseId(`tool_${nanoid()}`);
 
     let nextResult = result;
 

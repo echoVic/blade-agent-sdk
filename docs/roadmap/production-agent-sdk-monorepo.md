@@ -82,7 +82,7 @@ Dependency direction:
 
 ---
 
-## Migration Progress — 341 Slices Completed
+## Migration Progress — 342 Slices Completed
 
 ### Subsystems at 100% (Complete)
 
@@ -1325,6 +1325,19 @@ After 29 slices (#150-#178), approximately 4,160 lines migrated from root to `@b
 **Verification:** `pnpm -r run type-check` 3/3 zero errors; root type-check 54 errors (−4, 0 new); `verify:boundaries` PASS; `verify:entrypoints` PASS; `verify:packages` PASS; `verify:release` PASS; `verify:examples` PASS; root suite 1248 passing (ContextManager/Agent/Session/ModelManager/CompactionHandler suites all pass) / 43 pre-existing failures unchanged; package suite 648 passing (+4 new, 5 pre-existing failures unchanged); `git diff --check` clean
 **Impact:** 🎉 **CONTEXT SUBSYSTEM 100% MIGRATED** — root `src/context/` now holds ONLY shims (CompactionService #337, PersistentStore #340, ContextManager #341, processors/storage/strategies earlier). The context-core chain (SessionStore #339 → PersistentStore #340 → ContextManager #341) is complete.
 **Remaining work (next slices):** `ExecutionPipeline.ts` (1468L); Session.ts (784L) + SessionRuntime.ts (598L); Agent.ts (662L) + LoopRunner (404L) + BackgroundAgentManager (605L)
+
+### Slice #342 — Port ExecutionPipeline into @blade-ai/agent-sdk/local (1468L) 🎉 Largest Root File Migrated
+
+**Capability:** `ExecutionPipeline` — the tool execution pipeline (registry lookup, permission resolution with mode/path/rule/handler flows + confirmation, pre/post tool-use hooks via HookRuntime, effect normalization, execution history, timeouts, per-kind concurrency scheduling, result artifacts). Formerly root `src/tools/execution/ExecutionPipeline.ts` (1468L) — the LARGEST root file. ALL deps were package-owned (`HookRuntime`, `Logger`, branded `SessionId`/`ToolUseId`, `types/permissions` handlers, `ToolCatalog`/`ToolRegistry`, `tools/types` incl. the LOOSE `Tool` (the root ToolDefinition.ts shim re-exports from `@blade-ai/agent-sdk/tools`, so the pipeline's `Tool` IS the loose index.ts one), `ToolKind`/`ToolErrorType`/`validationErrorToToolResult` (from `tools/index.js`), `ConfirmationUtils`/`SessionRuntimeUtils`/`FileLockManager`).
+**Package bugfix (TDD — #294 regression):** the package `HookRuntime.applyPostToolUse`/`applyPostToolUseFailure` 4th parameter was `toolUseId?: ToolUseId` — the ORIGINAL root API (and both real callers: the pipeline and `defaultToolRuntime.ts`) pass an OPTIONS object `{ toolUseId?, permissionMode?, abortSignal? (+errorType/isInterrupt/isTimeout for failure) }`. This caused 2 pre-existing root TS2345 errors AND a latent runtime bug (the options object was being used AS the toolUseId). Restored the original options-object signatures; the root's 2 errors + the 2 duplicate-`ConfirmationReasonSource` errors (root imported it twice) are eliminated.
+**Package capability port:** `local/executionPipeline.ts` (1468L) — faithful copy with import rewrites (ExecutionHistoryEntry from `tools/types/ExecutionTypes.js`, normalize*Effects from `toolEffects.js`, `validationErrorToToolResult` from `tools/index.js`, mid-file ConfirmationReasonSource/Entry re-exports consolidated). Exported from `local/index.ts` (`ExecutionPipeline`, `ExecutionPipelineConfig`, `ExecutionStats`).
+**Root file shimmed:** `src/tools/execution/ExecutionPipeline.ts` (1468L → 7L) re-exports from `@blade-ai/agent-sdk/local`; root consumers (SessionRuntime, LoopHookBuilder) unchanged. One root test call site updated to the restored options-object API.
+**Pre-existing error reduction:** root type-check **54 → 50** (−4 errors, 0 new).
+**Size budget:** agent-sdk packed tarball grew past the 320KB budget → raised to 360KB in `verify-packages.mjs` (documented headroom for the remaining Session/Agent core ports).
+**Focused test:** `packages/agent-sdk/src/__tests__/executionPipelinePort.test.ts` — 3 runtime tests (tool execution, unknown-tool failure, execution history).
+**Verification:** `pnpm -r run type-check` 3/3 zero errors; root type-check 50 errors (−4, 0 new); `verify:boundaries` PASS; `verify:entrypoints` PASS; `verify:packages` PASS (360KB budget); `verify:release` PASS; `verify:examples` PASS; root suite 1248 passing (ExecutionPipeline 975L test file + HookRuntime/LoopRunner/LoopHookBuilder/SessionRuntime suites all pass) / 43 pre-existing failures unchanged; package suite 651 passing (+3 new, 5 pre-existing failures unchanged); `git diff --check` clean
+**Impact:** the tool execution capability is fully package-owned; root `src/tools/execution/` is now a shim. Remaining root real-code files: Session.ts (784L) + SessionRuntime.ts (598L); Agent.ts (662L) + LoopRunner (404L) + BackgroundAgentManager (605L) + LoopHookBuilder (390L) + CompactionHandler (277L) + ModelManager (138L).
+**Remaining work (next slices):** Session.ts (784L) + SessionRuntime.ts (598L); Agent.ts (662L) + LoopRunner (404L) + BackgroundAgentManager (605L)
 
 ## 🏆 Milestone — Zero Production Test Failures (#245)
 

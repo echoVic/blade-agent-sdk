@@ -152,6 +152,11 @@ export { NoopPersistentStore, PersistentStore } from './persistentStore.js';
 // Context manager (slice #341 — ported from root src/context/ContextManager.ts)
 export { ContextManager } from './contextManager.js';
 
+// Tool execution pipeline (slice #342 — ported from root
+// src/tools/execution/ExecutionPipeline.ts)
+export { ExecutionPipeline } from './executionPipeline.js';
+export type { ExecutionPipelineConfig, ExecutionStats } from './executionPipeline.js';
+
 export { BashClassifier } from './BashClassifier.js';
 export type {  BashCommandCategory, BashClassification } from './BashClassifier.js';
 export { SecureProcessExecutor } from './SecureProcessExecutor.js';

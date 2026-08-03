@@ -195,8 +195,9 @@ const packageSpecs = [
     dir: 'packages/agent-sdk',
     expectedDescription: 'Session-first Blade Agent SDK',
     // The local barrel re-exports every adapter; the packed tarball runs
-    // ~297KB. Budget kept with headroom for legitimate growth.
-    maxPackedBytes: 320 * 1024,
+    // ~297KB. Budget raised to 360KB in #342 for the ExecutionPipeline
+    // (1468L) port; headroom for the remaining Session/Agent core ports.
+    maxPackedBytes: 360 * 1024,
     requiredFiles: [
       'package/README.md',
       'package/LICENSE',

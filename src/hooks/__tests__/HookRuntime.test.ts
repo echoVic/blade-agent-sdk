@@ -120,7 +120,7 @@ describe('HookRuntime', () => {
       success: true,
       llmContent: 'original output',
     };
-    const post = await runtime.applyPostToolUse('Read', pre.updatedInput, result, ToolUseId('tool-1'));
+    const post = await runtime.applyPostToolUse('Read', pre.updatedInput, result, { toolUseId: ToolUseId('tool-1') });
 
     expect(pre.updatedInput).toEqual({
       file_path: 'a.ts',
