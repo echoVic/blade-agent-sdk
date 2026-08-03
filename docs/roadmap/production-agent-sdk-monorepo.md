@@ -82,7 +82,7 @@ Dependency direction:
 
 ---
 
-## Migration Progress — 298 Slices Completed
+## Migration Progress — 299 Slices Completed
 
 ### Subsystems at 100% (Complete)
 
@@ -761,6 +761,18 @@ After 29 slices (#150-#178), approximately 4,160 lines migrated from root to `@b
 **Verification:** `pnpm -r run type-check` zero errors; root type-check **142 errors (down 1 from 143)** — the shim resolved the pre-existing SubagentRegistry dual-declaration mismatch (`{model, source, ...}` vs `SubagentConfig`); 0 new errors; boundary verifier unchanged (120 pre-existing violations, 0 new); `git diff --check` clean
 **Impact:** 309L root code eliminated; fourth subagents file migrated (after builtinAgents #290, SubagentExecutor/SessionStore pending); root test suite improved 16→10 failing files
 **Remaining work (next slices):** `Session.ts` missing `SessionId` import (pre-existing `Cannot find name 'SessionId'` — blocks 6 session test files); boundary verifier browser-safe closure (120 pre-existing violations); HookManager/HookExecutor/HookTypes (largest remaining hooks files)
+
+### Slice #299 — Shim AgentSessionStore.ts to Re-Export from @blade-ai/agent-sdk/local
+
+**Capability:** `AgentSessionStore` — agent session persistence for Task-tool resume (JSONL storage, session caching, CRUD, auto-cleanup) (271L)
+**Target:** `@blade-ai/agent-sdk/local`
+**Root file shimmed:** `src/agent/subagents/AgentSessionStore.ts` — reduced from 271L implementation to 2-line re-export
+**Package:** `packages/agent-sdk/src/local/agentSessionStore.ts` (271L) — byte-for-byte identical except import paths (Logger, branded, agentTypes, agentSessionTypes)
+**Type-error fix:** Root file used `export type { AgentSession } from '@blade-ai/agent-sdk/local'` — re-exports do NOT bring the name into file scope, causing 12 pre-existing `Cannot find name 'AgentSession'` errors. The shim resolves all 12 by delegating to the package version (which uses the correct import+re-export pattern).
+**Tests:** Root 6 tests pass via shim (AgentSessionStore + BackgroundAgentManager)
+**Verification:** `pnpm -r run type-check` zero errors; root type-check **129 errors (down 13 from 142)** — all 13 AgentSessionStore `Cannot find name 'AgentSession'` errors resolved, 0 new; boundary verifier unchanged (120 pre-existing, 0 new); `git diff --check` clean
+**Impact:** 271L root code eliminated; subagents subsystem now 3/5 files migrated (builtinAgents #290, SubagentRegistry #298, AgentSessionStore #299); root type-check cumulative improvement 143 → 129 across #298-#299
+**Remaining work (next slices):** `Session.ts` missing `SessionId` import (blocks 6 session test files); AgentEvent.ts (249L pure types, next near-identical shim candidate); boundary verifier browser-safe closure (120 pre-existing violations)
 
 ## 🏆 Milestone — Zero Production Test Failures (#245)
 
