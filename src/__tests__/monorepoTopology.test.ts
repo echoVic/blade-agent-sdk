@@ -486,8 +486,11 @@ describe('monorepo topology', () => {
       "export { createChatServiceAsync } from '../session/ChatServiceFactory.js';",
     );
     expect(chatServiceInterfaceSource).not.toContain('VercelAIChatService');
-    expect(chatServiceFactorySource).toContain('function createChatServiceAsync');
-    expect(chatServiceFactorySource).toContain("from './VercelAIChatService.js'");
+    // Since #304, ChatServiceFactory is a re-export shim of the canonical
+    // implementation in @blade-ai/agent-sdk/local.
+    expect(chatServiceFactorySource.trim()).toBe(
+      "export { createChatServiceAsync } from '@blade-ai/agent-sdk/local';",
+    );
     expect(
       chatServiceInterfaceSource,
       'legacy root service path must not be a chat protocol type source',

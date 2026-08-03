@@ -82,7 +82,7 @@ Dependency direction:
 
 ---
 
-## Migration Progress — 303 Slices Completed
+## Migration Progress — 304 Slices Completed
 
 ### Subsystems at 100% (Complete)
 
@@ -835,6 +835,19 @@ After 29 slices (#150-#178), approximately 4,160 lines migrated from root to `@b
 **Verification:** `pnpm -r run type-check` zero errors; root type-check 119 errors (0 new); boundary verifier unchanged (120 pre-existing, 0 new); `git diff --check` clean
 **Impact:** 133L root code eliminated; agent/state subsystem now 4/5 files migrated (ConversationState #281, TurnState #301, LoopState #303, + systemSource); LoopState class identity unified between root loop consumers and package
 **Remaining work (next slices):** `Session.ts` missing `SessionId` import (blocks 6 session test files); `Session.ts` full migration (785L, 11+ type errors); boundary verifier browser-safe closure (120 pre-existing violations)
+
+### Slice #304 — Shim ChatServiceFactory.ts to Re-Export from @blade-ai/agent-sdk/local
+
+**Capability:** `createChatServiceAsync` — async chat service creation with provider header injection (41L)
+**Target:** `@blade-ai/agent-sdk/local`
+**Root file shimmed:** `src/session/ChatServiceFactory.ts` — reduced from 41L implementation to 1-line re-export
+**Package:** `packages/agent-sdk/src/local/chatServiceFactory.ts` (41L) — byte-for-byte identical except import paths (Logger, vercelAIChatService)
+**Barrel:** Already exported in `packages/agent-sdk/src/local/index.ts` (no change needed)
+**Consumers:** `CompactionService.ts`, `ModelManager.ts`, `ChatServiceInterface.ts` — unchanged (same function signature)
+**Tests:** 13 tests pass (CompactionService, ModelManager, ModelManager.setModel)
+**Verification:** `pnpm -r run type-check` zero errors; root type-check 119 errors (0 new); boundary verifier unchanged (120 pre-existing, 0 new); `git diff --check` clean
+**Impact:** 41L root code eliminated; session/chat subsystem further migrated (VercelAIChatService #296, ChatServiceFactory #304)
+**Remaining work (next slices):** `Session.ts` missing `SessionId` import (blocks 6 session test files); tools subsystem re-shims (ToolDefinition 8 diff-lines, ToolCatalog 10, ExecutionTypes 12 — restored in recovery phase #193+); boundary verifier browser-safe closure (120 pre-existing violations)
 
 ## 🏆 Milestone — Zero Production Test Failures (#245)
 
