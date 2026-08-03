@@ -44,7 +44,7 @@ export class McpRegistry extends EventEmitter {
       throw new Error(`MCP服务器 "${name}" 已经注册`);
     }
 
-    const client = new McpClient(config, name, config.healthCheck, undefined, this.storageRoot);
+    const client = new McpClient(name, config, { healthCheckConfig: config.healthCheck });
     const serverInfo: McpServerInfo = {
       config,
       client,
@@ -94,7 +94,7 @@ export class McpRegistry extends EventEmitter {
       command: '',
     };
 
-    const client = new McpClient(config, name, undefined, handle, this.storageRoot);
+    const client = new McpClient(name, config, { inProcessHandle: handle });
     const serverInfo: McpServerInfo = {
       config,
       client,

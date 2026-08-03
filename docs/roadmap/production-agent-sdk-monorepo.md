@@ -82,7 +82,7 @@ Dependency direction:
 
 ---
 
-## Migration Progress — 315 Slices Completed
+## Migration Progress — 316 Slices Completed
 
 ### Subsystems at 100% (Complete)
 
@@ -1005,6 +1005,20 @@ After 29 slices (#150-#178), approximately 4,160 lines migrated from root to `@b
 **Verification:** `pnpm -r run type-check` zero errors; root type-check 96 errors (0 new); `verify:boundaries` PASS; `verify:entrypoints` PASS; `git diff --check` clean
 **Impact:** 114L root code eliminated; **subagents subsystem FULLY migrated** (builtinAgents #290, SubagentRegistry #298, AgentSessionStore #299, types #314, SubagentExecutor #315); first breaking-change slice this session with documented migration path
 **Remaining work (next slices):** `McpClient.ts`/`McpRegistry.ts`/`createMcpTool.ts` re-shims (legacy 5-arg vs new 3-arg McpClient constructor alignment — multi-slice); `session/types.ts` re-shim (StreamMessage session vs kernel union); package Tool declaration consolidation; `HookExecutor.ts`/`HookManager.ts` (670/902 diff lines)
+
+### Slice #316 — Shim McpClient.ts to Re-Export from @blade-ai/agent-sdk/local
+
+**Capability:** `McpClient` — MCP client with connection management, OAuth, health monitoring, retry, error classification (631L)
+**Target:** `@blade-ai/agent-sdk/local`
+**Root file shimmed:** `src/mcp/McpClient.ts` — reduced from 631L implementation to 2-line re-export
+**Package:** `packages/agent-sdk/src/local/McpClient.ts` (559L) — canonical implementation with the NEW 3-arg constructor `(serverName, config, options)` (vs root legacy 5-arg `(config, serverName, healthCheck, handle, storageRoot)`)
+**Breaking change (constructor):** `McpClient` constructor signature changed to `(serverName, config, options?)`; aligned consumers:
+- `McpRegistry.ts` (2 sites): `new McpClient(config, name, config.healthCheck, undefined, storageRoot)` → `new McpClient(name, config, { healthCheckConfig: config.healthCheck })`; in-process handle variant → `{ inProcessHandle: handle }`
+- `McpClient.test.ts` (5 sites): `new McpClient(config, 'test-server')` → `new McpClient('test-server', config)`
+**Package API addition:** Added `get healthCheck(): HealthMonitor | null` accessor to package McpClient (root had it; required by the `McpServerInfoForCapability` weak-type check — surfaced SessionRuntime(405) assignability error on first shim attempt)
+**Verification:** `pnpm -r run type-check` zero errors; root type-check 96 errors (0 new); `verify:boundaries` PASS; `verify:entrypoints` PASS; 51 mcp tests pass; full suite 4 pre-existing failing files unchanged; `git diff --check` clean
+**Impact:** 631L root code eliminated — the LARGEST root file migrated this session; MCP client now canonical in package with unified constructor; unblocks McpRegistry (#317) and createMcpTool (#318) re-shims
+**Remaining work (next slices):** `McpRegistry.ts` (533L — constructor alignment done, connect-flow diffs remain); `createMcpTool.ts` (355L — schema conversion divergence); `session/types.ts` re-shim; package Tool declaration consolidation; `HookExecutor.ts`/`HookManager.ts`
 
 ## 🏆 Milestone — Zero Production Test Failures (#245)
 

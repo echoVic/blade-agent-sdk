@@ -11,7 +11,7 @@ describe('McpClient', () => {
         type: 'stdio',
       };
 
-      const client = new McpClient(config, 'test-server');
+      const client = new McpClient('test-server', config);
       expect(client).toBeDefined();
     });
 
@@ -22,7 +22,7 @@ describe('McpClient', () => {
         url: 'http://localhost:3000/sse',
       };
 
-      const client = new McpClient(config, 'test-server');
+      const client = new McpClient('test-server', config);
       expect(client).toBeDefined();
     });
 
@@ -33,7 +33,7 @@ describe('McpClient', () => {
         url: 'http://localhost:3000/mcp',
       };
 
-      const client = new McpClient(config, 'test-server');
+      const client = new McpClient('test-server', config);
       expect(client).toBeDefined();
     });
 
@@ -43,7 +43,7 @@ describe('McpClient', () => {
         args: ['server.js'],
       };
 
-      const client = new McpClient(config, 'test-server');
+      const client = new McpClient('test-server', config);
       expect(client).toBeDefined();
     });
   });
@@ -87,7 +87,7 @@ describe('McpClient', () => {
         args: ['server.js'],
       };
 
-      const client = new McpClient(config, 'test-server');
+      const client = new McpClient('test-server', config);
       expect(client.availableTools).toEqual([]);
     });
   });

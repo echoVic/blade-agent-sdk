@@ -206,6 +206,11 @@ export class McpClient extends EventEmitter {
     return Array.from(this.tools.values());
   }
 
+  /** Health monitor accessor (null when health checking is disabled) */
+  get healthCheck(): HealthMonitor | null {
+    return this.healthMonitor;
+  }
+
   /** Server info (public readonly proxy) */
   get server(): { name: string; version: string } | null {
     return this.serverInfo;
