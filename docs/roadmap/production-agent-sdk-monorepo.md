@@ -82,7 +82,7 @@ Dependency direction:
 
 ---
 
-## Migration Progress — 305 Slices Completed
+## Migration Progress — 306 Slices Completed
 
 ### Subsystems at 100% (Complete)
 
@@ -867,6 +867,20 @@ After 29 slices (#150-#178), approximately 4,160 lines migrated from root to `@b
 **Impact:** 124L root code eliminated; tools/types subsystem re-migrated (ToolDefinition #151 → restored #193+ → re-shimmed #305); Tool type identity unified across root and package — unblocks createTool/ToolRegistry/ToolCatalog re-shims
 **Notes:** Package has TWO parallel Tool/ToolDescription/ExecutionContext declarations (`tools/types/ToolDefinition.ts` vs `tools/types/index.ts`) — a pre-existing duplication to consolidate in a future slice
 **Remaining work (next slices):** `Session.ts` missing `SessionId` import (blocks 6 session test files); tools re-shims (ToolCatalog 10 diff-lines, ExecutionTypes 12); package Tool declaration consolidation (ToolDefinition.ts vs index.ts duplication); boundary verifier browser-safe closure (120 pre-existing violations)
+
+### Slice #306 — Shim Compaction Strategies to Re-Export from @blade-ai/agent-sdk/local
+
+**Capability:** `microcompact`/`MicrocompactOptions`/`MicrocompactResult` (83L) + `softCompact`/`SoftCompactionOptions`/`SoftCompactionResult` (60L) — context compaction strategies
+**Target:** `@blade-ai/agent-sdk/local`
+**Root files shimmed (2):**
+- `src/context/strategies/MicrocompactStrategy.ts` — 83L → 4-line re-export (byte-for-byte identical to package, `diff` clean)
+- `src/context/strategies/SoftCompactionStrategy.ts` — 60L → 4-line re-export (byte-for-byte identical)
+**Barrel:** Already exported in `packages/agent-sdk/src/local/index.ts` (no change needed)
+**Consumers:** `CompactionService.ts`, `CompactionHandler.ts` — unchanged (same function signatures)
+**Tests:** 4 tests pass (CompactionHandler, CompactionService, ContextManager); package localCompactionStrategies tests unchanged
+**Verification:** `pnpm -r run type-check` zero errors; root type-check 101 errors (0 new); boundary verifier unchanged (120 pre-existing, 0 new); `git diff --check` clean
+**Impact:** 143L root code eliminated; context/strategies subsystem migrated (Microcompact #97 + SoftCompaction restored → re-shimmed #306); byte-identical shims — first zero-diff shims in Phase 3
+**Remaining work (next slices):** `Session.ts` missing `SessionId` import (blocks 6 session test files); `ContextFilter.ts` (399L real code — next context subsystem candidate); package Tool declaration consolidation (blocks ToolCatalog/ExecutionTypes re-shims); boundary verifier browser-safe closure (120 pre-existing violations)
 
 ## 🏆 Milestone — Zero Production Test Failures (#245)
 
