@@ -110,8 +110,8 @@ describe('agent-sdk local memory adapter', () => {
       { name: 'beta-note' },
     ]);
     await expect(manager.readIndexContent()).resolves.toBe(
-      '- [alpha-note](alpha-note) - Alpha entry\n' +
-      '- [beta-note](beta-note) - Beta entry',
+      '- [alpha-note](alpha-note) — Alpha entry\n' +
+      '- [beta-note](beta-note) — Beta entry',
     );
   });
 });

@@ -82,7 +82,7 @@ Dependency direction:
 
 ---
 
-## Migration Progress — 350 Slices Completed
+## Migration Progress — 351 Slices Completed
 
 ### Subsystems at 100% (Complete)
 
@@ -1430,6 +1430,14 @@ After 29 slices (#150-#178), approximately 4,160 lines migrated from root to `@b
 **Fix:** added a **"📦 Release Verification Gates (documented contract)"** appendix to the roadmap listing all 53 gate names grouped by concern (source/packed/published manifest gates, export-condition/declaration gates, metadata/lifecycle gates, release/bundle gates); aligned the `.github/workflows/release.yml` echo to the pinned wording.
 **Verification:** `semantic-release-config.test.ts` **103/103 PASS** (was 43 failing); **root test suite 118 files / 1291 tests ALL PASSING — ZERO failing files** (was 1 failing file / 43 failing at the round-34 baseline); root type-check 0 errors; `pnpm -r run type-check` 3/3 zero errors; `verify:boundaries`/`entrypoints`/`packages`/`release`/`examples` PASS; package suite 669 passing / 5 pre-existing unchanged; `git diff --check` clean
 **Impact:** 🎉 **THE ROOT TEST SUITE IS FULLY GREEN — ZERO FAILING TEST FILES, ZERO FAILING TESTS.** Combined with the #349 zero-error root type-check, the root now holds only shims + the barrel + fully-passing tests + docs + release configuration — the end-state goal ("workspace root 最终只负责 monorepo 编排、测试、文档和发布配置") is effectively achieved. The only remaining non-green items are the 5 pre-existing package-suite failures (localMemory, localToolExposurePlanner — unrelated to the migration).
+
+### Slice #351 — Fix the Last 5 Package-Suite Failures — 🎉 THE ENTIRE WORKSPACE IS FULLY GREEN
+
+**Capability:** the last failing tests in the workspace — 2 package-suite files (5 tests: `localMemory` ×1, `localToolExposurePlanner` ×4). All were stale-test/stub issues, not implementation bugs.
+**Fix 1 (memory index separator — TDD):** `localMemory.test.ts` expected `- [name](name) - description` (hyphen) but the implementation renders the em-dash `—`; the ROOT `MemoryManager.test.ts` (passing) pins the em-dash — so the PACKAGE test was the stale one. First attempt changed the implementation to the hyphen (breaking the root test — caught by the full-suite regression run), then REVERTED and fixed the package test to the em-dash instead. The root suite's passing expectation is the authoritative spec.
+**Fix 2 (planner stub catalog):** `localToolExposurePlanner.test.ts`'s stub `getEntries: () => entries ?? []` returned an EMPTY array, and the planner prefers `getEntries` over `getAll` (`catalogEntries?.map(...) ?? this.catalog.getAll()` — `??` only falls back on null/undefined, not `[]`). The real `ToolCatalog.getEntries()` ALWAYS returns the full entry set, so the stub was unrealistic. Fixed the stub to derive entries from the tools (`entries ?? tools.map(tool => ({ tool, source: {...} }))`) — matching the real catalog contract.
+**Verification:** package suite **137 files / 674 tests ALL PASSING — ZERO failures** (was 5); root suite 118 files / 1291 tests ALL PASSING; root type-check 0 errors; `pnpm -r run type-check` 3/3 zero errors; `verify:boundaries`/`entrypoints`/`packages`/`release`/`examples` PASS; `git diff --check` clean
+**Impact:** 🎉🎉 **THE ENTIRE WORKSPACE IS FULLY GREEN** — every test in every suite (root 1291 + packages 674) passes, all type-checks are zero-error, and every verifier passes. The monorepo migration is functionally complete: the root holds only the barrel, shims, tests, docs, and release configuration; all production capability lives in the three packages (`@blade-ai/ai`, `@blade-ai/agent`, `@blade-ai/agent-sdk`) with enforced boundaries.
 
 ## 🏆 Milestone — Zero Production Test Failures (#245)
 

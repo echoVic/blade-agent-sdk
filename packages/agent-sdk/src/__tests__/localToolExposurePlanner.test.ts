@@ -30,7 +30,14 @@ describe('ToolExposurePlanner (agent-sdk)', () => {
   function stubCatalog(tools: Tool[], entries?: ToolCatalogEntry[]): ToolCatalogReadView {
     return {
       getAll: () => tools,
-      getEntries: () => entries ?? [],
+      // The real ToolCatalog.getEntries() always returns the full entry set,
+      // so the stub must derive entries from the tools when none are passed.
+      getEntries: () =>
+        entries
+        ?? tools.map((tool) => ({
+          tool,
+          source: { kind: 'custom' as const, trustLevel: 'trusted' as const, sourceId: 'stub' },
+        })),
     };
   }
 
