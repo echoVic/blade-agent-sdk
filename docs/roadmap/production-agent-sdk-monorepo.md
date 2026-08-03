@@ -82,7 +82,7 @@ Dependency direction:
 
 ---
 
-## Migration Progress — 335 Slices Completed
+## Migration Progress — 336 Slices Completed
 
 ### Subsystems at 100% (Complete)
 
@@ -1258,6 +1258,18 @@ After 29 slices (#150-#178), approximately 4,160 lines migrated from root to `@b
 **Focused test:** `src/tools/types/__tests__/ExecutionTypesShim.test.ts` — compile-time `Assert<IsEqual<root ExecutionContext, package ExecutionContext>>` + `IsEqual<ExecutionHistoryEntry, package ExecutionHistoryEntry>` pin the type identity, plus a runtime check of `getEffectiveProjectDir` against a branded-sessionId context.
 **Verification:** `pnpm -r run type-check` 3/3 zero errors; root type-check 68 errors (0 new); `verify:boundaries` PASS; `verify:entrypoints` PASS; `verify:packages` PASS; `verify:release` PASS; `verify:examples` PASS; root suite 1248 passing (+1 new, 43 pre-existing failures unchanged); `git diff --check` clean
 **Impact:** the ExecutionContext consolidation (#334) is now complete END-TO-END — root and package consumers share exactly one canonical ExecutionContext with typed registry ports and branded session ids; the root's ExecutionTypes duplicate is eliminated; tools/types subsystem is fully on the package.
+**Remaining work (next slices):** `ExecutionPipeline.ts` (1468L) + context core (PersistentStore 841L, ContextManager 712L, CompactionService 539L); Session.ts (784L) + SessionRuntime.ts (598L) + SessionStore.ts (538L); Agent.ts (662L) + LoopRunner (404L) + BackgroundAgentManager (605L)
+
+### Slice #336 — Port SessionKernelAdapter into the Package + Align the Phantom Pipeline/Registry Interfaces
+
+**Capability:** `createKernelToolPort` — the adapter that bridges a session tool registry + execution pipeline to the `@blade-ai/agent` kernel's `AgentToolPort` (list/execute). Formerly root `src/session/SessionKernelAdapter.ts` (91L); the package already had the sibling adapters (`SessionKernelHookAdapter`, `SessionKernelStoreAdapter`, `SessionKernelTraceAdapter`) — the TOOL adapter was the missing one.
+**Phantom interfaces aligned (TDD):** `local/kernelAdapterTypes.ts` — `ExecutionPipelineLike` was `execute(toolCall, context): Promise<AgentToolResult>` (2-arg, wrong return) and `ToolRegistryLike` only had `get(name): unknown` — NEITHER matched any real implementation, producing 6 pre-existing type errors in the root adapter + 2 in its test + 1 in `LoopHookBuilder.ts` (ExecutionPipeline not assignable). Now aligned to the REAL APIs: `ExecutionPipelineLike.execute(toolName: string, params: JsonObject, context: unknown): Promise<ToolResult>` (the root ExecutionPipeline's actual signature) and `ToolRegistryLike { get(name): Tool | undefined; getAll(): Tool[] }` (the package ToolRegistry's actual API). Both the root `ExecutionPipeline` and the package `ToolRegistry` now satisfy them structurally.
+**Package capability port:** `local/SessionKernelAdapter.ts` — the full adapter (list via registry.getAll + getFunctionDeclaration, execute via pipeline.execute with created context, kernel-effect projection via `normalizeToolEffects`, recursive JSON-safety guards ported verbatim). Exported from `local/index.ts` (`createKernelToolPort` + `KernelToolPortOptions`).
+**Root file shimmed:** `src/session/SessionKernelAdapter.ts` (91L → 2L) re-exports from `@blade-ai/agent-sdk/local`; root SessionRuntime keeps the same call shape.
+**Pre-existing error reduction:** root type-check **68 → 58** (−10 errors, 0 new): the 6 adapter errors (TS2339/TS7006/TS2554/TS2339/TS2345/TS2339), 2 test errors (TS2322 ExecutionPipeline→ExecutionPipelineLike), 1 LoopHookBuilder error (same TS2322), and the #335-fixed stale import carried over. Also fixed the one new cast (`parameters as unknown as JsonObject`) and the #334 focused test's registry mock (now needs `getAll`).
+**Focused test:** `packages/agent-sdk/src/__tests__/sessionKernelAdapter.test.ts` — 3 runtime tests (list declarations, execute through pipeline with created branded-sessionId context, failed results flagged `isError`).
+**Verification:** `pnpm -r run type-check` 3/3 zero errors; root type-check 58 errors (−10, 0 new); `verify:boundaries` PASS; `verify:entrypoints` PASS; `verify:packages` PASS; `verify:release` PASS; `verify:examples` PASS; root suite 1248 passing / 43 pre-existing failures unchanged; package suite 630 passing (+3 new, 5 pre-existing failures unchanged); `git diff --check` clean
+**Impact:** the session→kernel tool boundary is now fully package-owned; the phantom-interface debt (interfaces matching no real implementation) is cleared for the pipeline/registry contracts, and the `ExecutionPipelineLike` shape is now an accurate structural contract the real root ExecutionPipeline satisfies.
 **Remaining work (next slices):** `ExecutionPipeline.ts` (1468L) + context core (PersistentStore 841L, ContextManager 712L, CompactionService 539L); Session.ts (784L) + SessionRuntime.ts (598L) + SessionStore.ts (538L); Agent.ts (662L) + LoopRunner (404L) + BackgroundAgentManager (605L)
 
 ## 🏆 Milestone — Zero Production Test Failures (#245)

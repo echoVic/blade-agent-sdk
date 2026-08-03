@@ -59,7 +59,7 @@ type _RuntimeContextSnapshotIsLocalBranded = Assert<
 
 describe('ExecutionContext consolidation (single canonical type)', () => {
   it('accepts branded session ids and typed registry ports', () => {
-    const toolRegistry: ToolRegistryLike = { get: () => undefined };
+    const toolRegistry: ToolRegistryLike = { get: () => undefined, getAll: () => [] };
     const toolCatalog: ToolCatalogLike = { getAll: () => [] };
     const context: ExecutionContext = {
       sessionId: SessionId('ctx-session'),
