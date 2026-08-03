@@ -82,7 +82,7 @@ Dependency direction:
 
 ---
 
-## Migration Progress — 330 Slices Completed
+## Migration Progress — 331 Slices Completed
 
 ### Subsystems at 100% (Complete)
 
@@ -1206,6 +1206,15 @@ After 29 slices (#150-#178), approximately 4,160 lines migrated from root to `@b
 **RED → GREEN:** the 2 pre-existing root test failures ("should match wildcard pattern" for file `/tmp/*` and network `localhost:*`) confirmed the bug; all 35 SandboxService tests now pass.
 **Verification:** `pnpm -r run type-check` zero errors; root type-check 69 errors (0 new); `verify:boundaries` PASS; `verify:entrypoints` PASS; `verify:packages` PASS; 35 sandbox tests pass; lint 0 warnings; `git diff --check` clean
 **Impact:** root test suite **3 → 2 failing files** (47 → 45 failing tests, 1243 → 1245 passing); the remaining 2 are pre-existing (semantic-release-config 43 release scripts, SessionRuntime 2 hook-related); wildcard ignore patterns now function correctly
+**Remaining work (next slices):** ExecutionContext consolidation (SessionId unification prerequisite — multi-slice); `ExecutionPipeline.ts` (1468L) + context core (PersistentStore 841L, ContextManager 712L, CompactionService 539L); Session.ts (784L) + SessionRuntime.ts (598L) + SessionStore.ts (538L); Agent.ts (662L) + LoopRunner (404L) + BackgroundAgentManager (605L)
+
+### Slice #331 — Repair Stale SessionRuntime Hook Assertions to the Canonical Package HookManager API
+
+**Capability:** `HookManager.executeUserPromptSubmitHooks` — session prompt-hook integration contract in the kernel-turn path
+**Root test repair (2 pre-existing failures fixed):** `src/session/__tests__/SessionRuntime.test.ts` asserted the PRE-migration root `HookManager` signature `(prompt: string, { projectDir, sessionId, ... })` — but the canonical package API (established at #145, used by `local/HookRuntime.ts:406` and every shim consumer) is positional: `({ userPrompt, hasImages, imageCount }, projectDir, sessionId, permissionMode, signal?)`. The kernel-turn flow (`createKernelHookPort` → `HookRuntime.applyUserPromptSubmit` → singleton `HookManager`) WAS firing correctly — the spy received 1 call with the new argument shape; only the assertions were stale. Updated both tests ("should apply session prompt hooks before guarded kernel model calls", "should combine session prompt hooks with the hook runtime facade") to assert the canonical signature; the behavioral intent (prompt rewritten via session hooks, manager invoked with prompt info + projectDir + sessionId) is unchanged.
+**Breaking change (now documented, was undocumented since #145):** `executeUserPromptSubmitHooks` signature changed from `(prompt, { projectDir, sessionId, permissionMode, hasImages, imageCount, abortSignal })` to positional `({ userPrompt, hasImages, imageCount }, projectDir, sessionId, permissionMode, signal)`. Migration note for consumers: wrap the prompt in the params object and pass projectDir/sessionId/permissionMode/signal as separate positional args.
+**Verification:** `pnpm -r run type-check` zero errors; root type-check 69 errors (0 new); `verify:boundaries` PASS; `verify:entrypoints` PASS; `verify:packages` PASS; SessionRuntime.test.ts 16/16 pass; `git diff --check` clean
+**Impact:** root test suite **2 → 1 failing files** (45 → 43 failing tests — the 2 hook failures eliminated; remaining pre-existing: semantic-release-config 43 release scripts); kernel-turn UserPromptSubmit hook integration is now verified end-to-end against the canonical package API
 **Remaining work (next slices):** ExecutionContext consolidation (SessionId unification prerequisite — multi-slice); `ExecutionPipeline.ts` (1468L) + context core (PersistentStore 841L, ContextManager 712L, CompactionService 539L); Session.ts (784L) + SessionRuntime.ts (598L) + SessionStore.ts (538L); Agent.ts (662L) + LoopRunner (404L) + BackgroundAgentManager (605L)
 
 ## 🏆 Milestone — Zero Production Test Failures (#245)

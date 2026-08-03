@@ -672,11 +672,11 @@ describe('SessionRuntime', () => {
       }),
     );
     expect(managerSpy).toHaveBeenCalledWith(
-      'Prompt rewritten for kernel',
-      expect.objectContaining({
-        projectDir: workspaceRoot,
-        sessionId: 'session-kernel-hooks',
-      }),
+      { userPrompt: 'Prompt rewritten for kernel', hasImages: false, imageCount: 0 },
+      workspaceRoot,
+      'session-kernel-hooks',
+      PermissionMode.DEFAULT,
+      undefined,
     );
 
     await runtime.close();
@@ -873,11 +873,11 @@ describe('SessionRuntime', () => {
     const rewritten = await runtime.getHookRuntime().applyUserPromptSubmit('original prompt');
 
     expect(managerSpy).toHaveBeenCalledWith(
-      'from-session-hook',
-      expect.objectContaining({
-        projectDir: workspaceRoot,
-        sessionId: 'session-hooks',
-      }),
+      { userPrompt: 'from-session-hook', hasImages: false, imageCount: 0 },
+      workspaceRoot,
+      'session-hooks',
+      PermissionMode.DEFAULT,
+      undefined,
     );
     expect(rewritten).toBe('from-hook-manager\n\nextra context');
 
