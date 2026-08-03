@@ -82,7 +82,7 @@ Dependency direction:
 
 ---
 
-## Migration Progress — 327 Slices Completed
+## Migration Progress — 328 Slices Completed
 
 ### Subsystems at 100% (Complete)
 
@@ -1167,6 +1167,19 @@ After 29 slices (#150-#178), approximately 4,160 lines migrated from root to `@b
 **Verification:** `pnpm -r run type-check` zero errors; root type-check 69 errors (0 new); `verify:boundaries` PASS; `verify:entrypoints` PASS; `verify:packages` PASS; 59 tool/session tests pass (2 pre-existing hook failures); full suite 4 pre-existing failing files unchanged; `git diff --check` clean
 **Impact:** 123L root code eliminated + ~160L package duplication removed; tools/catalog subsystem re-migrated (#153 → restored → #327); the delegation-semantics blocker is resolved — unblocks the remaining tools work and validates the consolidation pattern for the Tool/ExecutionContext duplicates
 **Remaining work (next slices):** `ExecutionTypes.ts` (56L — ExecutionContext string vs branded dup, same consolidation pattern); `ExecutionPipeline.ts` (1468L) + context core (PersistentStore 841L, ContextManager 712L, CompactionService 539L); Session.ts (784L) + SessionRuntime.ts (598L) + SessionStore.ts (538L); Agent.ts (662L) + LoopRunner (404L) + BackgroundAgentManager (605L)
+
+### Slice #328 — Port AttachmentHandler.ts into @blade-ai/agent-sdk/local (173L)
+
+**Capability:** `AttachmentHandler` — @-mention file attachment processing for user messages (multimodal + string content, system-reminder injection) (173L)
+**Target:** `@blade-ai/agent-sdk/local`
+**Package file created:** `packages/agent-sdk/src/local/AttachmentHandler.ts` (173L) — ported from root with adjusted imports (Logger, attachmentCollector, promptProcessors, agentTypes — all package-local; @blade-ai/ai/chat unchanged)
+**Barrel:** Added `AttachmentHandler` export to `packages/agent-sdk/src/local/index.ts`
+**Root file shimmed:** `src/agent/AttachmentHandler.ts` — reduced from 173L implementation to 1-line re-export
+**Consumer:** `Agent.ts` (`new AttachmentHandler(cwd, logger)`) — unchanged
+**Explored and REVERTED this round (documented):** the ExecutionTypes/ExecutionContext consolidation (string vs branded) requires a package-wide SessionId unification across 10+ session-layer files (runtimeHooks, runtimeToolRegistration, runtimeSessionLifecycle, runtimeToolExecution, store contract, etc.) — a multi-slice effort, reverted to keep the tree green
+**Verification:** `pnpm -r run type-check` zero errors; root type-check 69 errors (0 new, exact baseline match); `verify:boundaries` PASS; `verify:entrypoints` PASS; `verify:packages` PASS; 178 agent/session tests pass (2 pre-existing hook failures); full suite 4 pre-existing failing files unchanged; `git diff --check` clean
+**Impact:** 173L root code eliminated; attachment processing now package-canonical
+**Remaining work (next slices):** ExecutionContext consolidation (SessionId unification prerequisite — multi-slice); monorepoTopology test-maintenance (14 stale shim-era assertions); `ExecutionPipeline.ts` (1468L) + context core; Session.ts (784L) + SessionRuntime.ts (598L) + SessionStore.ts (538L); Agent.ts (662L) + LoopRunner (404L) + BackgroundAgentManager (605L)
 
 ## 🏆 Milestone — Zero Production Test Failures (#245)
 

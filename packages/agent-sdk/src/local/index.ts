@@ -430,6 +430,7 @@ export type {  LlmToolDefinition, LoopSkillState, LoopRecoveryState, LoopExecuti
 export {  PlanExecutor } from './planExecutor.js';
 export {  LoopState } from './loopState.js';
 export {  AttachmentCollector } from './attachmentCollector.js';
+export {  AttachmentHandler } from './AttachmentHandler.js';
 export {  SubagentRegistry, subagentRegistry } from './subagentRegistry.js';
 export {  AgentSessionStore } from './agentSessionStore.js';
 export {  VercelAIChatService } from './vercelAIChatService.js';
