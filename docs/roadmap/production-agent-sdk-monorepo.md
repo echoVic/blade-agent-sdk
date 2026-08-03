@@ -82,7 +82,7 @@ Dependency direction:
 
 ---
 
-## Migration Progress — 297 Slices Completed
+## Migration Progress — 298 Slices Completed
 
 ### Subsystems at 100% (Complete)
 
@@ -748,6 +748,19 @@ After 29 slices (#150-#178), approximately 4,160 lines migrated from root to `@b
 **Consumer:** `src/agent/AttachmentHandler.ts` — unchanged (imports via `../prompts/processors/AttachmentCollector.js`, resolves through shim)
 **Verification:** `pnpm -r run type-check` zero errors, `pnpm run type-check` 143 pre-existing errors (0 new), 0 self-ref boundary violations
 **Impact:** 504L root code eliminated; third prompt/processor shim (after AtMentionParser #285, ContextCompressor #287)
+
+### Slice #298 — Shim SubagentRegistry.ts to Re-Export from @blade-ai/agent-sdk/local
+
+**Capability:** `SubagentRegistry` — subagent registration, Markdown+YAML frontmatter parsing, LLM-readable description generation, builtin/user/project/session source management (309L) + `subagentRegistry` singleton
+**Target:** `@blade-ai/agent-sdk/local`
+**Root file shimmed:** `src/agent/subagents/SubagentRegistry.ts` — reduced from 309L implementation to 1-line re-export
+**Package:** `packages/agent-sdk/src/local/subagentRegistry.ts` (309L) — byte-for-byte identical except import paths (Logger, builtinAgents, subagents/types)
+**Barrel:** Added `subagentRegistry` singleton to existing `SubagentRegistry` export in `packages/agent-sdk/src/local/index.ts`
+**Infrastructure fix:** Added missing `@blade-ai/agent-sdk/subagents` alias to root `vitest.config.ts` — root tests importing `builtinAgents.ts` (shimmed in #290) failed with `Cannot find module '@blade-ai/agent-sdk/subagents'`. The alias repairs 6 root test files (SubagentRegistry, taskTools, taskTool.registry, memoryTools, Agent, SessionRuntime).
+**Tests:** Root 2 tests pass via shim (SubagentRegistry.test.ts), 12 total across repaired files; package 6 tests pass (runtimeSubagents, subagentsEntry)
+**Verification:** `pnpm -r run type-check` zero errors; root type-check **142 errors (down 1 from 143)** — the shim resolved the pre-existing SubagentRegistry dual-declaration mismatch (`{model, source, ...}` vs `SubagentConfig`); 0 new errors; boundary verifier unchanged (120 pre-existing violations, 0 new); `git diff --check` clean
+**Impact:** 309L root code eliminated; fourth subagents file migrated (after builtinAgents #290, SubagentExecutor/SessionStore pending); root test suite improved 16→10 failing files
+**Remaining work (next slices):** `Session.ts` missing `SessionId` import (pre-existing `Cannot find name 'SessionId'` — blocks 6 session test files); boundary verifier browser-safe closure (120 pre-existing violations); HookManager/HookExecutor/HookTypes (largest remaining hooks files)
 
 ## 🏆 Milestone — Zero Production Test Failures (#245)
 
