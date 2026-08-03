@@ -102,7 +102,7 @@ const toolExecutionOutcomeAugmentationContractLines = [
   '  requestConfirmation: async () => ({ approved: true }),',
   '};',
   'const publicToolsExecutionContext: PublicToolsExecutionContext = {',
-  "  sessionId: 'public-session',",
+  "  sessionId: SessionId('public-session'),",
   '  confirmationHandler: publicToolsConfirmationHandler,',
   '};',
   '',

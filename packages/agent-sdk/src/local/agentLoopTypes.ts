@@ -1,7 +1,7 @@
 /**
  * Agent loop type definitions
  */
-import type { ConfirmationHandler } from '../tools/types/ExecutionTypes.js';
+import type { ConfirmationHandler } from '../tools/types/index.js';
 import type { ToolCatalogSourcePolicy } from '../tools/public-index.js';
 import type { AgentId, SessionId } from './branded.js';
 import type { OutputFormat, PermissionMode, PermissionsConfig, SandboxSettings } from '../types/common.js';

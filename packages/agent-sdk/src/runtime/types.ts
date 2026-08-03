@@ -22,14 +22,11 @@ export interface RuntimeContext {
   metadata?: JsonObject;
 }
 
-export interface ContextSnapshot {
-  readonly sessionId: string;
-  readonly turnId: string;
-  readonly context: RuntimeContext;
-  readonly filesystemRoots: string[];
-  readonly cwd: string | undefined;
-  readonly environment: Record<string, string>;
-}
+// The canonical ContextSnapshot lives in local/ContextSnapshot.ts (branded
+// sessionId + createContextSnapshot/mergeContext implementations); the former
+// duplicate here declared a stale plain-string sessionId.
+import type { ContextSnapshot } from '../local/ContextSnapshot.js';
+export type { ContextSnapshot };
 
 export interface RuntimePatchSkillInfo {
   id: string;

@@ -2,7 +2,7 @@ import type { AgentToolPort } from '@blade-ai/agent/ports';
 import type { AgentToolCall, AgentToolResult } from '@blade-ai/agent/protocol';
 import type { ExecutionPipelineLike, ToolRegistryLike } from '@blade-ai/agent-sdk/local';
 import { normalizeToolEffects } from '../tools/types/ToolEffects.js';
-import type { ExecutionContext } from '@blade-ai/agent-sdk';
+import type { ExecutionContext } from '../tools/types/index.js';
 import type { ToolResult } from '../tools/types/ToolResult.js';
 import type { JsonObject, JsonValue } from '../types/common.js';
 

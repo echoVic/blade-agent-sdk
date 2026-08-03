@@ -1464,6 +1464,7 @@ import {
 import {
   createSession as createSessionFromSessionSubpath,
   resumeSession as resumeSessionFromSessionSubpath,
+  SessionId,
   SessionId as SessionIdValue,
 } from '@blade-ai/agent-sdk/session';
 import {

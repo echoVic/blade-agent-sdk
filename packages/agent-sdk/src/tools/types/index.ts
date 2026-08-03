@@ -112,23 +112,11 @@ export interface BladeConfig {
   storageRoot?: string;
 }
 
-export interface ExecutionContext {
-  userId?: string;
-  sessionId?: string;
-  messageId?: string;
-  contextSnapshot?: ContextSnapshot;
-  skillActivationPaths?: string[];
-  signal?: AbortSignal;
-  onProgress?: (message: string) => void | Promise<void>;
-  updateOutput?: (output: string) => void | Promise<void>;
-  confirmationHandler?: ConfirmationHandler;
-  permissionMode?: PermissionMode;
-  bladeConfig?: BladeConfig;
-  backgroundAgentManager?: unknown;
-  toolRegistry?: unknown;
-  toolCatalog?: unknown;
-  discoveredTools?: string[];
-}
+// The single canonical ExecutionContext lives in ExecutionTypes.ts (slice #334):
+// the former loose definition here and the branded `Omit<...>` extension there
+// are merged into ONE type, re-exported below.
+import type { ExecutionContext } from './ExecutionTypes.js';
+export type { ExecutionContext };
 
 export interface ToolResultMetadata {
   summary?: string;

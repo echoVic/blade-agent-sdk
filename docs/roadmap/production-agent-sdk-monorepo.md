@@ -82,7 +82,7 @@ Dependency direction:
 
 ---
 
-## Migration Progress — 333 Slices Completed
+## Migration Progress — 334 Slices Completed
 
 ### Subsystems at 100% (Complete)
 
@@ -1236,6 +1236,18 @@ After 29 slices (#150-#178), approximately 4,160 lines migrated from root to `@b
 **Verification:** `pnpm -r run type-check` 3/3 zero errors; root type-check 69 errors (0 new); `verify:boundaries` PASS; `verify:entrypoints` PASS; `verify:packages` PASS; `verify:release` PASS; `verify:examples` PASS; package suite 624 passing (+1 new, 5 pre-existing failures unchanged); root suite 1247 passing / 43 pre-existing failures unchanged; `git diff --check` clean
 **Impact:** the session layer is fully unified on the branded `SessionId` — the ONLY remaining plain-string sessionId is `LogEntry.sessionId` (by design). The type prerequisite for the ExecutionContext consolidation (#328 revert) is now completely satisfied: every session-layer surface that carries a session id (store port, snapshots, summaries, stream messages, hook payloads, tool execution context, runtime options) uses the same branded species.
 **Remaining work (next slices):** ExecutionContext consolidation (single canonical ExecutionContext in the package — the branded `tools/types/ExecutionTypes.ts` vs the loose `tools/types/index.ts` merge, previously reverted at #328); `ExecutionPipeline.ts` (1468L) + context core (PersistentStore 841L, ContextManager 712L, CompactionService 539L); Session.ts (784L) + SessionRuntime.ts (598L) + SessionStore.ts (538L); Agent.ts (662L) + LoopRunner (404L) + BackgroundAgentManager (605L)
+
+### Slice #334 — Consolidate the Package ExecutionContext into ONE Canonical Type
+
+**Capability:** `ExecutionContext` — the package previously carried TWO ExecutionContext definitions: the loose public one in `tools/types/index.ts` (`sessionId?: string`, `toolRegistry?: unknown`, `backgroundAgentManager?: unknown`, ...) and the branded one in `tools/types/ExecutionTypes.ts` (`Omit<SdkExecutionContext, 8 keys>` with branded `SessionId`/`MessageId` and typed registry ports). This was the merge previously attempted and reverted at #328 — now unblocked by the #332/#333 SessionId unification.
+**Type merge (TDD):** `tools/types/ExecutionTypes.ts` now defines the SINGLE canonical flat `ExecutionContext` — every loose field preserved (userId, skillActivationPaths, signal, onProgress, updateOutput, permissionMode, discoveredTools) plus branded `sessionId`/`messageId`, typed `contextSnapshot`/`confirmationHandler`/`bladeConfig` and typed `backgroundAgentManager`/`toolRegistry`/`toolCatalog` ports; the `Omit<...>` indirection is gone (no circularity with public-index). `tools/types/index.ts` deletes its loose copy and re-exports the canonical (with the file-scope import pattern). `@blade-ai/agent-sdk/tools` and the root barrel now expose exactly one ExecutionContext.
+**Bonus dedupe (part of the merge):** `runtime/types.ts` had a SECOND duplicate `ContextSnapshot` with a stale plain-string `sessionId` — now re-exports the canonical branded one from `local/ContextSnapshot.ts` (which carries the createContextSnapshot/mergeContext implementations). This was the only remaining plain-string sessionId in a session-scoped type.
+**Root adaptation:** `src/session/SessionKernelAdapter.ts` had a pre-existing stale `import type { ExecutionContext } from '@blade-ai/agent-sdk'` (TS2305 — the barrel never exported it); fixed to root `../tools/types/index.js`. Root error count 69 → **68** (1 pre-existing error eliminated, 0 new).
+**Verifier consumers updated:** the shared `toolExecutionOutcomeAugmentationContractLines` in `public-type-contracts.mjs` built a `PublicToolsExecutionContext` with a plain-string sessionId — now `SessionId('public-session')`; `verify-packages.mjs` consumer-types gained the `SessionId` value import (aliased alongside `SessionIdValue`).
+**Focused test:** `packages/agent-sdk/src/__tests__/executionContextConsolidation.test.ts` — 6 compile-time assertions (`IsEqual` between canonical and public-tools ExecutionContext; branded sessionId; typed toolRegistry/toolCatalog/backgroundAgentManager ports; runtime ContextSnapshot sessionId branded) plus 3 runtime tests (context with branded id + typed ports, `getEffectiveProjectDir`, `ExecutionHistoryEntry`).
+**Verification:** `pnpm -r run type-check` 3/3 zero errors; root type-check 68 errors (1 REMOVED, 0 new); `verify:boundaries` PASS; `verify:entrypoints` PASS; `verify:packages` PASS; `verify:release` PASS; `verify:examples` PASS; package suite 627 passing (+3 new, 5 pre-existing failures unchanged); root suite 1247 passing / 43 pre-existing failures unchanged; `git diff --check` clean
+**Impact:** the package now has exactly ONE ExecutionContext with a fully-typed boundary contract (branded session id + typed registry/manager ports); the #328 revert's core obstacle (two incompatible context species) is eliminated. Root's own ExecutionContext (`src/tools/types/ExecutionTypes.ts`) remains a distinct root-typed Omit-extension for now.
+**Remaining work (next slices):** root ExecutionTypes.ts shim (make root consumers use the package canonical — needs root branded.ts SessionId/MessageId unification first); `ExecutionPipeline.ts` (1468L) + context core (PersistentStore 841L, ContextManager 712L, CompactionService 539L); Session.ts (784L) + SessionRuntime.ts (598L) + SessionStore.ts (538L); Agent.ts (662L) + LoopRunner (404L) + BackgroundAgentManager (605L)
 
 ## 🏆 Milestone — Zero Production Test Failures (#245)
 
