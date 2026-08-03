@@ -82,7 +82,7 @@ Dependency direction:
 
 ---
 
-## Migration Progress — 304 Slices Completed
+## Migration Progress — 305 Slices Completed
 
 ### Subsystems at 100% (Complete)
 
@@ -848,6 +848,25 @@ After 29 slices (#150-#178), approximately 4,160 lines migrated from root to `@b
 **Verification:** `pnpm -r run type-check` zero errors; root type-check 119 errors (0 new); boundary verifier unchanged (120 pre-existing, 0 new); `git diff --check` clean
 **Impact:** 41L root code eliminated; session/chat subsystem further migrated (VercelAIChatService #296, ChatServiceFactory #304)
 **Remaining work (next slices):** `Session.ts` missing `SessionId` import (blocks 6 session test files); tools subsystem re-shims (ToolDefinition 8 diff-lines, ToolCatalog 10, ExecutionTypes 12 — restored in recovery phase #193+); boundary verifier browser-safe closure (120 pre-existing violations)
+
+### Slice #305 — Shim ToolDefinition.ts to Re-Export from @blade-ai/agent-sdk/tools
+
+**Capability:** `ToolDefinition` — core tool type definitions (`Tool`, `ToolConfig`, `ToolDefinition`, `ToolInvocation`, `ToolDescription`, `ToolSchema`, `ToolDescriptionResolver`) + 4 re-exported exposure types (124L)
+**Target:** `@blade-ai/agent-sdk/tools`
+**Root file shimmed:** `src/tools/types/ToolDefinition.ts` — reduced from 124L implementation to 11-line type re-export
+**Package API addition:** Added `ToolInvocation` + `PreparedPermissionMatcher` to `packages/agent-sdk/src/tools/index.ts` export block (both already defined in `tools/types/index.ts`, previously not publicly exported — required for the root shim)
+**Type-error fixes (15 pre-existing errors):**
+- 2 root file self-errors (`Cannot find name 'FunctionDeclaration'` + `Module '@blade-ai/agent-sdk/local' has no exported member 'FunctionDeclaration'` — re-export without file-scope import, same pattern as AgentSessionStore #299)
+- 13 dual-declaration errors (root Tool vs package Tool across Agent.ts, SessionRuntime.ts, ToolCatalog.ts, ToolRegistry.ts)
+**Conformance fixes (5 latent errors surfaced by identity unification — root code aligned to canonical package types):**
+- `createTool.ts`: 3 schema casts (`FunctionDeclaration['parameters']`, `as any` — mirroring package createTool)
+- `ToolExposurePlanner.ts`: 2 null-safety fixes (`displayName ?? tool.name`, `tool.exposure?.`) — package Tool has optional `displayName`/`exposure`
+- `SessionContext.test.ts`: ExecutionContext import moved to `@blade-ai/agent-sdk/tools` (package ExecutionContext has `sessionId?: string` vs root ExecutionTypes branded — package-internal dual ExecutionContext tracked for future unification)
+**Tests:** 34 tests pass (ToolExposurePlanner, ExecutionPipeline, ToolRegistry); full suite 10 failing files unchanged
+**Verification:** `pnpm -r run type-check` zero errors; root type-check **101 errors (down 18 from 119, 0 new)**; boundary verifier unchanged (120 pre-existing, 0 new); `verify:entrypoints` passed; `git diff --check` clean
+**Impact:** 124L root code eliminated; tools/types subsystem re-migrated (ToolDefinition #151 → restored #193+ → re-shimmed #305); Tool type identity unified across root and package — unblocks createTool/ToolRegistry/ToolCatalog re-shims
+**Notes:** Package has TWO parallel Tool/ToolDescription/ExecutionContext declarations (`tools/types/ToolDefinition.ts` vs `tools/types/index.ts`) — a pre-existing duplication to consolidate in a future slice
+**Remaining work (next slices):** `Session.ts` missing `SessionId` import (blocks 6 session test files); tools re-shims (ToolCatalog 10 diff-lines, ExecutionTypes 12); package Tool declaration consolidation (ToolDefinition.ts vs index.ts duplication); boundary verifier browser-safe closure (120 pre-existing violations)
 
 ## 🏆 Milestone — Zero Production Test Failures (#245)
 

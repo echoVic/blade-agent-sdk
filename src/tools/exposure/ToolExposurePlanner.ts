@@ -10,8 +10,9 @@ import type {
   ToolCatalogReadView,
   ToolCatalogSourcePolicy,
 } from '../catalog/ToolCatalog.js';
+import type { RuntimeToolPolicySnapshot } from '@blade-ai/agent-sdk/local';
 
-export { type RuntimeToolPolicySnapshot } from '@blade-ai/agent-sdk/local';
+export type { RuntimeToolPolicySnapshot };
 
 export interface ToolDiscoveryEntry {
   name: string;
@@ -90,10 +91,10 @@ export class ToolExposurePlanner {
 
       discoverableTools.push({
         name: tool.name,
-        displayName: tool.displayName,
+        displayName: tool.displayName ?? tool.name,
         description: tool.description.short,
         mode: exposureMode,
-        discoveryHint: tool.exposure.discoveryHint || undefined,
+        discoveryHint: tool.exposure?.discoveryHint || undefined,
       });
     }
 
@@ -181,15 +182,15 @@ export class ToolExposurePlanner {
       return 'eager';
     }
 
-    if (tool.exposure.alwaysLoad) {
+    if (tool.exposure?.alwaysLoad) {
       return 'eager';
     }
 
-    if (tool.exposure.mode === 'deferred' && !discoveredTools.has(tool.name)) {
+    if (tool.exposure?.mode === 'deferred' && !discoveredTools.has(tool.name)) {
       return 'deferred';
     }
 
-    if (tool.exposure.mode === 'discoverable-only') {
+    if (tool.exposure?.mode === 'discoverable-only') {
       return 'discoverable-only';
     }
 

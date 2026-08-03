@@ -30,6 +30,7 @@ import type {
   ToolSchema,
   ToolSuccessResult,
   ToolValidationError,
+  PreparedPermissionMatcher,
 } from './types/index.js';
 import { ToolErrorType } from './types/index.js';
 import {
@@ -622,11 +623,13 @@ export type {
   ToolExposureConfig,
   ToolExposureMode,
   ToolFailureResult,
+  ToolInvocation,
   ToolResult,
   ToolResultMetadata,
   ToolSchema,
   ToolSuccessResult,
   ToolValidationError,
+  PreparedPermissionMatcher,
 };
 export {
   createToolBehavior,

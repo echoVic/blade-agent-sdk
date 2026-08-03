@@ -5,7 +5,7 @@ import type { ModelResponse } from '@blade-ai/ai';
 import type { ContentPart } from '@blade-ai/ai/chat';
 import { describe, expect, it, vi } from 'vitest';
 import { PersistentStore } from '../../context/storage/PersistentStore.js';
-import type { ExecutionContext, ToolDefinition } from '../../tools/types/index.js';
+import type { ExecutionContext, ToolDefinition } from '@blade-ai/agent-sdk/tools';
 import { SessionId } from '../../types/branded.js';
 import { HookEvent } from '../../types/constants.js';
 

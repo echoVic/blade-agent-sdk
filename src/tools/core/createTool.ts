@@ -108,7 +108,7 @@ export function createTool<TSchema extends z.ZodSchema>(
       return {
         name: config.name,
         description: cachedStaticDescriptionText,
-        parameters: cachedFunctionSchema,
+        parameters: cachedFunctionSchema as unknown as import('../types/index.js').FunctionDeclaration['parameters'],
       };
     },
 
@@ -128,7 +128,7 @@ export function createTool<TSchema extends z.ZodSchema>(
         category: config.category,
         tags: config.tags || [],
         description: config.description,
-        schema: cachedFunctionSchema,
+        schema: cachedFunctionSchema as any,
       };
     },
 
@@ -232,7 +232,7 @@ export function toolFromDefinition<TParams = JsonObject>(
       return {
         name: definition.name,
         description: formatToolDescription(description),
-        parameters: definition.parameters as import('json-schema').JSONSchema7,
+        parameters: definition.parameters as unknown as import('../types/index.js').FunctionDeclaration['parameters'],
       };
     },
 
