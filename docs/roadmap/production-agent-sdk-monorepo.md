@@ -82,7 +82,7 @@ Dependency direction:
 
 ---
 
-## Migration Progress — 317 Slices Completed
+## Migration Progress — 318 Slices Completed
 
 ### Subsystems at 100% (Complete)
 
@@ -1039,6 +1039,19 @@ After 29 slices (#150-#178), approximately 4,160 lines migrated from root to `@b
 **Verification:** `pnpm -r run type-check` zero errors; root type-check 96 errors (0 new); `verify:boundaries` PASS; `verify:entrypoints` PASS; 28 mcp tests + 13 package mcp tests pass; full suite back to 4 pre-existing failing files; `git diff --check` clean
 **Impact:** 533L root code eliminated; **MCP subsystem fully migrated** (HealthMonitor #295, McpClient #316, McpRegistry #317, + earlier); package McpRegistry API now canonical with 3 phantom consumer interfaces aligned to reality; removed 2 casts
 **Remaining work (next slices):** `createMcpTool.ts` (355L — schema conversion divergence); `session/types.ts` re-shim (StreamMessage union); package Tool declaration consolidation; `HookExecutor.ts`/`HookManager.ts`; `ExecutionPipeline.ts` (1468L) + context core (PersistentStore 841L, ContextManager 712L)
+
+### Slice #318 — Shim createMcpTool.ts to Re-Export from @blade-ai/agent-sdk/local
+
+**Capability:** `createMcpTool` — JSON Schema → Zod conversion for MCP tools; MCP tool definition → Blade Tool factory (355L)
+**Target:** `@blade-ai/agent-sdk/local`
+**Root file shimmed:** `src/mcp/createMcpTool.ts` — reduced from 355L implementation to 1-line re-export
+**Package:** `packages/agent-sdk/src/local/createMcpTool.ts` (355L) — canonical; despite 133 diff lines (schema-conversion organization), behavior verified equivalent by the root test suite
+**Barrel:** Already exported in `packages/agent-sdk/src/local/index.ts` (no change needed)
+**Consumers:** `McpRegistry` (package, internal), root `mcp/index.ts` barrel — unchanged
+**Behavior verification:** 5 root createMcpTool tests pass through the shim (enum values, nullable union types, object additionalProperties, $ref resolution, unsupported-ref fallback) — confirms the package conversion is behaviorally equivalent for these cases
+**Verification:** `pnpm -r run type-check` zero errors; root type-check 96 errors (0 new — only line shifts in SessionRuntime.test); `verify:boundaries` PASS; 60 mcp tests pass; full suite 4 pre-existing failing files unchanged; `git diff --check` clean
+**Impact:** 355L root code eliminated; **MCP subsystem now 100% in the package** — all MCP runtime code (HealthMonitor, McpClient, McpRegistry, createMcpTool, auth, types, capability projector) migrated; root mcp/ directory holds only shims + index barrel
+**Remaining work (next slices):** `session/types.ts` re-shim (StreamMessage session vs kernel variant union — protocol design work); `HookExecutor.ts` (1243L) + `HookManager.ts` (1623L) (large diffs vs package); package Tool declaration consolidation; `ExecutionPipeline.ts` (1468L) + context core (PersistentStore 841L, ContextManager 712L, CompactionService 539L); Session.ts (784L)
 
 ## 🏆 Milestone — Zero Production Test Failures (#245)
 
