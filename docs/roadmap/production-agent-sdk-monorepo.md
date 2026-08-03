@@ -82,7 +82,7 @@ Dependency direction:
 
 ---
 
-## Migration Progress — 307 Slices Completed
+## Migration Progress — 308 Slices Completed
 
 ### Subsystems at 100% (Complete)
 
@@ -893,6 +893,19 @@ After 29 slices (#150-#178), approximately 4,160 lines migrated from root to `@b
 **Verification:** `pnpm -r run type-check` zero errors; root type-check **96 errors (down 5 from 101, 0 new)**; root test suite **10 → 4 failing files** (83 → 61 failing tests, 1207 → 1229 passing); boundary verifier unchanged (120 pre-existing, 0 new); `git diff --check` clean
 **Impact:** Root failing test files reduced from 10 to 4 (only pre-existing: monorepoTopology 14 stale, semantic-release 43, SandboxService 2, SessionRuntime 2 hook-related); Session.ts type errors 17 → 12; first step toward full Session.ts migration
 **Remaining work (next slices):** `Session.ts` full migration (785L, 12 remaining type errors — kernel stream options, PromptResult, hook types); `ContextFilter.ts` (399L real code); package Tool declaration consolidation (blocks ToolCatalog/ExecutionTypes re-shims); boundary verifier browser-safe closure (120 pre-existing violations)
+
+### Slice #308 — Shim ContextFilter.ts to Re-Export from @blade-ai/agent-sdk/local
+
+**Capability:** `ContextFilter` — context filtering processor (message priority, tool filtering, token limits, time window, message compression) (399L)
+**Target:** `@blade-ai/agent-sdk/local`
+**Root file shimmed:** `src/context/processors/ContextFilter.ts` — reduced from 399L implementation to 1-line re-export
+**Package:** `packages/agent-sdk/src/local/ContextFilterProcessor.ts` (399L) — identical except class renamed `ContextFilter` → `ContextFilterProcessor` (package already exports the type `ContextFilter` = options interface from contextTypes.ts)
+**Shim alias:** `export { ContextFilterProcessor as ContextFilter }` — preserves the root class name for `ContextManager.ts` consumers (`new ContextFilter(...)`, `.filter(...)`)
+**Barrel:** Already exported in `packages/agent-sdk/src/local/index.ts` (no change needed)
+**Tests:** 2 root tests pass (ContextManager, CompactionService); package localContextProcessors tests unchanged
+**Verification:** `pnpm -r run type-check` zero errors; root type-check 96 errors (0 new); boundary verifier unchanged (120 pre-existing, 0 new); `git diff --check` clean
+**Impact:** 399L root code eliminated; second-largest single-file shim (after AttachmentCollector 504L #297); context/processors subsystem migrated (ContextCompressor #287, AttachmentCollector #297, ContextFilter #308)
+**Remaining work (next slices):** `Session.ts` full migration (785L, 12 remaining type errors); `CompactionService.ts` (539L) + `ContextManager.ts` (712L) + `PersistentStore.ts` (841L) — context core; package Tool declaration consolidation (blocks ToolCatalog/ExecutionTypes re-shims); boundary verifier browser-safe closure (120 pre-existing violations)
 
 ## 🏆 Milestone — Zero Production Test Failures (#245)
 
