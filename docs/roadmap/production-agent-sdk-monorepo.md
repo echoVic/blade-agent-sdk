@@ -82,7 +82,7 @@ Dependency direction:
 
 ---
 
-## Migration Progress — 308 Slices Completed
+## Migration Progress — 309 Slices Completed
 
 ### Subsystems at 100% (Complete)
 
@@ -906,6 +906,19 @@ After 29 slices (#150-#178), approximately 4,160 lines migrated from root to `@b
 **Verification:** `pnpm -r run type-check` zero errors; root type-check 96 errors (0 new); boundary verifier unchanged (120 pre-existing, 0 new); `git diff --check` clean
 **Impact:** 399L root code eliminated; second-largest single-file shim (after AttachmentCollector 504L #297); context/processors subsystem migrated (ContextCompressor #287, AttachmentCollector #297, ContextFilter #308)
 **Remaining work (next slices):** `Session.ts` full migration (785L, 12 remaining type errors); `CompactionService.ts` (539L) + `ContextManager.ts` (712L) + `PersistentStore.ts` (841L) — context core; package Tool declaration consolidation (blocks ToolCatalog/ExecutionTypes re-shims); boundary verifier browser-safe closure (120 pre-existing violations)
+
+### Slice #309 — Shim HookSchemas.ts to Re-Export from @blade-ai/agent-sdk/local
+
+**Capability:** `JsonValueSchema`, `getHookSchemas`, `safeParseHookOutput` — Hook system Zod schemas with lazySingleton deferred construction (564L)
+**Target:** `@blade-ai/agent-sdk/local`
+**Root file shimmed:** `src/hooks/schemas/HookSchemas.ts` — reduced from 564L implementation to 3-line re-export
+**Package:** `packages/agent-sdk/src/local/hookSchemas.ts` (564L) — identical except import paths (common, constants, typeAssertions, lazySingleton from `@blade-ai/agent/utils`, hookTypes)
+**Barrel:** Already exported in `packages/agent-sdk/src/local/index.ts` (no change needed)
+**Dead-code note:** `JsonValueSchema`/`getHookSchemas`/`safeParseHookOutput` have ZERO consumers in root (self-references only) — the root file was orphaned after the hooks migration; package version is canonical
+**Tests:** 66 hook tests pass (BashClassifier, HookConfig, HookExecutionGuard, HookRuntime, Matcher, OutputParser)
+**Verification:** `pnpm -r run type-check` zero errors; root type-check 96 errors (0 new); boundary verifier unchanged (120 pre-existing, 0 new); `git diff --check` clean
+**Impact:** 564L root code eliminated — **largest single-file shim this session** (surpasses ContextFilter 399L #308, AttachmentCollector 504L #297); hooks/schemas subsystem migrated
+**Remaining work (next slices):** `HookExecutor.ts` (1243L) + `HookManager.ts` (1623L) — large diffs vs package (670/902 lines), blocked on session/kernel types; `Session.ts` full migration; package Tool declaration consolidation; boundary verifier browser-safe closure (120 pre-existing violations)
 
 ## 🏆 Milestone — Zero Production Test Failures (#245)
 
