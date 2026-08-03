@@ -82,7 +82,7 @@ Dependency direction:
 
 ---
 
-## Migration Progress — 319 Slices Completed
+## Migration Progress — 320 Slices Completed
 
 ### Subsystems at 100% (Complete)
 
@@ -1067,6 +1067,17 @@ After 29 slices (#150-#178), approximately 4,160 lines migrated from root to `@b
 **Impact:** Root stream protocol unified with the canonical session StreamMessage; pre-existing Session.ts kernel-event type errors resolved — clears the type-level path toward full Session.ts migration
 **Notes:** 12 remaining session/types.ts errors are pre-existing re-export-scope issues (SendOptions/StreamOptions/ModelInfo/etc. used in SessionOptions/ISession but only re-exported) — a future slice can apply the import+re-export pattern to all of them
 **Remaining work (next slices):** session/types.ts re-export-scope cleanup (12 pre-existing errors); `HookExecutor.ts` (1243L) + `HookManager.ts` (1623L); package Tool declaration consolidation; `ExecutionPipeline.ts` (1468L) + context core; Session.ts (784L)
+
+### Slice #320 — Fix session/types.ts Re-Export Scope (13 Pre-Existing Type Errors)
+
+**Capability:** Session types file repair — the 11 type names used inside `SessionOptions`/`ISession` were only re-exported (`export type { X } from ...` does not bring X into file scope), causing 13 pre-existing "Cannot find name" errors
+**Root file updated:** `src/session/types.ts` — added a consolidated `import type` block from `@blade-ai/agent-sdk/local` (AgentDefinition, ForkSessionOptions/Result, HookCallback, HookInput, HookOutput, McpServerStatus, McpToolInfo, ModelInfo, ProviderConfig, SendOptions, StreamOptions, SubagentInfo) + `SessionHookEvent` from `@blade-ai/agent-sdk/session` (its correct home — the old re-export from local was a WRONG module: local has no SessionHookEvent); converted all re-export lines to plain re-exports of the imported names
+**Type-error fixes (13 genuine pre-existing):**
+- 11× "Cannot find name" (SendOptions, StreamOptions, ModelInfo, McpServerStatus, McpToolInfo, ForkSessionOptions, ProviderConfig ×2, AgentDefinition, SubagentInfo, SessionHookEvent ×2, HookCallback)
+- 1× wrong-module error (SessionHookEvent from local — resolved via session subpath)
+**Verification:** `pnpm -r run type-check` zero errors; root type-check **83 → 70 (down 13, 0 new)**; `verify:boundaries` PASS; 61 session tests pass (2 pre-existing hook failures); full suite 4 pre-existing failing files unchanged; `git diff --check` clean; session/types.ts lint 0 warnings
+**Impact:** session/types.ts is now fully type-clean — every name used in the session contracts resolves from the package subpaths; Session.ts (784L) migration path is now type-clear
+**Remaining work (next slices):** `HookExecutor.ts` (1243L) + `HookManager.ts` (1623L) (large diffs vs package — hooks subsystem final push); package Tool declaration consolidation (blocks remaining tools re-shims); `ExecutionPipeline.ts` (1468L) + context core (PersistentStore 841L, ContextManager 712L, CompactionService 539L); Session.ts (784L) + SessionRuntime.ts (598L)
 
 ## 🏆 Milestone — Zero Production Test Failures (#245)
 

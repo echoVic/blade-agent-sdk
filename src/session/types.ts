@@ -23,6 +23,22 @@ import type { StreamMessageType } from '../types/constants.js';
 import type { AgentLogger } from '../types/logging.js';
 import type { CanUseTool, PermissionHandler } from '../types/permissions.js';
 import type { Assert, IsEqual } from '../types/typeAssertions.js';
+import type {
+  AgentDefinition,
+  ForkSessionOptions,
+  ForkSessionResult,
+  HookCallback,
+  HookInput,
+  HookOutput,
+  McpServerStatus,
+  McpToolInfo,
+  ModelInfo,
+  ProviderConfig,
+  SendOptions,
+  StreamOptions,
+  SubagentInfo,
+} from '@blade-ai/agent-sdk/local';
+import type { SessionHookEvent } from '@blade-ai/agent-sdk/session';
 
 export type { ExecutionContext, ProviderType, TokenUsage, ToolDefinition, ToolResult };
 
@@ -41,17 +57,17 @@ export type { StreamMessage };
 
 type _AssertStreamMessageComplete = Assert<IsEqual<StreamMessage['type'], StreamMessageType>>;
 
-export type { HookInput } from '@blade-ai/agent-sdk/local';
+export type { HookInput };
 
-export type { HookOutput } from '@blade-ai/agent-sdk/local';
+export type { HookOutput };
 
-export type { HookCallback } from '@blade-ai/agent-sdk/local';
+export type { HookCallback };
 
-export type { SessionHookEvent } from '@blade-ai/agent-sdk/local';
+export type { SessionHookEvent };
 
-export type { SubagentInfo } from '@blade-ai/agent-sdk/local';
+export type { SubagentInfo };
 
-export type { AgentDefinition } from '@blade-ai/agent-sdk/local';
+export type { AgentDefinition };
 
 export interface SessionOptions {
   provider: ProviderConfig;
@@ -96,15 +112,15 @@ export interface SessionOptions {
   observability?: ObservabilityOptions;
 }
 
-export type { StreamOptions, SendOptions } from '@blade-ai/agent-sdk/local';
+export type { StreamOptions, SendOptions };
 
-export type { ModelInfo } from '@blade-ai/agent-sdk/local';
+export type { ModelInfo };
 
-export type { McpServerStatus } from '@blade-ai/agent-sdk/local';
+export type { McpServerStatus };
 
-export type { McpToolInfo } from '@blade-ai/agent-sdk/local';
+export type { McpToolInfo };
 
-export type { ForkSessionOptions, ForkSessionResult } from '@blade-ai/agent-sdk/local';
+export type { ForkSessionOptions, ForkSessionResult };
 
 export interface ISession extends AsyncDisposable {
   readonly sessionId: SessionId;
