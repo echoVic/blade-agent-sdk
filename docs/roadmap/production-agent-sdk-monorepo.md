@@ -82,7 +82,7 @@ Dependency direction:
 
 ---
 
-## Migration Progress — 300 Slices Completed
+## Migration Progress — 301 Slices Completed
 
 ### Subsystems at 100% (Complete)
 
@@ -786,6 +786,26 @@ After 29 slices (#150-#178), approximately 4,160 lines migrated from root to `@b
 **Verification:** `pnpm -r run type-check` zero errors; root type-check 129 errors (0 new); boundary verifier unchanged (120 pre-existing, 0 new); `git diff --check` clean
 **Impact:** 249L root code eliminated; AgentEvent type identity now unified with package local consumers (planExecutor, adapterContracts, sessionTypes); root agent/event subsystem fully migrated (types #167, events #300)
 **Notes:** Pure type file — no runtime behavior change; monorepoTopology stale assertions (14) tracked for a future test-maintenance slice
+**Remaining work (next slices):** `Session.ts` missing `SessionId` import (blocks 6 session test files); LoopState.ts (133L, next near-identical shim candidate); boundary verifier browser-safe closure (120 pre-existing violations)
+
+### Slice #301 — Shim TurnState.ts to Re-Export from @blade-ai/agent-sdk/local + Align Like Interfaces
+
+**Capability:** `TurnState` — 5-type turn state system (`LlmToolDefinition`, `LoopSkillState`, `LoopRecoveryState`, `LoopExecutionContext`, `TurnState`) (56L)
+**Target:** `@blade-ai/agent-sdk/local`
+**Root file shimmed:** `src/agent/state/TurnState.ts` — reduced from 56L implementation to 5-line type re-export
+**Package:** `packages/agent-sdk/src/local/turnState.ts` (56L) — differs only in the 4 decoupling interfaces (`ToolRegistryLike`, `ToolCatalogLike`, `BackgroundAgentManagerLike`, `ConfirmationHandlerLike`) replacing root concrete types
+**Like-interface correction (2 files):**
+- `kernelAdapterTypes.ts` — `ToolRegistryLike.getTool(toolName)` → `get(name)` (matches BOTH root and package ToolRegistry; `getTool` was a phantom member — zero call sites)
+- `turnStateTypes.ts` — `ToolCatalogLike.resolveDefinitions?` → `getAll(): unknown[]` (matches both ToolCatalog versions; `resolveDefinitions` was phantom — zero call sites)
+- Rationale: the phantom members made the interfaces structurally incompatible with the real classes, causing latent type errors and blocking the shim
+**Type-error fixes (9 genuine errors):**
+- 3 TurnState dual-declarations: `LoopHookBuilder.ts(387)`, `AgentLoop.test.ts(155)`, `AgentLoop.streaming.test.ts(99)`
+- 5 phantom-`getTool` errors: `SessionRuntime.ts(161)`, `SessionKernelAdapter.test.ts(37,74)`, `discoverTools.test.ts(38,79)`
+- 1 ToolCatalogLike mismatch: `discoverTools.test.ts(108)`
+**Tests:** 65 tests pass across 6 affected files (LoopRunner 29, AgentLoop, AgentLoop.streaming, LoopState, SessionKernelAdapter, discoverTools)
+**Verification:** `pnpm -r run type-check` zero errors; root type-check **120 errors (down 9 from 129)**; boundary verifier unchanged (120 pre-existing, 0 new); `git diff --check` clean
+**Impact:** 56L root code eliminated; TurnState identity unified (root consumers were passing TurnState values across the dual declaration); Like interfaces now match real class APIs — unblocks future ToolRegistry/ToolCatalog shims
+**Notes:** `LoopRunner.ts(364)` error persists (renamed target `IBackgroundAgentManager` → `BackgroundAgentManagerLike`; root `context.backgroundAgentManager` is typed `unknown` — pre-existing loose typing in root code)
 **Remaining work (next slices):** `Session.ts` missing `SessionId` import (blocks 6 session test files); LoopState.ts (133L, next near-identical shim candidate); boundary verifier browser-safe closure (120 pre-existing violations)
 
 ## 🏆 Milestone — Zero Production Test Failures (#245)

@@ -11,7 +11,8 @@ export interface ExecutionPipelineLike {
 /**
  * Minimal interface for a tool registry.
  * Used by SessionKernelAdapter to avoid depending on the root ToolRegistry class.
+ * Mirrors the `get(name)` lookup used by both root and package ToolRegistry.
  */
 export interface ToolRegistryLike {
-  getTool(toolName: string): unknown;
+  get(name: string): unknown;
 }

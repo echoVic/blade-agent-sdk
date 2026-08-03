@@ -4,8 +4,9 @@
  */
 
 // ToolCatalog — methods commonly accessed through LoopExecutionContext
+// Mirrors the `getAll()` lookup present on both root and package ToolCatalog.
 export interface ToolCatalogLike {
-  resolveDefinitions?: (toolNames: string[]) => unknown;
+  getAll(): unknown[];
 }
 
 // BackgroundAgentManager — optional in LoopExecutionContext
