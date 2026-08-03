@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { SessionId } from '../local/branded.js';
+import type { SdkMcpServerHandle } from '../local/SdkMcpServer.js';
 import type { ModelPort } from '@blade-ai/ai';
 import {
   isPackageLocalSdkMcpServerHandle,
@@ -448,9 +449,9 @@ describe('agent-sdk package-local session runtime shell', () => {
     const localHandle = {
       name: 'local',
       version: '1.0.0',
-      server: {},
-      createClientTransport: async () => ({}),
-    };
+      server: {} as never,
+      createClientTransport: async () => ({} as never),
+    } as SdkMcpServerHandle;
     const disabledConfig = {
       command: 'node',
       args: ['disabled.js'],

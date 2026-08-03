@@ -448,7 +448,9 @@ describe('monorepo topology', () => {
     const legacyMessageUtilsSource = readFileSync('src/services/messageUtils.ts', 'utf-8');
     const runtimeMessageUtilsSource = readFileSync('src/runtime/messageUtils.ts', 'utf-8');
     const runtimeConsumers = [
-      'src/session/Session.ts',
+      // Slice #348: Session.ts is now a shim; the package legacySession owns
+      // the message-clone import.
+      'packages/agent-sdk/src/session/legacySession.ts',
       'src/session/SessionStore.ts',
       'src/hooks/HookRuntime.ts',
       'src/agent/CompactionHandler.ts',
@@ -465,7 +467,7 @@ describe('monorepo topology', () => {
       const source = readFileSync(file, 'utf-8');
 
       expect(source, `${file} should import message clone helpers from runtime`).toMatch(
-        /from '\..\/runtime\/messageUtils\.js'|from '@blade-ai\/agent-sdk\/local'/,
+        /from '\..\/runtime\/messageUtils\.js'|from '@blade-ai\/agent-sdk\/local'|from '\.\.\/local\/messageUtils\.js'/,
       );
       expect(source, `${file} should not import the legacy root message utils shim`).not.toContain(
         '../services/messageUtils.js',
@@ -1998,6 +2000,9 @@ describe('monorepo topology', () => {
         "export type { AgentRuntimeDeps } from './agent.js';",
         "export { BackgroundAgentManager } from './backgroundAgentManager.js';",
         "export type { StartBackgroundAgentOptions } from '../local/backgroundAgentTypes.js';",
+        "export { SessionRuntime } from './sessionRuntime.js';",
+        "export { createSession, forkSession, prompt, resumeSession } from './legacySession.js';",
+        "export type { ForkOptions, ResumeOptions } from './legacySession.js';",
       ].join('\n'),
     );
     expect(internalEntrySource).not.toContain('export *');

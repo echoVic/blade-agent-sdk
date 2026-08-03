@@ -4,7 +4,7 @@ const createAgent = vi.fn(async (_config: unknown, _options?: unknown) => ({
   async setModel() {},
 }));
 
-vi.mock('../../agent/Agent.js', () => ({
+vi.mock('../../../packages/agent-sdk/src/session/agent.js', () => ({
   Agent: {
     create: createAgent,
   },

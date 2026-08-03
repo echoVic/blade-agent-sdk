@@ -71,49 +71,9 @@ export type { SubagentInfo };
 
 export type { AgentDefinition };
 
-export interface SessionOptions {
-  provider: ProviderConfig;
-  model: string;
-  temperature?: number;
-  maxOutputTokens?: number;
-  maxContextTokens?: number;
-  providerOptions?: JsonObject;
-  thinkingEnabled?: boolean;
-  thinkingBudget?: number;
-  tokenBudget?: TokenBudgetConfig;
-
-  allowedTools?: string[];
-  disallowedTools?: string[];
-  toolSourcePolicy?: ToolCatalogSourcePolicy;
-  mcpServers?: Record<string, McpServerConfig | SdkMcpServerHandle>;
-  // 使用 ToolDefinition<never> 以容纳不同 TParams 的自定义工具：execute 的参数位是逆变的，
-  // 若写成 ToolDefinition<JsonObject>[]，则 defineTool<{...}>() 得到的强类型工具无法赋值进来，
-  // 迫使调用方在 execute 内部做 cast。never 只用于数组元素的参数位，不泄漏到调用方的 execute。
-  tools?: ToolDefinition<never>[];
-
-  permissionMode?: PermissionMode;
-  permissionHandler?: PermissionHandler;
-  canUseTool?: CanUseTool;
-
-  systemPrompt?: string;
-  maxTurns?: number;
-  agents?: Record<string, AgentDefinition>;
-  subagent?: SubagentInfo;
-
-  hooks?: Partial<Record<SessionHookEvent, HookCallback[]>>;
-
-  defaultContext?: RuntimeContext;
-  logger?: AgentLogger;
-  storagePath?: string;
-  persistSession?: boolean;
-
-  outputFormat?: OutputFormat;
-
-  sandbox?: SandboxSettings;
-
-  observability?: ObservabilityOptions;
-}
-
+// Slice #348: SessionOptions is canonically defined in the package session
+// layer (session/types.ts); the root declaration is retired.
+export type { SessionOptions } from '@blade-ai/agent-sdk/session';
 export type { StreamOptions, SendOptions };
 
 export type { ModelInfo };

@@ -34,12 +34,8 @@ export interface ToolCatalogSourcePolicy {
   allowedTrustLevels?: ToolTrustLevel[];
 }
 
-export interface SdkMcpServerHandle {
-  name: string;
-  version: string;
-  createClientTransport: () => Promise<unknown>;
-  server: unknown;
-}
+import type { SdkMcpServerHandle } from '../local/SdkMcpServer.js';
+export type { SdkMcpServerHandle };
 
 export type LogLevelName = 'debug' | 'info' | 'warn' | 'error';
 

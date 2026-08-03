@@ -470,6 +470,8 @@ export class HookRuntime {
     payload: {
       taskId: string;
       taskDescription: string;
+      hasImages?: boolean;
+      imageCount?: number;
       resultSummary?: string;
       success: boolean;
       abortSignal?: AbortSignal;

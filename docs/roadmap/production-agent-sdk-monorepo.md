@@ -82,7 +82,7 @@ Dependency direction:
 
 ---
 
-## Migration Progress — 347 Slices Completed
+## Migration Progress — 348 Slices Completed
 
 ### Subsystems at 100% (Complete)
 
@@ -1399,6 +1399,19 @@ After 29 slices (#150-#178), approximately 4,160 lines migrated from root to `@b
 **Verification:** `pnpm -r run type-check` 3/3 zero errors; root type-check 10 errors (−8, 0 new); `verify:boundaries` PASS (updated rules); `verify:entrypoints` PASS; `verify:packages` PASS; `verify:release` PASS; `verify:examples` PASS; root suite 1248 passing (Agent/BackgroundAgentManager/SessionRuntime/LoopRunner suites + topology 74/74 pass) / 43 pre-existing failures unchanged; package suite 665 passing (+3 new, 5 pre-existing failures unchanged); `git diff --check` clean
 **Impact:** 🎉 **AGENT CORE 100% MIGRATED** — root `src/agent/` now holds ONLY shims (Agent, LoopRunner, LoopHookBuilder, CompactionHandler, ModelManager, RuntimePatchManager, subagents). The session-agent chain (ModelManager #343 → CompactionHandler #344 → LoopHookBuilder #345 → LoopRunner #346 → Agent+BackgroundAgentManager #347) is complete.
 **Remaining work (next slices):** SessionRuntime.ts (598L) + Session.ts (784L) — the LAST root session real files; then the root holds only orchestration/tests/docs/release config.
+
+### Slice #348 — Port SessionRuntime (598L) + the Legacy Session Factory/Class (784L) into the Package 🎉 Session Core Complete
+
+**Capability:** `SessionRuntime` (kernel-backed session runtime: model/kernel/hook/store/trace/tool ports, MCP registry wiring, sandbox, background agents) + the legacy `Session` factory/class (createSession/resumeSession/forkSession/prompt, ISession lifecycle). Formerly root `src/session/SessionRuntime.ts` (598L) + `src/session/Session.ts` (784L) — the LAST root session real files.
+**Package capability port:** `session/sessionRuntime.ts` + `session/legacySession.ts` (the name `Session.ts` is taken by the package's runtime-factory entry) with full import rewrites; exported from `session/internal.ts` (`SessionRuntime`, `createSession`/`resumeSession`/`forkSession`/`prompt`, `ForkOptions`/`ResumeOptions`).
+**Package type gaps FIXED (TDD — the port exposed them as 4 pre-existing root errors):** `SessionAgentKernelStreamOptions` + `input`/`turnId`/`signal`/`includeThinking`; `HookRuntime.runTaskCompleted` payload + `hasImages`/`imageCount`; `PromptResult` + `turnsCount?`; and the session `SdkMcpServerHandle` DEDUPED to the local canonical (typed Transport/McpServer — the session copy was a loose duplicate).
+**Root type dedupe:** `src/session/types.ts`'s local `SessionOptions` interface retired → re-exports the package session `SessionOptions` (the root tests pass the package type; the divergence was `tools?: ToolDefinition<never>[]` vs `tools?: SessionTool[]` — `SessionTool = ToolDefinition<never> | Tool` so assignable after dedupe).
+**Root files shimmed:** `src/session/SessionRuntime.ts` (598L → 3L), `src/session/Session.ts` (784L → 4L). One root test's Agent mock re-pointed to the package `session/agent.js` path.
+**Boundary verifier + topology tests updated** (session/internal content, message-utils consumer list, boundary allowed-imports map for the two new shims).
+**Pre-existing error reduction:** root type-check **10 → 6** (−4 errors, 0 new; the remaining 6 are an unrelated pre-existing `src/types/common.ts` duplicate-identifier issue, unchanged).
+**Focused test:** `packages/agent-sdk/src/__tests__/legacySessionPort.test.ts` — 3 runtime tests with a `vi.hoisted` Agent mock (factory + runtime exports, session creation through the legacy factory, branded ids).
+**Verification:** `pnpm -r run type-check` 3/3 zero errors; root type-check 6 errors (−4, 0 new); `verify:boundaries` PASS (updated rules); `verify:entrypoints` PASS; `verify:packages` PASS; `verify:release` PASS; `verify:examples` PASS; root suite 1248 passing (SessionRuntime/SessionPersistence/SessionModelConfig suites + topology 74/74 pass) / 43 pre-existing failures unchanged; package suite 668 passing (+3 new, 5 pre-existing failures unchanged); `git diff --check` clean
+**Impact:** 🎉 **SESSION CORE 100% MIGRATED** — root `src/session/` now holds ONLY shims (SessionRuntime, Session, SessionStore, kernel adapters). The root holds no production session/agent/context/tools runtime code — only orchestration (src/index.ts barrel), tests, docs, and release config remain for the final cleanup slices.
 
 ## 🏆 Milestone — Zero Production Test Failures (#245)
 

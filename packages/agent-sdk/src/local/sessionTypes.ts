@@ -9,6 +9,7 @@ import { DecisionBehavior } from './hookTypes.js';
 import type { MessageId, SessionId } from './branded.js';
 import type { SessionInfo } from './context.js';
 import type { Message } from '@blade-ai/ai/chat';
+import type { UserMessageContent } from './agentTypes.js';
 import type { ModelPort } from '@blade-ai/ai';
 import type { AgentModelRequestDefaults } from '@blade-ai/agent/kernel';
 import type { TraceRecorder } from './TraceRecorder.js';
@@ -86,6 +87,7 @@ export interface PromptResult {
   toolCalls: ToolCallRecord[];
   usage: TokenUsage;
   duration: number;
+  turnsCount?: number;
 }
 
 export type StreamMessage =
@@ -245,10 +247,16 @@ export interface SessionAgentKernelOptions {
 /**
  * SessionAgentKernelStreamOptions — 流式 Agent 内核启动选项
  *
- * 扩展 SessionAgentKernelOptions，增加 Agent 事件回调。
+ * 扩展 SessionAgentKernelOptions，增加流式 turn 输入与 Agent 事件回调。
+ * (slice #348: added input/turnId/signal/includeThinking — the legacy
+ * SessionRuntime consumed them; 4 pre-existing root type errors fixed.)
  */
 export interface SessionAgentKernelStreamOptions
   extends SessionAgentKernelOptions {
+  input: UserMessageContent;
+  turnId?: string;
+  signal?: AbortSignal;
+  includeThinking?: boolean;
   onAgentEvent?: (event: AgentEvent) => void;
 }
 
