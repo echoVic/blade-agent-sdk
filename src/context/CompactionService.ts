@@ -103,9 +103,10 @@ export async function compact(
 
     const preCompactResult = await hookManager.executePreCompactHooks(
       {
+        strategy: options.trigger,
         trigger: options.trigger,
-        messages_before: messages.length,
-        tokens_before: preTokens,
+        messagesBefore: messages.length,
+        tokensBefore: preTokens,
       },
       options.projectDir,
       options.sessionId || SessionId('unknown'),
@@ -132,13 +133,17 @@ export async function compact(
       console.warn(`[CompactionService] PreCompact hook warning: ${preCompactResult.warning}`);
     }
 
-    const hookResult = await hookManager.executeCompactionHooks(options.trigger, {
-      projectDir: options.projectDir,
-      sessionId: options.sessionId || SessionId('unknown'),
-      permissionMode: options.permissionMode || PermissionMode.DEFAULT,
-      messagesBefore: messages.length,
-      tokensBefore: preTokens,
-    });
+    const hookResult = await hookManager.executeCompactionHooks(
+      {
+        strategy: options.trigger,
+        trigger: options.trigger,
+        messagesBefore: messages.length,
+        tokensBefore: preTokens,
+      },
+      options.projectDir,
+      options.sessionId || SessionId('unknown'),
+      options.permissionMode || PermissionMode.DEFAULT,
+    );
 
     if (hookResult.blockCompaction) {
       console.log(
@@ -230,11 +235,12 @@ export async function compact(
         const postHookManager = HookManager.getInstance();
         const postHookResult = await postHookManager.executePostCompactHooks(
           {
+            strategy: options.trigger,
             trigger: options.trigger,
-            messages_before: messages.length,
-            messages_after: compactedMessages.length,
-            tokens_before: preTokens,
-            tokens_after: postTokens,
+            messagesBefore: messages.length,
+            messagesAfter: compactedMessages.length,
+            tokensBefore: preTokens,
+            tokensAfter: postTokens,
             summary,
           },
           options.projectDir,

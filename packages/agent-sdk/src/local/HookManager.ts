@@ -945,6 +945,10 @@ export class HookManager {
       strategy: string;
       reason?: string;
       messageCount?: number;
+      /** Rich fields from CompactionService (ported from root) */
+      trigger?: 'manual' | 'auto';
+      messagesBefore?: number;
+      tokensBefore?: number;
     },
     projectDir: string,
     sessionId: SessionId,
@@ -962,9 +966,9 @@ export class HookManager {
       project_dir: projectDir,
       session_id: sessionId,
       permission_mode: permissionMode,
-      trigger: 'auto',
-      messages_before: params.messageCount ?? 0,
-      tokens_before: 0,
+      trigger: params.trigger ?? 'auto',
+      messages_before: params.messagesBefore ?? params.messageCount ?? 0,
+      tokens_before: params.tokensBefore ?? 0,
     };
 
     const hooks = this.getMatchingHooks(HookEvent.Compaction, {});
@@ -1064,6 +1068,10 @@ export class HookManager {
       strategy: string;
       reason?: string;
       messageCount?: number;
+      /** Rich fields from CompactionService (ported from root) */
+      trigger?: 'manual' | 'auto';
+      messagesBefore?: number;
+      tokensBefore?: number;
     },
     projectDir: string,
     sessionId: SessionId,
@@ -1081,9 +1089,9 @@ export class HookManager {
       project_dir: projectDir,
       session_id: sessionId,
       permission_mode: permissionMode,
-      trigger: 'auto',
-      messages_before: params.messageCount ?? 0,
-      tokens_before: 0,
+      trigger: params.trigger ?? 'auto',
+      messages_before: params.messagesBefore ?? params.messageCount ?? 0,
+      tokens_before: params.tokensBefore ?? 0,
     };
 
     const hooks = this.getMatchingHooks(HookEvent.PreCompact, {});
@@ -1124,6 +1132,13 @@ export class HookManager {
       strategy: string;
       originalCount?: number;
       compactedCount?: number;
+      /** Rich fields from CompactionService (ported from root) */
+      trigger?: 'manual' | 'auto';
+      messagesBefore?: number;
+      messagesAfter?: number;
+      tokensBefore?: number;
+      tokensAfter?: number;
+      summary?: string;
     },
     projectDir: string,
     sessionId: SessionId,
@@ -1141,11 +1156,11 @@ export class HookManager {
       project_dir: projectDir,
       session_id: sessionId,
       permission_mode: permissionMode,
-      trigger: 'auto',
-      messages_before: params.originalCount ?? 0,
-      messages_after: params.compactedCount ?? 0,
-      tokens_before: 0,
-      tokens_after: 0,
+      trigger: params.trigger ?? 'auto',
+      messages_before: params.messagesBefore ?? params.originalCount ?? 0,
+      messages_after: params.messagesAfter ?? params.compactedCount ?? 0,
+      tokens_before: params.tokensBefore ?? 0,
+      tokens_after: params.tokensAfter ?? 0,
     };
 
     const hooks = this.getMatchingHooks(HookEvent.PostCompact, {});

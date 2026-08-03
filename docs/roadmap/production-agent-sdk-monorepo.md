@@ -82,7 +82,7 @@ Dependency direction:
 
 ---
 
-## Migration Progress — 323 Slices Completed
+## Migration Progress — 324 Slices Completed
 
 ### Subsystems at 100% (Complete)
 
@@ -1117,6 +1117,22 @@ After 29 slices (#150-#178), approximately 4,160 lines migrated from root to `@b
 **Verification:** `pnpm -r run type-check` zero errors; root type-check 69 errors (0 new); `verify:boundaries` PASS; `verify:entrypoints` PASS; `verify:packages` PASS; 80 hook/session tests pass (2 pre-existing hook failures); full suite 4 pre-existing failing files unchanged; `git diff --check` clean
 **Impact:** 1243L root code eliminated — second-largest shim after HookTypes 1214L #322; hooks runtime executor now package-canonical with CORRECTED stop semantics; root HookManager (1623L) now delegates to the package executor — its own stop defaults already correct
 **Remaining work (next slices):** `HookManager.ts` (1623L) — the last hooks file (diff alignment); package Tool declaration consolidation (blocks tools re-shims); `ExecutionPipeline.ts` (1468L) + context core (PersistentStore 841L, ContextManager 712L, CompactionService 539L); Session.ts (784L) + SessionRuntime.ts (598L)
+
+### Slice #324 — Port Rich Compaction Params + Shim HookManager.ts (1623L) 🎉 Hooks Complete
+
+**Capability:** `HookManager` — hook configuration management + singleton orchestration (1623L — the LARGEST root file shimmed this session, surpassing HookTypes 1214L #322)
+**Target:** `@blade-ai/agent-sdk/local`
+**Package capability port (3 methods):** the package's compaction-hook params were SIMPLIFIED (strategy/messageCount only, tokens hardcoded 0, trigger hardcoded 'auto') — a data regression vs root. Ported the root's rich fields into the package:
+- `executePreCompactHooks`: + `trigger?`/`messagesBefore?`/`tokensBefore?`
+- `executeCompactionHooks`: + `trigger?`/`messagesBefore?`/`tokensBefore?`
+- `executePostCompactHooks`: + `trigger?`/`messagesBefore?`/`messagesAfter?`/`tokensBefore?`/`tokensAfter?`/`summary?`
+- all three now pass the rich values into their hookInput (falling back to the old defaults)
+**Consumer adaptation:** `CompactionService.ts` — 3 call sites updated to the package signature shape (`(params, projectDir, sessionId, permissionMode)` with `strategy: options.trigger`)
+**Method renames (breaking, documented):** `executePreToolHooks`/`executePostToolHooks` → `executePreToolUseHooks`/`executePostToolUseHooks` (package names; zero root consumers — only the package HookRuntime uses them)
+**Root file shimmed:** `src/hooks/HookManager.ts` — reduced from 1623L implementation to 1-line re-export
+**Verification:** `pnpm -r run type-check` zero errors; root type-check 69 errors (0 new); `verify:boundaries` PASS; `verify:entrypoints` PASS; `verify:packages` PASS; 67 hook/compaction tests pass; full suite 4 pre-existing failing files unchanged; `git diff --check` clean
+**Impact:** 1623L root code eliminated — the LARGEST single-file shim of the migration; 🎉 **HOOKS SUBSYSTEM 100% MIGRATED** (OutputParser #293, HookRuntime #294, HookSchemas #309, HookTypes #322, HookExecutor #323, HookManager #324); root hooks/ holds only shims
+**Remaining work (next slices):** package Tool declaration consolidation (blocks tools re-shims — ToolCatalog delegation semantics); `ExecutionPipeline.ts` (1468L) + context core (PersistentStore 841L, ContextManager 712L, CompactionService 539L); Session.ts (784L) + SessionRuntime.ts (598L); Agent.ts (662L) + LoopRunner (404L) + BackgroundAgentManager (605L)
 
 ## 🏆 Milestone — Zero Production Test Failures (#245)
 
