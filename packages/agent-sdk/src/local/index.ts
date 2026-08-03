@@ -149,6 +149,9 @@ export { CacheStore } from './CacheStore.js';
 // src/context/storage/PersistentStore.ts)
 export { NoopPersistentStore, PersistentStore } from './persistentStore.js';
 
+// Context manager (slice #341 — ported from root src/context/ContextManager.ts)
+export { ContextManager } from './contextManager.js';
+
 export { BashClassifier } from './BashClassifier.js';
 export type {  BashCommandCategory, BashClassification } from './BashClassifier.js';
 export { SecureProcessExecutor } from './SecureProcessExecutor.js';

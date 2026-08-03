@@ -82,7 +82,7 @@ Dependency direction:
 
 ---
 
-## Migration Progress — 340 Slices Completed
+## Migration Progress — 341 Slices Completed
 
 ### Subsystems at 100% (Complete)
 
@@ -1314,6 +1314,17 @@ After 29 slices (#150-#178), approximately 4,160 lines migrated from root to `@b
 **Verification:** `pnpm -r run type-check` 3/3 zero errors; root type-check 58 errors (0 new); `verify:boundaries` PASS; `verify:entrypoints` PASS; `verify:packages` PASS; `verify:release` PASS; `verify:examples` PASS; root suite 1248 passing (ContextManager/Agent/Session suites all pass) / 43 pre-existing failures unchanged; package suite 644 passing (+3 new, 5 pre-existing failures unchanged); `git diff --check` clean
 **Impact:** the context-core persistence layer is fully package-owned; root `src/context/storage/` now holds only shims. **ContextManager (712L) is the last real context-core file** and its remaining deps are all shims — the next slice can migrate it.
 **Remaining work (next slices):** `ExecutionPipeline.ts` (1468L); context core (ContextManager 712L); Session.ts (784L) + SessionRuntime.ts (598L); Agent.ts (662L) + LoopRunner (404L) + BackgroundAgentManager (605L)
+
+### Slice #341 — Port ContextManager into @blade-ai/agent-sdk/local (712L) 🎉 Context Core Complete
+
+**Capability:** `ContextManager` — the unified context manager (memory + persistent project store + session store + cache + compressor + filter; session lifecycle with generated/persisted ids; message/tool-call/tool-result/compaction persistence; workspace/tool state; formatted context; session search with relevance ranking; stats; cleanup). Formerly root `src/context/ContextManager.ts` (712L) — the LAST real context-core file. Unblocked by #339/#340 (its `JsonlSessionStore`/`PersistentStore` deps are now shims); all other deps were package-owned (`ContextCompressor`, `ContextFilterProcessor as ContextFilter`, `CacheStore`, `ContextMemoryStore as MemoryStore`, `SessionRuntimeUtils` guards, `local/context.js` + `local/contextTypes.js` types incl. `ContextManagerOptions`/`ContextFilter`).
+**Package capability port:** `local/contextManager.ts` (712L) — faithful copy with import rewrites (incl. the `ContextFilterProcessor as ContextFilter` and `ContextMemoryStore as MemoryStore` aliases matching the root shim names). Exported from `local/index.ts` (`ContextManager`).
+**Root file shimmed:** `src/context/ContextManager.ts` (712L → 5L) re-exports from `@blade-ai/agent-sdk/local`; root consumers (Agent, SessionRuntime, ModelManager, LoopRunner, CompactionHandler) unchanged.
+**Pre-existing error reduction:** root type-check **58 → 54** (−4 errors, 0 new): ContextManager's own pre-existing TS7006 (×2 implicit any) + TS2724/TS2459 (SessionState/SessionSummary not exported by the then-real root SessionStore) are eliminated.
+**Focused test:** `packages/agent-sdk/src/__tests__/contextManagerPort.test.ts` — 4 runtime tests on temp dirs (session creation with generated ids, conversation hydration from the unified session store mirroring the root test's write-via-PersistentStore-then-load pattern, session search, cleanup).
+**Verification:** `pnpm -r run type-check` 3/3 zero errors; root type-check 54 errors (−4, 0 new); `verify:boundaries` PASS; `verify:entrypoints` PASS; `verify:packages` PASS; `verify:release` PASS; `verify:examples` PASS; root suite 1248 passing (ContextManager/Agent/Session/ModelManager/CompactionHandler suites all pass) / 43 pre-existing failures unchanged; package suite 648 passing (+4 new, 5 pre-existing failures unchanged); `git diff --check` clean
+**Impact:** 🎉 **CONTEXT SUBSYSTEM 100% MIGRATED** — root `src/context/` now holds ONLY shims (CompactionService #337, PersistentStore #340, ContextManager #341, processors/storage/strategies earlier). The context-core chain (SessionStore #339 → PersistentStore #340 → ContextManager #341) is complete.
+**Remaining work (next slices):** `ExecutionPipeline.ts` (1468L); Session.ts (784L) + SessionRuntime.ts (598L); Agent.ts (662L) + LoopRunner (404L) + BackgroundAgentManager (605L)
 
 ## 🏆 Milestone — Zero Production Test Failures (#245)
 
