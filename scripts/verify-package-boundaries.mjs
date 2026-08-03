@@ -140,6 +140,14 @@ const allowedRootSessionInternalImports = new Map([
     'src/agent/AgentLoop.ts',
     new Set(['agentLoop']),
   ],
+  [
+    'src/agent/Agent.ts',
+    new Set(['Agent', 'AgentRuntimeDeps']),
+  ],
+  [
+    'src/agent/subagents/BackgroundAgentManager.ts',
+    new Set(['BackgroundAgentManager', 'StartBackgroundAgentOptions']),
+  ],
 ]);
 
 const rootScopedSourceRules = [

@@ -30,7 +30,7 @@ const createAgent = vi.fn(async (_config, _options, deps) => ({
   deps,
 }));
 
-vi.mock('../../Agent.js', () => ({
+vi.mock('../../../../packages/agent-sdk/src/session/agent.js', () => ({
   Agent: {
     create: createAgent,
   },

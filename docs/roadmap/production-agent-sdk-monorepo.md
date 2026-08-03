@@ -82,7 +82,7 @@ Dependency direction:
 
 ---
 
-## Migration Progress — 346 Slices Completed
+## Migration Progress — 347 Slices Completed
 
 ### Subsystems at 100% (Complete)
 
@@ -1385,6 +1385,20 @@ After 29 slices (#150-#178), approximately 4,160 lines migrated from root to `@b
 **Verification:** `pnpm -r run type-check` 3/3 zero errors; root type-check 18 errors (−12, 0 new); `verify:boundaries` PASS (updated rules); `verify:entrypoints` PASS; `verify:packages` PASS; `verify:release` PASS; `verify:examples` PASS; root suite 1248 passing (LoopRunner/Agent/AgentLoop suites + topology 74/74 pass) / 43 pre-existing failures unchanged; package suite 662 passing (+3 new, 5 pre-existing failures unchanged); `git diff --check` clean
 **Impact:** the agent loop orchestration is fully package-owned (session layer); root `src/agent/loop/` now holds only shims. The ONLY remaining root agent-core real file is **Agent.ts (662L)**.
 **Remaining work (next slices):** Agent.ts (662L); SessionRuntime.ts (598L) + Session.ts (784L); BackgroundAgentManager (605L)
+
+### Slice #347 — Port Agent (662L) + BackgroundAgentManager (605L) into the Package Session Layer 🎉 Agent Core Complete
+
+**Capability:** `Agent` (session agent: chat/streamChat/runAgenticLoop, tool whitelist, model management, compaction, plan approval) + `BackgroundAgentManager` (background subagent lifecycle with dual lifecycle/work abort controllers, session store, orphan cleanup, resume). Formerly root `src/agent/Agent.ts` (662L) + `src/agent/subagents/BackgroundAgentManager.ts` (605L) — a CIRCULAR pair (each constructs the other), so both were ported TOGETHER into the package session layer (`session/agent.ts`, `session/backgroundAgentManager.ts`).
+**Package capability port:** both files with full import rewrites (ContextManager/HookRuntime/Logger/ExecutionPipeline/ModelManager/CompactionHandler/PlanExecutor/AttachmentHandler/McpRegistry/SubagentRegistry/AgentSessionStore from `local/`, LoopRunner from `./loopRunner.js`, ToolCatalog/ToolRegistry from `tools/`, SubagentConfig/SubagentResult from `../subagents/types.js`) + 2 pre-existing root type errors FIXED (Agent `snapshot.cwd` narrowing; the manager's `progress` implicit-any resolved by the typed Agent). Exported from `session/internal.ts` (`Agent`, `AgentRuntimeDeps`, `BackgroundAgentManager`, `StartBackgroundAgentOptions`).
+**Root files shimmed:** `src/agent/Agent.ts` (662L → 6L), `src/agent/subagents/BackgroundAgentManager.ts` (605L → 4L) — re-export from `@blade-ai/agent-sdk/session/internal`.
+**Boundary verifier updated:** `allowedRootSessionInternalImports` gains `src/agent/Agent.ts` (Agent, AgentRuntimeDeps) + `src/agent/subagents/BackgroundAgentManager.ts` (BackgroundAgentManager, StartBackgroundAgentOptions).
+**Mock-path fix (depth bug):** the BackgroundAgentManager test's Agent mock path `../../../packages/...` was THREE levels up from `src/agent/subagents/__tests__/` — it resolved to `src/packages/...` (nonexistent) so the mock never registered (0 calls, 2 test failures). Corrected to `../../../../packages/...` (4 levels to root). The two "spy not called" failures and the resume-flow failure were all this single depth bug.
+**Topology test updated:** the internal.ts exact-content assertion gains the 4 new exports.
+**Pre-existing error reduction:** root type-check **18 → 10** (−8 errors, 0 new — incl. Agent's cwd error + 7 consumer knock-ons in Session.ts/SessionRuntime.ts).
+**Focused test:** `packages/agent-sdk/src/__tests__/agentPort.test.ts` — 3 runtime tests (Agent class export, manager creation with a real AgentSessionStore, background agent start with branded ids).
+**Verification:** `pnpm -r run type-check` 3/3 zero errors; root type-check 10 errors (−8, 0 new); `verify:boundaries` PASS (updated rules); `verify:entrypoints` PASS; `verify:packages` PASS; `verify:release` PASS; `verify:examples` PASS; root suite 1248 passing (Agent/BackgroundAgentManager/SessionRuntime/LoopRunner suites + topology 74/74 pass) / 43 pre-existing failures unchanged; package suite 665 passing (+3 new, 5 pre-existing failures unchanged); `git diff --check` clean
+**Impact:** 🎉 **AGENT CORE 100% MIGRATED** — root `src/agent/` now holds ONLY shims (Agent, LoopRunner, LoopHookBuilder, CompactionHandler, ModelManager, RuntimePatchManager, subagents). The session-agent chain (ModelManager #343 → CompactionHandler #344 → LoopHookBuilder #345 → LoopRunner #346 → Agent+BackgroundAgentManager #347) is complete.
+**Remaining work (next slices):** SessionRuntime.ts (598L) + Session.ts (784L) — the LAST root session real files; then the root holds only orchestration/tests/docs/release config.
 
 ## 🏆 Milestone — Zero Production Test Failures (#245)
 
