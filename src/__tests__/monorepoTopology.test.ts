@@ -172,7 +172,11 @@ describe('monorepo topology', () => {
   });
 
   it('keeps legacy root model management on ai provider helper subpaths', () => {
-    const modelManagerSource = readFileSync('src/agent/ModelManager.ts', 'utf-8');
+    // Slice #343: ModelManager moved into the package (modelManager.ts).
+    const modelManagerSource = readFileSync(
+      'packages/agent-sdk/src/local/modelManager.ts',
+      'utf-8',
+    );
 
     expect(modelManagerSource).toContain("from '@blade-ai/ai/deepseek'");
     expect(modelManagerSource).not.toContain("from '../services/deepseek.js'");
@@ -227,7 +231,8 @@ describe('monorepo topology', () => {
       'src/agent/CompactionHandler.ts',
       'src/agent/LoopHookBuilder.ts',
       'src/agent/LoopRunner.ts',
-      'src/agent/ModelManager.ts',
+      // Slice #343: ModelManager moved into the package (modelManager.ts).
+      'packages/agent-sdk/src/local/modelManager.ts',
       'src/agent/RuntimePatchManager.ts',
       'src/agent/types.ts',
       'src/agent/loop/adapterContracts.ts',
@@ -257,9 +262,9 @@ describe('monorepo topology', () => {
         /from '@blade-ai\/ai\/chat'|from '@blade-ai\/agent-sdk\/local'|from '@blade-ai\/agent/,
       );
 
-      if (file === 'src/agent/ModelManager.ts') {
+      if (file === 'packages/agent-sdk/src/local/modelManager.ts') {
         expect(source, `${file} should import the session chat service factory`).toContain(
-          "from '../session/ChatServiceFactory.js'",
+          "from './chatServiceFactory.js'",
         );
         expect(legacyChatServiceImports, `${file} should not import the legacy factory shim`)
           .toHaveLength(0);
@@ -472,7 +477,8 @@ describe('monorepo topology', () => {
     const chatServiceInterfaceSource = readFileSync('src/services/ChatServiceInterface.ts', 'utf-8');
     const chatServiceFactorySource = readFileSync('src/session/ChatServiceFactory.ts', 'utf-8');
     const importSites = [
-      ['src/agent/ModelManager.ts', 'import'],
+      // Slice #343: ModelManager moved into the package (modelManager.ts).
+      ['packages/agent-sdk/src/local/modelManager.ts', 'import'],
       ['packages/agent-sdk/src/local/compactionService.ts', 'import'],
       ['src/services/__tests__/deepseek.live.test.ts', 'import'],
       ['src/services/__tests__/deepseek-deep.live.test.ts', 'import'],

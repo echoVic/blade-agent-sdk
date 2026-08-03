@@ -157,6 +157,9 @@ export { ContextManager } from './contextManager.js';
 export { ExecutionPipeline } from './executionPipeline.js';
 export type { ExecutionPipelineConfig, ExecutionStats } from './executionPipeline.js';
 
+// Model lifecycle manager (slice #343 — ported from root src/agent/ModelManager.ts)
+export { ModelManager } from './modelManager.js';
+
 export { BashClassifier } from './BashClassifier.js';
 export type {  BashCommandCategory, BashClassification } from './BashClassifier.js';
 export { SecureProcessExecutor } from './SecureProcessExecutor.js';

@@ -82,7 +82,7 @@ Dependency direction:
 
 ---
 
-## Migration Progress — 342 Slices Completed
+## Migration Progress — 343 Slices Completed
 
 ### Subsystems at 100% (Complete)
 
@@ -1338,6 +1338,18 @@ After 29 slices (#150-#178), approximately 4,160 lines migrated from root to `@b
 **Verification:** `pnpm -r run type-check` 3/3 zero errors; root type-check 50 errors (−4, 0 new); `verify:boundaries` PASS; `verify:entrypoints` PASS; `verify:packages` PASS (360KB budget); `verify:release` PASS; `verify:examples` PASS; root suite 1248 passing (ExecutionPipeline 975L test file + HookRuntime/LoopRunner/LoopHookBuilder/SessionRuntime suites all pass) / 43 pre-existing failures unchanged; package suite 651 passing (+3 new, 5 pre-existing failures unchanged); `git diff --check` clean
 **Impact:** the tool execution capability is fully package-owned; root `src/tools/execution/` is now a shim. Remaining root real-code files: Session.ts (784L) + SessionRuntime.ts (598L); Agent.ts (662L) + LoopRunner (404L) + BackgroundAgentManager (605L) + LoopHookBuilder (390L) + CompactionHandler (277L) + ModelManager (138L).
 **Remaining work (next slices):** Session.ts (784L) + SessionRuntime.ts (598L); Agent.ts (662L) + LoopRunner (404L) + BackgroundAgentManager (605L)
+
+### Slice #343 — Port ModelManager into @blade-ai/agent-sdk/local (138L)
+
+**Capability:** `ModelManager` — the model lifecycle manager (config resolution, apply/switch with DeepSeek defaults + thinking detection, chat service creation). Formerly root `src/agent/ModelManager.ts` (138L) — the FIRST agent-core file, and the leaf that unblocks the loop chain. Unblocked by #341 (its only real dep, `ContextManager`, is now a shim); other deps were package-owned (`chatServiceFactory`, `Logger`, `withDeepSeekDefaults` from `@blade-ai/ai/deepseek`, `isThinkingModel` from `@blade-ai/ai/model`, `BladeConfig`/`ModelConfig`/`OutputFormat`).
+**Package capability port:** `local/modelManager.ts` (138L) — faithful copy with import rewrites (incl. a case-sensitive `./contextManager.js` import to avoid the macOS file-system case collision with the new file). Exported from `local/index.ts` (`ModelManager`).
+**Root file shimmed:** `src/agent/ModelManager.ts` (138L → 4L) re-exports from `@blade-ai/agent-sdk/local`; root consumers (Agent, LoopHookBuilder, LoopRunner) unchanged. One root test mock re-pointed to the PACKAGE `chatServiceFactory.js` path (the known mock-path pattern).
+**Topology tests updated:** `monorepoTopology.test.ts` — the "legacy root model management" check, the agent-chat-protocol file list + ModelManager special-case, and the session-factory importSites entry all now point at `packages/agent-sdk/src/local/modelManager.ts` (with `./chatServiceFactory.js`).
+**Pre-existing error reduction:** root type-check **50 → 46** (−4 TS7006 implicit-any errors inside the old ModelManager, 0 new).
+**Focused test:** `packages/agent-sdk/src/__tests__/modelManagerPort.test.ts` — 3 runtime tests with `vi.hoisted` mock (config resolution, apply + chat-service creation with output-token limits, model switching).
+**Verification:** `pnpm -r run type-check` 3/3 zero errors; root type-check 46 errors (−4, 0 new); `verify:boundaries` PASS; `verify:entrypoints` PASS; `verify:packages` PASS; `verify:release` PASS; `verify:examples` PASS; root suite 1248 passing / 43 pre-existing failures unchanged; package suite 654 passing (+3 new, 5 pre-existing failures unchanged); `git diff --check` clean
+**Impact:** the agent-core migration chain is OPENED — the leaf `ModelManager` is package-owned; next slices can port `CompactionHandler` (277L) → `LoopHookBuilder` (390L) → `LoopRunner` (404L) → `Agent.ts` (662L) → then SessionRuntime (598L) + Session (784L).
+**Remaining work (next slices):** CompactionHandler.ts (277L) + LoopHookBuilder.ts (390L) + LoopRunner.ts (404L) + Agent.ts (662L); SessionRuntime.ts (598L) + Session.ts (784L); BackgroundAgentManager (605L)
 
 ## 🏆 Milestone — Zero Production Test Failures (#245)
 

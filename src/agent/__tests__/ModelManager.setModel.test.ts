@@ -9,7 +9,9 @@ const mockCreateChatServiceAsync = vi.fn(async (config: ChatConfig) => ({
   updateConfig: vi.fn(() => {}),
 }));
 
-vi.mock('../../session/ChatServiceFactory.js', () => ({
+// Slice #343: ModelManager moved into the package, so the chat factory mock
+// must target the PACKAGE module path.
+vi.mock('../../../packages/agent-sdk/src/local/chatServiceFactory.js', () => ({
   createChatServiceAsync: mockCreateChatServiceAsync,
 }));
 
