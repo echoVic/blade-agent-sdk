@@ -1194,7 +1194,7 @@ describe('agent-sdk default kernel runtime factory', () => {
   it('forks resumed sessions by materializing package-local JSONL history', async () => {
     const workspaceRoot = createWorkspaceRoot();
     const store = new JsonlSessionStore(workspaceRoot);
-    const sourceSnapshot = await store.writeForkState('parent-session', {
+    const sourceSnapshot = await store.writeForkState(SessionId('parent-session'), {
       sessionId: SessionId('root-session'),
       messages: [
         { id: 'message-1', role: 'user', content: 'hello' },
@@ -1273,7 +1273,7 @@ describe('agent-sdk default kernel runtime factory', () => {
     await session.send('persist this turn');
     await collect(session.stream());
 
-    await expect(store.loadState('persisted-session')).resolves.toMatchObject({
+    await expect(store.loadState(SessionId('persisted-session'))).resolves.toMatchObject({
       sessionId: SessionId('persisted-session'),
       messages: [
         {
@@ -1492,7 +1492,7 @@ describe('agent-sdk default kernel runtime factory', () => {
   it('hydrates resumed session messages from package-local JSONL history', async () => {
     const workspaceRoot = createWorkspaceRoot();
     const store = new JsonlSessionStore(workspaceRoot);
-    await store.writeForkState('history-session', {
+    await store.writeForkState(SessionId('history-session'), {
       sessionId: SessionId('root-session'),
       messages: [
         { id: 'message-1', role: 'user', content: 'remember me' },

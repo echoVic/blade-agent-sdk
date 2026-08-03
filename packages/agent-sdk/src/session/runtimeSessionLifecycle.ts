@@ -1,9 +1,10 @@
 import type { PackageLocalRuntimeHookRuntimePort } from './runtimeHooks.js';
+import type { SessionId } from './types.js';
 
 export interface PackageLocalRuntimeSessionLifecycleStorePort<TMessage> {
-  createSession(sessionId: string): Promise<void> | void;
-  loadSession(sessionId: string): Promise<boolean> | boolean;
-  loadMessages(sessionId: string): Promise<TMessage[]> | TMessage[];
+  createSession(sessionId: SessionId): Promise<void> | void;
+  loadSession(sessionId: SessionId): Promise<boolean> | boolean;
+  loadMessages(sessionId: SessionId): Promise<TMessage[]> | TMessage[];
 }
 
 export interface PackageLocalRuntimeSessionLifecycleOperations<TMessage> {
@@ -15,7 +16,7 @@ export interface PackageLocalRuntimeSessionLifecycleOperations<TMessage> {
 }
 
 export interface PackageLocalRuntimeSessionLifecycleOperationsOptions<TMessage> {
-  sessionId: string;
+  sessionId: SessionId;
   sessionStore: PackageLocalRuntimeSessionLifecycleStorePort<TMessage>;
   hookRuntime?: PackageLocalRuntimeHookRuntimePort;
   model?: string;

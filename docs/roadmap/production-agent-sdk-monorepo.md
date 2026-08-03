@@ -82,7 +82,7 @@ Dependency direction:
 
 ---
 
-## Migration Progress — 332 Slices Completed
+## Migration Progress — 333 Slices Completed
 
 ### Subsystems at 100% (Complete)
 
@@ -1227,6 +1227,15 @@ After 29 slices (#150-#178), approximately 4,160 lines migrated from root to `@b
 **Verification:** `pnpm -r run type-check` 3/3 zero errors; root type-check 69 errors (0 new); `verify:boundaries` PASS; `verify:entrypoints` PASS; `verify:packages` PASS; `verify:release` PASS; `verify:examples` PASS; package suite 623 passing (+3 new, 5 pre-existing failures unchanged); root suite 1247 passing / 43 pre-existing failures unchanged; `git diff --check` clean
 **Impact:** the session layer and the session subpath public API now speak ONE branded `SessionId`; the ExecutionContext consolidation's type prerequisite is satisfied (remaining internal `sessionId: string` port parameters are assignable-compatible and will be swept in part 2)
 **Remaining work (next slices):** SessionId unification part 2 (sweep the remaining assignable-compatible `sessionId: string` port params in store.ts / runtimeToolExecution.ts / runtimeSessionLifecycle.ts / runtimePorts.ts) then ExecutionContext consolidation; `ExecutionPipeline.ts` (1468L) + context core (PersistentStore 841L, ContextManager 712L, CompactionService 539L); Session.ts (784L) + SessionRuntime.ts (598L) + SessionStore.ts (538L); Agent.ts (662L) + LoopRunner (404L) + BackgroundAgentManager (605L)
+
+### Slice #333 — Complete the Session Layer SessionId Unification (Part 2)
+
+**Capability:** `SessionId` — sweeps the remaining assignable-compatible `sessionId: string` port parameters in the session layer to the branded type, completing the unification started in #332 so NO plain-string sessionId species remains in the session layer (except the intentionally-logging `LogEntry.sessionId`, which stays a plain optional string because it is informational metadata consumed by user loggers).
+**Type sweep (TDD):** `store.ts` — `SessionStore` port methods, `SessionSummary.sessionId`, `SessionSnapshot.sessionId`, `NoopSessionStore` + `JsonlSessionStore` implementations and internals (`getSessionFilePath`, `readEntries`, `writeEntries`, `appendEntries`), and `listSessions(): Promise<SessionId[]>` (file-derived ids now wrapped via the `SessionId(...)` constructor, imported as a VALUE from `local/branded.ts`); `runtimeSessionLifecycle.ts` (4 sites: `PackageLocalRuntimeSessionLifecycleStorePort` + options); `runtimeToolExecution.ts` (`PackageLocalToolExecutionContext.sessionId` — the runtime's per-tool execution context now REQUIRES a branded id). Test ripple fixed: `sessionStore.test.ts` (10 sites) and `defaultKernelRuntimeFactory.test.ts` (3 store-call sites, incl. 2 manual repairs after an over-eager perl substitution mangled `writeForkState(SessionId('x'), {` into `writeForkState(SessionId('x')), {`).
+**Focused test:** `sessionIdUnification.test.ts` extended with 4 new compile-time assertions (`SessionStore['createSession']` param, `SessionSnapshot.sessionId`, `SessionSummary.sessionId`, `SessionStore['listSessions']` return, `PackageLocalToolExecutionContext.sessionId` — all pinned to `SessionId`) plus a runtime round-trip through `JsonlSessionStore` (create/load/fork/list with branded ids).
+**Verification:** `pnpm -r run type-check` 3/3 zero errors; root type-check 69 errors (0 new); `verify:boundaries` PASS; `verify:entrypoints` PASS; `verify:packages` PASS; `verify:release` PASS; `verify:examples` PASS; package suite 624 passing (+1 new, 5 pre-existing failures unchanged); root suite 1247 passing / 43 pre-existing failures unchanged; `git diff --check` clean
+**Impact:** the session layer is fully unified on the branded `SessionId` — the ONLY remaining plain-string sessionId is `LogEntry.sessionId` (by design). The type prerequisite for the ExecutionContext consolidation (#328 revert) is now completely satisfied: every session-layer surface that carries a session id (store port, snapshots, summaries, stream messages, hook payloads, tool execution context, runtime options) uses the same branded species.
+**Remaining work (next slices):** ExecutionContext consolidation (single canonical ExecutionContext in the package — the branded `tools/types/ExecutionTypes.ts` vs the loose `tools/types/index.ts` merge, previously reverted at #328); `ExecutionPipeline.ts` (1468L) + context core (PersistentStore 841L, ContextManager 712L, CompactionService 539L); Session.ts (784L) + SessionRuntime.ts (598L) + SessionStore.ts (538L); Agent.ts (662L) + LoopRunner (404L) + BackgroundAgentManager (605L)
 
 ## 🏆 Milestone — Zero Production Test Failures (#245)
 

@@ -8,6 +8,7 @@ import {
   type ToolExecutionRegistryLike,
 } from '@blade-ai/agent/loop';
 import type { JsonObject } from '../types/common.js';
+import type { SessionId } from './types.js';
 import {
   ToolErrorType,
   type ExecutionContext,
@@ -21,7 +22,7 @@ export type PackageLocalToolExecutionOutcome = ToolExecutionOutcomeOf<AgentFunct
 export type PackageLocalToolExecutionUpdate = ToolExecutionUpdateOf<AgentFunctionToolCall>;
 
 export type PackageLocalToolExecutionContext = ExecutionContext & {
-  sessionId: string;
+  sessionId: SessionId;
   userId: string;
 };
 

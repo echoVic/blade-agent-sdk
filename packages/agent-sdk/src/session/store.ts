@@ -9,6 +9,7 @@ import type {
   SessionMessage,
   SessionToolCall,
 } from './types.js';
+import { SessionId } from '../local/branded.js';
 
 interface SessionTimelineEntry {
   id: string;
@@ -39,7 +40,7 @@ interface SessionSubagentRef {
 }
 
 interface SessionInfo {
-  sessionId: string;
+  sessionId: SessionId;
   rootId?: string;
   parentId?: string;
   relationType?: 'subagent';
@@ -98,7 +99,7 @@ interface MessageRecord {
 }
 
 export interface SessionSummary {
-  sessionId: string;
+  sessionId: SessionId;
   lastActivity: number;
   messageCount: number;
   topics: string[];
@@ -106,7 +107,7 @@ export interface SessionSummary {
 }
 
 export interface SessionSnapshot {
-  sessionId: string;
+  sessionId: SessionId;
   messages: SessionMessage[];
   messageIds: string[];
   lastActivity: number;
@@ -123,36 +124,36 @@ export interface SessionState extends SessionSnapshot {
 }
 
 export interface SessionStore {
-  createSession(sessionId: string): Promise<void>;
-  loadState(sessionId: string): Promise<SessionState | null>;
-  loadMessages(sessionId: string): Promise<SessionMessage[]>;
+  createSession(sessionId: SessionId): Promise<void>;
+  loadState(sessionId: SessionId): Promise<SessionState | null>;
+  loadMessages(sessionId: SessionId): Promise<SessionMessage[]>;
   appendMessage(
-    sessionId: string,
+    sessionId: SessionId,
     message: ModelMessage,
     context: AgentStoreAppendContext,
   ): Promise<SessionMessage>;
-  forkState(sessionId: string, options?: { messageId?: string }): Promise<SessionSnapshot | null>;
+  forkState(sessionId: SessionId, options?: { messageId?: string }): Promise<SessionSnapshot | null>;
   writeForkState(
-    forkedSessionId: string,
+    forkedSessionId: SessionId,
     snapshot: SessionSnapshot | null,
   ): Promise<SessionSnapshot | null>;
-  listSessions(): Promise<string[]>;
-  getSessionSummary(sessionId: string): Promise<SessionSummary | null>;
+  listSessions(): Promise<SessionId[]>;
+  getSessionSummary(sessionId: SessionId): Promise<SessionSummary | null>;
 }
 
 export class NoopSessionStore implements SessionStore {
-  async createSession(_sessionId: string): Promise<void> {}
+  async createSession(_sessionId: SessionId): Promise<void> {}
 
-  async loadState(_sessionId: string): Promise<SessionState | null> {
+  async loadState(_sessionId: SessionId): Promise<SessionState | null> {
     return null;
   }
 
-  async loadMessages(_sessionId: string): Promise<SessionMessage[]> {
+  async loadMessages(_sessionId: SessionId): Promise<SessionMessage[]> {
     return [];
   }
 
   async appendMessage(
-    _sessionId: string,
+    _sessionId: SessionId,
     message: ModelMessage,
     _context: AgentStoreAppendContext,
   ): Promise<SessionMessage> {
@@ -160,7 +161,7 @@ export class NoopSessionStore implements SessionStore {
   }
 
   async forkState(
-    _sessionId: string,
+    _sessionId: SessionId,
     _options?: { messageId?: string },
   ): Promise<SessionSnapshot | null> {
     return null;
@@ -173,11 +174,11 @@ export class NoopSessionStore implements SessionStore {
     return null;
   }
 
-  async listSessions(): Promise<string[]> {
+  async listSessions(): Promise<SessionId[]> {
     return [];
   }
 
-  async getSessionSummary(_sessionId: string): Promise<SessionSummary | null> {
+  async getSessionSummary(_sessionId: SessionId): Promise<SessionSummary | null> {
     return null;
   }
 }
@@ -186,7 +187,7 @@ function normalizeSessionStorageRoot(storageRoot: string): string {
   return basename(storageRoot) === 'sessions' ? storageRoot : join(storageRoot, 'sessions');
 }
 
-function getSessionFilePath(storageRoot: string, sessionId: string): string {
+function getSessionFilePath(storageRoot: string, sessionId: SessionId): string {
   return join(normalizeSessionStorageRoot(storageRoot), `${sessionId}.jsonl`);
 }
 
@@ -329,7 +330,7 @@ export class JsonlSessionStore implements SessionStore {
     this.storageRoot = normalizeSessionStorageRoot(storageRoot);
   }
 
-  async createSession(sessionId: string): Promise<void> {
+  async createSession(sessionId: SessionId): Promise<void> {
     const existing = await this.loadState(sessionId);
     if (existing) {
       return;
@@ -345,7 +346,7 @@ export class JsonlSessionStore implements SessionStore {
     ]);
   }
 
-  async loadState(sessionId: string): Promise<SessionState | null> {
+  async loadState(sessionId: SessionId): Promise<SessionState | null> {
     const entries = await this.readEntries(sessionId);
     if (entries.length === 0) {
       return null;
@@ -479,13 +480,13 @@ export class JsonlSessionStore implements SessionStore {
     };
   }
 
-  async loadMessages(sessionId: string): Promise<SessionMessage[]> {
+  async loadMessages(sessionId: SessionId): Promise<SessionMessage[]> {
     const state = await this.loadState(sessionId);
     return state?.messages ?? [];
   }
 
   async appendMessage(
-    sessionId: string,
+    sessionId: SessionId,
     message: ModelMessage,
     context: AgentStoreAppendContext,
   ): Promise<SessionMessage> {
@@ -523,7 +524,7 @@ export class JsonlSessionStore implements SessionStore {
   }
 
   async forkState(
-    sessionId: string,
+    sessionId: SessionId,
     options?: { messageId?: string },
   ): Promise<SessionSnapshot | null> {
     const state = await this.loadState(sessionId);
@@ -555,7 +556,7 @@ export class JsonlSessionStore implements SessionStore {
   }
 
   async writeForkState(
-    forkedSessionId: string,
+    forkedSessionId: SessionId,
     snapshot: SessionSnapshot | null,
   ): Promise<SessionSnapshot | null> {
     if (!snapshot) {
@@ -607,19 +608,19 @@ export class JsonlSessionStore implements SessionStore {
     };
   }
 
-  async listSessions(): Promise<string[]> {
+  async listSessions(): Promise<SessionId[]> {
     try {
       const files = await fs.readdir(this.storageRoot, { withFileTypes: true });
       return files
         .filter((file) => file.isFile() && file.name.endsWith('.jsonl'))
-        .map((file) => file.name.replace(/\.jsonl$/, ''))
+        .map((file) => SessionId(file.name.replace(/\.jsonl$/, '')))
         .sort();
     } catch {
       return [];
     }
   }
 
-  async getSessionSummary(sessionId: string): Promise<SessionSummary | null> {
+  async getSessionSummary(sessionId: SessionId): Promise<SessionSummary | null> {
     const state = await this.loadState(sessionId);
     if (!state) {
       return null;
@@ -636,7 +637,7 @@ export class JsonlSessionStore implements SessionStore {
     };
   }
 
-  private async readEntries(sessionId: string): Promise<SessionEvent[]> {
+  private async readEntries(sessionId: SessionId): Promise<SessionEvent[]> {
     try {
       const filePath = getSessionFilePath(this.storageRoot, sessionId);
       const content = await fs.readFile(filePath, 'utf-8');
@@ -681,7 +682,7 @@ export class JsonlSessionStore implements SessionStore {
     };
   }
 
-  private async writeEntries(sessionId: string, entries: SessionEvent[]): Promise<void> {
+  private async writeEntries(sessionId: SessionId, entries: SessionEvent[]): Promise<void> {
     const filePath = getSessionFilePath(this.storageRoot, sessionId);
     await fs.mkdir(this.storageRoot, { recursive: true, mode: 0o755 });
     await fs.writeFile(
@@ -691,7 +692,7 @@ export class JsonlSessionStore implements SessionStore {
     );
   }
 
-  private async appendEntries(sessionId: string, entries: SessionEvent[]): Promise<void> {
+  private async appendEntries(sessionId: SessionId, entries: SessionEvent[]): Promise<void> {
     const filePath = getSessionFilePath(this.storageRoot, sessionId);
     await fs.mkdir(this.storageRoot, { recursive: true, mode: 0o755 });
     await fs.appendFile(

@@ -36,7 +36,7 @@ describe('agent-sdk package-local session store', () => {
   it('reconstructs unified JSONL session state without root session store imports', async () => {
     const workspaceRoot = createWorkspaceRoot();
     const sessionStore = new JsonlSessionStore(workspaceRoot);
-    const sessionId = 'agent-sdk-session-store';
+    const sessionId = SessionId('agent-sdk-session-store');
     const userMessageId = 'message-user';
     const assistantMessageId = 'message-assistant';
     const toolResultMessageId = 'message-tool-result';
@@ -164,8 +164,8 @@ describe('agent-sdk package-local session store', () => {
 
     const state = await sessionStore.loadState(sessionId);
     const forked = await sessionStore.forkState(sessionId, { messageId: assistantMessageId });
-    await sessionStore.writeForkState('forked-session', forked);
-    const forkedState = await sessionStore.loadState('forked-session');
+    await sessionStore.writeForkState(SessionId('forked-session'), forked);
+    const forkedState = await sessionStore.loadState(SessionId('forked-session'));
 
     expectDefined(state);
     expect(state.messages).toHaveLength(4);
@@ -221,25 +221,25 @@ describe('agent-sdk package-local session store', () => {
   it('keeps empty session persistence as an explicit noop implementation', async () => {
     const store = new NoopSessionStore();
 
-    await expect(store.loadState('missing')).resolves.toBeNull();
-    await expect(store.loadMessages('missing')).resolves.toEqual([]);
-    await expect(store.forkState('missing')).resolves.toBeNull();
-    await expect(store.writeForkState('forked', null)).resolves.toBeNull();
+    await expect(store.loadState(SessionId('missing'))).resolves.toBeNull();
+    await expect(store.loadMessages(SessionId('missing'))).resolves.toEqual([]);
+    await expect(store.forkState(SessionId('missing'))).resolves.toBeNull();
+    await expect(store.writeForkState(SessionId('forked'), null)).resolves.toBeNull();
     await expect(store.listSessions()).resolves.toEqual([]);
-    await expect(store.getSessionSummary('missing')).resolves.toBeNull();
+    await expect(store.getSessionSummary(SessionId('missing'))).resolves.toBeNull();
   });
 
   it('returns generated message ids when writing fork snapshots with anonymous messages', async () => {
     const workspaceRoot = createWorkspaceRoot();
     const sessionStore = new JsonlSessionStore(workspaceRoot);
 
-    const written = await sessionStore.writeForkState('anonymous-fork', {
+    const written = await sessionStore.writeForkState(SessionId('anonymous-fork'), {
       sessionId: SessionId('parent-session'),
       messages: [{ role: 'user', content: 'hello without an id' }],
       messageIds: [],
       lastActivity: Date.now(),
     });
-    const reloaded = await sessionStore.loadState('anonymous-fork');
+    const reloaded = await sessionStore.loadState(SessionId('anonymous-fork'));
 
     expectDefined(written);
     expectDefined(reloaded);
