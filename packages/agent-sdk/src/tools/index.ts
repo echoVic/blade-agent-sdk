@@ -600,6 +600,16 @@ export function validationErrorToToolResult(error: ToolValidationError): ToolRes
 // Tool Search Utilities
 export { normalizeSearchText, scoreToolSearchMatch, searchTools } from './toolSearch.js';
 
+// Tool Exposure Planner
+export { ToolExposurePlanner } from './exposure/ToolExposurePlanner.js';
+export type {
+  ToolDiscoveryEntry,
+  ToolExposure,
+  ToolExposurePlan,
+  ToolExposurePlannerOptions,
+  RuntimeToolPolicySnapshot,
+} from './exposure/ToolExposurePlanner.js';
+
 export type {
   BladeConfig,
   ConfirmationDetails,

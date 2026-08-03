@@ -82,7 +82,7 @@ Dependency direction:
 
 ---
 
-## Migration Progress — 312 Slices Completed
+## Migration Progress — 313 Slices Completed
 
 ### Subsystems at 100% (Complete)
 
@@ -966,6 +966,19 @@ After 29 slices (#150-#178), approximately 4,160 lines migrated from root to `@b
 **Verification:** `pnpm run verify:boundaries` **120 violations → 0 PASS**; `pnpm run verify:packages` **PASS** (previously failed on ai providers manifest + agent-sdk size); `verify:entrypoints` PASS; `verify:release` PASS; 49 boundary verifier tests pass; root type-check 96 (0 new); full root suite 4 pre-existing failing files unchanged
 **Impact:** Both `verify:boundaries` and `verify:packages` gates are now GREEN — the first time in the #298-#312 migration run; Principle 7 (improve the verification chain) satisfied; future slices can rely on these gates
 **Remaining work (next slices):** `McpClient.ts` (631L) + `McpRegistry.ts` (533L) + `createMcpTool.ts` (355L) re-shims (API alignment); `session/types.ts` re-shim (StreamMessage semantic divergence); package Tool declaration consolidation; `HookExecutor.ts`/`HookManager.ts` (670/902 diff lines)
+
+### Slice #313 — Shim ToolExposurePlanner.ts to Re-Export from @blade-ai/agent-sdk/tools
+
+**Capability:** `ToolExposurePlanner` — tool exposure planning (declaration generation, exposure mode resolution, runtime policy filtering, allow/deny selectors, discoverable entries) (208L)
+**Target:** `@blade-ai/agent-sdk/tools`
+**Root file shimmed:** `src/tools/exposure/ToolExposurePlanner.ts` — reduced from 208L implementation to 2-line re-export
+**Package API addition:** Added `ToolExposurePlanner` (class) + 5 types (`ToolDiscoveryEntry`, `ToolExposure`, `ToolExposurePlan`, `ToolExposurePlannerOptions`, `RuntimeToolPolicySnapshot`) to `packages/agent-sdk/src/tools/index.ts` from `./exposure/ToolExposurePlanner.js` — the exposure planner was never wired into the public index
+**Package:** `packages/agent-sdk/src/tools/exposure/ToolExposurePlanner.ts` (208L) — identical except import organization + `new Set<string>(...)` generic (fixes the root's latent `Set<unknown>` issue)
+**Consumers:** `LoopRunner.ts` (`new ToolExposurePlanner(exposureCatalog)` — structural `ToolCatalogReadView` typing verified), `ToolCatalog.ts` (type comment only)
+**Tests:** 38 tests pass (ToolExposurePlanner, LoopRunner, ToolCatalog); full suite 4 pre-existing failing files unchanged
+**Verification:** `pnpm -r run type-check` zero errors; root type-check 96 errors (0 new); `verify:boundaries` PASS; `verify:entrypoints` PASS; `git diff --check` clean
+**Impact:** 208L root code eliminated; tools/exposure subsystem re-migrated (#154 → restored → #313); ToolExposurePlanner now part of the public `@blade-ai/agent-sdk/tools` surface
+**Remaining work (next slices):** `McpClient.ts` (631L) + `McpRegistry.ts` (533L) + `createMcpTool.ts` (355L) re-shims (legacy 5-arg vs new 3-arg McpClient constructor alignment); `session/types.ts` re-shim (StreamMessage session vs kernel variant union); package Tool declaration consolidation (`tools/types/ToolDefinition.ts` vs `tools/types/index.ts` duplicates); `HookExecutor.ts`/`HookManager.ts`
 
 ## 🏆 Milestone — Zero Production Test Failures (#245)
 
