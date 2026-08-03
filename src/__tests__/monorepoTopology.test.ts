@@ -1932,7 +1932,11 @@ describe('monorepo topology', () => {
     expect(rootExecutionTypesSource).not.toContain('export interface ConfirmationDetails');
     expect(rootExecutionTypesSource).not.toContain('export interface ConfirmationResponse');
     expect(rootExecutionTypesSource).not.toContain('export interface ConfirmationHandler');
-    expect(rootExecutionTypesSource).toContain('ExecutionContext as SdkExecutionContext');
+    // Slice #335: the root file is now a pure re-export shim of the package
+    // canonical ExecutionContext (the Omit-extension is gone).
+    expect(rootExecutionTypesSource).not.toContain('ExecutionContext as SdkExecutionContext');
+    expect(rootExecutionTypesSource).toContain('export { getEffectiveProjectDir }');
+    expect(rootExecutionTypesSource).toContain('export type {');
   });
 
   it('keeps agent-core tool-start events on the closed ToolKind protocol', () => {

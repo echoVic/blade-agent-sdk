@@ -56,6 +56,11 @@ export type {
   ToolCatalogSourcePolicy,
 } from './catalog/ToolCatalog.js';
 
+// Canonical ExecutionContext helpers (slice #335): exposed publicly so the
+// root legacy ExecutionTypes.ts can shim to @blade-ai/agent-sdk/tools.
+export { getEffectiveProjectDir } from './types/ExecutionTypes.js';
+export type { ExecutionHistoryEntry } from './types/ExecutionTypes.js';
+
 export function createTool<TSchema extends z.ZodSchema>(
   config: ToolConfig<TSchema, z.infer<TSchema>>,
 ): Tool<z.infer<TSchema>> {

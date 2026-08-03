@@ -128,3 +128,5 @@ export {
   resolveToolBehaviorSafely,
   ToolKind,
 } from './types/ToolKind.js';
+export { getEffectiveProjectDir } from './types/ExecutionTypes.js';
+export type { ExecutionHistoryEntry } from './types/ExecutionTypes.js';

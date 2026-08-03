@@ -82,7 +82,7 @@ Dependency direction:
 
 ---
 
-## Migration Progress — 334 Slices Completed
+## Migration Progress — 335 Slices Completed
 
 ### Subsystems at 100% (Complete)
 
@@ -1248,6 +1248,17 @@ After 29 slices (#150-#178), approximately 4,160 lines migrated from root to `@b
 **Verification:** `pnpm -r run type-check` 3/3 zero errors; root type-check 68 errors (1 REMOVED, 0 new); `verify:boundaries` PASS; `verify:entrypoints` PASS; `verify:packages` PASS; `verify:release` PASS; `verify:examples` PASS; package suite 627 passing (+3 new, 5 pre-existing failures unchanged); root suite 1247 passing / 43 pre-existing failures unchanged; `git diff --check` clean
 **Impact:** the package now has exactly ONE ExecutionContext with a fully-typed boundary contract (branded session id + typed registry/manager ports); the #328 revert's core obstacle (two incompatible context species) is eliminated. Root's own ExecutionContext (`src/tools/types/ExecutionTypes.ts`) remains a distinct root-typed Omit-extension for now.
 **Remaining work (next slices):** root ExecutionTypes.ts shim (make root consumers use the package canonical — needs root branded.ts SessionId/MessageId unification first); `ExecutionPipeline.ts` (1468L) + context core (PersistentStore 841L, ContextManager 712L, CompactionService 539L); Session.ts (784L) + SessionRuntime.ts (598L) + SessionStore.ts (538L); Agent.ts (662L) + LoopRunner (404L) + BackgroundAgentManager (605L)
+
+### Slice #335 — Shim Root ExecutionTypes.ts to the Package Canonical ExecutionContext
+
+**Capability:** `ExecutionContext` (root) — the root `src/tools/types/ExecutionTypes.ts` was the last remaining Omit-extension duplicate of the package canonical type (extending `SdkExecutionContext` from `@blade-ai/agent-sdk/tools` with ROOT-branded overrides). Now that root `branded.ts` is a package shim (SessionId/MessageId share the package `__brand`), root `ContextSnapshot` and `BladeConfig` are package shims, and the package ExecutionContext is canonical (#334), the root duplicate is redundant.
+**Root file shimmed (TDD):** `src/tools/types/ExecutionTypes.ts` (56L → 12L) is now a pure re-export shim: `export type { ConfirmationDetails, ConfirmationHandler, ConfirmationResponse, ExecutionContext, ExecutionHistoryEntry } from '@blade-ai/agent-sdk/tools'` + `export { getEffectiveProjectDir }`. Root consumers (SessionRuntime, Session.ts, tools barrel) now receive the package canonical type directly; the Omit-extension (and its root-branded override site) is gone.
+**Package public API addition:** `getEffectiveProjectDir` (value) and `ExecutionHistoryEntry` (type) were previously internal to `tools/types/ExecutionTypes.ts` — now exported from BOTH `tools/index.ts` (runtime entry) and `tools/public-index.ts` (overlaid public d.ts), so the root shim imports only from the public `@blade-ai/agent-sdk/tools` surface (boundary-verifier compliant).
+**Topology test updated:** `monorepoTopology.test.ts` "keeps root execution context contracts on the agent-sdk tools package" now asserts the shim form (no `ExecutionContext as SdkExecutionContext`, has `export { getEffectiveProjectDir }` + `export type {`).
+**Focused test:** `src/tools/types/__tests__/ExecutionTypesShim.test.ts` — compile-time `Assert<IsEqual<root ExecutionContext, package ExecutionContext>>` + `IsEqual<ExecutionHistoryEntry, package ExecutionHistoryEntry>` pin the type identity, plus a runtime check of `getEffectiveProjectDir` against a branded-sessionId context.
+**Verification:** `pnpm -r run type-check` 3/3 zero errors; root type-check 68 errors (0 new); `verify:boundaries` PASS; `verify:entrypoints` PASS; `verify:packages` PASS; `verify:release` PASS; `verify:examples` PASS; root suite 1248 passing (+1 new, 43 pre-existing failures unchanged); `git diff --check` clean
+**Impact:** the ExecutionContext consolidation (#334) is now complete END-TO-END — root and package consumers share exactly one canonical ExecutionContext with typed registry ports and branded session ids; the root's ExecutionTypes duplicate is eliminated; tools/types subsystem is fully on the package.
+**Remaining work (next slices):** `ExecutionPipeline.ts` (1468L) + context core (PersistentStore 841L, ContextManager 712L, CompactionService 539L); Session.ts (784L) + SessionRuntime.ts (598L) + SessionStore.ts (538L); Agent.ts (662L) + LoopRunner (404L) + BackgroundAgentManager (605L)
 
 ## 🏆 Milestone — Zero Production Test Failures (#245)
 
