@@ -35,31 +35,12 @@ export type { ToolCallRecord };
 
 export type { PromptResult };
 
-export type StreamMessage =
-  | {
-      type: 'tool_permission_updates';
-      id: string;
-      name: string;
-      updates: PermissionUpdate[];
-      sessionId: SessionId;
-    }
-  | {
-      type: 'tool_result';
-      id: string;
-      name: string;
-      output: string | object;
-      isError?: boolean;
-      sessionId: SessionId;
-    }
-  | { type: 'usage'; usage: TokenUsage; sessionId: SessionId }
-  | {
-      type: 'result';
-      subtype: 'success' | 'error';
-      content?: string;
-      error?: string;
-      sessionId: SessionId;
-    }
-  | { type: 'error'; message: string; code?: string; sessionId: SessionId };
+// The canonical session stream protocol lives in @blade-ai/agent-sdk/session.
+// It is a strict superset of the old root union (adds turn_start/turn_end/
+// content/thinking/tool_use/tool_progress/tool_message/tool_runtime_patch/
+// tool_context_patch/tool_new_messages/budget_warning/budget_exhausted).
+import type { StreamMessage } from '@blade-ai/agent-sdk/session';
+export type { StreamMessage };
 
 type _AssertStreamMessageComplete = Assert<IsEqual<StreamMessage['type'], StreamMessageType>>;
 

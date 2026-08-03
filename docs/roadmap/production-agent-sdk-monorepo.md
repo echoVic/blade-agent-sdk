@@ -82,7 +82,7 @@ Dependency direction:
 
 ---
 
-## Migration Progress — 318 Slices Completed
+## Migration Progress — 319 Slices Completed
 
 ### Subsystems at 100% (Complete)
 
@@ -1052,6 +1052,21 @@ After 29 slices (#150-#178), approximately 4,160 lines migrated from root to `@b
 **Verification:** `pnpm -r run type-check` zero errors; root type-check 96 errors (0 new — only line shifts in SessionRuntime.test); `verify:boundaries` PASS; 60 mcp tests pass; full suite 4 pre-existing failing files unchanged; `git diff --check` clean
 **Impact:** 355L root code eliminated; **MCP subsystem now 100% in the package** — all MCP runtime code (HealthMonitor, McpClient, McpRegistry, createMcpTool, auth, types, capability projector) migrated; root mcp/ directory holds only shims + index barrel
 **Remaining work (next slices):** `session/types.ts` re-shim (StreamMessage session vs kernel variant union — protocol design work); `HookExecutor.ts` (1243L) + `HookManager.ts` (1623L) (large diffs vs package); package Tool declaration consolidation; `ExecutionPipeline.ts` (1468L) + context core (PersistentStore 841L, ContextManager 712L, CompactionService 539L); Session.ts (784L)
+
+### Slice #319 — Re-Export StreamMessage from @blade-ai/agent-sdk/session + Fix Constants Gap
+
+**Capability:** Session stream protocol unification — root `StreamMessage` (5-variant subset) replaced with the canonical package session StreamMessage (17-variant superset)
+**Root file updated:** `src/session/types.ts` — inline 5-variant `StreamMessage` union → import+re-export from `@blade-ai/agent-sdk/session` (the package session subpath index exports it)
+**Infrastructure:** Added `@blade-ai/agent-sdk/session` path alias to root `tsconfig.json` + `vitest.config.ts` (with `$` exact-match suffix — rollup/vite aliases prefix-match, which broke `session/internal` resolution)
+**Package gap fix:** `local/constants.ts` `StreamMessageType` was missing `BUDGET_WARNING`/`BUDGET_EXHAUSTED` (types/constants.ts had them; session StreamMessage has them) — the 15-vs-17 mismatch kept the `IsEqual<StreamMessage['type'], StreamMessageType>` compile-time assertion false
+**Type-error fixes (13 genuine pre-existing):**
+- 7 Session.ts comparison/never errors (364, 742-748 — `'tool_use'`/`'turn_start'` vs the 5-variant union now type-check)
+- 5+ SessionRuntime.ts assignments (192, 257, 261, 266, 300 — kernel event types like `'turn_start'`/`'content'`/`'tool_use'` now assignable)
+- 1 assertion (`_AssertStreamMessageComplete` now true)
+**Verification:** `pnpm -r run type-check` zero errors; root type-check **96 → 83 (down 13, 0 new)**; `verify:boundaries` PASS; `verify:packages` PASS; 61 session tests pass (2 pre-existing hook failures); full suite back to 4 pre-existing failing files; `git diff --check` clean
+**Impact:** Root stream protocol unified with the canonical session StreamMessage; pre-existing Session.ts kernel-event type errors resolved — clears the type-level path toward full Session.ts migration
+**Notes:** 12 remaining session/types.ts errors are pre-existing re-export-scope issues (SendOptions/StreamOptions/ModelInfo/etc. used in SessionOptions/ISession but only re-exported) — a future slice can apply the import+re-export pattern to all of them
+**Remaining work (next slices):** session/types.ts re-export-scope cleanup (12 pre-existing errors); `HookExecutor.ts` (1243L) + `HookManager.ts` (1623L); package Tool declaration consolidation; `ExecutionPipeline.ts` (1468L) + context core; Session.ts (784L)
 
 ## 🏆 Milestone — Zero Production Test Failures (#245)
 
