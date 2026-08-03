@@ -82,7 +82,7 @@ Dependency direction:
 
 ---
 
-## Migration Progress — 309 Slices Completed
+## Migration Progress — 310 Slices Completed
 
 ### Subsystems at 100% (Complete)
 
@@ -919,6 +919,19 @@ After 29 slices (#150-#178), approximately 4,160 lines migrated from root to `@b
 **Verification:** `pnpm -r run type-check` zero errors; root type-check 96 errors (0 new); boundary verifier unchanged (120 pre-existing, 0 new); `git diff --check` clean
 **Impact:** 564L root code eliminated — **largest single-file shim this session** (surpasses ContextFilter 399L #308, AttachmentCollector 504L #297); hooks/schemas subsystem migrated
 **Remaining work (next slices):** `HookExecutor.ts` (1243L) + `HookManager.ts` (1623L) — large diffs vs package (670/902 lines), blocked on session/kernel types; `Session.ts` full migration; package Tool declaration consolidation; boundary verifier browser-safe closure (120 pre-existing violations)
+
+### Slice #310 — Shim mcp/auth/types.ts to Re-Export from @blade-ai/agent-sdk/local
+
+**Capability:** OAuth types (`OAuthToken`, `OAuthConfig`, `AuthorizationOAuthConfig`, `RefreshableOAuthConfig`, `OAuthCredentials`, `OAuthTokenResponse`) (62L)
+**Target:** `@blade-ai/agent-sdk/local`
+**Root file shimmed:** `src/mcp/auth/types.ts` — reduced from 62L implementation to 6-line type re-export
+**Package:** `packages/agent-sdk/src/local/oauthTypes.ts` (62L) — byte-for-byte identical (zero diff lines)
+**Barrel:** Already exported in `packages/agent-sdk/src/local/index.ts` (no change needed)
+**Dead-code note:** OAuth types have ZERO root consumers — `McpClient` uses `OAuthProvider`/`OAuthTokenStorage` (both shimmed #288) but never imports these types directly
+**Tests:** 51 mcp tests pass (5 files)
+**Verification:** `pnpm -r run type-check` zero errors; root type-check 96 errors (0 new); boundary verifier unchanged (120 pre-existing, 0 new); `git diff --check` clean
+**Impact:** 62L root code eliminated; **mcp/auth subsystem fully migrated** (OAuthProvider #288, OAuthTokenStorage #288, types #310); mcp/auth/index.ts shim already in place
+**Remaining work (next slices):** `McpCapabilityProjector.ts` (84L — package version adds decoupling interfaces); `McpClient.ts` (631L) + `McpRegistry.ts` (533L) + `createMcpTool.ts` (355L) re-shims (package copies diverged — need API alignment); `session/types.ts` re-shim (StreamMessage/SessionOptions/ISession type-identity unification); boundary verifier browser-safe closure (120 pre-existing violations)
 
 ## 🏆 Milestone — Zero Production Test Failures (#245)
 
