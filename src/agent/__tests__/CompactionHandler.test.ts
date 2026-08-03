@@ -3,21 +3,25 @@ import type { Message } from '@blade-ai/ai/chat';
 import { SessionId } from '../../types/branded.js';
 import { ConversationState } from '../state/ConversationState.js';
 
-const mockCompact = vi.fn(async () => ({
-  success: true,
-  summary: 'summary',
-  preTokens: 700,
-  postTokens: 120,
-  filesIncluded: [],
-  compactedMessages: [{ role: 'user' as const, content: 'summary' }],
-  boundaryMessage: { role: 'system' as const, content: 'boundary' },
-  summaryMessage: { role: 'user' as const, content: 'summary' },
+const { mockCompact } = vi.hoisted(() => ({
+  mockCompact: vi.fn(async () => ({
+    success: true,
+    summary: 'summary',
+    preTokens: 700,
+    postTokens: 120,
+    filesIncluded: [],
+    compactedMessages: [{ role: 'user' as const, content: 'summary' }],
+    boundaryMessage: { role: 'system' as const, content: 'boundary' },
+    summaryMessage: { role: 'user' as const, content: 'summary' },
+  })),
 }));
 
-vi.mock('../../context/CompactionService.js', async () => {
-  const actual = await vi.importActual<typeof import('../../context/CompactionService.js')>(
-    '../../context/CompactionService.js',
-  );
+// Slice #344: CompactionHandler moved into the package, so the CompactionService
+// mock must target the PACKAGE module path.
+vi.mock('../../../packages/agent-sdk/src/local/compactionService.js', async () => {
+  const actual = await vi.importActual<
+    typeof import('../../../packages/agent-sdk/src/local/compactionService.js')
+  >('../../../packages/agent-sdk/src/local/compactionService.js');
 
   return {
     ...actual,

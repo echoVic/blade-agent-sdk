@@ -160,6 +160,10 @@ export type { ExecutionPipelineConfig, ExecutionStats } from './executionPipelin
 // Model lifecycle manager (slice #343 — ported from root src/agent/ModelManager.ts)
 export { ModelManager } from './modelManager.js';
 
+// Compaction handler (slice #344 — ported from root src/agent/CompactionHandler.ts;
+// CompactionRuntimeContext is owned by ./compactionTypes.js)
+export { CompactionHandler } from './compactionHandler.js';
+
 export { BashClassifier } from './BashClassifier.js';
 export type {  BashCommandCategory, BashClassification } from './BashClassifier.js';
 export { SecureProcessExecutor } from './SecureProcessExecutor.js';

@@ -82,7 +82,7 @@ Dependency direction:
 
 ---
 
-## Migration Progress — 343 Slices Completed
+## Migration Progress — 344 Slices Completed
 
 ### Subsystems at 100% (Complete)
 
@@ -1350,6 +1350,17 @@ After 29 slices (#150-#178), approximately 4,160 lines migrated from root to `@b
 **Verification:** `pnpm -r run type-check` 3/3 zero errors; root type-check 46 errors (−4, 0 new); `verify:boundaries` PASS; `verify:entrypoints` PASS; `verify:packages` PASS; `verify:release` PASS; `verify:examples` PASS; root suite 1248 passing / 43 pre-existing failures unchanged; package suite 654 passing (+3 new, 5 pre-existing failures unchanged); `git diff --check` clean
 **Impact:** the agent-core migration chain is OPENED — the leaf `ModelManager` is package-owned; next slices can port `CompactionHandler` (277L) → `LoopHookBuilder` (390L) → `LoopRunner` (404L) → `Agent.ts` (662L) → then SessionRuntime (598L) + Session (784L).
 **Remaining work (next slices):** CompactionHandler.ts (277L) + LoopHookBuilder.ts (390L) + LoopRunner.ts (404L) + Agent.ts (662L); SessionRuntime.ts (598L) + Session.ts (784L); BackgroundAgentManager (605L)
+
+### Slice #344 — Port CompactionHandler into @blade-ai/agent-sdk/local (277L)
+
+**Capability:** `CompactionHandler` — the in-loop compaction check (microcompact → LLM compaction → emergency truncation → soft-compact fallback with original-message restoration). Formerly root `src/agent/CompactionHandler.ts` (277L) — the second agent-core leaf. All deps were package-owned (`CompactionService` #337, `ContextManager` #341, `softCompact`, `TokenCounter`, `Logger`, `cloneMessage`, branded `SessionId`, `CompactingEvent` in `local/agentEvent.js`, `ConversationState` from `@blade-ai/agent/state`).
+**Package capability port:** `local/compactionHandler.ts` (277L) — faithful copy with import rewrites; `CompactionRuntimeContext` is DEDUPED into the package-owned `./compactionTypes.js` (the local copy was removed, imported + re-exported instead). Exported from `local/index.ts` (`CompactionHandler`; `CompactionRuntimeContext` already exported).
+**Root file shimmed:** `src/agent/CompactionHandler.ts` (277L → 5L) re-exports from `@blade-ai/agent-sdk/local`; root consumers (Agent, LoopHookBuilder, LoopRunner) unchanged.
+**Mock-path updates (known pattern):** `src/agent/__tests__/CompactionHandler.test.ts` mocked the ROOT `../../context/CompactionService.js` — re-pointed to the PACKAGE `compactionService.js` path, and `mockCompact` wrapped in `vi.hoisted` (the factory now executes against the package barrel chain).
+**Focused test:** `packages/agent-sdk/src/__tests__/compactionHandlerPort.test.ts` — 3 runtime tests (skip without usage data, skip below soft threshold — both draining the async generator via a `runToEnd` helper — and the type contract), with a `ConversationState` built via its real constructor + `append`.
+**Verification:** `pnpm -r run type-check` 3/3 zero errors; root type-check 46 errors (0 new); `verify:boundaries` PASS; `verify:entrypoints` PASS; `verify:packages` PASS; `verify:release` PASS; `verify:examples` PASS; root suite 1248 passing (CompactionHandler/LoopRunner/LoopHookBuilder/Agent suites all pass) / 43 pre-existing failures unchanged; package suite 657 passing (+3 new, 5 pre-existing failures unchanged); `git diff --check` clean
+**Impact:** the agent-core loop chain advances — `CompactionHandler` is package-owned; next: `LoopHookBuilder` (390L) → `LoopRunner` (404L) → `Agent.ts` (662L).
+**Remaining work (next slices):** LoopHookBuilder.ts (390L) + LoopRunner.ts (404L) + Agent.ts (662L); SessionRuntime.ts (598L) + Session.ts (784L); BackgroundAgentManager (605L)
 
 ## 🏆 Milestone — Zero Production Test Failures (#245)
 
