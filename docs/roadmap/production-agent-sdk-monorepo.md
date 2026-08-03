@@ -82,7 +82,7 @@ Dependency direction:
 
 ---
 
-## Migration Progress — 325 Slices Completed
+## Migration Progress — 326 Slices Completed
 
 ### Subsystems at 100% (Complete)
 
@@ -1145,6 +1145,17 @@ After 29 slices (#150-#178), approximately 4,160 lines migrated from root to `@b
 **Verification:** `pnpm -r run type-check` zero errors; root type-check 69 errors (0 new); `verify:boundaries` PASS; `verify:entrypoints` PASS; `verify:packages` PASS; 10 ToolRegistry tests pass; full suite 4 pre-existing failing files unchanged; `git diff --check` clean
 **Impact:** 409L root code eliminated; tools/registry subsystem re-migrated (#152 → restored → #325); ToolRegistry now part of the public tools surface with corrected PLAN-mode semantics
 **Remaining work (next slices):** `createTool.ts` (474L) + `ToolCatalog.ts` (123L — delegation-semantics blocker: package public ToolCatalog is self-contained; needs the Tool declaration consolidation); `ExecutionTypes.ts` (56L — ExecutionContext dup); `ExecutionPipeline.ts` (1468L) + context core; Session.ts (784L) + SessionRuntime.ts (598L); Agent.ts (662L) + LoopRunner (404L) + BackgroundAgentManager (605L)
+
+### Slice #326 — Shim createTool.ts to Re-Export from @blade-ai/agent-sdk/tools (474L)
+
+**Capability:** `createTool`/`defineTool`/`toolFromDefinition` — tool factory (Zod schema parsing, JSON Schema generation, validation, error handling) (474L)
+**Target:** `@blade-ai/agent-sdk/tools`
+**Root file shimmed:** `src/tools/core/createTool.ts` — reduced from 474L implementation to 1-line re-export
+**Package:** the PUBLIC `@blade-ai/agent-sdk/tools` index's inline createTool/defineTool/toolFromDefinition (the canonical public surface — the package also has a migrated `tools/core/createTool.ts` copy)
+**Behavior verification (TDD):** all **34 root createTool tests pass through the shim** (schema parsing, validation, error handling, defineTool/toolFromDefinition) — confirms the public inline factory is behaviorally equivalent for the tested surface
+**Verification:** `pnpm -r run type-check` zero errors; root type-check 69 errors (0 new); `verify:boundaries` PASS; `verify:entrypoints` PASS; `verify:packages` PASS; 135 tool/mcp tests pass; full suite 4 pre-existing failing files unchanged; `git diff --check` clean
+**Impact:** 474L root code eliminated; tools/core subsystem re-migrated (#155 → restored → #326); tools public factory now canonical
+**Remaining work (next slices):** `ToolCatalog.ts` (123L — delegation-semantics blocker, needs Tool declaration consolidation); `ExecutionTypes.ts` (56L — ExecutionContext dup); `ExecutionPipeline.ts` (1468L) + context core (PersistentStore 841L, ContextManager 712L, CompactionService 539L); Session.ts (784L) + SessionRuntime.ts (598L); Agent.ts (662L) + LoopRunner (404L) + BackgroundAgentManager (605L)
 
 ## 🏆 Milestone — Zero Production Test Failures (#245)
 
