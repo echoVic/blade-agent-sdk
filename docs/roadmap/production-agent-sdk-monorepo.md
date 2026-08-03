@@ -82,7 +82,7 @@ Dependency direction:
 
 ---
 
-## Migration Progress — 313 Slices Completed
+## Migration Progress — 314 Slices Completed
 
 ### Subsystems at 100% (Complete)
 
@@ -979,6 +979,19 @@ After 29 slices (#150-#178), approximately 4,160 lines migrated from root to `@b
 **Verification:** `pnpm -r run type-check` zero errors; root type-check 96 errors (0 new); `verify:boundaries` PASS; `verify:entrypoints` PASS; `git diff --check` clean
 **Impact:** 208L root code eliminated; tools/exposure subsystem re-migrated (#154 → restored → #313); ToolExposurePlanner now part of the public `@blade-ai/agent-sdk/tools` surface
 **Remaining work (next slices):** `McpClient.ts` (631L) + `McpRegistry.ts` (533L) + `createMcpTool.ts` (355L) re-shims (legacy 5-arg vs new 3-arg McpClient constructor alignment); `session/types.ts` re-shim (StreamMessage session vs kernel variant union); package Tool declaration consolidation (`tools/types/ToolDefinition.ts` vs `tools/types/index.ts` duplicates); `HookExecutor.ts`/`HookManager.ts`
+
+### Slice #314 — Shim subagents/types.ts to Re-Export from @blade-ai/agent-sdk/subagents
+
+**Capability:** Subagent types + mapper (`ClaudeCodePermissionMode`, `mapClaudeCodePermissionMode`, `SubagentColor`, `SubagentSource`, `SubagentConfig`, `SubagentContext`, `SubagentResult`, `SubagentFrontmatter`) (172L)
+**Target:** `@blade-ai/agent-sdk/subagents`
+**Root file shimmed:** `src/agent/subagents/types.ts` — reduced from 172L implementation to 2-line re-export
+**Package:** `packages/agent-sdk/src/subagents/types.ts` (172L) — differs in import paths, stripped doc comments, trailing comma, and `SubagentColor` union adds `'gray'` (a widening — root values remain assignable)
+**Barrel:** Already exported in `packages/agent-sdk/src/subagents/index.ts` (all 8 names, no change needed)
+**Consumers:** `BackgroundAgentManager.ts`, `SubagentExecutor.ts` — type-only imports (`SubagentConfig`, `SubagentResult` etc.), unchanged
+**Tests:** 10 tests pass (BackgroundAgentManager, AgentSessionStore, taskTools)
+**Verification:** `pnpm -r run type-check` zero errors; root type-check 96 errors (0 new); `verify:boundaries` PASS; `git diff --check` clean
+**Impact:** 172L root code eliminated; **subagents subsystem 4/5 files migrated** (builtinAgents #290, SubagentRegistry #298, AgentSessionStore #299, types #314; SubagentExecutor 114L remains — package copy was rewritten for decoupling)
+**Remaining work (next slices):** `SubagentExecutor.ts` (114L — package copy rewritten with decoupling, needs alignment); `McpClient.ts`/`McpRegistry.ts`/`createMcpTool.ts` re-shims (constructor signature alignment); `session/types.ts` re-shim (StreamMessage union); package Tool declaration consolidation; `HookExecutor.ts`/`HookManager.ts`
 
 ## 🏆 Milestone — Zero Production Test Failures (#245)
 
