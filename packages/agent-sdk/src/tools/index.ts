@@ -1,6 +1,6 @@
 import { zodToJsonSchema } from 'zod-to-json-schema';
 import type { z } from 'zod';
-import type { JsonObject, JsonValue, PermissionMode } from '../types/common.js';
+import type { JsonObject, JsonValue } from '../types/common.js';
 import type {
   BladeConfig,
   ConfirmationDetails,
@@ -43,165 +43,18 @@ import {
   ToolKind,
 } from './types/ToolKind.js';
 
-export type ToolSourceKind = 'builtin' | 'custom' | 'mcp' | 'session';
-export type ToolTrustLevel = 'trusted' | 'workspace' | 'remote';
-
-export interface ToolSourceInfo {
-  kind: ToolSourceKind;
-  trustLevel: ToolTrustLevel;
-  sourceId: string;
-}
-
-export interface ToolCatalogEntry {
-  tool: Tool;
-  source: ToolSourceInfo;
-}
-
-export interface ToolCatalogSourcePolicy {
-  allowedSources?: ToolSourceKind[];
-  allowedTrustLevels?: ToolTrustLevel[];
-}
-
-export interface ToolCatalogReadView {
-  getAll(): Tool[];
-  getEntries?(): ToolCatalogEntry[];
-  getFunctionDeclarationsByMode?(mode?: PermissionMode): FunctionDeclaration[];
-}
-
-const defaultCustomSource: ToolSourceInfo = {
-  kind: 'custom',
-  trustLevel: 'workspace',
-  sourceId: 'custom',
-};
-
-const defaultMcpSource: ToolSourceInfo = {
-  kind: 'mcp',
-  trustLevel: 'remote',
-  sourceId: 'mcp',
-};
-
-export class ToolCatalog implements ToolCatalogReadView {
-  private readonly tools = new Map<string, Tool>();
-  private readonly entries = new Map<string, ToolCatalogEntry>();
-  private readonly mcpToolNames = new Set<string>();
-
-  constructor(private readonly registry?: unknown) {}
-
-  getRegistry(): unknown {
-    return this.registry;
-  }
-
-  register<TParams>(
-    tool: Tool<TParams>,
-    source: ToolSourceInfo = defaultCustomSource,
-  ): void {
-    const publicTool = tool as unknown as Tool;
-    this.tools.set(publicTool.name, publicTool);
-    this.entries.set(publicTool.name, { tool: publicTool, source });
-    if (source.kind === 'mcp') {
-      this.mcpToolNames.add(publicTool.name);
-    }
-  }
-
-  registerAll<TParams>(
-    tools: Tool<TParams>[],
-    source: ToolSourceInfo = defaultCustomSource,
-  ): void {
-    for (const tool of tools) {
-      this.register(tool, source);
-    }
-  }
-
-  registerMcpTool<TParams>(
-    tool: Tool<TParams>,
-    source: ToolSourceInfo = defaultMcpSource,
-  ): void {
-    this.register(tool, source);
-    this.mcpToolNames.add(tool.name);
-  }
-
-  unregister(name: string): boolean {
-    const tool = this.get(name);
-    if (!tool) {
-      return false;
-    }
-    this.tools.delete(tool.name);
-    this.entries.delete(tool.name);
-    this.mcpToolNames.delete(tool.name);
-    return true;
-  }
-
-  removeMcpTools(serverName: string): number {
-    const removedNames = [...this.mcpToolNames].filter((name) => {
-      const tool = this.tools.get(name);
-      return tool ? matchesMcpServer(tool, serverName) : false;
-    });
-
-    for (const name of removedNames) {
-      this.unregister(name);
-    }
-
-    return removedNames.length;
-  }
-
-  get(name: string): Tool | undefined {
-    return this.tools.get(name) ?? this.getByAlias(name);
-  }
-
-  has(name: string): boolean {
-    return Boolean(this.get(name));
-  }
-
-  getAll(): Tool[] {
-    return [...this.tools.values()];
-  }
-
-  getEntries(): ToolCatalogEntry[] {
-    return this.getAll()
-      .map((tool) => this.entries.get(tool.name))
-      .filter((entry): entry is ToolCatalogEntry => Boolean(entry));
-  }
-
-  getEntry(name: string): ToolCatalogEntry | undefined {
-    const tool = this.get(name);
-    return tool ? this.entries.get(tool.name) : undefined;
-  }
-
-  getFunctionDeclarations(): FunctionDeclaration[] {
-    return this.getAll().map((tool) => tool.getFunctionDeclaration());
-  }
-
-  getFunctionDeclarationsByMode(_mode?: PermissionMode): FunctionDeclaration[] {
-    return this.getFunctionDeclarations();
-  }
-
-  search(query: string): Tool[] {
-    const normalizedQuery = query.trim().toLowerCase();
-    if (!normalizedQuery) {
-      return this.getAll();
-    }
-
-    return this.getAll().filter((tool) => {
-      const description = tool.description;
-      const text = [
-        tool.name,
-        tool.displayName,
-        description.short,
-        description.long,
-        tool.category,
-        ...tool.tags,
-      ]
-        .filter((value): value is string => Boolean(value))
-        .join('\n')
-        .toLowerCase();
-      return text.includes(normalizedQuery);
-    });
-  }
-
-  private getByAlias(name: string): Tool | undefined {
-    return this.getAll().find((tool) => tool.aliases?.includes(name));
-  }
-}
+// Tool Catalog (delegation implementation — canonical, shared with the
+// public tools surface). The self-contained inline copy was consolidated
+// into ./catalog/ToolCatalog.js.
+export { ToolCatalog } from './catalog/ToolCatalog.js';
+export type {
+  ToolSourceInfo,
+  ToolCatalogEntry,
+  ToolCatalogReadView,
+  ToolSourceKind,
+  ToolTrustLevel,
+  ToolCatalogSourcePolicy,
+} from './catalog/ToolCatalog.js';
 
 export function createTool<TSchema extends z.ZodSchema>(
   config: ToolConfig<TSchema, z.infer<TSchema>>,
@@ -539,11 +392,6 @@ function isPathLikeKey(key: string): boolean {
     || key.endsWith('Path')
     || key === 'file'
     || key === 'directory';
-}
-
-function matchesMcpServer(tool: Tool, serverName: string): boolean {
-  const legacyPrefix = `mcp__${serverName}__`;
-  return tool.tags.includes(serverName) || tool.name.startsWith(legacyPrefix);
 }
 
 function normalizeExposure(exposure: ToolExposureConfig | undefined): Required<ToolExposureConfig> {

@@ -82,7 +82,7 @@ Dependency direction:
 
 ---
 
-## Migration Progress — 326 Slices Completed
+## Migration Progress — 327 Slices Completed
 
 ### Subsystems at 100% (Complete)
 
@@ -1156,6 +1156,17 @@ After 29 slices (#150-#178), approximately 4,160 lines migrated from root to `@b
 **Verification:** `pnpm -r run type-check` zero errors; root type-check 69 errors (0 new); `verify:boundaries` PASS; `verify:entrypoints` PASS; `verify:packages` PASS; 135 tool/mcp tests pass; full suite 4 pre-existing failing files unchanged; `git diff --check` clean
 **Impact:** 474L root code eliminated; tools/core subsystem re-migrated (#155 → restored → #326); tools public factory now canonical
 **Remaining work (next slices):** `ToolCatalog.ts` (123L — delegation-semantics blocker, needs Tool declaration consolidation); `ExecutionTypes.ts` (56L — ExecutionContext dup); `ExecutionPipeline.ts` (1468L) + context core (PersistentStore 841L, ContextManager 712L, CompactionService 539L); Session.ts (784L) + SessionRuntime.ts (598L); Agent.ts (662L) + LoopRunner (404L) + BackgroundAgentManager (605L)
+
+### Slice #327 — Consolidate Package ToolCatalog (Delegation Canonical) + Shim ToolCatalog.ts 🏆
+
+**Capability:** ToolCatalog — tool catalog with source tracking, registry delegation, permission-mode filtering (123L)
+**The delegation-semantics blocker RESOLVED:** the package had TWO ToolCatalog implementations — the public inline one (tools/index.ts, SELF-CONTAINED: own maps, ignores the passed registry) and the migrated delegation one (tools/catalog/ToolCatalog.ts, DELEGATES to a ToolRegistry). Root consumers require the delegation semantics (registrations must reach the pipeline's registry — the earlier #321 shim attempt failed on exactly this).
+**Package consolidation:** removed the inline self-contained ToolCatalog class + its duplicate type definitions (ToolSourceInfo/ToolCatalogEntry/ToolCatalogReadView/ToolSourceKind/ToolTrustLevel/ToolCatalogSourcePolicy) from `tools/index.ts` (~160 lines); re-exported the canonical delegation ToolCatalog + types from `./catalog/ToolCatalog.js`. The public `@blade-ai/agent-sdk/tools` surface now IS the delegation implementation.
+**Root file shimmed:** `src/tools/catalog/ToolCatalog.ts` — reduced from 123L implementation to 2-line re-export
+**Result:** the session tool-registration tests that failed in the #321 attempt now PASS (tools registered via the catalog appear in the pipeline registry via delegation)
+**Verification:** `pnpm -r run type-check` zero errors; root type-check 69 errors (0 new); `verify:boundaries` PASS; `verify:entrypoints` PASS; `verify:packages` PASS; 59 tool/session tests pass (2 pre-existing hook failures); full suite 4 pre-existing failing files unchanged; `git diff --check` clean
+**Impact:** 123L root code eliminated + ~160L package duplication removed; tools/catalog subsystem re-migrated (#153 → restored → #327); the delegation-semantics blocker is resolved — unblocks the remaining tools work and validates the consolidation pattern for the Tool/ExecutionContext duplicates
+**Remaining work (next slices):** `ExecutionTypes.ts` (56L — ExecutionContext string vs branded dup, same consolidation pattern); `ExecutionPipeline.ts` (1468L) + context core (PersistentStore 841L, ContextManager 712L, CompactionService 539L); Session.ts (784L) + SessionRuntime.ts (598L) + SessionStore.ts (538L); Agent.ts (662L) + LoopRunner (404L) + BackgroundAgentManager (605L)
 
 ## 🏆 Milestone — Zero Production Test Failures (#245)
 
