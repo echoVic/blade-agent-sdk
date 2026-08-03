@@ -189,7 +189,10 @@ describe('monorepo topology', () => {
       'src/context/ContextManager.ts',
       'src/context/FileAnalyzer.ts',
       'src/context/TokenCounter.ts',
-      'src/context/CompactionService.ts',
+      // Slice #337: CompactionService is now a package-local shim
+      // (packages/agent-sdk/src/local/compactionService.ts), which owns the
+      // session chat factory import.
+      'packages/agent-sdk/src/local/compactionService.ts',
       'src/context/storage/PersistentStore.ts',
       'src/context/strategies/MicrocompactStrategy.ts',
       'src/context/strategies/SoftCompactionStrategy.ts',
@@ -208,17 +211,6 @@ describe('monorepo topology', () => {
       expect(source, `${file} should import chat protocol types from ai`).toMatch(
         /from '@blade-ai\/ai\/chat'|from '@blade-ai\/agent-sdk\/local'|from '@blade-ai\/agent/,
       );
-
-      if (file === 'src/context/CompactionService.ts') {
-        expect(source, `${file} should import the session chat service factory`).toContain(
-          "from '../session/ChatServiceFactory.js'",
-        );
-        expect(legacyChatServiceImports, `${file} should not import the legacy factory shim`)
-          .toHaveLength(0);
-        expect(legacyChatServiceImports.join('\n'), `${file} should not import Message from root`)
-          .not.toMatch(/\btype\s+Message\b/);
-        continue;
-      }
 
       expect(
         legacyChatServiceImports,
@@ -481,7 +473,7 @@ describe('monorepo topology', () => {
     const chatServiceFactorySource = readFileSync('src/session/ChatServiceFactory.ts', 'utf-8');
     const importSites = [
       ['src/agent/ModelManager.ts', 'import'],
-      ['src/context/CompactionService.ts', 'import'],
+      ['packages/agent-sdk/src/local/compactionService.ts', 'import'],
       ['src/services/__tests__/deepseek.live.test.ts', 'import'],
       ['src/services/__tests__/deepseek-deep.live.test.ts', 'import'],
       ['src/agent/__tests__/ModelManager.setModel.test.ts', 'mock'],
@@ -506,8 +498,8 @@ describe('monorepo topology', () => {
       const source = readFileSync(file, 'utf-8');
 
       if (mode === 'mock') {
-        expect(source, `${file} should mock the session factory export`).toContain(
-          '../session/ChatServiceFactory.js',
+        expect(source, `${file} should mock the session factory export`).toMatch(
+          /packages\/agent-sdk\/src\/local\/chatServiceFactory\.js|\.\.\/session\/ChatServiceFactory\.js/,
         );
         expect(
           source.match(/import[\s\S]*?from ['"][^'"]*ChatServiceInterface\.js['"];?/g) ?? [],
@@ -517,7 +509,7 @@ describe('monorepo topology', () => {
       }
 
       const imports =
-        source.match(/import[\s\S]*?from ['"][^'"]*ChatServiceFactory\.js['"];?/g) ?? [];
+        source.match(/import[\s\S]*?from ['"][^'"]*[Cc]hatServiceFactory\.js['"];?/g) ?? [];
 
       expect(imports, `${file} should import the session factory exactly once`).toHaveLength(1);
       expect(imports[0], `${file} should only import createChatServiceAsync`).toMatch(

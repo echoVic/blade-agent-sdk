@@ -12,11 +12,14 @@ const mockCreateChatServiceAsync = vi.fn(async (_config: Record<string, unknown>
   sideQuery: mockSideQuery,
 }));
 
-vi.mock('../../session/ChatServiceFactory.js', () => ({
+// The root CompactionService is now a shim of @blade-ai/agent-sdk/local
+// (slice #337): mock the PACKAGE module paths so both the root shim and the
+// package implementation are intercepted.
+vi.mock('../../../packages/agent-sdk/src/local/chatServiceFactory.js', () => ({
   createChatServiceAsync: mockCreateChatServiceAsync,
 }));
 
-vi.mock('../FileAnalyzer.js', () => ({
+vi.mock('../../../packages/agent-sdk/src/local/FileAnalyzer.js', () => ({
   FileAnalyzer: {
     analyzeFiles: () => [],
     readFilesContent: async () => [],

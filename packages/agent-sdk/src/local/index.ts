@@ -131,6 +131,18 @@ export type {  MicrocompactOptions, MicrocompactResult } from './microcompactStr
 export { softCompact } from './softCompactionStrategy.js';
 export type {  SoftCompactionOptions, SoftCompactionResult } from './softCompactionStrategy.js';
 
+// Compaction orchestration service (slice #337 — ported from root
+// src/context/CompactionService.ts)
+export {
+  compact,
+  CompactionService,
+  microcompactMessages,
+} from './compactionService.js';
+export type {
+  CompactionOptions,
+  CompactionResult,
+} from './compactionService.js';
+
 export { CacheStore } from './CacheStore.js';
 export { BashClassifier } from './BashClassifier.js';
 export type {  BashCommandCategory, BashClassification } from './BashClassifier.js';

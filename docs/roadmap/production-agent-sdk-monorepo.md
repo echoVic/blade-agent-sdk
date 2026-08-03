@@ -82,7 +82,7 @@ Dependency direction:
 
 ---
 
-## Migration Progress — 336 Slices Completed
+## Migration Progress — 337 Slices Completed
 
 ### Subsystems at 100% (Complete)
 
@@ -1271,6 +1271,18 @@ After 29 slices (#150-#178), approximately 4,160 lines migrated from root to `@b
 **Verification:** `pnpm -r run type-check` 3/3 zero errors; root type-check 58 errors (−10, 0 new); `verify:boundaries` PASS; `verify:entrypoints` PASS; `verify:packages` PASS; `verify:release` PASS; `verify:examples` PASS; root suite 1248 passing / 43 pre-existing failures unchanged; package suite 630 passing (+3 new, 5 pre-existing failures unchanged); `git diff --check` clean
 **Impact:** the session→kernel tool boundary is now fully package-owned; the phantom-interface debt (interfaces matching no real implementation) is cleared for the pipeline/registry contracts, and the `ExecutionPipelineLike` shape is now an accurate structural contract the real root ExecutionPipeline satisfies.
 **Remaining work (next slices):** `ExecutionPipeline.ts` (1468L) + context core (PersistentStore 841L, ContextManager 712L, CompactionService 539L); Session.ts (784L) + SessionRuntime.ts (598L) + SessionStore.ts (538L); Agent.ts (662L) + LoopRunner (404L) + BackgroundAgentManager (605L)
+
+### Slice #337 — Port CompactionService into @blade-ai/agent-sdk/local (545L)
+
+**Capability:** `CompactionService` — the context compaction orchestration service (hook gating via PreCompact/Compaction/PostCompact hooks, file analysis, LLM summary generation, boundary/summary message creation, fallback truncation). Formerly root `src/context/CompactionService.ts` (545L); ALL its dependencies were already package-owned (`HookManager`, `createChatServiceAsync` in `local/chatServiceFactory.ts`, `FileAnalyzer`, `microcompact` in `local/microcompactStrategy.ts`, `TokenCounter`, `NOOP_LOGGER`, branded `SessionId`, `PermissionMode`/`ProviderType`) — the port was a faithful copy with import rewrites.
+**Package capability port:** `local/compactionService.ts` (545L) — `compact()` (pre-hook gating → file analysis → summary → retention filtering → boundary/summary messages → post-hook), `microcompactMessages()`, the `CompactionService` facade, plus private helpers (`generateSummary`, `inferProvider`, `buildCompactionPrompt`, `createBoundaryMessage`, `createSummaryMessage`, `fallbackCompact`). Exported from `local/index.ts` (`compact`, `CompactionService`, `microcompactMessages`, `CompactionOptions`, `CompactionResult`).
+**Root file shimmed:** `src/context/CompactionService.ts` (545L → 12L) re-exports from `@blade-ai/agent-sdk/local`; root consumers (CompactionHandler, LoopHookBuilder) unchanged.
+**Mock-path updates (known pattern):** `src/context/__tests__/CompactionService.test.ts` mocked the ROOT `../../session/ChatServiceFactory.js` and `../FileAnalyzer.js` — re-pointed to the PACKAGE module paths (`../../../packages/agent-sdk/src/local/chatServiceFactory.js`, `FileAnalyzer.js`) so both the root shim and the package implementation are intercepted.
+**Topology tests updated:** `monorepoTopology.test.ts` — (1) the "context chat protocol types" file list now checks `packages/agent-sdk/src/local/compactionService.ts` and drops the root CompactionService special-case (the session factory import moved into the package); (2) the "legacy root chat service interface" importSites entry points at the package file with a case-insensitive factory regex; (3) the mock-mode assertion accepts the package mock path.
+**Focused test:** `packages/agent-sdk/src/__tests__/compactionService.test.ts` — 3 runtime tests with vi.hoisted mocks (full compact flow with hook gating → file analysis → LLM summary → boundary/summary messages, facade + passthrough microcompact equivalence, fallback truncation on summary failure).
+**Verification:** `pnpm -r run type-check` 3/3 zero errors; root type-check 58 errors (0 new); `verify:boundaries` PASS; `verify:entrypoints` PASS; `verify:packages` PASS; `verify:release` PASS; `verify:examples` PASS; root suite 1248 passing / 43 pre-existing failures unchanged; package suite 633 passing (+3 new, 5 pre-existing failures unchanged); `git diff --check` clean
+**Impact:** the context compaction orchestration is fully package-owned — the LARGEST context-core file migrated so far (545L); root `src/context/` now holds only shims (CompactionService) + the two remaining real files (ContextManager 712L, PersistentStore 841L).
+**Remaining work (next slices):** `ExecutionPipeline.ts` (1468L); context core (ContextManager 712L, PersistentStore 841L); Session.ts (784L) + SessionRuntime.ts (598L) + SessionStore.ts (538L); Agent.ts (662L) + LoopRunner (404L) + BackgroundAgentManager (605L)
 
 ## 🏆 Milestone — Zero Production Test Failures (#245)
 
