@@ -1,31 +1,34 @@
 import { describe, expect, it, vi } from 'vitest';
+import type { SubagentBladeConfig } from '@blade-ai/agent-sdk/subagents';
 import { createContextSnapshot } from '../../../runtime/index.js';
 import { SessionId } from '../../../types/branded.js';
 
-const runAgenticLoop = vi.fn(async () => ({
-  success: true,
-  finalMessage: 'done',
-  metadata: {
-    toolCallsCount: 0,
-    tokensUsed: 0,
-  },
-}));
-
-const createAgent = vi.fn(async (_config: unknown, _options: unknown, deps: unknown) => ({
-  runAgenticLoop,
-  deps,
-}));
-
-vi.mock('../../Agent.js', () => ({
-  Agent: {
-    create: createAgent,
-  },
-}));
-
 const { SubagentExecutor } = await import('../SubagentExecutor.js');
 
+function createBladeConfig(): SubagentBladeConfig {
+  return {
+    models: [
+      {
+        id: 'default',
+        name: 'gpt-4o-mini',
+        provider: 'openai-compatible',
+        model: 'gpt-4o-mini',
+        apiKey: 'test-key',
+        baseUrl: 'https://example.com',
+      },
+    ],
+    currentModelId: 'default',
+  };
+}
+
 describe('SubagentExecutor', () => {
-  it('should inherit the parent snapshot context when creating a subagent', async () => {
+  it('delegates execution to the injected runner with config and context', async () => {
+    const runner = vi.fn(async () => ({
+      success: true,
+      message: 'done',
+      agentId: 'agent-1',
+    }));
+
     const snapshot = createContextSnapshot(SessionId('parent-session'), 'turn-1', {
       capabilities: {
         filesystem: {
@@ -39,78 +42,56 @@ describe('SubagentExecutor', () => {
     });
 
     const executor = new SubagentExecutor(
-      {
-        name: 'research',
-        description: 'Research subagent',
-      },
-      {
-        models: [
-          {
-            id: 'default',
-            name: 'gpt-4o-mini',
-            provider: 'openai-compatible',
-            model: 'gpt-4o-mini',
-            apiKey: 'test-key',
-            baseUrl: 'https://example.com',
-          },
-        ],
-        currentModelId: 'default',
-      },
+      { name: 'research', description: 'Research subagent' },
+      createBladeConfig(),
+      undefined,
+      runner,
     );
 
-    await executor.execute({
+    const result = await executor.execute({
       prompt: 'inspect',
       parentSessionId: 'parent-session',
       snapshot,
     });
 
-    expect(createAgent).toHaveBeenCalledWith(
-      expect.anything(),
-      expect.anything(),
+    expect(runner).toHaveBeenCalledWith(
       expect.objectContaining({
-        defaultContext: snapshot.context,
+        config: { name: 'research', description: 'Research subagent' },
+        bladeConfig: createBladeConfig(),
+        context: expect.objectContaining({
+          prompt: 'inspect',
+          parentSessionId: 'parent-session',
+          snapshot,
+        }),
+        agentId: expect.any(String),
+        systemPrompt: expect.any(String),
       }),
     );
-    expect(runAgenticLoop).toHaveBeenCalledWith(
-      'inspect',
-      expect.objectContaining({
-        snapshot,
-      }),
-    );
+    expect(result).toEqual({
+      success: true,
+      message: 'done',
+      agentId: 'agent-1',
+    });
   });
 
-  it('passes configured context omissions into the child agent context', async () => {
+  it('wraps runner failures into a failed result', async () => {
+    const runner = vi.fn(async () => {
+      throw new Error('subagent crashed');
+    });
+
     const executor = new SubagentExecutor(
-      {
-        name: 'Explore',
-        description: 'Explore subagent',
-        omitEnvironment: true,
-      },
-      {
-        models: [
-          {
-            id: 'default',
-            name: 'gpt-4o-mini',
-            provider: 'openai-compatible',
-            model: 'gpt-4o-mini',
-            apiKey: 'test-key',
-            baseUrl: 'https://example.com',
-          },
-        ],
-        currentModelId: 'default',
-      },
+      { name: 'research', description: 'Research subagent' },
+      createBladeConfig(),
+      undefined,
+      runner,
     );
 
-    await executor.execute({
+    const result = await executor.execute({
       prompt: 'inspect',
       parentSessionId: 'parent-session',
     });
 
-    expect(runAgenticLoop).toHaveBeenCalledWith(
-      'inspect',
-      expect.objectContaining({
-        omitEnvironment: true,
-      }),
-    );
+    expect(result.success).toBe(false);
+    expect(result.error).toBe('subagent crashed');
   });
 });

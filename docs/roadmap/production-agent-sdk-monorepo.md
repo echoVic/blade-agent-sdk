@@ -82,7 +82,7 @@ Dependency direction:
 
 ---
 
-## Migration Progress — 314 Slices Completed
+## Migration Progress — 315 Slices Completed
 
 ### Subsystems at 100% (Complete)
 
@@ -992,6 +992,19 @@ After 29 slices (#150-#178), approximately 4,160 lines migrated from root to `@b
 **Verification:** `pnpm -r run type-check` zero errors; root type-check 96 errors (0 new); `verify:boundaries` PASS; `git diff --check` clean
 **Impact:** 172L root code eliminated; **subagents subsystem 4/5 files migrated** (builtinAgents #290, SubagentRegistry #298, AgentSessionStore #299, types #314; SubagentExecutor 114L remains — package copy was rewritten for decoupling)
 **Remaining work (next slices):** `SubagentExecutor.ts` (114L — package copy rewritten with decoupling, needs alignment); `McpClient.ts`/`McpRegistry.ts`/`createMcpTool.ts` re-shims (constructor signature alignment); `session/types.ts` re-shim (StreamMessage union); package Tool declaration consolidation; `HookExecutor.ts`/`HookManager.ts`
+
+### Slice #315 — Shim SubagentExecutor.ts to Re-Export from @blade-ai/agent-sdk/subagents
+
+**Capability:** `SubagentExecutor` — subagent execution facade (114L) with breaking change: execution moved to an injectable `SubagentExecutionRunner`
+**Target:** `@blade-ai/agent-sdk/subagents`
+**Root file shimmed:** `src/agent/subagents/SubagentExecutor.ts` — reduced from 114L implementation to 2-line re-export
+**Package:** `packages/agent-sdk/src/subagents/SubagentExecutor.ts` (114L) — REWRITTEN: replaces direct `Agent.create()` + `runAgenticLoop()` with runner delegation; default runner throws ("requires a runtime runner") — the runtime is provided by session agents / local Task tool
+**Package API addition:** Added `SubagentBladeConfig` to `subagents/index.ts` exports (was defined but not publicly exported)
+**Breaking change (documented):** The root class created and ran an `Agent` instance directly; the package class requires an injected `SubagentExecutionRunner` (default throws). Root consumers: NONE (orphan class — only its test used it), so impact is contained to the test rewrite.
+**Test rewrite (TDD):** `SubagentExecutor.test.ts` rewritten from Agent.create-mocking to runner-delegation verification (2 tests: delegates config/context to runner + wraps runner failures). RED confirmed against the old implementation, GREEN via shim.
+**Verification:** `pnpm -r run type-check` zero errors; root type-check 96 errors (0 new); `verify:boundaries` PASS; `verify:entrypoints` PASS; `git diff --check` clean
+**Impact:** 114L root code eliminated; **subagents subsystem FULLY migrated** (builtinAgents #290, SubagentRegistry #298, AgentSessionStore #299, types #314, SubagentExecutor #315); first breaking-change slice this session with documented migration path
+**Remaining work (next slices):** `McpClient.ts`/`McpRegistry.ts`/`createMcpTool.ts` re-shims (legacy 5-arg vs new 3-arg McpClient constructor alignment — multi-slice); `session/types.ts` re-shim (StreamMessage session vs kernel union); package Tool declaration consolidation; `HookExecutor.ts`/`HookManager.ts` (670/902 diff lines)
 
 ## 🏆 Milestone — Zero Production Test Failures (#245)
 
