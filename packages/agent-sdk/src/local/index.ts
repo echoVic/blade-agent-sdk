@@ -453,6 +453,11 @@ export {  AttachmentHandler } from './AttachmentHandler.js';
 export {  SubagentRegistry, subagentRegistry } from './subagentRegistry.js';
 export {  AgentSessionStore } from './agentSessionStore.js';
 export {  VercelAIChatService } from './vercelAIChatService.js';
+
+// JSONL session store implementation (slice #339 — ported from root
+// src/session/SessionStore.ts; the SessionStore contract is in
+// ./sessionTypes.js)
+export { JsonlSessionStore, NoopSessionStore } from './sessionStore.js';
 export type {  StartBackgroundAgentOptions } from './backgroundAgentTypes.js';
 export type {  CompactionRuntimeContext, CompactionHandlerLike } from './compactionTypes.js';
 export type {  PreToolUseRuntimeResult, PostToolUseRuntimeResult } from './hookTypes.js';

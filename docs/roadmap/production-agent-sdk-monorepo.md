@@ -82,7 +82,7 @@ Dependency direction:
 
 ---
 
-## Migration Progress — 338 Slices Completed
+## Migration Progress — 339 Slices Completed
 
 ### Subsystems at 100% (Complete)
 
@@ -1294,6 +1294,16 @@ After 29 slices (#150-#178), approximately 4,160 lines migrated from root to `@b
 **Verification:** `pnpm -r run type-check` 3/3 zero errors; root type-check 58 errors (0 new); `verify:boundaries` PASS; `verify:entrypoints` PASS; `verify:packages` PASS; `verify:release` PASS; `verify:examples` PASS; root suite 1248 passing (all 15 agent test files pass) / 43 pre-existing failures unchanged; package suite 638 passing (+5 new, 5 pre-existing failures unchanged); `git diff --check` clean
 **Impact:** the runtime patch machinery is fully package-owned — the last standalone agent-side utility class is migrated; root `src/agent/` now holds real code only in the core loop/session files (Agent.ts 662L, LoopRunner.ts 404L, LoopHookBuilder.ts 390L, ModelManager.ts 138L, CompactionHandler.ts 277L, BackgroundAgentManager.ts 605L).
 **Remaining work (next slices):** `ExecutionPipeline.ts` (1468L); context core (ContextManager 712L, PersistentStore 841L — both depend on root SessionStore.ts 538L); Session.ts (784L) + SessionRuntime.ts (598L) + SessionStore.ts (538L); Agent.ts (662L) + LoopRunner (404L) + BackgroundAgentManager (605L)
+
+### Slice #339 — Port the JSONL SessionStore into @blade-ai/agent-sdk/local (538L)
+
+**Capability:** `JsonlSessionStore`/`NoopSessionStore` — the legacy JSONL session persistence store (append-only event log materialization into `SessionState`, message/tool-call/timeline recovery, fork snapshots, session summaries). Formerly root `src/session/SessionStore.ts` (538L). The package ALREADY owned the exact contract: `local/sessionTypes.ts` defines `SessionStore` (loadState/loadMessages/forkState/listSessions/getSessionSummary) plus `SessionState`/`SessionSnapshot`/`SessionSummary`/`SessionTimelineEntry`/`SessionToolCallState`/`SessionSubagentRef` — the root file's own comment even named these as its implementation classes. All other deps were package-owned (`JSONLStore`, `pathUtils`, `stringifyContent`/`toTimestamp`/`toMessageContent`/`upsertContentPart` in `SessionRuntimeUtils`, `cloneJsonValue`/`cloneMessage` in `messageUtils`, `PartInfo`/`SessionEvent`/`SessionInfo` in `local/context.ts`).
+**Package capability port:** `local/sessionStore.ts` (538L → 520L) — faithful copy with import rewrites; the duplicate local `SessionStore` interface declaration is removed (the contract is imported from `./sessionTypes.js`). Exported from `local/index.ts` (`JsonlSessionStore`, `NoopSessionStore`).
+**Root file shimmed:** `src/session/SessionStore.ts` (538L → 5L) re-exports from `@blade-ai/agent-sdk/local`; root consumers (SessionRuntime, Session, ContextManager, PersistentStore, BackgroundAgentManager, Agent) unchanged. This UNBLOCKS the context-core migrations: ContextManager (712L) and PersistentStore (841L) both import the root SessionStore — they now import a shim.
+**Focused test:** `packages/agent-sdk/src/__tests__/sessionStorePort.test.ts` — 3 runtime tests (store create/list behavior on a temp dir, NoopSessionStore empty semantics, structural contract satisfaction) + a compile-time structural contract check.
+**Verification:** `pnpm -r run type-check` 3/3 zero errors; root type-check 58 errors (0 new); `verify:boundaries` PASS; `verify:entrypoints` PASS; `verify:packages` PASS; `verify:release` PASS; `verify:examples` PASS; root suite 1248 passing (SessionStore/SessionRuntime/ContextManager/PersistentStore/BackgroundAgentManager/Session persistence suites all pass) / 43 pre-existing failures unchanged; package suite 641 passing (+3 new, 5 pre-existing failures unchanged); `git diff --check` clean
+**Impact:** the session persistence capability is fully package-owned; the last root dependency of the context core is now a shim — ContextManager and PersistentStore can be migrated next without dragging the store along.
+**Remaining work (next slices):** `ExecutionPipeline.ts` (1468L); context core (ContextManager 712L, PersistentStore 841L); Session.ts (784L) + SessionRuntime.ts (598L); Agent.ts (662L) + LoopRunner (404L) + BackgroundAgentManager (605L)
 
 ## 🏆 Milestone — Zero Production Test Failures (#245)
 
