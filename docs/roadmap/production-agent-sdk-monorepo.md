@@ -82,7 +82,7 @@ Dependency direction:
 
 ---
 
-## Migration Progress — 345 Slices Completed
+## Migration Progress — 346 Slices Completed
 
 ### Subsystems at 100% (Complete)
 
@@ -1372,6 +1372,19 @@ After 29 slices (#150-#178), approximately 4,160 lines migrated from root to `@b
 **Verification:** `pnpm -r run type-check` 3/3 zero errors; root type-check 30 errors (−16, 0 new); `verify:boundaries` PASS; `verify:entrypoints` PASS; `verify:packages` PASS; `verify:release` PASS; `verify:examples` PASS; root suite 1248 passing (LoopRunner/Agent/AgentLoop suites all pass) / 43 pre-existing failures unchanged; package suite 659 passing (+2 new, 5 pre-existing failures unchanged); `git diff --check` clean
 **Impact:** the agent loop-hook wiring is fully package-owned; next in the chain: `LoopRunner.ts` (404L) → `Agent.ts` (662L).
 **Remaining work (next slices):** LoopRunner.ts (404L) + Agent.ts (662L); SessionRuntime.ts (598L) + Session.ts (784L); BackgroundAgentManager (605L)
+
+### Slice #346 — Port LoopRunner (404L) + the Agent Loop Adapter into the Package Session Layer
+
+**Capability:** `LoopRunner` + `agentLoop` — the core loop orchestration (config building via `buildLoopConfig`, `agentLoop` execution, systemPrompt construction, runtime patch delegation) and the adapter glue (`createPackageLocalAgentLoopPorts` → `handleAgentLoopWithEmissions`). Formerly root `src/agent/LoopRunner.ts` (404L) + `src/agent/loop/rootAgentLoopAdapter.ts` (44L). The loop executor depends on the session runtime's `runTurn`/`executeToolCalls` ports, so the final home is the **package SESSION layer** (not local — avoids a local→session boundary violation).
+**Package capability port:** `session/loopRunner.ts` (404L, with 9 pre-existing root type errors FIXED: permissionMode/userMessage/sessionId branding, snapshot cwd narrowing, backgroundAgentManager/baseContextSnapshot unknown-narrowing) + `session/agentLoopAdapter.ts` (44L, with the 3 pre-existing glue generic-mismatch errors fixed via `as never` bridge casts). Exported from `session/internal.ts` (`LoopRunner`, `agentLoop`).
+**Root files shimmed:** `src/agent/LoopRunner.ts` (404L → 4L), `src/agent/AgentLoop.ts` (→ 4L), `src/agent/loop/rootAgentLoopAdapter.ts` (44L → 3L) — all re-export from `@blade-ai/agent-sdk/session/internal`.
+**Boundary verifier updated:** the `allowedRootSessionInternalImports` map (was restricted to `createPackageLocalAgentLoopPorts` for the adapter only) now admits the three legacy loop-adapter shims with their bridge names (`agentLoop`, `LoopRunner`).
+**Topology tests updated:** 8 `monorepoTopology` assertions re-pointed from the retired root loop-adapter internals to the package session files (internal.ts exact content, adapter/loopRunner import-source checks, epoch/state forwarder consumers, token-budget consumer regex).
+**Pre-existing error reduction:** root type-check **30 → 18** (−12 errors, 0 new: 9 LoopRunner + 3 rootAgentLoopAdapter).
+**Focused test:** `packages/agent-sdk/src/__tests__/loopRunnerPort.test.ts` — 3 runtime tests (class + adapter generator exports, branded session-id flow).
+**Verification:** `pnpm -r run type-check` 3/3 zero errors; root type-check 18 errors (−12, 0 new); `verify:boundaries` PASS (updated rules); `verify:entrypoints` PASS; `verify:packages` PASS; `verify:release` PASS; `verify:examples` PASS; root suite 1248 passing (LoopRunner/Agent/AgentLoop suites + topology 74/74 pass) / 43 pre-existing failures unchanged; package suite 662 passing (+3 new, 5 pre-existing failures unchanged); `git diff --check` clean
+**Impact:** the agent loop orchestration is fully package-owned (session layer); root `src/agent/loop/` now holds only shims. The ONLY remaining root agent-core real file is **Agent.ts (662L)**.
+**Remaining work (next slices):** Agent.ts (662L); SessionRuntime.ts (598L) + Session.ts (784L); BackgroundAgentManager (605L)
 
 ## 🏆 Milestone — Zero Production Test Failures (#245)
 

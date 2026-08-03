@@ -130,7 +130,15 @@ const rootSourceRules = [
 const allowedRootSessionInternalImports = new Map([
   [
     'src/agent/loop/rootAgentLoopAdapter.ts',
-    new Set(['createPackageLocalAgentLoopPorts']),
+    new Set(['createPackageLocalAgentLoopPorts', 'agentLoop']),
+  ],
+  [
+    'src/agent/LoopRunner.ts',
+    new Set(['LoopRunner']),
+  ],
+  [
+    'src/agent/AgentLoop.ts',
+    new Set(['agentLoop']),
   ],
 ]);
 
