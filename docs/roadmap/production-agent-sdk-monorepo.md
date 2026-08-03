@@ -82,7 +82,7 @@ Dependency direction:
 
 ---
 
-## Migration Progress — 306 Slices Completed
+## Migration Progress — 307 Slices Completed
 
 ### Subsystems at 100% (Complete)
 
@@ -881,6 +881,18 @@ After 29 slices (#150-#178), approximately 4,160 lines migrated from root to `@b
 **Verification:** `pnpm -r run type-check` zero errors; root type-check 101 errors (0 new); boundary verifier unchanged (120 pre-existing, 0 new); `git diff --check` clean
 **Impact:** 143L root code eliminated; context/strategies subsystem migrated (Microcompact #97 + SoftCompaction restored → re-shimmed #306); byte-identical shims — first zero-diff shims in Phase 3
 **Remaining work (next slices):** `Session.ts` missing `SessionId` import (blocks 6 session test files); `ContextFilter.ts` (399L real code — next context subsystem candidate); package Tool declaration consolidation (blocks ToolCatalog/ExecutionTypes re-shims); boundary verifier browser-safe closure (120 pre-existing violations)
+
+### Slice #307 — Fix Missing SessionId/SessionSnapshot Imports in Session.ts
+
+**Capability:** Session runtime import repair (bugfix) — unblocks the session test suite and reduces Session.ts type errors
+**Root file fixed:** `src/session/Session.ts` — added `SessionId` + `SessionSnapshot` to the existing `@blade-ai/agent-sdk/local` import; removed broken `type SessionSnapshot` from `./SessionStore.js` import (SessionStore imports it from the package but never re-exports it → TS2459)
+**Type-error fixes (5 genuine pre-existing):**
+- 4× `Cannot find name 'SessionId'` (46, 50, 73, 74) — Session.ts called `SessionId(nanoid())` without importing the branded factory
+- 1× `Module './SessionStore.js' declares 'SessionSnapshot' locally, but it is not exported` (26)
+**Test-suite repair (6 files / 26 tests):** SessionContext, SessionModelConfig, SessionInMemoryMode, SessionObservability, SessionOpenAIConfig, SessionPersistence — all previously crashed with `ReferenceError: SessionId is not defined` at runtime; now pass
+**Verification:** `pnpm -r run type-check` zero errors; root type-check **96 errors (down 5 from 101, 0 new)**; root test suite **10 → 4 failing files** (83 → 61 failing tests, 1207 → 1229 passing); boundary verifier unchanged (120 pre-existing, 0 new); `git diff --check` clean
+**Impact:** Root failing test files reduced from 10 to 4 (only pre-existing: monorepoTopology 14 stale, semantic-release 43, SandboxService 2, SessionRuntime 2 hook-related); Session.ts type errors 17 → 12; first step toward full Session.ts migration
+**Remaining work (next slices):** `Session.ts` full migration (785L, 12 remaining type errors — kernel stream options, PromptResult, hook types); `ContextFilter.ts` (399L real code); package Tool declaration consolidation (blocks ToolCatalog/ExecutionTypes re-shims); boundary verifier browser-safe closure (120 pre-existing violations)
 
 ## 🏆 Milestone — Zero Production Test Failures (#245)
 

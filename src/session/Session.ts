@@ -11,7 +11,7 @@ import {
 } from '../runtime/index.js';
 import type { ContentPart, Message } from '@blade-ai/ai/chat';
 import { cloneMessage } from '../runtime/messageUtils.js';
-import { isJsonObject, isSessionToolCall, isSessionToolCallArray } from '@blade-ai/agent-sdk/local';
+import { isJsonObject, isSessionToolCall, isSessionToolCallArray, SessionId, type SessionSnapshot } from '@blade-ai/agent-sdk/local';
 import {
   type BladeConfig,
   type JsonObject,
@@ -23,7 +23,6 @@ import { SessionRuntime } from './SessionRuntime.js';
 import {
   JsonlSessionStore,
   NoopSessionStore,
-  type SessionSnapshot,
   type SessionStore,
 } from './SessionStore.js';
 import type {
