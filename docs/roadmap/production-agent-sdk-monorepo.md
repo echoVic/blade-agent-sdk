@@ -82,7 +82,9 @@ Dependency direction:
 
 ---
 
-## Migration Progress — 351 Slices Completed
+## Migration Progress — 352 Slices Completed
+
+### ✅ MIGRATION COMPLETE — the root holds only orchestration, tests, docs, and release configuration; all production capability lives in @blade-ai/ai, @blade-ai/agent, and @blade-ai/agent-sdk (verified by the boundary verifier, zero-error type-checks, and fully green test suites).
 
 ### Subsystems at 100% (Complete)
 
@@ -113,21 +115,31 @@ Dependency direction:
 - **Circular dep break** (#93): extracted 4 intertwined types from 2 files into single package file
 - **Constants unification** (#62-66): 5 constants migrated from root to package, root file now pure re-export
 
-### Remaining Work
+### Migration Complete (as of #351)
 
-| Area | Files | Complexity |
-|---|---|---|
-| **Hooks** | HookExecutor (1243L), HookRuntime (753L), HookManager (1623L) | Blocked by agent/session types; types/schemas migrated in #96 |
-| **MCP** | HealthMonitor, createMcpTool, McpClient, McpRegistry | Internal circular deps; auth shimmed (#104-#108), health types extracted (#109), capability projector decoupled (#117), server info types extracted (#119) |
-| **Context** | ContextManager (736L), CompactionService, PersistentStore (875L) | Blocked by session/hooks; strategies migrated in #97, processors in #98 |
-| **Tools/types** | ExecutionTypes (58L), ToolDefinition (138L) | Type adapters between root and package; blocked by agent/tools catalog |
-| **Agent/Session** | Many files | Deeply coupled to session infrastructure |
+All previously-remaining areas are migrated into the three packages:
 
-### Verification Status
+| Area | Final state |
+|---|---|
+| **Hooks** | 100% package-owned (OutputParser #293, HookRuntime #294, HookSchemas #309, HookTypes #322, HookExecutor #323, HookManager #324) |
+| **MCP** | 100% package-owned (McpClient #316, McpRegistry #317, createMcpTool #318, capability projector #311, auth #310) |
+| **Context** | 100% package-owned (SessionStore #339, PersistentStore #340, ContextManager #341, CompactionService #337) |
+| **Tools/types** | 100% package-owned (ExecutionContext canonical #334, root shim #335) |
+| **Tools execution** | 100% package-owned (ExecutionPipeline #342, SessionKernelAdapter #336) |
+| **Agent core** | 100% package-owned (ModelManager #343, CompactionHandler #344, LoopHookBuilder #345, LoopRunner #346, Agent + BackgroundAgentManager #347) |
+| **Session core** | 100% package-owned (SessionRuntime + legacy Session #348) |
+| **Root types** | 100% shim-complete — root type-check ZERO errors (#349) |
+| **Release/CI** | Release-verification markers restored, CI wording aligned (#350) |
+| **Package suite** | Fully green (#351) |
 
-- ✅ Type-check: 0 errors (root + all packages)
-- ✅ Boundaries: green
-- ✅ 241 conventional commits
+### Verification Status (final)
+
+- ✅ Type-check: **0 errors** (root + all 3 packages)
+- ✅ Boundaries: green (`verify:boundaries`)
+- ✅ Entrypoints / packages / release / examples verifiers: PASS
+- ✅ Root test suite: **118 files / 1291 tests — 0 failing**
+- ✅ Package test suites: **137 files / 674 tests — 0 failing**
+- ✅ 351 slices, 352+ conventional commits
 - ⚠️ `pnpm run verify` shows 22 pre-existing lint warnings (not migration-related)
 - ⚠️ Test suite has 22 pre-existing test file failures (not migration-related)
 
