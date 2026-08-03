@@ -1,6 +1,9 @@
 import { describe, expect, it, type Mock, vi } from 'vitest';
 import { z } from 'zod';
-import * as FileAnalyzerModule from '../../context/FileAnalyzer.js';
+// Slice #338: RuntimePatchManager moved into the package, so the analyzeFiles
+// spy must target the PACKAGE module (the root shim re-export is not
+// intercepted by vi.spyOn for the package's internal import).
+import * as FileAnalyzerModule from '../../../packages/agent-sdk/src/local/FileAnalyzer.js';
 import { HookRuntime } from '../../hooks/HookRuntime.js';
 import type { RuntimePatch } from '../../runtime/RuntimePatch.js';
 import type { Message } from '@blade-ai/ai/chat';

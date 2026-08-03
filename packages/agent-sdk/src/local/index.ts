@@ -247,6 +247,11 @@ export type {
   RuntimePatch,
 } from './RuntimePatch.js';
 export { summarizeRuntimePatchApplications } from './RuntimePatch.js';
+
+// Runtime patch lifecycle manager (slice #338 — ported from root
+// src/agent/RuntimePatchManager.ts)
+export { RuntimePatchManager } from './RuntimePatchManager.js';
+
 export { configureStreamDebug, streamDebug } from './StreamDebugLogger.js';
 export { HookExecutionGuard } from './HookExecutionGuard.js';
 export { HookBus } from './HookBus.js';

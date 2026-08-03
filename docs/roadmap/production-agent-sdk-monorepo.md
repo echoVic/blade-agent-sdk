@@ -82,7 +82,7 @@ Dependency direction:
 
 ---
 
-## Migration Progress — 337 Slices Completed
+## Migration Progress — 338 Slices Completed
 
 ### Subsystems at 100% (Complete)
 
@@ -1283,6 +1283,17 @@ After 29 slices (#150-#178), approximately 4,160 lines migrated from root to `@b
 **Verification:** `pnpm -r run type-check` 3/3 zero errors; root type-check 58 errors (0 new); `verify:boundaries` PASS; `verify:entrypoints` PASS; `verify:packages` PASS; `verify:release` PASS; `verify:examples` PASS; root suite 1248 passing / 43 pre-existing failures unchanged; package suite 633 passing (+3 new, 5 pre-existing failures unchanged); `git diff --check` clean
 **Impact:** the context compaction orchestration is fully package-owned — the LARGEST context-core file migrated so far (545L); root `src/context/` now holds only shims (CompactionService) + the two remaining real files (ContextManager 712L, PersistentStore 841L).
 **Remaining work (next slices):** `ExecutionPipeline.ts` (1468L); context core (ContextManager 712L, PersistentStore 841L); Session.ts (784L) + SessionRuntime.ts (598L) + SessionStore.ts (538L); Agent.ts (662L) + LoopRunner (404L) + BackgroundAgentManager (605L)
+
+### Slice #338 — Port RuntimePatchManager into @blade-ai/agent-sdk/local (424L)
+
+**Capability:** `RuntimePatchManager` — the runtime patch lifecycle manager extracted from the root LoopRunner (skill activation/clear, runtime tool-policy overlays, context overlays, tool discovery + discoverable-tools catalog message sync, runtime hook registration/unregistration, patch history with reset pruning, turn-scoped state cleanup). Formerly root `src/agent/RuntimePatchManager.ts` (424L); ALL dependencies were already package-owned (`analyzeFiles` in `local/FileAnalyzer.ts`, `HookRuntime`, `InternalLogger`/`NOOP_LOGGER`, `createContextSnapshot`/`mergeContext`, `summarizeRuntimePatchApplications`/`RuntimePatch*` types in `local/RuntimePatch.ts`, `SkillActivationContext` in `local/skillsTypes.ts`, `ToolDiscoveryEntry` in `tools/exposure/ToolExposurePlanner.ts`, `getRuntimePatchEffect` in `local/toolEffects.ts`, `LoopState` in `local/loopState.ts`, `LoopSkillState` in `local/turnState.ts`, `ConversationState` from `@blade-ai/agent/state`).
+**Package capability port:** `local/RuntimePatchManager.ts` (424L) — faithful copy with import rewrites (incl. one import-cleanup: `summarizeRuntimePatchApplications` lives in `RuntimePatch.ts`, not `ContextSnapshot.ts`). Exported from `local/index.ts`.
+**Root file shimmed:** `src/agent/RuntimePatchManager.ts` (424L → 4L) re-exports from `@blade-ai/agent-sdk/local`; root consumers (LoopRunner constructs `new RuntimePatchManager(...)`, LoopHookBuilder) unchanged.
+**Mock-path update (known pattern):** `src/agent/__tests__/LoopRunner.test.ts`'s `vi.spyOn(FileAnalyzerModule, 'analyzeFiles')` targeted the ROOT `../../context/FileAnalyzer.js` shim — the ported class imports the PACKAGE module, so the spy got 0 calls; re-pointed to `../../../packages/agent-sdk/src/local/FileAnalyzer.js`.
+**Focused test:** `packages/agent-sdk/src/__tests__/runtimePatchManager.test.ts` — 5 runtime tests (skill patch application + loop-state activation, turn-scoped cleanup keeping session patches, patch derivation from effects/explicit/failure, skill activation context from non-system messages, skill deactivation) with a minimal fake LoopState.
+**Verification:** `pnpm -r run type-check` 3/3 zero errors; root type-check 58 errors (0 new); `verify:boundaries` PASS; `verify:entrypoints` PASS; `verify:packages` PASS; `verify:release` PASS; `verify:examples` PASS; root suite 1248 passing (all 15 agent test files pass) / 43 pre-existing failures unchanged; package suite 638 passing (+5 new, 5 pre-existing failures unchanged); `git diff --check` clean
+**Impact:** the runtime patch machinery is fully package-owned — the last standalone agent-side utility class is migrated; root `src/agent/` now holds real code only in the core loop/session files (Agent.ts 662L, LoopRunner.ts 404L, LoopHookBuilder.ts 390L, ModelManager.ts 138L, CompactionHandler.ts 277L, BackgroundAgentManager.ts 605L).
+**Remaining work (next slices):** `ExecutionPipeline.ts` (1468L); context core (ContextManager 712L, PersistentStore 841L — both depend on root SessionStore.ts 538L); Session.ts (784L) + SessionRuntime.ts (598L) + SessionStore.ts (538L); Agent.ts (662L) + LoopRunner (404L) + BackgroundAgentManager (605L)
 
 ## 🏆 Milestone — Zero Production Test Failures (#245)
 
