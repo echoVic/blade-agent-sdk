@@ -4,7 +4,7 @@
  * 负责执行单个或多个 Hooks
  */
 
-import type { JsonObject, JsonValue } from '../types/common.js';
+import type { JsonObject } from '../types/common.js';
 import { OutputParser } from './OutputParser.js';
 import { SecureProcessExecutor } from './SecureProcessExecutor.js';
 import {
@@ -210,6 +210,9 @@ export class HookExecutor {
 
   /**
    * 执行 Stop Hooks (并行)
+   *
+   * 默认允许停止 (shouldStop: true)；任何 hook 返回
+   * hookSpecificOutput.continue === false 时阻止停止并给出原因。
    */
   async executeStopHooks(
     hooks: Hook[],
@@ -217,7 +220,7 @@ export class HookExecutor {
     context: HookExecutionContext
   ): Promise<StopHookResult> {
     if (hooks.length === 0) {
-      return { shouldStop: false };
+      return { shouldStop: true };
     }
 
     const warnings: string[] = [];
@@ -231,13 +234,28 @@ export class HookExecutor {
     );
 
     for (const result of results) {
-      if (!result.success && result.warning) {
-        warnings.push(result.warning);
+      if (!result.success) {
+        if (result.warning) {
+          warnings.push(result.warning);
+        }
+        if (result.error) {
+          warnings.push(result.error);
+        }
+        continue;
+      }
+
+      const specific = result.output?.hookSpecificOutput;
+      if (specific && 'continue' in specific && specific.continue === false) {
+        return {
+          shouldStop: false,
+          continueReason: specific.continueReason,
+          warning: warnings.length > 0 ? warnings.join('\n') : undefined,
+        };
       }
     }
 
     return {
-      shouldStop: false,
+      shouldStop: true,
       warning: warnings.length > 0 ? warnings.join('\n') : undefined,
     };
   }

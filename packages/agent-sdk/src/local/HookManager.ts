@@ -418,7 +418,7 @@ export class HookManager {
     signal?: AbortSignal
   ): Promise<StopHookResult> {
     if (!this.isEnabled()) {
-      return { shouldStop: false };
+      return { shouldStop: true };
     }
 
     const hookInput: StopInput = {
@@ -434,7 +434,7 @@ export class HookManager {
     const hooks = this.getMatchingHooks(HookEvent.Stop, {});
 
     if (hooks.length === 0) {
-      return { shouldStop: false };
+      return { shouldStop: true };
     }
 
     const execContext: HookExecutionContext = {
@@ -455,7 +455,7 @@ export class HookManager {
     } catch (err) {
       console.error('[HookManager] Error executing Stop hooks:', err);
       return {
-        shouldStop: false,
+        shouldStop: true,
         warning: `Hook execution failed: ${err instanceof Error ? err.message : String(err)}`,
       };
     }

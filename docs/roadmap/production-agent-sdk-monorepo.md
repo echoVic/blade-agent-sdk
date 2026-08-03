@@ -82,7 +82,7 @@ Dependency direction:
 
 ---
 
-## Migration Progress — 322 Slices Completed
+## Migration Progress — 323 Slices Completed
 
 ### Subsystems at 100% (Complete)
 
@@ -1105,6 +1105,18 @@ After 29 slices (#150-#178), approximately 4,160 lines migrated from root to `@b
 **Verification:** `pnpm -r run type-check` zero errors; root type-check **70 → 69 (down 1, 0 new)**; `verify:boundaries` PASS; `verify:entrypoints` PASS; `verify:packages` PASS; 66 hook tests + 80 session/hook tests pass (2 pre-existing hook failures); full suite 4 pre-existing failing files unchanged; `git diff --check` clean
 **Impact:** 1214L root code eliminated — the largest single-file shim of the migration; hooks TYPES fully package-canonical; hook-type identity unified between root consumers (HookExecutor/HookManager) and package — the type-level prerequisite for the HookExecutor/HookManager migration is now clear
 **Remaining work (next slices):** `HookExecutor.ts` (1243L) + `HookManager.ts` (1623L) — the last hooks runtime files (diff alignment remains); package Tool declaration consolidation (self-contained vs delegation ToolCatalog — blocks tools re-shims); `ExecutionPipeline.ts` (1468L) + context core; Session.ts (784L) + SessionRuntime.ts (598L)
+
+### Slice #323 — Fix Package Stop-Hook Semantics + Shim HookExecutor.ts (1243L)
+
+**Capability:** `HookExecutor` — hook command execution with output parsing (1243L — second-largest root file shimmed)
+**Target:** `@blade-ai/agent-sdk/local`
+**Package bugfix (TDD):** The package `executeStopHooks` had INVERTED semantics — it always returned `shouldStop: false` (never allows stopping) for both empty and executed hooks, and `HookManager.executeStopHooks` had the same inverted defaults. The root semantics (confirmed by `StopHookResult.shouldStop` doc "false 表示继续执行"): default `shouldStop: true` (stop allowed); a hook returning `hookSpecificOutput.continue === false` → `shouldStop: false` + `continueReason`.
+**TDD:** Added 2 package tests (localHookExecutor.test.ts): "allows stopping when no hook blocks it" + "blocks stopping when a hook returns continue: false" — RED against the inverted implementation, GREEN after the fix (with `hookEventName: 'Stop'` discriminator and `HookType.Command` enum in the test)
+**Root file shimmed:** `src/hooks/HookExecutor.ts` — reduced from 1243L implementation to 1-line re-export (method surface verified identical: 22 public + 3 private methods)
+**Behavior notes:** package version runs stop hooks in parallel (maxConcurrentHooks) vs root serial; warning/error aggregation updated; modifiedInput empty-object handling — all canonical package behavior
+**Verification:** `pnpm -r run type-check` zero errors; root type-check 69 errors (0 new); `verify:boundaries` PASS; `verify:entrypoints` PASS; `verify:packages` PASS; 80 hook/session tests pass (2 pre-existing hook failures); full suite 4 pre-existing failing files unchanged; `git diff --check` clean
+**Impact:** 1243L root code eliminated — second-largest shim after HookTypes 1214L #322; hooks runtime executor now package-canonical with CORRECTED stop semantics; root HookManager (1623L) now delegates to the package executor — its own stop defaults already correct
+**Remaining work (next slices):** `HookManager.ts` (1623L) — the last hooks file (diff alignment); package Tool declaration consolidation (blocks tools re-shims); `ExecutionPipeline.ts` (1468L) + context core (PersistentStore 841L, ContextManager 712L, CompactionService 539L); Session.ts (784L) + SessionRuntime.ts (598L)
 
 ## 🏆 Milestone — Zero Production Test Failures (#245)
 
