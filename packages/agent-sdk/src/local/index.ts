@@ -164,6 +164,11 @@ export { ModelManager } from './modelManager.js';
 // CompactionRuntimeContext is owned by ./compactionTypes.js)
 export { CompactionHandler } from './compactionHandler.js';
 
+// Agent loop config builder (slice #345 — ported from root
+// src/agent/LoopHookBuilder.ts)
+export { buildLoopConfig } from './loopHookBuilder.js';
+export type { LoopHookBuilderDeps } from './loopHookBuilder.js';
+
 export { BashClassifier } from './BashClassifier.js';
 export type {  BashCommandCategory, BashClassification } from './BashClassifier.js';
 export { SecureProcessExecutor } from './SecureProcessExecutor.js';

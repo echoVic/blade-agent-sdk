@@ -82,7 +82,7 @@ Dependency direction:
 
 ---
 
-## Migration Progress — 344 Slices Completed
+## Migration Progress — 345 Slices Completed
 
 ### Subsystems at 100% (Complete)
 
@@ -1361,6 +1361,17 @@ After 29 slices (#150-#178), approximately 4,160 lines migrated from root to `@b
 **Verification:** `pnpm -r run type-check` 3/3 zero errors; root type-check 46 errors (0 new); `verify:boundaries` PASS; `verify:entrypoints` PASS; `verify:packages` PASS; `verify:release` PASS; `verify:examples` PASS; root suite 1248 passing (CompactionHandler/LoopRunner/LoopHookBuilder/Agent suites all pass) / 43 pre-existing failures unchanged; package suite 657 passing (+3 new, 5 pre-existing failures unchanged); `git diff --check` clean
 **Impact:** the agent-core loop chain advances — `CompactionHandler` is package-owned; next: `LoopHookBuilder` (390L) → `LoopRunner` (404L) → `Agent.ts` (662L).
 **Remaining work (next slices):** LoopHookBuilder.ts (390L) + LoopRunner.ts (404L) + Agent.ts (662L); SessionRuntime.ts (598L) + Session.ts (784L); BackgroundAgentManager (605L)
+
+### Slice #345 — Port LoopHookBuilder into @blade-ai/agent-sdk/local (390L)
+
+**Capability:** `buildLoopConfig` + `LoopHookBuilderDeps` — the agent loop config builder (grouped AgentLoopHooks: beforeTurn/afterTurn/preToolUse/postToolUse/startSubagent/subagentStatus etc., JSONL persistence wiring via `persistToJsonl`, compaction + microcompact integration). Formerly root `src/agent/LoopHookBuilder.ts` (390L). All deps were package-owned (`CompactionService` #337, `ContextManager` #341, `CompactionHandler` #344, `ModelManager` #343, `ExecutionPipeline` #342, `HookRuntime`, `toJsonValue`/`normalizeToolEffects`, `AgentLoopConfig`/`AgentLoopHooks` from `local/adapterContracts.ts`, `LoopOptions` from `agentLoopTypes.ts`, `ChatContext` from `agentTypes.ts`, `LoopState`, `TokenBudget`).
+**Package capability port:** `local/loopHookBuilder.ts` (390L) — faithful copy with import rewrites; **14 pre-existing root type errors FIXED in the port** (the root file's `ChatContext.sessionId: string` → branded via `SessionId(...)`, `snapshot?: unknown` → narrowed `(context.snapshot as { cwd?: string } | undefined)?.cwd`, `subagentInfo: unknown` → narrowed to the `saveToolResult` shape). Exported from `local/index.ts` (`buildLoopConfig`, `LoopHookBuilderDeps`).
+**Root file shimmed:** `src/agent/LoopHookBuilder.ts` (390L → 5L) re-exports from `@blade-ai/agent-sdk/local`; root consumers (Agent, LoopRunner) unchanged.
+**Pre-existing error reduction:** root type-check **46 → 30** (−16 errors, 0 new — the 14 LoopHookBuilder errors + 2 consumer knock-on errors).
+**Focused test:** `packages/agent-sdk/src/__tests__/loopHookBuilderPort.test.ts` — 2 runtime tests (config built with grouped hooks + maxTurns; branded session-id flow intact) with minimal stubbed deps.
+**Verification:** `pnpm -r run type-check` 3/3 zero errors; root type-check 30 errors (−16, 0 new); `verify:boundaries` PASS; `verify:entrypoints` PASS; `verify:packages` PASS; `verify:release` PASS; `verify:examples` PASS; root suite 1248 passing (LoopRunner/Agent/AgentLoop suites all pass) / 43 pre-existing failures unchanged; package suite 659 passing (+2 new, 5 pre-existing failures unchanged); `git diff --check` clean
+**Impact:** the agent loop-hook wiring is fully package-owned; next in the chain: `LoopRunner.ts` (404L) → `Agent.ts` (662L).
+**Remaining work (next slices):** LoopRunner.ts (404L) + Agent.ts (662L); SessionRuntime.ts (598L) + Session.ts (784L); BackgroundAgentManager (605L)
 
 ## 🏆 Milestone — Zero Production Test Failures (#245)
 
