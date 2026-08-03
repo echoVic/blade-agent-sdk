@@ -53,6 +53,7 @@ export type {
   OutputFormat,
   PermissionsConfig,
   ProviderType,
+  NetworkSandboxSettings,
   SandboxSettings,
   TokenUsage,
 } from '../types/common.js';

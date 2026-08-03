@@ -82,7 +82,7 @@ Dependency direction:
 
 ---
 
-## Migration Progress — 348 Slices Completed
+## Migration Progress — 349 Slices Completed
 
 ### Subsystems at 100% (Complete)
 
@@ -1412,6 +1412,16 @@ After 29 slices (#150-#178), approximately 4,160 lines migrated from root to `@b
 **Focused test:** `packages/agent-sdk/src/__tests__/legacySessionPort.test.ts` — 3 runtime tests with a `vi.hoisted` Agent mock (factory + runtime exports, session creation through the legacy factory, branded ids).
 **Verification:** `pnpm -r run type-check` 3/3 zero errors; root type-check 6 errors (−4, 0 new); `verify:boundaries` PASS (updated rules); `verify:entrypoints` PASS; `verify:packages` PASS; `verify:release` PASS; `verify:examples` PASS; root suite 1248 passing (SessionRuntime/SessionPersistence/SessionModelConfig suites + topology 74/74 pass) / 43 pre-existing failures unchanged; package suite 668 passing (+3 new, 5 pre-existing failures unchanged); `git diff --check` clean
 **Impact:** 🎉 **SESSION CORE 100% MIGRATED** — root `src/session/` now holds ONLY shims (SessionRuntime, Session, SessionStore, kernel adapters). The root holds no production session/agent/context/tools runtime code — only orchestration (src/index.ts barrel), tests, docs, and release config remain for the final cleanup slices.
+
+### Slice #349 — Complete the Root types/common.ts Shim — 🎉 ROOT TYPE-CHECK ZERO ERRORS
+
+**Capability:** the root `src/types/common.ts` common-type barrel — the last root file with type errors. The 6 remaining pre-existing errors: duplicate identifier `MessageRole`/`PermissionMode` (the file re-exported each as BOTH `export { X }` and `export type { X }` — the value export already carries the type), and `BladeConfig`/`NetworkSandboxSettings` missing from the `@blade-ai/agent-sdk` barrel.
+**Package API additions:** `@blade-ai/agent-sdk` barrel now exports `BladeConfig` (from `./tools/types/index.js` — it lived only on the tools subpath) and `NetworkSandboxSettings` (added to the `core/index.ts` types/common re-export chain, then the barrel).
+**Root file fixed:** `src/types/common.ts` — the duplicate `export type { MessageRole }`/`export type { PermissionMode }` lines removed (merged into the value re-export); BladeConfig/NetworkSandboxSettings now resolve from the barrel.
+**Pre-existing error reduction:** root type-check **6 → 0** — 🎉 **THE ROOT IS NOW FULLY TYPE-CLEAN** (from 69 errors at the #332-round baseline, ~6 pre-existing at #348). All remaining root type-check errors are eliminated; the root compiles cleanly with only shims, tests, docs, and orchestration.
+**Focused test:** `packages/agent-sdk/src/__tests__/commonTypesShim.test.ts` — compile-time `IsEqual` pins that the barrel's `BladeConfig`/`NetworkSandboxSettings` are the canonical tools/types + types/common types.
+**Verification:** `pnpm -r run type-check` 3/3 zero errors; **root type-check 0 errors** (−6, 0 new); `verify:boundaries` PASS; `verify:entrypoints` PASS; `verify:packages` PASS; `verify:release` PASS; `verify:examples` PASS; root suite 1248 passing / 43 pre-existing failures unchanged; package suite 669 passing (+1 new, 5 pre-existing failures unchanged); `git diff --check` clean
+**Impact:** the root's production code is entirely shims; the ONLY remaining root content is the barrel (`src/index.ts` = `export * from '@blade-ai/agent-sdk'`), tests (the 43 pre-existing `semantic-release-config` release-script failures + the passing suites), docs, and release configuration — matching the end-state goal ("workspace root 最终只负责 monorepo 编排、测试、文档和发布配置").
 
 ## 🏆 Milestone — Zero Production Test Failures (#245)
 

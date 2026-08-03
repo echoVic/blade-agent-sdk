@@ -42,6 +42,7 @@ export type {
   RuntimePatchSkillInfo,
   RuntimeToolDiscoveryPatch,
   RuntimeToolPolicyPatch,
+  NetworkSandboxSettings,
   SandboxSettings,
   SendOptions,
   StreamMessage,
@@ -138,6 +139,7 @@ export type {
   ToolSourceKind,
   ToolTrustLevel,
 } from './tools/index.js';
+export type { BladeConfig } from './tools/types/index.js';
 export {
   createTool,
   defineTool,

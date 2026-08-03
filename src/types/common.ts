@@ -5,10 +5,7 @@
  */
 
 // Value + type re-exports (also available as runtime consts)
-export { MessageRole } from '@blade-ai/agent-sdk';
-export type { MessageRole } from '@blade-ai/agent-sdk';
-export { PermissionMode } from '@blade-ai/agent-sdk';
-export type { PermissionMode } from '@blade-ai/agent-sdk';
+export { MessageRole, PermissionMode } from '@blade-ai/agent-sdk';
 
 // Pure type re-exports
 export type { JsonObject, JsonValue } from '@blade-ai/agent-sdk';
