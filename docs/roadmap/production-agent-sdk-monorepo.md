@@ -82,7 +82,7 @@ Dependency direction:
 
 ---
 
-## Migration Progress — 329 Slices Completed
+## Migration Progress — 330 Slices Completed
 
 ### Subsystems at 100% (Complete)
 
@@ -1197,6 +1197,15 @@ After 29 slices (#150-#178), approximately 4,160 lines migrated from root to `@b
 - Session stream contract: `includeThinking` check moved to the package session types
 **Verification:** root type-check 69 errors (0 new); `git diff --check` clean; lint 0 warnings; **monorepoTopology 14 failing → 0 (74/74 pass)**
 **Impact:** root test suite **4 → 3 failing files** (61 → 47 failing tests, 1229 → 1243 passing); the topology suite now accurately documents the shim-era architecture; remaining 3 failing files are semantic-release-config (43, pre-existing), SandboxService (2, pre-existing), SessionRuntime (2, pre-existing hook-related)
+**Remaining work (next slices):** ExecutionContext consolidation (SessionId unification prerequisite — multi-slice); `ExecutionPipeline.ts` (1468L) + context core (PersistentStore 841L, ContextManager 712L, CompactionService 539L); Session.ts (784L) + SessionRuntime.ts (598L) + SessionStore.ts (538L); Agent.ts (662L) + LoopRunner (404L) + BackgroundAgentManager (605L)
+
+### Slice #330 — Fix Package Sandbox Wildcard Ignore-Pattern Bug（2 个 pre-existing 测试恢复）
+
+**Capability:** `SandboxService` — sandbox violation ignore-pattern matching (wildcard support for file/network ignore lists)
+**Package bugfix (TDD):** `escapeRegExp` in `packages/agent-sdk/src/local/sandbox.ts` did NOT escape `*` — so the wildcard step (`.replace(/\\\*/g, '.*')`) never fired, producing the invalid regex `^/tmp/*$` and failing all wildcard ignore patterns. Fixed by adding `*` to the escape character class.
+**RED → GREEN:** the 2 pre-existing root test failures ("should match wildcard pattern" for file `/tmp/*` and network `localhost:*`) confirmed the bug; all 35 SandboxService tests now pass.
+**Verification:** `pnpm -r run type-check` zero errors; root type-check 69 errors (0 new); `verify:boundaries` PASS; `verify:entrypoints` PASS; `verify:packages` PASS; 35 sandbox tests pass; lint 0 warnings; `git diff --check` clean
+**Impact:** root test suite **3 → 2 failing files** (47 → 45 failing tests, 1243 → 1245 passing); the remaining 2 are pre-existing (semantic-release-config 43 release scripts, SessionRuntime 2 hook-related); wildcard ignore patterns now function correctly
 **Remaining work (next slices):** ExecutionContext consolidation (SessionId unification prerequisite — multi-slice); `ExecutionPipeline.ts` (1468L) + context core (PersistentStore 841L, ContextManager 712L, CompactionService 539L); Session.ts (784L) + SessionRuntime.ts (598L) + SessionStore.ts (538L); Agent.ts (662L) + LoopRunner (404L) + BackgroundAgentManager (605L)
 
 ## 🏆 Milestone — Zero Production Test Failures (#245)

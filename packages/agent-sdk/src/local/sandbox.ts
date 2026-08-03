@@ -160,5 +160,5 @@ export function getSandboxService(): SandboxService {
 }
 
 function escapeRegExp(value: string): string {
-  return value.replace(/[|\\{}()[\]^$+?.]/g, '\\$&');
+  return value.replace(/[|\\{}()[\]^$+?.*]/g, '\\$&');
 }
