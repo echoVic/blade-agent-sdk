@@ -5,8 +5,6 @@ import type { AgentTrace, ObservabilityOptions } from '../observability/index.js
 import type {
   ContextSnapshot,
   RuntimeContext,
-  RuntimeContextPatch,
-  RuntimePatch,
 } from '../runtime/index.js';
 import type { Message } from '@blade-ai/ai/chat';
 import type { PromptResult, ToolCallRecord, ToolCatalogSourcePolicy } from '@blade-ai/agent-sdk/local';
@@ -14,7 +12,6 @@ import type { ExecutionContext, ToolDefinition, ToolResult } from '../tools/type
 import type { SessionId } from '../types/branded.js';
 import type {
   JsonObject,
-  JsonValue,
   McpServerConfig,
   OutputFormat,
   PermissionMode,
@@ -22,9 +19,9 @@ import type {
   SandboxSettings,
   TokenUsage,
 } from '../types/common.js';
-import type { HookEvent, StreamMessageType } from '../types/constants.js';
+import type { StreamMessageType } from '../types/constants.js';
 import type { AgentLogger } from '../types/logging.js';
-import type { CanUseTool, PermissionHandler, PermissionUpdate } from '../types/permissions.js';
+import type { CanUseTool, PermissionHandler } from '../types/permissions.js';
 import type { Assert, IsEqual } from '../types/typeAssertions.js';
 
 export type { ExecutionContext, ProviderType, TokenUsage, ToolDefinition, ToolResult };
