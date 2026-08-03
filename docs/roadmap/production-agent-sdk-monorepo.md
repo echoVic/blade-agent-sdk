@@ -82,7 +82,7 @@ Dependency direction:
 
 ---
 
-## Migration Progress — 310 Slices Completed
+## Migration Progress — 311 Slices Completed
 
 ### Subsystems at 100% (Complete)
 
@@ -932,6 +932,22 @@ After 29 slices (#150-#178), approximately 4,160 lines migrated from root to `@b
 **Verification:** `pnpm -r run type-check` zero errors; root type-check 96 errors (0 new); boundary verifier unchanged (120 pre-existing, 0 new); `git diff --check` clean
 **Impact:** 62L root code eliminated; **mcp/auth subsystem fully migrated** (OAuthProvider #288, OAuthTokenStorage #288, types #310); mcp/auth/index.ts shim already in place
 **Remaining work (next slices):** `McpCapabilityProjector.ts` (84L — package version adds decoupling interfaces); `McpClient.ts` (631L) + `McpRegistry.ts` (533L) + `createMcpTool.ts` (355L) re-shims (package copies diverged — need API alignment); `session/types.ts` re-shim (StreamMessage/SessionOptions/ISession type-identity unification); boundary verifier browser-safe closure (120 pre-existing violations)
+
+### Slice #311 — Shim McpCapabilityProjector.ts to Re-Export from @blade-ai/agent-sdk/local
+
+**Capability:** `projectMcpCapabilities`, `McpServerCapability`, `McpToolCapability` — MCP capability projection (server status/health/tools to capability entries) (84L)
+**Target:** `@blade-ai/agent-sdk/local`
+**Root file shimmed:** `src/mcp/McpCapabilityProjector.ts` — reduced from 84L implementation to 2-line re-export
+**Package:** `packages/agent-sdk/src/local/McpCapabilityProjector.ts` (109L) — adds `McpServerInfoForCapability` + `McpCapabilitySource` decoupling interfaces; projection body identical
+**Decoupling-interface fixes (2, matching the #301 Like-interface pattern):**
+- `McpCapabilitySource.getAllServers()`: `IterableIterator<...>` → `Iterable<[string, McpServerInfoForCapability]>` (phantom — matched NEITHER registry: root McpRegistry returns `Map<string, McpServerInfo>`, package McpRegistry returns `string[]`; `Iterable` accepts both Map and iterator sources)
+- `McpServerInfoForCapability.client.healthCheck`: added `| null` (root McpClient exposes `get healthCheck(): HealthMonitor | null`)
+**Barrel:** Already exported in `packages/agent-sdk/src/local/index.ts` (projectMcpCapabilities + 4 types, no change needed)
+**Consumers:** `SessionRuntime.ts` (`projectMcpCapabilities(this.mcpRegistry)`) — root McpRegistry now satisfies the fixed interface
+**Tests:** 51 mcp tests pass; SessionRuntime 2 pre-existing hook failures unchanged
+**Verification:** `pnpm -r run type-check` zero errors; root type-check **96 errors (0 new)** — first attempt surfaced SessionRuntime(405) assignability error, fixed via the interface alignment; boundary verifier unchanged (120 pre-existing, 0 new); `git diff --check` clean
+**Impact:** 84L root code eliminated; MCP capability projection now canonical in package; phantom `McpCapabilitySource` interface aligned to real registry APIs (same pattern as ToolRegistryLike #301)
+**Remaining work (next slices):** `McpClient.ts` (631L) + `McpRegistry.ts` (533L) + `createMcpTool.ts` (355L) re-shims (package copies diverged — need API alignment); `session/types.ts` re-shim; package Tool declaration consolidation; boundary verifier browser-safe closure (120 pre-existing violations)
 
 ## 🏆 Milestone — Zero Production Test Failures (#245)
 

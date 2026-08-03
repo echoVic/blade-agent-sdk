@@ -14,7 +14,8 @@ export interface McpServerInfoForCapability {
     healthCheck?: { enabled?: boolean };
   };
   client: {
-    healthCheck?: { getStatus(): HealthStatus };
+    // root McpClient exposes `get healthCheck(): HealthMonitor | null`
+    healthCheck?: { getStatus(): HealthStatus } | null;
   };
   tools: McpToolDefinition[];
 }
@@ -22,9 +23,11 @@ export interface McpServerInfoForCapability {
 /**
  * Minimal interface for an MCP registry needed by the capability projector.
  * Decouples from the McpRegistry class to break the circular dependency chain.
+ * Uses `Iterable` so both Map-returning registries (root McpRegistry
+ * `Map<string, McpServerInfo>`) and iterator-based sources satisfy it.
  */
 export interface McpCapabilitySource {
-  getAllServers(): IterableIterator<[string, McpServerInfoForCapability]>;
+  getAllServers(): Iterable<[string, McpServerInfoForCapability]>;
 }
 
 export interface McpToolCapability {
