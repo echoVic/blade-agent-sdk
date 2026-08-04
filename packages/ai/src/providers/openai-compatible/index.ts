@@ -1,4 +1,5 @@
 import { createOpenAICompatible } from '@ai-sdk/openai-compatible';
+import { normalizeOpenAICompatibleBaseUrl } from './baseUrl.js';
 import { generateText, jsonSchema, Output, streamText } from 'ai';
 import type {
   JsonObject,
@@ -12,6 +13,8 @@ import type {
   ModelToolDefinition,
   UsageInfo,
 } from '../../model/index.js';
+
+export { normalizeOpenAICompatibleBaseUrl } from './baseUrl.js';
 
 export interface OpenAICompatibleModelPortOptions {
   apiKey: string;
@@ -83,7 +86,7 @@ type StreamPart = {
 export function createOpenAICompatibleModelPort(options: OpenAICompatibleModelPortOptions): ModelPort {
   const provider = createOpenAICompatible({
     apiKey: options.apiKey,
-    baseURL: options.baseUrl,
+    baseURL: normalizeOpenAICompatibleBaseUrl(options.baseUrl) ?? options.baseUrl,
     headers: options.headers,
     name: options.name ?? 'openai-compatible',
   });

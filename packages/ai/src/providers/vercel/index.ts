@@ -1,6 +1,7 @@
 import { createAnthropic } from '@ai-sdk/anthropic';
 import { createAzure } from '@ai-sdk/azure';
 import { createDeepSeek } from '@ai-sdk/deepseek';
+import { normalizeOpenAICompatibleBaseUrl } from '../openai-compatible/baseUrl.js';
 import { createGoogleGenerativeAI } from '@ai-sdk/google';
 import { createOpenAI } from '@ai-sdk/openai';
 import { createOpenAICompatible } from '@ai-sdk/openai-compatible';
@@ -525,7 +526,7 @@ function createCompatibleModel(options: {
   const compatible = createOpenAICompatible({
     name: options.name,
     apiKey: options.apiKey,
-    baseURL: options.baseUrl ?? '',
+    baseURL: normalizeOpenAICompatibleBaseUrl(options.baseUrl ?? '') ?? options.baseUrl ?? '',
     headers: options.headers,
   });
   return compatible(options.model);

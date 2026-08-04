@@ -82,7 +82,17 @@ Dependency direction:
 
 ---
 
-## Migration Progress — 352 Slices Completed
+## Migration Progress — 353 Slices Completed
+
+### Slice #353 — Real-Provider Live Smoke + OpenAI-Compatible Base-URL `/v1` Normalization Fix
+
+**Capability:** live end-to-end session testing against a real OpenAI-compatible gateway (`callapi8.com` via the New-API protocol), plus a real provider-interop bug found and fixed.
+**Live validation (real provider, 5 runs):** with `https://callapi8.com` + `glm-5.2` / `deepseek-v4-flash` / `qwen3.8-max` / `kimi-k2.5`, `scripts/test-live-session-glm.mjs` passes (content emitted, success result, usage, observability trace, no unexpected tool use). Available models fetched from `/v1/models`: deepseek-v4-flash/pro, glm-5.2, kimi-k2.5/k2.6/k2.7-code/k3, mimo-v2.5/pro, MiniMax-M2.7/M3, qwen3.6-plus/3.7-max/3.7-plus/3.8-max/3.8-max-preview.
+**Bug found (TDD):** passing a root base URL WITHOUT `/v1` (e.g. `https://callapi8.com`) made `@ai-sdk/openai-compatible` request `https://callapi8.com/chat/completions` — the gateway returned its HTML landing page → "Invalid JSON response" (session stream error / empty content). The `@blade-ai/ai` providers never normalized user-supplied base URLs.
+**Fix:** new `normalizeOpenAICompatibleBaseUrl` in `packages/ai/src/providers/openai-compatible/baseUrl.ts` (empty→undefined, trim trailing slashes, root path → append `/v1`, explicit non-root paths kept) — wired into BOTH `createOpenAICompatibleModelPort` and `createVercelModelPort`'s compatible path, exported from the openai-compatible subpath. 5 unit tests.
+**Verification:** live tests pass for all 4 models with both `/v1` and root URLs; ai package 50 tests pass; root 1291 + packages 674 tests pass; all type-checks zero errors; all verifiers PASS; `git diff --check` clean
+**Impact:** session users can now pass aggregator-style root URLs directly (`baseUrl: 'https://gateway.example.com'`) and the SDK resolves `/v1` automatically — the exact interop failure reproduced against the real provider is eliminated.
+
 
 ### ✅ MIGRATION COMPLETE — the root holds only orchestration, tests, docs, and release configuration; all production capability lives in @blade-ai/ai, @blade-ai/agent, and @blade-ai/agent-sdk (verified by the boundary verifier, zero-error type-checks, and fully green test suites).
 
