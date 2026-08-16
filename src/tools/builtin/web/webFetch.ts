@@ -422,11 +422,7 @@ async function fetchWithTimeout(
     return await fetch(url, { ...options, signal: controller.signal });
   } catch (error: unknown) {
     if (getErrorName(error) === 'AbortError') {
-      if (error instanceof Error) {
-        error.message = '请求被中止或超时';
-        throw error;
-      }
-      const wrapped = new Error('请求被中止或超时');
+      const wrapped = new Error('请求被中止或超时', { cause: error });
       wrapped.name = 'AbortError';
       throw wrapped;
     }
