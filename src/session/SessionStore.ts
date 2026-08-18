@@ -181,6 +181,35 @@ function inferRole(partType: string): MessageRole {
   }
 }
 
+function isEmptyAssistantMessage(message: Message): boolean {
+  return message.role === 'assistant'
+    && message.content === ''
+    && !message.reasoningContent
+    && !message.tool_calls?.length;
+}
+
+function getPartMessageId(
+  part: PartInfo,
+  messageRecords: Map<string, MessageRecord>,
+): MessageId {
+  const existing = messageRecords.get(part.messageId);
+  if (!existing) {
+    return part.messageId;
+  }
+
+  if (part.partType === 'tool_call' && existing.message.role !== 'assistant') {
+    return MessageId(`${part.messageId}:tool-call`);
+  }
+  if (part.partType === 'tool_result' && existing.message.role !== 'tool') {
+    const payload = isRecord(part.payload) ? part.payload : {};
+    const toolCallId = typeof payload.toolCallId === 'string'
+      ? payload.toolCallId
+      : part.partId;
+    return MessageId(`${part.messageId}:tool-result:${toolCallId}`);
+  }
+  return part.messageId;
+}
+
 function getToolCallState(
   toolCalls: Map<string, SessionToolCallState>,
   toolCallId: string,
@@ -217,6 +246,10 @@ export class JsonlSessionStore implements SessionStore {
     const orderedMessageIds: string[] = [];
     const summaryMessageIds = new Set<string>();
     const toolCalls = new Map<string, SessionToolCallState>();
+    const projectedToolCalls = new Map<string, {
+      sourceMessageId: string;
+      projectedMessageId: MessageId;
+    }>();
     const subagentRefs: SessionSubagentRef[] = [];
     let sessionInfo: Partial<SessionInfo> = { sessionId };
     let createdAt = toTimestamp(undefined, entries[0]?.timestamp ?? new Date().toISOString());
@@ -301,10 +334,21 @@ export class JsonlSessionStore implements SessionStore {
       }
 
       const data = entry.data;
+      let messageId = getPartMessageId(data, messageRecords);
+      if (data.partType === 'tool_call') {
+        const payload = isRecord(data.payload) ? data.payload : {};
+        const toolCallId = typeof payload.toolCallId === 'string'
+          ? payload.toolCallId
+          : data.partId;
+        const projected = projectedToolCalls.get(toolCallId);
+        if (projected && projected.sourceMessageId !== data.messageId) continue;
+        if (projected) messageId = projected.projectedMessageId;
+      }
       const record = ensureMessageRecord(
-        data.messageId,
+        messageId,
         inferRole(data.partType),
         entry.timestamp,
+        messageId === data.messageId ? undefined : data.messageId,
       );
 
       this.applyPartToMessage({
@@ -312,6 +356,7 @@ export class JsonlSessionStore implements SessionStore {
         record,
         contentParts,
         toolCalls,
+        projectedToolCalls,
         subagentRefs,
         summaryMessageIds,
         onSummary: (value) => {
@@ -325,6 +370,7 @@ export class JsonlSessionStore implements SessionStore {
     const timeline = orderedMessageIds
       .map((messageId) => messageRecords.get(messageId))
       .filter((record): record is MessageRecord => record !== undefined)
+      .filter((record) => !isEmptyAssistantMessage(record.message))
       .map((record) => ({
         id: record.id,
         parentMessageId: record.parentMessageId,
@@ -438,6 +484,10 @@ export class JsonlSessionStore implements SessionStore {
     record: MessageRecord;
     contentParts: Map<string, Array<{ partId: string; content: ContentPart }>>;
     toolCalls: Map<string, SessionToolCallState>;
+    projectedToolCalls: Map<string, {
+      sourceMessageId: string;
+      projectedMessageId: MessageId;
+    }>;
     subagentRefs: SessionSubagentRef[];
     summaryMessageIds: Set<string>;
     onSummary: (summary: string) => void;
@@ -447,6 +497,7 @@ export class JsonlSessionStore implements SessionStore {
       record,
       contentParts,
       toolCalls,
+      projectedToolCalls,
       subagentRefs,
       summaryMessageIds,
       onSummary,
@@ -514,6 +565,10 @@ export class JsonlSessionStore implements SessionStore {
           ...(record.message.tool_calls ?? []).filter((call) => call.id !== toolCall.id),
           toolCall,
         ];
+        projectedToolCalls.set(toolCallId, {
+          sourceMessageId: part.messageId,
+          projectedMessageId: MessageId(record.id),
+        });
 
         const toolCallState = getToolCallState(toolCalls, toolCallId, {
           name: toolName,

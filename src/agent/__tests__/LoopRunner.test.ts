@@ -1858,14 +1858,14 @@ describe('LoopRunner', () => {
           provenance: expect.objectContaining({
             toolName: 'PatchEnvA',
             toolCallId: 'patch-env-a-call',
-            toolUseUuid: 'tool-use-a',
+            toolUseUuid: null,
           }),
         }),
         expect.objectContaining({
           provenance: expect.objectContaining({
             toolName: 'PatchEnvB',
             toolCallId: 'patch-env-b-call',
-            toolUseUuid: 'tool-use-b',
+            toolUseUuid: null,
           }),
         }),
       ]);
@@ -2071,6 +2071,16 @@ describe('LoopRunner', () => {
 
       expect(result.success).toBe(true);
       expect(saveToolResult).toHaveBeenCalled();
+      const saveMessageCalls = saveMessage.mock.calls as unknown as Array<readonly unknown[]>;
+      const assistantToolCallIndex = saveMessageCalls.findIndex((call) => {
+        const metadata = call[4] as { toolCalls?: unknown[] } | undefined;
+        return Boolean(metadata?.toolCalls?.length);
+      });
+      const injectedMessageIndex = saveMessageCalls.findIndex((call) => call[2] === 'Injected assistant context');
+      expect(saveMessage.mock.invocationCallOrder[assistantToolCallIndex])
+        .toBeLessThan(saveToolResult.mock.invocationCallOrder[0] ?? 0);
+      expect(saveToolResult.mock.invocationCallOrder[0])
+        .toBeLessThan(saveMessage.mock.invocationCallOrder[injectedMessageIndex] ?? 0);
       expect(saveMessage).toHaveBeenCalledWith(
         'sess-1',
         'assistant',

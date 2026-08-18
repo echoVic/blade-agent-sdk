@@ -434,21 +434,6 @@ export async function* agentLoop(
       };
     }
 
-    // 写入 assistant 消息
-    convState.append({
-      role: 'assistant',
-      content: turnResult.content || '',
-      reasoningContent: turnResult.reasoningContent,
-      tool_calls: turnResult.toolCalls,
-    });
-
-    await messageHooks?.onAssistant?.({
-      content: turnResult.content || '',
-      reasoningContent: turnResult.reasoningContent,
-      toolCalls: turnResult.toolCalls,
-      turn: turnsCount,
-    });
-
     // 工具执行：流式已执行 or 非流式在此执行
     let executionResults = streamingExecutionResults;
 
@@ -487,31 +472,48 @@ export async function* agentLoop(
       });
     }
 
+    const resultByToolCallId = new Map(
+      executionResults.map((executionResult) => [executionResult.toolCall.id, executionResult]),
+    );
+    const orderedExecutionResults = turnResult.toolCalls.flatMap((toolCall) => {
+      const executionResult = resultByToolCallId.get(toolCall.id);
+      return executionResult ? [executionResult] : [];
+    });
+
+    if (epoch && !epoch.isValid) {
+      for (const { toolCall, toolUseUuid } of orderedExecutionResults) {
+        await toolHooks?.afterExecEpochDiscard?.({
+          toolCall,
+          toolUseUuid,
+          reason: 'execution epoch invalidated',
+        });
+      }
+      continue;
+    }
+    if (orderedExecutionResults.length !== turnResult.toolCalls.length) {
+      throw new Error('Tool execution completed without results for every declared tool call');
+    }
+
+    convState.append({
+      role: 'assistant',
+      content: turnResult.content || '',
+      reasoningContent: turnResult.reasoningContent,
+      tool_calls: turnResult.toolCalls,
+    });
+
+    await messageHooks?.onAssistant?.({
+      content: turnResult.content || '',
+      reasoningContent: turnResult.reasoningContent,
+      toolCalls: turnResult.toolCalls,
+      turn: turnsCount,
+    });
+
+    let exitResult: typeof orderedExecutionResults[number] | undefined;
     // 处理结果
-    for (const { toolCall, result, toolUseUuid } of executionResults) {
-      if (epoch && !epoch.isValid) break;
-
+    for (const { toolCall, result, toolUseUuid } of orderedExecutionResults) {
       recordToolResult(result);
-
-      if (result.metadata?.shouldExitLoop) {
-        const finalMessage =
-          typeof result.llmContent === 'string' ? result.llmContent : '循环已退出';
-        if (!streamingExecutionResults) {
-          yield { type: 'tool_result', toolCall, result };
-        }
-        yield { type: 'turn_end', turn: turnsCount, hasToolCalls: true };
-        yield { type: 'agent_end' };
-        return {
-          success: result.success,
-          finalMessage,
-          metadata: {
-            turnsCount,
-            toolCallsCount: totalToolCalls,
-            duration: Date.now() - startTime,
-            shouldExitLoop: true,
-            targetMode: result.metadata?.targetMode as PermissionMode | undefined,
-          },
-        };
+      if (result.metadata?.shouldExitLoop && !exitResult) {
+        exitResult = { toolCall, result, toolUseUuid };
       }
 
       if (!streamingExecutionResults) {
@@ -537,24 +539,44 @@ export async function* agentLoop(
           : JSON.stringify(toolResultContent),
       });
 
-      if (result.newMessages && result.newMessages.length > 0) {
-        convState.append(
-          ...result.newMessages.map((message) => ({
-            ...message,
-            ...(message.role === 'system'
-              ? {
-                  metadata: {
-                    ...(isRecord(message.metadata) ? message.metadata : {}),
-                    _systemSource: 'tool_injection' as const,
-                  },
-                }
-              : {}),
-          })),
-        );
-      }
+    }
+
+    for (const { result } of orderedExecutionResults) {
+      if (!result.newMessages?.length) continue;
+      convState.append(
+        ...result.newMessages.map((message) => ({
+          ...message,
+          ...(message.role === 'system'
+            ? {
+                metadata: {
+                  ...(isRecord(message.metadata) ? message.metadata : {}),
+                  _systemSource: 'tool_injection' as const,
+                },
+              }
+            : {}),
+        })),
+      );
     }
 
     yield { type: 'turn_end', turn: turnsCount, hasToolCalls: true };
+
+    if (exitResult) {
+      const finalMessage = typeof exitResult.result.llmContent === 'string'
+        ? exitResult.result.llmContent
+        : '循环已退出';
+      yield { type: 'agent_end' };
+      return {
+        success: exitResult.result.success,
+        finalMessage,
+        metadata: {
+          turnsCount,
+          toolCallsCount: totalToolCalls,
+          duration: Date.now() - startTime,
+          shouldExitLoop: true,
+          targetMode: exitResult.result.metadata?.targetMode as PermissionMode | undefined,
+        },
+      };
+    }
 
     if (signal?.aborted) {
       yield { type: 'agent_end' };

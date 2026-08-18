@@ -15,7 +15,9 @@ import type { ExecutionPipeline } from '../tools/execution/ExecutionPipeline.js'
 import {
   normalizeToolEffects,
   type ToolEffect,
+  type ToolResult,
 } from '../tools/types/index.js';
+import type { FunctionToolCall } from './loop/types.js';
 import type { SessionId } from '../types/branded.js';
 import type { JsonValue } from '../types/common.js';
 import type { AgentLoopConfig, AgentLoopHooks } from './AgentLoop.js';
@@ -87,6 +89,58 @@ export function buildLoopConfig(deps: LoopHookBuilderDeps): AgentLoopConfig {
   } = deps;
 
   let progressToolUseCount = 0;
+  let assistantToolCallIds: string[] = [];
+  const pendingToolResults = new Map<string, {
+    toolCall: FunctionToolCall;
+    result: ToolResult;
+    injectedMessages: Message[];
+    subagentRef?: {
+      subagentSessionId: string;
+      subagentType: string;
+      subagentStatus: 'running' | 'completed' | 'failed' | 'cancelled';
+      subagentSummary?: string;
+    };
+  }>();
+
+  const persistToolResultsIfReady = async (): Promise<void> => {
+    if (!assistantToolCallIds.length
+      || assistantToolCallIds.some((toolCallId) => !pendingToolResults.has(toolCallId))) return;
+    const ready = assistantToolCallIds
+      .map((toolCallId) => pendingToolResults.get(toolCallId))
+      .filter((pending): pending is NonNullable<typeof pending> => pending !== undefined);
+    assistantToolCallIds = [];
+    await persistToJsonl(modelManager, context.sessionId, logger, async (contextMgr, sessionId) => {
+      for (const pending of ready) {
+        const uuid = await contextMgr.saveToolResult(
+          sessionId, pending.toolCall.id, pending.toolCall.function.name,
+          pending.result.success ? toJsonValue(pending.result.llmContent) : null,
+          getLastUuid(), pending.result.success ? undefined : pending.result.error?.message,
+          context.subagentInfo, pending.subagentRef,
+        );
+        setLastUuid(uuid);
+      }
+      for (const pending of ready) {
+        for (const injectedMessage of pending.injectedMessages) {
+          const isRec = (v: unknown): v is Record<string, unknown> =>
+            typeof v === 'object' && v !== null && !Array.isArray(v);
+          const customMetadata = isRec(injectedMessage.metadata)
+            ? { ...injectedMessage.metadata }
+            : {};
+          if (injectedMessage.role === 'system') customMetadata._systemSource = 'tool_injection';
+          const uuid = await contextMgr.saveMessage(
+            sessionId,
+            injectedMessage.role,
+            injectedMessage.content,
+            getLastUuid(),
+            Object.keys(customMetadata).length ? { customMetadata } : undefined,
+            context.subagentInfo,
+          );
+          setLastUuid(uuid);
+        }
+      }
+    });
+    for (const pending of ready) pendingToolResults.delete(pending.toolCall.id);
+  };
 
   const hooks: AgentLoopHooks = {
     turn: {
@@ -157,84 +211,39 @@ export function buildLoopConfig(deps: LoopHookBuilderDeps): AgentLoopConfig {
     },
 
     tool: {
-      async beforeExec(ctx) {
-        try {
-          const contextMgr = modelManager.getContextManager();
-          if (contextMgr && context.sessionId) {
-            return await contextMgr.saveToolUse(
-              context.sessionId, ctx.toolCall.function.name,
-              ctx.params,
-              getLastUuid(), context.subagentInfo,
-              ctx.toolCall.id,
-            );
-          }
-        } catch (error) {
-          logger.warn('[LoopHookBuilder] 保存工具调用失败:', error);
-        }
+      async beforeExec(_ctx) {
         return null;
       },
 
       async afterExec(ctx) {
-        const { toolCall, result, toolUseUuid } = ctx;
-
-        await persistToJsonl(modelManager, context.sessionId, logger, async (contextMgr, sessionId) => {
-          const metadata = result.metadata;
-          const normalizedEffects = normalizeToolEffects(result);
-          const injectedMessages = normalizedEffects
-            .filter((effect): effect is Extract<ToolEffect, { type: 'newMessages' }> => effect.type === 'newMessages')
-            .flatMap((effect) => effect.messages);
-          const isSubagentStatus = (v: unknown): v is 'running' | 'completed' | 'failed' | 'cancelled' =>
-            v === 'running' || v === 'completed' || v === 'failed' || v === 'cancelled';
-          const subagentStatus = isSubagentStatus(metadata?.subagentStatus)
-            ? metadata.subagentStatus : 'completed';
-          const subagentRef = metadata && typeof metadata.subagentSessionId === 'string'
-            ? {
-                subagentSessionId: metadata.subagentSessionId,
-                subagentType: typeof metadata.subagentType === 'string'
-                  ? metadata.subagentType : toolCall.function.name,
-                subagentStatus,
-                subagentSummary: typeof metadata.subagentSummary === 'string'
-                  ? metadata.subagentSummary : undefined,
-              }
-            : undefined;
-          const uuid = await contextMgr.saveToolResult(
-            sessionId, toolCall.id, toolCall.function.name,
-            result.success ? toJsonValue(result.llmContent) : null,
-            toolUseUuid, result.success ? undefined : result.error?.message,
-            context.subagentInfo, subagentRef,
-          );
-          setLastUuid(uuid);
-
-          if (injectedMessages.length > 0) {
-            let parentUuid = uuid;
-            for (const injectedMessage of injectedMessages) {
-              const customMeta = (() => {
-                const isRec = (v: unknown): v is Record<string, unknown> =>
-                  typeof v === 'object' && v !== null && !Array.isArray(v);
-                const base = isRec(injectedMessage.metadata)
-                  ? { ...injectedMessage.metadata }
-                  : {};
-                if (injectedMessage.role === 'system') {
-                  base._systemSource = 'tool_injection';
-                }
-                return Object.keys(base).length > 0 ? base : undefined;
-              })();
-
-              const injectedUuid = await contextMgr.saveMessage(
-                sessionId,
-                injectedMessage.role,
-                injectedMessage.content,
-                parentUuid,
-                customMeta ? { customMetadata: customMeta } : undefined,
-                context.subagentInfo,
-              );
-              parentUuid = injectedUuid;
-            }
-            setLastUuid(parentUuid);
-          }
-        });
-
+        const { toolCall, result } = ctx;
         const normalizedEffects = normalizeToolEffects(result);
+        const metadata = result.metadata;
+        const injectedMessages = normalizedEffects
+          .filter((effect): effect is Extract<ToolEffect, { type: 'newMessages' }> => effect.type === 'newMessages')
+          .flatMap((effect) => effect.messages);
+        const isSubagentStatus = (v: unknown): v is 'running' | 'completed' | 'failed' | 'cancelled' =>
+          v === 'running' || v === 'completed' || v === 'failed' || v === 'cancelled';
+        const subagentStatus = isSubagentStatus(metadata?.subagentStatus)
+          ? metadata.subagentStatus : 'completed';
+        const subagentRef = metadata && typeof metadata.subagentSessionId === 'string'
+          ? {
+              subagentSessionId: metadata.subagentSessionId,
+              subagentType: typeof metadata.subagentType === 'string'
+                ? metadata.subagentType : toolCall.function.name,
+              subagentStatus,
+              subagentSummary: typeof metadata.subagentSummary === 'string'
+                ? metadata.subagentSummary : undefined,
+            }
+          : undefined;
+        pendingToolResults.set(toolCall.id, {
+          toolCall,
+          result,
+          injectedMessages,
+          subagentRef,
+        });
+        await persistToolResultsIfReady();
+
         for (const effect of normalizedEffects) {
           if (effect.type === 'contextPatch') {
             runtimePatchManager.applyRuntimeContextPatch(effect.patch);
@@ -251,7 +260,7 @@ export function buildLoopConfig(deps: LoopHookBuilderDeps): AgentLoopConfig {
           runtimePatchManager.applyRuntimePatch(runtimePatch, loopState, {
             toolName: toolCall.function.name,
             toolCallId: toolCall.id,
-            toolUseUuid,
+            toolUseUuid: null,
           });
         }
 
@@ -277,19 +286,7 @@ export function buildLoopConfig(deps: LoopHookBuilderDeps): AgentLoopConfig {
       },
 
       async afterExecEpochDiscard(ctx) {
-        const toolUseUuid = ctx.toolUseUuid;
-        if (!toolUseUuid) return;
-        await persistToJsonl(modelManager, context.sessionId, logger, async (contextMgr, sessionId) => {
-          await contextMgr.saveToolResult(
-            sessionId,
-            ctx.toolCall.id,
-            ctx.toolCall.function.name,
-            null,
-            toolUseUuid,
-            ctx.reason,
-            context.subagentInfo,
-          );
-        });
+        pendingToolResults.delete(ctx.toolCall.id);
       },
     },
 
@@ -311,6 +308,8 @@ export function buildLoopConfig(deps: LoopHookBuilderDeps): AgentLoopConfig {
             setLastUuid(uuid);
           }
         });
+        assistantToolCallIds = (ctx.toolCalls ?? []).map((toolCall) => toolCall.id);
+        await persistToolResultsIfReady();
       },
 
       async onComplete(ctx) {
@@ -347,6 +346,8 @@ export function buildLoopConfig(deps: LoopHookBuilderDeps): AgentLoopConfig {
 
       onStateChange(recovery) {
         if (recovery.phase === 'started') {
+          assistantToolCallIds = [];
+          pendingToolResults.clear();
           loopState.startRecovery(recovery.reason ?? 'recovery_started');
           return;
         }

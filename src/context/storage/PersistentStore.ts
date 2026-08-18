@@ -232,18 +232,17 @@ export class PersistentStore {
       const store = new JSONLStore(filePath);
       await this.ensureSessionCreated(sessionId, subagentInfo);
       const now = new Date().toISOString();
-      const messageId = parentUuid ? MessageId(parentUuid) : MessageId(nanoid());
-      const entries: SessionEvent[] = [];
-      if (!parentUuid) {
-        const messageInfo: MessageInfo = {
-          messageId,
-          role: 'assistant',
-          parentMessageId: undefined,
-          createdAt: now,
-        };
-        entries.push(this.createEvent('message_created', sessionId, messageInfo));
-      }
       const toolCallId = requestedToolCallId ?? nanoid();
+      const messageId = MessageId(toolCallId);
+      const messageInfo: MessageInfo = {
+        messageId,
+        role: 'assistant',
+        parentMessageId: parentUuid ?? undefined,
+        createdAt: now,
+      };
+      const entries: SessionEvent[] = [
+        this.createEvent('message_created', sessionId, messageInfo),
+      ];
       const partInfo: PartInfo = {
         partId: toolCallId,
         messageId,
@@ -320,17 +319,16 @@ export class PersistentStore {
       const store = new JSONLStore(filePath);
       await this.ensureSessionCreated(sessionId, subagentInfo);
       const now = new Date().toISOString();
-      const messageId = parentUuid ? MessageId(parentUuid) : MessageId(nanoid());
-      const entries: SessionEvent[] = [];
-      if (!parentUuid) {
-        const messageInfo: MessageInfo = {
-          messageId,
-          role: 'assistant',
-          parentMessageId: undefined,
-          createdAt: now,
-        };
-        entries.push(this.createEvent('message_created', sessionId, messageInfo));
-      }
+      const messageId = MessageId(nanoid());
+      const messageInfo: MessageInfo = {
+        messageId,
+        role: 'tool',
+        parentMessageId: parentUuid ?? undefined,
+        createdAt: now,
+      };
+      const entries: SessionEvent[] = [
+        this.createEvent('message_created', sessionId, messageInfo),
+      ];
       const toolResultPart: PartInfo = {
         partId: toolId,
         messageId,
@@ -359,7 +357,7 @@ export class PersistentStore {
         entries.push(this.createEvent('part_created', sessionId, subtaskPart));
       }
       await store.appendBatch(entries);
-      return toolId;
+      return messageId;
     } catch (error) {
       console.error(
         `[PersistentStore] 保存工具结果失败 (session: ${sessionId}):`,
