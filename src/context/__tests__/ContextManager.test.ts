@@ -29,19 +29,19 @@ describe('ContextManager', () => {
 
     const sessionId = SessionId('session-1');
     await persistentStore.saveMessage(sessionId, 'user', 'hello');
-    const toolCallId = await persistentStore.saveToolUse(sessionId, 'Read', { file_path: 'README.md' });
-    await persistentStore.saveToolResult(
+    const toolUse = await persistentStore.saveToolUse(sessionId, 'Read', { file_path: 'README.md' });
+    const toolResultMessageId = await persistentStore.saveToolResult(
       sessionId,
-      toolCallId,
+      toolUse.toolCallId,
       'Read',
       'file contents',
-      toolCallId,
+      toolUse.messageId,
     );
     await persistentStore.saveCompaction(
       sessionId,
       'Compacted summary',
       { trigger: 'auto', preTokens: 42, postTokens: 20 },
-      toolCallId,
+      toolResultMessageId,
     );
 
     await contextManager.initialize();
@@ -58,5 +58,55 @@ describe('ContextManager', () => {
     expect(formatted.context.layers.conversation.summary).toBe('Compacted summary');
     expect(formatted.context.layers.tool.recentCalls).toHaveLength(1);
     expect(formatted.context.layers.tool.recentCalls[0]?.status).toBe('success');
+  });
+
+  it('keeps pending tool-use message IDs scoped to their session', async () => {
+    const workspaceRoot = createWorkspaceRoot();
+    const contextManager = new ContextManager({
+      projectPath: workspaceRoot,
+      storage: {
+        maxMemorySize: 1000,
+        persistentPath: workspaceRoot,
+        cacheSize: 100,
+        compressionEnabled: true,
+      },
+    });
+    await contextManager.initialize();
+
+    const firstSessionId = SessionId('session-first');
+    await contextManager.createSession(undefined, {}, { sessionId: firstSessionId });
+    await contextManager.addToolCall({
+      id: 'call-reused',
+      name: 'Search',
+      input: { query: 'first' },
+      timestamp: Date.now(),
+      status: 'pending',
+    });
+
+    const secondSessionId = SessionId('session-second');
+    await contextManager.createSession(undefined, {}, { sessionId: secondSessionId });
+    await contextManager.addToolCall({
+      id: 'call-reused',
+      name: 'Search',
+      input: { query: 'second' },
+      timestamp: Date.now(),
+      status: 'pending',
+    });
+    await contextManager.addToolCall({
+      id: 'call-reused',
+      name: 'Search',
+      input: { query: 'second' },
+      output: 'second result',
+      timestamp: Date.now(),
+      status: 'success',
+    });
+
+    const state = await new JsonlSessionStore(workspaceRoot).loadState(secondSessionId);
+
+    assertDefined(state);
+    expect(state.messages.map((message) => message.role)).toEqual(['assistant', 'tool']);
+    expect(state.messages[0]?.tool_calls?.[0]?.id).toBe('call-reused');
+    expect(state.messages[1]?.tool_call_id).toBe('call-reused');
+    expect(state.timeline[1]?.parentMessageId).toBe(state.timeline[0]?.id);
   });
 });

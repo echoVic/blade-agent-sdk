@@ -1,9 +1,14 @@
 import { describe, expect, it, type Mock, vi } from 'vitest';
+import { mkdtempSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { z } from 'zod';
+import { ContextManager } from '../../context/ContextManager.js';
 import * as FileAnalyzerModule from '../../context/FileAnalyzer.js';
 import { HookRuntime } from '../../hooks/HookRuntime.js';
 import type { RuntimePatch } from '../../runtime/RuntimePatch.js';
 import type { Message } from '../../services/ChatServiceInterface.js';
+import { JsonlSessionStore } from '../../session/SessionStore.js';
 import { ToolCatalog } from '../../tools/catalog/ToolCatalog.js';
 import { createTool } from '../../tools/core/createTool.js';
 import type { ExecutionPipeline } from '../../tools/execution/ExecutionPipeline.js';
@@ -132,6 +137,105 @@ describe('LoopRunner', () => {
       await runner.runLoop('Test message', context);
 
       expect(mm._contextMgr.saveMessage).toHaveBeenCalled();
+    });
+
+    it('persists streaming tool turns in provider-compatible order', async () => {
+      const workspaceRoot = mkdtempSync(join(tmpdir(), 'loop-runner-persistence-'));
+      const sessionId = SessionId('streaming-tool-session');
+      const contextManager = new ContextManager({
+        projectPath: workspaceRoot,
+        storage: {
+          maxMemorySize: 1000,
+          persistentPath: workspaceRoot,
+          cacheSize: 100,
+          compressionEnabled: true,
+        },
+      });
+      await contextManager.initialize();
+      await contextManager.createSession(undefined, {}, { sessionId });
+
+      let turn = 0;
+      const streamChat = vi.fn(async function* () {
+        turn += 1;
+        if (turn === 1) {
+          yield {
+            toolCalls: [
+              {
+                index: 0,
+                id: 'call-first',
+                function: { name: 'Search', arguments: '{"query":"first"}' },
+              },
+              {
+                index: 1,
+                id: 'call-second',
+                function: { name: 'Search', arguments: '{"query":"second"}' },
+              },
+            ],
+          };
+          yield { finishReason: 'tool_calls' };
+          return;
+        }
+        yield { content: 'done' };
+        yield { finishReason: 'stop' };
+      });
+      const modelManager = {
+        getChatService: () => ({
+          chat: vi.fn(),
+          streamChat,
+          getConfig: () => ({
+            model: 'test-model',
+            maxContextTokens: 128000,
+          }),
+          updateConfig: vi.fn(),
+        }),
+        getContextManager: () => contextManager,
+        getMaxContextTokens: () => 128000,
+        switchModelIfNeeded: vi.fn(async () => {}),
+      } as unknown as ModelManager;
+      const pipeline = {
+        getCatalog: () => undefined,
+        getRegistry: () => ({
+          getAll: () => [],
+          getFunctionDeclarationsByMode: () => [
+            { name: 'Search', description: 'Search', parameters: {} },
+          ],
+          get: (name: string) => ({ kind: 'readonly', name }),
+        }),
+        execute: vi.fn(async (toolName: string, params: Record<string, unknown>) => ({
+          success: true,
+          llmContent: `${toolName}:${String(params.query)}`,
+        })),
+      } as unknown as ExecutionPipeline;
+      const runner = new LoopRunner(
+        baseConfig,
+        baseOptions,
+        modelManager,
+        pipeline,
+        workspaceRoot,
+        undefined,
+        true,
+      );
+
+      const result = await runner.runLoop('run both searches', createContext({ sessionId }));
+      const state = await new JsonlSessionStore(workspaceRoot).loadState(sessionId);
+
+      expect(result.success).toBe(true);
+      expect(state?.messages.map((message) => message.role)).toEqual([
+        'user',
+        'assistant',
+        'tool',
+        'tool',
+        'assistant',
+      ]);
+      expect(state?.messages[1]?.tool_calls?.map((toolCall) => toolCall.id)).toEqual([
+        'call-first',
+        'call-second',
+      ]);
+      expect(state?.messages.slice(2, 4).map((message) => message.tool_call_id)).toEqual([
+        'call-first',
+        'call-second',
+      ]);
+      expect(new Set(state?.messageIds).size).toBe(state?.messageIds.length);
     });
 
     it('should return error when maxTurns is 0', async () => {
@@ -1858,14 +1962,14 @@ describe('LoopRunner', () => {
           provenance: expect.objectContaining({
             toolName: 'PatchEnvA',
             toolCallId: 'patch-env-a-call',
-            toolUseUuid: 'tool-use-a',
+            toolUseUuid: 'uuid-1',
           }),
         }),
         expect.objectContaining({
           provenance: expect.objectContaining({
             toolName: 'PatchEnvB',
             toolCallId: 'patch-env-b-call',
-            toolUseUuid: 'tool-use-b',
+            toolUseUuid: 'uuid-1',
           }),
         }),
       ]);
@@ -2023,6 +2127,7 @@ describe('LoopRunner', () => {
         });
 
       const saveMessage = vi.fn(async () => 'msg-uuid');
+      const saveToolUse = vi.fn(async () => 'tool-use-uuid');
       const saveToolResult = vi.fn(async () => 'tool-result-uuid');
       const mm = {
         getChatService: () => ({
@@ -2039,7 +2144,7 @@ describe('LoopRunner', () => {
         }),
         getContextManager: () => ({
           saveMessage,
-          saveToolUse: vi.fn(async () => 'uuid-2'),
+          saveToolUse,
           saveToolResult,
           saveCompaction: vi.fn(async () => {}),
         }),
@@ -2070,7 +2175,20 @@ describe('LoopRunner', () => {
       const result = await runner.runLoop('Hello', createContext({ sessionId: SessionId('sess-1') }));
 
       expect(result.success).toBe(true);
+      expect(saveToolUse).not.toHaveBeenCalled();
       expect(saveToolResult).toHaveBeenCalled();
+      const saveMessageCalls = saveMessage.mock.calls as unknown as Array<readonly unknown[]>;
+      const assistantToolCallIndex = saveMessageCalls.findIndex((call) => {
+        const metadata = call[4] as { toolCalls?: unknown[] } | undefined;
+        return Boolean(metadata?.toolCalls?.length);
+      });
+      const injectedMessageIndex = saveMessageCalls.findIndex(
+        (call) => call[2] === 'Injected assistant context',
+      );
+      expect(saveMessage.mock.invocationCallOrder[assistantToolCallIndex])
+        .toBeLessThan(saveToolResult.mock.invocationCallOrder[0] ?? 0);
+      expect(saveToolResult.mock.invocationCallOrder[0])
+        .toBeLessThan(saveMessage.mock.invocationCallOrder[injectedMessageIndex] ?? 0);
       expect(saveMessage).toHaveBeenCalledWith(
         'sess-1',
         'assistant',
