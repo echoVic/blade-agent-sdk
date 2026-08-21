@@ -10,9 +10,15 @@ import { getErrorName } from '../../../utils/errorUtils.js';
 import type { WebSearchResult } from './webSearch.js';
 
 /**
- * 搜索提供商接口
+ * 搜索提供商（判别联合）
+ *
+ * - http: 通过 HTTP 请求调用搜索 API
+ * - sdk:  通过内置 SDK 函数直接搜索（绕过 HTTP）
  */
-export interface SearchProvider {
+export type SearchProvider = HttpSearchProvider | SdkSearchProvider;
+
+export interface HttpSearchProvider {
+  kind: 'http';
   /** 提供商名称（用于日志显示） */
   name: string;
   /** API 端点 */
@@ -27,8 +33,14 @@ export interface SearchProvider {
   parseResponse: (data: JsonValue) => WebSearchResult[];
   /** 获取请求头 */
   getHeaders: () => Record<string, string>;
-  /** 可选的 SDK 搜索函数（优先使用，绕过 HTTP 请求） */
-  searchFn?: (query: string) => Promise<WebSearchResult[]>;
+}
+
+export interface SdkSearchProvider {
+  kind: 'sdk';
+  /** 提供商名称（用于日志显示） */
+  name: string;
+  /** SDK 搜索函数 */
+  searchFn: (query: string) => Promise<WebSearchResult[]>;
 }
 
 // ============================================================================
@@ -148,6 +160,7 @@ function transformDuckDuckGoResponse(data: JsonValue): WebSearchResult[] {
 }
 
 const duckDuckGoProvider: SearchProvider = {
+  kind: 'http',
   name: 'DuckDuckGo',
   endpoint: 'https://duckduckgo.com/',
   buildUrl: (query: string) => {
@@ -231,6 +244,7 @@ function createSearXNGProvider(instanceUrl: string): SearchProvider {
   })();
 
   return {
+    kind: 'http',
     name: `SearXNG(${hostname})`,
     endpoint: instanceUrl,
     buildUrl: (query: string) => {
@@ -357,8 +371,8 @@ function parseExaMcpResponse(text: string): WebSearchResult[] {
  */
 function createExaProvider(): SearchProvider {
   return {
+    kind: 'sdk',
     name: 'Exa',
-    endpoint: `${EXA_MCP_CONFIG.BASE_URL}${EXA_MCP_CONFIG.ENDPOINT}`,
 
     // 使用 MCP 搜索函数
     searchFn: async (query: string): Promise<WebSearchResult[]> => {
@@ -430,11 +444,6 @@ function createExaProvider(): SearchProvider {
         throw error;
       }
     },
-
-    // 兼容性字段
-    buildUrl: () => `${EXA_MCP_CONFIG.BASE_URL}${EXA_MCP_CONFIG.ENDPOINT}`,
-    parseResponse: () => [],
-    getHeaders: () => ({}),
   };
 }
 
