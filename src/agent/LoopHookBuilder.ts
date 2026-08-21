@@ -13,8 +13,8 @@ import type { InternalLogger } from '../logging/Logger.js';
 import type { Message } from '../services/ChatServiceInterface.js';
 import type { ExecutionPipeline } from '../tools/execution/ExecutionPipeline.js';
 import {
-  normalizeToolEffects,
-  type ToolEffect,
+    normalizeToolEffects,
+    type ToolEffect,
 } from '../tools/types/index.js';
 import type { SessionId } from '../types/branded.js';
 import type { JsonValue } from '../types/common.js';
@@ -25,8 +25,8 @@ import type { RuntimePatchManager } from './RuntimePatchManager.js';
 import type { LoopState } from './state/LoopState.js';
 import type { TokenBudget } from './TokenBudget.js';
 import type {
-  ChatContext,
-  LoopOptions,
+    ChatContext,
+    LoopOptions,
 } from './types.js';
 
 export interface LoopHookBuilderDeps {
@@ -252,7 +252,6 @@ export function buildLoopConfig(deps: LoopHookBuilderDeps): AgentLoopConfig {
         const modelId = runtimePatch?.modelOverride?.modelId?.trim() || undefined;
         if (modelId) {
           await modelManager.switchModelIfNeeded(modelId);
-          loopState.setTransitionReason('model_switched');
         }
 
         if (options?.onProgress) {
@@ -326,22 +325,6 @@ export function buildLoopConfig(deps: LoopHookBuilderDeps): AgentLoopConfig {
             return result;
           }
         : undefined,
-
-      onStateChange(recovery) {
-        if (recovery.phase === 'started') {
-          loopState.startRecovery(recovery.reason ?? 'recovery_started');
-          return;
-        }
-        if (recovery.phase === 'retrying') {
-          loopState.markRecoveryRetry(recovery.reason ?? 'recovery_retry');
-          return;
-        }
-        if (recovery.phase === 'failed') {
-          loopState.failRecovery(recovery.reason ?? 'recovery_failed');
-          return;
-        }
-        loopState.resetRecovery();
-      },
     },
 
     stop: {

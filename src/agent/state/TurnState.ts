@@ -23,12 +23,6 @@ export interface LoopSkillState {
   scope?: 'turn' | 'session';
 }
 
-export interface LoopRecoveryState {
-  attempt: number;
-  hasAttemptedReactiveCompact: boolean;
-  lastReason?: string;
-}
-
 export interface LoopExecutionContext {
   sessionId: SessionId;
   userId: string;
@@ -51,6 +45,4 @@ export interface TurnState {
   permissionMode?: PermissionMode;
   executionContext: LoopExecutionContext;
   activeSkill?: LoopSkillState;
-  recovery?: LoopRecoveryState;
-  transitionReason?: string;
 }

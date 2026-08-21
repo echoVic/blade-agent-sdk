@@ -173,7 +173,6 @@ export class RuntimePatchManager {
       };
       this.runtimeSkillState = nextSkillContext;
       loopState.setActiveSkill(nextSkillContext);
-      loopState.setTransitionReason('skill_activated');
     }
   }
 
