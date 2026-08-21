@@ -82,6 +82,34 @@ const RETAIN_PERCENT = 0.2;
 const FALLBACK_RETAIN_PERCENT = 0.3;
 
 /**
+ * 保留最近的消息窗口，并过滤掉 tool_call_id 不在保留窗口内的孤儿 tool 消息。
+ *
+ * @param messages - 消息列表
+ * @param retainPercent - 保留比例（0-1）
+ * @returns 过滤后的保留消息
+ */
+export function retainRecentMessages(messages: Message[], retainPercent: number): Message[] {
+  const retainCount = Math.ceil(messages.length * retainPercent);
+  const candidateMessages = messages.slice(-retainCount);
+
+  const availableToolCallIds = new Set<string>();
+  for (const msg of candidateMessages) {
+    if (msg.role === 'assistant' && msg.tool_calls) {
+      for (const tc of msg.tool_calls) {
+        availableToolCallIds.add(tc.id);
+      }
+    }
+  }
+
+  return candidateMessages.filter((msg) => {
+    if (msg.role === 'tool' && msg.tool_call_id) {
+      return availableToolCallIds.has(msg.tool_call_id);
+    }
+    return true;
+  });
+}
+
+/**
  * 执行压缩
  *
  * @param messages - 消息列表
@@ -184,23 +212,7 @@ export async function compact(
     console.log('[CompactionService] 生成总结，长度:', summary.length);
 
     const retainCount = Math.ceil(messages.length * RETAIN_PERCENT);
-    const candidateMessages = messages.slice(-retainCount);
-
-    const availableToolCallIds = new Set<string>();
-    for (const msg of candidateMessages) {
-      if (msg.role === 'assistant' && msg.tool_calls) {
-        for (const tc of msg.tool_calls) {
-          availableToolCallIds.add(tc.id);
-        }
-      }
-    }
-
-    const retainedMessages = candidateMessages.filter((msg) => {
-      if (msg.role === 'tool' && msg.tool_call_id) {
-        return availableToolCallIds.has(msg.tool_call_id);
-      }
-      return true;
-    });
+    const retainedMessages = retainRecentMessages(messages, RETAIN_PERCENT);
 
     console.log('[CompactionService] 保留消息数:', retainCount);
     console.log('[CompactionService] 过滤后保留消息数:', retainedMessages.length);
@@ -481,23 +493,7 @@ function fallbackCompact(
   error: unknown
 ): CompactionResult {
   const retainCount = Math.ceil(messages.length * FALLBACK_RETAIN_PERCENT);
-  const candidateMessages = messages.slice(-retainCount);
-
-  const availableToolCallIds = new Set<string>();
-  for (const msg of candidateMessages) {
-    if (msg.role === 'assistant' && msg.tool_calls) {
-      for (const tc of msg.tool_calls) {
-        availableToolCallIds.add(tc.id);
-      }
-    }
-  }
-
-  const retainedMessages = candidateMessages.filter((msg) => {
-    if (msg.role === 'tool' && msg.tool_call_id) {
-      return availableToolCallIds.has(msg.tool_call_id);
-    }
-    return true;
-  });
+  const retainedMessages = retainRecentMessages(messages, FALLBACK_RETAIN_PERCENT);
 
   const boundaryMessageId = nanoid();
   const boundaryMessage = createBoundaryMessage(
