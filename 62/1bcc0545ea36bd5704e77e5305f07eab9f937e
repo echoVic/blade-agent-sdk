@@ -1,0 +1,28 @@
+src/agent/subagents/AgentSessionStore.ts
+  s_4c33c264d8f24c::t_c4e267a1047e4a 220-235,247-264
+src/agent/subagents/BackgroundAgentManager.ts
+  s_4c33c264d8f24c::t_ea4d284db73110 133-135,140
+  s_4c33c264d8f24c::t_dd4324d6ba0347 270,274
+  s_4c33c264d8f24c::t_5d5904c156e3cf 485,494
+  s_4c33c264d8f24c::t_e828b96c538680 346-348,353-354
+  s_4c33c264d8f24c::t_ae4e3eafafc3e6 303-305,310-311
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "621bcc0545ea36bd5704e77e5305f07eab9f937e",
+  "prompts": {},
+  "sessions": {
+    "s_4c33c264d8f24c": {
+      "agent_id": {
+        "tool": "trae",
+        "id": "6a8686761ae06a11e91be747",
+        "model": "Doubao-Seed-Evolving__dev",
+        "display_model_name": "Seed-Evolving"
+      },
+      "human_author": "echoVic <137844255@qq.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
