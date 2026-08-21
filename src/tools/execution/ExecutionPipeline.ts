@@ -91,7 +91,6 @@ export interface ConfirmationReasonEntry {
 export class ExecutionPipeline {
   private executionHistory: ExecutionHistoryEntry[] = [];
   private readonly maxHistorySize: number;
-  private readonly maxConcurrency: number;
   private readonly toolTimeoutMs: number | undefined;
   private readonly sessionApprovals = new Set<string>();
   private readonly denialTracker = new DenialTracker();
@@ -110,7 +109,6 @@ export class ExecutionPipeline {
     config: ExecutionPipelineConfig = {}
   ) {
     this.maxHistorySize = config.maxHistorySize || 1000;
-    this.maxConcurrency = config.maxConcurrency ?? 10;
     this.toolTimeoutMs = config.toolTimeoutMs;
     this.hookRuntime = config.hookRuntime;
     this.logger = (config.logger ?? NOOP_LOGGER).child(LogCategory.EXECUTION);
@@ -310,73 +308,6 @@ export class ExecutionPipeline {
 
       return errorResult;
     }
-  }
-
-  /**
-   * 批量执行工具
-   */
-  async executeAll(
-    requests: Array<{
-      toolName: string;
-      params: JsonObject;
-      context: ExecutionContext;
-    }>
-  ): Promise<ToolResult[]> {
-    return this.executeTools(requests);
-  }
-
-  /**
-   * 按工具并发安全策略执行工具
-   */
-  async executeTools(
-    requests: Array<{
-      toolName: string;
-      params: JsonObject;
-      context: ExecutionContext;
-    }>,
-    maxConcurrency: number = this.maxConcurrency
-  ): Promise<ToolResult[]> {
-    const results = new Array<ToolResult>(requests.length);
-    const batches = this.partitionToolCalls(requests);
-
-    for (const batch of batches) {
-      if (batch.mode === 'parallel') {
-        const batchResults = await this.executeWithConcurrency(
-          batch.requests,
-          maxConcurrency,
-          async (request) => this.execute(request.toolName, request.params, request.context)
-        );
-
-        for (let i = 0; i < batch.requests.length; i++) {
-          results[batch.requests[i].index] = batchResults[i];
-        }
-        continue;
-      }
-
-      for (const request of batch.requests) {
-        results[request.index] = await this.execute(
-          request.toolName,
-          request.params,
-          request.context
-        );
-      }
-    }
-
-    return results;
-  }
-
-  /**
-   * 并行执行工具（带并发控制）
-   */
-  async executeParallel(
-    requests: Array<{
-      toolName: string;
-      params: JsonObject;
-      context: ExecutionContext;
-    }>,
-    maxConcurrency: number = this.maxConcurrency
-  ): Promise<ToolResult[]> {
-    return this.executeTools(requests, maxConcurrency);
   }
 
   /**
@@ -1098,43 +1029,6 @@ export class ExecutionPipeline {
     };
   }
 
-  private partitionToolCalls(
-    requests: Array<{
-      toolName: string;
-      params: JsonObject;
-      context: ExecutionContext;
-    }>
-  ): PartitionedToolCallBatch[] {
-    const batches: PartitionedToolCallBatch[] = [];
-    let currentBatch: PartitionedToolCallBatch | null = null;
-
-    for (const [index, request] of requests.entries()) {
-      const mode = this.canExecuteInParallel(request.toolName, request.params)
-        ? 'parallel'
-        : 'serial';
-      const indexedRequest: IndexedToolCallRequest = { ...request, index };
-
-      if (!currentBatch || currentBatch.mode !== mode) {
-        currentBatch = { mode, requests: [indexedRequest] };
-        batches.push(currentBatch);
-        continue;
-      }
-
-      currentBatch.requests.push(indexedRequest);
-    }
-
-    return batches;
-  }
-
-  private canExecuteInParallel(
-    toolName: string,
-    params: JsonObject,
-  ): boolean {
-    const tool = this.registry.get(toolName);
-    const behavior = resolveToolBehaviorSafely(tool, params);
-    return behavior?.isReadOnly === true && behavior.isConcurrencySafe;
-  }
-
   /**
    * Wraps a pipeline execution with an optional per-tool timeout.
    * When toolTimeoutMs is set and the tool exceeds it, the promise is rejected
@@ -1162,42 +1056,6 @@ export class ExecutionPipeline {
       );
     });
   }
-
-  private async executeWithConcurrency<TRequest, TResult>(    requests: TRequest[],
-    maxConcurrency: number,
-    executor: (request: TRequest) => Promise<TResult>,
-  ): Promise<TResult[]> {
-    if (requests.length === 0) {
-      return [];
-    }
-
-    const results = new Array<TResult>(requests.length);
-    const workerCount = Math.min(Math.max(maxConcurrency, 1), requests.length);
-    let nextIndex = 0;
-
-    const workers = Array.from({ length: workerCount }, async () => {
-      while (nextIndex < requests.length) {
-        const currentIndex = nextIndex;
-        nextIndex += 1;
-        results[currentIndex] = await executor(requests[currentIndex]);
-      }
-    });
-
-    await Promise.all(workers);
-    return results;
-  }
-}
-
-interface IndexedToolCallRequest {
-  toolName: string;
-  params: JsonObject;
-  context: ExecutionContext;
-  index: number;
-}
-
-interface PartitionedToolCallBatch {
-  mode: 'parallel' | 'serial';
-  requests: IndexedToolCallRequest[];
 }
 
 /**
@@ -1212,7 +1070,6 @@ export interface ExecutionPipelineConfig {
   canUseTool?: CanUseTool;
   hookRuntime?: HookRuntime;
   logger?: InternalLogger;
-  maxConcurrency?: number;
   /**
    * Per-tool execution timeout in milliseconds.
    * When a tool exceeds this limit it is aborted and returns a TIMEOUT error.
