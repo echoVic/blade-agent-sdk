@@ -3,7 +3,7 @@ import { McpRegistry } from '../McpRegistry.js';
 
 const mockConnect = vi.fn(() => Promise.resolve());
 const mockDisconnect = vi.fn(() => Promise.resolve());
-const mockOn = vi.fn(() => {});
+const mockOn = vi.fn((_event: string, _handler: (...args: unknown[]) => void) => {});
 
 vi.mock('../McpClient.js', () => ({
   McpClient: class MockMcpClient {
@@ -199,6 +199,31 @@ describe('McpRegistry', () => {
     it('should return empty array for non-existent server', () => {
       const tools = registry.getToolsByServer('non-existent');
       expect(tools).toEqual([]);
+    });
+  });
+
+  describe('event-driven state sync', () => {
+    it('should clear lastError when the client reconnects after an error', async () => {
+      const handlers: Record<string, (...args: unknown[]) => void> = {};
+      mockOn.mockImplementation(
+        (event: string, handler: (...args: unknown[]) => void) => {
+          handlers[event] = handler;
+        }
+      );
+
+      await registry.registerServer('test', { command: 'test-server' });
+
+      // 模拟意外断开：客户端发出 error 事件
+      handlers.error?.(new Error('MCP服务器连接意外关闭'));
+      const afterError = registry.getServerStatus('test');
+      expect(afterError?.lastError).toBeInstanceOf(Error);
+      expect(afterError?.status).toBe('error');
+
+      // 模拟自动重连成功：客户端发出 connected 事件
+      handlers.connected?.({ name: 'test', version: '1.0.0' });
+      const afterReconnect = registry.getServerStatus('test');
+      expect(afterReconnect?.status).toBe('connected');
+      expect(afterReconnect?.lastError).toBeUndefined();
     });
   });
 });

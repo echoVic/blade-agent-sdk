@@ -189,24 +189,13 @@ export class McpRegistry extends EventEmitter {
       throw new Error(`MCP服务器 "${name}" 未注册`);
     }
 
-    // 如果已连接，先断开
+    // 如果已连接，先断开（disconnect 会同步触发 'disconnected' 事件，
+    // 事件处理器将 serverInfo.status 更新为 DISCONNECTED）
     if (serverInfo.status === McpConnectionStatus.CONNECTED) {
       await serverInfo.client.disconnect();
     }
 
-    // 尝试重新连接
-    try {
-      serverInfo.status = McpConnectionStatus.CONNECTING;
-      await serverInfo.client.connect();
-      serverInfo.status = McpConnectionStatus.CONNECTED;
-      serverInfo.connectedAt = new Date();
-      serverInfo.lastError = undefined;
-      serverInfo.tools = serverInfo.client.availableTools;
-    } catch (error) {
-      serverInfo.lastError = toError(error);
-      serverInfo.status = McpConnectionStatus.ERROR;
-      throw error;
-    }
+    await this.connectServer(name);
   }
 
   /**
@@ -417,6 +406,7 @@ export class McpRegistry extends EventEmitter {
     client.on('connected', (server) => {
       serverInfo.status = McpConnectionStatus.CONNECTED;
       serverInfo.connectedAt = new Date();
+      serverInfo.lastError = undefined;
       serverInfo.tools = client.availableTools;
       this.emit('serverConnected', name, server);
     });
