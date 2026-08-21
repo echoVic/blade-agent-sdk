@@ -6,6 +6,7 @@ src/agent/subagents/BackgroundAgentManager.ts
   s_4c33c264d8f24c::t_5d5904c156e3cf 485,494
   s_4c33c264d8f24c::t_e828b96c538680 346-348,353-354
   s_4c33c264d8f24c::t_ae4e3eafafc3e6 303-305,310-311
+  s_4c33c264d8f24c::t_4f24d11708a4a3 20-21 gitai:{"mixed_line_ranges":[],"operations":[{"operation_id":"6a8826a280388580e5b8dfa5","tool_type":"agent","tool_id":"Edit","line_ranges":[{"Range":[20,21]}]}]}
 ---
 {
   "schema_version": "authorship/3.0.0",
@@ -23,6 +24,36 @@ src/agent/subagents/BackgroundAgentManager.ts
       "human_author": "echoVic <137844255@qq.com>"
     }
   },
-  "attestation_metadata": {},
+  "attestation_metadata": {
+    "src/agent/subagents/BackgroundAgentManager.ts": [
+      {
+        "hash": "s_4c33c264d8f24c::t_4f24d11708a4a3",
+        "line_ranges": [
+          {
+            "Range": [
+              20,
+              21
+            ]
+          }
+        ],
+        "mixed_line_ranges": [],
+        "operations": [
+          {
+            "operation_id": "6a8826a280388580e5b8dfa5",
+            "tool_type": "agent",
+            "tool_id": "Edit",
+            "line_ranges": [
+              {
+                "Range": [
+                  20,
+                  21
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  },
   "remote_transcripts": {}
 }
