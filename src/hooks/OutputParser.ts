@@ -7,12 +7,12 @@
 import type { JsonValue } from '../types/common.js';
 import { safeParseHookOutput } from './schemas/HookSchemas.js';
 import {
-  type Hook,
-  type HookConfig,
-  type HookExecutionResult,
-  HookExitCode,
-  type HookOutput,
-  type ProcessResult,
+    type Hook,
+    type HookConfig,
+    type HookExecutionResult,
+    HookExitCode,
+    type HookOutput,
+    type ProcessResult,
 } from './types/HookTypes.js';
 
 const VALID_EXIT_CODES = new Set(Object.values(HookExitCode).filter((v): v is number => typeof v === 'number'));
@@ -38,42 +38,13 @@ export class OutputParser {
   ): HookExecutionResult {
     // 1. 超时 - 根据 timeoutBehavior 配置处理
     if (result.timedOut) {
-      const timeoutBehavior = config?.timeoutBehavior || 'ignore';
-      const errorMsg = 'Hook timeout';
-
-      if (timeoutBehavior === 'deny') {
-        return {
-          success: false,
-          blocking: true,
-          error: errorMsg,
-          stdout: result.stdout,
-          stderr: result.stderr,
-          exitCode: result.exitCode,
-          hook,
-        };
-      } else if (timeoutBehavior === 'ask') {
-        return {
-          success: false,
-          blocking: false,
-          needsConfirmation: true,
-          warning: `${errorMsg}. Continue?`,
-          stdout: result.stdout,
-          stderr: result.stderr,
-          exitCode: result.exitCode,
-          hook,
-        };
-      } else {
-        // ignore
-        return {
-          success: false,
-          blocking: false,
-          warning: errorMsg,
-          stdout: result.stdout,
-          stderr: result.stderr,
-          exitCode: result.exitCode,
-          hook,
-        };
-      }
+      return this.buildFailureResult(
+        config?.timeoutBehavior || 'ignore',
+        'Hook timeout',
+        result,
+        hook,
+        result.exitCode,
+      );
     }
 
     // 2. 尝试解析 JSON 输出
@@ -87,42 +58,13 @@ export class OutputParser {
         // 验证失败 - 根据 failureBehavior 配置处理
         const errorMsg =
           'error' in validation ? validation.error.message : 'Unknown validation error';
-        const failureBehavior = config?.failureBehavior || 'ignore';
-        const fullMsg = `Invalid hook output JSON: ${errorMsg}`;
-
-        if (failureBehavior === 'deny') {
-          return {
-            success: false,
-            blocking: true,
-            error: fullMsg,
-            stdout: result.stdout,
-            stderr: result.stderr,
-            exitCode: result.exitCode,
-            hook,
-          };
-        } else if (failureBehavior === 'ask') {
-          return {
-            success: false,
-            blocking: false,
-            needsConfirmation: true,
-            warning: `${fullMsg}. Continue?`,
-            stdout: result.stdout,
-            stderr: result.stderr,
-            exitCode: result.exitCode,
-            hook,
-          };
-        } else {
-          // ignore
-          return {
-            success: false,
-            blocking: false,
-            warning: fullMsg,
-            stdout: result.stdout,
-            stderr: result.stderr,
-            exitCode: result.exitCode,
-            hook,
-          };
-        }
+        return this.buildFailureResult(
+          config?.failureBehavior || 'ignore',
+          `Invalid hook output JSON: ${errorMsg}`,
+          result,
+          hook,
+          result.exitCode,
+        );
       }
 
       const output = validation.data as HookOutput;
@@ -201,85 +143,63 @@ export class OutputParser {
 
       case 124: {
         // TIMEOUT - 根据 timeoutBehavior 配置处理
-        const timeoutBehavior = config?.timeoutBehavior || 'ignore';
-        const errorMsg = 'Hook timeout';
-
-        if (timeoutBehavior === 'deny') {
-          return {
-            success: false,
-            blocking: true,
-            error: errorMsg,
-            stdout: result.stdout,
-            stderr: result.stderr,
-            exitCode,
-            hook,
-          };
-        } else if (timeoutBehavior === 'ask') {
-          return {
-            success: false,
-            blocking: false,
-            needsConfirmation: true,
-            warning: `${errorMsg}. Continue?`,
-            stdout: result.stdout,
-            stderr: result.stderr,
-            exitCode,
-            hook,
-          };
-        } else {
-          // ignore
-          return {
-            success: false,
-            blocking: false,
-            warning: errorMsg,
-            stdout: result.stdout,
-            stderr: result.stderr,
-            exitCode,
-            hook,
-          };
-        }
+        return this.buildFailureResult(
+          config?.timeoutBehavior || 'ignore',
+          'Hook timeout',
+          result,
+          hook,
+          exitCode,
+        );
       }
 
       default: {
         // NON_BLOCKING_ERROR - 根据 failureBehavior 配置处理
-        const failureBehavior = config?.failureBehavior || 'ignore';
         const errorMsg =
           result.stderr || result.stdout || `Hook failed with exit code ${exitCode}`;
-
-        if (failureBehavior === 'deny') {
-          return {
-            success: false,
-            blocking: true,
-            error: errorMsg,
-            stdout: result.stdout,
-            stderr: result.stderr,
-            exitCode,
-            hook,
-          };
-        } else if (failureBehavior === 'ask') {
-          return {
-            success: false,
-            blocking: false,
-            needsConfirmation: true,
-            warning: `${errorMsg}. Continue?`,
-            stdout: result.stdout,
-            stderr: result.stderr,
-            exitCode,
-            hook,
-          };
-        } else {
-          // ignore
-          return {
-            success: false,
-            blocking: false,
-            warning: errorMsg,
-            stdout: result.stdout,
-            stderr: result.stderr,
-            exitCode,
-            hook,
-          };
-        }
+        return this.buildFailureResult(
+          config?.failureBehavior || 'ignore',
+          errorMsg,
+          result,
+          hook,
+          exitCode,
+        );
       }
     }
+  }
+
+  /**
+   * 根据行为策略（deny/ask/ignore）构建失败结果。
+   * 统一处理超时、JSON 校验失败、非零退出码等场景的三态分派。
+   */
+  private buildFailureResult(
+    behavior: 'ignore' | 'deny' | 'ask',
+    errorMsg: string,
+    result: ProcessResult,
+    hook: Hook,
+    exitCode?: number,
+  ): HookExecutionResult {
+    const common = {
+      stdout: result.stdout,
+      stderr: result.stderr,
+      exitCode,
+      hook,
+    };
+
+    if (behavior === 'deny') {
+      return { success: false, blocking: true, error: errorMsg, ...common };
+    }
+
+    if (behavior === 'ask') {
+      return {
+        success: false,
+        blocking: false,
+        needsConfirmation: true,
+        warning: `${errorMsg}. Continue?`,
+        ...common,
+      };
+    }
+
+    return { success: false, blocking: false, warning: errorMsg, ...common };
   }
 
   /**

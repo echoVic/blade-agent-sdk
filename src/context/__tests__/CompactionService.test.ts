@@ -23,7 +23,7 @@ vi.mock('../FileAnalyzer.js', () => ({
   },
 }));
 
-const { compact } = await import('../CompactionService.js');
+const { compact, retainRecentMessages } = await import('../CompactionService.js');
 
 describe('CompactionService', () => {
   beforeEach(() => {
@@ -53,5 +53,34 @@ describe('CompactionService', () => {
     );
     expect(mockSideQuery).toHaveBeenCalledTimes(1);
     expect(mockChat).not.toHaveBeenCalled();
+  });
+
+  it('retainRecentMessages drops orphan tool results outside the retained window', () => {
+    const messages: Message[] = [
+      { role: 'assistant', content: 'a', tool_calls: [{ id: 'tc-keep', type: 'function', function: { name: 'x', arguments: '{}' } }] },
+      { role: 'user', content: 'b' },
+      { role: 'assistant', content: 'c' },
+      { role: 'tool', tool_call_id: 'tc-keep', content: 'kept' },
+      { role: 'tool', tool_call_id: 'tc-orphan', content: 'dropped' },
+      { role: 'assistant', content: 'd', tool_calls: [{ id: 'tc-orphan', type: 'function', function: { name: 'y', arguments: '{}' } }] },
+    ];
+
+    // retain 50%: last 3 messages = tool(tc-keep) + tool(tc-orphan) + assistant(tc-orphan).
+    // Only tc-orphan's tool_calls are inside the window, so tool(tc-keep) is an orphan.
+    const retained = retainRecentMessages(messages, 0.5);
+
+    expect(retained.map((m) => m.content)).toEqual(['dropped', 'd']);
+  });
+
+  it('retainRecentMessages keeps tool results whose tool_calls are in the window', () => {
+    const messages: Message[] = [
+      { role: 'assistant', content: 'a', tool_calls: [{ id: 'tc-1', type: 'function', function: { name: 'x', arguments: '{}' } }] },
+      { role: 'tool', tool_call_id: 'tc-1', content: 'result-1' },
+    ];
+
+    const retained = retainRecentMessages(messages, 1);
+
+    expect(retained).toHaveLength(2);
+    expect(retained[1].content).toBe('result-1');
   });
 });
