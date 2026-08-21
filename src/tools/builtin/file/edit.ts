@@ -5,24 +5,23 @@ import { getFileSystemService } from '../../../services/FileSystemService.js';
 import { getErrorCode, getErrorMessage, getErrorName } from '../../../utils/errorUtils.js';
 import { createTool } from '../../core/createTool.js';
 import type {
-    EditErrorMetadata,
-    EditMetadata,
-    ExecutionContext,
-    ToolResult,
+  EditErrorMetadata,
+  EditMetadata,
+  ExecutionContext,
+  ToolResult,
 } from '../../types/index.js';
 import { ToolErrorType, ToolKind } from '../../types/index.js';
 import { lazySchema } from '../../validation/lazySchema.js';
 import { ToolSchemas } from '../../validation/zodSchemas.js';
 import { generateDiffSnippetWithMatch } from './diffUtils.js';
 import {
-    flexibleMatch,
-    type MatchResult,
-    MatchStrategy,
-    unescapeString,
+  flexibleMatch,
+  type MatchResult,
+  MatchStrategy,
+  unescapeString,
 } from './editCorrector.js';
-import { FileAccessTracker } from './FileAccessTracker.js';
 import { isSensitivePath } from './sensitivePathCheck.js';
-import { SnapshotManager } from './SnapshotManager.js';
+import { recordWriteComplete, runWriteGuard } from './writeGuard.js';
 
 /**
  * EditTool - File edit tool
@@ -126,50 +125,16 @@ export const editTool = createTool({
         signal.throwIfAborted();
       }
 
-      // Read-Before-Write 验证（对齐 Claude Code 官方：强制模式）
-      if (sessionId) {
-        const tracker = FileAccessTracker.getInstance();
-
-        // 检查文件是否已读取（强制失败）
-        if (!tracker.hasFileBeenRead(file_path, sessionId)) {
-          return {
-            success: false,
-            llmContent: `You must use your Read tool at least once in the conversation before editing. This tool will error if you attempt an edit without reading the file.`,
-            error: {
-              type: ToolErrorType.VALIDATION_ERROR,
-              message: 'File not read before edit',
-            },
-            metadata: {
-              requiresRead: true,
-            },
-          };
-        }
-
-        // 🔴 检查文件是否被外部程序修改
-        const externalModCheck = await tracker.checkExternalModification(file_path);
-        if (externalModCheck.isExternal) {
-          return {
-            success: false,
-            llmContent: `The file has been modified by an external program since you last read it. You must use the Read tool again to see the current content before editing.\n\nDetails: ${externalModCheck.message}`,
-            error: {
-              type: ToolErrorType.VALIDATION_ERROR,
-              message: 'File modified externally',
-              details: { externalModification: externalModCheck.message },
-            },
-          };
-        }
-      }
-
-      // 创建快照（如果有 sessionId 和 messageId）
-      if (sessionId && messageId) {
-        try {
-          const snapshotManager = new SnapshotManager({ sessionId });
-          await snapshotManager.initialize();
-          await snapshotManager.createSnapshot(file_path, messageId);
-        } catch (error) {
-          console.warn('[EditTool] 创建快照失败:', error);
-          // 快照失败不中断编辑操作，只记录警告
-        }
+      // Read-before-write、外部修改检查、快照创建
+      const guard = await runWriteGuard({
+        filePath: file_path,
+        sessionId,
+        messageId,
+        operation: 'edit',
+        fileExists: true,
+      });
+      if (guard.blocked) {
+        return guard.blocked;
       }
 
       // 智能匹配并查找匹配项
@@ -298,11 +263,8 @@ export const editTool = createTool({
       // 写入文件（统一使用 FileSystemService）
       await fsService.writeTextFile(file_path, newContent);
 
-      // 🔴 更新文件访问记录（记录编辑操作）
-      if (sessionId) {
-        const tracker = FileAccessTracker.getInstance();
-        await tracker.recordFileEdit(file_path, sessionId, 'edit');
-      }
+      // 更新文件访问记录（记录编辑操作）
+      await recordWriteComplete(file_path, sessionId, 'edit');
 
       // 验证写入成功（统一使用 FileSystemService）
       const stats = await fsService.stat(file_path);
