@@ -1,0 +1,27 @@
+src/hooks/OutputParser.ts
+  s_4c33c264d8f24c::t_59d2ee06dcc8be 41-47
+  s_4c33c264d8f24c::t_8c50bea400090c 146-152,159-165
+  s_4c33c264d8f24c::t_485aa5cd29995a 10-15,61-67
+  s_4c33c264d8f24c::t_bc95ead59460c6 171-202
+  s_4c33c264d8f24c::t_17527d8cafdc7f 170
+  s_4c33c264d8f24c::t_0599e38c26d8aa 203-204
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "0cc109d5c22f1299528c720474e07c5c006b9cdb",
+  "prompts": {},
+  "sessions": {
+    "s_4c33c264d8f24c": {
+      "agent_id": {
+        "tool": "trae",
+        "id": "6a8686761ae06a11e91be747",
+        "model": "Doubao-Seed-Evolving__dev",
+        "display_model_name": "Seed-Evolving"
+      },
+      "human_author": "echoVic <137844255@qq.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
