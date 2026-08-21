@@ -724,40 +724,10 @@ export class VercelAIChatService implements IChatService {
     tools?: Array<{ name: string; description: string; parameters: JSONSchema7 }>,
     signal?: AbortSignal
   ): Promise<ChatResponse> {
-    await this.initialized;
-    const startTime = Date.now();
-    this.logger.debug('🚀 [VercelAIChatService] Starting chat request');
-
-    const { coreMessages, coreTools, experimentalOutput } = this.prepareRequest(messages, tools);
-
-    try {
-      const gen = withRetry(
-        (ctx: RetryContext) =>
-          generateText({
-            model: this.model,
-            messages: coreMessages as never,
-            tools: coreTools as never,
-            maxOutputTokens: ctx.maxTokensOverride ?? this.config.maxOutputTokens,
-            temperature: this.getTemperatureOverride(this.config.temperature ?? 0),
-            abortSignal: signal,
-            experimental_output: experimentalOutput,
-            providerOptions: this.getProviderOptions(),
-          }),
-        this.retryConfig,
-        signal,
-      );
-
-      const result = await consumeRetryGenerator(gen, this.logger);
-
-      const duration = Date.now() - startTime;
-      this.logger.debug('📥 [VercelAIChatService] Response received in', duration, 'ms');
-
-      return this.buildChatResponse(result);
-    } catch (error) {
-      const duration = Date.now() - startTime;
-      this.logger.error('❌ [VercelAIChatService] Chat failed after', duration, 'ms');
-      throw error;
-    }
+    return consumeRetryGenerator(
+      this.chatWithRetryEvents(messages, tools, signal),
+      this.logger,
+    );
   }
 
   async sideQuery(
