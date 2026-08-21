@@ -7,11 +7,16 @@ export interface SandboxExecutionContext {
   workDir?: string;
 }
 
+export type SandboxCheckOutcome =
+  | 'disabled'
+  | 'excluded'
+  | 'sandboxed'
+  | 'requires_permission'
+  | 'denied';
+
 export interface SandboxCheckResult {
-  allowed: boolean;
-  reason?: string;
-  requiresPermission?: boolean;
-  isExcluded?: boolean;
+  outcome: SandboxCheckOutcome;
+  reason: string;
 }
 
 export class SandboxService {
@@ -67,29 +72,27 @@ export class SandboxService {
     const { command, dangerouslyDisableSandbox } = ctx;
 
     if (!this.isEnabled()) {
-      return { allowed: true, reason: 'Sandbox is disabled' };
+      return { outcome: 'disabled', reason: 'Sandbox is disabled' };
     }
 
     if (this.isCommandExcluded(command)) {
-      return { allowed: true, reason: 'Command is in excluded list', isExcluded: true };
+      return { outcome: 'excluded', reason: 'Command is in excluded list' };
     }
 
     if (dangerouslyDisableSandbox) {
       if (this.allowsUnsandboxedCommands()) {
         return {
-          allowed: false,
+          outcome: 'requires_permission',
           reason: 'Command requests unsandboxed execution',
-          requiresPermission: true,
-        };
-      } else {
-        return {
-          allowed: false,
-          reason: 'Unsandboxed commands are not allowed',
         };
       }
+      return {
+        outcome: 'denied',
+        reason: 'Unsandboxed commands are not allowed',
+      };
     }
 
-    return { allowed: true, reason: 'Command will run in sandbox' };
+    return { outcome: 'sandboxed', reason: 'Command will run in sandbox' };
   }
 
   shouldIgnoreFileViolation(filePath: string): boolean {

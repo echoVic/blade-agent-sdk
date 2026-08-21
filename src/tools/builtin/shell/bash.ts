@@ -220,21 +220,22 @@ Before executing commands:
     const sandboxService = getSandboxService();
     const sandboxCheck = sandboxService.checkCommand({ command });
 
-    if (sandboxCheck.allowed) {
-      return undefined;
+    switch (sandboxCheck.outcome) {
+      case 'disabled':
+      case 'excluded':
+      case 'sandboxed':
+        return undefined;
+      case 'requires_permission':
+        return {
+          behavior: 'ask',
+          message: sandboxCheck.reason,
+        } as const;
+      case 'denied':
+        return {
+          behavior: 'deny',
+          message: sandboxCheck.reason,
+        } as const;
     }
-
-    if (sandboxCheck.requiresPermission) {
-      return {
-        behavior: 'ask',
-        message: sandboxCheck.reason || 'Command requires user permission',
-      } as const;
-    }
-
-    return {
-      behavior: 'deny',
-      message: sandboxCheck.reason || 'Blocked by sandbox',
-    } as const;
   },
 
   // 执行函数

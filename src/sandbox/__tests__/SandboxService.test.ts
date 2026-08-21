@@ -139,7 +139,7 @@ describe('SandboxService', () => {
       const service = getSandboxService();
       service.configure({ enabled: false });
       const result = service.checkCommand({ command: 'rm -rf /' });
-      expect(result.allowed).toBe(true);
+      expect(result.outcome).toBe('disabled');
       expect(result.reason).toBe('Sandbox is disabled');
     });
 
@@ -147,15 +147,14 @@ describe('SandboxService', () => {
       const service = getSandboxService();
       service.configure({ enabled: true, excludedCommands: ['git'] });
       const result = service.checkCommand({ command: 'git push' });
-      expect(result.allowed).toBe(true);
-      expect(result.isExcluded).toBe(true);
+      expect(result.outcome).toBe('excluded');
     });
 
     it('should block unsandboxed command when not allowed', () => {
       const service = getSandboxService();
       service.configure({ enabled: true, allowUnsandboxedCommands: false });
       const result = service.checkCommand({ command: 'ls', dangerouslyDisableSandbox: true });
-      expect(result.allowed).toBe(false);
+      expect(result.outcome).toBe('denied');
       expect(result.reason).toBe('Unsandboxed commands are not allowed');
     });
 
@@ -163,15 +162,14 @@ describe('SandboxService', () => {
       const service = getSandboxService();
       service.configure({ enabled: true, allowUnsandboxedCommands: true });
       const result = service.checkCommand({ command: 'ls', dangerouslyDisableSandbox: true });
-      expect(result.allowed).toBe(false);
-      expect(result.requiresPermission).toBe(true);
+      expect(result.outcome).toBe('requires_permission');
     });
 
     it('should allow normal command in sandbox', () => {
       const service = getSandboxService();
       service.configure({ enabled: true });
       const result = service.checkCommand({ command: 'ls -la' });
-      expect(result.allowed).toBe(true);
+      expect(result.outcome).toBe('sandboxed');
       expect(result.reason).toBe('Command will run in sandbox');
     });
   });
