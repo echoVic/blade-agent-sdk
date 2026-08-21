@@ -1,0 +1,27 @@
+src/tools/builtin/web/webSearch.ts
+  s_4c33c264d8f24c::t_3542ab5282859d 184-185,199
+src/tools/builtin/web/searchProviders.ts
+  s_4c33c264d8f24c::t_280c07b7758eff 13-16,18-21,36-43
+  s_4c33c264d8f24c::t_109ea6fc45eb8c 163
+  s_4c33c264d8f24c::t_766a6b96dd008e 374
+  s_4c33c264d8f24c::t_f2ab7cf6b9e084 247
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "e4bc122730ff78eb41473e668ec23a62c11b2cbc",
+  "prompts": {},
+  "sessions": {
+    "s_4c33c264d8f24c": {
+      "agent_id": {
+        "tool": "trae",
+        "id": "6a8686761ae06a11e91be747",
+        "model": "Doubao-Seed-Evolving__dev",
+        "display_model_name": "Seed-Evolving"
+      },
+      "human_author": "echoVic <137844255@qq.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}

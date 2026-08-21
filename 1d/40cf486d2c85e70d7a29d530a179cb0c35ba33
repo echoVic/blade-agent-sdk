@@ -1,0 +1,26 @@
+src/agent/AttachmentHandler.ts
+  s_4c33c264d8f24c::t_a4cc4b77f7beac 77
+  s_4c33c264d8f24c::t_440153a6d23e03 137
+src/prompts/processors/types.ts
+  s_4c33c264d8f24c::t_e2a7c5a07eb2db 32,34-39,56,58-59,65-78
+  s_4c33c264d8f24c::t_183f9df2f751c4 79
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "1d40cf486d2c85e70d7a29d530a179cb0c35ba33",
+  "prompts": {},
+  "sessions": {
+    "s_4c33c264d8f24c": {
+      "agent_id": {
+        "tool": "trae",
+        "id": "6a8686761ae06a11e91be747",
+        "model": "Doubao-Seed-Evolving__dev",
+        "display_model_name": "Seed-Evolving"
+      },
+      "human_author": "echoVic <137844255@qq.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
