@@ -29,19 +29,19 @@ describe('ContextManager', () => {
 
     const sessionId = SessionId('session-1');
     await persistentStore.saveMessage(sessionId, 'user', 'hello');
-    const toolCallId = await persistentStore.saveToolUse(sessionId, 'Read', { file_path: 'README.md' });
-    await persistentStore.saveToolResult(
+    const toolUse = await persistentStore.saveToolUse(sessionId, 'Read', { file_path: 'README.md' });
+    const toolResultMessageId = await persistentStore.saveToolResult(
       sessionId,
-      toolCallId,
+      toolUse.toolCallId,
       'Read',
       'file contents',
-      toolCallId,
+      toolUse.messageId,
     );
     await persistentStore.saveCompaction(
       sessionId,
       'Compacted summary',
       { trigger: 'auto', preTokens: 42, postTokens: 20 },
-      toolCallId,
+      toolResultMessageId,
     );
 
     await contextManager.initialize();

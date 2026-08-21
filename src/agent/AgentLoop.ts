@@ -491,7 +491,12 @@ export async function* agentLoop(
       continue;
     }
     if (orderedExecutionResults.length !== turnResult.toolCalls.length) {
-      throw new Error('Tool execution completed without results for every declared tool call');
+      const missing = turnResult.toolCalls
+        .filter((toolCall) => !resultByToolCallId.has(toolCall.id))
+        .map((toolCall) => `${toolCall.function.name}(${toolCall.id})`);
+      throw new Error(
+        `Tool execution completed without results for every declared tool call: ${missing.join(', ')}`,
+      );
     }
 
     convState.append({

@@ -35,13 +35,19 @@ describe('Session persistence', () => {
 
     const sessionId = SessionId('session-1');
     await persistentStore.saveMessage(sessionId, 'user', 'hello');
-    const toolCallId = await persistentStore.saveToolUse(sessionId, 'Read', { file_path: 'README.md' });
-    await persistentStore.saveToolResult(sessionId, toolCallId, 'Read', 'contents', toolCallId);
+    const toolUse = await persistentStore.saveToolUse(sessionId, 'Read', { file_path: 'README.md' });
+    const toolResultMessageId = await persistentStore.saveToolResult(
+      sessionId,
+      toolUse.toolCallId,
+      'Read',
+      'contents',
+      toolUse.messageId,
+    );
     const summaryId = await persistentStore.saveCompaction(
       sessionId,
       'Compacted summary',
       { trigger: 'auto', preTokens: 12 },
-      toolCallId,
+      toolResultMessageId,
     );
 
     const session = await resumeSession({

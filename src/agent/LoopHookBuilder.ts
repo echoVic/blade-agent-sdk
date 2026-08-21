@@ -140,6 +140,13 @@ export function buildLoopConfig(deps: LoopHookBuilderDeps): AgentLoopConfig {
       }
     });
     for (const pending of ready) pendingToolResults.delete(pending.toolCall.id);
+    if (pendingToolResults.size) {
+      logger.warn(
+        '[LoopHookBuilder] Dropping tool results with no declared tool call:',
+        Array.from(pendingToolResults.keys()),
+      );
+      pendingToolResults.clear();
+    }
   };
 
   const hooks: AgentLoopHooks = {

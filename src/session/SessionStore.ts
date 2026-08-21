@@ -188,44 +188,97 @@ function isEmptyAssistantMessage(message: Message): boolean {
     && !message.tool_calls?.length;
 }
 
+interface ToolCallOccurrence {
+  key: string;
+  sourceMessageId: string;
+  toolCallId: string;
+  matched: boolean;
+}
+
+interface ToolOccurrencePlan {
+  callsByEventId: Map<string, ToolCallOccurrence>;
+  resultsByEventId: Map<string, ToolCallOccurrence>;
+}
+
+function getPartToolCallId(part: PartInfo): string {
+  const payload = isRecord(part.payload) ? part.payload : {};
+  return typeof payload.toolCallId === 'string' ? payload.toolCallId : part.partId;
+}
+
+function createToolOccurrencePlan(entries: SessionEvent[]): ToolOccurrencePlan {
+  const callsByEventId = new Map<string, ToolCallOccurrence>();
+  const resultsByEventId = new Map<string, ToolCallOccurrence>();
+  const callsBySource = new Map<string, ToolCallOccurrence>();
+  const resultsBySource = new Map<string, ToolCallOccurrence>();
+  const unmatchedByToolCallId = new Map<string, ToolCallOccurrence[]>();
+  let occurrenceIndex = 0;
+
+  for (const entry of entries) {
+    if (entry.type !== 'part_created' && entry.type !== 'part_updated') continue;
+    const part = entry.data;
+    if (part.partType !== 'tool_call' && part.partType !== 'tool_result') continue;
+    const toolCallId = getPartToolCallId(part);
+    const sourceKey = `${part.messageId}\0${toolCallId}`;
+
+    if (part.partType === 'tool_call') {
+      let occurrence = callsBySource.get(sourceKey);
+      if (!occurrence) {
+        occurrence = {
+          key: `tool-call:${occurrenceIndex++}`,
+          sourceMessageId: part.messageId,
+          toolCallId,
+          matched: false,
+        };
+        callsBySource.set(sourceKey, occurrence);
+        const unmatched = unmatchedByToolCallId.get(toolCallId) ?? [];
+        unmatched.push(occurrence);
+        unmatchedByToolCallId.set(toolCallId, unmatched);
+      }
+      callsByEventId.set(entry.id, occurrence);
+      continue;
+    }
+
+    let occurrence = resultsBySource.get(sourceKey);
+    if (!occurrence) {
+      const unmatched = unmatchedByToolCallId.get(toolCallId) ?? [];
+      occurrence = unmatched.shift();
+      if (!occurrence) continue;
+      occurrence.matched = true;
+      resultsBySource.set(sourceKey, occurrence);
+    }
+    resultsByEventId.set(entry.id, occurrence);
+  }
+
+  return { callsByEventId, resultsByEventId };
+}
+
 function getPartMessageId(
   part: PartInfo,
   messageRecords: Map<string, MessageRecord>,
+  occurrence?: ToolCallOccurrence,
 ): MessageId {
   const existing = messageRecords.get(part.messageId);
-  if (!existing) {
-    return part.messageId;
-  }
+  if (!existing) return part.messageId;
 
   if (part.partType === 'tool_call' && existing.message.role !== 'assistant') {
-    return MessageId(`${part.messageId}:tool-call`);
+    return MessageId(`${part.messageId}:${occurrence?.key ?? 'tool-call'}`);
   }
   if (part.partType === 'tool_result' && existing.message.role !== 'tool') {
-    const payload = isRecord(part.payload) ? part.payload : {};
-    const toolCallId = typeof payload.toolCallId === 'string'
-      ? payload.toolCallId
-      : part.partId;
-    return MessageId(`${part.messageId}:tool-result:${toolCallId}`);
+    return MessageId(`${part.messageId}:tool-result:${occurrence?.key ?? getPartToolCallId(part)}`);
   }
   return part.messageId;
 }
 
 function getToolCallState(
   toolCalls: Map<string, SessionToolCallState>,
-  toolCallId: string,
-  defaults: Omit<SessionToolCallState, 'id'>,
+  stateKey: string,
+  defaults: SessionToolCallState,
 ): SessionToolCallState {
-  const existing = toolCalls.get(toolCallId);
-  if (existing) {
-    return existing;
-  }
+  const existing = toolCalls.get(stateKey);
+  if (existing) return existing;
 
-  const created: SessionToolCallState = {
-    id: toolCallId,
-    ...defaults,
-  };
-  toolCalls.set(toolCallId, created);
-  return created;
+  toolCalls.set(stateKey, defaults);
+  return defaults;
 }
 
 export class JsonlSessionStore implements SessionStore {
@@ -246,10 +299,7 @@ export class JsonlSessionStore implements SessionStore {
     const orderedMessageIds: string[] = [];
     const summaryMessageIds = new Set<string>();
     const toolCalls = new Map<string, SessionToolCallState>();
-    const projectedToolCalls = new Map<string, {
-      sourceMessageId: string;
-      projectedMessageId: MessageId;
-    }>();
+    const toolOccurrencePlan = createToolOccurrencePlan(entries);
     const subagentRefs: SessionSubagentRef[] = [];
     let sessionInfo: Partial<SessionInfo> = { sessionId };
     let createdAt = toTimestamp(undefined, entries[0]?.timestamp ?? new Date().toISOString());
@@ -334,16 +384,14 @@ export class JsonlSessionStore implements SessionStore {
       }
 
       const data = entry.data;
-      let messageId = getPartMessageId(data, messageRecords);
-      if (data.partType === 'tool_call') {
-        const payload = isRecord(data.payload) ? data.payload : {};
-        const toolCallId = typeof payload.toolCallId === 'string'
-          ? payload.toolCallId
-          : data.partId;
-        const projected = projectedToolCalls.get(toolCallId);
-        if (projected && projected.sourceMessageId !== data.messageId) continue;
-        if (projected) messageId = projected.projectedMessageId;
-      }
+      const occurrence = data.partType === 'tool_call'
+        ? toolOccurrencePlan.callsByEventId.get(entry.id)
+        : data.partType === 'tool_result'
+          ? toolOccurrencePlan.resultsByEventId.get(entry.id)
+          : undefined;
+      if ((data.partType === 'tool_call' || data.partType === 'tool_result') && !occurrence) continue;
+      if (data.partType === 'tool_call' && !occurrence?.matched) continue;
+      const messageId = getPartMessageId(data, messageRecords, occurrence);
       const record = ensureMessageRecord(
         messageId,
         inferRole(data.partType),
@@ -356,7 +404,7 @@ export class JsonlSessionStore implements SessionStore {
         record,
         contentParts,
         toolCalls,
-        projectedToolCalls,
+        toolOccurrenceKey: occurrence?.key,
         subagentRefs,
         summaryMessageIds,
         onSummary: (value) => {
@@ -367,10 +415,15 @@ export class JsonlSessionStore implements SessionStore {
 
     // Build the timeline directly from the mutable builder records (no clone).
     // `messages` is cloned from the same records so the two arrays are independent.
-    const timeline = orderedMessageIds
+    const records = orderedMessageIds
       .map((messageId) => messageRecords.get(messageId))
-      .filter((record): record is MessageRecord => record !== undefined)
-      .filter((record) => !isEmptyAssistantMessage(record.message))
+      .filter((record): record is MessageRecord => record !== undefined);
+    const referencedMessageIds = new Set([
+      ...records.flatMap((record) => record.parentMessageId ? [record.parentMessageId] : []),
+      ...subagentRefs.map((ref) => String(ref.messageId)),
+    ]);
+    const timeline = records
+      .filter((record) => !isEmptyAssistantMessage(record.message) || referencedMessageIds.has(record.id))
       .map((record) => ({
         id: record.id,
         parentMessageId: record.parentMessageId,
@@ -397,7 +450,9 @@ export class JsonlSessionStore implements SessionStore {
       toolCalls: Array.from(toolCalls.values()).map((toolCall) => ({
         ...toolCall,
       })),
-      subagentRefs: subagentRefs.map((ref) => ({ ...ref })),
+      subagentRefs: subagentRefs
+        .filter((ref) => messageIds.includes(String(ref.messageId)))
+        .map((ref) => ({ ...ref })),
     };
   }
 
@@ -484,10 +539,7 @@ export class JsonlSessionStore implements SessionStore {
     record: MessageRecord;
     contentParts: Map<string, Array<{ partId: string; content: ContentPart }>>;
     toolCalls: Map<string, SessionToolCallState>;
-    projectedToolCalls: Map<string, {
-      sourceMessageId: string;
-      projectedMessageId: MessageId;
-    }>;
+    toolOccurrenceKey?: string;
     subagentRefs: SessionSubagentRef[];
     summaryMessageIds: Set<string>;
     onSummary: (summary: string) => void;
@@ -497,7 +549,7 @@ export class JsonlSessionStore implements SessionStore {
       record,
       contentParts,
       toolCalls,
-      projectedToolCalls,
+      toolOccurrenceKey,
       subagentRefs,
       summaryMessageIds,
       onSummary,
@@ -565,12 +617,9 @@ export class JsonlSessionStore implements SessionStore {
           ...(record.message.tool_calls ?? []).filter((call) => call.id !== toolCall.id),
           toolCall,
         ];
-        projectedToolCalls.set(toolCallId, {
-          sourceMessageId: part.messageId,
-          projectedMessageId: MessageId(record.id),
-        });
 
-        const toolCallState = getToolCallState(toolCalls, toolCallId, {
+        const toolCallState = getToolCallState(toolCalls, toolOccurrenceKey ?? toolCallId, {
+          id: toolCallId,
           name: toolName,
           input,
           messageId: record.id,
@@ -595,7 +644,8 @@ export class JsonlSessionStore implements SessionStore {
         record.message.name = toolName;
         record.message.content = error ? `Error: ${error}` : stringifyContent(output);
 
-        const toolCallState = getToolCallState(toolCalls, toolCallId, {
+        const toolCallState = getToolCallState(toolCalls, toolOccurrenceKey ?? toolCallId, {
+          id: toolCallId,
           name: toolName,
           input: {},
           messageId: record.id,

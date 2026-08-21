@@ -4,18 +4,51 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { JSONLStore } from '../../context/storage/JSONLStore.js';
 import { getSessionFilePathFromStorageRoot } from '../../context/storage/pathUtils.js';
-import { PersistentStore } from '../../context/storage/PersistentStore.js';
+import { NoopPersistentStore, PersistentStore } from '../../context/storage/PersistentStore.js';
 import type { SessionEvent } from '../../context/types.js';
 import { JsonlSessionStore } from '../SessionStore.js';
 import type { ContentPart } from '../../services/ChatServiceInterface.js';
 import { assertDefined } from '../../__tests__/helpers/assertDefined.js';
-import { SessionId } from '../../types/branded.js';
+import { MessageId, SessionId } from '../../types/branded.js';
 
 function createWorkspaceRoot(): string {
   return mkdtempSync(join(tmpdir(), 'session-store-test-'));
 }
 
+function sessionEvent<T extends SessionEvent['type']>(
+  sessionId: SessionId,
+  timestamp: string,
+  id: string,
+  type: T,
+  data: Extract<SessionEvent, { type: T }>['data'],
+): Extract<SessionEvent, { type: T }> {
+  return { id, sessionId, timestamp, type, version: '1.1.1', data } as Extract<SessionEvent, { type: T }>;
+}
+
 describe('JsonlSessionStore', () => {
+  it('should keep no-op persistence message IDs distinct from tool-call IDs', async () => {
+    const store = new NoopPersistentStore();
+    const toolUse = await store.saveToolUse(
+      SessionId('session-noop'),
+      'Search',
+      { query: 'needle' },
+      null,
+      undefined,
+      'call-noop',
+    );
+    const toolResultMessageId = await store.saveToolResult(
+      SessionId('session-noop'),
+      toolUse.toolCallId,
+      'Search',
+      'result',
+      toolUse.messageId,
+    );
+
+    expect(toolUse.toolCallId).toBe('call-noop');
+    expect(toolUse.messageId).not.toBe(toolUse.toolCallId);
+    expect(toolResultMessageId).not.toBe(toolUse.toolCallId);
+  });
+
   it('should reconstruct full session state from JSONL events', async () => {
     const workspaceRoot = createWorkspaceRoot();
     const persistentStore = new PersistentStore(workspaceRoot);
@@ -23,7 +56,7 @@ describe('JsonlSessionStore', () => {
 
     const sessionId = SessionId('session-1');
     const userMessageId = await persistentStore.saveMessage(sessionId, 'user', 'hello');
-    const toolCallId = await persistentStore.saveToolUse(
+    const toolUse = await persistentStore.saveToolUse(
       sessionId,
       'Task',
       {
@@ -32,12 +65,12 @@ describe('JsonlSessionStore', () => {
         description: 'Inspect repository',
       },
     );
-    await persistentStore.saveToolResult(
+    const toolResultMessageId = await persistentStore.saveToolResult(
       sessionId,
-      toolCallId,
+      toolUse.toolCallId,
       'Task',
       { status: 'done' },
-      toolCallId,
+      toolUse.messageId,
       undefined,
       undefined,
       {
@@ -51,7 +84,7 @@ describe('JsonlSessionStore', () => {
       sessionId,
       'Compacted summary',
       { trigger: 'auto', preTokens: 100, postTokens: 40 },
-      toolCallId,
+      toolResultMessageId,
     );
 
     const state = await sessionStore.loadState(sessionId);
@@ -62,9 +95,9 @@ describe('JsonlSessionStore', () => {
     expect(state.messages[0]?.id).toBe(userMessageId);
     expect(state.messages[0]?.role).toBe('user');
     expect(state.messages[1]?.role).toBe('assistant');
-    expect(state.messages[1]?.tool_calls?.[0]?.id).toBe(toolCallId);
+    expect(state.messages[1]?.tool_calls?.[0]?.id).toBe(toolUse.toolCallId);
     expect(state.messages[2]?.role).toBe('tool');
-    expect(state.messages[2]?.tool_call_id).toBe(toolCallId);
+    expect(state.messages[2]?.tool_call_id).toBe(toolUse.toolCallId);
     expect(state.messages[3]?.role).toBe('system');
     expect(state.messages[3]?.id).toBe(summaryMessageId);
     expect(state.messages[3]?.content).toBe('Compacted summary');
@@ -83,7 +116,7 @@ describe('JsonlSessionStore', () => {
     const sessionId = SessionId('session-sequential-tools');
     const userMessageId = await persistentStore.saveMessage(sessionId, 'user', 'hello');
     const firstToolCallId = 'call-first';
-    const firstAssistantId = await persistentStore.saveToolUse(
+    const firstToolUse = await persistentStore.saveToolUse(
       sessionId,
       'Search',
       { query: 'first' },
@@ -93,13 +126,13 @@ describe('JsonlSessionStore', () => {
     );
     const firstResultId = await persistentStore.saveToolResult(
       sessionId,
-      firstToolCallId,
+      firstToolUse.toolCallId,
       'Search',
       'first result',
-      firstAssistantId,
+      firstToolUse.messageId,
     );
     const secondToolCallId = 'call-second';
-    const secondAssistantId = await persistentStore.saveToolUse(
+    const secondToolUse = await persistentStore.saveToolUse(
       sessionId,
       'Search',
       { query: 'second' },
@@ -109,10 +142,10 @@ describe('JsonlSessionStore', () => {
     );
     await persistentStore.saveToolResult(
       sessionId,
-      secondToolCallId,
+      secondToolUse.toolCallId,
       'Search',
       'second result',
-      secondAssistantId,
+      secondToolUse.messageId,
     );
 
     const state = await sessionStore.loadState(sessionId);
@@ -131,66 +164,58 @@ describe('JsonlSessionStore', () => {
     expect(state.messages[4]?.tool_call_id).toBe(secondToolCallId);
     expect(new Set(state.messageIds).size).toBe(state.messageIds.length);
     expect(state.timeline[1]?.parentMessageId).toBe(userMessageId);
-    expect(state.timeline[2]?.parentMessageId).toBe(firstAssistantId);
+    expect(state.timeline[2]?.parentMessageId).toBe(firstToolUse.messageId);
     expect(state.timeline[3]?.parentMessageId).toBe(firstResultId);
-    expect(state.timeline[4]?.parentMessageId).toBe(secondAssistantId);
+    expect(state.timeline[4]?.parentMessageId).toBe(secondToolUse.messageId);
   });
 
   it('should repair legacy message ID collisions and duplicate tool calls', async () => {
     const workspaceRoot = createWorkspaceRoot();
     const sessionId = SessionId('session-legacy-tool-collision');
     const now = new Date().toISOString();
-    const event = (id: string, type: string, data: object): SessionEvent => ({
-      id,
-      sessionId,
-      timestamp: now,
-      type,
-      version: '1.1.1',
-      data,
-    }) as SessionEvent;
     const entries = [
-      event('session', 'session_created', {
+      sessionEvent(sessionId, now,'session', 'session_created', {
         sessionId,
         rootId: sessionId,
         status: 'running',
         createdAt: now,
         updatedAt: now,
       }),
-      event('user', 'message_created', { messageId: 'user-1', role: 'user', createdAt: now }),
-      event('user-text', 'part_created', {
-        partId: 'user-text', messageId: 'user-1', partType: 'text',
+      sessionEvent(sessionId, now,'user', 'message_created', { messageId: MessageId('user-1'), role: 'user', createdAt: now }),
+      sessionEvent(sessionId, now,'user-text', 'part_created', {
+        partId: 'user-text', messageId: MessageId('user-1'), partType: 'text',
         payload: { text: 'hello' }, createdAt: now,
       }),
-      event('first-call', 'part_created', {
-        partId: 'call-first', messageId: 'user-1', partType: 'tool_call',
+      sessionEvent(sessionId, now,'first-call', 'part_created', {
+        partId: 'call-first', messageId: MessageId('user-1'), partType: 'tool_call',
         payload: { toolCallId: 'call-first', toolName: 'Search', input: { query: 'first' } },
         createdAt: now,
       }),
-      event('first-result', 'part_created', {
-        partId: 'call-first', messageId: 'call-first', partType: 'tool_result',
+      sessionEvent(sessionId, now,'first-result', 'part_created', {
+        partId: 'call-first', messageId: MessageId('call-first'), partType: 'tool_result',
         payload: { toolCallId: 'call-first', toolName: 'Search', output: 'first result', error: null },
         createdAt: now,
       }),
-      event('second-call', 'part_created', {
-        partId: 'call-second', messageId: 'call-first', partType: 'tool_call',
+      sessionEvent(sessionId, now,'second-call', 'part_created', {
+        partId: 'call-second', messageId: MessageId('call-first'), partType: 'tool_call',
         payload: { toolCallId: 'call-second', toolName: 'Search', input: { query: 'second' } },
         createdAt: now,
       }),
-      event('assistant', 'message_created', {
-        messageId: 'assistant-1', role: 'assistant', createdAt: now,
+      sessionEvent(sessionId, now,'assistant', 'message_created', {
+        messageId: MessageId('assistant-1'), role: 'assistant', createdAt: now,
       }),
-      event('duplicate-first-call', 'part_created', {
-        partId: 'call-first', messageId: 'assistant-1', partType: 'tool_call',
+      sessionEvent(sessionId, now,'duplicate-first-call', 'part_created', {
+        partId: 'call-first', messageId: MessageId('assistant-1'), partType: 'tool_call',
         payload: { toolCallId: 'call-first', toolName: 'Search', input: { query: 'first' } },
         createdAt: now,
       }),
-      event('duplicate-second-call', 'part_created', {
-        partId: 'call-second', messageId: 'assistant-1', partType: 'tool_call',
+      sessionEvent(sessionId, now,'duplicate-second-call', 'part_created', {
+        partId: 'call-second', messageId: MessageId('assistant-1'), partType: 'tool_call',
         payload: { toolCallId: 'call-second', toolName: 'Search', input: { query: 'second' } },
         createdAt: now,
       }),
-      event('second-result', 'part_created', {
-        partId: 'call-second', messageId: 'call-second', partType: 'tool_result',
+      sessionEvent(sessionId, now,'second-result', 'part_created', {
+        partId: 'call-second', messageId: MessageId('call-second'), partType: 'tool_result',
         payload: { toolCallId: 'call-second', toolName: 'Search', output: 'second result', error: null },
         createdAt: now,
       }),
@@ -214,6 +239,66 @@ describe('JsonlSessionStore', () => {
       .toBe('first result');
     expect(state.messages.find((message) => message.tool_call_id === 'call-second')?.content)
       .toBe('second result');
+  });
+
+  it('should preserve repeated provider tool-call IDs across turns', async () => {
+    const workspaceRoot = createWorkspaceRoot();
+    const persistentStore = new PersistentStore(workspaceRoot);
+    const sessionStore = new JsonlSessionStore(workspaceRoot);
+    const sessionId = SessionId('session-repeated-tool-call-id');
+    const repeatedToolCallId = 'call-repeated';
+
+    const userMessageId = await persistentStore.saveMessage(sessionId, 'user', 'first');
+    const firstUse = await persistentStore.saveToolUse(
+      sessionId,
+      'Search',
+      { query: 'first' },
+      userMessageId,
+      undefined,
+      repeatedToolCallId,
+    );
+    const firstResultId = await persistentStore.saveToolResult(
+      sessionId,
+      firstUse.toolCallId,
+      'Search',
+      'first result',
+      firstUse.messageId,
+    );
+    const secondUse = await persistentStore.saveToolUse(
+      sessionId,
+      'Search',
+      { query: 'second' },
+      firstResultId,
+      undefined,
+      repeatedToolCallId,
+    );
+    await persistentStore.saveToolResult(
+      sessionId,
+      secondUse.toolCallId,
+      'Search',
+      'second result',
+      secondUse.messageId,
+    );
+
+    const state = await sessionStore.loadState(sessionId);
+
+    assertDefined(state);
+    expect(state.messages.map((message) => message.role)).toEqual([
+      'user',
+      'assistant',
+      'tool',
+      'assistant',
+      'tool',
+    ]);
+    expect(state.messages.filter((message) => message.tool_calls?.[0]?.id === repeatedToolCallId))
+      .toHaveLength(2);
+    expect(state.messages.filter((message) => message.tool_call_id === repeatedToolCallId))
+      .toHaveLength(2);
+    expect(state.toolCalls).toHaveLength(2);
+    expect(state.toolCalls.map((toolCall) => toolCall.output)).toEqual([
+      'first result',
+      'second result',
+    ]);
   });
 
   it('should preserve assistant reasoning content with tool calls for resume', async () => {
@@ -247,7 +332,7 @@ describe('JsonlSessionStore', () => {
       'call-search',
       'Search',
       'result',
-      'call-search',
+      assistantMessageId,
     );
 
     const state = await sessionStore.loadState(sessionId);
@@ -274,6 +359,61 @@ describe('JsonlSessionStore', () => {
       role: 'tool',
       tool_call_id: 'call-search',
     });
+  });
+
+  it('should retain empty assistant messages referenced by children and subagent refs', async () => {
+    const workspaceRoot = createWorkspaceRoot();
+    const sessionId = SessionId('session-referenced-empty-assistant');
+    const now = new Date().toISOString();
+    const emptyAssistantId = MessageId('assistant-empty');
+    const entries: SessionEvent[] = [
+      sessionEvent(sessionId, now, 'session', 'session_created', {
+        sessionId,
+        rootId: sessionId,
+        status: 'running',
+        createdAt: now,
+        updatedAt: now,
+      }),
+      sessionEvent(sessionId, now, 'empty', 'message_created', {
+        messageId: emptyAssistantId,
+        role: 'assistant',
+        createdAt: now,
+      }),
+      sessionEvent(sessionId, now, 'subtask', 'part_created', {
+        partId: 'subtask',
+        messageId: emptyAssistantId,
+        partType: 'subtask_ref',
+        payload: {
+          childSessionId: 'child-1',
+          agentType: 'research',
+          status: 'running',
+        },
+        createdAt: now,
+      }),
+      sessionEvent(sessionId, now, 'child', 'message_created', {
+        messageId: MessageId('assistant-child'),
+        role: 'assistant',
+        parentMessageId: emptyAssistantId,
+        createdAt: now,
+      }),
+      sessionEvent(sessionId, now, 'child-text', 'part_created', {
+        partId: 'child-text',
+        messageId: MessageId('assistant-child'),
+        partType: 'text',
+        payload: { text: 'child answer' },
+        createdAt: now,
+      }),
+    ];
+    await new JSONLStore(getSessionFilePathFromStorageRoot(workspaceRoot, sessionId))
+      .appendBatch(entries);
+
+    const state = await new JsonlSessionStore(workspaceRoot).loadState(sessionId);
+
+    assertDefined(state);
+    expect(state.messageIds).toContain(emptyAssistantId);
+    expect(state.timeline.find((entry) => entry.id === 'assistant-child')?.parentMessageId)
+      .toBe(emptyAssistantId);
+    expect(state.subagentRefs[0]?.messageId).toBe(emptyAssistantId);
   });
 
   it('should fork state by linear message boundary', async () => {
