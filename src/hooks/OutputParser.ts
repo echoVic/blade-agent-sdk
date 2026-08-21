@@ -7,12 +7,12 @@
 import type { JsonValue } from '../types/common.js';
 import { safeParseHookOutput } from './schemas/HookSchemas.js';
 import {
-    type Hook,
-    type HookConfig,
-    type HookExecutionResult,
-    HookExitCode,
-    type HookOutput,
-    type ProcessResult,
+  type Hook,
+  type HookConfig,
+  type HookExecutionResult,
+  HookExitCode,
+  type HookOutput,
+  type ProcessResult,
 } from './types/HookTypes.js';
 
 const VALID_EXIT_CODES = new Set(Object.values(HookExitCode).filter((v): v is number => typeof v === 'number'));
@@ -72,10 +72,8 @@ export class OutputParser {
       // 检查 decision.behavior
       if (output.decision?.behavior === 'block') {
         return {
-          success: false,
-          blocking: true,
+          status: 'blocked',
           error: output.systemMessage || 'Hook blocked execution',
-          output,
           stdout: result.stdout,
           stderr: result.stderr,
           exitCode: result.exitCode,
@@ -86,7 +84,7 @@ export class OutputParser {
       // async behavior - 不阻塞
       if (output.decision?.behavior === 'async') {
         return {
-          success: true,
+          status: 'success',
           output,
           stdout: result.stdout,
           stderr: result.stderr,
@@ -97,7 +95,7 @@ export class OutputParser {
 
       // approve - 成功
       return {
-        success: true,
+        status: 'success',
         output,
         stdout: result.stdout,
         stderr: result.stderr,
@@ -123,7 +121,7 @@ export class OutputParser {
     switch (exitCode) {
       case 0: // SUCCESS
         return {
-          success: true,
+          status: 'success',
           stdout: result.stdout,
           stderr: result.stderr,
           exitCode,
@@ -132,8 +130,7 @@ export class OutputParser {
 
       case 2: // BLOCKING_ERROR
         return {
-          success: false,
-          blocking: true,
+          status: 'blocked',
           error: result.stderr || result.stdout || 'Hook returned exit code 2',
           stdout: result.stdout,
           stderr: result.stderr,
@@ -186,20 +183,18 @@ export class OutputParser {
     };
 
     if (behavior === 'deny') {
-      return { success: false, blocking: true, error: errorMsg, ...common };
+      return { status: 'blocked', error: errorMsg, ...common };
     }
 
     if (behavior === 'ask') {
       return {
-        success: false,
-        blocking: false,
-        needsConfirmation: true,
+        status: 'needs_confirmation',
         warning: `${errorMsg}. Continue?`,
         ...common,
       };
     }
 
-    return { success: false, blocking: false, warning: errorMsg, ...common };
+    return { status: 'warning', warning: errorMsg, ...common };
   }
 
   /**

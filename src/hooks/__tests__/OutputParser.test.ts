@@ -21,8 +21,7 @@ describe('OutputParser', () => {
       };
 
       const parsed = parser.parse(result, mockHook);
-      expect(parsed.success).toBe(true);
-      expect(parsed.blocking).toBeUndefined();
+      expect(parsed.status).toBe('success');
     });
 
     it('should return blocking error for exit code 2', () => {
@@ -34,9 +33,8 @@ describe('OutputParser', () => {
       };
 
       const parsed = parser.parse(result, mockHook);
-      expect(parsed.success).toBe(false);
-      expect(parsed.blocking).toBe(true);
-      expect(parsed.error).toBe('Blocked by hook');
+      expect(parsed.status).toBe('blocked');
+      expect(parsed.status === 'blocked' && parsed.error).toBe('Blocked by hook');
     });
 
     it('should return non-blocking error for other exit codes with ignore behavior', () => {
@@ -48,9 +46,8 @@ describe('OutputParser', () => {
       };
 
       const parsed = parser.parse(result, mockHook, { failureBehavior: 'ignore' });
-      expect(parsed.success).toBe(false);
-      expect(parsed.blocking).toBe(false);
-      expect(parsed.warning).toBe('Some error');
+      expect(parsed.status).toBe('warning');
+      expect(parsed.status === 'warning' && parsed.warning).toBe('Some error');
     });
 
     it('should return blocking error for other exit codes with deny behavior', () => {
@@ -63,9 +60,8 @@ describe('OutputParser', () => {
 
       const config: Pick<HookConfig, 'failureBehavior'> = { failureBehavior: 'deny' };
       const parsed = parser.parse(result, mockHook, config);
-      expect(parsed.success).toBe(false);
-      expect(parsed.blocking).toBe(true);
-      expect(parsed.error).toBe('Some error');
+      expect(parsed.status).toBe('blocked');
+      expect(parsed.status === 'blocked' && parsed.error).toBe('Some error');
     });
 
     it('should request confirmation for other exit codes with ask behavior', () => {
@@ -78,9 +74,7 @@ describe('OutputParser', () => {
 
       const config: Pick<HookConfig, 'failureBehavior'> = { failureBehavior: 'ask' };
       const parsed = parser.parse(result, mockHook, config);
-      expect(parsed.success).toBe(false);
-      expect(parsed.blocking).toBe(false);
-      expect(parsed.needsConfirmation).toBe(true);
+      expect(parsed.status).toBe('needs_confirmation');
     });
   });
 
@@ -94,9 +88,8 @@ describe('OutputParser', () => {
       };
 
       const parsed = parser.parse(result, mockHook, { timeoutBehavior: 'ignore' });
-      expect(parsed.success).toBe(false);
-      expect(parsed.blocking).toBe(false);
-      expect(parsed.warning).toBe('Hook timeout');
+      expect(parsed.status).toBe('warning');
+      expect(parsed.status === 'warning' && parsed.warning).toBe('Hook timeout');
     });
 
     it('should handle timeout with deny behavior', () => {
@@ -108,9 +101,8 @@ describe('OutputParser', () => {
       };
 
       const parsed = parser.parse(result, mockHook, { timeoutBehavior: 'deny' });
-      expect(parsed.success).toBe(false);
-      expect(parsed.blocking).toBe(true);
-      expect(parsed.error).toBe('Hook timeout');
+      expect(parsed.status).toBe('blocked');
+      expect(parsed.status === 'blocked' && parsed.error).toBe('Hook timeout');
     });
 
     it('should handle timeout with ask behavior', () => {
@@ -122,9 +114,7 @@ describe('OutputParser', () => {
       };
 
       const parsed = parser.parse(result, mockHook, { timeoutBehavior: 'ask' });
-      expect(parsed.success).toBe(false);
-      expect(parsed.blocking).toBe(false);
-      expect(parsed.needsConfirmation).toBe(true);
+      expect(parsed.status).toBe('needs_confirmation');
     });
   });
 
@@ -140,8 +130,8 @@ describe('OutputParser', () => {
       };
 
       const parsed = parser.parse(result, mockHook);
-      expect(parsed.success).toBe(true);
-      expect(parsed.output).toBeDefined();
+      expect(parsed.status).toBe('success');
+      expect(parsed.status === 'success' && parsed.output).toBeDefined();
     });
 
     it('should parse JSON output with block decision', () => {
@@ -156,9 +146,8 @@ describe('OutputParser', () => {
       };
 
       const parsed = parser.parse(result, mockHook);
-      expect(parsed.success).toBe(false);
-      expect(parsed.blocking).toBe(true);
-      expect(parsed.error).toBe('Operation blocked');
+      expect(parsed.status).toBe('blocked');
+      expect(parsed.status === 'blocked' && parsed.error).toBe('Operation blocked');
     });
 
     it('should parse JSON output with async decision', () => {
@@ -172,7 +161,7 @@ describe('OutputParser', () => {
       };
 
       const parsed = parser.parse(result, mockHook);
-      expect(parsed.success).toBe(true);
+      expect(parsed.status).toBe('success');
     });
 
     it('should parse JSON with hookSpecificOutput', () => {
@@ -190,8 +179,8 @@ describe('OutputParser', () => {
       };
 
       const parsed = parser.parse(result, mockHook);
-      expect(parsed.success).toBe(true);
-      expect(parsed.output?.hookSpecificOutput).toBeDefined();
+      expect(parsed.status).toBe('success');
+      expect(parsed.status === 'success' && parsed.output?.hookSpecificOutput).toBeDefined();
     });
 
     it('should handle invalid JSON gracefully', () => {
@@ -203,7 +192,7 @@ describe('OutputParser', () => {
       };
 
       const parsed = parser.parse(result, mockHook);
-      expect(parsed.success).toBe(true);
+      expect(parsed.status).toBe('success');
     });
 
     it('should handle empty stdout', () => {
@@ -215,7 +204,7 @@ describe('OutputParser', () => {
       };
 
       const parsed = parser.parse(result, mockHook);
-      expect(parsed.success).toBe(true);
+      expect(parsed.status).toBe('success');
     });
 
     it('should handle JSON with extra whitespace', () => {
@@ -231,7 +220,7 @@ describe('OutputParser', () => {
       };
 
       const parsed = parser.parse(result, mockHook);
-      expect(parsed.success).toBe(true);
+      expect(parsed.status).toBe('success');
     });
   });
 
@@ -245,7 +234,10 @@ describe('OutputParser', () => {
       };
 
       const parsed = parser.parse(result, mockHook);
-      expect(parsed.error).toBe('stderr error');
+      expect(parsed.status).toBe('blocked');
+      if (parsed.status === 'blocked') {
+        expect(parsed.error).toBe('stderr error');
+      }
     });
 
     it('should use stdout as error message when stderr is empty', () => {
@@ -257,7 +249,10 @@ describe('OutputParser', () => {
       };
 
       const parsed = parser.parse(result, mockHook);
-      expect(parsed.error).toBe('stdout error');
+      expect(parsed.status).toBe('blocked');
+      if (parsed.status === 'blocked') {
+        expect(parsed.error).toBe('stdout error');
+      }
     });
 
     it('should use default message when both are empty', () => {
@@ -269,7 +264,10 @@ describe('OutputParser', () => {
       };
 
       const parsed = parser.parse(result, mockHook);
-      expect(parsed.error).toBe('Hook returned exit code 2');
+      expect(parsed.status).toBe('blocked');
+      if (parsed.status === 'blocked') {
+        expect(parsed.error).toBe('Hook returned exit code 2');
+      }
     });
   });
 });
