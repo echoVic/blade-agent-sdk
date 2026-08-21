@@ -149,10 +149,17 @@ export async function* agentLoop(
   let totalToolCalls = 0;
   let totalTokens = 0;
   let lastPromptTokens: number | undefined;
-  let recoveryAttemptedTurn: number | null = null;
-  let recoveryAttempt = 0;
-  /** 当前回合需要重试（不自增 turnsCount、不发 turn_end） */
-  let retryCurrentTurn = false;
+  /**
+   * 反应式压缩恢复状态机：
+   * - idle: 未在恢复中
+   * - retry_pending: 压缩成功，当前轮待重试（跳过 beforeTurn/turn_start/turnsCount）
+   * - in_retried_turn: 已消费重试，正在执行重试轮（再次溢出则判定 exhausted）
+   */
+  type RecoveryState =
+    | { phase: 'idle' }
+    | { phase: 'retry_pending'; turn: number; attempt: number }
+    | { phase: 'in_retried_turn'; turn: number; attempt: number };
+  let recovery: RecoveryState = { phase: 'idle' };
   let epoch: ExecutionEpoch | null = null;
 
   const recordToolResult = (result: ToolResult): void => {
@@ -174,7 +181,7 @@ export async function* agentLoop(
       return buildAbortResult(turnsCount, totalToolCalls, startTime);
     }
 
-    if (!retryCurrentTurn && turnHooks?.beforeTurn) {
+    if (recovery.phase !== 'retry_pending' && turnHooks?.beforeTurn) {
       const beforeTurnStream = turnHooks.beforeTurn({
         turn: turnsCount,
         messages: convState.toArray(),
@@ -187,11 +194,18 @@ export async function* agentLoop(
       }
     }
 
-    if (!retryCurrentTurn) {
+    if (recovery.phase !== 'retry_pending') {
       turnsCount++;
       yield { type: 'turn_start', turn: turnsCount, maxTurns: effectiveMaxTurns };
     }
-    retryCurrentTurn = false;
+    // 消费重试标记：retry_pending -> in_retried_turn
+    if (recovery.phase === 'retry_pending') {
+      recovery = {
+        phase: 'in_retried_turn',
+        turn: recovery.turn,
+        attempt: recovery.attempt,
+      };
+    }
 
     if (signal?.aborted) {
       yield { type: 'agent_end' };
@@ -250,19 +264,19 @@ export async function* agentLoop(
         throw llmError;
       }
 
-      // 反应式压缩：context 溢出时尝试恢复
+      // 反应式压缩：context 溢出时尝试恢复（仅从 idle 状态发起）
       if (
         isOverflowRecoverable(llmError)
         && recoveryHooks?.reactiveCompact
-        && recoveryAttemptedTurn !== turnsCount
+        && recovery.phase === 'idle'
       ) {
-        recoveryAttemptedTurn = turnsCount;
-        recoveryAttempt += 1;
+        const attempt = 1;
+        recovery = { phase: 'retry_pending', turn: turnsCount, attempt };
         recoveryHooks.onStateChange?.({
           turn: turnsCount,
           phase: 'started',
           reason: 'context_overflow',
-          attempt: recoveryAttempt,
+          attempt,
         });
         yield { type: 'recovery', phase: 'started', reason: 'context_overflow' };
         const compactStream = recoveryHooks.reactiveCompact({ messages: convState.toArray() });
@@ -280,7 +294,7 @@ export async function* agentLoop(
             turn: turnsCount,
             phase: 'failed',
             reason: 'reactive_compact_failed',
-            attempt: recoveryAttempt,
+            attempt,
           });
           yield { type: 'recovery', phase: 'failed', reason: 'reactive_compact' };
           throw llmError;
@@ -289,22 +303,21 @@ export async function* agentLoop(
           turn: turnsCount,
           phase: 'retrying',
           reason: 'reactive_compact_retry',
-          attempt: recoveryAttempt,
+          attempt,
         });
         yield { type: 'recovery', phase: 'retrying', reason: 'reactive_compact' };
         epoch?.invalidate();
         // 显式"重试当前轮"：不减 turnsCount，不发 turn_end
-        retryCurrentTurn = true;
         yield { type: 'turn_retry', turn: turnsCount, reason: 'reactive_compact' };
         continue;
       }
 
-      if (isOverflowRecoverable(llmError) && recoveryAttemptedTurn === turnsCount) {
+      if (isOverflowRecoverable(llmError) && recovery.phase === 'in_retried_turn') {
         recoveryHooks?.onStateChange?.({
           turn: turnsCount,
           phase: 'failed',
           reason: 'recovery_exhausted',
-          attempt: recoveryAttempt,
+          attempt: recovery.attempt,
         });
         yield { type: 'recovery', phase: 'failed', reason: 'recovery_exhausted' };
       }
@@ -315,14 +328,13 @@ export async function* agentLoop(
       throw new Error('Agent loop completed without a chat response');
     }
 
-    recoveryAttemptedTurn = null;
-    if (recoveryAttempt > 0) {
+    if (recovery.phase !== 'idle') {
       recoveryHooks?.onStateChange?.({
         turn: turnsCount,
         phase: 'reset',
         attempt: 0,
       });
-      recoveryAttempt = 0;
+      recovery = { phase: 'idle' };
     }
 
     // Token usage

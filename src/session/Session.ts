@@ -46,11 +46,20 @@ export interface ResumeOptions extends SessionOptions {
   sessionId: SessionId;
 }
 
+type RequestPhase =
+  | { phase: 'idle' }
+  | {
+      phase: 'pending';
+      message: UserMessageContent;
+      options: SendOptions | null;
+      snapshot: ContextSnapshot;
+    }
+  | { phase: 'streaming'; abortController: AbortController };
+
 class Session implements ISession {
   readonly sessionId: SessionId;
   private agent: Agent | null = null;
   private runtime: SessionRuntime | null = null;
-  private abortController: AbortController | null = null;
   private _messages: Message[] = [];
   private readonly options: SessionOptions;
   private readonly store: SessionStore;
@@ -66,9 +75,15 @@ class Session implements ISession {
   private cleanupHandle: CleanupHandle | null = null;
   private readonly traces: AgentTrace[] = [];
 
-  private pendingMessage: UserMessageContent | null = null;
-  private pendingSendOptions: SendOptions | null = null;
-  private pendingContextSnapshot: ContextSnapshot | null = null;
+  /**
+   * 请求阶段状态机：
+   * - idle: 无待处理请求
+   * - pending: send() 已调用，等待 stream() 消费
+   * - streaming: stream() 正在执行，持有 abortController
+   *
+   * 防止在 streaming 期间再次调用 send() 产生并发 generator 竞态。
+   */
+  private requestPhase: RequestPhase = { phase: 'idle' };
 
   constructor(options: SessionOptions, sessionId?: SessionId, isResume = false) {
     this.sessionId = sessionId || SessionId(nanoid());
@@ -241,37 +256,41 @@ class Session implements ISession {
   async send(message: UserMessageContent, options?: SendOptions): Promise<void> {
     await this.ensureInitialized();
 
-    if (this.pendingMessage !== null) {
+    if (this.requestPhase.phase !== 'idle') {
       throw new Error(
-        'Cannot send a new message while a previous message is pending. Call stream() first.',
+        this.requestPhase.phase === 'streaming'
+          ? 'Cannot send a new message while a previous stream() is active. Drain or abort it first.'
+          : 'Cannot send a new message while a previous message is pending. Call stream() first.',
       );
     }
 
-    this.pendingMessage = message;
-    this.pendingSendOptions = options || null;
-    this.pendingContextSnapshot = createContextSnapshot(
-      this.sessionId,
-      nanoid(),
-      this.defaultContext,
-      options?.context,
-    );
+    this.requestPhase = {
+      phase: 'pending',
+      message,
+      options: options || null,
+      snapshot: createContextSnapshot(
+        this.sessionId,
+        nanoid(),
+        this.defaultContext,
+        options?.context,
+      ),
+    };
   }
 
   async *stream(options?: StreamOptions): AsyncGenerator<StreamMessage> {
     await this.ensureInitialized();
     const runtime = this.getRuntime();
 
-    if (this.pendingMessage === null) {
+    if (this.requestPhase.phase !== 'pending') {
       throw new Error('No pending message. Call send() before stream().');
     }
 
-    let message = this.pendingMessage;
-    const sendOptions = this.pendingSendOptions;
-    const pendingSnapshot = this.pendingContextSnapshot;
-    this.pendingMessage = null;
-    this.pendingSendOptions = null;
-    this.pendingContextSnapshot = null;
+    const { message: initialMessage, options: sendOptions, snapshot: pendingSnapshot } = this.requestPhase;
 
+    const abortController = new AbortController();
+    this.requestPhase = { phase: 'streaming', abortController };
+
+    let message = initialMessage;
     const traceRecorder = this.createTraceRecorder(message);
     let traceFinished = false;
     const finishTrace = async (
@@ -304,15 +323,14 @@ class Session implements ISession {
       maxContextTokens: 0,
     };
 
-    this.abortController = new AbortController();
     let signalCleanup: (() => void) | undefined;
     let signal: AbortSignal;
     if (sendOptions?.signal) {
-      const combined = this.combineSignals(sendOptions.signal, this.abortController.signal);
+      const combined = this.combineSignals(sendOptions.signal, abortController.signal);
       signal = combined.signal;
       signalCleanup = combined.cleanup;
     } else {
-      signal = this.abortController.signal;
+      signal = abortController.signal;
     }
 
     const snapshot =
@@ -609,7 +627,7 @@ class Session implements ISession {
     } finally {
       runtime.getHookRuntime().setTraceCollector(undefined);
       signalCleanup?.();
-      this.abortController = null;
+      this.requestPhase = { phase: 'idle' };
     }
   }
 
@@ -621,11 +639,9 @@ class Session implements ISession {
     this.cleanupHandle?.unregister();
     this.cleanupHandle = null;
     this.abort();
+    this.requestPhase = { phase: 'idle' };
     this.agent = null;
     this.initialized = false;
-    this.pendingMessage = null;
-    this.pendingSendOptions = null;
-    this.pendingContextSnapshot = null;
     const runtime = this.runtime;
     this.runtime = null;
     if (runtime) {
@@ -639,9 +655,9 @@ class Session implements ISession {
   }
 
   abort(): void {
-    if (this.abortController) {
-      this.abortController.abort();
-      this.abortController = null;
+    if (this.requestPhase.phase === 'streaming') {
+      this.requestPhase.abortController.abort();
+      this.requestPhase = { phase: 'idle' };
     }
   }
 

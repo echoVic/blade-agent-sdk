@@ -4,7 +4,6 @@ import type { PermissionMode } from '../../types/common.js';
 import type { ConversationState } from './ConversationState.js';
 import type {
   LoopExecutionContext,
-  LoopRecoveryState,
   LoopSkillState,
   LlmToolDefinition,
   TurnState,
@@ -31,11 +30,6 @@ export class LoopState {
   private readonly resolveChatServiceFn: () => IChatService;
   private readonly resolveMaxContextTokensFn: () => number;
   private activeSkill?: LoopSkillState;
-  private recovery: LoopRecoveryState = {
-    attempt: 0,
-    hasAttemptedReactiveCompact: false,
-  };
-  private transitionReason?: string;
 
   constructor(options: LoopStateOptions) {
     this.conversationState = options.conversationState;
@@ -58,8 +52,6 @@ export class LoopState {
       permissionMode: this.permissionMode,
       executionContext: this.executionContext,
       activeSkill: this.activeSkill,
-      recovery: { ...this.recovery },
-      transitionReason: this.transitionReason,
     };
   }
 
@@ -89,45 +81,5 @@ export class LoopState {
 
   setActiveSkill(skill: LoopSkillState | undefined): void {
     this.activeSkill = skill;
-  }
-
-  setTransitionReason(reason: string | undefined): void {
-    this.transitionReason = reason;
-  }
-
-  getRecoveryState(): LoopRecoveryState {
-    return { ...this.recovery };
-  }
-
-  startRecovery(reason: string): void {
-    this.recovery = {
-      attempt: this.recovery.attempt + 1,
-      hasAttemptedReactiveCompact: true,
-      lastReason: reason,
-    };
-    this.transitionReason = reason;
-  }
-
-  markRecoveryRetry(reason: string): void {
-    this.recovery = {
-      ...this.recovery,
-      lastReason: reason,
-    };
-    this.transitionReason = reason;
-  }
-
-  failRecovery(reason: string): void {
-    this.recovery = {
-      ...this.recovery,
-      lastReason: reason,
-    };
-    this.transitionReason = reason;
-  }
-
-  resetRecovery(): void {
-    this.recovery = {
-      attempt: 0,
-      hasAttemptedReactiveCompact: false,
-    };
   }
 }

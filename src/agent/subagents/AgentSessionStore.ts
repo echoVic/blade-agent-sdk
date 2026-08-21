@@ -217,7 +217,22 @@ export class AgentSessionStore {
   }
 
   /**
-   * 标记会话完成
+   * 更新运行中会话的可变字段（消息、进度）。
+   * 仅允许在 status === 'running' 时更新，避免终端状态后写入陈旧数据。
+   */
+  updateRunningSession(
+    agentId: AgentId,
+    updates: { messages?: Message[]; progress?: AgentProgress },
+  ): AgentSession | undefined {
+    const session = this.loadSession(agentId);
+    if (!session || session.status !== 'running') {
+      return undefined;
+    }
+    return this.updateSession(agentId, updates);
+  }
+
+  /**
+   * 标记会话完成（成功或失败）。
    */
   markCompleted(
     agentId: AgentId,
@@ -229,6 +244,24 @@ export class AgentSessionStore {
       result,
       stats,
       completedAt: Date.now(),
+      progress: undefined,
+    });
+  }
+
+  /**
+   * 标记会话已取消。
+   */
+  markCancelled(
+    agentId: AgentId,
+    result?: { success: false; message: string; error?: string },
+    stats?: AgentSession['stats'],
+  ): AgentSession | undefined {
+    return this.updateSession(agentId, {
+      status: 'cancelled',
+      result: result ?? { success: false, message: '' },
+      stats,
+      completedAt: Date.now(),
+      progress: undefined,
     });
   }
 

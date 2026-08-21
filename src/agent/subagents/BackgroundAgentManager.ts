@@ -17,8 +17,8 @@ import type { Message } from '../../services/ChatServiceInterface.js';
 import { AgentId } from '../../types/branded.js';
 import type { BladeConfig, PermissionMode } from '../../types/common.js';
 import type {
-    AgentSession,
-    AgentSessionStore,
+  AgentSession,
+  AgentSessionStore,
 } from './AgentSessionStore.js';
 import { runSubagent } from './runSubagent.js';
 import type { SubagentRegistry } from './SubagentRegistry.js';
@@ -130,15 +130,14 @@ export class BackgroundAgentManager {
 
         if (!isInMemory || age > maxOrphanAge) {
           this.logger.warn(`Cleaning up orphaned agent session: ${session.id}`);
-          this.sessionStore.updateSession(session.id, {
-            status: 'failed',
-            result: {
+          this.sessionStore.markCompleted(
+            session.id,
+            {
               success: false,
               message: '',
               error: 'Session was orphaned (process restart or timeout)',
             },
-            completedAt: now,
-          });
+          );
         }
       }
     }
@@ -268,11 +267,11 @@ export class BackgroundAgentManager {
         messages,
         signal: workSignal,
         onProgress: (progress) => {
-          this.sessionStore.updateSession(agentId, { progress });
+          this.sessionStore.updateRunningSession(agentId, { progress });
         },
       });
 
-      this.sessionStore.updateSession(agentId, {
+      this.sessionStore.updateRunningSession(agentId, {
         messages,
       });
 
@@ -301,16 +300,15 @@ export class BackgroundAgentManager {
           };
 
       if (wasCancelled && !result.success) {
-        this.sessionStore.updateSession(agentId, {
-          status: 'cancelled',
-          result: {
+        this.sessionStore.markCancelled(
+          agentId,
+          {
             success: false,
             message: result.message,
             error: result.error,
           },
-          stats: result.stats,
-          completedAt: Date.now(),
-        });
+          result.stats,
+        );
       } else {
         this.sessionStore.markCompleted(
           agentId,
@@ -345,16 +343,15 @@ export class BackgroundAgentManager {
         this.sessionStore.loadSession(agentId)?.status === 'cancelled';
 
       if (wasCancelled) {
-        this.sessionStore.updateSession(agentId, {
-          status: 'cancelled',
-          result: {
+        this.sessionStore.markCancelled(
+          agentId,
+          {
             success: false,
             message: '',
             error: errorMessage,
           },
-          stats: { duration },
-          completedAt: Date.now(),
-        });
+          { duration },
+        );
       } else {
         this.sessionStore.markCompleted(
           agentId,
@@ -485,7 +482,7 @@ export class BackgroundAgentManager {
       const session = this.sessionStore.loadSession(agentId);
       if (session && session.status === 'running') {
         // 更新状态为已取消
-        this.sessionStore.updateSession(agentId, { status: 'cancelled' });
+        this.sessionStore.markCancelled(agentId);
       }
       return false;
     }
@@ -494,7 +491,7 @@ export class BackgroundAgentManager {
     runtime.lifecycleController.abort();
 
     // 更新状态
-    this.sessionStore.updateSession(agentId, { status: 'cancelled' });
+    this.sessionStore.markCancelled(agentId);
 
     this.logger.info(`Background agent cancelled: ${agentId}`);
     return true;

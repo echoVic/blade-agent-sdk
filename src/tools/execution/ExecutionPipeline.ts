@@ -67,8 +67,6 @@ interface PipelineExecutionState {
   permissionCheckResult?: { reason?: string };
   affectedPaths: string[];
   needsConfirmation: boolean;
-  toolRequestedConfirmation: boolean;
-  confirmationReason?: string;
   confirmationReasons: ConfirmationReasonEntry[];
   permissionSignature?: string;
   hookToolUseId?: ToolUseId;
@@ -186,7 +184,6 @@ export class ExecutionPipeline {
       },
       affectedPaths: [],
       needsConfirmation: false,
-      toolRequestedConfirmation: false,
       confirmationReasons: [],
     };
 
@@ -429,7 +426,6 @@ export class ExecutionPipeline {
 
       if (toolPermissionResult?.behavior === 'ask') {
         state.needsConfirmation = true;
-        state.toolRequestedConfirmation = true;
         addConfirmationReason(state, 'tool', toolPermissionResult.message);
       }
 
@@ -704,10 +700,9 @@ export class ExecutionPipeline {
         }
         if (state.permissionSignature && this.sessionApprovals.has(state.permissionSignature)) {
           state.needsConfirmation = false;
-          state.confirmationReason = undefined;
           state.confirmationReasons = [];
         }
-        if (!state.toolRequestedConfirmation && !state.confirmationReason) {
+        if (!hasToolRequestedConfirmation(state) && !getConfirmationReason(state)) {
           state.needsConfirmation = false;
         }
         this.logger.debug(`permissionHandler allowed: ${state.toolName}`);
@@ -780,7 +775,7 @@ export class ExecutionPipeline {
 
       const confirmationDetails: ConfirmationDetails = {
         title: confirmationTitle,
-        message: state.confirmationReason || '此操作需要用户确认',
+        message: getConfirmationReason(state) || '此操作需要用户确认',
         kind: state.resolvedBehavior?.kind ?? state.tool.kind,
         details: this.generatePreviewForTool(state.tool.name, state.params),
         risks: this.extractRisksFromPermissionCheck(
@@ -1123,7 +1118,16 @@ function addConfirmationReason(
 ): void {
   const msg = message || defaultReasonMessage(source);
   state.confirmationReasons.push({ source, message: msg });
-  state.confirmationReason = combineConfirmationReasons(state.confirmationReasons);
+}
+
+/** Tool itself requested confirmation (vs. rule/path/hook/handler). */
+function hasToolRequestedConfirmation(state: PipelineExecutionState): boolean {
+  return state.confirmationReasons.some((r) => r.source === 'tool');
+}
+
+/** Combined, de-duplicated confirmation message derived from all reasons. */
+function getConfirmationReason(state: PipelineExecutionState): string | undefined {
+  return combineConfirmationReasons(state.confirmationReasons);
 }
 
 function defaultReasonMessage(source: ConfirmationReasonSource): string {
