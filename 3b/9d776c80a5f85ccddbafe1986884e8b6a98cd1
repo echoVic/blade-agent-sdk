@@ -1,0 +1,24 @@
+src/context/storage/PersistentStore.ts
+  s_4c33c264d8f24c::t_1d07cfc9b9ac34 70-74
+  s_4c33c264d8f24c::t_cd72518955ebfe 532
+  s_4c33c264d8f24c::t_41ce4ae739cd6c 9-15,19-22,109-110,113-122,139
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "3b9d776c80a5f85ccddbafe1986884e8b6a98cd1",
+  "prompts": {},
+  "sessions": {
+    "s_4c33c264d8f24c": {
+      "agent_id": {
+        "tool": "trae",
+        "id": "6a8686761ae06a11e91be747",
+        "model": "Doubao-Seed-Evolving__dev",
+        "display_model_name": "Seed-Evolving"
+      },
+      "human_author": "echoVic <137844255@qq.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
