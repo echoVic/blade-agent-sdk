@@ -6,20 +6,20 @@ import { JsonlSessionStore } from '../../session/SessionStore.js';
 import { MessageId, SessionId } from '../../types/branded.js';
 import type { JsonObject, JsonValue, MessageRole } from '../../types/common.js';
 import type {
-  ContextData,
-  ConversationContext,
-  MessageInfo,
-  PartInfo,
-  SessionContext,
-  SessionEvent,
-  SessionInfo,
+    ContextData,
+    ConversationContext,
+    MessageInfo,
+    PartInfo,
+    SessionContext,
+    SessionEvent,
+    SessionInfo,
 } from '../types.js';
 import { JSONLStore } from './JSONLStore.js';
 import {
-  detectGitBranch,
-  getSessionFilePathFromStorageRoot,
-  listProjectDirectories,
-  normalizeSessionStorageRoot
+    detectGitBranch,
+    getSessionFilePathFromStorageRoot,
+    listProjectDirectories,
+    normalizeSessionStorageRoot
 } from './pathUtils.js';
 
 function extractMimeType(url: string): string | undefined {
@@ -67,6 +67,11 @@ export class PersistentStore {
   private readonly projectPath?: string;
   private readonly maxSessions: number;
   private readonly version: string;
+  /**
+   * 已确认存在（已创建或已检测到文件）的会话 ID 集合。
+   * 避免每次写入都全量读取 JSONL 文件来判断 session_created 是否已写入。
+   */
+  private readonly knownSessions = new Set<string>();
 
   constructor(
     storageRoot: string,
@@ -101,10 +106,20 @@ export class PersistentStore {
     sessionId: SessionId,
     subagentInfo?: { parentSessionId: string; subagentType: string; isSidechain: boolean }
   ): Promise<void> {
+    if (this.knownSessions.has(sessionId)) return;
+
     const filePath = getSessionFilePathFromStorageRoot(this.storageRoot, sessionId);
     const store = new JSONLStore(filePath);
-    const stats = await store.getStats();
-    if (stats.lineCount > 0) return;
+
+    // 冷路径：用单次 access 检查文件是否已存在，而非读取整个文件
+    try {
+      await fs.access(filePath);
+      this.knownSessions.add(sessionId);
+      return;
+    } catch {
+      // 文件不存在，需要写入 session_created 事件
+    }
+
     const now = new Date().toISOString();
     const sessionInfo: SessionInfo = {
       sessionId,
@@ -121,6 +136,7 @@ export class PersistentStore {
     };
     const entry = this.createEvent('session_created', sessionId, sessionInfo);
     await store.append(entry);
+    this.knownSessions.add(sessionId);
   }
 
   private buildCompactionMetadata(metadata: {
@@ -513,6 +529,7 @@ export class PersistentStore {
    * 删除会话数据
    */
   async deleteSession(sessionId: SessionId): Promise<void> {
+    this.knownSessions.delete(sessionId);
     try {
       const filePath = getSessionFilePathFromStorageRoot(this.storageRoot, sessionId);
       const store = new JSONLStore(filePath);
