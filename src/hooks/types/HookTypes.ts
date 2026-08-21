@@ -884,25 +884,7 @@ export interface ProcessResult {
 /**
  * Hook 执行结果
  */
-export interface HookExecutionResult {
-  /** 是否成功 */
-  success: boolean;
-
-  /** 是否阻塞 */
-  blocking?: boolean;
-
-  /** 是否需要用户确认 (ask 行为) */
-  needsConfirmation?: boolean;
-
-  /** 错误信息 */
-  error?: string;
-
-  /** 警告信息 */
-  warning?: string;
-
-  /** 解析后的输出 */
-  output?: HookOutput;
-
+interface HookExecutionResultBase {
   /** 原始标准输出 */
   stdout?: string;
 
@@ -915,6 +897,21 @@ export interface HookExecutionResult {
   /** Hook 配置 */
   hook?: Hook;
 }
+
+/**
+ * Hook 执行结果（判别联合）。
+ *
+ * - success: 执行成功，可能携带解析后的 output
+ * - blocked: 阻塞性错误，应拒绝执行
+ * - needs_confirmation: 需要用户确认后继续
+ * - warning: 非阻塞警告，记录后继续
+ */
+export type HookExecutionResult = HookExecutionResultBase & (
+  | { status: 'success'; output?: HookOutput }
+  | { status: 'blocked'; error: string }
+  | { status: 'needs_confirmation'; warning: string }
+  | { status: 'warning'; warning: string }
+);
 
 /**
  * PreToolUse Hook 执行结果

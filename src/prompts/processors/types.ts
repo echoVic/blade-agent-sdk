@@ -29,9 +29,14 @@ export interface AtMention {
 }
 
 /**
- * 附件类型
+ * 文件附件
  */
-export type AttachmentType = 'file' | 'directory' | 'error';
+export interface FileAttachment {
+  type: 'file';
+  path: string;
+  content: string;
+  metadata: AttachmentMetadata;
+}
 
 /**
  * 附件元数据
@@ -48,20 +53,29 @@ export interface AttachmentMetadata {
 }
 
 /**
- * 附件对象
+ * 目录附件
  */
-export interface Attachment {
-  /** 附件类型 */
-  type: AttachmentType;
-  /** 相对路径 */
+export interface DirectoryAttachment {
+  type: 'directory';
   path: string;
-  /** 文件内容 */
   content: string;
-  /** 元数据 */
   metadata?: AttachmentMetadata;
-  /** 错误信息（type='error' 时使用） */
-  error?: string;
 }
+
+/**
+ * 错误附件（读取失败时）
+ */
+export interface ErrorAttachment {
+  type: 'error';
+  path: string;
+  content: '';
+  error: string;
+}
+
+/**
+ * 附件对象（判别联合）
+ */
+export type Attachment = FileAttachment | DirectoryAttachment | ErrorAttachment;
 
 /**
  * 附件收集器选项

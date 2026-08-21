@@ -77,27 +77,22 @@ export class HookExecutor {
         const result = await this.executeHook(hook, hookInput as HookInput, context);
 
         // 处理结果
-        if (!result.success) {
-          if (result.blocking) {
-            // 阻塞错误 - 立即返回 deny
-            return {
-              decision: 'deny',
-              reason: result.error,
-            };
-          }
+        if (result.status === 'blocked') {
+          return {
+            decision: 'deny',
+            reason: result.error,
+          };
+        }
 
-          if (result.needsConfirmation) {
-            // 需要确认 - 返回 ask
-            return {
-              decision: 'ask',
-              reason: result.warning || result.error,
-            };
-          }
+        if (result.status === 'needs_confirmation') {
+          return {
+            decision: 'ask',
+            reason: result.warning,
+          };
+        }
 
-          // 非阻塞错误 - 记录警告,继续
-          if (result.warning) {
-            warnings.push(result.warning);
-          }
+        if (result.status === 'warning') {
+          warnings.push(result.warning);
           continue;
         }
 
@@ -188,8 +183,11 @@ export class HookExecutor {
     const warnings: string[] = [];
 
     for (const result of results) {
-      if (!result.success && result.warning) {
+      if (result.status === 'warning') {
         warnings.push(result.warning);
+        continue;
+      }
+      if (result.status !== 'success') {
         continue;
       }
 
@@ -235,10 +233,10 @@ export class HookExecutor {
       try {
         const result = await this.executeHook(hook, input, context);
 
-        if (!result.success) {
-          if (result.warning) {
-            warnings.push(result.warning);
-          }
+        if (result.status === 'warning') {
+          warnings.push(result.warning);
+        }
+        if (result.status !== 'success') {
           continue;
         }
 
@@ -283,16 +281,16 @@ export class HookExecutor {
       try {
         const result = await this.executeHook(hook, input, context);
 
-        if (!result.success) {
-          if (result.blocking) {
-            return {
-              proceed: false,
-              warning: result.error,
-            };
-          }
-          if (result.warning) {
-            warnings.push(result.warning);
-          }
+        if (result.status === 'blocked') {
+          return {
+            proceed: false,
+            warning: result.error,
+          };
+        }
+        if (result.status === 'warning') {
+          warnings.push(result.warning);
+        }
+        if (result.status !== 'success') {
           continue;
         }
 
@@ -333,10 +331,10 @@ export class HookExecutor {
       try {
         const result = await this.executeHook(hook, input, context);
 
-        if (!result.success) {
-          if (result.warning) {
-            warnings.push(result.warning);
-          }
+        if (result.status === 'warning') {
+          warnings.push(result.warning);
+        }
+        if (result.status !== 'success') {
           continue;
         }
 
@@ -387,17 +385,17 @@ export class HookExecutor {
       try {
         const result = await this.executeHook(hook, input, context);
 
-        if (!result.success) {
-          if (result.blocking) {
-            return {
-              allowCompletion: false,
-              blockReason: result.error,
-              warning: warnings.length > 0 ? warnings.join('\n') : undefined,
-            };
-          }
-          if (result.warning) {
-            warnings.push(result.warning);
-          }
+        if (result.status === 'blocked') {
+          return {
+            allowCompletion: false,
+            blockReason: result.error,
+            warning: warnings.length > 0 ? warnings.join('\n') : undefined,
+          };
+        }
+        if (result.status === 'warning') {
+          warnings.push(result.warning);
+        }
+        if (result.status !== 'success') {
           continue;
         }
 
@@ -441,10 +439,10 @@ export class HookExecutor {
       try {
         const result = await this.executeHook(hook, input, context);
 
-        if (!result.success) {
-          if (result.warning) {
-            warnings.push(result.warning);
-          }
+        if (result.status === 'warning') {
+          warnings.push(result.warning);
+        }
+        if (result.status !== 'success') {
           continue;
         }
 
@@ -493,17 +491,17 @@ export class HookExecutor {
       try {
         const result = await this.executeHook(hook, input, context);
 
-        if (!result.success) {
-          if (result.blocking) {
-            // 阻塞错误，停止处理
-            return {
-              proceed: false,
-              warning: result.error,
-            };
-          }
-          if (result.warning) {
-            warnings.push(result.warning);
-          }
+        if (result.status === 'blocked') {
+          // 阻塞错误，停止处理
+          return {
+            proceed: false,
+            warning: result.error,
+          };
+        }
+        if (result.status === 'warning') {
+          warnings.push(result.warning);
+        }
+        if (result.status !== 'success') {
           continue;
         }
 
@@ -557,16 +555,16 @@ export class HookExecutor {
       try {
         const result = await this.executeHook(hook, input, context);
 
-        if (!result.success) {
-          if (result.blocking) {
-            return {
-              proceed: false,
-              warning: result.error,
-            };
-          }
-          if (result.warning) {
-            warnings.push(result.warning);
-          }
+        if (result.status === 'blocked') {
+          return {
+            proceed: false,
+            warning: result.error,
+          };
+        }
+        if (result.status === 'warning') {
+          warnings.push(result.warning);
+        }
+        if (result.status !== 'success') {
           continue;
         }
 
@@ -611,7 +609,7 @@ export class HookExecutor {
     );
 
     for (const result of results) {
-      if (!result.success && result.warning) {
+      if (result.status === 'warning') {
         warnings.push(result.warning);
       }
     }
@@ -645,7 +643,7 @@ export class HookExecutor {
     );
 
     for (const result of results) {
-      if (!result.success && result.warning) {
+      if (result.status === 'warning') {
         warnings.push(result.warning);
         continue;
       }
@@ -685,10 +683,10 @@ export class HookExecutor {
       try {
         const result = await this.executeHook(hook, input, context);
 
-        if (!result.success) {
-          if (result.warning) {
-            warnings.push(result.warning);
-          }
+        if (result.status === 'warning') {
+          warnings.push(result.warning);
+        }
+        if (result.status !== 'success') {
           continue;
         }
 
@@ -733,10 +731,10 @@ export class HookExecutor {
       try {
         const result = await this.executeHook(hook, input, context);
 
-        if (!result.success) {
-          if (result.warning) {
-            warnings.push(result.warning);
-          }
+        if (result.status === 'warning') {
+          warnings.push(result.warning);
+        }
+        if (result.status !== 'success') {
           continue;
         }
 
@@ -780,10 +778,10 @@ export class HookExecutor {
       try {
         const result = await this.executeHook(hook, input, context);
 
-        if (!result.success) {
-          if (result.warning) {
-            warnings.push(result.warning);
-          }
+        if (result.status === 'warning') {
+          warnings.push(result.warning);
+        }
+        if (result.status !== 'success') {
           continue;
         }
 
@@ -827,10 +825,10 @@ export class HookExecutor {
       try {
         const result = await this.executeHook(hook, input, context);
 
-        if (!result.success) {
-          if (result.warning) {
-            warnings.push(result.warning);
-          }
+        if (result.status === 'warning') {
+          warnings.push(result.warning);
+        }
+        if (result.status !== 'success') {
           continue;
         }
 
@@ -874,10 +872,10 @@ export class HookExecutor {
       try {
         const result = await this.executeHook(hook, input, context);
 
-        if (!result.success) {
-          if (result.warning) {
-            warnings.push(result.warning);
-          }
+        if (result.status === 'warning') {
+          warnings.push(result.warning);
+        }
+        if (result.status !== 'success') {
           continue;
         }
 
@@ -919,10 +917,8 @@ export class HookExecutor {
       try {
         const result = await this.executeHook(hook, input, context);
 
-        if (!result.success) {
-          if (result.warning) {
-            warnings.push(result.warning);
-          }
+        if (result.status === 'warning') {
+          warnings.push(result.warning);
         }
       } catch (err) {
         const errorMsg = err instanceof Error ? err.message : String(err);
@@ -956,10 +952,10 @@ export class HookExecutor {
       try {
         const result = await this.executeHook(hook, input, context);
 
-        if (!result.success) {
-          if (result.warning) {
-            warnings.push(result.warning);
-          }
+        if (result.status === 'warning') {
+          warnings.push(result.warning);
+        }
+        if (result.status !== 'success') {
           continue;
         }
 
@@ -1003,10 +999,10 @@ export class HookExecutor {
       try {
         const result = await this.executeHook(hook, input, context);
 
-        if (!result.success) {
-          if (result.warning) {
-            warnings.push(result.warning);
-          }
+        if (result.status === 'warning') {
+          warnings.push(result.warning);
+        }
+        if (result.status !== 'success') {
           continue;
         }
 
@@ -1047,10 +1043,10 @@ export class HookExecutor {
       try {
         const result = await this.executeHook(hook, input, context);
 
-        if (!result.success) {
-          if (result.warning) {
-            warnings.push(result.warning);
-          }
+        if (result.status === 'warning') {
+          warnings.push(result.warning);
+        }
+        if (result.status !== 'success') {
           continue;
         }
 
@@ -1097,8 +1093,11 @@ export class HookExecutor {
     );
 
     for (const result of results) {
-      if (!result.success && result.warning) {
+      if (result.status === 'warning') {
         warnings.push(result.warning);
+        continue;
+      }
+      if (result.status !== 'success') {
         continue;
       }
 
@@ -1138,7 +1137,7 @@ export class HookExecutor {
     );
 
     for (const result of results) {
-      if (!result.success && result.warning) {
+      if (result.status === 'warning') {
         warnings.push(result.warning);
       }
     }
@@ -1189,9 +1188,8 @@ export class HookExecutor {
       });
     } catch (err) {
       return {
-        success: false,
-        blocking: false,
-        error: err instanceof Error ? err.message : String(err),
+        status: 'warning',
+        warning: err instanceof Error ? err.message : String(err),
         hook,
       };
     }
@@ -1218,9 +1216,8 @@ export class HookExecutor {
 
       // 创建新的 hook 执行 Promise
       const promise = this.executeHook(hook, input, context).catch((err) => ({
-        success: false,
-        blocking: false,
-        error: err instanceof Error ? err.message : String(err),
+        status: 'warning' as const,
+        warning: err instanceof Error ? err.message : String(err),
         hook,
       }));
 

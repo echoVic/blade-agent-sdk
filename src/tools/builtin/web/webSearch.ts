@@ -181,8 +181,8 @@ async function searchWithProvider(
     };
   }
 
-  // 如果提供商有 SDK 搜索函数，优先使用
-  if (provider.searchFn) {
+  // SDK 提供商（如 Exa）直接调用 searchFn，绕过 HTTP
+  if (provider.kind === 'sdk') {
     try {
       updateOutput?.(`🔍 搜索中 (${provider.name})...`);
       const results = await provider.searchFn(query);
@@ -196,7 +196,7 @@ async function searchWithProvider(
     }
   }
 
-  // 否则使用 HTTP 请求（兼容旧提供商）
+  // HTTP 提供商
   updateOutput?.(`🔍 搜索中 (${provider.name})...`);
 
   const url = provider.buildUrl(query);

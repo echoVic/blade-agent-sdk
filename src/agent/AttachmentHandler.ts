@@ -74,7 +74,7 @@ export class AttachmentHandler {
 
     for (const att of attachments) {
       if (att.type === 'file') {
-        const lineInfo = att.metadata?.lineRange
+        const lineInfo = att.metadata.lineRange
           ? ` (lines ${att.metadata.lineRange.start}${att.metadata.lineRange.end ? `-${att.metadata.lineRange.end}` : ''})`
           : '';
 
@@ -134,7 +134,7 @@ export class AttachmentHandler {
 
     for (const att of attachments) {
       if (att.type === 'file') {
-        const lineInfo = att.metadata?.lineRange
+        const lineInfo = att.metadata.lineRange
           ? ` (lines ${att.metadata.lineRange.start}${att.metadata.lineRange.end ? `-${att.metadata.lineRange.end}` : ''})`
           : '';
 
