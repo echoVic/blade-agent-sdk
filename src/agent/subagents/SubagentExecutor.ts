@@ -1,9 +1,8 @@
 import { nanoid } from 'nanoid';
-import { SessionId } from '../../types/branded.js';
 import type { BladeConfig } from '../../types/common.js';
-import { Agent } from '../Agent.js';
 import type { SubagentRegistry } from './SubagentRegistry.js';
 import type { SubagentConfig, SubagentContext, SubagentResult } from './types.js';
+import { runSubagent } from './runSubagent.js';
 
 /**
  * Subagent 执行器
@@ -31,54 +30,19 @@ export class SubagentExecutor {
     const agentId = context.subagentSessionId ?? nanoid();
 
     try {
-      const systemPrompt = this.buildSystemPrompt(context);
-
-      const modelId =
-        this.config.model && this.config.model !== 'inherit'
-          ? this.config.model
-          : undefined;
-      const agent = await Agent.create(this.bladeConfig, {
-        toolWhitelist: this.config.tools,
-        modelId,
-      }, {
+      const loopResult = await runSubagent({
+        config: this.config,
+        bladeConfig: this.bladeConfig,
         subagentRegistry: this.subagentRegistry,
-        defaultContext: context.snapshot
-          ? context.snapshot.context
-          : {},
+        prompt: context.prompt,
+        agentId,
+        parentSessionId: context.parentSessionId,
+        permissionMode: context.permissionMode,
+        snapshot: context.snapshot,
+        omitEnvironment: context.omitEnvironment ?? this.config.omitEnvironment,
       });
 
-      let finalMessage = '';
-      let toolCallCount = 0;
-      let tokensUsed = 0;
-
-      const subagentInfo = {
-        parentSessionId: context.parentSessionId || '',
-        subagentType: this.config.name,
-        // Mark as sidechain so the subagent's messages are stored in a
-        // separate session tree and do not pollute the parent session's
-        // persistent store.
-        isSidechain: true,
-      };
-      
-      const loopResult = await agent.runAgenticLoop(
-        context.prompt,
-        {
-          messages: [],
-          userId: 'subagent',
-          sessionId: SessionId(agentId),
-          snapshot: context.snapshot,
-          permissionMode: context.permissionMode,
-          systemPrompt,
-          subagentInfo,
-          omitEnvironment: context.omitEnvironment ?? this.config.omitEnvironment,
-        }
-      );
-
-      if (loopResult.success) {
-        finalMessage = loopResult.finalMessage || '';
-        toolCallCount = loopResult.metadata?.toolCallsCount || 0;
-        tokensUsed = loopResult.metadata?.tokensUsed || 0;
-      } else {
+      if (!loopResult.success) {
         throw new Error(loopResult.error?.message || 'Subagent execution failed');
       }
 
@@ -86,11 +50,11 @@ export class SubagentExecutor {
 
       return {
         success: true,
-        message: finalMessage,
+        message: loopResult.finalMessage || '',
         agentId,
         stats: {
-          tokens: tokensUsed,
-          toolCalls: toolCallCount,
+          tokens: loopResult.metadata?.tokensUsed || 0,
+          toolCalls: loopResult.metadata?.toolCallsCount || 0,
           duration,
         },
       };
@@ -106,9 +70,5 @@ export class SubagentExecutor {
         },
       };
     }
-  }
-
-  private buildSystemPrompt(_context: SubagentContext): string {
-    return this.config.systemPrompt || '';
   }
 }

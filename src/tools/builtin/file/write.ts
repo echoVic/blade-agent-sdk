@@ -14,9 +14,8 @@ import { ToolErrorType, ToolKind } from '../../types/index.js';
 import { lazySchema } from '../../validation/lazySchema.js';
 import { ToolSchemas } from '../../validation/zodSchemas.js';
 import { generateDiffSnippet } from './diffUtils.js';
-import { FileAccessTracker } from './FileAccessTracker.js';
+import { recordWriteComplete, runWriteGuard } from './writeGuard.js';
 import { isSensitivePath } from './sensitivePathCheck.js';
-import { SnapshotManager } from './SnapshotManager.js';
 
 /**
  * WriteTool - File writer
@@ -121,53 +120,18 @@ export const writeTool = createTool({
         // 检查失败，假设文件不存在
       }
 
-      // Read-Before-Write 验证（对齐 Claude Code 官方：强制模式）
-      if (fileExists && sessionId) {
-        const tracker = FileAccessTracker.getInstance();
-
-        // 检查文件是否已读取（强制失败）
-        if (!tracker.hasFileBeenRead(file_path, sessionId)) {
-          return {
-            success: false,
-            llmContent: `If this is an existing file, you MUST use the Read tool first to read the file's contents. This tool will fail if you did not read the file first.`,
-            error: {
-              type: ToolErrorType.VALIDATION_ERROR,
-              message: 'File not read before write',
-            },
-            metadata: {
-              requiresRead: true,
-            },
-          };
-        }
-
-        // 🔴 检查文件是否被外部程序修改（强制失败）
-        const externalModCheck = await tracker.checkExternalModification(file_path);
-        if (externalModCheck.isExternal) {
-          return {
-            success: false,
-            llmContent: `The file has been modified by an external program since you last read it. You must use the Read tool again to see the current content before writing.\n\nDetails: ${externalModCheck.message}`,
-            error: {
-              type: ToolErrorType.VALIDATION_ERROR,
-              message: 'File modified externally',
-              details: { externalModification: externalModCheck.message },
-            },
-          };
-        }
+      // Read-before-write、外部修改检查、快照创建（仅对已存在文件）
+      const guard = await runWriteGuard({
+        filePath: file_path,
+        sessionId,
+        messageId,
+        operation: 'write',
+        fileExists,
+      });
+      if (guard.blocked) {
+        return guard.blocked;
       }
-
-      // 创建快照（如果文件存在且有 sessionId 和 messageId）
-      let snapshotCreated = false;
-      if (fileExists && sessionId && messageId) {
-        try {
-          const snapshotManager = new SnapshotManager({ sessionId });
-          await snapshotManager.initialize();
-          await snapshotManager.createSnapshot(file_path, messageId);
-          snapshotCreated = true;
-        } catch (error) {
-          console.warn('[WriteTool] 创建快照失败:', error);
-          // 快照失败不中断写入操作
-        }
-      }
+      const snapshotCreated = guard.snapshotCreated;
 
       if (typeof signal.throwIfAborted === 'function') {
         signal.throwIfAborted();
@@ -192,11 +156,8 @@ export const writeTool = createTool({
         await fs.writeFile(file_path, writeBuffer);
       }
 
-      // 🔴 更新文件访问记录（记录写入操作）
-      if (sessionId) {
-        const tracker = FileAccessTracker.getInstance();
-        await tracker.recordFileEdit(file_path, sessionId, 'write');
-      }
+      // 更新文件访问记录（记录写入操作）
+      await recordWriteComplete(file_path, sessionId, 'write');
 
       if (typeof signal.throwIfAborted === 'function') {
         signal.throwIfAborted();

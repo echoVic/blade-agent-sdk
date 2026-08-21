@@ -14,13 +14,13 @@ import { join } from 'node:path';
 import { type InternalLogger, LogCategory, NOOP_LOGGER } from '../../logging/Logger.js';
 import type { ContextSnapshot } from '../../runtime/index.js';
 import type { Message } from '../../services/ChatServiceInterface.js';
-import { AgentId, SessionId } from '../../types/branded.js';
+import { AgentId } from '../../types/branded.js';
 import type { BladeConfig, PermissionMode } from '../../types/common.js';
-import { Agent } from '../Agent.js';
 import type {
-  AgentSession,
-  AgentSessionStore,
+    AgentSession,
+    AgentSessionStore,
 } from './AgentSessionStore.js';
+import { runSubagent } from './runSubagent.js';
 import type { SubagentRegistry } from './SubagentRegistry.js';
 import type { SubagentConfig, SubagentResult } from './types.js';
 
@@ -255,36 +255,17 @@ export class BackgroundAgentManager {
         throw new Error('Agent execution was cancelled');
       }
 
-      const systemPrompt = config.systemPrompt || '';
-      const modelId =
-        config.model && config.model !== 'inherit' ? config.model : undefined;
-      const agent = await Agent.create(bladeConfig, {
-        systemPrompt,
-        toolWhitelist: config.tools,
-        modelId,
-      }, {
+      const messages = existingMessages ?? [];
+      const loopResult = await runSubagent({
+        config,
+        bladeConfig,
         subagentRegistry,
-        defaultContext: snapshot
-          ? snapshot.context
-          : {},
-      });
-
-      const context = {
-        messages: existingMessages || [],
-        userId: 'subagent',
-        sessionId: SessionId(agentId),
-        snapshot,
+        prompt,
+        agentId,
+        parentSessionId,
         permissionMode,
-        subagentInfo: {
-          parentSessionId: parentSessionId || '',
-          subagentType: config.name,
-          // Background agents run in a separate session tree; mark as sidechain
-          // so their messages are not written into the parent session's store.
-          isSidechain: true,
-        },
-      };
-
-      const loopResult = await agent.runAgenticLoop(prompt, context, {
+        snapshot,
+        messages,
         signal: workSignal,
         onProgress: (progress) => {
           this.sessionStore.updateSession(agentId, { progress });
@@ -292,7 +273,7 @@ export class BackgroundAgentManager {
       });
 
       this.sessionStore.updateSession(agentId, {
-        messages: context.messages,
+        messages,
       });
 
       const duration = Date.now() - startTime;
