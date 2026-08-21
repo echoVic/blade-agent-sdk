@@ -155,7 +155,13 @@ describe('agentLoop streaming integration', () => {
       throw new Error('streamResponse should not be used when tools are present');
     });
     void streamResponse;
-    const onAfterToolExec = vi.fn();
+    const hookOrder: string[] = [];
+    const onAssistantMessage = vi.fn(async () => {
+      hookOrder.push('assistant');
+    });
+    const onAfterToolExec = vi.fn(async () => {
+      hookOrder.push('tool-result');
+    });
 
     const loopPromise = collectEvents(
       agentLoop(
@@ -167,6 +173,7 @@ describe('agentLoop streaming integration', () => {
             }),
             execute,
           } as unknown as AgentLoopConfig['executionPipeline'],
+          onAssistantMessage,
           onAfterToolExec,
           turnState: {
             chatService: {
@@ -204,6 +211,7 @@ describe('agentLoop streaming integration', () => {
     expect(result.success).toBe(true);
     expect(result.finalMessage).toBe('exit now');
     expect(onAfterToolExec).toHaveBeenCalledTimes(1);
+    expect(hookOrder).toEqual(['assistant', 'tool-result']);
 
     const eventTypes = events.map((event) => event.type);
     expect(eventTypes.filter((type) => type === 'stream_end')).toHaveLength(1);

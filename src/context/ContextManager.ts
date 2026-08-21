@@ -14,7 +14,11 @@ import { ContextCompressor } from './processors/ContextCompressor.js';
 import { ContextFilter } from './processors/ContextFilter.js';
 import { CacheStore } from './storage/CacheStore.js';
 import { MemoryStore } from './storage/MemoryStore.js';
-import { NoopPersistentStore, PersistentStore } from './storage/PersistentStore.js';
+import {
+  NoopPersistentStore,
+  PersistentStore,
+  type PersistedToolUse,
+} from './storage/PersistentStore.js';
 import type {
   CompressedContext,
   ContextData,
@@ -54,6 +58,7 @@ export class ContextManager {
   private readonly projectPath?: string;
 
   private currentSessionId: SessionId | null = null;
+  private readonly pendingToolUses = new Map<string, string[]>();
   private initialized = false;
 
   constructor(options: Partial<ContextManagerOptions> = {}) {
@@ -267,21 +272,33 @@ export class ContextManager {
       throw new Error('没有活动会话');
     }
 
+    const pendingToolUseKey = `${this.currentSessionId}\0${toolCall.id}`;
     if (toolCall.status === 'pending') {
-      const toolUseId = await this.persistent.saveToolUse(
+      const persisted = await this.persistent.saveToolUse(
         this.currentSessionId,
         toolCall.name,
         toolCall.input,
         null,
+        undefined,
+        toolCall.id,
       );
-      toolCall = { ...toolCall, id: toolUseId };
+      const pendingMessageIds = this.pendingToolUses.get(pendingToolUseKey) ?? [];
+      pendingMessageIds.push(persisted.messageId);
+      this.pendingToolUses.set(pendingToolUseKey, pendingMessageIds);
     } else {
+      const pendingMessageIds = this.pendingToolUses.get(pendingToolUseKey) ?? [];
+      const parentMessageId = pendingMessageIds.shift() ?? null;
+      if (pendingMessageIds.length > 0) {
+        this.pendingToolUses.set(pendingToolUseKey, pendingMessageIds);
+      } else {
+        this.pendingToolUses.delete(pendingToolUseKey);
+      }
       await this.persistent.saveToolResult(
         this.currentSessionId,
         toolCall.id,
         toolCall.name,
         toolCall.output ?? null,
-        toolCall.id,
+        parentMessageId,
         toolCall.error,
       );
     }
@@ -339,7 +356,7 @@ export class ContextManager {
       isSidechain: boolean;
     },
     requestedToolCallId?: string,
-  ): Promise<string> {
+  ): Promise<PersistedToolUse> {
     return this.persistent.saveToolUse(
       sessionId,
       toolName,

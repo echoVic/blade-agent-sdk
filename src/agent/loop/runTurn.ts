@@ -175,7 +175,6 @@ async function* runStreamingWithTools(
       hooks: {
         onBeforeToolExec: toolHooks.onBeforeExec,
       },
-      onAfterToolExec: toolHooks.onAfterExec,
       onAfterToolExecEpochDiscard: toolHooks.onAfterExecEpochDiscard,
       onContentDelta: (delta) => queue.enqueue({ type: 'content_delta', delta }),
       onThinkingDelta: (delta) => queue.enqueue({ type: 'thinking_delta', delta }),
