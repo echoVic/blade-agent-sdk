@@ -303,6 +303,31 @@ export function createDeepSeekTokenBudgetCostConfig(
   };
 }
 
+interface DeepSeekTokenBreakdown {
+  inputCacheHitTokens: number;
+  inputCacheMissTokens: number;
+  reasoningOutputTokens: number;
+  outputTokens: number;
+}
+
+/**
+ * 从 UsageInfo 推导 token 分解：缓存命中/未命中、推理输出、普通输出。
+ */
+function deriveDeepSeekTokenBreakdown(usage: UsageInfo): DeepSeekTokenBreakdown {
+  const inputCacheHitTokens = usage.cacheReadInputTokens ?? 0;
+  const inputCacheMissTokens = usage.cacheMissInputTokens
+    ?? usage.billableInputTokens
+    ?? Math.max((usage.promptTokens ?? 0) - inputCacheHitTokens, 0);
+  const reasoningOutputTokens = usage.reasoningTokens ?? 0;
+  const outputTokens = Math.max((usage.completionTokens ?? 0) - reasoningOutputTokens, 0);
+  return {
+    inputCacheHitTokens,
+    inputCacheMissTokens,
+    reasoningOutputTokens,
+    outputTokens,
+  };
+}
+
 export function calculateDeepSeekCost(
   usage: UsageInfo,
   model?: string,
@@ -310,12 +335,12 @@ export function calculateDeepSeekCost(
 ): DeepSeekCostBreakdown | undefined {
   if (!pricing) return undefined;
 
-  const inputCacheHitTokens = usage.cacheReadInputTokens ?? 0;
-  const inputCacheMissTokens = usage.cacheMissInputTokens
-    ?? usage.billableInputTokens
-    ?? Math.max((usage.promptTokens ?? 0) - inputCacheHitTokens, 0);
-  const reasoningOutputTokens = usage.reasoningTokens ?? 0;
-  const outputTokens = Math.max((usage.completionTokens ?? 0) - reasoningOutputTokens, 0);
+  const {
+    inputCacheHitTokens,
+    inputCacheMissTokens,
+    reasoningOutputTokens,
+    outputTokens,
+  } = deriveDeepSeekTokenBreakdown(usage);
   const inputCacheHitCost = inputCacheHitTokens * pricing.inputCacheHit;
   const inputCacheMissCost = inputCacheMissTokens * pricing.inputCacheMiss;
   const outputCost = outputTokens * pricing.output;
@@ -362,15 +387,16 @@ export class DeepSeekCostTracker {
 
     const breakdown = calculateDeepSeekCost(usage, this.model, this.pricing);
     if (!breakdown) {
-      const cacheHitTokens = usage.cacheReadInputTokens ?? 0;
-      const cacheMissTokens = usage.cacheMissInputTokens
-        ?? usage.billableInputTokens
-        ?? Math.max((usage.promptTokens ?? 0) - cacheHitTokens, 0);
-      const reasoningTokens = usage.reasoningTokens ?? 0;
-      this.inputCacheHitTokens += cacheHitTokens;
-      this.inputCacheMissTokens += cacheMissTokens;
-      this.reasoningOutputTokens += reasoningTokens;
-      this.outputTokens += Math.max((usage.completionTokens ?? 0) - reasoningTokens, 0);
+      const {
+        inputCacheHitTokens,
+        inputCacheMissTokens,
+        reasoningOutputTokens,
+        outputTokens,
+      } = deriveDeepSeekTokenBreakdown(usage);
+      this.inputCacheHitTokens += inputCacheHitTokens;
+      this.inputCacheMissTokens += inputCacheMissTokens;
+      this.reasoningOutputTokens += reasoningOutputTokens;
+      this.outputTokens += outputTokens;
       return undefined;
     }
 
