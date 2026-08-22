@@ -237,12 +237,15 @@ const session = await createSession({
 
 ## send / stream 交互模型
 
-Blade SDK 采用 **send + stream 两步式** 交互：`send()` 提交用户消息，`stream()` 消费 Agent 的完整输出流。
+Blade SDK 采用 **send + stream 两步式** 交互：`send()` 接受输入并返回投递结果，`stream()` 消费 Agent 的完整输出流。请求运行期间再次调用 `send()` 时，输入会按 `priority` 转向当前请求或排队到下一请求。
 
 ```ts
-// send：提交消息，返回 Promise<void>
+// send：提交消息，返回输入 ID、请求 ID 与实际投递方式
 // message 支持纯文本字符串或多模态内容数组（ContentPart[]）
-session.send(message: UserMessageContent, options?: SendOptions): Promise<void>
+session.send(
+  message: UserMessageContent,
+  options?: SendOptions,
+): Promise<InputSubmission>
 
 // stream：异步迭代消费输出
 session.stream(options?: StreamOptions): AsyncGenerator<StreamMessage>
@@ -255,8 +258,45 @@ interface SendOptions {
   signal?: AbortSignal;        // 外部取消信号
   maxTurns?: number;           // 覆盖本次请求的最大轮次
   context?: RuntimeContext;    // 本轮的运行时上下文（与 defaultContext 合并）
+  priority?: 'now' | 'next' | 'later';
+  expectedRequestId?: RequestId;
+}
+
+type InputSubmission =
+  | { status: 'started'; inputId: InputId; requestId: RequestId }
+  | { status: 'steered'; inputId: InputId; requestId: RequestId; priority: 'now' | 'next' }
+  | { status: 'queued'; inputId: InputId; priority: 'later' };
+```
+
+`priority` 在已有 pending/running 请求时生效：
+
+- `next`（默认）：不中断当前步骤，在下一个模型/工具安全点加入当前请求。
+- `now`：中断当前模型步骤及声明为 `interruptBehavior: 'cancel'` 的工具，闭合全部工具结果后加入当前请求。
+- `later`：不影响当前请求，排队为下一个独立请求。当前 `stream()` 结束后再次调用 `stream()` 消费它。
+
+`now` 触发后，流会先产生 `turn_interrupted`；若模型已经声明工具调用，SDK 会为每个调用生成或等待一个终态 `tool_result`，之后才产生 `input_applied`。被中断的模型部分输出仅用于 UI 展示，不会写回模型上下文。
+
+`expectedRequestId` 用于防止并发客户端把输入投递到错误的活动请求。请求已经 sealed 或正在停止时，`next`/`now` 会安全降级为 `later`。活动请求期间不能覆盖 `signal`、`maxTurns` 或 `context`。
+
+```ts
+const started = await session.send('分析失败原因');
+const output = session.stream();
+
+// output 正在消费时，可从另一个异步任务提交修正
+const steered = await session.send('先检查数据库连接，不要改代码', {
+  priority: 'next',
+  expectedRequestId:
+    started.status === 'started' ? started.requestId : undefined,
+});
+
+for await (const event of output) {
+  if (event.type === 'input_applied') {
+    console.log(`已应用输入 ${event.inputId}`);
+  }
 }
 ```
+
+已接受的输入有数量和字节双重上限，并通过 JSONL 记录 `input_enqueued`、`input_applied` 或 `input_cancelled`。进程重启后，尚未应用的输入会恢复为 `later`，避免绑定到已经失效的请求。
 
 ### StreamOptions
 
@@ -268,12 +308,14 @@ interface StreamOptions {
 
 ### StreamMessage 类型
 
-`stream()` 产出的是 **判别联合类型**（Discriminated Union），共 15 种：
+`stream()` 产出的是判别联合类型：
 
 ```ts
 type StreamMessage =
   | { type: 'turn_start'; turn: number; sessionId: string }
   | { type: 'turn_end'; turn: number; sessionId: string }
+  | { type: 'turn_interrupted'; inputId: InputId; requestId: RequestId; turn: number; sessionId: string }
+  | { type: 'input_applied'; inputId: InputId; requestId: RequestId; priority: 'now' | 'next'; turn: number; sessionId: string }
   | { type: 'content'; delta: string; sessionId: string }
   | { type: 'thinking'; delta: string; sessionId: string }
   | { type: 'tool_use'; id: string; name: string; input: unknown; sessionId: string }
@@ -293,6 +335,8 @@ type StreamMessage =
 | ------------- | ----------------------------------------- |
 | `turn_start`  | Agent 开始新一轮                               |
 | `turn_end`    | Agent 当前轮结束                               |
+| `turn_interrupted` | 当前模型步骤被 `now` 输入中断                  |
+| `input_applied` | 排队输入已持久化并加入模型上下文；`turn` 是目标模型轮次     |
 | `content`     | 文本内容增量（流式）                                |
 | `thinking`    | 模型思考过程增量（需 `includeThinking: true`）       |
 | `tool_use`    | Agent 发起工具调用                              |
@@ -1229,17 +1273,32 @@ session.close();
 
 ### abort()
 
-仅中止当前正在进行的请求，不关闭会话：
+终止当前正在进行的整个请求，不关闭会话。它与 `priority: 'now'` 不同：`abort()` 会取消所有工具，包括 `interruptBehavior: 'block'` 的工具；`now` 只中断当前步骤，并在安全点继续同一请求。
 
 ```ts
+const currentStream = session.stream();
 session.abort();
 
-// 会话仍然可用
-await session.send('换个思路重新试试');
+// 先排队，当前流完成清理后再消费下一请求
+await session.send('换个思路重新试试', { priority: 'later' });
+for await (const msg of currentStream) {
+  // Drain the aborted request.
+}
 for await (const msg of session.stream()) {
   if (msg.type === 'content') process.stdout.write(msg.delta);
 }
 ```
+
+### 管理待处理输入
+
+```ts
+const queued = await session.send('稍后执行', { priority: 'later' });
+
+session.getPendingInputs();
+await session.cancelInput(queued.inputId);
+```
+
+已被 AgentLoop claim 的输入不能再取消，`cancelInput()` 此时返回 `false`。
 
 ### setModel()
 
@@ -1529,11 +1588,16 @@ interface ISession extends AsyncDisposable {
   readonly messages: Message[];
 
   /**
-   * 提交用户消息
+   * 提交用户消息；空闲时启动请求，活动时按 priority 转向或排队
    * 支持纯文本字符串或多模态内容数组（ContentPart[]）
-   * 必须在调用 stream() 之前调用
    */
-  send(message: UserMessageContent, options?: SendOptions): Promise<void>;
+  send(message: UserMessageContent, options?: SendOptions): Promise<InputSubmission>;
+
+  /** 获取尚未应用的输入快照 */
+  getPendingInputs(): readonly PendingSessionInput[];
+
+  /** 取消尚未被 AgentLoop claim 的输入 */
+  cancelInput(inputId: InputId): Promise<boolean>;
 
   /**
    * 异步迭代消费 Agent 输出流
@@ -1542,7 +1606,7 @@ interface ISession extends AsyncDisposable {
   stream(options?: StreamOptions): AsyncGenerator<StreamMessage>;
 
   /** 关闭会话并释放所有资源 */
-  close(): void;
+  close(): Promise<void>;
 
   /** 中止当前正在进行的请求 */
   abort(): void;
@@ -1611,6 +1675,11 @@ export { createSession, resumeSession, forkSession, prompt };
 export type {
   SessionOptions,
   SendOptions,
+  InputSubmission,
+  PendingSessionInput,
+  InputPriority,
+  InputId,
+  RequestId,
   StreamOptions,
   StreamMessage,
   ISession,
@@ -1651,5 +1720,13 @@ export type {
 };
 
 // 常量枚举
-export { PermissionMode, HookEvent, StreamMessageType, ToolKind, MessageRole, PermissionDecision };
+export {
+  PermissionMode,
+  InputPriority,
+  HookEvent,
+  StreamMessageType,
+  ToolKind,
+  MessageRole,
+  PermissionDecision,
+};
 ```

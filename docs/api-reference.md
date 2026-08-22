@@ -48,6 +48,7 @@
 | `MemoryManager` | memory | memory 编排层 |
 | `SubagentRegistry` | subagents | 注册和发现子 Agent |
 | `SubagentExecutor` | subagents | 执行单个子 Agent |
+| `SessionInputError` | session | 输入队列容量、请求匹配或活动请求选项错误 |
 
 ## 常量 / 枚举
 
@@ -56,7 +57,8 @@
 | `PermissionMode` | `DEFAULT` / `AUTO_EDIT` / `YOLO` / `PLAN` |
 | `HookEvent` | `SessionStart` / `SessionEnd` / `UserPromptSubmit` / `PermissionRequest` / `PreToolUse` / `PostToolUse` / `PostToolUseFailure` / `TaskCompleted` / `Stop` / `SubagentStart` / `SubagentStop` / `Notification` / `Compaction` / `StopFailure` / `PreCompact` / `PostCompact` / `Elicitation` / `ElicitationResult` / `ConfigChange` / `CwdChanged` / `FileChanged` / `InstructionsLoaded` |
 | `ToolKind` | `READONLY` / `WRITE` / `EXECUTE` |
-| `StreamMessageType` | `TURN_START` / `TURN_END` / `CONTENT` / `THINKING` / `TOOL_USE` / `TOOL_PROGRESS` / `TOOL_MESSAGE` / `TOOL_RUNTIME_PATCH` / `TOOL_CONTEXT_PATCH` / `TOOL_NEW_MESSAGES` / `TOOL_PERMISSION_UPDATES` / `TOOL_RESULT` / `USAGE` / `RESULT` / `ERROR` |
+| `InputPriority` | `NOW` / `NEXT` / `LATER` |
+| `StreamMessageType` | 包含 `TURN_INTERRUPTED` / `INPUT_APPLIED` 及内容、工具、用量、结果事件 |
 | `MessageRole` | `SYSTEM` / `USER` / `ASSISTANT` / `TOOL` |
 | `PermissionDecision` | `ALLOW` / `DENY` / `ASK` |
 
@@ -69,8 +71,11 @@
 | `ISession` | Session 实例接口 |
 | `SessionOptions` | Session 创建选项 |
 | `SendOptions` | send() 选项 |
+| `InputSubmission` | 输入被 started / steered / queued 的判别联合 |
+| `PendingSessionInput` | 尚未应用的持久化输入 |
+| `InputId` / `RequestId` | 输入与活动请求的 branded identifiers |
 | `StreamOptions` | stream() 选项 |
-| `StreamMessage` | 流式消息联合类型（15 种） |
+| `StreamMessage` | Session 流式消息联合类型 |
 | `PromptResult` | prompt() 返回结果 |
 | `ResumeOptions` | resume 选项 |
 | `ForkOptions` | fork 选项 |
@@ -103,6 +108,8 @@
 | `ToolExposureMode` | 工具暴露模式 |
 | `ToolExecutionUpdate` | 工具执行过程更新事件 |
 | `FunctionDeclaration` | 函数声明（JSON Schema 格式） |
+
+`ToolBehavior.interruptBehavior` 默认为 `block`。只有能够观察 `AbortSignal` 并可靠清理资源的工具才应声明为 `cancel`。
 
 ### 工具目录
 

@@ -100,8 +100,9 @@ SDK 的所有能力都围绕 **Session（会话）** 组织。Session 是唯一�
 
 ```
 createSession() → ISession
-                    ├── send()     发送用户消息
+                    ├── send()     启动、转向或排队用户输入
                     ├── stream()   流式接收 Agent 输出
+                    ├── cancelInput() / getPendingInputs()
                     ├── close()    关闭会话
                     ├── abort()    中断当前执行
                     ├── fork()     分叉会话
@@ -114,9 +115,11 @@ createSession() → ISession
 
 每一轮交互遵循固定模式：
 
-1. 调用 `send(message)` 提交用户消息
+1. 调用 `send(message)` 提交用户消息，并取得 `InputSubmission`
 2. 调用 `stream()` 获取异步迭代器，消费所有流式事件
 3. Agent 自动执行工具调用，完成多轮推理后结束
+
+请求执行期间再次调用 `send()` 时，默认以 `priority: 'next'` 在下一个模型/工具安全点加入当前请求；也可以使用 `now` 中断当前步骤，或使用 `later` 排队到下一请求。
 
 ```ts
 await session.send('重构 src/utils.ts 中的 parseDate 函数');

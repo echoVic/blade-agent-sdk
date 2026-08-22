@@ -309,3 +309,24 @@ interface ExecutionContext {
   bladeConfig?: BladeConfig;
 }
 ```
+
+### 工具中断策略
+
+`interruptBehavior` 控制工具收到 `priority: 'now'` 的 steering 时是否取消：
+
+```ts
+const tool = createTool({
+  // ...
+  interruptBehavior: 'cancel',
+  async *execute(params, context) {
+    context.signal?.throwIfAborted();
+    // ...
+  },
+});
+```
+
+- `block` 是默认值。工具继续完成，结果落盘后再应用 steering，适合写文件、状态变更和不可撤销的外部调用。
+- `cancel` 仅用于真正监听 `context.signal`、能安全停止并在 `finally` 中释放资源的工具。
+- Session 的显式 `abort()` 和 `close()` 属于请求级终止，不受 `block` 限制。
+
+内置的 `Read`、`Glob`、`Grep`、`WebFetch`、`WebSearch` 和前台 `Bash` 明确声明为 `cancel`；后台 `Bash` 及其他内置工具为 `block`。动态 MCP 工具默认 `block`。
