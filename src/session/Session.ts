@@ -206,15 +206,24 @@ class Session implements ISession {
     try {
       const state = await this.store.loadState(this.sessionId);
       this._messages = state?.messages ?? [];
-      this.inputInbox.restore(
-        (state?.pendingInputs ?? []).map((input) => ({
-          ...input,
-          content: input.content as UserMessageContent,
-        })),
-      );
-      if (this.executionState.phase === 'idle') {
-        this.scheduleNextQueuedInput();
-      }
+      // 恢复待处理输入并调度下一个排队输入的过程会读写 executionState 与
+      // inputInbox，与其他状态转换保持一致地在 inputMutex 内完成。
+      await this.inputMutex.runExclusive(() => {
+        const dropped = this.inputInbox.restore(
+          (state?.pendingInputs ?? []).map((input) => ({
+            ...input,
+            content: input.content as UserMessageContent,
+          })),
+        );
+        if (dropped > 0) {
+          this.logger.warn(
+            `[Session] Dropped ${dropped} pending input(s) exceeding queue capacity while restoring session ${this.sessionId}`,
+          );
+        }
+        if (this.executionState.phase === 'idle') {
+          this.scheduleNextQueuedInput();
+        }
+      });
       if (this._messages.length === 0) {
         this.logger.debug(`[Session] No history found for session ${this.sessionId}`);
         return;
@@ -467,24 +476,53 @@ class Session implements ISession {
     await this.ensureInitialized();
     const runtime = this.getRuntime();
 
-    if (this.executionState.phase !== 'pending') {
+    // 声明请求所有权必须原子：相位检查、pending→running 转换与初始输入移除
+    // 需在 inputMutex 内一次完成，避免与 send()/cancelInput()/finishRequest()
+    // 对 executionState 的并发读写交错。
+    const claimed = await this.inputMutex.runExclusive(() => {
+      if (this.executionState.phase !== 'pending') {
+        return null;
+      }
+      const {
+        requestId,
+        input,
+        message: initialMessage,
+        options: sendOptions,
+        snapshot: pendingSnapshot,
+      } = this.executionState;
+      const requestController = this.executionState.controller;
+      this.executionState = {
+        phase: 'running',
+        requestId,
+        controller: requestController,
+      };
+      // 提交执行后立即将初始输入移出收件箱：它已被应用，不再是待处理输入，
+      // 且已通过 initialInputId 从 steering 领取中排除。若延后移除，一旦流在
+      // 持久化 input_applied 之后、首个事件产出之前抛错，releaseRequest 会把它
+      // 重新排队为 later 并二次应用，造成同一输入重复写入历史。
+      this.inputInbox.remove(input.inputId);
+      return {
+        requestId,
+        input,
+        initialMessage,
+        sendOptions,
+        pendingSnapshot,
+        requestController,
+      };
+    });
+
+    if (!claimed) {
       throw new Error('No pending message. Call send() before stream().');
     }
 
     const {
       requestId,
       input,
-      message: initialMessage,
-      options: sendOptions,
-      snapshot: pendingSnapshot,
-    } = this.executionState;
-
-    const requestController = this.executionState.controller;
-    this.executionState = {
-      phase: 'running',
-      requestId,
-      controller: requestController,
-    };
+      initialMessage,
+      sendOptions,
+      pendingSnapshot,
+      requestController,
+    } = claimed;
 
     let message = initialMessage;
     const traceRecorder = this.createTraceRecorder(message);
@@ -507,6 +545,10 @@ class Session implements ISession {
       const errorMessage = error instanceof Error ? error.message : String(error);
       await finishTrace('error', { error: errorMessage });
       runtime.getHookRuntime().setTraceCollector(undefined);
+      // 初始输入已在进入 running 时移出收件箱；hook 失败时仍需与正常路径一样
+      // 释放请求资源，否则会话会永久停留在 running 且外部 AbortSignal 监听器泄漏。
+      requestController.dispose();
+      await this.finishRequest(requestId);
       yield { type: 'error', message: errorMessage, sessionId: this.sessionId };
       return;
     }
@@ -548,16 +590,11 @@ class Session implements ISession {
 
     try {
       let loopResult: LoopResult | undefined;
-      let inputApplied = false;
       const turnSpans = new Map<number, string>();
       const toolSpans = new Map<string, string>();
 
       while (true) {
         const { value, done } = await stream.next();
-        if (!inputApplied) {
-          this.inputInbox.remove(input.inputId);
-          inputApplied = true;
-        }
         if (done) {
           loopResult = value;
           break;
@@ -854,19 +891,27 @@ class Session implements ISession {
   }
 
   async close(): Promise<void> {
-    if (this.executionState.phase === 'closed') {
+    // 关闭时对 executionState 的读写走 inputMutex，避免与并发 send()/stream()
+    // 交错（例如 send() 在 await 处让出后用 pending 覆盖 closed）。
+    const alreadyClosed = await this.inputMutex.runExclusive(() => {
+      if (this.executionState.phase === 'closed') {
+        return true;
+      }
+      if (this.executionState.phase === 'pending') {
+        this.executionState.controller.abortRequest({ kind: 'session_close' });
+        this.executionState.controller.dispose();
+      } else if (
+        this.executionState.phase === 'running'
+        || this.executionState.phase === 'stopping'
+      ) {
+        this.executionState.controller.abortRequest({ kind: 'session_close' });
+      }
+      this.executionState = { phase: 'closed' };
+      return false;
+    });
+    if (alreadyClosed) {
       return;
     }
-    if (this.executionState.phase === 'pending') {
-      this.executionState.controller.abortRequest({ kind: 'session_close' });
-      this.executionState.controller.dispose();
-    } else if (
-      this.executionState.phase === 'running'
-      || this.executionState.phase === 'stopping'
-    ) {
-      this.executionState.controller.abortRequest({ kind: 'session_close' });
-    }
-    this.executionState = { phase: 'closed' };
     this.cleanupHandle?.unregister();
     this.cleanupHandle = null;
     this.agent = null;
@@ -884,6 +929,8 @@ class Session implements ISession {
   }
 
   abort(): void {
+    // abort() 是同步 API，无法 await inputMutex；但它在单个微任务内原子执行
+    // （无 await 让出点），因此对 executionState 的读改本身不会与其他转换交错。
     if (this.executionState.phase === 'running') {
       const { requestId, controller } = this.executionState;
       controller.abortRequest({ kind: 'user_abort' });
@@ -892,6 +939,15 @@ class Session implements ISession {
         requestId,
         controller,
       };
+    } else if (this.executionState.phase === 'pending') {
+      // send() 已返回但 stream() 尚未启动：此时没有运行中的流去驱动 finishRequest，
+      // 必须在此直接完成收尾，否则该请求会永久停留在 pending。
+      const { controller, input } = this.executionState;
+      controller.abortRequest({ kind: 'user_abort' });
+      controller.dispose();
+      this.inputInbox.remove(input.inputId);
+      this.executionState = { phase: 'idle' };
+      this.scheduleNextQueuedInput();
     }
   }
 
