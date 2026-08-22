@@ -2,8 +2,10 @@
 
 Sandbox 为内置 `Bash` 工具提供尽力而为的操作系统隔离。Linux 使用 Bubblewrap，macOS 使用 Seatbelt (`sandbox-exec`)。权限系统决定是否批准调用；Sandbox 尝试限制批准后的命令。
 
-::: danger 先检查运行时能力
-`sandbox.enabled: true` 不保证当前机器具备沙箱执行器。执行器不可用时，当前实现会原样执行命令。生产环境必须在启动时检查 `getSandboxService().getCapabilities().available`，并在不可用时拒绝启动或禁用 `Bash`。
+::: danger 显式启用即为强约束
+`sandbox.enabled: true` 要求当前机器具备支持的沙箱执行器。执行器不可用时，
+Session 初始化会抛出 `ConfigError`；低层命令包装也会拒绝执行，不会降级为
+原样运行命令。
 :::
 
 ## 安全初始化
@@ -51,9 +53,9 @@ interface SandboxSettings {
 
 | 字段 | 默认值 | 当前行为 |
 |------|--------|----------|
-| `enabled` | `false` | 请求对 `Bash` 使用可用的 OS 沙箱 |
+| `enabled` | `false` | 强制 `Bash` 使用 OS 沙箱；执行器不可用时抛出 `ConfigError` |
 | `autoAllowBashIfSandboxed` | `false` | 可查询的配置标记；当前执行管道未读取，不能据此假设 Bash 会自动批准 |
-| `excludedCommands` | `[]` | 影响 Sandbox 检查结果；当前命令包装器仍可能包装这些命令，不应依赖它绕过沙箱 |
+| `excludedCommands` | `[]` | 显式跳过指定命令的沙箱包装；这些命令会在宿主环境直接执行，应谨慎使用 |
 | `allowUnsandboxedCommands` | `false` | 允许 `SandboxService.checkCommand()` 的显式无沙箱请求进入权限确认；当前内置 Bash 不暴露该请求参数 |
 | `network` | 未设置 | 传给命令包装器的网络选项 |
 | `ignoreViolations` | 未设置 | 可供上层查询的忽略规则；当前命令包装器不会应用这些规则 |
@@ -71,7 +73,8 @@ console.log(capabilities.type); // 'bubblewrap' | 'seatbelt' | 'none'
 console.log(capabilities.features);
 ```
 
-建议把 `available === false` 当作部署配置错误，而不是降级路径。SDK 目前不会自动 fail closed。
+`available === false` 是部署配置错误。启用 Sandbox 后，SDK 会 fail closed；
+应用仍可在创建 Session 前检查能力，以提供自定义错误或禁用 `Bash`。
 
 ## 文件系统边界
 
@@ -149,7 +152,8 @@ console.log(service.isEnabled());
 console.log(service.getCapabilities());
 ```
 
-如果 `available` 为 `false`，命令不会被包装。
+如果 `available` 为 `false`，启用 Sandbox 会导致 Session 初始化失败；直接
+调用低层 wrapper 也会抛出 `ConfigError`。
 
 ### 网络被完全禁用
 

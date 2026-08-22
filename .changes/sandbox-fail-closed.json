@@ -1,0 +1,5 @@
+{
+  "type": "fix",
+  "en": "Fail closed when Sandbox is enabled but no supported OS sandbox executor is available.",
+  "zh-CN": "启用 Sandbox 但系统缺少受支持的沙箱执行器时拒绝运行，避免静默降级。"
+}
