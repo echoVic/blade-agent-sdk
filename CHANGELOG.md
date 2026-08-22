@@ -2,6 +2,16 @@
 
 All notable changes to `@blade-ai/agent-sdk` are documented here.
 
+## [3.1.0] - 2026-08-22
+
+### Features
+
+- Add durable `now`, `next`, and `later` session inputs with safe-point steering and interruptible tool execution.
+
+### Documentation
+
+- Restore generated changelogs and add complete English and Simplified Chinese documentation.
+
 ## [3.0.0] - 2026-08-22
 
 ### Breaking Changes
