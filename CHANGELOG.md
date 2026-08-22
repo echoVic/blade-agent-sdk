@@ -2,6 +2,12 @@
 
 All notable changes to `@blade-ai/agent-sdk` are documented here.
 
+## [4.2.0] - 2026-08-22
+
+### Features
+
+- Add pull-based durable event subscriptions with validated reconnect cursors, replay barriers, bounded buffering, and live delivery.
+
 ## [4.1.0] - 2026-08-22
 
 ### Features
