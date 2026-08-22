@@ -40,6 +40,12 @@ import type { HookEvent, StreamMessageType } from '../types/constants.js';
 import type { AgentLogger } from '../types/logging.js';
 import type { CanUseTool, PermissionHandler, PermissionUpdate } from '../types/permissions.js';
 import type { Assert, IsEqual } from '../types/typeAssertions.js';
+import type { DurableEventStore } from './events/DurableEventStore.js';
+import type {
+  DurableSessionProjection,
+  DurableSessionRecoveryPlan,
+} from './events/DurableSessionProjector.js';
+
 export type {
   ExecutionContext,
   ProviderType,
@@ -282,6 +288,7 @@ export interface SessionOptions {
   logger?: AgentLogger;
   storagePath?: string;
   persistSession?: boolean;
+  durableEventStore?: DurableEventStore;
 
   outputFormat?: OutputFormat;
 
@@ -347,7 +354,7 @@ export interface ISession extends AsyncDisposable {
   stream(options?: StreamOptions): AsyncGenerator<StreamMessage>;
 
   close(): Promise<void>;
-  abort(): void;
+  abort(): Promise<void>;
 
   getDefaultContext(): RuntimeContext;
   setDefaultContext(context: RuntimeContext): void;
@@ -368,6 +375,8 @@ export interface ISession extends AsyncDisposable {
 
   getLastTrace(): AgentTrace | undefined;
   getTraces(): AgentTrace[];
+  getDurableProjection(): DurableSessionProjection | null;
+  getDurableRecoveryPlan(): DurableSessionRecoveryPlan | null;
 }
 
 export type { ContextSnapshot, RuntimeContext };

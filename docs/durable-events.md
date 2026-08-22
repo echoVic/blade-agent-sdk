@@ -5,10 +5,10 @@ Session 内单调序列、compare-and-append、cursor 分页读取，以及确�
 Session 生命周期投影。
 
 ::: warning 当前集成阶段
-当前不会改变 `Session.send()`、`Session.stream()` 或现有 Session JSONL。
-调用方可以独立使用 Event Store 和 recovery projector；Session 生命周期事件
-将在后续阶段接入。工具管道已经提供 awaited lifecycle hooks，以便接入时严格
-保持 persist-before-side-effect 和 persist-before-publish 顺序。
+Session 只有在显式设置 `SessionOptions.durableEventStore` 时才写入 durable
+事件；现有消息 JSONL 保持不变。活动 Request 的自动恢复尚未启用，遇到未完成
+工作时 `resumeSession()` 会抛出 `DurableSessionRecoveryRequiredError`，禁止
+自动重放已开始的工具。
 :::
 
 ## 安装与导入
@@ -278,6 +278,8 @@ Recovery plan 还分别返回 `retryableToolAttempts`、`cancelableToolAttempts`
 4. 调用文件 `fsync` 后才返回成功。
 
 事件文件使用 `0600` 权限，Session ID 经过 base64url 编码，不会成为文件路径。
+事件会保存原始请求输入、工具输入和模型侧工具结果；调用方必须将 Store 视为
+敏感数据存储，并自行配置加密、保留期限和访问控制。
 
 ## 一致性边界
 
@@ -299,6 +301,8 @@ Store 不持久化 token delta、工具 progress 等高频 UI 事件。只有会
 | `DurableCommandConflictError` | 相同 `commandId` 对应不同内容或非连续事件区间 |
 | `DurableCommandOutcomeUnknownError` | 写入失败后无法确认 command 是否提交，Journal 已 fenced |
 | `DurableSessionJournalError` | command 输入、Store page 或 commit 返回值违反契约 |
+| `DurableSessionRecoveryRequiredError` | Session 存在未完成工作，必须先执行恢复或对账 |
+| `SessionDurableRecorderError` | Session runtime 观察到非法 durable 生命周期状态 |
 | `DurableEventProjectionError` | schema、事件顺序或关联关系不满足生命周期约束 |
 | `DurableEventSequenceConflictError` | compare-and-append 前置条件失败 |
 | `DurableEventStoreError` | 参数、cursor、读写或日志完整性错误 |

@@ -299,7 +299,8 @@ for await (const event of output) {
 已接受的输入有数量和字节双重上限。配置 `storagePath` 后，SDK 通过
 JSONL 记录 `input_enqueued`、`input_applied` 或 `input_cancelled`；
 进程重启后，尚未应用的输入会恢复为 `later`，避免绑定到已经失效的请求。
-内存模式不会跨进程恢复。
+内存模式不会跨进程恢复。配置 `durableEventStore` 时，初始请求内容还会写入
+`request_accepted`；它不会替代 `storagePath` 对后续 steering 队列的恢复。
 
 ### StreamOptions
 
@@ -635,6 +636,49 @@ const session = await createSession({
 - `forkSession()` 不可用（会抛出错误）
 - `session.fork()` 仍然可用，因为它直接复制内存中的消息
   :::
+
+### Durable 执行事件
+
+通过 `durableEventStore` 显式启用可恢复执行日志。该 Store 与消息历史存储相互
+独立，因此也可以与 `persistSession: false` 组合：
+
+```ts
+import {
+  JsonlDurableEventStore,
+  createSession,
+} from '@blade-ai/agent-sdk';
+
+const eventStore = new JsonlDurableEventStore('/var/lib/my-agent');
+const session = await createSession({
+  provider,
+  model,
+  persistSession: false,
+  durableEventStore: eventStore,
+});
+```
+
+启用后，Session 会记录 Session、Request、Turn、Tool、Permission 和输入应用
+事件，并保证：
+
+- `send()` 返回前已提交 `request_accepted`。
+- `turn_start` 和 `tool_use` 对外可见前已提交对应 durable 事件。
+- 工具副作用开始前已提交 `tool_started`。
+- `tool_result`、`result` 或 `error` 对外可见前已提交终态。
+- pending request 的 `await session.abort()` 返回前已提交
+  `request_interrupted`。
+
+如果 durable 边界提交失败，Session 会直接拒绝 stream，而不会伪造普通终态
+事件；在日志完成对账前，新请求和排队请求也不会继续执行。
+
+```ts
+const projection = session.getDurableProjection();
+const recovery = session.getDurableRecoveryPlan();
+```
+
+`resumeSession()` 遇到未完成的 durable Request、待决权限或未知工具结果时抛出
+`DurableSessionRecoveryRequiredError`。当前集成不会自动重放已开始的工具；
+调用方必须先通过 `DurableSessionJournal` 对账。JSONL adapter 只支持单进程
+writer，多进程部署需要实现带事务 CAS 或 fencing 的 `DurableEventStore`。
 
 ### 自定义存储路径
 
@@ -1296,7 +1340,7 @@ await session.close();
 
 ```ts
 const currentStream = session.stream();
-session.abort();
+await session.abort();
 
 // 先排队，当前流完成清理后再消费下一请求
 await session.send('换个思路重新试试', { priority: 'later' });
@@ -1513,7 +1557,8 @@ async function analyzeCodeManual() {
 | `defaultContext`  | `RuntimeContext`                                        | —  | `{}`        | 会话级默认运行时上下文                                       |
 | `logger`          | `AgentLogger`                                           | —  | —           | 结构化日志适配器                                          |
 | `storagePath`     | `string`                                                | —  | —           | 会话存储根路径；未设置时使用内存存储                              |
-| `persistSession`  | `boolean`                                               | —  | `true`      | 有 `storagePath` 时是否启用磁盘持久化                           |
+| `persistSession`  | `boolean`                                               | —  | `true`      | 有 `storagePath` 时是否启用消息历史持久化                         |
+| `durableEventStore` | `DurableEventStore`                                  | —  | —           | opt-in durable 执行事件 Store                                 |
 | `outputFormat`    | `OutputFormat`                                          | —  | —           | 结构化 JSON Schema 输出格式                              |
 | `sandbox`         | `SandboxSettings`                                       | —  | —           | 命令执行沙箱设置                                          |
 | `observability`   | `ObservabilityOptions`                                  | —  | —           | Trace 收集、payload 捕获与 sink 配置                         |
@@ -1632,7 +1677,7 @@ interface ISession extends AsyncDisposable {
   close(): Promise<void>;
 
   /** 中止当前正在进行的请求 */
-  abort(): void;
+  abort(): Promise<void>;
 
   /** 获取当前默认运行时上下文 */
   getDefaultContext(): RuntimeContext;
@@ -1673,6 +1718,8 @@ interface ISession extends AsyncDisposable {
   /** 获取最近一条或全部 observability trace */
   getLastTrace(): AgentTrace | undefined;
   getTraces(): AgentTrace[];
+  getDurableProjection(): DurableSessionProjection | null;
+  getDurableRecoveryPlan(): DurableSessionRecoveryPlan | null;
 }
 ```
 

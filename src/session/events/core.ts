@@ -36,6 +36,10 @@ export {
   projectDurableSession,
 } from './DurableSessionProjector.js';
 export {
+  DurableSessionRecoveryRequiredError,
+  SessionDurableRecorderError,
+} from './SessionDurableRecorder.js';
+export {
   DURABLE_EVENT_LOG_FORMAT,
   type PersistedDurableEventBatch,
   parseDurableEventDraft,

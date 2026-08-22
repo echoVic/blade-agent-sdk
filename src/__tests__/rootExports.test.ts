@@ -7,8 +7,10 @@ import type {
   DurableSessionCommand,
   DurableSessionRecoveryPlan,
   InputSubmission,
+  ISession,
   PendingSessionInput,
   RuntimePatch,
+  SessionOptions,
   SessionTool,
   ToolCatalogEntry,
   ToolEffect,
@@ -36,6 +38,7 @@ import {
   DurableEventType,
   DurableSessionJournal,
   DurableSessionProjector,
+  DurableSessionRecoveryRequiredError,
   EventId,
   EventSequence,
   FileSystemMemoryStore,
@@ -47,6 +50,7 @@ import {
   projectDurableSession,
   RequestId,
   SessionInputError,
+  SessionDurableRecorderError,
   SubagentExecutor,
   SubagentRegistry,
   ToolAttemptId,
@@ -83,6 +87,8 @@ describe('root exports', () => {
     expect(DurableCommandOutcomeUnknownError).toBeDefined();
     expect(DurableSessionJournal.open).toBeTypeOf('function');
     expect(DurableSessionProjector).toBeDefined();
+    expect(DurableSessionRecoveryRequiredError).toBeDefined();
+    expect(SessionDurableRecorderError).toBeDefined();
     expect(projectDurableSession([]).status).toBe('empty');
   });
 
@@ -117,6 +123,10 @@ describe('root exports', () => {
       'none' | 'resume_request' | 'resume_turn' | 'resolve_permissions' | 'reconcile_tool_outcomes'
     >();
     expectTypeOf<DurableEventStore['append']>().toBeFunction();
+    expectTypeOf<SessionOptions['durableEventStore']>().toEqualTypeOf<
+      DurableEventStore | undefined
+    >();
+    expectTypeOf<ReturnType<ISession['abort']>>().toEqualTypeOf<Promise<void>>();
     expectTypeOf<ToolCatalogEntry['source']['kind']>().toEqualTypeOf<
       'builtin' | 'custom' | 'mcp' | 'session'
     >();
