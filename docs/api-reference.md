@@ -105,6 +105,7 @@ Node-local 能力外，这些函数都从根入口导出；实际 subpath 以“
 | `DurableSessionJournal` / `DurableSessionJournalOptions` | command-oriented 串行提交、CAS 重试与对账层 |
 | `DurableSessionRecoveryCoordinator` | accepted Request 恢复、权限消解与工具结果对账协调器 |
 | `DurableSessionCommand` / `DurableCommandEventDraft` | Journal command 与不含重复 `commandId` 的事件输入 |
+| `DurableCommandCommitOptions` | 通过 `expectedHeadSequence` 固定状态派生 command 的前置 head |
 | `DurableCommandCommitResult` / `DurableCommandCommitStatus` | `committed` / `replayed` / `reconciled` 提交结果 |
 | `DurableSessionJournalError` / `DurableSessionJournalErrorCode` | command、分页和 Store 返回值错误 |
 | `DurableCommandConflictError` | 同一 `commandId` 被用于不同事件 |
@@ -128,6 +129,7 @@ Node-local 能力外，这些函数都从根入口导出；实际 subpath 以“
 | `planDurableSessionRecovery` / `DurableSessionRecoveryPlan` | 分类未完成 Request、Turn、Tool 与 Permission |
 | `DurableSessionProjection` / `DurableSessionProjectionStatus` | Session 当前 durable 状态 |
 | `DurableRequestProjection` / `DurableRequestStatus` | 活动 Request 状态 |
+| `DurableRequestRecoveryOrigin` | continuation Request 的 source Request/Turn provenance |
 | `DurableTurnProjection` / `DurableTurnStatus` | 活动 Turn 状态 |
 | `DurableToolAttemptProjection` / `DurableToolAttemptStatus` | 当前 Turn 的工具尝试状态 |
 | `DurablePermissionProjection` / `DurablePermissionStatus` | 工具权限状态 |
@@ -136,6 +138,7 @@ Node-local 能力外，这些函数都从根入口导出；实际 subpath 以“
 | `DurableSessionResumeDecision` | `ready` / `resume_accepted_request` / `recovery_required` 决策 |
 | `DurableToolOutcomeReconciliation` / `DurableToolOutcomeReconciliationCommand` | 显式工具结果对账输入 |
 | `DurableToolStartCommand` | 恢复执行前持久化 `tool_started` 的幂等命令 |
+| `DurableTurnRecoveryCommand` / `DurableTurnRecoveryResult` | 原子 Turn rollover 命令及结果 |
 | `DurablePermissionResolutionCommand` | 幂等权限消解输入 |
 | `DurableRecoveryCommitResult` | 对账提交结果及更新后的 projection/recovery plan |
 | `DURABLE_EVENT_SCHEMA_VERSION` / `DURABLE_EVENT_LOG_FORMAT` | wire schema 与日志格式版本 |

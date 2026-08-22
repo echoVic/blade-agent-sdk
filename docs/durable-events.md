@@ -7,8 +7,9 @@ Session 生命周期投影。
 ::: warning 当前集成阶段
 Session 只有在显式设置 `SessionOptions.durableEventStore` 时才写入 durable
 事件；现有消息 JSONL 保持不变。`resumeSession()` 会自动恢复已接受但尚未跨过
-`request_started` 边界的 Request。活动 Turn、待决权限和已开始的工具仍需要
-显式恢复或对账；`non_idempotent` 工具绝不会被自动重放。
+`request_started` 边界的 Request。活动 Turn 必须先通过 Recovery Coordinator
+原子 rollover；待决权限和未知工具结果仍需显式消解。`non_idempotent` 工具
+绝不会被自动重放。
 :::
 
 ## 安装与导入
@@ -69,7 +70,7 @@ interface DurableEventEnvelope<TType extends DurableEventType> {
 |------|-----------|--------------|
 | `session_created` | Session | `source?`、`parentSessionId?` |
 | `session_closed` | Session | `reason` |
-| `request_accepted` | `requestId`、`commandId` | `inputId`、`input`、`priority`、`maxTurns?`、`model?`、`context?` |
+| `request_accepted` | `requestId`、`commandId` | `inputId`、`input`、`priority`、`maxTurns?`、`model?`、`context?`、`recovery?` |
 | `request_started` | `requestId` | 空对象 |
 | `request_completed` | `requestId` | `output?`、`usage?` |
 | `request_failed` | `requestId` | `error` |
@@ -182,6 +183,10 @@ console.log(journal.getProjection().status); // open
 相同 `commandId` 和相同事件再次提交时返回 `replayed`，不会追加第二份事件。
 若 command 已存在但内容不同，抛出 `DurableCommandConflictError`。
 一个 command 的事件必须在日志中连续；同一 ID 分散在多个区间也按冲突处理。
+依赖当前 projection 生成的 command 应通过 `expectedHeadSequence` 固定其观察
+到的 head，避免同进程或其他 writer 更新状态后仍提交旧决策。Recovery
+Coordinator 对所有恢复 command 强制设置该前置条件；相同 command 已由竞争者
+提交时仍返回 `reconciled`。
 
 当底层写入报错后，Journal 会重新读取 canonical log：
 
@@ -364,6 +369,47 @@ Session 会使用 durable 输入以及持久化的 `maxTurns`、模型和 Runtim
 恢复同一个 `requestId`。旧日志中缺少执行快照的 Request，以及已经开始的
 Request，即使暂时没有活动 Turn，也返回 `recovery_required`；这是为了避免
 使用不同配置执行或重复提交一次可能已完成的模型调用。
+
+对于 `resume_turn`，调用 `prepareTurnRecovery()` 可在同一个 CAS command 中：
+
+1. 取消尚未获得可信终态的 `pure` / `idempotent` 或未开始工具；
+2. 以 `process_restart` 终止旧 Turn 和 Request；
+3. 接受一个包含原始输入、工具终态和 source Request/Turn provenance 的新
+   continuation Request。
+
+continuation 会把从未执行的工具标记为 `not_started`，把已开始但可安全重试的
+工具标记为 `interrupted_before_trusted_completion`。恢复后的消息历史会丢弃
+没有配对结果的旧 tool call；上述 durable 状态随新的 user continuation 一起
+送入模型，因此不会构造跨 Store 的伪造 tool result，也不会留下 provider
+不接受的悬空 tool call。多模态原始输入仍以原始 content parts 传递，不会降级
+成 JSON 文本。权限恢复为 `allow` 但尚未执行的工具使用权限阶段更新后的输入，
+并按 `non_idempotent` 保守分类。
+
+```ts
+await coordinator.prepareTurnRecovery({
+  commandId: CommandId('recover-turn-42'),
+  requestId: RequestId('request-source-42'),
+  turnId: TurnId('turn-source-42'),
+  recoveryRequestId: RequestId('request-recovery-42'),
+  recoveryInputId: InputId('input-recovery-42'),
+});
+
+const session = await resumeSession({
+  ...options,
+  sessionId,
+});
+for await (const event of session.stream()) {
+  // 新 accepted Request 通过现有恢复路径执行。
+}
+```
+
+整个 rollover 可按相同 `commandId` 重试，竞争进程只能提交一次。provenance
+只有在同一 command 中紧邻 `turn_aborted → request_interrupted →
+request_accepted` 时才有效。`requestId` 和 `turnId` 是调用方已观察状态的
+前置条件，不能隐式切换到更新后的 active Turn。任何已 `completed` / `failed`，或在开始执行后
+变为 `cancelled` 的 `non_idempotent` 工具都会触发
+`DURABLE_RECOVERY_UNSAFE_ROLLOVER`，必须保持 fail-closed；该 API 不使用提示词
+绕过未知副作用。
 
 Schema v2 为 `tool_scheduled` 增加必填 `sideEffect`。v1 日志不会被静默推断，
 需要显式迁移后才能由当前 runtime 恢复。

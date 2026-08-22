@@ -683,9 +683,13 @@ Request，并保留其 `requestId`、输入、`maxTurns` 和 Runtime Context。�
 
 已经开始的 Request、活动 Turn、待决权限或未知工具结果不会被推测性重放，而是
 抛出 `DurableSessionRecoveryRequiredError`。使用
-`DurableSessionRecoveryCoordinator` 显式消解权限或对账工具结果；
-`non_idempotent` 工具始终保持 fail-closed。JSONL adapter 只支持单进程
-writer，多进程部署需要实现带事务 CAS 或 fencing 的 `DurableEventStore`。
+`DurableSessionRecoveryCoordinator` 显式消解权限或对账工具结果；对于安全的
+`resume_turn`，先调用 `prepareTurnRecovery()` 原子终止旧执行并接受一个带
+provenance 的 continuation Request，随后 `resumeSession()` 会按普通 accepted
+Request 恢复。已完成、失败，或在开始执行后被取消的 `non_idempotent` 工具
+始终保持 fail-closed。
+JSONL adapter 只支持单进程 writer，多进程部署需要实现带事务 CAS 或 fencing
+的 `DurableEventStore`。
 
 ### 自定义存储路径
 
