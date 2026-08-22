@@ -143,6 +143,7 @@ export type {
   ResumeOptions,
   SendOptions,
   SessionOptions,
+  SessionTool,
   StreamMessage,
   StreamOptions,
   SubagentInfo,

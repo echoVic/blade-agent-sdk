@@ -199,13 +199,14 @@ for await (const event of session.stream({ includeThinking: true })) {
 
 ## Opt-in memory tools
 
-`getBuiltinTools()` can create a memory-enabled tool set for a custom
-lower-level runtime:
+Create the opt-in Memory tools and pass them directly to Session:
 
 ```ts
 import {
+  createMemoryReadTool,
+  createMemoryWriteTool,
+  createSession,
   FileSystemMemoryStore,
-  getBuiltinTools,
   MemoryManager,
 } from '@blade-ai/agent-sdk';
 
@@ -213,21 +214,19 @@ const manager = new MemoryManager(
   new FileSystemMemoryStore('/var/lib/my-agent/memory'),
 );
 
-const tools = await getBuiltinTools({
-  memoryManager: manager,
+const session = await createSession({
+  provider,
+  model,
+  tools: [
+    createMemoryReadTool({ manager }),
+    createMemoryWriteTool({ manager }),
+  ],
 });
 ```
 
 `FileSystemMemoryStore` writes one frontmatter-backed Markdown file per memory
 and maintains a `MEMORY.md` index. Memory types are `user`, `project`,
 `feedback`, and `reference`.
-
-::: warning Session integration
-`createMemoryReadTool()` and `createMemoryWriteTool()` return the lower-level
-`Tool` interface, while `SessionOptions.tools` currently accepts
-`ToolDefinition`. Do not pass those helper results directly to Session; there
-is no first-class `memoryManager` Session option yet.
-:::
 
 ## Tool source policy
 

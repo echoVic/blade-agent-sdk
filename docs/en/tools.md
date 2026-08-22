@@ -5,7 +5,7 @@ The SDK exposes three tool authoring APIs:
 | API | Schema | Use |
 |-----|--------|-----|
 | `defineTool()` | JSON Schema | Lightweight typed definitions accepted by Session |
-| `createTool()` | Zod | Runtime validation for lower-level tool runtimes |
+| `createTool()` | Zod | Full inference, runtime validation, and interruption policy |
 | `toolFromDefinition()` | JSON Schema | Convert a definition into the internal `Tool` interface |
 
 Every tool executes as `AsyncGenerator<ToolYield, ToolResult>`.
@@ -85,8 +85,9 @@ const deploy = createTool({
 });
 ```
 
-`createTool()` returns the lower-level `Tool` interface. It cannot currently be
-passed directly to `SessionOptions.tools`, which accepts `ToolDefinition`.
+`createTool()` returns a complete `Tool` that can be passed directly to
+`SessionOptions.tools`. Session preserves the instance instead of adapting it,
+so validation, behavior, and interruption settings remain intact.
 
 ## Streaming contract
 
@@ -198,10 +199,8 @@ const tool = createTool({
 Explicit `session.abort()` and `session.close()` are request-level cancellation and are not blocked by `interruptBehavior: 'block'`.
 
 `interruptBehavior` belongs to the `ToolConfig` accepted by `createTool()`;
-`defineTool()` / `ToolDefinition` does not expose it. Because
-`SessionOptions.tools` currently accepts only `ToolDefinition`, custom Session
-tools cannot opt into `cancel` yet. This setting is available to lower-level
-runtimes that compose `Tool` instances directly.
+`defineTool()` / `ToolDefinition` does not expose it. Use `createTool()` with
+`cancel` when a custom Session tool can safely stop for a `now` input.
 
 ## ToolDefinition
 

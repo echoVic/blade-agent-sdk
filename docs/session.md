@@ -914,7 +914,7 @@ const currentContext = session.getDefaultContext();
 
 ```ts
 interface SessionOptions {
-  tools?: ToolDefinition[];      // 追加自定义工具
+  tools?: SessionTool[];         // ToolDefinition 或完整 Tool
   allowedTools?: string[];       // 工具白名单（仅允许列出的工具）
   disallowedTools?: string[];    // 工具黑名单（排除列出的工具）
 }
@@ -976,10 +976,10 @@ const session = await createSession({
 });
 ```
 
-### 低层 createTool + Zod Schema
+### 使用 createTool + Zod Schema
 
 ```ts
-import { createTool, ToolKind } from '@blade-ai/agent-sdk';
+import { createSession, createTool, ToolKind } from '@blade-ai/agent-sdk';
 import { z } from 'zod';
 
 const dbQueryTool = createTool({
@@ -1003,11 +1003,17 @@ const dbQueryTool = createTool({
     };
   },
 });
+
+const session = await createSession({
+  provider: { type: 'openai', apiKey: process.env.OPENAI_API_KEY },
+  model: 'gpt-4o',
+  tools: [dbQueryTool],
+});
 ```
 
-`createTool()` 返回低层 `Tool`，当前不能直接传给
-`SessionOptions.tools`。Session 自定义工具请使用上一节的
-`defineTool()`；需要直接组合 `Tool` 的自定义运行时才使用 `createTool()`。
+`SessionOptions.tools` 接受 `ToolDefinition` 和完整 `Tool`。传入
+`createTool()` 的结果时，Session 会保留其 Zod 校验、权限检查和
+`interruptBehavior`。
 
 ### 工具过滤
 
@@ -1496,7 +1502,7 @@ async function analyzeCodeManual() {
 | `allowedTools`    | `string[]`                                              | —  | —           | 工具白名单；未设置表示不限制，空数组表示禁用全部工具                    |
 | `disallowedTools` | `string[]`                                              | —  | —           | 工具黑名单                                             |
 | `toolSourcePolicy` | `ToolCatalogSourcePolicy`                              | —  | —           | 工具来源策略，按来源类型和信任级别过滤工具                            |
-| `tools`           | `ToolDefinition[]`                                      | —  | —           | 追加的自定义工具                                          |
+| `tools`           | `SessionTool[]`                                          | —  | —           | 追加的 `ToolDefinition` 或完整 `Tool`                        |
 | `mcpServers`      | `Record<string, McpServerConfig \| SdkMcpServerHandle>` | —  | —           | MCP 服务器配置映射                                       |
 | `permissionMode`  | `PermissionMode`                                        | —  | `'default'` | 权限审批模式                                            |
 | `permissionHandler` | `PermissionHandler`                                   | —  | —           | 底层权限处理器（比 `canUseTool` 更低级）                       |
