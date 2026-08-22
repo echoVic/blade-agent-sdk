@@ -49,21 +49,42 @@ export class SessionInputInbox {
     }
   }
 
-  restore(entries: readonly PendingSessionInput[]): void {
-    for (const entry of entries) {
-      this.enqueue({
-        ...entry,
-        priority: InputPriority.LATER,
-        targetRequestId: undefined,
-      });
+  /**
+   * 从持久化历史恢复待处理输入。
+   *
+   * 逐条尝试入队；一旦达到 count/byte 上限即停止恢复剩余条目，而不是抛错。
+   * 这样可避免容量超限时经由调用方的 try/catch 静默丢弃全部待处理输入。
+   *
+   * @returns 未能恢复（被丢弃）的条目数量，供调用方记录告警。
+   */
+  restore(entries: readonly PendingSessionInput[]): number {
+    let dropped = 0;
+    for (const [index, entry] of entries.entries()) {
+      try {
+        this.enqueue({
+          ...entry,
+          priority: InputPriority.LATER,
+          targetRequestId: undefined,
+        });
+      } catch (error) {
+        if (error instanceof SessionInputError && error.code === 'SESSION_INPUT_QUEUE_FULL') {
+          dropped = entries.length - index;
+          break;
+        }
+        throw error;
+      }
     }
+    return dropped;
   }
 
   claimNextLater(requestId: RequestId): PendingSessionInput | undefined {
     const entry = this.entries.find(
       (candidate) =>
         candidate.priority === InputPriority.LATER
-        && candidate.targetRequestId === undefined,
+        && candidate.targetRequestId === undefined
+        // 与 claimForRequest 保持一致：仅领取已持久化提交的输入，
+        // 避免领取 reserve() 之后尚未 markCommitted 的条目。
+        && this.committedInputIds.has(candidate.inputId),
     );
     if (!entry) {
       return undefined;
