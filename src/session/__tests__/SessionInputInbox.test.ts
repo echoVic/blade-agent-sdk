@@ -123,4 +123,45 @@ describe('SessionInputInbox', () => {
       }));
     expect(byBytes.size).toBe(0);
   });
+
+  it('does not claim a later input before persistence commits', () => {
+    const inbox = new SessionInputInbox();
+    const entry = input('input-1', InputPriority.LATER);
+    inbox.reserve(entry);
+
+    // reserve 之后、markCommitted 之前不可被 claimNextLater 领取
+    expect(inbox.claimNextLater(RequestId('request-1'))).toBeUndefined();
+
+    inbox.markCommitted(entry.inputId);
+    expect(inbox.claimNextLater(RequestId('request-1'))?.inputId).toBe('input-1');
+  });
+
+  it('restores up to capacity and reports dropped inputs instead of throwing', () => {
+    const inbox = new SessionInputInbox(2, 1024);
+
+    const dropped = inbox.restore([
+      input('input-1', InputPriority.LATER),
+      input('input-2', InputPriority.LATER),
+      input('input-3', InputPriority.LATER),
+      input('input-4', InputPriority.LATER),
+    ]);
+
+    // 前两条恢复成功，其余两条因超出 count 上限被丢弃且不抛错
+    expect(inbox.size).toBe(2);
+    expect(dropped).toBe(2);
+    expect(inbox.getAll().map((entry) => entry.inputId)).toEqual([
+      'input-1',
+      'input-2',
+    ]);
+  });
+
+  it('restores all inputs when within capacity', () => {
+    const inbox = new SessionInputInbox(4, 1024);
+    const dropped = inbox.restore([
+      input('input-1', InputPriority.LATER),
+      input('input-2', InputPriority.LATER),
+    ]);
+    expect(dropped).toBe(0);
+    expect(inbox.size).toBe(2);
+  });
 });
