@@ -21,6 +21,7 @@ import {
   CommandId,
   type DurableEventDataMap,
   DurableSessionProjector,
+  DurableSessionJournal,
   DurableEventType,
   EventSequence,
   InputId,
@@ -97,6 +98,10 @@ const result = await store.append(
   sessionId,
   [
     {
+      type: DurableEventType.SESSION_CREATED,
+      data: { source: 'create' },
+    },
+    {
       type: DurableEventType.REQUEST_ACCEPTED,
       requestId,
       commandId,
@@ -118,7 +123,7 @@ const result = await store.append(
 );
 
 console.log(result.previousSequence); // null
-console.log(result.lastSequence);     // 2
+console.log(result.lastSequence);     // 3
 ```
 
 One `append()` call is stored as one batch. The Store validates every draft and
@@ -142,6 +147,53 @@ await store.append(sessionId, events, {
   expectedLastSequence: EventSequence(12),
 });
 ```
+
+## Command journal
+
+Production code should commit lifecycle events through `DurableSessionJournal`.
+The Journal adds these guarantees above the Store:
+
+- serialized commits within each instance;
+- lifecycle transition preview before persistence;
+- one caller-provided `commandId` stamped onto every event;
+- bounded refresh and retry after explicit CAS conflicts;
+- idempotent replay of an identical command;
+- read-after-failure reconciliation after `DURABLE_EVENT_WRITE_FAILED`.
+
+```ts
+const journal = await DurableSessionJournal.open(store, sessionId);
+
+const committed = await journal.commit({
+  commandId: CommandId('create-session-123'),
+  events: [
+    {
+      type: DurableEventType.SESSION_CREATED,
+      data: { source: 'create' },
+    },
+  ],
+});
+
+console.log(committed.status); // committed | replayed | reconciled
+console.log(journal.getProjection().status); // open
+```
+
+Submitting the same `commandId` and identical events returns `replayed` without
+appending another copy. Reusing the command ID with different content throws
+`DurableCommandConflictError`. A command's events must be contiguous in the
+journal; the same ID appearing in separate ranges is also a conflict.
+
+After a lower-level write error, the Journal reloads the canonical log:
+
+- A complete matching command returns `reconciled`.
+- A missing command or failed reload throws
+  `DurableCommandOutcomeUnknownError` without an automatic retry.
+
+The latter case requires reconciliation by the caller or a higher-level recovery
+coordinator. An automatic retry could duplicate a write that succeeded but is
+not yet visible. The Journal records `getUncertainCommandId()` in memory and
+rejects different commands; submitting the same command can only trigger another
+read reconciliation. `maxConflictRetries` applies only to explicit
+compare-and-append conflicts, not unknown outcomes.
 
 ## Cursor reads
 
@@ -254,6 +306,9 @@ journal.
 
 | Error | Meaning |
 |-------|---------|
+| `DurableCommandConflictError` | One `commandId` maps to different content or non-contiguous ranges. |
+| `DurableCommandOutcomeUnknownError` | A failed write cannot be reconciled and the Journal is fenced. |
+| `DurableSessionJournalError` | Command input, Store page, or commit result violates its contract. |
 | `DurableEventProjectionError` | Schema, ordering, or correlation violates lifecycle invariants. |
 | `DurableEventSequenceConflictError` | Compare-and-append precondition failed. |
 | `DurableEventStoreError` | Invalid input, cursor, I/O, or log integrity failure. |

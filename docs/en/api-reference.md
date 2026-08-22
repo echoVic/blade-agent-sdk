@@ -60,6 +60,7 @@ These ID exports are branded identifiers, not arbitrary strings.
 Runtime:
 
 - `JsonlDurableEventStore`
+- `DurableSessionJournal`
 - `DurableEventType`
 - `DURABLE_EVENT_SCHEMA_VERSION`
 - `DURABLE_EVENT_LOG_FORMAT`
@@ -74,6 +75,15 @@ Runtime:
 Types and errors:
 
 - `DurableEventStore`
+- `DurableSessionJournalOptions`
+- `DurableSessionCommand`
+- `DurableCommandEventDraft`
+- `DurableCommandCommitResult`
+- `DurableCommandCommitStatus`
+- `DurableSessionJournalError`
+- `DurableSessionJournalErrorCode`
+- `DurableCommandConflictError`
+- `DurableCommandOutcomeUnknownError`
 - `DurableEventEnvelope`
 - `DurableEventDraft`
 - `DurableEventDataMap`

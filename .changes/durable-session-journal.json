@@ -1,0 +1,5 @@
+{
+  "type": "feature",
+  "en": "Add a command-oriented durable Session journal with lifecycle preflight, bounded CAS retries, idempotent replay, and unknown-write reconciliation.",
+  "zh-CN": "新增面向 command 的 durable Session journal，提供生命周期预演、有界 CAS 重试、幂等 replay 与未知写入结果对账。"
+}

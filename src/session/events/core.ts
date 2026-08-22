@@ -5,6 +5,18 @@ export {
   type DurableEventStoreErrorCode,
 } from './DurableEventStore.js';
 export {
+  type DurableCommandCommitResult,
+  type DurableCommandCommitStatus,
+  DurableCommandConflictError,
+  type DurableCommandEventDraft,
+  DurableCommandOutcomeUnknownError,
+  type DurableSessionCommand,
+  DurableSessionJournal,
+  DurableSessionJournalError,
+  type DurableSessionJournalErrorCode,
+  type DurableSessionJournalOptions,
+} from './DurableSessionJournal.js';
+export {
   DurableEventProjectionError,
   type DurablePermissionProjection,
   type DurablePermissionStatus,

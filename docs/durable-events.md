@@ -20,6 +20,7 @@ import {
   CommandId,
   type DurableEventDataMap,
   DurableSessionProjector,
+  DurableSessionJournal,
   DurableEventType,
   EventSequence,
   InputId,
@@ -95,6 +96,10 @@ const result = await store.append(
   sessionId,
   [
     {
+      type: DurableEventType.SESSION_CREATED,
+      data: { source: 'create' },
+    },
+    {
       type: DurableEventType.REQUEST_ACCEPTED,
       requestId,
       commandId,
@@ -116,7 +121,7 @@ const result = await store.append(
 );
 
 console.log(result.previousSequence); // null
-console.log(result.lastSequence);     // 2
+console.log(result.lastSequence);     // 3
 ```
 
 一次 `append()` 的事件会写入同一个 batch。Store 在写入前完成 schema 校验并
@@ -140,6 +145,51 @@ await store.append(sessionId, events, {
   expectedLastSequence: EventSequence(12),
 });
 ```
+
+## Command journal
+
+生产代码应优先通过 `DurableSessionJournal` 提交生命周期事件。Journal 在 Store
+之上增加：
+
+- 每个实例内的串行提交。
+- 写入前的 lifecycle transition 预演。
+- 所有事件统一写入调用方提供的 `commandId`。
+- CAS 冲突后的有界刷新与重试。
+- 相同 command 的幂等 replay。
+- `DURABLE_EVENT_WRITE_FAILED` 后的 read-after-failure 对账。
+
+```ts
+const journal = await DurableSessionJournal.open(store, sessionId);
+
+const committed = await journal.commit({
+  commandId: CommandId('create-session-123'),
+  events: [
+    {
+      type: DurableEventType.SESSION_CREATED,
+      data: { source: 'create' },
+    },
+  ],
+});
+
+console.log(committed.status); // committed | replayed | reconciled
+console.log(journal.getProjection().status); // open
+```
+
+相同 `commandId` 和相同事件再次提交时返回 `replayed`，不会追加第二份事件。
+若 command 已存在但内容不同，抛出 `DurableCommandConflictError`。
+一个 command 的事件必须在日志中连续；同一 ID 分散在多个区间也按冲突处理。
+
+当底层写入报错后，Journal 会重新读取 canonical log：
+
+- 能找到完整且匹配的 command：返回 `reconciled`。
+- 找不到 command 或无法重新读取：抛出
+  `DurableCommandOutcomeUnknownError`，且不会自动重试。
+
+后一种情况必须由调用方或更高层 recovery coordinator 对账。自动重试可能重复
+执行已经生效但暂时不可见的写入。Journal 会在内存中记录
+`getUncertainCommandId()` 并拒绝其他 command；相同 command 只能再次触发读取
+对账。`maxConflictRetries` 只控制明确 compare-and-append 冲突的重试，不适用于
+unknown outcome。
 
 ## Cursor 读取
 
@@ -245,6 +295,9 @@ Store 不持久化 token delta、工具 progress 等高频 UI 事件。只有会
 
 | 错误 | 说明 |
 |------|------|
+| `DurableCommandConflictError` | 相同 `commandId` 对应不同内容或非连续事件区间 |
+| `DurableCommandOutcomeUnknownError` | 写入失败后无法确认 command 是否提交，Journal 已 fenced |
+| `DurableSessionJournalError` | command 输入、Store page 或 commit 返回值违反契约 |
 | `DurableEventProjectionError` | schema、事件顺序或关联关系不满足生命周期约束 |
 | `DurableEventSequenceConflictError` | compare-and-append 前置条件失败 |
 | `DurableEventStoreError` | 参数、cursor、读写或日志完整性错误 |

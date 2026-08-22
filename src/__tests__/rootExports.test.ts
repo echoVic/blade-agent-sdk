@@ -1,8 +1,10 @@
 import { describe, expect, expectTypeOf, it } from 'vitest';
 import type {
+  DurableCommandEventDraft,
   DurableEventEnvelope,
   DurableEventOfType,
   DurableEventStore,
+  DurableSessionCommand,
   DurableSessionRecoveryPlan,
   InputSubmission,
   PendingSessionInput,
@@ -23,7 +25,10 @@ import {
   completeToolExecution,
   createMemoryReadTool,
   createMemoryWriteTool,
+  DurableCommandConflictError,
+  DurableCommandOutcomeUnknownError,
   DurableEventType,
+  DurableSessionJournal,
   DurableSessionProjector,
   EventId,
   EventSequence,
@@ -68,6 +73,9 @@ describe('root exports', () => {
     expect(ToolAttemptId('attempt-1')).toBe('attempt-1');
     expect(TurnId('turn-1')).toBe('turn-1');
     expect(PermissionRequestId('permission-1')).toBe('permission-1');
+    expect(DurableCommandConflictError).toBeDefined();
+    expect(DurableCommandOutcomeUnknownError).toBeDefined();
+    expect(DurableSessionJournal.open).toBeTypeOf('function');
     expect(DurableSessionProjector).toBeDefined();
     expect(projectDurableSession([]).status).toBe('empty');
   });
@@ -89,6 +97,9 @@ describe('root exports', () => {
     expectTypeOf<
       DurableEventOfType<typeof DurableEventType.REQUEST_ACCEPTED>['data']['inputId']
     >().toEqualTypeOf<InputId>();
+    expectTypeOf<
+      DurableSessionCommand['events'][number]
+    >().toEqualTypeOf<DurableCommandEventDraft>();
     expectTypeOf<DurableSessionRecoveryPlan['action']>().toEqualTypeOf<
       'none' | 'resume_request' | 'resume_turn' | 'resolve_permissions' | 'reconcile_tool_outcomes'
     >();
