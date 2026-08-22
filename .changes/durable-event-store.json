@@ -1,5 +1,0 @@
-{
-  "type": "feature",
-  "en": "Add the first Durable Event Store phase with versioned envelopes, compare-and-append sequencing, cursor reads, and a crash-tolerant JSONL adapter.",
-  "zh-CN": "新增 Durable Event Store 第一阶段，提供版本化事件信封、compare-and-append 序列、cursor 读取和可容忍尾部中断写入的 JSONL adapter。"
-}

@@ -2,6 +2,12 @@
 
 All notable changes to `@blade-ai/agent-sdk` are documented here.
 
+## [3.2.0] - 2026-08-22
+
+### Features
+
+- Add the first Durable Event Store phase with versioned envelopes, compare-and-append sequencing, cursor reads, and a crash-tolerant JSONL adapter.
+
 ## [3.1.2] - 2026-08-22
 
 ### Fixes

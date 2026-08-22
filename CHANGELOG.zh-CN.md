@@ -2,6 +2,12 @@
 
 `@blade-ai/agent-sdk` 的所有重要变更都记录在此。
 
+## [3.2.0] - 2026-08-22
+
+### 新功能
+
+- 新增 Durable Event Store 第一阶段，提供版本化事件信封、compare-and-append 序列、cursor 读取和可容忍尾部中断写入的 JSONL adapter。
+
 ## [3.1.2] - 2026-08-22
 
 ### 修复
