@@ -2,6 +2,12 @@
 
 All notable changes to `@blade-ai/agent-sdk` are documented here.
 
+## [4.3.0] - 2026-08-22
+
+### Features
+
+- Add atomic active-turn rollover into provenance-linked continuation requests with stale-CAS protection and fail-closed non-idempotent boundaries.
+
 ## [4.2.0] - 2026-08-22
 
 ### Features

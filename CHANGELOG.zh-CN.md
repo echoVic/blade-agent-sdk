@@ -2,6 +2,12 @@
 
 `@blade-ai/agent-sdk` 的所有重要变更都记录在此。
 
+## [4.3.0] - 2026-08-22
+
+### 新功能
+
+- 新增 active Turn 到 provenance continuation Request 的原子 rollover，并提供 stale-CAS 防护与非幂等边界的 fail-closed 保证。
+
 ## [4.2.0] - 2026-08-22
 
 ### 新功能
