@@ -1299,5 +1299,59 @@ describe('agentLoop', () => {
         'user',
       ]);
     });
+
+    it('releases only unapplied inputs when steering application fails', async () => {
+      const inbox = new SessionInputInbox();
+      const requestId = RequestId('request-apply-failure');
+      const runControl = new ActiveRequestController(
+        requestId,
+        undefined,
+        inbox,
+        InputId('initial-input'),
+      );
+      for (const [index, inputId] of [
+        'steer-first',
+        'steer-failing',
+        'steer-remaining',
+      ].entries()) {
+        inbox.enqueue({
+          inputId: InputId(inputId),
+          content: inputId,
+          priority: 'next',
+          targetRequestId: requestId,
+          acceptedAt: index,
+        });
+      }
+      const applyAttempts: string[] = [];
+      const config = baseConfig({
+        runControl,
+        onInputApply: async ({ input }) => {
+          applyAttempts.push(input.inputId);
+          if (input.inputId === 'steer-failing') {
+            throw new Error('input hook failed');
+          }
+          return {
+            role: 'user',
+            content: input.content,
+          };
+        },
+      });
+
+      await expect(collectEvents(agentLoop(config))).rejects.toThrow(
+        'input hook failed',
+      );
+
+      expect(applyAttempts).toEqual(['steer-first', 'steer-failing']);
+      expect(inbox.getAll().map((input) => input.inputId)).toEqual([
+        'steer-failing',
+        'steer-remaining',
+      ]);
+      expect(
+        runControl.claimSteeringInputs().map((input) => input.inputId),
+      ).toEqual([
+        'steer-failing',
+        'steer-remaining',
+      ]);
+    });
   });
 });
