@@ -2,6 +2,18 @@
 
 `@blade-ai/agent-sdk` 的所有重要变更都记录在此。
 
+## [3.3.0] - 2026-08-22
+
+### 破坏性变更
+
+- 将 fail-closed、opt-in durable 事件日志接入 Session 的请求、Turn、工具、权限、中止、关闭与流取消生命周期；Session.abort() 现返回 Promise，以等待 pending request 的 durable 终态。
+
+### 新功能
+
+- 新增面向 command 的 durable Session journal，提供生命周期预演、有界 CAS 重试、幂等 replay 与未知写入结果对账。
+- 新增严格的逐事件 durable 生命周期 payload 与确定性 Session 恢复投影，显式区分工具结果对账和待决权限状态。
+- 新增可等待的工具生命周期钩子，在调度、权限交互、副作用开始和终态结果发布之间强制 durable 顺序。
+
 ## [3.2.0] - 2026-08-22
 
 ### 新功能

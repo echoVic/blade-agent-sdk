@@ -1,5 +1,0 @@
-{
-  "type": "feature",
-  "en": "Add awaited tool lifecycle hooks that enforce durable ordering around scheduling, permission prompts, side-effect start, and terminal result publication.",
-  "zh-CN": "新增可等待的工具生命周期钩子，在调度、权限交互、副作用开始和终态结果发布之间强制 durable 顺序。"
-}

@@ -1,5 +1,0 @@
-{
-  "type": "feature",
-  "en": "Add strict per-event durable lifecycle payloads and deterministic Session recovery projection with explicit tool and permission reconciliation states.",
-  "zh-CN": "新增严格的逐事件 durable 生命周期 payload 与确定性 Session 恢复投影，显式区分工具结果对账和待决权限状态。"
-}

@@ -2,6 +2,18 @@
 
 All notable changes to `@blade-ai/agent-sdk` are documented here.
 
+## [3.3.0] - 2026-08-22
+
+### Breaking Changes
+
+- Integrate fail-closed, opt-in durable event journaling into Session request, turn, tool, permission, abort, close, and stream-cancellation lifecycles; Session.abort() now returns a Promise that settles pending-request durability.
+
+### Features
+
+- Add a command-oriented durable Session journal with lifecycle preflight, bounded CAS retries, idempotent replay, and unknown-write reconciliation.
+- Add strict per-event durable lifecycle payloads and deterministic Session recovery projection with explicit tool and permission reconciliation states.
+- Add awaited tool lifecycle hooks that enforce durable ordering around scheduling, permission prompts, side-effect start, and terminal result publication.
+
 ## [3.2.0] - 2026-08-22
 
 ### Features
