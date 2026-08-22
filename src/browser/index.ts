@@ -21,13 +21,12 @@ export type {
   ToolEffect,
   ToolEffectYield,
   ToolExecution,
-  ToolModelContent,
   ToolMessage,
+  ToolModelContent,
   ToolProgress,
   ToolResult,
   ToolYield,
 } from '../core/index.js';
-export * from '../session/events/core.js';
 export {
   CommandId,
   collectToolExecution,
@@ -40,13 +39,16 @@ export {
   MessageRole,
   PermissionDecision,
   PermissionMode,
+  PermissionRequestId,
   RequestId,
   SessionId,
   StreamMessageType,
   ToolAttemptId,
   ToolKind,
+  ToolUseId,
   TurnId,
 } from '../core/index.js';
+export * from '../session/events/core.js';
 
 export {
   createMemoryReadTool,

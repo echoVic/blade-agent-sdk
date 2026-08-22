@@ -207,6 +207,7 @@ export {
   EventSequence,
   InputId,
   MessageId,
+  PermissionRequestId,
   RequestId,
   SessionId,
   ToolAttemptId,
