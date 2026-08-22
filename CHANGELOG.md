@@ -2,6 +2,12 @@
 
 All notable changes to `@blade-ai/agent-sdk` are documented here.
 
+## [4.4.0] - 2026-08-22
+
+### Features
+
+- Add atomic recovery for Requests that crash before their first Turn, with persist-before-preparation steering, stale-boundary fencing, and explicit Request outcome reconciliation.
+
 ## [4.3.0] - 2026-08-22
 
 ### Features

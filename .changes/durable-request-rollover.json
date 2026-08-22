@@ -1,5 +1,0 @@
-{
-  "type": "feature",
-  "en": "Add atomic recovery for Requests that crash before their first Turn, with persist-before-preparation steering, stale-boundary fencing, and explicit Request outcome reconciliation.",
-  "zh-CN": "新增首个 Turn 前崩溃 Request 的原子恢复，为 steering 输入实施先持久化后准备与过期边界熔断，并支持显式 Request 终态对账。"
-}
