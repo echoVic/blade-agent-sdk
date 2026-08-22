@@ -34,6 +34,7 @@ import {
   RequestId,
   SessionId,
   ToolAttemptId,
+  TurnId,
 } from '@blade-ai/agent-sdk';
 ```
 
@@ -294,11 +295,20 @@ const recovery = projector.recoveryPlan();
 - 一个 Session 同时只能有一个活动 Request，一个 Request 同时只能有一个活动 Turn。
 - Request、Turn、Tool Attempt、Permission Request、Command 和已应用 Input ID 不可复用。
 - Turn 编号必须连续；关联的 Session、Request、Turn 与 Tool 标识必须一致。
+- `input_applied.turnId` 若存在，必须匹配当前 active Turn。
+- Request 终态若携带 `causationEventId`，必须指向该 Request 最后一次持久化边界
+  （例如 `request_accepted`、`request_started`、`input_applied` 或 Turn 终止事件）。
 - `tool_started` 前必须完成权限决策；未完成的工具会阻止 Turn 结束。
 - `causationEventId` 只能引用同一日志中已出现的事件。
 
 任一事件校验失败后 projector 实例会保持 failed 状态；调用方必须丢弃该实例，
 修复 canonical journal 后从头重新投影，不能跳过坏事件继续运行。
+为兼容既有 schema v2 日志，缺失的 Request 终态 causation 仍可读取；当前
+Session writer 会把所有独立 Request 终态绑定到最后一次 Request 边界，
+`reconcileRequestOutcome()` 则绑定调用方确认过的最后 Turn 终止事件。Journal
+preview 会拒绝新的无锚点或 stale-boundary 写入。同一 command 中紧邻的
+Turn/Request 原子终止不需要引用尚未分配的 event ID；直接绕过 Journal 使用
+Store 的写入方必须自行遵守同一契约。
 
 `recoveryPlan()` 返回以下动作之一：
 
@@ -382,6 +392,14 @@ await coordinator.resolvePermission({
 不能证明 pre-Turn Hook 或其他准备步骤没有产生副作用。仅当 durable
 `appliedInputIds` 恰好为初始输入时，plan 才返回 `rollover_request`；缺失初始
 应用记录或存在额外 steering 输入时返回 `reconcile_request_inputs`。
+初始输入和 steering 输入都在各自 Hook/附件准备前提交 `input_applied`；提交
+失败时不会运行准备副作用，提交成功后即使准备失败也不会自动重放该输入。
+若输入在一个已完成 Turn 与下一个 Turn 之间进入准备阶段，plan 同样返回
+`reconcile_request_inputs`；`sourceLastTurn` 将 rollover 固定到调用方观察到的
+Turn 编号。
+该保证依赖 writer 遵守相同顺序；若自定义或旧版 writer 曾在
+`input_applied` 前执行输入副作用，journal 无法证明该副作用，调用方必须
+fail closed，而不能仅依据 `rollover_request` 自动继续。
 
 两种动作都通过 `prepareRequestRecovery()` 收敛，但调用方必须先对账整个
 pre-Turn 准备阶段，提供最终准备好的输入，并原样回传观察到的
@@ -390,23 +408,26 @@ pre-Turn 准备阶段，提供最终准备好的输入，并原样回传观察�
 ```ts
 const request = coordinator.getProjection().activeRequest;
 if (!request) throw new Error('No active Request');
+const preparedInput = 'prepared input after external reconciliation';
 
 await coordinator.prepareRequestRecovery({
   commandId: CommandId('recover-request-42'),
   requestId: RequestId('request-source-42'),
   inputId: InputId('input-source-42'),
+  sourceLastTurn: request.lastTurn,
   recoveryTurnId: TurnId('synthetic-recovery-turn-42'),
   recoveryRequestId: RequestId('request-recovery-42'),
   recoveryInputId: InputId('input-recovery-42'),
   preparation: {
     status: 'reconciled',
-    appliedInputIds: request.appliedInputIds,
+    appliedInputIds: request.appliedInputIds ?? [],
     input: preparedInput,
   },
 });
 ```
 
-该 API 在一个 CAS command 中写入
+该 API 在一个 CAS command 中写入可选的 `request_started`（源 Request 尚为
+accepted 时），随后写入
 `turn_started (synthetic) → turn_aborted → request_interrupted →
 request_accepted`。source Request/Input ID、`appliedInputIds` 和 Journal head
 都是前置条件；并发出现真实 `turn_started` 或新的输入应用时，旧决策会失败。
@@ -421,9 +442,15 @@ request_accepted`。source Request/Input ID、`appliedInputIds` 和 Journal head
 `interrupted`：
 
 ```ts
+const terminalPending = coordinator.getProjection().activeRequest;
+if (!terminalPending?.lastTurnEventId) {
+  throw new Error('No terminal-pending Turn');
+}
+
 await coordinator.reconcileRequestOutcome({
   commandId: CommandId('reconcile-request-42'),
-  requestId: RequestId('request-source-42'),
+  requestId: terminalPending.requestId,
+  lastTurnEventId: terminalPending.lastTurnEventId,
   outcome: {
     status: 'completed',
     output: 'already completed',
@@ -431,6 +458,9 @@ await coordinator.reconcileRequestOutcome({
   },
 });
 ```
+
+`lastTurnEventId` 把结论绑定到调用方实际检查过的 Turn 终止事件；若期间出现更新的
+Turn，或重试时改用其他锚点，提交会 fail closed。
 
 对于 `resume_turn`，调用 `prepareTurnRecovery()` 可在同一个 CAS command 中：
 

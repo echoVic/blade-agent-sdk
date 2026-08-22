@@ -128,7 +128,7 @@ Node-local 能力外，这些函数都从根入口导出；实际 subpath 以“
 | `DurableSessionProjector` / `projectDurableSession` | 增量或一次性重建并校验 Session 生命周期 |
 | `planDurableSessionRecovery` / `DurableSessionRecoveryPlan` | 分类未完成 Request、Turn、Tool 与 Permission |
 | `DurableSessionProjection` / `DurableSessionProjectionStatus` | Session 当前 durable 状态及全局已对账输入 |
-| `DurableRequestProjection` / `DurableRequestStatus` | 活动 Request 状态、已应用及已对账输入 |
+| `DurableRequestProjection` / `DurableRequestStatus` | 活动 Request 状态、已应用、待准备及已对账输入 |
 | `DurableRequestRecoveryOrigin` | continuation Request 的 source Request/Turn provenance |
 | `DurableRequestRecoveryKind` | 区分 active-Turn 与 synthetic pre-Turn recovery |
 | `DurableTurnProjection` / `DurableTurnStatus` | 活动 Turn 状态 |

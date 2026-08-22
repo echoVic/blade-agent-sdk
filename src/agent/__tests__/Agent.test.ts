@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { Agent } from '../Agent.js';
+import { RECONCILED_INITIAL_INPUT } from '../InitialInputPreparation.js';
 import type {
   ChatContext,
   LoopOptions,
@@ -100,7 +101,7 @@ describe('Agent input preparation', () => {
     };
 
     const recovered = await testable.prepareContext('already prepared', context, {
-      initialInputPreparation: 'reconciled',
+      initialInputPreparation: RECONCILED_INITIAL_INPUT,
     });
     const ordinary = await testable.prepareContext('needs preparation', context);
 

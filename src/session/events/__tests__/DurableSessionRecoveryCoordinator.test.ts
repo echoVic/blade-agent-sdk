@@ -346,6 +346,7 @@ describe('DurableSessionRecoveryCoordinator', () => {
       commandId: CommandId('rollover-pre-turn-request'),
       requestId,
       inputId,
+      sourceLastTurn: 0,
       recoveryTurnId: requestRolloverTurnId,
       recoveryRequestId: rolloverRequestId,
       recoveryInputId: rolloverInputId,
@@ -366,6 +367,15 @@ describe('DurableSessionRecoveryCoordinator', () => {
       } as never),
     ).rejects.toMatchObject({
       code: 'DURABLE_RECOVERY_INVALID_STATE',
+    });
+    await expect(
+      first.prepareRequestRecovery({
+        ...command,
+        commandId: CommandId('rollover-stale-turn'),
+        sourceLastTurn: 1,
+      }),
+    ).rejects.toMatchObject({
+      code: 'DURABLE_RECOVERY_TARGET_NOT_FOUND',
     });
     const results = await Promise.all([
       first.prepareRequestRecovery(command),
@@ -415,6 +425,58 @@ describe('DurableSessionRecoveryCoordinator', () => {
     });
   });
 
+  it('reconciles an accepted Request that already applied a steering input', async () => {
+    const store = createStore();
+    const journal = await createJournal(store);
+    const steeringInputId = InputId('accepted-request-steering');
+    await journal.commit({
+      commandId: CommandId('apply-before-request-start'),
+      events: [
+        {
+          type: DurableEventType.INPUT_APPLIED,
+          requestId,
+          data: {
+            inputId: steeringInputId,
+            priority: 'next',
+          },
+        },
+      ],
+    });
+    const coordinator = new DurableSessionRecoveryCoordinator(journal);
+
+    expect(coordinator.planResume()).toMatchObject({
+      action: 'recovery_required',
+      recoveryPlan: { action: 'reconcile_request_inputs' },
+    });
+    const result = await coordinator.prepareRequestRecovery({
+      commandId: CommandId('reconcile-accepted-request-inputs'),
+      requestId,
+      inputId,
+      sourceLastTurn: 0,
+      recoveryTurnId: requestRolloverTurnId,
+      recoveryRequestId: rolloverRequestId,
+      recoveryInputId: rolloverInputId,
+      preparation: {
+        status: 'reconciled',
+        appliedInputIds: [steeringInputId],
+        input: 'reconciled accepted Request input',
+      },
+    });
+
+    expect(result.commit.events.map((event) => event.type)).toEqual([
+      DurableEventType.REQUEST_STARTED,
+      DurableEventType.TURN_STARTED,
+      DurableEventType.TURN_ABORTED,
+      DurableEventType.REQUEST_INTERRUPTED,
+      DurableEventType.REQUEST_ACCEPTED,
+    ]);
+    expect(result.projection.activeRequest).toMatchObject({
+      requestId: rolloverRequestId,
+      recoveryKind: 'pre_turn_request',
+      reconciledInputIds: [inputId, steeringInputId],
+    });
+  });
+
   it('requires exact reconciliation of pre-turn applied inputs before rollover', async () => {
     const store = createStore();
     const journal = await createJournal(store, { requestStarted: true });
@@ -437,6 +499,7 @@ describe('DurableSessionRecoveryCoordinator', () => {
       commandId: CommandId('reconcile-pre-turn-inputs'),
       requestId,
       inputId,
+      sourceLastTurn: 0,
       recoveryTurnId: requestRolloverTurnId,
       recoveryRequestId: rolloverRequestId,
       recoveryInputId: rolloverInputId,
@@ -455,6 +518,15 @@ describe('DurableSessionRecoveryCoordinator', () => {
           ...command.preparation,
           appliedInputIds: [inputId],
         },
+      }),
+    ).rejects.toMatchObject({
+      code: 'DURABLE_RECOVERY_INVALID_STATE',
+    });
+    await expect(
+      coordinator.prepareRequestRecovery({
+        ...command,
+        commandId: CommandId('reuse-steering-input-for-recovery'),
+        recoveryInputId: steeringInputId,
       }),
     ).rejects.toMatchObject({
       code: 'DURABLE_RECOVERY_INVALID_STATE',
@@ -508,6 +580,7 @@ describe('DurableSessionRecoveryCoordinator', () => {
       commandId: CommandId('reconcile-missing-input-application'),
       requestId,
       inputId,
+      sourceLastTurn: 0,
       recoveryTurnId: requestRolloverTurnId,
       recoveryRequestId: rolloverRequestId,
       recoveryInputId: rolloverInputId,
@@ -525,6 +598,83 @@ describe('DurableSessionRecoveryCoordinator', () => {
     });
   });
 
+  it('reconciles an input prepared between completed Turns', async () => {
+    const store = createStore();
+    const journal = await createJournal(store, { requestStarted: true });
+    const betweenTurnsInputId = InputId('between-turns-input');
+    await journal.commit({
+      commandId: CommandId('complete-turn-and-apply-input'),
+      events: [
+        {
+          type: DurableEventType.TURN_STARTED,
+          requestId,
+          turnId,
+          data: { turn: 1, model: 'accepted-model' },
+        },
+        {
+          type: DurableEventType.TURN_COMPLETED,
+          requestId,
+          turnId,
+          data: { turn: 1, hasToolCalls: false },
+        },
+        {
+          type: DurableEventType.INPUT_APPLIED,
+          requestId,
+          data: {
+            inputId: betweenTurnsInputId,
+            priority: 'next',
+          },
+        },
+      ],
+    });
+    const coordinator = new DurableSessionRecoveryCoordinator(journal);
+
+    expect(coordinator.getRecoveryPlan().action).toBe('reconcile_request_inputs');
+    const result = await coordinator.prepareRequestRecovery({
+      commandId: CommandId('reconcile-between-turns-input'),
+      requestId,
+      inputId,
+      sourceLastTurn: 1,
+      recoveryTurnId: requestRolloverTurnId,
+      recoveryRequestId: rolloverRequestId,
+      recoveryInputId: rolloverInputId,
+      preparation: {
+        status: 'reconciled',
+        appliedInputIds: [inputId, betweenTurnsInputId],
+        input: 'prepared input for turn two',
+      },
+    });
+
+    expect(result.commit.events).toEqual([
+      expect.objectContaining({
+        type: DurableEventType.TURN_STARTED,
+        data: expect.objectContaining({ turn: 2 }),
+      }),
+      expect.objectContaining({
+        type: DurableEventType.TURN_ABORTED,
+        data: expect.objectContaining({ turn: 2 }),
+      }),
+      expect.objectContaining({
+        type: DurableEventType.REQUEST_INTERRUPTED,
+      }),
+      expect.objectContaining({
+        type: DurableEventType.REQUEST_ACCEPTED,
+        data: expect.objectContaining({
+          recovery: {
+            requestId,
+            turnId: requestRolloverTurnId,
+            turn: 2,
+          },
+        }),
+      }),
+    ]);
+    expect(result.continuation).toContain('"boundary": "between_turns"');
+    expect(result.projection.activeRequest).toMatchObject({
+      recoveryKind: 'pre_turn_request',
+      reconciledInputIds: [betweenTurnsInputId],
+    });
+  });
+
   it('does not roll a pre-turn Request over after a concurrent Turn starts', async () => {
     const baseStore = createStore();
     const store = new StartTurnBeforeRequestRolloverStore(baseStore);
@@ -534,6 +684,7 @@ describe('DurableSessionRecoveryCoordinator', () => {
       commandId: CommandId('raced-request-rollover'),
       requestId,
       inputId,
+      sourceLastTurn: 0,
       recoveryTurnId: requestRolloverTurnId,
       recoveryRequestId: rolloverRequestId,
       recoveryInputId: rolloverInputId,
@@ -581,6 +732,10 @@ describe('DurableSessionRecoveryCoordinator', () => {
     });
     const coordinator = new DurableSessionRecoveryCoordinator(journal);
     const second = await DurableSessionRecoveryCoordinator.open(store, sessionId);
+    const lastTurnEventId = coordinator.getProjection().activeRequest?.lastTurnEventId;
+    if (!lastTurnEventId) {
+      throw new Error('Expected a terminal Turn event');
+    }
 
     expect(coordinator.getRecoveryPlan().action).toBe('reconcile_request_outcome');
     await expect(
@@ -588,6 +743,7 @@ describe('DurableSessionRecoveryCoordinator', () => {
         commandId: CommandId('unsafe-post-turn-rollover'),
         requestId,
         inputId,
+        sourceLastTurn: 1,
         recoveryTurnId: requestRolloverTurnId,
         recoveryRequestId: rolloverRequestId,
         recoveryInputId: rolloverInputId,
@@ -604,6 +760,7 @@ describe('DurableSessionRecoveryCoordinator', () => {
     const command = {
       commandId: CommandId('reconcile-request-completed'),
       requestId,
+      lastTurnEventId,
       outcome: {
         status: 'completed' as const,
         output: 'already completed',
@@ -614,6 +771,15 @@ describe('DurableSessionRecoveryCoordinator', () => {
         },
       },
     };
+    await expect(
+      coordinator.reconcileRequestOutcome({
+        ...command,
+        commandId: CommandId('reconcile-wrong-turn-event'),
+        lastTurnEventId: EventId('different-turn-event'),
+      }),
+    ).rejects.toMatchObject({
+      code: 'DURABLE_RECOVERY_TARGET_NOT_FOUND',
+    });
     const results = await Promise.all([
       coordinator.reconcileRequestOutcome(command),
       second.reconcileRequestOutcome(command),
@@ -625,6 +791,7 @@ describe('DurableSessionRecoveryCoordinator', () => {
       'reconciled',
     ]);
     expect(replayed.commit.status).toBe('replayed');
+    expect(replayed.commit.events[0]?.causationEventId).toBe(lastTurnEventId);
     expect(replayed.recoveryPlan.action).toBe('none');
     expect(replayed.projection.activeRequest).toBeNull();
     await expect(
@@ -675,9 +842,15 @@ describe('DurableSessionRecoveryCoordinator', () => {
       ],
     });
 
-    const result = await new DurableSessionRecoveryCoordinator(journal).reconcileRequestOutcome({
+    const coordinator = new DurableSessionRecoveryCoordinator(journal);
+    const lastTurnEventId = coordinator.getProjection().activeRequest?.lastTurnEventId;
+    if (!lastTurnEventId) {
+      throw new Error('Expected a terminal Turn event');
+    }
+    const result = await coordinator.reconcileRequestOutcome({
       commandId: CommandId(`reconcile-request-${outcome.status}`),
       requestId,
+      lastTurnEventId,
       outcome,
     });
 

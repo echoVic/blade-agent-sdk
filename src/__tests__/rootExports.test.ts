@@ -178,17 +178,21 @@ describe('root exports', () => {
     expectTypeOf<DurableRequestRecoveryOrigin['turnId']>().toEqualTypeOf<TurnId>();
     expectTypeOf<DurableRequestRecoveryKind>().toEqualTypeOf<'turn' | 'pre_turn_request'>();
     expectTypeOf<DurableRequestRolloverCommand['inputId']>().toEqualTypeOf<InputId>();
+    expectTypeOf<DurableRequestRolloverCommand['sourceLastTurn']>().toEqualTypeOf<number>();
     expectTypeOf<DurableRequestRolloverCommand['recoveryTurnId']>().toEqualTypeOf<TurnId>();
     expectTypeOf<
       DurableRequestRolloverCommand['preparation']['appliedInputIds']
     >().toEqualTypeOf<readonly InputId[]>();
     expectTypeOf<DurableRequestRolloverResult['recoveryRequestId']>().toEqualTypeOf<RequestId>();
     expectTypeOf<DurableSessionProjection['reconciledInputIds']>().toEqualTypeOf<
-      readonly InputId[]
+      readonly InputId[] | undefined
     >();
     expectTypeOf<
       DurableRequestOutcomeReconciliationCommand['requestId']
     >().toEqualTypeOf<RequestId>();
+    expectTypeOf<
+      DurableRequestOutcomeReconciliationCommand['lastTurnEventId']
+    >().toEqualTypeOf<EventId>();
     expectTypeOf<
       DurableToolOutcomeReconciliationCommand['toolAttemptId']
     >().toEqualTypeOf<ToolAttemptId>();

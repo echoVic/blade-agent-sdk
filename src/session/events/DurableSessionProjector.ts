@@ -99,10 +99,12 @@ export interface DurableRequestProjection {
   readonly context?: JsonObject;
   readonly recovery?: DurableRequestRecoveryOrigin;
   readonly recoveryKind?: DurableRequestRecoveryKind;
-  readonly reconciledInputIds: readonly InputId[];
+  readonly reconciledInputIds?: readonly InputId[];
   readonly status: DurableRequestStatus;
-  readonly appliedInputIds: readonly InputId[];
+  readonly appliedInputIds?: readonly InputId[];
+  readonly pendingInputIds?: readonly InputId[];
   readonly lastTurn: number;
+  readonly lastTurnEventId?: EventId | null;
   readonly activeTurn: DurableTurnProjection | null;
 }
 
@@ -115,7 +117,7 @@ export interface DurableSessionProjection {
   readonly closeReason: DurableSessionCloseReason | null;
   readonly activeRequest: DurableRequestProjection | null;
   readonly appliedInputIds: readonly InputId[];
-  readonly reconciledInputIds: readonly InputId[];
+  readonly reconciledInputIds?: readonly InputId[];
   readonly acceptedCommandIds: readonly CommandId[];
 }
 
@@ -173,6 +175,7 @@ interface MutableTurnProjection {
   turn: number;
   model?: string;
   status: DurableTurnStatus;
+  preparedInputIds: InputId[];
   toolAttempts: Map<ToolAttemptId, MutableToolAttemptProjection>;
 }
 
@@ -191,7 +194,10 @@ interface MutableRequestProjection {
   reconciledInputIds: InputId[];
   status: DurableRequestStatus;
   appliedInputIds: InputId[];
+  pendingInputIds: InputId[];
   lastTurn: number;
+  lastTurnEventId: EventId | null;
+  lastBoundaryEventId: EventId;
   activeTurn: MutableTurnProjection | null;
 }
 
@@ -225,7 +231,13 @@ interface ProjectionAccumulator {
     commandId?: CommandId;
     sequence: EventSequence;
     reason: DurableTurnAbortReason;
+    preparedInputIds: readonly InputId[];
     unsafeNonIdempotentToolAttemptId: ToolAttemptId | null;
+  } | null;
+  lastTurnTerminal: {
+    requestId: RequestId;
+    commandId?: CommandId;
+    sequence: EventSequence;
   } | null;
   lastRequestInterruption: {
     requestId: RequestId;
@@ -340,6 +352,66 @@ function assertTurnCanEnd(event: DurableEventEnvelope, turn: MutableTurnProjecti
   }
 }
 
+function assertRequestCausation(
+  event: DurableEventEnvelope,
+  request: MutableRequestProjection,
+): void {
+  // Schema v2 allowed no causation, and atomic rollover cannot reference an ID
+  // assigned later in the same append. New standalone terminal writes include it.
+  if (
+    event.causationEventId !== undefined
+    && event.causationEventId !== request.lastBoundaryEventId
+  ) {
+    invalid(
+      event,
+      `Request terminal causation ${event.causationEventId} does not match the latest boundary`,
+    );
+  }
+}
+
+function assertNewRequestTerminalCausation(
+  state: ProjectionAccumulator,
+  event: DurableEventEnvelope,
+): void {
+  if (
+    event.type !== DurableEventTypeValue.REQUEST_COMPLETED
+    && event.type !== DurableEventTypeValue.REQUEST_FAILED
+    && event.type !== DurableEventTypeValue.REQUEST_INTERRUPTED
+  ) {
+    return;
+  }
+  const request = state.activeRequest;
+  if (
+    !request
+    || request.requestId !== event.requestId
+    || event.causationEventId === request.lastBoundaryEventId
+  ) {
+    return;
+  }
+  const terminal = state.lastTurnTerminal;
+  const atomicTurnTermination =
+    event.causationEventId === undefined
+    && terminal?.requestId === event.requestId
+    && terminal.commandId !== undefined
+    && terminal.commandId === event.commandId
+    && Number(terminal.sequence) + 1 === Number(event.sequence);
+  if (!atomicTurnTermination) {
+    invalid(event, 'A new Request terminal event requires latest-boundary causation');
+  }
+}
+
+function assertNewInputApplicationBoundary(
+  state: ProjectionAccumulator,
+  event: DurableEventEnvelope,
+): void {
+  if (
+    event.type === DurableEventTypeValue.INPUT_APPLIED
+    && state.activeRequest?.activeTurn
+  ) {
+    invalid(event, 'A new input application requires a completed or aborted Turn');
+  }
+}
+
 export function hasCrossedNonIdempotentBoundary(
   tool: DurableToolAttemptProjection,
 ): boolean {
@@ -396,7 +468,9 @@ function cloneRequest(request: MutableRequestProjection | null): DurableRequestP
     reconciledInputIds: [...request.reconciledInputIds],
     status: request.status,
     appliedInputIds: [...request.appliedInputIds],
+    pendingInputIds: [...request.pendingInputIds],
     lastTurn: request.lastTurn,
+    lastTurnEventId: request.lastTurnEventId,
     activeTurn: cloneTurn(request.activeTurn),
   };
 }
@@ -435,6 +509,9 @@ function applyEvent(state: ProjectionAccumulator, event: DurableEventEnvelope): 
       if (state.seenInputIds.has(event.data.inputId)) {
         invalid(event, `Input ID ${event.data.inputId} was already accepted`);
       }
+      if (state.seenAppliedInputIds.has(event.data.inputId)) {
+        invalid(event, `Input ID ${event.data.inputId} was already applied`);
+      }
       let recoveryKind: DurableRequestRecoveryKind | undefined;
       let reconciledInputIds: InputId[] = [];
       if (event.data.recovery) {
@@ -469,22 +546,26 @@ function applyEvent(state: ProjectionAccumulator, event: DurableEventEnvelope): 
         const syntheticPreTurn =
           origin.commandId === event.commandId
           && Number(origin.sequence) + 1 === Number(turnAbort.sequence);
-        if (syntheticPreTurn && recovery.turn !== 1) {
-          invalid(
-            event,
-            `Recovery origin ${recovery.turnId} is not a canonical pre-turn rollover`,
-          );
-        }
         recoveryKind = syntheticPreTurn ? 'pre_turn_request' : 'turn';
-        reconciledInputIds = [
-          requestInterruption.inputId,
-          ...requestInterruption.appliedInputIds.filter(
-            (inputId) => inputId !== requestInterruption.inputId,
-          ),
-        ];
-        for (const inputId of reconciledInputIds) {
-          if (!state.reconciledInputIds.includes(inputId)) {
-            state.reconciledInputIds.push(inputId);
+        reconciledInputIds = syntheticPreTurn
+          ? [
+              ...(recovery.turn === 1 ? [requestInterruption.inputId] : []),
+              ...turnAbort.preparedInputIds.filter(
+                (inputId) =>
+                  recovery.turn !== 1 || inputId !== requestInterruption.inputId,
+              ),
+            ]
+          : [
+              requestInterruption.inputId,
+              ...requestInterruption.appliedInputIds.filter(
+                (inputId) => inputId !== requestInterruption.inputId,
+              ),
+            ];
+        if (syntheticPreTurn) {
+          for (const inputId of reconciledInputIds) {
+            if (!state.reconciledInputIds.includes(inputId)) {
+              state.reconciledInputIds.push(inputId);
+            }
           }
         }
         if (!syntheticPreTurn && origin.commandId === event.commandId) {
@@ -519,7 +600,10 @@ function applyEvent(state: ProjectionAccumulator, event: DurableEventEnvelope): 
         reconciledInputIds,
         status: 'accepted',
         appliedInputIds: [],
+        pendingInputIds: [],
         lastTurn: 0,
+        lastTurnEventId: null,
+        lastBoundaryEventId: event.eventId,
         activeTurn: null,
       };
       return;
@@ -531,6 +615,13 @@ function applyEvent(state: ProjectionAccumulator, event: DurableEventEnvelope): 
         invalid(event, `Request ${request.requestId} was already started`);
       }
       request.status = 'running';
+      request.lastBoundaryEventId = event.eventId;
+      if (
+        request.pendingInputIds.length === 1
+        && request.pendingInputIds[0] === request.inputId
+      ) {
+        request.pendingInputIds = [];
+      }
       return;
     }
 
@@ -539,6 +630,7 @@ function applyEvent(state: ProjectionAccumulator, event: DurableEventEnvelope): 
       if (request.activeTurn) {
         invalid(event, `Turn ${request.activeTurn.turnId} is still active`);
       }
+      assertRequestCausation(event, request);
       state.activeRequest = null;
       return;
     }
@@ -548,6 +640,7 @@ function applyEvent(state: ProjectionAccumulator, event: DurableEventEnvelope): 
       if (request.activeTurn) {
         invalid(event, `Turn ${request.activeTurn.turnId} is still active`);
       }
+      assertRequestCausation(event, request);
       state.activeRequest = null;
       return;
     }
@@ -557,6 +650,7 @@ function applyEvent(state: ProjectionAccumulator, event: DurableEventEnvelope): 
       if (request.activeTurn) {
         invalid(event, `Turn ${request.activeTurn.turnId} is still active`);
       }
+      assertRequestCausation(event, request);
       state.activeRequest = null;
       state.lastRequestInterruption = {
         requestId: event.requestId,
@@ -589,12 +683,16 @@ function applyEvent(state: ProjectionAccumulator, event: DurableEventEnvelope): 
         ...(event.commandId ? { commandId: event.commandId } : {}),
         sequence: event.sequence,
       });
+      const preparedInputIds = request.pendingInputIds;
+      request.pendingInputIds = [];
       request.lastTurn = event.data.turn;
+      request.lastBoundaryEventId = event.eventId;
       request.activeTurn = {
         turnId: event.turnId,
         turn: event.data.turn,
         ...(event.data.model ? { model: event.data.model } : {}),
         status: 'running',
+        preparedInputIds,
         toolAttempts: new Map(),
       };
       return;
@@ -608,6 +706,13 @@ function applyEvent(state: ProjectionAccumulator, event: DurableEventEnvelope): 
       }
       assertTurnCanEnd(event, turn);
       request.activeTurn = null;
+      request.lastTurnEventId = event.eventId;
+      request.lastBoundaryEventId = event.eventId;
+      state.lastTurnTerminal = {
+        requestId: event.requestId,
+        ...(event.commandId ? { commandId: event.commandId } : {}),
+        sequence: event.sequence,
+      };
       return;
     }
 
@@ -622,6 +727,13 @@ function applyEvent(state: ProjectionAccumulator, event: DurableEventEnvelope): 
         hasCrossedNonIdempotentBoundary,
       );
       request.activeTurn = null;
+      request.lastTurnEventId = event.eventId;
+      request.lastBoundaryEventId = event.eventId;
+      state.lastTurnTerminal = {
+        requestId: event.requestId,
+        ...(event.commandId ? { commandId: event.commandId } : {}),
+        sequence: event.sequence,
+      };
       state.lastTurnAbort = {
         requestId: event.requestId,
         turnId: event.turnId,
@@ -629,6 +741,7 @@ function applyEvent(state: ProjectionAccumulator, event: DurableEventEnvelope): 
         ...(event.commandId ? { commandId: event.commandId } : {}),
         sequence: event.sequence,
         reason: event.data.reason,
+        preparedInputIds: [...turn.preparedInputIds],
         unsafeNonIdempotentToolAttemptId: unsafeNonIdempotentTool?.toolAttemptId ?? null,
       };
       return;
@@ -792,12 +905,26 @@ function applyEvent(state: ProjectionAccumulator, event: DurableEventEnvelope): 
 
     case DurableEventTypeValue.INPUT_APPLIED: {
       const request = requireActiveRequest(state, event);
+      if (
+        event.turnId !== undefined
+        && request.activeTurn?.turnId !== event.turnId
+      ) {
+        invalid(event, `No active turn matches ${String(event.turnId)}`);
+      }
       if (state.seenAppliedInputIds.has(event.data.inputId)) {
         invalid(event, `Input ID ${event.data.inputId} was already applied`);
+      }
+      if (
+        state.seenInputIds.has(event.data.inputId)
+        && event.data.inputId !== request.inputId
+      ) {
+        invalid(event, `Input ID ${event.data.inputId} was already used by another Request`);
       }
       state.seenAppliedInputIds.add(event.data.inputId);
       state.appliedInputIds.push(event.data.inputId);
       request.appliedInputIds.push(event.data.inputId);
+      request.pendingInputIds.push(event.data.inputId);
+      request.lastBoundaryEventId = event.eventId;
       return;
     }
   }
@@ -820,6 +947,7 @@ function createProjectionAccumulator(): ProjectionAccumulator {
     seenTurnIds: new Set(),
     turnOrigins: new Map(),
     lastTurnAbort: null,
+    lastTurnTerminal: null,
     lastRequestInterruption: null,
     seenToolAttemptIds: new Set(),
     seenPermissionRequestIds: new Set(),
@@ -892,17 +1020,18 @@ export class DurableSessionProjector {
         eventId = EventId(`__preview__:${nextSequence}:${collision}`);
       }
       const draft = parseDurableEventDraft(candidate);
-      projector.apply([
-        parseDurableEventEnvelope({
-          ...draft,
-          schemaVersion: DURABLE_EVENT_SCHEMA_VERSION,
-          eventId,
-          sequence: EventSequence(nextSequence),
-          sessionId,
-          recordedAt,
-          occurredAt: draft.occurredAt ?? recordedAt,
-        }),
-      ]);
+      const event = parseDurableEventEnvelope({
+        ...draft,
+        schemaVersion: DURABLE_EVENT_SCHEMA_VERSION,
+        eventId,
+        sequence: EventSequence(nextSequence),
+        sessionId,
+        recordedAt,
+        occurredAt: draft.occurredAt ?? recordedAt,
+      });
+      assertNewInputApplicationBoundary(projector.state, event);
+      assertNewRequestTerminalCausation(projector.state, event);
+      projector.apply([event]);
       nextSequence += 1;
     }
 
@@ -964,6 +1093,7 @@ export function planDurableSessionRecovery(
 ): DurableSessionRecoveryPlan {
   const request = projection.activeRequest;
   const turn = request?.activeTurn ?? null;
+  const pendingInputIds = request?.pendingInputIds ?? [];
   const tools = turn?.toolAttempts ?? [];
   const unknownToolAttempts = tools.filter(
     (tool) =>
@@ -1000,11 +1130,16 @@ export function planDurableSessionRecovery(
   } else if (turn) {
     action = 'resume_turn';
   } else if (request?.status === 'accepted') {
-    action = 'resume_request';
+    action = (request.appliedInputIds ?? []).length === 0
+      ? 'resume_request'
+      : 'reconcile_request_inputs';
+  } else if (pendingInputIds.length > 0) {
+    action = 'reconcile_request_inputs';
   } else if (request?.lastTurn === 0) {
+    const appliedInputIds = request.appliedInputIds ?? [];
     action =
-      request.appliedInputIds.length === 1
-      && request.appliedInputIds[0] === request.inputId
+      appliedInputIds.length === 1
+      && appliedInputIds[0] === request.inputId
         ? 'rollover_request'
         : 'reconcile_request_inputs';
   } else if (request) {

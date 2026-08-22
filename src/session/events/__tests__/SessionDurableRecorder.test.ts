@@ -114,7 +114,8 @@ describe('SessionDurableRecorder', () => {
       },
     });
 
-    expect((await store.read(sessionId)).events.map((event) => event.type)).toEqual([
+    const events = (await store.read(sessionId)).events;
+    expect(events.map((event) => event.type)).toEqual([
       'session_created',
       'request_accepted',
       'input_applied',
@@ -128,8 +129,13 @@ describe('SessionDurableRecorder', () => {
       'turn_completed',
       'request_completed',
     ]);
+    const turnCompleted = events.find((event) => event.type === DurableEventType.TURN_COMPLETED);
+    const requestCompleted = events.find(
+      (event) => event.type === DurableEventType.REQUEST_COMPLETED,
+    );
+    expect(requestCompleted?.causationEventId).toBe(turnCompleted?.eventId);
     expect(
-      (await store.read(sessionId)).events.find(
+      events.find(
         (event) => event.type === DurableEventType.REQUEST_ACCEPTED,
       )?.data,
     ).toMatchObject({
@@ -141,7 +147,7 @@ describe('SessionDurableRecorder', () => {
       },
     });
     expect(
-      (await store.read(sessionId)).events.find(
+      events.find(
         (event) => event.type === DurableEventType.TOOL_SCHEDULED,
       )?.data,
     ).toMatchObject({ sideEffect: 'non_idempotent' });
@@ -154,6 +160,171 @@ describe('SessionDurableRecorder', () => {
       sideEffect: 'idempotent',
     });
     expect(journal.getProjection().activeRequest).toBeNull();
+  });
+
+  it('persists steering input application before preparation and confirms it once', async () => {
+    const steeringInputId = InputId('steering-input');
+    await recorder.recordAccepted(inputId, 'run');
+    await recorder.recordStarted(inputId);
+
+    await recorder.onInputApplying({
+      inputId: steeringInputId,
+      priority: 'next',
+    });
+
+    expect((await store.read(sessionId)).events.at(-1)).toMatchObject({
+      type: DurableEventType.INPUT_APPLIED,
+      requestId,
+      data: {
+        inputId: steeringInputId,
+        priority: 'next',
+      },
+    });
+
+    await recorder.recordAgentEvent({
+      type: 'input_applied',
+      inputId: steeringInputId,
+      requestId,
+      priority: 'next',
+      turn: 1,
+    });
+
+    expect(
+      (await store.read(sessionId)).events.filter(
+        (event) =>
+          event.type === DurableEventType.INPUT_APPLIED
+          && event.data.inputId === steeringInputId,
+      ),
+    ).toHaveLength(1);
+  });
+
+  it('binds a pre-turn terminal event to the latest Request boundary', async () => {
+    const steeringInputId = InputId('terminal-steering-input');
+    await recorder.recordAccepted(inputId, 'run');
+    await recorder.recordStarted(inputId);
+    await recorder.onInputApplying({
+      inputId: steeringInputId,
+      priority: 'next',
+    });
+
+    await recorder.finish({
+      status: 'failed',
+      error: new Error('preparation failed'),
+    });
+
+    const events = (await store.read(sessionId)).events;
+    const inputApplied = events.at(-2);
+    const requestFailed = events.at(-1);
+    expect(inputApplied).toMatchObject({
+      type: DurableEventType.INPUT_APPLIED,
+      data: { inputId: steeringInputId },
+    });
+    expect(requestFailed).toMatchObject({
+      type: DurableEventType.REQUEST_FAILED,
+      causationEventId: inputApplied?.eventId,
+    });
+  });
+
+  it('rejects a steering event that did not cross the durable application boundary', async () => {
+    await recorder.recordAccepted(inputId, 'run');
+    await recorder.recordStarted(inputId);
+
+    await expect(
+      recorder.recordAgentEvent({
+        type: 'input_applied',
+        inputId: InputId('unpersisted-steering-input'),
+        requestId,
+        priority: 'next',
+        turn: 1,
+      }),
+    ).rejects.toThrow(/was not persisted before preparation/);
+  });
+
+  it('does not rebase steering input application across a stale journal head', async () => {
+    await recorder.recordAccepted(inputId, 'run');
+    await recorder.recordStarted(inputId);
+    const competingJournal = await DurableSessionJournal.open(store, sessionId);
+    await competingJournal.commit({
+      commandId: CommandId('competing-input'),
+      events: [
+        {
+          type: DurableEventType.INPUT_APPLIED,
+          requestId,
+          data: {
+            inputId: InputId('competing-steering-input'),
+            priority: 'next',
+          },
+        },
+      ],
+    });
+
+    await expect(
+      recorder.onInputApplying({
+        inputId: InputId('stale-steering-input'),
+        priority: 'next',
+      }),
+    ).rejects.toMatchObject({
+      code: 'DURABLE_EVENT_SEQUENCE_CONFLICT',
+    });
+
+    await expect(
+      recorder.finish({
+        status: 'failed',
+        error: new Error('input application failed'),
+      }),
+    ).rejects.toThrow(/fenced after a durable boundary failure/);
+
+    const events = (await store.read(sessionId)).events;
+    expect(
+      events.some(
+        (event) =>
+          event.type === DurableEventType.REQUEST_COMPLETED
+          || event.type === DurableEventType.REQUEST_FAILED
+          || event.type === DurableEventType.REQUEST_INTERRUPTED,
+      ),
+    ).toBe(false);
+    expect(journal.getRecoveryPlan()).toMatchObject({
+      action: 'reconcile_request_inputs',
+      requestId,
+    });
+  });
+
+  it('does not rebase a Request terminal event over a concurrent input application', async () => {
+    await recorder.recordAccepted(inputId, 'run');
+    await recorder.recordStarted(inputId);
+    await recorder.recordAgentEvent({
+      type: 'turn_start',
+      turn: 1,
+      maxTurns: 10,
+    });
+    await recorder.recordAgentEvent({
+      type: 'turn_end',
+      turn: 1,
+      hasToolCalls: false,
+    });
+    const competingJournal = await DurableSessionJournal.open(store, sessionId);
+    await competingJournal.commit({
+      commandId: CommandId('competing-terminal-input'),
+      events: [
+        {
+          type: DurableEventType.INPUT_APPLIED,
+          requestId,
+          data: {
+            inputId: InputId('terminal-race-input'),
+            priority: 'next',
+          },
+        },
+      ],
+    });
+
+    await expect(
+      recorder.finish({
+        status: 'completed',
+        output: 'stale result',
+      }),
+    ).rejects.toMatchObject({
+      code: 'DURABLE_EVENT_SEQUENCE_CONFLICT',
+    });
   });
 
   it('records a denied permission as a cancelled tool without starting it', async () => {

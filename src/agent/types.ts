@@ -9,7 +9,8 @@ import type { ConfirmationHandler, ToolExecutionLifecycle } from '../tools/types
 import type { AgentId, InputId, RequestId, SessionId } from '../types/branded.js';
 import type { OutputFormat, PermissionMode, PermissionsConfig, SandboxSettings } from '../types/common.js';
 import type { CanUseTool, PermissionHandler } from '../types/permissions.js';
-import type { AgentRunControl } from './AgentRunControl.js';
+import type { AgentRunControl, AgentSteeringInput } from './AgentRunControl.js';
+import type { InitialInputPreparation } from './InitialInputPreparation.js';
 import type { AgentSession } from './subagents/AgentSessionStore.js';
 import type { StartBackgroundAgentOptions } from './subagents/BackgroundAgentManager.js';
 import type { TokenBudgetConfig, TokenBudgetSnapshot } from './TokenBudget.js';
@@ -19,6 +20,12 @@ import type { TokenBudgetConfig, TokenBudgetSnapshot } from './TokenBudget.js';
  * 支持纯文本或多模态内容（文本 + 图片）
  */
 export type UserMessageContent = string | ContentPart[];
+
+export interface InputApplicationLifecycle {
+  onInputApplying(
+    input: Pick<AgentSteeringInput, 'inputId' | 'priority'>,
+  ): Promise<void>;
+}
 
 /**
  * 后台 Agent 管理器的最小接口
@@ -139,8 +146,10 @@ export interface LoopOptions {
   runControl?: AgentRunControl;
   /** @internal Session-owned durable tool lifecycle recorder. */
   toolExecutionLifecycle?: ToolExecutionLifecycle;
+  /** @internal Persists a steering input before its preparation side effects. */
+  inputApplicationLifecycle?: InputApplicationLifecycle;
   /** @internal A recovered Request already completed its initial input preparation. */
-  initialInputPreparation?: 'required' | 'reconciled';
+  initialInputPreparation?: InitialInputPreparation;
   onTurnLimitReached?: (data: { turnsCount: number }) => Promise<TurnLimitResponse>;
   /** 进度回调，每次 tool call 完成后触发 */
   onProgress?: (progress: AgentProgress) => void;

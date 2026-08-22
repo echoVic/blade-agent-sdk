@@ -38,6 +38,7 @@ import {
   RequestId,
   SessionId,
   ToolAttemptId,
+  TurnId,
 } from '@blade-ai/agent-sdk';
 ```
 
@@ -308,12 +309,24 @@ The projector fails closed and verifies at least these invariants:
 - A Session has at most one active Request, and a Request has at most one active Turn.
 - Request, Turn, Tool Attempt, Permission Request, Command, and applied Input IDs are not reused.
 - Turn numbers are contiguous, and correlated Session, Request, Turn, and Tool identities match.
+- An `input_applied.turnId`, when present, matches the active Turn.
+- Request-terminal causation, when present, points to that Request's latest
+  persisted boundary, such as `request_accepted`, `request_started`,
+  `input_applied`, or a terminal Turn event.
 - Permission decisions finish before `tool_started`; unfinished tools prevent Turn completion.
 - `causationEventId` only references an earlier event in the same journal.
 
 After any validation failure, the projector instance remains failed. Discard it,
 repair the canonical journal, and replay from the beginning rather than skipping
 the invalid event.
+For compatibility with existing schema-v2 journals, an absent Request-terminal
+causation remains readable. The current Session writer binds every standalone
+Request terminal event to the latest Request boundary, while
+`reconcileRequestOutcome()` binds the caller-confirmed terminal Turn event.
+Journal preview rejects new unanchored or stale-boundary writes. An adjacent
+Turn/Request termination in one command does not need to reference an event ID
+that has not been allocated yet. Writers that bypass Journal and append to the
+Store directly must preserve the same contract themselves.
 
 `recoveryPlan()` returns one of these actions:
 
@@ -403,6 +416,16 @@ pre-Turn hooks or other preparation had no side effects. The plan returns
 `rollover_request` only when the durable `appliedInputIds` contain exactly the
 initial input. A missing initial application or additional steering input
 returns `reconcile_request_inputs`.
+Both initial and steering inputs commit `input_applied` before their hooks and
+attachment preparation. A failed commit prevents those side effects; a
+successful commit prevents automatic replay even if preparation later fails.
+If an input enters preparation between a completed Turn and the next Turn, the
+plan also returns `reconcile_request_inputs`; `sourceLastTurn` binds rollover to
+the Turn number observed by the caller.
+This guarantee depends on writers preserving that order. If a custom or older
+writer ran input side effects before `input_applied`, the journal cannot prove
+their outcome and the caller must fail closed instead of continuing from
+`rollover_request` alone.
 
 Both actions converge through `prepareRequestRecovery()`, but the caller must
 first reconcile the complete pre-Turn preparation stage, provide the final
@@ -411,23 +434,26 @@ prepared input, and echo the observed `activeRequest.appliedInputIds` exactly:
 ```ts
 const request = coordinator.getProjection().activeRequest;
 if (!request) throw new Error('No active Request');
+const preparedInput = 'prepared input after external reconciliation';
 
 await coordinator.prepareRequestRecovery({
   commandId: CommandId('recover-request-42'),
   requestId: RequestId('request-source-42'),
   inputId: InputId('input-source-42'),
+  sourceLastTurn: request.lastTurn,
   recoveryTurnId: TurnId('synthetic-recovery-turn-42'),
   recoveryRequestId: RequestId('request-recovery-42'),
   recoveryInputId: InputId('input-recovery-42'),
   preparation: {
     status: 'reconciled',
-    appliedInputIds: request.appliedInputIds,
+    appliedInputIds: request.appliedInputIds ?? [],
     input: preparedInput,
   },
 });
 ```
 
-The API writes
+The API writes an optional `request_started` when the source is still accepted,
+followed by
 `turn_started (synthetic) -> turn_aborted -> request_interrupted ->
 request_accepted` in one CAS command. The source Request/Input IDs,
 `appliedInputIds`, and Journal head are preconditions. A concurrent real
@@ -445,9 +471,15 @@ record, use a stable `commandId` to commit `completed`, `failed`, or
 `interrupted` explicitly:
 
 ```ts
+const terminalPending = coordinator.getProjection().activeRequest;
+if (!terminalPending?.lastTurnEventId) {
+  throw new Error('No terminal-pending Turn');
+}
+
 await coordinator.reconcileRequestOutcome({
   commandId: CommandId('reconcile-request-42'),
-  requestId: RequestId('request-source-42'),
+  requestId: terminalPending.requestId,
+  lastTurnEventId: terminalPending.lastTurnEventId,
   outcome: {
     status: 'completed',
     output: 'already completed',
@@ -455,6 +487,9 @@ await coordinator.reconcileRequestOutcome({
   },
 });
 ```
+
+`lastTurnEventId` binds the decision to the exact terminal Turn event inspected
+by the caller. A newer Turn or a retry with another anchor fails closed.
 
 For `resume_turn`, `prepareTurnRecovery()` performs these transitions in one
 CAS command:

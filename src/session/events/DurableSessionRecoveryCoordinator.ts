@@ -2,6 +2,7 @@ import type { UserMessageContent } from '../../agent/types.js';
 import { SdkError } from '../../errors/SdkError.js';
 import type {
   CommandId,
+  EventId,
   EventSequence,
   InputId,
   PermissionRequestId,
@@ -100,6 +101,7 @@ export interface DurableRequestRolloverCommand {
   readonly commandId: CommandId;
   readonly requestId: RequestId;
   readonly inputId: InputId;
+  readonly sourceLastTurn: number;
   readonly recoveryTurnId: TurnId;
   readonly recoveryRequestId: RequestId;
   readonly recoveryInputId: InputId;
@@ -153,6 +155,7 @@ export type DurableRequestOutcomeReconciliation =
 export interface DurableRequestOutcomeReconciliationCommand {
   readonly commandId: CommandId;
   readonly requestId: RequestId;
+  readonly lastTurnEventId: EventId;
   readonly outcome: DurableRequestOutcomeReconciliation;
 }
 
@@ -181,6 +184,7 @@ function isAcceptedRequestRecovery(
     recoveryPlan.action === 'resume_request' &&
     request?.status === 'accepted' &&
     request.activeTurn === null &&
+    (request.appliedInputIds ?? []).length === 0 &&
     !projection.appliedInputIds.includes(request.inputId) &&
     request.maxTurns !== undefined &&
     request.model !== undefined &&
@@ -277,20 +281,29 @@ function validatePersistedRequestRollover(
   continuation: UserMessageContent;
   interruptedRequestId: RequestId;
 } {
-  const [turnStarted, turnAborted, requestInterrupted, accepted] = events;
+  const [turnStarted, turnAborted, requestInterrupted, accepted] = events.slice(-4);
+  const requestStarted = events.length === 5 ? events[0] : undefined;
+  const recoveryTurn = command.sourceLastTurn + 1;
   const recovery = accepted?.type === DurableEventType.REQUEST_ACCEPTED
     ? accepted.data.recovery
     : undefined;
   if (
-    events.length !== 4
+    (events.length !== 4 && events.length !== 5)
+    || (
+      requestStarted !== undefined
+      && (
+        requestStarted.type !== DurableEventType.REQUEST_STARTED
+        || requestStarted.requestId !== command.requestId
+      )
+    )
     || turnStarted?.type !== DurableEventType.TURN_STARTED
     || turnStarted.requestId !== command.requestId
     || turnStarted.turnId !== command.recoveryTurnId
-    || turnStarted.data.turn !== 1
+    || turnStarted.data.turn !== recoveryTurn
     || turnAborted?.type !== DurableEventType.TURN_ABORTED
     || turnAborted.requestId !== command.requestId
     || turnAborted.turnId !== command.recoveryTurnId
-    || turnAborted.data.turn !== 1
+    || turnAborted.data.turn !== recoveryTurn
     || turnAborted.data.reason !== 'process_restart'
     || requestInterrupted?.type !== DurableEventType.REQUEST_INTERRUPTED
     || requestInterrupted.requestId !== command.requestId
@@ -301,7 +314,7 @@ function validatePersistedRequestRollover(
     || !recovery
     || recovery.requestId !== command.requestId
     || recovery.turnId !== command.recoveryTurnId
-    || recovery.turn !== 1
+    || recovery.turn !== recoveryTurn
   ) {
     throw new DurableSessionRecoveryError(
       'DURABLE_RECOVERY_INVALID_STATE',
@@ -323,6 +336,7 @@ function validatePersistedRequestRollover(
     command.requestId,
     command.inputId,
     command.preparation.appliedInputIds,
+    command.sourceLastTurn,
   );
   if (
     JSON.stringify(toJsonValue(continuation))
@@ -360,6 +374,8 @@ function parseReconciledRequestPreparation(
 ): UserMessageContent {
   if (
     command.preparation?.status !== 'reconciled'
+    || !Number.isSafeInteger(command.sourceLastTurn)
+    || command.sourceLastTurn < 0
     || !Array.isArray(command.preparation.appliedInputIds)
     || command.preparation.appliedInputIds.some(
       (appliedInputId) =>
@@ -370,7 +386,7 @@ function parseReconciledRequestPreparation(
   ) {
     throw new DurableSessionRecoveryError(
       'DURABLE_RECOVERY_INVALID_STATE',
-      'Request recovery requires an explicit, unique applied-input reconciliation',
+      'Request recovery requires a valid source Turn and explicit, unique input reconciliation',
     );
   }
 
@@ -492,6 +508,7 @@ function buildRequestRecoveryContinuation(
   requestId: RequestId,
   inputId: InputId,
   appliedInputIds: readonly InputId[],
+  sourceLastTurn: number,
 ): UserMessageContent {
   return composeRecoveryContinuation(
     preparedInput,
@@ -499,11 +516,17 @@ function buildRequestRecoveryContinuation(
       sourceRequestId: requestId,
       sourceInputId: inputId,
       sourceAppliedInputIds: appliedInputIds,
-      boundary: 'before_first_turn',
+      sourceLastTurn,
+      boundary: sourceLastTurn === 0 ? 'before_first_turn' : 'between_turns',
     },
     [
       'Pre-turn side effects were explicitly reconciled. '
-        + 'No primary model turn started before the restart. Execute this prepared input once.',
+        + (
+          sourceLastTurn === 0
+            ? 'No primary model turn started before the restart. '
+            : `No model turn started after completed turn ${sourceLastTurn}. `
+        )
+        + 'Execute this prepared input once.',
     ],
   );
 }
@@ -516,6 +539,7 @@ function requestOutcomeEvent(
       return {
         type: DurableEventType.REQUEST_COMPLETED,
         requestId: command.requestId,
+        causationEventId: command.lastTurnEventId,
         data: {
           ...(command.outcome.output !== undefined ? { output: command.outcome.output } : {}),
           ...(command.outcome.usage ? { usage: command.outcome.usage } : {}),
@@ -525,6 +549,7 @@ function requestOutcomeEvent(
       return {
         type: DurableEventType.REQUEST_FAILED,
         requestId: command.requestId,
+        causationEventId: command.lastTurnEventId,
         data: {
           error: command.outcome.error,
         },
@@ -533,6 +558,7 @@ function requestOutcomeEvent(
       return {
         type: DurableEventType.REQUEST_INTERRUPTED,
         requestId: command.requestId,
+        causationEventId: command.lastTurnEventId,
         data: {
           reason: 'process_restart',
         },
@@ -601,8 +627,8 @@ export class DurableSessionRecoveryCoordinator {
   }
 
   /**
-   * Atomically replaces a started Request that never reached its first Turn
-   * with a provenance-linked continuation Request.
+   * Atomically replaces a Request interrupted during preparation before its
+   * next Turn with a provenance-linked continuation Request.
    */
   async prepareRequestRecovery(
     command: DurableRequestRolloverCommand,
@@ -633,9 +659,8 @@ export class DurableSessionRecoveryCoordinator {
         && recoveryPlan.action !== 'reconcile_request_inputs'
       )
       || !request
-      || request.status !== 'running'
+      || (request.status !== 'running' && request.status !== 'accepted')
       || request.activeTurn
-      || request.lastTurn !== 0
     ) {
       throw new DurableSessionRecoveryError(
         'DURABLE_RECOVERY_INVALID_STATE',
@@ -645,10 +670,17 @@ export class DurableSessionRecoveryCoordinator {
     if (request.requestId !== command.requestId || request.inputId !== command.inputId) {
       throw new DurableSessionRecoveryError(
         'DURABLE_RECOVERY_TARGET_NOT_FOUND',
-        `No pre-turn Request matches ${command.requestId}/${command.inputId}`,
+        `No Request awaiting preparation recovery matches ${command.requestId}/${command.inputId}`,
       );
     }
-    if (!inputIdsEqual(request.appliedInputIds, command.preparation.appliedInputIds)) {
+    if (request.lastTurn !== command.sourceLastTurn) {
+      throw new DurableSessionRecoveryError(
+        'DURABLE_RECOVERY_TARGET_NOT_FOUND',
+        `Request ${request.requestId} last Turn does not match ${command.sourceLastTurn}`,
+      );
+    }
+    const appliedInputIds = request.appliedInputIds ?? [];
+    if (!inputIdsEqual(appliedInputIds, command.preparation.appliedInputIds)) {
       throw new DurableSessionRecoveryError(
         'DURABLE_RECOVERY_INVALID_STATE',
         `Request ${request.requestId} applied-input reconciliation does not match durable state`,
@@ -669,18 +701,28 @@ export class DurableSessionRecoveryCoordinator {
       preparedInput,
       request.requestId,
       request.inputId,
-      request.appliedInputIds,
+      appliedInputIds,
+      request.lastTurn,
     );
     const commit = await this.commitRecovery(
       {
         commandId: command.commandId,
         events: [
+          ...(request.status === 'accepted'
+            ? [
+                {
+                  type: DurableEventType.REQUEST_STARTED,
+                  requestId: request.requestId,
+                  data: {},
+                } as const,
+              ]
+            : []),
           {
             type: DurableEventType.TURN_STARTED,
             requestId: request.requestId,
             turnId: command.recoveryTurnId,
             data: {
-              turn: 1,
+              turn: request.lastTurn + 1,
               model: request.model,
             },
           },
@@ -689,7 +731,7 @@ export class DurableSessionRecoveryCoordinator {
             requestId: request.requestId,
             turnId: command.recoveryTurnId,
             data: {
-              turn: 1,
+              turn: request.lastTurn + 1,
               reason: 'process_restart',
             },
           },
@@ -713,7 +755,7 @@ export class DurableSessionRecoveryCoordinator {
               recovery: {
                 requestId: request.requestId,
                 turnId: command.recoveryTurnId,
-                turn: 1,
+                turn: request.lastTurn + 1,
               },
             },
           },
@@ -754,6 +796,7 @@ export class DurableSessionRecoveryCoordinator {
       || request.status !== 'running'
       || request.activeTurn
       || request.lastTurn === 0
+      || request.lastTurnEventId === null
     ) {
       throw new DurableSessionRecoveryError(
         'DURABLE_RECOVERY_INVALID_STATE',
@@ -764,6 +807,12 @@ export class DurableSessionRecoveryCoordinator {
       throw new DurableSessionRecoveryError(
         'DURABLE_RECOVERY_TARGET_NOT_FOUND',
         `No terminal-pending Request matches ${command.requestId}`,
+      );
+    }
+    if (request.lastTurnEventId !== command.lastTurnEventId) {
+      throw new DurableSessionRecoveryError(
+        'DURABLE_RECOVERY_TARGET_NOT_FOUND',
+        `Request ${request.requestId} last Turn event does not match ${command.lastTurnEventId}`,
       );
     }
 

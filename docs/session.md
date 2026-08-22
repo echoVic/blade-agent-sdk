@@ -661,14 +661,18 @@ const session = await createSession({
 事件，并保证：
 
 - `send()` 返回前已提交 `request_accepted`。
+- steering 输入的 `input_applied` 在其 Hook 和附件准备前提交。
 - `turn_start` 和 `tool_use` 对外可见前已提交对应 durable 事件。
 - 工具副作用开始前已提交 `tool_started`。
+- 独立写入的 Request 终态通过 `causationEventId` 绑定最后一次持久化的
+  Request 边界。
 - `tool_result`、`result` 或 `error` 对外可见前已提交终态。
 - pending request 的 `await session.abort()` 返回前已提交
   `request_interrupted`。
 
-如果 durable 边界提交失败，Session 会直接拒绝 stream，而不会伪造普通终态
-事件；在日志完成对账前，新请求和排队请求也不会继续执行。
+如果 durable 边界提交失败，Session 会 fence 当前 Recorder 并直接拒绝
+stream，不会在 Journal 刷新后伪造普通终态事件；在日志完成对账前，新请求和
+排队请求也不会继续执行。
 
 ```ts
 const projection = session.getDurableProjection();
@@ -682,7 +686,8 @@ Request，并保留其 `requestId`、输入、`maxTurns` 和 Runtime Context。�
 模型。缺少完整执行快照的旧 durable Request 不会自动恢复。
 
 已经开始的 Request、活动 Turn、待决权限或未知工具结果不会被推测性重放，而是
-抛出 `DurableSessionRecoveryRequiredError`。首个 Turn 尚未开始时，调用
+抛出 `DurableSessionRecoveryRequiredError`。首个或后续 Turn 尚未开始但输入
+准备状态不明确时，调用
 `prepareRequestRecovery()` 并提供已对账的最终输入与精确
 `appliedInputIds`，把旧 Request 原子 rollover 为新 Request；缺失或额外输入会
 先分类为 `reconcile_request_inputs`。恢复执行会跳过已完成的初始 Hook、附件

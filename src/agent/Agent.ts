@@ -46,6 +46,7 @@ import { createPermissionHandlerFromCanUseTool } from '../types/permissions.js';
 import type { AgentEvent } from './AgentEvent.js';
 import { AttachmentHandler } from './AttachmentHandler.js';
 import { CompactionHandler } from './CompactionHandler.js';
+import { RECONCILED_INITIAL_INPUT } from './InitialInputPreparation.js';
 import { LoopRunner } from './LoopRunner.js';
 import { ModelManager } from './ModelManager.js';
 import { PlanExecutor } from './PlanExecutor.js';
@@ -416,7 +417,7 @@ export class Agent {
     if (!this.isInitialized) throw new Error('Agent未初始化');
 
     const ctx = this.withBackgroundAgentManager(context);
-    const enhancedMessage = options?.initialInputPreparation === 'reconciled'
+    const enhancedMessage = options?.initialInputPreparation === RECONCILED_INITIAL_INPUT
       ? message
       : await this.prepareMessageForContext(message, ctx);
     const loopOptions: LoopOptions = {

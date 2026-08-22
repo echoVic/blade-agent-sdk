@@ -80,9 +80,13 @@ export function buildLoopConfig(deps: LoopHookBuilderDeps): AgentLoopConfig {
   let pendingToolResultCount = 0;
   let pendingInjectedMessages: Message[] = [];
   let currentAssistantMessageId: string | null = null;
+  const inputApplicationLifecycle = options?.inputApplicationLifecycle;
 
   const hooks: AgentLoopHooks = {
     input: {
+      beforeApply: inputApplicationLifecycle
+        ? ({ input }) => inputApplicationLifecycle.onInputApplying(input)
+        : undefined,
       async apply({ input }) {
         if (!runControl) {
           throw new SdkError(
@@ -377,7 +381,7 @@ export function buildLoopConfig(deps: LoopHookBuilderDeps): AgentLoopConfig {
     isYoloMode,
     signal: options?.signal,
     tokenBudget,
-    skipInitialBeforeTurn: options?.initialInputPreparation === 'reconciled',
+    initialInputPreparation: options?.initialInputPreparation,
     prepareTurnState: (turn) => loopState.buildTurnState(turn),
     hooks,
   };

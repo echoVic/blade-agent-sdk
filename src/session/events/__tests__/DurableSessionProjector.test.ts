@@ -279,6 +279,111 @@ describe('DurableSessionProjector', () => {
     expect(projector.snapshot().activeRequest?.status).toBe('accepted');
   });
 
+  it('requires latest-boundary causation for new standalone Request terminal writes', () => {
+    const projector = new DurableSessionProjector().apply(
+      envelopes([
+        ...turnPrefix(),
+        {
+          type: DurableEventType.TURN_COMPLETED,
+          requestId,
+          turnId,
+          data: { turn: 1, hasToolCalls: false },
+        },
+      ]),
+    );
+    const lastTurnEventId = projector.snapshot().activeRequest?.lastTurnEventId;
+    if (!lastTurnEventId) {
+      throw new Error('Expected terminal Turn event');
+    }
+
+    expect(() =>
+      projector.preview(sessionId, [
+        {
+          type: DurableEventType.REQUEST_COMPLETED,
+          requestId,
+          data: {},
+        },
+      ]),
+    ).toThrow(/requires latest-boundary causation/);
+    expect(
+      projector.preview(sessionId, [
+        {
+          type: DurableEventType.REQUEST_COMPLETED,
+          requestId,
+          causationEventId: lastTurnEventId,
+          data: {},
+        },
+      ]).activeRequest,
+    ).toBeNull();
+  });
+
+  it('rejects last-Turn causation after an input application advances the boundary', () => {
+    const projector = new DurableSessionProjector().apply(
+      envelopes([
+        ...turnPrefix(),
+        {
+          type: DurableEventType.TURN_COMPLETED,
+          requestId,
+          turnId,
+          data: { turn: 1, hasToolCalls: false },
+        },
+        {
+          type: DurableEventType.INPUT_APPLIED,
+          requestId,
+          data: {
+            inputId: InputId('latest-boundary-input'),
+            priority: 'next',
+          },
+        },
+      ]),
+    );
+    const projection = projector.snapshot();
+    const lastTurnEventId = projection.activeRequest?.lastTurnEventId;
+    const lastBoundaryEventId = projection.lastEventId;
+    if (!lastTurnEventId || !lastBoundaryEventId) {
+      throw new Error('Expected Turn and input boundary events');
+    }
+
+    expect(() =>
+      projector.preview(sessionId, [
+        {
+          type: DurableEventType.REQUEST_FAILED,
+          requestId,
+          causationEventId: lastTurnEventId,
+          data: { error: { message: 'stale completion' } },
+        },
+      ]),
+    ).toThrow(/requires latest-boundary causation/);
+    expect(
+      projector.preview(sessionId, [
+        {
+          type: DurableEventType.REQUEST_FAILED,
+          requestId,
+          causationEventId: lastBoundaryEventId,
+          data: { error: { message: 'preparation failed' } },
+        },
+      ]).activeRequest,
+    ).toBeNull();
+  });
+
+  it('rejects new input application while a Turn is active', () => {
+    const projector = new DurableSessionProjector().apply(envelopes(turnPrefix()));
+
+    expect(() =>
+      projector.preview(sessionId, [
+        {
+          type: DurableEventType.INPUT_APPLIED,
+          requestId,
+          turnId,
+          data: {
+            inputId: InputId('new-active-turn-input'),
+            priority: 'next',
+          },
+        },
+      ]),
+    ).toThrow(/requires a completed or aborted Turn/);
+  });
+
   it('distinguishes accepted, pre-turn, post-turn, and active-turn recovery', () => {
     const accepted = project([
       requestPrefix()[0] as DurableEventDraft,
@@ -304,6 +409,23 @@ describe('DurableSessionProjector', () => {
     });
     expect(planDurableSessionRecovery(accepted)).toMatchObject({
       action: 'resume_request',
+      requestId,
+      turnId: null,
+    });
+
+    const acceptedWithAppliedInput = project([
+      ...requestPrefix().slice(0, 2),
+      {
+        type: DurableEventType.INPUT_APPLIED,
+        requestId,
+        data: {
+          inputId: InputId('accepted-steering-input'),
+          priority: 'next',
+        },
+      },
+    ]);
+    expect(planDurableSessionRecovery(acceptedWithAppliedInput)).toMatchObject({
+      action: 'reconcile_request_inputs',
       requestId,
       turnId: null,
     });
@@ -366,6 +488,53 @@ describe('DurableSessionProjector', () => {
     ]);
     expect(planDurableSessionRecovery(completedTurn)).toMatchObject({
       action: 'reconcile_request_outcome',
+      requestId,
+      turnId: null,
+    });
+
+    const betweenTurnsInput = project([
+      ...turnPrefix(),
+      {
+        type: DurableEventType.TURN_COMPLETED,
+        requestId,
+        turnId,
+        data: { turn: 1, hasToolCalls: false },
+      },
+      {
+        type: DurableEventType.INPUT_APPLIED,
+        requestId,
+        data: {
+          inputId: InputId('between-turns-input'),
+          priority: 'next',
+        },
+      },
+    ]);
+    expect(planDurableSessionRecovery(betweenTurnsInput)).toMatchObject({
+      action: 'reconcile_request_inputs',
+      requestId,
+      turnId: null,
+    });
+
+    const legacyPreparedBeforeTurnEnd = project([
+      ...turnPrefix(),
+      {
+        type: DurableEventType.INPUT_APPLIED,
+        requestId,
+        turnId,
+        data: {
+          inputId: InputId('legacy-between-turns-input'),
+          priority: 'next',
+        },
+      },
+      {
+        type: DurableEventType.TURN_COMPLETED,
+        requestId,
+        turnId,
+        data: { turn: 1, hasToolCalls: false },
+      },
+    ]);
+    expect(planDurableSessionRecovery(legacyPreparedBeforeTurnEnd)).toMatchObject({
+      action: 'reconcile_request_inputs',
       requestId,
       turnId: null,
     });
@@ -1035,6 +1204,101 @@ describe('DurableSessionProjector', () => {
         },
       ],
       message: /Input ID input-1 was already applied/,
+    },
+    {
+      name: 'request terminal event with stale Turn causation',
+      drafts: [
+        ...turnPrefix(),
+        {
+          type: DurableEventType.TURN_COMPLETED,
+          requestId,
+          turnId,
+          data: { turn: 1, hasToolCalls: false },
+        },
+        {
+          type: DurableEventType.REQUEST_COMPLETED,
+          requestId,
+          causationEventId: EventId('event-1'),
+          data: {},
+        },
+      ],
+      message: /does not match the latest boundary/,
+    },
+    {
+      name: 'input application scoped to a stale Turn',
+      drafts: [
+        ...turnPrefix(),
+        {
+          type: DurableEventType.INPUT_APPLIED,
+          requestId,
+          turnId: TurnId('stale-turn'),
+          data: {
+            inputId: InputId('steering-input'),
+            priority: 'next',
+          },
+        },
+      ],
+      message: /No active turn matches stale-turn/,
+    },
+    {
+      name: 'accepted request reuses a steering input ID',
+      drafts: [
+        ...requestPrefix(),
+        {
+          type: DurableEventType.INPUT_APPLIED,
+          requestId,
+          data: {
+            inputId: InputId('steering-input'),
+            priority: 'next',
+          },
+        },
+        {
+          type: DurableEventType.REQUEST_COMPLETED,
+          requestId,
+          data: {},
+        },
+        {
+          type: DurableEventType.REQUEST_ACCEPTED,
+          requestId: RequestId('request-2'),
+          commandId: CommandId('command-2'),
+          data: {
+            inputId: InputId('steering-input'),
+            input: 'second',
+            priority: 'next',
+          },
+        },
+      ],
+      message: /Input ID steering-input was already applied/,
+    },
+    {
+      name: 'steering input reuses an accepted Request input ID',
+      drafts: [
+        ...requestPrefix().slice(0, 2),
+        {
+          type: DurableEventType.REQUEST_INTERRUPTED,
+          requestId,
+          data: { reason: 'user_abort' },
+        },
+        {
+          type: DurableEventType.REQUEST_ACCEPTED,
+          requestId: RequestId('request-2'),
+          commandId: CommandId('command-2'),
+          data: {
+            inputId: InputId('input-2'),
+            input: 'second',
+            priority: 'next',
+          },
+        },
+        {
+          type: DurableEventType.INPUT_APPLIED,
+          requestId: RequestId('request-2'),
+          data: {
+            inputId: initialInputId,
+            priority: 'next',
+          },
+        },
+      ],
+      message: /Input ID input-1 was already used by another Request/,
     },
   ] as const)('rejects $name', ({ drafts, message }) => {
     expect(() => project(drafts as readonly DurableEventDraft[])).toThrow(message);
