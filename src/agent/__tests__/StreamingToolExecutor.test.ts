@@ -1,7 +1,12 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { ChatResponse, StreamChunk } from '../../services/ChatServiceInterface.js';
+import { ActiveRequestController } from '../../session/ActiveRequestController.js';
 import type { ToolExecution, ToolResult } from '../../tools/types/index.js';
-import { SessionId } from '../../types/branded.js';
+import {
+  InputId,
+  RequestId,
+  SessionId,
+} from '../../types/branded.js';
 import { PermissionMode } from '../../types/common.js';
 import { StreamingToolExecutor } from '../StreamingToolExecutor.js';
 
@@ -20,7 +25,11 @@ async function tick(): Promise<void> {
 }
 
 function createExecutor(options: {
-  streamChat: () => AsyncGenerator<StreamChunk, void, unknown>;
+  streamChat: (
+    messages?: unknown,
+    tools?: unknown,
+    signal?: AbortSignal,
+  ) => AsyncGenerator<StreamChunk, void, unknown>;
   fallbackChat?: () => Promise<ChatResponse>;
   execute?: (
     toolName: string,
@@ -760,9 +769,9 @@ describe('StreamingToolExecutor', () => {
     expect(onAfter).toHaveBeenCalledTimes(1);
   });
 
-  it('lets block-interrupt tools finish after the outer signal aborts', async () => {
+  it('lets block-interrupt tools finish after a steering interrupt', async () => {
     const toolGate = deferred<ToolResult>();
-    const controller = new AbortController();
+    const runControl = new ActiveRequestController(RequestId('request-blocking'));
     let settled = false;
 
     const { executor, execute } = createExecutor({
@@ -779,7 +788,7 @@ describe('StreamingToolExecutor', () => {
             },
           ],
         };
-        while (!controller.signal.aborted) {
+        while (!runControl.stepSignal.aborted) {
           await tick();
         }
       },
@@ -793,7 +802,7 @@ describe('StreamingToolExecutor', () => {
       .collectAndExecute(
         [{ role: 'user', content: 'run blocking tool' }],
         [{ name: 'BlockingTool', description: 'block', parameters: {} }],
-        controller.signal,
+        runControl.stepSignal,
         {
           executionPipeline: executionPipelineFromMock(execute, {
             BlockingTool: { interruptBehavior: 'block' },
@@ -802,6 +811,8 @@ describe('StreamingToolExecutor', () => {
             sessionId: SessionId('session-1'),
             userId: 'user-1',
           },
+          requestSignal: runControl.requestSignal,
+          steeringSignal: runControl.steeringSignal,
         },
       )
       .finally(() => {
@@ -812,7 +823,7 @@ describe('StreamingToolExecutor', () => {
     await tick();
     expect(execute).toHaveBeenCalledTimes(1);
 
-    controller.abort();
+    runControl.interruptStep(InputId('input-now'));
     await tick();
 
     expect(settled).toBe(false);
@@ -825,6 +836,78 @@ describe('StreamingToolExecutor', () => {
     const result = await promise;
     expect(result.executionResults).toHaveLength(1);
     expect(result.executionResults[0].result.status).toBe('success');
+  });
+
+  it('cancels cancel-interrupt tools and marks their result as interrupted', async () => {
+    const toolStarted = deferred<void>();
+    const runControl = new ActiveRequestController(RequestId('request-cancel'));
+    const { executor, execute } = createExecutor({
+      streamChat: async function* () {
+        yield {
+          toolCalls: [
+            {
+              index: 0,
+              id: 'tool-1',
+              function: {
+                name: 'CancelableTool',
+                arguments: '{}',
+              },
+            },
+          ],
+        };
+        while (!runControl.stepSignal.aborted) {
+          await tick();
+        }
+      },
+      execute: async (_toolName, _params, context) => {
+        const signal = (context as { signal?: AbortSignal } | undefined)?.signal;
+        toolStarted.resolve();
+        await new Promise<void>((_resolve, reject) => {
+          signal?.addEventListener(
+            'abort',
+            () => reject(new Error('cancelled')),
+            { once: true },
+          );
+        });
+        return {
+          status: 'success',
+          model: 'unexpected',
+        };
+      },
+      toolInterruptBehaviors: {
+        CancelableTool: 'cancel',
+      },
+    });
+
+    const promise = executor.collectAndExecute(
+      [{ role: 'user', content: 'run cancelable tool' }],
+      [{ name: 'CancelableTool', description: 'cancel', parameters: {} }],
+      runControl.stepSignal,
+      {
+        executionPipeline: executionPipelineFromMock(execute, {
+          CancelableTool: { interruptBehavior: 'cancel' },
+        }),
+        executionContext: {
+          sessionId: SessionId('session-1'),
+          userId: 'user-1',
+        },
+        requestSignal: runControl.requestSignal,
+        steeringSignal: runControl.steeringSignal,
+      },
+    );
+    await toolStarted.promise;
+
+    runControl.interruptStep(InputId('input-now'));
+    const result = await promise;
+
+    expect(result.executionResults).toHaveLength(1);
+    expect(result.executionResults[0].result).toMatchObject({
+      status: 'error',
+      error: {
+        type: 'interrupted',
+        message: 'cancelled',
+      },
+    });
   });
 
   it('forwards skillActivationPaths through the streaming execution path', async () => {
@@ -877,6 +960,82 @@ describe('StreamingToolExecutor', () => {
     expect(result.executionResults[0].result.metadata).toMatchObject({
       observedSkillActivationPaths: ['/workspace/src/index.ts'],
     });
+  });
+
+  it('synthesizes terminal tool results when steering interrupts model streaming', async () => {
+    const streamStarted = deferred<void>();
+    const runControl = new ActiveRequestController(
+      RequestId('request-1'),
+    );
+    const { executor, execute } = createExecutor({
+      streamChat: async function* (_messages, _tools, signal) {
+        yield {
+          toolCalls: [
+            {
+              index: 0,
+              id: 'tool-1',
+              function: {
+                name: 'ReadA',
+                arguments: '{"path":"a"}',
+              },
+            },
+            {
+              index: 1,
+              id: 'tool-2',
+              function: {
+                name: 'ReadB',
+                arguments: '{"path":"b"}',
+              },
+            },
+          ],
+        };
+        streamStarted.resolve();
+        await new Promise<void>((_resolve, reject) => {
+          signal?.addEventListener(
+            'abort',
+            () => reject(signal.reason),
+            { once: true },
+          );
+        });
+      },
+    });
+
+    const execution = executor.collectAndExecute(
+      [{ role: 'user', content: 'inspect files' }],
+      [
+        { name: 'ReadA', description: 'read a', parameters: {} },
+        { name: 'ReadB', description: 'read b', parameters: {} },
+      ],
+      runControl.stepSignal,
+      {
+        executionPipeline: executionPipelineFromMock(execute),
+        executionContext: {
+          sessionId: SessionId('session-1'),
+          userId: 'user-1',
+        },
+        requestSignal: runControl.requestSignal,
+        steeringSignal: runControl.steeringSignal,
+        permissionMode: PermissionMode.PLAN,
+      },
+    );
+    await streamStarted.promise;
+    runControl.interruptStep(InputId('input-now'));
+
+    const result = await execution;
+
+    expect(execute).not.toHaveBeenCalled();
+    expect(result.chatResponse.toolCalls).toHaveLength(2);
+    expect(result.executionResults).toHaveLength(2);
+    expect(result.executionResults.map((outcome) => outcome.result)).toEqual([
+      expect.objectContaining({
+        status: 'error',
+        error: expect.objectContaining({ type: 'interrupted' }),
+      }),
+      expect.objectContaining({
+        status: 'error',
+        error: expect.objectContaining({ type: 'interrupted' }),
+      }),
+    ]);
   });
 });
 

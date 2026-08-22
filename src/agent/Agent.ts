@@ -417,7 +417,11 @@ export class Agent {
 
     const ctx = this.withBackgroundAgentManager(context);
     const enhancedMessage = await this.prepareMessageForContext(message, ctx);
-    const loopOptions: LoopOptions = { signal: ctx.signal, ...options };
+    const loopOptions: LoopOptions = {
+      signal: ctx.signal,
+      ...options,
+      prepareInput: (input) => this.prepareMessageForContext(input, ctx),
+    };
 
     return { enhancedMessage, context: ctx, loopOptions };
   }

@@ -6,9 +6,15 @@ import type { ContextSnapshot } from '../runtime/index.js';
 import type { ContentPart, Message } from '../services/ChatServiceInterface.js';
 import type { ToolCatalogSourcePolicy } from '../tools/catalog/index.js';
 import type { ConfirmationHandler } from '../tools/types/ExecutionTypes.js';
-import type { AgentId, SessionId } from '../types/branded.js';
+import type {
+  AgentId,
+  InputId,
+  RequestId,
+  SessionId,
+} from '../types/branded.js';
 import type { OutputFormat, PermissionMode, PermissionsConfig, SandboxSettings } from '../types/common.js';
 import type { CanUseTool, PermissionHandler } from '../types/permissions.js';
+import type { AgentRunControl } from './AgentRunControl.js';
 import type { AgentSession } from './subagents/AgentSessionStore.js';
 import type { StartBackgroundAgentOptions } from './subagents/BackgroundAgentManager.js';
 import type { TokenBudgetConfig, TokenBudgetSnapshot } from './TokenBudget.js';
@@ -127,6 +133,15 @@ export interface LoopOptions {
   maxTurns?: number;
   autoCompact?: boolean;
   signal?: AbortSignal;
+  /** @internal Durable queued-input application metadata. */
+  inputApplication?: {
+    inputId: InputId;
+    requestId: RequestId;
+  };
+  /** @internal Applies the same attachment and skill preparation as initial input. */
+  prepareInput?: (input: UserMessageContent) => Promise<UserMessageContent>;
+  /** @internal Session-owned input and cancellation control plane. */
+  runControl?: AgentRunControl;
   onTurnLimitReached?: (data: { turnsCount: number }) => Promise<TurnLimitResponse>;
   /** 进度回调，每次 tool call 完成后触发 */
   onProgress?: (progress: AgentProgress) => void;

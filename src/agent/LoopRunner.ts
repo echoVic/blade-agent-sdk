@@ -16,11 +16,11 @@ import { buildSystemPrompt } from '../prompts/index.js';
 import type { Message } from '../services/ChatServiceInterface.js';
 import type { SkillActivationContext } from '../skills/index.js';
 import { injectSkillsMetadata } from '../skills/index.js';
+import { ToolCatalog } from '../tools/catalog/index.js';
+import type { ExecutionPipeline } from '../tools/execution/ExecutionPipeline.js';
 import {
   ToolExposurePlanner,
 } from '../tools/exposure/index.js';
-import { ToolCatalog } from '../tools/catalog/index.js';
-import type { ExecutionPipeline } from '../tools/execution/ExecutionPipeline.js';
 import {
   type BladeConfig,
   PermissionMode,
@@ -30,10 +30,11 @@ import type { AgentEvent } from './AgentEvent.js';
 import { agentLoop } from './AgentLoop.js';
 import type { CompactionHandler } from './CompactionHandler.js';
 import { AGENT_TURN_SAFETY_LIMIT } from './constants.js';
+import { buildLoopConfig } from './LoopHookBuilder.js';
 import type { ModelManager } from './ModelManager.js';
 import { RuntimePatchManager } from './RuntimePatchManager.js';
-import { LoopState } from './state/LoopState.js';
 import { ConversationState } from './state/ConversationState.js';
+import { LoopState } from './state/LoopState.js';
 import { isValidSystemSource } from './state/systemSource.js';
 import type { LoopSkillState } from './state/TurnState.js';
 import type { TokenBudget } from './TokenBudget.js';
@@ -44,7 +45,6 @@ import type {
   LoopResult,
   UserMessageContent,
 } from './types.js';
-import { buildLoopConfig } from './LoopHookBuilder.js';
 
 // ===== Module-level helpers =====
 
@@ -171,15 +171,31 @@ export class LoopRunner {
 
     // 2. 保存用户消息到 JSONL
     let lastMessageUuid: string | null = null;
-    try {
-      const contextMgr = this.modelManager.getContextManager();
-      if (contextMgr && context.sessionId && hasPersistableUserContent(message)) {
-        lastMessageUuid = await contextMgr.saveMessage(
-          context.sessionId, 'user', message, null, undefined, context.subagentInfo
+    const contextMgr = this.modelManager.getContextManager();
+    if (contextMgr && context.sessionId && options?.inputApplication) {
+      try {
+        lastMessageUuid = await contextMgr.saveAppliedInputMessage(
+          context.sessionId,
+          options.inputApplication.inputId,
+          options.inputApplication.requestId,
+          message,
+          null,
+          context.subagentInfo,
         );
+      } catch (error) {
+        // 与其他消息写入保持一致的 best-effort 策略：持久化失败不应中断请求。
+        this.logger.warn('[LoopRunner] 保存已应用输入消息失败:', error);
       }
-    } catch (error) {
-      this.logger.warn('[LoopRunner] 保存用户消息失败:', error);
+    } else {
+      try {
+        if (contextMgr && context.sessionId && hasPersistableUserContent(message)) {
+          lastMessageUuid = await contextMgr.saveMessage(
+            context.sessionId, 'user', message, null, undefined, context.subagentInfo
+          );
+        }
+      } catch (error) {
+        this.logger.warn('[LoopRunner] 保存用户消息失败:', error);
+      }
     }
 
     // 3. 计算 maxTurns
@@ -217,6 +233,7 @@ export class LoopRunner {
       modelManager: this.modelManager,
       runtimePatchManager: this.runtimePatchManager,
       defaultProjectPath: this.defaultProjectPath,
+      runControl: options?.runControl,
     });
 
     // 5. 运行 AgentLoop

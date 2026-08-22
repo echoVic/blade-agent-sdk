@@ -1,0 +1,5 @@
+{
+  "type": "feature",
+  "en": "Add durable `now`, `next`, and `later` session inputs with safe-point steering and interruptible tool execution.",
+  "zh-CN": "新增持久化的 `now`、`next`、`later` Session 输入，支持安全点转向和可中断工具执行。"
+}

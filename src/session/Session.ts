@@ -1,6 +1,8 @@
+import { Mutex } from 'async-mutex';
 import { nanoid } from 'nanoid';
 import { Agent } from '../agent/Agent.js';
 import type { ChatContext, LoopResult, UserMessageContent } from '../agent/types.js';
+import { SessionInputError } from '../errors/SessionInputError.js';
 import { type CleanupHandle, registerCleanup } from '../lifecycle/CleanupRegistry.js';
 import { createRootLogger, type InternalLogger, LogCategory } from '../logging/Logger.js';
 import { type AgentTrace, TraceRecorder } from '../observability/index.js';
@@ -11,7 +13,11 @@ import {
 } from '../runtime/index.js';
 import type { ContentPart, Message } from '../services/ChatServiceInterface.js';
 import { cloneMessage } from '../services/messageUtils.js';
-import { SessionId } from '../types/branded.js';
+import {
+  InputId,
+  RequestId,
+  SessionId,
+} from '../types/branded.js';
 import {
   type BladeConfig,
   type JsonValue,
@@ -19,6 +25,10 @@ import {
   PermissionMode,
   type ProviderType,
 } from '../types/common.js';
+import { ActiveRequestController } from './ActiveRequestController.js';
+import {
+  SessionInputInbox,
+} from './SessionInputInbox.js';
 import { SessionRuntime } from './SessionRuntime.js';
 import {
   JsonlSessionStore,
@@ -28,10 +38,12 @@ import {
 } from './SessionStore.js';
 import type {
   ForkSessionOptions,
+  InputSubmission,
   ISession,
   McpServerStatus,
   McpToolInfo,
   ModelInfo,
+  PendingSessionInput,
   PromptResult,
   ProviderConfig,
   SendOptions,
@@ -41,20 +53,34 @@ import type {
   TokenUsage,
   ToolCallRecord,
 } from './types.js';
+import { InputPriority } from './types.js';
 
 export interface ResumeOptions extends SessionOptions {
   sessionId: SessionId;
 }
 
-type RequestPhase =
+type SessionExecutionState =
   | { phase: 'idle' }
   | {
       phase: 'pending';
+      requestId: RequestId;
+      input: PendingSessionInput;
+      controller: ActiveRequestController;
       message: UserMessageContent;
       options: SendOptions | null;
       snapshot: ContextSnapshot;
     }
-  | { phase: 'streaming'; abortController: AbortController };
+  | {
+      phase: 'running';
+      requestId: RequestId;
+      controller: ActiveRequestController;
+    }
+  | {
+      phase: 'stopping';
+      requestId: RequestId;
+      controller: ActiveRequestController;
+    }
+  | { phase: 'closed' };
 
 class Session implements ISession {
   readonly sessionId: SessionId;
@@ -71,19 +97,22 @@ class Session implements ISession {
   private permissionMode: PermissionMode;
   private defaultContext: RuntimeContext;
   private initialized = false;
-  private closed = false;
   private cleanupHandle: CleanupHandle | null = null;
   private readonly traces: AgentTrace[] = [];
+  private readonly inputInbox = new SessionInputInbox();
+  private readonly inputMutex = new Mutex();
 
   /**
    * 请求阶段状态机：
    * - idle: 无待处理请求
    * - pending: send() 已调用，等待 stream() 消费
-   * - streaming: stream() 正在执行，持有 abortController
+   * - running: stream() 正在执行
+   * - stopping: 已请求中止，等待 stream() 完成清理
+   * - closed: 会话已关闭
    *
    * 防止在 streaming 期间再次调用 send() 产生并发 generator 竞态。
    */
-  private requestPhase: RequestPhase = { phase: 'idle' };
+  private executionState: SessionExecutionState = { phase: 'idle' };
 
   constructor(options: SessionOptions, sessionId?: SessionId, isResume = false) {
     this.sessionId = sessionId || SessionId(nanoid());
@@ -106,7 +135,7 @@ class Session implements ISession {
   }
 
   get isClosed(): boolean {
-    return this.closed;
+    return this.executionState.phase === 'closed';
   }
 
   getDefaultContext(): RuntimeContext {
@@ -126,6 +155,9 @@ class Session implements ISession {
   }
 
   async initialize(): Promise<void> {
+    if (this.executionState.phase === 'closed') {
+      throw new Error('Session is closed');
+    }
     if (this.initialized) return;
 
     const config = this.buildBladeConfig();
@@ -174,6 +206,24 @@ class Session implements ISession {
     try {
       const state = await this.store.loadState(this.sessionId);
       this._messages = state?.messages ?? [];
+      // 恢复待处理输入并调度下一个排队输入的过程会读写 executionState 与
+      // inputInbox，与其他状态转换保持一致地在 inputMutex 内完成。
+      await this.inputMutex.runExclusive(() => {
+        const dropped = this.inputInbox.restore(
+          (state?.pendingInputs ?? []).map((input) => ({
+            ...input,
+            content: input.content as UserMessageContent,
+          })),
+        );
+        if (dropped > 0) {
+          this.logger.warn(
+            `[Session] Dropped ${dropped} pending input(s) exceeding queue capacity while restoring session ${this.sessionId}`,
+          );
+        }
+        if (this.executionState.phase === 'idle') {
+          this.scheduleNextQueuedInput();
+        }
+      });
       if (this._messages.length === 0) {
         this.logger.debug(`[Session] No history found for session ${this.sessionId}`);
         return;
@@ -253,42 +303,226 @@ class Session implements ISession {
     return urls[type] || '';
   }
 
-  async send(message: UserMessageContent, options?: SendOptions): Promise<void> {
+  async send(
+    message: UserMessageContent,
+    options?: SendOptions,
+  ): Promise<InputSubmission> {
     await this.ensureInitialized();
 
-    if (this.requestPhase.phase !== 'idle') {
-      throw new Error(
-        this.requestPhase.phase === 'streaming'
-          ? 'Cannot send a new message while a previous stream() is active. Drain or abort it first.'
-          : 'Cannot send a new message while a previous message is pending. Call stream() first.',
-      );
-    }
+    return this.inputMutex.runExclusive(async () => {
+      if (this.executionState.phase === 'closed') {
+        throw new Error('Session is closed');
+      }
 
-    this.requestPhase = {
-      phase: 'pending',
-      message,
-      options: options || null,
-      snapshot: createContextSnapshot(
-        this.sessionId,
-        nanoid(),
-        this.defaultContext,
-        options?.context,
-      ),
-    };
+      const inputId = InputId(nanoid());
+      if (this.executionState.phase === 'idle') {
+        if (options?.expectedRequestId) {
+          throw new SessionInputError(
+            'SESSION_REQUEST_MISMATCH',
+            `No active request matches "${options.expectedRequestId}"`,
+          );
+        }
+        const requestId = RequestId(nanoid());
+        const input: PendingSessionInput = {
+          inputId,
+          content: message,
+          priority: InputPriority.NEXT,
+          targetRequestId: requestId,
+          acceptedAt: Date.now(),
+        };
+        this.inputInbox.reserve(input);
+        try {
+          await this.persistInput(input);
+          this.inputInbox.markCommitted(inputId);
+        } catch (error) {
+          this.inputInbox.remove(inputId);
+          throw error;
+        }
+        this.executionState = this.createPendingState(
+          requestId,
+          input,
+          options,
+        );
+        return {
+          status: 'started',
+          inputId,
+          requestId,
+        };
+      }
+
+      if (options?.signal || options?.maxTurns !== undefined || options?.context) {
+        throw new SessionInputError(
+          'SESSION_INPUT_OPTIONS_UNSUPPORTED',
+          'signal, maxTurns, and context can only be set when starting an idle request',
+        );
+      }
+
+      let priority = options?.priority ?? InputPriority.NEXT;
+      const activeRequestId = this.executionState.requestId;
+      const activeController = this.executionState.controller;
+      if (
+        options?.expectedRequestId
+        && options.expectedRequestId !== activeRequestId
+      ) {
+        throw new SessionInputError(
+          'SESSION_REQUEST_MISMATCH',
+          `Expected request "${options.expectedRequestId}" but "${activeRequestId}" is active`,
+        );
+      }
+      let canSteerCurrentRequest =
+        priority !== InputPriority.LATER
+        && this.executionState.phase !== 'stopping'
+        && (this.executionState.phase !== 'running'
+          || !this.executionState.controller.isSealed);
+      if (!canSteerCurrentRequest) {
+        priority = InputPriority.LATER;
+      }
+
+      const input: PendingSessionInput = {
+        inputId,
+        content: message,
+        priority,
+        targetRequestId: canSteerCurrentRequest
+          ? activeRequestId
+          : undefined,
+        acceptedAt: Date.now(),
+      };
+      this.inputInbox.reserve(input);
+      try {
+        await this.persistInput(input);
+        const requestStillAcceptsSteering =
+          (this.executionState.phase === 'pending'
+            || this.executionState.phase === 'running')
+          && this.executionState.requestId === activeRequestId
+          && !activeController.isSealed;
+        if (canSteerCurrentRequest && !requestStillAcceptsSteering) {
+          canSteerCurrentRequest = false;
+          priority = InputPriority.LATER;
+          this.inputInbox.retargetLater(inputId);
+        }
+        this.inputInbox.markCommitted(inputId);
+        if (
+          canSteerCurrentRequest
+          && priority === InputPriority.NOW
+          && this.executionState.phase === 'running'
+        ) {
+          activeController.interruptStep(inputId);
+        }
+      } catch (error) {
+        this.inputInbox.remove(inputId);
+        throw error;
+      }
+      return canSteerCurrentRequest
+        ? {
+            status: 'steered',
+            inputId,
+            requestId: activeRequestId,
+            priority: priority === InputPriority.NOW
+              ? InputPriority.NOW
+              : InputPriority.NEXT,
+          }
+        : {
+            status: 'queued',
+            inputId,
+            priority: InputPriority.LATER,
+          };
+    });
+  }
+
+  getPendingInputs(): readonly PendingSessionInput[] {
+    return this.inputInbox.getAll();
+  }
+
+  async cancelInput(inputId: InputId): Promise<boolean> {
+    await this.ensureInitialized();
+    return this.inputMutex.runExclusive(async () => {
+      if (
+        (this.executionState.phase === 'running'
+          || this.executionState.phase === 'stopping')
+        && this.executionState.controller.isInitialInput(inputId)
+      ) {
+        return false;
+      }
+      const input = this.inputInbox.claimForCancellation(inputId);
+      if (!input) {
+        return false;
+      }
+
+      try {
+        await this.getRuntime().getContextManager().saveInputCancelled(
+          this.sessionId,
+          inputId,
+          'cancelled_by_user',
+        );
+      } catch (error) {
+        this.inputInbox.releaseClaim(inputId);
+        throw error;
+      }
+      this.inputInbox.remove(inputId);
+
+      if (
+        this.executionState.phase === 'pending'
+        && this.executionState.input.inputId === inputId
+      ) {
+        this.executionState.controller.dispose();
+        this.executionState = { phase: 'idle' };
+        this.scheduleNextQueuedInput();
+      }
+      return true;
+    });
   }
 
   async *stream(options?: StreamOptions): AsyncGenerator<StreamMessage> {
     await this.ensureInitialized();
     const runtime = this.getRuntime();
 
-    if (this.requestPhase.phase !== 'pending') {
+    // 声明请求所有权必须原子：相位检查、pending→running 转换与初始输入移除
+    // 需在 inputMutex 内一次完成，避免与 send()/cancelInput()/finishRequest()
+    // 对 executionState 的并发读写交错。
+    const claimed = await this.inputMutex.runExclusive(() => {
+      if (this.executionState.phase !== 'pending') {
+        return null;
+      }
+      const {
+        requestId,
+        input,
+        message: initialMessage,
+        options: sendOptions,
+        snapshot: pendingSnapshot,
+      } = this.executionState;
+      const requestController = this.executionState.controller;
+      this.executionState = {
+        phase: 'running',
+        requestId,
+        controller: requestController,
+      };
+      // 提交执行后立即将初始输入移出收件箱：它已被应用，不再是待处理输入，
+      // 且已通过 initialInputId 从 steering 领取中排除。若延后移除，一旦流在
+      // 持久化 input_applied 之后、首个事件产出之前抛错，releaseRequest 会把它
+      // 重新排队为 later 并二次应用，造成同一输入重复写入历史。
+      this.inputInbox.remove(input.inputId);
+      return {
+        requestId,
+        input,
+        initialMessage,
+        sendOptions,
+        pendingSnapshot,
+        requestController,
+      };
+    });
+
+    if (!claimed) {
       throw new Error('No pending message. Call send() before stream().');
     }
 
-    const { message: initialMessage, options: sendOptions, snapshot: pendingSnapshot } = this.requestPhase;
-
-    const abortController = new AbortController();
-    this.requestPhase = { phase: 'streaming', abortController };
+    const {
+      requestId,
+      input,
+      initialMessage,
+      sendOptions,
+      pendingSnapshot,
+      requestController,
+    } = claimed;
 
     let message = initialMessage;
     const traceRecorder = this.createTraceRecorder(message);
@@ -311,6 +545,10 @@ class Session implements ISession {
       const errorMessage = error instanceof Error ? error.message : String(error);
       await finishTrace('error', { error: errorMessage });
       runtime.getHookRuntime().setTraceCollector(undefined);
+      // 初始输入已在进入 running 时移出收件箱；hook 失败时仍需与正常路径一样
+      // 释放请求资源，否则会话会永久停留在 running 且外部 AbortSignal 监听器泄漏。
+      requestController.dispose();
+      await this.finishRequest(requestId);
       yield { type: 'error', message: errorMessage, sessionId: this.sessionId };
       return;
     }
@@ -323,15 +561,7 @@ class Session implements ISession {
       maxContextTokens: 0,
     };
 
-    let signalCleanup: (() => void) | undefined;
-    let signal: AbortSignal;
-    if (sendOptions?.signal) {
-      const combined = this.combineSignals(sendOptions.signal, abortController.signal);
-      signal = combined.signal;
-      signalCleanup = combined.cleanup;
-    } else {
-      signal = abortController.signal;
-    }
+    const signal = requestController.requestSignal;
 
     const snapshot =
       pendingSnapshot ??
@@ -351,6 +581,11 @@ class Session implements ISession {
     const stream = this.getAgent().streamChat(message, context, {
       maxTurns: sendOptions?.maxTurns ?? this.maxTurns,
       signal,
+      inputApplication: {
+        inputId: input.inputId,
+        requestId,
+      },
+      runControl: requestController,
     });
 
     try {
@@ -375,6 +610,29 @@ class Session implements ISession {
             traceRecorder?.recordTurnEnd(turnSpans.get(value.turn), value.turn);
             turnSpans.delete(value.turn);
             yield { type: 'turn_end', turn: value.turn, sessionId: this.sessionId };
+            break;
+          case 'turn_interrupted':
+            traceRecorder?.addEvent('turn_interrupted', {
+              inputId: value.inputId,
+              requestId: value.requestId,
+              turn: value.turn,
+            });
+            yield {
+              ...value,
+              sessionId: this.sessionId,
+            };
+            break;
+          case 'input_applied':
+            traceRecorder?.addEvent('input_applied', {
+              inputId: value.inputId,
+              requestId: value.requestId,
+              priority: value.priority,
+              turn: value.turn,
+            });
+            yield {
+              ...value,
+              sessionId: this.sessionId,
+            };
             break;
           case 'content_delta':
             traceRecorder?.addEvent('content_delta', { delta: value.delta });
@@ -627,20 +885,35 @@ class Session implements ISession {
       yield { type: 'error', message: errorMessage, sessionId: this.sessionId };
     } finally {
       runtime.getHookRuntime().setTraceCollector(undefined);
-      signalCleanup?.();
-      this.requestPhase = { phase: 'idle' };
+      requestController.dispose();
+      await this.finishRequest(requestId);
     }
   }
 
   async close(): Promise<void> {
-    if (this.closed) {
+    // 关闭时对 executionState 的读写走 inputMutex，避免与并发 send()/stream()
+    // 交错（例如 send() 在 await 处让出后用 pending 覆盖 closed）。
+    const alreadyClosed = await this.inputMutex.runExclusive(() => {
+      if (this.executionState.phase === 'closed') {
+        return true;
+      }
+      if (this.executionState.phase === 'pending') {
+        this.executionState.controller.abortRequest({ kind: 'session_close' });
+        this.executionState.controller.dispose();
+      } else if (
+        this.executionState.phase === 'running'
+        || this.executionState.phase === 'stopping'
+      ) {
+        this.executionState.controller.abortRequest({ kind: 'session_close' });
+      }
+      this.executionState = { phase: 'closed' };
+      return false;
+    });
+    if (alreadyClosed) {
       return;
     }
-    this.closed = true;
     this.cleanupHandle?.unregister();
     this.cleanupHandle = null;
-    this.abort();
-    this.requestPhase = { phase: 'idle' };
     this.agent = null;
     this.initialized = false;
     const runtime = this.runtime;
@@ -656,9 +929,25 @@ class Session implements ISession {
   }
 
   abort(): void {
-    if (this.requestPhase.phase === 'streaming') {
-      this.requestPhase.abortController.abort();
-      this.requestPhase = { phase: 'idle' };
+    // abort() 是同步 API，无法 await inputMutex；但它在单个微任务内原子执行
+    // （无 await 让出点），因此对 executionState 的读改本身不会与其他转换交错。
+    if (this.executionState.phase === 'running') {
+      const { requestId, controller } = this.executionState;
+      controller.abortRequest({ kind: 'user_abort' });
+      this.executionState = {
+        phase: 'stopping',
+        requestId,
+        controller,
+      };
+    } else if (this.executionState.phase === 'pending') {
+      // send() 已返回但 stream() 尚未启动：此时没有运行中的流去驱动 finishRequest，
+      // 必须在此直接完成收尾，否则该请求会永久停留在 pending。
+      const { controller, input } = this.executionState;
+      controller.abortRequest({ kind: 'user_abort' });
+      controller.dispose();
+      this.inputInbox.remove(input.inputId);
+      this.executionState = { phase: 'idle' };
+      this.scheduleNextQueuedInput();
     }
   }
 
@@ -720,7 +1009,7 @@ class Session implements ISession {
   }
 
   private async ensureInitialized(): Promise<void> {
-    if (this.closed) {
+    if (this.executionState.phase === 'closed') {
       throw new Error('Session is closed');
     }
     if (!this.initialized) {
@@ -742,31 +1031,71 @@ class Session implements ISession {
     return this.runtime;
   }
 
-  private combineSignals(
-    signal1: AbortSignal,
-    signal2: AbortSignal,
-  ): { signal: AbortSignal; cleanup: () => void } {
-    const controller = new AbortController();
+  private async finishRequest(requestId: RequestId): Promise<void> {
+    await this.inputMutex.runExclusive(() => {
+      if (
+        (this.executionState.phase !== 'running'
+          && this.executionState.phase !== 'stopping')
+        || this.executionState.requestId !== requestId
+      ) {
+        return;
+      }
 
-    if (signal1.aborted || signal2.aborted) {
-      controller.abort();
-      return { signal: controller.signal, cleanup: () => {} };
+      this.inputInbox.releaseRequest(requestId);
+      this.executionState = { phase: 'idle' };
+      this.scheduleNextQueuedInput();
+    });
+  }
+
+  private createPendingState(
+    requestId: RequestId,
+    input: PendingSessionInput,
+    options?: SendOptions,
+  ): Extract<SessionExecutionState, { phase: 'pending' }> {
+    return {
+      phase: 'pending',
+      requestId,
+      input,
+      controller: new ActiveRequestController(
+        requestId,
+        options?.signal,
+        this.inputInbox,
+        input.inputId,
+      ),
+      message: input.content,
+      options: options || null,
+      snapshot: createContextSnapshot(
+        this.sessionId,
+        nanoid(),
+        this.defaultContext,
+        options?.context,
+      ),
+    };
+  }
+
+  private scheduleNextQueuedInput(): void {
+    if (this.executionState.phase !== 'idle') {
+      return;
     }
+    const requestId = RequestId(nanoid());
+    const input = this.inputInbox.claimNextLater(requestId);
+    if (!input) {
+      return;
+    }
+    this.executionState = this.createPendingState(requestId, input);
+  }
 
-    const cleanup = () => {
-      signal1.removeEventListener('abort', onAbort);
-      signal2.removeEventListener('abort', onAbort);
-    };
-
-    const onAbort = () => {
-      cleanup();
-      controller.abort();
-    };
-
-    signal1.addEventListener('abort', onAbort);
-    signal2.addEventListener('abort', onAbort);
-
-    return { signal: controller.signal, cleanup };
+  private async persistInput(input: PendingSessionInput): Promise<void> {
+    await this.getRuntime().getContextManager().saveInputEnqueued(
+      this.sessionId,
+      {
+        inputId: input.inputId,
+        content: input.content as JsonValue,
+        priority: input.priority,
+        targetRequestId: input.targetRequestId,
+        acceptedAt: input.acceptedAt,
+      },
+    );
   }
 
   private safeParseJson(str: string): JsonValue {

@@ -4,8 +4,8 @@ SDK 提供三种方式创建自定义工具，从简单到完整：
 
 | 方式 | 函数 | Schema | 适用场景 |
 |------|------|--------|----------|
-| 简单模式 | `defineTool()` | JSON Schema | 快速定义，直接传给 Session |
-| 工厂模式 | `createTool()` | Zod Schema | 需要类型推断和参数验证 |
+| 简单模式 | `defineTool()` | JSON Schema | 快速定义，可直接传给 Session |
+| 工厂模式 | `createTool()` | Zod Schema | 低层运行时需要类型推断和参数验证 |
 | 转换模式 | `toolFromDefinition()` | JSON Schema | 将 ToolDefinition 转为内部 Tool 对象 |
 
 ## defineTool
@@ -52,6 +52,8 @@ const searchTool = defineTool({
 ## createTool
 
 使用 Zod Schema 的工厂函数，提供完整的类型推断和运行时验证。
+它返回低层 `Tool`，当前不能直接放入只接受 `ToolDefinition` 的
+`SessionOptions.tools`。
 
 ```ts
 import { z } from 'zod';
@@ -141,13 +143,13 @@ SDK 内置 23 个标准工具，连接 MCP 后额外提供 2 个资源工具：
 | | KillShell | execute | 终止 Shell 进程 |
 | **网络** | WebFetch | readonly | 抓取网页内容 |
 | | WebSearch | readonly | 搜索互联网 |
-| **子任务** | Task | execute | 创建子任务（子 Agent） |
+| **子任务** | Task | readonly | 创建子任务（子 Agent） |
 | | TaskOutput | readonly | 获取子任务输出 |
-| **结构化任务** | TaskCreate | execute | 创建结构化任务条目 |
-| | TaskGet | readonly | 获取任务详情 |
-| | TaskUpdate | execute | 更新任务状态 |
-| | TaskList | readonly | 列出所有任务 |
-| | TaskStop | execute | 停止后台任务或后台 Agent |
+| **结构化任务** | TaskCreate | write | 创建结构化任务条目 |
+| | TaskGet | write | 获取任务详情 |
+| | TaskUpdate | write | 更新任务状态 |
+| | TaskList | write | 列出所有任务 |
+| | TaskStop | write | 停止后台任务或后台 Agent |
 | **系统** | AskUserQuestion | readonly | 向用户提问 |
 | | DiscoverTools | readonly | 发现并搜索可用工具 |
 | | Skill | execute | 调用 Skill 脚本 |
@@ -186,13 +188,23 @@ const session2 = await createSession({
 ### ToolDefinition
 
 ```ts
-interface ToolDefinition<TParams = Record<string, unknown>> {
+interface ToolDefinition<
+  TParams = JsonObject,
+  TData extends JsonValue = JsonValue,
+> {
   name: string;
+  aliases?: string[];
   displayName?: string;
   description: string | ToolDescription;
-  parameters: unknown;
-  kind?: ToolKind;     // 'readonly' | 'write' | 'execute'
-  execute: (params: TParams, context: ExecutionContext) => ToolExecution;
+  parameters: JSONSchema7;
+  kind?: ToolKind;
+  category?: string;
+  tags?: string[];
+  exposure?: ToolExposureConfig;
+  execute: (
+    params: TParams,
+    context: ExecutionContext,
+  ) => ToolExecution<TData>;
 }
 ```
 
@@ -257,8 +269,10 @@ type ToolExecution = AsyncGenerator<ToolYield, ToolResult, void>;
 
 不产生中间事件的工具也必须返回 `ToolExecution`，可使用 `completeToolExecution(result)`。需要只消费最终结果时使用 `collectToolExecution(execution)`。
 
-::: warning data 必须可 JSON 序列化
-`data` 会被序列化落盘（结果产物存储），因此其类型约束为 `JsonValue`。若你的领域类型是 `interface`（无索引签名），赋给 `data` 时可能报「缺少索引签名」。解决办法是让该类型满足 `JsonValue`（字段均为 JSON 值），不要用 `as unknown` 强绕过——那会把「运行时序列化失败」的风险藏起来。
+::: warning data 必须是 JSON 值
+`data` 是供调用方消费的结构化结果，类型约束为 `JsonValue`。大型结果的
+artifact 落盘针对 `model` 内容，并不单独持久化 `data`。若领域 interface
+缺少索引签名，可在边界显式转换为 JSON 对象，不要用 `as unknown` 绕过。
 :::
 
 ### 为工具参数与 data 提供类型
@@ -300,12 +314,43 @@ const tool = defineTool<{ query: string; limit?: number }, { count: number }>({
 ```ts
 interface ExecutionContext {
   userId?: string;
-  sessionId?: string;
-  messageId?: string;
+  sessionId?: SessionId;
+  messageId?: MessageId;
   contextSnapshot?: ContextSnapshot;
+  skillActivationPaths?: string[];
   signal?: AbortSignal;
   confirmationHandler?: ConfirmationHandler;
   permissionMode?: PermissionMode;
   bladeConfig?: BladeConfig;
+  backgroundAgentManager?: IBackgroundAgentManager;
+  toolRegistry?: ToolRegistry;
+  toolCatalog?: ToolCatalog;
+  discoveredTools?: string[];
 }
 ```
+
+### 工具中断策略
+
+`interruptBehavior` 控制工具收到 `priority: 'now'` 的 steering 时是否取消：
+
+```ts
+const tool = createTool({
+  // ...
+  interruptBehavior: 'cancel',
+  async *execute(params, context) {
+    context.signal?.throwIfAborted();
+    // ...
+  },
+});
+```
+
+- `block` 是默认值。工具继续完成，结果落盘后再应用 steering，适合写文件、状态变更和不可撤销的外部调用。
+- `cancel` 仅用于真正监听 `context.signal`、能安全停止并在 `finally` 中释放资源的工具。
+- Session 的显式 `abort()` 和 `close()` 属于请求级终止，不受 `block` 限制。
+
+`interruptBehavior` 属于 `createTool()` 的 `ToolConfig`，轻量
+`defineTool()` / `ToolDefinition` 不暴露该字段。由于
+`SessionOptions.tools` 当前只接受 `ToolDefinition`，Session 暂不支持为
+自定义工具声明 `cancel`；该能力适用于直接组合低层 `Tool` 的运行时。
+
+内置的 `Read`、`Glob`、`Grep`、`WebFetch`、`WebSearch` 和前台 `Bash` 明确声明为 `cancel`；后台 `Bash` 及其他内置工具为 `block`。动态 MCP 工具默认 `block`。

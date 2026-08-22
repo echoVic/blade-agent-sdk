@@ -237,12 +237,15 @@ const session = await createSession({
 
 ## send / stream 交互模型
 
-Blade SDK 采用 **send + stream 两步式** 交互：`send()` 提交用户消息，`stream()` 消费 Agent 的完整输出流。
+Blade SDK 采用 **send + stream 两步式** 交互：`send()` 接受输入并返回投递结果，`stream()` 消费 Agent 的完整输出流。请求运行期间再次调用 `send()` 时，输入会按 `priority` 转向当前请求或排队到下一请求。
 
 ```ts
-// send：提交消息，返回 Promise<void>
+// send：提交消息，返回输入 ID、请求 ID 与实际投递方式
 // message 支持纯文本字符串或多模态内容数组（ContentPart[]）
-session.send(message: UserMessageContent, options?: SendOptions): Promise<void>
+session.send(
+  message: UserMessageContent,
+  options?: SendOptions,
+): Promise<InputSubmission>
 
 // stream：异步迭代消费输出
 session.stream(options?: StreamOptions): AsyncGenerator<StreamMessage>
@@ -255,8 +258,48 @@ interface SendOptions {
   signal?: AbortSignal;        // 外部取消信号
   maxTurns?: number;           // 覆盖本次请求的最大轮次
   context?: RuntimeContext;    // 本轮的运行时上下文（与 defaultContext 合并）
+  priority?: 'now' | 'next' | 'later';
+  expectedRequestId?: RequestId;
+}
+
+type InputSubmission =
+  | { status: 'started'; inputId: InputId; requestId: RequestId }
+  | { status: 'steered'; inputId: InputId; requestId: RequestId; priority: 'now' | 'next' }
+  | { status: 'queued'; inputId: InputId; priority: 'later' };
+```
+
+`priority` 在已有 pending/running 请求时生效：
+
+- `next`（默认）：不中断当前步骤，在下一个模型/工具安全点加入当前请求。
+- `now`：中断当前模型步骤及声明为 `interruptBehavior: 'cancel'` 的工具，闭合全部工具结果后加入当前请求。
+- `later`：不影响当前请求，排队为下一个独立请求。当前 `stream()` 结束后再次调用 `stream()` 消费它。
+
+`now` 触发后，流会先产生 `turn_interrupted`；若模型已经声明工具调用，SDK 会为每个调用生成或等待一个终态 `tool_result`，之后才产生 `input_applied`。被中断的模型部分输出仅用于 UI 展示，不会写回模型上下文。
+
+`expectedRequestId` 用于防止并发客户端把输入投递到错误的活动请求。请求已经 sealed 或正在停止时，`next`/`now` 会安全降级为 `later`。活动请求期间不能覆盖 `signal`、`maxTurns` 或 `context`。
+
+```ts
+const started = await session.send('分析失败原因');
+const output = session.stream();
+
+// output 正在消费时，可从另一个异步任务提交修正
+const steered = await session.send('先检查数据库连接，不要改代码', {
+  priority: 'next',
+  expectedRequestId:
+    started.status === 'started' ? started.requestId : undefined,
+});
+
+for await (const event of output) {
+  if (event.type === 'input_applied') {
+    console.log(`已应用输入 ${event.inputId}`);
+  }
 }
 ```
+
+已接受的输入有数量和字节双重上限。配置 `storagePath` 后，SDK 通过
+JSONL 记录 `input_enqueued`、`input_applied` 或 `input_cancelled`；
+进程重启后，尚未应用的输入会恢复为 `later`，避免绑定到已经失效的请求。
+内存模式不会跨进程恢复。
 
 ### StreamOptions
 
@@ -268,31 +311,35 @@ interface StreamOptions {
 
 ### StreamMessage 类型
 
-`stream()` 产出的是 **判别联合类型**（Discriminated Union），共 15 种：
+`stream()` 产出的是判别联合类型：
 
 ```ts
 type StreamMessage =
-  | { type: 'turn_start'; turn: number; sessionId: string }
-  | { type: 'turn_end'; turn: number; sessionId: string }
-  | { type: 'content'; delta: string; sessionId: string }
-  | { type: 'thinking'; delta: string; sessionId: string }
-  | { type: 'tool_use'; id: string; name: string; input: unknown; sessionId: string }
-  | { type: 'tool_progress'; id: string; name: string; progress: ToolProgress; sessionId: string }
-  | { type: 'tool_message'; id: string; name: string; content: ToolDisplayContent; sessionId: string }
-  | { type: 'tool_runtime_patch'; id: string; name: string; patch: RuntimePatch; sessionId: string }
-  | { type: 'tool_context_patch'; id: string; name: string; patch: RuntimeContextPatch; sessionId: string }
-  | { type: 'tool_new_messages'; id: string; name: string; messages: Message[]; sessionId: string }
-  | { type: 'tool_permission_updates'; id: string; name: string; updates: PermissionUpdate[]; sessionId: string }
-  | { type: 'tool_result'; id: string; name: string; output: unknown; display?: ToolDisplayContent; isError?: boolean; sessionId: string }
-  | { type: 'usage'; usage: TokenUsage; sessionId: string }
-  | { type: 'result'; subtype: 'success' | 'error'; content?: string; error?: string; sessionId: string }
-  | { type: 'error'; message: string; code?: string; sessionId: string };
+  | { type: 'turn_start'; turn: number; sessionId: SessionId }
+  | { type: 'turn_end'; turn: number; sessionId: SessionId }
+  | { type: 'turn_interrupted'; inputId: InputId; requestId: RequestId; turn: number; sessionId: SessionId }
+  | { type: 'input_applied'; inputId: InputId; requestId: RequestId; priority: 'now' | 'next'; turn: number; sessionId: SessionId }
+  | { type: 'content'; delta: string; sessionId: SessionId }
+  | { type: 'thinking'; delta: string; sessionId: SessionId }
+  | { type: 'tool_use'; id: string; name: string; input: JsonValue; sessionId: SessionId }
+  | { type: 'tool_progress'; id: string; name: string; progress: ToolProgress; sessionId: SessionId }
+  | { type: 'tool_message'; id: string; name: string; content: ToolDisplayContent; sessionId: SessionId }
+  | { type: 'tool_runtime_patch'; id: string; name: string; patch: RuntimePatch; sessionId: SessionId }
+  | { type: 'tool_context_patch'; id: string; name: string; patch: RuntimeContextPatch; sessionId: SessionId }
+  | { type: 'tool_new_messages'; id: string; name: string; messages: Message[]; sessionId: SessionId }
+  | { type: 'tool_permission_updates'; id: string; name: string; updates: PermissionUpdate[]; sessionId: SessionId }
+  | { type: 'tool_result'; id: string; name: string; output: ToolModelContent; display?: ToolDisplayContent; isError?: boolean; sessionId: SessionId }
+  | { type: 'usage'; usage: TokenUsage; sessionId: SessionId }
+  | { type: 'result'; subtype: 'success' | 'error'; content?: string; error?: string; sessionId: SessionId }
+  | { type: 'error'; message: string; code?: string; sessionId: SessionId };
 ```
 
 | 类型            | 说明                                        |
 | ------------- | ----------------------------------------- |
 | `turn_start`  | Agent 开始新一轮                               |
 | `turn_end`    | Agent 当前轮结束                               |
+| `turn_interrupted` | 当前模型步骤被 `now` 输入中断                  |
+| `input_applied` | 排队输入已持久化并加入模型上下文；`turn` 是目标模型轮次     |
 | `content`     | 文本内容增量（流式）                                |
 | `thinking`    | 模型思考过程增量（需 `includeThinking: true`）       |
 | `tool_use`    | Agent 发起工具调用                              |
@@ -307,7 +354,10 @@ type StreamMessage =
 | `result`      | 最终结果（`subtype` 为 `'success'` 或 `'error'`） |
 | `error`       | 流处理过程中发生的错误                               |
 
-### 完整 Stream 处理示例
+公开联合类型为 `result` 保留了 `subtype: 'error'`，但当前 Session 实现会把
+请求失败作为独立的 `error` 事件发送，`result` 用于成功完成。
+
+### 常用 Stream 事件处理示例
 
 ```ts
 import { createSession } from '@blade-ai/agent-sdk';
@@ -374,7 +424,7 @@ for await (const msg of session.stream({ includeThinking: true })) {
   }
 }
 
-session.close();
+await session.close();
 ```
 
 ### 多轮对话示例
@@ -397,7 +447,7 @@ for await (const msg of session.stream()) {
   if (msg.type === 'content') process.stdout.write(msg.delta);
 }
 
-session.close();
+await session.close();
 ```
 
 ### 使用 AbortSignal 取消请求
@@ -420,7 +470,7 @@ for await (const msg of session.stream()) {
 ::: warning
 
 - 调用 `stream()` 之前必须先调用 `send()`，否则会抛出 `'No pending message. Call send() before stream().'`
-- 上一条消息尚未 `stream()` 完成时再次调用 `send()` 会抛出错误
+- 活动请求期间可以再次调用 `send()`；通过 `priority` 选择立即转向、安全点转向或排队
 - 每条 pending message 只能被 `stream()` 消费一次
   :::
 
@@ -429,7 +479,10 @@ for await (const msg of session.stream()) {
 `prompt()` 是一个便捷函数，适用于不需要保留长期会话的一次性请求场景。内部会自动创建 Session、发送消息、消费流、关闭 Session。
 
 ```ts
-function prompt(message: string, options: SessionOptions): Promise<PromptResult>
+function prompt(
+  message: Parameters<ISession['send']>[0],
+  options: SessionOptions,
+): Promise<PromptResult>
 ```
 
 ### PromptResult
@@ -540,15 +593,15 @@ for (const call of result.toolCalls) {
 
 ## 会话持久化
 
-Blade Agent SDK 默认启用磁盘持久化，适合 CLI、IDE 插件、桌面应用等需要恢复历史会话的场景。
+Blade Agent SDK 默认使用内存存储。只有配置 `storagePath` 且未设置
+`persistSession: false` 时才写入磁盘。
 
-### 持久化模式（默认）
+### 持久化模式
 
 ```ts
 const session = await createSession({
   provider: { type: 'anthropic', apiKey: process.env.ANTHROPIC_API_KEY },
   model: 'claude-sonnet-4-20250514',
-  // persistSession 默认为 true
   storagePath: '/home/user/.blade',
 });
 ```
@@ -557,7 +610,7 @@ const session = await createSession({
 
 - 会话历史自动写入本地存储（JSONL 格式）
 - 存储路径：`{storagePath}/sessions/{sessionId}.jsonl`
-- 未指定 `storagePath` 时使用默认路径 `~/.blade/sessions`
+- 未指定 `storagePath` 时使用内存存储，不创建 Session 文件
 - 可通过 `resumeSession()` 恢复已有会话
 - 可通过 `forkSession()` 从历史会话分叉
 
@@ -719,6 +772,11 @@ const branch2 = await session.fork({ messageId: 'msg-789' });
 
 `RuntimeContext` 为工具执行提供运行时环境信息，包括文件系统访问范围、浏览器能力、网络权限等。
 
+`RuntimeContext` 和 filesystem capability 都是可选的。没有 workspace 时，
+对话、显式自定义工具和显式配置的子 Agent 仍可使用；本地文件工具以及
+依赖项目目录的 Agent/Skill 发现不会启用。SDK 不会隐式使用
+`process.cwd()`。
+
 ```ts
 interface RuntimeContext {
   id?: string;
@@ -832,7 +890,8 @@ Microcompact 是最轻量的压缩方式，不调用 LLM，只替换旧的大型
 3. 压缩成功后自动重试当前轮次
 4. 如果压缩后仍然超限，抛出原始错误
 
-整个恢复过程对上层透明，SDK 会通过 `recovery` 事件通知状态变化（`started` → `retrying` → 成功，或 `started` → `failed`）。
+整个恢复过程对上层透明。`recovery` 是内部 Agent 事件，不属于公开
+`StreamMessage`；调用方通过最终的 `result` 或 `error` 观察结果。
 
 ### 动态更新上下文
 
@@ -866,19 +925,19 @@ interface SessionOptions {
 ### ToolDefinition
 
 ```ts
-interface ToolDefinition<TParams = Record<string, unknown>> {
+interface ToolDefinition<TParams = JsonObject> {
   name: string;
   description: string | ToolDescription;
-  parameters: unknown;             // JSON Schema 或 Zod Schema
+  parameters: JSONSchema7;          // JSON Schema
   execute: (params: TParams, context: ExecutionContext) => ToolExecution;
-  kind?: ToolKind;                 // 'readonly' | 'write' | 'execute'
+  kind?: ToolKind;
 }
 ```
 
 ### 自定义工具示例
 
 ```ts
-import { createSession } from '@blade-ai/agent-sdk';
+import { createSession, ToolKind } from '@blade-ai/agent-sdk';
 import type { ToolDefinition } from '@blade-ai/agent-sdk';
 
 const weatherTool: ToolDefinition = {
@@ -892,7 +951,7 @@ const weatherTool: ToolDefinition = {
     },
     required: ['city'],
   },
-  kind: 'readonly',
+  kind: ToolKind.ReadOnly,
   async *execute(params, context) {
     const { city, unit = 'celsius' } = params as { city: string; unit?: string };
     yield {
@@ -917,16 +976,16 @@ const session = await createSession({
 });
 ```
 
-### 使用 createTool + Zod Schema
+### 低层 createTool + Zod Schema
 
 ```ts
-import { createTool, createSession } from '@blade-ai/agent-sdk';
+import { createTool, ToolKind } from '@blade-ai/agent-sdk';
 import { z } from 'zod';
 
 const dbQueryTool = createTool({
   name: 'DatabaseQuery',
   displayName: 'Database Query',
-  kind: 'readonly',
+  kind: ToolKind.ReadOnly,
   schema: z.object({
     query: z.string().describe('SQL 查询语句'),
     database: z.string().optional().describe('数据库名称'),
@@ -944,13 +1003,11 @@ const dbQueryTool = createTool({
     };
   },
 });
-
-const session = await createSession({
-  provider: { type: 'openai', apiKey: process.env.OPENAI_API_KEY },
-  model: 'gpt-4o',
-  tools: [dbQueryTool],
-});
 ```
+
+`createTool()` 返回低层 `Tool`，当前不能直接传给
+`SessionOptions.tools`。Session 自定义工具请使用上一节的
+`defineTool()`；需要直接组合 `Tool` 的自定义运行时才使用 `createTool()`。
 
 ### 工具过滤
 
@@ -993,7 +1050,7 @@ type PermissionMode = 'default' | 'autoEdit' | 'yolo' | 'plan';
 | -------------- | ------------- | ------------------------- |
 | **DEFAULT**    | `'default'`   | 标准模式，写入/执行类工具需要审批         |
 | **AUTO\_EDIT** | `'autoEdit'`  | 自动批准文件编辑（write），但命令执行仍需审批 |
-| **YOLO**       | `'yolo'`      | 自动批准所有工具调用，不再询问           |
+| **YOLO**       | `'yolo'`      | 内置 mode handler 默认批准；工具自检、路径安全和其他 handler 仍可拒绝或询问 |
 | **PLAN**       | `'plan'`      | 计划模式——只规划不执行，生成实施方案       |
 
 ### 在创建会话时设置
@@ -1217,7 +1274,7 @@ for await (const msg of session.stream()) {
 关闭会话并释放所有资源（Agent、Runtime、MCP 连接等）：
 
 ```ts
-session.close();
+await session.close();
 ```
 
 调用后：
@@ -1225,21 +1282,36 @@ session.close();
 - 中止正在进行的请求
 - 断开所有 MCP 服务器连接
 - 触发 `SessionEnd` Hook
-- 后续调用 `send()` / `stream()` 需要重新初始化
+- Session 永久进入关闭状态，后续 `send()` / `stream()` 会抛出错误
 
 ### abort()
 
-仅中止当前正在进行的请求，不关闭会话：
+终止当前正在进行的整个请求，不关闭会话。它与 `priority: 'now'` 不同：`abort()` 会取消所有工具，包括 `interruptBehavior: 'block'` 的工具；`now` 只中断当前步骤，并在安全点继续同一请求。
 
 ```ts
+const currentStream = session.stream();
 session.abort();
 
-// 会话仍然可用
-await session.send('换个思路重新试试');
+// 先排队，当前流完成清理后再消费下一请求
+await session.send('换个思路重新试试', { priority: 'later' });
+for await (const msg of currentStream) {
+  // Drain the aborted request.
+}
 for await (const msg of session.stream()) {
   if (msg.type === 'content') process.stdout.write(msg.delta);
 }
 ```
+
+### 管理待处理输入
+
+```ts
+const queued = await session.send('稍后执行', { priority: 'later' });
+
+session.getPendingInputs();
+await session.cancelInput(queued.inputId);
+```
+
+已被 AgentLoop claim 的输入不能再取消，`cancelInput()` 此时返回 `false`。
 
 ### setModel()
 
@@ -1397,7 +1469,7 @@ async function analyzeCodeManual() {
       if (msg.type === 'content') process.stdout.write(msg.delta);
     }
   } finally {
-    session.close();
+    await session.close();
   }
 }
 ```
@@ -1434,10 +1506,11 @@ async function analyzeCodeManual() {
 | `hooks`           | `Partial<Record<SessionHookEvent, HookCallback[]>>`     | —  | —           | 生命周期 Hook 回调                                      |
 | `defaultContext`  | `RuntimeContext`                                        | —  | `{}`        | 会话级默认运行时上下文                                       |
 | `logger`          | `AgentLogger`                                           | —  | —           | 结构化日志适配器                                          |
-| `storagePath`     | `string`                                                | —  | `~/.blade`  | 会话存储根路径                                           |
-| `persistSession`  | `boolean`                                               | —  | `true`      | 是否启用磁盘持久化                                         |
+| `storagePath`     | `string`                                                | —  | —           | 会话存储根路径；未设置时使用内存存储                              |
+| `persistSession`  | `boolean`                                               | —  | `true`      | 有 `storagePath` 时是否启用磁盘持久化                           |
 | `outputFormat`    | `OutputFormat`                                          | —  | —           | 结构化 JSON Schema 输出格式                              |
 | `sandbox`         | `SandboxSettings`                                       | —  | —           | 命令执行沙箱设置                                          |
+| `observability`   | `ObservabilityOptions`                                  | —  | —           | Trace 收集、payload 捕获与 sink 配置                         |
 
 ### SessionHookEvent
 
@@ -1463,17 +1536,17 @@ type HookCallback = (input: HookInput) => Promise<HookOutput>;
 interface HookInput {
   event: HookEvent;
   toolName?: string;
-  toolInput?: unknown;
-  toolOutput?: unknown;
+  toolInput?: JsonObject;
+  toolOutput?: ToolModelContent;
   error?: Error;
-  sessionId: string;
+  sessionId: SessionId;
   [key: string]: unknown;
 }
 
 interface HookOutput {
   action: 'continue' | 'skip' | 'abort';
-  modifiedInput?: unknown;
-  modifiedOutput?: unknown;
+  modifiedInput?: JsonObject | string;
+  modifiedOutput?: JsonValue;
   reason?: string;
 }
 ```
@@ -1523,17 +1596,25 @@ const session = await createSession({
 ```ts
 interface ISession extends AsyncDisposable {
   /** 会话唯一标识符 */
-  readonly sessionId: string;
+  readonly sessionId: SessionId;
 
   /** 当前会话的消息历史（只读副本） */
   readonly messages: Message[];
 
+  /** Session 是否已永久关闭 */
+  readonly isClosed: boolean;
+
   /**
-   * 提交用户消息
+   * 提交用户消息；空闲时启动请求，活动时按 priority 转向或排队
    * 支持纯文本字符串或多模态内容数组（ContentPart[]）
-   * 必须在调用 stream() 之前调用
    */
-  send(message: UserMessageContent, options?: SendOptions): Promise<void>;
+  send(message: UserMessageContent, options?: SendOptions): Promise<InputSubmission>;
+
+  /** 获取尚未应用的输入快照 */
+  getPendingInputs(): readonly PendingSessionInput[];
+
+  /** 取消尚未被 AgentLoop claim 的输入 */
+  cancelInput(inputId: InputId): Promise<boolean>;
 
   /**
    * 异步迭代消费 Agent 输出流
@@ -1542,7 +1623,7 @@ interface ISession extends AsyncDisposable {
   stream(options?: StreamOptions): AsyncGenerator<StreamMessage>;
 
   /** 关闭会话并释放所有资源 */
-  close(): void;
+  close(): Promise<void>;
 
   /** 中止当前正在进行的请求 */
   abort(): void;
@@ -1582,6 +1663,10 @@ interface ISession extends AsyncDisposable {
 
   /** 从当前会话创建分叉 */
   fork(options?: ForkSessionOptions): Promise<ISession>;
+
+  /** 获取最近一条或全部 observability trace */
+  getLastTrace(): AgentTrace | undefined;
+  getTraces(): AgentTrace[];
 }
 ```
 
@@ -1598,7 +1683,10 @@ function resumeSession(options: ResumeOptions): Promise<ISession>;
 function forkSession(options: ForkOptions): Promise<ISession>;
 
 /** 一次性请求（自动创建和销毁会话） */
-function prompt(message: string, options: SessionOptions): Promise<PromptResult>;
+function prompt(
+  message: Parameters<ISession['send']>[0],
+  options: SessionOptions,
+): Promise<PromptResult>;
 ```
 
 ### 完整类型导出一览
@@ -1611,6 +1699,11 @@ export { createSession, resumeSession, forkSession, prompt };
 export type {
   SessionOptions,
   SendOptions,
+  InputSubmission,
+  PendingSessionInput,
+  InputPriority,
+  InputId,
+  RequestId,
   StreamOptions,
   StreamMessage,
   ISession,
@@ -1647,9 +1740,16 @@ export type {
   PermissionHandler,
   PermissionUpdate,
   AgentLogger,
-  UserMessageContent,
 };
 
 // 常量枚举
-export { PermissionMode, HookEvent, StreamMessageType, ToolKind, MessageRole, PermissionDecision };
+export {
+  PermissionMode,
+  InputPriority,
+  HookEvent,
+  StreamMessageType,
+  ToolKind,
+  MessageRole,
+  PermissionDecision,
+};
 ```

@@ -9,6 +9,7 @@ import type {
 import type { ExecutionPipeline } from '../tools/execution/ExecutionPipeline.js';
 import type { ToolEffect, ToolResult } from '../tools/types/index.js';
 import { ToolErrorType } from '../tools/types/index.js';
+import { isSteeringInterruptSignal } from '../types/abort.js';
 import { type JsonObject, PermissionMode } from '../types/common.js';
 import type { ExecutionEpoch } from './ExecutionEpoch.js';
 import type { ToolExecutionOutcome } from './loop/executeToolCalls.js';
@@ -34,6 +35,8 @@ export interface StreamingToolExecutorConfig {
   executionContext: ToolExecutionContext;
   logger?: InternalLogger;
   permissionMode?: PermissionMode;
+  requestSignal?: AbortSignal;
+  steeringSignal?: AbortSignal;
   hooks?: ToolExecutionHooks;
   onContentDelta?: (delta: string) => void | Promise<void>;
   onThinkingDelta?: (delta: string) => void | Promise<void>;
@@ -62,6 +65,7 @@ interface ToolCallAccumulatorEntry {
   name: string;
   arguments: string;
   dispatched: boolean;
+  dispatchedArguments?: string;
   cancelled: boolean;
 }
 
@@ -207,6 +211,15 @@ export class StreamingToolExecutor {
         await Promise.all(inFlightExecutions.values());
       }
 
+      if (isSteeringInterruptSignal(signal)) {
+        await this.completeInterruptedToolCalls(
+          toolCallAccumulator,
+          executionResults,
+          executionConfig,
+          epoch,
+        );
+      }
+
       return {
         chatResponse: {
           content: fullContent,
@@ -219,6 +232,27 @@ export class StreamingToolExecutor {
         ),
       };
     } catch (error) {
+      if (isSteeringInterruptSignal(signal)) {
+        await Promise.allSettled(Array.from(inFlightExecutions.values()));
+        await this.completeInterruptedToolCalls(
+          toolCallAccumulator,
+          executionResults,
+          executionConfig,
+          epoch,
+        );
+        return {
+          chatResponse: {
+            content: fullContent,
+            reasoningContent: fullReasoningContent || undefined,
+            toolCalls: this.buildFinalToolCalls(toolCallAccumulator),
+            usage: streamUsage,
+          },
+          executionResults: executionResults.filter(
+            (result): result is ToolExecutionOutcome => result !== undefined,
+          ),
+        };
+      }
+
       if (this.isStreamingNotSupportedError(error)) {
         this.logger.warn('[Agent] 流式请求失败，回退到 streamChatResponse');
         return this.collectWithFallback(messages, tools, signal, executionConfig, epoch);
@@ -292,9 +326,20 @@ export class StreamingToolExecutor {
     );
 
     if (signal?.aborted || !this.isEpochActive(epoch)) {
+      // steering 中断（stepSignal 触发但请求本身未 abort）时，chatResponse 仍可能
+      // 携带 toolCalls。若此处直接返回空 executionResults，AgentLoop 会因“声明了
+      // 工具调用却没有对应结果”而抛错。为每个已规划的工具调用补一个合成的
+      // INTERRUPTED 结果，保持 tool_call/tool_result 配对完整。
+      const interruptedResults = isSteeringInterruptSignal(signal)
+        ? await this.synthesizeInterruptedResults(
+            executionPlan.calls,
+            executionConfig,
+            epoch,
+          )
+        : [];
       return {
         chatResponse: chatResponse ?? { content: '', toolCalls: undefined, usage: undefined },
-        executionResults: [],
+        executionResults: interruptedResults,
       };
     }
 
@@ -393,6 +438,7 @@ export class StreamingToolExecutor {
       }
 
       entry.dispatched = true;
+      entry.dispatchedArguments = entry.arguments;
       dispatchedAny = true;
       const execution = this.executeToolCall({
         index,
@@ -463,7 +509,8 @@ export class StreamingToolExecutor {
         executionContext: input.executionConfig.executionContext,
         logger: this.logger,
         permissionMode: input.executionConfig.permissionMode,
-        signal: input.signal,
+        signal: input.executionConfig.requestSignal ?? input.signal,
+        steeringSignal: input.executionConfig.steeringSignal,
         batchSignal: input.batchController.signal,
         hooks: {
           onBeforeToolExec: input.executionConfig.hooks?.onBeforeToolExec,
@@ -533,6 +580,7 @@ export class StreamingToolExecutor {
         name: toolCallChunk.function?.name || '',
         arguments: '',
         dispatched: false,
+        dispatchedArguments: undefined,
         cancelled: false,
       };
       accumulator.set(index, entry);
@@ -563,7 +611,7 @@ export class StreamingToolExecutor {
         type: 'function' as const,
         function: {
           name: toolCall.name,
-          arguments: toolCall.arguments,
+          arguments: toolCall.dispatchedArguments ?? toolCall.arguments,
         },
       }));
 
@@ -594,6 +642,100 @@ export class StreamingToolExecutor {
         message: 'Cancelled due to sibling Bash failure',
       },
     };
+  }
+
+  private async completeInterruptedToolCalls(
+    accumulator: Map<number, ToolCallAccumulatorEntry>,
+    executionResults: Array<ToolExecutionOutcome | undefined>,
+    executionConfig: StreamingToolExecutorConfig,
+    epoch?: ExecutionEpoch,
+  ): Promise<void> {
+    const entries = Array.from(accumulator.entries()).sort(
+      ([leftIndex], [rightIndex]) => leftIndex - rightIndex,
+    );
+    for (const [index, entry] of entries) {
+      if (
+        executionResults[index]
+        || !entry.id
+        || !entry.name
+      ) {
+        continue;
+      }
+      const outcome: ToolExecutionOutcome = {
+        toolCall: this.toFunctionToolCall(
+          entry.id,
+          entry.name,
+          entry.dispatchedArguments ?? entry.arguments,
+        ),
+        result: {
+          status: 'error',
+          model: 'Tool execution interrupted by newer user input',
+          error: {
+            type: ToolErrorType.INTERRUPTED,
+            message: 'Interrupted by newer user input',
+          },
+        },
+        effects: [],
+        toolUseUuid: null,
+      };
+      executionResults[index] = outcome;
+      if (!entry.dispatched) {
+        await this.emitToolExecutionUpdate(executionConfig, {
+          type: 'tool_ready',
+          toolCall: outcome.toolCall,
+        }, epoch);
+      }
+      await this.emitToolExecutionUpdate(executionConfig, {
+        type: 'tool_result',
+        outcome,
+      }, epoch);
+      await this.emitToolExecutionUpdate(executionConfig, {
+        type: 'tool_completed',
+        outcome,
+      }, epoch);
+    }
+  }
+
+  /**
+   * fallback 路径下无 accumulator，直接依据已规划的工具调用为每个调用合成一个
+   * INTERRUPTED 结果，并逐个发出 ready/result/completed 事件，使 steering 中断
+   * 时的 tool_call/tool_result 配对与主流式路径保持一致。
+   */
+  private async synthesizeInterruptedResults(
+    calls: readonly FunctionToolCall[],
+    executionConfig: StreamingToolExecutorConfig,
+    epoch?: ExecutionEpoch,
+  ): Promise<ToolExecutionOutcome[]> {
+    const outcomes: ToolExecutionOutcome[] = [];
+    for (const toolCall of calls) {
+      const outcome: ToolExecutionOutcome = {
+        toolCall,
+        result: {
+          status: 'error',
+          model: 'Tool execution interrupted by newer user input',
+          error: {
+            type: ToolErrorType.INTERRUPTED,
+            message: 'Interrupted by newer user input',
+          },
+        },
+        effects: [],
+        toolUseUuid: null,
+      };
+      outcomes.push(outcome);
+      await this.emitToolExecutionUpdate(executionConfig, {
+        type: 'tool_ready',
+        toolCall: outcome.toolCall,
+      }, epoch);
+      await this.emitToolExecutionUpdate(executionConfig, {
+        type: 'tool_result',
+        outcome,
+      }, epoch);
+      await this.emitToolExecutionUpdate(executionConfig, {
+        type: 'tool_completed',
+        outcome,
+      }, epoch);
+    }
+    return outcomes;
   }
 
   private isJsonParseable(value: string): boolean {

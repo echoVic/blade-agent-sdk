@@ -87,8 +87,8 @@ describe('createTool', () => {
       expect(echoTool.maxResultSizeChars).toBe(Number.POSITIVE_INFINITY);
     });
 
-    it('should default interruptBehavior to cancel', () => {
-      expect(echoTool.interruptBehavior).toBe('cancel');
+    it('should default interruptBehavior to block', () => {
+      expect(echoTool.interruptBehavior).toBe('block');
     });
 
     it('should resolve default behavior from static config', () => {
@@ -97,7 +97,7 @@ describe('createTool', () => {
         isReadOnly: true,
         isConcurrencySafe: true,
         isDestructive: false,
-        interruptBehavior: 'cancel',
+        interruptBehavior: 'block',
       });
     });
   });
@@ -505,14 +505,14 @@ describe('createTool', () => {
         isReadOnly: true,
         isConcurrencySafe: true,
         isDestructive: false,
-        interruptBehavior: 'cancel',
+        interruptBehavior: 'block',
       });
       expect(tool.resolveBehavior?.({ mode: 'write' })).toEqual({
         kind: ToolKind.Write,
         isReadOnly: false,
         isConcurrencySafe: false,
         isDestructive: true,
-        interruptBehavior: 'cancel',
+        interruptBehavior: 'block',
       });
     });
 

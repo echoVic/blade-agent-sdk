@@ -10,6 +10,7 @@ import {
   type ToolResult,
   type ToolYield,
 } from '../../tools/types/index.js';
+import { isSteeringInterruptSignal } from '../../types/abort.js';
 import type { SessionId } from '../../types/branded.js';
 import type { BladeConfig, JsonObject, PermissionMode } from '../../types/common.js';
 import type { IBackgroundAgentManager } from '../types.js';
@@ -108,6 +109,7 @@ export interface RunToolCallInput {
   logger?: InternalLogger;
   permissionMode?: PermissionMode;
   signal?: AbortSignal;
+  steeringSignal?: AbortSignal;
   hooks?: ToolExecutionHooks;
   batchSignal?: AbortSignal;
 }
@@ -117,17 +119,19 @@ export async function runToolCall(
 ): Promise<ToolExecutionOutcome> {
   const logger = input.logger ?? NOOP_LOGGER.child(LogCategory.AGENT);
   let outcome: ToolExecutionOutcome;
+  let interruptBehavior: 'cancel' | 'block' = 'block';
 
   try {
     const params = JSON.parse(input.toolCall.function.arguments) as JsonObject;
     await repairToolCallParams(input.toolCall, params);
-    const interruptBehavior = resolveToolInterruptBehavior(
+    interruptBehavior = resolveToolInterruptBehavior(
       input.executionPipeline.getRegistry(),
       input.toolCall.function.name,
       params,
     );
     const interruptSignal = createInterruptAwareAbortSignal({
-      outerSignal: input.signal,
+      requestSignal: input.signal,
+      steeringSignal: input.steeringSignal,
       batchSignal: input.batchSignal,
       interruptBehavior,
     });
@@ -181,6 +185,19 @@ export async function runToolCall(
           mapToolYieldToExecutionUpdate(input.toolCall, step.value),
         );
       }
+      if (
+        result.status === 'error'
+        && interruptBehavior === 'cancel'
+        && isSteeringInterruptSignal(input.steeringSignal)
+      ) {
+        result = {
+          ...result,
+          error: {
+            ...result.error,
+            type: ToolErrorType.INTERRUPTED,
+          },
+        };
+      }
     } finally {
       if (execution && !executionCompleted) {
         try {
@@ -196,13 +213,18 @@ export async function runToolCall(
   } catch (error) {
     logger.error(`Tool execution failed for ${input.toolCall.function.name}:`, error);
     const message = error instanceof Error ? error.message : 'Unknown error';
+    const interrupted =
+      interruptBehavior === 'cancel'
+      && isSteeringInterruptSignal(input.steeringSignal);
     outcome = {
       toolCall: input.toolCall,
       result: {
         status: 'error',
         model: `Tool execution failed: ${message}`,
         error: {
-          type: ToolErrorType.EXECUTION_ERROR,
+          type: interrupted
+            ? ToolErrorType.INTERRUPTED
+            : ToolErrorType.EXECUTION_ERROR,
           message,
         },
       },

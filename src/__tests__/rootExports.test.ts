@@ -1,16 +1,23 @@
 import { describe, expect, expectTypeOf, it } from 'vitest';
 import {
   FileSystemMemoryStore,
+  InputId,
+  InputPriority,
   MemoryManager,
+  RequestId,
+  SessionInputError,
   SubagentExecutor,
   SubagentRegistry,
   ToolCatalog,
+  ToolErrorType,
   collectToolExecution,
   completeToolExecution,
   createMemoryReadTool,
   createMemoryWriteTool,
 } from '../index.js';
 import type {
+  InputSubmission,
+  PendingSessionInput,
   RuntimePatch,
   ToolCatalogEntry,
   ToolEffect,
@@ -33,6 +40,11 @@ describe('root exports', () => {
     expect(ToolCatalog).toBeDefined();
     expect(collectToolExecution).toBeTypeOf('function');
     expect(completeToolExecution).toBeTypeOf('function');
+    expect(InputPriority.NEXT).toBe('next');
+    expect(InputId('input-1')).toBe('input-1');
+    expect(RequestId('request-1')).toBe('request-1');
+    expect(new SessionInputError('TEST', 'message')).toBeInstanceOf(Error);
+    expect(ToolErrorType.INTERRUPTED).toBe('interrupted');
   });
 
   it('exports runtime tool contracts at the root entrypoint', () => {
@@ -48,6 +60,12 @@ describe('root exports', () => {
     expectTypeOf<ToolEffectYield['kind']>().toEqualTypeOf<'effect'>();
     expectTypeOf<ToolExecution>().toMatchTypeOf<
       AsyncGenerator<ToolYield, unknown, void>
+    >();
+    expectTypeOf<InputSubmission['status']>().toEqualTypeOf<
+      'started' | 'steered' | 'queued'
+    >();
+    expectTypeOf<PendingSessionInput['priority']>().toEqualTypeOf<
+      'now' | 'next' | 'later'
     >();
     expectTypeOf<ToolCatalogEntry['source']['kind']>().toEqualTypeOf<
       'builtin' | 'custom' | 'mcp' | 'session'

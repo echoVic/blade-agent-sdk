@@ -15,6 +15,7 @@ import type {
   ToolProgress,
   ToolResult,
 } from '../tools/types/ToolResult.js';
+import type { InputId, RequestId } from '../types/branded.js';
 import type { PermissionUpdate } from '../types/permissions.js';
 import type { TokenBudgetSnapshot } from './TokenBudget.js';
 
@@ -64,6 +65,21 @@ export interface TurnRetryEvent {
   type: 'turn_retry';
   turn: number;
   reason: 'reactive_compact';
+}
+
+export interface InputAppliedEvent {
+  type: 'input_applied';
+  inputId: InputId;
+  requestId: RequestId;
+  priority: 'now' | 'next';
+  turn: number;
+}
+
+export interface TurnInterruptedEvent {
+  type: 'turn_interrupted';
+  inputId: InputId;
+  requestId: RequestId;
+  turn: number;
 }
 
 // ===== 内容流事件 =====
@@ -229,6 +245,8 @@ export type AgentEvent =
   | TurnStartEvent
   | TurnEndEvent
   | TurnRetryEvent
+  | InputAppliedEvent
+  | TurnInterruptedEvent
   | ContentDeltaEvent
   | ThinkingDeltaEvent
   | StreamEndEvent

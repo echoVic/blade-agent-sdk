@@ -21,6 +21,7 @@ export const readTool = createTool({
   name: 'Read',
   displayName: 'File Read',
   kind: ToolKind.ReadOnly,
+  interruptBehavior: 'cancel',
   maxResultSizeChars: 500_000, // ~500KB — large files get externalized to avoid context bloat
 
   // Zod Schema 定义

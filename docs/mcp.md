@@ -96,7 +96,7 @@ interface McpServerConfig {
 | `args` | `string[]` | 命令参数 |
 | `env` | `Record<string, string>` | 子进程环境变量 |
 | `disabled` | `boolean` | 暂时禁用此服务器 |
-| `alwaysAllow` | `string[]` | 自动授权的工具名列表（跳过权限检查） |
+| `alwaysAllow` | `string[]` | 保留的 MCP 配置元数据；当前 Session 权限管道不会据此自动授权 |
 | `type` | `'stdio' \| 'sse' \| 'http'` | 传输模式 |
 | `url` | `string` | SSE/HTTP 模式的服务器 URL |
 | `headers` | `Record<string, string>` | SSE/HTTP 的请求头 |
@@ -219,28 +219,38 @@ function tool<T extends ZodRawShape>(
 
 ```ts
 interface McpToolCallResponse {
-  content: Array<{ type: 'text'; text: string }>;
+  content: Array<{
+    type: 'text' | 'image' | 'resource';
+    text?: string;
+    data?: string;
+    mimeType?: string;
+  }>;
   isError?: boolean;
 }
 ```
 
-## alwaysAllow 自动授权
+## MCP 工具授权
 
-对于信任的 MCP 工具，可以跳过权限检查：
+`alwaysAllow` 当前不会跳过 Session 的权限检查。需要自动授权可信 MCP 工具时，请在 `canUseTool` 或 `permissionHandler` 中显式实现策略：
 
 ```ts
-mcpServers: {
-  filesystem: {
-    type: 'stdio',
-    command: 'npx',
-    args: ['-y', '@modelcontextprotocol/server-filesystem', '/workspace'],
-    alwaysAllow: ['read_file', 'list_directory'],  // 这些工具不需要权限确认
+const session = await createSession({
+  // ...provider, model, mcpServers
+  canUseTool: async (toolName) => {
+    if (['read_file', 'list_directory'].includes(toolName)) {
+      return { behavior: 'allow' };
+    }
+    return { behavior: 'ask' };
   },
-}
+});
 ```
 
+当不同 MCP Server 暴露同名工具时，SDK 可能将名称改写为
+`serverName__toolName`。权限策略应同时考虑 `mcpListTools()` 返回的实际名称，
+不要只匹配服务器声明的原始名称。
+
 ::: warning
-`alwaysAllow` 仅影响权限提示，不影响沙箱限制。即使自动授权，沙箱仍然会限制实际执行范围。
+权限授权不等价于沙箱隔离。MCP 工具在远端或子进程中的实际能力还取决于对应 MCP Server 的部署与安全边界。
 :::
 
 ## OAuth 认证

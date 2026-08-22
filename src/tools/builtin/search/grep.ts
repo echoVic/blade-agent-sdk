@@ -635,6 +635,7 @@ export const grepTool = createTool({
   name: 'Grep',
   displayName: '内容搜索',
   kind: ToolKind.ReadOnly,
+  interruptBehavior: 'cancel',
   maxResultSizeChars: 100_000, // ~100KB before externalization
 
   // Zod Schema 定义

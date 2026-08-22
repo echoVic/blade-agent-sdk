@@ -1,36 +1,25 @@
 # Blade Agent SDK
 
-面向 Node.js 与 TypeScript 的 Session-first Agent SDK。它把多轮会话、工具执行、MCP、子 Agent、Skills、权限控制、Hooks、沙箱和结构化输出统一到一套 API 中，适合构建 CLI 助手、IDE 插件、自动化工作流和对话式开发工具。
+[简体中文](./README.zh-CN.md)
 
-根目录 `README` 只保留仓库概览和最小上手。更详细的配置、API 和使用模式已经放在 `docs/` 中，并通过 VitePress 对外发布，避免首页和文档站维护两套重复内容。
+A session-first TypeScript SDK for building AI agents on Node.js. It provides one API for multi-turn conversations, streaming tool execution, MCP, subagents, Skills, permissions, hooks, sandbox policies, structured output, and observability.
 
-## 核心能力
+## Requirements
 
-- Session-first：`createSession()`、`resumeSession()`、`forkSession()`、`prompt()`
-- 流式 Agent 交互：`send()` + `stream()`，支持内容、thinking、tool use、tool result、usage、result 等 15 种事件类型
-- 多模型支持：`openai`、`anthropic`、`azure-openai`、`gemini`、`deepseek`、`openai-compatible`
-- 工具系统：内置 23 个标准工具，支持 `defineTool()`、`createTool()`、MCP 协议工具与 MCP 资源工具
-- 工具目录：`ToolCatalog` 统一管理内置、自定义、MCP 工具的来源追踪与信任分级
-- MCP：支持 `stdio`、`sse`、`http` 传输，也支持进程内 `createSdkMcpServer()`
-- 协作能力：子 Agent（前台/后台）、`Task` / `TaskOutput` / `TaskStop` 工具，以及用户级和项目级 Skills
-- Memory 系统：`MemoryManager` + `FileSystemMemoryStore`，可选的 `MemoryRead` / `MemoryWrite` 工具
-- 安全与治理：`permissionMode`、`canUseTool`、`permissionHandler`、Hooks、沙箱配置可组合使用
-- Observability：可选 trace 记录，把 stream events、tool calls、usage、hooks 汇总为可调试的执行轨迹
-- 工程能力：运行时 Context、结构化输出、日志接口、会话持久化与分叉、自动上下文压缩、上下文溢出恢复、Token 预算
+- Node.js 22.14.0 or later
+- An ESM project or ESM-capable build tool
 
-## 安装
+The package is ESM-only and does not support CommonJS `require()`.
+
+## Install
 
 ```bash
 npm install @blade-ai/agent-sdk
-# 或
+# or
 pnpm add @blade-ai/agent-sdk
 ```
 
-已发布包面向 npm 分发；这个仓库本身使用 `pnpm` 进行依赖安装、构建、测试、发布和文档开发。
-
-> **ESM-only**：本包为纯 ESM（`"type": "module"`），仅通过 `import` 使用，不支持 CommonJS `require()`（否则会报 `ERR_PACKAGE_PATH_NOT_EXPORTED`）。请确保项目为 ESM（package.json 设 `"type": "module"`）或使用支持 ESM 的运行时/打包器。
-
-## 快速开始
+## Quick Start
 
 ```ts
 import { createSession } from '@blade-ai/agent-sdk';
@@ -42,7 +31,7 @@ const session = await createSession({
   maxOutputTokens: 4096,
 });
 
-await session.send('分析当前项目的目录结构，并总结关键模块职责');
+await session.send('Summarize the responsibilities of this project');
 
 for await (const event of session.stream()) {
   if (event.type === 'content') {
@@ -50,15 +39,15 @@ for await (const event of session.stream()) {
   }
 }
 
-session.close();
+await session.close();
 ```
 
-如果你只需要一次性调用，可以直接使用 `prompt()`：
+For a one-shot request, use `prompt()`:
 
 ```ts
 import { prompt } from '@blade-ai/agent-sdk';
 
-const result = await prompt('总结这个仓库的公开 API', {
+const result = await prompt('Explain this API surface', {
   provider: { type: 'openai', apiKey: process.env.OPENAI_API_KEY! },
   model: 'gpt-4o-mini',
 });
@@ -68,134 +57,151 @@ console.log(result.toolCalls);
 console.log(result.usage);
 ```
 
-## 模型参数
+## Core Capabilities
 
-`createSession()` 可以直接配置常见模型采样和预算参数，这些字段会传入当前会话的默认 `ModelConfig`：
+- Session lifecycle: `createSession()`, `resumeSession()`, `forkSession()`, and `prompt()`
+- Steerable requests: durable `now`, `next`, and `later` inputs with cancellation and pending-input inspection
+- Streaming: 17 typed events for turns, content, reasoning, tools, usage, steering, results, and errors
+- Providers: OpenAI, Anthropic, Azure OpenAI, Gemini, DeepSeek, and OpenAI-compatible APIs
+- Tools: generator-only custom tools, capability-grouped built-ins, MCP tools, and typed progress/effects
+- Collaboration: foreground and background subagents, task tools, and project Skills
+- Safety: permission modes, policy callbacks, hooks, path checks, and optional OS sandbox integration
+- Runtime: optional workspace context, structured output, persistence, context compaction, token budgets, and traces
+
+## Steer an Active Request
+
+`send()` returns an `InputSubmission`. While a request is active, choose when the new input should apply:
 
 ```ts
-const session = await createSession({
-  provider: { type: 'openai', apiKey: process.env.OPENAI_API_KEY! },
-  model: 'gpt-5',
-  temperature: 0.2,
-  maxOutputTokens: 4096,
-  maxContextTokens: 128000,
-  providerOptions: {
-    openai: { reasoningEffort: 'low' },
+const current = await session.send('Analyze the repository');
+
+for await (const event of session.stream()) {
+  if (event.type === 'tool_use' && event.name === 'Bash') {
+    await session.send('Stop editing and only report findings', {
+      priority: 'now',
+      expectedRequestId: current.requestId,
+    });
+  }
+}
+```
+
+- `now`: interrupt the current cancellable step and steer immediately
+- `next`: apply at the next model or tool safe point
+- `later`: queue input for the next request
+
+Use `getPendingInputs()` and `cancelInput()` to manage accepted inputs.
+
+## Custom Tools
+
+Tool execution uses `AsyncGenerator<ToolYield, ToolResult>` exclusively:
+
+```ts
+import { defineTool, ToolKind } from '@blade-ai/agent-sdk';
+
+const weather = defineTool({
+  name: 'GetWeather',
+  description: 'Get the weather for a city',
+  kind: ToolKind.ReadOnly,
+  parameters: {
+    type: 'object',
+    properties: {
+      city: { type: 'string' },
+    },
+    required: ['city'],
   },
-  thinkingEnabled: true,
-  thinkingBudget: 1024,
+  async *execute({ city }) {
+    yield { kind: 'progress', message: `Loading weather for ${city}` };
+    return {
+      status: 'success',
+      model: `${city}: clear, 25 C`,
+      display: { summary: `Weather for ${city}` },
+    };
+  },
 });
 ```
 
-## 包入口
-
-SDK 保持 session-first 的默认体验，root 入口面向 Node server 和 CLI 场景：
+## Package Entry Points
 
 ```ts
 import { createSession } from '@blade-ai/agent-sdk';
-```
-
-需要更明确的运行时边界时，可以使用 subpath exports：
-
-```ts
-import { createSession } from '@blade-ai/agent-sdk/server';
-import { ToolKind } from '@blade-ai/agent-sdk/core';
+import { InputPriority, ToolKind } from '@blade-ai/agent-sdk/core';
 import { defineTool } from '@blade-ai/agent-sdk/tools';
 import { getBuiltinTools } from '@blade-ai/agent-sdk/local';
 ```
 
-`@blade-ai/agent-sdk/core` 只导出 browser-safe 的类型、协议和常量。浏览器环境误导入 root、`server`、`session` 或 `local` 入口时，会解析到 browser stub，并在调用 server-only API 时抛出清晰错误。
+- Root: complete Node.js API
+- `/core`: browser-safe contracts, constants, and types
+- `/tools`: browser-safe tool authoring primitives
+- `/server` and `/session`: server-side Session APIs
+- `/local`: built-in local tools and local runtime helpers
 
-## Observability Trace
+Importing a server-only entry in a browser resolves to a stub that throws a clear runtime error.
 
-当需要调试 Agent 行为时，可以开启 `observability`。SDK 会为每次 `send()` + `stream()` 生成一条 trace，串起 turn、内容流、工具调用、usage、hooks 和最终结果。
+## Persistence and Workspace
 
-默认情况下，trace 只记录结构化摘要，不保存完整 prompt、模型输出、工具入参或工具结果，避免把敏感内容写入调试数据。只有显式设置 `capturePayloads: true` 时才会记录完整 payload。
+Sessions are in-memory unless `storagePath` is configured:
 
 ```ts
-import { createSession } from '@blade-ai/agent-sdk';
-
 const session = await createSession({
-  provider: { type: 'openai', apiKey: process.env.OPENAI_API_KEY! },
-  model: 'gpt-4o-mini',
-  observability: {
-    enabled: true,
-    // capturePayloads: true, // 调试时才开启，可能包含敏感内容
-    sink: async (trace) => {
-      await sendTraceToYourPlatform(trace);
+  provider,
+  model,
+  storagePath: '/var/lib/my-agent',
+  defaultContext: {
+    capabilities: {
+      filesystem: {
+        roots: [process.cwd()],
+        cwd: process.cwd(),
+      },
     },
   },
 });
-
-await session.send('分析当前项目的测试覆盖');
-for await (const event of session.stream()) {
-  if (event.type === 'content') process.stdout.write(event.delta);
-}
-
-console.log(session.getLastTrace());
 ```
 
-## 什么时候适合用它
+The workspace is optional. Sessions and explicitly configured agents work without one, but local filesystem tools and project-level discovery require a filesystem-capable workspace.
 
-- 需要一个可持久化、可恢复、可分叉的 Agent Session 层
-- 需要把文件、搜索、Shell、Web、MCP 等能力统一暴露给模型
-- 需要在本地开发环境里组合权限控制和沙箱
-- 需要用自定义工具、MCP server、子 Agent 或 Skills 扩展能力
-- 需要结构化输出、日志、trace 和运行时 Context 来接入现有应用
+## Documentation
 
-## 文档
+- [English documentation](./docs/en/index.md)
+- [中文文档](./docs/index.md)
+- [English changelog](./CHANGELOG.md)
+- [中文更新日志](./CHANGELOG.zh-CN.md)
 
-README 只保留概览。详细用法请直接看文档：
-
-- [文档首页](./docs/index.md)
-- [概览](./docs/blade-agent-sdk.md)
-- [Session API](./docs/session.md)
-- [Provider 配置](./docs/providers.md)
-- [工具系统](./docs/tools.md)
-- [MCP 协议集成](./docs/mcp.md)
-- [子 Agent](./docs/agents.md)
-- [Skills 系统](./docs/skills.md)
-- [Hooks 生命周期钩子](./docs/hooks.md)
-- [权限控制](./docs/permissions.md)
-- [沙箱安全](./docs/sandbox.md)
-- [常见模式](./docs/recipes.md)
-- [API 参考](./docs/api-reference.md)
-
-## 仓库开发
+## Development
 
 ```bash
 pnpm install
-pnpm run build
-pnpm test
-pnpm run type-check
 pnpm run lint
-pnpm run docs:dev
+pnpm run type-check
+pnpm run test
+pnpm run build
+pnpm run docs:build
 ```
 
-## 发布
+## Release Process
 
-本仓库使用 `semantic-release` 自动发包。代码合并到 `main` 后，GitHub Actions 会先运行 lint、type-check、build 和 test；通过后再根据 conventional commits 自动决定版本、创建 `v*` 标签、发布 GitHub Release，并把 `@blade-ai/agent-sdk` 发布到 npm。
+Releases are managed only by `semantic-release`. Every releasable pull request must add a bilingual JSON fragment under `.changes/`. On `main`, the release workflow:
 
-- `feat:` 触发 minor 版本
-- `fix:` 触发 patch 版本
-- `BREAKING CHANGE:` 触发 major 版本
-- `docs:`、`test:`、`chore:` 等默认不会单独发包
-
-第一次启用前，需要在 npm 上为 `@blade-ai/agent-sdk` 配置 Trusted Publishing，让 GitHub Actions 通过 OIDC 发布，不再依赖长期 `NPM_TOKEN`。npm 配置项：
-
-- Owner: `echoVic`
-- Repository: `blade-agent-sdk`
-- Workflow filename: `release.yml`
-- Environment name: 留空
-
-手动预演可以运行：
-
-```bash
-pnpm run release:dry
+```json
+{
+  "type": "feature",
+  "en": "Add a user-facing capability.",
+  "zh-CN": "新增一项用户可见能力。"
+}
 ```
 
-更多贡献约定见 [CONTRIBUTING.md](./CONTRIBUTING.md)。
+Use a unique kebab-case filename. Allowed types are `breaking`, `feature`,
+`fix`, `performance`, `refactor`, and `docs`.
 
-## 社区
+1. validates, builds, and tests the package and documentation;
+2. determines the next version from conventional commits;
+3. updates `package.json`, `CHANGELOG.md`, and `CHANGELOG.zh-CN.md`;
+4. commits the generated release metadata;
+5. publishes the npm package and GitHub Release.
 
-- [linux.do](https://linux.do/)
+Run `pnpm run changelog:check` to validate fragments and `pnpm run release:dry` to preview a release.
+
+See [CONTRIBUTING.md](./CONTRIBUTING.md) for contribution guidance.
+
+## License
+
+[MIT](./LICENSE)

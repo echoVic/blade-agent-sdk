@@ -13,7 +13,7 @@ SDK 内置 3 种子 Agent：
 | Plan | 规划型，用于制定执行计划 | 是 |
 
 ::: tip
-Explore 和 Plan 子 Agent 默认设置了 `contextOmissions: ['environment']`，省略环境上下文信息以节省 token，让更多上下文空间用于实际任务内容。
+Explore 和 Plan 子 Agent 会在内部省略环境上下文，以节省 token。`SessionOptions.agents` 使用的公开 `AgentDefinition` 不暴露该内部配置。
 :::
 
 ## 自定义子 Agent
@@ -56,7 +56,6 @@ interface AgentDefinition {
   systemPrompt?: string;
   allowedTools?: string[];
   model?: string;
-  contextOmissions?: Array<'environment'>;
 }
 ```
 
@@ -67,7 +66,6 @@ interface AgentDefinition {
 | `systemPrompt` | 子 Agent 专属的系统提示词 |
 | `allowedTools` | 限制可用工具范围 |
 | `model` | 使用不同模型（可选，默认继承主 Session） |
-| `contextOmissions` | 省略的上下文部分。设置 `['environment']` 可跳过环境信息注入，节省 token |
 
 ::: tip
 SDK 只内置 `general-purpose`、`Explore`、`Plan` 三种通用 agent 模式。产品化角色例如 `verification` 应由上层应用自行定义。

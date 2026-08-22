@@ -1,12 +1,18 @@
 import { describe, expect, it, type Mock, vi } from 'vitest';
 import type { Message } from '../../services/ChatServiceInterface.js';
 import { CannotRetryError } from '../../services/RetryPolicy.js';
+import { ActiveRequestController } from '../../session/ActiveRequestController.js';
+import { SessionInputInbox } from '../../session/SessionInputInbox.js';
 import {
   completeToolExecution,
   type ToolEffect,
   type ToolResult,
 } from '../../tools/types/index.js';
-import { SessionId } from '../../types/branded.js';
+import {
+  InputId,
+  RequestId,
+  SessionId,
+} from '../../types/branded.js';
 import type { AgentEvent } from '../AgentEvent.js';
 import type { AgentLoopConfig } from '../AgentLoop.js';
 import { agentLoop } from '../AgentLoop.js';
@@ -80,6 +86,7 @@ type BaseConfigOverrides = Partial<Omit<AgentLoopConfig, 'prepareTurnState' | 'c
   messages?: Message[];
   // Legacy flat hooks (translated to grouped shape below)
   onBeforeTurn?: NonNullable<NonNullable<AgentLoopConfig['hooks']>['turn']>['beforeTurn'];
+  onInputApply?: NonNullable<NonNullable<AgentLoopConfig['hooks']>['input']>['apply'];
   onTurnLimitReached?: NonNullable<NonNullable<AgentLoopConfig['hooks']>['turn']>['onTurnLimitReached'];
   onTurnLimitCompact?: NonNullable<NonNullable<AgentLoopConfig['hooks']>['turn']>['onTurnLimitCompact'];
   onBeforeToolExec?: NonNullable<NonNullable<AgentLoopConfig['hooks']>['tool']>['beforeExec'];
@@ -102,6 +109,7 @@ function baseConfig(overrides: BaseConfigOverrides = {}): AgentLoopConfig {
     maxTurns = 10,
     isYoloMode = false,
     onBeforeTurn,
+    onInputApply,
     onTurnLimitReached,
     onTurnLimitCompact,
     onBeforeToolExec,
@@ -136,6 +144,9 @@ function baseConfig(overrides: BaseConfigOverrides = {}): AgentLoopConfig {
   };
 
   const hooks: NonNullable<AgentLoopConfig['hooks']> = {
+    input: {
+      apply: onInputApply,
+    },
     turn: {
       beforeTurn: onBeforeTurn,
       onTurnLimitReached,
@@ -964,6 +975,383 @@ describe('agentLoop', () => {
           metadata: expect.objectContaining({ _systemSource: 'tool_injection' }),
         }),
       );
+    });
+
+    it('applies next-priority input before completing a no-tool response', async () => {
+      const inbox = new SessionInputInbox();
+      const requestId = RequestId('request-steer-no-tool');
+      const runControl = new ActiveRequestController(
+        requestId,
+        undefined,
+        inbox,
+        InputId('initial-input'),
+      );
+      const chatService = createMockChatService([
+        { content: 'First answer' },
+        { content: 'Steered answer' },
+      ]);
+      let stopChecks = 0;
+      const config = baseConfig({
+        runControl,
+        turnState: { chatService },
+        onInputApply: async ({ input }) => ({
+          role: 'user',
+          content: input.content,
+        }),
+        onStopCheck: async () => {
+          stopChecks += 1;
+          if (stopChecks === 1) {
+            inbox.enqueue({
+              inputId: InputId('steer-1'),
+              content: 'Change direction',
+              priority: 'next',
+              targetRequestId: requestId,
+              acceptedAt: 1,
+            });
+          }
+          return { shouldStop: true };
+        },
+      });
+
+      const { events, result } = await collectEvents(agentLoop(config));
+
+      expect(result.success).toBe(true);
+      expect(events).toContainEqual({
+        type: 'input_applied',
+        inputId: 'steer-1',
+        requestId,
+        priority: 'next',
+        turn: 2,
+      });
+      const secondRequestMessages = (
+        chatService.chat as unknown as Mock
+      ).mock.calls[1]?.[0] as Message[];
+      expect(secondRequestMessages.slice(-2)).toEqual([
+        expect.objectContaining({
+          role: 'assistant',
+          content: 'First answer',
+        }),
+        expect.objectContaining({
+          role: 'user',
+          content: 'Change direction',
+        }),
+      ]);
+      expect(inbox.size).toBe(0);
+    });
+
+    it('applies next-priority input after a complete tool-result batch', async () => {
+      const inbox = new SessionInputInbox();
+      const requestId = RequestId('request-steer-tool');
+      const runControl = new ActiveRequestController(
+        requestId,
+        undefined,
+        inbox,
+        InputId('initial-input'),
+      );
+      const chatService = createMockChatService([
+        {
+          content: 'Inspecting',
+          toolCalls: [{
+            id: 'call_1',
+            type: 'function',
+            function: { name: 'ReadFile', arguments: '{}' },
+          }],
+        },
+        { content: 'Done' },
+      ]);
+      const config = baseConfig({
+        runControl,
+        turnState: { chatService },
+        onInputApply: async ({ input }) => ({
+          role: 'user',
+          content: input.content,
+        }),
+        onAfterToolExec: async () => {
+          inbox.enqueue({
+            inputId: InputId('steer-1'),
+            content: 'Inspect the tests too',
+            priority: 'next',
+            targetRequestId: requestId,
+            acceptedAt: 1,
+          });
+        },
+      });
+
+      await collectEvents(agentLoop(config));
+
+      const secondRequestMessages = (
+        chatService.chat as unknown as Mock
+      ).mock.calls[1]?.[0] as Message[];
+      expect(secondRequestMessages.slice(-3).map((message) => message.role)).toEqual([
+        'assistant',
+        'tool',
+        'user',
+      ]);
+      expect(secondRequestMessages.at(-1)?.content).toBe('Inspect the tests too');
+      expect(inbox.size).toBe(0);
+    });
+
+    it('interrupts the current model step and applies now-priority input', async () => {
+      let resolveStarted!: () => void;
+      const started = new Promise<void>((resolve) => {
+        resolveStarted = resolve;
+      });
+      let requestCount = 0;
+      const chat = vi.fn(async (
+        _messages: readonly Message[],
+        _tools: unknown,
+        signal?: AbortSignal,
+      ) => {
+        requestCount += 1;
+        if (requestCount === 1) {
+          resolveStarted();
+          await new Promise<void>((_resolve, reject) => {
+            signal?.addEventListener(
+              'abort',
+              () => reject(signal.reason),
+              { once: true },
+            );
+          });
+        }
+        return {
+          content: 'Redirected answer',
+          toolCalls: [],
+          usage: { promptTokens: 100, completionTokens: 50, totalTokens: 150 },
+        };
+      });
+      const chatService = {
+        chat,
+        chatWithRetryEvents: vi.fn(async function* (
+          ...args: Parameters<typeof chat>
+        ) {
+          yield* [] as never[];
+          return await chat(...args);
+        }),
+        getConfig: () => ({
+          model: 'test-model',
+          maxContextTokens: 128000,
+        }),
+      } as unknown as TurnState['chatService'];
+      const inbox = new SessionInputInbox();
+      const requestId = RequestId('request-interrupt-model');
+      const runControl = new ActiveRequestController(
+        requestId,
+        undefined,
+        inbox,
+        InputId('initial-input'),
+      );
+      const onAssistantMessage = vi.fn(async () => {});
+      const config = baseConfig({
+        runControl,
+        turnState: { chatService },
+        onAssistantMessage,
+        onInputApply: async ({ input }) => ({
+          role: 'user',
+          content: input.content,
+        }),
+      });
+
+      const execution = collectEvents(agentLoop(config));
+      await started;
+      inbox.enqueue({
+        inputId: InputId('steer-now'),
+        content: 'Stop and use the other approach',
+        priority: 'now',
+        targetRequestId: requestId,
+        acceptedAt: 1,
+      });
+      runControl.interruptStep(InputId('steer-now'));
+
+      const { events, result } = await execution;
+
+      expect(result.success).toBe(true);
+      expect(events).toContainEqual({
+        type: 'turn_interrupted',
+        inputId: 'steer-now',
+        requestId,
+        turn: 1,
+      });
+      expect(events).toContainEqual({
+        type: 'input_applied',
+        inputId: 'steer-now',
+        requestId,
+        priority: 'now',
+        turn: 2,
+      });
+      const secondRequestMessages = chat.mock.calls[1]?.[0] as Message[];
+      expect(secondRequestMessages.at(-1)?.content).toBe(
+        'Stop and use the other approach',
+      );
+      expect(onAssistantMessage).toHaveBeenCalledTimes(1);
+      expect(onAssistantMessage).toHaveBeenCalledWith(
+        expect.objectContaining({
+          content: 'Redirected answer',
+          turn: 2,
+        }),
+      );
+    });
+
+    it('closes interrupted tool calls before applying now-priority input', async () => {
+      let resolveToolStarted!: () => void;
+      const toolStarted = new Promise<void>((resolve) => {
+        resolveToolStarted = resolve;
+      });
+      const inbox = new SessionInputInbox();
+      const requestId = RequestId('request-interrupt-tool');
+      const runControl = new ActiveRequestController(
+        requestId,
+        undefined,
+        inbox,
+        InputId('initial-input'),
+      );
+      const executionPipeline = {
+        getRegistry: () => ({
+          get: (name: string) => ({
+            kind: 'execute',
+            name,
+            interruptBehavior: 'cancel',
+          }),
+        }),
+        execute: vi.fn(async function* (
+          _toolName: string,
+          _params: unknown,
+          context: { signal?: AbortSignal },
+        ) {
+          resolveToolStarted();
+          await new Promise<void>((resolve) => {
+            if (context.signal?.aborted) {
+              resolve();
+              return;
+            }
+            context.signal?.addEventListener('abort', () => resolve(), {
+              once: true,
+            });
+          });
+          return {
+            status: 'error',
+            model: 'interrupted',
+            error: {
+              type: 'interrupted',
+              message: 'interrupted',
+            },
+          };
+        }),
+      } as unknown as AgentLoopConfig['executionPipeline'];
+      const chatService = createMockChatService([
+        {
+          content: 'Running tool',
+          toolCalls: [{
+            id: 'call_1',
+            type: 'function',
+            function: { name: 'CancelableTool', arguments: '{}' },
+          }],
+        },
+        { content: 'Redirected answer' },
+      ]);
+      const config = baseConfig({
+        runControl,
+        executionPipeline,
+        turnState: { chatService },
+        onInputApply: async ({ input }) => ({
+          role: 'user',
+          content: input.content,
+        }),
+      });
+
+      const execution = collectEvents(agentLoop(config));
+      await toolStarted;
+      inbox.enqueue({
+        inputId: InputId('steer-now'),
+        content: 'Use a different tool',
+        priority: 'now',
+        targetRequestId: requestId,
+        acceptedAt: 1,
+      });
+      runControl.interruptStep(InputId('steer-now'));
+
+      const { events, result } = await execution;
+
+      expect(result.success).toBe(true);
+      const toolResultIndex = events.findIndex(
+        (event) => event.type === 'tool_result',
+      );
+      const inputAppliedIndex = events.findIndex(
+        (event) => event.type === 'input_applied',
+      );
+      expect(toolResultIndex).toBeGreaterThan(-1);
+      expect(inputAppliedIndex).toBeGreaterThan(toolResultIndex);
+      const interruptedToolResult = events[toolResultIndex];
+      expect(interruptedToolResult).toMatchObject({
+        type: 'tool_result',
+        result: {
+          status: 'error',
+          error: {
+            type: 'interrupted',
+          },
+        },
+      });
+      const secondRequestMessages = (
+        chatService.chat as unknown as Mock
+      ).mock.calls[1]?.[0] as Message[];
+      expect(secondRequestMessages.slice(-3).map((message) => message.role)).toEqual([
+        'assistant',
+        'tool',
+        'user',
+      ]);
+    });
+
+    it('releases only unapplied inputs when steering application fails', async () => {
+      const inbox = new SessionInputInbox();
+      const requestId = RequestId('request-apply-failure');
+      const runControl = new ActiveRequestController(
+        requestId,
+        undefined,
+        inbox,
+        InputId('initial-input'),
+      );
+      for (const [index, inputId] of [
+        'steer-first',
+        'steer-failing',
+        'steer-remaining',
+      ].entries()) {
+        inbox.enqueue({
+          inputId: InputId(inputId),
+          content: inputId,
+          priority: 'next',
+          targetRequestId: requestId,
+          acceptedAt: index,
+        });
+      }
+      const applyAttempts: string[] = [];
+      const config = baseConfig({
+        runControl,
+        onInputApply: async ({ input }) => {
+          applyAttempts.push(input.inputId);
+          if (input.inputId === 'steer-failing') {
+            throw new Error('input hook failed');
+          }
+          return {
+            role: 'user',
+            content: input.content,
+          };
+        },
+      });
+
+      await expect(collectEvents(agentLoop(config))).rejects.toThrow(
+        'input hook failed',
+      );
+
+      expect(applyAttempts).toEqual(['steer-first', 'steer-failing']);
+      expect(inbox.getAll().map((input) => input.inputId)).toEqual([
+        'steer-failing',
+        'steer-remaining',
+      ]);
+      expect(
+        runControl.claimSteeringInputs().map((input) => input.inputId),
+      ).toEqual([
+        'steer-failing',
+        'steer-remaining',
+      ]);
     });
   });
 });
