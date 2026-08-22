@@ -30,6 +30,7 @@ export const editTool = createTool({
   name: 'Edit',
   displayName: 'File Edit',
   kind: ToolKind.Write,
+  sideEffect: 'non_idempotent',
   strict: true, // 启用 OpenAI Structured Outputs
   isConcurrencySafe: false, // 文件编辑不支持并发
 

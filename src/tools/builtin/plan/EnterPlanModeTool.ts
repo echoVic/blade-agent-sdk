@@ -12,6 +12,7 @@ export const enterPlanModeTool = createTool({
   name: 'EnterPlanMode',
   displayName: 'Enter Plan Mode',
   kind: ToolKind.ReadOnly,
+  sideEffect: 'non_idempotent',
 
   schema: lazySchema(() => z.object({})),
 

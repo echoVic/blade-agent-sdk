@@ -20,6 +20,7 @@ export function createTodoWriteTool(opts: { sessionId: SessionId; configDir?: st
     name: 'TodoWrite',
     displayName: 'Todo Write',
     kind: ToolKind.ReadOnly,
+    sideEffect: 'idempotent',
     isConcurrencySafe: false,
 
     schema: lazySchema(() => z.object({

@@ -46,6 +46,7 @@ export type {
   ToolEffectYield,
   ToolError,
   ToolExecution,
+  ToolExecutionStartedLifecycle,
   ToolExecutionLifecycle,
   ToolExposureConfig,
   ToolExposureMode,
@@ -65,7 +66,7 @@ export {
   completeToolExecution,
   ToolErrorType,
 } from '../tools/types/index.js';
-export { ToolKind } from '../tools/types/ToolKind.js';
+export { ToolKind, ToolSideEffect } from '../tools/types/ToolKind.js';
 export {
   CommandId,
   EventId,

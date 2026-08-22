@@ -115,4 +115,57 @@ describe('builtin tool groups', () => {
       run_in_background: true,
     })).toMatchObject({ interruptBehavior: 'block' });
   });
+
+  it('declares an explicit side-effect contract for every default builtin tool', () => {
+    const tools = flattenBuiltinToolGroups(createBuiltinToolGroups({
+      sessionId: SessionId('builtin-side-effects'),
+      subagentRegistry: new SubagentRegistry(),
+    }));
+
+    expect(Object.fromEntries(
+      tools.map((tool) => [tool.name, tool.sideEffect]),
+    )).toEqual({
+      Read: 'pure',
+      Edit: 'non_idempotent',
+      Write: 'idempotent',
+      NotebookEdit: 'non_idempotent',
+      Glob: 'pure',
+      Grep: 'pure',
+      Bash: 'non_idempotent',
+      KillShell: 'idempotent',
+      WebFetch: 'non_idempotent',
+      WebSearch: 'pure',
+      Task: 'non_idempotent',
+      TaskOutput: 'non_idempotent',
+      TaskCreate: 'non_idempotent',
+      TaskGet: 'pure',
+      TaskUpdate: 'idempotent',
+      TaskList: 'pure',
+      TaskStop: 'idempotent',
+      TodoWrite: 'idempotent',
+      EnterPlanMode: 'non_idempotent',
+      ExitPlanMode: 'non_idempotent',
+      AskUserQuestion: 'non_idempotent',
+      DiscoverTools: 'idempotent',
+      Skill: 'non_idempotent',
+    });
+
+    const bash = tools.find((tool) => tool.name === 'Bash');
+    expect(bash?.resolveBehavior?.({
+      command: 'git status',
+      run_in_background: false,
+    })).toMatchObject({ sideEffect: 'pure' });
+    expect(bash?.resolveBehavior?.({
+      command: 'git commit -m test',
+      run_in_background: false,
+    })).toMatchObject({ sideEffect: 'non_idempotent' });
+
+    const webFetch = tools.find((tool) => tool.name === 'WebFetch');
+    expect(webFetch?.resolveBehavior?.({ url: 'https://example.com', method: 'GET' }))
+      .toMatchObject({ sideEffect: 'pure' });
+    expect(webFetch?.resolveBehavior?.({ url: 'https://example.com', method: 'PUT' }))
+      .toMatchObject({ sideEffect: 'idempotent' });
+    expect(webFetch?.resolveBehavior?.({ url: 'https://example.com', method: 'POST' }))
+      .toMatchObject({ sideEffect: 'non_idempotent' });
+  });
 });

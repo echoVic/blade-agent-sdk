@@ -12,6 +12,7 @@ export function createTaskStopTool({ sessionId }: { sessionId: SessionId }) {
     name: 'TaskStop',
     displayName: 'Stop Task',
     kind: ToolKind.Write,
+    sideEffect: 'idempotent',
     description: {
       short: 'Stop a running background task',
       long: 'Use this tool to stop a running background task (spawned via the Agent tool with run_in_background=true). This marks the task as completed and records the stop time.',

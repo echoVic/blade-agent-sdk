@@ -2,7 +2,7 @@ import { PermissionMode } from '../../types/common.js';
 import { getErrorMessage } from '../../utils/errorUtils.js';
 import { searchTools } from '../search/toolSearch.js';
 import type { FunctionDeclaration, Tool } from '../types/index.js';
-import { resolveToolBehaviorHint } from '../types/index.js';
+import { isToolSideEffect, resolveToolBehaviorHint } from '../types/index.js';
 
 /**
  * 工具注册表
@@ -22,6 +22,7 @@ export class ToolRegistry {
    * 注册内置工具
    */
   register(tool: Tool): void {
+    this.assertSideEffectContract(tool);
     if (this.tools.has(tool.name)) {
       throw new Error(`工具 '${tool.name}' 已注册`);
     }
@@ -245,6 +246,7 @@ export class ToolRegistry {
    * 注册MCP工具
    */
   registerMcpTool(tool: Tool): void {
+    this.assertSideEffectContract(tool);
     if (this.mcpTools.has(tool.name)) {
       // MCP工具可以覆盖（支持热更新）
       const previous = this.mcpTools.get(tool.name);
@@ -270,6 +272,14 @@ export class ToolRegistry {
       }
       return left.name.localeCompare(right.name);
     });
+  }
+
+  private assertSideEffectContract(tool: Tool): void {
+    if (!isToolSideEffect(tool.sideEffect)) {
+      throw new TypeError(
+        `Tool '${tool.name}' must declare sideEffect as pure, idempotent, or non_idempotent`,
+      );
+    }
   }
 
   private invalidateSortedToolCaches(): void {

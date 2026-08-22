@@ -27,6 +27,7 @@ export function createReadMcpResourceTool(registry: McpRegistry) {
     name: 'ReadMcpResource',
     displayName: 'Read MCP Resource',
     kind: ToolKind.ReadOnly,
+    sideEffect: 'pure',
     description: {
       short: 'Read the contents of an MCP resource by URI',
       long: `Reads and returns the contents of a resource from a connected MCP (Model Context Protocol) server.

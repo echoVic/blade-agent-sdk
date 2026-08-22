@@ -36,4 +36,4 @@ export {
   completeToolExecution,
   ToolErrorType,
 } from './types/index.js';
-export { ToolKind } from './types/ToolKind.js';
+export { ToolKind, ToolSideEffect } from './types/ToolKind.js';

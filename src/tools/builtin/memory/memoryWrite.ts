@@ -25,6 +25,7 @@ export function createMemoryWriteTool({ manager }: { manager: MemoryManager }) {
     name: 'MemoryWrite',
     displayName: 'Write Memory',
     kind: ToolKind.Write,
+    sideEffect: 'idempotent',
     description: {
       short: 'Save or delete memories in the configured memory store',
       long: `Save or delete memories in the configured memory store supplied by the SDK consumer.

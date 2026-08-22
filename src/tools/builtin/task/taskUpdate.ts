@@ -14,6 +14,7 @@ export function createTaskUpdateTool({ sessionId }: { sessionId: SessionId }) {
     name: 'TaskUpdate',
     displayName: 'Update Task',
     kind: ToolKind.Write,
+    sideEffect: 'idempotent',
     description: {
       short: 'Update a task in the task list',
       long: `Use this tool to update a task's status, details, or dependencies.

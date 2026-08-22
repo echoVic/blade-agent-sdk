@@ -14,6 +14,7 @@ export const exitPlanModeTool = createTool({
   name: 'ExitPlanMode',
   displayName: 'Exit Plan Mode',
   kind: ToolKind.ReadOnly,
+  sideEffect: 'non_idempotent',
 
   schema: lazySchema(() => z.object({
     plan: z.string().describe('The complete implementation plan in markdown format'),

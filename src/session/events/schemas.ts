@@ -118,10 +118,17 @@ const DurableEventDataSchemas = {
     .object({
       ...ToolIdentitySchema,
       input: JsonValueSchema,
+      sideEffect: z.enum(['pure', 'idempotent', 'non_idempotent']),
       interruptBehavior: z.enum(['block', 'cancel']),
     })
     .strict(),
-  [DurableEventTypeValue.TOOL_STARTED]: z.object(ToolIdentitySchema).strict(),
+  [DurableEventTypeValue.TOOL_STARTED]: z
+    .object({
+      ...ToolIdentitySchema,
+      input: JsonValueSchema,
+      sideEffect: z.enum(['pure', 'idempotent', 'non_idempotent']),
+    })
+    .strict(),
   [DurableEventTypeValue.TOOL_COMPLETED]: z
     .object({
       ...ToolIdentitySchema,

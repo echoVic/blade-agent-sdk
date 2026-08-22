@@ -4,7 +4,7 @@ import type { ContextSnapshot } from '../../runtime/index.js';
 import type { BladeConfig, JsonObject, PermissionMode } from '../../types/common.js';
 import type { ToolCatalog } from '../catalog/index.js';
 import type { ToolRegistry } from '../registry/ToolRegistry.js';
-import type { ToolKind } from './ToolKind.js';
+import type { ToolKind, ToolSideEffect } from './ToolKind.js';
 import type { ToolResult } from './ToolResult.js';
 
 interface QuestionOption {
@@ -63,19 +63,25 @@ export interface ToolPermissionResolution {
   message?: string;
 }
 
+export interface ToolExecutionStartedLifecycle {
+  input: JsonObject;
+  sideEffect: ToolSideEffect;
+}
+
 export interface ToolInvocationLifecycle {
   onPermissionRequested?(
     details: ConfirmationDetails,
     input: JsonObject,
   ): Promise<PermissionRequestId>;
   onPermissionResolved?(resolution: ToolPermissionResolution): Promise<void>;
-  onExecutionStarted?(): Promise<void>;
+  onExecutionStarted?(event: ToolExecutionStartedLifecycle): Promise<void>;
 }
 
 export interface ToolScheduledLifecycle {
   toolCallId: ToolUseId;
   toolName: string;
   input: JsonObject;
+  sideEffect: ToolSideEffect;
   interruptBehavior: 'block' | 'cancel';
 }
 

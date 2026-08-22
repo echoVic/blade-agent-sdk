@@ -28,6 +28,7 @@ export const taskOutputTool = createTool({
   name: 'TaskOutput',
   displayName: 'Task Output',
   kind: ToolKind.ReadOnly,
+  sideEffect: 'non_idempotent',
 
   schema: lazySchema(() => z.object({
     task_id: z.string().min(1).describe('The task ID to get output from'),

@@ -33,7 +33,8 @@ interface WebResponse {
 export const webFetchTool = createTool({
   name: 'WebFetch',
   displayName: 'Web Fetch',
-  kind: ToolKind.ReadOnly,
+  kind: ToolKind.Execute,
+  sideEffect: 'non_idempotent',
   interruptBehavior: 'cancel',
 
   // Zod Schema 定义
@@ -84,6 +85,28 @@ export const webFetchTool = createTool({
       description: 'Return response headers',
     }),
   })),
+
+  resolveBehaviorHint: () => ({
+    kind: ToolKind.ReadOnly,
+    sideEffect: 'pure',
+    isReadOnly: true,
+    isConcurrencySafe: true,
+    isDestructive: false,
+  }),
+
+  resolveBehavior: ({ method }) => {
+    const isReadOnly = method === 'GET' || method === 'HEAD';
+    return {
+      kind: isReadOnly ? ToolKind.ReadOnly : ToolKind.Execute,
+      sideEffect:
+        isReadOnly ? 'pure' : method === 'PUT' || method === 'DELETE'
+          ? 'idempotent'
+          : 'non_idempotent',
+      isReadOnly,
+      isConcurrencySafe: isReadOnly,
+      isDestructive: method === 'DELETE',
+    };
+  },
 
   // 工具描述（对齐 Claude Code 官方）
   description: {

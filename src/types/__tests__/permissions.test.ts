@@ -17,6 +17,7 @@ function createRequest(overrides: Partial<Parameters<ReturnType<typeof createMod
     affectedPaths: [],
     toolKind: ToolKind.Execute,
     toolMeta: {
+      sideEffect: 'non_idempotent' as const,
       isReadOnly: false,
       isConcurrencySafe: true,
       isDestructive: false,
@@ -33,6 +34,7 @@ describe('createModePermissionHandler', () => {
       permissionMode: PermissionMode.PLAN,
       toolKind: ToolKind.Write,
       toolMeta: {
+        sideEffect: 'idempotent',
         isReadOnly: false,
         isConcurrencySafe: false,
         isDestructive: false,
@@ -52,6 +54,7 @@ describe('createModePermissionHandler', () => {
     const result = await handler(createRequest({
       toolKind: ToolKind.ReadOnly,
       toolMeta: {
+        sideEffect: 'pure',
         isReadOnly: true,
         isConcurrencySafe: true,
         isDestructive: false,
@@ -86,6 +89,7 @@ describe('createRuleBasedPermissionHandler', () => {
       toolName: 'Read',
       toolKind: ToolKind.ReadOnly,
       toolMeta: {
+        sideEffect: 'pure',
         isReadOnly: true,
         isConcurrencySafe: true,
         isDestructive: false,
@@ -107,6 +111,7 @@ describe('createRuleBasedPermissionHandler', () => {
       toolName: 'Read',
       toolKind: ToolKind.ReadOnly,
       toolMeta: {
+        sideEffect: 'pure',
         isReadOnly: true,
         isConcurrencySafe: true,
         isDestructive: false,
@@ -143,6 +148,7 @@ describe('createPathSafetyPermissionHandler', () => {
       toolKind: ToolKind.ReadOnly,
       affectedPaths: ['/tmp/id_rsa'],
       toolMeta: {
+        sideEffect: 'pure',
         isReadOnly: true,
         isConcurrencySafe: true,
         isDestructive: false,
@@ -168,6 +174,7 @@ describe('createPathSafetyPermissionHandler', () => {
       toolKind: ToolKind.ReadOnly,
       affectedPaths: ['/tmp/id_rsa'],
       toolMeta: {
+        sideEffect: 'pure',
         isReadOnly: true,
         isConcurrencySafe: true,
         isDestructive: false,

@@ -3,25 +3,15 @@ import type { ContextSnapshot } from '../../runtime/index.js';
 import type { ToolCatalog } from '../../tools/catalog/index.js';
 import type { ExecutionPipeline } from '../../tools/execution/ExecutionPipeline.js';
 import type { ToolRegistry } from '../../tools/registry/ToolRegistry.js';
-import type {
-  ConfirmationHandler,
-  ToolExecutionLifecycle,
-} from '../../tools/types/ExecutionTypes.js';
-import {
-  type ToolEffect,
-  ToolErrorType,
-  type ToolResult,
-  type ToolYield,
-} from '../../tools/types/index.js';
+import type { ConfirmationHandler, ToolExecutionLifecycle } from '../../tools/types/ExecutionTypes.js';
+import type { ToolEffect, ToolResult, ToolYield } from '../../tools/types/index.js';
+import { resolveToolBehaviorSafely, ToolErrorType, ToolSideEffect } from '../../tools/types/index.js';
 import { isSteeringInterruptSignal } from '../../types/abort.js';
 import { type SessionId, ToolUseId } from '../../types/branded.js';
 import type { BladeConfig, JsonObject, PermissionMode } from '../../types/common.js';
 import type { IBackgroundAgentManager } from '../types.js';
 import { repairToolCallParams } from './repairToolCallParams.js';
-import {
-  createInterruptAwareAbortSignal,
-  resolveToolInterruptBehavior,
-} from './toolInterruptBehavior.js';
+import { createInterruptAwareAbortSignal, resolveToolInterruptBehavior } from './toolInterruptBehavior.js';
 import type { FunctionToolCall } from './types.js';
 
 export interface ToolExecutionOutcome {
@@ -121,6 +111,7 @@ export interface RunToolCallInput {
 export async function runToolCall(input: RunToolCallInput): Promise<ToolExecutionOutcome> {
   const logger = input.logger ?? NOOP_LOGGER.child(LogCategory.AGENT);
   let interruptBehavior: 'cancel' | 'block' = 'block';
+  let sideEffect: ToolSideEffect = ToolSideEffect.NON_IDEMPOTENT;
   let params: JsonObject;
 
   try {
@@ -135,6 +126,11 @@ export async function runToolCall(input: RunToolCallInput): Promise<ToolExecutio
       input.toolCall.function.name,
       params,
     );
+    sideEffect =
+      resolveToolBehaviorSafely(
+        input.executionPipeline.getRegistry().get(input.toolCall.function.name),
+        params,
+      )?.sideEffect ?? ToolSideEffect.NON_IDEMPOTENT;
   } catch (error) {
     const outcome = buildFailedOutcome(
       input.toolCall,
@@ -161,6 +157,7 @@ export async function runToolCall(input: RunToolCallInput): Promise<ToolExecutio
     toolCallId: ToolUseId(input.toolCall.id),
     toolName: input.toolCall.function.name,
     input: structuredClone(params),
+    sideEffect,
     interruptBehavior,
   });
   await emitToolExecutionUpdate(input.hooks, {

@@ -54,6 +54,7 @@ const { SessionRuntime } = await import('../SessionRuntime.js');
 
 const customTool: ToolDefinition<{ value?: string }> = {
   name: 'CustomTool',
+  sideEffect: 'pure',
   description: 'Custom test tool',
   parameters: {
     type: 'object',
@@ -215,6 +216,7 @@ describe('SessionRuntime', () => {
       name: 'RuntimeTool',
       displayName: 'Runtime Tool',
       kind: ToolKind.ReadOnly,
+      sideEffect: 'pure',
       interruptBehavior: 'cancel',
       strict: true,
       schema: z.object({

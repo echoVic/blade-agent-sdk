@@ -8,10 +8,10 @@ import { getErrorMessage, getErrorName } from '../../../utils/errorUtils.js';
 import { toJsonValue } from '../../../utils/jsonValue.js';
 import { createTool } from '../../core/createTool.js';
 import type {
-    BashBackgroundMetadata,
-    BashForegroundMetadata,
-    ExecutionContext,
-    ToolResult,
+  BashBackgroundMetadata,
+  BashForegroundMetadata,
+  ExecutionContext,
+  ToolResult,
 } from '../../types/index.js';
 import { ToolErrorType, ToolKind } from '../../types/index.js';
 import { lazySchema } from '../../validation/lazySchema.js';
@@ -32,6 +32,7 @@ export const bashTool = createTool({
   name: 'Bash',
   displayName: 'Bash Command',
   kind: ToolKind.Execute,
+  sideEffect: 'non_idempotent',
   interruptBehavior: 'cancel',
   maxResultSizeChars: 200_000, // ~200KB before externalization
 
@@ -182,6 +183,7 @@ Before executing commands:
     if (run_in_background) {
       return {
         kind: ToolKind.Execute,
+        sideEffect: 'non_idempotent',
         isReadOnly: false,
         isConcurrencySafe: false,
         isDestructive: classification.category === 'destructive',
@@ -192,6 +194,7 @@ Before executing commands:
     if (classification.category === 'readonly') {
       return {
         kind: ToolKind.ReadOnly,
+        sideEffect: 'pure',
         isReadOnly: true,
         isConcurrencySafe: true,
         isDestructive: false,
@@ -201,6 +204,7 @@ Before executing commands:
 
     return {
       kind: ToolKind.Execute,
+      sideEffect: 'non_idempotent',
       isReadOnly: false,
       isConcurrencySafe: false,
       isDestructive: classification.category === 'destructive',

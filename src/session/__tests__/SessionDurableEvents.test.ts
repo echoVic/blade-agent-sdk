@@ -167,6 +167,7 @@ describe('Session durable events', () => {
         toolCallId: ToolUseId('tool-call-1'),
         toolName: 'Write',
         input: { file_path: '/tmp/file' },
+        sideEffect: 'non_idempotent',
         interruptBehavior: 'block',
       });
       if (!invocation) {
@@ -191,7 +192,10 @@ describe('Session durable events', () => {
         permissionRequestId,
         decision: 'allow',
       });
-      await invocation.onExecutionStarted?.();
+      await invocation.onExecutionStarted?.({
+        input: { file_path: '/tmp/file' },
+        sideEffect: 'non_idempotent',
+      });
       sideEffectSawToolStarted = (await store.read(sessionIdForTest)).events.some(
         (event) => event.type === DurableEventType.TOOL_STARTED,
       );
@@ -253,12 +257,16 @@ describe('Session durable events', () => {
         toolCallId: ToolUseId('tool-call-1'),
         toolName: 'Write',
         input: {},
+        sideEffect: 'non_idempotent',
         interruptBehavior: 'block',
       });
       if (!invocation) {
         throw new Error('Missing tool invocation lifecycle');
       }
-      await invocation.onExecutionStarted?.();
+      await invocation.onExecutionStarted?.({
+        input: {},
+        sideEffect: 'non_idempotent',
+      });
       sideEffectRan = true;
       return {
         success: true,
