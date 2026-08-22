@@ -92,11 +92,33 @@ git checkout -b feature/your-feature-name
 - Write clean, typed code
 - Follow existing code style and patterns
 - Add tests for new functionality
+- Add a bilingual changelog fragment for releasable changes
+
+A release fragment is a uniquely named JSON file under `.changes/`:
+
+```json
+{
+  "type": "feature",
+  "en": "Add concise user-facing release text.",
+  "zh-CN": "新增简洁的用户可见发布说明。"
+}
+```
+
+Allowed types are `breaking`, `feature`, `fix`, `performance`, `refactor`,
+and `docs`. Use a kebab-case filename and validate it with:
+
+```bash
+pnpm run changelog:check
+```
+
+The release workflow consumes fragments and updates both `CHANGELOG.md` and
+`CHANGELOG.zh-CN.md`. Do not edit the package version manually.
 
 ### 4. Test Your Changes
 
 ```bash
 pnpm test
+pnpm run docs:build
 ```
 
 ### 5. Verify Code Quality
@@ -132,6 +154,8 @@ Before submitting a PR, ensure:
 - [ ] No `any` types introduced
 - [ ] New features have tests
 - [ ] Documentation updated if needed
+- [ ] Releasable changes include a bilingual `.changes/*.json` fragment
+- [ ] Both documentation locales build (`pnpm run docs:build`)
 
 ## Code Review
 

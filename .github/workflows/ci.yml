@@ -21,6 +21,8 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
@@ -34,6 +36,13 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Validate changelog fragments
+        run: pnpm run changelog:check
+
+      - name: Require changelog fragment for releasable changes
+        if: github.event_name == 'pull_request'
+        run: pnpm run changelog:check -- --base "${{ github.event.pull_request.base.sha }}"
+
       - name: Lint
         run: pnpm run lint
 
@@ -42,6 +51,9 @@ jobs:
 
       - name: Build
         run: pnpm run build
+
+      - name: Build documentation
+        run: pnpm run docs:build
 
       - name: Test
         run: pnpm run test
