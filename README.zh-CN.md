@@ -162,6 +162,7 @@ workspace 是可选的。没有 workspace 时，Session 和显式配置的 Agent
 ## 文档
 
 - [中文文档](./docs/index.md)
+- [Durable Event Store](./docs/durable-events.md)
 - [English documentation](./docs/en/index.md)
 - [中文更新日志](./CHANGELOG.zh-CN.md)
 - [English changelog](./CHANGELOG.md)

@@ -10,6 +10,10 @@ export type {
 } from '../mcp/index.js';
 export { createSdkMcpServer, tool } from '../mcp/index.js';
 export { FileSystemMemoryStore, MemoryManager } from '../memory/index.js';
+export {
+  JsonlDurableEventStore,
+  type JsonlDurableEventStoreOptions,
+} from '../session/events/JsonlDurableEventStore.js';
 export type {
   SandboxCapabilities,
   SandboxCheckResult,

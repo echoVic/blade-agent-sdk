@@ -24,6 +24,7 @@ export type {
   RuntimeToolDiscoveryPatch,
   RuntimeToolPolicyPatch,
 } from '../runtime/index.js';
+export * from '../session/events/core.js';
 export type {
   InputSubmission,
   PendingSessionInput,
@@ -79,9 +80,14 @@ export {
   StreamMessageType,
 } from '../types/constants.js';
 export {
+  CommandId,
+  EventId,
+  EventSequence,
   InputId,
   RequestId,
   SessionId,
+  ToolAttemptId,
+  TurnId,
 } from '../types/branded.js';
 export type {
   CanUseTool,
