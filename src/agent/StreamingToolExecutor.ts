@@ -326,9 +326,20 @@ export class StreamingToolExecutor {
     );
 
     if (signal?.aborted || !this.isEpochActive(epoch)) {
+      // steering 中断（stepSignal 触发但请求本身未 abort）时，chatResponse 仍可能
+      // 携带 toolCalls。若此处直接返回空 executionResults，AgentLoop 会因“声明了
+      // 工具调用却没有对应结果”而抛错。为每个已规划的工具调用补一个合成的
+      // INTERRUPTED 结果，保持 tool_call/tool_result 配对完整。
+      const interruptedResults = isSteeringInterruptSignal(signal)
+        ? await this.synthesizeInterruptedResults(
+            executionPlan.calls,
+            executionConfig,
+            epoch,
+          )
+        : [];
       return {
         chatResponse: chatResponse ?? { content: '', toolCalls: undefined, usage: undefined },
-        executionResults: [],
+        executionResults: interruptedResults,
       };
     }
 
@@ -683,6 +694,48 @@ export class StreamingToolExecutor {
         outcome,
       }, epoch);
     }
+  }
+
+  /**
+   * fallback 路径下无 accumulator，直接依据已规划的工具调用为每个调用合成一个
+   * INTERRUPTED 结果，并逐个发出 ready/result/completed 事件，使 steering 中断
+   * 时的 tool_call/tool_result 配对与主流式路径保持一致。
+   */
+  private async synthesizeInterruptedResults(
+    calls: readonly FunctionToolCall[],
+    executionConfig: StreamingToolExecutorConfig,
+    epoch?: ExecutionEpoch,
+  ): Promise<ToolExecutionOutcome[]> {
+    const outcomes: ToolExecutionOutcome[] = [];
+    for (const toolCall of calls) {
+      const outcome: ToolExecutionOutcome = {
+        toolCall,
+        result: {
+          status: 'error',
+          model: 'Tool execution interrupted by newer user input',
+          error: {
+            type: ToolErrorType.INTERRUPTED,
+            message: 'Interrupted by newer user input',
+          },
+        },
+        effects: [],
+        toolUseUuid: null,
+      };
+      outcomes.push(outcome);
+      await this.emitToolExecutionUpdate(executionConfig, {
+        type: 'tool_ready',
+        toolCall: outcome.toolCall,
+      }, epoch);
+      await this.emitToolExecutionUpdate(executionConfig, {
+        type: 'tool_result',
+        outcome,
+      }, epoch);
+      await this.emitToolExecutionUpdate(executionConfig, {
+        type: 'tool_completed',
+        outcome,
+      }, epoch);
+    }
+    return outcomes;
   }
 
   private isJsonParseable(value: string): boolean {
