@@ -40,14 +40,15 @@ The resource content can be text (returned as-is) or binary data (returned as ba
     },
     schema: lazySchema(() => ReadMcpResourceParamsSchema),
 
-    async execute(params: ReadMcpResourceParams) {
+    // biome-ignore lint/correctness/useYield: terminal-only tool execution
+    async *execute(params: ReadMcpResourceParams) {
       try {
         const servers = registry.getAllServers();
 
       if (servers.size === 0) {
         return {
-          success: false,
-          llmContent: 'No MCP servers are currently connected.',
+          status: 'error',
+          model: 'No MCP servers are currently connected.',
           error: {
             message: 'No MCP servers connected',
             type: ToolErrorType.EXECUTION_ERROR,
@@ -90,8 +91,8 @@ The resource content can be text (returned as-is) or binary data (returned as ba
           : `Resource "${params.uri}" not found on any connected MCP server.`;
 
         return {
-          success: false,
-          llmContent: errorMessage + (errors.length > 0 ? `\n\nErrors:\n${errors.join('\n')}` : ''),
+          status: 'error',
+          model: errorMessage + (errors.length > 0 ? `\n\nErrors:\n${errors.join('\n')}` : ''),
           error: {
             message: errorMessage,
             type: ToolErrorType.EXECUTION_ERROR,
@@ -102,19 +103,19 @@ The resource content can be text (returned as-is) or binary data (returned as ba
         };
       }
 
-      let llmContent: string;
+      let model: string;
 
       if (content.text !== undefined) {
-        llmContent = content.text;
+        model = content.text;
       } else if (content.blob !== undefined) {
-        llmContent = `[Binary content, base64 encoded, ${content.blob.length} characters]\n\n${content.blob.slice(0, 1000)}${content.blob.length > 1000 ? '...' : ''}`;
+        model = `[Binary content, base64 encoded, ${content.blob.length} characters]\n\n${content.blob.slice(0, 1000)}${content.blob.length > 1000 ? '...' : ''}`;
       } else {
-        llmContent = JSON.stringify(content, null, 2);
+        model = JSON.stringify(content, null, 2);
       }
 
       return {
-        success: true,
-        llmContent,
+        status: 'success',
+        model,
         metadata: {
           summary: `读取 MCP 资源: ${params.uri}`,
           uri: params.uri,
@@ -128,8 +129,8 @@ The resource content can be text (returned as-is) or binary data (returned as ba
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       return {
-        success: false,
-        llmContent: `Failed to read MCP resource: ${message}`,
+        status: 'error',
+        model: `Failed to read MCP resource: ${message}`,
         error: {
           message,
           type: ToolErrorType.EXECUTION_ERROR,

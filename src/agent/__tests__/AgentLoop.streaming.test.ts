@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { Message } from '../../services/ChatServiceInterface.js';
-import type { ToolResult } from '../../tools/types/index.js';
+import { completeToolExecution, type ToolResult } from '../../tools/types/index.js';
 import type { AgentEvent } from '../AgentEvent.js';
 import type { AgentLoopConfig } from '../AgentLoop.js';
 import { agentLoop } from '../AgentLoop.js';
@@ -138,17 +138,24 @@ describe('agentLoop streaming integration', () => {
       };
       yield { finishReason: 'tool_calls' };
     });
-    const execute = vi.fn(async (
-      _toolName: string,
-      _params: Record<string, unknown>,
-      context?: {
-        onProgress?: (message: string) => void;
-        updateOutput?: (message: string) => void;
-      },
-    ) => {
-      context?.onProgress?.('loading');
-      context?.updateOutput?.('partial output');
-      return toolGate.promise;
+    const execute = vi.fn(async function* () {
+      yield { kind: 'progress', message: 'loading' };
+      yield {
+        kind: 'message',
+        content: { summary: 'partial output' },
+      };
+      yield {
+        kind: 'effect',
+        effect: {
+          type: 'runtimePatch',
+          patch: {
+            scope: 'turn',
+            source: 'tool',
+            systemPromptAppend: 'extra',
+          },
+        },
+      };
+      return await toolGate.promise;
     });
     const streamResponse = vi.fn(async function* () {
       yield* [] as never[];
@@ -190,19 +197,9 @@ describe('agentLoop streaming integration', () => {
     );
 
     toolGate.resolve({
-      success: true,
-      llmContent: 'exit now',
+      status: 'success',
+      model: 'exit now',
       metadata: { shouldExitLoop: true },
-      effects: [
-        {
-          type: 'runtimePatch',
-          patch: {
-            scope: 'turn',
-            source: 'tool',
-            systemPromptAppend: 'extra',
-          },
-        },
-      ],
     });
 
     const { events, result } = await loopPromise;
@@ -251,9 +248,9 @@ describe('agentLoop streaming integration', () => {
         usage: { promptTokens: 10, completionTokens: 5, totalTokens: 15 },
       });
     const streamChat = vi.fn();
-    const execute = vi.fn(async () => ({
-      success: true,
-      llmContent: 'tool output',
+    const execute = vi.fn(() => completeToolExecution({
+      status: 'success',
+      model: 'tool output',
     }));
 
     const { result } = await collectEvents(

@@ -12,6 +12,7 @@ import { createTool } from '../../core/createTool.js';
 import type { ExecutionContext, ToolResult } from '../../types/index.js';
 import { ToolErrorType, ToolKind } from '../../types/index.js';
 import { AgentId } from '../../../types/branded.js';
+import { toJsonValue } from '../../../utils/jsonValue.js';
 import { lazySchema } from '../../validation/lazySchema.js';
 import { ToolSchemas } from '../../validation/zodSchemas.js';
 import { BackgroundShellManager } from '../shell/BackgroundShellManager.js';
@@ -73,7 +74,8 @@ export const taskOutputTool = createTool({
     ],
   },
 
-  async execute(params, context: ExecutionContext): Promise<ToolResult> {
+  // biome-ignore lint/correctness/useYield: terminal-only tool execution
+  async *execute(params, context: ExecutionContext) {
     const { task_id, block, timeout } = params;
     const agentManager = context.backgroundAgentManager as BackgroundAgentManager | undefined;
 
@@ -91,8 +93,8 @@ export const taskOutputTool = createTool({
     }
 
     return {
-      success: false,
-      llmContent: `Unknown task ID: ${task_id}.`,
+      status: 'error',
+      model: `Unknown task ID: ${task_id}.`,
       error: {
         type: ToolErrorType.VALIDATION_ERROR,
         message: `Unknown task ID: ${task_id}`,
@@ -127,8 +129,8 @@ async function handleShellOutput(
   const processInfo = manager.getProcess(taskId);
   if (!processInfo) {
     return {
-      success: false,
-      llmContent: `Shell not found: ${taskId}`,
+      status: 'error',
+      model: `Shell not found: ${taskId}`,
       error: {
         type: ToolErrorType.EXECUTION_ERROR,
         message: 'Shell 会话不存在或已清理',
@@ -149,8 +151,8 @@ async function handleShellOutput(
   const snapshot = manager.consumeOutput(taskId);
   if (!snapshot) {
     return {
-      success: false,
-      llmContent: `Failed to get output for shell: ${taskId}`,
+      status: 'error',
+      model: `Failed to get output for shell: ${taskId}`,
       error: {
         type: ToolErrorType.EXECUTION_ERROR,
         message: 'Failed to consume output',
@@ -178,8 +180,8 @@ async function handleShellOutput(
   };
 
   return {
-    success: true,
-    llmContent: payload,
+    status: 'success',
+    model: toJsonValue(payload),
     metadata: {
       summary: `获取任务输出: ${taskId}`,
       ...payload,
@@ -201,8 +203,8 @@ async function handleAgentOutput(
   let session = manager.getAgent(taskId);
   if (!session) {
     return {
-      success: false,
-      llmContent: `Agent not found: ${taskId}`,
+      status: 'error',
+      model: `Agent not found: ${taskId}`,
       error: {
         type: ToolErrorType.EXECUTION_ERROR,
         message: 'Agent 会话不存在或已清理',
@@ -218,8 +220,8 @@ async function handleAgentOutput(
     session = await manager.waitForCompletion(taskId, timeout);
     if (!session) {
       return {
-        success: false,
-        llmContent: `Failed to wait for agent: ${taskId}`,
+        status: 'error',
+        model: `Failed to wait for agent: ${taskId}`,
         error: {
           type: ToolErrorType.EXECUTION_ERROR,
           message: 'Wait for completion failed',
@@ -256,8 +258,8 @@ async function handleAgentOutput(
         : 'running';
 
   return {
-    success: true,
-    llmContent: payload,
+    status: 'success',
+    model: toJsonValue(payload),
     metadata: {
       summary: `获取任务输出: ${taskId}`,
       ...payload,

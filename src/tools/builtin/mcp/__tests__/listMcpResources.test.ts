@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { collectToolExecution } from '../../../types/index.js';
 import { createListMcpResourcesTool } from '../listMcpResources.js';
 import type { McpRegistry } from '../../../../mcp/McpRegistry.js';
 
@@ -9,6 +10,9 @@ const mockRegistry = {
 } as Pick<McpRegistry, 'getAllServers'> as McpRegistry;
 
 const listMcpResourcesTool = createListMcpResourcesTool(mockRegistry);
+const executeListMcpResources = (
+  params: Parameters<typeof listMcpResourcesTool.execute>[0],
+) => collectToolExecution(listMcpResourcesTool.execute(params));
 
 describe('listMcpResourcesTool', () => {
   beforeEach(() => {
@@ -33,10 +37,10 @@ describe('listMcpResourcesTool', () => {
     it('should return no servers message when no servers connected', async () => {
       mockGetAllServers.mockReturnValue(new Map());
 
-      const result = await listMcpResourcesTool.execute({});
+      const result = await executeListMcpResources({});
 
-      expect(result.success).toBe(true);
-      expect(result.llmContent).toBe('No MCP servers are currently connected.');
+      expect(result.status).toBe('success');
+      expect(result.model).toBe('No MCP servers are currently connected.');
       expect(result.metadata?.serverCount).toBe(0);
     });
 
@@ -46,10 +50,10 @@ describe('listMcpResourcesTool', () => {
       };
       mockGetAllServers.mockReturnValue(new Map([['test-server', { client: mockClient }]]));
 
-      const result = await listMcpResourcesTool.execute({});
+      const result = await executeListMcpResources({});
 
-      expect(result.success).toBe(true);
-      expect(result.llmContent).toContain('No resources found');
+      expect(result.status).toBe('success');
+      expect(result.model).toContain('No resources found');
     });
 
     it('should list resources from all servers', async () => {
@@ -63,12 +67,12 @@ describe('listMcpResourcesTool', () => {
       };
       mockGetAllServers.mockReturnValue(new Map([['test-server', { client: mockClient }]]));
 
-      const result = await listMcpResourcesTool.execute({});
+      const result = await executeListMcpResources({});
 
-      expect(result.success).toBe(true);
-      expect(result.llmContent).toContain('Found 2 resource(s)');
-      expect(result.llmContent).toContain('file:///test.txt');
-      expect(result.llmContent).toContain('db://users/1');
+      expect(result.status).toBe('success');
+      expect(result.model).toContain('Found 2 resource(s)');
+      expect(result.model).toContain('file:///test.txt');
+      expect(result.model).toContain('db://users/1');
       expect(result.metadata?.resourceCount).toBe(2);
     });
 
@@ -86,9 +90,9 @@ describe('listMcpResourcesTool', () => {
         ])
       );
 
-      const result = await listMcpResourcesTool.execute({ serverName: 'server1' });
+      const result = await executeListMcpResources({ serverName: 'server1' });
 
-      expect(result.success).toBe(true);
+      expect(result.status).toBe('success');
       expect(mockClient1.listResources).toHaveBeenCalled();
       expect(mockClient2.listResources).not.toHaveBeenCalled();
     });
@@ -96,10 +100,10 @@ describe('listMcpResourcesTool', () => {
     it('should skip servers without client', async () => {
       mockGetAllServers.mockReturnValue(new Map([['no-client-server', { client: null }]]));
 
-      const result = await listMcpResourcesTool.execute({});
+      const result = await executeListMcpResources({});
 
-      expect(result.success).toBe(true);
-      expect(result.llmContent).toContain('No resources found');
+      expect(result.status).toBe('success');
+      expect(result.model).toContain('No resources found');
     });
 
     it('should handle errors from individual servers', async () => {
@@ -108,9 +112,9 @@ describe('listMcpResourcesTool', () => {
       };
       mockGetAllServers.mockReturnValue(new Map([['failing-server', { client: mockClient }]]));
 
-      const result = await listMcpResourcesTool.execute({});
+      const result = await executeListMcpResources({});
 
-      expect(result.success).toBe(true);
+      expect(result.status).toBe('success');
       expect(result.metadata?.errors).toBeDefined();
     });
 
@@ -119,10 +123,10 @@ describe('listMcpResourcesTool', () => {
         throw new Error('Unexpected error');
       });
 
-      const result = await listMcpResourcesTool.execute({});
+      const result = await executeListMcpResources({});
 
-      expect(result.success).toBe(false);
-      expect(result.llmContent).toContain('Failed to list MCP resources');
+      expect(result.status).toBe('error');
+      expect(result.model).toContain('Failed to list MCP resources');
     });
   });
 });

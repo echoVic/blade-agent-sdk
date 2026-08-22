@@ -1,6 +1,5 @@
 import { z } from 'zod';
 import { createTool } from '../../core/createTool.js';
-import type { ToolResult } from '../../types/ToolResult.js';
 import { ToolErrorType } from '../../types/ToolResult.js';
 import { ToolKind } from '../../types/ToolKind.js';
 import { lazySchema } from '../../validation/lazySchema.js';
@@ -23,13 +22,13 @@ This tool searches deferred/discoverable tools, returns the best matches, and ac
       .optional()
       .describe('Maximum tools to activate'),
   })),
-  async execute(params, context): Promise<ToolResult> {
+  async *execute(params, context) {
     const searchCatalog = context.toolCatalog;
     const searchSource = searchCatalog ?? context.toolRegistry;
     if (!searchSource) {
       return {
-        success: false,
-        llmContent: 'Tool discovery is unavailable because no tool registry was provided.',
+        status: 'error',
+        model: 'Tool discovery is unavailable because no tool registry was provided.',
         error: {
           type: ToolErrorType.EXECUTION_ERROR,
           message: 'Tool registry is unavailable',
@@ -49,8 +48,8 @@ This tool searches deferred/discoverable tools, returns the best matches, and ac
 
     if (matches.length === 0) {
       return {
-        success: true,
-        llmContent: `No hidden tools matched "${params.query}".`,
+        status: 'success',
+        model: `No hidden tools matched "${params.query}".`,
         metadata: {
           summary: '未找到匹配工具',
         },
@@ -69,20 +68,21 @@ This tool searches deferred/discoverable tools, returns the best matches, and ac
       },
     };
 
+    yield {
+      kind: 'effect',
+      effect: {
+        type: 'runtimePatch',
+        patch: runtimePatch,
+      },
+    };
+
     return {
-      success: true,
-      llmContent: `Activated deferred tools:\n${summary}`,
-      effects: [
-        {
-          type: 'runtimePatch',
-          patch: runtimePatch,
-        },
-      ],
+      status: 'success',
+      model: `Activated deferred tools:\n${summary}`,
       metadata: {
         discoveredTools: activatedNames,
         summary: `发现 ${activatedNames.length} 个工具`,
       },
-      runtimePatch,
     };
   },
 });

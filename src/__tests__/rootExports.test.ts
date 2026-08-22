@@ -5,6 +5,8 @@ import {
   SubagentExecutor,
   SubagentRegistry,
   ToolCatalog,
+  collectToolExecution,
+  completeToolExecution,
   createMemoryReadTool,
   createMemoryWriteTool,
 } from '../index.js';
@@ -12,7 +14,12 @@ import type {
   RuntimePatch,
   ToolCatalogEntry,
   ToolEffect,
+  ToolEffectYield,
+  ToolExecution,
   ToolExecutionUpdate,
+  ToolMessage,
+  ToolProgress,
+  ToolYield,
 } from '../index.js';
 
 describe('root exports', () => {
@@ -24,12 +31,23 @@ describe('root exports', () => {
     expect(SubagentRegistry).toBeDefined();
     expect(SubagentExecutor).toBeDefined();
     expect(ToolCatalog).toBeDefined();
+    expect(collectToolExecution).toBeTypeOf('function');
+    expect(completeToolExecution).toBeTypeOf('function');
   });
 
   it('exports runtime tool contracts at the root entrypoint', () => {
     expectTypeOf<RuntimePatch['scope']>().toEqualTypeOf<'turn' | 'session'>();
     expectTypeOf<ToolEffect['type']>().toEqualTypeOf<
       'runtimePatch' | 'contextPatch' | 'newMessages' | 'permissionUpdates'
+    >();
+    expectTypeOf<ToolYield['kind']>().toEqualTypeOf<
+      'progress' | 'message' | 'effect'
+    >();
+    expectTypeOf<ToolProgress['kind']>().toEqualTypeOf<'progress'>();
+    expectTypeOf<ToolMessage['kind']>().toEqualTypeOf<'message'>();
+    expectTypeOf<ToolEffectYield['kind']>().toEqualTypeOf<'effect'>();
+    expectTypeOf<ToolExecution>().toMatchTypeOf<
+      AsyncGenerator<ToolYield, unknown, void>
     >();
     expectTypeOf<ToolCatalogEntry['source']['kind']>().toEqualTypeOf<
       'builtin' | 'custom' | 'mcp' | 'session'

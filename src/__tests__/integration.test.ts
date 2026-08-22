@@ -14,21 +14,21 @@
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { describe, it, expect, afterEach } from 'vitest';
+import { afterEach, describe, expect, it } from 'vitest';
 import { z } from 'zod';
 import {
   createSdkMcpServer,
   createSession,
-  forkSession,
-  prompt,
   defineTool,
-  PermissionMode,
-  resumeSession,
-  tool,
+  forkSession,
   type ISession,
-  type StreamMessage,
+  PermissionMode,
   type PromptResult,
   type ProviderType,
+  prompt,
+  resumeSession,
+  type StreamMessage,
+  tool,
 } from '../index.js';
 
 // ─── 配置（从环境变量读取） ─────────────────────────────────
@@ -243,10 +243,11 @@ describeIntegration('4. 自定义工具调用', () => {
         },
         required: ['city'],
       },
-      execute: async (params: { city: string }) => {
+      // biome-ignore lint/correctness/useYield: terminal-only tool execution
+      async *execute(params: { city: string }) {
         return {
-          success: true as const,
-          llmContent: JSON.stringify({ city: params.city, temperature: 23, condition: 'sunny' }),
+          status: 'success' as const,
+          model: JSON.stringify({ city: params.city, temperature: 23, condition: 'sunny' }),
         };
       },
     });
@@ -298,7 +299,7 @@ describeIntegration('4. 自定义工具调用', () => {
         },
         required: ['operation', 'a', 'b'],
       },
-      execute: async (params: { operation: string; a: number; b: number }) => {
+      async *execute(params: { operation: string; a: number; b: number }) {
         const ops: Record<string, (a: number, b: number) => number> = {
           add: (a, b) => a + b,
           subtract: (a, b) => a - b,
@@ -307,8 +308,8 @@ describeIntegration('4. 自定义工具调用', () => {
         };
         const result = ops[params.operation]?.(params.a, params.b) ?? 0;
         return {
-          success: true as const,
-          llmContent: JSON.stringify({ result }),
+          status: 'success' as const,
+          model: JSON.stringify({ result }),
         };
       },
     });
@@ -514,10 +515,13 @@ describeIntegration('6.2 Hooks / Permissions / MCP 真实链路', () => {
         },
         required: ['value'],
       },
-      execute: async (params: { value: string }) => ({
-        success: true,
-        llmContent: `server:${params.value}`,
-      }),
+      // biome-ignore lint/correctness/useYield: terminal-only tool execution
+      async *execute(params: { value: string }) {
+        return {
+          status: 'success',
+          model: `server:${params.value}`,
+        };
+      },
     });
 
     const session = await createSession(baseOptions({
@@ -568,10 +572,13 @@ describeIntegration('6.2 Hooks / Permissions / MCP 真实链路', () => {
         },
         required: ['reason'],
       },
-      execute: async () => ({
-        success: true,
-        llmContent: 'should-not-run',
-      }),
+      // biome-ignore lint/correctness/useYield: terminal-only tool execution
+      async *execute() {
+        return {
+          status: 'success',
+          model: 'should-not-run',
+        };
+      },
     });
 
     const session = await createSession(baseOptions({

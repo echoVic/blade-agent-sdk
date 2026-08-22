@@ -30,8 +30,8 @@ const createAgent = vi.fn(async () => ({
         },
       },
       result: {
-        success: true,
-        llmContent: 'secret tool output',
+        status: 'success',
+        model: 'secret tool output',
       },
     };
     yield {

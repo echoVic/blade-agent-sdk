@@ -5,6 +5,11 @@ import type { ChatContext, LoopOptions } from '../../../../agent/types.js';
 import { AgentSessionStore } from '../../../../agent/subagents/AgentSessionStore.js';
 import { BackgroundAgentManager } from '../../../../agent/subagents/BackgroundAgentManager.js';
 import { AgentId, SessionId } from '../../../../types/branded.js';
+import {
+  collectToolExecution,
+  type ExecutionContext,
+  type Tool,
+} from '../../../types/index.js';
 import { createTaskCreateTool } from '../taskCreate.js';
 import { createTaskGetTool } from '../taskGet.js';
 import { createTaskListTool } from '../taskList.js';
@@ -57,21 +62,16 @@ const subagentConfig = {
 };
 
 async function executeWithContext<TParams>(
-  tool: {
-    build: (params: TParams) => {
-      execute: (
-        signal: AbortSignal,
-        updateOutput?: (output: string) => void,
-        context?: { sessionId?: SessionId }
-      ) => Promise<Awaited<ReturnType<ReturnType<typeof createTaskCreateTool>['execute']>>>;
-    };
-  },
+  tool: Tool<TParams>,
   params: TParams,
-  sessionId: SessionId
+  context: SessionId | Partial<ExecutionContext>,
 ) {
-  return tool.build(params).execute(new AbortController().signal, undefined, {
-    sessionId,
-  });
+  return collectToolExecution(
+    tool.build(params).execute(
+      new AbortController().signal,
+      typeof context === 'string' ? { sessionId: context } : context,
+    ),
+  );
 }
 
 let manager: InstanceType<typeof BackgroundAgentManager>;
@@ -129,8 +129,8 @@ describe('task tools', () => {
       runtimeSessionId
     );
 
-    expect(created.success).toBe(true);
-    expect(created.llmContent).toEqual({
+    expect(created.status).toBe('success');
+    expect(created.model).toEqual({
       taskId: expect.any(String),
       task: expect.objectContaining({
         subject: 'Implement task tools',
@@ -138,11 +138,11 @@ describe('task tools', () => {
       }),
     });
 
-    const taskId = (created.llmContent as { taskId: string }).taskId;
+    const taskId = (created.model as { taskId: string }).taskId;
 
     const fetched = await executeWithContext(getTool, { taskId }, runtimeSessionId);
-    expect(fetched.success).toBe(true);
-    expect(fetched.llmContent).toEqual(
+    expect(fetched.status).toBe('success');
+    expect(fetched.model).toEqual(
       expect.objectContaining({
         id: taskId,
         subject: 'Implement task tools',
@@ -159,8 +159,8 @@ describe('task tools', () => {
       },
       runtimeSessionId
     );
-    expect(updated.success).toBe(true);
-    expect(updated.llmContent).toEqual(
+    expect(updated.status).toBe('success');
+    expect(updated.model).toEqual(
       expect.objectContaining({
         id: taskId,
         status: 'in_progress',
@@ -170,8 +170,8 @@ describe('task tools', () => {
     );
 
     const listed = await executeWithContext(listTool, {}, runtimeSessionId);
-    expect(listed.success).toBe(true);
-    expect(listed.llmContent).toEqual([
+    expect(listed.status).toBe('success');
+    expect(listed.model).toEqual([
       {
         id: taskId,
         subject: 'Implement task tools',
@@ -182,8 +182,8 @@ describe('task tools', () => {
     ]);
 
     const stopped = await executeWithContext(stopTool, { taskId }, runtimeSessionId);
-    expect(stopped.success).toBe(true);
-    expect(stopped.llmContent).toEqual(
+    expect(stopped.status).toBe('success');
+    expect(stopped.model).toEqual(
       expect.objectContaining({
         id: taskId,
         status: 'completed',
@@ -198,14 +198,14 @@ describe('task tools', () => {
       { taskId, status: 'deleted' },
       runtimeSessionId
     );
-    expect(deleted.success).toBe(true);
-    expect(deleted.llmContent).toEqual({
+    expect(deleted.status).toBe('success');
+    expect(deleted.model).toEqual({
       taskId,
       deleted: true,
     });
 
     const listedAfterDelete = await executeWithContext(listTool, {}, runtimeSessionId);
-    expect(listedAfterDelete.llmContent).toEqual([]);
+    expect(listedAfterDelete.model).toEqual([]);
   });
 
   it('stops a running background agent via TaskStop and keeps it cancelled', async () => {
@@ -237,22 +237,22 @@ describe('task tools', () => {
     }));
 
     const stopTool = createTaskStopTool({ sessionId: SessionId(`factory-${Date.now()}`) });
-    const stopped = await stopTool.build({ taskId: agentId }).execute(
-      new AbortController().signal,
-      undefined,
+    const stopped = await executeWithContext(
+      stopTool,
+      { taskId: agentId },
       {
         sessionId: SessionId(`runtime-${Date.now()}`),
         backgroundAgentManager: manager,
       } as never,
     );
 
-    expect(stopped.success).toBe(true);
+    expect(stopped.status).toBe('success');
     expect(stopped.metadata).toEqual(
       expect.objectContaining({
         stoppedBackgroundAgent: true,
       }),
     );
-    expect(stopped.llmContent).toEqual(
+    expect(stopped.model).toEqual(
       expect.objectContaining({
         id: agentId,
         status: 'cancelled',
@@ -270,16 +270,16 @@ describe('task tools', () => {
       killAgent: vi.fn(() => true),
     };
 
-    const stopped = await stopTool.build({ taskId: 'agent-1' }).execute(
-      new AbortController().signal,
-      undefined,
+    const stopped = await executeWithContext(
+      stopTool,
+      { taskId: 'agent-1' },
       {
         sessionId: SessionId(`runtime-${Date.now()}`),
         backgroundAgentManager: fakeManager,
       } as never,
     );
 
-    expect(stopped.success).toBe(true);
+    expect(stopped.status).toBe('success');
     expect(fakeManager.getAgent).toHaveBeenCalledWith('agent-1');
     expect(fakeManager.killAgent).toHaveBeenCalledWith('agent-1');
   });

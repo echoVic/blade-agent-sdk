@@ -2,7 +2,6 @@ import * as fs from 'node:fs/promises';
 import { z } from 'zod';
 import { createTool } from '../../core/createTool.js';
 import { lazySchema } from '../../validation/lazySchema.js';
-import type { ToolResult } from '../../types/ToolResult.js';
 import { ToolErrorType } from '../../types/ToolResult.js';
 import { ToolKind } from '../../types/ToolKind.js';
 
@@ -49,7 +48,7 @@ export const notebookEditTool = createTool({
     long: `Completely replaces the contents of a specific cell in a Jupyter notebook (.ipynb file) with new source. Jupyter notebooks are interactive documents that combine code, text, and visualizations, commonly used for data analysis and scientific computing. The notebook_path parameter must be an absolute path, not a relative path. The cell_number is 0-indexed. Use edit_mode=insert to add a new cell at the index specified by cell_number. Use edit_mode=delete to delete the cell at the index specified by cell_number.`,
   },
 
-  async execute(params, _context): Promise<ToolResult> {
+  async *execute(params, _context) {
     const {
       notebook_path,
       cell_id,
@@ -65,8 +64,8 @@ export const notebookEditTool = createTool({
 
       if (!notebook.cells || !Array.isArray(notebook.cells)) {
         return {
-          success: false,
-          llmContent: 'Invalid notebook format: no cells array found',
+          status: 'error',
+          model: 'Invalid notebook format: no cells array found',
           error: {
             type: ToolErrorType.VALIDATION_ERROR,
             message: 'Invalid notebook format',
@@ -85,8 +84,8 @@ export const notebookEditTool = createTool({
         );
         if (cellIndex === -1 && edit_mode !== 'insert') {
           return {
-            success: false,
-            llmContent: `Cell with ID "${cell_id}" not found`,
+            status: 'error',
+            model: `Cell with ID "${cell_id}" not found`,
             error: {
               type: ToolErrorType.VALIDATION_ERROR,
               message: `Cell ID "${cell_id}" not found`,
@@ -102,8 +101,8 @@ export const notebookEditTool = createTool({
         case 'replace': {
           if (cellIndex === -1) {
             return {
-              success: false,
-              llmContent: 'Cell ID required for replace operation',
+              status: 'error',
+              model: 'Cell ID required for replace operation',
               error: {
                 type: ToolErrorType.VALIDATION_ERROR,
                 message: 'Cell ID required for replace',
@@ -126,8 +125,8 @@ export const notebookEditTool = createTool({
         case 'insert': {
           if (!cell_type) {
             return {
-              success: false,
-              llmContent: 'cell_type is required for insert operation',
+              status: 'error',
+              model: 'cell_type is required for insert operation',
               error: {
                 type: ToolErrorType.VALIDATION_ERROR,
                 message: 'cell_type required for insert',
@@ -153,8 +152,8 @@ export const notebookEditTool = createTool({
         case 'delete': {
           if (cellIndex === -1) {
             return {
-              success: false,
-              llmContent: 'Cell ID required for delete operation',
+              status: 'error',
+              model: 'Cell ID required for delete operation',
               error: {
                 type: ToolErrorType.VALIDATION_ERROR,
                 message: 'Cell ID required for delete',
@@ -180,8 +179,8 @@ export const notebookEditTool = createTool({
             : 'deleted';
 
       return {
-        success: true,
-        llmContent: `Successfully ${actionMsg} cell in ${notebook_path}`,
+        status: 'success',
+        model: `Successfully ${actionMsg} cell in ${notebook_path}`,
         metadata: {
           summary: `编辑 Notebook: ${edit_mode}`,
           notebook_path,
@@ -192,8 +191,8 @@ export const notebookEditTool = createTool({
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unknown error';
       return {
-        success: false,
-        llmContent: `Failed to edit notebook: ${message}`,
+        status: 'error',
+        model: `Failed to edit notebook: ${message}`,
         error: {
           type: ToolErrorType.EXECUTION_ERROR,
           message,

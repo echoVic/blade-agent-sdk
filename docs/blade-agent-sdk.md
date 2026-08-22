@@ -62,11 +62,17 @@ const weatherTool = defineTool({
     },
     required: ['city'],
   },
-  execute: async (params) => ({
-    success: true,
-    llmContent: `${params.city}: 晴 25°C`,
-    displayContent: `查询天气: ${params.city}`,
-  }),
+  async *execute(params) {
+    yield {
+      kind: 'progress',
+      message: `正在查询 ${params.city} 的天气`,
+    };
+    return {
+      status: 'success',
+      model: `${params.city}: 晴 25°C`,
+      display: { summary: `查询天气: ${params.city}` },
+    };
+  },
 });
 
 const session = await createSession({

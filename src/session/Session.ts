@@ -430,7 +430,7 @@ class Session implements ISession {
               {
                 toolCallId: value.toolCall.id,
                 name: value.toolCall.function.name,
-                message: value.message,
+                progress: value.progress,
               },
               toolSpans.get(value.toolCall.id),
             );
@@ -438,7 +438,7 @@ class Session implements ISession {
               type: 'tool_progress',
               id: value.toolCall.id,
               name: value.toolCall.function.name,
-              message: value.message,
+              progress: value.progress,
               sessionId: this.sessionId,
             };
             break;
@@ -450,7 +450,7 @@ class Session implements ISession {
               {
                 toolCallId: value.toolCall.id,
                 name: value.toolCall.function.name,
-                message: value.message,
+                content: value.content,
               },
               toolSpans.get(value.toolCall.id),
             );
@@ -458,7 +458,7 @@ class Session implements ISession {
               type: 'tool_message',
               id: value.toolCall.id,
               name: value.toolCall.function.name,
-              message: value.message,
+              content: value.content,
               sessionId: this.sessionId,
             };
             break;
@@ -547,23 +547,24 @@ class Session implements ISession {
             if (value.toolCall.type !== 'function') break;
             const record = toolCalls.find((tc) => tc.id === value.toolCall.id);
             if (record) {
-              record.output = value.result.llmContent;
-              record.isError = !value.result.success;
+              record.output = value.result.model;
+              record.isError = value.result.status === 'error';
             }
             traceRecorder?.recordToolResult(
               toolSpans.get(value.toolCall.id),
               value.toolCall.id,
               value.toolCall.function.name,
-              value.result.llmContent,
-              !value.result.success,
+              value.result.model,
+              value.result.status === 'error',
             );
             toolSpans.delete(value.toolCall.id);
             yield {
               type: 'tool_result',
               id: value.toolCall.id,
               name: value.toolCall.function.name,
-              output: value.result.llmContent,
-              isError: !value.result.success,
+              output: value.result.model,
+              display: value.result.display,
+              isError: value.result.status === 'error',
               sessionId: this.sessionId,
             };
             break;

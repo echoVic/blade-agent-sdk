@@ -1,6 +1,5 @@
 import { z } from 'zod';
 import { createTool } from '../../core/createTool.js';
-import type { ToolResult } from '../../types/ToolResult.js';
 import { ToolErrorType } from '../../types/ToolResult.js';
 import { ToolKind } from '../../types/ToolKind.js';
 import { lazySchema } from '../../validation/lazySchema.js';
@@ -96,7 +95,8 @@ User: "What files handle routing?"
 `,
   },
 
-  async execute(_params, context): Promise<ToolResult> {
+  // biome-ignore lint/correctness/useYield: terminal-only tool execution
+  async *execute(_params, context) {
     // Trigger UI confirmation flow
     if (context.confirmationHandler) {
       try {
@@ -114,8 +114,8 @@ User: "What files handle routing?"
 
         if (response.approved) {
           return {
-            success: true,
-            llmContent:
+            status: 'success',
+            model:
               '✅ User approved entering Plan mode.\n\n' +
               'You are now in PLAN MODE. Remember:\n' +
               '- Use ONLY read-only tools: Read, Glob, Grep, WebFetch, WebSearch, Task\n' +
@@ -131,8 +131,8 @@ User: "What files handle routing?"
           };
         } else {
           return {
-            success: true,
-            llmContent:
+            status: 'success',
+            model:
               '⚠️ User declined to enter Plan mode.\n\n' +
               'Proceed with the task directly without planning phase. ' +
               'You can still use search tools to understand the codebase as needed, ' +
@@ -146,8 +146,8 @@ User: "What files handle routing?"
         }
       } catch (error) {
         return {
-          success: false,
-          llmContent: `Confirmation flow error: ${error instanceof Error ? error.message : 'Unknown error'}`,
+          status: 'error',
+          model: `Confirmation flow error: ${error instanceof Error ? error.message : 'Unknown error'}`,
           error: {
             type: ToolErrorType.EXECUTION_ERROR,
             message: 'Confirmation flow error',
@@ -161,8 +161,8 @@ User: "What files handle routing?"
 
     // Fallback: if no confirmation handler, return guidance
     return {
-      success: true,
-      llmContent:
+      status: 'success',
+      model:
         'Plan mode requested but no interactive confirmation available.\n\n' +
         'Proceeding with research phase. Use read-only tools to explore the codebase, ' +
         'then call ExitPlanMode with your implementation plan when ready.',

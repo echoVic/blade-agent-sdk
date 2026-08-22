@@ -11,12 +11,12 @@ import picomatch from 'picomatch';
 import { z } from 'zod';
 import { hasFilesystemCapability } from '../../../runtime/index.js';
 import { getErrorMessage, getErrorName } from '../../../utils/errorUtils.js';
+import { toJsonValue } from '../../../utils/jsonValue.js';
 import { DEFAULT_EXCLUDE_DIRS } from '../../../utils/filePatterns.js';
 import { createTool } from '../../core/createTool.js';
 import type {
   ExecutionContext,
   GrepMetadata,
-  ToolResult,
 } from '../../types/index.js';
 import { ToolErrorType, ToolKind } from '../../types/index.js';
 import { lazySchema } from '../../validation/lazySchema.js';
@@ -165,8 +165,7 @@ function isSystemGrepAvailable(): boolean {
 async function executeRipgrep(
   args: string[],
   _outputMode: string,
-  signal: AbortSignal,
-  _updateOutput?: (output: string) => void
+  signal: AbortSignal
 ): Promise<{ stdout: string; stderr: string; exitCode: number }> {
   const rgPath = getRipgrepPath();
   if (!rgPath) {
@@ -724,7 +723,7 @@ export const grepTool = createTool({
   },
 
   // 执行函数
-  async execute(params, context: ExecutionContext): Promise<ToolResult> {
+  async *execute(params, context: ExecutionContext) {
     const {
       pattern,
       path,
@@ -740,14 +739,13 @@ export const grepTool = createTool({
       offset,
       multiline,
     } = params;
-    const { updateOutput } = context;
     const signal = context.signal ?? new AbortController().signal;
 
     try {
       if (!hasFilesystemCapability(context.contextSnapshot)) {
         return {
-          success: false,
-          llmContent: 'No filesystem access in the current runtime context.',
+          status: 'error',
+          model: 'No filesystem access in the current runtime context.',
           error: {
             type: ToolErrorType.PERMISSION_DENIED,
             message: 'No filesystem access in current context',
@@ -758,8 +756,8 @@ export const grepTool = createTool({
       const searchPath = path ?? context.contextSnapshot?.cwd;
       if (!searchPath) {
         return {
-          success: false,
-          llmContent: 'No search path provided and no filesystem working directory is available.',
+          status: 'error',
+          model: 'No search path provided and no filesystem working directory is available.',
           error: {
             type: ToolErrorType.VALIDATION_ERROR,
             message: 'No search path available',
@@ -767,7 +765,11 @@ export const grepTool = createTool({
         };
       }
 
-      updateOutput?.(`使用智能搜索策略查找模式 "${pattern}"...`);
+      yield {
+        kind: 'progress',
+        message: `使用智能搜索策略查找模式 "${pattern}"...`,
+        data: { pattern },
+      };
 
       let result: { stdout: string; stderr: string; exitCode: number } | null = null;
       let strategy: SearchStrategy = SearchStrategy.RIPGREP;
@@ -777,7 +779,10 @@ export const grepTool = createTool({
       const rgPath = getRipgrepPath();
       if (rgPath) {
         try {
-          updateOutput?.(`🚀 使用 ripgrep (${rgPath})`);
+          yield {
+            kind: 'message',
+            content: { summary: `使用 ripgrep (${rgPath})` },
+          };
 
           const args = buildRipgrepArgs({
             pattern,
@@ -795,10 +800,13 @@ export const grepTool = createTool({
             multiline: multiline ?? false,
           });
 
-          result = await executeRipgrep(args, output_mode, signal, updateOutput);
+          result = await executeRipgrep(args, output_mode, signal);
           strategy = SearchStrategy.RIPGREP;
         } catch {
-          updateOutput?.(`⚠️ ripgrep 失败，尝试降级策略...`);
+          yield {
+            kind: 'message',
+            content: { summary: 'ripgrep 失败，尝试降级策略...' },
+          };
           result = null;
         }
       }
@@ -806,7 +814,10 @@ export const grepTool = createTool({
       // 策略 2: 降级到 git grep (如果在 git 仓库中)
       if (!result && (await isGitRepository(searchPath))) {
         try {
-          updateOutput?.(`📦 使用 git grep`);
+          yield {
+            kind: 'message',
+            content: { summary: '使用 git grep' },
+          };
 
           result = await executeGitGrep(
             pattern,
@@ -820,7 +831,10 @@ export const grepTool = createTool({
           );
           strategy = SearchStrategy.GIT_GREP;
         } catch {
-          updateOutput?.(`⚠️ git grep 失败，继续尝试其他策略...`);
+          yield {
+            kind: 'message',
+            content: { summary: 'git grep 失败，继续尝试其他策略...' },
+          };
           result = null;
         }
       }
@@ -828,7 +842,10 @@ export const grepTool = createTool({
       // 策略 3: 降级到系统 grep
       if (!result && isSystemGrepAvailable()) {
         try {
-          updateOutput?.(`🔧 使用系统 grep`);
+          yield {
+            kind: 'message',
+            content: { summary: '使用系统 grep' },
+          };
 
           result = await executeSystemGrep(
             pattern,
@@ -841,14 +858,20 @@ export const grepTool = createTool({
           );
           strategy = SearchStrategy.SYSTEM_GREP;
         } catch {
-          updateOutput?.(`⚠️ 系统 grep 失败，使用纯 JavaScript 实现...`);
+          yield {
+            kind: 'message',
+            content: { summary: '系统 grep 失败，使用纯 JavaScript 实现...' },
+          };
           result = null;
         }
       }
 
       // 策略 4: 最终降级到纯 JavaScript 实现
       if (!result) {
-        updateOutput?.(`💡 使用纯 JavaScript 搜索实现`);
+        yield {
+          kind: 'message',
+          content: { summary: '使用纯 JavaScript 搜索实现' },
+        };
 
         const fallbackResult = await executeFallbackGrep(
           pattern,
@@ -902,8 +925,8 @@ export const grepTool = createTool({
 
       if (result && result.exitCode !== 0 && result.stderr) {
         return {
-          success: false,
-          llmContent: `Search execution failed: ${result.stderr}`,
+          status: 'error',
+          model: `Search execution failed: ${result.stderr}`,
           error: {
             type: ToolErrorType.EXECUTION_ERROR,
             message: result.stderr,
@@ -912,15 +935,15 @@ export const grepTool = createTool({
       }
 
       return {
-        success: true,
-        llmContent: matches,
+        status: 'success',
+        model: toJsonValue(matches),
         metadata,
       };
     } catch (error) {
       if (getErrorName(error) === 'AbortError') {
         return {
-          success: false,
-          llmContent: 'Search aborted',
+          status: 'error',
+          model: 'Search aborted',
           error: {
             type: ToolErrorType.EXECUTION_ERROR,
             message: '操作被中止',
@@ -929,8 +952,8 @@ export const grepTool = createTool({
       }
 
       return {
-        success: false,
-        llmContent: `Search failed: ${getErrorMessage(error)}`,
+        status: 'error',
+        model: `Search failed: ${getErrorMessage(error)}`,
         error: {
           type: ToolErrorType.EXECUTION_ERROR,
           message: getErrorMessage(error),

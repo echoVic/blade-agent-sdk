@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { ExecutionContext } from '../../../types/ExecutionTypes.js';
+import { collectToolExecution } from '../../../types/ToolResult.js';
 import { askUserQuestionTool } from '../askUserQuestion.js';
 
 describe('AskUserQuestion Tool', () => {
@@ -14,7 +15,9 @@ describe('AskUserQuestion Tool', () => {
     context: Partial<ExecutionContext>
   ) => {
     const invocation = askUserQuestionTool.build(params);
-    return invocation.execute(new AbortController().signal, undefined, context);
+    return collectToolExecution(
+      invocation.execute(new AbortController().signal, context),
+    );
   };
 
   describe('basic properties', () => {
@@ -54,8 +57,8 @@ describe('AskUserQuestion Tool', () => {
         context
       );
 
-      expect(result.success).toBe(false);
-      expect(result.llmContent).toContain('No confirmation handler');
+      expect(result.status).toBe('error');
+      expect(result.model).toContain('No confirmation handler');
     });
 
     it('should return cancelled when user cancels', async () => {
@@ -81,8 +84,8 @@ describe('AskUserQuestion Tool', () => {
         context
       );
 
-      expect(result.success).toBe(true);
-      expect(result.llmContent).toContain('cancelled');
+      expect(result.status).toBe('success');
+      expect(result.model).toContain('cancelled');
       expect(result.metadata?.cancelled).toBe(true);
     });
 
@@ -114,8 +117,8 @@ describe('AskUserQuestion Tool', () => {
         context
       );
 
-      expect(result.success).toBe(true);
-      expect(result.llmContent).toContain('Framework: React');
+      expect(result.status).toBe('success');
+      expect(result.model).toContain('Framework: React');
       expect(result.metadata?.answers).toEqual({ Framework: 'React' });
     });
 
@@ -148,8 +151,8 @@ describe('AskUserQuestion Tool', () => {
         context
       );
 
-      expect(result.success).toBe(true);
-      expect(result.llmContent).toContain('TypeScript, ESLint');
+      expect(result.status).toBe('success');
+      expect(result.model).toContain('TypeScript, ESLint');
     });
 
     it('should handle approved but no answers', async () => {
@@ -180,8 +183,8 @@ describe('AskUserQuestion Tool', () => {
         context
       );
 
-      expect(result.success).toBe(true);
-      expect(result.llmContent).toContain('approved but no answers');
+      expect(result.status).toBe('success');
+      expect(result.model).toContain('approved but no answers');
       expect(result.metadata?.noAnswersCollected).toBe(true);
     });
 
@@ -208,8 +211,8 @@ describe('AskUserQuestion Tool', () => {
         context
       );
 
-      expect(result.success).toBe(false);
-      expect(result.llmContent).toContain('Failed to ask user questions');
+      expect(result.status).toBe('error');
+      expect(result.model).toContain('Failed to ask user questions');
       expect(result.error).toBeDefined();
     });
 

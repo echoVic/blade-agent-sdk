@@ -180,7 +180,7 @@ export function createTaskTool({ registry }: { registry: SubagentRegistry }) {
         },
       ],
     },
-    async execute(params, context: ExecutionContext): Promise<ToolResult> {
+    async *execute(params, context: ExecutionContext) {
       const {
         subagent_type,
         description,
@@ -189,7 +189,6 @@ export function createTaskTool({ registry }: { registry: SubagentRegistry }) {
         resume,
         subagent_session_id,
       } = params;
-      const { updateOutput } = context;
       const subagentSessionId = AgentId(
         typeof subagent_session_id === 'string' && subagent_session_id.length > 0
           ? subagent_session_id
@@ -203,8 +202,8 @@ export function createTaskTool({ registry }: { registry: SubagentRegistry }) {
         const subagentConfig = registry.getSubagent(subagent_type);
         if (!subagentConfig) {
           return {
-            success: false,
-            llmContent: `Unknown subagent type: ${subagent_type}. Available types: ${registeredNames.join(', ') || 'none'}`,
+            status: 'error',
+            model: `Unknown subagent type: ${subagent_type}. Available types: ${registeredNames.join(', ') || 'none'}`,
             error: {
               type: ToolErrorType.EXECUTION_ERROR,
               message: `Unknown subagent type: ${subagent_type}`,
@@ -237,12 +236,15 @@ export function createTaskTool({ registry }: { registry: SubagentRegistry }) {
           );
         }
 
-        updateOutput?.(`🚀 启动 ${subagent_type} subagent: ${description}`);
+        yield {
+          kind: 'message',
+          content: { summary: `启动 ${subagent_type} subagent: ${description}` },
+        };
 
         if (!context.bladeConfig) {
           return {
-            success: false,
-            llmContent: 'BladeConfig is required for subagent execution',
+            status: 'error',
+            model: 'BladeConfig is required for subagent execution',
             error: {
               type: ToolErrorType.EXECUTION_ERROR,
               message: 'BladeConfig is required',
@@ -262,7 +264,11 @@ export function createTaskTool({ registry }: { registry: SubagentRegistry }) {
           snapshot: context.contextSnapshot,
         };
 
-        updateOutput?.('⚙️  执行任务中...');
+        yield {
+          kind: 'progress',
+          message: '执行任务中...',
+          data: { subagentType: subagent_type },
+        };
 
         const startTime = Date.now();
         let result: SubagentResult = await executor.execute(subagentContext);
@@ -317,8 +323,8 @@ export function createTaskTool({ registry }: { registry: SubagentRegistry }) {
         );
 
         return {
-          success: false,
-          llmContent: `Subagent execution error: ${getErrorMessage(error)}`,
+          status: 'error',
+          model: `Subagent execution error: ${getErrorMessage(error)}`,
           error: {
             type: ToolErrorType.EXECUTION_ERROR,
             message: getErrorMessage(error),
@@ -354,8 +360,8 @@ function buildTaskResult(
         : result.message;
 
     return {
-      success: true,
-      llmContent: result.message,
+      status: 'success',
+      model: result.message,
       metadata: {
         summary: '子 Agent 执行完成',
         subagent_type: subagentType,
@@ -371,8 +377,8 @@ function buildTaskResult(
   }
 
   return {
-    success: false,
-    llmContent: `Subagent execution failed: ${result.error}`,
+    status: 'error',
+    model: `Subagent execution failed: ${result.error}`,
     error: {
       type: ToolErrorType.EXECUTION_ERROR,
       message: result.error || 'Unknown error',
@@ -401,8 +407,8 @@ function handleBackgroundExecution(
 ): ToolResult {
   if (!context.bladeConfig) {
     return {
-      success: false,
-      llmContent: 'BladeConfig is required for background agent execution',
+      status: 'error',
+      model: 'BladeConfig is required for background agent execution',
       error: {
         type: ToolErrorType.EXECUTION_ERROR,
         message: 'BladeConfig is required',
@@ -416,8 +422,8 @@ function handleBackgroundExecution(
   const manager = context.backgroundAgentManager as BackgroundAgentManager | undefined;
   if (!manager) {
     return {
-      success: false,
-      llmContent: 'BackgroundAgentManager not available in execution context',
+      status: 'error',
+      model: 'BackgroundAgentManager not available in execution context',
       error: {
         type: ToolErrorType.EXECUTION_ERROR,
         message: 'BackgroundAgentManager not injected via ExecutionContext',
@@ -441,8 +447,8 @@ function handleBackgroundExecution(
   });
 
   return {
-    success: true,
-    llmContent: {
+    status: 'success',
+    model: {
       agent_id: agentId,
       status: 'running',
       message: `Agent started in background. Use TaskOutput(task_id: "${agentId}") to retrieve results.`,
@@ -475,8 +481,8 @@ function handleResume(
 ): ToolResult {
   if (!context.bladeConfig) {
     return {
-      success: false,
-      llmContent: 'BladeConfig is required for agent resume',
+      status: 'error',
+      model: 'BladeConfig is required for agent resume',
       error: {
         type: ToolErrorType.EXECUTION_ERROR,
         message: 'BladeConfig is required',
@@ -490,8 +496,8 @@ function handleResume(
   const manager = context.backgroundAgentManager as BackgroundAgentManager | undefined;
   if (!manager) {
     return {
-      success: false,
-      llmContent: 'BackgroundAgentManager not available in execution context',
+      status: 'error',
+      model: 'BackgroundAgentManager not available in execution context',
       error: {
         type: ToolErrorType.EXECUTION_ERROR,
         message: 'BackgroundAgentManager not injected via ExecutionContext',
@@ -505,8 +511,8 @@ function handleResume(
   const session = manager.getAgent(agentId);
   if (!session) {
     return {
-      success: false,
-      llmContent: `Cannot resume agent ${agentId}: session not found`,
+      status: 'error',
+      model: `Cannot resume agent ${agentId}: session not found`,
       error: {
         type: ToolErrorType.EXECUTION_ERROR,
         message: `Agent session not found: ${agentId}`,
@@ -519,8 +525,8 @@ function handleResume(
 
   if (manager.isRunning(agentId)) {
     return {
-      success: false,
-      llmContent: `Cannot resume agent ${agentId}: still running`,
+      status: 'error',
+      model: `Cannot resume agent ${agentId}: still running`,
       error: {
         type: ToolErrorType.EXECUTION_ERROR,
         message: `Agent is still running: ${agentId}`,
@@ -544,8 +550,8 @@ function handleResume(
 
   if (!newAgentId) {
     return {
-      success: false,
-      llmContent: `Failed to resume agent ${agentId}`,
+      status: 'error',
+      model: `Failed to resume agent ${agentId}`,
       error: {
         type: ToolErrorType.EXECUTION_ERROR,
         message: `Failed to resume agent: ${agentId}`,
@@ -557,8 +563,8 @@ function handleResume(
   }
 
   return {
-    success: true,
-    llmContent: {
+    status: 'success',
+    model: {
       agent_id: newAgentId,
       status: 'running',
       resumed_from: agentId,

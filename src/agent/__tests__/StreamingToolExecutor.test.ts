@@ -1,8 +1,8 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { ChatResponse, StreamChunk } from '../../services/ChatServiceInterface.js';
-import type { ToolResult } from '../../tools/types/index.js';
-import { PermissionMode } from '../../types/common.js';
+import type { ToolExecution, ToolResult } from '../../tools/types/index.js';
 import { SessionId } from '../../types/branded.js';
+import { PermissionMode } from '../../types/common.js';
 import { StreamingToolExecutor } from '../StreamingToolExecutor.js';
 
 function deferred<T>() {
@@ -26,15 +26,15 @@ function createExecutor(options: {
     toolName: string,
     params: unknown,
     context?: unknown,
-  ) => Promise<ToolResult>;
+  ) => Promise<ToolResult> | ToolExecution;
   toolKinds?: Record<string, 'readonly' | 'write' | 'execute'>;
   toolInterruptBehaviors?: Record<string, 'cancel' | 'block'>;
 }) {
   const execute = vi.fn(
     options.execute
       ?? (async (toolName: string) => ({
-        success: true,
-        llmContent: `result:${toolName}`,
+        status: 'success',
+        model: `result:${toolName}`,
       })),
   );
 
@@ -149,8 +149,8 @@ describe('StreamingToolExecutor', () => {
     expect(order).not.toContain('complete:ReadFile');
 
     toolGate.resolve({
-      success: true,
-      llmContent: 'file contents',
+      status: 'success',
+      model: 'file contents',
     });
 
     const { executionResults } = await promise;
@@ -196,8 +196,8 @@ describe('StreamingToolExecutor', () => {
           return firstToolGate.promise;
         }
         return {
-          success: true,
-          llmContent: toolName,
+          status: 'success',
+          model: toolName,
         };
       },
     });
@@ -227,8 +227,8 @@ describe('StreamingToolExecutor', () => {
     expect(started).toEqual(['ReadA']);
 
     firstToolGate.resolve({
-      success: true,
-      llmContent: 'ReadA',
+      status: 'success',
+      model: 'ReadA',
     });
 
     const { executionResults } = await execution;
@@ -327,23 +327,31 @@ describe('StreamingToolExecutor', () => {
         };
         yield { finishReason: 'tool_calls' };
       },
-      execute: async (_toolName: string, _params: unknown, context?: unknown) => {
-        const runtimeContext = context as {
-          onProgress?: (message: string) => Promise<void>;
-          updateOutput?: (message: string) => Promise<void>;
-        } | undefined;
-        await runtimeContext?.onProgress?.('Scanning');
-        await runtimeContext?.updateOutput?.('Scan complete');
-        return {
-          success: true,
-          llmContent: 'done',
-          runtimePatch: {
-            scope: 'turn',
-            source: 'tool',
-            toolDiscovery: {
-              discover: ['ReadFile'],
+      async *execute() {
+        yield {
+          kind: 'progress',
+          message: 'Scanning',
+        };
+        yield {
+          kind: 'message',
+          content: { summary: 'Scan complete' },
+        };
+        yield {
+          kind: 'effect',
+          effect: {
+            type: 'runtimePatch',
+            patch: {
+              scope: 'turn',
+              source: 'tool',
+              toolDiscovery: {
+                discover: ['ReadFile'],
+              },
             },
           },
+        };
+        return {
+          status: 'success',
+          model: 'done',
         };
       },
     });
@@ -360,10 +368,10 @@ describe('StreamingToolExecutor', () => {
         },
         onToolExecutionUpdate: async (update) => {
           if (update.type === 'tool_progress') {
-            updates.push(`progress:${update.message}`);
+            updates.push(`progress:${update.progress.message}`);
           }
           if (update.type === 'tool_message') {
-            updates.push(`message:${update.message}`);
+            updates.push(`message:${update.content.summary}`);
           }
           if (update.type === 'tool_runtime_patch') {
             updates.push('runtimePatch');
@@ -452,8 +460,8 @@ describe('StreamingToolExecutor', () => {
     expect(execute).toHaveBeenCalledTimes(2);
 
     fastGate.resolve({
-      success: true,
-      llmContent: 'fast done',
+      status: 'success',
+      model: 'fast done',
     });
     await tick();
 
@@ -462,8 +470,8 @@ describe('StreamingToolExecutor', () => {
     expect(settled).toBe(false);
 
     slowGate.resolve({
-      success: true,
-      llmContent: 'slow done',
+      status: 'success',
+      model: 'slow done',
     });
 
     const { executionResults } = await promise;
@@ -514,8 +522,8 @@ describe('StreamingToolExecutor', () => {
         if (toolName === 'Bash') {
           bashFinished.resolve();
           return {
-            success: false,
-            llmContent: '',
+            status: 'error',
+            model: '',
             error: {
               type: 'execution_error',
               message: 'bash failed',
@@ -547,9 +555,9 @@ describe('StreamingToolExecutor', () => {
 
     expect(executionResults).toHaveLength(2);
     expect(executionResults[0].toolCall.function.name).toBe('Bash');
-    expect(executionResults[0].result.success).toBe(false);
+    expect(executionResults[0].result.status).toBe('error');
     expect(executionResults[1].toolCall.function.name).toBe('ReadFile');
-    expect(executionResults[1].result.success).toBe(false);
+    expect(executionResults[1].result.status).toBe('error');
     expect(executionResults[1].result.error?.message).toBe('Cancelled due to sibling Bash failure');
     expect(onAfter).toHaveBeenCalledTimes(2);
     expect(onComplete).toHaveBeenCalledTimes(2);
@@ -592,8 +600,8 @@ describe('StreamingToolExecutor', () => {
           return firstToolGate.promise;
         }
         return {
-          success: true,
-          llmContent: 'b',
+          status: 'success',
+          model: 'b',
         };
       },
     });
@@ -623,8 +631,8 @@ describe('StreamingToolExecutor', () => {
     expect(started).toEqual(['WriteA']);
 
     firstToolGate.resolve({
-      success: true,
-      llmContent: 'a',
+      status: 'success',
+      model: 'a',
     });
 
     const { executionResults } = await promise;
@@ -744,8 +752,8 @@ describe('StreamingToolExecutor', () => {
     expect(settled).toBe(false);
 
     toolGate.resolve({
-      success: true,
-      llmContent: 'done',
+      status: 'success',
+      model: 'done',
     });
 
     await expect(promise).rejects.toThrow('maximum context length exceeded');
@@ -810,13 +818,13 @@ describe('StreamingToolExecutor', () => {
     expect(settled).toBe(false);
 
     toolGate.resolve({
-      success: true,
-      llmContent: 'finished',
+      status: 'success',
+      model: 'finished',
     });
 
     const result = await promise;
     expect(result.executionResults).toHaveLength(1);
-    expect(result.executionResults[0].result.success).toBe(true);
+    expect(result.executionResults[0].result.status).toBe('success');
   });
 
   it('forwards skillActivationPaths through the streaming execution path', async () => {
@@ -825,8 +833,8 @@ describe('StreamingToolExecutor', () => {
       _params: unknown,
       context?: unknown,
     ): Promise<ToolResult> => ({
-      success: true,
-      llmContent: 'done',
+      status: 'success',
+      model: 'done',
       metadata: {
         observedSkillActivationPaths: (context as { skillActivationPaths?: string[] } | undefined)?.skillActivationPaths,
       },
@@ -883,6 +891,24 @@ function executionPipelineFromMock(
         interruptBehavior: toolConfigs?.[name]?.interruptBehavior ?? 'cancel',
       }),
     }),
-    execute,
+    execute: (...args: [string, unknown, unknown?]) => {
+      const result = execute(...args);
+      return isToolExecution(result)
+        ? result
+        : completeAsyncToolExecution(result as Promise<ToolResult>);
+    },
   } as never;
+}
+
+// biome-ignore lint/correctness/useYield: adapts promise-based test gates, not production tools
+async function* completeAsyncToolExecution(
+  result: Promise<ToolResult>,
+): ToolExecution {
+  return await result;
+}
+
+function isToolExecution(value: unknown): value is ToolExecution {
+  return typeof value === 'object'
+    && value !== null
+    && Symbol.asyncIterator in value;
 }

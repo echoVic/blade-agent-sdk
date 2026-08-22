@@ -4,6 +4,7 @@ import { createTool } from '../../core/createTool.js';
 import { ToolKind } from '../../types/ToolKind.js';
 import { lazySchema } from '../../validation/lazySchema.js';
 import type { SessionId } from '../../../types/branded.js';
+import { toJsonValue } from '../../../utils/jsonValue.js';
 import type { CreateTaskInput } from './TaskStore.js';
 import { TaskStore } from './TaskStore.js';
 
@@ -29,13 +30,14 @@ All tasks are created with status \`pending\`.`,
       activeForm: z.string().optional().describe('Present continuous form shown in spinner when in_progress (e.g., "Fixing authentication bug"). If omitted, the spinner shows the subject instead.'),
       metadata: z.record(z.string(), JsonValueSchema).optional().describe('Arbitrary metadata to attach to the task'),
     })),
-    execute: async (input, context) => {
+    // biome-ignore lint/correctness/useYield: terminal-only tool execution
+    async *execute(input, context) {
       const sid = context?.sessionId ?? sessionId;
       const store = TaskStore.getInstance(sid);
       const task = await store.create(input as unknown as CreateTaskInput);
       return {
-        success: true,
-        llmContent: { taskId: task.id, task },
+        status: 'success',
+        model: toJsonValue({ taskId: task.id, task }),
         metadata: {
           summary: `创建任务: ${input.subject}`,
           task,

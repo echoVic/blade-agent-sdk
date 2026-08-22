@@ -113,8 +113,8 @@ describe('HookRuntime', () => {
     });
 
     const result: ToolResult = {
-      success: true,
-      llmContent: 'original output',
+      status: 'success',
+      model: 'original output',
     };
     const post = await runtime.applyPostToolUse('Read', pre.updatedInput, result, {
       toolUseId: ToolUseId('tool-1'),
@@ -137,7 +137,7 @@ describe('HookRuntime', () => {
         projectDir: '/tmp/project',
       }),
     );
-    expect(post.result.llmContent).toBe('callback output');
+    expect(post.result.model).toBe('callback output');
     expect(hookManager.executePostToolHooks).toHaveBeenCalledWith(
       'Read',
       'tool-1',
@@ -145,7 +145,7 @@ describe('HookRuntime', () => {
         manager: true,
       }),
       expect.objectContaining({
-        llmContent: 'original output',
+        model: 'original output',
       }),
       expect.objectContaining({
         projectDir: '/tmp/project',

@@ -62,8 +62,8 @@ export async function runWriteGuard(params: WriteGuardParams): Promise<WriteGuar
     if (!tracker.hasFileBeenRead(filePath, sessionId)) {
       return {
         blocked: {
-          success: false,
-          llmContent: NOT_READ_MESSAGES[operation],
+          status: 'error',
+          model: NOT_READ_MESSAGES[operation],
           error: {
             type: ToolErrorType.VALIDATION_ERROR,
             message: NOT_READ_ERROR_MESSAGES[operation],
@@ -78,8 +78,8 @@ export async function runWriteGuard(params: WriteGuardParams): Promise<WriteGuar
     if (externalModCheck.isExternal) {
       return {
         blocked: {
-          success: false,
-          llmContent: `The file has been modified by an external program since you last read it. You must use the Read tool again to see the current content ${EXTERNAL_MOD_DETAIL[operation]}.\n\nDetails: ${externalModCheck.message}`,
+          status: 'error',
+          model: `The file has been modified by an external program since you last read it. You must use the Read tool again to see the current content ${EXTERNAL_MOD_DETAIL[operation]}.\n\nDetails: ${externalModCheck.message}`,
           error: {
             type: ToolErrorType.VALIDATION_ERROR,
             message: 'File modified externally',

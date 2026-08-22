@@ -8,7 +8,6 @@ import type {
   EditErrorMetadata,
   EditMetadata,
   ExecutionContext,
-  ToolResult,
 } from '../../types/index.js';
 import { ToolErrorType, ToolKind } from '../../types/index.js';
 import { lazySchema } from '../../validation/lazySchema.js';
@@ -64,14 +63,14 @@ export const editTool = createTool({
     if (!hasFilesystemCapability(context.contextSnapshot)) {
       return {
         message: 'No filesystem access in current context',
-        llmContent: 'No filesystem access in the current runtime context.',
+        model: 'No filesystem access in the current runtime context.',
         errorType: ToolErrorType.PERMISSION_DENIED,
       };
     }
     if (old_string === new_string) {
       return {
         message: 'New string is identical to old string',
-        llmContent: 'New string is identical; no replacement needed',
+        model: 'New string is identical; no replacement needed',
       };
     }
     return undefined;
@@ -92,13 +91,16 @@ export const editTool = createTool({
   },
 
   // 执行函数
-  async execute(params, context: ExecutionContext): Promise<ToolResult> {
+  async *execute(params, context: ExecutionContext) {
     const { file_path, old_string, new_string, replace_all } = params;
-    const { updateOutput, sessionId, messageId } = context;
+    const { sessionId, messageId } = context;
     const signal = context.signal ?? new AbortController().signal;
 
     try {
-      updateOutput?.('Starting to read file...');
+      yield {
+        kind: 'message',
+        content: { summary: 'Starting to read file...' },
+      };
 
       // 获取文件系统服务
       const fsService = getFileSystemService();
@@ -110,8 +112,8 @@ export const editTool = createTool({
       } catch (error) {
         if (getErrorCode(error) === 'ENOENT' || getErrorMessage(error)?.includes('not found')) {
           return {
-            success: false,
-            llmContent: `File not found: ${file_path}`,
+            status: 'error',
+            model: `File not found: ${file_path}`,
             error: {
               type: ToolErrorType.EXECUTION_ERROR,
               message: `文件不存在`,
@@ -145,8 +147,8 @@ export const editTool = createTool({
         const errorDetails = generateRichErrorMessage(content, old_string, file_path);
 
         return {
-          success: false,
-          llmContent: errorDetails.llmContent,
+          status: 'error',
+          model: errorDetails.model,
           error: {
             type: ToolErrorType.EXECUTION_ERROR,
             message: '未找到匹配内容',
@@ -220,8 +222,8 @@ export const editTool = createTool({
 
         // 直接失败（对齐 Claude Code 官方行为）
         return {
-          success: false,
-          llmContent: llmMessage,
+          status: 'error',
+          model: llmMessage,
           error: {
             type: ToolErrorType.VALIDATION_ERROR,
             message: 'old_string is not unique',
@@ -235,7 +237,11 @@ export const editTool = createTool({
           },
         };
       } else {
-        updateOutput?.(`找到 ${matches.length} 个匹配项，开始替换...`);
+        yield {
+          kind: 'progress',
+          message: `找到 ${matches.length} 个匹配项，开始替换...`,
+          data: { matches: matches.length },
+        };
       }
 
       // 执行替换（使用实际匹配的字符串）
@@ -308,8 +314,8 @@ export const editTool = createTool({
       };
 
       return {
-        success: true,
-        llmContent: {
+        status: 'success',
+        model: {
           file_path,
           replacements: replacedCount,
           total_matches: matches.length,
@@ -319,8 +325,8 @@ export const editTool = createTool({
     } catch (error) {
       if (getErrorName(error) === 'AbortError') {
         return {
-          success: false,
-          llmContent: 'File edit aborted',
+          status: 'error',
+          model: 'File edit aborted',
           error: {
             type: ToolErrorType.EXECUTION_ERROR,
             message: '操作被中止',
@@ -329,8 +335,8 @@ export const editTool = createTool({
       }
 
       return {
-        success: false,
-        llmContent: `File edit failed: ${getErrorMessage(error)}`,
+        status: 'error',
+        model: `File edit failed: ${getErrorMessage(error)}`,
         error: {
           type: ToolErrorType.EXECUTION_ERROR,
           message: getErrorMessage(error),
@@ -466,7 +472,7 @@ function generateRichErrorMessage(
   searchString: string,
   filePath: string
 ): {
-  llmContent: string;
+  model: string;
   metadata: EditErrorMetadata;
 } {
   const lines = fileContent.split('\n');
@@ -495,7 +501,7 @@ function generateRichErrorMessage(
     .join('\n');
 
   // 3. 生成 LLM 可读的错误信息
-  let llmContent = `String not found in file.
+  let modelContent = `String not found in file.
 
 File: ${filePath}
 Total lines: ${totalLines}
@@ -508,28 +514,28 @@ Total lines: ${totalLines}
       ? `${searchString.substring(0, 300)}\n... (truncated)`
       : searchString;
 
-  llmContent += `You tried to match:\n${searchPreview}\n\n`;
+  modelContent += `You tried to match:\n${searchPreview}\n\n`;
 
   // 显示文件摘录
   if (fuzzyMatches.length > 0) {
-    llmContent += `File content around possible matches (lines ${excerptStartLine + 1}-${excerptEndLine}):\n${excerpt}\n\n`;
+    modelContent += `File content around possible matches (lines ${excerptStartLine + 1}-${excerptEndLine}):\n${excerpt}\n\n`;
   } else {
-    llmContent += `File content preview (lines ${excerptStartLine + 1}-${excerptEndLine}):\n${excerpt}\n\n`;
+    modelContent += `File content preview (lines ${excerptStartLine + 1}-${excerptEndLine}):\n${excerpt}\n\n`;
   }
 
   // 显示模糊匹配建议
   if (fuzzyMatches.length > 0) {
-    llmContent += `Possible similar matches found:\n`;
+    modelContent += `Possible similar matches found:\n`;
     fuzzyMatches.forEach((match, idx) => {
       const preview =
         match.text.length > 100 ? `${match.text.substring(0, 100)}...` : match.text;
-      llmContent += `  ${idx + 1}. Line ${match.lineNumber} (similarity: ${Math.round(match.similarity * 100)}%)\n     ${preview.replace(/\n/g, '\\n')}\n`;
+      modelContent += `  ${idx + 1}. Line ${match.lineNumber} (similarity: ${Math.round(match.similarity * 100)}%)\n     ${preview.replace(/\n/g, '\\n')}\n`;
     });
-    llmContent += '\n';
+    modelContent += '\n';
   }
 
   // 提供恢复建议
-  llmContent += `Recovery suggestions:
+  modelContent += `Recovery suggestions:
 1. Use the Read tool to verify the current file content
 2. Check for typos, whitespace differences, or quote mismatches
 3. Provide more surrounding context to make the match unique
@@ -542,7 +548,7 @@ Common issues:
 - Outdated mental model: File may have changed since you last read it`;
 
   return {
-    llmContent,
+    model: modelContent,
     metadata: {
       searchStringLength: searchString.length,
       fuzzyMatches: fuzzyMatches.map((m) => ({

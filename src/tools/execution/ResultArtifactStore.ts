@@ -13,7 +13,7 @@ export class ResultArtifactStore {
     toolName: string;
     sessionId?: string;
     context: ExecutionContext;
-    llmContent?: string;
+    modelContent?: string;
   }): Promise<PersistedToolResultArtifact> {
     const baseDir = await this.resolveBaseDir(options.context);
     await fs.mkdir(baseDir, { recursive: true });
@@ -24,7 +24,7 @@ export class ResultArtifactStore {
     await fs.writeFile(artifactPath, JSON.stringify({
       toolName: options.toolName,
       sessionId: options.sessionId,
-      llmContent: options.llmContent,
+      modelContent: options.modelContent,
       createdAt: new Date().toISOString(),
     }, null, 2), 'utf8');
 

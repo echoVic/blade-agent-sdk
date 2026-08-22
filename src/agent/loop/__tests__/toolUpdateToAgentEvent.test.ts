@@ -30,9 +30,9 @@ describe('toolUpdateToAgentEvent', () => {
   });
 
   it('maps tool_result', () => {
-    const result = { success: true as const, llmContent: 'ok' };
+    const result = { status: 'success' as const, model: 'ok' };
     const event = toolUpdateToAgentEvent(
-      { type: 'tool_result', outcome: { toolCall, result, toolUseUuid: null } },
+      { type: 'tool_result', outcome: { toolCall, result, effects: [], toolUseUuid: null } },
       registry,
     );
     expect(event).toEqual({ type: 'tool_result', toolCall, result });
@@ -40,11 +40,23 @@ describe('toolUpdateToAgentEvent', () => {
 
   it('maps tool_progress / tool_message', () => {
     expect(
-      toolUpdateToAgentEvent({ type: 'tool_progress', toolCall, message: 'p' }, registry),
-    ).toEqual({ type: 'tool_progress', toolCall, message: 'p' });
+      toolUpdateToAgentEvent({
+        type: 'tool_progress',
+        toolCall,
+        progress: { kind: 'progress', message: 'p', completed: 1, total: 2 },
+      }, registry),
+    ).toEqual({
+      type: 'tool_progress',
+      toolCall,
+      progress: { kind: 'progress', message: 'p', completed: 1, total: 2 },
+    });
     expect(
-      toolUpdateToAgentEvent({ type: 'tool_message', toolCall, message: 'm' }, registry),
-    ).toEqual({ type: 'tool_message', toolCall, message: 'm' });
+      toolUpdateToAgentEvent({
+        type: 'tool_message',
+        toolCall,
+        content: { summary: 'm' },
+      }, registry),
+    ).toEqual({ type: 'tool_message', toolCall, content: { summary: 'm' } });
   });
 
   it('returns null for internal-only updates', () => {
@@ -56,7 +68,15 @@ describe('toolUpdateToAgentEvent', () => {
     ).toBeNull();
     expect(
       toolUpdateToAgentEvent(
-        { type: 'tool_completed', outcome: { toolCall, result: { success: true as const, llmContent: '' }, toolUseUuid: null } },
+        {
+          type: 'tool_completed',
+          outcome: {
+            toolCall,
+            result: { status: 'success' as const, model: '' },
+            effects: [],
+            toolUseUuid: null,
+          },
+        },
         registry,
       ),
     ).toBeNull();

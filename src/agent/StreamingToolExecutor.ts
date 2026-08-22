@@ -7,7 +7,7 @@ import type {
   StreamToolCall,
 } from '../services/ChatServiceInterface.js';
 import type { ExecutionPipeline } from '../tools/execution/ExecutionPipeline.js';
-import type { ToolResult } from '../tools/types/index.js';
+import type { ToolEffect, ToolResult } from '../tools/types/index.js';
 import { ToolErrorType } from '../tools/types/index.js';
 import { type JsonObject, PermissionMode } from '../types/common.js';
 import type { ExecutionEpoch } from './ExecutionEpoch.js';
@@ -47,6 +47,7 @@ export interface StreamingToolExecutorConfig {
   onAfterToolExec?: (ctx: {
     toolCall: FunctionToolCall;
     result: ToolResult;
+    effects: ToolEffect[];
     toolUseUuid: string | null;
   }) => void | Promise<void>;
   onAfterToolExecEpochDiscard?: (ctx: {
@@ -372,6 +373,7 @@ export class StreamingToolExecutor {
         const outcome: ToolExecutionOutcome = {
           toolCall: this.toFunctionToolCall(entry.id, entry.name, entry.arguments),
           result: this.buildCascadeAbortResult(),
+          effects: [],
           toolUseUuid: null,
         };
         input.executionResults[index] = outcome;
@@ -430,6 +432,7 @@ export class StreamingToolExecutor {
       const outcome: ToolExecutionOutcome = {
         toolCall: input.toolCall,
         result: this.buildCascadeAbortResult(),
+        effects: [],
         toolUseUuid: null,
       };
       input.executionResults[input.index] = outcome;
@@ -450,6 +453,7 @@ export class StreamingToolExecutor {
     }, input.epoch);
 
     let result: ToolResult;
+    let effects = [] as ToolExecutionOutcome['effects'];
     let toolUseUuid: string | null = null;
 
     try {
@@ -467,15 +471,17 @@ export class StreamingToolExecutor {
         },
       });
       result = outcome.result;
+      effects = outcome.effects;
       toolUseUuid = outcome.toolUseUuid;
     } catch (error) {
       this.logger.error(`Tool execution failed for ${input.toolCall.function.name}:`, error);
+      const message = error instanceof Error ? error.message : 'Unknown error';
       result = {
-        success: false,
-        llmContent: '',
+        status: 'error',
+        model: `Tool execution failed: ${message}`,
         error: {
           type: ToolErrorType.EXECUTION_ERROR,
-          message: error instanceof Error ? error.message : 'Unknown error',
+          message,
         },
       };
     }
@@ -493,7 +499,7 @@ export class StreamingToolExecutor {
 
     if (
       input.toolCall.function.name === 'Bash' &&
-      !result.success &&
+      result.status === 'error' &&
       !input.batchController.signal.aborted &&
       !input.signal?.aborted
     ) {
@@ -503,6 +509,7 @@ export class StreamingToolExecutor {
     input.executionResults[input.index] = {
       toolCall: input.toolCall,
       result,
+      effects,
       toolUseUuid,
     };
   }
@@ -580,8 +587,8 @@ export class StreamingToolExecutor {
 
   private buildCascadeAbortResult(): ToolResult {
     return {
-      success: false,
-      llmContent: 'Tool execution cancelled because a sibling Bash tool failed',
+      status: 'error',
+      model: 'Tool execution cancelled because a sibling Bash tool failed',
       error: {
         type: ToolErrorType.EXECUTION_ERROR,
         message: 'Cancelled due to sibling Bash failure',

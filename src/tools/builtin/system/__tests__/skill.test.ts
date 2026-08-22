@@ -6,6 +6,7 @@ import { createContextSnapshot } from '../../../../runtime/index.js';
 import { SkillRegistry } from '../../../../skills/SkillRegistry.js';
 import { SessionId } from '../../../../types/branded.js';
 import type { ExecutionContext } from '../../../types/ExecutionTypes.js';
+import { collectToolExecution, type ToolYield } from '../../../types/ToolResult.js';
 import { skillTool } from '../skill.js';
 
 async function createProjectSkill(
@@ -23,7 +24,14 @@ async function executeSkill(
   context: Partial<ExecutionContext>,
 ) {
   const invocation = skillTool.build(params);
-  return invocation.execute(new AbortController().signal, undefined, context);
+  const events: ToolYield[] = [];
+  const result = await collectToolExecution(
+    invocation.execute(new AbortController().signal, context),
+    (event) => {
+      events.push(event);
+    },
+  );
+  return { result, events };
 }
 
 describe('Skill tool', () => {
@@ -67,9 +75,9 @@ Focus on source files.
       skillActivationPaths: ['docs/readme.md'],
     } satisfies Partial<ExecutionContext>;
 
-    const result = await executeSkill({ skill: 'src-only' }, context);
+    const { result } = await executeSkill({ skill: 'src-only' }, context);
 
-    expect(result.success).toBe(false);
+    expect(result.status).toBe('error');
     expect(result.error?.message).toContain('conditions are not satisfied');
   });
 
@@ -101,13 +109,13 @@ Focus on source files.
       }),
     } satisfies Partial<ExecutionContext>;
 
-    const result = await executeSkill(
+    const { result } = await executeSkill(
       { skill: 'src-only', args: 'src/index.ts' },
       context,
     );
 
-    expect(result.success).toBe(true);
-    expect(String(result.llmContent)).toContain('Focus on source files.');
+    expect(result.status).toBe('success');
+    expect(String(result.model)).toContain('Focus on source files.');
   });
 
   it('returns skill activation as a runtimePatch effect', async () => {
@@ -140,39 +148,39 @@ Review code carefully.
       }),
     } satisfies Partial<ExecutionContext>;
 
-    const result = await executeSkill(
+    const { result, events } = await executeSkill(
       { skill: 'reviewer' },
       context,
     );
 
-    expect(result.success).toBe(true);
-    expect(result.effects).toEqual([
+    expect(result.status).toBe('success');
+    expect(events).toEqual([
       {
-        type: 'runtimePatch',
-        patch: {
-          scope: 'turn',
-          source: 'skill',
-          skill: {
-            id: 'reviewer',
-            name: 'reviewer',
-            basePath: path.join(projectRoot, 'skills', 'reviewer'),
+        kind: 'effect',
+        effect: {
+          type: 'runtimePatch',
+          patch: {
+            scope: 'turn',
+            source: 'skill',
+            skill: {
+              id: 'reviewer',
+              name: 'reviewer',
+              basePath: path.join(projectRoot, 'skills', 'reviewer'),
+            },
+            toolPolicy: {
+              allow: ['Read'],
+              deny: undefined,
+            },
+            modelOverride: {
+              modelId: 'gpt-5.4',
+              effort: undefined,
+            },
+            systemPromptAppend: undefined,
+            environment: undefined,
+            hooks: undefined,
           },
-          toolPolicy: {
-            allow: ['Read'],
-            deny: undefined,
-          },
-          modelOverride: {
-            modelId: 'gpt-5.4',
-            effort: undefined,
-          },
-          systemPromptAppend: undefined,
-          environment: undefined,
-          hooks: undefined,
         },
       },
     ]);
-    expect(result.runtimePatch).toEqual(result.effects?.[0]?.type === 'runtimePatch'
-      ? result.effects[0].patch
-      : undefined);
   });
 });

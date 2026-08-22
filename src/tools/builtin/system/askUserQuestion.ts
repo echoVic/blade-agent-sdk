@@ -1,6 +1,5 @@
 import { z } from 'zod';
 import { createTool } from '../../core/createTool.js';
-import type { ToolResult } from '../../types/ToolResult.js';
 import { ToolErrorType } from '../../types/ToolResult.js';
 import { ToolKind } from '../../types/ToolKind.js';
 import { ToolSchemas } from '../../validation/zodSchemas.js';
@@ -86,7 +85,7 @@ Usage notes:
 - If you recommend a specific option, make that the first option in the list and add "(Recommended)" at the end of the label`,
   },
 
-  async execute(params, context): Promise<ToolResult> {
+  async *execute(params, context) {
     // 触发 UI 确认流程
     if (context.confirmationHandler) {
       try {
@@ -100,8 +99,8 @@ Usage notes:
         // 检查是否被拒绝（用户取消或 ACP 权限拒绝）
         if (!response.approved) {
           return {
-            success: true,
-            llmContent: 'User cancelled the question prompt without providing answers.',
+            status: 'success',
+            model: 'User cancelled the question prompt without providing answers.',
             metadata: { cancelled: true, summary: '用户取消' },
           };
         }
@@ -117,8 +116,8 @@ Usage notes:
             .join('\n');
 
           return {
-            success: true,
-            llmContent: `User answers:\n${formattedAnswers}`,
+            status: 'success',
+            model: `User answers:\n${formattedAnswers}`,
             metadata: { answers: response.answers, summary: '用户回答已收集' },
           };
         }
@@ -126,8 +125,8 @@ Usage notes:
         // 兼容模式：approved 但没有 answers
         // 某些会话环境中用户允许了操作，但不支持收集结构化答案
         return {
-          success: true,
-          llmContent:
+          status: 'success',
+          model:
             'The question was approved but no answers were collected. ' +
             'This can happen in sessions where structured question UI is not available. ' +
             'Please ask the user directly in your response or make reasonable assumptions based on context.',
@@ -135,8 +134,8 @@ Usage notes:
         };
       } catch (error) {
         return {
-          success: false,
-          llmContent: `Failed to ask user questions: ${error instanceof Error ? error.message : 'Unknown error'}`,
+          status: 'error',
+          model: `Failed to ask user questions: ${error instanceof Error ? error.message : 'Unknown error'}`,
           error: {
             type: ToolErrorType.EXECUTION_ERROR,
             message: 'Failed to display questions',
@@ -150,8 +149,8 @@ Usage notes:
 
     // 降级：如果没有确认处理器，返回错误
     return {
-      success: false,
-      llmContent:
+      status: 'error',
+      model:
         'No confirmation handler available. Cannot ask user questions in non-interactive mode.',
       error: {
         type: ToolErrorType.EXECUTION_ERROR,

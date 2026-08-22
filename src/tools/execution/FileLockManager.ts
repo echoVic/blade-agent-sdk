@@ -11,17 +11,19 @@ import { type InternalLogger, LogCategory, NOOP_LOGGER } from '../../logging/Log
 
 type FileLockMode = 'read' | 'write';
 
-interface QueuedLockRequest<T> {
+export interface FileLockLease {
+  release(): void;
+}
+
+interface QueuedLockRequest {
   mode: FileLockMode;
-  operation: () => Promise<T>;
-  resolve: (value: T | PromiseLike<T>) => void;
-  reject: (reason?: unknown) => void;
+  resolve: (lease: FileLockLease) => void;
 }
 
 interface FileLockState {
   activeReaders: number;
   activeWriter: boolean;
-  queue: QueuedLockRequest<unknown>[];
+  queue: QueuedLockRequest[];
 }
 
 export class FileLockManager {
@@ -76,22 +78,21 @@ export class FileLockManager {
       throw new TypeError('FileLockManager.acquireLock requires an operation');
     }
 
+    return this.runWithLock(filePath, mode, operation);
+  }
+
+  acquire(filePath: string, mode: FileLockMode = 'write'): Promise<FileLockLease> {
     const state = this.getOrCreateState(filePath);
-    return new Promise<T>((resolve, reject) => {
-      const request: QueuedLockRequest<T> = {
-        mode,
-        operation,
-        resolve,
-        reject,
-      };
+    return new Promise<FileLockLease>((resolve) => {
+      const request: QueuedLockRequest = { mode, resolve };
 
       if (this.canGrantImmediately(state, mode)) {
-        this.startRequest(filePath, state, request);
+        this.grant(filePath, state, request);
         return;
       }
 
       this.logger.debug(`排队等待${mode === 'read' ? '读' : '写'}锁: ${filePath}`);
-      state.queue.push(request as QueuedLockRequest<unknown>);
+      state.queue.push(request);
     });
   }
 
@@ -167,10 +168,10 @@ export class FileLockManager {
     return state.activeWriter || state.activeReaders > 0 || state.queue.length > 0;
   }
 
-  private startRequest<T>(
+  private grant(
     filePath: string,
     state: FileLockState,
-    request: QueuedLockRequest<T>,
+    request: QueuedLockRequest,
   ): void {
     if (request.mode === 'read') {
       state.activeReaders += 1;
@@ -180,16 +181,14 @@ export class FileLockManager {
       this.logger.debug(`获取文件写锁: ${filePath}`);
     }
 
-    void (async () => {
-      try {
-        const result = await request.operation();
+    let released = false;
+    request.resolve({
+      release: () => {
+        if (released) return;
+        released = true;
         this.releaseRequest(filePath, state, request.mode);
-        request.resolve(result);
-      } catch (error) {
-        this.releaseRequest(filePath, state, request.mode);
-        request.reject(error);
-      }
-    })();
+      },
+    });
   }
 
   private drainQueue(filePath: string, state: FileLockState): void {
@@ -207,14 +206,14 @@ export class FileLockManager {
       while (state.queue[0]?.mode === 'read') {
         const request = state.queue.shift();
         if (!request) break;
-        this.startRequest(filePath, state, request);
+        this.grant(filePath, state, request);
       }
       return;
     }
 
     const request = state.queue.shift();
     if (request) {
-      this.startRequest(filePath, state, request);
+      this.grant(filePath, state, request);
     }
   }
 
@@ -238,5 +237,18 @@ export class FileLockManager {
     }
 
     this.drainQueue(filePath, state);
+  }
+
+  private async runWithLock<T>(
+    filePath: string,
+    mode: FileLockMode,
+    operation: () => Promise<T>,
+  ): Promise<T> {
+    const lease = await this.acquire(filePath, mode);
+    try {
+      return await operation();
+    } finally {
+      lease.release();
+    }
   }
 }

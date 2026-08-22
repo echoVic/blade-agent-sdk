@@ -27,11 +27,17 @@ const searchTool = defineTool({
     required: ['query'],
   },
   kind: ToolKind.ReadOnly,
-  execute: async (params) => {
+  async *execute(params) {
     const results = await searchDocuments(params.query, params.limit ?? 10);
+    yield {
+      kind: 'progress',
+      message: '文档搜索完成',
+      data: { count: results.length },
+    };
     return {
-      success: true,
-      llmContent: JSON.stringify(results),
+      status: 'success',
+      model: JSON.stringify(results),
+      display: { summary: `找到 ${results.length} 条文档` },
       // 可选：结构化数据（必须是 JSON 值），供调用方消费
       data: { count: results.length },
     };
@@ -65,10 +71,16 @@ const deployTool = createTool({
     environment: z.enum(['staging', 'production']).describe('目标环境'),
     version: z.string().describe('部署版本号'),
   }),
-  execute: async (params, context) => {
+  async *execute(params, context) {
+    yield {
+      kind: 'progress',
+      message: '正在部署',
+      data: { environment: params.environment, version: params.version },
+    };
     return {
-      success: true,
-      llmContent: `已部署 v${params.version} 到 ${params.environment}`,
+      status: 'success',
+      model: `已部署 v${params.version} 到 ${params.environment}`,
+      display: { summary: `部署完成: ${params.environment}` },
     };
   },
 });
@@ -180,7 +192,7 @@ interface ToolDefinition<TParams = Record<string, unknown>> {
   description: string | ToolDescription;
   parameters: unknown;
   kind?: ToolKind;     // 'readonly' | 'write' | 'execute'
-  execute: (params: TParams, context: ExecutionContext) => Promise<ToolResult>;
+  execute: (params: TParams, context: ExecutionContext) => ToolExecution;
 }
 ```
 
@@ -202,23 +214,48 @@ interface ToolDescription {
 
 ```ts
 type ToolResult = ToolSuccessResult | ToolFailureResult;
+type ToolModelContent = JsonValue;
 
 interface ToolSuccessResult {
-  success: true;
-  llmContent: string | object;   // 返回给 LLM 的内容
+  status: 'success';
+  model: ToolModelContent;       // 返回给模型的 JSON 内容
+  display?: ToolDisplayContent;  // 返回给 UI 的内容
   data?: JsonValue;              // 可选：结构化数据（必须是 JSON 值）
   metadata?: ToolResultMetadata;
 }
 
 interface ToolFailureResult {
-  success: false;
-  llmContent: string | object;
+  status: 'error';
+  model: ToolModelContent;
+  display?: ToolDisplayContent;
   error: ToolError;              // 失败时必填
   metadata?: ToolResultMetadata;
 }
 ```
 
-`llmContent` 是给 LLM 消费的内容；如需返回结构化数据用 `data`（其类型为 `JsonValue`，因此自定义对象数组等需保证可 JSON 序列化）。失败时 `success: false` 且必须带 `error`。
+`model` 只用于回写模型上下文，`display` 只用于 UI 展示，两者不应互相解析。`model` 和 `data` 都必须是严格的 JSON 值。失败时 `status: 'error'` 且必须带 `error`。
+
+### ToolYield 与 ToolExecution
+
+工具执行是一个有类型终值的异步生成器。过程中可以按真实发生顺序产生进度、展示消息和运行时 effect，最后返回一个 `ToolResult`：
+
+```ts
+type ToolYield =
+  | {
+      kind: 'progress';
+      message?: string;
+      data?: JsonValue;
+      completed?: number;
+      total?: number;
+      resumeToken?: string;
+    }
+  | { kind: 'message'; content: ToolDisplayContent }
+  | { kind: 'effect'; effect: ToolEffect };
+
+type ToolExecution = AsyncGenerator<ToolYield, ToolResult, void>;
+```
+
+不产生中间事件的工具也必须返回 `ToolExecution`，可使用 `completeToolExecution(result)`。需要只消费最终结果时使用 `collectToolExecution(execution)`。
 
 ::: warning data 必须可 JSON 序列化
 `data` 会被序列化落盘（结果产物存储），因此其类型约束为 `JsonValue`。若你的领域类型是 `interface`（无索引签名），赋给 `data` 时可能报「缺少索引签名」。解决办法是让该类型满足 `JsonValue`（字段均为 JSON 值），不要用 `as unknown` 强绕过——那会把「运行时序列化失败」的风险藏起来。
@@ -243,10 +280,15 @@ const tool = defineTool<{ query: string; limit?: number }, { count: number }>({
     },
     required: ['query'],
   },
-  execute: async (params) => {
+  async *execute(params) {
     // params.query: string, params.limit?: number —— 无需 cast
     const results = await searchDocuments(params.query, params.limit ?? 10);
-    return { success: true, llmContent: JSON.stringify(results), data: { count: results.length } };
+    return {
+      status: 'success',
+      model: JSON.stringify(results),
+      display: { summary: `找到 ${results.length} 条结果` },
+      data: { count: results.length },
+    };
   },
 });
 ```
@@ -262,8 +304,6 @@ interface ExecutionContext {
   messageId?: string;
   contextSnapshot?: ContextSnapshot;
   signal?: AbortSignal;
-  onProgress?: (message: string) => void;
-  updateOutput?: (output: string) => void;
   confirmationHandler?: ConfirmationHandler;
   permissionMode?: PermissionMode;
   bladeConfig?: BladeConfig;

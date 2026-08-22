@@ -3,7 +3,6 @@ import * as path from 'node:path';
 import { z } from 'zod';
 import { createTool } from '../../core/createTool.js';
 import { ToolKind } from '../../types/ToolKind.js';
-import type { ToolResult } from '../../types/ToolResult.js';
 import { ToolErrorType } from '../../types/ToolResult.js';
 import { lazySchema } from '../../validation/lazySchema.js';
 
@@ -62,7 +61,8 @@ Before using this tool, ensure your plan is clear and unambiguous. If there are 
 `,
   },
 
-  async execute(params, context): Promise<ToolResult> {
+  // biome-ignore lint/correctness/useYield: terminal-only tool execution
+  async *execute(params, context) {
     // 使用参数中的 plan 内容
     const planContent = params.plan || '';
 
@@ -99,8 +99,8 @@ Before using this tool, ensure your plan is clear and unambiguous. If there are 
 
         if (response.approved) {
           return {
-            success: true,
-            llmContent:
+            status: 'success',
+            model:
               '✅ Plan approved by user. Plan mode exited; you can proceed to code changes.',
             metadata: {
               summary: '计划已批准',
@@ -113,8 +113,8 @@ Before using this tool, ensure your plan is clear and unambiguous. If there are 
         } else {
           // 拒绝方案后退出循环，返回到用户输入界面
           return {
-            success: true,
-            llmContent:
+            status: 'success',
+            model:
               '⚠️ Plan rejected by user. Awaiting user feedback.\n\n' +
               (response.feedback || 'No specific feedback provided.') +
               '\n\nThe agent has stopped and control is returned to the user. ' +
@@ -130,8 +130,8 @@ Before using this tool, ensure your plan is clear and unambiguous. If there are 
         }
       } catch (error) {
         return {
-          success: false,
-          llmContent: `Confirmation flow error: ${error instanceof Error ? error.message : 'Unknown error'}`,
+          status: 'error',
+          model: `Confirmation flow error: ${error instanceof Error ? error.message : 'Unknown error'}`,
           error: {
             type: ToolErrorType.EXECUTION_ERROR,
             message: 'Confirmation flow error',
@@ -145,8 +145,8 @@ Before using this tool, ensure your plan is clear and unambiguous. If there are 
 
     // 降级：如果没有确认处理器，直接返回成功
     return {
-      success: true,
-      llmContent:
+      status: 'success',
+      model:
         '✅ Plan mode exit requested. No interactive confirmation available.\n' +
         'Proceeding with implementation.',
       metadata: {

@@ -6,7 +6,6 @@ import { HookEvent } from '../../../types/constants.js';
 import { createTool } from '../../core/createTool.js';
 import { getEffectiveProjectDir } from '../../types/ExecutionTypes.js';
 import { ToolKind } from '../../types/ToolKind.js';
-import type { ToolResult } from '../../types/ToolResult.js';
 import { ToolErrorType } from '../../types/ToolResult.js';
 import { lazySchema } from '../../validation/lazySchema.js';
 
@@ -16,7 +15,7 @@ import { lazySchema } from '../../validation/lazySchema.js';
  *
  * Skills 是动态 Prompt 扩展机制，允许 AI 根据用户请求自动调用专业能力。
  * 执行 Skill 时，返回双消息：
- * - llmContent: 完整的 Skill 指令（发送给 LLM）
+ * - model: 完整的 Skill 指令（发送给 LLM）
  * - metadata.summary: 简短的加载提示
  */
 export const skillTool = createTool({
@@ -55,7 +54,7 @@ Important:
 `,
   },
 
-  async execute(params, context): Promise<ToolResult> {
+  async *execute(params, context) {
     const { skill, args } = params;
 
     // 获取 SkillRegistry
@@ -65,8 +64,8 @@ Important:
     // 检查 skill 是否存在
     if (!skillMetadata) {
       return {
-        success: false,
-        llmContent: `Skill "${skill}" not found. Available skills: ${
+        status: 'error',
+        model: `Skill "${skill}" not found. Available skills: ${
           registry
             .getAll()
             .map((s) => s.name)
@@ -91,8 +90,8 @@ Important:
     if (!activationAllowed) {
       const requiredPaths = skillMetadata.conditions?.paths?.join(', ') || 'unknown';
       return {
-        success: false,
-        llmContent: `Skill "${skill}" is not available in the current context. Required path conditions: ${requiredPaths}`,
+        status: 'error',
+        model: `Skill "${skill}" is not available in the current context. Required path conditions: ${requiredPaths}`,
         error: {
           type: ToolErrorType.VALIDATION_ERROR,
           message: `Skill "${skill}" conditions are not satisfied`,
@@ -107,8 +106,8 @@ Important:
     const content = await registry.loadContent(skill, { cwd, args });
     if (!content) {
       return {
-        success: false,
-        llmContent: `Failed to load skill "${skill}" content`,
+        status: 'error',
+        model: `Failed to load skill "${skill}" content`,
         error: {
           type: ToolErrorType.EXECUTION_ERROR,
           message: `Could not read SKILL.md for "${skill}"`,
@@ -153,16 +152,17 @@ Important:
       hooks: runtimeHooks,
     };
 
-    // 返回双消息
+    yield {
+      kind: 'effect',
+      effect: {
+        type: 'runtimePatch',
+        patch: runtimePatch,
+      },
+    };
+
     return {
-      success: true,
-      llmContent: skillInstructions,
-      effects: [
-        {
-          type: 'runtimePatch',
-          patch: runtimePatch,
-        },
-      ],
+      status: 'success',
+      model: skillInstructions,
       metadata: {
         skillId: content.metadata.name,
         skillName: skill,
@@ -170,7 +170,6 @@ Important:
         version: content.metadata.version,
         summary: `加载 Skill: ${skill}`,
       },
-      runtimePatch,
     };
   },
 });

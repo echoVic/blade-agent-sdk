@@ -5,6 +5,7 @@ import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { SessionId } from '../../../../types/branded.js';
 import { type BladeConfig, PermissionMode } from '../../../../types/common.js';
+import { collectToolExecution } from '../../../types/index.js';
 import type { ExecutionContext } from '../../../types/ExecutionTypes.js';
 import { exitPlanModeTool } from '../ExitPlanModeTool.js';
 
@@ -36,7 +37,9 @@ async function executeWithContext(
   plan = '# Plan\n\n1. Add tests'
 ) {
   const invocation = exitPlanModeTool.build({ plan });
-  return invocation.execute(new AbortController().signal, undefined, context);
+  return collectToolExecution(
+    invocation.execute(new AbortController().signal, context),
+  );
 }
 
 describe('ExitPlanMode Tool', () => {
@@ -61,7 +64,7 @@ describe('ExitPlanMode Tool', () => {
         planContent: '# Plan\n\n1. Add tests',
       })
     );
-    expect(result.success).toBe(true);
+    expect(result.status).toBe('success');
     expect(result.metadata?.targetMode).toBe(PermissionMode.DEFAULT);
   });
 
@@ -75,8 +78,8 @@ describe('ExitPlanMode Tool', () => {
 
     const defaultPlanPath = join(fakeHome, '.blade', 'plans', 'plan_session-456.md');
     expect(await pathExists(defaultPlanPath)).toBe(false);
-    expect(result.success).toBe(true);
-    expect(result.llmContent).toBe(
+    expect(result.status).toBe('success');
+    expect(result.model).toBe(
       '✅ Plan mode exit requested. No interactive confirmation available.\n' +
       'Proceeding with implementation.',
     );

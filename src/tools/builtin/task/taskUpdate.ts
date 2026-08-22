@@ -5,6 +5,7 @@ import { ToolErrorType } from '../../types/index.js';
 import { ToolKind } from '../../types/ToolKind.js';
 import { lazySchema } from '../../validation/lazySchema.js';
 import type { SessionId } from '../../../types/branded.js';
+import { toJsonValue } from '../../../utils/jsonValue.js';
 import type { UpdateTaskInput } from './TaskStore.js';
 import { TaskStore } from './TaskStore.js';
 
@@ -34,7 +35,8 @@ ONLY mark a task as completed when you have FULLY accomplished it.`,
       addBlocks: z.array(z.string()).optional().describe('Task IDs that this task blocks'),
       addBlockedBy: z.array(z.string()).optional().describe('Task IDs that must complete before this one can start'),
     })),
-    execute: async ({ taskId, ...input }, context) => {
+    // biome-ignore lint/correctness/useYield: terminal-only tool execution
+    async *execute({ taskId, ...input }, context) {
       const sid = context?.sessionId ?? sessionId;
       const store = TaskStore.getInstance(sid);
 
@@ -42,8 +44,8 @@ ONLY mark a task as completed when you have FULLY accomplished it.`,
         const existing = await store.get(taskId);
         if (!existing) {
           return {
-            success: false,
-            llmContent: `Task #${taskId} not found`,
+            status: 'error',
+            model: `Task #${taskId} not found`,
             error: { type: ToolErrorType.VALIDATION_ERROR, message: `Task ${taskId} not found` },
             metadata: {
               summary: '未找到任务',
@@ -52,8 +54,8 @@ ONLY mark a task as completed when you have FULLY accomplished it.`,
         }
         await store.delete(taskId);
         return {
-          success: true,
-          llmContent: { taskId, deleted: true },
+          status: 'success',
+          model: toJsonValue({ taskId, deleted: true }),
           metadata: {
             summary: `删除任务: ${taskId}`,
           },
@@ -63,8 +65,8 @@ ONLY mark a task as completed when you have FULLY accomplished it.`,
       const task = await store.update(taskId, input as unknown as UpdateTaskInput);
       if (!task) {
         return {
-          success: false,
-          llmContent: `Task #${taskId} not found`,
+          status: 'error',
+          model: `Task #${taskId} not found`,
           error: { type: ToolErrorType.VALIDATION_ERROR, message: `Task ${taskId} not found` },
           metadata: {
             summary: '未找到任务',
@@ -72,8 +74,8 @@ ONLY mark a task as completed when you have FULLY accomplished it.`,
         };
       }
       return {
-        success: true,
-        llmContent: task,
+        status: 'success',
+        model: toJsonValue(task),
         metadata: {
           summary: `更新任务: ${taskId}`,
           task,

@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { createContextSnapshot } from '../../../runtime/index.js';
+import { completeToolExecution } from '../../../tools/types/index.js';
 import { SessionId } from '../../../types/branded.js';
 import { executeToolCalls } from '../executeToolCalls.js';
 
@@ -25,12 +26,13 @@ describe('executeToolCalls', () => {
         calls,
       },
       executionPipeline: {
-        execute: vi.fn(async (toolName: string) => {
+        execute: vi.fn(async function* (toolName: string) {
           started.push(toolName);
+          yield { kind: 'progress', data: { toolName } };
           await executionGate;
           return {
-            success: true,
-            llmContent: toolName,
+            status: 'success',
+            model: toolName,
           };
         }),
         getRegistry: () => ({
@@ -54,9 +56,9 @@ describe('executeToolCalls', () => {
   });
 
   it('should forward the turn-scoped context snapshot into tool execution', async () => {
-    const execute = vi.fn(async () => ({
-      success: true,
-      llmContent: 'ok',
+    const execute = vi.fn(() => completeToolExecution({
+      status: 'success',
+      model: 'ok',
     }));
 
     await executeToolCalls({
@@ -109,9 +111,9 @@ describe('executeToolCalls', () => {
     const controller = new AbortController();
     controller.abort();
 
-    const execute = vi.fn(async () => ({
-      success: true,
-      llmContent: 'ok',
+    const execute = vi.fn(() => completeToolExecution({
+      status: 'success',
+      model: 'ok',
     }));
 
     await executeToolCalls({
@@ -152,6 +154,44 @@ describe('executeToolCalls', () => {
     );
   });
 
+  it('returns model-facing content when tool arguments are invalid JSON', async () => {
+    const execute = vi.fn(() => completeToolExecution({
+      status: 'success',
+      model: 'unexpected',
+    }));
+
+    const [outcome] = await executeToolCalls({
+      plan: {
+        mode: 'serial',
+        calls: [
+          {
+            id: 'tool-invalid-json',
+            type: 'function',
+            function: {
+              name: 'Read',
+              arguments: '{',
+            },
+          },
+        ],
+      },
+      executionPipeline: {
+        execute,
+        getRegistry: () => ({
+          get: () => undefined,
+        }),
+      } as never,
+      executionContext: {
+        sessionId: SessionId('session-invalid-json'),
+        userId: 'user-1',
+      },
+    });
+
+    expect(execute).not.toHaveBeenCalled();
+    expect(outcome.result.status).toBe('error');
+    expect(outcome.result.model).toContain('Tool execution failed:');
+    expect(outcome.result.model).toContain('JSON');
+  });
+
   it('emits a unified ready-progress-message-effect-result-completed update sequence for each tool call', async () => {
     const updates: string[] = [];
 
@@ -170,49 +210,65 @@ describe('executeToolCalls', () => {
         ],
       },
       executionPipeline: {
-        execute: vi.fn(async (_toolName, _params, context) => {
-          await context?.onProgress?.('Scanning');
-          await context?.updateOutput?.('Scan complete');
+        execute: vi.fn(async function* () {
+          yield {
+            kind: 'progress',
+            message: 'Scanning',
+          };
+          yield {
+            kind: 'message',
+            content: { summary: 'Scan complete' },
+          };
+          yield {
+            kind: 'effect',
+            effect: {
+              type: 'runtimePatch',
+              patch: {
+                scope: 'turn',
+                source: 'tool',
+                toolDiscovery: {
+                  discover: ['Read'],
+                },
+              },
+            },
+          };
+          yield {
+            kind: 'effect',
+            effect: {
+              type: 'contextPatch',
+              patch: {
+                scope: 'turn',
+                context: {
+                  metadata: {
+                    key: 'value',
+                  },
+                },
+              },
+            },
+          };
+          yield {
+            kind: 'effect',
+            effect: {
+              type: 'newMessages',
+              messages: [{ role: 'assistant', content: 'injected' }],
+            },
+          };
+          yield {
+            kind: 'effect',
+            effect: {
+              type: 'permissionUpdates',
+              updates: [
+                {
+                  type: 'addRules',
+                  behavior: 'allow',
+                  rules: [{ toolName: 'Read', ruleContent: 'sig:read' }],
+                },
+              ],
+            },
+          };
           return {
-            success: true,
-            llmContent: 'ok',
-            effects: [
-              {
-                type: 'runtimePatch',
-                patch: {
-                  scope: 'turn',
-                  source: 'tool',
-                  toolDiscovery: {
-                    discover: ['Read'],
-                  },
-                },
-              },
-              {
-                type: 'contextPatch',
-                patch: {
-                  scope: 'turn',
-                  context: {
-                    metadata: {
-                      key: 'value',
-                    },
-                  },
-                },
-              },
-              {
-                type: 'newMessages',
-                messages: [{ role: 'assistant', content: 'injected' }],
-              },
-              {
-                type: 'permissionUpdates',
-                updates: [
-                  {
-                    type: 'addRules',
-                    behavior: 'allow',
-                    rules: [{ toolName: 'Read', ruleContent: 'sig:read' }],
-                  },
-                ],
-              },
-            ],
+            status: 'success',
+            model: 'ok',
           };
         }),
         getRegistry: () => ({
@@ -233,10 +289,10 @@ describe('executeToolCalls', () => {
               updates.push(`started:${update.toolCall.function.name}`);
               break;
             case 'tool_progress':
-              updates.push(`progress:${update.message}`);
+              updates.push(`progress:${update.progress.message}`);
               break;
             case 'tool_message':
-              updates.push(`message:${update.message}`);
+              updates.push(`message:${update.content.summary}`);
               break;
             case 'tool_runtime_patch':
               updates.push('runtimePatch');

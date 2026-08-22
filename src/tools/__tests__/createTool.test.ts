@@ -2,22 +2,27 @@ import { describe, expect, expectTypeOf, it } from 'vitest';
 import { z } from 'zod';
 import { createTool, toolFromDefinition } from '../core/createTool.js';
 import type { ReadMetadata } from '../types/ToolMetadata.js';
-import type { ToolResult } from '../types/ToolResult.js';
+import {
+  collectToolExecution,
+  completeToolExecution,
+  type ToolResult,
+  type ToolYield,
+} from '../types/ToolResult.js';
 import { ToolKind } from '../types/ToolKind.js';
 import { lazySchema } from '../validation/lazySchema.js';
 
 describe('createTool', () => {
-  it('exposes ToolResult as a success-discriminated generic union', () => {
+  it('exposes ToolResult as a status-discriminated generic union', () => {
     type EchoResult = ToolResult<{ echoed: string }, ReadMetadata>;
 
     expectTypeOf<EchoResult>().toMatchTypeOf<
       | {
-          success: true;
+          status: 'success';
           data?: { echoed: string };
           metadata?: ReadMetadata;
         }
       | {
-          success: false;
+          status: 'error';
           error: {
             message: string;
           };
@@ -41,10 +46,15 @@ describe('createTool', () => {
       important: ['Do not use in production'],
     },
     schema: testSchema,
-    execute: async (params) => {
+    async *execute(params) {
       const count = params.count || 1;
       const result = Array(count).fill(params.message).join(' ');
-      return { success: true, llmContent: result };
+      yield {
+        kind: 'progress',
+        message: 'Echoing message',
+        data: { count },
+      };
+      return { status: 'success', model: result };
     },
   });
 
@@ -139,9 +149,9 @@ describe('createTool', () => {
             value: z.string(),
           });
         }),
-        execute: async ({ value }) => ({
-          success: true,
-          llmContent: value,
+        execute: ({ value }) => completeToolExecution({
+          status: 'success',
+          model: value,
         }),
       });
 
@@ -168,9 +178,9 @@ describe('createTool', () => {
         schema: z.object({
           target: z.string(),
         }),
-        execute: async ({ target }) => ({
-          success: true,
-          llmContent: target,
+        execute: ({ target }) => completeToolExecution({
+          status: 'success',
+          model: target,
         }),
       });
 
@@ -218,9 +228,9 @@ describe('createTool', () => {
           backupPath: z.string().optional(),
           files: z.array(z.string()).optional(),
         }),
-        execute: async ({ file_path }) => ({
-          success: true,
-          llmContent: file_path,
+        execute: ({ file_path }) => completeToolExecution({
+          status: 'success',
+          model: file_path,
         }),
       });
 
@@ -247,15 +257,28 @@ describe('createTool', () => {
 
   describe('execute', () => {
     it('should execute with valid params', async () => {
-      const result = await echoTool.execute({ message: 'Hello' });
-      expect(result.success).toBe(true);
-      expect(result.llmContent).toBe('Hello');
+      const events: ToolYield[] = [];
+      const result = await collectToolExecution(
+        echoTool.execute({ message: 'Hello' }),
+        (event) => {
+          events.push(event);
+        },
+      );
+      expect(result.status).toBe('success');
+      expect(result.model).toBe('Hello');
+      expect(events).toEqual([
+        {
+          kind: 'progress',
+          message: 'Echoing message',
+          data: { count: 1 },
+        },
+      ]);
     });
 
     it('should handle count parameter', async () => {
-      const result = await echoTool.execute({ message: 'Hi', count: 3 });
-      expect(result.success).toBe(true);
-      expect(result.llmContent).toBe('Hi Hi Hi');
+      const result = await collectToolExecution(echoTool.execute({ message: 'Hi', count: 3 }));
+      expect(result.status).toBe('success');
+      expect(result.model).toBe('Hi Hi Hi');
     });
 
     it('should run semantic validateInput before execution', async () => {
@@ -273,19 +296,115 @@ describe('createTool', () => {
                 message: 'Blocked by semantic validation',
               }
             : undefined,
-        execute: async ({ value }) => ({
-          success: true,
-          llmContent: value,
+        execute: ({ value }) => completeToolExecution({
+          status: 'success',
+          model: value,
         }),
       });
 
-      const blocked = await guardedTool.execute({ value: 'blocked' });
-      const allowed = await guardedTool.execute({ value: 'allowed' });
+      const blocked = await collectToolExecution(guardedTool.execute({ value: 'blocked' }));
+      const allowed = await collectToolExecution(guardedTool.execute({ value: 'allowed' }));
 
-      expect(blocked.success).toBe(false);
+      expect(blocked.status).toBe('error');
       expect(blocked.error?.message).toBe('Blocked by semantic validation');
-      expect(allowed.success).toBe(true);
-      expect(allowed.llmContent).toBe('allowed');
+      expect(allowed.status).toBe('success');
+      expect(allowed.model).toBe('allowed');
+    });
+
+    it('closes the execution when an event consumer fails', async () => {
+      let finalized = false;
+      const tool = createTool({
+        name: 'CleanupTool',
+        displayName: 'Cleanup Tool',
+        kind: ToolKind.Execute,
+        description: { short: 'Tool with cleanup' },
+        schema: z.object({}),
+        async *execute() {
+          try {
+            yield { kind: 'progress', message: 'started' };
+            return { status: 'success', model: 'done' };
+          } finally {
+            finalized = true;
+          }
+        },
+      });
+
+      await expect(
+        collectToolExecution(tool.execute({}), () => {
+          throw new Error('consumer failed');
+        }),
+      ).rejects.toThrow('consumer failed');
+      expect(finalized).toBe(true);
+    });
+
+    it('preserves consumer failures when execution cleanup also fails', async () => {
+      const tool = createTool({
+        name: 'FailingCleanupTool',
+        displayName: 'Failing Cleanup Tool',
+        kind: ToolKind.Execute,
+        description: { short: 'Tool with failing cleanup' },
+        schema: z.object({}),
+        async *execute() {
+          try {
+            yield { kind: 'progress', message: 'started' };
+            return { status: 'success', model: 'done' };
+          } finally {
+            // biome-ignore lint/correctness/noUnsafeFinally: verifies cleanup-error precedence
+            throw new Error('cleanup failed');
+          }
+        },
+      });
+
+      await expect(
+        collectToolExecution(tool.execute({}), () => {
+          throw new Error('consumer failed');
+        }),
+      ).rejects.toThrow('consumer failed');
+    });
+
+    it('rejects Promise-returning tool implementations at runtime', async () => {
+      const invalidTool = createTool({
+        name: 'InvalidTool',
+        displayName: 'Invalid Tool',
+        kind: ToolKind.Execute,
+        description: { short: 'Invalid legacy tool' },
+        schema: z.object({}),
+        execute: (async () => ({
+          status: 'success',
+          model: 'legacy result',
+        })) as never,
+      });
+
+      await expect(
+        collectToolExecution(invalidTool.execute({})),
+      ).rejects.toMatchObject({
+        name: 'ToolExecutionError',
+        code: 'TOOL_EXECUTION_ERROR',
+        toolName: 'InvalidTool',
+      });
+    });
+
+    it('rejects Promise-returning definitions through the direct tool API', async () => {
+      const invalidTool = toolFromDefinition({
+        name: 'InvalidDefinition',
+        description: 'Invalid legacy tool definition',
+        parameters: {
+          type: 'object',
+          properties: {},
+        },
+        execute: (async () => ({
+          status: 'success',
+          model: 'legacy result',
+        })) as never,
+      });
+
+      await expect(
+        collectToolExecution(invalidTool.execute({})),
+      ).rejects.toMatchObject({
+        name: 'ToolExecutionError',
+        code: 'TOOL_EXECUTION_ERROR',
+        toolName: 'InvalidDefinition',
+      });
     });
 
     it('should expose tool-level checkPermissions when configured', async () => {
@@ -304,9 +423,9 @@ describe('createTool', () => {
                 message: 'Blocked by tool permission',
               }
             : undefined,
-        execute: async ({ value }) => ({
-          success: true,
-          llmContent: value,
+        execute: ({ value }) => completeToolExecution({
+          status: 'success',
+          model: value,
         }),
       });
 
@@ -335,7 +454,7 @@ describe('createTool', () => {
         kind: ToolKind.ReadOnly,
         description: { short: 'Read only tool' },
         schema: z.object({}),
-        execute: async () => ({ success: true, llmContent: '' }),
+        execute: () => completeToolExecution({ status: 'success', model: '' }),
       });
       expect(readonlyTool.isReadOnly).toBe(true);
 
@@ -345,7 +464,7 @@ describe('createTool', () => {
         kind: ToolKind.Write,
         description: { short: 'Write tool' },
         schema: z.object({}),
-        execute: async () => ({ success: true, llmContent: '' }),
+        execute: () => completeToolExecution({ status: 'success', model: '' }),
       });
       expect(writeTool.isReadOnly).toBe(false);
     });
@@ -358,7 +477,7 @@ describe('createTool', () => {
         isReadOnly: false,
         description: { short: 'Custom tool' },
         schema: z.object({}),
-        execute: async () => ({ success: true, llmContent: '' }),
+        execute: () => completeToolExecution({ status: 'success', model: '' }),
       });
       expect(tool.isReadOnly).toBe(false);
     });
@@ -378,7 +497,7 @@ describe('createTool', () => {
           isConcurrencySafe: params.mode === 'read',
           isDestructive: params.mode !== 'read',
         }),
-        execute: async () => ({ success: true, llmContent: '' }),
+        execute: () => completeToolExecution({ status: 'success', model: '' }),
       });
 
       expect(tool.resolveBehavior?.({} as unknown as { mode: 'read' | 'write' })).toEqual({
@@ -405,7 +524,7 @@ describe('createTool', () => {
         description: { short: 'Limited tool' },
         schema: z.object({}),
         maxResultSizeChars: 128,
-        execute: async () => ({ success: true, llmContent: '' }),
+        execute: () => completeToolExecution({ status: 'success', model: '' }),
       });
 
       expect(tool.maxResultSizeChars).toBe(128);
@@ -419,7 +538,7 @@ describe('createTool', () => {
         description: { short: 'Blocking tool' },
         schema: z.object({}),
         interruptBehavior: 'block',
-        execute: async () => ({ success: true, llmContent: '' }),
+        execute: () => completeToolExecution({ status: 'success', model: '' }),
       });
 
       expect(tool.interruptBehavior).toBe('block');
@@ -437,7 +556,7 @@ describe('createTool', () => {
         kind: ToolKind.ReadOnly,
         description: { short: 'Tool with signature' },
         schema: z.object({ path: z.string() }),
-        execute: async () => ({ success: true, llmContent: '' }),
+        execute: () => completeToolExecution({ status: 'success', model: '' }),
         preparePermissionMatcher: (params) => ({
           signatureContent: params.path,
           abstractRule: `read:${params.path}`,
@@ -466,11 +585,11 @@ describe('createTool', () => {
           mode: 'deferred',
           discoveryHint: 'Use when searching the tool catalog.',
         },
-        async execute() {
-          return {
-            success: true,
-            llmContent: 'ok',
-          };
+        execute() {
+          return completeToolExecution({
+            status: 'success',
+            model: 'ok',
+          });
         },
       });
 

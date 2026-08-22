@@ -4,10 +4,10 @@ import { z } from 'zod';
 import { hasFilesystemCapability } from '../../../runtime/index.js';
 import { getFileSystemService } from '../../../services/FileSystemService.js';
 import { getErrorCode, getErrorMessage, getErrorName } from '../../../utils/errorUtils.js';
+import { toJsonValue } from '../../../utils/jsonValue.js';
 import { createTool } from '../../core/createTool.js';
 import type {
   ExecutionContext,
-  ToolResult,
   WriteMetadata,
 } from '../../types/index.js';
 import { ToolErrorType, ToolKind } from '../../types/index.js';
@@ -55,7 +55,7 @@ export const writeTool = createTool({
     if (!hasFilesystemCapability(context.contextSnapshot)) {
       return {
         message: 'No filesystem access in current context',
-        llmContent: 'No filesystem access in the current runtime context.',
+        model: 'No filesystem access in the current runtime context.',
         errorType: ToolErrorType.PERMISSION_DENIED,
       };
     }
@@ -76,13 +76,16 @@ export const writeTool = createTool({
   },
 
   // 执行函数
-  async execute(params, context: ExecutionContext): Promise<ToolResult> {
+  async *execute(params, context: ExecutionContext) {
     const { file_path, content, encoding, create_directories } = params;
-    const { updateOutput, sessionId, messageId } = context;
+    const { sessionId, messageId } = context;
     const signal = context.signal ?? new AbortController().signal;
 
     try {
-      updateOutput?.('开始写入文件...');
+      yield {
+        kind: 'message',
+        content: { summary: '开始写入文件...' },
+      };
 
       // 获取文件系统服务
       const fsService = getFileSystemService();
@@ -202,20 +205,20 @@ export const writeTool = createTool({
       };
 
       return {
-        success: true,
-        llmContent: {
+        status: 'success',
+        model: toJsonValue({
           file_path,
           size: stats?.size,
           modified:
             stats?.mtime instanceof Date ? stats.mtime.toISOString() : undefined,
-        },
+        }),
         metadata,
       };
     } catch (error) {
       if (getErrorName(error) === 'AbortError') {
         return {
-          success: false,
-          llmContent: 'File write aborted',
+          status: 'error',
+          model: 'File write aborted',
           error: {
             type: ToolErrorType.EXECUTION_ERROR,
             message: '操作被中止',
@@ -224,8 +227,8 @@ export const writeTool = createTool({
       }
 
       return {
-        success: false,
-        llmContent: `File write failed: ${getErrorMessage(error)}`,
+        status: 'error',
+        model: `File write failed: ${getErrorMessage(error)}`,
         error: {
           type: ToolErrorType.EXECUTION_ERROR,
           message: getErrorMessage(error),

@@ -4,7 +4,7 @@ import type { JsonObject, JsonValue } from '../../types/common.js';
 import type { PermissionResult } from '../../types/permissions.js';
 import type { ExecutionContext } from './ExecutionTypes.js';
 import type { ToolBehavior, ToolKind } from './ToolKind.js';
-import type { ToolResult, ToolValidationError } from './ToolResult.js';
+import type { ToolExecution, ToolValidationError } from './ToolResult.js';
 
 export interface FunctionDeclaration {
   name: string;
@@ -12,7 +12,7 @@ export interface FunctionDeclaration {
   parameters: JSONSchema7;
 }
 
-export interface ToolInvocation<TParams = JsonObject, TResult = ToolResult> {
+export interface ToolInvocation<TParams = JsonObject> {
   readonly toolName: string;
   readonly params: TParams;
 
@@ -21,9 +21,8 @@ export interface ToolInvocation<TParams = JsonObject, TResult = ToolResult> {
   validate?(context?: Partial<ExecutionContext>): Promise<ToolValidationError | undefined>;
   execute(
     signal: AbortSignal,
-    updateOutput?: (output: string) => void,
     context?: Partial<ExecutionContext>,
-  ): Promise<TResult>;
+  ): ToolExecution;
 }
 
 export interface ToolDescription {
@@ -64,7 +63,7 @@ export interface ToolDefinition<TParams = JsonObject, TData extends JsonValue = 
   category?: string;
   tags?: string[];
   exposure?: ToolExposureConfig;
-  execute: (params: TParams, context: ExecutionContext) => Promise<ToolResult<TData>>;
+  execute: (params: TParams, context: ExecutionContext) => ToolExecution<TData>;
 }
 
 export interface ToolConfig<TSchema extends z.ZodSchema = z.ZodSchema, TParams = JsonObject> {
@@ -82,7 +81,7 @@ export interface ToolConfig<TSchema extends z.ZodSchema = z.ZodSchema, TParams =
   description: ToolDescription;
   describe?: ToolDescriptionResolver<TParams>;
   exposure?: ToolExposureConfig;
-  execute: (params: TParams, context: ExecutionContext) => Promise<ToolResult>;
+  execute: (params: TParams, context: ExecutionContext) => ToolExecution;
   validateInput?: (
     params: TParams,
     context: ExecutionContext,
@@ -122,7 +121,7 @@ export interface Tool<TParams = JsonObject> {
   describe(params?: TParams): ToolDescription;
   getMetadata(): Record<string, unknown>;
   build(params: TParams): ToolInvocation<TParams>;
-  execute(params: TParams, signal?: AbortSignal): Promise<ToolResult>;
+  execute(params: TParams, context?: ExecutionContext): ToolExecution;
 
   validateInput?: (
     params: TParams,

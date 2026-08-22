@@ -20,12 +20,11 @@ import type {
     ConfirmationDetails,
     ExecutionContext,
     ExecutionHistoryEntry,
-    ToolResult
+    ToolExecution,
+    ToolResult,
+    ToolYield,
 } from '../types/index.js';
-import {
-    normalizePermissionEffects,
-    normalizeToolEffects,
-} from '../types/index.js';
+import { normalizePermissionEffects } from '../types/index.js';
 import type { Tool, ToolInvocation } from '../types/ToolDefinition.js';
 import {
     isReadOnlyKind,
@@ -39,7 +38,7 @@ import {
 } from '../types/ToolResult.js';
 import { type ConcurrencyLimits, ConcurrencyScheduler } from './ConcurrencyScheduler.js';
 import { DenialTracker } from './DenialTracker.js';
-import { FileLockManager } from './FileLockManager.js';
+import { type FileLockLease, FileLockManager } from './FileLockManager.js';
 import { ResultArtifactStore } from './ResultArtifactStore.js';
 
 function getString(params: JsonObject, key: string, defaultValue = ''): string {
@@ -144,24 +143,24 @@ export class ExecutionPipeline {
   /**
    * 执行工具
    */
-  async execute(
+  async *execute(
     toolName: string,
     params: JsonObject,
     context: ExecutionContext
-  ): Promise<ToolResult> {
+  ): ToolExecution {
     const startTime = Date.now();
     const executionId = this.generateExecutionId();
     const nextParams = { ...params } as JsonObject;
 
     const tool = this.registry.get(toolName);
     if (!tool) {
-      const result = this.normalizeResultEffects(await this.applyPostExecutionHooks(
+      const result = await this.applyPostExecutionHooks(
         toolName,
         nextParams,
         context,
         this.createExecutionFailureResult(`Tool "${toolName}" not found`),
         executionId,
-      ));
+      );
       this.addToHistory({
         executionId,
         toolName,
@@ -198,31 +197,29 @@ export class ExecutionPipeline {
         ? 'read'
         : 'write';
 
-    const runPipeline = (): Promise<ToolResult> => {
-      if (filePath) {
-        const lockManager = FileLockManager.getInstance(this.logger);
-        return lockManager.acquireLock(filePath, lockMode, () =>
-          this.executeWithPipeline(state, executionId, startTime)
-        );
-      }
-      return this.executeWithPipeline(state, executionId, startTime);
-    };
-
     const toolKind = resolvedBehavior?.kind ?? tool.kind ?? ToolKind.Execute;
-    const result = await this.withTimeout(toolName, () =>
-      this.scheduler.schedule(toolKind, runPipeline),
-    );
-    return result;
+    const concurrencyLease = await this.scheduler.acquire(toolKind);
+    let fileLease: FileLockLease | undefined;
+
+    try {
+      fileLease = filePath
+        ? await FileLockManager.getInstance(this.logger).acquire(filePath, lockMode)
+        : undefined;
+      return yield* this.executeWithPipeline(state, executionId, startTime);
+    } finally {
+      fileLease?.release();
+      concurrencyLease.release();
+    }
   }
 
   /**
    * 通过管道执行工具（内部方法）
    */
-  private async executeWithPipeline(
+  private async *executeWithPipeline(
     state: PipelineExecutionState,
     executionId: string,
     startTime: number
-  ): Promise<ToolResult> {
+  ): ToolExecution {
     try {
       await this.applyPreToolUseHooks(state, executionId);
       if (!state.result && state.context.signal?.aborted) {
@@ -235,17 +232,17 @@ export class ExecutionPipeline {
         await this.resolveConfirmation(state);
       }
       if (!state.result) {
-        await this.executeInvocation(state);
+        yield* this.executeInvocation(state);
       }
 
       let result = await this.normalizeExecutionResult(state);
-      result = this.normalizeResultEffects(await this.applyPostExecutionHooks(
+      result = await this.applyPostExecutionHooks(
         state.toolName,
         state.params,
         state.context,
         result,
         executionId,
-      ));
+      );
       const endTime = Date.now();
 
       // 记录执行历史
@@ -268,23 +265,23 @@ export class ExecutionPipeline {
         getErrorName(error) === 'TimeoutError';
 
       let errorResult: ToolResult = {
-        success: false,
-        llmContent: `Tool execution failed: ${errorMsg}`,
+        status: 'error',
+        model: `Tool execution failed: ${errorMsg}`,
         error: {
-          type: ToolErrorType.EXECUTION_ERROR,
+          type: isTimeout ? ToolErrorType.TIMEOUT_ERROR : ToolErrorType.EXECUTION_ERROR,
           message: errorMsg,
         },
       };
 
       try {
-        errorResult = this.normalizeResultEffects(await this.applyPostExecutionHooks(
+        errorResult = await this.applyPostExecutionHooks(
           state.toolName,
           state.params,
           state.context,
           errorResult,
           executionId,
           { isTimeout },
-        ));
+        );
       } catch (hookError) {
         // Hook 执行失败不应阻止错误处理
         console.warn(
@@ -343,7 +340,7 @@ export class ExecutionPipeline {
     let totalDuration = 0;
 
     for (const entry of this.executionHistory) {
-      if (entry.result.success) {
+      if (entry.result.status === 'success') {
         stats.successfulExecutions++;
       } else {
         stats.failedExecutions++;
@@ -520,7 +517,9 @@ export class ExecutionPipeline {
     await this.handleLegacyConfirmation(state, affectedPaths);
   }
 
-  private async executeInvocation(state: PipelineExecutionState): Promise<void> {
+  private async *executeInvocation(
+    state: PipelineExecutionState,
+  ): AsyncGenerator<ToolYield, void, void> {
     if (!state.invocation) {
       state.result = this.createAbortedResult(
         'Pre-execution stage failed; cannot run tool',
@@ -528,15 +527,92 @@ export class ExecutionPipeline {
       return;
     }
 
+    const timeoutController = this.toolTimeoutMs ? new AbortController() : undefined;
+    const executionSignal = timeoutController
+      ? state.context.signal
+        ? AbortSignal.any([state.context.signal, timeoutController.signal])
+        : timeoutController.signal
+      : state.context.signal ?? new AbortController().signal;
+    const execution = state.invocation.execute(executionSignal, {
+      ...state.context,
+      signal: executionSignal,
+    });
+    const deadline = this.toolTimeoutMs
+      ? Date.now() + this.toolTimeoutMs
+      : undefined;
+    let completed = false;
+    let timedOut = false;
+
     try {
-      state.result = await state.invocation.execute(
-        state.context.signal ?? new AbortController().signal,
-        state.context.onProgress,
-        state.context,
-      );
+      while (true) {
+        const step = await this.nextExecutionStep(execution, state.toolName, deadline);
+        if (step.done) {
+          state.result = step.value;
+          completed = true;
+          return;
+        }
+        yield step.value;
+      }
     } catch (error) {
-      state.result = this.createAbortedResult(`Tool execution failed: ${getErrorMessage(error)}`);
+      timedOut = getErrorName(error) === 'TimeoutError';
+      if (timedOut) {
+        timeoutController?.abort(error);
+      }
+      state.result = this.createExecutionFailureResult(
+        timedOut
+          ? `Tool execution timeout after ${this.toolTimeoutMs}ms`
+          : getErrorMessage(error),
+        timedOut ? ToolErrorType.TIMEOUT_ERROR : ToolErrorType.EXECUTION_ERROR,
+      );
+    } finally {
+      if (!completed) {
+        const closing = execution.return(undefined as never);
+        if (timedOut) {
+          void closing.catch(() => {});
+        } else {
+          try {
+            await closing;
+          } catch {
+            // Preserve the original execution or consumer failure.
+          }
+        }
+      }
     }
+  }
+
+  private async nextExecutionStep(
+    execution: ToolExecution,
+    toolName: string,
+    deadline?: number,
+  ): Promise<IteratorResult<ToolYield, ToolResult>> {
+    if (deadline === undefined) {
+      return execution.next();
+    }
+
+    const remaining = deadline - Date.now();
+    if (remaining <= 0) {
+      throw this.createTimeoutError(toolName);
+    }
+
+    return new Promise<IteratorResult<ToolYield, ToolResult>>((resolve, reject) => {
+      const timer = setTimeout(() => reject(this.createTimeoutError(toolName)), remaining);
+      execution.next().then(
+        (step) => {
+          clearTimeout(timer);
+          resolve(step);
+        },
+        (error) => {
+          clearTimeout(timer);
+          reject(error);
+        },
+      );
+    });
+  }
+
+  private createTimeoutError(toolName: string): Error {
+    const error = new Error(`Tool "${toolName}" timed out after ${this.toolTimeoutMs}ms`);
+    error.name = 'TimeoutError';
+    return error;
   }
 
   private async applyPreToolUseHooks(
@@ -570,8 +646,8 @@ export class ExecutionPipeline {
     if (hookResult.action === 'skip') {
       const message = hookResult.reason || `Tool "${state.toolName}" was skipped by hook`;
       state.result = {
-        success: true,
-        llmContent: message,
+        status: 'success',
+        model: message,
       };
       return;
     }
@@ -598,7 +674,7 @@ export class ExecutionPipeline {
     }
 
     const toolUseId = ToolUseId(`tool_use_${executionId}`);
-    const hookResult = result.success
+    const hookResult = result.status === 'success'
       ? await this.hookRuntime.applyPostToolUse(toolName, params, result, {
           toolUseId,
           permissionMode: context.permissionMode,
@@ -828,12 +904,15 @@ export class ExecutionPipeline {
     return this.createExecutionFailureResult(message);
   }
 
-  private createExecutionFailureResult(message: string): ToolResult {
+  private createExecutionFailureResult(
+    message: string,
+    type: ToolErrorType = ToolErrorType.EXECUTION_ERROR,
+  ): ToolResult {
     return {
-      success: false,
-      llmContent: `Tool execution failed: ${message}`,
+      status: 'error',
+      model: `Tool execution failed: ${message}`,
       error: {
-        type: ToolErrorType.EXECUTION_ERROR,
+        type,
         message,
       },
     };
@@ -844,8 +923,8 @@ export class ExecutionPipeline {
     options?: { shouldExitLoop?: boolean },
   ): ToolResult {
     return {
-      success: false,
-      llmContent: `Tool execution aborted: ${reason || 'Unknown reason'}`,
+      status: 'error',
+      model: `Tool execution aborted: ${reason || 'Unknown reason'}`,
       error: {
         type: ToolErrorType.EXECUTION_ERROR,
         message: reason || 'Execution aborted',
@@ -860,8 +939,8 @@ export class ExecutionPipeline {
       throw new Error('Tool execution result not set');
     }
 
-    if (!result.llmContent) {
-      result.llmContent = 'Execution completed';
+    if (result.model === '' || result.model === null) {
+      result.model = 'Execution completed';
     }
 
     if (!result.metadata) {
@@ -871,8 +950,9 @@ export class ExecutionPipeline {
     const maxResultSizeChars =
       state.tool.maxResultSizeChars ?? Number.POSITIVE_INFINITY;
     if (Number.isFinite(maxResultSizeChars) && maxResultSizeChars >= 0) {
-      const llmContentLength = typeof result.llmContent === 'string' ? result.llmContent.length : undefined;
-      const exceedsLimit = llmContentLength !== undefined && llmContentLength > maxResultSizeChars;
+      const modelContentLength = typeof result.model === 'string' ? result.model.length : undefined;
+      const exceedsLimit =
+        modelContentLength !== undefined && modelContentLength > maxResultSizeChars;
 
       if (exceedsLimit) {
         try {
@@ -881,32 +961,32 @@ export class ExecutionPipeline {
             sessionId: state.context.sessionId,
             toolName: state.toolName,
             context: state.context,
-            llmContent: typeof result.llmContent === 'string' ? result.llmContent : undefined,
+            modelContent: typeof result.model === 'string' ? result.model : undefined,
           });
           const summary = `[externalized result to ${artifact.path}]`;
-          if (llmContentLength !== undefined) {
-            result.llmContent = summary;
-            result.metadata.llmContentOriginalLength = llmContentLength;
+          if (modelContentLength !== undefined) {
+            result.model = summary;
+            result.metadata.modelContentOriginalLength = modelContentLength;
           }
           result.metadata.resultExternalized = true;
           result.metadata.resultArtifactPath = artifact.path;
           result.metadata.resultSizeLimit = maxResultSizeChars;
         } catch {
-          const llmContent = this.truncateStringResult(result.llmContent, maxResultSizeChars);
-          if (llmContent) {
-            result.llmContent = llmContent.value;
+          const modelContent = this.truncateStringResult(result.model, maxResultSizeChars);
+          if (modelContent) {
+            result.model = modelContent.value;
             result.metadata.resultTruncated = true;
             result.metadata.resultSizeLimit = maxResultSizeChars;
-            result.metadata.llmContentOriginalLength = llmContent.originalLength;
+            result.metadata.modelContentOriginalLength = modelContent.originalLength;
           }
         }
       } else {
-        const llmContent = this.truncateStringResult(result.llmContent, maxResultSizeChars);
-        if (llmContent) {
-          result.llmContent = llmContent.value;
+        const modelContent = this.truncateStringResult(result.model, maxResultSizeChars);
+        if (modelContent) {
+          result.model = modelContent.value;
           result.metadata.resultTruncated = true;
           result.metadata.resultSizeLimit = maxResultSizeChars;
-          result.metadata.llmContentOriginalLength = llmContent.originalLength;
+          result.metadata.modelContentOriginalLength = modelContent.originalLength;
         }
       }
     }
@@ -916,11 +996,6 @@ export class ExecutionPipeline {
     result.metadata.timestamp = Date.now();
 
     state.result = result;
-    return result;
-  }
-
-  private normalizeResultEffects(result: ToolResult): ToolResult {
-    result.effects = normalizeToolEffects(result);
     return result;
   }
 
@@ -1024,33 +1099,6 @@ export class ExecutionPipeline {
     };
   }
 
-  /**
-   * Wraps a pipeline execution with an optional per-tool timeout.
-   * When toolTimeoutMs is set and the tool exceeds it, the promise is rejected
-   * with a TIMEOUT error result rather than throwing.
-   */
-  private async withTimeout(toolName: string, run: () => Promise<ToolResult>): Promise<ToolResult> {
-    if (!this.toolTimeoutMs) {
-      return run();
-    }
-    const timeoutMs = this.toolTimeoutMs;
-    return new Promise<ToolResult>((resolve, reject) => {
-      const timer = setTimeout(() => {
-        resolve({
-          success: false,
-          llmContent: `Tool "${toolName}" timed out after ${timeoutMs}ms`,
-          error: {
-            type: ToolErrorType.EXECUTION_ERROR,
-            message: `Tool execution timeout after ${timeoutMs}ms`,
-          },
-        });
-      }, timeoutMs);
-      run().then(
-        (result) => { clearTimeout(timer); resolve(result); },
-        (err) => { clearTimeout(timer); reject(err); },
-      );
-    });
-  }
 }
 
 /**
