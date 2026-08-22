@@ -15,6 +15,7 @@ const zhSidebar = [
     text: '核心功能',
     items: [
       { text: 'Session 会话', link: '/session' },
+      { text: 'Durable Event Store', link: '/durable-events' },
       { text: '工具系统', link: '/tools' },
       { text: '权限控制', link: '/permissions' },
       { text: 'Hooks 生命周期', link: '/hooks' },
@@ -50,6 +51,7 @@ const enSidebar = [
     text: 'Core',
     items: [
       { text: 'Session', link: '/en/session' },
+      { text: 'Durable Event Store', link: '/en/durable-events' },
       { text: 'Tools', link: '/en/tools' },
       { text: 'Permissions', link: '/en/permissions' },
       { text: 'Hooks', link: '/en/hooks' },

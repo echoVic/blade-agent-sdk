@@ -43,11 +43,45 @@ Constants:
 - `InputId`
 - `RequestId`
 - `SessionId`
+- `EventId`
+- `EventSequence`
+- `CommandId`
+- `TurnId`
+- `ToolAttemptId`
 - `AgentId`
 - `MessageId`
 - `ToolUseId`
 
 These ID exports are branded identifiers, not arbitrary strings.
+
+## Durable Events
+
+Runtime:
+
+- `JsonlDurableEventStore`
+- `DurableEventType`
+- `DURABLE_EVENT_SCHEMA_VERSION`
+- `DURABLE_EVENT_LOG_FORMAT`
+- `parseDurableEventDraft`
+- `parseDurableEventEnvelope`
+- `parsePersistedDurableEventBatch`
+
+Types and errors:
+
+- `DurableEventStore`
+- `DurableEventEnvelope`
+- `DurableEventDraft`
+- `DurableEventAppendOptions`
+- `DurableEventAppendResult`
+- `DurableEventReadOptions`
+- `DurableEventPage`
+- `PersistedDurableEventBatch`
+- `DurableEventSequenceConflictError`
+- `DurableEventStoreError`
+- `DurableEventStoreErrorCode`
+
+The JSONL adapter is Node-only. Event contracts, constants, errors, and parsers
+are browser-safe through `/core`.
 
 ## Tools
 
