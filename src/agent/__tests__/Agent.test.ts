@@ -84,6 +84,7 @@ describe('Agent input preparation', () => {
         message: UserMessageContent,
         context: ChatContext,
       ): Promise<UserMessageContent>;
+      discoverSkillsForCwd(cwd?: string): Promise<void>;
       prepareContext(
         message: UserMessageContent,
         context: ChatContext,
@@ -94,10 +95,28 @@ describe('Agent input preparation', () => {
     const prepare = vi
       .spyOn(testable, 'prepareMessageForContext')
       .mockResolvedValue('prepared again');
+    const discover = vi
+      .spyOn(testable, 'discoverSkillsForCwd')
+      .mockResolvedValue();
     const context: ChatContext = {
       messages: [],
       userId: 'test-user',
       sessionId: SessionId('recovered-session'),
+      snapshot: {
+        sessionId: SessionId('recovered-session'),
+        turnId: 'recovered-turn',
+        context: {
+          capabilities: {
+            filesystem: {
+              roots: ['/recovered/workspace'],
+              cwd: '/recovered/workspace',
+            },
+          },
+        },
+        filesystemRoots: ['/recovered/workspace'],
+        cwd: '/recovered/workspace',
+        environment: {},
+      },
     };
 
     const recovered = await testable.prepareContext('already prepared', context, {
@@ -107,6 +126,8 @@ describe('Agent input preparation', () => {
 
     expect(recovered.enhancedMessage).toBe('already prepared');
     expect(ordinary.enhancedMessage).toBe('prepared again');
+    expect(discover).toHaveBeenCalledOnce();
+    expect(discover).toHaveBeenCalledWith('/recovered/workspace');
     expect(prepare).toHaveBeenCalledOnce();
   });
 });

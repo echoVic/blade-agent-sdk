@@ -417,9 +417,13 @@ export class Agent {
     if (!this.isInitialized) throw new Error('Agent未初始化');
 
     const ctx = this.withBackgroundAgentManager(context);
-    const enhancedMessage = options?.initialInputPreparation === RECONCILED_INITIAL_INPUT
-      ? message
-      : await this.prepareMessageForContext(message, ctx);
+    let enhancedMessage: UserMessageContent;
+    if (options?.initialInputPreparation === RECONCILED_INITIAL_INPUT) {
+      await this.discoverSkillsForCwd(this.getContextWorkingDirectory(ctx));
+      enhancedMessage = message;
+    } else {
+      enhancedMessage = await this.prepareMessageForContext(message, ctx);
+    }
     const loopOptions: LoopOptions = {
       signal: ctx.signal,
       ...options,
