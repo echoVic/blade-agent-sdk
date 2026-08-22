@@ -61,6 +61,7 @@ Runtime:
 
 - `JsonlDurableEventStore`
 - `DurableSessionJournal`
+- `DurableSessionRecoveryCoordinator`
 - `DurableEventType`
 - `DURABLE_EVENT_SCHEMA_VERSION`
 - `DURABLE_EVENT_LOG_FORMAT`
@@ -82,6 +83,8 @@ Types and errors:
 - `DurableCommandCommitStatus`
 - `DurableSessionJournalError`
 - `DurableSessionJournalErrorCode`
+- `DurableSessionRecoveryError`
+- `DurableSessionRecoveryErrorCode`
 - `DurableCommandConflictError`
 - `DurableCommandOutcomeUnknownError`
 - `DurableEventEnvelope`
@@ -117,6 +120,13 @@ Types and errors:
 - `DurableSessionProjectionStatus`
 - `DurableSessionRecoveryAction`
 - `DurableSessionRecoveryPlan`
+- `DurableAcceptedRequestRecovery`
+- `DurableSessionResumeDecision`
+- `DurableToolOutcomeReconciliation`
+- `DurableToolOutcomeReconciliationCommand`
+- `DurableToolStartCommand`
+- `DurablePermissionResolutionCommand`
+- `DurableRecoveryCommitResult`
 - `DurableToolAttemptProjection`
 - `DurableToolAttemptStatus`
 - `DurableTurnProjection`

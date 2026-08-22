@@ -8,9 +8,10 @@ projection.
 ::: warning Integration status
 Session writes durable events only when
 `SessionOptions.durableEventStore` is explicitly set; the existing message JSONL
-format is unchanged. Automatic recovery of an active Request is not enabled.
-`resumeSession()` throws `DurableSessionRecoveryRequiredError` for unfinished
-work instead of replaying a started tool.
+format is unchanged. `resumeSession()` automatically restores a Request that
+was accepted but did not cross the `request_started` boundary. Active Turns,
+pending permissions, and started tools still require explicit recovery or
+reconciliation. A `non_idempotent` tool is never replayed automatically.
 :::
 
 ## Imports
@@ -22,6 +23,7 @@ entry. The Node.js JSONL adapter is available from root and `/local`:
 import {
   CommandId,
   type DurableEventDataMap,
+  DurableSessionRecoveryCoordinator,
   DurableSessionProjector,
   DurableSessionJournal,
   DurableEventType,
@@ -31,6 +33,7 @@ import {
   PermissionRequestId,
   RequestId,
   SessionId,
+  ToolAttemptId,
 } from '@blade-ai/agent-sdk';
 ```
 
@@ -69,7 +72,7 @@ are rejected before append.
 |-------|----------------|-------------|
 | `session_created` | Session | `source?`, `parentSessionId?` |
 | `session_closed` | Session | `reason` |
-| `request_accepted` | `requestId`, `commandId` | `inputId`, `input`, `priority` |
+| `request_accepted` | `requestId`, `commandId` | `inputId`, `input`, `priority`, `maxTurns?`, `model?`, `context?` |
 | `request_started` | `requestId` | Empty object |
 | `request_completed` | `requestId` | `output?`, `usage?` |
 | `request_failed` | `requestId` | `error` |
@@ -267,6 +270,67 @@ The plan also separates `retryableToolAttempts`, `cancelableToolAttempts`,
 `non_idempotent` tools remain unknown and require external reconciliation with
 `tool_completed`, `tool_failed`, or `tool_cancelled`; the projector does not
 allow the Turn to end before then.
+
+## Recovery Coordinator
+
+`DurableSessionRecoveryCoordinator` adds constrained state mutations above the
+projector's recovery classification:
+
+```ts
+const coordinator = await DurableSessionRecoveryCoordinator.open(
+  store,
+  sessionId,
+);
+
+const decision = coordinator.planResume();
+if (decision.action === 'resume_accepted_request') {
+  console.log(decision.request.input);
+}
+
+await coordinator.reconcileToolOutcome({
+  commandId: CommandId('reconcile-deploy-42'),
+  toolAttemptId: ToolAttemptId('attempt-42'),
+  outcome: {
+    status: 'completed',
+    result: { deploymentId: 'dep-42' },
+  },
+});
+```
+
+`reconcileToolOutcome()` accepts only a Tool Attempt still addressable by the
+current projection and inherits the Journal's command idempotency and CAS
+semantics. Callers can explicitly record `completed`, `failed`, or `cancelled`
+and must reuse the same `commandId` when retrying an operation.
+
+Resolve a pending permission with `resolvePermission()`. A `deny` or `cancel`
+decision commits `permission_resolved` and the matching `tool_cancelled` in one
+command/batch, so observers never see a denied permission with a scheduled tool:
+
+```ts
+await coordinator.resolvePermission({
+  commandId: CommandId('deny-deploy-42'),
+  permissionRequestId: PermissionRequestId('permission-42'),
+  decision: 'deny',
+  message: 'Deployment window closed',
+});
+```
+
+After resolving a permission as `allow`, the application must call and await
+`startToolAttempt({ commandId, toolAttemptId, input, sideEffect })` before
+running the tool with exactly that final input. This method commits
+`tool_started` as a separate idempotent command and preserves the
+persist-before-side-effect boundary. A `pure` or `idempotent` tool already in
+`started` state may be replayed and then settled with
+`reconcileToolOutcome()`. A started `non_idempotent` tool must only be
+reconciled after querying the external system and must not be executed again.
+
+`planResume()` returns `resume_accepted_request` only when the accepted Request
+has no `input_applied` or `request_started` boundary and carries a complete
+execution snapshot. Session resumes the same `requestId` using the durable
+input and persisted `maxTurns`, model, and Runtime Context. A legacy Request
+without that snapshot, or a started Request even without an active Turn, returns
+`recovery_required`. This avoids executing under different settings or
+duplicating a model call that may already have completed.
 
 Schema v2 adds the required `sideEffect` field to `tool_scheduled`. Version 1
 logs are not inferred silently and must be migrated before this runtime can

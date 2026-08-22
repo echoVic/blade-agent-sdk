@@ -6,9 +6,9 @@ Session 生命周期投影。
 
 ::: warning 当前集成阶段
 Session 只有在显式设置 `SessionOptions.durableEventStore` 时才写入 durable
-事件；现有消息 JSONL 保持不变。活动 Request 的自动恢复尚未启用，遇到未完成
-工作时 `resumeSession()` 会抛出 `DurableSessionRecoveryRequiredError`，禁止
-自动重放已开始的工具。
+事件；现有消息 JSONL 保持不变。`resumeSession()` 会自动恢复已接受但尚未跨过
+`request_started` 边界的 Request。活动 Turn、待决权限和已开始的工具仍需要
+显式恢复或对账；`non_idempotent` 工具绝不会被自动重放。
 :::
 
 ## 安装与导入
@@ -20,6 +20,7 @@ adapter 从根入口或 `/local` 导入：
 import {
   CommandId,
   type DurableEventDataMap,
+  DurableSessionRecoveryCoordinator,
   DurableSessionProjector,
   DurableSessionJournal,
   DurableEventType,
@@ -29,6 +30,7 @@ import {
   PermissionRequestId,
   RequestId,
   SessionId,
+  ToolAttemptId,
 } from '@blade-ai/agent-sdk';
 ```
 
@@ -66,7 +68,7 @@ interface DurableEventEnvelope<TType extends DurableEventType> {
 |------|-----------|--------------|
 | `session_created` | Session | `source?`、`parentSessionId?` |
 | `session_closed` | Session | `reason` |
-| `request_accepted` | `requestId`、`commandId` | `inputId`、`input`、`priority` |
+| `request_accepted` | `requestId`、`commandId` | `inputId`、`input`、`priority`、`maxTurns?`、`model?`、`context?` |
 | `request_started` | `requestId` | 空对象 |
 | `request_completed` | `requestId` | `output?`、`usage?` |
 | `request_failed` | `requestId` | `error` |
@@ -260,6 +262,64 @@ Recovery plan 还分别返回 `retryableToolAttempts`、`cancelableToolAttempts`
 `non_idempotent` 工具进入 unknown 集合，必须在外部对账后由
 `tool_completed`、`tool_failed` 或 `tool_cancelled` 解析。在此之前投影器不会
 允许 Turn 结束。
+
+## Recovery Coordinator
+
+`DurableSessionRecoveryCoordinator` 在 projector 的恢复分类之上提供受约束的
+状态变更 API：
+
+```ts
+const coordinator = await DurableSessionRecoveryCoordinator.open(
+  store,
+  sessionId,
+);
+
+const decision = coordinator.planResume();
+if (decision.action === 'resume_accepted_request') {
+  console.log(decision.request.input);
+}
+
+await coordinator.reconcileToolOutcome({
+  commandId: CommandId('reconcile-deploy-42'),
+  toolAttemptId: ToolAttemptId('attempt-42'),
+  outcome: {
+    status: 'completed',
+    result: { deploymentId: 'dep-42' },
+  },
+});
+```
+
+`reconcileToolOutcome()` 只允许 projector 当前仍可解析的 Tool Attempt，并复用
+Journal 的 command 幂等和 CAS 语义。`completed`、`failed` 与 `cancelled`
+三种结果都可显式提交；调用方重试时必须复用同一个 `commandId`。
+
+待决权限通过 `resolvePermission()` 处理。`deny` 或 `cancel` 会把
+`permission_resolved` 和对应的 `tool_cancelled` 放在同一 command/batch 中，
+不会暴露“权限已拒绝但工具仍处于 scheduled”的中间状态：
+
+```ts
+await coordinator.resolvePermission({
+  commandId: CommandId('deny-deploy-42'),
+  permissionRequestId: PermissionRequestId('permission-42'),
+  decision: 'deny',
+  message: 'Deployment window closed',
+});
+```
+
+权限恢复为 `allow` 后，应用必须先调用并等待
+`startToolAttempt({ commandId, toolAttemptId, input, sideEffect })`，再使用完全
+相同的最终输入执行工具。该方法把 `tool_started` 作为独立幂等 command 提交，
+从而保持 persist-before-side-effect。已经处于 `started` 的 `pure` /
+`idempotent` 工具可直接安全重放，再通过 `reconcileToolOutcome()` 写入终态；
+已经处于 `started` 的 `non_idempotent` 工具只能查询外部系统后对账，禁止再次
+执行。
+
+`planResume()` 仅将没有 `input_applied` / `request_started` 且具备完整执行快照的
+accepted Request 标记为 `resume_accepted_request`。
+Session 会使用 durable 输入以及持久化的 `maxTurns`、模型和 Runtime Context
+恢复同一个 `requestId`。旧日志中缺少执行快照的 Request，以及已经开始的
+Request，即使暂时没有活动 Turn，也返回 `recovery_required`；这是为了避免
+使用不同配置执行或重复提交一次可能已完成的模型调用。
 
 Schema v2 为 `tool_scheduled` 增加必填 `sideEffect`。v1 日志不会被静默推断，
 需要显式迁移后才能由当前 runtime 恢复。
