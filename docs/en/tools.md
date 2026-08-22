@@ -13,7 +13,7 @@ Every tool executes as `AsyncGenerator<ToolYield, ToolResult>`.
 ## defineTool
 
 ```ts
-import { defineTool, ToolKind } from '@blade-ai/agent-sdk';
+import { defineTool, ToolKind, ToolSideEffect } from '@blade-ai/agent-sdk';
 
 const searchDocs = defineTool<
   { query: string; limit?: number },
@@ -22,6 +22,7 @@ const searchDocs = defineTool<
   name: 'SearchDocs',
   description: 'Search the documentation index',
   kind: ToolKind.ReadOnly,
+  sideEffect: ToolSideEffect.PURE,
   parameters: {
     type: 'object',
     properties: {
@@ -53,13 +54,14 @@ Use `ToolKind.ReadOnly`, `ToolKind.Write`, or `ToolKind.Execute`. TypeScript doe
 ## createTool
 
 ```ts
-import { createTool, ToolKind } from '@blade-ai/agent-sdk';
+import { createTool, ToolKind, ToolSideEffect } from '@blade-ai/agent-sdk';
 import { z } from 'zod';
 
 const deploy = createTool({
   name: 'Deploy',
   displayName: 'Deploy',
   kind: ToolKind.Execute,
+  sideEffect: ToolSideEffect.NON_IDEMPOTENT,
   description: {
     short: 'Deploy an application',
     long: 'Deploy a tested build to staging or production.',
@@ -184,6 +186,7 @@ Effects can update runtime policy, context, messages, or permissions. The Sessio
 ```ts
 const tool = createTool({
   // ...
+  sideEffect: ToolSideEffect.IDEMPOTENT,
   interruptBehavior: 'cancel',
   async *execute(params, context) {
     context.signal?.throwIfAborted();
@@ -202,6 +205,24 @@ Explicit `session.abort()` and `session.close()` are request-level cancellation 
 `defineTool()` / `ToolDefinition` does not expose it. Use `createTool()` with
 `cancel` when a custom Session tool can safely stop for a `now` input.
 
+## Side-effect contract
+
+Every `ToolDefinition`, `ToolConfig`, and complete `Tool` must explicitly
+declare `sideEffect`:
+
+- `pure`: does not mutate external state and can be replayed during recovery.
+- `idempotent`: repeating the same invocation reaches the same intended state
+  and can be replayed during recovery.
+- `non_idempotent`: repeating an invocation may create additional effects, so a
+  started call requires operator or external-system reconciliation.
+
+`ToolKind`, `isReadOnly`, and `sideEffect` are independent dimensions; the SDK
+does not infer one from another. Parameter-dependent tools may narrow the
+contract through `resolveBehavior()`, but their static declaration must be the
+most conservative value. Dynamic MCP tools always use `non_idempotent`; remote
+annotations are hints and are not sufficient evidence for safe automatic
+replay.
+
 ## ToolDefinition
 
 ```ts
@@ -214,6 +235,7 @@ interface ToolDefinition<
   displayName?: string;
   description: string | ToolDescription;
   parameters: JSONSchema7;
+  sideEffect: ToolSideEffect;
   kind?: ToolKind;
   category?: string;
   tags?: string[];
@@ -259,6 +281,19 @@ interface ToolExecutionLifecycle {
   onToolSettled?(event: ToolSettledLifecycle): Promise<void>;
 }
 
+interface ToolScheduledLifecycle {
+  toolCallId: ToolUseId;
+  toolName: string;
+  input: JsonObject;
+  sideEffect: ToolSideEffect;
+  interruptBehavior: 'block' | 'cancel';
+}
+
+interface ToolExecutionStartedLifecycle {
+  input: JsonObject;
+  sideEffect: ToolSideEffect;
+}
+
 interface ToolInvocationLifecycle {
   onPermissionRequested?(
     details: ConfirmationDetails,
@@ -267,7 +302,9 @@ interface ToolInvocationLifecycle {
   onPermissionResolved?(
     resolution: ToolPermissionResolution,
   ): Promise<void>;
-  onExecutionStarted?(): Promise<void>;
+  onExecutionStarted?(
+    event: ToolExecutionStartedLifecycle,
+  ): Promise<void>;
 }
 ```
 
@@ -276,7 +313,9 @@ These callbacks are not best-effort telemetry. Their ordering is fixed:
 1. `onToolScheduled` completes before `tool_start` is published.
 2. `onPermissionRequested` completes before the interactive confirmation handler runs.
 3. `onPermissionResolved` completes before the permission decision is accepted.
-4. `onExecutionStarted` completes before the tool generator is invoked, so a durable write failure blocks the side effect.
+4. `onExecutionStarted` persists the final post-permission input and resolved
+   side-effect contract before invoking the tool generator, so a durable write
+   failure blocks the side effect.
 5. `onToolSettled` completes before `tool_result` is published.
 
 Invalid JSON arguments and synthetic interruption results for calls that were
@@ -300,15 +339,32 @@ behavior is unchanged.
 | Todos | `TodoWrite` |
 | MCP resources | `ListMcpResources`, `ReadMcpResource` |
 
-Current `ToolKind` values:
+Built-in contracts:
 
-| Tool | Kind |
-|------|------|
-| `Read`, `Glob`, `Grep`, `WebFetch`, `WebSearch`, `Task`, `TaskOutput` | `ReadOnly` |
-| `TaskCreate`, `TaskGet`, `TaskUpdate`, `TaskList`, `TaskStop` | `Write` |
-| `Bash`, `KillShell` | `Execute` |
+| Tool | Kind | Side effect |
+|------|------|-------------|
+| `Read` | `ReadOnly` | `pure` |
+| `Edit` | `Write` | `non_idempotent` |
+| `Write` | `Write` | `idempotent` |
+| `NotebookEdit` | `Write` | `non_idempotent`; replace narrows to `idempotent` |
+| `Glob`, `Grep` | `ReadOnly` | `pure` |
+| `Bash` | `Execute` | `non_idempotent`; read-only foreground commands narrow to `pure` |
+| `KillShell` | `Execute` | `idempotent` |
+| `WebFetch` | `Execute` | `non_idempotent`; GET/HEAD narrow to `pure`, PUT/DELETE to `idempotent` |
+| `WebSearch` | `ReadOnly` | `pure` |
+| `Task` | `ReadOnly` | `non_idempotent` |
+| `TaskOutput` | `ReadOnly` | `non_idempotent` |
+| `TaskCreate` | `Write` | `non_idempotent` |
+| `TaskGet`, `TaskList` | `Write` | `pure` |
+| `TaskUpdate`, `TaskStop` | `Write` | `idempotent` |
+| `TodoWrite` | `ReadOnly` | `idempotent` |
+| `EnterPlanMode`, `ExitPlanMode`, `AskUserQuestion` | `ReadOnly` | `non_idempotent` |
+| `DiscoverTools` | `ReadOnly` | `idempotent` |
+| `Skill` | `Execute` | `non_idempotent` |
+| `ListMcpResources`, `ReadMcpResource` | `ReadOnly` | `pure` |
 
-See source metadata for the remaining tool kinds. Permission decisions use the declared kind, so consumers should not infer it from a tool name.
+Permission decisions use the resolved behavior, so consumers should not infer
+kind or side effects from a tool name.
 
 ## Select tools
 

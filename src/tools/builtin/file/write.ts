@@ -25,6 +25,7 @@ export const writeTool = createTool({
   name: 'Write',
   displayName: 'File Write',
   kind: ToolKind.Write,
+  sideEffect: 'idempotent',
   strict: true, // 启用 OpenAI Structured Outputs
   isConcurrencySafe: false, // 文件写入不支持并发
 

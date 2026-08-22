@@ -99,7 +99,9 @@ function turnPrefix(): DurableEventDraft[] {
   ];
 }
 
-function toolScheduled(): DurableEventDraft {
+function toolScheduled(
+  sideEffect: 'pure' | 'idempotent' | 'non_idempotent' = 'non_idempotent',
+): DurableEventDraft {
   return {
     type: DurableEventType.TOOL_SCHEDULED,
     requestId,
@@ -109,6 +111,7 @@ function toolScheduled(): DurableEventDraft {
       toolCallId,
       toolName: 'Write',
       input: { file_path: '/tmp/file' },
+      sideEffect,
       interruptBehavior: 'block',
     },
   };
@@ -152,7 +155,12 @@ describe('DurableSessionProjector', () => {
         requestId,
         turnId,
         toolAttemptId,
-        data: { toolCallId, toolName: 'Write' },
+        data: {
+          toolCallId,
+          toolName: 'Write',
+          input: { file_path: '/tmp/file' },
+          sideEffect: 'non_idempotent',
+        },
       },
       {
         type: DurableEventType.TOOL_COMPLETED,
@@ -308,6 +316,7 @@ describe('DurableSessionProjector', () => {
     expect(recovery.pendingPermissions).toEqual([
       expect.objectContaining({
         permissionRequestId,
+        input: { file_path: '/tmp/file' },
         status: 'pending',
       }),
     ]);
@@ -352,7 +361,12 @@ describe('DurableSessionProjector', () => {
         requestId,
         turnId,
         toolAttemptId,
-        data: { toolCallId, toolName: 'Write' },
+        data: {
+          toolCallId,
+          toolName: 'Write',
+          input: { file_path: '/tmp/file' },
+          sideEffect: 'non_idempotent',
+        },
       },
     ] satisfies DurableEventDraft[];
 
@@ -399,6 +413,40 @@ describe('DurableSessionProjector', () => {
       unknownToolAttempts: [],
     });
   });
+
+  it.each(['pure', 'idempotent'] as const)(
+    'classifies a started %s tool as replayable',
+    (sideEffect) => {
+      const projection = project([
+        ...turnPrefix(),
+        toolScheduled('non_idempotent'),
+        {
+          type: DurableEventType.TOOL_STARTED,
+          requestId,
+          turnId,
+          toolAttemptId,
+          data: {
+            toolCallId,
+            toolName: 'Write',
+            input: { file_path: '/tmp/final-file' },
+            sideEffect,
+          },
+        },
+      ]);
+
+      expect(planDurableSessionRecovery(projection)).toMatchObject({
+        action: 'resume_turn',
+        retryableToolAttempts: [
+          expect.objectContaining({
+            status: 'started',
+            input: { file_path: '/tmp/final-file' },
+            sideEffect,
+          }),
+        ],
+        unknownToolAttempts: [],
+      });
+    },
+  );
 
   it('projects every non-success terminal lifecycle variant', () => {
     const failedRequest = project([
@@ -533,7 +581,12 @@ describe('DurableSessionProjector', () => {
           requestId,
           turnId,
           toolAttemptId,
-          data: { toolCallId, toolName: 'Write' },
+          data: {
+            toolCallId,
+            toolName: 'Write',
+            input: {},
+            sideEffect: 'non_idempotent',
+          },
         },
       ],
       message: /No tool attempt matches/,
@@ -549,7 +602,12 @@ describe('DurableSessionProjector', () => {
           requestId,
           turnId,
           toolAttemptId,
-          data: { toolCallId, toolName: 'Write' },
+          data: {
+            toolCallId,
+            toolName: 'Write',
+            input: { file_path: '/tmp/file' },
+            sideEffect: 'non_idempotent',
+          },
         },
       ],
       message: /unresolved permission/,
@@ -604,6 +662,8 @@ describe('DurableSessionProjector', () => {
           data: {
             toolCallId: ToolUseId('different-call'),
             toolName: 'Write',
+            input: { file_path: '/tmp/file' },
+            sideEffect: 'non_idempotent',
           },
         },
       ],
@@ -753,7 +813,12 @@ describe('DurableSessionProjector', () => {
           requestId,
           turnId,
           toolAttemptId,
-          data: { toolCallId, toolName: 'Write' },
+          data: {
+            toolCallId,
+            toolName: 'Write',
+            input: { file_path: '/tmp/file' },
+            sideEffect: 'non_idempotent',
+          },
         },
         {
           type: DurableEventType.TOOL_COMPLETED,
@@ -771,6 +836,7 @@ describe('DurableSessionProjector', () => {
             toolCallId: ToolUseId('call-2'),
             toolName: 'Read',
             input: { file_path: '/tmp/file' },
+            sideEffect: 'pure',
             interruptBehavior: 'cancel',
           },
         },

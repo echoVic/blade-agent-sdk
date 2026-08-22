@@ -13,6 +13,7 @@ export const notebookEditTool = createTool({
   name: 'NotebookEdit',
   displayName: 'Notebook Edit',
   kind: ToolKind.Write,
+  sideEffect: 'non_idempotent',
 
   schema: lazySchema(() => z.object({
     notebook_path: z
@@ -41,6 +42,14 @@ export const notebookEditTool = createTool({
         'The type of edit to make (replace, insert, delete). Defaults to replace.'
       ),
   })),
+
+  resolveBehavior: ({ edit_mode }) => ({
+    kind: ToolKind.Write,
+    sideEffect: edit_mode === 'replace' ? 'idempotent' : 'non_idempotent',
+    isReadOnly: false,
+    isConcurrencySafe: false,
+    isDestructive: edit_mode === 'delete',
+  }),
 
   // 工具描述（对齐 Claude Code 官方）
   description: {

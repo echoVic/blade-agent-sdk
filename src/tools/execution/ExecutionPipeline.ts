@@ -550,7 +550,10 @@ export class ExecutionPipeline {
       return;
     }
 
-    await state.context.toolInvocationLifecycle?.onExecutionStarted?.();
+    await state.context.toolInvocationLifecycle?.onExecutionStarted?.({
+      input: structuredClone(state.params),
+      sideEffect: state.resolvedBehavior?.sideEffect ?? state.tool.sideEffect,
+    });
     const timeoutController = this.toolTimeoutMs ? new AbortController() : undefined;
     const executionSignal = timeoutController
       ? state.context.signal
@@ -773,6 +776,7 @@ export class ExecutionPipeline {
       affectedPaths,
       toolKind,
       toolMeta: {
+        sideEffect: resolvedBehavior?.sideEffect ?? state.tool.sideEffect,
         isReadOnly: resolvedBehavior?.isReadOnly ?? isReadOnlyKind(toolKind),
         isConcurrencySafe: resolvedBehavior?.isConcurrencySafe ?? isReadOnlyKind(toolKind),
         isDestructive: resolvedBehavior?.isDestructive ?? false,
@@ -802,6 +806,7 @@ export class ExecutionPipeline {
           if (request) {
             request.input = state.params;
             request.toolMeta = {
+              sideEffect: state.resolvedBehavior?.sideEffect ?? state.tool.sideEffect,
               isReadOnly:
                 state.resolvedBehavior?.isReadOnly
                 ?? isReadOnlyKind(state.resolvedBehavior?.kind ?? state.tool.kind),

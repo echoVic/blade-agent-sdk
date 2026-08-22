@@ -1,3 +1,4 @@
+import type { ToolSideEffect } from '../../tools/types/ToolKind.js';
 import type {
   CommandId,
   EventId,
@@ -12,7 +13,7 @@ import type {
 } from '../../types/branded.js';
 import type { JsonValue } from '../../types/common.js';
 
-export const DURABLE_EVENT_SCHEMA_VERSION = 1 as const;
+export const DURABLE_EVENT_SCHEMA_VERSION = 2 as const;
 
 export const DurableEventType = {
   SESSION_CREATED: 'session_created',
@@ -113,11 +114,14 @@ export interface DurableEventDataMap {
     toolCallId: ToolUseId;
     toolName: string;
     input: JsonValue;
+    sideEffect: ToolSideEffect;
     interruptBehavior: DurableToolInterruptBehavior;
   };
   [DurableEventType.TOOL_STARTED]: {
     toolCallId: ToolUseId;
     toolName: string;
+    input: JsonValue;
+    sideEffect: ToolSideEffect;
   };
   [DurableEventType.TOOL_COMPLETED]: {
     toolCallId: ToolUseId;

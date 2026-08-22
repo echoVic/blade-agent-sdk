@@ -16,6 +16,7 @@ import type {
   ToolEffect,
   ToolEffectYield,
   ToolExecution,
+  ToolExecutionStartedLifecycle,
   ToolExecutionLifecycle,
   ToolExecutionUpdate,
   ToolInvocationLifecycle,
@@ -35,6 +36,7 @@ import {
   createMemoryWriteTool,
   DurableCommandConflictError,
   DurableCommandOutcomeUnknownError,
+  DURABLE_EVENT_SCHEMA_VERSION,
   DurableEventType,
   DurableSessionJournal,
   DurableSessionProjector,
@@ -56,6 +58,7 @@ import {
   ToolAttemptId,
   ToolCatalog,
   ToolErrorType,
+  ToolSideEffect,
   TurnId,
 } from '../index.js';
 
@@ -75,6 +78,8 @@ describe('root exports', () => {
     expect(RequestId('request-1')).toBe('request-1');
     expect(new SessionInputError('TEST', 'message')).toBeInstanceOf(Error);
     expect(ToolErrorType.INTERRUPTED).toBe('interrupted');
+    expect(ToolSideEffect.NON_IDEMPOTENT).toBe('non_idempotent');
+    expect(DURABLE_EVENT_SCHEMA_VERSION).toBe(2);
     expect(DurableEventType.REQUEST_ACCEPTED).toBe('request_accepted');
     expect(JsonlDurableEventStore).toBeDefined();
     expect(CommandId('command-1')).toBe('command-1');
@@ -103,11 +108,17 @@ describe('root exports', () => {
     expectTypeOf<ToolEffectYield['kind']>().toEqualTypeOf<'effect'>();
     expectTypeOf<ToolExecution>().toMatchTypeOf<AsyncGenerator<ToolYield, unknown, void>>();
     expectTypeOf<NonNullable<ToolExecutionLifecycle['onToolScheduled']>>().toBeFunction();
+    expectTypeOf<ToolExecutionStartedLifecycle['sideEffect']>().toEqualTypeOf<
+      'pure' | 'idempotent' | 'non_idempotent'
+    >();
     expectTypeOf<NonNullable<ToolInvocationLifecycle['onExecutionStarted']>>().toBeFunction();
     expectTypeOf<ToolPermissionResolution['decision']>().toEqualTypeOf<
       'allow' | 'deny' | 'cancel'
     >();
     expectTypeOf<ToolScheduledLifecycle['interruptBehavior']>().toEqualTypeOf<'block' | 'cancel'>();
+    expectTypeOf<ToolScheduledLifecycle['sideEffect']>().toEqualTypeOf<
+      'pure' | 'idempotent' | 'non_idempotent'
+    >();
     expectTypeOf<ToolSettledLifecycle['result']>().toEqualTypeOf<ToolResult>();
     expectTypeOf<InputSubmission['status']>().toEqualTypeOf<'started' | 'steered' | 'queued'>();
     expectTypeOf<PendingSessionInput['priority']>().toEqualTypeOf<'now' | 'next' | 'later'>();

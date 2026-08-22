@@ -1,13 +1,18 @@
 import type { z } from 'zod';
 import type { JsonObject, JsonValue } from '../../types/common.js';
 import type {
-  ExecutionContext,
-  Tool,
-  ToolConfig,
-  ToolDefinition,
-  ToolInvocation,
+    ExecutionContext,
+    Tool,
+    ToolConfig,
+    ToolDefinition,
+    ToolInvocation,
 } from '../types/index.js';
-import { createToolBehavior, isReadOnlyKind, ToolKind } from '../types/ToolKind.js';
+import {
+    createToolBehavior,
+    isReadOnlyKind,
+    isToolSideEffect,
+    ToolKind,
+} from '../types/ToolKind.js';
 import { parseWithZod } from '../validation/errorFormatter.js';
 import { resolveToolSchema } from '../validation/lazySchema.js';
 import { zodToFunctionSchema } from '../validation/zodToJson.js';
@@ -34,7 +39,7 @@ export function createTool<TSchema extends z.ZodSchema>(
   const resolveDescription = (params?: TParams) =>
     config.describe?.(params) ?? config.description;
 
-  const staticBehavior = createToolBehavior(config.kind, {
+  const staticBehavior = createToolBehavior(config.kind, config.sideEffect, {
     isReadOnly: config.isReadOnly,
     isConcurrencySafe: config.isConcurrencySafe,
     isDestructive: config.isDestructive,
@@ -62,6 +67,7 @@ export function createTool<TSchema extends z.ZodSchema>(
     aliases: config.aliases,
     displayName: config.displayName,
     kind: config.kind,
+    sideEffect: staticBehavior.sideEffect,
 
     // 🆕 isReadOnly 字段
     // 优先使用 config 中的显式设置，否则根据 kind 推断
@@ -121,6 +127,7 @@ export function createTool<TSchema extends z.ZodSchema>(
         name: config.name,
         displayName: config.displayName,
         kind: config.kind,
+        sideEffect: staticBehavior.sideEffect,
         version: config.version || '1.0.0',
         category: config.category,
         tags: config.tags || [],
@@ -222,15 +229,20 @@ export function toolFromDefinition<TParams = JsonObject>(
   const description = typeof definition.description === 'string'
     ? { short: definition.description }
     : definition.description;
-  const staticBehavior = createToolBehavior(definition.kind || ToolKind.Execute, {
-    isReadOnly: definition.kind ? isReadOnlyKind(definition.kind) : false,
-  });
+  const staticBehavior = createToolBehavior(
+    definition.kind || ToolKind.Execute,
+    definition.sideEffect,
+    {
+      isReadOnly: definition.kind ? isReadOnlyKind(definition.kind) : false,
+    },
+  );
 
   return {
     name: definition.name,
     aliases: definition.aliases,
     displayName: definition.displayName || definition.name,
     kind: definition.kind || ToolKind.Execute,
+    sideEffect: staticBehavior.sideEffect,
     isReadOnly: staticBehavior.isReadOnly,
     isConcurrencySafe: staticBehavior.isConcurrencySafe,
     isDestructive: staticBehavior.isDestructive,
@@ -264,6 +276,7 @@ export function toolFromDefinition<TParams = JsonObject>(
         name: definition.name,
         displayName: definition.displayName || definition.name,
         kind: definition.kind || ToolKind.Execute,
+        sideEffect: staticBehavior.sideEffect,
         version: '1.0.0',
         category: definition.category,
         tags: definition.tags || [],
@@ -363,5 +376,10 @@ function isPathLikeKey(key: string): boolean {
 export function defineTool<TParams = JsonObject, TData extends JsonValue = JsonValue>(
   definition: ToolDefinition<TParams, TData>
 ): ToolDefinition<TParams, TData> {
+  if (!isToolSideEffect(definition.sideEffect)) {
+    throw new TypeError(
+      'Tool sideEffect must be pure, idempotent, or non_idempotent',
+    );
+  }
   return definition;
 }

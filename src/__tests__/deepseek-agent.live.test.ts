@@ -118,6 +118,7 @@ describeDeepSeek('1. Thinking output 在 Agent 中的透传', () => {
 describeDeepSeek('2. Thinking + Tool Use 组合场景', () => {
   const mathTool = defineTool({
     name: 'calculate',
+    sideEffect: 'pure',
     description: 'Evaluate a math expression. Returns numeric result.',
     parameters: {
       type: 'object',
@@ -159,6 +160,7 @@ describeDeepSeek('2. Thinking + Tool Use 组合场景', () => {
   it('多轮工具调用循环应稳定完成', async () => {
     const dbTool = defineTool({
       name: 'query_db',
+      sideEffect: 'pure',
       description: 'Query a database table. Returns matching records.',
       parameters: {
         type: 'object',
@@ -208,6 +210,7 @@ describeDeepSeek('2. Thinking + Tool Use 组合场景', () => {
   it('工具返回错误时模型应优雅处理', async () => {
     const failTool = defineTool({
       name: 'unstable_api',
+      sideEffect: 'pure',
       description: 'An API that sometimes fails. Call it to get data.',
       parameters: {
         type: 'object',
@@ -302,6 +305,7 @@ describeDeepSeek('4. 复杂工具 Schema 适配', () => {
   it('复杂嵌套参数应正确解析', async () => {
     const createTaskTool = defineTool({
       name: 'create_task',
+      sideEffect: 'non_idempotent',
       description: 'Create a project task with details.',
       parameters: {
         type: 'object',
@@ -351,6 +355,7 @@ describeDeepSeek('4. 复杂工具 Schema 适配', () => {
   it('enum 参数应精确匹配约束值', async () => {
     const statusTool = defineTool({
       name: 'set_status',
+      sideEffect: 'idempotent',
       description: 'Set item status. Only accepts: draft, review, approved, rejected.',
       parameters: {
         type: 'object',

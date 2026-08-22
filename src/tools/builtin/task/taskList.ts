@@ -10,6 +10,7 @@ export function createTaskListTool({ sessionId }: { sessionId: SessionId }) {
     name: 'TaskList',
     displayName: 'List Tasks',
     kind: ToolKind.Write,
+    sideEffect: 'pure',
     description: {
       short: 'List all tasks in the task list',
       long: `Use this tool to see all tasks and their current status.

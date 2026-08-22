@@ -235,6 +235,7 @@ describeIntegration('4. 自定义工具调用', () => {
   it('模型应调用自定义工具并使用结果回复', async () => {
     const weatherTool = defineTool({
       name: 'get_weather',
+      sideEffect: 'pure',
       description: 'Get current weather for a city. Returns temperature in Celsius.',
       parameters: {
         type: 'object',
@@ -289,6 +290,7 @@ describeIntegration('4. 自定义工具调用', () => {
   it('多工具场景：模型可在单次对话中多次调用工具', async () => {
     const calcTool = defineTool({
       name: 'calculator',
+      sideEffect: 'pure',
       description: 'Simple calculator. Supports add, subtract, multiply, divide.',
       parameters: {
         type: 'object',
@@ -507,6 +509,7 @@ describeIntegration('6.2 Hooks / Permissions / MCP 真实链路', () => {
   it('hooks 应能修改工具输入输出并影响最终回复', async () => {
     const echoTool = defineTool({
       name: 'echo_hook',
+      sideEffect: 'pure',
       description: 'Echo the provided value for integration testing.',
       parameters: {
         type: 'object',
@@ -564,6 +567,7 @@ describeIntegration('6.2 Hooks / Permissions / MCP 真实链路', () => {
   it('canUseTool deny 应阻止工具执行并返回受控错误结果', async () => {
     const restrictedTool = defineTool({
       name: 'restricted_action',
+      sideEffect: 'non_idempotent',
       description: 'A restricted tool that should be denied by permissions.',
       parameters: {
         type: 'object',

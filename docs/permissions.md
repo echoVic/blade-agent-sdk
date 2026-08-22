@@ -41,6 +41,7 @@ import type { CanUseTool } from '@blade-ai/agent-sdk';
 
 const canUseTool: CanUseTool = async (toolName, input, options) => {
   // options.toolKind: 'readonly' | 'write' | 'execute'
+  // options.sideEffect: 'pure' | 'idempotent' | 'non_idempotent'
   // options.affectedPaths: string[]
   // options.signal: AbortSignal
 
@@ -85,6 +86,7 @@ type PermissionResult =
 interface CanUseToolOptions {
   signal: AbortSignal;
   toolKind: 'readonly' | 'write' | 'execute';
+  sideEffect: 'pure' | 'idempotent' | 'non_idempotent';
   affectedPaths: string[];
 }
 ```

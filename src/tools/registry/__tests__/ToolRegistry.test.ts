@@ -8,6 +8,7 @@ function createTool(
     isReadOnly?: boolean;
     tags?: string[];
     aliases?: string[];
+    sideEffect?: 'pure' | 'idempotent' | 'non_idempotent';
     displayName?: string;
     description?: string | { short: string; long?: string };
     category?: string;
@@ -21,6 +22,7 @@ function createTool(
     displayName: options.displayName ?? name,
     description,
     kind: options.isReadOnly ? 'readonly' : 'execute',
+    sideEffect: options.sideEffect ?? (options.isReadOnly ? 'pure' : 'non_idempotent'),
     isReadOnly: options.isReadOnly ?? false,
     tags: options.tags ?? [],
     category: options.category,
@@ -38,6 +40,23 @@ function createTool(
 }
 
 describe('ToolRegistry ordering', () => {
+  it('rejects tools without a valid side-effect contract', () => {
+    const registry = new ToolRegistry();
+
+    expect(() =>
+      registry.register({
+        ...createTool('MissingContract'),
+        sideEffect: undefined,
+      } as never),
+    ).toThrow(/must declare sideEffect/);
+    expect(() =>
+      registry.registerMcpTool({
+        ...createTool('InvalidContract'),
+        sideEffect: 'unknown',
+      } as never),
+    ).toThrow(/must declare sideEffect/);
+  });
+
   it('is a plain registry instead of exposing EventEmitter APIs', () => {
     const registry = new ToolRegistry();
 
@@ -82,6 +101,7 @@ describe('ToolRegistry ordering', () => {
       isReadOnly: false,
       getBehaviorHint: () => ({
         kind: 'readonly',
+        sideEffect: 'pure',
         isReadOnly: true,
         isConcurrencySafe: true,
         isDestructive: false,
@@ -92,6 +112,7 @@ describe('ToolRegistry ordering', () => {
       ...createTool('HintWrite', { isReadOnly: true }),
       getBehaviorHint: () => ({
         kind: 'execute',
+        sideEffect: 'non_idempotent',
         isReadOnly: false,
         isConcurrencySafe: true,
         isDestructive: false,

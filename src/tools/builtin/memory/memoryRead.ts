@@ -38,6 +38,7 @@ export function createMemoryReadTool({ manager }: { manager: MemoryManager }) {
     name: 'MemoryRead',
     displayName: 'Read Memory',
     kind: ToolKind.ReadOnly,
+    sideEffect: 'pure',
     description: {
       short: 'Read memories from the configured memory store',
       long: `Read memories from the configured memory store supplied by the SDK consumer.

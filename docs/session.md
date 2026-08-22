@@ -973,6 +973,7 @@ interface ToolDefinition<TParams = JsonObject> {
   name: string;
   description: string | ToolDescription;
   parameters: JSONSchema7;          // JSON Schema
+  sideEffect: ToolSideEffect;
   execute: (params: TParams, context: ExecutionContext) => ToolExecution;
   kind?: ToolKind;
 }
@@ -981,7 +982,7 @@ interface ToolDefinition<TParams = JsonObject> {
 ### 自定义工具示例
 
 ```ts
-import { createSession, ToolKind } from '@blade-ai/agent-sdk';
+import { createSession, ToolKind, ToolSideEffect } from '@blade-ai/agent-sdk';
 import type { ToolDefinition } from '@blade-ai/agent-sdk';
 
 const weatherTool: ToolDefinition = {
@@ -996,6 +997,7 @@ const weatherTool: ToolDefinition = {
     required: ['city'],
   },
   kind: ToolKind.ReadOnly,
+  sideEffect: ToolSideEffect.PURE,
   async *execute(params, context) {
     const { city, unit = 'celsius' } = params as { city: string; unit?: string };
     yield {
@@ -1023,13 +1025,14 @@ const session = await createSession({
 ### 使用 createTool + Zod Schema
 
 ```ts
-import { createSession, createTool, ToolKind } from '@blade-ai/agent-sdk';
+import { createSession, createTool, ToolKind, ToolSideEffect } from '@blade-ai/agent-sdk';
 import { z } from 'zod';
 
 const dbQueryTool = createTool({
   name: 'DatabaseQuery',
   displayName: 'Database Query',
   kind: ToolKind.ReadOnly,
+  sideEffect: ToolSideEffect.PURE,
   schema: z.object({
     query: z.string().describe('SQL 查询语句'),
     database: z.string().optional().describe('数据库名称'),

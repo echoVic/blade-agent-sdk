@@ -9,6 +9,7 @@ export const discoverToolsTool = createTool({
   name: 'DiscoverTools',
   displayName: 'Discover Tools',
   kind: ToolKind.ReadOnly,
+  sideEffect: 'idempotent',
   description: {
     short: 'Search the hidden tool catalog and load matching tools into this conversation',
     long: `Use this when you suspect a specialized tool exists but it is not currently exposed in the active function list.

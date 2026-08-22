@@ -145,15 +145,21 @@ Types:
 `FunctionDeclaration`, `Tool`, `ToolBehavior`, `ToolConfig`, `ToolDescription`,
 `ToolDescriptionResolver`, `ToolDisplayContent`, `ToolEffect`,
 `ToolEffectYield`, `ToolError`, `ToolExecution`, `ToolExecutionLifecycle`,
-`ToolInvocationLifecycle`, `ToolScheduledLifecycle`, `ToolSettledLifecycle`,
+`ToolExecutionStartedLifecycle`, `ToolInvocationLifecycle`,
+`ToolScheduledLifecycle`, `ToolSettledLifecycle`,
 `ToolPermissionResolution`, `ToolExposureConfig`, `ToolExposureMode`,
-`ToolMessage`, `ToolModelContent`, `ToolProgress`, `ToolSchema`,
+`ToolMessage`, `ToolModelContent`, `ToolProgress`, `ToolSchema`, `ToolSideEffect`,
 `ToolExecutionUpdate`, and `ToolYield`.
 
 Constants:
 
 - `ToolKind`: `ReadOnly`, `Write`, and `Execute`
+- `ToolSideEffect`: `PURE`, `IDEMPOTENT`, and `NON_IDEMPOTENT`
 - `ToolErrorType`: validation, permission, execution, interruption, timeout, and network errors
+
+Every `ToolDefinition` and `ToolConfig` requires a `sideEffect` declaration.
+The resolved value determines whether a started tool can be replayed during
+durable recovery.
 
 ## Tool catalog
 

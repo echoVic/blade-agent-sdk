@@ -97,6 +97,7 @@ const validDrafts: readonly DurableEventDraft[] = [
       toolCallId,
       toolName: 'Write',
       input: { file_path: '/tmp/file' },
+      sideEffect: 'non_idempotent',
       interruptBehavior: 'block',
     },
   },
@@ -105,7 +106,12 @@ const validDrafts: readonly DurableEventDraft[] = [
     requestId,
     turnId,
     toolAttemptId,
-    data: { toolCallId, toolName: 'Write' },
+    data: {
+      toolCallId,
+      toolName: 'Write',
+      input: { file_path: '/tmp/file' },
+      sideEffect: 'non_idempotent',
+    },
   },
   {
     type: DurableEventType.TOOL_COMPLETED,
@@ -215,7 +221,12 @@ describe('durable event schemas', () => {
         type: DurableEventType.TOOL_STARTED,
         requestId,
         turnId,
-        data: { toolCallId, toolName: 'Write' },
+        data: {
+          toolCallId,
+          toolName: 'Write',
+          input: { file_path: '/tmp/file' },
+          sideEffect: 'non_idempotent',
+        },
       }),
     ).toThrow(/requires toolAttemptId/);
   });
@@ -246,6 +257,22 @@ describe('durable event schemas', () => {
       parseDurableEventDraft({
         type: 'future_event',
         data: {},
+      }),
+    ).toThrow();
+
+    expect(() =>
+      parseDurableEventDraft({
+        type: DurableEventType.TOOL_SCHEDULED,
+        requestId,
+        turnId,
+        toolAttemptId,
+        data: {
+          toolCallId,
+          toolName: 'Write',
+          input: {},
+          sideEffect: 'unknown',
+          interruptBehavior: 'block',
+        },
       }),
     ).toThrow();
 
@@ -281,5 +308,19 @@ describe('durable event schemas', () => {
       requestId: 'request-1',
       commandId: 'command-1',
     });
+  });
+
+  it('rejects pre-side-effect-contract schema versions', () => {
+    expect(() =>
+      parseDurableEventEnvelope({
+        ...validDrafts[0],
+        schemaVersion: 1,
+        eventId: EventId('event-v1'),
+        sequence: 1,
+        sessionId: 'session-1',
+        recordedAt: '2026-08-22T12:00:00.000Z',
+        occurredAt: '2026-08-22T12:00:00.000Z',
+      }),
+    ).toThrow();
   });
 });

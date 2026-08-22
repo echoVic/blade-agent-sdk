@@ -53,6 +53,7 @@ export const globTool = createTool({
   name: 'Glob',
   displayName: 'File Pattern Match',
   kind: ToolKind.ReadOnly,
+  sideEffect: 'pure',
   interruptBehavior: 'cancel',
 
   // Zod Schema 定义

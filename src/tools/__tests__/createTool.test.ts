@@ -1,6 +1,6 @@
 import { describe, expect, expectTypeOf, it } from 'vitest';
 import { z } from 'zod';
-import { createTool, toolFromDefinition } from '../core/createTool.js';
+import { createTool, defineTool, toolFromDefinition } from '../core/createTool.js';
 import type { ReadMetadata } from '../types/ToolMetadata.js';
 import {
   collectToolExecution,
@@ -39,6 +39,7 @@ describe('createTool', () => {
     name: 'Echo',
     displayName: 'Echo Tool',
     kind: ToolKind.ReadOnly,
+    sideEffect: 'pure',
     description: {
       short: 'Echoes a message',
       long: 'A simple tool that echoes back the provided message',
@@ -59,6 +60,27 @@ describe('createTool', () => {
   });
 
   describe('tool properties', () => {
+    it('rejects a missing side-effect contract at runtime', () => {
+      expect(() =>
+        createTool({
+          name: 'MissingSideEffect',
+          displayName: 'Missing Side Effect',
+          kind: ToolKind.ReadOnly,
+          description: { short: 'Invalid tool' },
+          schema: z.object({}),
+          execute: () => completeToolExecution({ status: 'success', model: '' }),
+        } as never),
+      ).toThrow(/sideEffect must be/);
+      expect(() =>
+        defineTool({
+          name: 'MissingDefinitionSideEffect',
+          description: 'Invalid definition',
+          parameters: { type: 'object' },
+          execute: () => completeToolExecution({ status: 'success', model: '' }),
+        } as never),
+      ).toThrow(/sideEffect must be/);
+    });
+
     it('should have correct name', () => {
       expect(echoTool.name).toBe('Echo');
     });
@@ -69,6 +91,10 @@ describe('createTool', () => {
 
     it('should have correct kind', () => {
       expect(echoTool.kind).toBe(ToolKind.ReadOnly);
+    });
+
+    it('should expose the declared side-effect contract', () => {
+      expect(echoTool.sideEffect).toBe('pure');
     });
 
     it('should be readonly for readonly kind', () => {
@@ -94,6 +120,7 @@ describe('createTool', () => {
     it('should resolve default behavior from static config', () => {
       expect(echoTool.resolveBehavior?.({ message: 'Hello' })).toEqual({
         kind: ToolKind.ReadOnly,
+        sideEffect: 'pure',
         isReadOnly: true,
         isConcurrencySafe: true,
         isDestructive: false,
@@ -142,6 +169,7 @@ describe('createTool', () => {
         name: 'LazyTool',
         displayName: 'Lazy Tool',
         kind: ToolKind.ReadOnly,
+        sideEffect: 'pure',
         description: { short: 'Lazy tool' },
         schema: lazySchema(() => {
           schemaInitCount += 1;
@@ -169,6 +197,7 @@ describe('createTool', () => {
         name: 'DescribeTool',
         displayName: 'Describe Tool',
         kind: ToolKind.Execute,
+        sideEffect: 'non_idempotent',
         description: { short: 'General tool description' },
         describe: (params) => ({
           short: params?.target
@@ -202,6 +231,7 @@ describe('createTool', () => {
       expect(metadata.name).toBe('Echo');
       expect(metadata.displayName).toBe('Echo Tool');
       expect(metadata.kind).toBe(ToolKind.ReadOnly);
+      expect(metadata.sideEffect).toBe('pure');
       expect(metadata.version).toBe('1.0.0');
     });
 
@@ -222,6 +252,7 @@ describe('createTool', () => {
         name: 'PathTool',
         displayName: 'Path Tool',
         kind: ToolKind.Write,
+        sideEffect: 'idempotent',
         description: { short: 'Path-aware tool' },
         schema: z.object({
           file_path: z.string(),
@@ -286,6 +317,7 @@ describe('createTool', () => {
         name: 'GuardedTool',
         displayName: 'Guarded Tool',
         kind: ToolKind.ReadOnly,
+        sideEffect: 'pure',
         description: { short: 'Tool with semantic validation' },
         schema: z.object({
           value: z.string(),
@@ -317,6 +349,7 @@ describe('createTool', () => {
         name: 'CleanupTool',
         displayName: 'Cleanup Tool',
         kind: ToolKind.Execute,
+        sideEffect: 'non_idempotent',
         description: { short: 'Tool with cleanup' },
         schema: z.object({}),
         async *execute() {
@@ -342,6 +375,7 @@ describe('createTool', () => {
         name: 'FailingCleanupTool',
         displayName: 'Failing Cleanup Tool',
         kind: ToolKind.Execute,
+        sideEffect: 'non_idempotent',
         description: { short: 'Tool with failing cleanup' },
         schema: z.object({}),
         async *execute() {
@@ -367,6 +401,7 @@ describe('createTool', () => {
         name: 'InvalidTool',
         displayName: 'Invalid Tool',
         kind: ToolKind.Execute,
+        sideEffect: 'non_idempotent',
         description: { short: 'Invalid legacy tool' },
         schema: z.object({}),
         execute: (async () => ({
@@ -387,6 +422,7 @@ describe('createTool', () => {
     it('rejects Promise-returning definitions through the direct tool API', async () => {
       const invalidTool = toolFromDefinition({
         name: 'InvalidDefinition',
+        sideEffect: 'pure',
         description: 'Invalid legacy tool definition',
         parameters: {
           type: 'object',
@@ -412,6 +448,7 @@ describe('createTool', () => {
         name: 'PermissionedTool',
         displayName: 'Permissioned Tool',
         kind: ToolKind.Execute,
+        sideEffect: 'non_idempotent',
         description: { short: 'Tool with permission check' },
         schema: z.object({
           value: z.string(),
@@ -452,6 +489,7 @@ describe('createTool', () => {
         name: 'ReadTool',
         displayName: 'Read Tool',
         kind: ToolKind.ReadOnly,
+        sideEffect: 'pure',
         description: { short: 'Read only tool' },
         schema: z.object({}),
         execute: () => completeToolExecution({ status: 'success', model: '' }),
@@ -462,6 +500,7 @@ describe('createTool', () => {
         name: 'WriteTool',
         displayName: 'Write Tool',
         kind: ToolKind.Write,
+        sideEffect: 'idempotent',
         description: { short: 'Write tool' },
         schema: z.object({}),
         execute: () => completeToolExecution({ status: 'success', model: '' }),
@@ -474,6 +513,7 @@ describe('createTool', () => {
         name: 'CustomTool',
         displayName: 'Custom Tool',
         kind: ToolKind.ReadOnly,
+        sideEffect: 'pure',
         isReadOnly: false,
         description: { short: 'Custom tool' },
         schema: z.object({}),
@@ -487,12 +527,14 @@ describe('createTool', () => {
         name: 'DynamicTool',
         displayName: 'Dynamic Tool',
         kind: ToolKind.Execute,
+        sideEffect: 'non_idempotent',
         description: { short: 'Dynamic behavior tool' },
         schema: z.object({
           mode: z.enum(['read', 'write']).default('read'),
         }),
         resolveBehavior: (params) => ({
           kind: params.mode === 'read' ? ToolKind.ReadOnly : ToolKind.Write,
+          sideEffect: params.mode === 'read' ? 'pure' : 'idempotent',
           isReadOnly: params.mode === 'read',
           isConcurrencySafe: params.mode === 'read',
           isDestructive: params.mode !== 'read',
@@ -502,6 +544,7 @@ describe('createTool', () => {
 
       expect(tool.resolveBehavior?.({} as unknown as { mode: 'read' | 'write' })).toEqual({
         kind: ToolKind.ReadOnly,
+        sideEffect: 'pure',
         isReadOnly: true,
         isConcurrencySafe: true,
         isDestructive: false,
@@ -509,6 +552,7 @@ describe('createTool', () => {
       });
       expect(tool.resolveBehavior?.({ mode: 'write' })).toEqual({
         kind: ToolKind.Write,
+        sideEffect: 'idempotent',
         isReadOnly: false,
         isConcurrencySafe: false,
         isDestructive: true,
@@ -521,6 +565,7 @@ describe('createTool', () => {
         name: 'LimitedTool',
         displayName: 'Limited Tool',
         kind: ToolKind.ReadOnly,
+        sideEffect: 'pure',
         description: { short: 'Limited tool' },
         schema: z.object({}),
         maxResultSizeChars: 128,
@@ -535,6 +580,7 @@ describe('createTool', () => {
         name: 'BlockingTool',
         displayName: 'Blocking Tool',
         kind: ToolKind.Execute,
+        sideEffect: 'non_idempotent',
         description: { short: 'Blocking tool' },
         schema: z.object({}),
         interruptBehavior: 'block',
@@ -554,6 +600,7 @@ describe('createTool', () => {
         name: 'SignatureTool',
         displayName: 'Signature Tool',
         kind: ToolKind.ReadOnly,
+        sideEffect: 'pure',
         description: { short: 'Tool with signature' },
         schema: z.object({ path: z.string() }),
         execute: () => completeToolExecution({ status: 'success', model: '' }),
@@ -577,6 +624,7 @@ describe('createTool', () => {
     it('preserves category, tags, and exposure metadata for simplified tool definitions', () => {
       const tool = toolFromDefinition({
         name: 'IndexedTool',
+        sideEffect: 'pure',
         description: 'Indexed tool',
         parameters: { type: 'object', properties: {} },
         category: 'analysis',
@@ -601,6 +649,7 @@ describe('createTool', () => {
       });
       expect(tool.getMetadata()).toMatchObject({
         category: 'analysis',
+        sideEffect: 'pure',
         tags: ['search', 'catalog'],
       });
     });

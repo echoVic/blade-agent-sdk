@@ -12,6 +12,7 @@ export function createTaskGetTool({ sessionId }: { sessionId: SessionId }) {
     name: 'TaskGet',
     displayName: 'Get Task',
     kind: ToolKind.Write,
+    sideEffect: 'pure',
     description: {
       short: 'Retrieve a task by its ID from the task list',
       long: `Use this tool to get full task details including description, status, dependencies, and metadata.

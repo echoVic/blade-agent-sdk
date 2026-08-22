@@ -1,5 +1,5 @@
 import type { ToolEffect } from '../tools/types/ToolEffects.js';
-import type { ToolKind } from '../tools/types/ToolKind.js';
+import type { ToolKind, ToolSideEffect } from '../tools/types/ToolKind.js';
 import { ToolKind as ToolKindValue } from '../tools/types/ToolKind.js';
 import {
   SensitiveFileDetector,
@@ -44,6 +44,7 @@ export type PermissionResult =
 export interface CanUseToolOptions {
   signal: AbortSignal;
   toolKind: ToolKind;
+  sideEffect: ToolSideEffect;
   affectedPaths: string[];
 }
 
@@ -62,6 +63,7 @@ export interface PermissionHandlerRequest {
   affectedPaths: string[];
   toolKind: ToolKind;
   toolMeta: {
+    sideEffect: ToolSideEffect;
     isReadOnly: boolean;
     isConcurrencySafe: boolean;
     isDestructive: boolean;
@@ -87,6 +89,7 @@ export function createPermissionHandlerFromCanUseTool(
     canUseTool(request.toolName, request.input, {
       signal: request.signal,
       toolKind: request.toolKind,
+      sideEffect: request.toolMeta.sideEffect,
       affectedPaths: request.affectedPaths,
     });
 }

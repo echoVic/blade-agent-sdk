@@ -13,6 +13,7 @@ export function createTaskCreateTool({ sessionId }: { sessionId: SessionId }) {
     name: 'TaskCreate',
     displayName: 'Create Task',
     kind: ToolKind.Write,
+    sideEffect: 'non_idempotent',
     description: {
       short: 'Create a new task in the task list',
       long: `Use this tool to create a structured task list for your current coding session. This helps you track progress, organize complex tasks, and demonstrate thoroughness to the user.

@@ -3,6 +3,7 @@ import type { AgentEvent, TokenUsageInfo } from '../../agent/AgentEvent.js';
 import type { LoopResult, UserMessageContent } from '../../agent/types.js';
 import { SdkError } from '../../errors/SdkError.js';
 import type {
+  ToolExecutionStartedLifecycle,
   ToolExecutionLifecycle,
   ToolInvocationLifecycle,
   ToolPermissionResolution,
@@ -263,6 +264,7 @@ export class SessionDurableRecorder implements ToolExecutionLifecycle {
             toolCallId: tool.toolCallId,
             toolName: tool.toolName,
             input: event.input,
+            sideEffect: event.sideEffect,
             interruptBehavior: event.interruptBehavior,
           },
         },
@@ -278,7 +280,7 @@ export class SessionDurableRecorder implements ToolExecutionLifecycle {
       onPermissionRequested: (details, input) =>
         this.recordPermissionRequested(tool, details.message, input),
       onPermissionResolved: (resolution) => this.recordPermissionResolved(tool, resolution),
-      onExecutionStarted: () => this.recordToolStarted(tool),
+      onExecutionStarted: (event) => this.recordToolStarted(tool, event),
     };
   }
 
@@ -498,7 +500,10 @@ export class SessionDurableRecorder implements ToolExecutionLifecycle {
     tool.permissionDecision = resolution.decision;
   }
 
-  private async recordToolStarted(tool: ActiveTool): Promise<void> {
+  private async recordToolStarted(
+    tool: ActiveTool,
+    event: ToolExecutionStartedLifecycle,
+  ): Promise<void> {
     const turn = this.requireActiveTurn();
     await this.commit([
       {
@@ -509,6 +514,8 @@ export class SessionDurableRecorder implements ToolExecutionLifecycle {
         data: {
           toolCallId: tool.toolCallId,
           toolName: tool.toolName,
+          input: event.input,
+          sideEffect: event.sideEffect,
         },
       },
     ]);

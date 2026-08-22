@@ -21,25 +21,28 @@ describe('isConcurrencySafe inference', () => {
 
   describe('createToolBehavior defaults', () => {
     it('ReadOnly kind defaults isConcurrencySafe to true', () => {
-      const behavior = createToolBehavior(ToolKind.ReadOnly);
+      const behavior = createToolBehavior(ToolKind.ReadOnly, 'pure');
       expect(behavior.isConcurrencySafe).toBe(true);
       expect(behavior.isReadOnly).toBe(true);
+      expect(behavior.sideEffect).toBe('pure');
     });
 
     it('Write kind defaults isConcurrencySafe to false', () => {
-      const behavior = createToolBehavior(ToolKind.Write);
+      const behavior = createToolBehavior(ToolKind.Write, 'idempotent');
       expect(behavior.isConcurrencySafe).toBe(false);
       expect(behavior.isReadOnly).toBe(false);
+      expect(behavior.sideEffect).toBe('idempotent');
     });
 
     it('Execute kind defaults isConcurrencySafe to false', () => {
-      const behavior = createToolBehavior(ToolKind.Execute);
+      const behavior = createToolBehavior(ToolKind.Execute, 'non_idempotent');
       expect(behavior.isConcurrencySafe).toBe(false);
       expect(behavior.isReadOnly).toBe(false);
+      expect(behavior.sideEffect).toBe('non_idempotent');
     });
 
     it('explicit override takes precedence over kind inference', () => {
-      const behavior = createToolBehavior(ToolKind.ReadOnly, {
+      const behavior = createToolBehavior(ToolKind.ReadOnly, 'pure', {
         isConcurrencySafe: false,
       });
       expect(behavior.isConcurrencySafe).toBe(false);
@@ -47,7 +50,7 @@ describe('isConcurrencySafe inference', () => {
     });
 
     it('Write tool can opt-in to concurrency safe', () => {
-      const behavior = createToolBehavior(ToolKind.Write, {
+      const behavior = createToolBehavior(ToolKind.Write, 'idempotent', {
         isConcurrencySafe: true,
       });
       expect(behavior.isConcurrencySafe).toBe(true);

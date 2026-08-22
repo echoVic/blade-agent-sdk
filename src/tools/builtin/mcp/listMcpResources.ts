@@ -27,6 +27,7 @@ export function createListMcpResourcesTool(registry: McpRegistry) {
     name: 'ListMcpResources',
     displayName: 'List MCP Resources',
     kind: ToolKind.ReadOnly,
+    sideEffect: 'pure',
     description: {
       short: 'List resources available from connected MCP servers',
       long: `Lists all resources provided by connected MCP (Model Context Protocol) servers.

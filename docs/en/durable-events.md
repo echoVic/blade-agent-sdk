@@ -38,7 +38,7 @@ import {
 
 ```ts
 interface DurableEventEnvelope<TType extends DurableEventType> {
-  schemaVersion: 1;
+  schemaVersion: 2;
   eventId: EventId;
   sequence: EventSequence;
   sessionId: SessionId;
@@ -77,8 +77,8 @@ are rejected before append.
 | `turn_started` | `requestId`, `turnId` | `turn`, `model?` |
 | `turn_completed` | `requestId`, `turnId` | `turn`, `hasToolCalls` |
 | `turn_aborted` | `requestId`, `turnId` | `turn`, `reason` |
-| `tool_scheduled` | Request, Turn, `toolAttemptId` | `toolCallId`, `toolName`, `input`, `interruptBehavior` |
-| `tool_started` | Request, Turn, `toolAttemptId` | `toolCallId`, `toolName` |
+| `tool_scheduled` | Request, Turn, `toolAttemptId` | `toolCallId`, `toolName`, `input`, `sideEffect`, `interruptBehavior` |
+| `tool_started` | Request, Turn, `toolAttemptId` | Tool identity, final `input`, resolved `sideEffect` |
 | `tool_completed` | Request, Turn, `toolAttemptId` | Tool identity, `result` |
 | `tool_failed` | Request, Turn, `toolAttemptId` | Tool identity, `error` |
 | `tool_cancelled` | Request, Turn, `toolAttemptId` | Tool identity, `reason` |
@@ -257,14 +257,20 @@ the invalid event.
 |--------|---------|
 | `none` | No unfinished work exists. |
 | `resume_request` | A Request was accepted without an active Turn and can restart. |
-| `resume_turn` | A model call or tool that never started can continue from the durable boundary. |
+| `resume_turn` | A model call, scheduled tool, or safely replayable started tool can continue. |
 | `resolve_permissions` | Pending permissions must be presented again or resolved by policy. |
 | `reconcile_tool_outcomes` | A tool started without a reliable terminal outcome and must not be retried automatically. |
 
 The plan also separates `retryableToolAttempts`, `cancelableToolAttempts`,
-`unknownToolAttempts`, and `pendingPermissions`. An external reconciliation can
-resolve `tool_outcome_unknown` with `tool_completed`, `tool_failed`, or
-`tool_cancelled`; the projector does not allow the Turn to end before then.
+`unknownToolAttempts`, and `pendingPermissions`. Started or
+`tool_outcome_unknown` tools declared `pure` or `idempotent` are retryable.
+`non_idempotent` tools remain unknown and require external reconciliation with
+`tool_completed`, `tool_failed`, or `tool_cancelled`; the projector does not
+allow the Turn to end before then.
+
+Schema v2 adds the required `sideEffect` field to `tool_scheduled`. Version 1
+logs are not inferred silently and must be migrated before this runtime can
+resume them.
 
 ## JSONL persistence
 

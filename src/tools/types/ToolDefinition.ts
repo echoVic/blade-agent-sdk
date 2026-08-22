@@ -3,7 +3,7 @@ import type { z } from 'zod';
 import type { JsonObject, JsonValue } from '../../types/common.js';
 import type { PermissionResult } from '../../types/permissions.js';
 import type { ExecutionContext } from './ExecutionTypes.js';
-import type { ToolBehavior, ToolKind } from './ToolKind.js';
+import type { ToolBehavior, ToolKind, ToolSideEffect } from './ToolKind.js';
 import type { ToolExecution, ToolValidationError } from './ToolResult.js';
 
 export interface FunctionDeclaration {
@@ -59,6 +59,7 @@ export interface ToolDefinition<TParams = JsonObject, TData extends JsonValue = 
   displayName?: string;
   description: string | ToolDescription;
   parameters: JSONSchema7;
+  sideEffect: ToolSideEffect;
   kind?: ToolKind;
   category?: string;
   tags?: string[];
@@ -71,6 +72,7 @@ export interface ToolConfig<TSchema extends z.ZodSchema = z.ZodSchema, TParams =
   aliases?: string[];
   displayName: string;
   kind: ToolKind;
+  sideEffect: ToolSideEffect;
   isReadOnly?: boolean;
   isConcurrencySafe?: boolean;
   isDestructive?: boolean;
@@ -103,6 +105,7 @@ export interface Tool<TParams = JsonObject> {
   readonly aliases?: string[];
   readonly displayName: string;
   readonly kind: ToolKind;
+  readonly sideEffect: ToolSideEffect;
   readonly isReadOnly: boolean;
   readonly isConcurrencySafe: boolean;
   readonly isDestructive?: boolean;

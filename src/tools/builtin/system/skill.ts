@@ -22,6 +22,7 @@ export const skillTool = createTool({
   name: 'Skill',
   displayName: 'Skill',
   kind: ToolKind.Execute,
+  sideEffect: 'non_idempotent',
 
   schema: lazySchema(() => z.object({
     skill: z

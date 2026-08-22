@@ -21,6 +21,7 @@ export type {
   ToolEffect,
   ToolEffectYield,
   ToolExecution,
+  ToolExecutionStartedLifecycle,
   ToolExecutionLifecycle,
   ToolInvocationLifecycle,
   ToolMessage,
@@ -50,6 +51,7 @@ export {
   StreamMessageType,
   ToolAttemptId,
   ToolKind,
+  ToolSideEffect,
   ToolUseId,
   TurnId,
 } from '../core/index.js';

@@ -68,6 +68,7 @@ export const askUserQuestionTool = createTool({
   name: 'AskUserQuestion',
   displayName: 'Ask User Question',
   kind: ToolKind.ReadOnly,
+  sideEffect: 'non_idempotent',
 
   schema: lazySchema(() => askUserQuestionSchema),
 

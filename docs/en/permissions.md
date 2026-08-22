@@ -92,6 +92,7 @@ type PermissionResult =
 interface CanUseToolOptions {
   signal: AbortSignal;
   toolKind: ToolKind;
+  sideEffect: ToolSideEffect;
   affectedPaths: string[];
 }
 ```

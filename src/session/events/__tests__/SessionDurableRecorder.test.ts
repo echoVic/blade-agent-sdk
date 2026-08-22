@@ -66,6 +66,7 @@ describe('SessionDurableRecorder', () => {
       toolCallId: ToolUseId('tool-call-1'),
       toolName: 'Write',
       input: { file_path: '/tmp/file' },
+      sideEffect: 'non_idempotent',
       interruptBehavior: 'block',
     });
     const permissionRequestId = await lifecycle.onPermissionRequested?.(
@@ -79,7 +80,10 @@ describe('SessionDurableRecorder', () => {
       permissionRequestId,
       decision: 'allow',
     });
-    await lifecycle.onExecutionStarted?.();
+    await lifecycle.onExecutionStarted?.({
+      input: { file_path: '/tmp/approved-file' },
+      sideEffect: 'idempotent',
+    });
     await recorder.onToolSettled({
       toolCallId: ToolUseId('tool-call-1'),
       toolName: 'Write',
@@ -118,6 +122,19 @@ describe('SessionDurableRecorder', () => {
       'turn_completed',
       'request_completed',
     ]);
+    expect(
+      (await store.read(sessionId)).events.find(
+        (event) => event.type === DurableEventType.TOOL_SCHEDULED,
+      )?.data,
+    ).toMatchObject({ sideEffect: 'non_idempotent' });
+    expect(
+      (await store.read(sessionId)).events.find(
+        (event) => event.type === DurableEventType.TOOL_STARTED,
+      )?.data,
+    ).toMatchObject({
+      input: { file_path: '/tmp/approved-file' },
+      sideEffect: 'idempotent',
+    });
     expect(journal.getProjection().activeRequest).toBeNull();
   });
 
@@ -133,6 +150,7 @@ describe('SessionDurableRecorder', () => {
       toolCallId: ToolUseId('tool-call-1'),
       toolName: 'Write',
       input: {},
+      sideEffect: 'non_idempotent',
       interruptBehavior: 'block',
     });
     const permissionRequestId = await lifecycle.onPermissionRequested?.({ message: 'Allow?' }, {});
@@ -175,6 +193,7 @@ describe('SessionDurableRecorder', () => {
       toolCallId: ToolUseId('tool-call-1'),
       toolName: 'Write',
       input: {},
+      sideEffect: 'non_idempotent',
       interruptBehavior: 'block',
     });
     await recorder.onToolSettled({
@@ -207,6 +226,7 @@ describe('SessionDurableRecorder', () => {
       toolCallId: ToolUseId('tool-call-1'),
       toolName: 'Write',
       input: {},
+      sideEffect: 'non_idempotent',
       interruptBehavior: 'block',
     });
 
@@ -252,9 +272,13 @@ describe('SessionDurableRecorder', () => {
       toolCallId: ToolUseId('tool-call-1'),
       toolName: 'Write',
       input: {},
+      sideEffect: 'non_idempotent',
       interruptBehavior: 'block',
     });
-    await lifecycle.onExecutionStarted?.();
+    await lifecycle.onExecutionStarted?.({
+      input: {},
+      sideEffect: 'non_idempotent',
+    });
 
     await expect(
       recorder.finish({
@@ -287,9 +311,13 @@ describe('SessionDurableRecorder', () => {
       toolCallId: ToolUseId('tool-call-1'),
       toolName: 'Write',
       input: {},
+      sideEffect: 'non_idempotent',
       interruptBehavior: 'block',
     });
-    await lifecycle.onExecutionStarted?.();
+    await lifecycle.onExecutionStarted?.({
+      input: {},
+      sideEffect: 'non_idempotent',
+    });
 
     await expect(
       recorder.recordAgentEvent({
@@ -315,9 +343,13 @@ describe('SessionDurableRecorder', () => {
       toolCallId,
       toolName: 'Read',
       input: {},
+      sideEffect: 'pure',
       interruptBehavior: 'cancel',
     });
-    await lifecycle.onExecutionStarted?.();
+    await lifecycle.onExecutionStarted?.({
+      input: {},
+      sideEffect: 'pure',
+    });
     const settled = {
       toolCallId,
       toolName: 'Read',
@@ -347,12 +379,14 @@ describe('SessionDurableRecorder', () => {
       toolCallId,
       toolName: 'Read',
       input: {},
+      sideEffect: 'pure',
       interruptBehavior: 'cancel',
     });
     const duplicate = recorder.onToolScheduled({
       toolCallId,
       toolName: 'Read',
       input: {},
+      sideEffect: 'pure',
       interruptBehavior: 'cancel',
     });
 

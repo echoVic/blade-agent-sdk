@@ -96,12 +96,13 @@ Use `getPendingInputs()` and `cancelInput()` to manage accepted inputs.
 Tool execution uses `AsyncGenerator<ToolYield, ToolResult>` exclusively:
 
 ```ts
-import { defineTool, ToolKind } from '@blade-ai/agent-sdk';
+import { defineTool, ToolKind, ToolSideEffect } from '@blade-ai/agent-sdk';
 
 const weather = defineTool({
   name: 'GetWeather',
   description: 'Get the weather for a city',
   kind: ToolKind.ReadOnly,
+  sideEffect: ToolSideEffect.PURE,
   parameters: {
     type: 'object',
     properties: {

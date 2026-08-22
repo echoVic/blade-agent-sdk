@@ -36,6 +36,7 @@ describe('DiscoverTools tool', () => {
       name: 'HeavyInspect',
       displayName: 'Heavy Inspect',
       kind: ToolKind.Execute,
+      sideEffect: 'non_idempotent',
       description: { short: 'Heavy inspection tool' },
       exposure: {
         mode: 'deferred',
@@ -73,6 +74,7 @@ describe('DiscoverTools tool', () => {
       name: 'HeavyInspect',
       displayName: 'Heavy Inspect',
       kind: ToolKind.Execute,
+      sideEffect: 'non_idempotent',
       description: { short: 'Heavy inspection tool' },
       exposure: {
         mode: 'deferred',
@@ -97,6 +99,7 @@ describe('DiscoverTools tool', () => {
       name: 'HeavyInspect',
       displayName: 'Heavy Inspect',
       kind: ToolKind.Execute,
+      sideEffect: 'non_idempotent',
       description: { short: 'Heavy inspection tool' },
       exposure: {
         mode: 'deferred',

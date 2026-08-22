@@ -368,7 +368,10 @@ describe('executeToolCalls', () => {
           context: ExecutionContext,
         ) {
           lifecycle.push(`pipeline:${String(_params.value)}`);
-          await context.toolInvocationLifecycle?.onExecutionStarted?.();
+          await context.toolInvocationLifecycle?.onExecutionStarted?.({
+            input: _params,
+            sideEffect: 'idempotent',
+          });
           lifecycle.push('side-effect');
           return {
             status: 'success',
@@ -376,15 +379,21 @@ describe('executeToolCalls', () => {
           };
         }),
         getRegistry: () => ({
-          get: () => ({ kind: 'write', interruptBehavior: 'block' }),
+          get: () => ({
+            kind: 'write',
+            sideEffect: 'idempotent',
+            interruptBehavior: 'block',
+          }),
         }),
       } as never,
       executionContext: {
         sessionId: SessionId('session-lifecycle'),
         userId: 'user-1',
         lifecycle: {
-          onToolScheduled: async ({ toolCallId, input, interruptBehavior }) => {
-            lifecycle.push(`scheduled:${toolCallId}:${String(input.value)}:${interruptBehavior}`);
+          onToolScheduled: async ({ toolCallId, input, sideEffect, interruptBehavior }) => {
+            lifecycle.push(
+              `scheduled:${toolCallId}:${String(input.value)}:${sideEffect}:${interruptBehavior}`,
+            );
             input.value = 'mutated';
             return {
               onExecutionStarted: async () => {
@@ -406,7 +415,7 @@ describe('executeToolCalls', () => {
 
     expect(outcome.result.status).toBe('success');
     expect(lifecycle).toEqual([
-      'scheduled:tool-lifecycle:ok:block',
+      'scheduled:tool-lifecycle:ok:idempotent:block',
       'update:tool_ready',
       'update:tool_started',
       'pipeline:ok',

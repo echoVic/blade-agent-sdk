@@ -19,6 +19,10 @@ function buildTool(schema: JSONSchema7) {
 }
 
 describe('createMcpTool', () => {
+  it('classifies remote MCP tools conservatively', () => {
+    expect(buildTool({ type: 'object' }).sideEffect).toBe('non_idempotent');
+  });
+
   it('should support enum values for strings and numbers', () => {
     const tool = buildTool({
       type: 'object',

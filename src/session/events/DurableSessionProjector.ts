@@ -1,4 +1,5 @@
 import { SdkError } from '../../errors/SdkError.js';
+import type { ToolSideEffect } from '../../tools/types/ToolKind.js';
 import {
   type CommandId,
   EventId,
@@ -49,6 +50,7 @@ export type DurableSessionRecoveryAction =
 
 export interface DurablePermissionProjection {
   readonly permissionRequestId: PermissionRequestId;
+  readonly input: JsonValue;
   readonly status: DurablePermissionStatus;
   readonly decision?: DurablePermissionDecision;
   readonly message?: string;
@@ -59,6 +61,7 @@ export interface DurableToolAttemptProjection {
   readonly toolCallId: ToolUseId;
   readonly toolName: string;
   readonly input: JsonValue;
+  readonly sideEffect: ToolSideEffect;
   readonly interruptBehavior: DurableToolInterruptBehavior;
   readonly status: DurableToolAttemptStatus;
   readonly permission: DurablePermissionProjection | null;
@@ -126,6 +129,7 @@ export class DurableEventProjectionError extends SdkError {
 
 interface MutablePermissionProjection {
   permissionRequestId: PermissionRequestId;
+  input: JsonValue;
   status: DurablePermissionStatus;
   decision?: DurablePermissionDecision;
   message?: string;
@@ -136,6 +140,7 @@ interface MutableToolAttemptProjection {
   toolCallId: ToolUseId;
   toolName: string;
   input: JsonValue;
+  sideEffect: ToolSideEffect;
   interruptBehavior: DurableToolInterruptBehavior;
   status: DurableToolAttemptStatus;
   permission: MutablePermissionProjection | null;
@@ -446,6 +451,7 @@ function applyEvent(state: ProjectionAccumulator, event: DurableEventEnvelope): 
         toolCallId: event.data.toolCallId,
         toolName: event.data.toolName,
         input: event.data.input,
+        sideEffect: event.data.sideEffect,
         interruptBehavior: event.data.interruptBehavior,
         status: 'scheduled',
         permission: null,
@@ -468,6 +474,7 @@ function applyEvent(state: ProjectionAccumulator, event: DurableEventEnvelope): 
       state.seenPermissionRequestIds.add(event.data.permissionRequestId);
       tool.permission = {
         permissionRequestId: event.data.permissionRequestId,
+        input: event.data.input,
         status: 'pending',
         ...(event.data.message !== undefined ? { message: event.data.message } : {}),
       };
@@ -502,6 +509,8 @@ function applyEvent(state: ProjectionAccumulator, event: DurableEventEnvelope): 
       if (tool.permission?.status === 'resolved' && tool.permission.decision !== 'allow') {
         invalid(event, `Tool attempt ${tool.toolAttemptId} did not receive permission`);
       }
+      tool.input = event.data.input;
+      tool.sideEffect = event.data.sideEffect;
       tool.status = 'started';
       return;
     }
@@ -755,17 +764,25 @@ export function planDurableSessionRecovery(
   const turn = request?.activeTurn ?? null;
   const tools = turn?.toolAttempts ?? [];
   const unknownToolAttempts = tools.filter(
-    (tool) => tool.status === 'started' || tool.status === 'outcome_unknown',
+    (tool) =>
+      (tool.status === 'started' || tool.status === 'outcome_unknown')
+      && tool.sideEffect === 'non_idempotent',
   );
   const pendingPermissions = tools.flatMap((tool) =>
     tool.permission?.status === 'pending' ? [tool.permission] : [],
   );
   const retryableToolAttempts = tools.filter(
     (tool) =>
-      tool.status === 'scheduled' &&
-      tool.permission?.status !== 'pending' &&
-      permissionDecision(tool) !== 'deny' &&
-      permissionDecision(tool) !== 'cancel',
+      (
+        tool.status === 'scheduled'
+        && tool.permission?.status !== 'pending'
+        && permissionDecision(tool) !== 'deny'
+        && permissionDecision(tool) !== 'cancel'
+      )
+      || (
+        (tool.status === 'started' || tool.status === 'outcome_unknown')
+        && tool.sideEffect !== 'non_idempotent'
+      ),
   );
   const cancelableToolAttempts = tools.filter(
     (tool) =>

@@ -60,6 +60,7 @@ import { createSession, defineTool } from '@blade-ai/agent-sdk';
 const weatherTool = defineTool({
   name: 'GetWeather',
   description: '查询指定城市的天气',
+  sideEffect: 'pure',
   parameters: {
     type: 'object',
     properties: {
