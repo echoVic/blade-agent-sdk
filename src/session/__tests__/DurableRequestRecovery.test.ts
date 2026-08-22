@@ -44,13 +44,13 @@ describe('DurableRequestRecovery', () => {
   });
 
   it.each([
-    42,
-    [null],
-    [{ type: 'text' }],
-    [{ type: 'text', text: 'invalid', providerOptions: [] }],
-    [{ type: 'image_url', image_url: {} }],
-    [{ type: 'unknown' }],
-  ] satisfies JsonValue[])('rejects invalid request content %#', (input) => {
+    { input: 42 },
+    { input: [null] },
+    { input: [{ type: 'text' }] },
+    { input: [{ type: 'text', text: 'invalid', providerOptions: [] }] },
+    { input: [{ type: 'image_url', image_url: {} }] },
+    { input: [{ type: 'unknown' }] },
+  ] satisfies Array<{ input: JsonValue }>)('rejects invalid request content %#', ({ input }) => {
     expect(() => parseDurableUserMessageContent(input)).toThrow(
       SessionDurableRecorderError,
     );

@@ -316,11 +316,13 @@ await coordinator.resolvePermission({
 ```
 
 After resolving a permission as `allow`, the application must call and await
-`startToolAttempt({ commandId, toolAttemptId, input, sideEffect })` before
-running the tool with exactly that final input. This method commits
-`tool_started` as a separate idempotent command and preserves the
-persist-before-side-effect boundary. A `pure` or `idempotent` tool already in
-`started` state may be replayed and then settled with
+`startToolAttempt({ commandId, toolAttemptId })` before running the exact input
+returned in the updated projection. The method only uses persisted operation
+facts and commits `tool_started` as a separate idempotent command, preserving
+the persist-before-side-effect boundary. A tool resumed after a permission
+round-trip is conservatively classified as `non_idempotent`; callers cannot
+downgrade its side-effect class during recovery. A `pure` or `idempotent` tool
+already in `started` state may be replayed and then settled with
 `reconcileToolOutcome()`. A started `non_idempotent` tool must only be
 reconciled after querying the external system and must not be executed again.
 

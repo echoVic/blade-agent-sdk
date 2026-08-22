@@ -421,6 +421,7 @@ class Session implements ISession {
           }
           this.inputInbox.markCommitted(inputId);
         } catch (error) {
+          pendingState.controller.dispose();
           this.inputInbox.remove(inputId);
           throw error;
         }

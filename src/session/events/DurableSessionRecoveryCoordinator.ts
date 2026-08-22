@@ -5,7 +5,6 @@ import type {
   SessionId,
   ToolAttemptId,
 } from '../../types/branded.js';
-import type { ToolSideEffect } from '../../tools/types/ToolKind.js';
 import type { JsonObject, JsonValue } from '../../types/common.js';
 import type { DurableEventStore } from './DurableEventStore.js';
 import {
@@ -74,8 +73,6 @@ export interface DurableToolOutcomeReconciliationCommand {
 export interface DurableToolStartCommand {
   readonly commandId: CommandId;
   readonly toolAttemptId: ToolAttemptId;
-  readonly input: JsonObject;
-  readonly sideEffect: ToolSideEffect;
 }
 
 export interface DurablePermissionResolutionCommand {
@@ -238,6 +235,8 @@ export class DurableSessionRecoveryCoordinator {
   async startToolAttempt(command: DurableToolStartCommand): Promise<DurableRecoveryCommitResult> {
     await this.journal.refresh();
     const { request, turn, tool } = this.findToolAttempt(command.toolAttemptId);
+    const recoveredFromPermission = tool.permission?.status === 'resolved'
+      && tool.permission.decision === 'allow';
     const commit = await this.commitRecovery({
       commandId: command.commandId,
       events: [
@@ -249,8 +248,11 @@ export class DurableSessionRecoveryCoordinator {
           data: {
             toolCallId: tool.toolCallId,
             toolName: tool.toolName,
-            input: command.input,
-            sideEffect: command.sideEffect,
+            input: recoveredFromPermission ? tool.permission?.input ?? tool.input : tool.input,
+            // A permission round-trip may have changed input after scheduling.
+            // Without the live Tool resolver, only the most conservative
+            // classification is safe across the restart boundary.
+            sideEffect: recoveredFromPermission ? 'non_idempotent' : tool.sideEffect,
           },
         },
       ],

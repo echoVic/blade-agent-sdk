@@ -200,6 +200,25 @@ describe('Session durable events', () => {
     await session.close();
   });
 
+  it('releases the external abort listener when durable acceptance fails', async () => {
+    const { store } = createStore();
+    const failingStore = new FailOnEventTypeStore(store, DurableEventType.REQUEST_ACCEPTED);
+    const session = await createSession(options(failingStore));
+    const controller = new AbortController();
+    const addListener = vi.spyOn(controller.signal, 'addEventListener');
+    const removeListener = vi.spyOn(controller.signal, 'removeEventListener');
+
+    await expect(
+      session.send('must not leak', { signal: controller.signal }),
+    ).rejects.toBeInstanceOf(DurableCommandOutcomeUnknownError);
+
+    const abortListener = addListener.mock.calls.find(([type]) => type === 'abort')?.[1];
+    expect(abortListener).toBeDefined();
+    expect(removeListener).toHaveBeenCalledWith('abort', abortListener);
+    expect(session.getPendingInputs()).toEqual([]);
+    await expect(session.close()).rejects.toBeInstanceOf(DurableCommandOutcomeUnknownError);
+  });
+
   it('persists tool and permission boundaries around the real side effect', async () => {
     const { store } = createStore();
     let sideEffectSawToolStarted = false;

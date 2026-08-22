@@ -118,7 +118,7 @@ async function createJournal(
                       permissionRequestId,
                       toolCallId,
                       toolName: 'Deploy',
-                      input: { environment: 'production' },
+                      input: { environment: 'approved-production' },
                       message: 'Allow deployment?',
                     },
                   },
@@ -356,8 +356,6 @@ describe('DurableSessionRecoveryCoordinator', () => {
       coordinator.startToolAttempt({
         commandId: CommandId('start-before-permission'),
         toolAttemptId,
-        input: { environment: 'approved-production' },
-        sideEffect: 'idempotent',
       }),
     ).rejects.toMatchObject({
       code: 'DURABLE_RECOVERY_INVALID_STATE',
@@ -372,8 +370,6 @@ describe('DurableSessionRecoveryCoordinator', () => {
     const command = {
       commandId: CommandId('start-deployment'),
       toolAttemptId,
-      input: { environment: 'approved-production' },
-      sideEffect: 'idempotent' as const,
     };
     const started = await coordinator.startToolAttempt(command);
     const replayed = await coordinator.startToolAttempt(command);
@@ -381,12 +377,12 @@ describe('DurableSessionRecoveryCoordinator', () => {
     expect(started.commit.status).toBe('committed');
     expect(replayed.commit.status).toBe('replayed');
     expect(started.recoveryPlan).toMatchObject({
-      action: 'resume_turn',
-      retryableToolAttempts: [
+      action: 'reconcile_tool_outcomes',
+      unknownToolAttempts: [
         {
           toolAttemptId,
           input: { environment: 'approved-production' },
-          sideEffect: 'idempotent',
+          sideEffect: 'non_idempotent',
           status: 'started',
         },
       ],

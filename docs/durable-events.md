@@ -307,12 +307,13 @@ await coordinator.resolvePermission({
 ```
 
 权限恢复为 `allow` 后，应用必须先调用并等待
-`startToolAttempt({ commandId, toolAttemptId, input, sideEffect })`，再使用完全
-相同的最终输入执行工具。该方法把 `tool_started` 作为独立幂等 command 提交，
-从而保持 persist-before-side-effect。已经处于 `started` 的 `pure` /
-`idempotent` 工具可直接安全重放，再通过 `reconcileToolOutcome()` 写入终态；
-已经处于 `started` 的 `non_idempotent` 工具只能查询外部系统后对账，禁止再次
-执行。
+`startToolAttempt({ commandId, toolAttemptId })`，再使用返回 projection 中完全
+相同的输入执行工具。该方法只使用已持久化的操作事实并把 `tool_started` 作为
+独立幂等 command 提交，从而保持 persist-before-side-effect。经过权限恢复的
+工具会保守标记为 `non_idempotent`，调用方不能在恢复时降低副作用等级。已经处于
+`started` 的 `pure` / `idempotent` 工具可直接安全重放，再通过
+`reconcileToolOutcome()` 写入终态；已经处于 `started` 的 `non_idempotent`
+工具只能查询外部系统后对账，禁止再次执行。
 
 `planResume()` 仅将没有 `input_applied` / `request_started` 且具备完整执行快照的
 accepted Request 标记为 `resume_accepted_request`。
