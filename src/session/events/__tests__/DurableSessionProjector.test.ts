@@ -234,6 +234,40 @@ describe('DurableSessionProjector', () => {
     });
   });
 
+  it('previews drafts on an isolated fork without mutating canonical state', () => {
+    const projector = new DurableSessionProjector().apply(envelopes(requestPrefix().slice(0, 2)));
+
+    const preview = projector.preview(sessionId, [
+      {
+        type: DurableEventType.REQUEST_STARTED,
+        requestId,
+        data: {},
+      },
+    ]);
+
+    expect(preview.activeRequest?.status).toBe('running');
+    expect(preview.headSequence).toBe(3);
+    expect(projector.snapshot().activeRequest?.status).toBe('accepted');
+    expect(projector.snapshot().headSequence).toBe(2);
+  });
+
+  it('rejects an invalid preview without poisoning the canonical projector', () => {
+    const projector = new DurableSessionProjector().apply(envelopes(requestPrefix().slice(0, 2)));
+
+    expect(() =>
+      projector.preview(sessionId, [
+        {
+          type: DurableEventType.TURN_STARTED,
+          requestId,
+          turnId,
+          data: { turn: 1 },
+        },
+      ]),
+    ).toThrow(/has not started/);
+
+    expect(projector.snapshot().activeRequest?.status).toBe('accepted');
+  });
+
   it('classifies accepted requests and active model turns as retryable', () => {
     const accepted = project(requestPrefix().slice(0, 2));
     expect(planDurableSessionRecovery(accepted)).toMatchObject({

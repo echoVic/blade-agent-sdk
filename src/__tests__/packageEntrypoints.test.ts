@@ -72,6 +72,7 @@ describe('package entrypoints', () => {
 
     expect(browser.PermissionMode.DEFAULT).toBe('default');
     expect(browser.DurableEventType.REQUEST_ACCEPTED).toBe('request_accepted');
+    expect(browser.DurableSessionJournal.open).toBeTypeOf('function');
     expect(browser.projectDurableSession([]).status).toBe('empty');
     expect(browser.PermissionRequestId('permission-1')).toBe('permission-1');
     expect(browser.ToolUseId('tool-call-1')).toBe('tool-call-1');

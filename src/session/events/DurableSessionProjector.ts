@@ -1,20 +1,22 @@
 import { SdkError } from '../../errors/SdkError.js';
-import type {
-  CommandId,
+import {
+  type CommandId,
   EventId,
   EventSequence,
-  InputId,
-  PermissionRequestId,
-  RequestId,
-  SessionId,
-  ToolAttemptId,
-  ToolUseId,
-  TurnId,
+  type InputId,
+  type PermissionRequestId,
+  type RequestId,
+  type SessionId,
+  type ToolAttemptId,
+  type ToolUseId,
+  type TurnId,
 } from '../../types/branded.js';
 import type { JsonValue } from '../../types/common.js';
-import { parseDurableEventEnvelope } from './schemas.js';
+import { parseDurableEventDraft, parseDurableEventEnvelope } from './schemas.js';
 import {
+  DURABLE_EVENT_SCHEMA_VERSION,
   type DurableEventDataMap,
+  type DurableEventDraft,
   type DurableEventEnvelope,
   type DurableEventError,
   type DurableEventType,
@@ -618,7 +620,7 @@ function createProjectionAccumulator(): ProjectionAccumulator {
 }
 
 export class DurableSessionProjector {
-  private readonly state = createProjectionAccumulator();
+  private state = createProjectionAccumulator();
   private failure: DurableEventProjectionError | null = null;
 
   apply(events: readonly DurableEventEnvelope[]): this {
@@ -657,6 +659,43 @@ export class DurableSessionProjector {
 
   recoveryPlan(): DurableSessionRecoveryPlan {
     return planDurableSessionRecovery(this.snapshot());
+  }
+
+  fork(): DurableSessionProjector {
+    this.assertHealthy();
+    const projector = new DurableSessionProjector();
+    projector.state = structuredClone(this.state);
+    return projector;
+  }
+
+  preview(sessionId: SessionId, drafts: readonly DurableEventDraft[]): DurableSessionProjection {
+    const projector = this.fork();
+    const recordedAt = new Date(0).toISOString();
+    let nextSequence = Number(projector.state.headSequence ?? 0) + 1;
+
+    for (const candidate of drafts) {
+      let eventId = EventId(`__preview__:${nextSequence}`);
+      let collision = 0;
+      while (projector.state.seenEventIds.has(eventId)) {
+        collision += 1;
+        eventId = EventId(`__preview__:${nextSequence}:${collision}`);
+      }
+      const draft = parseDurableEventDraft(candidate);
+      projector.apply([
+        parseDurableEventEnvelope({
+          ...draft,
+          schemaVersion: DURABLE_EVENT_SCHEMA_VERSION,
+          eventId,
+          sequence: EventSequence(nextSequence),
+          sessionId,
+          recordedAt,
+          occurredAt: draft.occurredAt ?? recordedAt,
+        }),
+      ]);
+      nextSequence += 1;
+    }
+
+    return projector.snapshot();
   }
 
   private assertHealthy(): void {

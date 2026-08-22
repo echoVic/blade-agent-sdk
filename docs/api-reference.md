@@ -100,6 +100,12 @@ Node-local 能力外，这些函数都从根入口导出；实际 subpath 以“
 | 导出 | 说明 |
 |------|------|
 | `DurableEventStore` | append/read/head 的持久化接口 |
+| `DurableSessionJournal` / `DurableSessionJournalOptions` | command-oriented 串行提交、CAS 重试与对账层 |
+| `DurableSessionCommand` / `DurableCommandEventDraft` | Journal command 与不含重复 `commandId` 的事件输入 |
+| `DurableCommandCommitResult` / `DurableCommandCommitStatus` | `committed` / `replayed` / `reconciled` 提交结果 |
+| `DurableSessionJournalError` / `DurableSessionJournalErrorCode` | command、分页和 Store 返回值错误 |
+| `DurableCommandConflictError` | 同一 `commandId` 被用于不同事件 |
+| `DurableCommandOutcomeUnknownError` | 写入失败后无法确认 command 是否提交 |
 | `DurableEventEnvelope` / `DurableEventDraft` | 已提交事件与待提交事件 |
 | `DurableEventDataMap` / `DurableEventOfType` / `DurableEventError` / `DurableTokenUsage` | 事件类型到严格 payload 的映射、类型提取及公共 payload |
 | `DurableInputPriority` / `DurablePermissionDecision` | 输入优先级与权限结果 |
