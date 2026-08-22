@@ -749,6 +749,103 @@ describe('DurableSessionRecoveryCoordinator', () => {
     expect(result.continuation).toContain('"content": "durable result"');
   });
 
+  it('bounds oversized tool state and marks every truncated value as incomplete', async () => {
+    const store = createStore();
+    const journal = await createJournal(store, { requestStarted: true });
+    const oversized = 'x'.repeat(5_000);
+    const failedAttemptId = ToolAttemptId('recovery-failed-attempt');
+    const failedCallId = ToolUseId('recovery-failed-call');
+    await journal.commit({
+      commandId: CommandId('settle-oversized-tools'),
+      events: [
+        {
+          type: DurableEventType.TURN_STARTED,
+          requestId,
+          turnId,
+          data: { turn: 1, model: 'accepted-model' },
+        },
+        {
+          type: DurableEventType.TOOL_SCHEDULED,
+          requestId,
+          turnId,
+          toolAttemptId,
+          data: {
+            toolCallId,
+            toolName: 'Read',
+            input: { payload: oversized },
+            sideEffect: 'pure',
+            interruptBehavior: 'cancel',
+          },
+        },
+        {
+          type: DurableEventType.TOOL_STARTED,
+          requestId,
+          turnId,
+          toolAttemptId,
+          data: {
+            toolCallId,
+            toolName: 'Read',
+            input: { payload: oversized },
+            sideEffect: 'pure',
+          },
+        },
+        {
+          type: DurableEventType.TOOL_COMPLETED,
+          requestId,
+          turnId,
+          toolAttemptId,
+          data: {
+            toolCallId,
+            toolName: 'Read',
+            result: { payload: oversized },
+          },
+        },
+        {
+          type: DurableEventType.TOOL_SCHEDULED,
+          requestId,
+          turnId,
+          toolAttemptId: failedAttemptId,
+          data: {
+            toolCallId: failedCallId,
+            toolName: 'Search',
+            input: {},
+            sideEffect: 'pure',
+            interruptBehavior: 'cancel',
+          },
+        },
+        {
+          type: DurableEventType.TOOL_FAILED,
+          requestId,
+          turnId,
+          toolAttemptId: failedAttemptId,
+          data: {
+            toolCallId: failedCallId,
+            toolName: 'Search',
+            error: { message: oversized },
+          },
+        },
+      ],
+    });
+
+    const result = await new DurableSessionRecoveryCoordinator(journal).prepareTurnRecovery({
+      commandId: CommandId('rollover-oversized-tools'),
+      requestId,
+      turnId,
+      recoveryRequestId: rolloverRequestId,
+      recoveryInputId: rolloverInputId,
+    });
+
+    expect(typeof result.continuation).toBe('string');
+    if (typeof result.continuation !== 'string') {
+      throw new Error('Expected a text recovery continuation');
+    }
+    expect(result.continuation.match(/"kind": "truncated_recovery_value"/g)).toHaveLength(3);
+    expect(result.continuation).toContain('"complete": false');
+    expect(result.continuation).toContain('"originalJsonCharacters":');
+    expect(result.continuation).not.toContain(oversized);
+    expect(result.continuation.length).toBeLessThan(14_000);
+  });
+
   it.each([
     {
       outcome: {

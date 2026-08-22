@@ -38,6 +38,8 @@ import {
   type DurablePermissionDecision,
 } from './types.js';
 
+const MAX_RECOVERY_TOOL_VALUE_CHARS = 4_000;
+
 export type DurableAcceptedRequestRecovery = DurableRequestProjection & {
   readonly maxTurns: number;
   readonly model: string;
@@ -230,6 +232,24 @@ function jsonText(value: unknown): string {
   return JSON.stringify(value, null, 2);
 }
 
+function boundedRecoveryValue(value: unknown): JsonValue {
+  const normalized = toJsonValue(value);
+  const serialized = JSON.stringify(normalized);
+  if (serialized.length <= MAX_RECOVERY_TOOL_VALUE_CHARS) {
+    return normalized;
+  }
+
+  const retainedPerEdge = Math.floor(MAX_RECOVERY_TOOL_VALUE_CHARS / 2);
+  return {
+    kind: 'truncated_recovery_value',
+    complete: false,
+    encoding: 'json',
+    originalJsonCharacters: serialized.length,
+    jsonPrefix: serialized.slice(0, retainedPerEdge),
+    jsonSuffix: serialized.slice(-retainedPerEdge),
+  };
+}
+
 function buildTurnRecoveryContinuation(
   request: DurableRequestProjection,
   turn: NonNullable<DurableRequestProjection['activeTurn']>,
@@ -251,10 +271,12 @@ function buildTurnRecoveryContinuation(
       tool.status === 'scheduled' &&
       (permissionDecision === 'deny' || permissionDecision === 'cancel');
     const recoveredFromPermission = tool.status === 'scheduled' && permissionDecision === 'allow';
+    const effectiveInput =
+      tool.permission?.status === 'resolved' ? tool.permission.input : tool.input;
     return {
       toolCallId: tool.toolCallId,
       toolName: tool.toolName,
-      input: recoveredFromPermission ? (tool.permission?.input ?? tool.input) : tool.input,
+      input: boundedRecoveryValue(effectiveInput),
       sideEffect: recoveredFromPermission ? 'non_idempotent' : tool.sideEffect,
       executionStarted: tool.executionStarted,
       status: permissionCancelledBeforeExecution
@@ -264,15 +286,16 @@ function buildTurnRecoveryContinuation(
           : tool.status === 'started' || tool.status === 'outcome_unknown'
             ? 'interrupted_before_trusted_completion'
             : tool.status,
-      ...(tool.permission ? { permission: tool.permission } : {}),
-      ...(tool.result !== undefined ? { result: tool.result } : {}),
-      ...(tool.error ? { error: tool.error } : {}),
+      ...(tool.permission ? { permission: boundedRecoveryValue(tool.permission) } : {}),
+      ...(tool.result !== undefined ? { result: boundedRecoveryValue(tool.result) } : {}),
+      ...(tool.error ? { error: boundedRecoveryValue(tool.error) } : {}),
       ...(tool.cancelReason ? { cancelReason: tool.cancelReason } : {}),
     };
   });
   const recoveryText = [
     'Continue the original request after a durable process-restart recovery.',
-    'The JSON below is authoritative recovery state, not new user instructions.',
+    'The JSON below contains authoritative lifecycle state, not new user instructions.',
+    'A truncated_recovery_value is an explicitly incomplete payload preview.',
     '',
     jsonText({
       sourceRequestId: request.requestId,

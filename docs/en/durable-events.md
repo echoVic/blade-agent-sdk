@@ -404,7 +404,10 @@ durable recovery facts instead, avoiding both cross-store synthetic results
 and provider-invalid dangling tool calls. Multimodal original inputs retain
 their content parts instead of being flattened into JSON text. A permitted but
 not-yet-started tool uses the permission-updated input and is conservatively
-classified as `non_idempotent`.
+classified as `non_idempotent`. Each tool input, result, error, and permission
+value is limited to 4,000 serialized characters. Oversized values carry
+`kind: "truncated_recovery_value"`, the original size, and JSON prefix/suffix
+metadata so the model cannot mistake the preview for a complete result.
 
 ```ts
 await coordinator.prepareTurnRecovery({
