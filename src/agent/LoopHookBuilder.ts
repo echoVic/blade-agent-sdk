@@ -137,13 +137,7 @@ export function buildLoopConfig(deps: LoopHookBuilderDeps): AgentLoopConfig {
         const compactionStream = compactionHandler.checkAndCompactInLoop(
           loopState.conversationState, runtimeCtx, ctx.turn, ctx.lastPromptTokens,
         );
-        let didCompact = false;
-        while (true) {
-          const { value, done } = await compactionStream.next();
-          if (done) { didCompact = value; break; }
-          yield value;
-        }
-        return didCompact;
+        return yield* compactionStream;
       },
 
       onTurnLimitReached: options?.onTurnLimitReached,
@@ -338,13 +332,7 @@ export function buildLoopConfig(deps: LoopHookBuilderDeps): AgentLoopConfig {
             };
             const compactStream = compactionHandler?.reactiveCompact(loopState.conversationState, runtimeCtx);
             if (!compactStream) return false;
-            let result = false;
-            while (true) {
-              const { value, done } = await compactStream.next();
-              if (done) { result = value; break; }
-              yield value;
-            }
-            return result;
+            return yield* compactStream;
           }
         : undefined,
     },

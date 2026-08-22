@@ -347,6 +347,8 @@ Turn 结束；进程崩溃留下 started attempt 时，plan 返回
 一次 model attempt 表示包含内部 HTTP 重试的一次逻辑模型调用；反应式压缩后的
 重新调用会创建新的 attempt。高频 token delta 仍是临时流，完整响应在任何后续
 Turn 终态前持久化。
+活动 model attempt 的对账优先于同一 Turn 的权限和工具结果；模型终态提交后，
+plan 会继续暴露尚未消解的下一层恢复动作。
 
 ## Recovery Coordinator
 

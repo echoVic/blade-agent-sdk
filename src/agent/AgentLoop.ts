@@ -223,16 +223,11 @@ export async function* agentLoop(
       && !(initialInputPreparation === RECONCILED_INITIAL_INPUT && turnsCount === 0)
       && turnHooks?.beforeTurn
     ) {
-      const beforeTurnStream = turnHooks.beforeTurn({
+      yield* turnHooks.beforeTurn({
         turn: turnsCount,
         messages: convState.toArray(),
         lastPromptTokens,
       });
-      while (true) {
-        const { value, done } = await beforeTurnStream.next();
-        if (done) break;
-        yield value;
-      }
     }
 
     if (recovery.phase !== 'retry_pending') {
@@ -270,7 +265,7 @@ export async function* agentLoop(
 
     const stepSignal = runControl?.stepSignal ?? signal;
     try {
-      const turnGen = runTurn({
+      const turnOutcome = yield* runTurn({
         turnState,
         messages: convState.toArray(),
         executionPipeline,
@@ -290,23 +285,8 @@ export async function* agentLoop(
           onUpdate: toolHooks?.onUpdate,
         },
       });
-      let turnStreamCompleted = false;
-      try {
-        while (true) {
-          const { value, done } = await turnGen.next();
-          if (done) {
-            turnResult = value.chatResponse;
-            streamingExecutionResults = value.streamingExecutionResults;
-            turnStreamCompleted = true;
-            break;
-          }
-          yield value;
-        }
-      } finally {
-        if (!turnStreamCompleted) {
-          await turnGen.return(undefined as never);
-        }
-      }
+      turnResult = turnOutcome.chatResponse;
+      streamingExecutionResults = turnOutcome.streamingExecutionResults;
     } catch (llmError) {
       const interruptInputId = getSteeringInterruptInputId(stepSignal);
       if (!signal?.aborted && interruptInputId && runControl) {
@@ -351,16 +331,9 @@ export async function* agentLoop(
           attempt,
         });
         yield { type: 'recovery', phase: 'started', reason: 'context_overflow' };
-        const compactStream = recoveryHooks.reactiveCompact({ messages: convState.toArray() });
-        let recovered = false;
-        while (true) {
-          const { value, done } = await compactStream.next();
-          if (done) {
-            recovered = value;
-            break;
-          }
-          yield value;
-        }
+        const recovered = yield* recoveryHooks.reactiveCompact({
+          messages: convState.toArray(),
+        });
         if (!recovered) {
           recoveryHooks.onStateChange?.({
             turn: turnsCount,

@@ -367,6 +367,9 @@ A model attempt is one logical model operation and may contain internal HTTP
 retries. A reactive-compaction retry creates a new attempt. High-frequency
 token deltas remain transient, while the complete response is durable before
 any later Turn terminal event.
+Active model reconciliation takes precedence over permission and tool outcomes
+in the same Turn. After the model terminal event commits, the plan exposes the
+next unresolved recovery action.
 
 ## Recovery Coordinator
 

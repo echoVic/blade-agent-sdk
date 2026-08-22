@@ -296,20 +296,27 @@ export class StreamingToolExecutor {
   }> {
     const stream = streamChatResponse(this.getChatService, messages, tools, signal, this.logger);
     let chatResponse: ChatResponse | undefined;
+    let streamCompleted = false;
+    try {
+      while (true) {
+        const { value, done } = await stream.next();
+        if (done) {
+          chatResponse = value;
+          streamCompleted = true;
+          break;
+        }
 
-    while (true) {
-      const { value, done } = await stream.next();
-      if (done) {
-        chatResponse = value;
-        break;
+        if (!this.isEpochActive(epoch)) break;
+
+        if (value.type === 'content_delta') {
+          await executionConfig.onContentDelta?.(value.delta);
+        } else {
+          await executionConfig.onThinkingDelta?.(value.delta);
+        }
       }
-
-      if (!this.isEpochActive(epoch)) break;
-
-      if (value.type === 'content_delta') {
-        await executionConfig.onContentDelta?.(value.delta);
-      } else {
-        await executionConfig.onThinkingDelta?.(value.delta);
+    } finally {
+      if (!streamCompleted) {
+        await stream.return(undefined as never);
       }
     }
 
