@@ -100,6 +100,8 @@ Node-local 能力外，这些函数都从根入口导出；实际 subpath 以“
 | 导出 | 说明 |
 |------|------|
 | `DurableEventStore` | append/read/head 的持久化接口 |
+| `DurableEventSubscription` | 支持 replay/caught-up/live 阶段的可重连事件流 |
+| `durableEventCursor` / `parseDurableEventCursor` | 创建和严格解析版本化恢复 cursor |
 | `DurableSessionJournal` / `DurableSessionJournalOptions` | command-oriented 串行提交、CAS 重试与对账层 |
 | `DurableSessionRecoveryCoordinator` | accepted Request 恢复、权限消解与工具结果对账协调器 |
 | `DurableSessionCommand` / `DurableCommandEventDraft` | Journal command 与不含重复 `commandId` 的事件输入 |
@@ -118,6 +120,9 @@ Node-local 能力外，这些函数都从根入口导出；实际 subpath 以“
 | `DurableSessionCloseReason` | Session 关闭原因 |
 | `DurableEventAppendOptions` / `DurableEventAppendResult` | compare-and-append 参数与结果 |
 | `DurableEventReadOptions` / `DurableEventPage` | cursor 分页读取参数与结果 |
+| `DurableEventCursor` / `DURABLE_EVENT_CURSOR_VERSION` | 绑定 Session、sequence 和 event ID 的 cursor |
+| `DurableEventSubscriptionOptions` / `DurableEventSubscriptionMessage` | 订阅配置与 event/caught-up 消息 |
+| `DurableEventSubscriptionError` / `DurableEventSubscriptionErrorCode` | cursor、分页或订阅配置错误 |
 | `DurableEventType` / `isDurableEventType` | 生命周期事件名及运行时类型判断 |
 | `DurableSessionProjector` / `projectDurableSession` | 增量或一次性重建并校验 Session 生命周期 |
 | `planDurableSessionRecovery` / `DurableSessionRecoveryPlan` | 分类未完成 Request、Turn、Tool 与 Permission |
