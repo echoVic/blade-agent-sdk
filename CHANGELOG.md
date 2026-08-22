@@ -2,6 +2,12 @@
 
 All notable changes to `@blade-ai/agent-sdk` are documented here.
 
+## [4.1.0] - 2026-08-22
+
+### Features
+
+- Add a durable recovery coordinator with idempotent tool-outcome and permission reconciliation, and automatically resume requests that were accepted before execution started.
+
 ## [4.0.0] - 2026-08-22
 
 ### Breaking Changes
