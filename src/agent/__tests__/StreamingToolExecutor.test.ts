@@ -160,6 +160,85 @@ describe('StreamingToolExecutor', () => {
     expect(order.indexOf('after:ReadFile')).toBeLessThan(order.indexOf('complete:ReadFile'));
   });
 
+  it('defers streaming tool calls and executes them serially in plan mode', async () => {
+    const finishGate = deferred<void>();
+    const firstToolGate = deferred<ToolResult>();
+    const started: string[] = [];
+
+    const { executor, execute } = createExecutor({
+      streamChat: async function* () {
+        yield {
+          toolCalls: [
+            {
+              index: 0,
+              id: 'tool-1',
+              function: {
+                name: 'ReadA',
+                arguments: '{}',
+              },
+            },
+            {
+              index: 1,
+              id: 'tool-2',
+              function: {
+                name: 'ReadB',
+                arguments: '{}',
+              },
+            },
+          ],
+        };
+        await finishGate.promise;
+        yield { finishReason: 'tool_calls' };
+      },
+      execute: async (toolName: string) => {
+        started.push(toolName);
+        if (toolName === 'ReadA') {
+          return firstToolGate.promise;
+        }
+        return {
+          success: true,
+          llmContent: toolName,
+        };
+      },
+    });
+
+    const execution = executor.collectAndExecute(
+      [{ role: 'user', content: 'inspect files' }],
+      [
+        { name: 'ReadA', description: 'read a', parameters: {} },
+        { name: 'ReadB', description: 'read b', parameters: {} },
+      ],
+      undefined,
+      {
+        executionPipeline: executionPipelineFromMock(execute),
+        executionContext: {
+          sessionId: SessionId('session-plan'),
+          userId: 'user-1',
+        },
+        permissionMode: PermissionMode.PLAN,
+      },
+    );
+
+    await tick();
+    expect(started).toEqual([]);
+
+    finishGate.resolve();
+    await tick();
+    expect(started).toEqual(['ReadA']);
+
+    firstToolGate.resolve({
+      success: true,
+      llmContent: 'ReadA',
+    });
+
+    const { executionResults } = await execution;
+    expect(started).toEqual(['ReadA', 'ReadB']);
+    expect(executionResults.map(({ toolCall }) => toolCall.function.name)).toEqual([
+      'ReadA',
+      'ReadB',
+    ]);
+  });
+
   it('emits unified tool execution updates while preserving legacy callbacks', async () => {
     const updates: string[] = [];
 

@@ -455,7 +455,6 @@ export async function* agentLoop(
       );
       const executionPlan = planToolExecution(
         functionCalls,
-        executionPipeline.getRegistry(),
         turnPermissionMode,
       );
 

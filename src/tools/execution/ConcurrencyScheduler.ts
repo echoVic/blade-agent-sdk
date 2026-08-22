@@ -5,13 +5,14 @@
  *
  * | Bucket   | 最大并发 | 说明                                       |
  * |----------|---------|--------------------------------------------|
- * | readonly | ∞       | 无副作用工具 (Read/Grep/Glob/WebFetch 等)  |
- * | write    | ∞ *     | 写工具;* 不同文件可并行,同文件由调用方走   |
+ * | readonly | 10      | 无副作用工具 (Read/Grep/Glob/WebFetch 等)  |
+ * | write    | 10 *    | 写工具;* 不同文件可并行,同文件由调用方走   |
  * |          |         | FileLockManager 串行                       |
  * | execute  | 3       | Bash/Shell 限并发,避免系统资源争抢         |
  *
  * 注意: scheduler 只做"桶配额"管理;工具内部的串行化 (如同文件编辑)
  * 仍由 FileLockManager 负责。两者正交。
+ * 调用方应直接提交所有已就绪任务,不要再叠加独立的数值并发限制。
  */
 
 import { ToolKind } from '../types/ToolKind.js';
@@ -35,8 +36,8 @@ export interface ConcurrencyLimits {
 }
 
 const DEFAULT_LIMITS: Required<ConcurrencyLimits> = {
-  readonly: Number.POSITIVE_INFINITY,
-  write: Number.POSITIVE_INFINITY,
+  readonly: 10,
+  write: 10,
   execute: 3,
 };
 

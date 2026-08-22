@@ -272,7 +272,6 @@ describe('agentLoop', () => {
         releaseFirstExecution = resolve;
       });
 
-      // Use readonly kind so planToolExecution picks parallel mode
       const pipeline = {
         getRegistry: () => ({
           get: (_name: string) => ({ kind: 'readonly', name: _name }),

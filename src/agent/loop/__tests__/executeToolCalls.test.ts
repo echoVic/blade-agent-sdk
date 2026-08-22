@@ -4,6 +4,55 @@ import { SessionId } from '../../../types/branded.js';
 import { executeToolCalls } from '../executeToolCalls.js';
 
 describe('executeToolCalls', () => {
+  it('submits parallel calls without an additional batch limit and preserves result order', async () => {
+    let releaseExecutions!: () => void;
+    const executionGate = new Promise<void>((resolve) => {
+      releaseExecutions = resolve;
+    });
+    const started: string[] = [];
+    const calls = Array.from({ length: 12 }, (_, index) => ({
+      id: `tool-${index}`,
+      type: 'function' as const,
+      function: {
+        name: `Read${index}`,
+        arguments: '{}',
+      },
+    }));
+
+    const execution = executeToolCalls({
+      plan: {
+        mode: 'parallel',
+        calls,
+      },
+      executionPipeline: {
+        execute: vi.fn(async (toolName: string) => {
+          started.push(toolName);
+          await executionGate;
+          return {
+            success: true,
+            llmContent: toolName,
+          };
+        }),
+        getRegistry: () => ({
+          get: () => undefined,
+        }),
+      } as never,
+      executionContext: {
+        sessionId: SessionId('session-parallel'),
+        userId: 'user-1',
+      },
+    });
+
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(started).toEqual(calls.map((call) => call.function.name));
+
+    releaseExecutions();
+    const results = await execution;
+    expect(results.map((result) => result.toolCall.function.name)).toEqual(
+      calls.map((call) => call.function.name),
+    );
+  });
+
   it('should forward the turn-scoped context snapshot into tool execution', async () => {
     const execute = vi.fn(async () => ({
       success: true,

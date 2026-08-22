@@ -32,10 +32,10 @@ describe('ConcurrencyScheduler', () => {
     });
   });
 
-  describe('readonly 桶: 无限并发', () => {
-    it('100 个 readonly 任务应全部并行启动', async () => {
+  describe('readonly 桶: 默认限并发 10', () => {
+    it('超过 10 个任务时,多余的应排队', async () => {
       const scheduler = new ConcurrencyScheduler();
-      const gates = Array.from({ length: 100 }, () => deferred<number>());
+      const gates = Array.from({ length: 12 }, () => deferred<number>());
 
       const results = gates.map((g, i) =>
         scheduler.schedule(ToolKind.ReadOnly, async () => g.promise.then(() => i))
@@ -44,21 +44,48 @@ describe('ConcurrencyScheduler', () => {
       await new Promise((r) => setTimeout(r, 0));
 
       expect(scheduler.getStats()[ToolKind.ReadOnly]).toEqual({
-        inFlight: 100,
-        queued: 0,
+        inFlight: 10,
+        queued: 2,
       });
 
       for (const g of gates) {
         g.resolve(0);
       }
       const values = await Promise.all(results);
-      expect(values).toHaveLength(100);
+      expect(values).toHaveLength(12);
     });
   });
 
-  describe('execute 桶: 限并发 3', () => {
+  describe('write 桶: 默认限并发 10', () => {
+    it('超过 10 个任务时,多余的应排队', async () => {
+      const scheduler = new ConcurrencyScheduler();
+      const gates = Array.from({ length: 12 }, () => deferred<void>());
+      const started: number[] = [];
+
+      const promises = gates.map((g, i) =>
+        scheduler.schedule(ToolKind.Write, async () => {
+          started.push(i);
+          await g.promise;
+        })
+      );
+
+      await new Promise((r) => setTimeout(r, 0));
+      expect(started).toEqual([0, 1, 2, 3, 4, 5, 6, 7, 8, 9]);
+      expect(scheduler.getStats()[ToolKind.Write]).toEqual({
+        inFlight: 10,
+        queued: 2,
+      });
+
+      for (const g of gates) {
+        g.resolve();
+      }
+      await Promise.all(promises);
+    });
+  });
+
+  describe('execute 桶: 默认限并发 3', () => {
     it('超过 3 个任务时,多余的应排队', async () => {
-      const scheduler = new ConcurrencyScheduler({ execute: 3 });
+      const scheduler = new ConcurrencyScheduler();
       const gates = Array.from({ length: 5 }, () => deferred<void>());
       const started: number[] = [];
 

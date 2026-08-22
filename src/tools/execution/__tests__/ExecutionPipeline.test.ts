@@ -15,6 +15,14 @@ function registerTool<TParams>(registry: ToolRegistry, tool: Tool<TParams>): voi
   registry.register(tool as unknown as Tool);
 }
 
+function deferred<T = void>() {
+  let resolve!: (value: T | PromiseLike<T>) => void;
+  const promise = new Promise<T>((res) => {
+    resolve = res;
+  });
+  return { promise, resolve };
+}
+
 describe('ExecutionPipeline', () => {
   it('does not expose stage-pipeline management on the default execution path', () => {
     const registry = new ToolRegistry();
@@ -26,6 +34,54 @@ describe('ExecutionPipeline', () => {
     expect('getStages' in (pipeline as unknown as Record<string, unknown>)).toBe(false);
     expect('addStage' in (pipeline as unknown as Record<string, unknown>)).toBe(false);
     expect('removeStage' in (pipeline as unknown as Record<string, unknown>)).toBe(false);
+  });
+
+  it('enforces configured concurrency limits at the execution boundary', async () => {
+    const registry = new ToolRegistry();
+    const gates = Array.from({ length: 3 }, () => deferred());
+    const started: number[] = [];
+
+    registerTool(
+      registry,
+      createTool({
+        name: 'LimitedRead',
+        displayName: 'Limited Read',
+        kind: ToolKind.ReadOnly,
+        description: { short: 'Concurrency-limited read' },
+        schema: z.object({
+          id: z.number(),
+        }),
+        execute: async ({ id }) => {
+          started.push(id);
+          await gates[id].promise;
+          return {
+            success: true,
+            llmContent: String(id),
+          };
+        },
+      })
+    );
+
+    const pipeline = new ExecutionPipeline(registry, {
+      permissionMode: PermissionMode.YOLO,
+      concurrencyLimits: {
+        readonly: 2,
+      },
+    });
+    const executions = gates.map((_, id) =>
+      pipeline.execute('LimitedRead', { id }, { permissionMode: PermissionMode.YOLO })
+    );
+
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(started).toEqual([0, 1]);
+
+    gates[0].resolve();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(started).toEqual([0, 1, 2]);
+
+    gates[1].resolve();
+    gates[2].resolve();
+    await Promise.all(executions);
   });
 
   it('uses resolved readonly behavior for plan-mode execution', async () => {
