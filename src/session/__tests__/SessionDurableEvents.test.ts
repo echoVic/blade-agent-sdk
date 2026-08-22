@@ -5,13 +5,17 @@ import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { AgentEvent } from '../../agent/AgentEvent.js';
 import type { LoopOptions, LoopResult, UserMessageContent } from '../../agent/types.js';
+import { PersistentStore } from '../../context/storage/PersistentStore.js';
+import type { Message } from '../../services/ChatServiceInterface.js';
 import {
   CommandId,
   EventId,
   InputId,
   RequestId,
   SessionId,
+  ToolAttemptId,
   ToolUseId,
+  TurnId,
 } from '../../types/branded.js';
 import type { JsonValue } from '../../types/common.js';
 import { type DurableEventStore, DurableEventStoreError } from '../events/DurableEventStore.js';
@@ -23,6 +27,7 @@ import {
   DurableCommandOutcomeUnknownError,
   DurableSessionJournal,
 } from '../events/DurableSessionJournal.js';
+import { DurableSessionRecoveryCoordinator } from '../events/DurableSessionRecoveryCoordinator.js';
 import { JsonlDurableEventStore } from '../events/JsonlDurableEventStore.js';
 import {
   DurableSessionRecoveryRequiredError,
@@ -519,6 +524,158 @@ describe('Session durable events', () => {
     expect(events.find((event) => event.type === DurableEventType.REQUEST_STARTED)?.requestId).toBe(
       requestId,
     );
+    expect(session.getDurableRecoveryPlan()?.action).toBe('none');
+    await session.close();
+  });
+
+  it('resumes a safely rolled-over active turn as a new durable request', async () => {
+    const { root, store } = createStore();
+    const sessionId = SessionId('turn-rollover-session');
+    const requestId = RequestId('turn-rollover-source');
+    const inputId = InputId('turn-rollover-source-input');
+    const recoveryRequestId = RequestId('turn-rollover-recovery');
+    const recoveryInputId = InputId('turn-rollover-recovery-input');
+    const journal = await DurableSessionJournal.open(store, sessionId);
+    await journal.commit({
+      commandId: CommandId('turn-rollover-bootstrap'),
+      events: [
+        {
+          type: DurableEventType.SESSION_CREATED,
+          data: { source: 'create' },
+        },
+        {
+          type: DurableEventType.REQUEST_ACCEPTED,
+          requestId,
+          data: {
+            inputId,
+            input: 'finish the original task',
+            priority: 'next',
+            maxTurns: 9,
+            model: 'rollover-model',
+            context: {
+              id: 'rollover-context',
+            },
+          },
+        },
+        {
+          type: DurableEventType.INPUT_APPLIED,
+          requestId,
+          data: { inputId, priority: 'next' },
+        },
+        {
+          type: DurableEventType.REQUEST_STARTED,
+          requestId,
+          data: {},
+        },
+        {
+          type: DurableEventType.TURN_STARTED,
+          requestId,
+          turnId: TurnId('turn-rollover-active-turn'),
+          data: { turn: 1, model: 'rollover-model' },
+        },
+        {
+          type: DurableEventType.TOOL_SCHEDULED,
+          requestId,
+          turnId: TurnId('turn-rollover-active-turn'),
+          toolAttemptId: ToolAttemptId('turn-rollover-tool-attempt'),
+          data: {
+            toolCallId: ToolUseId('turn-rollover-tool-call'),
+            toolName: 'Read',
+            input: { file_path: '/tmp/recovery-input' },
+            sideEffect: 'pure',
+            interruptBehavior: 'cancel',
+          },
+        },
+        {
+          type: DurableEventType.TOOL_STARTED,
+          requestId,
+          turnId: TurnId('turn-rollover-active-turn'),
+          toolAttemptId: ToolAttemptId('turn-rollover-tool-attempt'),
+          data: {
+            toolCallId: ToolUseId('turn-rollover-tool-call'),
+            toolName: 'Read',
+            input: { file_path: '/tmp/recovery-input' },
+            sideEffect: 'pure',
+          },
+        },
+      ],
+    });
+    const persistentStore = new PersistentStore(root);
+    const sourceMessageId = await persistentStore.saveAppliedInputMessage(
+      sessionId,
+      inputId,
+      requestId,
+      'finish the original task',
+    );
+    await persistentStore.saveMessage(sessionId, 'assistant', '', sourceMessageId, {
+      toolCalls: [
+        {
+          id: 'turn-rollover-tool-call',
+          type: 'function',
+          function: {
+            name: 'Read',
+            arguments: '{"file_path":"/tmp/recovery-input"}',
+          },
+        },
+      ],
+    });
+    await new DurableSessionRecoveryCoordinator(journal).prepareTurnRecovery({
+      commandId: CommandId('prepare-turn-rollover'),
+      requestId,
+      turnId: TurnId('turn-rollover-active-turn'),
+      recoveryRequestId,
+      recoveryInputId,
+    });
+    let observedMessage: UserMessageContent | undefined;
+    let observedHistory: readonly Message[] | undefined;
+    streamChat = async function* rolloverStream(message, context) {
+      observedMessage = message;
+      observedHistory = (context as { messages: Message[] }).messages;
+      yield { type: 'turn_start', turn: 1, maxTurns: 9 };
+      yield { type: 'turn_end', turn: 1, hasToolCalls: false };
+      return {
+        success: true,
+        finalMessage: 'recovered',
+        metadata: { turnsCount: 1, toolCallsCount: 0, duration: 1 },
+      };
+    };
+
+    const session = await resumeSession({
+      ...options(store),
+      persistSession: true,
+      storagePath: root,
+      sessionId,
+    });
+
+    expect(session.getPendingInputs()).toEqual([
+      expect.objectContaining({
+        inputId: recoveryInputId,
+        targetRequestId: recoveryRequestId,
+      }),
+    ]);
+    for await (const _event of session.stream()) {
+      // Drain the recovery request.
+    }
+
+    expect(observedMessage).toContain('finish the original task');
+    expect(observedMessage).toContain('interrupted_before_trusted_completion');
+    expect(observedHistory).toEqual([
+      expect.objectContaining({
+        role: 'user',
+        content: 'finish the original task',
+      }),
+    ]);
+    expect(observedHistory?.some((message) => message.tool_calls?.length)).toBe(false);
+    const events = (await store.read(sessionId)).events;
+    expect(events.filter((event) => event.type === DurableEventType.REQUEST_ACCEPTED)).toHaveLength(
+      2,
+    );
+    expect(
+      events.find(
+        (event) =>
+          event.type === DurableEventType.REQUEST_STARTED && event.requestId === recoveryRequestId,
+      ),
+    ).toBeDefined();
     expect(session.getDurableRecoveryPlan()?.action).toBe('none');
     await session.close();
   });

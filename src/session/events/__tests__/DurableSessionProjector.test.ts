@@ -33,6 +33,9 @@ const turnId = TurnId('turn-1');
 const toolAttemptId = ToolAttemptId('attempt-1');
 const toolCallId = ToolUseId('call-1');
 const permissionRequestId = PermissionRequestId('permission-1');
+const recoveryRequestId = RequestId('request-recovery');
+const recoveryInputId = InputId('input-recovery');
+const recoveryCommandId = CommandId('recovery-command');
 const timestamp = '2026-08-22T12:00:00.000Z';
 
 function envelopes(
@@ -315,6 +318,171 @@ describe('DurableSessionProjector', () => {
     });
   });
 
+  it('validates and projects canonical turn recovery provenance', () => {
+    const recovered = project([
+      ...turnPrefix(),
+      {
+        type: DurableEventType.TURN_ABORTED,
+        requestId,
+        turnId,
+        commandId: recoveryCommandId,
+        data: { turn: 1, reason: 'process_restart' },
+      },
+      {
+        type: DurableEventType.REQUEST_INTERRUPTED,
+        requestId,
+        commandId: recoveryCommandId,
+        data: { reason: 'process_restart' },
+      },
+      {
+        type: DurableEventType.REQUEST_ACCEPTED,
+        requestId: recoveryRequestId,
+        commandId: recoveryCommandId,
+        data: {
+          inputId: recoveryInputId,
+          input: 'continue',
+          priority: 'next',
+          maxTurns: 12,
+          model: 'request-model',
+          context: {},
+          recovery: {
+            requestId,
+            turnId,
+            turn: 1,
+          },
+        },
+      },
+    ]);
+
+    expect(recovered.activeRequest).toMatchObject({
+      requestId: recoveryRequestId,
+      recovery: {
+        requestId,
+        turnId,
+        turn: 1,
+      },
+    });
+
+    expect(() =>
+      project([
+        {
+          type: DurableEventType.SESSION_CREATED,
+          data: { source: 'create' },
+        },
+        {
+          type: DurableEventType.REQUEST_ACCEPTED,
+          requestId: recoveryRequestId,
+          commandId: CommandId('invalid-recovery'),
+          data: {
+            inputId: recoveryInputId,
+            input: 'continue',
+            priority: 'next',
+            recovery: {
+              requestId,
+              turnId,
+              turn: 1,
+            },
+          },
+        },
+      ]),
+    ).toThrow(/not an atomic canonical rollover/);
+
+    expect(() =>
+      project([
+        ...turnPrefix(),
+        {
+          type: DurableEventType.TURN_ABORTED,
+          requestId,
+          turnId,
+          commandId: CommandId('terminate-old-request'),
+          data: { turn: 1, reason: 'process_restart' },
+        },
+        {
+          type: DurableEventType.REQUEST_INTERRUPTED,
+          requestId,
+          commandId: CommandId('terminate-old-request'),
+          data: { reason: 'process_restart' },
+        },
+        {
+          type: DurableEventType.REQUEST_ACCEPTED,
+          requestId: recoveryRequestId,
+          commandId: recoveryCommandId,
+          data: {
+            inputId: recoveryInputId,
+            input: 'continue',
+            priority: 'next',
+            recovery: {
+              requestId,
+              turnId,
+              turn: 1,
+            },
+          },
+        },
+      ]),
+    ).toThrow(/not an atomic canonical rollover/);
+  });
+
+  it('rejects a recovery request that bypasses a non-idempotent execution boundary', () => {
+    expect(() =>
+      project([
+        ...turnPrefix(),
+        toolScheduled('non_idempotent'),
+        {
+          type: DurableEventType.TOOL_STARTED,
+          requestId,
+          turnId,
+          toolAttemptId,
+          data: {
+            toolCallId,
+            toolName: 'Write',
+            input: { file_path: '/tmp/file' },
+            sideEffect: 'non_idempotent',
+          },
+        },
+        {
+          type: DurableEventType.TOOL_CANCELLED,
+          requestId,
+          turnId,
+          toolAttemptId,
+          commandId: recoveryCommandId,
+          data: {
+            toolCallId,
+            toolName: 'Write',
+            reason: 'process_restart',
+          },
+        },
+        {
+          type: DurableEventType.TURN_ABORTED,
+          requestId,
+          turnId,
+          commandId: recoveryCommandId,
+          data: { turn: 1, reason: 'process_restart' },
+        },
+        {
+          type: DurableEventType.REQUEST_INTERRUPTED,
+          requestId,
+          commandId: recoveryCommandId,
+          data: { reason: 'process_restart' },
+        },
+        {
+          type: DurableEventType.REQUEST_ACCEPTED,
+          requestId: recoveryRequestId,
+          commandId: recoveryCommandId,
+          data: {
+            inputId: recoveryInputId,
+            input: 'continue',
+            priority: 'next',
+            recovery: {
+              requestId,
+              turnId,
+              turn: 1,
+            },
+          },
+        },
+      ]),
+    ).toThrow(/crossed non-idempotent tool attempt/);
+  });
+
   it('classifies scheduled tools as retryable before execution starts', () => {
     const projection = project([...turnPrefix(), toolScheduled()]);
     const recovery = planDurableSessionRecovery(projection);
@@ -324,6 +492,7 @@ describe('DurableSessionProjector', () => {
     expect(recovery.retryableToolAttempts[0]).toMatchObject({
       toolAttemptId,
       toolCallId,
+      executionStarted: false,
       status: 'scheduled',
     });
     expect(recovery.unknownToolAttempts).toEqual([]);
@@ -459,6 +628,7 @@ describe('DurableSessionProjector', () => {
         action: 'resume_turn',
         retryableToolAttempts: [
           expect.objectContaining({
+            executionStarted: true,
             status: 'started',
             input: { file_path: '/tmp/final-file' },
             sideEffect,

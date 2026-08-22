@@ -88,6 +88,7 @@ Types and errors:
 - `DurableSessionJournalOptions`
 - `DurableSessionCommand`
 - `DurableCommandEventDraft`
+- `DurableCommandCommitOptions`
 - `DurableCommandCommitResult`
 - `DurableCommandCommitStatus`
 - `DurableSessionJournalError`
@@ -105,6 +106,7 @@ Types and errors:
 - `DurableInputPriority`
 - `DurablePermissionDecision`
 - `DurableRequestInterruptReason`
+- `DurableRequestRecoveryOrigin`
 - `DurableTurnAbortReason`
 - `DurableToolInterruptBehavior`
 - `DurableToolCancelReason`
@@ -120,6 +122,8 @@ Types and errors:
 - `DurableEventStoreErrorCode`
 - `DurableEventProjectionError`
 - `DurableSessionRecoveryRequiredError`
+- `DurableTurnRecoveryCommand`
+- `DurableTurnRecoveryResult`
 - `SessionDurableRecorderError`
 - `DurablePermissionProjection`
 - `DurablePermissionStatus`

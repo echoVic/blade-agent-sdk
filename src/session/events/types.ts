@@ -73,6 +73,12 @@ export interface DurableTokenUsage {
   totalTokens: number;
 }
 
+export interface DurableRequestRecoveryOrigin {
+  requestId: RequestId;
+  turnId: TurnId;
+  turn: number;
+}
+
 export interface DurableEventDataMap {
   [DurableEventType.SESSION_CREATED]: {
     source?: 'create' | 'resume' | 'fork';
@@ -88,6 +94,7 @@ export interface DurableEventDataMap {
     maxTurns?: number;
     model?: string;
     context?: JsonObject;
+    recovery?: DurableRequestRecoveryOrigin;
   };
   [DurableEventType.REQUEST_STARTED]: Record<string, never>;
   [DurableEventType.REQUEST_COMPLETED]: {

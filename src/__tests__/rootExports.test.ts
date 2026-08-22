@@ -1,6 +1,7 @@
 import { describe, expect, expectTypeOf, it } from 'vitest';
 import type {
   DurableAcceptedRequestRecovery,
+  DurableCommandCommitOptions,
   DurableCommandEventDraft,
   DurableEventCursor,
   DurableEventEnvelope,
@@ -8,11 +9,14 @@ import type {
   DurableEventStore,
   DurableEventSubscriptionMessage,
   DurableEventSubscriptionOptions,
+  DurableRequestRecoveryOrigin,
   DurableSessionCommand,
-  DurableSessionResumeDecision,
   DurableSessionRecoveryPlan,
+  DurableSessionResumeDecision,
   DurableToolOutcomeReconciliationCommand,
   DurableToolStartCommand,
+  DurableTurnRecoveryCommand,
+  DurableTurnRecoveryResult,
   InputSubmission,
   ISession,
   PendingSessionInput,
@@ -23,8 +27,8 @@ import type {
   ToolEffect,
   ToolEffectYield,
   ToolExecution,
-  ToolExecutionStartedLifecycle,
   ToolExecutionLifecycle,
+  ToolExecutionStartedLifecycle,
   ToolExecutionUpdate,
   ToolInvocationLifecycle,
   ToolMessage,
@@ -41,11 +45,10 @@ import {
   completeToolExecution,
   createMemoryReadTool,
   createMemoryWriteTool,
-  DurableCommandConflictError,
-  DurableCommandOutcomeUnknownError,
   DURABLE_EVENT_CURSOR_VERSION,
   DURABLE_EVENT_SCHEMA_VERSION,
-  durableEventCursor,
+  DurableCommandConflictError,
+  DurableCommandOutcomeUnknownError,
   DurableEventSubscription,
   DurableEventSubscriptionError,
   DurableEventType,
@@ -54,6 +57,7 @@ import {
   DurableSessionRecoveryCoordinator,
   DurableSessionRecoveryError,
   DurableSessionRecoveryRequiredError,
+  durableEventCursor,
   EventId,
   EventSequence,
   FileSystemMemoryStore,
@@ -64,8 +68,8 @@ import {
   PermissionRequestId,
   projectDurableSession,
   RequestId,
-  SessionInputError,
   SessionDurableRecorderError,
+  SessionInputError,
   SubagentExecutor,
   SubagentRegistry,
   ToolAttemptId,
@@ -144,12 +148,8 @@ describe('root exports', () => {
     expectTypeOf<ReturnType<typeof createMemoryReadTool>>().toMatchTypeOf<SessionTool>();
     expectTypeOf<DurableEventEnvelope['sequence']>().toEqualTypeOf<EventSequence>();
     expectTypeOf<DurableEventCursor['eventId']>().toEqualTypeOf<EventId>();
-    expectTypeOf<DurableEventSubscriptionMessage['type']>().toEqualTypeOf<
-      'event' | 'caught_up'
-    >();
-    expectTypeOf<DurableEventSubscriptionOptions['follow']>().toEqualTypeOf<
-      boolean | undefined
-    >();
+    expectTypeOf<DurableEventSubscriptionMessage['type']>().toEqualTypeOf<'event' | 'caught_up'>();
+    expectTypeOf<DurableEventSubscriptionOptions['follow']>().toEqualTypeOf<boolean | undefined>();
     expectTypeOf<
       DurableEventOfType<typeof DurableEventType.REQUEST_ACCEPTED>['data']['inputId']
     >().toEqualTypeOf<InputId>();
@@ -163,10 +163,17 @@ describe('root exports', () => {
       'ready' | 'resume_accepted_request' | 'recovery_required'
     >();
     expectTypeOf<DurableAcceptedRequestRecovery['model']>().toEqualTypeOf<string>();
+    expectTypeOf<DurableRequestRecoveryOrigin['turnId']>().toEqualTypeOf<TurnId>();
     expectTypeOf<
       DurableToolOutcomeReconciliationCommand['toolAttemptId']
     >().toEqualTypeOf<ToolAttemptId>();
     expectTypeOf<DurableToolStartCommand['commandId']>().toEqualTypeOf<CommandId>();
+    expectTypeOf<DurableTurnRecoveryCommand['recoveryInputId']>().toEqualTypeOf<InputId>();
+    expectTypeOf<DurableTurnRecoveryCommand['turnId']>().toEqualTypeOf<TurnId>();
+    expectTypeOf<DurableTurnRecoveryResult['recoveryRequestId']>().toEqualTypeOf<RequestId>();
+    expectTypeOf<DurableCommandCommitOptions['expectedHeadSequence']>().toEqualTypeOf<
+      EventSequence | null | undefined
+    >();
     expectTypeOf<DurableEventStore['append']>().toBeFunction();
     expectTypeOf<SessionOptions['durableEventStore']>().toEqualTypeOf<
       DurableEventStore | undefined

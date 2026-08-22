@@ -9,9 +9,10 @@ projection.
 Session writes durable events only when
 `SessionOptions.durableEventStore` is explicitly set; the existing message JSONL
 format is unchanged. `resumeSession()` automatically restores a Request that
-was accepted but did not cross the `request_started` boundary. Active Turns,
-pending permissions, and started tools still require explicit recovery or
-reconciliation. A `non_idempotent` tool is never replayed automatically.
+was accepted but did not cross the `request_started` boundary. An active Turn
+must first be atomically rolled over through the Recovery Coordinator; pending
+permissions and unknown tool outcomes still require explicit resolution. A
+`non_idempotent` tool is never replayed automatically.
 :::
 
 ## Imports
@@ -73,7 +74,7 @@ are rejected before append.
 |-------|----------------|-------------|
 | `session_created` | Session | `source?`, `parentSessionId?` |
 | `session_closed` | Session | `reason` |
-| `request_accepted` | `requestId`, `commandId` | `inputId`, `input`, `priority`, `maxTurns?`, `model?`, `context?` |
+| `request_accepted` | `requestId`, `commandId` | `inputId`, `input`, `priority`, `maxTurns?`, `model?`, `context?`, `recovery?` |
 | `request_started` | `requestId` | Empty object |
 | `request_completed` | `requestId` | `output?`, `usage?` |
 | `request_failed` | `requestId` | `error` |
@@ -187,6 +188,11 @@ Submitting the same `commandId` and identical events returns `replayed` without
 appending another copy. Reusing the command ID with different content throws
 `DurableCommandConflictError`. A command's events must be contiguous in the
 journal; the same ID appearing in separate ranges is also a conflict.
+Commands derived from the current projection should pin the observed head with
+`expectedHeadSequence` so stale decisions cannot commit after either local or
+external writers advance the state. The Recovery Coordinator enforces this for
+all recovery commands; the same command committed by a competitor still
+returns `reconciled`.
 
 After a lower-level write error, the Journal reloads the canonical log:
 
@@ -380,6 +386,56 @@ input and persisted `maxTurns`, model, and Runtime Context. A legacy Request
 without that snapshot, or a started Request even without an active Turn, returns
 `recovery_required`. This avoids executing under different settings or
 duplicating a model call that may already have completed.
+
+For `resume_turn`, `prepareTurnRecovery()` performs these transitions in one
+CAS command:
+
+1. cancel `pure` / `idempotent` or not-yet-started tools without a trusted
+   terminal outcome;
+2. terminate the old Turn and Request with `process_restart`;
+3. accept a new continuation Request containing the original input, durable
+   tool outcomes, and source Request/Turn provenance.
+
+The continuation marks tools that never executed as `not_started` and
+retry-safe tools that crossed the execution boundary as
+`interrupted_before_trusted_completion`. Restored message history omits old
+tool calls without paired results; the new user continuation carries the
+durable recovery facts instead, avoiding both cross-store synthetic results
+and provider-invalid dangling tool calls. Multimodal original inputs retain
+their content parts instead of being flattened into JSON text. A permitted but
+not-yet-started tool uses the permission-updated input and is conservatively
+classified as `non_idempotent`. Each tool input, result, error, and permission
+value is limited to 4,000 serialized characters. Oversized values carry
+`kind: "truncated_recovery_value"`, the original size, and JSON prefix/suffix
+metadata so the model cannot mistake the preview for a complete result.
+
+```ts
+await coordinator.prepareTurnRecovery({
+  commandId: CommandId('recover-turn-42'),
+  requestId: RequestId('request-source-42'),
+  turnId: TurnId('turn-source-42'),
+  recoveryRequestId: RequestId('request-recovery-42'),
+  recoveryInputId: InputId('input-recovery-42'),
+});
+
+const session = await resumeSession({
+  ...options,
+  sessionId,
+});
+for await (const event of session.stream()) {
+  // The new accepted Request uses the existing resume path.
+}
+```
+
+The entire rollover can be retried with the same `commandId`, and competing
+processes can commit it only once. Provenance is valid only when the same
+command contains the adjacent `turn_aborted -> request_interrupted ->
+request_accepted` transition. `requestId` and `turnId` are preconditions for
+the state observed by the caller, so the command cannot silently target a
+newer active Turn. A `non_idempotent` tool that is `completed`, `failed`, or
+`cancelled` after execution started raises
+`DURABLE_RECOVERY_UNSAFE_ROLLOVER` and remains fail-closed; the API does not use
+prompting to bypass an unknown side effect.
 
 Schema v2 adds the required `sideEffect` field to `tool_scheduled`. Version 1
 logs are not inferred silently and must be migrated before this runtime can
