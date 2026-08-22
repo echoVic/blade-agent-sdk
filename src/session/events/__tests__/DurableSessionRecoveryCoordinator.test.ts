@@ -1052,6 +1052,76 @@ describe('DurableSessionRecoveryCoordinator', () => {
     ).rejects.toThrow(/different events/);
   });
 
+  it('reconciles the active model before exposing an unknown tool outcome', async () => {
+    const store = createStore();
+    const journal = await createJournal(store, { requestStarted: true });
+    await journal.commit({
+      commandId: CommandId('start-streaming-model-and-tool'),
+      events: [
+        {
+          type: DurableEventType.TURN_STARTED,
+          requestId,
+          turnId,
+          data: { turn: 1, model: 'accepted-model' },
+        },
+        {
+          type: DurableEventType.MODEL_REQUEST_STARTED,
+          requestId,
+          turnId,
+          modelAttemptId,
+          data: {
+            model: 'accepted-model',
+            streaming: true,
+          },
+        },
+        {
+          type: DurableEventType.TOOL_SCHEDULED,
+          requestId,
+          turnId,
+          toolAttemptId,
+          data: {
+            toolCallId,
+            toolName: 'Deploy',
+            input: { environment: 'production' },
+            sideEffect: 'non_idempotent',
+            interruptBehavior: 'block',
+          },
+        },
+        {
+          type: DurableEventType.TOOL_STARTED,
+          requestId,
+          turnId,
+          toolAttemptId,
+          data: {
+            toolCallId,
+            toolName: 'Deploy',
+            input: { environment: 'production' },
+            sideEffect: 'non_idempotent',
+          },
+        },
+      ],
+    });
+    const coordinator = new DurableSessionRecoveryCoordinator(journal);
+    expect(coordinator.getRecoveryPlan().action).toBe('reconcile_model_outcome');
+
+    const result = await coordinator.reconcileModelOutcome({
+      commandId: CommandId('settle-streaming-model'),
+      requestId,
+      turnId,
+      modelAttemptId,
+      outcome: {
+        status: 'failed',
+        error: { message: 'stream ended unexpectedly' },
+      },
+    });
+
+    expect(result.recoveryPlan).toMatchObject({
+      action: 'reconcile_tool_outcomes',
+      activeModelAttempt: null,
+      unknownToolAttempts: [{ toolAttemptId }],
+    });
+  });
+
   it.each([
     {
       outcome: {
