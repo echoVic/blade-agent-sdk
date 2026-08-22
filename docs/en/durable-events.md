@@ -6,11 +6,11 @@ compare-and-append, cursor-based reads, and deterministic Session lifecycle
 projection.
 
 ::: warning Integration status
-The current phase does not change `Session.send()`, `Session.stream()`, or the
-existing Session JSONL format. Applications can use the Event Store and recovery
-projector directly; Session lifecycle events will be connected in a later phase.
-The tool pipeline already exposes awaited lifecycle hooks so that integration can
-preserve persist-before-side-effect and persist-before-publish ordering.
+Session writes durable events only when
+`SessionOptions.durableEventStore` is explicitly set; the existing message JSONL
+format is unchanged. Automatic recovery of an active Request is not enabled.
+`resumeSession()` throws `DurableSessionRecoveryRequiredError` for unfinished
+work instead of replaying a started tool.
 :::
 
 ## Imports
@@ -287,6 +287,9 @@ Each append:
 
 Event files use mode `0600`. Session IDs are base64url encoded and cannot
 become filesystem paths.
+Events contain raw request inputs, tool inputs, and model-facing tool results.
+Treat the Store as sensitive data and configure encryption, retention, and
+access control at the deployment boundary.
 
 ## Consistency boundary
 
@@ -311,6 +314,8 @@ journal.
 | `DurableCommandConflictError` | One `commandId` maps to different content or non-contiguous ranges. |
 | `DurableCommandOutcomeUnknownError` | A failed write cannot be reconciled and the Journal is fenced. |
 | `DurableSessionJournalError` | Command input, Store page, or commit result violates its contract. |
+| `DurableSessionRecoveryRequiredError` | The Session has unfinished work that requires recovery or reconciliation. |
+| `SessionDurableRecorderError` | Session runtime observed an invalid durable lifecycle state. |
 | `DurableEventProjectionError` | Schema, ordering, or correlation violates lifecycle invariants. |
 | `DurableEventSequenceConflictError` | Compare-and-append precondition failed. |
 | `DurableEventStoreError` | Invalid input, cursor, I/O, or log integrity failure. |

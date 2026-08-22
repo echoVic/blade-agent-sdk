@@ -107,6 +107,8 @@ Types and errors:
 - `DurableEventStoreError`
 - `DurableEventStoreErrorCode`
 - `DurableEventProjectionError`
+- `DurableSessionRecoveryRequiredError`
+- `SessionDurableRecorderError`
 - `DurablePermissionProjection`
 - `DurablePermissionStatus`
 - `DurableRequestProjection`

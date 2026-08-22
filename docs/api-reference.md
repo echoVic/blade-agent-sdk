@@ -106,6 +106,8 @@ Node-local 能力外，这些函数都从根入口导出；实际 subpath 以“
 | `DurableSessionJournalError` / `DurableSessionJournalErrorCode` | command、分页和 Store 返回值错误 |
 | `DurableCommandConflictError` | 同一 `commandId` 被用于不同事件 |
 | `DurableCommandOutcomeUnknownError` | 写入失败后无法确认 command 是否提交 |
+| `DurableSessionRecoveryRequiredError` | Session 恢复前需要权限或工具结果对账 |
+| `SessionDurableRecorderError` | Session runtime 观察到非法 durable 生命周期状态 |
 | `DurableEventEnvelope` / `DurableEventDraft` | 已提交事件与待提交事件 |
 | `DurableEventDataMap` / `DurableEventOfType` / `DurableEventError` / `DurableTokenUsage` | 事件类型到严格 payload 的映射、类型提取及公共 payload |
 | `DurableInputPriority` / `DurablePermissionDecision` | 输入优先级与权限结果 |

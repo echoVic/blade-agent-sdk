@@ -1,0 +1,5 @@
+{
+  "type": "breaking",
+  "en": "Integrate fail-closed, opt-in durable event journaling into Session request, turn, tool, permission, abort, close, and stream-cancellation lifecycles; Session.abort() now returns a Promise that settles pending-request durability.",
+  "zh-CN": "将 fail-closed、opt-in durable 事件日志接入 Session 的请求、Turn、工具、权限、中止、关闭与流取消生命周期；Session.abort() 现返回 Promise，以等待 pending request 的 durable 终态。"
+}

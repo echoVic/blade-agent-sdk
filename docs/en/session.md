@@ -102,9 +102,11 @@ for await (const event of output) {
 
 `expectedRequestId` prevents a concurrent client from steering the wrong request. If the target request is sealed or stopping, a `now` or `next` input is safely retargeted to `later`.
 
-Accepted inputs are durable only when `storagePath` enables persistence.
-Unapplied inputs are then recovered as `later` after process restart. In-memory
-Sessions do not recover inputs across processes.
+Queued and steering inputs are durable only when `storagePath` enables message
+persistence. Unapplied inputs are then recovered as `later` after process
+restart. When `durableEventStore` is configured, the initial request input is
+also captured by `request_accepted`; this does not replace pending-input
+recovery for later steering messages.
 
 ## Manage pending input
 
@@ -175,7 +177,7 @@ Partial model output produced before `turn_interrupted` can be displayed, but it
 
 ```ts
 const stream = session.stream();
-session.abort();
+await session.abort();
 
 for await (const event of stream) {
   // Drain cleanup and terminal events.
@@ -235,6 +237,53 @@ const session = await createSession({
 ```
 
 Session files are written under `{storagePath}/sessions/`. `persistSession: false` forces in-memory behavior.
+
+### Durable execution events
+
+Set `durableEventStore` to opt into the recoverable execution journal. The
+event Store is independent of message-history persistence, so it can be used
+with `persistSession: false`:
+
+```ts
+import {
+  JsonlDurableEventStore,
+  createSession,
+} from '@blade-ai/agent-sdk';
+
+const eventStore = new JsonlDurableEventStore('/var/lib/my-agent');
+const session = await createSession({
+  provider,
+  model,
+  persistSession: false,
+  durableEventStore: eventStore,
+});
+```
+
+When enabled, Session records Session, Request, Turn, Tool, Permission, and
+input-application events with these ordering guarantees:
+
+- `request_accepted` commits before `send()` returns.
+- Turn and tool scheduling events commit before `turn_start` or `tool_use` is published.
+- `tool_started` commits before the tool side effect can run.
+- Terminal events commit before `tool_result`, `result`, or `error` is published.
+- A pending request commits `request_interrupted` before
+  `await session.abort()` resolves.
+
+If a durable boundary cannot be committed, Session rejects the stream instead
+of fabricating a normal terminal event. New and queued requests remain blocked
+until the journal has been reconciled.
+
+```ts
+const projection = session.getDurableProjection();
+const recovery = session.getDurableRecoveryPlan();
+```
+
+`resumeSession()` throws `DurableSessionRecoveryRequiredError` when the
+durable log contains unfinished work, pending permission, or an unknown tool
+outcome. The current integration never replays a started tool automatically;
+reconcile it through `DurableSessionJournal` first. The JSONL adapter supports
+only one process; multi-process deployments need a `DurableEventStore` with
+transactional CAS or fencing.
 
 ### Resume
 
@@ -440,6 +489,7 @@ Payload capture is opt-in because prompts and tool data may be sensitive.
 | `logger` | `AgentLogger` | Structured logger |
 | `storagePath` | `string` | Enables JSONL persistence |
 | `persistSession` | `boolean` | Disable persistence explicitly |
+| `durableEventStore` | `DurableEventStore` | Opt-in durable execution journal |
 | `outputFormat` | `OutputFormat` | Structured output schema |
 | `sandbox` | `SandboxSettings` | Bash sandbox settings |
 | `observability` | `ObservabilityOptions` | Trace collection |
@@ -457,7 +507,7 @@ interface ISession extends AsyncDisposable {
   getPendingInputs(): readonly PendingSessionInput[];
   cancelInput(inputId: InputId): Promise<boolean>;
 
-  abort(): void;
+  abort(): Promise<void>;
   close(): Promise<void>;
   fork(options?: ForkSessionOptions): Promise<ISession>;
 
@@ -476,5 +526,7 @@ interface ISession extends AsyncDisposable {
 
   getLastTrace(): AgentTrace | undefined;
   getTraces(): AgentTrace[];
+  getDurableProjection(): DurableSessionProjection | null;
+  getDurableRecoveryPlan(): DurableSessionRecoveryPlan | null;
 }
 ```
