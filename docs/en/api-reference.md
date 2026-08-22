@@ -48,6 +48,7 @@ Constants:
 - `CommandId`
 - `TurnId`
 - `ToolAttemptId`
+- `PermissionRequestId`
 - `AgentId`
 - `MessageId`
 - `ToolUseId`
@@ -65,12 +66,28 @@ Runtime:
 - `parseDurableEventDraft`
 - `parseDurableEventEnvelope`
 - `parsePersistedDurableEventBatch`
+- `isDurableEventType`
+- `projectDurableSession`
+- `planDurableSessionRecovery`
+- `DurableSessionProjector`
 
 Types and errors:
 
 - `DurableEventStore`
 - `DurableEventEnvelope`
 - `DurableEventDraft`
+- `DurableEventDataMap`
+- `DurableEventError`
+- `DurableEventOfType`
+- `DurableTokenUsage`
+- `DurableInputPriority`
+- `DurablePermissionDecision`
+- `DurableRequestInterruptReason`
+- `DurableTurnAbortReason`
+- `DurableToolInterruptBehavior`
+- `DurableToolCancelReason`
+- `DurableToolOutcomeUnknownReason`
+- `DurableSessionCloseReason`
 - `DurableEventAppendOptions`
 - `DurableEventAppendResult`
 - `DurableEventReadOptions`
@@ -79,6 +96,19 @@ Types and errors:
 - `DurableEventSequenceConflictError`
 - `DurableEventStoreError`
 - `DurableEventStoreErrorCode`
+- `DurableEventProjectionError`
+- `DurablePermissionProjection`
+- `DurablePermissionStatus`
+- `DurableRequestProjection`
+- `DurableRequestStatus`
+- `DurableSessionProjection`
+- `DurableSessionProjectionStatus`
+- `DurableSessionRecoveryAction`
+- `DurableSessionRecoveryPlan`
+- `DurableToolAttemptProjection`
+- `DurableToolAttemptStatus`
+- `DurableTurnProjection`
+- `DurableTurnStatus`
 
 The JSONL adapter is Node-only. Event contracts, constants, errors, and parsers
 are browser-safe through `/core`.
