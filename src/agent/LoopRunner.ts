@@ -171,15 +171,26 @@ export class LoopRunner {
 
     // 2. 保存用户消息到 JSONL
     let lastMessageUuid: string | null = null;
-    try {
-      const contextMgr = this.modelManager.getContextManager();
-      if (contextMgr && context.sessionId && hasPersistableUserContent(message)) {
-        lastMessageUuid = await contextMgr.saveMessage(
-          context.sessionId, 'user', message, null, undefined, context.subagentInfo
-        );
+    const contextMgr = this.modelManager.getContextManager();
+    if (contextMgr && context.sessionId && options?.inputApplication) {
+      lastMessageUuid = await contextMgr.saveAppliedInputMessage(
+        context.sessionId,
+        options.inputApplication.inputId,
+        options.inputApplication.requestId,
+        message,
+        null,
+        context.subagentInfo,
+      );
+    } else {
+      try {
+        if (contextMgr && context.sessionId && hasPersistableUserContent(message)) {
+          lastMessageUuid = await contextMgr.saveMessage(
+            context.sessionId, 'user', message, null, undefined, context.subagentInfo
+          );
+        }
+      } catch (error) {
+        this.logger.warn('[LoopRunner] 保存用户消息失败:', error);
       }
-    } catch (error) {
-      this.logger.warn('[LoopRunner] 保存用户消息失败:', error);
     }
 
     // 3. 计算 maxTurns

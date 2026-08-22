@@ -3,12 +3,18 @@ import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
 import type { ContentPart, ToolCall } from '../../services/ChatServiceInterface.js';
 import { JsonlSessionStore } from '../../session/SessionStore.js';
-import { MessageId, SessionId } from '../../types/branded.js';
+import {
+  type InputId,
+  MessageId,
+  type RequestId,
+  SessionId,
+} from '../../types/branded.js';
 import type { JsonObject, JsonValue, MessageRole } from '../../types/common.js';
 import type {
     ContextData,
     ConversationContext,
     MessageInfo,
+    PendingInputInfo,
     PartInfo,
     SessionContext,
     SessionEvent,
@@ -231,6 +237,71 @@ export class PersistentStore {
       console.error(`[PersistentStore] 保存消息失败 (session: ${sessionId}):`, error);
       throw error;
     }
+  }
+
+  async saveInputEnqueued(
+    sessionId: SessionId,
+    input: PendingInputInfo,
+  ): Promise<void> {
+    const filePath = getSessionFilePathFromStorageRoot(this.storageRoot, sessionId);
+    const store = new JSONLStore(filePath);
+    await this.ensureSessionCreated(sessionId);
+    await store.append(this.createEvent('input_enqueued', sessionId, input));
+  }
+
+  async saveAppliedInputMessage(
+    sessionId: SessionId,
+    inputId: InputId,
+    requestId: RequestId,
+    content: string | ContentPart[],
+    parentUuid: string | null = null,
+    subagentInfo?: {
+      parentSessionId: string;
+      subagentType: string;
+      isSidechain: boolean;
+    },
+  ): Promise<string> {
+    const filePath = getSessionFilePathFromStorageRoot(this.storageRoot, sessionId);
+    const store = new JSONLStore(filePath);
+    await this.ensureSessionCreated(sessionId, subagentInfo);
+    const now = new Date().toISOString();
+    const messageId = MessageId(nanoid());
+    const messageInfo: MessageInfo = {
+      messageId,
+      role: 'user',
+      parentMessageId: parentUuid ?? undefined,
+      createdAt: now,
+      customMetadata: {
+        inputId,
+        requestId,
+      },
+    };
+    await store.appendBatch([
+      this.createEvent('message_created', sessionId, messageInfo),
+      ...this.buildPartEntries(sessionId, messageId, content, now, {}),
+      this.createEvent('input_applied', sessionId, {
+        inputId,
+        requestId,
+        messageId,
+        appliedAt: Date.now(),
+      }),
+    ]);
+    return messageId;
+  }
+
+  async saveInputCancelled(
+    sessionId: SessionId,
+    inputId: InputId,
+    reason: string,
+  ): Promise<void> {
+    const filePath = getSessionFilePathFromStorageRoot(this.storageRoot, sessionId);
+    const store = new JSONLStore(filePath);
+    await this.ensureSessionCreated(sessionId);
+    await store.append(this.createEvent('input_cancelled', sessionId, {
+      inputId,
+      reason,
+      cancelledAt: Date.now(),
+    }));
   }
 
   /**
@@ -774,6 +845,36 @@ export class NoopPersistentStore {
     _requestedToolCallId?: string,
   ): Promise<string> {
     return nanoid();
+  }
+
+  async saveInputEnqueued(
+    _sessionId: SessionId,
+    _input: PendingInputInfo,
+  ): Promise<void> {
+    return Promise.resolve();
+  }
+
+  async saveAppliedInputMessage(
+    _sessionId: SessionId,
+    _inputId: InputId,
+    _requestId: RequestId,
+    _content: string | ContentPart[],
+    _parentUuid: string | null = null,
+    _subagentInfo?: {
+      parentSessionId: string;
+      subagentType: string;
+      isSidechain: boolean;
+    },
+  ): Promise<string> {
+    return nanoid();
+  }
+
+  async saveInputCancelled(
+    _sessionId: SessionId,
+    _inputId: InputId,
+    _reason: string,
+  ): Promise<void> {
+    return Promise.resolve();
   }
 
   async saveToolUse(

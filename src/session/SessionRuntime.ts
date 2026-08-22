@@ -156,6 +156,10 @@ export class SessionRuntime {
     return this.backgroundAgentManager;
   }
 
+  getContextManager(): ContextManager {
+    return this.contextManager;
+  }
+
   async initialize(): Promise<void> {
     if (this.initialized) return;
 

@@ -25,10 +25,13 @@ export type {
   RuntimeToolPolicyPatch,
 } from '../runtime/index.js';
 export type {
+  InputSubmission,
+  PendingSessionInput,
   SendOptions,
   StreamMessage,
   StreamOptions,
 } from '../session/types.js';
+export { InputPriority } from '../session/types.js';
 export type {
   ExecutionContext,
   FunctionDeclaration,
@@ -75,6 +78,11 @@ export {
   PermissionMode,
   StreamMessageType,
 } from '../types/constants.js';
+export {
+  InputId,
+  RequestId,
+  SessionId,
+} from '../types/branded.js';
 export type {
   CanUseTool,
   CanUseToolOptions,

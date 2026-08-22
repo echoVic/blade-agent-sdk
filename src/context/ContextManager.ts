@@ -8,7 +8,12 @@ import {
   type SessionStore,
   type SessionSummary,
 } from '../session/SessionStore.js';
-import { SessionId } from '../types/branded.js';
+import type { ContentPart } from '../services/ChatServiceInterface.js';
+import {
+  type InputId,
+  type RequestId,
+  SessionId,
+} from '../types/branded.js';
 import type { JsonObject, JsonValue } from '../types/common.js';
 import { ContextCompressor } from './processors/ContextCompressor.js';
 import { ContextFilter } from './processors/ContextFilter.js';
@@ -25,6 +30,7 @@ import type {
   ContextManagerOptions,
   ContextMessage,
   ContextFilter as FilterOptions,
+  PendingInputInfo,
   SystemContext,
   ToolCall,
   WorkspaceContext,
@@ -340,6 +346,43 @@ export class ContextManager {
       metadata,
       subagentInfo
     );
+  }
+
+  async saveInputEnqueued(
+    sessionId: SessionId,
+    input: PendingInputInfo,
+  ): Promise<void> {
+    return this.persistent.saveInputEnqueued(sessionId, input);
+  }
+
+  async saveAppliedInputMessage(
+    sessionId: SessionId,
+    inputId: InputId,
+    requestId: RequestId,
+    content: string | ContentPart[],
+    parentUuid: string | null = null,
+    subagentInfo?: {
+      parentSessionId: string;
+      subagentType: string;
+      isSidechain: boolean;
+    },
+  ): Promise<string> {
+    return this.persistent.saveAppliedInputMessage(
+      sessionId,
+      inputId,
+      requestId,
+      content,
+      parentUuid,
+      subagentInfo,
+    );
+  }
+
+  async saveInputCancelled(
+    sessionId: SessionId,
+    inputId: InputId,
+    reason: string,
+  ): Promise<void> {
+    return this.persistent.saveInputCancelled(sessionId, inputId, reason);
   }
 
   /**

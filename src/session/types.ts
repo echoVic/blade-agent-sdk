@@ -19,7 +19,11 @@ import type {
   ToolProgress,
   ToolResult,
 } from '../tools/types/index.js';
-import type { SessionId } from '../types/branded.js';
+import type {
+  InputId,
+  RequestId,
+  SessionId,
+} from '../types/branded.js';
 import type {
   JsonObject,
   JsonValue,
@@ -34,8 +38,47 @@ import type { HookEvent, StreamMessageType } from '../types/constants.js';
 import type { AgentLogger } from '../types/logging.js';
 import type { CanUseTool, PermissionHandler, PermissionUpdate } from '../types/permissions.js';
 import type { Assert, IsEqual } from '../types/typeAssertions.js';
+export type {
+  ExecutionContext,
+  ProviderType,
+  TokenUsage,
+  ToolDefinition,
+  ToolResult,
+};
 
-export type { ExecutionContext, ProviderType, TokenUsage, ToolDefinition, ToolResult };
+export const InputPriority = {
+  NOW: 'now',
+  NEXT: 'next',
+  LATER: 'later',
+} as const;
+
+export type InputPriority = (typeof InputPriority)[keyof typeof InputPriority];
+
+export type InputSubmission =
+  | {
+      status: 'started';
+      inputId: InputId;
+      requestId: RequestId;
+    }
+  | {
+      status: 'steered';
+      inputId: InputId;
+      requestId: RequestId;
+      priority: 'now' | 'next';
+    }
+  | {
+      status: 'queued';
+      inputId: InputId;
+      priority: 'later';
+    };
+
+export interface PendingSessionInput {
+  inputId: InputId;
+  content: UserMessageContent;
+  priority: InputPriority;
+  targetRequestId?: RequestId;
+  acceptedAt: number;
+}
 
 export interface ProviderConfig {
   type: ProviderType;
@@ -228,6 +271,8 @@ export interface SendOptions {
   signal?: AbortSignal;
   maxTurns?: number;
   context?: RuntimeContext;
+  priority?: InputPriority;
+  expectedRequestId?: RequestId;
 }
 
 export interface StreamOptions {
@@ -272,7 +317,9 @@ export interface ISession extends AsyncDisposable {
   readonly messages: Message[];
   readonly isClosed: boolean;
 
-  send(message: UserMessageContent, options?: SendOptions): Promise<void>;
+  send(message: UserMessageContent, options?: SendOptions): Promise<InputSubmission>;
+  getPendingInputs(): readonly PendingSessionInput[];
+  cancelInput(inputId: InputId): Promise<boolean>;
 
   stream(options?: StreamOptions): AsyncGenerator<StreamMessage>;
 

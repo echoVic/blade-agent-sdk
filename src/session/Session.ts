@@ -1,6 +1,8 @@
+import { Mutex } from 'async-mutex';
 import { nanoid } from 'nanoid';
 import { Agent } from '../agent/Agent.js';
 import type { ChatContext, LoopResult, UserMessageContent } from '../agent/types.js';
+import { SessionInputError } from '../errors/SessionInputError.js';
 import { type CleanupHandle, registerCleanup } from '../lifecycle/CleanupRegistry.js';
 import { createRootLogger, type InternalLogger, LogCategory } from '../logging/Logger.js';
 import { type AgentTrace, TraceRecorder } from '../observability/index.js';
@@ -11,7 +13,11 @@ import {
 } from '../runtime/index.js';
 import type { ContentPart, Message } from '../services/ChatServiceInterface.js';
 import { cloneMessage } from '../services/messageUtils.js';
-import { RequestId, SessionId } from '../types/branded.js';
+import {
+  InputId,
+  RequestId,
+  SessionId,
+} from '../types/branded.js';
 import {
   type BladeConfig,
   type JsonValue,
@@ -32,16 +38,22 @@ import type {
   McpServerStatus,
   McpToolInfo,
   ModelInfo,
+  PendingSessionInput,
   PromptResult,
   ProviderConfig,
   SendOptions,
   SessionOptions,
   StreamMessage,
   StreamOptions,
+  InputSubmission,
   TokenUsage,
   ToolCallRecord,
 } from './types.js';
 import { ActiveRequestController } from './ActiveRequestController.js';
+import {
+  SessionInputInbox,
+} from './SessionInputInbox.js';
+import { InputPriority } from './types.js';
 
 export interface ResumeOptions extends SessionOptions {
   sessionId: SessionId;
@@ -52,6 +64,7 @@ type SessionExecutionState =
   | {
       phase: 'pending';
       requestId: RequestId;
+      input: PendingSessionInput;
       message: UserMessageContent;
       options: SendOptions | null;
       snapshot: ContextSnapshot;
@@ -85,6 +98,8 @@ class Session implements ISession {
   private initialized = false;
   private cleanupHandle: CleanupHandle | null = null;
   private readonly traces: AgentTrace[] = [];
+  private readonly inputInbox = new SessionInputInbox();
+  private readonly inputMutex = new Mutex();
 
   /**
    * 请求阶段状态机：
@@ -190,6 +205,15 @@ class Session implements ISession {
     try {
       const state = await this.store.loadState(this.sessionId);
       this._messages = state?.messages ?? [];
+      this.inputInbox.restore(
+        (state?.pendingInputs ?? []).map((input) => ({
+          ...input,
+          content: input.content as UserMessageContent,
+        })),
+      );
+      if (this.executionState.phase === 'idle') {
+        this.scheduleNextQueuedInput();
+      }
       if (this._messages.length === 0) {
         this.logger.debug(`[Session] No history found for session ${this.sessionId}`);
         return;
@@ -269,30 +293,130 @@ class Session implements ISession {
     return urls[type] || '';
   }
 
-  async send(message: UserMessageContent, options?: SendOptions): Promise<void> {
+  async send(
+    message: UserMessageContent,
+    options?: SendOptions,
+  ): Promise<InputSubmission> {
     await this.ensureInitialized();
 
-    if (this.executionState.phase !== 'idle') {
-      throw new Error(
-        this.executionState.phase === 'running'
-          || this.executionState.phase === 'stopping'
-          ? 'Cannot send a new message while a previous stream() is active. Drain or abort it first.'
-          : 'Cannot send a new message while a previous message is pending. Call stream() first.',
-      );
-    }
+    return this.inputMutex.runExclusive(async () => {
+      if (this.executionState.phase === 'closed') {
+        throw new Error('Session is closed');
+      }
 
-    this.executionState = {
-      phase: 'pending',
-      requestId: RequestId(nanoid()),
-      message,
-      options: options || null,
-      snapshot: createContextSnapshot(
-        this.sessionId,
-        nanoid(),
-        this.defaultContext,
-        options?.context,
-      ),
-    };
+      const inputId = InputId(nanoid());
+      if (this.executionState.phase === 'idle') {
+        if (options?.expectedRequestId) {
+          throw new SessionInputError(
+            'SESSION_REQUEST_MISMATCH',
+            `No active request matches "${options.expectedRequestId}"`,
+          );
+        }
+        const requestId = RequestId(nanoid());
+        const input: PendingSessionInput = {
+          inputId,
+          content: message,
+          priority: InputPriority.NEXT,
+          targetRequestId: requestId,
+          acceptedAt: Date.now(),
+        };
+        this.inputInbox.enqueue(input);
+        try {
+          await this.persistInput(input);
+        } catch (error) {
+          this.inputInbox.remove(inputId);
+          throw error;
+        }
+        this.executionState = this.createPendingState(
+          requestId,
+          input,
+          options,
+        );
+        return {
+          status: 'started',
+          inputId,
+          requestId,
+        };
+      }
+
+      if (options?.signal || options?.maxTurns !== undefined || options?.context) {
+        throw new SessionInputError(
+          'SESSION_INPUT_OPTIONS_UNSUPPORTED',
+          'signal, maxTurns, and context can only be set when starting an idle request',
+        );
+      }
+
+      const priority = options?.priority ?? InputPriority.LATER;
+      const activeRequestId = this.executionState.requestId;
+      if (
+        options?.expectedRequestId
+        && options.expectedRequestId !== activeRequestId
+      ) {
+        throw new SessionInputError(
+          'SESSION_REQUEST_MISMATCH',
+          `Expected request "${options.expectedRequestId}" but "${activeRequestId}" is active`,
+        );
+      }
+      if (priority !== InputPriority.LATER) {
+        throw new SessionInputError(
+          'SESSION_STEERING_UNAVAILABLE',
+          'Mid-request steering is not available yet; use priority "later"',
+        );
+      }
+
+      const input: PendingSessionInput = {
+        inputId,
+        content: message,
+        priority,
+        acceptedAt: Date.now(),
+      };
+      this.inputInbox.enqueue(input);
+      try {
+        await this.persistInput(input);
+      } catch (error) {
+        this.inputInbox.remove(inputId);
+        throw error;
+      }
+      return {
+        status: 'queued',
+        inputId,
+        priority,
+      };
+    });
+  }
+
+  getPendingInputs(): readonly PendingSessionInput[] {
+    return this.inputInbox.getAll();
+  }
+
+  async cancelInput(inputId: InputId): Promise<boolean> {
+    await this.ensureInitialized();
+    return this.inputMutex.runExclusive(async () => {
+      const input = this.inputInbox.remove(inputId);
+      if (!input) {
+        return false;
+      }
+
+      try {
+        await this.getRuntime().getContextManager().saveInputCancelled(
+          this.sessionId,
+          inputId,
+          'cancelled_by_user',
+        );
+      } catch (error) {
+        this.inputInbox.enqueue(input);
+        throw error;
+      }
+
+      if (
+        this.executionState.phase === 'pending'
+        && this.executionState.input.inputId === inputId
+      ) {
+        this.executionState = { phase: 'idle' };
+        this.scheduleNextQueuedInput();
+      }
+      return true;
+    });
   }
 
   async *stream(options?: StreamOptions): AsyncGenerator<StreamMessage> {
@@ -305,6 +429,7 @@ class Session implements ISession {
 
     const {
       requestId,
+      input,
       message: initialMessage,
       options: sendOptions,
       snapshot: pendingSnapshot,
@@ -373,15 +498,24 @@ class Session implements ISession {
     const stream = this.getAgent().streamChat(message, context, {
       maxTurns: sendOptions?.maxTurns ?? this.maxTurns,
       signal,
+      inputApplication: {
+        inputId: input.inputId,
+        requestId,
+      },
     });
 
     try {
       let loopResult: LoopResult | undefined;
+      let inputApplied = false;
       const turnSpans = new Map<number, string>();
       const toolSpans = new Map<string, string>();
 
       while (true) {
         const { value, done } = await stream.next();
+        if (!inputApplied) {
+          this.inputInbox.remove(input.inputId);
+          inputApplied = true;
+        }
         if (done) {
           loopResult = value;
           break;
@@ -650,7 +784,7 @@ class Session implements ISession {
     } finally {
       runtime.getHookRuntime().setTraceCollector(undefined);
       requestController.dispose();
-      this.finishRequest(requestId);
+      await this.finishRequest(requestId);
     }
   }
 
@@ -773,14 +907,65 @@ class Session implements ISession {
     return this.runtime;
   }
 
-  private finishRequest(requestId: RequestId): void {
-    if (
-      (this.executionState.phase === 'running'
-        || this.executionState.phase === 'stopping')
-      && this.executionState.requestId === requestId
-    ) {
+  private async finishRequest(requestId: RequestId): Promise<void> {
+    await this.inputMutex.runExclusive(() => {
+      if (
+        (this.executionState.phase !== 'running'
+          && this.executionState.phase !== 'stopping')
+        || this.executionState.requestId !== requestId
+      ) {
+        return;
+      }
+
+      this.inputInbox.releaseRequest(requestId);
       this.executionState = { phase: 'idle' };
+      this.scheduleNextQueuedInput();
+    });
+  }
+
+  private createPendingState(
+    requestId: RequestId,
+    input: PendingSessionInput,
+    options?: SendOptions,
+  ): Extract<SessionExecutionState, { phase: 'pending' }> {
+    return {
+      phase: 'pending',
+      requestId,
+      input,
+      message: input.content,
+      options: options || null,
+      snapshot: createContextSnapshot(
+        this.sessionId,
+        nanoid(),
+        this.defaultContext,
+        options?.context,
+      ),
+    };
+  }
+
+  private scheduleNextQueuedInput(): void {
+    if (this.executionState.phase !== 'idle') {
+      return;
     }
+    const requestId = RequestId(nanoid());
+    const input = this.inputInbox.claimNextLater(requestId);
+    if (!input) {
+      return;
+    }
+    this.executionState = this.createPendingState(requestId, input);
+  }
+
+  private async persistInput(input: PendingSessionInput): Promise<void> {
+    await this.getRuntime().getContextManager().saveInputEnqueued(
+      this.sessionId,
+      {
+        inputId: input.inputId,
+        content: input.content as JsonValue,
+        priority: input.priority,
+        targetRequestId: input.targetRequestId,
+        acceptedAt: input.acceptedAt,
+      },
+    );
   }
 
   private safeParseJson(str: string): JsonValue {

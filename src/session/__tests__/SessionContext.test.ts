@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
 import { PersistentStore } from '../../context/storage/PersistentStore.js';
 import type { ContentPart } from '../../services/ChatServiceInterface.js';
-import { SessionId } from '../../types/branded.js';
+import { InputId, SessionId } from '../../types/branded.js';
 import { HookEvent } from '../../types/constants.js';
 
 const capturedContexts: unknown[] = [];
@@ -399,29 +399,36 @@ describe('Session runtime context', () => {
     await session.close();
   });
 
-  it('does not accept a new request until an aborted stream finishes cleanup', async () => {
+  it('keeps a queued request when an aborted stream finishes cleanup', async () => {
+    let requestCount = 0;
     createAgent.mockResolvedValueOnce({
       async *streamChat(
         _message: unknown,
         context: { signal?: AbortSignal },
       ): AsyncGenerator<unknown, unknown, unknown> {
+        requestCount += 1;
         yield { type: 'turn_start', turn: 1 };
-        await new Promise<void>((resolve) => {
-          if (context.signal?.aborted) {
-            resolve();
-            return;
-          }
-          context.signal?.addEventListener('abort', () => resolve(), { once: true });
-        });
-        await new Promise((resolve) => setTimeout(resolve, 0));
+        if (requestCount === 1) {
+          await new Promise<void>((resolve) => {
+            if (context.signal?.aborted) {
+              resolve();
+              return;
+            }
+            context.signal?.addEventListener('abort', () => resolve(), { once: true });
+          });
+          await new Promise((resolve) => setTimeout(resolve, 0));
+        }
         return {
-          success: false,
-          error: {
-            type: 'aborted',
-            message: 'aborted',
-          },
+          success: requestCount > 1,
+          error: requestCount === 1
+            ? {
+                type: 'aborted',
+                message: 'aborted',
+              }
+            : undefined,
+          finalMessage: requestCount > 1 ? 'done' : undefined,
           metadata: {
-            turnsCount: 0,
+            turnsCount: requestCount > 1 ? 1 : 0,
             toolCallsCount: 0,
             duration: 0,
           },
@@ -444,15 +451,106 @@ describe('Session runtime context', () => {
     });
 
     session.abort();
-    await expect(session.send('second')).rejects.toThrow(
-      'Cannot send a new message while a previous stream() is active',
-    );
+    await expect(session.send('second')).resolves.toMatchObject({
+      status: 'queued',
+      priority: 'later',
+    });
 
     while (!(await stream.next()).done) {
       // Drain the aborted request so its cleanup can complete.
     }
 
-    await expect(session.send('second')).resolves.toBeUndefined();
+    for await (const _event of session.stream()) {
+      // The queued request must survive cleanup of the aborted stream.
+    }
+    await session.close();
+  });
+
+  it('durably queues later input and promotes it after the active request', async () => {
+    const storagePath = mkdtempSync(join(tmpdir(), 'session-context-queued-input-'));
+    let releaseFirstRequest!: () => void;
+    const firstRequestGate = new Promise<void>((resolve) => {
+      releaseFirstRequest = resolve;
+    });
+    let requestCount = 0;
+    createAgent.mockResolvedValueOnce({
+      async *streamChat(message: unknown): AsyncGenerator<unknown, unknown, unknown> {
+        requestCount += 1;
+        capturedMessages.push(message);
+        yield { type: 'turn_start', turn: 1 };
+        if (requestCount === 1) {
+          await firstRequestGate;
+        }
+        return {
+          success: true,
+          finalMessage: `done-${requestCount}`,
+          metadata: {
+            turnsCount: 1,
+            toolCallsCount: 0,
+            duration: 0,
+          },
+        };
+      },
+      async setModel() {},
+    } as never);
+
+    const session = await createSession({
+      provider: { type: 'openai-compatible', apiKey: 'test-key' },
+      model: 'gpt-4o-mini',
+      storagePath,
+    });
+    const started = await session.send('first');
+    expect(started.status).toBe('started');
+
+    const firstStream = session.stream();
+    await firstStream.next();
+    const queued = await session.send('second', {
+      priority: 'later',
+      expectedRequestId:
+        started.status === 'started' ? started.requestId : undefined,
+    });
+    expect(queued).toMatchObject({
+      status: 'queued',
+      priority: 'later',
+    });
+
+    releaseFirstRequest();
+    while (!(await firstStream.next()).done) {
+      // Drain the first request.
+    }
+
+    for await (const _event of session.stream()) {
+      // The durable follow-up was promoted to the next request.
+    }
+
+    expect(capturedMessages.slice(-2)).toEqual(['first', 'second']);
+
+    await session.close();
+  });
+
+  it('restores unresolved durable input as the next pending request', async () => {
+    const storagePath = mkdtempSync(join(tmpdir(), 'session-context-recovered-input-'));
+    const sessionId = SessionId('session-recovered-input');
+    const persistentStore = new PersistentStore(storagePath);
+    await persistentStore.saveInputEnqueued(sessionId, {
+      inputId: InputId('input-recovered'),
+      content: 'continue after restart',
+      priority: 'next',
+      acceptedAt: 1,
+    });
+
+    const session = await resumeSession({
+      sessionId,
+      provider: { type: 'openai-compatible', apiKey: 'test-key' },
+      model: 'gpt-4o-mini',
+      storagePath,
+    });
+
+    for await (const _event of session.stream()) {
+      // Restored input is immediately available without another send().
+    }
+
+    expect(capturedMessages.at(-1)).toBe('continue after restart');
     await session.close();
   });
 });

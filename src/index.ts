@@ -10,13 +10,14 @@ export type {
   SubagentSource,
 } from './agent/subagents/types.js';
 export type { TokenBudgetConfig, TokenBudgetSnapshot } from './agent/TokenBudget.js';
-export type { SdkErrorOptions } from './errors/index.js';
+export type { SdkErrorOptions, SessionInputErrorCode } from './errors/index.js';
 // --- Error hierarchy ---
 export {
   AbortError,
   ConfigError,
   PermissionDeniedError,
   SdkError,
+  SessionInputError,
   ToolExecutionError,
 } from './errors/index.js';
 // --- Hook schema accessors ---
@@ -130,10 +131,12 @@ export type {
   HookCallback,
   HookInput,
   HookOutput,
+  InputSubmission,
   ISession,
   McpServerStatus,
   McpToolInfo,
   ModelInfo,
+  PendingSessionInput,
   PromptResult,
   ProviderConfig,
   ProviderType,
@@ -149,7 +152,13 @@ export type {
   ToolResult,
 } from './session/index.js';
 // --- Session ---
-export { createSession, forkSession, prompt, resumeSession } from './session/index.js';
+export {
+  createSession,
+  forkSession,
+  InputPriority,
+  prompt,
+  resumeSession,
+} from './session/index.js';
 // --- Tool authoring primitives ---
 export { getBuiltinTools } from './tools/builtin/index.js';
 export { createMemoryReadTool, createMemoryWriteTool } from './tools/builtin/memory/index.js';
@@ -189,7 +198,14 @@ export {
   ToolErrorType,
 } from './tools/types/index.js';
 export { ToolKind } from './tools/types/ToolKind.js';
-export { AgentId, MessageId, SessionId, ToolUseId } from './types/branded.js';
+export {
+  AgentId,
+  InputId,
+  MessageId,
+  RequestId,
+  SessionId,
+  ToolUseId,
+} from './types/branded.js';
 // --- Constants & types ---
 export type {
   JsonObject,

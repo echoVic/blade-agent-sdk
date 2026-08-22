@@ -4,7 +4,12 @@ import {
   getSessionFilePathFromStorageRoot,
   normalizeSessionStorageRoot,
 } from '@/context/storage/pathUtils.js';
-import type { PartInfo, SessionEvent, SessionInfo } from '../context/types.js';
+import type {
+  PartInfo,
+  PendingInputInfo,
+  SessionEvent,
+  SessionInfo,
+} from '../context/types.js';
 import type { ContentPart, Message, ToolCall } from '../services/ChatServiceInterface.js';
 import { cloneJsonValue, cloneMessage } from '../services/messageUtils.js';
 import type { JsonValue, MessageRole } from '../types/common.js';
@@ -61,6 +66,7 @@ export interface SessionState extends SessionSnapshot {
   summaryMessageIds: string[];
   toolCalls: SessionToolCallState[];
   subagentRefs: SessionSubagentRef[];
+  pendingInputs: PendingInputInfo[];
 }
 
 export interface SessionStore {
@@ -293,6 +299,7 @@ export class JsonlSessionStore implements SessionStore {
     const resultMessageIdsByOccurrence = new Map<string, MessageId>();
     const resultOccurrenceByMessageId = new Map<string, string>();
     const subagentRefs: SessionSubagentRef[] = [];
+    const pendingInputs = new Map<string, PendingInputInfo>();
     let sessionInfo: Partial<SessionInfo> = { sessionId };
     let createdAt = toTimestamp(undefined, entries[0]?.timestamp ?? new Date().toISOString());
     let lastActivity = createdAt;
@@ -368,6 +375,19 @@ export class JsonlSessionStore implements SessionStore {
           };
         }
 
+        continue;
+      }
+
+      if (entry.type === 'input_enqueued') {
+        pendingInputs.set(entry.data.inputId, {
+          ...entry.data,
+          content: cloneJsonValue(entry.data.content),
+        });
+        continue;
+      }
+
+      if (entry.type === 'input_applied' || entry.type === 'input_cancelled') {
+        pendingInputs.delete(entry.data.inputId);
         continue;
       }
 
@@ -480,6 +500,10 @@ export class JsonlSessionStore implements SessionStore {
       subagentRefs: subagentRefs
         .filter((ref) => messageIds.includes(String(ref.messageId)))
         .map((ref) => ({ ...ref })),
+      pendingInputs: Array.from(pendingInputs.values()).map((input) => ({
+        ...input,
+        content: cloneJsonValue(input.content),
+      })),
     };
   }
 

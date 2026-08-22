@@ -1,15 +1,20 @@
-import { describe, expect, it } from 'vitest';
 import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { JSONLStore } from '../../context/storage/JSONLStore.js';
-import { getSessionFilePathFromStorageRoot } from '../../context/storage/pathUtils.js';
-import { NoopPersistentStore, PersistentStore } from '../../context/storage/PersistentStore.js';
-import type { SessionEvent } from '../../context/types.js';
-import { JsonlSessionStore } from '../SessionStore.js';
-import type { ContentPart } from '../../services/ChatServiceInterface.js';
+import { describe, expect, it } from 'vitest';
 import { assertDefined } from '../../__tests__/helpers/assertDefined.js';
-import { MessageId, SessionId } from '../../types/branded.js';
+import { JSONLStore } from '../../context/storage/JSONLStore.js';
+import { NoopPersistentStore, PersistentStore } from '../../context/storage/PersistentStore.js';
+import { getSessionFilePathFromStorageRoot } from '../../context/storage/pathUtils.js';
+import type { SessionEvent } from '../../context/types.js';
+import type { ContentPart } from '../../services/ChatServiceInterface.js';
+import {
+  InputId,
+  MessageId,
+  RequestId,
+  SessionId,
+} from '../../types/branded.js';
+import { JsonlSessionStore } from '../SessionStore.js';
 
 function createWorkspaceRoot(): string {
   return mkdtempSync(join(tmpdir(), 'session-store-test-'));
@@ -168,6 +173,79 @@ describe('JsonlSessionStore', () => {
     expect(state.timeline[2]?.parentMessageId).toBe(firstToolUse.messageId);
     expect(state.timeline[3]?.parentMessageId).toBe(firstResultId);
     expect(state.timeline[4]?.parentMessageId).toBe(secondToolUse.messageId);
+  });
+
+  it('reconstructs only unresolved durable session inputs', async () => {
+    const workspaceRoot = createWorkspaceRoot();
+    const persistentStore = new PersistentStore(workspaceRoot);
+    const sessionStore = new JsonlSessionStore(workspaceRoot);
+    const sessionId = SessionId('session-pending-inputs');
+    const firstInputId = InputId('input-first');
+    const secondInputId = InputId('input-second');
+    const cancelledInputId = InputId('input-cancelled');
+
+    await persistentStore.saveInputEnqueued(sessionId, {
+      inputId: firstInputId,
+      content: 'first',
+      priority: 'next',
+      targetRequestId: RequestId('request-old'),
+      acceptedAt: 1,
+    });
+    await persistentStore.saveInputEnqueued(sessionId, {
+      inputId: secondInputId,
+      content: [
+        {
+          type: 'text',
+          text: 'second',
+        },
+      ],
+      priority: 'later',
+      acceptedAt: 2,
+    });
+    await persistentStore.saveAppliedInputMessage(
+      sessionId,
+      firstInputId,
+      RequestId('request-old'),
+      'first',
+    );
+    await persistentStore.saveInputEnqueued(sessionId, {
+      inputId: cancelledInputId,
+      content: 'cancelled',
+      priority: 'later',
+      acceptedAt: 3,
+    });
+    await persistentStore.saveInputCancelled(
+      sessionId,
+      cancelledInputId,
+      'cancelled_by_user',
+    );
+
+    const state = await sessionStore.loadState(sessionId);
+
+    assertDefined(state);
+    expect(state.pendingInputs).toEqual([
+      {
+        inputId: secondInputId,
+        content: [
+          {
+            type: 'text',
+            text: 'second',
+          },
+        ],
+        priority: 'later',
+        acceptedAt: 2,
+      },
+    ]);
+    expect(state.messages).toEqual([
+      expect.objectContaining({
+        role: 'user',
+        content: 'first',
+        metadata: expect.objectContaining({
+          inputId: firstInputId,
+          requestId: 'request-old',
+        }),
+      }),
+    ]);
   });
 
   it('should repair legacy message ID collisions and duplicate tool calls', async () => {

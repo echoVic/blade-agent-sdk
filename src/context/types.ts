@@ -2,7 +2,12 @@
  * 上下文管理模块的核心类型定义
  */
 
-import type { MessageId, SessionId } from '../types/branded.js';
+import type {
+  InputId,
+  MessageId,
+  RequestId,
+  SessionId,
+} from '../types/branded.js';
 import type { JsonObject, JsonValue, MessageRole } from '../types/common.js';
 
 export interface ContextMessage {
@@ -122,7 +127,10 @@ export type JSONLEventType =
   | 'session_updated'
   | 'message_created'
   | 'part_created'
-  | 'part_updated';
+  | 'part_updated'
+  | 'input_enqueued'
+  | 'input_applied'
+  | 'input_cancelled';
 
 export type PartType =
   | 'text'
@@ -170,6 +178,27 @@ export interface PartInfo {
   createdAt: string;
 }
 
+export interface PendingInputInfo {
+  inputId: InputId;
+  content: JsonValue;
+  priority: 'now' | 'next' | 'later';
+  targetRequestId?: RequestId;
+  acceptedAt: number;
+}
+
+export interface AppliedInputInfo {
+  inputId: InputId;
+  requestId: RequestId;
+  messageId: MessageId;
+  appliedAt: number;
+}
+
+export interface CancelledInputInfo {
+  inputId: InputId;
+  reason: string;
+  cancelledAt: number;
+}
+
 export interface SessionEventBase {
   id: string;
   sessionId: SessionId;
@@ -185,4 +214,7 @@ export type SessionEvent =
   | (SessionEventBase & { type: 'session_updated'; data: Partial<SessionInfo> })
   | (SessionEventBase & { type: 'message_created'; data: MessageInfo })
   | (SessionEventBase & { type: 'part_created'; data: PartInfo })
-  | (SessionEventBase & { type: 'part_updated'; data: PartInfo });
+  | (SessionEventBase & { type: 'part_updated'; data: PartInfo })
+  | (SessionEventBase & { type: 'input_enqueued'; data: PendingInputInfo })
+  | (SessionEventBase & { type: 'input_applied'; data: AppliedInputInfo })
+  | (SessionEventBase & { type: 'input_cancelled'; data: CancelledInputInfo });
