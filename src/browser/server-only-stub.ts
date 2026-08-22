@@ -51,3 +51,9 @@ export class MemoryManager {
     serverOnly('MemoryManager');
   }
 }
+
+export class JsonlDurableEventStore {
+  constructor(..._args: unknown[]) {
+    serverOnly('JsonlDurableEventStore');
+  }
+}

@@ -56,6 +56,7 @@ Node-local 能力外，这些函数都从根入口导出；实际 subpath 以“
 | `MemoryManager` | memory | memory 编排层 |
 | `SubagentRegistry` | subagents | 注册和发现子 Agent |
 | `SubagentExecutor` | subagents | 执行单个子 Agent |
+| `JsonlDurableEventStore` | root / local | Node.js 单进程 durable event JSONL adapter |
 | `SessionInputError` | session | 输入队列容量、请求匹配或活动请求选项错误 |
 | `SdkError` 及派生错误 | root | 类型化 SDK 错误层级 |
 
@@ -84,6 +85,8 @@ Node-local 能力外，这些函数都从根入口导出；实际 subpath 以“
 | `InputSubmission` | 输入被 started / steered / queued 的判别联合 |
 | `PendingSessionInput` | 尚未应用的持久化输入 |
 | `InputId` / `RequestId` / `SessionId` | 输入、活动请求与会话的 branded identifiers |
+| `EventId` / `EventSequence` | durable event 标识与 Session 内单调序列 |
+| `CommandId` / `TurnId` / `ToolAttemptId` | durable command、turn 与工具尝试标识 |
 | `StreamOptions` | stream() 选项 |
 | `StreamMessage` | Session 流式消息联合类型 |
 | `PromptResult` | prompt() 返回结果 |
@@ -91,6 +94,21 @@ Node-local 能力外，这些函数都从根入口导出；实际 subpath 以“
 | `ForkOptions` | fork 选项 |
 | `ForkSessionOptions` | Session fork 选项 |
 | `ForkSessionResult` | Session fork 结果 |
+
+### Durable Events
+
+| 导出 | 说明 |
+|------|------|
+| `DurableEventStore` | append/read/head 的持久化接口 |
+| `DurableEventEnvelope` / `DurableEventDraft` | 已提交事件与待提交事件 |
+| `DurableEventAppendOptions` / `DurableEventAppendResult` | compare-and-append 参数与结果 |
+| `DurableEventReadOptions` / `DurableEventPage` | cursor 分页读取参数与结果 |
+| `DurableEventType` | 首版生命周期事件名 |
+| `DURABLE_EVENT_SCHEMA_VERSION` / `DURABLE_EVENT_LOG_FORMAT` | wire schema 与日志格式版本 |
+| `DurableEventSequenceConflictError` | CAS 序列冲突错误 |
+| `DurableEventStoreError` / `DurableEventStoreErrorCode` | 参数、I/O 和日志损坏错误 |
+| `parseDurableEventDraft` / `parseDurableEventEnvelope` | 严格 schema 解析 |
+| `parsePersistedDurableEventBatch` / `PersistedDurableEventBatch` | JSONL batch 解析与类型 |
 
 ### 工具
 

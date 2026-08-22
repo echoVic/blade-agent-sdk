@@ -162,6 +162,7 @@ The workspace is optional. Sessions and explicitly configured agents work withou
 ## Documentation
 
 - [English documentation](./docs/en/index.md)
+- [Durable Event Store](./docs/en/durable-events.md)
 - [中文文档](./docs/index.md)
 - [English changelog](./CHANGELOG.md)
 - [中文更新日志](./CHANGELOG.zh-CN.md)

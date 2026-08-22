@@ -122,6 +122,7 @@ export {
   sanitizeDeepSeekStrictSchema,
   summarizeDeepSeekBatchChatCompletions,
 } from './services/deepseek.js';
+export * from './session/events/index.js';
 export type {
   AgentDefinition,
   ExecutionContext,
@@ -201,11 +202,16 @@ export {
 export { ToolKind } from './tools/types/ToolKind.js';
 export {
   AgentId,
+  CommandId,
+  EventId,
+  EventSequence,
   InputId,
   MessageId,
   RequestId,
   SessionId,
+  ToolAttemptId,
   ToolUseId,
+  TurnId,
 } from './types/branded.js';
 // --- Constants & types ---
 export type {

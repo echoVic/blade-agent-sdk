@@ -77,10 +77,16 @@ const browserRootOutput = run(process.execPath, [
     "const m = await import('@blade-ai/agent-sdk');",
     'console.log(m.PermissionMode.DEFAULT);',
     'try { m.createSession({}); } catch (error) { console.log(error.message); }',
+    'try { new m.JsonlDurableEventStore("."); } catch (error) { console.log(error.message); }',
   ].join(' '),
 ]);
 assertIncludes(browserRootOutput, 'default', 'browser root import');
 assertIncludes(browserRootOutput, 'server-only for createSession', 'browser root stub');
+assertIncludes(
+  browserRootOutput,
+  'server-only for JsonlDurableEventStore',
+  'browser durable event store stub',
+);
 
 const subpathOutput = run(process.execPath, [
   '-e',
@@ -90,10 +96,14 @@ const subpathOutput = run(process.execPath, [
     "const server = await import('@blade-ai/agent-sdk/server');",
     "const tools = await import('@blade-ai/agent-sdk/tools');",
     "const local = await import('@blade-ai/agent-sdk/local');",
-    "console.log(core.PermissionMode.DEFAULT, browser.PermissionMode.DEFAULT, typeof server.createSession, typeof tools.defineTool, typeof local.getBuiltinTools);",
+    "console.log(core.PermissionMode.DEFAULT, core.DurableEventType.REQUEST_ACCEPTED, browser.PermissionMode.DEFAULT, typeof server.createSession, typeof tools.defineTool, typeof local.getBuiltinTools, typeof local.JsonlDurableEventStore);",
   ].join(' '),
 ]);
-assertIncludes(subpathOutput, 'default default function function function', 'subpath imports');
+assertIncludes(
+  subpathOutput,
+  'default request_accepted default function function function function',
+  'subpath imports',
+);
 
 verifyBrowserSafeDist('dist/browser/index.js');
 verifyBrowserSafeDist('dist/browser/server-only-stub.js');

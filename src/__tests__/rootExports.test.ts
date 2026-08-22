@@ -1,8 +1,13 @@
 import { describe, expect, expectTypeOf, it } from 'vitest';
 import {
+  CommandId,
+  DurableEventType,
+  EventId,
+  EventSequence,
   FileSystemMemoryStore,
   InputId,
   InputPriority,
+  JsonlDurableEventStore,
   MemoryManager,
   RequestId,
   SessionInputError,
@@ -10,12 +15,16 @@ import {
   SubagentRegistry,
   ToolCatalog,
   ToolErrorType,
+  ToolAttemptId,
+  TurnId,
   collectToolExecution,
   completeToolExecution,
   createMemoryReadTool,
   createMemoryWriteTool,
 } from '../index.js';
 import type {
+  DurableEventEnvelope,
+  DurableEventStore,
   InputSubmission,
   PendingSessionInput,
   RuntimePatch,
@@ -46,6 +55,13 @@ describe('root exports', () => {
     expect(RequestId('request-1')).toBe('request-1');
     expect(new SessionInputError('TEST', 'message')).toBeInstanceOf(Error);
     expect(ToolErrorType.INTERRUPTED).toBe('interrupted');
+    expect(DurableEventType.REQUEST_ACCEPTED).toBe('request_accepted');
+    expect(JsonlDurableEventStore).toBeDefined();
+    expect(CommandId('command-1')).toBe('command-1');
+    expect(EventId('event-1')).toBe('event-1');
+    expect(EventSequence(1)).toBe(1);
+    expect(ToolAttemptId('attempt-1')).toBe('attempt-1');
+    expect(TurnId('turn-1')).toBe('turn-1');
   });
 
   it('exports runtime tool contracts at the root entrypoint', () => {
@@ -69,6 +85,10 @@ describe('root exports', () => {
       'now' | 'next' | 'later'
     >();
     expectTypeOf<ReturnType<typeof createMemoryReadTool>>().toMatchTypeOf<SessionTool>();
+    expectTypeOf<DurableEventEnvelope['sequence']>().toEqualTypeOf<
+      EventSequence
+    >();
+    expectTypeOf<DurableEventStore['append']>().toBeFunction();
     expectTypeOf<ToolCatalogEntry['source']['kind']>().toEqualTypeOf<
       'builtin' | 'custom' | 'mcp' | 'session'
     >();

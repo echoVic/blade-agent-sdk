@@ -71,8 +71,12 @@ describe('package entrypoints', () => {
     const serverOnly = await import('../browser/server-only-stub.js');
 
     expect(browser.PermissionMode.DEFAULT).toBe('default');
+    expect(browser.DurableEventType.REQUEST_ACCEPTED).toBe('request_accepted');
     expect(() => browser.createSession({} as never)).toThrow(/server-only.*createSession/);
     expect(() => serverOnly.getBuiltinTools()).toThrow(/server-only.*getBuiltinTools/);
+    expect(() => new serverOnly.JsonlDurableEventStore()).toThrow(
+      /server-only.*JsonlDurableEventStore/,
+    );
   });
 
   it('keeps browser-safe source entries away from Node-only and server runtime imports', () => {

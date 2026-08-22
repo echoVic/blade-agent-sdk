@@ -27,9 +27,13 @@ export type {
   ToolResult,
   ToolYield,
 } from '../core/index.js';
+export * from '../session/events/core.js';
 export {
+  CommandId,
   collectToolExecution,
   completeToolExecution,
+  EventId,
+  EventSequence,
   HookEvent,
   InputId,
   InputPriority,
@@ -39,7 +43,9 @@ export {
   RequestId,
   SessionId,
   StreamMessageType,
+  ToolAttemptId,
   ToolKind,
+  TurnId,
 } from '../core/index.js';
 
 export {
@@ -50,6 +56,7 @@ export {
   FileSystemMemoryStore,
   forkSession,
   getBuiltinTools,
+  JsonlDurableEventStore,
   MemoryManager,
   prompt,
   resumeSession,
