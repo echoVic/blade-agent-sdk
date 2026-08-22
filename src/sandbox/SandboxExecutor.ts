@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { type InternalLogger, LogCategory, NOOP_LOGGER } from '../logging/Logger.js';
 import type { NetworkSandboxSettings, SandboxSettings } from '../types/common.js';
+import { createSandboxUnavailableError } from './sandboxErrors.js';
 
 export interface SandboxExecutionOptions {
   workDir: string;
@@ -155,11 +156,14 @@ export class SandboxExecutor {
   }
 
   wrapCommand(command: string, options: SandboxExecutionOptions): string {
-    if (!this.canUseSandbox()) {
+    if (!this.isEnabled()) {
       return command;
     }
 
     const capabilities = this.getCapabilities();
+    if (!capabilities.available) {
+      throw createSandboxUnavailableError();
+    }
 
     if (capabilities.type === 'bubblewrap') {
       return this.wrapWithBubblewrap(command, options);
@@ -167,7 +171,7 @@ export class SandboxExecutor {
       return this.wrapWithSeatbelt(command, options);
     }
 
-    return command;
+    throw createSandboxUnavailableError();
   }
 
   private wrapWithBubblewrap(command: string, options: SandboxExecutionOptions): string {

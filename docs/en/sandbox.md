@@ -2,8 +2,10 @@
 
 Sandbox support provides best-effort operating-system isolation for the built-in `Bash` tool. Linux uses Bubblewrap and macOS uses Seatbelt (`sandbox-exec`). Permissions decide whether a call may proceed; the sandbox attempts to restrict an approved command.
 
-::: danger Check runtime availability
-`sandbox.enabled: true` does not guarantee that a sandbox executor exists on the host. When none is available, the current implementation executes the original command. Production applications must inspect `getSandboxService().getCapabilities().available` and fail closed or disable `Bash`.
+::: danger Enabling sandbox is a hard requirement
+`sandbox.enabled: true` requires a supported sandbox executor. Session
+initialization throws `ConfigError` when none is available, and the lower-level
+command wrapper also rejects execution instead of running the original command.
 :::
 
 ## Safe initialization
@@ -48,9 +50,9 @@ interface SandboxSettings {
 
 | Option | Default | Current behavior |
 |--------|---------|------------------|
-| `enabled` | `false` | Request OS sandboxing for `Bash`. |
+| `enabled` | `false` | Require OS sandboxing for `Bash`; throw `ConfigError` when unavailable. |
 | `autoAllowBashIfSandboxed` | `false` | Queryable configuration metadata. The current execution pipeline does not consume it, so it does not guarantee automatic approval. |
-| `excludedCommands` | `[]` | Affects sandbox classification; the command wrapper may still sandbox these commands. Do not rely on it as a bypass. |
+| `excludedCommands` | `[]` | Explicitly bypass sandbox wrapping for matching commands. They execute on the host and should be used sparingly. |
 | `allowUnsandboxedCommands` | `false` | Allow an explicit unsandboxed request passed to `SandboxService.checkCommand()` to enter permission review. Built-in Bash does not currently expose that request flag. |
 | `network` | unset | Network options passed to the command wrapper. |
 | `ignoreViolations` | unset | Queryable metadata; the current command wrapper does not apply these rules. |
@@ -66,7 +68,9 @@ console.log(capabilities.type); // 'bubblewrap' | 'seatbelt' | 'none'
 console.log(capabilities.features);
 ```
 
-Treat `available === false` as a deployment configuration failure when isolation is required. The SDK does not currently fail closed.
+`available === false` is a deployment configuration error. The SDK fails closed
+when Sandbox is enabled. Applications can still perform the capability check
+before creating a Session to provide a custom error or disable `Bash`.
 
 ## Filesystem boundary
 
@@ -142,7 +146,8 @@ console.log(service.isEnabled());
 console.log(service.getCapabilities());
 ```
 
-If `available` is false, the original command is executed.
+If `available` is false, enabling Sandbox fails Session initialization. Calling
+the lower-level wrapper directly also throws `ConfigError`.
 
 ### All network access is blocked
 

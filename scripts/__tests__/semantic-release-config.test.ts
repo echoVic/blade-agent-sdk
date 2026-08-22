@@ -50,10 +50,12 @@ describe('package provenance metadata', () => {
     });
   });
 
-  it('uses the latest released version and a single release entry point', () => {
+  it('aligns package and changelog versions with a single release entry point', () => {
     const packageJson = JSON.parse(readFileSync(resolve('package.json'), 'utf8'));
+    const changelog = readFileSync(resolve('CHANGELOG.md'), 'utf8');
+    const latestVersion = /^## \[([^\]]+)\]/m.exec(changelog)?.[1];
 
-    expect(packageJson.version).toBe('3.0.0');
+    expect(packageJson.version).toBe(latestVersion);
     expect(packageJson.scripts.release).toBe('semantic-release');
     expect(packageJson.scripts).not.toHaveProperty('release:legacy');
   });

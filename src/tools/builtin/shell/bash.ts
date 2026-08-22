@@ -235,6 +235,7 @@ Before executing commands:
           behavior: 'ask',
           message: sandboxCheck.reason,
         } as const;
+      case 'unavailable':
       case 'denied':
         return {
           behavior: 'deny',

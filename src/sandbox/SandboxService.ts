@@ -1,5 +1,6 @@
 import type { SandboxSettings } from '../types/common.js';
 import { getSandboxExecutor } from './SandboxExecutor.js';
+import { createSandboxUnavailableError } from './sandboxErrors.js';
 
 export interface SandboxExecutionContext {
   command: string;
@@ -10,6 +11,7 @@ export interface SandboxExecutionContext {
 export type SandboxCheckOutcome =
   | 'disabled'
   | 'excluded'
+  | 'unavailable'
   | 'sandboxed'
   | 'requires_permission'
   | 'denied';
@@ -38,7 +40,11 @@ export class SandboxService {
 
   configure(settings: SandboxSettings): void {
     this.settings = { ...settings };
-    getSandboxExecutor().configure(settings);
+    const executor = getSandboxExecutor();
+    executor.configure(settings);
+    if (this.isEnabled() && !executor.getCapabilities().available) {
+      throw createSandboxUnavailableError();
+    }
   }
 
   getSettings(): SandboxSettings {
@@ -50,7 +56,11 @@ export class SandboxService {
   }
 
   shouldAutoAllowBash(): boolean {
-    return this.isEnabled() && this.settings.autoAllowBashIfSandboxed === true;
+    return (
+      this.isEnabled() &&
+      this.settings.autoAllowBashIfSandboxed === true &&
+      getSandboxExecutor().canUseSandbox()
+    );
   }
 
   isCommandExcluded(command: string): boolean {
@@ -60,7 +70,7 @@ export class SandboxService {
 
     const commandName = this.extractCommandName(command);
     return this.settings.excludedCommands.some(
-      (excluded) => commandName === excluded || command.startsWith(`${excluded} `)
+      (excluded) => commandName === excluded || command.startsWith(`${excluded} `),
     );
   }
 
@@ -89,6 +99,13 @@ export class SandboxService {
       return {
         outcome: 'denied',
         reason: 'Unsandboxed commands are not allowed',
+      };
+    }
+
+    if (!getSandboxExecutor().canUseSandbox()) {
+      return {
+        outcome: 'unavailable',
+        reason: createSandboxUnavailableError().message,
       };
     }
 
@@ -159,11 +176,11 @@ export class SandboxService {
       return command;
     }
 
-    const executor = getSandboxExecutor();
-    if (!executor.canUseSandbox()) {
+    if (this.isCommandExcluded(command)) {
       return command;
     }
 
+    const executor = getSandboxExecutor();
     const options = executor.buildExecutionOptions(workDir, this.settings.network);
     return executor.wrapCommand(command, options);
   }

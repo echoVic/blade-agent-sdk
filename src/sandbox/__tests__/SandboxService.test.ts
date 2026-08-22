@@ -1,20 +1,24 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { SandboxService, getSandboxService } from '../SandboxService.js';
+import { bashTool } from '../../tools/builtin/shell/bash.js';
+import type { SandboxCapabilities } from '../SandboxExecutor.js';
+import { getSandboxService, SandboxService } from '../SandboxService.js';
 
 const mockSandboxExecutor = {
   configure: vi.fn(() => {}),
-  canUseSandbox: vi.fn(() => false),
+  canUseSandbox: vi.fn(() => true),
   buildExecutionOptions: vi.fn(() => ({ workDir: '/test' })),
-  wrapCommand: vi.fn((cmd: string) => cmd),
-  getCapabilities: vi.fn(() => ({
-    available: false,
-    type: 'none' as const,
-    features: {
-      fileSystemIsolation: false,
-      networkIsolation: false,
-      processIsolation: false,
-    },
-  })),
+  wrapCommand: vi.fn((cmd: string) => `sandbox:${cmd}`),
+  getCapabilities: vi.fn(
+    (): SandboxCapabilities => ({
+      available: true,
+      type: 'seatbelt' as const,
+      features: {
+        fileSystemIsolation: true,
+        networkIsolation: true,
+        processIsolation: true,
+      },
+    }),
+  ),
 };
 
 vi.mock('../SandboxExecutor.js', () => ({
@@ -23,6 +27,18 @@ vi.mock('../SandboxExecutor.js', () => ({
 
 describe('SandboxService', () => {
   beforeEach(() => {
+    vi.clearAllMocks();
+    mockSandboxExecutor.canUseSandbox.mockReturnValue(true);
+    mockSandboxExecutor.getCapabilities.mockReturnValue({
+      available: true,
+      type: 'seatbelt',
+      features: {
+        fileSystemIsolation: true,
+        networkIsolation: true,
+        processIsolation: true,
+      },
+    });
+    mockSandboxExecutor.wrapCommand.mockImplementation((cmd: string) => `sandbox:${cmd}`);
     SandboxService.resetInstance();
   });
 
@@ -67,6 +83,23 @@ describe('SandboxService', () => {
       settings.enabled = false;
       expect(service.getSettings().enabled).toBe(true);
     });
+
+    it('should fail when sandbox is enabled without an available executor', () => {
+      mockSandboxExecutor.getCapabilities.mockReturnValue({
+        available: false,
+        type: 'none',
+        features: {
+          fileSystemIsolation: false,
+          networkIsolation: false,
+          processIsolation: false,
+        },
+      });
+      const service = getSandboxService();
+
+      expect(() => service.configure({ enabled: true })).toThrow(
+        'Sandbox is enabled, but no supported sandbox executor is available',
+      );
+    });
   });
 
   describe('isEnabled', () => {
@@ -105,6 +138,14 @@ describe('SandboxService', () => {
       const service = getSandboxService();
       service.configure({ enabled: true, autoAllowBashIfSandboxed: true });
       expect(service.shouldAutoAllowBash()).toBe(true);
+    });
+
+    it('should return false when the configured sandbox becomes unavailable', () => {
+      const service = getSandboxService();
+      service.configure({ enabled: true, autoAllowBashIfSandboxed: true });
+      mockSandboxExecutor.canUseSandbox.mockReturnValue(false);
+
+      expect(service.shouldAutoAllowBash()).toBe(false);
     });
   });
 
@@ -171,6 +212,19 @@ describe('SandboxService', () => {
       const result = service.checkCommand({ command: 'ls -la' });
       expect(result.outcome).toBe('sandboxed');
       expect(result.reason).toBe('Command will run in sandbox');
+    });
+
+    it('should deny a normal command when the configured sandbox becomes unavailable', () => {
+      const service = getSandboxService();
+      service.configure({ enabled: true });
+      mockSandboxExecutor.canUseSandbox.mockReturnValue(false);
+
+      const result = service.checkCommand({ command: 'ls -la' });
+
+      expect(result.outcome).toBe('unavailable');
+      expect(result.reason).toContain(
+        'Sandbox is enabled, but no supported sandbox executor is available',
+      );
     });
   });
 
@@ -302,6 +356,45 @@ describe('SandboxService', () => {
       service.configure({ enabled: false });
       const result = service.wrapCommandForSandbox('ls -la', '/tmp');
       expect(result).toBe('ls -la');
+    });
+
+    it('should use the configured executor when sandbox is enabled', () => {
+      const service = getSandboxService();
+      service.configure({ enabled: true });
+
+      expect(service.wrapCommandForSandbox('ls -la', '/tmp')).toBe('sandbox:ls -la');
+    });
+
+    it('should leave explicitly excluded commands unsandboxed', () => {
+      const service = getSandboxService();
+      service.configure({ enabled: true, excludedCommands: ['git'] });
+
+      expect(service.wrapCommandForSandbox('git status', '/tmp')).toBe('git status');
+      expect(mockSandboxExecutor.wrapCommand).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('Bash integration', () => {
+    it('should deny Bash before execution when the sandbox is unavailable', async () => {
+      const service = getSandboxService();
+      service.configure({ enabled: true });
+      mockSandboxExecutor.canUseSandbox.mockReturnValue(false);
+
+      const result = await bashTool.checkPermissions?.(
+        {
+          command: 'echo unsafe',
+          timeout: 30_000,
+          run_in_background: false,
+        },
+        {},
+      );
+
+      expect(result).toEqual({
+        behavior: 'deny',
+        message: expect.stringContaining(
+          'Sandbox is enabled, but no supported sandbox executor is available',
+        ),
+      });
     });
   });
 });

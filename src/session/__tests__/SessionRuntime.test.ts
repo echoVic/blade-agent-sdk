@@ -6,12 +6,14 @@ import { assertDefined } from '../../__tests__/helpers/assertDefined.js';
 import { HookManager } from '../../hooks/HookManager.js';
 import { NOOP_LOGGER } from '../../logging/Logger.js';
 import { createContextSnapshot, type RuntimeContext } from '../../runtime/index.js';
+import { getSandboxExecutor, SandboxExecutor } from '../../sandbox/SandboxExecutor.js';
+import { SandboxService } from '../../sandbox/SandboxService.js';
 import { FileAccessTracker } from '../../tools/builtin/file/FileAccessTracker.js';
 import { FileLockManager } from '../../tools/execution/FileLockManager.js';
 import {
-  collectToolExecution,
-  completeToolExecution,
-  type ToolDefinition,
+    collectToolExecution,
+    completeToolExecution,
+    type ToolDefinition,
 } from '../../tools/types/index.js';
 import { SessionId } from '../../types/branded.js';
 import type { JsonObject } from '../../types/common.js';
@@ -92,6 +94,8 @@ describe('SessionRuntime', () => {
     mockOn.mockClear();
     FileAccessTracker.resetInstance();
     FileLockManager.resetInstance();
+    SandboxExecutor.resetInstance();
+    SandboxService.resetInstance();
   });
 
   afterEach(async () => {
@@ -106,6 +110,40 @@ describe('SessionRuntime', () => {
       createFilesystemContext(workspaceRoot),
       NOOP_LOGGER,
     );
+    await runtime.close();
+    SandboxExecutor.resetInstance();
+    SandboxService.resetInstance();
+  });
+
+  it('should fail initialization when sandbox is enabled but unavailable', async () => {
+    const executor = getSandboxExecutor();
+    vi.spyOn(executor, 'getCapabilities').mockReturnValue({
+      available: false,
+      type: 'none',
+      features: {
+        fileSystemIsolation: false,
+        networkIsolation: false,
+        processIsolation: false,
+      },
+    });
+    const runtime = new SessionRuntime(
+      SessionId('session-sandbox-unavailable'),
+      createOptions({
+        sandbox: { enabled: true },
+      }),
+      {
+        models: [],
+      },
+      PermissionMode.DEFAULT,
+      createFilesystemContext(workspaceRoot),
+      NOOP_LOGGER,
+    );
+
+    await expect(runtime.initialize()).rejects.toMatchObject({
+      code: 'CONFIG_ERROR',
+      name: 'ConfigError',
+    });
+
     await runtime.close();
   });
 

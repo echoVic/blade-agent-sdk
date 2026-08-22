@@ -1,5 +1,5 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { SandboxExecutor, getSandboxExecutor } from '../SandboxExecutor.js';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { getSandboxExecutor, SandboxExecutor } from '../SandboxExecutor.js';
 
 describe('SandboxExecutor', () => {
   beforeEach(() => {
@@ -92,6 +92,24 @@ describe('SandboxExecutor', () => {
       executor.configure({ enabled: false });
       const result = executor.wrapCommand('ls -la', { workDir: '/home/test' });
       expect(result).toBe('ls -la');
+    });
+
+    it('should fail closed when sandbox is enabled but unavailable', () => {
+      const executor = getSandboxExecutor();
+      executor.configure({ enabled: true });
+      vi.spyOn(executor, 'getCapabilities').mockReturnValue({
+        available: false,
+        type: 'none',
+        features: {
+          fileSystemIsolation: false,
+          networkIsolation: false,
+          processIsolation: false,
+        },
+      });
+
+      expect(() => executor.wrapCommand('echo unsafe', { workDir: '/home/test' })).toThrow(
+        'Sandbox is enabled, but no supported sandbox executor is available',
+      );
     });
   });
 
