@@ -416,7 +416,9 @@ export class Agent {
     if (!this.isInitialized) throw new Error('Agent未初始化');
 
     const ctx = this.withBackgroundAgentManager(context);
-    const enhancedMessage = await this.prepareMessageForContext(message, ctx);
+    const enhancedMessage = options?.initialInputPreparation === 'reconciled'
+      ? message
+      : await this.prepareMessageForContext(message, ctx);
     const loopOptions: LoopOptions = {
       signal: ctx.signal,
       ...options,

@@ -139,6 +139,8 @@ export interface LoopOptions {
   runControl?: AgentRunControl;
   /** @internal Session-owned durable tool lifecycle recorder. */
   toolExecutionLifecycle?: ToolExecutionLifecycle;
+  /** @internal A recovered Request already completed its initial input preparation. */
+  initialInputPreparation?: 'required' | 'reconciled';
   onTurnLimitReached?: (data: { turnsCount: number }) => Promise<TurnLimitResponse>;
   /** 进度回调，每次 tool call 完成后触发 */
   onProgress?: (progress: AgentProgress) => void;

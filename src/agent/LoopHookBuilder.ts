@@ -377,6 +377,7 @@ export function buildLoopConfig(deps: LoopHookBuilderDeps): AgentLoopConfig {
     isYoloMode,
     signal: options?.signal,
     tokenBudget,
+    skipInitialBeforeTurn: options?.initialInputPreparation === 'reconciled',
     prepareTurnState: (turn) => loopState.buildTurnState(turn),
     hooks,
   };

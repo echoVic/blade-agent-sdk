@@ -104,6 +104,7 @@ type SessionExecutionState =
       options: SendOptions | null;
       snapshot: ContextSnapshot;
       durableRecorder: SessionDurableRecorder | null;
+      initialInputPreparation: 'required' | 'reconciled';
     }
   | {
       phase: 'running';
@@ -295,9 +296,16 @@ class Session implements ISession {
       if (durableAcceptedRequest) {
         this.restoreDurableAcceptedRequest(durableAcceptedRequest);
       }
+      const durableProjection = this.durableJournal?.getProjection();
+      const reconciledInputIds = new Set([
+        ...(durableProjection?.appliedInputIds ?? []),
+        ...(durableProjection?.reconciledInputIds ?? []),
+        ...(durableAcceptedRequest?.reconciledInputIds ?? []),
+        ...(durableAcceptedRequest ? [durableAcceptedRequest.inputId] : []),
+      ]);
       const dropped = this.inputInbox.restore(
         (state?.pendingInputs ?? [])
-          .filter((input) => input.inputId !== durableAcceptedRequest?.inputId)
+          .filter((input) => !reconciledInputIds.has(input.inputId))
           .map((input) => ({
             ...input,
             content: input.content as UserMessageContent,
@@ -614,6 +622,7 @@ class Session implements ISession {
         options: sendOptions,
         snapshot: pendingSnapshot,
         durableRecorder: pendingDurableRecorder,
+        initialInputPreparation,
       } = this.executionState;
       const requestController = this.executionState.controller;
       const durableRecorder = pendingDurableRecorder
@@ -658,6 +667,7 @@ class Session implements ISession {
         pendingSnapshot,
         requestController,
         durableRecorder,
+        initialInputPreparation,
       };
     });
 
@@ -673,6 +683,7 @@ class Session implements ISession {
       pendingSnapshot,
       requestController,
       durableRecorder,
+      initialInputPreparation,
     } = claimed;
 
     let durableFinishAttempted = false;
@@ -705,7 +716,9 @@ class Session implements ISession {
 
     runtime.getHookRuntime().setTraceCollector(traceRecorder);
     try {
-      message = await runtime.getHookRuntime().applyUserPromptSubmit(message);
+      if (initialInputPreparation === 'required') {
+        message = await runtime.getHookRuntime().applyUserPromptSubmit(message);
+      }
     } catch (error) {
       let terminalError = error;
       try {
@@ -765,6 +778,7 @@ class Session implements ISession {
       },
       runControl: requestController,
       toolExecutionLifecycle: durableRecorder ?? undefined,
+      initialInputPreparation,
     });
     let agentStreamCompleted = false;
 
@@ -1443,6 +1457,7 @@ class Session implements ISession {
     options?: SendOptions,
     durableRecorder: SessionDurableRecorder | null = null,
     snapshot?: ContextSnapshot,
+    initialInputPreparation: 'required' | 'reconciled' = 'required',
   ): Extract<SessionExecutionState, { phase: 'pending' }> {
     return {
       phase: 'pending',
@@ -1457,6 +1472,7 @@ class Session implements ISession {
       message: input.content,
       options: options || null,
       durableRecorder,
+      initialInputPreparation,
       snapshot: snapshot ?? createContextSnapshot(
         this.sessionId,
         nanoid(),
@@ -1508,6 +1524,7 @@ class Session implements ISession {
       sendOptions,
       recorder,
       snapshot,
+      request.recoveryKind === 'pre_turn_request' ? 'reconciled' : 'required',
     );
     this.durableAcceptedRequest = null;
   }

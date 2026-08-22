@@ -120,6 +120,7 @@ export interface AgentLoopConfig {
   signal?: AbortSignal;
   tokenBudget?: TokenBudget;
   runControl?: AgentRunControl;
+  skipInitialBeforeTurn?: boolean;
   prepareTurnState: (turn: number) => TurnState;
   hooks?: AgentLoopHooks;
 }
@@ -144,6 +145,7 @@ export async function* agentLoop(
     signal,
     tokenBudget,
     runControl,
+    skipInitialBeforeTurn,
     hooks,
   } = config;
   const inputHooks = hooks?.input;
@@ -205,7 +207,11 @@ export async function* agentLoop(
       includeNow: true,
     });
 
-    if (recovery.phase !== 'retry_pending' && turnHooks?.beforeTurn) {
+    if (
+      recovery.phase !== 'retry_pending'
+      && !(skipInitialBeforeTurn && turnsCount === 0)
+      && turnHooks?.beforeTurn
+    ) {
       const beforeTurnStream = turnHooks.beforeTurn({
         turn: turnsCount,
         messages: convState.toArray(),

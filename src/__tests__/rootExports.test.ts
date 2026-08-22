@@ -10,7 +10,12 @@ import type {
   DurableEventSubscriptionMessage,
   DurableEventSubscriptionOptions,
   DurableRequestRecoveryOrigin,
+  DurableRequestRecoveryKind,
+  DurableRequestOutcomeReconciliationCommand,
+  DurableRequestRolloverCommand,
+  DurableRequestRolloverResult,
   DurableSessionCommand,
+  DurableSessionProjection,
   DurableSessionRecoveryPlan,
   DurableSessionResumeDecision,
   DurableToolOutcomeReconciliationCommand,
@@ -157,13 +162,33 @@ describe('root exports', () => {
       DurableSessionCommand['events'][number]
     >().toEqualTypeOf<DurableCommandEventDraft>();
     expectTypeOf<DurableSessionRecoveryPlan['action']>().toEqualTypeOf<
-      'none' | 'resume_request' | 'resume_turn' | 'resolve_permissions' | 'reconcile_tool_outcomes'
+      | 'none'
+      | 'resume_request'
+      | 'rollover_request'
+      | 'resume_turn'
+      | 'resolve_permissions'
+      | 'reconcile_tool_outcomes'
+      | 'reconcile_request_inputs'
+      | 'reconcile_request_outcome'
     >();
     expectTypeOf<DurableSessionResumeDecision['action']>().toEqualTypeOf<
       'ready' | 'resume_accepted_request' | 'recovery_required'
     >();
     expectTypeOf<DurableAcceptedRequestRecovery['model']>().toEqualTypeOf<string>();
     expectTypeOf<DurableRequestRecoveryOrigin['turnId']>().toEqualTypeOf<TurnId>();
+    expectTypeOf<DurableRequestRecoveryKind>().toEqualTypeOf<'turn' | 'pre_turn_request'>();
+    expectTypeOf<DurableRequestRolloverCommand['inputId']>().toEqualTypeOf<InputId>();
+    expectTypeOf<DurableRequestRolloverCommand['recoveryTurnId']>().toEqualTypeOf<TurnId>();
+    expectTypeOf<
+      DurableRequestRolloverCommand['preparation']['appliedInputIds']
+    >().toEqualTypeOf<readonly InputId[]>();
+    expectTypeOf<DurableRequestRolloverResult['recoveryRequestId']>().toEqualTypeOf<RequestId>();
+    expectTypeOf<DurableSessionProjection['reconciledInputIds']>().toEqualTypeOf<
+      readonly InputId[]
+    >();
+    expectTypeOf<
+      DurableRequestOutcomeReconciliationCommand['requestId']
+    >().toEqualTypeOf<RequestId>();
     expectTypeOf<
       DurableToolOutcomeReconciliationCommand['toolAttemptId']
     >().toEqualTypeOf<ToolAttemptId>();

@@ -7,9 +7,10 @@ Session 生命周期投影。
 ::: warning 当前集成阶段
 Session 只有在显式设置 `SessionOptions.durableEventStore` 时才写入 durable
 事件；现有消息 JSONL 保持不变。`resumeSession()` 会自动恢复已接受但尚未跨过
-`request_started` 边界的 Request。活动 Turn 必须先通过 Recovery Coordinator
-原子 rollover；待决权限和未知工具结果仍需显式消解。`non_idempotent` 工具
-绝不会被自动重放。
+`request_started` 边界的 Request。已开始但尚无 Turn 的 Request，以及活动
+Turn，必须先通过 Recovery Coordinator 原子 rollover；待决权限、未知工具结果
+和已完成 Turn 的 Request 仍需显式消解。`non_idempotent` 工具绝不会被自动
+重放。
 :::
 
 ## 安装与导入
@@ -87,6 +88,11 @@ interface DurableEventEnvelope<TType extends DurableEventType> {
 | `permission_requested` | Request、Turn、`toolAttemptId` | `permissionRequestId`、工具标识、`input` |
 | `permission_resolved` | Request、Turn、`toolAttemptId` | `permissionRequestId`、`decision` |
 | `input_applied` | `requestId`、可选 `turnId` | `inputId`、`priority` |
+
+`request_accepted.recovery` 始终使用 v2 的
+`{ requestId, turnId, turn }` wire shape。首个 Turn 前的 Request rollover 会
+在同一 command 中写入一个 synthetic Turn 作为 provenance；projector 通过
+`recoveryKind: 'pre_turn_request'` 暴露该语义，而不修改持久化 schema。
 
 ## 追加事件
 
@@ -299,10 +305,13 @@ const recovery = projector.recoveryPlan();
 | 动作 | 含义 |
 |------|------|
 | `none` | 没有未完成工作 |
-| `resume_request` | Request 已接受但没有活动 Turn，可重新启动 |
+| `resume_request` | Request 已接受且未开始，可恢复同一 Request |
+| `rollover_request` | Request 已开始但首个 Turn 尚未开始，可安全转成新 Request |
 | `resume_turn` | 模型调用、尚未开始的工具或可安全重放的 started tool 可以继续 |
 | `resolve_permissions` | 必须重新呈现或按策略处理未决权限 |
 | `reconcile_tool_outcomes` | 工具已开始但没有可靠终态，禁止自动重试 |
+| `reconcile_request_inputs` | 首个 Turn 前的已应用输入集合不明确，必须显式对账 |
+| `reconcile_request_outcome` | Turn 已结束但 Request 没有终态，必须先确认最终结果 |
 
 Recovery plan 还分别返回 `retryableToolAttempts`、`cancelableToolAttempts`、
 `unknownToolAttempts` 和 `pendingPermissions`。started 或
@@ -363,12 +372,65 @@ await coordinator.resolvePermission({
 `reconcileToolOutcome()` 写入终态；已经处于 `started` 的 `non_idempotent`
 工具只能查询外部系统后对账，禁止再次执行。
 
-`planResume()` 仅将没有 `input_applied` / `request_started` 且具备完整执行快照的
-accepted Request 标记为 `resume_accepted_request`。
-Session 会使用 durable 输入以及持久化的 `maxTurns`、模型和 Runtime Context
-恢复同一个 `requestId`。旧日志中缺少执行快照的 Request，以及已经开始的
-Request，即使暂时没有活动 Turn，也返回 `recovery_required`；这是为了避免
-使用不同配置执行或重复提交一次可能已完成的模型调用。
+`planResume()` 仅将没有 `input_applied` / `request_started` 且具备完整执行快照
+的 accepted Request 标记为 `resume_accepted_request`。Session 会使用 durable
+输入以及持久化的 `maxTurns`、模型和 Runtime Context 恢复同一个 `requestId`。
+旧日志中缺少执行快照的 Request 继续返回 `recovery_required`。
+
+`request_started` 会在 `UserPromptSubmit`、附件展开、首轮压缩以及 AgentLoop
+产生 `turn_start` 之前持久化。因此“尚无 Turn”只证明主模型调用尚未开始，
+不能证明 pre-Turn Hook 或其他准备步骤没有产生副作用。仅当 durable
+`appliedInputIds` 恰好为初始输入时，plan 才返回 `rollover_request`；缺失初始
+应用记录或存在额外 steering 输入时返回 `reconcile_request_inputs`。
+
+两种动作都通过 `prepareRequestRecovery()` 收敛，但调用方必须先对账整个
+pre-Turn 准备阶段，提供最终准备好的输入，并原样回传观察到的
+`activeRequest.appliedInputIds`：
+
+```ts
+const request = coordinator.getProjection().activeRequest;
+if (!request) throw new Error('No active Request');
+
+await coordinator.prepareRequestRecovery({
+  commandId: CommandId('recover-request-42'),
+  requestId: RequestId('request-source-42'),
+  inputId: InputId('input-source-42'),
+  recoveryTurnId: TurnId('synthetic-recovery-turn-42'),
+  recoveryRequestId: RequestId('request-recovery-42'),
+  recoveryInputId: InputId('input-recovery-42'),
+  preparation: {
+    status: 'reconciled',
+    appliedInputIds: request.appliedInputIds,
+    input: preparedInput,
+  },
+});
+```
+
+该 API 在一个 CAS command 中写入
+`turn_started (synthetic) → turn_aborted → request_interrupted →
+request_accepted`。source Request/Input ID、`appliedInputIds` 和 Journal head
+都是前置条件；并发出现真实 `turn_started` 或新的输入应用时，旧决策会失败。
+恢复后的 Session 会过滤已经应用或对账的旧 pending 输入，并跳过
+`UserPromptSubmit`、附件展开和首轮 `beforeTurn` 准备，确保调用方提供的
+`preparedInput` 只执行一次。原始多模态 content parts 保持原结构。
+
+如果 Request 已经完成过至少一个 Turn、当前却没有 active Turn，
+`recoveryPlan()` 返回 `reconcile_request_outcome`。此时最终模型输出可能已经
+发生而 Request 终态尚未持久化，SDK 不会自动重试。查询 provider 或上层业务
+记录后，使用稳定 `commandId` 显式提交 `completed`、`failed` 或
+`interrupted`：
+
+```ts
+await coordinator.reconcileRequestOutcome({
+  commandId: CommandId('reconcile-request-42'),
+  requestId: RequestId('request-source-42'),
+  outcome: {
+    status: 'completed',
+    output: 'already completed',
+    usage: { inputTokens: 120, outputTokens: 30, totalTokens: 150 },
+  },
+});
+```
 
 对于 `resume_turn`，调用 `prepareTurnRecovery()` 可在同一个 CAS command 中：
 
@@ -406,11 +468,13 @@ for await (const event of session.stream()) {
 }
 ```
 
-整个 rollover 可按相同 `commandId` 重试，竞争进程只能提交一次。provenance
-只有在同一 command 中紧邻 `turn_aborted → request_interrupted →
-request_accepted` 时才有效。`requestId` 和 `turnId` 是调用方已观察状态的
-前置条件，不能隐式切换到更新后的 active Turn。任何已 `completed` / `failed`，或在开始执行后
-变为 `cancelled` 的 `non_idempotent` 工具都会触发
+整个 rollover 可按相同 `commandId` 重试，竞争进程只能提交一次。active-Turn
+provenance 只有在同一 command 中紧邻
+`turn_aborted → request_interrupted → request_accepted` 时才有效；pre-Turn
+provenance 还要求前置 synthetic `turn_started`。`requestId` 和 `turnId` 是
+调用方已观察状态的前置条件，不能隐式切换到更新后的 active Turn。任何已
+`completed` / `failed`，或在开始执行后变为 `cancelled` 的
+`non_idempotent` 工具都会触发
 `DURABLE_RECOVERY_UNSAFE_ROLLOVER`，必须保持 fail-closed；该 API 不使用提示词
 绕过未知副作用。
 

@@ -35,6 +35,7 @@ import {
 
 export type DurableSessionProjectionStatus = 'empty' | 'open' | 'closed';
 export type DurableRequestStatus = 'accepted' | 'running';
+export type DurableRequestRecoveryKind = 'turn' | 'pre_turn_request';
 export type DurableTurnStatus = 'running';
 export type DurableToolAttemptStatus =
   | 'scheduled'
@@ -47,9 +48,12 @@ export type DurablePermissionStatus = 'pending' | 'resolved';
 export type DurableSessionRecoveryAction =
   | 'none'
   | 'resume_request'
+  | 'rollover_request'
   | 'resume_turn'
   | 'resolve_permissions'
-  | 'reconcile_tool_outcomes';
+  | 'reconcile_tool_outcomes'
+  | 'reconcile_request_inputs'
+  | 'reconcile_request_outcome';
 
 export interface DurablePermissionProjection {
   readonly permissionRequestId: PermissionRequestId;
@@ -94,7 +98,10 @@ export interface DurableRequestProjection {
   readonly model?: string;
   readonly context?: JsonObject;
   readonly recovery?: DurableRequestRecoveryOrigin;
+  readonly recoveryKind?: DurableRequestRecoveryKind;
+  readonly reconciledInputIds: readonly InputId[];
   readonly status: DurableRequestStatus;
+  readonly appliedInputIds: readonly InputId[];
   readonly lastTurn: number;
   readonly activeTurn: DurableTurnProjection | null;
 }
@@ -108,6 +115,7 @@ export interface DurableSessionProjection {
   readonly closeReason: DurableSessionCloseReason | null;
   readonly activeRequest: DurableRequestProjection | null;
   readonly appliedInputIds: readonly InputId[];
+  readonly reconciledInputIds: readonly InputId[];
   readonly acceptedCommandIds: readonly CommandId[];
 }
 
@@ -179,7 +187,10 @@ interface MutableRequestProjection {
   model?: string;
   context?: JsonObject;
   recovery?: DurableRequestRecoveryOrigin;
+  recoveryKind?: DurableRequestRecoveryKind;
+  reconciledInputIds: InputId[];
   status: DurableRequestStatus;
+  appliedInputIds: InputId[];
   lastTurn: number;
   activeTurn: MutableTurnProjection | null;
 }
@@ -193,11 +204,20 @@ interface ProjectionAccumulator {
   closeReason: DurableSessionCloseReason | null;
   activeRequest: MutableRequestProjection | null;
   appliedInputIds: InputId[];
+  reconciledInputIds: InputId[];
   acceptedCommandIds: CommandId[];
   seenEventIds: Set<EventId>;
   seenRequestIds: Set<RequestId>;
   seenTurnIds: Set<TurnId>;
-  turnOrigins: Map<TurnId, { requestId: RequestId; turn: number }>;
+  turnOrigins: Map<
+    TurnId,
+    {
+      requestId: RequestId;
+      turn: number;
+      commandId?: CommandId;
+      sequence: EventSequence;
+    }
+  >;
   lastTurnAbort: {
     requestId: RequestId;
     turnId: TurnId;
@@ -209,6 +229,10 @@ interface ProjectionAccumulator {
   } | null;
   lastRequestInterruption: {
     requestId: RequestId;
+    inputId: InputId;
+    appliedInputIds: readonly InputId[];
+    status: DurableRequestStatus;
+    lastTurn: number;
     commandId?: CommandId;
     sequence: EventSequence;
     reason: DurableRequestInterruptReason;
@@ -368,7 +392,10 @@ function cloneRequest(request: MutableRequestProjection | null): DurableRequestP
     ...(request.model ? { model: request.model } : {}),
     ...(request.context ? { context: request.context } : {}),
     ...(request.recovery ? { recovery: request.recovery } : {}),
+    ...(request.recoveryKind ? { recoveryKind: request.recoveryKind } : {}),
+    reconciledInputIds: [...request.reconciledInputIds],
     status: request.status,
+    appliedInputIds: [...request.appliedInputIds],
     lastTurn: request.lastTurn,
     activeTurn: cloneTurn(request.activeTurn),
   };
@@ -394,7 +421,7 @@ function applyEvent(state: ProjectionAccumulator, event: DurableEventEnvelope): 
       state.closeReason = event.data.reason;
       return;
 
-    case DurableEventTypeValue.REQUEST_ACCEPTED:
+    case DurableEventTypeValue.REQUEST_ACCEPTED: {
       requireOpenSession(state, event);
       if (state.activeRequest) {
         invalid(event, `Request ${state.activeRequest.requestId} is still active`);
@@ -408,36 +435,68 @@ function applyEvent(state: ProjectionAccumulator, event: DurableEventEnvelope): 
       if (state.seenInputIds.has(event.data.inputId)) {
         invalid(event, `Input ID ${event.data.inputId} was already accepted`);
       }
+      let recoveryKind: DurableRequestRecoveryKind | undefined;
+      let reconciledInputIds: InputId[] = [];
       if (event.data.recovery) {
-        const origin = state.turnOrigins.get(event.data.recovery.turnId);
+        const recovery = event.data.recovery;
+        const origin = state.turnOrigins.get(recovery.turnId);
         const turnAbort = state.lastTurnAbort;
         const requestInterruption = state.lastRequestInterruption;
         if (
           !origin ||
-          origin.requestId !== event.data.recovery.requestId ||
-          origin.turn !== event.data.recovery.turn ||
+          origin.requestId !== recovery.requestId ||
+          origin.turn !== recovery.turn ||
           !turnAbort ||
-          turnAbort.requestId !== event.data.recovery.requestId ||
-          turnAbort.turnId !== event.data.recovery.turnId ||
-          turnAbort.turn !== event.data.recovery.turn ||
+          turnAbort.requestId !== recovery.requestId ||
+          turnAbort.turnId !== recovery.turnId ||
+          turnAbort.turn !== recovery.turn ||
           turnAbort.reason !== 'process_restart' ||
           turnAbort.commandId !== event.commandId ||
           !requestInterruption ||
-          requestInterruption.requestId !== event.data.recovery.requestId ||
+          requestInterruption.requestId !== recovery.requestId ||
           requestInterruption.reason !== 'process_restart' ||
           requestInterruption.commandId !== event.commandId ||
           Number(turnAbort.sequence) + 1 !== Number(requestInterruption.sequence) ||
-          Number(requestInterruption.sequence) + 1 !== Number(event.sequence)
+          Number(requestInterruption.sequence) + 1 !== Number(event.sequence) ||
+          requestInterruption.status !== 'running' ||
+          requestInterruption.lastTurn !== recovery.turn
         ) {
           invalid(
             event,
-            `Recovery origin ${event.data.recovery.turnId} is not an atomic canonical rollover`,
+            `Recovery origin ${recovery.turnId} is not an atomic canonical rollover`,
+          );
+        }
+        const syntheticPreTurn =
+          origin.commandId === event.commandId
+          && Number(origin.sequence) + 1 === Number(turnAbort.sequence);
+        if (syntheticPreTurn && recovery.turn !== 1) {
+          invalid(
+            event,
+            `Recovery origin ${recovery.turnId} is not a canonical pre-turn rollover`,
+          );
+        }
+        recoveryKind = syntheticPreTurn ? 'pre_turn_request' : 'turn';
+        reconciledInputIds = [
+          requestInterruption.inputId,
+          ...requestInterruption.appliedInputIds.filter(
+            (inputId) => inputId !== requestInterruption.inputId,
+          ),
+        ];
+        for (const inputId of reconciledInputIds) {
+          if (!state.reconciledInputIds.includes(inputId)) {
+            state.reconciledInputIds.push(inputId);
+          }
+        }
+        if (!syntheticPreTurn && origin.commandId === event.commandId) {
+          invalid(
+            event,
+            `Recovery origin ${recovery.turnId} has a non-adjacent synthetic Turn`,
           );
         }
         if (turnAbort.unsafeNonIdempotentToolAttemptId) {
           invalid(
             event,
-            `Recovery origin ${event.data.recovery.turnId} crossed non-idempotent tool attempt ${turnAbort.unsafeNonIdempotentToolAttemptId}`,
+            `Recovery origin ${recovery.turnId} crossed non-idempotent tool attempt ${turnAbort.unsafeNonIdempotentToolAttemptId}`,
           );
         }
       }
@@ -456,11 +515,15 @@ function applyEvent(state: ProjectionAccumulator, event: DurableEventEnvelope): 
         ...(event.data.model ? { model: event.data.model } : {}),
         ...(event.data.context ? { context: event.data.context } : {}),
         ...(event.data.recovery ? { recovery: event.data.recovery } : {}),
+        ...(recoveryKind ? { recoveryKind } : {}),
+        reconciledInputIds,
         status: 'accepted',
+        appliedInputIds: [],
         lastTurn: 0,
         activeTurn: null,
       };
       return;
+    }
 
     case DurableEventTypeValue.REQUEST_STARTED: {
       const request = requireActiveRequest(state, event);
@@ -497,6 +560,10 @@ function applyEvent(state: ProjectionAccumulator, event: DurableEventEnvelope): 
       state.activeRequest = null;
       state.lastRequestInterruption = {
         requestId: event.requestId,
+        inputId: request.inputId,
+        appliedInputIds: [...request.appliedInputIds],
+        status: request.status,
+        lastTurn: request.lastTurn,
         ...(event.commandId ? { commandId: event.commandId } : {}),
         sequence: event.sequence,
         reason: event.data.reason,
@@ -519,6 +586,8 @@ function applyEvent(state: ProjectionAccumulator, event: DurableEventEnvelope): 
       state.turnOrigins.set(event.turnId, {
         requestId: request.requestId,
         turn: event.data.turn,
+        ...(event.commandId ? { commandId: event.commandId } : {}),
+        sequence: event.sequence,
       });
       request.lastTurn = event.data.turn;
       request.activeTurn = {
@@ -722,12 +791,13 @@ function applyEvent(state: ProjectionAccumulator, event: DurableEventEnvelope): 
     }
 
     case DurableEventTypeValue.INPUT_APPLIED: {
-      requireActiveRequest(state, event);
+      const request = requireActiveRequest(state, event);
       if (state.seenAppliedInputIds.has(event.data.inputId)) {
         invalid(event, `Input ID ${event.data.inputId} was already applied`);
       }
       state.seenAppliedInputIds.add(event.data.inputId);
       state.appliedInputIds.push(event.data.inputId);
+      request.appliedInputIds.push(event.data.inputId);
       return;
     }
   }
@@ -743,6 +813,7 @@ function createProjectionAccumulator(): ProjectionAccumulator {
     closeReason: null,
     activeRequest: null,
     appliedInputIds: [],
+    reconciledInputIds: [],
     acceptedCommandIds: [],
     seenEventIds: new Set(),
     seenRequestIds: new Set(),
@@ -792,6 +863,7 @@ export class DurableSessionProjector {
       closeReason: state.closeReason,
       activeRequest: cloneRequest(state.activeRequest),
       appliedInputIds: [...state.appliedInputIds],
+      reconciledInputIds: [...state.reconciledInputIds],
       acceptedCommandIds: [...state.acceptedCommandIds],
     });
   }
@@ -927,8 +999,16 @@ export function planDurableSessionRecovery(
     action = 'resolve_permissions';
   } else if (turn) {
     action = 'resume_turn';
-  } else if (request) {
+  } else if (request?.status === 'accepted') {
     action = 'resume_request';
+  } else if (request?.lastTurn === 0) {
+    action =
+      request.appliedInputIds.length === 1
+      && request.appliedInputIds[0] === request.inputId
+        ? 'rollover_request'
+        : 'reconcile_request_inputs';
+  } else if (request) {
+    action = 'reconcile_request_outcome';
   }
 
   return {

@@ -4,14 +4,14 @@ import { CannotRetryError } from '../../services/RetryPolicy.js';
 import { ActiveRequestController } from '../../session/ActiveRequestController.js';
 import { SessionInputInbox } from '../../session/SessionInputInbox.js';
 import {
-  completeToolExecution,
-  type ToolEffect,
-  type ToolResult,
+    completeToolExecution,
+    type ToolEffect,
+    type ToolResult,
 } from '../../tools/types/index.js';
 import {
-  InputId,
-  RequestId,
-  SessionId,
+    InputId,
+    RequestId,
+    SessionId,
 } from '../../types/branded.js';
 import type { AgentEvent } from '../AgentEvent.js';
 import type { AgentLoopConfig } from '../AgentLoop.js';
@@ -240,6 +240,36 @@ describe('agentLoop', () => {
         expect(usageEvent.usage.inputTokens).toBe(200);
         expect(usageEvent.usage.outputTokens).toBe(100);
       }
+    });
+
+    it('skips only the first before-turn hook for reconciled recovery input', async () => {
+      const beforeTurn = vi.fn(async function* () {
+        yield* [] as AgentEvent[];
+        return false;
+      });
+      const chatService = createMockChatService([
+        {
+          content: 'Run a tool',
+          toolCalls: [{
+            id: 'call_1',
+            type: 'function',
+            function: { name: 'ReadFile', arguments: '{"path":"test.ts"}' },
+          }],
+        },
+        { content: 'Done' },
+      ]);
+
+      const { result } = await collectEvents(agentLoop(baseConfig({
+        skipInitialBeforeTurn: true,
+        onBeforeTurn: beforeTurn,
+        turnState: { chatService },
+      })));
+
+      expect(result.metadata?.turnsCount).toBe(2);
+      expect(beforeTurn).toHaveBeenCalledOnce();
+      expect(beforeTurn).toHaveBeenCalledWith(
+        expect.objectContaining({ turn: 1 }),
+      );
     });
   });
 

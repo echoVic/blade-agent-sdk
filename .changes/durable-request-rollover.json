@@ -1,0 +1,5 @@
+{
+  "type": "feature",
+  "en": "Add atomic recovery for Requests that crash before their first Turn, with explicit input preparation and post-Turn outcome reconciliation.",
+  "zh-CN": "新增首个 Turn 前崩溃 Request 的原子恢复，要求显式对账输入准备及 Turn 后 Request 终态。"
+}

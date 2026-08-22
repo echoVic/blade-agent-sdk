@@ -682,12 +682,17 @@ Request，并保留其 `requestId`、输入、`maxTurns` 和 Runtime Context。�
 模型。缺少完整执行快照的旧 durable Request 不会自动恢复。
 
 已经开始的 Request、活动 Turn、待决权限或未知工具结果不会被推测性重放，而是
-抛出 `DurableSessionRecoveryRequiredError`。使用
-`DurableSessionRecoveryCoordinator` 显式消解权限或对账工具结果；对于安全的
-`resume_turn`，先调用 `prepareTurnRecovery()` 原子终止旧执行并接受一个带
-provenance 的 continuation Request，随后 `resumeSession()` 会按普通 accepted
-Request 恢复。已完成、失败，或在开始执行后被取消的 `non_idempotent` 工具
-始终保持 fail-closed。
+抛出 `DurableSessionRecoveryRequiredError`。首个 Turn 尚未开始时，调用
+`prepareRequestRecovery()` 并提供已对账的最终输入与精确
+`appliedInputIds`，把旧 Request 原子 rollover 为新 Request；缺失或额外输入会
+先分类为 `reconcile_request_inputs`。恢复执行会跳过已完成的初始 Hook、附件
+展开和首轮准备，并过滤旧队列中已应用的输入。对于安全的 `resume_turn`，调用
+`prepareTurnRecovery()` 原子终止旧执行并接受一个带 provenance 的 continuation
+Request。两者随后都由 `resumeSession()` 的 accepted-Request 路径执行。若
+Request 已完成至少一个 Turn 但缺少 Request 终态，则返回
+`reconcile_request_outcome`；使用 `reconcileRequestOutcome()` 确认终态，禁止
+自动重放。已完成、失败，或在开始执行后被取消的 `non_idempotent` 工具始终保持
+fail-closed。
 JSONL adapter 只支持单进程 writer，多进程部署需要实现带事务 CAS 或 fencing
 的 `DurableEventStore`。
 

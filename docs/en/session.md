@@ -287,12 +287,19 @@ execution snapshot are not resumed automatically.
 
 A started Request, active Turn, pending permission, or unknown tool outcome is
 never replayed speculatively and raises `DurableSessionRecoveryRequiredError`.
-Use `DurableSessionRecoveryCoordinator` to resolve permissions or reconcile
-tool outcomes explicitly. For a safe `resume_turn`, call
-`prepareTurnRecovery()` first to atomically terminate the old execution and
-accept a provenance-linked continuation Request. `resumeSession()` then uses
-the normal accepted-Request path. A `non_idempotent` tool that completed,
-failed, or was cancelled after execution started always remains fail-closed.
+When no first Turn started, call `prepareRequestRecovery()` with the reconciled
+final input and exact `appliedInputIds` to atomically roll the old Request into
+a new one. Missing or extra input applications are first classified as
+`reconcile_request_inputs`. Recovery skips the completed initial hooks,
+attachment expansion, and first-turn preparation, and filters already applied
+inputs from the legacy queue. For a safe `resume_turn`, call
+`prepareTurnRecovery()` to atomically terminate the old execution and accept a
+provenance-linked continuation Request. Both then use `resumeSession()`'s
+accepted-Request path. A Request whose last Turn ended without a Request
+terminal event reports `reconcile_request_outcome`; settle it with
+`reconcileRequestOutcome()` rather than replaying it. A `non_idempotent` tool
+that completed, failed, or was cancelled after execution started always
+remains fail-closed.
 The JSONL adapter supports only one process;
 multi-process deployments need a `DurableEventStore` with transactional CAS or
 fencing.

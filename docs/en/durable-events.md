@@ -9,10 +9,12 @@ projection.
 Session writes durable events only when
 `SessionOptions.durableEventStore` is explicitly set; the existing message JSONL
 format is unchanged. `resumeSession()` automatically restores a Request that
-was accepted but did not cross the `request_started` boundary. An active Turn
-must first be atomically rolled over through the Recovery Coordinator; pending
-permissions and unknown tool outcomes still require explicit resolution. A
-`non_idempotent` tool is never replayed automatically.
+was accepted but did not cross the `request_started` boundary. A started
+Request without a Turn, and an active Turn, must first be atomically rolled
+over through the Recovery Coordinator. Pending permissions, unknown tool
+outcomes, and Requests whose latest Turn finished without a Request terminal
+event still require explicit resolution. A `non_idempotent` tool is never
+replayed automatically.
 :::
 
 ## Imports
@@ -91,6 +93,12 @@ are rejected before append.
 | `permission_requested` | Request, Turn, `toolAttemptId` | `permissionRequestId`, tool identity, `input` |
 | `permission_resolved` | Request, Turn, `toolAttemptId` | `permissionRequestId`, `decision` |
 | `input_applied` | `requestId`, optional `turnId` | `inputId`, `priority` |
+
+`request_accepted.recovery` always retains the v2
+`{ requestId, turnId, turn }` wire shape. A pre-Turn Request rollover writes a
+synthetic Turn in the same command to provide provenance. The projector exposes
+that meaning as `recoveryKind: 'pre_turn_request'` without changing the
+persistent schema.
 
 ## Append events
 
@@ -312,10 +320,13 @@ the invalid event.
 | Action | Meaning |
 |--------|---------|
 | `none` | No unfinished work exists. |
-| `resume_request` | A Request was accepted without an active Turn and can restart. |
+| `resume_request` | A Request was accepted but not started and can resume in place. |
+| `rollover_request` | A Request started before its first Turn and can safely roll into a new Request. |
 | `resume_turn` | A model call, scheduled tool, or safely replayable started tool can continue. |
 | `resolve_permissions` | Pending permissions must be presented again or resolved by policy. |
 | `reconcile_tool_outcomes` | A tool started without a reliable terminal outcome and must not be retried automatically. |
+| `reconcile_request_inputs` | The applied-input set before the first Turn is ambiguous and requires explicit reconciliation. |
+| `reconcile_request_outcome` | A Turn ended without a Request terminal event, so the final outcome must be reconciled. |
 
 The plan also separates `retryableToolAttempts`, `cancelableToolAttempts`,
 `unknownToolAttempts`, and `pendingPermissions`. Started or
@@ -383,9 +394,67 @@ reconciled after querying the external system and must not be executed again.
 has no `input_applied` or `request_started` boundary and carries a complete
 execution snapshot. Session resumes the same `requestId` using the durable
 input and persisted `maxTurns`, model, and Runtime Context. A legacy Request
-without that snapshot, or a started Request even without an active Turn, returns
-`recovery_required`. This avoids executing under different settings or
-duplicating a model call that may already have completed.
+without that snapshot continues to return `recovery_required`.
+
+`request_started` is persisted before `UserPromptSubmit`, attachment expansion,
+initial compaction, and AgentLoop's `turn_start`. Therefore, the absence of a
+Turn proves only that no primary model call started; it does not prove that
+pre-Turn hooks or other preparation had no side effects. The plan returns
+`rollover_request` only when the durable `appliedInputIds` contain exactly the
+initial input. A missing initial application or additional steering input
+returns `reconcile_request_inputs`.
+
+Both actions converge through `prepareRequestRecovery()`, but the caller must
+first reconcile the complete pre-Turn preparation stage, provide the final
+prepared input, and echo the observed `activeRequest.appliedInputIds` exactly:
+
+```ts
+const request = coordinator.getProjection().activeRequest;
+if (!request) throw new Error('No active Request');
+
+await coordinator.prepareRequestRecovery({
+  commandId: CommandId('recover-request-42'),
+  requestId: RequestId('request-source-42'),
+  inputId: InputId('input-source-42'),
+  recoveryTurnId: TurnId('synthetic-recovery-turn-42'),
+  recoveryRequestId: RequestId('request-recovery-42'),
+  recoveryInputId: InputId('input-recovery-42'),
+  preparation: {
+    status: 'reconciled',
+    appliedInputIds: request.appliedInputIds,
+    input: preparedInput,
+  },
+});
+```
+
+The API writes
+`turn_started (synthetic) -> turn_aborted -> request_interrupted ->
+request_accepted` in one CAS command. The source Request/Input IDs,
+`appliedInputIds`, and Journal head are preconditions. A concurrent real
+`turn_started` or new input application makes the stale command fail. The
+restored Session filters old pending inputs that were applied or reconciled and
+skips `UserPromptSubmit`, attachment expansion, and the first `beforeTurn`
+preparation, so the supplied `preparedInput` executes once. Original multimodal
+content parts retain their structure.
+
+When a Request has already completed at least one Turn but has no active Turn,
+`recoveryPlan()` returns `reconcile_request_outcome`. The final model response
+may have occurred before the Request terminal event was persisted, so the SDK
+does not retry it automatically. After querying the provider or application
+record, use a stable `commandId` to commit `completed`, `failed`, or
+`interrupted` explicitly:
+
+```ts
+await coordinator.reconcileRequestOutcome({
+  commandId: CommandId('reconcile-request-42'),
+  requestId: RequestId('request-source-42'),
+  outcome: {
+    status: 'completed',
+    output: 'already completed',
+    usage: { inputTokens: 120, outputTokens: 30, totalTokens: 150 },
+  },
+});
+```
 
 For `resume_turn`, `prepareTurnRecovery()` performs these transitions in one
 CAS command:
@@ -428,12 +497,14 @@ for await (const event of session.stream()) {
 ```
 
 The entire rollover can be retried with the same `commandId`, and competing
-processes can commit it only once. Provenance is valid only when the same
-command contains the adjacent `turn_aborted -> request_interrupted ->
-request_accepted` transition. `requestId` and `turnId` are preconditions for
-the state observed by the caller, so the command cannot silently target a
-newer active Turn. A `non_idempotent` tool that is `completed`, `failed`, or
-`cancelled` after execution started raises
+processes can commit it only once. Active-Turn provenance is valid only when
+the same command contains the adjacent
+`turn_aborted -> request_interrupted -> request_accepted` transition; pre-Turn
+provenance additionally requires the preceding synthetic `turn_started`.
+`requestId` and `turnId` are preconditions for the state observed by the
+caller, so the command cannot silently target a newer active Turn. A
+`non_idempotent` tool that is `completed`, `failed`, or `cancelled` after
+execution started raises
 `DURABLE_RECOVERY_UNSAFE_ROLLOVER` and remains fail-closed; the API does not use
 prompting to bypass an unknown side effect.
 

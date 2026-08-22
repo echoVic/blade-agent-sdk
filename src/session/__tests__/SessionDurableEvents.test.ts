@@ -6,6 +6,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { AgentEvent } from '../../agent/AgentEvent.js';
 import type { LoopOptions, LoopResult, UserMessageContent } from '../../agent/types.js';
 import { PersistentStore } from '../../context/storage/PersistentStore.js';
+import { HookRuntime } from '../../hooks/HookRuntime.js';
 import type { Message } from '../../services/ChatServiceInterface.js';
 import {
   CommandId,
@@ -124,6 +125,7 @@ function options(store: DurableEventStore) {
 }
 
 afterEach(async () => {
+  vi.restoreAllMocks();
   streamChat = async function* defaultStream() {
     yield { type: 'turn_start', turn: 1, maxTurns: 10 };
     yield { type: 'turn_end', turn: 1, hasToolCalls: false };
@@ -423,7 +425,7 @@ describe('Session durable events', () => {
 
     const durableTypes = (await store.read(session.sessionId)).events.map((event) => event.type);
     expect(durableTypes).not.toContain(DurableEventType.REQUEST_COMPLETED);
-    expect(session.getDurableRecoveryPlan()?.action).toBe('resume_request');
+    expect(session.getDurableRecoveryPlan()?.action).toBe('reconcile_request_outcome');
     await expect(session.send('must wait for recovery')).rejects.toBeInstanceOf(
       DurableSessionRecoveryRequiredError,
     );
@@ -524,6 +526,118 @@ describe('Session durable events', () => {
     expect(events.find((event) => event.type === DurableEventType.REQUEST_STARTED)?.requestId).toBe(
       requestId,
     );
+    expect(session.getDurableRecoveryPlan()?.action).toBe('none');
+    await session.close();
+  });
+
+  it('resumes a rolled-over Request that crashed before its first Turn', async () => {
+    const { root, store } = createStore();
+    const sessionId = SessionId('request-rollover-session');
+    const requestId = RequestId('request-rollover-source');
+    const inputId = InputId('request-rollover-source-input');
+    const recoveryRequestId = RequestId('request-rollover-recovery');
+    const recoveryInputId = InputId('request-rollover-recovery-input');
+    const recoveryTurnId = TurnId('request-rollover-synthetic-turn');
+    const persistentStore = new PersistentStore(root);
+    await persistentStore.saveInputEnqueued(sessionId, {
+      inputId,
+      content: 'run exactly once',
+      priority: 'next',
+      targetRequestId: requestId,
+      acceptedAt: Date.parse('2026-08-22T12:00:00.000Z'),
+    });
+    const journal = await DurableSessionJournal.open(store, sessionId);
+    await journal.commit({
+      commandId: CommandId('request-rollover-bootstrap'),
+      events: [
+        {
+          type: DurableEventType.SESSION_CREATED,
+          data: { source: 'create' },
+        },
+        {
+          type: DurableEventType.REQUEST_ACCEPTED,
+          requestId,
+          data: {
+            inputId,
+            input: 'run exactly once',
+            priority: 'next',
+            maxTurns: 7,
+            model: 'request-rollover-model',
+            context: {
+              id: 'request-rollover-context',
+            },
+          },
+        },
+        {
+          type: DurableEventType.INPUT_APPLIED,
+          requestId,
+          data: { inputId, priority: 'next' },
+        },
+        {
+          type: DurableEventType.REQUEST_STARTED,
+          requestId,
+          data: {},
+        },
+      ],
+    });
+    await new DurableSessionRecoveryCoordinator(journal).prepareRequestRecovery({
+      commandId: CommandId('prepare-request-rollover'),
+      requestId,
+      inputId,
+      recoveryTurnId,
+      recoveryRequestId,
+      recoveryInputId,
+      preparation: {
+        status: 'reconciled',
+        appliedInputIds: [inputId],
+        input: 'prepared exactly once',
+      },
+    });
+    const promptHook = vi.spyOn(HookRuntime.prototype, 'applyUserPromptSubmit');
+    let observedMessage: UserMessageContent | undefined;
+    let observedOptions: LoopOptions | undefined;
+    streamChat = async function* requestRolloverStream(message, _context, loopOptions) {
+      observedMessage = message;
+      observedOptions = loopOptions;
+      yield { type: 'turn_start', turn: 1, maxTurns: 7 };
+      yield { type: 'turn_end', turn: 1, hasToolCalls: false };
+      return {
+        success: true,
+        finalMessage: 'recovered',
+        metadata: { turnsCount: 1, toolCallsCount: 0, duration: 1 },
+      };
+    };
+
+    const session = await resumeSession({
+      ...options(store),
+      persistSession: true,
+      storagePath: root,
+      sessionId,
+    });
+
+    expect(session.getPendingInputs()).toEqual([
+      expect.objectContaining({
+        inputId: recoveryInputId,
+        targetRequestId: recoveryRequestId,
+      }),
+    ]);
+    for await (const _event of session.stream()) {
+      // Drain the recovery request.
+    }
+
+    expect(observedMessage).toContain('"boundary": "before_first_turn"');
+    expect(observedMessage).toContain('prepared exactly once');
+    expect(observedMessage).not.toContain('run exactly once');
+    expect(promptHook).not.toHaveBeenCalled();
+    expect(observedOptions?.initialInputPreparation).toBe('reconciled');
+    const events = (await store.read(sessionId)).events;
+    expect(events.filter((event) => event.type === DurableEventType.REQUEST_ACCEPTED)).toHaveLength(
+      2,
+    );
+    expect(events.filter((event) => event.type === DurableEventType.REQUEST_STARTED)).toHaveLength(
+      2,
+    );
+    expect(events.filter((event) => event.type === DurableEventType.TURN_STARTED)).toHaveLength(2);
     expect(session.getDurableRecoveryPlan()?.action).toBe('none');
     await session.close();
   });

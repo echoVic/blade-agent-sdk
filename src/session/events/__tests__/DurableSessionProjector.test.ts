@@ -279,7 +279,7 @@ describe('DurableSessionProjector', () => {
     expect(projector.snapshot().activeRequest?.status).toBe('accepted');
   });
 
-  it('classifies accepted requests and active model turns as retryable', () => {
+  it('distinguishes accepted, pre-turn, post-turn, and active-turn recovery', () => {
     const accepted = project([
       requestPrefix()[0] as DurableEventDraft,
       {
@@ -308,6 +308,44 @@ describe('DurableSessionProjector', () => {
       turnId: null,
     });
 
+    const startedWithoutTurn = project(requestPrefix());
+    expect(planDurableSessionRecovery(startedWithoutTurn)).toMatchObject({
+      action: 'rollover_request',
+      requestId,
+      turnId: null,
+    });
+
+    const startedWithoutAppliedInput = project([
+      ...requestPrefix().slice(0, 2),
+      {
+        type: DurableEventType.REQUEST_STARTED,
+        requestId,
+        data: {},
+      },
+    ]);
+    expect(planDurableSessionRecovery(startedWithoutAppliedInput)).toMatchObject({
+      action: 'reconcile_request_inputs',
+      requestId,
+      turnId: null,
+    });
+
+    const startedWithSteeringInput = project([
+      ...requestPrefix(),
+      {
+        type: DurableEventType.INPUT_APPLIED,
+        requestId,
+        data: {
+          inputId: InputId('steering-input'),
+          priority: 'next',
+        },
+      },
+    ]);
+    expect(planDurableSessionRecovery(startedWithSteeringInput)).toMatchObject({
+      action: 'reconcile_request_inputs',
+      requestId,
+      turnId: null,
+    });
+
     const activeTurn = project(turnPrefix());
     expect(planDurableSessionRecovery(activeTurn)).toMatchObject({
       action: 'resume_turn',
@@ -316,6 +354,129 @@ describe('DurableSessionProjector', () => {
       retryableToolAttempts: [],
       unknownToolAttempts: [],
     });
+
+    const completedTurn = project([
+      ...turnPrefix(),
+      {
+        type: DurableEventType.TURN_COMPLETED,
+        requestId,
+        turnId,
+        data: { turn: 1, hasToolCalls: false },
+      },
+    ]);
+    expect(planDurableSessionRecovery(completedTurn)).toMatchObject({
+      action: 'reconcile_request_outcome',
+      requestId,
+      turnId: null,
+    });
+  });
+
+  it('validates and projects canonical pre-turn Request recovery provenance', () => {
+    const requestRecoveryCommandId = CommandId('request-recovery-command');
+    const requestRecoveryTurnId = TurnId('request-recovery-turn');
+    const recovered = project([
+      ...requestPrefix(),
+      {
+        type: DurableEventType.TURN_STARTED,
+        requestId,
+        turnId: requestRecoveryTurnId,
+        commandId: requestRecoveryCommandId,
+        data: { turn: 1, model: 'request-model' },
+      },
+      {
+        type: DurableEventType.TURN_ABORTED,
+        requestId,
+        turnId: requestRecoveryTurnId,
+        commandId: requestRecoveryCommandId,
+        data: { turn: 1, reason: 'process_restart' },
+      },
+      {
+        type: DurableEventType.REQUEST_INTERRUPTED,
+        requestId,
+        commandId: requestRecoveryCommandId,
+        data: { reason: 'process_restart' },
+      },
+      {
+        type: DurableEventType.REQUEST_ACCEPTED,
+        requestId: recoveryRequestId,
+        commandId: requestRecoveryCommandId,
+        data: {
+          inputId: recoveryInputId,
+          input: 'continue',
+          priority: 'next',
+          recovery: {
+            requestId,
+            turnId: requestRecoveryTurnId,
+            turn: 1,
+          },
+        },
+      },
+    ]);
+
+    expect(recovered.activeRequest).toMatchObject({
+      requestId: recoveryRequestId,
+      recovery: {
+        requestId,
+        turnId: requestRecoveryTurnId,
+        turn: 1,
+      },
+      recoveryKind: 'pre_turn_request',
+      reconciledInputIds: [initialInputId],
+    });
+    expect(recovered.reconciledInputIds).toEqual([initialInputId]);
+
+    const steeringInputId = InputId('steering-input');
+    const reconciled = project([
+      ...requestPrefix(),
+      {
+        type: DurableEventType.INPUT_APPLIED,
+        requestId,
+        data: {
+          inputId: steeringInputId,
+          priority: 'next',
+        },
+      },
+      {
+        type: DurableEventType.TURN_STARTED,
+        requestId,
+        turnId: requestRecoveryTurnId,
+        commandId: requestRecoveryCommandId,
+        data: { turn: 1, model: 'request-model' },
+      },
+      {
+        type: DurableEventType.TURN_ABORTED,
+        requestId,
+        turnId: requestRecoveryTurnId,
+        commandId: requestRecoveryCommandId,
+        data: { turn: 1, reason: 'process_restart' },
+      },
+      {
+        type: DurableEventType.REQUEST_INTERRUPTED,
+        requestId,
+        commandId: requestRecoveryCommandId,
+        data: { reason: 'process_restart' },
+      },
+      {
+        type: DurableEventType.REQUEST_ACCEPTED,
+        requestId: recoveryRequestId,
+        commandId: requestRecoveryCommandId,
+        data: {
+          inputId: recoveryInputId,
+          input: 'continue',
+          priority: 'next',
+          recovery: {
+            requestId,
+            turnId: requestRecoveryTurnId,
+            turn: 1,
+          },
+        },
+      },
+    ]);
+    expect(reconciled.activeRequest).toMatchObject({
+      recoveryKind: 'pre_turn_request',
+      reconciledInputIds: [initialInputId, steeringInputId],
+    });
+    expect(reconciled.reconciledInputIds).toEqual([initialInputId, steeringInputId]);
   });
 
   it('validates and projects canonical turn recovery provenance', () => {
