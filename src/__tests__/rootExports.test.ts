@@ -2,9 +2,12 @@ import { describe, expect, expectTypeOf, it } from 'vitest';
 import type {
   DurableAcceptedRequestRecovery,
   DurableCommandEventDraft,
+  DurableEventCursor,
   DurableEventEnvelope,
   DurableEventOfType,
   DurableEventStore,
+  DurableEventSubscriptionMessage,
+  DurableEventSubscriptionOptions,
   DurableSessionCommand,
   DurableSessionResumeDecision,
   DurableSessionRecoveryPlan,
@@ -40,7 +43,11 @@ import {
   createMemoryWriteTool,
   DurableCommandConflictError,
   DurableCommandOutcomeUnknownError,
+  DURABLE_EVENT_CURSOR_VERSION,
   DURABLE_EVENT_SCHEMA_VERSION,
+  durableEventCursor,
+  DurableEventSubscription,
+  DurableEventSubscriptionError,
   DurableEventType,
   DurableSessionJournal,
   DurableSessionProjector,
@@ -86,7 +93,11 @@ describe('root exports', () => {
     expect(ToolErrorType.INTERRUPTED).toBe('interrupted');
     expect(ToolSideEffect.NON_IDEMPOTENT).toBe('non_idempotent');
     expect(DURABLE_EVENT_SCHEMA_VERSION).toBe(2);
+    expect(DURABLE_EVENT_CURSOR_VERSION).toBe(1);
     expect(DurableEventType.REQUEST_ACCEPTED).toBe('request_accepted');
+    expect(DurableEventSubscription.open).toBeTypeOf('function');
+    expect(DurableEventSubscriptionError).toBeDefined();
+    expect(durableEventCursor).toBeTypeOf('function');
     expect(JsonlDurableEventStore).toBeDefined();
     expect(CommandId('command-1')).toBe('command-1');
     expect(EventId('event-1')).toBe('event-1');
@@ -132,6 +143,13 @@ describe('root exports', () => {
     expectTypeOf<PendingSessionInput['priority']>().toEqualTypeOf<'now' | 'next' | 'later'>();
     expectTypeOf<ReturnType<typeof createMemoryReadTool>>().toMatchTypeOf<SessionTool>();
     expectTypeOf<DurableEventEnvelope['sequence']>().toEqualTypeOf<EventSequence>();
+    expectTypeOf<DurableEventCursor['eventId']>().toEqualTypeOf<EventId>();
+    expectTypeOf<DurableEventSubscriptionMessage['type']>().toEqualTypeOf<
+      'event' | 'caught_up'
+    >();
+    expectTypeOf<DurableEventSubscriptionOptions['follow']>().toEqualTypeOf<
+      boolean | undefined
+    >();
     expectTypeOf<
       DurableEventOfType<typeof DurableEventType.REQUEST_ACCEPTED>['data']['inputId']
     >().toEqualTypeOf<InputId>();
@@ -154,6 +172,9 @@ describe('root exports', () => {
       DurableEventStore | undefined
     >();
     expectTypeOf<ReturnType<ISession['abort']>>().toEqualTypeOf<Promise<void>>();
+    expectTypeOf<ReturnType<ISession['subscribeDurableEvents']>>().toEqualTypeOf<
+      Promise<DurableEventSubscription>
+    >();
     expectTypeOf<ToolCatalogEntry['source']['kind']>().toEqualTypeOf<
       'builtin' | 'custom' | 'mcp' | 'session'
     >();

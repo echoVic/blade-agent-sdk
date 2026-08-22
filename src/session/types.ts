@@ -42,6 +42,10 @@ import type { CanUseTool, PermissionHandler, PermissionUpdate } from '../types/p
 import type { Assert, IsEqual } from '../types/typeAssertions.js';
 import type { DurableEventStore } from './events/DurableEventStore.js';
 import type {
+  DurableEventSubscription,
+  DurableEventSubscriptionOptions,
+} from './events/DurableEventSubscription.js';
+import type {
   DurableSessionProjection,
   DurableSessionRecoveryPlan,
 } from './events/DurableSessionProjector.js';
@@ -377,6 +381,10 @@ export interface ISession extends AsyncDisposable {
   getTraces(): AgentTrace[];
   getDurableProjection(): DurableSessionProjection | null;
   getDurableRecoveryPlan(): DurableSessionRecoveryPlan | null;
+  /** Replays durable events from an optional cursor and then follows live commits. */
+  subscribeDurableEvents(
+    options?: DurableEventSubscriptionOptions,
+  ): Promise<DurableEventSubscription>;
 }
 
 export type { ContextSnapshot, RuntimeContext };

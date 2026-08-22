@@ -5,6 +5,17 @@ export {
   type DurableEventStoreErrorCode,
 } from './DurableEventStore.js';
 export {
+  DURABLE_EVENT_CURSOR_VERSION,
+  durableEventCursor,
+  DurableEventSubscription,
+  DurableEventSubscriptionError,
+  type DurableEventSubscriptionErrorCode,
+  type DurableEventSubscriptionMessage,
+  type DurableEventSubscriptionOptions,
+  type DurableEventCursor,
+  parseDurableEventCursor,
+} from './DurableEventSubscription.js';
+export {
   type DurableCommandCommitResult,
   type DurableCommandCommitStatus,
   DurableCommandConflictError,

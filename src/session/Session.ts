@@ -36,6 +36,11 @@ import {
     parseDurableUserMessageContent,
     serializeDurableRuntimeContext,
 } from './DurableRequestRecovery.js';
+import {
+    DurableEventSubscription,
+    DurableEventSubscriptionError,
+    type DurableEventSubscriptionOptions,
+} from './events/DurableEventSubscription.js';
 import { DurableSessionJournal } from './events/DurableSessionJournal.js';
 import type {
     DurableRequestProjection,
@@ -203,6 +208,21 @@ class Session implements ISession {
 
   getDurableRecoveryPlan(): DurableSessionRecoveryPlan | null {
     return this.durableJournal?.getRecoveryPlan() ?? null;
+  }
+
+  /** Replays persisted lifecycle events, then follows newly committed events. */
+  async subscribeDurableEvents(
+    options: DurableEventSubscriptionOptions = {},
+  ): Promise<DurableEventSubscription> {
+    await this.ensureInitialized();
+    const store = this.options.durableEventStore;
+    if (!store) {
+      throw new DurableEventSubscriptionError(
+        'DURABLE_EVENT_SUBSCRIPTION_NOT_CONFIGURED',
+        'Session durable event subscription requires durableEventStore',
+      );
+    }
+    return DurableEventSubscription.open(store, this.sessionId, options);
   }
 
   async initialize(): Promise<void> {

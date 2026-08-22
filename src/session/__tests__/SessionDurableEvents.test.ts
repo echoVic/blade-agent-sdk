@@ -16,6 +16,10 @@ import {
 import type { JsonValue } from '../../types/common.js';
 import { type DurableEventStore, DurableEventStoreError } from '../events/DurableEventStore.js';
 import {
+  DurableEventSubscriptionError,
+  type DurableEventSubscriptionMessage,
+} from '../events/DurableEventSubscription.js';
+import {
   DurableCommandOutcomeUnknownError,
   DurableSessionJournal,
 } from '../events/DurableSessionJournal.js';
@@ -159,6 +163,45 @@ describe('Session durable events', () => {
     expect((await store.read(session.sessionId)).events.at(-1)?.type).toBe(
       DurableEventType.SESSION_CLOSED,
     );
+  });
+
+  it('exposes the durable event subscription through Session', async () => {
+    const { store } = createStore();
+    const session = await createSession(options(store));
+    const subscription = await session.subscribeDurableEvents({
+      follow: false,
+    });
+    const messages: DurableEventSubscriptionMessage[] = [];
+
+    for await (const message of subscription) {
+      messages.push(message);
+    }
+
+    expect(messages).toMatchObject([
+      {
+        type: 'event',
+        event: { type: DurableEventType.SESSION_CREATED },
+        phase: 'replay',
+      },
+      {
+        type: 'caught_up',
+        headSequence: 1,
+      },
+    ]);
+    await session.close();
+  });
+
+  it('rejects Session event subscriptions without a durable Store', async () => {
+    const session = await createSession({
+      provider: { type: 'openai-compatible', apiKey: 'test-key' },
+      model: 'test-model',
+      persistSession: false,
+    });
+
+    await expect(session.subscribeDurableEvents()).rejects.toBeInstanceOf(
+      DurableEventSubscriptionError,
+    );
+    await session.close();
   });
 
   it('persists the accepted request execution snapshot before send returns', async () => {
