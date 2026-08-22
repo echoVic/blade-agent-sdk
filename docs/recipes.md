@@ -28,7 +28,7 @@ for (const question of questions) {
   console.log('\n---\n');
 }
 
-session.close();
+await session.close();
 ```
 
 ### 带流式输出的交互式对话
@@ -98,7 +98,7 @@ while (true) {
 }
 
 rl.close();
-session.close();
+await session.close();
 console.log('会话已结束');
 ```
 
@@ -134,15 +134,12 @@ setTimeout(() => controller.abort(), 60_000);
 
 await session.send('重构整个 src 目录', { signal: controller.signal });
 
-try {
-  for await (const event of session.stream()) {
-    if (event.type === 'content') {
-      process.stdout.write(event.delta);
-    }
+for await (const event of session.stream()) {
+  if (event.type === 'content') {
+    process.stdout.write(event.delta);
   }
-} catch (err) {
-  if (controller.signal.aborted) {
-    console.log('\n任务已超时取消');
+  if (event.type === 'error') {
+    console.error(`\n任务失败或被取消: ${event.message}`);
   }
 }
 ```
@@ -215,6 +212,15 @@ for await (const msg of session.stream({ includeThinking: true })) {
     case 'turn_start':
       console.log(`\n--- 第 ${msg.turn} 轮 ---`);
       break;
+    case 'turn_end':
+      console.log(`\n--- 第 ${msg.turn} 轮结束 ---`);
+      break;
+    case 'turn_interrupted':
+      console.log(`\n输入 ${msg.inputId} 中断了第 ${msg.turn} 轮`);
+      break;
+    case 'input_applied':
+      console.log(`\n已应用 ${msg.priority} 输入 ${msg.inputId}`);
+      break;
     case 'thinking':
       process.stderr.write(`[思考] ${msg.delta}`);
       break;
@@ -223,6 +229,24 @@ for await (const msg of session.stream({ includeThinking: true })) {
       break;
     case 'tool_use':
       console.log(`\n🔧 ${msg.name}(${JSON.stringify(msg.input)})`);
+      break;
+    case 'tool_progress':
+      console.log(`\n   ${msg.progress.message ?? '工具执行中'}`);
+      break;
+    case 'tool_message':
+      console.log('\n   工具消息:', msg.content);
+      break;
+    case 'tool_runtime_patch':
+      console.log('\n   应用运行时补丁:', msg.patch);
+      break;
+    case 'tool_context_patch':
+      console.log('\n   应用上下文补丁:', msg.patch);
+      break;
+    case 'tool_new_messages':
+      console.log(`\n   工具新增 ${msg.messages.length} 条消息`);
+      break;
+    case 'tool_permission_updates':
+      console.log(`\n   工具更新 ${msg.updates.length} 条权限规则`);
       break;
     case 'tool_result':
       console.log(`   → ${msg.isError ? '❌' : '✅'} ${msg.name}`);
@@ -246,12 +270,13 @@ console.log(`\n总 Token: ${totalTokens}`);
 
 ## Memory 系统
 
-Memory 系统是 opt-in 的。默认不注册 `MemoryRead` / `MemoryWrite` 工具，需要显式传入 `MemoryManager`：
+Memory 系统是 opt-in 的。`getBuiltinTools()` 可以为自定义低层运行时创建
+带 Memory 的工具集合：
 
 ```ts
 import {
-  createSession,
   FileSystemMemoryStore,
+  getBuiltinTools,
   MemoryManager,
 } from '@blade-ai/agent-sdk';
 
@@ -259,14 +284,21 @@ const memoryManager = new MemoryManager(
   new FileSystemMemoryStore('/home/user/.blade/memory'),
 );
 
-const session = await createSession({
-  provider: { type: 'openai', apiKey: process.env.OPENAI_API_KEY! },
-  model: 'gpt-4o',
+const tools = await getBuiltinTools({
+  memoryManager,
 });
 ```
 
 ::: tip
-`FileSystemMemoryStore` 使用 JSONL 格式持久化，按 slug 名称索引。Memory 类型包括 `user`（用户偏好）、`project`（项目约定）、`feedback`（反馈改进）和 `reference`（参考资料）。
+`FileSystemMemoryStore` 将每条 Memory 保存为带 frontmatter 的 Markdown
+文件，并维护 `MEMORY.md` 索引。Memory 类型包括 `user`、`project`、
+`feedback` 和 `reference`。
+:::
+
+::: warning Session 集成边界
+`createMemoryReadTool()` / `createMemoryWriteTool()` 返回低层 `Tool`，而
+`SessionOptions.tools` 当前只接受 `ToolDefinition`。因此不能把这些 helper
+的返回值直接放入 Session；Session 暂无一等 `memoryManager` 配置。
 :::
 
 ## 工具来源策略（ToolCatalogSourcePolicy）
@@ -279,8 +311,7 @@ const session = await createSession({
   model: 'gpt-4o',
   toolSourcePolicy: {
     allowedSources: ['builtin', 'custom'],
-    blockedSources: ['mcp'],
-    trustLevels: ['trusted', 'workspace'],
+    allowedTrustLevels: ['trusted', 'workspace'],
   },
 });
 ```
@@ -294,8 +325,8 @@ const session = await createSession({
 
 | 信任级别 | 说明 |
 |----------|------|
-| `trusted` | 内置和自定义工具 |
-| `workspace` | 项目级工具 |
+| `trusted` | SDK 内置工具 |
+| `workspace` | `SessionOptions.tools` 中的自定义工具和项目级工具 |
 | `remote` | 远程 MCP 工具 |
 
 ## 子 Agent 协作
