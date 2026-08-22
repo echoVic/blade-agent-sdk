@@ -76,6 +76,9 @@ const DurableEventDataSchemas = {
       inputId: NonEmptyStringSchema,
       input: JsonValueSchema,
       priority: z.enum(['now', 'next', 'later']),
+      maxTurns: z.number().int().min(-1).max(Number.MAX_SAFE_INTEGER).optional(),
+      model: NonEmptyStringSchema.optional(),
+      context: JsonObjectSchema.optional(),
     })
     .strict(),
   [DurableEventTypeValue.REQUEST_STARTED]: z.object({}).strict(),

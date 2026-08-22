@@ -277,7 +277,28 @@ describe('DurableSessionProjector', () => {
   });
 
   it('classifies accepted requests and active model turns as retryable', () => {
-    const accepted = project(requestPrefix().slice(0, 2));
+    const accepted = project([
+      requestPrefix()[0] as DurableEventDraft,
+      {
+        type: DurableEventType.REQUEST_ACCEPTED,
+        requestId,
+        commandId,
+        data: {
+          inputId: initialInputId,
+          input: 'Build the feature',
+          priority: 'next',
+          maxTurns: 12,
+          model: 'request-model',
+          context: { id: 'request-context' },
+        },
+      },
+    ]);
+    expect(accepted.activeRequest).toMatchObject({
+      acceptedAt: timestamp,
+      maxTurns: 12,
+      model: 'request-model',
+      context: { id: 'request-context' },
+    });
     expect(planDurableSessionRecovery(accepted)).toMatchObject({
       action: 'resume_request',
       requestId,

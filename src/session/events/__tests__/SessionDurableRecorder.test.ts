@@ -54,7 +54,13 @@ describe('SessionDurableRecorder', () => {
   });
 
   it('records a complete request, turn, permission, and tool lifecycle', async () => {
-    await recorder.recordAccepted(inputId, 'run write');
+    await recorder.recordAccepted(inputId, 'run write', 'next', {
+      maxTurns: 17,
+      context: {
+        id: 'request-context',
+        environment: { REGION: 'test' },
+      },
+    });
     await recorder.recordStarted(inputId);
     await recorder.recordAgentEvent({
       type: 'turn_start',
@@ -122,6 +128,18 @@ describe('SessionDurableRecorder', () => {
       'turn_completed',
       'request_completed',
     ]);
+    expect(
+      (await store.read(sessionId)).events.find(
+        (event) => event.type === DurableEventType.REQUEST_ACCEPTED,
+      )?.data,
+    ).toMatchObject({
+      maxTurns: 17,
+      model: 'test-model',
+      context: {
+        id: 'request-context',
+        environment: { REGION: 'test' },
+      },
+    });
     expect(
       (await store.read(sessionId)).events.find(
         (event) => event.type === DurableEventType.TOOL_SCHEDULED,

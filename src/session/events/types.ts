@@ -11,7 +11,7 @@ import type {
   ToolUseId,
   TurnId,
 } from '../../types/branded.js';
-import type { JsonValue } from '../../types/common.js';
+import type { JsonObject, JsonValue } from '../../types/common.js';
 
 export const DURABLE_EVENT_SCHEMA_VERSION = 2 as const;
 
@@ -85,6 +85,9 @@ export interface DurableEventDataMap {
     inputId: InputId;
     input: JsonValue;
     priority: DurableInputPriority;
+    maxTurns?: number;
+    model?: string;
+    context?: JsonObject;
   };
   [DurableEventType.REQUEST_STARTED]: Record<string, never>;
   [DurableEventType.REQUEST_COMPLETED]: {
