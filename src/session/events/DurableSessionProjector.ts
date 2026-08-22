@@ -1333,12 +1333,12 @@ export function planDurableSessionRecovery(
   );
 
   let action: DurableSessionRecoveryAction = 'none';
-  if (unknownToolAttempts.length > 0) {
+  if (activeModelAttempt) {
+    action = 'reconcile_model_outcome';
+  } else if (unknownToolAttempts.length > 0) {
     action = 'reconcile_tool_outcomes';
   } else if (pendingPermissions.length > 0) {
     action = 'resolve_permissions';
-  } else if (activeModelAttempt) {
-    action = 'reconcile_model_outcome';
   } else if (turn) {
     action = 'resume_turn';
   } else if (request?.status === 'accepted') {

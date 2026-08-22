@@ -505,6 +505,41 @@ describe('DurableSessionProjector', () => {
     expect(planDurableSessionRecovery(completed).action).toBe('resume_turn');
   });
 
+  it('prioritizes an unknown model outcome before tool and permission reconciliation', () => {
+    const projection = project([
+      ...turnPrefix(),
+      {
+        type: DurableEventType.MODEL_REQUEST_STARTED,
+        requestId,
+        turnId,
+        modelAttemptId,
+        data: {
+          model: 'claude-sonnet',
+          streaming: true,
+        },
+      },
+      toolScheduled('non_idempotent'),
+      {
+        type: DurableEventType.TOOL_STARTED,
+        requestId,
+        turnId,
+        toolAttemptId,
+        data: {
+          toolCallId,
+          toolName: 'Write',
+          input: { file_path: '/tmp/file' },
+          sideEffect: 'non_idempotent',
+        },
+      },
+    ]);
+
+    expect(planDurableSessionRecovery(projection)).toMatchObject({
+      action: 'reconcile_model_outcome',
+      activeModelAttempt: { modelAttemptId },
+      unknownToolAttempts: [{ toolAttemptId }],
+    });
+  });
+
   it('requires a model attempt to settle before its Turn can end', () => {
     expect(() =>
       project([
