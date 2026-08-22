@@ -6,6 +6,8 @@ import { assertDefined } from '../../__tests__/helpers/assertDefined.js';
 import { HookManager } from '../../hooks/HookManager.js';
 import { NOOP_LOGGER } from '../../logging/Logger.js';
 import { createContextSnapshot, type RuntimeContext } from '../../runtime/index.js';
+import { FileAccessTracker } from '../../tools/builtin/file/FileAccessTracker.js';
+import { FileLockManager } from '../../tools/execution/FileLockManager.js';
 import type { ToolDefinition, ToolResult } from '../../tools/types/index.js';
 import { SessionId } from '../../types/branded.js';
 import type { JsonObject } from '../../types/common.js';
@@ -84,6 +86,8 @@ describe('SessionRuntime', () => {
     mockConnect.mockClear();
     mockDisconnect.mockClear();
     mockOn.mockClear();
+    FileAccessTracker.resetInstance();
+    FileLockManager.resetInstance();
   });
 
   afterEach(async () => {
@@ -150,6 +154,30 @@ describe('SessionRuntime', () => {
     await runtime.initialize();
 
     expect(runtime.getToolRegistry().getAll()).toEqual([]);
+
+    await runtime.close();
+  });
+
+  it('should not initialize file facilities before a file operation runs', async () => {
+    const accessTrackerSpy = vi.spyOn(FileAccessTracker, 'getInstance');
+    const lockManagerSpy = vi.spyOn(FileLockManager, 'getInstance');
+    const runtime = new SessionRuntime(
+      SessionId('session-no-file-tools'),
+      createOptions({
+        allowedTools: [],
+      }),
+      {
+        models: [],
+      },
+      PermissionMode.DEFAULT,
+      {},
+      NOOP_LOGGER,
+    );
+
+    await runtime.initialize();
+
+    expect(accessTrackerSpy).not.toHaveBeenCalled();
+    expect(lockManagerSpy).not.toHaveBeenCalled();
 
     await runtime.close();
   });
