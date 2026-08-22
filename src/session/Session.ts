@@ -65,6 +65,7 @@ type SessionExecutionState =
       phase: 'pending';
       requestId: RequestId;
       input: PendingSessionInput;
+      controller: ActiveRequestController;
       message: UserMessageContent;
       options: SendOptions | null;
       snapshot: ContextSnapshot;
@@ -346,7 +347,7 @@ class Session implements ISession {
         );
       }
 
-      const priority = options?.priority ?? InputPriority.LATER;
+      let priority = options?.priority ?? InputPriority.NEXT;
       const activeRequestId = this.executionState.requestId;
       if (
         options?.expectedRequestId
@@ -357,17 +358,29 @@ class Session implements ISession {
           `Expected request "${options.expectedRequestId}" but "${activeRequestId}" is active`,
         );
       }
-      if (priority !== InputPriority.LATER) {
+      if (priority === InputPriority.NOW) {
         throw new SessionInputError(
           'SESSION_STEERING_UNAVAILABLE',
-          'Mid-request steering is not available yet; use priority "later"',
+          'Interrupting steering is not available yet; use priority "next" or "later"',
         );
+      }
+
+      const canSteerCurrentRequest =
+        priority === InputPriority.NEXT
+        && this.executionState.phase !== 'stopping'
+        && (this.executionState.phase !== 'running'
+          || !this.executionState.controller.isSealed);
+      if (!canSteerCurrentRequest) {
+        priority = InputPriority.LATER;
       }
 
       const input: PendingSessionInput = {
         inputId,
         content: message,
         priority,
+        targetRequestId: canSteerCurrentRequest
+          ? activeRequestId
+          : undefined,
         acceptedAt: Date.now(),
       };
       this.inputInbox.enqueue(input);
@@ -377,11 +390,18 @@ class Session implements ISession {
         this.inputInbox.remove(inputId);
         throw error;
       }
-      return {
-        status: 'queued',
-        inputId,
-        priority,
-      };
+      return canSteerCurrentRequest
+        ? {
+            status: 'steered',
+            inputId,
+            requestId: activeRequestId,
+            priority: InputPriority.NEXT,
+          }
+        : {
+            status: 'queued',
+            inputId,
+            priority: InputPriority.LATER,
+          };
     });
   }
 
@@ -412,6 +432,7 @@ class Session implements ISession {
         this.executionState.phase === 'pending'
         && this.executionState.input.inputId === inputId
       ) {
+        this.executionState.controller.dispose();
         this.executionState = { phase: 'idle' };
         this.scheduleNextQueuedInput();
       }
@@ -435,10 +456,7 @@ class Session implements ISession {
       snapshot: pendingSnapshot,
     } = this.executionState;
 
-    const requestController = new ActiveRequestController(
-      requestId,
-      sendOptions?.signal,
-    );
+    const requestController = this.executionState.controller;
     this.executionState = {
       phase: 'running',
       requestId,
@@ -502,6 +520,7 @@ class Session implements ISession {
         inputId: input.inputId,
         requestId,
       },
+      runControl: requestController,
     });
 
     try {
@@ -531,6 +550,18 @@ class Session implements ISession {
             traceRecorder?.recordTurnEnd(turnSpans.get(value.turn), value.turn);
             turnSpans.delete(value.turn);
             yield { type: 'turn_end', turn: value.turn, sessionId: this.sessionId };
+            break;
+          case 'input_applied':
+            traceRecorder?.addEvent('input_applied', {
+              inputId: value.inputId,
+              requestId: value.requestId,
+              priority: value.priority,
+              turn: value.turn,
+            });
+            yield {
+              ...value,
+              sessionId: this.sessionId,
+            };
             break;
           case 'content_delta':
             traceRecorder?.addEvent('content_delta', { delta: value.delta });
@@ -792,7 +823,10 @@ class Session implements ISession {
     if (this.executionState.phase === 'closed') {
       return;
     }
-    if (
+    if (this.executionState.phase === 'pending') {
+      this.executionState.controller.abortRequest({ kind: 'session_close' });
+      this.executionState.controller.dispose();
+    } else if (
       this.executionState.phase === 'running'
       || this.executionState.phase === 'stopping'
     ) {
@@ -932,6 +966,12 @@ class Session implements ISession {
       phase: 'pending',
       requestId,
       input,
+      controller: new ActiveRequestController(
+        requestId,
+        options?.signal,
+        this.inputInbox,
+        input.inputId,
+      ),
       message: input.content,
       options: options || null,
       snapshot: createContextSnapshot(

@@ -13,6 +13,7 @@ const DEFAULT_MAX_BYTES = 1024 * 1024;
 
 export class SessionInputInbox {
   private readonly entries: PendingSessionInput[] = [];
+  private readonly claimedInputIds = new Set<InputId>();
   private retainedBytes = 0;
 
   constructor(
@@ -60,9 +61,10 @@ export class SessionInputInbox {
     return cloneEntry(entry);
   }
 
-  takeForRequest(
+  claimForRequest(
     requestId: RequestId,
     priorities: readonly InputPriorityType[],
+    excludedInputId?: InputId,
   ): PendingSessionInput[] {
     const priorityOrder = new Map(
       priorities.map((priority, index) => [priority, index]),
@@ -71,7 +73,9 @@ export class SessionInputInbox {
       .filter(
         (entry) =>
           entry.targetRequestId === requestId
-          && priorityOrder.has(entry.priority),
+          && priorityOrder.has(entry.priority)
+          && entry.inputId !== excludedInputId
+          && !this.claimedInputIds.has(entry.inputId),
       )
       .sort(
         (left, right) =>
@@ -81,9 +85,18 @@ export class SessionInputInbox {
       );
 
     for (const entry of matched) {
-      this.remove(entry.inputId);
+      this.claimedInputIds.add(entry.inputId);
     }
     return matched.map(cloneEntry);
+  }
+
+  acknowledge(inputId: InputId): PendingSessionInput | undefined {
+    this.claimedInputIds.delete(inputId);
+    return this.remove(inputId);
+  }
+
+  releaseClaim(inputId: InputId): void {
+    this.claimedInputIds.delete(inputId);
   }
 
   remove(inputId: InputId): PendingSessionInput | undefined {
@@ -96,6 +109,7 @@ export class SessionInputInbox {
     if (!entry) {
       return undefined;
     }
+    this.claimedInputIds.delete(inputId);
     this.retainedBytes -= getRetainedBytes(entry.content);
     return cloneEntry(entry);
   }
@@ -107,6 +121,7 @@ export class SessionInputInbox {
       }
       entry.priority = InputPriority.LATER;
       entry.targetRequestId = undefined;
+      this.claimedInputIds.delete(entry.inputId);
     }
   }
 

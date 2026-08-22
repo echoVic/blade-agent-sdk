@@ -56,6 +56,7 @@ export type MessageRole = (typeof MessageRole)[keyof typeof MessageRole];
 export const StreamMessageType = {
   TURN_START: 'turn_start',
   TURN_END: 'turn_end',
+  INPUT_APPLIED: 'input_applied',
   CONTENT: 'content',
   THINKING: 'thinking',
   TOOL_USE: 'tool_use',

@@ -9,6 +9,8 @@ import { HookRuntime } from '../../hooks/HookRuntime.js';
 import type { RuntimeContextPatch } from '../../runtime/RuntimeContextPatch.js';
 import type { RuntimePatch } from '../../runtime/RuntimePatch.js';
 import type { Message } from '../../services/ChatServiceInterface.js';
+import { ActiveRequestController } from '../../session/ActiveRequestController.js';
+import { SessionInputInbox } from '../../session/SessionInputInbox.js';
 import { JsonlSessionStore } from '../../session/SessionStore.js';
 import { ToolCatalog } from '../../tools/catalog/ToolCatalog.js';
 import { createTool } from '../../tools/core/createTool.js';
@@ -20,7 +22,11 @@ import {
   type ToolResult,
 } from '../../tools/types/index.js';
 import { ToolKind } from '../../tools/types/ToolKind.js';
-import { SessionId } from '../../types/branded.js';
+import {
+  InputId,
+  RequestId,
+  SessionId,
+} from '../../types/branded.js';
 import type { BladeConfig } from '../../types/common.js';
 import { PermissionMode } from '../../types/common.js';
 import { HookEvent } from '../../types/constants.js';
@@ -32,6 +38,7 @@ import type { AgentOptions, ChatContext } from '../types.js';
 // ===== Mock Factories =====
 
 type MockContextMgr = {
+  saveAppliedInputMessage: Mock;
   saveMessage: Mock;
   saveToolUse: Mock;
   saveToolResult: Mock;
@@ -98,6 +105,7 @@ function createRetryEventsMock<TArgs extends unknown[], TResult>(
 
 function createMockModelManager(overrides: Partial<Record<string, unknown>> = {}): MockModelManager {
   const mockContextMgr: MockContextMgr = {
+    saveAppliedInputMessage: vi.fn(async () => 'input-message-uuid'),
     saveMessage: vi.fn(async () => 'uuid-1'),
     saveToolUse: vi.fn(async () => 'uuid-2'),
     saveToolResult: vi.fn(async () => 'uuid-3'),
@@ -2255,6 +2263,67 @@ describe('LoopRunner', () => {
         { customMetadata: { _systemSource: 'tool_injection' } },
         undefined,
       );
+    });
+
+    it('persists claimed steering input before exposing it to the model', async () => {
+      const mm = createMockModelManager();
+      const pipeline = createMockPipeline();
+      const runner = new LoopRunner(baseConfig, baseOptions, mm, pipeline);
+      const inbox = new SessionInputInbox();
+      const requestId = RequestId('request-steering');
+      const initialInputId = InputId('input-initial');
+      const steeringInputId = InputId('input-steering');
+      inbox.enqueue({
+        inputId: steeringInputId,
+        content: 'Apply this correction',
+        priority: 'next',
+        targetRequestId: requestId,
+        acceptedAt: 1,
+      });
+      const runControl = new ActiveRequestController(
+        requestId,
+        undefined,
+        inbox,
+        initialInputId,
+      );
+
+      const result = await runner.runLoop(
+        'Initial request',
+        createContext({ sessionId: SessionId('session-steering') }),
+        {
+          runControl,
+          inputApplication: {
+            inputId: initialInputId,
+            requestId,
+          },
+        },
+      );
+
+      expect(result.success).toBe(true);
+      expect(mm._contextMgr.saveAppliedInputMessage).toHaveBeenNthCalledWith(
+        1,
+        'session-steering',
+        initialInputId,
+        requestId,
+        'Initial request',
+        null,
+        undefined,
+      );
+      expect(mm._contextMgr.saveAppliedInputMessage).toHaveBeenNthCalledWith(
+        2,
+        'session-steering',
+        steeringInputId,
+        requestId,
+        'Apply this correction',
+        'input-message-uuid',
+        undefined,
+      );
+      const modelMessages = mm._chat.mock.calls[0]?.[0] as Message[];
+      expect(modelMessages.slice(-2).map((message) => message.content)).toEqual([
+        'Initial request',
+        'Apply this correction',
+      ]);
+      expect(inbox.size).toBe(0);
     });
 
     it('consumes ToolResult.effects for context patches and injected messages', async () => {

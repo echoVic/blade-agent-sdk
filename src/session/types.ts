@@ -110,6 +110,14 @@ export interface PromptResult {
 export type StreamMessage =
   | { type: 'turn_start'; turn: number; sessionId: SessionId }
   | { type: 'turn_end'; turn: number; sessionId: SessionId }
+  | {
+      type: 'input_applied';
+      inputId: InputId;
+      requestId: RequestId;
+      priority: 'now' | 'next';
+      turn: number;
+      sessionId: SessionId;
+    }
   | { type: 'content'; delta: string; sessionId: SessionId }
   | { type: 'thinking'; delta: string; sessionId: SessionId }
   | { type: 'tool_use'; id: string; name: string; input: JsonValue; sessionId: SessionId }

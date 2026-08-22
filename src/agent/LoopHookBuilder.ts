@@ -8,6 +8,7 @@
 
 import { CompactionService } from '../context/CompactionService.js';
 import type { ContextManager } from '../context/ContextManager.js';
+import { SdkError } from '../errors/SdkError.js';
 import type { HookRuntime } from '../hooks/HookRuntime.js';
 import type { InternalLogger } from '../logging/Logger.js';
 import type { Message } from '../services/ChatServiceInterface.js';
@@ -15,6 +16,7 @@ import type { ExecutionPipeline } from '../tools/execution/ExecutionPipeline.js'
 import type { ToolEffect } from '../tools/types/index.js';
 import type { SessionId } from '../types/branded.js';
 import type { AgentLoopConfig, AgentLoopHooks } from './AgentLoop.js';
+import type { AgentRunControl } from './AgentRunControl.js';
 import type { CompactionHandler, CompactionRuntimeContext } from './CompactionHandler.js';
 import type { ModelManager } from './ModelManager.js';
 import type { RuntimePatchManager } from './RuntimePatchManager.js';
@@ -42,6 +44,7 @@ export interface LoopHookBuilderDeps {
   modelManager: ModelManager;
   runtimePatchManager: RuntimePatchManager;
   defaultProjectPath?: string;
+  runControl?: AgentRunControl;
 }
 
 // ===== JSONL 持久化辅助 =====
@@ -70,6 +73,7 @@ export function buildLoopConfig(deps: LoopHookBuilderDeps): AgentLoopConfig {
     streaming, executionPipeline, logger, tokenBudget,
     compactionHandler, hookRuntime, modelManager,
     runtimePatchManager, defaultProjectPath,
+    runControl,
   } = deps;
 
   let progressToolUseCount = 0;
@@ -78,6 +82,47 @@ export function buildLoopConfig(deps: LoopHookBuilderDeps): AgentLoopConfig {
   let currentAssistantMessageId: string | null = null;
 
   const hooks: AgentLoopHooks = {
+    input: {
+      async apply({ input }) {
+        if (!runControl) {
+          throw new SdkError(
+            'AGENT_RUN_CONTROL_MISSING',
+            'Cannot apply steering input without an active run controller',
+          );
+        }
+        const hookContent = hookRuntime
+          ? await hookRuntime.applyUserPromptSubmit(input.content)
+          : input.content;
+        const content = options?.prepareInput
+          ? await options.prepareInput(hookContent)
+          : hookContent;
+        const contextMgr = modelManager.getContextManager();
+        const messageId = contextMgr && context.sessionId
+          ? await contextMgr.saveAppliedInputMessage(
+              context.sessionId,
+              input.inputId,
+              runControl.requestId,
+              content,
+              getLastUuid(),
+              context.subagentInfo,
+            )
+          : undefined;
+        if (messageId) {
+          setLastUuid(messageId);
+        }
+        return {
+          id: messageId,
+          role: 'user',
+          content,
+          metadata: {
+            inputId: input.inputId,
+            requestId: runControl.requestId,
+            inputPriority: input.priority,
+          },
+        };
+      },
+    },
+
     turn: {
       async *beforeTurn(ctx) {
         if (!compactionHandler) return false;
@@ -336,6 +381,7 @@ export function buildLoopConfig(deps: LoopHookBuilderDeps): AgentLoopConfig {
   return {
     streaming,
     executionPipeline,
+    runControl,
     logger,
     conversationState: loopState.conversationState,
     maxTurns,

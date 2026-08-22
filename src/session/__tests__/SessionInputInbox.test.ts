@@ -33,11 +33,15 @@ describe('SessionInputInbox', () => {
     inbox.enqueue(input('input-1', InputPriority.NOW, requestId));
 
     expect(
-      inbox.takeForRequest(requestId, [
+      inbox.claimForRequest(requestId, [
         InputPriority.NOW,
         InputPriority.NEXT,
       ]).map((entry) => entry.inputId),
     ).toEqual(['input-1', 'input-3', 'input-2']);
+    expect(inbox.size).toBe(3);
+    inbox.acknowledge(InputId('input-1'));
+    inbox.acknowledge(InputId('input-3'));
+    inbox.acknowledge(InputId('input-2'));
     expect(inbox.size).toBe(0);
   });
 

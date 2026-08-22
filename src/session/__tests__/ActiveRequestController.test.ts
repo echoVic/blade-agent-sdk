@@ -7,10 +7,7 @@ describe('ActiveRequestController', () => {
     const controller = new ActiveRequestController(RequestId('request-1'));
     const firstStepSignal = controller.stepSignal;
 
-    controller.interruptStep({
-      kind: 'steering',
-      inputId: InputId('input-1'),
-    });
+    controller.interruptStep(InputId('input-1'));
 
     expect(firstStepSignal.aborted).toBe(true);
     expect(firstStepSignal.reason).toEqual({

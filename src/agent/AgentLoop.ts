@@ -13,6 +13,10 @@ import type { ExecutionPipeline } from '../tools/execution/ExecutionPipeline.js'
 import type { ToolEffect, ToolResult } from '../tools/types/index.js';
 import type { JsonObject, PermissionMode } from '../types/common.js';
 import type { AgentEvent, TokenUsageInfo } from './AgentEvent.js';
+import type {
+  AgentRunControl,
+  AgentSteeringInput,
+} from './AgentRunControl.js';
 import { AGENT_TURN_SAFETY_LIMIT } from './constants.js';
 import { ExecutionEpoch } from './ExecutionEpoch.js';
 import { isOverflowRecoverable } from './isOverflowRecoverable.js';
@@ -35,6 +39,12 @@ import type { LoopResult, TurnLimitResponse } from './types.js';
  * LoopHookBuilder 负责构建，AgentLoop 消费。
  */
 export interface AgentLoopHooks {
+  input?: {
+    apply?: (ctx: {
+      input: AgentSteeringInput;
+      turn: number;
+    }) => Promise<Message>;
+  };
   turn?: {
     beforeTurn?: (ctx: {
       turn: number;
@@ -108,6 +118,7 @@ export interface AgentLoopConfig {
   isYoloMode: boolean;
   signal?: AbortSignal;
   tokenBudget?: TokenBudget;
+  runControl?: AgentRunControl;
   prepareTurnState: (turn: number) => TurnState;
   hooks?: AgentLoopHooks;
 }
@@ -131,8 +142,10 @@ export async function* agentLoop(
     isYoloMode,
     signal,
     tokenBudget,
+    runControl,
     hooks,
   } = config;
+  const inputHooks = hooks?.input;
 
   const turnHooks = hooks?.turn;
   const toolHooks = hooks?.tool;
@@ -181,6 +194,13 @@ export async function* agentLoop(
       yield { type: 'agent_end' };
       return buildAbortResult(turnsCount, totalToolCalls, startTime);
     }
+
+    yield* applyPendingSteeringInputs({
+      runControl,
+      inputHooks,
+      conversationState: convState,
+      turn: turnsCount,
+    });
 
     if (recovery.phase !== 'retry_pending' && turnHooks?.beforeTurn) {
       const beforeTurnStream = turnHooks.beforeTurn({
@@ -419,6 +439,29 @@ export async function* agentLoop(
     // 无 tool calls → 正常结束或重试
     if (!turnResult.toolCalls || turnResult.toolCalls.length === 0) {
       const content = turnResult.content || '';
+      const pendingBeforeDecision = runControl?.claimSteeringInputs() ?? [];
+      if (pendingBeforeDecision.length > 0) {
+        convState.append({
+          role: 'assistant',
+          content,
+          reasoningContent: turnResult.reasoningContent,
+        });
+        await messageHooks?.onAssistant?.({
+          content,
+          reasoningContent: turnResult.reasoningContent,
+          turn: turnsCount,
+        });
+        yield* applyClaimedSteeringInputs({
+          inputs: pendingBeforeDecision,
+          runControl,
+          inputHooks,
+          conversationState: convState,
+          turn: turnsCount,
+        });
+        yield { type: 'turn_end', turn: turnsCount, hasToolCalls: false };
+        continue;
+      }
+
       const noToolDecision = await decideNoToolTurn(
         content,
         convState.toArray(),
@@ -427,6 +470,31 @@ export async function* agentLoop(
       );
       if (noToolDecision.action === 'retry' || noToolDecision.action === 'continue_with_reminder') {
         convState.append(noToolDecision.message);
+        yield { type: 'turn_end', turn: turnsCount, hasToolCalls: false };
+        continue;
+      }
+
+      const pendingAtCompletion = runControl?.claimSteeringInputs({
+        sealIfEmpty: true,
+      }) ?? [];
+      if (pendingAtCompletion.length > 0) {
+        convState.append({
+          role: 'assistant',
+          content,
+          reasoningContent: turnResult.reasoningContent,
+        });
+        await messageHooks?.onAssistant?.({
+          content,
+          reasoningContent: turnResult.reasoningContent,
+          turn: turnsCount,
+        });
+        yield* applyClaimedSteeringInputs({
+          inputs: pendingAtCompletion,
+          runControl,
+          inputHooks,
+          conversationState: convState,
+          turn: turnsCount,
+        });
         yield { type: 'turn_end', turn: turnsCount, hasToolCalls: false };
         continue;
       }
@@ -581,6 +649,17 @@ export async function* agentLoop(
       }
     }
 
+    if (exitResult) {
+      runControl?.seal();
+    } else {
+      yield* applyPendingSteeringInputs({
+        runControl,
+        inputHooks,
+        conversationState: convState,
+        turn: turnsCount,
+      });
+    }
+
     yield { type: 'turn_end', turn: turnsCount, hasToolCalls: true };
 
     if (exitResult) {
@@ -633,6 +712,69 @@ export async function* agentLoop(
       turnsCount = 0;
     }
   }
+}
+
+async function* applyPendingSteeringInputs(options: {
+  runControl: AgentRunControl | undefined;
+  inputHooks: AgentLoopHooks['input'];
+  conversationState: ConversationState;
+  turn: number;
+}): AsyncGenerator<AgentEvent, boolean> {
+  const inputs = options.runControl?.claimSteeringInputs() ?? [];
+  return yield* applyClaimedSteeringInputs({
+    ...options,
+    inputs,
+  });
+}
+
+async function* applyClaimedSteeringInputs(options: {
+  inputs: AgentSteeringInput[];
+  runControl: AgentRunControl | undefined;
+  inputHooks: AgentLoopHooks['input'];
+  conversationState: ConversationState;
+  turn: number;
+}): AsyncGenerator<AgentEvent, boolean> {
+  const {
+    inputs,
+    runControl,
+    inputHooks,
+    conversationState,
+    turn,
+  } = options;
+  if (!runControl || inputs.length === 0) {
+    return false;
+  }
+
+  for (let index = 0; index < inputs.length; index += 1) {
+    const input = inputs[index];
+    if (!input) {
+      continue;
+    }
+    try {
+      const message = inputHooks?.apply
+        ? await inputHooks.apply({ input, turn })
+        : {
+            role: 'user' as const,
+            content: input.content,
+          };
+      conversationState.append(message);
+      runControl.acknowledgeInput(input.inputId);
+      yield {
+        type: 'input_applied',
+        inputId: input.inputId,
+        requestId: runControl.requestId,
+        priority: input.priority,
+        turn,
+      };
+    } catch (error) {
+      runControl.releaseInput(input.inputId);
+      for (const pending of inputs.slice(index + 1)) {
+        runControl.releaseInput(pending.inputId);
+      }
+      throw error;
+    }
+  }
+  return true;
 }
 
 // ===== 辅助函数 =====

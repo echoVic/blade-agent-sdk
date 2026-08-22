@@ -16,11 +16,11 @@ import { buildSystemPrompt } from '../prompts/index.js';
 import type { Message } from '../services/ChatServiceInterface.js';
 import type { SkillActivationContext } from '../skills/index.js';
 import { injectSkillsMetadata } from '../skills/index.js';
+import { ToolCatalog } from '../tools/catalog/index.js';
+import type { ExecutionPipeline } from '../tools/execution/ExecutionPipeline.js';
 import {
   ToolExposurePlanner,
 } from '../tools/exposure/index.js';
-import { ToolCatalog } from '../tools/catalog/index.js';
-import type { ExecutionPipeline } from '../tools/execution/ExecutionPipeline.js';
 import {
   type BladeConfig,
   PermissionMode,
@@ -30,10 +30,11 @@ import type { AgentEvent } from './AgentEvent.js';
 import { agentLoop } from './AgentLoop.js';
 import type { CompactionHandler } from './CompactionHandler.js';
 import { AGENT_TURN_SAFETY_LIMIT } from './constants.js';
+import { buildLoopConfig } from './LoopHookBuilder.js';
 import type { ModelManager } from './ModelManager.js';
 import { RuntimePatchManager } from './RuntimePatchManager.js';
-import { LoopState } from './state/LoopState.js';
 import { ConversationState } from './state/ConversationState.js';
+import { LoopState } from './state/LoopState.js';
 import { isValidSystemSource } from './state/systemSource.js';
 import type { LoopSkillState } from './state/TurnState.js';
 import type { TokenBudget } from './TokenBudget.js';
@@ -44,7 +45,6 @@ import type {
   LoopResult,
   UserMessageContent,
 } from './types.js';
-import { buildLoopConfig } from './LoopHookBuilder.js';
 
 // ===== Module-level helpers =====
 
@@ -228,6 +228,7 @@ export class LoopRunner {
       modelManager: this.modelManager,
       runtimePatchManager: this.runtimePatchManager,
       defaultProjectPath: this.defaultProjectPath,
+      runControl: options?.runControl,
     });
 
     // 5. 运行 AgentLoop
