@@ -21,6 +21,7 @@ import {
 } from '../types/branded.js';
 import {
     type BladeConfig,
+    type JsonObject,
     type JsonValue,
     type ModelConfig,
     PermissionMode,
@@ -30,11 +31,18 @@ import {
     ActiveRequestController,
     type RequestAbortReason,
 } from './ActiveRequestController.js';
+import {
+    parseDurableRuntimeContext,
+    parseDurableUserMessageContent,
+    serializeDurableRuntimeContext,
+} from './DurableRequestRecovery.js';
 import { DurableSessionJournal } from './events/DurableSessionJournal.js';
 import type {
+    DurableRequestProjection,
     DurableSessionProjection,
     DurableSessionRecoveryPlan,
 } from './events/DurableSessionProjector.js';
+import { DurableSessionRecoveryCoordinator } from './events/DurableSessionRecoveryCoordinator.js';
 import {
     type DurableRequestFinish,
     durableRequestFinishFromLoopResult,
@@ -54,6 +62,7 @@ import {
     JsonlSessionStore,
     NoopSessionStore,
     type SessionSnapshot,
+    type SessionState,
     type SessionStore,
 } from './SessionStore.js';
 import type {
@@ -125,6 +134,7 @@ class Session implements ISession {
   private readonly inputInbox = new SessionInputInbox();
   private readonly inputMutex = new Mutex();
   private durableJournal: DurableSessionJournal | null = null;
+  private durableAcceptedRequest: DurableRequestProjection | null = null;
   private durableClosePromise: Promise<void> | null = null;
 
   /**
@@ -245,35 +255,48 @@ class Session implements ISession {
   }
 
   async loadHistory(): Promise<void> {
+    let state: SessionState | null = null;
     try {
-      const state = await this.store.loadState(this.sessionId);
-      this._messages = state?.messages ?? [];
-      // 恢复待处理输入并调度下一个排队输入的过程会读写 executionState 与
-      // inputInbox，与其他状态转换保持一致地在 inputMutex 内完成。
-      await this.inputMutex.runExclusive(() => {
-        const dropped = this.inputInbox.restore(
-          (state?.pendingInputs ?? []).map((input) => ({
+      state = await this.store.loadState(this.sessionId);
+    } catch (error) {
+      if (this.durableAcceptedRequest) {
+        throw new SessionDurableRecorderError(
+          `Failed to load history before resuming request ${this.durableAcceptedRequest.requestId}`,
+          { cause: error },
+        );
+      }
+      this.logger.warn(`[Session] Failed to load history for session ${this.sessionId}:`, error);
+    }
+    this._messages = state?.messages ?? [];
+    // Durable acceptance is authoritative. The legacy queue remains a
+    // best-effort message/history projection and may be missing after a crash.
+    await this.inputMutex.runExclusive(() => {
+      const durableAcceptedRequest = this.durableAcceptedRequest;
+      if (durableAcceptedRequest) {
+        this.restoreDurableAcceptedRequest(durableAcceptedRequest);
+      }
+      const dropped = this.inputInbox.restore(
+        (state?.pendingInputs ?? [])
+          .filter((input) => input.inputId !== durableAcceptedRequest?.inputId)
+          .map((input) => ({
             ...input,
             content: input.content as UserMessageContent,
           })),
+      );
+      if (dropped > 0) {
+        this.logger.warn(
+          `[Session] Dropped ${dropped} pending input(s) exceeding queue capacity while restoring session ${this.sessionId}`,
         );
-        if (dropped > 0) {
-          this.logger.warn(
-            `[Session] Dropped ${dropped} pending input(s) exceeding queue capacity while restoring session ${this.sessionId}`,
-          );
-        }
-        if (this.executionState.phase === 'idle') {
-          this.scheduleNextQueuedInput();
-        }
-      });
-      if (this._messages.length === 0) {
-        this.logger.debug(`[Session] No history found for session ${this.sessionId}`);
-        return;
       }
-      this.logger.debug(`[Session] Loaded ${this._messages.length} messages from history`);
-    } catch (error) {
-      this.logger.warn(`[Session] Failed to load history for session ${this.sessionId}:`, error);
+      if (this.executionState.phase === 'idle') {
+        this.scheduleNextQueuedInput();
+      }
+    });
+    if (this._messages.length === 0) {
+      this.logger.debug(`[Session] No history found for session ${this.sessionId}`);
+      return;
     }
+    this.logger.debug(`[Session] Loaded ${this._messages.length} messages from history`);
   }
 
   private buildBladeConfig(): BladeConfig {
@@ -376,9 +399,15 @@ class Session implements ISession {
         const durableRecorder = this.durableJournal
           ? new SessionDurableRecorder(this.durableJournal, requestId, this.options.model)
           : null;
+        const pendingState = this.createPendingState(requestId, input, options, durableRecorder);
         this.inputInbox.reserve(input);
         try {
-          await durableRecorder?.recordAccepted(inputId, message);
+          await durableRecorder?.recordAccepted(
+            inputId,
+            message,
+            'next',
+            this.durableExecutionSnapshot(pendingState),
+          );
           try {
             await this.persistInput(input);
           } catch (error) {
@@ -395,12 +424,7 @@ class Session implements ISession {
           this.inputInbox.remove(inputId);
           throw error;
         }
-        this.executionState = this.createPendingState(
-          requestId,
-          input,
-          options,
-          durableRecorder,
-        );
+        this.executionState = pendingState;
         return {
           status: 'started',
           inputId,
@@ -513,11 +537,7 @@ class Session implements ISession {
           : null;
       let durablyInterrupted = false;
       if (pendingState) {
-        const durableRecorder = await this.ensureDurableRecorder(
-          pendingState.requestId,
-          pendingState.input,
-          pendingState.durableRecorder,
-        );
+        const durableRecorder = await this.ensureDurableRecorder(pendingState);
         pendingState.durableRecorder = durableRecorder;
         if (durableRecorder) {
           await durableRecorder.finish({
@@ -565,6 +585,7 @@ class Session implements ISession {
       if (this.executionState.phase !== 'pending') {
         return null;
       }
+      const pendingState = this.executionState;
       const {
         requestId,
         input,
@@ -578,17 +599,25 @@ class Session implements ISession {
         ?? (this.durableJournal
           ? new SessionDurableRecorder(this.durableJournal, requestId, this.options.model)
           : null);
-      if (durableRecorder && !pendingDurableRecorder) {
-        await durableRecorder.recordAccepted(
+      try {
+        if (durableRecorder && !pendingDurableRecorder) {
+          await durableRecorder.recordAccepted(
+            input.inputId,
+            input.content,
+            input.priority === InputPriority.LATER ? 'later' : 'next',
+            this.durableExecutionSnapshot(pendingState),
+          );
+        }
+        await durableRecorder?.recordStarted(
           input.inputId,
-          input.content,
           input.priority === InputPriority.LATER ? 'later' : 'next',
         );
+      } catch (error) {
+        requestController.dispose();
+        this.inputInbox.remove(input.inputId);
+        this.executionState = { phase: 'idle' };
+        throw error;
       }
-      await durableRecorder?.recordStarted(
-        input.inputId,
-        input.priority === InputPriority.LATER ? 'later' : 'next',
-      );
       this.executionState = {
         phase: 'running',
         requestId,
@@ -1094,14 +1123,10 @@ class Session implements ISession {
         return true;
       }
       if (this.executionState.phase === 'pending') {
-        const { controller, input, requestId } = this.executionState;
+        const { controller, input } = this.executionState;
         controller.abortRequest({ kind: 'session_close' });
         if (recordDurableClose) {
-          const durableRecorder = await this.ensureDurableRecorder(
-            requestId,
-            input,
-            this.executionState.durableRecorder,
-          );
+          const durableRecorder = await this.ensureDurableRecorder(this.executionState);
           this.executionState.durableRecorder = durableRecorder;
           await durableRecorder?.finish({
             status: 'interrupted',
@@ -1164,11 +1189,7 @@ class Session implements ISession {
         ) {
           return;
         }
-        const durableRecorder = await this.ensureDurableRecorder(
-          pendingState.requestId,
-          pendingState.input,
-          pendingState.durableRecorder,
-        );
+        const durableRecorder = await this.ensureDurableRecorder(pendingState);
         pendingState.durableRecorder = durableRecorder;
         await durableRecorder?.finish({
           status: 'interrupted',
@@ -1302,30 +1323,33 @@ class Session implements ISession {
         `Durable Session ${this.sessionId} is closed`,
       );
     }
-    const recoveryPlan = journal.getRecoveryPlan();
-    if (recoveryPlan.action !== 'none') {
-      throw new DurableSessionRecoveryRequiredError(recoveryPlan);
+    const resumeDecision = new DurableSessionRecoveryCoordinator(journal).planResume();
+    if (resumeDecision.action === 'recovery_required') {
+      throw new DurableSessionRecoveryRequiredError(resumeDecision.recoveryPlan);
+    }
+    if (resumeDecision.action === 'resume_accepted_request') {
+      this.durableAcceptedRequest = resumeDecision.request;
+      this.options.model = resumeDecision.request.model;
     }
     this.durableJournal = journal;
   }
 
   private async ensureDurableRecorder(
-    requestId: RequestId,
-    input: PendingSessionInput,
-    existing: SessionDurableRecorder | null,
+    pendingState: Extract<SessionExecutionState, { phase: 'pending' }>,
   ): Promise<SessionDurableRecorder | null> {
-    if (existing || !this.durableJournal) {
-      return existing;
+    if (pendingState.durableRecorder || !this.durableJournal) {
+      return pendingState.durableRecorder;
     }
     const recorder = new SessionDurableRecorder(
       this.durableJournal,
-      requestId,
+      pendingState.requestId,
       this.options.model,
     );
     await recorder.recordAccepted(
-      input.inputId,
-      input.content,
-      input.priority === InputPriority.LATER ? 'later' : 'next',
+      pendingState.input.inputId,
+      pendingState.input.content,
+      pendingState.input.priority === InputPriority.LATER ? 'later' : 'next',
+      this.durableExecutionSnapshot(pendingState),
     );
     return recorder;
   }
@@ -1397,6 +1421,7 @@ class Session implements ISession {
     input: PendingSessionInput,
     options?: SendOptions,
     durableRecorder: SessionDurableRecorder | null = null,
+    snapshot?: ContextSnapshot,
   ): Extract<SessionExecutionState, { phase: 'pending' }> {
     return {
       phase: 'pending',
@@ -1411,13 +1436,59 @@ class Session implements ISession {
       message: input.content,
       options: options || null,
       durableRecorder,
-      snapshot: createContextSnapshot(
+      snapshot: snapshot ?? createContextSnapshot(
         this.sessionId,
         nanoid(),
         this.defaultContext,
         options?.context,
       ),
     };
+  }
+
+  private durableExecutionSnapshot(state: Extract<SessionExecutionState, { phase: 'pending' }>): {
+    maxTurns: number;
+    context: JsonObject;
+  } {
+    return {
+      maxTurns: state.options?.maxTurns ?? this.maxTurns,
+      context: serializeDurableRuntimeContext(state.snapshot.context),
+    };
+  }
+
+  private restoreDurableAcceptedRequest(request: DurableRequestProjection): void {
+    if (this.executionState.phase !== 'idle') {
+      throw new SessionDurableRecorderError(
+        `Cannot restore request ${request.requestId} while Session is ${this.executionState.phase}`,
+      );
+    }
+    const content = parseDurableUserMessageContent(request.input);
+    const acceptedAt = Date.parse(request.acceptedAt);
+    const input: PendingSessionInput = {
+      inputId: request.inputId,
+      content,
+      priority: request.priority === InputPriority.LATER ? InputPriority.LATER : InputPriority.NEXT,
+      targetRequestId: request.requestId,
+      acceptedAt: Number.isFinite(acceptedAt) ? acceptedAt : Date.now(),
+    };
+    this.inputInbox.remove(input.inputId);
+    this.inputInbox.enqueue(input);
+
+    const recoveredContext = parseDurableRuntimeContext(request.context) ?? this.defaultContext;
+    const snapshot = createContextSnapshot(this.sessionId, nanoid(), recoveredContext);
+    const sendOptions: SendOptions = {
+      ...(request.maxTurns !== undefined ? { maxTurns: request.maxTurns } : {}),
+    };
+    const recorder = this.durableJournal
+      ? new SessionDurableRecorder(this.durableJournal, request.requestId, this.options.model)
+      : null;
+    this.executionState = this.createPendingState(
+      request.requestId,
+      input,
+      sendOptions,
+      recorder,
+      snapshot,
+    );
+    this.durableAcceptedRequest = null;
   }
 
   private scheduleNextQueuedInput(): void {
@@ -1584,9 +1655,14 @@ export async function resumeSession(options: ResumeOptions): Promise<ISession> {
   }
   const { sessionId, ...sessionOptions } = options;
   const session = new Session(sessionOptions, sessionId, true);
-  await session.initialize();
-  await session.loadHistory();
-  return session;
+  try {
+    await session.initialize();
+    await session.loadHistory();
+    return session;
+  } catch (error) {
+    await session.disposeAfterFork();
+    throw error;
+  }
 }
 
 export interface ForkOptions extends ResumeOptions {
