@@ -41,6 +41,25 @@ const TYPE_ORDER = [
   'refactor',
   'docs',
 ];
+const RELEASE_TYPE_BY_FRAGMENT = {
+  breaking: 'major',
+  feature: 'minor',
+  fix: 'patch',
+  performance: 'patch',
+  refactor: 'patch',
+  docs: 'patch',
+};
+const RELEASE_TYPE_RANK = {
+  patch: 1,
+  minor: 2,
+  major: 3,
+};
+const COMMIT_ANALYZER_OPTIONS = {
+  parserOpts: {
+    breakingHeaderPattern: /^(\w*)(?:\((.*)\))?!: (.*)$/,
+    breakingHeaderCorrespondence: ['type', 'scope', 'subject'],
+  },
+};
 
 function getFragmentPaths(cwd) {
   const directory = path.join(cwd, FRAGMENT_DIRECTORY);
@@ -101,6 +120,20 @@ function readFragments(cwd) {
       'zh-CN': fragment['zh-CN'].trim(),
     };
   });
+}
+
+function releaseTypeFromFragments(fragments) {
+  let releaseType = null;
+  for (const fragment of fragments) {
+    const candidate = RELEASE_TYPE_BY_FRAGMENT[fragment.type];
+    if (
+      candidate
+      && (!releaseType || RELEASE_TYPE_RANK[candidate] > RELEASE_TYPE_RANK[releaseType])
+    ) {
+      releaseType = candidate;
+    }
+  }
+  return releaseType;
 }
 
 function renderRelease(version, date, locale, fragments) {
@@ -188,7 +221,7 @@ async function hasReleasableCommit(cwd, base) {
     message,
   }));
   const releaseType = await analyzeCommits(
-    {},
+    COMMIT_ANALYZER_OPTIONS,
     {
       commits,
       cwd,
@@ -196,6 +229,17 @@ async function hasReleasableCommit(cwd, base) {
     },
   );
   return releaseType !== null;
+}
+
+async function analyzeCommits(_pluginConfig, context) {
+  const fragments = readFragments(context.cwd);
+  const releaseType = releaseTypeFromFragments(fragments);
+  if (releaseType) {
+    context.logger.log(
+      `Selected ${releaseType} release from ${fragments.length} bilingual changelog fragment(s)`,
+    );
+  }
+  return releaseType;
 }
 
 async function verifyRange(cwd, base) {
@@ -259,6 +303,7 @@ if (require.main === module) {
 }
 
 module.exports = {
+  analyzeCommits,
   verifyConditions,
   prepare,
   _internals: {
@@ -268,6 +313,7 @@ module.exports = {
     hasReleasableCommit,
     prependRelease,
     readFragments,
+    releaseTypeFromFragments,
     renderRelease,
     stageFragmentDeletions,
     verifyRange,

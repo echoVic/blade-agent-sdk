@@ -14,7 +14,12 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 
 const require = createRequire(import.meta.url);
 const plugin = require('../semantic-release-bilingual-changelog.cjs');
-const { readFragments, renderRelease, verifyRange } = plugin._internals;
+const {
+  readFragments,
+  releaseTypeFromFragments,
+  renderRelease,
+  verifyRange,
+} = plugin._internals;
 const temporaryDirectories: string[] = [];
 
 function createTemporaryDirectory(): string {
@@ -85,6 +90,30 @@ describe('bilingual changelog fragments', () => {
         '',
         '- Fix session recovery.',
       ].join('\n'),
+    );
+    expect(releaseTypeFromFragments(fragments)).toBe('minor');
+  });
+
+  it('uses the highest changelog fragment type as the release level', async () => {
+    const directory = createTemporaryDirectory();
+    writeFragment(directory, 'repair-runtime.json', {
+      type: 'fix',
+      en: 'Repair runtime behavior.',
+      'zh-CN': '修复运行时行为。',
+    });
+    writeFragment(directory, 'break-tool-contract.json', {
+      type: 'breaking',
+      en: 'Require a tool contract.',
+      'zh-CN': '要求工具契约。',
+    });
+    const logger = { log: vi.fn() };
+
+    await expect(plugin.analyzeCommits({}, {
+      cwd: directory,
+      logger,
+    })).resolves.toBe('major');
+    expect(logger.log).toHaveBeenCalledWith(
+      'Selected major release from 2 bilingual changelog fragment(s)',
     );
   });
 
@@ -194,6 +223,24 @@ describe('pull request fragment requirement', () => {
     commitAll(directory, 'docs: add changelog fragment');
 
     await expect(verifyRange(directory, base)).resolves.toBeUndefined();
+  });
+
+  it('recognizes breaking-change bang headers as releasable', async () => {
+    const directory = createTemporaryDirectory();
+    initializeRepository(directory);
+    writeFileSync(join(directory, 'README.md'), '# Test\n');
+    commitAll(directory, 'chore: initialize');
+    const base = execFileSync('git', ['rev-parse', 'HEAD'], {
+      cwd: directory,
+      encoding: 'utf8',
+    }).trim();
+
+    writeFileSync(join(directory, 'api.ts'), 'export const version = 2;\n');
+    commitAll(directory, 'feat(api)!: replace the contract');
+
+    await expect(verifyRange(directory, base)).rejects.toThrow(
+      'require a bilingual .changes/*.json fragment',
+    );
   });
 
   it('does not require a fragment for non-releasable commits', async () => {

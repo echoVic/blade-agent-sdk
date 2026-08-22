@@ -17,10 +17,14 @@ describe('semantic-release configuration', () => {
 
   it('updates bilingual changelogs and commits release metadata before publishing', () => {
     const config = require('../../release.config.cjs');
+    const parserOpts = {
+      breakingHeaderPattern: /^(\w*)(?:\((.*)\))?!: (.*)$/,
+      breakingHeaderCorrespondence: ['type', 'scope', 'subject'],
+    };
 
     expect(config.plugins).toEqual([
-      '@semantic-release/commit-analyzer',
-      '@semantic-release/release-notes-generator',
+      ['@semantic-release/commit-analyzer', { parserOpts }],
+      ['@semantic-release/release-notes-generator', { parserOpts }],
       './scripts/semantic-release-bilingual-changelog.cjs',
       '@semantic-release/npm',
       [
