@@ -10,11 +10,11 @@ SDK 提供多层权限机制，控制 Agent 的工具执行行为。
 |------|------|------|
 | 默认 | `'default'` | 写入和执行类工具需要用户确认 |
 | 自动编辑 | `'autoEdit'` | 文件编辑自动通过，命令执行仍需确认 |
-| YOLO | `'yolo'` | 所有工具自动通过 |
+| YOLO | `'yolo'` | 跳过交互式确认；工具自检与路径安全检查仍然执行 |
 | 计划模式 | `'plan'` | 只允许只读工具 |
 
 ```ts
-import { PermissionMode } from '@blade-ai/agent-sdk';
+import { createSession, PermissionMode } from '@blade-ai/agent-sdk';
 
 const session = await createSession({
   provider: { type: 'openai', apiKey: process.env.OPENAI_API_KEY! },
@@ -27,7 +27,9 @@ session.setPermissionMode(PermissionMode.YOLO);
 ```
 
 ::: warning
-`yolo` 模式会跳过所有权限确认，仅建议在沙箱环境或完全信任的场景中使用。
+`yolo` 只让内置 mode handler 自动批准；工具级 `ask`、自定义 handler
+的 `ask` 和敏感路径确认仍可能要求用户确认。它也不会绕过工具自检或路径
+安全策略，仍只应在受控环境中使用。
 :::
 
 ## 自定义权限回调
@@ -65,11 +67,16 @@ const session = await createSession({
 ```ts
 type PermissionResult =
   // 允许执行（可选修改输入）
-  | { behavior: 'allow'; updatedInput?: Record<string, unknown>; updatedPermissions?: PermissionUpdate[] }
+  | {
+      behavior: 'allow';
+      updatedInput?: JsonObject;
+      effects?: ToolEffect[];
+      updatedPermissions?: PermissionUpdate[];
+    }
   // 拒绝执行
   | { behavior: 'deny'; message: string; interrupt?: boolean }
   // 交给内置权限系统决定
-  | { behavior: 'ask' };
+  | { behavior: 'ask'; message?: string };
 ```
 
 ## CanUseToolOptions

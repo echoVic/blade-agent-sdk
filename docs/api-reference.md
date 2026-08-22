@@ -16,7 +16,10 @@
 
 ## 函数
 
-| 函数 | 来源 | 说明 |
+下表“逻辑模块”用于分类，不代表可导入的 package subpath。除特别标注的
+Node-local 能力外，这些函数都从根入口导出；实际 subpath 以“包入口”表为准。
+
+| 函数 | 逻辑模块 | 说明 |
 |------|------|------|
 | `createSession` | session | 创建新会话 |
 | `resumeSession` | session | 恢复会话 |
@@ -25,11 +28,11 @@
 | `defineTool` | tools | 定义工具（简单模式） |
 | `createTool` | tools | 创建工具（Zod 模式） |
 | `toolFromDefinition` | tools | 转换 ToolDefinition → Tool |
-| `getBuiltinTools` | tools | 获取内置工具 |
-| `createMemoryReadTool` | tools | 创建 opt-in MemoryRead 工具 |
-| `createMemoryWriteTool` | tools | 创建 opt-in MemoryWrite 工具 |
-| `tool` | mcp | 定义 MCP 工具 |
-| `createSdkMcpServer` | mcp | 创建进程内 MCP Server |
+| `getBuiltinTools` | root / local | 获取内置工具 |
+| `createMemoryReadTool` | root / local | 创建 opt-in MemoryRead 工具 |
+| `createMemoryWriteTool` | root / local | 创建 opt-in MemoryWrite 工具 |
+| `tool` | root / local | 定义 MCP 工具 |
+| `createSdkMcpServer` | root / local | 创建进程内 MCP Server |
 | `createContextSnapshot` | runtime | 创建上下文快照 |
 | `mergeContext` | runtime | 合并上下文 |
 | `hasFilesystemCapability` | runtime | 检查文件系统能力 |
@@ -38,6 +41,11 @@
 | `createPathSafetyPermissionHandler` | permissions | 基于路径安全策略创建处理器 |
 | `createPermissionHandlerFromCanUseTool` | permissions | 从 canUseTool 回调创建处理器 |
 | `createRuleBasedPermissionHandler` | permissions | 基于规则创建处理器 |
+| `collectToolExecution` | root / core / tools | 消费工具执行并返回最终结果 |
+| `completeToolExecution` | root / core / tools | 将单个结果包装成工具执行 |
+| `calculateDeepSeekCost` 等 | root | DeepSeek 调用、成本、缓存和长上下文辅助函数 |
+| `registerCleanup` / `gracefulShutdown` | root | 注册和执行进程级清理 |
+| `getErrorMessage` 等 | root | 安全提取未知错误信息 |
 
 ## 类 / 运行时对象
 
@@ -49,6 +57,7 @@
 | `SubagentRegistry` | subagents | 注册和发现子 Agent |
 | `SubagentExecutor` | subagents | 执行单个子 Agent |
 | `SessionInputError` | session | 输入队列容量、请求匹配或活动请求选项错误 |
+| `SdkError` 及派生错误 | root | 类型化 SDK 错误层级 |
 
 ## 常量 / 枚举
 
@@ -56,7 +65,7 @@
 |------|------|
 | `PermissionMode` | `DEFAULT` / `AUTO_EDIT` / `YOLO` / `PLAN` |
 | `HookEvent` | `SessionStart` / `SessionEnd` / `UserPromptSubmit` / `PermissionRequest` / `PreToolUse` / `PostToolUse` / `PostToolUseFailure` / `TaskCompleted` / `Stop` / `SubagentStart` / `SubagentStop` / `Notification` / `Compaction` / `StopFailure` / `PreCompact` / `PostCompact` / `Elicitation` / `ElicitationResult` / `ConfigChange` / `CwdChanged` / `FileChanged` / `InstructionsLoaded` |
-| `ToolKind` | `READONLY` / `WRITE` / `EXECUTE` |
+| `ToolKind` | `ReadOnly` / `Write` / `Execute` |
 | `InputPriority` | `NOW` / `NEXT` / `LATER` |
 | `StreamMessageType` | 包含 `TURN_INTERRUPTED` / `INPUT_APPLIED` 及内容、工具、用量、结果事件 |
 | `MessageRole` | `SYSTEM` / `USER` / `ASSISTANT` / `TOOL` |
@@ -73,7 +82,7 @@
 | `SendOptions` | send() 选项 |
 | `InputSubmission` | 输入被 started / steered / queued 的判别联合 |
 | `PendingSessionInput` | 尚未应用的持久化输入 |
-| `InputId` / `RequestId` | 输入与活动请求的 branded identifiers |
+| `InputId` / `RequestId` / `SessionId` | 输入、活动请求与会话的 branded identifiers |
 | `StreamOptions` | stream() 选项 |
 | `StreamMessage` | Session 流式消息联合类型 |
 | `PromptResult` | prompt() 返回结果 |
@@ -131,6 +140,9 @@
 | `MemoryStore` | Memory 后端抽象接口 |
 | `MemoryType` | Memory 类型（`user` / `feedback` / `project` / `reference`） |
 
+`createMemoryReadTool()` 和 `createMemoryWriteTool()` 返回低层 `Tool`；
+当前不能直接传给只接受 `ToolDefinition` 的 `SessionOptions.tools`。
+
 ### Provider
 
 | 类型 | 说明 |
@@ -173,6 +185,11 @@
 | `HookInput` | Hook 输入 |
 | `HookOutput` | Hook 输出 |
 
+`HookEvent` 包含 22 个文件 Hook 事件；`SessionOptions.hooks` 只接受
+`SessionStart`、`SessionEnd`、`UserPromptSubmit`、`PermissionRequest`、
+`PreToolUse`、`PostToolUse`、`PostToolUseFailure` 和 `TaskCompleted` 这 8 个
+内联事件。
+
 ### 运行时
 
 | 类型 | 说明 |
@@ -210,3 +227,87 @@
 | `AgentLogger` | 日志接口 |
 | `LogEntry` | 日志条目 |
 | `LogLevelName` | 日志级别 |
+
+### Observability 与错误
+
+| 类型 | 说明 |
+|------|------|
+| `ObservabilityOptions` | Trace 开关、payload 捕获和 sink 配置 |
+| `AgentTrace` / `TraceEvent` / `TraceSpan` | 一次 Agent 请求的结构化执行轨迹 |
+| `TracePayloadSummary` / `TraceSink` | Trace 摘要与输出接口 |
+| `TraceSpanKind` / `TraceStatus` | Span 类型与状态 |
+| `SdkErrorOptions` / `SessionInputErrorCode` | SDK 错误元数据 |
+| `TokenBudgetConfig` / `TokenBudgetSnapshot` | 跨轮次 token 预算配置与快照 |
+
+### 错误、生命周期与标识符
+
+| 导出 | 说明 |
+|------|------|
+| `SdkError` / `AbortError` / `ConfigError` | SDK 基础错误、中止错误与配置错误 |
+| `PermissionDeniedError` / `ToolExecutionError` | 权限与工具执行错误 |
+| `getErrorCode` / `getErrorMessage` / `getErrorName` / `toError` | 未知错误规范化辅助函数 |
+| `registerCleanup` / `gracefulShutdown` / `resetCleanupRegistry` | 进程级清理生命周期 |
+| `CleanupFn` / `CleanupHandle` / `GracefulShutdownOptions` | 清理生命周期类型 |
+| `AgentId` / `MessageId` / `ToolUseId` | Agent、消息和工具调用 branded identifiers |
+| `JsonObject` / `JsonValue` | 严格 JSON 类型 |
+| `Assert` / `Extends` / `IsEqual` / `KeysEqual` | 编译期类型断言辅助类型 |
+| `lazySingleton` | 惰性单例辅助函数 |
+
+### Hook 协议
+
+除 Session 内联 Hook 类型外，根入口还导出：
+
+- `getHookSchemas`
+- `DecisionBehavior`
+- `HookExitCode`
+- `HookType`
+
+### DeepSeek 辅助 API
+
+函数与运行时值：
+
+- `calculateDeepSeekCost`
+- `createDeepSeekBatchChatCompletions`
+- `createDeepSeekChatCompletion`
+- `createDeepSeekFimCompletion`
+- `createDeepSeekLongContextChunks`
+- `createDeepSeekLongContextMessages`
+- `createDeepSeekLongContextPlan`
+- `createDeepSeekTokenBudgetCostConfig`
+- `estimateDeepSeekTokens`
+- `getDeepSeekPricing`
+- `normalizeDeepSeekModel`
+- `optimizeDeepSeekCachePrefix`
+- `resolveDeepSeekBaseUrl`
+- `sanitizeDeepSeekStrictSchema`
+- `summarizeDeepSeekBatchChatCompletions`
+- `DEEPSEEK_BETA_BASE_URL`
+- `DEEPSEEK_DEFAULT_BASE_URL`
+- `DEEPSEEK_DEFAULT_MODEL`
+- `DEEPSEEK_DEFAULT_PRICING`
+- `DeepSeekCostTracker`
+
+类型：
+
+- `DeepSeekBatchChatCompletionItem`
+- `DeepSeekBatchChatCompletionOptions`
+- `DeepSeekBatchChatCompletionResult`
+- `DeepSeekBatchChatCompletionSummary`
+- `DeepSeekCacheOptimizationOptions`
+- `DeepSeekChatCompletionOptions`
+- `DeepSeekChatCompletionResponse`
+- `DeepSeekChatMessage`
+- `DeepSeekCostBreakdown`
+- `DeepSeekCostSnapshot`
+- `DeepSeekFimCompletionOptions`
+- `DeepSeekFimCompletionResponse`
+- `DeepSeekLongContextChunk`
+- `DeepSeekLongContextOptions`
+- `DeepSeekLongContextPlan`
+- `DeepSeekPricing`
+- `DeepSeekProviderOptions`
+
+### 工具错误
+
+- `ToolError`
+- `ToolErrorType`
