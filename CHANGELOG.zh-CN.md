@@ -2,6 +2,16 @@
 
 `@blade-ai/agent-sdk` 的所有重要变更都记录在此。
 
+## [4.0.0] - 2026-08-22
+
+### 破坏性变更
+
+- 要求每个工具显式声明 pure、idempotent 或 non_idempotent 副作用语义；durable event schema v2 持久化最终执行输入与解析后的契约，据此区分可重放工作与必须对账的未知结果。
+
+### 修复
+
+- 让 changelog fragment 直接驱动 semantic-release 版本选择，并识别 Conventional Commit 的感叹号 header，防止 breaking change 合并后未发布版本。
+
 ## [3.3.0] - 2026-08-22
 
 ### 破坏性变更

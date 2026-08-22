@@ -1,5 +1,0 @@
-{
-  "type": "breaking",
-  "en": "Require every tool to declare pure, idempotent, or non-idempotent side-effect semantics; durable event schema v2 persists the final execution input and resolved contract to distinguish replayable work from outcomes that require reconciliation.",
-  "zh-CN": "要求每个工具显式声明 pure、idempotent 或 non_idempotent 副作用语义；durable event schema v2 持久化最终执行输入与解析后的契约，据此区分可重放工作与必须对账的未知结果。"
-}

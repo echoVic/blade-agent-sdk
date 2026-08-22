@@ -2,6 +2,16 @@
 
 All notable changes to `@blade-ai/agent-sdk` are documented here.
 
+## [4.0.0] - 2026-08-22
+
+### Breaking Changes
+
+- Require every tool to declare pure, idempotent, or non-idempotent side-effect semantics; durable event schema v2 persists the final execution input and resolved contract to distinguish replayable work from outcomes that require reconciliation.
+
+### Fixes
+
+- Make changelog fragments drive semantic-release version selection and recognize Conventional Commit bang headers so breaking changes cannot merge without a release.
+
 ## [3.3.0] - 2026-08-22
 
 ### Breaking Changes
