@@ -17,6 +17,7 @@ import type {
   AgentRunControl,
   AgentSteeringInput,
 } from './AgentRunControl.js';
+import { getSteeringInterruptInputId } from '../types/abort.js';
 import { AGENT_TURN_SAFETY_LIMIT } from './constants.js';
 import { ExecutionEpoch } from './ExecutionEpoch.js';
 import { isOverflowRecoverable } from './isOverflowRecoverable.js';
@@ -189,6 +190,7 @@ export async function* agentLoop(
   // === Agentic Loop ===
   while (true) {
     epoch = new ExecutionEpoch();
+    runControl?.advanceStep();
 
     if (signal?.aborted) {
       yield { type: 'agent_end' };
@@ -199,7 +201,8 @@ export async function* agentLoop(
       runControl,
       inputHooks,
       conversationState: convState,
-      turn: turnsCount,
+      turn: turnsCount + 1,
+      includeNow: true,
     });
 
     if (recovery.phase !== 'retry_pending' && turnHooks?.beforeTurn) {
@@ -248,13 +251,16 @@ export async function* agentLoop(
       toolUseUuid: string | null;
     }> | undefined;
 
+    const stepSignal = runControl?.stepSignal ?? signal;
     try {
       const turnGen = runTurn({
         turnState,
         messages: convState.toArray(),
         executionPipeline,
         streaming,
-        signal,
+        signal: stepSignal,
+        requestSignal: signal,
+        steeringSignal: runControl?.steeringSignal,
         epoch,
         executionContext: turnExecutionContext,
         permissionMode: turnPermissionMode,
@@ -276,6 +282,24 @@ export async function* agentLoop(
         yield value;
       }
     } catch (llmError) {
+      const interruptInputId = getSteeringInterruptInputId(stepSignal);
+      if (!signal?.aborted && interruptInputId && runControl) {
+        yield {
+          type: 'turn_interrupted',
+          inputId: interruptInputId,
+          requestId: runControl.requestId,
+          turn: turnsCount,
+        };
+        yield* applyPendingSteeringInputs({
+          runControl,
+          inputHooks,
+          conversationState: convState,
+          turn: turnsCount + 1,
+          includeNow: true,
+        });
+        yield { type: 'turn_end', turn: turnsCount, hasToolCalls: false };
+        continue;
+      }
       if (llmError instanceof FallbackTriggeredError) {
         epoch?.invalidate();
         yield {
@@ -428,19 +452,29 @@ export async function* agentLoop(
       return buildAbortResult(turnsCount - 1, totalToolCalls, startTime);
     }
 
-    if (turnResult.reasoningContent && !signal?.aborted) {
+    const steeringInterruptInputId = getSteeringInterruptInputId(stepSignal);
+
+    if (
+      turnResult.reasoningContent
+      && !signal?.aborted
+      && !steeringInterruptInputId
+    ) {
       yield { type: 'thinking', content: turnResult.reasoningContent };
     }
 
-    if (turnResult.content?.trim() && !signal?.aborted && !streamingExecutionResults) {
+    if (
+      turnResult.content?.trim()
+      && !signal?.aborted
+      && !steeringInterruptInputId
+      && !streamingExecutionResults
+    ) {
       yield { type: 'stream_end' };
     }
 
     // 无 tool calls → 正常结束或重试
     if (!turnResult.toolCalls || turnResult.toolCalls.length === 0) {
       const content = turnResult.content || '';
-      const pendingBeforeDecision = runControl?.claimSteeringInputs() ?? [];
-      if (pendingBeforeDecision.length > 0) {
+      if (!steeringInterruptInputId) {
         convState.append({
           role: 'assistant',
           content,
@@ -451,12 +485,26 @@ export async function* agentLoop(
           reasoningContent: turnResult.reasoningContent,
           turn: turnsCount,
         });
+      }
+
+      if (!signal?.aborted && steeringInterruptInputId && runControl) {
+        yield {
+          type: 'turn_interrupted',
+          inputId: steeringInterruptInputId,
+          requestId: runControl.requestId,
+          turn: turnsCount,
+        };
+      }
+      const pendingBeforeDecision = runControl?.claimSteeringInputs({
+        includeNow: true,
+      }) ?? [];
+      if (pendingBeforeDecision.length > 0) {
         yield* applyClaimedSteeringInputs({
           inputs: pendingBeforeDecision,
           runControl,
           inputHooks,
           conversationState: convState,
-          turn: turnsCount,
+          turn: turnsCount + 1,
         });
         yield { type: 'turn_end', turn: turnsCount, hasToolCalls: false };
         continue;
@@ -474,26 +522,32 @@ export async function* agentLoop(
         continue;
       }
 
+      const completionInterruptInputId =
+        getSteeringInterruptInputId(stepSignal);
+      if (
+        !steeringInterruptInputId
+        && !signal?.aborted
+        && completionInterruptInputId
+        && runControl
+      ) {
+        yield {
+          type: 'turn_interrupted',
+          inputId: completionInterruptInputId,
+          requestId: runControl.requestId,
+          turn: turnsCount,
+        };
+      }
       const pendingAtCompletion = runControl?.claimSteeringInputs({
+        includeNow: true,
         sealIfEmpty: true,
       }) ?? [];
       if (pendingAtCompletion.length > 0) {
-        convState.append({
-          role: 'assistant',
-          content,
-          reasoningContent: turnResult.reasoningContent,
-        });
-        await messageHooks?.onAssistant?.({
-          content,
-          reasoningContent: turnResult.reasoningContent,
-          turn: turnsCount,
-        });
         yield* applyClaimedSteeringInputs({
           inputs: pendingAtCompletion,
           runControl,
           inputHooks,
           conversationState: convState,
-          turn: turnsCount,
+          turn: turnsCount + 1,
         });
         yield { type: 'turn_end', turn: turnsCount, hasToolCalls: false };
         continue;
@@ -546,6 +600,7 @@ export async function* agentLoop(
         logger: config.logger,
         permissionMode: turnPermissionMode,
         signal,
+        steeringSignal: runControl?.steeringSignal,
         hooks: {
           onBeforeToolExec: toolHooks?.beforeExec,
           onUpdate: toolHooks?.onUpdate,
@@ -652,11 +707,21 @@ export async function* agentLoop(
     if (exitResult) {
       runControl?.seal();
     } else {
+      const interruptInputId = getSteeringInterruptInputId(stepSignal);
+      if (!signal?.aborted && interruptInputId && runControl) {
+        yield {
+          type: 'turn_interrupted',
+          inputId: interruptInputId,
+          requestId: runControl.requestId,
+          turn: turnsCount,
+        };
+      }
       yield* applyPendingSteeringInputs({
         runControl,
         inputHooks,
         conversationState: convState,
-        turn: turnsCount,
+        turn: turnsCount + 1,
+        includeNow: true,
       });
     }
 
@@ -719,8 +784,11 @@ async function* applyPendingSteeringInputs(options: {
   inputHooks: AgentLoopHooks['input'];
   conversationState: ConversationState;
   turn: number;
+  includeNow?: boolean;
 }): AsyncGenerator<AgentEvent, boolean> {
-  const inputs = options.runControl?.claimSteeringInputs() ?? [];
+  const inputs = options.runControl?.claimSteeringInputs({
+    includeNow: options.includeNow,
+  }) ?? [];
   return yield* applyClaimedSteeringInputs({
     ...options,
     inputs,

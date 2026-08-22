@@ -25,6 +25,10 @@ import {
   PermissionMode,
   type ProviderType,
 } from '../types/common.js';
+import { ActiveRequestController } from './ActiveRequestController.js';
+import {
+  SessionInputInbox,
+} from './SessionInputInbox.js';
 import { SessionRuntime } from './SessionRuntime.js';
 import {
   JsonlSessionStore,
@@ -34,6 +38,7 @@ import {
 } from './SessionStore.js';
 import type {
   ForkSessionOptions,
+  InputSubmission,
   ISession,
   McpServerStatus,
   McpToolInfo,
@@ -45,14 +50,9 @@ import type {
   SessionOptions,
   StreamMessage,
   StreamOptions,
-  InputSubmission,
   TokenUsage,
   ToolCallRecord,
 } from './types.js';
-import { ActiveRequestController } from './ActiveRequestController.js';
-import {
-  SessionInputInbox,
-} from './SessionInputInbox.js';
 import { InputPriority } from './types.js';
 
 export interface ResumeOptions extends SessionOptions {
@@ -321,9 +321,10 @@ class Session implements ISession {
           targetRequestId: requestId,
           acceptedAt: Date.now(),
         };
-        this.inputInbox.enqueue(input);
+        this.inputInbox.reserve(input);
         try {
           await this.persistInput(input);
+          this.inputInbox.markCommitted(inputId);
         } catch (error) {
           this.inputInbox.remove(inputId);
           throw error;
@@ -349,6 +350,7 @@ class Session implements ISession {
 
       let priority = options?.priority ?? InputPriority.NEXT;
       const activeRequestId = this.executionState.requestId;
+      const activeController = this.executionState.controller;
       if (
         options?.expectedRequestId
         && options.expectedRequestId !== activeRequestId
@@ -358,15 +360,8 @@ class Session implements ISession {
           `Expected request "${options.expectedRequestId}" but "${activeRequestId}" is active`,
         );
       }
-      if (priority === InputPriority.NOW) {
-        throw new SessionInputError(
-          'SESSION_STEERING_UNAVAILABLE',
-          'Interrupting steering is not available yet; use priority "next" or "later"',
-        );
-      }
-
-      const canSteerCurrentRequest =
-        priority === InputPriority.NEXT
+      let canSteerCurrentRequest =
+        priority !== InputPriority.LATER
         && this.executionState.phase !== 'stopping'
         && (this.executionState.phase !== 'running'
           || !this.executionState.controller.isSealed);
@@ -383,9 +378,27 @@ class Session implements ISession {
           : undefined,
         acceptedAt: Date.now(),
       };
-      this.inputInbox.enqueue(input);
+      this.inputInbox.reserve(input);
       try {
         await this.persistInput(input);
+        const requestStillAcceptsSteering =
+          (this.executionState.phase === 'pending'
+            || this.executionState.phase === 'running')
+          && this.executionState.requestId === activeRequestId
+          && !activeController.isSealed;
+        if (canSteerCurrentRequest && !requestStillAcceptsSteering) {
+          canSteerCurrentRequest = false;
+          priority = InputPriority.LATER;
+          this.inputInbox.retargetLater(inputId);
+        }
+        this.inputInbox.markCommitted(inputId);
+        if (
+          canSteerCurrentRequest
+          && priority === InputPriority.NOW
+          && this.executionState.phase === 'running'
+        ) {
+          activeController.interruptStep(inputId);
+        }
       } catch (error) {
         this.inputInbox.remove(inputId);
         throw error;
@@ -395,7 +408,9 @@ class Session implements ISession {
             status: 'steered',
             inputId,
             requestId: activeRequestId,
-            priority: InputPriority.NEXT,
+            priority: priority === InputPriority.NOW
+              ? InputPriority.NOW
+              : InputPriority.NEXT,
           }
         : {
             status: 'queued',
@@ -412,7 +427,14 @@ class Session implements ISession {
   async cancelInput(inputId: InputId): Promise<boolean> {
     await this.ensureInitialized();
     return this.inputMutex.runExclusive(async () => {
-      const input = this.inputInbox.remove(inputId);
+      if (
+        (this.executionState.phase === 'running'
+          || this.executionState.phase === 'stopping')
+        && this.executionState.controller.isInitialInput(inputId)
+      ) {
+        return false;
+      }
+      const input = this.inputInbox.claimForCancellation(inputId);
       if (!input) {
         return false;
       }
@@ -424,9 +446,10 @@ class Session implements ISession {
           'cancelled_by_user',
         );
       } catch (error) {
-        this.inputInbox.enqueue(input);
+        this.inputInbox.releaseClaim(inputId);
         throw error;
       }
+      this.inputInbox.remove(inputId);
 
       if (
         this.executionState.phase === 'pending'
@@ -550,6 +573,17 @@ class Session implements ISession {
             traceRecorder?.recordTurnEnd(turnSpans.get(value.turn), value.turn);
             turnSpans.delete(value.turn);
             yield { type: 'turn_end', turn: value.turn, sessionId: this.sessionId };
+            break;
+          case 'turn_interrupted':
+            traceRecorder?.addEvent('turn_interrupted', {
+              inputId: value.inputId,
+              requestId: value.requestId,
+              turn: value.turn,
+            });
+            yield {
+              ...value,
+              sessionId: this.sessionId,
+            };
             break;
           case 'input_applied':
             traceRecorder?.addEvent('input_applied', {

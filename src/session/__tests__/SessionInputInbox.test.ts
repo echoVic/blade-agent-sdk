@@ -57,6 +57,33 @@ describe('SessionInputInbox', () => {
     expect(inbox.size).toBe(0);
   });
 
+  it('does not expose a reserved input before persistence commits', () => {
+    const inbox = new SessionInputInbox();
+    const requestId = RequestId('request-1');
+    const entry = input('input-1', InputPriority.NEXT, requestId);
+    inbox.reserve(entry);
+
+    expect(inbox.claimForRequest(requestId, [InputPriority.NEXT])).toEqual([]);
+
+    inbox.markCommitted(entry.inputId);
+    expect(inbox.claimForRequest(requestId, [InputPriority.NEXT])).toEqual([
+      entry,
+    ]);
+  });
+
+  it('does not cancel input already claimed for application', () => {
+    const inbox = new SessionInputInbox();
+    const requestId = RequestId('request-1');
+    const entry = input('input-1', InputPriority.NEXT, requestId);
+    inbox.enqueue(entry);
+    inbox.claimForRequest(requestId, [InputPriority.NEXT]);
+
+    expect(inbox.claimForCancellation(entry.inputId)).toBeUndefined();
+
+    inbox.releaseClaim(entry.inputId);
+    expect(inbox.claimForCancellation(entry.inputId)).toEqual(entry);
+  });
+
   it('demotes restored and abandoned request inputs to later delivery', () => {
     const inbox = new SessionInputInbox();
     inbox.restore([

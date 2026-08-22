@@ -2,6 +2,7 @@ import type {
   AgentRunControl,
   AgentSteeringInput,
 } from '../agent/AgentRunControl.js';
+import type { SteeringInterruptReason } from '../types/abort.js';
 import type { InputId, RequestId } from '../types/branded.js';
 import { InputPriority } from './types.js';
 import type { SessionInputInbox } from './SessionInputInbox.js';
@@ -10,11 +11,6 @@ export type RequestAbortReason =
   | { kind: 'user_abort' }
   | { kind: 'session_close' }
   | { kind: 'external_abort'; cause?: unknown };
-
-interface SteeringInterruptReason {
-  kind: 'steering';
-  inputId: InputId;
-}
 
 export class ActiveRequestController implements AgentRunControl {
   private readonly requestController = new AbortController();
@@ -56,6 +52,10 @@ export class ActiveRequestController implements AgentRunControl {
     return this.requestController.signal;
   }
 
+  get steeringSignal(): AbortSignal {
+    return this.stepController.signal;
+  }
+
   get stepSignal(): AbortSignal {
     return AbortSignal.any([
       this.requestController.signal,
@@ -65,6 +65,10 @@ export class ActiveRequestController implements AgentRunControl {
 
   get isSealed(): boolean {
     return this.sealed;
+  }
+
+  isInitialInput(inputId: InputId): boolean {
+    return this.initialInputId === inputId;
   }
 
   abortRequest(reason: RequestAbortReason): void {

@@ -351,6 +351,7 @@ export const webSearchTool = createTool({
   name: 'WebSearch',
   displayName: 'Web Search',
   kind: ToolKind.ReadOnly,
+  interruptBehavior: 'cancel',
 
   schema: lazySchema(() => z.object({
     query: z

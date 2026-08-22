@@ -23,6 +23,7 @@ interface ExecuteToolCallsInput {
   logger?: InternalLogger;
   permissionMode?: PermissionMode;
   signal?: AbortSignal;
+  steeringSignal?: AbortSignal;
   hooks?: ToolExecutionHooks;
 }
 
@@ -58,6 +59,7 @@ async function executeToolCall(
     logger: input.logger,
     permissionMode: input.permissionMode,
     signal: input.signal,
+    steeringSignal: input.steeringSignal,
     hooks: input.hooks,
   });
 }

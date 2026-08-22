@@ -111,6 +111,13 @@ export type StreamMessage =
   | { type: 'turn_start'; turn: number; sessionId: SessionId }
   | { type: 'turn_end'; turn: number; sessionId: SessionId }
   | {
+      type: 'turn_interrupted';
+      inputId: InputId;
+      requestId: RequestId;
+      turn: number;
+      sessionId: SessionId;
+    }
+  | {
       type: 'input_applied';
       inputId: InputId;
       requestId: RequestId;

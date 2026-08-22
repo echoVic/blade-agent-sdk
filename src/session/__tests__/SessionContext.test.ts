@@ -4,7 +4,11 @@ import { join } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
 import { PersistentStore } from '../../context/storage/PersistentStore.js';
 import type { ContentPart } from '../../services/ChatServiceInterface.js';
-import { InputId, SessionId } from '../../types/branded.js';
+import {
+  InputId,
+  RequestId,
+  SessionId,
+} from '../../types/branded.js';
 import { HookEvent } from '../../types/constants.js';
 
 const capturedContexts: unknown[] = [];
@@ -176,6 +180,19 @@ describe('Session runtime context', () => {
       async *streamChat(): AsyncGenerator<unknown, unknown, unknown> {
         yield { type: 'turn_start', turn: 1 };
         yield {
+          type: 'turn_interrupted',
+          inputId: InputId('input-1'),
+          requestId: RequestId('request-1'),
+          turn: 1,
+        };
+        yield {
+          type: 'input_applied',
+          inputId: InputId('input-1'),
+          requestId: RequestId('request-1'),
+          priority: 'now',
+          turn: 1,
+        };
+        yield {
           type: 'tool_start',
           toolCall: {
             id: 'tool-1',
@@ -280,6 +297,8 @@ describe('Session runtime context', () => {
     }
 
     expect(events).toEqual(expect.arrayContaining([
+      'turn_interrupted',
+      'input_applied',
       'tool_use',
       'tool_progress',
       'tool_message',
@@ -551,6 +570,95 @@ describe('Session runtime context', () => {
     }
 
     expect(capturedMessages.at(-1)).toBe('continue after restart');
+    await session.close();
+  });
+
+  it('routes now-priority input to the active step controller', async () => {
+    let observedStepSignal: AbortSignal | undefined;
+    createAgent.mockResolvedValueOnce({
+      async *streamChat(
+        _message: unknown,
+        _context: unknown,
+        options: {
+          runControl?: {
+            stepSignal: AbortSignal;
+          };
+        },
+      ): AsyncGenerator<unknown, unknown, unknown> {
+        observedStepSignal = options.runControl?.stepSignal;
+        yield { type: 'turn_start', turn: 1 };
+        await new Promise<void>((resolve) => {
+          if (observedStepSignal?.aborted) {
+            resolve();
+            return;
+          }
+          observedStepSignal?.addEventListener('abort', () => resolve(), {
+            once: true,
+          });
+        });
+        return {
+          success: false,
+          error: {
+            type: 'aborted',
+            message: 'interrupted',
+          },
+          metadata: {
+            turnsCount: 1,
+            toolCallsCount: 0,
+            duration: 0,
+          },
+        };
+      },
+      async setModel() {},
+    } as never);
+
+    const session = await createSession({
+      provider: { type: 'openai-compatible', apiKey: 'test-key' },
+      model: 'gpt-4o-mini',
+      persistSession: false,
+    });
+    const started = await session.send('first');
+    const stream = session.stream();
+    await stream.next();
+
+    const steered = await session.send('change direction now', {
+      priority: 'now',
+      expectedRequestId:
+        started.status === 'started' ? started.requestId : undefined,
+    });
+
+    expect(steered).toMatchObject({
+      status: 'steered',
+      priority: 'now',
+    });
+    expect(observedStepSignal?.aborted).toBe(true);
+    expect(observedStepSignal?.reason).toMatchObject({
+      kind: 'steering',
+      inputId: steered.inputId,
+    });
+
+    while (!(await stream.next()).done) {
+      // Drain the interrupted request.
+    }
+    await session.close();
+  });
+
+  it('rejects steering targeted at a stale request id', async () => {
+    const session = await createSession({
+      provider: { type: 'openai-compatible', apiKey: 'test-key' },
+      model: 'gpt-4o-mini',
+      persistSession: false,
+    });
+    const started = await session.send('first');
+    expect(started.status).toBe('started');
+
+    await expect(session.send('stale steering', {
+      priority: 'next',
+      expectedRequestId: RequestId('stale-request'),
+    })).rejects.toMatchObject({
+      code: 'SESSION_REQUEST_MISMATCH',
+    });
+
     await session.close();
   });
 });

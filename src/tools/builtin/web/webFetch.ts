@@ -34,6 +34,7 @@ export const webFetchTool = createTool({
   name: 'WebFetch',
   displayName: 'Web Fetch',
   kind: ToolKind.ReadOnly,
+  interruptBehavior: 'cancel',
 
   // Zod Schema 定义
   schema: lazySchema(() => z.object({

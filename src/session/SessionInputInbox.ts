@@ -14,6 +14,7 @@ const DEFAULT_MAX_BYTES = 1024 * 1024;
 export class SessionInputInbox {
   private readonly entries: PendingSessionInput[] = [];
   private readonly claimedInputIds = new Set<InputId>();
+  private readonly committedInputIds = new Set<InputId>();
   private retainedBytes = 0;
 
   constructor(
@@ -22,6 +23,11 @@ export class SessionInputInbox {
   ) {}
 
   enqueue(entry: PendingSessionInput): void {
+    this.reserve(entry);
+    this.markCommitted(entry.inputId);
+  }
+
+  reserve(entry: PendingSessionInput): void {
     const retainedBytes = getRetainedBytes(entry.content);
     if (
       this.entries.length >= this.maxInputs
@@ -35,6 +41,12 @@ export class SessionInputInbox {
 
     this.entries.push(cloneEntry(entry));
     this.retainedBytes += retainedBytes;
+  }
+
+  markCommitted(inputId: InputId): void {
+    if (this.entries.some((entry) => entry.inputId === inputId)) {
+      this.committedInputIds.add(inputId);
+    }
   }
 
   restore(entries: readonly PendingSessionInput[]): void {
@@ -75,6 +87,7 @@ export class SessionInputInbox {
           entry.targetRequestId === requestId
           && priorityOrder.has(entry.priority)
           && entry.inputId !== excludedInputId
+          && this.committedInputIds.has(entry.inputId)
           && !this.claimedInputIds.has(entry.inputId),
       )
       .sort(
@@ -99,6 +112,18 @@ export class SessionInputInbox {
     this.claimedInputIds.delete(inputId);
   }
 
+  claimForCancellation(inputId: InputId): PendingSessionInput | undefined {
+    if (this.claimedInputIds.has(inputId)) {
+      return undefined;
+    }
+    const entry = this.entries.find((candidate) => candidate.inputId === inputId);
+    if (!entry) {
+      return undefined;
+    }
+    this.claimedInputIds.add(inputId);
+    return cloneEntry(entry);
+  }
+
   remove(inputId: InputId): PendingSessionInput | undefined {
     const index = this.entries.findIndex((entry) => entry.inputId === inputId);
     if (index === -1) {
@@ -110,6 +135,7 @@ export class SessionInputInbox {
       return undefined;
     }
     this.claimedInputIds.delete(inputId);
+    this.committedInputIds.delete(inputId);
     this.retainedBytes -= getRetainedBytes(entry.content);
     return cloneEntry(entry);
   }
@@ -123,6 +149,17 @@ export class SessionInputInbox {
       entry.targetRequestId = undefined;
       this.claimedInputIds.delete(entry.inputId);
     }
+  }
+
+  retargetLater(inputId: InputId): PendingSessionInput | undefined {
+    const entry = this.entries.find((candidate) => candidate.inputId === inputId);
+    if (!entry) {
+      return undefined;
+    }
+    entry.priority = InputPriority.LATER;
+    entry.targetRequestId = undefined;
+    this.claimedInputIds.delete(inputId);
+    return cloneEntry(entry);
   }
 
   getAll(): PendingSessionInput[] {

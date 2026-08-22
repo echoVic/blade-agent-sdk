@@ -35,51 +35,46 @@ export function resolveToolInterruptBehavior(
 }
 
 export function createInterruptAwareAbortSignal(options: {
-  outerSignal?: AbortSignal;
+  requestSignal?: AbortSignal;
+  steeringSignal?: AbortSignal;
   batchSignal?: AbortSignal;
   interruptBehavior: InterruptBehavior;
 }): { signal: AbortSignal; cleanup: () => void } {
-  const trackedSignals: AbortSignal[] = [];
-
-  if (options.batchSignal) {
-    trackedSignals.push(options.batchSignal);
-  }
-
-  if (options.interruptBehavior === 'cancel' && options.outerSignal) {
-    trackedSignals.push(options.outerSignal);
-  }
-
-  if (trackedSignals.length === 0) {
-    const controller = new AbortController();
-    return { signal: controller.signal, cleanup: () => {} };
-  }
-
-  if (trackedSignals.length === 1) {
-    return { signal: trackedSignals[0], cleanup: () => {} };
-  }
-
-  if (trackedSignals.some((signal) => signal.aborted)) {
-    const controller = new AbortController();
-    controller.abort();
-    return { signal: controller.signal, cleanup: () => {} };
-  }
-
   const controller = new AbortController();
-  const abort = () => {
-    if (!controller.signal.aborted) {
-      controller.abort();
+  const cleanups: Array<() => void> = [];
+
+  const linkSignal = (
+    signal: AbortSignal | undefined,
+    shouldPropagate: () => boolean,
+  ) => {
+    if (!signal) {
+      return;
     }
+
+    const propagate = () => {
+      if (shouldPropagate() && !controller.signal.aborted) {
+        controller.abort(signal.reason);
+      }
+    };
+    if (signal.aborted) {
+      propagate();
+      return;
+    }
+    signal.addEventListener('abort', propagate, { once: true });
+    cleanups.push(() => signal.removeEventListener('abort', propagate));
   };
 
-  for (const signal of trackedSignals) {
-    signal.addEventListener('abort', abort);
+  linkSignal(options.batchSignal, () => true);
+  linkSignal(options.requestSignal, () => true);
+  if (options.interruptBehavior === 'cancel') {
+    linkSignal(options.steeringSignal, () => true);
   }
 
   return {
     signal: controller.signal,
     cleanup: () => {
-      for (const signal of trackedSignals) {
-        signal.removeEventListener('abort', abort);
+      for (const cleanup of cleanups) {
+        cleanup();
       }
     },
   };

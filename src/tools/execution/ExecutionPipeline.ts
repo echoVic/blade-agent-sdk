@@ -1,5 +1,6 @@
 import type { HookRuntime } from '../../hooks/HookRuntime.js';
 import { type InternalLogger, LogCategory, NOOP_LOGGER } from '../../logging/Logger.js';
+import { isSteeringInterruptSignal } from '../../types/abort.js';
 import { SessionId, ToolUseId } from '../../types/branded.js';
 import { type JsonObject, PermissionMode, type PermissionsConfig } from '../../types/common.js';
 import {
@@ -69,6 +70,7 @@ interface PipelineExecutionState {
   confirmationReasons: ConfirmationReasonEntry[];
   permissionSignature?: string;
   hookToolUseId?: ToolUseId;
+  interrupted: boolean;
 }
 
 /**
@@ -184,6 +186,7 @@ export class ExecutionPipeline {
       affectedPaths: [],
       needsConfirmation: false,
       confirmationReasons: [],
+      interrupted: false,
     };
 
     // 检查工具是否需要文件锁
@@ -223,7 +226,15 @@ export class ExecutionPipeline {
     try {
       await this.applyPreToolUseHooks(state, executionId);
       if (!state.result && state.context.signal?.aborted) {
-        state.result = this.createAbortedResult('任务已被用户中止');
+        state.interrupted = isSteeringInterruptSignal(state.context.signal);
+        state.result = this.createAbortedResult(
+          state.interrupted ? '工具执行被新的用户输入中断' : '任务已被用户中止',
+          {
+            errorType: state.interrupted
+              ? ToolErrorType.INTERRUPTED
+              : ToolErrorType.EXECUTION_ERROR,
+          },
+        );
       }
       if (!state.result) {
         await this.prepareExecution(state);
@@ -242,6 +253,7 @@ export class ExecutionPipeline {
         state.context,
         result,
         executionId,
+        { isInterrupt: state.interrupted },
       );
       const endTime = Date.now();
 
@@ -263,12 +275,19 @@ export class ExecutionPipeline {
       const isTimeout =
         errorMsg.includes('timeout') ||
         getErrorName(error) === 'TimeoutError';
+      const isInterrupt =
+        state.interrupted
+        || isSteeringInterruptSignal(state.context.signal);
 
       let errorResult: ToolResult = {
         status: 'error',
         model: `Tool execution failed: ${errorMsg}`,
         error: {
-          type: isTimeout ? ToolErrorType.TIMEOUT_ERROR : ToolErrorType.EXECUTION_ERROR,
+          type: isTimeout
+            ? ToolErrorType.TIMEOUT_ERROR
+            : isInterrupt
+              ? ToolErrorType.INTERRUPTED
+              : ToolErrorType.EXECUTION_ERROR,
           message: errorMsg,
         },
       };
@@ -280,7 +299,7 @@ export class ExecutionPipeline {
           state.context,
           errorResult,
           executionId,
-          { isTimeout },
+          { isTimeout, isInterrupt },
         );
       } catch (hookError) {
         // Hook 执行失败不应阻止错误处理
@@ -548,6 +567,19 @@ export class ExecutionPipeline {
         const step = await this.nextExecutionStep(execution, state.toolName, deadline);
         if (step.done) {
           state.result = step.value;
+          if (
+            state.result.status === 'error'
+            && isSteeringInterruptSignal(executionSignal)
+          ) {
+            state.interrupted = true;
+            state.result = {
+              ...state.result,
+              error: {
+                ...state.result.error,
+                type: ToolErrorType.INTERRUPTED,
+              },
+            };
+          }
           completed = true;
           return;
         }
@@ -555,6 +587,9 @@ export class ExecutionPipeline {
       }
     } catch (error) {
       timedOut = getErrorName(error) === 'TimeoutError';
+      state.interrupted =
+        !timedOut
+        && isSteeringInterruptSignal(executionSignal);
       if (timedOut) {
         timeoutController?.abort(error);
       }
@@ -562,7 +597,11 @@ export class ExecutionPipeline {
         timedOut
           ? `Tool execution timeout after ${this.toolTimeoutMs}ms`
           : getErrorMessage(error),
-        timedOut ? ToolErrorType.TIMEOUT_ERROR : ToolErrorType.EXECUTION_ERROR,
+        timedOut
+          ? ToolErrorType.TIMEOUT_ERROR
+          : state.interrupted
+            ? ToolErrorType.INTERRUPTED
+            : ToolErrorType.EXECUTION_ERROR,
       );
     } finally {
       if (!completed) {
@@ -920,13 +959,16 @@ export class ExecutionPipeline {
 
   private createAbortedResult(
     reason?: string,
-    options?: { shouldExitLoop?: boolean },
+    options?: {
+      shouldExitLoop?: boolean;
+      errorType?: ToolErrorType;
+    },
   ): ToolResult {
     return {
       status: 'error',
       model: `Tool execution aborted: ${reason || 'Unknown reason'}`,
       error: {
-        type: ToolErrorType.EXECUTION_ERROR,
+        type: options?.errorType ?? ToolErrorType.EXECUTION_ERROR,
         message: reason || 'Execution aborted',
       },
       metadata: options?.shouldExitLoop ? { shouldExitLoop: true } : undefined,

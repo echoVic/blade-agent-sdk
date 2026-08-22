@@ -107,7 +107,7 @@ describe('executeToolCalls', () => {
     );
   });
 
-  it('should ignore an already-aborted outer signal for block-interrupt tools', async () => {
+  it('should propagate an already-aborted request signal to block-interrupt tools', async () => {
     const controller = new AbortController();
     controller.abort();
 
@@ -148,7 +148,7 @@ describe('executeToolCalls', () => {
       {},
       expect.objectContaining({
         signal: expect.objectContaining({
-          aborted: false,
+          aborted: true,
         }),
       }),
     );

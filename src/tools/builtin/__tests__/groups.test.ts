@@ -70,4 +70,49 @@ describe('builtin tool groups', () => {
       'Skill',
     ]);
   });
+
+  it('declares an explicit interruption policy for every default builtin tool', () => {
+    const tools = flattenBuiltinToolGroups(createBuiltinToolGroups({
+      sessionId: SessionId('builtin-interrupt-behavior'),
+      subagentRegistry: new SubagentRegistry(),
+    }));
+
+    expect(Object.fromEntries(
+      tools.map((tool) => [tool.name, tool.interruptBehavior]),
+    )).toEqual({
+      Read: 'cancel',
+      Edit: 'block',
+      Write: 'block',
+      NotebookEdit: 'block',
+      Glob: 'cancel',
+      Grep: 'cancel',
+      Bash: 'cancel',
+      KillShell: 'block',
+      WebFetch: 'cancel',
+      WebSearch: 'cancel',
+      Task: 'block',
+      TaskOutput: 'block',
+      TaskCreate: 'block',
+      TaskGet: 'block',
+      TaskUpdate: 'block',
+      TaskList: 'block',
+      TaskStop: 'block',
+      TodoWrite: 'block',
+      EnterPlanMode: 'block',
+      ExitPlanMode: 'block',
+      AskUserQuestion: 'block',
+      DiscoverTools: 'block',
+      Skill: 'block',
+    });
+
+    const bash = tools.find((tool) => tool.name === 'Bash');
+    expect(bash?.resolveBehavior?.({
+      command: 'sleep 10',
+      run_in_background: false,
+    })).toMatchObject({ interruptBehavior: 'cancel' });
+    expect(bash?.resolveBehavior?.({
+      command: 'sleep 10',
+      run_in_background: true,
+    })).toMatchObject({ interruptBehavior: 'block' });
+  });
 });

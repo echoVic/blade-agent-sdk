@@ -1,9 +1,9 @@
-import type { Entry } from 'fast-glob';
-import fg from 'fast-glob';
 import type { Stats } from 'node:fs';
 import { stat } from 'node:fs/promises';
-import type { Readable } from 'node:stream';
 import { join, resolve } from 'node:path';
+import type { Readable } from 'node:stream';
+import type { Entry } from 'fast-glob';
+import fg from 'fast-glob';
 import { z } from 'zod';
 import { hasFilesystemCapability } from '../../../runtime/index.js';
 import { getErrorCode, getErrorMessage, getErrorName } from '../../../utils/errorUtils.js';
@@ -53,6 +53,7 @@ export const globTool = createTool({
   name: 'Glob',
   displayName: 'File Pattern Match',
   kind: ToolKind.ReadOnly,
+  interruptBehavior: 'cancel',
 
   // Zod Schema 定义
   schema: lazySchema(() => z.object({

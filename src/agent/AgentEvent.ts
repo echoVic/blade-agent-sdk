@@ -75,6 +75,13 @@ export interface InputAppliedEvent {
   turn: number;
 }
 
+export interface TurnInterruptedEvent {
+  type: 'turn_interrupted';
+  inputId: InputId;
+  requestId: RequestId;
+  turn: number;
+}
+
 // ===== 内容流事件 =====
 
 /** 内容增量（流式） */
@@ -239,6 +246,7 @@ export type AgentEvent =
   | TurnEndEvent
   | TurnRetryEvent
   | InputAppliedEvent
+  | TurnInterruptedEvent
   | ContentDeltaEvent
   | ThinkingDeltaEvent
   | StreamEndEvent

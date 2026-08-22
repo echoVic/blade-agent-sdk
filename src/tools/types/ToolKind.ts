@@ -25,7 +25,7 @@ export function createToolBehavior(
     isReadOnly: overrides.isReadOnly ?? isReadOnlyKind(kind),
     isConcurrencySafe: overrides.isConcurrencySafe ?? isReadOnlyKind(kind),
     isDestructive: overrides.isDestructive ?? false,
-    interruptBehavior: overrides.interruptBehavior ?? 'cancel',
+    interruptBehavior: overrides.interruptBehavior ?? 'block',
   };
 }
 

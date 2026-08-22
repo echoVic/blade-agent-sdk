@@ -323,17 +323,6 @@ export function buildLoopConfig(deps: LoopHookBuilderDeps): AgentLoopConfig {
         });
       },
 
-      async onComplete(ctx) {
-        await persistToJsonl(modelManager, context.sessionId, logger, async (contextMgr, sessionId) => {
-          if (ctx.content.trim() !== '') {
-            const uuid = await contextMgr.saveMessage(
-              sessionId, 'assistant', ctx.content,
-              getLastUuid(), undefined, context.subagentInfo,
-            );
-            setLastUuid(uuid);
-          }
-        });
-      },
     },
 
     recovery: {

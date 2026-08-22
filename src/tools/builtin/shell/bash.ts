@@ -32,6 +32,7 @@ export const bashTool = createTool({
   name: 'Bash',
   displayName: 'Bash Command',
   kind: ToolKind.Execute,
+  interruptBehavior: 'cancel',
   maxResultSizeChars: 200_000, // ~200KB before externalization
 
   // Zod Schema 定义
@@ -184,6 +185,7 @@ Before executing commands:
         isReadOnly: false,
         isConcurrencySafe: false,
         isDestructive: classification.category === 'destructive',
+        interruptBehavior: 'block',
       };
     }
 
@@ -193,6 +195,7 @@ Before executing commands:
         isReadOnly: true,
         isConcurrencySafe: true,
         isDestructive: false,
+        interruptBehavior: 'cancel',
       };
     }
 
@@ -201,6 +204,7 @@ Before executing commands:
       isReadOnly: false,
       isConcurrencySafe: false,
       isDestructive: classification.category === 'destructive',
+      interruptBehavior: 'cancel',
     };
   },
 

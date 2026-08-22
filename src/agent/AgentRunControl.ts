@@ -11,6 +11,7 @@ export interface AgentSteeringInput {
 export interface AgentRunControl {
   readonly requestId: RequestId;
   readonly requestSignal: AbortSignal;
+  readonly steeringSignal: AbortSignal;
   readonly stepSignal: AbortSignal;
   readonly isSealed: boolean;
 

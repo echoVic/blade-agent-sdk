@@ -59,6 +59,8 @@ export interface RunTurnInput {
   executionPipeline: ExecutionPipeline;
   streaming?: boolean;
   signal?: AbortSignal;
+  requestSignal?: AbortSignal;
+  steeringSignal?: AbortSignal;
   epoch: ExecutionEpoch;
   executionContext: ToolExecutionContext;
   permissionMode?: PermissionMode;
@@ -150,7 +152,8 @@ async function* runStreamingWithTools(
 ): AsyncGenerator<AgentEvent, TurnOutcome> {
   const {
     turnState, messages, executionPipeline,
-    signal, epoch, executionContext, permissionMode, toolHooks, logger,
+    signal, requestSignal, steeringSignal, epoch,
+    executionContext, permissionMode, toolHooks, logger,
   } = input;
 
   const streamingExecutor = new StreamingToolExecutor(
@@ -173,6 +176,8 @@ async function* runStreamingWithTools(
       executionContext,
       logger,
       permissionMode,
+      requestSignal,
+      steeringSignal,
       hooks: {
         onBeforeToolExec: toolHooks.onBeforeExec,
       },

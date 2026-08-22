@@ -9,6 +9,7 @@ import {
   SubagentExecutor,
   SubagentRegistry,
   ToolCatalog,
+  ToolErrorType,
   collectToolExecution,
   completeToolExecution,
   createMemoryReadTool,
@@ -16,6 +17,7 @@ import {
 } from '../index.js';
 import type {
   InputSubmission,
+  PendingSessionInput,
   RuntimePatch,
   ToolCatalogEntry,
   ToolEffect,
@@ -42,6 +44,7 @@ describe('root exports', () => {
     expect(InputId('input-1')).toBe('input-1');
     expect(RequestId('request-1')).toBe('request-1');
     expect(new SessionInputError('TEST', 'message')).toBeInstanceOf(Error);
+    expect(ToolErrorType.INTERRUPTED).toBe('interrupted');
   });
 
   it('exports runtime tool contracts at the root entrypoint', () => {
@@ -60,6 +63,9 @@ describe('root exports', () => {
     >();
     expectTypeOf<InputSubmission['status']>().toEqualTypeOf<
       'started' | 'steered' | 'queued'
+    >();
+    expectTypeOf<PendingSessionInput['priority']>().toEqualTypeOf<
+      'now' | 'next' | 'later'
     >();
     expectTypeOf<ToolCatalogEntry['source']['kind']>().toEqualTypeOf<
       'builtin' | 'custom' | 'mcp' | 'session'

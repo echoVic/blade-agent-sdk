@@ -1021,7 +1021,7 @@ describe('agentLoop', () => {
         inputId: 'steer-1',
         requestId,
         priority: 'next',
-        turn: 1,
+        turn: 2,
       });
       const secondRequestMessages = (
         chatService.chat as unknown as Mock
@@ -1089,6 +1089,215 @@ describe('agentLoop', () => {
       ]);
       expect(secondRequestMessages.at(-1)?.content).toBe('Inspect the tests too');
       expect(inbox.size).toBe(0);
+    });
+
+    it('interrupts the current model step and applies now-priority input', async () => {
+      let resolveStarted!: () => void;
+      const started = new Promise<void>((resolve) => {
+        resolveStarted = resolve;
+      });
+      let requestCount = 0;
+      const chat = vi.fn(async (
+        _messages: readonly Message[],
+        _tools: unknown,
+        signal?: AbortSignal,
+      ) => {
+        requestCount += 1;
+        if (requestCount === 1) {
+          resolveStarted();
+          await new Promise<void>((_resolve, reject) => {
+            signal?.addEventListener(
+              'abort',
+              () => reject(signal.reason),
+              { once: true },
+            );
+          });
+        }
+        return {
+          content: 'Redirected answer',
+          toolCalls: [],
+          usage: { promptTokens: 100, completionTokens: 50, totalTokens: 150 },
+        };
+      });
+      const chatService = {
+        chat,
+        chatWithRetryEvents: vi.fn(async function* (
+          ...args: Parameters<typeof chat>
+        ) {
+          yield* [] as never[];
+          return await chat(...args);
+        }),
+        getConfig: () => ({
+          model: 'test-model',
+          maxContextTokens: 128000,
+        }),
+      } as unknown as TurnState['chatService'];
+      const inbox = new SessionInputInbox();
+      const requestId = RequestId('request-interrupt-model');
+      const runControl = new ActiveRequestController(
+        requestId,
+        undefined,
+        inbox,
+        InputId('initial-input'),
+      );
+      const onAssistantMessage = vi.fn(async () => {});
+      const config = baseConfig({
+        runControl,
+        turnState: { chatService },
+        onAssistantMessage,
+        onInputApply: async ({ input }) => ({
+          role: 'user',
+          content: input.content,
+        }),
+      });
+
+      const execution = collectEvents(agentLoop(config));
+      await started;
+      inbox.enqueue({
+        inputId: InputId('steer-now'),
+        content: 'Stop and use the other approach',
+        priority: 'now',
+        targetRequestId: requestId,
+        acceptedAt: 1,
+      });
+      runControl.interruptStep(InputId('steer-now'));
+
+      const { events, result } = await execution;
+
+      expect(result.success).toBe(true);
+      expect(events).toContainEqual({
+        type: 'turn_interrupted',
+        inputId: 'steer-now',
+        requestId,
+        turn: 1,
+      });
+      expect(events).toContainEqual({
+        type: 'input_applied',
+        inputId: 'steer-now',
+        requestId,
+        priority: 'now',
+        turn: 2,
+      });
+      const secondRequestMessages = chat.mock.calls[1]?.[0] as Message[];
+      expect(secondRequestMessages.at(-1)?.content).toBe(
+        'Stop and use the other approach',
+      );
+      expect(onAssistantMessage).toHaveBeenCalledTimes(1);
+      expect(onAssistantMessage).toHaveBeenCalledWith(
+        expect.objectContaining({
+          content: 'Redirected answer',
+          turn: 2,
+        }),
+      );
+    });
+
+    it('closes interrupted tool calls before applying now-priority input', async () => {
+      let resolveToolStarted!: () => void;
+      const toolStarted = new Promise<void>((resolve) => {
+        resolveToolStarted = resolve;
+      });
+      const inbox = new SessionInputInbox();
+      const requestId = RequestId('request-interrupt-tool');
+      const runControl = new ActiveRequestController(
+        requestId,
+        undefined,
+        inbox,
+        InputId('initial-input'),
+      );
+      const executionPipeline = {
+        getRegistry: () => ({
+          get: (name: string) => ({
+            kind: 'execute',
+            name,
+            interruptBehavior: 'cancel',
+          }),
+        }),
+        execute: vi.fn(async function* (
+          _toolName: string,
+          _params: unknown,
+          context: { signal?: AbortSignal },
+        ) {
+          resolveToolStarted();
+          await new Promise<void>((resolve) => {
+            if (context.signal?.aborted) {
+              resolve();
+              return;
+            }
+            context.signal?.addEventListener('abort', () => resolve(), {
+              once: true,
+            });
+          });
+          return {
+            status: 'error',
+            model: 'interrupted',
+            error: {
+              type: 'interrupted',
+              message: 'interrupted',
+            },
+          };
+        }),
+      } as unknown as AgentLoopConfig['executionPipeline'];
+      const chatService = createMockChatService([
+        {
+          content: 'Running tool',
+          toolCalls: [{
+            id: 'call_1',
+            type: 'function',
+            function: { name: 'CancelableTool', arguments: '{}' },
+          }],
+        },
+        { content: 'Redirected answer' },
+      ]);
+      const config = baseConfig({
+        runControl,
+        executionPipeline,
+        turnState: { chatService },
+        onInputApply: async ({ input }) => ({
+          role: 'user',
+          content: input.content,
+        }),
+      });
+
+      const execution = collectEvents(agentLoop(config));
+      await toolStarted;
+      inbox.enqueue({
+        inputId: InputId('steer-now'),
+        content: 'Use a different tool',
+        priority: 'now',
+        targetRequestId: requestId,
+        acceptedAt: 1,
+      });
+      runControl.interruptStep(InputId('steer-now'));
+
+      const { events, result } = await execution;
+
+      expect(result.success).toBe(true);
+      const toolResultIndex = events.findIndex(
+        (event) => event.type === 'tool_result',
+      );
+      const inputAppliedIndex = events.findIndex(
+        (event) => event.type === 'input_applied',
+      );
+      expect(toolResultIndex).toBeGreaterThan(-1);
+      expect(inputAppliedIndex).toBeGreaterThan(toolResultIndex);
+      const interruptedToolResult = events[toolResultIndex];
+      expect(interruptedToolResult).toMatchObject({
+        type: 'tool_result',
+        result: {
+          status: 'error',
+          error: {
+            type: 'interrupted',
+          },
+        },
+      });
+      const secondRequestMessages = (
+        chatService.chat as unknown as Mock
+      ).mock.calls[1]?.[0] as Message[];
+      expect(secondRequestMessages.slice(-3).map((message) => message.role)).toEqual([
+        'assistant',
+        'tool',
+        'user',
+      ]);
     });
   });
 });
