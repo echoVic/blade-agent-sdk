@@ -19,6 +19,7 @@ import type {
   InputSubmission,
   PendingSessionInput,
   RuntimePatch,
+  SessionTool,
   ToolCatalogEntry,
   ToolEffect,
   ToolEffectYield,
@@ -67,6 +68,7 @@ describe('root exports', () => {
     expectTypeOf<PendingSessionInput['priority']>().toEqualTypeOf<
       'now' | 'next' | 'later'
     >();
+    expectTypeOf<ReturnType<typeof createMemoryReadTool>>().toMatchTypeOf<SessionTool>();
     expectTypeOf<ToolCatalogEntry['source']['kind']>().toEqualTypeOf<
       'builtin' | 'custom' | 'mcp' | 'session'
     >();

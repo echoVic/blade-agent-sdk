@@ -33,7 +33,7 @@ Types:
 `ForkSessionResult`, `HookCallback`, `HookInput`, `HookOutput`,
 `InputSubmission`, `ISession`, `McpServerStatus`, `McpToolInfo`, `ModelInfo`,
 `PendingSessionInput`, `PromptResult`, `ProviderConfig`, `ProviderType`,
-`ResumeOptions`, `SendOptions`, `SessionOptions`, `StreamMessage`,
+`ResumeOptions`, `SendOptions`, `SessionOptions`, `SessionTool`, `StreamMessage`,
 `StreamOptions`, `SubagentInfo`, `TokenUsage`, `ToolCallRecord`,
 `ToolDefinition`, and `ToolResult`.
 
@@ -128,9 +128,8 @@ Types:
 
 Memory tools are opt-in.
 
-`createMemoryReadTool()` and `createMemoryWriteTool()` return the lower-level
-`Tool` interface and cannot currently be passed directly to
-`SessionOptions.tools`.
+`createMemoryReadTool()` and `createMemoryWriteTool()` return complete `Tool`
+instances that can be passed directly to `SessionOptions.tools`.
 
 ## Permissions
 

@@ -5,7 +5,7 @@ SDK 提供三种方式创建自定义工具，从简单到完整：
 | 方式 | 函数 | Schema | 适用场景 |
 |------|------|--------|----------|
 | 简单模式 | `defineTool()` | JSON Schema | 快速定义，可直接传给 Session |
-| 工厂模式 | `createTool()` | Zod Schema | 低层运行时需要类型推断和参数验证 |
+| 工厂模式 | `createTool()` | Zod Schema | 完整类型推断、运行时验证和中断策略 |
 | 转换模式 | `toolFromDefinition()` | JSON Schema | 将 ToolDefinition 转为内部 Tool 对象 |
 
 ## defineTool
@@ -51,9 +51,9 @@ const searchTool = defineTool({
 
 ## createTool
 
-使用 Zod Schema 的工厂函数，提供完整的类型推断和运行时验证。
-它返回低层 `Tool`，当前不能直接放入只接受 `ToolDefinition` 的
-`SessionOptions.tools`。
+使用 Zod Schema 的工厂函数，提供完整的类型推断、运行时验证和工具行为配置。
+返回的 `Tool` 可以直接放入 `SessionOptions.tools`，Session 会保留原实例，
+不会再次适配或丢失行为。
 
 ```ts
 import { z } from 'zod';
@@ -349,8 +349,7 @@ const tool = createTool({
 - Session 的显式 `abort()` 和 `close()` 属于请求级终止，不受 `block` 限制。
 
 `interruptBehavior` 属于 `createTool()` 的 `ToolConfig`，轻量
-`defineTool()` / `ToolDefinition` 不暴露该字段。由于
-`SessionOptions.tools` 当前只接受 `ToolDefinition`，Session 暂不支持为
-自定义工具声明 `cancel`；该能力适用于直接组合低层 `Tool` 的运行时。
+`defineTool()` / `ToolDefinition` 不暴露该字段。需要让 Session 中的自定义
+工具响应 `now` 转向时，应使用 `createTool()` 并声明 `cancel`。
 
 内置的 `Read`、`Glob`、`Grep`、`WebFetch`、`WebSearch` 和前台 `Bash` 明确声明为 `cancel`；后台 `Bash` 及其他内置工具为 `block`。动态 MCP 工具默认 `block`。

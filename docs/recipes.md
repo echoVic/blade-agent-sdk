@@ -270,13 +270,14 @@ console.log(`\n总 Token: ${totalTokens}`);
 
 ## Memory 系统
 
-Memory 系统是 opt-in 的。`getBuiltinTools()` 可以为自定义低层运行时创建
-带 Memory 的工具集合：
+Memory 系统是 opt-in 的。创建 Memory 工具后直接传给 Session：
 
 ```ts
 import {
+  createMemoryReadTool,
+  createMemoryWriteTool,
+  createSession,
   FileSystemMemoryStore,
-  getBuiltinTools,
   MemoryManager,
 } from '@blade-ai/agent-sdk';
 
@@ -284,8 +285,13 @@ const memoryManager = new MemoryManager(
   new FileSystemMemoryStore('/home/user/.blade/memory'),
 );
 
-const tools = await getBuiltinTools({
-  memoryManager,
+const session = await createSession({
+  provider: { type: 'openai', apiKey: process.env.OPENAI_API_KEY! },
+  model: 'gpt-4o',
+  tools: [
+    createMemoryReadTool({ manager: memoryManager }),
+    createMemoryWriteTool({ manager: memoryManager }),
+  ],
 });
 ```
 
@@ -293,12 +299,6 @@ const tools = await getBuiltinTools({
 `FileSystemMemoryStore` 将每条 Memory 保存为带 frontmatter 的 Markdown
 文件，并维护 `MEMORY.md` 索引。Memory 类型包括 `user`、`project`、
 `feedback` 和 `reference`。
-:::
-
-::: warning Session 集成边界
-`createMemoryReadTool()` / `createMemoryWriteTool()` 返回低层 `Tool`，而
-`SessionOptions.tools` 当前只接受 `ToolDefinition`。因此不能把这些 helper
-的返回值直接放入 Session；Session 暂无一等 `memoryManager` 配置。
 :::
 
 ## 工具来源策略（ToolCatalogSourcePolicy）

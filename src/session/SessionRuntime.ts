@@ -39,12 +39,37 @@ import type {
   McpServerStatus,
   McpToolInfo,
   SessionOptions,
+  SessionTool,
 } from './types.js';
 
 function isSdkMcpServerHandle(
   config: McpServerConfig | SdkMcpServerHandle
 ): config is SdkMcpServerHandle {
   return 'createClientTransport' in config && 'server' in config;
+}
+
+function isRuntimeTool(tool: SessionTool): tool is Exclude<
+  SessionTool,
+  { parameters: unknown }
+> {
+  const candidate = tool as {
+    build?: unknown;
+    execute?: unknown;
+    getFunctionDeclaration?: unknown;
+  };
+  return typeof candidate.build === 'function'
+    && typeof candidate.execute === 'function'
+    && typeof candidate.getFunctionDeclaration === 'function';
+}
+
+function toRuntimeTool(tool: SessionTool): Tool {
+  // Registry dispatch validates parameters before invoking the concrete Tool.
+  // Erase its invariant parameter type only at this heterogeneous boundary.
+  return (
+    isRuntimeTool(tool)
+      ? tool
+      : toolFromDefinition(tool)
+  ) as unknown as Tool;
 }
 
 function resolveStorageRoot(storagePath?: string): string | undefined {
@@ -307,7 +332,7 @@ export class SessionRuntime {
     if (!this.options.tools || this.options.tools.length === 0) {
       return;
     }
-    const tools = this.options.tools.map((tool) => toolFromDefinition(tool));
+    const tools = this.options.tools.map(toRuntimeTool);
     this.registerTools(tools);
   }
 
