@@ -140,12 +140,14 @@ Node-local 能力外，这些函数都从根入口导出；实际 subpath 以“
 | `ToolConfig` | 工具配置 |
 | `ToolSchema` | 工具 Schema |
 | `ToolBehavior` | 工具行为配置 |
+| `ToolSideEffect` | 工具副作用契约：`pure` / `idempotent` / `non_idempotent` |
 | `ToolEffect` | 工具副作用描述 |
 | `ToolDefinition` | 工具定义接口 |
 | `ToolDescription` | 工具描述（短描述/长描述/使用提示/示例） |
 | `ToolDescriptionResolver` | 动态工具描述解析器 |
 | `ToolExecution` | 工具的异步生成器执行契约 |
 | `ToolExecutionLifecycle` | Request 级工具 scheduled / settled 持久化边界 |
+| `ToolExecutionStartedLifecycle` | 最终执行输入与解析后副作用等级 |
 | `ToolInvocationLifecycle` | 单次工具权限与副作用开始边界 |
 | `ToolScheduledLifecycle` / `ToolSettledLifecycle` | 工具调度与终态 payload |
 | `ToolPermissionResolution` | 权限请求的 durable 决策 payload |
@@ -163,6 +165,7 @@ Node-local 能力外，这些函数都从根入口导出；实际 subpath 以“
 | `ToolExecutionUpdate` | 工具执行过程更新事件 |
 | `FunctionDeclaration` | 函数声明（JSON Schema 格式） |
 
+`ToolBehavior.sideEffect` 必须显式声明并决定 started tool 是否可在恢复时重放。
 `ToolBehavior.interruptBehavior` 默认为 `block`。只有能够观察 `AbortSignal` 并可靠清理资源的工具才应声明为 `cancel`。
 
 ### 工具目录

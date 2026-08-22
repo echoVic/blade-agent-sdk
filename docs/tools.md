@@ -13,7 +13,7 @@ SDK 提供三种方式创建自定义工具，从简单到完整：
 最简单的工具定义方式，原样返回传入的定义。适合直接传给 `SessionOptions.tools`。
 
 ```ts
-import { defineTool, ToolKind } from '@blade-ai/agent-sdk';
+import { defineTool, ToolKind, ToolSideEffect } from '@blade-ai/agent-sdk';
 
 const searchTool = defineTool({
   name: 'SearchDocs',
@@ -27,6 +27,7 @@ const searchTool = defineTool({
     required: ['query'],
   },
   kind: ToolKind.ReadOnly,
+  sideEffect: ToolSideEffect.PURE,
   async *execute(params) {
     const results = await searchDocuments(params.query, params.limit ?? 10);
     yield {
@@ -57,12 +58,13 @@ const searchTool = defineTool({
 
 ```ts
 import { z } from 'zod';
-import { createTool, ToolKind } from '@blade-ai/agent-sdk';
+import { createTool, ToolKind, ToolSideEffect } from '@blade-ai/agent-sdk';
 
 const deployTool = createTool({
   name: 'Deploy',
   displayName: 'Deploy',
   kind: ToolKind.Execute,
+  sideEffect: ToolSideEffect.NON_IDEMPOTENT,
   description: {
     short: '部署应用到指定环境',
     long: '支持 staging 和 production 环境的自动部署',
@@ -131,33 +133,33 @@ const tools = await getBuiltinTools({
 
 SDK 内置 23 个标准工具，连接 MCP 后额外提供 2 个资源工具：
 
-| 分类 | 工具名 | Kind | 说明 |
-|------|--------|------|------|
-| **文件** | Read | readonly | 读取文件内容 |
-| | Edit | write | 搜索替换编辑文件 |
-| | Write | write | 写入/创建文件 |
-| | NotebookEdit | write | 编辑 Jupyter Notebook |
-| **搜索** | Glob | readonly | 文件名模式匹配搜索 |
-| | Grep | readonly | 文件内容正则搜索 |
-| **Shell** | Bash | execute | 执行 Shell 命令 |
-| | KillShell | execute | 终止 Shell 进程 |
-| **网络** | WebFetch | readonly | 抓取网页内容 |
-| | WebSearch | readonly | 搜索互联网 |
-| **子任务** | Task | readonly | 创建子任务（子 Agent） |
-| | TaskOutput | readonly | 获取子任务输出 |
-| **结构化任务** | TaskCreate | write | 创建结构化任务条目 |
-| | TaskGet | write | 获取任务详情 |
-| | TaskUpdate | write | 更新任务状态 |
-| | TaskList | write | 列出所有任务 |
-| | TaskStop | write | 停止后台任务或后台 Agent |
-| **系统** | AskUserQuestion | readonly | 向用户提问 |
-| | DiscoverTools | readonly | 发现并搜索可用工具 |
-| | Skill | execute | 调用 Skill 脚本 |
-| **计划** | EnterPlanMode | readonly | 进入计划模式 |
-| | ExitPlanMode | readonly | 退出计划模式 |
-| **待办** | TodoWrite | readonly | 管理待办事项 |
-| **MCP** | ListMcpResources | readonly | 列出 MCP 资源（需连接 MCP） |
-| | ReadMcpResource | readonly | 读取 MCP 资源（需连接 MCP） |
+| 分类 | 工具名 | Kind | Side effect | 说明 |
+|------|--------|------|-------------|------|
+| **文件** | Read | readonly | pure | 读取文件内容 |
+| | Edit | write | non_idempotent | 搜索替换编辑文件 |
+| | Write | write | idempotent | 写入/创建文件 |
+| | NotebookEdit | write | non_idempotent | 编辑 Jupyter Notebook；replace 调用动态收窄为 idempotent |
+| **搜索** | Glob | readonly | pure | 文件名模式匹配搜索 |
+| | Grep | readonly | pure | 文件内容正则搜索 |
+| **Shell** | Bash | execute | non_idempotent | 执行 Shell 命令；只读前台命令动态收窄为 pure |
+| | KillShell | execute | idempotent | 终止 Shell 进程 |
+| **网络** | WebFetch | execute | non_idempotent | GET/HEAD 动态收窄为 pure，PUT/DELETE 为 idempotent |
+| | WebSearch | readonly | pure | 搜索互联网 |
+| **子任务** | Task | readonly | non_idempotent | 创建子任务（子 Agent） |
+| | TaskOutput | readonly | non_idempotent | 获取并消费子任务输出 |
+| **结构化任务** | TaskCreate | write | non_idempotent | 创建结构化任务条目 |
+| | TaskGet | write | pure | 获取任务详情 |
+| | TaskUpdate | write | idempotent | 更新任务状态 |
+| | TaskList | write | pure | 列出所有任务 |
+| | TaskStop | write | idempotent | 停止后台任务或后台 Agent |
+| **系统** | AskUserQuestion | readonly | non_idempotent | 向用户提问 |
+| | DiscoverTools | readonly | idempotent | 发现并搜索可用工具 |
+| | Skill | execute | non_idempotent | 调用 Skill 脚本 |
+| **计划** | EnterPlanMode | readonly | non_idempotent | 进入计划模式 |
+| | ExitPlanMode | readonly | non_idempotent | 退出计划模式 |
+| **待办** | TodoWrite | readonly | idempotent | 管理待办事项 |
+| **MCP** | ListMcpResources | readonly | pure | 列出 MCP 资源（需连接 MCP） |
+| | ReadMcpResource | readonly | pure | 读取 MCP 资源（需连接 MCP） |
 
 ::: tip
 `Task` 使用当前 session 的 `SubagentRegistry`。`DiscoverTools` 允许 LLM 搜索和发现可用工具。`MemoryRead` / `MemoryWrite` 属于 opt-in 工具，不在默认列表中。
@@ -197,6 +199,7 @@ interface ToolDefinition<
   displayName?: string;
   description: string | ToolDescription;
   parameters: JSONSchema7;
+  sideEffect: ToolSideEffect;
   kind?: ToolKind;
   category?: string;
   tags?: string[];
@@ -280,12 +283,13 @@ artifact 落盘针对 `model` 内容，并不单独持久化 `data`。若领域 
 `defineTool` 支持两个可选泛型：`TParams`（参数类型）与 `TData`（`data` 字段类型，须 `extends JsonValue`）。指定后 `execute` 的 `params` 与返回的 `data` 都会得到精确类型，无需在 `execute` 内部做 `as` 断言：
 
 ```ts
-import { defineTool, ToolKind } from '@blade-ai/agent-sdk';
+import { defineTool, ToolKind, ToolSideEffect } from '@blade-ai/agent-sdk';
 
 const tool = defineTool<{ query: string; limit?: number }, { count: number }>({
   name: 'SearchDocs',
   description: '搜索文档库',
   kind: ToolKind.ReadOnly,
+  sideEffect: ToolSideEffect.PURE,
   parameters: {
     type: 'object',
     properties: {
@@ -342,6 +346,19 @@ interface ToolExecutionLifecycle {
   onToolSettled?(event: ToolSettledLifecycle): Promise<void>;
 }
 
+interface ToolScheduledLifecycle {
+  toolCallId: ToolUseId;
+  toolName: string;
+  input: JsonObject;
+  sideEffect: ToolSideEffect;
+  interruptBehavior: 'block' | 'cancel';
+}
+
+interface ToolExecutionStartedLifecycle {
+  input: JsonObject;
+  sideEffect: ToolSideEffect;
+}
+
 interface ToolInvocationLifecycle {
   onPermissionRequested?(
     details: ConfirmationDetails,
@@ -350,7 +367,9 @@ interface ToolInvocationLifecycle {
   onPermissionResolved?(
     resolution: ToolPermissionResolution,
   ): Promise<void>;
-  onExecutionStarted?(): Promise<void>;
+  onExecutionStarted?(
+    event: ToolExecutionStartedLifecycle,
+  ): Promise<void>;
 }
 ```
 
@@ -359,12 +378,26 @@ interface ToolInvocationLifecycle {
 1. `onToolScheduled` 完成后才发布 `tool_start`。
 2. `onPermissionRequested` 完成后才调用交互式确认处理器。
 3. `onPermissionResolved` 完成后才接受权限决定。
-4. `onExecutionStarted` 完成后才调用工具 generator，因此 durable 写失败不会放行副作用。
+4. `onExecutionStarted` 持久化权限处理后的最终输入和副作用等级；完成后才调用工具 generator，因此 durable 写失败不会放行副作用。
 5. `onToolSettled` 完成后才发布 `tool_result`。
 
 无效 JSON 参数和从未派发的 synthetic interruption result 不会进入 durable
 lifecycle，因为它们尚未形成可执行调用。未配置 lifecycle observer 时行为与
 普通工具执行一致。
+
+### 副作用契约
+
+每个 `ToolDefinition`、`ToolConfig` 和完整 `Tool` 都必须显式声明
+`sideEffect`：
+
+- `pure`：不改变外部状态，可以在恢复时重放。
+- `idempotent`：相同参数重复执行会达到相同目标状态，可以在恢复时重放。
+- `non_idempotent`：重复执行可能产生额外副作用，started 后必须人工或外部系统对账。
+
+`ToolKind`、`isReadOnly` 与 `sideEffect` 是不同维度，SDK 不会相互推断。参数相关
+工具可以用 `resolveBehavior()` 收窄契约，但静态声明必须采用最保守值。动态
+MCP 工具始终按 `non_idempotent` 处理；远端 annotations 只是 hint，不能单独
+作为自动重放的安全依据。
 
 ### 工具中断策略
 
@@ -373,6 +406,7 @@ lifecycle，因为它们尚未形成可执行调用。未配置 lifecycle observ
 ```ts
 const tool = createTool({
   // ...
+  sideEffect: ToolSideEffect.IDEMPOTENT,
   interruptBehavior: 'cancel',
   async *execute(params, context) {
     context.signal?.throwIfAborted();

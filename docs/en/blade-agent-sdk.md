@@ -61,6 +61,7 @@ const weather = defineTool({
   name: 'GetWeather',
   description: 'Get the current weather for a city',
   kind: ToolKind.ReadOnly,
+  sideEffect: 'pure',
   parameters: {
     type: 'object',
     properties: {

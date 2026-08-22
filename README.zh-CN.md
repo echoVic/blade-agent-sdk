@@ -96,12 +96,13 @@ for await (const event of session.stream()) {
 工具执行只使用 `AsyncGenerator<ToolYield, ToolResult>`：
 
 ```ts
-import { defineTool, ToolKind } from '@blade-ai/agent-sdk';
+import { defineTool, ToolKind, ToolSideEffect } from '@blade-ai/agent-sdk';
 
 const weather = defineTool({
   name: 'GetWeather',
   description: '查询城市天气',
   kind: ToolKind.ReadOnly,
+  sideEffect: ToolSideEffect.PURE,
   parameters: {
     type: 'object',
     properties: {

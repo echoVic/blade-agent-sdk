@@ -36,7 +36,7 @@ import {
 
 ```ts
 interface DurableEventEnvelope<TType extends DurableEventType> {
-  schemaVersion: 1;
+  schemaVersion: 2;
   eventId: EventId;
   sequence: EventSequence;
   sessionId: SessionId;
@@ -74,8 +74,8 @@ interface DurableEventEnvelope<TType extends DurableEventType> {
 | `turn_started` | `requestId`、`turnId` | `turn`、`model?` |
 | `turn_completed` | `requestId`、`turnId` | `turn`、`hasToolCalls` |
 | `turn_aborted` | `requestId`、`turnId` | `turn`、`reason` |
-| `tool_scheduled` | Request、Turn、`toolAttemptId` | `toolCallId`、`toolName`、`input`、`interruptBehavior` |
-| `tool_started` | Request、Turn、`toolAttemptId` | `toolCallId`、`toolName` |
+| `tool_scheduled` | Request、Turn、`toolAttemptId` | `toolCallId`、`toolName`、`input`、`sideEffect`、`interruptBehavior` |
+| `tool_started` | Request、Turn、`toolAttemptId` | 工具标识、最终 `input`、解析后的 `sideEffect` |
 | `tool_completed` | Request、Turn、`toolAttemptId` | 工具标识、`result` |
 | `tool_failed` | Request、Turn、`toolAttemptId` | 工具标识、`error` |
 | `tool_cancelled` | Request、Turn、`toolAttemptId` | 工具标识、`reason` |
@@ -250,14 +250,19 @@ const recovery = projector.recoveryPlan();
 |------|------|
 | `none` | 没有未完成工作 |
 | `resume_request` | Request 已接受但没有活动 Turn，可重新启动 |
-| `resume_turn` | 模型调用或尚未开始的工具可以从持久化边界继续 |
+| `resume_turn` | 模型调用、尚未开始的工具或可安全重放的 started tool 可以继续 |
 | `resolve_permissions` | 必须重新呈现或按策略处理未决权限 |
 | `reconcile_tool_outcomes` | 工具已开始但没有可靠终态，禁止自动重试 |
 
 Recovery plan 还分别返回 `retryableToolAttempts`、`cancelableToolAttempts`、
-`unknownToolAttempts` 和 `pendingPermissions`。`tool_outcome_unknown` 可以在外部
-对账后由 `tool_completed`、`tool_failed` 或 `tool_cancelled` 解析；在此之前
-投影器不会允许 Turn 结束。
+`unknownToolAttempts` 和 `pendingPermissions`。started 或
+`tool_outcome_unknown` 状态的 `pure` / `idempotent` 工具进入 retryable 集合；
+`non_idempotent` 工具进入 unknown 集合，必须在外部对账后由
+`tool_completed`、`tool_failed` 或 `tool_cancelled` 解析。在此之前投影器不会
+允许 Turn 结束。
+
+Schema v2 为 `tool_scheduled` 增加必填 `sideEffect`。v1 日志不会被静默推断，
+需要显式迁移后才能由当前 runtime 恢复。
 
 ## JSONL 持久化
 
