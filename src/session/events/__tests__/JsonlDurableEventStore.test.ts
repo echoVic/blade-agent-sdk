@@ -2,7 +2,15 @@ import { appendFile, mkdtemp, readFile, rm, stat } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { EventId, EventSequence, RequestId, SessionId, TurnId } from '../../../types/branded.js';
+import {
+  CommandId,
+  EventId,
+  EventSequence,
+  InputId,
+  RequestId,
+  SessionId,
+  TurnId,
+} from '../../../types/branded.js';
 import { DurableEventSequenceConflictError, DurableEventStoreError } from '../DurableEventStore.js';
 import { JsonlDurableEventStore } from '../JsonlDurableEventStore.js';
 import { DURABLE_EVENT_LOG_FORMAT } from '../schemas.js';
@@ -46,7 +54,12 @@ describe('JsonlDurableEventStore', () => {
         {
           type: DurableEventType.REQUEST_ACCEPTED,
           requestId: RequestId('request-1'),
-          data: { inputId: 'input-1', priority: 'next' },
+          commandId: CommandId('command-1'),
+          data: {
+            inputId: InputId('input-1'),
+            input: 'hello',
+            priority: 'next',
+          },
         },
         {
           type: DurableEventType.REQUEST_STARTED,
@@ -89,10 +102,20 @@ describe('JsonlDurableEventStore', () => {
 
   it('reads exclusive cursor pages without gaps', async () => {
     const sessionId = SessionId('session-pagination');
+    const requestId = RequestId('request-pagination');
     await store.append(sessionId, [
       { type: DurableEventType.SESSION_CREATED, data: {} },
-      { type: DurableEventType.REQUEST_ACCEPTED, data: {} },
-      { type: DurableEventType.REQUEST_STARTED, data: {} },
+      {
+        type: DurableEventType.REQUEST_ACCEPTED,
+        requestId,
+        commandId: CommandId('command-pagination'),
+        data: {
+          inputId: InputId('input-pagination'),
+          input: 'hello',
+          priority: 'next',
+        },
+      },
+      { type: DurableEventType.REQUEST_STARTED, requestId, data: {} },
     ]);
 
     const firstPage = await store.read(sessionId, { limit: 2 });
@@ -122,12 +145,26 @@ describe('JsonlDurableEventStore', () => {
     const results = await Promise.allSettled([
       competingStore.append(
         sessionId,
-        [{ type: DurableEventType.REQUEST_ACCEPTED, data: { writer: 'a' } }],
+        [
+          {
+            type: DurableEventType.REQUEST_ACCEPTED,
+            requestId: RequestId('request-a'),
+            commandId: CommandId('command-a'),
+            data: { inputId: InputId('input-a'), input: 'a', priority: 'next' },
+          },
+        ],
         { expectedLastSequence: EventSequence(1) },
       ),
       store.append(
         sessionId,
-        [{ type: DurableEventType.REQUEST_ACCEPTED, data: { writer: 'b' } }],
+        [
+          {
+            type: DurableEventType.REQUEST_ACCEPTED,
+            requestId: RequestId('request-b'),
+            commandId: CommandId('command-b'),
+            data: { inputId: InputId('input-b'), input: 'b', priority: 'next' },
+          },
+        ],
         { expectedLastSequence: EventSequence(1) },
       ),
     ]);
@@ -155,7 +192,18 @@ describe('JsonlDurableEventStore', () => {
     await duplicateStore.append(sessionId, [{ type: DurableEventType.SESSION_CREATED, data: {} }]);
 
     await expect(
-      duplicateStore.append(sessionId, [{ type: DurableEventType.REQUEST_ACCEPTED, data: {} }]),
+      duplicateStore.append(sessionId, [
+        {
+          type: DurableEventType.REQUEST_ACCEPTED,
+          requestId: RequestId('request-duplicate'),
+          commandId: CommandId('command-duplicate'),
+          data: {
+            inputId: InputId('input-duplicate'),
+            input: 'hello',
+            priority: 'next',
+          },
+        },
+      ]),
     ).rejects.toMatchObject({
       code: 'DURABLE_EVENT_INVALID_APPEND',
     });
@@ -174,9 +222,22 @@ describe('JsonlDurableEventStore', () => {
     });
     expect((await reopened.read(sessionId)).events).toHaveLength(1);
 
-    await reopened.append(sessionId, [{ type: DurableEventType.REQUEST_ACCEPTED, data: {} }], {
-      expectedLastSequence: EventSequence(1),
-    });
+    await reopened.append(
+      sessionId,
+      [
+        {
+          type: DurableEventType.REQUEST_ACCEPTED,
+          requestId: RequestId('request-after-crash'),
+          commandId: CommandId('command-after-crash'),
+          data: {
+            inputId: InputId('input-after-crash'),
+            input: 'hello',
+            priority: 'next',
+          },
+        },
+      ],
+      { expectedLastSequence: EventSequence(1) },
+    );
 
     expect((await reopened.read(sessionId)).events.map((event) => event.sequence)).toEqual([1, 2]);
     expect(await readFile(filePath, 'utf8')).not.toContain(
@@ -213,7 +274,13 @@ describe('JsonlDurableEventStore', () => {
             sequence: 3,
             sessionId,
             type: DurableEventType.REQUEST_ACCEPTED,
-            data: {},
+            commandId: 'command-gap',
+            requestId: 'request-gap',
+            data: {
+              inputId: 'input-gap',
+              input: 'hello',
+              priority: 'next',
+            },
             recordedAt: timestamp,
             occurredAt: timestamp,
           },
@@ -246,7 +313,7 @@ describe('JsonlDurableEventStore', () => {
           type: DurableEventType.REQUEST_ACCEPTED,
           data: { invalid: Number.POSITIVE_INFINITY },
         },
-      ]),
+      ] as never),
     ).rejects.toMatchObject({
       code: 'DURABLE_EVENT_INVALID_APPEND',
     });
@@ -271,10 +338,10 @@ describe('JsonlDurableEventStore', () => {
     const firstSession = SessionId('../../first/session');
     const secondSession = SessionId('second-session');
     await store.append(firstSession, [
-      { type: DurableEventType.SESSION_CREATED, data: { session: 'first' } },
+      { type: DurableEventType.SESSION_CREATED, data: { source: 'create' } },
     ]);
     await store.append(secondSession, [
-      { type: DurableEventType.SESSION_CREATED, data: { session: 'second' } },
+      { type: DurableEventType.SESSION_CREATED, data: { source: 'resume' } },
     ]);
 
     expect(resolve(dirname(store.getFilePath(firstSession)))).toBe(
@@ -282,10 +349,10 @@ describe('JsonlDurableEventStore', () => {
     );
     expect(store.getFilePath(firstSession)).not.toBe(store.getFilePath(secondSession));
     expect((await store.read(firstSession)).events[0]?.data).toEqual({
-      session: 'first',
+      source: 'create',
     });
     expect((await store.read(secondSession)).events[0]?.data).toEqual({
-      session: 'second',
+      source: 'resume',
     });
   });
 
@@ -293,14 +360,22 @@ describe('JsonlDurableEventStore', () => {
     const sessionId = SessionId('session-clones');
     const data = { nested: { value: 'original' } };
     const appended = await store.append(sessionId, [
-      { type: DurableEventType.SESSION_CREATED, data },
+      {
+        type: DurableEventType.REQUEST_COMPLETED,
+        requestId: RequestId('request-clones'),
+        data: { output: data },
+      },
     ]);
 
     data.nested.value = 'mutated-input';
-    (appended.events[0]?.data.nested as { value: string }).value = 'mutated-result';
+    const appendedEvent = appended.events[0];
+    if (appendedEvent?.type !== DurableEventType.REQUEST_COMPLETED) {
+      throw new Error('Expected request_completed event');
+    }
+    (appendedEvent.data.output as { nested: { value: string } }).nested.value = 'mutated-result';
 
     expect((await store.read(sessionId)).events[0]?.data).toEqual({
-      nested: { value: 'original' },
+      output: { nested: { value: 'original' } },
     });
   });
 

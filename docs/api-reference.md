@@ -86,7 +86,7 @@ Node-local 能力外，这些函数都从根入口导出；实际 subpath 以“
 | `PendingSessionInput` | 尚未应用的持久化输入 |
 | `InputId` / `RequestId` / `SessionId` | 输入、活动请求与会话的 branded identifiers |
 | `EventId` / `EventSequence` | durable event 标识与 Session 内单调序列 |
-| `CommandId` / `TurnId` / `ToolAttemptId` | durable command、turn 与工具尝试标识 |
+| `CommandId` / `TurnId` / `ToolAttemptId` / `PermissionRequestId` | durable command、turn、工具尝试与权限请求标识 |
 | `StreamOptions` | stream() 选项 |
 | `StreamMessage` | Session 流式消息联合类型 |
 | `PromptResult` | prompt() 返回结果 |
@@ -101,10 +101,24 @@ Node-local 能力外，这些函数都从根入口导出；实际 subpath 以“
 |------|------|
 | `DurableEventStore` | append/read/head 的持久化接口 |
 | `DurableEventEnvelope` / `DurableEventDraft` | 已提交事件与待提交事件 |
+| `DurableEventDataMap` / `DurableEventOfType` / `DurableEventError` / `DurableTokenUsage` | 事件类型到严格 payload 的映射、类型提取及公共 payload |
+| `DurableInputPriority` / `DurablePermissionDecision` | 输入优先级与权限结果 |
+| `DurableRequestInterruptReason` / `DurableTurnAbortReason` | Request 与 Turn 中断原因 |
+| `DurableToolInterruptBehavior` / `DurableToolCancelReason` / `DurableToolOutcomeUnknownReason` | 工具中断、取消及未知结果原因 |
+| `DurableSessionCloseReason` | Session 关闭原因 |
 | `DurableEventAppendOptions` / `DurableEventAppendResult` | compare-and-append 参数与结果 |
 | `DurableEventReadOptions` / `DurableEventPage` | cursor 分页读取参数与结果 |
-| `DurableEventType` | 首版生命周期事件名 |
+| `DurableEventType` / `isDurableEventType` | 生命周期事件名及运行时类型判断 |
+| `DurableSessionProjector` / `projectDurableSession` | 增量或一次性重建并校验 Session 生命周期 |
+| `planDurableSessionRecovery` / `DurableSessionRecoveryPlan` | 分类未完成 Request、Turn、Tool 与 Permission |
+| `DurableSessionProjection` / `DurableSessionProjectionStatus` | Session 当前 durable 状态 |
+| `DurableRequestProjection` / `DurableRequestStatus` | 活动 Request 状态 |
+| `DurableTurnProjection` / `DurableTurnStatus` | 活动 Turn 状态 |
+| `DurableToolAttemptProjection` / `DurableToolAttemptStatus` | 当前 Turn 的工具尝试状态 |
+| `DurablePermissionProjection` / `DurablePermissionStatus` | 工具权限状态 |
+| `DurableSessionRecoveryAction` | 恢复动作判别值 |
 | `DURABLE_EVENT_SCHEMA_VERSION` / `DURABLE_EVENT_LOG_FORMAT` | wire schema 与日志格式版本 |
+| `DurableEventProjectionError` | 生命周期事件顺序或关联关系非法 |
 | `DurableEventSequenceConflictError` | CAS 序列冲突错误 |
 | `DurableEventStoreError` / `DurableEventStoreErrorCode` | 参数、I/O 和日志损坏错误 |
 | `parseDurableEventDraft` / `parseDurableEventEnvelope` | 严格 schema 解析 |

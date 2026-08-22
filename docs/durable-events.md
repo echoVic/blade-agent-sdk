@@ -1,11 +1,13 @@
 # Durable Event Store
 
-Durable Event Store 是可恢复执行内核的第一阶段基础设施。它提供稳定的事件
-envelope、Session 内单调序列、compare-and-append 和 cursor 分页读取。
+Durable Event Store 是可恢复执行内核的基础设施。它提供稳定的事件 envelope、
+Session 内单调序列、compare-and-append、cursor 分页读取，以及确定性的
+Session 生命周期投影。
 
 ::: warning 当前集成阶段
-本阶段不会改变 `Session.send()`、`Session.stream()` 或现有 Session JSONL。
-调用方可以独立使用 Event Store；Session 生命周期事件将在后续阶段接入。
+当前不会改变 `Session.send()`、`Session.stream()` 或现有 Session JSONL。
+调用方可以独立使用 Event Store 和 recovery projector；Session 生命周期事件
+将在后续阶段接入。
 :::
 
 ## 安装与导入
@@ -16,10 +18,13 @@ adapter 从根入口或 `/local` 导入：
 ```ts
 import {
   CommandId,
+  type DurableEventDataMap,
+  DurableSessionProjector,
   DurableEventType,
   EventSequence,
   InputId,
   JsonlDurableEventStore,
+  PermissionRequestId,
   RequestId,
   SessionId,
 } from '@blade-ai/agent-sdk';
@@ -28,13 +33,13 @@ import {
 ## Event envelope
 
 ```ts
-interface DurableEventEnvelope {
+interface DurableEventEnvelope<TType extends DurableEventType> {
   schemaVersion: 1;
   eventId: EventId;
   sequence: EventSequence;
   sessionId: SessionId;
-  type: DurableEventType;
-  data: JsonObject;
+  type: TType;
+  data: DurableEventDataMap[TType];
   recordedAt: string;
   occurredAt: string;
   commandId?: CommandId;
@@ -51,17 +56,31 @@ interface DurableEventEnvelope {
 - `occurredAt` 是业务事件发生时间，未提供时等于 `recordedAt`。
 - 关联 ID 使用 branded types，防止不同 ID 被误用。
 
-首版保留了 Session、Request、Turn、Tool、Permission 和输入生命周期事件名。
-事件 payload 当前为严格 `JsonObject`；后续阶段会为各事件增加判别联合。
+每种事件都有独立的严格 payload，并与 envelope 中必需的关联 ID 组成
+`DurableEventDraft` / `DurableEventEnvelope` 判别联合。未知字段、缺失 scope ID、
+无效枚举和非有限数值都会在追加前被拒绝。
 
-| 范围 | 事件 |
-|------|------|
-| Session | `session_created`、`session_closed` |
-| Request | `request_accepted`、`request_started`、`request_completed`、`request_failed`、`request_interrupted` |
-| Turn | `turn_started`、`turn_completed`、`turn_aborted` |
-| Tool | `tool_scheduled`、`tool_started`、`tool_completed`、`tool_failed`、`tool_cancelled`、`tool_outcome_unknown` |
-| Permission | `permission_requested`、`permission_resolved` |
-| Input | `input_applied` |
+| 事件 | 必需 scope | 关键 payload |
+|------|-----------|--------------|
+| `session_created` | Session | `source?`、`parentSessionId?` |
+| `session_closed` | Session | `reason` |
+| `request_accepted` | `requestId`、`commandId` | `inputId`、`input`、`priority` |
+| `request_started` | `requestId` | 空对象 |
+| `request_completed` | `requestId` | `output?`、`usage?` |
+| `request_failed` | `requestId` | `error` |
+| `request_interrupted` | `requestId` | `reason`、`byInputId?` |
+| `turn_started` | `requestId`、`turnId` | `turn`、`model?` |
+| `turn_completed` | `requestId`、`turnId` | `turn`、`hasToolCalls` |
+| `turn_aborted` | `requestId`、`turnId` | `turn`、`reason` |
+| `tool_scheduled` | Request、Turn、`toolAttemptId` | `toolCallId`、`toolName`、`input`、`interruptBehavior` |
+| `tool_started` | Request、Turn、`toolAttemptId` | `toolCallId`、`toolName` |
+| `tool_completed` | Request、Turn、`toolAttemptId` | 工具标识、`result` |
+| `tool_failed` | Request、Turn、`toolAttemptId` | 工具标识、`error` |
+| `tool_cancelled` | Request、Turn、`toolAttemptId` | 工具标识、`reason` |
+| `tool_outcome_unknown` | Request、Turn、`toolAttemptId` | 工具标识、`reason` |
+| `permission_requested` | Request、Turn、`toolAttemptId` | `permissionRequestId`、工具标识、`input` |
+| `permission_resolved` | Request、Turn、`toolAttemptId` | `permissionRequestId`、`decision` |
+| `input_applied` | `requestId`、可选 `turnId` | `inputId`、`priority` |
 
 ## 追加事件
 
@@ -81,6 +100,7 @@ const result = await store.append(
       commandId,
       data: {
         inputId,
+        input: 'Run the deployment checks',
         priority: 'next',
       },
     },
@@ -141,6 +161,53 @@ console.log(page.hasMore);
 `after` 是 exclusive cursor。单页限制为 1 到 1000 条；cursor 超过当前 head
 会被拒绝，而不是静默返回空结果。
 
+## 状态投影与恢复分类
+
+`DurableSessionProjector` 可以逐页消费事件；`projectDurableSession()` 是一次性
+便利函数。投影器会重新执行所有生命周期约束，而不是信任调用方构造的类型：
+
+```ts
+const projector = new DurableSessionProjector();
+let after: EventSequence | undefined;
+
+do {
+  const page = await store.read(sessionId, { after, limit: 100 });
+  projector.apply(page.events);
+  after = page.nextCursor ?? undefined;
+  if (!page.hasMore) break;
+} while (true);
+
+const projection = projector.snapshot();
+const recovery = projector.recoveryPlan();
+```
+
+投影器 fail closed，至少验证：
+
+- 首条事件必须创建 Session，关闭后不能继续追加生命周期事件。
+- 一个 Session 同时只能有一个活动 Request，一个 Request 同时只能有一个活动 Turn。
+- Request、Turn、Tool Attempt、Permission Request、Command 和已应用 Input ID 不可复用。
+- Turn 编号必须连续；关联的 Session、Request、Turn 与 Tool 标识必须一致。
+- `tool_started` 前必须完成权限决策；未完成的工具会阻止 Turn 结束。
+- `causationEventId` 只能引用同一日志中已出现的事件。
+
+任一事件校验失败后 projector 实例会保持 failed 状态；调用方必须丢弃该实例，
+修复 canonical journal 后从头重新投影，不能跳过坏事件继续运行。
+
+`recoveryPlan()` 返回以下动作之一：
+
+| 动作 | 含义 |
+|------|------|
+| `none` | 没有未完成工作 |
+| `resume_request` | Request 已接受但没有活动 Turn，可重新启动 |
+| `resume_turn` | 模型调用或尚未开始的工具可以从持久化边界继续 |
+| `resolve_permissions` | 必须重新呈现或按策略处理未决权限 |
+| `reconcile_tool_outcomes` | 工具已开始但没有可靠终态，禁止自动重试 |
+
+Recovery plan 还分别返回 `retryableToolAttempts`、`cancelableToolAttempts`、
+`unknownToolAttempts` 和 `pendingPermissions`。`tool_outcome_unknown` 可以在外部
+对账后由 `tool_completed`、`tool_failed` 或 `tool_cancelled` 解析；在此之前
+投影器不会允许 Turn 结束。
+
 ## JSONL 持久化
 
 文件位于：
@@ -169,7 +236,7 @@ console.log(page.hasMore);
 
 `DURABLE_EVENT_WRITE_FAILED` 不代表 batch 一定没有写入：底层写入成功但
 `fsync` 失败时，提交结果可能未知。调用方重试前必须重新读取 head，并通过
-`commandId` 等关联字段核对结果。第一阶段尚不提供 command 自动去重。
+`commandId` 等关联字段核对结果。当前 Store 尚不提供 command 自动去重。
 
 Store 不持久化 token delta、工具 progress 等高频 UI 事件。只有会影响恢复
 决策的 domain event 应进入 durable journal。
@@ -178,6 +245,7 @@ Store 不持久化 token delta、工具 progress 等高频 UI 事件。只有会
 
 | 错误 | 说明 |
 |------|------|
+| `DurableEventProjectionError` | schema、事件顺序或关联关系不满足生命周期约束 |
 | `DurableEventSequenceConflictError` | compare-and-append 前置条件失败 |
 | `DurableEventStoreError` | 参数、cursor、读写或日志完整性错误 |
 
