@@ -11,7 +11,7 @@ import {
 } from '../runtime/index.js';
 import type { ContentPart, Message } from '../services/ChatServiceInterface.js';
 import { cloneMessage } from '../services/messageUtils.js';
-import { SessionId } from '../types/branded.js';
+import { RequestId, SessionId } from '../types/branded.js';
 import {
   type BladeConfig,
   type JsonValue,
@@ -41,20 +41,32 @@ import type {
   TokenUsage,
   ToolCallRecord,
 } from './types.js';
+import { ActiveRequestController } from './ActiveRequestController.js';
 
 export interface ResumeOptions extends SessionOptions {
   sessionId: SessionId;
 }
 
-type RequestPhase =
+type SessionExecutionState =
   | { phase: 'idle' }
   | {
       phase: 'pending';
+      requestId: RequestId;
       message: UserMessageContent;
       options: SendOptions | null;
       snapshot: ContextSnapshot;
     }
-  | { phase: 'streaming'; abortController: AbortController };
+  | {
+      phase: 'running';
+      requestId: RequestId;
+      controller: ActiveRequestController;
+    }
+  | {
+      phase: 'stopping';
+      requestId: RequestId;
+      controller: ActiveRequestController;
+    }
+  | { phase: 'closed' };
 
 class Session implements ISession {
   readonly sessionId: SessionId;
@@ -71,7 +83,6 @@ class Session implements ISession {
   private permissionMode: PermissionMode;
   private defaultContext: RuntimeContext;
   private initialized = false;
-  private closed = false;
   private cleanupHandle: CleanupHandle | null = null;
   private readonly traces: AgentTrace[] = [];
 
@@ -79,11 +90,13 @@ class Session implements ISession {
    * 请求阶段状态机：
    * - idle: 无待处理请求
    * - pending: send() 已调用，等待 stream() 消费
-   * - streaming: stream() 正在执行，持有 abortController
+   * - running: stream() 正在执行
+   * - stopping: 已请求中止，等待 stream() 完成清理
+   * - closed: 会话已关闭
    *
    * 防止在 streaming 期间再次调用 send() 产生并发 generator 竞态。
    */
-  private requestPhase: RequestPhase = { phase: 'idle' };
+  private executionState: SessionExecutionState = { phase: 'idle' };
 
   constructor(options: SessionOptions, sessionId?: SessionId, isResume = false) {
     this.sessionId = sessionId || SessionId(nanoid());
@@ -106,7 +119,7 @@ class Session implements ISession {
   }
 
   get isClosed(): boolean {
-    return this.closed;
+    return this.executionState.phase === 'closed';
   }
 
   getDefaultContext(): RuntimeContext {
@@ -126,6 +139,9 @@ class Session implements ISession {
   }
 
   async initialize(): Promise<void> {
+    if (this.executionState.phase === 'closed') {
+      throw new Error('Session is closed');
+    }
     if (this.initialized) return;
 
     const config = this.buildBladeConfig();
@@ -256,16 +272,18 @@ class Session implements ISession {
   async send(message: UserMessageContent, options?: SendOptions): Promise<void> {
     await this.ensureInitialized();
 
-    if (this.requestPhase.phase !== 'idle') {
+    if (this.executionState.phase !== 'idle') {
       throw new Error(
-        this.requestPhase.phase === 'streaming'
+        this.executionState.phase === 'running'
+          || this.executionState.phase === 'stopping'
           ? 'Cannot send a new message while a previous stream() is active. Drain or abort it first.'
           : 'Cannot send a new message while a previous message is pending. Call stream() first.',
       );
     }
 
-    this.requestPhase = {
+    this.executionState = {
       phase: 'pending',
+      requestId: RequestId(nanoid()),
       message,
       options: options || null,
       snapshot: createContextSnapshot(
@@ -281,14 +299,26 @@ class Session implements ISession {
     await this.ensureInitialized();
     const runtime = this.getRuntime();
 
-    if (this.requestPhase.phase !== 'pending') {
+    if (this.executionState.phase !== 'pending') {
       throw new Error('No pending message. Call send() before stream().');
     }
 
-    const { message: initialMessage, options: sendOptions, snapshot: pendingSnapshot } = this.requestPhase;
+    const {
+      requestId,
+      message: initialMessage,
+      options: sendOptions,
+      snapshot: pendingSnapshot,
+    } = this.executionState;
 
-    const abortController = new AbortController();
-    this.requestPhase = { phase: 'streaming', abortController };
+    const requestController = new ActiveRequestController(
+      requestId,
+      sendOptions?.signal,
+    );
+    this.executionState = {
+      phase: 'running',
+      requestId,
+      controller: requestController,
+    };
 
     let message = initialMessage;
     const traceRecorder = this.createTraceRecorder(message);
@@ -323,15 +353,7 @@ class Session implements ISession {
       maxContextTokens: 0,
     };
 
-    let signalCleanup: (() => void) | undefined;
-    let signal: AbortSignal;
-    if (sendOptions?.signal) {
-      const combined = this.combineSignals(sendOptions.signal, abortController.signal);
-      signal = combined.signal;
-      signalCleanup = combined.cleanup;
-    } else {
-      signal = abortController.signal;
-    }
+    const signal = requestController.requestSignal;
 
     const snapshot =
       pendingSnapshot ??
@@ -627,20 +649,24 @@ class Session implements ISession {
       yield { type: 'error', message: errorMessage, sessionId: this.sessionId };
     } finally {
       runtime.getHookRuntime().setTraceCollector(undefined);
-      signalCleanup?.();
-      this.requestPhase = { phase: 'idle' };
+      requestController.dispose();
+      this.finishRequest(requestId);
     }
   }
 
   async close(): Promise<void> {
-    if (this.closed) {
+    if (this.executionState.phase === 'closed') {
       return;
     }
-    this.closed = true;
+    if (
+      this.executionState.phase === 'running'
+      || this.executionState.phase === 'stopping'
+    ) {
+      this.executionState.controller.abortRequest({ kind: 'session_close' });
+    }
+    this.executionState = { phase: 'closed' };
     this.cleanupHandle?.unregister();
     this.cleanupHandle = null;
-    this.abort();
-    this.requestPhase = { phase: 'idle' };
     this.agent = null;
     this.initialized = false;
     const runtime = this.runtime;
@@ -656,9 +682,14 @@ class Session implements ISession {
   }
 
   abort(): void {
-    if (this.requestPhase.phase === 'streaming') {
-      this.requestPhase.abortController.abort();
-      this.requestPhase = { phase: 'idle' };
+    if (this.executionState.phase === 'running') {
+      const { requestId, controller } = this.executionState;
+      controller.abortRequest({ kind: 'user_abort' });
+      this.executionState = {
+        phase: 'stopping',
+        requestId,
+        controller,
+      };
     }
   }
 
@@ -720,7 +751,7 @@ class Session implements ISession {
   }
 
   private async ensureInitialized(): Promise<void> {
-    if (this.closed) {
+    if (this.executionState.phase === 'closed') {
       throw new Error('Session is closed');
     }
     if (!this.initialized) {
@@ -742,31 +773,14 @@ class Session implements ISession {
     return this.runtime;
   }
 
-  private combineSignals(
-    signal1: AbortSignal,
-    signal2: AbortSignal,
-  ): { signal: AbortSignal; cleanup: () => void } {
-    const controller = new AbortController();
-
-    if (signal1.aborted || signal2.aborted) {
-      controller.abort();
-      return { signal: controller.signal, cleanup: () => {} };
+  private finishRequest(requestId: RequestId): void {
+    if (
+      (this.executionState.phase === 'running'
+        || this.executionState.phase === 'stopping')
+      && this.executionState.requestId === requestId
+    ) {
+      this.executionState = { phase: 'idle' };
     }
-
-    const cleanup = () => {
-      signal1.removeEventListener('abort', onAbort);
-      signal2.removeEventListener('abort', onAbort);
-    };
-
-    const onAbort = () => {
-      cleanup();
-      controller.abort();
-    };
-
-    signal1.addEventListener('abort', onAbort);
-    signal2.addEventListener('abort', onAbort);
-
-    return { signal: controller.signal, cleanup };
   }
 
   private safeParseJson(str: string): JsonValue {

@@ -398,4 +398,61 @@ describe('Session runtime context', () => {
 
     await session.close();
   });
+
+  it('does not accept a new request until an aborted stream finishes cleanup', async () => {
+    createAgent.mockResolvedValueOnce({
+      async *streamChat(
+        _message: unknown,
+        context: { signal?: AbortSignal },
+      ): AsyncGenerator<unknown, unknown, unknown> {
+        yield { type: 'turn_start', turn: 1 };
+        await new Promise<void>((resolve) => {
+          if (context.signal?.aborted) {
+            resolve();
+            return;
+          }
+          context.signal?.addEventListener('abort', () => resolve(), { once: true });
+        });
+        await new Promise((resolve) => setTimeout(resolve, 0));
+        return {
+          success: false,
+          error: {
+            type: 'aborted',
+            message: 'aborted',
+          },
+          metadata: {
+            turnsCount: 0,
+            toolCallsCount: 0,
+            duration: 0,
+          },
+        };
+      },
+      async setModel() {},
+    } as never);
+
+    const session = await createSession({
+      provider: { type: 'openai-compatible', apiKey: 'test-key' },
+      model: 'gpt-4o-mini',
+      persistSession: false,
+    });
+    await session.send('first');
+
+    const stream = session.stream();
+    await expect(stream.next()).resolves.toMatchObject({
+      value: { type: 'turn_start' },
+      done: false,
+    });
+
+    session.abort();
+    await expect(session.send('second')).rejects.toThrow(
+      'Cannot send a new message while a previous stream() is active',
+    );
+
+    while (!(await stream.next()).done) {
+      // Drain the aborted request so its cleanup can complete.
+    }
+
+    await expect(session.send('second')).resolves.toBeUndefined();
+    await session.close();
+  });
 });
