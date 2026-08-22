@@ -259,12 +259,15 @@ const session = await createSession({
 });
 ```
 
-When enabled, Session records Session, Request, Turn, Tool, Permission, and
-input-application events with these ordering guarantees:
+When enabled, Session records Session, Request, Turn, Model Attempt, Tool,
+Permission, and input-application events with these ordering guarantees:
 
 - `request_accepted` commits before `send()` returns.
 - A steering input's `input_applied` commits before its hooks and attachment preparation.
 - Turn and tool scheduling events commit before `turn_start` or `tool_use` is published.
+- `model_request_started` commits before the provider call. The call then
+  settles as `model_request_completed`, `model_request_failed`, or
+  `model_request_aborted`.
 - `tool_started` commits before the tool side effect can run.
 - A standalone Request terminal event links to the latest persisted Request
   boundary through `causationEventId`.
@@ -289,8 +292,11 @@ but has no `request_started` event. It preserves the `requestId`, input,
 calling `stream()` directly. Legacy durable Requests without a complete
 execution snapshot are not resumed automatically.
 
-A started Request, active Turn, pending permission, or unknown tool outcome is
-never replayed speculatively and raises `DurableSessionRecoveryRequiredError`.
+A started Request, active Turn, pending permission, unknown model outcome, or
+unknown tool outcome is never replayed speculatively and raises
+`DurableSessionRecoveryRequiredError`. An active `model_request_started`
+produces `reconcile_model_outcome`; inspect provider or application records and
+commit the confirmed result through `reconcileModelOutcome()` before rollover.
 When input preparation is ambiguous before the first or a subsequent Turn, call
 `prepareRequestRecovery()` with the reconciled final input, exact
 `appliedInputIds`, and observed `sourceLastTurn` to atomically roll the old

@@ -8,9 +8,9 @@ Session 生命周期投影。
 Session 只有在显式设置 `SessionOptions.durableEventStore` 时才写入 durable
 事件；现有消息 JSONL 保持不变。`resumeSession()` 会自动恢复已接受但尚未跨过
 `request_started` 边界的 Request。已开始但尚无 Turn 的 Request，以及活动
-Turn，必须先通过 Recovery Coordinator 原子 rollover；待决权限、未知工具结果
-和已完成 Turn 的 Request 仍需显式消解。`non_idempotent` 工具绝不会被自动
-重放。
+Turn，必须先通过 Recovery Coordinator 原子 rollover；待决权限、未知工具结果、
+未知模型结果和已完成 Turn 的 Request 仍需显式消解。`non_idempotent`
+工具和结果未知的模型调用绝不会被自动重放。
 :::
 
 ## 安装与导入
@@ -30,6 +30,7 @@ import {
   EventSequence,
   InputId,
   JsonlDurableEventStore,
+  ModelAttemptId,
   PermissionRequestId,
   RequestId,
   SessionId,
@@ -42,7 +43,7 @@ import {
 
 ```ts
 interface DurableEventEnvelope<TType extends DurableEventType> {
-  schemaVersion: 2;
+  schemaVersion: 2 | 3;
   eventId: EventId;
   sequence: EventSequence;
   sessionId: SessionId;
@@ -53,6 +54,7 @@ interface DurableEventEnvelope<TType extends DurableEventType> {
   commandId?: CommandId;
   requestId?: RequestId;
   turnId?: TurnId;
+  modelAttemptId?: ModelAttemptId;
   toolAttemptId?: ToolAttemptId;
   causationEventId?: EventId;
 }
@@ -80,6 +82,10 @@ interface DurableEventEnvelope<TType extends DurableEventType> {
 | `turn_started` | `requestId`、`turnId` | `turn`、`model?` |
 | `turn_completed` | `requestId`、`turnId` | `turn`、`hasToolCalls` |
 | `turn_aborted` | `requestId`、`turnId` | `turn`、`reason` |
+| `model_request_started` | Request、Turn、`modelAttemptId` | `model`、`streaming` |
+| `model_request_completed` | Request、Turn、`modelAttemptId` | 完整模型 `response` |
+| `model_request_failed` | Request、Turn、`modelAttemptId` | `error` |
+| `model_request_aborted` | Request、Turn、`modelAttemptId` | `reason` |
 | `tool_scheduled` | Request、Turn、`toolAttemptId` | `toolCallId`、`toolName`、`input`、`sideEffect`、`interruptBehavior` |
 | `tool_started` | Request、Turn、`toolAttemptId` | 工具标识、最终 `input`、解析后的 `sideEffect` |
 | `tool_completed` | Request、Turn、`toolAttemptId` | 工具标识、`result` |
@@ -93,7 +99,8 @@ interface DurableEventEnvelope<TType extends DurableEventType> {
 `request_accepted.recovery` 始终使用 v2 的
 `{ requestId, turnId, turn }` wire shape。首个 Turn 前的 Request rollover 会
 在同一 command 中写入一个 synthetic Turn 作为 provenance；projector 通过
-`recoveryKind: 'pre_turn_request'` 暴露该语义，而不修改持久化 schema。
+`recoveryKind: 'pre_turn_request'` 暴露该语义，而不扩展持久化的 recovery
+字段。
 
 ## 追加事件
 
@@ -317,18 +324,29 @@ Store 的写入方必须自行遵守同一契约。
 | `none` | 没有未完成工作 |
 | `resume_request` | Request 已接受且未开始，可恢复同一 Request |
 | `rollover_request` | Request 已开始但首个 Turn 尚未开始，可安全转成新 Request |
-| `resume_turn` | 模型调用、尚未开始的工具或可安全重放的 started tool 可以继续 |
+| `resume_turn` | Turn 尚未调用模型，或模型结果已知且工具可安全继续 |
 | `resolve_permissions` | 必须重新呈现或按策略处理未决权限 |
 | `reconcile_tool_outcomes` | 工具已开始但没有可靠终态，禁止自动重试 |
+| `reconcile_model_outcome` | 模型请求已开始但没有可靠终态，必须先向 provider 或业务记录对账 |
 | `reconcile_request_inputs` | 首个 Turn 前的已应用输入集合不明确，必须显式对账 |
 | `reconcile_request_outcome` | Turn 已结束但 Request 没有终态，必须先确认最终结果 |
 
-Recovery plan 还分别返回 `retryableToolAttempts`、`cancelableToolAttempts`、
-`unknownToolAttempts` 和 `pendingPermissions`。started 或
+Recovery plan 还返回 `activeModelAttempt`，并分别返回
+`retryableToolAttempts`、`cancelableToolAttempts`、`unknownToolAttempts` 和
+`pendingPermissions`。started 或
 `tool_outcome_unknown` 状态的 `pure` / `idempotent` 工具进入 retryable 集合；
 `non_idempotent` 工具进入 unknown 集合，必须在外部对账后由
 `tool_completed`、`tool_failed` 或 `tool_cancelled` 解析。在此之前投影器不会
 允许 Turn 结束。
+
+模型调用使用独立的 `ModelAttemptId`。Session 在调用 provider 前提交
+`model_request_started`，并在调用返回后提交 `model_request_completed`、
+`model_request_failed` 或 `model_request_aborted`。活动 model attempt 会阻止
+Turn 结束；进程崩溃留下 started attempt 时，plan 返回
+`reconcile_model_outcome`，不会把可能已经计费或完成的调用当作从未发生。
+一次 model attempt 表示包含内部 HTTP 重试的一次逻辑模型调用；反应式压缩后的
+重新调用会创建新的 attempt。高频 token delta 仍是临时流，完整响应在任何后续
+Turn 终态前持久化。
 
 ## Recovery Coordinator
 
@@ -355,6 +373,35 @@ await coordinator.reconcileToolOutcome({
   },
 });
 ```
+
+对结果未知的模型调用，必须查询 provider request 日志或上层业务记录后显式
+对账。命令同时绑定 Request、Turn 和 Model Attempt，且通过 Journal CAS
+拒绝 stale decision：
+
+```ts
+await coordinator.reconcileModelOutcome({
+  commandId: CommandId('reconcile-model-42'),
+  requestId: RequestId('request-42'),
+  turnId: TurnId('turn-42'),
+  modelAttemptId: ModelAttemptId('model-attempt-42'),
+  outcome: {
+    status: 'completed',
+    response: {
+      content: 'Inspected result',
+      usage: {
+        promptTokens: 120,
+        completionTokens: 30,
+        totalTokens: 150,
+      },
+    },
+  },
+});
+```
+
+也可以确认 `failed` 或 `aborted`。对账后的 Turn 才能进入
+`prepareTurnRecovery()`；continuation 会携带有界的已确认模型响应和所有工具
+结果，因此不会把未知 provider 调用静默重发。重试同一操作必须复用原
+`commandId`。
 
 `reconcileToolOutcome()` 只允许 projector 当前仍可解析的 Tool Attempt，并复用
 Journal 的 command 幂等和 CAS 语义。`completed`、`failed` 与 `cancelled`
@@ -508,8 +555,11 @@ provenance 还要求前置 synthetic `turn_started`。`requestId` 和 `turnId` �
 `DURABLE_RECOVERY_UNSAFE_ROLLOVER`，必须保持 fail-closed；该 API 不使用提示词
 绕过未知副作用。
 
-Schema v2 为 `tool_scheduled` 增加必填 `sideEffect`。v1 日志不会被静默推断，
-需要显式迁移后才能由当前 runtime 恢复。
+当前 writer 使用 schema v3，并为模型调用增加 `modelAttemptId` 及完整生命周期
+事件。Reader 可继续读取 schema v2 日志，并允许在同一 Session 后续追加 v3
+batch；schema 版本只能单调升级，不能在 v3 后降回 v2，且 v2 batch 不允许伪装
+包含 v3 模型事件。Schema v1 不会被静默推断，需要显式迁移后才能由当前 runtime
+恢复。
 
 ## JSONL 持久化
 
@@ -530,8 +580,8 @@ Schema v2 为 `tool_scheduled` 增加必填 `sideEffect`。v1 日志不会被静
 4. 调用文件 `fsync` 后才返回成功。
 
 事件文件使用 `0600` 权限，Session ID 经过 base64url 编码，不会成为文件路径。
-事件会保存原始请求输入、工具输入和模型侧工具结果；调用方必须将 Store 视为
-敏感数据存储，并自行配置加密、保留期限和访问控制。
+事件会保存原始请求输入、完整模型响应、工具输入和模型侧工具结果；调用方必须将
+Store 视为敏感数据存储，并自行配置加密、保留期限和访问控制。
 
 ## 一致性边界
 
