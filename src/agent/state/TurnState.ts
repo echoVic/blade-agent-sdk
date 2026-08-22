@@ -3,7 +3,10 @@ import type { ContextSnapshot } from '../../runtime/index.js';
 import type { IChatService, Message } from '../../services/ChatServiceInterface.js';
 import type { ToolCatalog } from '../../tools/catalog/index.js';
 import type { ToolRegistry } from '../../tools/registry/ToolRegistry.js';
-import type { ConfirmationHandler } from '../../tools/types/ExecutionTypes.js';
+import type {
+  ConfirmationHandler,
+  ToolExecutionLifecycle,
+} from '../../tools/types/ExecutionTypes.js';
 import type { SessionId } from '../../types/branded.js';
 import type { BladeConfig, PermissionMode } from '../../types/common.js';
 import type { IBackgroundAgentManager } from '../types.js';
@@ -34,6 +37,7 @@ export interface LoopExecutionContext {
   toolRegistry?: ToolRegistry;
   toolCatalog?: ToolCatalog;
   discoveredTools?: string[];
+  lifecycle?: ToolExecutionLifecycle;
 }
 
 export interface TurnState {
