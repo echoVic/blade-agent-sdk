@@ -97,4 +97,31 @@ describe('SessionRuntime subagents', () => {
     expect(descriptionB).not.toContain('session-auditor');
     expect(descriptionB).not.toContain('verification');
   });
+
+  it('keeps builtin and explicit session agents available without a workspace', async () => {
+    const runtime = new SessionRuntime(
+      SessionId('session-without-workspace'),
+      createOptions({
+        agents: {
+          assistant: {
+            name: 'assistant',
+            description: 'Handle non-coding requests',
+          },
+        },
+      }),
+      {
+        models: [],
+      },
+      PermissionMode.DEFAULT,
+      {},
+      NOOP_LOGGER,
+    );
+    runtimes.push(runtime);
+
+    await runtime.initialize();
+
+    const description = getTaskDescription(runtime);
+    expect(description).toContain('general-purpose');
+    expect(description).toContain('assistant');
+  });
 });

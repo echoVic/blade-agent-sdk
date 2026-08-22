@@ -1,4 +1,5 @@
-import { describe, expect, it } from 'vitest';
+import { join } from 'node:path';
+import { describe, expect, it, vi } from 'vitest';
 import { SubagentRegistry } from '../SubagentRegistry.js';
 
 describe('SubagentRegistry', () => {
@@ -31,5 +32,34 @@ describe('SubagentRegistry', () => {
       description: 'Session-specific planner',
       source: 'session',
     });
+  });
+
+  it('does not scan local agent directories without a workspace', () => {
+    const registry = new SubagentRegistry();
+    const loadFromDirectory = vi.spyOn(registry, 'loadFromDirectory');
+
+    const count = registry.loadFromStandardLocations(undefined, '/storage');
+
+    expect(count).toBe(3);
+    expect(registry.getAllNames()).toEqual([
+      'general-purpose',
+      'Explore',
+      'Plan',
+    ]);
+    expect(loadFromDirectory).not.toHaveBeenCalled();
+  });
+
+  it('scans user and project agent directories when a workspace exists', () => {
+    const registry = new SubagentRegistry();
+    const loadFromDirectory = vi
+      .spyOn(registry, 'loadFromDirectory')
+      .mockImplementation(() => {});
+
+    registry.loadFromStandardLocations('/workspace', '/storage');
+
+    expect(loadFromDirectory.mock.calls).toEqual([
+      [join('/storage', 'agents'), 'user'],
+      [join('/workspace', 'agents'), 'project'],
+    ]);
   });
 });
