@@ -2,6 +2,12 @@
 
 All notable changes to `@blade-ai/agent-sdk` are documented here.
 
+## [3.1.2] - 2026-08-22
+
+### Fixes
+
+- Allow Session custom tools to accept complete `Tool` instances from `createTool()` and the Memory tool helpers.
+
 ## [3.1.1] - 2026-08-22
 
 ### Fixes

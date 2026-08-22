@@ -1,5 +1,0 @@
-{
-  "type": "fix",
-  "en": "Allow Session custom tools to accept complete `Tool` instances from `createTool()` and the Memory tool helpers.",
-  "zh-CN": "允许 Session 自定义工具直接接收 `createTool()` 和 Memory helper 返回的完整 `Tool` 实例。"
-}
