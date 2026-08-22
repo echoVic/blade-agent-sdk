@@ -1,13 +1,16 @@
 # Durable Event Store
 
-Durable Event Store is the first foundation for a recoverable execution
-runtime. It provides a stable event envelope, monotonic per-Session sequences,
-compare-and-append, and cursor-based reads.
+Durable Event Store is the foundation for a recoverable execution runtime. It
+provides a stable event envelope, monotonic per-Session sequences,
+compare-and-append, cursor-based reads, and deterministic Session lifecycle
+projection.
 
 ::: warning Integration status
-This phase does not change `Session.send()`, `Session.stream()`, or the existing
-Session JSONL format. Applications can use the Event Store directly; Session
-lifecycle events will be connected in a later phase.
+Session writes durable events only when
+`SessionOptions.durableEventStore` is explicitly set; the existing message JSONL
+format is unchanged. Automatic recovery of an active Request is not enabled.
+`resumeSession()` throws `DurableSessionRecoveryRequiredError` for unfinished
+work instead of replaying a started tool.
 :::
 
 ## Imports
@@ -18,10 +21,14 @@ entry. The Node.js JSONL adapter is available from root and `/local`:
 ```ts
 import {
   CommandId,
+  type DurableEventDataMap,
+  DurableSessionProjector,
+  DurableSessionJournal,
   DurableEventType,
   EventSequence,
   InputId,
   JsonlDurableEventStore,
+  PermissionRequestId,
   RequestId,
   SessionId,
 } from '@blade-ai/agent-sdk';
@@ -30,13 +37,13 @@ import {
 ## Event envelope
 
 ```ts
-interface DurableEventEnvelope {
+interface DurableEventEnvelope<TType extends DurableEventType> {
   schemaVersion: 1;
   eventId: EventId;
   sequence: EventSequence;
   sessionId: SessionId;
-  type: DurableEventType;
-  data: JsonObject;
+  type: TType;
+  data: DurableEventDataMap[TType];
   recordedAt: string;
   occurredAt: string;
   commandId?: CommandId;
@@ -53,18 +60,32 @@ interface DurableEventEnvelope {
 - `occurredAt` is the domain occurrence time and defaults to `recordedAt`.
 - Correlation fields use branded IDs to prevent accidental ID mixing.
 
-Version 1 reserves Session, Request, Turn, Tool, Permission, and input lifecycle
-event names. Payloads are strict `JsonObject` values; later phases will add
-per-event discriminated payload types.
+Each event has a dedicated strict payload. Its required envelope correlation IDs
+form the `DurableEventDraft` and `DurableEventEnvelope` discriminated unions.
+Unknown fields, missing scope IDs, invalid enum values, and non-finite numbers
+are rejected before append.
 
-| Scope | Events |
-|-------|--------|
-| Session | `session_created`, `session_closed` |
-| Request | `request_accepted`, `request_started`, `request_completed`, `request_failed`, `request_interrupted` |
-| Turn | `turn_started`, `turn_completed`, `turn_aborted` |
-| Tool | `tool_scheduled`, `tool_started`, `tool_completed`, `tool_failed`, `tool_cancelled`, `tool_outcome_unknown` |
-| Permission | `permission_requested`, `permission_resolved` |
-| Input | `input_applied` |
+| Event | Required scope | Key payload |
+|-------|----------------|-------------|
+| `session_created` | Session | `source?`, `parentSessionId?` |
+| `session_closed` | Session | `reason` |
+| `request_accepted` | `requestId`, `commandId` | `inputId`, `input`, `priority` |
+| `request_started` | `requestId` | Empty object |
+| `request_completed` | `requestId` | `output?`, `usage?` |
+| `request_failed` | `requestId` | `error` |
+| `request_interrupted` | `requestId` | `reason`, `byInputId?` |
+| `turn_started` | `requestId`, `turnId` | `turn`, `model?` |
+| `turn_completed` | `requestId`, `turnId` | `turn`, `hasToolCalls` |
+| `turn_aborted` | `requestId`, `turnId` | `turn`, `reason` |
+| `tool_scheduled` | Request, Turn, `toolAttemptId` | `toolCallId`, `toolName`, `input`, `interruptBehavior` |
+| `tool_started` | Request, Turn, `toolAttemptId` | `toolCallId`, `toolName` |
+| `tool_completed` | Request, Turn, `toolAttemptId` | Tool identity, `result` |
+| `tool_failed` | Request, Turn, `toolAttemptId` | Tool identity, `error` |
+| `tool_cancelled` | Request, Turn, `toolAttemptId` | Tool identity, `reason` |
+| `tool_outcome_unknown` | Request, Turn, `toolAttemptId` | Tool identity, `reason` |
+| `permission_requested` | Request, Turn, `toolAttemptId` | `permissionRequestId`, tool identity, `input` |
+| `permission_resolved` | Request, Turn, `toolAttemptId` | `permissionRequestId`, `decision` |
+| `input_applied` | `requestId`, optional `turnId` | `inputId`, `priority` |
 
 ## Append events
 
@@ -79,11 +100,16 @@ const result = await store.append(
   sessionId,
   [
     {
+      type: DurableEventType.SESSION_CREATED,
+      data: { source: 'create' },
+    },
+    {
       type: DurableEventType.REQUEST_ACCEPTED,
       requestId,
       commandId,
       data: {
         inputId,
+        input: 'Run the deployment checks',
         priority: 'next',
       },
     },
@@ -99,7 +125,7 @@ const result = await store.append(
 );
 
 console.log(result.previousSequence); // null
-console.log(result.lastSequence);     // 2
+console.log(result.lastSequence);     // 3
 ```
 
 One `append()` call is stored as one batch. The Store validates every draft and
@@ -124,6 +150,53 @@ await store.append(sessionId, events, {
 });
 ```
 
+## Command journal
+
+Production code should commit lifecycle events through `DurableSessionJournal`.
+The Journal adds these guarantees above the Store:
+
+- serialized commits within each instance;
+- lifecycle transition preview before persistence;
+- one caller-provided `commandId` stamped onto every event;
+- bounded refresh and retry after explicit CAS conflicts;
+- idempotent replay of an identical command;
+- read-after-failure reconciliation after `DURABLE_EVENT_WRITE_FAILED`.
+
+```ts
+const journal = await DurableSessionJournal.open(store, sessionId);
+
+const committed = await journal.commit({
+  commandId: CommandId('create-session-123'),
+  events: [
+    {
+      type: DurableEventType.SESSION_CREATED,
+      data: { source: 'create' },
+    },
+  ],
+});
+
+console.log(committed.status); // committed | replayed | reconciled
+console.log(journal.getProjection().status); // open
+```
+
+Submitting the same `commandId` and identical events returns `replayed` without
+appending another copy. Reusing the command ID with different content throws
+`DurableCommandConflictError`. A command's events must be contiguous in the
+journal; the same ID appearing in separate ranges is also a conflict.
+
+After a lower-level write error, the Journal reloads the canonical log:
+
+- A complete matching command returns `reconciled`.
+- A missing command or failed reload throws
+  `DurableCommandOutcomeUnknownError` without an automatic retry.
+
+The latter case requires reconciliation by the caller or a higher-level recovery
+coordinator. An automatic retry could duplicate a write that succeeded but is
+not yet visible. The Journal records `getUncertainCommandId()` in memory and
+rejects different commands; submitting the same command can only trigger another
+read reconciliation. `maxConflictRetries` applies only to explicit
+compare-and-append conflicts, not unknown outcomes.
+
 ## Cursor reads
 
 ```ts
@@ -143,6 +216,55 @@ console.log(page.hasMore);
 
 `after` is exclusive. Page size must be between 1 and 1000. A cursor ahead of
 the current head is rejected rather than silently returning an empty page.
+
+## State projection and recovery classification
+
+`DurableSessionProjector` consumes events page by page.
+`projectDurableSession()` is the one-shot convenience function. The projector
+rechecks every lifecycle invariant instead of trusting compile-time types:
+
+```ts
+const projector = new DurableSessionProjector();
+let after: EventSequence | undefined;
+
+do {
+  const page = await store.read(sessionId, { after, limit: 100 });
+  projector.apply(page.events);
+  after = page.nextCursor ?? undefined;
+  if (!page.hasMore) break;
+} while (true);
+
+const projection = projector.snapshot();
+const recovery = projector.recoveryPlan();
+```
+
+The projector fails closed and verifies at least these invariants:
+
+- The first event creates the Session, and no lifecycle event follows closure.
+- A Session has at most one active Request, and a Request has at most one active Turn.
+- Request, Turn, Tool Attempt, Permission Request, Command, and applied Input IDs are not reused.
+- Turn numbers are contiguous, and correlated Session, Request, Turn, and Tool identities match.
+- Permission decisions finish before `tool_started`; unfinished tools prevent Turn completion.
+- `causationEventId` only references an earlier event in the same journal.
+
+After any validation failure, the projector instance remains failed. Discard it,
+repair the canonical journal, and replay from the beginning rather than skipping
+the invalid event.
+
+`recoveryPlan()` returns one of these actions:
+
+| Action | Meaning |
+|--------|---------|
+| `none` | No unfinished work exists. |
+| `resume_request` | A Request was accepted without an active Turn and can restart. |
+| `resume_turn` | A model call or tool that never started can continue from the durable boundary. |
+| `resolve_permissions` | Pending permissions must be presented again or resolved by policy. |
+| `reconcile_tool_outcomes` | A tool started without a reliable terminal outcome and must not be retried automatically. |
+
+The plan also separates `retryableToolAttempts`, `cancelableToolAttempts`,
+`unknownToolAttempts`, and `pendingPermissions`. An external reconciliation can
+resolve `tool_outcome_unknown` with `tool_completed`, `tool_failed`, or
+`tool_cancelled`; the projector does not allow the Turn to end before then.
 
 ## JSONL persistence
 
@@ -165,6 +287,9 @@ Each append:
 
 Event files use mode `0600`. Session IDs are base64url encoded and cannot
 become filesystem paths.
+Events contain raw request inputs, tool inputs, and model-facing tool results.
+Treat the Store as sensitive data and configure encryption, retention, and
+access control at the deployment boundary.
 
 ## Consistency boundary
 
@@ -176,7 +301,7 @@ or an execution lease.
 `DURABLE_EVENT_WRITE_FAILED` does not prove that a batch was not written. A
 write can reach the file before `fsync` reports failure. Before retrying, read
 the head and correlate events through `commandId` or another domain identifier.
-Phase one does not provide automatic command deduplication.
+The current Store does not provide automatic command deduplication.
 
 The Store does not persist token deltas or high-frequency tool progress.
 Only domain events that affect recovery decisions belong in the durable
@@ -186,6 +311,12 @@ journal.
 
 | Error | Meaning |
 |-------|---------|
+| `DurableCommandConflictError` | One `commandId` maps to different content or non-contiguous ranges. |
+| `DurableCommandOutcomeUnknownError` | A failed write cannot be reconciled and the Journal is fenced. |
+| `DurableSessionJournalError` | Command input, Store page, or commit result violates its contract. |
+| `DurableSessionRecoveryRequiredError` | The Session has unfinished work that requires recovery or reconciliation. |
+| `SessionDurableRecorderError` | Session runtime observed an invalid durable lifecycle state. |
+| `DurableEventProjectionError` | Schema, ordering, or correlation violates lifecycle invariants. |
 | `DurableEventSequenceConflictError` | Compare-and-append precondition failed. |
 | `DurableEventStoreError` | Invalid input, cursor, I/O, or log integrity failure. |
 

@@ -7,51 +7,71 @@ import { type CleanupHandle, registerCleanup } from '../lifecycle/CleanupRegistr
 import { createRootLogger, type InternalLogger, LogCategory } from '../logging/Logger.js';
 import { type AgentTrace, TraceRecorder } from '../observability/index.js';
 import {
-  type ContextSnapshot,
-  createContextSnapshot,
-  type RuntimeContext,
+    type ContextSnapshot,
+    createContextSnapshot,
+    type RuntimeContext,
 } from '../runtime/index.js';
 import type { ContentPart, Message } from '../services/ChatServiceInterface.js';
 import { cloneMessage } from '../services/messageUtils.js';
 import {
-  InputId,
-  RequestId,
-  SessionId,
+    CommandId,
+    InputId,
+    RequestId,
+    SessionId,
 } from '../types/branded.js';
 import {
-  type BladeConfig,
-  type JsonValue,
-  type ModelConfig,
-  PermissionMode,
-  type ProviderType,
+    type BladeConfig,
+    type JsonValue,
+    type ModelConfig,
+    PermissionMode,
+    type ProviderType,
 } from '../types/common.js';
-import { ActiveRequestController } from './ActiveRequestController.js';
 import {
-  SessionInputInbox,
+    ActiveRequestController,
+    type RequestAbortReason,
+} from './ActiveRequestController.js';
+import { DurableSessionJournal } from './events/DurableSessionJournal.js';
+import type {
+    DurableSessionProjection,
+    DurableSessionRecoveryPlan,
+} from './events/DurableSessionProjector.js';
+import {
+    type DurableRequestFinish,
+    durableRequestFinishFromLoopResult,
+    DurableSessionRecoveryRequiredError,
+    SessionDurableRecorder,
+    SessionDurableRecorderError,
+} from './events/SessionDurableRecorder.js';
+import {
+    DurableEventType,
+    type DurableRequestInterruptReason,
+} from './events/types.js';
+import {
+    SessionInputInbox,
 } from './SessionInputInbox.js';
 import { SessionRuntime } from './SessionRuntime.js';
 import {
-  JsonlSessionStore,
-  NoopSessionStore,
-  type SessionSnapshot,
-  type SessionStore,
+    JsonlSessionStore,
+    NoopSessionStore,
+    type SessionSnapshot,
+    type SessionStore,
 } from './SessionStore.js';
 import type {
-  ForkSessionOptions,
-  InputSubmission,
-  ISession,
-  McpServerStatus,
-  McpToolInfo,
-  ModelInfo,
-  PendingSessionInput,
-  PromptResult,
-  ProviderConfig,
-  SendOptions,
-  SessionOptions,
-  StreamMessage,
-  StreamOptions,
-  TokenUsage,
-  ToolCallRecord,
+    ForkSessionOptions,
+    InputSubmission,
+    ISession,
+    McpServerStatus,
+    McpToolInfo,
+    ModelInfo,
+    PendingSessionInput,
+    PromptResult,
+    ProviderConfig,
+    SendOptions,
+    SessionOptions,
+    StreamMessage,
+    StreamOptions,
+    TokenUsage,
+    ToolCallRecord,
 } from './types.js';
 import { InputPriority } from './types.js';
 
@@ -69,16 +89,19 @@ type SessionExecutionState =
       message: UserMessageContent;
       options: SendOptions | null;
       snapshot: ContextSnapshot;
+      durableRecorder: SessionDurableRecorder | null;
     }
   | {
       phase: 'running';
       requestId: RequestId;
       controller: ActiveRequestController;
+      durableRecorder: SessionDurableRecorder | null;
     }
   | {
       phase: 'stopping';
       requestId: RequestId;
       controller: ActiveRequestController;
+      durableRecorder: SessionDurableRecorder | null;
     }
   | { phase: 'closed' };
 
@@ -101,6 +124,8 @@ class Session implements ISession {
   private readonly traces: AgentTrace[] = [];
   private readonly inputInbox = new SessionInputInbox();
   private readonly inputMutex = new Mutex();
+  private durableJournal: DurableSessionJournal | null = null;
+  private durableClosePromise: Promise<void> | null = null;
 
   /**
    * 请求阶段状态机：
@@ -114,7 +139,15 @@ class Session implements ISession {
    */
   private executionState: SessionExecutionState = { phase: 'idle' };
 
-  constructor(options: SessionOptions, sessionId?: SessionId, isResume = false) {
+  constructor(
+    options: SessionOptions,
+    sessionId?: SessionId,
+    isResume = false,
+    private readonly durableOrigin: {
+      source: 'create' | 'resume' | 'fork';
+      parentSessionId?: SessionId;
+    } = { source: isResume ? 'resume' : 'create' },
+  ) {
     this.sessionId = sessionId || SessionId(nanoid());
     this.options = options;
     this.maxTurns = options.maxTurns ?? 200;
@@ -154,12 +187,21 @@ class Session implements ISession {
     return [...this.traces];
   }
 
+  getDurableProjection(): DurableSessionProjection | null {
+    return this.durableJournal?.getProjection() ?? null;
+  }
+
+  getDurableRecoveryPlan(): DurableSessionRecoveryPlan | null {
+    return this.durableJournal?.getRecoveryPlan() ?? null;
+  }
+
   async initialize(): Promise<void> {
     if (this.executionState.phase === 'closed') {
       throw new Error('Session is closed');
     }
     if (this.initialized) return;
 
+    await this.initializeDurableJournal();
     const config = this.buildBladeConfig();
     this.runtime = new SessionRuntime(
       this.sessionId,
@@ -316,6 +358,7 @@ class Session implements ISession {
 
       const inputId = InputId(nanoid());
       if (this.executionState.phase === 'idle') {
+        this.assertDurableReadyForNewRequest();
         if (options?.expectedRequestId) {
           throw new SessionInputError(
             'SESSION_REQUEST_MISMATCH',
@@ -330,9 +373,23 @@ class Session implements ISession {
           targetRequestId: requestId,
           acceptedAt: Date.now(),
         };
+        const durableRecorder = this.durableJournal
+          ? new SessionDurableRecorder(this.durableJournal, requestId, this.options.model)
+          : null;
         this.inputInbox.reserve(input);
         try {
-          await this.persistInput(input);
+          await durableRecorder?.recordAccepted(inputId, message);
+          try {
+            await this.persistInput(input);
+          } catch (error) {
+            if (!durableRecorder) {
+              throw error;
+            }
+            this.logger.warn(
+              '[Session] Legacy input persistence failed after durable acceptance:',
+              error,
+            );
+          }
           this.inputInbox.markCommitted(inputId);
         } catch (error) {
           this.inputInbox.remove(inputId);
@@ -342,6 +399,7 @@ class Session implements ISession {
           requestId,
           input,
           options,
+          durableRecorder,
         );
         return {
           status: 'started',
@@ -448,6 +506,27 @@ class Session implements ISession {
         return false;
       }
 
+      const pendingState =
+        this.executionState.phase === 'pending'
+        && this.executionState.input.inputId === inputId
+          ? this.executionState
+          : null;
+      let durablyInterrupted = false;
+      if (pendingState) {
+        const durableRecorder = await this.ensureDurableRecorder(
+          pendingState.requestId,
+          pendingState.input,
+          pendingState.durableRecorder,
+        );
+        pendingState.durableRecorder = durableRecorder;
+        if (durableRecorder) {
+          await durableRecorder.finish({
+            status: 'interrupted',
+            reason: 'user_abort',
+          });
+          durablyInterrupted = true;
+        }
+      }
       try {
         await this.getRuntime().getContextManager().saveInputCancelled(
           this.sessionId,
@@ -455,16 +534,19 @@ class Session implements ISession {
           'cancelled_by_user',
         );
       } catch (error) {
-        this.inputInbox.releaseClaim(inputId);
-        throw error;
+        if (!durablyInterrupted) {
+          this.inputInbox.releaseClaim(inputId);
+          throw error;
+        }
+        this.logger.warn(
+          '[Session] Legacy input cancellation persistence failed after durable interruption:',
+          error,
+        );
       }
       this.inputInbox.remove(inputId);
 
-      if (
-        this.executionState.phase === 'pending'
-        && this.executionState.input.inputId === inputId
-      ) {
-        this.executionState.controller.dispose();
+      if (pendingState && this.executionState === pendingState) {
+        pendingState.controller.dispose();
         this.executionState = { phase: 'idle' };
         this.scheduleNextQueuedInput();
       }
@@ -479,7 +561,7 @@ class Session implements ISession {
     // 声明请求所有权必须原子：相位检查、pending→running 转换与初始输入移除
     // 需在 inputMutex 内一次完成，避免与 send()/cancelInput()/finishRequest()
     // 对 executionState 的并发读写交错。
-    const claimed = await this.inputMutex.runExclusive(() => {
+    const claimed = await this.inputMutex.runExclusive(async () => {
       if (this.executionState.phase !== 'pending') {
         return null;
       }
@@ -489,12 +571,29 @@ class Session implements ISession {
         message: initialMessage,
         options: sendOptions,
         snapshot: pendingSnapshot,
+        durableRecorder: pendingDurableRecorder,
       } = this.executionState;
       const requestController = this.executionState.controller;
+      const durableRecorder = pendingDurableRecorder
+        ?? (this.durableJournal
+          ? new SessionDurableRecorder(this.durableJournal, requestId, this.options.model)
+          : null);
+      if (durableRecorder && !pendingDurableRecorder) {
+        await durableRecorder.recordAccepted(
+          input.inputId,
+          input.content,
+          input.priority === InputPriority.LATER ? 'later' : 'next',
+        );
+      }
+      await durableRecorder?.recordStarted(
+        input.inputId,
+        input.priority === InputPriority.LATER ? 'later' : 'next',
+      );
       this.executionState = {
         phase: 'running',
         requestId,
         controller: requestController,
+        durableRecorder,
       };
       // 提交执行后立即将初始输入移出收件箱：它已被应用，不再是待处理输入，
       // 且已通过 initialInputId 从 steering 领取中排除。若延后移除，一旦流在
@@ -508,6 +607,7 @@ class Session implements ISession {
         sendOptions,
         pendingSnapshot,
         requestController,
+        durableRecorder,
       };
     });
 
@@ -522,8 +622,23 @@ class Session implements ISession {
       sendOptions,
       pendingSnapshot,
       requestController,
+      durableRecorder,
     } = claimed;
 
+    let durableFinishAttempted = false;
+    let durableFinishCommitted = !durableRecorder;
+    const finishDurableRequest = async (finish: DurableRequestFinish): Promise<void> => {
+      if (!durableRecorder || durableFinishAttempted) {
+        return;
+      }
+      durableFinishAttempted = true;
+      if (!await durableRecorder.finish(finish)) {
+        throw new SessionDurableRecorderError(
+          `Request ${requestId} has a tool outcome that requires reconciliation`,
+        );
+      }
+      durableFinishCommitted = true;
+    };
     let message = initialMessage;
     const traceRecorder = this.createTraceRecorder(message);
     let traceFinished = false;
@@ -542,13 +657,26 @@ class Session implements ISession {
     try {
       message = await runtime.getHookRuntime().applyUserPromptSubmit(message);
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : String(error);
+      let terminalError = error;
+      try {
+        await finishDurableRequest({ status: 'failed', error });
+      } catch (durableError) {
+        terminalError = new AggregateError(
+          [error, durableError],
+          'Request setup and durable finalization both failed',
+        );
+      }
+      const errorMessage =
+        terminalError instanceof Error ? terminalError.message : String(terminalError);
       await finishTrace('error', { error: errorMessage });
       runtime.getHookRuntime().setTraceCollector(undefined);
       // 初始输入已在进入 running 时移出收件箱；hook 失败时仍需与正常路径一样
       // 释放请求资源，否则会话会永久停留在 running 且外部 AbortSignal 监听器泄漏。
       requestController.dispose();
       await this.finishRequest(requestId);
+      if (durableRecorder && !durableFinishCommitted) {
+        throw terminalError;
+      }
       yield { type: 'error', message: errorMessage, sessionId: this.sessionId };
       return;
     }
@@ -586,7 +714,9 @@ class Session implements ISession {
         requestId,
       },
       runControl: requestController,
+      toolExecutionLifecycle: durableRecorder ?? undefined,
     });
+    let agentStreamCompleted = false;
 
     try {
       let loopResult: LoopResult | undefined;
@@ -597,8 +727,10 @@ class Session implements ISession {
         const { value, done } = await stream.next();
         if (done) {
           loopResult = value;
+          agentStreamCompleted = true;
           break;
         }
+        await durableRecorder?.recordAgentEvent(value);
         switch (value.type) {
           case 'turn_start': {
             const spanId = traceRecorder?.recordTurnStart(value.turn, value.maxTurns);
@@ -850,12 +982,15 @@ class Session implements ISession {
 
       if (!loopResult.success && !isAborted && !shouldExit) {
         const messageText = loopResult.error?.message || 'Unknown error';
+        await finishDurableRequest({
+          status: 'failed',
+          error: messageText,
+        });
         await finishTrace('error', { error: messageText });
         yield { type: 'error', message: messageText, sessionId: this.sessionId };
         return;
       }
 
-      yield { type: 'usage', usage: totalUsage, sessionId: this.sessionId };
       this._messages = context.messages;
       const imageCount = this.getImageCount(message);
       await runtime.getHookRuntime().runTaskCompleted({
@@ -873,6 +1008,14 @@ class Session implements ISession {
         toolCallsCount: loopResult.metadata?.toolCallsCount,
         duration: loopResult.metadata?.duration,
       });
+      await finishDurableRequest(
+        durableRequestFinishFromLoopResult(
+          loopResult,
+          totalUsage,
+          this.getDurableInterruptReason(requestController),
+        ),
+      );
+      yield { type: 'usage', usage: totalUsage, sessionId: this.sessionId };
       yield {
         type: 'result',
         subtype: 'success',
@@ -880,26 +1023,93 @@ class Session implements ISession {
         sessionId: this.sessionId,
       };
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : String(error);
+      let terminalError = error;
+      if (!durableFinishAttempted) {
+        try {
+          await finishDurableRequest({ status: 'failed', error });
+        } catch (durableError) {
+          terminalError = new AggregateError(
+            [error, durableError],
+            'Request execution and durable finalization both failed',
+          );
+        }
+      }
+      const errorMessage =
+        terminalError instanceof Error ? terminalError.message : String(terminalError);
       await finishTrace('error', { error: errorMessage });
+      if (durableRecorder && !durableFinishCommitted) {
+        throw terminalError;
+      }
       yield { type: 'error', message: errorMessage, sessionId: this.sessionId };
     } finally {
+      let cleanupError: unknown;
+      if (!agentStreamCompleted) {
+        requestController.abortRequest({ kind: 'user_abort' });
+        try {
+          await stream.return(undefined as never);
+        } catch (error) {
+          cleanupError = error;
+        }
+        try {
+          if (!durableFinishAttempted) {
+            await finishDurableRequest({
+              status: 'interrupted',
+              reason: 'user_abort',
+            });
+          }
+        } catch (error) {
+          cleanupError = cleanupError
+            ? new AggregateError(
+                [cleanupError, error],
+                'Agent stream cleanup and durable finalization both failed',
+              )
+            : error;
+        }
+      }
       runtime.getHookRuntime().setTraceCollector(undefined);
       requestController.dispose();
       await this.finishRequest(requestId);
+      if (this.executionState.phase === 'closed') {
+        await this.closeDurableSession();
+      }
+      if (cleanupError) {
+        await Promise.reject(cleanupError);
+      }
     }
   }
 
   async close(): Promise<void> {
+    await this.closeInternal(true);
+  }
+
+  async disposeAfterFork(): Promise<void> {
+    await this.closeInternal(false);
+  }
+
+  private async closeInternal(recordDurableClose: boolean): Promise<void> {
     // 关闭时对 executionState 的读写走 inputMutex，避免与并发 send()/stream()
     // 交错（例如 send() 在 await 处让出后用 pending 覆盖 closed）。
-    const alreadyClosed = await this.inputMutex.runExclusive(() => {
+    const alreadyClosed = await this.inputMutex.runExclusive(async () => {
       if (this.executionState.phase === 'closed') {
         return true;
       }
       if (this.executionState.phase === 'pending') {
-        this.executionState.controller.abortRequest({ kind: 'session_close' });
-        this.executionState.controller.dispose();
+        const { controller, input, requestId } = this.executionState;
+        controller.abortRequest({ kind: 'session_close' });
+        if (recordDurableClose) {
+          const durableRecorder = await this.ensureDurableRecorder(
+            requestId,
+            input,
+            this.executionState.durableRecorder,
+          );
+          this.executionState.durableRecorder = durableRecorder;
+          await durableRecorder?.finish({
+            status: 'interrupted',
+            reason: 'session_close',
+          });
+        }
+        controller.dispose();
+        this.inputInbox.remove(input.inputId);
       } else if (
         this.executionState.phase === 'running'
         || this.executionState.phase === 'stopping'
@@ -910,6 +1120,9 @@ class Session implements ISession {
       return false;
     });
     if (alreadyClosed) {
+      if (recordDurableClose) {
+        await this.closeDurableSession();
+      }
       return;
     }
     this.cleanupHandle?.unregister();
@@ -925,29 +1138,48 @@ class Session implements ISession {
         await runtime.close();
       }
     }
+    if (recordDurableClose) {
+      await this.closeDurableSession();
+    }
     this.logger.debug(`[Session] Closed session ${this.sessionId}`);
   }
 
-  abort(): void {
-    // abort() 是同步 API，无法 await inputMutex；但它在单个微任务内原子执行
-    // （无 await 让出点），因此对 executionState 的读改本身不会与其他转换交错。
+  async abort(): Promise<void> {
     if (this.executionState.phase === 'running') {
-      const { requestId, controller } = this.executionState;
+      const { requestId, controller, durableRecorder } = this.executionState;
       controller.abortRequest({ kind: 'user_abort' });
       this.executionState = {
         phase: 'stopping',
         requestId,
         controller,
+        durableRecorder,
       };
     } else if (this.executionState.phase === 'pending') {
-      // send() 已返回但 stream() 尚未启动：此时没有运行中的流去驱动 finishRequest，
-      // 必须在此直接完成收尾，否则该请求会永久停留在 pending。
-      const { controller, input } = this.executionState;
-      controller.abortRequest({ kind: 'user_abort' });
-      controller.dispose();
-      this.inputInbox.remove(input.inputId);
-      this.executionState = { phase: 'idle' };
-      this.scheduleNextQueuedInput();
+      const pendingState = this.executionState;
+      pendingState.controller.abortRequest({ kind: 'user_abort' });
+      await this.inputMutex.runExclusive(async () => {
+        if (
+          this.executionState.phase !== 'pending'
+          || this.executionState.requestId !== pendingState.requestId
+        ) {
+          return;
+        }
+        const durableRecorder = await this.ensureDurableRecorder(
+          pendingState.requestId,
+          pendingState.input,
+          pendingState.durableRecorder,
+        );
+        pendingState.durableRecorder = durableRecorder;
+        await durableRecorder?.finish({
+          status: 'interrupted',
+          reason: 'user_abort',
+        });
+        const { controller, input } = pendingState;
+        controller.dispose();
+        this.inputInbox.remove(input.inputId);
+        this.executionState = { phase: 'idle' };
+        this.scheduleNextQueuedInput();
+      });
     }
   }
 
@@ -1031,6 +1263,119 @@ class Session implements ISession {
     return this.runtime;
   }
 
+  private async initializeDurableJournal(): Promise<void> {
+    if (this.durableJournal) {
+      return;
+    }
+    const eventStore = this.options.durableEventStore;
+    if (!eventStore) {
+      return;
+    }
+
+    const journal = await DurableSessionJournal.open(eventStore, this.sessionId);
+    const projection = journal.getProjection();
+    if (projection.status === 'empty') {
+      await journal.commit({
+        commandId: CommandId(nanoid()),
+        events: [
+          {
+            type: DurableEventType.SESSION_CREATED,
+            data: {
+              source: this.durableOrigin.source,
+              ...(this.durableOrigin.parentSessionId
+                ? { parentSessionId: this.durableOrigin.parentSessionId }
+                : {}),
+            },
+          },
+        ],
+      });
+      this.durableJournal = journal;
+      return;
+    }
+    if (!this.isResumeSession) {
+      throw new SessionDurableRecorderError(
+        `Durable Session ${this.sessionId} already exists`,
+      );
+    }
+    if (projection.status === 'closed') {
+      throw new SessionDurableRecorderError(
+        `Durable Session ${this.sessionId} is closed`,
+      );
+    }
+    const recoveryPlan = journal.getRecoveryPlan();
+    if (recoveryPlan.action !== 'none') {
+      throw new DurableSessionRecoveryRequiredError(recoveryPlan);
+    }
+    this.durableJournal = journal;
+  }
+
+  private async ensureDurableRecorder(
+    requestId: RequestId,
+    input: PendingSessionInput,
+    existing: SessionDurableRecorder | null,
+  ): Promise<SessionDurableRecorder | null> {
+    if (existing || !this.durableJournal) {
+      return existing;
+    }
+    const recorder = new SessionDurableRecorder(
+      this.durableJournal,
+      requestId,
+      this.options.model,
+    );
+    await recorder.recordAccepted(
+      input.inputId,
+      input.content,
+      input.priority === InputPriority.LATER ? 'later' : 'next',
+    );
+    return recorder;
+  }
+
+  private async closeDurableSession(): Promise<void> {
+    if (this.durableClosePromise) {
+      return this.durableClosePromise;
+    }
+    const journal = this.durableJournal;
+    if (!journal) {
+      return;
+    }
+    const projection = journal.getProjection();
+    if (projection.status !== 'open' || projection.activeRequest) {
+      return;
+    }
+    const closePromise = journal.commit({
+      commandId: CommandId(nanoid()),
+      events: [
+        {
+          type: DurableEventType.SESSION_CLOSED,
+          data: { reason: 'shutdown' },
+        },
+      ],
+    }).then(() => undefined);
+    this.durableClosePromise = closePromise;
+    try {
+      await closePromise;
+    } catch (error) {
+      if (this.durableClosePromise === closePromise) {
+        this.durableClosePromise = null;
+      }
+      throw error;
+    }
+  }
+
+  private assertDurableReadyForNewRequest(): void {
+    const recoveryPlan = this.durableJournal?.getRecoveryPlan();
+    if (recoveryPlan && recoveryPlan.action !== 'none') {
+      throw new DurableSessionRecoveryRequiredError(recoveryPlan);
+    }
+  }
+
+  private getDurableInterruptReason(
+    controller: ActiveRequestController,
+  ): DurableRequestInterruptReason {
+    const reason = controller.requestSignal.reason as RequestAbortReason | undefined;
+    return reason?.kind === 'session_close' ? 'session_close' : 'user_abort';
+  }
+
   private async finishRequest(requestId: RequestId): Promise<void> {
     await this.inputMutex.runExclusive(() => {
       if (
@@ -1051,6 +1396,7 @@ class Session implements ISession {
     requestId: RequestId,
     input: PendingSessionInput,
     options?: SendOptions,
+    durableRecorder: SessionDurableRecorder | null = null,
   ): Extract<SessionExecutionState, { phase: 'pending' }> {
     return {
       phase: 'pending',
@@ -1064,6 +1410,7 @@ class Session implements ISession {
       ),
       message: input.content,
       options: options || null,
+      durableRecorder,
       snapshot: createContextSnapshot(
         this.sessionId,
         nanoid(),
@@ -1075,6 +1422,12 @@ class Session implements ISession {
 
   private scheduleNextQueuedInput(): void {
     if (this.executionState.phase !== 'idle') {
+      return;
+    }
+    if (
+      this.durableJournal
+      && this.durableJournal.getRecoveryPlan().action !== 'none'
+    ) {
       return;
     }
     const requestId = RequestId(nanoid());
@@ -1146,10 +1499,18 @@ class Session implements ISession {
         })
       : this.createSnapshotFromMessages(options?.messageId);
 
-    const forkedSession = new Session({
-      ...this.options,
-      defaultContext: this.defaultContext,
-    });
+    const forkedSession = new Session(
+      {
+        ...this.options,
+        defaultContext: this.defaultContext,
+      },
+      undefined,
+      false,
+      {
+        source: 'fork',
+        parentSessionId: this.sessionId,
+      },
+    );
     await forkedSession.initialize();
     forkedSession._messages = this.cloneSnapshotMessages(snapshot);
 
@@ -1244,11 +1605,11 @@ export async function forkSession(options: ForkOptions): Promise<ISession> {
   await sourceSession.initialize();
   await sourceSession.loadHistory();
 
-  const forkedSession = await sourceSession.fork({ messageId });
-
-  await sourceSession.close();
-
-  return forkedSession;
+  try {
+    return await sourceSession.fork({ messageId });
+  } finally {
+    await sourceSession.disposeAfterFork();
+  }
 }
 
 export async function prompt(

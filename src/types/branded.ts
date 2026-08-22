@@ -13,6 +13,7 @@ export type EventSequence = Brand<number, 'EventSequence'>;
 export type TurnId = Brand<string, 'TurnId'>;
 export type ToolAttemptId = Brand<string, 'ToolAttemptId'>;
 export type CommandId = Brand<string, 'CommandId'>;
+export type PermissionRequestId = Brand<string, 'PermissionRequestId'>;
 
 export const SessionId = (value: string): SessionId => value as SessionId;
 export const AgentId = (value: string): AgentId => value as AgentId;
@@ -25,3 +26,5 @@ export const EventSequence = (value: number): EventSequence => value as EventSeq
 export const TurnId = (value: string): TurnId => value as TurnId;
 export const ToolAttemptId = (value: string): ToolAttemptId => value as ToolAttemptId;
 export const CommandId = (value: string): CommandId => value as CommandId;
+export const PermissionRequestId = (value: string): PermissionRequestId =>
+  value as PermissionRequestId;

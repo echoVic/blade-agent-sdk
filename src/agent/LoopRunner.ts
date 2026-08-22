@@ -18,13 +18,8 @@ import type { SkillActivationContext } from '../skills/index.js';
 import { injectSkillsMetadata } from '../skills/index.js';
 import { ToolCatalog } from '../tools/catalog/index.js';
 import type { ExecutionPipeline } from '../tools/execution/ExecutionPipeline.js';
-import {
-  ToolExposurePlanner,
-} from '../tools/exposure/index.js';
-import {
-  type BladeConfig,
-  PermissionMode,
-} from '../types/common.js';
+import { ToolExposurePlanner } from '../tools/exposure/index.js';
+import { type BladeConfig, PermissionMode } from '../types/common.js';
 import { getEnvironmentContext } from '../utils/environment.js';
 import type { AgentEvent } from './AgentEvent.js';
 import { agentLoop } from './AgentLoop.js';
@@ -38,13 +33,7 @@ import { LoopState } from './state/LoopState.js';
 import { isValidSystemSource } from './state/systemSource.js';
 import type { LoopSkillState } from './state/TurnState.js';
 import type { TokenBudget } from './TokenBudget.js';
-import type {
-  AgentOptions,
-  ChatContext,
-  LoopOptions,
-  LoopResult,
-  UserMessageContent,
-} from './types.js';
+import type { AgentOptions, ChatContext, LoopOptions, LoopResult, UserMessageContent } from './types.js';
 
 // ===== Module-level helpers =====
 
@@ -167,7 +156,12 @@ export class LoopRunner {
     );
 
     const permissionMode = context.permissionMode;
-    const loopState = this.createLoopState(context, conversationState, permissionMode);
+    const loopState = this.createLoopState(
+      context,
+      conversationState,
+      permissionMode,
+      options?.toolExecutionLifecycle,
+    );
 
     // 2. 保存用户消息到 JSONL
     let lastMessageUuid: string | null = null;
@@ -342,6 +336,7 @@ export class LoopRunner {
     context: ChatContext,
     conversationState: ConversationState,
     permissionMode: PermissionMode | undefined,
+    toolExecutionLifecycle: LoopOptions['toolExecutionLifecycle'],
   ): LoopState {
     const rpm = this.runtimePatchManager;
     const catalog = this.executionPipeline.getCatalog();
@@ -399,6 +394,7 @@ export class LoopRunner {
           : undefined,
         toolRegistry: registry,
         discoveredTools: Array.from(rpm.discoveredTools ?? []),
+        lifecycle: toolExecutionLifecycle,
       },
       baseContextSnapshot: context.snapshot,
       initialActiveSkill: rpm.skillContext,

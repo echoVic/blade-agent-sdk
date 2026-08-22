@@ -86,7 +86,7 @@ Node-local 能力外，这些函数都从根入口导出；实际 subpath 以“
 | `PendingSessionInput` | 尚未应用的持久化输入 |
 | `InputId` / `RequestId` / `SessionId` | 输入、活动请求与会话的 branded identifiers |
 | `EventId` / `EventSequence` | durable event 标识与 Session 内单调序列 |
-| `CommandId` / `TurnId` / `ToolAttemptId` | durable command、turn 与工具尝试标识 |
+| `CommandId` / `TurnId` / `ToolAttemptId` / `PermissionRequestId` | durable command、turn、工具尝试与权限请求标识 |
 | `StreamOptions` | stream() 选项 |
 | `StreamMessage` | Session 流式消息联合类型 |
 | `PromptResult` | prompt() 返回结果 |
@@ -100,11 +100,33 @@ Node-local 能力外，这些函数都从根入口导出；实际 subpath 以“
 | 导出 | 说明 |
 |------|------|
 | `DurableEventStore` | append/read/head 的持久化接口 |
+| `DurableSessionJournal` / `DurableSessionJournalOptions` | command-oriented 串行提交、CAS 重试与对账层 |
+| `DurableSessionCommand` / `DurableCommandEventDraft` | Journal command 与不含重复 `commandId` 的事件输入 |
+| `DurableCommandCommitResult` / `DurableCommandCommitStatus` | `committed` / `replayed` / `reconciled` 提交结果 |
+| `DurableSessionJournalError` / `DurableSessionJournalErrorCode` | command、分页和 Store 返回值错误 |
+| `DurableCommandConflictError` | 同一 `commandId` 被用于不同事件 |
+| `DurableCommandOutcomeUnknownError` | 写入失败后无法确认 command 是否提交 |
+| `DurableSessionRecoveryRequiredError` | Session 恢复前需要权限或工具结果对账 |
+| `SessionDurableRecorderError` | Session runtime 观察到非法 durable 生命周期状态 |
 | `DurableEventEnvelope` / `DurableEventDraft` | 已提交事件与待提交事件 |
+| `DurableEventDataMap` / `DurableEventOfType` / `DurableEventError` / `DurableTokenUsage` | 事件类型到严格 payload 的映射、类型提取及公共 payload |
+| `DurableInputPriority` / `DurablePermissionDecision` | 输入优先级与权限结果 |
+| `DurableRequestInterruptReason` / `DurableTurnAbortReason` | Request 与 Turn 中断原因 |
+| `DurableToolInterruptBehavior` / `DurableToolCancelReason` / `DurableToolOutcomeUnknownReason` | 工具中断、取消及未知结果原因 |
+| `DurableSessionCloseReason` | Session 关闭原因 |
 | `DurableEventAppendOptions` / `DurableEventAppendResult` | compare-and-append 参数与结果 |
 | `DurableEventReadOptions` / `DurableEventPage` | cursor 分页读取参数与结果 |
-| `DurableEventType` | 首版生命周期事件名 |
+| `DurableEventType` / `isDurableEventType` | 生命周期事件名及运行时类型判断 |
+| `DurableSessionProjector` / `projectDurableSession` | 增量或一次性重建并校验 Session 生命周期 |
+| `planDurableSessionRecovery` / `DurableSessionRecoveryPlan` | 分类未完成 Request、Turn、Tool 与 Permission |
+| `DurableSessionProjection` / `DurableSessionProjectionStatus` | Session 当前 durable 状态 |
+| `DurableRequestProjection` / `DurableRequestStatus` | 活动 Request 状态 |
+| `DurableTurnProjection` / `DurableTurnStatus` | 活动 Turn 状态 |
+| `DurableToolAttemptProjection` / `DurableToolAttemptStatus` | 当前 Turn 的工具尝试状态 |
+| `DurablePermissionProjection` / `DurablePermissionStatus` | 工具权限状态 |
+| `DurableSessionRecoveryAction` | 恢复动作判别值 |
 | `DURABLE_EVENT_SCHEMA_VERSION` / `DURABLE_EVENT_LOG_FORMAT` | wire schema 与日志格式版本 |
+| `DurableEventProjectionError` | 生命周期事件顺序或关联关系非法 |
 | `DurableEventSequenceConflictError` | CAS 序列冲突错误 |
 | `DurableEventStoreError` / `DurableEventStoreErrorCode` | 参数、I/O 和日志损坏错误 |
 | `parseDurableEventDraft` / `parseDurableEventEnvelope` | 严格 schema 解析 |
@@ -123,6 +145,10 @@ Node-local 能力外，这些函数都从根入口导出；实际 subpath 以“
 | `ToolDescription` | 工具描述（短描述/长描述/使用提示/示例） |
 | `ToolDescriptionResolver` | 动态工具描述解析器 |
 | `ToolExecution` | 工具的异步生成器执行契约 |
+| `ToolExecutionLifecycle` | Request 级工具 scheduled / settled 持久化边界 |
+| `ToolInvocationLifecycle` | 单次工具权限与副作用开始边界 |
+| `ToolScheduledLifecycle` / `ToolSettledLifecycle` | 工具调度与终态 payload |
+| `ToolPermissionResolution` | 权限请求的 durable 决策 payload |
 | `ToolYield` | 工具产生的结构化进度、展示消息或 effect |
 | `ToolProgress` | 可选包含计数、结构化数据和恢复令牌的进度事件 |
 | `ToolMessage` | 面向用户界面的执行消息 |

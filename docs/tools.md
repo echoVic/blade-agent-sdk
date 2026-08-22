@@ -326,8 +326,45 @@ interface ExecutionContext {
   toolRegistry?: ToolRegistry;
   toolCatalog?: ToolCatalog;
   discoveredTools?: string[];
+  toolInvocationLifecycle?: ToolInvocationLifecycle; // runtime 内部注入
 }
 ```
+
+### Durable lifecycle 边界
+
+Runtime 可以通过 `ToolExecutionLifecycle` 观察并阻塞工具的关键持久化边界：
+
+```ts
+interface ToolExecutionLifecycle {
+  onToolScheduled?(
+    event: ToolScheduledLifecycle,
+  ): Promise<ToolInvocationLifecycle | undefined>;
+  onToolSettled?(event: ToolSettledLifecycle): Promise<void>;
+}
+
+interface ToolInvocationLifecycle {
+  onPermissionRequested?(
+    details: ConfirmationDetails,
+    input: JsonObject,
+  ): Promise<PermissionRequestId>;
+  onPermissionResolved?(
+    resolution: ToolPermissionResolution,
+  ): Promise<void>;
+  onExecutionStarted?(): Promise<void>;
+}
+```
+
+这些回调不是 best-effort telemetry。执行顺序固定为：
+
+1. `onToolScheduled` 完成后才发布 `tool_start`。
+2. `onPermissionRequested` 完成后才调用交互式确认处理器。
+3. `onPermissionResolved` 完成后才接受权限决定。
+4. `onExecutionStarted` 完成后才调用工具 generator，因此 durable 写失败不会放行副作用。
+5. `onToolSettled` 完成后才发布 `tool_result`。
+
+无效 JSON 参数和从未派发的 synthetic interruption result 不会进入 durable
+lifecycle，因为它们尚未形成可执行调用。未配置 lifecycle observer 时行为与
+普通工具执行一致。
 
 ### 工具中断策略
 

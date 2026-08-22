@@ -155,7 +155,7 @@ describe('Session steering resilience', () => {
     expect(submission.status).toBe('started');
 
     // send() 已返回、stream() 尚未调用时中止：不应被静默忽略。
-    session.abort();
+    await session.abort();
 
     // 中止后会话回到 idle，可以启动全新请求。
     const next = await session.send('after abort');

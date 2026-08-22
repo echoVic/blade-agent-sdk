@@ -48,6 +48,7 @@ Constants:
 - `CommandId`
 - `TurnId`
 - `ToolAttemptId`
+- `PermissionRequestId`
 - `AgentId`
 - `MessageId`
 - `ToolUseId`
@@ -59,18 +60,44 @@ These ID exports are branded identifiers, not arbitrary strings.
 Runtime:
 
 - `JsonlDurableEventStore`
+- `DurableSessionJournal`
 - `DurableEventType`
 - `DURABLE_EVENT_SCHEMA_VERSION`
 - `DURABLE_EVENT_LOG_FORMAT`
 - `parseDurableEventDraft`
 - `parseDurableEventEnvelope`
 - `parsePersistedDurableEventBatch`
+- `isDurableEventType`
+- `projectDurableSession`
+- `planDurableSessionRecovery`
+- `DurableSessionProjector`
 
 Types and errors:
 
 - `DurableEventStore`
+- `DurableSessionJournalOptions`
+- `DurableSessionCommand`
+- `DurableCommandEventDraft`
+- `DurableCommandCommitResult`
+- `DurableCommandCommitStatus`
+- `DurableSessionJournalError`
+- `DurableSessionJournalErrorCode`
+- `DurableCommandConflictError`
+- `DurableCommandOutcomeUnknownError`
 - `DurableEventEnvelope`
 - `DurableEventDraft`
+- `DurableEventDataMap`
+- `DurableEventError`
+- `DurableEventOfType`
+- `DurableTokenUsage`
+- `DurableInputPriority`
+- `DurablePermissionDecision`
+- `DurableRequestInterruptReason`
+- `DurableTurnAbortReason`
+- `DurableToolInterruptBehavior`
+- `DurableToolCancelReason`
+- `DurableToolOutcomeUnknownReason`
+- `DurableSessionCloseReason`
 - `DurableEventAppendOptions`
 - `DurableEventAppendResult`
 - `DurableEventReadOptions`
@@ -79,6 +106,21 @@ Types and errors:
 - `DurableEventSequenceConflictError`
 - `DurableEventStoreError`
 - `DurableEventStoreErrorCode`
+- `DurableEventProjectionError`
+- `DurableSessionRecoveryRequiredError`
+- `SessionDurableRecorderError`
+- `DurablePermissionProjection`
+- `DurablePermissionStatus`
+- `DurableRequestProjection`
+- `DurableRequestStatus`
+- `DurableSessionProjection`
+- `DurableSessionProjectionStatus`
+- `DurableSessionRecoveryAction`
+- `DurableSessionRecoveryPlan`
+- `DurableToolAttemptProjection`
+- `DurableToolAttemptStatus`
+- `DurableTurnProjection`
+- `DurableTurnStatus`
 
 The JSONL adapter is Node-only. Event contracts, constants, errors, and parsers
 are browser-safe through `/core`.
@@ -102,9 +144,11 @@ Types:
 
 `FunctionDeclaration`, `Tool`, `ToolBehavior`, `ToolConfig`, `ToolDescription`,
 `ToolDescriptionResolver`, `ToolDisplayContent`, `ToolEffect`,
-`ToolEffectYield`, `ToolError`, `ToolExecution`, `ToolExposureConfig`,
-`ToolExposureMode`, `ToolMessage`, `ToolModelContent`, `ToolProgress`,
-`ToolSchema`, `ToolExecutionUpdate`, and `ToolYield`.
+`ToolEffectYield`, `ToolError`, `ToolExecution`, `ToolExecutionLifecycle`,
+`ToolInvocationLifecycle`, `ToolScheduledLifecycle`, `ToolSettledLifecycle`,
+`ToolPermissionResolution`, `ToolExposureConfig`, `ToolExposureMode`,
+`ToolMessage`, `ToolModelContent`, `ToolProgress`, `ToolSchema`,
+`ToolExecutionUpdate`, and `ToolYield`.
 
 Constants:
 

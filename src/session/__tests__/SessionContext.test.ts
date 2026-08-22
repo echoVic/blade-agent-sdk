@@ -469,7 +469,7 @@ describe('Session runtime context', () => {
       done: false,
     });
 
-    session.abort();
+    await session.abort();
     await expect(session.send('second')).resolves.toMatchObject({
       status: 'queued',
       priority: 'later',

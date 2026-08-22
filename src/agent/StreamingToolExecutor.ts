@@ -1,10 +1,10 @@
 import type { JSONSchema7 } from 'json-schema';
 import { type InternalLogger, LogCategory, NOOP_LOGGER } from '../logging/Logger.js';
 import type {
-  ChatResponse,
-  IChatService,
-  Message,
-  StreamToolCall,
+    ChatResponse,
+    IChatService,
+    Message,
+    StreamToolCall,
 } from '../services/ChatServiceInterface.js';
 import type { ExecutionPipeline } from '../tools/execution/ExecutionPipeline.js';
 import type { ToolEffect, ToolResult } from '../tools/types/index.js';
@@ -15,10 +15,10 @@ import type { ExecutionEpoch } from './ExecutionEpoch.js';
 import type { ToolExecutionOutcome } from './loop/executeToolCalls.js';
 import { planToolExecution } from './loop/planToolExecution.js';
 import {
-  emitToolExecutionUpdate,
-  runToolCall,
-  type ToolExecutionContext,
-  type ToolExecutionUpdate,
+    emitToolExecutionUpdate,
+    runToolCall,
+    type ToolExecutionContext,
+    type ToolExecutionUpdate,
 } from './loop/runToolCall.js';
 import { streamChatResponse } from './loop/streamChatResponse.js';
 import type { FunctionToolCall } from './loop/types.js';
@@ -493,45 +493,22 @@ export class StreamingToolExecutor {
       return;
     }
 
-    await this.emitToolExecutionUpdate(input.executionConfig, {
-      type: 'tool_ready',
+    const outcome = await runToolCall({
       toolCall: input.toolCall,
-    }, input.epoch);
-
-    let result: ToolResult;
-    let effects = [] as ToolExecutionOutcome['effects'];
-    let toolUseUuid: string | null = null;
-
-    try {
-      const outcome = await runToolCall({
-        toolCall: input.toolCall,
-        executionPipeline: input.executionConfig.executionPipeline,
-        executionContext: input.executionConfig.executionContext,
-        logger: this.logger,
-        permissionMode: input.executionConfig.permissionMode,
-        signal: input.executionConfig.requestSignal ?? input.signal,
-        steeringSignal: input.executionConfig.steeringSignal,
-        batchSignal: input.batchController.signal,
-        hooks: {
-          onBeforeToolExec: input.executionConfig.hooks?.onBeforeToolExec,
-          onUpdate: (update) => this.emitToolExecutionUpdate(input.executionConfig, update, input.epoch),
-        },
-      });
-      result = outcome.result;
-      effects = outcome.effects;
-      toolUseUuid = outcome.toolUseUuid;
-    } catch (error) {
-      this.logger.error(`Tool execution failed for ${input.toolCall.function.name}:`, error);
-      const message = error instanceof Error ? error.message : 'Unknown error';
-      result = {
-        status: 'error',
-        model: `Tool execution failed: ${message}`,
-        error: {
-          type: ToolErrorType.EXECUTION_ERROR,
-          message,
-        },
-      };
-    }
+      executionPipeline: input.executionConfig.executionPipeline,
+      executionContext: input.executionConfig.executionContext,
+      logger: this.logger,
+      permissionMode: input.executionConfig.permissionMode,
+      signal: input.executionConfig.requestSignal ?? input.signal,
+      steeringSignal: input.executionConfig.steeringSignal,
+      batchSignal: input.batchController.signal,
+      hooks: {
+        onBeforeToolExec: input.executionConfig.hooks?.onBeforeToolExec,
+        onUpdate: (update) =>
+          this.emitToolExecutionUpdate(input.executionConfig, update, input.epoch),
+      },
+    });
+    const { result, effects, toolUseUuid } = outcome;
 
     // Epoch guard: 工具执行完后检查 epoch 是否仍有效
     if (!this.isEpochActive(input.epoch)) {

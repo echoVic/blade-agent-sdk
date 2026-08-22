@@ -1,7 +1,44 @@
 import { describe, expect, expectTypeOf, it } from 'vitest';
+import type {
+  DurableCommandEventDraft,
+  DurableEventEnvelope,
+  DurableEventOfType,
+  DurableEventStore,
+  DurableSessionCommand,
+  DurableSessionRecoveryPlan,
+  InputSubmission,
+  ISession,
+  PendingSessionInput,
+  RuntimePatch,
+  SessionOptions,
+  SessionTool,
+  ToolCatalogEntry,
+  ToolEffect,
+  ToolEffectYield,
+  ToolExecution,
+  ToolExecutionLifecycle,
+  ToolExecutionUpdate,
+  ToolInvocationLifecycle,
+  ToolMessage,
+  ToolPermissionResolution,
+  ToolProgress,
+  ToolResult,
+  ToolScheduledLifecycle,
+  ToolSettledLifecycle,
+  ToolYield,
+} from '../index.js';
 import {
   CommandId,
+  collectToolExecution,
+  completeToolExecution,
+  createMemoryReadTool,
+  createMemoryWriteTool,
+  DurableCommandConflictError,
+  DurableCommandOutcomeUnknownError,
   DurableEventType,
+  DurableSessionJournal,
+  DurableSessionProjector,
+  DurableSessionRecoveryRequiredError,
   EventId,
   EventSequence,
   FileSystemMemoryStore,
@@ -9,34 +46,17 @@ import {
   InputPriority,
   JsonlDurableEventStore,
   MemoryManager,
+  PermissionRequestId,
+  projectDurableSession,
   RequestId,
   SessionInputError,
+  SessionDurableRecorderError,
   SubagentExecutor,
   SubagentRegistry,
+  ToolAttemptId,
   ToolCatalog,
   ToolErrorType,
-  ToolAttemptId,
   TurnId,
-  collectToolExecution,
-  completeToolExecution,
-  createMemoryReadTool,
-  createMemoryWriteTool,
-} from '../index.js';
-import type {
-  DurableEventEnvelope,
-  DurableEventStore,
-  InputSubmission,
-  PendingSessionInput,
-  RuntimePatch,
-  SessionTool,
-  ToolCatalogEntry,
-  ToolEffect,
-  ToolEffectYield,
-  ToolExecution,
-  ToolExecutionUpdate,
-  ToolMessage,
-  ToolProgress,
-  ToolYield,
 } from '../index.js';
 
 describe('root exports', () => {
@@ -62,6 +82,14 @@ describe('root exports', () => {
     expect(EventSequence(1)).toBe(1);
     expect(ToolAttemptId('attempt-1')).toBe('attempt-1');
     expect(TurnId('turn-1')).toBe('turn-1');
+    expect(PermissionRequestId('permission-1')).toBe('permission-1');
+    expect(DurableCommandConflictError).toBeDefined();
+    expect(DurableCommandOutcomeUnknownError).toBeDefined();
+    expect(DurableSessionJournal.open).toBeTypeOf('function');
+    expect(DurableSessionProjector).toBeDefined();
+    expect(DurableSessionRecoveryRequiredError).toBeDefined();
+    expect(SessionDurableRecorderError).toBeDefined();
+    expect(projectDurableSession([]).status).toBe('empty');
   });
 
   it('exports runtime tool contracts at the root entrypoint', () => {
@@ -69,26 +97,36 @@ describe('root exports', () => {
     expectTypeOf<ToolEffect['type']>().toEqualTypeOf<
       'runtimePatch' | 'contextPatch' | 'newMessages' | 'permissionUpdates'
     >();
-    expectTypeOf<ToolYield['kind']>().toEqualTypeOf<
-      'progress' | 'message' | 'effect'
-    >();
+    expectTypeOf<ToolYield['kind']>().toEqualTypeOf<'progress' | 'message' | 'effect'>();
     expectTypeOf<ToolProgress['kind']>().toEqualTypeOf<'progress'>();
     expectTypeOf<ToolMessage['kind']>().toEqualTypeOf<'message'>();
     expectTypeOf<ToolEffectYield['kind']>().toEqualTypeOf<'effect'>();
-    expectTypeOf<ToolExecution>().toMatchTypeOf<
-      AsyncGenerator<ToolYield, unknown, void>
+    expectTypeOf<ToolExecution>().toMatchTypeOf<AsyncGenerator<ToolYield, unknown, void>>();
+    expectTypeOf<NonNullable<ToolExecutionLifecycle['onToolScheduled']>>().toBeFunction();
+    expectTypeOf<NonNullable<ToolInvocationLifecycle['onExecutionStarted']>>().toBeFunction();
+    expectTypeOf<ToolPermissionResolution['decision']>().toEqualTypeOf<
+      'allow' | 'deny' | 'cancel'
     >();
-    expectTypeOf<InputSubmission['status']>().toEqualTypeOf<
-      'started' | 'steered' | 'queued'
-    >();
-    expectTypeOf<PendingSessionInput['priority']>().toEqualTypeOf<
-      'now' | 'next' | 'later'
-    >();
+    expectTypeOf<ToolScheduledLifecycle['interruptBehavior']>().toEqualTypeOf<'block' | 'cancel'>();
+    expectTypeOf<ToolSettledLifecycle['result']>().toEqualTypeOf<ToolResult>();
+    expectTypeOf<InputSubmission['status']>().toEqualTypeOf<'started' | 'steered' | 'queued'>();
+    expectTypeOf<PendingSessionInput['priority']>().toEqualTypeOf<'now' | 'next' | 'later'>();
     expectTypeOf<ReturnType<typeof createMemoryReadTool>>().toMatchTypeOf<SessionTool>();
-    expectTypeOf<DurableEventEnvelope['sequence']>().toEqualTypeOf<
-      EventSequence
+    expectTypeOf<DurableEventEnvelope['sequence']>().toEqualTypeOf<EventSequence>();
+    expectTypeOf<
+      DurableEventOfType<typeof DurableEventType.REQUEST_ACCEPTED>['data']['inputId']
+    >().toEqualTypeOf<InputId>();
+    expectTypeOf<
+      DurableSessionCommand['events'][number]
+    >().toEqualTypeOf<DurableCommandEventDraft>();
+    expectTypeOf<DurableSessionRecoveryPlan['action']>().toEqualTypeOf<
+      'none' | 'resume_request' | 'resume_turn' | 'resolve_permissions' | 'reconcile_tool_outcomes'
     >();
     expectTypeOf<DurableEventStore['append']>().toBeFunction();
+    expectTypeOf<SessionOptions['durableEventStore']>().toEqualTypeOf<
+      DurableEventStore | undefined
+    >();
+    expectTypeOf<ReturnType<ISession['abort']>>().toEqualTypeOf<Promise<void>>();
     expectTypeOf<ToolCatalogEntry['source']['kind']>().toEqualTypeOf<
       'builtin' | 'custom' | 'mcp' | 'session'
     >();

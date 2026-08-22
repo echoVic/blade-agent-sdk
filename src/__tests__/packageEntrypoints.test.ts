@@ -72,6 +72,11 @@ describe('package entrypoints', () => {
 
     expect(browser.PermissionMode.DEFAULT).toBe('default');
     expect(browser.DurableEventType.REQUEST_ACCEPTED).toBe('request_accepted');
+    expect(browser.DurableSessionJournal.open).toBeTypeOf('function');
+    expect(browser.DurableSessionRecoveryRequiredError).toBeDefined();
+    expect(browser.projectDurableSession([]).status).toBe('empty');
+    expect(browser.PermissionRequestId('permission-1')).toBe('permission-1');
+    expect(browser.ToolUseId('tool-call-1')).toBe('tool-call-1');
     expect(() => browser.createSession({} as never)).toThrow(/server-only.*createSession/);
     expect(() => serverOnly.getBuiltinTools()).toThrow(/server-only.*getBuiltinTools/);
     expect(() => new serverOnly.JsonlDurableEventStore()).toThrow(

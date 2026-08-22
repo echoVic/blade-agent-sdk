@@ -3,7 +3,10 @@ import type { ContextSnapshot } from '../../runtime/index.js';
 import type { ToolCatalog } from '../../tools/catalog/index.js';
 import type { ExecutionPipeline } from '../../tools/execution/ExecutionPipeline.js';
 import type { ToolRegistry } from '../../tools/registry/ToolRegistry.js';
-import type { ConfirmationHandler } from '../../tools/types/ExecutionTypes.js';
+import type {
+  ConfirmationHandler,
+  ToolExecutionLifecycle,
+} from '../../tools/types/ExecutionTypes.js';
 import {
   type ToolEffect,
   ToolErrorType,
@@ -11,7 +14,7 @@ import {
   type ToolYield,
 } from '../../tools/types/index.js';
 import { isSteeringInterruptSignal } from '../../types/abort.js';
-import type { SessionId } from '../../types/branded.js';
+import { type SessionId, ToolUseId } from '../../types/branded.js';
 import type { BladeConfig, JsonObject, PermissionMode } from '../../types/common.js';
 import type { IBackgroundAgentManager } from '../types.js';
 import { repairToolCallParams } from './repairToolCallParams.js';
@@ -89,6 +92,7 @@ export interface ToolExecutionContext {
   toolCatalog?: ToolCatalog;
   toolRegistry?: ToolRegistry;
   discoveredTools?: string[];
+  lifecycle?: ToolExecutionLifecycle;
 }
 
 export interface ToolExecutionHooks {
@@ -114,21 +118,58 @@ export interface RunToolCallInput {
   batchSignal?: AbortSignal;
 }
 
-export async function runToolCall(
-  input: RunToolCallInput,
-): Promise<ToolExecutionOutcome> {
+export async function runToolCall(input: RunToolCallInput): Promise<ToolExecutionOutcome> {
   const logger = input.logger ?? NOOP_LOGGER.child(LogCategory.AGENT);
-  let outcome: ToolExecutionOutcome;
   let interruptBehavior: 'cancel' | 'block' = 'block';
+  let params: JsonObject;
 
   try {
-    const params = JSON.parse(input.toolCall.function.arguments) as JsonObject;
+    const parsed: unknown = JSON.parse(input.toolCall.function.arguments);
+    if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
+      throw new Error('Tool arguments must be a JSON object');
+    }
+    params = parsed as JsonObject;
     await repairToolCallParams(input.toolCall, params);
     interruptBehavior = resolveToolInterruptBehavior(
       input.executionPipeline.getRegistry(),
       input.toolCall.function.name,
       params,
     );
+  } catch (error) {
+    const outcome = buildFailedOutcome(
+      input.toolCall,
+      error,
+      interruptBehavior,
+      input.steeringSignal,
+    );
+    await emitToolExecutionUpdate(input.hooks, {
+      type: 'tool_ready',
+      toolCall: input.toolCall,
+    });
+    await emitToolExecutionUpdate(input.hooks, {
+      type: 'tool_result',
+      outcome,
+    });
+    await emitToolExecutionUpdate(input.hooks, {
+      type: 'tool_completed',
+      outcome,
+    });
+    return outcome;
+  }
+
+  const invocationLifecycle = await input.executionContext.lifecycle?.onToolScheduled?.({
+    toolCallId: ToolUseId(input.toolCall.id),
+    toolName: input.toolCall.function.name,
+    input: structuredClone(params),
+    interruptBehavior,
+  });
+  await emitToolExecutionUpdate(input.hooks, {
+    type: 'tool_ready',
+    toolCall: input.toolCall,
+  });
+
+  let outcome: ToolExecutionOutcome;
+  try {
     const interruptSignal = createInterruptAwareAbortSignal({
       requestSignal: input.signal,
       steeringSignal: input.steeringSignal,
@@ -136,10 +177,11 @@ export async function runToolCall(
       interruptBehavior,
     });
 
-    const toolUseUuid = await input.hooks?.onBeforeToolExec?.({
-      toolCall: input.toolCall,
-      params,
-    }) ?? null;
+    const toolUseUuid =
+      (await input.hooks?.onBeforeToolExec?.({
+        toolCall: input.toolCall,
+        params,
+      })) ?? null;
     await emitToolExecutionUpdate(input.hooks, {
       type: 'tool_started',
       toolCall: input.toolCall,
@@ -152,24 +194,21 @@ export async function runToolCall(
     let execution: ReturnType<ExecutionPipeline['execute']> | undefined;
     let executionCompleted = false;
     try {
-      execution = input.executionPipeline.execute(
-        input.toolCall.function.name,
-        params,
-        {
-          sessionId: input.executionContext.sessionId,
-          userId: input.executionContext.userId,
-          contextSnapshot: input.executionContext.contextSnapshot,
-          skillActivationPaths: input.executionContext.skillActivationPaths,
-          signal: interruptSignal.signal,
-          confirmationHandler: input.executionContext.confirmationHandler,
-          bladeConfig: input.executionContext.bladeConfig,
-          backgroundAgentManager: input.executionContext.backgroundAgentManager,
-          toolCatalog: input.executionContext.toolCatalog,
-          toolRegistry: input.executionContext.toolRegistry,
-          discoveredTools: input.executionContext.discoveredTools,
-          permissionMode: input.permissionMode,
-        },
-      );
+      execution = input.executionPipeline.execute(input.toolCall.function.name, params, {
+        sessionId: input.executionContext.sessionId,
+        userId: input.executionContext.userId,
+        contextSnapshot: input.executionContext.contextSnapshot,
+        skillActivationPaths: input.executionContext.skillActivationPaths,
+        signal: interruptSignal.signal,
+        confirmationHandler: input.executionContext.confirmationHandler,
+        bladeConfig: input.executionContext.bladeConfig,
+        backgroundAgentManager: input.executionContext.backgroundAgentManager,
+        toolCatalog: input.executionContext.toolCatalog,
+        toolRegistry: input.executionContext.toolRegistry,
+        discoveredTools: input.executionContext.discoveredTools,
+        permissionMode: input.permissionMode,
+        toolInvocationLifecycle: invocationLifecycle,
+      });
       while (true) {
         const step = await execution.next();
         if (step.done) {
@@ -186,9 +225,9 @@ export async function runToolCall(
         );
       }
       if (
-        result.status === 'error'
-        && interruptBehavior === 'cancel'
-        && isSteeringInterruptSignal(input.steeringSignal)
+        result.status === 'error' &&
+        interruptBehavior === 'cancel' &&
+        isSteeringInterruptSignal(input.steeringSignal)
       ) {
         result = {
           ...result,
@@ -212,27 +251,14 @@ export async function runToolCall(
     outcome = { toolCall: input.toolCall, result, effects, toolUseUuid };
   } catch (error) {
     logger.error(`Tool execution failed for ${input.toolCall.function.name}:`, error);
-    const message = error instanceof Error ? error.message : 'Unknown error';
-    const interrupted =
-      interruptBehavior === 'cancel'
-      && isSteeringInterruptSignal(input.steeringSignal);
-    outcome = {
-      toolCall: input.toolCall,
-      result: {
-        status: 'error',
-        model: `Tool execution failed: ${message}`,
-        error: {
-          type: interrupted
-            ? ToolErrorType.INTERRUPTED
-            : ToolErrorType.EXECUTION_ERROR,
-          message,
-        },
-      },
-      effects: [],
-      toolUseUuid: null,
-    };
+    outcome = buildFailedOutcome(input.toolCall, error, interruptBehavior, input.steeringSignal);
   }
 
+  await input.executionContext.lifecycle?.onToolSettled?.({
+    toolCallId: ToolUseId(input.toolCall.id),
+    toolName: input.toolCall.function.name,
+    result: outcome.result,
+  });
   await emitToolExecutionUpdate(input.hooks, {
     type: 'tool_result',
     outcome,
@@ -242,6 +268,29 @@ export async function runToolCall(
     outcome,
   });
   return outcome;
+}
+
+function buildFailedOutcome(
+  toolCall: FunctionToolCall,
+  error: unknown,
+  interruptBehavior: 'cancel' | 'block',
+  steeringSignal: AbortSignal | undefined,
+): ToolExecutionOutcome {
+  const message = error instanceof Error ? error.message : 'Unknown error';
+  const interrupted = interruptBehavior === 'cancel' && isSteeringInterruptSignal(steeringSignal);
+  return {
+    toolCall,
+    result: {
+      status: 'error',
+      model: `Tool execution failed: ${message}`,
+      error: {
+        type: interrupted ? ToolErrorType.INTERRUPTED : ToolErrorType.EXECUTION_ERROR,
+        message,
+      },
+    },
+    effects: [],
+    toolUseUuid: null,
+  };
 }
 
 export async function emitToolExecutionUpdate(

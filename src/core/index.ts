@@ -46,13 +46,18 @@ export type {
   ToolEffectYield,
   ToolError,
   ToolExecution,
+  ToolExecutionLifecycle,
   ToolExposureConfig,
   ToolExposureMode,
-  ToolModelContent,
+  ToolInvocationLifecycle,
   ToolMessage,
+  ToolModelContent,
+  ToolPermissionResolution,
   ToolProgress,
   ToolResult,
+  ToolScheduledLifecycle,
   ToolSchema,
+  ToolSettledLifecycle,
   ToolYield,
 } from '../tools/types/index.js';
 export {
@@ -61,6 +66,18 @@ export {
   ToolErrorType,
 } from '../tools/types/index.js';
 export { ToolKind } from '../tools/types/ToolKind.js';
+export {
+  CommandId,
+  EventId,
+  EventSequence,
+  InputId,
+  PermissionRequestId,
+  RequestId,
+  SessionId,
+  ToolAttemptId,
+  ToolUseId,
+  TurnId,
+} from '../types/branded.js';
 export type {
   JsonObject,
   JsonValue,
@@ -79,16 +96,6 @@ export {
   PermissionMode,
   StreamMessageType,
 } from '../types/constants.js';
-export {
-  CommandId,
-  EventId,
-  EventSequence,
-  InputId,
-  RequestId,
-  SessionId,
-  ToolAttemptId,
-  TurnId,
-} from '../types/branded.js';
 export type {
   CanUseTool,
   CanUseToolOptions,

@@ -7,7 +7,7 @@ import type {
   ToolExecutionHooks,
   ToolExecutionOutcome,
 } from './runToolCall.js';
-import { emitToolExecutionUpdate, runToolCall } from './runToolCall.js';
+import { runToolCall } from './runToolCall.js';
 import type { FunctionToolCall } from './types.js';
 
 export type {
@@ -39,19 +39,13 @@ export async function executeToolCalls(
     return results;
   }
 
-  return Promise.all(
-    plan.calls.map((toolCall) => executeToolCall(toolCall, input)),
-  );
+  return Promise.all(plan.calls.map((toolCall) => executeToolCall(toolCall, input)));
 }
 
 async function executeToolCall(
   toolCall: FunctionToolCall,
   input: ExecuteToolCallsInput,
 ): Promise<ToolExecutionOutcome> {
-  await emitToolExecutionUpdate(input.hooks, {
-    type: 'tool_ready',
-    toolCall,
-  });
   return runToolCall({
     toolCall,
     executionPipeline: input.executionPipeline,
