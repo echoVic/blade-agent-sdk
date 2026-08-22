@@ -14,12 +14,10 @@ fragments in the generated release commit.
 
 Allowed `type` values:
 
-- `breaking`
-- `feature`
-- `fix`
-- `performance`
-- `refactor`
-- `docs`
+- `breaking` → major
+- `feature` → minor
+- `fix` / `performance` / `refactor` / `docs` → patch
 
 Use a unique kebab-case filename. Both language fields are required and must
-describe user-visible behavior rather than commit mechanics.
+describe user-visible behavior rather than commit mechanics. The highest
+fragment type determines the semantic-release version.

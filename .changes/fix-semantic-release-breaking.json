@@ -1,0 +1,5 @@
+{
+  "type": "fix",
+  "en": "Make changelog fragments drive semantic-release version selection and recognize Conventional Commit bang headers so breaking changes cannot merge without a release.",
+  "zh-CN": "让 changelog fragment 直接驱动 semantic-release 版本选择，并识别 Conventional Commit 的感叹号 header，防止 breaking change 合并后未发布版本。"
+}

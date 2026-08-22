@@ -1,9 +1,14 @@
+const parserOpts = {
+  breakingHeaderPattern: /^(\w*)(?:\((.*)\))?!: (.*)$/,
+  breakingHeaderCorrespondence: ['type', 'scope', 'subject'],
+};
+
 module.exports = {
   branches: ['main'],
   tagFormat: 'v${version}',
   plugins: [
-    '@semantic-release/commit-analyzer',
-    '@semantic-release/release-notes-generator',
+    ['@semantic-release/commit-analyzer', { parserOpts }],
+    ['@semantic-release/release-notes-generator', { parserOpts }],
     './scripts/semantic-release-bilingual-changelog.cjs',
     '@semantic-release/npm',
     [
