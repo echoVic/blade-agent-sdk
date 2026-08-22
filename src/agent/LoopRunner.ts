@@ -173,14 +173,19 @@ export class LoopRunner {
     let lastMessageUuid: string | null = null;
     const contextMgr = this.modelManager.getContextManager();
     if (contextMgr && context.sessionId && options?.inputApplication) {
-      lastMessageUuid = await contextMgr.saveAppliedInputMessage(
-        context.sessionId,
-        options.inputApplication.inputId,
-        options.inputApplication.requestId,
-        message,
-        null,
-        context.subagentInfo,
-      );
+      try {
+        lastMessageUuid = await contextMgr.saveAppliedInputMessage(
+          context.sessionId,
+          options.inputApplication.inputId,
+          options.inputApplication.requestId,
+          message,
+          null,
+          context.subagentInfo,
+        );
+      } catch (error) {
+        // 与其他消息写入保持一致的 best-effort 策略：持久化失败不应中断请求。
+        this.logger.warn('[LoopRunner] 保存已应用输入消息失败:', error);
+      }
     } else {
       try {
         if (contextMgr && context.sessionId && hasPersistableUserContent(message)) {
