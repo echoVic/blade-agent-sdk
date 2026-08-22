@@ -2,6 +2,12 @@
 
 All notable changes to `@blade-ai/agent-sdk` are documented here.
 
+## [3.1.1] - 2026-08-22
+
+### Fixes
+
+- Fail closed when Sandbox is enabled but no supported OS sandbox executor is available.
+
 ## [3.1.0] - 2026-08-22
 
 ### Features
