@@ -101,11 +101,13 @@ Node-local 能力外，这些函数都从根入口导出；实际 subpath 以“
 |------|------|
 | `DurableEventStore` | append/read/head 的持久化接口 |
 | `DurableSessionJournal` / `DurableSessionJournalOptions` | command-oriented 串行提交、CAS 重试与对账层 |
+| `DurableSessionRecoveryCoordinator` | accepted Request 恢复、权限消解与工具结果对账协调器 |
 | `DurableSessionCommand` / `DurableCommandEventDraft` | Journal command 与不含重复 `commandId` 的事件输入 |
 | `DurableCommandCommitResult` / `DurableCommandCommitStatus` | `committed` / `replayed` / `reconciled` 提交结果 |
 | `DurableSessionJournalError` / `DurableSessionJournalErrorCode` | command、分页和 Store 返回值错误 |
 | `DurableCommandConflictError` | 同一 `commandId` 被用于不同事件 |
 | `DurableCommandOutcomeUnknownError` | 写入失败后无法确认 command 是否提交 |
+| `DurableSessionRecoveryError` / `DurableSessionRecoveryErrorCode` | 恢复目标缺失或状态不满足恢复契约 |
 | `DurableSessionRecoveryRequiredError` | Session 恢复前需要权限或工具结果对账 |
 | `SessionDurableRecorderError` | Session runtime 观察到非法 durable 生命周期状态 |
 | `DurableEventEnvelope` / `DurableEventDraft` | 已提交事件与待提交事件 |
@@ -125,6 +127,12 @@ Node-local 能力外，这些函数都从根入口导出；实际 subpath 以“
 | `DurableToolAttemptProjection` / `DurableToolAttemptStatus` | 当前 Turn 的工具尝试状态 |
 | `DurablePermissionProjection` / `DurablePermissionStatus` | 工具权限状态 |
 | `DurableSessionRecoveryAction` | 恢复动作判别值 |
+| `DurableAcceptedRequestRecovery` | 可自动恢复且带完整执行快照的 accepted Request |
+| `DurableSessionResumeDecision` | `ready` / `resume_accepted_request` / `recovery_required` 决策 |
+| `DurableToolOutcomeReconciliation` / `DurableToolOutcomeReconciliationCommand` | 显式工具结果对账输入 |
+| `DurableToolStartCommand` | 恢复执行前持久化 `tool_started` 的幂等命令 |
+| `DurablePermissionResolutionCommand` | 幂等权限消解输入 |
+| `DurableRecoveryCommitResult` | 对账提交结果及更新后的 projection/recovery plan |
 | `DURABLE_EVENT_SCHEMA_VERSION` / `DURABLE_EVENT_LOG_FORMAT` | wire schema 与日志格式版本 |
 | `DurableEventProjectionError` | 生命周期事件顺序或关联关系非法 |
 | `DurableEventSequenceConflictError` | CAS 序列冲突错误 |

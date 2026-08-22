@@ -278,12 +278,18 @@ const projection = session.getDurableProjection();
 const recovery = session.getDurableRecoveryPlan();
 ```
 
-`resumeSession()` throws `DurableSessionRecoveryRequiredError` when the
-durable log contains unfinished work, pending permission, or an unknown tool
-outcome. The current integration never replays a started tool automatically;
-reconcile it through `DurableSessionJournal` first. The JSONL adapter supports
-only one process; multi-process deployments need a `DurableEventStore` with
-transactional CAS or fencing.
+`resumeSession()` automatically restores a durable Request that was accepted
+but has no `request_started` event. It preserves the `requestId`, input,
+`maxTurns`, model, and Runtime Context, so the caller can continue it by
+calling `stream()` directly. Legacy durable Requests without a complete
+execution snapshot are not resumed automatically.
+
+A started Request, active Turn, pending permission, or unknown tool outcome is
+never replayed speculatively and raises `DurableSessionRecoveryRequiredError`.
+Use `DurableSessionRecoveryCoordinator` to resolve permissions or reconcile
+tool outcomes explicitly. `non_idempotent` tools always remain fail-closed. The
+JSONL adapter supports only one process; multi-process deployments need a
+`DurableEventStore` with transactional CAS or fencing.
 
 ### Resume
 
@@ -296,6 +302,15 @@ const session = await resumeSession({
   model,
   storagePath: '/var/lib/my-agent',
 });
+
+// A process that stopped after send() but before stream() leaves the original
+// Request pending. Do not submit the same input twice.
+if (session.getPendingInputs().length === 0) {
+  await session.send('Continue the analysis');
+}
+for await (const event of session.stream()) {
+  // Consume the resumed or newly submitted Request.
+}
 ```
 
 `resumeSession()` requires persistent storage.

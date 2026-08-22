@@ -675,9 +675,15 @@ const projection = session.getDurableProjection();
 const recovery = session.getDurableRecoveryPlan();
 ```
 
-`resumeSession()` 遇到未完成的 durable Request、待决权限或未知工具结果时抛出
-`DurableSessionRecoveryRequiredError`。当前集成不会自动重放已开始的工具；
-调用方必须先通过 `DurableSessionJournal` 对账。JSONL adapter 只支持单进程
+`resumeSession()` 会自动恢复已接受但尚未写入 `request_started` 的 durable
+Request，并保留其 `requestId`、输入、`maxTurns` 和 Runtime Context。调用方可
+直接调用 `stream()` 继续这个 pending Request；执行时也会恢复接受请求时的
+模型。缺少完整执行快照的旧 durable Request 不会自动恢复。
+
+已经开始的 Request、活动 Turn、待决权限或未知工具结果不会被推测性重放，而是
+抛出 `DurableSessionRecoveryRequiredError`。使用
+`DurableSessionRecoveryCoordinator` 显式消解权限或对账工具结果；
+`non_idempotent` 工具始终保持 fail-closed。JSONL adapter 只支持单进程
 writer，多进程部署需要实现带事务 CAS 或 fencing 的 `DurableEventStore`。
 
 ### 自定义存储路径
@@ -720,7 +726,10 @@ const session = await resumeSession({
 
 console.log('已恢复消息数:', session.messages.length);
 
-await session.send('继续之前的分析');
+// 如果进程在 send() 之后、stream() 之前退出，原请求已经恢复为 pending。
+if (session.getPendingInputs().length === 0) {
+  await session.send('继续之前的分析');
+}
 for await (const msg of session.stream()) {
   if (msg.type === 'content') process.stdout.write(msg.delta);
 }

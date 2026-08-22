@@ -195,7 +195,7 @@ export class LoopRunner {
     // 3. 计算 maxTurns
     const isYoloMode = context.permissionMode === PermissionMode.YOLO;
     const configuredMaxTurns =
-      this.runtimeOptions.maxTurns ?? options?.maxTurns ?? this.config.maxTurns ?? -1;
+      options?.maxTurns ?? this.runtimeOptions.maxTurns ?? this.config.maxTurns ?? -1;
 
     if (configuredMaxTurns === 0) {
       return {

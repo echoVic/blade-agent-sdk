@@ -1,0 +1,5 @@
+{
+  "type": "feature",
+  "en": "Add a durable recovery coordinator with idempotent tool-outcome and permission reconciliation, and automatically resume requests that were accepted before execution started.",
+  "zh-CN": "新增 Durable Recovery Coordinator，支持幂等的工具结果与权限对账，并自动恢复已接受但尚未开始执行的请求。"
+}

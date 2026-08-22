@@ -13,13 +13,17 @@ import {
   SessionId,
   ToolUseId,
 } from '../../types/branded.js';
+import type { JsonValue } from '../../types/common.js';
 import { type DurableEventStore, DurableEventStoreError } from '../events/DurableEventStore.js';
 import {
   DurableCommandOutcomeUnknownError,
   DurableSessionJournal,
 } from '../events/DurableSessionJournal.js';
 import { JsonlDurableEventStore } from '../events/JsonlDurableEventStore.js';
-import { DurableSessionRecoveryRequiredError } from '../events/SessionDurableRecorder.js';
+import {
+  DurableSessionRecoveryRequiredError,
+  SessionDurableRecorderError,
+} from '../events/SessionDurableRecorder.js';
 import type {
   DurableEventAppendOptions,
   DurableEventAppendResult,
@@ -45,7 +49,7 @@ let streamChat: StreamChat = async function* defaultStream() {
   };
 };
 
-const createAgent = vi.fn(async () => ({
+const createAgent = vi.fn(async (_config?: unknown, _options?: unknown, _deps?: unknown) => ({
   streamChat: (message: UserMessageContent, context: unknown, options?: LoopOptions) =>
     streamChat(message, context, options),
   async setModel() {},
@@ -155,6 +159,64 @@ describe('Session durable events', () => {
     expect((await store.read(session.sessionId)).events.at(-1)?.type).toBe(
       DurableEventType.SESSION_CLOSED,
     );
+  });
+
+  it('persists the accepted request execution snapshot before send returns', async () => {
+    const { store } = createStore();
+    const session = await createSession({
+      ...options(store),
+      maxTurns: 50,
+      defaultContext: {
+        id: 'default-context',
+        environment: { DEFAULT: 'yes', OVERRIDE: 'before' },
+      },
+    });
+
+    await session.send('snapshot me', {
+      maxTurns: 9,
+      context: {
+        id: 'request-context',
+        environment: { OVERRIDE: 'after' },
+      },
+    });
+
+    expect(
+      (await store.read(session.sessionId)).events.find(
+        (event) => event.type === DurableEventType.REQUEST_ACCEPTED,
+      )?.data,
+    ).toMatchObject({
+      input: 'snapshot me',
+      maxTurns: 9,
+      model: 'test-model',
+      context: {
+        id: 'request-context',
+        environment: {
+          DEFAULT: 'yes',
+          OVERRIDE: 'after',
+        },
+      },
+    });
+    await session.abort();
+    await session.close();
+  });
+
+  it('releases the external abort listener when durable acceptance fails', async () => {
+    const { store } = createStore();
+    const failingStore = new FailOnEventTypeStore(store, DurableEventType.REQUEST_ACCEPTED);
+    const session = await createSession(options(failingStore));
+    const controller = new AbortController();
+    const addListener = vi.spyOn(controller.signal, 'addEventListener');
+    const removeListener = vi.spyOn(controller.signal, 'removeEventListener');
+
+    await expect(
+      session.send('must not leak', { signal: controller.signal }),
+    ).rejects.toBeInstanceOf(DurableCommandOutcomeUnknownError);
+
+    const abortListener = addListener.mock.calls.find(([type]) => type === 'abort')?.[1];
+    expect(abortListener).toBeDefined();
+    expect(removeListener).toHaveBeenCalledWith('abort', abortListener);
+    expect(session.getPendingInputs()).toEqual([]);
+    await expect(session.close()).rejects.toBeInstanceOf(DurableCommandOutcomeUnknownError);
   });
 
   it('persists tool and permission boundaries around the real side effect', async () => {
@@ -278,11 +340,13 @@ describe('Session durable events', () => {
     const session = await createSession(options(failingStore));
     await session.send('write');
     const messages: AgentEvent[] = [];
-    await expect((async () => {
-      for await (const event of session.stream()) {
-        messages.push(event as AgentEvent);
-      }
-    })()).rejects.toThrow('Request execution and durable finalization both failed');
+    await expect(
+      (async () => {
+        for await (const event of session.stream()) {
+          messages.push(event as AgentEvent);
+        }
+      })(),
+    ).rejects.toThrow('Request execution and durable finalization both failed');
 
     expect(sideEffectRan).toBe(false);
     expect(messages.some((event) => event.type === 'error')).toBe(false);
@@ -318,9 +382,11 @@ describe('Session durable events', () => {
     await session.close();
   });
 
-  it('fails closed when resuming a session with unfinished durable work', async () => {
+  it('resumes a durably accepted request without accepting it twice', async () => {
     const { root, store } = createStore();
     const sessionId = SessionId('unfinished-session');
+    const requestId = RequestId('unfinished-request');
+    const inputId = InputId('unfinished-input');
     const journal = await DurableSessionJournal.open(store, sessionId);
     await journal.commit({
       commandId: CommandId('command-create'),
@@ -336,12 +402,279 @@ describe('Session durable events', () => {
       events: [
         {
           type: DurableEventType.REQUEST_ACCEPTED,
-          requestId: RequestId('unfinished-request'),
+          requestId,
           data: {
-            inputId: InputId('unfinished-input'),
+            inputId,
             input: 'resume me',
             priority: 'next',
+            maxTurns: 17,
+            model: 'durable-model',
+            context: {
+              id: 'durable-context',
+              environment: { RECOVERED: 'yes' },
+            },
           },
+        },
+      ],
+    });
+    let observedMessage: UserMessageContent | undefined;
+    let observedContext: unknown;
+    let observedOptions: LoopOptions | undefined;
+    streamChat = async function* recoveredStream(message, context, loopOptions) {
+      observedMessage = message;
+      observedContext = context;
+      observedOptions = loopOptions;
+      yield { type: 'turn_start', turn: 1, maxTurns: 17 };
+      yield { type: 'turn_end', turn: 1, hasToolCalls: false };
+      return {
+        success: true,
+        finalMessage: 'recovered',
+        metadata: { turnsCount: 1, toolCallsCount: 0, duration: 1 },
+      };
+    };
+
+    const session = await resumeSession({
+      ...options(store),
+      persistSession: true,
+      storagePath: root,
+      sessionId,
+      defaultContext: {
+        id: 'replacement-context',
+        environment: { RECOVERED: 'no' },
+      },
+    });
+
+    const createdConfig = createAgent.mock.calls.at(-1)?.[0] as
+      | { models?: Array<{ model?: string }> }
+      | undefined;
+    expect(createdConfig?.models?.[0]?.model).toBe('durable-model');
+    expect(session.getPendingInputs()).toEqual([
+      expect.objectContaining({
+        inputId,
+        content: 'resume me',
+        targetRequestId: requestId,
+      }),
+    ]);
+    for await (const _event of session.stream()) {
+      // Drain the recovered request.
+    }
+
+    expect(observedMessage).toBe('resume me');
+    expect(observedOptions?.maxTurns).toBe(17);
+    expect(observedContext).toMatchObject({
+      snapshot: {
+        context: {
+          id: 'durable-context',
+          environment: { RECOVERED: 'yes' },
+        },
+      },
+    });
+    const events = (await store.read(sessionId)).events;
+    expect(events.filter((event) => event.type === DurableEventType.REQUEST_ACCEPTED)).toHaveLength(
+      1,
+    );
+    expect(events.find((event) => event.type === DurableEventType.REQUEST_STARTED)?.requestId).toBe(
+      requestId,
+    );
+    expect(session.getDurableRecoveryPlan()?.action).toBe('none');
+    await session.close();
+  });
+
+  it('allows only one concurrent resume to cross request_started', async () => {
+    const { root, store } = createStore();
+    const sessionId = SessionId('concurrent-recovery-session');
+    const requestId = RequestId('concurrent-recovery-request');
+    const inputId = InputId('concurrent-recovery-input');
+    const journal = await DurableSessionJournal.open(store, sessionId);
+    await journal.commit({
+      commandId: CommandId('concurrent-bootstrap'),
+      events: [
+        {
+          type: DurableEventType.SESSION_CREATED,
+          data: { source: 'create' },
+        },
+        {
+          type: DurableEventType.REQUEST_ACCEPTED,
+          requestId,
+          data: {
+            inputId,
+            input: 'execute once',
+            priority: 'next',
+            maxTurns: 20,
+            model: 'test-model',
+            context: {},
+          },
+        },
+      ],
+    });
+    let modelCalls = 0;
+    streamChat = async function* concurrentRecoveryStream() {
+      modelCalls += 1;
+      yield { type: 'turn_start', turn: 1, maxTurns: 20 };
+      yield { type: 'turn_end', turn: 1, hasToolCalls: false };
+      return {
+        success: true,
+        finalMessage: 'done',
+        metadata: { turnsCount: 1, toolCallsCount: 0, duration: 1 },
+      };
+    };
+
+    const [winner, loser] = await Promise.all([
+      resumeSession({
+        ...options(store),
+        persistSession: true,
+        storagePath: root,
+        sessionId,
+      }),
+      resumeSession({
+        ...options(store),
+        persistSession: true,
+        storagePath: root,
+        sessionId,
+      }),
+    ]);
+    const winnerStream = winner.stream();
+    await expect(winnerStream.next()).resolves.toMatchObject({
+      value: { type: 'turn_start' },
+      done: false,
+    });
+    await expect(loser.stream().next()).rejects.toThrow(
+      /already applied|already started|has not started/,
+    );
+    expect(loser.getPendingInputs()).toEqual([]);
+
+    while (!(await winnerStream.next()).done) {
+      // Drain the winning execution.
+    }
+    expect(modelCalls).toBe(1);
+    expect(
+      (await store.read(sessionId)).events.filter(
+        (event) => event.type === DurableEventType.REQUEST_STARTED,
+      ),
+    ).toHaveLength(1);
+    await winner.close();
+    await loser.close();
+  });
+
+  it('restores multimodal content from an accepted durable request', async () => {
+    const { root, store } = createStore();
+    const sessionId = SessionId('multimodal-recovery-session');
+    const requestId = RequestId('multimodal-recovery-request');
+    const inputId = InputId('multimodal-recovery-input');
+    const input: JsonValue = [
+      { type: 'text', text: 'Inspect this image' },
+      {
+        type: 'image_url',
+        image_url: { url: 'data:image/png;base64,recovery' },
+      },
+    ];
+    const journal = await DurableSessionJournal.open(store, sessionId);
+    await journal.commit({
+      commandId: CommandId('multimodal-bootstrap'),
+      events: [
+        {
+          type: DurableEventType.SESSION_CREATED,
+          data: { source: 'create' },
+        },
+        {
+          type: DurableEventType.REQUEST_ACCEPTED,
+          requestId,
+          data: {
+            inputId,
+            input,
+            priority: 'next',
+            maxTurns: 20,
+            model: 'test-model',
+            context: {},
+          },
+        },
+      ],
+    });
+
+    const session = await resumeSession({
+      ...options(store),
+      persistSession: true,
+      storagePath: root,
+      sessionId,
+    });
+
+    expect(session.getPendingInputs()[0]?.content).toEqual(input);
+    await session.abort();
+    await session.close();
+  });
+
+  it('fails closed when an accepted request payload cannot be restored', async () => {
+    const { root, store } = createStore();
+    const sessionId = SessionId('invalid-recovery-session');
+    const requestId = RequestId('invalid-recovery-request');
+    const inputId = InputId('invalid-recovery-input');
+    const journal = await DurableSessionJournal.open(store, sessionId);
+    await journal.commit({
+      commandId: CommandId('invalid-bootstrap'),
+      events: [
+        {
+          type: DurableEventType.SESSION_CREATED,
+          data: { source: 'create' },
+        },
+        {
+          type: DurableEventType.REQUEST_ACCEPTED,
+          requestId,
+          data: {
+            inputId,
+            input: { unsupported: true },
+            priority: 'next',
+            maxTurns: 20,
+            model: 'test-model',
+            context: {},
+          },
+        },
+      ],
+    });
+
+    await expect(
+      resumeSession({
+        ...options(store),
+        persistSession: true,
+        storagePath: root,
+        sessionId,
+      }),
+    ).rejects.toBeInstanceOf(SessionDurableRecorderError);
+  });
+
+  it('fails closed when resuming a request that crossed the execution boundary', async () => {
+    const { root, store } = createStore();
+    const sessionId = SessionId('running-session');
+    const requestId = RequestId('running-request');
+    const inputId = InputId('running-input');
+    const journal = await DurableSessionJournal.open(store, sessionId);
+    await journal.commit({
+      commandId: CommandId('command-bootstrap'),
+      events: [
+        {
+          type: DurableEventType.SESSION_CREATED,
+          data: { source: 'create' },
+        },
+        {
+          type: DurableEventType.REQUEST_ACCEPTED,
+          requestId,
+          data: {
+            inputId,
+            input: 'do not replay me',
+            priority: 'next',
+          },
+        },
+        {
+          type: DurableEventType.INPUT_APPLIED,
+          requestId,
+          data: {
+            inputId,
+            priority: 'next',
+          },
+        },
+        {
+          type: DurableEventType.REQUEST_STARTED,
+          requestId,
+          data: {},
         },
       ],
     });
@@ -420,10 +753,9 @@ describe('Session durable events', () => {
 
     expect(innerClosed).toBe(true);
     expect(session.getDurableRecoveryPlan()?.action).toBe('none');
-    expect((await store.read(session.sessionId)).events.map((event) => event.type).slice(-2)).toEqual([
-      DurableEventType.TURN_ABORTED,
-      DurableEventType.REQUEST_INTERRUPTED,
-    ]);
+    expect(
+      (await store.read(session.sessionId)).events.map((event) => event.type).slice(-2),
+    ).toEqual([DurableEventType.TURN_ABORTED, DurableEventType.REQUEST_INTERRUPTED]);
     await session.close();
   });
 
@@ -434,10 +766,9 @@ describe('Session durable events', () => {
 
     await session.close();
 
-    expect((await store.read(session.sessionId)).events.map((event) => event.type).slice(-2)).toEqual([
-      DurableEventType.REQUEST_INTERRUPTED,
-      DurableEventType.SESSION_CLOSED,
-    ]);
+    expect(
+      (await store.read(session.sessionId)).events.map((event) => event.type).slice(-2),
+    ).toEqual([DurableEventType.REQUEST_INTERRUPTED, DurableEventType.SESSION_CLOSED]);
   });
 
   it('commits session closure once across concurrent close calls', async () => {
@@ -488,8 +819,9 @@ describe('Session durable events', () => {
     }
 
     const events = (await store.read(session.sessionId)).events;
-    expect(events.find((event) => event.type === DurableEventType.REQUEST_INTERRUPTED)?.data)
-      .toMatchObject({ reason: 'session_close' });
+    expect(
+      events.find((event) => event.type === DurableEventType.REQUEST_INTERRUPTED)?.data,
+    ).toMatchObject({ reason: 'session_close' });
     expect(events.at(-1)?.type).toBe(DurableEventType.SESSION_CLOSED);
   });
 

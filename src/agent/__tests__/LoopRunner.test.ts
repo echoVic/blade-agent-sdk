@@ -17,15 +17,15 @@ import { createTool } from '../../tools/core/createTool.js';
 import type { ExecutionPipeline } from '../../tools/execution/ExecutionPipeline.js';
 import { ToolRegistry } from '../../tools/registry/ToolRegistry.js';
 import {
-  completeToolExecution,
-  type ToolEffect,
-  type ToolResult,
+    completeToolExecution,
+    type ToolEffect,
+    type ToolResult,
 } from '../../tools/types/index.js';
 import { ToolKind } from '../../tools/types/ToolKind.js';
 import {
-  InputId,
-  RequestId,
-  SessionId,
+    InputId,
+    RequestId,
+    SessionId,
 } from '../../types/branded.js';
 import type { BladeConfig } from '../../types/common.js';
 import { PermissionMode } from '../../types/common.js';
@@ -307,6 +307,25 @@ describe('LoopRunner', () => {
 
       expect(result.success).toBe(false);
       expect(result.error?.type).toBe('chat_disabled');
+    });
+
+    it('should let request maxTurns override the Session default', async () => {
+      const mm = createMockModelManager();
+      const pipeline = createMockPipeline();
+      const runner = new LoopRunner(
+        baseConfig,
+        { ...baseOptions, maxTurns: 10 },
+        mm,
+        pipeline,
+      );
+
+      const result = await runner.runLoop('Hello', createContext(), {
+        maxTurns: 0,
+      });
+
+      expect(result.success).toBe(false);
+      expect(result.error?.type).toBe('chat_disabled');
+      expect(mm._chat).not.toHaveBeenCalled();
     });
 
     it('should handle abort signal', async () => {

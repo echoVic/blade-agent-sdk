@@ -17,6 +17,18 @@ export {
   type DurableSessionJournalOptions,
 } from './DurableSessionJournal.js';
 export {
+  type DurableAcceptedRequestRecovery,
+  type DurablePermissionResolutionCommand,
+  type DurableRecoveryCommitResult,
+  DurableSessionRecoveryCoordinator,
+  DurableSessionRecoveryError,
+  type DurableSessionRecoveryErrorCode,
+  type DurableSessionResumeDecision,
+  type DurableToolOutcomeReconciliation,
+  type DurableToolOutcomeReconciliationCommand,
+  type DurableToolStartCommand,
+} from './DurableSessionRecoveryCoordinator.js';
+export {
   DurableEventProjectionError,
   type DurablePermissionProjection,
   type DurablePermissionStatus,

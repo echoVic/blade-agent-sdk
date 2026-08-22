@@ -20,7 +20,7 @@ import {
   type ToolUseId,
   TurnId,
 } from '../../types/branded.js';
-import type { JsonValue } from '../../types/common.js';
+import type { JsonObject, JsonValue } from '../../types/common.js';
 import { toJsonValue } from '../../utils/jsonValue.js';
 import type { DurableSessionJournal } from './DurableSessionJournal.js';
 import type { DurableSessionRecoveryPlan } from './DurableSessionProjector.js';
@@ -97,6 +97,10 @@ export class SessionDurableRecorder implements ToolExecutionLifecycle {
     inputId: InputId,
     input: UserMessageContent,
     priority: 'next' | 'later' = 'next',
+    execution: {
+      readonly maxTurns?: number;
+      readonly context?: JsonObject;
+    } = {},
   ): Promise<void> {
     await this.commit([
       {
@@ -106,6 +110,9 @@ export class SessionDurableRecorder implements ToolExecutionLifecycle {
           inputId,
           input: toJsonValue(input),
           priority,
+          ...(execution.maxTurns !== undefined ? { maxTurns: execution.maxTurns } : {}),
+          model: this.model,
+          ...(execution.context ? { context: execution.context } : {}),
         },
       },
     ]);

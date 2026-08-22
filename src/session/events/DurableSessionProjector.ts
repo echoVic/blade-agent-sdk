@@ -12,7 +12,7 @@ import {
   type ToolUseId,
   type TurnId,
 } from '../../types/branded.js';
-import type { JsonValue } from '../../types/common.js';
+import type { JsonObject, JsonValue } from '../../types/common.js';
 import { parseDurableEventDraft, parseDurableEventEnvelope } from './schemas.js';
 import {
   DURABLE_EVENT_SCHEMA_VERSION,
@@ -85,6 +85,10 @@ export interface DurableRequestProjection {
   readonly inputId: InputId;
   readonly input: JsonValue;
   readonly priority: DurableInputPriority;
+  readonly acceptedAt: string;
+  readonly maxTurns?: number;
+  readonly model?: string;
+  readonly context?: JsonObject;
   readonly status: DurableRequestStatus;
   readonly lastTurn: number;
   readonly activeTurn: DurableTurnProjection | null;
@@ -164,6 +168,10 @@ interface MutableRequestProjection {
   inputId: InputId;
   input: JsonValue;
   priority: DurableInputPriority;
+  acceptedAt: string;
+  maxTurns?: number;
+  model?: string;
+  context?: JsonObject;
   status: DurableRequestStatus;
   lastTurn: number;
   activeTurn: MutableTurnProjection | null;
@@ -321,6 +329,10 @@ function cloneRequest(request: MutableRequestProjection | null): DurableRequestP
     inputId: request.inputId,
     input: request.input,
     priority: request.priority,
+    acceptedAt: request.acceptedAt,
+    ...(request.maxTurns !== undefined ? { maxTurns: request.maxTurns } : {}),
+    ...(request.model ? { model: request.model } : {}),
+    ...(request.context ? { context: request.context } : {}),
     status: request.status,
     lastTurn: request.lastTurn,
     activeTurn: cloneTurn(request.activeTurn),
@@ -371,6 +383,10 @@ function applyEvent(state: ProjectionAccumulator, event: DurableEventEnvelope): 
         inputId: event.data.inputId,
         input: event.data.input,
         priority: event.data.priority,
+        acceptedAt: event.occurredAt,
+        ...(event.data.maxTurns !== undefined ? { maxTurns: event.data.maxTurns } : {}),
+        ...(event.data.model ? { model: event.data.model } : {}),
+        ...(event.data.context ? { context: event.data.context } : {}),
         status: 'accepted',
         lastTurn: 0,
         activeTurn: null,

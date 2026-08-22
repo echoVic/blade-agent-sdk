@@ -1,11 +1,15 @@
 import { describe, expect, expectTypeOf, it } from 'vitest';
 import type {
+  DurableAcceptedRequestRecovery,
   DurableCommandEventDraft,
   DurableEventEnvelope,
   DurableEventOfType,
   DurableEventStore,
   DurableSessionCommand,
+  DurableSessionResumeDecision,
   DurableSessionRecoveryPlan,
+  DurableToolOutcomeReconciliationCommand,
+  DurableToolStartCommand,
   InputSubmission,
   ISession,
   PendingSessionInput,
@@ -40,6 +44,8 @@ import {
   DurableEventType,
   DurableSessionJournal,
   DurableSessionProjector,
+  DurableSessionRecoveryCoordinator,
+  DurableSessionRecoveryError,
   DurableSessionRecoveryRequiredError,
   EventId,
   EventSequence,
@@ -92,6 +98,8 @@ describe('root exports', () => {
     expect(DurableCommandOutcomeUnknownError).toBeDefined();
     expect(DurableSessionJournal.open).toBeTypeOf('function');
     expect(DurableSessionProjector).toBeDefined();
+    expect(DurableSessionRecoveryCoordinator.open).toBeTypeOf('function');
+    expect(DurableSessionRecoveryError).toBeDefined();
     expect(DurableSessionRecoveryRequiredError).toBeDefined();
     expect(SessionDurableRecorderError).toBeDefined();
     expect(projectDurableSession([]).status).toBe('empty');
@@ -133,6 +141,14 @@ describe('root exports', () => {
     expectTypeOf<DurableSessionRecoveryPlan['action']>().toEqualTypeOf<
       'none' | 'resume_request' | 'resume_turn' | 'resolve_permissions' | 'reconcile_tool_outcomes'
     >();
+    expectTypeOf<DurableSessionResumeDecision['action']>().toEqualTypeOf<
+      'ready' | 'resume_accepted_request' | 'recovery_required'
+    >();
+    expectTypeOf<DurableAcceptedRequestRecovery['model']>().toEqualTypeOf<string>();
+    expectTypeOf<
+      DurableToolOutcomeReconciliationCommand['toolAttemptId']
+    >().toEqualTypeOf<ToolAttemptId>();
+    expectTypeOf<DurableToolStartCommand['commandId']>().toEqualTypeOf<CommandId>();
     expectTypeOf<DurableEventStore['append']>().toBeFunction();
     expectTypeOf<SessionOptions['durableEventStore']>().toEqualTypeOf<
       DurableEventStore | undefined
