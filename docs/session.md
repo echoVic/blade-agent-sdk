@@ -673,6 +673,7 @@ const session = await createSession({
 ```ts
 const projection = session.getDurableProjection();
 const recovery = session.getDurableRecoveryPlan();
+const events = await session.subscribeDurableEvents({ after: savedCursor });
 ```
 
 `resumeSession()` 会自动恢复已接受但尚未写入 `request_started` 的 durable
@@ -1732,6 +1733,9 @@ interface ISession extends AsyncDisposable {
   getTraces(): AgentTrace[];
   getDurableProjection(): DurableSessionProjection | null;
   getDurableRecoveryPlan(): DurableSessionRecoveryPlan | null;
+  subscribeDurableEvents(
+    options?: DurableEventSubscriptionOptions,
+  ): Promise<DurableEventSubscription>;
 }
 ```
 

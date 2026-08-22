@@ -22,6 +22,7 @@ entry. The Node.js JSONL adapter is available from root and `/local`:
 ```ts
 import {
   CommandId,
+  DurableEventSubscription,
   type DurableEventDataMap,
   DurableSessionRecoveryCoordinator,
   DurableSessionProjector,
@@ -220,6 +221,52 @@ console.log(page.hasMore);
 `after` is exclusive. Page size must be between 1 and 1000. A cursor ahead of
 the current head is rejected rather than silently returning an empty page.
 
+## Reconnectable event subscriptions
+
+`DurableEventSubscription` wraps cursor-based reads in a pull-based
+`AsyncIterableIterator`. It captures a replay head when opened, replays events
+through that position, emits one `caught_up` barrier, and then marks later
+events as `live`:
+
+```ts
+const subscription = await DurableEventSubscription.open(store, sessionId, {
+  after: savedCursor,
+  pageSize: 100,
+  pollIntervalMs: 250,
+});
+
+for await (const message of subscription) {
+  if (message.type === 'caught_up') {
+    markClientReady(message.headSequence);
+    continue;
+  }
+
+  await deliver(message.event);
+  await saveCursor(message.cursor);
+}
+```
+
+The same subscription is available from an initialized Session:
+
+```ts
+const subscription = await session.subscribeDurableEvents({
+  after: savedCursor,
+});
+```
+
+A cursor is a strictly versioned JSON value containing `sessionId`, `sequence`,
+and `eventId`. Reconnection verifies that the cursor still names the same event
+in the canonical log. A foreign, ahead-of-head, replaced, or sequence-gapped
+cursor fails closed instead of skipping data.
+
+The subscription reads another page only when the consumer asks for another
+item, bounding memory and read pressure by `pageSize`. It ends after
+`session_closed`; `close()` cleanly releases a pending wait, while an
+`AbortSignal` terminates with `AbortError`. Set `follow: false` to replay only
+the snapshot that existed when the subscription opened. Persist each delivery's
+cursor only after processing the event to obtain at-least-once delivery across
+reconnections.
+
 ## State projection and recovery classification
 
 `DurableSessionProjector` consumes events page by page.
@@ -386,6 +433,7 @@ journal.
 | `DurableCommandConflictError` | One `commandId` maps to different content or non-contiguous ranges. |
 | `DurableCommandOutcomeUnknownError` | A failed write cannot be reconciled and the Journal is fenced. |
 | `DurableSessionJournalError` | Command input, Store page, or commit result violates its contract. |
+| `DurableEventSubscriptionError` | Subscription options, cursor anchors, or Store pages violate the replay contract. |
 | `DurableSessionRecoveryRequiredError` | The Session has unfinished work that requires recovery or reconciliation. |
 | `SessionDurableRecorderError` | Session runtime observed an invalid durable lifecycle state. |
 | `DurableEventProjectionError` | Schema, ordering, or correlation violates lifecycle invariants. |

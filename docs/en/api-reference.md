@@ -60,6 +60,10 @@ These ID exports are branded identifiers, not arbitrary strings.
 Runtime:
 
 - `JsonlDurableEventStore`
+- `DurableEventSubscription`
+- `durableEventCursor`
+- `parseDurableEventCursor`
+- `DURABLE_EVENT_CURSOR_VERSION`
 - `DurableSessionJournal`
 - `DurableSessionRecoveryCoordinator`
 - `DurableEventType`
@@ -76,6 +80,11 @@ Runtime:
 Types and errors:
 
 - `DurableEventStore`
+- `DurableEventCursor`
+- `DurableEventSubscriptionOptions`
+- `DurableEventSubscriptionMessage`
+- `DurableEventSubscriptionError`
+- `DurableEventSubscriptionErrorCode`
 - `DurableSessionJournalOptions`
 - `DurableSessionCommand`
 - `DurableCommandEventDraft`

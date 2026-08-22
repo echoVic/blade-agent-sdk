@@ -19,6 +19,7 @@ adapter 从根入口或 `/local` 导入：
 ```ts
 import {
   CommandId,
+  DurableEventSubscription,
   type DurableEventDataMap,
   DurableSessionRecoveryCoordinator,
   DurableSessionProjector,
@@ -214,6 +215,48 @@ console.log(page.hasMore);
 `after` 是 exclusive cursor。单页限制为 1 到 1000 条；cursor 超过当前 head
 会被拒绝，而不是静默返回空结果。
 
+## 可重连事件订阅
+
+`DurableEventSubscription` 将 cursor 分页读取封装为 pull-based
+`AsyncIterableIterator`。订阅打开时固定一个 replay head，先回放该位置之前的
+事件，再发送一次 `caught_up` barrier，之后到达的事件标记为 `live`：
+
+```ts
+const subscription = await DurableEventSubscription.open(store, sessionId, {
+  after: savedCursor,
+  pageSize: 100,
+  pollIntervalMs: 250,
+});
+
+for await (const message of subscription) {
+  if (message.type === 'caught_up') {
+    markClientReady(message.headSequence);
+    continue;
+  }
+
+  await deliver(message.event);
+  await saveCursor(message.cursor);
+}
+```
+
+也可以从已初始化的 Session 创建相同订阅：
+
+```ts
+const subscription = await session.subscribeDurableEvents({
+  after: savedCursor,
+});
+```
+
+cursor 是严格版本化的 JSON 值，包含 `sessionId`、`sequence` 和 `eventId`。
+重连时会验证 cursor 指向的事件仍是 canonical log 中的同一事件；跨 Session、
+超前、被替换或产生 sequence gap 的 cursor 会 fail closed，而不是跳过数据。
+
+订阅只在消费者请求下一项时读取下一页，内存和读取压力由 `pageSize` 有界控制。
+收到 `session_closed` 后流自动结束；`close()` 正常结束等待中的读取，
+`AbortSignal` 则以 `AbortError` 终止。`follow: false` 只回放订阅创建时已经存在
+的快照。应用应在成功处理事件后再持久化该 delivery 的 cursor，从而在断线重连
+时获得 at-least-once 交付。
+
 ## 状态投影与恢复分类
 
 `DurableSessionProjector` 可以逐页消费事件；`projectDurableSession()` 是一次性
@@ -367,6 +410,7 @@ Store 不持久化 token delta、工具 progress 等高频 UI 事件。只有会
 | `DurableCommandConflictError` | 相同 `commandId` 对应不同内容或非连续事件区间 |
 | `DurableCommandOutcomeUnknownError` | 写入失败后无法确认 command 是否提交，Journal 已 fenced |
 | `DurableSessionJournalError` | command 输入、Store page 或 commit 返回值违反契约 |
+| `DurableEventSubscriptionError` | 订阅配置、cursor 锚点或 Store page 不满足续读契约 |
 | `DurableSessionRecoveryRequiredError` | Session 存在未完成工作，必须先执行恢复或对账 |
 | `SessionDurableRecorderError` | Session runtime 观察到非法 durable 生命周期状态 |
 | `DurableEventProjectionError` | schema、事件顺序或关联关系不满足生命周期约束 |

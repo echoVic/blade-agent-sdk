@@ -1,0 +1,5 @@
+{
+  "type": "feature",
+  "en": "Add pull-based durable event subscriptions with validated reconnect cursors, replay barriers, bounded buffering, and live delivery.",
+  "zh-CN": "新增拉取式 durable 事件订阅，支持可验证的重连 cursor、回放边界、有界缓冲和实时交付。"
+}
