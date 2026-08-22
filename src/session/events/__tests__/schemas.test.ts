@@ -262,6 +262,22 @@ describe('durable event schemas', () => {
           priority: 'next',
           recovery: {
             requestId: RequestId('source-request'),
+          },
+        },
+      }),
+    ).toThrow();
+
+    expect(() =>
+      parseDurableEventDraft({
+        type: DurableEventType.REQUEST_ACCEPTED,
+        requestId,
+        commandId,
+        data: {
+          inputId: InputId('input-1'),
+          input: 'hello',
+          priority: 'next',
+          recovery: {
+            requestId: RequestId('source-request'),
             turnId: TurnId('source-turn'),
             turn: 0,
           },

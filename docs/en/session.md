@@ -263,15 +263,19 @@ When enabled, Session records Session, Request, Turn, Tool, Permission, and
 input-application events with these ordering guarantees:
 
 - `request_accepted` commits before `send()` returns.
+- A steering input's `input_applied` commits before its hooks and attachment preparation.
 - Turn and tool scheduling events commit before `turn_start` or `tool_use` is published.
 - `tool_started` commits before the tool side effect can run.
+- A standalone Request terminal event links to the latest persisted Request
+  boundary through `causationEventId`.
 - Terminal events commit before `tool_result`, `result`, or `error` is published.
 - A pending request commits `request_interrupted` before
   `await session.abort()` resolves.
 
-If a durable boundary cannot be committed, Session rejects the stream instead
-of fabricating a normal terminal event. New and queued requests remain blocked
-until the journal has been reconciled.
+If a durable boundary cannot be committed, Session fences the current Recorder
+and rejects the stream instead of fabricating a normal terminal event after the
+Journal refreshes. New and queued requests remain blocked until the journal has
+been reconciled.
 
 ```ts
 const projection = session.getDurableProjection();
@@ -287,12 +291,20 @@ execution snapshot are not resumed automatically.
 
 A started Request, active Turn, pending permission, or unknown tool outcome is
 never replayed speculatively and raises `DurableSessionRecoveryRequiredError`.
-Use `DurableSessionRecoveryCoordinator` to resolve permissions or reconcile
-tool outcomes explicitly. For a safe `resume_turn`, call
-`prepareTurnRecovery()` first to atomically terminate the old execution and
-accept a provenance-linked continuation Request. `resumeSession()` then uses
-the normal accepted-Request path. A `non_idempotent` tool that completed,
-failed, or was cancelled after execution started always remains fail-closed.
+When input preparation is ambiguous before the first or a subsequent Turn, call
+`prepareRequestRecovery()` with the reconciled final input, exact
+`appliedInputIds`, and observed `sourceLastTurn` to atomically roll the old
+Request into a new one. Missing or extra input applications are first classified as
+`reconcile_request_inputs`. Recovery skips the completed initial hooks,
+attachment expansion, and first-turn preparation, and filters already applied
+inputs from the legacy queue. For a safe `resume_turn`, call
+`prepareTurnRecovery()` to atomically terminate the old execution and accept a
+provenance-linked continuation Request. Both then use `resumeSession()`'s
+accepted-Request path. A Request whose last Turn ended without a Request
+terminal event reports `reconcile_request_outcome`; settle it with
+`reconcileRequestOutcome()` rather than replaying it. A `non_idempotent` tool
+that completed, failed, or was cancelled after execution started always
+remains fail-closed.
 The JSONL adapter supports only one process;
 multi-process deployments need a `DurableEventStore` with transactional CAS or
 fencing.

@@ -1,10 +1,14 @@
 import { nanoid } from 'nanoid';
 import type { AgentEvent, TokenUsageInfo } from '../../agent/AgentEvent.js';
-import type { LoopResult, UserMessageContent } from '../../agent/types.js';
+import type {
+  InputApplicationLifecycle,
+  LoopResult,
+  UserMessageContent,
+} from '../../agent/types.js';
 import { SdkError } from '../../errors/SdkError.js';
 import type {
-  ToolExecutionStartedLifecycle,
   ToolExecutionLifecycle,
+  ToolExecutionStartedLifecycle,
   ToolInvocationLifecycle,
   ToolPermissionResolution,
   ToolScheduledLifecycle,
@@ -13,6 +17,7 @@ import type {
 import { ToolErrorType } from '../../tools/types/ToolResult.js';
 import {
   CommandId,
+  type EventId,
   type InputId,
   PermissionRequestId,
   type RequestId,
@@ -22,7 +27,11 @@ import {
 } from '../../types/branded.js';
 import type { JsonObject, JsonValue } from '../../types/common.js';
 import { toJsonValue } from '../../utils/jsonValue.js';
-import type { DurableSessionJournal } from './DurableSessionJournal.js';
+import type {
+  DurableCommandCommitOptions,
+  DurableCommandCommitResult,
+  DurableSessionJournal,
+} from './DurableSessionJournal.js';
 import type { DurableSessionRecoveryPlan } from './DurableSessionProjector.js';
 import {
   DurableEventType,
@@ -81,8 +90,12 @@ export class DurableSessionRecoveryRequiredError extends SdkError {
   }
 }
 
-export class SessionDurableRecorder implements ToolExecutionLifecycle {
+export class SessionDurableRecorder implements ToolExecutionLifecycle, InputApplicationLifecycle {
   private activeTurn: ActiveTurn | null = null;
+  private readonly persistedInputApplications = new Map<InputId, 'now' | 'next'>();
+  private lastBoundaryEventId: EventId | null = null;
+  private boundaryFailed = false;
+  private boundaryFailure: unknown;
   private ignoredTurnEnd: number | null = null;
   private requestStarted = false;
   private requestFinished = false;
@@ -91,7 +104,14 @@ export class SessionDurableRecorder implements ToolExecutionLifecycle {
     private readonly journal: DurableSessionJournal,
     readonly requestId: RequestId,
     private readonly model: string,
-  ) {}
+  ) {
+    const projection = journal.getProjection();
+    const request = projection.activeRequest;
+    if (request?.requestId === requestId && request.activeTurn === null) {
+      this.lastBoundaryEventId = projection.lastEventId;
+      this.requestStarted = request.status === 'running';
+    }
+  }
 
   async recordAccepted(
     inputId: InputId,
@@ -102,7 +122,7 @@ export class SessionDurableRecorder implements ToolExecutionLifecycle {
       readonly context?: JsonObject;
     } = {},
   ): Promise<void> {
-    await this.commit([
+    await this.commitRequestBoundary([
       {
         type: DurableEventType.REQUEST_ACCEPTED,
         requestId: this.requestId,
@@ -123,7 +143,7 @@ export class SessionDurableRecorder implements ToolExecutionLifecycle {
     if (this.requestStarted) {
       throw new SessionDurableRecorderError(`Request ${this.requestId} was already started`);
     }
-    await this.commit([
+    await this.commitRequestBoundary([
       {
         type: DurableEventType.INPUT_APPLIED,
         requestId: this.requestId,
@@ -139,6 +159,41 @@ export class SessionDurableRecorder implements ToolExecutionLifecycle {
       },
     ]);
     this.requestStarted = true;
+  }
+
+  async onInputApplying(
+    input: { readonly inputId: InputId; readonly priority: 'now' | 'next' },
+  ): Promise<void> {
+    this.assertRequestOpen();
+    if (!this.requestStarted) {
+      throw new SessionDurableRecorderError(`Request ${this.requestId} has not started`);
+    }
+    if (this.activeTurn) {
+      throw new SessionDurableRecorderError(
+        `Input ${input.inputId} cannot be prepared while turn ${this.activeTurn.turnId} is active`,
+      );
+    }
+    const existingPriority = this.persistedInputApplications.get(input.inputId);
+    if (existingPriority) {
+      if (existingPriority !== input.priority) {
+        throw new SessionDurableRecorderError(
+          `Input ${input.inputId} changed priority during durable application`,
+        );
+      }
+      return;
+    }
+
+    await this.commitRequestBoundary([
+      {
+        type: DurableEventType.INPUT_APPLIED,
+        requestId: this.requestId,
+        data: {
+          inputId: input.inputId,
+          priority: input.priority,
+        },
+      },
+    ]);
+    this.persistedInputApplications.set(input.inputId, input.priority);
   }
 
   async recordAgentEvent(event: AgentEvent): Promise<void> {
@@ -163,18 +218,21 @@ export class SessionDurableRecorder implements ToolExecutionLifecycle {
         this.ignoredTurnEnd = event.turn;
         return;
       case 'input_applied':
-        await this.commit([
-          {
-            type: DurableEventType.INPUT_APPLIED,
-            requestId: this.requestId,
-            ...(this.activeTurn ? { turnId: this.activeTurn.turnId } : {}),
-            data: {
-              inputId: event.inputId,
-              priority: event.priority,
-            },
-          },
-        ]);
-        return;
+        {
+          const persistedPriority = this.persistedInputApplications.get(event.inputId);
+          if (!persistedPriority) {
+            throw new SessionDurableRecorderError(
+              `Input ${event.inputId} was not persisted before preparation`,
+            );
+          }
+          if (persistedPriority !== event.priority) {
+            throw new SessionDurableRecorderError(
+              `Input ${event.inputId} changed priority after durable application`,
+            );
+          }
+          this.persistedInputApplications.delete(event.inputId);
+          return;
+        }
       default:
         return;
     }
@@ -194,12 +252,14 @@ export class SessionDurableRecorder implements ToolExecutionLifecycle {
       }
     }
 
+    const causationEventId = this.requireLastBoundaryEventId();
     switch (finish.status) {
       case 'completed':
-        await this.commit([
+        await this.commitAtCurrentHead([
           {
             type: DurableEventType.REQUEST_COMPLETED,
             requestId: this.requestId,
+            causationEventId,
             data: {
               ...(finish.output !== undefined ? { output: finish.output } : {}),
               ...(finish.usage
@@ -216,10 +276,11 @@ export class SessionDurableRecorder implements ToolExecutionLifecycle {
         ]);
         break;
       case 'failed':
-        await this.commit([
+        await this.commitAtCurrentHead([
           {
             type: DurableEventType.REQUEST_FAILED,
             requestId: this.requestId,
+            causationEventId,
             data: {
               error: {
                 message:
@@ -230,10 +291,11 @@ export class SessionDurableRecorder implements ToolExecutionLifecycle {
         ]);
         break;
       case 'interrupted':
-        await this.commit([
+        await this.commitAtCurrentHead([
           {
             type: DurableEventType.REQUEST_INTERRUPTED,
             requestId: this.requestId,
+            causationEventId,
             data: {
               reason: finish.reason,
               ...(finish.byInputId ? { byInputId: finish.byInputId } : {}),
@@ -359,7 +421,7 @@ export class SessionDurableRecorder implements ToolExecutionLifecycle {
       turn,
       tools: new Map(),
     };
-    await this.commit([
+    await this.commitRequestBoundary([
       {
         type: DurableEventType.TURN_STARTED,
         requestId: this.requestId,
@@ -375,7 +437,7 @@ export class SessionDurableRecorder implements ToolExecutionLifecycle {
 
   private async completeTurn(turn: number, hasToolCalls: boolean): Promise<void> {
     const activeTurn = this.requireTurnNumber(turn);
-    await this.commit([
+    await this.commitRequestBoundary([
       {
         type: DurableEventType.TURN_COMPLETED,
         requestId: this.requestId,
@@ -433,7 +495,7 @@ export class SessionDurableRecorder implements ToolExecutionLifecycle {
     }
 
     if (drafts.length > 0) {
-      await this.commit(drafts);
+      await this.commitAtCurrentHead(drafts);
       for (const tool of cancelledPermissions) {
         tool.permissionDecision = 'cancel';
       }
@@ -444,7 +506,7 @@ export class SessionDurableRecorder implements ToolExecutionLifecycle {
     if (hasUnknownOutcome) {
       return false;
     }
-    await this.commit([
+    await this.commitRequestBoundary([
       {
         type: DurableEventType.TURN_ABORTED,
         requestId: this.requestId,
@@ -550,9 +612,28 @@ export class SessionDurableRecorder implements ToolExecutionLifecycle {
   }
 
   private assertRequestOpen(): void {
+    this.assertBoundaryHealthy();
     if (this.requestFinished) {
       throw new SessionDurableRecorderError(`Request ${this.requestId} is already terminal`);
     }
+  }
+
+  private assertBoundaryHealthy(): void {
+    if (this.boundaryFailed) {
+      throw new SessionDurableRecorderError(
+        `Request ${this.requestId} recorder is fenced after a durable boundary failure`,
+        { cause: this.boundaryFailure },
+      );
+    }
+  }
+
+  private requireLastBoundaryEventId(): EventId {
+    if (!this.lastBoundaryEventId) {
+      throw new SessionDurableRecorderError(
+        `Request ${this.requestId} has no durable boundary`,
+      );
+    }
+    return this.lastBoundaryEventId;
   }
 
   private requireActiveTurn(): ActiveTurn {
@@ -575,11 +656,43 @@ export class SessionDurableRecorder implements ToolExecutionLifecycle {
 
   private async commit(
     events: Parameters<DurableSessionJournal['commit']>[0]['events'],
-  ): Promise<void> {
-    await this.journal.commit({
-      commandId: CommandId(nanoid()),
-      events,
-    });
+    options: DurableCommandCommitOptions = {},
+  ): Promise<DurableCommandCommitResult> {
+    return this.journal.commit(
+      {
+        commandId: CommandId(nanoid()),
+        events,
+      },
+      options,
+    );
+  }
+
+  private async commitRequestBoundary(
+    events: Parameters<DurableSessionJournal['commit']>[0]['events'],
+  ): Promise<DurableCommandCommitResult> {
+    const commit = await this.commitAtCurrentHead(events);
+    const boundary = commit.events.at(-1);
+    if (!boundary) {
+      throw new SessionDurableRecorderError(
+        `Request ${this.requestId} boundary commit returned no events`,
+      );
+    }
+    this.lastBoundaryEventId = boundary.eventId;
+    return commit;
+  }
+
+  private async commitAtCurrentHead(
+    events: Parameters<DurableSessionJournal['commit']>[0]['events'],
+  ): Promise<DurableCommandCommitResult> {
+    this.assertBoundaryHealthy();
+    const expectedHeadSequence = this.journal.getProjection().headSequence;
+    try {
+      return await this.commit(events, { expectedHeadSequence });
+    } catch (error) {
+      this.boundaryFailed = true;
+      this.boundaryFailure = error;
+      throw error;
+    }
   }
 }
 

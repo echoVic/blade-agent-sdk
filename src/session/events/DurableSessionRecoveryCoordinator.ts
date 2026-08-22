@@ -2,6 +2,7 @@ import type { UserMessageContent } from '../../agent/types.js';
 import { SdkError } from '../../errors/SdkError.js';
 import type {
   CommandId,
+  EventId,
   EventSequence,
   InputId,
   PermissionRequestId,
@@ -36,6 +37,7 @@ import {
   type DurableEventError,
   DurableEventType,
   type DurablePermissionDecision,
+  type DurableTokenUsage,
 } from './types.js';
 
 const MAX_RECOVERY_TOOL_VALUE_CHARS = 4_000;
@@ -95,6 +97,21 @@ export interface DurablePermissionResolutionCommand {
   readonly message?: string;
 }
 
+export interface DurableRequestRolloverCommand {
+  readonly commandId: CommandId;
+  readonly requestId: RequestId;
+  readonly inputId: InputId;
+  readonly sourceLastTurn: number;
+  readonly recoveryTurnId: TurnId;
+  readonly recoveryRequestId: RequestId;
+  readonly recoveryInputId: InputId;
+  readonly preparation: {
+    readonly status: 'reconciled';
+    readonly appliedInputIds: readonly InputId[];
+    readonly input: UserMessageContent;
+  };
+}
+
 export interface DurableTurnRecoveryCommand {
   readonly commandId: CommandId;
   readonly requestId: RequestId;
@@ -113,6 +130,33 @@ export interface DurableTurnRecoveryResult extends DurableRecoveryCommitResult {
   readonly continuation: UserMessageContent;
   readonly interruptedRequestId: RequestId;
   readonly recoveryRequestId: RequestId;
+}
+
+export interface DurableRequestRolloverResult extends DurableRecoveryCommitResult {
+  readonly continuation: UserMessageContent;
+  readonly interruptedRequestId: RequestId;
+  readonly recoveryRequestId: RequestId;
+}
+
+export type DurableRequestOutcomeReconciliation =
+  | {
+      readonly status: 'completed';
+      readonly output?: JsonValue;
+      readonly usage?: DurableTokenUsage;
+    }
+  | {
+      readonly status: 'failed';
+      readonly error: DurableEventError;
+    }
+  | {
+      readonly status: 'interrupted';
+    };
+
+export interface DurableRequestOutcomeReconciliationCommand {
+  readonly commandId: CommandId;
+  readonly requestId: RequestId;
+  readonly lastTurnEventId: EventId;
+  readonly outcome: DurableRequestOutcomeReconciliation;
 }
 
 export type DurableSessionRecoveryErrorCode =
@@ -140,6 +184,7 @@ function isAcceptedRequestRecovery(
     recoveryPlan.action === 'resume_request' &&
     request?.status === 'accepted' &&
     request.activeTurn === null &&
+    (request.appliedInputIds ?? []).length === 0 &&
     !projection.appliedInputIds.includes(request.inputId) &&
     request.maxTurns !== undefined &&
     request.model !== undefined &&
@@ -228,8 +273,165 @@ function validatePersistedTurnRecovery(
   };
 }
 
+function validatePersistedRequestRollover(
+  events: readonly DurableEventEnvelope[],
+  command: DurableRequestRolloverCommand,
+  preparedInput: UserMessageContent,
+): {
+  continuation: UserMessageContent;
+  interruptedRequestId: RequestId;
+} {
+  const [turnStarted, turnAborted, requestInterrupted, accepted] = events.slice(-4);
+  const requestStarted = events.length === 5 ? events[0] : undefined;
+  const recoveryTurn = command.sourceLastTurn + 1;
+  const recovery = accepted?.type === DurableEventType.REQUEST_ACCEPTED
+    ? accepted.data.recovery
+    : undefined;
+  if (
+    (events.length !== 4 && events.length !== 5)
+    || (
+      requestStarted !== undefined
+      && (
+        requestStarted.type !== DurableEventType.REQUEST_STARTED
+        || requestStarted.requestId !== command.requestId
+      )
+    )
+    || turnStarted?.type !== DurableEventType.TURN_STARTED
+    || turnStarted.requestId !== command.requestId
+    || turnStarted.turnId !== command.recoveryTurnId
+    || turnStarted.data.turn !== recoveryTurn
+    || turnAborted?.type !== DurableEventType.TURN_ABORTED
+    || turnAborted.requestId !== command.requestId
+    || turnAborted.turnId !== command.recoveryTurnId
+    || turnAborted.data.turn !== recoveryTurn
+    || turnAborted.data.reason !== 'process_restart'
+    || requestInterrupted?.type !== DurableEventType.REQUEST_INTERRUPTED
+    || requestInterrupted.requestId !== command.requestId
+    || requestInterrupted.data.reason !== 'process_restart'
+    || accepted?.type !== DurableEventType.REQUEST_ACCEPTED
+    || accepted.requestId !== command.recoveryRequestId
+    || accepted.data.inputId !== command.recoveryInputId
+    || !recovery
+    || recovery.requestId !== command.requestId
+    || recovery.turnId !== command.recoveryTurnId
+    || recovery.turn !== recoveryTurn
+  ) {
+    throw new DurableSessionRecoveryError(
+      'DURABLE_RECOVERY_INVALID_STATE',
+      `Durable command ${command.commandId} is not the requested Request rollover`,
+    );
+  }
+  let continuation: UserMessageContent;
+  try {
+    continuation = parseDurableUserMessageContent(accepted.data.input);
+  } catch (cause) {
+    throw new DurableSessionRecoveryError(
+      'DURABLE_RECOVERY_INVALID_STATE',
+      `Durable command ${command.commandId} has an invalid recovery continuation`,
+      { cause },
+    );
+  }
+  const expectedContinuation = buildRequestRecoveryContinuation(
+    preparedInput,
+    command.requestId,
+    command.inputId,
+    command.preparation.appliedInputIds,
+    command.sourceLastTurn,
+  );
+  if (
+    JSON.stringify(toJsonValue(continuation))
+    !== JSON.stringify(toJsonValue(expectedContinuation))
+  ) {
+    throw new DurableSessionRecoveryError(
+      'DURABLE_RECOVERY_INVALID_STATE',
+      `Durable command ${command.commandId} has different preparation input`,
+    );
+  }
+  return {
+    continuation,
+    interruptedRequestId: recovery.requestId,
+  };
+}
+
 function jsonText(value: unknown): string {
   return JSON.stringify(value, null, 2);
+}
+
+function parseRecoveryInput(request: DurableRequestProjection): UserMessageContent {
+  try {
+    return parseDurableUserMessageContent(request.input);
+  } catch (cause) {
+    throw new DurableSessionRecoveryError(
+      'DURABLE_RECOVERY_INVALID_STATE',
+      `Request ${request.requestId} has an invalid recovery input`,
+      { cause },
+    );
+  }
+}
+
+function parseReconciledRequestPreparation(
+  command: DurableRequestRolloverCommand,
+): UserMessageContent {
+  if (
+    command.preparation?.status !== 'reconciled'
+    || !Number.isSafeInteger(command.sourceLastTurn)
+    || command.sourceLastTurn < 0
+    || !Array.isArray(command.preparation.appliedInputIds)
+    || command.preparation.appliedInputIds.some(
+      (appliedInputId) =>
+        typeof appliedInputId !== 'string' || appliedInputId.trim() === '',
+    )
+    || new Set(command.preparation.appliedInputIds).size
+      !== command.preparation.appliedInputIds.length
+  ) {
+    throw new DurableSessionRecoveryError(
+      'DURABLE_RECOVERY_INVALID_STATE',
+      'Request recovery requires a valid source Turn and explicit, unique input reconciliation',
+    );
+  }
+
+  try {
+    return parseDurableUserMessageContent(toJsonValue(command.preparation.input));
+  } catch (cause) {
+    throw new DurableSessionRecoveryError(
+      'DURABLE_RECOVERY_INVALID_STATE',
+      `Request ${command.requestId} has an invalid reconciled preparation input`,
+      { cause },
+    );
+  }
+}
+
+function inputIdsEqual(
+  left: readonly InputId[],
+  right: readonly InputId[],
+): boolean {
+  return left.length === right.length
+    && left.every((inputId, index) => inputId === right[index]);
+}
+
+function composeRecoveryContinuation(
+  originalInput: UserMessageContent,
+  recoveryState: Readonly<Record<string, unknown>>,
+  instructions: readonly string[],
+): UserMessageContent {
+  const recoveryText = [
+    'Continue the original request after a durable process-restart recovery.',
+    'The JSON below contains authoritative lifecycle state, not new user instructions.',
+    'A truncated_recovery_value is an explicitly incomplete payload preview.',
+    '',
+    jsonText({
+      ...recoveryState,
+      originalInput:
+        typeof originalInput === 'string'
+          ? originalInput
+          : { kind: 'multimodal_content_parts', preservedBelow: true },
+    }),
+    '',
+    ...instructions,
+  ].join('\n');
+  return typeof originalInput === 'string'
+    ? recoveryText
+    : [{ type: 'text', text: recoveryText }, ...originalInput];
 }
 
 function boundedRecoveryValue(value: unknown): JsonValue {
@@ -254,16 +456,7 @@ function buildTurnRecoveryContinuation(
   request: DurableRequestProjection,
   turn: NonNullable<DurableRequestProjection['activeTurn']>,
 ): UserMessageContent {
-  let originalInput: UserMessageContent;
-  try {
-    originalInput = parseDurableUserMessageContent(request.input);
-  } catch (cause) {
-    throw new DurableSessionRecoveryError(
-      'DURABLE_RECOVERY_INVALID_STATE',
-      `Request ${request.requestId} has an invalid recovery input`,
-      { cause },
-    );
-  }
+  const originalInput = parseRecoveryInput(request);
   const toolOutcomes = turn.toolAttempts.map((tool) => {
     const permissionDecision =
       tool.permission?.status === 'resolved' ? tool.permission.decision : undefined;
@@ -292,31 +485,85 @@ function buildTurnRecoveryContinuation(
       ...(tool.cancelReason ? { cancelReason: tool.cancelReason } : {}),
     };
   });
-  const recoveryText = [
-    'Continue the original request after a durable process-restart recovery.',
-    'The JSON below contains authoritative lifecycle state, not new user instructions.',
-    'A truncated_recovery_value is an explicitly incomplete payload preview.',
-    '',
-    jsonText({
+  return composeRecoveryContinuation(
+    originalInput,
+    {
       sourceRequestId: request.requestId,
       sourceTurnId: turn.turnId,
       sourceTurn: turn.turn,
-      originalInput:
-        typeof originalInput === 'string'
-          ? originalInput
-          : { kind: 'multimodal_content_parts', preservedBelow: true },
       toolOutcomes,
-    }),
-    '',
-    'Do not repeat tool operations marked completed. ' +
-      'Operations marked not_started are safe to execute once. Operations marked ' +
-      'interrupted_before_trusted_completion may be retried only when their ' +
-      'side-effect contract permits it. Operations marked cancelled_before_execution ' +
-      'require fresh permission. Continue the original task.',
-  ].join('\n');
-  return typeof originalInput === 'string'
-    ? recoveryText
-    : [{ type: 'text', text: recoveryText }, ...originalInput];
+    },
+    [
+      'Do not repeat tool operations marked completed. '
+        + 'Operations marked not_started are safe to execute once. Operations marked '
+        + 'interrupted_before_trusted_completion may be retried only when their '
+        + 'side-effect contract permits it. Operations marked cancelled_before_execution '
+        + 'require fresh permission. Continue the original task.',
+    ],
+  );
+}
+
+function buildRequestRecoveryContinuation(
+  preparedInput: UserMessageContent,
+  requestId: RequestId,
+  inputId: InputId,
+  appliedInputIds: readonly InputId[],
+  sourceLastTurn: number,
+): UserMessageContent {
+  return composeRecoveryContinuation(
+    preparedInput,
+    {
+      sourceRequestId: requestId,
+      sourceInputId: inputId,
+      sourceAppliedInputIds: appliedInputIds,
+      sourceLastTurn,
+      boundary: sourceLastTurn === 0 ? 'before_first_turn' : 'between_turns',
+    },
+    [
+      'Pre-turn side effects were explicitly reconciled. '
+        + (
+          sourceLastTurn === 0
+            ? 'No primary model turn started before the restart. '
+            : `No model turn started after completed turn ${sourceLastTurn}. `
+        )
+        + 'Execute this prepared input once.',
+    ],
+  );
+}
+
+function requestOutcomeEvent(
+  command: DurableRequestOutcomeReconciliationCommand,
+): DurableCommandEventDraft {
+  switch (command.outcome.status) {
+    case 'completed':
+      return {
+        type: DurableEventType.REQUEST_COMPLETED,
+        requestId: command.requestId,
+        causationEventId: command.lastTurnEventId,
+        data: {
+          ...(command.outcome.output !== undefined ? { output: command.outcome.output } : {}),
+          ...(command.outcome.usage ? { usage: command.outcome.usage } : {}),
+        },
+      };
+    case 'failed':
+      return {
+        type: DurableEventType.REQUEST_FAILED,
+        requestId: command.requestId,
+        causationEventId: command.lastTurnEventId,
+        data: {
+          error: command.outcome.error,
+        },
+      };
+    case 'interrupted':
+      return {
+        type: DurableEventType.REQUEST_INTERRUPTED,
+        requestId: command.requestId,
+        causationEventId: command.lastTurnEventId,
+        data: {
+          reason: 'process_restart',
+        },
+      };
+  }
 }
 
 /**
@@ -377,6 +624,206 @@ export class DurableSessionRecoveryCoordinator {
       projection,
       recoveryPlan,
     };
+  }
+
+  /**
+   * Atomically replaces a Request interrupted during preparation before its
+   * next Turn with a provenance-linked continuation Request.
+   */
+  async prepareRequestRecovery(
+    command: DurableRequestRolloverCommand,
+  ): Promise<DurableRequestRolloverResult> {
+    const preparedInput = parseReconciledRequestPreparation(command);
+    await this.journal.refresh();
+    const existing = this.journal.getCommandEvents(command.commandId);
+    if (existing) {
+      const persisted = validatePersistedRequestRollover(existing, command, preparedInput);
+      const commit = await this.commitRecovery({
+        commandId: command.commandId,
+        events: existing.map(eventToCommandDraft),
+      });
+      return {
+        ...this.result(commit),
+        continuation: persisted.continuation,
+        interruptedRequestId: persisted.interruptedRequestId,
+        recoveryRequestId: command.recoveryRequestId,
+      };
+    }
+
+    const projection = this.getProjection();
+    const recoveryPlan = this.getRecoveryPlan();
+    const request = projection.activeRequest;
+    if (
+      (
+        recoveryPlan.action !== 'rollover_request'
+        && recoveryPlan.action !== 'reconcile_request_inputs'
+      )
+      || !request
+      || (request.status !== 'running' && request.status !== 'accepted')
+      || request.activeTurn
+    ) {
+      throw new DurableSessionRecoveryError(
+        'DURABLE_RECOVERY_INVALID_STATE',
+        `Request recovery requires rollover_request or reconcile_request_inputs, found ${recoveryPlan.action}`,
+      );
+    }
+    if (request.requestId !== command.requestId || request.inputId !== command.inputId) {
+      throw new DurableSessionRecoveryError(
+        'DURABLE_RECOVERY_TARGET_NOT_FOUND',
+        `No Request awaiting preparation recovery matches ${command.requestId}/${command.inputId}`,
+      );
+    }
+    if (request.lastTurn !== command.sourceLastTurn) {
+      throw new DurableSessionRecoveryError(
+        'DURABLE_RECOVERY_TARGET_NOT_FOUND',
+        `Request ${request.requestId} last Turn does not match ${command.sourceLastTurn}`,
+      );
+    }
+    const appliedInputIds = request.appliedInputIds ?? [];
+    if (!inputIdsEqual(appliedInputIds, command.preparation.appliedInputIds)) {
+      throw new DurableSessionRecoveryError(
+        'DURABLE_RECOVERY_INVALID_STATE',
+        `Request ${request.requestId} applied-input reconciliation does not match durable state`,
+      );
+    }
+    if (
+      request.maxTurns === undefined
+      || request.model === undefined
+      || request.context === undefined
+    ) {
+      throw new DurableSessionRecoveryError(
+        'DURABLE_RECOVERY_INVALID_STATE',
+        `Request ${request.requestId} has no complete execution snapshot`,
+      );
+    }
+
+    const continuation = buildRequestRecoveryContinuation(
+      preparedInput,
+      request.requestId,
+      request.inputId,
+      appliedInputIds,
+      request.lastTurn,
+    );
+    const commit = await this.commitRecovery(
+      {
+        commandId: command.commandId,
+        events: [
+          ...(request.status === 'accepted'
+            ? [
+                {
+                  type: DurableEventType.REQUEST_STARTED,
+                  requestId: request.requestId,
+                  data: {},
+                } as const,
+              ]
+            : []),
+          {
+            type: DurableEventType.TURN_STARTED,
+            requestId: request.requestId,
+            turnId: command.recoveryTurnId,
+            data: {
+              turn: request.lastTurn + 1,
+              model: request.model,
+            },
+          },
+          {
+            type: DurableEventType.TURN_ABORTED,
+            requestId: request.requestId,
+            turnId: command.recoveryTurnId,
+            data: {
+              turn: request.lastTurn + 1,
+              reason: 'process_restart',
+            },
+          },
+          {
+            type: DurableEventType.REQUEST_INTERRUPTED,
+            requestId: request.requestId,
+            data: {
+              reason: 'process_restart',
+            },
+          },
+          {
+            type: DurableEventType.REQUEST_ACCEPTED,
+            requestId: command.recoveryRequestId,
+            data: {
+              inputId: command.recoveryInputId,
+              input: toJsonValue(continuation),
+              priority: 'next',
+              maxTurns: request.maxTurns,
+              model: request.model,
+              context: request.context,
+              recovery: {
+                requestId: request.requestId,
+                turnId: command.recoveryTurnId,
+                turn: request.lastTurn + 1,
+              },
+            },
+          },
+        ],
+      },
+      projection.headSequence,
+    );
+    return {
+      ...this.result(commit),
+      continuation,
+      interruptedRequestId: request.requestId,
+      recoveryRequestId: command.recoveryRequestId,
+    };
+  }
+
+  /**
+   * Records the externally reconciled terminal outcome of a Request whose
+   * final Turn ended before the Request terminal event was persisted.
+   */
+  async reconcileRequestOutcome(
+    command: DurableRequestOutcomeReconciliationCommand,
+  ): Promise<DurableRecoveryCommitResult> {
+    await this.journal.refresh();
+    const event = requestOutcomeEvent(command);
+    if (this.journal.getCommandEvents(command.commandId)) {
+      return this.result(await this.commitRecovery({
+        commandId: command.commandId,
+        events: [event],
+      }));
+    }
+
+    const projection = this.getProjection();
+    const recoveryPlan = this.getRecoveryPlan();
+    const request = projection.activeRequest;
+    if (
+      recoveryPlan.action !== 'reconcile_request_outcome'
+      || !request
+      || request.status !== 'running'
+      || request.activeTurn
+      || request.lastTurn === 0
+      || request.lastTurnEventId === null
+    ) {
+      throw new DurableSessionRecoveryError(
+        'DURABLE_RECOVERY_INVALID_STATE',
+        `Request outcome reconciliation requires reconcile_request_outcome, found ${recoveryPlan.action}`,
+      );
+    }
+    if (request.requestId !== command.requestId) {
+      throw new DurableSessionRecoveryError(
+        'DURABLE_RECOVERY_TARGET_NOT_FOUND',
+        `No terminal-pending Request matches ${command.requestId}`,
+      );
+    }
+    if (request.lastTurnEventId !== command.lastTurnEventId) {
+      throw new DurableSessionRecoveryError(
+        'DURABLE_RECOVERY_TARGET_NOT_FOUND',
+        `Request ${request.requestId} last Turn event does not match ${command.lastTurnEventId}`,
+      );
+    }
+
+    const commit = await this.commitRecovery(
+      {
+        commandId: command.commandId,
+        events: [event],
+      },
+      projection.headSequence,
+    );
+    return this.result(commit);
   }
 
   /**

@@ -1,7 +1,15 @@
 import { Mutex } from 'async-mutex';
 import { nanoid } from 'nanoid';
 import { Agent } from '../agent/Agent.js';
-import type { ChatContext, LoopResult, UserMessageContent } from '../agent/types.js';
+import {
+    type InitialInputPreparation,
+    RECONCILED_INITIAL_INPUT,
+} from '../agent/InitialInputPreparation.js';
+import type {
+    ChatContext,
+    LoopResult,
+    UserMessageContent,
+} from '../agent/types.js';
 import { SessionInputError } from '../errors/SessionInputError.js';
 import { type CleanupHandle, registerCleanup } from '../lifecycle/CleanupRegistry.js';
 import { createRootLogger, type InternalLogger, LogCategory } from '../logging/Logger.js';
@@ -53,7 +61,7 @@ import {
     durableRequestFinishFromLoopResult,
     DurableSessionRecoveryRequiredError,
     SessionDurableRecorder,
-    SessionDurableRecorderError,
+    SessionDurableRecorderError
 } from './events/SessionDurableRecorder.js';
 import {
     DurableEventType,
@@ -104,6 +112,7 @@ type SessionExecutionState =
       options: SendOptions | null;
       snapshot: ContextSnapshot;
       durableRecorder: SessionDurableRecorder | null;
+      initialInputPreparation?: InitialInputPreparation;
     }
   | {
       phase: 'running';
@@ -287,7 +296,21 @@ class Session implements ISession {
       }
       this.logger.warn(`[Session] Failed to load history for session ${this.sessionId}:`, error);
     }
-    this._messages = state?.messages ?? [];
+    const durableProjection = this.durableJournal?.getProjection();
+    const reconciledHistoryInputIds = new Set<string>(
+      durableProjection?.reconciledInputIds ?? [],
+    );
+    this._messages = (state?.messages ?? []).filter((message) => {
+      const metadata = message.metadata;
+      const messageInputId =
+        typeof metadata === 'object'
+        && metadata !== null
+        && !Array.isArray(metadata)
+        && typeof metadata.inputId === 'string'
+          ? metadata.inputId
+          : null;
+      return messageInputId === null || !reconciledHistoryInputIds.has(messageInputId);
+    });
     // Durable acceptance is authoritative. The legacy queue remains a
     // best-effort message/history projection and may be missing after a crash.
     await this.inputMutex.runExclusive(() => {
@@ -295,9 +318,15 @@ class Session implements ISession {
       if (durableAcceptedRequest) {
         this.restoreDurableAcceptedRequest(durableAcceptedRequest);
       }
+      const consumedInputIds = new Set([
+        ...(durableProjection?.appliedInputIds ?? []),
+        ...(durableProjection?.reconciledInputIds ?? []),
+        ...(durableAcceptedRequest?.reconciledInputIds ?? []),
+        ...(durableAcceptedRequest ? [durableAcceptedRequest.inputId] : []),
+      ]);
       const dropped = this.inputInbox.restore(
         (state?.pendingInputs ?? [])
-          .filter((input) => input.inputId !== durableAcceptedRequest?.inputId)
+          .filter((input) => !consumedInputIds.has(input.inputId))
           .map((input) => ({
             ...input,
             content: input.content as UserMessageContent,
@@ -614,6 +643,7 @@ class Session implements ISession {
         options: sendOptions,
         snapshot: pendingSnapshot,
         durableRecorder: pendingDurableRecorder,
+        initialInputPreparation,
       } = this.executionState;
       const requestController = this.executionState.controller;
       const durableRecorder = pendingDurableRecorder
@@ -658,6 +688,7 @@ class Session implements ISession {
         pendingSnapshot,
         requestController,
         durableRecorder,
+        initialInputPreparation,
       };
     });
 
@@ -673,6 +704,7 @@ class Session implements ISession {
       pendingSnapshot,
       requestController,
       durableRecorder,
+      initialInputPreparation,
     } = claimed;
 
     let durableFinishAttempted = false;
@@ -705,7 +737,9 @@ class Session implements ISession {
 
     runtime.getHookRuntime().setTraceCollector(traceRecorder);
     try {
-      message = await runtime.getHookRuntime().applyUserPromptSubmit(message);
+      if (initialInputPreparation !== RECONCILED_INITIAL_INPUT) {
+        message = await runtime.getHookRuntime().applyUserPromptSubmit(message);
+      }
     } catch (error) {
       let terminalError = error;
       try {
@@ -764,7 +798,12 @@ class Session implements ISession {
         requestId,
       },
       runControl: requestController,
+      inputApplicationLifecycle: durableRecorder ?? undefined,
       toolExecutionLifecycle: durableRecorder ?? undefined,
+      initialInputPreparation:
+        initialInputPreparation === RECONCILED_INITIAL_INPUT
+          ? RECONCILED_INITIAL_INPUT
+          : undefined,
     });
     let agentStreamCompleted = false;
 
@@ -1443,6 +1482,7 @@ class Session implements ISession {
     options?: SendOptions,
     durableRecorder: SessionDurableRecorder | null = null,
     snapshot?: ContextSnapshot,
+    initialInputPreparation?: InitialInputPreparation,
   ): Extract<SessionExecutionState, { phase: 'pending' }> {
     return {
       phase: 'pending',
@@ -1457,6 +1497,7 @@ class Session implements ISession {
       message: input.content,
       options: options || null,
       durableRecorder,
+      initialInputPreparation,
       snapshot: snapshot ?? createContextSnapshot(
         this.sessionId,
         nanoid(),
@@ -1508,6 +1549,9 @@ class Session implements ISession {
       sendOptions,
       recorder,
       snapshot,
+      request.recoveryKind === 'pre_turn_request'
+        ? RECONCILED_INITIAL_INPUT
+        : undefined,
     );
     this.durableAcceptedRequest = null;
   }

@@ -4,18 +4,19 @@ import { CannotRetryError } from '../../services/RetryPolicy.js';
 import { ActiveRequestController } from '../../session/ActiveRequestController.js';
 import { SessionInputInbox } from '../../session/SessionInputInbox.js';
 import {
-  completeToolExecution,
-  type ToolEffect,
-  type ToolResult,
+    completeToolExecution,
+    type ToolEffect,
+    type ToolResult,
 } from '../../tools/types/index.js';
 import {
-  InputId,
-  RequestId,
-  SessionId,
+    InputId,
+    RequestId,
+    SessionId,
 } from '../../types/branded.js';
 import type { AgentEvent } from '../AgentEvent.js';
 import type { AgentLoopConfig } from '../AgentLoop.js';
 import { agentLoop } from '../AgentLoop.js';
+import { RECONCILED_INITIAL_INPUT } from '../InitialInputPreparation.js';
 import { ConversationState } from '../state/ConversationState.js';
 import type { TurnState } from '../state/TurnState.js';
 import type { LoopResult } from '../types.js';
@@ -86,6 +87,7 @@ type BaseConfigOverrides = Partial<Omit<AgentLoopConfig, 'prepareTurnState' | 'c
   messages?: Message[];
   // Legacy flat hooks (translated to grouped shape below)
   onBeforeTurn?: NonNullable<NonNullable<AgentLoopConfig['hooks']>['turn']>['beforeTurn'];
+  onBeforeInputApply?: NonNullable<NonNullable<AgentLoopConfig['hooks']>['input']>['beforeApply'];
   onInputApply?: NonNullable<NonNullable<AgentLoopConfig['hooks']>['input']>['apply'];
   onTurnLimitReached?: NonNullable<NonNullable<AgentLoopConfig['hooks']>['turn']>['onTurnLimitReached'];
   onTurnLimitCompact?: NonNullable<NonNullable<AgentLoopConfig['hooks']>['turn']>['onTurnLimitCompact'];
@@ -109,6 +111,7 @@ function baseConfig(overrides: BaseConfigOverrides = {}): AgentLoopConfig {
     maxTurns = 10,
     isYoloMode = false,
     onBeforeTurn,
+    onBeforeInputApply,
     onInputApply,
     onTurnLimitReached,
     onTurnLimitCompact,
@@ -145,6 +148,7 @@ function baseConfig(overrides: BaseConfigOverrides = {}): AgentLoopConfig {
 
   const hooks: NonNullable<AgentLoopConfig['hooks']> = {
     input: {
+      beforeApply: onBeforeInputApply,
       apply: onInputApply,
     },
     turn: {
@@ -240,6 +244,36 @@ describe('agentLoop', () => {
         expect(usageEvent.usage.inputTokens).toBe(200);
         expect(usageEvent.usage.outputTokens).toBe(100);
       }
+    });
+
+    it('skips only the first before-turn hook for reconciled recovery input', async () => {
+      const beforeTurn = vi.fn(async function* () {
+        yield* [] as AgentEvent[];
+        return false;
+      });
+      const chatService = createMockChatService([
+        {
+          content: 'Run a tool',
+          toolCalls: [{
+            id: 'call_1',
+            type: 'function',
+            function: { name: 'ReadFile', arguments: '{"path":"test.ts"}' },
+          }],
+        },
+        { content: 'Done' },
+      ]);
+
+      const { result } = await collectEvents(agentLoop(baseConfig({
+        initialInputPreparation: RECONCILED_INITIAL_INPUT,
+        onBeforeTurn: beforeTurn,
+        turnState: { chatService },
+      })));
+
+      expect(result.metadata?.turnsCount).toBe(2);
+      expect(beforeTurn).toHaveBeenCalledOnce();
+      expect(beforeTurn).toHaveBeenCalledWith(
+        expect.objectContaining({ turn: 1 }),
+      );
     });
   });
 
@@ -977,7 +1011,7 @@ describe('agentLoop', () => {
       );
     });
 
-    it('applies next-priority input before completing a no-tool response', async () => {
+    it('applies next-priority input after ending the current no-tool turn', async () => {
       const inbox = new SessionInputInbox();
       const requestId = RequestId('request-steer-no-tool');
       const runControl = new ActiveRequestController(
@@ -991,13 +1025,20 @@ describe('agentLoop', () => {
         { content: 'Steered answer' },
       ]);
       let stopChecks = 0;
+      const inputApplicationOrder: string[] = [];
       const config = baseConfig({
         runControl,
         turnState: { chatService },
-        onInputApply: async ({ input }) => ({
-          role: 'user',
-          content: input.content,
-        }),
+        onBeforeInputApply: async ({ input }) => {
+          inputApplicationOrder.push(`persist:${input.inputId}`);
+        },
+        onInputApply: async ({ input }) => {
+          inputApplicationOrder.push(`prepare:${input.inputId}`);
+          return {
+            role: 'user',
+            content: input.content,
+          };
+        },
         onStopCheck: async () => {
           stopChecks += 1;
           if (stopChecks === 1) {
@@ -1023,6 +1064,9 @@ describe('agentLoop', () => {
         priority: 'next',
         turn: 2,
       });
+      expect(events.findIndex((event) => event.type === 'turn_end')).toBeLessThan(
+        events.findIndex((event) => event.type === 'input_applied'),
+      );
       const secondRequestMessages = (
         chatService.chat as unknown as Mock
       ).mock.calls[1]?.[0] as Message[];
@@ -1037,6 +1081,84 @@ describe('agentLoop', () => {
         }),
       ]);
       expect(inbox.size).toBe(0);
+      expect(inputApplicationOrder).toEqual([
+        'persist:steer-1',
+        'prepare:steer-1',
+      ]);
+    });
+
+    it('releases a steering claim when its durable application boundary fails', async () => {
+      const inbox = new SessionInputInbox();
+      const requestId = RequestId('request-steer-persist-failure');
+      const inputId = InputId('steer-persist-failure');
+      const runControl = new ActiveRequestController(
+        requestId,
+        undefined,
+        inbox,
+        InputId('initial-input'),
+      );
+      inbox.enqueue({
+        inputId,
+        content: 'Do not prepare this input',
+        priority: 'next',
+        targetRequestId: requestId,
+        acceptedAt: 1,
+      });
+      const prepareInput = vi.fn(async () => ({
+        role: 'user' as const,
+        content: 'unexpected',
+      }));
+      const config = baseConfig({
+        runControl,
+        onBeforeInputApply: async () => {
+          throw new Error('durable input boundary failed');
+        },
+        onInputApply: prepareInput,
+      });
+
+      await expect(collectEvents(agentLoop(config))).rejects.toThrow(
+        'durable input boundary failed',
+      );
+
+      expect(prepareInput).not.toHaveBeenCalled();
+      expect(runControl.claimSteeringInputs()).toEqual([
+        expect.objectContaining({ inputId }),
+      ]);
+    });
+
+    it('does not requeue a steering input after its durable boundary commits', async () => {
+      const inbox = new SessionInputInbox();
+      const requestId = RequestId('request-steer-preparation-failure');
+      const inputId = InputId('steer-preparation-failure');
+      const runControl = new ActiveRequestController(
+        requestId,
+        undefined,
+        inbox,
+        InputId('initial-input'),
+      );
+      inbox.enqueue({
+        inputId,
+        content: 'Apply once',
+        priority: 'next',
+        targetRequestId: requestId,
+        acceptedAt: 1,
+      });
+      const durableBoundary = vi.fn(async () => {});
+      const config = baseConfig({
+        runControl,
+        onBeforeInputApply: durableBoundary,
+        onInputApply: async () => {
+          throw new Error('input preparation failed');
+        },
+      });
+
+      await expect(collectEvents(agentLoop(config))).rejects.toThrow(
+        'input preparation failed',
+      );
+
+      expect(durableBoundary).toHaveBeenCalledOnce();
+      expect(inbox.size).toBe(0);
+      expect(runControl.claimSteeringInputs()).toEqual([]);
     });
 
     it('applies next-priority input after a complete tool-result batch', async () => {
@@ -1278,8 +1400,10 @@ describe('agentLoop', () => {
       const inputAppliedIndex = events.findIndex(
         (event) => event.type === 'input_applied',
       );
+      const turnEndIndex = events.findIndex((event) => event.type === 'turn_end');
       expect(toolResultIndex).toBeGreaterThan(-1);
       expect(inputAppliedIndex).toBeGreaterThan(toolResultIndex);
+      expect(inputAppliedIndex).toBeGreaterThan(turnEndIndex);
       const interruptedToolResult = events[toolResultIndex];
       expect(interruptedToolResult).toMatchObject({
         type: 'tool_result',

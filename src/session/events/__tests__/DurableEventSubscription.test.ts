@@ -94,7 +94,7 @@ async function appendOpenRequest(store: DurableEventStore): Promise<void> {
       },
     ],
   });
-  await journal.commit({
+  const started = await journal.commit({
     commandId: CommandId('start'),
     events: [
       {
@@ -112,12 +112,17 @@ async function appendOpenRequest(store: DurableEventStore): Promise<void> {
       },
     ],
   });
+  const requestStarted = started.events.at(-1);
+  if (!requestStarted || requestStarted.type !== DurableEventType.REQUEST_STARTED) {
+    throw new Error('Expected request_started event');
+  }
   await journal.commit({
     commandId: CommandId('interrupt'),
     events: [
       {
         type: DurableEventType.REQUEST_INTERRUPTED,
         requestId,
+        causationEventId: requestStarted.eventId,
         data: { reason: 'process_restart' },
       },
     ],

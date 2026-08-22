@@ -122,6 +122,11 @@ Types and errors:
 - `DurableEventStoreErrorCode`
 - `DurableEventProjectionError`
 - `DurableSessionRecoveryRequiredError`
+- `DurableRequestRolloverCommand`
+- `DurableRequestRolloverResult`
+- `DurableRequestOutcomeReconciliation`
+- `DurableRequestOutcomeReconciliationCommand`
+- `DurableRequestRecoveryKind`
 - `DurableTurnRecoveryCommand`
 - `DurableTurnRecoveryResult`
 - `SessionDurableRecorderError`

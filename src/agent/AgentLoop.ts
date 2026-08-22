@@ -11,15 +11,19 @@ import type { ChatResponse, Message, ToolCall } from '../services/ChatServiceInt
 import { FallbackTriggeredError } from '../services/RetryPolicy.js';
 import type { ExecutionPipeline } from '../tools/execution/ExecutionPipeline.js';
 import type { ToolEffect, ToolResult } from '../tools/types/index.js';
+import { getSteeringInterruptInputId } from '../types/abort.js';
 import type { JsonObject, PermissionMode } from '../types/common.js';
 import type { AgentEvent, TokenUsageInfo } from './AgentEvent.js';
 import type {
   AgentRunControl,
   AgentSteeringInput,
 } from './AgentRunControl.js';
-import { getSteeringInterruptInputId } from '../types/abort.js';
 import { AGENT_TURN_SAFETY_LIMIT } from './constants.js';
 import { ExecutionEpoch } from './ExecutionEpoch.js';
+import {
+  type InitialInputPreparation,
+  RECONCILED_INITIAL_INPUT,
+} from './InitialInputPreparation.js';
 import { isOverflowRecoverable } from './isOverflowRecoverable.js';
 import { decideNoToolTurn } from './loop/decideNoToolTurn.js';
 import { decideTurnLimit } from './loop/decideTurnLimit.js';
@@ -41,6 +45,10 @@ import type { LoopResult, TurnLimitResponse } from './types.js';
  */
 export interface AgentLoopHooks {
   input?: {
+    beforeApply?: (ctx: {
+      input: AgentSteeringInput;
+      turn: number;
+    }) => Promise<void>;
     apply?: (ctx: {
       input: AgentSteeringInput;
       turn: number;
@@ -120,6 +128,7 @@ export interface AgentLoopConfig {
   signal?: AbortSignal;
   tokenBudget?: TokenBudget;
   runControl?: AgentRunControl;
+  initialInputPreparation?: InitialInputPreparation;
   prepareTurnState: (turn: number) => TurnState;
   hooks?: AgentLoopHooks;
 }
@@ -144,6 +153,7 @@ export async function* agentLoop(
     signal,
     tokenBudget,
     runControl,
+    initialInputPreparation,
     hooks,
   } = config;
   const inputHooks = hooks?.input;
@@ -205,7 +215,11 @@ export async function* agentLoop(
       includeNow: true,
     });
 
-    if (recovery.phase !== 'retry_pending' && turnHooks?.beforeTurn) {
+    if (
+      recovery.phase !== 'retry_pending'
+      && !(initialInputPreparation === RECONCILED_INITIAL_INPUT && turnsCount === 0)
+      && turnHooks?.beforeTurn
+    ) {
       const beforeTurnStream = turnHooks.beforeTurn({
         turn: turnsCount,
         messages: convState.toArray(),
@@ -499,6 +513,7 @@ export async function* agentLoop(
         includeNow: true,
       }) ?? [];
       if (pendingBeforeDecision.length > 0) {
+        yield { type: 'turn_end', turn: turnsCount, hasToolCalls: false };
         yield* applyClaimedSteeringInputs({
           inputs: pendingBeforeDecision,
           runControl,
@@ -506,7 +521,6 @@ export async function* agentLoop(
           conversationState: convState,
           turn: turnsCount + 1,
         });
-        yield { type: 'turn_end', turn: turnsCount, hasToolCalls: false };
         continue;
       }
 
@@ -542,6 +556,7 @@ export async function* agentLoop(
         sealIfEmpty: true,
       }) ?? [];
       if (pendingAtCompletion.length > 0) {
+        yield { type: 'turn_end', turn: turnsCount, hasToolCalls: false };
         yield* applyClaimedSteeringInputs({
           inputs: pendingAtCompletion,
           runControl,
@@ -549,7 +564,6 @@ export async function* agentLoop(
           conversationState: convState,
           turn: turnsCount + 1,
         });
-        yield { type: 'turn_end', turn: turnsCount, hasToolCalls: false };
         continue;
       }
 
@@ -716,6 +730,11 @@ export async function* agentLoop(
           turn: turnsCount,
         };
       }
+    }
+
+    yield { type: 'turn_end', turn: turnsCount, hasToolCalls: true };
+
+    if (!exitResult) {
       yield* applyPendingSteeringInputs({
         runControl,
         inputHooks,
@@ -724,8 +743,6 @@ export async function* agentLoop(
         includeNow: true,
       });
     }
-
-    yield { type: 'turn_end', turn: turnsCount, hasToolCalls: true };
 
     if (exitResult) {
       const finalMessage =
@@ -818,7 +835,13 @@ async function* applyClaimedSteeringInputs(options: {
     if (!input) {
       continue;
     }
+    let durableApplicationStarted = false;
     try {
+      if (inputHooks?.beforeApply) {
+        await inputHooks.beforeApply({ input, turn });
+        runControl.acknowledgeInput(input.inputId);
+        durableApplicationStarted = true;
+      }
       const message = inputHooks?.apply
         ? await inputHooks.apply({ input, turn })
         : {
@@ -826,7 +849,9 @@ async function* applyClaimedSteeringInputs(options: {
             content: input.content,
           };
       conversationState.append(message);
-      runControl.acknowledgeInput(input.inputId);
+      if (!durableApplicationStarted) {
+        runControl.acknowledgeInput(input.inputId);
+      }
       yield {
         type: 'input_applied',
         inputId: input.inputId,
@@ -835,7 +860,9 @@ async function* applyClaimedSteeringInputs(options: {
         turn,
       };
     } catch (error) {
-      runControl.releaseInput(input.inputId);
+      if (!durableApplicationStarted) {
+        runControl.releaseInput(input.inputId);
+      }
       for (const pending of inputs.slice(index + 1)) {
         runControl.releaseInput(pending.inputId);
       }

@@ -4,8 +4,10 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { AgentEvent } from '../../agent/AgentEvent.js';
+import { RECONCILED_INITIAL_INPUT } from '../../agent/InitialInputPreparation.js';
 import type { LoopOptions, LoopResult, UserMessageContent } from '../../agent/types.js';
 import { PersistentStore } from '../../context/storage/PersistentStore.js';
+import { HookRuntime } from '../../hooks/HookRuntime.js';
 import type { Message } from '../../services/ChatServiceInterface.js';
 import {
   CommandId,
@@ -99,6 +101,56 @@ class FailOnEventTypeStore implements DurableEventStore {
   }
 }
 
+class InjectInputBeforeTurnStore implements DurableEventStore {
+  private injected = false;
+
+  constructor(
+    private readonly delegate: DurableEventStore,
+    private readonly inputId: InputId,
+  ) {}
+
+  async append(
+    sessionId: SessionId,
+    events: readonly DurableEventDraft[],
+    options?: DurableEventAppendOptions,
+  ): Promise<DurableEventAppendResult> {
+    if (!this.injected) {
+      const turnStarted = events.find(
+        (event) => event.type === DurableEventType.TURN_STARTED,
+      );
+      if (turnStarted?.type === DurableEventType.TURN_STARTED) {
+        this.injected = true;
+        await this.delegate.append(
+          sessionId,
+          [
+            {
+              type: DurableEventType.INPUT_APPLIED,
+              requestId: turnStarted.requestId,
+              commandId: CommandId('competing-input'),
+              data: {
+                inputId: this.inputId,
+                priority: 'next',
+              },
+            },
+          ],
+          options?.expectedLastSequence !== undefined
+            ? { expectedLastSequence: options.expectedLastSequence }
+            : {},
+        );
+      }
+    }
+    return this.delegate.append(sessionId, events, options);
+  }
+
+  read(sessionId: SessionId, options?: DurableEventReadOptions): Promise<DurableEventPage> {
+    return this.delegate.read(sessionId, options);
+  }
+
+  getHeadSequence(sessionId: SessionId) {
+    return this.delegate.getHeadSequence(sessionId);
+  }
+}
+
 const tempRoots: string[] = [];
 
 function createStore() {
@@ -124,6 +176,7 @@ function options(store: DurableEventStore) {
 }
 
 afterEach(async () => {
+  vi.restoreAllMocks();
   streamChat = async function* defaultStream() {
     yield { type: 'turn_start', turn: 1, maxTurns: 10 };
     yield { type: 'turn_end', turn: 1, hasToolCalls: false };
@@ -168,6 +221,66 @@ describe('Session durable events', () => {
     expect((await store.read(session.sessionId)).events.at(-1)?.type).toBe(
       DurableEventType.SESSION_CLOSED,
     );
+  });
+
+  it('persists a steering input before its preparation side effects', async () => {
+    const { store } = createStore();
+    let durableEventsBeforePreparation: readonly DurableEventDraft[] = [];
+    streamChat = async function* inputBoundaryStream(_message, _context, loopOptions) {
+      const runControl = loopOptions?.runControl;
+      const lifecycle = loopOptions?.inputApplicationLifecycle;
+      const input = runControl?.claimSteeringInputs({ includeNow: true })[0];
+      if (!runControl || !lifecycle || !input) {
+        throw new Error('Missing steering lifecycle');
+      }
+      await lifecycle.onInputApplying(input);
+      runControl.acknowledgeInput(input.inputId);
+      durableEventsBeforePreparation = (await store.read(session.sessionId)).events;
+      yield {
+        type: 'input_applied',
+        inputId: input.inputId,
+        requestId: runControl.requestId,
+        priority: input.priority,
+        turn: 1,
+      };
+      yield { type: 'turn_start', turn: 1, maxTurns: 10 };
+      yield { type: 'turn_end', turn: 1, hasToolCalls: false };
+      return {
+        success: true,
+        finalMessage: 'done',
+        metadata: { turnsCount: 1, toolCallsCount: 0, duration: 1 },
+      };
+    };
+
+    const session = await createSession(options(store));
+    await session.send('initial');
+    const steering = await session.send('steer', { priority: 'next' });
+
+    const streamEvents = [];
+    for await (const event of session.stream()) {
+      streamEvents.push(event);
+    }
+
+    expect(steering.status).toBe('steered');
+    expect(streamEvents).not.toContainEqual(
+      expect.objectContaining({ type: 'error' }),
+    );
+    expect(durableEventsBeforePreparation).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          type: DurableEventType.INPUT_APPLIED,
+          data: expect.objectContaining({ inputId: steering.inputId }),
+        }),
+      ]),
+    );
+    expect(
+      (await store.read(session.sessionId)).events.filter(
+        (event) =>
+          event.type === DurableEventType.INPUT_APPLIED
+          && event.data.inputId === steering.inputId,
+      ),
+    ).toHaveLength(1);
+    await session.close();
   });
 
   it('exposes the durable event subscription through Session', async () => {
@@ -423,10 +536,49 @@ describe('Session durable events', () => {
 
     const durableTypes = (await store.read(session.sessionId)).events.map((event) => event.type);
     expect(durableTypes).not.toContain(DurableEventType.REQUEST_COMPLETED);
-    expect(session.getDurableRecoveryPlan()?.action).toBe('resume_request');
+    expect(session.getDurableRecoveryPlan()?.action).toBe('reconcile_request_outcome');
     await expect(session.send('must wait for recovery')).rejects.toBeInstanceOf(
       DurableSessionRecoveryRequiredError,
     );
+    await session.close();
+  });
+
+  it('does not finalize after a concurrent input wins the next Turn boundary', async () => {
+    const { store } = createStore();
+    const competingInputId = InputId('concurrent-boundary-input');
+    const racingStore = new InjectInputBeforeTurnStore(store, competingInputId);
+    const session = await createSession(options(racingStore));
+    await session.send('race the next Turn');
+
+    await expect(
+      (async () => {
+        for await (const _event of session.stream()) {
+          // Drain.
+        }
+      })(),
+    ).rejects.toThrow('Request execution and durable finalization both failed');
+
+    const events = (await store.read(session.sessionId)).events;
+    expect(events).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          type: DurableEventType.INPUT_APPLIED,
+          data: expect.objectContaining({ inputId: competingInputId }),
+        }),
+      ]),
+    );
+    expect(
+      events.some(
+        (event) =>
+          event.type === DurableEventType.TURN_STARTED
+          || event.type === DurableEventType.REQUEST_COMPLETED
+          || event.type === DurableEventType.REQUEST_FAILED
+          || event.type === DurableEventType.REQUEST_INTERRUPTED,
+      ),
+    ).toBe(false);
+    expect(session.getDurableRecoveryPlan()).toMatchObject({
+      action: 'reconcile_request_inputs',
+    });
     await session.close();
   });
 
@@ -524,6 +676,134 @@ describe('Session durable events', () => {
     expect(events.find((event) => event.type === DurableEventType.REQUEST_STARTED)?.requestId).toBe(
       requestId,
     );
+    expect(session.getDurableRecoveryPlan()?.action).toBe('none');
+    await session.close();
+  });
+
+  it('resumes a rolled-over Request that crashed before its first Turn', async () => {
+    const { root, store } = createStore();
+    const sessionId = SessionId('request-rollover-session');
+    const requestId = RequestId('request-rollover-source');
+    const inputId = InputId('request-rollover-source-input');
+    const steeringInputId = InputId('request-rollover-steering-input');
+    const recoveryRequestId = RequestId('request-rollover-recovery');
+    const recoveryInputId = InputId('request-rollover-recovery-input');
+    const recoveryTurnId = TurnId('request-rollover-synthetic-turn');
+    const persistentStore = new PersistentStore(root);
+    await persistentStore.saveAppliedInputMessage(
+      sessionId,
+      inputId,
+      requestId,
+      'prepared before the crash',
+    );
+    await persistentStore.saveInputEnqueued(sessionId, {
+      inputId: steeringInputId,
+      content: 'steering before the crash',
+      priority: 'next',
+      targetRequestId: requestId,
+      acceptedAt: Date.parse('2026-08-22T12:00:01.000Z'),
+    });
+    const journal = await DurableSessionJournal.open(store, sessionId);
+    await journal.commit({
+      commandId: CommandId('request-rollover-bootstrap'),
+      events: [
+        {
+          type: DurableEventType.SESSION_CREATED,
+          data: { source: 'create' },
+        },
+        {
+          type: DurableEventType.REQUEST_ACCEPTED,
+          requestId,
+          data: {
+            inputId,
+            input: 'run exactly once',
+            priority: 'next',
+            maxTurns: 7,
+            model: 'request-rollover-model',
+            context: {
+              id: 'request-rollover-context',
+            },
+          },
+        },
+        {
+          type: DurableEventType.INPUT_APPLIED,
+          requestId,
+          data: { inputId, priority: 'next' },
+        },
+        {
+          type: DurableEventType.REQUEST_STARTED,
+          requestId,
+          data: {},
+        },
+        {
+          type: DurableEventType.INPUT_APPLIED,
+          requestId,
+          data: { inputId: steeringInputId, priority: 'next' },
+        },
+      ],
+    });
+    await new DurableSessionRecoveryCoordinator(journal).prepareRequestRecovery({
+      commandId: CommandId('prepare-request-rollover'),
+      requestId,
+      inputId,
+      sourceLastTurn: 0,
+      recoveryTurnId,
+      recoveryRequestId,
+      recoveryInputId,
+      preparation: {
+        status: 'reconciled',
+        appliedInputIds: [inputId, steeringInputId],
+        input: 'prepared exactly once',
+      },
+    });
+    const promptHook = vi.spyOn(HookRuntime.prototype, 'applyUserPromptSubmit');
+    let observedMessage: UserMessageContent | undefined;
+    let observedHistory: readonly Message[] | undefined;
+    let observedOptions: LoopOptions | undefined;
+    streamChat = async function* requestRolloverStream(message, context, loopOptions) {
+      observedMessage = message;
+      observedHistory = (context as { messages: Message[] }).messages;
+      observedOptions = loopOptions;
+      yield { type: 'turn_start', turn: 1, maxTurns: 7 };
+      yield { type: 'turn_end', turn: 1, hasToolCalls: false };
+      return {
+        success: true,
+        finalMessage: 'recovered',
+        metadata: { turnsCount: 1, toolCallsCount: 0, duration: 1 },
+      };
+    };
+
+    const session = await resumeSession({
+      ...options(store),
+      persistSession: true,
+      storagePath: root,
+      sessionId,
+    });
+
+    expect(session.getPendingInputs()).toEqual([
+      expect.objectContaining({
+        inputId: recoveryInputId,
+        targetRequestId: recoveryRequestId,
+      }),
+    ]);
+    for await (const _event of session.stream()) {
+      // Drain the recovery request.
+    }
+
+    expect(observedMessage).toContain('"boundary": "before_first_turn"');
+    expect(observedMessage).toContain('prepared exactly once');
+    expect(observedMessage).not.toContain('run exactly once');
+    expect(observedHistory).toEqual([]);
+    expect(promptHook).not.toHaveBeenCalled();
+    expect(observedOptions?.initialInputPreparation).toBe(RECONCILED_INITIAL_INPUT);
+    const events = (await store.read(sessionId)).events;
+    expect(events.filter((event) => event.type === DurableEventType.REQUEST_ACCEPTED)).toHaveLength(
+      2,
+    );
+    expect(events.filter((event) => event.type === DurableEventType.REQUEST_STARTED)).toHaveLength(
+      2,
+    );
+    expect(events.filter((event) => event.type === DurableEventType.TURN_STARTED)).toHaveLength(2);
     expect(session.getDurableRecoveryPlan()?.action).toBe('none');
     await session.close();
   });
@@ -738,9 +1018,9 @@ describe('Session durable events', () => {
       value: { type: 'turn_start' },
       done: false,
     });
-    await expect(loser.stream().next()).rejects.toThrow(
-      /already applied|already started|has not started/,
-    );
+    await expect(loser.stream().next()).rejects.toMatchObject({
+      code: 'DURABLE_EVENT_SEQUENCE_CONFLICT',
+    });
     expect(loser.getPendingInputs()).toEqual([]);
 
     while (!(await winnerStream.next()).done) {
