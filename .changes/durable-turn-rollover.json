@@ -1,0 +1,5 @@
+{
+  "type": "feature",
+  "en": "Add atomic active-turn rollover into provenance-linked continuation requests with stale-CAS protection and fail-closed non-idempotent boundaries.",
+  "zh-CN": "新增 active Turn 到 provenance continuation Request 的原子 rollover，并提供 stale-CAS 防护与非幂等边界的 fail-closed 保证。"
+}

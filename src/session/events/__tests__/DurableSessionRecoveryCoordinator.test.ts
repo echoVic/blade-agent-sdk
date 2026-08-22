@@ -6,6 +6,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import {
   CommandId,
   EventId,
+  type EventSequence,
   InputId,
   PermissionRequestId,
   RequestId,
@@ -14,13 +15,20 @@ import {
   ToolUseId,
   TurnId,
 } from '../../../types/branded.js';
+import type { JsonValue } from '../../../types/common.js';
+import type { DurableEventStore } from '../DurableEventStore.js';
 import { DurableSessionJournal } from '../DurableSessionJournal.js';
 import {
   DurableSessionRecoveryCoordinator,
   DurableSessionRecoveryError,
 } from '../DurableSessionRecoveryCoordinator.js';
 import { JsonlDurableEventStore } from '../JsonlDurableEventStore.js';
-import { DurableEventType } from '../types.js';
+import {
+  type DurableEventAppendOptions,
+  type DurableEventDraft,
+  type DurableEventReadOptions,
+  DurableEventType,
+} from '../types.js';
 
 const sessionId = SessionId('recovery-session');
 const requestId = RequestId('recovery-request');
@@ -29,6 +37,8 @@ const turnId = TurnId('recovery-turn');
 const toolAttemptId = ToolAttemptId('recovery-attempt');
 const toolCallId = ToolUseId('recovery-call');
 const permissionRequestId = PermissionRequestId('recovery-permission');
+const rolloverRequestId = RequestId('rollover-request');
+const rolloverInputId = InputId('rollover-input');
 
 const roots: string[] = [];
 
@@ -42,10 +52,62 @@ function createStore(): JsonlDurableEventStore {
   });
 }
 
+class StartToolBeforeRolloverStore implements DurableEventStore {
+  private injected = false;
+
+  constructor(private readonly delegate: DurableEventStore) {}
+
+  async append(
+    targetSessionId: SessionId,
+    events: readonly DurableEventDraft[],
+    options?: DurableEventAppendOptions,
+  ) {
+    if (
+      !this.injected &&
+      events.some(
+        (event) =>
+          event.type === DurableEventType.REQUEST_ACCEPTED && event.data.recovery !== undefined,
+      )
+    ) {
+      this.injected = true;
+      await this.delegate.append(
+        targetSessionId,
+        [
+          {
+            type: DurableEventType.TOOL_STARTED,
+            commandId: CommandId('racing-tool-start'),
+            requestId,
+            turnId,
+            toolAttemptId,
+            data: {
+              toolCallId,
+              toolName: 'Deploy',
+              input: { environment: 'production' },
+              sideEffect: 'non_idempotent',
+            },
+          },
+        ],
+        options,
+      );
+    }
+    return this.delegate.append(targetSessionId, events, options);
+  }
+
+  read(targetSessionId: SessionId, options?: DurableEventReadOptions) {
+    return this.delegate.read(targetSessionId, options);
+  }
+
+  getHeadSequence(targetSessionId: SessionId): Promise<EventSequence | null> {
+    return this.delegate.getHeadSequence(targetSessionId);
+  }
+}
+
 async function createJournal(
-  store: JsonlDurableEventStore,
+  store: DurableEventStore,
   options: {
+    input?: JsonValue;
     requestStarted?: boolean;
+    sideEffect?: 'pure' | 'idempotent' | 'non_idempotent';
     tool?: 'none' | 'pending_permission' | 'started';
   } = {},
 ): Promise<DurableSessionJournal> {
@@ -62,7 +124,7 @@ async function createJournal(
         requestId,
         data: {
           inputId,
-          input: 'recover this request',
+          input: options.input === undefined ? 'recover this request' : options.input,
           priority: 'next',
           maxTurns: 17,
           model: 'accepted-model',
@@ -103,7 +165,7 @@ async function createJournal(
                 toolCallId,
                 toolName: 'Deploy',
                 input: { environment: 'production' },
-                sideEffect: 'non_idempotent' as const,
+                sideEffect: options.sideEffect ?? ('non_idempotent' as const),
                 interruptBehavior: 'block' as const,
               },
             },
@@ -264,6 +326,540 @@ describe('DurableSessionRecoveryCoordinator', () => {
         },
       }),
     ).rejects.toThrow(/different events/);
+  });
+
+  it('atomically rolls a recoverable turn into a new accepted request', async () => {
+    const store = createStore();
+    const journal = await createJournal(store, { requestStarted: true });
+    await journal.commit({
+      commandId: CommandId('start-turn'),
+      events: [
+        {
+          type: DurableEventType.TURN_STARTED,
+          requestId,
+          turnId,
+          data: { turn: 1, model: 'accepted-model' },
+        },
+      ],
+    });
+    const first = await DurableSessionRecoveryCoordinator.open(store, sessionId);
+    const second = await DurableSessionRecoveryCoordinator.open(store, sessionId);
+    const headBeforeMismatch = await store.getHeadSequence(sessionId);
+    await expect(
+      first.prepareTurnRecovery({
+        commandId: CommandId('rollover-wrong-source'),
+        requestId: RequestId('different-source-request'),
+        turnId,
+        recoveryRequestId: rolloverRequestId,
+        recoveryInputId: rolloverInputId,
+      }),
+    ).rejects.toMatchObject({
+      code: 'DURABLE_RECOVERY_TARGET_NOT_FOUND',
+    });
+    expect(await store.getHeadSequence(sessionId)).toBe(headBeforeMismatch);
+
+    const command = {
+      commandId: CommandId('rollover-turn'),
+      requestId,
+      turnId,
+      recoveryRequestId: rolloverRequestId,
+      recoveryInputId: rolloverInputId,
+    };
+
+    const results = await Promise.all([
+      first.prepareTurnRecovery(command),
+      second.prepareTurnRecovery(command),
+    ]);
+    const replayed = await first.prepareTurnRecovery(command);
+
+    expect(results.map((result) => result.commit.status).sort()).toEqual([
+      'committed',
+      'reconciled',
+    ]);
+    expect(replayed.commit.status).toBe('replayed');
+    expect(replayed.continuation).toContain('sourceTurnId');
+    expect(replayed.projection.activeRequest).toMatchObject({
+      requestId: rolloverRequestId,
+      inputId: rolloverInputId,
+      status: 'accepted',
+      recovery: {
+        requestId,
+        turnId,
+        turn: 1,
+      },
+    });
+    expect(first.planResume()).toMatchObject({
+      action: 'resume_accepted_request',
+      request: {
+        requestId: rolloverRequestId,
+        inputId: rolloverInputId,
+      },
+    });
+    expect((await store.read(sessionId)).events.map((event) => event.type).slice(-3)).toEqual([
+      DurableEventType.TURN_ABORTED,
+      DurableEventType.REQUEST_INTERRUPTED,
+      DurableEventType.REQUEST_ACCEPTED,
+    ]);
+    await expect(
+      first.prepareTurnRecovery({
+        ...command,
+        recoveryInputId: InputId('different-rollover-input'),
+      }),
+    ).rejects.toMatchObject({
+      code: 'DURABLE_RECOVERY_INVALID_STATE',
+    });
+  });
+
+  it('does not rebase rollover after a non-idempotent tool starts concurrently', async () => {
+    const baseStore = createStore();
+    const store = new StartToolBeforeRolloverStore(baseStore);
+    const journal = await createJournal(store, { requestStarted: true });
+    await journal.commit({
+      commandId: CommandId('schedule-racing-tool'),
+      events: [
+        {
+          type: DurableEventType.TURN_STARTED,
+          requestId,
+          turnId,
+          data: { turn: 1, model: 'accepted-model' },
+        },
+        {
+          type: DurableEventType.TOOL_SCHEDULED,
+          requestId,
+          turnId,
+          toolAttemptId,
+          data: {
+            toolCallId,
+            toolName: 'Deploy',
+            input: { environment: 'production' },
+            sideEffect: 'non_idempotent',
+            interruptBehavior: 'block',
+          },
+        },
+      ],
+    });
+    const coordinator = await DurableSessionRecoveryCoordinator.open(store, sessionId);
+    const command = {
+      commandId: CommandId('raced-rollover'),
+      requestId,
+      turnId,
+      recoveryRequestId: rolloverRequestId,
+      recoveryInputId: rolloverInputId,
+    };
+
+    await expect(coordinator.prepareTurnRecovery(command)).rejects.toMatchObject({
+      code: 'DURABLE_EVENT_SEQUENCE_CONFLICT',
+    });
+    await expect(coordinator.prepareTurnRecovery(command)).rejects.toMatchObject({
+      code: 'DURABLE_RECOVERY_INVALID_STATE',
+    });
+
+    const events = (await baseStore.read(sessionId)).events;
+    expect(events.at(-1)).toMatchObject({
+      type: DurableEventType.TOOL_STARTED,
+      data: {
+        sideEffect: 'non_idempotent',
+      },
+    });
+    expect(
+      events.some(
+        (event) =>
+          event.type === DurableEventType.REQUEST_ACCEPTED && event.requestId === rolloverRequestId,
+      ),
+    ).toBe(false);
+  });
+
+  it('cancels retry-safe started tools before rolling over the turn', async () => {
+    const store = createStore();
+    const journal = await createJournal(store, { requestStarted: true });
+    await journal.commit({
+      commandId: CommandId('start-safe-tool'),
+      events: [
+        {
+          type: DurableEventType.TURN_STARTED,
+          requestId,
+          turnId,
+          data: { turn: 1, model: 'accepted-model' },
+        },
+        {
+          type: DurableEventType.TOOL_SCHEDULED,
+          requestId,
+          turnId,
+          toolAttemptId,
+          data: {
+            toolCallId,
+            toolName: 'Read',
+            input: { file_path: '/tmp/input' },
+            sideEffect: 'pure',
+            interruptBehavior: 'cancel',
+          },
+        },
+        {
+          type: DurableEventType.TOOL_STARTED,
+          requestId,
+          turnId,
+          toolAttemptId,
+          data: {
+            toolCallId,
+            toolName: 'Read',
+            input: { file_path: '/tmp/input' },
+            sideEffect: 'pure',
+          },
+        },
+      ],
+    });
+    const coordinator = new DurableSessionRecoveryCoordinator(journal);
+
+    const result = await coordinator.prepareTurnRecovery({
+      commandId: CommandId('rollover-safe-tool'),
+      requestId,
+      turnId,
+      recoveryRequestId: rolloverRequestId,
+      recoveryInputId: rolloverInputId,
+    });
+
+    expect(result.commit.events.map((event) => event.type)).toEqual([
+      DurableEventType.TOOL_CANCELLED,
+      DurableEventType.TURN_ABORTED,
+      DurableEventType.REQUEST_INTERRUPTED,
+      DurableEventType.REQUEST_ACCEPTED,
+    ]);
+    expect(result.continuation).toContain('interrupted_before_trusted_completion');
+    expect(result.continuation).toContain('"sideEffect": "pure"');
+  });
+
+  it('marks a scheduled non-idempotent tool as safe to execute for the first time', async () => {
+    const store = createStore();
+    const journal = await createJournal(store, { requestStarted: true });
+    await journal.commit({
+      commandId: CommandId('schedule-non-idempotent-tool'),
+      events: [
+        {
+          type: DurableEventType.TURN_STARTED,
+          requestId,
+          turnId,
+          data: { turn: 1, model: 'accepted-model' },
+        },
+        {
+          type: DurableEventType.TOOL_SCHEDULED,
+          requestId,
+          turnId,
+          toolAttemptId,
+          data: {
+            toolCallId,
+            toolName: 'Deploy',
+            input: { environment: 'production' },
+            sideEffect: 'non_idempotent',
+            interruptBehavior: 'block',
+          },
+        },
+      ],
+    });
+
+    const result = await new DurableSessionRecoveryCoordinator(journal).prepareTurnRecovery({
+      commandId: CommandId('rollover-scheduled-non-idempotent-tool'),
+      requestId,
+      turnId,
+      recoveryRequestId: rolloverRequestId,
+      recoveryInputId: rolloverInputId,
+    });
+
+    expect(result.continuation).toContain('"status": "not_started"');
+    expect(result.continuation).toContain('Operations marked not_started are safe to execute once');
+    expect(result.continuation).not.toContain('"status": "interrupted_before_trusted_completion"');
+  });
+
+  it('preserves multimodal request parts in the recovery continuation', async () => {
+    const store = createStore();
+    const originalInput: JsonValue[] = [
+      { type: 'text', text: 'Inspect this image' },
+      { type: 'image_url', image_url: { url: 'data:image/png;base64,aW1hZ2U=' } },
+    ];
+    const journal = await createJournal(store, {
+      input: originalInput,
+      requestStarted: true,
+    });
+    await journal.commit({
+      commandId: CommandId('start-multimodal-turn'),
+      events: [
+        {
+          type: DurableEventType.TURN_STARTED,
+          requestId,
+          turnId,
+          data: { turn: 1, model: 'accepted-model' },
+        },
+      ],
+    });
+    const coordinator = new DurableSessionRecoveryCoordinator(journal);
+    const command = {
+      commandId: CommandId('rollover-multimodal-turn'),
+      requestId,
+      turnId,
+      recoveryRequestId: rolloverRequestId,
+      recoveryInputId: rolloverInputId,
+    };
+
+    const committed = await coordinator.prepareTurnRecovery(command);
+    const replayed = await coordinator.prepareTurnRecovery(command);
+
+    expect(committed.continuation).toEqual([
+      expect.objectContaining({
+        type: 'text',
+        text: expect.stringContaining('"kind": "multimodal_content_parts"'),
+      }),
+      ...originalInput,
+    ]);
+    expect(replayed.continuation).toEqual(committed.continuation);
+    expect(committed.projection.activeRequest?.input).toEqual(committed.continuation);
+  });
+
+  it('uses permission-updated input and conservative side effects in the continuation', async () => {
+    const store = createStore();
+    const journal = await createJournal(store, {
+      requestStarted: true,
+      sideEffect: 'pure',
+      tool: 'pending_permission',
+    });
+    const coordinator = new DurableSessionRecoveryCoordinator(journal);
+    await coordinator.resolvePermission({
+      commandId: CommandId('allow-updated-tool'),
+      permissionRequestId,
+      decision: 'allow',
+    });
+
+    const result = await coordinator.prepareTurnRecovery({
+      commandId: CommandId('rollover-allowed-tool'),
+      requestId,
+      turnId,
+      recoveryRequestId: rolloverRequestId,
+      recoveryInputId: rolloverInputId,
+    });
+
+    expect(result.continuation).toContain('"environment": "approved-production"');
+    expect(result.continuation).not.toContain('"environment": "production"');
+    expect(result.continuation).toContain('"sideEffect": "non_idempotent"');
+    expect(result.continuation).toContain('"status": "not_started"');
+  });
+
+  it('replays rollover after cancelling a previously denied scheduled tool', async () => {
+    const store = createStore();
+    const journal = await createJournal(store, {
+      requestStarted: true,
+      tool: 'pending_permission',
+    });
+    await journal.commit({
+      commandId: CommandId('resolve-denial-without-cancellation'),
+      events: [
+        {
+          type: DurableEventType.PERMISSION_RESOLVED,
+          requestId,
+          turnId,
+          toolAttemptId,
+          data: {
+            permissionRequestId,
+            decision: 'deny',
+          },
+        },
+      ],
+    });
+    const coordinator = new DurableSessionRecoveryCoordinator(journal);
+    const command = {
+      commandId: CommandId('rollover-denied-tool'),
+      requestId,
+      turnId,
+      recoveryRequestId: rolloverRequestId,
+      recoveryInputId: rolloverInputId,
+    };
+
+    const committed = await coordinator.prepareTurnRecovery(command);
+    const replayed = await coordinator.prepareTurnRecovery(command);
+
+    expect(committed.commit.events[0]).toMatchObject({
+      type: DurableEventType.TOOL_CANCELLED,
+      data: { reason: 'permission_denied' },
+    });
+    expect(replayed.commit.status).toBe('replayed');
+  });
+
+  it('carries a completed retry-safe tool result into the continuation', async () => {
+    const store = createStore();
+    const journal = await createJournal(store, { requestStarted: true });
+    await journal.commit({
+      commandId: CommandId('complete-safe-tool'),
+      events: [
+        {
+          type: DurableEventType.TURN_STARTED,
+          requestId,
+          turnId,
+          data: { turn: 1, model: 'accepted-model' },
+        },
+        {
+          type: DurableEventType.TOOL_SCHEDULED,
+          requestId,
+          turnId,
+          toolAttemptId,
+          data: {
+            toolCallId,
+            toolName: 'Read',
+            input: { file_path: '/tmp/input' },
+            sideEffect: 'pure',
+            interruptBehavior: 'cancel',
+          },
+        },
+        {
+          type: DurableEventType.TOOL_STARTED,
+          requestId,
+          turnId,
+          toolAttemptId,
+          data: {
+            toolCallId,
+            toolName: 'Read',
+            input: { file_path: '/tmp/input' },
+            sideEffect: 'pure',
+          },
+        },
+        {
+          type: DurableEventType.TOOL_COMPLETED,
+          requestId,
+          turnId,
+          toolAttemptId,
+          data: {
+            toolCallId,
+            toolName: 'Read',
+            result: { content: 'durable result' },
+          },
+        },
+      ],
+    });
+
+    const result = await new DurableSessionRecoveryCoordinator(journal).prepareTurnRecovery({
+      commandId: CommandId('rollover-completed-safe-tool'),
+      requestId,
+      turnId,
+      recoveryRequestId: rolloverRequestId,
+      recoveryInputId: rolloverInputId,
+    });
+
+    expect(result.commit.events.map((event) => event.type)).toEqual([
+      DurableEventType.TURN_ABORTED,
+      DurableEventType.REQUEST_INTERRUPTED,
+      DurableEventType.REQUEST_ACCEPTED,
+    ]);
+    expect(result.continuation).toContain('"status": "completed"');
+    expect(result.continuation).toContain('"content": "durable result"');
+  });
+
+  it.each([
+    {
+      outcome: {
+        status: 'completed' as const,
+        result: { deploymentId: 'dep-unsafe' },
+      },
+    },
+    {
+      outcome: {
+        status: 'failed' as const,
+        error: { message: 'remote outcome may be partial' },
+      },
+    },
+    {
+      outcome: {
+        status: 'cancelled' as const,
+      },
+    },
+  ])('refuses rollover after a non-idempotent $outcome.status', async ({ outcome }) => {
+    const store = createStore();
+    await createJournal(store, { requestStarted: true, tool: 'started' });
+    const coordinator = await DurableSessionRecoveryCoordinator.open(store, sessionId);
+    await coordinator.reconcileToolOutcome({
+      commandId: CommandId(`settle-${outcome.status}`),
+      toolAttemptId,
+      outcome,
+    });
+
+    await expect(
+      coordinator.prepareTurnRecovery({
+        commandId: CommandId(`rollover-${outcome.status}`),
+        requestId,
+        turnId,
+        recoveryRequestId: rolloverRequestId,
+        recoveryInputId: rolloverInputId,
+      }),
+    ).rejects.toMatchObject({
+      code: 'DURABLE_RECOVERY_UNSAFE_ROLLOVER',
+    });
+  });
+
+  it('rejects a reused command that contains work after accepting the continuation', async () => {
+    const store = createStore();
+    const journal = await createJournal(store, { requestStarted: true });
+    const commandId = CommandId('rollover-and-start');
+    await journal.commit({
+      commandId: CommandId('start-turn-before-rollover-and-start'),
+      events: [
+        {
+          type: DurableEventType.TURN_STARTED,
+          requestId,
+          turnId,
+          data: { turn: 1, model: 'accepted-model' },
+        },
+      ],
+    });
+    await journal.commit({
+      commandId,
+      events: [
+        {
+          type: DurableEventType.TURN_ABORTED,
+          requestId,
+          turnId,
+          data: { turn: 1, reason: 'process_restart' },
+        },
+        {
+          type: DurableEventType.REQUEST_INTERRUPTED,
+          requestId,
+          data: { reason: 'process_restart' },
+        },
+        {
+          type: DurableEventType.REQUEST_ACCEPTED,
+          requestId: rolloverRequestId,
+          data: {
+            inputId: rolloverInputId,
+            input: 'continue',
+            priority: 'next',
+            maxTurns: 17,
+            model: 'accepted-model',
+            context: {},
+            recovery: {
+              requestId,
+              turnId,
+              turn: 1,
+            },
+          },
+        },
+        {
+          type: DurableEventType.INPUT_APPLIED,
+          requestId: rolloverRequestId,
+          data: { inputId: rolloverInputId, priority: 'next' },
+        },
+        {
+          type: DurableEventType.REQUEST_STARTED,
+          requestId: rolloverRequestId,
+          data: {},
+        },
+      ],
+    });
+
+    await expect(
+      new DurableSessionRecoveryCoordinator(journal).prepareTurnRecovery({
+        commandId,
+        requestId,
+        turnId,
+        recoveryRequestId: rolloverRequestId,
+        recoveryInputId: rolloverInputId,
+      }),
+    ).rejects.toMatchObject({
+      code: 'DURABLE_RECOVERY_INVALID_STATE',
+    });
   });
 
   it.each([

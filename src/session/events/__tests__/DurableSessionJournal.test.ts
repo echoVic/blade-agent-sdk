@@ -253,6 +253,20 @@ describe('DurableSessionJournal', () => {
 
     expect(replayed.status).toBe('replayed');
     expect(replayed.events).toHaveLength(1);
+    const indexed = journal.getCommandEvents(command.commandId);
+    expect(indexed).toMatchObject([
+      {
+        type: DurableEventType.SESSION_CREATED,
+        commandId: command.commandId,
+      },
+    ]);
+    if (indexed) {
+      (indexed[0] as { data: { source?: string } }).data.source = 'fork';
+    }
+    expect(journal.getCommandEvents(command.commandId)?.[0]?.data).toEqual({
+      source: 'create',
+    });
+    expect(journal.getCommandEvents(CommandId('missing-command'))).toBeNull();
     expect(await store.getHeadSequence(sessionId)).toBe(1);
   });
 
@@ -352,6 +366,95 @@ describe('DurableSessionJournal', () => {
       lastSequence: 4,
     });
     expect(second.getProjection().activeRequest?.status).toBe('running');
+  });
+
+  it('does not rebase a state-derived command when its expected head is stale', async () => {
+    const bootstrap = await DurableSessionJournal.open(store, sessionId);
+    await bootstrap.commit({
+      commandId: CommandId('command-create'),
+      events: [sessionCreated()],
+    });
+    await bootstrap.commit({
+      commandId: CommandId('command-request'),
+      events: [requestAccepted()],
+    });
+
+    const first = await DurableSessionJournal.open(store, sessionId);
+    const second = await DurableSessionJournal.open(store, sessionId);
+    await first.commit({
+      commandId: CommandId('command-input'),
+      events: [
+        {
+          type: DurableEventType.INPUT_APPLIED,
+          requestId,
+          data: {
+            inputId: initialInputId,
+            priority: 'next',
+          },
+        },
+      ],
+    });
+
+    await expect(
+      second.commit(
+        {
+          commandId: CommandId('command-start'),
+          events: [
+            {
+              type: DurableEventType.REQUEST_STARTED,
+              requestId,
+              data: {},
+            },
+          ],
+        },
+        { expectedHeadSequence: EventSequence(2) },
+      ),
+    ).rejects.toBeInstanceOf(DurableEventSequenceConflictError);
+    expect(second.getProjection().activeRequest?.status).toBe('accepted');
+    expect(await store.getHeadSequence(sessionId)).toBe(3);
+  });
+
+  it('checks an expected head against commits made through the same journal', async () => {
+    const journal = await DurableSessionJournal.open(store, sessionId);
+    await journal.commit({
+      commandId: CommandId('command-create'),
+      events: [sessionCreated()],
+    });
+    await journal.commit({
+      commandId: CommandId('command-request'),
+      events: [requestAccepted()],
+    });
+    const observedHead = journal.getProjection().headSequence;
+    await journal.commit({
+      commandId: CommandId('command-input'),
+      events: [
+        {
+          type: DurableEventType.INPUT_APPLIED,
+          requestId,
+          data: {
+            inputId: initialInputId,
+            priority: 'next',
+          },
+        },
+      ],
+    });
+
+    await expect(
+      journal.commit(
+        {
+          commandId: CommandId('command-start'),
+          events: [
+            {
+              type: DurableEventType.REQUEST_STARTED,
+              requestId,
+              data: {},
+            },
+          ],
+        },
+        { expectedHeadSequence: observedHead },
+      ),
+    ).rejects.toBeInstanceOf(DurableEventSequenceConflictError);
+    expect(await store.getHeadSequence(sessionId)).toBe(3);
   });
 
   it('reconciles concurrent delivery of the same command', async () => {

@@ -46,6 +46,11 @@ const validDrafts: readonly DurableEventDraft[] = [
         id: 'request-context',
         environment: { REGION: 'test' },
       },
+      recovery: {
+        requestId: RequestId('source-request'),
+        turnId: TurnId('source-turn'),
+        turn: 3,
+      },
     },
   },
   {
@@ -243,6 +248,24 @@ describe('durable event schemas', () => {
         type: DurableEventType.REQUEST_STARTED,
         requestId,
         data: { unexpected: true },
+      }),
+    ).toThrow();
+
+    expect(() =>
+      parseDurableEventDraft({
+        type: DurableEventType.REQUEST_ACCEPTED,
+        requestId,
+        commandId,
+        data: {
+          inputId: InputId('input-1'),
+          input: 'hello',
+          priority: 'next',
+          recovery: {
+            requestId: RequestId('source-request'),
+            turnId: TurnId('source-turn'),
+            turn: 0,
+          },
+        },
       }),
     ).toThrow();
 

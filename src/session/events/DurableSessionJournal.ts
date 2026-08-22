@@ -28,6 +28,14 @@ export interface DurableSessionCommand {
   readonly events: readonly DurableCommandEventDraft[];
 }
 
+export interface DurableCommandCommitOptions {
+  /**
+   * Requires the Journal to still be at this exact head before committing.
+   * Commands derived from a state snapshot should always set this precondition.
+   */
+  readonly expectedHeadSequence?: EventSequence | null;
+}
+
 export type DurableCommandCommitStatus = 'committed' | 'replayed' | 'reconciled';
 
 export interface DurableCommandCommitResult extends DurableEventAppendResult {
@@ -217,6 +225,12 @@ export class DurableSessionJournal {
     return this.uncertainCommand?.commandId ?? null;
   }
 
+  /** Returns a defensive snapshot of one already-indexed command. */
+  getCommandEvents(commandId: CommandId): readonly DurableEventEnvelope[] | null {
+    const events = this.commandEvents.get(commandId);
+    return events ? structuredClone(events) : null;
+  }
+
   refresh(): Promise<DurableSessionProjection> {
     return this.runExclusive(async () => {
       await this.reload();
@@ -224,12 +238,16 @@ export class DurableSessionJournal {
     });
   }
 
-  commit(command: DurableSessionCommand): Promise<DurableCommandCommitResult> {
-    return this.runExclusive(() => this.commitExclusive(command));
+  commit(
+    command: DurableSessionCommand,
+    options: DurableCommandCommitOptions = {},
+  ): Promise<DurableCommandCommitResult> {
+    return this.runExclusive(() => this.commitExclusive(command, options));
   }
 
   private async commitExclusive(
     command: DurableSessionCommand,
+    options: DurableCommandCommitOptions,
   ): Promise<DurableCommandCommitResult> {
     const drafts = this.parseCommand(command);
     if (this.uncertainCommand) {
@@ -260,6 +278,16 @@ export class DurableSessionJournal {
     const existing = this.commandEvents.get(command.commandId);
     if (existing) {
       return this.resolveExistingCommand('replayed', command.commandId, existing, drafts);
+    }
+    const currentHeadSequence = this.projector.snapshot().headSequence;
+    if (
+      options.expectedHeadSequence !== undefined
+      && currentHeadSequence !== options.expectedHeadSequence
+    ) {
+      throw new DurableEventSequenceConflictError(
+        options.expectedHeadSequence,
+        currentHeadSequence,
+      );
     }
 
     let conflicts = 0;
@@ -294,7 +322,10 @@ export class DurableSessionJournal {
           if (committed) {
             return this.resolveExistingCommand('reconciled', command.commandId, committed, drafts);
           }
-          if (conflicts >= this.maxConflictRetries) {
+          if (
+            options.expectedHeadSequence !== undefined
+            || conflicts >= this.maxConflictRetries
+          ) {
             throw error;
           }
           conflicts += 1;

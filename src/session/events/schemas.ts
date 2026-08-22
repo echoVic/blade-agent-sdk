@@ -79,6 +79,14 @@ const DurableEventDataSchemas = {
       maxTurns: z.number().int().min(-1).max(Number.MAX_SAFE_INTEGER).optional(),
       model: NonEmptyStringSchema.optional(),
       context: JsonObjectSchema.optional(),
+      recovery: z
+        .object({
+          requestId: NonEmptyStringSchema,
+          turnId: NonEmptyStringSchema,
+          turn: PositiveIntegerSchema,
+        })
+        .strict()
+        .optional(),
     })
     .strict(),
   [DurableEventTypeValue.REQUEST_STARTED]: z.object({}).strict(),

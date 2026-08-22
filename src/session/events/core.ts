@@ -16,6 +16,7 @@ export {
   parseDurableEventCursor,
 } from './DurableEventSubscription.js';
 export {
+  type DurableCommandCommitOptions,
   type DurableCommandCommitResult,
   type DurableCommandCommitStatus,
   DurableCommandConflictError,
@@ -38,6 +39,8 @@ export {
   type DurableToolOutcomeReconciliation,
   type DurableToolOutcomeReconciliationCommand,
   type DurableToolStartCommand,
+  type DurableTurnRecoveryCommand,
+  type DurableTurnRecoveryResult,
 } from './DurableSessionRecoveryCoordinator.js';
 export {
   DurableEventProjectionError,
@@ -84,6 +87,7 @@ export {
   type DurableInputPriority,
   type DurablePermissionDecision,
   type DurableRequestInterruptReason,
+  type DurableRequestRecoveryOrigin,
   type DurableSessionCloseReason,
   type DurableTokenUsage,
   type DurableToolCancelReason,
