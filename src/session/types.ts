@@ -12,8 +12,10 @@ import type { Message } from '../services/ChatServiceInterface.js';
 import type { ToolCatalogSourcePolicy } from '../tools/catalog/index.js';
 import type {
   ExecutionContext,
+  Tool,
   ToolDefinition,
   ToolDisplayContent,
+  ToolInvocation,
   ToolMessage,
   ToolModelContent,
   ToolProgress,
@@ -239,6 +241,14 @@ export interface AgentDefinition {
   model?: string;
 }
 
+// Existential Tool shape for heterogeneous arrays. The concrete parameter type
+// remains enforced where each Tool is created.
+type ErasedTool = Omit<Tool<never>, 'build'> & {
+  build(params: never): ToolInvocation<unknown>;
+};
+
+export type SessionTool = ToolDefinition<never> | ErasedTool;
+
 export interface SessionOptions {
   provider: ProviderConfig;
   model: string;
@@ -254,10 +264,8 @@ export interface SessionOptions {
   disallowedTools?: string[];
   toolSourcePolicy?: ToolCatalogSourcePolicy;
   mcpServers?: Record<string, McpServerConfig | SdkMcpServerHandle>;
-  // 使用 ToolDefinition<never> 以容纳不同 TParams 的自定义工具：execute 的参数位是逆变的，
-  // 若写成 ToolDefinition<JsonObject>[]，则 defineTool<{...}>() 得到的强类型工具无法赋值进来，
-  // 迫使调用方在 execute 内部做 cast。never 只用于数组元素的参数位，不泄漏到调用方的 execute。
-  tools?: ToolDefinition<never>[];
+  // never 用于擦除异构工具的参数类型，不会泄漏到各工具自己的 execute 实现。
+  tools?: SessionTool[];
 
   permissionMode?: PermissionMode;
   permissionHandler?: PermissionHandler;

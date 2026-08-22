@@ -426,7 +426,7 @@ Payload capture is opt-in because prompts and tool data may be sensitive.
 | `providerOptions` | `JsonObject` | Provider-specific options |
 | `thinkingEnabled` / `thinkingBudget` | `boolean` / `number` | Reasoning controls |
 | `tokenBudget` | `TokenBudgetConfig` | Request and cost limits |
-| `tools` | `ToolDefinition[]` | Custom tools |
+| `tools` | `SessionTool[]` | Custom `ToolDefinition` or complete `Tool` instances |
 | `allowedTools` / `disallowedTools` | `string[]` | Tool filters |
 | `toolSourcePolicy` | `ToolCatalogSourcePolicy` | Source and trust filtering |
 | `mcpServers` | `Record<string, McpServerConfig \| SdkMcpServerHandle>` | MCP configuration |

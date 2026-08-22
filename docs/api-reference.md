@@ -79,6 +79,7 @@ Node-local 能力外，这些函数都从根入口导出；实际 subpath 以“
 |------|------|
 | `ISession` | Session 实例接口 |
 | `SessionOptions` | Session 创建选项 |
+| `SessionTool` | Session 接受的 `ToolDefinition` 或完整 `Tool` 联合类型 |
 | `SendOptions` | send() 选项 |
 | `InputSubmission` | 输入被 started / steered / queued 的判别联合 |
 | `PendingSessionInput` | 尚未应用的持久化输入 |
@@ -140,8 +141,8 @@ Node-local 能力外，这些函数都从根入口导出；实际 subpath 以“
 | `MemoryStore` | Memory 后端抽象接口 |
 | `MemoryType` | Memory 类型（`user` / `feedback` / `project` / `reference`） |
 
-`createMemoryReadTool()` 和 `createMemoryWriteTool()` 返回低层 `Tool`；
-当前不能直接传给只接受 `ToolDefinition` 的 `SessionOptions.tools`。
+`createMemoryReadTool()` 和 `createMemoryWriteTool()` 返回完整 `Tool`，可直接
+传给 `SessionOptions.tools`。
 
 ### Provider
 

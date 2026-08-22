@@ -2,18 +2,23 @@ import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { z } from 'zod';
 import { assertDefined } from '../../__tests__/helpers/assertDefined.js';
 import { HookManager } from '../../hooks/HookManager.js';
 import { NOOP_LOGGER } from '../../logging/Logger.js';
+import { MemoryManager } from '../../memory/MemoryManager.js';
 import { createContextSnapshot, type RuntimeContext } from '../../runtime/index.js';
 import { getSandboxExecutor, SandboxExecutor } from '../../sandbox/SandboxExecutor.js';
 import { SandboxService } from '../../sandbox/SandboxService.js';
 import { FileAccessTracker } from '../../tools/builtin/file/FileAccessTracker.js';
+import { createMemoryReadTool } from '../../tools/builtin/memory/index.js';
+import { createTool } from '../../tools/core/createTool.js';
 import { FileLockManager } from '../../tools/execution/FileLockManager.js';
 import {
-    collectToolExecution,
-    completeToolExecution,
-    type ToolDefinition,
+  collectToolExecution,
+  completeToolExecution,
+  type ToolDefinition,
+  ToolKind,
 } from '../../tools/types/index.js';
 import { SessionId } from '../../types/branded.js';
 import type { JsonObject } from '../../types/common.js';
@@ -196,6 +201,81 @@ describe('SessionRuntime', () => {
     await runtime.initialize();
 
     expect(runtime.getToolRegistry().getAll()).toEqual([]);
+
+    await runtime.close();
+  });
+
+  it('should register complete Tool instances without adapting away their behavior', async () => {
+    const execute = vi.fn(({ value }: { value: string }) =>
+      completeToolExecution({
+        status: 'success',
+        model: value,
+      }));
+    const runtimeTool = createTool({
+      name: 'RuntimeTool',
+      displayName: 'Runtime Tool',
+      kind: ToolKind.ReadOnly,
+      interruptBehavior: 'cancel',
+      strict: true,
+      schema: z.object({
+        value: z.string(),
+      }),
+      description: {
+        short: 'Runtime tool',
+      },
+      execute,
+    });
+    const memoryManager = new MemoryManager({
+      save: vi.fn(),
+      get: vi.fn(),
+      list: vi.fn(async () => []),
+      delete: vi.fn(),
+    });
+    const memoryTool = createMemoryReadTool({ manager: memoryManager });
+    const runtime = new SessionRuntime(
+      SessionId('session-complete-tools'),
+      createOptions({
+        allowedTools: ['RuntimeTool', 'MemoryRead'],
+        tools: [runtimeTool, memoryTool],
+      }),
+      {
+        models: [],
+      },
+      PermissionMode.DEFAULT,
+      createFilesystemContext(workspaceRoot),
+      NOOP_LOGGER,
+    );
+
+    await runtime.initialize();
+
+    expect(runtime.getToolRegistry().get('RuntimeTool')).toBe(runtimeTool);
+    expect(runtime.getToolRegistry().get('MemoryRead')).toBe(memoryTool);
+    expect(runtime.getToolRegistry().get('RuntimeTool')?.interruptBehavior).toBe('cancel');
+
+    const executionPipeline = runtime.getAgentRuntimeDeps().executionPipeline;
+    assertDefined(executionPipeline);
+    const invalidResult = await collectToolExecution(
+      executionPipeline.execute('RuntimeTool', {}, {}),
+    );
+    expect(invalidResult.status).toBe('error');
+    expect(execute).not.toHaveBeenCalled();
+
+    const validResult = await collectToolExecution(
+      executionPipeline.execute('RuntimeTool', { value: 'validated' }, {}),
+    );
+    expect(validResult).toMatchObject({
+      status: 'success',
+      model: 'validated',
+    });
+    expect(execute).toHaveBeenCalledOnce();
+
+    const memoryResult = await collectToolExecution(
+      executionPipeline.execute('MemoryRead', { operation: 'list' }, {}),
+    );
+    expect(memoryResult).toMatchObject({
+      status: 'success',
+      model: [],
+    });
 
     await runtime.close();
   });
