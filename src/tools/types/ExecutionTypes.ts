@@ -1,4 +1,4 @@
-import type { MessageId, SessionId } from '@/types/branded.js';
+import type { MessageId, PermissionRequestId, SessionId, ToolUseId } from '@/types/branded.js';
 import type { IBackgroundAgentManager } from '../../agent/types.js';
 import type { ContextSnapshot } from '../../runtime/index.js';
 import type { BladeConfig, JsonObject, PermissionMode } from '../../types/common.js';
@@ -57,6 +57,39 @@ export interface ConfirmationHandler {
   requestConfirmation(details: ConfirmationDetails): Promise<ConfirmationResponse>;
 }
 
+export interface ToolPermissionResolution {
+  permissionRequestId: PermissionRequestId;
+  decision: 'allow' | 'deny' | 'cancel';
+  message?: string;
+}
+
+export interface ToolInvocationLifecycle {
+  onPermissionRequested?(
+    details: ConfirmationDetails,
+    input: JsonObject,
+  ): Promise<PermissionRequestId>;
+  onPermissionResolved?(resolution: ToolPermissionResolution): Promise<void>;
+  onExecutionStarted?(): Promise<void>;
+}
+
+export interface ToolScheduledLifecycle {
+  toolCallId: ToolUseId;
+  toolName: string;
+  input: JsonObject;
+  interruptBehavior: 'block' | 'cancel';
+}
+
+export interface ToolSettledLifecycle {
+  toolCallId: ToolUseId;
+  toolName: string;
+  result: ToolResult;
+}
+
+export interface ToolExecutionLifecycle {
+  onToolScheduled?(event: ToolScheduledLifecycle): Promise<ToolInvocationLifecycle | undefined>;
+  onToolSettled?(event: ToolSettledLifecycle): Promise<void>;
+}
+
 /**
  * 执行上下文
  */
@@ -74,6 +107,8 @@ export interface ExecutionContext {
   toolRegistry?: ToolRegistry;
   toolCatalog?: ToolCatalog;
   discoveredTools?: string[];
+  /** @internal Awaited lifecycle boundary immediately before the tool side effect. */
+  toolInvocationLifecycle?: ToolInvocationLifecycle;
 }
 
 export function getEffectiveProjectDir(context: ExecutionContext): string | undefined {

@@ -7,7 +7,8 @@ Session 生命周期投影。
 ::: warning 当前集成阶段
 当前不会改变 `Session.send()`、`Session.stream()` 或现有 Session JSONL。
 调用方可以独立使用 Event Store 和 recovery projector；Session 生命周期事件
-将在后续阶段接入。
+将在后续阶段接入。工具管道已经提供 awaited lifecycle hooks，以便接入时严格
+保持 persist-before-side-effect 和 persist-before-publish 顺序。
 :::
 
 ## 安装与导入

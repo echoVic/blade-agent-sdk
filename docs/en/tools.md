@@ -242,8 +242,47 @@ interface ExecutionContext {
   toolRegistry?: ToolRegistry;
   toolCatalog?: ToolCatalog;
   discoveredTools?: string[];
+  toolInvocationLifecycle?: ToolInvocationLifecycle; // injected by the runtime
 }
 ```
+
+## Durable lifecycle boundaries
+
+A runtime can use `ToolExecutionLifecycle` to observe and block critical tool
+persistence boundaries:
+
+```ts
+interface ToolExecutionLifecycle {
+  onToolScheduled?(
+    event: ToolScheduledLifecycle,
+  ): Promise<ToolInvocationLifecycle | undefined>;
+  onToolSettled?(event: ToolSettledLifecycle): Promise<void>;
+}
+
+interface ToolInvocationLifecycle {
+  onPermissionRequested?(
+    details: ConfirmationDetails,
+    input: JsonObject,
+  ): Promise<PermissionRequestId>;
+  onPermissionResolved?(
+    resolution: ToolPermissionResolution,
+  ): Promise<void>;
+  onExecutionStarted?(): Promise<void>;
+}
+```
+
+These callbacks are not best-effort telemetry. Their ordering is fixed:
+
+1. `onToolScheduled` completes before `tool_start` is published.
+2. `onPermissionRequested` completes before the interactive confirmation handler runs.
+3. `onPermissionResolved` completes before the permission decision is accepted.
+4. `onExecutionStarted` completes before the tool generator is invoked, so a durable write failure blocks the side effect.
+5. `onToolSettled` completes before `tool_result` is published.
+
+Invalid JSON arguments and synthetic interruption results for calls that were
+never dispatched do not enter the durable lifecycle because they never form an
+executable invocation. Without a lifecycle observer, normal tool execution
+behavior is unchanged.
 
 ## Built-in tools
 

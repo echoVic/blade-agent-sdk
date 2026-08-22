@@ -5,7 +5,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
 import { createTool } from '../../core/createTool.js';
 import { ToolRegistry } from '../../registry/ToolRegistry.js';
-import { SessionId } from '../../../types/branded.js';
+import { PermissionRequestId, SessionId } from '../../../types/branded.js';
 import { type JsonObject, PermissionMode } from '../../../types/common.js';
 import {
   collectToolExecution,
@@ -985,6 +985,247 @@ describe('ExecutionPipeline', () => {
     expect(result.status).toBe('error');
     expect(result.error?.message).toContain('User rejected sensitive file access');
     expect(confirmationHandler.requestConfirmation).toHaveBeenCalledTimes(1);
+    expect(executeSpy).not.toHaveBeenCalled();
+  });
+
+  it('awaits permission and execution lifecycle boundaries before invoking a tool', async () => {
+    const registry = new ToolRegistry();
+    const events: string[] = [];
+
+    registerTool(
+      registry,
+      createTool({
+        name: 'LifecycleTool',
+        displayName: 'Lifecycle Tool',
+        kind: ToolKind.Execute,
+        description: { short: 'Lifecycle tool' },
+        schema: z.object({ value: z.string() }),
+        checkPermissions: () => ({
+          behavior: 'ask',
+          message: 'Confirm lifecycle tool',
+        }),
+        execute: ({ value }) => {
+          events.push(`execute:${value}`);
+          return completeToolExecution({
+            status: 'success',
+            model: value,
+          });
+        },
+      }),
+    );
+
+    const pipeline = new ExecutionPipeline(registry, {
+      permissionMode: PermissionMode.YOLO,
+      permissionHandler: async () => ({ behavior: 'allow' }),
+    });
+    const result = await executePipeline(
+      pipeline,
+      'LifecycleTool',
+      { value: 'ok' },
+      {
+        permissionMode: PermissionMode.YOLO,
+        confirmationHandler: {
+          requestConfirmation: async () => {
+            events.push('permission-handler');
+            return { approved: true };
+          },
+        },
+        toolInvocationLifecycle: {
+          onPermissionRequested: async (_details, input) => {
+            events.push('permission-requested');
+            input.value = 'mutated';
+            return PermissionRequestId('permission-1');
+          },
+          onPermissionResolved: async ({ decision }) => {
+            events.push(`permission-resolved:${decision}`);
+          },
+          onExecutionStarted: async () => {
+            events.push('execution-started');
+          },
+        },
+      },
+    );
+
+    expect(result.status).toBe('success');
+    expect(events).toEqual([
+      'permission-requested',
+      'permission-handler',
+      'permission-resolved:allow',
+      'execution-started',
+      'execute:ok',
+    ]);
+  });
+
+  it('records denied and cancelled permission decisions without starting execution', async () => {
+    const registry = new ToolRegistry();
+    const executeSpy = vi.fn(() => completeToolExecution({
+      status: 'success',
+      model: 'unexpected',
+    }));
+    registerTool(
+      registry,
+      createTool({
+        name: 'PermissionLifecycleTool',
+        displayName: 'Permission Lifecycle Tool',
+        kind: ToolKind.Execute,
+        description: { short: 'Permission lifecycle tool' },
+        schema: z.object({}),
+        checkPermissions: () => ({ behavior: 'ask', message: 'Confirm' }),
+        execute: executeSpy,
+      }),
+    );
+    const pipeline = new ExecutionPipeline(registry, {
+      permissionMode: PermissionMode.YOLO,
+      permissionHandler: async () => ({ behavior: 'allow' }),
+    });
+
+    const denied: string[] = [];
+    const deniedResult = await executePipeline(
+      pipeline,
+      'PermissionLifecycleTool',
+      {},
+      {
+        permissionMode: PermissionMode.YOLO,
+        confirmationHandler: {
+          requestConfirmation: async () => ({ approved: false, reason: 'no' }),
+        },
+        toolInvocationLifecycle: {
+          onPermissionRequested: async () => PermissionRequestId('permission-denied'),
+          onPermissionResolved: async ({ decision }) => {
+            denied.push(decision);
+          },
+          onExecutionStarted: async () => {
+            denied.push('started');
+          },
+        },
+      },
+    );
+
+    const cancelled: string[] = [];
+    const cancelledResult = await executePipeline(
+      pipeline,
+      'PermissionLifecycleTool',
+      {},
+      {
+        permissionMode: PermissionMode.YOLO,
+        confirmationHandler: {
+          requestConfirmation: async () => {
+            throw new Error('prompt closed');
+          },
+        },
+        toolInvocationLifecycle: {
+          onPermissionRequested: async () => PermissionRequestId('permission-cancelled'),
+          onPermissionResolved: async ({ decision }) => {
+            cancelled.push(decision);
+          },
+          onExecutionStarted: async () => {
+            cancelled.push('started');
+          },
+        },
+      },
+    );
+
+    expect(deniedResult.status).toBe('error');
+    expect(cancelledResult.status).toBe('error');
+    expect(denied).toEqual(['deny']);
+    expect(cancelled).toEqual(['cancel']);
+    expect(executeSpy).not.toHaveBeenCalled();
+  });
+
+  it('blocks the side effect when an execution-start lifecycle boundary fails', async () => {
+    const registry = new ToolRegistry();
+    const executeSpy = vi.fn(() => completeToolExecution({
+      status: 'success',
+      model: 'unexpected',
+    }));
+    registerTool(
+      registry,
+      createTool({
+        name: 'BlockedLifecycleTool',
+        displayName: 'Blocked Lifecycle Tool',
+        kind: ToolKind.Execute,
+        description: { short: 'Blocked lifecycle tool' },
+        schema: z.object({}),
+        execute: executeSpy,
+      }),
+    );
+    const pipeline = new ExecutionPipeline(registry, {
+      permissionMode: PermissionMode.YOLO,
+    });
+
+    const result = await executePipeline(
+      pipeline,
+      'BlockedLifecycleTool',
+      {},
+      {
+        permissionMode: PermissionMode.YOLO,
+        toolInvocationLifecycle: {
+          onExecutionStarted: async () => {
+            throw new Error('durable write failed');
+          },
+        },
+      },
+    );
+
+    expect(result).toMatchObject({
+      status: 'error',
+      error: {
+        message: 'durable write failed',
+      },
+    });
+    expect(executeSpy).not.toHaveBeenCalled();
+  });
+
+  it('blocks the side effect when permission resolution cannot be persisted', async () => {
+    const registry = new ToolRegistry();
+    const executeSpy = vi.fn(() => completeToolExecution({
+      status: 'success',
+      model: 'unexpected',
+    }));
+    registerTool(
+      registry,
+      createTool({
+        name: 'PermissionResolutionTool',
+        displayName: 'Permission Resolution Tool',
+        kind: ToolKind.Execute,
+        description: { short: 'Permission resolution tool' },
+        schema: z.object({}),
+        checkPermissions: () => ({ behavior: 'ask', message: 'Confirm' }),
+        execute: executeSpy,
+      }),
+    );
+    const pipeline = new ExecutionPipeline(registry, {
+      permissionMode: PermissionMode.YOLO,
+      permissionHandler: async () => ({ behavior: 'allow' }),
+    });
+
+    const result = await executePipeline(
+      pipeline,
+      'PermissionResolutionTool',
+      {},
+      {
+        permissionMode: PermissionMode.YOLO,
+        confirmationHandler: {
+          requestConfirmation: async () => ({ approved: true }),
+        },
+        toolInvocationLifecycle: {
+          onPermissionRequested: async () => PermissionRequestId('permission-1'),
+          onPermissionResolved: async () => {
+            throw new Error('resolution write failed');
+          },
+          onExecutionStarted: async () => {
+            throw new Error('must not start');
+          },
+        },
+      },
+    );
+
+    expect(result).toMatchObject({
+      status: 'error',
+      error: {
+        message: expect.stringContaining('resolution write failed'),
+      },
+    });
     expect(executeSpy).not.toHaveBeenCalled();
   });
 });

@@ -3,9 +3,9 @@ import type { ChatResponse, StreamChunk } from '../../services/ChatServiceInterf
 import { ActiveRequestController } from '../../session/ActiveRequestController.js';
 import type { ToolExecution, ToolResult } from '../../tools/types/index.js';
 import {
-  InputId,
-  RequestId,
-  SessionId,
+    InputId,
+    RequestId,
+    SessionId,
 } from '../../types/branded.js';
 import { PermissionMode } from '../../types/common.js';
 import { StreamingToolExecutor } from '../StreamingToolExecutor.js';
@@ -74,6 +74,131 @@ function createExecutor(options: {
 }
 
 describe('StreamingToolExecutor', () => {
+  it('awaits durable scheduling before publishing or dispatching a streaming tool', async () => {
+    const scheduleGate = deferred<void>();
+    const order: string[] = [];
+    const { executor, execute } = createExecutor({
+      streamChat: async function* () {
+        yield {
+          toolCalls: [
+            {
+              index: 0,
+              id: 'tool-durable',
+              function: {
+                name: 'Write',
+                arguments: '{}',
+              },
+            },
+          ],
+        };
+        yield { finishReason: 'tool_calls' };
+      },
+      execute: async () => {
+        order.push('execute');
+        return { status: 'success', model: 'done' };
+      },
+      toolInterruptBehaviors: {
+        Write: 'block',
+      },
+    });
+
+    const promise = executor.collectAndExecute(
+      [{ role: 'user', content: 'write' }],
+      [{ name: 'Write', description: 'writes', parameters: {} }],
+      undefined,
+      {
+        executionPipeline: executionPipelineFromMock(execute, {
+          Write: { interruptBehavior: 'block' },
+        }),
+        executionContext: {
+          sessionId: SessionId('session-1'),
+          userId: 'user-1',
+          lifecycle: {
+            onToolScheduled: async () => {
+              order.push('schedule-start');
+              await scheduleGate.promise;
+              order.push('schedule-end');
+              return undefined;
+            },
+            onToolSettled: async () => {
+              order.push('settled');
+            },
+          },
+        },
+        onToolReady: () => {
+          order.push('ready');
+        },
+      },
+    );
+
+    await tick();
+    expect(order).toEqual(['schedule-start']);
+    expect(execute).not.toHaveBeenCalled();
+
+    scheduleGate.resolve();
+    await promise;
+    expect(order).toEqual([
+      'schedule-start',
+      'schedule-end',
+      'ready',
+      'execute',
+      'settled',
+    ]);
+  });
+
+  it('fails the streaming turn before publishing a terminal result when durable settlement fails', async () => {
+    const published: string[] = [];
+    const { executor, execute } = createExecutor({
+      streamChat: async function* () {
+        yield {
+          toolCalls: [
+            {
+              index: 0,
+              id: 'tool-settlement',
+              function: {
+                name: 'Write',
+                arguments: '{}',
+              },
+            },
+          ],
+        };
+        yield { finishReason: 'tool_calls' };
+      },
+      execute: async () => ({
+        status: 'success',
+        model: 'done',
+      }),
+    });
+
+    await expect(
+      executor.collectAndExecute(
+        [{ role: 'user', content: 'write' }],
+        [{ name: 'Write', description: 'writes', parameters: {} }],
+        undefined,
+        {
+          executionPipeline: executionPipelineFromMock(execute),
+          executionContext: {
+            sessionId: SessionId('session-1'),
+            userId: 'user-1',
+            lifecycle: {
+              onToolScheduled: async () => undefined,
+              onToolSettled: async () => {
+                throw new Error('terminal write failed');
+              },
+            },
+          },
+          onAfterToolExec: () => {
+            published.push('result');
+          },
+          onToolComplete: () => {
+            published.push('completed');
+          },
+        },
+      ),
+    ).rejects.toThrow('terminal write failed');
+    expect(published).toEqual([]);
+  });
+
   it('dispatches a tool as soon as arguments become parseable, forwards deltas, and emits stream_end before tool completion', async () => {
     const finishGate = deferred<void>();
     const toolGate = deferred<ToolResult>();

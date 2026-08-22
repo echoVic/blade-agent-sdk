@@ -9,6 +9,8 @@ projection.
 The current phase does not change `Session.send()`, `Session.stream()`, or the
 existing Session JSONL format. Applications can use the Event Store and recovery
 projector directly; Session lifecycle events will be connected in a later phase.
+The tool pipeline already exposes awaited lifecycle hooks so that integration can
+preserve persist-before-side-effect and persist-before-publish ordering.
 :::
 
 ## Imports

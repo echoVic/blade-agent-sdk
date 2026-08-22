@@ -142,9 +142,11 @@ Types:
 
 `FunctionDeclaration`, `Tool`, `ToolBehavior`, `ToolConfig`, `ToolDescription`,
 `ToolDescriptionResolver`, `ToolDisplayContent`, `ToolEffect`,
-`ToolEffectYield`, `ToolError`, `ToolExecution`, `ToolExposureConfig`,
-`ToolExposureMode`, `ToolMessage`, `ToolModelContent`, `ToolProgress`,
-`ToolSchema`, `ToolExecutionUpdate`, and `ToolYield`.
+`ToolEffectYield`, `ToolError`, `ToolExecution`, `ToolExecutionLifecycle`,
+`ToolInvocationLifecycle`, `ToolScheduledLifecycle`, `ToolSettledLifecycle`,
+`ToolPermissionResolution`, `ToolExposureConfig`, `ToolExposureMode`,
+`ToolMessage`, `ToolModelContent`, `ToolProgress`, `ToolSchema`,
+`ToolExecutionUpdate`, and `ToolYield`.
 
 Constants:
 

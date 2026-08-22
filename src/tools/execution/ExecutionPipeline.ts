@@ -1,7 +1,11 @@
 import type { HookRuntime } from '../../hooks/HookRuntime.js';
 import { type InternalLogger, LogCategory, NOOP_LOGGER } from '../../logging/Logger.js';
 import { isSteeringInterruptSignal } from '../../types/abort.js';
-import { SessionId, ToolUseId } from '../../types/branded.js';
+import {
+    type PermissionRequestId,
+    SessionId,
+    ToolUseId,
+} from '../../types/branded.js';
 import { type JsonObject, PermissionMode, type PermissionsConfig } from '../../types/common.js';
 import {
     type CanUseTool,
@@ -546,6 +550,7 @@ export class ExecutionPipeline {
       return;
     }
 
+    await state.context.toolInvocationLifecycle?.onExecutionStarted?.();
     const timeoutController = this.toolTimeoutMs ? new AbortController() : undefined;
     const executionSignal = timeoutController
       ? state.context.signal
@@ -881,6 +886,8 @@ export class ExecutionPipeline {
       return;
     }
 
+    let permissionRequestId: PermissionRequestId | undefined;
+    let resolutionAttempted = false;
     try {
       const description = state.invocation.getDescription();
       const confirmationTitle =
@@ -905,9 +912,22 @@ export class ExecutionPipeline {
 
       const confirmationHandler = state.context.confirmationHandler;
       if (confirmationHandler) {
+        permissionRequestId =
+          await state.context.toolInvocationLifecycle?.onPermissionRequested?.(
+            confirmationDetails,
+            structuredClone(state.params),
+          );
         this.logger.info(`[ExecutionPipeline] Requesting confirmation for ${state.tool.name}`);
         const response = await confirmationHandler.requestConfirmation(confirmationDetails);
         this.logger.info(`[ExecutionPipeline] Confirmation response: approved=${response.approved}`);
+        if (permissionRequestId) {
+          resolutionAttempted = true;
+          await state.context.toolInvocationLifecycle?.onPermissionResolved?.({
+            permissionRequestId,
+            decision: response.approved ? 'allow' : 'deny',
+            ...(response.reason ? { message: response.reason } : {}),
+          });
+        }
 
         if (!response.approved) {
           const reason = response.reason || 'User rejected';
@@ -933,8 +953,24 @@ export class ExecutionPipeline {
         state.needsConfirmation = false;
       }
     } catch (error) {
+      let failure = error;
+      if (permissionRequestId && !resolutionAttempted) {
+        try {
+          resolutionAttempted = true;
+          await state.context.toolInvocationLifecycle?.onPermissionResolved?.({
+            permissionRequestId,
+            decision: 'cancel',
+            message: getErrorMessage(error),
+          });
+        } catch (resolutionError) {
+          failure = new AggregateError(
+            [error, resolutionError],
+            'Permission handling and durable resolution both failed',
+          );
+        }
+      }
       state.result = this.createAbortedResult(
-        `User confirmation failed: ${getErrorMessage(error)}`,
+        `User confirmation failed: ${getErrorMessage(failure)}`,
       );
     }
   }
