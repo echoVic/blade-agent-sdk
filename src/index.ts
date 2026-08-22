@@ -186,12 +186,17 @@ export type {
   ToolEffectYield,
   ToolError,
   ToolExecution,
+  ToolExecutionLifecycle,
   ToolExposureConfig,
   ToolExposureMode,
+  ToolInvocationLifecycle,
   ToolMessage,
   ToolModelContent,
+  ToolPermissionResolution,
   ToolProgress,
+  ToolScheduledLifecycle,
   ToolSchema,
+  ToolSettledLifecycle,
   ToolYield,
 } from './tools/types/index.js';
 export {

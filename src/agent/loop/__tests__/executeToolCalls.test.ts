@@ -1,7 +1,8 @@
 import { describe, expect, it, vi } from 'vitest';
 import { createContextSnapshot } from '../../../runtime/index.js';
-import { completeToolExecution } from '../../../tools/types/index.js';
+import { completeToolExecution, type ExecutionContext } from '../../../tools/types/index.js';
 import { SessionId } from '../../../types/branded.js';
+import type { JsonObject } from '../../../types/common.js';
 import { executeToolCalls } from '../executeToolCalls.js';
 
 describe('executeToolCalls', () => {
@@ -56,10 +57,12 @@ describe('executeToolCalls', () => {
   });
 
   it('should forward the turn-scoped context snapshot into tool execution', async () => {
-    const execute = vi.fn(() => completeToolExecution({
-      status: 'success',
-      model: 'ok',
-    }));
+    const execute = vi.fn(() =>
+      completeToolExecution({
+        status: 'success',
+        model: 'ok',
+      }),
+    );
 
     await executeToolCalls({
       plan: {
@@ -111,10 +114,12 @@ describe('executeToolCalls', () => {
     const controller = new AbortController();
     controller.abort();
 
-    const execute = vi.fn(() => completeToolExecution({
-      status: 'success',
-      model: 'ok',
-    }));
+    const execute = vi.fn(() =>
+      completeToolExecution({
+        status: 'success',
+        model: 'ok',
+      }),
+    );
 
     await executeToolCalls({
       plan: {
@@ -155,10 +160,13 @@ describe('executeToolCalls', () => {
   });
 
   it('returns model-facing content when tool arguments are invalid JSON', async () => {
-    const execute = vi.fn(() => completeToolExecution({
-      status: 'success',
-      model: 'unexpected',
-    }));
+    const execute = vi.fn(() =>
+      completeToolExecution({
+        status: 'success',
+        model: 'unexpected',
+      }),
+    );
+    const onToolScheduled = vi.fn(async () => undefined);
 
     const [outcome] = await executeToolCalls({
       plan: {
@@ -183,10 +191,14 @@ describe('executeToolCalls', () => {
       executionContext: {
         sessionId: SessionId('session-invalid-json'),
         userId: 'user-1',
+        lifecycle: {
+          onToolScheduled,
+        },
       },
     });
 
     expect(execute).not.toHaveBeenCalled();
+    expect(onToolScheduled).not.toHaveBeenCalled();
     expect(outcome.result.status).toBe('error');
     expect(outcome.result.model).toContain('Tool execution failed:');
     expect(outcome.result.model).toContain('JSON');
@@ -329,5 +341,177 @@ describe('executeToolCalls', () => {
       'result:Read',
       'completed:Read',
     ]);
+  });
+
+  it('awaits durable schedule and settlement around tool execution', async () => {
+    const lifecycle: string[] = [];
+
+    const [outcome] = await executeToolCalls({
+      plan: {
+        mode: 'serial',
+        calls: [
+          {
+            id: 'tool-lifecycle',
+            type: 'function',
+            function: {
+              name: 'Write',
+              arguments: '{"value":"ok"}',
+            },
+          },
+        ],
+      },
+      executionPipeline: {
+        // biome-ignore lint/correctness/useYield: test double returns a terminal generator result
+        execute: vi.fn(async function* (
+          _toolName: string,
+          _params: JsonObject,
+          context: ExecutionContext,
+        ) {
+          lifecycle.push(`pipeline:${String(_params.value)}`);
+          await context.toolInvocationLifecycle?.onExecutionStarted?.();
+          lifecycle.push('side-effect');
+          return {
+            status: 'success',
+            model: 'ok',
+          };
+        }),
+        getRegistry: () => ({
+          get: () => ({ kind: 'write', interruptBehavior: 'block' }),
+        }),
+      } as never,
+      executionContext: {
+        sessionId: SessionId('session-lifecycle'),
+        userId: 'user-1',
+        lifecycle: {
+          onToolScheduled: async ({ toolCallId, input, interruptBehavior }) => {
+            lifecycle.push(`scheduled:${toolCallId}:${String(input.value)}:${interruptBehavior}`);
+            input.value = 'mutated';
+            return {
+              onExecutionStarted: async () => {
+                lifecycle.push('execution-started');
+              },
+            };
+          },
+          onToolSettled: async ({ result }) => {
+            lifecycle.push(`settled:${result.status}`);
+          },
+        },
+      },
+      hooks: {
+        onUpdate: (update) => {
+          lifecycle.push(`update:${update.type}`);
+        },
+      },
+    });
+
+    expect(outcome.result.status).toBe('success');
+    expect(lifecycle).toEqual([
+      'scheduled:tool-lifecycle:ok:block',
+      'update:tool_ready',
+      'update:tool_started',
+      'pipeline:ok',
+      'execution-started',
+      'side-effect',
+      'settled:success',
+      'update:tool_result',
+      'update:tool_completed',
+    ]);
+  });
+
+  it('does not enter the execution pipeline when durable scheduling fails', async () => {
+    const execute = vi.fn(() =>
+      completeToolExecution({
+        status: 'success',
+        model: 'unexpected',
+      }),
+    );
+    const onToolSettled = vi.fn(async () => {});
+
+    await expect(
+      executeToolCalls({
+        plan: {
+          mode: 'serial',
+          calls: [
+            {
+              id: 'tool-schedule-failure',
+              type: 'function',
+              function: {
+                name: 'Write',
+                arguments: '{}',
+              },
+            },
+          ],
+        },
+        executionPipeline: {
+          execute,
+          getRegistry: () => ({
+            get: () => ({ kind: 'write', interruptBehavior: 'block' }),
+          }),
+        } as never,
+        executionContext: {
+          sessionId: SessionId('session-lifecycle'),
+          userId: 'user-1',
+          lifecycle: {
+            onToolScheduled: async () => {
+              throw new Error('schedule write failed');
+            },
+            onToolSettled,
+          },
+        },
+      }),
+    ).rejects.toThrow('schedule write failed');
+
+    expect(execute).not.toHaveBeenCalled();
+    expect(onToolSettled).not.toHaveBeenCalled();
+  });
+
+  it('does not publish a tool result when durable settlement fails', async () => {
+    const updates: string[] = [];
+
+    await expect(
+      executeToolCalls({
+        plan: {
+          mode: 'serial',
+          calls: [
+            {
+              id: 'tool-settle-failure',
+              type: 'function',
+              function: {
+                name: 'Write',
+                arguments: '{}',
+              },
+            },
+          ],
+        },
+        executionPipeline: {
+          execute: vi.fn(() =>
+            completeToolExecution({
+              status: 'success',
+              model: 'done',
+            }),
+          ),
+          getRegistry: () => ({
+            get: () => ({ kind: 'write', interruptBehavior: 'block' }),
+          }),
+        } as never,
+        executionContext: {
+          sessionId: SessionId('session-lifecycle'),
+          userId: 'user-1',
+          lifecycle: {
+            onToolScheduled: async () => undefined,
+            onToolSettled: async () => {
+              throw new Error('settlement write failed');
+            },
+          },
+        },
+        hooks: {
+          onUpdate: (update) => {
+            updates.push(update.type);
+          },
+        },
+      }),
+    ).rejects.toThrow('settlement write failed');
+
+    expect(updates).toEqual(['tool_ready', 'tool_started']);
   });
 });

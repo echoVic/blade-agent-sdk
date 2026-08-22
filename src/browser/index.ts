@@ -21,10 +21,15 @@ export type {
   ToolEffect,
   ToolEffectYield,
   ToolExecution,
+  ToolExecutionLifecycle,
+  ToolInvocationLifecycle,
   ToolMessage,
   ToolModelContent,
+  ToolPermissionResolution,
   ToolProgress,
   ToolResult,
+  ToolScheduledLifecycle,
+  ToolSettledLifecycle,
   ToolYield,
 } from '../core/index.js';
 export {

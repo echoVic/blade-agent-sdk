@@ -14,9 +14,15 @@ import type {
   ToolEffect,
   ToolEffectYield,
   ToolExecution,
+  ToolExecutionLifecycle,
   ToolExecutionUpdate,
+  ToolInvocationLifecycle,
   ToolMessage,
+  ToolPermissionResolution,
   ToolProgress,
+  ToolResult,
+  ToolScheduledLifecycle,
+  ToolSettledLifecycle,
   ToolYield,
 } from '../index.js';
 import {
@@ -90,6 +96,13 @@ describe('root exports', () => {
     expectTypeOf<ToolMessage['kind']>().toEqualTypeOf<'message'>();
     expectTypeOf<ToolEffectYield['kind']>().toEqualTypeOf<'effect'>();
     expectTypeOf<ToolExecution>().toMatchTypeOf<AsyncGenerator<ToolYield, unknown, void>>();
+    expectTypeOf<NonNullable<ToolExecutionLifecycle['onToolScheduled']>>().toBeFunction();
+    expectTypeOf<NonNullable<ToolInvocationLifecycle['onExecutionStarted']>>().toBeFunction();
+    expectTypeOf<ToolPermissionResolution['decision']>().toEqualTypeOf<
+      'allow' | 'deny' | 'cancel'
+    >();
+    expectTypeOf<ToolScheduledLifecycle['interruptBehavior']>().toEqualTypeOf<'block' | 'cancel'>();
+    expectTypeOf<ToolSettledLifecycle['result']>().toEqualTypeOf<ToolResult>();
     expectTypeOf<InputSubmission['status']>().toEqualTypeOf<'started' | 'steered' | 'queued'>();
     expectTypeOf<PendingSessionInput['priority']>().toEqualTypeOf<'now' | 'next' | 'later'>();
     expectTypeOf<ReturnType<typeof createMemoryReadTool>>().toMatchTypeOf<SessionTool>();
