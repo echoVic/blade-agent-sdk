@@ -19,9 +19,11 @@ import type {
 import type { ExecutionPipeline } from '../../tools/execution/ExecutionPipeline.js';
 import type { ToolEffect, ToolResult } from '../../tools/types/index.js';
 import type { PermissionMode } from '../../types/common.js';
+import { isSteeringInterruptSignal } from '../../types/abort.js';
 import type { JsonObject } from '../../types/common.js';
 import type { AgentEvent } from '../AgentEvent.js';
 import type { ExecutionEpoch } from '../ExecutionEpoch.js';
+import type { ModelExecutionLifecycle } from '../ModelExecutionLifecycle.js';
 import { StreamingToolExecutor } from '../StreamingToolExecutor.js';
 import type { TurnState } from '../state/TurnState.js';
 import { AsyncEventQueue } from './AsyncEventQueue.js';
@@ -64,6 +66,7 @@ export interface RunTurnInput {
   epoch: ExecutionEpoch;
   executionContext: ToolExecutionContext;
   permissionMode?: PermissionMode;
+  modelExecutionLifecycle?: ModelExecutionLifecycle;
   toolHooks: RunTurnToolHooks;
   logger?: InternalLogger;
 }
@@ -89,61 +92,128 @@ export async function* runTurn(
     parameters: JSONSchema7;
   }>;
   const turnChatService = turnState.chatService;
+  const requestLifecycle = await input.modelExecutionLifecycle?.onModelRequestStarting({
+    turn: turnState.turn,
+    model: turnChatService.getConfig().model,
+    streaming: streaming === true,
+  });
 
-  // 分支 1：streaming + 有工具 — 流式边解析边执行
-  if (streaming && tools.length > 0) {
-    return yield* runStreamingWithTools(input, tools);
-  }
-
-  // 分支 2：streaming only — 纯流式，无工具执行
-  if (streaming) {
-    const stream = streamChatResponse(
-      () => turnChatService,
-      messages,
-      tools,
-      signal,
-      logger,
-    );
-    let chatResponse: ChatResponse | undefined;
-    while (true) {
-      const { value, done } = await stream.next();
-      if (done) {
-        chatResponse = value;
-        break;
-      }
-      if (value.type === 'content_delta') {
-        yield { type: 'content_delta', delta: value.delta };
+  let settlementAttempted = false;
+  try {
+    let outcome: TurnOutcome;
+    try {
+      // 分支 1：streaming + 有工具 — 流式边解析边执行
+      if (streaming && tools.length > 0) {
+        outcome = yield* runStreamingWithTools(input, tools);
+      } else if (streaming) {
+        // 分支 2：streaming only — 纯流式，无工具执行
+        const stream = streamChatResponse(
+          () => turnChatService,
+          messages,
+          tools,
+          signal,
+          logger,
+        );
+        let chatResponse: ChatResponse | undefined;
+      let streamCompleted = false;
+      try {
+        while (true) {
+          const { value, done } = await stream.next();
+          if (done) {
+            chatResponse = value;
+            streamCompleted = true;
+            break;
+          }
+          if (value.type === 'content_delta') {
+            yield { type: 'content_delta', delta: value.delta };
+          } else {
+            yield { type: 'thinking_delta', delta: value.delta };
+          }
+        }
+      } finally {
+        if (!streamCompleted) {
+          await stream.return(undefined as never);
+          }
+        }
+        if (!chatResponse) {
+          throw new Error('Stream terminated without chat response');
+        }
+        outcome = { chatResponse };
+      } else if (typeof turnChatService.chatWithRetryEvents === 'function') {
+        // 分支 3：非流式 + 带重试事件
+        const retryGen = turnChatService.chatWithRetryEvents(messages, tools, signal);
+        let chatResponse: ChatResponse | undefined;
+      let retryStreamCompleted = false;
+      try {
+        while (true) {
+          const { value, done } = await retryGen.next();
+          if (done) {
+            chatResponse = value;
+            retryStreamCompleted = true;
+            break;
+          }
+          yield {
+            type: 'api_retry',
+            attempt: value.attempt,
+            maxRetries: value.maxRetries,
+            delayMs: value.delayMs,
+            error: value.error,
+          };
+        }
+      } finally {
+        if (!retryStreamCompleted) {
+          await retryGen.return(undefined as never);
+          }
+        }
+        if (!chatResponse) {
+          throw new Error('Model retry stream terminated without a chat response');
+        }
+        outcome = { chatResponse };
       } else {
-        yield { type: 'thinking_delta', delta: value.delta };
+        // 分支 4：纯非流式
+        outcome = {
+          chatResponse: await turnChatService.chat(messages, tools, signal),
+        };
+      }
+    } catch (error) {
+      if (requestLifecycle) {
+        settlementAttempted = true;
+        try {
+          if (signal?.aborted) {
+            await requestLifecycle.onAborted(
+              isSteeringInterruptSignal(signal) ? 'steering' : 'request_interrupted',
+            );
+          } else {
+            await requestLifecycle.onFailed(error);
+          }
+        } catch (lifecycleError) {
+          throw new AggregateError(
+            [error, lifecycleError],
+            'Model request and durable settlement both failed',
+          );
+        }
+      }
+      throw error;
+    }
+
+    if (requestLifecycle) {
+      settlementAttempted = true;
+      if (signal?.aborted) {
+        await requestLifecycle.onAborted(
+          isSteeringInterruptSignal(signal) ? 'steering' : 'request_interrupted',
+        );
+      } else {
+        await requestLifecycle.onCompleted(outcome.chatResponse);
       }
     }
-    if (!chatResponse) {
-      throw new Error('Stream terminated without chat response');
-    }
-    return { chatResponse };
-  }
-
-  // 分支 3：非流式 + 带重试事件
-  if (typeof turnChatService.chatWithRetryEvents === 'function') {
-    const retryGen = turnChatService.chatWithRetryEvents(messages, tools, signal);
-    while (true) {
-      const { value, done } = await retryGen.next();
-      if (done) {
-        return { chatResponse: value };
-      }
-      yield {
-        type: 'api_retry',
-        attempt: value.attempt,
-        maxRetries: value.maxRetries,
-        delayMs: value.delayMs,
-        error: value.error,
-      };
+    return outcome;
+  } finally {
+    if (requestLifecycle && !settlementAttempted) {
+      await requestLifecycle.onAborted(
+        isSteeringInterruptSignal(signal) ? 'steering' : 'request_interrupted',
+      );
     }
   }
-
-  // 分支 4：纯非流式
-  const chatResponse = await turnChatService.chat(messages, tools, signal);
-  return { chatResponse };
 }
 
 async function* runStreamingWithTools(
@@ -204,19 +274,27 @@ async function* runStreamingWithTools(
       queue.close();
     });
 
-  for await (const event of queue) {
-    yield event;
+  let executionCompleted = false;
+  try {
+    for await (const event of queue) {
+      yield event;
+    }
+
+    await executionPromise;
+    executionCompleted = true;
+
+    if (executionError) {
+      throw executionError;
+    }
+
+    if (!chatResponse) {
+      throw new Error('Streaming executor completed without chat response');
+    }
+
+    return { chatResponse, streamingExecutionResults };
+  } finally {
+    if (!executionCompleted) {
+      await executionPromise;
+    }
   }
-
-  await executionPromise;
-
-  if (executionError) {
-    throw executionError;
-  }
-
-  if (!chatResponse) {
-    throw new Error('Streaming executor completed without chat response');
-  }
-
-  return { chatResponse, streamingExecutionResults };
 }

@@ -1,8 +1,8 @@
+import { Mutex } from 'async-mutex';
+import { nanoid } from 'nanoid';
 import { Buffer } from 'node:buffer';
 import { mkdir, open, readFile, truncate } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
-import { Mutex } from 'async-mutex';
-import { nanoid } from 'nanoid';
 import { EventId, EventSequence, type SessionId } from '../../types/branded.js';
 import {
   DurableEventSequenceConflictError,
@@ -23,6 +23,7 @@ import {
   type DurableEventEnvelope,
   type DurableEventPage,
   type DurableEventReadOptions,
+  type DurableEventSchemaVersion,
 } from './types.js';
 
 const DEFAULT_PAGE_SIZE = 100;
@@ -289,6 +290,7 @@ export class JsonlDurableEventStore implements DurableEventStore {
     const events: DurableEventEnvelope[] = [];
     const eventIds = new Set<string>();
     let expectedSequence = 1;
+    let previousSchemaVersion: DurableEventSchemaVersion | null = null;
 
     for (const [index, line] of lines.entries()) {
       let batch: PersistedDurableEventBatch;
@@ -302,9 +304,16 @@ export class JsonlDurableEventStore implements DurableEventStore {
         );
       }
 
-      this.assertBatchIntegrity(batch, sessionId, expectedSequence, eventIds);
+      this.assertBatchIntegrity(
+        batch,
+        sessionId,
+        expectedSequence,
+        previousSchemaVersion,
+        eventIds,
+      );
       events.push(...batch.events);
       expectedSequence = Number(batch.lastSequence) + 1;
+      previousSchemaVersion = batch.schemaVersion;
     }
 
     return {
@@ -318,6 +327,7 @@ export class JsonlDurableEventStore implements DurableEventStore {
     batch: PersistedDurableEventBatch,
     sessionId: SessionId,
     expectedFirstSequence: number,
+    previousSchemaVersion: DurableEventSchemaVersion | null,
     eventIds: Set<string>,
   ): void {
     const firstSequence = Number(batch.firstSequence);
@@ -330,6 +340,12 @@ export class JsonlDurableEventStore implements DurableEventStore {
       throw new DurableEventStoreError(
         'DURABLE_EVENT_CORRUPT_LOG',
         `Non-contiguous durable event batch for session ${sessionId}`,
+      );
+    }
+    if (previousSchemaVersion !== null && batch.schemaVersion < previousSchemaVersion) {
+      throw new DurableEventStoreError(
+        'DURABLE_EVENT_CORRUPT_LOG',
+        `Durable event schema regressed from v${previousSchemaVersion} to v${batch.schemaVersion}`,
       );
     }
 

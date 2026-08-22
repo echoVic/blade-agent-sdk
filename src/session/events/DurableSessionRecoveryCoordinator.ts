@@ -5,6 +5,7 @@ import type {
   EventId,
   EventSequence,
   InputId,
+  ModelAttemptId,
   PermissionRequestId,
   RequestId,
   SessionId,
@@ -25,6 +26,7 @@ import {
 } from './DurableSessionJournal.js';
 import {
   DurableEventProjectionError,
+  type DurableModelAttemptProjection,
   type DurablePermissionProjection,
   type DurableRequestProjection,
   type DurableSessionProjection,
@@ -36,6 +38,7 @@ import {
   type DurableEventEnvelope,
   type DurableEventError,
   DurableEventType,
+  type DurableModelResponse,
   type DurablePermissionDecision,
   type DurableTokenUsage,
 } from './types.js';
@@ -95,6 +98,27 @@ export interface DurablePermissionResolutionCommand {
   readonly permissionRequestId: PermissionRequestId;
   readonly decision: DurablePermissionDecision;
   readonly message?: string;
+}
+
+export type DurableModelOutcomeReconciliation =
+  | {
+      readonly status: 'completed';
+      readonly response: DurableModelResponse;
+    }
+  | {
+      readonly status: 'failed';
+      readonly error: DurableEventError;
+    }
+  | {
+      readonly status: 'aborted';
+    };
+
+export interface DurableModelOutcomeReconciliationCommand {
+  readonly commandId: CommandId;
+  readonly requestId: RequestId;
+  readonly turnId: TurnId;
+  readonly modelAttemptId: ModelAttemptId;
+  readonly outcome: DurableModelOutcomeReconciliation;
 }
 
 export interface DurableRequestRolloverCommand {
@@ -199,6 +223,7 @@ function eventToCommandDraft(event: DurableEventEnvelope): DurableCommandEventDr
     occurredAt: event.occurredAt,
     ...('requestId' in event ? { requestId: event.requestId } : {}),
     ...('turnId' in event ? { turnId: event.turnId } : {}),
+    ...('modelAttemptId' in event ? { modelAttemptId: event.modelAttemptId } : {}),
     ...('toolAttemptId' in event ? { toolAttemptId: event.toolAttemptId } : {}),
     ...(event.causationEventId ? { causationEventId: event.causationEventId } : {}),
   } as DurableCommandEventDraft;
@@ -491,9 +516,30 @@ function buildTurnRecoveryContinuation(
       sourceRequestId: request.requestId,
       sourceTurnId: turn.turnId,
       sourceTurn: turn.turn,
+      ...(turn.modelAttempts.length > 0
+        ? {
+            modelAttempts: turn.modelAttempts.map((attempt) => ({
+              modelAttemptId: attempt.modelAttemptId,
+              model: attempt.model,
+              streaming: attempt.streaming,
+              status: attempt.status,
+              ...(attempt.response
+                ? { response: boundedRecoveryValue(attempt.response) }
+                : {}),
+              ...(attempt.error ? { error: attempt.error } : {}),
+              ...(attempt.abortReason ? { abortReason: attempt.abortReason } : {}),
+            })),
+          }
+        : {}),
       toolOutcomes,
     },
     [
+      ...(turn.modelAttempts.length > 0
+        ? [
+            'Treat completed model responses as authoritative prior output and do not regenerate them. '
+              + 'Failed or aborted model attempts have no trusted response.',
+          ]
+        : []),
       'Do not repeat tool operations marked completed. '
         + 'Operations marked not_started are safe to execute once. Operations marked '
         + 'interrupted_before_trusted_completion may be retried only when their '
@@ -566,11 +612,48 @@ function requestOutcomeEvent(
   }
 }
 
+function modelOutcomeEvent(
+  command: DurableModelOutcomeReconciliationCommand,
+): DurableCommandEventDraft {
+  const correlation = {
+    requestId: command.requestId,
+    turnId: command.turnId,
+    modelAttemptId: command.modelAttemptId,
+  };
+  switch (command.outcome.status) {
+    case 'completed':
+      return {
+        type: DurableEventType.MODEL_REQUEST_COMPLETED,
+        ...correlation,
+        data: {
+          response: command.outcome.response,
+        },
+      };
+    case 'failed':
+      return {
+        type: DurableEventType.MODEL_REQUEST_FAILED,
+        ...correlation,
+        data: {
+          error: command.outcome.error,
+        },
+      };
+    case 'aborted':
+      return {
+        type: DurableEventType.MODEL_REQUEST_ABORTED,
+        ...correlation,
+        data: {
+          reason: 'process_restart',
+        },
+      };
+  }
+}
+
 /**
  * Coordinates explicit recovery mutations against one durable Session journal.
  *
- * Recovery never guesses the outcome of a started tool. Callers must supply a
- * stable command ID so retries remain idempotent across process restarts.
+ * Recovery never guesses the outcome of a started model request or tool.
+ * Callers must supply a stable command ID so retries remain idempotent across
+ * process restarts.
  */
 export class DurableSessionRecoveryCoordinator {
   constructor(private readonly journal: DurableSessionJournal) {}
@@ -960,6 +1043,50 @@ export class DurableSessionRecoveryCoordinator {
     };
   }
 
+  /**
+   * Records the externally reconciled outcome of a model request that may
+   * have completed before the process stopped.
+   */
+  async reconcileModelOutcome(
+    command: DurableModelOutcomeReconciliationCommand,
+  ): Promise<DurableRecoveryCommitResult> {
+    await this.journal.refresh();
+    const event = modelOutcomeEvent(command);
+    if (this.journal.getCommandEvents(command.commandId)) {
+      return this.result(await this.commitRecovery({
+        commandId: command.commandId,
+        events: [event],
+      }));
+    }
+
+    const expectedHeadSequence = this.getProjection().headSequence;
+    const recoveryPlan = this.getRecoveryPlan();
+    const { request, turn, attempt } = this.findModelAttempt(command.modelAttemptId);
+    if (recoveryPlan.action !== 'reconcile_model_outcome') {
+      throw new DurableSessionRecoveryError(
+        'DURABLE_RECOVERY_INVALID_STATE',
+        `Model outcome reconciliation requires reconcile_model_outcome, found ${recoveryPlan.action}`,
+      );
+    }
+    if (
+      request.requestId !== command.requestId
+      || turn.turnId !== command.turnId
+      || attempt.modelAttemptId !== command.modelAttemptId
+      || attempt.status !== 'started'
+    ) {
+      throw new DurableSessionRecoveryError(
+        'DURABLE_RECOVERY_TARGET_NOT_FOUND',
+        `No active model attempt matches ${command.requestId}/${command.turnId}/${command.modelAttemptId}`,
+      );
+    }
+
+    const commit = await this.commitRecovery({
+      commandId: command.commandId,
+      events: [event],
+    }, expectedHeadSequence);
+    return this.result(commit);
+  }
+
   async reconcileToolOutcome(
     command: DurableToolOutcomeReconciliationCommand,
   ): Promise<DurableRecoveryCommitResult> {
@@ -1103,6 +1230,25 @@ export class DurableSessionRecoveryCoordinator {
       );
     }
     return { request, turn, tool };
+  }
+
+  private findModelAttempt(modelAttemptId: ModelAttemptId): {
+    request: DurableRequestProjection;
+    turn: NonNullable<DurableRequestProjection['activeTurn']>;
+    attempt: DurableModelAttemptProjection;
+  } {
+    const request = this.getProjection().activeRequest;
+    const turn = request?.activeTurn;
+    const attempt = turn?.modelAttempts.find(
+      (candidate) => candidate.modelAttemptId === modelAttemptId,
+    );
+    if (!request || !turn || !attempt) {
+      throw new DurableSessionRecoveryError(
+        'DURABLE_RECOVERY_TARGET_NOT_FOUND',
+        `No model attempt matches ${modelAttemptId}`,
+      );
+    }
+    return { request, turn, attempt };
   }
 
   private findPermission(permissionRequestId: PermissionRequestId): {

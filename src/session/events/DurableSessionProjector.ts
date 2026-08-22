@@ -5,6 +5,7 @@ import {
   EventId,
   EventSequence,
   type InputId,
+  type ModelAttemptId,
   type PermissionRequestId,
   type RequestId,
   type SessionId,
@@ -20,9 +21,12 @@ import {
   type DurableEventDraft,
   type DurableEventEnvelope,
   type DurableEventError,
+  type DurableEventSchemaVersion,
   type DurableEventType,
   DurableEventType as DurableEventTypeValue,
   type DurableInputPriority,
+  type DurableModelRequestAbortReason,
+  type DurableModelResponse,
   type DurablePermissionDecision,
   type DurableRequestInterruptReason,
   type DurableRequestRecoveryOrigin,
@@ -45,6 +49,7 @@ export type DurableToolAttemptStatus =
   | 'cancelled'
   | 'outcome_unknown';
 export type DurablePermissionStatus = 'pending' | 'resolved';
+export type DurableModelAttemptStatus = 'started' | 'completed' | 'failed' | 'aborted';
 export type DurableSessionRecoveryAction =
   | 'none'
   | 'resume_request'
@@ -52,6 +57,7 @@ export type DurableSessionRecoveryAction =
   | 'resume_turn'
   | 'resolve_permissions'
   | 'reconcile_tool_outcomes'
+  | 'reconcile_model_outcome'
   | 'reconcile_request_inputs'
   | 'reconcile_request_outcome';
 
@@ -79,11 +85,23 @@ export interface DurableToolAttemptProjection {
   readonly unknownReason?: DurableToolOutcomeUnknownReason;
 }
 
+export interface DurableModelAttemptProjection {
+  readonly modelAttemptId: ModelAttemptId;
+  readonly model: string;
+  readonly streaming: boolean;
+  readonly status: DurableModelAttemptStatus;
+  readonly response?: DurableModelResponse;
+  readonly error?: DurableEventError;
+  readonly abortReason?: DurableModelRequestAbortReason;
+}
+
 export interface DurableTurnProjection {
   readonly turnId: TurnId;
   readonly turn: number;
   readonly model?: string;
   readonly status: DurableTurnStatus;
+  readonly modelAttempts: readonly DurableModelAttemptProjection[];
+  readonly activeModelAttempt: DurableModelAttemptProjection | null;
   readonly toolAttempts: readonly DurableToolAttemptProjection[];
 }
 
@@ -110,6 +128,7 @@ export interface DurableRequestProjection {
 
 export interface DurableSessionProjection {
   readonly sessionId: SessionId | null;
+  readonly schemaVersion: DurableEventSchemaVersion | null;
   readonly status: DurableSessionProjectionStatus;
   readonly headSequence: EventSequence | null;
   readonly lastEventId: EventId | null;
@@ -125,6 +144,7 @@ export interface DurableSessionRecoveryPlan {
   readonly action: DurableSessionRecoveryAction;
   readonly requestId: RequestId | null;
   readonly turnId: TurnId | null;
+  readonly activeModelAttempt: DurableModelAttemptProjection | null;
   readonly retryableToolAttempts: readonly DurableToolAttemptProjection[];
   readonly cancelableToolAttempts: readonly DurableToolAttemptProjection[];
   readonly unknownToolAttempts: readonly DurableToolAttemptProjection[];
@@ -170,12 +190,24 @@ interface MutableToolAttemptProjection {
   unknownReason?: DurableToolOutcomeUnknownReason;
 }
 
+interface MutableModelAttemptProjection {
+  modelAttemptId: ModelAttemptId;
+  model: string;
+  streaming: boolean;
+  status: DurableModelAttemptStatus;
+  response?: DurableModelResponse;
+  error?: DurableEventError;
+  abortReason?: DurableModelRequestAbortReason;
+}
+
 interface MutableTurnProjection {
   turnId: TurnId;
   turn: number;
   model?: string;
   status: DurableTurnStatus;
   preparedInputIds: InputId[];
+  modelAttempts: Map<ModelAttemptId, MutableModelAttemptProjection>;
+  activeModelAttempt: MutableModelAttemptProjection | null;
   toolAttempts: Map<ToolAttemptId, MutableToolAttemptProjection>;
 }
 
@@ -203,6 +235,7 @@ interface MutableRequestProjection {
 
 interface ProjectionAccumulator {
   sessionId: SessionId | null;
+  schemaVersion: DurableEventSchemaVersion | null;
   status: DurableSessionProjectionStatus;
   headSequence: EventSequence | null;
   lastEventId: EventId | null;
@@ -249,6 +282,7 @@ interface ProjectionAccumulator {
     sequence: EventSequence;
     reason: DurableRequestInterruptReason;
   } | null;
+  seenModelAttemptIds: Set<ModelAttemptId>;
   seenToolAttemptIds: Set<ToolAttemptId>;
   seenPermissionRequestIds: Set<PermissionRequestId>;
   seenInputIds: Set<InputId>;
@@ -258,6 +292,7 @@ interface ProjectionAccumulator {
 
 type RequestScopedEvent = DurableEventEnvelope & { readonly requestId: RequestId };
 type TurnScopedEvent = RequestScopedEvent & { readonly turnId: TurnId };
+type ModelScopedEvent = TurnScopedEvent & { readonly modelAttemptId: ModelAttemptId };
 type ToolScopedEvent = TurnScopedEvent & { readonly toolAttemptId: ToolAttemptId };
 
 function invalid(event: DurableEventEnvelope, message: string): never {
@@ -320,6 +355,22 @@ function requireToolAttempt(
   return tool;
 }
 
+function requireModelAttempt(
+  state: ProjectionAccumulator,
+  event: ModelScopedEvent,
+): MutableModelAttemptProjection {
+  const turn = requireActiveTurn(state, event);
+  const attempt = turn.modelAttempts.get(event.modelAttemptId);
+  if (
+    !attempt
+    || turn.activeModelAttempt?.modelAttemptId !== event.modelAttemptId
+    || attempt.status !== 'started'
+  ) {
+    invalid(event, `No active model attempt matches ${String(event.modelAttemptId)}`);
+  }
+  return attempt;
+}
+
 function assertToolIdentity(
   event: DurableEventEnvelope,
   tool: MutableToolAttemptProjection,
@@ -340,6 +391,9 @@ function assertNoPendingPermission(
 }
 
 function assertTurnCanEnd(event: DurableEventEnvelope, turn: MutableTurnProjection): void {
+  if (turn.activeModelAttempt) {
+    invalid(event, `Model attempt ${turn.activeModelAttempt.modelAttemptId} is not terminal`);
+  }
   const unfinished = Array.from(turn.toolAttempts.values()).find(
     (tool) =>
       tool.status === 'scheduled' ||
@@ -436,6 +490,14 @@ function cloneTool(tool: MutableToolAttemptProjection): DurableToolAttemptProjec
   };
 }
 
+function cloneModelAttempt(
+  attempt: MutableModelAttemptProjection,
+): DurableModelAttemptProjection {
+  return {
+    ...attempt,
+  };
+}
+
 function cloneTurn(turn: MutableTurnProjection | null): DurableTurnProjection | null {
   if (!turn) {
     return null;
@@ -445,6 +507,10 @@ function cloneTurn(turn: MutableTurnProjection | null): DurableTurnProjection | 
     turn: turn.turn,
     ...(turn.model ? { model: turn.model } : {}),
     status: turn.status,
+    modelAttempts: Array.from(turn.modelAttempts.values(), cloneModelAttempt),
+    activeModelAttempt: turn.activeModelAttempt
+      ? cloneModelAttempt(turn.activeModelAttempt)
+      : null,
     toolAttempts: Array.from(turn.toolAttempts.values(), cloneTool),
   };
 }
@@ -693,6 +759,8 @@ function applyEvent(state: ProjectionAccumulator, event: DurableEventEnvelope): 
         ...(event.data.model ? { model: event.data.model } : {}),
         status: 'running',
         preparedInputIds,
+        modelAttempts: new Map(),
+        activeModelAttempt: null,
         toolAttempts: new Map(),
       };
       return;
@@ -744,6 +812,71 @@ function applyEvent(state: ProjectionAccumulator, event: DurableEventEnvelope): 
         preparedInputIds: [...turn.preparedInputIds],
         unsafeNonIdempotentToolAttemptId: unsafeNonIdempotentTool?.toolAttemptId ?? null,
       };
+      return;
+    }
+
+    case DurableEventTypeValue.MODEL_REQUEST_STARTED: {
+      const request = requireRunningRequest(state, event);
+      const turn = requireActiveTurn(state, event);
+      if (turn.activeModelAttempt) {
+        invalid(
+          event,
+          `Model attempt ${turn.activeModelAttempt.modelAttemptId} is still active`,
+        );
+      }
+      const previousAttempt = Array.from(turn.modelAttempts.values()).at(-1);
+      if (previousAttempt && previousAttempt.status !== 'failed') {
+        invalid(
+          event,
+          `Model attempt ${previousAttempt.modelAttemptId} ended as ${previousAttempt.status}`,
+        );
+      }
+      if (state.seenModelAttemptIds.has(event.modelAttemptId)) {
+        invalid(event, `Model attempt ID ${event.modelAttemptId} was already used`);
+      }
+      const attempt: MutableModelAttemptProjection = {
+        modelAttemptId: event.modelAttemptId,
+        model: event.data.model,
+        streaming: event.data.streaming,
+        status: 'started',
+      };
+      state.seenModelAttemptIds.add(event.modelAttemptId);
+      turn.modelAttempts.set(event.modelAttemptId, attempt);
+      turn.activeModelAttempt = attempt;
+      request.lastBoundaryEventId = event.eventId;
+      return;
+    }
+
+    case DurableEventTypeValue.MODEL_REQUEST_COMPLETED: {
+      const request = requireRunningRequest(state, event);
+      const turn = requireActiveTurn(state, event);
+      const attempt = requireModelAttempt(state, event);
+      attempt.status = 'completed';
+      attempt.response = event.data.response;
+      turn.activeModelAttempt = null;
+      request.lastBoundaryEventId = event.eventId;
+      return;
+    }
+
+    case DurableEventTypeValue.MODEL_REQUEST_FAILED: {
+      const request = requireRunningRequest(state, event);
+      const turn = requireActiveTurn(state, event);
+      const attempt = requireModelAttempt(state, event);
+      attempt.status = 'failed';
+      attempt.error = event.data.error;
+      turn.activeModelAttempt = null;
+      request.lastBoundaryEventId = event.eventId;
+      return;
+    }
+
+    case DurableEventTypeValue.MODEL_REQUEST_ABORTED: {
+      const request = requireRunningRequest(state, event);
+      const turn = requireActiveTurn(state, event);
+      const attempt = requireModelAttempt(state, event);
+      attempt.status = 'aborted';
+      attempt.abortReason = event.data.reason;
+      turn.activeModelAttempt = null;
+      request.lastBoundaryEventId = event.eventId;
       return;
     }
 
@@ -933,6 +1066,7 @@ function applyEvent(state: ProjectionAccumulator, event: DurableEventEnvelope): 
 function createProjectionAccumulator(): ProjectionAccumulator {
   return {
     sessionId: null,
+    schemaVersion: null,
     status: 'empty',
     headSequence: null,
     lastEventId: null,
@@ -949,6 +1083,7 @@ function createProjectionAccumulator(): ProjectionAccumulator {
     lastTurnAbort: null,
     lastTurnTerminal: null,
     lastRequestInterruption: null,
+    seenModelAttemptIds: new Set(),
     seenToolAttemptIds: new Set(),
     seenPermissionRequestIds: new Set(),
     seenInputIds: new Set(),
@@ -984,6 +1119,7 @@ export class DurableSessionProjector {
     const state = this.state;
     return structuredClone({
       sessionId: state.sessionId,
+      schemaVersion: state.schemaVersion,
       status: state.status,
       headSequence: state.headSequence,
       lastEventId: state.lastEventId,
@@ -1062,6 +1198,12 @@ export class DurableSessionProjector {
     if (state.sessionId && event.sessionId !== state.sessionId) {
       invalid(event, `Expected session ${state.sessionId}, received ${event.sessionId}`);
     }
+    if (state.schemaVersion !== null && event.schemaVersion < state.schemaVersion) {
+      invalid(
+        event,
+        `Durable event schema regressed from v${state.schemaVersion} to v${event.schemaVersion}`,
+      );
+    }
     if (state.seenEventIds.has(event.eventId)) {
       invalid(event, `Event ID ${event.eventId} was already used`);
     }
@@ -1071,6 +1213,7 @@ export class DurableSessionProjector {
 
     state.seenEventIds.add(event.eventId);
     applyEvent(state, event);
+    state.schemaVersion = event.schemaVersion;
     state.headSequence = event.sequence;
     state.lastEventId = event.eventId;
   }
@@ -1093,6 +1236,7 @@ export function planDurableSessionRecovery(
 ): DurableSessionRecoveryPlan {
   const request = projection.activeRequest;
   const turn = request?.activeTurn ?? null;
+  const activeModelAttempt = turn?.activeModelAttempt ?? null;
   const pendingInputIds = request?.pendingInputIds ?? [];
   const tools = turn?.toolAttempts ?? [];
   const unknownToolAttempts = tools.filter(
@@ -1127,6 +1271,8 @@ export function planDurableSessionRecovery(
     action = 'reconcile_tool_outcomes';
   } else if (pendingPermissions.length > 0) {
     action = 'resolve_permissions';
+  } else if (activeModelAttempt) {
+    action = 'reconcile_model_outcome';
   } else if (turn) {
     action = 'resume_turn';
   } else if (request?.status === 'accepted') {
@@ -1150,6 +1296,7 @@ export function planDurableSessionRecovery(
     action,
     requestId: request?.requestId ?? null,
     turnId: turn?.turnId ?? null,
+    activeModelAttempt,
     retryableToolAttempts,
     cancelableToolAttempts,
     unknownToolAttempts,

@@ -67,6 +67,29 @@ describe('SessionDurableRecorder', () => {
       turn: 1,
       maxTurns: 10,
     });
+    const modelRequest = await recorder.onModelRequestStarting({
+      turn: 1,
+      model: 'test-model',
+      streaming: false,
+    });
+    await modelRequest.onCompleted({
+      content: '',
+      toolCalls: [
+        {
+          id: 'tool-call-1',
+          type: 'function',
+          function: {
+            name: 'Write',
+            arguments: '{"file_path":"/tmp/file"}',
+          },
+        },
+      ],
+      usage: {
+        promptTokens: 10,
+        completionTokens: 2,
+        totalTokens: 12,
+      },
+    });
 
     const lifecycle = await recorder.onToolScheduled({
       toolCallId: ToolUseId('tool-call-1'),
@@ -121,6 +144,8 @@ describe('SessionDurableRecorder', () => {
       'input_applied',
       'request_started',
       'turn_started',
+      'model_request_started',
+      'model_request_completed',
       'tool_scheduled',
       'permission_requested',
       'permission_resolved',
@@ -160,6 +185,68 @@ describe('SessionDurableRecorder', () => {
       sideEffect: 'idempotent',
     });
     expect(journal.getProjection().activeRequest).toBeNull();
+  });
+
+  it('requires reconciliation when a model request has no durable outcome', async () => {
+    await recorder.recordAccepted(inputId, 'run');
+    await recorder.recordStarted(inputId);
+    await recorder.recordAgentEvent({
+      type: 'turn_start',
+      turn: 1,
+      maxTurns: 10,
+    });
+    await recorder.onModelRequestStarting({
+      turn: 1,
+      model: 'test-model',
+      streaming: true,
+    });
+
+    expect(journal.getRecoveryPlan()).toMatchObject({
+      action: 'reconcile_model_outcome',
+      requestId,
+    });
+    await expect(
+      recorder.finish({
+        status: 'failed',
+        error: new Error('worker stopped'),
+      }),
+    ).rejects.toThrow(/Model attempt .* is still active/);
+    expect((await store.read(sessionId)).events.at(-1)?.type).toBe(
+      DurableEventType.MODEL_REQUEST_STARTED,
+    );
+  });
+
+  it('preserves model failure classification in the durable outcome', async () => {
+    await recorder.recordAccepted(inputId, 'run');
+    await recorder.recordStarted(inputId);
+    await recorder.recordAgentEvent({
+      type: 'turn_start',
+      turn: 1,
+      maxTurns: 10,
+    });
+    const modelRequest = await recorder.onModelRequestStarting({
+      turn: 1,
+      model: 'test-model',
+      streaming: false,
+    });
+    const modelError = Object.assign(new Error('provider overloaded'), {
+      code: 'MODEL_OVERLOADED',
+      retryable: true,
+    });
+
+    await modelRequest.onFailed(modelError);
+
+    expect((await store.read(sessionId)).events.at(-1)).toMatchObject({
+      type: DurableEventType.MODEL_REQUEST_FAILED,
+      data: {
+        error: {
+          message: 'provider overloaded',
+          code: 'MODEL_OVERLOADED',
+          retryable: true,
+        },
+      },
+    });
+    expect(journal.getRecoveryPlan().action).toBe('resume_turn');
   });
 
   it('persists steering input application before preparation and confirms it once', async () => {

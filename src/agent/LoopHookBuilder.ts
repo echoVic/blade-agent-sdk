@@ -381,6 +381,7 @@ export function buildLoopConfig(deps: LoopHookBuilderDeps): AgentLoopConfig {
     isYoloMode,
     signal: options?.signal,
     tokenBudget,
+    modelExecutionLifecycle: options?.modelExecutionLifecycle,
     initialInputPreparation: options?.initialInputPreparation,
     prepareTurnState: (turn) => loopState.buildTurnState(turn),
     hooks,

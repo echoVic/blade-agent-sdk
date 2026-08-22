@@ -3,6 +3,7 @@ import {
   CommandId,
   EventId,
   EventSequence,
+  ModelAttemptId,
   RequestId,
   SessionId,
   ToolAttemptId,
@@ -14,6 +15,7 @@ import {
   type DurableEventDataMap,
   type DurableEventDraft,
   type DurableEventEnvelope,
+  type DurableEventSchemaVersion,
   type DurableEventType,
   DurableEventType as DurableEventTypeValue,
 } from './types.js';
@@ -52,6 +54,36 @@ const DurableTokenUsageSchema = z
     inputTokens: NonNegativeIntegerSchema,
     outputTokens: NonNegativeIntegerSchema,
     totalTokens: NonNegativeIntegerSchema,
+  })
+  .strict();
+const DurableModelUsageSchema = z
+  .object({
+    promptTokens: NonNegativeIntegerSchema,
+    completionTokens: NonNegativeIntegerSchema,
+    totalTokens: NonNegativeIntegerSchema,
+    reasoningTokens: NonNegativeIntegerSchema.optional(),
+    cacheCreationInputTokens: NonNegativeIntegerSchema.optional(),
+    cacheReadInputTokens: NonNegativeIntegerSchema.optional(),
+    cacheMissInputTokens: NonNegativeIntegerSchema.optional(),
+    billableInputTokens: NonNegativeIntegerSchema.optional(),
+  })
+  .strict();
+const DurableModelResponseSchema = z
+  .object({
+    content: z.string(),
+    reasoningContent: z.string().optional(),
+    toolCalls: z
+      .array(
+        z
+          .object({
+            id: NonEmptyStringSchema,
+            name: NonEmptyStringSchema,
+            arguments: z.string(),
+          })
+          .strict(),
+      )
+      .optional(),
+    usage: DurableModelUsageSchema.optional(),
   })
   .strict();
 const ToolIdentitySchema = {
@@ -123,6 +155,27 @@ const DurableEventDataSchemas = {
     .object({
       turn: PositiveIntegerSchema,
       reason: z.enum(['request_interrupted', 'error', 'process_restart', 'recovery_required']),
+    })
+    .strict(),
+  [DurableEventTypeValue.MODEL_REQUEST_STARTED]: z
+    .object({
+      model: NonEmptyStringSchema,
+      streaming: z.boolean(),
+    })
+    .strict(),
+  [DurableEventTypeValue.MODEL_REQUEST_COMPLETED]: z
+    .object({
+      response: DurableModelResponseSchema,
+    })
+    .strict(),
+  [DurableEventTypeValue.MODEL_REQUEST_FAILED]: z
+    .object({
+      error: DurableEventErrorSchema,
+    })
+    .strict(),
+  [DurableEventTypeValue.MODEL_REQUEST_ABORTED]: z
+    .object({
+      reason: z.enum(['request_interrupted', 'steering', 'process_restart']),
     })
     .strict(),
   [DurableEventTypeValue.TOOL_SCHEDULED]: z
@@ -201,15 +254,21 @@ const DurableEventDraftBaseSchema = z
     commandId: NonEmptyStringSchema.optional(),
     requestId: NonEmptyStringSchema.optional(),
     turnId: NonEmptyStringSchema.optional(),
+    modelAttemptId: NonEmptyStringSchema.optional(),
     toolAttemptId: NonEmptyStringSchema.optional(),
     causationEventId: NonEmptyStringSchema.optional(),
   })
   .strict()
   .superRefine(validateEventScope);
 
+const DurableEventSchemaVersionSchema = z.union([
+  z.literal(2),
+  z.literal(DURABLE_EVENT_SCHEMA_VERSION),
+]);
+
 const DurableEventEnvelopeSchema = z
   .object({
-    schemaVersion: z.literal(DURABLE_EVENT_SCHEMA_VERSION),
+    schemaVersion: DurableEventSchemaVersionSchema,
     eventId: NonEmptyStringSchema,
     sequence: EventSequenceSchema,
     sessionId: NonEmptyStringSchema,
@@ -220,34 +279,69 @@ const DurableEventEnvelopeSchema = z
     commandId: NonEmptyStringSchema.optional(),
     requestId: NonEmptyStringSchema.optional(),
     turnId: NonEmptyStringSchema.optional(),
+    modelAttemptId: NonEmptyStringSchema.optional(),
     toolAttemptId: NonEmptyStringSchema.optional(),
     causationEventId: NonEmptyStringSchema.optional(),
   })
   .strict()
-  .superRefine(validateEventScope);
+  .superRefine((value, context) => {
+    validateEventScope(value, context);
+    if (
+      value.schemaVersion === 2
+      && (
+        value.type === DurableEventTypeValue.MODEL_REQUEST_STARTED
+        || value.type === DurableEventTypeValue.MODEL_REQUEST_COMPLETED
+        || value.type === DurableEventTypeValue.MODEL_REQUEST_FAILED
+        || value.type === DurableEventTypeValue.MODEL_REQUEST_ABORTED
+      )
+    ) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['type'],
+        message: `${value.type} requires durable event schema v3`,
+      });
+    }
+  });
 
 const PersistedDurableEventBatchSchema = z
   .object({
     format: z.literal(DURABLE_EVENT_LOG_FORMAT),
-    schemaVersion: z.literal(DURABLE_EVENT_SCHEMA_VERSION),
+    schemaVersion: DurableEventSchemaVersionSchema,
     sessionId: NonEmptyStringSchema,
     firstSequence: EventSequenceSchema,
     lastSequence: EventSequenceSchema,
     events: z.array(z.unknown()).min(1),
   })
-  .strict();
+  .strict()
+  .superRefine((value, context) => {
+    for (const [index, event] of value.events.entries()) {
+      if (
+        typeof event === 'object'
+        && event !== null
+        && 'schemaVersion' in event
+        && event.schemaVersion !== value.schemaVersion
+      ) {
+        context.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['events', index, 'schemaVersion'],
+          message: 'Event schema version must match its batch',
+        });
+      }
+    }
+  });
 
 interface ParsedEventScope {
   type: DurableEventType;
   commandId?: string;
   requestId?: string;
   turnId?: string;
+  modelAttemptId?: string;
   toolAttemptId?: string;
 }
 
 export interface PersistedDurableEventBatch {
   readonly format: typeof DURABLE_EVENT_LOG_FORMAT;
-  readonly schemaVersion: typeof DURABLE_EVENT_SCHEMA_VERSION;
+  readonly schemaVersion: DurableEventSchemaVersion;
   readonly sessionId: SessionId;
   readonly firstSequence: EventSequence;
   readonly lastSequence: EventSequence;
@@ -279,12 +373,14 @@ function validateEventScope(value: ParsedEventScope, context: z.RefinementCtx): 
     case DurableEventTypeValue.SESSION_CLOSED:
       forbidField('requestId');
       forbidField('turnId');
+      forbidField('modelAttemptId');
       forbidField('toolAttemptId');
       return;
     case DurableEventTypeValue.REQUEST_ACCEPTED:
       requireField('commandId');
       requireField('requestId');
       forbidField('turnId');
+      forbidField('modelAttemptId');
       forbidField('toolAttemptId');
       return;
     case DurableEventTypeValue.REQUEST_STARTED:
@@ -293,6 +389,7 @@ function validateEventScope(value: ParsedEventScope, context: z.RefinementCtx): 
     case DurableEventTypeValue.REQUEST_INTERRUPTED:
       requireField('requestId');
       forbidField('turnId');
+      forbidField('modelAttemptId');
       forbidField('toolAttemptId');
       return;
     case DurableEventTypeValue.TURN_STARTED:
@@ -300,6 +397,16 @@ function validateEventScope(value: ParsedEventScope, context: z.RefinementCtx): 
     case DurableEventTypeValue.TURN_ABORTED:
       requireField('requestId');
       requireField('turnId');
+      forbidField('modelAttemptId');
+      forbidField('toolAttemptId');
+      return;
+    case DurableEventTypeValue.MODEL_REQUEST_STARTED:
+    case DurableEventTypeValue.MODEL_REQUEST_COMPLETED:
+    case DurableEventTypeValue.MODEL_REQUEST_FAILED:
+    case DurableEventTypeValue.MODEL_REQUEST_ABORTED:
+      requireField('requestId');
+      requireField('turnId');
+      requireField('modelAttemptId');
       forbidField('toolAttemptId');
       return;
     case DurableEventTypeValue.TOOL_SCHEDULED:
@@ -312,10 +419,12 @@ function validateEventScope(value: ParsedEventScope, context: z.RefinementCtx): 
     case DurableEventTypeValue.PERMISSION_RESOLVED:
       requireField('requestId');
       requireField('turnId');
+      forbidField('modelAttemptId');
       requireField('toolAttemptId');
       return;
     case DurableEventTypeValue.INPUT_APPLIED:
       requireField('requestId');
+      forbidField('modelAttemptId');
       forbidField('toolAttemptId');
       return;
   }
@@ -338,6 +447,9 @@ function toDurableEventDraft(
     ...(parsed.commandId ? { commandId: CommandId(parsed.commandId) } : {}),
     ...(parsed.requestId ? { requestId: RequestId(parsed.requestId) } : {}),
     ...(parsed.turnId ? { turnId: TurnId(parsed.turnId) } : {}),
+    ...(parsed.modelAttemptId
+      ? { modelAttemptId: ModelAttemptId(parsed.modelAttemptId) }
+      : {}),
     ...(parsed.toolAttemptId ? { toolAttemptId: ToolAttemptId(parsed.toolAttemptId) } : {}),
     ...(parsed.causationEventId ? { causationEventId: EventId(parsed.causationEventId) } : {}),
   } as DurableEventDraft;

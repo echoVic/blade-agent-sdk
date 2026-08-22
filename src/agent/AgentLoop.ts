@@ -25,6 +25,7 @@ import {
   RECONCILED_INITIAL_INPUT,
 } from './InitialInputPreparation.js';
 import { isOverflowRecoverable } from './isOverflowRecoverable.js';
+import type { ModelExecutionLifecycle } from './ModelExecutionLifecycle.js';
 import { decideNoToolTurn } from './loop/decideNoToolTurn.js';
 import { decideTurnLimit } from './loop/decideTurnLimit.js';
 import { executeToolCalls } from './loop/executeToolCalls.js';
@@ -128,6 +129,7 @@ export interface AgentLoopConfig {
   signal?: AbortSignal;
   tokenBudget?: TokenBudget;
   runControl?: AgentRunControl;
+  modelExecutionLifecycle?: ModelExecutionLifecycle;
   initialInputPreparation?: InitialInputPreparation;
   prepareTurnState: (turn: number) => TurnState;
   hooks?: AgentLoopHooks;
@@ -153,6 +155,7 @@ export async function* agentLoop(
     signal,
     tokenBudget,
     runControl,
+    modelExecutionLifecycle,
     initialInputPreparation,
     hooks,
   } = config;
@@ -278,6 +281,7 @@ export async function* agentLoop(
         epoch,
         executionContext: turnExecutionContext,
         permissionMode: turnPermissionMode,
+        modelExecutionLifecycle,
         logger: config.logger,
         toolHooks: {
           onBeforeExec: toolHooks?.beforeExec,
@@ -286,14 +290,22 @@ export async function* agentLoop(
           onUpdate: toolHooks?.onUpdate,
         },
       });
-      while (true) {
-        const { value, done } = await turnGen.next();
-        if (done) {
-          turnResult = value.chatResponse;
-          streamingExecutionResults = value.streamingExecutionResults;
-          break;
+      let turnStreamCompleted = false;
+      try {
+        while (true) {
+          const { value, done } = await turnGen.next();
+          if (done) {
+            turnResult = value.chatResponse;
+            streamingExecutionResults = value.streamingExecutionResults;
+            turnStreamCompleted = true;
+            break;
+          }
+          yield value;
         }
-        yield value;
+      } finally {
+        if (!turnStreamCompleted) {
+          await turnGen.return(undefined as never);
+        }
       }
     } catch (llmError) {
       const interruptInputId = getSteeringInterruptInputId(stepSignal);

@@ -4,6 +4,7 @@ import {
   EventId,
   EventSequence,
   InputId,
+  ModelAttemptId,
   PermissionRequestId,
   RequestId,
   SessionId,
@@ -30,6 +31,7 @@ const requestId = RequestId('request-1');
 const commandId = CommandId('command-1');
 const initialInputId = InputId('input-1');
 const turnId = TurnId('turn-1');
+const modelAttemptId = ModelAttemptId('model-attempt-1');
 const toolAttemptId = ToolAttemptId('attempt-1');
 const toolCallId = ToolUseId('call-1');
 const permissionRequestId = PermissionRequestId('permission-1');
@@ -279,6 +281,56 @@ describe('DurableSessionProjector', () => {
     expect(projector.snapshot().activeRequest?.status).toBe('accepted');
   });
 
+  it('allows schema upgrades but rejects schema downgrades', () => {
+    const legacy = parseDurableEventEnvelope({
+      schemaVersion: 2,
+      eventId: EventId('legacy-session-created'),
+      sequence: 1,
+      sessionId,
+      type: DurableEventType.SESSION_CREATED,
+      data: { source: 'create' },
+      recordedAt: timestamp,
+      occurredAt: timestamp,
+    });
+    const upgraded = parseDurableEventEnvelope({
+      schemaVersion: DURABLE_EVENT_SCHEMA_VERSION,
+      eventId: EventId('current-request-accepted'),
+      sequence: 2,
+      sessionId,
+      type: DurableEventType.REQUEST_ACCEPTED,
+      requestId,
+      commandId,
+      data: {
+        inputId: initialInputId,
+        input: 'upgrade',
+        priority: 'next',
+      },
+      recordedAt: timestamp,
+      occurredAt: timestamp,
+    });
+    const projector = new DurableSessionProjector().apply([legacy, upgraded]);
+    expect(projector.snapshot()).toMatchObject({
+      schemaVersion: 3,
+      activeRequest: { requestId },
+    });
+
+    expect(() =>
+      projector.apply([
+        parseDurableEventEnvelope({
+          schemaVersion: 2,
+          eventId: EventId('downgraded-request-started'),
+          sequence: 3,
+          sessionId,
+          type: DurableEventType.REQUEST_STARTED,
+          requestId,
+          data: {},
+          recordedAt: timestamp,
+          occurredAt: timestamp,
+        }),
+      ]),
+    ).toThrow(/schema regressed from v3 to v2/);
+  });
+
   it('requires latest-boundary causation for new standalone Request terminal writes', () => {
     const projector = new DurableSessionProjector().apply(
       envelopes([
@@ -382,6 +434,262 @@ describe('DurableSessionProjector', () => {
         },
       ]),
     ).toThrow(/requires a completed or aborted Turn/);
+  });
+
+  it('projects model attempts and blocks recovery while an outcome is unknown', () => {
+    const started = project([
+      ...turnPrefix(),
+      {
+        type: DurableEventType.MODEL_REQUEST_STARTED,
+        requestId,
+        turnId,
+        modelAttemptId,
+        data: {
+          model: 'claude-sonnet',
+          streaming: true,
+        },
+      },
+    ]);
+
+    expect(started.activeRequest?.activeTurn?.activeModelAttempt).toMatchObject({
+      modelAttemptId,
+      model: 'claude-sonnet',
+      streaming: true,
+      status: 'started',
+    });
+    expect(planDurableSessionRecovery(started)).toMatchObject({
+      action: 'reconcile_model_outcome',
+      requestId,
+      turnId,
+    });
+
+    const completed = project([
+      ...turnPrefix(),
+      {
+        type: DurableEventType.MODEL_REQUEST_STARTED,
+        requestId,
+        turnId,
+        modelAttemptId,
+        data: {
+          model: 'claude-sonnet',
+          streaming: true,
+        },
+      },
+      {
+        type: DurableEventType.MODEL_REQUEST_COMPLETED,
+        requestId,
+        turnId,
+        modelAttemptId,
+        data: {
+          response: {
+            content: 'done',
+            usage: {
+              promptTokens: 10,
+              completionTokens: 2,
+              totalTokens: 12,
+            },
+          },
+        },
+      },
+    ]);
+    expect(completed.activeRequest?.activeTurn).toMatchObject({
+      activeModelAttempt: null,
+      modelAttempts: [
+        expect.objectContaining({
+          modelAttemptId,
+          status: 'completed',
+          response: expect.objectContaining({ content: 'done' }),
+        }),
+      ],
+    });
+    expect(planDurableSessionRecovery(completed).action).toBe('resume_turn');
+  });
+
+  it('requires a model attempt to settle before its Turn can end', () => {
+    expect(() =>
+      project([
+        ...turnPrefix(),
+        {
+          type: DurableEventType.MODEL_REQUEST_STARTED,
+          requestId,
+          turnId,
+          modelAttemptId,
+          data: {
+            model: 'claude-sonnet',
+            streaming: false,
+          },
+        },
+        {
+          type: DurableEventType.TURN_ABORTED,
+          requestId,
+          turnId,
+          data: {
+            turn: 1,
+            reason: 'process_restart',
+          },
+        },
+      ]),
+    ).toThrow(/Model attempt model-attempt-1 is not terminal/);
+  });
+
+  it.each([
+    {
+      type: DurableEventType.MODEL_REQUEST_FAILED,
+      data: { error: { message: 'provider unavailable', retryable: true } },
+      status: 'failed',
+    },
+    {
+      type: DurableEventType.MODEL_REQUEST_ABORTED,
+      data: { reason: 'steering' as const },
+      status: 'aborted',
+    },
+  ])('projects a terminal $status model attempt', ({ type, data, status }) => {
+    const projection = project([
+      ...turnPrefix(),
+      {
+        type: DurableEventType.MODEL_REQUEST_STARTED,
+        requestId,
+        turnId,
+        modelAttemptId,
+        data: {
+          model: 'claude-sonnet',
+          streaming: false,
+        },
+      },
+      {
+        type,
+        requestId,
+        turnId,
+        modelAttemptId,
+        data,
+      },
+    ] as readonly DurableEventDraft[]);
+
+    expect(projection.activeRequest?.activeTurn).toMatchObject({
+      activeModelAttempt: null,
+      modelAttempts: [
+        expect.objectContaining({
+          modelAttemptId,
+          status,
+        }),
+      ],
+    });
+    expect(planDurableSessionRecovery(projection).action).toBe('resume_turn');
+  });
+
+  it('rejects overlapping and mismatched model attempts', () => {
+    const started = [
+      ...turnPrefix(),
+      {
+        type: DurableEventType.MODEL_REQUEST_STARTED,
+        requestId,
+        turnId,
+        modelAttemptId,
+        data: {
+          model: 'claude-sonnet',
+          streaming: true,
+        },
+      },
+    ] as const;
+
+    expect(() =>
+      project([
+        ...started,
+        {
+          type: DurableEventType.MODEL_REQUEST_STARTED,
+          requestId,
+          turnId,
+          modelAttemptId: ModelAttemptId('model-attempt-2'),
+          data: {
+            model: 'claude-sonnet',
+            streaming: true,
+          },
+        },
+      ]),
+    ).toThrow(/is still active/);
+    expect(() =>
+      project([
+        ...started,
+        {
+          type: DurableEventType.MODEL_REQUEST_COMPLETED,
+          requestId,
+          turnId,
+          modelAttemptId: ModelAttemptId('different-model-attempt'),
+          data: {
+            response: { content: 'wrong attempt' },
+          },
+        },
+      ]),
+    ).toThrow(/No active model attempt matches/);
+  });
+
+  it('allows a retry after model failure but not after a completed response', () => {
+    const failedAttempt = [
+      ...turnPrefix(),
+      {
+        type: DurableEventType.MODEL_REQUEST_STARTED,
+        requestId,
+        turnId,
+        modelAttemptId,
+        data: {
+          model: 'claude-sonnet',
+          streaming: false,
+        },
+      },
+      {
+        type: DurableEventType.MODEL_REQUEST_FAILED,
+        requestId,
+        turnId,
+        modelAttemptId,
+        data: {
+          error: { message: 'context overflow', retryable: true },
+        },
+      },
+    ] as const;
+    const retryAttemptId = ModelAttemptId('model-attempt-2');
+    expect(
+      project([
+        ...failedAttempt,
+        {
+          type: DurableEventType.MODEL_REQUEST_STARTED,
+          requestId,
+          turnId,
+          modelAttemptId: retryAttemptId,
+          data: {
+            model: 'claude-sonnet',
+            streaming: false,
+          },
+        },
+      ]).activeRequest?.activeTurn?.activeModelAttempt,
+    ).toMatchObject({
+      modelAttemptId: retryAttemptId,
+      status: 'started',
+    });
+
+    expect(() =>
+      project([
+        ...failedAttempt.slice(0, -1),
+        {
+          type: DurableEventType.MODEL_REQUEST_COMPLETED,
+          requestId,
+          turnId,
+          modelAttemptId,
+          data: {
+            response: { content: 'done' },
+          },
+        },
+        {
+          type: DurableEventType.MODEL_REQUEST_STARTED,
+          requestId,
+          turnId,
+          modelAttemptId: retryAttemptId,
+          data: {
+            model: 'claude-sonnet',
+            streaming: false,
+          },
+        },
+      ]),
+    ).toThrow(/ended as completed/);
   });
 
   it('distinguishes accepted, pre-turn, post-turn, and active-turn recovery', () => {
