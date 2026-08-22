@@ -690,6 +690,101 @@ describe('DurableSessionProjector', () => {
         },
       ]),
     ).toThrow(/ended as completed/);
+    expect(() =>
+      project([
+        ...turnPrefix(),
+        failedAttempt[failedAttempt.length - 2],
+        toolScheduled('pure'),
+        failedAttempt[failedAttempt.length - 1],
+        {
+          type: DurableEventType.MODEL_REQUEST_STARTED,
+          requestId,
+          turnId,
+          modelAttemptId: retryAttemptId,
+          data: {
+            model: 'claude-sonnet',
+            streaming: false,
+          },
+        },
+      ] as readonly DurableEventDraft[]),
+    ).toThrow(/dispatched tools before failing/);
+  });
+
+  it('binds durable tool calls to the completed model response', () => {
+    const modelStarted = {
+      type: DurableEventType.MODEL_REQUEST_STARTED,
+      requestId,
+      turnId,
+      modelAttemptId,
+      data: {
+        model: 'claude-sonnet',
+        streaming: false,
+      },
+    } as const;
+    const matchingResponse = {
+      type: DurableEventType.MODEL_REQUEST_COMPLETED,
+      requestId,
+      turnId,
+      modelAttemptId,
+      data: {
+        response: {
+          content: '',
+          toolCalls: [
+            {
+              id: toolCallId,
+              name: 'Write',
+              arguments: '{"file_path":"/tmp/file"}',
+            },
+          ],
+        },
+      },
+    } as const;
+
+    expect(
+      project([
+        ...turnPrefix(),
+        modelStarted,
+        matchingResponse,
+        toolScheduled(),
+      ]).activeRequest?.activeTurn?.toolAttempts,
+    ).toHaveLength(1);
+    expect(() =>
+      project([
+        ...turnPrefix(),
+        modelStarted,
+        {
+          ...matchingResponse,
+          data: {
+            response: {
+              content: '',
+              toolCalls: [
+                {
+                  id: toolCallId,
+                  name: 'Read',
+                  arguments: '{"file_path":"/tmp/file"}',
+                },
+              ],
+            },
+          },
+        },
+        toolScheduled(),
+      ]),
+    ).toThrow(/was not declared by model attempt/);
+    expect(() =>
+      project([
+        ...turnPrefix(),
+        modelStarted,
+        toolScheduled(),
+        {
+          ...matchingResponse,
+          data: {
+            response: {
+              content: '',
+            },
+          },
+        },
+      ]),
+    ).toThrow(/does not declare durable tool call/);
   });
 
   it('distinguishes accepted, pre-turn, post-turn, and active-turn recovery', () => {

@@ -381,6 +381,59 @@ function assertToolIdentity(
   }
 }
 
+function assertToolMatchesCompletedModelResponse(
+  event: DurableEventEnvelope,
+  turn: MutableTurnProjection,
+  toolCallId: ToolUseId,
+  toolName: string,
+): void {
+  const modelAttempt = Array.from(turn.modelAttempts.values()).at(-1);
+  if (!modelAttempt) {
+    return;
+  }
+  if (modelAttempt.status === 'started') {
+    return;
+  }
+  if (modelAttempt.status !== 'completed') {
+    invalid(
+      event,
+      `Tool call ${toolCallId} follows model attempt ${modelAttempt.modelAttemptId} with status ${modelAttempt.status}`,
+    );
+  }
+  const declared = modelAttempt.response?.toolCalls?.find(
+    (toolCall) => toolCall.id === toolCallId,
+  );
+  if (!declared || declared.name !== toolName) {
+    invalid(
+      event,
+      `Tool call ${toolCallId}/${toolName} was not declared by model attempt ${modelAttempt.modelAttemptId}`,
+    );
+  }
+}
+
+function assertCompletedResponseMatchesScheduledTools(
+  event: DurableEventEnvelope<typeof DurableEventTypeValue.MODEL_REQUEST_COMPLETED>,
+  turn: MutableTurnProjection,
+): void {
+  const toolCalls = event.data.response.toolCalls ?? [];
+  const seenToolCallIds = new Set<ToolUseId>();
+  for (const toolCall of toolCalls) {
+    if (seenToolCallIds.has(toolCall.id)) {
+      invalid(event, `Model response reused tool call ID ${toolCall.id}`);
+    }
+    seenToolCallIds.add(toolCall.id);
+  }
+  for (const tool of turn.toolAttempts.values()) {
+    const declared = toolCalls.find((toolCall) => toolCall.id === tool.toolCallId);
+    if (!declared || declared.name !== tool.toolName) {
+      invalid(
+        event,
+        `Model response does not declare durable tool call ${tool.toolCallId}/${tool.toolName}`,
+      );
+    }
+  }
+}
+
 function assertNoPendingPermission(
   event: DurableEventEnvelope,
   tool: MutableToolAttemptProjection,
@@ -831,6 +884,12 @@ function applyEvent(state: ProjectionAccumulator, event: DurableEventEnvelope): 
           `Model attempt ${previousAttempt.modelAttemptId} ended as ${previousAttempt.status}`,
         );
       }
+      if (previousAttempt && turn.toolAttempts.size > 0) {
+        invalid(
+          event,
+          `Model attempt ${previousAttempt.modelAttemptId} dispatched tools before failing`,
+        );
+      }
       if (state.seenModelAttemptIds.has(event.modelAttemptId)) {
         invalid(event, `Model attempt ID ${event.modelAttemptId} was already used`);
       }
@@ -851,6 +910,7 @@ function applyEvent(state: ProjectionAccumulator, event: DurableEventEnvelope): 
       const request = requireRunningRequest(state, event);
       const turn = requireActiveTurn(state, event);
       const attempt = requireModelAttempt(state, event);
+      assertCompletedResponseMatchesScheduledTools(event, turn);
       attempt.status = 'completed';
       attempt.response = event.data.response;
       turn.activeModelAttempt = null;
@@ -882,6 +942,12 @@ function applyEvent(state: ProjectionAccumulator, event: DurableEventEnvelope): 
 
     case DurableEventTypeValue.TOOL_SCHEDULED: {
       const turn = requireActiveTurn(state, event);
+      assertToolMatchesCompletedModelResponse(
+        event,
+        turn,
+        event.data.toolCallId,
+        event.data.toolName,
+      );
       if (state.seenToolAttemptIds.has(event.toolAttemptId)) {
         invalid(event, `Tool attempt ID ${event.toolAttemptId} was already used`);
       }

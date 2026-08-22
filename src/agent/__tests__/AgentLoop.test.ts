@@ -313,6 +313,58 @@ describe('agentLoop', () => {
       expect(onFailed).not.toHaveBeenCalled();
     });
 
+    it('actively cancels a streaming-with-tools provider when the generator closes', async () => {
+      const onAborted = vi.fn(async () => {});
+      let providerStreamClosed = false;
+      const chatService = {
+        streamChat: vi.fn(async function* (
+          _messages: readonly Message[],
+          _tools: unknown,
+          signal?: AbortSignal,
+        ) {
+          try {
+            yield { content: 'partial' };
+            await new Promise<void>((_resolve, reject) => {
+              signal?.addEventListener('abort', () => reject(signal.reason), {
+                once: true,
+              });
+            });
+          } finally {
+            providerStreamClosed = true;
+          }
+        }),
+        getConfig: () => ({
+          model: 'test-model',
+          maxContextTokens: 128000,
+        }),
+      } as unknown as TurnState['chatService'];
+      const loop = agentLoop(baseConfig({
+        streaming: true,
+        turnState: {
+          chatService,
+          tools: [{ name: 'Read', description: 'read', parameters: {} }],
+        },
+        modelExecutionLifecycle: {
+          onModelRequestStarting: vi.fn(async () => ({
+            onCompleted: vi.fn(async () => {}),
+            onFailed: vi.fn(async () => {}),
+            onAborted,
+          })),
+        },
+      }));
+
+      await loop.next();
+      await loop.next();
+      await expect(loop.next()).resolves.toMatchObject({
+        value: { type: 'content_delta', delta: 'partial' },
+        done: false,
+      });
+      await loop.return(undefined as never);
+
+      expect(providerStreamClosed).toBe(true);
+      expect(onAborted).toHaveBeenCalledWith('request_interrupted');
+    });
+
     it('records a known model failure before propagating it', async () => {
       const modelError = new Error('provider unavailable');
       const onCompleted = vi.fn(async () => {});

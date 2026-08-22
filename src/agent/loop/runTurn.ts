@@ -230,6 +230,13 @@ async function* runStreamingWithTools(
     () => turnState.chatService,
     logger,
   );
+  const closeController = new AbortController();
+  const modelSignal = signal
+    ? AbortSignal.any([signal, closeController.signal])
+    : closeController.signal;
+  const toolRequestSignal = requestSignal
+    ? AbortSignal.any([requestSignal, closeController.signal])
+    : closeController.signal;
 
   const queue = new AsyncEventQueue<AgentEvent>({
     isLive: () => epoch.isValid,
@@ -241,12 +248,12 @@ async function* runStreamingWithTools(
   let executionError: unknown;
 
   const executionPromise = streamingExecutor
-    .collectAndExecute(messages, tools, signal, {
+    .collectAndExecute(messages, tools, modelSignal, {
       executionPipeline,
       executionContext,
       logger,
       permissionMode,
-      requestSignal,
+      requestSignal: toolRequestSignal,
       steeringSignal,
       hooks: {
         onBeforeToolExec: toolHooks.onBeforeExec,
@@ -294,6 +301,7 @@ async function* runStreamingWithTools(
     return { chatResponse, streamingExecutionResults };
   } finally {
     if (!executionCompleted) {
+      closeController.abort(new Error('Streaming model turn closed by consumer'));
       await executionPromise;
     }
   }

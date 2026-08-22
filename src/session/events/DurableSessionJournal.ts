@@ -122,6 +122,7 @@ function comparableDraft(
     commandId: draft.commandId,
     ...('requestId' in draft ? { requestId: draft.requestId } : {}),
     ...('turnId' in draft ? { turnId: draft.turnId } : {}),
+    ...('modelAttemptId' in draft ? { modelAttemptId: draft.modelAttemptId } : {}),
     ...('toolAttemptId' in draft ? { toolAttemptId: draft.toolAttemptId } : {}),
     ...(draft.causationEventId ? { causationEventId: draft.causationEventId } : {}),
     ...(occurredAt ? { occurredAt } : {}),
