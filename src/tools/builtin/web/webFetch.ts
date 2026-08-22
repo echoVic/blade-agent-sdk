@@ -1,10 +1,10 @@
 import { z } from 'zod';
 import { getErrorMessage, getErrorName } from '../../../utils/errorUtils.js';
+import { toJsonValue } from '../../../utils/jsonValue.js';
 import { createTool } from '../../core/createTool.js';
 import { lazySchema } from '../../validation/lazySchema.js';
 import type {
   ExecutionContext,
-  ToolResult,
   WebFetchMetadata,
 } from '../../types/index.js';
 import { ToolErrorType, ToolKind } from '../../types/index.js';
@@ -108,7 +108,7 @@ Usage notes:
   },
 
   // 执行函数
-  async execute(params, context: ExecutionContext): Promise<ToolResult> {
+  async *execute(params, context: ExecutionContext) {
     const {
       url,
       method = 'GET',
@@ -121,21 +121,30 @@ Usage notes:
       max_redirects = 5,
       return_headers = false,
     } = params;
-    const { updateOutput } = context;
     const signal = context.signal ?? new AbortController().signal;
 
     try {
       // 如果启用内容提取，使用 Jina Reader
       if (extract_content) {
         try {
+          yield {
+            kind: 'progress',
+            message: `使用 Jina Reader 提取内容: ${url}`,
+            data: toJsonValue({ url, strategy: 'jina' }),
+          };
           const startTime = Date.now();
           const response = await fetchWithJinaReader({
             url,
             jinaOptions: jina_options,
             timeout,
             signal,
-            updateOutput,
           });
+          yield {
+            kind: 'message',
+            content: {
+              summary: `Jina Reader 成功提取内容 (${response.body.length} 字符)`,
+            },
+          };
 
           const responseTime = Date.now() - startTime;
           response.response_time = responseTime;
@@ -159,8 +168,8 @@ Usage notes:
           };
 
           return {
-            success: true,
-            llmContent: response,
+            status: 'success',
+            model: toJsonValue(response),
             metadata: {
               ...metadata,
               summary: `GET ${new URL(url).hostname} - ${response.status}`,
@@ -168,13 +177,20 @@ Usage notes:
           };
         } catch {
           // Jina Reader 失败，回退到直接获取
-          updateOutput?.(`⚠️ Jina Reader 失败，使用标准方式获取`);
+          yield {
+            kind: 'message',
+            content: { summary: 'Jina Reader 失败，使用标准方式获取' },
+          };
           // 继续执行下面的标准逻辑
         }
       }
 
       // 标准获取逻辑
-      updateOutput?.(`发送 ${method} 请求到: ${url}`);
+      yield {
+        kind: 'progress',
+        message: `发送 ${method} 请求到: ${url}`,
+        data: toJsonValue({ method, url, strategy: 'direct' }),
+      };
 
       const startTime = Date.now();
       const response = await performRequest({
@@ -212,8 +228,8 @@ Usage notes:
       // HTTP错误状态码处理
       if (response.status >= 400) {
         return {
-          success: false,
-          llmContent: `HTTP error ${response.status}: ${response.status_text}`,
+          status: 'error',
+          model: `HTTP error ${response.status}: ${response.status_text}`,
           error: {
             type: ToolErrorType.EXECUTION_ERROR,
             message: `HTTP error ${response.status}: ${response.status_text}`,
@@ -230,8 +246,8 @@ Usage notes:
       }
 
       return {
-        success: true,
-        llmContent: response,
+        status: 'success',
+        model: toJsonValue(response),
         metadata: {
           ...metadata,
           summary: `${method} ${new URL(url).hostname} - ${response.status}`,
@@ -240,8 +256,8 @@ Usage notes:
     } catch (error: unknown) {
       if (getErrorName(error) === 'AbortError') {
         return {
-          success: false,
-          llmContent: 'Request aborted',
+          status: 'error',
+          model: 'Request aborted',
           error: {
             type: ToolErrorType.EXECUTION_ERROR,
             message: '操作被中止',
@@ -254,8 +270,8 @@ Usage notes:
 
       const message = getErrorMessage(error);
       return {
-        success: false,
-        llmContent: `Network request failed: ${message}`,
+        status: 'error',
+        model: `Network request failed: ${message}`,
         error: {
           type: ToolErrorType.EXECUTION_ERROR,
           message,
@@ -479,14 +495,11 @@ async function fetchWithJinaReader(options: {
   };
   timeout: number;
   signal?: AbortSignal;
-  updateOutput?: (msg: string) => void;
 }): Promise<WebResponse> {
-  const { url, jinaOptions, timeout, signal, updateOutput } = options;
+  const { url, jinaOptions, timeout, signal } = options;
 
   // 构建 Jina Reader URL
   const jinaUrl = `https://r.jina.ai/${encodeURIComponent(url)}`;
-
-  updateOutput?.(`🔍 使用 Jina Reader 提取内容: ${url}`);
 
   // 构建请求头
   const headers: Record<string, string> = {
@@ -504,8 +517,7 @@ async function fetchWithJinaReader(options: {
     headers['X-Wait-For-Selector'] = jinaOptions.wait_for_selector;
   }
 
-  try {
-    const response = await fetchWithTimeout(
+  const response = await fetchWithTimeout(
       jinaUrl,
       {
         method: 'GET',
@@ -524,24 +536,18 @@ async function fetchWithJinaReader(options: {
     // 解析 Jina Reader 响应
     const parsed = parseJinaResponse(markdownContent);
 
-    updateOutput?.(`✅ Jina Reader 成功提取内容 (${parsed.content.length} 字符)`);
-
     // 返回标准 WebResponse 格式
-    return {
-      status: response.status,
-      status_text: response.statusText,
-      headers: headersToObject(response.headers),
-      body: formatJinaContent(parsed),
-      url: parsed.sourceUrl || url,
-      redirected: false,
-      redirect_count: 0,
-      content_type: 'text/markdown',
-      response_time: 0, // 将在外部设置
-    };
-  } catch (error) {
-    updateOutput?.(`⚠️ Jina Reader 失败，回退到直接获取`);
-    throw error; // 让外层处理回退
-  }
+  return {
+    status: response.status,
+    status_text: response.statusText,
+    headers: headersToObject(response.headers),
+    body: formatJinaContent(parsed),
+    url: parsed.sourceUrl || url,
+    redirected: false,
+    redirect_count: 0,
+    content_type: 'text/markdown',
+    response_time: 0, // 将在外部设置
+  };
 }
 
 /**

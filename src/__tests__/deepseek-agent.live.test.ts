@@ -126,10 +126,11 @@ describeDeepSeek('2. Thinking + Tool Use 组合场景', () => {
       },
       required: ['expression'],
     },
-    execute: async (params: { expression: string }) => {
+    // biome-ignore lint/correctness/useYield: terminal-only tool execution
+    async *execute(params: { expression: string }) {
       // eslint-disable-next-line no-eval
       const result = Function(`"use strict"; return (${params.expression})`)();
-      return { success: true as const, llmContent: String(result) };
+      return { status: 'success' as const, model: String(result) };
     },
   });
 
@@ -167,7 +168,8 @@ describeDeepSeek('2. Thinking + Tool Use 组合场景', () => {
         },
         required: ['table'],
       },
-      execute: async (params: { table: string; filter?: string }) => {
+      // biome-ignore lint/correctness/useYield: terminal-only tool execution
+      async *execute(params: { table: string; filter?: string }) {
         const data: Record<string, unknown[]> = {
           users: [
             { id: 1, name: 'Alice', age: 30 },
@@ -182,8 +184,8 @@ describeDeepSeek('2. Thinking + Tool Use 组合场景', () => {
         };
         const records = data[params.table] || [];
         return {
-          success: true as const,
-          llmContent: JSON.stringify({ table: params.table, records, count: records.length }),
+          status: 'success' as const,
+          model: JSON.stringify({ table: params.table, records, count: records.length }),
         };
       },
     });
@@ -214,13 +216,14 @@ describeDeepSeek('2. Thinking + Tool Use 组合场景', () => {
         },
         required: ['endpoint'],
       },
-      execute: async (params: { endpoint: string }) => {
+      // biome-ignore lint/correctness/useYield: terminal-only tool execution
+      async *execute(params: { endpoint: string }) {
         if (params.endpoint === '/health') {
-          return { success: true as const, llmContent: '{"status":"healthy","version":"2.1.0"}' };
+          return { status: 'success' as const, model: '{"status":"healthy","version":"2.1.0"}' };
         }
         return {
-          success: false as const,
-          llmContent: `API Error: endpoint "${params.endpoint}" returned 503 Service Unavailable`,
+          status: 'error' as const,
+          model: `API Error: endpoint "${params.endpoint}" returned 503 Service Unavailable`,
           error: {
             type: ToolErrorType.EXECUTION_ERROR,
             message: `API Error: endpoint "${params.endpoint}" returned 503 Service Unavailable`,
@@ -321,10 +324,11 @@ describeDeepSeek('4. 复杂工具 Schema 适配', () => {
         },
         required: ['title', 'priority', 'assignee'],
       },
-      execute: async (params: Record<string, unknown>) => {
+      // biome-ignore lint/correctness/useYield: terminal-only tool execution
+      async *execute(params: Record<string, unknown>) {
         return {
-          success: true as const,
-          llmContent: JSON.stringify({ id: 'TASK-001', created: true, ...params }),
+          status: 'success' as const,
+          model: JSON.stringify({ id: 'TASK-001', created: true, ...params }),
         };
       },
     });
@@ -357,10 +361,11 @@ describeDeepSeek('4. 复杂工具 Schema 适配', () => {
         },
         required: ['itemId', 'status'],
       },
-      execute: async (params: { itemId: string; status: string; reason?: string }) => {
+      // biome-ignore lint/correctness/useYield: terminal-only tool execution
+      async *execute(params: { itemId: string; status: string; reason?: string }) {
         return {
-          success: true as const,
-          llmContent: JSON.stringify({ updated: true, ...params }),
+          status: 'success' as const,
+          model: JSON.stringify({ updated: true, ...params }),
         };
       },
     });

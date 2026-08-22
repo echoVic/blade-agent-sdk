@@ -28,13 +28,13 @@ export function toolUpdateToAgentEvent(
       return {
         type: 'tool_progress',
         toolCall: update.toolCall,
-        message: update.message,
+        progress: update.progress,
       };
     case 'tool_message':
       return {
         type: 'tool_message',
         toolCall: update.toolCall,
-        message: update.message,
+        content: update.content,
       };
     case 'tool_runtime_patch':
       return {

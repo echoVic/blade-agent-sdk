@@ -1,4 +1,3 @@
-import type { JsonObject } from '../../types/common.js';
 import { type InternalLogger, LogCategory, NOOP_LOGGER } from '../../logging/Logger.js';
 import type { ContextSnapshot } from '../../runtime/index.js';
 import type { ToolCatalog } from '../../tools/catalog/index.js';
@@ -6,13 +5,13 @@ import type { ExecutionPipeline } from '../../tools/execution/ExecutionPipeline.
 import type { ToolRegistry } from '../../tools/registry/ToolRegistry.js';
 import type { ConfirmationHandler } from '../../tools/types/ExecutionTypes.js';
 import {
-  normalizeToolEffects,
   type ToolEffect,
-  type ToolResult,
   ToolErrorType,
+  type ToolResult,
+  type ToolYield,
 } from '../../tools/types/index.js';
-import type { BladeConfig, PermissionMode } from '../../types/common.js';
 import type { SessionId } from '../../types/branded.js';
+import type { BladeConfig, JsonObject, PermissionMode } from '../../types/common.js';
 import type { IBackgroundAgentManager } from '../types.js';
 import { repairToolCallParams } from './repairToolCallParams.js';
 import {
@@ -24,6 +23,7 @@ import type { FunctionToolCall } from './types.js';
 export interface ToolExecutionOutcome {
   toolCall: FunctionToolCall;
   result: ToolResult;
+  effects: ToolEffect[];
   toolUseUuid: string | null;
 }
 
@@ -41,12 +41,12 @@ export type ToolExecutionUpdate =
   | {
       type: 'tool_progress';
       toolCall: FunctionToolCall;
-      message: string;
+      progress: Extract<ToolYield, { kind: 'progress' }>;
     }
   | {
       type: 'tool_message';
       toolCall: FunctionToolCall;
-      message: string;
+      content: Extract<ToolYield, { kind: 'message' }>['content'];
     }
   | {
       type: 'tool_runtime_patch';
@@ -144,8 +144,11 @@ export async function runToolCall(
     });
 
     let result: ToolResult;
+    const effects: ToolEffect[] = [];
+    let execution: ReturnType<ExecutionPipeline['execute']> | undefined;
+    let executionCompleted = false;
     try {
-      result = await input.executionPipeline.execute(
+      execution = input.executionPipeline.execute(
         input.toolCall.function.name,
         params,
         {
@@ -154,20 +157,6 @@ export async function runToolCall(
           contextSnapshot: input.executionContext.contextSnapshot,
           skillActivationPaths: input.executionContext.skillActivationPaths,
           signal: interruptSignal.signal,
-          onProgress: (message) => {
-            void emitToolExecutionUpdate(input.hooks, {
-              type: 'tool_progress',
-              toolCall: input.toolCall,
-              message,
-            });
-          },
-          updateOutput: (message) => {
-            void emitToolExecutionUpdate(input.hooks, {
-              type: 'tool_message',
-              toolCall: input.toolCall,
-              message,
-            });
-          },
           confirmationHandler: input.executionContext.confirmationHandler,
           bladeConfig: input.executionContext.bladeConfig,
           backgroundAgentManager: input.executionContext.backgroundAgentManager,
@@ -177,33 +166,51 @@ export async function runToolCall(
           permissionMode: input.permissionMode,
         },
       );
+      while (true) {
+        const step = await execution.next();
+        if (step.done) {
+          result = step.value;
+          executionCompleted = true;
+          break;
+        }
+        if (step.value.kind === 'effect') {
+          effects.push(step.value.effect);
+        }
+        await emitToolExecutionUpdate(
+          input.hooks,
+          mapToolYieldToExecutionUpdate(input.toolCall, step.value),
+        );
+      }
     } finally {
+      if (execution && !executionCompleted) {
+        try {
+          await execution.return(undefined as never);
+        } catch {
+          // Preserve the original execution or event-consumer failure.
+        }
+      }
       interruptSignal.cleanup();
     }
 
-    outcome = { toolCall: input.toolCall, result, toolUseUuid };
+    outcome = { toolCall: input.toolCall, result, effects, toolUseUuid };
   } catch (error) {
     logger.error(`Tool execution failed for ${input.toolCall.function.name}:`, error);
+    const message = error instanceof Error ? error.message : 'Unknown error';
     outcome = {
       toolCall: input.toolCall,
       result: {
-        success: false,
-        llmContent: '',
+        status: 'error',
+        model: `Tool execution failed: ${message}`,
         error: {
           type: ToolErrorType.EXECUTION_ERROR,
-          message: error instanceof Error ? error.message : 'Unknown error',
+          message,
         },
       },
+      effects: [],
       toolUseUuid: null,
     };
   }
 
-  for (const effect of normalizeToolEffects(outcome.result)) {
-    await emitToolExecutionUpdate(
-      input.hooks,
-      mapToolEffectToExecutionUpdate(outcome.toolCall, effect),
-    );
-  }
   await emitToolExecutionUpdate(input.hooks, {
     type: 'tool_result',
     outcome,
@@ -239,6 +246,28 @@ export async function emitToolExecutionUpdate(
     case 'tool_completed':
       await hooks?.onToolComplete?.(update.outcome.toolCall, update.outcome.result);
       return;
+  }
+}
+
+function mapToolYieldToExecutionUpdate(
+  toolCall: FunctionToolCall,
+  event: ToolYield,
+): ToolExecutionUpdate {
+  switch (event.kind) {
+    case 'progress':
+      return {
+        type: 'tool_progress',
+        toolCall,
+        progress: event,
+      };
+    case 'message':
+      return {
+        type: 'tool_message',
+        toolCall,
+        content: event.content,
+      };
+    case 'effect':
+      return mapToolEffectToExecutionUpdate(toolCall, event.effect);
   }
 }
 

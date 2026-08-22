@@ -4,6 +4,7 @@ import { ToolKind } from '../../types/ToolKind.js';
 import { lazySchema } from '../../validation/lazySchema.js';
 import { ToolErrorType } from '../../types/index.js';
 import type { SessionId } from '../../../types/branded.js';
+import { toJsonValue } from '../../../utils/jsonValue.js';
 import { TaskStore } from './TaskStore.js';
 
 export function createTaskGetTool({ sessionId }: { sessionId: SessionId }) {
@@ -23,14 +24,15 @@ Use when:
     schema: lazySchema(() => z.object({
       taskId: z.string().describe('The ID of the task to retrieve'),
     })),
-    execute: async ({ taskId }, context) => {
+    // biome-ignore lint/correctness/useYield: terminal-only tool execution
+    async *execute({ taskId }, context) {
       const sid = context?.sessionId ?? sessionId;
       const store = TaskStore.getInstance(sid);
       const task = await store.get(taskId);
       if (!task) {
         return {
-          success: false,
-          llmContent: `Task #${taskId} not found`,
+          status: 'error',
+          model: `Task #${taskId} not found`,
           error: { type: ToolErrorType.VALIDATION_ERROR, message: `Task ${taskId} not found` },
           metadata: {
             summary: '未找到任务',
@@ -38,8 +40,8 @@ Use when:
         };
       }
       return {
-        success: true,
-        llmContent: task,
+        status: 'success',
+        model: toJsonValue(task),
         metadata: {
           summary: `获取任务: ${taskId}`,
           task,

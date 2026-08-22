@@ -24,7 +24,7 @@ Returns a summary of each task:
 Prefer working on tasks in ID order (lowest ID first) when multiple tasks are available.`,
     },
     schema: lazySchema(() => z.object({})),
-    execute: async (_input, context) => {
+    async *execute(_input, context) {
       const sid = context?.sessionId ?? sessionId;
       const store = TaskStore.getInstance(sid);
       const tasks = await store.list();
@@ -36,8 +36,8 @@ Prefer working on tasks in ID order (lowest ID first) when multiple tasks are av
         blockedBy: t.blockedBy,
       }));
       return {
-        success: true,
-        llmContent: summary,
+        status: 'success',
+        model: summary,
         metadata: {
           summary: `列出 ${tasks.length} 个任务`,
           tasks: summary,

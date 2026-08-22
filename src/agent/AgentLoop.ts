@@ -10,7 +10,7 @@ import type { InternalLogger } from '../logging/Logger.js';
 import type { ChatResponse, Message, ToolCall } from '../services/ChatServiceInterface.js';
 import { FallbackTriggeredError } from '../services/RetryPolicy.js';
 import type { ExecutionPipeline } from '../tools/execution/ExecutionPipeline.js';
-import type { ToolResult } from '../tools/types/index.js';
+import type { ToolEffect, ToolResult } from '../tools/types/index.js';
 import type { JsonObject, PermissionMode } from '../types/common.js';
 import type { AgentEvent, TokenUsageInfo } from './AgentEvent.js';
 import { AGENT_TURN_SAFETY_LIMIT } from './constants.js';
@@ -58,6 +58,7 @@ export interface AgentLoopHooks {
     afterExec?: (ctx: {
       toolCall: FunctionToolCall;
       result: ToolResult;
+      effects: ToolEffect[];
       toolUseUuid: string | null;
     }) => Promise<void>;
     afterExecEpochDiscard?: (ctx: {
@@ -223,6 +224,7 @@ export async function* agentLoop(
     let streamingExecutionResults: Array<{
       toolCall: FunctionToolCall;
       result: ToolResult;
+      effects: ToolEffect[];
       toolUseUuid: string | null;
     }> | undefined;
 
@@ -455,7 +457,6 @@ export async function* agentLoop(
       );
       const executionPlan = planToolExecution(
         functionCalls,
-        executionPipeline.getRegistry(),
         turnPermissionMode,
       );
 
@@ -530,22 +531,20 @@ export async function* agentLoop(
 
     let exitResult: typeof orderedExecutionResults[number] | undefined;
     // 处理结果
-    for (const { toolCall, result, toolUseUuid } of orderedExecutionResults) {
+    for (const { toolCall, result, effects, toolUseUuid } of orderedExecutionResults) {
       recordToolResult(result);
 
       if (result.metadata?.shouldExitLoop && !exitResult) {
-        exitResult = { toolCall, result, toolUseUuid };
+        exitResult = { toolCall, result, effects, toolUseUuid };
       }
 
       if (!streamingExecutionResults) {
         yield { type: 'tool_result', toolCall, result };
       }
-      await toolHooks?.afterExec?.({ toolCall, result, toolUseUuid });
+      await toolHooks?.afterExec?.({ toolCall, result, effects, toolUseUuid });
 
       // 写入 tool 消息
-      let toolResultContent = result.success
-        ? result.llmContent || ''
-        : result.error?.message || '执行失败';
+      let toolResultContent = result.model;
 
       if (typeof toolResultContent === 'object' && toolResultContent !== null) {
         toolResultContent = JSON.stringify(toolResultContent, null, 2);
@@ -561,10 +560,13 @@ export async function* agentLoop(
       });
     }
 
-    for (const { result } of orderedExecutionResults) {
-      if (result.newMessages && result.newMessages.length > 0) {
+    for (const { effects } of orderedExecutionResults) {
+      const newMessages = effects
+        .filter((effect) => effect.type === 'newMessages')
+        .flatMap((effect) => effect.type === 'newMessages' ? effect.messages : []);
+      if (newMessages.length > 0) {
         convState.append(
-          ...result.newMessages.map((message) => ({
+          ...newMessages.map((message) => ({
             ...message,
             ...(message.role === 'system'
               ? {
@@ -583,12 +585,12 @@ export async function* agentLoop(
 
     if (exitResult) {
       const finalMessage =
-        typeof exitResult.result.llmContent === 'string'
-          ? exitResult.result.llmContent
+        typeof exitResult.result.model === 'string'
+          ? exitResult.result.model
           : '循环已退出';
       yield { type: 'agent_end' };
       return {
-        success: exitResult.result.success,
+        success: exitResult.result.status === 'success',
         finalMessage,
         metadata: {
           turnsCount,

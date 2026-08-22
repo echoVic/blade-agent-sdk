@@ -6,7 +6,6 @@ import type {
   ToolConfig,
   ToolDefinition,
   ToolInvocation,
-  ToolResult,
 } from '../types/index.js';
 import { createToolBehavior, isReadOnlyKind, ToolKind } from '../types/ToolKind.js';
 import { parseWithZod } from '../validation/errorFormatter.js';
@@ -137,7 +136,7 @@ export function createTool<TSchema extends z.ZodSchema>(
       // 使用 Zod 验证参数
       const validatedParams = parseWithZod(getSchema(), params);
 
-      return new UnifiedToolInvocation<TParams, ToolResult>(
+      return new UnifiedToolInvocation<TParams>(
         config.name,
         validatedParams,
         config.execute,
@@ -150,9 +149,12 @@ export function createTool<TSchema extends z.ZodSchema>(
     /**
      * 一键执行
      */
-    async execute(params: TParams, signal?: AbortSignal): Promise<ToolResult> {
+    execute(params: TParams, context: ExecutionContext = {}) {
       const invocation = this.build(params);
-      return invocation.execute(signal || new AbortController().signal);
+      return invocation.execute(
+        context.signal ?? new AbortController().signal,
+        context,
+      );
     },
 
     validateInput: validateInputFn
@@ -271,7 +273,7 @@ export function toolFromDefinition<TParams = JsonObject>(
     },
 
     build(params: TParams): ToolInvocation<TParams> {
-      return new UnifiedToolInvocation<TParams, ToolResult>(
+      return new UnifiedToolInvocation<TParams>(
         definition.name,
         params,
         (p, ctx) => definition.execute(p, ctx),
@@ -281,9 +283,12 @@ export function toolFromDefinition<TParams = JsonObject>(
       );
     },
 
-    async execute(params: TParams, signal?: AbortSignal): Promise<ToolResult> {
-      const context: ExecutionContext = { signal };
-      return definition.execute(params, context);
+    execute(params: TParams, context: ExecutionContext = {}) {
+      const invocation = this.build(params);
+      return invocation.execute(
+        context.signal ?? new AbortController().signal,
+        context,
+      );
     },
 
     getBehaviorHint() {
@@ -346,10 +351,10 @@ function isPathLikeKey(key: string): boolean {
  *     },
  *     required: ['message']
  *   },
- *   execute: async (params, context) => {
+ *   async *execute(params, context) {
  *     return {
- *       success: true,
- *       llmContent: `Received: ${params.message}`,
+ *       status: 'success',
+ *       model: `Received: ${params.message}`,
  *     };
  *   }
  * });

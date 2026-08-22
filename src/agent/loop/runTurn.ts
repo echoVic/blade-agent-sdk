@@ -17,7 +17,7 @@ import type {
   Message,
 } from '../../services/ChatServiceInterface.js';
 import type { ExecutionPipeline } from '../../tools/execution/ExecutionPipeline.js';
-import type { ToolResult } from '../../tools/types/index.js';
+import type { ToolEffect, ToolResult } from '../../tools/types/index.js';
 import type { PermissionMode } from '../../types/common.js';
 import type { JsonObject } from '../../types/common.js';
 import type { AgentEvent } from '../AgentEvent.js';
@@ -25,7 +25,11 @@ import type { ExecutionEpoch } from '../ExecutionEpoch.js';
 import { StreamingToolExecutor } from '../StreamingToolExecutor.js';
 import type { TurnState } from '../state/TurnState.js';
 import { AsyncEventQueue } from './AsyncEventQueue.js';
-import type { ToolExecutionContext, ToolExecutionUpdate } from './runToolCall.js';
+import type {
+  ToolExecutionContext,
+  ToolExecutionOutcome,
+  ToolExecutionUpdate,
+} from './runToolCall.js';
 import { streamChatResponse } from './streamChatResponse.js';
 import { toolUpdateToAgentEvent } from './toolUpdateToAgentEvent.js';
 import type { FunctionToolCall } from './types.js';
@@ -38,6 +42,7 @@ export interface RunTurnToolHooks {
   onAfterExec?: (ctx: {
     toolCall: FunctionToolCall;
     result: ToolResult;
+    effects: ToolEffect[];
     toolUseUuid: string | null;
   }) => Promise<void>;
   onAfterExecEpochDiscard?: (ctx: {
@@ -61,11 +66,7 @@ export interface RunTurnInput {
   logger?: InternalLogger;
 }
 
-export interface StreamingExecutionResult {
-  toolCall: FunctionToolCall;
-  result: ToolResult;
-  toolUseUuid: string | null;
-}
+export type StreamingExecutionResult = ToolExecutionOutcome;
 
 export interface TurnOutcome {
   chatResponse: ChatResponse;

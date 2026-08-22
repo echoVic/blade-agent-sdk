@@ -1,34 +1,17 @@
-import {
-  resolveToolBehaviorSafely,
-  type ToolBehavior,
-} from '../../tools/types/ToolKind.js';
-import type { JsonObject } from '../../types/common.js';
 import { PermissionMode, type PermissionMode as PermissionModeValue } from '../../types/common.js';
 import type { FunctionToolCall } from './types.js';
 
-type ToolRegistryLike = {
-  get(
-    name: string
-  ):
-    | {
-        kind?: string;
-        isReadOnly?: boolean;
-        isConcurrencySafe?: boolean;
-        isDestructive?: boolean;
-        resolveBehavior?: (params: JsonObject) => ToolBehavior;
-      }
-    | undefined;
-};
-
 export interface ToolExecutionPlan {
-  mode: 'parallel' | 'serial' | 'mixed';
+  mode: 'parallel' | 'serial';
   calls: FunctionToolCall[];
-  groups?: FunctionToolCall[][];
 }
 
+/**
+ * Applies turn-level ordering constraints only. Resource concurrency limits
+ * are enforced centrally by ConcurrencyScheduler inside ExecutionPipeline.
+ */
 export function planToolExecution(
   calls: FunctionToolCall[],
-  registry: ToolRegistryLike,
   permissionMode?: PermissionModeValue,
 ): ToolExecutionPlan {
   if (calls.length === 1 || permissionMode === PermissionMode.PLAN) {
@@ -38,67 +21,8 @@ export function planToolExecution(
     };
   }
 
-  if (calls.length === 0) {
-    return {
-      mode: 'parallel',
-      calls,
-    };
-  }
-
-  const readonlyCalls: FunctionToolCall[] = [];
-  const nonReadonlyCalls: FunctionToolCall[] = [];
-
-  for (const call of calls) {
-    const tool = registry.get(call.function.name);
-    const parsedArgs = parseToolArguments(call.function.arguments);
-    const behavior = parsedArgs
-      ? resolveToolBehaviorSafely(tool as Parameters<typeof resolveToolBehaviorSafely>[0], parsedArgs)
-      : undefined;
-
-    if (
-      (behavior?.isReadOnly && behavior.isConcurrencySafe) ||
-      (!behavior && tool?.kind === 'readonly' && tool?.isConcurrencySafe !== false)
-    ) {
-      readonlyCalls.push(call);
-      continue;
-    }
-
-    nonReadonlyCalls.push(call);
-  }
-
-  if (nonReadonlyCalls.length === 0) {
-    return {
-      mode: 'parallel',
-      calls,
-    };
-  }
-
-  if (readonlyCalls.length === 0) {
-    return {
-      mode: 'serial',
-      calls,
-    };
-  }
-
-  const groups: FunctionToolCall[][] = [
-    readonlyCalls,
-    ...nonReadonlyCalls.map((call) => [call]),
-  ];
-
   return {
-    mode: 'mixed',
-    calls: [...readonlyCalls, ...nonReadonlyCalls],
-    groups,
+    mode: 'parallel',
+    calls,
   };
-}
-
-function parseToolArguments(argumentsText: string): JsonObject | undefined {
-  try {
-    const parsed: unknown = JSON.parse(argumentsText);
-    return parsed && typeof parsed === 'object' && !Array.isArray(parsed)
-      ? (parsed as JsonObject)
-      : undefined;
-  } catch {
-    return undefined;
-  }
 }

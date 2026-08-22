@@ -3,6 +3,7 @@ import { getBuiltinTools } from '../../index.js';
 import { MemoryManager } from '../../../../memory/MemoryManager.js';
 import type { MemoryStore } from '../../../../memory/MemoryStore.js';
 import type { Memory, MemoryInput } from '../../../../memory/MemoryTypes.js';
+import { collectToolExecution } from '../../../types/index.js';
 import { SessionId } from '../../../../types/branded.js';
 import { createMemoryReadTool, createMemoryWriteTool } from '../index.js';
 
@@ -33,7 +34,9 @@ async function executeTool<TParams>(
   tool: ReturnType<typeof createMemoryReadTool> | ReturnType<typeof createMemoryWriteTool>,
   params: TParams,
 ) {
-  return tool.build(params as never).execute(new AbortController().signal);
+  return collectToolExecution(
+    tool.build(params as never).execute(new AbortController().signal),
+  );
 }
 
 describe('memory tools', () => {
@@ -73,7 +76,7 @@ describe('memory tools', () => {
       query: 'session scoped',
     });
 
-    expect(listResult.llmContent).toEqual([
+    expect(listResult.model).toEqual([
       {
         name: 'project-context',
         description: 'Repository conventions',
@@ -81,7 +84,7 @@ describe('memory tools', () => {
         updatedAt: 1,
       },
     ]);
-    expect(searchResult.llmContent).toEqual([
+    expect(searchResult.model).toEqual([
       {
         name: 'project-context',
         description: 'Repository conventions',
@@ -110,8 +113,8 @@ describe('memory tools', () => {
       name: 'missing-memory',
     });
 
-    expect(result.success).toBe(true);
-    expect(result.llmContent).toEqual({
+    expect(result.status).toBe('success');
+    expect(result.model).toEqual({
       name: 'missing-memory',
       deleteRequested: true,
     });

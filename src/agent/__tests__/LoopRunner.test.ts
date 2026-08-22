@@ -1,11 +1,12 @@
-import { describe, expect, it, type Mock, vi } from 'vitest';
 import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { describe, expect, it, type Mock, vi } from 'vitest';
 import { z } from 'zod';
 import { ContextManager } from '../../context/ContextManager.js';
 import * as FileAnalyzerModule from '../../context/FileAnalyzer.js';
 import { HookRuntime } from '../../hooks/HookRuntime.js';
+import type { RuntimeContextPatch } from '../../runtime/RuntimeContextPatch.js';
 import type { RuntimePatch } from '../../runtime/RuntimePatch.js';
 import type { Message } from '../../services/ChatServiceInterface.js';
 import { JsonlSessionStore } from '../../session/SessionStore.js';
@@ -13,6 +14,11 @@ import { ToolCatalog } from '../../tools/catalog/ToolCatalog.js';
 import { createTool } from '../../tools/core/createTool.js';
 import type { ExecutionPipeline } from '../../tools/execution/ExecutionPipeline.js';
 import { ToolRegistry } from '../../tools/registry/ToolRegistry.js';
+import {
+  completeToolExecution,
+  type ToolEffect,
+  type ToolResult,
+} from '../../tools/types/index.js';
 import { ToolKind } from '../../tools/types/ToolKind.js';
 import { SessionId } from '../../types/branded.js';
 import type { BladeConfig } from '../../types/common.js';
@@ -31,6 +37,50 @@ type MockContextMgr = {
   saveToolResult: Mock;
   saveCompaction: Mock;
 };
+
+interface MockToolResult {
+  status: 'success' | 'error';
+  model: string | object;
+  error?: { type: string; message: string };
+  metadata?: ToolResult['metadata'];
+  effects?: ToolEffect[];
+  runtimePatch?: unknown;
+  contextPatch?: unknown;
+  newMessages?: Message[];
+}
+
+function mockToolExecution<TArgs extends unknown[]>(
+  implementation: (...args: TArgs) => Promise<MockToolResult>,
+) {
+  return vi.fn(async function* (...args: TArgs) {
+    const {
+      effects = [],
+      runtimePatch,
+      contextPatch,
+      newMessages,
+      ...result
+    } = await implementation(...args);
+    for (const effect of effects) {
+      yield { kind: 'effect' as const, effect };
+    }
+    if (runtimePatch) {
+      yield {
+        kind: 'effect' as const,
+        effect: { type: 'runtimePatch' as const, patch: runtimePatch as RuntimePatch },
+      };
+    }
+    if (contextPatch) {
+      yield {
+        kind: 'effect' as const,
+        effect: { type: 'contextPatch' as const, patch: contextPatch as RuntimeContextPatch },
+      };
+    }
+    if (newMessages) {
+      yield { kind: 'effect' as const, effect: { type: 'newMessages' as const, messages: newMessages } };
+    }
+    return result as ToolResult;
+  });
+}
 
 type MockModelManager = ModelManager & {
   _chat: Mock;
@@ -86,9 +136,9 @@ function createMockPipeline(): ExecutionPipeline {
       getFunctionDeclarationsByMode: () => [],
       get: (name: string) => ({ kind: 'execute', name }),
     }),
-    execute: vi.fn(async (toolName: string) => ({
-      success: true,
-      llmContent: `Result of ${toolName}`,
+    execute: mockToolExecution(async (toolName: string) => ({
+      status: 'success',
+      model: `Result of ${toolName}`,
     })),
   } as unknown as ExecutionPipeline;
 }
@@ -201,9 +251,9 @@ describe('LoopRunner', () => {
           ],
           get: (name: string) => ({ kind: 'readonly', name }),
         }),
-        execute: vi.fn(async (toolName: string, params: Record<string, unknown>) => ({
-          success: true,
-          llmContent: `${toolName}:${String(params.query)}`,
+        execute: mockToolExecution(async (toolName: string, params: Record<string, unknown>) => ({
+          status: 'success',
+          model: `${toolName}:${String(params.query)}`,
         })),
       } as unknown as ExecutionPipeline;
       const runner = new LoopRunner(
@@ -365,11 +415,11 @@ describe('LoopRunner', () => {
           ],
           get: (name: string) => ({ kind: 'execute', name }),
         }),
-        execute: vi.fn(async (toolName: string) => {
+        execute: mockToolExecution(async (toolName: string) => {
           if (toolName === 'Skill') {
             return {
-              success: true,
-              llmContent: 'Skill activated',
+              status: 'success',
+              model: 'Skill activated',
               runtimePatch: {
                 scope: 'session',
                 source: 'skill',
@@ -385,8 +435,8 @@ describe('LoopRunner', () => {
             };
           }
           return {
-            success: true,
-            llmContent: `Result of ${toolName}`,
+            status: 'success',
+            model: `Result of ${toolName}`,
           };
         }),
       } as unknown as ExecutionPipeline;
@@ -425,9 +475,9 @@ describe('LoopRunner', () => {
           kind: ToolKind.ReadOnly,
           description: { short: 'Builtin tool' },
           schema: z.object({}),
-          execute: async () => ({
-            success: true,
-            llmContent: 'builtin',
+          execute: () => completeToolExecution({
+            status: 'success',
+            model: 'builtin',
           }),
         }),
         {
@@ -444,9 +494,9 @@ describe('LoopRunner', () => {
           kind: ToolKind.ReadOnly,
           description: { short: 'Remote tool' },
           schema: z.object({}),
-          execute: async () => ({
-            success: true,
-            llmContent: 'remote',
+          execute: () => completeToolExecution({
+            status: 'success',
+            model: 'remote',
           }),
         }),
         {
@@ -459,9 +509,9 @@ describe('LoopRunner', () => {
       const pipeline = {
         getRegistry: () => registry,
         getCatalog: () => catalog,
-        execute: vi.fn(async (toolName: string) => ({
-          success: true,
-          llmContent: `Result of ${toolName}`,
+        execute: mockToolExecution(async (toolName: string) => ({
+          status: 'success',
+          model: `Result of ${toolName}`,
         })),
       } as unknown as ExecutionPipeline;
 
@@ -560,9 +610,9 @@ describe('LoopRunner', () => {
           ],
           get: (name: string) => ({ kind: 'execute', name }),
         }),
-        execute: vi.fn(async () => ({
-          success: true,
-          llmContent: 'Skill activated',
+        execute: mockToolExecution(async () => ({
+          status: 'success',
+          model: 'Skill activated',
           runtimePatch: {
             scope: 'session',
             source: 'skill',
@@ -633,7 +683,7 @@ describe('LoopRunner', () => {
         kind: ToolKind.ReadOnly,
         description: { short: 'Read tool' },
         schema: z.object({}),
-        execute: async () => ({ success: true, llmContent: '' }),
+        execute: () => completeToolExecution({ status: 'success', model: '' }),
       });
       const discoverTool = createTool({
         name: 'DiscoverTools',
@@ -641,7 +691,7 @@ describe('LoopRunner', () => {
         kind: ToolKind.ReadOnly,
         description: { short: 'Discover hidden tools' },
         schema: z.object({ query: z.string() }),
-        execute: async () => ({ success: true, llmContent: '' }),
+        execute: () => completeToolExecution({ status: 'success', model: '' }),
       });
       const heavyInspectTool = createTool({
         name: 'HeavyInspect',
@@ -650,7 +700,7 @@ describe('LoopRunner', () => {
         description: { short: 'Heavy inspection tool' },
         exposure: { mode: 'deferred', discoveryHint: 'Use for heavyweight inspection.' },
         schema: z.object({}),
-        execute: async () => ({ success: true, llmContent: '' }),
+        execute: () => completeToolExecution({ status: 'success', model: '' }),
       });
 
       const pipeline = {
@@ -660,11 +710,11 @@ describe('LoopRunner', () => {
           getFunctionDeclarationsByMode: () => [],
           get: (name: string) => ({ kind: 'execute', name }),
         }),
-        execute: vi.fn(async (toolName: string) => {
+        execute: mockToolExecution(async (toolName: string) => {
           if (toolName === 'DiscoverTools') {
             return {
-              success: true,
-              llmContent: 'Loaded hidden tool',
+              status: 'success',
+              model: 'Loaded hidden tool',
               runtimePatch: {
                 scope: 'session',
                 source: 'tool',
@@ -675,8 +725,8 @@ describe('LoopRunner', () => {
             };
           }
           return {
-            success: true,
-            llmContent: `Result of ${toolName}`,
+            status: 'success',
+            model: `Result of ${toolName}`,
           };
         }),
       } as unknown as ExecutionPipeline;
@@ -758,9 +808,9 @@ describe('LoopRunner', () => {
           ],
           get: (name: string) => ({ kind: 'execute', name }),
         }),
-        execute: vi.fn(async () => ({
-          success: true,
-          llmContent: 'Model switched',
+        execute: mockToolExecution(async () => ({
+          status: 'success',
+          model: 'Model switched',
           runtimePatch: {
             scope: 'session',
             source: 'tool',
@@ -836,9 +886,9 @@ describe('LoopRunner', () => {
           ],
           get: (name: string) => ({ kind: 'execute', name }),
         }),
-        execute: vi.fn(async () => ({
-          success: true,
-          llmContent: 'Legacy result',
+        execute: mockToolExecution(async () => ({
+          status: 'success',
+          model: 'Legacy result',
           metadata: {
             allowedTools: ['Read'],
             modelId: 'model-b',
@@ -914,9 +964,9 @@ describe('LoopRunner', () => {
           ],
           get: (name: string) => ({ kind: 'execute', name }),
         }),
-        execute: vi.fn(async () => ({
-          success: true,
-          llmContent: 'Legacy skill result',
+        execute: mockToolExecution(async () => ({
+          status: 'success',
+          model: 'Legacy skill result',
           metadata: {
             allowedTools: ['Read'],
             modelId: 'model-b',
@@ -992,9 +1042,9 @@ describe('LoopRunner', () => {
           ],
           get: (name: string) => ({ kind: 'execute', name }),
         }),
-        execute: vi.fn(async () => ({
-          success: false,
-          llmContent: 'failed',
+        execute: mockToolExecution(async () => ({
+          status: 'error',
+          model: 'failed',
           error: {
             type: 'execution_error',
             message: 'boom',
@@ -1083,9 +1133,9 @@ describe('LoopRunner', () => {
           ],
           get: (name: string) => ({ kind: 'execute', name }),
         }),
-        execute: vi.fn(async () => ({
-          success: true,
-          llmContent: 'Skill activated',
+        execute: mockToolExecution(async () => ({
+          status: 'success',
+          model: 'Skill activated',
           runtimePatch: {
             scope: 'turn',
             source: 'skill',
@@ -1178,13 +1228,13 @@ describe('LoopRunner', () => {
           ],
           get: (name: string) => ({ kind: 'execute', name }),
         }),
-        execute: vi.fn(async () => {
+        execute: mockToolExecution(async () => {
           skillExecutions += 1;
 
           if (skillExecutions === 1) {
             return {
-              success: true,
-              llmContent: 'Skill activated',
+              status: 'success',
+              model: 'Skill activated',
               runtimePatch: {
                 scope: 'session',
                 source: 'skill',
@@ -1201,8 +1251,8 @@ describe('LoopRunner', () => {
           }
 
           return {
-            success: true,
-            llmContent: 'Skill switched',
+            status: 'success',
+            model: 'Skill switched',
             runtimePatch: {
               scope: 'session',
               source: 'skill',
@@ -1298,9 +1348,9 @@ describe('LoopRunner', () => {
           ],
           get: (name: string) => ({ kind: 'execute', name }),
         }),
-        execute: vi.fn(async () => ({
-          success: true,
-          llmContent: 'Skill activated',
+        execute: mockToolExecution(async () => ({
+          status: 'success',
+          model: 'Skill activated',
           runtimePatch: {
             scope: 'session',
             source: 'skill',
@@ -1391,9 +1441,9 @@ describe('LoopRunner', () => {
           ],
           get: (name: string) => ({ kind: 'execute', name }),
         }),
-        execute: vi.fn(async () => ({
-          success: true,
-          llmContent: 'Skill activated',
+        execute: mockToolExecution(async () => ({
+          status: 'success',
+          model: 'Skill activated',
           runtimePatch: {
             scope: 'turn',
             source: 'skill',
@@ -1484,9 +1534,9 @@ describe('LoopRunner', () => {
           ],
           get: (name: string) => ({ kind: 'execute', name }),
         }),
-        execute: vi.fn(async () => ({
-          success: true,
-          llmContent: 'Skill activated',
+        execute: mockToolExecution(async () => ({
+          status: 'success',
+          model: 'Skill activated',
           runtimePatch: {
             scope: 'session',
             source: 'skill',
@@ -1603,15 +1653,15 @@ describe('LoopRunner', () => {
           },
           get: (name: string) => ({ kind: 'execute', name }),
         }),
-        execute: vi.fn(async (
+        execute: mockToolExecution(async (
           toolName: string,
           _params: Record<string, unknown>,
           executionContext: { contextSnapshot?: { environment?: Record<string, string> } },
         ) => {
           if (toolName === 'Skill') {
             return {
-              success: true,
-              llmContent: 'Skill activated',
+              status: 'success',
+              model: 'Skill activated',
               runtimePatch: {
                 scope: 'session',
                 source: 'skill',
@@ -1629,8 +1679,8 @@ describe('LoopRunner', () => {
 
           observedEnvironments.push(executionContext.contextSnapshot?.environment);
           return {
-            success: true,
-            llmContent: 'Environment inspected',
+            status: 'success',
+            model: 'Environment inspected',
           };
         }),
       } as unknown as ExecutionPipeline;
@@ -1743,9 +1793,9 @@ describe('LoopRunner', () => {
           },
           get: (name: string) => ({ kind: 'execute', name }),
         }),
-        execute: vi.fn(async (toolName: string) => ({
-          success: true,
-          llmContent: `${toolName} applied`,
+        execute: mockToolExecution(async (toolName: string) => ({
+          status: 'success',
+          model: `${toolName} applied`,
           runtimePatch: {
             scope: 'session',
             source: 'tool',
@@ -1897,15 +1947,15 @@ describe('LoopRunner', () => {
           },
           get: (name: string) => ({ kind: 'execute', name }),
         }),
-        execute: vi.fn(async (
+        execute: mockToolExecution(async (
           toolName: string,
           _params: Record<string, unknown>,
           executionContext: { contextSnapshot?: { environment?: Record<string, string> } },
         ) => {
           if (toolName === 'PatchEnvA') {
             return {
-              success: true,
-              llmContent: 'Patch env A applied',
+              status: 'success',
+              model: 'Patch env A applied',
               runtimePatch: {
                 scope: 'session',
                 source: 'tool',
@@ -1919,8 +1969,8 @@ describe('LoopRunner', () => {
 
           if (toolName === 'PatchEnvB') {
             return {
-              success: true,
-              llmContent: 'Patch env B applied',
+              status: 'success',
+              model: 'Patch env B applied',
               runtimePatch: {
                 scope: 'session',
                 source: 'tool',
@@ -1934,8 +1984,8 @@ describe('LoopRunner', () => {
 
           observedEnvironments.push(executionContext.contextSnapshot?.environment);
           return {
-            success: true,
-            llmContent: 'Environment inspected',
+            status: 'success',
+            model: 'Environment inspected',
           };
         }),
       } as unknown as ExecutionPipeline;
@@ -2062,15 +2112,15 @@ describe('LoopRunner', () => {
           },
           get: (name: string) => ({ kind: 'execute', name }),
         }),
-        execute: vi.fn(async (
+        execute: mockToolExecution(async (
           toolName: string,
           _params: Record<string, unknown>,
           executionContext: { contextSnapshot?: { context?: { capabilities?: { browser?: { pageId?: string } } } } },
         ) => {
           if (toolName === 'BrowserBootstrap') {
             return {
-              success: true,
-              llmContent: 'Browser bootstrapped',
+              status: 'success',
+              model: 'Browser bootstrapped',
               contextPatch: {
                 scope: 'session',
                 context: {
@@ -2088,8 +2138,8 @@ describe('LoopRunner', () => {
             executionContext.contextSnapshot?.context?.capabilities?.browser?.pageId,
           );
           return {
-            success: true,
-            llmContent: 'Browser inspected',
+            status: 'success',
+            model: 'Browser inspected',
           };
         }),
       } as unknown as ExecutionPipeline;
@@ -2101,7 +2151,7 @@ describe('LoopRunner', () => {
       expect(observedPageIds).toEqual(['page-123']);
     });
 
-    it('persists ToolResult.newMessages after the tool result in session storage order', async () => {
+    it('persists yielded newMessages after the tool result in session storage order', async () => {
       const chatFn = vi.fn(async () => ({
         content: 'Done',
         toolCalls: [{
@@ -2161,9 +2211,9 @@ describe('LoopRunner', () => {
           ],
           get: (name: string) => ({ kind: 'execute', name }),
         }),
-        execute: vi.fn(async () => ({
-          success: true,
-          llmContent: 'Skill activated',
+        execute: mockToolExecution(async () => ({
+          status: 'success',
+          model: 'Skill activated',
           newMessages: [
             { role: 'assistant', content: 'Injected assistant context' },
             { role: 'system', content: 'Injected system context' },
@@ -2295,15 +2345,15 @@ describe('LoopRunner', () => {
           },
           get: (name: string) => ({ kind: 'execute', name }),
         }),
-        execute: vi.fn(async (
+        execute: mockToolExecution(async (
           toolName: string,
           _params: Record<string, unknown>,
           executionContext: { contextSnapshot?: { context?: { capabilities?: { browser?: { pageId?: string } } } } },
         ) => {
           if (toolName === 'BrowserBootstrap') {
             return {
-              success: true,
-              llmContent: 'Browser bootstrapped',
+              status: 'success',
+              model: 'Browser bootstrapped',
               effects: [
                 {
                   type: 'contextPatch' as const,
@@ -2332,8 +2382,8 @@ describe('LoopRunner', () => {
             executionContext.contextSnapshot?.context?.capabilities?.browser?.pageId,
           );
           return {
-            success: true,
-            llmContent: 'Browser inspected',
+            status: 'success',
+            model: 'Browser inspected',
           };
         }),
       } as unknown as ExecutionPipeline;

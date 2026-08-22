@@ -12,12 +12,8 @@ import type { HookRuntime } from '../hooks/HookRuntime.js';
 import type { InternalLogger } from '../logging/Logger.js';
 import type { Message } from '../services/ChatServiceInterface.js';
 import type { ExecutionPipeline } from '../tools/execution/ExecutionPipeline.js';
-import {
-    normalizeToolEffects,
-    type ToolEffect,
-} from '../tools/types/index.js';
+import type { ToolEffect } from '../tools/types/index.js';
 import type { SessionId } from '../types/branded.js';
-import type { JsonValue } from '../types/common.js';
 import type { AgentLoopConfig, AgentLoopHooks } from './AgentLoop.js';
 import type { CompactionHandler, CompactionRuntimeContext } from './CompactionHandler.js';
 import type { ModelManager } from './ModelManager.js';
@@ -49,7 +45,6 @@ export interface LoopHookBuilderDeps {
 }
 
 // ===== JSONL 持久化辅助 =====
-
 async function persistToJsonl(
   modelManager: ModelManager,
   sessionId: SessionId | undefined,
@@ -63,15 +58,6 @@ async function persistToJsonl(
     }
   } catch (error) {
     logger.warn('[LoopHookBuilder] JSONL persistence failed:', error);
-  }
-}
-
-function toJsonValue(value: string | object): JsonValue {
-  if (typeof value === 'string') return value;
-  try {
-    return JSON.parse(JSON.stringify(value)) as JsonValue;
-  } catch {
-    return String(value);
   }
 }
 
@@ -165,9 +151,8 @@ export function buildLoopConfig(deps: LoopHookBuilderDeps): AgentLoopConfig {
       },
 
       async afterExec(ctx) {
-        const { toolCall, result, toolUseUuid } = ctx;
-        const normalizedEffects = normalizeToolEffects(result);
-        const injectedMessages = normalizedEffects
+        const { toolCall, result, effects, toolUseUuid } = ctx;
+        const injectedMessages = effects
           .filter((effect): effect is Extract<ToolEffect, { type: 'newMessages' }> =>
             effect.type === 'newMessages')
           .flatMap((effect) => effect.messages);
@@ -191,8 +176,8 @@ export function buildLoopConfig(deps: LoopHookBuilderDeps): AgentLoopConfig {
             : undefined;
           const uuid = await contextMgr.saveToolResult(
             sessionId, toolCall.id, toolCall.function.name,
-            result.success ? toJsonValue(result.llmContent) : null,
-            getLastUuid(), result.success ? undefined : result.error?.message,
+            result.status === 'success' ? result.model : null,
+            getLastUuid(), result.status === 'success' ? undefined : result.error.message,
             context.subagentInfo, subagentRef,
           );
           setLastUuid(uuid);
@@ -229,7 +214,7 @@ export function buildLoopConfig(deps: LoopHookBuilderDeps): AgentLoopConfig {
           });
         }
 
-        for (const effect of normalizedEffects) {
+        for (const effect of effects) {
           if (effect.type === 'contextPatch') {
             runtimePatchManager.applyRuntimeContextPatch(effect.patch);
             runtimePatchManager.refreshRuntimeContextSnapshot(loopState);
@@ -237,9 +222,8 @@ export function buildLoopConfig(deps: LoopHookBuilderDeps): AgentLoopConfig {
         }
 
         const runtimePatch = runtimePatchManager.deriveRuntimePatch({
-          success: result.success,
-          effects: normalizedEffects,
-          runtimePatch: result.runtimePatch,
+          status: result.status,
+          effects,
         });
         if (runtimePatch) {
           runtimePatchManager.applyRuntimePatch(runtimePatch, loopState, {

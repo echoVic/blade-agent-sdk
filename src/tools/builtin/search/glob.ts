@@ -20,7 +20,6 @@ import { createTool } from '../../core/createTool.js';
 import type {
     ExecutionContext,
     GlobMetadata,
-    ToolResult
 } from '../../types/index.js';
 import { ToolErrorType, ToolKind } from '../../types/index.js';
 import { lazySchema } from '../../validation/lazySchema.js';
@@ -90,7 +89,7 @@ export const globTool = createTool({
   },
 
   // 执行函数
-  async execute(params, context: ExecutionContext): Promise<ToolResult> {
+  async *execute(params, context: ExecutionContext) {
     const {
       pattern,
       path,
@@ -98,14 +97,13 @@ export const globTool = createTool({
       include_directories,
       case_sensitive,
     } = params;
-    const { updateOutput } = context;
     const signal = context.signal ?? new AbortController().signal;
 
     try {
       if (!hasFilesystemCapability(context.contextSnapshot)) {
         return {
-          success: false,
-          llmContent: 'No filesystem access in the current runtime context.',
+          status: 'error',
+          model: 'No filesystem access in the current runtime context.',
           error: {
             type: ToolErrorType.PERMISSION_DENIED,
             message: 'No filesystem access in current context',
@@ -116,8 +114,8 @@ export const globTool = createTool({
       const searchRoot = path ?? context.contextSnapshot?.cwd;
       if (!searchRoot) {
         return {
-          success: false,
-          llmContent: 'No search path provided and no filesystem working directory is available.',
+          status: 'error',
+          model: 'No search path provided and no filesystem working directory is available.',
           error: {
             type: ToolErrorType.VALIDATION_ERROR,
             message: 'No search path available',
@@ -125,7 +123,11 @@ export const globTool = createTool({
         };
       }
 
-      updateOutput?.(`Searching in ${searchRoot} for pattern "${pattern}"...`);
+      yield {
+        kind: 'progress',
+        message: `Searching in ${searchRoot} for pattern "${pattern}"...`,
+        data: { pattern, searchRoot },
+      };
 
       // 验证搜索路径存在
       const searchPath = resolve(searchRoot);
@@ -133,8 +135,8 @@ export const globTool = createTool({
         const stats = await stat(searchPath);
         if (!stats.isDirectory()) {
           return {
-            success: false,
-            llmContent: `Search path must be a directory: ${searchPath}`,
+            status: 'error',
+            model: `Search path must be a directory: ${searchPath}`,
             error: {
               type: ToolErrorType.VALIDATION_ERROR,
               message: '搜索路径必须是目录',
@@ -144,8 +146,8 @@ export const globTool = createTool({
       } catch (error) {
         if (getErrorCode(error) === 'ENOENT') {
           return {
-            success: false,
-            llmContent: `Search path does not exist: ${searchPath}`,
+            status: 'error',
+            model: `Search path does not exist: ${searchPath}`,
             error: {
               type: ToolErrorType.EXECUTION_ERROR,
               message: '搜索路径不存在',
@@ -212,8 +214,8 @@ export const globTool = createTool({
       }
 
       return {
-        success: true,
-        llmContent: llmFriendlyText,
+        status: 'success',
+        model: llmFriendlyText,
         metadata: {
           ...metadata,
           matches: sortedMatches, // 保留原始数据在 metadata 中
@@ -222,8 +224,8 @@ export const globTool = createTool({
     } catch (error) {
       if (getErrorName(error) === 'AbortError') {
         return {
-          success: false,
-          llmContent: 'File search aborted',
+          status: 'error',
+          model: 'File search aborted',
           error: {
             type: ToolErrorType.EXECUTION_ERROR,
             message: '操作被中止',
@@ -232,8 +234,8 @@ export const globTool = createTool({
       }
 
       return {
-        success: false,
-        llmContent: `Search failed: ${getErrorMessage(error)}`,
+        status: 'error',
+        model: `Search failed: ${getErrorMessage(error)}`,
         error: {
           type: ToolErrorType.EXECUTION_ERROR,
           message: getErrorMessage(error),

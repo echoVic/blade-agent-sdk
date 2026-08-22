@@ -10,7 +10,15 @@ import type {
 } from '../runtime/index.js';
 import type { Message } from '../services/ChatServiceInterface.js';
 import type { ToolCatalogSourcePolicy } from '../tools/catalog/index.js';
-import type { ExecutionContext, ToolDefinition, ToolResult } from '../tools/types/index.js';
+import type {
+  ExecutionContext,
+  ToolDefinition,
+  ToolDisplayContent,
+  ToolMessage,
+  ToolModelContent,
+  ToolProgress,
+  ToolResult,
+} from '../tools/types/index.js';
 import type { SessionId } from '../types/branded.js';
 import type {
   JsonObject,
@@ -43,7 +51,7 @@ export interface ToolCallRecord {
   id: string;
   name: string;
   input: JsonValue;
-  output: string | object;
+  output: ToolModelContent;
   duration: number;
   isError?: boolean;
 }
@@ -62,8 +70,20 @@ export type StreamMessage =
   | { type: 'content'; delta: string; sessionId: SessionId }
   | { type: 'thinking'; delta: string; sessionId: SessionId }
   | { type: 'tool_use'; id: string; name: string; input: JsonValue; sessionId: SessionId }
-  | { type: 'tool_progress'; id: string; name: string; message: string; sessionId: SessionId }
-  | { type: 'tool_message'; id: string; name: string; message: string; sessionId: SessionId }
+  | {
+      type: 'tool_progress';
+      id: string;
+      name: string;
+      progress: ToolProgress;
+      sessionId: SessionId;
+    }
+  | {
+      type: 'tool_message';
+      id: string;
+      name: string;
+      content: ToolMessage['content'];
+      sessionId: SessionId;
+    }
   | {
       type: 'tool_runtime_patch';
       id: string;
@@ -96,7 +116,8 @@ export type StreamMessage =
       type: 'tool_result';
       id: string;
       name: string;
-      output: string | object;
+      output: ToolModelContent;
+      display?: ToolDisplayContent;
       isError?: boolean;
       sessionId: SessionId;
     }
@@ -116,7 +137,7 @@ export interface HookInput {
   event: HookEvent;
   toolName?: string;
   toolInput?: JsonObject;
-  toolOutput?: string | object;
+  toolOutput?: ToolModelContent;
   error?: Error;
   sessionId: SessionId;
   [key: string]: unknown;

@@ -1,6 +1,7 @@
 import { once } from 'node:events';
 import { createServer, type Server } from 'node:http';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { collectToolExecution } from '../../../types/index.js';
 import { webFetchTool } from '../webFetch.js';
 
 const servers: Server[] = [];
@@ -38,10 +39,12 @@ describe('WebFetch Tool', () => {
       vi.fn().mockRejectedValue(new DOMException('This operation was aborted', 'AbortError')),
     );
 
-    const result = await webFetchTool.execute(createParams('https://example.com'));
+    const result = await collectToolExecution(
+      webFetchTool.execute(createParams('https://example.com')),
+    );
 
-    expect(result.success).toBe(false);
-    expect(result.llmContent).toBe('Request aborted');
+    expect(result.status).toBe('error');
+    expect(result.model).toBe('Request aborted');
     expect(result.error?.message).toBe('操作被中止');
     expect(result.metadata?.summary).toBe('GET example.com - aborted');
   });
@@ -59,10 +62,12 @@ describe('WebFetch Tool', () => {
       throw new Error('Expected the test server to listen on a TCP port');
     }
 
-    const result = await webFetchTool.execute(createParams(`http://127.0.0.1:${address.port}`));
+    const result = await collectToolExecution(
+      webFetchTool.execute(createParams(`http://127.0.0.1:${address.port}`)),
+    );
 
-    expect(result.success).toBe(false);
-    expect(result.llmContent).toBe('Request aborted');
+    expect(result.status).toBe('error');
+    expect(result.model).toBe('Request aborted');
     expect(result.error?.message).toBe('操作被中止');
     expect(result.metadata?.summary).toBe('GET 127.0.0.1 - aborted');
   });

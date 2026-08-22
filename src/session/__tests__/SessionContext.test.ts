@@ -196,7 +196,10 @@ describe('Session runtime context', () => {
               arguments: '{}',
             },
           },
-          message: 'loading',
+          progress: {
+            kind: 'progress',
+            message: 'loading',
+          },
         };
         yield {
           type: 'tool_message',
@@ -208,7 +211,9 @@ describe('Session runtime context', () => {
               arguments: '{}',
             },
           },
-          message: 'partial output',
+          content: {
+            summary: 'partial output',
+          },
         };
         yield {
           type: 'tool_runtime_patch',
@@ -237,8 +242,11 @@ describe('Session runtime context', () => {
             },
           },
           result: {
-            success: true,
-            llmContent: 'done',
+            status: 'success',
+            model: 'done',
+            display: {
+              summary: 'Read completed',
+            },
           },
         };
         return {
@@ -263,8 +271,12 @@ describe('Session runtime context', () => {
     await session.send('hello');
 
     const events: string[] = [];
+    let toolResultDisplay: unknown;
     for await (const event of session.stream()) {
       events.push(event.type);
+      if (event.type === 'tool_result') {
+        toolResultDisplay = event.display;
+      }
     }
 
     expect(events).toEqual(expect.arrayContaining([
@@ -274,6 +286,7 @@ describe('Session runtime context', () => {
       'tool_runtime_patch',
       'tool_result',
     ]));
+    expect(toolResultDisplay).toEqual({ summary: 'Read completed' });
 
     await session.close();
   });

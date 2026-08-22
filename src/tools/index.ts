@@ -17,12 +17,23 @@ export type {
   ToolDefinition,
   ToolDescription,
   ToolDescriptionResolver,
+  ToolDisplayContent,
   ToolEffect,
+  ToolEffectYield,
   ToolError,
+  ToolExecution,
   ToolExposureConfig,
   ToolExposureMode,
+  ToolModelContent,
+  ToolMessage,
+  ToolProgress,
   ToolResult,
   ToolSchema,
+  ToolYield,
 } from './types/index.js';
-export { ToolErrorType } from './types/index.js';
+export {
+  collectToolExecution,
+  completeToolExecution,
+  ToolErrorType,
+} from './types/index.js';
 export { ToolKind } from './types/ToolKind.js';

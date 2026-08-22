@@ -170,13 +170,24 @@ export type {
   ToolConfig,
   ToolDescription,
   ToolDescriptionResolver,
+  ToolDisplayContent,
   ToolEffect,
+  ToolEffectYield,
   ToolError,
+  ToolExecution,
   ToolExposureConfig,
   ToolExposureMode,
+  ToolMessage,
+  ToolModelContent,
+  ToolProgress,
   ToolSchema,
+  ToolYield,
 } from './tools/types/index.js';
-export { ToolErrorType } from './tools/types/index.js';
+export {
+  collectToolExecution,
+  completeToolExecution,
+  ToolErrorType,
+} from './tools/types/index.js';
 export { ToolKind } from './tools/types/ToolKind.js';
 export { AgentId, MessageId, SessionId, ToolUseId } from './types/branded.js';
 // --- Constants & types ---

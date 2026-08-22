@@ -207,6 +207,8 @@ export class SubagentRegistry {
    * 2. 用户级配置（{storageRoot}/agents/）
    * 3. 项目级配置（{projectDir}/agents/）
    *
+   * 未提供 projectDir 时仅加载内置配置，不扫描本地目录。
+   *
    * @param projectDir 项目目录（用于加载项目级配置）
    * @param storageRoot SDK 数据存储根目录（用于加载用户级配置）
    * @returns 加载的 subagent 数量
@@ -218,6 +220,12 @@ export class SubagentRegistry {
     // 1. 加载内置配置
     this.loadBuiltinAgents();
 
+    if (!projectDir) {
+      const count = this.getAllNames().length;
+      this.logger.debug(`📦 Loaded ${count} builtin subagents without workspace discovery`);
+      return count;
+    }
+
     // 2. 加载用户级配置（可覆盖内置）
     if (storageRoot) {
       const userAgentsDir = path.join(storageRoot, 'agents');
@@ -225,10 +233,8 @@ export class SubagentRegistry {
     }
 
     // 3. 加载项目级配置（可覆盖用户级）
-    if (projectDir) {
-      const projectAgentsDir = path.join(projectDir, 'agents');
-      this.loadFromDirectory(projectAgentsDir, 'project');
-    }
+    const projectAgentsDir = path.join(projectDir, 'agents');
+    this.loadFromDirectory(projectAgentsDir, 'project');
 
     const count = this.getAllNames().length;
     this.logger.debug(`📦 Loaded ${count} subagents from standard locations`);

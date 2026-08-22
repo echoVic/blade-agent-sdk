@@ -2,10 +2,10 @@ import { type Dispatcher, ProxyAgent, fetch as undiciFetch } from 'undici';
 import { z } from 'zod';
 import type { JsonValue } from '../../../types/common.js';
 import { getErrorMessage, getErrorName } from '../../../utils/errorUtils.js';
+import { toJsonValue } from '../../../utils/jsonValue.js';
 import { createTool } from '../../core/createTool.js';
 import type {
     ExecutionContext,
-    ToolResult,
     WebSearchMetadata,
 } from '../../types/index.js';
 import { ToolErrorType, ToolKind } from '../../types/index.js';
@@ -121,8 +121,7 @@ async function fetchWithRetry(
   options: { headers: Record<string, string>; method?: string; body?: string },
   timeout: number,
   signal?: AbortSignal,
-  dispatcher?: Dispatcher,
-  updateOutput?: (msg: string) => void
+  dispatcher?: Dispatcher
 ): Promise<Response> {
   let lastError: Error | null = null;
 
@@ -142,9 +141,6 @@ async function fetchWithRetry(
         const delay = Math.min(
           RETRY_CONFIG.baseDelay * 2 ** attempt,
           RETRY_CONFIG.maxDelay
-        );
-        updateOutput?.(
-          `⏳ 请求失败，${delay / 1000}s 后重试 (${attempt + 1}/${RETRY_CONFIG.maxRetries})...`
         );
         await new Promise((resolve) => setTimeout(resolve, delay));
       }
@@ -166,15 +162,13 @@ async function searchWithProvider(
   query: string,
   timeout: number,
   signal?: AbortSignal,
-  dispatcher?: Dispatcher,
-  updateOutput?: (msg: string) => void
+  dispatcher?: Dispatcher
 ): Promise<{ results: WebSearchResult[]; providerName: string }> {
   // 检查缓存
   const cache = getSearchCache();
   const cachedResults = cache.get(provider.name, query);
 
   if (cachedResults) {
-    updateOutput?.(`💾 使用缓存结果 (${provider.name})`);
     return {
       results: cachedResults,
       providerName: `${provider.name} (cached)`,
@@ -184,7 +178,6 @@ async function searchWithProvider(
   // SDK 提供商（如 Exa）直接调用 searchFn，绕过 HTTP
   if (provider.kind === 'sdk') {
     try {
-      updateOutput?.(`🔍 搜索中 (${provider.name})...`);
       const results = await provider.searchFn(query);
 
       // 写入缓存
@@ -197,8 +190,6 @@ async function searchWithProvider(
   }
 
   // HTTP 提供商
-  updateOutput?.(`🔍 搜索中 (${provider.name})...`);
-
   const url = provider.buildUrl(query);
   const method = provider.method || 'GET';
   const headers = provider.getHeaders();
@@ -219,8 +210,7 @@ async function searchWithProvider(
     options,
     timeout,
     signal,
-    dispatcher,
-    updateOutput
+    dispatcher
   );
 
   if (!response.ok) {
@@ -249,8 +239,7 @@ async function searchWithProvider(
 async function searchWithFallback(
   query: string,
   timeout: number,
-  signal?: AbortSignal,
-  updateOutput?: (msg: string) => void
+  signal?: AbortSignal
 ): Promise<{ results: WebSearchResult[]; providerName: string }> {
   const providers = getAllProviders();
   const dispatcher = getProxyAgent();
@@ -265,19 +254,16 @@ async function searchWithFallback(
     }
 
     try {
-      updateOutput?.(`🔎 使用 ${provider.name} 搜索...`);
       return await searchWithProvider(
         provider,
         query,
         timeout,
         signal,
-        dispatcher,
-        updateOutput
+        dispatcher
       );
     } catch (error) {
       const errorMsg = `${provider.name}: ${getErrorMessage(error)}`;
       errors.push(errorMsg);
-      updateOutput?.(`⚠️ ${errorMsg}`);
 
       // 如果是最后一个提供商，抛出错误
       if (i === providers.length - 1) {
@@ -414,25 +400,29 @@ IMPORTANT - Use the correct year in search queries:
 `,
   },
 
-  async execute(params, context: ExecutionContext): Promise<ToolResult> {
+  async *execute(params, context: ExecutionContext) {
     const { query } = params;
     const allowedDomains = normalizeDomainList(params.allowed_domains);
     const blockedDomains = normalizeDomainList(params.blocked_domains);
-    const { updateOutput } = context;
     const signal = context.signal ?? new AbortController().signal;
 
-    updateOutput?.(
-      `🔎 Searching: "${query}" (${getProviderCount()} providers available)`
-    );
+    yield {
+      kind: 'progress',
+      message: `Searching: "${query}"`,
+      data: { query, providerCount: getProviderCount() },
+    };
 
     try {
       // 使用多提供商故障转移搜索
       const { results: rawResults, providerName } = await searchWithFallback(
         query,
         SEARCH_TIMEOUT,
-        signal,
-        updateOutput
+        signal
       );
+      yield {
+        kind: 'message',
+        content: { summary: `Search completed with ${providerName}` },
+      };
 
       // 应用域名过滤
       const filteredResults = applyDomainFilters(
@@ -462,8 +452,8 @@ IMPORTANT - Use the correct year in search queries:
 
       if (limitedResults.length === 0) {
         return {
-          success: true,
-          llmContent: resultPayload,
+          status: 'success',
+          model: toJsonValue(resultPayload),
           metadata: {
             ...metadata,
             summary: `搜索 "${query}": 0 条结果`,
@@ -472,8 +462,8 @@ IMPORTANT - Use the correct year in search queries:
       }
 
       return {
-        success: true,
-        llmContent: resultPayload,
+        status: 'success',
+        model: toJsonValue(resultPayload),
         metadata: {
           ...metadata,
           summary: `搜索 "${query}": ${limitedResults.length} 条结果`,
@@ -481,8 +471,8 @@ IMPORTANT - Use the correct year in search queries:
       };
     } catch (error) {
       return {
-        success: false,
-        llmContent: `WebSearch call failed: ${getErrorMessage(error)}`,
+        status: 'error',
+        model: `WebSearch call failed: ${getErrorMessage(error)}`,
         error: {
           type: ToolErrorType.EXECUTION_ERROR,
           message: getErrorMessage(error),

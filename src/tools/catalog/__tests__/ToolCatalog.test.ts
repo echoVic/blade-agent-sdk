@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { z } from 'zod';
 import { createTool } from '../../core/createTool.js';
-import { ToolKind } from '../../types/index.js';
+import { completeToolExecution, ToolKind } from '../../types/index.js';
 import { ToolCatalog } from '../ToolCatalog.js';
 
 describe('ToolCatalog', () => {
@@ -13,7 +13,7 @@ describe('ToolCatalog', () => {
       kind: ToolKind.ReadOnly,
       description: { short: 'Read tool' },
       schema: z.object({}),
-      execute: async () => ({ success: true, llmContent: '' }),
+      execute: () => completeToolExecution({ status: 'success', model: '' }),
     });
 
     catalog.register(builtinTool, {
@@ -42,7 +42,7 @@ describe('ToolCatalog', () => {
       description: { short: 'Search docs' },
       tags: ['docs'],
       schema: z.object({}),
-      execute: async () => ({ success: true, llmContent: '' }),
+      execute: () => completeToolExecution({ status: 'success', model: '' }),
     });
 
     catalog.registerMcpTool(remoteTool, {
@@ -64,7 +64,7 @@ describe('ToolCatalog', () => {
       kind: ToolKind.ReadOnly,
       description: { short: 'Read tool' },
       schema: z.object({}),
-      execute: async () => ({ success: true, llmContent: '' }),
+      execute: () => completeToolExecution({ status: 'success', model: '' }),
     });
     const writeTool = createTool({
       name: 'Write',
@@ -72,7 +72,7 @@ describe('ToolCatalog', () => {
       kind: ToolKind.Write,
       description: { short: 'Write tool' },
       schema: z.object({}),
-      execute: async () => ({ success: true, llmContent: '' }),
+      execute: () => completeToolExecution({ status: 'success', model: '' }),
     });
 
     catalog.register(readTool, {

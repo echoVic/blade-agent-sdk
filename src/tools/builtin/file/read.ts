@@ -7,7 +7,6 @@ import { createTool } from '../../core/createTool.js';
 import type {
     ExecutionContext,
     ReadMetadata,
-    ToolResult,
 } from '../../types/index.js';
 import { ToolErrorType, ToolKind } from '../../types/index.js';
 import { lazySchema } from '../../validation/lazySchema.js';
@@ -42,7 +41,7 @@ export const readTool = createTool({
     if (!hasFilesystemCapability(context.contextSnapshot)) {
       return {
         message: 'No filesystem access in current context',
-        llmContent: 'No filesystem access in the current runtime context.',
+        model: 'No filesystem access in the current runtime context.',
         errorType: ToolErrorType.PERMISSION_DENIED,
       };
     }
@@ -90,13 +89,16 @@ export const readTool = createTool({
   },
 
   // 执行函数
-  async execute(params, context: ExecutionContext): Promise<ToolResult> {
+  async *execute(params, context: ExecutionContext) {
     const { file_path, offset, limit, encoding = 'utf8' } = params;
-    const { updateOutput, sessionId } = context;
+    const { sessionId } = context;
     const signal = context.signal ?? new AbortController().signal;
 
     try {
-      updateOutput?.('Starting file read...');
+      yield {
+        kind: 'message',
+        content: { summary: 'Starting file read...' },
+      };
 
       // 获取文件系统服务
       const fsService = getFileSystemService();
@@ -109,8 +111,8 @@ export const readTool = createTool({
         }
       } catch (_error) {
         return {
-          success: false,
-          llmContent: `File not found: ${file_path}`,
+          status: 'error',
+          model: `File not found: ${file_path}`,
           error: {
             type: ToolErrorType.EXECUTION_ERROR,
             message: `File not found: ${file_path}`,
@@ -134,8 +136,8 @@ export const readTool = createTool({
 
       if (stats?.isDirectory) {
         return {
-          success: false,
-          llmContent: `Cannot read a directory: ${file_path}`,
+          status: 'error',
+          model: `Cannot read a directory: ${file_path}`,
           error: {
             type: ToolErrorType.EXECUTION_ERROR,
             message: 'Target is a directory, not a file',
@@ -160,7 +162,10 @@ export const readTool = createTool({
 
       // 处理二进制文件
       if (isBinaryFile && encoding === 'utf8') {
-        updateOutput?.('检测到二进制文件，使用 base64 编码...');
+        yield {
+          kind: 'message',
+          content: { summary: '检测到二进制文件，使用 base64 编码...' },
+        };
         const buffer = await fsService.readBinaryFile(file_path);
         content = buffer.toString('base64');
         metadata.encoding = 'base64';
@@ -222,15 +227,15 @@ export const readTool = createTool({
       metadata.summary = summary;
 
       return {
-        success: true,
-        llmContent: content,
+        status: 'success',
+        model: content,
         metadata,
       };
     } catch (error) {
       if (getErrorName(error) === 'AbortError') {
         return {
-          success: false,
-          llmContent: 'File read aborted',
+          status: 'error',
+          model: 'File read aborted',
           error: {
             type: ToolErrorType.EXECUTION_ERROR,
             message: 'Operation aborted',
@@ -239,8 +244,8 @@ export const readTool = createTool({
       }
 
       return {
-        success: false,
-        llmContent: `File read failed: ${getErrorMessage(error)}`,
+        status: 'error',
+        model: `File read failed: ${getErrorMessage(error)}`,
         error: {
           type: ToolErrorType.EXECUTION_ERROR,
           message: getErrorMessage(error),

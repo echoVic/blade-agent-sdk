@@ -6,7 +6,13 @@ import { assertDefined } from '../../__tests__/helpers/assertDefined.js';
 import { HookManager } from '../../hooks/HookManager.js';
 import { NOOP_LOGGER } from '../../logging/Logger.js';
 import { createContextSnapshot, type RuntimeContext } from '../../runtime/index.js';
-import type { ToolDefinition, ToolResult } from '../../tools/types/index.js';
+import { FileAccessTracker } from '../../tools/builtin/file/FileAccessTracker.js';
+import { FileLockManager } from '../../tools/execution/FileLockManager.js';
+import {
+  collectToolExecution,
+  completeToolExecution,
+  type ToolDefinition,
+} from '../../tools/types/index.js';
 import { SessionId } from '../../types/branded.js';
 import type { JsonObject } from '../../types/common.js';
 import { PermissionMode } from '../../types/common.js';
@@ -48,11 +54,11 @@ const customTool: ToolDefinition<{ value?: string }> = {
       value: { type: 'string' },
     },
   },
-  async execute() {
-    return {
-      success: true,
-      llmContent: 'ok',
-    };
+  execute() {
+    return completeToolExecution({
+      status: 'success',
+      model: 'ok',
+    });
   },
 };
 
@@ -84,6 +90,8 @@ describe('SessionRuntime', () => {
     mockConnect.mockClear();
     mockDisconnect.mockClear();
     mockOn.mockClear();
+    FileAccessTracker.resetInstance();
+    FileLockManager.resetInstance();
   });
 
   afterEach(async () => {
@@ -150,6 +158,30 @@ describe('SessionRuntime', () => {
     await runtime.initialize();
 
     expect(runtime.getToolRegistry().getAll()).toEqual([]);
+
+    await runtime.close();
+  });
+
+  it('should not initialize file facilities before a file operation runs', async () => {
+    const accessTrackerSpy = vi.spyOn(FileAccessTracker, 'getInstance');
+    const lockManagerSpy = vi.spyOn(FileLockManager, 'getInstance');
+    const runtime = new SessionRuntime(
+      SessionId('session-no-file-tools'),
+      createOptions({
+        allowedTools: [],
+      }),
+      {
+        models: [],
+      },
+      PermissionMode.DEFAULT,
+      {},
+      NOOP_LOGGER,
+    );
+
+    await runtime.initialize();
+
+    expect(accessTrackerSpy).not.toHaveBeenCalled();
+    expect(lockManagerSpy).not.toHaveBeenCalled();
 
     await runtime.close();
   });
@@ -231,10 +263,11 @@ describe('SessionRuntime', () => {
   });
 
   it('should apply session hook callbacks to tool execution', async () => {
-    const execute = vi.fn(async (params: { value?: string }): Promise<ToolResult> => ({
-      success: true,
-      llmContent: params.value || 'missing',
-    }));
+    const execute = vi.fn((params: { value?: string }) =>
+      completeToolExecution({
+        status: 'success' as const,
+        model: params.value || 'missing',
+      }));
 
     const runtime = new SessionRuntime(
       SessionId('session-3'),
@@ -272,21 +305,23 @@ describe('SessionRuntime', () => {
 
     const executionPipeline = runtime.getAgentRuntimeDeps().executionPipeline;
     assertDefined(executionPipeline);
-    const result = await executionPipeline.execute(
-      'CustomTool',
-      { value: 'original' },
-      {
-        sessionId: SessionId('session-3'),
-        contextSnapshot: createContextSnapshot(SessionId('session-3'), 'turn-1', createFilesystemContext(workspaceRoot)),
-      },
+    const result = await collectToolExecution(
+      executionPipeline.execute(
+        'CustomTool',
+        { value: 'original' },
+        {
+          sessionId: SessionId('session-3'),
+          contextSnapshot: createContextSnapshot(SessionId('session-3'), 'turn-1', createFilesystemContext(workspaceRoot)),
+        },
+      ),
     );
 
     expect(execute).toHaveBeenCalledWith(
       expect.objectContaining({ value: 'from-pre-hook' }),
       expect.anything(),
     );
-    expect(result.success).toBe(true);
-    expect(result.llmContent).toBe('from-post-hook');
+    expect(result.status).toBe('success');
+    expect(result.model).toBe('from-post-hook');
 
     await runtime.close();
   });
@@ -339,10 +374,11 @@ describe('SessionRuntime', () => {
       behavior: 'allow' as const,
       updatedInput: input,
     }));
-    const execute = vi.fn(async (params: { value?: string }): Promise<ToolResult> => ({
-      success: true,
-      llmContent: params.value || 'missing',
-    }));
+    const execute = vi.fn((params: { value?: string }) =>
+      completeToolExecution({
+        status: 'success' as const,
+        model: params.value || 'missing',
+      }));
 
     const runtime = new SessionRuntime(
       SessionId('session-4'),
@@ -375,13 +411,15 @@ describe('SessionRuntime', () => {
 
     const executionPipeline4 = runtime.getAgentRuntimeDeps().executionPipeline;
     assertDefined(executionPipeline4);
-    const result = await executionPipeline4.execute(
-      'CustomTool',
-      { value: 'original' },
-      {
-        sessionId: SessionId('session-4'),
-        contextSnapshot: createContextSnapshot(SessionId('session-4'), 'turn-1', createFilesystemContext(workspaceRoot)),
-      },
+    const result = await collectToolExecution(
+      executionPipeline4.execute(
+        'CustomTool',
+        { value: 'original' },
+        {
+          sessionId: SessionId('session-4'),
+          contextSnapshot: createContextSnapshot(SessionId('session-4'), 'turn-1', createFilesystemContext(workspaceRoot)),
+        },
+      ),
     );
 
     expect(canUseTool).toHaveBeenCalledWith(
@@ -393,7 +431,7 @@ describe('SessionRuntime', () => {
       expect.objectContaining({ value: 'from-permission-hook' }),
       expect.anything(),
     );
-    expect(result.llmContent).toBe('from-permission-hook');
+    expect(result.model).toBe('from-permission-hook');
 
     await runtime.close();
   });
@@ -405,7 +443,8 @@ describe('SessionRuntime', () => {
         tools: [
           {
             ...customTool,
-            async execute() {
+            // biome-ignore lint/correctness/useYield: exercises a terminal execution failure
+            async *execute() {
               throw new Error('boom');
             },
           },
@@ -431,17 +470,19 @@ describe('SessionRuntime', () => {
 
     const executionPipeline5 = runtime.getAgentRuntimeDeps().executionPipeline;
     assertDefined(executionPipeline5);
-    const result = await executionPipeline5.execute(
-      'CustomTool',
-      { value: 'original' },
-      {
-        sessionId: SessionId('session-5'),
-        contextSnapshot: createContextSnapshot(SessionId('session-5'), 'turn-1', createFilesystemContext(workspaceRoot)),
-      },
+    const result = await collectToolExecution(
+      executionPipeline5.execute(
+        'CustomTool',
+        { value: 'original' },
+        {
+          sessionId: SessionId('session-5'),
+          contextSnapshot: createContextSnapshot(SessionId('session-5'), 'turn-1', createFilesystemContext(workspaceRoot)),
+        },
+      ),
     );
 
-    expect(result.success).toBe(false);
-    expect(result.llmContent).toBe('hook-adjusted-error');
+    expect(result.status).toBe('error');
+    expect(result.model).toBe('hook-adjusted-error');
 
     await runtime.close();
   });

@@ -17,12 +17,10 @@ import {
 } from '../runtime/index.js';
 import { getSandboxExecutor } from '../sandbox/SandboxExecutor.js';
 import { getSandboxService } from '../sandbox/SandboxService.js';
-import { FileAccessTracker } from '../tools/builtin/file/FileAccessTracker.js';
 import { getBuiltinTools } from '../tools/builtin/index.js';
 import { ToolCatalog } from '../tools/catalog/ToolCatalog.js';
 import { toolFromDefinition } from '../tools/core/createTool.js';
 import { ExecutionPipeline } from '../tools/execution/ExecutionPipeline.js';
-import { FileLockManager } from '../tools/execution/FileLockManager.js';
 import { ToolRegistry } from '../tools/registry/ToolRegistry.js';
 import type { Tool } from '../tools/types/index.js';
 import type { BladeConfig, McpServerConfig, PermissionsConfig } from '../types/common.js';
@@ -168,8 +166,6 @@ export class SessionRuntime {
 
     this.initializeSubagents();
     await this.contextManager.initialize();
-    FileAccessTracker.getInstance(this.rootLogger);
-    FileLockManager.getInstance(this.rootLogger);
     this.initializeHooks();
     await this.registerBuiltinTools();
     this.registerCustomTools();

@@ -7,9 +7,9 @@ import type {
   StreamToolCall,
 } from '../services/ChatServiceInterface.js';
 import type { ExecutionPipeline } from '../tools/execution/ExecutionPipeline.js';
-import type { ToolResult } from '../tools/types/index.js';
+import type { ToolEffect, ToolResult } from '../tools/types/index.js';
 import { ToolErrorType } from '../tools/types/index.js';
-import type { JsonObject, PermissionMode } from '../types/common.js';
+import { type JsonObject, PermissionMode } from '../types/common.js';
 import type { ExecutionEpoch } from './ExecutionEpoch.js';
 import type { ToolExecutionOutcome } from './loop/executeToolCalls.js';
 import { planToolExecution } from './loop/planToolExecution.js';
@@ -47,6 +47,7 @@ export interface StreamingToolExecutorConfig {
   onAfterToolExec?: (ctx: {
     toolCall: FunctionToolCall;
     result: ToolResult;
+    effects: ToolEffect[];
     toolUseUuid: string | null;
   }) => void | Promise<void>;
   onAfterToolExecEpochDiscard?: (ctx: {
@@ -98,6 +99,7 @@ export class StreamingToolExecutor {
     let streamUsage: ChatResponse['usage'];
     let chunkCount = 0;
     let hasDispatchedTools = false;
+    const shouldExecuteSerially = executionConfig.permissionMode === PermissionMode.PLAN;
 
     try {
       const stream = chatService.streamChat(messages, tools, signal);
@@ -132,16 +134,18 @@ export class StreamingToolExecutor {
             this.accumulateToolCall(toolCallAccumulator, toolCallChunk);
           }
 
-          hasDispatchedTools = (await this.dispatchReadyToolCalls({
-            accumulator: toolCallAccumulator,
-            executionResults,
-            inFlightExecutions,
-            signal,
-            batchController,
-            executionConfig,
-            forcePending: false,
-            epoch,
-          })) || hasDispatchedTools;
+          if (!shouldExecuteSerially) {
+            hasDispatchedTools = (await this.dispatchReadyToolCalls({
+              accumulator: toolCallAccumulator,
+              executionResults,
+              inFlightExecutions,
+              signal,
+              batchController,
+              executionConfig,
+              forcePending: false,
+              epoch,
+            })) || hasDispatchedTools;
+          }
         }
 
         if (chunk.finishReason) {
@@ -163,31 +167,45 @@ export class StreamingToolExecutor {
         await executionConfig.onStreamEnd?.();
       }
 
-      hasDispatchedTools = (await this.dispatchReadyToolCalls({
-        accumulator: toolCallAccumulator,
-        executionResults,
-        inFlightExecutions,
-        signal,
-        batchController,
-        executionConfig,
-        forcePending: false,
-        epoch,
-      })) || hasDispatchedTools;
+      if (shouldExecuteSerially) {
+        hasDispatchedTools = (await this.dispatchReadyToolCalls({
+          accumulator: toolCallAccumulator,
+          executionResults,
+          inFlightExecutions,
+          signal,
+          batchController,
+          executionConfig,
+          forcePending: true,
+          serial: true,
+          epoch,
+        })) || hasDispatchedTools;
+      } else {
+        hasDispatchedTools = (await this.dispatchReadyToolCalls({
+          accumulator: toolCallAccumulator,
+          executionResults,
+          inFlightExecutions,
+          signal,
+          batchController,
+          executionConfig,
+          forcePending: false,
+          epoch,
+        })) || hasDispatchedTools;
 
-      await Promise.all(inFlightExecutions.values());
+        await Promise.all(inFlightExecutions.values());
 
-      hasDispatchedTools = (await this.dispatchReadyToolCalls({
-        accumulator: toolCallAccumulator,
-        executionResults,
-        inFlightExecutions,
-        signal,
-        batchController,
-        executionConfig,
-        forcePending: true,
-        epoch,
-      })) || hasDispatchedTools;
+        hasDispatchedTools = (await this.dispatchReadyToolCalls({
+          accumulator: toolCallAccumulator,
+          executionResults,
+          inFlightExecutions,
+          signal,
+          batchController,
+          executionConfig,
+          forcePending: true,
+          epoch,
+        })) || hasDispatchedTools;
 
-      await Promise.all(inFlightExecutions.values());
+        await Promise.all(inFlightExecutions.values());
+      }
 
       return {
         chatResponse: {
@@ -270,7 +288,6 @@ export class StreamingToolExecutor {
     );
     const executionPlan = planToolExecution(
       functionToolCalls,
-      executionConfig.executionPipeline.getRegistry(),
       executionConfig.permissionMode,
     );
 
@@ -286,7 +303,6 @@ export class StreamingToolExecutor {
     const batchController = new AbortController();
     const executionResults: Array<ToolExecutionOutcome | undefined> = [];
     const allCalls = executionPlan.calls;
-    const MAX_CONCURRENCY = 5;
 
     const executeOne = (index: number, toolCall: FunctionToolCall) =>
       this.executeToolCall({
@@ -304,21 +320,9 @@ export class StreamingToolExecutor {
         if (!this.isEpochActive(epoch)) break;
         await executeOne(i, allCalls[i]);
       }
-    } else if (executionPlan.mode === 'mixed') {
-      const groups = executionPlan.groups ?? allCalls.map((tc) => [tc]);
-      let globalIndex = 0;
-      for (const group of groups) {
-        if (!this.isEpochActive(epoch)) break;
-        await this.executeWithConcurrencyLimit(
-          group, MAX_CONCURRENCY,
-          (toolCall) => executeOne(globalIndex++, toolCall),
-        );
-      }
     } else {
-      // parallel
-      await this.executeWithConcurrencyLimit(
-        allCalls, MAX_CONCURRENCY,
-        (toolCall, i) => executeOne(i, toolCall),
+      await Promise.all(
+        allCalls.map((toolCall, index) => executeOne(index, toolCall)),
       );
     }
 
@@ -342,6 +346,7 @@ export class StreamingToolExecutor {
     batchController: AbortController;
     executionConfig: StreamingToolExecutorConfig;
     forcePending: boolean;
+    serial?: boolean;
     epoch?: ExecutionEpoch;
   }): Promise<boolean> {
     if (input.signal?.aborted) {
@@ -368,6 +373,7 @@ export class StreamingToolExecutor {
         const outcome: ToolExecutionOutcome = {
           toolCall: this.toFunctionToolCall(entry.id, entry.name, entry.arguments),
           result: this.buildCascadeAbortResult(),
+          effects: [],
           toolUseUuid: null,
         };
         input.executionResults[index] = outcome;
@@ -388,41 +394,22 @@ export class StreamingToolExecutor {
 
       entry.dispatched = true;
       dispatchedAny = true;
-      input.inFlightExecutions.set(
+      const execution = this.executeToolCall({
         index,
-        this.executeToolCall({
-          index,
-          toolCall: this.toFunctionToolCall(entry.id, entry.name, entry.arguments),
-          signal: input.signal,
-          batchController: input.batchController,
-          executionConfig: input.executionConfig,
-          executionResults: input.executionResults,
-          epoch: input.epoch,
-        }),
-      );
+        toolCall: this.toFunctionToolCall(entry.id, entry.name, entry.arguments),
+        signal: input.signal,
+        batchController: input.batchController,
+        executionConfig: input.executionConfig,
+        executionResults: input.executionResults,
+        epoch: input.epoch,
+      });
+      input.inFlightExecutions.set(index, execution);
+      if (input.serial) {
+        await execution;
+      }
     }
 
     return dispatchedAny;
-  }
-
-  /**
-   * 复刻 executeToolCalls.ts 的 executeWithConcurrency 语义：
-   * worker-pool 模式，最多 maxConcurrency 个并发 worker。
-   */
-  private async executeWithConcurrencyLimit<T>(
-    items: T[],
-    maxConcurrency: number,
-    executor: (item: T, index: number) => Promise<void>,
-  ): Promise<void> {
-    let nextIndex = 0;
-    const workerCount = Math.min(maxConcurrency, items.length);
-    const workers = Array.from({ length: workerCount }, async () => {
-      while (nextIndex < items.length) {
-        const currentIndex = nextIndex++;
-        await executor(items[currentIndex], currentIndex);
-      }
-    });
-    await Promise.all(workers);
   }
 
   private async executeToolCall(input: {
@@ -445,6 +432,7 @@ export class StreamingToolExecutor {
       const outcome: ToolExecutionOutcome = {
         toolCall: input.toolCall,
         result: this.buildCascadeAbortResult(),
+        effects: [],
         toolUseUuid: null,
       };
       input.executionResults[input.index] = outcome;
@@ -465,6 +453,7 @@ export class StreamingToolExecutor {
     }, input.epoch);
 
     let result: ToolResult;
+    let effects = [] as ToolExecutionOutcome['effects'];
     let toolUseUuid: string | null = null;
 
     try {
@@ -482,15 +471,17 @@ export class StreamingToolExecutor {
         },
       });
       result = outcome.result;
+      effects = outcome.effects;
       toolUseUuid = outcome.toolUseUuid;
     } catch (error) {
       this.logger.error(`Tool execution failed for ${input.toolCall.function.name}:`, error);
+      const message = error instanceof Error ? error.message : 'Unknown error';
       result = {
-        success: false,
-        llmContent: '',
+        status: 'error',
+        model: `Tool execution failed: ${message}`,
         error: {
           type: ToolErrorType.EXECUTION_ERROR,
-          message: error instanceof Error ? error.message : 'Unknown error',
+          message,
         },
       };
     }
@@ -508,7 +499,7 @@ export class StreamingToolExecutor {
 
     if (
       input.toolCall.function.name === 'Bash' &&
-      !result.success &&
+      result.status === 'error' &&
       !input.batchController.signal.aborted &&
       !input.signal?.aborted
     ) {
@@ -518,6 +509,7 @@ export class StreamingToolExecutor {
     input.executionResults[input.index] = {
       toolCall: input.toolCall,
       result,
+      effects,
       toolUseUuid,
     };
   }
@@ -595,8 +587,8 @@ export class StreamingToolExecutor {
 
   private buildCascadeAbortResult(): ToolResult {
     return {
-      success: false,
-      llmContent: 'Tool execution cancelled because a sibling Bash tool failed',
+      status: 'error',
+      model: 'Tool execution cancelled because a sibling Bash tool failed',
       error: {
         type: ToolErrorType.EXECUTION_ERROR,
         message: 'Cancelled due to sibling Bash failure',

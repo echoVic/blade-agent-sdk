@@ -5,6 +5,7 @@ import { BashClassifier } from '../../../hooks/BashClassifier.js';
 import { getSandboxService } from '../../../sandbox/SandboxService.js';
 import { SessionId } from '../../../types/branded.js';
 import { getErrorMessage, getErrorName } from '../../../utils/errorUtils.js';
+import { toJsonValue } from '../../../utils/jsonValue.js';
 import { createTool } from '../../core/createTool.js';
 import type {
     BashBackgroundMetadata,
@@ -211,7 +212,7 @@ Before executing commands:
 
     return {
       message: 'No working directory available',
-      llmContent:
+      model:
         'No working directory provided and no filesystem working directory is available.',
     };
   },
@@ -239,9 +240,8 @@ Before executing commands:
   },
 
   // 执行函数
-  async execute(params, context: ExecutionContext): Promise<ToolResult> {
+  async *execute(params, context: ExecutionContext) {
     const { command, timeout = 30000, cwd, env, run_in_background = false } = params;
-    const { updateOutput } = context;
     const signal = context.signal ?? new AbortController().signal;
 
     try {
@@ -253,21 +253,27 @@ Before executing commands:
       const effectiveCommand = sandboxService.wrapCommandForSandbox(command, workDir);
 
       if (sandboxService.isEnabled() && effectiveCommand !== command) {
-        updateOutput?.(`🔒 Executing in sandbox: ${command}`);
+        yield {
+          kind: 'message',
+          content: { summary: `Executing in sandbox: ${command}` },
+        };
       } else {
-        updateOutput?.(`Executing Bash command: ${command}`);
+        yield {
+          kind: 'message',
+          content: { summary: `Executing Bash command: ${command}` },
+        };
       }
 
       if (run_in_background) {
         return executeInBackground(effectiveCommand, workDir, env);
       }
 
-      return executeWithTimeout(effectiveCommand, workDir, env, timeout, signal, updateOutput);
+      return await executeWithTimeout(effectiveCommand, workDir, env, timeout, signal);
     } catch (error: unknown) {
       if (getErrorName(error) === 'AbortError') {
         return {
-          success: false,
-          llmContent: 'Command execution aborted',
+          status: 'error',
+          model: 'Command execution aborted',
           error: {
             type: ToolErrorType.EXECUTION_ERROR,
             message: 'Operation aborted',
@@ -276,8 +282,8 @@ Before executing commands:
       }
 
       return {
-        success: false,
-        llmContent: `Command execution failed: ${getErrorMessage(error)}`,
+        status: 'error',
+        model: `Command execution failed: ${getErrorMessage(error)}`,
         error: {
           type: ToolErrorType.EXECUTION_ERROR,
           message: getErrorMessage(error),
@@ -362,14 +368,14 @@ function executeInBackground(
   };
 
   return {
-    success: true,
-    llmContent: {
+    status: 'success',
+    model: toJsonValue({
       command,
       background: true,
       pid: backgroundProcess.pid,
       bash_id: backgroundProcess.id,
       shell_id: backgroundProcess.id,
-    },
+    }),
     metadata,
   };
 }
@@ -382,8 +388,7 @@ async function executeWithTimeout(
   cwd: string,
   env: Record<string, string> | undefined,
   timeout: number,
-  signal: AbortSignal,
-  _updateOutput?: (output: string) => void
+  signal: AbortSignal
 ): Promise<ToolResult> {
   return new Promise((resolve) => {
     const startTime = Date.now();
@@ -449,8 +454,8 @@ async function executeWithTimeout(
       // 如果超时
       if (timedOut) {
         resolve({
-          success: false,
-          llmContent: `Command execution timed out (${timeout}ms)`,
+          status: 'error',
+          model: `Command execution timed out (${timeout}ms)`,
           error: {
             type: ToolErrorType.TIMEOUT_ERROR,
             message: '命令执行超时',
@@ -469,8 +474,8 @@ async function executeWithTimeout(
       // 如果被中止
       if (signal.aborted) {
         resolve({
-          success: false,
-          llmContent: 'Command execution aborted by user',
+          status: 'error',
+          model: 'Command execution aborted by user',
           error: {
             type: ToolErrorType.EXECUTION_ERROR,
             message: '操作被中止',
@@ -513,8 +518,8 @@ async function executeWithTimeout(
       );
 
       resolve({
-        success: true,
-        llmContent: {
+        status: 'success',
+        model: toJsonValue({
           stdout: truncated.stdout,
           stderr: truncated.stderr,
           execution_time: executionTime,
@@ -523,7 +528,7 @@ async function executeWithTimeout(
           ...(truncated.truncationInfo && {
             truncation_info: truncated.truncationInfo,
           }),
-        },
+        }),
         metadata,
       });
     });
@@ -539,8 +544,8 @@ async function executeWithTimeout(
       }
 
       resolve({
-        success: false,
-        llmContent: `Command execution failed: ${error.message}`,
+        status: 'error',
+        model: `Command execution failed: ${error.message}`,
         error: {
           type: ToolErrorType.EXECUTION_ERROR,
           message: error.message,

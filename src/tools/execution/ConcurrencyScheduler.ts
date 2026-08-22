@@ -5,27 +5,30 @@
  *
  * | Bucket   | 最大并发 | 说明                                       |
  * |----------|---------|--------------------------------------------|
- * | readonly | ∞       | 无副作用工具 (Read/Grep/Glob/WebFetch 等)  |
- * | write    | ∞ *     | 写工具;* 不同文件可并行,同文件由调用方走   |
+ * | readonly | 10      | 无副作用工具 (Read/Grep/Glob/WebFetch 等)  |
+ * | write    | 10 *    | 写工具;* 不同文件可并行,同文件由调用方走   |
  * |          |         | FileLockManager 串行                       |
  * | execute  | 3       | Bash/Shell 限并发,避免系统资源争抢         |
  *
  * 注意: scheduler 只做"桶配额"管理;工具内部的串行化 (如同文件编辑)
  * 仍由 FileLockManager 负责。两者正交。
+ * 调用方应直接提交所有已就绪任务,不要再叠加独立的数值并发限制。
  */
 
 import { ToolKind } from '../types/ToolKind.js';
 
-type PendingTask<T = unknown> = {
-  fn: () => Promise<T>;
-  resolve: (value: T | PromiseLike<T>) => void;
-  reject: (reason?: unknown) => void;
+export interface ConcurrencyLease {
+  release(): void;
+}
+
+interface PendingLease {
+  resolve: (lease: ConcurrencyLease) => void;
 };
 
 interface BucketState {
   inFlight: number;
   maxConcurrent: number;
-  queue: PendingTask[];
+  queue: PendingLease[];
 }
 
 export interface ConcurrencyLimits {
@@ -35,8 +38,8 @@ export interface ConcurrencyLimits {
 }
 
 const DEFAULT_LIMITS: Required<ConcurrencyLimits> = {
-  readonly: Number.POSITIVE_INFINITY,
-  write: Number.POSITIVE_INFINITY,
+  readonly: 10,
+  write: 10,
   execute: 3,
 };
 
@@ -77,23 +80,29 @@ export class ConcurrencyScheduler {
     ConcurrencyScheduler.instance = null;
   }
 
-  schedule<T>(kind: ToolKind, fn: () => Promise<T>): Promise<T> {
+  async acquire(kind: ToolKind): Promise<ConcurrencyLease> {
     const bucket = this.buckets[kind];
     if (!bucket) {
-      return fn();
+      return { release() {} };
     }
 
     if (bucket.inFlight < bucket.maxConcurrent) {
-      return this.runImmediately(bucket, fn);
+      bucket.inFlight++;
+      return this.createLease(bucket);
     }
 
-    return new Promise<T>((resolve, reject) => {
-      bucket.queue.push({
-        fn: fn as () => Promise<unknown>,
-        resolve: resolve as (v: unknown) => void,
-        reject,
-      });
+    return new Promise<ConcurrencyLease>((resolve) => {
+      bucket.queue.push({ resolve });
     });
+  }
+
+  async schedule<T>(kind: ToolKind, fn: () => Promise<T>): Promise<T> {
+    const lease = await this.acquire(kind);
+    try {
+      return await fn();
+    } finally {
+      lease.release();
+    }
   }
 
   getStats(): Record<ToolKind, { inFlight: number; queued: number }> {
@@ -113,31 +122,24 @@ export class ConcurrencyScheduler {
     };
   }
 
-  private async runImmediately<T>(
-    bucket: BucketState,
-    fn: () => Promise<T>,
-  ): Promise<T> {
-    bucket.inFlight++;
-    try {
-      return await fn();
-    } finally {
-      bucket.inFlight--;
-      this.drain(bucket);
-    }
+  private createLease(bucket: BucketState): ConcurrencyLease {
+    let released = false;
+    return {
+      release: () => {
+        if (released) return;
+        released = true;
+        bucket.inFlight--;
+        this.drain(bucket);
+      },
+    };
   }
 
   private drain(bucket: BucketState): void {
     while (bucket.inFlight < bucket.maxConcurrent && bucket.queue.length > 0) {
-      const task = bucket.queue.shift();
-      if (!task) break;
+      const pending = bucket.queue.shift();
+      if (!pending) break;
       bucket.inFlight++;
-      task
-        .fn()
-        .then(task.resolve, task.reject)
-        .finally(() => {
-          bucket.inFlight--;
-          this.drain(bucket);
-        });
+      pending.resolve(this.createLease(bucket));
     }
   }
 }

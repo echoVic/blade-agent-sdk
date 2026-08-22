@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { createContextSnapshot } from '../../../runtime/index.js';
+import { collectToolExecution } from '../../types/index.js';
 import { SessionId } from '../../../types/branded.js';
 import { globTool } from '../search/glob.js';
 import { grepTool } from '../search/grep.js';
@@ -16,13 +17,14 @@ describe('tool runtime context guards', () => {
       case_sensitive: false,
     });
 
-    const result = await invocation.execute(
-      new AbortController().signal,
-      undefined,
-      { contextSnapshot: emptySnapshot },
+    const result = await collectToolExecution(
+      invocation.execute(
+        new AbortController().signal,
+        { contextSnapshot: emptySnapshot },
+      ),
     );
 
-    expect(result.success).toBe(false);
+    expect(result.status).toBe('error');
     expect(result.error?.message).toBe('No filesystem access in current context');
   });
 
@@ -35,13 +37,14 @@ describe('tool runtime context guards', () => {
       multiline: false,
     });
 
-    const result = await invocation.execute(
-      new AbortController().signal,
-      undefined,
-      { contextSnapshot: emptySnapshot },
+    const result = await collectToolExecution(
+      invocation.execute(
+        new AbortController().signal,
+        { contextSnapshot: emptySnapshot },
+      ),
     );
 
-    expect(result.success).toBe(false);
+    expect(result.status).toBe('error');
     expect(result.error?.message).toBe('No filesystem access in current context');
   });
 
@@ -52,13 +55,14 @@ describe('tool runtime context guards', () => {
       run_in_background: false,
     });
 
-    const result = await invocation.execute(
-      new AbortController().signal,
-      undefined,
-      { contextSnapshot: emptySnapshot },
+    const result = await collectToolExecution(
+      invocation.execute(
+        new AbortController().signal,
+        { contextSnapshot: emptySnapshot },
+      ),
     );
 
-    expect(result.success).toBe(false);
+    expect(result.status).toBe('error');
     expect(result.error?.message).toBe('No working directory available');
   });
 });

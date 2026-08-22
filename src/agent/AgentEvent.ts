@@ -10,7 +10,11 @@
 import type { RuntimeContextPatch, RuntimePatch } from '../runtime/index.js';
 import type { Message, ToolCall } from '../services/ChatServiceInterface.js';
 import type { TodoItem } from '../tools/builtin/todo/types.js';
-import type { ToolResult } from '../tools/types/ToolResult.js';
+import type {
+  ToolMessage,
+  ToolProgress,
+  ToolResult,
+} from '../tools/types/ToolResult.js';
 import type { PermissionUpdate } from '../types/permissions.js';
 import type { TokenBudgetSnapshot } from './TokenBudget.js';
 
@@ -113,14 +117,14 @@ export interface ToolResultEvent {
 export interface ToolProgressEvent {
   type: 'tool_progress';
   toolCall: ToolCall;
-  message: string;
+  progress: ToolProgress;
 }
 
 /** 工具输出消息更新 */
 export interface ToolMessageEvent {
   type: 'tool_message';
   toolCall: ToolCall;
-  message: string;
+  content: ToolMessage['content'];
 }
 
 /** 工具运行时 patch 事件 */

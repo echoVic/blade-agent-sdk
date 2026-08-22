@@ -277,13 +277,13 @@ type StreamMessage =
   | { type: 'content'; delta: string; sessionId: string }
   | { type: 'thinking'; delta: string; sessionId: string }
   | { type: 'tool_use'; id: string; name: string; input: unknown; sessionId: string }
-  | { type: 'tool_progress'; id: string; name: string; message: string; sessionId: string }
-  | { type: 'tool_message'; id: string; name: string; message: string; sessionId: string }
+  | { type: 'tool_progress'; id: string; name: string; progress: ToolProgress; sessionId: string }
+  | { type: 'tool_message'; id: string; name: string; content: ToolDisplayContent; sessionId: string }
   | { type: 'tool_runtime_patch'; id: string; name: string; patch: RuntimePatch; sessionId: string }
   | { type: 'tool_context_patch'; id: string; name: string; patch: RuntimeContextPatch; sessionId: string }
   | { type: 'tool_new_messages'; id: string; name: string; messages: Message[]; sessionId: string }
   | { type: 'tool_permission_updates'; id: string; name: string; updates: PermissionUpdate[]; sessionId: string }
-  | { type: 'tool_result'; id: string; name: string; output: unknown; isError?: boolean; sessionId: string }
+  | { type: 'tool_result'; id: string; name: string; output: unknown; display?: ToolDisplayContent; isError?: boolean; sessionId: string }
   | { type: 'usage'; usage: TokenUsage; sessionId: string }
   | { type: 'result'; subtype: 'success' | 'error'; content?: string; error?: string; sessionId: string }
   | { type: 'error'; message: string; code?: string; sessionId: string };
@@ -870,7 +870,7 @@ interface ToolDefinition<TParams = Record<string, unknown>> {
   name: string;
   description: string | ToolDescription;
   parameters: unknown;             // JSON Schema 或 Zod Schema
-  execute: (params: TParams, context: ExecutionContext) => Promise<ToolResult>;
+  execute: (params: TParams, context: ExecutionContext) => ToolExecution;
   kind?: ToolKind;                 // 'readonly' | 'write' | 'execute'
 }
 ```
@@ -893,13 +893,19 @@ const weatherTool: ToolDefinition = {
     required: ['city'],
   },
   kind: 'readonly',
-  execute: async (params, context) => {
+  async *execute(params, context) {
     const { city, unit = 'celsius' } = params as { city: string; unit?: string };
+    yield {
+      kind: 'progress',
+      message: `正在查询 ${city}`,
+    };
     const weather = await fetchWeatherAPI(city, unit);
     return {
-      success: true,
-      llmContent: JSON.stringify(weather),
-      displayContent: `${city}: ${weather.temperature}°${unit === 'celsius' ? 'C' : 'F'}`,
+      status: 'success',
+      model: JSON.stringify(weather),
+      display: {
+        summary: `${city}: ${weather.temperature}°${unit === 'celsius' ? 'C' : 'F'}`,
+      },
     };
   },
 };
@@ -929,12 +935,12 @@ const dbQueryTool = createTool({
     short: '执行只读数据库查询',
     long: '在指定数据库上执行只读 SQL 查询并返回结果',
   },
-  execute: async (params, context) => {
+  async *execute(params, context) {
     const results = await runQuery(params.query, params.database);
     return {
-      success: true,
-      llmContent: JSON.stringify(results),
-      displayContent: `查询返回 ${results.length} 行`,
+      status: 'success',
+      model: JSON.stringify(results),
+      display: { summary: `查询返回 ${results.length} 行` },
     };
   },
 });

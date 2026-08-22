@@ -1,8 +1,9 @@
 import { z } from 'zod';
 import type { SessionId } from '../../../types/branded.js';
+import { toJsonValue } from '../../../utils/jsonValue.js';
 import { getErrorMessage } from '../../../utils/errorUtils.js';
 import { createTool } from '../../core/createTool.js';
-import type { ExecutionContext, ToolResult } from '../../types/index.js';
+import type { ExecutionContext, } from '../../types/index.js';
 import { ToolErrorType, ToolKind } from '../../types/index.js';
 import { lazySchema } from '../../validation/lazySchema.js';
 import { TodoManager } from './TodoManager.js';
@@ -93,31 +94,36 @@ When in doubt, use this tool. Being proactive with task management demonstrates 
 `,
     },
 
-    async execute(params, context: ExecutionContext): Promise<ToolResult> {
+    async *execute(params, context: ExecutionContext) {
       const { todos } = params;
-      const { updateOutput } = context;
-
       try {
         const targetSessionId = context.sessionId || sessionId;
         const manager = TodoManager.getInstance(targetSessionId, configDir);
 
-        updateOutput?.('Updating TODO list...');
+        yield {
+          kind: 'progress',
+          message: 'Updating TODO list...',
+          data: { total: todos.length },
+        };
 
         await manager.updateTodos(todos);
 
         const sortedTodos = manager.getTodos();
         const stats = calculateStats(sortedTodos);
 
-        updateOutput?.(
-          `✅ TODO list updated (${stats.completed}/${stats.total} completed)`
-        );
+        yield {
+          kind: 'progress',
+          message: `TODO list updated (${stats.completed}/${stats.total} completed)`,
+          completed: stats.completed,
+          total: stats.total,
+        };
 
         return {
-          success: true,
-          llmContent: {
+          status: 'success',
+          model: toJsonValue({
             todos: sortedTodos,
             stats,
-          },
+          }),
           metadata: {
             summary: `更新 ${todos.length} 个待办项`,
             stats,
@@ -125,8 +131,8 @@ When in doubt, use this tool. Being proactive with task management demonstrates 
         };
       } catch (error) {
         return {
-          success: false,
-          llmContent: `Update failed: ${getErrorMessage(error)}`,
+          status: 'error',
+          model: `Update failed: ${getErrorMessage(error)}`,
           error: {
             type: ToolErrorType.EXECUTION_ERROR,
             message: getErrorMessage(error),

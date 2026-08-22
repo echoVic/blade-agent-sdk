@@ -105,12 +105,11 @@ export class RuntimePatchManager {
 
   deriveRuntimePatch(
     result: {
-      success: boolean;
-      runtimePatch?: RuntimePatch;
+      status: 'success' | 'error';
       effects?: ToolEffect[];
     },
   ): RuntimePatch | undefined {
-    if (!result.success) {
+    if (result.status === 'error') {
       return undefined;
     }
 
@@ -119,9 +118,6 @@ export class RuntimePatchManager {
       return effectRuntimePatch;
     }
 
-    if (result.runtimePatch) {
-      return result.runtimePatch;
-    }
     return undefined;
   }
 

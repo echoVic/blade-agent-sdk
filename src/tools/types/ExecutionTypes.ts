@@ -67,8 +67,6 @@ export interface ExecutionContext {
   contextSnapshot?: ContextSnapshot;
   skillActivationPaths?: string[];
   signal?: AbortSignal;
-  onProgress?: (message: string) => void | Promise<void>;
-  updateOutput?: (output: string) => void | Promise<void>;
   confirmationHandler?: ConfirmationHandler;
   permissionMode?: PermissionMode;
   bladeConfig?: BladeConfig;

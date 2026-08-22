@@ -89,7 +89,14 @@
 | `ToolDefinition` | 工具定义接口 |
 | `ToolDescription` | 工具描述（短描述/长描述/使用提示/示例） |
 | `ToolDescriptionResolver` | 动态工具描述解析器 |
-| `ToolResult` | 工具执行结果 |
+| `ToolExecution` | 工具的异步生成器执行契约 |
+| `ToolYield` | 工具产生的结构化进度、展示消息或 effect |
+| `ToolProgress` | 可选包含计数、结构化数据和恢复令牌的进度事件 |
+| `ToolMessage` | 面向用户界面的执行消息 |
+| `ToolEffectYield` | 工具产生的运行时 effect 事件 |
+| `ToolResult` | 工具执行的最终成功/失败结果 |
+| `ToolModelContent` | 回写模型上下文的工具内容 |
+| `ToolDisplayContent` | 展示给用户的工具内容 |
 | `ExecutionContext` | 工具执行上下文 |
 | `ToolCallRecord` | 工具调用记录 |
 | `ToolExposureConfig` | 工具暴露配置 |

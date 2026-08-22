@@ -1,6 +1,7 @@
 import { z } from 'zod';
+import { toJsonValue } from '../../../utils/jsonValue.js';
 import { createTool } from '../../core/createTool.js';
-import type { ExecutionContext, ToolResult } from '../../types/index.js';
+import type { ExecutionContext, } from '../../types/index.js';
 import { ToolErrorType, ToolKind } from '../../types/index.js';
 import { lazySchema } from '../../validation/lazySchema.js';
 import { BackgroundShellManager } from './BackgroundShellManager.js';
@@ -26,14 +27,15 @@ export const killShellTool = createTool({
 `,
   },
 
-  async execute(params, _context: ExecutionContext): Promise<ToolResult> {
+  // biome-ignore lint/correctness/useYield: terminal-only tool execution
+  async *execute(params, _context: ExecutionContext) {
     const manager = BackgroundShellManager.getInstance();
     const result = manager.kill(params.shell_id);
 
     if (!result) {
       return {
-        success: false,
-        llmContent: `Shell not found: ${params.shell_id}`,
+        status: 'error',
+        model: `Shell not found: ${params.shell_id}`,
         error: {
           type: ToolErrorType.EXECUTION_ERROR,
           message: 'Shell ID 不存在或已清理',
@@ -43,8 +45,8 @@ export const killShellTool = createTool({
 
     if (!result.success && !result.alreadyExited) {
       return {
-        success: false,
-        llmContent: `Failed to terminate Shell: ${params.shell_id}`,
+        status: 'error',
+        model: `Failed to terminate Shell: ${params.shell_id}`,
         error: {
           type: ToolErrorType.EXECUTION_ERROR,
           message: '发送终止信号失败',
@@ -54,15 +56,15 @@ export const killShellTool = createTool({
     }
 
     return {
-      success: true,
-      llmContent: {
+      status: 'success',
+      model: toJsonValue({
         shell_id: params.shell_id,
         status: result.status,
         already_exited: result.alreadyExited,
         pid: result.pid,
         exit_code: result.exitCode,
         signal: result.signal,
-      },
+      }),
       metadata: { ...result, summary: `终止 Shell ${params.shell_id}` },
     };
   },

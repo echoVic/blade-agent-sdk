@@ -37,12 +37,24 @@ export type {
   ToolDefinition,
   ToolDescription,
   ToolDescriptionResolver,
+  ToolDisplayContent,
   ToolEffect,
+  ToolEffectYield,
   ToolError,
+  ToolExecution,
   ToolExposureConfig,
   ToolExposureMode,
+  ToolModelContent,
+  ToolMessage,
+  ToolProgress,
   ToolResult,
   ToolSchema,
+  ToolYield,
+} from '../tools/types/index.js';
+export {
+  collectToolExecution,
+  completeToolExecution,
+  ToolErrorType,
 } from '../tools/types/index.js';
 export { ToolKind } from '../tools/types/ToolKind.js';
 export type {

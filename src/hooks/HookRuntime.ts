@@ -276,7 +276,7 @@ export class HookRuntime {
       if (managerResult.additionalContext) {
         nextResult = {
           ...nextResult,
-          llmContent: `${nextResult.llmContent}\n\n${managerResult.additionalContext}`,
+          model: `${this.stringifyHookOutput(nextResult.model)}\n\n${managerResult.additionalContext}`,
         };
       }
       if (managerResult.warning) {
@@ -573,10 +573,10 @@ export class HookRuntime {
     }
 
     if (hookResult.additionalContext) {
-      const currentContent = nextResult.llmContent || '';
+      const currentContent = this.stringifyHookOutput(nextResult.model);
       nextResult = {
         ...nextResult,
-        llmContent: `${currentContent}\n\n---\n**Hook Context:**\n${hookResult.additionalContext}`,
+        model: `${currentContent}\n\n---\n**Hook Context:**\n${hookResult.additionalContext}`,
       };
     }
 
@@ -584,7 +584,7 @@ export class HookRuntime {
       const renderedOutput = this.stringifyHookOutput(hookResult.modifiedOutput);
       nextResult = {
         ...nextResult,
-        llmContent: renderedOutput,
+        model: renderedOutput,
       };
     }
 
@@ -603,16 +603,16 @@ export class HookRuntime {
     }
 
     let nextResult = result;
-    let nextOutput: string | object | JsonValue = result.llmContent;
+    let nextOutput: JsonValue = result.model;
     const outputs = await this.dispatchObserved(
       event,
       buildHookInput(this.options.sessionId, event, {
         toolName,
         toolInput: input,
         toolOutput: nextOutput,
-        error: result.success
+        error: result.status === 'success'
           ? undefined
-          : new Error(result.error?.message || `Tool "${toolName}" failed`),
+          : new Error(result.error.message),
       }),
     );
 
@@ -631,11 +631,11 @@ export class HookRuntime {
       }
     }
 
-    if (nextOutput !== result.llmContent) {
+    if (nextOutput !== result.model) {
       const renderedOutput = this.stringifyHookOutput(nextOutput);
       nextResult = {
         ...nextResult,
-        llmContent: renderedOutput,
+        model: renderedOutput,
       };
     }
 

@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import type { Memory } from '../../../memory/MemoryTypes.js';
 import type { MemoryManager } from '../../../memory/MemoryManager.js';
+import { toJsonValue } from '../../../utils/jsonValue.js';
 import { createTool } from '../../core/createTool.js';
 import { ToolErrorType } from '../../types/ToolResult.js';
 import { ToolKind } from '../../types/ToolKind.js';
@@ -48,13 +49,14 @@ Operations:
 - index: Read the derived memory index content`,
     },
     schema: lazySchema(() => memoryReadSchema),
-    execute: async (params) => {
+    // biome-ignore lint/correctness/useYield: terminal-only tool execution
+    async *execute(params) {
       switch (params.operation) {
         case 'list': {
           const summaries = (await manager.list()).map(toMemorySummary);
           return {
-            success: true,
-            llmContent: summaries,
+            status: 'success',
+            model: toJsonValue(summaries),
             metadata: {
               summary: summaries.length === 0
                 ? '记忆列表为空'
@@ -66,8 +68,8 @@ Operations:
           const memory = await manager.get(params.name);
           if (!memory) {
             return {
-              success: false,
-              llmContent: `Memory "${params.name}" not found`,
+              status: 'error',
+              model: `Memory "${params.name}" not found`,
               error: {
                 type: ToolErrorType.EXECUTION_ERROR,
                 message: `Memory "${params.name}" not found`,
@@ -78,8 +80,8 @@ Operations:
             };
           }
           return {
-            success: true,
-            llmContent: memory,
+            status: 'success',
+            model: toJsonValue(memory),
             metadata: {
               summary: `读取记忆: ${params.name}`,
             },
@@ -88,8 +90,8 @@ Operations:
         case 'search': {
           const summaries = (await manager.search(params.query)).map(toMemorySummary);
           return {
-            success: true,
-            llmContent: summaries,
+            status: 'success',
+            model: toJsonValue(summaries),
             metadata: {
               summary: `搜索记忆: ${summaries.length} 条结果`,
             },
@@ -98,8 +100,8 @@ Operations:
         case 'index': {
           const content = await manager.readIndexContent();
           return {
-            success: true,
-            llmContent: content,
+            status: 'success',
+            model: content,
             metadata: {
               summary: '读取所有记忆',
             },
@@ -108,8 +110,8 @@ Operations:
       }
 
       return {
-        success: false,
-        llmContent: `Unsupported operation: ${(params as { operation: string }).operation}`,
+        status: 'error',
+        model: `Unsupported operation: ${(params as { operation: string }).operation}`,
         error: {
           type: ToolErrorType.EXECUTION_ERROR,
           message: `Unsupported operation: ${(params as { operation: string }).operation}`,

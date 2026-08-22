@@ -4,7 +4,7 @@ import { PermissionMode } from '../../../types/common.js';
 import { ToolCatalog } from '../../catalog/ToolCatalog.js';
 import { createTool } from '../../core/createTool.js';
 import { ToolRegistry } from '../../registry/ToolRegistry.js';
-import { ToolKind } from '../../types/index.js';
+import { completeToolExecution, ToolKind } from '../../types/index.js';
 import { ToolExposurePlanner } from '../ToolExposurePlanner.js';
 
 function registerTool(registry: ToolRegistry, tool: ReturnType<typeof createTool>) {
@@ -22,7 +22,7 @@ describe('ToolExposurePlanner', () => {
         kind: ToolKind.ReadOnly,
         description: { short: 'Read tool' },
         schema: z.object({}),
-        execute: async () => ({ success: true, llmContent: '' }),
+        execute: () => completeToolExecution({ status: 'success', model: '' }),
       }),
     );
     registerTool(
@@ -33,7 +33,7 @@ describe('ToolExposurePlanner', () => {
         kind: ToolKind.Write,
         description: { short: 'Write tool' },
         schema: z.object({}),
-        execute: async () => ({ success: true, llmContent: '' }),
+        execute: () => completeToolExecution({ status: 'success', model: '' }),
       }),
     );
 
@@ -63,7 +63,7 @@ describe('ToolExposurePlanner', () => {
         }),
         description: { short: 'Hinted readonly tool' },
         schema: z.object({}),
-        execute: async () => ({ success: true, llmContent: '' }),
+        execute: () => completeToolExecution({ status: 'success', model: '' }),
       }),
     );
     registerTool(
@@ -78,7 +78,7 @@ describe('ToolExposurePlanner', () => {
         }),
         description: { short: 'Hinted non-readonly tool' },
         schema: z.object({}),
-        execute: async () => ({ success: true, llmContent: '' }),
+        execute: () => completeToolExecution({ status: 'success', model: '' }),
       }),
     );
 
@@ -105,7 +105,7 @@ describe('ToolExposurePlanner', () => {
           kind: name === 'Read' ? ToolKind.ReadOnly : ToolKind.Execute,
           description: { short: `${name} tool` },
           schema: z.object({}),
-          execute: async () => ({ success: true, llmContent: '' }),
+          execute: () => completeToolExecution({ status: 'success', model: '' }),
         }),
       );
     }
@@ -142,7 +142,7 @@ describe('ToolExposurePlanner', () => {
           discoveryHint: 'Use when you need heavyweight inspection.',
         },
         schema: z.object({}),
-        execute: async () => ({ success: true, llmContent: '' }),
+        execute: () => completeToolExecution({ status: 'success', model: '' }),
       }),
     );
     registerTool(
@@ -157,7 +157,7 @@ describe('ToolExposurePlanner', () => {
           alwaysLoad: true,
         },
         schema: z.object({}),
-        execute: async () => ({ success: true, llmContent: '' }),
+        execute: () => completeToolExecution({ status: 'success', model: '' }),
       }),
     );
 
@@ -191,7 +191,7 @@ describe('ToolExposurePlanner', () => {
       kind: ToolKind.ReadOnly,
       description: { short: 'Builtin tool' },
       schema: z.object({}),
-      execute: async () => ({ success: true, llmContent: '' }),
+      execute: () => completeToolExecution({ status: 'success', model: '' }),
     });
     const remoteMcpTool = createTool({
       name: 'RemoteTool',
@@ -199,7 +199,7 @@ describe('ToolExposurePlanner', () => {
       kind: ToolKind.ReadOnly,
       description: { short: 'Remote tool' },
       schema: z.object({}),
-      execute: async () => ({ success: true, llmContent: '' }),
+      execute: () => completeToolExecution({ status: 'success', model: '' }),
     });
 
     catalog.register(builtinTool, {
@@ -241,7 +241,7 @@ describe('ToolExposurePlanner', () => {
         mode: 'deferred',
       },
       schema: z.object({}),
-      execute: async () => ({ success: true, llmContent: '' }),
+      execute: () => completeToolExecution({ status: 'success', model: '' }),
     });
 
     catalog.register(deferredTool, {

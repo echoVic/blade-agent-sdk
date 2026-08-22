@@ -42,14 +42,14 @@ access their contents.`,
     },
     schema: lazySchema(() => ListMcpResourcesParamsSchema),
 
-    async execute(params: ListMcpResourcesParams) {
+    async *execute(params: ListMcpResourcesParams) {
       try {
         const servers = registry.getAllServers();
 
       if (servers.size === 0) {
         return {
-          success: true,
-          llmContent: 'No MCP servers are currently connected.',
+          status: 'success',
+          model: 'No MCP servers are currently connected.',
           metadata: {
             summary: '无 MCP 服务器',
             resources: [],
@@ -98,8 +98,8 @@ access their contents.`,
           : 'No resources found from any connected MCP server.';
 
         return {
-          success: true,
-          llmContent: message + (errors.length > 0 ? `\n\nErrors:\n${errors.join('\n')}` : ''),
+          status: 'success',
+          model: message + (errors.length > 0 ? `\n\nErrors:\n${errors.join('\n')}` : ''),
           metadata: {
             summary: `列出 ${allResources.length} 个 MCP 资源`,
             resources: [],
@@ -121,8 +121,8 @@ access their contents.`,
       const summary = `Found ${allResources.length} resource(s) from ${new Set(allResources.map((r) => r.serverName)).size} server(s)`;
 
       return {
-        success: true,
-        llmContent: `${summary}\n\n${resourceList}`,
+        status: 'success',
+        model: `${summary}\n\n${resourceList}`,
         metadata: {
           summary: `列出 ${allResources.length} 个 MCP 资源`,
           resources: allResources,
@@ -133,8 +133,8 @@ access their contents.`,
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       return {
-        success: false,
-        llmContent: `Failed to list MCP resources: ${message}`,
+        status: 'error',
+        model: `Failed to list MCP resources: ${message}`,
         error: {
           message,
           type: ToolErrorType.EXECUTION_ERROR,

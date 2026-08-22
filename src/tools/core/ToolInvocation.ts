@@ -1,16 +1,16 @@
+import { ToolExecutionError } from '../../errors/ToolExecutionError.js';
 import type { JsonObject } from '../../types/common.js';
 import {
   type ExecutionContext,
+  type ToolExecution,
   type ToolInvocation,
-  type ToolResult,
   type ToolValidationError,
   validationErrorToToolResult,
 } from '../types/index.js';
 
 export class UnifiedToolInvocation<
   TParams = JsonObject,
-  TResult extends ToolResult = ToolResult,
-> implements ToolInvocation<TParams, TResult> {
+> implements ToolInvocation<TParams> {
   private validationPassed = false;
 
   constructor(
@@ -19,7 +19,7 @@ export class UnifiedToolInvocation<
     private readonly executeFn: (
       params: TParams,
       context: ExecutionContext
-    ) => Promise<TResult>,
+    ) => ToolExecution,
     private readonly validateFn?: (
       params: TParams,
       context: ExecutionContext
@@ -57,7 +57,6 @@ export class UnifiedToolInvocation<
 
     const validationResult = await this.validateFn(this.params, {
       signal: context.signal,
-      updateOutput: context.updateOutput,
       ...context,
     });
 
@@ -72,26 +71,38 @@ export class UnifiedToolInvocation<
   /**
    * 执行工具
    * @param signal - 中止信号
-   * @param updateOutput - 输出更新回调
    * @param context - 额外的执行上下文（包含 confirmationHandler、permissionMode 等）
    */
-  async execute(
+  async *execute(
     signal: AbortSignal,
-    updateOutput?: (output: string) => void,
     context?: Partial<ExecutionContext>
-  ): Promise<TResult> {
+  ): ToolExecution {
     // 合并基础 context 和额外字段
     const fullContext: ExecutionContext = {
       signal,
-      updateOutput,
       ...context, // 包含 confirmationHandler, permissionMode, userId, sessionId 等
     };
 
     const validationError = await this.validate(fullContext);
     if (validationError) {
-      return validationErrorToToolResult(validationError) as TResult;
+      return validationErrorToToolResult(validationError);
     }
 
-    return this.executeFn(this.params, fullContext);
+    const execution = this.executeFn(this.params, fullContext);
+    if (!isToolExecution(execution)) {
+      throw new ToolExecutionError(
+        this.toolName,
+        'execute() must return an AsyncGenerator',
+      );
+    }
+
+    return yield* execution;
   }
+}
+
+function isToolExecution(value: unknown): value is ToolExecution {
+  return typeof value === 'object'
+    && value !== null
+    && Symbol.asyncIterator in value
+    && typeof (value as { next?: unknown }).next === 'function';
 }

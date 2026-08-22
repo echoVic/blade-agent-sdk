@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import type { MemoryManager } from '../../../memory/MemoryManager.js';
+import { toJsonValue } from '../../../utils/jsonValue.js';
 import { createTool } from '../../core/createTool.js';
 import { ToolErrorType } from '../../types/ToolResult.js';
 import { ToolKind } from '../../types/ToolKind.js';
@@ -35,7 +36,8 @@ Operations:
 Memory types: user, feedback, project, reference`,
     },
     schema: lazySchema(() => memoryWriteSchema),
-    execute: async (params) => {
+    // biome-ignore lint/correctness/useYield: terminal-only tool execution
+    async *execute(params) {
       switch (params.operation) {
         case 'save': {
           const memory = await manager.save({
@@ -45,8 +47,8 @@ Memory types: user, feedback, project, reference`,
             body: params.body,
           });
           return {
-            success: true,
-            llmContent: memory,
+            status: 'success',
+            model: toJsonValue(memory),
             metadata: {
               summary: `保存记忆: ${params.name}`,
             },
@@ -55,8 +57,8 @@ Memory types: user, feedback, project, reference`,
         case 'delete': {
           await manager.delete(params.name);
           return {
-            success: true,
-            llmContent: { name: params.name, deleteRequested: true },
+            status: 'success',
+            model: { name: params.name, deleteRequested: true },
             metadata: {
               summary: `删除记忆: ${params.name}`,
             },
@@ -65,8 +67,8 @@ Memory types: user, feedback, project, reference`,
       }
 
       return {
-        success: false,
-        llmContent: `Unsupported operation: ${(params as { operation: string }).operation}`,
+        status: 'error',
+        model: `Unsupported operation: ${(params as { operation: string }).operation}`,
         error: {
           type: ToolErrorType.EXECUTION_ERROR,
           message: `Unsupported operation: ${(params as { operation: string }).operation}`,

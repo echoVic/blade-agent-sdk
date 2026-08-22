@@ -58,14 +58,12 @@ describe('agent loop decisions', () => {
       function: { name, arguments: '{}' },
     });
 
-    it('should return parallel for empty calls and serial for single/multi execute calls', () => {
-      const registry = { get: () => ({ kind: 'execute' }) };
-
-      expect(planToolExecution([], registry).mode).toBe('parallel');
-      expect(planToolExecution([toolCall('ReadFile')], registry).mode).toBe('serial');
+    it('should return parallel for empty/multi calls and serial for a single call', () => {
+      expect(planToolExecution([]).mode).toBe('parallel');
+      expect(planToolExecution([toolCall('ReadFile')]).mode).toBe('serial');
       expect(
-        planToolExecution([toolCall('ReadA'), toolCall('ReadB')], registry).mode,
-      ).toBe('serial');
+        planToolExecution([toolCall('ReadA'), toolCall('ReadB')]).mode,
+      ).toBe('parallel');
     });
   });
 

@@ -1,7 +1,11 @@
-import { describe, expect, it, vi, type Mock } from 'vitest';
+import { describe, expect, it, type Mock, vi } from 'vitest';
 import type { Message } from '../../services/ChatServiceInterface.js';
 import { CannotRetryError } from '../../services/RetryPolicy.js';
-import type { ToolResult } from '../../tools/types/index.js';
+import {
+  completeToolExecution,
+  type ToolEffect,
+  type ToolResult,
+} from '../../tools/types/index.js';
 import { SessionId } from '../../types/branded.js';
 import type { AgentEvent } from '../AgentEvent.js';
 import type { AgentLoopConfig } from '../AgentLoop.js';
@@ -12,16 +16,25 @@ import type { LoopResult } from '../types.js';
 
 // ===== Mock Factories =====
 
-function createMockExecutionPipeline(results?: Record<string, ToolResult>) {
+type MockToolResult = ToolResult & { testEffects?: ToolEffect[] };
+
+function createMockExecutionPipeline(results?: Record<string, MockToolResult>) {
   return {
     getRegistry: () => ({
       get: (name: string) => ({ kind: 'execute', name }),
     }),
-    execute: vi.fn(async (toolName: string, _params: unknown, _ctx: unknown) => {
-      if (results?.[toolName]) return results[toolName];
+    execute: vi.fn(async function* (toolName: string) {
+      const configured = results?.[toolName];
+      if (configured) {
+        for (const effect of configured.testEffects ?? []) {
+          yield { kind: 'effect' as const, effect };
+        }
+        const { testEffects: _, ...result } = configured;
+        return result;
+      }
       return {
-        success: true,
-        llmContent: `Result of ${toolName}`,
+        status: 'success',
+        model: `Result of ${toolName}`,
       } as ToolResult;
     }),
   } as unknown as AgentLoopConfig['executionPipeline'];
@@ -272,19 +285,19 @@ describe('agentLoop', () => {
         releaseFirstExecution = resolve;
       });
 
-      // Use readonly kind so planToolExecution picks parallel mode
       const pipeline = {
         getRegistry: () => ({
           get: (_name: string) => ({ kind: 'readonly', name: _name }),
         }),
-        execute: vi.fn(async (toolName: string) => {
+        execute: vi.fn(async function* (toolName: string) {
         executeCount++;
+        yield { kind: 'progress', data: { toolName } };
         if (toolName === 'ReadA') {
           await firstExecutionGate;
         }
         return {
-          success: true,
-          llmContent: `Result of ${toolName}`,
+          status: 'success',
+          model: `Result of ${toolName}`,
         } as ToolResult;
       }),
       } as unknown as AgentLoopConfig['executionPipeline'];
@@ -316,9 +329,12 @@ describe('agentLoop', () => {
 
     it('should handle tool execution failure gracefully', async () => {
       const pipeline = createMockExecutionPipeline();
-      (pipeline.execute as Mock).mockImplementation(async () => {
-        throw new Error('Permission denied');
-      });
+      (pipeline.execute as Mock).mockImplementation(
+        // biome-ignore lint/correctness/useYield: exercises a terminal execution failure
+        async function* () {
+          throw new Error('Permission denied');
+        },
+      );
 
       const chatService = createMockChatService([
         {
@@ -342,8 +358,8 @@ describe('agentLoop', () => {
     it('should exit loop when tool sets shouldExitLoop', async () => {
       const pipeline = createMockExecutionPipeline({
         ExitTool: {
-          success: true,
-          llmContent: 'Exiting',
+          status: 'success',
+          model: 'Exiting',
           metadata: { shouldExitLoop: true },
         },
       });
@@ -392,10 +408,10 @@ describe('agentLoop', () => {
       ]);
 
       const pipeline = createMockExecutionPipeline();
-      (pipeline.execute as Mock).mockImplementation(async () => {
+      (pipeline.execute as Mock).mockImplementation(() => {
         // Abort during tool execution
         controller.abort();
-        return { success: true, llmContent: 'ok' } as ToolResult;
+        return completeToolExecution({ status: 'success', model: 'ok' });
       });
 
       const config = baseConfig({
@@ -893,7 +909,7 @@ describe('agentLoop', () => {
       expect((toolMsg as Message & { name?: string }).name).toBe('ReadFile');
     });
 
-    it('should append ToolResult.newMessages after the tool result message', async () => {
+    it('should append yielded newMessages after the tool result message', async () => {
       const messages: Message[] = [{ role: 'user' as const, content: 'Do the thing' }];
       const chatService = createMockChatService([
         {
@@ -909,11 +925,16 @@ describe('agentLoop', () => {
 
       const executionPipeline = createMockExecutionPipeline({
         Skill: {
-          success: true,
-          llmContent: 'tool-body',
-          newMessages: [
-            { role: 'assistant', content: 'Injected assistant context' },
-            { role: 'system', content: 'Injected system context' },
+          status: 'success',
+          model: 'tool-body',
+          testEffects: [
+            {
+              type: 'newMessages',
+              messages: [
+                { role: 'assistant', content: 'Injected assistant context' },
+                { role: 'system', content: 'Injected system context' },
+              ],
+            },
           ],
         },
       });
