@@ -9,6 +9,8 @@ import type {
   DurableEventStore,
   DurableEventSubscriptionMessage,
   DurableEventSubscriptionOptions,
+  DurableModelAttemptProjection,
+  DurableModelOutcomeReconciliationCommand,
   DurableRequestRecoveryOrigin,
   DurableRequestRecoveryKind,
   DurableRequestOutcomeReconciliationCommand,
@@ -70,6 +72,7 @@ import {
   InputPriority,
   JsonlDurableEventStore,
   MemoryManager,
+  ModelAttemptId,
   PermissionRequestId,
   projectDurableSession,
   RequestId,
@@ -101,9 +104,10 @@ describe('root exports', () => {
     expect(new SessionInputError('TEST', 'message')).toBeInstanceOf(Error);
     expect(ToolErrorType.INTERRUPTED).toBe('interrupted');
     expect(ToolSideEffect.NON_IDEMPOTENT).toBe('non_idempotent');
-    expect(DURABLE_EVENT_SCHEMA_VERSION).toBe(2);
+    expect(DURABLE_EVENT_SCHEMA_VERSION).toBe(3);
     expect(DURABLE_EVENT_CURSOR_VERSION).toBe(1);
     expect(DurableEventType.REQUEST_ACCEPTED).toBe('request_accepted');
+    expect(DurableEventType.MODEL_REQUEST_STARTED).toBe('model_request_started');
     expect(DurableEventSubscription.open).toBeTypeOf('function');
     expect(DurableEventSubscriptionError).toBeDefined();
     expect(durableEventCursor).toBeTypeOf('function');
@@ -111,6 +115,7 @@ describe('root exports', () => {
     expect(CommandId('command-1')).toBe('command-1');
     expect(EventId('event-1')).toBe('event-1');
     expect(EventSequence(1)).toBe(1);
+    expect(ModelAttemptId('model-attempt-1')).toBe('model-attempt-1');
     expect(ToolAttemptId('attempt-1')).toBe('attempt-1');
     expect(TurnId('turn-1')).toBe('turn-1');
     expect(PermissionRequestId('permission-1')).toBe('permission-1');
@@ -168,6 +173,7 @@ describe('root exports', () => {
       | 'resume_turn'
       | 'resolve_permissions'
       | 'reconcile_tool_outcomes'
+      | 'reconcile_model_outcome'
       | 'reconcile_request_inputs'
       | 'reconcile_request_outcome'
     >();
@@ -177,6 +183,12 @@ describe('root exports', () => {
     expectTypeOf<DurableAcceptedRequestRecovery['model']>().toEqualTypeOf<string>();
     expectTypeOf<DurableRequestRecoveryOrigin['turnId']>().toEqualTypeOf<TurnId>();
     expectTypeOf<DurableRequestRecoveryKind>().toEqualTypeOf<'turn' | 'pre_turn_request'>();
+    expectTypeOf<DurableModelAttemptProjection['modelAttemptId']>().toEqualTypeOf<
+      ReturnType<typeof ModelAttemptId>
+    >();
+    expectTypeOf<
+      DurableModelOutcomeReconciliationCommand['modelAttemptId']
+    >().toEqualTypeOf<ReturnType<typeof ModelAttemptId>>();
     expectTypeOf<DurableRequestRolloverCommand['inputId']>().toEqualTypeOf<InputId>();
     expectTypeOf<DurableRequestRolloverCommand['sourceLastTurn']>().toEqualTypeOf<number>();
     expectTypeOf<DurableRequestRolloverCommand['recoveryTurnId']>().toEqualTypeOf<TurnId>();

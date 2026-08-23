@@ -1,4 +1,10 @@
-import type { MessageId, PermissionRequestId, SessionId, ToolUseId } from '@/types/branded.js';
+import type {
+  MessageId,
+  ModelAttemptId,
+  PermissionRequestId,
+  SessionId,
+  ToolUseId,
+} from '@/types/branded.js';
 import type { IBackgroundAgentManager } from '../../agent/types.js';
 import type { ContextSnapshot } from '../../runtime/index.js';
 import type { BladeConfig, JsonObject, PermissionMode } from '../../types/common.js';
@@ -80,6 +86,8 @@ export interface ToolInvocationLifecycle {
 export interface ToolScheduledLifecycle {
   toolCallId: ToolUseId;
   toolName: string;
+  modelAttemptId?: ModelAttemptId;
+  modelInput: JsonObject;
   input: JsonObject;
   sideEffect: ToolSideEffect;
   interruptBehavior: 'block' | 'cancel';

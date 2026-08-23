@@ -8,6 +8,7 @@ import {
   EventId,
   type EventSequence,
   InputId,
+  ModelAttemptId,
   PermissionRequestId,
   RequestId,
   SessionId,
@@ -34,6 +35,7 @@ const sessionId = SessionId('recovery-session');
 const requestId = RequestId('recovery-request');
 const inputId = InputId('recovery-input');
 const turnId = TurnId('recovery-turn');
+const modelAttemptId = ModelAttemptId('recovery-model-attempt');
 const toolAttemptId = ToolAttemptId('recovery-attempt');
 const toolCallId = ToolUseId('recovery-call');
 const permissionRequestId = PermissionRequestId('recovery-permission');
@@ -42,6 +44,39 @@ const rolloverInputId = InputId('rollover-input');
 const requestRolloverTurnId = TurnId('request-rollover-turn');
 
 const roots: string[] = [];
+
+function completedModelToolEvents(
+  toolCalls: Array<{
+    id: ToolUseId;
+    name: string;
+    arguments: string;
+  }>,
+): DurableEventDraft[] {
+  return [
+    {
+      type: DurableEventType.MODEL_REQUEST_STARTED,
+      requestId,
+      turnId,
+      modelAttemptId,
+      data: {
+        model: 'accepted-model',
+        streaming: false,
+      },
+    },
+    {
+      type: DurableEventType.MODEL_REQUEST_COMPLETED,
+      requestId,
+      turnId,
+      modelAttemptId,
+      data: {
+        response: {
+          content: '',
+          toolCalls,
+        },
+      },
+    },
+  ];
+}
 
 function createStore(): JsonlDurableEventStore {
   const root = mkdtempSync(join(tmpdir(), 'durable-recovery-coordinator-'));
@@ -151,6 +186,50 @@ class StartTurnBeforeRequestRolloverStore implements DurableEventStore {
   }
 }
 
+class SettleModelBeforeReconciliationStore implements DurableEventStore {
+  private injected = false;
+
+  constructor(private readonly delegate: DurableEventStore) {}
+
+  async append(
+    targetSessionId: SessionId,
+    events: readonly DurableEventDraft[],
+    options?: DurableEventAppendOptions,
+  ) {
+    if (
+      !this.injected
+      && events.some((event) => event.type === DurableEventType.MODEL_REQUEST_COMPLETED)
+    ) {
+      this.injected = true;
+      await this.delegate.append(
+        targetSessionId,
+        [
+          {
+            type: DurableEventType.MODEL_REQUEST_FAILED,
+            commandId: CommandId('competing-model-outcome'),
+            requestId,
+            turnId,
+            modelAttemptId,
+            data: {
+              error: { message: 'provider confirmed failure' },
+            },
+          },
+        ],
+        options,
+      );
+    }
+    return this.delegate.append(targetSessionId, events, options);
+  }
+
+  read(targetSessionId: SessionId, options?: DurableEventReadOptions) {
+    return this.delegate.read(targetSessionId, options);
+  }
+
+  getHeadSequence(targetSessionId: SessionId): Promise<EventSequence | null> {
+    return this.delegate.getHeadSequence(targetSessionId);
+  }
+}
+
 async function createJournal(
   store: DurableEventStore,
   options: {
@@ -203,16 +282,25 @@ async function createJournal(
               type: DurableEventType.TURN_STARTED,
               requestId,
               turnId,
-              data: { turn: 1, model: 'test-model' },
+              data: { turn: 1, model: 'accepted-model' },
             },
+            ...completedModelToolEvents([
+              {
+                id: toolCallId,
+                name: 'Deploy',
+                arguments: '{"environment":"production"}',
+              },
+            ]),
             {
               type: DurableEventType.TOOL_SCHEDULED,
               requestId,
               turnId,
+              modelAttemptId,
               toolAttemptId,
               data: {
                 toolCallId,
                 toolName: 'Deploy',
+                modelInput: { environment: 'production' },
                 input: { environment: 'production' },
                 sideEffect: options.sideEffect ?? ('non_idempotent' as const),
                 interruptBehavior: 'block' as const,
@@ -903,6 +991,413 @@ describe('DurableSessionRecoveryCoordinator', () => {
     ).rejects.toThrow(/different events/);
   });
 
+  it('reconciles an unknown model response idempotently and carries it into rollover', async () => {
+    const store = createStore();
+    const journal = await createJournal(store, { requestStarted: true });
+    await journal.commit({
+      commandId: CommandId('start-model-request'),
+      events: [
+        {
+          type: DurableEventType.TURN_STARTED,
+          requestId,
+          turnId,
+          data: { turn: 1, model: 'accepted-model' },
+        },
+        {
+          type: DurableEventType.MODEL_REQUEST_STARTED,
+          requestId,
+          turnId,
+          modelAttemptId,
+          data: {
+            model: 'accepted-model',
+            streaming: true,
+          },
+        },
+      ],
+    });
+    const first = await DurableSessionRecoveryCoordinator.open(store, sessionId);
+    const second = await DurableSessionRecoveryCoordinator.open(store, sessionId);
+    expect(first.getRecoveryPlan()).toMatchObject({
+      action: 'reconcile_model_outcome',
+      requestId,
+      turnId,
+    });
+    const command = {
+      commandId: CommandId('reconcile-model-response'),
+      requestId,
+      turnId,
+      modelAttemptId,
+      outcome: {
+        status: 'completed' as const,
+        response: {
+          content: 'Use the inspected state',
+          toolCalls: [
+            {
+              id: ToolUseId('recovered-tool-call'),
+              name: 'Read',
+              arguments: '{"file_path":"/tmp/state"}',
+            },
+          ],
+          usage: {
+            promptTokens: 100,
+            completionTokens: 20,
+            totalTokens: 120,
+          },
+        },
+      },
+    };
+
+    const results = await Promise.all([
+      first.reconcileModelOutcome(command),
+      second.reconcileModelOutcome(command),
+    ]);
+
+    expect(results.map((result) => result.commit.status).sort()).toEqual([
+      'committed',
+      'reconciled',
+    ]);
+    expect(results.every((result) => result.recoveryPlan.action === 'resume_turn')).toBe(true);
+    expect(
+      first.getProjection().activeRequest?.activeTurn?.modelAttempts,
+    ).toEqual([
+      expect.objectContaining({
+        modelAttemptId,
+        status: 'completed',
+        response: expect.objectContaining({
+          content: 'Use the inspected state',
+        }),
+      }),
+    ]);
+
+    const rollover = await first.prepareTurnRecovery({
+      commandId: CommandId('rollover-after-model-response'),
+      requestId,
+      turnId,
+      recoveryRequestId: rolloverRequestId,
+      recoveryInputId: rolloverInputId,
+    });
+    expect(rollover.continuation).toContain('"modelAttempts"');
+    expect(rollover.continuation).toContain('Use the inspected state');
+    expect(rollover.continuation).toContain(
+      'Treat completed model responses as authoritative prior output',
+    );
+    expect(rollover.recoveryPlan.action).toBe('resume_request');
+
+    await expect(
+      first.reconcileModelOutcome({
+        ...command,
+        outcome: {
+          status: 'completed',
+          response: { content: 'different response' },
+        },
+      }),
+    ).rejects.toThrow(/different events/);
+  });
+
+  it('reconciles the active model before exposing an unknown tool outcome', async () => {
+    const store = createStore();
+    const journal = await createJournal(store, { requestStarted: true });
+    await journal.commit({
+      commandId: CommandId('start-streaming-model-and-tool'),
+      events: [
+        {
+          type: DurableEventType.TURN_STARTED,
+          requestId,
+          turnId,
+          data: { turn: 1, model: 'accepted-model' },
+        },
+        {
+          type: DurableEventType.MODEL_REQUEST_STARTED,
+          requestId,
+          turnId,
+          modelAttemptId,
+          data: {
+            model: 'accepted-model',
+            streaming: true,
+          },
+        },
+        {
+          type: DurableEventType.TOOL_SCHEDULED,
+          requestId,
+          turnId,
+          modelAttemptId,
+          toolAttemptId,
+          data: {
+            toolCallId,
+            toolName: 'Deploy',
+            modelInput: { environment: 'production' },
+            input: { environment: 'production' },
+            sideEffect: 'non_idempotent',
+            interruptBehavior: 'block',
+          },
+        },
+        {
+          type: DurableEventType.TOOL_STARTED,
+          requestId,
+          turnId,
+          toolAttemptId,
+          data: {
+            toolCallId,
+            toolName: 'Deploy',
+            input: { environment: 'production' },
+            sideEffect: 'non_idempotent',
+          },
+        },
+      ],
+    });
+    const coordinator = new DurableSessionRecoveryCoordinator(journal);
+    expect(coordinator.getRecoveryPlan().action).toBe('reconcile_model_outcome');
+
+    const result = await coordinator.reconcileModelOutcome({
+      commandId: CommandId('settle-streaming-model'),
+      requestId,
+      turnId,
+      modelAttemptId,
+      outcome: {
+        status: 'failed',
+        error: { message: 'stream ended unexpectedly' },
+      },
+    });
+
+    expect(result.recoveryPlan).toMatchObject({
+      action: 'reconcile_tool_outcomes',
+      activeModelAttempt: null,
+      unknownToolAttempts: [{ toolAttemptId }],
+    });
+  });
+
+  it('discards an unstarted tool when its model attempt has no confirmed response', async () => {
+    const store = createStore();
+    const journal = await createJournal(store, { requestStarted: true });
+    await journal.commit({
+      commandId: CommandId('start-unconfirmed-model-tool'),
+      events: [
+        {
+          type: DurableEventType.TURN_STARTED,
+          requestId,
+          turnId,
+          data: { turn: 1, model: 'accepted-model' },
+        },
+        {
+          type: DurableEventType.MODEL_REQUEST_STARTED,
+          requestId,
+          turnId,
+          modelAttemptId,
+          data: {
+            model: 'accepted-model',
+            streaming: true,
+          },
+        },
+        {
+          type: DurableEventType.TOOL_SCHEDULED,
+          requestId,
+          turnId,
+          modelAttemptId,
+          toolAttemptId,
+          data: {
+            toolCallId,
+            toolName: 'Read',
+            modelInput: { file_path: '/tmp/input' },
+            input: { file_path: '/tmp/input' },
+            sideEffect: 'pure',
+            interruptBehavior: 'cancel',
+          },
+        },
+      ],
+    });
+    const coordinator = new DurableSessionRecoveryCoordinator(journal);
+    const reconciled = await coordinator.reconcileModelOutcome({
+      commandId: CommandId('fail-unconfirmed-model-tool'),
+      requestId,
+      turnId,
+      modelAttemptId,
+      outcome: {
+        status: 'failed',
+        error: { message: 'provider stream failed' },
+      },
+    });
+    expect(reconciled.recoveryPlan).toMatchObject({
+      action: 'resume_turn',
+      retryableToolAttempts: [],
+      cancelableToolAttempts: [{ toolAttemptId }],
+    });
+
+    const rollover = await coordinator.prepareTurnRecovery({
+      commandId: CommandId('rollover-unconfirmed-model-tool'),
+      requestId,
+      turnId,
+      recoveryRequestId: rolloverRequestId,
+      recoveryInputId: rolloverInputId,
+    });
+    expect(rollover.commit.events[0]).toMatchObject({
+      type: DurableEventType.TOOL_CANCELLED,
+      toolAttemptId,
+    });
+    expect(rollover.continuation).toContain('discarded_unconfirmed_model_response');
+    expect(rollover.continuation).toContain('must not be retried');
+  });
+
+  it.each([
+    {
+      outcome: {
+        status: 'failed' as const,
+        error: { message: 'provider rejected the request', retryable: true },
+      },
+      eventType: DurableEventType.MODEL_REQUEST_FAILED,
+      status: 'failed',
+    },
+    {
+      outcome: {
+        status: 'aborted' as const,
+      },
+      eventType: DurableEventType.MODEL_REQUEST_ABORTED,
+      status: 'aborted',
+    },
+  ])('reconciles an unknown model outcome as $status', async ({
+    outcome,
+    eventType,
+    status,
+  }) => {
+    const store = createStore();
+    const journal = await createJournal(store, { requestStarted: true });
+    await journal.commit({
+      commandId: CommandId(`start-model-before-${status}`),
+      events: [
+        {
+          type: DurableEventType.TURN_STARTED,
+          requestId,
+          turnId,
+          data: { turn: 1, model: 'accepted-model' },
+        },
+        {
+          type: DurableEventType.MODEL_REQUEST_STARTED,
+          requestId,
+          turnId,
+          modelAttemptId,
+          data: {
+            model: 'accepted-model',
+            streaming: false,
+          },
+        },
+      ],
+    });
+    const coordinator = await DurableSessionRecoveryCoordinator.open(store, sessionId);
+
+    const result = await coordinator.reconcileModelOutcome({
+      commandId: CommandId(`reconcile-model-${status}`),
+      requestId,
+      turnId,
+      modelAttemptId,
+      outcome,
+    });
+
+    expect(result.commit.events).toEqual([
+      expect.objectContaining({
+        type: eventType,
+        modelAttemptId,
+      }),
+    ]);
+    expect(
+      result.projection.activeRequest?.activeTurn?.modelAttempts[0],
+    ).toMatchObject({ status });
+    expect(result.recoveryPlan.action).toBe('resume_turn');
+  });
+
+  it('rejects model reconciliation against a stale attempt target', async () => {
+    const store = createStore();
+    const journal = await createJournal(store, { requestStarted: true });
+    await journal.commit({
+      commandId: CommandId('start-model-for-stale-target'),
+      events: [
+        {
+          type: DurableEventType.TURN_STARTED,
+          requestId,
+          turnId,
+          data: { turn: 1, model: 'accepted-model' },
+        },
+        {
+          type: DurableEventType.MODEL_REQUEST_STARTED,
+          requestId,
+          turnId,
+          modelAttemptId,
+          data: {
+            model: 'accepted-model',
+            streaming: true,
+          },
+        },
+      ],
+    });
+    const coordinator = await DurableSessionRecoveryCoordinator.open(store, sessionId);
+
+    await expect(
+      coordinator.reconcileModelOutcome({
+        commandId: CommandId('reconcile-stale-model'),
+        requestId,
+        turnId,
+        modelAttemptId: ModelAttemptId('different-model-attempt'),
+        outcome: { status: 'aborted' },
+      }),
+    ).rejects.toMatchObject({
+      code: 'DURABLE_RECOVERY_TARGET_NOT_FOUND',
+    });
+  });
+
+  it('does not rebase model reconciliation after a competing outcome wins', async () => {
+    const baseStore = createStore();
+    const store = new SettleModelBeforeReconciliationStore(baseStore);
+    const journal = await createJournal(store, { requestStarted: true });
+    await journal.commit({
+      commandId: CommandId('start-model-before-race'),
+      events: [
+        {
+          type: DurableEventType.TURN_STARTED,
+          requestId,
+          turnId,
+          data: { turn: 1, model: 'accepted-model' },
+        },
+        {
+          type: DurableEventType.MODEL_REQUEST_STARTED,
+          requestId,
+          turnId,
+          modelAttemptId,
+          data: {
+            model: 'accepted-model',
+            streaming: true,
+          },
+        },
+      ],
+    });
+    const coordinator = new DurableSessionRecoveryCoordinator(journal);
+
+    await expect(
+      coordinator.reconcileModelOutcome({
+        commandId: CommandId('stale-model-reconciliation'),
+        requestId,
+        turnId,
+        modelAttemptId,
+        outcome: {
+          status: 'completed',
+          response: { content: 'stale response' },
+        },
+      }),
+    ).rejects.toMatchObject({
+      code: 'DURABLE_EVENT_SEQUENCE_CONFLICT',
+    });
+    expect(
+      coordinator.getProjection().activeRequest?.activeTurn?.modelAttempts[0],
+    ).toMatchObject({
+      modelAttemptId,
+      status: 'failed',
+      error: { message: 'provider confirmed failure' },
+    });
+    expect(coordinator.getRecoveryPlan().action).toBe('resume_turn');
+    expect(
+      (await baseStore.read(sessionId)).events.some(
+        (event) => event.type === DurableEventType.MODEL_REQUEST_COMPLETED,
+      ),
+    ).toBe(false);
+  });
+
   it('atomically rolls a recoverable turn into a new accepted request', async () => {
     const store = createStore();
     const journal = await createJournal(store, { requestStarted: true });
@@ -998,14 +1493,23 @@ describe('DurableSessionRecoveryCoordinator', () => {
           turnId,
           data: { turn: 1, model: 'accepted-model' },
         },
+        ...completedModelToolEvents([
+          {
+            id: toolCallId,
+            name: 'Deploy',
+            arguments: '{"environment":"production"}',
+          },
+        ]),
         {
           type: DurableEventType.TOOL_SCHEDULED,
           requestId,
           turnId,
+          modelAttemptId,
           toolAttemptId,
           data: {
             toolCallId,
             toolName: 'Deploy',
+            modelInput: { environment: 'production' },
             input: { environment: 'production' },
             sideEffect: 'non_idempotent',
             interruptBehavior: 'block',
@@ -1056,14 +1560,23 @@ describe('DurableSessionRecoveryCoordinator', () => {
           turnId,
           data: { turn: 1, model: 'accepted-model' },
         },
+        ...completedModelToolEvents([
+          {
+            id: toolCallId,
+            name: 'Read',
+            arguments: '{"file_path":"/tmp/input"}',
+          },
+        ]),
         {
           type: DurableEventType.TOOL_SCHEDULED,
           requestId,
           turnId,
+          modelAttemptId,
           toolAttemptId,
           data: {
             toolCallId,
             toolName: 'Read',
+            modelInput: { file_path: '/tmp/input' },
             input: { file_path: '/tmp/input' },
             sideEffect: 'pure',
             interruptBehavior: 'cancel',
@@ -1115,14 +1628,23 @@ describe('DurableSessionRecoveryCoordinator', () => {
           turnId,
           data: { turn: 1, model: 'accepted-model' },
         },
+        ...completedModelToolEvents([
+          {
+            id: toolCallId,
+            name: 'Deploy',
+            arguments: '{"environment":"production"}',
+          },
+        ]),
         {
           type: DurableEventType.TOOL_SCHEDULED,
           requestId,
           turnId,
+          modelAttemptId,
           toolAttemptId,
           data: {
             toolCallId,
             toolName: 'Deploy',
+            modelInput: { environment: 'production' },
             input: { environment: 'production' },
             sideEffect: 'non_idempotent',
             interruptBehavior: 'block',
@@ -1268,14 +1790,23 @@ describe('DurableSessionRecoveryCoordinator', () => {
           turnId,
           data: { turn: 1, model: 'accepted-model' },
         },
+        ...completedModelToolEvents([
+          {
+            id: toolCallId,
+            name: 'Read',
+            arguments: '{"file_path":"/tmp/input"}',
+          },
+        ]),
         {
           type: DurableEventType.TOOL_SCHEDULED,
           requestId,
           turnId,
+          modelAttemptId,
           toolAttemptId,
           data: {
             toolCallId,
             toolName: 'Read',
+            modelInput: { file_path: '/tmp/input' },
             input: { file_path: '/tmp/input' },
             sideEffect: 'pure',
             interruptBehavior: 'cancel',
@@ -1339,14 +1870,28 @@ describe('DurableSessionRecoveryCoordinator', () => {
           turnId,
           data: { turn: 1, model: 'accepted-model' },
         },
+        ...completedModelToolEvents([
+          {
+            id: toolCallId,
+            name: 'Read',
+            arguments: JSON.stringify({ payload: oversized }),
+          },
+          {
+            id: failedCallId,
+            name: 'Search',
+            arguments: '{}',
+          },
+        ]),
         {
           type: DurableEventType.TOOL_SCHEDULED,
           requestId,
           turnId,
+          modelAttemptId,
           toolAttemptId,
           data: {
             toolCallId,
             toolName: 'Read',
+            modelInput: { payload: oversized },
             input: { payload: oversized },
             sideEffect: 'pure',
             interruptBehavior: 'cancel',
@@ -1379,10 +1924,12 @@ describe('DurableSessionRecoveryCoordinator', () => {
           type: DurableEventType.TOOL_SCHEDULED,
           requestId,
           turnId,
+          modelAttemptId,
           toolAttemptId: failedAttemptId,
           data: {
             toolCallId: failedCallId,
             toolName: 'Search',
+            modelInput: {},
             input: {},
             sideEffect: 'pure',
             interruptBehavior: 'cancel',
@@ -1414,11 +1961,75 @@ describe('DurableSessionRecoveryCoordinator', () => {
     if (typeof result.continuation !== 'string') {
       throw new Error('Expected a text recovery continuation');
     }
-    expect(result.continuation.match(/"kind": "truncated_recovery_value"/g)).toHaveLength(3);
+    expect(result.continuation.match(/"kind": "truncated_recovery_value"/g)).toHaveLength(4);
     expect(result.continuation).toContain('"complete": false');
     expect(result.continuation).toContain('"originalJsonCharacters":');
     expect(result.continuation).not.toContain(oversized);
-    expect(result.continuation.length).toBeLessThan(14_000);
+    expect(result.continuation.length).toBeLessThan(20_000);
+  });
+
+  it('bounds model-attempt history and model errors in recovery continuations', async () => {
+    const store = createStore();
+    const journal = await createJournal(store, { requestStarted: true });
+    const oversizedError = 'model-error'.repeat(600);
+    const attempts = Array.from({ length: 20 }, (_, index) => {
+      const attemptId = ModelAttemptId(
+        `bounded-model-attempt-${String(index).padStart(2, '0')}`,
+      );
+      return [
+        {
+          type: DurableEventType.MODEL_REQUEST_STARTED,
+          requestId,
+          turnId,
+          modelAttemptId: attemptId,
+          data: {
+            model: 'accepted-model',
+            streaming: false,
+          },
+        },
+        {
+          type: DurableEventType.MODEL_REQUEST_FAILED,
+          requestId,
+          turnId,
+          modelAttemptId: attemptId,
+          data: {
+            error: {
+              message: index === 19 ? oversizedError : `failure-${index}`,
+            },
+          },
+        },
+      ] satisfies DurableEventDraft[];
+    }).flat();
+    await journal.commit({
+      commandId: CommandId('bounded-model-attempts'),
+      events: [
+        {
+          type: DurableEventType.TURN_STARTED,
+          requestId,
+          turnId,
+          data: { turn: 1, model: 'accepted-model' },
+        },
+        ...attempts,
+      ],
+    });
+
+    const result = await new DurableSessionRecoveryCoordinator(journal).prepareTurnRecovery({
+      commandId: CommandId('rollover-bounded-model-attempts'),
+      requestId,
+      turnId,
+      recoveryRequestId: rolloverRequestId,
+      recoveryInputId: rolloverInputId,
+    });
+
+    expect(typeof result.continuation).toBe('string');
+    if (typeof result.continuation !== 'string') {
+      throw new Error('Expected a text recovery continuation');
+    }
+    expect(result.continuation).toContain('"modelAttemptsOmitted": 4');
+    expect(result.continuation).not.toContain('bounded-model-attempt-00');
+    expect(result.continuation).toContain('bounded-model-attempt-19');
+    expect(result.continuation).toContain('"kind": "truncated_recovery_value"');
+    expect(result.continuation).not.toContain(oversizedError);
   });
 
   it.each([

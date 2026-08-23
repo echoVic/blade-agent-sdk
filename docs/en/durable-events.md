@@ -11,10 +11,10 @@ Session writes durable events only when
 format is unchanged. `resumeSession()` automatically restores a Request that
 was accepted but did not cross the `request_started` boundary. A started
 Request without a Turn, and an active Turn, must first be atomically rolled
-over through the Recovery Coordinator. Pending permissions, unknown tool
-outcomes, and Requests whose latest Turn finished without a Request terminal
-event still require explicit resolution. A `non_idempotent` tool is never
-replayed automatically.
+over through the Recovery Coordinator. Pending permissions, unknown tool or
+model outcomes, and Requests whose latest Turn finished without a Request
+terminal event still require explicit resolution. A `non_idempotent` tool or
+model call with an unknown outcome is never replayed automatically.
 :::
 
 ## Imports
@@ -34,6 +34,7 @@ import {
   EventSequence,
   InputId,
   JsonlDurableEventStore,
+  ModelAttemptId,
   PermissionRequestId,
   RequestId,
   SessionId,
@@ -46,7 +47,7 @@ import {
 
 ```ts
 interface DurableEventEnvelope<TType extends DurableEventType> {
-  schemaVersion: 2;
+  schemaVersion: 2 | 3;
   eventId: EventId;
   sequence: EventSequence;
   sessionId: SessionId;
@@ -57,6 +58,7 @@ interface DurableEventEnvelope<TType extends DurableEventType> {
   commandId?: CommandId;
   requestId?: RequestId;
   turnId?: TurnId;
+  modelAttemptId?: ModelAttemptId;
   toolAttemptId?: ToolAttemptId;
   causationEventId?: EventId;
 }
@@ -85,7 +87,11 @@ are rejected before append.
 | `turn_started` | `requestId`, `turnId` | `turn`, `model?` |
 | `turn_completed` | `requestId`, `turnId` | `turn`, `hasToolCalls` |
 | `turn_aborted` | `requestId`, `turnId` | `turn`, `reason` |
-| `tool_scheduled` | Request, Turn, `toolAttemptId` | `toolCallId`, `toolName`, `input`, `sideEffect`, `interruptBehavior` |
+| `model_request_started` | Request, Turn, `modelAttemptId` | `model`, `streaming` |
+| `model_request_completed` | Request, Turn, `modelAttemptId` | Complete model `response` |
+| `model_request_failed` | Request, Turn, `modelAttemptId` | `error` |
+| `model_request_aborted` | Request, Turn, `modelAttemptId` | `reason` |
+| `tool_scheduled` | Request, Turn, `modelAttemptId`, `toolAttemptId` | `toolCallId`, `toolName`, `modelInput`, `input`, `sideEffect`, `interruptBehavior` |
 | `tool_started` | Request, Turn, `toolAttemptId` | Tool identity, final `input`, resolved `sideEffect` |
 | `tool_completed` | Request, Turn, `toolAttemptId` | Tool identity, `result` |
 | `tool_failed` | Request, Turn, `toolAttemptId` | Tool identity, `error` |
@@ -98,8 +104,8 @@ are rejected before append.
 `request_accepted.recovery` always retains the v2
 `{ requestId, turnId, turn }` wire shape. A pre-Turn Request rollover writes a
 synthetic Turn in the same command to provide provenance. The projector exposes
-that meaning as `recoveryKind: 'pre_turn_request'` without changing the
-persistent schema.
+that meaning as `recoveryKind: 'pre_turn_request'` without adding fields to the
+persistent recovery object.
 
 ## Append events
 
@@ -335,18 +341,35 @@ Store directly must preserve the same contract themselves.
 | `none` | No unfinished work exists. |
 | `resume_request` | A Request was accepted but not started and can resume in place. |
 | `rollover_request` | A Request started before its first Turn and can safely roll into a new Request. |
-| `resume_turn` | A model call, scheduled tool, or safely replayable started tool can continue. |
+| `resume_turn` | The Turn has not called the model, or its model outcome is known and tools can continue safely. |
 | `resolve_permissions` | Pending permissions must be presented again or resolved by policy. |
 | `reconcile_tool_outcomes` | A tool started without a reliable terminal outcome and must not be retried automatically. |
+| `reconcile_model_outcome` | A model request started without a reliable terminal outcome and must be reconciled against provider or application records. |
 | `reconcile_request_inputs` | The applied-input set before the first Turn is ambiguous and requires explicit reconciliation. |
 | `reconcile_request_outcome` | A Turn ended without a Request terminal event, so the final outcome must be reconciled. |
 
-The plan also separates `retryableToolAttempts`, `cancelableToolAttempts`,
-`unknownToolAttempts`, and `pendingPermissions`. Started or
+The plan also exposes `activeModelAttempt` and separates
+`retryableToolAttempts`, `cancelableToolAttempts`, `unknownToolAttempts`, and
+`pendingPermissions`. Started or
 `tool_outcome_unknown` tools declared `pure` or `idempotent` are retryable.
 `non_idempotent` tools remain unknown and require external reconciliation with
 `tool_completed`, `tool_failed`, or `tool_cancelled`; the projector does not
 allow the Turn to end before then.
+
+Model calls use independent `ModelAttemptId` values. Session commits
+`model_request_started` before calling the provider, then commits
+`model_request_completed`, `model_request_failed`, or
+`model_request_aborted` after the call settles. An active model attempt blocks
+Turn termination. If a process stops with a started attempt, the plan returns
+`reconcile_model_outcome` instead of treating a possibly completed or billed
+call as if it never happened.
+A model attempt is one logical model operation and may contain internal HTTP
+retries. A reactive-compaction retry creates a new attempt. High-frequency
+token deltas remain transient, while the complete response is durable before
+any later Turn terminal event.
+Active model reconciliation takes precedence over permission and tool outcomes
+in the same Turn. After the model terminal event commits, the plan exposes the
+next unresolved recovery action.
 
 ## Recovery Coordinator
 
@@ -373,6 +396,37 @@ await coordinator.reconcileToolOutcome({
   },
 });
 ```
+
+For a model call with an unknown outcome, inspect provider request logs or
+application records and reconcile it explicitly. The command binds the
+Request, Turn, and Model Attempt and uses Journal CAS to reject stale
+decisions:
+
+```ts
+await coordinator.reconcileModelOutcome({
+  commandId: CommandId('reconcile-model-42'),
+  requestId: RequestId('request-42'),
+  turnId: TurnId('turn-42'),
+  modelAttemptId: ModelAttemptId('model-attempt-42'),
+  outcome: {
+    status: 'completed',
+    response: {
+      content: 'Inspected result',
+      usage: {
+        promptTokens: 120,
+        completionTokens: 30,
+        totalTokens: 150,
+      },
+    },
+  },
+});
+```
+
+The caller may instead confirm `failed` or `aborted`. Only a reconciled Turn
+can proceed to `prepareTurnRecovery()`. Its continuation carries bounded,
+confirmed model responses together with tool outcomes, so an unknown provider
+call is never silently reissued. Reuse the original `commandId` when retrying
+the reconciliation.
 
 `reconcileToolOutcome()` accepts only a Tool Attempt still addressable by the
 current projection and inherits the Journal's command idempotency and CAS
@@ -508,8 +562,11 @@ durable recovery facts instead, avoiding both cross-store synthetic results
 and provider-invalid dangling tool calls. Multimodal original inputs retain
 their content parts instead of being flattened into JSON text. A permitted but
 not-yet-started tool uses the permission-updated input and is conservatively
-classified as `non_idempotent`. Each tool input, result, error, and permission
-value is limited to 4,000 serialized characters. Oversized values carry
+classified as `non_idempotent`. Unfinished tools from a `failed` or `aborted`
+Model Attempt are marked `discarded_unconfirmed_model_response` and must not be
+retried. A continuation retains at most the latest 16
+Model Attempts. Each model response/error and tool input, result, error, and
+permission value is limited to 4,000 serialized characters. Oversized values carry
 `kind: "truncated_recovery_value"`, the original size, and JSON prefix/suffix
 metadata so the model cannot mistake the preview for a complete result.
 
@@ -543,9 +600,18 @@ execution started raises
 `DURABLE_RECOVERY_UNSAFE_ROLLOVER` and remains fail-closed; the API does not use
 prompting to bypass an unknown side effect.
 
-Schema v2 adds the required `sideEffect` field to `tool_scheduled`. Version 1
-logs are not inferred silently and must be migrated before this runtime can
-resume them.
+The current writer uses schema v3, which adds `modelAttemptId` and the complete
+model-request lifecycle. In v3, `tool_scheduled.modelAttemptId` explicitly
+identifies the Model Attempt that produced the call, `modelInput` preserves the
+provider's original arguments, and `input` holds repaired execution input. The
+projector uses canonical JSON to match the tool ID, name, and original
+arguments to the confirmed model response. If streaming dispatches a tool before
+`model_request_completed`, the terminal model event validates all previously
+scheduled tools when it arrives. Readers remain compatible with schema-v2 logs
+that lack these fields and may append later v3 batches to the same Session. Schema
+versions may only increase: a v2 batch after v3 is corrupt, and a v2 batch
+cannot masquerade as containing v3 model events. Version 1 logs are not
+inferred silently and must be migrated before this runtime can resume them.
 
 ## JSONL persistence
 
@@ -568,9 +634,9 @@ Each append:
 
 Event files use mode `0600`. Session IDs are base64url encoded and cannot
 become filesystem paths.
-Events contain raw request inputs, tool inputs, and model-facing tool results.
-Treat the Store as sensitive data and configure encryption, retention, and
-access control at the deployment boundary.
+Events contain raw request inputs, complete model responses, tool inputs, and
+model-facing tool results. Treat the Store as sensitive data and configure
+encryption, retention, and access control at the deployment boundary.
 
 ## Consistency boundary
 

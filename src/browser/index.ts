@@ -43,6 +43,7 @@ export {
   InputId,
   InputPriority,
   MessageRole,
+  ModelAttemptId,
   PermissionDecision,
   PermissionMode,
   PermissionRequestId,

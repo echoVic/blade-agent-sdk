@@ -213,6 +213,7 @@ export {
   EventSequence,
   InputId,
   MessageId,
+  ModelAttemptId,
   PermissionRequestId,
   RequestId,
   SessionId,

@@ -47,6 +47,7 @@ Constants:
 - `EventSequence`
 - `CommandId`
 - `TurnId`
+- `ModelAttemptId`
 - `ToolAttemptId`
 - `PermissionRequestId`
 - `AgentId`
@@ -101,12 +102,17 @@ Types and errors:
 - `DurableEventDraft`
 - `DurableEventDataMap`
 - `DurableEventError`
+- `DurableEventSchemaVersion`
 - `DurableEventOfType`
+- `DurableModelResponse`
+- `DurableModelToolCall`
+- `DurableModelUsage`
 - `DurableTokenUsage`
 - `DurableInputPriority`
 - `DurablePermissionDecision`
 - `DurableRequestInterruptReason`
 - `DurableRequestRecoveryOrigin`
+- `DurableModelRequestAbortReason`
 - `DurableTurnAbortReason`
 - `DurableToolInterruptBehavior`
 - `DurableToolCancelReason`
@@ -126,6 +132,8 @@ Types and errors:
 - `DurableRequestRolloverResult`
 - `DurableRequestOutcomeReconciliation`
 - `DurableRequestOutcomeReconciliationCommand`
+- `DurableModelOutcomeReconciliation`
+- `DurableModelOutcomeReconciliationCommand`
 - `DurableRequestRecoveryKind`
 - `DurableTurnRecoveryCommand`
 - `DurableTurnRecoveryResult`
@@ -147,6 +155,8 @@ Types and errors:
 - `DurableRecoveryCommitResult`
 - `DurableToolAttemptProjection`
 - `DurableToolAttemptStatus`
+- `DurableModelAttemptProjection`
+- `DurableModelAttemptStatus`
 - `DurableTurnProjection`
 - `DurableTurnStatus`
 

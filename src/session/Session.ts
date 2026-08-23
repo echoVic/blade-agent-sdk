@@ -799,6 +799,7 @@ class Session implements ISession {
       },
       runControl: requestController,
       inputApplicationLifecycle: durableRecorder ?? undefined,
+      modelExecutionLifecycle: durableRecorder ?? undefined,
       toolExecutionLifecycle: durableRecorder ?? undefined,
       initialInputPreparation:
         initialInputPreparation === RECONCILED_INITIAL_INPUT

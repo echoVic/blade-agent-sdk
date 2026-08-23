@@ -12,6 +12,7 @@ import { FallbackTriggeredError } from '../services/RetryPolicy.js';
 import type { ExecutionPipeline } from '../tools/execution/ExecutionPipeline.js';
 import type { ToolEffect, ToolResult } from '../tools/types/index.js';
 import { getSteeringInterruptInputId } from '../types/abort.js';
+import type { ModelAttemptId } from '../types/branded.js';
 import type { JsonObject, PermissionMode } from '../types/common.js';
 import type { AgentEvent, TokenUsageInfo } from './AgentEvent.js';
 import type {
@@ -25,6 +26,7 @@ import {
   RECONCILED_INITIAL_INPUT,
 } from './InitialInputPreparation.js';
 import { isOverflowRecoverable } from './isOverflowRecoverable.js';
+import type { ModelExecutionLifecycle } from './ModelExecutionLifecycle.js';
 import { decideNoToolTurn } from './loop/decideNoToolTurn.js';
 import { decideTurnLimit } from './loop/decideTurnLimit.js';
 import { executeToolCalls } from './loop/executeToolCalls.js';
@@ -128,6 +130,7 @@ export interface AgentLoopConfig {
   signal?: AbortSignal;
   tokenBudget?: TokenBudget;
   runControl?: AgentRunControl;
+  modelExecutionLifecycle?: ModelExecutionLifecycle;
   initialInputPreparation?: InitialInputPreparation;
   prepareTurnState: (turn: number) => TurnState;
   hooks?: AgentLoopHooks;
@@ -153,6 +156,7 @@ export async function* agentLoop(
     signal,
     tokenBudget,
     runControl,
+    modelExecutionLifecycle,
     initialInputPreparation,
     hooks,
   } = config;
@@ -220,16 +224,11 @@ export async function* agentLoop(
       && !(initialInputPreparation === RECONCILED_INITIAL_INPUT && turnsCount === 0)
       && turnHooks?.beforeTurn
     ) {
-      const beforeTurnStream = turnHooks.beforeTurn({
+      yield* turnHooks.beforeTurn({
         turn: turnsCount,
         messages: convState.toArray(),
         lastPromptTokens,
       });
-      while (true) {
-        const { value, done } = await beforeTurnStream.next();
-        if (done) break;
-        yield value;
-      }
     }
 
     if (recovery.phase !== 'retry_pending') {
@@ -264,10 +263,11 @@ export async function* agentLoop(
       effects: ToolEffect[];
       toolUseUuid: string | null;
     }> | undefined;
+    let modelAttemptId: ModelAttemptId | undefined;
 
     const stepSignal = runControl?.stepSignal ?? signal;
     try {
-      const turnGen = runTurn({
+      const turnOutcome = yield* runTurn({
         turnState,
         messages: convState.toArray(),
         executionPipeline,
@@ -278,6 +278,7 @@ export async function* agentLoop(
         epoch,
         executionContext: turnExecutionContext,
         permissionMode: turnPermissionMode,
+        modelExecutionLifecycle,
         logger: config.logger,
         toolHooks: {
           onBeforeExec: toolHooks?.beforeExec,
@@ -286,15 +287,9 @@ export async function* agentLoop(
           onUpdate: toolHooks?.onUpdate,
         },
       });
-      while (true) {
-        const { value, done } = await turnGen.next();
-        if (done) {
-          turnResult = value.chatResponse;
-          streamingExecutionResults = value.streamingExecutionResults;
-          break;
-        }
-        yield value;
-      }
+      turnResult = turnOutcome.chatResponse;
+      streamingExecutionResults = turnOutcome.streamingExecutionResults;
+      modelAttemptId = turnOutcome.modelAttemptId;
     } catch (llmError) {
       const interruptInputId = getSteeringInterruptInputId(stepSignal);
       if (!signal?.aborted && interruptInputId && runControl) {
@@ -339,16 +334,9 @@ export async function* agentLoop(
           attempt,
         });
         yield { type: 'recovery', phase: 'started', reason: 'context_overflow' };
-        const compactStream = recoveryHooks.reactiveCompact({ messages: convState.toArray() });
-        let recovered = false;
-        while (true) {
-          const { value, done } = await compactStream.next();
-          if (done) {
-            recovered = value;
-            break;
-          }
-          yield value;
-        }
+        const recovered = yield* recoveryHooks.reactiveCompact({
+          messages: convState.toArray(),
+        });
         if (!recovered) {
           recoveryHooks.onStateChange?.({
             turn: turnsCount,
@@ -610,7 +598,9 @@ export async function* agentLoop(
       executionResults = await executeToolCalls({
         plan: executionPlan,
         executionPipeline,
-        executionContext: turnExecutionContext,
+        executionContext: modelAttemptId
+          ? { ...turnExecutionContext, modelAttemptId }
+          : turnExecutionContext,
         logger: config.logger,
         permissionMode: turnPermissionMode,
         signal,

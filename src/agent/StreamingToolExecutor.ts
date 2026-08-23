@@ -40,6 +40,7 @@ export interface StreamingToolExecutorConfig {
   hooks?: ToolExecutionHooks;
   onContentDelta?: (delta: string) => void | Promise<void>;
   onThinkingDelta?: (delta: string) => void | Promise<void>;
+  onModelResponse?: (response: ChatResponse) => void | Promise<void>;
   onStreamEnd?: () => void | Promise<void>;
   onToolExecutionUpdate?: (update: ToolExecutionUpdate) => void | Promise<void>;
   onToolReady?: (toolCall: FunctionToolCall) => void | Promise<void>;
@@ -167,7 +168,14 @@ export class StreamingToolExecutor {
         return this.collectWithFallback(messages, tools, signal, executionConfig, epoch);
       }
 
+      const chatResponse: ChatResponse = {
+        content: fullContent,
+        reasoningContent: fullReasoningContent || undefined,
+        toolCalls: this.buildFinalToolCalls(toolCallAccumulator),
+        usage: streamUsage,
+      };
       if (!signal?.aborted && this.isEpochActive(epoch)) {
+        await executionConfig.onModelResponse?.(chatResponse);
         await executionConfig.onStreamEnd?.();
       }
 
@@ -221,12 +229,7 @@ export class StreamingToolExecutor {
       }
 
       return {
-        chatResponse: {
-          content: fullContent,
-          reasoningContent: fullReasoningContent || undefined,
-          toolCalls: this.buildFinalToolCalls(toolCallAccumulator),
-          usage: streamUsage,
-        },
+        chatResponse,
         executionResults: executionResults.filter(
           (result): result is ToolExecutionOutcome => result !== undefined,
         ),
@@ -296,24 +299,32 @@ export class StreamingToolExecutor {
   }> {
     const stream = streamChatResponse(this.getChatService, messages, tools, signal, this.logger);
     let chatResponse: ChatResponse | undefined;
+    let streamCompleted = false;
+    try {
+      while (true) {
+        const { value, done } = await stream.next();
+        if (done) {
+          chatResponse = value;
+          streamCompleted = true;
+          break;
+        }
 
-    while (true) {
-      const { value, done } = await stream.next();
-      if (done) {
-        chatResponse = value;
-        break;
+        if (!this.isEpochActive(epoch)) break;
+
+        if (value.type === 'content_delta') {
+          await executionConfig.onContentDelta?.(value.delta);
+        } else {
+          await executionConfig.onThinkingDelta?.(value.delta);
+        }
       }
-
-      if (!this.isEpochActive(epoch)) break;
-
-      if (value.type === 'content_delta') {
-        await executionConfig.onContentDelta?.(value.delta);
-      } else {
-        await executionConfig.onThinkingDelta?.(value.delta);
+    } finally {
+      if (!streamCompleted) {
+        await stream.return(undefined as never);
       }
     }
 
-    if (!signal?.aborted && this.isEpochActive(epoch)) {
+    if (chatResponse && !signal?.aborted && this.isEpochActive(epoch)) {
+      await executionConfig.onModelResponse?.(chatResponse);
       await executionConfig.onStreamEnd?.();
     }
 

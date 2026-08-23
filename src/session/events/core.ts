@@ -30,6 +30,8 @@ export {
 } from './DurableSessionJournal.js';
 export {
   type DurableAcceptedRequestRecovery,
+  type DurableModelOutcomeReconciliation,
+  type DurableModelOutcomeReconciliationCommand,
   type DurablePermissionResolutionCommand,
   type DurableRecoveryCommitResult,
   type DurableRequestOutcomeReconciliation,
@@ -48,6 +50,8 @@ export {
 } from './DurableSessionRecoveryCoordinator.js';
 export {
   DurableEventProjectionError,
+  type DurableModelAttemptProjection,
+  type DurableModelAttemptStatus,
   type DurablePermissionProjection,
   type DurablePermissionStatus,
   type DurableRequestProjection,
@@ -88,8 +92,13 @@ export {
   type DurableEventOfType,
   type DurableEventPage,
   type DurableEventReadOptions,
+  type DurableEventSchemaVersion,
   DurableEventType,
   type DurableInputPriority,
+  type DurableModelRequestAbortReason,
+  type DurableModelResponse,
+  type DurableModelToolCall,
+  type DurableModelUsage,
   type DurablePermissionDecision,
   type DurableRequestInterruptReason,
   type DurableRequestRecoveryOrigin,

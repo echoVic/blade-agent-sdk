@@ -86,7 +86,7 @@ Node-local 能力外，这些函数都从根入口导出；实际 subpath 以“
 | `PendingSessionInput` | 尚未应用的持久化输入 |
 | `InputId` / `RequestId` / `SessionId` | 输入、活动请求与会话的 branded identifiers |
 | `EventId` / `EventSequence` | durable event 标识与 Session 内单调序列 |
-| `CommandId` / `TurnId` / `ToolAttemptId` / `PermissionRequestId` | durable command、turn、工具尝试与权限请求标识 |
+| `CommandId` / `TurnId` / `ModelAttemptId` / `ToolAttemptId` / `PermissionRequestId` | durable command、turn、模型尝试、工具尝试与权限请求标识 |
 | `StreamOptions` | stream() 选项 |
 | `StreamMessage` | Session 流式消息联合类型 |
 | `PromptResult` | prompt() 返回结果 |
@@ -103,7 +103,7 @@ Node-local 能力外，这些函数都从根入口导出；实际 subpath 以“
 | `DurableEventSubscription` | 支持 replay/caught-up/live 阶段的可重连事件流 |
 | `durableEventCursor` / `parseDurableEventCursor` | 创建和严格解析版本化恢复 cursor |
 | `DurableSessionJournal` / `DurableSessionJournalOptions` | command-oriented 串行提交、CAS 重试与对账层 |
-| `DurableSessionRecoveryCoordinator` | Request/Turn rollover、权限消解及工具与 Request 结果对账协调器 |
+| `DurableSessionRecoveryCoordinator` | Request/Turn rollover、权限消解及模型、工具与 Request 结果对账协调器 |
 | `DurableSessionCommand` / `DurableCommandEventDraft` | Journal command 与不含重复 `commandId` 的事件输入 |
 | `DurableCommandCommitOptions` | 通过 `expectedHeadSequence` 固定状态派生 command 的前置 head |
 | `DurableCommandCommitResult` / `DurableCommandCommitStatus` | `committed` / `replayed` / `reconciled` 提交结果 |
@@ -111,12 +111,13 @@ Node-local 能力外，这些函数都从根入口导出；实际 subpath 以“
 | `DurableCommandConflictError` | 同一 `commandId` 被用于不同事件 |
 | `DurableCommandOutcomeUnknownError` | 写入失败后无法确认 command 是否提交 |
 | `DurableSessionRecoveryError` / `DurableSessionRecoveryErrorCode` | 恢复目标缺失或状态不满足恢复契约 |
-| `DurableSessionRecoveryRequiredError` | Session 恢复前需要权限或工具结果对账 |
+| `DurableSessionRecoveryRequiredError` | Session 恢复前需要输入、模型、权限或工具结果对账 |
 | `SessionDurableRecorderError` | Session runtime 观察到非法 durable 生命周期状态 |
 | `DurableEventEnvelope` / `DurableEventDraft` | 已提交事件与待提交事件 |
-| `DurableEventDataMap` / `DurableEventOfType` / `DurableEventError` / `DurableTokenUsage` | 事件类型到严格 payload 的映射、类型提取及公共 payload |
+| `DurableEventDataMap` / `DurableEventOfType` / `DurableEventError` / `DurableEventSchemaVersion` / `DurableTokenUsage` | 事件类型到严格 payload 的映射、类型提取、schema 版本及公共 payload |
+| `DurableModelResponse` / `DurableModelToolCall` / `DurableModelUsage` | 已完成模型响应、工具调用与用量的持久化结构 |
 | `DurableInputPriority` / `DurablePermissionDecision` | 输入优先级与权限结果 |
-| `DurableRequestInterruptReason` / `DurableTurnAbortReason` | Request 与 Turn 中断原因 |
+| `DurableRequestInterruptReason` / `DurableTurnAbortReason` / `DurableModelRequestAbortReason` | Request、Turn 与模型调用中断原因 |
 | `DurableToolInterruptBehavior` / `DurableToolCancelReason` / `DurableToolOutcomeUnknownReason` | 工具中断、取消及未知结果原因 |
 | `DurableSessionCloseReason` | Session 关闭原因 |
 | `DurableEventAppendOptions` / `DurableEventAppendResult` | compare-and-append 参数与结果 |
@@ -132,6 +133,7 @@ Node-local 能力外，这些函数都从根入口导出；实际 subpath 以“
 | `DurableRequestRecoveryOrigin` | continuation Request 的 source Request/Turn provenance |
 | `DurableRequestRecoveryKind` | 区分 active-Turn 与 synthetic pre-Turn recovery |
 | `DurableTurnProjection` / `DurableTurnStatus` | 活动 Turn 状态 |
+| `DurableModelAttemptProjection` / `DurableModelAttemptStatus` | 当前 Turn 的模型调用尝试状态 |
 | `DurableToolAttemptProjection` / `DurableToolAttemptStatus` | 当前 Turn 的工具尝试状态 |
 | `DurablePermissionProjection` / `DurablePermissionStatus` | 工具权限状态 |
 | `DurableSessionRecoveryAction` | 恢复动作判别值 |
@@ -139,6 +141,7 @@ Node-local 能力外，这些函数都从根入口导出；实际 subpath 以“
 | `DurableSessionResumeDecision` | `ready` / `resume_accepted_request` / `recovery_required` 决策 |
 | `DurableRequestRolloverCommand` / `DurableRequestRolloverResult` | 首个 Turn 前的原子 Request rollover 命令及结果 |
 | `DurableRequestOutcomeReconciliation` / `DurableRequestOutcomeReconciliationCommand` | Turn 后缺失 Request 终态时的显式对账输入 |
+| `DurableModelOutcomeReconciliation` / `DurableModelOutcomeReconciliationCommand` | 未知模型调用结果的显式对账输入 |
 | `DurableToolOutcomeReconciliation` / `DurableToolOutcomeReconciliationCommand` | 显式工具结果对账输入 |
 | `DurableToolStartCommand` | 恢复执行前持久化 `tool_started` 的幂等命令 |
 | `DurableTurnRecoveryCommand` / `DurableTurnRecoveryResult` | 原子 Turn rollover 命令及结果 |

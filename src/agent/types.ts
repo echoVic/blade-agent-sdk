@@ -11,6 +11,7 @@ import type { OutputFormat, PermissionMode, PermissionsConfig, SandboxSettings }
 import type { CanUseTool, PermissionHandler } from '../types/permissions.js';
 import type { AgentRunControl, AgentSteeringInput } from './AgentRunControl.js';
 import type { InitialInputPreparation } from './InitialInputPreparation.js';
+import type { ModelExecutionLifecycle } from './ModelExecutionLifecycle.js';
 import type { AgentSession } from './subagents/AgentSessionStore.js';
 import type { StartBackgroundAgentOptions } from './subagents/BackgroundAgentManager.js';
 import type { TokenBudgetConfig, TokenBudgetSnapshot } from './TokenBudget.js';
@@ -148,6 +149,8 @@ export interface LoopOptions {
   toolExecutionLifecycle?: ToolExecutionLifecycle;
   /** @internal Persists a steering input before its preparation side effects. */
   inputApplicationLifecycle?: InputApplicationLifecycle;
+  /** @internal Persists model invocation boundaries for durable recovery. */
+  modelExecutionLifecycle?: ModelExecutionLifecycle;
   /** @internal A recovered Request already completed its initial input preparation. */
   initialInputPreparation?: InitialInputPreparation;
   onTurnLimitReached?: (data: { turnsCount: number }) => Promise<TurnLimitResponse>;

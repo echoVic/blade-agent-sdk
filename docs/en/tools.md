@@ -284,6 +284,8 @@ interface ToolExecutionLifecycle {
 interface ToolScheduledLifecycle {
   toolCallId: ToolUseId;
   toolName: string;
+  modelAttemptId?: ModelAttemptId;
+  modelInput: JsonObject; // Original provider arguments.
   input: JsonObject;
   sideEffect: ToolSideEffect;
   interruptBehavior: 'block' | 'cancel';

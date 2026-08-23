@@ -186,6 +186,56 @@ describe('LoopRunner', () => {
       expect(mm._chat).toHaveBeenCalledTimes(1);
     });
 
+    it('propagates consumer close to the active AgentLoop and provider stream', async () => {
+      const mm = createMockModelManager();
+      const pipeline = createMockPipeline();
+      let providerClosed = false;
+      const chatService = {
+        streamChat: vi.fn(async function* () {
+          try {
+            yield { content: 'partial' };
+          } finally {
+            providerClosed = true;
+          }
+        }),
+        getConfig: () => ({
+          model: 'test-model',
+          maxContextTokens: 128000,
+        }),
+      };
+      vi.spyOn(mm, 'getChatService').mockReturnValue(chatService as never);
+      const onAborted = vi.fn(async () => {});
+      const runner = new LoopRunner(
+        baseConfig,
+        baseOptions,
+        mm,
+        pipeline,
+        undefined,
+        undefined,
+        true,
+      );
+      const stream = runner.runLoopStream('Hello', createContext(), {
+        modelExecutionLifecycle: {
+          onModelRequestStarting: async () => ({
+            onCompleted: async () => {},
+            onFailed: async () => {},
+            onAborted,
+          }),
+        },
+      });
+
+      await stream.next();
+      await stream.next();
+      await expect(stream.next()).resolves.toMatchObject({
+        value: { type: 'content_delta', delta: 'partial' },
+        done: false,
+      });
+      await stream.return(undefined as never);
+
+      expect(providerClosed).toBe(true);
+      expect(onAborted).toHaveBeenCalledWith('request_interrupted');
+    });
+
     it('should persist the user message through the context store facade', async () => {
       const mm = createMockModelManager();
       const pipeline = createMockPipeline();

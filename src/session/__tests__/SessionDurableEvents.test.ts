@@ -5,6 +5,7 @@ import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { AgentEvent } from '../../agent/AgentEvent.js';
 import { RECONCILED_INITIAL_INPUT } from '../../agent/InitialInputPreparation.js';
+import type { ModelRequestLifecycle } from '../../agent/ModelExecutionLifecycle.js';
 import type { LoopOptions, LoopResult, UserMessageContent } from '../../agent/types.js';
 import { PersistentStore } from '../../context/storage/PersistentStore.js';
 import { HookRuntime } from '../../hooks/HookRuntime.js';
@@ -13,6 +14,7 @@ import {
   CommandId,
   EventId,
   InputId,
+  ModelAttemptId,
   RequestId,
   SessionId,
   ToolAttemptId,
@@ -223,6 +225,69 @@ describe('Session durable events', () => {
     );
   });
 
+  it('persists model request boundaries through the Session runtime', async () => {
+    const { store } = createStore();
+    streamChat = async function* modelLifecycleStream(_message, _context, loopOptions) {
+      yield { type: 'turn_start', turn: 1, maxTurns: 10 };
+      const lifecycle = await loopOptions?.modelExecutionLifecycle?.onModelRequestStarting({
+        turn: 1,
+        model: 'test-model',
+        streaming: true,
+      });
+      if (!lifecycle) {
+        throw new Error('Missing model execution lifecycle');
+      }
+      await lifecycle.onCompleted({
+        content: 'durable response',
+        usage: {
+          promptTokens: 11,
+          completionTokens: 3,
+          totalTokens: 14,
+        },
+      });
+      yield { type: 'turn_end', turn: 1, hasToolCalls: false };
+      return {
+        success: true,
+        finalMessage: 'durable response',
+        metadata: { turnsCount: 1, toolCallsCount: 0, duration: 1 },
+      };
+    };
+    const session = await createSession(options(store));
+    await session.send('persist the model call');
+
+    for await (const _event of session.stream()) {
+      // Drain.
+    }
+
+    const events = (await store.read(session.sessionId)).events;
+    expect(events.map((event) => event.type)).toEqual([
+      DurableEventType.SESSION_CREATED,
+      DurableEventType.REQUEST_ACCEPTED,
+      DurableEventType.INPUT_APPLIED,
+      DurableEventType.REQUEST_STARTED,
+      DurableEventType.TURN_STARTED,
+      DurableEventType.MODEL_REQUEST_STARTED,
+      DurableEventType.MODEL_REQUEST_COMPLETED,
+      DurableEventType.TURN_COMPLETED,
+      DurableEventType.REQUEST_COMPLETED,
+    ]);
+    expect(
+      events.find(
+        (event) => event.type === DurableEventType.MODEL_REQUEST_COMPLETED,
+      )?.data,
+    ).toEqual({
+      response: {
+        content: 'durable response',
+        usage: {
+          promptTokens: 11,
+          completionTokens: 3,
+          totalTokens: 14,
+        },
+      },
+    });
+    await session.close();
+  });
+
   it('persists a steering input before its preparation side effects', async () => {
     const { store } = createStore();
     let durableEventsBeforePreparation: readonly DurableEventDraft[] = [];
@@ -385,10 +450,36 @@ describe('Session durable events', () => {
     let sideEffectSawToolStarted = false;
     streamChat = async function* toolStream(_message, _context, loopOptions) {
       yield { type: 'turn_start', turn: 1, maxTurns: 10 };
+      const modelRequest = await loopOptions?.modelExecutionLifecycle?.onModelRequestStarting({
+        turn: 1,
+        model: 'test-model',
+        streaming: false,
+      });
+      if (!modelRequest) {
+        throw new Error('Missing model execution lifecycle');
+      }
+      if (!modelRequest.modelAttemptId) {
+        throw new Error('Missing model attempt ID');
+      }
+      await modelRequest.onCompleted({
+        content: '',
+        toolCalls: [
+          {
+            id: 'tool-call-1',
+            type: 'function',
+            function: {
+              name: 'Write',
+              arguments: '{"file_path":"/tmp/file"}',
+            },
+          },
+        ],
+      });
       const lifecycle = loopOptions?.toolExecutionLifecycle;
       const invocation = await lifecycle?.onToolScheduled?.({
         toolCallId: ToolUseId('tool-call-1'),
         toolName: 'Write',
+        modelAttemptId: modelRequest.modelAttemptId,
+        modelInput: { file_path: '/tmp/file' },
         input: { file_path: '/tmp/file' },
         sideEffect: 'non_idempotent',
         interruptBehavior: 'block',
@@ -458,6 +549,8 @@ describe('Session durable events', () => {
       DurableEventType.INPUT_APPLIED,
       DurableEventType.REQUEST_STARTED,
       DurableEventType.TURN_STARTED,
+      DurableEventType.MODEL_REQUEST_STARTED,
+      DurableEventType.MODEL_REQUEST_COMPLETED,
       DurableEventType.TOOL_SCHEDULED,
       DurableEventType.PERMISSION_REQUESTED,
       DurableEventType.PERMISSION_RESOLVED,
@@ -475,10 +568,36 @@ describe('Session durable events', () => {
     let sideEffectRan = false;
     streamChat = async function* failedToolStart(_message, _context, loopOptions) {
       yield { type: 'turn_start', turn: 1, maxTurns: 10 };
+      const modelRequest = await loopOptions?.modelExecutionLifecycle?.onModelRequestStarting({
+        turn: 1,
+        model: 'test-model',
+        streaming: false,
+      });
+      if (!modelRequest) {
+        throw new Error('Missing model execution lifecycle');
+      }
+      if (!modelRequest.modelAttemptId) {
+        throw new Error('Missing model attempt ID');
+      }
+      await modelRequest.onCompleted({
+        content: '',
+        toolCalls: [
+          {
+            id: 'tool-call-1',
+            type: 'function',
+            function: {
+              name: 'Write',
+              arguments: '{}',
+            },
+          },
+        ],
+      });
       const lifecycle = loopOptions?.toolExecutionLifecycle;
       const invocation = await lifecycle?.onToolScheduled?.({
         toolCallId: ToolUseId('tool-call-1'),
         toolName: 'Write',
+        modelAttemptId: modelRequest.modelAttemptId,
+        modelInput: {},
         input: {},
         sideEffect: 'non_idempotent',
         interruptBehavior: 'block',
@@ -854,13 +973,43 @@ describe('Session durable events', () => {
           data: { turn: 1, model: 'rollover-model' },
         },
         {
+          type: DurableEventType.MODEL_REQUEST_STARTED,
+          requestId,
+          turnId: TurnId('turn-rollover-active-turn'),
+          modelAttemptId: ModelAttemptId('turn-rollover-model-attempt'),
+          data: {
+            model: 'rollover-model',
+            streaming: false,
+          },
+        },
+        {
+          type: DurableEventType.MODEL_REQUEST_COMPLETED,
+          requestId,
+          turnId: TurnId('turn-rollover-active-turn'),
+          modelAttemptId: ModelAttemptId('turn-rollover-model-attempt'),
+          data: {
+            response: {
+              content: '',
+              toolCalls: [
+                {
+                  id: ToolUseId('turn-rollover-tool-call'),
+                  name: 'Read',
+                  arguments: '{"file_path":"/tmp/recovery-input"}',
+                },
+              ],
+            },
+          },
+        },
+        {
           type: DurableEventType.TOOL_SCHEDULED,
           requestId,
           turnId: TurnId('turn-rollover-active-turn'),
+          modelAttemptId: ModelAttemptId('turn-rollover-model-attempt'),
           toolAttemptId: ToolAttemptId('turn-rollover-tool-attempt'),
           data: {
             toolCallId: ToolUseId('turn-rollover-tool-call'),
             toolName: 'Read',
+            modelInput: { file_path: '/tmp/recovery-input' },
             input: { file_path: '/tmp/recovery-input' },
             sideEffect: 'pure',
             interruptBehavior: 'cancel',
@@ -1210,9 +1359,15 @@ describe('Session durable events', () => {
   it('closes the inner stream and durably interrupts when a consumer stops early', async () => {
     const { store } = createStore();
     let innerClosed = false;
-    streamChat = async function* interruptedByConsumer() {
+    streamChat = async function* interruptedByConsumer(_message, _context, loopOptions) {
+      let modelRequest: ModelRequestLifecycle | undefined;
       try {
         yield { type: 'turn_start', turn: 1, maxTurns: 10 };
+        modelRequest = await loopOptions?.modelExecutionLifecycle?.onModelRequestStarting({
+          turn: 1,
+          model: 'test-model',
+          streaming: true,
+        });
         yield { type: 'content_delta', delta: 'partial' };
         return {
           success: true,
@@ -1220,6 +1375,7 @@ describe('Session durable events', () => {
           metadata: { turnsCount: 1, toolCallsCount: 0, duration: 1 },
         };
       } finally {
+        await modelRequest?.onAborted('request_interrupted');
         innerClosed = true;
       }
     };
@@ -1227,15 +1383,20 @@ describe('Session durable events', () => {
     await session.send('stop early');
 
     for await (const event of session.stream()) {
-      expect(event.type).toBe('turn_start');
-      break;
+      if (event.type === 'content') {
+        break;
+      }
     }
 
     expect(innerClosed).toBe(true);
     expect(session.getDurableRecoveryPlan()?.action).toBe('none');
     expect(
-      (await store.read(session.sessionId)).events.map((event) => event.type).slice(-2),
-    ).toEqual([DurableEventType.TURN_ABORTED, DurableEventType.REQUEST_INTERRUPTED]);
+      (await store.read(session.sessionId)).events.map((event) => event.type).slice(-3),
+    ).toEqual([
+      DurableEventType.MODEL_REQUEST_ABORTED,
+      DurableEventType.TURN_ABORTED,
+      DurableEventType.REQUEST_INTERRUPTED,
+    ]);
     await session.close();
   });
 

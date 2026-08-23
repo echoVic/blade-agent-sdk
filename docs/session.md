@@ -657,12 +657,19 @@ const session = await createSession({
 });
 ```
 
-启用后，Session 会记录 Session、Request、Turn、Tool、Permission 和输入应用
-事件，并保证：
+启用后，Session 会记录 Session、Request、Turn、Model Attempt、Tool、
+Permission 和输入应用事件，并保证：
 
 - `send()` 返回前已提交 `request_accepted`。
 - steering 输入的 `input_applied` 在其 Hook 和附件准备前提交。
 - `turn_start` 和 `tool_use` 对外可见前已提交对应 durable 事件。
+- `model_request_started` 在调用 provider 前提交；模型调用返回后会提交
+  `model_request_completed`、`model_request_failed` 或
+  `model_request_aborted`。
+- `tool_scheduled` 通过 `modelAttemptId` 绑定产生它的模型调用，并同时保存
+  provider 原始 `modelInput` 与参数修复后的执行 `input`；schema v3 projector
+  会校验工具 ID、名称和原始参数。流式工具提前调度时，完整模型响应一旦收敛就会
+  在等待工具终态前持久化并反向校验。
 - 工具副作用开始前已提交 `tool_started`。
 - 独立写入的 Request 终态通过 `causationEventId` 绑定最后一次持久化的
   Request 边界。
@@ -685,9 +692,11 @@ Request，并保留其 `requestId`、输入、`maxTurns` 和 Runtime Context。�
 直接调用 `stream()` 继续这个 pending Request；执行时也会恢复接受请求时的
 模型。缺少完整执行快照的旧 durable Request 不会自动恢复。
 
-已经开始的 Request、活动 Turn、待决权限或未知工具结果不会被推测性重放，而是
-抛出 `DurableSessionRecoveryRequiredError`。首个或后续 Turn 尚未开始但输入
-准备状态不明确时，调用
+已经开始的 Request、活动 Turn、待决权限、未知模型结果或未知工具结果不会被
+推测性重放，而是抛出 `DurableSessionRecoveryRequiredError`。活动
+`model_request_started` 会返回 `reconcile_model_outcome`；调用方必须查询
+provider 或业务记录，并通过 `reconcileModelOutcome()` 提交已确认结果，之后
+才能 rollover。首个或后续 Turn 尚未开始但输入准备状态不明确时，调用
 `prepareRequestRecovery()` 并提供已对账的最终输入与精确
 `appliedInputIds`，把旧 Request 原子 rollover 为新 Request；缺失或额外输入会
 先分类为 `reconcile_request_inputs`。恢复执行会跳过已完成的初始 Hook、附件

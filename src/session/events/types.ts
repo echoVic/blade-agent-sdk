@@ -4,6 +4,7 @@ import type {
   EventId,
   EventSequence,
   InputId,
+  ModelAttemptId,
   PermissionRequestId,
   RequestId,
   SessionId,
@@ -13,7 +14,8 @@ import type {
 } from '../../types/branded.js';
 import type { JsonObject, JsonValue } from '../../types/common.js';
 
-export const DURABLE_EVENT_SCHEMA_VERSION = 2 as const;
+export const DURABLE_EVENT_SCHEMA_VERSION = 3 as const;
+export type DurableEventSchemaVersion = 2 | typeof DURABLE_EVENT_SCHEMA_VERSION;
 
 export const DurableEventType = {
   SESSION_CREATED: 'session_created',
@@ -26,6 +28,10 @@ export const DurableEventType = {
   TURN_STARTED: 'turn_started',
   TURN_COMPLETED: 'turn_completed',
   TURN_ABORTED: 'turn_aborted',
+  MODEL_REQUEST_STARTED: 'model_request_started',
+  MODEL_REQUEST_COMPLETED: 'model_request_completed',
+  MODEL_REQUEST_FAILED: 'model_request_failed',
+  MODEL_REQUEST_ABORTED: 'model_request_aborted',
   TOOL_SCHEDULED: 'tool_scheduled',
   TOOL_STARTED: 'tool_started',
   TOOL_COMPLETED: 'tool_completed',
@@ -60,6 +66,10 @@ export type DurableToolCancelReason =
   | 'cascade_abort'
   | 'process_restart';
 export type DurableToolOutcomeUnknownReason = 'process_restart' | 'commit_outcome_unknown';
+export type DurableModelRequestAbortReason =
+  | 'request_interrupted'
+  | 'steering'
+  | 'process_restart';
 
 export interface DurableEventError {
   message: string;
@@ -71,6 +81,30 @@ export interface DurableTokenUsage {
   inputTokens: number;
   outputTokens: number;
   totalTokens: number;
+}
+
+export interface DurableModelUsage {
+  promptTokens: number;
+  completionTokens: number;
+  totalTokens: number;
+  reasoningTokens?: number;
+  cacheCreationInputTokens?: number;
+  cacheReadInputTokens?: number;
+  cacheMissInputTokens?: number;
+  billableInputTokens?: number;
+}
+
+export interface DurableModelToolCall {
+  id: ToolUseId;
+  name: string;
+  arguments: string;
+}
+
+export interface DurableModelResponse {
+  content: string;
+  reasoningContent?: string;
+  toolCalls?: readonly DurableModelToolCall[];
+  usage?: DurableModelUsage;
 }
 
 export interface DurableRequestRecoveryOrigin {
@@ -120,9 +154,23 @@ export interface DurableEventDataMap {
     turn: number;
     reason: DurableTurnAbortReason;
   };
+  [DurableEventType.MODEL_REQUEST_STARTED]: {
+    model: string;
+    streaming: boolean;
+  };
+  [DurableEventType.MODEL_REQUEST_COMPLETED]: {
+    response: DurableModelResponse;
+  };
+  [DurableEventType.MODEL_REQUEST_FAILED]: {
+    error: DurableEventError;
+  };
+  [DurableEventType.MODEL_REQUEST_ABORTED]: {
+    reason: DurableModelRequestAbortReason;
+  };
   [DurableEventType.TOOL_SCHEDULED]: {
     toolCallId: ToolUseId;
     toolName: string;
+    modelInput?: JsonValue;
     input: JsonValue;
     sideEffect: ToolSideEffect;
     interruptBehavior: DurableToolInterruptBehavior;
@@ -187,8 +235,13 @@ type TurnEventType =
   | typeof DurableEventType.TURN_COMPLETED
   | typeof DurableEventType.TURN_ABORTED;
 
+type ModelEventType =
+  | typeof DurableEventType.MODEL_REQUEST_STARTED
+  | typeof DurableEventType.MODEL_REQUEST_COMPLETED
+  | typeof DurableEventType.MODEL_REQUEST_FAILED
+  | typeof DurableEventType.MODEL_REQUEST_ABORTED;
+
 type ToolEventType =
-  | typeof DurableEventType.TOOL_SCHEDULED
   | typeof DurableEventType.TOOL_STARTED
   | typeof DurableEventType.TOOL_COMPLETED
   | typeof DurableEventType.TOOL_FAILED
@@ -202,33 +255,54 @@ type PermissionEventType =
 type DurableEventCorrelation<TType extends DurableEventType> =
   TType extends typeof DurableEventType.REQUEST_ACCEPTED
     ? { readonly requestId: RequestId; readonly commandId: CommandId }
-    : TType extends ToolEventType | PermissionEventType
+    : TType extends ModelEventType
       ? {
           readonly requestId: RequestId;
           readonly turnId: TurnId;
-          readonly toolAttemptId: ToolAttemptId;
+          readonly modelAttemptId: ModelAttemptId;
           readonly commandId?: CommandId;
         }
-      : TType extends TurnEventType
+      : TType extends typeof DurableEventType.TOOL_SCHEDULED
         ? {
             readonly requestId: RequestId;
             readonly turnId: TurnId;
+            readonly modelAttemptId?: ModelAttemptId;
+            readonly toolAttemptId: ToolAttemptId;
             readonly commandId?: CommandId;
           }
-        : TType extends typeof DurableEventType.INPUT_APPLIED
+        : TType extends ToolEventType | PermissionEventType
           ? {
               readonly requestId: RequestId;
-              readonly turnId?: TurnId;
+              readonly turnId: TurnId;
+              readonly toolAttemptId: ToolAttemptId;
+              readonly modelAttemptId?: never;
               readonly commandId?: CommandId;
             }
-          : TType extends Exclude<RequestEventType, typeof DurableEventType.REQUEST_ACCEPTED>
+          : TType extends TurnEventType
             ? {
                 readonly requestId: RequestId;
+                readonly turnId: TurnId;
+                readonly modelAttemptId?: never;
+                readonly toolAttemptId?: never;
                 readonly commandId?: CommandId;
               }
-            : TType extends SessionEventType
-              ? { readonly commandId?: CommandId }
-              : never;
+            : TType extends typeof DurableEventType.INPUT_APPLIED
+              ? {
+                  readonly requestId: RequestId;
+                  readonly turnId?: TurnId;
+                  readonly modelAttemptId?: never;
+                  readonly toolAttemptId?: never;
+                  readonly commandId?: CommandId;
+                }
+              : TType extends Exclude<RequestEventType, typeof DurableEventType.REQUEST_ACCEPTED>
+                ? {
+                    readonly requestId: RequestId;
+                    readonly modelAttemptId?: never;
+                    readonly commandId?: CommandId;
+                  }
+                : TType extends SessionEventType
+                  ? { readonly commandId?: CommandId; readonly modelAttemptId?: never }
+                  : never;
 
 type DurableEventDraftVariant<TType extends DurableEventType> = {
   readonly type: TType;
@@ -241,7 +315,7 @@ export type DurableEventDraft<TType extends DurableEventType = DurableEventType>
   TType extends DurableEventType ? DurableEventDraftVariant<TType> : never;
 
 type DurableEventEnvelopeFields = {
-  readonly schemaVersion: typeof DURABLE_EVENT_SCHEMA_VERSION;
+  readonly schemaVersion: DurableEventSchemaVersion;
   readonly eventId: EventId;
   readonly sequence: EventSequence;
   readonly sessionId: SessionId;

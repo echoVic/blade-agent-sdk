@@ -7,7 +7,7 @@ import type { ConfirmationHandler, ToolExecutionLifecycle } from '../../tools/ty
 import type { ToolEffect, ToolResult, ToolYield } from '../../tools/types/index.js';
 import { resolveToolBehaviorSafely, ToolErrorType, ToolSideEffect } from '../../tools/types/index.js';
 import { isSteeringInterruptSignal } from '../../types/abort.js';
-import { type SessionId, ToolUseId } from '../../types/branded.js';
+import { type ModelAttemptId, type SessionId, ToolUseId } from '../../types/branded.js';
 import type { BladeConfig, JsonObject, PermissionMode } from '../../types/common.js';
 import type { IBackgroundAgentManager } from '../types.js';
 import { repairToolCallParams } from './repairToolCallParams.js';
@@ -74,6 +74,7 @@ export type ToolExecutionUpdate =
 export interface ToolExecutionContext {
   sessionId: SessionId;
   userId: string;
+  modelAttemptId?: ModelAttemptId;
   contextSnapshot?: ContextSnapshot;
   skillActivationPaths?: string[];
   confirmationHandler?: ConfirmationHandler;
@@ -112,6 +113,7 @@ export async function runToolCall(input: RunToolCallInput): Promise<ToolExecutio
   const logger = input.logger ?? NOOP_LOGGER.child(LogCategory.AGENT);
   let interruptBehavior: 'cancel' | 'block' = 'block';
   let sideEffect: ToolSideEffect = ToolSideEffect.NON_IDEMPOTENT;
+  let modelInput: JsonObject;
   let params: JsonObject;
 
   try {
@@ -120,6 +122,7 @@ export async function runToolCall(input: RunToolCallInput): Promise<ToolExecutio
       throw new Error('Tool arguments must be a JSON object');
     }
     params = parsed as JsonObject;
+    modelInput = structuredClone(params);
     await repairToolCallParams(input.toolCall, params);
     interruptBehavior = resolveToolInterruptBehavior(
       input.executionPipeline.getRegistry(),
@@ -156,6 +159,10 @@ export async function runToolCall(input: RunToolCallInput): Promise<ToolExecutio
   const invocationLifecycle = await input.executionContext.lifecycle?.onToolScheduled?.({
     toolCallId: ToolUseId(input.toolCall.id),
     toolName: input.toolCall.function.name,
+    ...(input.executionContext.modelAttemptId
+      ? { modelAttemptId: input.executionContext.modelAttemptId }
+      : {}),
+    modelInput,
     input: structuredClone(params),
     sideEffect,
     interruptBehavior,

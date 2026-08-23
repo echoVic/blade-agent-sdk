@@ -7,8 +7,10 @@ import {
   EventId,
   EventSequence,
   InputId,
+  ModelAttemptId,
   RequestId,
   SessionId,
+  TurnId,
 } from '../../../types/branded.js';
 import type { JsonValue } from '../../../types/common.js';
 import {
@@ -653,6 +655,73 @@ describe('DurableSessionJournal', () => {
     expect(reopened.getProjection().headSequence).toBe(3);
     expect(reopened.getProjection().activeRequest?.status).toBe('running');
     expect(replayed.status).toBe('replayed');
+  });
+
+  it('includes modelAttemptId when validating command replay identity', async () => {
+    const journal = await DurableSessionJournal.open(store, sessionId);
+    const turnId = TurnId('turn-model-replay');
+    await journal.commit({
+      commandId: CommandId('command-bootstrap-model'),
+      events: [
+        sessionCreated(),
+        requestAccepted(),
+        {
+          type: DurableEventType.REQUEST_STARTED,
+          requestId,
+          data: {},
+        },
+        {
+          type: DurableEventType.TURN_STARTED,
+          requestId,
+          turnId,
+          data: { turn: 1 },
+        },
+      ],
+    });
+    const commandId = CommandId('command-model-start');
+    await journal.commit({
+      commandId,
+      events: [
+        {
+          type: DurableEventType.MODEL_REQUEST_STARTED,
+          requestId,
+          turnId,
+          modelAttemptId: ModelAttemptId('model-attempt-original'),
+          data: { model: 'test-model', streaming: true },
+        },
+      ],
+    });
+
+    await expect(
+      journal.commit({
+        commandId,
+        events: [
+          {
+            type: DurableEventType.MODEL_REQUEST_STARTED,
+            requestId,
+            turnId,
+            modelAttemptId: ModelAttemptId('model-attempt-original'),
+            data: { model: 'test-model', streaming: true },
+          },
+        ],
+      }),
+    ).resolves.toMatchObject({
+      status: 'replayed',
+    });
+    await expect(
+      journal.commit({
+        commandId,
+        events: [
+          {
+            type: DurableEventType.MODEL_REQUEST_STARTED,
+            requestId,
+            turnId,
+            modelAttemptId: ModelAttemptId('model-attempt-different'),
+            data: { model: 'test-model', streaming: true },
+          },
+        ],
+      }),
+    ).rejects.toBeInstanceOf(DurableCommandConflictError);
   });
 
   it('bounds CAS retries for competing commands', async () => {

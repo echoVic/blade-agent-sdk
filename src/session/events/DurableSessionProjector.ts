@@ -5,6 +5,7 @@ import {
   EventId,
   EventSequence,
   type InputId,
+  type ModelAttemptId,
   type PermissionRequestId,
   type RequestId,
   type SessionId,
@@ -13,6 +14,7 @@ import {
   type TurnId,
 } from '../../types/branded.js';
 import type { JsonObject, JsonValue } from '../../types/common.js';
+import { canonicalJson } from './canonicalJson.js';
 import { parseDurableEventDraft, parseDurableEventEnvelope } from './schemas.js';
 import {
   DURABLE_EVENT_SCHEMA_VERSION,
@@ -20,9 +22,12 @@ import {
   type DurableEventDraft,
   type DurableEventEnvelope,
   type DurableEventError,
+  type DurableEventSchemaVersion,
   type DurableEventType,
   DurableEventType as DurableEventTypeValue,
   type DurableInputPriority,
+  type DurableModelRequestAbortReason,
+  type DurableModelResponse,
   type DurablePermissionDecision,
   type DurableRequestInterruptReason,
   type DurableRequestRecoveryOrigin,
@@ -45,6 +50,7 @@ export type DurableToolAttemptStatus =
   | 'cancelled'
   | 'outcome_unknown';
 export type DurablePermissionStatus = 'pending' | 'resolved';
+export type DurableModelAttemptStatus = 'started' | 'completed' | 'failed' | 'aborted';
 export type DurableSessionRecoveryAction =
   | 'none'
   | 'resume_request'
@@ -52,6 +58,7 @@ export type DurableSessionRecoveryAction =
   | 'resume_turn'
   | 'resolve_permissions'
   | 'reconcile_tool_outcomes'
+  | 'reconcile_model_outcome'
   | 'reconcile_request_inputs'
   | 'reconcile_request_outcome';
 
@@ -67,6 +74,8 @@ export interface DurableToolAttemptProjection {
   readonly toolAttemptId: ToolAttemptId;
   readonly toolCallId: ToolUseId;
   readonly toolName: string;
+  readonly modelAttemptId?: ModelAttemptId;
+  readonly modelInput?: JsonValue;
   readonly input: JsonValue;
   readonly sideEffect: ToolSideEffect;
   readonly interruptBehavior: DurableToolInterruptBehavior;
@@ -79,11 +88,23 @@ export interface DurableToolAttemptProjection {
   readonly unknownReason?: DurableToolOutcomeUnknownReason;
 }
 
+export interface DurableModelAttemptProjection {
+  readonly modelAttemptId: ModelAttemptId;
+  readonly model: string;
+  readonly streaming: boolean;
+  readonly status: DurableModelAttemptStatus;
+  readonly response?: DurableModelResponse;
+  readonly error?: DurableEventError;
+  readonly abortReason?: DurableModelRequestAbortReason;
+}
+
 export interface DurableTurnProjection {
   readonly turnId: TurnId;
   readonly turn: number;
   readonly model?: string;
   readonly status: DurableTurnStatus;
+  readonly modelAttempts: readonly DurableModelAttemptProjection[];
+  readonly activeModelAttempt: DurableModelAttemptProjection | null;
   readonly toolAttempts: readonly DurableToolAttemptProjection[];
 }
 
@@ -110,6 +131,7 @@ export interface DurableRequestProjection {
 
 export interface DurableSessionProjection {
   readonly sessionId: SessionId | null;
+  readonly schemaVersion: DurableEventSchemaVersion | null;
   readonly status: DurableSessionProjectionStatus;
   readonly headSequence: EventSequence | null;
   readonly lastEventId: EventId | null;
@@ -125,6 +147,7 @@ export interface DurableSessionRecoveryPlan {
   readonly action: DurableSessionRecoveryAction;
   readonly requestId: RequestId | null;
   readonly turnId: TurnId | null;
+  readonly activeModelAttempt: DurableModelAttemptProjection | null;
   readonly retryableToolAttempts: readonly DurableToolAttemptProjection[];
   readonly cancelableToolAttempts: readonly DurableToolAttemptProjection[];
   readonly unknownToolAttempts: readonly DurableToolAttemptProjection[];
@@ -158,6 +181,8 @@ interface MutableToolAttemptProjection {
   toolAttemptId: ToolAttemptId;
   toolCallId: ToolUseId;
   toolName: string;
+  modelAttemptId?: ModelAttemptId;
+  modelInput?: JsonValue;
   input: JsonValue;
   sideEffect: ToolSideEffect;
   interruptBehavior: DurableToolInterruptBehavior;
@@ -170,12 +195,25 @@ interface MutableToolAttemptProjection {
   unknownReason?: DurableToolOutcomeUnknownReason;
 }
 
+interface MutableModelAttemptProjection {
+  modelAttemptId: ModelAttemptId;
+  model: string;
+  streaming: boolean;
+  status: DurableModelAttemptStatus;
+  response?: DurableModelResponse;
+  error?: DurableEventError;
+  abortReason?: DurableModelRequestAbortReason;
+}
+
 interface MutableTurnProjection {
   turnId: TurnId;
   turn: number;
   model?: string;
   status: DurableTurnStatus;
   preparedInputIds: InputId[];
+  modelAttempts: Map<ModelAttemptId, MutableModelAttemptProjection>;
+  lastModelAttempt: MutableModelAttemptProjection | null;
+  activeModelAttempt: MutableModelAttemptProjection | null;
   toolAttempts: Map<ToolAttemptId, MutableToolAttemptProjection>;
 }
 
@@ -203,6 +241,7 @@ interface MutableRequestProjection {
 
 interface ProjectionAccumulator {
   sessionId: SessionId | null;
+  schemaVersion: DurableEventSchemaVersion | null;
   status: DurableSessionProjectionStatus;
   headSequence: EventSequence | null;
   lastEventId: EventId | null;
@@ -249,6 +288,7 @@ interface ProjectionAccumulator {
     sequence: EventSequence;
     reason: DurableRequestInterruptReason;
   } | null;
+  seenModelAttemptIds: Set<ModelAttemptId>;
   seenToolAttemptIds: Set<ToolAttemptId>;
   seenPermissionRequestIds: Set<PermissionRequestId>;
   seenInputIds: Set<InputId>;
@@ -258,6 +298,7 @@ interface ProjectionAccumulator {
 
 type RequestScopedEvent = DurableEventEnvelope & { readonly requestId: RequestId };
 type TurnScopedEvent = RequestScopedEvent & { readonly turnId: TurnId };
+type ModelScopedEvent = TurnScopedEvent & { readonly modelAttemptId: ModelAttemptId };
 type ToolScopedEvent = TurnScopedEvent & { readonly toolAttemptId: ToolAttemptId };
 
 function invalid(event: DurableEventEnvelope, message: string): never {
@@ -320,6 +361,22 @@ function requireToolAttempt(
   return tool;
 }
 
+function requireModelAttempt(
+  state: ProjectionAccumulator,
+  event: ModelScopedEvent,
+): MutableModelAttemptProjection {
+  const turn = requireActiveTurn(state, event);
+  const attempt = turn.modelAttempts.get(event.modelAttemptId);
+  if (
+    !attempt
+    || turn.activeModelAttempt?.modelAttemptId !== event.modelAttemptId
+    || attempt.status !== 'started'
+  ) {
+    invalid(event, `No active model attempt matches ${String(event.modelAttemptId)}`);
+  }
+  return attempt;
+}
+
 function assertToolIdentity(
   event: DurableEventEnvelope,
   tool: MutableToolAttemptProjection,
@@ -327,6 +384,107 @@ function assertToolIdentity(
 ): void {
   if (tool.toolCallId !== data.toolCallId || tool.toolName !== data.toolName) {
     invalid(event, `Tool identity does not match attempt ${tool.toolAttemptId}`);
+  }
+}
+
+function assertToolMatchesModelAttempt(
+  event: DurableEventEnvelope,
+  turn: MutableTurnProjection,
+  toolCallId: ToolUseId,
+  toolName: string,
+  modelAttemptId: ModelAttemptId | undefined,
+  modelInput: JsonValue | undefined,
+): void {
+  if (!modelAttemptId) {
+    if (event.schemaVersion >= DURABLE_EVENT_SCHEMA_VERSION) {
+      invalid(event, `Tool call ${toolCallId} has no model attempt identity`);
+    }
+    return;
+  }
+  const modelAttempt = turn.modelAttempts.get(modelAttemptId);
+  if (
+    !modelAttempt
+    || turn.lastModelAttempt?.modelAttemptId !== modelAttemptId
+  ) {
+    invalid(event, `Tool call ${toolCallId} does not belong to the current model attempt`);
+  }
+  if (modelAttempt.status === 'started') {
+    if (modelInput === undefined) {
+      invalid(event, `Tool call ${toolCallId} has no original model input`);
+    }
+    return;
+  }
+  if (modelAttempt.status !== 'completed') {
+    invalid(
+      event,
+      `Tool call ${toolCallId} follows model attempt ${modelAttempt.modelAttemptId} with status ${modelAttempt.status}`,
+    );
+  }
+  const declared = modelAttempt.response?.toolCalls?.find(
+    (toolCall) => toolCall.id === toolCallId,
+  );
+  if (!declared || declared.name !== toolName) {
+    invalid(
+      event,
+      `Tool call ${toolCallId}/${toolName} was not declared by model attempt ${modelAttempt.modelAttemptId}`,
+    );
+  }
+  assertModelToolInput(event, toolCallId, declared.arguments, modelInput);
+}
+
+function assertModelToolInput(
+  event: DurableEventEnvelope,
+  toolCallId: ToolUseId,
+  argumentsText: string,
+  modelInput: JsonValue | undefined,
+): void {
+  if (modelInput === undefined) {
+    invalid(event, `Tool call ${toolCallId} has no original model input`);
+  }
+  let declaredInput: JsonValue;
+  try {
+    declaredInput = JSON.parse(argumentsText) as JsonValue;
+  } catch (cause) {
+    throw new DurableEventProjectionError(
+      `Tool call ${toolCallId} has invalid model arguments`,
+      event,
+      { cause },
+    );
+  }
+  if (canonicalJson(declaredInput) !== canonicalJson(modelInput)) {
+    invalid(event, `Tool call ${toolCallId} input does not match the model response`);
+  }
+}
+
+function assertCompletedResponseMatchesScheduledTools(
+  event: DurableEventEnvelope<typeof DurableEventTypeValue.MODEL_REQUEST_COMPLETED>,
+  turn: MutableTurnProjection,
+): void {
+  const toolCalls = event.data.response.toolCalls ?? [];
+  const seenToolCallIds = new Set<ToolUseId>();
+  for (const toolCall of toolCalls) {
+    if (seenToolCallIds.has(toolCall.id)) {
+      invalid(event, `Model response reused tool call ID ${toolCall.id}`);
+    }
+    seenToolCallIds.add(toolCall.id);
+  }
+  for (const tool of turn.toolAttempts.values()) {
+    if (tool.modelAttemptId !== event.modelAttemptId) {
+      continue;
+    }
+    const declared = toolCalls.find((toolCall) => toolCall.id === tool.toolCallId);
+    if (!declared || declared.name !== tool.toolName) {
+      invalid(
+        event,
+        `Model response does not declare durable tool call ${tool.toolCallId}/${tool.toolName}`,
+      );
+    }
+    assertModelToolInput(
+      event,
+      tool.toolCallId,
+      declared.arguments,
+      tool.modelInput,
+    );
   }
 }
 
@@ -340,6 +498,9 @@ function assertNoPendingPermission(
 }
 
 function assertTurnCanEnd(event: DurableEventEnvelope, turn: MutableTurnProjection): void {
+  if (turn.activeModelAttempt) {
+    invalid(event, `Model attempt ${turn.activeModelAttempt.modelAttemptId} is not terminal`);
+  }
   const unfinished = Array.from(turn.toolAttempts.values()).find(
     (tool) =>
       tool.status === 'scheduled' ||
@@ -436,6 +597,14 @@ function cloneTool(tool: MutableToolAttemptProjection): DurableToolAttemptProjec
   };
 }
 
+function cloneModelAttempt(
+  attempt: MutableModelAttemptProjection,
+): DurableModelAttemptProjection {
+  return {
+    ...attempt,
+  };
+}
+
 function cloneTurn(turn: MutableTurnProjection | null): DurableTurnProjection | null {
   if (!turn) {
     return null;
@@ -445,6 +614,10 @@ function cloneTurn(turn: MutableTurnProjection | null): DurableTurnProjection | 
     turn: turn.turn,
     ...(turn.model ? { model: turn.model } : {}),
     status: turn.status,
+    modelAttempts: Array.from(turn.modelAttempts.values(), cloneModelAttempt),
+    activeModelAttempt: turn.activeModelAttempt
+      ? cloneModelAttempt(turn.activeModelAttempt)
+      : null,
     toolAttempts: Array.from(turn.toolAttempts.values(), cloneTool),
   };
 }
@@ -693,6 +866,9 @@ function applyEvent(state: ProjectionAccumulator, event: DurableEventEnvelope): 
         ...(event.data.model ? { model: event.data.model } : {}),
         status: 'running',
         preparedInputIds,
+        modelAttempts: new Map(),
+        lastModelAttempt: null,
+        activeModelAttempt: null,
         toolAttempts: new Map(),
       };
       return;
@@ -747,16 +923,110 @@ function applyEvent(state: ProjectionAccumulator, event: DurableEventEnvelope): 
       return;
     }
 
+    case DurableEventTypeValue.MODEL_REQUEST_STARTED: {
+      const request = requireRunningRequest(state, event);
+      const turn = requireActiveTurn(state, event);
+      if (turn.activeModelAttempt) {
+        invalid(
+          event,
+          `Model attempt ${turn.activeModelAttempt.modelAttemptId} is still active`,
+        );
+      }
+      const previousAttempt = turn.lastModelAttempt;
+      if (previousAttempt && previousAttempt.status !== 'failed') {
+        invalid(
+          event,
+          `Model attempt ${previousAttempt.modelAttemptId} ended as ${previousAttempt.status}`,
+        );
+      }
+      if (previousAttempt && turn.toolAttempts.size > 0) {
+        invalid(
+          event,
+          `Model attempt ${previousAttempt.modelAttemptId} dispatched tools before failing`,
+        );
+      }
+      if (state.seenModelAttemptIds.has(event.modelAttemptId)) {
+        invalid(event, `Model attempt ID ${event.modelAttemptId} was already used`);
+      }
+      const attempt: MutableModelAttemptProjection = {
+        modelAttemptId: event.modelAttemptId,
+        model: event.data.model,
+        streaming: event.data.streaming,
+        status: 'started',
+      };
+      state.seenModelAttemptIds.add(event.modelAttemptId);
+      turn.modelAttempts.set(event.modelAttemptId, attempt);
+      turn.lastModelAttempt = attempt;
+      turn.activeModelAttempt = attempt;
+      request.lastBoundaryEventId = event.eventId;
+      return;
+    }
+
+    case DurableEventTypeValue.MODEL_REQUEST_COMPLETED: {
+      const request = requireRunningRequest(state, event);
+      const turn = requireActiveTurn(state, event);
+      const attempt = requireModelAttempt(state, event);
+      assertCompletedResponseMatchesScheduledTools(event, turn);
+      attempt.status = 'completed';
+      attempt.response = event.data.response;
+      turn.activeModelAttempt = null;
+      request.lastBoundaryEventId = event.eventId;
+      return;
+    }
+
+    case DurableEventTypeValue.MODEL_REQUEST_FAILED: {
+      const request = requireRunningRequest(state, event);
+      const turn = requireActiveTurn(state, event);
+      const attempt = requireModelAttempt(state, event);
+      attempt.status = 'failed';
+      attempt.error = event.data.error;
+      turn.activeModelAttempt = null;
+      request.lastBoundaryEventId = event.eventId;
+      return;
+    }
+
+    case DurableEventTypeValue.MODEL_REQUEST_ABORTED: {
+      const request = requireRunningRequest(state, event);
+      const turn = requireActiveTurn(state, event);
+      const attempt = requireModelAttempt(state, event);
+      attempt.status = 'aborted';
+      attempt.abortReason = event.data.reason;
+      turn.activeModelAttempt = null;
+      request.lastBoundaryEventId = event.eventId;
+      return;
+    }
+
     case DurableEventTypeValue.TOOL_SCHEDULED: {
       const turn = requireActiveTurn(state, event);
       if (state.seenToolAttemptIds.has(event.toolAttemptId)) {
         invalid(event, `Tool attempt ID ${event.toolAttemptId} was already used`);
       }
+      if (
+        Array.from(turn.toolAttempts.values()).some(
+          (tool) => tool.toolCallId === event.data.toolCallId,
+        )
+      ) {
+        invalid(event, `Tool call ID ${event.data.toolCallId} was already scheduled`);
+      }
+      assertToolMatchesModelAttempt(
+        event,
+        turn,
+        event.data.toolCallId,
+        event.data.toolName,
+        event.modelAttemptId,
+        event.data.modelInput,
+      );
       state.seenToolAttemptIds.add(event.toolAttemptId);
       turn.toolAttempts.set(event.toolAttemptId, {
         toolAttemptId: event.toolAttemptId,
         toolCallId: event.data.toolCallId,
         toolName: event.data.toolName,
+        ...(event.modelAttemptId
+          ? { modelAttemptId: event.modelAttemptId }
+          : {}),
+        ...(event.data.modelInput !== undefined
+          ? { modelInput: event.data.modelInput }
+          : {}),
         input: event.data.input,
         sideEffect: event.data.sideEffect,
         interruptBehavior: event.data.interruptBehavior,
@@ -933,6 +1203,7 @@ function applyEvent(state: ProjectionAccumulator, event: DurableEventEnvelope): 
 function createProjectionAccumulator(): ProjectionAccumulator {
   return {
     sessionId: null,
+    schemaVersion: null,
     status: 'empty',
     headSequence: null,
     lastEventId: null,
@@ -949,6 +1220,7 @@ function createProjectionAccumulator(): ProjectionAccumulator {
     lastTurnAbort: null,
     lastTurnTerminal: null,
     lastRequestInterruption: null,
+    seenModelAttemptIds: new Set(),
     seenToolAttemptIds: new Set(),
     seenPermissionRequestIds: new Set(),
     seenInputIds: new Set(),
@@ -984,6 +1256,7 @@ export class DurableSessionProjector {
     const state = this.state;
     return structuredClone({
       sessionId: state.sessionId,
+      schemaVersion: state.schemaVersion,
       status: state.status,
       headSequence: state.headSequence,
       lastEventId: state.lastEventId,
@@ -1062,6 +1335,12 @@ export class DurableSessionProjector {
     if (state.sessionId && event.sessionId !== state.sessionId) {
       invalid(event, `Expected session ${state.sessionId}, received ${event.sessionId}`);
     }
+    if (state.schemaVersion !== null && event.schemaVersion < state.schemaVersion) {
+      invalid(
+        event,
+        `Durable event schema regressed from v${state.schemaVersion} to v${event.schemaVersion}`,
+      );
+    }
     if (state.seenEventIds.has(event.eventId)) {
       invalid(event, `Event ID ${event.eventId} was already used`);
     }
@@ -1071,6 +1350,7 @@ export class DurableSessionProjector {
 
     state.seenEventIds.add(event.eventId);
     applyEvent(state, event);
+    state.schemaVersion = event.schemaVersion;
     state.headSequence = event.sequence;
     state.lastEventId = event.eventId;
   }
@@ -1093,37 +1373,63 @@ export function planDurableSessionRecovery(
 ): DurableSessionRecoveryPlan {
   const request = projection.activeRequest;
   const turn = request?.activeTurn ?? null;
+  const activeModelAttempt = turn?.activeModelAttempt ?? null;
   const pendingInputIds = request?.pendingInputIds ?? [];
   const tools = turn?.toolAttempts ?? [];
+  const modelAttemptStatuses = new Map(
+    (turn?.modelAttempts ?? []).map((attempt) => [attempt.modelAttemptId, attempt.status]),
+  );
+  const hasUnconfirmedModelResponse = (tool: DurableToolAttemptProjection): boolean =>
+    tool.modelAttemptId !== undefined
+    && modelAttemptStatuses.get(tool.modelAttemptId) !== 'completed';
   const unknownToolAttempts = tools.filter(
     (tool) =>
       (tool.status === 'started' || tool.status === 'outcome_unknown')
       && tool.sideEffect === 'non_idempotent',
   );
   const pendingPermissions = tools.flatMap((tool) =>
-    tool.permission?.status === 'pending' ? [tool.permission] : [],
+    tool.permission?.status === 'pending' && !hasUnconfirmedModelResponse(tool)
+      ? [tool.permission]
+      : [],
   );
   const retryableToolAttempts = tools.filter(
     (tool) =>
-      (
+      !hasUnconfirmedModelResponse(tool)
+      && (
+        (
         tool.status === 'scheduled'
         && tool.permission?.status !== 'pending'
         && permissionDecision(tool) !== 'deny'
         && permissionDecision(tool) !== 'cancel'
-      )
-      || (
-        (tool.status === 'started' || tool.status === 'outcome_unknown')
-        && tool.sideEffect !== 'non_idempotent'
+        )
+        || (
+          (tool.status === 'started' || tool.status === 'outcome_unknown')
+          && tool.sideEffect !== 'non_idempotent'
+        )
       ),
   );
   const cancelableToolAttempts = tools.filter(
     (tool) =>
-      tool.status === 'scheduled' &&
-      (permissionDecision(tool) === 'deny' || permissionDecision(tool) === 'cancel'),
+      (
+        tool.status === 'scheduled'
+        && (permissionDecision(tool) === 'deny' || permissionDecision(tool) === 'cancel')
+      )
+      || (
+        hasUnconfirmedModelResponse(tool)
+        && (
+          tool.status === 'scheduled'
+          || (
+            (tool.status === 'started' || tool.status === 'outcome_unknown')
+            && tool.sideEffect !== 'non_idempotent'
+          )
+        )
+      ),
   );
 
   let action: DurableSessionRecoveryAction = 'none';
-  if (unknownToolAttempts.length > 0) {
+  if (activeModelAttempt) {
+    action = 'reconcile_model_outcome';
+  } else if (unknownToolAttempts.length > 0) {
     action = 'reconcile_tool_outcomes';
   } else if (pendingPermissions.length > 0) {
     action = 'resolve_permissions';
@@ -1150,6 +1456,7 @@ export function planDurableSessionRecovery(
     action,
     requestId: request?.requestId ?? null,
     turnId: turn?.turnId ?? null,
+    activeModelAttempt,
     retryableToolAttempts,
     cancelableToolAttempts,
     unknownToolAttempts,

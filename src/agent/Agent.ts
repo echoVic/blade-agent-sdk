@@ -456,20 +456,12 @@ export class Agent {
     const { enhancedMessage, context, loopOptions } = prepared;
 
     if (context.permissionMode === 'plan') {
-      const planStream = this.planExecutor.runPlanLoopStream(
-        enhancedMessage, context, loopOptions,
+      const planResult = yield* this.planExecutor.runPlanLoopStream(
+        enhancedMessage,
+        context,
+        loopOptions,
         (msg, ctx, opts, sp) => this.loopRunner.executeWithAgentLoop(msg, ctx, opts, sp),
       );
-
-      let planResult: LoopResult | undefined;
-      while (true) {
-        const { value, done } = await planStream.next();
-        if (done) {
-          planResult = value;
-          break;
-        }
-        yield value;
-      }
 
       if (isPlanApprovalResult(planResult)) {
         const targetMode = planResult.metadata.targetMode;
@@ -479,9 +471,6 @@ export class Agent {
         return yield* this.loopRunner.runLoopStream(messageWithPlan, newContext, loopOptions);
       }
 
-      if (!planResult) {
-        throw new Error('Plan stream completed without result');
-      }
       return planResult;
     }
 

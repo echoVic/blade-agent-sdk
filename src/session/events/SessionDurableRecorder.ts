@@ -1,6 +1,11 @@
 import { nanoid } from 'nanoid';
 import type { AgentEvent, TokenUsageInfo } from '../../agent/AgentEvent.js';
 import type {
+  ModelExecutionLifecycle,
+  ModelRequestAbortReason,
+  ModelRequestLifecycle,
+} from '../../agent/ModelExecutionLifecycle.js';
+import type {
   InputApplicationLifecycle,
   LoopResult,
   UserMessageContent,
@@ -19,10 +24,11 @@ import {
   CommandId,
   type EventId,
   type InputId,
+  ModelAttemptId,
   PermissionRequestId,
   type RequestId,
   ToolAttemptId,
-  type ToolUseId,
+  ToolUseId,
   TurnId,
 } from '../../types/branded.js';
 import type { JsonObject, JsonValue } from '../../types/common.js';
@@ -34,7 +40,9 @@ import type {
 } from './DurableSessionJournal.js';
 import type { DurableSessionRecoveryPlan } from './DurableSessionProjector.js';
 import {
+  type DurableEventError,
   DurableEventType,
+  type DurableModelResponse,
   type DurableRequestInterruptReason,
   type DurableToolCancelReason,
 } from './types.js';
@@ -53,7 +61,35 @@ interface ActiveTool {
 interface ActiveTurn {
   turnId: TurnId;
   turn: number;
+  modelAttemptId: ModelAttemptId | null;
   tools: Map<ToolUseId, ActiveTool>;
+}
+
+interface ActiveModelAttempt {
+  modelAttemptId: ModelAttemptId;
+  turnId: TurnId;
+}
+
+function toDurableEventError(error: unknown, fallbackMessage: string): DurableEventError {
+  const record =
+    typeof error === 'object' && error !== null
+      ? error as Record<string, unknown>
+      : undefined;
+  const rawMessage =
+    error instanceof Error
+      ? error.message
+      : typeof record?.message === 'string'
+        ? record.message
+        : String(error);
+  return {
+    message: rawMessage.trim() === '' ? fallbackMessage : rawMessage,
+    ...(typeof record?.code === 'string' && record.code.trim() !== ''
+      ? { code: record.code }
+      : {}),
+    ...(typeof record?.retryable === 'boolean'
+      ? { retryable: record.retryable }
+      : {}),
+  };
 }
 
 export type DurableRequestFinish =
@@ -90,8 +126,13 @@ export class DurableSessionRecoveryRequiredError extends SdkError {
   }
 }
 
-export class SessionDurableRecorder implements ToolExecutionLifecycle, InputApplicationLifecycle {
+export class SessionDurableRecorder implements
+  ToolExecutionLifecycle,
+  InputApplicationLifecycle,
+  ModelExecutionLifecycle
+{
   private activeTurn: ActiveTurn | null = null;
+  private activeModelAttempt: ActiveModelAttempt | null = null;
   private readonly persistedInputApplications = new Map<InputId, 'now' | 'next'>();
   private lastBoundaryEventId: EventId | null = null;
   private boundaryFailed = false;
@@ -238,6 +279,51 @@ export class SessionDurableRecorder implements ToolExecutionLifecycle, InputAppl
     }
   }
 
+  async onModelRequestStarting(input: {
+    readonly turn: number;
+    readonly model: string;
+    readonly streaming: boolean;
+  }): Promise<ModelRequestLifecycle> {
+    const turn = this.requireTurnNumber(input.turn);
+    if (this.activeModelAttempt) {
+      throw new SessionDurableRecorderError(
+        `Model attempt ${this.activeModelAttempt.modelAttemptId} is still active`,
+      );
+    }
+    const attempt: ActiveModelAttempt = {
+      modelAttemptId: ModelAttemptId(nanoid()),
+      turnId: turn.turnId,
+    };
+    this.activeModelAttempt = attempt;
+    try {
+      await this.commitRequestBoundary([
+        {
+          type: DurableEventType.MODEL_REQUEST_STARTED,
+          requestId: this.requestId,
+          turnId: turn.turnId,
+          modelAttemptId: attempt.modelAttemptId,
+          data: {
+            model: input.model,
+            streaming: input.streaming,
+          },
+        },
+      ]);
+    } catch (error) {
+      if (this.activeModelAttempt === attempt) {
+        this.activeModelAttempt = null;
+      }
+      throw error;
+    }
+    turn.modelAttemptId = attempt.modelAttemptId;
+
+    return {
+      modelAttemptId: attempt.modelAttemptId,
+      onCompleted: (response) => this.completeModelRequest(attempt, response),
+      onFailed: (error) => this.failModelRequest(attempt, error),
+      onAborted: (reason) => this.abortModelRequest(attempt, reason),
+    };
+  }
+
   async finish(finish: DurableRequestFinish): Promise<boolean> {
     this.assertRequestOpen();
     if (this.activeTurn) {
@@ -282,10 +368,7 @@ export class SessionDurableRecorder implements ToolExecutionLifecycle, InputAppl
             requestId: this.requestId,
             causationEventId,
             data: {
-              error: {
-                message:
-                  finish.error instanceof Error ? finish.error.message : String(finish.error),
-              },
+              error: toDurableEventError(finish.error, 'Request failed'),
             },
           },
         ]);
@@ -310,6 +393,11 @@ export class SessionDurableRecorder implements ToolExecutionLifecycle, InputAppl
 
   async onToolScheduled(event: ToolScheduledLifecycle): Promise<ToolInvocationLifecycle> {
     const turn = this.requireActiveTurn();
+    if (!event.modelAttemptId || event.modelAttemptId !== turn.modelAttemptId) {
+      throw new SessionDurableRecorderError(
+        `Tool call ${event.toolCallId} does not belong to the current model attempt`,
+      );
+    }
     if (turn.tools.has(event.toolCallId)) {
       throw new SessionDurableRecorderError(
         `Tool call ${event.toolCallId} was already scheduled in turn ${turn.turnId}`,
@@ -328,10 +416,12 @@ export class SessionDurableRecorder implements ToolExecutionLifecycle, InputAppl
           type: DurableEventType.TOOL_SCHEDULED,
           requestId: this.requestId,
           turnId: turn.turnId,
+          modelAttemptId: event.modelAttemptId,
           toolAttemptId: tool.toolAttemptId,
           data: {
             toolCallId: tool.toolCallId,
             toolName: tool.toolName,
+            modelInput: event.modelInput,
             input: event.input,
             sideEffect: event.sideEffect,
             interruptBehavior: event.interruptBehavior,
@@ -419,6 +509,7 @@ export class SessionDurableRecorder implements ToolExecutionLifecycle, InputAppl
     const activeTurn: ActiveTurn = {
       turnId: TurnId(nanoid()),
       turn,
+      modelAttemptId: null,
       tools: new Map(),
     };
     await this.commitRequestBoundary([
@@ -437,6 +528,7 @@ export class SessionDurableRecorder implements ToolExecutionLifecycle, InputAppl
 
   private async completeTurn(turn: number, hasToolCalls: boolean): Promise<void> {
     const activeTurn = this.requireTurnNumber(turn);
+    this.assertNoActiveModelAttempt(activeTurn);
     await this.commitRequestBoundary([
       {
         type: DurableEventType.TURN_COMPLETED,
@@ -453,6 +545,7 @@ export class SessionDurableRecorder implements ToolExecutionLifecycle, InputAppl
 
   private async abortTurn(turn: number, reason: 'request_interrupted' | 'error'): Promise<boolean> {
     const activeTurn = this.requireTurnNumber(turn);
+    this.assertNoActiveModelAttempt(activeTurn);
     const drafts = [];
     const cancelledPermissions: ActiveTool[] = [];
     const settledTools: ActiveTool[] = [];
@@ -519,6 +612,105 @@ export class SessionDurableRecorder implements ToolExecutionLifecycle, InputAppl
     ]);
     this.activeTurn = null;
     return true;
+  }
+
+  private async completeModelRequest(
+    attempt: ActiveModelAttempt,
+    response: Parameters<ModelRequestLifecycle['onCompleted']>[0],
+  ): Promise<void> {
+    this.requireModelAttempt(attempt);
+    await this.commitRebasableRequestBoundary([
+      {
+        type: DurableEventType.MODEL_REQUEST_COMPLETED,
+        requestId: this.requestId,
+        turnId: attempt.turnId,
+        modelAttemptId: attempt.modelAttemptId,
+        data: {
+          response: this.toDurableModelResponse(response),
+        },
+      },
+    ]);
+    this.activeModelAttempt = null;
+  }
+
+  private async failModelRequest(
+    attempt: ActiveModelAttempt,
+    error: unknown,
+  ): Promise<void> {
+    this.requireModelAttempt(attempt);
+    await this.commitRebasableRequestBoundary([
+      {
+        type: DurableEventType.MODEL_REQUEST_FAILED,
+        requestId: this.requestId,
+        turnId: attempt.turnId,
+        modelAttemptId: attempt.modelAttemptId,
+        data: {
+          error: toDurableEventError(error, 'Model request failed'),
+        },
+      },
+    ]);
+    this.activeModelAttempt = null;
+  }
+
+  private async abortModelRequest(
+    attempt: ActiveModelAttempt,
+    reason: ModelRequestAbortReason,
+  ): Promise<void> {
+    this.requireModelAttempt(attempt);
+    await this.commitRebasableRequestBoundary([
+      {
+        type: DurableEventType.MODEL_REQUEST_ABORTED,
+        requestId: this.requestId,
+        turnId: attempt.turnId,
+        modelAttemptId: attempt.modelAttemptId,
+        data: { reason },
+      },
+    ]);
+    this.activeModelAttempt = null;
+  }
+
+  private toDurableModelResponse(
+    response: Parameters<ModelRequestLifecycle['onCompleted']>[0],
+  ): DurableModelResponse {
+    return {
+      content: response.content,
+      ...(response.reasoningContent !== undefined
+        ? { reasoningContent: response.reasoningContent }
+        : {}),
+      ...(response.toolCalls && response.toolCalls.length > 0
+        ? {
+            toolCalls: response.toolCalls.map((toolCall) => ({
+              id: ToolUseId(toolCall.id),
+              name: toolCall.function.name,
+              arguments: toolCall.function.arguments,
+            })),
+          }
+        : {}),
+      ...(response.usage
+        ? {
+            usage: {
+              promptTokens: response.usage.promptTokens,
+              completionTokens: response.usage.completionTokens,
+              totalTokens: response.usage.totalTokens,
+              ...(response.usage.reasoningTokens !== undefined
+                ? { reasoningTokens: response.usage.reasoningTokens }
+                : {}),
+              ...(response.usage.cacheCreationInputTokens !== undefined
+                ? { cacheCreationInputTokens: response.usage.cacheCreationInputTokens }
+                : {}),
+              ...(response.usage.cacheReadInputTokens !== undefined
+                ? { cacheReadInputTokens: response.usage.cacheReadInputTokens }
+                : {}),
+              ...(response.usage.cacheMissInputTokens !== undefined
+                ? { cacheMissInputTokens: response.usage.cacheMissInputTokens }
+                : {}),
+              ...(response.usage.billableInputTokens !== undefined
+                ? { billableInputTokens: response.usage.billableInputTokens }
+                : {}),
+            },
+          }
+        : {}),
+    };
   }
 
   private async recordPermissionRequested(
@@ -654,6 +846,26 @@ export class SessionDurableRecorder implements ToolExecutionLifecycle, InputAppl
     return activeTurn;
   }
 
+  private requireModelAttempt(attempt: ActiveModelAttempt): void {
+    this.assertRequestOpen();
+    if (
+      this.activeModelAttempt !== attempt
+      || this.activeTurn?.turnId !== attempt.turnId
+    ) {
+      throw new SessionDurableRecorderError(
+        `No active model attempt matches ${attempt.modelAttemptId}`,
+      );
+    }
+  }
+
+  private assertNoActiveModelAttempt(turn: ActiveTurn): void {
+    if (this.activeModelAttempt?.turnId === turn.turnId) {
+      throw new SessionDurableRecorderError(
+        `Model attempt ${this.activeModelAttempt.modelAttemptId} is still active`,
+      );
+    }
+  }
+
   private async commit(
     events: Parameters<DurableSessionJournal['commit']>[0]['events'],
     options: DurableCommandCommitOptions = {},
@@ -671,6 +883,27 @@ export class SessionDurableRecorder implements ToolExecutionLifecycle, InputAppl
     events: Parameters<DurableSessionJournal['commit']>[0]['events'],
   ): Promise<DurableCommandCommitResult> {
     const commit = await this.commitAtCurrentHead(events);
+    this.updateLastBoundary(commit);
+    return commit;
+  }
+
+  private async commitRebasableRequestBoundary(
+    events: Parameters<DurableSessionJournal['commit']>[0]['events'],
+  ): Promise<DurableCommandCommitResult> {
+    this.assertBoundaryHealthy();
+    let commit: DurableCommandCommitResult;
+    try {
+      commit = await this.commit(events);
+    } catch (error) {
+      this.boundaryFailed = true;
+      this.boundaryFailure = error;
+      throw error;
+    }
+    this.updateLastBoundary(commit);
+    return commit;
+  }
+
+  private updateLastBoundary(commit: DurableCommandCommitResult): void {
     const boundary = commit.events.at(-1);
     if (!boundary) {
       throw new SessionDurableRecorderError(
@@ -678,7 +911,6 @@ export class SessionDurableRecorder implements ToolExecutionLifecycle, InputAppl
       );
     }
     this.lastBoundaryEventId = boundary.eventId;
-    return commit;
   }
 
   private async commitAtCurrentHead(

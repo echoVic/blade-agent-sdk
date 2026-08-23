@@ -1,0 +1,5 @@
+{
+  "type": "breaking",
+  "en": "Persist and deterministically settle model request attempts around provider calls, bind durable tool schedules to authoritative model responses, require explicit reconciliation for unknown outcomes, and advance the durable event wire format to schema v3 with schema-v2 read compatibility.",
+  "zh-CN": "在 provider 调用前后持久化并确定性闭合模型请求尝试，将 durable 工具调度绑定到权威模型响应，对未知结果强制显式对账，并将 durable event wire format 升级至 schema v3，同时保持 schema v2 读取兼容。"
+}

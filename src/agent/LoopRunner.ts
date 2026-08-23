@@ -232,21 +232,7 @@ export class LoopRunner {
 
     // 5. 运行 AgentLoop
     try {
-      const loop = agentLoop(loopConfig);
-      let result: LoopResult | undefined;
-
-      while (true) {
-        const { value, done } = await loop.next();
-        if (done) {
-          result = value;
-          break;
-        }
-        yield value;
-      }
-
-      if (!result) {
-        throw new Error('AgentLoop ended without result');
-      }
+      const result = yield* agentLoop(loopConfig);
 
       syncContextMessages(context, loopState.conversationState);
       return result;

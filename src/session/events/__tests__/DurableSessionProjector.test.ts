@@ -4,6 +4,7 @@ import {
   EventId,
   EventSequence,
   InputId,
+  ModelAttemptId,
   PermissionRequestId,
   RequestId,
   SessionId,
@@ -30,6 +31,7 @@ const requestId = RequestId('request-1');
 const commandId = CommandId('command-1');
 const initialInputId = InputId('input-1');
 const turnId = TurnId('turn-1');
+const modelAttemptId = ModelAttemptId('model-attempt-1');
 const toolAttemptId = ToolAttemptId('attempt-1');
 const toolCallId = ToolUseId('call-1');
 const permissionRequestId = PermissionRequestId('permission-1');
@@ -104,20 +106,71 @@ function turnPrefix(): DurableEventDraft[] {
 
 function toolScheduled(
   sideEffect: 'pure' | 'idempotent' | 'non_idempotent' = 'non_idempotent',
-): DurableEventDraft {
+): DurableEventDraft<typeof DurableEventType.TOOL_SCHEDULED> {
   return {
     type: DurableEventType.TOOL_SCHEDULED,
     requestId,
     turnId,
+    modelAttemptId,
     toolAttemptId,
     data: {
       toolCallId,
       toolName: 'Write',
+      modelInput: { file_path: '/tmp/file' },
       input: { file_path: '/tmp/file' },
       sideEffect,
       interruptBehavior: 'block',
     },
   };
+}
+
+function completedModelAttempt(
+  toolCalls: Array<{
+    id: ToolUseId;
+    name: string;
+    arguments: string;
+  }> = [
+    {
+      id: toolCallId,
+      name: 'Write',
+      arguments: '{"file_path":"/tmp/file"}',
+    },
+  ],
+): DurableEventDraft[] {
+  return [
+    {
+      type: DurableEventType.MODEL_REQUEST_STARTED,
+      requestId,
+      turnId,
+      modelAttemptId,
+      data: {
+        model: 'claude-sonnet',
+        streaming: false,
+      },
+    },
+    {
+      type: DurableEventType.MODEL_REQUEST_COMPLETED,
+      requestId,
+      turnId,
+      modelAttemptId,
+      data: {
+        response: {
+          content: '',
+          toolCalls,
+        },
+      },
+    },
+  ];
+}
+
+function toolTurnPrefix(
+  toolCalls?: Array<{
+    id: ToolUseId;
+    name: string;
+    arguments: string;
+  }>,
+): DurableEventDraft[] {
+  return [...turnPrefix(), ...completedModelAttempt(toolCalls)];
 }
 
 function permissionRequested(): DurableEventDraft {
@@ -143,7 +196,7 @@ function project(drafts: readonly DurableEventDraft[]) {
 describe('DurableSessionProjector', () => {
   it('projects a complete session lifecycle', () => {
     const projection = project([
-      ...turnPrefix(),
+      ...toolTurnPrefix(),
       toolScheduled(),
       permissionRequested(),
       {
@@ -199,8 +252,8 @@ describe('DurableSessionProjector', () => {
     expect(projection).toMatchObject({
       sessionId,
       status: 'closed',
-      headSequence: 13,
-      lastEventId: 'event-13',
+      headSequence: 15,
+      lastEventId: 'event-15',
       closeReason: 'completed',
       activeRequest: null,
       appliedInputIds: [initialInputId],
@@ -226,7 +279,7 @@ describe('DurableSessionProjector', () => {
 
   it('returns defensive snapshots that cannot mutate projector state', () => {
     const projector = new DurableSessionProjector().apply(
-      envelopes([...turnPrefix(), toolScheduled()]),
+      envelopes([...toolTurnPrefix(), toolScheduled()]),
     );
     const first = projector.snapshot();
     const tool = first.activeRequest?.activeTurn?.toolAttempts[0];
@@ -277,6 +330,101 @@ describe('DurableSessionProjector', () => {
     ).toThrow(/has not started/);
 
     expect(projector.snapshot().activeRequest?.status).toBe('accepted');
+  });
+
+  it('allows schema upgrades but rejects schema downgrades', () => {
+    const legacy = parseDurableEventEnvelope({
+      schemaVersion: 2,
+      eventId: EventId('legacy-session-created'),
+      sequence: 1,
+      sessionId,
+      type: DurableEventType.SESSION_CREATED,
+      data: { source: 'create' },
+      recordedAt: timestamp,
+      occurredAt: timestamp,
+    });
+    const upgraded = parseDurableEventEnvelope({
+      schemaVersion: DURABLE_EVENT_SCHEMA_VERSION,
+      eventId: EventId('current-request-accepted'),
+      sequence: 2,
+      sessionId,
+      type: DurableEventType.REQUEST_ACCEPTED,
+      requestId,
+      commandId,
+      data: {
+        inputId: initialInputId,
+        input: 'upgrade',
+        priority: 'next',
+      },
+      recordedAt: timestamp,
+      occurredAt: timestamp,
+    });
+    const projector = new DurableSessionProjector().apply([legacy, upgraded]);
+    expect(projector.snapshot()).toMatchObject({
+      schemaVersion: 3,
+      activeRequest: { requestId },
+    });
+
+    expect(() =>
+      projector.apply([
+        parseDurableEventEnvelope({
+          schemaVersion: 2,
+          eventId: EventId('downgraded-request-started'),
+          sequence: 3,
+          sessionId,
+          type: DurableEventType.REQUEST_STARTED,
+          requestId,
+          data: {},
+          recordedAt: timestamp,
+          occurredAt: timestamp,
+        }),
+      ]),
+    ).toThrow(/schema regressed from v3 to v2/);
+  });
+
+  it('continues to project schema-v2 tool events without model attempt metadata', () => {
+    const legacyDrafts: DurableEventDraft[] = [
+      ...turnPrefix(),
+      {
+        type: DurableEventType.TOOL_SCHEDULED,
+        requestId,
+        turnId,
+        toolAttemptId,
+        data: {
+          toolCallId,
+          toolName: 'Write',
+          input: { file_path: '/tmp/file' },
+          sideEffect: 'non_idempotent',
+          interruptBehavior: 'block',
+        },
+      },
+    ];
+    const legacyEvents = legacyDrafts.map((draft, index) =>
+      parseDurableEventEnvelope({
+        ...draft,
+        schemaVersion: 2,
+        eventId: EventId(`legacy-event-${index + 1}`),
+        sequence: EventSequence(index + 1),
+        sessionId,
+        recordedAt: timestamp,
+        occurredAt: timestamp,
+      }),
+    );
+
+    expect(projectDurableSession(legacyEvents)).toMatchObject({
+      schemaVersion: 2,
+      activeRequest: {
+        activeTurn: {
+          toolAttempts: [
+            expect.objectContaining({
+              toolAttemptId,
+              toolCallId,
+              input: { file_path: '/tmp/file' },
+            }),
+          ],
+        },
+      },
+    });
   });
 
   it('requires latest-boundary causation for new standalone Request terminal writes', () => {
@@ -382,6 +530,555 @@ describe('DurableSessionProjector', () => {
         },
       ]),
     ).toThrow(/requires a completed or aborted Turn/);
+  });
+
+  it('projects model attempts and blocks recovery while an outcome is unknown', () => {
+    const started = project([
+      ...turnPrefix(),
+      {
+        type: DurableEventType.MODEL_REQUEST_STARTED,
+        requestId,
+        turnId,
+        modelAttemptId,
+        data: {
+          model: 'claude-sonnet',
+          streaming: true,
+        },
+      },
+    ]);
+
+    expect(started.activeRequest?.activeTurn?.activeModelAttempt).toMatchObject({
+      modelAttemptId,
+      model: 'claude-sonnet',
+      streaming: true,
+      status: 'started',
+    });
+    expect(planDurableSessionRecovery(started)).toMatchObject({
+      action: 'reconcile_model_outcome',
+      requestId,
+      turnId,
+    });
+
+    const completed = project([
+      ...turnPrefix(),
+      {
+        type: DurableEventType.MODEL_REQUEST_STARTED,
+        requestId,
+        turnId,
+        modelAttemptId,
+        data: {
+          model: 'claude-sonnet',
+          streaming: true,
+        },
+      },
+      {
+        type: DurableEventType.MODEL_REQUEST_COMPLETED,
+        requestId,
+        turnId,
+        modelAttemptId,
+        data: {
+          response: {
+            content: 'done',
+            usage: {
+              promptTokens: 10,
+              completionTokens: 2,
+              totalTokens: 12,
+            },
+          },
+        },
+      },
+    ]);
+    expect(completed.activeRequest?.activeTurn).toMatchObject({
+      activeModelAttempt: null,
+      modelAttempts: [
+        expect.objectContaining({
+          modelAttemptId,
+          status: 'completed',
+          response: expect.objectContaining({ content: 'done' }),
+        }),
+      ],
+    });
+    expect(planDurableSessionRecovery(completed).action).toBe('resume_turn');
+  });
+
+  it('prioritizes an unknown model outcome before tool and permission reconciliation', () => {
+    const projection = project([
+      ...turnPrefix(),
+      {
+        type: DurableEventType.MODEL_REQUEST_STARTED,
+        requestId,
+        turnId,
+        modelAttemptId,
+        data: {
+          model: 'claude-sonnet',
+          streaming: true,
+        },
+      },
+      toolScheduled('non_idempotent'),
+      {
+        type: DurableEventType.TOOL_STARTED,
+        requestId,
+        turnId,
+        toolAttemptId,
+        data: {
+          toolCallId,
+          toolName: 'Write',
+          input: { file_path: '/tmp/file' },
+          sideEffect: 'non_idempotent',
+        },
+      },
+    ]);
+
+    expect(planDurableSessionRecovery(projection)).toMatchObject({
+      action: 'reconcile_model_outcome',
+      activeModelAttempt: { modelAttemptId },
+      unknownToolAttempts: [{ toolAttemptId }],
+    });
+  });
+
+  it('requires a model attempt to settle before its Turn can end', () => {
+    expect(() =>
+      project([
+        ...turnPrefix(),
+        {
+          type: DurableEventType.MODEL_REQUEST_STARTED,
+          requestId,
+          turnId,
+          modelAttemptId,
+          data: {
+            model: 'claude-sonnet',
+            streaming: false,
+          },
+        },
+        {
+          type: DurableEventType.TURN_ABORTED,
+          requestId,
+          turnId,
+          data: {
+            turn: 1,
+            reason: 'process_restart',
+          },
+        },
+      ]),
+    ).toThrow(/Model attempt model-attempt-1 is not terminal/);
+  });
+
+  it.each([
+    {
+      type: DurableEventType.MODEL_REQUEST_FAILED,
+      data: { error: { message: 'provider unavailable', retryable: true } },
+      status: 'failed',
+    },
+    {
+      type: DurableEventType.MODEL_REQUEST_ABORTED,
+      data: { reason: 'steering' as const },
+      status: 'aborted',
+    },
+  ])('projects a terminal $status model attempt', ({ type, data, status }) => {
+    const projection = project([
+      ...turnPrefix(),
+      {
+        type: DurableEventType.MODEL_REQUEST_STARTED,
+        requestId,
+        turnId,
+        modelAttemptId,
+        data: {
+          model: 'claude-sonnet',
+          streaming: false,
+        },
+      },
+      {
+        type,
+        requestId,
+        turnId,
+        modelAttemptId,
+        data,
+      },
+    ] as readonly DurableEventDraft[]);
+
+    expect(projection.activeRequest?.activeTurn).toMatchObject({
+      activeModelAttempt: null,
+      modelAttempts: [
+        expect.objectContaining({
+          modelAttemptId,
+          status,
+        }),
+      ],
+    });
+    expect(planDurableSessionRecovery(projection).action).toBe('resume_turn');
+  });
+
+  it('rejects overlapping and mismatched model attempts', () => {
+    const started = [
+      ...turnPrefix(),
+      {
+        type: DurableEventType.MODEL_REQUEST_STARTED,
+        requestId,
+        turnId,
+        modelAttemptId,
+        data: {
+          model: 'claude-sonnet',
+          streaming: true,
+        },
+      },
+    ] as const;
+
+    expect(() =>
+      project([
+        ...started,
+        {
+          type: DurableEventType.MODEL_REQUEST_STARTED,
+          requestId,
+          turnId,
+          modelAttemptId: ModelAttemptId('model-attempt-2'),
+          data: {
+            model: 'claude-sonnet',
+            streaming: true,
+          },
+        },
+      ]),
+    ).toThrow(/is still active/);
+    expect(() =>
+      project([
+        ...started,
+        {
+          type: DurableEventType.MODEL_REQUEST_COMPLETED,
+          requestId,
+          turnId,
+          modelAttemptId: ModelAttemptId('different-model-attempt'),
+          data: {
+            response: { content: 'wrong attempt' },
+          },
+        },
+      ]),
+    ).toThrow(/No active model attempt matches/);
+  });
+
+  it('allows a retry after model failure but not after a completed response', () => {
+    const failedAttempt = [
+      ...turnPrefix(),
+      {
+        type: DurableEventType.MODEL_REQUEST_STARTED,
+        requestId,
+        turnId,
+        modelAttemptId,
+        data: {
+          model: 'claude-sonnet',
+          streaming: false,
+        },
+      },
+      {
+        type: DurableEventType.MODEL_REQUEST_FAILED,
+        requestId,
+        turnId,
+        modelAttemptId,
+        data: {
+          error: { message: 'context overflow', retryable: true },
+        },
+      },
+    ] as const;
+    const retryAttemptId = ModelAttemptId('model-attempt-2');
+    expect(
+      project([
+        ...failedAttempt,
+        {
+          type: DurableEventType.MODEL_REQUEST_STARTED,
+          requestId,
+          turnId,
+          modelAttemptId: retryAttemptId,
+          data: {
+            model: 'claude-sonnet',
+            streaming: false,
+          },
+        },
+      ]).activeRequest?.activeTurn?.activeModelAttempt,
+    ).toMatchObject({
+      modelAttemptId: retryAttemptId,
+      status: 'started',
+    });
+
+    expect(() =>
+      project([
+        ...failedAttempt.slice(0, -1),
+        {
+          type: DurableEventType.MODEL_REQUEST_COMPLETED,
+          requestId,
+          turnId,
+          modelAttemptId,
+          data: {
+            response: { content: 'done' },
+          },
+        },
+        {
+          type: DurableEventType.MODEL_REQUEST_STARTED,
+          requestId,
+          turnId,
+          modelAttemptId: retryAttemptId,
+          data: {
+            model: 'claude-sonnet',
+            streaming: false,
+          },
+        },
+      ]),
+    ).toThrow(/ended as completed/);
+    expect(() =>
+      project([
+        ...turnPrefix(),
+        failedAttempt[failedAttempt.length - 2],
+        toolScheduled('pure'),
+        failedAttempt[failedAttempt.length - 1],
+        {
+          type: DurableEventType.MODEL_REQUEST_STARTED,
+          requestId,
+          turnId,
+          modelAttemptId: retryAttemptId,
+          data: {
+            model: 'claude-sonnet',
+            streaming: false,
+          },
+        },
+      ] as readonly DurableEventDraft[]),
+    ).toThrow(/dispatched tools before failing/);
+  });
+
+  it('binds durable tool calls to the completed model response', () => {
+    const modelStarted = {
+      type: DurableEventType.MODEL_REQUEST_STARTED,
+      requestId,
+      turnId,
+      modelAttemptId,
+      data: {
+        model: 'claude-sonnet',
+        streaming: false,
+      },
+    } as const;
+    const matchingResponse = {
+      type: DurableEventType.MODEL_REQUEST_COMPLETED,
+      requestId,
+      turnId,
+      modelAttemptId,
+      data: {
+        response: {
+          content: '',
+          toolCalls: [
+            {
+              id: toolCallId,
+              name: 'Write',
+              arguments: '{"file_path":"/tmp/file"}',
+            },
+          ],
+        },
+      },
+    } as const;
+
+    expect(
+      project([
+        ...turnPrefix(),
+        modelStarted,
+        matchingResponse,
+        {
+          ...toolScheduled(),
+          data: {
+            ...toolScheduled().data,
+            input: { file_path: '/tmp/repaired-file' },
+          },
+        },
+      ]).activeRequest?.activeTurn?.toolAttempts,
+    ).toEqual([
+      expect.objectContaining({
+        modelAttemptId,
+        modelInput: { file_path: '/tmp/file' },
+        input: { file_path: '/tmp/repaired-file' },
+      }),
+    ]);
+    expect(() =>
+      project([
+        ...turnPrefix(),
+        modelStarted,
+        {
+          ...matchingResponse,
+          data: {
+            response: {
+              content: '',
+              toolCalls: [
+                {
+                  id: toolCallId,
+                  name: 'Read',
+                  arguments: '{"file_path":"/tmp/file"}',
+                },
+              ],
+            },
+          },
+        },
+        toolScheduled(),
+      ]),
+    ).toThrow(/was not declared by model attempt/);
+    expect(() =>
+      project([
+        ...turnPrefix(),
+        modelStarted,
+        matchingResponse,
+        {
+          ...toolScheduled(),
+          data: {
+            ...toolScheduled().data,
+            modelInput: { file_path: '/tmp/other-file' },
+          },
+        },
+      ]),
+    ).toThrow(/input does not match the model response/);
+    expect(() =>
+      project([
+        ...turnPrefix(),
+        modelStarted,
+        toolScheduled(),
+        {
+          ...matchingResponse,
+          data: {
+            response: {
+              content: '',
+            },
+          },
+        },
+      ]),
+    ).toThrow(/does not declare durable tool call/);
+    expect(() =>
+      project([
+        ...turnPrefix(),
+        toolScheduled(),
+      ]),
+    ).toThrow(/does not belong to the current model attempt/);
+  });
+
+  it('rejects stale tool-attempt bindings and duplicate model tool-call IDs', () => {
+    const retryAttemptId = ModelAttemptId('model-attempt-2');
+    expect(() =>
+      project([
+        ...turnPrefix(),
+        {
+          type: DurableEventType.MODEL_REQUEST_STARTED,
+          requestId,
+          turnId,
+          modelAttemptId,
+          data: { model: 'claude-sonnet', streaming: false },
+        },
+        {
+          type: DurableEventType.MODEL_REQUEST_FAILED,
+          requestId,
+          turnId,
+          modelAttemptId,
+          data: { error: { message: 'retry' } },
+        },
+        {
+          type: DurableEventType.MODEL_REQUEST_STARTED,
+          requestId,
+          turnId,
+          modelAttemptId: retryAttemptId,
+          data: { model: 'claude-sonnet', streaming: false },
+        },
+        toolScheduled(),
+      ]),
+    ).toThrow(/does not belong to the current model attempt/);
+
+    expect(() =>
+      project([
+        ...turnPrefix(),
+        {
+          type: DurableEventType.MODEL_REQUEST_STARTED,
+          requestId,
+          turnId,
+          modelAttemptId,
+          data: { model: 'claude-sonnet', streaming: false },
+        },
+        {
+          type: DurableEventType.MODEL_REQUEST_COMPLETED,
+          requestId,
+          turnId,
+          modelAttemptId,
+          data: {
+            response: {
+              content: '',
+              toolCalls: [
+                {
+                  id: toolCallId,
+                  name: 'Write',
+                  arguments: '{"file_path":"/tmp/file"}',
+                },
+                {
+                  id: toolCallId,
+                  name: 'Write',
+                  arguments: '{"file_path":"/tmp/file"}',
+                },
+              ],
+            },
+          },
+        },
+      ]),
+    ).toThrow(/reused tool call ID/);
+  });
+
+  it.each([
+    {
+      type: DurableEventType.MODEL_REQUEST_FAILED,
+      data: { error: { message: 'stream failed' } },
+      status: 'failed',
+    },
+    {
+      type: DurableEventType.MODEL_REQUEST_ABORTED,
+      data: { reason: 'request_interrupted' as const },
+      status: 'aborted',
+    },
+  ])('does not retry tools from a model attempt that ended as $status', ({
+    type,
+    data,
+    status,
+  }) => {
+    const projection = project([
+      ...turnPrefix(),
+      {
+        type: DurableEventType.MODEL_REQUEST_STARTED,
+        requestId,
+        turnId,
+        modelAttemptId,
+        data: {
+          model: 'claude-sonnet',
+          streaming: true,
+        },
+      },
+      toolScheduled('pure'),
+      {
+        type,
+        requestId,
+        turnId,
+        modelAttemptId,
+        data,
+      },
+    ] as readonly DurableEventDraft[]);
+
+    expect(projection.activeRequest?.activeTurn).toMatchObject({
+      modelAttempts: [
+        expect.objectContaining({
+          modelAttemptId,
+          status,
+        }),
+      ],
+      toolAttempts: [
+        expect.objectContaining({
+          modelAttemptId,
+          status: 'scheduled',
+        }),
+      ],
+    });
+    expect(planDurableSessionRecovery(projection)).toMatchObject({
+      action: 'resume_turn',
+      retryableToolAttempts: [],
+      cancelableToolAttempts: [
+        expect.objectContaining({
+          toolAttemptId,
+          modelAttemptId,
+        }),
+      ],
+    });
   });
 
   it('distinguishes accepted, pre-turn, post-turn, and active-turn recovery', () => {
@@ -755,7 +1452,7 @@ describe('DurableSessionProjector', () => {
   it('rejects a recovery request that bypasses a non-idempotent execution boundary', () => {
     expect(() =>
       project([
-        ...turnPrefix(),
+        ...toolTurnPrefix(),
         toolScheduled('non_idempotent'),
         {
           type: DurableEventType.TOOL_STARTED,
@@ -814,7 +1511,7 @@ describe('DurableSessionProjector', () => {
   });
 
   it('classifies scheduled tools as retryable before execution starts', () => {
-    const projection = project([...turnPrefix(), toolScheduled()]);
+    const projection = project([...toolTurnPrefix(), toolScheduled()]);
     const recovery = planDurableSessionRecovery(projection);
 
     expect(recovery.action).toBe('resume_turn');
@@ -829,7 +1526,7 @@ describe('DurableSessionProjector', () => {
   });
 
   it('prioritizes unresolved permissions over retrying a scheduled tool', () => {
-    const projection = project([...turnPrefix(), toolScheduled(), permissionRequested()]);
+    const projection = project([...toolTurnPrefix(), toolScheduled(), permissionRequested()]);
     const recovery = planDurableSessionRecovery(projection);
 
     expect(recovery.action).toBe('resolve_permissions');
@@ -845,7 +1542,7 @@ describe('DurableSessionProjector', () => {
 
   it('classifies denied scheduled tools for terminal cancellation', () => {
     const projection = project([
-      ...turnPrefix(),
+      ...toolTurnPrefix(),
       toolScheduled(),
       permissionRequested(),
       {
@@ -874,7 +1571,7 @@ describe('DurableSessionProjector', () => {
 
   it('requires reconciliation for a started tool until its outcome is resolved', () => {
     const started = [
-      ...turnPrefix(),
+      ...toolTurnPrefix(),
       toolScheduled(),
       {
         type: DurableEventType.TOOL_STARTED,
@@ -938,7 +1635,7 @@ describe('DurableSessionProjector', () => {
     'classifies a started %s tool as replayable',
     (sideEffect) => {
       const projection = project([
-        ...turnPrefix(),
+        ...toolTurnPrefix(),
         toolScheduled('non_idempotent'),
         {
           type: DurableEventType.TOOL_STARTED,
@@ -1002,7 +1699,7 @@ describe('DurableSessionProjector', () => {
     expect(abortedTurn.activeRequest?.activeTurn).toBeNull();
 
     const failedTool = project([
-      ...turnPrefix(),
+      ...toolTurnPrefix(),
       toolScheduled(),
       {
         type: DurableEventType.TOOL_FAILED,
@@ -1019,7 +1716,7 @@ describe('DurableSessionProjector', () => {
     expect(failedTool.activeRequest?.activeTurn?.toolAttempts[0]?.status).toBe('failed');
 
     const cancelledTool = project([
-      ...turnPrefix(),
+      ...toolTurnPrefix(),
       toolScheduled(),
       {
         type: DurableEventType.TOOL_CANCELLED,
@@ -1115,7 +1812,7 @@ describe('DurableSessionProjector', () => {
     {
       name: 'tool start while permission is unresolved',
       drafts: [
-        ...turnPrefix(),
+        ...toolTurnPrefix(),
         toolScheduled(),
         permissionRequested(),
         {
@@ -1136,7 +1833,7 @@ describe('DurableSessionProjector', () => {
     {
       name: 'turn completion with unfinished tool',
       drafts: [
-        ...turnPrefix(),
+        ...toolTurnPrefix(),
         toolScheduled(),
         {
           type: DurableEventType.TURN_COMPLETED,
@@ -1173,7 +1870,7 @@ describe('DurableSessionProjector', () => {
     {
       name: 'tool identity mismatch',
       drafts: [
-        ...turnPrefix(),
+        ...toolTurnPrefix(),
         toolScheduled(),
         {
           type: DurableEventType.TOOL_STARTED,
@@ -1394,7 +2091,7 @@ describe('DurableSessionProjector', () => {
     {
       name: 'tool attempt ID',
       drafts: [
-        ...turnPrefix(),
+        ...toolTurnPrefix(),
         toolScheduled(),
         {
           type: DurableEventType.TOOL_FAILED,
@@ -1414,7 +2111,18 @@ describe('DurableSessionProjector', () => {
     {
       name: 'permission request ID',
       drafts: [
-        ...turnPrefix(),
+        ...toolTurnPrefix([
+          {
+            id: toolCallId,
+            name: 'Write',
+            arguments: '{"file_path":"/tmp/file"}',
+          },
+          {
+            id: ToolUseId('call-2'),
+            name: 'Read',
+            arguments: '{"file_path":"/tmp/file"}',
+          },
+        ]),
         toolScheduled(),
         permissionRequested(),
         {
@@ -1447,10 +2155,12 @@ describe('DurableSessionProjector', () => {
           type: DurableEventType.TOOL_SCHEDULED,
           requestId,
           turnId,
+          modelAttemptId,
           toolAttemptId: ToolAttemptId('attempt-2'),
           data: {
             toolCallId: ToolUseId('call-2'),
             toolName: 'Read',
+            modelInput: { file_path: '/tmp/file' },
             input: { file_path: '/tmp/file' },
             sideEffect: 'pure',
             interruptBehavior: 'cancel',

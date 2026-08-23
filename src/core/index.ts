@@ -72,6 +72,7 @@ export {
   EventId,
   EventSequence,
   InputId,
+  ModelAttemptId,
   PermissionRequestId,
   RequestId,
   SessionId,

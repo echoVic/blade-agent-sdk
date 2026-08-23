@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { createContextSnapshot } from '../../../runtime/index.js';
 import { completeToolExecution, type ExecutionContext } from '../../../tools/types/index.js';
-import { SessionId } from '../../../types/branded.js';
+import { ModelAttemptId, SessionId } from '../../../types/branded.js';
 import type { JsonObject } from '../../../types/common.js';
 import { executeToolCalls } from '../executeToolCalls.js';
 
@@ -390,9 +390,15 @@ describe('executeToolCalls', () => {
         sessionId: SessionId('session-lifecycle'),
         userId: 'user-1',
         lifecycle: {
-          onToolScheduled: async ({ toolCallId, input, sideEffect, interruptBehavior }) => {
+          onToolScheduled: async ({
+            toolCallId,
+            modelInput,
+            input,
+            sideEffect,
+            interruptBehavior,
+          }) => {
             lifecycle.push(
-              `scheduled:${toolCallId}:${String(input.value)}:${sideEffect}:${interruptBehavior}`,
+              `scheduled:${toolCallId}:${String(modelInput.value)}:${String(input.value)}:${sideEffect}:${interruptBehavior}`,
             );
             input.value = 'mutated';
             return {
@@ -415,7 +421,7 @@ describe('executeToolCalls', () => {
 
     expect(outcome.result.status).toBe('success');
     expect(lifecycle).toEqual([
-      'scheduled:tool-lifecycle:ok:idempotent:block',
+      'scheduled:tool-lifecycle:ok:ok:idempotent:block',
       'update:tool_ready',
       'update:tool_started',
       'pipeline:ok',
@@ -425,6 +431,67 @@ describe('executeToolCalls', () => {
       'update:tool_result',
       'update:tool_completed',
     ]);
+  });
+
+  it('preserves model arguments separately from repaired execution input', async () => {
+    const execute = vi.fn(() =>
+      completeToolExecution({
+        status: 'success',
+        model: 'ok',
+      }),
+    );
+    const onToolScheduled = vi.fn(async () => undefined);
+
+    await executeToolCalls({
+      plan: {
+        mode: 'serial',
+        calls: [
+          {
+            id: 'task-with-repaired-input',
+            type: 'function',
+            function: {
+              name: 'Task',
+              arguments: '{"description":"inspect"}',
+            },
+          },
+        ],
+      },
+      executionPipeline: {
+        execute,
+        getRegistry: () => ({
+          get: () => undefined,
+        }),
+      } as never,
+      executionContext: {
+        sessionId: SessionId('session-repaired-input'),
+        userId: 'user-1',
+        modelAttemptId: ModelAttemptId('model-attempt-repaired-input'),
+        lifecycle: {
+          onToolScheduled,
+        },
+      },
+    });
+
+    expect(onToolScheduled).toHaveBeenCalledWith({
+      toolCallId: 'task-with-repaired-input',
+      toolName: 'Task',
+      modelAttemptId: 'model-attempt-repaired-input',
+      modelInput: { description: 'inspect' },
+      input: {
+        description: 'inspect',
+        subagent_session_id: expect.any(String),
+      },
+      sideEffect: 'non_idempotent',
+      interruptBehavior: 'cancel',
+    });
+    expect(execute).toHaveBeenCalledWith(
+      'Task',
+      {
+        description: 'inspect',
+        subagent_session_id: expect.any(String),
+      },
+      expect.any(Object),
+    );
   });
 
   it('does not enter the execution pipeline when durable scheduling fails', async () => {

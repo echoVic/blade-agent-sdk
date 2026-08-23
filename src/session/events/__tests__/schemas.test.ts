@@ -3,13 +3,19 @@ import {
   CommandId,
   EventId,
   InputId,
+  ModelAttemptId,
   PermissionRequestId,
   RequestId,
   ToolAttemptId,
   ToolUseId,
   TurnId,
 } from '../../../types/branded.js';
-import { parseDurableEventDraft, parseDurableEventEnvelope } from '../schemas.js';
+import {
+  DURABLE_EVENT_LOG_FORMAT,
+  parseDurableEventDraft,
+  parseDurableEventEnvelope,
+  parsePersistedDurableEventBatch,
+} from '../schemas.js';
 import {
   DURABLE_EVENT_SCHEMA_VERSION,
   type DurableEventDraft,
@@ -19,6 +25,7 @@ import {
 const requestId = RequestId('request-1');
 const commandId = CommandId('command-1');
 const turnId = TurnId('turn-1');
+const modelAttemptId = ModelAttemptId('model-attempt-1');
 const toolAttemptId = ToolAttemptId('attempt-1');
 const toolCallId = ToolUseId('call-1');
 const permissionRequestId = PermissionRequestId('permission-1');
@@ -100,13 +107,68 @@ const validDrafts: readonly DurableEventDraft[] = [
     data: { turn: 1, reason: 'request_interrupted' },
   },
   {
+    type: DurableEventType.MODEL_REQUEST_STARTED,
+    requestId,
+    turnId,
+    modelAttemptId,
+    data: {
+      model: 'claude-sonnet',
+      streaming: true,
+    },
+  },
+  {
+    type: DurableEventType.MODEL_REQUEST_COMPLETED,
+    requestId,
+    turnId,
+    modelAttemptId,
+    data: {
+      response: {
+        content: 'done',
+        reasoningContent: 'reasoning',
+        toolCalls: [
+          {
+            id: toolCallId,
+            name: 'Write',
+            arguments: '{"file_path":"/tmp/file"}',
+          },
+        ],
+        usage: {
+          promptTokens: 10,
+          completionTokens: 2,
+          totalTokens: 12,
+          cacheReadInputTokens: 4,
+        },
+      },
+    },
+  },
+  {
+    type: DurableEventType.MODEL_REQUEST_FAILED,
+    requestId,
+    turnId,
+    modelAttemptId,
+    data: {
+      error: { message: 'provider failed', code: 'MODEL_ERROR', retryable: true },
+    },
+  },
+  {
+    type: DurableEventType.MODEL_REQUEST_ABORTED,
+    requestId,
+    turnId,
+    modelAttemptId,
+    data: {
+      reason: 'steering',
+    },
+  },
+  {
     type: DurableEventType.TOOL_SCHEDULED,
     requestId,
     turnId,
+    modelAttemptId,
     toolAttemptId,
     data: {
       toolCallId,
       toolName: 'Write',
+      modelInput: { file_path: '/tmp/file' },
       input: { file_path: '/tmp/file' },
       sideEffect: 'non_idempotent',
       interruptBehavior: 'block',
@@ -381,5 +443,120 @@ describe('durable event schemas', () => {
         occurredAt: '2026-08-22T12:00:00.000Z',
       }),
     ).toThrow();
+  });
+
+  it('reads schema-v2 logs but forbids model-attempt events in v2', () => {
+    const legacyEvent = {
+      ...validDrafts[0],
+      schemaVersion: 2,
+      eventId: EventId('legacy-event'),
+      sequence: 1,
+      sessionId: 'legacy-session',
+      recordedAt: '2026-08-22T12:00:00.000Z',
+      occurredAt: '2026-08-22T12:00:00.000Z',
+    };
+    expect(parseDurableEventEnvelope(legacyEvent).schemaVersion).toBe(2);
+    expect(
+      parsePersistedDurableEventBatch({
+        format: DURABLE_EVENT_LOG_FORMAT,
+        schemaVersion: 2,
+        sessionId: 'legacy-session',
+        firstSequence: 1,
+        lastSequence: 1,
+        events: [legacyEvent],
+      }).schemaVersion,
+    ).toBe(2);
+
+    expect(() =>
+      parseDurableEventEnvelope({
+        ...validDrafts.find(
+          (draft) => draft.type === DurableEventType.MODEL_REQUEST_STARTED,
+        ),
+        schemaVersion: 2,
+        eventId: EventId('invalid-v2-model-event'),
+        sequence: 1,
+        sessionId: 'legacy-session',
+        recordedAt: '2026-08-22T12:00:00.000Z',
+        occurredAt: '2026-08-22T12:00:00.000Z',
+      }),
+    ).toThrow(/requires durable event schema v3/);
+  });
+
+  it('requires model-attempt identity and original input for schema-v3 tool schedules only', () => {
+    const toolScheduled = validDrafts.find(
+      (draft) => draft.type === DurableEventType.TOOL_SCHEDULED,
+    );
+    if (!toolScheduled || toolScheduled.type !== DurableEventType.TOOL_SCHEDULED) {
+      throw new Error('Expected tool_scheduled fixture');
+    }
+    const { modelInput: _modelInput, ...legacyData } = toolScheduled.data;
+    const { modelAttemptId: _modelAttemptId, ...legacyToolScheduled } = toolScheduled;
+    const envelope = {
+      ...legacyToolScheduled,
+      data: legacyData,
+      eventId: EventId('tool-without-model-input'),
+      sequence: 1,
+      sessionId: 'session-1',
+      recordedAt: '2026-08-22T12:00:00.000Z',
+      occurredAt: '2026-08-22T12:00:00.000Z',
+    };
+
+    expect(() =>
+      parseDurableEventEnvelope({
+        ...envelope,
+        modelAttemptId,
+        schemaVersion: DURABLE_EVENT_SCHEMA_VERSION,
+      }),
+    ).toThrow(/requires modelInput/);
+    expect(() =>
+      parseDurableEventEnvelope({
+        ...envelope,
+        data: toolScheduled.data,
+        schemaVersion: DURABLE_EVENT_SCHEMA_VERSION,
+      }),
+    ).toThrow(/requires modelAttemptId/);
+    expect(
+      parseDurableEventEnvelope({
+        ...envelope,
+        schemaVersion: 2,
+      }).schemaVersion,
+    ).toBe(2);
+    expect(() =>
+      parseDurableEventEnvelope({
+        ...envelope,
+        modelAttemptId,
+        schemaVersion: 2,
+      }),
+    ).toThrow(/does not allow modelAttemptId/);
+    expect(() =>
+      parseDurableEventEnvelope({
+        ...envelope,
+        data: toolScheduled.data,
+        schemaVersion: 2,
+      }),
+    ).toThrow(/does not allow modelInput/);
+  });
+
+  it('rejects a persisted batch whose event version does not match', () => {
+    expect(() =>
+      parsePersistedDurableEventBatch({
+        format: DURABLE_EVENT_LOG_FORMAT,
+        schemaVersion: DURABLE_EVENT_SCHEMA_VERSION,
+        sessionId: 'session-1',
+        firstSequence: 1,
+        lastSequence: 1,
+        events: [
+          {
+            ...validDrafts[0],
+            schemaVersion: 2,
+            eventId: EventId('mixed-version-event'),
+            sequence: 1,
+            sessionId: 'session-1',
+            recordedAt: '2026-08-22T12:00:00.000Z',
+            occurredAt: '2026-08-22T12:00:00.000Z',
+          },
+        ],
+      }),
+    ).toThrow(/must match its batch/);
   });
 });

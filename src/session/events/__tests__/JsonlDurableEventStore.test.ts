@@ -1,4 +1,12 @@
-import { appendFile, mkdtemp, readFile, rm, stat } from 'node:fs/promises';
+import {
+  appendFile,
+  mkdir,
+  mkdtemp,
+  readFile,
+  rm,
+  stat,
+  writeFile,
+} from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
@@ -98,6 +106,88 @@ describe('JsonlDurableEventStore', () => {
       'event-2',
       'event-3',
     ]);
+  });
+
+  it('reads schema-v2 batches and appends new schema-v3 events', async () => {
+    const sessionId = SessionId('session-schema-upgrade');
+    const filePath = store.getFilePath(sessionId);
+    const timestamp = '2026-08-22T12:00:00.000Z';
+    await mkdir(dirname(filePath), { recursive: true });
+    await writeFile(
+      filePath,
+      `${JSON.stringify({
+        format: DURABLE_EVENT_LOG_FORMAT,
+        schemaVersion: 2,
+        sessionId,
+        firstSequence: 1,
+        lastSequence: 1,
+        events: [
+          {
+            schemaVersion: 2,
+            eventId: 'legacy-event',
+            sequence: 1,
+            sessionId,
+            type: DurableEventType.SESSION_CREATED,
+            data: { source: 'create' },
+            recordedAt: timestamp,
+            occurredAt: timestamp,
+          },
+        ],
+      })}\n`,
+      { encoding: 'utf8', mode: 0o600 },
+    );
+
+    expect((await store.read(sessionId)).events[0]?.schemaVersion).toBe(2);
+    const appended = await store.append(
+      sessionId,
+      [
+        {
+          type: DurableEventType.REQUEST_ACCEPTED,
+          requestId: RequestId('schema-v3-request'),
+          commandId: CommandId('schema-v3-command'),
+          data: {
+            inputId: InputId('schema-v3-input'),
+            input: 'continue',
+            priority: 'next',
+          },
+        },
+      ],
+      { expectedLastSequence: EventSequence(1) },
+    );
+
+    expect(appended.events[0]?.schemaVersion).toBe(3);
+    expect((await store.read(sessionId)).events.map((event) => event.schemaVersion)).toEqual([
+      2,
+      3,
+    ]);
+
+    await appendFile(
+      filePath,
+      `${JSON.stringify({
+        format: DURABLE_EVENT_LOG_FORMAT,
+        schemaVersion: 2,
+        sessionId,
+        firstSequence: 3,
+        lastSequence: 3,
+        events: [
+          {
+            schemaVersion: 2,
+            eventId: 'downgraded-event',
+            sequence: 3,
+            sessionId,
+            type: DurableEventType.REQUEST_STARTED,
+            requestId: RequestId('schema-v3-request'),
+            data: {},
+            recordedAt: timestamp,
+            occurredAt: timestamp,
+          },
+        ],
+      })}\n`,
+    );
+    await expect(store.read(sessionId)).rejects.toMatchObject({
+      code: 'DURABLE_EVENT_CORRUPT_LOG',
+      message: expect.stringContaining('schema regressed'),
+    });
   });
 
   it('reads exclusive cursor pages without gaps', async () => {
