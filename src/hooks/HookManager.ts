@@ -13,7 +13,10 @@ import { DEFAULT_HOOK_CONFIG, mergeHookConfig, parseEnvConfig } from './HookConf
 import { HookExecutionGuard } from './HookExecutionGuard.js';
 import { HookExecutor } from './HookExecutor.js';
 import { Matcher } from './Matcher.js';
-import { getRecoverableHookErrorMessage } from './WindowsProcessJob.js';
+import {
+    getRecoverableHookErrorMessage,
+    isHookProcessContainmentError,
+} from './WindowsProcessJob.js';
 import type {
     CompactionHookResult,
     CompactionInput,
@@ -165,16 +168,18 @@ export class HookManager {
         // 触发 ConfigChange hook
         const changedKeys = Object.keys(settings.hooks);
         if (changedKeys.length > 0) {
-          // 异步触发，不阻塞 reloadConfig
-          void this.executeConfigChangeHooks(
+          await this.executeConfigChangeHooks(
             { changed_keys: changedKeys, source: 'file' },
             '',
             SessionId(''),
             PermissionMode.DEFAULT,
-          ).catch(() => {});
+          );
         }
       }
-    } catch {
+    } catch (error) {
+      if (isHookProcessContainmentError(error)) {
+        throw error;
+      }
       // 文件不存在或读取失败，保持当前配置
     }
   }

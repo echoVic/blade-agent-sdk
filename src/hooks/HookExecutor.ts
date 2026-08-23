@@ -7,7 +7,10 @@
 import type { JsonObject, JsonValue } from '../types/common.js';
 import { OutputParser } from './OutputParser.js';
 import { SecureProcessExecutor } from './SecureProcessExecutor.js';
-import { getRecoverableHookErrorMessage } from './WindowsProcessJob.js';
+import {
+  getRecoverableHookErrorMessage,
+  isHookProcessContainmentError,
+} from './WindowsProcessJob.js';
 import {
   type CommandHook,
   type CompactionHookResult,
@@ -1207,12 +1210,17 @@ export class HookExecutor {
   ): Promise<HookExecutionResult[]> {
     const results: Promise<HookExecutionResult>[] = [];
     const executing = new Set<Promise<void>>();
+    let containmentFailure: unknown;
 
     for (const hook of hooks) {
       // 如果达到并发限制,等待一个完成
       if (executing.size >= maxConcurrent) {
         // 等待任意一个 Promise 完成
         await Promise.race(executing);
+        if (containmentFailure) {
+          await Promise.all(executing);
+          throw containmentFailure;
+        }
       }
 
       // 创建新的 hook 执行 Promise
@@ -1227,8 +1235,11 @@ export class HookExecutor {
         .then(() => {
           executing.delete(tracker);
         })
-        .catch(() => {
+        .catch((error) => {
           executing.delete(tracker);
+          if (isHookProcessContainmentError(error)) {
+            containmentFailure ??= error;
+          }
         });
 
       executing.add(tracker);
@@ -1236,6 +1247,10 @@ export class HookExecutor {
     }
 
     // 等待所有剩余的 hooks 完成
+    await Promise.all(executing);
+    if (containmentFailure) {
+      throw containmentFailure;
+    }
     return Promise.all(results);
   }
 }

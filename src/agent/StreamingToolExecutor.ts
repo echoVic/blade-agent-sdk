@@ -1,4 +1,5 @@
 import type { JSONSchema7 } from 'json-schema';
+import { isHookProcessContainmentError } from '../hooks/WindowsProcessJob.js';
 import { type InternalLogger, LogCategory, NOOP_LOGGER } from '../logging/Logger.js';
 import type {
     ChatResponse,
@@ -235,8 +236,12 @@ export class StreamingToolExecutor {
         ),
       };
     } catch (error) {
-      if (isSteeringInterruptSignal(signal)) {
+      if (isHookProcessContainmentError(error)) {
         await Promise.allSettled(Array.from(inFlightExecutions.values()));
+        throw error;
+      }
+      if (isSteeringInterruptSignal(signal)) {
+        await this.settleInFlightExecutions(inFlightExecutions.values());
         await this.completeInterruptedToolCalls(
           toolCallAccumulator,
           executionResults,
@@ -262,11 +267,25 @@ export class StreamingToolExecutor {
       }
 
       if (hasDispatchedTools) {
-        await Promise.allSettled(Array.from(inFlightExecutions.values()));
+        await this.settleInFlightExecutions(inFlightExecutions.values());
         this.logger.warn('[Agent] 流式响应在工具派发后失败，已等待在途工具完成并继续抛出原始错误');
       }
 
       throw error;
+    }
+  }
+
+  private async settleInFlightExecutions(
+    executions: Iterable<Promise<void>>,
+  ): Promise<void> {
+    const settled = await Promise.allSettled(Array.from(executions));
+    const containmentFailure = settled.find(
+      (result): result is PromiseRejectedResult =>
+        result.status === 'rejected'
+        && isHookProcessContainmentError(result.reason),
+    );
+    if (containmentFailure) {
+      throw containmentFailure.reason;
     }
   }
 
@@ -460,6 +479,10 @@ export class StreamingToolExecutor {
         executionResults: input.executionResults,
         epoch: input.epoch,
       });
+      // The stream loop may not await this promise until a later chunk. Mark
+      // rejection as observed now; the original promise remains rejected and
+      // is inspected by the synchronization paths.
+      void execution.catch(() => {});
       input.inFlightExecutions.set(index, execution);
       if (input.serial) {
         await execution;

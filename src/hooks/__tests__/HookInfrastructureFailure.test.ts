@@ -1,7 +1,11 @@
+import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ToolUseId, SessionId } from '../../types/branded.js';
 import { PermissionMode } from '../../types/common.js';
 import { DEFAULT_HOOK_CONFIG } from '../HookConfig.js';
+import { HookExecutor } from '../HookExecutor.js';
 import { HookManager } from '../HookManager.js';
 import { SecureProcessExecutor } from '../SecureProcessExecutor.js';
 import { HookType } from '../types/HookTypes.js';
@@ -9,6 +13,8 @@ import {
   HookProcessContainmentError,
   WindowsProcessJob,
 } from '../WindowsProcessJob.js';
+
+const roots: string[] = [];
 
 function createWindowsJob(bindings: Record<string, unknown>): WindowsProcessJob {
   const Constructor = WindowsProcessJob as unknown as new (
@@ -18,9 +24,12 @@ function createWindowsJob(bindings: Record<string, unknown>): WindowsProcessJob 
   return new Constructor(bindings, {});
 }
 
-afterEach(() => {
+afterEach(async () => {
   vi.restoreAllMocks();
   HookManager.getInstance().loadConfig(DEFAULT_HOOK_CONFIG);
+  await Promise.all(roots.splice(0).map((root) =>
+    rm(root, { recursive: true, force: true })
+  ));
 });
 
 describe('Hook infrastructure failures', () => {
@@ -87,6 +96,73 @@ describe('Hook infrastructure failures', () => {
       decision: 'allow',
       warning: 'hook command failed',
     });
+  });
+
+  it('propagates containment failure from a ConfigChange Hook reload', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'hook-config-reload-'));
+    roots.push(root);
+    const configPath = join(root, 'settings.json');
+    await writeFile(configPath, JSON.stringify({
+      hooks: { enabled: true },
+    }));
+    const containmentError = new HookProcessContainmentError(
+      'Windows Job Object support is unavailable',
+    );
+    const manager = HookManager.getInstance();
+    vi.spyOn(manager, 'executeConfigChangeHooks')
+      .mockRejectedValueOnce(containmentError);
+
+    await expect(manager.reloadConfig(configPath)).rejects.toBe(
+      containmentError,
+    );
+  });
+
+  it('stops scheduling concurrent Hooks after a containment failure', async () => {
+    const containmentError = new HookProcessContainmentError(
+      'Windows Job Object cleanup failed',
+    );
+    const execute = vi.spyOn(SecureProcessExecutor.prototype, 'execute')
+      .mockRejectedValueOnce(containmentError)
+      .mockResolvedValue({
+        stdout: '',
+        stderr: '',
+        exitCode: 0,
+        timedOut: false,
+      });
+    const executor = new HookExecutor();
+
+    await expect(executor.executePostToolHooks(
+      [
+        { type: HookType.Command, command: 'first' },
+        { type: HookType.Command, command: 'second' },
+      ],
+      {
+        hook_event_name: 'PostToolUse',
+        hook_execution_id: 'containment-concurrency',
+        timestamp: new Date().toISOString(),
+        project_dir: process.cwd(),
+        session_id: 'containment-concurrency',
+        permission_mode: PermissionMode.DEFAULT,
+        tool_name: 'Bash',
+        tool_use_id: 'containment-concurrency',
+        tool_input: {},
+        tool_response: {
+          status: 'success',
+          model: 'ok',
+        },
+      },
+      {
+        projectDir: process.cwd(),
+        sessionId: SessionId('containment-concurrency'),
+        permissionMode: PermissionMode.DEFAULT,
+        config: {
+          ...DEFAULT_HOOK_CONFIG,
+          enabled: true,
+          maxConcurrentHooks: 1,
+        },
+      },
+    )).rejects.toBe(containmentError);
+    expect(execute).toHaveBeenCalledOnce();
   });
 
   it('bounds Windows Job termination and closes the kill-on-close handle', async () => {
