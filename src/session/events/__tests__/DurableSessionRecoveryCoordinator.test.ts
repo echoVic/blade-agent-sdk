@@ -1166,6 +1166,77 @@ describe('DurableSessionRecoveryCoordinator', () => {
     });
   });
 
+  it('discards an unstarted tool when its model attempt has no confirmed response', async () => {
+    const store = createStore();
+    const journal = await createJournal(store, { requestStarted: true });
+    await journal.commit({
+      commandId: CommandId('start-unconfirmed-model-tool'),
+      events: [
+        {
+          type: DurableEventType.TURN_STARTED,
+          requestId,
+          turnId,
+          data: { turn: 1, model: 'accepted-model' },
+        },
+        {
+          type: DurableEventType.MODEL_REQUEST_STARTED,
+          requestId,
+          turnId,
+          modelAttemptId,
+          data: {
+            model: 'accepted-model',
+            streaming: true,
+          },
+        },
+        {
+          type: DurableEventType.TOOL_SCHEDULED,
+          requestId,
+          turnId,
+          modelAttemptId,
+          toolAttemptId,
+          data: {
+            toolCallId,
+            toolName: 'Read',
+            modelInput: { file_path: '/tmp/input' },
+            input: { file_path: '/tmp/input' },
+            sideEffect: 'pure',
+            interruptBehavior: 'cancel',
+          },
+        },
+      ],
+    });
+    const coordinator = new DurableSessionRecoveryCoordinator(journal);
+    const reconciled = await coordinator.reconcileModelOutcome({
+      commandId: CommandId('fail-unconfirmed-model-tool'),
+      requestId,
+      turnId,
+      modelAttemptId,
+      outcome: {
+        status: 'failed',
+        error: { message: 'provider stream failed' },
+      },
+    });
+    expect(reconciled.recoveryPlan).toMatchObject({
+      action: 'resume_turn',
+      retryableToolAttempts: [],
+      cancelableToolAttempts: [{ toolAttemptId }],
+    });
+
+    const rollover = await coordinator.prepareTurnRecovery({
+      commandId: CommandId('rollover-unconfirmed-model-tool'),
+      requestId,
+      turnId,
+      recoveryRequestId: rolloverRequestId,
+      recoveryInputId: rolloverInputId,
+    });
+    expect(rollover.commit.events[0]).toMatchObject({
+      type: DurableEventType.TOOL_CANCELLED,
+      toolAttemptId,
+    });
+    expect(rollover.continuation).toContain('discarded_unconfirmed_model_response');
+    expect(rollover.continuation).toContain('must not be retried');
+  });
+
   it.each([
     {
       outcome: {

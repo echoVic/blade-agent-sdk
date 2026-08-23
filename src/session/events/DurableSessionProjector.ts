@@ -212,6 +212,7 @@ interface MutableTurnProjection {
   status: DurableTurnStatus;
   preparedInputIds: InputId[];
   modelAttempts: Map<ModelAttemptId, MutableModelAttemptProjection>;
+  lastModelAttempt: MutableModelAttemptProjection | null;
   activeModelAttempt: MutableModelAttemptProjection | null;
   toolAttempts: Map<ToolAttemptId, MutableToolAttemptProjection>;
 }
@@ -395,16 +396,15 @@ function assertToolMatchesModelAttempt(
   modelInput: JsonValue | undefined,
 ): void {
   if (!modelAttemptId) {
-    if (event.schemaVersion >= 3) {
+    if (event.schemaVersion >= DURABLE_EVENT_SCHEMA_VERSION) {
       invalid(event, `Tool call ${toolCallId} has no model attempt identity`);
     }
     return;
   }
   const modelAttempt = turn.modelAttempts.get(modelAttemptId);
-  const currentModelAttempt = Array.from(turn.modelAttempts.values()).at(-1);
   if (
     !modelAttempt
-    || currentModelAttempt?.modelAttemptId !== modelAttemptId
+    || turn.lastModelAttempt?.modelAttemptId !== modelAttemptId
   ) {
     invalid(event, `Tool call ${toolCallId} does not belong to the current model attempt`);
   }
@@ -867,6 +867,7 @@ function applyEvent(state: ProjectionAccumulator, event: DurableEventEnvelope): 
         status: 'running',
         preparedInputIds,
         modelAttempts: new Map(),
+        lastModelAttempt: null,
         activeModelAttempt: null,
         toolAttempts: new Map(),
       };
@@ -931,7 +932,7 @@ function applyEvent(state: ProjectionAccumulator, event: DurableEventEnvelope): 
           `Model attempt ${turn.activeModelAttempt.modelAttemptId} is still active`,
         );
       }
-      const previousAttempt = Array.from(turn.modelAttempts.values()).at(-1);
+      const previousAttempt = turn.lastModelAttempt;
       if (previousAttempt && previousAttempt.status !== 'failed') {
         invalid(
           event,
@@ -955,6 +956,7 @@ function applyEvent(state: ProjectionAccumulator, event: DurableEventEnvelope): 
       };
       state.seenModelAttemptIds.add(event.modelAttemptId);
       turn.modelAttempts.set(event.modelAttemptId, attempt);
+      turn.lastModelAttempt = attempt;
       turn.activeModelAttempt = attempt;
       request.lastBoundaryEventId = event.eventId;
       return;
@@ -1374,31 +1376,54 @@ export function planDurableSessionRecovery(
   const activeModelAttempt = turn?.activeModelAttempt ?? null;
   const pendingInputIds = request?.pendingInputIds ?? [];
   const tools = turn?.toolAttempts ?? [];
+  const modelAttemptStatuses = new Map(
+    (turn?.modelAttempts ?? []).map((attempt) => [attempt.modelAttemptId, attempt.status]),
+  );
+  const hasUnconfirmedModelResponse = (tool: DurableToolAttemptProjection): boolean =>
+    tool.modelAttemptId !== undefined
+    && modelAttemptStatuses.get(tool.modelAttemptId) !== 'completed';
   const unknownToolAttempts = tools.filter(
     (tool) =>
       (tool.status === 'started' || tool.status === 'outcome_unknown')
       && tool.sideEffect === 'non_idempotent',
   );
   const pendingPermissions = tools.flatMap((tool) =>
-    tool.permission?.status === 'pending' ? [tool.permission] : [],
+    tool.permission?.status === 'pending' && !hasUnconfirmedModelResponse(tool)
+      ? [tool.permission]
+      : [],
   );
   const retryableToolAttempts = tools.filter(
     (tool) =>
-      (
+      !hasUnconfirmedModelResponse(tool)
+      && (
+        (
         tool.status === 'scheduled'
         && tool.permission?.status !== 'pending'
         && permissionDecision(tool) !== 'deny'
         && permissionDecision(tool) !== 'cancel'
-      )
-      || (
-        (tool.status === 'started' || tool.status === 'outcome_unknown')
-        && tool.sideEffect !== 'non_idempotent'
+        )
+        || (
+          (tool.status === 'started' || tool.status === 'outcome_unknown')
+          && tool.sideEffect !== 'non_idempotent'
+        )
       ),
   );
   const cancelableToolAttempts = tools.filter(
     (tool) =>
-      tool.status === 'scheduled' &&
-      (permissionDecision(tool) === 'deny' || permissionDecision(tool) === 'cancel'),
+      (
+        tool.status === 'scheduled'
+        && (permissionDecision(tool) === 'deny' || permissionDecision(tool) === 'cancel')
+      )
+      || (
+        hasUnconfirmedModelResponse(tool)
+        && (
+          tool.status === 'scheduled'
+          || (
+            (tool.status === 'started' || tool.status === 'outcome_unknown')
+            && tool.sideEffect !== 'non_idempotent'
+          )
+        )
+      ),
   );
 
   let action: DurableSessionRecoveryAction = 'none';

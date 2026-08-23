@@ -562,7 +562,9 @@ durable recovery facts instead, avoiding both cross-store synthetic results
 and provider-invalid dangling tool calls. Multimodal original inputs retain
 their content parts instead of being flattened into JSON text. A permitted but
 not-yet-started tool uses the permission-updated input and is conservatively
-classified as `non_idempotent`. A continuation retains at most the latest 16
+classified as `non_idempotent`. Unfinished tools from a `failed` or `aborted`
+Model Attempt are marked `discarded_unconfirmed_model_response` and must not be
+retried. A continuation retains at most the latest 16
 Model Attempts. Each model response/error and tool input, result, error, and
 permission value is limited to 4,000 serialized characters. Oversized values carry
 `kind: "truncated_recovery_value"`, the original size, and JSON prefix/suffix

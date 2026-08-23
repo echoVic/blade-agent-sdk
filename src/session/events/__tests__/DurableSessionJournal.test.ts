@@ -700,6 +700,22 @@ describe('DurableSessionJournal', () => {
             type: DurableEventType.MODEL_REQUEST_STARTED,
             requestId,
             turnId,
+            modelAttemptId: ModelAttemptId('model-attempt-original'),
+            data: { model: 'test-model', streaming: true },
+          },
+        ],
+      }),
+    ).resolves.toMatchObject({
+      status: 'replayed',
+    });
+    await expect(
+      journal.commit({
+        commandId,
+        events: [
+          {
+            type: DurableEventType.MODEL_REQUEST_STARTED,
+            requestId,
+            turnId,
             modelAttemptId: ModelAttemptId('model-attempt-different'),
             data: { model: 'test-model', streaming: true },
           },

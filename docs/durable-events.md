@@ -524,7 +524,9 @@ continuation 会把从未执行的工具标记为 `not_started`，把已开始�
 送入模型，因此不会构造跨 Store 的伪造 tool result，也不会留下 provider
 不接受的悬空 tool call。多模态原始输入仍以原始 content parts 传递，不会降级
 成 JSON 文本。权限恢复为 `allow` 但尚未执行的工具使用权限阶段更新后的输入，
-并按 `non_idempotent` 保守分类。continuation 最多保留最近 16 次 Model
+并按 `non_idempotent` 保守分类。来自 `failed` / `aborted` Model Attempt 的
+未完成工具标记为 `discarded_unconfirmed_model_response`，不得重试。continuation
+最多保留最近 16 次 Model
 Attempt；每个模型 response/error 及工具的 input、result、error 和 permission
 最多保留 4,000 个序列化字符；超限值会携带
 `kind: "truncated_recovery_value"`、原始长度和 JSON 前后缀，模型不会把预览误认

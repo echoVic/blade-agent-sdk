@@ -1017,6 +1017,70 @@ describe('DurableSessionProjector', () => {
     ).toThrow(/reused tool call ID/);
   });
 
+  it.each([
+    {
+      type: DurableEventType.MODEL_REQUEST_FAILED,
+      data: { error: { message: 'stream failed' } },
+      status: 'failed',
+    },
+    {
+      type: DurableEventType.MODEL_REQUEST_ABORTED,
+      data: { reason: 'request_interrupted' as const },
+      status: 'aborted',
+    },
+  ])('does not retry tools from a model attempt that ended as $status', ({
+    type,
+    data,
+    status,
+  }) => {
+    const projection = project([
+      ...turnPrefix(),
+      {
+        type: DurableEventType.MODEL_REQUEST_STARTED,
+        requestId,
+        turnId,
+        modelAttemptId,
+        data: {
+          model: 'claude-sonnet',
+          streaming: true,
+        },
+      },
+      toolScheduled('pure'),
+      {
+        type,
+        requestId,
+        turnId,
+        modelAttemptId,
+        data,
+      },
+    ] as readonly DurableEventDraft[]);
+
+    expect(projection.activeRequest?.activeTurn).toMatchObject({
+      modelAttempts: [
+        expect.objectContaining({
+          modelAttemptId,
+          status,
+        }),
+      ],
+      toolAttempts: [
+        expect.objectContaining({
+          modelAttemptId,
+          status: 'scheduled',
+        }),
+      ],
+    });
+    expect(planDurableSessionRecovery(projection)).toMatchObject({
+      action: 'resume_turn',
+      retryableToolAttempts: [],
+      cancelableToolAttempts: [
+        expect.objectContaining({
+          toolAttemptId,
+          modelAttemptId,
+        }),
+      ],
+    });
+  });
+
   it('distinguishes accepted, pre-turn, post-turn, and active-turn recovery', () => {
     const accepted = project([
       requestPrefix()[0] as DurableEventDraft,

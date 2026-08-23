@@ -485,6 +485,9 @@ function buildTurnRecoveryContinuation(
   const originalInput = parseRecoveryInput(request);
   const retainedModelAttempts = turn.modelAttempts.slice(-MAX_RECOVERY_MODEL_ATTEMPTS);
   const omittedModelAttempts = turn.modelAttempts.length - retainedModelAttempts.length;
+  const modelAttemptStatuses = new Map(
+    turn.modelAttempts.map((attempt) => [attempt.modelAttemptId, attempt.status]),
+  );
   const toolOutcomes = turn.toolAttempts.map((tool) => {
     const permissionDecision =
       tool.permission?.status === 'resolved' ? tool.permission.decision : undefined;
@@ -492,6 +495,13 @@ function buildTurnRecoveryContinuation(
       tool.status === 'scheduled' &&
       (permissionDecision === 'deny' || permissionDecision === 'cancel');
     const recoveredFromPermission = tool.status === 'scheduled' && permissionDecision === 'allow';
+    const unconfirmedModelResponse =
+      tool.modelAttemptId !== undefined
+      && modelAttemptStatuses.get(tool.modelAttemptId) !== 'completed';
+    const unfinished =
+      tool.status === 'scheduled'
+      || tool.status === 'started'
+      || tool.status === 'outcome_unknown';
     const effectiveInput =
       tool.permission?.status === 'resolved' ? tool.permission.input : tool.input;
     return {
@@ -501,7 +511,9 @@ function buildTurnRecoveryContinuation(
       input: boundedRecoveryValue(effectiveInput),
       sideEffect: recoveredFromPermission ? 'non_idempotent' : tool.sideEffect,
       executionStarted: tool.executionStarted,
-      status: permissionCancelledBeforeExecution
+      status: unconfirmedModelResponse && unfinished
+        ? 'discarded_unconfirmed_model_response'
+        : permissionCancelledBeforeExecution
         ? 'cancelled_before_execution'
         : tool.status === 'scheduled'
           ? 'not_started'
@@ -553,7 +565,8 @@ function buildTurnRecoveryContinuation(
         + 'Operations marked not_started are safe to execute once. Operations marked '
         + 'interrupted_before_trusted_completion may be retried only when their '
         + 'side-effect contract permits it. Operations marked cancelled_before_execution '
-        + 'require fresh permission. Continue the original task.',
+        + 'require fresh permission. Operations marked discarded_unconfirmed_model_response '
+        + 'must not be retried. Continue the original task.',
     ],
   );
 }
