@@ -1511,7 +1511,7 @@ SDK 可以阻止 stale journal commit 和新的模型/工具起点，但通用�
 校验 token 才能获得 hard fencing。
 
 `JsonlDurableEventStore` 只为共享同一受支持本地文件系统的 Node.js 进程实现该
-协议，并不是跨主机 Store。跨主机部署必须实现
+协议，并不是跨主机 Store。启用 execution lease 的跨主机 Session 必须实现
 `DurableExecutionLeaseStore`，并在同一个数据库事务中完成租约变更和
 `append(..., { executionFence })` 校验。
 
@@ -1941,7 +1941,13 @@ function prompt(
 
 ```ts
 // 函数
-export { createSession, resumeSession, forkSession, prompt };
+export {
+  createSession,
+  resumeSession,
+  forkSession,
+  prompt,
+  DurableExecutionLease,
+};
 
 // 类型
 export type {
@@ -1968,6 +1974,14 @@ export type {
   ResumeOptions,
   SessionHandoffResult,
   SessionHandoffErrorCode,
+  DurableExecutionLeaseOptions,
+  DurableExecutionLeaseSnapshot,
+  DurableExecutionLeaseStore,
+  DurableExecutionFence,
+  DurableExecutionLeaseErrorCode,
+  WorkerId,
+  ExecutionLeaseId,
+  FencingToken,
   ModelInfo,
   McpServerStatus,
   McpToolInfo,

@@ -57,6 +57,9 @@ Node-local 能力外，这些函数都从根入口导出；实际 subpath 以“
 | `SubagentRegistry` | subagents | 注册和发现子 Agent |
 | `SubagentExecutor` | subagents | 执行单个子 Agent |
 | `DurableExecutionLease` | durable events | 自动 heartbeat 的 Store-backed execution lease handle |
+| `executionFence` | durable events | 从 lease snapshot 提取不可变的下游 fence |
+| `isDurableExecutionLeaseStore` | durable events | 检查 Store 是否实现完整 execution lease 协议 |
+| `DURABLE_EXECUTION_LEASE_FORMAT` | durable events | lease sidecar 的持久化格式标识 |
 | `JsonlDurableEventStore` | root / local | 支持同机多进程锁的 Node.js durable event JSONL adapter |
 | `DurableExecutionLeaseError` | durable events | lease 冲突、失租、缺少 fence 或状态损坏错误 |
 | `SessionInputError` | session | 输入队列容量、请求匹配或活动请求选项错误 |

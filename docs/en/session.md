@@ -315,10 +315,10 @@ prevent stale Journal commits and new model/tool starts, but a generic
 downstream service cannot be hard-fenced unless it validates the token.
 
 `JsonlDurableEventStore` implements this protocol for Node.js processes sharing
-one supported local filesystem. It is not a cross-host store. Cross-host
-deployments must implement `DurableExecutionLeaseStore` so lease mutation and
-`append(..., { executionFence })` validation occur in the same database
-transaction.
+one supported local filesystem. It is not a cross-host store. Lease-enabled
+cross-host Sessions must implement `DurableExecutionLeaseStore` so lease
+mutation and `append(..., { executionFence })` validation occur in the same
+database transaction.
 
 Recovery mutations can hold the same lease guard:
 
