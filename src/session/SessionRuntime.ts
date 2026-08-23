@@ -353,6 +353,7 @@ export class SessionRuntime {
       maxHistorySize: 1000,
       permissionHandler: this.createPermissionHandler(),
       hookRuntime: this.hookRuntime,
+      toolTimeoutMs: this.bladeConfig.toolTimeoutMs,
       middleware: this.pluginHost.getToolMiddleware(),
       logger: this.rootLogger,
       toolCatalog: this.toolCatalog,

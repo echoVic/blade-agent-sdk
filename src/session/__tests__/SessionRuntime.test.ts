@@ -184,6 +184,64 @@ describe('SessionRuntime', () => {
     await runtime.close();
   });
 
+  it('applies the Session tool timeout to runtime tool execution', async () => {
+    let observedAbort = false;
+    const slowTool = createTool({
+      name: 'SlowTool',
+      displayName: 'Slow Tool',
+      kind: ToolKind.Execute,
+      sideEffect: 'non_idempotent',
+      description: { short: 'Wait until cancelled' },
+      schema: z.object({}),
+      async *execute(_params, context) {
+        await new Promise<void>((_resolve, reject) => {
+          context.signal?.addEventListener(
+            'abort',
+            () => {
+              observedAbort = true;
+              reject(context.signal?.reason);
+            },
+            { once: true },
+          );
+        });
+        return {
+          status: 'success',
+          model: 'unexpected',
+        };
+      },
+    });
+    const runtime = new SessionRuntime(
+      SessionId('session-tool-timeout'),
+      createOptions({
+        allowedTools: ['SlowTool'],
+        tools: [slowTool],
+        toolTimeoutMs: 10,
+      }),
+      {
+        models: [],
+        toolTimeoutMs: 10,
+      },
+      PermissionMode.YOLO,
+      createFilesystemContext(workspaceRoot),
+      NOOP_LOGGER,
+    );
+
+    await runtime.initialize();
+    const executionPipeline = runtime.getAgentRuntimeDeps().executionPipeline;
+    assertDefined(executionPipeline);
+    const result = await collectToolExecution(
+      executionPipeline.execute('SlowTool', {}, {}),
+    );
+
+    expect(result).toMatchObject({
+      status: 'error',
+      error: { type: 'timeout_error' },
+    });
+    expect(observedAbort).toBe(true);
+
+    await runtime.close();
+  });
+
   it('should install plugin tools and tool middleware through one declarative entry', async () => {
     const calls: string[] = [];
     const pluginTool = createTool({
