@@ -57,6 +57,7 @@ function createContext(projectDir: string, abortSignal?: AbortSignal): HookExecu
 async function createProcessTreeFixture(
   root: string,
   parentExits = false,
+  markerDelayMs = 500,
 ): Promise<{
   command: string;
   markerPath: string;
@@ -74,7 +75,7 @@ async function createProcessTreeFixture(
       'setTimeout(() => {',
       "  writeFileSync(process.argv[2], 'survived');",
       '  process.exit(0);',
-      '}, 500);',
+      '}, Number(process.argv[3]));',
     ].join('\n'),
   );
   await writeFile(
@@ -84,7 +85,7 @@ async function createProcessTreeFixture(
       "import { execFileSync } from 'node:child_process';",
       "import { writeFileSync } from 'node:fs';",
       "const parentExits = process.argv[5] === 'exit';",
-      'const child = spawn(process.execPath, [process.argv[2], process.argv[3]], {',
+      'const child = spawn(process.execPath, [process.argv[2], process.argv[3], process.argv[6]], {',
       "  stdio: 'ignore',",
       '});',
       "const groupPid = process.platform === 'win32'",
@@ -106,6 +107,7 @@ async function createProcessTreeFixture(
       quoteShellArgument(markerPath),
       quoteShellArgument(readyPath),
       quoteShellArgument(parentExits ? 'exit' : 'wait'),
+      quoteShellArgument(String(markerDelayMs)),
     ].join(' '),
     markerPath,
     readyPath,
@@ -209,21 +211,29 @@ describe('SecureProcessExecutor', () => {
   ])('terminates and reaps the hook process tree on $mode', async ({ mode, expectedTimeout }) => {
     const root = await mkdtemp(join(tmpdir(), `hook-${mode}-tree-`));
     roots.push(root);
-    const fixture = await createProcessTreeFixture(root);
+    const fixture = await createProcessTreeFixture(
+      root,
+      false,
+      mode === 'timeout' && process.platform === 'win32' ? 5_000 : 500,
+    );
     const controller = new AbortController();
     const executor = new SecureProcessExecutor(50);
     const execution = executor.execute(
       fixture.command,
       createInput(root),
       createContext(root, controller.signal),
-      mode === 'timeout' ? 200 : 5_000,
+      mode === 'timeout'
+        ? process.platform === 'win32'
+          ? 2_000
+          : 200
+        : 5_000,
     );
 
     await vi.waitFor(
       async () => {
         expect(await pathExists(fixture.readyPath)).toBe(true);
       },
-      { timeout: 2_000 },
+      { timeout: 5_000 },
     );
     const { groupPid, childPid } = JSON.parse(await readFile(fixture.readyPath, 'utf8')) as {
       groupPid: number;
