@@ -2,6 +2,12 @@
 
 All notable changes to `@blade-ai/agent-sdk` are documented here.
 
+## [5.0.3] - 2026-08-23
+
+### Fixes
+
+- Serialize local Session transcript access across processes, durably sync appends, recover torn crash tails, reject path-unsafe Session IDs, and fail closed on committed record corruption.
+
 ## [5.0.2] - 2026-08-23
 
 ### Fixes
