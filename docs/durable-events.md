@@ -106,6 +106,10 @@ interface DurableEventEnvelope<TType extends DurableEventType> {
 
 ```ts
 const store = new JsonlDurableEventStore('/var/lib/my-agent');
+// 可选：另一个进程持锁时最多等待 15 秒。
+const boundedWaitStore = new JsonlDurableEventStore('/var/lib/my-agent', {
+  lockTimeoutMs: 15_000,
+});
 const sessionId = SessionId('session-123');
 const requestId = RequestId('request-123');
 const commandId = CommandId('command-123');
@@ -584,10 +588,14 @@ runtime 恢复。
 
 每次提交：
 
-1. 在进程级 mutex 内重新读取并校验当前 head。
+1. 在进程级 mutex 内排队，再获取 Session 级跨进程文件锁并重新读取、校验当前 head。
 2. 验证 compare-and-append 前置条件。
 3. 以一次 batch 写入分配连续 sequence。
 4. 调用文件 `fsync` 后才返回成功。
+
+`read()` 和 `getHeadSequence()` 使用同一把锁，因此不会读取另一进程正在截断或
+追加的中间状态。默认最多等待 10 秒；锁目录通过 heartbeat 保持有效，进程崩溃
+遗留且超过 30 秒的 stale lock 会被安全回收。
 
 事件文件使用 `0600` 权限，Session ID 经过 base64url 编码，不会成为文件路径。
 事件会保存原始请求输入、完整模型响应、工具输入和模型侧工具结果；调用方必须将
@@ -595,9 +603,9 @@ Store 视为敏感数据存储，并自行配置加密、保留期限和访问�
 
 ## 一致性边界
 
-`JsonlDurableEventStore` 保证单个 Node.js 进程内多个 Store 实例的串行追加。
-它不提供跨进程 fencing。多个进程或多副本服务必须实现
-`DurableEventStore` 接口，并使用数据库事务、CAS 或 lease 保证单写者。
+`JsonlDurableEventStore` 保证同一主机上多个 Node.js 进程针对同一 Session 的
+互斥读写和原子 compare-and-append。它不提供跨主机 execution lease；多副本服务
+仍应实现 `DurableEventStore` 接口，并使用数据库事务、CAS 或 lease 保证单写者。
 
 `DURABLE_EVENT_WRITE_FAILED` 不代表 batch 一定没有写入：底层写入成功但
 `fsync` 失败时，提交结果可能未知。调用方重试前必须重新读取 head，并通过
@@ -618,6 +626,8 @@ Store 不持久化 token delta、工具 progress 等高频 UI 事件。只有会
 | `SessionDurableRecorderError` | Session runtime 观察到非法 durable 生命周期状态 |
 | `DurableEventProjectionError` | schema、事件顺序或关联关系不满足生命周期约束 |
 | `DurableEventSequenceConflictError` | compare-and-append 前置条件失败 |
+| `DURABLE_EVENT_LOCK_FAILED` | Session 文件锁初始化或获取失败 |
+| `DURABLE_EVENT_LOCK_TIMEOUT` | 在 `lockTimeoutMs` 内未能获得 Session 文件锁 |
 | `DurableEventStoreError` | 参数、cursor、读写或日志完整性错误 |
 
 完整、已换行但 schema 错误或 sequence 不连续的记录被视为损坏日志；Store

@@ -1,0 +1,5 @@
+{
+  "type": "fix",
+  "en": "Serialize JSONL durable-event reads and compare-and-append writes across Node.js processes with bounded lock waits and stale-lock recovery.",
+  "zh-CN": "通过有界锁等待和 stale lock 恢复，在多个 Node.js 进程之间串行化 JSONL durable event 读取与 compare-and-append 写入。"
+}

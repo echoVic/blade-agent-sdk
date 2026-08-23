@@ -111,6 +111,10 @@ persistent recovery object.
 
 ```ts
 const store = new JsonlDurableEventStore('/var/lib/my-agent');
+// Optional: wait at most 15 seconds for another process to release the lock.
+const boundedWaitStore = new JsonlDurableEventStore('/var/lib/my-agent', {
+  lockTimeoutMs: 15_000,
+});
 const sessionId = SessionId('session-123');
 const requestId = RequestId('request-123');
 const commandId = CommandId('command-123');
@@ -627,10 +631,16 @@ newline, so a partial transaction is never accepted.
 
 Each append:
 
-1. rereads and validates the current head under a process-wide mutex;
+1. queues under the process-wide mutex, then acquires a Session-scoped
+   inter-process file lock and rereads and validates the current head;
 2. checks the compare-and-append precondition;
 3. assigns contiguous sequences and writes one batch;
 4. calls file `fsync` before reporting success.
+
+`read()` and `getHeadSequence()` acquire the same lock, so they cannot observe
+another process between tail truncation and append. Lock acquisition waits up
+to 10 seconds by default. A heartbeat keeps owned locks fresh, and an abandoned
+lock older than 30 seconds is reclaimed.
 
 Event files use mode `0600`. Session IDs are base64url encoded and cannot
 become filesystem paths.
@@ -640,10 +650,10 @@ encryption, retention, and access control at the deployment boundary.
 
 ## Consistency boundary
 
-`JsonlDurableEventStore` serializes multiple Store instances within one Node.js
-process. It does not provide cross-process fencing. Multi-process or replicated
-services must implement `DurableEventStore` with database transactions, CAS,
-or an execution lease.
+`JsonlDurableEventStore` provides mutually exclusive reads and atomic
+compare-and-append across Node.js processes on the same host. It does not
+provide a cross-host execution lease. Replicated services must still implement
+`DurableEventStore` with database transactions, CAS, or a lease.
 
 `DURABLE_EVENT_WRITE_FAILED` does not prove that a batch was not written. A
 write can reach the file before `fsync` reports failure. Before retrying, read
@@ -666,6 +676,8 @@ journal.
 | `SessionDurableRecorderError` | Session runtime observed an invalid durable lifecycle state. |
 | `DurableEventProjectionError` | Schema, ordering, or correlation violates lifecycle invariants. |
 | `DurableEventSequenceConflictError` | Compare-and-append precondition failed. |
+| `DURABLE_EVENT_LOCK_FAILED` | Session file-lock setup or acquisition failed. |
+| `DURABLE_EVENT_LOCK_TIMEOUT` | The Session file lock was not acquired within `lockTimeoutMs`. |
 | `DurableEventStoreError` | Invalid input, cursor, I/O, or log integrity failure. |
 
 A complete newline-terminated record with an invalid schema, duplicate ID, or

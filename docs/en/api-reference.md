@@ -81,6 +81,7 @@ Runtime:
 Types and errors:
 
 - `DurableEventStore`
+- `JsonlDurableEventStoreOptions`
 - `DurableEventCursor`
 - `DurableEventSubscriptionOptions`
 - `DurableEventSubscriptionMessage`

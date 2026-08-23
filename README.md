@@ -61,7 +61,7 @@ console.log(result.usage);
 
 - Session lifecycle: `createSession()`, `resumeSession()`, `forkSession()`, and `prompt()`
 - Steerable requests: durable `now`, `next`, and `later` inputs with cancellation and pending-input inspection
-- Durable recovery: pre-start resume, safe Request/Turn rollover, explicit model/tool reconciliation, and reconnectable cursors
+- Durable recovery: cross-process-safe local journaling, safe Request/Turn rollover, explicit model/tool reconciliation, and reconnectable cursors
 - Streaming: 17 typed events for turns, content, reasoning, tools, usage, steering, results, and errors
 - Providers: OpenAI, Anthropic, Azure OpenAI, Gemini, DeepSeek, and OpenAI-compatible APIs
 - Tools: generator-only custom tools, capability-grouped built-ins, MCP tools, and typed progress/effects

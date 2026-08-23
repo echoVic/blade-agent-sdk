@@ -56,7 +56,7 @@ Node-local 能力外，这些函数都从根入口导出；实际 subpath 以“
 | `MemoryManager` | memory | memory 编排层 |
 | `SubagentRegistry` | subagents | 注册和发现子 Agent |
 | `SubagentExecutor` | subagents | 执行单个子 Agent |
-| `JsonlDurableEventStore` | root / local | Node.js 单进程 durable event JSONL adapter |
+| `JsonlDurableEventStore` | root / local | 支持同机多进程锁的 Node.js durable event JSONL adapter |
 | `SessionInputError` | session | 输入队列容量、请求匹配或活动请求选项错误 |
 | `SdkError` 及派生错误 | root | 类型化 SDK 错误层级 |
 
@@ -122,6 +122,7 @@ Node-local 能力外，这些函数都从根入口导出；实际 subpath 以“
 | `DurableSessionCloseReason` | Session 关闭原因 |
 | `DurableEventAppendOptions` / `DurableEventAppendResult` | compare-and-append 参数与结果 |
 | `DurableEventReadOptions` / `DurableEventPage` | cursor 分页读取参数与结果 |
+| `JsonlDurableEventStoreOptions` | JSONL Store 时钟、事件 ID factory 与 `lockTimeoutMs` |
 | `DurableEventCursor` / `DURABLE_EVENT_CURSOR_VERSION` | 绑定 Session、sequence 和 event ID 的 cursor |
 | `DurableEventSubscriptionOptions` / `DurableEventSubscriptionMessage` | 订阅配置与 event/caught-up 消息 |
 | `DurableEventSubscriptionError` / `DurableEventSubscriptionErrorCode` | cursor、分页或订阅配置错误 |
