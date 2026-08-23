@@ -603,6 +603,10 @@ runtime 恢复。
 锁状态属于打开的文件描述符。只要仍有进程使用该 Store，就不能手动删除、替换或
 移动事件文件及其 lock sidecar。
 
+Native lock addon 仅在首次 Store 操作时加载，不影响其他 SDK API 的导入。在
+addon 无法加载或平台不支持 advisory lock 时，Store 以
+`DURABLE_EVENT_LOCK_FAILED` fail closed。
+
 事件文件使用 `0600` 权限，Session ID 经过 base64url 编码，不会成为文件路径。
 事件会保存原始请求输入、完整模型响应、工具输入和模型侧工具结果；调用方必须将
 Store 视为敏感数据存储，并自行配置加密、保留期限和访问控制。

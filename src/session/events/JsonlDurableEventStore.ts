@@ -1,5 +1,4 @@
 import { Mutex, withTimeout } from 'async-mutex';
-import { tryLock, unlock } from 'fs-native-extensions';
 import { nanoid } from 'nanoid';
 import { Buffer } from 'node:buffer';
 import { type FileHandle, mkdir, open, readFile, realpath, truncate } from 'node:fs/promises';
@@ -40,6 +39,15 @@ interface FileMutexEntry {
 }
 
 const FILE_MUTEXES = new Map<string, FileMutexEntry>();
+
+type NativeFileLock = Pick<typeof import('fs-native-extensions'), 'tryLock' | 'unlock'>;
+
+let nativeFileLockPromise: Promise<NativeFileLock> | undefined;
+
+function loadNativeFileLock(): Promise<NativeFileLock> {
+  nativeFileLockPromise ??= import('fs-native-extensions');
+  return nativeFileLockPromise;
+}
 
 async function runWithFileMutex<T>(
   filePath: string,
@@ -305,13 +313,15 @@ export class JsonlDurableEventStore implements DurableEventStore {
     sessionId: SessionId,
     deadline: number,
   ): Promise<() => Promise<void>> {
+    let nativeFileLock: NativeFileLock;
     let lockFile: FileHandle;
     try {
+      nativeFileLock = await loadNativeFileLock();
       lockFile = await open(`${filePath}.lock`, 'a+', 0o600);
     } catch (error) {
       throw new DurableEventStoreError(
         'DURABLE_EVENT_LOCK_FAILED',
-        `Failed to open durable event lock for session ${sessionId}`,
+        `Failed to initialize durable event locking for session ${sessionId}`,
         { cause: error },
       );
     }
@@ -327,7 +337,7 @@ export class JsonlDurableEventStore implements DurableEventStore {
 
         let acquired: boolean;
         try {
-          acquired = tryLock(lockFile.fd);
+          acquired = nativeFileLock.tryLock(lockFile.fd);
         } catch (error) {
           throw new DurableEventStoreError(
             'DURABLE_EVENT_LOCK_FAILED',
@@ -336,7 +346,7 @@ export class JsonlDurableEventStore implements DurableEventStore {
           );
         }
         if (acquired) {
-          return this.createProcessLockRelease(lockFile);
+          return this.createProcessLockRelease(lockFile, nativeFileLock.unlock);
         }
 
         const retryWaitMs = deadline - performance.now();
@@ -357,7 +367,10 @@ export class JsonlDurableEventStore implements DurableEventStore {
     }
   }
 
-  private createProcessLockRelease(lockFile: FileHandle): () => Promise<void> {
+  private createProcessLockRelease(
+    lockFile: FileHandle,
+    unlockFile: NativeFileLock['unlock'],
+  ): () => Promise<void> {
     let released = false;
     return async () => {
       if (released) {
@@ -367,7 +380,7 @@ export class JsonlDurableEventStore implements DurableEventStore {
 
       let releaseError: unknown;
       try {
-        unlock(lockFile.fd);
+        unlockFile(lockFile.fd);
       } catch (error) {
         releaseError = error;
       }

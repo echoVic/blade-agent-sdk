@@ -651,6 +651,11 @@ mean that the lock is currently held; ownership belongs to an open file
 descriptor. Do not delete, replace, or move event logs or their lock sidecars
 while any process is using the Store.
 
+The native lock addon is loaded only on the first Store operation, so other SDK
+APIs remain importable without it. If the addon cannot load or the platform
+does not support advisory locking, the Store fails closed with
+`DURABLE_EVENT_LOCK_FAILED`.
+
 Event files use mode `0600`. Session IDs are base64url encoded and cannot
 become filesystem paths.
 Events contain raw request inputs, complete model responses, tool inputs, and
