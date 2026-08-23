@@ -65,6 +65,7 @@ console.log(result.usage);
 - Streaming: 17 typed events for turns, content, reasoning, tools, usage, steering, results, and errors
 - Providers: OpenAI, Anthropic, Azure OpenAI, Gemini, DeepSeek, and OpenAI-compatible APIs
 - Tools: generator-only custom tools, capability-grouped built-ins, MCP tools, and typed progress/effects
+- Extensibility: onion-style model/tool middleware and declarative plugins that bundle middleware, hooks, and tools
 - Collaboration: foreground and background subagents, task tools, and project Skills
 - Safety: permission modes, policy callbacks, hooks, path checks, and optional OS sandbox integration
 - Runtime: optional workspace context, structured output, crash-safe local transcripts, context compaction, token budgets, and traces
@@ -164,6 +165,7 @@ The workspace is optional. Sessions and explicitly configured agents work withou
 ## Documentation
 
 - [English documentation](./docs/en/index.md)
+- [Middleware and plugins](./docs/en/middleware.md)
 - [Durable Event Store](./docs/en/durable-events.md)
 - [中文文档](./docs/index.md)
 - [English changelog](./CHANGELOG.md)

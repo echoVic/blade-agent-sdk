@@ -12,6 +12,7 @@
 | `@blade-ai/agent-sdk/core` | Browser-safe / Node | 类型、协议、事件、常量，不导入 Node-only runtime |
 | `@blade-ai/agent-sdk/browser` | Browser | Browser-safe 常量和 server-only stub |
 | `@blade-ai/agent-sdk/tools` | Browser-safe / Node | 工具定义、工具类型、工具目录等不依赖本地执行器的 API |
+| `@blade-ai/agent-sdk/middleware` | Browser-safe / Node | 洋葱组合器、模型/工具 middleware 与插件定义 |
 | `@blade-ai/agent-sdk/local` | Node server / CLI | 内置工具、MCP、memory、sandbox 等 Node 本地能力 |
 
 ## 函数
@@ -43,6 +44,9 @@ Node-local 能力外，这些函数都从根入口导出；实际 subpath 以“
 | `createRuleBasedPermissionHandler` | permissions | 基于规则创建处理器 |
 | `collectToolExecution` | root / core / tools | 消费工具执行并返回最终结果 |
 | `completeToolExecution` | root / core / tools | 将单个结果包装成工具执行 |
+| `composeMiddleware` | root / core / middleware | 组合通用洋葱 middleware |
+| `definePlugin` | root / core / middleware | 定义声明式 Agent 插件 |
+| `wrapChatService` | root / core / middleware | 使用模型 middleware 包装 `IChatService` |
 | `calculateDeepSeekCost` 等 | root | DeepSeek 调用、成本、缓存和长上下文辅助函数 |
 | `registerCleanup` / `gracefulShutdown` | root | 注册和执行进程级清理 |
 | `getErrorMessage` 等 | root | 安全提取未知错误信息 |
@@ -273,6 +277,20 @@ Node-local 能力外，这些函数都从根入口导出；实际 subpath 以“
 `SessionStart`、`SessionEnd`、`UserPromptSubmit`、`PermissionRequest`、
 `PreToolUse`、`PostToolUse`、`PostToolUseFailure` 和 `TaskCompleted` 这 8 个
 内联事件。
+
+### Middleware 与插件
+
+| 类型 | 说明 |
+|------|------|
+| `Middleware` / `MiddlewareNext` | 通用洋葱中间件契约 |
+| `AgentMiddlewareConfig` | Session 级模型与工具 middleware 配置 |
+| `AgentPlugin` | 声明式 middleware、hooks 与工具集合 |
+| `ModelMiddleware` | 模型调用包装器集合 |
+| `ModelChatRequest` / `ModelSideQueryRequest` | 非流式模型请求 |
+| `ModelStreamRequest` / `ModelRetryRequest` | 流式与重试可见请求 |
+| `ToolMiddleware` / `ToolMiddlewareRequest` | 流式工具执行中间件 |
+
+详见 [Middleware 与插件](./middleware)。
 
 ### 运行时
 

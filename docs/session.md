@@ -1741,6 +1741,8 @@ async function analyzeCodeManual() {
 | `agents`          | `Record<string, AgentDefinition>`                       | —  | —           | 命名子代理定义                                           |
 | `subagent`        | `SubagentInfo`                                          | —  | —           | 子代理上下文信息（内部使用）                                    |
 | `hooks`           | `Partial<Record<SessionHookEvent, HookCallback[]>>`     | —  | —           | 生命周期 Hook 回调                                      |
+| `middleware`      | `AgentMiddlewareConfig`                                 | —  | —           | 直接注册模型与工具洋葱 middleware                            |
+| `plugins`         | `readonly AgentPlugin[]`                                | —  | —           | 声明式打包 middleware、hooks 与工具                         |
 | `defaultContext`  | `RuntimeContext`                                        | —  | `{}`        | 会话级默认运行时上下文                                       |
 | `logger`          | `AgentLogger`                                           | —  | —           | 结构化日志适配器                                          |
 | `storagePath`     | `string`                                                | —  | —           | 会话存储根路径；未设置时使用内存存储                              |

@@ -12,6 +12,7 @@ This page inventories the public package surface. Detailed behavior is documente
 | `@blade-ai/agent-sdk/core` | Browser and Node.js | Browser-safe contracts, constants, and types |
 | `@blade-ai/agent-sdk/browser` | Browser | Core contracts plus stubs for server-only functions |
 | `@blade-ai/agent-sdk/tools` | Browser and Node.js | Tool authoring, catalog, and execution contracts |
+| `@blade-ai/agent-sdk/middleware` | Browser and Node.js | Onion composition, model/tool middleware, and plugin definitions |
 | `@blade-ai/agent-sdk/local` | Node.js | Built-in tools, MCP, memory, and sandbox adapters |
 
 The package is ESM-only. Browser imports of root, `/server`, `/session`, or `/local` resolve server APIs to stubs that throw an explicit error.
@@ -314,6 +315,26 @@ Types and constants:
 - `HookType`
 
 `HookEvent` has 22 protocol events. `SessionOptions.hooks` only accepts the eight events in `SessionHookEvent`; see [Hooks](./hooks).
+
+## Middleware and plugins
+
+Runtime:
+
+- `composeMiddleware`
+- `definePlugin`
+- `wrapChatService`
+
+Types:
+
+- `Middleware` / `MiddlewareNext`
+- `AgentMiddlewareConfig`
+- `AgentPlugin`
+- `ModelMiddleware`
+- `ModelChatRequest` / `ModelSideQueryRequest`
+- `ModelStreamRequest` / `ModelRetryRequest`
+- `ToolMiddleware` / `ToolMiddlewareRequest`
+
+See [Middleware and plugins](./middleware).
 
 ## Runtime context
 
