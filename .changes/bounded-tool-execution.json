@@ -1,5 +1,0 @@
-{
-  "type": "fix",
-  "en": "Bound tool invocations to 10 minutes by default, expose SessionOptions.toolTimeoutMs, keep the deadline active across progress yields, and fail closed while timed-out cleanup remains pending.",
-  "zh-CN": "工具调用默认限制为 10 分钟，新增 SessionOptions.toolTimeoutMs，确保 progress yield 期间持续计时，并在超时清理未完成时保持 fail-closed。"
-}

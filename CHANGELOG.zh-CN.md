@@ -2,6 +2,12 @@
 
 `@blade-ai/agent-sdk` 的所有重要变更都记录在此。
 
+## [5.3.2] - 2026-08-23
+
+### 修复
+
+- 工具调用默认限制为 10 分钟，新增 SessionOptions.toolTimeoutMs，确保 progress yield 期间持续计时，并在超时清理未完成时保持 fail-closed。
+
 ## [5.3.1] - 2026-08-23
 
 ### 修复

@@ -2,6 +2,12 @@
 
 All notable changes to `@blade-ai/agent-sdk` are documented here.
 
+## [5.3.2] - 2026-08-23
+
+### Fixes
+
+- Bound tool invocations to 10 minutes by default, expose SessionOptions.toolTimeoutMs, keep the deadline active across progress yields, and fail closed while timed-out cleanup remains pending.
+
 ## [5.3.1] - 2026-08-23
 
 ### Fixes
