@@ -423,6 +423,12 @@ const tool = createTool({
   两者都会等待活动工具完成清理，因此自定义工具即使阻止 `now` 转向，也必须监听
   request `AbortSignal`。
 
+`SessionOptions.toolTimeoutMs` 限制每次工具调用的总时长，默认值为 `600000`
+（10 分钟）。时限从权限检查及 durable `tool_started` 边界完成后开始，在
+progress yield 之间持续计时，并在到期时中止工具的 signal。终态结果的错误类型为
+`ToolErrorType.TIMEOUT_ERROR`。SDK 最多等待工具清理 5 秒，避免忽略取消信号的
+工具无限阻塞 Session 关闭或 handoff。
+
 `interruptBehavior` 属于 `createTool()` 的 `ToolConfig`，轻量
 `defineTool()` / `ToolDefinition` 不暴露该字段。需要让 Session 中的自定义
 工具响应 `now` 转向时，应使用 `createTool()` 并声明 `cancel`。

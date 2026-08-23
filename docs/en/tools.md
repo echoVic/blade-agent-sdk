@@ -203,6 +203,14 @@ Explicit `session.abort()` and `session.close()` are request-level cancellation 
 Both methods wait for active tool cleanup, so custom tools must honor the
 request `AbortSignal` even when they block `now`-priority steering.
 
+`SessionOptions.toolTimeoutMs` bounds each tool invocation and defaults to
+`600000` (10 minutes). The deadline starts after permission checks and the
+durable `tool_started` boundary, remains active across progress yields, and
+aborts the tool's signal on expiry. The terminal result has
+`ToolErrorType.TIMEOUT_ERROR`. Cleanup is awaited for at most 5 seconds so a
+tool that ignores cancellation cannot indefinitely block Session shutdown or
+handoff.
+
 `interruptBehavior` belongs to the `ToolConfig` accepted by `createTool()`;
 `defineTool()` / `ToolDefinition` does not expose it. Use `createTool()` with
 `cancel` when a custom Session tool can safely stop for a `now` input.
