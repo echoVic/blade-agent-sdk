@@ -1295,7 +1295,7 @@ class Session implements ISession {
         this.executionState.execution?.releaseBackpressure();
         return {
           alreadyClosed: true,
-          completion: this.executionState.execution?.completion ?? null,
+          execution: this.executionState.execution,
         };
       }
       let execution: SessionStreamExecution | undefined;
@@ -1326,43 +1326,45 @@ class Session implements ISession {
       };
       return {
         alreadyClosed: false,
-        completion: execution?.completion ?? null,
+        execution,
       };
     });
-    if (closeState.alreadyClosed) {
-      if (closeState.completion) {
-        await closeState.completion;
-      }
-      if (recordDurableClose) {
-        await this.closeDurableSession();
-      }
-      return;
-    }
 
     const closeErrors: unknown[] = [];
-    if (closeState.completion) {
+    if (closeState.execution) {
       try {
-        await closeState.completion;
+        await closeState.execution.completion;
       } catch (error) {
         closeErrors.push(error);
       }
+      await this.inputMutex.runExclusive(() => {
+        if (
+          this.executionState.phase === 'closed'
+          && this.executionState.execution === closeState.execution
+        ) {
+          this.executionState = { phase: 'closed' };
+        }
+      });
     }
-    this.cleanupHandle?.unregister();
-    this.cleanupHandle = null;
-    this.agent = null;
-    this.initialized = false;
-    const runtime = this.runtime;
-    this.runtime = null;
-    if (runtime) {
-      try {
-        await runtime.getHookRuntime().runSessionEnd({ reason: 'other' });
-      } catch (error) {
-        closeErrors.push(error);
-      }
-      try {
-        await runtime.close();
-      } catch (error) {
-        closeErrors.push(error);
+
+    if (!closeState.alreadyClosed) {
+      this.cleanupHandle?.unregister();
+      this.cleanupHandle = null;
+      this.agent = null;
+      this.initialized = false;
+      const runtime = this.runtime;
+      this.runtime = null;
+      if (runtime) {
+        try {
+          await runtime.getHookRuntime().runSessionEnd({ reason: 'other' });
+        } catch (error) {
+          closeErrors.push(error);
+        }
+        try {
+          await runtime.close();
+        } catch (error) {
+          closeErrors.push(error);
+        }
       }
     }
     if (recordDurableClose) {
@@ -1372,7 +1374,9 @@ class Session implements ISession {
         closeErrors.push(error);
       }
     }
-    this.logger.debug(`[Session] Closed session ${this.sessionId}`);
+    if (!closeState.alreadyClosed) {
+      this.logger.debug(`[Session] Closed session ${this.sessionId}`);
+    }
     if (closeErrors.length === 1) {
       throw closeErrors[0];
     }

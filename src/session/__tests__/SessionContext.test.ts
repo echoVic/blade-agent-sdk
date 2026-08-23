@@ -550,6 +550,7 @@ describe('Session runtime context', () => {
     controller.abort();
 
     await vi.waitFor(() => expect(innerClosed).toBe(true));
+    await session.abort();
     await expect(session.send('after external abort')).resolves.toMatchObject({
       status: 'started',
     });

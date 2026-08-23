@@ -188,9 +188,10 @@ for await (const event of session.stream()) {
 `abort()` terminates the whole active request and does not close the Session. It
 can be awaited from inside stream consumption without deadlocking. The Promise
 resolves only after the inner Agent stream has closed, model and tool lifecycle
-cleanup has settled, the durable Request terminal event has committed, and
-request ownership has been released. Any already buffered stream events remain
-readable afterward, but draining them is not required for cleanup.
+cleanup has settled, and request ownership has been released. When
+`durableEventStore` is configured, it also waits for the durable Request
+terminal event to commit. Any already buffered stream events remain readable
+afterward, but draining them is not required for cleanup.
 
 If durable terminal persistence fails or has an unknown outcome, `abort()`
 rejects and recovery fencing prevents another Request from starting. This
@@ -514,9 +515,10 @@ console.log(session.isClosed);
 ```
 
 `close()` aborts active work and waits for the same request-completion barrier
-as `abort()` before closing MCP connections, running the `SessionEnd` hook, and
-committing `session_closed`. Concurrent calls share one close Promise. A closed
-Session cannot be reinitialized.
+as `abort()` before closing MCP connections and running the `SessionEnd` hook.
+When `durableEventStore` is configured, it also waits for `session_closed` to
+commit. Concurrent calls share one close Promise. A closed Session cannot be
+reinitialized.
 
 Use explicit resource management when available:
 

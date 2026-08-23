@@ -1435,6 +1435,42 @@ describe('Session durable events', () => {
     await expect(session.close()).resolves.toBeUndefined();
   });
 
+  it('allows close retry after running-request terminal persistence fails', async () => {
+    const { store } = createStore();
+    const failingStore = new FailOnEventTypeStore(
+      store,
+      DurableEventType.REQUEST_INTERRUPTED,
+    );
+    streamChat = async function* interruptedByClose(_message, context) {
+      yield { type: 'turn_start', turn: 1, maxTurns: 10 };
+      const signal = (context as { signal?: AbortSignal }).signal;
+      await new Promise<void>((resolve) => {
+        if (signal?.aborted) {
+          resolve();
+          return;
+        }
+        signal?.addEventListener('abort', () => resolve(), { once: true });
+      });
+      return {
+        success: false,
+        error: { type: 'aborted', message: 'closed' },
+        metadata: { turnsCount: 1, toolCallsCount: 0, duration: 1 },
+      };
+    };
+    const session = await createSession(options(failingStore));
+    await session.send('close with failed persistence');
+    const output = session.stream();
+    await output.next();
+
+    await expect(session.close()).rejects.toBeInstanceOf(
+      DurableCommandOutcomeUnknownError,
+    );
+    await expect(session.close()).resolves.toBeUndefined();
+    await expect(output.next()).rejects.toBeInstanceOf(
+      DurableCommandOutcomeUnknownError,
+    );
+  });
+
   it('durably interrupts a pending request before cancelling its input', async () => {
     const { store } = createStore();
     const session = await createSession(options(store));

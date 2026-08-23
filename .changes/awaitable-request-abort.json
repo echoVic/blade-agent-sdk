@@ -1,5 +1,5 @@
 {
   "type": "fix",
-  "en": "Make running Session abort and close operations wait for Agent stream cleanup, model and tool settlement, durable Request finalization, and request ownership release without consumer deadlocks.",
-  "zh-CN": "使运行中 Session 的 abort 与 close 操作在无消费者死锁的情况下，等待 Agent stream 清理、模型与工具收敛、durable Request 终态持久化及请求所有权释放。"
+  "en": "Make running Session abort and close operations wait for Agent stream cleanup, model and tool settlement, request ownership release, and configured durable Request finalization without consumer deadlocks.",
+  "zh-CN": "使运行中 Session 的 abort 与 close 操作在无消费者死锁的情况下，等待 Agent stream 清理、模型与工具收敛及请求所有权释放，并在配置 durableEventStore 时等待 Request 终态持久化。"
 }

@@ -1391,7 +1391,8 @@ await session.close();
 
 调用后：
 
-- 中止正在进行的请求，并等待请求执行、模型/工具生命周期与 durable 终态收敛
+- 中止正在进行的请求，并等待请求执行与模型/工具生命周期收敛；配置
+  `durableEventStore` 时还会等待 durable 终态收敛
 - 断开所有 MCP 服务器连接
 - 触发 `SessionEnd` Hook
 - Session 永久进入关闭状态，后续 `send()` / `stream()` 会抛出错误
@@ -1412,9 +1413,9 @@ for await (const msg of session.stream()) {
 ```
 
 可以在 stream 消费回调内直接 `await session.abort()`，不会产生死锁。该 Promise
-仅在内部 Agent stream 已关闭、模型和工具生命周期清理完成、durable Request
-终态已提交且请求所有权已释放后返回。已缓冲的 stream 事件仍可继续读取，但不再
-需要通过 drain 来驱动清理。
+仅在内部 Agent stream 已关闭、模型和工具生命周期清理完成且请求所有权已释放后
+返回。配置 `durableEventStore` 时，它还会等待 durable Request 终态提交。已缓冲
+的 stream 事件仍可继续读取，但不再需要通过 drain 来驱动清理。
 
 如果 durable 终态持久化失败或写入结果未知，`abort()` 会拒绝，并通过 recovery
 fencing 阻止新 Request 启动。
