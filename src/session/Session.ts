@@ -1945,7 +1945,13 @@ class Session implements ISession {
     controller: ActiveRequestController,
   ): DurableRequestInterruptReason {
     const reason = controller.requestSignal.reason as RequestAbortReason | undefined;
-    return reason?.kind === 'session_close' ? 'session_close' : 'user_abort';
+    if (reason?.kind === 'session_close') {
+      return 'session_close';
+    }
+    if (reason?.kind === 'session_handoff') {
+      return 'process_restart';
+    }
+    return 'user_abort';
   }
 
   private async finishRequest(requestId: RequestId): Promise<void> {

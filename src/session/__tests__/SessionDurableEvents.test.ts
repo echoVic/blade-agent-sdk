@@ -1642,6 +1642,7 @@ describe('Session durable events', () => {
           }
           signal?.addEventListener('abort', () => resolve(), { once: true });
         });
+        yield { type: 'content_delta', delta: 'ignored after handoff' };
         return {
           success: false,
           error: { type: 'aborted', message: 'handed off' },
@@ -1658,6 +1659,7 @@ describe('Session durable events', () => {
       ...options(store),
       persistSession: true,
       storagePath: root,
+      observability: { enabled: true, capturePayloads: true },
     });
     await session.send('running handoff');
     const output = session.stream();
@@ -1696,6 +1698,17 @@ describe('Session durable events', () => {
       DurableEventType.MODEL_REQUEST_STARTED,
       DurableEventType.MODEL_REQUEST_ABORTED,
     ]);
+    expect(session.getLastTrace()).toMatchObject({
+      status: 'aborted',
+      events: expect.arrayContaining([
+        expect.objectContaining({
+          type: 'error',
+          data: {
+            reason: expect.objectContaining({ value: 'process_restart' }),
+          },
+        }),
+      ]),
+    });
     await expect(output.next()).resolves.toEqual({ value: undefined, done: true });
 
     const requestId = handoff.recoveryPlan.requestId;
@@ -1973,6 +1986,74 @@ describe('Session durable events', () => {
     });
     expect(withoutTranscript.isClosed).toBe(false);
     await withoutTranscript.close();
+  });
+
+  it('rejects handoff after Session close has started', async () => {
+    const { root, store } = createStore();
+    const session = await createSession({
+      ...options(store),
+      persistSession: true,
+      storagePath: root,
+    });
+
+    const close = session.close();
+
+    await expect(session.suspendForHandoff()).rejects.toMatchObject({
+      code: 'SESSION_HANDOFF_UNAVAILABLE',
+      message: 'Session close has already started',
+    });
+    await close;
+  });
+
+  it('rejects handoff after Request cancellation has started', async () => {
+    const { root, store } = createStore();
+    let cleanupStarted = false;
+    let releaseCleanup!: () => void;
+    const cleanupGate = new Promise<void>((resolve) => {
+      releaseCleanup = resolve;
+    });
+    streamChat = async function* stoppingRequest(_message, context) {
+      try {
+        yield { type: 'turn_start', turn: 1, maxTurns: 10 };
+        const signal = (context as { signal?: AbortSignal }).signal;
+        await new Promise<void>((resolve) => {
+          if (signal?.aborted) {
+            resolve();
+            return;
+          }
+          signal?.addEventListener('abort', () => resolve(), { once: true });
+        });
+        return {
+          success: false,
+          error: { type: 'aborted', message: 'aborted' },
+          metadata: { turnsCount: 1, toolCallsCount: 0, duration: 1 },
+        };
+      } finally {
+        cleanupStarted = true;
+        await cleanupGate;
+      }
+    };
+    const session = await createSession({
+      ...options(store),
+      persistSession: true,
+      storagePath: root,
+    });
+    await session.send('abort before handoff');
+    const output = session.stream();
+    await output.next();
+    const abort = session.abort();
+    await vi.waitFor(() => expect(cleanupStarted).toBe(true));
+
+    try {
+      await expect(session.suspendForHandoff()).rejects.toMatchObject({
+        code: 'SESSION_HANDOFF_UNAVAILABLE',
+        message: 'Session request cancellation has already started',
+      });
+    } finally {
+      releaseCleanup();
+      await abort;
+      await session.close();
+    }
   });
 
   it('does not cancel the Request when a background subagent blocks handoff', async () => {
