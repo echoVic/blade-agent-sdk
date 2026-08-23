@@ -249,6 +249,27 @@ describe('LoopRunner', () => {
       expect(mm._contextMgr.saveMessage).toHaveBeenCalled();
     });
 
+    it('does not persist input after the explicit request signal is cancelled', async () => {
+      const mm = createMockModelManager();
+      const pipeline = createMockPipeline();
+      const runner = new LoopRunner(baseConfig, baseOptions, mm, pipeline);
+      const controller = new AbortController();
+      const cancellation = new Error('request cancelled');
+      controller.abort(cancellation);
+
+      await expect(
+        runner.runLoop('Cancelled input', createContext(), {
+          signal: controller.signal,
+        }),
+      ).resolves.toMatchObject({
+        success: false,
+        error: { type: 'aborted' },
+      });
+      expect(mm._contextMgr.saveMessage).not.toHaveBeenCalled();
+      expect(mm._contextMgr.saveAppliedInputMessage).not.toHaveBeenCalled();
+      expect(mm._chat).not.toHaveBeenCalled();
+    });
+
     it('fences the initial transcript write before model execution', async () => {
       const mm = createMockModelManager();
       const pipeline = createMockPipeline();

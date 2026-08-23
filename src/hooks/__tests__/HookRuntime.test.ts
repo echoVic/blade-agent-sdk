@@ -289,6 +289,48 @@ describe('HookRuntime', () => {
     expect(executeUserPromptSubmitHooks).toHaveBeenCalledOnce();
   });
 
+  it('rejects an in-flight file hook that completes after quarantine', async () => {
+    const firstStarted = deferred();
+    const secondStarted = deferred();
+    const releaseFirst = deferred();
+    const releaseSecond = deferred();
+    const containmentError = new HookProcessContainmentError(
+      'Hook process cleanup failed',
+    );
+    let callCount = 0;
+    const executeUserPromptSubmitHooks = vi.fn(async () => {
+      callCount += 1;
+      if (callCount === 1) {
+        firstStarted.resolve();
+        await releaseFirst.promise;
+        throw containmentError;
+      }
+      secondStarted.resolve();
+      await releaseSecond.promise;
+      return { proceed: true };
+    });
+    const runtime = new HookRuntime({
+      sessionId: SessionId('session-concurrent-file-hook-containment'),
+      permissionMode: PermissionMode.DEFAULT,
+      resolveProjectDir: () => '/tmp/project',
+      hookManager: {
+        executeUserPromptSubmitHooks,
+      } as never,
+    });
+    const firstDispatch = runtime.applyUserPromptSubmit('first');
+    const firstRejection = expect(firstDispatch).rejects.toBe(containmentError);
+    await firstStarted.promise;
+    const secondDispatch = runtime.applyUserPromptSubmit('second');
+    const secondRejection = expect(secondDispatch).rejects.toBe(containmentError);
+    await secondStarted.promise;
+
+    releaseFirst.resolve();
+    await firstRejection;
+    releaseSecond.resolve();
+
+    await secondRejection;
+  });
+
   it('rejects invalid inline hook timeout configuration', () => {
     for (const [name, value] of [
       ['hookTimeoutMs', 0],

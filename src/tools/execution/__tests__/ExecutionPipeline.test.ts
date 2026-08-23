@@ -866,6 +866,88 @@ describe('ExecutionPipeline', () => {
     expect(executeSpy).not.toHaveBeenCalled();
   });
 
+  it('blocks an in-flight tool before its side effect after quarantine', async () => {
+    const registry = new ToolRegistry();
+    const firstPermissionStarted = deferred();
+    const secondExecutionReady = deferred();
+    const releaseFirstPermission = deferred();
+    const releaseSecondExecution = deferred();
+    const firstController = new AbortController();
+    const containmentError = new HookProcessContainmentError(
+      'Permission Hook process cleanup failed',
+    );
+    const executeSpy = vi.fn(() => completeToolExecution({
+      status: 'success',
+      model: 'unexpected',
+    }));
+    registerTool(
+      registry,
+      createTool({
+        name: 'ConcurrentContainmentTool',
+        displayName: 'Concurrent Containment Tool',
+        kind: ToolKind.Execute,
+        sideEffect: 'non_idempotent',
+        description: { short: 'Concurrent containment tool' },
+        schema: z.object({ id: z.string() }),
+        execute: executeSpy,
+      }),
+    );
+    const permissionHandler = vi.fn(async (request) => {
+      if (request.input.id === 'first') {
+        firstPermissionStarted.resolve();
+        await releaseFirstPermission.promise;
+        throw containmentError;
+      }
+      return { behavior: 'allow' as const };
+    });
+    const pipeline = new ExecutionPipeline(registry, {
+      permissionMode: PermissionMode.YOLO,
+      permissionHandler,
+      concurrencyLimits: { execute: 2 },
+    });
+    const firstExecution = executePipeline(
+      pipeline,
+      'ConcurrentContainmentTool',
+      { id: 'first' },
+      {
+        permissionMode: PermissionMode.YOLO,
+        signal: firstController.signal,
+      },
+    );
+    await firstPermissionStarted.promise;
+
+    const secondExecution = executePipeline(
+      pipeline,
+      'ConcurrentContainmentTool',
+      { id: 'second' },
+      {
+        permissionMode: PermissionMode.YOLO,
+        toolInvocationLifecycle: {
+          onExecutionStarted: async () => {
+            secondExecutionReady.resolve();
+            await releaseSecondExecution.promise;
+          },
+        },
+      },
+    );
+    const secondRejection = expect(secondExecution).rejects.toBe(containmentError);
+    await secondExecutionReady.promise;
+
+    firstController.abort(new Error('request cancelled'));
+    await expect(firstExecution).resolves.toMatchObject({
+      status: 'error',
+      error: { message: 'request cancelled' },
+    });
+    releaseFirstPermission.resolve();
+    await vi.waitFor(() => {
+      expect(pipeline.getTerminalCleanupFailure()).toBe(containmentError);
+    });
+    releaseSecondExecution.resolve();
+
+    await secondRejection;
+    expect(executeSpy).not.toHaveBeenCalled();
+  });
+
   it('uses resolved readonly behavior for plan-mode execution', async () => {
     const registry = new ToolRegistry();
 

@@ -513,6 +513,7 @@ export class ExecutionPipeline {
         toolKind,
         state.context.signal,
       );
+      this.throwIfTerminalCleanupFailed();
       state.context.signal?.throwIfAborted();
       if (this.hasPendingCleanup()) {
         return this.createPendingCleanupResult();
@@ -524,11 +525,13 @@ export class ExecutionPipeline {
             state.context.signal,
           )
         : undefined;
+      this.throwIfTerminalCleanupFailed();
       state.context.signal?.throwIfAborted();
       if (this.hasPendingCleanup()) {
         return this.createPendingCleanupResult();
       }
       await state.context.assertExecutionLease?.();
+      this.throwIfTerminalCleanupFailed();
       state.context.signal?.throwIfAborted();
       return yield* this.executeWithPipeline(state, executionId);
     } catch (error) {
@@ -568,6 +571,7 @@ export class ExecutionPipeline {
   ): ToolExecution {
     try {
       await this.applyPreToolUseHooks(state, executionId);
+      this.throwIfTerminalCleanupFailed();
       if (!state.result && state.context.signal?.aborted) {
         state.interrupted = isSteeringInterruptSignal(state.context.signal);
         state.result = this.createAbortedResult(
@@ -581,9 +585,11 @@ export class ExecutionPipeline {
       }
       if (!state.result) {
         await this.prepareExecution(state);
+        this.throwIfTerminalCleanupFailed();
       }
       if (!state.result) {
         await this.resolveConfirmation(state);
+        this.throwIfTerminalCleanupFailed();
       }
       if (!state.result) {
         yield* this.executeInvocation(state);
@@ -944,6 +950,7 @@ export class ExecutionPipeline {
       sideEffect: state.resolvedBehavior?.sideEffect ?? state.tool.sideEffect,
     });
     await state.context.assertExecutionLease?.();
+    this.throwIfTerminalCleanupFailed();
     if (this.hasPendingCleanup()) {
       state.result = this.createPendingCleanupResult();
       return;

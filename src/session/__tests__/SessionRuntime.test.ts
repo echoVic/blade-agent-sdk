@@ -478,7 +478,12 @@ describe('SessionRuntime', () => {
       );
     });
 
+    const cancelBackgroundAgents = vi.spyOn(
+      runtime.getBackgroundAgentManager(),
+      'sealCancelAndWait',
+    );
     await expect(runtime.close()).rejects.toBe(containmentError);
+    expect(cancelBackgroundAgents).toHaveBeenCalledOnce();
   });
 
   it('should install plugin tools and tool middleware through one declarative entry', async () => {

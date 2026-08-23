@@ -676,6 +676,7 @@ export class HookRuntime {
     abortSignal?.throwIfAborted();
     try {
       const result = await operation();
+      this.throwIfTerminalContainmentFailed();
       abortSignal?.throwIfAborted();
       return result;
     } catch (error) {
@@ -685,6 +686,7 @@ export class HookRuntime {
       ) {
         this.terminalContainmentFailure = error;
       }
+      this.throwIfTerminalContainmentFailed();
       throw error;
     }
   }

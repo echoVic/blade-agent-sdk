@@ -131,6 +131,21 @@ export class LoopRunner {
     options?: LoopOptions,
     systemPrompt?: string,
   ): AsyncGenerator<AgentEvent, LoopResult> {
+    const requestSignal = options?.signal ?? context.signal;
+    if (requestSignal?.aborted) {
+      if (
+        isExecutionLeaseFailure(requestSignal.reason)
+        || isHookProcessContainmentError(requestSignal.reason)
+      ) {
+        throw requestSignal.reason;
+      }
+      return {
+        success: false,
+        error: { type: 'aborted', message: '任务已被用户中止' },
+        metadata: { turnsCount: 0, toolCallsCount: 0, duration: 0 },
+      };
+    }
+
     // 1. 构建消息历史 — 入口归一化 + ConversationState 构造
     const rootPromptMessage: Message | null = systemPrompt
       ? {
@@ -176,7 +191,11 @@ export class LoopRunner {
       const inputApplication = options.inputApplication;
       try {
         lastMessageUuid = await runWithExecutionLeaseBoundary(
-          context,
+          {
+            signal: requestSignal,
+            assertExecutionLease: context.assertExecutionLease,
+            runWithExecutionLease: context.runWithExecutionLease,
+          },
           () => contextMgr.saveAppliedInputMessage(
             sessionId,
             inputApplication.inputId,
@@ -187,7 +206,7 @@ export class LoopRunner {
           ),
         );
       } catch (error) {
-        if (context.signal?.aborted || isExecutionLeaseFailure(error)) {
+        if (requestSignal?.aborted || isExecutionLeaseFailure(error)) {
           throw error;
         }
         // 与其他消息写入保持一致的 best-effort 策略：持久化失败不应中断请求。
@@ -198,7 +217,11 @@ export class LoopRunner {
         if (contextMgr && context.sessionId && hasPersistableUserContent(message)) {
           const sessionId = context.sessionId;
           lastMessageUuid = await runWithExecutionLeaseBoundary(
-            context,
+            {
+              signal: requestSignal,
+              assertExecutionLease: context.assertExecutionLease,
+              runWithExecutionLease: context.runWithExecutionLease,
+            },
             () => contextMgr.saveMessage(
               sessionId,
               'user',
@@ -210,7 +233,7 @@ export class LoopRunner {
           );
         }
       } catch (error) {
-        if (context.signal?.aborted || isExecutionLeaseFailure(error)) {
+        if (requestSignal?.aborted || isExecutionLeaseFailure(error)) {
           throw error;
         }
         this.logger.warn('[LoopRunner] 保存用户消息失败:', error);
@@ -268,8 +291,8 @@ export class LoopRunner {
       ) {
         throw error;
       }
-      if (isExecutionLeaseFailure(context.signal?.reason)) {
-        throw context.signal.reason;
+      if (isExecutionLeaseFailure(requestSignal?.reason)) {
+        throw requestSignal.reason;
       }
       if (error instanceof Error &&
         (error.name === 'AbortError' || error.message.includes('aborted'))) {

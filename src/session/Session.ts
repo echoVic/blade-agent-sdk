@@ -1537,7 +1537,7 @@ class Session implements ISession {
     disposition: 'terminal' | 'detached',
     abortReason: RequestAbortReason = { kind: 'session_close' },
   ): Promise<void> {
-    this.runtime?.assertNoPendingCleanup();
+    this.runtime?.assertNoPendingCleanup({ includeTerminalFailures: false });
     const recordDurableClose = disposition === 'terminal';
     // 关闭时对 executionState 的读写走 inputMutex，避免与并发 send()/stream()
     // 交错（例如 send() 在 await 处让出后用 pending 覆盖 closed）。
@@ -1607,7 +1607,7 @@ class Session implements ISession {
       });
     }
 
-    this.runtime?.assertNoPendingCleanup();
+    this.runtime?.assertNoPendingCleanup({ includeTerminalFailures: false });
     if (this.runtime) {
       closeErrors.push(...(await this.releaseLocalRuntime()));
     }
