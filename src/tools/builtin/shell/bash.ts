@@ -439,22 +439,30 @@ async function executeWithTimeout(
       stderr += data.toString();
     });
 
+    const safeSignalTree = (signalName: NodeJS.Signals): void => {
+      try {
+        signalProcessTree(bashProcess.pid, signalName, bashProcess);
+      } catch (error) {
+        stderr += `\nFailed to signal command process tree: ${getErrorMessage(error)}`;
+      }
+    };
+
     // 设置超时
     const timeoutHandle = setTimeout(() => {
       timedOut = true;
-      signalProcessTree(bashProcess.pid, 'SIGTERM', bashProcess);
+      safeSignalTree('SIGTERM');
 
       // 如果 SIGTERM 无效,强制 SIGKILL
       setTimeout(() => {
         if (isProcessTreeAlive(bashProcess.pid, bashProcess)) {
-          signalProcessTree(bashProcess.pid, 'SIGKILL', bashProcess);
+          safeSignalTree('SIGKILL');
         }
       }, 1000);
     }, timeout);
 
     // 处理中止信号
     const abortHandler = () => {
-      signalProcessTree(bashProcess.pid, 'SIGTERM', bashProcess);
+      safeSignalTree('SIGTERM');
       clearTimeout(timeoutHandle);
     };
 

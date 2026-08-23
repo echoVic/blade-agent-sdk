@@ -1,5 +1,6 @@
 import type { HookRuntime } from '../../hooks/HookRuntime.js';
 import { type InternalLogger, LogCategory, NOOP_LOGGER } from '../../logging/Logger.js';
+import { isExecutionLeaseFailure } from '../../session/events/DurableExecutionLeaseStore.js';
 import { isSteeringInterruptSignal } from '../../types/abort.js';
 import {
   type PermissionRequestId,
@@ -82,16 +83,6 @@ interface PipelineExecutionState {
  * Ranked for display: deny > tool > rule > path > handler.
  */
 export type ConfirmationReasonSource = 'tool' | 'rule' | 'path' | 'handler' | 'hook';
-
-function isExecutionLeaseFailure(error: unknown): boolean {
-  return (
-    typeof error === 'object' &&
-    error !== null &&
-    'code' in error &&
-    typeof error.code === 'string' &&
-    error.code.startsWith('DURABLE_EXECUTION_LEASE_')
-  );
-}
 
 export interface ConfirmationReasonEntry {
   source: ConfirmationReasonSource;

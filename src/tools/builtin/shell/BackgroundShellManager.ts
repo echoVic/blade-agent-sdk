@@ -1,7 +1,7 @@
 import { type ChildProcess, spawn } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import type { DurableExecutionFence } from '../../../session/events/DurableExecutionLeaseStore.js';
-import type { SessionId } from '../../../types/branded.js';
+import type { FencingToken, SessionId } from '../../../types/branded.js';
 import {
   isProcessTreeAlive,
   shellProcessSpawnOptions,
@@ -66,7 +66,7 @@ export class BackgroundShellManager {
   private static instance: BackgroundShellManager | null = null;
   private processes = new Map<string, BackgroundShellProcess>();
   private sealedSessionIds = new Set<SessionId>();
-  private revokedExecutionFences = new Set<string>();
+  private revokedFencingTokens = new Map<SessionId, FencingToken>();
 
   static getInstance(): BackgroundShellManager {
     if (!BackgroundShellManager.instance) {
@@ -80,9 +80,7 @@ export class BackgroundShellManager {
       this.sealedSessionIds.has(options.sessionId) ||
       (
         options.executionFence &&
-        this.revokedExecutionFences.has(
-          this.executionFenceKey(options.sessionId, options.executionFence),
-        )
+        this.isExecutionFenceRevoked(options.sessionId, options.executionFence)
       )
     ) {
       throw new Error(`Background shell admission is closed for Session ${options.sessionId}`);
@@ -215,7 +213,10 @@ export class BackgroundShellManager {
   }
 
   sealExecutionFence(sessionId: SessionId, fence: DurableExecutionFence): void {
-    this.revokedExecutionFences.add(this.executionFenceKey(sessionId, fence));
+    const revokedThrough = this.revokedFencingTokens.get(sessionId);
+    if (revokedThrough === undefined || fence.fencingToken > revokedThrough) {
+      this.revokedFencingTokens.set(sessionId, fence.fencingToken);
+    }
   }
 
   killSession(sessionId: SessionId): readonly string[] {
@@ -281,11 +282,17 @@ export class BackgroundShellManager {
       };
     }
 
-    const killed = signalProcessTree(
-      processInfo.pid,
-      'SIGTERM',
-      processInfo.process,
-    );
+    let killed = false;
+    try {
+      killed = signalProcessTree(
+        processInfo.pid,
+        'SIGTERM',
+        processInfo.process,
+      );
+    } catch (error) {
+      processInfo.errorMessage =
+        error instanceof Error ? error.message : String(error);
+    }
     if (!killed) {
       return {
         success: false,
@@ -335,11 +342,12 @@ export class BackgroundShellManager {
     }
   }
 
-  private executionFenceKey(
+  private isExecutionFenceRevoked(
     sessionId: SessionId,
     fence: DurableExecutionFence,
-  ): string {
-    return `${sessionId}\0${fence.leaseId}\0${fence.fencingToken}`;
+  ): boolean {
+    const revokedThrough = this.revokedFencingTokens.get(sessionId);
+    return revokedThrough !== undefined && fence.fencingToken <= revokedThrough;
   }
 
   private sameExecutionFence(
@@ -385,6 +393,6 @@ export class BackgroundShellManager {
     }
     this.processes.clear();
     this.sealedSessionIds.clear();
-    this.revokedExecutionFences.clear();
+    this.revokedFencingTokens.clear();
   }
 }

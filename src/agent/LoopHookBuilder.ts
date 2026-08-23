@@ -12,6 +12,10 @@ import { SdkError } from '../errors/SdkError.js';
 import type { HookRuntime } from '../hooks/HookRuntime.js';
 import type { InternalLogger } from '../logging/Logger.js';
 import type { Message } from '../services/ChatServiceInterface.js';
+import {
+  isExecutionLeaseFailure,
+  runWithExecutionLeaseBoundary,
+} from '../session/events/DurableExecutionLeaseStore.js';
 import type { ExecutionPipeline } from '../tools/execution/ExecutionPipeline.js';
 import type { ToolEffect } from '../tools/types/index.js';
 import type { SessionId } from '../types/branded.js';
@@ -23,19 +27,9 @@ import type { RuntimePatchManager } from './RuntimePatchManager.js';
 import type { LoopState } from './state/LoopState.js';
 import type { TokenBudget } from './TokenBudget.js';
 import type {
-    ChatContext,
-    LoopOptions,
+  ChatContext,
+  LoopOptions,
 } from './types.js';
-
-function isExecutionLeaseFailure(error: unknown): boolean {
-  return (
-    typeof error === 'object'
-    && error !== null
-    && 'code' in error
-    && typeof error.code === 'string'
-    && error.code.startsWith('DURABLE_EXECUTION_LEASE_')
-  );
-}
 
 export interface LoopHookBuilderDeps {
   context: ChatContext;
@@ -71,21 +65,14 @@ async function persistToJsonl<T>(
     signal?.throwIfAborted();
     const contextMgr = modelManager.getContextManager();
     if (contextMgr && sessionId) {
-      const persist = async (): Promise<T> => {
-        signal?.throwIfAborted();
-        const result = await callback(contextMgr, sessionId);
-        signal?.throwIfAborted();
-        return result;
-      };
-      if (runWithExecutionLease) {
-        const result = await runWithExecutionLease(persist);
-        signal?.throwIfAborted();
-        return result;
-      }
-      await assertExecutionLease?.();
-      const result = await persist();
-      await assertExecutionLease?.();
-      return result;
+      return runWithExecutionLeaseBoundary(
+        {
+          signal,
+          assertExecutionLease,
+          runWithExecutionLease,
+        },
+        () => callback(contextMgr, sessionId),
+      );
     }
   } catch (error) {
     if (signal?.aborted || isExecutionLeaseFailure(error)) {
@@ -368,7 +355,10 @@ export function buildLoopConfig(deps: LoopHookBuilderDeps): AgentLoopConfig {
               lastActivity: toolCall.function.name,
               updatedAt: Date.now(),
             });
-          } catch {
+          } catch (error) {
+            if (isExecutionLeaseFailure(error)) {
+              throw error;
+            }
             // 忽略回调异常
           }
         }

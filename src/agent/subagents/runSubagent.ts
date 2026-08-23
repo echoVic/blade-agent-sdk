@@ -25,7 +25,7 @@ export interface RunSubagentOptions {
   assertExecutionLease?: () => Promise<void>;
   runWithExecutionLease?: <T>(operation: () => Promise<T>) => Promise<T>;
   omitEnvironment?: boolean;
-  onProgress?: (progress: AgentProgress) => void;
+  onProgress?: (progress: AgentProgress) => void | Promise<void>;
 }
 
 function resolveModelId(config: SubagentConfig): string | undefined {

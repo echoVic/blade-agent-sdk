@@ -5,6 +5,10 @@ import { TokenCounter } from '../context/TokenCounter.js';
 import { type InternalLogger, LogCategory, NOOP_LOGGER } from '../logging/Logger.js';
 import type { IChatService } from '../services/ChatServiceInterface.js';
 import { cloneMessage } from '../services/messageUtils.js';
+import {
+  isExecutionLeaseFailure,
+  runWithExecutionLeaseBoundary,
+} from '../session/events/DurableExecutionLeaseStore.js';
 import type { SessionId } from '../types/branded.js';
 import type { CompactingEvent } from './AgentEvent.js';
 import type { ConversationState } from './state/ConversationState.js';
@@ -15,36 +19,6 @@ export interface CompactionRuntimeContext {
   signal?: AbortSignal;
   assertExecutionLease?: () => Promise<void>;
   runWithExecutionLease?: <T>(operation: () => Promise<T>) => Promise<T>;
-}
-
-function isExecutionLeaseFailure(error: unknown): boolean {
-  return (
-    typeof error === 'object' &&
-    error !== null &&
-    'code' in error &&
-    typeof error.code === 'string' &&
-    error.code.startsWith('DURABLE_EXECUTION_LEASE_')
-  );
-}
-
-async function runFencedPersistence<T>(
-  runtimeCtx: CompactionRuntimeContext,
-  operation: () => Promise<T>,
-): Promise<T> {
-  runtimeCtx.signal?.throwIfAborted();
-  if (runtimeCtx.runWithExecutionLease) {
-    const result = await runtimeCtx.runWithExecutionLease(async () => {
-      runtimeCtx.signal?.throwIfAborted();
-      return operation();
-    });
-    runtimeCtx.signal?.throwIfAborted();
-    return result;
-  }
-  await runtimeCtx.assertExecutionLease?.();
-  const result = await operation();
-  runtimeCtx.signal?.throwIfAborted();
-  await runtimeCtx.assertExecutionLease?.();
-  return result;
 }
 
 export class CompactionHandler {
@@ -175,7 +149,7 @@ export class CompactionHandler {
         try {
           const contextMgr = this.getContextManager();
           if (contextMgr && runtimeCtx.sessionId) {
-            await runFencedPersistence(
+            await runWithExecutionLeaseBoundary(
               runtimeCtx,
               () => contextMgr.saveCompaction(
                 runtimeCtx.sessionId,
@@ -304,7 +278,7 @@ export class CompactionHandler {
       try {
         const contextMgr = this.getContextManager();
         if (contextMgr && runtimeCtx.sessionId) {
-          await runFencedPersistence(
+          await runWithExecutionLeaseBoundary(
             runtimeCtx,
             () => contextMgr.saveCompaction(
               runtimeCtx.sessionId,

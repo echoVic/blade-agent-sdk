@@ -72,6 +72,58 @@ export class DurableExecutionLeaseError extends SdkError {
   }
 }
 
+const DURABLE_EXECUTION_LEASE_ERROR_CODES: ReadonlySet<string> = new Set([
+  'DURABLE_EXECUTION_LEASE_INVALID',
+  'DURABLE_EXECUTION_LEASE_NOT_SUPPORTED',
+  'DURABLE_EXECUTION_LEASE_CONFLICT',
+  'DURABLE_EXECUTION_LEASE_REQUIRED',
+  'DURABLE_EXECUTION_LEASE_LOST',
+  'DURABLE_EXECUTION_LEASE_CORRUPT',
+  'DURABLE_EXECUTION_LEASE_WRITE_FAILED',
+] satisfies readonly DurableExecutionLeaseErrorCode[]);
+
+export function isExecutionLeaseFailure(
+  error: unknown,
+): error is DurableExecutionLeaseError {
+  if (error instanceof DurableExecutionLeaseError) {
+    return true;
+  }
+  return (
+    typeof error === 'object' &&
+    error !== null &&
+    'code' in error &&
+    typeof error.code === 'string' &&
+    DURABLE_EXECUTION_LEASE_ERROR_CODES.has(error.code)
+  );
+}
+
+export interface ExecutionLeaseBoundary {
+  signal?: AbortSignal;
+  assertExecutionLease?: () => Promise<void>;
+  runWithExecutionLease?: <T>(operation: () => Promise<T>) => Promise<T>;
+}
+
+/** Runs short persistence work within the active execution-lease boundary. */
+export async function runWithExecutionLeaseBoundary<T>(
+  boundary: ExecutionLeaseBoundary,
+  operation: () => Promise<T>,
+): Promise<T> {
+  boundary.signal?.throwIfAborted();
+  if (boundary.runWithExecutionLease) {
+    const result = await boundary.runWithExecutionLease(async () => {
+      boundary.signal?.throwIfAborted();
+      return operation();
+    });
+    boundary.signal?.throwIfAborted();
+    return result;
+  }
+  await boundary.assertExecutionLease?.();
+  const result = await operation();
+  boundary.signal?.throwIfAborted();
+  await boundary.assertExecutionLease?.();
+  return result;
+}
+
 export interface DurableExecutionLeaseStore extends DurableEventStore {
   /**
    * Returns true once the Session has entered fenced execution mode.

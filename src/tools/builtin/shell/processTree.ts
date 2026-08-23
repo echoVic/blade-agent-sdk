@@ -31,6 +31,8 @@ export function signalProcessTree(
   }
 
   if (process.platform === 'win32') {
+    // Windows has no POSIX signal semantics for console process trees.
+    // taskkill /T /F therefore force-terminates the complete tree.
     const result = spawnSync(
       'taskkill',
       [
@@ -54,10 +56,14 @@ export function signalProcessTree(
     process.kill(-pid, signal);
     return true;
   } catch (error) {
-    if (!isMissingProcess(error)) {
-      throw error;
+    try {
+      return child?.kill(signal) ?? false;
+    } catch {
+      if (!isMissingProcess(error)) {
+        throw error;
+      }
+      return false;
     }
-    return child?.kill(signal) ?? false;
   }
 }
 

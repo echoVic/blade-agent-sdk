@@ -10,6 +10,7 @@ import {
     createChatServiceAsync,
     type Message,
 } from '../services/ChatServiceInterface.js';
+import { isExecutionLeaseFailure } from '../session/events/DurableExecutionLeaseStore.js';
 import { SessionId } from '../types/branded.js';
 import { PermissionMode, type ProviderType } from '../types/common.js';
 import { FileAnalyzer, type FileContent } from './FileAnalyzer.js';
@@ -84,16 +85,6 @@ const RETAIN_PERCENT = 0.2;
 
 /** 降级时保留比例（30%） */
 const FALLBACK_RETAIN_PERCENT = 0.3;
-
-function isExecutionLeaseFailure(error: unknown): boolean {
-  return (
-    typeof error === 'object'
-    && error !== null
-    && 'code' in error
-    && typeof error.code === 'string'
-    && error.code.startsWith('DURABLE_EXECUTION_LEASE_')
-  );
-}
 
 /**
  * 保留最近的消息窗口，并过滤掉 tool_call_id 不在保留窗口内的孤儿 tool 消息。

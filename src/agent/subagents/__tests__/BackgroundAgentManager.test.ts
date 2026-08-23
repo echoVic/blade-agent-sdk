@@ -307,6 +307,31 @@ describe('BackgroundAgentManager', () => {
     ).rejects.toThrow('Background agent admission is closed');
   });
 
+  it('fails cleanup closed when a background agent misses the shutdown deadline', async () => {
+    let finishExecution: (() => void) | undefined;
+    runAgenticLoop.mockImplementationOnce(async () => {
+      await new Promise<void>((resolve) => {
+        finishExecution = resolve;
+      });
+      return { success: false, error: { message: 'cancelled late' } };
+    });
+    const agentId = AgentId(await manager.startBackgroundAgent({
+      config: subagentConfig,
+      bladeConfig,
+      description: 'Unresponsive work',
+      prompt: 'inspect',
+    }));
+    await vi.waitFor(() => expect(runAgenticLoop).toHaveBeenCalled());
+
+    await expect(manager.sealCancelAndWait(10)).rejects.toThrow(
+      `Timed out waiting for background agents to stop: ${agentId}`,
+    );
+    expect(manager.getActiveAgentIds()).toEqual([agentId]);
+
+    finishExecution?.();
+    await manager.waitForCompletion(agentId, 0);
+  });
+
   it('prevents a stale owner from overwriting successor state or output', async () => {
     const store = AgentSessionStore.create();
     const oldManager = BackgroundAgentManager.create(

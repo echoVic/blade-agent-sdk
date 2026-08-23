@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { createContextSnapshot } from '../../../runtime/index.js';
+import { DurableExecutionLeaseError } from '../../../session/events/DurableExecutionLeaseStore.js';
 import { completeToolExecution, type ExecutionContext } from '../../../tools/types/index.js';
 import { ModelAttemptId, SessionId } from '../../../types/branded.js';
 import type { JsonObject } from '../../../types/common.js';
@@ -202,6 +203,47 @@ describe('executeToolCalls', () => {
     expect(outcome.result.status).toBe('error');
     expect(outcome.result.model).toContain('Tool execution failed:');
     expect(outcome.result.model).toContain('JSON');
+  });
+
+  it('propagates execution lease failures instead of creating a tool result', async () => {
+    const leaseError = new DurableExecutionLeaseError(
+      'DURABLE_EXECUTION_LEASE_LOST',
+      'worker is stale',
+    );
+    const onToolSettled = vi.fn(async () => {});
+
+    await expect(
+      executeToolCalls({
+        plan: {
+          mode: 'serial',
+          calls: [
+            {
+              id: 'tool-stale-worker',
+              type: 'function',
+              function: {
+                name: 'Write',
+                arguments: '{}',
+              },
+            },
+          ],
+        },
+        executionPipeline: {
+          // biome-ignore lint/correctness/useYield: generator fails before producing output
+          execute: vi.fn(async function* () {
+            throw leaseError;
+          }),
+          getRegistry: () => ({
+            get: () => undefined,
+          }),
+        } as never,
+        executionContext: {
+          sessionId: SessionId('session-stale-worker'),
+          userId: 'user-1',
+          lifecycle: { onToolSettled },
+        },
+      }),
+    ).rejects.toBe(leaseError);
+    expect(onToolSettled).not.toHaveBeenCalled();
   });
 
   it('emits a unified ready-progress-message-effect-result-completed update sequence for each tool call', async () => {

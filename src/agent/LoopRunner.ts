@@ -14,6 +14,10 @@ import type { HookRuntime } from '../hooks/HookRuntime.js';
 import { type InternalLogger, LogCategory, NOOP_LOGGER } from '../logging/Logger.js';
 import { buildSystemPrompt } from '../prompts/index.js';
 import type { Message } from '../services/ChatServiceInterface.js';
+import {
+  isExecutionLeaseFailure,
+  runWithExecutionLeaseBoundary,
+} from '../session/events/DurableExecutionLeaseStore.js';
 import type { SkillActivationContext } from '../skills/index.js';
 import { injectSkillsMetadata } from '../skills/index.js';
 import { ToolCatalog } from '../tools/catalog/index.js';
@@ -51,36 +55,6 @@ function hasPersistableUserContent(message: UserMessageContent): boolean {
   }
 
   return message.some((part) => part.type === 'image_url' || part.text.trim() !== '');
-}
-
-function isExecutionLeaseFailure(error: unknown): boolean {
-  return (
-    typeof error === 'object'
-    && error !== null
-    && 'code' in error
-    && typeof error.code === 'string'
-    && error.code.startsWith('DURABLE_EXECUTION_LEASE_')
-  );
-}
-
-async function runFencedTranscriptWrite<T>(
-  context: ChatContext,
-  operation: () => Promise<T>,
-): Promise<T> {
-  context.signal?.throwIfAborted();
-  if (context.runWithExecutionLease) {
-    const result = await context.runWithExecutionLease(async () => {
-      context.signal?.throwIfAborted();
-      return operation();
-    });
-    context.signal?.throwIfAborted();
-    return result;
-  }
-  await context.assertExecutionLease?.();
-  const result = await operation();
-  context.signal?.throwIfAborted();
-  await context.assertExecutionLease?.();
-  return result;
 }
 
 export class LoopRunner {
@@ -200,7 +174,7 @@ export class LoopRunner {
       const sessionId = context.sessionId;
       const inputApplication = options.inputApplication;
       try {
-        lastMessageUuid = await runFencedTranscriptWrite(
+        lastMessageUuid = await runWithExecutionLeaseBoundary(
           context,
           () => contextMgr.saveAppliedInputMessage(
             sessionId,
@@ -222,7 +196,7 @@ export class LoopRunner {
       try {
         if (contextMgr && context.sessionId && hasPersistableUserContent(message)) {
           const sessionId = context.sessionId;
-          lastMessageUuid = await runFencedTranscriptWrite(
+          lastMessageUuid = await runWithExecutionLeaseBoundary(
             context,
             () => contextMgr.saveMessage(
               sessionId,
@@ -287,6 +261,12 @@ export class LoopRunner {
       syncContextMessages(context, loopState.conversationState);
       return result;
     } catch (error) {
+      if (isExecutionLeaseFailure(error)) {
+        throw error;
+      }
+      if (isExecutionLeaseFailure(context.signal?.reason)) {
+        throw context.signal.reason;
+      }
       if (error instanceof Error &&
         (error.name === 'AbortError' || error.message.includes('aborted'))) {
         return {

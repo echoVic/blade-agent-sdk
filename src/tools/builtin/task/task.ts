@@ -19,6 +19,7 @@ import type {
   SubagentResult,
 } from '../../../agent/subagents/types.js';
 import { HookManager } from '../../../hooks/HookManager.js';
+import { isExecutionLeaseFailure } from '../../../session/events/DurableExecutionLeaseStore.js';
 import { AgentId, SessionId } from '../../../types/branded.js';
 import { PermissionMode } from '../../../types/common.js';
 import { getErrorMessage } from '../../../utils/errorUtils.js';
@@ -332,6 +333,9 @@ export function createTaskTool({ registry }: { registry: SubagentRegistry }) {
 
         return buildTaskResult(result, subagent_type, description, duration, subagentSessionId);
       } catch (error) {
+        if (isExecutionLeaseFailure(error)) {
+          throw error;
+        }
         const _errorMessage = extractUserFriendlyError(
           error instanceof Error ? error : new Error(getErrorMessage(error))
         );

@@ -7,6 +7,7 @@ import {
   type DurableExecutionLease as DurableExecutionLeaseSnapshot,
   type DurableExecutionLeaseStore,
   executionFence,
+  isExecutionLeaseFailure,
   isDurableExecutionLeaseStore,
 } from './DurableExecutionLeaseStore.js';
 
@@ -160,7 +161,7 @@ export class DurableExecutionLease {
   }
 
   observeStoreFailure(error: unknown): void {
-    if (!this.isLeaseFailure(error)) {
+    if (!isExecutionLeaseFailure(error)) {
       return;
     }
     this.markLost(
@@ -198,7 +199,7 @@ export class DurableExecutionLease {
       this.released = true;
     } catch (cause) {
       if (
-        this.isLeaseFailure(cause) &&
+        isExecutionLeaseFailure(cause) &&
         typeof cause === 'object' &&
         cause !== null &&
         'code' in cause &&
@@ -294,14 +295,4 @@ export class DurableExecutionLease {
         );
   }
 
-  private isLeaseFailure(error: unknown): boolean {
-    return (
-      error instanceof DurableExecutionLeaseError ||
-      (typeof error === 'object' &&
-        error !== null &&
-        'code' in error &&
-        typeof error.code === 'string' &&
-        error.code.startsWith('DURABLE_EXECUTION_LEASE_'))
-    );
-  }
 }

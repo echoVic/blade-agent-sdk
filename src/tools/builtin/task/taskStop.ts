@@ -27,6 +27,21 @@ export function createTaskStopTool({ sessionId }: { sessionId: SessionId }) {
       if (agentManager?.getAgent(aid)) {
         const stopped = await agentManager.killAgent(aid);
         const latestSession = agentManager.getAgent(aid);
+        if (!stopped && latestSession?.status === 'running') {
+          return {
+            status: 'error',
+            model: `Background agent ${taskId} could not be stopped`,
+            error: {
+              type: ToolErrorType.EXECUTION_ERROR,
+              message: `Background agent ${taskId} is owned by another execution`,
+            },
+            metadata: {
+              summary: '无法停止后台 Agent',
+              task: latestSession,
+              stoppedBackgroundAgent: false,
+            },
+          };
+        }
         return {
           status: 'success',
           model: toJsonValue(

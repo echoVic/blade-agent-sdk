@@ -8,6 +8,7 @@ import { DurableExecutionLease } from '../DurableExecutionLease.js';
 import {
   DurableExecutionLeaseError,
   type DurableExecutionLeaseStore,
+  isDurableExecutionLeaseStore,
 } from '../DurableExecutionLeaseStore.js';
 import { DurableSessionJournal } from '../DurableSessionJournal.js';
 import { DurableSessionRecoveryCoordinator } from '../DurableSessionRecoveryCoordinator.js';
@@ -279,8 +280,43 @@ describe('DurableExecutionLease', () => {
 
   it('accepts structural lease Stores without requiring the JSONL adapter', async () => {
     const store = await createStore();
-    const leaseStore: DurableExecutionLeaseStore = store;
+    const leaseStore = {
+      append: (...args: Parameters<DurableEventStore['append']>) =>
+        store.append(...args),
+      read: (...args: Parameters<DurableEventStore['read']>) =>
+        store.read(...args),
+      getHeadSequence: (
+        ...args: Parameters<DurableEventStore['getHeadSequence']>
+      ) => store.getHeadSequence(...args),
+      requiresExecutionLease: (
+        ...args: Parameters<DurableExecutionLeaseStore['requiresExecutionLease']>
+      ) => store.requiresExecutionLease(...args),
+      acquireExecutionLease: (
+        ...args: Parameters<DurableExecutionLeaseStore['acquireExecutionLease']>
+      ) => store.acquireExecutionLease(...args),
+      renewExecutionLease: (
+        ...args: Parameters<DurableExecutionLeaseStore['renewExecutionLease']>
+      ) => store.renewExecutionLease(...args),
+      assertExecutionLease: (
+        ...args: Parameters<DurableExecutionLeaseStore['assertExecutionLease']>
+      ) => store.assertExecutionLease(...args),
+      withExecutionLease: <T>(
+        lease: Parameters<DurableExecutionLeaseStore['withExecutionLease']>[0],
+        operation: () => Promise<T>,
+      ) => store.withExecutionLease(lease, operation),
+      releaseExecutionLease: (
+        ...args: Parameters<DurableExecutionLeaseStore['releaseExecutionLease']>
+      ) => store.releaseExecutionLease(...args),
+    } satisfies DurableExecutionLeaseStore;
 
-    expect(leaseStore).toBe(store);
+    expect(isDurableExecutionLeaseStore(leaseStore)).toBe(true);
+    const lease = await DurableExecutionLease.acquire(
+      leaseStore,
+      SessionId('structural-session'),
+      {
+        ownerId: WorkerId('worker-a'),
+      },
+    );
+    await lease.release();
   });
 });
