@@ -193,71 +193,79 @@ describe('SessionRuntime', () => {
     await runtime.close();
   });
 
-  it('applies the Session tool timeout to runtime tool execution', async () => {
-    let observedAbort = false;
-    const slowTool = createTool({
-      name: 'SlowTool',
-      displayName: 'Slow Tool',
-      kind: ToolKind.Execute,
-      sideEffect: 'non_idempotent',
-      description: { short: 'Wait until cancelled' },
-      schema: z.object({}),
-      async *execute(_params, context) {
-        await new Promise<void>((_resolve, reject) => {
-          context.signal?.addEventListener(
-            'abort',
-            () => {
-              observedAbort = true;
-              reject(context.signal?.reason);
-            },
-            { once: true },
-          );
-        });
-        return {
-          status: 'success',
-          model: 'unexpected',
-        };
-      },
-    });
-    const runtime = new SessionRuntime(
-      SessionId('session-tool-timeout'),
-      createOptions({
-        allowedTools: ['SlowTool'],
-        tools: [slowTool],
-        toolTimeoutMs: 10,
-        hooks: {
-          [HookEvent.PostToolUseFailure]: [
-            async () => ({
-              action: 'abort',
-              reason: 'hook attempted to replace timeout',
-            }),
-          ],
+  it.each(['abort', 'throw'] as const)(
+    'preserves the Session tool timeout when a failure hook returns %s',
+    async (hookBehavior) => {
+      let observedAbort = false;
+      const slowTool = createTool({
+        name: 'SlowTool',
+        displayName: 'Slow Tool',
+        kind: ToolKind.Execute,
+        sideEffect: 'non_idempotent',
+        description: { short: 'Wait until cancelled' },
+        schema: z.object({}),
+        async *execute(_params, context) {
+          await new Promise<void>((_resolve, reject) => {
+            context.signal?.addEventListener(
+              'abort',
+              () => {
+                observedAbort = true;
+                reject(context.signal?.reason);
+              },
+              { once: true },
+            );
+          });
+          return {
+            status: 'success',
+            model: 'unexpected',
+          };
         },
-      }),
-      {
-        models: [],
-        toolTimeoutMs: 10,
-      },
-      PermissionMode.YOLO,
-      createFilesystemContext(workspaceRoot),
-      NOOP_LOGGER,
-    );
+      });
+      const runtime = new SessionRuntime(
+        SessionId('session-tool-timeout'),
+        createOptions({
+          allowedTools: ['SlowTool'],
+          tools: [slowTool],
+          toolTimeoutMs: 10,
+          hooks: {
+            [HookEvent.PostToolUseFailure]: [
+              async () => {
+                if (hookBehavior === 'throw') {
+                  throw new Error('hook failed after timeout');
+                }
+                return {
+                  action: 'abort',
+                  reason: 'hook attempted to replace timeout',
+                };
+              },
+            ],
+          },
+        }),
+        {
+          models: [],
+          toolTimeoutMs: 10,
+        },
+        PermissionMode.YOLO,
+        createFilesystemContext(workspaceRoot),
+        NOOP_LOGGER,
+      );
 
-    await runtime.initialize();
-    const executionPipeline = runtime.getAgentRuntimeDeps().executionPipeline;
-    assertDefined(executionPipeline);
-    const result = await collectToolExecution(
-      executionPipeline.execute('SlowTool', {}, {}),
-    );
+      await runtime.initialize();
+      const executionPipeline = runtime.getAgentRuntimeDeps().executionPipeline;
+      assertDefined(executionPipeline);
+      const result = await collectToolExecution(
+        executionPipeline.execute('SlowTool', {}, {}),
+      );
 
-    expect(result).toMatchObject({
-      status: 'error',
-      error: { type: 'timeout_error' },
-    });
-    expect(observedAbort).toBe(true);
+      expect(result).toMatchObject({
+        status: 'error',
+        error: { type: 'timeout_error' },
+      });
+      expect(observedAbort).toBe(true);
 
-    await runtime.close();
-  });
+      await runtime.close();
+    },
+  );
 
   it('fails closed while a timed-out tool is still cleaning up', async () => {
     vi.useFakeTimers();

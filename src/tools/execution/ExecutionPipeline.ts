@@ -330,7 +330,16 @@ export class ExecutionPipeline {
           if (isExecutionLeaseFailure(protectedContext.signal?.reason)) {
             throw protectedContext.signal.reason;
           }
-          if (protectedContext.signal?.aborted) {
+          if (
+            coreCompleted
+            && coreResult?.status === 'error'
+            && coreResult.error.type === ToolErrorType.TIMEOUT_ERROR
+          ) {
+            this.logger.warn(
+              `Tool middleware failed after ${toolName} timed out; preserving the core timeout`,
+            );
+            result = coreResult;
+          } else if (protectedContext.signal?.aborted) {
             const isInterrupt = isSteeringInterruptSignal(protectedContext.signal);
             result = this.createAbortedResult(
               isInterrupt ? '工具执行被新的用户输入中断' : '任务已被用户中止',
@@ -510,19 +519,31 @@ export class ExecutionPipeline {
       await state.context.assertExecutionLease?.();
 
       const normalizedResult = await this.normalizeExecutionResult(state);
-      const result = await this.applyPostExecutionHooks(
-        state.toolName,
-        state.params,
-        state.context,
-        normalizedResult,
-        executionId,
-        {
-          isTimeout:
-            normalizedResult.status === 'error'
-            && normalizedResult.error.type === ToolErrorType.TIMEOUT_ERROR,
-          isInterrupt: state.interrupted,
-        },
-      );
+      const isTimeout =
+        normalizedResult.status === 'error'
+        && normalizedResult.error.type === ToolErrorType.TIMEOUT_ERROR;
+      let result: ToolResult;
+      try {
+        result = await this.applyPostExecutionHooks(
+          state.toolName,
+          state.params,
+          state.context,
+          normalizedResult,
+          executionId,
+          { isTimeout, isInterrupt: state.interrupted },
+        );
+      } catch (error) {
+        if (isExecutionLeaseFailure(error)) {
+          throw error;
+        }
+        if (isTimeout) {
+          this.logger.warn(
+            `Post-execution hooks failed after ${state.toolName} timed out; preserving the timeout`,
+          );
+          return normalizedResult;
+        }
+        throw error;
+      }
 
       return this.preserveTimeoutFailure(
         normalizedResult,
