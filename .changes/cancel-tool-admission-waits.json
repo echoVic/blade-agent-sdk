@@ -1,0 +1,5 @@
+{
+  "type": "fix",
+  "en": "Cancel queued tool concurrency and same-file lock waits with the active Request signal without leaking leases or disturbing FIFO order.",
+  "zh-CN": "工具等待并发槽位或同文件锁时现在响应当前 Request 的取消信号，且不会泄漏 lease 或破坏 FIFO 顺序。"
+}

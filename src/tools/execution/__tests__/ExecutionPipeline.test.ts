@@ -7,7 +7,7 @@ import { ConfigError } from '../../../errors/ConfigError.js';
 import { DurableExecutionLeaseError } from '../../../session/events/DurableExecutionLeaseStore.js';
 import { createTool } from '../../core/createTool.js';
 import { ToolRegistry } from '../../registry/ToolRegistry.js';
-import { PermissionRequestId, SessionId } from '../../../types/branded.js';
+import { InputId, PermissionRequestId, SessionId } from '../../../types/branded.js';
 import { type JsonObject, PermissionMode } from '../../../types/common.js';
 import type { PermissionHandler } from '../../../types/permissions.js';
 import {
@@ -114,6 +114,172 @@ describe('ExecutionPipeline', () => {
     gates[1].resolve();
     gates[2].resolve();
     await Promise.all(executions);
+  });
+
+  it('cancels a tool while it is queued for a concurrency slot', async () => {
+    const registry = new ToolRegistry();
+    const scheduler = new ConcurrencyScheduler({ execute: 1 });
+    const firstStarted = deferred();
+    const releaseFirst = deferred();
+    const started: number[] = [];
+
+    registerTool(
+      registry,
+      createTool({
+        name: 'QueuedExecutionTool',
+        displayName: 'Queued Execution Tool',
+        kind: ToolKind.Execute,
+        sideEffect: 'non_idempotent',
+        description: { short: 'Concurrency queue cancellation tool' },
+        schema: z.object({ id: z.number() }),
+        async *execute({ id }) {
+          started.push(id);
+          yield { kind: 'progress', data: { id } };
+          if (id === 1) {
+            firstStarted.resolve();
+            await releaseFirst.promise;
+          }
+          return { status: 'success', model: String(id) };
+        },
+      }),
+    );
+
+    const pipeline = new ExecutionPipeline(registry, {
+      permissionMode: PermissionMode.YOLO,
+      scheduler,
+    });
+    const first = executePipeline(
+      pipeline,
+      'QueuedExecutionTool',
+      { id: 1 },
+      { permissionMode: PermissionMode.YOLO },
+    );
+    await firstStarted.promise;
+
+    const controller = new AbortController();
+    const second = executePipeline(
+      pipeline,
+      'QueuedExecutionTool',
+      { id: 2 },
+      {
+        permissionMode: PermissionMode.YOLO,
+        signal: controller.signal,
+      },
+    );
+    await vi.waitFor(() => {
+      expect(scheduler.getStats()[ToolKind.Execute].queued).toBe(1);
+    });
+
+    controller.abort({
+      kind: 'steering',
+      inputId: InputId('queued-steering'),
+    });
+    await expect(second).resolves.toMatchObject({
+      status: 'error',
+      error: {
+        type: ToolErrorType.INTERRUPTED,
+        message: '工具执行被新的用户输入中断',
+      },
+    });
+    expect(started).toEqual([1]);
+    expect(scheduler.getStats()[ToolKind.Execute]).toEqual({
+      inFlight: 1,
+      queued: 0,
+    });
+
+    releaseFirst.resolve();
+    await expect(first).resolves.toMatchObject({
+      status: 'success',
+      model: '1',
+    });
+    expect(scheduler.getStats()[ToolKind.Execute].inFlight).toBe(0);
+  });
+
+  it('cancels a tool while it is queued for a file lock', async () => {
+    const registry = new ToolRegistry();
+    const scheduler = new ConcurrencyScheduler({ write: 2 });
+    const firstStarted = deferred();
+    const releaseFirst = deferred();
+    const started: number[] = [];
+    const filePath = '/tmp/file-lock-cancellation.txt';
+
+    registerTool(
+      registry,
+      createTool({
+        name: 'FileLockCancellationTool',
+        displayName: 'File Lock Cancellation Tool',
+        kind: ToolKind.Write,
+        sideEffect: 'idempotent',
+        description: { short: 'File lock cancellation tool' },
+        schema: z.object({
+          id: z.number(),
+          file_path: z.string(),
+        }),
+        async *execute({ id }) {
+          started.push(id);
+          yield { kind: 'progress', data: { id } };
+          if (id === 1) {
+            firstStarted.resolve();
+            await releaseFirst.promise;
+          }
+          return { status: 'success', model: String(id) };
+        },
+      }),
+    );
+
+    const pipeline = new ExecutionPipeline(registry, {
+      permissionMode: PermissionMode.YOLO,
+      scheduler,
+    });
+    const first = executePipeline(
+      pipeline,
+      'FileLockCancellationTool',
+      { id: 1, file_path: filePath },
+      { permissionMode: PermissionMode.YOLO },
+    );
+    await firstStarted.promise;
+
+    const controller = new AbortController();
+    const addAbortListener = vi.spyOn(controller.signal, 'addEventListener');
+    const second = executePipeline(
+      pipeline,
+      'FileLockCancellationTool',
+      { id: 2, file_path: filePath },
+      {
+        permissionMode: PermissionMode.YOLO,
+        signal: controller.signal,
+      },
+    );
+    await vi.waitFor(() => {
+      expect(addAbortListener).toHaveBeenCalledWith(
+        'abort',
+        expect.any(Function),
+        { once: true },
+      );
+    });
+
+    controller.abort(new Error('cancel file lock wait'));
+    await expect(second).resolves.toMatchObject({
+      status: 'error',
+      error: {
+        type: ToolErrorType.EXECUTION_ERROR,
+        message: '任务已被用户中止',
+      },
+    });
+    expect(started).toEqual([1]);
+    expect(scheduler.getStats()[ToolKind.Write]).toEqual({
+      inFlight: 1,
+      queued: 0,
+    });
+    expect(FileLockManager.getInstance().isLocked(filePath)).toBe(true);
+
+    releaseFirst.resolve();
+    await expect(first).resolves.toMatchObject({
+      status: 'success',
+      model: '1',
+    });
+    expect(scheduler.getStats()[ToolKind.Write].inFlight).toBe(0);
+    expect(FileLockManager.getInstance().isLocked(filePath)).toBe(false);
   });
 
   it('releases execution leases when an event consumer stops the stream', async () => {

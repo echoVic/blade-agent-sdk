@@ -1244,6 +1244,10 @@ type PermissionResult =
 会保留 Runtime 和 durable execution lease、拒绝新的工具执行，并让 `close()`
 或 `suspendForHandoff()` 保持可重试失败，直至该回调结束。
 
+等待工具并发槽位或同文件锁也不计入 `toolTimeoutMs`，但会响应 Request 取消。
+Request 中止后，对应 waiter 会立即从队列移除；若资源授予与取消同时发生，SDK
+会在任何 Hook、权限检查或工具副作用开始前释放已取得的槽位与锁。
+
 ## 子 Agent
 
 通过 `agents` 字段定义命名子代理，供内置任务工具（如 Task）在运行时调度：
