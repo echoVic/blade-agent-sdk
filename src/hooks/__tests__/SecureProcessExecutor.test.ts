@@ -9,6 +9,7 @@ import { signalProcessTree } from '../../tools/builtin/shell/processTree.js';
 import { DEFAULT_HOOK_CONFIG } from '../HookConfig.js';
 import { SecureProcessExecutor } from '../SecureProcessExecutor.js';
 import type { HookExecutionContext, HookInput } from '../types/HookTypes.js';
+import { HookProcessContainmentError } from '../WindowsProcessJob.js';
 
 const roots: string[] = [];
 const processGroups = new Set<number>();
@@ -298,6 +299,24 @@ describe('SecureProcessExecutor', () => {
       );
       processGroups.delete(groupPid);
       processGroups.delete(childPid);
+    },
+  );
+
+  it.runIf(process.platform === 'win32')(
+    'fails closed when the contained wrapper cannot spawn',
+    async () => {
+      const root = await mkdtemp(join(tmpdir(), 'hook-invalid-cwd-'));
+      roots.push(root);
+      const executor = new SecureProcessExecutor(50);
+
+      await expect(
+        executor.execute(
+          'echo should-not-run',
+          createInput(root),
+          createContext(join(root, 'missing')),
+          5_000,
+        ),
+      ).rejects.toBeInstanceOf(HookProcessContainmentError);
     },
   );
 });

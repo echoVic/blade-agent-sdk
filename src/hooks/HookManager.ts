@@ -13,55 +13,56 @@ import { DEFAULT_HOOK_CONFIG, mergeHookConfig, parseEnvConfig } from './HookConf
 import { HookExecutionGuard } from './HookExecutionGuard.js';
 import { HookExecutor } from './HookExecutor.js';
 import { Matcher } from './Matcher.js';
+import { getRecoverableHookErrorMessage } from './WindowsProcessJob.js';
 import type {
-  CompactionHookResult,
-  CompactionInput,
-  ConfigChangeHookResult,
-  ConfigChangeInput,
-  CwdChangedHookResult,
-  CwdChangedInput,
-  ElicitationHookResult,
-  ElicitationInput,
-  ElicitationResultHookResult,
-  ElicitationResultInput,
-  FileChangedHookResult,
-  FileChangedInput,
-  Hook,
-  HookConfig,
-  HookExecutionContext,
-  InstructionsLoadedHookResult,
-  InstructionsLoadedInput,
-  MatchContext,
-  NotificationHookResult,
-  NotificationInput,
-  PermissionRequestHookResult,
-  PermissionRequestInput,
-  PostCompactHookResult,
-  PostCompactInput,
-  PostToolHookResult,
-  PostToolUseFailureHookResult,
-  PostToolUseFailureInput,
-  PostToolUseInput,
-  PreCompactHookResult,
-  PreCompactInput,
-  PreToolHookResult,
-  PreToolUseInput,
-  SessionEndHookResult,
-  SessionEndInput,
-  SessionStartHookResult,
-  SessionStartInput,
-  StopFailureHookResult,
-  StopFailureInput,
-  StopHookResult,
-  StopInput,
-  SubagentStartHookResult,
-  SubagentStartInput,
-  SubagentStopHookResult,
-  SubagentStopInput,
-  TaskCompletedHookResult,
-  TaskCompletedInput,
-  UserPromptSubmitHookResult,
-  UserPromptSubmitInput
+    CompactionHookResult,
+    CompactionInput,
+    ConfigChangeHookResult,
+    ConfigChangeInput,
+    CwdChangedHookResult,
+    CwdChangedInput,
+    ElicitationHookResult,
+    ElicitationInput,
+    ElicitationResultHookResult,
+    ElicitationResultInput,
+    FileChangedHookResult,
+    FileChangedInput,
+    Hook,
+    HookConfig,
+    HookExecutionContext,
+    InstructionsLoadedHookResult,
+    InstructionsLoadedInput,
+    MatchContext,
+    NotificationHookResult,
+    NotificationInput,
+    PermissionRequestHookResult,
+    PermissionRequestInput,
+    PostCompactHookResult,
+    PostCompactInput,
+    PostToolHookResult,
+    PostToolUseFailureHookResult,
+    PostToolUseFailureInput,
+    PostToolUseInput,
+    PreCompactHookResult,
+    PreCompactInput,
+    PreToolHookResult,
+    PreToolUseInput,
+    SessionEndHookResult,
+    SessionEndInput,
+    SessionStartHookResult,
+    SessionStartInput,
+    StopFailureHookResult,
+    StopFailureInput,
+    StopHookResult,
+    StopInput,
+    SubagentStartHookResult,
+    SubagentStartInput,
+    SubagentStopHookResult,
+    SubagentStopInput,
+    TaskCompletedHookResult,
+    TaskCompletedInput,
+    UserPromptSubmitHookResult,
+    UserPromptSubmitInput
 } from './types/HookTypes.js';
 
 /**
@@ -270,7 +271,7 @@ export class HookManager {
       console.error('[HookManager] Error executing PreToolUse hooks:', err);
       return {
         decision: 'allow',
-        warning: `Hook execution failed: ${err instanceof Error ? err.message : String(err)}`,
+        warning: `Hook execution failed: ${getRecoverableHookErrorMessage(err)}`,
       };
     }
   }
@@ -353,7 +354,7 @@ export class HookManager {
     } catch (err) {
       console.error('[HookManager] Error executing PostToolUse hooks:', err);
       return {
-        warning: `Hook execution failed: ${err instanceof Error ? err.message : String(err)}`,
+        warning: `Hook execution failed: ${getRecoverableHookErrorMessage(err)}`,
       };
     } finally {
       // 清理完成的工具
@@ -413,7 +414,7 @@ export class HookManager {
       console.error('[HookManager] Error executing Stop hooks:', err);
       return {
         shouldStop: true,
-        warning: `Hook execution failed: ${err instanceof Error ? err.message : String(err)}`,
+        warning: `Hook execution failed: ${getRecoverableHookErrorMessage(err)}`,
       };
     }
   }
@@ -475,7 +476,7 @@ export class HookManager {
       console.error('[HookManager] Error executing SubagentStart hooks:', err);
       return {
         proceed: true,
-        warning: `Hook execution failed: ${err instanceof Error ? err.message : String(err)}`,
+        warning: `Hook execution failed: ${getRecoverableHookErrorMessage(err)}`,
       };
     }
   }
@@ -542,7 +543,7 @@ export class HookManager {
       console.error('[HookManager] Error executing SubagentStop hooks:', err);
       return {
         shouldStop: true,
-        warning: `Hook execution failed: ${err instanceof Error ? err.message : String(err)}`,
+        warning: `Hook execution failed: ${getRecoverableHookErrorMessage(err)}`,
       };
     }
   }
@@ -604,7 +605,7 @@ export class HookManager {
       console.error('[HookManager] Error executing TaskCompleted hooks:', err);
       return {
         allowCompletion: true,
-        warning: `Hook execution failed: ${err instanceof Error ? err.message : String(err)}`,
+        warning: `Hook execution failed: ${getRecoverableHookErrorMessage(err)}`,
       };
     }
   }
@@ -668,7 +669,7 @@ export class HookManager {
       console.error('[HookManager] Error executing PermissionRequest hooks:', err);
       return {
         decision: 'ask',
-        warning: `Hook execution failed: ${err instanceof Error ? err.message : String(err)}`,
+        warning: `Hook execution failed: ${getRecoverableHookErrorMessage(err)}`,
       };
     }
   }
@@ -731,7 +732,7 @@ export class HookManager {
       console.error('[HookManager] Error executing UserPromptSubmit hooks:', err);
       return {
         proceed: true,
-        warning: `Hook execution failed: ${err instanceof Error ? err.message : String(err)}`,
+        warning: `Hook execution failed: ${getRecoverableHookErrorMessage(err)}`,
       };
     }
   }
@@ -790,7 +791,7 @@ export class HookManager {
       console.error('[HookManager] Error executing SessionStart hooks:', err);
       return {
         proceed: true,
-        warning: `Hook execution failed: ${err instanceof Error ? err.message : String(err)}`,
+        warning: `Hook execution failed: ${getRecoverableHookErrorMessage(err)}`,
       };
     }
   }
@@ -845,7 +846,7 @@ export class HookManager {
     } catch (err) {
       console.error('[HookManager] Error executing SessionEnd hooks:', err);
       return {
-        warning: `Hook execution failed: ${err instanceof Error ? err.message : String(err)}`,
+        warning: `Hook execution failed: ${getRecoverableHookErrorMessage(err)}`,
       };
     }
   }
@@ -919,7 +920,7 @@ export class HookManager {
     } catch (err) {
       console.error('[HookManager] Error executing PostToolUseFailure hooks:', err);
       return {
-        warning: `Hook execution failed: ${err instanceof Error ? err.message : String(err)}`,
+        warning: `Hook execution failed: ${getRecoverableHookErrorMessage(err)}`,
       };
     }
   }
@@ -983,7 +984,7 @@ export class HookManager {
       return {
         suppress: false,
         message,
-        warning: `Hook execution failed: ${err instanceof Error ? err.message : String(err)}`,
+        warning: `Hook execution failed: ${getRecoverableHookErrorMessage(err)}`,
       };
     }
   }
@@ -1046,7 +1047,7 @@ export class HookManager {
       console.error('[HookManager] Error executing Compaction hooks:', err);
       return {
         blockCompaction: false,
-        warning: `Hook execution failed: ${err instanceof Error ? err.message : String(err)}`,
+        warning: `Hook execution failed: ${getRecoverableHookErrorMessage(err)}`,
       };
     }
   }
@@ -1102,7 +1103,7 @@ export class HookManager {
       console.error('[HookManager] Error executing StopFailure hooks:', err);
       return {
         shouldRetry: false,
-        warning: `Hook execution failed: ${err instanceof Error ? err.message : String(err)}`,
+        warning: `Hook execution failed: ${getRecoverableHookErrorMessage(err)}`,
       };
     }
   }
@@ -1158,7 +1159,7 @@ export class HookManager {
       console.error('[HookManager] Error executing PreCompact hooks:', err);
       return {
         blockCompaction: false,
-        warning: `Hook execution failed: ${err instanceof Error ? err.message : String(err)}`,
+        warning: `Hook execution failed: ${getRecoverableHookErrorMessage(err)}`,
       };
     }
   }
@@ -1223,7 +1224,7 @@ export class HookManager {
     } catch (err) {
       console.error('[HookManager] Error executing PostCompact hooks:', err);
       return {
-        warning: `Hook execution failed: ${err instanceof Error ? err.message : String(err)}`,
+        warning: `Hook execution failed: ${getRecoverableHookErrorMessage(err)}`,
       };
     }
   }
@@ -1279,7 +1280,7 @@ export class HookManager {
       console.error('[HookManager] Error executing Elicitation hooks:', err);
       return {
         proceed: true,
-        warning: `Hook execution failed: ${err instanceof Error ? err.message : String(err)}`,
+        warning: `Hook execution failed: ${getRecoverableHookErrorMessage(err)}`,
       };
     }
   }
@@ -1335,7 +1336,7 @@ export class HookManager {
       console.error('[HookManager] Error executing ElicitationResult hooks:', err);
       return {
         proceed: true,
-        warning: `Hook execution failed: ${err instanceof Error ? err.message : String(err)}`,
+        warning: `Hook execution failed: ${getRecoverableHookErrorMessage(err)}`,
       };
     }
   }
@@ -1390,7 +1391,7 @@ export class HookManager {
       console.error('[HookManager] Error executing ConfigChange hooks:', err);
       return {
         proceed: true,
-        warning: `Hook execution failed: ${err instanceof Error ? err.message : String(err)}`,
+        warning: `Hook execution failed: ${getRecoverableHookErrorMessage(err)}`,
       };
     }
   }
@@ -1445,7 +1446,7 @@ export class HookManager {
       console.error('[HookManager] Error executing CwdChanged hooks:', err);
       return {
         proceed: true,
-        warning: `Hook execution failed: ${err instanceof Error ? err.message : String(err)}`,
+        warning: `Hook execution failed: ${getRecoverableHookErrorMessage(err)}`,
       };
     }
   }
@@ -1502,7 +1503,7 @@ export class HookManager {
       console.error('[HookManager] Error executing FileChanged hooks:', err);
       return {
         action: 'reload',
-        warning: `Hook execution failed: ${err instanceof Error ? err.message : String(err)}`,
+        warning: `Hook execution failed: ${getRecoverableHookErrorMessage(err)}`,
       };
     }
   }
@@ -1557,7 +1558,7 @@ export class HookManager {
       console.error('[HookManager] Error executing InstructionsLoaded hooks:', err);
       return {
         proceed: true,
-        warning: `Hook execution failed: ${err instanceof Error ? err.message : String(err)}`,
+        warning: `Hook execution failed: ${getRecoverableHookErrorMessage(err)}`,
       };
     }
   }

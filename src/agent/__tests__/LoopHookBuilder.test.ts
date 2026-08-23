@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { HookRuntime } from '../../hooks/HookRuntime.js';
+import { HookProcessContainmentError } from '../../hooks/WindowsProcessJob.js';
 import { DurableExecutionLeaseError } from '../../session/events/DurableExecutionLeaseStore.js';
 import { SessionId } from '../../types/branded.js';
 import { buildLoopConfig } from '../LoopHookBuilder.js';
@@ -61,6 +62,19 @@ describe('LoopHookBuilder stop hook', () => {
     await expect(
       stopCheck({ content: 'done', turn: 1 }),
     ).rejects.toBe(leaseError);
+  });
+
+  it('propagates process-containment failures from a Stop hook', async () => {
+    const containmentError = new HookProcessContainmentError(
+      'Windows Job Object support is unavailable',
+    );
+    const stopCheck = createStopCheck(vi.fn(async () => {
+      throw containmentError;
+    }));
+
+    await expect(
+      stopCheck({ content: 'done', turn: 1 }),
+    ).rejects.toBe(containmentError);
   });
 
   it('preserves the fail-safe stop fallback for ordinary Hook errors', async () => {

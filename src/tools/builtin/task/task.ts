@@ -19,6 +19,7 @@ import type {
   SubagentResult,
 } from '../../../agent/subagents/types.js';
 import { HookManager } from '../../../hooks/HookManager.js';
+import { isHookProcessContainmentError } from '../../../hooks/WindowsProcessJob.js';
 import { isExecutionLeaseFailure } from '../../../session/events/DurableExecutionLeaseStore.js';
 import { AgentId, SessionId } from '../../../types/branded.js';
 import { PermissionMode } from '../../../types/common.js';
@@ -331,7 +332,10 @@ export function createTaskTool({ registry }: { registry: SubagentRegistry }) {
           }
         } catch (hookError) {
           context.signal?.throwIfAborted();
-          if (isExecutionLeaseFailure(hookError)) {
+          if (
+            isExecutionLeaseFailure(hookError)
+            || isHookProcessContainmentError(hookError)
+          ) {
             throw hookError;
           }
           console.warn('[Task] SubagentStop hook execution failed:', hookError);
@@ -340,7 +344,10 @@ export function createTaskTool({ registry }: { registry: SubagentRegistry }) {
         return buildTaskResult(result, subagent_type, description, duration, subagentSessionId);
       } catch (error) {
         context.signal?.throwIfAborted();
-        if (isExecutionLeaseFailure(error)) {
+        if (
+          isExecutionLeaseFailure(error)
+          || isHookProcessContainmentError(error)
+        ) {
           throw error;
         }
         const _errorMessage = extractUserFriendlyError(

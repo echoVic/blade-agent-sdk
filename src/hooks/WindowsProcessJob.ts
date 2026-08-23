@@ -1,3 +1,5 @@
+import { SdkError } from '../errors/SdkError.js';
+
 const JOB_OBJECT_BASIC_ACCOUNTING_INFORMATION = 1;
 const JOB_OBJECT_EXTENDED_LIMIT_INFORMATION = 9;
 const JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE = 0x0000_2000;
@@ -8,25 +10,15 @@ const WINDOWS_JOB_POLL_INTERVAL_MS = 20;
 type NativeHandle = unknown;
 
 interface WindowsJobBindings {
-  createJobObject: (
-    attributes: null,
-    name: null,
-  ) => NativeHandle;
+  createJobObject: (attributes: null, name: null) => NativeHandle;
   setInformationJobObject: (
     job: NativeHandle,
     informationClass: number,
     information: Buffer,
     informationLength: number,
   ) => number;
-  openProcess: (
-    desiredAccess: number,
-    inheritHandle: number,
-    processId: number,
-  ) => NativeHandle;
-  assignProcessToJobObject: (
-    job: NativeHandle,
-    process: NativeHandle,
-  ) => number;
+  openProcess: (desiredAccess: number, inheritHandle: number, processId: number) => NativeHandle;
+  assignProcessToJobObject: (job: NativeHandle, process: NativeHandle) => number;
   terminateJobObject: (job: NativeHandle, exitCode: number) => number;
   queryInformationJobObject: (
     job: NativeHandle,
@@ -41,11 +33,35 @@ interface WindowsJobBindings {
 
 let bindingsPromise: Promise<WindowsJobBindings> | undefined;
 
-function win32Error(
-  bindings: WindowsJobBindings,
-  operation: string,
-): Error {
-  return new Error(`${operation} failed (Win32 error ${bindings.getLastError()})`);
+export class HookProcessContainmentError extends SdkError {
+  constructor(message: string, options?: { cause?: unknown }) {
+    super('HOOK_PROCESS_CONTAINMENT_FAILED', message, options);
+  }
+}
+
+export function isHookProcessContainmentError(
+  error: unknown,
+): error is HookProcessContainmentError {
+  return (
+    error instanceof HookProcessContainmentError ||
+    (typeof error === 'object' &&
+      error !== null &&
+      'code' in error &&
+      error.code === 'HOOK_PROCESS_CONTAINMENT_FAILED')
+  );
+}
+
+export function getRecoverableHookErrorMessage(error: unknown): string {
+  if (isHookProcessContainmentError(error)) {
+    throw error;
+  }
+  return error instanceof Error ? error.message : String(error);
+}
+
+function win32Error(bindings: WindowsJobBindings, operation: string): HookProcessContainmentError {
+  return new HookProcessContainmentError(
+    `${operation} failed (Win32 error ${bindings.getLastError()})`,
+  );
 }
 
 async function loadWindowsJobBindings(): Promise<WindowsJobBindings> {
@@ -53,40 +69,38 @@ async function loadWindowsJobBindings(): Promise<WindowsJobBindings> {
     throw new Error('Windows Job Objects are only available on Windows');
   }
   if (!bindingsPromise) {
-    bindingsPromise = import('koffi').then(({ default: koffi }) => {
-      const kernel32 = koffi.load('kernel32.dll');
-      return {
-        createJobObject: kernel32.func(
-          'void * __stdcall CreateJobObjectW(void *attributes, const char16_t *name)',
-        ),
-        setInformationJobObject: kernel32.func(
-          'int32_t __stdcall SetInformationJobObject(void *job, int32_t informationClass, void *information, uint32_t informationLength)',
-        ),
-        openProcess: kernel32.func(
-          'void * __stdcall OpenProcess(uint32_t desiredAccess, int32_t inheritHandle, uint32_t processId)',
-        ),
-        assignProcessToJobObject: kernel32.func(
-          'int32_t __stdcall AssignProcessToJobObject(void *job, void *process)',
-        ),
-        terminateJobObject: kernel32.func(
-          'int32_t __stdcall TerminateJobObject(void *job, uint32_t exitCode)',
-        ),
-        queryInformationJobObject: kernel32.func(
-          'int32_t __stdcall QueryInformationJobObject(void *job, int32_t informationClass, void *information, uint32_t informationLength, void *returnLength)',
-        ),
-        closeHandle: kernel32.func(
-          'int32_t __stdcall CloseHandle(void *handle)',
-        ),
-        getLastError: kernel32.func(
-          'uint32_t __stdcall GetLastError()',
-        ),
-      };
-    }).catch((error) => {
-      bindingsPromise = undefined;
-      throw new Error('Windows Job Object support is unavailable', {
-        cause: error,
+    bindingsPromise = import('koffi')
+      .then(({ default: koffi }) => {
+        const kernel32 = koffi.load('kernel32.dll');
+        return {
+          createJobObject: kernel32.func(
+            'void * __stdcall CreateJobObjectW(void *attributes, const char16_t *name)',
+          ),
+          setInformationJobObject: kernel32.func(
+            'int32_t __stdcall SetInformationJobObject(void *job, int32_t informationClass, void *information, uint32_t informationLength)',
+          ),
+          openProcess: kernel32.func(
+            'void * __stdcall OpenProcess(uint32_t desiredAccess, int32_t inheritHandle, uint32_t processId)',
+          ),
+          assignProcessToJobObject: kernel32.func(
+            'int32_t __stdcall AssignProcessToJobObject(void *job, void *process)',
+          ),
+          terminateJobObject: kernel32.func(
+            'int32_t __stdcall TerminateJobObject(void *job, uint32_t exitCode)',
+          ),
+          queryInformationJobObject: kernel32.func(
+            'int32_t __stdcall QueryInformationJobObject(void *job, int32_t informationClass, void *information, uint32_t informationLength, void *returnLength)',
+          ),
+          closeHandle: kernel32.func('int32_t __stdcall CloseHandle(void *handle)'),
+          getLastError: kernel32.func('uint32_t __stdcall GetLastError()'),
+        };
+      })
+      .catch((error) => {
+        bindingsPromise = undefined;
+        throw new HookProcessContainmentError('Windows Job Object support is unavailable', {
+          cause: error,
+        });
       });
-    });
   }
   return bindingsPromise;
 }
@@ -119,12 +133,14 @@ export class WindowsProcessJob {
     }
 
     const information = createExtendedLimitInformation();
-    if (!bindings.setInformationJobObject(
-      handle,
-      JOB_OBJECT_EXTENDED_LIMIT_INFORMATION,
-      information,
-      information.byteLength,
-    )) {
+    if (
+      !bindings.setInformationJobObject(
+        handle,
+        JOB_OBJECT_EXTENDED_LIMIT_INFORMATION,
+        information,
+        information.byteLength,
+      )
+    ) {
       const error = win32Error(bindings, 'SetInformationJobObject');
       bindings.closeHandle(handle);
       throw error;
@@ -135,7 +151,9 @@ export class WindowsProcessJob {
 
   assign(processId: number): void {
     if (this.closed) {
-      throw new Error('Cannot assign a process to a closed Windows Job Object');
+      throw new HookProcessContainmentError(
+        'Cannot assign a process to a closed Windows Job Object',
+      );
     }
     const processHandle = this.bindings.openProcess(
       PROCESS_TERMINATE | PROCESS_SET_QUOTA,
@@ -147,10 +165,7 @@ export class WindowsProcessJob {
     }
 
     try {
-      if (!this.bindings.assignProcessToJobObject(
-        this.handle,
-        processHandle,
-      )) {
+      if (!this.bindings.assignProcessToJobObject(this.handle, processHandle)) {
         throw win32Error(this.bindings, 'AssignProcessToJobObject');
       }
     } finally {
@@ -178,30 +193,42 @@ export class WindowsProcessJob {
       return;
     }
 
-    while (this.getActiveProcessCount() !== 0) {
-      if (!this.bindings.terminateJobObject(this.handle, 1)) {
+    try {
+      if (this.getActiveProcessCount() > 0 && !this.bindings.terminateJobObject(this.handle, 1)) {
+        throw win32Error(this.bindings, 'TerminateJobObject');
+      }
+
+      while (this.getActiveProcessCount() > 0) {
         await new Promise<void>((resolve) => {
           setTimeout(resolve, WINDOWS_JOB_POLL_INTERVAL_MS);
         });
-        continue;
       }
-      await new Promise<void>((resolve) => {
-        setTimeout(resolve, WINDOWS_JOB_POLL_INTERVAL_MS);
-      });
+      this.close();
+    } catch (error) {
+      try {
+        this.close();
+      } catch (closeError) {
+        throw new HookProcessContainmentError(
+          'Failed to close the Windows Job Object after cleanup failed',
+          { cause: new AggregateError([error, closeError]) },
+        );
+      }
+      throw error;
     }
-    this.close();
   }
 
-  private getActiveProcessCount(): number | undefined {
+  private getActiveProcessCount(): number {
     const information = Buffer.alloc(48);
-    if (!this.bindings.queryInformationJobObject(
-      this.handle,
-      JOB_OBJECT_BASIC_ACCOUNTING_INFORMATION,
-      information,
-      information.byteLength,
-      null,
-    )) {
-      return undefined;
+    if (
+      !this.bindings.queryInformationJobObject(
+        this.handle,
+        JOB_OBJECT_BASIC_ACCOUNTING_INFORMATION,
+        information,
+        information.byteLength,
+        null,
+      )
+    ) {
+      throw win32Error(this.bindings, 'QueryInformationJobObject');
     }
     return information.readUInt32LE(40);
   }

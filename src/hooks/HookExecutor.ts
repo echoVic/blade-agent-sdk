@@ -7,6 +7,7 @@
 import type { JsonObject, JsonValue } from '../types/common.js';
 import { OutputParser } from './OutputParser.js';
 import { SecureProcessExecutor } from './SecureProcessExecutor.js';
+import { getRecoverableHookErrorMessage } from './WindowsProcessJob.js';
 import {
   type CommandHook,
   type CompactionHookResult,
@@ -127,7 +128,7 @@ export class HookExecutor {
         }
       } catch (err) {
         // Hook 执行异常,根据 failureBehavior 处理
-        const errorMsg = err instanceof Error ? err.message : String(err);
+        const errorMsg = getRecoverableHookErrorMessage(err);
         warnings.push(`Hook failed: ${errorMsg}`);
 
         if (context.config.failureBehavior === 'deny') {
@@ -251,7 +252,7 @@ export class HookExecutor {
           };
         }
       } catch (err) {
-        const errorMsg = err instanceof Error ? err.message : String(err);
+        const errorMsg = getRecoverableHookErrorMessage(err);
         warnings.push(`Hook failed: ${errorMsg}`);
       }
     }
@@ -299,7 +300,7 @@ export class HookExecutor {
           additionalContexts.push(specific.additionalContext);
         }
       } catch (err) {
-        const errorMsg = err instanceof Error ? err.message : String(err);
+        const errorMsg = getRecoverableHookErrorMessage(err);
         warnings.push(`Hook failed: ${errorMsg}`);
       }
     }
@@ -352,7 +353,7 @@ export class HookExecutor {
           }
         }
       } catch (err) {
-        const errorMsg = err instanceof Error ? err.message : String(err);
+        const errorMsg = getRecoverableHookErrorMessage(err);
         warnings.push(`Hook failed: ${errorMsg}`);
       }
     }
@@ -408,7 +409,7 @@ export class HookExecutor {
           };
         }
       } catch (err) {
-        const errorMsg = err instanceof Error ? err.message : String(err);
+        const errorMsg = getRecoverableHookErrorMessage(err);
         warnings.push(`Hook failed: ${errorMsg}`);
       }
     }
@@ -458,7 +459,7 @@ export class HookExecutor {
           }
         }
       } catch (err) {
-        const errorMsg = err instanceof Error ? err.message : String(err);
+        const errorMsg = getRecoverableHookErrorMessage(err);
         warnings.push(`Hook failed: ${errorMsg}`);
       }
     }
@@ -520,7 +521,7 @@ export class HookExecutor {
           }
         }
       } catch (err) {
-        const errorMsg = err instanceof Error ? err.message : String(err);
+        const errorMsg = getRecoverableHookErrorMessage(err);
         warnings.push(`Hook failed: ${errorMsg}`);
       }
     }
@@ -573,7 +574,7 @@ export class HookExecutor {
           Object.assign(env, specific.env);
         }
       } catch (err) {
-        const errorMsg = err instanceof Error ? err.message : String(err);
+        const errorMsg = getRecoverableHookErrorMessage(err);
         warnings.push(`Hook failed: ${errorMsg}`);
       }
     }
@@ -701,7 +702,7 @@ export class HookExecutor {
           message = result.stdout.trim();
         }
       } catch (err) {
-        const errorMsg = err instanceof Error ? err.message : String(err);
+        const errorMsg = getRecoverableHookErrorMessage(err);
         warnings.push(`Hook failed: ${errorMsg}`);
       }
     }
@@ -747,7 +748,7 @@ export class HookExecutor {
           };
         }
       } catch (err) {
-        const errorMsg = err instanceof Error ? err.message : String(err);
+        const errorMsg = getRecoverableHookErrorMessage(err);
         warnings.push(`Hook failed: ${errorMsg}`);
       }
     }
@@ -794,7 +795,7 @@ export class HookExecutor {
           };
         }
       } catch (err) {
-        const errorMsg = err instanceof Error ? err.message : String(err);
+        const errorMsg = getRecoverableHookErrorMessage(err);
         warnings.push(`Hook failed: ${errorMsg}`);
       }
     }
@@ -841,7 +842,7 @@ export class HookExecutor {
           };
         }
       } catch (err) {
-        const errorMsg = err instanceof Error ? err.message : String(err);
+        const errorMsg = getRecoverableHookErrorMessage(err);
         warnings.push(`Hook failed: ${errorMsg}`);
       }
     }
@@ -888,7 +889,7 @@ export class HookExecutor {
           };
         }
       } catch (err) {
-        const errorMsg = err instanceof Error ? err.message : String(err);
+        const errorMsg = getRecoverableHookErrorMessage(err);
         warnings.push(`Hook failed: ${errorMsg}`);
       }
     }
@@ -921,7 +922,7 @@ export class HookExecutor {
           warnings.push(result.warning);
         }
       } catch (err) {
-        const errorMsg = err instanceof Error ? err.message : String(err);
+        const errorMsg = getRecoverableHookErrorMessage(err);
         warnings.push(`Hook failed: ${errorMsg}`);
       }
     }
@@ -967,7 +968,7 @@ export class HookExecutor {
           };
         }
       } catch (err) {
-        const errorMsg = err instanceof Error ? err.message : String(err);
+        const errorMsg = getRecoverableHookErrorMessage(err);
         warnings.push(`Hook failed: ${errorMsg}`);
       }
     }
@@ -1011,7 +1012,7 @@ export class HookExecutor {
           action = specific.action as 'reload' | 'ignore';
         }
       } catch (err) {
-        const errorMsg = err instanceof Error ? err.message : String(err);
+        const errorMsg = getRecoverableHookErrorMessage(err);
         warnings.push(`Hook failed: ${errorMsg}`);
       }
     }
@@ -1055,7 +1056,7 @@ export class HookExecutor {
           modified_instructions = specific.modified_instructions;
         }
       } catch (err) {
-        const errorMsg = err instanceof Error ? err.message : String(err);
+        const errorMsg = getRecoverableHookErrorMessage(err);
         warnings.push(`Hook failed: ${errorMsg}`);
       }
     }
@@ -1189,7 +1190,7 @@ export class HookExecutor {
     } catch (err) {
       return {
         status: 'warning',
-        warning: err instanceof Error ? err.message : String(err),
+        warning: getRecoverableHookErrorMessage(err),
         hook,
       };
     }
@@ -1217,7 +1218,7 @@ export class HookExecutor {
       // 创建新的 hook 执行 Promise
       const promise = this.executeHook(hook, input, context).catch((err) => ({
         status: 'warning' as const,
-        warning: err instanceof Error ? err.message : String(err),
+        warning: getRecoverableHookErrorMessage(err),
         hook,
       }));
 

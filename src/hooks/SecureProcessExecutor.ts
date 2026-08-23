@@ -18,7 +18,10 @@ import {
   type HookInput,
   type ProcessResult,
 } from './types/HookTypes.js';
-import { WindowsProcessJob } from './WindowsProcessJob.js';
+import {
+  HookProcessContainmentError,
+  WindowsProcessJob,
+} from './WindowsProcessJob.js';
 
 const DEFAULT_HOOK_PROCESS_TERMINATION_GRACE_MS = 1_000;
 const WINDOWS_HOOK_RUNNER = `
@@ -160,8 +163,17 @@ export class SecureProcessExecutor {
           });
     } catch (error) {
       windowsJob?.close();
-      throw error;
+      throw windowsJob
+        ? new HookProcessContainmentError(
+            'Failed to spawn the contained Windows Hook process',
+            { cause: error },
+          )
+        : error;
     }
+    child.once('error', () => {
+      // Keep spawn failures observed if containment setup rejects before the
+      // main lifecycle listeners are installed.
+    });
 
     if (windowsJob) {
       try {
@@ -176,9 +188,10 @@ export class SecureProcessExecutor {
           this.terminationGraceMs,
         );
         windowsJob.close();
-        throw new Error('Failed to contain the Windows Hook process', {
-          cause: error,
-        });
+        throw new HookProcessContainmentError(
+          'Failed to contain the Windows Hook process',
+          { cause: error },
+        );
       }
     }
     const processInput = windowsJob
@@ -252,7 +265,14 @@ export class SecureProcessExecutor {
         void processCleanup.then(
           () => {
             if (reason === 'process-error') {
-              rejectOnce(cause);
+              rejectOnce(
+                windowsJob
+                  ? new HookProcessContainmentError(
+                      'The contained Windows Hook process failed',
+                      { cause },
+                    )
+                  : cause,
+              );
               return;
             }
             resolveOnce(

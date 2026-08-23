@@ -10,6 +10,7 @@ import { CompactionService } from '../context/CompactionService.js';
 import type { ContextManager } from '../context/ContextManager.js';
 import { SdkError } from '../errors/SdkError.js';
 import type { HookRuntime } from '../hooks/HookRuntime.js';
+import { isHookProcessContainmentError } from '../hooks/WindowsProcessJob.js';
 import type { InternalLogger } from '../logging/Logger.js';
 import type { Message } from '../services/ChatServiceInterface.js';
 import {
@@ -440,7 +441,10 @@ export function buildLoopConfig(deps: LoopHookBuilderDeps): AgentLoopConfig {
           };
         } catch (error) {
           requestSignal?.throwIfAborted();
-          if (isExecutionLeaseFailure(error)) {
+          if (
+            isExecutionLeaseFailure(error)
+            || isHookProcessContainmentError(error)
+          ) {
             throw error;
           }
           return { shouldStop: true };

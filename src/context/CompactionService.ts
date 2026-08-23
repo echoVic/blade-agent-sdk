@@ -5,6 +5,7 @@
 
 import { nanoid } from 'nanoid';
 import { HookManager } from '../hooks/HookManager.js';
+import { isHookProcessContainmentError } from '../hooks/WindowsProcessJob.js';
 import { NOOP_LOGGER } from '../logging/Logger.js';
 import { createChatServiceAsync, type Message } from '../services/ChatServiceInterface.js';
 import { wrapChatServiceWithTimeouts } from '../services/ChatServiceTimeout.js';
@@ -200,7 +201,11 @@ export async function compact(
         console.warn(`[CompactionService] Compaction hook warning: ${hookResult.warning}`);
       }
     } catch (hookError) {
-      if (options.signal?.aborted || isExecutionLeaseFailure(hookError)) {
+      if (
+        options.signal?.aborted
+        || isExecutionLeaseFailure(hookError)
+        || isHookProcessContainmentError(hookError)
+      ) {
         throw hookError;
       }
       console.warn('[CompactionService] Compaction hook execution failed:', hookError);
@@ -274,7 +279,11 @@ export async function compact(
           console.warn(`[CompactionService] PostCompact hook warning: ${postHookResult.warning}`);
         }
       } catch (hookError) {
-        if (options.signal?.aborted || isExecutionLeaseFailure(hookError)) {
+        if (
+          options.signal?.aborted
+          || isExecutionLeaseFailure(hookError)
+          || isHookProcessContainmentError(hookError)
+        ) {
           throw hookError;
         }
         console.warn('[CompactionService] PostCompact hook execution failed:', hookError);
@@ -294,7 +303,10 @@ export async function compact(
     };
   } catch (error) {
     options.signal?.throwIfAborted();
-    if (isExecutionLeaseFailure(error)) {
+    if (
+      isExecutionLeaseFailure(error)
+      || isHookProcessContainmentError(error)
+    ) {
       throw error;
     }
     console.error('[CompactionService] 压缩失败，使用降级策略', error);

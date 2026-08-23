@@ -1,5 +1,6 @@
 import { ConfigError } from '../../errors/ConfigError.js';
 import type { HookRuntime } from '../../hooks/HookRuntime.js';
+import { isHookProcessContainmentError } from '../../hooks/WindowsProcessJob.js';
 import { type InternalLogger, LogCategory, NOOP_LOGGER } from '../../logging/Logger.js';
 import { composeMiddleware } from '../../middleware/composeMiddleware.js';
 import type {
@@ -349,6 +350,9 @@ export class ExecutionPipeline {
           if (isExecutionLeaseFailure(error)) {
             throw error;
           }
+          if (isHookProcessContainmentError(error)) {
+            throw error;
+          }
           if (isExecutionLeaseFailure(protectedContext.signal?.reason)) {
             throw protectedContext.signal.reason;
           }
@@ -521,6 +525,9 @@ export class ExecutionPipeline {
       if (isExecutionLeaseFailure(error)) {
         throw error;
       }
+      if (isHookProcessContainmentError(error)) {
+        throw error;
+      }
       if (isExecutionLeaseFailure(state.context.signal?.reason)) {
         throw state.context.signal.reason;
       }
@@ -591,6 +598,9 @@ export class ExecutionPipeline {
         if (isExecutionLeaseFailure(error)) {
           throw error;
         }
+        if (isHookProcessContainmentError(error)) {
+          throw error;
+        }
         if (isTimeout) {
           this.logger.warn(
             `Post-execution hooks failed after ${state.toolName} timed out; preserving the timeout`,
@@ -607,6 +617,9 @@ export class ExecutionPipeline {
       );
     } catch (error) {
       if (isExecutionLeaseFailure(error)) {
+        throw error;
+      }
+      if (isHookProcessContainmentError(error)) {
         throw error;
       }
       const errorMsg = getErrorMessage(error);
@@ -647,6 +660,9 @@ export class ExecutionPipeline {
         );
       } catch (hookError) {
         if (isExecutionLeaseFailure(hookError)) {
+          throw hookError;
+        }
+        if (isHookProcessContainmentError(hookError)) {
           throw hookError;
         }
         // Hook 执行失败不应阻止错误处理
