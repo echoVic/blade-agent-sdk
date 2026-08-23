@@ -573,7 +573,9 @@ describe('JsonlDurableEventStore', () => {
       expiresAt: '2026-08-22T12:00:01.000Z',
     });
     await expect(leaseStore.requiresExecutionLease(sessionId)).resolves.toBe(true);
-    expect((await stat(leaseStore.getExecutionLeaseFilePath(sessionId))).mode & 0o777).toBe(0o600);
+    if (process.platform !== 'win32') {
+      expect((await stat(leaseStore.getExecutionLeaseFilePath(sessionId))).mode & 0o777).toBe(0o600);
+    }
     await expect(
       leaseStore.acquireExecutionLease(sessionId, {
         leaseId: secondLeaseId,
