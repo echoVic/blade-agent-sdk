@@ -132,18 +132,14 @@ export class LoopRunner {
     systemPrompt?: string,
   ): AsyncGenerator<AgentEvent, LoopResult> {
     const requestSignal = options?.signal ?? context.signal;
-    if (requestSignal?.aborted) {
-      if (
+    if (
+      requestSignal?.aborted
+      && (
         isExecutionLeaseFailure(requestSignal.reason)
         || isHookProcessContainmentError(requestSignal.reason)
-      ) {
-        throw requestSignal.reason;
-      }
-      return {
-        success: false,
-        error: { type: 'aborted', message: '任务已被用户中止' },
-        metadata: { turnsCount: 0, toolCallsCount: 0, duration: 0 },
-      };
+      )
+    ) {
+      throw requestSignal.reason;
     }
 
     // 1. 构建消息历史 — 入口归一化 + ConversationState 构造
@@ -186,7 +182,12 @@ export class LoopRunner {
     // 2. 保存用户消息到 JSONL
     let lastMessageUuid: string | null = null;
     const contextMgr = this.modelManager.getContextManager();
-    if (contextMgr && context.sessionId && options?.inputApplication) {
+    if (
+      !requestSignal?.aborted
+      && contextMgr
+      && context.sessionId
+      && options?.inputApplication
+    ) {
       const sessionId = context.sessionId;
       const inputApplication = options.inputApplication;
       try {
@@ -212,7 +213,7 @@ export class LoopRunner {
         // 与其他消息写入保持一致的 best-effort 策略：持久化失败不应中断请求。
         this.logger.warn('[LoopRunner] 保存已应用输入消息失败:', error);
       }
-    } else {
+    } else if (!requestSignal?.aborted) {
       try {
         if (contextMgr && context.sessionId && hasPersistableUserContent(message)) {
           const sessionId = context.sessionId;
