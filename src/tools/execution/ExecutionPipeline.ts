@@ -515,6 +515,7 @@ export class ExecutionPipeline {
         return this.createPendingCleanupResult();
       }
       await state.context.assertExecutionLease?.();
+      state.context.signal?.throwIfAborted();
       return yield* this.executeWithPipeline(state, executionId);
     } catch (error) {
       if (isExecutionLeaseFailure(error)) {

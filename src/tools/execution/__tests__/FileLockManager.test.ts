@@ -281,6 +281,33 @@ describe('FileLockManager', () => {
       expect(manager.isLocked(filePath)).toBe(false);
     });
 
+    it('admits a queued reader when the writer ahead of it is cancelled', async () => {
+      const manager = FileLockManager.getInstance();
+      const filePath = '/tmp/cancelled-writer.ts';
+      const activeReader = await manager.acquire(filePath, 'read');
+      const controller = new AbortController();
+      const reason = new Error('cancelled writer');
+      const writer = manager.acquire(filePath, 'write', controller.signal);
+      const queuedReader = manager.acquire(filePath, 'read');
+      const writerResult = expect(writer).rejects.toBe(reason);
+      let readerAcquired = false;
+      void queuedReader.then(() => {
+        readerAcquired = true;
+      });
+
+      await Promise.resolve();
+      expect(readerAcquired).toBe(false);
+      controller.abort(reason);
+      await writerResult;
+      const secondReader = await queuedReader;
+
+      expect(readerAcquired).toBe(true);
+      activeReader.release();
+      expect(manager.isLocked(filePath)).toBe(true);
+      secondReader.release();
+      expect(manager.isLocked(filePath)).toBe(false);
+    });
+
     it('does not run acquireLock work when cancellation wins after grant', async () => {
       const manager = FileLockManager.getInstance();
       const holder = await manager.acquire('/tmp/grant-race.ts');

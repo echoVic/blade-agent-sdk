@@ -130,8 +130,8 @@ export class FileLockManager {
             return;
           }
           state.queue.splice(index, 1);
-          this.cleanupState(filePath, state);
           reject(getAbortSignalReason(signal));
+          this.drainQueue(filePath, state);
         };
         signal.addEventListener('abort', request.onAbort, { once: true });
       }
@@ -243,12 +243,15 @@ export class FileLockManager {
   }
 
   private drainQueue(filePath: string, state: FileLockState): void {
-    if (state.activeWriter || state.activeReaders > 0) {
+    if (state.activeWriter) {
       return;
     }
 
     while (state.queue.length > 0) {
       const next = state.queue[0];
+      if (state.activeReaders > 0 && next?.mode === 'write') {
+        return;
+      }
       if (next?.mode === 'read') {
         let grantedReader = false;
         while (state.queue[0]?.mode === 'read') {

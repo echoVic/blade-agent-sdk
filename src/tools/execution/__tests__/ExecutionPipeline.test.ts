@@ -4,6 +4,7 @@ import * as path from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
 import { ConfigError } from '../../../errors/ConfigError.js';
+import type { HookRuntime } from '../../../hooks/HookRuntime.js';
 import { DurableExecutionLeaseError } from '../../../session/events/DurableExecutionLeaseStore.js';
 import { createTool } from '../../core/createTool.js';
 import { ToolRegistry } from '../../registry/ToolRegistry.js';
@@ -280,6 +281,67 @@ describe('ExecutionPipeline', () => {
     });
     expect(scheduler.getStats()[ToolKind.Write].inFlight).toBe(0);
     expect(FileLockManager.getInstance().isLocked(filePath)).toBe(false);
+  });
+
+  it('does not start pre-tool hooks when cancellation wins during the final lease check', async () => {
+    const registry = new ToolRegistry();
+    const leaseCheckStarted = deferred();
+    const releaseLeaseCheck = deferred();
+    const preToolUse = vi.fn();
+    let leaseCheckCount = 0;
+
+    registerTool(
+      registry,
+      createTool({
+        name: 'LeaseCheckCancellationTool',
+        displayName: 'Lease Check Cancellation Tool',
+        kind: ToolKind.Execute,
+        sideEffect: 'non_idempotent',
+        description: { short: 'Lease check cancellation tool' },
+        schema: z.object({}),
+        execute: () => completeToolExecution({
+          status: 'success',
+          model: 'unexpected',
+        }),
+      }),
+    );
+
+    const pipeline = new ExecutionPipeline(registry, {
+      permissionMode: PermissionMode.YOLO,
+      hookRuntime: {
+        applyPreToolUse: preToolUse,
+      } as unknown as HookRuntime,
+    });
+    const controller = new AbortController();
+    const resultPromise = executePipeline(
+      pipeline,
+      'LeaseCheckCancellationTool',
+      {},
+      {
+        permissionMode: PermissionMode.YOLO,
+        signal: controller.signal,
+        assertExecutionLease: async () => {
+          leaseCheckCount += 1;
+          if (leaseCheckCount === 3) {
+            leaseCheckStarted.resolve();
+            await releaseLeaseCheck.promise;
+          }
+        },
+      },
+    );
+
+    await leaseCheckStarted.promise;
+    controller.abort(new Error('cancel final lease check'));
+    releaseLeaseCheck.resolve();
+
+    await expect(resultPromise).resolves.toMatchObject({
+      status: 'error',
+      error: {
+        type: ToolErrorType.EXECUTION_ERROR,
+        message: '任务已被用户中止',
+      },
+    });
+    expect(preToolUse).not.toHaveBeenCalled();
   });
 
   it('releases execution leases when an event consumer stops the stream', async () => {
