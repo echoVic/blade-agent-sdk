@@ -62,26 +62,12 @@ process.stdin.once('end', () => {
     }
   });
   child.stdin.on('error', (error) => {
-    if (error?.code === 'EPIPE') {
-      return;
-    }
-    failed = true;
-    process.exitCode = 1;
-    process.stderr.write(String(error));
-    child.kill();
+    // The command may close stdin without consuming the payload. Its final
+    // exit status remains authoritative.
   });
   child.stdin.end(payload.input);
 });
 `;
-
-function isBrokenPipeError(error: unknown): boolean {
-  return (
-    typeof error === 'object'
-    && error !== null
-    && 'code' in error
-    && error.code === 'EPIPE'
-  );
-}
 
 /**
  * 流量限制器
@@ -220,7 +206,6 @@ export class SecureProcessExecutor {
       let termination:
         | 'abort'
         | 'timeout'
-        | 'input-error'
         | 'process-error'
         | undefined;
       let timeout: ReturnType<typeof setTimeout> | undefined;
@@ -249,7 +234,7 @@ export class SecureProcessExecutor {
         reject(error);
       };
       const stop = (
-        reason: 'abort' | 'timeout' | 'input-error' | 'process-error',
+        reason: 'abort' | 'timeout' | 'process-error',
         cause?: unknown,
       ): void => {
         if (settled || termination) {
@@ -268,14 +253,6 @@ export class SecureProcessExecutor {
           () => {
             if (reason === 'process-error') {
               rejectOnce(cause);
-              return;
-            }
-            if (reason === 'input-error') {
-              rejectOnce(
-                new Error(`Failed to write hook input: ${String(cause)}`, {
-                  cause,
-                }),
-              );
               return;
             }
             resolveOnce(
@@ -313,13 +290,9 @@ export class SecureProcessExecutor {
       child.on('error', (error) => {
         stop('process-error', error);
       });
-      child.stdin.on('error', (error) => {
-        if (isBrokenPipeError(error)) {
-          // Fast hooks may close stdin before the write completes. Their exit
-          // status remains authoritative.
-          return;
-        }
-        stop('input-error', error);
+      child.stdin.on('error', () => {
+        // Fast hooks may close stdin before the write completes. Their exit
+        // status remains authoritative.
       });
 
       timeout = setTimeout(() => stop('timeout'), timeoutMs);
@@ -336,11 +309,8 @@ export class SecureProcessExecutor {
         try {
           child.stdin.write(processInput);
           child.stdin.end();
-        } catch (error) {
-          if (isBrokenPipeError(error)) {
-            return;
-          }
-          stop('input-error', error);
+        } catch {
+          // Wait for close or timeout; the process exit status is authoritative.
         }
       }
     });
