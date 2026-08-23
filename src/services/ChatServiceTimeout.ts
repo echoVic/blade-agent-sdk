@@ -224,7 +224,7 @@ async function* runGeneratorWithTimeout<TYield, TReturn>(
                 signal,
               );
       } catch (error) {
-        timedOut = error instanceof ModelTimeoutError;
+        timedOut = timedOut || error instanceof ModelTimeoutError;
         throw error;
       }
 
