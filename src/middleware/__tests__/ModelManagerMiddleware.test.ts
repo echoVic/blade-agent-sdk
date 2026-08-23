@@ -1,8 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import type {
-  ChatConfig,
-  IChatService,
-} from '../../services/ChatServiceInterface.js';
+import type { ChatConfig, IChatService } from '../../services/ChatServiceInterface.js';
 import type { BladeConfig } from '../../types/common.js';
 import type { ModelMiddleware } from '../ModelMiddleware.js';
 
@@ -43,9 +40,7 @@ describe('ModelManager middleware integration', () => {
   });
 
   it('reapplies model middleware when switching provider services', async () => {
-    createChatServiceAsync.mockImplementation(async (config: ChatConfig) =>
-      createService(config),
-    );
+    createChatServiceAsync.mockImplementation(async (config: ChatConfig) => createService(config));
     const observedModels: string[] = [];
     const middleware: ModelMiddleware = {
       async wrapChat(request, next) {
@@ -75,14 +70,9 @@ describe('ModelManager middleware integration', () => {
         },
       ],
     };
-    const manager = new ModelManager(
-      config,
-      undefined,
-      undefined,
-      undefined,
-      undefined,
-      [middleware],
-    );
+    const manager = new ModelManager(config, undefined, undefined, undefined, undefined, [
+      middleware,
+    ]);
 
     await manager.applyModelConfig(manager.resolveModelConfig(), 'initial');
     await expect(manager.getChatService().chat([])).resolves.toEqual({
@@ -98,9 +88,7 @@ describe('ModelManager middleware integration', () => {
 
   it('applies request timeouts outside model middleware', async () => {
     vi.useFakeTimers();
-    createChatServiceAsync.mockImplementation(async (config: ChatConfig) =>
-      createService(config),
-    );
+    createChatServiceAsync.mockImplementation(async (config: ChatConfig) => createService(config));
     const config: BladeConfig = {
       currentModelId: 'default',
       models: [
@@ -115,20 +103,13 @@ describe('ModelManager middleware integration', () => {
         },
       ],
     };
-    const manager = new ModelManager(
-      config,
-      undefined,
-      undefined,
-      undefined,
-      undefined,
-      [
-        {
-          async wrapChat() {
-            return await new Promise<never>(() => {});
-          },
+    const manager = new ModelManager(config, undefined, undefined, undefined, undefined, [
+      {
+        async wrapChat() {
+          return await new Promise<never>(() => {});
         },
-      ],
-    );
+      },
+    ]);
     await manager.applyModelConfig(manager.resolveModelConfig(), 'initial');
     const result = manager.getChatService().chat([]);
     const rejection = expect(result).rejects.toMatchObject({

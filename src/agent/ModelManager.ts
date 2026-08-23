@@ -6,10 +6,7 @@
 
 import { ContextManager } from '../context/ContextManager.js';
 import { type InternalLogger, LogCategory, NOOP_LOGGER } from '../logging/Logger.js';
-import {
-  type ModelMiddleware,
-  wrapChatService,
-} from '../middleware/ModelMiddleware.js';
+import { type ModelMiddleware, wrapChatService } from '../middleware/ModelMiddleware.js';
 import { createChatServiceAsync, type IChatService } from '../services/ChatServiceInterface.js';
 import { wrapChatServiceWithTimeouts } from '../services/ChatServiceTimeout.js';
 import { withDeepSeekDefaults } from '../services/deepseek.js';

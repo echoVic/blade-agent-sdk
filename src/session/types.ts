@@ -1,10 +1,7 @@
 import type { TokenBudgetConfig } from '../agent/TokenBudget.js';
 import type { UserMessageContent } from '../agent/types.js';
 import type { SdkMcpServerHandle } from '../mcp/SdkMcpServer.js';
-import type {
-  AgentMiddlewareConfig,
-  AgentPlugin,
-} from '../middleware/AgentPlugin.js';
+import type { AgentMiddlewareConfig, AgentPlugin } from '../middleware/AgentPlugin.js';
 import type { AgentTrace, ObservabilityOptions } from '../observability/index.js';
 import type {
   ContextSnapshot,
@@ -25,12 +22,7 @@ import type {
   ToolProgress,
   ToolResult,
 } from '../tools/types/index.js';
-import type {
-  EventSequence,
-  InputId,
-  RequestId,
-  SessionId,
-} from '../types/branded.js';
+import type { EventSequence, InputId, RequestId, SessionId } from '../types/branded.js';
 import type {
   JsonObject,
   JsonValue,
@@ -47,9 +39,7 @@ import type { CanUseTool, PermissionHandler, PermissionUpdate } from '../types/p
 import type { Assert, IsEqual } from '../types/typeAssertions.js';
 import type { DurableEventStore } from './events/DurableEventStore.js';
 import type { DurableExecutionLeaseOptions } from './events/DurableExecutionLease.js';
-import type {
-  DurableExecutionLease as DurableExecutionLeaseSnapshot,
-} from './events/DurableExecutionLeaseStore.js';
+import type { DurableExecutionLease as DurableExecutionLeaseSnapshot } from './events/DurableExecutionLeaseStore.js';
 import type {
   DurableEventSubscription,
   DurableEventSubscriptionOptions,

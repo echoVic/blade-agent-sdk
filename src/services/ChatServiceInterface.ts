@@ -194,7 +194,7 @@ export interface IChatService {
       description: string;
       parameters: JSONSchema7;
     }>,
-    signal?: AbortSignal
+    signal?: AbortSignal,
   ): Promise<ChatResponse>;
 
   /**
@@ -204,7 +204,7 @@ export interface IChatService {
   sideQuery(
     messages: readonly Message[],
     signal?: AbortSignal,
-    options?: SideQueryOptions
+    options?: SideQueryOptions,
   ): Promise<ChatResponse>;
 
   /**
@@ -217,7 +217,7 @@ export interface IChatService {
       description: string;
       parameters: JSONSchema7;
     }>,
-    signal?: AbortSignal
+    signal?: AbortSignal,
   ): AsyncGenerator<StreamChunk, void, unknown>;
 
   /**
@@ -232,7 +232,7 @@ export interface IChatService {
       description: string;
       parameters: JSONSchema7;
     }>,
-    signal?: AbortSignal
+    signal?: AbortSignal,
   ): AsyncGenerator<RetryEvent, ChatResponse>;
 
   /**
@@ -269,14 +269,19 @@ export async function createChatServiceAsync(
           ...resolvedConfig.customHeaders, // 用户配置优先
         },
       };
-      logger.child(LogCategory.SERVICE).debug(`🔧 注入 ${resolvedConfig.providerId} 特定 headers:`, Object.keys(providerHeaders));
+      logger
+        .child(LogCategory.SERVICE)
+        .debug(`🔧 注入 ${resolvedConfig.providerId} 特定 headers:`, Object.keys(providerHeaders));
     }
   }
 
   return await createChatServiceInternal(resolvedConfig, logger);
 }
 
-async function createChatServiceInternal(config: ChatConfig, logger: InternalLogger): Promise<IChatService> {
+async function createChatServiceInternal(
+  config: ChatConfig,
+  logger: InternalLogger,
+): Promise<IChatService> {
   const service = new VercelAIChatService(config, logger);
   await service.ready();
   return service;

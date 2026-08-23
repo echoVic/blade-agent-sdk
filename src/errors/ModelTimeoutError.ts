@@ -1,8 +1,6 @@
 import { SdkError } from './SdkError.js';
 
-export type ModelTimeoutErrorCode =
-  | 'MODEL_REQUEST_TIMEOUT'
-  | 'MODEL_STREAM_IDLE_TIMEOUT';
+export type ModelTimeoutErrorCode = 'MODEL_REQUEST_TIMEOUT' | 'MODEL_STREAM_IDLE_TIMEOUT';
 
 export class ModelTimeoutError extends SdkError {
   constructor(

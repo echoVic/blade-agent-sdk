@@ -164,11 +164,10 @@ describe('root exports', () => {
   });
 
   it('exports runtime tool contracts at the root entrypoint', () => {
-    expectTypeOf<AgentPlugin['middleware']>().toEqualTypeOf<
-      AgentMiddlewareConfig | undefined
-    >();
-    expectTypeOf<NonNullable<AgentMiddlewareConfig['tool']>[number]>()
-      .toEqualTypeOf<ToolMiddleware>();
+    expectTypeOf<AgentPlugin['middleware']>().toEqualTypeOf<AgentMiddlewareConfig | undefined>();
+    expectTypeOf<
+      NonNullable<AgentMiddlewareConfig['tool']>[number]
+    >().toEqualTypeOf<ToolMiddleware>();
     expectTypeOf<RuntimePatch['scope']>().toEqualTypeOf<'turn' | 'session'>();
     expectTypeOf<ToolEffect['type']>().toEqualTypeOf<
       'runtimePatch' | 'contextPatch' | 'newMessages' | 'permissionUpdates'
