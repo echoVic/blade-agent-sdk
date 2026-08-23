@@ -33,6 +33,10 @@ export interface ModelConfig {
   maxContextTokens?: number;
   maxOutputTokens?: number;
   temperature?: number;
+  /** Maximum wall-clock wait for a non-streaming model operation. */
+  requestTimeoutMs?: number;
+  /** Maximum wait between model stream chunks. */
+  streamIdleTimeoutMs?: number;
   headers?: Record<string, string>;
   providerOptions?: JsonObject;
   thinkingEnabled?: boolean;

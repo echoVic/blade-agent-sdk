@@ -449,6 +449,8 @@ class Session implements ISession {
       apiKey: provider.apiKey || '',
       baseUrl: provider.baseUrl || this.getDefaultBaseUrl(provider.type),
       headers: Object.keys(headers).length > 0 ? headers : undefined,
+      requestTimeoutMs: provider.requestTimeoutMs,
+      streamIdleTimeoutMs: provider.streamIdleTimeoutMs,
       maxContextTokens: this.options.maxContextTokens ?? 128000,
       maxOutputTokens: this.options.maxOutputTokens,
       temperature: this.options.temperature,

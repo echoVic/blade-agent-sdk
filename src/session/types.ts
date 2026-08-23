@@ -111,6 +111,10 @@ export interface ProviderConfig {
   organization?: string;
   apiVersion?: string;
   projectId?: string;
+  /** Maximum wall-clock wait for a non-streaming model operation. */
+  requestTimeoutMs?: number;
+  /** Maximum wait between model stream chunks. */
+  streamIdleTimeoutMs?: number;
 }
 
 export interface ToolCallRecord {

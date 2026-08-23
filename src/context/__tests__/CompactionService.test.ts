@@ -1,5 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { Message } from '../../services/ChatServiceInterface.js';
+import type {
+    ChatConfig,
+    Message,
+} from '../../services/ChatServiceInterface.js';
 
 const mockChat = vi.fn(async () => ({
   content: '<summary>ok</summary>',
@@ -7,10 +10,22 @@ const mockChat = vi.fn(async () => ({
 const mockSideQuery = vi.fn(async () => ({
   content: '<summary>ok</summary>',
 }));
-const mockCreateChatServiceAsync = vi.fn(async (_config: Record<string, unknown>) => ({
-  chat: mockChat,
-  sideQuery: mockSideQuery,
-}));
+const mockCreateChatServiceAsync = vi.fn(async (config: ChatConfig) => {
+  let currentConfig = config;
+  return {
+    chat: mockChat,
+    sideQuery: mockSideQuery,
+    async *streamChat() {
+      yield { content: 'unused' };
+    },
+    getConfig() {
+      return currentConfig;
+    },
+    updateConfig(next: Partial<ChatConfig>) {
+      currentConfig = { ...currentConfig, ...next };
+    },
+  };
+});
 
 vi.mock('../../services/ChatServiceInterface.js', () => ({
   createChatServiceAsync: mockCreateChatServiceAsync,
@@ -50,12 +65,14 @@ describe('CompactionService', () => {
         provider: 'openai',
         baseUrl: 'https://api.openai.com/v1',
         model: 'gpt-5',
+        timeout: 60_000,
       }),
       expect.anything(),
     );
     expect(mockSideQuery).toHaveBeenCalledWith(
       expect.anything(),
-      controller.signal,
+      expect.any(AbortSignal),
+      undefined,
     );
     expect(mockChat).not.toHaveBeenCalled();
   });

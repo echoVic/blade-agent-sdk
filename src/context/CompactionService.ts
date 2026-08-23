@@ -7,17 +7,18 @@ import { nanoid } from 'nanoid';
 import { HookManager } from '../hooks/HookManager.js';
 import { NOOP_LOGGER } from '../logging/Logger.js';
 import {
-    createChatServiceAsync,
-    type Message,
+  createChatServiceAsync,
+  type Message,
 } from '../services/ChatServiceInterface.js';
+import { wrapChatServiceWithTimeouts } from '../services/ChatServiceTimeout.js';
 import { isExecutionLeaseFailure } from '../session/events/DurableExecutionLeaseStore.js';
 import { SessionId } from '../types/branded.js';
 import { PermissionMode, type ProviderType } from '../types/common.js';
 import { FileAnalyzer, type FileContent } from './FileAnalyzer.js';
 import {
-    microcompact,
-    type MicrocompactOptions,
-    type MicrocompactResult,
+  microcompact,
+  type MicrocompactOptions,
+  type MicrocompactResult,
 } from './strategies/MicrocompactStrategy.js';
 import { TokenCounter } from './TokenCounter.js';
 
@@ -338,16 +339,18 @@ async function generateSummary(
 
   console.log('[CompactionService] 使用压缩模型:', options.modelName);
 
-  const chatService = await createChatServiceAsync({
-    apiKey: options.apiKey || process.env.BLADE_API_KEY || '',
-    baseUrl: baseURL,
-    model: options.modelName,
-    temperature: 0.3,
-    maxOutputTokens: 8000,
-    timeout: 60000,
-    provider: options.provider || inferProvider(baseURL),
-    customHeaders: options.customHeaders,
-  }, NOOP_LOGGER);
+  const chatService = wrapChatServiceWithTimeouts(
+    await createChatServiceAsync({
+      apiKey: options.apiKey || process.env.BLADE_API_KEY || '',
+      baseUrl: baseURL,
+      model: options.modelName,
+      temperature: 0.3,
+      maxOutputTokens: 8000,
+      timeout: 60000,
+      provider: options.provider || inferProvider(baseURL),
+      customHeaders: options.customHeaders,
+    }, NOOP_LOGGER),
+  );
 
   const response = await chatService.sideQuery(
     [{ role: 'user', content: prompt }],

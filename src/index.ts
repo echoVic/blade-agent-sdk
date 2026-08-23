@@ -11,6 +11,7 @@ export type {
 } from './agent/subagents/types.js';
 export type { TokenBudgetConfig, TokenBudgetSnapshot } from './agent/TokenBudget.js';
 export type {
+  ModelTimeoutErrorCode,
   SdkErrorOptions,
   SessionHandoffErrorCode,
   SessionInputErrorCode,
@@ -19,6 +20,7 @@ export type {
 export {
   AbortError,
   ConfigError,
+  ModelTimeoutError,
   PermissionDeniedError,
   SdkError,
   SessionHandoffError,
