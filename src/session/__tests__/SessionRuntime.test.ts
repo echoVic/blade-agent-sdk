@@ -411,13 +411,14 @@ describe('SessionRuntime', () => {
 
     await started.promise;
     controller.abort(new Error('request cancelled'));
+    const closeResult = expect(runtime.close()).rejects.toThrow(
+      'still has a permission callback cleaning up',
+    );
     await expect(resultPromise).resolves.toMatchObject({
       status: 'error',
       error: { message: 'request cancelled' },
     });
-    await expect(runtime.close()).rejects.toThrow(
-      'still has a permission callback cleaning up',
-    );
+    await closeResult;
 
     release.resolve();
     await vi.waitFor(() => {

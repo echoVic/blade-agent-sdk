@@ -1031,6 +1031,10 @@ export class ExecutionPipeline {
       () => undefined,
       () => undefined,
     );
+    const trackCleanup = (): void => {
+      this.trackPendingPermissionCleanup(cleanup);
+    };
+    signal.addEventListener('abort', trackCleanup, { once: true });
 
     try {
       const result = await awaitWithAbortSignal(() => callback, signal);
@@ -1038,10 +1042,11 @@ export class ExecutionPipeline {
       return result;
     } catch (error) {
       if (signal.aborted) {
-        this.trackPendingPermissionCleanup(cleanup);
         throw getAbortSignalReason(signal);
       }
       throw error;
+    } finally {
+      signal.removeEventListener('abort', trackCleanup);
     }
   }
 

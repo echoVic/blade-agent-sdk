@@ -737,6 +737,7 @@ describe('ExecutionPipeline', () => {
       await started.promise;
       expect(callbackSignal).toBe(controller.signal);
       controller.abort(cancellation);
+      expect(pipeline.hasPendingPermissionCleanup()).toBe(true);
 
       await expect(resultPromise).resolves.toMatchObject({
         status: 'error',
@@ -744,7 +745,6 @@ describe('ExecutionPipeline', () => {
           message: `${boundary} cancelled`,
         },
       });
-      expect(pipeline.hasPendingPermissionCleanup()).toBe(true);
       if (boundary === 'confirmationHandler') {
         expect(permissionResolutions).toEqual(['cancel']);
       }

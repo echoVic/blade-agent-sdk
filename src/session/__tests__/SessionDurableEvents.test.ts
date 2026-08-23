@@ -2015,14 +2015,15 @@ describe('Session durable events', () => {
 
     await started.promise;
     controller.abort(new Error('handoff permission cancelled'));
+    const blockedHandoff = expect(session.suspendForHandoff()).rejects.toThrow(
+      'permission callback cleaning up',
+    );
     await expect(execution).resolves.toMatchObject({
       status: 'error',
       error: { message: 'handoff permission cancelled' },
     });
 
-    await expect(session.suspendForHandoff()).rejects.toThrow(
-      'permission callback cleaning up',
-    );
+    await blockedHandoff;
     expect(releaseLease).not.toHaveBeenCalled();
     expect(session.getExecutionLease()).not.toBeNull();
 
