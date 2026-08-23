@@ -913,9 +913,8 @@ export class ExecutionPipeline {
           () => undefined,
           () => undefined,
         );
-        if (!await this.waitForExecutionClose(closing)) {
-          this.trackPendingExecutionCleanup(closing);
-        }
+        this.trackPendingExecutionCleanup(closing);
+        await this.waitForExecutionClose(closing);
       }
     }
   }
@@ -964,20 +963,17 @@ export class ExecutionPipeline {
 
   private async waitForExecutionClose(
     closing: PromiseLike<unknown>,
-  ): Promise<boolean> {
-    return await new Promise<boolean>((resolve) => {
+  ): Promise<void> {
+    await new Promise<void>((resolve) => {
       let settled = false;
-      const finish = (closed: boolean): void => {
+      const finish = (): void => {
         if (settled) return;
         settled = true;
         clearTimeout(timeout);
-        resolve(closed);
+        resolve();
       };
-      const timeout = setTimeout(() => finish(false), MAX_TOOL_CLEANUP_WAIT_MS);
-      closing.then(
-        () => finish(true),
-        () => finish(true),
-      );
+      const timeout = setTimeout(finish, MAX_TOOL_CLEANUP_WAIT_MS);
+      closing.then(finish, finish);
     });
   }
 

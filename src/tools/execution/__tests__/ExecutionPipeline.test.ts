@@ -388,6 +388,7 @@ describe('ExecutionPipeline', () => {
     await vi.advanceTimersToNextTimerAsync();
     await vi.advanceTimersToNextTimerAsync();
     expect(settled).toBe(false);
+    expect(pipeline.hasPendingExecutionCleanup()).toBe(true);
 
     await vi.advanceTimersByTimeAsync(4_999);
     expect(settled).toBe(false);
