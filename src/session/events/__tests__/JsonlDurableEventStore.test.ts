@@ -1,3 +1,5 @@
+import { type ChildProcessWithoutNullStreams, spawn } from 'node:child_process';
+import { once } from 'node:events';
 import {
   appendFile,
   mkdir,
@@ -5,10 +7,12 @@ import {
   readFile,
   rm,
   stat,
+  utimes,
   writeFile,
 } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import {
   CommandId,
@@ -24,10 +28,80 @@ import { JsonlDurableEventStore } from '../JsonlDurableEventStore.js';
 import { DURABLE_EVENT_LOG_FORMAT } from '../schemas.js';
 import { DURABLE_EVENT_SCHEMA_VERSION, DurableEventType } from '../types.js';
 
+const lockHolderPath = join(
+  dirname(fileURLToPath(import.meta.url)),
+  'fixtures',
+  'holdFileLock.cjs',
+);
+
+async function startLockHolder(
+  filePath: string,
+  holdMs: number,
+  batch?: string,
+): Promise<ChildProcessWithoutNullStreams> {
+  const child = spawn(process.execPath, [
+    lockHolderPath,
+    filePath,
+    String(holdMs),
+    ...(batch ? [Buffer.from(batch).toString('base64url')] : []),
+  ]);
+  let stderr = '';
+  child.stderr.setEncoding('utf8');
+  child.stderr.on('data', (chunk: string) => {
+    stderr += chunk;
+  });
+  await new Promise<void>((resolveReady, rejectReady) => {
+    const onData = (chunk: Buffer): void => {
+      if (chunk.toString('utf8').includes('locked')) {
+        child.stdout.off('data', onData);
+        child.off('exit', onExit);
+        resolveReady();
+      }
+    };
+    const onExit = (code: number | null, signal: NodeJS.Signals | null): void => {
+      child.stdout.off('data', onData);
+      rejectReady(
+        new Error(
+          `Lock holder exited before acquiring the lock (${code ?? signal}): ${stderr}`,
+        ),
+      );
+    };
+    child.stdout.on('data', onData);
+    child.once('exit', onExit);
+  });
+  return child;
+}
+
+async function waitForChild(child: ChildProcessWithoutNullStreams): Promise<void> {
+  if (child.exitCode !== null || child.signalCode !== null) {
+    return;
+  }
+  const [code, signal] = await once(child, 'exit') as [
+    number | null,
+    NodeJS.Signals | null,
+  ];
+  if (code !== 0) {
+    throw new Error(`Lock holder exited with ${code ?? signal}`);
+  }
+}
+
+async function terminateChild(
+  child: ChildProcessWithoutNullStreams,
+  signal: NodeJS.Signals,
+): Promise<void> {
+  if (child.exitCode !== null || child.signalCode !== null) {
+    return;
+  }
+  const exit = once(child, 'exit');
+  child.kill(signal);
+  await exit;
+}
+
 describe('JsonlDurableEventStore', () => {
   let storageRoot: string;
   let nextEventId: number;
   let store: JsonlDurableEventStore;
+  const childProcesses: ChildProcessWithoutNullStreams[] = [];
 
   beforeEach(async () => {
     storageRoot = await mkdtemp(join(tmpdir(), 'durable-event-store-'));
@@ -39,6 +113,11 @@ describe('JsonlDurableEventStore', () => {
   });
 
   afterEach(async () => {
+    await Promise.all(childProcesses.splice(0).map(async (child) => {
+      if (child.exitCode === null && child.signalCode === null) {
+        await terminateChild(child, 'SIGTERM');
+      }
+    }));
     await rm(storageRoot, { recursive: true, force: true });
   });
 
@@ -272,6 +351,160 @@ describe('JsonlDurableEventStore', () => {
       expect(rejected.reason).toBeInstanceOf(DurableEventSequenceConflictError);
     }
     expect(await store.getHeadSequence(sessionId)).toBe(2);
+  });
+
+  it('waits for a lock held by another process before appending', async () => {
+    const sessionId = SessionId('session-cross-process-lock');
+    const filePath = store.getFilePath(sessionId);
+    const child = await startLockHolder(filePath, 200);
+    childProcesses.push(child);
+    let settled = false;
+
+    const append = store.append(
+      sessionId,
+      [{ type: DurableEventType.SESSION_CREATED, data: {} }],
+      { expectedLastSequence: null },
+    ).finally(() => {
+      settled = true;
+    });
+    await new Promise<void>((resolveDelay) => setTimeout(resolveDelay, 75));
+    expect(settled).toBe(false);
+
+    await expect(append).resolves.toMatchObject({
+      previousSequence: null,
+      lastSequence: 1,
+    });
+    await waitForChild(child);
+    await expect(stat(`${filePath}.lock`)).rejects.toMatchObject({
+      code: 'ENOENT',
+    });
+  });
+
+  it('checks CAS against a batch committed by another process while waiting', async () => {
+    const sessionId = SessionId('session-cross-process-cas');
+    const filePath = store.getFilePath(sessionId);
+    const timestamp = '2026-08-23T09:00:00.000Z';
+    const batch = JSON.stringify({
+      format: DURABLE_EVENT_LOG_FORMAT,
+      schemaVersion: DURABLE_EVENT_SCHEMA_VERSION,
+      sessionId,
+      firstSequence: 1,
+      lastSequence: 1,
+      events: [
+        {
+          schemaVersion: DURABLE_EVENT_SCHEMA_VERSION,
+          eventId: 'child-event-1',
+          sequence: 1,
+          sessionId,
+          type: DurableEventType.SESSION_CREATED,
+          data: { source: 'create' },
+          recordedAt: timestamp,
+          occurredAt: timestamp,
+        },
+      ],
+    });
+    const child = await startLockHolder(filePath, 200, batch);
+    childProcesses.push(child);
+
+    await expect(
+      store.append(
+        sessionId,
+        [
+          {
+            type: DurableEventType.REQUEST_ACCEPTED,
+            requestId: RequestId('stale-request'),
+            commandId: CommandId('stale-command'),
+            data: {
+              inputId: InputId('stale-input'),
+              input: 'must conflict',
+              priority: 'next',
+            },
+          },
+        ],
+        { expectedLastSequence: null },
+      ),
+    ).rejects.toMatchObject({
+      expectedSequence: null,
+      actualSequence: 1,
+    });
+    await waitForChild(child);
+    await expect(store.getHeadSequence(sessionId)).resolves.toBe(1);
+  });
+
+  it('fails closed on lock timeout and succeeds after the owner releases it', async () => {
+    const sessionId = SessionId('session-lock-timeout');
+    const filePath = store.getFilePath(sessionId);
+    const child = await startLockHolder(filePath, 500);
+    childProcesses.push(child);
+    const impatientStore = new JsonlDurableEventStore(storageRoot, {
+      lockTimeoutMs: 50,
+    });
+
+    await expect(
+      impatientStore.append(
+        sessionId,
+        [{ type: DurableEventType.SESSION_CREATED, data: {} }],
+        { expectedLastSequence: null },
+      ),
+    ).rejects.toMatchObject({
+      code: 'DURABLE_EVENT_LOCK_TIMEOUT',
+    });
+    await expect(impatientStore.read(sessionId)).rejects.toMatchObject({
+      code: 'DURABLE_EVENT_LOCK_TIMEOUT',
+    });
+    await expect(impatientStore.getHeadSequence(sessionId)).rejects.toMatchObject({
+      code: 'DURABLE_EVENT_LOCK_TIMEOUT',
+    });
+
+    await waitForChild(child);
+    await expect(
+      impatientStore.append(
+        sessionId,
+        [{ type: DurableEventType.SESSION_CREATED, data: {} }],
+        { expectedLastSequence: null },
+      ),
+    ).resolves.toMatchObject({
+      lastSequence: 1,
+    });
+    await expect(impatientStore.read(sessionId)).resolves.toMatchObject({
+      headSequence: 1,
+    });
+    await expect(impatientStore.getHeadSequence(sessionId)).resolves.toBe(1);
+  });
+
+  it('reclaims a stale lock left by a crashed process', async () => {
+    const sessionId = SessionId('session-stale-process-lock');
+    const filePath = store.getFilePath(sessionId);
+    const child = await startLockHolder(filePath, 10_000);
+    childProcesses.push(child);
+    await terminateChild(child, 'SIGKILL');
+    const staleTime = new Date(Date.now() - 60_000);
+    await utimes(`${filePath}.lock`, staleTime, staleTime);
+    const recoveringStore = new JsonlDurableEventStore(storageRoot, {
+      lockTimeoutMs: 500,
+    });
+
+    await expect(
+      recoveringStore.append(
+        sessionId,
+        [{ type: DurableEventType.SESSION_CREATED, data: {} }],
+        { expectedLastSequence: null },
+      ),
+    ).resolves.toMatchObject({
+      lastSequence: 1,
+    });
+    await expect(stat(`${filePath}.lock`)).rejects.toMatchObject({
+      code: 'ENOENT',
+    });
+  });
+
+  it('rejects invalid lock timeout options', () => {
+    expect(
+      () => new JsonlDurableEventStore(storageRoot, { lockTimeoutMs: -1 }),
+    ).toThrow(/lockTimeoutMs/);
+    expect(
+      () => new JsonlDurableEventStore(storageRoot, { lockTimeoutMs: 1.5 }),
+    ).toThrow(/lockTimeoutMs/);
   });
 
   it('rejects duplicate event IDs across append batches', async () => {
