@@ -19,6 +19,7 @@ import type {
   SubagentResult,
 } from '../../../agent/subagents/types.js';
 import { HookManager } from '../../../hooks/HookManager.js';
+import { isExecutionLeaseFailure } from '../../../session/events/DurableExecutionLeaseStore.js';
 import { AgentId, SessionId } from '../../../types/branded.js';
 import { PermissionMode } from '../../../types/common.js';
 import { getErrorMessage } from '../../../utils/errorUtils.js';
@@ -216,7 +217,7 @@ export function createTaskTool({ registry }: { registry: SubagentRegistry }) {
         }
 
         if (resume) {
-          return handleResume(
+          return await handleResume(
             AgentId(resume),
             prompt,
             subagentConfig,
@@ -227,7 +228,7 @@ export function createTaskTool({ registry }: { registry: SubagentRegistry }) {
         }
 
         if (run_in_background) {
-          return handleBackgroundExecution(
+          return await handleBackgroundExecution(
             subagentConfig,
             description,
             prompt,
@@ -268,6 +269,10 @@ export function createTaskTool({ registry }: { registry: SubagentRegistry }) {
           permissionMode: context.permissionMode,
           subagentSessionId,
           snapshot: context.contextSnapshot,
+          signal: context.signal,
+          executionFence: context.executionFence,
+          assertExecutionLease: context.assertExecutionLease,
+          runWithExecutionLease: context.runWithExecutionLease,
         };
 
         yield {
@@ -308,6 +313,10 @@ export function createTaskTool({ registry }: { registry: SubagentRegistry }) {
               permissionMode: context.permissionMode,
               subagentSessionId,
               snapshot: context.contextSnapshot,
+              signal: context.signal,
+              executionFence: context.executionFence,
+              assertExecutionLease: context.assertExecutionLease,
+              runWithExecutionLease: context.runWithExecutionLease,
             };
 
             const continueStartTime = Date.now();
@@ -324,6 +333,9 @@ export function createTaskTool({ registry }: { registry: SubagentRegistry }) {
 
         return buildTaskResult(result, subagent_type, description, duration, subagentSessionId);
       } catch (error) {
+        if (isExecutionLeaseFailure(error)) {
+          throw error;
+        }
         const _errorMessage = extractUserFriendlyError(
           error instanceof Error ? error : new Error(getErrorMessage(error))
         );
@@ -398,7 +410,7 @@ function buildTaskResult(
   };
 }
 
-function handleBackgroundExecution(
+async function handleBackgroundExecution(
   subagentConfig: {
     name: string;
     description: string;
@@ -410,7 +422,7 @@ function handleBackgroundExecution(
   context: ExecutionContext,
   subagentSessionId: AgentId,
   registry: SubagentRegistry,
-): ToolResult {
+): Promise<ToolResult> {
   if (!context.bladeConfig) {
     return {
       status: 'error',
@@ -440,7 +452,7 @@ function handleBackgroundExecution(
     };
   }
 
-  const agentId = manager.startBackgroundAgent({
+  const agentId = await manager.startBackgroundAgent({
     config: subagentConfig,
     bladeConfig: context.bladeConfig,
     subagentRegistry: registry,
@@ -450,6 +462,9 @@ function handleBackgroundExecution(
     permissionMode: context.permissionMode,
     agentId: subagentSessionId,
     snapshot: context.contextSnapshot,
+    executionFence: context.executionFence,
+    assertExecutionLease: context.assertExecutionLease,
+    runWithExecutionLease: context.runWithExecutionLease,
   });
 
   return {
@@ -472,7 +487,7 @@ function handleBackgroundExecution(
   };
 }
 
-function handleResume(
+async function handleResume(
   agentId: AgentId,
   prompt: string,
   subagentConfig: {
@@ -484,7 +499,7 @@ function handleResume(
   description: string,
   context: ExecutionContext,
   registry: SubagentRegistry,
-): ToolResult {
+): Promise<ToolResult> {
   if (!context.bladeConfig) {
     return {
       status: 'error',
@@ -543,7 +558,7 @@ function handleResume(
     };
   }
 
-  const newAgentId = manager.resumeAgent(
+  const newAgentId = await manager.resumeAgent(
     agentId,
     prompt,
     subagentConfig,
@@ -552,6 +567,9 @@ function handleResume(
     context.permissionMode,
     registry,
     description,
+    context.executionFence,
+    context.assertExecutionLease,
+    context.runWithExecutionLease,
   );
 
   if (!newAgentId) {

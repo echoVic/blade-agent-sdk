@@ -253,10 +253,96 @@ local Session closed and must be recovered from the durable journal.
 `SessionHandoffError` exposes stable `code`, `activeSubagentIds`, and
 `activeShellIds` fields for orchestration.
 
-This API is a cooperative shutdown barrier, not a cross-host lease. Stop routing
-new work to the old worker before calling it, and use a transactional
-`DurableEventStore` with fencing when multiple hosts can execute the same
-Session.
+Without `executionLease`, this API remains a cooperative shutdown barrier:
+stop routing new work to the old worker before calling it. With a lease-capable
+`DurableEventStore`, handoff keeps the current lease until execution, transcript
+writes, and journal finalization settle, then releases it before returning.
+The successor acquires a higher fencing token when it calls `resumeSession()`.
+
+## Fence execution across workers
+
+Configure `executionLease` when more than one worker can open the same durable
+Session:
+
+```ts
+import {
+  JsonlDurableEventStore,
+  WorkerId,
+  createSession,
+} from '@blade-ai/agent-sdk';
+
+const eventStore = new JsonlDurableEventStore('/var/lib/my-agent');
+const session = await createSession({
+  provider,
+  model,
+  storagePath: '/var/lib/my-agent',
+  durableEventStore: eventStore,
+  executionLease: {
+    ownerId: WorkerId(process.env.HOSTNAME ?? `worker-${process.pid}`),
+    ttlMs: 30_000,
+    heartbeatIntervalMs: 10_000,
+  },
+});
+```
+
+Session acquisition is fail-closed. A second live worker receives
+`DURABLE_EXECUTION_LEASE_CONFLICT`. Each successful takeover increments a
+monotonic `FencingToken`; every Journal commit validates the active lease in
+the same Store transaction as its append. Short SDK-owned transcript writes are
+serialized against takeover through `withExecutionLease()`. Background-subagent
+state and output writes carry and validate the same fence. The Session heartbeat
+stops admitting new work and aborts the root execution, foreground/background
+subagents, and complete process groups for Session-owned shells when ownership
+cannot be renewed.
+
+Once a Session enables an execution lease, its fencing requirement is
+permanent. After the old lease expires or is released, `resumeSession()` without
+`executionLease` still fails with `DURABLE_EXECUTION_LEASE_REQUIRED`; the
+successor must first acquire a lease with a higher token. Normal `close()` waits
+for background agents and Session-owned shells to stop before it commits the
+durable close and releases the lease. If runtime cleanup fails, it retains the
+lease and allows the caller to retry `close()`.
+
+Normally omit `leaseId` so the SDK generates a random ID for each worker
+execution. Reusing the same `ownerId + leaseId` is treated as an idempotent
+retry of one acquisition; concurrent workers must never share that identity.
+
+`session.getExecutionLease()` returns the current lease snapshot. Tools receive
+the immutable `{ leaseId, fencingToken }` as
+`ExecutionContext.executionFence`. A tool that writes another shared system
+must pass this fence to that system and have it reject older tokens. The SDK can
+prevent stale Journal commits and new model/tool starts, but a generic
+downstream service cannot be hard-fenced unless it validates the token.
+
+`JsonlDurableEventStore` implements this protocol for Node.js processes sharing
+one supported local filesystem. It is not a cross-host store. Lease-enabled
+cross-host Sessions must implement `DurableExecutionLeaseStore` so lease
+mutation and `append(..., { executionFence })` validation occur in the same
+database transaction.
+
+Recovery mutations can hold the same lease guard:
+
+```ts
+import {
+  DurableExecutionLease,
+  DurableSessionRecoveryCoordinator,
+  WorkerId,
+} from '@blade-ai/agent-sdk';
+
+const lease = await DurableExecutionLease.acquire(eventStore, sessionId, {
+  ownerId: WorkerId('recovery-worker'),
+});
+try {
+  const coordinator = await DurableSessionRecoveryCoordinator.open(
+    eventStore,
+    sessionId,
+    { executionLease: lease },
+  );
+  // Reconcile or prepare recovery while the fence remains active.
+} finally {
+  await lease.release();
+}
+```
 
 ## One-shot prompts
 
@@ -617,6 +703,7 @@ Payload capture is opt-in because prompts and tool data may be sensitive.
 | `storagePath` | `string` | Enables JSONL persistence |
 | `persistSession` | `boolean` | Disable persistence explicitly |
 | `durableEventStore` | `DurableEventStore` | Opt-in durable execution journal |
+| `executionLease` | `DurableExecutionLeaseOptions` | Opt-in worker ownership, heartbeat, and fencing |
 | `outputFormat` | `OutputFormat` | Structured output schema |
 | `sandbox` | `SandboxSettings` | Bash sandbox settings |
 | `observability` | `ObservabilityOptions` | Trace collection |
@@ -656,6 +743,7 @@ interface ISession extends AsyncDisposable {
   getTraces(): AgentTrace[];
   getDurableProjection(): DurableSessionProjection | null;
   getDurableRecoveryPlan(): DurableSessionRecoveryPlan | null;
+  getExecutionLease(): DurableExecutionLeaseSnapshot | null;
   subscribeDurableEvents(
     options?: DurableEventSubscriptionOptions,
   ): Promise<DurableEventSubscription>;

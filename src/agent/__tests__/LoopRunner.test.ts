@@ -10,6 +10,7 @@ import type { RuntimeContextPatch } from '../../runtime/RuntimeContextPatch.js';
 import type { RuntimePatch } from '../../runtime/RuntimePatch.js';
 import type { Message } from '../../services/ChatServiceInterface.js';
 import { ActiveRequestController } from '../../session/ActiveRequestController.js';
+import { DurableExecutionLeaseError } from '../../session/events/DurableExecutionLeaseStore.js';
 import { SessionInputInbox } from '../../session/SessionInputInbox.js';
 import { JsonlSessionStore } from '../../session/SessionStore.js';
 import { ToolCatalog } from '../../tools/catalog/ToolCatalog.js';
@@ -245,6 +246,63 @@ describe('LoopRunner', () => {
       await runner.runLoop('Test message', context);
 
       expect(mm._contextMgr.saveMessage).toHaveBeenCalled();
+    });
+
+    it('fences the initial transcript write before model execution', async () => {
+      const mm = createMockModelManager();
+      const pipeline = createMockPipeline();
+      const runner = new LoopRunner(baseConfig, baseOptions, mm, pipeline);
+      const leaseError = Object.assign(new Error('execution lease lost'), {
+        code: 'DURABLE_EXECUTION_LEASE_LOST',
+      });
+      const runWithExecutionLease = vi.fn(async () => {
+        throw leaseError;
+      });
+
+      await expect(
+        runner.runLoop(
+          'Test message',
+          createContext({ runWithExecutionLease }),
+        ),
+      ).rejects.toBe(leaseError);
+
+      expect(runWithExecutionLease).toHaveBeenCalledOnce();
+      expect(mm._contextMgr.saveMessage).not.toHaveBeenCalled();
+      expect(mm._chat).not.toHaveBeenCalled();
+    });
+
+    it('propagates execution lease loss from progress persistence', async () => {
+      const mm = createMockModelManager();
+      mm._chat
+        .mockResolvedValueOnce({
+          content: '',
+          toolCalls: [{
+            id: 'lease-progress-tool',
+            type: 'function',
+            function: { name: 'Read', arguments: '{}' },
+          }],
+          usage: { promptTokens: 10, completionTokens: 5, totalTokens: 15 },
+        })
+        .mockResolvedValueOnce({
+          content: 'unexpected',
+          toolCalls: [],
+          usage: { promptTokens: 10, completionTokens: 5, totalTokens: 15 },
+        });
+      const pipeline = createMockPipeline();
+      const runner = new LoopRunner(baseConfig, baseOptions, mm, pipeline);
+      const leaseError = new DurableExecutionLeaseError(
+        'DURABLE_EXECUTION_LEASE_LOST',
+        'worker is stale',
+      );
+
+      await expect(
+        runner.runLoop('Run a tool', createContext(), {
+          onProgress: async () => {
+            throw leaseError;
+          },
+        }),
+      ).rejects.toBe(leaseError);
+      expect(mm._chat).toHaveBeenCalledOnce();
     });
 
     it('persists streaming tool turns in provider-compatible order', async () => {

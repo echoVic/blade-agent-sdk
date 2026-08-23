@@ -15,6 +15,9 @@ export type ModelAttemptId = Brand<string, 'ModelAttemptId'>;
 export type ToolAttemptId = Brand<string, 'ToolAttemptId'>;
 export type CommandId = Brand<string, 'CommandId'>;
 export type PermissionRequestId = Brand<string, 'PermissionRequestId'>;
+export type WorkerId = Brand<string, 'WorkerId'>;
+export type ExecutionLeaseId = Brand<string, 'ExecutionLeaseId'>;
+export type FencingToken = Brand<number, 'FencingToken'>;
 
 export const SessionId = (value: string): SessionId => value as SessionId;
 export const AgentId = (value: string): AgentId => value as AgentId;
@@ -30,3 +33,6 @@ export const ToolAttemptId = (value: string): ToolAttemptId => value as ToolAtte
 export const CommandId = (value: string): CommandId => value as CommandId;
 export const PermissionRequestId = (value: string): PermissionRequestId =>
   value as PermissionRequestId;
+export const WorkerId = (value: string): WorkerId => value as WorkerId;
+export const ExecutionLeaseId = (value: string): ExecutionLeaseId => value as ExecutionLeaseId;
+export const FencingToken = (value: number): FencingToken => value as FencingToken;

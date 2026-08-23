@@ -192,8 +192,8 @@ export type {
   ToolEffectYield,
   ToolError,
   ToolExecution,
-  ToolExecutionStartedLifecycle,
   ToolExecutionLifecycle,
+  ToolExecutionStartedLifecycle,
   ToolExposureConfig,
   ToolExposureMode,
   ToolInvocationLifecycle,
@@ -217,6 +217,8 @@ export {
   CommandId,
   EventId,
   EventSequence,
+  ExecutionLeaseId,
+  FencingToken,
   InputId,
   MessageId,
   ModelAttemptId,
@@ -226,6 +228,7 @@ export {
   ToolAttemptId,
   ToolUseId,
   TurnId,
+  WorkerId,
 } from './types/branded.js';
 // --- Constants & types ---
 export type {

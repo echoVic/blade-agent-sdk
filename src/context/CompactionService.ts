@@ -10,6 +10,7 @@ import {
     createChatServiceAsync,
     type Message,
 } from '../services/ChatServiceInterface.js';
+import { isExecutionLeaseFailure } from '../session/events/DurableExecutionLeaseStore.js';
 import { SessionId } from '../types/branded.js';
 import { PermissionMode, type ProviderType } from '../types/common.js';
 import { FileAnalyzer, type FileContent } from './FileAnalyzer.js';
@@ -46,6 +47,10 @@ export interface CompactionOptions {
   permissionMode?: PermissionMode;
   /** 当前 turn 的项目目录（用于 hooks） */
   projectDir?: string;
+  /** Cancels the compaction provider request with its owning execution. */
+  signal?: AbortSignal;
+  /** @internal Validates execution ownership around compaction side effects. */
+  assertExecutionLease?: () => Promise<void>;
 }
 
 /**
@@ -120,6 +125,8 @@ export async function compact(
   messages: Message[],
   options: CompactionOptions
 ): Promise<CompactionResult> {
+  options.signal?.throwIfAborted();
+  await options.assertExecutionLease?.();
   const preTokens =
     options.actualPreTokens ?? TokenCounter.countTokens(messages, options.modelName);
   const tokenSource = options.actualPreTokens
@@ -140,7 +147,10 @@ export async function compact(
       options.projectDir,
       options.sessionId || SessionId('unknown'),
       options.permissionMode || PermissionMode.DEFAULT,
+      options.signal,
     );
+    options.signal?.throwIfAborted();
+    await options.assertExecutionLease?.();
 
     if (preCompactResult.blockCompaction) {
       console.log(
@@ -168,7 +178,10 @@ export async function compact(
       permissionMode: options.permissionMode || PermissionMode.DEFAULT,
       messagesBefore: messages.length,
       tokensBefore: preTokens,
+      abortSignal: options.signal,
     });
+    options.signal?.throwIfAborted();
+    await options.assertExecutionLease?.();
 
     if (hookResult.blockCompaction) {
       console.log(
@@ -193,6 +206,9 @@ export async function compact(
       );
     }
     } catch (hookError) {
+      if (options.signal?.aborted || isExecutionLeaseFailure(hookError)) {
+        throw hookError;
+      }
       console.warn('[CompactionService] Compaction hook execution failed:', hookError);
     }
   }
@@ -208,7 +224,11 @@ export async function compact(
     const fileContents = await FileAnalyzer.readFilesContent(filePaths);
     console.log('[CompactionService] 成功读取文件:', fileContents.length);
 
+    options.signal?.throwIfAborted();
+    await options.assertExecutionLease?.();
     const summary = await generateSummary(messages, fileContents, options);
+    options.signal?.throwIfAborted();
+    await options.assertExecutionLease?.();
     console.log('[CompactionService] 生成总结，长度:', summary.length);
 
     const retainCount = Math.ceil(messages.length * RETAIN_PERCENT);
@@ -241,6 +261,8 @@ export async function compact(
 
     if (options.projectDir) {
       try {
+        options.signal?.throwIfAborted();
+        await options.assertExecutionLease?.();
         const postHookManager = HookManager.getInstance();
         const postHookResult = await postHookManager.executePostCompactHooks(
           {
@@ -254,15 +276,22 @@ export async function compact(
           options.projectDir,
           options.sessionId || SessionId('unknown'),
           options.permissionMode || PermissionMode.DEFAULT,
+          options.signal,
         );
+        options.signal?.throwIfAborted();
+        await options.assertExecutionLease?.();
         if (postHookResult.warning) {
           console.warn(`[CompactionService] PostCompact hook warning: ${postHookResult.warning}`);
         }
       } catch (hookError) {
+        if (options.signal?.aborted || isExecutionLeaseFailure(hookError)) {
+          throw hookError;
+        }
         console.warn('[CompactionService] PostCompact hook execution failed:', hookError);
       }
     }
 
+    options.signal?.throwIfAborted();
     return {
       success: true,
       summary,
@@ -274,6 +303,10 @@ export async function compact(
       summaryMessage,
     };
   } catch (error) {
+    options.signal?.throwIfAborted();
+    if (isExecutionLeaseFailure(error)) {
+      throw error;
+    }
     console.error('[CompactionService] 压缩失败，使用降级策略', error);
     return fallbackCompact(messages, options, preTokens, error);
   }
@@ -317,7 +350,8 @@ async function generateSummary(
   }, NOOP_LOGGER);
 
   const response = await chatService.sideQuery(
-    [{ role: 'user', content: prompt }]
+    [{ role: 'user', content: prompt }],
+    options.signal,
   );
 
   const content = response.content || '';

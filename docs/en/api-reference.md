@@ -55,6 +55,9 @@ Constants:
 - `ModelAttemptId`
 - `ToolAttemptId`
 - `PermissionRequestId`
+- `WorkerId`
+- `ExecutionLeaseId`
+- `FencingToken`
 - `AgentId`
 - `MessageId`
 - `ToolUseId`
@@ -65,6 +68,11 @@ These ID exports are branded identifiers, not arbitrary strings.
 
 Runtime:
 
+- `DurableExecutionLease`
+- `DurableExecutionLeaseError`
+- `executionFence`
+- `isDurableExecutionLeaseStore`
+- `DURABLE_EXECUTION_LEASE_FORMAT`
 - `JsonlDurableEventStore`
 - `DurableEventSubscription`
 - `durableEventCursor`
@@ -85,6 +93,11 @@ Runtime:
 
 Types and errors:
 
+- `DurableExecutionLeaseOptions`
+- `DurableExecutionLeaseStore`
+- `DurableExecutionLeaseSnapshot`
+- `DurableExecutionFence`
+- `DurableExecutionLeaseErrorCode`
 - `DurableEventStore`
 - `JsonlDurableEventStoreOptions`
 - `DurableEventCursor`

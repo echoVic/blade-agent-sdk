@@ -4,7 +4,9 @@ import { getBuiltinTools } from '../../index.js';
 import type { ChatContext, LoopOptions } from '../../../../agent/types.js';
 import { AgentSessionStore } from '../../../../agent/subagents/AgentSessionStore.js';
 import { BackgroundAgentManager } from '../../../../agent/subagents/BackgroundAgentManager.js';
+import { SubagentRegistry } from '../../../../agent/subagents/SubagentRegistry.js';
 import { AgentId, SessionId } from '../../../../types/branded.js';
+import { DurableExecutionLeaseError } from '../../../../session/events/DurableExecutionLeaseStore.js';
 import {
   collectToolExecution,
   type ExecutionContext,
@@ -14,6 +16,7 @@ import { createTaskCreateTool } from '../taskCreate.js';
 import { createTaskGetTool } from '../taskGet.js';
 import { createTaskListTool } from '../taskList.js';
 import { createTaskStopTool } from '../taskStop.js';
+import { createTaskTool } from '../task.js';
 import { createTaskUpdateTool } from '../taskUpdate.js';
 
 const { runAgenticLoop, createAgent } = vi.hoisted(() => ({
@@ -229,7 +232,7 @@ describe('task tools', () => {
         }),
     );
 
-    const agentId = AgentId(manager.startBackgroundAgent({
+    const agentId = AgentId(await manager.startBackgroundAgent({
       config: subagentConfig,
       bladeConfig,
       description: 'Inspect repository',
@@ -267,7 +270,7 @@ describe('task tools', () => {
     const stopTool = createTaskStopTool({ sessionId: SessionId(`factory-${Date.now()}`) });
     const fakeManager = {
       getAgent: vi.fn(() => ({ id: AgentId('agent-1'), status: 'running' })),
-      killAgent: vi.fn(() => true),
+      killAgent: vi.fn(async () => true),
     };
 
     const stopped = await executeWithContext(
@@ -282,5 +285,65 @@ describe('task tools', () => {
     expect(stopped.status).toBe('success');
     expect(fakeManager.getAgent).toHaveBeenCalledWith('agent-1');
     expect(fakeManager.killAgent).toHaveBeenCalledWith('agent-1');
+  });
+
+  it('reports an error when a running agent belongs to another execution', async () => {
+    const stopTool = createTaskStopTool({ sessionId: SessionId(`factory-${Date.now()}`) });
+    const session = {
+      id: AgentId('agent-owned-elsewhere'),
+      status: 'running',
+    };
+    const fakeManager = {
+      getAgent: vi.fn(() => session),
+      killAgent: vi.fn(async () => false),
+    };
+
+    const stopped = await executeWithContext(
+      stopTool,
+      { taskId: session.id },
+      {
+        sessionId: SessionId(`runtime-${Date.now()}`),
+        backgroundAgentManager: fakeManager,
+      } as never,
+    );
+
+    expect(stopped).toMatchObject({
+      status: 'error',
+      metadata: {
+        stoppedBackgroundAgent: false,
+      },
+    });
+  });
+
+  it('propagates lease loss while starting a background agent', async () => {
+    const registry = new SubagentRegistry();
+    registry.register(subagentConfig);
+    const taskTool = createTaskTool({ registry });
+    const leaseError = new DurableExecutionLeaseError(
+      'DURABLE_EXECUTION_LEASE_LOST',
+      'worker is stale',
+    );
+    const fakeManager = {
+      startBackgroundAgent: vi.fn(async () => {
+        throw leaseError;
+      }),
+    };
+
+    await expect(
+      executeWithContext(
+        taskTool,
+        {
+          subagent_type: subagentConfig.name,
+          description: 'Inspect repository',
+          prompt: 'inspect code',
+          run_in_background: true,
+        },
+        {
+          sessionId: SessionId('stale-task-session'),
+          bladeConfig,
+          backgroundAgentManager: fakeManager,
+        } as never,
+      ),
+    ).rejects.toBe(leaseError);
   });
 });

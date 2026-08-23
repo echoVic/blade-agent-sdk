@@ -1,45 +1,46 @@
 import type { HookRuntime } from '../../hooks/HookRuntime.js';
 import { type InternalLogger, LogCategory, NOOP_LOGGER } from '../../logging/Logger.js';
+import { isExecutionLeaseFailure } from '../../session/events/DurableExecutionLeaseStore.js';
 import { isSteeringInterruptSignal } from '../../types/abort.js';
 import {
-    type PermissionRequestId,
-    SessionId,
-    ToolUseId,
+  type PermissionRequestId,
+  SessionId,
+  ToolUseId,
 } from '../../types/branded.js';
 import { type JsonObject, PermissionMode, type PermissionsConfig } from '../../types/common.js';
 import {
-    type CanUseTool,
-    type PermissionResult as CanUseToolResult,
-    createModePermissionHandler,
-    createPathSafetyPermissionHandler,
-    createPermissionHandlerFromCanUseTool,
-    createRuleBasedPermissionHandler,
-    type PermissionHandler,
-    type PermissionHandlerRequest,
-    type PermissionUpdate,
+  type CanUseTool,
+  type PermissionResult as CanUseToolResult,
+  createModePermissionHandler,
+  createPathSafetyPermissionHandler,
+  createPermissionHandlerFromCanUseTool,
+  createRuleBasedPermissionHandler,
+  type PermissionHandler,
+  type PermissionHandlerRequest,
+  type PermissionUpdate,
 } from '../../types/permissions.js';
 import { getErrorMessage, getErrorName } from '../../utils/errorUtils.js';
 import type { ToolCatalog } from '../catalog/ToolCatalog.js';
 import type { ToolRegistry } from '../registry/ToolRegistry.js';
 import type {
-    ConfirmationDetails,
-    ExecutionContext,
-    ExecutionHistoryEntry,
-    ToolExecution,
-    ToolResult,
-    ToolYield,
+  ConfirmationDetails,
+  ExecutionContext,
+  ExecutionHistoryEntry,
+  ToolExecution,
+  ToolResult,
+  ToolYield,
 } from '../types/index.js';
 import { normalizePermissionEffects } from '../types/index.js';
 import type { Tool, ToolInvocation } from '../types/ToolDefinition.js';
 import {
-    isReadOnlyKind,
-    resolveToolBehaviorSafely,
-    type ToolBehavior,
-    ToolKind,
+  isReadOnlyKind,
+  resolveToolBehaviorSafely,
+  type ToolBehavior,
+  ToolKind,
 } from '../types/ToolKind.js';
 import {
-    ToolErrorType,
-    validationErrorToToolResult,
+  ToolErrorType,
+  validationErrorToToolResult,
 } from '../types/ToolResult.js';
 import { type ConcurrencyLimits, ConcurrencyScheduler } from './ConcurrencyScheduler.js';
 import { DenialTracker } from './DenialTracker.js';
@@ -193,6 +194,8 @@ export class ExecutionPipeline {
       interrupted: false,
     };
 
+    await state.context.assertExecutionLease?.();
+
     // 检查工具是否需要文件锁
     const resolvedBehavior = resolveToolBehaviorSafely(tool, nextParams);
     const filePath =
@@ -212,6 +215,7 @@ export class ExecutionPipeline {
       fileLease = filePath
         ? await FileLockManager.getInstance(this.logger).acquire(filePath, lockMode)
         : undefined;
+      await state.context.assertExecutionLease?.();
       return yield* this.executeWithPipeline(state, executionId, startTime);
     } finally {
       fileLease?.release();
@@ -249,6 +253,7 @@ export class ExecutionPipeline {
       if (!state.result) {
         yield* this.executeInvocation(state);
       }
+      await state.context.assertExecutionLease?.();
 
       let result = await this.normalizeExecutionResult(state);
       result = await this.applyPostExecutionHooks(
@@ -274,6 +279,9 @@ export class ExecutionPipeline {
 
       return result;
     } catch (error) {
+      if (isExecutionLeaseFailure(error)) {
+        throw error;
+      }
       const endTime = Date.now();
       const errorMsg = getErrorMessage(error);
       const isTimeout =
@@ -554,6 +562,7 @@ export class ExecutionPipeline {
       input: structuredClone(state.params),
       sideEffect: state.resolvedBehavior?.sideEffect ?? state.tool.sideEffect,
     });
+    await state.context.assertExecutionLease?.();
     if (state.context.signal?.aborted) {
       state.result = this.createAbortedResult('Task was aborted before tool execution');
       return;

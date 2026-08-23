@@ -1,5 +1,9 @@
 import { type InternalLogger, LogCategory, NOOP_LOGGER } from '../../logging/Logger.js';
 import type { ContextSnapshot } from '../../runtime/index.js';
+import {
+  type DurableExecutionFence,
+  isExecutionLeaseFailure,
+} from '../../session/events/DurableExecutionLeaseStore.js';
 import type { ToolCatalog } from '../../tools/catalog/index.js';
 import type { ExecutionPipeline } from '../../tools/execution/ExecutionPipeline.js';
 import type { ToolRegistry } from '../../tools/registry/ToolRegistry.js';
@@ -80,6 +84,9 @@ export interface ToolExecutionContext {
   confirmationHandler?: ConfirmationHandler;
   bladeConfig?: BladeConfig;
   backgroundAgentManager?: IBackgroundAgentManager;
+  executionFence?: DurableExecutionFence;
+  assertExecutionLease?: () => Promise<void>;
+  runWithExecutionLease?: <T>(operation: () => Promise<T>) => Promise<T>;
   toolCatalog?: ToolCatalog;
   toolRegistry?: ToolRegistry;
   discoveredTools?: string[];
@@ -207,6 +214,9 @@ export async function runToolCall(input: RunToolCallInput): Promise<ToolExecutio
         confirmationHandler: input.executionContext.confirmationHandler,
         bladeConfig: input.executionContext.bladeConfig,
         backgroundAgentManager: input.executionContext.backgroundAgentManager,
+        executionFence: input.executionContext.executionFence,
+        assertExecutionLease: input.executionContext.assertExecutionLease,
+        runWithExecutionLease: input.executionContext.runWithExecutionLease,
         toolCatalog: input.executionContext.toolCatalog,
         toolRegistry: input.executionContext.toolRegistry,
         discoveredTools: input.executionContext.discoveredTools,
@@ -254,6 +264,9 @@ export async function runToolCall(input: RunToolCallInput): Promise<ToolExecutio
 
     outcome = { toolCall: input.toolCall, result, effects, toolUseUuid };
   } catch (error) {
+    if (isExecutionLeaseFailure(error)) {
+      throw error;
+    }
     logger.error(`Tool execution failed for ${input.toolCall.function.name}:`, error);
     outcome = buildFailedOutcome(input.toolCall, error, interruptBehavior, input.steeringSignal);
   }

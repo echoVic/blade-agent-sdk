@@ -34,6 +34,7 @@ describe('CompactionService', () => {
 
   it('uses the native openai provider for official OpenAI compaction requests', async () => {
     const messages: Message[] = [{ role: 'user', content: 'hello' }];
+    const controller = new AbortController();
 
     await compact(messages, {
       trigger: 'manual',
@@ -41,6 +42,7 @@ describe('CompactionService', () => {
       maxContextTokens: 128000,
       apiKey: 'test-key',
       baseURL: 'https://api.openai.com/v1',
+      signal: controller.signal,
     });
 
     expect(mockCreateChatServiceAsync).toHaveBeenCalledWith(
@@ -51,8 +53,31 @@ describe('CompactionService', () => {
       }),
       expect.anything(),
     );
-    expect(mockSideQuery).toHaveBeenCalledTimes(1);
+    expect(mockSideQuery).toHaveBeenCalledWith(
+      expect.anything(),
+      controller.signal,
+    );
     expect(mockChat).not.toHaveBeenCalled();
+  });
+
+  it('does not convert an aborted provider request into fallback compaction', async () => {
+    const controller = new AbortController();
+    const abortError = new Error('execution ownership lost');
+    mockSideQuery.mockImplementationOnce(async () => {
+      controller.abort(abortError);
+      throw abortError;
+    });
+
+    await expect(
+      compact([{ role: 'user', content: 'hello' }], {
+        trigger: 'auto',
+        modelName: 'gpt-5',
+        maxContextTokens: 128000,
+        apiKey: 'test-key',
+        baseURL: 'https://api.openai.com/v1',
+        signal: controller.signal,
+      }),
+    ).rejects.toBe(abortError);
   });
 
   it('retainRecentMessages drops orphan tool results outside the retained window', () => {

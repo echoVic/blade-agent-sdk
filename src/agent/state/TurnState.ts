@@ -1,6 +1,7 @@
 import type { JSONSchema7 } from 'json-schema';
 import type { ContextSnapshot } from '../../runtime/index.js';
 import type { IChatService, Message } from '../../services/ChatServiceInterface.js';
+import type { DurableExecutionFence } from '../../session/events/DurableExecutionLeaseStore.js';
 import type { ToolCatalog } from '../../tools/catalog/index.js';
 import type { ToolRegistry } from '../../tools/registry/ToolRegistry.js';
 import type {
@@ -34,6 +35,9 @@ export interface LoopExecutionContext {
   confirmationHandler?: ConfirmationHandler;
   bladeConfig?: BladeConfig;
   backgroundAgentManager?: IBackgroundAgentManager;
+  executionFence?: DurableExecutionFence;
+  assertExecutionLease?: () => Promise<void>;
+  runWithExecutionLease?: <T>(operation: () => Promise<T>) => Promise<T>;
   toolRegistry?: ToolRegistry;
   toolCatalog?: ToolCatalog;
   discoveredTools?: string[];

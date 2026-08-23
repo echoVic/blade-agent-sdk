@@ -8,11 +8,20 @@
  */
 
 import fs from 'node:fs';
+import { unlink } from 'node:fs/promises';
 import path from 'node:path';
+import writeFileAtomic from 'write-file-atomic';
 import { type InternalLogger, LogCategory, NOOP_LOGGER } from '../../logging/Logger.js';
 import type { Message } from '../../services/ChatServiceInterface.js';
+import type { DurableExecutionFence } from '../../session/events/DurableExecutionLeaseStore.js';
 import { AgentId } from '../../types/branded.js';
+import {
+  syncParentDirectory,
+  withAdvisoryFileLock,
+} from '../../utils/advisoryFileLock.js';
 import type { AgentProgress } from '../types.js';
+
+const AGENT_SESSION_LOCK_TIMEOUT_MS = 10_000;
 
 /**
  * Agent 会话状态
@@ -72,6 +81,9 @@ export interface AgentSession {
 
   /** 运行时进度（仅在 status === 'running' 时持续更新） */
   progress?: AgentProgress;
+
+  /** Root Session ownership that is allowed to mutate this execution. */
+  executionFence?: DurableExecutionFence;
 }
 
 /**
@@ -134,19 +146,44 @@ export class AgentSessionStore {
   /**
    * 保存会话
    */
-  saveSession(session: AgentSession): void {
-    // 更新缓存
-    this.cache.set(session.id, session);
+  async saveSession(session: AgentSession): Promise<boolean> {
+    return this.runWithSessionLock(session.id, 'write', async () => {
+      const current = this.loadSessionFromDisk(session.id);
+      if (
+        current &&
+        !this.canReplaceExecution(current.executionFence, session.executionFence)
+      ) {
+        return false;
+      }
 
+      await this.writeSession(session);
+      return true;
+    });
+  }
+
+  private async writeSession(session: AgentSession): Promise<void> {
     const filePath = this.getSessionPath(session.id);
-    if (!filePath) return;
+    if (!filePath) {
+      this.cache.set(session.id, session);
+      return;
+    }
 
     try {
       const data = JSON.stringify(session, null, 2);
-      fs.writeFileSync(filePath, data, 'utf-8');
+      const created = !fs.existsSync(filePath);
+      await writeFileAtomic(filePath, data, {
+        encoding: 'utf8',
+        fsync: true,
+        mode: 0o600,
+      });
+      if (created) {
+        await syncParentDirectory(filePath);
+      }
+      this.cache.set(session.id, session);
       this.logger.debug(`Session saved: ${session.id}`);
     } catch (error) {
       this.logger.warn(`Failed to save session ${session.id}:`, error);
+      throw error;
     }
   }
 
@@ -154,14 +191,18 @@ export class AgentSessionStore {
    * 加载会话
    */
   loadSession(agentId: AgentId): AgentSession | undefined {
-    // 先检查缓存
-    if (this.cache.has(agentId)) {
+    if (!this.sessionsDir && this.cache.has(agentId)) {
       return this.cache.get(agentId);
     }
 
-    const filePath = this.getSessionPath(agentId);
-    if (!filePath) return undefined;
+    return this.loadSessionFromDisk(agentId);
+  }
 
+  private loadSessionFromDisk(agentId: AgentId): AgentSession | undefined {
+    const filePath = this.getSessionPath(agentId);
+    if (!filePath) {
+      return this.cache.get(agentId);
+    }
     try {
       if (!fs.existsSync(filePath)) {
         return undefined;
@@ -183,29 +224,40 @@ export class AgentSessionStore {
   /**
    * 更新会话状态
    */
-  updateSession(
+  async updateSession(
     agentId: AgentId,
-    updates: Partial<AgentSession>
-  ): AgentSession | undefined {
-    const session = this.loadSession(agentId);
-    if (!session) {
-      return undefined;
-    }
+    updates: Partial<AgentSession>,
+    expectedExecutionFence?: DurableExecutionFence,
+  ): Promise<AgentSession | undefined> {
+    return this.runWithSessionLock(agentId, 'write', async () => {
+      const session = this.loadSessionFromDisk(agentId);
+      if (
+        !session ||
+        !this.sameExecutionFence(session.executionFence, expectedExecutionFence)
+      ) {
+        return undefined;
+      }
 
-    const updatedSession: AgentSession = {
-      ...session,
-      ...updates,
-      lastActiveAt: Date.now(),
-    };
+      const updatedSession: AgentSession = {
+        ...session,
+        ...updates,
+        executionFence: session.executionFence,
+        lastActiveAt: Date.now(),
+      };
 
-    this.saveSession(updatedSession);
-    return updatedSession;
+      await this.writeSession(updatedSession);
+      return updatedSession;
+    });
   }
 
   /**
    * 追加消息到会话
    */
-  appendMessages(agentId: AgentId, messages: Message[]): AgentSession | undefined {
+  async appendMessages(
+    agentId: AgentId,
+    messages: Message[],
+    expectedExecutionFence?: DurableExecutionFence,
+  ): Promise<AgentSession | undefined> {
     const session = this.loadSession(agentId);
     if (!session) {
       return undefined;
@@ -213,69 +265,93 @@ export class AgentSessionStore {
 
     return this.updateSession(agentId, {
       messages: [...session.messages, ...messages],
-    });
+    }, expectedExecutionFence);
   }
 
   /**
    * 更新运行中会话的可变字段（消息、进度）。
    * 仅允许在 status === 'running' 时更新，避免终端状态后写入陈旧数据。
    */
-  updateRunningSession(
+  async updateRunningSession(
     agentId: AgentId,
     updates: { messages?: Message[]; progress?: AgentProgress },
-  ): AgentSession | undefined {
-    const session = this.loadSession(agentId);
-    if (!session || session.status !== 'running') {
-      return undefined;
-    }
-    return this.updateSession(agentId, updates);
+    expectedExecutionFence?: DurableExecutionFence,
+  ): Promise<AgentSession | undefined> {
+    return this.runWithSessionLock(agentId, 'write', async () => {
+      const session = this.loadSessionFromDisk(agentId);
+      if (
+        !session ||
+        session.status !== 'running' ||
+        !this.sameExecutionFence(session.executionFence, expectedExecutionFence)
+      ) {
+        return undefined;
+      }
+      const updatedSession: AgentSession = {
+        ...session,
+        ...updates,
+        executionFence: session.executionFence,
+        lastActiveAt: Date.now(),
+      };
+      await this.writeSession(updatedSession);
+      return updatedSession;
+    });
   }
 
   /**
    * 标记会话完成（成功或失败）。
    */
-  markCompleted(
+  async markCompleted(
     agentId: AgentId,
     result: { success: boolean; message: string; error?: string },
-    stats?: AgentSession['stats']
-  ): AgentSession | undefined {
+    stats?: AgentSession['stats'],
+    expectedExecutionFence?: DurableExecutionFence,
+  ): Promise<AgentSession | undefined> {
     return this.updateSession(agentId, {
       status: result.success ? 'completed' : 'failed',
       result,
       stats,
       completedAt: Date.now(),
       progress: undefined,
-    });
+    }, expectedExecutionFence);
   }
 
   /**
    * 标记会话已取消。
    */
-  markCancelled(
+  async markCancelled(
     agentId: AgentId,
     result?: { success: false; message: string; error?: string },
     stats?: AgentSession['stats'],
-  ): AgentSession | undefined {
+    expectedExecutionFence?: DurableExecutionFence,
+  ): Promise<AgentSession | undefined> {
     return this.updateSession(agentId, {
       status: 'cancelled',
       result: result ?? { success: false, message: '' },
       stats,
       completedAt: Date.now(),
       progress: undefined,
-    });
+    }, expectedExecutionFence);
   }
 
   /**
    * 删除会话
    */
-  deleteSession(agentId: AgentId): boolean {
+  async deleteSession(
+    agentId: AgentId,
+    expectedExecutionFence?: DurableExecutionFence,
+  ): Promise<boolean> {
     try {
-      const filePath = this.getSessionPath(agentId);
-      if (filePath && fs.existsSync(filePath)) {
-        fs.unlinkSync(filePath);
-      }
-      this.cache.delete(agentId);
-      return true;
+      return await this.runWithSessionLock(agentId, 'write', async () => {
+        const session = this.loadSessionFromDisk(agentId);
+        if (
+          session &&
+          !this.sameExecutionFence(session.executionFence, expectedExecutionFence)
+        ) {
+          return false;
+        }
+        await this.deleteSessionFile(agentId);
+        return true;
+      });
     } catch (error) {
       this.logger.warn(`Failed to delete session ${agentId}:`, error);
       return false;
@@ -324,7 +400,9 @@ export class AgentSessionStore {
    * 清理过期会话
    * @param maxAgeMs 最大保留时间（毫秒），默认 7 天
    */
-  cleanupExpiredSessions(maxAgeMs: number = 7 * 24 * 60 * 60 * 1000): number {
+  async cleanupExpiredSessions(
+    maxAgeMs: number = 7 * 24 * 60 * 60 * 1000,
+  ): Promise<number> {
     const now = Date.now();
     const sessions = this.listSessions();
     let cleaned = 0;
@@ -335,7 +413,7 @@ export class AgentSessionStore {
 
       const age = now - session.lastActiveAt;
       if (age > maxAgeMs) {
-        if (this.deleteSession(session.id)) {
+        if (await this.deleteTerminalSession(session.id)) {
           cleaned++;
         }
       }
@@ -353,5 +431,105 @@ export class AgentSessionStore {
    */
   clearCache(): void {
     this.cache.clear();
+  }
+
+  private async deleteTerminalSession(agentId: AgentId): Promise<boolean> {
+    return this.runWithSessionLock(agentId, 'write', async () => {
+      const session = this.loadSessionFromDisk(agentId);
+      if (!session || session.status === 'running') {
+        return false;
+      }
+      await this.deleteSessionFile(agentId);
+      return true;
+    });
+  }
+
+  private async deleteSessionFile(agentId: AgentId): Promise<void> {
+    const filePath = this.getSessionPath(agentId);
+    if (filePath) {
+      try {
+        await unlink(filePath);
+      } catch (error) {
+        if (
+          !(
+            typeof error === 'object' &&
+            error !== null &&
+            'code' in error &&
+            error.code === 'ENOENT'
+          )
+        ) {
+          throw error;
+        }
+      }
+    }
+    this.cache.delete(agentId);
+  }
+
+  private runWithSessionLock<T>(
+    agentId: AgentId,
+    operation: 'read' | 'write',
+    callback: () => Promise<T>,
+  ): Promise<T> {
+    const filePath = this.getSessionPath(agentId);
+    if (!filePath) {
+      return callback();
+    }
+    return withAdvisoryFileLock(
+      filePath,
+      {
+        timeoutMs: AGENT_SESSION_LOCK_TIMEOUT_MS,
+        errors: {
+          prepare: (cause) => this.storageError(agentId, operation, cause),
+          initialize: (cause) => this.storageError(agentId, operation, cause),
+          acquire: (cause) => this.storageError(agentId, operation, cause),
+          timeout: () =>
+            new Error(
+              `Timed out acquiring the background agent ${operation} lock for ${agentId}`,
+            ),
+          release: (cause) => this.storageError(agentId, operation, cause),
+        },
+      },
+      callback,
+    );
+  }
+
+  private storageError(
+    agentId: AgentId,
+    operation: 'read' | 'write',
+    cause: unknown,
+  ): Error {
+    return new Error(
+      `Failed to ${operation} background agent session ${agentId}`,
+      { cause },
+    );
+  }
+
+  private canReplaceExecution(
+    current: DurableExecutionFence | undefined,
+    next: DurableExecutionFence | undefined,
+  ): boolean {
+    if (!current) {
+      return true;
+    }
+    if (!next) {
+      return false;
+    }
+    if (this.sameExecutionFence(current, next)) {
+      return true;
+    }
+    return next.fencingToken > current.fencingToken;
+  }
+
+  private sameExecutionFence(
+    left: DurableExecutionFence | undefined,
+    right: DurableExecutionFence | undefined,
+  ): boolean {
+    if (!left || !right) {
+      return left === right;
+    }
+    return (
+      left.leaseId === right.leaseId &&
+      left.fencingToken === right.fencingToken
+    );
   }
 }

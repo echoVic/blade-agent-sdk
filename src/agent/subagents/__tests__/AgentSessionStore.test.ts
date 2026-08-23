@@ -3,7 +3,11 @@ import { access, mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { AgentId } from '../../../types/branded.js';
+import {
+  AgentId,
+  ExecutionLeaseId,
+  FencingToken,
+} from '../../../types/branded.js';
 import { type AgentSession, AgentSessionStore } from '../AgentSessionStore.js';
 
 const tempDirs: string[] = [];
@@ -45,7 +49,7 @@ describe('AgentSessionStore', () => {
     const fakeHome = await createTempDir('blade-agent-home-');
 
     const store = AgentSessionStore.create();
-    store.saveSession(createSession('agent-memory'));
+    await store.saveSession(createSession('agent-memory'));
 
     expect(store.loadSession(AgentId('agent-memory'))?.id).toBe('agent-memory');
     expect(store.listSessions().map((session) => session.id)).toEqual(['agent-memory']);
@@ -56,13 +60,105 @@ describe('AgentSessionStore', () => {
     const storageRoot = await createTempDir('blade-agent-storage-');
 
     const store = AgentSessionStore.create(storageRoot);
-    store.saveSession(createSession('agent/unsafe:id'));
+    await store.saveSession(createSession('agent/unsafe:id'));
 
     const sessionPath = join(storageRoot, 'agents', 'sessions', 'agent_unsafe_id.json');
     expect(await pathExists(sessionPath)).toBe(true);
     expect(JSON.parse(await readFile(sessionPath, 'utf8'))).toMatchObject({
       id: 'agent/unsafe:id',
       subagentType: 'research',
+    });
+  });
+
+  it('rejects stale subagent writers after a fencing-token takeover', async () => {
+    const storageRoot = await createTempDir('blade-agent-fenced-storage-');
+    const store = AgentSessionStore.create(storageRoot);
+    const agentId = AgentId('agent-fenced');
+    const staleFence = {
+      leaseId: ExecutionLeaseId('lease-stale'),
+      fencingToken: FencingToken(1),
+    };
+    const successorFence = {
+      leaseId: ExecutionLeaseId('lease-successor'),
+      fencingToken: FencingToken(2),
+    };
+
+    await expect(store.saveSession({
+      ...createSession(agentId),
+      executionFence: staleFence,
+    })).resolves.toBe(true);
+    await expect(store.saveSession({
+      ...createSession(agentId),
+      description: 'Successor execution',
+      executionFence: successorFence,
+    })).resolves.toBe(true);
+
+    await expect(
+      store.markCancelled(agentId, undefined, undefined, staleFence),
+    ).resolves.toBeUndefined();
+    await expect(store.saveSession({
+      ...createSession(agentId),
+      description: 'Stale replacement',
+      executionFence: staleFence,
+    })).resolves.toBe(false);
+    expect(store.loadSession(agentId)).toMatchObject({
+      description: 'Successor execution',
+      status: 'running',
+      executionFence: successorFence,
+    });
+    await expect(store.deleteSession(agentId)).resolves.toBe(false);
+
+    await expect(
+      store.markCompleted(
+        agentId,
+        { success: true, message: 'done' },
+        undefined,
+        successorFence,
+      ),
+    ).resolves.toMatchObject({ status: 'completed' });
+    await new Promise<void>((resolve) => setTimeout(resolve, 2));
+    await expect(store.cleanupExpiredSessions(0)).resolves.toBe(1);
+    expect(store.loadSession(agentId)).toBeUndefined();
+  });
+
+  it('serializes fencing-token takeovers across Store instances', async () => {
+    const storageRoot = await createTempDir('blade-agent-fence-race-');
+    const firstStore = AgentSessionStore.create(storageRoot);
+    const secondStore = AgentSessionStore.create(storageRoot);
+    const agentId = AgentId('agent-fence-race');
+    await firstStore.saveSession({
+      ...createSession(agentId),
+      executionFence: {
+        leaseId: ExecutionLeaseId('lease-1'),
+        fencingToken: FencingToken(1),
+      },
+    });
+
+    await Promise.all([
+      firstStore.saveSession({
+        ...createSession(agentId),
+        description: 'token 2',
+        executionFence: {
+          leaseId: ExecutionLeaseId('lease-2'),
+          fencingToken: FencingToken(2),
+        },
+      }),
+      secondStore.saveSession({
+        ...createSession(agentId),
+        description: 'token 3',
+        executionFence: {
+          leaseId: ExecutionLeaseId('lease-3'),
+          fencingToken: FencingToken(3),
+        },
+      }),
+    ]);
+
+    expect(firstStore.loadSession(agentId)).toMatchObject({
+      description: 'token 3',
+      executionFence: {
+        leaseId: 'lease-3',
+        fencingToken: 3,
+      },
     });
   });
 });

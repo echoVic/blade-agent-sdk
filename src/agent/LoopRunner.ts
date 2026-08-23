@@ -14,6 +14,10 @@ import type { HookRuntime } from '../hooks/HookRuntime.js';
 import { type InternalLogger, LogCategory, NOOP_LOGGER } from '../logging/Logger.js';
 import { buildSystemPrompt } from '../prompts/index.js';
 import type { Message } from '../services/ChatServiceInterface.js';
+import {
+  isExecutionLeaseFailure,
+  runWithExecutionLeaseBoundary,
+} from '../session/events/DurableExecutionLeaseStore.js';
 import type { SkillActivationContext } from '../skills/index.js';
 import { injectSkillsMetadata } from '../skills/index.js';
 import { ToolCatalog } from '../tools/catalog/index.js';
@@ -167,27 +171,47 @@ export class LoopRunner {
     let lastMessageUuid: string | null = null;
     const contextMgr = this.modelManager.getContextManager();
     if (contextMgr && context.sessionId && options?.inputApplication) {
+      const sessionId = context.sessionId;
+      const inputApplication = options.inputApplication;
       try {
-        lastMessageUuid = await contextMgr.saveAppliedInputMessage(
-          context.sessionId,
-          options.inputApplication.inputId,
-          options.inputApplication.requestId,
-          message,
-          null,
-          context.subagentInfo,
+        lastMessageUuid = await runWithExecutionLeaseBoundary(
+          context,
+          () => contextMgr.saveAppliedInputMessage(
+            sessionId,
+            inputApplication.inputId,
+            inputApplication.requestId,
+            message,
+            null,
+            context.subagentInfo,
+          ),
         );
       } catch (error) {
+        if (context.signal?.aborted || isExecutionLeaseFailure(error)) {
+          throw error;
+        }
         // 与其他消息写入保持一致的 best-effort 策略：持久化失败不应中断请求。
         this.logger.warn('[LoopRunner] 保存已应用输入消息失败:', error);
       }
     } else {
       try {
         if (contextMgr && context.sessionId && hasPersistableUserContent(message)) {
-          lastMessageUuid = await contextMgr.saveMessage(
-            context.sessionId, 'user', message, null, undefined, context.subagentInfo
+          const sessionId = context.sessionId;
+          lastMessageUuid = await runWithExecutionLeaseBoundary(
+            context,
+            () => contextMgr.saveMessage(
+              sessionId,
+              'user',
+              message,
+              null,
+              undefined,
+              context.subagentInfo,
+            ),
           );
         }
       } catch (error) {
+        if (context.signal?.aborted || isExecutionLeaseFailure(error)) {
+          throw error;
+        }
         this.logger.warn('[LoopRunner] 保存用户消息失败:', error);
       }
     }
@@ -237,6 +261,12 @@ export class LoopRunner {
       syncContextMessages(context, loopState.conversationState);
       return result;
     } catch (error) {
+      if (isExecutionLeaseFailure(error)) {
+        throw error;
+      }
+      if (isExecutionLeaseFailure(context.signal?.reason)) {
+        throw context.signal.reason;
+      }
       if (error instanceof Error &&
         (error.name === 'AbortError' || error.message.includes('aborted'))) {
         return {
@@ -375,6 +405,9 @@ export class LoopRunner {
         confirmationHandler: context.confirmationHandler,
         bladeConfig: this.config,
         backgroundAgentManager: context.backgroundAgentManager,
+        executionFence: context.executionFence,
+        assertExecutionLease: context.assertExecutionLease,
+        runWithExecutionLease: context.runWithExecutionLease,
         toolCatalog: catalog instanceof ToolCatalog
           ? catalog
           : undefined,

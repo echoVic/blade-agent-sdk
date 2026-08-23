@@ -99,6 +99,7 @@ export async function* runTurn(
     model: turnChatService.getConfig().model,
     streaming: streaming === true,
   });
+  await turnState.executionContext.assertExecutionLease?.();
 
   let settlementAttempted = false;
   const settleCompleted = async (response: ChatResponse): Promise<void> => {

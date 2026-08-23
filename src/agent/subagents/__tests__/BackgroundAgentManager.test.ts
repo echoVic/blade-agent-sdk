@@ -1,7 +1,14 @@
+import { access, readFile, rm } from 'node:fs/promises';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { NOOP_LOGGER } from '../../../logging/Logger.js';
 import { createContextSnapshot } from '../../../runtime/index.js';
-import { AgentId, SessionId } from '../../../types/branded.js';
+import { DurableExecutionLeaseError } from '../../../session/events/DurableExecutionLeaseStore.js';
+import {
+    AgentId,
+    ExecutionLeaseId,
+    FencingToken,
+    SessionId,
+} from '../../../types/branded.js';
 import type { ChatContext, LoopOptions } from '../../types.js';
 import { AgentSessionStore } from '../AgentSessionStore.js';
 
@@ -84,7 +91,7 @@ describe('BackgroundAgentManager', () => {
       },
     });
 
-    const agentId = AgentId(manager.startBackgroundAgent({
+    const agentId = AgentId(await manager.startBackgroundAgent({
       config: subagentConfig,
       bladeConfig,
       description: 'Inspect repo',
@@ -105,7 +112,7 @@ describe('BackgroundAgentManager', () => {
   });
 
   it('updates the session description when resuming with a new description', async () => {
-    const agentId = AgentId(manager.startBackgroundAgent({
+    const agentId = AgentId(await manager.startBackgroundAgent({
       config: subagentConfig,
       bladeConfig,
       description: 'Original description',
@@ -114,7 +121,7 @@ describe('BackgroundAgentManager', () => {
 
     await manager.waitForCompletion(agentId, 1000);
 
-    const resumedId = manager.resumeAgent(
+    const resumedId = await manager.resumeAgent(
       agentId,
       'follow up',
       subagentConfig,
@@ -152,7 +159,7 @@ describe('BackgroundAgentManager', () => {
         }),
     );
 
-    const agentId = AgentId(manager.startBackgroundAgent({
+    const agentId = AgentId(await manager.startBackgroundAgent({
       config: subagentConfig,
       bladeConfig,
       description: 'Long running task',
@@ -171,7 +178,8 @@ describe('BackgroundAgentManager', () => {
     expect(runtime?.workController).toBeInstanceOf(AbortController);
     expect(runtime?.lifecycleController).not.toBe(runtime?.workController);
 
-    manager.killAgent(agentId);
+    await vi.waitFor(() => expect(runAgenticLoop).toHaveBeenCalled());
+    await manager.killAgent(agentId);
 
     expect(runtime?.lifecycleController.signal.aborted).toBe(true);
     expect(runtime?.workController.signal.aborted).toBe(true);
@@ -199,14 +207,15 @@ describe('BackgroundAgentManager', () => {
         }),
     );
 
-    const agentId = AgentId(manager.startBackgroundAgent({
+    const agentId = AgentId(await manager.startBackgroundAgent({
       config: subagentConfig,
       bladeConfig,
       description: 'Long running task',
       prompt: 'inspect',
     }));
 
-    expect(manager.killAgent(agentId)).toBe(true);
+    await vi.waitFor(() => expect(runAgenticLoop).toHaveBeenCalled());
+    await expect(manager.killAgent(agentId)).resolves.toBe(true);
 
     const session = await manager.waitForCompletion(agentId, 1000);
     expect(session?.status).toBe('cancelled');
@@ -233,7 +242,7 @@ describe('BackgroundAgentManager', () => {
         }),
     );
 
-    const agentId = AgentId(manager.startBackgroundAgent({
+    const agentId = AgentId(await manager.startBackgroundAgent({
       config: subagentConfig,
       bladeConfig,
       description: 'Handoff blocker',
@@ -242,18 +251,195 @@ describe('BackgroundAgentManager', () => {
 
     expect(manager.getActiveAgentIds()).toEqual([agentId]);
     await vi.waitFor(() => expect(runAgenticLoop).toHaveBeenCalled());
-    expect(manager.killAgent(agentId)).toBe(true);
+    await expect(manager.killAgent(agentId)).resolves.toBe(true);
     await manager.waitForCompletion(agentId, 1000);
 
     expect(manager.getActiveAgentIds()).toEqual([]);
     manager.sealForHandoff();
-    expect(() =>
+    await expect(
       manager.startBackgroundAgent({
         config: subagentConfig,
         bladeConfig,
         description: 'Rejected after handoff seal',
         prompt: 'inspect',
       }),
-    ).toThrow('Background agent admission is closed for Session handoff');
+    ).rejects.toThrow('Background agent admission is closed for Session handoff');
+  });
+
+  it('seals admission and cancels every running agent after ownership loss', async () => {
+    runAgenticLoop.mockImplementationOnce(
+      async (
+        _message: string,
+        _context: ChatContext,
+        options?: LoopOptions,
+      ) =>
+        await new Promise((resolve) => {
+          options?.signal?.addEventListener(
+            'abort',
+            () =>
+              resolve({
+                success: false,
+                error: { message: 'ownership lost' },
+                metadata: { duration: 0 },
+              }),
+            { once: true },
+          );
+        }),
+    );
+    const agentId = AgentId(await manager.startBackgroundAgent({
+      config: subagentConfig,
+      bladeConfig,
+      description: 'Lease-owned work',
+      prompt: 'inspect',
+    }));
+    await vi.waitFor(() => expect(runAgenticLoop).toHaveBeenCalled());
+
+    await expect(manager.sealCancelAndWait()).resolves.toEqual([agentId]);
+    expect(manager.getAgent(agentId)?.status).toBe('cancelled');
+    expect(manager.getActiveAgentIds()).toEqual([]);
+    await expect(
+      manager.startBackgroundAgent({
+        config: subagentConfig,
+        bladeConfig,
+        description: 'Rejected after ownership loss',
+        prompt: 'inspect',
+      }),
+    ).rejects.toThrow('Background agent admission is closed');
+  });
+
+  it('fails cleanup closed when a background agent misses the shutdown deadline', async () => {
+    let finishExecution: (() => void) | undefined;
+    runAgenticLoop.mockImplementationOnce(async () => {
+      await new Promise<void>((resolve) => {
+        finishExecution = resolve;
+      });
+      return { success: false, error: { message: 'cancelled late' } };
+    });
+    const agentId = AgentId(await manager.startBackgroundAgent({
+      config: subagentConfig,
+      bladeConfig,
+      description: 'Unresponsive work',
+      prompt: 'inspect',
+    }));
+    await vi.waitFor(() => expect(runAgenticLoop).toHaveBeenCalled());
+
+    await expect(manager.sealCancelAndWait(10)).rejects.toThrow(
+      `Timed out waiting for background agents to stop: ${agentId}`,
+    );
+    expect(manager.getActiveAgentIds()).toEqual([agentId]);
+
+    finishExecution?.();
+    await manager.waitForCompletion(agentId, 0);
+  });
+
+  it('prevents a stale owner from overwriting successor state or output', async () => {
+    const store = AgentSessionStore.create();
+    const oldManager = BackgroundAgentManager.create(
+      NOOP_LOGGER,
+      store,
+      SessionId('root-session'),
+    );
+    const successorManager = BackgroundAgentManager.create(
+      NOOP_LOGGER,
+      store,
+      SessionId('root-session'),
+    );
+    const agentId = AgentId('shared-agent');
+    const staleFence = {
+      leaseId: ExecutionLeaseId('stale-lease'),
+      fencingToken: FencingToken(1),
+    };
+    const successorFence = {
+      leaseId: ExecutionLeaseId('successor-lease'),
+      fencingToken: FencingToken(2),
+    };
+    let activeToken = 1;
+    const boundary = (token: number) =>
+      async <T>(operation: () => Promise<T>): Promise<T> => {
+        if (activeToken !== token) {
+          throw new DurableExecutionLeaseError(
+            'DURABLE_EXECUTION_LEASE_LOST',
+            `Execution token ${token} is stale`,
+          );
+        }
+        return operation();
+      };
+    let finishOld: (() => void) | undefined;
+    let finishSuccessor: (() => void) | undefined;
+    runAgenticLoop
+      .mockImplementationOnce(async () => {
+        await new Promise<void>((resolve) => {
+          finishOld = resolve;
+        });
+        return { success: true, finalMessage: 'stale result' };
+      })
+      .mockImplementationOnce(async () => {
+        await new Promise<void>((resolve) => {
+          finishSuccessor = resolve;
+        });
+        return { success: true, finalMessage: 'successor result' };
+      });
+
+    await oldManager.startBackgroundAgent({
+      config: subagentConfig,
+      bladeConfig,
+      description: 'Stale execution',
+      prompt: 'inspect',
+      agentId,
+      executionFence: staleFence,
+      assertExecutionLease: async () => {
+        await boundary(1)(async () => {});
+      },
+      runWithExecutionLease: boundary(1),
+    });
+    await vi.waitFor(() => expect(runAgenticLoop).toHaveBeenCalledTimes(1));
+    const staleOutputFile = store.loadSession(agentId)?.outputFile;
+
+    activeToken = 2;
+    await successorManager.startBackgroundAgent({
+      config: subagentConfig,
+      bladeConfig,
+      description: 'Successor execution',
+      prompt: 'continue',
+      agentId,
+      executionFence: successorFence,
+      assertExecutionLease: async () => {
+        await boundary(2)(async () => {});
+      },
+      runWithExecutionLease: boundary(2),
+    });
+    await vi.waitFor(() => expect(runAgenticLoop).toHaveBeenCalledTimes(2));
+    const successorOutputFile = store.loadSession(agentId)?.outputFile;
+    expect(successorOutputFile).not.toBe(staleOutputFile);
+
+    finishOld?.();
+    await oldManager.waitForCompletion(agentId, 0);
+    expect(store.loadSession(agentId)).toMatchObject({
+      description: 'Successor execution',
+      status: 'running',
+      executionFence: successorFence,
+      outputFile: successorOutputFile,
+    });
+    if (staleOutputFile) {
+      await expect(access(staleOutputFile)).rejects.toThrow();
+    }
+
+    finishSuccessor?.();
+    await successorManager.waitForCompletion(agentId, 0);
+    expect(store.loadSession(agentId)).toMatchObject({
+      status: 'completed',
+      result: {
+        success: true,
+        message: 'successor result',
+      },
+      executionFence: successorFence,
+      outputFile: successorOutputFile,
+    });
+    if (successorOutputFile) {
+      await expect(readFile(successorOutputFile, 'utf8')).resolves.toContain(
+        'successor result',
+      );
+      await rm(successorOutputFile, { force: true });
+    }
   });
 });

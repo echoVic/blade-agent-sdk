@@ -18,6 +18,11 @@ import { lazySchema } from '../../validation/lazySchema.js';
 import { ToolSchemas } from '../../validation/zodSchemas.js';
 import { BackgroundShellManager } from './BackgroundShellManager.js';
 import { OutputTruncator } from './OutputTruncator.js';
+import {
+  isProcessTreeAlive,
+  shellProcessSpawnOptions,
+  signalProcessTree,
+} from './processTree.js';
 
 /**
  * Bash Tool - Shell command executor
@@ -281,6 +286,7 @@ Before executing commands:
             ?? context.sessionId
             ?? SessionId(randomUUID()),
           env,
+          context.executionFence,
         );
       }
 
@@ -361,7 +367,8 @@ function executeInBackground(
   command: string,
   cwd: string,
   sessionId: SessionId,
-  env?: Record<string, string>
+  env?: Record<string, string>,
+  executionFence?: ExecutionContext['executionFence'],
 ): ToolResult {
   const manager = BackgroundShellManager.getInstance();
   const backgroundProcess = manager.startBackgroundProcess({
@@ -369,6 +376,7 @@ function executeInBackground(
     sessionId,
     cwd,
     env,
+    executionFence,
   });
 
   const cmdPreview = command.length > 30 ? `${command.substring(0, 30)}...` : command;
@@ -418,6 +426,7 @@ async function executeWithTimeout(
       cwd,
       env: { ...process.env, ...env, BLADE_CLI: '1' },
       stdio: ['pipe', 'pipe', 'pipe'],
+      ...shellProcessSpawnOptions(),
     });
 
     // 收集 stdout
@@ -430,22 +439,30 @@ async function executeWithTimeout(
       stderr += data.toString();
     });
 
+    const safeSignalTree = (signalName: NodeJS.Signals): void => {
+      try {
+        signalProcessTree(bashProcess.pid, signalName, bashProcess);
+      } catch (error) {
+        stderr += `\nFailed to signal command process tree: ${getErrorMessage(error)}`;
+      }
+    };
+
     // 设置超时
     const timeoutHandle = setTimeout(() => {
       timedOut = true;
-      bashProcess.kill('SIGTERM');
+      safeSignalTree('SIGTERM');
 
       // 如果 SIGTERM 无效,强制 SIGKILL
       setTimeout(() => {
-        if (!bashProcess.killed) {
-          bashProcess.kill('SIGKILL');
+        if (isProcessTreeAlive(bashProcess.pid, bashProcess)) {
+          safeSignalTree('SIGKILL');
         }
       }, 1000);
     }, timeout);
 
     // 处理中止信号
     const abortHandler = () => {
-      bashProcess.kill('SIGTERM');
+      safeSignalTree('SIGTERM');
       clearTimeout(timeoutHandle);
     };
 

@@ -3,6 +3,7 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
+import { DurableExecutionLeaseError } from '../../../session/events/DurableExecutionLeaseStore.js';
 import { createTool } from '../../core/createTool.js';
 import { ToolRegistry } from '../../registry/ToolRegistry.js';
 import { PermissionRequestId, SessionId } from '../../../types/branded.js';
@@ -1199,6 +1200,98 @@ describe('ExecutionPipeline', () => {
         message: 'durable write failed',
       },
     });
+    expect(executeSpy).not.toHaveBeenCalled();
+  });
+
+  it('checks the execution fence immediately before the tool side effect', async () => {
+    const registry = new ToolRegistry();
+    const executeSpy = vi.fn(() => completeToolExecution({
+      status: 'success',
+      model: 'unexpected',
+    }));
+    registerTool(
+      registry,
+      createTool({
+        name: 'FencedTool',
+        displayName: 'Fenced Tool',
+        kind: ToolKind.Execute,
+        sideEffect: 'non_idempotent',
+        description: { short: 'Fenced tool' },
+        schema: z.object({}),
+        execute: executeSpy,
+      }),
+    );
+    const pipeline = new ExecutionPipeline(registry, {
+      permissionMode: PermissionMode.YOLO,
+    });
+    const leaseError = new DurableExecutionLeaseError(
+      'DURABLE_EXECUTION_LEASE_LOST',
+      'execution lease lost',
+    );
+    const assertExecutionLease = vi.fn()
+      .mockResolvedValueOnce(undefined)
+      .mockResolvedValueOnce(undefined)
+      .mockRejectedValueOnce(leaseError);
+
+    await expect(
+      executePipeline(
+        pipeline,
+        'FencedTool',
+        {},
+        {
+          permissionMode: PermissionMode.YOLO,
+          assertExecutionLease,
+          toolInvocationLifecycle: {
+            onExecutionStarted: async () => {},
+          },
+        },
+      ),
+    ).rejects.toBe(leaseError);
+    expect(assertExecutionLease).toHaveBeenCalledTimes(3);
+    expect(executeSpy).not.toHaveBeenCalled();
+  });
+
+  it('rechecks the execution fence after lock acquisition and before hooks', async () => {
+    const registry = new ToolRegistry();
+    const executeSpy = vi.fn(() => completeToolExecution({
+      status: 'success',
+      model: 'unexpected',
+    }));
+    registerTool(
+      registry,
+      createTool({
+        name: 'QueuedFencedTool',
+        displayName: 'Queued Fenced Tool',
+        kind: ToolKind.Execute,
+        sideEffect: 'non_idempotent',
+        description: { short: 'Queued fenced tool' },
+        schema: z.object({}),
+        execute: executeSpy,
+      }),
+    );
+    const pipeline = new ExecutionPipeline(registry, {
+      permissionMode: PermissionMode.YOLO,
+    });
+    const assertExecutionLease = vi.fn()
+      .mockResolvedValueOnce(undefined)
+      .mockRejectedValueOnce(new Error('execution lease lost while queued'));
+    const onExecutionStarted = vi.fn(async () => {});
+
+    await expect(
+      executePipeline(
+        pipeline,
+        'QueuedFencedTool',
+        {},
+        {
+          permissionMode: PermissionMode.YOLO,
+          assertExecutionLease,
+          toolInvocationLifecycle: { onExecutionStarted },
+        },
+      ),
+    ).rejects.toThrow('execution lease lost while queued');
+
+    expect(assertExecutionLease).toHaveBeenCalledTimes(2);
+    expect(onExecutionStarted).not.toHaveBeenCalled();
     expect(executeSpy).not.toHaveBeenCalled();
   });
 

@@ -4,6 +4,7 @@
 
 import type { ContextSnapshot } from '../runtime/index.js';
 import type { ContentPart, Message } from '../services/ChatServiceInterface.js';
+import type { DurableExecutionFence } from '../session/events/DurableExecutionLeaseStore.js';
 import type { ToolCatalogSourcePolicy } from '../tools/catalog/index.js';
 import type { ConfirmationHandler, ToolExecutionLifecycle } from '../tools/types/ExecutionTypes.js';
 import type { AgentId, InputId, RequestId, SessionId } from '../types/branded.js';
@@ -56,10 +57,14 @@ export interface IBackgroundAgentReader {
 }
 
 export interface IBackgroundAgentController {
-  killAgent(agentId: AgentId): boolean;
+  killAgent(agentId: AgentId): Promise<boolean>;
   cancelCurrentWork(agentId: AgentId): boolean;
-  startBackgroundAgent(options: StartBackgroundAgentOptions): string;
-  resumeAgent(agentId: AgentId, newPrompt: string, ...args: unknown[]): string | undefined;
+  startBackgroundAgent(options: StartBackgroundAgentOptions): Promise<string>;
+  resumeAgent(
+    agentId: AgentId,
+    newPrompt: string,
+    ...args: unknown[]
+  ): Promise<string | undefined>;
   sendMessage(agentId: AgentId, message: string): boolean;
 }
 
@@ -95,6 +100,11 @@ export interface ChatContext {
   subagentInfo?: SubagentInfoForContext; // 子代理信息（用于 JSONL 写入）
   omitEnvironment?: boolean;
   backgroundAgentManager?: IBackgroundAgentManager;
+  executionFence?: DurableExecutionFence;
+  /** @internal Validates execution ownership immediately before a model or tool side effect. */
+  assertExecutionLease?: () => Promise<void>;
+  /** @internal Serializes a short persistence operation against lease takeover. */
+  runWithExecutionLease?: <T>(operation: () => Promise<T>) => Promise<T>;
 }
 
 /**
@@ -156,7 +166,7 @@ export interface LoopOptions {
   initialInputPreparation?: InitialInputPreparation;
   onTurnLimitReached?: (data: { turnsCount: number }) => Promise<TurnLimitResponse>;
   /** 进度回调，每次 tool call 完成后触发 */
-  onProgress?: (progress: AgentProgress) => void;
+  onProgress?: (progress: AgentProgress) => void | Promise<void>;
 }
 
 /**

@@ -12,6 +12,10 @@ import { SdkError } from '../errors/SdkError.js';
 import type { HookRuntime } from '../hooks/HookRuntime.js';
 import type { InternalLogger } from '../logging/Logger.js';
 import type { Message } from '../services/ChatServiceInterface.js';
+import {
+  isExecutionLeaseFailure,
+  runWithExecutionLeaseBoundary,
+} from '../session/events/DurableExecutionLeaseStore.js';
 import type { ExecutionPipeline } from '../tools/execution/ExecutionPipeline.js';
 import type { ToolEffect } from '../tools/types/index.js';
 import type { SessionId } from '../types/branded.js';
@@ -23,8 +27,8 @@ import type { RuntimePatchManager } from './RuntimePatchManager.js';
 import type { LoopState } from './state/LoopState.js';
 import type { TokenBudget } from './TokenBudget.js';
 import type {
-    ChatContext,
-    LoopOptions,
+  ChatContext,
+  LoopOptions,
 } from './types.js';
 
 export interface LoopHookBuilderDeps {
@@ -48,20 +52,35 @@ export interface LoopHookBuilderDeps {
 }
 
 // ===== JSONL 持久化辅助 =====
-async function persistToJsonl(
+async function persistToJsonl<T>(
   modelManager: ModelManager,
   sessionId: SessionId | undefined,
   logger: InternalLogger,
-  callback: (contextManager: ContextManager, sessionId: SessionId) => Promise<void>,
-): Promise<void> {
+  callback: (contextManager: ContextManager, sessionId: SessionId) => Promise<T>,
+  assertExecutionLease?: () => Promise<void>,
+  signal?: AbortSignal,
+  runWithExecutionLease?: <T>(operation: () => Promise<T>) => Promise<T>,
+): Promise<T | undefined> {
   try {
+    signal?.throwIfAborted();
     const contextMgr = modelManager.getContextManager();
     if (contextMgr && sessionId) {
-      await callback(contextMgr, sessionId);
+      return runWithExecutionLeaseBoundary(
+        {
+          signal,
+          assertExecutionLease,
+          runWithExecutionLease,
+        },
+        () => callback(contextMgr, sessionId),
+      );
     }
   } catch (error) {
+    if (signal?.aborted || isExecutionLeaseFailure(error)) {
+      throw error;
+    }
     logger.warn('[LoopHookBuilder] JSONL persistence failed:', error);
   }
+  return undefined;
 }
 
 // ===== Main builder =====
@@ -100,17 +119,25 @@ export function buildLoopConfig(deps: LoopHookBuilderDeps): AgentLoopConfig {
         const content = options?.prepareInput
           ? await options.prepareInput(hookContent)
           : hookContent;
-        const contextMgr = modelManager.getContextManager();
-        const messageId = contextMgr && context.sessionId
-          ? await contextMgr.saveAppliedInputMessage(
-              context.sessionId,
+        context.signal?.throwIfAborted();
+        await context.assertExecutionLease?.();
+        const messageId = await persistToJsonl(
+          modelManager,
+          context.sessionId,
+          logger,
+          (contextMgr, sessionId) =>
+            contextMgr.saveAppliedInputMessage(
+              sessionId,
               input.inputId,
               runControl.requestId,
               content,
               getLastUuid(),
               context.subagentInfo,
-            )
-          : undefined;
+            ),
+          context.assertExecutionLease,
+          context.signal,
+          context.runWithExecutionLease,
+        );
         if (messageId) {
           setLastUuid(messageId);
         }
@@ -133,6 +160,9 @@ export function buildLoopConfig(deps: LoopHookBuilderDeps): AgentLoopConfig {
         const runtimeCtx: CompactionRuntimeContext = {
           sessionId: context.sessionId,
           projectDir: context.snapshot?.cwd ?? defaultProjectPath,
+          signal: context.signal,
+          assertExecutionLease: context.assertExecutionLease,
+          runWithExecutionLease: context.runWithExecutionLease,
         };
         const compactionStream = compactionHandler.checkAndCompactInLoop(
           loopState.conversationState, runtimeCtx, ctx.turn, ctx.lastPromptTokens,
@@ -143,6 +173,7 @@ export function buildLoopConfig(deps: LoopHookBuilderDeps): AgentLoopConfig {
       onTurnLimitReached: options?.onTurnLimitReached,
 
       async onTurnLimitCompact(_ctx) {
+        await context.assertExecutionLease?.();
         try {
           const cs = loopState.getChatService().getConfig();
           const compactResult = await CompactionService.compact(
@@ -156,8 +187,12 @@ export function buildLoopConfig(deps: LoopHookBuilderDeps): AgentLoopConfig {
               baseURL: cs.baseUrl,
               customHeaders: cs.customHeaders,
               projectDir: context.snapshot?.cwd ?? defaultProjectPath,
+              signal: context.signal,
+              assertExecutionLease: context.assertExecutionLease,
             },
           );
+          context.signal?.throwIfAborted();
+          await context.assertExecutionLease?.();
           const continueMessage: Message = {
             role: 'user',
             content: 'This session is being continued from a previous conversation. '
@@ -166,14 +201,22 @@ export function buildLoopConfig(deps: LoopHookBuilderDeps): AgentLoopConfig {
               + 'Continue with the last task that you were asked to work on.',
           };
 
-          await persistToJsonl(modelManager, context.sessionId, logger, async (contextMgr, sessionId) => {
-            await contextMgr.saveCompaction(
-              sessionId, compactResult.summary,
-              { trigger: 'auto', preTokens: compactResult.preTokens,
-                postTokens: compactResult.postTokens, filesIncluded: compactResult.filesIncluded },
-              null,
-            );
-          });
+          await persistToJsonl(
+            modelManager,
+            context.sessionId,
+            logger,
+            async (contextMgr, sessionId) => {
+              await contextMgr.saveCompaction(
+                sessionId, compactResult.summary,
+                { trigger: 'auto', preTokens: compactResult.preTokens,
+                  postTokens: compactResult.postTokens, filesIncluded: compactResult.filesIncluded },
+                null,
+              );
+            },
+            context.assertExecutionLease,
+            context.signal,
+            context.runWithExecutionLease,
+          );
 
           return {
             success: true,
@@ -181,6 +224,12 @@ export function buildLoopConfig(deps: LoopHookBuilderDeps): AgentLoopConfig {
             continueMessage,
           };
         } catch (compactError) {
+          if (
+            context.signal?.aborted
+            || isExecutionLeaseFailure(compactError)
+          ) {
+            throw compactError;
+          }
           logger.error('[LoopHookBuilder] 压缩失败，使用降级策略:', compactError);
           const recentMessages = loopState.conversationState.getContextMessages().slice(-80);
           return { success: true, compactedMessages: recentMessages };
@@ -201,60 +250,76 @@ export function buildLoopConfig(deps: LoopHookBuilderDeps): AgentLoopConfig {
           .flatMap((effect) => effect.messages);
         pendingInjectedMessages.push(...injectedMessages);
 
-        await persistToJsonl(modelManager, context.sessionId, logger, async (contextMgr, sessionId) => {
-          const metadata = result.metadata;
-          const isSubagentStatus = (v: unknown): v is 'running' | 'completed' | 'failed' | 'cancelled' =>
-            v === 'running' || v === 'completed' || v === 'failed' || v === 'cancelled';
-          const subagentStatus = isSubagentStatus(metadata?.subagentStatus)
-            ? metadata.subagentStatus : 'completed';
-          const subagentRef = metadata && typeof metadata.subagentSessionId === 'string'
-            ? {
-                subagentSessionId: metadata.subagentSessionId,
-                subagentType: typeof metadata.subagentType === 'string'
-                  ? metadata.subagentType : toolCall.function.name,
-                subagentStatus,
-                subagentSummary: typeof metadata.subagentSummary === 'string'
-                  ? metadata.subagentSummary : undefined,
-              }
-            : undefined;
-          const uuid = await contextMgr.saveToolResult(
-            sessionId, toolCall.id, toolCall.function.name,
-            result.status === 'success' ? result.model : null,
-            getLastUuid(), result.status === 'success' ? undefined : result.error.message,
-            context.subagentInfo, subagentRef,
-          );
-          setLastUuid(uuid);
-        });
+        await persistToJsonl(
+          modelManager,
+          context.sessionId,
+          logger,
+          async (contextMgr, sessionId) => {
+            const metadata = result.metadata;
+            const isSubagentStatus = (v: unknown): v is 'running' | 'completed' | 'failed' | 'cancelled' =>
+              v === 'running' || v === 'completed' || v === 'failed' || v === 'cancelled';
+            const subagentStatus = isSubagentStatus(metadata?.subagentStatus)
+              ? metadata.subagentStatus : 'completed';
+            const subagentRef = metadata && typeof metadata.subagentSessionId === 'string'
+              ? {
+                  subagentSessionId: metadata.subagentSessionId,
+                  subagentType: typeof metadata.subagentType === 'string'
+                    ? metadata.subagentType : toolCall.function.name,
+                  subagentStatus,
+                  subagentSummary: typeof metadata.subagentSummary === 'string'
+                    ? metadata.subagentSummary : undefined,
+                }
+              : undefined;
+            const uuid = await contextMgr.saveToolResult(
+              sessionId, toolCall.id, toolCall.function.name,
+              result.status === 'success' ? result.model : null,
+              getLastUuid(), result.status === 'success' ? undefined : result.error.message,
+              context.subagentInfo, subagentRef,
+            );
+            setLastUuid(uuid);
+          },
+          context.assertExecutionLease,
+          context.signal,
+          context.runWithExecutionLease,
+        );
 
         pendingToolResultCount = Math.max(0, pendingToolResultCount - 1);
         if (pendingToolResultCount === 0 && pendingInjectedMessages.length > 0) {
           const messagesToPersist = pendingInjectedMessages;
           pendingInjectedMessages = [];
-          await persistToJsonl(modelManager, context.sessionId, logger, async (contextMgr, sessionId) => {
-            for (const injectedMessage of messagesToPersist) {
-              const customMeta = (() => {
-                const isRec = (v: unknown): v is Record<string, unknown> =>
-                  typeof v === 'object' && v !== null && !Array.isArray(v);
-                const base = isRec(injectedMessage.metadata)
-                  ? { ...injectedMessage.metadata }
-                  : {};
-                if (injectedMessage.role === 'system') {
-                  base._systemSource = 'tool_injection';
-                }
-                return Object.keys(base).length > 0 ? base : undefined;
-              })();
+          await persistToJsonl(
+            modelManager,
+            context.sessionId,
+            logger,
+            async (contextMgr, sessionId) => {
+              for (const injectedMessage of messagesToPersist) {
+                const customMeta = (() => {
+                  const isRec = (v: unknown): v is Record<string, unknown> =>
+                    typeof v === 'object' && v !== null && !Array.isArray(v);
+                  const base = isRec(injectedMessage.metadata)
+                    ? { ...injectedMessage.metadata }
+                    : {};
+                  if (injectedMessage.role === 'system') {
+                    base._systemSource = 'tool_injection';
+                  }
+                  return Object.keys(base).length > 0 ? base : undefined;
+                })();
 
-              const injectedUuid = await contextMgr.saveMessage(
-                sessionId,
-                injectedMessage.role,
-                injectedMessage.content,
-                getLastUuid(),
-                customMeta ? { customMetadata: customMeta } : undefined,
-                context.subagentInfo,
-              );
-              setLastUuid(injectedUuid);
-            }
-          });
+                const injectedUuid = await contextMgr.saveMessage(
+                  sessionId,
+                  injectedMessage.role,
+                  injectedMessage.content,
+                  getLastUuid(),
+                  customMeta ? { customMetadata: customMeta } : undefined,
+                  context.subagentInfo,
+                );
+                setLastUuid(injectedUuid);
+              }
+            },
+            context.assertExecutionLease,
+            context.signal,
+            context.runWithExecutionLease,
+          );
         }
 
         for (const effect of effects) {
@@ -284,13 +349,16 @@ export function buildLoopConfig(deps: LoopHookBuilderDeps): AgentLoopConfig {
         if (options?.onProgress) {
           progressToolUseCount++;
           try {
-            options.onProgress({
+            await options.onProgress({
               toolUseCount: progressToolUseCount,
               tokenCount: 0,
               lastActivity: toolCall.function.name,
               updatedAt: Date.now(),
             });
-          } catch {
+          } catch (error) {
+            if (isExecutionLeaseFailure(error)) {
+              throw error;
+            }
             // 忽略回调异常
           }
         }
@@ -302,23 +370,35 @@ export function buildLoopConfig(deps: LoopHookBuilderDeps): AgentLoopConfig {
         pendingToolResultCount = ctx.toolCalls?.length ?? 0;
         pendingInjectedMessages = [];
         currentAssistantMessageId = null;
-        await persistToJsonl(modelManager, context.sessionId, logger, async (contextMgr, sessionId) => {
-          if (ctx.content.trim() !== '' || ctx.reasoningContent || (ctx.toolCalls?.length ?? 0) > 0) {
-            const uuid = await contextMgr.saveMessage(
-              sessionId,
-              'assistant',
-              ctx.content,
-              getLastUuid(),
-              {
-                reasoningContent: ctx.reasoningContent,
-                toolCalls: ctx.toolCalls,
-              },
-              context.subagentInfo,
-            );
-            setLastUuid(uuid);
-            currentAssistantMessageId = uuid;
-          }
-        });
+        await persistToJsonl(
+          modelManager,
+          context.sessionId,
+          logger,
+          async (contextMgr, sessionId) => {
+            if (
+              ctx.content.trim() !== ''
+              || ctx.reasoningContent
+              || (ctx.toolCalls?.length ?? 0) > 0
+            ) {
+              const uuid = await contextMgr.saveMessage(
+                sessionId,
+                'assistant',
+                ctx.content,
+                getLastUuid(),
+                {
+                  reasoningContent: ctx.reasoningContent,
+                  toolCalls: ctx.toolCalls,
+                },
+                context.subagentInfo,
+              );
+              setLastUuid(uuid);
+              currentAssistantMessageId = uuid;
+            }
+          },
+          context.assertExecutionLease,
+          context.signal,
+          context.runWithExecutionLease,
+        );
       },
 
     },
@@ -329,6 +409,9 @@ export function buildLoopConfig(deps: LoopHookBuilderDeps): AgentLoopConfig {
             const runtimeCtx: CompactionRuntimeContext = {
               sessionId: context.sessionId,
               projectDir: context.snapshot?.cwd ?? defaultProjectPath,
+              signal: context.signal,
+              assertExecutionLease: context.assertExecutionLease,
+              runWithExecutionLease: context.runWithExecutionLease,
             };
             const compactStream = compactionHandler?.reactiveCompact(loopState.conversationState, runtimeCtx);
             if (!compactStream) return false;

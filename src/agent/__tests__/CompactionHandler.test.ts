@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Message } from '../../services/ChatServiceInterface.js';
+import { DurableExecutionLeaseError } from '../../session/events/DurableExecutionLeaseStore.js';
 import { SessionId } from '../../types/branded.js';
 import { ConversationState } from '../state/ConversationState.js';
 
@@ -78,6 +79,100 @@ describe('CompactionHandler', () => {
     );
   });
 
+  it('checks execution ownership before compaction provider I/O', async () => {
+    const handler = new CompactionHandler(
+      () => ({
+        getConfig: () => ({
+          model: 'gpt-4o-mini',
+          provider: 'openai-compatible' as const,
+          maxContextTokens: 1000,
+          maxOutputTokens: 200,
+          apiKey: 'test-key',
+          baseUrl: 'https://example.com',
+        }),
+      }) as never,
+      () => undefined,
+    );
+    const convState = new ConversationState(
+      null,
+      [{ role: 'user', content: 'context that requires compaction' }],
+      { role: 'assistant', content: 'continue' },
+    );
+    const assertExecutionLease = vi.fn(async () => {
+      throw new Error('execution lease lost');
+    });
+    const stream = handler.checkAndCompactInLoop(
+      convState,
+      {
+        sessionId: SessionId('fenced-compaction-session'),
+        assertExecutionLease,
+      },
+      2,
+      700,
+    );
+
+    await expect(stream.next()).resolves.toMatchObject({
+      value: { type: 'compacting', isCompacting: true },
+      done: false,
+    });
+    await expect(stream.next()).rejects.toThrow('execution lease lost');
+    expect(assertExecutionLease).toHaveBeenCalledOnce();
+    expect(mockCompact).not.toHaveBeenCalled();
+  });
+
+  it('discards a compaction result when execution ownership changes during provider I/O', async () => {
+    const handler = new CompactionHandler(
+      () => ({
+        getConfig: () => ({
+          model: 'gpt-4o-mini',
+          provider: 'openai-compatible' as const,
+          maxContextTokens: 1000,
+          maxOutputTokens: 200,
+          apiKey: 'test-key',
+          baseUrl: 'https://example.com',
+        }),
+      }) as never,
+      () => undefined,
+    );
+    const originalMessages = [
+      { role: 'user', content: 'context that must remain unchanged' },
+      { role: 'assistant', content: 'continue' },
+    ] satisfies Message[];
+    const currentMessage = originalMessages.at(-1);
+    if (!currentMessage) {
+      throw new Error('Expected a current compaction message');
+    }
+    const convState = new ConversationState(
+      null,
+      originalMessages.slice(0, -1),
+      currentMessage,
+    );
+    const leaseLost = new DurableExecutionLeaseError(
+      'DURABLE_EXECUTION_LEASE_LOST',
+      'execution ownership changed',
+    );
+    const assertExecutionLease = vi.fn()
+      .mockResolvedValueOnce(undefined)
+      .mockRejectedValueOnce(leaseLost);
+    const stream = handler.checkAndCompactInLoop(
+      convState,
+      {
+        sessionId: SessionId('mid-compaction-loss-session'),
+        assertExecutionLease,
+      },
+      2,
+      700,
+    );
+
+    await expect(stream.next()).resolves.toMatchObject({
+      value: { type: 'compacting', isCompacting: true },
+      done: false,
+    });
+    await expect(stream.next()).rejects.toBe(leaseLost);
+    expect(mockCompact).toHaveBeenCalledOnce();
+    expect(convState.getContextMessages()).toEqual(originalMessages);
+  });
+
   it('falls back from the original messages when reactive compaction fails after microcompact', async () => {
     mockCompact.mockRejectedValueOnce(new Error('compaction failed'));
 
@@ -101,8 +196,12 @@ describe('CompactionHandler', () => {
       { role: 'tool', tool_call_id: 'call-2', content: 'b'.repeat(3800) },
     ] satisfies Message[];
     const convState = new ConversationState(null, originalMessages.slice(0, -1), originalMessages[originalMessages.length - 1]);
+    const controller = new AbortController();
 
-    const stream = handler.reactiveCompact(convState, { sessionId: SessionId('session-1') });
+    const stream = handler.reactiveCompact(convState, {
+      sessionId: SessionId('session-1'),
+      signal: controller.signal,
+    });
     let didCompact = false;
     while (true) {
       const { value, done } = await stream.next();
@@ -118,5 +217,9 @@ describe('CompactionHandler', () => {
     // The fallback uses originalMessages.slice(-40), so content should still be original (not microcompacted)
     expect(updatedCtx[1]).toEqual(originalMessages[1]);
     expect(updatedCtx[1]?.content).not.toContain('[Microcompact]');
+    expect(mockCompact).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ signal: controller.signal }),
+    );
   });
 });

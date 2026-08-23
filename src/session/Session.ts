@@ -5,11 +5,7 @@ import {
   type InitialInputPreparation,
   RECONCILED_INITIAL_INPUT,
 } from '../agent/InitialInputPreparation.js';
-import type {
-  ChatContext,
-  LoopResult,
-  UserMessageContent,
-} from '../agent/types.js';
+import type { ChatContext, LoopResult, UserMessageContent } from '../agent/types.js';
 import { SessionHandoffError } from '../errors/SessionHandoffError.js';
 import { SessionInputError } from '../errors/SessionInputError.js';
 import { type CleanupHandle, registerCleanup } from '../lifecycle/CleanupRegistry.js';
@@ -22,13 +18,7 @@ import {
 } from '../runtime/index.js';
 import type { ContentPart, Message } from '../services/ChatServiceInterface.js';
 import { cloneMessage } from '../services/messageUtils.js';
-import {
-  CommandId,
-  type EventSequence,
-  InputId,
-  RequestId,
-  SessionId,
-} from '../types/branded.js';
+import { CommandId, type EventSequence, InputId, RequestId, SessionId } from '../types/branded.js';
 import {
   type BladeConfig,
   type JsonObject,
@@ -37,10 +27,7 @@ import {
   PermissionMode,
   type ProviderType,
 } from '../types/common.js';
-import {
-  ActiveRequestController,
-  type RequestAbortReason,
-} from './ActiveRequestController.js';
+import { ActiveRequestController, type RequestAbortReason } from './ActiveRequestController.js';
 import {
   parseDurableRuntimeContext,
   parseDurableUserMessageContent,
@@ -51,6 +38,11 @@ import {
   DurableEventSubscriptionError,
   type DurableEventSubscriptionOptions,
 } from './events/DurableEventSubscription.js';
+import { DurableExecutionLease } from './events/DurableExecutionLease.js';
+import {
+  DurableExecutionLeaseError,
+  type DurableExecutionLease as DurableExecutionLeaseSnapshot,
+} from './events/DurableExecutionLeaseStore.js';
 import { DurableSessionJournal } from './events/DurableSessionJournal.js';
 import type {
   DurableRequestProjection,
@@ -63,15 +55,10 @@ import {
   durableRequestFinishFromLoopResult,
   DurableSessionRecoveryRequiredError,
   SessionDurableRecorder,
-  SessionDurableRecorderError
+  SessionDurableRecorderError,
 } from './events/SessionDurableRecorder.js';
-import {
-  DurableEventType,
-  type DurableRequestInterruptReason,
-} from './events/types.js';
-import {
-  SessionInputInbox,
-} from './SessionInputInbox.js';
+import { DurableEventType, type DurableRequestInterruptReason } from './events/types.js';
+import { SessionInputInbox } from './SessionInputInbox.js';
 import { SessionRuntime } from './SessionRuntime.js';
 import {
   JsonlSessionStore,
@@ -175,6 +162,10 @@ class Session implements ISession {
   private durableJournal: DurableSessionJournal | null = null;
   private durableAcceptedRequest: DurableRequestProjection | null = null;
   private durableClosePromise: Promise<void> | null = null;
+  private executionLease: DurableExecutionLease | null = null;
+  private executionLeaseFailure: DurableExecutionLeaseError | null = null;
+  private executionLeaseLossCleanup: (() => void) | null = null;
+  private runtimeEndAttempted = false;
   private closePromise: Promise<void> | null = null;
   private handoffPromise: Promise<SessionHandoffResult> | null = null;
   private handoffRequested = false;
@@ -222,9 +213,10 @@ class Session implements ISession {
 
   get isClosed(): boolean {
     return (
-      this.handoffRequested
-      || this.executionState.phase === 'suspending'
-      || this.executionState.phase === 'closed'
+      this.executionLeaseFailure !== null ||
+      this.handoffRequested ||
+      this.executionState.phase === 'suspending' ||
+      this.executionState.phase === 'closed'
     );
   }
 
@@ -252,6 +244,10 @@ class Session implements ISession {
     return this.durableJournal?.getRecoveryPlan() ?? null;
   }
 
+  getExecutionLease(): DurableExecutionLeaseSnapshot | null {
+    return this.executionLease?.snapshot ?? null;
+  }
+
   /** Replays persisted lifecycle events, then follows newly committed events. */
   async subscribeDurableEvents(
     options: DurableEventSubscriptionOptions = {},
@@ -268,55 +264,90 @@ class Session implements ISession {
   }
 
   async initialize(): Promise<void> {
+    if (this.executionLeaseFailure) {
+      throw this.executionLeaseFailure;
+    }
     if (
-      this.executionState.phase === 'suspending'
-      || this.executionState.phase === 'closed'
+      this.handoffRequested ||
+      this.executionState.phase === 'suspending' ||
+      this.executionState.phase === 'closed'
     ) {
       throw new Error('Session is closed');
     }
     if (this.initialized) return;
 
-    await this.initializeDurableJournal();
-    const config = this.buildBladeConfig();
-    this.runtime = new SessionRuntime(
-      this.sessionId,
-      this.options,
-      config,
-      this.permissionMode,
-      this.defaultContext,
-      this.rootLogger,
-    );
-    await this.runtime.initialize();
-    if (this.isResumeSession) {
-      await this.runtime.ensureSessionLoaded();
-    } else {
-      await this.runtime.ensureSessionCreated();
+    await this.initializeExecutionLease();
+    try {
+      await this.initializeDurableJournal();
+      const config = this.buildBladeConfig();
+      this.runtime = new SessionRuntime(
+        this.sessionId,
+        this.options,
+        config,
+        this.permissionMode,
+        this.defaultContext,
+        this.rootLogger,
+      );
+      await this.runtime.initialize();
+      if (this.isResumeSession) {
+        await this.runWithExecutionLease(() => this.getRuntime().ensureSessionLoaded());
+      } else {
+        await this.runWithExecutionLease(() => this.getRuntime().ensureSessionCreated());
+      }
+
+      this.agent = await Agent.create(
+        config,
+        {
+          permissionMode: this.permissionMode,
+          systemPrompt: this.options.systemPrompt,
+          maxTurns: this.maxTurns,
+          permissionHandler: this.options.permissionHandler,
+          canUseTool: this.options.canUseTool,
+          toolSourcePolicy: this.options.toolSourcePolicy,
+          outputFormat: this.options.outputFormat,
+          sandbox: this.options.sandbox,
+          tokenBudget: this.options.tokenBudget,
+        },
+        this.runtime.getAgentRuntimeDeps(),
+      );
+
+      this.executionLeaseLossCleanup =
+        this.executionLease?.onLost((error) => {
+          this.handleExecutionLeaseLoss(error);
+        }) ?? null;
+      await this.executionLease?.assertActive();
+      await this.runtime.getHookRuntime().runSessionStart({
+        isResume: this.isResumeSession,
+        resumeSessionId: this.isResumeSession ? this.sessionId : undefined,
+      });
+      await this.executionLease?.assertActive();
+      if (this.executionLeaseFailure) {
+        throw this.executionLeaseFailure;
+      }
+      this.initialized = true;
+      this.cleanupHandle = registerCleanup(() => this.close());
+
+      this.logger.debug(`[Session] Initialized session ${this.sessionId}`);
+    } catch (error) {
+      const cleanupErrors = await this.releaseLocalRuntime();
+      if (cleanupErrors.length === 0) {
+        try {
+          await this.releaseExecutionLease();
+        } catch (leaseError) {
+          this.executionLease?.abandon(leaseError);
+          cleanupErrors.push(leaseError);
+        }
+      } else {
+        this.executionLease?.abandon(error);
+      }
+      if (cleanupErrors.length > 0) {
+        throw new AggregateError(
+          [error, ...cleanupErrors],
+          `Session ${this.sessionId} initialization failed during cleanup`,
+        );
+      }
+      throw error;
     }
-
-    this.agent = await Agent.create(
-      config,
-      {
-        permissionMode: this.permissionMode,
-        systemPrompt: this.options.systemPrompt,
-        maxTurns: this.maxTurns,
-        permissionHandler: this.options.permissionHandler,
-        canUseTool: this.options.canUseTool,
-        toolSourcePolicy: this.options.toolSourcePolicy,
-        outputFormat: this.options.outputFormat,
-        sandbox: this.options.sandbox,
-        tokenBudget: this.options.tokenBudget,
-      },
-      this.runtime.getAgentRuntimeDeps(),
-    );
-
-    this.initialized = true;
-    this.cleanupHandle = registerCleanup(() => this.close());
-    await this.runtime.getHookRuntime().runSessionStart({
-      isResume: this.isResumeSession,
-      resumeSessionId: this.isResumeSession ? this.sessionId : undefined,
-    });
-
-    this.logger.debug(`[Session] Initialized session ${this.sessionId}`);
   }
 
   async loadHistory(): Promise<void> {
@@ -333,16 +364,14 @@ class Session implements ISession {
       throw error;
     }
     const durableProjection = this.durableJournal?.getProjection();
-    const reconciledHistoryInputIds = new Set<string>(
-      durableProjection?.reconciledInputIds ?? [],
-    );
+    const reconciledHistoryInputIds = new Set<string>(durableProjection?.reconciledInputIds ?? []);
     this._messages = (state?.messages ?? []).filter((message) => {
       const metadata = message.metadata;
       const messageInputId =
-        typeof metadata === 'object'
-        && metadata !== null
-        && !Array.isArray(metadata)
-        && typeof metadata.inputId === 'string'
+        typeof metadata === 'object' &&
+        metadata !== null &&
+        !Array.isArray(metadata) &&
+        typeof metadata.inputId === 'string'
           ? metadata.inputId
           : null;
       return messageInputId === null || !reconciledHistoryInputIds.has(messageInputId);
@@ -453,17 +482,14 @@ class Session implements ISession {
     return urls[type] || '';
   }
 
-  async send(
-    message: UserMessageContent,
-    options?: SendOptions,
-  ): Promise<InputSubmission> {
+  async send(message: UserMessageContent, options?: SendOptions): Promise<InputSubmission> {
     await this.ensureInitialized();
 
     return this.inputMutex.runExclusive(async () => {
-      if (
-        this.executionState.phase === 'suspending'
-        || this.executionState.phase === 'closed'
-      ) {
+      if (this.executionLeaseFailure) {
+        throw this.executionLeaseFailure;
+      }
+      if (this.executionState.phase === 'suspending' || this.executionState.phase === 'closed') {
         throw new Error('Session is closed');
       }
 
@@ -531,20 +557,16 @@ class Session implements ISession {
       let priority = options?.priority ?? InputPriority.NEXT;
       const activeRequestId = this.executionState.requestId;
       const activeController = this.executionState.controller;
-      if (
-        options?.expectedRequestId
-        && options.expectedRequestId !== activeRequestId
-      ) {
+      if (options?.expectedRequestId && options.expectedRequestId !== activeRequestId) {
         throw new SessionInputError(
           'SESSION_REQUEST_MISMATCH',
           `Expected request "${options.expectedRequestId}" but "${activeRequestId}" is active`,
         );
       }
       let canSteerCurrentRequest =
-        priority !== InputPriority.LATER
-        && this.executionState.phase !== 'stopping'
-        && (this.executionState.phase !== 'running'
-          || !this.executionState.controller.isSealed);
+        priority !== InputPriority.LATER &&
+        this.executionState.phase !== 'stopping' &&
+        (this.executionState.phase !== 'running' || !this.executionState.controller.isSealed);
       if (!canSteerCurrentRequest) {
         priority = InputPriority.LATER;
       }
@@ -553,19 +575,16 @@ class Session implements ISession {
         inputId,
         content: message,
         priority,
-        targetRequestId: canSteerCurrentRequest
-          ? activeRequestId
-          : undefined,
+        targetRequestId: canSteerCurrentRequest ? activeRequestId : undefined,
         acceptedAt: Date.now(),
       };
       this.inputInbox.reserve(input);
       try {
         await this.persistInput(input);
         const requestStillAcceptsSteering =
-          (this.executionState.phase === 'pending'
-            || this.executionState.phase === 'running')
-          && this.executionState.requestId === activeRequestId
-          && !activeController.isSealed;
+          (this.executionState.phase === 'pending' || this.executionState.phase === 'running') &&
+          this.executionState.requestId === activeRequestId &&
+          !activeController.isSealed;
         if (canSteerCurrentRequest && !requestStillAcceptsSteering) {
           canSteerCurrentRequest = false;
           priority = InputPriority.LATER;
@@ -573,9 +592,9 @@ class Session implements ISession {
         }
         this.inputInbox.markCommitted(inputId);
         if (
-          canSteerCurrentRequest
-          && priority === InputPriority.NOW
-          && this.executionState.phase === 'running'
+          canSteerCurrentRequest &&
+          priority === InputPriority.NOW &&
+          this.executionState.phase === 'running'
         ) {
           activeController.interruptStep(inputId);
         }
@@ -588,9 +607,7 @@ class Session implements ISession {
             status: 'steered',
             inputId,
             requestId: activeRequestId,
-            priority: priority === InputPriority.NOW
-              ? InputPriority.NOW
-              : InputPriority.NEXT,
+            priority: priority === InputPriority.NOW ? InputPriority.NOW : InputPriority.NEXT,
           }
         : {
             status: 'queued',
@@ -607,16 +624,15 @@ class Session implements ISession {
   async cancelInput(inputId: InputId): Promise<boolean> {
     await this.ensureInitialized();
     return this.inputMutex.runExclusive(async () => {
-      if (
-        this.executionState.phase === 'suspending'
-        || this.executionState.phase === 'closed'
-      ) {
+      if (this.executionLeaseFailure) {
+        throw this.executionLeaseFailure;
+      }
+      if (this.executionState.phase === 'suspending' || this.executionState.phase === 'closed') {
         throw new Error('Session is closed');
       }
       if (
-        (this.executionState.phase === 'running'
-          || this.executionState.phase === 'stopping')
-        && this.executionState.controller.isInitialInput(inputId)
+        (this.executionState.phase === 'running' || this.executionState.phase === 'stopping') &&
+        this.executionState.controller.isInitialInput(inputId)
       ) {
         return false;
       }
@@ -626,8 +642,7 @@ class Session implements ISession {
       }
 
       const pendingState =
-        this.executionState.phase === 'pending'
-        && this.executionState.input.inputId === inputId
+        this.executionState.phase === 'pending' && this.executionState.input.inputId === inputId
           ? this.executionState
           : null;
       let durablyInterrupted = false;
@@ -643,10 +658,10 @@ class Session implements ISession {
         }
       }
       try {
-        await this.getRuntime().getContextManager().saveInputCancelled(
-          this.sessionId,
-          inputId,
-          'cancelled_by_user',
+        await this.runWithExecutionLease(() =>
+          this.getRuntime()
+            .getContextManager()
+            .saveInputCancelled(this.sessionId, inputId, 'cancelled_by_user'),
         );
       } catch (error) {
         if (!durablyInterrupted) {
@@ -673,9 +688,7 @@ class Session implements ISession {
     return this.consumeRequestStream(options);
   }
 
-  private async *consumeRequestStream(
-    options?: StreamOptions,
-  ): AsyncGenerator<StreamMessage> {
+  private async *consumeRequestStream(options?: StreamOptions): AsyncGenerator<StreamMessage> {
     const channel = new SessionStreamChannel<StreamMessage>(1);
     let settled = false;
     let resolveCompletion!: () => void;
@@ -748,6 +761,9 @@ class Session implements ISession {
     // 需在 inputMutex 内一次完成，避免与 send()/cancelInput()/finishRequest()
     // 对 executionState 的并发读写交错。
     const claimed = await this.inputMutex.runExclusive(async () => {
+      if (this.executionLeaseFailure) {
+        throw this.executionLeaseFailure;
+      }
       if (this.executionState.phase !== 'pending') {
         return null;
       }
@@ -762,8 +778,9 @@ class Session implements ISession {
         initialInputPreparation,
       } = this.executionState;
       const requestController = this.executionState.controller;
-      const durableRecorder = pendingDurableRecorder
-        ?? (this.durableJournal
+      const durableRecorder =
+        pendingDurableRecorder ??
+        (this.durableJournal
           ? new SessionDurableRecorder(this.durableJournal, requestId, this.options.model)
           : null);
       try {
@@ -834,7 +851,7 @@ class Session implements ISession {
         return;
       }
       durableFinishAttempted = true;
-      if (!await durableRecorder.finish(finish)) {
+      if (!(await durableRecorder.finish(finish))) {
         throw new SessionDurableRecorderError(
           `Request ${requestId} has a tool outcome that requires reconciliation`,
         );
@@ -855,8 +872,7 @@ class Session implements ISession {
       await this.notifyTraceSink(trace);
     };
     const signal = requestController.requestSignal;
-    const isHandoffRequested = () =>
-      durableRecorder?.isHandoffRequested() === true;
+    const isHandoffRequested = () => durableRecorder?.isHandoffRequested() === true;
     const releaseBackpressureOnAbort = () => execution.releaseBackpressure();
     if (signal.aborted) {
       releaseBackpressureOnAbort();
@@ -871,8 +887,9 @@ class Session implements ISession {
       }
     } catch (error) {
       const handingOff = isHandoffRequested();
+      const leaseFailure = this.executionLeaseFailure;
       let terminalError = error;
-      if (!handingOff) {
+      if (!handingOff && !leaseFailure) {
         try {
           await finishDurableRequest({ status: 'failed', error });
         } catch (durableError) {
@@ -884,12 +901,19 @@ class Session implements ISession {
       }
       const errorMessage =
         terminalError instanceof Error ? terminalError.message : String(terminalError);
-      await finishTrace(handingOff ? 'aborted' : 'error', {
-        ...(handingOff ? { reason: 'session_handoff' } : { error: errorMessage }),
+      await finishTrace(handingOff || leaseFailure ? 'aborted' : 'error', {
+        ...(handingOff
+          ? { reason: 'session_handoff' }
+          : leaseFailure
+            ? { reason: 'process_restart' }
+            : { error: errorMessage }),
       });
       try {
         if (handingOff) {
           return;
+        }
+        if (leaseFailure) {
+          throw leaseFailure;
         }
         if (durableRecorder && !durableFinishCommitted) {
           throw terminalError;
@@ -918,6 +942,7 @@ class Session implements ISession {
       pendingSnapshot ??
       createContextSnapshot(this.sessionId, nanoid(), this.defaultContext, sendOptions?.context);
     runtime.prepareTurn(snapshot);
+    const executionLease = this.executionLease;
 
     const context: ChatContext = {
       messages: this._messages,
@@ -926,6 +951,11 @@ class Session implements ISession {
       snapshot,
       signal,
       permissionMode: this.permissionMode,
+      executionFence: executionLease?.fence,
+      assertExecutionLease: executionLease ? () => executionLease.assertActive() : undefined,
+      runWithExecutionLease: executionLease
+        ? (operation) => executionLease.runFenced(operation)
+        : undefined,
       backgroundAgentManager: runtime.getBackgroundAgentManager(),
     };
 
@@ -941,9 +971,7 @@ class Session implements ISession {
       modelExecutionLifecycle: durableRecorder ?? undefined,
       toolExecutionLifecycle: durableRecorder ?? undefined,
       initialInputPreparation:
-        initialInputPreparation === RECONCILED_INITIAL_INPUT
-          ? RECONCILED_INITIAL_INPUT
-          : undefined,
+        initialInputPreparation === RECONCILED_INITIAL_INPUT ? RECONCILED_INITIAL_INPUT : undefined,
     });
     let agentStreamCompleted = false;
 
@@ -954,13 +982,15 @@ class Session implements ISession {
 
       while (true) {
         const next = await stream.next();
+        if (this.executionLeaseFailure) {
+          throw this.executionLeaseFailure;
+        }
         if (signal.aborted) {
           const canObserveHandoffCompletion =
-            isHandoffRequested()
-            && (next.done || next.value.type === 'agent_end');
+            isHandoffRequested() && (next.done || next.value.type === 'agent_end');
           if (
-            !canObserveHandoffCompletion
-            && (!next.done || next.value.error?.type !== 'aborted')
+            !canObserveHandoffCompletion &&
+            (!next.done || next.value.error?.type !== 'aborted')
           ) {
             return;
           }
@@ -1270,8 +1300,9 @@ class Session implements ISession {
       };
     } catch (error) {
       const handingOff = isHandoffRequested();
+      const leaseFailure = this.executionLeaseFailure;
       let terminalError = error;
-      if (!handingOff && !durableFinishAttempted) {
+      if (!handingOff && !leaseFailure && !durableFinishAttempted) {
         try {
           await finishDurableRequest({ status: 'failed', error });
         } catch (durableError) {
@@ -1283,11 +1314,18 @@ class Session implements ISession {
       }
       const errorMessage =
         terminalError instanceof Error ? terminalError.message : String(terminalError);
-      await finishTrace(handingOff ? 'aborted' : 'error', {
-        ...(handingOff ? { reason: 'session_handoff' } : { error: errorMessage }),
+      await finishTrace(handingOff || leaseFailure ? 'aborted' : 'error', {
+        ...(handingOff
+          ? { reason: 'session_handoff' }
+          : leaseFailure
+            ? { reason: 'process_restart' }
+            : { error: errorMessage }),
       });
       if (handingOff) {
         return;
+      }
+      if (leaseFailure) {
+        throw leaseFailure;
       }
       if (durableRecorder && !durableFinishCommitted) {
         throw terminalError;
@@ -1314,7 +1352,7 @@ class Session implements ISession {
               )
             : error;
         }
-        if (!isHandoffRequested()) {
+        if (!isHandoffRequested() && !this.executionLeaseFailure) {
           try {
             if (!durableFinishAttempted) {
               await finishDurableRequest({
@@ -1337,8 +1375,8 @@ class Session implements ISession {
       requestController.dispose();
       await this.finishRequest(requestId);
       if (
-        this.executionState.phase === 'closed'
-        && this.executionState.disposition === 'terminal'
+        this.executionState.phase === 'closed' &&
+        this.executionState.disposition === 'terminal'
       ) {
         await this.closeDurableSession();
       }
@@ -1365,6 +1403,9 @@ class Session implements ISession {
   }
 
   suspendForHandoff(): Promise<SessionHandoffResult> {
+    if (this.executionLeaseFailure) {
+      return Promise.reject(this.executionLeaseFailure);
+    }
     if (!this.options.durableEventStore) {
       return Promise.reject(
         new SessionHandoffError(
@@ -1386,10 +1427,7 @@ class Session implements ISession {
     }
     if (this.closePromise) {
       return Promise.reject(
-        new SessionHandoffError(
-          'SESSION_HANDOFF_UNAVAILABLE',
-          'Session close has already started',
-        ),
+        new SessionHandoffError('SESSION_HANDOFF_UNAVAILABLE', 'Session close has already started'),
       );
     }
 
@@ -1399,10 +1437,7 @@ class Session implements ISession {
     void handoffPromise.catch(() => {
       if (this.handoffPromise === handoffPromise) {
         this.handoffPromise = null;
-        if (
-          this.executionState.phase !== 'suspending'
-          && this.executionState.phase !== 'closed'
-        ) {
+        if (this.executionState.phase !== 'suspending' && this.executionState.phase !== 'closed') {
           this.handoffRequested = false;
         }
       }
@@ -1414,7 +1449,10 @@ class Session implements ISession {
     await this.closeInternal('detached');
   }
 
-  private async closeInternal(disposition: 'terminal' | 'detached'): Promise<void> {
+  private async closeInternal(
+    disposition: 'terminal' | 'detached',
+    abortReason: RequestAbortReason = { kind: 'session_close' },
+  ): Promise<void> {
     const recordDurableClose = disposition === 'terminal';
     // 关闭时对 executionState 的读写走 inputMutex，避免与并发 send()/stream()
     // 交错（例如 send() 在 await 处让出后用 pending 覆盖 closed）。
@@ -1438,16 +1476,16 @@ class Session implements ISession {
             reason: 'session_close',
           });
         }
-        controller.abortRequest({ kind: 'session_close' });
+        controller.abortRequest(abortReason);
         controller.dispose();
         this.inputInbox.remove(input.inputId);
       } else if (
-        this.executionState.phase === 'running'
-        || this.executionState.phase === 'stopping'
-        || this.executionState.phase === 'suspending'
+        this.executionState.phase === 'running' ||
+        this.executionState.phase === 'stopping' ||
+        this.executionState.phase === 'suspending'
       ) {
         if (this.executionState.phase !== 'suspending') {
-          this.executionState.controller.abortRequest({ kind: 'session_close' });
+          this.executionState.controller.abortRequest(abortReason);
         }
         execution = this.executionState.execution;
         execution.releaseBackpressure();
@@ -1473,8 +1511,8 @@ class Session implements ISession {
       }
       await this.inputMutex.runExclusive(() => {
         if (
-          this.executionState.phase === 'closed'
-          && this.executionState.execution === closeState.execution
+          this.executionState.phase === 'closed' &&
+          this.executionState.execution === closeState.execution
         ) {
           this.executionState = {
             phase: 'closed',
@@ -1484,12 +1522,22 @@ class Session implements ISession {
       });
     }
 
-    if (!closeState.alreadyClosed) {
-      closeErrors.push(...await this.releaseLocalRuntime());
+    if (this.runtime) {
+      closeErrors.push(...(await this.releaseLocalRuntime()));
     }
     if (recordDurableClose && closeState.disposition === 'terminal') {
       try {
         await this.closeDurableSession();
+      } catch (error) {
+        closeErrors.push(error);
+      }
+    }
+    if (
+      !this.runtime &&
+      (closeErrors.length === 0 || this.executionLeaseFailure)
+    ) {
+      try {
+        await this.releaseExecutionLease();
       } catch (error) {
         closeErrors.push(error);
       }
@@ -1507,10 +1555,7 @@ class Session implements ISession {
 
   private async suspendForHandoffInternal(): Promise<SessionHandoffResult> {
     if (!this.initialized) {
-      throw new SessionHandoffError(
-        'SESSION_HANDOFF_UNAVAILABLE',
-        'Session is not initialized',
-      );
+      throw new SessionHandoffError('SESSION_HANDOFF_UNAVAILABLE', 'Session is not initialized');
     }
     const runtime = this.getRuntime();
     const journal = this.durableJournal;
@@ -1523,10 +1568,7 @@ class Session implements ISession {
 
     const handoffState = await this.inputMutex.runExclusive(() => {
       if (this.executionState.phase === 'closed') {
-        throw new SessionHandoffError(
-          'SESSION_HANDOFF_UNAVAILABLE',
-          'Session is already closed',
-        );
+        throw new SessionHandoffError('SESSION_HANDOFF_UNAVAILABLE', 'Session is already closed');
       }
       if (this.executionState.phase === 'stopping') {
         throw new SessionHandoffError(
@@ -1536,14 +1578,12 @@ class Session implements ISession {
       }
 
       const durableRecorder =
-        this.executionState.phase === 'pending'
-        || this.executionState.phase === 'running'
+        this.executionState.phase === 'pending' || this.executionState.phase === 'running'
           ? this.executionState.durableRecorder
           : null;
       if (
-        (this.executionState.phase === 'pending'
-          || this.executionState.phase === 'running')
-        && !durableRecorder
+        (this.executionState.phase === 'pending' || this.executionState.phase === 'running') &&
+        !durableRecorder
       ) {
         throw new SessionHandoffError(
           'SESSION_HANDOFF_NOT_CONFIGURED',
@@ -1552,11 +1592,10 @@ class Session implements ISession {
       }
       durableRecorder?.assertHandoffReady();
 
-      const blockers = runtime.sealBackgroundWorkForHandoff();
-      if (
-        blockers.activeSubagentIds.length > 0
-        || blockers.activeShellIds.length > 0
-      ) {
+      const blockers = runtime.sealBackgroundWorkForHandoff(
+        this.executionLease?.fence,
+      );
+      if (blockers.activeSubagentIds.length > 0 || blockers.activeShellIds.length > 0) {
         throw new SessionHandoffError(
           'SESSION_HANDOFF_ACTIVE_WORK',
           'Session handoff requires all background work to settle first',
@@ -1633,7 +1672,7 @@ class Session implements ISession {
         };
       }
     });
-    handoffErrors.push(...await this.releaseLocalRuntime());
+    handoffErrors.push(...(await this.releaseLocalRuntime()));
 
     let recoveryPlan: DurableSessionRecoveryPlan | null = null;
     let headSequence: EventSequence | null = null;
@@ -1650,15 +1689,22 @@ class Session implements ISession {
     } catch (error) {
       handoffErrors.push(error);
     }
+    if (
+      !this.runtime &&
+      (handoffErrors.length === 0 || this.executionLeaseFailure)
+    ) {
+      try {
+        await this.releaseExecutionLease();
+      } catch (error) {
+        handoffErrors.push(error);
+      }
+    }
 
     if (handoffErrors.length === 1) {
       throw handoffErrors[0];
     }
     if (handoffErrors.length > 1) {
-      throw new AggregateError(
-        handoffErrors,
-        'Session handoff failed in multiple phases',
-      );
+      throw new AggregateError(handoffErrors, 'Session handoff failed in multiple phases');
     }
     if (!recoveryPlan || headSequence === null) {
       throw new SessionHandoffError(
@@ -1682,20 +1728,117 @@ class Session implements ISession {
     this.agent = null;
     this.initialized = false;
     const runtime = this.runtime;
-    this.runtime = null;
+    const executionFence = this.executionLease?.fence;
     if (runtime) {
+      let runtimeClosed = false;
+      if (!this.runtimeEndAttempted) {
+        try {
+          await runtime.getHookRuntime().runSessionEnd({ reason: 'other' });
+          this.runtimeEndAttempted = true;
+        } catch (error) {
+          errors.push(error);
+        }
+      }
       try {
-        await runtime.getHookRuntime().runSessionEnd({ reason: 'other' });
+        await runtime.close(executionFence);
+        runtimeClosed = true;
       } catch (error) {
         errors.push(error);
       }
-      try {
-        await runtime.close();
-      } catch (error) {
-        errors.push(error);
+      if (
+        this.runtimeEndAttempted &&
+        runtimeClosed &&
+        this.runtime === runtime
+      ) {
+        this.runtime = null;
       }
     }
     return errors;
+  }
+
+  private async initializeExecutionLease(): Promise<void> {
+    const options = this.options.executionLease;
+    if (!options || this.executionLease) {
+      return;
+    }
+    if (!this.persistenceEnabled || !this.options.storagePath) {
+      throw new DurableExecutionLeaseError(
+        'DURABLE_EXECUTION_LEASE_INVALID',
+        'Session execution leases require persistent transcript storage',
+        { sessionId: this.sessionId },
+      );
+    }
+    const store = this.options.durableEventStore;
+    if (!store) {
+      throw new DurableExecutionLeaseError(
+        'DURABLE_EXECUTION_LEASE_NOT_SUPPORTED',
+        'Session execution leases require durableEventStore',
+        { sessionId: this.sessionId },
+      );
+    }
+    this.executionLease = await DurableExecutionLease.acquire(store, this.sessionId, options);
+  }
+
+  private runWithExecutionLease<T>(operation: () => Promise<T>): Promise<T> {
+    return this.executionLease
+      ? this.executionLease.runFenced(operation)
+      : operation();
+  }
+
+  private async releaseExecutionLease(): Promise<void> {
+    const lease = this.executionLease;
+    await lease?.release();
+    if (this.executionLease === lease) {
+      this.executionLeaseLossCleanup?.();
+      this.executionLeaseLossCleanup = null;
+      this.executionLease = null;
+    }
+  }
+
+  private handleExecutionLeaseLoss(error: DurableExecutionLeaseError): void {
+    if (this.executionLeaseFailure) {
+      return;
+    }
+    this.executionLeaseFailure = error;
+    const state = this.executionState;
+    if (state.phase === 'pending') {
+      state.controller.abortRequest({
+        kind: 'execution_lease_lost',
+        cause: error,
+      });
+    } else if (
+      state.phase === 'running' ||
+      state.phase === 'stopping' ||
+      state.phase === 'suspending'
+    ) {
+      state.controller.abortRequest({
+        kind: 'execution_lease_lost',
+        cause: error,
+      });
+      state.execution.releaseBackpressure();
+    }
+    const executionFence = this.executionLease?.fence;
+    if (executionFence) {
+      this.runtime?.stopBackgroundWorkAfterLeaseLoss(executionFence);
+    }
+    if (!this.initialized || this.handoffPromise || this.closePromise) {
+      return;
+    }
+
+    const cleanup = this.closeInternal('detached', {
+      kind: 'execution_lease_lost',
+      cause: error,
+    });
+    this.closePromise = cleanup;
+    void cleanup.catch((cleanupError: unknown) => {
+      this.logger.error(
+        `[Session] Failed to clean up after execution lease loss for ${this.sessionId}`,
+        cleanupError,
+      );
+      if (this.closePromise === cleanup) {
+        this.closePromise = null;
+      }
+    });
   }
 
   async abort(): Promise<void> {
@@ -1705,12 +1848,7 @@ class Session implements ISession {
     }
     const result = await this.inputMutex.runExclusive(async () => {
       if (this.executionState.phase === 'running') {
-        const {
-          requestId,
-          controller,
-          durableRecorder,
-          execution,
-        } = this.executionState;
+        const { requestId, controller, durableRecorder, execution } = this.executionState;
         controller.abortRequest({ kind: 'user_abort' });
         execution.releaseBackpressure();
         this.executionState = {
@@ -1807,15 +1945,21 @@ class Session implements ISession {
   }
 
   private async ensureInitialized(): Promise<void> {
+    if (this.executionLeaseFailure) {
+      throw this.executionLeaseFailure;
+    }
     if (
-      this.executionState.phase === 'suspending'
-      || this.executionState.phase === 'closed'
+      this.handoffRequested ||
+      this.executionState.phase === 'suspending' ||
+      this.executionState.phase === 'closed'
     ) {
       throw new Error('Session is closed');
     }
     if (!this.initialized) {
       await this.initialize();
+      return;
     }
+    await this.executionLease?.assertActive();
   }
 
   private getAgent(): Agent {
@@ -1841,7 +1985,9 @@ class Session implements ISession {
       return;
     }
 
-    const journal = await DurableSessionJournal.open(eventStore, this.sessionId);
+    const journal = await DurableSessionJournal.open(eventStore, this.sessionId, {
+      ...(this.executionLease ? { executionLease: this.executionLease } : {}),
+    });
     const projection = journal.getProjection();
     if (projection.status === 'empty') {
       await journal.commit({
@@ -1862,14 +2008,10 @@ class Session implements ISession {
       return;
     }
     if (!this.isResumeSession) {
-      throw new SessionDurableRecorderError(
-        `Durable Session ${this.sessionId} already exists`,
-      );
+      throw new SessionDurableRecorderError(`Durable Session ${this.sessionId} already exists`);
     }
     if (projection.status === 'closed') {
-      throw new SessionDurableRecorderError(
-        `Durable Session ${this.sessionId} is closed`,
-      );
+      throw new SessionDurableRecorderError(`Durable Session ${this.sessionId} is closed`);
     }
     const resumeDecision = new DurableSessionRecoveryCoordinator(journal).planResume();
     if (resumeDecision.action === 'recovery_required') {
@@ -1914,15 +2056,17 @@ class Session implements ISession {
     if (projection.status !== 'open' || projection.activeRequest) {
       return;
     }
-    const closePromise = journal.commit({
-      commandId: CommandId(nanoid()),
-      events: [
-        {
-          type: DurableEventType.SESSION_CLOSED,
-          data: { reason: 'shutdown' },
-        },
-      ],
-    }).then(() => undefined);
+    const closePromise = journal
+      .commit({
+        commandId: CommandId(nanoid()),
+        events: [
+          {
+            type: DurableEventType.SESSION_CLOSED,
+            data: { reason: 'shutdown' },
+          },
+        ],
+      })
+      .then(() => undefined);
     this.durableClosePromise = closePromise;
     try {
       await closePromise;
@@ -1951,15 +2095,17 @@ class Session implements ISession {
     if (reason?.kind === 'session_handoff') {
       return 'process_restart';
     }
+    if (reason?.kind === 'execution_lease_lost') {
+      return 'process_restart';
+    }
     return 'user_abort';
   }
 
   private async finishRequest(requestId: RequestId): Promise<void> {
     await this.inputMutex.runExclusive(() => {
       if (
-        (this.executionState.phase !== 'running'
-          && this.executionState.phase !== 'stopping')
-        || this.executionState.requestId !== requestId
+        (this.executionState.phase !== 'running' && this.executionState.phase !== 'stopping') ||
+        this.executionState.requestId !== requestId
       ) {
         return;
       }
@@ -1992,12 +2138,9 @@ class Session implements ISession {
       options: options || null,
       durableRecorder,
       initialInputPreparation,
-      snapshot: snapshot ?? createContextSnapshot(
-        this.sessionId,
-        nanoid(),
-        this.defaultContext,
-        options?.context,
-      ),
+      snapshot:
+        snapshot ??
+        createContextSnapshot(this.sessionId, nanoid(), this.defaultContext, options?.context),
     };
   }
 
@@ -2043,9 +2186,7 @@ class Session implements ISession {
       sendOptions,
       recorder,
       snapshot,
-      request.recoveryKind === 'pre_turn_request'
-        ? RECONCILED_INITIAL_INPUT
-        : undefined,
+      request.recoveryKind === 'pre_turn_request' ? RECONCILED_INITIAL_INPUT : undefined,
     );
     this.durableAcceptedRequest = null;
   }
@@ -2054,10 +2195,7 @@ class Session implements ISession {
     if (this.executionState.phase !== 'idle') {
       return;
     }
-    if (
-      this.durableJournal
-      && this.durableJournal.getRecoveryPlan().action !== 'none'
-    ) {
+    if (this.durableJournal && this.durableJournal.getRecoveryPlan().action !== 'none') {
       return;
     }
     const requestId = RequestId(nanoid());
@@ -2069,15 +2207,16 @@ class Session implements ISession {
   }
 
   private async persistInput(input: PendingSessionInput): Promise<void> {
-    await this.getRuntime().getContextManager().saveInputEnqueued(
-      this.sessionId,
-      {
-        inputId: input.inputId,
-        content: input.content as JsonValue,
-        priority: input.priority,
-        targetRequestId: input.targetRequestId,
-        acceptedAt: input.acceptedAt,
-      },
+    await this.runWithExecutionLease(() =>
+      this.getRuntime()
+        .getContextManager()
+        .saveInputEnqueued(this.sessionId, {
+          inputId: input.inputId,
+          content: input.content as JsonValue,
+          priority: input.priority,
+          targetRequestId: input.targetRequestId,
+          acceptedAt: input.acceptedAt,
+        }),
     );
   }
 
@@ -2124,9 +2263,11 @@ class Session implements ISession {
   async fork(options?: ForkSessionOptions): Promise<ISession> {
     await this.ensureInitialized();
     const snapshot = this.persistenceEnabled
-      ? await this.store.forkState(this.sessionId, {
-          messageId: options?.messageId,
-        })
+      ? await this.runWithExecutionLease(() =>
+          this.store.forkState(this.sessionId, {
+            messageId: options?.messageId,
+          }),
+        )
       : this.createSnapshotFromMessages(options?.messageId);
 
     const forkedSession = new Session(

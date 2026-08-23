@@ -1,4 +1,5 @@
 import type { ContextSnapshot } from '../../runtime/index.js';
+import type { DurableExecutionFence } from '../../session/events/DurableExecutionLeaseStore.js';
 import { PermissionMode } from '../../types/common.js';
 
 /**
@@ -25,7 +26,7 @@ export type ClaudeCodePermissionMode =
  * - ignore → DEFAULT (忽略，使用默认)
  */
 export function mapClaudeCodePermissionMode(
-  mode: ClaudeCodePermissionMode | undefined
+  mode: ClaudeCodePermissionMode | undefined,
 ): PermissionMode {
   switch (mode) {
     case 'default':
@@ -57,12 +58,7 @@ export type SubagentColor =
   | 'pink'
   | 'cyan';
 
-export type SubagentSource =
-  | 'builtin'
-  | 'user'
-  | 'project'
-  | 'session'
-  | `plugin:${string}`;
+export type SubagentSource = 'builtin' | 'user' | 'project' | 'session' | `plugin:${string}`;
 
 /**
  * Subagent 配置
@@ -113,7 +109,11 @@ export interface SubagentContext {
   permissionMode?: PermissionMode;
   subagentSessionId?: string;
   snapshot?: ContextSnapshot;
+  signal?: AbortSignal;
   omitEnvironment?: boolean;
+  executionFence?: DurableExecutionFence;
+  assertExecutionLease?: () => Promise<void>;
+  runWithExecutionLease?: <T>(operation: () => Promise<T>) => Promise<T>;
 }
 
 /**

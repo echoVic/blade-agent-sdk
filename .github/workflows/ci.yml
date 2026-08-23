@@ -95,3 +95,5 @@ jobs:
           src/session/events/__tests__/JsonlDurableEventStore.test.ts
           src/session/events/__tests__/JsonlDurableEventStoreCompromise.test.ts
           src/session/events/__tests__/JsonlDurableEventStoreUnavailableLock.test.ts
+          src/agent/subagents/__tests__/AgentSessionStore.test.ts
+          src/tools/builtin/shell/__tests__/BackgroundShellManager.test.ts
