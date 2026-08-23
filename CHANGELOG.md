@@ -2,6 +2,12 @@
 
 All notable changes to `@blade-ai/agent-sdk` are documented here.
 
+## [5.0.0] - 2026-08-23
+
+### Breaking Changes
+
+- Persist and deterministically settle model request attempts around provider calls, bind durable tool schedules to authoritative model responses, require explicit reconciliation for unknown outcomes, and advance the durable event wire format to schema v3 with schema-v2 read compatibility.
+
 ## [4.4.0] - 2026-08-22
 
 ### Features
