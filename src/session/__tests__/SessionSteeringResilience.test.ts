@@ -140,9 +140,9 @@ describe('Session steering resilience', () => {
     await started.promise;
     controller.abort(cancellation);
 
-    await expect(firstEvent).resolves.toMatchObject({
-      value: { type: 'error' },
-      done: false,
+    await expect(firstEvent).resolves.toEqual({
+      value: undefined,
+      done: true,
     });
     expect(hookSignal?.aborted).toBe(true);
     expect(hookSignal?.reason).toEqual({

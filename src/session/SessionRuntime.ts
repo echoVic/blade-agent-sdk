@@ -275,7 +275,32 @@ export class SessionRuntime {
     });
   }
 
+  assertNoPendingCleanup(): void {
+    const errors: Error[] = [];
+    if (this.executionPipeline.hasPendingExecutionCleanup()) {
+      errors.push(
+        new Error(
+          `Session runtime ${this.sessionId} still has a tool execution cleaning up`,
+        ),
+      );
+    }
+    if (this.hookRuntime.hasPendingCallbackCleanup()) {
+      errors.push(
+        new Error(
+          `Session runtime ${this.sessionId} still has an inline hook callback cleaning up`,
+        ),
+      );
+    }
+    if (errors.length === 1) {
+      throw errors[0];
+    }
+    if (errors.length > 1) {
+      throw new AggregateError(errors, `Session runtime ${this.sessionId} cleanup is pending`);
+    }
+  }
+
   async close(executionFence?: DurableExecutionFence): Promise<void> {
+    this.assertNoPendingCleanup();
     const shellManager = BackgroundShellManager.getInstance();
     const shutdownResults = await Promise.allSettled([
       this.backgroundAgentManager.sealCancelAndWait(),
@@ -291,19 +316,10 @@ export class SessionRuntime {
     } catch (error) {
       errors.push(error);
     }
-    if (this.executionPipeline.hasPendingExecutionCleanup()) {
-      errors.push(
-        new Error(
-          `Session runtime ${this.sessionId} still has a tool execution cleaning up`,
-        ),
-      );
-    }
-    if (this.hookRuntime.hasPendingCallbackCleanup()) {
-      errors.push(
-        new Error(
-          `Session runtime ${this.sessionId} still has an inline hook callback cleaning up`,
-        ),
-      );
+    try {
+      this.assertNoPendingCleanup();
+    } catch (error) {
+      errors.push(error);
     }
     if (errors.length === 1) {
       throw errors[0];

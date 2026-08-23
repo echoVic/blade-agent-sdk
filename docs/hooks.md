@@ -87,6 +87,9 @@ callback 必须监听 signal 并释放资源；如果取消后仍未结束，后
 dispatch 以及 Session close/handoff 都会 fail-closed，直至该 callback
 settle。上述选项不替代文件 Hook 自己的独立超时配置。
 
+`SessionEnd` callback 在一次 runtime 关闭流程中只执行一次；callback 失败或
+超时后，重试 `close()` 不会再次调用它。
+
 ## 修改用户输入
 
 `UserPromptSubmit` 的文本字段名是 `userPrompt`。返回 `modifiedInput.userPrompt` 可替换文本，同时保留原消息中的图片：

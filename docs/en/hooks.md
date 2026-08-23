@@ -88,6 +88,9 @@ inline hook dispatches and Session close or handoff fail closed until it
 settles. These options do not replace the independent timeout configuration
 used by file hooks.
 
+`SessionEnd` callbacks are one-shot for a runtime shutdown attempt. A failed or
+timed-out callback is not invoked again when `close()` is retried.
+
 ## Modify a prompt
 
 `UserPromptSubmit` uses the `userPrompt` field:
