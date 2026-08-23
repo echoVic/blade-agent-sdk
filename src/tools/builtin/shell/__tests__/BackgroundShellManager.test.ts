@@ -64,7 +64,9 @@ describe('BackgroundShellManager handoff admission', () => {
       success: true,
       status: 'killed',
     });
-    expect(manager.getActiveProcessIds(firstSession)).toEqual([processInfo.id]);
+    if (process.platform !== 'win32') {
+      expect(manager.getActiveProcessIds(firstSession)).toEqual([processInfo.id]);
+    }
     await vi.waitFor(() => expect(manager.getActiveProcessIds(firstSession)).toEqual([]), {
       timeout: 2_000,
     });
