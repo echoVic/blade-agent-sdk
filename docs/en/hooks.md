@@ -92,11 +92,12 @@ File/command hooks check the Request signal before spawning. On POSIX,
 cancellation or a file-hook timeout terminates the process group, waits briefly
 after `SIGTERM`, and escalates to `SIGKILL` when needed. On Windows, the command
 is admitted to a Job Object before it can spawn descendants and cancellation
-terminates the complete Job. The Hook does not settle until the owned process
-tree has exited. Windows command hooks fail closed before spawning when the
-`koffi` native binding is unavailable. The runtime checks the signal again after
-each file hook, so the default `ignore` failure policy cannot resume an
-already-cancelled Request.
+terminates the complete Job. The Hook does not report successful cleanup until
+the owned process tree has exited; containment failures reject instead of
+following the configured Hook failure policy. Windows command hooks also fail
+closed before spawning when the `koffi` native binding is unavailable. The
+runtime checks the signal again after each file hook, so the default `ignore`
+failure policy cannot resume an already-cancelled Request.
 
 `SessionEnd` callbacks are one-shot for a runtime shutdown attempt. A failed or
 timed-out callback is not invoked again when `close()` is retried; file hooks

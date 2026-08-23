@@ -231,6 +231,7 @@ export function buildLoopConfig(deps: LoopHookBuilderDeps): AgentLoopConfig {
           if (
             context.signal?.aborted
             || isExecutionLeaseFailure(compactError)
+            || isHookProcessContainmentError(compactError)
           ) {
             throw compactError;
           }

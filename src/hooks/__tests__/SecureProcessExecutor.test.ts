@@ -262,7 +262,7 @@ describe('SecureProcessExecutor', () => {
     processGroups.delete(groupPid);
   });
 
-  it.runIf(process.platform === 'win32')(
+  it(
     'reaps descendants after the hook command parent has exited',
     async () => {
       const root = await mkdtemp(join(tmpdir(), 'hook-exited-parent-'));

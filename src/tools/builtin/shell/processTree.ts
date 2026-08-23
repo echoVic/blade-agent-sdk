@@ -1,6 +1,7 @@
 import { type ChildProcess, spawnSync } from 'node:child_process';
 
 const PROCESS_TREE_POLL_INTERVAL_MS = 20;
+const PROCESS_TREE_FORCE_KILL_ATTEMPTS = 3;
 
 function isMissingProcess(error: unknown): boolean {
   return (
@@ -104,17 +105,22 @@ export async function waitForProcessTreeExit(
   return true;
 }
 
-/** Escalates process-tree termination and remains pending until the tree exits. */
+/** Escalates process-tree termination and rejects if the tree remains alive. */
 export async function terminateProcessTree(
   pid: number | undefined,
   child: ChildProcess | undefined,
   gracePeriodMs: number,
 ): Promise<void> {
+  let lastSignalError: unknown;
   const signalSafely = (signal: NodeJS.Signals): void => {
     try {
-      signalProcessTree(pid, signal, child);
-    } catch {
-      // Keep escalating and polling; returning while the tree is alive is unsafe.
+      if (!signalProcessTree(pid, signal, child)) {
+        lastSignalError = new Error(
+          `Process tree ${pid ?? 'unknown'} did not accept ${signal}`,
+        );
+      }
+    } catch (error) {
+      lastSignalError = error;
     }
   };
 
@@ -128,10 +134,19 @@ export async function terminateProcessTree(
     return;
   }
 
-  while (true) {
+  for (
+    let attempt = 0;
+    attempt < PROCESS_TREE_FORCE_KILL_ATTEMPTS;
+    attempt += 1
+  ) {
     signalSafely('SIGKILL');
     if (await waitForProcessTreeExit(pid, child, gracePeriodMs)) {
       return;
     }
   }
+
+  throw new Error(
+    `Failed to terminate process tree ${pid} after ${PROCESS_TREE_FORCE_KILL_ATTEMPTS} force-kill attempts`,
+    { cause: lastSignalError },
+  );
 }

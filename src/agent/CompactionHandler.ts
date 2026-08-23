@@ -2,6 +2,7 @@ import { CompactionService } from '../context/CompactionService.js';
 import type { ContextManager } from '../context/ContextManager.js';
 import { softCompact } from '../context/strategies/SoftCompactionStrategy.js';
 import { TokenCounter } from '../context/TokenCounter.js';
+import { isHookProcessContainmentError } from '../hooks/WindowsProcessJob.js';
 import { type InternalLogger, LogCategory, NOOP_LOGGER } from '../logging/Logger.js';
 import type { IChatService } from '../services/ChatServiceInterface.js';
 import { cloneMessage } from '../services/messageUtils.js';
@@ -169,6 +170,7 @@ export class CompactionHandler {
           if (
             runtimeCtx.signal?.aborted ||
             isExecutionLeaseFailure(saveError)
+            || isHookProcessContainmentError(saveError)
           ) {
             throw saveError;
           }
@@ -182,6 +184,7 @@ export class CompactionHandler {
         if (
           runtimeCtx.signal?.aborted ||
           isExecutionLeaseFailure(error)
+          || isHookProcessContainmentError(error)
         ) {
           throw error;
         }
@@ -297,6 +300,7 @@ export class CompactionHandler {
         if (
           runtimeCtx.signal?.aborted ||
           isExecutionLeaseFailure(saveError)
+          || isHookProcessContainmentError(saveError)
         ) {
           throw saveError;
         }
@@ -309,6 +313,7 @@ export class CompactionHandler {
       if (
         runtimeCtx.signal?.aborted ||
         isExecutionLeaseFailure(error)
+        || isHookProcessContainmentError(error)
       ) {
         throw error;
       }

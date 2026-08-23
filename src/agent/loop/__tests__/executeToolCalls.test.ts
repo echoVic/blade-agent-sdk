@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
+import { HookProcessContainmentError } from '../../../hooks/WindowsProcessJob.js';
 import { createContextSnapshot } from '../../../runtime/index.js';
 import { DurableExecutionLeaseError } from '../../../session/events/DurableExecutionLeaseStore.js';
 import { completeToolExecution, type ExecutionContext } from '../../../tools/types/index.js';
@@ -243,6 +244,46 @@ describe('executeToolCalls', () => {
         },
       }),
     ).rejects.toBe(leaseError);
+    expect(onToolSettled).not.toHaveBeenCalled();
+  });
+
+  it('propagates Hook process containment failures instead of creating a tool result', async () => {
+    const containmentError = new HookProcessContainmentError(
+      'Windows Job Object support is unavailable',
+    );
+    const onToolSettled = vi.fn(async () => {});
+
+    await expect(
+      executeToolCalls({
+        plan: {
+          mode: 'serial',
+          calls: [
+            {
+              id: 'tool-without-hook-containment',
+              type: 'function',
+              function: {
+                name: 'Write',
+                arguments: '{}',
+              },
+            },
+          ],
+        },
+        executionPipeline: {
+          // biome-ignore lint/correctness/useYield: generator fails before producing output
+          execute: vi.fn(async function* () {
+            throw containmentError;
+          }),
+          getRegistry: () => ({
+            get: () => undefined,
+          }),
+        } as never,
+        executionContext: {
+          sessionId: SessionId('session-without-hook-containment'),
+          userId: 'user-1',
+          lifecycle: { onToolSettled },
+        },
+      }),
+    ).rejects.toBe(containmentError);
     expect(onToolSettled).not.toHaveBeenCalled();
   });
 

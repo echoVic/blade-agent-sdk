@@ -20,6 +20,7 @@ import {
 } from './types/HookTypes.js';
 import {
   HookProcessContainmentError,
+  isHookProcessContainmentError,
   WindowsProcessJob,
 } from './WindowsProcessJob.js';
 
@@ -71,6 +72,15 @@ process.stdin.once('end', () => {
   child.stdin.end(payload.input);
 });
 `;
+
+function toContainmentError(
+  message: string,
+  error: unknown,
+): HookProcessContainmentError {
+  return isHookProcessContainmentError(error)
+    ? error
+    : new HookProcessContainmentError(message, { cause: error });
+}
 
 /**
  * 流量限制器
@@ -182,12 +192,20 @@ export class SecureProcessExecutor {
         }
         windowsJob.assign(child.pid);
       } catch (error) {
-        await terminateProcessTree(
-          child.pid,
-          child,
-          this.terminationGraceMs,
-        );
-        windowsJob.close();
+        try {
+          await terminateProcessTree(
+            child.pid,
+            child,
+            this.terminationGraceMs,
+          );
+        } catch (cleanupError) {
+          throw new HookProcessContainmentError(
+            'Failed to contain or terminate the Windows Hook process',
+            { cause: new AggregateError([error, cleanupError]) },
+          );
+        } finally {
+          windowsJob.close();
+        }
         throw new HookProcessContainmentError(
           'Failed to contain the Windows Hook process',
           { cause: error },
@@ -286,7 +304,11 @@ export class SecureProcessExecutor {
                 : this.createCancelledResult(stdout.getContent()),
             );
           },
-          rejectOnce,
+          (error) => {
+            rejectOnce(
+              toContainmentError('Failed to terminate the Hook process tree', error),
+            );
+          },
         );
       };
 
@@ -295,7 +317,11 @@ export class SecureProcessExecutor {
         cleanup();
         const processCleanup = windowsJob
           ? windowsJob.terminateAndWait()
-          : Promise.resolve();
+          : terminateProcessTree(
+              child.pid,
+              child,
+              this.terminationGraceMs,
+            );
         void processCleanup.then(() => {
           if (termination) return;
           resolveOnce({
@@ -304,7 +330,11 @@ export class SecureProcessExecutor {
             exitCode: code ?? 1,
             timedOut: false,
           });
-        }, rejectOnce);
+        }, (error) => {
+          rejectOnce(
+            toContainmentError('Failed to reap the Hook process tree', error),
+          );
+        });
       });
 
       child.on('error', (error) => {
