@@ -18,6 +18,7 @@ import {
     LogCategory,
     NOOP_LOGGER,
 } from '../logging/Logger.js';
+import type { ModelMiddleware } from '../middleware/ModelMiddleware.js';
 import { McpRegistry } from '../mcp/McpRegistry.js';
 import { buildSystemPrompt } from '../prompts/index.js';
 import {
@@ -76,6 +77,7 @@ export interface AgentRuntimeDeps {
   subagentRegistry?: SubagentRegistry;
   backgroundAgentManager?: BackgroundAgentManager;
   hookRuntime?: HookRuntime;
+  modelMiddleware?: readonly ModelMiddleware[];
   runtimeManaged?: boolean;
   logger?: InternalLogger;
 }
@@ -141,6 +143,7 @@ export class Agent {
       deps.contextManager,
       getContextCwd(this.defaultContext),
       this.rootLogger,
+      deps.modelMiddleware,
     );
     this.planExecutor = new PlanExecutor(config.language, this.rootLogger);
     this.tokenBudget = this.createTokenBudget(runtimeOptions.tokenBudget);

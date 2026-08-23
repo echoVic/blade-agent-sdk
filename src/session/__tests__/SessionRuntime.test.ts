@@ -184,6 +184,78 @@ describe('SessionRuntime', () => {
     await runtime.close();
   });
 
+  it('should install plugin tools and tool middleware through one declarative entry', async () => {
+    const calls: string[] = [];
+    const pluginTool = createTool({
+      name: 'PluginTool',
+      displayName: 'Plugin Tool',
+      kind: ToolKind.ReadOnly,
+      sideEffect: 'pure',
+      description: { short: 'Plugin test tool' },
+      schema: z.object({ value: z.string().optional() }),
+      execute(params) {
+        return completeToolExecution({
+          status: 'success',
+          model: params.value ?? 'missing',
+        });
+      },
+    });
+    const runtime = new SessionRuntime(
+      SessionId('session-plugin'),
+      createOptions({
+        allowedTools: ['PluginTool'],
+        plugins: [
+          {
+            name: 'audit',
+            tools: [pluginTool],
+            middleware: {
+              tool: [
+                async function* (request, next) {
+                  calls.push(`before:${request.toolName}`);
+                  const result = yield* next({
+                    ...request,
+                    input: { ...request.input, value: 'from-plugin' },
+                  });
+                  calls.push(`after:${request.toolName}`);
+                  return result;
+                },
+              ],
+            },
+          },
+        ],
+      }),
+      {
+        models: [],
+      },
+      PermissionMode.YOLO,
+      createFilesystemContext(workspaceRoot),
+      NOOP_LOGGER,
+    );
+
+    await runtime.initialize();
+
+    expect(runtime.getToolCatalog().getEntry('PluginTool')).toMatchObject({
+      source: {
+        kind: 'custom',
+        trustLevel: 'workspace',
+        sourceId: 'plugin:audit',
+      },
+    });
+    const executionPipeline = runtime.getAgentRuntimeDeps().executionPipeline;
+    assertDefined(executionPipeline);
+    const result = await collectToolExecution(
+      executionPipeline.execute('PluginTool', { value: 'original' }, {}),
+    );
+
+    expect(result).toMatchObject({
+      status: 'success',
+      model: 'from-plugin',
+    });
+    expect(calls).toEqual(['before:PluginTool', 'after:PluginTool']);
+
+    await runtime.close();
+  });
+
   it('should disable all tools when allowedTools is an empty array', async () => {
     const runtime = new SessionRuntime(
       SessionId('session-empty-allowlist'),
