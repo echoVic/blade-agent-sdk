@@ -596,7 +596,8 @@ runtime 恢复。
 `read()` 和 `getHeadSequence()` 使用同一把锁，因此不会读取另一进程正在截断或
 追加的中间状态。本进程 mutex 排队与跨进程锁获取共用默认 10 秒总预算。跨进程
 锁使用操作系统 advisory lock：进程退出或崩溃时由内核立即释放，暂停但仍存活的
-进程会继续持锁，不会因 wall-clock 超时被另一个进程夺取。
+进程会继续持锁，不会因 wall-clock 超时被另一个进程夺取。`lockTimeoutMs: 0`
+表示只立即尝试一次；锁已被占用时不会排队或重试。
 
 每个事件文件旁会保留一个 `*.jsonl.lock` sidecar。它的存在不表示锁当前被占用；
 锁状态属于打开的文件描述符。只要仍有进程使用该 Store，就不能手动删除、替换或
@@ -611,8 +612,8 @@ Store 视为敏感数据存储，并自行配置加密、保留期限和访问�
 `JsonlDurableEventStore` 保证同一主机上多个 Node.js 进程针对同一 Session 的
 互斥读写和原子 compare-and-append。该保证要求本地文件系统正确实现 advisory
 lock；它不适用于 NFS 等共享网络文件系统，也不提供跨主机 execution lease。
-多副本服务仍应实现 `DurableEventStore` 接口，并使用数据库事务、CAS 或 lease
-保证单写者。
+多副本服务仍应实现 `DurableEventStore` 接口，并使用数据库事务、CAS 或带
+fencing token 的 lease 保证单写者；不能依赖未提供 fencing 的超时 lease。
 
 `DURABLE_EVENT_WRITE_FAILED` 不代表 batch 一定没有写入：底层写入成功后
 `fsync`、解锁或关闭锁文件失败时，提交结果都可能未知。调用方重试前必须重新

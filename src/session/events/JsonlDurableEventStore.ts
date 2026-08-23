@@ -4,6 +4,7 @@ import { nanoid } from 'nanoid';
 import { Buffer } from 'node:buffer';
 import { type FileHandle, mkdir, open, readFile, realpath, truncate } from 'node:fs/promises';
 import { basename, join, resolve } from 'node:path';
+import { performance } from 'node:perf_hooks';
 import { EventId, EventSequence, type SessionId } from '../../types/branded.js';
 import {
   DurableEventSequenceConflictError,
@@ -253,7 +254,7 @@ export class JsonlDurableEventStore implements DurableEventStore {
     operation: 'read' | 'write',
     callback: () => Promise<T>,
   ): Promise<T> {
-    const deadline = Date.now() + this.lockTimeoutMs;
+    const deadline = performance.now() + this.lockTimeoutMs;
     let lockTarget: string;
     try {
       await mkdir(this.rootDirectory, { recursive: true, mode: 0o700 });
@@ -268,7 +269,7 @@ export class JsonlDurableEventStore implements DurableEventStore {
     }
 
     const timeoutError = this.createLockTimeoutError(sessionId);
-    const localWaitMs = Math.max(0, deadline - Date.now());
+    const localWaitMs = Math.max(0, deadline - performance.now());
     return runWithFileMutex(lockTarget, localWaitMs, timeoutError, async () => {
       const release = await this.acquireProcessLock(lockTarget, sessionId, deadline);
       const operationErrorCode =
@@ -318,7 +319,7 @@ export class JsonlDurableEventStore implements DurableEventStore {
     try {
       let attempted = false;
       while (true) {
-        const remainingMs = deadline - Date.now();
+        const remainingMs = deadline - performance.now();
         if (remainingMs <= 0 && (attempted || this.lockTimeoutMs > 0)) {
           throw this.createLockTimeoutError(sessionId);
         }
@@ -338,7 +339,7 @@ export class JsonlDurableEventStore implements DurableEventStore {
           return this.createProcessLockRelease(lockFile);
         }
 
-        const retryWaitMs = deadline - Date.now();
+        const retryWaitMs = deadline - performance.now();
         if (retryWaitMs <= 0) {
           throw this.createLockTimeoutError(sessionId);
         }

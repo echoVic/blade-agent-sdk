@@ -642,7 +642,9 @@ another process between tail truncation and append. Local mutex queuing and
 cross-process acquisition share a total 10-second budget by default. The
 cross-process lock is an operating-system advisory lock: the kernel releases it
 when a process exits or crashes, while a paused live process retains ownership
-instead of being displaced after a wall-clock timeout.
+instead of being displaced after a wall-clock timeout. `lockTimeoutMs: 0`
+performs exactly one immediate attempt without queuing or retrying when the lock
+is held.
 
 Each event log has a persistent `*.jsonl.lock` sidecar. Its presence does not
 mean that the lock is currently held; ownership belongs to an open file
@@ -662,7 +664,8 @@ compare-and-append across Node.js processes on the same host. This guarantee
 requires a local filesystem with working advisory locks; it does not apply to
 shared network filesystems such as NFS and does not provide a cross-host
 execution lease. Replicated services must still implement `DurableEventStore`
-with database transactions, CAS, or a lease.
+with database transactions, CAS, or a lease carrying a fencing token. An
+unfenced timeout-based lease is not sufficient.
 
 `DURABLE_EVENT_WRITE_FAILED` does not prove that a batch was not written. The
 outcome can be unknown when `fsync`, unlocking, or closing the lock file fails

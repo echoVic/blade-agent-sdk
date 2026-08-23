@@ -1,12 +1,14 @@
 import { mkdtemp, rm, stat } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { performance } from 'node:perf_hooks';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { EventId, SessionId } from '../../../types/branded.js';
 
 const lockState = vi.hoisted(() => ({
   acquireError: undefined as Error | undefined,
   acquireResults: [] as boolean[],
+  closeError: undefined as Error | undefined,
   releaseError: undefined as Error | undefined,
   acquireAttempts: 0,
   releaseAttempts: 0,
@@ -28,6 +30,26 @@ vi.mock('fs-native-extensions', () => ({
   }),
 }));
 
+vi.mock('node:fs/promises', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('node:fs/promises')>();
+  return {
+    ...actual,
+    open: vi.fn(async (path: string, flags: string, mode?: number) => {
+      const file = await actual.open(path, flags, mode);
+      if (path.endsWith('.lock')) {
+        const close = file.close.bind(file);
+        file.close = async () => {
+          await close();
+          if (lockState.closeError) {
+            throw lockState.closeError;
+          }
+        };
+      }
+      return file;
+    }),
+  };
+});
+
 import { JsonlDurableEventStore } from '../JsonlDurableEventStore.js';
 import { DurableEventType } from '../types.js';
 
@@ -37,6 +59,7 @@ describe('JsonlDurableEventStore native lock failures', () => {
   afterEach(async () => {
     lockState.acquireError = undefined;
     lockState.acquireResults = [];
+    lockState.closeError = undefined;
     lockState.releaseError = undefined;
     lockState.acquireAttempts = 0;
     lockState.releaseAttempts = 0;
@@ -97,13 +120,42 @@ describe('JsonlDurableEventStore native lock failures', () => {
     });
   });
 
+  it('reports an unknown write outcome when the lock file fails to close', async () => {
+    storageRoot = await mkdtemp(join(tmpdir(), 'durable-event-lock-close-failure-'));
+    const store = new JsonlDurableEventStore(storageRoot, {
+      eventIdFactory: () => EventId('committed-before-close-failure'),
+    });
+    const sessionId = SessionId('session-lock-close-failure');
+    lockState.closeError = new Error('close failed');
+
+    await expect(
+      store.append(sessionId, [{ type: DurableEventType.SESSION_CREATED, data: {} }], {
+        expectedLastSequence: null,
+      }),
+    ).rejects.toMatchObject({
+      code: 'DURABLE_EVENT_WRITE_FAILED',
+      message: expect.stringContaining('failed while holding the Session lock'),
+    });
+
+    lockState.closeError = undefined;
+    await expect(store.read(sessionId)).resolves.toMatchObject({
+      events: [
+        expect.objectContaining({
+          eventId: 'committed-before-close-failure',
+          sequence: 1,
+        }),
+      ],
+      headSequence: 1,
+    });
+  });
+
   it('does not retry lock acquisition after the total deadline', async () => {
     storageRoot = await mkdtemp(join(tmpdir(), 'durable-event-lock-deadline-'));
     const store = new JsonlDurableEventStore(storageRoot, {
       lockTimeoutMs: 10,
     });
     lockState.acquireResults.push(false);
-    vi.spyOn(Date, 'now')
+    vi.spyOn(performance, 'now')
       .mockReturnValueOnce(0)
       .mockReturnValueOnce(0)
       .mockReturnValueOnce(1)
