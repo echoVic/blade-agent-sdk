@@ -412,6 +412,7 @@ export class SessionDurableRecorder implements
           data: {
             toolCallId: tool.toolCallId,
             toolName: tool.toolName,
+            modelInput: event.modelInput,
             input: event.input,
             sideEffect: event.sideEffect,
             interruptBehavior: event.interruptBehavior,

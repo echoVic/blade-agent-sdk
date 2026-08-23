@@ -666,6 +666,8 @@ Permission 和输入应用事件，并保证：
 - `model_request_started` 在调用 provider 前提交；模型调用返回后会提交
   `model_request_completed`、`model_request_failed` 或
   `model_request_aborted`。
+- `tool_scheduled` 同时保存 provider 原始 `modelInput` 与参数修复后的执行
+  `input`；schema v3 projector 会把工具 ID、名称和原始参数绑定到对应模型响应。
 - 工具副作用开始前已提交 `tool_started`。
 - 独立写入的 Request 终态通过 `causationEventId` 绑定最后一次持久化的
   Request 边界。

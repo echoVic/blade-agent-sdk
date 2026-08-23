@@ -91,7 +91,7 @@ are rejected before append.
 | `model_request_completed` | Request, Turn, `modelAttemptId` | Complete model `response` |
 | `model_request_failed` | Request, Turn, `modelAttemptId` | `error` |
 | `model_request_aborted` | Request, Turn, `modelAttemptId` | `reason` |
-| `tool_scheduled` | Request, Turn, `toolAttemptId` | `toolCallId`, `toolName`, `input`, `sideEffect`, `interruptBehavior` |
+| `tool_scheduled` | Request, Turn, `toolAttemptId` | `toolCallId`, `toolName`, `modelInput`, `input`, `sideEffect`, `interruptBehavior` |
 | `tool_started` | Request, Turn, `toolAttemptId` | Tool identity, final `input`, resolved `sideEffect` |
 | `tool_completed` | Request, Turn, `toolAttemptId` | Tool identity, `result` |
 | `tool_failed` | Request, Turn, `toolAttemptId` | Tool identity, `error` |
@@ -562,8 +562,8 @@ durable recovery facts instead, avoiding both cross-store synthetic results
 and provider-invalid dangling tool calls. Multimodal original inputs retain
 their content parts instead of being flattened into JSON text. A permitted but
 not-yet-started tool uses the permission-updated input and is conservatively
-classified as `non_idempotent`. Each tool input, result, error, and permission
-value is limited to 4,000 serialized characters. Oversized values carry
+classified as `non_idempotent`. Each model response and tool input, result,
+error, and permission value is limited to 4,000 serialized characters. Oversized values carry
 `kind: "truncated_recovery_value"`, the original size, and JSON prefix/suffix
 metadata so the model cannot mistake the preview for a complete result.
 
@@ -598,11 +598,17 @@ execution started raises
 prompting to bypass an unknown side effect.
 
 The current writer uses schema v3, which adds `modelAttemptId` and the complete
-model-request lifecycle. Readers remain compatible with schema-v2 logs and may
-append later v3 batches to the same Session. Schema versions may only increase:
-a v2 batch after v3 is corrupt, and a v2 batch cannot masquerade as containing
-v3 model events. Version 1 logs are not inferred silently and must be migrated
-before this runtime can resume them.
+model-request lifecycle. In v3, `tool_scheduled.modelInput` preserves the
+provider's original arguments while `input` holds repaired execution input.
+The projector requires each tool to belong to the current Model Attempt and
+uses canonical JSON to match its ID, name, and original arguments to the
+confirmed model response. If streaming dispatches a tool before
+`model_request_completed`, the terminal model event validates all previously
+scheduled tools when it arrives. Readers remain compatible with schema-v2 logs
+that lack these fields and may append later v3 batches to the same Session. Schema
+versions may only increase: a v2 batch after v3 is corrupt, and a v2 batch
+cannot masquerade as containing v3 model events. Version 1 logs are not
+inferred silently and must be migrated before this runtime can resume them.
 
 ## JSONL persistence
 

@@ -43,7 +43,7 @@ import {
   type DurableTokenUsage,
 } from './types.js';
 
-const MAX_RECOVERY_TOOL_VALUE_CHARS = 4_000;
+const MAX_RECOVERY_VALUE_CHARS = 4_000;
 
 export type DurableAcceptedRequestRecovery = DurableRequestProjection & {
   readonly maxTurns: number;
@@ -462,11 +462,11 @@ function composeRecoveryContinuation(
 function boundedRecoveryValue(value: unknown): JsonValue {
   const normalized = toJsonValue(value);
   const serialized = JSON.stringify(normalized);
-  if (serialized.length <= MAX_RECOVERY_TOOL_VALUE_CHARS) {
+  if (serialized.length <= MAX_RECOVERY_VALUE_CHARS) {
     return normalized;
   }
 
-  const retainedPerEdge = Math.floor(MAX_RECOVERY_TOOL_VALUE_CHARS / 2);
+  const retainedPerEdge = Math.floor(MAX_RECOVERY_VALUE_CHARS / 2);
   return {
     kind: 'truncated_recovery_value',
     complete: false,

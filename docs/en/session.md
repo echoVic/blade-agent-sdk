@@ -268,6 +268,9 @@ Permission, and input-application events with these ordering guarantees:
 - `model_request_started` commits before the provider call. The call then
   settles as `model_request_completed`, `model_request_failed`, or
   `model_request_aborted`.
+- `tool_scheduled` stores both the provider's original `modelInput` and the
+  repaired execution `input`; the schema-v3 projector binds tool ID, name, and
+  original arguments to the corresponding model response.
 - `tool_started` commits before the tool side effect can run.
 - A standalone Request terminal event links to the latest persisted Request
   boundary through `causationEventId`.

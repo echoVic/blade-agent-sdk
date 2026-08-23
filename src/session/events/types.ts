@@ -170,6 +170,7 @@ export interface DurableEventDataMap {
   [DurableEventType.TOOL_SCHEDULED]: {
     toolCallId: ToolUseId;
     toolName: string;
+    modelInput?: JsonValue;
     input: JsonValue;
     sideEffect: ToolSideEffect;
     interruptBehavior: DurableToolInterruptBehavior;

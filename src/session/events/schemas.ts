@@ -181,6 +181,7 @@ const DurableEventDataSchemas = {
   [DurableEventTypeValue.TOOL_SCHEDULED]: z
     .object({
       ...ToolIdentitySchema,
+      modelInput: JsonValueSchema.optional(),
       input: JsonValueSchema,
       sideEffect: z.enum(['pure', 'idempotent', 'non_idempotent']),
       interruptBehavior: z.enum(['block', 'cancel']),
@@ -299,6 +300,17 @@ const DurableEventEnvelopeSchema = z
         code: z.ZodIssueCode.custom,
         path: ['type'],
         message: `${value.type} requires durable event schema v3`,
+      });
+    }
+    if (
+      value.schemaVersion === DURABLE_EVENT_SCHEMA_VERSION
+      && value.type === DurableEventTypeValue.TOOL_SCHEDULED
+      && value.data.modelInput === undefined
+    ) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['data', 'modelInput'],
+        message: `${value.type} requires modelInput in durable event schema v3`,
       });
     }
   });

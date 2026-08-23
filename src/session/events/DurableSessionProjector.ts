@@ -14,6 +14,7 @@ import {
   type TurnId,
 } from '../../types/branded.js';
 import type { JsonObject, JsonValue } from '../../types/common.js';
+import { canonicalJson } from './canonicalJson.js';
 import { parseDurableEventDraft, parseDurableEventEnvelope } from './schemas.js';
 import {
   DURABLE_EVENT_SCHEMA_VERSION,
@@ -73,6 +74,7 @@ export interface DurableToolAttemptProjection {
   readonly toolAttemptId: ToolAttemptId;
   readonly toolCallId: ToolUseId;
   readonly toolName: string;
+  readonly modelInput?: JsonValue;
   readonly input: JsonValue;
   readonly sideEffect: ToolSideEffect;
   readonly interruptBehavior: DurableToolInterruptBehavior;
@@ -178,6 +180,7 @@ interface MutableToolAttemptProjection {
   toolAttemptId: ToolAttemptId;
   toolCallId: ToolUseId;
   toolName: string;
+  modelInput?: JsonValue;
   input: JsonValue;
   sideEffect: ToolSideEffect;
   interruptBehavior: DurableToolInterruptBehavior;
@@ -381,17 +384,24 @@ function assertToolIdentity(
   }
 }
 
-function assertToolMatchesCompletedModelResponse(
+function assertToolMatchesModelAttempt(
   event: DurableEventEnvelope,
   turn: MutableTurnProjection,
   toolCallId: ToolUseId,
   toolName: string,
+  modelInput: JsonValue | undefined,
 ): void {
   const modelAttempt = Array.from(turn.modelAttempts.values()).at(-1);
   if (!modelAttempt) {
+    if (event.schemaVersion >= 3) {
+      invalid(event, `Tool call ${toolCallId} has no model attempt`);
+    }
     return;
   }
   if (modelAttempt.status === 'started') {
+    if (modelInput === undefined) {
+      invalid(event, `Tool call ${toolCallId} has no original model input`);
+    }
     return;
   }
   if (modelAttempt.status !== 'completed') {
@@ -408,6 +418,31 @@ function assertToolMatchesCompletedModelResponse(
       event,
       `Tool call ${toolCallId}/${toolName} was not declared by model attempt ${modelAttempt.modelAttemptId}`,
     );
+  }
+  assertModelToolInput(event, toolCallId, declared.arguments, modelInput);
+}
+
+function assertModelToolInput(
+  event: DurableEventEnvelope,
+  toolCallId: ToolUseId,
+  argumentsText: string,
+  modelInput: JsonValue | undefined,
+): void {
+  if (modelInput === undefined) {
+    invalid(event, `Tool call ${toolCallId} has no original model input`);
+  }
+  let declaredInput: JsonValue;
+  try {
+    declaredInput = JSON.parse(argumentsText) as JsonValue;
+  } catch (cause) {
+    throw new DurableEventProjectionError(
+      `Tool call ${toolCallId} has invalid model arguments`,
+      event,
+      { cause },
+    );
+  }
+  if (canonicalJson(declaredInput) !== canonicalJson(modelInput)) {
+    invalid(event, `Tool call ${toolCallId} input does not match the model response`);
   }
 }
 
@@ -431,6 +466,12 @@ function assertCompletedResponseMatchesScheduledTools(
         `Model response does not declare durable tool call ${tool.toolCallId}/${tool.toolName}`,
       );
     }
+    assertModelToolInput(
+      event,
+      tool.toolCallId,
+      declared.arguments,
+      tool.modelInput,
+    );
   }
 }
 
@@ -942,20 +983,31 @@ function applyEvent(state: ProjectionAccumulator, event: DurableEventEnvelope): 
 
     case DurableEventTypeValue.TOOL_SCHEDULED: {
       const turn = requireActiveTurn(state, event);
-      assertToolMatchesCompletedModelResponse(
+      if (state.seenToolAttemptIds.has(event.toolAttemptId)) {
+        invalid(event, `Tool attempt ID ${event.toolAttemptId} was already used`);
+      }
+      if (
+        Array.from(turn.toolAttempts.values()).some(
+          (tool) => tool.toolCallId === event.data.toolCallId,
+        )
+      ) {
+        invalid(event, `Tool call ID ${event.data.toolCallId} was already scheduled`);
+      }
+      assertToolMatchesModelAttempt(
         event,
         turn,
         event.data.toolCallId,
         event.data.toolName,
+        event.data.modelInput,
       );
-      if (state.seenToolAttemptIds.has(event.toolAttemptId)) {
-        invalid(event, `Tool attempt ID ${event.toolAttemptId} was already used`);
-      }
       state.seenToolAttemptIds.add(event.toolAttemptId);
       turn.toolAttempts.set(event.toolAttemptId, {
         toolAttemptId: event.toolAttemptId,
         toolCallId: event.data.toolCallId,
         toolName: event.data.toolName,
+        ...(event.data.modelInput !== undefined
+          ? { modelInput: event.data.modelInput }
+          : {}),
         input: event.data.input,
         sideEffect: event.data.sideEffect,
         interruptBehavior: event.data.interruptBehavior,

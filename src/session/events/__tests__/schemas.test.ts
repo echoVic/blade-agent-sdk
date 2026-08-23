@@ -167,6 +167,7 @@ const validDrafts: readonly DurableEventDraft[] = [
     data: {
       toolCallId,
       toolName: 'Write',
+      modelInput: { file_path: '/tmp/file' },
       input: { file_path: '/tmp/file' },
       sideEffect: 'non_idempotent',
       interruptBehavior: 'block',
@@ -478,6 +479,38 @@ describe('durable event schemas', () => {
         occurredAt: '2026-08-22T12:00:00.000Z',
       }),
     ).toThrow(/requires durable event schema v3/);
+  });
+
+  it('requires original model input for schema-v3 tool schedules only', () => {
+    const toolScheduled = validDrafts.find(
+      (draft) => draft.type === DurableEventType.TOOL_SCHEDULED,
+    );
+    if (!toolScheduled || toolScheduled.type !== DurableEventType.TOOL_SCHEDULED) {
+      throw new Error('Expected tool_scheduled fixture');
+    }
+    const { modelInput: _modelInput, ...legacyData } = toolScheduled.data;
+    const envelope = {
+      ...toolScheduled,
+      data: legacyData,
+      eventId: EventId('tool-without-model-input'),
+      sequence: 1,
+      sessionId: 'session-1',
+      recordedAt: '2026-08-22T12:00:00.000Z',
+      occurredAt: '2026-08-22T12:00:00.000Z',
+    };
+
+    expect(() =>
+      parseDurableEventEnvelope({
+        ...envelope,
+        schemaVersion: DURABLE_EVENT_SCHEMA_VERSION,
+      }),
+    ).toThrow(/requires modelInput/);
+    expect(
+      parseDurableEventEnvelope({
+        ...envelope,
+        schemaVersion: 2,
+      }).schemaVersion,
+    ).toBe(2);
   });
 
   it('rejects a persisted batch whose event version does not match', () => {

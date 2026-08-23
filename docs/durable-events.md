@@ -86,7 +86,7 @@ interface DurableEventEnvelope<TType extends DurableEventType> {
 | `model_request_completed` | Request、Turn、`modelAttemptId` | 完整模型 `response` |
 | `model_request_failed` | Request、Turn、`modelAttemptId` | `error` |
 | `model_request_aborted` | Request、Turn、`modelAttemptId` | `reason` |
-| `tool_scheduled` | Request、Turn、`toolAttemptId` | `toolCallId`、`toolName`、`input`、`sideEffect`、`interruptBehavior` |
+| `tool_scheduled` | Request、Turn、`toolAttemptId` | `toolCallId`、`toolName`、`modelInput`、`input`、`sideEffect`、`interruptBehavior` |
 | `tool_started` | Request、Turn、`toolAttemptId` | 工具标识、最终 `input`、解析后的 `sideEffect` |
 | `tool_completed` | Request、Turn、`toolAttemptId` | 工具标识、`result` |
 | `tool_failed` | Request、Turn、`toolAttemptId` | 工具标识、`error` |
@@ -524,8 +524,8 @@ continuation 会把从未执行的工具标记为 `not_started`，把已开始�
 送入模型，因此不会构造跨 Store 的伪造 tool result，也不会留下 provider
 不接受的悬空 tool call。多模态原始输入仍以原始 content parts 传递，不会降级
 成 JSON 文本。权限恢复为 `allow` 但尚未执行的工具使用权限阶段更新后的输入，
-并按 `non_idempotent` 保守分类。每个工具的 input、result、error 和 permission
-最多保留 4,000 个序列化字符；超限值会携带
+并按 `non_idempotent` 保守分类。每个模型 response 及工具的 input、result、
+error 和 permission 最多保留 4,000 个序列化字符；超限值会携带
 `kind: "truncated_recovery_value"`、原始长度和 JSON 前后缀，模型不会把预览误认
 为完整结果。
 
@@ -558,10 +558,14 @@ provenance 还要求前置 synthetic `turn_started`。`requestId` 和 `turnId` �
 绕过未知副作用。
 
 当前 writer 使用 schema v3，并为模型调用增加 `modelAttemptId` 及完整生命周期
-事件。Reader 可继续读取 schema v2 日志，并允许在同一 Session 后续追加 v3
-batch；schema 版本只能单调升级，不能在 v3 后降回 v2，且 v2 batch 不允许伪装
-包含 v3 模型事件。Schema v1 不会被静默推断，需要显式迁移后才能由当前 runtime
-恢复。
+事件。v3 的 `tool_scheduled.modelInput` 保存 provider 原始参数，`input` 保存参数
+修复后的执行值；projector 要求工具属于当前 Model Attempt，并以 canonical JSON
+校验其 ID、名称和原始参数与已确认模型响应完全一致。即使流式工具在
+`model_request_completed` 前开始调度，模型终态到达时也会反向校验已调度工具。
+Reader 可继续读取没有这些字段的 schema v2 日志，并允许在同一 Session 后续追加
+v3 batch；schema 版本只能单调升级，不能在 v3 后降回 v2，且 v2 batch 不允许
+伪装包含 v3 模型事件。Schema v1 不会被静默推断，需要显式迁移后才能由当前
+runtime 恢复。
 
 ## JSONL 持久化
 

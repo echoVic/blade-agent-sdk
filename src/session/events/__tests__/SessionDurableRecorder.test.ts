@@ -11,6 +11,7 @@ import {
   SessionId,
   ToolUseId,
 } from '../../../types/branded.js';
+import type { JsonObject } from '../../../types/common.js';
 import { DurableSessionJournal } from '../DurableSessionJournal.js';
 import { JsonlDurableEventStore } from '../JsonlDurableEventStore.js';
 import {
@@ -48,6 +49,31 @@ describe('SessionDurableRecorder', () => {
     });
     recorder = new SessionDurableRecorder(journal, requestId, 'test-model');
   });
+
+  async function recordCompletedModelTool(
+    toolCallId: ToolUseId,
+    toolName: string,
+    modelInput: JsonObject,
+  ): Promise<void> {
+    const modelRequest = await recorder.onModelRequestStarting({
+      turn: 1,
+      model: 'test-model',
+      streaming: false,
+    });
+    await modelRequest.onCompleted({
+      content: '',
+      toolCalls: [
+        {
+          id: toolCallId,
+          type: 'function',
+          function: {
+            name: toolName,
+            arguments: JSON.stringify(modelInput),
+          },
+        },
+      ],
+    });
+  }
 
   afterEach(async () => {
     await rm(storageRoot, { recursive: true, force: true });
@@ -94,6 +120,7 @@ describe('SessionDurableRecorder', () => {
     const lifecycle = await recorder.onToolScheduled({
       toolCallId: ToolUseId('tool-call-1'),
       toolName: 'Write',
+      modelInput: { file_path: '/tmp/file' },
       input: { file_path: '/tmp/file' },
       sideEffect: 'non_idempotent',
       interruptBehavior: 'block',
@@ -175,7 +202,11 @@ describe('SessionDurableRecorder', () => {
       events.find(
         (event) => event.type === DurableEventType.TOOL_SCHEDULED,
       )?.data,
-    ).toMatchObject({ sideEffect: 'non_idempotent' });
+    ).toMatchObject({
+      modelInput: { file_path: '/tmp/file' },
+      input: { file_path: '/tmp/file' },
+      sideEffect: 'non_idempotent',
+    });
     expect(
       (await store.read(sessionId)).events.find(
         (event) => event.type === DurableEventType.TOOL_STARTED,
@@ -422,9 +453,11 @@ describe('SessionDurableRecorder', () => {
       turn: 1,
       maxTurns: 10,
     });
+    await recordCompletedModelTool(ToolUseId('tool-call-1'), 'Write', {});
     const lifecycle = await recorder.onToolScheduled({
       toolCallId: ToolUseId('tool-call-1'),
       toolName: 'Write',
+      modelInput: {},
       input: {},
       sideEffect: 'non_idempotent',
       interruptBehavior: 'block',
@@ -465,9 +498,11 @@ describe('SessionDurableRecorder', () => {
       turn: 1,
       maxTurns: 10,
     });
+    await recordCompletedModelTool(ToolUseId('tool-call-1'), 'Write', {});
     await recorder.onToolScheduled({
       toolCallId: ToolUseId('tool-call-1'),
       toolName: 'Write',
+      modelInput: {},
       input: {},
       sideEffect: 'non_idempotent',
       interruptBehavior: 'block',
@@ -498,9 +533,11 @@ describe('SessionDurableRecorder', () => {
       turn: 1,
       maxTurns: 10,
     });
+    await recordCompletedModelTool(ToolUseId('tool-call-1'), 'Write', {});
     await recorder.onToolScheduled({
       toolCallId: ToolUseId('tool-call-1'),
       toolName: 'Write',
+      modelInput: {},
       input: {},
       sideEffect: 'non_idempotent',
       interruptBehavior: 'block',
@@ -544,9 +581,11 @@ describe('SessionDurableRecorder', () => {
       turn: 1,
       maxTurns: 10,
     });
+    await recordCompletedModelTool(ToolUseId('tool-call-1'), 'Write', {});
     const lifecycle = await recorder.onToolScheduled({
       toolCallId: ToolUseId('tool-call-1'),
       toolName: 'Write',
+      modelInput: {},
       input: {},
       sideEffect: 'non_idempotent',
       interruptBehavior: 'block',
@@ -583,9 +622,11 @@ describe('SessionDurableRecorder', () => {
       turn: 1,
       maxTurns: 10,
     });
+    await recordCompletedModelTool(ToolUseId('tool-call-1'), 'Write', {});
     const lifecycle = await recorder.onToolScheduled({
       toolCallId: ToolUseId('tool-call-1'),
       toolName: 'Write',
+      modelInput: {},
       input: {},
       sideEffect: 'non_idempotent',
       interruptBehavior: 'block',
@@ -615,9 +656,11 @@ describe('SessionDurableRecorder', () => {
       maxTurns: 10,
     });
     const toolCallId = ToolUseId('tool-call-1');
+    await recordCompletedModelTool(toolCallId, 'Read', {});
     const lifecycle = await recorder.onToolScheduled({
       toolCallId,
       toolName: 'Read',
+      modelInput: {},
       input: {},
       sideEffect: 'pure',
       interruptBehavior: 'cancel',
@@ -650,10 +693,12 @@ describe('SessionDurableRecorder', () => {
       maxTurns: 10,
     });
     const toolCallId = ToolUseId('tool-call-1');
+    await recordCompletedModelTool(toolCallId, 'Read', {});
 
     const first = recorder.onToolScheduled({
       toolCallId,
       toolName: 'Read',
+      modelInput: {},
       input: {},
       sideEffect: 'pure',
       interruptBehavior: 'cancel',
@@ -661,6 +706,7 @@ describe('SessionDurableRecorder', () => {
     const duplicate = recorder.onToolScheduled({
       toolCallId,
       toolName: 'Read',
+      modelInput: {},
       input: {},
       sideEffect: 'pure',
       interruptBehavior: 'cancel',

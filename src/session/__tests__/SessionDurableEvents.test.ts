@@ -14,6 +14,7 @@ import {
   CommandId,
   EventId,
   InputId,
+  ModelAttemptId,
   RequestId,
   SessionId,
   ToolAttemptId,
@@ -449,10 +450,32 @@ describe('Session durable events', () => {
     let sideEffectSawToolStarted = false;
     streamChat = async function* toolStream(_message, _context, loopOptions) {
       yield { type: 'turn_start', turn: 1, maxTurns: 10 };
+      const modelRequest = await loopOptions?.modelExecutionLifecycle?.onModelRequestStarting({
+        turn: 1,
+        model: 'test-model',
+        streaming: false,
+      });
+      if (!modelRequest) {
+        throw new Error('Missing model execution lifecycle');
+      }
+      await modelRequest.onCompleted({
+        content: '',
+        toolCalls: [
+          {
+            id: 'tool-call-1',
+            type: 'function',
+            function: {
+              name: 'Write',
+              arguments: '{"file_path":"/tmp/file"}',
+            },
+          },
+        ],
+      });
       const lifecycle = loopOptions?.toolExecutionLifecycle;
       const invocation = await lifecycle?.onToolScheduled?.({
         toolCallId: ToolUseId('tool-call-1'),
         toolName: 'Write',
+        modelInput: { file_path: '/tmp/file' },
         input: { file_path: '/tmp/file' },
         sideEffect: 'non_idempotent',
         interruptBehavior: 'block',
@@ -522,6 +545,8 @@ describe('Session durable events', () => {
       DurableEventType.INPUT_APPLIED,
       DurableEventType.REQUEST_STARTED,
       DurableEventType.TURN_STARTED,
+      DurableEventType.MODEL_REQUEST_STARTED,
+      DurableEventType.MODEL_REQUEST_COMPLETED,
       DurableEventType.TOOL_SCHEDULED,
       DurableEventType.PERMISSION_REQUESTED,
       DurableEventType.PERMISSION_RESOLVED,
@@ -539,10 +564,32 @@ describe('Session durable events', () => {
     let sideEffectRan = false;
     streamChat = async function* failedToolStart(_message, _context, loopOptions) {
       yield { type: 'turn_start', turn: 1, maxTurns: 10 };
+      const modelRequest = await loopOptions?.modelExecutionLifecycle?.onModelRequestStarting({
+        turn: 1,
+        model: 'test-model',
+        streaming: false,
+      });
+      if (!modelRequest) {
+        throw new Error('Missing model execution lifecycle');
+      }
+      await modelRequest.onCompleted({
+        content: '',
+        toolCalls: [
+          {
+            id: 'tool-call-1',
+            type: 'function',
+            function: {
+              name: 'Write',
+              arguments: '{}',
+            },
+          },
+        ],
+      });
       const lifecycle = loopOptions?.toolExecutionLifecycle;
       const invocation = await lifecycle?.onToolScheduled?.({
         toolCallId: ToolUseId('tool-call-1'),
         toolName: 'Write',
+        modelInput: {},
         input: {},
         sideEffect: 'non_idempotent',
         interruptBehavior: 'block',
@@ -918,6 +965,34 @@ describe('Session durable events', () => {
           data: { turn: 1, model: 'rollover-model' },
         },
         {
+          type: DurableEventType.MODEL_REQUEST_STARTED,
+          requestId,
+          turnId: TurnId('turn-rollover-active-turn'),
+          modelAttemptId: ModelAttemptId('turn-rollover-model-attempt'),
+          data: {
+            model: 'rollover-model',
+            streaming: false,
+          },
+        },
+        {
+          type: DurableEventType.MODEL_REQUEST_COMPLETED,
+          requestId,
+          turnId: TurnId('turn-rollover-active-turn'),
+          modelAttemptId: ModelAttemptId('turn-rollover-model-attempt'),
+          data: {
+            response: {
+              content: '',
+              toolCalls: [
+                {
+                  id: ToolUseId('turn-rollover-tool-call'),
+                  name: 'Read',
+                  arguments: '{"file_path":"/tmp/recovery-input"}',
+                },
+              ],
+            },
+          },
+        },
+        {
           type: DurableEventType.TOOL_SCHEDULED,
           requestId,
           turnId: TurnId('turn-rollover-active-turn'),
@@ -925,6 +1000,7 @@ describe('Session durable events', () => {
           data: {
             toolCallId: ToolUseId('turn-rollover-tool-call'),
             toolName: 'Read',
+            modelInput: { file_path: '/tmp/recovery-input' },
             input: { file_path: '/tmp/recovery-input' },
             sideEffect: 'pure',
             interruptBehavior: 'cancel',

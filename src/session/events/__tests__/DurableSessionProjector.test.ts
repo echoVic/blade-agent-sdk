@@ -106,7 +106,7 @@ function turnPrefix(): DurableEventDraft[] {
 
 function toolScheduled(
   sideEffect: 'pure' | 'idempotent' | 'non_idempotent' = 'non_idempotent',
-): DurableEventDraft {
+): DurableEventDraft<typeof DurableEventType.TOOL_SCHEDULED> {
   return {
     type: DurableEventType.TOOL_SCHEDULED,
     requestId,
@@ -115,11 +115,61 @@ function toolScheduled(
     data: {
       toolCallId,
       toolName: 'Write',
+      modelInput: { file_path: '/tmp/file' },
       input: { file_path: '/tmp/file' },
       sideEffect,
       interruptBehavior: 'block',
     },
   };
+}
+
+function completedModelAttempt(
+  toolCalls: Array<{
+    id: ToolUseId;
+    name: string;
+    arguments: string;
+  }> = [
+    {
+      id: toolCallId,
+      name: 'Write',
+      arguments: '{"file_path":"/tmp/file"}',
+    },
+  ],
+): DurableEventDraft[] {
+  return [
+    {
+      type: DurableEventType.MODEL_REQUEST_STARTED,
+      requestId,
+      turnId,
+      modelAttemptId,
+      data: {
+        model: 'claude-sonnet',
+        streaming: false,
+      },
+    },
+    {
+      type: DurableEventType.MODEL_REQUEST_COMPLETED,
+      requestId,
+      turnId,
+      modelAttemptId,
+      data: {
+        response: {
+          content: '',
+          toolCalls,
+        },
+      },
+    },
+  ];
+}
+
+function toolTurnPrefix(
+  toolCalls?: Array<{
+    id: ToolUseId;
+    name: string;
+    arguments: string;
+  }>,
+): DurableEventDraft[] {
+  return [...turnPrefix(), ...completedModelAttempt(toolCalls)];
 }
 
 function permissionRequested(): DurableEventDraft {
@@ -145,7 +195,7 @@ function project(drafts: readonly DurableEventDraft[]) {
 describe('DurableSessionProjector', () => {
   it('projects a complete session lifecycle', () => {
     const projection = project([
-      ...turnPrefix(),
+      ...toolTurnPrefix(),
       toolScheduled(),
       permissionRequested(),
       {
@@ -201,8 +251,8 @@ describe('DurableSessionProjector', () => {
     expect(projection).toMatchObject({
       sessionId,
       status: 'closed',
-      headSequence: 13,
-      lastEventId: 'event-13',
+      headSequence: 15,
+      lastEventId: 'event-15',
       closeReason: 'completed',
       activeRequest: null,
       appliedInputIds: [initialInputId],
@@ -228,7 +278,7 @@ describe('DurableSessionProjector', () => {
 
   it('returns defensive snapshots that cannot mutate projector state', () => {
     const projector = new DurableSessionProjector().apply(
-      envelopes([...turnPrefix(), toolScheduled()]),
+      envelopes([...toolTurnPrefix(), toolScheduled()]),
     );
     const first = projector.snapshot();
     const tool = first.activeRequest?.activeTurn?.toolAttempts[0];
@@ -329,6 +379,51 @@ describe('DurableSessionProjector', () => {
         }),
       ]),
     ).toThrow(/schema regressed from v3 to v2/);
+  });
+
+  it('continues to project schema-v2 tool events without model attempt metadata', () => {
+    const legacyDrafts: DurableEventDraft[] = [
+      ...turnPrefix(),
+      {
+        type: DurableEventType.TOOL_SCHEDULED,
+        requestId,
+        turnId,
+        toolAttemptId,
+        data: {
+          toolCallId,
+          toolName: 'Write',
+          input: { file_path: '/tmp/file' },
+          sideEffect: 'non_idempotent',
+          interruptBehavior: 'block',
+        },
+      },
+    ];
+    const legacyEvents = legacyDrafts.map((draft, index) =>
+      parseDurableEventEnvelope({
+        ...draft,
+        schemaVersion: 2,
+        eventId: EventId(`legacy-event-${index + 1}`),
+        sequence: EventSequence(index + 1),
+        sessionId,
+        recordedAt: timestamp,
+        occurredAt: timestamp,
+      }),
+    );
+
+    expect(projectDurableSession(legacyEvents)).toMatchObject({
+      schemaVersion: 2,
+      activeRequest: {
+        activeTurn: {
+          toolAttempts: [
+            expect.objectContaining({
+              toolAttemptId,
+              toolCallId,
+              input: { file_path: '/tmp/file' },
+            }),
+          ],
+        },
+      },
+    });
   });
 
   it('requires latest-boundary causation for new standalone Request terminal writes', () => {
@@ -780,9 +875,20 @@ describe('DurableSessionProjector', () => {
         ...turnPrefix(),
         modelStarted,
         matchingResponse,
-        toolScheduled(),
+        {
+          ...toolScheduled(),
+          data: {
+            ...toolScheduled().data,
+            input: { file_path: '/tmp/repaired-file' },
+          },
+        },
       ]).activeRequest?.activeTurn?.toolAttempts,
-    ).toHaveLength(1);
+    ).toEqual([
+      expect.objectContaining({
+        modelInput: { file_path: '/tmp/file' },
+        input: { file_path: '/tmp/repaired-file' },
+      }),
+    ]);
     expect(() =>
       project([
         ...turnPrefix(),
@@ -809,6 +915,20 @@ describe('DurableSessionProjector', () => {
       project([
         ...turnPrefix(),
         modelStarted,
+        matchingResponse,
+        {
+          ...toolScheduled(),
+          data: {
+            ...toolScheduled().data,
+            modelInput: { file_path: '/tmp/other-file' },
+          },
+        },
+      ]),
+    ).toThrow(/input does not match the model response/);
+    expect(() =>
+      project([
+        ...turnPrefix(),
+        modelStarted,
         toolScheduled(),
         {
           ...matchingResponse,
@@ -820,6 +940,12 @@ describe('DurableSessionProjector', () => {
         },
       ]),
     ).toThrow(/does not declare durable tool call/);
+    expect(() =>
+      project([
+        ...turnPrefix(),
+        toolScheduled(),
+      ]),
+    ).toThrow(/has no model attempt/);
   });
 
   it('distinguishes accepted, pre-turn, post-turn, and active-turn recovery', () => {
@@ -1193,7 +1319,7 @@ describe('DurableSessionProjector', () => {
   it('rejects a recovery request that bypasses a non-idempotent execution boundary', () => {
     expect(() =>
       project([
-        ...turnPrefix(),
+        ...toolTurnPrefix(),
         toolScheduled('non_idempotent'),
         {
           type: DurableEventType.TOOL_STARTED,
@@ -1252,7 +1378,7 @@ describe('DurableSessionProjector', () => {
   });
 
   it('classifies scheduled tools as retryable before execution starts', () => {
-    const projection = project([...turnPrefix(), toolScheduled()]);
+    const projection = project([...toolTurnPrefix(), toolScheduled()]);
     const recovery = planDurableSessionRecovery(projection);
 
     expect(recovery.action).toBe('resume_turn');
@@ -1267,7 +1393,7 @@ describe('DurableSessionProjector', () => {
   });
 
   it('prioritizes unresolved permissions over retrying a scheduled tool', () => {
-    const projection = project([...turnPrefix(), toolScheduled(), permissionRequested()]);
+    const projection = project([...toolTurnPrefix(), toolScheduled(), permissionRequested()]);
     const recovery = planDurableSessionRecovery(projection);
 
     expect(recovery.action).toBe('resolve_permissions');
@@ -1283,7 +1409,7 @@ describe('DurableSessionProjector', () => {
 
   it('classifies denied scheduled tools for terminal cancellation', () => {
     const projection = project([
-      ...turnPrefix(),
+      ...toolTurnPrefix(),
       toolScheduled(),
       permissionRequested(),
       {
@@ -1312,7 +1438,7 @@ describe('DurableSessionProjector', () => {
 
   it('requires reconciliation for a started tool until its outcome is resolved', () => {
     const started = [
-      ...turnPrefix(),
+      ...toolTurnPrefix(),
       toolScheduled(),
       {
         type: DurableEventType.TOOL_STARTED,
@@ -1376,7 +1502,7 @@ describe('DurableSessionProjector', () => {
     'classifies a started %s tool as replayable',
     (sideEffect) => {
       const projection = project([
-        ...turnPrefix(),
+        ...toolTurnPrefix(),
         toolScheduled('non_idempotent'),
         {
           type: DurableEventType.TOOL_STARTED,
@@ -1440,7 +1566,7 @@ describe('DurableSessionProjector', () => {
     expect(abortedTurn.activeRequest?.activeTurn).toBeNull();
 
     const failedTool = project([
-      ...turnPrefix(),
+      ...toolTurnPrefix(),
       toolScheduled(),
       {
         type: DurableEventType.TOOL_FAILED,
@@ -1457,7 +1583,7 @@ describe('DurableSessionProjector', () => {
     expect(failedTool.activeRequest?.activeTurn?.toolAttempts[0]?.status).toBe('failed');
 
     const cancelledTool = project([
-      ...turnPrefix(),
+      ...toolTurnPrefix(),
       toolScheduled(),
       {
         type: DurableEventType.TOOL_CANCELLED,
@@ -1553,7 +1679,7 @@ describe('DurableSessionProjector', () => {
     {
       name: 'tool start while permission is unresolved',
       drafts: [
-        ...turnPrefix(),
+        ...toolTurnPrefix(),
         toolScheduled(),
         permissionRequested(),
         {
@@ -1574,7 +1700,7 @@ describe('DurableSessionProjector', () => {
     {
       name: 'turn completion with unfinished tool',
       drafts: [
-        ...turnPrefix(),
+        ...toolTurnPrefix(),
         toolScheduled(),
         {
           type: DurableEventType.TURN_COMPLETED,
@@ -1611,7 +1737,7 @@ describe('DurableSessionProjector', () => {
     {
       name: 'tool identity mismatch',
       drafts: [
-        ...turnPrefix(),
+        ...toolTurnPrefix(),
         toolScheduled(),
         {
           type: DurableEventType.TOOL_STARTED,
@@ -1832,7 +1958,7 @@ describe('DurableSessionProjector', () => {
     {
       name: 'tool attempt ID',
       drafts: [
-        ...turnPrefix(),
+        ...toolTurnPrefix(),
         toolScheduled(),
         {
           type: DurableEventType.TOOL_FAILED,
@@ -1852,7 +1978,18 @@ describe('DurableSessionProjector', () => {
     {
       name: 'permission request ID',
       drafts: [
-        ...turnPrefix(),
+        ...toolTurnPrefix([
+          {
+            id: toolCallId,
+            name: 'Write',
+            arguments: '{"file_path":"/tmp/file"}',
+          },
+          {
+            id: ToolUseId('call-2'),
+            name: 'Read',
+            arguments: '{"file_path":"/tmp/file"}',
+          },
+        ]),
         toolScheduled(),
         permissionRequested(),
         {
@@ -1889,6 +2026,7 @@ describe('DurableSessionProjector', () => {
           data: {
             toolCallId: ToolUseId('call-2'),
             toolName: 'Read',
+            modelInput: { file_path: '/tmp/file' },
             input: { file_path: '/tmp/file' },
             sideEffect: 'pure',
             interruptBehavior: 'cancel',

@@ -80,6 +80,7 @@ export interface ToolInvocationLifecycle {
 export interface ToolScheduledLifecycle {
   toolCallId: ToolUseId;
   toolName: string;
+  modelInput: JsonObject;
   input: JsonObject;
   sideEffect: ToolSideEffect;
   interruptBehavior: 'block' | 'cancel';

@@ -14,6 +14,7 @@ import type {
   DurableEventPage,
   DurableEventType,
 } from './types.js';
+import { canonicalJson } from './canonicalJson.js';
 
 const DEFAULT_PAGE_SIZE = 500;
 const DEFAULT_MAX_CONFLICT_RETRIES = 3;
@@ -95,21 +96,6 @@ export class DurableCommandOutcomeUnknownError extends DurableSessionJournalErro
 
 function isErrorCode(error: unknown, code: string): boolean {
   return typeof error === 'object' && error !== null && 'code' in error && error.code === code;
-}
-
-function canonicalJson(value: unknown): string {
-  if (value === null || typeof value !== 'object') {
-    return JSON.stringify(value);
-  }
-  if (Array.isArray(value)) {
-    return `[${value.map(canonicalJson).join(',')}]`;
-  }
-  const record = value as Record<string, unknown>;
-  return `{${Object.keys(record)
-    .filter((key) => record[key] !== undefined)
-    .sort()
-    .map((key) => `${JSON.stringify(key)}:${canonicalJson(record[key])}`)
-    .join(',')}}`;
 }
 
 function comparableDraft(

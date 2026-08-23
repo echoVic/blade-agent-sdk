@@ -45,6 +45,39 @@ const requestRolloverTurnId = TurnId('request-rollover-turn');
 
 const roots: string[] = [];
 
+function completedModelToolEvents(
+  toolCalls: Array<{
+    id: ToolUseId;
+    name: string;
+    arguments: string;
+  }>,
+): DurableEventDraft[] {
+  return [
+    {
+      type: DurableEventType.MODEL_REQUEST_STARTED,
+      requestId,
+      turnId,
+      modelAttemptId,
+      data: {
+        model: 'accepted-model',
+        streaming: false,
+      },
+    },
+    {
+      type: DurableEventType.MODEL_REQUEST_COMPLETED,
+      requestId,
+      turnId,
+      modelAttemptId,
+      data: {
+        response: {
+          content: '',
+          toolCalls,
+        },
+      },
+    },
+  ];
+}
+
 function createStore(): JsonlDurableEventStore {
   const root = mkdtempSync(join(tmpdir(), 'durable-recovery-coordinator-'));
   roots.push(root);
@@ -251,6 +284,13 @@ async function createJournal(
               turnId,
               data: { turn: 1, model: 'test-model' },
             },
+            ...completedModelToolEvents([
+              {
+                id: toolCallId,
+                name: 'Deploy',
+                arguments: '{"environment":"production"}',
+              },
+            ]),
             {
               type: DurableEventType.TOOL_SCHEDULED,
               requestId,
@@ -259,6 +299,7 @@ async function createJournal(
               data: {
                 toolCallId,
                 toolName: 'Deploy',
+                modelInput: { environment: 'production' },
                 input: { environment: 'production' },
                 sideEffect: options.sideEffect ?? ('non_idempotent' as const),
                 interruptBehavior: 'block' as const,
@@ -1082,6 +1123,7 @@ describe('DurableSessionRecoveryCoordinator', () => {
           data: {
             toolCallId,
             toolName: 'Deploy',
+            modelInput: { environment: 'production' },
             input: { environment: 'production' },
             sideEffect: 'non_idempotent',
             interruptBehavior: 'block',
@@ -1378,6 +1420,13 @@ describe('DurableSessionRecoveryCoordinator', () => {
           turnId,
           data: { turn: 1, model: 'accepted-model' },
         },
+        ...completedModelToolEvents([
+          {
+            id: toolCallId,
+            name: 'Deploy',
+            arguments: '{"environment":"production"}',
+          },
+        ]),
         {
           type: DurableEventType.TOOL_SCHEDULED,
           requestId,
@@ -1386,6 +1435,7 @@ describe('DurableSessionRecoveryCoordinator', () => {
           data: {
             toolCallId,
             toolName: 'Deploy',
+            modelInput: { environment: 'production' },
             input: { environment: 'production' },
             sideEffect: 'non_idempotent',
             interruptBehavior: 'block',
@@ -1436,6 +1486,13 @@ describe('DurableSessionRecoveryCoordinator', () => {
           turnId,
           data: { turn: 1, model: 'accepted-model' },
         },
+        ...completedModelToolEvents([
+          {
+            id: toolCallId,
+            name: 'Read',
+            arguments: '{"file_path":"/tmp/input"}',
+          },
+        ]),
         {
           type: DurableEventType.TOOL_SCHEDULED,
           requestId,
@@ -1444,6 +1501,7 @@ describe('DurableSessionRecoveryCoordinator', () => {
           data: {
             toolCallId,
             toolName: 'Read',
+            modelInput: { file_path: '/tmp/input' },
             input: { file_path: '/tmp/input' },
             sideEffect: 'pure',
             interruptBehavior: 'cancel',
@@ -1495,6 +1553,13 @@ describe('DurableSessionRecoveryCoordinator', () => {
           turnId,
           data: { turn: 1, model: 'accepted-model' },
         },
+        ...completedModelToolEvents([
+          {
+            id: toolCallId,
+            name: 'Deploy',
+            arguments: '{"environment":"production"}',
+          },
+        ]),
         {
           type: DurableEventType.TOOL_SCHEDULED,
           requestId,
@@ -1503,6 +1568,7 @@ describe('DurableSessionRecoveryCoordinator', () => {
           data: {
             toolCallId,
             toolName: 'Deploy',
+            modelInput: { environment: 'production' },
             input: { environment: 'production' },
             sideEffect: 'non_idempotent',
             interruptBehavior: 'block',
@@ -1648,6 +1714,13 @@ describe('DurableSessionRecoveryCoordinator', () => {
           turnId,
           data: { turn: 1, model: 'accepted-model' },
         },
+        ...completedModelToolEvents([
+          {
+            id: toolCallId,
+            name: 'Read',
+            arguments: '{"file_path":"/tmp/input"}',
+          },
+        ]),
         {
           type: DurableEventType.TOOL_SCHEDULED,
           requestId,
@@ -1656,6 +1729,7 @@ describe('DurableSessionRecoveryCoordinator', () => {
           data: {
             toolCallId,
             toolName: 'Read',
+            modelInput: { file_path: '/tmp/input' },
             input: { file_path: '/tmp/input' },
             sideEffect: 'pure',
             interruptBehavior: 'cancel',
@@ -1719,6 +1793,18 @@ describe('DurableSessionRecoveryCoordinator', () => {
           turnId,
           data: { turn: 1, model: 'accepted-model' },
         },
+        ...completedModelToolEvents([
+          {
+            id: toolCallId,
+            name: 'Read',
+            arguments: JSON.stringify({ payload: oversized }),
+          },
+          {
+            id: failedCallId,
+            name: 'Search',
+            arguments: '{}',
+          },
+        ]),
         {
           type: DurableEventType.TOOL_SCHEDULED,
           requestId,
@@ -1727,6 +1813,7 @@ describe('DurableSessionRecoveryCoordinator', () => {
           data: {
             toolCallId,
             toolName: 'Read',
+            modelInput: { payload: oversized },
             input: { payload: oversized },
             sideEffect: 'pure',
             interruptBehavior: 'cancel',
@@ -1763,6 +1850,7 @@ describe('DurableSessionRecoveryCoordinator', () => {
           data: {
             toolCallId: failedCallId,
             toolName: 'Search',
+            modelInput: {},
             input: {},
             sideEffect: 'pure',
             interruptBehavior: 'cancel',
@@ -1794,11 +1882,11 @@ describe('DurableSessionRecoveryCoordinator', () => {
     if (typeof result.continuation !== 'string') {
       throw new Error('Expected a text recovery continuation');
     }
-    expect(result.continuation.match(/"kind": "truncated_recovery_value"/g)).toHaveLength(3);
+    expect(result.continuation.match(/"kind": "truncated_recovery_value"/g)).toHaveLength(4);
     expect(result.continuation).toContain('"complete": false');
     expect(result.continuation).toContain('"originalJsonCharacters":');
     expect(result.continuation).not.toContain(oversized);
-    expect(result.continuation.length).toBeLessThan(14_000);
+    expect(result.continuation.length).toBeLessThan(20_000);
   });
 
   it.each([
