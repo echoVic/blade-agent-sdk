@@ -5,6 +5,7 @@
 
 import { nanoid } from 'nanoid';
 import { HookManager } from '../hooks/HookManager.js';
+import type { HookRuntime } from '../hooks/HookRuntime.js';
 import { isHookProcessContainmentError } from '../hooks/WindowsProcessJob.js';
 import { NOOP_LOGGER } from '../logging/Logger.js';
 import { createChatServiceAsync, type Message } from '../services/ChatServiceInterface.js';
@@ -50,6 +51,8 @@ export interface CompactionOptions {
   signal?: AbortSignal;
   /** @internal Validates execution ownership around compaction side effects. */
   assertExecutionLease?: () => Promise<void>;
+  /** @internal Applies the owning Session's file-Hook quarantine boundary. */
+  hookRuntime?: Pick<HookRuntime, 'runFileHookOperation'>;
 }
 
 /**
@@ -130,21 +133,28 @@ export async function compact(
     options.actualPreTokens ?? TokenCounter.countTokens(messages, options.modelName);
   const tokenSource = options.actualPreTokens ? 'actual (from LLM usage)' : 'estimated';
   console.log(`[CompactionService] preTokens source: ${tokenSource}`);
+  const runFileHook = <T>(operation: () => Promise<T>): Promise<T> =>
+    options.hookRuntime
+      ? options.hookRuntime.runFileHookOperation(options.signal, operation)
+      : operation();
+  const projectDir = options.projectDir;
 
-  if (options.projectDir) {
+  if (projectDir) {
     try {
       const hookManager = HookManager.getInstance();
 
-      const preCompactResult = await hookManager.executePreCompactHooks(
-        {
-          trigger: options.trigger,
-          messages_before: messages.length,
-          tokens_before: preTokens,
-        },
-        options.projectDir,
-        options.sessionId || SessionId('unknown'),
-        options.permissionMode || PermissionMode.DEFAULT,
-        options.signal,
+      const preCompactResult = await runFileHook(
+        () => hookManager.executePreCompactHooks(
+          {
+            trigger: options.trigger,
+            messages_before: messages.length,
+            tokens_before: preTokens,
+          },
+          projectDir,
+          options.sessionId || SessionId('unknown'),
+          options.permissionMode || PermissionMode.DEFAULT,
+          options.signal,
+        ),
       );
       options.signal?.throwIfAborted();
       await options.assertExecutionLease?.();
@@ -169,14 +179,16 @@ export async function compact(
         console.warn(`[CompactionService] PreCompact hook warning: ${preCompactResult.warning}`);
       }
 
-      const hookResult = await hookManager.executeCompactionHooks(options.trigger, {
-        projectDir: options.projectDir,
-        sessionId: options.sessionId || SessionId('unknown'),
-        permissionMode: options.permissionMode || PermissionMode.DEFAULT,
-        messagesBefore: messages.length,
-        tokensBefore: preTokens,
-        abortSignal: options.signal,
-      });
+      const hookResult = await runFileHook(
+        () => hookManager.executeCompactionHooks(options.trigger, {
+          projectDir,
+          sessionId: options.sessionId || SessionId('unknown'),
+          permissionMode: options.permissionMode || PermissionMode.DEFAULT,
+          messagesBefore: messages.length,
+          tokensBefore: preTokens,
+          abortSignal: options.signal,
+        }),
+      );
       options.signal?.throwIfAborted();
       await options.assertExecutionLease?.();
 
@@ -254,24 +266,26 @@ export async function compact(
       `(-${((1 - postTokens / preTokens) * 100).toFixed(1)}%)`,
     );
 
-    if (options.projectDir) {
+    if (projectDir) {
       try {
         options.signal?.throwIfAborted();
         await options.assertExecutionLease?.();
         const postHookManager = HookManager.getInstance();
-        const postHookResult = await postHookManager.executePostCompactHooks(
-          {
-            trigger: options.trigger,
-            messages_before: messages.length,
-            messages_after: compactedMessages.length,
-            tokens_before: preTokens,
-            tokens_after: postTokens,
-            summary,
-          },
-          options.projectDir,
-          options.sessionId || SessionId('unknown'),
-          options.permissionMode || PermissionMode.DEFAULT,
-          options.signal,
+        const postHookResult = await runFileHook(
+          () => postHookManager.executePostCompactHooks(
+            {
+              trigger: options.trigger,
+              messages_before: messages.length,
+              messages_after: compactedMessages.length,
+              tokens_before: preTokens,
+              tokens_after: postTokens,
+              summary,
+            },
+            projectDir,
+            options.sessionId || SessionId('unknown'),
+            options.permissionMode || PermissionMode.DEFAULT,
+            options.signal,
+          ),
         );
         options.signal?.throwIfAborted();
         await options.assertExecutionLease?.();

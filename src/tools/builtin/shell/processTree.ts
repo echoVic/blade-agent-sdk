@@ -53,7 +53,7 @@ export function signalProcessTree(
     if (result.status === 0) {
       return true;
     }
-    return child?.kill(signal) ?? false;
+    return false;
   }
 
   try {
@@ -115,15 +115,18 @@ export async function terminateProcessTree(
   gracePeriodMs: number,
 ): Promise<void> {
   let lastSignalError: unknown;
-  const signalSafely = (signal: NodeJS.Signals): void => {
+  const signalSafely = (signal: NodeJS.Signals): boolean => {
     try {
-      if (!signalProcessTree(pid, signal, child, gracePeriodMs)) {
+      const accepted = signalProcessTree(pid, signal, child, gracePeriodMs);
+      if (!accepted) {
         lastSignalError = new Error(
           `Process tree ${pid ?? 'unknown'} did not accept ${signal}`,
         );
       }
+      return accepted;
     } catch (error) {
       lastSignalError = error;
+      return false;
     }
   };
 
@@ -132,8 +135,11 @@ export async function terminateProcessTree(
     return;
   }
 
-  signalSafely('SIGTERM');
-  if (await waitForProcessTreeExit(pid, child, gracePeriodMs)) {
+  let signalAccepted = signalSafely('SIGTERM');
+  if (
+    await waitForProcessTreeExit(pid, child, gracePeriodMs)
+    && (process.platform !== 'win32' || signalAccepted)
+  ) {
     return;
   }
 
@@ -142,8 +148,11 @@ export async function terminateProcessTree(
     attempt < PROCESS_TREE_FORCE_KILL_ATTEMPTS;
     attempt += 1
   ) {
-    signalSafely('SIGKILL');
-    if (await waitForProcessTreeExit(pid, child, gracePeriodMs)) {
+    signalAccepted = signalSafely('SIGKILL');
+    if (
+      await waitForProcessTreeExit(pid, child, gracePeriodMs)
+      && (process.platform !== 'win32' || signalAccepted)
+    ) {
       return;
     }
   }

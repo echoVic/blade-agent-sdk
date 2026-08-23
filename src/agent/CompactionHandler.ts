@@ -2,6 +2,7 @@ import { CompactionService } from '../context/CompactionService.js';
 import type { ContextManager } from '../context/ContextManager.js';
 import { softCompact } from '../context/strategies/SoftCompactionStrategy.js';
 import { TokenCounter } from '../context/TokenCounter.js';
+import type { HookRuntime } from '../hooks/HookRuntime.js';
 import { isHookProcessContainmentError } from '../hooks/WindowsProcessJob.js';
 import { type InternalLogger, LogCategory, NOOP_LOGGER } from '../logging/Logger.js';
 import type { IChatService } from '../services/ChatServiceInterface.js';
@@ -20,6 +21,7 @@ export interface CompactionRuntimeContext {
   signal?: AbortSignal;
   assertExecutionLease?: () => Promise<void>;
   runWithExecutionLease?: <T>(operation: () => Promise<T>) => Promise<T>;
+  hookRuntime?: HookRuntime;
 }
 
 export class CompactionHandler {
@@ -129,6 +131,7 @@ export class CompactionHandler {
           projectDir: runtimeCtx.projectDir,
           signal: runtimeCtx.signal,
           assertExecutionLease: runtimeCtx.assertExecutionLease,
+          hookRuntime: runtimeCtx.hookRuntime,
         });
         runtimeCtx.signal?.throwIfAborted();
         await runtimeCtx.assertExecutionLease?.();
@@ -271,6 +274,7 @@ export class CompactionHandler {
         projectDir: runtimeCtx.projectDir,
         signal: runtimeCtx.signal,
         assertExecutionLease: runtimeCtx.assertExecutionLease,
+        hookRuntime: runtimeCtx.hookRuntime,
       });
       runtimeCtx.signal?.throwIfAborted();
       await runtimeCtx.assertExecutionLease?.();

@@ -31,6 +31,22 @@ describe('terminateProcessTree', () => {
     );
   });
 
+  it('does not report root-only fallback as Windows tree cleanup', () => {
+    vi.spyOn(process, 'platform', 'get').mockReturnValue('win32');
+    vi.mocked(spawnSync).mockReturnValue({
+      status: null,
+      error: Object.assign(new Error('taskkill timed out'), {
+        code: 'ETIMEDOUT',
+      }),
+    } as never);
+    const child = {
+      kill: vi.fn(() => true),
+    } as unknown as ChildProcess;
+
+    expect(signalProcessTree(42_424, 'SIGKILL', child)).toBe(false);
+    expect(child.kill).not.toHaveBeenCalled();
+  });
+
   it('rejects after bounded force-kill attempts when the tree stays alive', async () => {
     const permissionError = Object.assign(new Error('operation not permitted'), {
       code: 'EPERM',

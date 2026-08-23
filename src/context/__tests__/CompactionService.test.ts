@@ -121,6 +121,28 @@ describe('CompactionService', () => {
     preCompactHook.mockRestore();
   });
 
+  it('routes session-owned compaction hooks through the runtime boundary', async () => {
+    const controller = new AbortController();
+    const runFileHookOperation = vi.fn(async (
+      signal: AbortSignal | undefined,
+      operation: () => Promise<unknown>,
+    ) => {
+      expect(signal).toBe(controller.signal);
+      return operation();
+    });
+
+    await compact([{ role: 'user', content: 'hello' }], {
+      trigger: 'manual',
+      modelName: 'gpt-5',
+      maxContextTokens: 128000,
+      projectDir: '/tmp',
+      signal: controller.signal,
+      hookRuntime: { runFileHookOperation } as never,
+    });
+
+    expect(runFileHookOperation).toHaveBeenCalledTimes(3);
+  });
+
   it('retainRecentMessages drops orphan tool results outside the retained window', () => {
     const messages: Message[] = [
       {

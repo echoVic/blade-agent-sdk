@@ -121,6 +121,14 @@ export class HookRuntime {
     return this.terminalContainmentFailure;
   }
 
+  /** @internal Runs a Session-owned file Hook through the quarantine boundary. */
+  runFileHookOperation<T>(
+    abortSignal: AbortSignal | undefined,
+    operation: () => Promise<T>,
+  ): Promise<T> {
+    return this.runFileHooks(abortSignal, operation);
+  }
+
   setTraceCollector(traceCollector: HookTraceCollector | undefined): void {
     this.traceCollector = traceCollector;
   }

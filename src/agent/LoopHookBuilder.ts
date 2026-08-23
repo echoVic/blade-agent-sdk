@@ -167,6 +167,7 @@ export function buildLoopConfig(deps: LoopHookBuilderDeps): AgentLoopConfig {
           signal: requestSignal,
           assertExecutionLease: context.assertExecutionLease,
           runWithExecutionLease: context.runWithExecutionLease,
+          hookRuntime,
         };
         const compactionStream = compactionHandler.checkAndCompactInLoop(
           loopState.conversationState, runtimeCtx, ctx.turn, ctx.lastPromptTokens,
@@ -193,6 +194,7 @@ export function buildLoopConfig(deps: LoopHookBuilderDeps): AgentLoopConfig {
               projectDir: context.snapshot?.cwd ?? defaultProjectPath,
               signal: requestSignal,
               assertExecutionLease: context.assertExecutionLease,
+              hookRuntime,
             },
           );
           requestSignal?.throwIfAborted();
@@ -417,6 +419,7 @@ export function buildLoopConfig(deps: LoopHookBuilderDeps): AgentLoopConfig {
               signal: requestSignal,
               assertExecutionLease: context.assertExecutionLease,
               runWithExecutionLease: context.runWithExecutionLease,
+              hookRuntime,
             };
             const compactStream = compactionHandler?.reactiveCompact(loopState.conversationState, runtimeCtx);
             if (!compactStream) return false;
