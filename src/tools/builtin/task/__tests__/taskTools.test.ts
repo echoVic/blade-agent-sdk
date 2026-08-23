@@ -7,6 +7,7 @@ import { BackgroundAgentManager } from '../../../../agent/subagents/BackgroundAg
 import { SubagentRegistry } from '../../../../agent/subagents/SubagentRegistry.js';
 import { AgentId, SessionId } from '../../../../types/branded.js';
 import { DurableExecutionLeaseError } from '../../../../session/events/DurableExecutionLeaseStore.js';
+import { HookManager } from '../../../../hooks/HookManager.js';
 import {
   collectToolExecution,
   type ExecutionContext,
@@ -88,6 +89,7 @@ describe('task tools', () => {
   });
 
   afterEach(() => {
+    vi.restoreAllMocks();
     manager.killAll();
   });
 
@@ -345,5 +347,52 @@ describe('task tools', () => {
         } as never,
       ),
     ).rejects.toBe(leaseError);
+  });
+
+  it('propagates cancellation through a running SubagentStop file hook', async () => {
+    const registry = new SubagentRegistry();
+    registry.register(subagentConfig);
+    const taskTool = createTaskTool({ registry });
+    const controller = new AbortController();
+    const cancellation = new Error('cancel subagent stop hook');
+    const started = Promise.withResolvers<void>();
+    const release = Promise.withResolvers<void>();
+    const stopHook = vi.spyOn(
+      HookManager.getInstance(),
+      'executeSubagentStopHooks',
+    ).mockImplementation(async (_agentType, context) => {
+      expect(context.abortSignal).toBe(controller.signal);
+      started.resolve();
+      await release.promise;
+      return { shouldStop: true };
+    });
+    runAgenticLoop.mockResolvedValueOnce({
+      success: true,
+      finalMessage: 'done',
+      metadata: { duration: 1 },
+    });
+
+    const execution = executeWithContext(
+      taskTool,
+      {
+        subagent_type: subagentConfig.name,
+        description: 'Inspect repository',
+        prompt: 'inspect code',
+        run_in_background: false,
+      },
+      {
+        sessionId: SessionId('cancelled-task-session'),
+        bladeConfig,
+        signal: controller.signal,
+        contextSnapshot: { cwd: '/tmp' },
+      } as never,
+    );
+    const cancellationResult = expect(execution).rejects.toBe(cancellation);
+    await started.promise;
+    controller.abort(cancellation);
+    release.resolve();
+
+    await cancellationResult;
+    expect(stopHook).toHaveBeenCalledOnce();
   });
 });

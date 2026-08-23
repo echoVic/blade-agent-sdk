@@ -300,7 +300,9 @@ export function createTaskTool({ registry }: { registry: SubagentRegistry }) {
             success: result.success,
             resultSummary: result.message.slice(0, 500),
             error: result.error,
+            abortSignal: context.signal,
           });
+          context.signal?.throwIfAborted();
 
           if (!stopResult.shouldStop && stopResult.continueReason) {
             console.log(
@@ -328,11 +330,16 @@ export function createTaskTool({ registry }: { registry: SubagentRegistry }) {
             console.warn(`[Task] SubagentStop hook warning: ${stopResult.warning}`);
           }
         } catch (hookError) {
+          context.signal?.throwIfAborted();
+          if (isExecutionLeaseFailure(hookError)) {
+            throw hookError;
+          }
           console.warn('[Task] SubagentStop hook execution failed:', hookError);
         }
 
         return buildTaskResult(result, subagent_type, description, duration, subagentSessionId);
       } catch (error) {
+        context.signal?.throwIfAborted();
         if (isExecutionLeaseFailure(error)) {
           throw error;
         }
