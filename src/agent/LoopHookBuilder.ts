@@ -114,7 +114,9 @@ export function buildLoopConfig(deps: LoopHookBuilderDeps): AgentLoopConfig {
           );
         }
         const hookContent = hookRuntime
-          ? await hookRuntime.applyUserPromptSubmit(input.content)
+          ? await hookRuntime.applyUserPromptSubmit(input.content, {
+              abortSignal: context.signal,
+            })
           : input.content;
         const content = options?.prepareInput
           ? await options.prepareInput(hookContent)

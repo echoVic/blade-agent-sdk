@@ -1,6 +1,10 @@
 import type { JSONSchema7 } from 'json-schema';
 import { ConfigError } from '../errors/ConfigError.js';
 import { ModelTimeoutError, type ModelTimeoutErrorCode } from '../errors/ModelTimeoutError.js';
+import {
+  awaitWithAbortSignal,
+  getAbortSignalReason,
+} from '../utils/abortPromise.js';
 import type {
   ChatConfig,
   ChatResponse,
@@ -45,15 +49,6 @@ function resolveModelTimeouts(config: ChatConfig): ResolvedModelTimeouts {
   };
 }
 
-function abortReason(signal: AbortSignal): unknown {
-  if (signal.reason !== undefined) {
-    return signal.reason;
-  }
-  const error = new Error('The operation was aborted');
-  error.name = 'AbortError';
-  return error;
-}
-
 function awaitWithTimeout<T>(
   operation: () => PromiseLike<T>,
   timeoutMs: number,
@@ -62,7 +57,7 @@ function awaitWithTimeout<T>(
   signal: AbortSignal,
 ): Promise<T> {
   if (signal.aborted) {
-    return Promise.reject(abortReason(signal));
+    return Promise.reject(getAbortSignalReason(signal));
   }
 
   return new Promise<T>((resolve, reject) => {
@@ -84,44 +79,13 @@ function awaitWithTimeout<T>(
       reject(error);
     };
     const onAbort = (): void => {
-      rejectOnce(abortReason(signal));
+      rejectOnce(getAbortSignalReason(signal));
     };
     const timer = setTimeout(() => {
       const error = new ModelTimeoutError(code, timeoutMs);
       timeoutController.abort(error);
       rejectOnce(error);
     }, timeoutMs);
-
-    signal.addEventListener('abort', onAbort, { once: true });
-    Promise.resolve().then(operation).then(resolveOnce, rejectOnce);
-  });
-}
-
-function awaitWithSignal<T>(operation: () => PromiseLike<T>, signal: AbortSignal): Promise<T> {
-  if (signal.aborted) {
-    return Promise.reject(abortReason(signal));
-  }
-
-  return new Promise<T>((resolve, reject) => {
-    let settled = false;
-    const cleanup = (): void => {
-      signal.removeEventListener('abort', onAbort);
-    };
-    const resolveOnce = (value: T): void => {
-      if (settled) return;
-      settled = true;
-      cleanup();
-      resolve(value);
-    };
-    const rejectOnce = (error: unknown): void => {
-      if (settled) return;
-      settled = true;
-      cleanup();
-      reject(error);
-    };
-    const onAbort = (): void => {
-      rejectOnce(abortReason(signal));
-    };
 
     signal.addEventListener('abort', onAbort, { once: true });
     Promise.resolve().then(operation).then(resolveOnce, rejectOnce);
@@ -215,7 +179,7 @@ async function* runGeneratorWithTimeout<TYield, TReturn>(
       try {
         step =
           mode === 'request'
-            ? await awaitWithSignal(() => source.next(), signal)
+            ? await awaitWithAbortSignal(() => source.next(), signal)
             : await awaitWithTimeout(
                 () => source.next(),
                 timeoutMs,

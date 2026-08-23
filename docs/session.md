@@ -1785,6 +1785,7 @@ type HookCallback = (input: HookInput) => Promise<HookOutput>;
 
 interface HookInput {
   event: HookEvent;
+  abortSignal?: AbortSignal;
   toolName?: string;
   toolInput?: JsonObject;
   toolOutput?: ToolModelContent;

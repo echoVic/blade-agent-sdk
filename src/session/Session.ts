@@ -319,6 +319,7 @@ class Session implements ISession {
       await this.runtime.getHookRuntime().runSessionStart({
         isResume: this.isResumeSession,
         resumeSessionId: this.isResumeSession ? this.sessionId : undefined,
+        abortSignal: this.executionLease?.signal,
       });
       await this.executionLease?.assertActive();
       if (this.executionLeaseFailure) {
@@ -886,7 +887,9 @@ class Session implements ISession {
     runtime.getHookRuntime().setTraceCollector(traceRecorder);
     try {
       if (initialInputPreparation !== RECONCILED_INITIAL_INPUT) {
-        message = await runtime.getHookRuntime().applyUserPromptSubmit(message);
+        message = await runtime.getHookRuntime().applyUserPromptSubmit(message, {
+          abortSignal: signal,
+        });
       }
     } catch (error) {
       const handingOff = isHandoffRequested();
@@ -1279,6 +1282,7 @@ class Session implements ISession {
         imageCount,
         resultSummary: loopResult.finalMessage || '',
         success: loopResult.success,
+        abortSignal: signal,
       });
       await finishTrace(isAborted ? 'aborted' : 'success', {
         content: loopResult.finalMessage || '',
