@@ -2,6 +2,12 @@
 
 `@blade-ai/agent-sdk` 的所有重要变更都记录在此。
 
+## [5.3.3] - 2026-08-23
+
+### 修复
+
+- 为 Session inline hook 事件增加可配置时限，将取消信号传入 callback，并在超时 callback 尚未结束时保持 fail-closed。
+
 ## [5.3.2] - 2026-08-23
 
 ### 修复

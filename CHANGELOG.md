@@ -2,6 +2,12 @@
 
 All notable changes to `@blade-ai/agent-sdk` are documented here.
 
+## [5.3.3] - 2026-08-23
+
+### Fixes
+
+- Bound Session inline hook events with configurable deadlines, propagate cancellation signals into callbacks, and fail closed while timed-out callbacks remain pending.
+
 ## [5.3.2] - 2026-08-23
 
 ### Fixes

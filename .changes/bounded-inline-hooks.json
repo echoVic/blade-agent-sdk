@@ -1,5 +1,0 @@
-{
-  "type": "fix",
-  "en": "Bound Session inline hook events with configurable deadlines, propagate cancellation signals into callbacks, and fail closed while timed-out callbacks remain pending.",
-  "zh-CN": "为 Session inline hook 事件增加可配置时限，将取消信号传入 callback，并在超时 callback 尚未结束时保持 fail-closed。"
-}
