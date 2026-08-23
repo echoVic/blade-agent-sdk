@@ -639,8 +639,15 @@ Each append:
 
 `read()` and `getHeadSequence()` acquire the same lock, so they cannot observe
 another process between tail truncation and append. Local mutex queuing and
-cross-process acquisition share a total 10-second budget by default. A heartbeat
-keeps owned locks fresh, and an abandoned lock older than 30 seconds is reclaimed.
+cross-process acquisition share a total 10-second budget by default. The
+cross-process lock is an operating-system advisory lock: the kernel releases it
+when a process exits or crashes, while a paused live process retains ownership
+instead of being displaced after a wall-clock timeout.
+
+Each event log has a persistent `*.jsonl.lock` sidecar. Its presence does not
+mean that the lock is currently held; ownership belongs to an open file
+descriptor. Do not delete, replace, or move event logs or their lock sidecars
+while any process is using the Store.
 
 Event files use mode `0600`. Session IDs are base64url encoded and cannot
 become filesystem paths.
@@ -651,15 +658,17 @@ encryption, retention, and access control at the deployment boundary.
 ## Consistency boundary
 
 `JsonlDurableEventStore` provides mutually exclusive reads and atomic
-compare-and-append across Node.js processes on the same host. It does not
-provide a cross-host execution lease. Replicated services must still implement
-`DurableEventStore` with database transactions, CAS, or a lease.
+compare-and-append across Node.js processes on the same host. This guarantee
+requires a local filesystem with working advisory locks; it does not apply to
+shared network filesystems such as NFS and does not provide a cross-host
+execution lease. Replicated services must still implement `DurableEventStore`
+with database transactions, CAS, or a lease.
 
 `DURABLE_EVENT_WRITE_FAILED` does not prove that a batch was not written. The
-outcome can be unknown when `fsync` fails, lock ownership is lost, or lock
-release fails after bytes reach the file. Before retrying, read the head and
-correlate events through `commandId` or another domain identifier. The current
-Store does not provide automatic command deduplication.
+outcome can be unknown when `fsync`, unlocking, or closing the lock file fails
+after bytes reach the event log. Before retrying, read the head and correlate
+events through `commandId` or another domain identifier. The current Store does
+not provide automatic command deduplication.
 
 The Store does not persist token deltas or high-frequency tool progress.
 Only domain events that affect recovery decisions belong in the durable
