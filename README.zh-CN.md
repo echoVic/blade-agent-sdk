@@ -130,11 +130,13 @@ import { createSession } from '@blade-ai/agent-sdk';
 import { InputPriority, ToolKind } from '@blade-ai/agent-sdk/core';
 import { defineTool } from '@blade-ai/agent-sdk/tools';
 import { getBuiltinTools } from '@blade-ai/agent-sdk/local';
+import { composeMiddleware } from '@blade-ai/agent-sdk/middleware';
 ```
 
 - 根入口：完整 Node.js API
 - `/core`：浏览器安全的协议、常量和类型
 - `/tools`：浏览器安全的工具定义原语
+- `/middleware`：浏览器安全的 middleware 与插件契约
 - `/server` 和 `/session`：服务端 Session API
 - `/local`：内置本地工具和本地运行时辅助函数
 

@@ -130,11 +130,13 @@ import { createSession } from '@blade-ai/agent-sdk';
 import { InputPriority, ToolKind } from '@blade-ai/agent-sdk/core';
 import { defineTool } from '@blade-ai/agent-sdk/tools';
 import { getBuiltinTools } from '@blade-ai/agent-sdk/local';
+import { composeMiddleware } from '@blade-ai/agent-sdk/middleware';
 ```
 
 - Root: complete Node.js API
 - `/core`: browser-safe contracts, constants, and types
 - `/tools`: browser-safe tool authoring primitives
+- `/middleware`: browser-safe middleware and plugin contracts
 - `/server` and `/session`: server-side Session APIs
 - `/local`: built-in local tools and local runtime helpers
 

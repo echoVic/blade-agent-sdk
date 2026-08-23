@@ -15,15 +15,18 @@ import {
 } from '@blade-ai/agent-sdk';
 
 const auditTool: ToolMiddleware = async function* (request, next) {
-  console.log('before', request.toolName, request.input);
+  console.log('before', { toolName: request.toolName });
   const result = yield* next();
-  console.log('after', request.toolName, result.status);
+  console.log('after', {
+    toolName: request.toolName,
+    status: result.status,
+  });
   return result;
 };
 
 const session = await createSession({
-  provider,
-  model,
+  provider: { type: 'openai', apiKey: process.env.OPENAI_API_KEY! },
+  model: 'gpt-4o-mini',
   plugins: [
     definePlugin({
       name: 'audit',
@@ -39,8 +42,8 @@ Register middleware directly when a reusable plugin is unnecessary:
 
 ```ts
 const session = await createSession({
-  provider,
-  model,
+  provider: { type: 'openai', apiKey: process.env.OPENAI_API_KEY! },
+  model: 'gpt-4o-mini',
   middleware: {
     tool: [auditTool],
   },
@@ -192,6 +195,9 @@ or hyphens, must start and end with a letter or number, and must be unique
 within a Session. Plugin tools are registered with `sourceId: "plugin:<name>"` and
 `trustLevel: "workspace"`. They still pass through `allowedTools`,
 `disallowedTools`, permission rules, and sandbox policy.
+Duplicate canonical tool names across built-ins, `SessionOptions.tools`, and
+plugins reject Session initialization; later registrations never replace an
+existing tool.
 
 ## Durable side-effect boundary
 
@@ -226,7 +232,8 @@ not expose arbitrary `ctx.emit(command)` to ordinary plugins yet, because that
 would let plugins bypass the durable event schema and recovery reconciliation.
 A successful short circuit does not invoke the real tool, but still persists a
 synthetic `tool_started` before publication. Recovery never replays middleware;
-lease loss or abort terminates the middleware chain.
+lease loss fails closed. An abort before core completion cancels execution,
+while an abort observed after core completion preserves the committed result.
 
 ## Middleware or hooks?
 

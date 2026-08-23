@@ -13,15 +13,18 @@ import {
 } from '@blade-ai/agent-sdk';
 
 const auditTool: ToolMiddleware = async function* (request, next) {
-  console.log('before', request.toolName, request.input);
+  console.log('before', { toolName: request.toolName });
   const result = yield* next();
-  console.log('after', request.toolName, result.status);
+  console.log('after', {
+    toolName: request.toolName,
+    status: result.status,
+  });
   return result;
 };
 
 const session = await createSession({
-  provider,
-  model,
+  provider: { type: 'openai', apiKey: process.env.OPENAI_API_KEY! },
+  model: 'gpt-4o-mini',
   plugins: [
     definePlugin({
       name: 'audit',
@@ -37,8 +40,8 @@ const session = await createSession({
 
 ```ts
 const session = await createSession({
-  provider,
-  model,
+  provider: { type: 'openai', apiKey: process.env.OPENAI_API_KEY! },
+  model: 'gpt-4o-mini',
   middleware: {
     tool: [auditTool],
   },
@@ -182,6 +185,8 @@ const reviewPlugin = definePlugin({
 字母或数字，并且在一个 Session 中唯一。插件工具以
 `sourceId: "plugin:<name>"`、`trustLevel: "workspace"` 注册，仍受
 `allowedTools`、`disallowedTools`、权限规则和 sandbox 约束。
+内置工具、`SessionOptions.tools` 和插件之间若出现重复 canonical 工具名，
+Session 初始化会失败；后注册项不会替换已有工具。
 
 ## Durable 副作用边界
 
@@ -212,7 +217,8 @@ onToolScheduled
 最终结果在发布前被持久化。SDK 暂不向普通插件暴露任意
 `ctx.emit(command)`，避免插件绕开 durable event schema 和恢复对账规则。
 短路成功不执行真实工具，但仍在结果发布前写入合成 `tool_started`。恢复流程
-不会重放 middleware；失租或 abort 会直接终止 middleware 链。
+不会重放 middleware；失租会 fail-closed。core 完成前收到 abort 会取消执行，
+core 完成后才观察到 abort 则保留已提交结果。
 
 ## Middleware 与 Hooks 的选择
 
