@@ -156,7 +156,7 @@ export class BackgroundAgentManager {
     const maxOrphanAge = 30 * 60 * 1000;
 
     for (const session of sessions) {
-      if (session.status === 'running') {
+      if (session.status === 'running' && !session.executionFence) {
         const isInMemory = this.runningAgents.has(session.id);
         const age = now - session.lastActiveAt;
 
