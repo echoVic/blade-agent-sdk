@@ -67,7 +67,7 @@ console.log(result.usage);
 - Tools: generator-only custom tools, capability-grouped built-ins, MCP tools, and typed progress/effects
 - Extensibility: onion-style model/tool middleware and declarative plugins that bundle middleware, hooks, and tools
 - Collaboration: foreground and background subagents, task tools, and project Skills
-- Safety: bounded model requests, permission modes, policy callbacks, hooks, path checks, and optional OS sandbox integration
+- Safety: bounded model and tool execution, permission modes, policy callbacks, hooks, path checks, and optional OS sandbox integration
 - Runtime: optional workspace context, structured output, crash-safe local transcripts, context compaction, token budgets, and traces
 
 ## Steer an Active Request

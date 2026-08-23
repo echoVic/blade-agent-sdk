@@ -400,6 +400,7 @@ export class Agent {
       permissionMode,
       maxHistorySize: 1000,
       permissionHandler,
+      toolTimeoutMs: this.config.toolTimeoutMs,
       middleware,
       toolCatalog: new ToolCatalog(registry),
     });

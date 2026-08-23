@@ -288,6 +288,8 @@ export interface SessionOptions {
 
   systemPrompt?: string;
   maxTurns?: number;
+  /** Maximum wall-clock duration of one tool invocation. */
+  toolTimeoutMs?: number;
   agents?: Record<string, AgentDefinition>;
   subagent?: SubagentInfo;
 

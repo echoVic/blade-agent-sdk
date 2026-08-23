@@ -420,6 +420,7 @@ class Session implements ISession {
       models: [modelConfig],
       currentModelId: modelConfig.id,
       temperature: this.options.temperature ?? 0.7,
+      toolTimeoutMs: this.options.toolTimeoutMs,
       permissions: {
         allow: [],
         deny: [],

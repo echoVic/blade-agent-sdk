@@ -87,6 +87,8 @@ export interface BladeConfig {
   debug?: boolean | string;
   temperature?: number;
   maxTurns?: number;
+  /** Maximum wall-clock duration of one tool invocation. */
+  toolTimeoutMs?: number;
   /**
    * Plan 文件的保存目录。
    * 不配置时 ExitPlanMode 工具不会将计划写入磁盘。

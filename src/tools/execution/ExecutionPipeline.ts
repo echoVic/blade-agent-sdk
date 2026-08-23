@@ -1,3 +1,4 @@
+import { ConfigError } from '../../errors/ConfigError.js';
 import type { HookRuntime } from '../../hooks/HookRuntime.js';
 import { type InternalLogger, LogCategory, NOOP_LOGGER } from '../../logging/Logger.js';
 import { composeMiddleware } from '../../middleware/composeMiddleware.js';
@@ -52,6 +53,20 @@ import { type ConcurrencyLimits, ConcurrencyScheduler } from './ConcurrencySched
 import { DenialTracker } from './DenialTracker.js';
 import { type FileLockLease, FileLockManager } from './FileLockManager.js';
 import { ResultArtifactStore } from './ResultArtifactStore.js';
+
+const DEFAULT_TOOL_TIMEOUT_MS = 600_000;
+const MAX_TOOL_CLEANUP_WAIT_MS = 5_000;
+const MAX_TIMER_DELAY_MS = 2_147_483_647;
+
+function resolveToolTimeoutMs(value: number | undefined): number {
+  const resolved = value ?? DEFAULT_TOOL_TIMEOUT_MS;
+  if (!Number.isSafeInteger(resolved) || resolved <= 0 || resolved > MAX_TIMER_DELAY_MS) {
+    throw new ConfigError(
+      `toolTimeoutMs must be a positive integer no greater than ${MAX_TIMER_DELAY_MS}`,
+    );
+  }
+  return resolved;
+}
 
 function getString(params: JsonObject, key: string, defaultValue = ''): string {
   const value = params[key];
@@ -108,7 +123,7 @@ export interface ConfirmationReasonEntry {
 export class ExecutionPipeline {
   private executionHistory: ExecutionHistoryEntry[] = [];
   private readonly maxHistorySize: number;
-  private readonly toolTimeoutMs: number | undefined;
+  private readonly toolTimeoutMs: number;
   private readonly sessionApprovals = new Set<string>();
   private readonly denialTracker = new DenialTracker();
   private readonly hookRuntime?: HookRuntime;
@@ -121,13 +136,14 @@ export class ExecutionPipeline {
   private readonly middleware: readonly ToolMiddleware[];
   private readonly scheduler: ConcurrencyScheduler;
   private readonly resultArtifactStore = new ResultArtifactStore();
+  private readonly pendingExecutionCleanups = new Set<Promise<void>>();
 
   constructor(
     private registry: ToolRegistry,
     config: ExecutionPipelineConfig = {}
   ) {
     this.maxHistorySize = config.maxHistorySize || 1000;
-    this.toolTimeoutMs = config.toolTimeoutMs;
+    this.toolTimeoutMs = resolveToolTimeoutMs(config.toolTimeoutMs);
     this.hookRuntime = config.hookRuntime;
     this.logger = (config.logger ?? NOOP_LOGGER).child(LogCategory.EXECUTION);
     this.toolCatalog = config.toolCatalog;
@@ -162,6 +178,10 @@ export class ExecutionPipeline {
     return this.toolCatalog;
   }
 
+  hasPendingExecutionCleanup(): boolean {
+    return this.pendingExecutionCleanups.size > 0;
+  }
+
   /**
    * 执行工具
    */
@@ -170,6 +190,9 @@ export class ExecutionPipeline {
     params: JsonObject,
     context: ExecutionContext
   ): ToolExecution {
+    if (this.hasPendingExecutionCleanup()) {
+      return this.createPendingCleanupResult();
+    }
     const startTime = Date.now();
     const executionId = this.generateExecutionId();
     const protectedContext = Object.freeze({
@@ -279,7 +302,16 @@ export class ExecutionPipeline {
             );
             result = yield* delegatedExecution;
           }
-          if (coreResult?.status === 'error' && result.status === 'success') {
+          if (
+            coreResult?.status === 'error'
+            && coreResult.error.type === ToolErrorType.TIMEOUT_ERROR
+          ) {
+            result = this.preserveTimeoutFailure(
+              coreResult,
+              result,
+              `Tool middleware for ${toolName}`,
+            );
+          } else if (coreResult?.status === 'error' && result.status === 'success') {
             this.logger.warn(
               `Tool middleware attempted to replace failed ${toolName} core execution with success; preserving the core failure`,
             );
@@ -298,7 +330,16 @@ export class ExecutionPipeline {
           if (isExecutionLeaseFailure(protectedContext.signal?.reason)) {
             throw protectedContext.signal.reason;
           }
-          if (protectedContext.signal?.aborted) {
+          if (
+            coreCompleted
+            && coreResult?.status === 'error'
+            && coreResult.error.type === ToolErrorType.TIMEOUT_ERROR
+          ) {
+            this.logger.warn(
+              `Tool middleware failed after ${toolName} timed out; preserving the core timeout`,
+            );
+            result = coreResult;
+          } else if (protectedContext.signal?.aborted) {
             const isInterrupt = isSteeringInterruptSignal(protectedContext.signal);
             result = this.createAbortedResult(
               isInterrupt ? '工具执行被新的用户输入中断' : '任务已被用户中止',
@@ -432,6 +473,9 @@ export class ExecutionPipeline {
     let fileLease: FileLockLease | undefined;
 
     try {
+      if (this.hasPendingExecutionCleanup()) {
+        return this.createPendingCleanupResult();
+      }
       fileLease = filePath
         ? await FileLockManager.getInstance(this.logger).acquire(filePath, lockMode)
         : undefined;
@@ -474,17 +518,38 @@ export class ExecutionPipeline {
       }
       await state.context.assertExecutionLease?.();
 
-      let result = await this.normalizeExecutionResult(state);
-      result = await this.applyPostExecutionHooks(
-        state.toolName,
-        state.params,
-        state.context,
-        result,
-        executionId,
-        { isInterrupt: state.interrupted },
-      );
+      const normalizedResult = await this.normalizeExecutionResult(state);
+      const isTimeout =
+        normalizedResult.status === 'error'
+        && normalizedResult.error.type === ToolErrorType.TIMEOUT_ERROR;
+      let result: ToolResult;
+      try {
+        result = await this.applyPostExecutionHooks(
+          state.toolName,
+          state.params,
+          state.context,
+          normalizedResult,
+          executionId,
+          { isTimeout, isInterrupt: state.interrupted },
+        );
+      } catch (error) {
+        if (isExecutionLeaseFailure(error)) {
+          throw error;
+        }
+        if (isTimeout) {
+          this.logger.warn(
+            `Post-execution hooks failed after ${state.toolName} timed out; preserving the timeout`,
+          );
+          return normalizedResult;
+        }
+        throw error;
+      }
 
-      return result;
+      return this.preserveTimeoutFailure(
+        normalizedResult,
+        result,
+        `Post-execution hooks for ${state.toolName}`,
+      );
     } catch (error) {
       if (isExecutionLeaseFailure(error)) {
         throw error;
@@ -497,7 +562,7 @@ export class ExecutionPipeline {
         state.interrupted
         || isSteeringInterruptSignal(state.context.signal);
 
-      let errorResult: ToolResult = {
+      const originalErrorResult: ToolResult = {
         status: 'error',
         model: `Tool execution failed: ${errorMsg}`,
         error: {
@@ -509,15 +574,21 @@ export class ExecutionPipeline {
           message: errorMsg,
         },
       };
+      let errorResult: ToolResult = originalErrorResult;
 
       try {
-        errorResult = await this.applyPostExecutionHooks(
+        const hookResult = await this.applyPostExecutionHooks(
           state.toolName,
           state.params,
           state.context,
           errorResult,
           executionId,
           { isTimeout, isInterrupt },
+        );
+        errorResult = this.preserveTimeoutFailure(
+          originalErrorResult,
+          hookResult,
+          `Post-execution hooks for ${state.toolName}`,
         );
       } catch (hookError) {
         if (isExecutionLeaseFailure(hookError)) {
@@ -756,35 +827,47 @@ export class ExecutionPipeline {
       );
       return;
     }
+    if (this.hasPendingExecutionCleanup()) {
+      state.result = this.createPendingCleanupResult();
+      return;
+    }
 
     await state.context.toolInvocationLifecycle?.onExecutionStarted?.({
       input: structuredClone(state.params),
       sideEffect: state.resolvedBehavior?.sideEffect ?? state.tool.sideEffect,
     });
     await state.context.assertExecutionLease?.();
+    if (this.hasPendingExecutionCleanup()) {
+      state.result = this.createPendingCleanupResult();
+      return;
+    }
     if (state.context.signal?.aborted) {
       state.result = this.createAbortedResult('Task was aborted before tool execution');
       return;
     }
-    const timeoutController = this.toolTimeoutMs ? new AbortController() : undefined;
-    const executionSignal = timeoutController
-      ? state.context.signal
-        ? AbortSignal.any([state.context.signal, timeoutController.signal])
-        : timeoutController.signal
-      : state.context.signal ?? new AbortController().signal;
+    let completed = false;
+    let timedOut = false;
+    const timeoutController = new AbortController();
+    const timeoutError = this.createTimeoutError(state.toolName);
+    const timeout = setTimeout(
+      () => {
+        timedOut = true;
+        timeoutController.abort(timeoutError);
+      },
+      this.toolTimeoutMs,
+    );
+    const executionSignal = state.context.signal
+      ? AbortSignal.any([state.context.signal, timeoutController.signal])
+      : timeoutController.signal;
     const execution = state.invocation.execute(executionSignal, {
       ...state.context,
       signal: executionSignal,
     });
-    const deadline = this.toolTimeoutMs
-      ? Date.now() + this.toolTimeoutMs
-      : undefined;
-    let completed = false;
-    let timedOut = false;
 
     try {
       while (true) {
-        const step = await this.nextExecutionStep(execution, state.toolName, deadline);
+        const step = await this.nextExecutionStep(execution, executionSignal);
+        timeoutController.signal.throwIfAborted();
         if (step.done) {
           state.result = step.value;
           if (
@@ -806,13 +889,10 @@ export class ExecutionPipeline {
         yield step.value;
       }
     } catch (error) {
-      timedOut = getErrorName(error) === 'TimeoutError';
-      state.interrupted =
-        !timedOut
-        && isSteeringInterruptSignal(executionSignal);
-      if (timedOut) {
-        timeoutController?.abort(error);
-      }
+      timedOut =
+        timeoutController.signal.aborted
+        || getErrorName(error) === 'TimeoutError';
+      state.interrupted = !timedOut && isSteeringInterruptSignal(executionSignal);
       state.result = this.createExecutionFailureResult(
         timedOut
           ? `Tool execution timeout after ${this.toolTimeoutMs}ms`
@@ -824,47 +904,83 @@ export class ExecutionPipeline {
             : ToolErrorType.EXECUTION_ERROR,
       );
     } finally {
+      clearTimeout(timeout);
       if (!completed) {
-        const closing = execution.return(undefined as never);
-        if (timedOut) {
-          void closing.catch(() => {});
-        } else {
-          try {
-            await closing;
-          } catch {
-            // Preserve the original execution or consumer failure.
-          }
+        if (!executionSignal.aborted) {
+          timeoutController.abort(new Error('Tool execution closed before completion'));
         }
+        const closing = Promise.resolve(execution.return(undefined as never)).then(
+          () => undefined,
+          () => undefined,
+        );
+        this.trackPendingExecutionCleanup(closing);
+        await this.waitForExecutionClose(closing);
       }
     }
   }
 
   private async nextExecutionStep(
     execution: ToolExecution,
-    toolName: string,
-    deadline?: number,
+    signal: AbortSignal,
   ): Promise<IteratorResult<ToolYield, ToolResult>> {
-    if (deadline === undefined) {
-      return execution.next();
-    }
-
-    const remaining = deadline - Date.now();
-    if (remaining <= 0) {
-      throw this.createTimeoutError(toolName);
+    if (signal.aborted) {
+      throw signal.reason;
     }
 
     return new Promise<IteratorResult<ToolYield, ToolResult>>((resolve, reject) => {
-      const timer = setTimeout(() => reject(this.createTimeoutError(toolName)), remaining);
+      let settled = false;
+      let abortTimer: ReturnType<typeof setTimeout> | undefined;
+      const cleanup = (): void => {
+        if (abortTimer !== undefined) {
+          clearTimeout(abortTimer);
+        }
+        signal.removeEventListener('abort', onAbort);
+      };
+      const resolveOnce = (step: IteratorResult<ToolYield, ToolResult>): void => {
+        if (settled) return;
+        settled = true;
+        cleanup();
+        resolve(step);
+      };
+      const rejectOnce = (error: unknown): void => {
+        if (settled) return;
+        settled = true;
+        cleanup();
+        reject(error);
+      };
+      const onAbort = (): void => {
+        // Preserve a terminal result produced in the same turn as cancellation.
+        abortTimer = setTimeout(() => rejectOnce(signal.reason), 0);
+      };
+
+      signal.addEventListener('abort', onAbort, { once: true });
       execution.next().then(
-        (step) => {
-          clearTimeout(timer);
-          resolve(step);
-        },
-        (error) => {
-          clearTimeout(timer);
-          reject(error);
-        },
+        resolveOnce,
+        rejectOnce,
       );
+    });
+  }
+
+  private async waitForExecutionClose(
+    closing: PromiseLike<unknown>,
+  ): Promise<void> {
+    await new Promise<void>((resolve) => {
+      let settled = false;
+      const finish = (): void => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timeout);
+        resolve();
+      };
+      const timeout = setTimeout(finish, MAX_TOOL_CLEANUP_WAIT_MS);
+      closing.then(finish, finish);
+    });
+  }
+
+  private trackPendingExecutionCleanup(closing: Promise<void>): void {
+    this.pendingExecutionCleanups.add(closing);
+    void closing.finally(() => {
+      this.pendingExecutionCleanups.delete(closing);
     });
   }
 
@@ -1210,6 +1326,41 @@ export class ExecutionPipeline {
     };
   }
 
+  private createPendingCleanupResult(): ToolResult {
+    return this.createExecutionFailureResult(
+      'A tool execution is still cleaning up; refusing to start another tool',
+    );
+  }
+
+  private preserveTimeoutFailure(
+    original: ToolResult,
+    transformed: ToolResult,
+    source: string,
+  ): ToolResult {
+    if (
+      original.status !== 'error'
+      || original.error.type !== ToolErrorType.TIMEOUT_ERROR
+      || (
+        transformed.status === 'error'
+        && transformed.error.type === ToolErrorType.TIMEOUT_ERROR
+      )
+    ) {
+      return transformed;
+    }
+
+    this.logger.warn(`${source} attempted to replace a tool timeout; preserving timeout semantics`);
+    if (transformed.status === 'success') {
+      return original;
+    }
+    return {
+      ...transformed,
+      error: {
+        ...transformed.error,
+        type: ToolErrorType.TIMEOUT_ERROR,
+      },
+    };
+  }
+
   private createAbortedResult(
     reason?: string,
     options?: {
@@ -1411,7 +1562,7 @@ export interface ExecutionPipelineConfig {
   /**
    * Per-tool execution timeout in milliseconds.
    * When a tool exceeds this limit it is aborted and returns a TIMEOUT error.
-   * Defaults to no timeout (undefined).
+   * Defaults to 600000 (10 minutes).
    */
   toolTimeoutMs?: number;
   scheduler?: ConcurrencyScheduler;

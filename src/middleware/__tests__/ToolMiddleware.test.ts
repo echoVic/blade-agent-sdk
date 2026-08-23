@@ -549,6 +549,62 @@ describe('ToolMiddleware', () => {
     ).resolves.toEqual(coreFailure);
   });
 
+  it('preserves a timeout when middleware returns or throws during unwind', async () => {
+    for (const behavior of ['return', 'throw'] as const) {
+      const registry = new ToolRegistry();
+      registry.register(
+        createTool({
+          name: 'TimeoutRecovery',
+          displayName: 'Timeout Recovery',
+          kind: ToolKind.Execute,
+          sideEffect: 'non_idempotent',
+          description: { short: 'Return an error after timeout abort' },
+          schema: z.object({}),
+          async *execute(_params, context) {
+            await new Promise<void>((resolve) => {
+              context.signal?.addEventListener('abort', () => resolve(), { once: true });
+            });
+            return {
+              status: 'error',
+              model: 'tool handled abort',
+              error: {
+                type: ToolErrorType.INTERRUPTED,
+                message: 'tool handled abort',
+              },
+            };
+          },
+        }) as unknown as Tool,
+      );
+      const pipeline = new ExecutionPipeline(registry, {
+        permissionMode: PermissionMode.YOLO,
+        toolTimeoutMs: 10,
+        middleware: [
+          async function* (_request, next) {
+            yield* next();
+            if (behavior === 'throw') {
+              throw new Error('middleware failure');
+            }
+            return {
+              status: 'error',
+              model: 'middleware replacement',
+              error: {
+                type: ToolErrorType.EXECUTION_ERROR,
+                message: 'middleware replacement',
+              },
+            };
+          },
+        ],
+      });
+
+      await expect(
+        collectToolExecution(pipeline.execute('TimeoutRecovery', {}, {})),
+      ).resolves.toMatchObject({
+        status: 'error',
+        error: { type: ToolErrorType.TIMEOUT_ERROR },
+      });
+    }
+  });
+
   it('preserves the core cancellation result after middleware unwinds', async () => {
     const controller = new AbortController();
     const coreCancellation: ToolResult = {

@@ -1736,6 +1736,7 @@ async function analyzeCodeManual() {
 | `disallowedTools` | `string[]`                                              | —  | —           | 工具黑名单                                             |
 | `toolSourcePolicy` | `ToolCatalogSourcePolicy`                              | —  | —           | 工具来源策略，按来源类型和信任级别过滤工具                            |
 | `tools`           | `SessionTool[]`                                          | —  | —           | 追加的 `ToolDefinition` 或完整 `Tool`                        |
+| `toolTimeoutMs`   | `number`                                                 | —  | `600000`    | 单次工具调用的总时限（毫秒）                                   |
 | `mcpServers`      | `Record<string, McpServerConfig \| SdkMcpServerHandle>` | —  | —           | MCP 服务器配置映射                                       |
 | `permissionMode`  | `PermissionMode`                                        | —  | `'default'` | 权限审批模式                                            |
 | `permissionHandler` | `PermissionHandler`                                   | —  | —           | 底层权限处理器（比 `canUseTool` 更低级）                       |

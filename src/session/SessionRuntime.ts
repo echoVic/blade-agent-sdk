@@ -289,6 +289,13 @@ export class SessionRuntime {
     } catch (error) {
       errors.push(error);
     }
+    if (this.executionPipeline.hasPendingExecutionCleanup()) {
+      errors.push(
+        new Error(
+          `Session runtime ${this.sessionId} still has a tool execution cleaning up`,
+        ),
+      );
+    }
     if (errors.length === 1) {
       throw errors[0];
     }
@@ -353,6 +360,7 @@ export class SessionRuntime {
       maxHistorySize: 1000,
       permissionHandler: this.createPermissionHandler(),
       hookRuntime: this.hookRuntime,
+      toolTimeoutMs: this.bladeConfig.toolTimeoutMs,
       middleware: this.pluginHost.getToolMiddleware(),
       logger: this.rootLogger,
       toolCatalog: this.toolCatalog,

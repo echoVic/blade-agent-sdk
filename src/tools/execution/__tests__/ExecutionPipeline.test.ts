@@ -1,8 +1,9 @@
 import * as fs from 'node:fs/promises';
 import * as os from 'node:os';
 import * as path from 'node:path';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
+import { ConfigError } from '../../../errors/ConfigError.js';
 import { DurableExecutionLeaseError } from '../../../session/events/DurableExecutionLeaseStore.js';
 import { createTool } from '../../core/createTool.js';
 import { ToolRegistry } from '../../registry/ToolRegistry.js';
@@ -13,6 +14,7 @@ import {
   completeToolExecution,
   type ExecutionContext,
   type Tool,
+  ToolErrorType,
   type ToolResult,
   type ToolYield,
 } from '../../types/index.js';
@@ -44,6 +46,10 @@ function executePipeline(
 }
 
 describe('ExecutionPipeline', () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
   it('does not expose stage-pipeline management on the default execution path', () => {
     const registry = new ToolRegistry();
     const pipeline = new ExecutionPipeline(registry, {
@@ -210,6 +216,233 @@ describe('ExecutionPipeline', () => {
     expect(result.status === 'error' ? result.error.type : undefined).toBe('timeout_error');
     expect(observedAbort).toBe(true);
     expect(finalized).toBe(true);
+  });
+
+  it('preserves timeout precedence when a tool returns success after abort', async () => {
+    vi.useFakeTimers();
+    const registry = new ToolRegistry();
+    const started = deferred();
+
+    registerTool(
+      registry,
+      createTool({
+        name: 'AbortRecovery',
+        displayName: 'Abort Recovery',
+        kind: ToolKind.Execute,
+        sideEffect: 'non_idempotent',
+        description: { short: 'Return success after abort' },
+        schema: z.object({}),
+        async *execute(_params, context) {
+          started.resolve();
+          await new Promise<void>((resolve) => {
+            context.signal?.addEventListener('abort', () => resolve(), { once: true });
+          });
+          return { status: 'success', model: 'recovered' };
+        },
+      }),
+    );
+
+    const pipeline = new ExecutionPipeline(registry, {
+      permissionMode: PermissionMode.YOLO,
+      toolTimeoutMs: 50,
+    });
+    const resultPromise = executePipeline(
+      pipeline,
+      'AbortRecovery',
+      {},
+      { permissionMode: PermissionMode.YOLO },
+    );
+
+    await started.promise;
+    await vi.advanceTimersToNextTimerAsync();
+
+    await expect(resultPromise).resolves.toMatchObject({
+      status: 'error',
+      error: { type: ToolErrorType.TIMEOUT_ERROR },
+    });
+  });
+
+  it('keeps the tool deadline active while the consumer pauses after progress', async () => {
+    vi.useFakeTimers();
+    const registry = new ToolRegistry();
+    let observedSignal: AbortSignal | undefined;
+    let finalized = false;
+
+    registerTool(
+      registry,
+      createTool({
+        name: 'PausedStream',
+        displayName: 'Paused Stream',
+        kind: ToolKind.Execute,
+        sideEffect: 'non_idempotent',
+        description: { short: 'Paused streaming tool' },
+        schema: z.object({}),
+        async *execute(_params, context) {
+          observedSignal = context.signal;
+          try {
+            yield { kind: 'progress', message: 'started' };
+            await new Promise(() => {});
+            return { status: 'success', model: 'unexpected' };
+          } finally {
+            finalized = true;
+          }
+        },
+      }),
+    );
+
+    const pipeline = new ExecutionPipeline(registry, {
+      permissionMode: PermissionMode.YOLO,
+      toolTimeoutMs: 50,
+    });
+    const execution = pipeline.execute(
+      'PausedStream',
+      {},
+      { permissionMode: PermissionMode.YOLO },
+    );
+
+    await expect(execution.next()).resolves.toEqual({
+      done: false,
+      value: { kind: 'progress', message: 'started' },
+    });
+    await vi.advanceTimersByTimeAsync(50);
+    expect(observedSignal?.aborted).toBe(true);
+
+    await expect(execution.next()).resolves.toMatchObject({
+      done: true,
+      value: {
+        status: 'error',
+        error: { type: ToolErrorType.TIMEOUT_ERROR },
+      },
+    });
+    await Promise.resolve();
+    expect(finalized).toBe(true);
+  });
+
+  it('waits for bounded cleanup when a timed-out tool ignores cancellation', async () => {
+    vi.useFakeTimers();
+    const registry = new ToolRegistry();
+    const scheduler = new ConcurrencyScheduler({ execute: 1 });
+    const started = deferred();
+    const queuedExecute = vi.fn(() => ({
+      status: 'success',
+      model: 'unexpected queued execution',
+    }) as ToolResult);
+
+    registerTool(
+      registry,
+      createTool({
+        name: 'UncooperativeTool',
+        displayName: 'Uncooperative Tool',
+        kind: ToolKind.Execute,
+        sideEffect: 'non_idempotent',
+        description: { short: 'Ignore cancellation' },
+        schema: z.object({}),
+        async *execute() {
+          started.resolve();
+          await new Promise(() => {});
+          return { status: 'success', model: 'unexpected' };
+        },
+      }),
+    );
+    registerTool(
+      registry,
+      createTool({
+        name: 'QueuedTool',
+        displayName: 'Queued Tool',
+        kind: ToolKind.Execute,
+        sideEffect: 'non_idempotent',
+        description: { short: 'Wait behind the timed-out tool' },
+        schema: z.object({}),
+        execute: () => completeToolExecution(queuedExecute()),
+      }),
+    );
+
+    const pipeline = new ExecutionPipeline(registry, {
+      permissionMode: PermissionMode.YOLO,
+      toolTimeoutMs: 50,
+      scheduler,
+    });
+    const resultPromise = executePipeline(
+      pipeline,
+      'UncooperativeTool',
+      {},
+      { permissionMode: PermissionMode.YOLO },
+    );
+    let settled = false;
+    void resultPromise.finally(() => {
+      settled = true;
+    });
+
+    await started.promise;
+    const queuedResultPromise = executePipeline(
+      pipeline,
+      'QueuedTool',
+      {},
+      { permissionMode: PermissionMode.YOLO },
+    );
+    for (let index = 0; index < 10; index += 1) {
+      await Promise.resolve();
+    }
+    expect(scheduler.getStats()[ToolKind.Execute].queued).toBe(1);
+
+    await vi.advanceTimersToNextTimerAsync();
+    await vi.advanceTimersToNextTimerAsync();
+    expect(settled).toBe(false);
+    expect(pipeline.hasPendingExecutionCleanup()).toBe(true);
+
+    await vi.advanceTimersByTimeAsync(4_999);
+    expect(settled).toBe(false);
+
+    await vi.advanceTimersByTimeAsync(1);
+    await expect(resultPromise).resolves.toMatchObject({
+      status: 'error',
+      error: { type: ToolErrorType.TIMEOUT_ERROR },
+    });
+    expect(pipeline.hasPendingExecutionCleanup()).toBe(true);
+    await expect(queuedResultPromise).resolves.toMatchObject({
+      status: 'error',
+      error: {
+        type: ToolErrorType.EXECUTION_ERROR,
+        message: expect.stringContaining('still cleaning up'),
+      },
+    });
+    expect(queuedExecute).not.toHaveBeenCalled();
+
+    await expect(
+      executePipeline(
+        pipeline,
+        'UncooperativeTool',
+        {},
+        { permissionMode: PermissionMode.YOLO },
+      ),
+    ).resolves.toMatchObject({
+      status: 'error',
+      error: {
+        type: ToolErrorType.EXECUTION_ERROR,
+        message: expect.stringContaining('still cleaning up'),
+      },
+    });
+  });
+
+  it('uses a bounded default and rejects invalid tool timeout values', () => {
+    const registry = new ToolRegistry();
+    const defaultPipeline = new ExecutionPipeline(registry);
+    expect(
+      (defaultPipeline as unknown as { toolTimeoutMs: number }).toolTimeoutMs,
+    ).toBe(600_000);
+
+    for (const toolTimeoutMs of [
+      0,
+      -1,
+      1.5,
+      Number.NaN,
+      Number.POSITIVE_INFINITY,
+      2_147_483_648,
+    ]) {
+      expect(
+        () => new ExecutionPipeline(registry, { toolTimeoutMs }),
+      ).toThrow(ConfigError);
+    }
   });
 
   it('returns a single-prefixed model message for thrown tool errors', async () => {

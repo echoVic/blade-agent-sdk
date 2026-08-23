@@ -30,6 +30,7 @@ describe('Session model config', () => {
       temperature: 0.2,
       maxOutputTokens: 4096,
       maxContextTokens: 32000,
+      toolTimeoutMs: 45_000,
       providerOptions,
       thinkingEnabled: true,
       thinkingBudget: 1024,
@@ -38,6 +39,7 @@ describe('Session model config', () => {
     const [config] = createAgent.mock.calls.at(-1) ?? [];
     expect(config).toMatchObject({
       temperature: 0.2,
+      toolTimeoutMs: 45_000,
       models: [
         expect.objectContaining({
           temperature: 0.2,

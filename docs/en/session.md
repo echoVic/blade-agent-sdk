@@ -689,6 +689,7 @@ Payload capture is opt-in because prompts and tool data may be sensitive.
 | `thinkingEnabled` / `thinkingBudget` | `boolean` / `number` | Reasoning controls |
 | `tokenBudget` | `TokenBudgetConfig` | Request and cost limits |
 | `tools` | `SessionTool[]` | Custom `ToolDefinition` or complete `Tool` instances |
+| `toolTimeoutMs` | `number` | Per-invocation wall-clock timeout; defaults to `600000` |
 | `allowedTools` / `disallowedTools` | `string[]` | Tool filters |
 | `toolSourcePolicy` | `ToolCatalogSourcePolicy` | Source and trust filtering |
 | `mcpServers` | `Record<string, McpServerConfig \| SdkMcpServerHandle>` | MCP configuration |
