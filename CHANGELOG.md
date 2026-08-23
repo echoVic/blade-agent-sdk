@@ -2,6 +2,12 @@
 
 All notable changes to `@blade-ai/agent-sdk` are documented here.
 
+## [5.1.0] - 2026-08-23
+
+### Features
+
+- Add a controlled Session worker handoff barrier that seals background-work admission, settles local execution, preserves the unfinished durable frontier, and returns its recovery plan without closing the durable Session.
+
 ## [5.0.4] - 2026-08-23
 
 ### Fixes

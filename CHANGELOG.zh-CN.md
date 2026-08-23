@@ -2,6 +2,12 @@
 
 `@blade-ai/agent-sdk` 的所有重要变更都记录在此。
 
+## [5.1.0] - 2026-08-23
+
+### 新功能
+
+- 新增受控 Session worker handoff 屏障：封闭后台工作准入、等待本地执行收敛、保留未完成的 durable frontier，并在不关闭 durable Session 的情况下返回恢复计划。
+
 ## [5.0.4] - 2026-08-23
 
 ### 修复

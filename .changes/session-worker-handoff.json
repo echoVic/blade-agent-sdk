@@ -1,5 +1,0 @@
-{
-  "type": "feature",
-  "en": "Add a controlled Session worker handoff barrier that seals background-work admission, settles local execution, preserves the unfinished durable frontier, and returns its recovery plan without closing the durable Session.",
-  "zh-CN": "新增受控 Session worker handoff 屏障：封闭后台工作准入、等待本地执行收敛、保留未完成的 durable frontier，并在不关闭 durable Session 的情况下返回恢复计划。"
-}

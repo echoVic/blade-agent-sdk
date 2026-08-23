@@ -1,6 +1,6 @@
 {
   "name": "@blade-ai/agent-sdk",
-  "version": "5.0.4",
+  "version": "5.1.0",
   "private": false,
   "description": "Blade AI Agent SDK",
   "repository": {
