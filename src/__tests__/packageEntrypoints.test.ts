@@ -42,6 +42,10 @@ describe('package entrypoints', () => {
         browser: './dist/browser/server-only-stub.js',
         import: './dist/local/index.js',
       },
+      './middleware': {
+        types: './dist/middleware/index.d.ts',
+        import: './dist/middleware/index.js',
+      },
     });
   });
 
@@ -53,6 +57,7 @@ describe('package entrypoints', () => {
       'src/server/index.ts',
       'src/tools/index.ts',
       'src/local/index.ts',
+      'src/middleware/index.ts',
       'src/session/index.ts',
     ]) {
       expect(existsSync(join(process.cwd(), file)), file).toBe(true);

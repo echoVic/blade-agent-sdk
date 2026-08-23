@@ -46,6 +46,7 @@ export class SubagentExecutor {
         executionFence: context.executionFence,
         assertExecutionLease: context.assertExecutionLease,
         runWithExecutionLease: context.runWithExecutionLease,
+        middleware: this.backgroundAgentManager?.getMiddleware?.(),
         omitEnvironment: context.omitEnvironment ?? this.config.omitEnvironment,
       });
 

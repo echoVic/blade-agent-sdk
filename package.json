@@ -47,6 +47,10 @@
       "browser": "./dist/browser/server-only-stub.js",
       "import": "./dist/local/index.js"
     },
+    "./middleware": {
+      "types": "./dist/middleware/index.d.ts",
+      "import": "./dist/middleware/index.js"
+    },
     "./package.json": {
       "default": "./package.json"
     }

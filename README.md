@@ -65,6 +65,7 @@ console.log(result.usage);
 - Streaming: 17 typed events for turns, content, reasoning, tools, usage, steering, results, and errors
 - Providers: OpenAI, Anthropic, Azure OpenAI, Gemini, DeepSeek, and OpenAI-compatible APIs
 - Tools: generator-only custom tools, capability-grouped built-ins, MCP tools, and typed progress/effects
+- Extensibility: onion-style model/tool middleware and declarative plugins that bundle middleware, hooks, and tools
 - Collaboration: foreground and background subagents, task tools, and project Skills
 - Safety: permission modes, policy callbacks, hooks, path checks, and optional OS sandbox integration
 - Runtime: optional workspace context, structured output, crash-safe local transcripts, context compaction, token budgets, and traces
@@ -129,11 +130,13 @@ import { createSession } from '@blade-ai/agent-sdk';
 import { InputPriority, ToolKind } from '@blade-ai/agent-sdk/core';
 import { defineTool } from '@blade-ai/agent-sdk/tools';
 import { getBuiltinTools } from '@blade-ai/agent-sdk/local';
+import { composeMiddleware } from '@blade-ai/agent-sdk/middleware';
 ```
 
 - Root: complete Node.js API
 - `/core`: browser-safe contracts, constants, and types
 - `/tools`: browser-safe tool authoring primitives
+- `/middleware`: browser-safe middleware and plugin contracts
 - `/server` and `/session`: server-side Session APIs
 - `/local`: built-in local tools and local runtime helpers
 
@@ -164,6 +167,7 @@ The workspace is optional. Sessions and explicitly configured agents work withou
 ## Documentation
 
 - [English documentation](./docs/en/index.md)
+- [Middleware and plugins](./docs/en/middleware.md)
 - [Durable Event Store](./docs/en/durable-events.md)
 - [中文文档](./docs/index.md)
 - [English changelog](./CHANGELOG.md)

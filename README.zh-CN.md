@@ -65,6 +65,7 @@ console.log(result.usage);
 - 流式事件：17 种类型化事件，覆盖轮次、内容、思维、工具、usage、转向、结果和错误
 - Provider：OpenAI、Anthropic、Azure OpenAI、Gemini、DeepSeek 和 OpenAI-compatible API
 - 工具：仅 generator 的自定义工具、按能力分组的内置工具、MCP 工具和类型化进度/副作用
+- 扩展：洋葱式模型/工具 middleware，以及可打包 middleware、hooks 与工具的声明式插件
 - 协作：前台/后台子 Agent、任务工具，以及项目级 Skills
 - 安全：权限模式、策略回调、Hooks、路径检查和可选 OS 沙箱集成
 - 运行时：可选 workspace、结构化输出、崩溃安全的本地会话记录、上下文压缩、token 预算和 trace
@@ -129,11 +130,13 @@ import { createSession } from '@blade-ai/agent-sdk';
 import { InputPriority, ToolKind } from '@blade-ai/agent-sdk/core';
 import { defineTool } from '@blade-ai/agent-sdk/tools';
 import { getBuiltinTools } from '@blade-ai/agent-sdk/local';
+import { composeMiddleware } from '@blade-ai/agent-sdk/middleware';
 ```
 
 - 根入口：完整 Node.js API
 - `/core`：浏览器安全的协议、常量和类型
 - `/tools`：浏览器安全的工具定义原语
+- `/middleware`：浏览器安全的 middleware 与插件契约
 - `/server` 和 `/session`：服务端 Session API
 - `/local`：内置本地工具和本地运行时辅助函数
 
@@ -164,6 +167,7 @@ workspace 是可选的。没有 workspace 时，Session 和显式配置的 Agent
 ## 文档
 
 - [中文文档](./docs/index.md)
+- [Middleware 与插件](./docs/middleware.md)
 - [Durable Event Store](./docs/durable-events.md)
 - [English documentation](./docs/en/index.md)
 - [中文更新日志](./CHANGELOG.zh-CN.md)

@@ -698,6 +698,8 @@ Payload capture is opt-in because prompts and tool data may be sensitive.
 | `maxTurns` | `number` | Agent turn limit |
 | `agents` | `Record<string, AgentDefinition>` | Session-local subagents |
 | `hooks` | `Partial<Record<SessionHookEvent, HookCallback[]>>` | Eight inline hook events |
+| `middleware` | `AgentMiddlewareConfig` | Direct model and tool onion middleware |
+| `plugins` | `readonly AgentPlugin[]` | Declarative bundles of middleware, hooks, and tools |
 | `defaultContext` | `RuntimeContext` | Optional runtime capabilities |
 | `logger` | `AgentLogger` | Structured logger |
 | `storagePath` | `string` | Enables JSONL persistence |

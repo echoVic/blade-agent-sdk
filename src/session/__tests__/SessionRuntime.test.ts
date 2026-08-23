@@ -184,6 +184,203 @@ describe('SessionRuntime', () => {
     await runtime.close();
   });
 
+  it('should install plugin tools and tool middleware through one declarative entry', async () => {
+    const calls: string[] = [];
+    const pluginTool = createTool({
+      name: 'PluginTool',
+      displayName: 'Plugin Tool',
+      kind: ToolKind.ReadOnly,
+      sideEffect: 'pure',
+      description: { short: 'Plugin test tool' },
+      schema: z.object({ value: z.string().optional() }),
+      execute(params) {
+        return completeToolExecution({
+          status: 'success',
+          model: params.value ?? 'missing',
+        });
+      },
+    });
+    const runtime = new SessionRuntime(
+      SessionId('session-plugin'),
+      createOptions({
+        allowedTools: ['PluginTool'],
+        plugins: [
+          {
+            name: 'audit',
+            tools: [pluginTool],
+            middleware: {
+              tool: [
+                async function* (request, next) {
+                  calls.push(`before:${request.toolName}`);
+                  const result = yield* next({
+                    ...request,
+                    input: { ...request.input, value: 'from-plugin' },
+                  });
+                  calls.push(`after:${request.toolName}`);
+                  return result;
+                },
+              ],
+            },
+          },
+        ],
+      }),
+      {
+        models: [],
+      },
+      PermissionMode.YOLO,
+      createFilesystemContext(workspaceRoot),
+      NOOP_LOGGER,
+    );
+
+    await runtime.initialize();
+
+    expect(runtime.getToolCatalog().getEntry('PluginTool')).toMatchObject({
+      source: {
+        kind: 'custom',
+        trustLevel: 'workspace',
+        sourceId: 'plugin:audit',
+      },
+    });
+    expect(
+      runtime.getBackgroundAgentManager().getMiddleware().tool,
+    ).toHaveLength(1);
+    const executionPipeline = runtime.getAgentRuntimeDeps().executionPipeline;
+    assertDefined(executionPipeline);
+    const result = await collectToolExecution(
+      executionPipeline.execute('PluginTool', { value: 'original' }, {}),
+    );
+
+    expect(result).toMatchObject({
+      status: 'success',
+      model: 'from-plugin',
+    });
+    expect(calls).toEqual(['before:PluginTool', 'after:PluginTool']);
+
+    await runtime.close();
+  });
+
+  it('rejects duplicate plugin tool names without replacing prior registrations', async () => {
+    const cases: Array<{
+      label: string;
+      toolName: string;
+      expectedSourceId: string;
+      options: Partial<SessionOptions>;
+    }> = [
+      {
+        label: 'builtin conflict',
+        toolName: 'Read',
+        expectedSourceId: 'builtin',
+        options: {
+          allowedTools: ['Read'],
+          plugins: [
+            {
+              name: 'duplicate-builtin',
+              tools: [{ ...customTool, name: 'Read' }],
+            },
+          ],
+        },
+      },
+      {
+        label: 'session tool conflict',
+        toolName: 'CustomTool',
+        expectedSourceId: 'session',
+        options: {
+          allowedTools: ['CustomTool'],
+          tools: [customTool],
+          plugins: [
+            {
+              name: 'duplicate-session',
+              tools: [customTool],
+            },
+          ],
+        },
+      },
+      {
+        label: 'plugin conflict',
+        toolName: 'CustomTool',
+        expectedSourceId: 'plugin:first-plugin',
+        options: {
+          allowedTools: ['CustomTool'],
+          plugins: [
+            {
+              name: 'first-plugin',
+              tools: [customTool],
+            },
+            {
+              name: 'second-plugin',
+              tools: [customTool],
+            },
+          ],
+        },
+      },
+    ];
+
+    for (const [index, testCase] of cases.entries()) {
+      const runtime = new SessionRuntime(
+        SessionId(`session-plugin-conflict-${index}`),
+        createOptions(testCase.options),
+        {
+          models: [],
+        },
+        PermissionMode.DEFAULT,
+        createFilesystemContext(workspaceRoot),
+        NOOP_LOGGER,
+      );
+
+      try {
+        await expect(
+          runtime.initialize(),
+          testCase.label,
+        ).rejects.toThrow('已注册');
+        expect(
+          runtime.getToolCatalog().getEntry(testCase.toolName)?.source.sourceId,
+          testCase.label,
+        ).toBe(testCase.expectedSourceId);
+      } finally {
+        await runtime.close();
+      }
+    }
+  });
+
+  it('should activate and execute hooks contributed only by a plugin', async () => {
+    const enableHooks = vi.spyOn(HookManager.getInstance(), 'enable');
+    const pluginHook = vi.fn(async () => ({
+      action: 'continue' as const,
+      modifiedInput: {
+        userPrompt: 'modified by plugin',
+      },
+    }));
+    const runtime = new SessionRuntime(
+      SessionId('session-plugin-hooks'),
+      createOptions({
+        plugins: [
+          {
+            name: 'prompt-hooks',
+            hooks: {
+              [HookEvent.UserPromptSubmit]: [pluginHook],
+            },
+          },
+        ],
+      }),
+      {
+        models: [],
+      },
+      PermissionMode.DEFAULT,
+      createFilesystemContext(workspaceRoot),
+      NOOP_LOGGER,
+    );
+
+    await runtime.initialize();
+
+    await expect(
+      runtime.getHookRuntime().applyUserPromptSubmit('original'),
+    ).resolves.toBe('modified by plugin');
+    expect(enableHooks).toHaveBeenCalled();
+    expect(pluginHook).toHaveBeenCalledOnce();
+
+    await runtime.close();
+  });
+
   it('should disable all tools when allowedTools is an empty array', async () => {
     const runtime = new SessionRuntime(
       SessionId('session-empty-allowlist'),

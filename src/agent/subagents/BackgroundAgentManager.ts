@@ -12,6 +12,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import writeFileAtomic from 'write-file-atomic';
 import { type InternalLogger, LogCategory, NOOP_LOGGER } from '../../logging/Logger.js';
+import type { AgentMiddlewareConfig } from '../../middleware/AgentPlugin.js';
 import type { ContextSnapshot } from '../../runtime/index.js';
 import type { Message } from '../../services/ChatServiceInterface.js';
 import {
@@ -115,13 +116,19 @@ export class BackgroundAgentManager {
 
   // 会话存储（支持注入，不再硬依赖全局 singleton）
   private sessionStore: AgentSessionStore;
+  private readonly middleware: AgentMiddlewareConfig;
 
   constructor(
     sessionStore: AgentSessionStore,
     logger?: InternalLogger,
     private readonly ownerSessionId?: SessionId,
+    middleware: AgentMiddlewareConfig = {},
   ) {
     this.sessionStore = sessionStore;
+    this.middleware = {
+      model: [...(middleware.model ?? [])],
+      tool: [...(middleware.tool ?? [])],
+    };
     if (logger) {
       this.logger = logger.child(LogCategory.AGENT);
       this.sessionStore.setLogger(logger);
@@ -141,13 +148,23 @@ export class BackgroundAgentManager {
     logger: InternalLogger,
     sessionStore: AgentSessionStore,
     ownerSessionId?: SessionId,
+    middleware?: AgentMiddlewareConfig,
   ): BackgroundAgentManager {
-    return new BackgroundAgentManager(sessionStore, logger, ownerSessionId);
+    return new BackgroundAgentManager(
+      sessionStore,
+      logger,
+      ownerSessionId,
+      middleware,
+    );
   }
 
   setLogger(logger: InternalLogger): void {
     this.logger = logger.child(LogCategory.AGENT);
     this.sessionStore.setLogger(logger);
+  }
+
+  getMiddleware(): AgentMiddlewareConfig {
+    return this.middleware;
   }
 
   private async cleanupOrphanedSessions(): Promise<void> {
@@ -347,6 +364,7 @@ export class BackgroundAgentManager {
         executionFence,
         assertExecutionLease,
         runWithExecutionLease,
+        middleware: this.middleware,
         onProgress: async (progress) => {
           await this.runOwnedPersistence(
             executionFence,

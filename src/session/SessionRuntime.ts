@@ -8,6 +8,7 @@ import { HookManager } from '../hooks/HookManager.js';
 import { HookRuntime } from '../hooks/HookRuntime.js';
 import type { InternalLogger } from '../logging/Logger.js';
 import { LogCategory } from '../logging/Logger.js';
+import { PluginHost } from '../middleware/PluginHost.js';
 import { projectMcpCapabilities, type McpServerCapability } from '../mcp/McpCapabilityProjector.js';
 import { McpRegistry } from '../mcp/McpRegistry.js';
 import type { SdkMcpServerHandle } from '../mcp/SdkMcpServer.js';
@@ -106,6 +107,7 @@ export class SessionRuntime {
   private readonly backgroundAgentManager: BackgroundAgentManager;
   private readonly hookCallbacks: Partial<Record<HookEvent, HookCallback[]>>;
   private readonly hookRuntime: HookRuntime;
+  private readonly pluginHost: PluginHost;
   private readonly rootLogger: InternalLogger;
   private readonly logger: InternalLogger;
   private initialized = false;
@@ -123,11 +125,19 @@ export class SessionRuntime {
     this.storageRoot = bladeConfig.storageRoot ?? resolveStorageRoot(options.storagePath);
     this.mcpRegistry = new McpRegistry(this.storageRoot);
     this.subagentRegistry = new SubagentRegistry(this.rootLogger, getContextCwd(defaultContext));
+    this.pluginHost = new PluginHost({
+      middleware: options.middleware,
+      plugins: options.plugins,
+    });
     const sessionStore = AgentSessionStore.create(this.storageRoot, this.rootLogger);
     this.backgroundAgentManager = BackgroundAgentManager.create(
       this.rootLogger,
       sessionStore,
       this.sessionId,
+      {
+        model: this.pluginHost.getModelMiddleware(),
+        tool: this.pluginHost.getToolMiddleware(),
+      },
     );
     this.contextManager = new ContextManager({
       storage: {
@@ -139,7 +149,7 @@ export class SessionRuntime {
       },
       projectPath: getContextCwd(defaultContext),
     });
-    this.hookCallbacks = options.hooks || {};
+    this.hookCallbacks = this.pluginHost.mergeHooks(options.hooks);
     this.hookRuntime = new HookRuntime({
       sessionId,
       permissionMode,
@@ -158,6 +168,8 @@ export class SessionRuntime {
       subagentRegistry: this.subagentRegistry,
       backgroundAgentManager: this.backgroundAgentManager,
       hookRuntime: this.hookRuntime,
+      modelMiddleware: this.pluginHost.getModelMiddleware(),
+      toolMiddleware: this.pluginHost.getToolMiddleware(),
       runtimeManaged: true,
       logger: this.rootLogger,
     };
@@ -234,6 +246,7 @@ export class SessionRuntime {
     this.initializeHooks();
     await this.registerBuiltinTools();
     this.registerCustomTools();
+    this.registerPluginTools();
     await this.registerConfiguredMcpServers();
 
     this.initialized = true;
@@ -340,6 +353,7 @@ export class SessionRuntime {
       maxHistorySize: 1000,
       permissionHandler: this.createPermissionHandler(),
       hookRuntime: this.hookRuntime,
+      middleware: this.pluginHost.getToolMiddleware(),
       logger: this.rootLogger,
       toolCatalog: this.toolCatalog,
     });
@@ -347,7 +361,7 @@ export class SessionRuntime {
 
   private initializeHooks(): void {
     const hookManager = HookManager.getInstance();
-    if (this.options.hooks && Object.keys(this.options.hooks).length > 0) {
+    if (Object.keys(this.hookCallbacks).length > 0) {
       hookManager.enable();
     }
   }
@@ -390,6 +404,21 @@ export class SessionRuntime {
     }
     const tools = this.options.tools.map(toRuntimeTool);
     this.registerTools(tools);
+  }
+
+  private registerPluginTools(): void {
+    const registrations = this.pluginHost.getTools();
+    for (const { pluginName, tool } of registrations) {
+      const filteredTools = this.filterTools([toRuntimeTool(tool)]);
+      if (filteredTools.length === 0) {
+        continue;
+      }
+      this.toolCatalog.registerAll(filteredTools, {
+        kind: 'custom',
+        trustLevel: 'workspace',
+        sourceId: `plugin:${pluginName}`,
+      });
+    }
   }
 
   private async registerConfiguredMcpServers(): Promise<void> {

@@ -4,10 +4,10 @@ import { NOOP_LOGGER } from '../../../logging/Logger.js';
 import { createContextSnapshot } from '../../../runtime/index.js';
 import { DurableExecutionLeaseError } from '../../../session/events/DurableExecutionLeaseStore.js';
 import {
-    AgentId,
-    ExecutionLeaseId,
-    FencingToken,
-    SessionId,
+  AgentId,
+  ExecutionLeaseId,
+  FencingToken,
+  SessionId,
 } from '../../../types/branded.js';
 import type { ChatContext, LoopOptions } from '../../types.js';
 import { AgentSessionStore } from '../AgentSessionStore.js';
@@ -107,6 +107,37 @@ describe('BackgroundAgentManager', () => {
       expect.objectContaining({
         backgroundAgentManager: manager,
         defaultContext: snapshot.context,
+      }),
+    );
+  });
+
+  it('propagates Session middleware into background subagents', async () => {
+    const modelMiddleware = {};
+    const toolMiddleware = vi.fn();
+    const managerWithMiddleware = BackgroundAgentManager.create(
+      NOOP_LOGGER,
+      AgentSessionStore.create(),
+      SessionId('middleware-owner'),
+      {
+        model: [modelMiddleware],
+        tool: [toolMiddleware],
+      },
+    );
+
+    const agentId = AgentId(await managerWithMiddleware.startBackgroundAgent({
+      config: subagentConfig,
+      bladeConfig,
+      description: 'Inspect repo',
+      prompt: 'inspect',
+    }));
+    await managerWithMiddleware.waitForCompletion(agentId, 1000);
+
+    expect(createAgent).toHaveBeenLastCalledWith(
+      expect.anything(),
+      expect.anything(),
+      expect.objectContaining({
+        modelMiddleware: [modelMiddleware],
+        toolMiddleware: [toolMiddleware],
       }),
     );
   });

@@ -1,5 +1,10 @@
 import type { HookRuntime } from '../../hooks/HookRuntime.js';
 import { type InternalLogger, LogCategory, NOOP_LOGGER } from '../../logging/Logger.js';
+import { composeMiddleware } from '../../middleware/composeMiddleware.js';
+import type {
+  ToolMiddleware,
+  ToolMiddlewareRequest,
+} from '../../middleware/ToolMiddleware.js';
 import { isExecutionLeaseFailure } from '../../session/events/DurableExecutionLeaseStore.js';
 import { isSteeringInterruptSignal } from '../../types/abort.js';
 import {
@@ -37,6 +42,7 @@ import {
   resolveToolBehaviorSafely,
   type ToolBehavior,
   ToolKind,
+  ToolSideEffect,
 } from '../types/ToolKind.js';
 import {
   ToolErrorType,
@@ -78,6 +84,13 @@ interface PipelineExecutionState {
   interrupted: boolean;
 }
 
+class ToolCoreExecutionError extends Error {
+  constructor(readonly cause: unknown) {
+    super('Tool core execution failed', { cause });
+    this.name = 'ToolCoreExecutionError';
+  }
+}
+
 /**
  * Confirmation reason source.
  * Ranked for display: deny > tool > rule > path > handler.
@@ -105,6 +118,7 @@ export class ExecutionPipeline {
   private readonly permissionHandlers: PermissionHandler[];
   private readonly defaultPermissionMode: PermissionMode;
   private readonly toolCatalog?: ToolCatalog;
+  private readonly middleware: readonly ToolMiddleware[];
   private readonly scheduler: ConcurrencyScheduler;
   private readonly resultArtifactStore = new ResultArtifactStore();
 
@@ -117,6 +131,7 @@ export class ExecutionPipeline {
     this.hookRuntime = config.hookRuntime;
     this.logger = (config.logger ?? NOOP_LOGGER).child(LogCategory.EXECUTION);
     this.toolCatalog = config.toolCatalog;
+    this.middleware = [...(config.middleware ?? [])];
     this.scheduler =
       config.scheduler ??
       (config.concurrencyLimits
@@ -157,37 +172,242 @@ export class ExecutionPipeline {
   ): ToolExecution {
     const startTime = Date.now();
     const executionId = this.generateExecutionId();
-    const nextParams = { ...params } as JsonObject;
+    const protectedContext = Object.freeze({
+      ...context,
+      sessionId: context.sessionId || SessionId(executionId),
+    });
+    const initialRequest: ToolMiddlewareRequest = {
+      toolName,
+      input: { ...params },
+      context: protectedContext,
+    };
+    const initialBehavior = resolveToolBehaviorSafely(
+      this.registry.get(toolName),
+      initialRequest.input,
+    );
+    let effectiveRequest = initialRequest;
+    let delegatedExecution: ToolExecution | undefined;
+    let coreStarted = false;
+    let coreCompleted = false;
+    let coreResult: ToolResult | undefined;
+    let coreFailure: ToolCoreExecutionError | undefined;
+    let result: ToolResult | undefined;
+    let completed = false;
 
-    const tool = this.registry.get(toolName);
+    const captureRequest = (
+      request: ToolMiddlewareRequest,
+    ): ToolMiddlewareRequest => {
+      if (request.toolName !== toolName) {
+        throw new Error('Tool middleware cannot change the tool name');
+      }
+      if (request.context !== protectedContext) {
+        throw new Error('Tool middleware cannot replace the execution context');
+      }
+      const effectiveBehavior = resolveToolBehaviorSafely(
+        this.registry.get(toolName),
+        request.input,
+      );
+      if (
+        initialBehavior &&
+        effectiveBehavior &&
+        initialBehavior.interruptBehavior !== effectiveBehavior.interruptBehavior
+      ) {
+        throw new Error(
+          'Tool middleware cannot change the tool interrupt behavior',
+        );
+      }
+      effectiveRequest = Object.freeze({
+        toolName: request.toolName,
+        input: { ...request.input },
+        context: request.context,
+      });
+      return effectiveRequest;
+    };
+    const guardedMiddleware = this.middleware.map<ToolMiddleware>(
+      (middleware) => (request, next) => {
+        const capturedRequest = captureRequest(request);
+        return middleware(
+          capturedRequest,
+          (nextRequest = capturedRequest) => next(nextRequest),
+        );
+      },
+    );
+    const execute = composeMiddleware(
+      guardedMiddleware,
+      (request: ToolMiddlewareRequest): ToolExecution => {
+        const coreRequest = captureRequest(request);
+        delegatedExecution = this.executeCoreBoundary(
+          coreRequest,
+          executionId,
+          () => {
+            coreStarted = true;
+          },
+          (completedResult) => {
+            coreCompleted = true;
+            coreResult = completedResult;
+          },
+          (failure) => {
+            coreFailure = failure;
+          },
+        );
+        return delegatedExecution;
+      },
+    );
+
+    await protectedContext.assertExecutionLease?.();
+
+    try {
+      if (protectedContext.signal?.aborted) {
+        const isInterrupt = isSteeringInterruptSignal(protectedContext.signal);
+        result = this.createAbortedResult(
+          isInterrupt ? '工具执行被新的用户输入中断' : '任务已被用户中止',
+          {
+            errorType: isInterrupt
+              ? ToolErrorType.INTERRUPTED
+              : ToolErrorType.EXECUTION_ERROR,
+          },
+        );
+      } else {
+        try {
+          result = yield* execute(initialRequest);
+          if (coreFailure) {
+            throw coreFailure;
+          }
+          if (coreStarted && !coreCompleted && delegatedExecution) {
+            this.logger.warn(
+              `Tool middleware returned before delegated ${toolName} execution completed; draining the core execution`,
+            );
+            result = yield* delegatedExecution;
+          }
+          if (coreResult?.status === 'error' && result.status === 'success') {
+            this.logger.warn(
+              `Tool middleware attempted to replace failed ${toolName} core execution with success; preserving the core failure`,
+            );
+            result = coreResult;
+          }
+        } catch (error) {
+          if (coreFailure) {
+            throw coreFailure.cause;
+          }
+          if (error instanceof ToolCoreExecutionError) {
+            throw error.cause;
+          }
+          if (isExecutionLeaseFailure(error)) {
+            throw error;
+          }
+          if (isExecutionLeaseFailure(protectedContext.signal?.reason)) {
+            throw protectedContext.signal.reason;
+          }
+          if (protectedContext.signal?.aborted) {
+            const isInterrupt = isSteeringInterruptSignal(protectedContext.signal);
+            result = this.createAbortedResult(
+              isInterrupt ? '工具执行被新的用户输入中断' : '任务已被用户中止',
+              {
+                errorType: isInterrupt
+                  ? ToolErrorType.INTERRUPTED
+                  : ToolErrorType.EXECUTION_ERROR,
+              },
+            );
+          } else {
+            result = this.createExecutionFailureResult(
+              `Tool middleware failed: ${getErrorMessage(error)}`,
+            );
+          }
+        }
+      }
+      if (protectedContext.signal?.aborted) {
+        if (coreCompleted && coreResult) {
+          result = coreResult;
+        } else {
+          const isInterrupt = isSteeringInterruptSignal(protectedContext.signal);
+          result = this.createAbortedResult(
+            isInterrupt ? '工具执行被新的用户输入中断' : '任务已被用户中止',
+            {
+              errorType: isInterrupt
+                ? ToolErrorType.INTERRUPTED
+                : ToolErrorType.EXECUTION_ERROR,
+            },
+          );
+        }
+      }
+      if (!coreStarted && result.status === 'success') {
+        effectiveRequest = captureRequest(effectiveRequest);
+        await this.recordMiddlewareShortCircuit(
+          effectiveRequest,
+        );
+      }
+      await protectedContext.assertExecutionLease?.();
+      completed = true;
+      return result;
+    } finally {
+      if (completed && result) {
+        this.addToHistory({
+          executionId,
+          toolName,
+          params: effectiveRequest.input,
+          result,
+          startTime,
+          endTime: Date.now(),
+          context: protectedContext,
+        });
+      }
+    }
+  }
+
+  private async recordMiddlewareShortCircuit(
+    request: ToolMiddlewareRequest,
+  ): Promise<void> {
+    const tool = this.registry.get(request.toolName);
+    const sideEffect =
+      resolveToolBehaviorSafely(tool, request.input)?.sideEffect ??
+      tool?.sideEffect ??
+      ToolSideEffect.NON_IDEMPOTENT;
+    await request.context.assertExecutionLease?.();
+    await request.context.toolInvocationLifecycle?.onExecutionStarted?.({
+      input: structuredClone(request.input),
+      sideEffect,
+    });
+  }
+
+  private async *executeCoreBoundary(
+    request: ToolMiddlewareRequest,
+    executionId: string,
+    onStart: () => void,
+    onCompleted: (result: ToolResult) => void,
+    onFailure: (failure: ToolCoreExecutionError) => void,
+  ): ToolExecution {
+    onStart();
+    try {
+      const result = yield* this.executeCore(request, executionId);
+      onCompleted(result);
+      return result;
+    } catch (error) {
+      const failure = new ToolCoreExecutionError(error);
+      onFailure(failure);
+      throw failure;
+    }
+  }
+
+  private async *executeCore(
+    request: ToolMiddlewareRequest,
+    executionId: string,
+  ): ToolExecution {
+    const tool = this.registry.get(request.toolName);
     if (!tool) {
-      const result = await this.applyPostExecutionHooks(
-        toolName,
-        nextParams,
-        context,
-        this.createExecutionFailureResult(`Tool "${toolName}" not found`),
+      return await this.applyPostExecutionHooks(
+        request.toolName,
+        request.input,
+        request.context,
+        this.createExecutionFailureResult(`Tool "${request.toolName}" not found`),
         executionId,
       );
-      this.addToHistory({
-        executionId,
-        toolName,
-        params: nextParams,
-        result,
-        startTime,
-        endTime: Date.now(),
-        context,
-      });
-      return result;
     }
 
     const state: PipelineExecutionState = {
-      toolName,
+      toolName: request.toolName,
       tool,
-      params: nextParams,
-      context: {
-        ...context,
-        sessionId: context.sessionId || SessionId(executionId),
-      },
+      params: request.input,
+      context: request.context,
       affectedPaths: [],
       needsConfirmation: false,
       confirmationReasons: [],
@@ -197,10 +417,10 @@ export class ExecutionPipeline {
     await state.context.assertExecutionLease?.();
 
     // 检查工具是否需要文件锁
-    const resolvedBehavior = resolveToolBehaviorSafely(tool, nextParams);
+    const resolvedBehavior = resolveToolBehaviorSafely(tool, request.input);
     const filePath =
-      typeof nextParams.file_path === 'string' && nextParams.file_path.trim() !== ''
-        ? String(nextParams.file_path)
+      typeof request.input.file_path === 'string' && request.input.file_path.trim() !== ''
+        ? String(request.input.file_path)
         : null;
     const lockMode =
       resolvedBehavior?.isReadOnly === true && resolvedBehavior.isConcurrencySafe
@@ -216,7 +436,7 @@ export class ExecutionPipeline {
         ? await FileLockManager.getInstance(this.logger).acquire(filePath, lockMode)
         : undefined;
       await state.context.assertExecutionLease?.();
-      return yield* this.executeWithPipeline(state, executionId, startTime);
+      return yield* this.executeWithPipeline(state, executionId);
     } finally {
       fileLease?.release();
       concurrencyLease.release();
@@ -229,7 +449,6 @@ export class ExecutionPipeline {
   private async *executeWithPipeline(
     state: PipelineExecutionState,
     executionId: string,
-    startTime: number
   ): ToolExecution {
     try {
       await this.applyPreToolUseHooks(state, executionId);
@@ -264,25 +483,12 @@ export class ExecutionPipeline {
         executionId,
         { isInterrupt: state.interrupted },
       );
-      const endTime = Date.now();
-
-      // 记录执行历史
-      this.addToHistory({
-        executionId,
-        toolName: state.toolName,
-        params: state.params,
-        result,
-        startTime,
-        endTime,
-        context: state.context,
-      });
 
       return result;
     } catch (error) {
       if (isExecutionLeaseFailure(error)) {
         throw error;
       }
-      const endTime = Date.now();
       const errorMsg = getErrorMessage(error);
       const isTimeout =
         errorMsg.includes('timeout') ||
@@ -314,22 +520,15 @@ export class ExecutionPipeline {
           { isTimeout, isInterrupt },
         );
       } catch (hookError) {
+        if (isExecutionLeaseFailure(hookError)) {
+          throw hookError;
+        }
         // Hook 执行失败不应阻止错误处理
         console.warn(
           '[ExecutionPipeline] PostToolUseFailure hook execution failed:',
           hookError
         );
       }
-
-      this.addToHistory({
-        executionId,
-        toolName: state.toolName,
-        params: state.params,
-        result: errorResult,
-        startTime,
-        endTime,
-        context: state.context,
-      });
 
       return errorResult;
     }
@@ -1218,6 +1417,7 @@ export interface ExecutionPipelineConfig {
   scheduler?: ConcurrencyScheduler;
   concurrencyLimits?: ConcurrencyLimits;
   toolCatalog?: ToolCatalog;
+  middleware?: readonly ToolMiddleware[];
 }
 
 /**

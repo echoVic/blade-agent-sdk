@@ -1,6 +1,10 @@
 import type { TokenBudgetConfig } from '../agent/TokenBudget.js';
 import type { UserMessageContent } from '../agent/types.js';
 import type { SdkMcpServerHandle } from '../mcp/SdkMcpServer.js';
+import type {
+  AgentMiddlewareConfig,
+  AgentPlugin,
+} from '../middleware/AgentPlugin.js';
 import type { AgentTrace, ObservabilityOptions } from '../observability/index.js';
 import type {
   ContextSnapshot,
@@ -56,6 +60,8 @@ import type {
 } from './events/DurableSessionProjector.js';
 
 export type {
+  AgentMiddlewareConfig,
+  AgentPlugin,
   ExecutionContext,
   ProviderType,
   TokenUsage,
@@ -292,6 +298,8 @@ export interface SessionOptions {
   subagent?: SubagentInfo;
 
   hooks?: Partial<Record<SessionHookEvent, HookCallback[]>>;
+  middleware?: AgentMiddlewareConfig;
+  plugins?: readonly AgentPlugin[];
 
   defaultContext?: RuntimeContext;
   logger?: AgentLogger;

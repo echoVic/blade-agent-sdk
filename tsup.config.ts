@@ -20,6 +20,7 @@ export default defineConfig({
     'browser/server-only-stub': 'src/browser/server-only-stub.ts',
     'core/index': 'src/core/index.ts',
     'local/index': 'src/local/index.ts',
+    'middleware/index': 'src/middleware/index.ts',
     'server/index': 'src/server/index.ts',
     'session/index': 'src/session/index.ts',
     'tools/index': 'src/tools/index.ts',

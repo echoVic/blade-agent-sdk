@@ -56,6 +56,8 @@ export { createSdkMcpServer, tool } from './mcp/index.js';
 export type { Memory, MemoryInput, MemoryStore, MemoryType } from './memory/index.js';
 // --- Memory ---
 export { FileSystemMemoryStore, MemoryManager } from './memory/index.js';
+// --- Middleware and plugins ---
+export * from './middleware/index.js';
 // --- Observability ---
 export type {
   AgentTrace,

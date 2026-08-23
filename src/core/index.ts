@@ -1,6 +1,7 @@
 // Browser-safe protocol, constants, and type exports.
 // Keep this entry free of Node-only runtime imports.
 
+export * from '../middleware/index.js';
 export type {
   AgentTrace,
   ObservabilityOptions,
