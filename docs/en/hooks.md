@@ -50,6 +50,7 @@ entry point does not currently re-export it.
 ```ts
 interface HookInput {
   event: HookEvent;
+  abortSignal?: AbortSignal;
   toolName?: string;
   toolInput?: JsonObject;
   toolOutput?: ToolModelContent;
@@ -71,6 +72,21 @@ type HookCallback = (input: HookInput) => Promise<HookOutput>;
 `skip` avoids execution and produces a successful result containing the
 reason. `abort` produces an error result. Neither action permanently closes
 the Session.
+
+## Deadlines and cancellation
+
+Each inline hook event has one wall-clock budget shared by its callbacks in
+registration order. `SessionOptions.hookTimeoutMs` defaults to `600000` (10
+minutes). `SessionEnd` uses the shorter
+`SessionOptions.sessionEndHookTimeoutMs`, which defaults to `3000`.
+
+The SDK combines the caller signal with the deadline and exposes it as
+`HookInput.abortSignal`. A deadline rejects the event with `HookTimeoutError`
+and code `HOOK_TIMEOUT`. Callback implementations must observe the signal and
+release resources. If a callback remains pending after cancellation, later
+inline hook dispatches and Session close or handoff fail closed until it
+settles. These options do not replace the independent timeout configuration
+used by file hooks.
 
 ## Modify a prompt
 

@@ -50,6 +50,7 @@ const session = await createSession({
 ```ts
 interface HookInput {
   event: HookEvent;
+  abortSignal?: AbortSignal;
   toolName?: string;
   toolInput?: JsonObject;
   toolOutput?: ToolModelContent;
@@ -73,6 +74,18 @@ type HookCallback = (input: HookInput) => Promise<HookOutput>;
 | `continue` | 继续处理，可同时返回修改后的输入或输出 |
 | `skip` | 跳过当前工具调用 |
 | `abort` | 中止当前 prompt 或工具调用；不会永久关闭 Session |
+
+## 时限与取消
+
+每次 inline hook 事件共享一份总 wall-clock 预算，callback 按注册顺序执行。
+`SessionOptions.hookTimeoutMs` 默认是 `600000`（10 分钟）。`SessionEnd`
+使用更短的 `SessionOptions.sessionEndHookTimeoutMs`，默认是 `3000`。
+
+SDK 会组合调用方 signal 与 deadline，并通过 `HookInput.abortSignal` 传给
+callback。到期后事件以 `HookTimeoutError`（code 为 `HOOK_TIMEOUT`）失败。
+callback 必须监听 signal 并释放资源；如果取消后仍未结束，后续 inline hook
+dispatch 以及 Session close/handoff 都会 fail-closed，直至该 callback
+settle。上述选项不替代文件 Hook 自己的独立超时配置。
 
 ## 修改用户输入
 
