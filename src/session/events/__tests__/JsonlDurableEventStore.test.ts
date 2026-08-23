@@ -252,12 +252,19 @@ describe('JsonlDurableEventStore', () => {
   });
 
   afterEach(async () => {
-    await Promise.all([...childProcesses].map((process) => terminateChild(process, 'SIGTERM')));
+    const trackedChildren = [...childProcesses];
     childProcesses.clear();
+    const terminationResults = await Promise.allSettled(
+      trackedChildren.map((process) => terminateChild(process, 'SIGTERM')),
+    );
     await Promise.all(
       filesystemAliases.splice(0).map((alias) => rm(alias, { recursive: true, force: true })),
     );
     await rm(storageRoot, { recursive: true, force: true });
+    const terminationFailure = terminationResults.find((result) => result.status === 'rejected');
+    if (terminationFailure?.status === 'rejected') {
+      throw terminationFailure.reason;
+    }
   });
 
   it('returns an empty page for a new session', async () => {

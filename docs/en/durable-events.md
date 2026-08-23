@@ -654,7 +654,9 @@ while any process is using the Store.
 The native lock addon is loaded only on the first Store operation, so other SDK
 APIs remain importable without it. If the addon cannot load or the platform
 does not support advisory locking, the Store fails closed with
-`DURABLE_EVENT_LOCK_FAILED`.
+`DURABLE_EVENT_LOCK_FAILED`. Prebuilt support currently covers macOS, glibc
+Linux, and Windows on x64/arm64. `JsonlDurableEventStore` does not support
+Alpine/musl or other targets.
 
 Event files use mode `0600`. Session IDs are base64url encoded and cannot
 become filesystem paths.

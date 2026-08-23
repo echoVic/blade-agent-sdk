@@ -605,7 +605,9 @@ runtime 恢复。
 
 Native lock addon 仅在首次 Store 操作时加载，不影响其他 SDK API 的导入。在
 addon 无法加载或平台不支持 advisory lock 时，Store 以
-`DURABLE_EVENT_LOCK_FAILED` fail closed。
+`DURABLE_EVENT_LOCK_FAILED` fail closed。当前预构建支持 macOS、glibc Linux 和
+Windows 的 x64/arm64；Alpine/musl 及其他目标不受 `JsonlDurableEventStore`
+支持。
 
 事件文件使用 `0600` 权限，Session ID 经过 base64url 编码，不会成为文件路径。
 事件会保存原始请求输入、完整模型响应、工具输入和模型侧工具结果；调用方必须将

@@ -3,6 +3,8 @@ declare module 'fs-native-extensions' {
     shared?: boolean;
   }
 
+  export function tryLock(fd: number, options?: FileLockOptions): boolean;
+  export function tryLock(fd: number, offset: number, options?: FileLockOptions): boolean;
   export function tryLock(
     fd: number,
     offset?: number,

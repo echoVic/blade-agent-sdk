@@ -45,7 +45,10 @@ type NativeFileLock = Pick<typeof import('fs-native-extensions'), 'tryLock' | 'u
 let nativeFileLockPromise: Promise<NativeFileLock> | undefined;
 
 function loadNativeFileLock(): Promise<NativeFileLock> {
-  nativeFileLockPromise ??= import('fs-native-extensions');
+  nativeFileLockPromise ??= import('fs-native-extensions').catch((error: unknown) => {
+    nativeFileLockPromise = undefined;
+    throw error;
+  });
   return nativeFileLockPromise;
 }
 
