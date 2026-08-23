@@ -3,7 +3,11 @@ import { access, mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { AgentId } from '../../../types/branded.js';
+import {
+  AgentId,
+  ExecutionLeaseId,
+  FencingToken,
+} from '../../../types/branded.js';
 import { type AgentSession, AgentSessionStore } from '../AgentSessionStore.js';
 
 const tempDirs: string[] = [];
@@ -63,6 +67,44 @@ describe('AgentSessionStore', () => {
     expect(JSON.parse(await readFile(sessionPath, 'utf8'))).toMatchObject({
       id: 'agent/unsafe:id',
       subagentType: 'research',
+    });
+  });
+
+  it('rejects stale subagent writers after a fencing-token takeover', async () => {
+    const storageRoot = await createTempDir('blade-agent-fenced-storage-');
+    const store = AgentSessionStore.create(storageRoot);
+    const agentId = AgentId('agent-fenced');
+    const staleFence = {
+      leaseId: ExecutionLeaseId('lease-stale'),
+      fencingToken: FencingToken(1),
+    };
+    const successorFence = {
+      leaseId: ExecutionLeaseId('lease-successor'),
+      fencingToken: FencingToken(2),
+    };
+
+    expect(store.saveSession({
+      ...createSession(agentId),
+      executionFence: staleFence,
+    })).toBe(true);
+    expect(store.saveSession({
+      ...createSession(agentId),
+      description: 'Successor execution',
+      executionFence: successorFence,
+    })).toBe(true);
+
+    expect(
+      store.markCancelled(agentId, undefined, undefined, staleFence),
+    ).toBeUndefined();
+    expect(store.saveSession({
+      ...createSession(agentId),
+      description: 'Stale replacement',
+      executionFence: staleFence,
+    })).toBe(false);
+    expect(store.loadSession(agentId)).toMatchObject({
+      description: 'Successor execution',
+      status: 'running',
+      executionFence: successorFence,
     });
   });
 });

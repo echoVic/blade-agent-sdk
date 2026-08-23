@@ -136,6 +136,7 @@ describe('root exports', () => {
     expect(DurableCommandConflictError).toBeDefined();
     expect(DurableCommandOutcomeUnknownError).toBeDefined();
     expect(DurableExecutionLease.acquire).toBeTypeOf('function');
+    expect(DurableExecutionLease.prototype.runFenced).toBeTypeOf('function');
     expect(DurableExecutionLeaseError).toBeDefined();
     expect(DURABLE_EXECUTION_LEASE_FORMAT).toBe('blade.durable-execution-lease');
     expect(ExecutionLeaseId('lease-1')).toBe('lease-1');
@@ -237,6 +238,7 @@ describe('root exports', () => {
     >();
     expectTypeOf<DurableEventStore['append']>().toBeFunction();
     expectTypeOf<DurableExecutionLeaseStore['acquireExecutionLease']>().toBeFunction();
+    expectTypeOf<DurableExecutionLeaseStore['withExecutionLease']>().toBeFunction();
     expectTypeOf<DurableExecutionFence['fencingToken']>().toEqualTypeOf<
       ReturnType<typeof FencingToken>
     >();

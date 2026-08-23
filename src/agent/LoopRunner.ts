@@ -53,6 +53,36 @@ function hasPersistableUserContent(message: UserMessageContent): boolean {
   return message.some((part) => part.type === 'image_url' || part.text.trim() !== '');
 }
 
+function isExecutionLeaseFailure(error: unknown): boolean {
+  return (
+    typeof error === 'object'
+    && error !== null
+    && 'code' in error
+    && typeof error.code === 'string'
+    && error.code.startsWith('DURABLE_EXECUTION_LEASE_')
+  );
+}
+
+async function runFencedTranscriptWrite<T>(
+  context: ChatContext,
+  operation: () => Promise<T>,
+): Promise<T> {
+  context.signal?.throwIfAborted();
+  if (context.runWithExecutionLease) {
+    const result = await context.runWithExecutionLease(async () => {
+      context.signal?.throwIfAborted();
+      return operation();
+    });
+    context.signal?.throwIfAborted();
+    return result;
+  }
+  await context.assertExecutionLease?.();
+  const result = await operation();
+  context.signal?.throwIfAborted();
+  await context.assertExecutionLease?.();
+  return result;
+}
+
 export class LoopRunner {
   readonly runtimePatchManager: RuntimePatchManager;
   private readonly logger: InternalLogger;
@@ -167,27 +197,47 @@ export class LoopRunner {
     let lastMessageUuid: string | null = null;
     const contextMgr = this.modelManager.getContextManager();
     if (contextMgr && context.sessionId && options?.inputApplication) {
+      const sessionId = context.sessionId;
+      const inputApplication = options.inputApplication;
       try {
-        lastMessageUuid = await contextMgr.saveAppliedInputMessage(
-          context.sessionId,
-          options.inputApplication.inputId,
-          options.inputApplication.requestId,
-          message,
-          null,
-          context.subagentInfo,
+        lastMessageUuid = await runFencedTranscriptWrite(
+          context,
+          () => contextMgr.saveAppliedInputMessage(
+            sessionId,
+            inputApplication.inputId,
+            inputApplication.requestId,
+            message,
+            null,
+            context.subagentInfo,
+          ),
         );
       } catch (error) {
+        if (context.signal?.aborted || isExecutionLeaseFailure(error)) {
+          throw error;
+        }
         // 与其他消息写入保持一致的 best-effort 策略：持久化失败不应中断请求。
         this.logger.warn('[LoopRunner] 保存已应用输入消息失败:', error);
       }
     } else {
       try {
         if (contextMgr && context.sessionId && hasPersistableUserContent(message)) {
-          lastMessageUuid = await contextMgr.saveMessage(
-            context.sessionId, 'user', message, null, undefined, context.subagentInfo
+          const sessionId = context.sessionId;
+          lastMessageUuid = await runFencedTranscriptWrite(
+            context,
+            () => contextMgr.saveMessage(
+              sessionId,
+              'user',
+              message,
+              null,
+              undefined,
+              context.subagentInfo,
+            ),
           );
         }
       } catch (error) {
+        if (context.signal?.aborted || isExecutionLeaseFailure(error)) {
+          throw error;
+        }
         this.logger.warn('[LoopRunner] 保存用户消息失败:', error);
       }
     }
@@ -377,6 +427,7 @@ export class LoopRunner {
         backgroundAgentManager: context.backgroundAgentManager,
         executionFence: context.executionFence,
         assertExecutionLease: context.assertExecutionLease,
+        runWithExecutionLease: context.runWithExecutionLease,
         toolCatalog: catalog instanceof ToolCatalog
           ? catalog
           : undefined,

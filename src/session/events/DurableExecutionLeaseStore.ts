@@ -88,6 +88,16 @@ export interface DurableExecutionLeaseStore extends DurableEventStore {
 
   assertExecutionLease(lease: DurableExecutionLease): Promise<void>;
 
+  /**
+   * Runs a short internal persistence operation while lease takeover is blocked.
+   * Implementations must validate the lease before invoking the callback.
+   * The callback must not re-enter this Store for the same Session.
+   */
+  withExecutionLease<T>(
+    lease: DurableExecutionLease,
+    operation: () => Promise<T>,
+  ): Promise<T>;
+
   releaseExecutionLease(lease: DurableExecutionLease): Promise<void>;
 }
 
@@ -100,6 +110,7 @@ export function isDurableExecutionLeaseStore(
     typeof candidate.acquireExecutionLease === 'function' &&
     typeof candidate.renewExecutionLease === 'function' &&
     typeof candidate.assertExecutionLease === 'function' &&
+    typeof candidate.withExecutionLease === 'function' &&
     typeof candidate.releaseExecutionLease === 'function'
   );
 }

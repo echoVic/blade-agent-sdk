@@ -1,4 +1,6 @@
+import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createContextSnapshot } from '../../../../runtime/index.js';
 import {
@@ -9,6 +11,20 @@ import {
 import { collectToolExecution } from '../../../types/index.js';
 import { BackgroundShellManager } from '../BackgroundShellManager.js';
 import { bashTool } from '../bash.js';
+
+function isProcessAlive(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (error) {
+    return !(
+      typeof error === 'object' &&
+      error !== null &&
+      'code' in error &&
+      error.code === 'ESRCH'
+    );
+  }
+}
 
 describe('BackgroundShellManager handoff admission', () => {
   const manager = BackgroundShellManager.getInstance();
@@ -187,4 +203,43 @@ describe('BackgroundShellManager handoff admission', () => {
       }),
     ).not.toThrow();
   });
+
+  it.skipIf(process.platform === 'win32')(
+    'terminates the complete process group before releasing ownership',
+    async () => {
+      const sessionId = SessionId('process-tree-shell-session');
+      const executionFence = {
+        leaseId: ExecutionLeaseId('process-tree-shell-lease'),
+        fencingToken: FencingToken(1),
+      };
+      const root = await mkdtemp(join(tmpdir(), 'blade-shell-tree-'));
+      const childPidPath = join(root, 'child.pid');
+      manager.openSession(sessionId);
+      const shell = manager.startBackgroundProcess({
+        command: `sleep 30 >/dev/null 2>&1 & echo $! > ${JSON.stringify(childPidPath)}; wait`,
+        sessionId,
+        cwd: root,
+        executionFence,
+      });
+      let childPid = 0;
+      await vi.waitFor(async () => {
+        childPid = Number((await readFile(childPidPath, 'utf8')).trim());
+        expect(Number.isSafeInteger(childPid) && childPid > 0).toBe(true);
+      });
+
+      try {
+        await expect(
+          manager.terminateExecutionFence(sessionId, executionFence, 500),
+        ).resolves.toEqual([shell.id]);
+        await vi.waitFor(() => expect(isProcessAlive(childPid)).toBe(false), {
+          timeout: 2_000,
+        });
+      } finally {
+        if (isProcessAlive(childPid)) {
+          process.kill(childPid, 'SIGKILL');
+        }
+        await rm(root, { recursive: true, force: true });
+      }
+    },
+  );
 });

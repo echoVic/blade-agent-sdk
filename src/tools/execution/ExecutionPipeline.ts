@@ -83,6 +83,16 @@ interface PipelineExecutionState {
  */
 export type ConfirmationReasonSource = 'tool' | 'rule' | 'path' | 'handler' | 'hook';
 
+function isExecutionLeaseFailure(error: unknown): boolean {
+  return (
+    typeof error === 'object' &&
+    error !== null &&
+    'code' in error &&
+    typeof error.code === 'string' &&
+    error.code.startsWith('DURABLE_EXECUTION_LEASE_')
+  );
+}
+
 export interface ConfirmationReasonEntry {
   source: ConfirmationReasonSource;
   message: string;
@@ -214,6 +224,7 @@ export class ExecutionPipeline {
       fileLease = filePath
         ? await FileLockManager.getInstance(this.logger).acquire(filePath, lockMode)
         : undefined;
+      await state.context.assertExecutionLease?.();
       return yield* this.executeWithPipeline(state, executionId, startTime);
     } finally {
       fileLease?.release();
@@ -251,6 +262,7 @@ export class ExecutionPipeline {
       if (!state.result) {
         yield* this.executeInvocation(state);
       }
+      await state.context.assertExecutionLease?.();
 
       let result = await this.normalizeExecutionResult(state);
       result = await this.applyPostExecutionHooks(
@@ -276,6 +288,9 @@ export class ExecutionPipeline {
 
       return result;
     } catch (error) {
+      if (isExecutionLeaseFailure(error)) {
+        throw error;
+      }
       const endTime = Date.now();
       const errorMsg = getErrorMessage(error);
       const isTimeout =

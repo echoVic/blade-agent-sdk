@@ -83,6 +83,7 @@ export interface ToolExecutionContext {
   backgroundAgentManager?: IBackgroundAgentManager;
   executionFence?: DurableExecutionFence;
   assertExecutionLease?: () => Promise<void>;
+  runWithExecutionLease?: <T>(operation: () => Promise<T>) => Promise<T>;
   toolCatalog?: ToolCatalog;
   toolRegistry?: ToolRegistry;
   discoveredTools?: string[];
@@ -212,6 +213,7 @@ export async function runToolCall(input: RunToolCallInput): Promise<ToolExecutio
         backgroundAgentManager: input.executionContext.backgroundAgentManager,
         executionFence: input.executionContext.executionFence,
         assertExecutionLease: input.executionContext.assertExecutionLease,
+        runWithExecutionLease: input.executionContext.runWithExecutionLease,
         toolCatalog: input.executionContext.toolCatalog,
         toolRegistry: input.executionContext.toolRegistry,
         discoveredTools: input.executionContext.discoveredTools,

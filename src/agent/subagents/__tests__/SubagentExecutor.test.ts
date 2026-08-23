@@ -59,6 +59,9 @@ describe('SubagentExecutor', () => {
     );
     const controller = new AbortController();
     const assertExecutionLease = vi.fn(async () => {});
+    const runWithExecutionLease = async <T>(
+      operation: () => Promise<T>,
+    ): Promise<T> => operation();
 
     await executor.execute({
       prompt: 'inspect',
@@ -70,6 +73,7 @@ describe('SubagentExecutor', () => {
         fencingToken: FencingToken(7),
       },
       assertExecutionLease,
+      runWithExecutionLease,
     });
 
     expect(createAgent).toHaveBeenCalledWith(
@@ -88,6 +92,7 @@ describe('SubagentExecutor', () => {
           fencingToken: 7,
         },
         assertExecutionLease,
+        runWithExecutionLease,
       }),
       expect.objectContaining({
         signal: controller.signal,

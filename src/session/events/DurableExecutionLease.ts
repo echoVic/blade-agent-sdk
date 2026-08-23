@@ -129,6 +129,36 @@ export class DurableExecutionLease {
     }
   }
 
+  /** Serializes a short persistence operation against lease takeover. */
+  async runFenced<T>(operation: () => Promise<T>): Promise<T> {
+    this.throwIfUnavailable();
+    try {
+      return await this.store.withExecutionLease(this.current, operation);
+    } catch (error) {
+      this.observeStoreFailure(error);
+      throw error;
+    }
+  }
+
+  /** @internal Stops renewal without releasing Store ownership. */
+  abandon(cause?: unknown): void {
+    if (this.released || this.loss) {
+      return;
+    }
+    this.markLost(
+      new DurableExecutionLeaseError(
+        'DURABLE_EXECUTION_LEASE_LOST',
+        `Execution lease ${this.current.leaseId} was abandoned`,
+        {
+          sessionId: this.current.sessionId,
+          leaseId: this.current.leaseId,
+          fencingToken: this.current.fencingToken,
+          cause,
+        },
+      ),
+    );
+  }
+
   observeStoreFailure(error: unknown): void {
     if (!this.isLeaseFailure(error)) {
       return;
@@ -178,6 +208,7 @@ export class DurableExecutionLease {
         this.released = true;
         return;
       }
+      this.scheduleHeartbeat();
       throw this.toLeaseLostError(cause);
     }
   }

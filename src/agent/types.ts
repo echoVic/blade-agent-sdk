@@ -57,10 +57,14 @@ export interface IBackgroundAgentReader {
 }
 
 export interface IBackgroundAgentController {
-  killAgent(agentId: AgentId): boolean;
+  killAgent(agentId: AgentId): Promise<boolean>;
   cancelCurrentWork(agentId: AgentId): boolean;
-  startBackgroundAgent(options: StartBackgroundAgentOptions): string;
-  resumeAgent(agentId: AgentId, newPrompt: string, ...args: unknown[]): string | undefined;
+  startBackgroundAgent(options: StartBackgroundAgentOptions): Promise<string>;
+  resumeAgent(
+    agentId: AgentId,
+    newPrompt: string,
+    ...args: unknown[]
+  ): Promise<string | undefined>;
   sendMessage(agentId: AgentId, message: string): boolean;
 }
 
@@ -99,6 +103,8 @@ export interface ChatContext {
   executionFence?: DurableExecutionFence;
   /** @internal Validates execution ownership immediately before a model or tool side effect. */
   assertExecutionLease?: () => Promise<void>;
+  /** @internal Serializes a short persistence operation against lease takeover. */
+  runWithExecutionLease?: <T>(operation: () => Promise<T>) => Promise<T>;
 }
 
 /**
@@ -160,7 +166,7 @@ export interface LoopOptions {
   initialInputPreparation?: InitialInputPreparation;
   onTurnLimitReached?: (data: { turnsCount: number }) => Promise<TurnLimitResponse>;
   /** 进度回调，每次 tool call 完成后触发 */
-  onProgress?: (progress: AgentProgress) => void;
+  onProgress?: (progress: AgentProgress) => void | Promise<void>;
 }
 
 /**

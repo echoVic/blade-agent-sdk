@@ -37,6 +37,7 @@ export interface LoopExecutionContext {
   backgroundAgentManager?: IBackgroundAgentManager;
   executionFence?: DurableExecutionFence;
   assertExecutionLease?: () => Promise<void>;
+  runWithExecutionLease?: <T>(operation: () => Promise<T>) => Promise<T>;
   toolRegistry?: ToolRegistry;
   toolCatalog?: ToolCatalog;
   discoveredTools?: string[];

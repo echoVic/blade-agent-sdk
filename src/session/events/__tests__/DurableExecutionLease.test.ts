@@ -35,7 +35,7 @@ describe('DurableExecutionLease', () => {
     const lease = await DurableExecutionLease.acquire(store, SessionId('heartbeat-session'), {
       ownerId: WorkerId('worker-a'),
       leaseId: ExecutionLeaseId('lease-a'),
-      ttlMs: 100,
+      ttlMs: 10_000,
       heartbeatIntervalMs: 20,
     });
 
@@ -62,7 +62,7 @@ describe('DurableExecutionLease', () => {
       SessionId('release-during-heartbeat-session'),
       {
         ownerId: WorkerId('worker-a'),
-        ttlMs: 100,
+        ttlMs: 10_000,
         heartbeatIntervalMs: 10,
       },
     );
@@ -78,6 +78,74 @@ describe('DurableExecutionLease', () => {
     expect(release).toHaveBeenCalledOnce();
   });
 
+  it('resumes heartbeats when lease release fails and remains retryable', async () => {
+    const store = await createStore();
+    const renew = vi.spyOn(store, 'renewExecutionLease');
+    const release = vi.spyOn(store, 'releaseExecutionLease');
+    release.mockRejectedValueOnce(new Error('temporary release failure'));
+    const lease = await DurableExecutionLease.acquire(
+      store,
+      SessionId('release-retry-heartbeat-session'),
+      {
+        ownerId: WorkerId('worker-a'),
+        ttlMs: 10_000,
+        heartbeatIntervalMs: 20,
+      },
+    );
+
+    await expect(lease.release()).rejects.toMatchObject({
+      code: 'DURABLE_EXECUTION_LEASE_LOST',
+    });
+    await vi.waitFor(() => expect(renew).toHaveBeenCalled(), { timeout: 1_000 });
+    await expect(lease.release()).resolves.toBeUndefined();
+    expect(release).toHaveBeenCalledTimes(2);
+  });
+
+  it('stops renewing an abandoned lease while preserving explicit release', async () => {
+    const store = await createStore();
+    const renew = vi.spyOn(store, 'renewExecutionLease');
+    const release = vi.spyOn(store, 'releaseExecutionLease');
+    const lease = await DurableExecutionLease.acquire(
+      store,
+      SessionId('abandoned-lease-session'),
+      {
+        ownerId: WorkerId('worker-a'),
+        ttlMs: 10_000,
+        heartbeatIntervalMs: 20,
+      },
+    );
+
+    lease.abandon(new Error('runtime cleanup failed'));
+    await new Promise<void>((resolve) => setTimeout(resolve, 40));
+
+    expect(renew).not.toHaveBeenCalled();
+    await expect(lease.assertActive()).rejects.toMatchObject({
+      code: 'DURABLE_EXECUTION_LEASE_LOST',
+    });
+    await expect(lease.release()).resolves.toBeUndefined();
+    expect(release).toHaveBeenCalledOnce();
+  });
+
+  it('runs short persistence work through the Store fencing boundary', async () => {
+    const store = await createStore();
+    const runFenced = vi.spyOn(store, 'withExecutionLease');
+    const lease = await DurableExecutionLease.acquire(
+      store,
+      SessionId('fenced-persistence-session'),
+      {
+        ownerId: WorkerId('worker-a'),
+        ttlMs: 10_000,
+        heartbeatIntervalMs: 5_000,
+      },
+    );
+
+    await expect(lease.runFenced(async () => 'persisted')).resolves.toBe(
+      'persisted',
+    );
+    expect(runFenced).toHaveBeenCalledOnce();
+    await lease.release();
+  });
+
   it('aborts its signal when heartbeat ownership is lost', async () => {
     const store = await createStore();
     vi.spyOn(store, 'renewExecutionLease').mockRejectedValueOnce(
@@ -85,7 +153,7 @@ describe('DurableExecutionLease', () => {
     );
     const lease = await DurableExecutionLease.acquire(store, SessionId('lost-session'), {
       ownerId: WorkerId('worker-a'),
-      ttlMs: 100,
+      ttlMs: 10_000,
       heartbeatIntervalMs: 20,
     });
 

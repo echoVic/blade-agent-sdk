@@ -79,6 +79,7 @@ vi.mock('../../agent/Agent.js', () => ({
 }));
 
 const { createSession, forkSession, resumeSession } = await import('../Session.js');
+const { SessionRuntime } = await import('../SessionRuntime.js');
 
 class FailOnEventTypeStore implements DurableEventStore {
   constructor(
@@ -1590,6 +1591,7 @@ describe('Session durable events', () => {
     const store = new JsonlDurableEventStore(root, {
       clock: () => new Date(now),
     });
+    let requestSignal: AbortSignal | undefined;
     streamChat = async function* leaseLossStream(_message, context, loopOptions) {
       yield { type: 'turn_start', turn: 1, maxTurns: 10 };
       await loopOptions?.modelExecutionLifecycle?.onModelRequestStarting({
@@ -1599,6 +1601,7 @@ describe('Session durable events', () => {
       });
       yield { type: 'content_delta', delta: 'before lease loss' };
       const signal = (context as { signal?: AbortSignal }).signal;
+      requestSignal = signal;
       await new Promise<void>((resolve) => {
         if (signal?.aborted) {
           resolve();
@@ -1654,6 +1657,26 @@ describe('Session durable events', () => {
     const output = session.stream();
     await output.next();
     await output.next();
+    let releaseInputMutex: (() => void) | undefined;
+    let markInputMutexHeld: (() => void) | undefined;
+    const inputMutexHeld = new Promise<void>((resolve) => {
+      markInputMutexHeld = resolve;
+    });
+    const inputMutexGate = new Promise<void>((resolve) => {
+      releaseInputMutex = resolve;
+    });
+    const inputMutex = (
+      session as unknown as {
+        inputMutex: {
+          runExclusive<T>(operation: () => Promise<T>): Promise<T>;
+        };
+      }
+    ).inputMutex;
+    const blockedOperation = inputMutex.runExclusive(async () => {
+      markInputMutexHeld?.();
+      await inputMutexGate;
+    });
+    await inputMutexHeld;
     now += 60_001;
     const replacementLease = await store.acquireExecutionLease(session.sessionId, {
       ownerId: WorkerId('worker-second'),
@@ -1661,9 +1684,20 @@ describe('Session durable events', () => {
       ttlMs: 10_000,
     });
 
-    await expect(session.send('reject stale worker input')).rejects.toMatchObject({
+    const localLease = (
+      session as unknown as {
+        executionLease: { assertActive(): Promise<void> } | null;
+      }
+    ).executionLease;
+    if (!localLease) {
+      throw new Error('Expected a local execution lease handle');
+    }
+    await expect(localLease.assertActive()).rejects.toMatchObject({
       code: 'DURABLE_EXECUTION_LEASE_LOST',
     });
+    expect(requestSignal?.aborted).toBe(true);
+    releaseInputMutex?.();
+    await blockedOperation;
     await expect(output.next()).rejects.toBeInstanceOf(DurableExecutionLeaseError);
     expect(cancelBackgroundAgents).toHaveBeenCalled();
     await vi.waitFor(
@@ -1738,6 +1772,120 @@ describe('Session durable events', () => {
     expect(session.getExecutionLease()).toBeNull();
   });
 
+  it('does not release ownership until runtime cleanup succeeds', async () => {
+    const { root, store } = createStore();
+    const session = await createSession({
+      ...options(store),
+      persistSession: true,
+      storagePath: root,
+      executionLease: {
+        ownerId: WorkerId('worker-runtime-close-retry'),
+        ttlMs: 10_000,
+        heartbeatIntervalMs: 5_000,
+      },
+    });
+    const runtime = (
+      session as unknown as {
+        runtime: { close(): Promise<void> } | null;
+      }
+    ).runtime;
+    if (!runtime) {
+      throw new Error('Expected an initialized Session runtime');
+    }
+    const originalClose = runtime.close.bind(runtime);
+    const runtimeClose = vi.spyOn(runtime, 'close')
+      .mockRejectedValueOnce(new Error('runtime cleanup failed'))
+      .mockImplementation(originalClose);
+    const release = vi.spyOn(store, 'releaseExecutionLease');
+
+    await expect(session.close()).rejects.toThrow('runtime cleanup failed');
+    expect(release).not.toHaveBeenCalled();
+    expect(session.getExecutionLease()).not.toBeNull();
+
+    await expect(session.close()).resolves.toBeUndefined();
+    expect(runtimeClose).toHaveBeenCalledTimes(2);
+    expect(release).toHaveBeenCalledOnce();
+    expect(session.getExecutionLease()).toBeNull();
+  });
+
+  it('retries a failed SessionEnd hook before releasing ownership', async () => {
+    const { root, store } = createStore();
+    const session = await createSession({
+      ...options(store),
+      persistSession: true,
+      storagePath: root,
+      executionLease: {
+        ownerId: WorkerId('worker-session-end-retry'),
+        ttlMs: 10_000,
+        heartbeatIntervalMs: 5_000,
+      },
+    });
+    const runtime = (
+      session as unknown as {
+        runtime: {
+          getHookRuntime(): {
+            runSessionEnd(input: { reason: 'other' }): Promise<void>;
+          };
+        } | null;
+      }
+    ).runtime;
+    if (!runtime) {
+      throw new Error('Expected an initialized Session runtime');
+    }
+    const hookRuntime = runtime.getHookRuntime();
+    const originalSessionEnd = hookRuntime.runSessionEnd.bind(hookRuntime);
+    const sessionEnd = vi.spyOn(hookRuntime, 'runSessionEnd')
+      .mockRejectedValueOnce(new Error('SessionEnd cleanup failed'))
+      .mockImplementation(originalSessionEnd);
+    const release = vi.spyOn(store, 'releaseExecutionLease');
+
+    await expect(session.close()).rejects.toThrow('SessionEnd cleanup failed');
+    expect(release).not.toHaveBeenCalled();
+    expect(session.getExecutionLease()).not.toBeNull();
+
+    await expect(session.close()).resolves.toBeUndefined();
+    expect(sessionEnd).toHaveBeenCalledTimes(2);
+    expect(release).toHaveBeenCalledOnce();
+    expect(session.getExecutionLease()).toBeNull();
+  });
+
+  it('does not release handoff ownership until runtime cleanup succeeds', async () => {
+    const { root, store } = createStore();
+    const session = await createSession({
+      ...options(store),
+      persistSession: true,
+      storagePath: root,
+      executionLease: {
+        ownerId: WorkerId('worker-handoff-cleanup-retry'),
+        ttlMs: 10_000,
+        heartbeatIntervalMs: 5_000,
+      },
+    });
+    const runtime = (
+      session as unknown as {
+        runtime: { close(): Promise<void> } | null;
+      }
+    ).runtime;
+    if (!runtime) {
+      throw new Error('Expected an initialized Session runtime');
+    }
+    const originalClose = runtime.close.bind(runtime);
+    vi.spyOn(runtime, 'close')
+      .mockRejectedValueOnce(new Error('handoff runtime cleanup failed'))
+      .mockImplementation(originalClose);
+    const release = vi.spyOn(store, 'releaseExecutionLease');
+
+    await expect(session.suspendForHandoff()).rejects.toThrow(
+      'handoff runtime cleanup failed',
+    );
+    expect(release).not.toHaveBeenCalled();
+    expect(session.getExecutionLease()).not.toBeNull();
+
+    await expect(session.close()).resolves.toBeUndefined();
+    expect(release).toHaveBeenCalledOnce();
+    expect(session.getExecutionLease()).toBeNull();
+  });
+
   it('waits for Session-owned shells before releasing execution ownership', async () => {
     const { root, store } = createStore();
     const session = await createSession({
@@ -1805,6 +1953,59 @@ describe('Session durable events', () => {
       code: 'DURABLE_EXECUTION_LEASE_LOST',
     });
     expect(releaseExecutionLease).toHaveBeenCalledOnce();
+  });
+
+  it('abandons initialization ownership when runtime cleanup cannot finish', async () => {
+    const { root } = createStore();
+    let now = Date.parse('2026-08-22T12:00:00.000Z');
+    const store = new JsonlDurableEventStore(root, {
+      clock: () => new Date(now),
+    });
+    const acquire = vi.spyOn(store, 'acquireExecutionLease');
+    const renew = vi.spyOn(store, 'renewExecutionLease');
+    const release = vi.spyOn(store, 'releaseExecutionLease');
+    vi.spyOn(SessionRuntime.prototype, 'close').mockRejectedValueOnce(
+      new Error('runtime initialization cleanup failed'),
+    );
+    createAgent.mockRejectedValueOnce(new Error('agent initialization failed'));
+    await expect(
+      createSession({
+        ...options(store),
+        persistSession: true,
+        storagePath: root,
+        executionLease: {
+          ownerId: WorkerId('worker-abandoned-initialization'),
+          ttlMs: 100,
+          heartbeatIntervalMs: 20,
+        },
+      }),
+    ).rejects.toBeInstanceOf(AggregateError);
+    const sessionId = acquire.mock.calls[0]?.[0];
+    if (!sessionId) {
+      throw new Error('Expected initialization to acquire a Session lease');
+    }
+    expect(release).not.toHaveBeenCalled();
+    const renewCallsAfterAbandon = renew.mock.calls.length;
+    await new Promise<void>((resolve) => setTimeout(resolve, 40));
+    expect(renew).toHaveBeenCalledTimes(renewCallsAfterAbandon);
+    await expect(
+      store.acquireExecutionLease(sessionId, {
+        ownerId: WorkerId('worker-before-expiry'),
+        leaseId: ExecutionLeaseId('lease-before-expiry'),
+        ttlMs: 100,
+      }),
+    ).rejects.toMatchObject({
+      code: 'DURABLE_EXECUTION_LEASE_CONFLICT',
+    });
+
+    now += 101;
+    const successor = await store.acquireExecutionLease(sessionId, {
+      ownerId: WorkerId('worker-after-expiry'),
+      leaseId: ExecutionLeaseId('lease-after-expiry'),
+      ttlMs: 100,
+    });
+    expect(successor.fencingToken).toBe(2);
+    await store.releaseExecutionLease(successor);
   });
 
   it('hands off a pending Request without terminalizing the durable Session', async () => {

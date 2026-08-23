@@ -8,9 +8,9 @@
  */
 
 import { nanoid } from 'nanoid';
-import { writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import writeFileAtomic from 'write-file-atomic';
 import { type InternalLogger, LogCategory, NOOP_LOGGER } from '../../logging/Logger.js';
 import type { ContextSnapshot } from '../../runtime/index.js';
 import type { Message } from '../../services/ChatServiceInterface.js';
@@ -46,6 +46,12 @@ interface BackgroundAgentRuntime {
 
   /** 待注入的消息队列（SendMessage 使用） */
   pendingMessages: string[];
+
+  /** Durable ownership used to fence every persisted mutation. */
+  executionFence?: DurableExecutionFence;
+
+  /** Store transaction that excludes root Session lease takeover. */
+  runWithExecutionLease?: <T>(operation: () => Promise<T>) => Promise<T>;
 }
 
 /**
@@ -87,6 +93,9 @@ export interface StartBackgroundAgentOptions {
 
   /** @internal Validates root Session ownership before a side effect. */
   assertExecutionLease?: () => Promise<void>;
+
+  /** @internal Serializes short transcript writes against lease takeover. */
+  runWithExecutionLease?: <T>(operation: () => Promise<T>) => Promise<T>;
 }
 
 /**
@@ -163,7 +172,7 @@ export class BackgroundAgentManager {
    * 启动后台 Agent
    * @returns agent ID
    */
-  startBackgroundAgent(options: StartBackgroundAgentOptions): string {
+  async startBackgroundAgent(options: StartBackgroundAgentOptions): Promise<string> {
     if (!this.acceptingNewAgents) {
       throw new Error('Background agent admission is closed for Session handoff');
     }
@@ -181,13 +190,14 @@ export class BackgroundAgentManager {
       snapshot,
       executionFence,
       assertExecutionLease,
+      runWithExecutionLease,
     } = options;
 
     // 生成或使用已有的 agent ID
     const id = agentId || AgentId(nanoid());
 
     // 创建输出文件路径
-    const outputFile = join(tmpdir(), `blade-agent-${id}.output`);
+    const outputFile = join(tmpdir(), `blade-agent-${nanoid()}.output`);
 
     // 拆分生命周期取消和当前工作取消
     const lifecycleController = new AbortController();
@@ -214,26 +224,41 @@ export class BackgroundAgentManager {
       lastActiveAt: Date.now(),
       parentSessionId,
       outputFile,
+      executionFence,
     };
 
-    // 保存会话
-    this.sessionStore.saveSession(session);
+    await this.runOwnedPersistence(
+      executionFence,
+      runWithExecutionLease,
+      async () => {
+        if (!this.sessionStore.saveSession(session)) {
+          throw new Error(`Execution fence rejected background agent ${id} creation`);
+        }
+      },
+    );
+    await assertExecutionLease?.();
+    if (!this.acceptingNewAgents) {
+      throw new Error('Background agent admission closed during ownership validation');
+    }
 
     const startTime = Date.now();
-    const promise = this.executeAgent(
-      id,
-      config,
-      bladeConfig,
-      subagentRegistry,
-      prompt,
-      parentSessionId,
-      permissionMode,
-      lifecycleController.signal,
-      workController.signal,
-      existingMessages,
-      snapshot,
-      executionFence,
-      assertExecutionLease,
+    const promise = Promise.resolve().then(() =>
+      this.executeAgent(
+        id,
+        config,
+        bladeConfig,
+        subagentRegistry,
+        prompt,
+        parentSessionId,
+        permissionMode,
+        lifecycleController.signal,
+        workController.signal,
+        existingMessages,
+        snapshot,
+        executionFence,
+        assertExecutionLease,
+        runWithExecutionLease,
+      ),
     );
 
     // 记录运行时信息
@@ -244,11 +269,15 @@ export class BackgroundAgentManager {
       workController,
       startTime,
       pendingMessages: [],
+      executionFence,
+      runWithExecutionLease,
     });
 
     // 执行完成后清理
     promise.finally(() => {
-      this.runningAgents.delete(id);
+      if (this.runningAgents.get(id)?.promise === promise) {
+        this.runningAgents.delete(id);
+      }
     });
 
     this.logger.info(`Background agent started: ${id} (${config.name})`);
@@ -272,6 +301,7 @@ export class BackgroundAgentManager {
     snapshot?: ContextSnapshot,
     executionFence?: DurableExecutionFence,
     assertExecutionLease?: () => Promise<void>,
+    runWithExecutionLease?: <T>(operation: () => Promise<T>) => Promise<T>,
   ): Promise<SubagentResult> {
     const startTime = Date.now();
 
@@ -295,20 +325,29 @@ export class BackgroundAgentManager {
         backgroundAgentManager: this,
         executionFence,
         assertExecutionLease,
-        onProgress: (progress) => {
-          this.sessionStore.updateRunningSession(agentId, { progress });
+        runWithExecutionLease,
+        onProgress: async (progress) => {
+          await this.runOwnedPersistence(
+            executionFence,
+            runWithExecutionLease,
+            async () => {
+              if (
+                !this.sessionStore.updateRunningSession(
+                  agentId,
+                  { progress },
+                  executionFence,
+                )
+              ) {
+                throw new Error(
+                  `Execution fence rejected background agent ${agentId} progress`,
+                );
+              }
+            },
+          );
         },
       });
 
-      this.sessionStore.updateRunningSession(agentId, {
-        messages,
-      });
-
       const duration = Date.now() - startTime;
-      const wasCancelled =
-        lifecycleSignal.aborted ||
-        workSignal.aborted ||
-        this.sessionStore.loadSession(agentId)?.status === 'cancelled';
       const result: SubagentResult = loopResult.success
         ? {
             success: true,
@@ -328,80 +367,135 @@ export class BackgroundAgentManager {
             stats: { duration },
           };
 
-      if (wasCancelled && !result.success) {
-        this.sessionStore.markCancelled(
-          agentId,
-          {
-            success: false,
-            message: result.message,
-            error: result.error,
-          },
-          result.stats,
-        );
-      } else {
-        this.sessionStore.markCompleted(
-          agentId,
-          {
-            success: result.success,
-            message: result.message,
-            error: result.error,
-          },
-          result.stats
-        );
-      }
-
-      // Write output to file for streaming access
-      const session = this.sessionStore.loadSession(agentId);
-      if (session?.outputFile) {
-        const output = JSON.stringify(
-          { status: wasCancelled ? 'cancelled' : result.success ? 'completed' : 'failed', result },
-          null,
-          2,
-        );
-        await writeFile(session.outputFile, output, 'utf-8').catch(() => {/* ignore write errors */});
-      }
+      await this.runOwnedPersistence(
+        executionFence,
+        runWithExecutionLease,
+        async () => {
+          this.sessionStore.updateRunningSession(
+            agentId,
+            { messages },
+            executionFence,
+          );
+          const wasCancelled =
+            lifecycleSignal.aborted ||
+            workSignal.aborted ||
+            this.sessionStore.loadSession(agentId)?.status === 'cancelled';
+          const updated = wasCancelled && !result.success
+            ? this.sessionStore.markCancelled(
+                agentId,
+                {
+                  success: false,
+                  message: result.message,
+                  error: result.error,
+                },
+                result.stats,
+                executionFence,
+              )
+            : this.sessionStore.markCompleted(
+                agentId,
+                {
+                  success: result.success,
+                  message: result.message,
+                  error: result.error,
+                },
+                result.stats,
+                executionFence,
+              );
+          if (!updated) {
+            throw new Error(
+              `Execution fence rejected background agent ${agentId} completion`,
+            );
+          }
+          if (updated.outputFile) {
+            const output = JSON.stringify(
+              {
+                status: wasCancelled
+                  ? 'cancelled'
+                  : result.success
+                    ? 'completed'
+                    : 'failed',
+                result,
+              },
+              null,
+              2,
+            );
+            await writeFileAtomic(
+              updated.outputFile,
+              output,
+              {
+                encoding: 'utf8',
+                fsync: true,
+                mode: 0o600,
+              },
+            ).catch((outputError: unknown) => {
+              this.logger.warn(
+                `Failed to persist background agent ${agentId} output`,
+                outputError,
+              );
+            });
+          }
+        },
+      );
 
       this.logger.info(`Background agent completed: ${agentId} (success=${result.success})`);
       return result;
     } catch (error) {
       const duration = Date.now() - startTime;
       const errorMessage = error instanceof Error ? error.message : String(error);
-      const wasCancelled =
-        lifecycleSignal.aborted ||
-        workSignal.aborted ||
-        this.sessionStore.loadSession(agentId)?.status === 'cancelled';
-
-      if (wasCancelled) {
-        this.sessionStore.markCancelled(
-          agentId,
-          {
-            success: false,
-            message: '',
-            error: errorMessage,
-          },
-          { duration },
-        );
-      } else {
-        this.sessionStore.markCompleted(
-          agentId,
-          {
-            success: false,
-            message: '',
-            error: errorMessage,
-          },
-          { duration }
-        );
-      }
-
-      this.logger.warn(`Background agent failed: ${agentId}`, error);
-
-      return {
+      const failure: SubagentResult = {
         success: false,
         message: '',
         agentId,
         error: errorMessage,
         stats: { duration },
       };
+
+      try {
+        await this.runOwnedPersistence(
+          executionFence,
+          runWithExecutionLease,
+          async () => {
+            const wasCancelled =
+              lifecycleSignal.aborted ||
+              workSignal.aborted ||
+              this.sessionStore.loadSession(agentId)?.status === 'cancelled';
+            const updated = wasCancelled
+              ? this.sessionStore.markCancelled(
+                  agentId,
+                  {
+                    success: false,
+                    message: '',
+                    error: errorMessage,
+                  },
+                  { duration },
+                  executionFence,
+                )
+              : this.sessionStore.markCompleted(
+                  agentId,
+                  {
+                    success: false,
+                    message: '',
+                    error: errorMessage,
+                  },
+                  { duration },
+                  executionFence,
+                );
+            if (!updated) {
+              throw new Error(
+                `Execution fence rejected background agent ${agentId} failure`,
+              );
+            }
+          },
+        );
+      } catch (persistenceError) {
+        this.logger.warn(
+          `Background agent ${agentId} failure could not be persisted`,
+          persistenceError,
+        );
+      }
+
+      this.logger.warn(`Background agent failed: ${agentId}`, error);
+      return failure;
     }
   }
 
@@ -465,7 +559,7 @@ export class BackgroundAgentManager {
    * @param bladeConfig BladeConfig 配置
    * @returns 新的 agent ID（如果创建了新 agent）或原 ID（如果继续执行）
    */
-  resumeAgent(
+  async resumeAgent(
     agentId: AgentId,
     newPrompt: string,
     config: SubagentConfig,
@@ -476,7 +570,8 @@ export class BackgroundAgentManager {
     description?: string,
     executionFence?: DurableExecutionFence,
     assertExecutionLease?: () => Promise<void>,
-  ): string | undefined {
+    runWithExecutionLease?: <T>(operation: () => Promise<T>) => Promise<T>,
+  ): Promise<string | undefined> {
     const session = this.sessionStore.loadSession(agentId);
 
     if (!session) {
@@ -501,20 +596,23 @@ export class BackgroundAgentManager {
       existingMessages: session.messages,
       executionFence,
       assertExecutionLease,
+      runWithExecutionLease,
     });
   }
 
   /**
    * 取消/终止 Agent
    */
-  killAgent(agentId: AgentId): boolean {
+  async killAgent(agentId: AgentId): Promise<boolean> {
     const runtime = this.runningAgents.get(agentId);
 
     if (!runtime) {
       // 不在运行中
       const session = this.sessionStore.loadSession(agentId);
       if (session && session.status === 'running') {
-        // 更新状态为已取消
+        if (session.executionFence) {
+          return false;
+        }
         this.sessionStore.markCancelled(agentId);
       }
       return false;
@@ -523,8 +621,24 @@ export class BackgroundAgentManager {
     // 发送取消信号
     runtime.lifecycleController.abort();
 
-    // 更新状态
-    this.sessionStore.markCancelled(agentId);
+    await this.runOwnedPersistence(
+      runtime.executionFence,
+      runtime.runWithExecutionLease,
+      async () => {
+        if (
+          !this.sessionStore.markCancelled(
+            agentId,
+            undefined,
+            undefined,
+            runtime.executionFence,
+          )
+        ) {
+          throw new Error(
+            `Execution fence rejected background agent ${agentId} cancellation`,
+          );
+        }
+      },
+    );
 
     this.logger.info(`Background agent cancelled: ${agentId}`);
     return true;
@@ -616,7 +730,7 @@ export class BackgroundAgentManager {
     this.sealForHandoff();
     const agentIds = this.getActiveAgentIds();
     for (const agentId of agentIds) {
-      this.killAgent(agentId);
+      this.runningAgents.get(agentId)?.lifecycleController.abort();
     }
     return agentIds;
   }
@@ -634,8 +748,8 @@ export class BackgroundAgentManager {
    * 终止所有运行中的 Agent
    */
   killAll(): void {
-    for (const [agentId] of this.runningAgents) {
-      this.killAgent(agentId);
+    for (const runtime of this.runningAgents.values()) {
+      runtime.lifecycleController.abort();
     }
   }
 
@@ -644,5 +758,18 @@ export class BackgroundAgentManager {
    */
   cleanupExpiredSessions(maxAgeMs?: number): number {
     return this.sessionStore.cleanupExpiredSessions(maxAgeMs);
+  }
+
+  private async runOwnedPersistence<T>(
+    executionFence: DurableExecutionFence | undefined,
+    runWithExecutionLease: (<R>(operation: () => Promise<R>) => Promise<R>) | undefined,
+    operation: () => Promise<T>,
+  ): Promise<T> {
+    if (executionFence && !runWithExecutionLease) {
+      throw new Error('Fenced background agents require a lease persistence boundary');
+    }
+    return runWithExecutionLease
+      ? runWithExecutionLease(operation)
+      : operation();
   }
 }

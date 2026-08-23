@@ -60,6 +60,26 @@ describe('CompactionService', () => {
     expect(mockChat).not.toHaveBeenCalled();
   });
 
+  it('does not convert an aborted provider request into fallback compaction', async () => {
+    const controller = new AbortController();
+    const abortError = new Error('execution ownership lost');
+    mockSideQuery.mockImplementationOnce(async () => {
+      controller.abort(abortError);
+      throw abortError;
+    });
+
+    await expect(
+      compact([{ role: 'user', content: 'hello' }], {
+        trigger: 'auto',
+        modelName: 'gpt-5',
+        maxContextTokens: 128000,
+        apiKey: 'test-key',
+        baseURL: 'https://api.openai.com/v1',
+        signal: controller.signal,
+      }),
+    ).rejects.toBe(abortError);
+  });
+
   it('retainRecentMessages drops orphan tool results outside the retained window', () => {
     const messages: Message[] = [
       { role: 'assistant', content: 'a', tool_calls: [{ id: 'tc-keep', type: 'function', function: { name: 'x', arguments: '{}' } }] },

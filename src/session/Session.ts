@@ -165,6 +165,7 @@ class Session implements ISession {
   private executionLease: DurableExecutionLease | null = null;
   private executionLeaseFailure: DurableExecutionLeaseError | null = null;
   private executionLeaseLossCleanup: (() => void) | null = null;
+  private runtimeEndAttempted = false;
   private closePromise: Promise<void> | null = null;
   private handoffPromise: Promise<SessionHandoffResult> | null = null;
   private handoffRequested = false;
@@ -289,9 +290,9 @@ class Session implements ISession {
       );
       await this.runtime.initialize();
       if (this.isResumeSession) {
-        await this.runtime.ensureSessionLoaded();
+        await this.runWithExecutionLease(() => this.getRuntime().ensureSessionLoaded());
       } else {
-        await this.runtime.ensureSessionCreated();
+        await this.runWithExecutionLease(() => this.getRuntime().ensureSessionCreated());
       }
 
       this.agent = await Agent.create(
@@ -329,10 +330,15 @@ class Session implements ISession {
       this.logger.debug(`[Session] Initialized session ${this.sessionId}`);
     } catch (error) {
       const cleanupErrors = await this.releaseLocalRuntime();
-      try {
-        await this.releaseExecutionLease();
-      } catch (leaseError) {
-        cleanupErrors.push(leaseError);
+      if (cleanupErrors.length === 0) {
+        try {
+          await this.releaseExecutionLease();
+        } catch (leaseError) {
+          this.executionLease?.abandon(leaseError);
+          cleanupErrors.push(leaseError);
+        }
+      } else {
+        this.executionLease?.abandon(error);
       }
       if (cleanupErrors.length > 0) {
         throw new AggregateError(
@@ -652,9 +658,11 @@ class Session implements ISession {
         }
       }
       try {
-        await this.getRuntime()
-          .getContextManager()
-          .saveInputCancelled(this.sessionId, inputId, 'cancelled_by_user');
+        await this.runWithExecutionLease(() =>
+          this.getRuntime()
+            .getContextManager()
+            .saveInputCancelled(this.sessionId, inputId, 'cancelled_by_user'),
+        );
       } catch (error) {
         if (!durablyInterrupted) {
           this.inputInbox.releaseClaim(inputId);
@@ -945,6 +953,9 @@ class Session implements ISession {
       permissionMode: this.permissionMode,
       executionFence: executionLease?.fence,
       assertExecutionLease: executionLease ? () => executionLease.assertActive() : undefined,
+      runWithExecutionLease: executionLease
+        ? (operation) => executionLease.runFenced(operation)
+        : undefined,
       backgroundAgentManager: runtime.getBackgroundAgentManager(),
     };
 
@@ -1511,7 +1522,7 @@ class Session implements ISession {
       });
     }
 
-    if (!closeState.alreadyClosed) {
+    if (this.runtime) {
       closeErrors.push(...(await this.releaseLocalRuntime()));
     }
     if (recordDurableClose && closeState.disposition === 'terminal') {
@@ -1521,10 +1532,15 @@ class Session implements ISession {
         closeErrors.push(error);
       }
     }
-    try {
-      await this.releaseExecutionLease();
-    } catch (error) {
-      closeErrors.push(error);
+    if (
+      !this.runtime &&
+      (closeErrors.length === 0 || this.executionLeaseFailure)
+    ) {
+      try {
+        await this.releaseExecutionLease();
+      } catch (error) {
+        closeErrors.push(error);
+      }
     }
     if (!closeState.alreadyClosed) {
       this.logger.debug(`[Session] Closed session ${this.sessionId}`);
@@ -1673,10 +1689,15 @@ class Session implements ISession {
     } catch (error) {
       handoffErrors.push(error);
     }
-    try {
-      await this.releaseExecutionLease();
-    } catch (error) {
-      handoffErrors.push(error);
+    if (
+      !this.runtime &&
+      (handoffErrors.length === 0 || this.executionLeaseFailure)
+    ) {
+      try {
+        await this.releaseExecutionLease();
+      } catch (error) {
+        handoffErrors.push(error);
+      }
     }
 
     if (handoffErrors.length === 1) {
@@ -1708,17 +1729,28 @@ class Session implements ISession {
     this.initialized = false;
     const runtime = this.runtime;
     const executionFence = this.executionLease?.fence;
-    this.runtime = null;
     if (runtime) {
-      try {
-        await runtime.getHookRuntime().runSessionEnd({ reason: 'other' });
-      } catch (error) {
-        errors.push(error);
+      let runtimeClosed = false;
+      if (!this.runtimeEndAttempted) {
+        try {
+          await runtime.getHookRuntime().runSessionEnd({ reason: 'other' });
+          this.runtimeEndAttempted = true;
+        } catch (error) {
+          errors.push(error);
+        }
       }
       try {
         await runtime.close(executionFence);
+        runtimeClosed = true;
       } catch (error) {
         errors.push(error);
+      }
+      if (
+        this.runtimeEndAttempted &&
+        runtimeClosed &&
+        this.runtime === runtime
+      ) {
+        this.runtime = null;
       }
     }
     return errors;
@@ -1747,12 +1779,18 @@ class Session implements ISession {
     this.executionLease = await DurableExecutionLease.acquire(store, this.sessionId, options);
   }
 
+  private runWithExecutionLease<T>(operation: () => Promise<T>): Promise<T> {
+    return this.executionLease
+      ? this.executionLease.runFenced(operation)
+      : operation();
+  }
+
   private async releaseExecutionLease(): Promise<void> {
-    this.executionLeaseLossCleanup?.();
-    this.executionLeaseLossCleanup = null;
     const lease = this.executionLease;
     await lease?.release();
     if (this.executionLease === lease) {
+      this.executionLeaseLossCleanup?.();
+      this.executionLeaseLossCleanup = null;
       this.executionLease = null;
     }
   }
@@ -1762,24 +1800,45 @@ class Session implements ISession {
       return;
     }
     this.executionLeaseFailure = error;
-    if (!this.initialized || this.handoffPromise || this.closePromise) {
-      return;
+    const state = this.executionState;
+    if (state.phase === 'pending') {
+      state.controller.abortRequest({
+        kind: 'execution_lease_lost',
+        cause: error,
+      });
+    } else if (
+      state.phase === 'running' ||
+      state.phase === 'stopping' ||
+      state.phase === 'suspending'
+    ) {
+      state.controller.abortRequest({
+        kind: 'execution_lease_lost',
+        cause: error,
+      });
+      state.execution.releaseBackpressure();
     }
-
     const executionFence = this.executionLease?.fence;
     if (executionFence) {
       this.runtime?.stopBackgroundWorkAfterLeaseLoss(executionFence);
     }
+    if (!this.initialized || this.handoffPromise || this.closePromise) {
+      return;
+    }
+
     const cleanup = this.closeInternal('detached', {
       kind: 'execution_lease_lost',
       cause: error,
-    }).catch((cleanupError: unknown) => {
+    });
+    this.closePromise = cleanup;
+    void cleanup.catch((cleanupError: unknown) => {
       this.logger.error(
         `[Session] Failed to clean up after execution lease loss for ${this.sessionId}`,
         cleanupError,
       );
+      if (this.closePromise === cleanup) {
+        this.closePromise = null;
+      }
     });
-    this.closePromise = cleanup;
   }
 
   async abort(): Promise<void> {
@@ -2148,15 +2207,17 @@ class Session implements ISession {
   }
 
   private async persistInput(input: PendingSessionInput): Promise<void> {
-    await this.getRuntime()
-      .getContextManager()
-      .saveInputEnqueued(this.sessionId, {
-        inputId: input.inputId,
-        content: input.content as JsonValue,
-        priority: input.priority,
-        targetRequestId: input.targetRequestId,
-        acceptedAt: input.acceptedAt,
-      });
+    await this.runWithExecutionLease(() =>
+      this.getRuntime()
+        .getContextManager()
+        .saveInputEnqueued(this.sessionId, {
+          inputId: input.inputId,
+          content: input.content as JsonValue,
+          priority: input.priority,
+          targetRequestId: input.targetRequestId,
+          acceptedAt: input.acceptedAt,
+        }),
+    );
   }
 
   private safeParseJson(str: string): JsonValue {
@@ -2202,9 +2263,11 @@ class Session implements ISession {
   async fork(options?: ForkSessionOptions): Promise<ISession> {
     await this.ensureInitialized();
     const snapshot = this.persistenceEnabled
-      ? await this.store.forkState(this.sessionId, {
-          messageId: options?.messageId,
-        })
+      ? await this.runWithExecutionLease(() =>
+          this.store.forkState(this.sessionId, {
+            messageId: options?.messageId,
+          }),
+        )
       : this.createSnapshotFromMessages(options?.messageId);
 
     const forkedSession = new Session(

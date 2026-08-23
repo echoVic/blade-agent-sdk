@@ -9,8 +9,10 @@
 
 import fs from 'node:fs';
 import path from 'node:path';
+import writeFileAtomic from 'write-file-atomic';
 import { type InternalLogger, LogCategory, NOOP_LOGGER } from '../../logging/Logger.js';
 import type { Message } from '../../services/ChatServiceInterface.js';
+import type { DurableExecutionFence } from '../../session/events/DurableExecutionLeaseStore.js';
 import { AgentId } from '../../types/branded.js';
 import type { AgentProgress } from '../types.js';
 
@@ -72,6 +74,9 @@ export interface AgentSession {
 
   /** 运行时进度（仅在 status === 'running' 时持续更新） */
   progress?: AgentProgress;
+
+  /** Root Session ownership that is allowed to mutate this execution. */
+  executionFence?: DurableExecutionFence;
 }
 
 /**
@@ -134,19 +139,44 @@ export class AgentSessionStore {
   /**
    * 保存会话
    */
-  saveSession(session: AgentSession): void {
-    // 更新缓存
-    this.cache.set(session.id, session);
+  saveSession(session: AgentSession): boolean {
+    const current = this.loadSessionFromDisk(session.id);
+    if (current && !this.canReplaceExecution(current.executionFence, session.executionFence)) {
+      return false;
+    }
 
+    this.writeSession(session);
+    return true;
+  }
+
+  private writeSession(session: AgentSession): void {
     const filePath = this.getSessionPath(session.id);
-    if (!filePath) return;
+    if (!filePath) {
+      this.cache.set(session.id, session);
+      return;
+    }
 
     try {
       const data = JSON.stringify(session, null, 2);
-      fs.writeFileSync(filePath, data, 'utf-8');
+      const created = !fs.existsSync(filePath);
+      writeFileAtomic.sync(filePath, data, {
+        encoding: 'utf8',
+        fsync: true,
+        mode: 0o600,
+      });
+      if (created && process.platform !== 'win32' && this.sessionsDir) {
+        const directory = fs.openSync(this.sessionsDir, 'r');
+        try {
+          fs.fsyncSync(directory);
+        } finally {
+          fs.closeSync(directory);
+        }
+      }
+      this.cache.set(session.id, session);
       this.logger.debug(`Session saved: ${session.id}`);
     } catch (error) {
       this.logger.warn(`Failed to save session ${session.id}:`, error);
+      throw error;
     }
   }
 
@@ -154,14 +184,18 @@ export class AgentSessionStore {
    * 加载会话
    */
   loadSession(agentId: AgentId): AgentSession | undefined {
-    // 先检查缓存
-    if (this.cache.has(agentId)) {
+    if (!this.sessionsDir && this.cache.has(agentId)) {
       return this.cache.get(agentId);
     }
 
-    const filePath = this.getSessionPath(agentId);
-    if (!filePath) return undefined;
+    return this.loadSessionFromDisk(agentId);
+  }
 
+  private loadSessionFromDisk(agentId: AgentId): AgentSession | undefined {
+    const filePath = this.getSessionPath(agentId);
+    if (!filePath) {
+      return this.cache.get(agentId);
+    }
     try {
       if (!fs.existsSync(filePath)) {
         return undefined;
@@ -185,27 +219,36 @@ export class AgentSessionStore {
    */
   updateSession(
     agentId: AgentId,
-    updates: Partial<AgentSession>
+    updates: Partial<AgentSession>,
+    expectedExecutionFence?: DurableExecutionFence,
   ): AgentSession | undefined {
-    const session = this.loadSession(agentId);
-    if (!session) {
+    const session = this.loadSessionFromDisk(agentId);
+    if (
+      !session ||
+      !this.sameExecutionFence(session.executionFence, expectedExecutionFence)
+    ) {
       return undefined;
     }
 
     const updatedSession: AgentSession = {
       ...session,
       ...updates,
+      executionFence: session.executionFence,
       lastActiveAt: Date.now(),
     };
 
-    this.saveSession(updatedSession);
+    this.writeSession(updatedSession);
     return updatedSession;
   }
 
   /**
    * 追加消息到会话
    */
-  appendMessages(agentId: AgentId, messages: Message[]): AgentSession | undefined {
+  appendMessages(
+    agentId: AgentId,
+    messages: Message[],
+    expectedExecutionFence?: DurableExecutionFence,
+  ): AgentSession | undefined {
     const session = this.loadSession(agentId);
     if (!session) {
       return undefined;
@@ -213,7 +256,7 @@ export class AgentSessionStore {
 
     return this.updateSession(agentId, {
       messages: [...session.messages, ...messages],
-    });
+    }, expectedExecutionFence);
   }
 
   /**
@@ -223,12 +266,17 @@ export class AgentSessionStore {
   updateRunningSession(
     agentId: AgentId,
     updates: { messages?: Message[]; progress?: AgentProgress },
+    expectedExecutionFence?: DurableExecutionFence,
   ): AgentSession | undefined {
-    const session = this.loadSession(agentId);
-    if (!session || session.status !== 'running') {
+    const session = this.loadSessionFromDisk(agentId);
+    if (
+      !session ||
+      session.status !== 'running' ||
+      !this.sameExecutionFence(session.executionFence, expectedExecutionFence)
+    ) {
       return undefined;
     }
-    return this.updateSession(agentId, updates);
+    return this.updateSession(agentId, updates, expectedExecutionFence);
   }
 
   /**
@@ -237,7 +285,8 @@ export class AgentSessionStore {
   markCompleted(
     agentId: AgentId,
     result: { success: boolean; message: string; error?: string },
-    stats?: AgentSession['stats']
+    stats?: AgentSession['stats'],
+    expectedExecutionFence?: DurableExecutionFence,
   ): AgentSession | undefined {
     return this.updateSession(agentId, {
       status: result.success ? 'completed' : 'failed',
@@ -245,7 +294,7 @@ export class AgentSessionStore {
       stats,
       completedAt: Date.now(),
       progress: undefined,
-    });
+    }, expectedExecutionFence);
   }
 
   /**
@@ -255,6 +304,7 @@ export class AgentSessionStore {
     agentId: AgentId,
     result?: { success: false; message: string; error?: string },
     stats?: AgentSession['stats'],
+    expectedExecutionFence?: DurableExecutionFence,
   ): AgentSession | undefined {
     return this.updateSession(agentId, {
       status: 'cancelled',
@@ -262,14 +312,24 @@ export class AgentSessionStore {
       stats,
       completedAt: Date.now(),
       progress: undefined,
-    });
+    }, expectedExecutionFence);
   }
 
   /**
    * 删除会话
    */
-  deleteSession(agentId: AgentId): boolean {
+  deleteSession(
+    agentId: AgentId,
+    expectedExecutionFence?: DurableExecutionFence,
+  ): boolean {
     try {
+      const session = this.loadSessionFromDisk(agentId);
+      if (
+        session &&
+        !this.sameExecutionFence(session.executionFence, expectedExecutionFence)
+      ) {
+        return false;
+      }
       const filePath = this.getSessionPath(agentId);
       if (filePath && fs.existsSync(filePath)) {
         fs.unlinkSync(filePath);
@@ -353,5 +413,34 @@ export class AgentSessionStore {
    */
   clearCache(): void {
     this.cache.clear();
+  }
+
+  private canReplaceExecution(
+    current: DurableExecutionFence | undefined,
+    next: DurableExecutionFence | undefined,
+  ): boolean {
+    if (!current) {
+      return true;
+    }
+    if (!next) {
+      return false;
+    }
+    if (this.sameExecutionFence(current, next)) {
+      return true;
+    }
+    return next.fencingToken > current.fencingToken;
+  }
+
+  private sameExecutionFence(
+    left: DurableExecutionFence | undefined,
+    right: DurableExecutionFence | undefined,
+  ): boolean {
+    if (!left || !right) {
+      return left === right;
+    }
+    return (
+      left.leaseId === right.leaseId &&
+      left.fencingToken === right.fencingToken
+    );
   }
 }

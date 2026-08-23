@@ -720,6 +720,55 @@ describe('JsonlDurableEventStore', () => {
     await expect(leaseStore.assertExecutionLease(renewed)).resolves.toBeUndefined();
   });
 
+  it('blocks lease takeover while a fenced persistence operation is running', async () => {
+    const sessionId = SessionId('session-fenced-persistence');
+    let now = Date.parse('2026-08-22T12:00:00.000Z');
+    const firstStore = new JsonlDurableEventStore(storageRoot, {
+      clock: () => new Date(now),
+    });
+    const secondStore = new JsonlDurableEventStore(storageRoot, {
+      clock: () => new Date(now),
+    });
+    const firstLease = await firstStore.acquireExecutionLease(sessionId, {
+      leaseId: ExecutionLeaseId('lease-fenced-persistence-first'),
+      ownerId: WorkerId('worker-fenced-persistence-first'),
+      ttlMs: 1_000,
+    });
+    let enterOperation: (() => void) | undefined;
+    let finishOperation: (() => void) | undefined;
+    const operationEntered = new Promise<void>((resolve) => {
+      enterOperation = resolve;
+    });
+    const operationGate = new Promise<void>((resolve) => {
+      finishOperation = resolve;
+    });
+    const fencedOperation = firstStore.withExecutionLease(
+      firstLease,
+      async () => {
+        enterOperation?.();
+        await operationGate;
+      },
+    );
+    await operationEntered;
+    now += 1_001;
+    let takeoverSettled = false;
+    const takeover = secondStore.acquireExecutionLease(sessionId, {
+      leaseId: ExecutionLeaseId('lease-fenced-persistence-second'),
+      ownerId: WorkerId('worker-fenced-persistence-second'),
+      ttlMs: 1_000,
+    }).finally(() => {
+      takeoverSettled = true;
+    });
+
+    await new Promise<void>((resolveDelay) => setTimeout(resolveDelay, 25));
+    expect(takeoverSettled).toBe(false);
+    finishOperation?.();
+    await fencedOperation;
+    await expect(takeover).resolves.toMatchObject({
+      fencingToken: 2,
+    });
+  });
+
   it('fails closed on corrupt execution lease state', async () => {
     const sessionId = SessionId('session-corrupt-lease');
     const filePath = store.getExecutionLeaseFilePath(sessionId);

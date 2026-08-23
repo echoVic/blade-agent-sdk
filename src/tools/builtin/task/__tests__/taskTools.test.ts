@@ -229,7 +229,7 @@ describe('task tools', () => {
         }),
     );
 
-    const agentId = AgentId(manager.startBackgroundAgent({
+    const agentId = AgentId(await manager.startBackgroundAgent({
       config: subagentConfig,
       bladeConfig,
       description: 'Inspect repository',
@@ -267,7 +267,7 @@ describe('task tools', () => {
     const stopTool = createTaskStopTool({ sessionId: SessionId(`factory-${Date.now()}`) });
     const fakeManager = {
       getAgent: vi.fn(() => ({ id: AgentId('agent-1'), status: 'running' })),
-      killAgent: vi.fn(() => true),
+      killAgent: vi.fn(async () => true),
     };
 
     const stopped = await executeWithContext(

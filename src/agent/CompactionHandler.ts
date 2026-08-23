@@ -14,6 +14,37 @@ export interface CompactionRuntimeContext {
   projectDir?: string;
   signal?: AbortSignal;
   assertExecutionLease?: () => Promise<void>;
+  runWithExecutionLease?: <T>(operation: () => Promise<T>) => Promise<T>;
+}
+
+function isExecutionLeaseFailure(error: unknown): boolean {
+  return (
+    typeof error === 'object' &&
+    error !== null &&
+    'code' in error &&
+    typeof error.code === 'string' &&
+    error.code.startsWith('DURABLE_EXECUTION_LEASE_')
+  );
+}
+
+async function runFencedPersistence<T>(
+  runtimeCtx: CompactionRuntimeContext,
+  operation: () => Promise<T>,
+): Promise<T> {
+  runtimeCtx.signal?.throwIfAborted();
+  if (runtimeCtx.runWithExecutionLease) {
+    const result = await runtimeCtx.runWithExecutionLease(async () => {
+      runtimeCtx.signal?.throwIfAborted();
+      return operation();
+    });
+    runtimeCtx.signal?.throwIfAborted();
+    return result;
+  }
+  await runtimeCtx.assertExecutionLease?.();
+  const result = await operation();
+  runtimeCtx.signal?.throwIfAborted();
+  await runtimeCtx.assertExecutionLease?.();
+  return result;
 }
 
 export class CompactionHandler {
@@ -122,7 +153,10 @@ export class CompactionHandler {
           actualPreTokens: actualPromptTokens,
           projectDir: runtimeCtx.projectDir,
           signal: runtimeCtx.signal,
+          assertExecutionLease: runtimeCtx.assertExecutionLease,
         });
+        runtimeCtx.signal?.throwIfAborted();
+        await runtimeCtx.assertExecutionLease?.();
 
         if (result.success) {
           convState.replaceContent(result.compactedMessages);
@@ -141,20 +175,29 @@ export class CompactionHandler {
         try {
           const contextMgr = this.getContextManager();
           if (contextMgr && runtimeCtx.sessionId) {
-            await contextMgr.saveCompaction(
-              runtimeCtx.sessionId,
-              result.summary,
-              {
-                trigger: 'auto',
-                preTokens: result.preTokens,
-                postTokens: result.postTokens,
-                filesIncluded: result.filesIncluded,
-              },
-              null
+            await runFencedPersistence(
+              runtimeCtx,
+              () => contextMgr.saveCompaction(
+                runtimeCtx.sessionId,
+                result.summary,
+                {
+                  trigger: 'auto',
+                  preTokens: result.preTokens,
+                  postTokens: result.postTokens,
+                  filesIncluded: result.filesIncluded,
+                },
+                null,
+              ),
             );
             this.logger.debug(`[Agent] [轮次 ${currentTurn}] 压缩数据已保存到 JSONL`);
           }
         } catch (saveError) {
+          if (
+            runtimeCtx.signal?.aborted ||
+            isExecutionLeaseFailure(saveError)
+          ) {
+            throw saveError;
+          }
           this.logger.warn(`[Agent] [轮次 ${currentTurn}] 保存压缩数据失败:`, saveError);
         }
 
@@ -162,6 +205,12 @@ export class CompactionHandler {
 
         return true;
       } catch (error) {
+        if (
+          runtimeCtx.signal?.aborted ||
+          isExecutionLeaseFailure(error)
+        ) {
+          throw error;
+        }
         yield { type: 'compacting', isCompacting: false };
 
         this.logger.error(`[Agent] [轮次 ${currentTurn}] 压缩失败，继续执行`, error);
@@ -244,7 +293,10 @@ export class CompactionHandler {
         customHeaders: chatConfig.customHeaders,
         projectDir: runtimeCtx.projectDir,
         signal: runtimeCtx.signal,
+        assertExecutionLease: runtimeCtx.assertExecutionLease,
       });
+      runtimeCtx.signal?.throwIfAborted();
+      await runtimeCtx.assertExecutionLease?.();
 
       convState.replaceContent(result.compactedMessages);
 
@@ -252,25 +304,40 @@ export class CompactionHandler {
       try {
         const contextMgr = this.getContextManager();
         if (contextMgr && runtimeCtx.sessionId) {
-          await contextMgr.saveCompaction(
-            runtimeCtx.sessionId,
-            result.summary,
-            {
-              trigger: 'auto',
-              preTokens: result.preTokens,
-              postTokens: result.postTokens,
-              filesIncluded: result.filesIncluded,
-            },
-            null,
+          await runFencedPersistence(
+            runtimeCtx,
+            () => contextMgr.saveCompaction(
+              runtimeCtx.sessionId,
+              result.summary,
+              {
+                trigger: 'auto',
+                preTokens: result.preTokens,
+                postTokens: result.postTokens,
+                filesIncluded: result.filesIncluded,
+              },
+              null,
+            ),
           );
         }
       } catch (saveError) {
+        if (
+          runtimeCtx.signal?.aborted ||
+          isExecutionLeaseFailure(saveError)
+        ) {
+          throw saveError;
+        }
         this.logger.warn('[Agent] 保存反应式压缩数据失败:', saveError);
       }
 
       yield { type: 'compacting', isCompacting: false };
       return true;
     } catch (error) {
+      if (
+        runtimeCtx.signal?.aborted ||
+        isExecutionLeaseFailure(error)
+      ) {
+        throw error;
+      }
       // Fallback: emergency truncation
       this.logger.error('[Agent] 反应式压缩失败，使用紧急截断:', error);
       const recentMessages = originalMessages.slice(-40);

@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Message } from '../../services/ChatServiceInterface.js';
+import { DurableExecutionLeaseError } from '../../session/events/DurableExecutionLeaseStore.js';
 import { SessionId } from '../../types/branded.js';
 import { ConversationState } from '../state/ConversationState.js';
 
@@ -117,6 +118,59 @@ describe('CompactionHandler', () => {
     await expect(stream.next()).rejects.toThrow('execution lease lost');
     expect(assertExecutionLease).toHaveBeenCalledOnce();
     expect(mockCompact).not.toHaveBeenCalled();
+  });
+
+  it('discards a compaction result when execution ownership changes during provider I/O', async () => {
+    const handler = new CompactionHandler(
+      () => ({
+        getConfig: () => ({
+          model: 'gpt-4o-mini',
+          provider: 'openai-compatible' as const,
+          maxContextTokens: 1000,
+          maxOutputTokens: 200,
+          apiKey: 'test-key',
+          baseUrl: 'https://example.com',
+        }),
+      }) as never,
+      () => undefined,
+    );
+    const originalMessages = [
+      { role: 'user', content: 'context that must remain unchanged' },
+      { role: 'assistant', content: 'continue' },
+    ] satisfies Message[];
+    const currentMessage = originalMessages.at(-1);
+    if (!currentMessage) {
+      throw new Error('Expected a current compaction message');
+    }
+    const convState = new ConversationState(
+      null,
+      originalMessages.slice(0, -1),
+      currentMessage,
+    );
+    const leaseLost = new DurableExecutionLeaseError(
+      'DURABLE_EXECUTION_LEASE_LOST',
+      'execution ownership changed',
+    );
+    const assertExecutionLease = vi.fn()
+      .mockResolvedValueOnce(undefined)
+      .mockRejectedValueOnce(leaseLost);
+    const stream = handler.checkAndCompactInLoop(
+      convState,
+      {
+        sessionId: SessionId('mid-compaction-loss-session'),
+        assertExecutionLease,
+      },
+      2,
+      700,
+    );
+
+    await expect(stream.next()).resolves.toMatchObject({
+      value: { type: 'compacting', isCompacting: true },
+      done: false,
+    });
+    await expect(stream.next()).rejects.toBe(leaseLost);
+    expect(mockCompact).toHaveBeenCalledOnce();
+    expect(convState.getContextMessages()).toEqual(originalMessages);
   });
 
   it('falls back from the original messages when reactive compaction fails after microcompact', async () => {

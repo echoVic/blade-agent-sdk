@@ -18,6 +18,11 @@ import { lazySchema } from '../../validation/lazySchema.js';
 import { ToolSchemas } from '../../validation/zodSchemas.js';
 import { BackgroundShellManager } from './BackgroundShellManager.js';
 import { OutputTruncator } from './OutputTruncator.js';
+import {
+  isProcessTreeAlive,
+  shellProcessSpawnOptions,
+  signalProcessTree,
+} from './processTree.js';
 
 /**
  * Bash Tool - Shell command executor
@@ -421,6 +426,7 @@ async function executeWithTimeout(
       cwd,
       env: { ...process.env, ...env, BLADE_CLI: '1' },
       stdio: ['pipe', 'pipe', 'pipe'],
+      ...shellProcessSpawnOptions(),
     });
 
     // 收集 stdout
@@ -436,19 +442,19 @@ async function executeWithTimeout(
     // 设置超时
     const timeoutHandle = setTimeout(() => {
       timedOut = true;
-      bashProcess.kill('SIGTERM');
+      signalProcessTree(bashProcess.pid, 'SIGTERM', bashProcess);
 
       // 如果 SIGTERM 无效,强制 SIGKILL
       setTimeout(() => {
-        if (!bashProcess.killed) {
-          bashProcess.kill('SIGKILL');
+        if (isProcessTreeAlive(bashProcess.pid, bashProcess)) {
+          signalProcessTree(bashProcess.pid, 'SIGKILL', bashProcess);
         }
       }, 1000);
     }, timeout);
 
     // 处理中止信号
     const abortHandler = () => {
-      bashProcess.kill('SIGTERM');
+      signalProcessTree(bashProcess.pid, 'SIGTERM', bashProcess);
       clearTimeout(timeoutHandle);
     };
 

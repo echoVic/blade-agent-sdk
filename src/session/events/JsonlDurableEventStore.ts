@@ -321,6 +321,18 @@ export class JsonlDurableEventStore implements DurableExecutionLeaseStore {
     });
   }
 
+  async withExecutionLease<T>(
+    lease: DurableExecutionLease,
+    operation: () => Promise<T>,
+  ): Promise<T> {
+    this.assertLeaseIdentity(lease.sessionId, lease);
+    return this.runWithExecutionLeaseLock(lease.sessionId, 'write', async () => {
+      const current = await this.loadExecutionLeaseState(lease.sessionId);
+      this.assertLeaseMatches(lease, current, this.clock());
+      return operation();
+    });
+  }
+
   async releaseExecutionLease(lease: DurableExecutionLease): Promise<void> {
     this.assertLeaseIdentity(lease.sessionId, lease);
     await this.runWithExecutionLeaseLock(lease.sessionId, 'write', async () => {

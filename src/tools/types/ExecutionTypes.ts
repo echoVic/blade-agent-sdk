@@ -122,6 +122,8 @@ export interface ExecutionContext {
   executionFence?: DurableExecutionFence;
   /** @internal Validates execution ownership immediately before a side effect. */
   assertExecutionLease?: () => Promise<void>;
+  /** @internal Serializes a short persistence operation against lease takeover. */
+  runWithExecutionLease?: <T>(operation: () => Promise<T>) => Promise<T>;
   toolRegistry?: ToolRegistry;
   toolCatalog?: ToolCatalog;
   discoveredTools?: string[];

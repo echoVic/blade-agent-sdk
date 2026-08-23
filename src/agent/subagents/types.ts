@@ -113,6 +113,7 @@ export interface SubagentContext {
   omitEnvironment?: boolean;
   executionFence?: DurableExecutionFence;
   assertExecutionLease?: () => Promise<void>;
+  runWithExecutionLease?: <T>(operation: () => Promise<T>) => Promise<T>;
 }
 
 /**

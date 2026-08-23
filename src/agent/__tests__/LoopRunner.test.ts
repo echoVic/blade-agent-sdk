@@ -247,6 +247,29 @@ describe('LoopRunner', () => {
       expect(mm._contextMgr.saveMessage).toHaveBeenCalled();
     });
 
+    it('fences the initial transcript write before model execution', async () => {
+      const mm = createMockModelManager();
+      const pipeline = createMockPipeline();
+      const runner = new LoopRunner(baseConfig, baseOptions, mm, pipeline);
+      const leaseError = Object.assign(new Error('execution lease lost'), {
+        code: 'DURABLE_EXECUTION_LEASE_LOST',
+      });
+      const runWithExecutionLease = vi.fn(async () => {
+        throw leaseError;
+      });
+
+      await expect(
+        runner.runLoop(
+          'Test message',
+          createContext({ runWithExecutionLease }),
+        ),
+      ).rejects.toBe(leaseError);
+
+      expect(runWithExecutionLease).toHaveBeenCalledOnce();
+      expect(mm._contextMgr.saveMessage).not.toHaveBeenCalled();
+      expect(mm._chat).not.toHaveBeenCalled();
+    });
+
     it('persists streaming tool turns in provider-compatible order', async () => {
       const workspaceRoot = mkdtempSync(join(tmpdir(), 'loop-runner-persistence-'));
       const sessionId = SessionId('streaming-tool-session');

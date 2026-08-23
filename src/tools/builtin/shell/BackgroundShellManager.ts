@@ -2,6 +2,12 @@ import { type ChildProcess, spawn } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import type { DurableExecutionFence } from '../../../session/events/DurableExecutionLeaseStore.js';
 import type { SessionId } from '../../../types/branded.js';
+import {
+  isProcessTreeAlive,
+  shellProcessSpawnOptions,
+  signalProcessTree,
+  waitForProcessTreeExit,
+} from './processTree.js';
 
 type BackgroundShellStatus = 'running' | 'exited' | 'killed' | 'error';
 const DEFAULT_TERMINATION_GRACE_MS = 2_000;
@@ -99,6 +105,7 @@ export class BackgroundShellManager {
       cwd: options.cwd,
       env: mergedEnv,
       stdio: ['ignore', 'pipe', 'pipe'],
+      ...shellProcessSpawnOptions(),
     });
 
     const processInfo: BackgroundShellProcess = {
@@ -128,11 +135,10 @@ export class BackgroundShellManager {
     });
 
     child.on('close', (code, signal) => {
-      processInfo.status = processInfo.status === 'killed' ? 'killed' : 'exited';
       processInfo.exitCode = code;
       processInfo.signal = signal;
-      processInfo.endTime = Date.now();
       processInfo.process = undefined;
+      this.refreshProcessStatus(processInfo);
     });
 
     child.on('error', (error) => {
@@ -152,6 +158,7 @@ export class BackgroundShellManager {
     if (!processInfo) {
       return undefined;
     }
+    this.refreshProcessStatus(processInfo);
 
     const snapshot: ShellOutputSnapshot = {
       id: processInfo.id,
@@ -174,7 +181,11 @@ export class BackgroundShellManager {
   }
 
   getProcess(shellId: string): BackgroundShellProcess | undefined {
-    return this.processes.get(shellId);
+    const processInfo = this.processes.get(shellId);
+    if (processInfo) {
+      this.refreshProcessStatus(processInfo);
+    }
+    return processInfo;
   }
 
   getActiveProcessIds(
@@ -185,9 +196,10 @@ export class BackgroundShellManager {
       .filter(
         (processInfo) =>
           processInfo.sessionId === sessionId &&
-          processInfo.process !== undefined &&
+          isProcessTreeAlive(processInfo.pid, processInfo.process) &&
           (
             executionFence === undefined ||
+            processInfo.executionFence === undefined ||
             this.sameExecutionFence(processInfo.executionFence, executionFence)
           ),
       )
@@ -258,7 +270,7 @@ export class BackgroundShellManager {
       return undefined;
     }
 
-    if (processInfo.status !== 'running' || !processInfo.process) {
+    if (!isProcessTreeAlive(processInfo.pid, processInfo.process)) {
       return {
         success: false,
         alreadyExited: true,
@@ -269,7 +281,11 @@ export class BackgroundShellManager {
       };
     }
 
-    const killed = processInfo.process.kill('SIGTERM');
+    const killed = signalProcessTree(
+      processInfo.pid,
+      'SIGTERM',
+      processInfo.process,
+    );
     if (!killed) {
       return {
         success: false,
@@ -296,39 +312,27 @@ export class BackgroundShellManager {
 
   private async waitForExit(shellId: string, gracePeriodMs: number): Promise<void> {
     const processInfo = this.processes.get(shellId);
-    const child = processInfo?.process;
-    if (!child || (await this.waitForChildClose(child, gracePeriodMs))) {
+    if (
+      !processInfo ||
+      await waitForProcessTreeExit(
+        processInfo.pid,
+        processInfo.process,
+        gracePeriodMs,
+      )
+    ) {
       return;
     }
 
-    child.kill('SIGKILL');
-    if (!(await this.waitForChildClose(child, gracePeriodMs))) {
+    signalProcessTree(processInfo.pid, 'SIGKILL', processInfo.process);
+    if (
+      !(await waitForProcessTreeExit(
+        processInfo.pid,
+        processInfo.process,
+        gracePeriodMs,
+      ))
+    ) {
       throw new Error(`Background shell ${shellId} did not terminate`);
     }
-  }
-
-  private waitForChildClose(child: ChildProcess, timeoutMs: number): Promise<boolean> {
-    if (child.exitCode !== null || child.signalCode !== null) {
-      return Promise.resolve(true);
-    }
-    return new Promise<boolean>((resolve) => {
-      let settled = false;
-      const finish = (closed: boolean): void => {
-        if (settled) {
-          return;
-        }
-        settled = true;
-        clearTimeout(timer);
-        child.off('close', onClose);
-        child.off('error', onError);
-        resolve(closed);
-      };
-      const onClose = (): void => finish(true);
-      const onError = (): void => finish(true);
-      const timer = setTimeout(() => finish(false), timeoutMs);
-      child.once('close', onClose);
-      child.once('error', onError);
-    });
   }
 
   private executionFenceKey(
@@ -348,15 +352,29 @@ export class BackgroundShellManager {
     );
   }
 
+  private refreshProcessStatus(processInfo: BackgroundShellProcess): void {
+    if (
+      processInfo.status === 'running' &&
+      !isProcessTreeAlive(processInfo.pid, processInfo.process)
+    ) {
+      processInfo.status = 'exited';
+      processInfo.endTime = Date.now();
+    }
+  }
+
   /**
    * 终止所有后台进程
    * 在应用退出时调用
    */
   killAll(): void {
     for (const [_shellId, processInfo] of this.processes) {
-      if (processInfo.status === 'running' && processInfo.process) {
+      if (isProcessTreeAlive(processInfo.pid, processInfo.process)) {
         try {
-          processInfo.process.kill('SIGTERM');
+          signalProcessTree(
+            processInfo.pid,
+            'SIGTERM',
+            processInfo.process,
+          );
           processInfo.status = 'killed';
           processInfo.endTime = Date.now();
           processInfo.process = undefined;

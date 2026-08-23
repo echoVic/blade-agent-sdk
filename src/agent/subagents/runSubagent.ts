@@ -23,6 +23,7 @@ export interface RunSubagentOptions {
   backgroundAgentManager?: BackgroundAgentManager;
   executionFence?: DurableExecutionFence;
   assertExecutionLease?: () => Promise<void>;
+  runWithExecutionLease?: <T>(operation: () => Promise<T>) => Promise<T>;
   omitEnvironment?: boolean;
   onProgress?: (progress: AgentProgress) => void;
 }
@@ -53,6 +54,7 @@ export async function runSubagent(options: RunSubagentOptions): Promise<LoopResu
     backgroundAgentManager,
     executionFence,
     assertExecutionLease,
+    runWithExecutionLease,
     omitEnvironment,
     onProgress,
   } = options;
@@ -92,6 +94,7 @@ export async function runSubagent(options: RunSubagentOptions): Promise<LoopResu
     omitEnvironment,
     executionFence,
     assertExecutionLease,
+    runWithExecutionLease,
   };
 
   return loopOptions
