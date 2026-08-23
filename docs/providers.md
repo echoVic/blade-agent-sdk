@@ -22,8 +22,16 @@ interface ProviderConfig {
   organization?: string;
   apiVersion?: string;
   projectId?: string;
+  requestTimeoutMs?: number;
+  streamIdleTimeoutMs?: number;
 }
 ```
+
+`requestTimeoutMs` 限制一次非流式模型操作的总时长（包括重试等待），默认
+10 分钟。`streamIdleTimeoutMs` 限制等待下一个流式 chunk 的时长，默认
+5 分钟。两者都必须是以毫秒为单位的正整数。超时会主动中止底层 provider
+请求，并抛出 `ModelTimeoutError`；错误码分别为
+`MODEL_REQUEST_TIMEOUT` 和 `MODEL_STREAM_IDLE_TIMEOUT`，不会伪装成用户取消。
 
 ## 配置示例
 

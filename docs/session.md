@@ -126,6 +126,8 @@ interface ProviderConfig {
   organization?: string;   // OpenAI 专用
   apiVersion?: string;      // Azure OpenAI 专用
   projectId?: string;       // OpenAI 专用
+  requestTimeoutMs?: number; // 非流式模型操作总时限，默认 600000
+  streamIdleTimeoutMs?: number; // 等待下一个流式 chunk 的时限，默认 300000
 }
 ```
 
@@ -1752,6 +1754,10 @@ async function analyzeCodeManual() {
 | `outputFormat`    | `OutputFormat`                                          | —  | —           | 结构化 JSON Schema 输出格式                              |
 | `sandbox`         | `SandboxSettings`                                       | —  | —           | 命令执行沙箱设置                                          |
 | `observability`   | `ObservabilityOptions`                                  | —  | —           | Trace 收集、payload 捕获与 sink 配置                         |
+
+`ProviderConfig.requestTimeoutMs` 默认 `600000`，
+`ProviderConfig.streamIdleTimeoutMs` 默认 `300000`。具体超时语义见
+[Provider 配置](./providers)。
 
 ### SessionHookEvent
 

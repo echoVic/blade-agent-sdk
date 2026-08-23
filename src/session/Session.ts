@@ -449,6 +449,8 @@ class Session implements ISession {
       apiKey: provider.apiKey || '',
       baseUrl: provider.baseUrl || this.getDefaultBaseUrl(provider.type),
       headers: Object.keys(headers).length > 0 ? headers : undefined,
+      requestTimeoutMs: provider.requestTimeoutMs,
+      streamIdleTimeoutMs: provider.streamIdleTimeoutMs,
       maxContextTokens: this.options.maxContextTokens ?? 128000,
       maxOutputTokens: this.options.maxOutputTokens,
       temperature: this.options.temperature,
@@ -1532,10 +1534,7 @@ class Session implements ISession {
         closeErrors.push(error);
       }
     }
-    if (
-      !this.runtime &&
-      (closeErrors.length === 0 || this.executionLeaseFailure)
-    ) {
+    if (!this.runtime && (closeErrors.length === 0 || this.executionLeaseFailure)) {
       try {
         await this.releaseExecutionLease();
       } catch (error) {
@@ -1592,9 +1591,7 @@ class Session implements ISession {
       }
       durableRecorder?.assertHandoffReady();
 
-      const blockers = runtime.sealBackgroundWorkForHandoff(
-        this.executionLease?.fence,
-      );
+      const blockers = runtime.sealBackgroundWorkForHandoff(this.executionLease?.fence);
       if (blockers.activeSubagentIds.length > 0 || blockers.activeShellIds.length > 0) {
         throw new SessionHandoffError(
           'SESSION_HANDOFF_ACTIVE_WORK',
@@ -1689,10 +1686,7 @@ class Session implements ISession {
     } catch (error) {
       handoffErrors.push(error);
     }
-    if (
-      !this.runtime &&
-      (handoffErrors.length === 0 || this.executionLeaseFailure)
-    ) {
+    if (!this.runtime && (handoffErrors.length === 0 || this.executionLeaseFailure)) {
       try {
         await this.releaseExecutionLease();
       } catch (error) {
@@ -1745,11 +1739,7 @@ class Session implements ISession {
       } catch (error) {
         errors.push(error);
       }
-      if (
-        this.runtimeEndAttempted &&
-        runtimeClosed &&
-        this.runtime === runtime
-      ) {
+      if (this.runtimeEndAttempted && runtimeClosed && this.runtime === runtime) {
         this.runtime = null;
       }
     }
@@ -1780,9 +1770,7 @@ class Session implements ISession {
   }
 
   private runWithExecutionLease<T>(operation: () => Promise<T>): Promise<T> {
-    return this.executionLease
-      ? this.executionLease.runFenced(operation)
-      : operation();
+    return this.executionLease ? this.executionLease.runFenced(operation) : operation();
   }
 
   private async releaseExecutionLease(): Promise<void> {

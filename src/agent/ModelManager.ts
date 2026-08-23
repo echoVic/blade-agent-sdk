@@ -6,11 +6,9 @@
 
 import { ContextManager } from '../context/ContextManager.js';
 import { type InternalLogger, LogCategory, NOOP_LOGGER } from '../logging/Logger.js';
-import {
-  type ModelMiddleware,
-  wrapChatService,
-} from '../middleware/ModelMiddleware.js';
+import { type ModelMiddleware, wrapChatService } from '../middleware/ModelMiddleware.js';
 import { createChatServiceAsync, type IChatService } from '../services/ChatServiceInterface.js';
+import { wrapChatServiceWithTimeouts } from '../services/ChatServiceTimeout.js';
 import { withDeepSeekDefaults } from '../services/deepseek.js';
 import type { BladeConfig, ModelConfig, OutputFormat } from '../types/common.js';
 import { isThinkingModel } from '../utils/modelDetection.js';
@@ -95,11 +93,15 @@ export class ModelManager {
       temperature: modelConfig.temperature ?? this.config.temperature,
       maxContextTokens: this.currentModelMaxContextTokens,
       maxOutputTokens: modelConfig.maxOutputTokens,
+      requestTimeoutMs: modelConfig.requestTimeoutMs,
+      streamIdleTimeoutMs: modelConfig.streamIdleTimeoutMs,
       supportsThinking,
       providerOptions: modelConfig.providerOptions as never,
       outputFormat: this.outputFormat,
     });
-    this.chatService = wrapChatService(chatService, this.modelMiddleware);
+    this.chatService = wrapChatServiceWithTimeouts(
+      wrapChatService(chatService, this.modelMiddleware),
+    );
 
     this.currentModelId = modelConfig.id;
     this.config.currentModelId = modelConfig.id;

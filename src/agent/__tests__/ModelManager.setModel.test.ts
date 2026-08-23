@@ -29,11 +29,13 @@ function createModelConfig(overrides: Partial<ModelConfig> = {}): ModelConfig {
 }
 
 describe('ModelManager.setModel', () => {
-  it('passes model output token limits into chat service config', async () => {
+  it('passes model output and timeout limits into chat service config', async () => {
     const config: BladeConfig = {
       models: [
         createModelConfig({
           maxOutputTokens: 4096,
+          requestTimeoutMs: 120_000,
+          streamIdleTimeoutMs: 30_000,
         }),
       ],
       currentModelId: 'default',
@@ -50,6 +52,8 @@ describe('ModelManager.setModel', () => {
     expect(mockCreateChatServiceAsync).toHaveBeenLastCalledWith(
       expect.objectContaining({
         maxOutputTokens: 4096,
+        requestTimeoutMs: 120_000,
+        streamIdleTimeoutMs: 30_000,
       }),
     );
   });

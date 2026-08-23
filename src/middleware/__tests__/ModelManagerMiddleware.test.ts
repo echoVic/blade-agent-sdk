@@ -1,8 +1,5 @@
-import { describe, expect, it, vi } from 'vitest';
-import type {
-  ChatConfig,
-  IChatService,
-} from '../../services/ChatServiceInterface.js';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import type { ChatConfig, IChatService } from '../../services/ChatServiceInterface.js';
 import type { BladeConfig } from '../../types/common.js';
 import type { ModelMiddleware } from '../ModelMiddleware.js';
 
@@ -38,10 +35,12 @@ function createService(config: ChatConfig): IChatService {
 }
 
 describe('ModelManager middleware integration', () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
   it('reapplies model middleware when switching provider services', async () => {
-    createChatServiceAsync.mockImplementation(async (config: ChatConfig) =>
-      createService(config),
-    );
+    createChatServiceAsync.mockImplementation(async (config: ChatConfig) => createService(config));
     const observedModels: string[] = [];
     const middleware: ModelMiddleware = {
       async wrapChat(request, next) {
@@ -71,14 +70,9 @@ describe('ModelManager middleware integration', () => {
         },
       ],
     };
-    const manager = new ModelManager(
-      config,
-      undefined,
-      undefined,
-      undefined,
-      undefined,
-      [middleware],
-    );
+    const manager = new ModelManager(config, undefined, undefined, undefined, undefined, [
+      middleware,
+    ]);
 
     await manager.applyModelConfig(manager.resolveModelConfig(), 'initial');
     await expect(manager.getChatService().chat([])).resolves.toEqual({
@@ -90,5 +84,41 @@ describe('ModelManager middleware integration', () => {
       content: 'model-b:wrapped',
     });
     expect(observedModels).toEqual(['model-a', 'model-b']);
+  });
+
+  it('applies request timeouts outside model middleware', async () => {
+    vi.useFakeTimers();
+    createChatServiceAsync.mockImplementation(async (config: ChatConfig) => createService(config));
+    const config: BladeConfig = {
+      currentModelId: 'default',
+      models: [
+        {
+          id: 'default',
+          name: 'Default',
+          provider: 'openai-compatible',
+          model: 'model-a',
+          apiKey: 'test',
+          baseUrl: 'https://example.test',
+          requestTimeoutMs: 25,
+        },
+      ],
+    };
+    const manager = new ModelManager(config, undefined, undefined, undefined, undefined, [
+      {
+        async wrapChat() {
+          return await new Promise<never>(() => {});
+        },
+      },
+    ]);
+    await manager.applyModelConfig(manager.resolveModelConfig(), 'initial');
+    const result = manager.getChatService().chat([]);
+    const rejection = expect(result).rejects.toMatchObject({
+      code: 'MODEL_REQUEST_TIMEOUT',
+      timeoutMs: 25,
+    });
+
+    await vi.advanceTimersByTimeAsync(25);
+
+    await rejection;
   });
 });

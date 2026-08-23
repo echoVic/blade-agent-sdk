@@ -90,6 +90,7 @@ import {
   JsonlDurableEventStore,
   MemoryManager,
   ModelAttemptId,
+  ModelTimeoutError,
   PermissionRequestId,
   projectDurableSession,
   RequestId,
@@ -119,6 +120,10 @@ describe('root exports', () => {
     expect(completeToolExecution).toBeTypeOf('function');
     expect(composeMiddleware).toBeTypeOf('function');
     expect(definePlugin({ name: 'test' })).toEqual({ name: 'test' });
+    expect(new ModelTimeoutError('MODEL_REQUEST_TIMEOUT', 1000)).toMatchObject({
+      code: 'MODEL_REQUEST_TIMEOUT',
+      timeoutMs: 1000,
+    });
     expect(InputPriority.NEXT).toBe('next');
     expect(InputId('input-1')).toBe('input-1');
     expect(RequestId('request-1')).toBe('request-1');
@@ -159,11 +164,10 @@ describe('root exports', () => {
   });
 
   it('exports runtime tool contracts at the root entrypoint', () => {
-    expectTypeOf<AgentPlugin['middleware']>().toEqualTypeOf<
-      AgentMiddlewareConfig | undefined
-    >();
-    expectTypeOf<NonNullable<AgentMiddlewareConfig['tool']>[number]>()
-      .toEqualTypeOf<ToolMiddleware>();
+    expectTypeOf<AgentPlugin['middleware']>().toEqualTypeOf<AgentMiddlewareConfig | undefined>();
+    expectTypeOf<
+      NonNullable<AgentMiddlewareConfig['tool']>[number]
+    >().toEqualTypeOf<ToolMiddleware>();
     expectTypeOf<RuntimePatch['scope']>().toEqualTypeOf<'turn' | 'session'>();
     expectTypeOf<ToolEffect['type']>().toEqualTypeOf<
       'runtimePatch' | 'contextPatch' | 'newMessages' | 'permissionUpdates'

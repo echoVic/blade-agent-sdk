@@ -30,8 +30,18 @@ interface ProviderConfig {
   organization?: string;
   apiVersion?: string;
   projectId?: string;
+  requestTimeoutMs?: number;
+  streamIdleTimeoutMs?: number;
 }
 ```
+
+`requestTimeoutMs` bounds one non-streaming model operation, including retry
+delays, and defaults to 10 minutes. `streamIdleTimeoutMs` bounds the wait for
+each next streaming chunk and defaults to 5 minutes. Both values
+must be positive integers in milliseconds. A timeout aborts the underlying
+provider request and throws `ModelTimeoutError` with code
+`MODEL_REQUEST_TIMEOUT` or `MODEL_STREAM_IDLE_TIMEOUT`; it is not reported as a
+user cancellation.
 
 ## OpenAI
 

@@ -119,7 +119,12 @@ export interface ChatConfig {
   temperature?: number;
   maxContextTokens?: number; // 上下文窗口大小（用于压缩判断）
   maxOutputTokens?: number; // 输出 token 限制（传给 API 的 max_tokens）
+  /** @deprecated Use requestTimeoutMs. */
   timeout?: number;
+  /** Maximum wall-clock wait for a non-streaming model operation. */
+  requestTimeoutMs?: number;
+  /** Maximum wait between model stream chunks. */
+  streamIdleTimeoutMs?: number;
   apiVersion?: string; // GPT OpenAI Platform 专用：API 版本（如 '2024-03-01-preview'）
   supportsThinking?: boolean; // 是否支持 thinking 模式（DeepSeek Reasoner 等）
   providerOptions?: ProviderOptions;
@@ -189,7 +194,7 @@ export interface IChatService {
       description: string;
       parameters: JSONSchema7;
     }>,
-    signal?: AbortSignal
+    signal?: AbortSignal,
   ): Promise<ChatResponse>;
 
   /**
@@ -199,7 +204,7 @@ export interface IChatService {
   sideQuery(
     messages: readonly Message[],
     signal?: AbortSignal,
-    options?: SideQueryOptions
+    options?: SideQueryOptions,
   ): Promise<ChatResponse>;
 
   /**
@@ -212,7 +217,7 @@ export interface IChatService {
       description: string;
       parameters: JSONSchema7;
     }>,
-    signal?: AbortSignal
+    signal?: AbortSignal,
   ): AsyncGenerator<StreamChunk, void, unknown>;
 
   /**
@@ -227,7 +232,7 @@ export interface IChatService {
       description: string;
       parameters: JSONSchema7;
     }>,
-    signal?: AbortSignal
+    signal?: AbortSignal,
   ): AsyncGenerator<RetryEvent, ChatResponse>;
 
   /**
@@ -264,14 +269,19 @@ export async function createChatServiceAsync(
           ...resolvedConfig.customHeaders, // 用户配置优先
         },
       };
-      logger.child(LogCategory.SERVICE).debug(`🔧 注入 ${resolvedConfig.providerId} 特定 headers:`, Object.keys(providerHeaders));
+      logger
+        .child(LogCategory.SERVICE)
+        .debug(`🔧 注入 ${resolvedConfig.providerId} 特定 headers:`, Object.keys(providerHeaders));
     }
   }
 
   return await createChatServiceInternal(resolvedConfig, logger);
 }
 
-async function createChatServiceInternal(config: ChatConfig, logger: InternalLogger): Promise<IChatService> {
+async function createChatServiceInternal(
+  config: ChatConfig,
+  logger: InternalLogger,
+): Promise<IChatService> {
   const service = new VercelAIChatService(config, logger);
   await service.ready();
   return service;

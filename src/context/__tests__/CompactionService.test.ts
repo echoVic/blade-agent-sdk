@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { Message } from '../../services/ChatServiceInterface.js';
+import type { ChatConfig, Message } from '../../services/ChatServiceInterface.js';
 
 const mockChat = vi.fn(async () => ({
   content: '<summary>ok</summary>',
@@ -7,10 +7,22 @@ const mockChat = vi.fn(async () => ({
 const mockSideQuery = vi.fn(async () => ({
   content: '<summary>ok</summary>',
 }));
-const mockCreateChatServiceAsync = vi.fn(async (_config: Record<string, unknown>) => ({
-  chat: mockChat,
-  sideQuery: mockSideQuery,
-}));
+const mockCreateChatServiceAsync = vi.fn(async (config: ChatConfig) => {
+  let currentConfig = config;
+  return {
+    chat: mockChat,
+    sideQuery: mockSideQuery,
+    async *streamChat() {
+      yield { content: 'unused' };
+    },
+    getConfig() {
+      return currentConfig;
+    },
+    updateConfig(next: Partial<ChatConfig>) {
+      currentConfig = { ...currentConfig, ...next };
+    },
+  };
+});
 
 vi.mock('../../services/ChatServiceInterface.js', () => ({
   createChatServiceAsync: mockCreateChatServiceAsync,
@@ -50,12 +62,14 @@ describe('CompactionService', () => {
         provider: 'openai',
         baseUrl: 'https://api.openai.com/v1',
         model: 'gpt-5',
+        timeout: 60_000,
       }),
       expect.anything(),
     );
     expect(mockSideQuery).toHaveBeenCalledWith(
       expect.anything(),
-      controller.signal,
+      expect.any(AbortSignal),
+      undefined,
     );
     expect(mockChat).not.toHaveBeenCalled();
   });
@@ -82,12 +96,22 @@ describe('CompactionService', () => {
 
   it('retainRecentMessages drops orphan tool results outside the retained window', () => {
     const messages: Message[] = [
-      { role: 'assistant', content: 'a', tool_calls: [{ id: 'tc-keep', type: 'function', function: { name: 'x', arguments: '{}' } }] },
+      {
+        role: 'assistant',
+        content: 'a',
+        tool_calls: [{ id: 'tc-keep', type: 'function', function: { name: 'x', arguments: '{}' } }],
+      },
       { role: 'user', content: 'b' },
       { role: 'assistant', content: 'c' },
       { role: 'tool', tool_call_id: 'tc-keep', content: 'kept' },
       { role: 'tool', tool_call_id: 'tc-orphan', content: 'dropped' },
-      { role: 'assistant', content: 'd', tool_calls: [{ id: 'tc-orphan', type: 'function', function: { name: 'y', arguments: '{}' } }] },
+      {
+        role: 'assistant',
+        content: 'd',
+        tool_calls: [
+          { id: 'tc-orphan', type: 'function', function: { name: 'y', arguments: '{}' } },
+        ],
+      },
     ];
 
     // retain 50%: last 3 messages = tool(tc-keep) + tool(tc-orphan) + assistant(tc-orphan).
@@ -99,7 +123,11 @@ describe('CompactionService', () => {
 
   it('retainRecentMessages keeps tool results whose tool_calls are in the window', () => {
     const messages: Message[] = [
-      { role: 'assistant', content: 'a', tool_calls: [{ id: 'tc-1', type: 'function', function: { name: 'x', arguments: '{}' } }] },
+      {
+        role: 'assistant',
+        content: 'a',
+        tool_calls: [{ id: 'tc-1', type: 'function', function: { name: 'x', arguments: '{}' } }],
+      },
       { role: 'tool', tool_call_id: 'tc-1', content: 'result-1' },
     ];
 

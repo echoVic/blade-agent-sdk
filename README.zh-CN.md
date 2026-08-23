@@ -67,7 +67,7 @@ console.log(result.usage);
 - 工具：仅 generator 的自定义工具、按能力分组的内置工具、MCP 工具和类型化进度/副作用
 - 扩展：洋葱式模型/工具 middleware，以及可打包 middleware、hooks 与工具的声明式插件
 - 协作：前台/后台子 Agent、任务工具，以及项目级 Skills
-- 安全：权限模式、策略回调、Hooks、路径检查和可选 OS 沙箱集成
+- 安全：有界模型请求、权限模式、策略回调、Hooks、路径检查和可选 OS 沙箱集成
 - 运行时：可选 workspace、结构化输出、崩溃安全的本地会话记录、上下文压缩、token 预算和 trace
 
 ## 转向活动请求

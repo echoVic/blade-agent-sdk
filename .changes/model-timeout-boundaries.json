@@ -1,0 +1,5 @@
+{
+  "type": "fix",
+  "en": "Bound stalled model calls with configurable request and stream-idle timeouts that abort the provider and preserve typed failure semantics.",
+  "zh-CN": "为停滞的模型调用增加可配置的请求与流空闲超时，主动中止 provider 并保留类型化失败语义。"
+}

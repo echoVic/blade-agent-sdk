@@ -20,7 +20,12 @@ describe('Session model config', () => {
       },
     };
     const session = await createSession({
-      provider: { type: 'openai', apiKey: 'test-key' },
+      provider: {
+        type: 'openai',
+        apiKey: 'test-key',
+        requestTimeoutMs: 120_000,
+        streamIdleTimeoutMs: 30_000,
+      },
       model: 'gpt-5',
       temperature: 0.2,
       maxOutputTokens: 4096,
@@ -38,6 +43,8 @@ describe('Session model config', () => {
           temperature: 0.2,
           maxOutputTokens: 4096,
           maxContextTokens: 32000,
+          requestTimeoutMs: 120_000,
+          streamIdleTimeoutMs: 30_000,
           providerOptions,
           thinkingEnabled: true,
           thinkingBudget: 1024,

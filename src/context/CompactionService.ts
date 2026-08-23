@@ -6,18 +6,16 @@
 import { nanoid } from 'nanoid';
 import { HookManager } from '../hooks/HookManager.js';
 import { NOOP_LOGGER } from '../logging/Logger.js';
-import {
-    createChatServiceAsync,
-    type Message,
-} from '../services/ChatServiceInterface.js';
+import { createChatServiceAsync, type Message } from '../services/ChatServiceInterface.js';
+import { wrapChatServiceWithTimeouts } from '../services/ChatServiceTimeout.js';
 import { isExecutionLeaseFailure } from '../session/events/DurableExecutionLeaseStore.js';
 import { SessionId } from '../types/branded.js';
 import { PermissionMode, type ProviderType } from '../types/common.js';
 import { FileAnalyzer, type FileContent } from './FileAnalyzer.js';
 import {
-    microcompact,
-    type MicrocompactOptions,
-    type MicrocompactResult,
+  microcompact,
+  type MicrocompactOptions,
+  type MicrocompactResult,
 } from './strategies/MicrocompactStrategy.js';
 import { TokenCounter } from './TokenCounter.js';
 
@@ -123,88 +121,84 @@ export function retainRecentMessages(messages: Message[], retainPercent: number)
  */
 export async function compact(
   messages: Message[],
-  options: CompactionOptions
+  options: CompactionOptions,
 ): Promise<CompactionResult> {
   options.signal?.throwIfAborted();
   await options.assertExecutionLease?.();
   const preTokens =
     options.actualPreTokens ?? TokenCounter.countTokens(messages, options.modelName);
-  const tokenSource = options.actualPreTokens
-    ? 'actual (from LLM usage)'
-    : 'estimated';
+  const tokenSource = options.actualPreTokens ? 'actual (from LLM usage)' : 'estimated';
   console.log(`[CompactionService] preTokens source: ${tokenSource}`);
 
   if (options.projectDir) {
     try {
-    const hookManager = HookManager.getInstance();
+      const hookManager = HookManager.getInstance();
 
-    const preCompactResult = await hookManager.executePreCompactHooks(
-      {
-        trigger: options.trigger,
-        messages_before: messages.length,
-        tokens_before: preTokens,
-      },
-      options.projectDir,
-      options.sessionId || SessionId('unknown'),
-      options.permissionMode || PermissionMode.DEFAULT,
-      options.signal,
-    );
-    options.signal?.throwIfAborted();
-    await options.assertExecutionLease?.();
-
-    if (preCompactResult.blockCompaction) {
-      console.log(
-        `[CompactionService] PreCompact hook 阻止压缩: ${preCompactResult.blockReason || '(无原因)'}`
+      const preCompactResult = await hookManager.executePreCompactHooks(
+        {
+          trigger: options.trigger,
+          messages_before: messages.length,
+          tokens_before: preTokens,
+        },
+        options.projectDir,
+        options.sessionId || SessionId('unknown'),
+        options.permissionMode || PermissionMode.DEFAULT,
+        options.signal,
       );
-      return {
-        success: false,
-        summary: '',
-        preTokens,
-        postTokens: preTokens,
-        filesIncluded: [],
-        compactedMessages: messages,
-        boundaryMessage: { role: 'system', content: '' },
-        summaryMessage: { role: 'user', content: '' },
-        error: preCompactResult.blockReason || 'Compaction blocked by PreCompact hook',
-      };
-    }
-    if (preCompactResult.warning) {
-      console.warn(`[CompactionService] PreCompact hook warning: ${preCompactResult.warning}`);
-    }
+      options.signal?.throwIfAborted();
+      await options.assertExecutionLease?.();
 
-    const hookResult = await hookManager.executeCompactionHooks(options.trigger, {
-      projectDir: options.projectDir,
-      sessionId: options.sessionId || SessionId('unknown'),
-      permissionMode: options.permissionMode || PermissionMode.DEFAULT,
-      messagesBefore: messages.length,
-      tokensBefore: preTokens,
-      abortSignal: options.signal,
-    });
-    options.signal?.throwIfAborted();
-    await options.assertExecutionLease?.();
+      if (preCompactResult.blockCompaction) {
+        console.log(
+          `[CompactionService] PreCompact hook 阻止压缩: ${preCompactResult.blockReason || '(无原因)'}`,
+        );
+        return {
+          success: false,
+          summary: '',
+          preTokens,
+          postTokens: preTokens,
+          filesIncluded: [],
+          compactedMessages: messages,
+          boundaryMessage: { role: 'system', content: '' },
+          summaryMessage: { role: 'user', content: '' },
+          error: preCompactResult.blockReason || 'Compaction blocked by PreCompact hook',
+        };
+      }
+      if (preCompactResult.warning) {
+        console.warn(`[CompactionService] PreCompact hook warning: ${preCompactResult.warning}`);
+      }
 
-    if (hookResult.blockCompaction) {
-      console.log(
-        `[CompactionService] Compaction hook 阻止压缩: ${hookResult.blockReason || '(无原因)'}`
-      );
-      return {
-        success: false,
-        summary: '',
-        preTokens,
-        postTokens: preTokens,
-        filesIncluded: [],
-        compactedMessages: messages,
-        boundaryMessage: { role: 'system', content: '' },
-        summaryMessage: { role: 'user', content: '' },
-        error: hookResult.blockReason || 'Compaction blocked by hook',
-      };
-    }
+      const hookResult = await hookManager.executeCompactionHooks(options.trigger, {
+        projectDir: options.projectDir,
+        sessionId: options.sessionId || SessionId('unknown'),
+        permissionMode: options.permissionMode || PermissionMode.DEFAULT,
+        messagesBefore: messages.length,
+        tokensBefore: preTokens,
+        abortSignal: options.signal,
+      });
+      options.signal?.throwIfAborted();
+      await options.assertExecutionLease?.();
 
-    if (hookResult.warning) {
-      console.warn(
-        `[CompactionService] Compaction hook warning: ${hookResult.warning}`
-      );
-    }
+      if (hookResult.blockCompaction) {
+        console.log(
+          `[CompactionService] Compaction hook 阻止压缩: ${hookResult.blockReason || '(无原因)'}`,
+        );
+        return {
+          success: false,
+          summary: '',
+          preTokens,
+          postTokens: preTokens,
+          filesIncluded: [],
+          compactedMessages: messages,
+          boundaryMessage: { role: 'system', content: '' },
+          summaryMessage: { role: 'user', content: '' },
+          error: hookResult.blockReason || 'Compaction blocked by hook',
+        };
+      }
+
+      if (hookResult.warning) {
+        console.warn(`[CompactionService] Compaction hook warning: ${hookResult.warning}`);
+      }
     } catch (hookError) {
       if (options.signal?.aborted || isExecutionLeaseFailure(hookError)) {
         throw hookError;
@@ -238,11 +232,7 @@ export async function compact(
     console.log('[CompactionService] 过滤后保留消息数:', retainedMessages.length);
 
     const boundaryMessageId = nanoid();
-    const boundaryMessage = createBoundaryMessage(
-      boundaryMessageId,
-      options.trigger,
-      preTokens
-    );
+    const boundaryMessage = createBoundaryMessage(boundaryMessageId, options.trigger, preTokens);
 
     const summaryMessageId = nanoid();
     const summaryMessage = createSummaryMessage(summaryMessageId, summary);
@@ -256,7 +246,7 @@ export async function compact(
       preTokens,
       '→',
       postTokens,
-      `(-${((1 - postTokens / preTokens) * 100).toFixed(1)}%)`
+      `(-${((1 - postTokens / preTokens) * 100).toFixed(1)}%)`,
     );
 
     if (options.projectDir) {
@@ -330,29 +320,30 @@ export function microcompactMessages(
 async function generateSummary(
   messages: Message[],
   fileContents: FileContent[],
-  options: CompactionOptions
+  options: CompactionOptions,
 ): Promise<string> {
   const prompt = buildCompactionPrompt(messages, fileContents);
-  const baseURL =
-    options.baseURL || process.env.BLADE_BASE_URL || 'https://api.openai.com/v1';
+  const baseURL = options.baseURL || process.env.BLADE_BASE_URL || 'https://api.openai.com/v1';
 
   console.log('[CompactionService] 使用压缩模型:', options.modelName);
 
-  const chatService = await createChatServiceAsync({
-    apiKey: options.apiKey || process.env.BLADE_API_KEY || '',
-    baseUrl: baseURL,
-    model: options.modelName,
-    temperature: 0.3,
-    maxOutputTokens: 8000,
-    timeout: 60000,
-    provider: options.provider || inferProvider(baseURL),
-    customHeaders: options.customHeaders,
-  }, NOOP_LOGGER);
-
-  const response = await chatService.sideQuery(
-    [{ role: 'user', content: prompt }],
-    options.signal,
+  const chatService = wrapChatServiceWithTimeouts(
+    await createChatServiceAsync(
+      {
+        apiKey: options.apiKey || process.env.BLADE_API_KEY || '',
+        baseUrl: baseURL,
+        model: options.modelName,
+        temperature: 0.3,
+        maxOutputTokens: 8000,
+        timeout: 60000,
+        provider: options.provider || inferProvider(baseURL),
+        customHeaders: options.customHeaders,
+      },
+      NOOP_LOGGER,
+    ),
   );
+
+  const response = await chatService.sideQuery([{ role: 'user', content: prompt }], options.signal);
 
   const content = response.content || '';
   const summaryMatch = content.match(/<summary>([\s\S]*?)<\/summary>/);
@@ -381,8 +372,8 @@ function inferProvider(baseURL?: string): ProviderType {
     return 'anthropic';
   }
   if (
-    normalized.includes('generativelanguage.googleapis.com')
-    || normalized.includes('aiplatform.googleapis.com')
+    normalized.includes('generativelanguage.googleapis.com') ||
+    normalized.includes('aiplatform.googleapis.com')
   ) {
     return 'gemini';
   }
@@ -396,21 +387,15 @@ function inferProvider(baseURL?: string): ProviderType {
  * @param fileContents - 文件内容列表
  * @returns 压缩 prompt
  */
-function buildCompactionPrompt(
-  messages: Message[],
-  fileContents: FileContent[]
-): string {
+function buildCompactionPrompt(messages: Message[], fileContents: FileContent[]): string {
   const messagesText = messages
     .map((msg, i) => {
       const role = msg.role || 'unknown';
-      const content =
-        typeof msg.content === 'string' ? msg.content : JSON.stringify(msg.content);
+      const content = typeof msg.content === 'string' ? msg.content : JSON.stringify(msg.content);
 
       const maxLength = 5000;
       const truncatedContent =
-        content.length > maxLength
-          ? `${content.substring(0, maxLength)}...`
-          : content;
+        content.length > maxLength ? `${content.substring(0, maxLength)}...` : content;
 
       return `[${i + 1}] ${role}: ${truncatedContent}`;
     })
@@ -474,7 +459,7 @@ Please provide your summary following the structure specified above, with both <
 function createBoundaryMessage(
   parentId: string,
   trigger: 'auto' | 'manual',
-  preTokens: number
+  preTokens: number,
 ): Message {
   return {
     id: nanoid(),
@@ -524,23 +509,19 @@ function fallbackCompact(
   messages: Message[],
   options: CompactionOptions,
   preTokens: number,
-  error: unknown
+  error: unknown,
 ): CompactionResult {
   const retainCount = Math.ceil(messages.length * FALLBACK_RETAIN_PERCENT);
   const retainedMessages = retainRecentMessages(messages, FALLBACK_RETAIN_PERCENT);
 
   const boundaryMessageId = nanoid();
-  const boundaryMessage = createBoundaryMessage(
-    boundaryMessageId,
-    options.trigger,
-    preTokens
-  );
+  const boundaryMessage = createBoundaryMessage(boundaryMessageId, options.trigger, preTokens);
 
   const errorMsg = error instanceof Error ? error.message : String(error);
   const summaryMessageId = nanoid();
   const summaryMessage = createSummaryMessage(
     summaryMessageId,
-    `[Automatic compaction failed; using fallback]\n\nAn error occurred during compaction. Retained the latest ${retainCount} messages (~30%).\n\nError: ${errorMsg}\n\nThe conversation can continue, but consider retrying compaction later with /compact.`
+    `[Automatic compaction failed; using fallback]\n\nAn error occurred during compaction. Retained the latest ${retainCount} messages (~30%).\n\nError: ${errorMsg}\n\nThe conversation can continue, but consider retrying compaction later with /compact.`,
   );
 
   const compactedMessages = [summaryMessage, ...retainedMessages];
