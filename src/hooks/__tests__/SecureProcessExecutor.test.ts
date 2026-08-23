@@ -214,7 +214,7 @@ describe('SecureProcessExecutor', () => {
     const fixture = await createProcessTreeFixture(
       root,
       false,
-      mode === 'timeout' && process.platform === 'win32' ? 5_000 : 500,
+      mode === 'timeout' ? 5_000 : 500,
     );
     const controller = new AbortController();
     const executor = new SecureProcessExecutor(50);
@@ -222,11 +222,7 @@ describe('SecureProcessExecutor', () => {
       fixture.command,
       createInput(root),
       createContext(root, controller.signal),
-      mode === 'timeout'
-        ? process.platform === 'win32'
-          ? 2_000
-          : 200
-        : 5_000,
+      mode === 'timeout' ? 2_000 : 5_000,
     );
 
     await vi.waitFor(

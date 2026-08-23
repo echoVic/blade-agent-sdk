@@ -5,7 +5,18 @@ import { DEFAULT_HOOK_CONFIG } from '../HookConfig.js';
 import { HookManager } from '../HookManager.js';
 import { SecureProcessExecutor } from '../SecureProcessExecutor.js';
 import { HookType } from '../types/HookTypes.js';
-import { HookProcessContainmentError } from '../WindowsProcessJob.js';
+import {
+  HookProcessContainmentError,
+  WindowsProcessJob,
+} from '../WindowsProcessJob.js';
+
+function createWindowsJob(bindings: Record<string, unknown>): WindowsProcessJob {
+  const Constructor = WindowsProcessJob as unknown as new (
+    bindings: Record<string, unknown>,
+    handle: object,
+  ) => WindowsProcessJob;
+  return new Constructor(bindings, {});
+}
 
 afterEach(() => {
   vi.restoreAllMocks();
@@ -76,5 +87,41 @@ describe('Hook infrastructure failures', () => {
       decision: 'allow',
       warning: 'hook command failed',
     });
+  });
+
+  it('bounds Windows Job termination and closes the kill-on-close handle', async () => {
+    const closeHandle = vi.fn(() => 1);
+    const job = createWindowsJob({
+      queryInformationJobObject: vi.fn((
+        _job,
+        _informationClass,
+        information: Buffer,
+      ) => {
+        information.writeUInt32LE(1, 40);
+        return 1;
+      }),
+      terminateJobObject: vi.fn(() => 1),
+      closeHandle,
+      getLastError: vi.fn(() => 0),
+    });
+
+    await expect(job.terminateAndWait(1)).rejects.toMatchObject({
+      code: 'HOOK_PROCESS_CONTAINMENT_FAILED',
+    });
+    expect(closeHandle).toHaveBeenCalledOnce();
+  });
+
+  it('reports a native process-handle close failure during assignment', () => {
+    const processHandle = {};
+    const job = createWindowsJob({
+      openProcess: vi.fn(() => processHandle),
+      assignProcessToJobObject: vi.fn(() => 1),
+      closeHandle: vi.fn(() => 0),
+      getLastError: vi.fn(() => 6),
+    });
+
+    expect(() => job.assign(42_424)).toThrow(
+      'Failed to close the Windows Hook process handle',
+    );
   });
 });

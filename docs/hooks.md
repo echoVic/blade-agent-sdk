@@ -95,6 +95,9 @@ Hook 超时时会终止进程组，先发送 `SIGTERM` 并短暂等待，必要�
 也会在启动前 fail-closed。Runtime 还会在每个文件 Hook 返回后再次检查信号，因此
 默认的 `ignore` 失败策略不会让已取消的 Request 继续执行。
 
+POSIX containment 以进程组为边界。若 Hook 命令主动通过 `setsid()` 创建新会话，
+该进程会离开 SDK 管理的进程组，不属于可移植清理边界。
+
 `SessionEnd` callback 在一次 runtime 关闭流程中只执行一次；callback 失败或
 超时后，重试 `close()` 不会再次调用它；文件 Hook 保持原有重试行为。
 

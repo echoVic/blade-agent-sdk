@@ -1,5 +1,5 @@
 {
   "type": "fix",
-  "en": "Prevent cancelled file hooks from spawning, contain Windows hook commands in Job Objects, and wait for complete process trees to terminate before request cleanup finishes.",
-  "zh-CN": "阻止已取消的文件 Hook 启动进程，使用 Windows Job Object 纳管 Hook 命令，并在请求清理完成前等待完整进程树退出。"
+  "en": "Prevent cancelled file hooks from spawning and wait for their owned POSIX process groups or Windows Jobs to terminate before request cleanup finishes.",
+  "zh-CN": "阻止已取消的文件 Hook 启动进程，并在请求清理完成前等待其受管的 POSIX 进程组或 Windows Job 退出。"
 }

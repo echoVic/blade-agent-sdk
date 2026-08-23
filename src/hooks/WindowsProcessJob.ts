@@ -64,6 +64,16 @@ function win32Error(bindings: WindowsJobBindings, operation: string): HookProces
   );
 }
 
+function closeNativeHandle(
+  bindings: WindowsJobBindings,
+  handle: NativeHandle,
+  operation: string,
+): void {
+  if (!bindings.closeHandle(handle)) {
+    throw win32Error(bindings, operation);
+  }
+}
+
 async function loadWindowsJobBindings(): Promise<WindowsJobBindings> {
   if (process.platform !== 'win32') {
     throw new Error('Windows Job Objects are only available on Windows');
@@ -141,9 +151,19 @@ export class WindowsProcessJob {
         information.byteLength,
       )
     ) {
-      const error = win32Error(bindings, 'SetInformationJobObject');
-      bindings.closeHandle(handle);
-      throw error;
+      const configurationError = win32Error(
+        bindings,
+        'SetInformationJobObject',
+      );
+      try {
+        closeNativeHandle(bindings, handle, 'CloseHandle(Job)');
+      } catch (closeError) {
+        throw new HookProcessContainmentError(
+          'Failed to configure and close the Windows Job Object',
+          { cause: new AggregateError([configurationError, closeError]) },
+        );
+      }
+      throw configurationError;
     }
 
     return new WindowsProcessJob(bindings, handle);
@@ -164,17 +184,36 @@ export class WindowsProcessJob {
       throw win32Error(this.bindings, 'OpenProcess');
     }
 
+    const assigned = this.bindings.assignProcessToJobObject(
+      this.handle,
+      processHandle,
+    );
+    const assignmentError = assigned
+      ? undefined
+      : win32Error(this.bindings, 'AssignProcessToJobObject');
     try {
-      if (!this.bindings.assignProcessToJobObject(this.handle, processHandle)) {
-        throw win32Error(this.bindings, 'AssignProcessToJobObject');
-      }
-    } finally {
-      this.bindings.closeHandle(processHandle);
+      closeNativeHandle(
+        this.bindings,
+        processHandle,
+        'CloseHandle(Process)',
+      );
+    } catch (closeError) {
+      throw new HookProcessContainmentError(
+        'Failed to close the Windows Hook process handle',
+        {
+          cause: assignmentError
+            ? new AggregateError([assignmentError, closeError])
+            : closeError,
+        },
+      );
+    }
+    if (assignmentError) {
+      throw assignmentError;
     }
   }
 
-  terminateAndWait(): Promise<void> {
-    this.cleanupPromise ??= this.terminateAndWaitOnce();
+  terminateAndWait(timeoutMs: number): Promise<void> {
+    this.cleanupPromise ??= this.terminateAndWaitOnce(timeoutMs);
     return this.cleanupPromise;
   }
 
@@ -182,13 +221,11 @@ export class WindowsProcessJob {
     if (this.closed) {
       return;
     }
-    if (!this.bindings.closeHandle(this.handle)) {
-      throw win32Error(this.bindings, 'CloseHandle');
-    }
+    closeNativeHandle(this.bindings, this.handle, 'CloseHandle(Job)');
     this.closed = true;
   }
 
-  private async terminateAndWaitOnce(): Promise<void> {
+  private async terminateAndWaitOnce(timeoutMs: number): Promise<void> {
     if (this.closed) {
       return;
     }
@@ -198,9 +235,19 @@ export class WindowsProcessJob {
         throw win32Error(this.bindings, 'TerminateJobObject');
       }
 
+      const deadline = Date.now() + timeoutMs;
       while (this.getActiveProcessCount() > 0) {
+        const remainingMs = deadline - Date.now();
+        if (remainingMs <= 0) {
+          throw new HookProcessContainmentError(
+            `Windows Hook Job did not terminate within ${timeoutMs}ms`,
+          );
+        }
         await new Promise<void>((resolve) => {
-          setTimeout(resolve, WINDOWS_JOB_POLL_INTERVAL_MS);
+          setTimeout(
+            resolve,
+            Math.min(WINDOWS_JOB_POLL_INTERVAL_MS, remainingMs),
+          );
         });
       }
       this.close();

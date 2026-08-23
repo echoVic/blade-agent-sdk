@@ -25,6 +25,7 @@ import {
 } from './WindowsProcessJob.js';
 
 const DEFAULT_HOOK_PROCESS_TERMINATION_GRACE_MS = 1_000;
+const WINDOWS_HOOK_PROCESS_TERMINATION_TIMEOUT_MS = 5_000;
 const WINDOWS_HOOK_RUNNER = `
 const { spawn } = require('node:child_process');
 
@@ -274,7 +275,9 @@ export class SecureProcessExecutor {
         termination = reason;
         cleanup();
         const processCleanup = windowsJob
-          ? windowsJob.terminateAndWait()
+          ? windowsJob.terminateAndWait(
+              WINDOWS_HOOK_PROCESS_TERMINATION_TIMEOUT_MS,
+            )
           : terminateProcessTree(
               child.pid,
               child,
@@ -316,7 +319,9 @@ export class SecureProcessExecutor {
         if (termination) return;
         cleanup();
         const processCleanup = windowsJob
-          ? windowsJob.terminateAndWait()
+          ? windowsJob.terminateAndWait(
+              WINDOWS_HOOK_PROCESS_TERMINATION_TIMEOUT_MS,
+            )
           : terminateProcessTree(
               child.pid,
               child,

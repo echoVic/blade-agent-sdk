@@ -99,6 +99,10 @@ closed before spawning when the `koffi` native binding is unavailable. The
 runtime checks the signal again after each file hook, so the default `ignore`
 failure policy cannot resume an already-cancelled Request.
 
+On POSIX, containment follows process-group semantics. A Hook command that
+deliberately creates a new session with `setsid()` leaves the SDK-owned process
+group and is outside this portable cleanup boundary.
+
 `SessionEnd` callbacks are one-shot for a runtime shutdown attempt. A failed or
 timed-out callback is not invoked again when `close()` is retried; file hooks
 retain their existing retry behavior.
