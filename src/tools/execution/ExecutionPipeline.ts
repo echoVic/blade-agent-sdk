@@ -316,7 +316,7 @@ export class ExecutionPipeline {
         }
       }
       if (protectedContext.signal?.aborted) {
-        if (coreResult?.status === 'error') {
+        if (coreCompleted && coreResult) {
           result = coreResult;
         } else {
           const isInterrupt = isSteeringInterruptSignal(protectedContext.signal);

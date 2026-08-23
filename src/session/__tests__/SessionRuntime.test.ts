@@ -259,6 +259,89 @@ describe('SessionRuntime', () => {
     await runtime.close();
   });
 
+  it('rejects duplicate plugin tool names without replacing prior registrations', async () => {
+    const cases: Array<{
+      label: string;
+      toolName: string;
+      expectedSourceId: string;
+      options: Partial<SessionOptions>;
+    }> = [
+      {
+        label: 'builtin conflict',
+        toolName: 'Read',
+        expectedSourceId: 'builtin',
+        options: {
+          allowedTools: ['Read'],
+          plugins: [
+            {
+              name: 'duplicate-builtin',
+              tools: [{ ...customTool, name: 'Read' }],
+            },
+          ],
+        },
+      },
+      {
+        label: 'session tool conflict',
+        toolName: 'CustomTool',
+        expectedSourceId: 'session',
+        options: {
+          allowedTools: ['CustomTool'],
+          tools: [customTool],
+          plugins: [
+            {
+              name: 'duplicate-session',
+              tools: [customTool],
+            },
+          ],
+        },
+      },
+      {
+        label: 'plugin conflict',
+        toolName: 'CustomTool',
+        expectedSourceId: 'plugin:first-plugin',
+        options: {
+          allowedTools: ['CustomTool'],
+          plugins: [
+            {
+              name: 'first-plugin',
+              tools: [customTool],
+            },
+            {
+              name: 'second-plugin',
+              tools: [customTool],
+            },
+          ],
+        },
+      },
+    ];
+
+    for (const [index, testCase] of cases.entries()) {
+      const runtime = new SessionRuntime(
+        SessionId(`session-plugin-conflict-${index}`),
+        createOptions(testCase.options),
+        {
+          models: [],
+        },
+        PermissionMode.DEFAULT,
+        createFilesystemContext(workspaceRoot),
+        NOOP_LOGGER,
+      );
+
+      try {
+        await expect(
+          runtime.initialize(),
+          testCase.label,
+        ).rejects.toThrow('已注册');
+        expect(
+          runtime.getToolCatalog().getEntry(testCase.toolName)?.source.sourceId,
+          testCase.label,
+        ).toBe(testCase.expectedSourceId);
+      } finally {
+        await runtime.close();
+      }
+    }
+  });
+
   it('should activate and execute hooks contributed only by a plugin', async () => {
     const enableHooks = vi.spyOn(HookManager.getInstance(), 'enable');
     const pluginHook = vi.fn(async () => ({

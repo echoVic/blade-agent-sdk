@@ -593,6 +593,52 @@ describe('ToolMiddleware', () => {
     ).resolves.toEqual(coreCancellation);
   });
 
+  it('preserves a completed core success when abort arrives during unwinding', async () => {
+    const controller = new AbortController();
+    const execute = vi.fn((value: string) => ({
+      status: 'success',
+      model: `core:${value}`,
+    }) as ToolResult);
+    const pipeline = new ExecutionPipeline(
+      createRegistry(execute),
+      {
+        permissionMode: PermissionMode.YOLO,
+        middleware: [
+          async function* (_request, next) {
+            const result = yield* next();
+            controller.abort(new Error('late abort'));
+            return {
+              ...result,
+              model: 'middleware result after abort',
+            };
+          },
+        ],
+      },
+    );
+
+    await expect(
+      collectToolExecution(
+        pipeline.execute(
+          'Echo',
+          { value: 'committed' },
+          { signal: controller.signal },
+        ),
+      ),
+    ).resolves.toMatchObject({
+      status: 'success',
+      model: 'core:committed',
+    });
+    expect(execute).toHaveBeenCalledOnce();
+    expect(pipeline.getExecutionHistory()).toEqual([
+      expect.objectContaining({
+        result: expect.objectContaining({
+          status: 'success',
+          model: 'core:committed',
+        }),
+      }),
+    ]);
+  });
+
   it('drains a delegated core execution that middleware abandons after starting', async () => {
     const pipeline = new ExecutionPipeline(
       createRegistry((value) => ({
