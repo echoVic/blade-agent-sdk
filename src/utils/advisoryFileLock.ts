@@ -187,3 +187,16 @@ export async function withAdvisoryFileLock<T>(
     },
   );
 }
+
+/** Persist a newly created file's directory entry on filesystems that support it. */
+export async function syncParentDirectory(filePath: string): Promise<void> {
+  if (process.platform === 'win32') {
+    return;
+  }
+  const directory = await open(dirname(filePath), 'r');
+  try {
+    await directory.sync();
+  } finally {
+    await directory.close();
+  }
+}

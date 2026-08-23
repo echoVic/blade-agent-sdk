@@ -175,6 +175,28 @@ describe('JSONLStore', () => {
     });
   });
 
+  it('fails closed when a committed event has an invalid payload', async () => {
+    const { filePath, store } = await createStore();
+    await store.append(event('valid'));
+    await appendFile(
+      filePath,
+      `${JSON.stringify({
+        id: 'invalid-message',
+        sessionId: 'session',
+        timestamp: '2026-08-23T00:00:00.000Z',
+        type: 'message_created',
+        version: '1.0.0',
+        data: {},
+      })}\n`,
+      'utf8',
+    );
+
+    await expect(store.readAll()).rejects.toMatchObject({
+      code: 'SESSION_JSONL_CORRUPT_LOG',
+      message: expect.stringContaining('line 2'),
+    });
+  });
+
   it('fails closed when a committed record contains invalid UTF-8', async () => {
     const { filePath, store } = await createStore();
     await store.append(event('valid'));
@@ -300,6 +322,22 @@ describe('JSONLStore', () => {
       expect((await stat(dirname(filePath))).mode & 0o777).toBe(0o700);
       expect((await stat(filePath)).mode & 0o777).toBe(0o600);
       expect((await stat(`${filePath}.lock`)).mode & 0o777).toBe(0o600);
+    },
+  );
+
+  it.skipIf(process.platform === 'win32')(
+    'keeps the Session directory private when a health check creates it first',
+    async () => {
+      const root = await mkdtemp(join(tmpdir(), 'persistent-store-health-'));
+      temporaryRoots.push(root);
+      const store = new PersistentStore(root);
+
+      await expect(store.checkStorageHealth()).resolves.toMatchObject({
+        isAvailable: true,
+        canWrite: true,
+      });
+
+      expect((await stat(join(root, 'sessions'))).mode & 0o777).toBe(0o700);
     },
   );
 

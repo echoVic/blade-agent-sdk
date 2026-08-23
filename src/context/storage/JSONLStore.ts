@@ -1,22 +1,15 @@
 import { open, readFile, stat, truncate, unlink } from 'node:fs/promises';
 import { TextDecoder } from 'node:util';
 import { SdkError } from '../../errors/SdkError.js';
-import type { JsonValue } from '../../types/common.js';
-import { withAdvisoryFileLock } from '../../utils/advisoryFileLock.js';
+import {
+  syncParentDirectory,
+  withAdvisoryFileLock,
+} from '../../utils/advisoryFileLock.js';
 import type { SessionEvent } from '../types.js';
+import { parseSessionEvent } from './sessionEventSchema.js';
 
 const DEFAULT_LOCK_TIMEOUT_MS = 10_000;
 const UTF8_DECODER = new TextDecoder('utf-8', { fatal: true });
-const SESSION_EVENT_TYPES = new Set([
-  'session_created',
-  'session_updated',
-  'message_created',
-  'part_created',
-  'part_updated',
-  'input_enqueued',
-  'input_applied',
-  'input_cancelled',
-]);
 
 export type JSONLStoreErrorCode =
   | 'SESSION_JSONL_CORRUPT_LOG'
@@ -46,20 +39,6 @@ interface LoadedFile {
   exists: boolean;
   committedBytes: number;
   totalBytes: number;
-}
-
-function isSessionEvent(data: unknown): data is SessionEvent {
-  if (!data || typeof data !== 'object' || Array.isArray(data)) return false;
-  const obj = data as Record<string, unknown>;
-  return typeof obj.id === 'string'
-    && typeof obj.sessionId === 'string'
-    && typeof obj.timestamp === 'string'
-    && typeof obj.type === 'string'
-    && SESSION_EVENT_TYPES.has(obj.type)
-    && typeof obj.version === 'string'
-    && typeof obj.data === 'object'
-    && obj.data !== null
-    && !Array.isArray(obj.data);
 }
 
 function hasErrorCode(error: unknown, code: string): boolean {
@@ -230,7 +209,7 @@ export class JSONLStore {
 
   private async writeUnlocked(
     content: string,
-    loaded: Pick<LoadedFile, 'committedBytes' | 'totalBytes'>,
+    loaded: Pick<LoadedFile, 'committedBytes' | 'exists' | 'totalBytes'>,
   ): Promise<void> {
     try {
       if (loaded.totalBytes > loaded.committedBytes) {
@@ -242,6 +221,9 @@ export class JSONLStore {
         await file.sync();
       } finally {
         await file.close();
+      }
+      if (!loaded.exists) {
+        await syncParentDirectory(this.filePath);
       }
     } catch (error) {
       if (error instanceof JSONLStoreError) {
@@ -277,10 +259,7 @@ export class JSONLStore {
         continue;
       }
       try {
-        const parsed: JsonValue = JSON.parse(line) as JsonValue;
-        if (!isSessionEvent(parsed)) {
-          throw new Error('Record is not a SessionEvent');
-        }
+        const parsed = parseSessionEvent(JSON.parse(line));
         if (eventIds.has(parsed.id)) {
           throw new Error(`Duplicate Session event ID: ${parsed.id}`);
         }

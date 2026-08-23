@@ -683,7 +683,7 @@ export class PersistentStore {
       const storagePath = this.storageRoot;
 
       // 尝试创建目录
-      await fs.mkdir(storagePath, { recursive: true, mode: 0o755 });
+      await fs.mkdir(storagePath, { recursive: true, mode: 0o700 });
 
       // 尝试写入测试文件
       const testFile = path.join(storagePath, '.health-check');

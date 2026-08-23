@@ -3,7 +3,10 @@ import { Buffer } from 'node:buffer';
 import { mkdir, open, readFile, truncate } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 import { EventId, EventSequence, type SessionId } from '../../types/branded.js';
-import { withAdvisoryFileLock } from '../../utils/advisoryFileLock.js';
+import {
+  syncParentDirectory,
+  withAdvisoryFileLock,
+} from '../../utils/advisoryFileLock.js';
 import {
   DurableEventSequenceConflictError,
   type DurableEventStore,
@@ -40,6 +43,7 @@ export interface JsonlDurableEventStoreOptions {
 
 interface LoadedLog {
   events: DurableEventEnvelope[];
+  exists: boolean;
   committedBytes: number;
   totalBytes: number;
 }
@@ -294,6 +298,9 @@ export class JsonlDurableEventStore implements DurableEventStore {
       } finally {
         await file.close();
       }
+      if (!loaded.exists) {
+        await syncParentDirectory(filePath);
+      }
     } catch (error) {
       if (error instanceof DurableEventStoreError) {
         throw error;
@@ -313,7 +320,12 @@ export class JsonlDurableEventStore implements DurableEventStore {
       bytes = await readFile(filePath);
     } catch (error) {
       if (error instanceof Error && 'code' in error && error.code === 'ENOENT') {
-        return { events: [], committedBytes: 0, totalBytes: 0 };
+        return {
+          events: [],
+          exists: false,
+          committedBytes: 0,
+          totalBytes: 0,
+        };
       }
       throw new DurableEventStoreError(
         'DURABLE_EVENT_READ_FAILED',
@@ -357,6 +369,7 @@ export class JsonlDurableEventStore implements DurableEventStore {
 
     return {
       events,
+      exists: true,
       committedBytes,
       totalBytes: bytes.length,
     };
