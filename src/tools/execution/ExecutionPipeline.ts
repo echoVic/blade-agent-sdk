@@ -53,7 +53,11 @@ import {
   ToolErrorType,
   validationErrorToToolResult,
 } from '../types/ToolResult.js';
-import { type ConcurrencyLimits, ConcurrencyScheduler } from './ConcurrencyScheduler.js';
+import {
+  type ConcurrencyLease,
+  type ConcurrencyLimits,
+  ConcurrencyScheduler,
+} from './ConcurrencyScheduler.js';
 import { DenialTracker } from './DenialTracker.js';
 import { type FileLockLease, FileLockManager } from './FileLockManager.js';
 import { ResultArtifactStore } from './ResultArtifactStore.js';
@@ -487,21 +491,54 @@ export class ExecutionPipeline {
         : 'write';
 
     const toolKind = resolvedBehavior?.kind ?? tool.kind ?? ToolKind.Execute;
-    const concurrencyLease = await this.scheduler.acquire(toolKind);
+    let concurrencyLease: ConcurrencyLease | undefined;
     let fileLease: FileLockLease | undefined;
 
     try {
+      concurrencyLease = await this.scheduler.acquire(
+        toolKind,
+        state.context.signal,
+      );
+      state.context.signal?.throwIfAborted();
       if (this.hasPendingCleanup()) {
         return this.createPendingCleanupResult();
       }
       fileLease = filePath
-        ? await FileLockManager.getInstance(this.logger).acquire(filePath, lockMode)
+        ? await FileLockManager.getInstance(this.logger).acquire(
+            filePath,
+            lockMode,
+            state.context.signal,
+          )
         : undefined;
+      state.context.signal?.throwIfAborted();
+      if (this.hasPendingCleanup()) {
+        return this.createPendingCleanupResult();
+      }
       await state.context.assertExecutionLease?.();
+      state.context.signal?.throwIfAborted();
       return yield* this.executeWithPipeline(state, executionId);
+    } catch (error) {
+      if (isExecutionLeaseFailure(error)) {
+        throw error;
+      }
+      if (isExecutionLeaseFailure(state.context.signal?.reason)) {
+        throw state.context.signal.reason;
+      }
+      if (state.context.signal?.aborted) {
+        const isInterrupt = isSteeringInterruptSignal(state.context.signal);
+        return this.createAbortedResult(
+          isInterrupt ? '工具执行被新的用户输入中断' : '任务已被用户中止',
+          {
+            errorType: isInterrupt
+              ? ToolErrorType.INTERRUPTED
+              : ToolErrorType.EXECUTION_ERROR,
+          },
+        );
+      }
+      throw error;
     } finally {
       fileLease?.release();
-      concurrencyLease.release();
+      concurrencyLease?.release();
     }
   }
 

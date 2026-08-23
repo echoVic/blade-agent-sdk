@@ -8,6 +8,7 @@
  */
 
 import { type InternalLogger, LogCategory, NOOP_LOGGER } from '../../logging/Logger.js';
+import { getAbortSignalReason } from '../../utils/abortPromise.js';
 
 type FileLockMode = 'read' | 'write';
 
@@ -18,6 +19,9 @@ export interface FileLockLease {
 interface QueuedLockRequest {
   mode: FileLockMode;
   resolve: (lease: FileLockLease) => void;
+  reject: (reason?: unknown) => void;
+  signal?: AbortSignal;
+  onAbort?: () => void;
 }
 
 interface FileLockState {
@@ -60,39 +64,77 @@ export class FileLockManager {
    * @param filePath 文件绝对路径
    * @param mode 锁模式，默认 write
    * @param operation 要执行的操作
+   * @param signal 可选的排队取消信号
    * @returns 操作结果
    */
-  acquireLock<T>(filePath: string, operation: () => Promise<T>): Promise<T>;
-  acquireLock<T>(filePath: string, mode: FileLockMode, operation: () => Promise<T>): Promise<T>;
+  acquireLock<T>(
+    filePath: string,
+    operation: () => Promise<T>,
+    signal?: AbortSignal,
+  ): Promise<T>;
+  acquireLock<T>(
+    filePath: string,
+    mode: FileLockMode,
+    operation: () => Promise<T>,
+    signal?: AbortSignal,
+  ): Promise<T>;
   acquireLock<T>(
     filePath: string,
     modeOrOperation: FileLockMode | (() => Promise<T>),
-    maybeOperation?: () => Promise<T>,
+    operationOrSignal?: (() => Promise<T>) | AbortSignal,
+    signal?: AbortSignal,
   ): Promise<T> {
     const mode = typeof modeOrOperation === 'function' ? 'write' : modeOrOperation;
     const operation = typeof modeOrOperation === 'function'
       ? modeOrOperation
-      : maybeOperation;
+      : operationOrSignal;
+    const resolvedSignal = typeof modeOrOperation === 'function'
+      ? operationOrSignal as AbortSignal | undefined
+      : signal;
 
-    if (!operation) {
+    if (typeof operation !== 'function') {
       throw new TypeError('FileLockManager.acquireLock requires an operation');
     }
 
-    return this.runWithLock(filePath, mode, operation);
+    return this.runWithLock(filePath, mode, operation, resolvedSignal);
   }
 
-  acquire(filePath: string, mode: FileLockMode = 'write'): Promise<FileLockLease> {
+  async acquire(
+    filePath: string,
+    mode: FileLockMode = 'write',
+    signal?: AbortSignal,
+  ): Promise<FileLockLease> {
+    signal?.throwIfAborted();
     const state = this.getOrCreateState(filePath);
-    return new Promise<FileLockLease>((resolve) => {
-      const request: QueuedLockRequest = { mode, resolve };
+    return new Promise<FileLockLease>((resolve, reject) => {
+      const request: QueuedLockRequest = {
+        mode,
+        resolve,
+        reject,
+        signal,
+      };
 
       if (this.canGrantImmediately(state, mode)) {
-        this.grant(filePath, state, request);
+        if (!this.grant(filePath, state, request)) {
+          this.cleanupState(filePath, state);
+        }
         return;
       }
 
       this.logger.debug(`排队等待${mode === 'read' ? '读' : '写'}锁: ${filePath}`);
       state.queue.push(request);
+      if (signal) {
+        request.onAbort = () => {
+          const index = state.queue.indexOf(request);
+          if (index < 0) {
+            return;
+          }
+          state.queue.splice(index, 1);
+          reject(getAbortSignalReason(signal));
+          this.drainQueue(filePath, state);
+        };
+        signal.addEventListener('abort', request.onAbort, { once: true });
+      }
     });
   }
 
@@ -172,7 +214,15 @@ export class FileLockManager {
     filePath: string,
     state: FileLockState,
     request: QueuedLockRequest,
-  ): void {
+  ): boolean {
+    if (request.onAbort && request.signal) {
+      request.signal.removeEventListener('abort', request.onAbort);
+    }
+    if (request.signal?.aborted) {
+      request.reject(getAbortSignalReason(request.signal));
+      return false;
+    }
+
     if (request.mode === 'read') {
       state.activeReaders += 1;
       this.logger.debug(`获取文件读锁: ${filePath} (activeReaders=${state.activeReaders})`);
@@ -189,32 +239,39 @@ export class FileLockManager {
         this.releaseRequest(filePath, state, request.mode);
       },
     });
+    return true;
   }
 
   private drainQueue(filePath: string, state: FileLockState): void {
-    if (state.activeWriter || state.activeReaders > 0) {
+    if (state.activeWriter) {
       return;
     }
 
-    if (state.queue.length === 0) {
-      this.cleanupState(filePath, state);
-      return;
-    }
-
-    const next = state.queue[0];
-    if (next?.mode === 'read') {
-      while (state.queue[0]?.mode === 'read') {
-        const request = state.queue.shift();
-        if (!request) break;
-        this.grant(filePath, state, request);
+    while (state.queue.length > 0) {
+      const next = state.queue[0];
+      if (state.activeReaders > 0 && next?.mode === 'write') {
+        return;
       }
-      return;
+      if (next?.mode === 'read') {
+        let grantedReader = false;
+        while (state.queue[0]?.mode === 'read') {
+          const request = state.queue.shift();
+          if (!request) break;
+          grantedReader = this.grant(filePath, state, request) || grantedReader;
+        }
+        if (grantedReader) {
+          return;
+        }
+        continue;
+      }
+
+      const request = state.queue.shift();
+      if (request && this.grant(filePath, state, request)) {
+        return;
+      }
     }
 
-    const request = state.queue.shift();
-    if (request) {
-      this.grant(filePath, state, request);
-    }
+    this.cleanupState(filePath, state);
   }
 
   private cleanupState(filePath: string, state: FileLockState): void {
@@ -243,9 +300,11 @@ export class FileLockManager {
     filePath: string,
     mode: FileLockMode,
     operation: () => Promise<T>,
+    signal?: AbortSignal,
   ): Promise<T> {
-    const lease = await this.acquire(filePath, mode);
+    const lease = await this.acquire(filePath, mode, signal);
     try {
+      signal?.throwIfAborted();
       return await operation();
     } finally {
       lease.release();

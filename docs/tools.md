@@ -451,6 +451,11 @@ generator 退出。JavaScript 无法强制抢占忽略取消信号的自定义�
 仍会完成取消，但新的工具调用以及 Session close/handoff 会 fail-closed，直至
 该回调 Promise 结束。已持久化的权限请求会先以 `decision: 'cancel'` 完成解析。
 
+并发槽位与同文件锁的等待也发生在工具时限开始之前，但都会监听当前 Request
+信号。取消会从 FIFO 队列中移除 waiter，不占用配额，也不打乱其他请求的顺序。
+若资源授予与取消发生在同一轮事件循环，pipeline 会再次检查信号，并在返回取消
+结果前释放已取得的所有 lease。
+
 `interruptBehavior` 属于 `createTool()` 的 `ToolConfig`，轻量
 `defineTool()` / `ToolDefinition` 不暴露该字段。需要让 Session 中的自定义
 工具响应 `now` 转向时，应使用 `createTool()` 并声明 `cancel`。

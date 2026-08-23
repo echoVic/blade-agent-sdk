@@ -220,6 +220,142 @@ describe('FileLockManager', () => {
     });
   });
 
+  describe('cancellable acquisition', () => {
+    it('rejects an already-aborted request without creating lock state', async () => {
+      const manager = FileLockManager.getInstance();
+      const controller = new AbortController();
+      const reason = new Error('cancelled before lock');
+      controller.abort(reason);
+
+      await expect(
+        manager.acquire('/tmp/cancelled.ts', 'write', controller.signal),
+      ).rejects.toBe(reason);
+      expect(manager.isLocked('/tmp/cancelled.ts')).toBe(false);
+    });
+
+    it('removes an aborted waiter and preserves FIFO progress', async () => {
+      const manager = FileLockManager.getInstance();
+      const holder = await manager.acquire('/tmp/queued.ts');
+      const controller = new AbortController();
+      const reason = new Error('cancelled while waiting for lock');
+      const cancelled = manager.acquire(
+        '/tmp/queued.ts',
+        'write',
+        controller.signal,
+      );
+      const next = manager.acquire('/tmp/queued.ts');
+      const cancelledResult = expect(cancelled).rejects.toBe(reason);
+
+      controller.abort(reason);
+      await cancelledResult;
+      expect(manager.isLocked('/tmp/queued.ts')).toBe(true);
+
+      holder.release();
+      const nextLease = await next;
+      nextLease.release();
+      expect(manager.isLocked('/tmp/queued.ts')).toBe(false);
+    });
+
+    it('skips an aborted waiter when an earlier abort listener releases the lock', async () => {
+      const manager = FileLockManager.getInstance();
+      const filePath = '/tmp/listener-order.ts';
+      const holder = await manager.acquire(filePath);
+      const controller = new AbortController();
+      const reason = new Error('cancelled during lock release');
+      controller.signal.addEventListener('abort', () => holder.release(), {
+        once: true,
+      });
+      const cancelled = manager.acquire(
+        filePath,
+        'write',
+        controller.signal,
+      );
+      const next = manager.acquire(filePath);
+      const cancelledResult = expect(cancelled).rejects.toBe(reason);
+
+      controller.abort(reason);
+      await cancelledResult;
+      const nextLease = await next;
+      nextLease.release();
+
+      expect(manager.isLocked(filePath)).toBe(false);
+    });
+
+    it('admits a queued reader when the writer ahead of it is cancelled', async () => {
+      const manager = FileLockManager.getInstance();
+      const filePath = '/tmp/cancelled-writer.ts';
+      const activeReader = await manager.acquire(filePath, 'read');
+      const controller = new AbortController();
+      const reason = new Error('cancelled writer');
+      const writer = manager.acquire(filePath, 'write', controller.signal);
+      const queuedReader = manager.acquire(filePath, 'read');
+      const writerResult = expect(writer).rejects.toBe(reason);
+      let readerAcquired = false;
+      void queuedReader.then(() => {
+        readerAcquired = true;
+      });
+
+      await Promise.resolve();
+      expect(readerAcquired).toBe(false);
+      controller.abort(reason);
+      await writerResult;
+      const secondReader = await queuedReader;
+
+      expect(readerAcquired).toBe(true);
+      activeReader.release();
+      expect(manager.isLocked(filePath)).toBe(true);
+      secondReader.release();
+      expect(manager.isLocked(filePath)).toBe(false);
+    });
+
+    it('does not run acquireLock work when cancellation wins after grant', async () => {
+      const manager = FileLockManager.getInstance();
+      const holder = await manager.acquire('/tmp/grant-race.ts');
+      const controller = new AbortController();
+      const reason = new Error('cancelled after lock grant');
+      let invoked = false;
+      const scheduled = manager.acquireLock(
+        '/tmp/grant-race.ts',
+        async () => {
+          invoked = true;
+        },
+        controller.signal,
+      );
+      const cancelledResult = expect(scheduled).rejects.toBe(reason);
+
+      holder.release();
+      controller.abort(reason);
+      await cancelledResult;
+
+      expect(invoked).toBe(false);
+      expect(manager.isLocked('/tmp/grant-race.ts')).toBe(false);
+    });
+
+    it('passes a cancellation signal through the explicit lock mode overload', async () => {
+      const manager = FileLockManager.getInstance();
+      const holder = await manager.acquire('/tmp/read-mode.ts', 'write');
+      const controller = new AbortController();
+      const reason = new Error('cancelled read');
+      let invoked = false;
+      const scheduled = manager.acquireLock(
+        '/tmp/read-mode.ts',
+        'read',
+        async () => {
+          invoked = true;
+        },
+        controller.signal,
+      );
+      const cancelledResult = expect(scheduled).rejects.toBe(reason);
+
+      controller.abort(reason);
+      await cancelledResult;
+      holder.release();
+
+      expect(invoked).toBe(false);
+      expect(manager.isLocked('/tmp/read-mode.ts')).toBe(false);
+    });
+  });
+
   describe('isLocked', () => {
     it('should return false for a file that has never been locked', () => {
       const manager = FileLockManager.getInstance();

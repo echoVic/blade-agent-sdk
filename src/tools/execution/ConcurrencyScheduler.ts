@@ -15,6 +15,7 @@
  * 调用方应直接提交所有已就绪任务,不要再叠加独立的数值并发限制。
  */
 
+import { getAbortSignalReason } from '../../utils/abortPromise.js';
 import { ToolKind } from '../types/ToolKind.js';
 
 export interface ConcurrencyLease {
@@ -23,6 +24,9 @@ export interface ConcurrencyLease {
 
 interface PendingLease {
   resolve: (lease: ConcurrencyLease) => void;
+  reject: (reason?: unknown) => void;
+  signal?: AbortSignal;
+  onAbort?: () => void;
 };
 
 interface BucketState {
@@ -80,7 +84,11 @@ export class ConcurrencyScheduler {
     ConcurrencyScheduler.instance = null;
   }
 
-  async acquire(kind: ToolKind): Promise<ConcurrencyLease> {
+  async acquire(
+    kind: ToolKind,
+    signal?: AbortSignal,
+  ): Promise<ConcurrencyLease> {
+    signal?.throwIfAborted();
     const bucket = this.buckets[kind];
     if (!bucket) {
       return { release() {} };
@@ -91,14 +99,35 @@ export class ConcurrencyScheduler {
       return this.createLease(bucket);
     }
 
-    return new Promise<ConcurrencyLease>((resolve) => {
-      bucket.queue.push({ resolve });
+    return new Promise<ConcurrencyLease>((resolve, reject) => {
+      const pending: PendingLease = {
+        resolve,
+        reject,
+        signal,
+      };
+      if (signal) {
+        pending.onAbort = () => {
+          const index = bucket.queue.indexOf(pending);
+          if (index < 0) {
+            return;
+          }
+          bucket.queue.splice(index, 1);
+          reject(getAbortSignalReason(signal));
+        };
+        signal.addEventListener('abort', pending.onAbort, { once: true });
+      }
+      bucket.queue.push(pending);
     });
   }
 
-  async schedule<T>(kind: ToolKind, fn: () => Promise<T>): Promise<T> {
-    const lease = await this.acquire(kind);
+  async schedule<T>(
+    kind: ToolKind,
+    fn: () => Promise<T>,
+    signal?: AbortSignal,
+  ): Promise<T> {
+    const lease = await this.acquire(kind, signal);
     try {
+      signal?.throwIfAborted();
       return await fn();
     } finally {
       lease.release();
@@ -138,6 +167,13 @@ export class ConcurrencyScheduler {
     while (bucket.inFlight < bucket.maxConcurrent && bucket.queue.length > 0) {
       const pending = bucket.queue.shift();
       if (!pending) break;
+      if (pending.onAbort && pending.signal) {
+        pending.signal.removeEventListener('abort', pending.onAbort);
+      }
+      if (pending.signal?.aborted) {
+        pending.reject(getAbortSignalReason(pending.signal));
+        continue;
+      }
       bucket.inFlight++;
       pending.resolve(this.createLease(bucket));
     }

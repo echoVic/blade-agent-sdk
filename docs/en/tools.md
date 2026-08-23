@@ -223,6 +223,13 @@ close/handoff fail closed until the callback Promise settles. A durable
 permission request is resolved with `decision: 'cancel'` before cancellation
 completes.
 
+Concurrency-slot and same-file lock waits also occur before the tool timeout
+starts, but both observe the active Request signal. Cancellation removes a
+queued waiter without consuming capacity or disturbing FIFO order. If resource
+grant and cancellation happen in the same turn, the pipeline rechecks the
+signal and releases every acquired lease before returning the cancellation
+result.
+
 `interruptBehavior` belongs to the `ToolConfig` accepted by `createTool()`;
 `defineTool()` / `ToolDefinition` does not expose it. Use `createTool()` with
 `cancel` when a custom Session tool can safely stop for a `now` input.

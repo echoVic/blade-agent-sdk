@@ -134,6 +134,102 @@ describe('ConcurrencyScheduler', () => {
     });
   });
 
+  describe('取消排队', () => {
+    it('拒绝已取消的请求且不占用配额', async () => {
+      const scheduler = new ConcurrencyScheduler({ execute: 1 });
+      const controller = new AbortController();
+      const reason = new Error('cancelled before acquire');
+      controller.abort(reason);
+
+      await expect(
+        scheduler.acquire(ToolKind.Execute, controller.signal),
+      ).rejects.toBe(reason);
+      expect(scheduler.getStats()[ToolKind.Execute]).toEqual({
+        inFlight: 0,
+        queued: 0,
+      });
+    });
+
+    it('从 FIFO 队列移除已取消的 waiter', async () => {
+      const scheduler = new ConcurrencyScheduler({ execute: 1 });
+      const holder = await scheduler.acquire(ToolKind.Execute);
+      const controller = new AbortController();
+      const reason = new Error('cancelled while queued');
+      const cancelled = scheduler.acquire(ToolKind.Execute, controller.signal);
+      const next = scheduler.acquire(ToolKind.Execute);
+      const cancelledResult = expect(cancelled).rejects.toBe(reason);
+
+      expect(scheduler.getStats()[ToolKind.Execute]).toEqual({
+        inFlight: 1,
+        queued: 2,
+      });
+      controller.abort(reason);
+      await cancelledResult;
+      expect(scheduler.getStats()[ToolKind.Execute]).toEqual({
+        inFlight: 1,
+        queued: 1,
+      });
+
+      holder.release();
+      const nextLease = await next;
+      expect(scheduler.getStats()[ToolKind.Execute]).toEqual({
+        inFlight: 1,
+        queued: 0,
+      });
+      nextLease.release();
+      expect(scheduler.getStats()[ToolKind.Execute].inFlight).toBe(0);
+    });
+
+    it('skips an aborted waiter when an earlier abort listener releases the slot', async () => {
+      const scheduler = new ConcurrencyScheduler({ execute: 1 });
+      const holder = await scheduler.acquire(ToolKind.Execute);
+      const controller = new AbortController();
+      const reason = new Error('cancelled during release');
+      controller.signal.addEventListener('abort', () => holder.release(), {
+        once: true,
+      });
+      const cancelled = scheduler.acquire(ToolKind.Execute, controller.signal);
+      const next = scheduler.acquire(ToolKind.Execute);
+      const cancelledResult = expect(cancelled).rejects.toBe(reason);
+
+      controller.abort(reason);
+      await cancelledResult;
+      const nextLease = await next;
+
+      expect(scheduler.getStats()[ToolKind.Execute]).toEqual({
+        inFlight: 1,
+        queued: 0,
+      });
+      nextLease.release();
+    });
+
+    it('does not run scheduled work when cancellation wins after grant', async () => {
+      const scheduler = new ConcurrencyScheduler({ execute: 1 });
+      const holder = await scheduler.acquire(ToolKind.Execute);
+      const controller = new AbortController();
+      const reason = new Error('cancelled after grant');
+      let invoked = false;
+      const scheduled = scheduler.schedule(
+        ToolKind.Execute,
+        async () => {
+          invoked = true;
+        },
+        controller.signal,
+      );
+      const cancelledResult = expect(scheduled).rejects.toBe(reason);
+
+      holder.release();
+      controller.abort(reason);
+      await cancelledResult;
+
+      expect(invoked).toBe(false);
+      expect(scheduler.getStats()[ToolKind.Execute]).toEqual({
+        inFlight: 0,
+        queued: 0,
+      });
+    });
+  });
+
   describe('桶隔离', () => {
     it('execute 桶打满不影响 readonly', async () => {
       const scheduler = new ConcurrencyScheduler({ execute: 1 });

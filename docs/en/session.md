@@ -618,6 +618,11 @@ retains its runtime and durable execution lease, rejects new tool work, and
 makes `close()` or `suspendForHandoff()` retryable only after that callback
 settles.
 
+Waiting for a tool concurrency slot or same-file lock is also outside
+`toolTimeoutMs`, but is cancellation-aware. Aborting the Request removes its
+waiter immediately; a slot or lock granted concurrently with cancellation is
+released before tool hooks, permission checks, or side effects can start.
+
 See [Tools](./tools), [Permissions](./permissions), and [Hooks](./hooks).
 
 ## MCP
