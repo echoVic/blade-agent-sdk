@@ -256,7 +256,12 @@ export function createTaskTool({ registry }: { registry: SubagentRegistry }) {
           };
         }
 
-        const executor = new SubagentExecutor(subagentConfig, context.bladeConfig, registry);
+        const executor = new SubagentExecutor(
+          subagentConfig,
+          context.bladeConfig,
+          registry,
+          context.backgroundAgentManager as BackgroundAgentManager | undefined,
+        );
         const subagentContext: SubagentContext = {
           prompt,
           parentSessionId: context.sessionId,

@@ -1202,6 +1202,59 @@ describe('ExecutionPipeline', () => {
     expect(executeSpy).not.toHaveBeenCalled();
   });
 
+  it('blocks the side effect when cancellation wins during the execution-start boundary', async () => {
+    const registry = new ToolRegistry();
+    const boundary = deferred();
+    const boundaryStarted = deferred();
+    const executeSpy = vi.fn(() => completeToolExecution({
+      status: 'success',
+      model: 'unexpected',
+    }));
+    registerTool(
+      registry,
+      createTool({
+        name: 'CancelledBoundaryTool',
+        displayName: 'Cancelled Boundary Tool',
+        kind: ToolKind.Execute,
+        sideEffect: 'non_idempotent',
+        description: { short: 'Cancellation boundary tool' },
+        schema: z.object({}),
+        execute: executeSpy,
+      }),
+    );
+    const pipeline = new ExecutionPipeline(registry, {
+      permissionMode: PermissionMode.YOLO,
+    });
+    const controller = new AbortController();
+    const resultPromise = executePipeline(
+      pipeline,
+      'CancelledBoundaryTool',
+      {},
+      {
+        permissionMode: PermissionMode.YOLO,
+        signal: controller.signal,
+        toolInvocationLifecycle: {
+          onExecutionStarted: async () => {
+            boundaryStarted.resolve();
+            await boundary.promise;
+          },
+        },
+      },
+    );
+
+    await boundaryStarted.promise;
+    controller.abort();
+    boundary.resolve();
+
+    await expect(resultPromise).resolves.toMatchObject({
+      status: 'error',
+      error: {
+        message: 'Task was aborted before tool execution',
+      },
+    });
+    expect(executeSpy).not.toHaveBeenCalled();
+  });
+
   it('blocks the side effect when permission resolution cannot be persisted', async () => {
     const registry = new ToolRegistry();
     const executeSpy = vi.fn(() => completeToolExecution({

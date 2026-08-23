@@ -98,6 +98,7 @@ describe('BackgroundAgentManager', () => {
       expect.anything(),
       expect.anything(),
       expect.objectContaining({
+        backgroundAgentManager: manager,
         defaultContext: snapshot.context,
       }),
     );
@@ -209,5 +210,50 @@ describe('BackgroundAgentManager', () => {
 
     const session = await manager.waitForCompletion(agentId, 1000);
     expect(session?.status).toBe('cancelled');
+  });
+
+  it('seals new admissions only after all background agents settle', async () => {
+    runAgenticLoop.mockImplementationOnce(
+      async (
+        _message: string,
+        _context: ChatContext,
+        options?: LoopOptions,
+      ) =>
+        await new Promise((resolve) => {
+          options?.signal?.addEventListener(
+            'abort',
+            () =>
+              resolve({
+                success: false,
+                error: { message: 'aborted' },
+                metadata: { duration: 0 },
+              }),
+            { once: true },
+          );
+        }),
+    );
+
+    const agentId = AgentId(manager.startBackgroundAgent({
+      config: subagentConfig,
+      bladeConfig,
+      description: 'Handoff blocker',
+      prompt: 'inspect',
+    }));
+
+    expect(manager.getActiveAgentIds()).toEqual([agentId]);
+    await vi.waitFor(() => expect(runAgenticLoop).toHaveBeenCalled());
+    expect(manager.killAgent(agentId)).toBe(true);
+    await manager.waitForCompletion(agentId, 1000);
+
+    expect(manager.getActiveAgentIds()).toEqual([]);
+    manager.sealForHandoff();
+    expect(() =>
+      manager.startBackgroundAgent({
+        config: subagentConfig,
+        bladeConfig,
+        description: 'Rejected after handoff seal',
+        prompt: 'inspect',
+      }),
+    ).toThrow('Background agent admission is closed for Session handoff');
   });
 });

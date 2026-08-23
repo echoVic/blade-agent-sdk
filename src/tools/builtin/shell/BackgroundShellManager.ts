@@ -55,6 +55,7 @@ export interface KillResult {
 export class BackgroundShellManager {
   private static instance: BackgroundShellManager | null = null;
   private processes = new Map<string, BackgroundShellProcess>();
+  private sealedSessionIds = new Set<SessionId>();
 
   static getInstance(): BackgroundShellManager {
     if (!BackgroundShellManager.instance) {
@@ -64,6 +65,10 @@ export class BackgroundShellManager {
   }
 
   startBackgroundProcess(options: StartOptions): BackgroundShellProcess {
+    if (this.sealedSessionIds.has(options.sessionId)) {
+      throw new Error(`Background shell admission is closed for Session ${options.sessionId}`);
+    }
+
     const shellId = `bash_${randomUUID()}`;
     const mergedEnv: Record<string, string> = {};
 
@@ -158,6 +163,22 @@ export class BackgroundShellManager {
     return this.processes.get(shellId);
   }
 
+  getActiveProcessIds(sessionId: SessionId): readonly string[] {
+    return [...this.processes.values()]
+      .filter((processInfo) =>
+        processInfo.sessionId === sessionId
+        && processInfo.process !== undefined)
+      .map((processInfo) => processInfo.id);
+  }
+
+  sealSessionForHandoff(sessionId: SessionId): void {
+    this.sealedSessionIds.add(sessionId);
+  }
+
+  openSession(sessionId: SessionId): void {
+    this.sealedSessionIds.delete(sessionId);
+  }
+
   kill(shellId: string): KillResult | undefined {
     const processInfo = this.processes.get(shellId);
     if (!processInfo) {
@@ -189,7 +210,6 @@ export class BackgroundShellManager {
 
     processInfo.status = 'killed';
     processInfo.endTime = Date.now();
-    processInfo.process = undefined;
 
     return {
       success: true,
@@ -219,5 +239,6 @@ export class BackgroundShellManager {
       }
     }
     this.processes.clear();
+    this.sealedSessionIds.clear();
   }
 }

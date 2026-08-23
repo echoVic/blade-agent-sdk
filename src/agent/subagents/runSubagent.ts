@@ -4,6 +4,7 @@ import type { ContextSnapshot } from '../../runtime/index.js';
 import type { Message } from '../../services/ChatServiceInterface.js';
 import { Agent } from '../Agent.js';
 import type { AgentProgress, LoopResult } from '../types.js';
+import type { BackgroundAgentManager } from './BackgroundAgentManager.js';
 import type { SubagentRegistry } from './SubagentRegistry.js';
 import type { SubagentConfig } from './types.js';
 
@@ -18,6 +19,7 @@ export interface RunSubagentOptions {
   snapshot?: ContextSnapshot;
   messages?: Message[];
   signal?: AbortSignal;
+  backgroundAgentManager?: BackgroundAgentManager;
   omitEnvironment?: boolean;
   onProgress?: (progress: AgentProgress) => void;
 }
@@ -45,6 +47,7 @@ export async function runSubagent(options: RunSubagentOptions): Promise<LoopResu
     snapshot,
     messages,
     signal,
+    backgroundAgentManager,
     omitEnvironment,
     onProgress,
   } = options;
@@ -57,6 +60,7 @@ export async function runSubagent(options: RunSubagentOptions): Promise<LoopResu
     },
     {
       subagentRegistry,
+      backgroundAgentManager,
       defaultContext: snapshot ? snapshot.context : {},
     },
   );

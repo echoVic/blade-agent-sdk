@@ -274,7 +274,14 @@ Before executing commands:
       }
 
       if (run_in_background) {
-        return executeInBackground(effectiveCommand, workDir, env);
+        return executeInBackground(
+          effectiveCommand,
+          workDir,
+          context.backgroundAgentManager?.getOwnerSessionId?.()
+            ?? context.sessionId
+            ?? SessionId(randomUUID()),
+          env,
+        );
       }
 
       return await executeWithTimeout(effectiveCommand, workDir, env, timeout, signal);
@@ -353,12 +360,13 @@ Before executing commands:
 function executeInBackground(
   command: string,
   cwd: string,
+  sessionId: SessionId,
   env?: Record<string, string>
 ): ToolResult {
   const manager = BackgroundShellManager.getInstance();
   const backgroundProcess = manager.startBackgroundProcess({
     command,
-    sessionId: SessionId(randomUUID()),
+    sessionId,
     cwd,
     env,
   });

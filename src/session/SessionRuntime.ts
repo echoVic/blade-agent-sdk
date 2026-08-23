@@ -18,6 +18,7 @@ import {
 import { getSandboxExecutor } from '../sandbox/SandboxExecutor.js';
 import { getSandboxService } from '../sandbox/SandboxService.js';
 import { getBuiltinTools } from '../tools/builtin/index.js';
+import { BackgroundShellManager } from '../tools/builtin/shell/BackgroundShellManager.js';
 import { ToolCatalog } from '../tools/catalog/ToolCatalog.js';
 import { toolFromDefinition } from '../tools/core/createTool.js';
 import { ExecutionPipeline } from '../tools/execution/ExecutionPipeline.js';
@@ -26,7 +27,7 @@ import type { Tool } from '../tools/types/index.js';
 import type { BladeConfig, McpServerConfig, PermissionsConfig } from '../types/common.js';
 import type { PermissionMode } from '../types/common.js';
 import { HookEvent } from '../types/constants.js';
-import type { SessionId } from '../types/branded.js';
+import type { AgentId, SessionId } from '../types/branded.js';
 import {
   createCompositePermissionHandler,
   createPermissionHandlerFromCanUseTool,
@@ -122,7 +123,11 @@ export class SessionRuntime {
     this.mcpRegistry = new McpRegistry(this.storageRoot);
     this.subagentRegistry = new SubagentRegistry(this.rootLogger, getContextCwd(defaultContext));
     const sessionStore = AgentSessionStore.create(this.storageRoot, this.rootLogger);
-    this.backgroundAgentManager = BackgroundAgentManager.create(this.rootLogger, sessionStore);
+    this.backgroundAgentManager = BackgroundAgentManager.create(
+      this.rootLogger,
+      sessionStore,
+      this.sessionId,
+    );
     this.contextManager = new ContextManager({
       storage: {
         maxMemorySize: 1000,
@@ -181,6 +186,20 @@ export class SessionRuntime {
     return this.backgroundAgentManager;
   }
 
+  sealBackgroundWorkForHandoff(): {
+    activeSubagentIds: readonly AgentId[];
+    activeShellIds: readonly string[];
+  } {
+    const activeSubagentIds = this.backgroundAgentManager.getActiveAgentIds();
+    const shellManager = BackgroundShellManager.getInstance();
+    const activeShellIds = shellManager.getActiveProcessIds(this.sessionId);
+    if (activeSubagentIds.length === 0 && activeShellIds.length === 0) {
+      this.backgroundAgentManager.sealForHandoff();
+      shellManager.sealSessionForHandoff(this.sessionId);
+    }
+    return { activeSubagentIds, activeShellIds };
+  }
+
   getContextManager(): ContextManager {
     return this.contextManager;
   }
@@ -188,6 +207,7 @@ export class SessionRuntime {
   async initialize(): Promise<void> {
     if (this.initialized) return;
 
+    BackgroundShellManager.getInstance().openSession(this.sessionId);
     if (this.options.sandbox) {
       getSandboxExecutor(this.rootLogger);
       getSandboxService().configure(this.options.sandbox);

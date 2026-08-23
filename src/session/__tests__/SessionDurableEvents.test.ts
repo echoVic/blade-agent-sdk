@@ -8,9 +8,12 @@ import { RECONCILED_INITIAL_INPUT } from '../../agent/InitialInputPreparation.js
 import type { ModelRequestLifecycle } from '../../agent/ModelExecutionLifecycle.js';
 import type { LoopOptions, LoopResult, UserMessageContent } from '../../agent/types.js';
 import { PersistentStore } from '../../context/storage/PersistentStore.js';
+import { SessionHandoffError } from '../../errors/SessionHandoffError.js';
 import { HookRuntime } from '../../hooks/HookRuntime.js';
 import type { Message } from '../../services/ChatServiceInterface.js';
+import { BackgroundShellManager } from '../../tools/builtin/shell/BackgroundShellManager.js';
 import {
+  AgentId,
   CommandId,
   EventId,
   InputId,
@@ -1469,6 +1472,632 @@ describe('Session durable events', () => {
     await expect(output.next()).rejects.toBeInstanceOf(
       DurableCommandOutcomeUnknownError,
     );
+  });
+
+  it('hands off an idle Session without closing its durable lifecycle', async () => {
+    const { root, store } = createStore();
+    const session = await createSession({
+      ...options(store),
+      persistSession: true,
+      storagePath: root,
+    });
+
+    const handoff = await session.suspendForHandoff();
+
+    expect(handoff.recoveryPlan.action).toBe('none');
+    expect(session.isClosed).toBe(true);
+    expect((await store.read(session.sessionId)).events.map((event) => event.type)).toEqual([
+      DurableEventType.SESSION_CREATED,
+    ]);
+    const shellManager = BackgroundShellManager.getInstance();
+    expect(() =>
+      shellManager.startBackgroundProcess({
+        command: 'true',
+        sessionId: session.sessionId,
+        cwd: root,
+      }),
+    ).toThrow(/admission is closed/);
+
+    const resumed = await resumeSession({
+      ...options(store),
+      persistSession: true,
+      storagePath: root,
+      sessionId: session.sessionId,
+    });
+    expect(() =>
+      shellManager.startBackgroundProcess({
+        command: 'true',
+        sessionId: session.sessionId,
+        cwd: root,
+      }),
+    ).not.toThrow();
+    await resumed.send('continue after idle handoff');
+    for await (const _event of resumed.stream()) {
+      // Drain.
+    }
+    await resumed.close();
+  });
+
+  it('hands off a pending Request without terminalizing the durable Session', async () => {
+    const { root, store } = createStore();
+    const session = await createSession({
+      ...options(store),
+      persistSession: true,
+      storagePath: root,
+    });
+    const submission = await session.send('pending handoff');
+    if (submission.status !== 'started') {
+      throw new Error('Expected started submission');
+    }
+
+    const handoff = session.suspendForHandoff();
+    expect(session.suspendForHandoff()).toBe(handoff);
+    const result = await handoff;
+    expect(result).toMatchObject({
+      sessionId: session.sessionId,
+      recoveryPlan: {
+        action: 'resume_request',
+        requestId: submission.requestId,
+      },
+    });
+    expect(session.isClosed).toBe(true);
+
+    const eventsBeforeResume = (await store.read(session.sessionId)).events;
+    expect(result.headSequence).toBe(eventsBeforeResume.at(-1)?.sequence);
+    expect(eventsBeforeResume.at(-1)?.type).toBe(DurableEventType.REQUEST_ACCEPTED);
+    expect(eventsBeforeResume).not.toContainEqual(
+      expect.objectContaining({ type: DurableEventType.SESSION_CLOSED }),
+    );
+    await expect(session.close()).resolves.toBeUndefined();
+    await expect(session.stream().next()).rejects.toThrow('Session is closed');
+    expect((await store.read(session.sessionId)).events).toHaveLength(
+      eventsBeforeResume.length,
+    );
+
+    const resumed = await resumeSession({
+      ...options(store),
+      persistSession: true,
+      storagePath: root,
+      sessionId: session.sessionId,
+    });
+    for await (const _event of resumed.stream()) {
+      // Drain the handed-off Request.
+    }
+    await resumed.close();
+  });
+
+  it('waits for a stream pump that started before claiming its pending Request', async () => {
+    const { root, store } = createStore();
+    const session = await createSession({
+      ...options(store),
+      persistSession: true,
+      storagePath: root,
+    });
+    await session.send('pending pump handoff');
+
+    let pumpStarted = false;
+    let releasePump!: () => void;
+    const pumpGate = new Promise<void>((resolve) => {
+      releasePump = resolve;
+    });
+    (session as unknown as {
+      ensureInitialized(): Promise<void>;
+    }).ensureInitialized = async () => {
+      pumpStarted = true;
+      await pumpGate;
+    };
+
+    const output = session.stream();
+    const next = output.next();
+    await vi.waitFor(() => expect(pumpStarted).toBe(true));
+    let handoffResolved = false;
+    const handoffPromise = session.suspendForHandoff().then((result) => {
+      handoffResolved = true;
+      return result;
+    });
+
+    await Promise.resolve();
+    expect(handoffResolved).toBe(false);
+    releasePump();
+    await expect(handoffPromise).resolves.toMatchObject({
+      recoveryPlan: { action: 'resume_request' },
+    });
+    await expect(next).resolves.toEqual({ value: undefined, done: true });
+  });
+
+  it('waits for running cleanup and preserves an unfinished Turn for handoff recovery', async () => {
+    const { root, store } = createStore();
+    let firstExecution = true;
+    let cleanupStarted = false;
+    let innerClosed = false;
+    let releaseCleanup!: () => void;
+    const cleanupGate = new Promise<void>((resolve) => {
+      releaseCleanup = resolve;
+    });
+    streamChat = async function* handoffStream(_message, context, loopOptions) {
+      if (!firstExecution) {
+        yield { type: 'turn_start', turn: 1, maxTurns: 10 };
+        yield { type: 'turn_end', turn: 1, hasToolCalls: false };
+        return {
+          success: true,
+          finalMessage: 'resumed',
+          metadata: { turnsCount: 1, toolCallsCount: 0, duration: 1 },
+        };
+      }
+      firstExecution = false;
+      let modelRequest: ModelRequestLifecycle | undefined;
+      try {
+        yield { type: 'turn_start', turn: 1, maxTurns: 10 };
+        modelRequest = await loopOptions?.modelExecutionLifecycle?.onModelRequestStarting({
+          turn: 1,
+          model: 'test-model',
+          streaming: true,
+        });
+        yield { type: 'content_delta', delta: 'partial' };
+        const signal = (context as { signal?: AbortSignal }).signal;
+        await new Promise<void>((resolve) => {
+          if (signal?.aborted) {
+            resolve();
+            return;
+          }
+          signal?.addEventListener('abort', () => resolve(), { once: true });
+        });
+        return {
+          success: false,
+          error: { type: 'aborted', message: 'handed off' },
+          metadata: { turnsCount: 1, toolCallsCount: 0, duration: 1 },
+        };
+      } finally {
+        await modelRequest?.onAborted('request_interrupted');
+        cleanupStarted = true;
+        await cleanupGate;
+        innerClosed = true;
+      }
+    };
+    const session = await createSession({
+      ...options(store),
+      persistSession: true,
+      storagePath: root,
+    });
+    await session.send('running handoff');
+    const output = session.stream();
+    await output.next();
+    await output.next();
+
+    let handoffResolved = false;
+    const handoffPromise = session.suspendForHandoff().then((result) => {
+      handoffResolved = true;
+      return result;
+    });
+    const concurrentClose = session.close();
+    expect(session.close()).toBe(concurrentClose);
+    expect(session.isClosed).toBe(true);
+    await expect(session.send('racing handoff')).rejects.toThrow('Session is closed');
+    await vi.waitFor(() => expect(cleanupStarted).toBe(true));
+    expect(handoffResolved).toBe(false);
+    releaseCleanup();
+    const handoff = await handoffPromise;
+    await concurrentClose;
+
+    expect(innerClosed).toBe(true);
+    expect(session.isClosed).toBe(true);
+    expect(handoff.recoveryPlan).toMatchObject({
+      action: 'resume_turn',
+      requestId: expect.any(String),
+      turnId: expect.any(String),
+    });
+    const eventsBeforeRecovery = (await store.read(session.sessionId)).events;
+    expect(eventsBeforeRecovery.map((event) => event.type)).toEqual([
+      DurableEventType.SESSION_CREATED,
+      DurableEventType.REQUEST_ACCEPTED,
+      DurableEventType.INPUT_APPLIED,
+      DurableEventType.REQUEST_STARTED,
+      DurableEventType.TURN_STARTED,
+      DurableEventType.MODEL_REQUEST_STARTED,
+      DurableEventType.MODEL_REQUEST_ABORTED,
+    ]);
+    await expect(output.next()).resolves.toEqual({ value: undefined, done: true });
+
+    const requestId = handoff.recoveryPlan.requestId;
+    const turnId = handoff.recoveryPlan.turnId;
+    if (!requestId || !turnId) {
+      throw new Error('Expected handoff recovery identifiers');
+    }
+    const coordinator = await DurableSessionRecoveryCoordinator.open(
+      store,
+      session.sessionId,
+    );
+    await coordinator.prepareTurnRecovery({
+      commandId: CommandId('handoff-recovery-command'),
+      requestId,
+      turnId,
+      recoveryRequestId: RequestId('handoff-recovery-request'),
+      recoveryInputId: InputId('handoff-recovery-input'),
+    });
+
+    const resumed = await resumeSession({
+      ...options(store),
+      persistSession: true,
+      storagePath: root,
+      sessionId: session.sessionId,
+    });
+    for await (const _event of resumed.stream()) {
+      // Drain the recovery Request on the replacement worker.
+    }
+    expect(resumed.getDurableRecoveryPlan()?.action).toBe('none');
+    await resumed.close();
+  });
+
+  it('opens a resumable Turn when handoff lands after a completed tool round', async () => {
+    const { root, store } = createStore();
+    streamChat = async function* interTurnHandoff(_message, context, loopOptions) {
+      yield { type: 'turn_start', turn: 1, maxTurns: 10 };
+      const modelRequest = await loopOptions?.modelExecutionLifecycle?.onModelRequestStarting({
+        turn: 1,
+        model: 'test-model',
+        streaming: false,
+      });
+      if (!modelRequest?.modelAttemptId) {
+        throw new Error('Missing model request lifecycle');
+      }
+      const toolCall = {
+        id: 'handoff-tool-call',
+        type: 'function' as const,
+        function: {
+          name: 'Read',
+          arguments: '{"file_path":"/tmp/input"}',
+        },
+      };
+      await modelRequest.onCompleted({
+        content: '',
+        toolCalls: [toolCall],
+      });
+      const toolLifecycle = loopOptions?.toolExecutionLifecycle;
+      const invocation = await toolLifecycle?.onToolScheduled?.({
+        toolCallId: ToolUseId(toolCall.id),
+        toolName: toolCall.function.name,
+        modelAttemptId: modelRequest.modelAttemptId,
+        modelInput: { file_path: '/tmp/input' },
+        input: { file_path: '/tmp/input' },
+        sideEffect: 'pure',
+        interruptBehavior: 'cancel',
+      });
+      if (!invocation) {
+        throw new Error('Missing tool invocation lifecycle');
+      }
+      yield { type: 'tool_start', toolCall };
+      await invocation.onExecutionStarted?.({
+        input: { file_path: '/tmp/input' },
+        sideEffect: 'pure',
+      });
+      await toolLifecycle?.onToolSettled?.({
+        toolCallId: ToolUseId(toolCall.id),
+        toolName: toolCall.function.name,
+        result: { status: 'success', model: 'contents' },
+      });
+      yield {
+        type: 'tool_result',
+        toolCall,
+        result: { status: 'success', model: 'contents' },
+      };
+      yield { type: 'turn_end', turn: 1, hasToolCalls: true };
+
+      const signal = (context as { signal?: AbortSignal }).signal;
+      if (!signal?.aborted) {
+        throw new Error('Expected handoff to abort before the next Turn');
+      }
+      yield { type: 'agent_end' };
+      return {
+        success: false,
+        error: { type: 'aborted', message: 'handed off between Turns' },
+        metadata: { turnsCount: 1, toolCallsCount: 1, duration: 1 },
+      };
+    };
+    const session = await createSession({
+      ...options(store),
+      persistSession: true,
+      storagePath: root,
+    });
+    await session.send('read and continue');
+    const output = session.stream();
+
+    let event: Awaited<ReturnType<typeof output.next>>;
+    do {
+      event = await output.next();
+    } while (!event.done && event.value.type !== 'turn_end');
+    expect(event).toMatchObject({
+      done: false,
+      value: { type: 'turn_end', turn: 1 },
+    });
+
+    const handoff = await session.suspendForHandoff();
+
+    expect(handoff.recoveryPlan).toMatchObject({
+      action: 'resume_turn',
+      requestId: expect.any(String),
+      turnId: expect.any(String),
+    });
+    await expect(output.next()).resolves.toEqual({ value: undefined, done: true });
+    const events = (await store.read(session.sessionId)).events;
+    expect(events.slice(-2)).toEqual([
+      expect.objectContaining({
+        type: DurableEventType.TURN_COMPLETED,
+        data: { turn: 1, hasToolCalls: true },
+      }),
+      expect.objectContaining({
+        type: DurableEventType.TURN_STARTED,
+        data: { turn: 2, model: 'test-model' },
+      }),
+    ]);
+    expect(events).not.toContainEqual(
+      expect.objectContaining({ type: DurableEventType.REQUEST_INTERRUPTED }),
+    );
+  });
+
+  it('opens a resumable Turn when handoff interrupts a no-tool continuation', async () => {
+    const { root, store } = createStore();
+    streamChat = async function* noToolContinuation(_message, context, loopOptions) {
+      yield { type: 'turn_start', turn: 1, maxTurns: 10 };
+      const modelRequest = await loopOptions?.modelExecutionLifecycle?.onModelRequestStarting({
+        turn: 1,
+        model: 'test-model',
+        streaming: false,
+      });
+      if (!modelRequest) {
+        throw new Error('Missing model request lifecycle');
+      }
+      await modelRequest.onCompleted({ content: 'retry with more detail' });
+      yield { type: 'turn_end', turn: 1, hasToolCalls: false };
+
+      const signal = (context as { signal?: AbortSignal }).signal;
+      if (!signal?.aborted) {
+        throw new Error('Expected handoff to abort before the next Turn');
+      }
+      yield { type: 'agent_end' };
+      return {
+        success: false,
+        error: { type: 'aborted', message: 'handed off before retry' },
+        metadata: { turnsCount: 1, toolCallsCount: 0, duration: 1 },
+      };
+    };
+    const session = await createSession({
+      ...options(store),
+      persistSession: true,
+      storagePath: root,
+    });
+    await session.send('continue after retry');
+    const output = session.stream();
+
+    let event: Awaited<ReturnType<typeof output.next>>;
+    do {
+      event = await output.next();
+    } while (!event.done && event.value.type !== 'turn_end');
+
+    await expect(session.suspendForHandoff()).resolves.toMatchObject({
+      recoveryPlan: {
+        action: 'resume_turn',
+        requestId: expect.any(String),
+        turnId: expect.any(String),
+      },
+    });
+    await expect(output.next()).resolves.toEqual({ value: undefined, done: true });
+    expect((await store.read(session.sessionId)).events.slice(-2)).toEqual([
+      expect.objectContaining({
+        type: DurableEventType.TURN_COMPLETED,
+        data: { turn: 1, hasToolCalls: false },
+      }),
+      expect.objectContaining({
+        type: DurableEventType.TURN_STARTED,
+        data: { turn: 2, model: 'test-model' },
+      }),
+    ]);
+  });
+
+  it('commits natural completion when handoff lands after a terminal no-tool Turn', async () => {
+    const { root, store } = createStore();
+    streamChat = async function* terminalHandoff(_message, _context, loopOptions) {
+      yield { type: 'turn_start', turn: 1, maxTurns: 10 };
+      const modelRequest = await loopOptions?.modelExecutionLifecycle?.onModelRequestStarting({
+        turn: 1,
+        model: 'test-model',
+        streaming: false,
+      });
+      if (!modelRequest) {
+        throw new Error('Missing model request lifecycle');
+      }
+      await modelRequest.onCompleted({ content: 'done' });
+      yield { type: 'turn_end', turn: 1, hasToolCalls: false };
+      yield { type: 'agent_end' };
+      return {
+        success: true,
+        finalMessage: 'done',
+        metadata: { turnsCount: 1, toolCallsCount: 0, duration: 1 },
+      };
+    };
+    const session = await createSession({
+      ...options(store),
+      persistSession: true,
+      storagePath: root,
+    });
+    await session.send('finish now');
+    const output = session.stream();
+
+    let event: Awaited<ReturnType<typeof output.next>>;
+    do {
+      event = await output.next();
+    } while (!event.done && event.value.type !== 'turn_end');
+    expect(event).toMatchObject({
+      done: false,
+      value: { type: 'turn_end', turn: 1 },
+    });
+
+    await expect(session.suspendForHandoff()).resolves.toMatchObject({
+      recoveryPlan: { action: 'none' },
+    });
+    await expect(output.next()).resolves.toMatchObject({
+      done: false,
+      value: { type: 'usage' },
+    });
+    await expect(output.next()).resolves.toMatchObject({
+      done: false,
+      value: { type: 'result', content: 'done' },
+    });
+    await expect(output.next()).resolves.toEqual({ value: undefined, done: true });
+    const events = (await store.read(session.sessionId)).events;
+    expect(events.at(-1)?.type).toBe(DurableEventType.REQUEST_COMPLETED);
+    expect(
+      events.filter((entry) => entry.type === DurableEventType.TURN_STARTED),
+    ).toHaveLength(1);
+  });
+
+  it('rejects handoff unless durable journal and transcript persistence are configured', async () => {
+    const withoutJournal = await createSession({
+      provider: { type: 'openai-compatible', apiKey: 'test-key' },
+      model: 'test-model',
+      persistSession: false,
+    });
+
+    await expect(withoutJournal.suspendForHandoff()).rejects.toBeInstanceOf(
+      SessionHandoffError,
+    );
+    expect(withoutJournal.isClosed).toBe(false);
+    await withoutJournal.close();
+
+    const { store } = createStore();
+    const withoutTranscript = await createSession({
+      ...options(store),
+      persistSession: true,
+    });
+    await expect(withoutTranscript.suspendForHandoff()).rejects.toMatchObject({
+      code: 'SESSION_HANDOFF_NOT_CONFIGURED',
+    });
+    expect(withoutTranscript.isClosed).toBe(false);
+    await withoutTranscript.close();
+  });
+
+  it('does not cancel the Request when a background subagent blocks handoff', async () => {
+    const { root, store } = createStore();
+    const session = await createSession({
+      ...options(store),
+      persistSession: true,
+      storagePath: root,
+    });
+    const runtime = (session as unknown as {
+      runtime: {
+        sealBackgroundWorkForHandoff(): {
+          activeSubagentIds: readonly AgentId[];
+          activeShellIds: readonly string[];
+        };
+      };
+    }).runtime;
+    vi.spyOn(runtime, 'sealBackgroundWorkForHandoff').mockReturnValue({
+      activeSubagentIds: [AgentId('active-subagent')],
+      activeShellIds: [],
+    });
+    const submission = await session.send('keep running');
+
+    await expect(session.suspendForHandoff()).rejects.toMatchObject({
+      code: 'SESSION_HANDOFF_ACTIVE_WORK',
+      activeSubagentIds: ['active-subagent'],
+      activeShellIds: [],
+    });
+    expect(session.isClosed).toBe(false);
+    expect(session.getPendingInputs()).toContainEqual(
+      expect.objectContaining({ inputId: submission.inputId }),
+    );
+    expect((await store.read(session.sessionId)).events.at(-1)?.type).toBe(
+      DurableEventType.REQUEST_ACCEPTED,
+    );
+    await session.close();
+  });
+
+  it('does not hand off while a Session-owned background shell is still alive', async () => {
+    const { root, store } = createStore();
+    const session = await createSession({
+      ...options(store),
+      persistSession: true,
+      storagePath: root,
+    });
+    const shellManager = BackgroundShellManager.getInstance();
+    const shell = shellManager.startBackgroundProcess({
+      command: 'sleep 30',
+      sessionId: session.sessionId,
+      cwd: root,
+    });
+
+    try {
+      await expect(session.suspendForHandoff()).rejects.toMatchObject({
+        code: 'SESSION_HANDOFF_ACTIVE_WORK',
+        activeSubagentIds: [],
+        activeShellIds: [shell.id],
+      });
+      expect(session.isClosed).toBe(false);
+    } finally {
+      shellManager.kill(shell.id);
+    }
+    await vi.waitFor(
+      () => expect(shellManager.getActiveProcessIds(session.sessionId)).toEqual([]),
+      { timeout: 2_000 },
+    );
+
+    await expect(session.suspendForHandoff()).resolves.toMatchObject({
+      recoveryPlan: { action: 'none' },
+    });
+  });
+
+  it('fails handoff closed when final model lifecycle persistence is uncertain', async () => {
+    const { root, store } = createStore();
+    const failingStore = new FailOnEventTypeStore(
+      store,
+      DurableEventType.MODEL_REQUEST_ABORTED,
+    );
+    streamChat = async function* failedHandoff(_message, context, loopOptions) {
+      let modelRequest: ModelRequestLifecycle | undefined;
+      try {
+        yield { type: 'turn_start', turn: 1, maxTurns: 10 };
+        modelRequest = await loopOptions?.modelExecutionLifecycle?.onModelRequestStarting({
+          turn: 1,
+          model: 'test-model',
+          streaming: true,
+        });
+        yield { type: 'content_delta', delta: 'partial' };
+        const signal = (context as { signal?: AbortSignal }).signal;
+        await new Promise<void>((resolve) => {
+          if (signal?.aborted) {
+            resolve();
+            return;
+          }
+          signal?.addEventListener('abort', () => resolve(), { once: true });
+        });
+        return {
+          success: false,
+          error: { type: 'aborted', message: 'handed off' },
+          metadata: { turnsCount: 1, toolCallsCount: 0, duration: 1 },
+        };
+      } finally {
+        await modelRequest?.onAborted('request_interrupted');
+      }
+    };
+    const session = await createSession({
+      ...options(failingStore),
+      persistSession: true,
+      storagePath: root,
+    });
+    await session.send('failed handoff');
+    const output = session.stream();
+    await output.next();
+    await output.next();
+
+    await expect(session.suspendForHandoff()).rejects.toBeInstanceOf(
+      SessionDurableRecorderError,
+    );
+    expect(session.isClosed).toBe(true);
+    expect(session.getDurableRecoveryPlan()?.action).toBe(
+      'reconcile_model_outcome',
+    );
+    expect(
+      (await store.read(session.sessionId)).events.map((event) => event.type),
+    ).not.toContain(DurableEventType.SESSION_CLOSED);
   });
 
   it('durably interrupts a pending request before cancelling its input', async () => {
