@@ -251,6 +251,9 @@ session.send(
 session.stream(options?: StreamOptions): AsyncGenerator<StreamMessage>
 ```
 
+每个 pending request 调用一次 `stream()`，正常情况下应消费到结束；如果消费暂停或
+提前结束，`abort()` 与 `close()` 会自行驱动取消清理，不再依赖调用方 drain。
+
 ### SendOptions
 
 ```ts
@@ -697,8 +700,8 @@ Permission 和输入应用事件，并保证：
 - 独立写入的 Request 终态通过 `causationEventId` 绑定最后一次持久化的
   Request 边界。
 - `tool_result`、`result` 或 `error` 对外可见前已提交终态。
-- pending request 的 `await session.abort()` 返回前已提交
-  `request_interrupted`。
+- pending 与 running request 的 `await session.abort()` 返回前都已提交
+  `request_interrupted`；running abort 还会等待内部执行及模型/工具生命周期清理。
 
 如果 durable 边界提交失败，Session 会 fence 当前 Recorder 并直接拒绝
 stream，不会在 Journal 刷新后伪造普通终态事件；在日志完成对账前，新请求和
@@ -1388,28 +1391,38 @@ await session.close();
 
 调用后：
 
-- 中止正在进行的请求
+- 中止正在进行的请求，并等待请求执行与模型/工具生命周期收敛；配置
+  `durableEventStore` 时还会等待 durable 终态收敛
 - 断开所有 MCP 服务器连接
 - 触发 `SessionEnd` Hook
 - Session 永久进入关闭状态，后续 `send()` / `stream()` 会抛出错误
+
+并发调用 `close()` 会共享同一个关闭 Promise，不会让后续调用方在 Runtime
+清理完成前提前返回。
 
 ### abort()
 
 终止当前正在进行的整个请求，不关闭会话。它与 `priority: 'now'` 不同：`abort()` 会取消所有工具，包括 `interruptBehavior: 'block'` 的工具；`now` 只中断当前步骤，并在安全点继续同一请求。
 
 ```ts
-const currentStream = session.stream();
-await session.abort();
-
-// 先排队，当前流完成清理后再消费下一请求
-await session.send('换个思路重新试试', { priority: 'later' });
-for await (const msg of currentStream) {
-  // Drain the aborted request.
-}
 for await (const msg of session.stream()) {
-  if (msg.type === 'content') process.stdout.write(msg.delta);
+  if (msg.type === 'content' && msg.delta.includes('立即停止')) {
+    await session.abort();
+  }
 }
 ```
+
+可以在 stream 消费回调内直接 `await session.abort()`，不会产生死锁。该 Promise
+仅在内部 Agent stream 已关闭、模型和工具生命周期清理完成且请求所有权已释放后
+返回。配置 `durableEventStore` 时，它还会等待 durable Request 终态提交。已缓冲
+的 stream 事件仍可继续读取，但不再需要通过 drain 来驱动清理。
+
+如果 durable 终态持久化失败或写入结果未知，`abort()` 会拒绝，并通过 recovery
+fencing 阻止新 Request 启动。
+
+JavaScript 边界上的取消是协作式的：自定义 provider 与工具必须监听
+`AbortSignal`，并在 `finally` 中释放资源；否则 Promise 会保持 pending，
+直到该操作自行结束。
 
 ### 管理待处理输入
 

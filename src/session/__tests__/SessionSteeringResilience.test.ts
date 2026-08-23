@@ -108,6 +108,30 @@ describe('Session steering resilience', () => {
     await session.close();
   });
 
+  it('closes cleanly when the consumer pauses on a setup-hook error', async () => {
+    const session = await createSession({
+      ...baseOptions(createWorkspaceRoot()),
+      hooks: {
+        [HookEvent.UserPromptSubmit]: [
+          async () => {
+            throw new Error('hook close');
+          },
+        ],
+      },
+    });
+    await session.send('fail before agent stream');
+    const output = session.stream();
+    await expect(output.next()).resolves.toMatchObject({
+      value: { type: 'error', message: 'hook close' },
+      done: false,
+    });
+
+    await session.close();
+
+    expect(session.isClosed).toBe(true);
+    await expect(output.next()).resolves.toEqual({ value: undefined, done: true });
+  });
+
   it('does not double-apply the initial input when the stream throws before the first event', async () => {
     streamChatImpl = async function* throwingStream() {
       // 在产出任何事件之前抛错，模拟 input_applied 已持久化但流随即失败。

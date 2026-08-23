@@ -357,7 +357,9 @@ export interface ISession extends AsyncDisposable {
 
   stream(options?: StreamOptions): AsyncGenerator<StreamMessage>;
 
+  /** Close after active cleanup and durable finalization when durableEventStore is configured. */
   close(): Promise<void>;
+  /** Abort after active cleanup and durable finalization when durableEventStore is configured. */
   abort(): Promise<void>;
 
   getDefaultContext(): RuntimeContext;
