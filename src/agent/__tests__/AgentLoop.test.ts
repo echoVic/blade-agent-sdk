@@ -1771,7 +1771,7 @@ describe('agentLoop', () => {
       expect(modelSettlements).toEqual(['aborted:steering', 'completed']);
     });
 
-    it('does not downgrade a containment failure during a steering interrupt', async () => {
+    it('does not downgrade an aggregated containment failure during a steering interrupt', async () => {
       let resolveStarted!: () => void;
       const started = new Promise<void>((resolve) => {
         resolveStarted = resolve;
@@ -1779,6 +1779,7 @@ describe('agentLoop', () => {
       const containmentError = new HookProcessContainmentError(
         'Hook process cleanup failed',
       );
+      const settlementError = new Error('durable settlement failed');
       const chat = vi.fn(async (
         _messages: readonly Message[],
         _tools: unknown,
@@ -1815,9 +1816,18 @@ describe('agentLoop', () => {
       const execution = collectEvents(agentLoop(baseConfig({
         runControl,
         turnState: { chatService },
+        modelExecutionLifecycle: {
+          onModelRequestStarting: async () => ({
+            onCompleted: async () => {},
+            onFailed: async () => {},
+            onAborted: async () => {
+              throw settlementError;
+            },
+          }),
+        },
         onInputApply,
       })));
-      const rejection = expect(execution).rejects.toBe(containmentError);
+      const failure = execution.catch((error: unknown) => error);
 
       await started;
       inbox.enqueue({
@@ -1829,7 +1839,12 @@ describe('agentLoop', () => {
       });
       runControl.interruptStep(InputId('steer-now'));
 
-      await rejection;
+      const error = await failure;
+      expect(error).toBeInstanceOf(AggregateError);
+      expect((error as AggregateError).errors).toEqual([
+        containmentError,
+        settlementError,
+      ]);
       expect(onInputApply).not.toHaveBeenCalled();
     });
 

@@ -11,6 +11,7 @@
  */
 
 import type { HookRuntime } from '../hooks/HookRuntime.js';
+import { isHookProcessContainmentError } from '../hooks/WindowsProcessJob.js';
 import { type InternalLogger, LogCategory, NOOP_LOGGER } from '../logging/Logger.js';
 import { buildSystemPrompt } from '../prompts/index.js';
 import type { Message } from '../services/ChatServiceInterface.js';
@@ -261,7 +262,10 @@ export class LoopRunner {
       syncContextMessages(context, loopState.conversationState);
       return result;
     } catch (error) {
-      if (isExecutionLeaseFailure(error)) {
+      if (
+        isExecutionLeaseFailure(error)
+        || isHookProcessContainmentError(error)
+      ) {
         throw error;
       }
       if (isExecutionLeaseFailure(context.signal?.reason)) {

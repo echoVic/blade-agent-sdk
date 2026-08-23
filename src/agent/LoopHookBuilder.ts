@@ -441,13 +441,13 @@ export function buildLoopConfig(deps: LoopHookBuilderDeps): AgentLoopConfig {
             warning: stopResult.warning,
           };
         } catch (error) {
-          requestSignal?.throwIfAborted();
           if (
             isExecutionLeaseFailure(error)
             || isHookProcessContainmentError(error)
           ) {
             throw error;
           }
+          requestSignal?.throwIfAborted();
           return { shouldStop: true };
         }
       },

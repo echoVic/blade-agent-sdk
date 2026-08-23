@@ -331,25 +331,25 @@ export function createTaskTool({ registry }: { registry: SubagentRegistry }) {
             console.warn(`[Task] SubagentStop hook warning: ${stopResult.warning}`);
           }
         } catch (hookError) {
-          context.signal?.throwIfAborted();
           if (
             isExecutionLeaseFailure(hookError)
             || isHookProcessContainmentError(hookError)
           ) {
             throw hookError;
           }
+          context.signal?.throwIfAborted();
           console.warn('[Task] SubagentStop hook execution failed:', hookError);
         }
 
         return buildTaskResult(result, subagent_type, description, duration, subagentSessionId);
       } catch (error) {
-        context.signal?.throwIfAborted();
         if (
           isExecutionLeaseFailure(error)
           || isHookProcessContainmentError(error)
         ) {
           throw error;
         }
+        context.signal?.throwIfAborted();
         const _errorMessage = extractUserFriendlyError(
           error instanceof Error ? error : new Error(getErrorMessage(error))
         );

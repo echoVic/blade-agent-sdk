@@ -8,6 +8,7 @@ import {
 import type { ChatContext, LoopResult, UserMessageContent } from '../agent/types.js';
 import { SessionHandoffError } from '../errors/SessionHandoffError.js';
 import { SessionInputError } from '../errors/SessionInputError.js';
+import { isHookProcessContainmentError } from '../hooks/WindowsProcessJob.js';
 import { type CleanupHandle, registerCleanup } from '../lifecycle/CleanupRegistry.js';
 import { createRootLogger, type InternalLogger, LogCategory } from '../logging/Logger.js';
 import { type AgentTrace, TraceRecorder } from '../observability/index.js';
@@ -895,11 +896,12 @@ class Session implements ISession {
       const handingOff = isHandoffRequested();
       const leaseFailure = this.executionLeaseFailure;
       const requestAborted = signal.aborted;
+      const containmentFailure = isHookProcessContainmentError(error);
       let terminalError = error;
       if (!handingOff && !leaseFailure) {
         try {
           await finishDurableRequest(
-            requestAborted
+            requestAborted && !containmentFailure
               ? {
                   status: 'interrupted',
                   reason: this.getDurableInterruptReason(requestController),
@@ -913,18 +915,41 @@ class Session implements ISession {
           );
         }
       }
-      const errorMessage =
+      let errorMessage =
         terminalError instanceof Error ? terminalError.message : String(terminalError);
-      await finishTrace(handingOff || leaseFailure || requestAborted ? 'aborted' : 'error', {
-        ...(handingOff
-          ? { reason: 'session_handoff' }
-          : leaseFailure
-            ? { reason: 'process_restart' }
-            : requestAborted
-              ? { reason: this.getDurableInterruptReason(requestController) }
-              : { error: errorMessage }),
-      });
+      let terminalContainmentFailure =
+        isHookProcessContainmentError(terminalError);
       try {
+        await finishTrace(
+          !terminalContainmentFailure && (handingOff || leaseFailure || requestAborted)
+            ? 'aborted'
+            : 'error',
+          {
+            ...(terminalContainmentFailure
+              ? { error: errorMessage }
+              : handingOff
+                ? { reason: 'session_handoff' }
+                : leaseFailure
+                  ? { reason: 'process_restart' }
+                  : requestAborted
+                    ? { reason: this.getDurableInterruptReason(requestController) }
+                    : { error: errorMessage }),
+          },
+        );
+      } catch (traceError) {
+        const combinedError = new AggregateError(
+          [terminalError, traceError],
+          'Request setup and trace finalization both failed',
+        );
+        terminalError = combinedError;
+        errorMessage = combinedError.message;
+        terminalContainmentFailure =
+          isHookProcessContainmentError(terminalError);
+      }
+      try {
+        if (terminalContainmentFailure) {
+          throw terminalError;
+        }
         if (handingOff) {
           return;
         }
@@ -1324,11 +1349,12 @@ class Session implements ISession {
       const handingOff = isHandoffRequested();
       const leaseFailure = this.executionLeaseFailure;
       const requestAborted = signal.aborted;
+      const containmentFailure = isHookProcessContainmentError(error);
       let terminalError = error;
       if (!handingOff && !leaseFailure && !durableFinishAttempted) {
         try {
           await finishDurableRequest(
-            requestAborted
+            requestAborted && !containmentFailure
               ? {
                   status: 'interrupted',
                   reason: this.getDurableInterruptReason(requestController),
@@ -1342,17 +1368,40 @@ class Session implements ISession {
           );
         }
       }
-      const errorMessage =
+      let errorMessage =
         terminalError instanceof Error ? terminalError.message : String(terminalError);
-      await finishTrace(handingOff || leaseFailure || requestAborted ? 'aborted' : 'error', {
-        ...(handingOff
-          ? { reason: 'session_handoff' }
-          : leaseFailure
-            ? { reason: 'process_restart' }
-            : requestAborted
-              ? { reason: this.getDurableInterruptReason(requestController) }
-              : { error: errorMessage }),
-      });
+      let terminalContainmentFailure =
+        isHookProcessContainmentError(terminalError);
+      try {
+        await finishTrace(
+          !terminalContainmentFailure && (handingOff || leaseFailure || requestAborted)
+            ? 'aborted'
+            : 'error',
+          {
+            ...(terminalContainmentFailure
+              ? { error: errorMessage }
+              : handingOff
+                ? { reason: 'session_handoff' }
+                : leaseFailure
+                  ? { reason: 'process_restart' }
+                  : requestAborted
+                    ? { reason: this.getDurableInterruptReason(requestController) }
+                    : { error: errorMessage }),
+          },
+        );
+      } catch (traceError) {
+        const combinedError = new AggregateError(
+          [terminalError, traceError],
+          'Request execution and trace finalization both failed',
+        );
+        terminalError = combinedError;
+        errorMessage = combinedError.message;
+        terminalContainmentFailure =
+          isHookProcessContainmentError(terminalError);
+      }
+      if (terminalContainmentFailure) {
+        throw terminalError;
+      }
       if (handingOff) {
         return;
       }

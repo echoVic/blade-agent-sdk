@@ -11,6 +11,7 @@ import { SecureProcessExecutor } from '../SecureProcessExecutor.js';
 import { HookType } from '../types/HookTypes.js';
 import {
   HookProcessContainmentError,
+  isHookProcessContainmentError,
   WindowsProcessJob,
 } from '../WindowsProcessJob.js';
 
@@ -33,6 +34,19 @@ afterEach(async () => {
 });
 
 describe('Hook infrastructure failures', () => {
+  it('recognizes containment failures through aggregate and cause wrappers', () => {
+    const containmentError = new HookProcessContainmentError(
+      'Windows Job Object cleanup failed',
+    );
+    const aggregate = new AggregateError([
+      new Error('durable settlement failed'),
+      new Error('wrapped', { cause: containmentError }),
+    ]);
+
+    expect(isHookProcessContainmentError(aggregate)).toBe(true);
+    expect(isHookProcessContainmentError(new Error('ordinary failure'))).toBe(false);
+  });
+
   it('does not downgrade a process-containment failure to ignore', async () => {
     const containmentError = new HookProcessContainmentError(
       'Windows Job Object support is unavailable',

@@ -41,13 +41,37 @@ export class HookProcessContainmentError extends SdkError {
 
 export function isHookProcessContainmentError(
   error: unknown,
-): error is HookProcessContainmentError {
+): boolean {
+  return containsHookProcessContainmentError(error, new Set());
+}
+
+function containsHookProcessContainmentError(
+  error: unknown,
+  seen: Set<object>,
+): boolean {
+  if (typeof error !== 'object' || error === null) {
+    return false;
+  }
+  if (
+    error instanceof HookProcessContainmentError
+    || ('code' in error && error.code === 'HOOK_PROCESS_CONTAINMENT_FAILED')
+  ) {
+    return true;
+  }
+  if (seen.has(error)) {
+    return false;
+  }
+  seen.add(error);
+  if (
+    error instanceof AggregateError
+    && error.errors.some((nestedError) =>
+      containsHookProcessContainmentError(nestedError, seen))
+  ) {
+    return true;
+  }
   return (
-    error instanceof HookProcessContainmentError ||
-    (typeof error === 'object' &&
-      error !== null &&
-      'code' in error &&
-      error.code === 'HOOK_PROCESS_CONTAINMENT_FAILED')
+    'cause' in error
+    && containsHookProcessContainmentError(error.cause, seen)
   );
 }
 

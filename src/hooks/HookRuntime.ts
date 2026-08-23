@@ -13,6 +13,7 @@ import type { HookCallback, HookInput } from '../session/types.js';
 import type { HookTraceCollector } from '../observability/index.js';
 import { HookManager } from './HookManager.js';
 import { HookBus } from './HookBus.js';
+import { isHookProcessContainmentError } from './WindowsProcessJob.js';
 
 interface HookRuntimeOptions {
   sessionId: SessionId;
@@ -80,6 +81,7 @@ export class HookRuntime {
   private readonly hookTimeoutMs: number;
   private readonly sessionEndHookTimeoutMs: number;
   private sessionEndCallbacksAttempted = false;
+  private terminalContainmentFailure: unknown;
   private traceCollector?: HookTraceCollector;
   private readonly runtimeHookRegistrations = new Map<string, {
     event: HookEvent;
@@ -113,6 +115,10 @@ export class HookRuntime {
 
   hasPendingCallbackCleanup(): boolean {
     return this.bus.hasPendingCallbackCleanup();
+  }
+
+  getTerminalContainmentFailure(): unknown {
+    return this.terminalContainmentFailure;
   }
 
   setTraceCollector(traceCollector: HookTraceCollector | undefined): void {
@@ -166,6 +172,7 @@ export class HookRuntime {
       abortSignal?: AbortSignal;
     } = {},
   ): Promise<PreToolUseRuntimeResult> {
+    this.throwIfTerminalContainmentFailed();
     options.abortSignal?.throwIfAborted();
     const toolUseId = options.toolUseId ?? `tool_${nanoid()}` as ToolUseId;
     let nextInput = { ...input };
@@ -252,6 +259,7 @@ export class HookRuntime {
       abortSignal?: AbortSignal;
     } = {},
   ): Promise<PostToolUseRuntimeResult> {
+    this.throwIfTerminalContainmentFailed();
     options.abortSignal?.throwIfAborted();
     const toolUseId = options.toolUseId ?? `tool_${nanoid()}` as ToolUseId;
     let nextResult = result;
@@ -300,6 +308,7 @@ export class HookRuntime {
       abortSignal?: AbortSignal;
     } = {},
   ): Promise<PostToolUseRuntimeResult> {
+    this.throwIfTerminalContainmentFailed();
     options.abortSignal?.throwIfAborted();
     const toolUseId = options.toolUseId ?? `tool_${nanoid()}` as ToolUseId;
     let nextResult = result;
@@ -358,6 +367,7 @@ export class HookRuntime {
     updatedInput: JsonObject;
     decision?: PermissionResult;
   }> {
+    this.throwIfTerminalContainmentFailed();
     options.abortSignal?.throwIfAborted();
     let nextInput = input;
 
@@ -434,6 +444,7 @@ export class HookRuntime {
     message: UserMessageContent,
     options: { abortSignal?: AbortSignal } = {},
   ): Promise<UserMessageContent> {
+    this.throwIfTerminalContainmentFailed();
     options.abortSignal?.throwIfAborted();
     let nextMessage = message;
 
@@ -504,6 +515,7 @@ export class HookRuntime {
   async runSessionStart(
     payload: { isResume: boolean; resumeSessionId?: string; abortSignal?: AbortSignal },
   ): Promise<void> {
+    this.throwIfTerminalContainmentFailed();
     await this.runCallbackGroup(HookEvent.SessionStart, payload, payload.abortSignal);
 
     const projectDir = this.options.resolveProjectDir();
@@ -537,6 +549,7 @@ export class HookRuntime {
       [key: string]: unknown;
     },
   ): Promise<void> {
+    this.throwIfTerminalContainmentFailed();
     await this.runCallbackGroup(HookEvent.TaskCompleted, payload, payload.abortSignal);
 
     const projectDir = this.options.resolveProjectDir();
@@ -576,6 +589,7 @@ export class HookRuntime {
       abortSignal?: AbortSignal;
     },
   ): Promise<void> {
+    this.throwIfTerminalContainmentFailed();
     payload.abortSignal?.throwIfAborted();
     if (!this.sessionEndCallbacksAttempted) {
       this.bus.assertNoPendingCallbackCleanup();
@@ -610,6 +624,7 @@ export class HookRuntime {
       abortSignal?: AbortSignal;
     },
   ): Promise<{ shouldStop: boolean; continueReason?: string; warning?: string }> {
+    this.throwIfTerminalContainmentFailed();
     payload.abortSignal?.throwIfAborted();
     const projectDir = this.options.resolveProjectDir();
     if (!projectDir) {
@@ -657,10 +672,27 @@ export class HookRuntime {
     abortSignal: AbortSignal | undefined,
     operation: () => Promise<T>,
   ): Promise<T> {
+    this.throwIfTerminalContainmentFailed();
     abortSignal?.throwIfAborted();
-    const result = await operation();
-    abortSignal?.throwIfAborted();
-    return result;
+    try {
+      const result = await operation();
+      abortSignal?.throwIfAborted();
+      return result;
+    } catch (error) {
+      if (
+        this.terminalContainmentFailure === undefined
+        && isHookProcessContainmentError(error)
+      ) {
+        this.terminalContainmentFailure = error;
+      }
+      throw error;
+    }
+  }
+
+  private throwIfTerminalContainmentFailed(): void {
+    if (this.terminalContainmentFailure !== undefined) {
+      throw this.terminalContainmentFailure;
+    }
   }
 
   private applyManagerPostToolResult(result: ToolResult, hookResult: {

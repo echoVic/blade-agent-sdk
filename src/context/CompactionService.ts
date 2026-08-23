@@ -302,13 +302,13 @@ export async function compact(
       summaryMessage,
     };
   } catch (error) {
-    options.signal?.throwIfAborted();
     if (
       isExecutionLeaseFailure(error)
       || isHookProcessContainmentError(error)
     ) {
       throw error;
     }
+    options.signal?.throwIfAborted();
     console.error('[CompactionService] 压缩失败，使用降级策略', error);
     return fallbackCompact(messages, options, preTokens, error);
   }

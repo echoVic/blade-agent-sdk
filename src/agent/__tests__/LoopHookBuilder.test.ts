@@ -78,6 +78,21 @@ describe('LoopHookBuilder stop hook', () => {
     ).rejects.toBe(containmentError);
   });
 
+  it('preserves a containment failure when Stop hook cancellation races cleanup', async () => {
+    const controller = new AbortController();
+    const containmentError = new HookProcessContainmentError(
+      'Hook process cleanup failed',
+    );
+    const stopCheck = createStopCheck(vi.fn(async () => {
+      controller.abort(new Error('request cancelled'));
+      throw containmentError;
+    }), controller.signal);
+
+    await expect(
+      stopCheck({ content: 'done', turn: 1 }),
+    ).rejects.toBe(containmentError);
+  });
+
   it('preserves the fail-safe stop fallback for ordinary Hook errors', async () => {
     const stopCheck = createStopCheck(vi.fn(async () => {
       throw new Error('hook failed');

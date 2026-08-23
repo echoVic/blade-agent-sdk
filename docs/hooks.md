@@ -94,6 +94,8 @@ Hook 超时时会终止进程组，先发送 `SIGTERM` 并短暂等待，必要�
 不服从普通 Hook 的失败降级策略。Windows 原生依赖 `koffi` 不可用时，命令 Hook
 也会在启动前 fail-closed。Runtime 还会在每个文件 Hook 返回后再次检查信号，因此
 默认的 `ignore` 失败策略不会让已取消的 Request 继续执行。
+如果 containment failure 在取消已赢得异步工具或权限竞态后才到达，执行管道会
+进入隔离状态；后续工具调用以及 Session close/handoff 都会继续 fail-closed。
 
 POSIX containment 以进程组为边界。若 Hook 命令主动通过 `setsid()` 创建新会话，
 该进程会离开 SDK 管理的进程组，不属于可移植清理边界。

@@ -6,6 +6,7 @@ import { z } from 'zod';
 import { ContextManager } from '../../context/ContextManager.js';
 import * as FileAnalyzerModule from '../../context/FileAnalyzer.js';
 import { HookRuntime } from '../../hooks/HookRuntime.js';
+import { HookProcessContainmentError } from '../../hooks/WindowsProcessJob.js';
 import type { RuntimeContextPatch } from '../../runtime/RuntimeContextPatch.js';
 import type { RuntimePatch } from '../../runtime/RuntimePatch.js';
 import type { Message } from '../../services/ChatServiceInterface.js';
@@ -303,6 +304,32 @@ describe('LoopRunner', () => {
         }),
       ).rejects.toBe(leaseError);
       expect(mm._chat).toHaveBeenCalledOnce();
+    });
+
+    it('propagates process-containment failures from the agent loop', async () => {
+      const mm = createMockModelManager();
+      mm._chat.mockResolvedValueOnce({
+        content: '',
+        toolCalls: [{
+          id: 'containment-tool',
+          type: 'function',
+          function: { name: 'Task', arguments: '{}' },
+        }],
+        usage: { promptTokens: 10, completionTokens: 5, totalTokens: 15 },
+      });
+      const containmentError = new HookProcessContainmentError(
+        'Hook process cleanup failed',
+      );
+      const pipeline = createMockPipeline();
+      pipeline.execute = vi.fn(async function* () {
+        yield* [] as never[];
+        throw containmentError;
+      });
+      const runner = new LoopRunner(baseConfig, baseOptions, mm, pipeline);
+
+      await expect(
+        runner.runLoop('Run a tool', createContext()),
+      ).rejects.toBe(containmentError);
     });
 
     it('persists streaming tool turns in provider-compatible order', async () => {

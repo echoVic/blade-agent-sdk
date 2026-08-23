@@ -8,6 +8,7 @@ import { SubagentRegistry } from '../../../../agent/subagents/SubagentRegistry.j
 import { AgentId, SessionId } from '../../../../types/branded.js';
 import { DurableExecutionLeaseError } from '../../../../session/events/DurableExecutionLeaseStore.js';
 import { HookManager } from '../../../../hooks/HookManager.js';
+import { HookProcessContainmentError } from '../../../../hooks/WindowsProcessJob.js';
 import {
   collectToolExecution,
   type ExecutionContext,
@@ -393,6 +394,47 @@ describe('task tools', () => {
     release.resolve();
 
     await cancellationResult;
+    expect(stopHook).toHaveBeenCalledOnce();
+  });
+
+  it('preserves a SubagentStop containment failure during cancellation', async () => {
+    const registry = new SubagentRegistry();
+    registry.register(subagentConfig);
+    const taskTool = createTaskTool({ registry });
+    const controller = new AbortController();
+    const containmentError = new HookProcessContainmentError(
+      'Hook process cleanup failed',
+    );
+    const stopHook = vi.spyOn(
+      HookManager.getInstance(),
+      'executeSubagentStopHooks',
+    ).mockImplementation(async () => {
+      controller.abort(new Error('request cancelled'));
+      throw containmentError;
+    });
+    runAgenticLoop.mockResolvedValueOnce({
+      success: true,
+      finalMessage: 'done',
+      metadata: { duration: 1 },
+    });
+
+    await expect(
+      executeWithContext(
+        taskTool,
+        {
+          subagent_type: subagentConfig.name,
+          description: 'Inspect repository',
+          prompt: 'inspect code',
+          run_in_background: false,
+        },
+        {
+          sessionId: SessionId('containment-task-session'),
+          bladeConfig,
+          signal: controller.signal,
+          contextSnapshot: { cwd: '/tmp' },
+        } as never,
+      ),
+    ).rejects.toBe(containmentError);
     expect(stopHook).toHaveBeenCalledOnce();
   });
 });

@@ -1,4 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { HookManager } from '../../hooks/HookManager.js';
+import { HookProcessContainmentError } from '../../hooks/WindowsProcessJob.js';
 import type { ChatConfig, Message } from '../../services/ChatServiceInterface.js';
 
 const mockChat = vi.fn(async () => ({
@@ -92,6 +94,31 @@ describe('CompactionService', () => {
         signal: controller.signal,
       }),
     ).rejects.toBe(abortError);
+  });
+
+  it('preserves a hook containment failure when cancellation races cleanup', async () => {
+    const controller = new AbortController();
+    const containmentError = new HookProcessContainmentError(
+      'Hook process cleanup failed',
+    );
+    const preCompactHook = vi.spyOn(
+      HookManager.getInstance(),
+      'executePreCompactHooks',
+    ).mockImplementationOnce(async () => {
+      controller.abort(new Error('request cancelled'));
+      throw containmentError;
+    });
+
+    await expect(
+      compact([{ role: 'user', content: 'hello' }], {
+        trigger: 'manual',
+        modelName: 'gpt-5',
+        maxContextTokens: 128000,
+        projectDir: '/tmp',
+        signal: controller.signal,
+      }),
+    ).rejects.toBe(containmentError);
+    preCompactHook.mockRestore();
   });
 
   it('retainRecentMessages drops orphan tool results outside the retained window', () => {

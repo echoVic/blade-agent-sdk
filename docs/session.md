@@ -1437,7 +1437,8 @@ JavaScript 边界上的取消是协作式的：自定义 provider 与工具必�
 `AbortSignal`，并在 `finally` 中释放资源；否则 Promise 会保持 pending，
 直到该操作自行结束。
 内置文件/命令 Hook 由 SDK 管理其 POSIX 进程组或 Windows Job：取消后不会再
-启动 Hook，并会等待对应清理完成后再结束 Request。
+启动 Hook，并会等待对应清理完成后再结束 Request。晚到的 containment failure
+会隔离执行管道，使后续工具调用以及 Session close/handoff 保持 fail-closed。
 
 ### suspendForHandoff()
 

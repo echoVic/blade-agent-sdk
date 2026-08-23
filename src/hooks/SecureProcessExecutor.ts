@@ -20,7 +20,6 @@ import {
 } from './types/HookTypes.js';
 import {
   HookProcessContainmentError,
-  isHookProcessContainmentError,
   WindowsProcessJob,
 } from './WindowsProcessJob.js';
 
@@ -78,7 +77,7 @@ function toContainmentError(
   message: string,
   error: unknown,
 ): HookProcessContainmentError {
-  return isHookProcessContainmentError(error)
+  return error instanceof HookProcessContainmentError
     ? error
     : new HookProcessContainmentError(message, { cause: error });
 }

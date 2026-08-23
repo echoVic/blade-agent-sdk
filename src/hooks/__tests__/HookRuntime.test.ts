@@ -7,6 +7,7 @@ import { SessionId, ToolUseId } from '../../types/branded.js';
 import { PermissionMode } from '../../types/common.js';
 import { HookEvent } from '../../types/constants.js';
 import { HookRuntime } from '../HookRuntime.js';
+import { HookProcessContainmentError } from '../WindowsProcessJob.js';
 
 function deferred(): { promise: Promise<void>; resolve: () => void } {
   let resolve!: () => void;
@@ -259,6 +260,32 @@ describe('HookRuntime', () => {
     release.resolve();
 
     await cancellationResult;
+    expect(executeUserPromptSubmitHooks).toHaveBeenCalledOnce();
+  });
+
+  it('quarantines file hooks after a containment failure', async () => {
+    const containmentError = new HookProcessContainmentError(
+      'Hook process cleanup failed',
+    );
+    const executeUserPromptSubmitHooks = vi.fn()
+      .mockRejectedValueOnce(containmentError)
+      .mockResolvedValue({ proceed: true });
+    const runtime = new HookRuntime({
+      sessionId: SessionId('session-file-hook-containment'),
+      permissionMode: PermissionMode.DEFAULT,
+      resolveProjectDir: () => '/tmp/project',
+      hookManager: {
+        executeUserPromptSubmitHooks,
+      } as never,
+    });
+
+    await expect(
+      runtime.applyUserPromptSubmit('first'),
+    ).rejects.toBe(containmentError);
+    expect(runtime.getTerminalContainmentFailure()).toBe(containmentError);
+    await expect(
+      runtime.applyUserPromptSubmit('second'),
+    ).rejects.toBe(containmentError);
     expect(executeUserPromptSubmitHooks).toHaveBeenCalledOnce();
   });
 

@@ -201,7 +201,8 @@ tools must honor their `AbortSignal` and release resources in `finally`;
 otherwise the Promise remains pending until that operation settles.
 Built-in file/command hooks are managed through a POSIX process group or Windows
 Job Object: they do not spawn after cancellation and wait for the corresponding
-cleanup before the Request finishes.
+cleanup before the Request finishes. A late containment failure quarantines the
+execution pipeline, so later tool calls and Session close or handoff fail closed.
 
 An external `AbortSignal` can also cancel a request:
 

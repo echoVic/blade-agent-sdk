@@ -2,6 +2,7 @@ import { type ChildProcess, spawnSync } from 'node:child_process';
 
 const PROCESS_TREE_POLL_INTERVAL_MS = 20;
 const PROCESS_TREE_FORCE_KILL_ATTEMPTS = 3;
+const WINDOWS_TASKKILL_TIMEOUT_MS = 5_000;
 
 function isMissingProcess(error: unknown): boolean {
   return (
@@ -26,6 +27,7 @@ export function signalProcessTree(
   pid: number | undefined,
   signal: NodeJS.Signals,
   child?: ChildProcess,
+  taskkillTimeoutMs = WINDOWS_TASKKILL_TIMEOUT_MS,
 ): boolean {
   if (!pid) {
     return child?.kill(signal) ?? false;
@@ -45,6 +47,7 @@ export function signalProcessTree(
       {
         stdio: 'ignore',
         windowsHide: true,
+        timeout: taskkillTimeoutMs,
       },
     );
     if (result.status === 0) {
@@ -114,7 +117,7 @@ export async function terminateProcessTree(
   let lastSignalError: unknown;
   const signalSafely = (signal: NodeJS.Signals): void => {
     try {
-      if (!signalProcessTree(pid, signal, child)) {
+      if (!signalProcessTree(pid, signal, child, gracePeriodMs)) {
         lastSignalError = new Error(
           `Process tree ${pid ?? 'unknown'} did not accept ${signal}`,
         );

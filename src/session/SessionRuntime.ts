@@ -277,6 +277,24 @@ export class SessionRuntime {
 
   assertNoPendingCleanup(): void {
     const errors: Error[] = [];
+    const terminalCleanupFailure =
+      this.executionPipeline.getTerminalCleanupFailure();
+    if (terminalCleanupFailure !== undefined) {
+      errors.push(
+        terminalCleanupFailure instanceof Error
+          ? terminalCleanupFailure
+          : new Error(String(terminalCleanupFailure)),
+      );
+    }
+    const hookContainmentFailure =
+      this.hookRuntime.getTerminalContainmentFailure();
+    if (hookContainmentFailure !== undefined) {
+      errors.push(
+        hookContainmentFailure instanceof Error
+          ? hookContainmentFailure
+          : new Error(String(hookContainmentFailure)),
+      );
+    }
     if (this.executionPipeline.hasPendingExecutionCleanup()) {
       errors.push(
         new Error(

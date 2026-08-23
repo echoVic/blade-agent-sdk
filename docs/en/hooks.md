@@ -98,6 +98,9 @@ following the configured Hook failure policy. Windows command hooks also fail
 closed before spawning when the `koffi` native binding is unavailable. The
 runtime checks the signal again after each file hook, so the default `ignore`
 failure policy cannot resume an already-cancelled Request.
+If a containment failure arrives after cancellation has already won an
+asynchronous tool or permission race, the execution pipeline is quarantined:
+later tool calls and Session close or handoff remain fail-closed.
 
 On POSIX, containment follows process-group semantics. A Hook command that
 deliberately creates a new session with `setsid()` leaves the SDK-owned process
