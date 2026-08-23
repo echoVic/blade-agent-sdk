@@ -2,6 +2,12 @@
 
 `@blade-ai/agent-sdk` 的所有重要变更都记录在此。
 
+## [5.2.0] - 2026-08-23
+
+### 新功能
+
+- 新增 Store-backed Session 执行租约：支持自动 heartbeat、粘性单调 fencing、Journal、transcript 与 subagent 状态原子保护、进程树取消及 close/handoff 受控释放。
+
 ## [5.1.1] - 2026-08-23
 
 ### 修复

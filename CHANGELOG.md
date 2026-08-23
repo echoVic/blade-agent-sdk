@@ -2,6 +2,12 @@
 
 All notable changes to `@blade-ai/agent-sdk` are documented here.
 
+## [5.2.0] - 2026-08-23
+
+### Features
+
+- Add Store-backed Session execution leases with automatic heartbeats, sticky monotonic fencing, atomic Journal, transcript, and subagent-state guards, process-tree cancellation, and controlled close or handoff release.
+
 ## [5.1.1] - 2026-08-23
 
 ### Fixes
