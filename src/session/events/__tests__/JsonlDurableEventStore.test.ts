@@ -625,7 +625,7 @@ describe('JsonlDurableEventStore', () => {
 
   it('fails an immediate lock attempt when another Store process owns the lock', async () => {
     const sessionId = SessionId('session-immediate-lock-held');
-    const holder = await startStoreLockHolder(storageRoot, sessionId, 'holder', 300);
+    const holder = await startStoreLockHolder(storageRoot, sessionId, 'holder', 10_000);
     childProcesses.push(holder.child);
     const contender = await startStoreWriter(storageRoot, sessionId, 'contender', {
       lockTimeoutMs: 0,
@@ -638,7 +638,7 @@ describe('JsonlDurableEventStore', () => {
       status: 'rejected',
       code: 'DURABLE_EVENT_LOCK_TIMEOUT',
     });
-    await waitForChild(holder.child);
+    await terminateChild(holder.child, 'SIGKILL');
   });
 
   it('rejects duplicate event IDs across append batches', async () => {
