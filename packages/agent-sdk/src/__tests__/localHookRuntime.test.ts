@@ -1,0 +1,160 @@
+import { describe, expect, it, vi } from 'vitest';
+import type { ContentPart } from '@blade-ai/ai/chat';
+import type { ToolResult } from '../tools/types/index.js';
+import { SessionId, ToolUseId } from '../local/branded.js';
+import { PermissionMode } from '../types/common.js';
+import { HookEvent } from '../types/constants.js';
+import { HookRuntime } from '../local/HookRuntime.js';
+
+describe('HookRuntime', () => {
+  it('computes image metadata once per applyUserPromptSubmit stage', async () => {
+    const hookManager = {
+      executeUserPromptSubmitHooks: vi.fn(async () => ({ proceed: true })),
+    };
+    const runtime = new HookRuntime({
+      sessionId: SessionId('session-1'),
+      permissionMode: PermissionMode.DEFAULT,
+      callbacks: {
+        [HookEvent.UserPromptSubmit]: [
+          async () => ({ action: 'continue' }),
+        ],
+      },
+      resolveProjectDir: () => '/tmp/project',
+      hookManager: hookManager as never,
+    });
+
+    const getImageCountSpy = vi.spyOn(
+      runtime as unknown as { getImageCount: (message: string | ContentPart[]) => number },
+      'getImageCount',
+    );
+
+    await runtime.applyUserPromptSubmit([
+      { type: 'text', text: 'prompt' },
+      { type: 'image_url', image_url: { url: 'data:image/png;base64,1' } },
+      { type: 'image_url', image_url: { url: 'data:image/png;base64,2' } },
+    ]);
+
+    expect(getImageCountSpy).toHaveBeenCalledTimes(2);
+    expect(hookManager.executeUserPromptSubmitHooks).toHaveBeenCalledWith(
+      expect.objectContaining({
+        userPrompt: 'prompt',
+        hasImages: true,
+        imageCount: 2,
+      }),
+      '/tmp/project',
+      'session-1',
+      'default',
+      undefined,
+    );
+  });
+
+  it('replaces all text parts with one leading text part while preserving all images', async () => {
+    const runtime = new HookRuntime({
+      sessionId: SessionId('session-2'),
+      permissionMode: PermissionMode.DEFAULT,
+      callbacks: {
+        [HookEvent.UserPromptSubmit]: [
+          async () => ({
+            action: 'continue',
+            modifiedInput: { userPrompt: 'updated prompt' },
+          }),
+        ],
+      },
+      resolveProjectDir: () => undefined,
+      hookManager: {
+        executeUserPromptSubmitHooks: vi.fn(),
+      } as never,
+    });
+
+    const rewritten = await runtime.applyUserPromptSubmit([
+      { type: 'image_url', image_url: { url: 'data:image/png;base64,before' } },
+      { type: 'text', text: 'first chunk' },
+      { type: 'image_url', image_url: { url: 'data:image/png;base64,after-first' } },
+      { type: 'text', text: 'second chunk' },
+    ] satisfies ContentPart[]);
+
+    expect(rewritten).toEqual([
+      { type: 'text', text: 'updated prompt' },
+      { type: 'image_url', image_url: { url: 'data:image/png;base64,before' } },
+      { type: 'image_url', image_url: { url: 'data:image/png;base64,after-first' } },
+    ]);
+  });
+
+  it('merges callback and hook-manager pre/post tool hooks through one facade', async () => {
+    const hookManager = {
+      executePreToolUseHooks: vi.fn(async () => ({
+        decision: 'ask',
+        reason: 'manager confirmation',
+        modifiedInput: { manager: true },
+      })),
+      executePostToolUseHooks: vi.fn(async () => ({
+        additionalContext: 'manager context',
+      })),
+    };
+    const runtime = new HookRuntime({
+      sessionId: SessionId('session-tool-hooks'),
+      permissionMode: PermissionMode.DEFAULT,
+      callbacks: {
+        [HookEvent.PreToolUse]: [
+          async () => ({
+            action: 'continue',
+            modifiedInput: { callback: true },
+          }),
+        ],
+        [HookEvent.PostToolUse]: [
+          async () => ({
+            action: 'continue',
+            modifiedOutput: 'callback output',
+          }),
+        ],
+      },
+      resolveProjectDir: () => '/tmp/project',
+      hookManager: hookManager as never,
+    });
+
+    const pre = await runtime.applyPreToolUse('Read', { file_path: 'a.ts' }, {
+      toolUseId: ToolUseId('tool-1'),
+    });
+
+    const result: ToolResult = {
+      success: true,
+      llmContent: 'original output',
+    };
+    const post = await runtime.applyPostToolUse('Read', pre.updatedInput, result, { toolUseId: ToolUseId('tool-1') });
+
+    expect(pre.updatedInput).toEqual({
+      file_path: 'a.ts',
+      callback: true,
+      manager: true,
+    });
+    expect(pre.needsConfirmation).toBe(true);
+    expect(pre.reason).toBe('manager confirmation');
+    expect(hookManager.executePreToolUseHooks).toHaveBeenCalledWith(
+      expect.objectContaining({
+        toolName: 'Read',
+        toolInput: expect.objectContaining({ callback: true }),
+        toolUseId: 'tool-1',
+      }),
+      '/tmp/project',
+      'session-tool-hooks',
+      'default',
+      undefined,
+    );
+    expect(post.result.llmContent).toBe('callback output\n\n---\n**Hook Context:**\nmanager context');
+    expect(hookManager.executePostToolUseHooks).toHaveBeenCalledWith(
+      expect.objectContaining({
+        toolName: 'Read',
+        toolInput: expect.objectContaining({
+          manager: true,
+        }),
+        toolResponse: expect.objectContaining({
+          llmContent: 'callback output',
+        }),
+        toolUseId: 'tool-1',
+      }),
+      '/tmp/project',
+      'session-tool-hooks',
+      'default',
+    );
+  });
+});

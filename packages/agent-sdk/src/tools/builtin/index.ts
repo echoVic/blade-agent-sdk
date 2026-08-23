@@ -7,6 +7,8 @@ import { SessionId } from '../../local/branded.js';
 import type { Tool } from '../types/index.js';
 import type { MemoryManager } from '../../local/MemoryManager.js';
 import type { SubagentRegistryLike } from '../../local/subagentTypes.js';
+import { SubagentRegistry } from '../../local/subagentRegistry.js';
+import { getBuiltinTools as getLocalBuiltinTools } from '../../local/builtin-tools.js';
 
 async function getMcpTools(mcpRegistry: McpRegistry): Promise<Tool[]> {
   try {
@@ -26,15 +28,19 @@ export async function getBuiltinTools(opts?: {
   subagentRegistry?: SubagentRegistryLike;
 }): Promise<Tool[]> {
   const sessionId = opts?.sessionId ?? SessionId(`session_${Date.now()}`);
+  const registry = opts?.subagentRegistry ?? new SubagentRegistry();
+  if (!opts?.subagentRegistry) {
+    registry.loadFromStandardLocations(undefined, opts?.configDir);
+  }
 
-  const tools = await getBuiltinTools({
+  const tools = await getLocalBuiltinTools({
     sessionId,
     configDir: opts?.configDir,
     mcpRegistry: opts?.mcpRegistry,
     includeMcpProtocolTools: opts?.includeMcpProtocolTools,
     memoryManager: opts?.memoryManager,
-    subagentRegistry: opts?.subagentRegistry,
-  }) as Tool[];
+    subagentRegistry: registry,
+  });
 
   const mcpTools = opts?.mcpRegistry && opts?.includeMcpProtocolTools !== false
     ? await getMcpTools(opts.mcpRegistry)

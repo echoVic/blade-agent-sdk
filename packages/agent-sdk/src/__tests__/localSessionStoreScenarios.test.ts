@@ -1,0 +1,208 @@
+import { describe, expect, it } from 'vitest';
+import { mkdtempSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { PersistentStore } from '../local/persistentStore.js';
+import { JsonlSessionStore } from '../local/sessionStore.js';
+import type { ContentPart } from '@blade-ai/ai/chat';
+import { assertDefined } from './helpers/assertDefined.js';
+import { SessionId } from '../local/branded.js';
+
+function createWorkspaceRoot(): string {
+  return mkdtempSync(join(tmpdir(), 'session-store-test-'));
+}
+
+describe('JsonlSessionStore', () => {
+  it('should reconstruct full session state from JSONL events', async () => {
+    const workspaceRoot = createWorkspaceRoot();
+    const persistentStore = new PersistentStore(workspaceRoot);
+    const sessionStore = new JsonlSessionStore(workspaceRoot);
+
+    const sessionId = SessionId('session-1');
+    const userMessageId = await persistentStore.saveMessage(sessionId, 'user', 'hello');
+    const toolCallId = await persistentStore.saveToolUse(
+      sessionId,
+      'Task',
+      {
+        subagent_session_id: 'child-1',
+        subagent_type: 'research',
+        description: 'Inspect repository',
+      },
+    );
+    await persistentStore.saveToolResult(
+      sessionId,
+      toolCallId,
+      'Task',
+      { status: 'done' },
+      toolCallId,
+      undefined,
+      undefined,
+      {
+        subagentSessionId: 'child-1',
+        subagentType: 'research',
+        subagentStatus: 'completed',
+        subagentSummary: 'Finished inspection',
+      },
+    );
+    const summaryMessageId = await persistentStore.saveCompaction(
+      sessionId,
+      'Compacted summary',
+      { trigger: 'auto', preTokens: 100, postTokens: 40 },
+      toolCallId,
+    );
+
+    const state = await sessionStore.loadState(sessionId);
+
+    expect(state).not.toBeNull();
+    assertDefined(state);
+    expect(state.messages).toHaveLength(4);
+    expect(state.messages[0]?.id).toBe(userMessageId);
+    expect(state.messages[0]?.role).toBe('user');
+    expect(state.messages[1]?.role).toBe('assistant');
+    expect(state.messages[1]?.tool_calls?.[0]?.id).toBe(toolCallId);
+    expect(state.messages[2]?.role).toBe('tool');
+    expect(state.messages[2]?.tool_call_id).toBe(toolCallId);
+    expect(state.messages[3]?.role).toBe('system');
+    expect(state.messages[3]?.id).toBe(summaryMessageId);
+    expect(state.messages[3]?.content).toBe('Compacted summary');
+    expect(state.summary).toBe('Compacted summary');
+    expect(state.toolCalls).toHaveLength(1);
+    expect(state.toolCalls[0]?.status).toBe('success');
+    expect(state.subagentRefs).toHaveLength(2);
+    expect(state.subagentRefs[1]?.status).toBe('completed');
+  });
+
+  it('should preserve assistant reasoning content with tool calls for resume', async () => {
+    const workspaceRoot = createWorkspaceRoot();
+    const persistentStore = new PersistentStore(workspaceRoot);
+    const sessionStore = new JsonlSessionStore(workspaceRoot);
+
+    const sessionId = SessionId('session-reasoning-tool-call');
+    const userMessageId = await persistentStore.saveMessage(sessionId, 'user', 'hello');
+    const assistantMessageId = await persistentStore.saveMessage(
+      sessionId,
+      'assistant',
+      '',
+      userMessageId,
+      {
+        reasoningContent: 'Need to inspect first.',
+        toolCalls: [
+          {
+            id: 'call-search',
+            type: 'function',
+            function: {
+              name: 'Search',
+              arguments: '{"q":"needle"}',
+            },
+          },
+        ],
+      },
+    );
+    await persistentStore.saveToolResult(
+      sessionId,
+      'call-search',
+      'Search',
+      'result',
+      'call-search',
+    );
+
+    const state = await sessionStore.loadState(sessionId);
+
+    expect(state).not.toBeNull();
+    assertDefined(state);
+    expect(state.messages).toHaveLength(3);
+    expect(state.messages[1]).toMatchObject({
+      id: assistantMessageId,
+      role: 'assistant',
+      content: '',
+      reasoningContent: 'Need to inspect first.',
+      tool_calls: [
+        {
+          id: 'call-search',
+          function: {
+            name: 'Search',
+            arguments: '{"q":"needle"}',
+          },
+        },
+      ],
+    });
+    expect(state.messages[2]).toMatchObject({
+      role: 'tool',
+      tool_call_id: 'call-search',
+    });
+  });
+
+  it('should fork state by linear message boundary', async () => {
+    const workspaceRoot = createWorkspaceRoot();
+    const persistentStore = new PersistentStore(workspaceRoot);
+    const sessionStore = new JsonlSessionStore(workspaceRoot);
+
+    const sessionId = SessionId('session-2');
+    const userMessageId = await persistentStore.saveMessage(sessionId, 'user', 'hello');
+    const assistantMessageId = await persistentStore.saveMessage(
+      sessionId,
+      'assistant',
+      'world',
+      userMessageId,
+    );
+    await persistentStore.saveCompaction(
+      sessionId,
+      'Compacted summary',
+      { trigger: 'manual', preTokens: 50 },
+      assistantMessageId,
+    );
+
+    const snapshot = await sessionStore.forkState(sessionId, { messageId: assistantMessageId });
+
+    expect(snapshot).not.toBeNull();
+    assertDefined(snapshot);
+    expect(snapshot.messageIds).toEqual([userMessageId, assistantMessageId]);
+    expect(snapshot.messages).toHaveLength(2);
+    expect(snapshot.summary).toBeUndefined();
+  });
+
+  it('should provide session summaries from the unified store', async () => {
+    const workspaceRoot = createWorkspaceRoot();
+    const persistentStore = new PersistentStore(workspaceRoot);
+    const sessionStore = new JsonlSessionStore(workspaceRoot);
+
+    await persistentStore.saveMessage(SessionId('session-a'), 'user', 'alpha');
+    await persistentStore.saveCompaction(
+      SessionId('session-a'),
+      'Searchable summary',
+      { trigger: 'auto', preTokens: 10 },
+    );
+    await persistentStore.saveMessage(SessionId('session-b'), 'user', 'beta');
+
+    const sessionIds = await sessionStore.listSessions();
+    const summary = await sessionStore.getSessionSummary(SessionId('session-a'));
+
+    expect(sessionIds).toEqual(['session-a', 'session-b']);
+    expect(summary).not.toBeNull();
+    assertDefined(summary);
+    expect(summary.messageCount).toBe(1);
+    expect(summary.summaryText).toBe('Searchable summary');
+  });
+
+  it('should reconstruct multimodal user messages preserving image parts', async () => {
+    const workspaceRoot = createWorkspaceRoot();
+    const persistentStore = new PersistentStore(workspaceRoot);
+    const sessionStore = new JsonlSessionStore(workspaceRoot);
+
+    const sessionId = SessionId('session-multimodal');
+    const content: ContentPart[] = [
+      { type: 'text', text: 'describe this image' },
+      { type: 'image_url', image_url: { url: 'data:image/png;base64,abc' } },
+    ];
+
+    await persistentStore.saveMessage(sessionId, 'user', content);
+
+    const state = await sessionStore.loadState(sessionId);
+
+    expect(state).not.toBeNull();
+    assertDefined(state);
+    expect(state.messages).toHaveLength(1);
+    expect(state.messages[0]?.role).toBe('user');
+    expect(state.messages[0]?.content).toEqual(content);
+  });
+});

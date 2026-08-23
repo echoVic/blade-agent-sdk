@@ -144,9 +144,13 @@ describe('monorepo topology', () => {
     const files = [
       'src/session/SessionRuntime.ts',
       'src/session/SessionModelPort.ts',
-      'src/session/__tests__/SessionKernelAdapter.test.ts',
-      'src/session/__tests__/SessionKernelStoreAdapter.test.ts',
-      'src/session/__tests__/SessionKernelTraceAdapter.test.ts',
+      // Test ports: kernel adapter tests now live in
+      // packages/agent-sdk/src/__tests__ (localSessionKernelAdapter.test.ts,
+      // localSessionKernelStoreAdapterScenarios.test.ts,
+      // localSessionKernelTraceAdapterScenarios.test.ts).
+      'packages/agent-sdk/src/__tests__/localSessionKernelAdapter.test.ts',
+      'packages/agent-sdk/src/__tests__/localSessionKernelStoreAdapterScenarios.test.ts',
+      'packages/agent-sdk/src/__tests__/localSessionKernelTraceAdapterScenarios.test.ts',
     ];
 
     expect(rootTsconfig.compilerOptions?.paths).toMatchObject({
@@ -200,10 +204,13 @@ describe('monorepo topology', () => {
       'src/context/storage/PersistentStore.ts',
       'src/context/strategies/MicrocompactStrategy.ts',
       'src/context/strategies/SoftCompactionStrategy.ts',
-      'src/context/__tests__/TokenCounter.test.ts',
+      // Test ports: TokenCounter + SoftCompactionStrategy tests now live in
+      // packages/agent-sdk/src/__tests__ (localTokenCounter.test.ts,
+      // localSoftCompactionStrategy.test.ts).
+      'packages/agent-sdk/src/__tests__/localTokenCounter.test.ts',
       'src/context/__tests__/CompactionService.test.ts',
       'src/context/strategies/__tests__/MicrocompactStrategy.test.ts',
-      'src/context/strategies/__tests__/SoftCompactionStrategy.test.ts',
+      'packages/agent-sdk/src/__tests__/localSoftCompactionStrategy.test.ts',
     ];
 
     for (const file of files) {
@@ -248,7 +255,9 @@ describe('monorepo topology', () => {
       'src/agent/__tests__/LoopState.test.ts',
       'src/agent/__tests__/ModelManager.setModel.test.ts',
       'src/agent/__tests__/decideTurnLimit.singleWriter.test.ts',
-      'src/agent/__tests__/skillActivationFiltering.test.ts',
+      // Test port: skill activation filtering tests now live in
+      // packages/agent-sdk/src/__tests__/localSkillActivationFiltering.test.ts.
+      'packages/agent-sdk/src/__tests__/localSkillActivationFiltering.test.ts',
       'src/agent/state/__tests__/ConversationState.test.ts',
     ];
 
@@ -346,9 +355,12 @@ describe('monorepo topology', () => {
       'src/session/Session.ts',
       'src/session/SessionStore.ts',
       'src/session/types.ts',
-      'src/session/__tests__/SessionContext.test.ts',
-      'src/session/__tests__/SessionPersistence.test.ts',
-      'src/session/__tests__/SessionStore.test.ts',
+      // Test ports: session integration tests now live in
+      // packages/agent-sdk/src/__tests__ (localSessionContext.test.ts,
+      // localSessionPersistence.test.ts, localSessionStoreScenarios.test.ts).
+      'packages/agent-sdk/src/__tests__/localSessionContext.test.ts',
+      'packages/agent-sdk/src/__tests__/localSessionPersistence.test.ts',
+      'packages/agent-sdk/src/__tests__/localSessionStoreScenarios.test.ts',
     ];
 
     for (const file of files) {
@@ -368,7 +380,9 @@ describe('monorepo topology', () => {
   it('keeps root hooks and tool result chat protocol types on the ai chat subpath', () => {
     const files = [
       'src/hooks/HookRuntime.ts',
-      'src/hooks/__tests__/HookRuntime.test.ts',
+      // Test port: HookRuntime tests now live in
+      // packages/agent-sdk/src/__tests__/localHookRuntime.test.ts.
+      'packages/agent-sdk/src/__tests__/localHookRuntime.test.ts',
       'src/tools/types/ToolEffects.ts',
     ];
 
@@ -414,7 +428,9 @@ describe('monorepo topology', () => {
   it('keeps root service implementation chat protocol types on the ai chat subpath', () => {
     const files = [
       'src/session/VercelAIChatService.ts',
-      'src/services/__tests__/deepseek-deep.live.test.ts',
+      // Test port: the deepseek live suite now lives in
+      // packages/agent-sdk/src/__tests__/deepseekDeepLive.test.ts.
+      'packages/agent-sdk/src/__tests__/deepseekDeepLive.test.ts',
     ];
 
     for (const file of files) {
@@ -428,7 +444,7 @@ describe('monorepo topology', () => {
 
       if (file.endsWith('.live.test.ts')) {
         expect(source, `${file} should import the session chat service factory`).toContain(
-          "from '../../session/ChatServiceFactory.js'",
+          "from '../local/chatServiceFactory.js'",
         );
         expect(legacyChatServiceImports, `${file} should not import the legacy factory shim`)
           .toHaveLength(0);
@@ -482,8 +498,11 @@ describe('monorepo topology', () => {
       // Slice #343: ModelManager moved into the package (modelManager.ts).
       ['packages/agent-sdk/src/local/modelManager.ts', 'import'],
       ['packages/agent-sdk/src/local/compactionService.ts', 'import'],
-      ['src/services/__tests__/deepseek.live.test.ts', 'import'],
-      ['src/services/__tests__/deepseek-deep.live.test.ts', 'import'],
+      // Test ports: deepseek live suites now live in
+      // packages/agent-sdk/src/__tests__ (deepseekLive.test.ts,
+      // deepseekDeepLive.test.ts).
+      ['packages/agent-sdk/src/__tests__/deepseekLive.test.ts', 'import'],
+      ['packages/agent-sdk/src/__tests__/deepseekDeepLive.test.ts', 'import'],
       ['src/agent/__tests__/ModelManager.setModel.test.ts', 'mock'],
       ['src/context/__tests__/CompactionService.test.ts', 'mock'],
     ] as const;
@@ -535,7 +554,12 @@ describe('monorepo topology', () => {
   it('keeps the legacy root Vercel chat service as a session implementation shim', () => {
     const legacyServiceSource = readFileSync('src/services/VercelAIChatService.ts', 'utf-8');
     const sessionServiceSource = readFileSync('src/session/VercelAIChatService.ts', 'utf-8');
-    const serviceTestSource = readFileSync('src/services/__tests__/VercelAIChatService.test.ts', 'utf-8');
+    // Test port: VercelAIChatService tests now live in
+    // packages/agent-sdk/src/__tests__/localVercelAIChatService.test.ts.
+    const serviceTestSource = readFileSync(
+      'packages/agent-sdk/src/__tests__/localVercelAIChatService.test.ts',
+      'utf-8',
+    );
 
     expect(legacyServiceSource.trim()).toBe(
       "export { VercelAIChatService } from '../session/VercelAIChatService.js';",
@@ -550,8 +574,8 @@ describe('monorepo topology', () => {
     expect(packageVercelServiceSource).toContain('export class VercelAIChatService');
     expect(packageVercelServiceSource).toContain("from '@blade-ai/ai/providers/vercel'");
     expect(packageVercelServiceSource).toContain("from '@blade-ai/ai/retry'");
-    expect(serviceTestSource).toContain("await import('../../session/VercelAIChatService.js')");
-    expect(serviceTestSource).not.toContain("await import('../VercelAIChatService.js')");
+    expect(serviceTestSource).toContain("await import('../local/vercelAIChatService.js')");
+    expect(serviceTestSource).not.toContain("await import('../../session/VercelAIChatService.js')");
   });
 
   it('keeps the legacy root retry policy as an ai package shim', () => {
