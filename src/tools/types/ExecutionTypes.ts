@@ -7,6 +7,7 @@ import type {
 } from '@/types/branded.js';
 import type { IBackgroundAgentManager } from '../../agent/types.js';
 import type { ContextSnapshot } from '../../runtime/index.js';
+import type { DurableExecutionFence } from '../../session/events/DurableExecutionLeaseStore.js';
 import type { BladeConfig, JsonObject, PermissionMode } from '../../types/common.js';
 import type { ToolCatalog } from '../catalog/index.js';
 import type { ToolRegistry } from '../registry/ToolRegistry.js';
@@ -118,6 +119,9 @@ export interface ExecutionContext {
   permissionMode?: PermissionMode;
   bladeConfig?: BladeConfig;
   backgroundAgentManager?: IBackgroundAgentManager;
+  executionFence?: DurableExecutionFence;
+  /** @internal Validates execution ownership immediately before a side effect. */
+  assertExecutionLease?: () => Promise<void>;
   toolRegistry?: ToolRegistry;
   toolCatalog?: ToolCatalog;
   discoveredTools?: string[];

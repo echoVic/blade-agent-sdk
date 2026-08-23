@@ -1,7 +1,11 @@
 import { tmpdir } from 'node:os';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createContextSnapshot } from '../../../../runtime/index.js';
-import { SessionId } from '../../../../types/branded.js';
+import {
+  ExecutionLeaseId,
+  FencingToken,
+  SessionId,
+} from '../../../../types/branded.js';
 import { collectToolExecution } from '../../../types/index.js';
 import { BackgroundShellManager } from '../BackgroundShellManager.js';
 import { bashTool } from '../bash.js';
@@ -45,10 +49,9 @@ describe('BackgroundShellManager handoff admission', () => {
       status: 'killed',
     });
     expect(manager.getActiveProcessIds(firstSession)).toEqual([processInfo.id]);
-    await vi.waitFor(
-      () => expect(manager.getActiveProcessIds(firstSession)).toEqual([]),
-      { timeout: 2_000 },
-    );
+    await vi.waitFor(() => expect(manager.getActiveProcessIds(firstSession)).toEqual([]), {
+      timeout: 2_000,
+    });
 
     expect(() =>
       manager.startBackgroundProcess({
@@ -62,6 +65,10 @@ describe('BackgroundShellManager handoff admission', () => {
   it('attributes Bash background processes to the calling Session', async () => {
     const rootSessionId = SessionId('bash-tool-root-session');
     const childSessionId = SessionId('bash-tool-child-session');
+    const executionFence = {
+      leaseId: ExecutionLeaseId('bash-tool-lease'),
+      fencingToken: FencingToken(3),
+    };
     manager.openSession(rootSessionId);
     const invocation = bashTool.build({
       command: 'sleep 30',
@@ -75,6 +82,7 @@ describe('BackgroundShellManager handoff admission', () => {
         backgroundAgentManager: {
           getOwnerSessionId: () => rootSessionId,
         } as never,
+        executionFence,
         contextSnapshot: createContextSnapshot(childSessionId, 'shell-turn', {
           capabilities: {
             filesystem: {
@@ -89,13 +97,94 @@ describe('BackgroundShellManager handoff admission', () => {
     expect(result.status).toBe('success');
     const [shellId] = manager.getActiveProcessIds(rootSessionId);
     expect(shellId).toMatch(/^bash_/);
+    expect(shellId ? manager.getProcess(shellId)?.executionFence : undefined).toEqual(
+      executionFence,
+    );
     expect(manager.getActiveProcessIds(childSessionId)).toEqual([]);
     if (shellId) {
       manager.kill(shellId);
     }
-    await vi.waitFor(
-      () => expect(manager.getActiveProcessIds(rootSessionId)).toEqual([]),
-      { timeout: 2_000 },
-    );
+    await vi.waitFor(() => expect(manager.getActiveProcessIds(rootSessionId)).toEqual([]), {
+      timeout: 2_000,
+    });
+  });
+
+  it('seals a Session and terminates all of its shells after ownership loss', async () => {
+    const lostSessionId = SessionId('lost-shell-session');
+    const otherSessionId = SessionId('unrelated-shell-session');
+    manager.openSession(lostSessionId);
+    manager.openSession(otherSessionId);
+    const first = manager.startBackgroundProcess({
+      command: 'sleep 30',
+      sessionId: lostSessionId,
+      cwd: tmpdir(),
+    });
+    const second = manager.startBackgroundProcess({
+      command: 'sleep 30',
+      sessionId: lostSessionId,
+      cwd: tmpdir(),
+    });
+    const unrelated = manager.startBackgroundProcess({
+      command: 'sleep 30',
+      sessionId: otherSessionId,
+      cwd: tmpdir(),
+    });
+
+    await expect(manager.terminateSession(lostSessionId)).resolves.toEqual([first.id, second.id]);
+    expect(() =>
+      manager.startBackgroundProcess({
+        command: 'true',
+        sessionId: lostSessionId,
+        cwd: tmpdir(),
+      }),
+    ).toThrow(/admission is closed/);
+    expect(manager.getActiveProcessIds(lostSessionId)).toEqual([]);
+    expect(manager.getActiveProcessIds(otherSessionId)).toEqual([unrelated.id]);
+  });
+
+  it('revokes only shells owned by the stale execution fence', async () => {
+    const sessionId = SessionId('fenced-shell-session');
+    const staleFence = {
+      leaseId: ExecutionLeaseId('stale-shell-lease'),
+      fencingToken: FencingToken(1),
+    };
+    const currentFence = {
+      leaseId: ExecutionLeaseId('current-shell-lease'),
+      fencingToken: FencingToken(2),
+    };
+    manager.openSession(sessionId);
+    const stale = manager.startBackgroundProcess({
+      command: 'sleep 30',
+      sessionId,
+      cwd: tmpdir(),
+      executionFence: staleFence,
+    });
+    const current = manager.startBackgroundProcess({
+      command: 'sleep 30',
+      sessionId,
+      cwd: tmpdir(),
+      executionFence: currentFence,
+    });
+
+    await expect(
+      manager.terminateExecutionFence(sessionId, staleFence),
+    ).resolves.toEqual([stale.id]);
+    expect(manager.getActiveProcessIds(sessionId)).toEqual([current.id]);
+    expect(() =>
+      manager.startBackgroundProcess({
+        command: 'true',
+        sessionId,
+        cwd: tmpdir(),
+        executionFence: staleFence,
+      }),
+    ).toThrow(/admission is closed/);
+    expect(() =>
+      manager.startBackgroundProcess({
+        command: 'true',
+        sessionId,
+        cwd: tmpdir(),
+        executionFence: currentFence,
+      }),
+    ).not.toThrow();
   });
 });

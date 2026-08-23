@@ -17,12 +17,16 @@ import {
   CommandId,
   EventId,
   EventSequence,
+  ExecutionLeaseId,
+  FencingToken,
   InputId,
   RequestId,
   SessionId,
   TurnId,
+  WorkerId,
 } from '../../../types/branded.js';
 import { DurableEventSequenceConflictError, DurableEventStoreError } from '../DurableEventStore.js';
+import { DurableExecutionLeaseError } from '../DurableExecutionLeaseStore.js';
 import { JsonlDurableEventStore } from '../JsonlDurableEventStore.js';
 import { DURABLE_EVENT_LOG_FORMAT } from '../schemas.js';
 import { DURABLE_EVENT_SCHEMA_VERSION, DurableEventType } from '../types.js';
@@ -34,6 +38,11 @@ const storeWriterPath = join(
   dirname(fileURLToPath(import.meta.url)),
   'fixtures',
   'jsonlStoreWriter.ts',
+);
+const leaseWorkerPath = join(
+  dirname(fileURLToPath(import.meta.url)),
+  'fixtures',
+  'jsonlLeaseWorker.ts',
 );
 
 interface ReadyChildProcess {
@@ -153,6 +162,14 @@ interface StoreWriterResult {
   actualSequence?: number | null;
 }
 
+interface LeaseWorkerResult {
+  status: 'fulfilled' | 'rejected';
+  workerId?: string;
+  leaseId?: string;
+  fencingToken?: number;
+  code?: string;
+}
+
 function parseStoreWriterResult(process: ReadyChildProcess): StoreWriterResult {
   const output = process.output();
   const resultLine = output.trim().split('\n').at(-1);
@@ -160,6 +177,15 @@ function parseStoreWriterResult(process: ReadyChildProcess): StoreWriterResult {
     throw new Error(`Store writer produced no result: ${output}`);
   }
   return JSON.parse(resultLine) as StoreWriterResult;
+}
+
+function parseLeaseWorkerResult(process: ReadyChildProcess): LeaseWorkerResult {
+  const output = process.output();
+  const resultLine = output.trim().split('\n').at(-1);
+  if (!resultLine) {
+    throw new Error(`Lease worker produced no result: ${output}`);
+  }
+  return JSON.parse(resultLine) as LeaseWorkerResult;
 }
 
 async function startStoreWriter(
@@ -183,6 +209,29 @@ async function startStoreWriter(
     ],
     'ready\n',
     'Store writer',
+  );
+}
+
+async function startLeaseWorker(
+  storageRoot: string,
+  sessionId: SessionId,
+  workerId: string,
+  leaseId: string,
+): Promise<ReadyChildProcess> {
+  return spawnReadyChild(
+    [
+      '--no-warnings',
+      '--experimental-transform-types',
+      '--loader',
+      sourceTypeScriptLoaderUrl,
+      leaseWorkerPath,
+      storageRoot,
+      sessionId,
+      workerId,
+      leaseId,
+    ],
+    'ready\n',
+    'Lease worker',
   );
 }
 
@@ -498,6 +547,197 @@ describe('JsonlDurableEventStore', () => {
     expect(await store.getHeadSequence(sessionId)).toBe(2);
   });
 
+  it('fences event appends with a monotonic execution lease', async () => {
+    const sessionId = SessionId('session-execution-lease');
+    const firstLeaseId = ExecutionLeaseId('lease-first');
+    const secondLeaseId = ExecutionLeaseId('lease-second');
+    let now = Date.parse('2026-08-22T12:00:00.000Z');
+    const leaseStore = new JsonlDurableEventStore(storageRoot, {
+      clock: () => new Date(now),
+      eventIdFactory: () => EventId(`lease-event-${++nextEventId}`),
+    });
+
+    await expect(leaseStore.requiresExecutionLease(sessionId)).resolves.toBe(false);
+    const firstLease = await leaseStore.acquireExecutionLease(sessionId, {
+      leaseId: firstLeaseId,
+      ownerId: WorkerId('worker-first'),
+      ttlMs: 1_000,
+    });
+    expect(firstLease).toMatchObject({
+      sessionId,
+      leaseId: firstLeaseId,
+      ownerId: 'worker-first',
+      fencingToken: 1,
+      acquiredAt: '2026-08-22T12:00:00.000Z',
+      renewedAt: '2026-08-22T12:00:00.000Z',
+      expiresAt: '2026-08-22T12:00:01.000Z',
+    });
+    await expect(leaseStore.requiresExecutionLease(sessionId)).resolves.toBe(true);
+    expect((await stat(leaseStore.getExecutionLeaseFilePath(sessionId))).mode & 0o777).toBe(0o600);
+    await expect(
+      leaseStore.acquireExecutionLease(sessionId, {
+        leaseId: secondLeaseId,
+        ownerId: WorkerId('worker-second'),
+        ttlMs: 1_000,
+      }),
+    ).rejects.toMatchObject({
+      code: 'DURABLE_EXECUTION_LEASE_CONFLICT',
+      activeLease: firstLease,
+    });
+    await expect(
+      leaseStore.append(sessionId, [{ type: DurableEventType.SESSION_CREATED, data: {} }], {
+        expectedLastSequence: null,
+      }),
+    ).rejects.toMatchObject({
+      code: 'DURABLE_EXECUTION_LEASE_REQUIRED',
+    });
+    await leaseStore.append(sessionId, [{ type: DurableEventType.SESSION_CREATED, data: {} }], {
+      expectedLastSequence: null,
+      executionFence: firstLease,
+    });
+
+    now += 1_001;
+    await expect(
+      leaseStore.append(
+        sessionId,
+        [
+          {
+            type: DurableEventType.REQUEST_ACCEPTED,
+            requestId: RequestId('unfenced-expired-request'),
+            commandId: CommandId('unfenced-expired-command'),
+            data: {
+              inputId: InputId('unfenced-expired-input'),
+              input: 'unfenced after expiry',
+              priority: 'next',
+            },
+          },
+        ],
+        { expectedLastSequence: EventSequence(1) },
+      ),
+    ).rejects.toMatchObject({
+      code: 'DURABLE_EXECUTION_LEASE_REQUIRED',
+    });
+    const secondLease = await leaseStore.acquireExecutionLease(sessionId, {
+      leaseId: secondLeaseId,
+      ownerId: WorkerId('worker-second'),
+      ttlMs: 1_000,
+    });
+    expect(secondLease.fencingToken).toBe(FencingToken(2));
+    await expect(
+      leaseStore.append(
+        sessionId,
+        [
+          {
+            type: DurableEventType.REQUEST_ACCEPTED,
+            requestId: RequestId('stale-request'),
+            commandId: CommandId('stale-command'),
+            data: {
+              inputId: InputId('stale-input'),
+              input: 'stale',
+              priority: 'next',
+            },
+          },
+        ],
+        {
+          expectedLastSequence: EventSequence(1),
+          executionFence: firstLease,
+        },
+      ),
+    ).rejects.toMatchObject({
+      code: 'DURABLE_EXECUTION_LEASE_LOST',
+      fencingToken: 1,
+      activeLease: secondLease,
+    });
+    await leaseStore.append(
+      sessionId,
+      [
+        {
+          type: DurableEventType.REQUEST_ACCEPTED,
+          requestId: RequestId('current-request'),
+          commandId: CommandId('current-command'),
+          data: {
+            inputId: InputId('current-input'),
+            input: 'current',
+            priority: 'next',
+          },
+        },
+      ],
+      {
+        expectedLastSequence: EventSequence(1),
+        executionFence: secondLease,
+      },
+    );
+
+    await leaseStore.releaseExecutionLease(secondLease);
+    await expect(leaseStore.releaseExecutionLease(secondLease)).resolves.toBeUndefined();
+    await expect(leaseStore.assertExecutionLease(secondLease)).rejects.toMatchObject({
+      code: 'DURABLE_EXECUTION_LEASE_LOST',
+    });
+    await expect(leaseStore.requiresExecutionLease(sessionId)).resolves.toBe(true);
+    await expect(
+      leaseStore.append(
+        sessionId,
+        [
+          {
+            type: DurableEventType.REQUEST_ACCEPTED,
+            requestId: RequestId('unfenced-released-request'),
+            commandId: CommandId('unfenced-released-command'),
+            data: {
+              inputId: InputId('unfenced-released-input'),
+              input: 'unfenced after release',
+              priority: 'next',
+            },
+          },
+        ],
+        { expectedLastSequence: EventSequence(2) },
+      ),
+    ).rejects.toMatchObject({
+      code: 'DURABLE_EXECUTION_LEASE_REQUIRED',
+    });
+  });
+
+  it('renews an execution lease without changing its fencing token', async () => {
+    const sessionId = SessionId('session-lease-renewal');
+    let now = Date.parse('2026-08-22T12:00:00.000Z');
+    const leaseStore = new JsonlDurableEventStore(storageRoot, {
+      clock: () => new Date(now),
+    });
+    const lease = await leaseStore.acquireExecutionLease(sessionId, {
+      leaseId: ExecutionLeaseId('lease-renewal'),
+      ownerId: WorkerId('worker-renewal'),
+      ttlMs: 1_000,
+    });
+
+    now += 400;
+    const renewed = await leaseStore.renewExecutionLease(lease, 1_000);
+
+    expect(renewed.fencingToken).toBe(lease.fencingToken);
+    expect(renewed.acquiredAt).toBe(lease.acquiredAt);
+    expect(renewed.renewedAt).toBe('2026-08-22T12:00:00.400Z');
+    expect(renewed.expiresAt).toBe('2026-08-22T12:00:01.400Z');
+    await expect(leaseStore.assertExecutionLease(renewed)).resolves.toBeUndefined();
+  });
+
+  it('fails closed on corrupt execution lease state', async () => {
+    const sessionId = SessionId('session-corrupt-lease');
+    const filePath = store.getExecutionLeaseFilePath(sessionId);
+    await mkdir(dirname(filePath), { recursive: true });
+    await writeFile(filePath, '{"format":"blade.durable-execution-lease"}\n');
+
+    await expect(
+      store.acquireExecutionLease(sessionId, {
+        leaseId: ExecutionLeaseId('lease-corrupt'),
+        ownerId: WorkerId('worker-corrupt'),
+        ttlMs: 1_000,
+      }),
+    ).rejects.toBeInstanceOf(DurableExecutionLeaseError);
+    await expect(
+      store.append(sessionId, [{ type: DurableEventType.SESSION_CREATED, data: {} }]),
+    ).rejects.toMatchObject({
+      code: 'DURABLE_EXECUTION_LEASE_CORRUPT',
+    });
+  });
+
   it('waits for a lock held by another process before appending', async () => {
     const sessionId = SessionId('session-cross-process-lock');
     const filePath = store.getFilePath(sessionId);
@@ -544,6 +784,33 @@ describe('JsonlDurableEventStore', () => {
     await expect(store.read(sessionId)).resolves.toMatchObject({
       events: [expect.objectContaining({ sequence: 1 })],
       headSequence: 1,
+    });
+  });
+
+  it('grants execution ownership to only one independent Store process', async () => {
+    const sessionId = SessionId('session-cross-process-lease');
+    const first = await startLeaseWorker(storageRoot, sessionId, 'worker-first', 'lease-first');
+    const second = await startLeaseWorker(storageRoot, sessionId, 'worker-second', 'lease-second');
+    first.child.stdin.end('go\n');
+    second.child.stdin.end('go\n');
+    await Promise.all([waitForChild(first), waitForChild(second)]);
+
+    const results = [first, second].map(parseLeaseWorkerResult);
+    expect(results.filter((result) => result.status === 'fulfilled')).toEqual([
+      expect.objectContaining({ fencingToken: 1 }),
+    ]);
+    expect(results.filter((result) => result.status === 'rejected')).toEqual([
+      expect.objectContaining({
+        code: 'DURABLE_EXECUTION_LEASE_CONFLICT',
+      }),
+    ]);
+
+    const unfencedWriter = await startStoreWriter(storageRoot, sessionId, 'unfenced-after-lease');
+    unfencedWriter.child.stdin.end('go\n');
+    await waitForChild(unfencedWriter);
+    expect(parseStoreWriterResult(unfencedWriter)).toMatchObject({
+      status: 'rejected',
+      code: 'DURABLE_EXECUTION_LEASE_REQUIRED',
     });
   });
 

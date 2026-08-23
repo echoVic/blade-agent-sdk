@@ -375,6 +375,8 @@ export class LoopRunner {
         confirmationHandler: context.confirmationHandler,
         bladeConfig: this.config,
         backgroundAgentManager: context.backgroundAgentManager,
+        executionFence: context.executionFence,
+        assertExecutionLease: context.assertExecutionLease,
         toolCatalog: catalog instanceof ToolCatalog
           ? catalog
           : undefined,

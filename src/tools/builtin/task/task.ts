@@ -268,6 +268,9 @@ export function createTaskTool({ registry }: { registry: SubagentRegistry }) {
           permissionMode: context.permissionMode,
           subagentSessionId,
           snapshot: context.contextSnapshot,
+          signal: context.signal,
+          executionFence: context.executionFence,
+          assertExecutionLease: context.assertExecutionLease,
         };
 
         yield {
@@ -308,6 +311,9 @@ export function createTaskTool({ registry }: { registry: SubagentRegistry }) {
               permissionMode: context.permissionMode,
               subagentSessionId,
               snapshot: context.contextSnapshot,
+              signal: context.signal,
+              executionFence: context.executionFence,
+              assertExecutionLease: context.assertExecutionLease,
             };
 
             const continueStartTime = Date.now();
@@ -450,6 +456,8 @@ function handleBackgroundExecution(
     permissionMode: context.permissionMode,
     agentId: subagentSessionId,
     snapshot: context.contextSnapshot,
+    executionFence: context.executionFence,
+    assertExecutionLease: context.assertExecutionLease,
   });
 
   return {
@@ -552,6 +560,8 @@ function handleResume(
     context.permissionMode,
     registry,
     description,
+    context.executionFence,
+    context.assertExecutionLease,
   );
 
   if (!newAgentId) {

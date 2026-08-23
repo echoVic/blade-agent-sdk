@@ -12,6 +12,8 @@ import type { ConversationState } from './state/ConversationState.js';
 export interface CompactionRuntimeContext {
   sessionId: SessionId;
   projectDir?: string;
+  signal?: AbortSignal;
+  assertExecutionLease?: () => Promise<void>;
 }
 
 export class CompactionHandler {
@@ -107,6 +109,7 @@ export class CompactionHandler {
 
       yield { type: 'compacting', isCompacting: true };
 
+      await runtimeCtx.assertExecutionLease?.();
       try {
         const result = await CompactionService.compact(convState.getContextMessages(), {
           trigger: 'auto',
@@ -118,6 +121,7 @@ export class CompactionHandler {
           customHeaders: chatConfig.customHeaders,
           actualPreTokens: actualPromptTokens,
           projectDir: runtimeCtx.projectDir,
+          signal: runtimeCtx.signal,
         });
 
         if (result.success) {
@@ -181,6 +185,7 @@ export class CompactionHandler {
     runtimeCtx: CompactionRuntimeContext,
   ): AsyncGenerator<CompactingEvent, boolean> {
     this.logger.warn('[Agent] 反应式压缩触发 (context length error)');
+    await runtimeCtx.assertExecutionLease?.();
     yield { type: 'compacting', isCompacting: true };
     const originalMessages = convState.getContextMessages().map(cloneMessage);
     let workingMessages = originalMessages.map(cloneMessage);
@@ -238,6 +243,7 @@ export class CompactionHandler {
         baseURL: chatConfig.baseUrl,
         customHeaders: chatConfig.customHeaders,
         projectDir: runtimeCtx.projectDir,
+        signal: runtimeCtx.signal,
       });
 
       convState.replaceContent(result.compactedMessages);

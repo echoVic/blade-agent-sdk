@@ -21,8 +21,8 @@ export type {
   ToolEffect,
   ToolEffectYield,
   ToolExecution,
-  ToolExecutionStartedLifecycle,
   ToolExecutionLifecycle,
+  ToolExecutionStartedLifecycle,
   ToolInvocationLifecycle,
   ToolMessage,
   ToolModelContent,
@@ -39,6 +39,8 @@ export {
   completeToolExecution,
   EventId,
   EventSequence,
+  ExecutionLeaseId,
+  FencingToken,
   HookEvent,
   InputId,
   InputPriority,
@@ -55,6 +57,7 @@ export {
   ToolSideEffect,
   ToolUseId,
   TurnId,
+  WorkerId,
 } from '../core/index.js';
 export * from '../session/events/core.js';
 

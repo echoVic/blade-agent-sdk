@@ -1,9 +1,9 @@
 import { nanoid } from 'nanoid';
 import type { BladeConfig } from '../../types/common.js';
 import type { BackgroundAgentManager } from './BackgroundAgentManager.js';
+import { runSubagent } from './runSubagent.js';
 import type { SubagentRegistry } from './SubagentRegistry.js';
 import type { SubagentConfig, SubagentContext, SubagentResult } from './types.js';
-import { runSubagent } from './runSubagent.js';
 
 /**
  * Subagent 执行器
@@ -42,6 +42,9 @@ export class SubagentExecutor {
         parentSessionId: context.parentSessionId,
         permissionMode: context.permissionMode,
         snapshot: context.snapshot,
+        signal: context.signal,
+        executionFence: context.executionFence,
+        assertExecutionLease: context.assertExecutionLease,
         omitEnvironment: context.omitEnvironment ?? this.config.omitEnvironment,
       });
 

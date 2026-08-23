@@ -1,6 +1,12 @@
 import { SdkError } from '../../errors/SdkError.js';
 import { type CommandId, EventSequence, type SessionId } from '../../types/branded.js';
+import { canonicalJson } from './canonicalJson.js';
 import { DurableEventSequenceConflictError, type DurableEventStore } from './DurableEventStore.js';
+import type { DurableExecutionLease } from './DurableExecutionLease.js';
+import {
+  DurableExecutionLeaseError,
+  isDurableExecutionLeaseStore,
+} from './DurableExecutionLeaseStore.js';
 import {
   type DurableSessionProjection,
   DurableSessionProjector,
@@ -14,7 +20,6 @@ import type {
   DurableEventPage,
   DurableEventType,
 } from './types.js';
-import { canonicalJson } from './canonicalJson.js';
 
 const DEFAULT_PAGE_SIZE = 500;
 const DEFAULT_MAX_CONFLICT_RETRIES = 3;
@@ -47,6 +52,7 @@ export interface DurableCommandCommitResult extends DurableEventAppendResult {
 export interface DurableSessionJournalOptions {
   readonly pageSize?: number;
   readonly maxConflictRetries?: number;
+  readonly executionLease?: DurableExecutionLease;
 }
 
 export type DurableSessionJournalErrorCode =
@@ -173,6 +179,7 @@ export class DurableSessionJournal {
     readonly sessionId: SessionId,
     private readonly pageSize: number,
     private readonly maxConflictRetries: number,
+    private readonly executionLease?: DurableExecutionLease,
   ) {}
 
   static async open(
@@ -195,7 +202,31 @@ export class DurableSessionJournal {
       );
     }
 
-    const journal = new DurableSessionJournal(store, sessionId, pageSize, maxConflictRetries);
+    if (options.executionLease && !options.executionLease.belongsTo(store, sessionId)) {
+      throw new DurableSessionJournalError(
+        'DURABLE_COMMAND_INVALID',
+        `Execution lease does not belong to durable Session ${sessionId}`,
+      );
+    }
+    if (
+      !options.executionLease &&
+      isDurableExecutionLeaseStore(store) &&
+      (await store.requiresExecutionLease(sessionId))
+    ) {
+      throw new DurableExecutionLeaseError(
+        'DURABLE_EXECUTION_LEASE_REQUIRED',
+        `Durable Session ${sessionId} requires an execution lease`,
+        { sessionId },
+      );
+    }
+    await options.executionLease?.assertActive();
+    const journal = new DurableSessionJournal(
+      store,
+      sessionId,
+      pageSize,
+      maxConflictRetries,
+      options.executionLease,
+    );
     await journal.reload();
     return journal;
   }
@@ -236,6 +267,19 @@ export class DurableSessionJournal {
     command: DurableSessionCommand,
     options: DurableCommandCommitOptions,
   ): Promise<DurableCommandCommitResult> {
+    try {
+      await this.executionLease?.assertActive();
+      return await this.commitFenced(command, options);
+    } catch (error) {
+      this.executionLease?.observeStoreFailure(error);
+      throw error;
+    }
+  }
+
+  private async commitFenced(
+    command: DurableSessionCommand,
+    options: DurableCommandCommitOptions,
+  ): Promise<DurableCommandCommitResult> {
     const drafts = this.parseCommand(command);
     if (this.uncertainCommand) {
       if (this.uncertainCommand.commandId !== command.commandId) {
@@ -268,8 +312,8 @@ export class DurableSessionJournal {
     }
     const currentHeadSequence = this.projector.snapshot().headSequence;
     if (
-      options.expectedHeadSequence !== undefined
-      && currentHeadSequence !== options.expectedHeadSequence
+      options.expectedHeadSequence !== undefined &&
+      currentHeadSequence !== options.expectedHeadSequence
     ) {
       throw new DurableEventSequenceConflictError(
         options.expectedHeadSequence,
@@ -284,6 +328,7 @@ export class DurableSessionJournal {
         const expectedLastSequence = this.projector.snapshot().headSequence;
         const result = await this.store.append(this.sessionId, drafts, {
           expectedLastSequence,
+          ...(this.executionLease ? { executionFence: this.executionLease.fence } : {}),
         });
         try {
           this.validateCommitResult(result, drafts, expectedLastSequence);
@@ -309,10 +354,7 @@ export class DurableSessionJournal {
           if (committed) {
             return this.resolveExistingCommand('reconciled', command.commandId, committed, drafts);
           }
-          if (
-            options.expectedHeadSequence !== undefined
-            || conflicts >= this.maxConflictRetries
-          ) {
+          if (options.expectedHeadSequence !== undefined || conflicts >= this.maxConflictRetries) {
             throw error;
           }
           conflicts += 1;

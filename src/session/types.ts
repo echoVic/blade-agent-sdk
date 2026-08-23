@@ -42,6 +42,10 @@ import type { AgentLogger } from '../types/logging.js';
 import type { CanUseTool, PermissionHandler, PermissionUpdate } from '../types/permissions.js';
 import type { Assert, IsEqual } from '../types/typeAssertions.js';
 import type { DurableEventStore } from './events/DurableEventStore.js';
+import type { DurableExecutionLeaseOptions } from './events/DurableExecutionLease.js';
+import type {
+  DurableExecutionLease as DurableExecutionLeaseSnapshot,
+} from './events/DurableExecutionLeaseStore.js';
 import type {
   DurableEventSubscription,
   DurableEventSubscriptionOptions,
@@ -294,6 +298,7 @@ export interface SessionOptions {
   storagePath?: string;
   persistSession?: boolean;
   durableEventStore?: DurableEventStore;
+  executionLease?: DurableExecutionLeaseOptions;
 
   outputFormat?: OutputFormat;
 
@@ -392,6 +397,7 @@ export interface ISession extends AsyncDisposable {
   getTraces(): AgentTrace[];
   getDurableProjection(): DurableSessionProjection | null;
   getDurableRecoveryPlan(): DurableSessionRecoveryPlan | null;
+  getExecutionLease(): DurableExecutionLeaseSnapshot | null;
   /** Replays durable events from an optional cursor and then follows live commits. */
   subscribeDurableEvents(
     options?: DurableEventSubscriptionOptions,

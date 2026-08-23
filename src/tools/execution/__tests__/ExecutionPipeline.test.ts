@@ -1202,6 +1202,54 @@ describe('ExecutionPipeline', () => {
     expect(executeSpy).not.toHaveBeenCalled();
   });
 
+  it('checks the execution fence immediately before the tool side effect', async () => {
+    const registry = new ToolRegistry();
+    const executeSpy = vi.fn(() => completeToolExecution({
+      status: 'success',
+      model: 'unexpected',
+    }));
+    registerTool(
+      registry,
+      createTool({
+        name: 'FencedTool',
+        displayName: 'Fenced Tool',
+        kind: ToolKind.Execute,
+        sideEffect: 'non_idempotent',
+        description: { short: 'Fenced tool' },
+        schema: z.object({}),
+        execute: executeSpy,
+      }),
+    );
+    const pipeline = new ExecutionPipeline(registry, {
+      permissionMode: PermissionMode.YOLO,
+    });
+    const assertExecutionLease = vi.fn()
+      .mockResolvedValueOnce(undefined)
+      .mockRejectedValueOnce(new Error('execution lease lost'));
+
+    const result = await executePipeline(
+      pipeline,
+      'FencedTool',
+      {},
+      {
+        permissionMode: PermissionMode.YOLO,
+        assertExecutionLease,
+        toolInvocationLifecycle: {
+          onExecutionStarted: async () => {},
+        },
+      },
+    );
+
+    expect(result).toMatchObject({
+      status: 'error',
+      error: {
+        message: 'execution lease lost',
+      },
+    });
+    expect(assertExecutionLease).toHaveBeenCalledTimes(2);
+    expect(executeSpy).not.toHaveBeenCalled();
+  });
+
   it('blocks the side effect when cancellation wins during the execution-start boundary', async () => {
     const registry = new ToolRegistry();
     const boundary = deferred();

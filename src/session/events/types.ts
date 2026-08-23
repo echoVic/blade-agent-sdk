@@ -13,6 +13,7 @@ import type {
   TurnId,
 } from '../../types/branded.js';
 import type { JsonObject, JsonValue } from '../../types/common.js';
+import type { DurableExecutionFence } from './DurableExecutionLeaseStore.js';
 
 export const DURABLE_EVENT_SCHEMA_VERSION = 3 as const;
 export type DurableEventSchemaVersion = 2 | typeof DURABLE_EVENT_SCHEMA_VERSION;
@@ -66,10 +67,7 @@ export type DurableToolCancelReason =
   | 'cascade_abort'
   | 'process_restart';
 export type DurableToolOutcomeUnknownReason = 'process_restart' | 'commit_outcome_unknown';
-export type DurableModelRequestAbortReason =
-  | 'request_interrupted'
-  | 'steering'
-  | 'process_restart';
+export type DurableModelRequestAbortReason = 'request_interrupted' | 'steering' | 'process_restart';
 
 export interface DurableEventError {
   message: string;
@@ -355,6 +353,12 @@ export interface DurableEventAppendOptions {
    * - EventSequence: require an exact current head
    */
   expectedLastSequence?: EventSequence | null;
+  /**
+   * Fences the append to a currently active execution lease. Lease-capable
+   * stores must validate this in the same transaction as the append and reject
+   * an omitted fence once the Session has entered fenced execution mode.
+   */
+  executionFence?: DurableExecutionFence;
 }
 
 export interface DurableEventAppendResult {

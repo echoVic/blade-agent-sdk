@@ -1,4 +1,24 @@
 export {
+  DEFAULT_EXECUTION_LEASE_HEARTBEAT_INTERVAL_MS,
+  DEFAULT_EXECUTION_LEASE_TTL_MS,
+  DurableExecutionLease,
+  type DurableExecutionLeaseOptions,
+} from './DurableExecutionLease.js';
+export {
+  type DurableExecutionFence,
+  type DurableExecutionLease as DurableExecutionLeaseSnapshot,
+  type DurableExecutionLeaseAcquireOptions,
+  DurableExecutionLeaseError,
+  type DurableExecutionLeaseErrorCode,
+  type DurableExecutionLeaseStore,
+  DURABLE_EXECUTION_LEASE_FORMAT,
+  DURABLE_EXECUTION_LEASE_FORMAT_VERSION,
+  executionFence,
+  isDurableExecutionLeaseStore,
+  type PersistedDurableExecutionLeaseState,
+  parsePersistedDurableExecutionLeaseState,
+} from './DurableExecutionLeaseStore.js';
+export {
   DurableEventSequenceConflictError,
   type DurableEventStore,
   DurableEventStoreError,

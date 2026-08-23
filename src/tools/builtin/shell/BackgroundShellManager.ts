@@ -1,20 +1,24 @@
 import { type ChildProcess, spawn } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
+import type { DurableExecutionFence } from '../../../session/events/DurableExecutionLeaseStore.js';
 import type { SessionId } from '../../../types/branded.js';
 
 type BackgroundShellStatus = 'running' | 'exited' | 'killed' | 'error';
+const DEFAULT_TERMINATION_GRACE_MS = 2_000;
 
 interface StartOptions {
   command: string;
   sessionId: SessionId;
   cwd: string;
   env?: Record<string, string | undefined>;
+  executionFence?: DurableExecutionFence;
 }
 
 interface BackgroundShellProcess {
   id: string;
   command: string;
   sessionId: SessionId;
+  executionFence?: DurableExecutionFence;
   cwd?: string;
   env?: Record<string, string | undefined>;
   process?: ChildProcess;
@@ -56,6 +60,7 @@ export class BackgroundShellManager {
   private static instance: BackgroundShellManager | null = null;
   private processes = new Map<string, BackgroundShellProcess>();
   private sealedSessionIds = new Set<SessionId>();
+  private revokedExecutionFences = new Set<string>();
 
   static getInstance(): BackgroundShellManager {
     if (!BackgroundShellManager.instance) {
@@ -65,7 +70,15 @@ export class BackgroundShellManager {
   }
 
   startBackgroundProcess(options: StartOptions): BackgroundShellProcess {
-    if (this.sealedSessionIds.has(options.sessionId)) {
+    if (
+      this.sealedSessionIds.has(options.sessionId) ||
+      (
+        options.executionFence &&
+        this.revokedExecutionFences.has(
+          this.executionFenceKey(options.sessionId, options.executionFence),
+        )
+      )
+    ) {
       throw new Error(`Background shell admission is closed for Session ${options.sessionId}`);
     }
 
@@ -92,6 +105,7 @@ export class BackgroundShellManager {
       id: shellId,
       command: options.command,
       sessionId: options.sessionId,
+      executionFence: options.executionFence,
       cwd: options.cwd,
       env: options.env,
       process: child,
@@ -163,11 +177,20 @@ export class BackgroundShellManager {
     return this.processes.get(shellId);
   }
 
-  getActiveProcessIds(sessionId: SessionId): readonly string[] {
+  getActiveProcessIds(
+    sessionId: SessionId,
+    executionFence?: DurableExecutionFence,
+  ): readonly string[] {
     return [...this.processes.values()]
-      .filter((processInfo) =>
-        processInfo.sessionId === sessionId
-        && processInfo.process !== undefined)
+      .filter(
+        (processInfo) =>
+          processInfo.sessionId === sessionId &&
+          processInfo.process !== undefined &&
+          (
+            executionFence === undefined ||
+            this.sameExecutionFence(processInfo.executionFence, executionFence)
+          ),
+      )
       .map((processInfo) => processInfo.id);
   }
 
@@ -177,6 +200,56 @@ export class BackgroundShellManager {
 
   openSession(sessionId: SessionId): void {
     this.sealedSessionIds.delete(sessionId);
+  }
+
+  sealExecutionFence(sessionId: SessionId, fence: DurableExecutionFence): void {
+    this.revokedExecutionFences.add(this.executionFenceKey(sessionId, fence));
+  }
+
+  killSession(sessionId: SessionId): readonly string[] {
+    this.sealSessionForHandoff(sessionId);
+    const shellIds = this.getActiveProcessIds(sessionId);
+    for (const shellId of shellIds) {
+      this.kill(shellId);
+    }
+    return shellIds;
+  }
+
+  async terminateSession(
+    sessionId: SessionId,
+    gracePeriodMs = DEFAULT_TERMINATION_GRACE_MS,
+  ): Promise<readonly string[]> {
+    if (!Number.isSafeInteger(gracePeriodMs) || gracePeriodMs < 0) {
+      throw new Error('Background shell termination grace period must be non-negative');
+    }
+    const shellIds = this.killSession(sessionId);
+    await Promise.all(shellIds.map((shellId) => this.waitForExit(shellId, gracePeriodMs)));
+    return shellIds;
+  }
+
+  killExecutionFence(
+    sessionId: SessionId,
+    fence: DurableExecutionFence,
+  ): readonly string[] {
+    this.sealExecutionFence(sessionId, fence);
+    const shellIds = this.getActiveProcessIds(sessionId, fence);
+    for (const shellId of shellIds) {
+      this.kill(shellId);
+    }
+    return shellIds;
+  }
+
+  async terminateExecutionFence(
+    sessionId: SessionId,
+    fence: DurableExecutionFence,
+    gracePeriodMs = DEFAULT_TERMINATION_GRACE_MS,
+  ): Promise<readonly string[]> {
+    if (!Number.isSafeInteger(gracePeriodMs) || gracePeriodMs < 0) {
+      throw new Error('Background shell termination grace period must be non-negative');
+    }
+    const shellIds = this.killExecutionFence(sessionId, fence);
+    await Promise.all(shellIds.map((shellId) => this.waitForExit(shellId, gracePeriodMs)));
+    return shellIds;
   }
 
   kill(shellId: string): KillResult | undefined {
@@ -221,6 +294,60 @@ export class BackgroundShellManager {
     };
   }
 
+  private async waitForExit(shellId: string, gracePeriodMs: number): Promise<void> {
+    const processInfo = this.processes.get(shellId);
+    const child = processInfo?.process;
+    if (!child || (await this.waitForChildClose(child, gracePeriodMs))) {
+      return;
+    }
+
+    child.kill('SIGKILL');
+    if (!(await this.waitForChildClose(child, gracePeriodMs))) {
+      throw new Error(`Background shell ${shellId} did not terminate`);
+    }
+  }
+
+  private waitForChildClose(child: ChildProcess, timeoutMs: number): Promise<boolean> {
+    if (child.exitCode !== null || child.signalCode !== null) {
+      return Promise.resolve(true);
+    }
+    return new Promise<boolean>((resolve) => {
+      let settled = false;
+      const finish = (closed: boolean): void => {
+        if (settled) {
+          return;
+        }
+        settled = true;
+        clearTimeout(timer);
+        child.off('close', onClose);
+        child.off('error', onError);
+        resolve(closed);
+      };
+      const onClose = (): void => finish(true);
+      const onError = (): void => finish(true);
+      const timer = setTimeout(() => finish(false), timeoutMs);
+      child.once('close', onClose);
+      child.once('error', onError);
+    });
+  }
+
+  private executionFenceKey(
+    sessionId: SessionId,
+    fence: DurableExecutionFence,
+  ): string {
+    return `${sessionId}\0${fence.leaseId}\0${fence.fencingToken}`;
+  }
+
+  private sameExecutionFence(
+    left: DurableExecutionFence | undefined,
+    right: DurableExecutionFence,
+  ): boolean {
+    return (
+      left?.leaseId === right.leaseId &&
+      left.fencingToken === right.fencingToken
+    );
+  }
+
   /**
    * 终止所有后台进程
    * 在应用退出时调用
@@ -240,5 +367,6 @@ export class BackgroundShellManager {
     }
     this.processes.clear();
     this.sealedSessionIds.clear();
+    this.revokedExecutionFences.clear();
   }
 }

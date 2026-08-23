@@ -281,6 +281,7 @@ Before executing commands:
             ?? context.sessionId
             ?? SessionId(randomUUID()),
           env,
+          context.executionFence,
         );
       }
 
@@ -361,7 +362,8 @@ function executeInBackground(
   command: string,
   cwd: string,
   sessionId: SessionId,
-  env?: Record<string, string>
+  env?: Record<string, string>,
+  executionFence?: ExecutionContext['executionFence'],
 ): ToolResult {
   const manager = BackgroundShellManager.getInstance();
   const backgroundProcess = manager.startBackgroundProcess({
@@ -369,6 +371,7 @@ function executeInBackground(
     sessionId,
     cwd,
     env,
+    executionFence,
   });
 
   const cmdPreview = command.length > 30 ? `${command.substring(0, 30)}...` : command;

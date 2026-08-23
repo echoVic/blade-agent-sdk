@@ -2,6 +2,7 @@ import { SessionId } from '../../types/branded.js';
 import type { BladeConfig, PermissionMode } from '../../types/common.js';
 import type { ContextSnapshot } from '../../runtime/index.js';
 import type { Message } from '../../services/ChatServiceInterface.js';
+import type { DurableExecutionFence } from '../../session/events/DurableExecutionLeaseStore.js';
 import { Agent } from '../Agent.js';
 import type { AgentProgress, LoopResult } from '../types.js';
 import type { BackgroundAgentManager } from './BackgroundAgentManager.js';
@@ -20,6 +21,8 @@ export interface RunSubagentOptions {
   messages?: Message[];
   signal?: AbortSignal;
   backgroundAgentManager?: BackgroundAgentManager;
+  executionFence?: DurableExecutionFence;
+  assertExecutionLease?: () => Promise<void>;
   omitEnvironment?: boolean;
   onProgress?: (progress: AgentProgress) => void;
 }
@@ -48,6 +51,8 @@ export async function runSubagent(options: RunSubagentOptions): Promise<LoopResu
     messages,
     signal,
     backgroundAgentManager,
+    executionFence,
+    assertExecutionLease,
     omitEnvironment,
     onProgress,
   } = options;
@@ -85,6 +90,8 @@ export async function runSubagent(options: RunSubagentOptions): Promise<LoopResu
       isSidechain: true,
     },
     omitEnvironment,
+    executionFence,
+    assertExecutionLease,
   };
 
   return loopOptions

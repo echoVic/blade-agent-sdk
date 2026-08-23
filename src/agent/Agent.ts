@@ -279,6 +279,8 @@ export class Agent {
       systemPrompt: context.systemPrompt,
       subagentInfo: context.subagentInfo,
       backgroundAgentManager: context.backgroundAgentManager,
+      executionFence: context.executionFence,
+      assertExecutionLease: context.assertExecutionLease,
     });
 
     return await this.loopRunner.runLoop(message, chatContext, options);

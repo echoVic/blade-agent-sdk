@@ -46,6 +46,8 @@ export interface CompactionOptions {
   permissionMode?: PermissionMode;
   /** 当前 turn 的项目目录（用于 hooks） */
   projectDir?: string;
+  /** Cancels the compaction provider request with its owning execution. */
+  signal?: AbortSignal;
 }
 
 /**
@@ -317,7 +319,8 @@ async function generateSummary(
   }, NOOP_LOGGER);
 
   const response = await chatService.sideQuery(
-    [{ role: 'user', content: prompt }]
+    [{ role: 'user', content: prompt }],
+    options.signal,
   );
 
   const content = response.content || '';

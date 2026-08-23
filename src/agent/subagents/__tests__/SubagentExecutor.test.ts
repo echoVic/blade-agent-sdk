@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { createContextSnapshot } from '../../../runtime/index.js';
-import { SessionId } from '../../../types/branded.js';
+import { ExecutionLeaseId, FencingToken, SessionId } from '../../../types/branded.js';
 
 const runAgenticLoop = vi.fn(async () => ({
   success: true,
@@ -57,11 +57,19 @@ describe('SubagentExecutor', () => {
         currentModelId: 'default',
       },
     );
+    const controller = new AbortController();
+    const assertExecutionLease = vi.fn(async () => {});
 
     await executor.execute({
       prompt: 'inspect',
       parentSessionId: 'parent-session',
       snapshot,
+      signal: controller.signal,
+      executionFence: {
+        leaseId: ExecutionLeaseId('lease-1'),
+        fencingToken: FencingToken(7),
+      },
+      assertExecutionLease,
     });
 
     expect(createAgent).toHaveBeenCalledWith(
@@ -75,6 +83,14 @@ describe('SubagentExecutor', () => {
       'inspect',
       expect.objectContaining({
         snapshot,
+        executionFence: {
+          leaseId: 'lease-1',
+          fencingToken: 7,
+        },
+        assertExecutionLease,
+      }),
+      expect.objectContaining({
+        signal: controller.signal,
       }),
     );
   });

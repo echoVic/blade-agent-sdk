@@ -16,6 +16,7 @@ import {
   AgentId,
   CommandId,
   EventId,
+  ExecutionLeaseId,
   InputId,
   ModelAttemptId,
   RequestId,
@@ -23,6 +24,7 @@ import {
   ToolAttemptId,
   ToolUseId,
   TurnId,
+  WorkerId,
 } from '../../types/branded.js';
 import type { JsonValue } from '../../types/common.js';
 import { type DurableEventStore, DurableEventStoreError } from '../events/DurableEventStore.js';
@@ -30,6 +32,7 @@ import {
   DurableEventSubscriptionError,
   type DurableEventSubscriptionMessage,
 } from '../events/DurableEventSubscription.js';
+import { DurableExecutionLeaseError } from '../events/DurableExecutionLeaseStore.js';
 import {
   DurableCommandOutcomeUnknownError,
   DurableSessionJournal,
@@ -120,9 +123,7 @@ class InjectInputBeforeTurnStore implements DurableEventStore {
     options?: DurableEventAppendOptions,
   ): Promise<DurableEventAppendResult> {
     if (!this.injected) {
-      const turnStarted = events.find(
-        (event) => event.type === DurableEventType.TURN_STARTED,
-      );
+      const turnStarted = events.find((event) => event.type === DurableEventType.TURN_STARTED);
       if (turnStarted?.type === DurableEventType.TURN_STARTED) {
         this.injected = true;
         await this.delegate.append(
@@ -182,6 +183,7 @@ function options(store: DurableEventStore) {
 
 afterEach(async () => {
   vi.restoreAllMocks();
+  BackgroundShellManager.getInstance().killAll();
   streamChat = async function* defaultStream() {
     yield { type: 'turn_start', turn: 1, maxTurns: 10 };
     yield { type: 'turn_end', turn: 1, hasToolCalls: false };
@@ -275,9 +277,7 @@ describe('Session durable events', () => {
       DurableEventType.REQUEST_COMPLETED,
     ]);
     expect(
-      events.find(
-        (event) => event.type === DurableEventType.MODEL_REQUEST_COMPLETED,
-      )?.data,
+      events.find((event) => event.type === DurableEventType.MODEL_REQUEST_COMPLETED)?.data,
     ).toEqual({
       response: {
         content: 'durable response',
@@ -330,9 +330,7 @@ describe('Session durable events', () => {
     }
 
     expect(steering.status).toBe('steered');
-    expect(streamEvents).not.toContainEqual(
-      expect.objectContaining({ type: 'error' }),
-    );
+    expect(streamEvents).not.toContainEqual(expect.objectContaining({ type: 'error' }));
     expect(durableEventsBeforePreparation).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
@@ -344,8 +342,7 @@ describe('Session durable events', () => {
     expect(
       (await store.read(session.sessionId)).events.filter(
         (event) =>
-          event.type === DurableEventType.INPUT_APPLIED
-          && event.data.inputId === steering.inputId,
+          event.type === DurableEventType.INPUT_APPLIED && event.data.inputId === steering.inputId,
       ),
     ).toHaveLength(1);
     await session.close();
@@ -692,10 +689,10 @@ describe('Session durable events', () => {
     expect(
       events.some(
         (event) =>
-          event.type === DurableEventType.TURN_STARTED
-          || event.type === DurableEventType.REQUEST_COMPLETED
-          || event.type === DurableEventType.REQUEST_FAILED
-          || event.type === DurableEventType.REQUEST_INTERRUPTED,
+          event.type === DurableEventType.TURN_STARTED ||
+          event.type === DurableEventType.REQUEST_COMPLETED ||
+          event.type === DurableEventType.REQUEST_FAILED ||
+          event.type === DurableEventType.REQUEST_INTERRUPTED,
       ),
     ).toBe(false);
     expect(session.getDurableRecoveryPlan()).toMatchObject({
@@ -1402,10 +1399,7 @@ describe('Session durable events', () => {
 
   it('rejects abort when running-request terminal persistence fails', async () => {
     const { store } = createStore();
-    const failingStore = new FailOnEventTypeStore(
-      store,
-      DurableEventType.REQUEST_INTERRUPTED,
-    );
+    const failingStore = new FailOnEventTypeStore(store, DurableEventType.REQUEST_INTERRUPTED);
     streamChat = async function* interruptedByAbort(_message, context) {
       yield { type: 'turn_start', turn: 1, maxTurns: 10 };
       const signal = (context as { signal?: AbortSignal }).signal;
@@ -1427,23 +1421,16 @@ describe('Session durable events', () => {
     const output = session.stream();
     await output.next();
 
-    await expect(session.abort()).rejects.toBeInstanceOf(
-      DurableCommandOutcomeUnknownError,
-    );
+    await expect(session.abort()).rejects.toBeInstanceOf(DurableCommandOutcomeUnknownError);
 
     expect(session.getDurableRecoveryPlan()?.action).toBe('reconcile_request_outcome');
-    await expect(output.next()).rejects.toBeInstanceOf(
-      DurableCommandOutcomeUnknownError,
-    );
+    await expect(output.next()).rejects.toBeInstanceOf(DurableCommandOutcomeUnknownError);
     await expect(session.close()).resolves.toBeUndefined();
   });
 
   it('allows close retry after running-request terminal persistence fails', async () => {
     const { store } = createStore();
-    const failingStore = new FailOnEventTypeStore(
-      store,
-      DurableEventType.REQUEST_INTERRUPTED,
-    );
+    const failingStore = new FailOnEventTypeStore(store, DurableEventType.REQUEST_INTERRUPTED);
     streamChat = async function* interruptedByClose(_message, context) {
       yield { type: 'turn_start', turn: 1, maxTurns: 10 };
       const signal = (context as { signal?: AbortSignal }).signal;
@@ -1465,13 +1452,9 @@ describe('Session durable events', () => {
     const output = session.stream();
     await output.next();
 
-    await expect(session.close()).rejects.toBeInstanceOf(
-      DurableCommandOutcomeUnknownError,
-    );
+    await expect(session.close()).rejects.toBeInstanceOf(DurableCommandOutcomeUnknownError);
     await expect(session.close()).resolves.toBeUndefined();
-    await expect(output.next()).rejects.toBeInstanceOf(
-      DurableCommandOutcomeUnknownError,
-    );
+    await expect(output.next()).rejects.toBeInstanceOf(DurableCommandOutcomeUnknownError);
   });
 
   it('hands off an idle Session without closing its durable lifecycle', async () => {
@@ -1518,6 +1501,312 @@ describe('Session durable events', () => {
     await resumed.close();
   });
 
+  it('transfers a fenced execution lease only after handoff completes', async () => {
+    const { root, store } = createStore();
+    const first = await createSession({
+      ...options(store),
+      persistSession: true,
+      storagePath: root,
+      executionLease: {
+        ownerId: WorkerId('worker-first'),
+        leaseId: ExecutionLeaseId('lease-first'),
+        ttlMs: 10_000,
+        heartbeatIntervalMs: 5_000,
+      },
+    });
+    expect(first.getExecutionLease()).toMatchObject({
+      sessionId: first.sessionId,
+      ownerId: 'worker-first',
+      leaseId: 'lease-first',
+      fencingToken: 1,
+    });
+
+    await expect(
+      resumeSession({
+        ...options(store),
+        persistSession: true,
+        storagePath: root,
+        sessionId: first.sessionId,
+        executionLease: {
+          ownerId: WorkerId('worker-second'),
+          leaseId: ExecutionLeaseId('lease-second'),
+          ttlMs: 10_000,
+          heartbeatIntervalMs: 5_000,
+        },
+      }),
+    ).rejects.toMatchObject({
+      code: 'DURABLE_EXECUTION_LEASE_CONFLICT',
+    });
+
+    const submission = await first.send('continue on the replacement worker');
+    if (submission.status !== 'started') {
+      throw new Error('Expected the first leased Request to start');
+    }
+    const handoff = await first.suspendForHandoff();
+    expect(handoff.recoveryPlan).toMatchObject({
+      action: 'resume_request',
+      requestId: submission.requestId,
+    });
+    expect(first.getExecutionLease()).toBeNull();
+
+    await expect(
+      resumeSession({
+        ...options(store),
+        persistSession: true,
+        storagePath: root,
+        sessionId: first.sessionId,
+      }),
+    ).rejects.toMatchObject({
+      code: 'DURABLE_EXECUTION_LEASE_REQUIRED',
+      sessionId: first.sessionId,
+    });
+
+    const second = await resumeSession({
+      ...options(store),
+      persistSession: true,
+      storagePath: root,
+      sessionId: first.sessionId,
+      executionLease: {
+        ownerId: WorkerId('worker-second'),
+        leaseId: ExecutionLeaseId('lease-second'),
+        ttlMs: 10_000,
+        heartbeatIntervalMs: 5_000,
+      },
+    });
+    expect(second.getExecutionLease()).toMatchObject({
+      ownerId: 'worker-second',
+      leaseId: 'lease-second',
+      fencingToken: 2,
+    });
+    for await (const _event of second.stream()) {
+      // Drain the handed-off Request.
+    }
+    await second.close();
+  });
+
+  it('fails closed and stops publishing when the execution lease is lost', async () => {
+    const { root } = createStore();
+    let now = Date.parse('2026-08-22T12:00:00.000Z');
+    const store = new JsonlDurableEventStore(root, {
+      clock: () => new Date(now),
+    });
+    streamChat = async function* leaseLossStream(_message, context, loopOptions) {
+      yield { type: 'turn_start', turn: 1, maxTurns: 10 };
+      await loopOptions?.modelExecutionLifecycle?.onModelRequestStarting({
+        turn: 1,
+        model: 'test-model',
+        streaming: true,
+      });
+      yield { type: 'content_delta', delta: 'before lease loss' };
+      const signal = (context as { signal?: AbortSignal }).signal;
+      await new Promise<void>((resolve) => {
+        if (signal?.aborted) {
+          resolve();
+          return;
+        }
+        signal?.addEventListener('abort', () => resolve(), { once: true });
+      });
+      return {
+        success: false,
+        error: { type: 'aborted', message: 'lease lost' },
+        metadata: { turnsCount: 1, toolCallsCount: 0, duration: 1 },
+      };
+    };
+    const session = await createSession({
+      ...options(store),
+      persistSession: true,
+      storagePath: root,
+      executionLease: {
+        ownerId: WorkerId('worker-first'),
+        leaseId: ExecutionLeaseId('lease-first'),
+        ttlMs: 60_000,
+        heartbeatIntervalMs: 30_000,
+      },
+    });
+    const firstLease = session.getExecutionLease();
+    if (!firstLease) {
+      throw new Error('Expected an active execution lease');
+    }
+    const runtime = (
+      session as unknown as {
+        runtime: {
+          getBackgroundAgentManager(): {
+            sealAndCancelAll(): readonly AgentId[];
+          };
+        } | null;
+      }
+    ).runtime;
+    if (!runtime) {
+      throw new Error('Expected an initialized Session runtime');
+    }
+    const cancelBackgroundAgents = vi.spyOn(
+      runtime.getBackgroundAgentManager(),
+      'sealAndCancelAll',
+    );
+    const shellManager = BackgroundShellManager.getInstance();
+    const backgroundShell = shellManager.startBackgroundProcess({
+      command: 'sleep 30',
+      sessionId: session.sessionId,
+      cwd: root,
+      executionFence: firstLease,
+    });
+    await session.send('wait for lease loss');
+    const output = session.stream();
+    await output.next();
+    await output.next();
+    now += 60_001;
+    const replacementLease = await store.acquireExecutionLease(session.sessionId, {
+      ownerId: WorkerId('worker-second'),
+      leaseId: ExecutionLeaseId('lease-second'),
+      ttlMs: 10_000,
+    });
+
+    await expect(session.send('reject stale worker input')).rejects.toMatchObject({
+      code: 'DURABLE_EXECUTION_LEASE_LOST',
+    });
+    await expect(output.next()).rejects.toBeInstanceOf(DurableExecutionLeaseError);
+    expect(cancelBackgroundAgents).toHaveBeenCalled();
+    await vi.waitFor(
+      () => expect(shellManager.getActiveProcessIds(session.sessionId)).toEqual([]),
+      { timeout: 2_000 },
+    );
+    expect(shellManager.consumeOutput(backgroundShell.id)?.status).toMatch(/^(killed|exited)$/);
+    await expect(session.close()).resolves.toBeUndefined();
+    expect(session.isClosed).toBe(true);
+    expect(session.getExecutionLease()).toBeNull();
+    expect(session.getDurableRecoveryPlan()?.action).toBe('reconcile_model_outcome');
+    const eventTypes = (await store.read(session.sessionId)).events.map((entry) => entry.type);
+    expect(eventTypes).not.toContain(DurableEventType.REQUEST_INTERRUPTED);
+    expect(eventTypes).not.toContain(DurableEventType.SESSION_CLOSED);
+    await expect(
+      store.append(
+        session.sessionId,
+        [
+          {
+            type: DurableEventType.MODEL_REQUEST_ABORTED,
+            requestId: RequestId('stale-request'),
+            turnId: TurnId('stale-turn'),
+            modelAttemptId: ModelAttemptId('stale-model'),
+            data: { reason: 'process_restart' },
+          },
+        ],
+        { executionFence: firstLease },
+      ),
+    ).rejects.toMatchObject({
+      code: 'DURABLE_EXECUTION_LEASE_LOST',
+    });
+    await store.releaseExecutionLease(replacementLease);
+  });
+
+  it('rejects execution lease configuration without persistent durable storage', async () => {
+    await expect(
+      createSession({
+        provider: { type: 'openai-compatible', apiKey: 'test-key' },
+        model: 'test-model',
+        persistSession: false,
+        executionLease: {
+          ownerId: WorkerId('worker-without-store'),
+        },
+      }),
+    ).rejects.toMatchObject({
+      code: 'DURABLE_EXECUTION_LEASE_INVALID',
+    });
+  });
+
+  it('retains the lease handle so close can retry a failed release', async () => {
+    const { root, store } = createStore();
+    const session = await createSession({
+      ...options(store),
+      persistSession: true,
+      storagePath: root,
+      executionLease: {
+        ownerId: WorkerId('worker-release-retry'),
+        ttlMs: 10_000,
+        heartbeatIntervalMs: 5_000,
+      },
+    });
+    const release = vi.spyOn(store, 'releaseExecutionLease');
+    release.mockRejectedValueOnce(new Error('transient release failure'));
+
+    await expect(session.close()).rejects.toMatchObject({
+      code: 'DURABLE_EXECUTION_LEASE_LOST',
+    });
+    expect(session.getExecutionLease()).not.toBeNull();
+
+    await expect(session.close()).resolves.toBeUndefined();
+    expect(release).toHaveBeenCalledTimes(2);
+    expect(session.getExecutionLease()).toBeNull();
+  });
+
+  it('waits for Session-owned shells before releasing execution ownership', async () => {
+    const { root, store } = createStore();
+    const session = await createSession({
+      ...options(store),
+      persistSession: true,
+      storagePath: root,
+      executionLease: {
+        ownerId: WorkerId('worker-close-shell'),
+        ttlMs: 10_000,
+        heartbeatIntervalMs: 5_000,
+      },
+    });
+    const shellManager = BackgroundShellManager.getInstance();
+    const executionFence = session.getExecutionLease();
+    if (!executionFence) {
+      throw new Error('Expected an active execution lease');
+    }
+    shellManager.startBackgroundProcess({
+      command: 'sleep 30',
+      sessionId: session.sessionId,
+      cwd: root,
+      executionFence,
+    });
+    const originalRelease = store.releaseExecutionLease.bind(store);
+    const release = vi.spyOn(store, 'releaseExecutionLease').mockImplementation(async (lease) => {
+      expect(shellManager.getActiveProcessIds(session.sessionId)).toEqual([]);
+      await originalRelease(lease);
+    });
+
+    await session.close();
+
+    expect(release).toHaveBeenCalledOnce();
+    expect(session.getExecutionLease()).toBeNull();
+  });
+
+  it('releases ownership when the final initialization fence check fails', async () => {
+    const { root, store } = createStore();
+    const assertExecutionLease = vi.spyOn(store, 'assertExecutionLease');
+    const releaseExecutionLease = vi.spyOn(store, 'releaseExecutionLease');
+    const originalAssert = assertExecutionLease.getMockImplementation();
+    let assertionCount = 0;
+    assertExecutionLease.mockImplementation(async (lease) => {
+      assertionCount += 1;
+      if (assertionCount === 3) {
+        throw new DurableExecutionLeaseError(
+          'DURABLE_EXECUTION_LEASE_LOST',
+          'ownership changed during initialization',
+        );
+      }
+      await originalAssert?.(lease);
+    });
+
+    await expect(
+      createSession({
+        ...options(store),
+        persistSession: true,
+        storagePath: root,
+        executionLease: {
+          ownerId: WorkerId('worker-initialization-loss'),
+          ttlMs: 10_000,
+          heartbeatIntervalMs: 5_000,
+        },
+      }),
+    ).rejects.toMatchObject({
+      code: 'DURABLE_EXECUTION_LEASE_LOST',
+    });
+    expect(releaseExecutionLease).toHaveBeenCalledOnce();
+  });
+
   it('hands off a pending Request without terminalizing the durable Session', async () => {
     const { root, store } = createStore();
     const session = await createSession({
@@ -1550,9 +1839,7 @@ describe('Session durable events', () => {
     );
     await expect(session.close()).resolves.toBeUndefined();
     await expect(session.stream().next()).rejects.toThrow('Session is closed');
-    expect((await store.read(session.sessionId)).events).toHaveLength(
-      eventsBeforeResume.length,
-    );
+    expect((await store.read(session.sessionId)).events).toHaveLength(eventsBeforeResume.length);
 
     const resumed = await resumeSession({
       ...options(store),
@@ -1580,9 +1867,11 @@ describe('Session durable events', () => {
     const pumpGate = new Promise<void>((resolve) => {
       releasePump = resolve;
     });
-    (session as unknown as {
-      ensureInitialized(): Promise<void>;
-    }).ensureInitialized = async () => {
+    (
+      session as unknown as {
+        ensureInitialized(): Promise<void>;
+      }
+    ).ensureInitialized = async () => {
       pumpStarted = true;
       await pumpGate;
     };
@@ -1716,10 +2005,7 @@ describe('Session durable events', () => {
     if (!requestId || !turnId) {
       throw new Error('Expected handoff recovery identifiers');
     }
-    const coordinator = await DurableSessionRecoveryCoordinator.open(
-      store,
-      session.sessionId,
-    );
+    const coordinator = await DurableSessionRecoveryCoordinator.open(store, session.sessionId);
     await coordinator.prepareTurnRecovery({
       commandId: CommandId('handoff-recovery-command'),
       requestId,
@@ -1958,9 +2244,7 @@ describe('Session durable events', () => {
     await expect(output.next()).resolves.toEqual({ value: undefined, done: true });
     const events = (await store.read(session.sessionId)).events;
     expect(events.at(-1)?.type).toBe(DurableEventType.REQUEST_COMPLETED);
-    expect(
-      events.filter((entry) => entry.type === DurableEventType.TURN_STARTED),
-    ).toHaveLength(1);
+    expect(events.filter((entry) => entry.type === DurableEventType.TURN_STARTED)).toHaveLength(1);
   });
 
   it('rejects handoff unless durable journal and transcript persistence are configured', async () => {
@@ -1970,9 +2254,7 @@ describe('Session durable events', () => {
       persistSession: false,
     });
 
-    await expect(withoutJournal.suspendForHandoff()).rejects.toBeInstanceOf(
-      SessionHandoffError,
-    );
+    await expect(withoutJournal.suspendForHandoff()).rejects.toBeInstanceOf(SessionHandoffError);
     expect(withoutJournal.isClosed).toBe(false);
     await withoutJournal.close();
 
@@ -2063,14 +2345,16 @@ describe('Session durable events', () => {
       persistSession: true,
       storagePath: root,
     });
-    const runtime = (session as unknown as {
-      runtime: {
-        sealBackgroundWorkForHandoff(): {
-          activeSubagentIds: readonly AgentId[];
-          activeShellIds: readonly string[];
+    const runtime = (
+      session as unknown as {
+        runtime: {
+          sealBackgroundWorkForHandoff(): {
+            activeSubagentIds: readonly AgentId[];
+            activeShellIds: readonly string[];
+          };
         };
-      };
-    }).runtime;
+      }
+    ).runtime;
     vi.spyOn(runtime, 'sealBackgroundWorkForHandoff').mockReturnValue({
       activeSubagentIds: [AgentId('active-subagent')],
       activeShellIds: [],
@@ -2128,10 +2412,7 @@ describe('Session durable events', () => {
 
   it('fails handoff closed when final model lifecycle persistence is uncertain', async () => {
     const { root, store } = createStore();
-    const failingStore = new FailOnEventTypeStore(
-      store,
-      DurableEventType.MODEL_REQUEST_ABORTED,
-    );
+    const failingStore = new FailOnEventTypeStore(store, DurableEventType.MODEL_REQUEST_ABORTED);
     streamChat = async function* failedHandoff(_message, context, loopOptions) {
       let modelRequest: ModelRequestLifecycle | undefined;
       try {
@@ -2169,16 +2450,12 @@ describe('Session durable events', () => {
     await output.next();
     await output.next();
 
-    await expect(session.suspendForHandoff()).rejects.toBeInstanceOf(
-      SessionDurableRecorderError,
-    );
+    await expect(session.suspendForHandoff()).rejects.toBeInstanceOf(SessionDurableRecorderError);
     expect(session.isClosed).toBe(true);
-    expect(session.getDurableRecoveryPlan()?.action).toBe(
-      'reconcile_model_outcome',
+    expect(session.getDurableRecoveryPlan()?.action).toBe('reconcile_model_outcome');
+    expect((await store.read(session.sessionId)).events.map((event) => event.type)).not.toContain(
+      DurableEventType.SESSION_CLOSED,
     );
-    expect(
-      (await store.read(session.sessionId)).events.map((event) => event.type),
-    ).not.toContain(DurableEventType.SESSION_CLOSED);
   });
 
   it('durably interrupts a pending request before cancelling its input', async () => {

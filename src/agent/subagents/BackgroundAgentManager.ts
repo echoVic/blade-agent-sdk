@@ -14,6 +14,7 @@ import { join } from 'node:path';
 import { type InternalLogger, LogCategory, NOOP_LOGGER } from '../../logging/Logger.js';
 import type { ContextSnapshot } from '../../runtime/index.js';
 import type { Message } from '../../services/ChatServiceInterface.js';
+import type { DurableExecutionFence } from '../../session/events/DurableExecutionLeaseStore.js';
 import { AgentId, type SessionId } from '../../types/branded.js';
 import type { BladeConfig, PermissionMode } from '../../types/common.js';
 import type {
@@ -80,6 +81,12 @@ export interface StartBackgroundAgentOptions {
 
   /** 父 turn 的 context snapshot（如果存在则继承） */
   snapshot?: ContextSnapshot;
+
+  /** Root Session execution fence propagated to nested work. */
+  executionFence?: DurableExecutionFence;
+
+  /** @internal Validates root Session ownership before a side effect. */
+  assertExecutionLease?: () => Promise<void>;
 }
 
 /**
@@ -172,6 +179,8 @@ export class BackgroundAgentManager {
       agentId,
       existingMessages,
       snapshot,
+      executionFence,
+      assertExecutionLease,
     } = options;
 
     // 生成或使用已有的 agent ID
@@ -223,6 +232,8 @@ export class BackgroundAgentManager {
       workController.signal,
       existingMessages,
       snapshot,
+      executionFence,
+      assertExecutionLease,
     );
 
     // 记录运行时信息
@@ -259,6 +270,8 @@ export class BackgroundAgentManager {
     workSignal: AbortSignal,
     existingMessages?: Message[],
     snapshot?: ContextSnapshot,
+    executionFence?: DurableExecutionFence,
+    assertExecutionLease?: () => Promise<void>,
   ): Promise<SubagentResult> {
     const startTime = Date.now();
 
@@ -280,6 +293,8 @@ export class BackgroundAgentManager {
         messages,
         signal: workSignal,
         backgroundAgentManager: this,
+        executionFence,
+        assertExecutionLease,
         onProgress: (progress) => {
           this.sessionStore.updateRunningSession(agentId, { progress });
         },
@@ -459,6 +474,8 @@ export class BackgroundAgentManager {
     permissionMode?: PermissionMode,
     subagentRegistry?: SubagentRegistry,
     description?: string,
+    executionFence?: DurableExecutionFence,
+    assertExecutionLease?: () => Promise<void>,
   ): string | undefined {
     const session = this.sessionStore.loadSession(agentId);
 
@@ -482,6 +499,8 @@ export class BackgroundAgentManager {
       permissionMode,
       agentId,
       existingMessages: session.messages,
+      executionFence,
+      assertExecutionLease,
     });
   }
 
@@ -590,6 +609,25 @@ export class BackgroundAgentManager {
   /** Prevents new background-agent work from starting in this runtime. */
   sealForHandoff(): void {
     this.acceptingNewAgents = false;
+  }
+
+  /** Prevents new work and cancels every active descendant after lease loss. */
+  sealAndCancelAll(): readonly AgentId[] {
+    this.sealForHandoff();
+    const agentIds = this.getActiveAgentIds();
+    for (const agentId of agentIds) {
+      this.killAgent(agentId);
+    }
+    return agentIds;
+  }
+
+  /** Cancels all descendants and waits until their execution promises settle. */
+  async sealCancelAndWait(): Promise<readonly AgentId[]> {
+    const agentIds = this.sealAndCancelAll();
+    await Promise.all(
+      agentIds.map((agentId) => this.waitForCompletion(agentId, 0)),
+    );
+    return agentIds;
   }
 
   /**

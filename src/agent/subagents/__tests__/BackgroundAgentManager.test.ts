@@ -256,4 +256,45 @@ describe('BackgroundAgentManager', () => {
       }),
     ).toThrow('Background agent admission is closed for Session handoff');
   });
+
+  it('seals admission and cancels every running agent after ownership loss', async () => {
+    runAgenticLoop.mockImplementationOnce(
+      async (
+        _message: string,
+        _context: ChatContext,
+        options?: LoopOptions,
+      ) =>
+        await new Promise((resolve) => {
+          options?.signal?.addEventListener(
+            'abort',
+            () =>
+              resolve({
+                success: false,
+                error: { message: 'ownership lost' },
+                metadata: { duration: 0 },
+              }),
+            { once: true },
+          );
+        }),
+    );
+    const agentId = AgentId(manager.startBackgroundAgent({
+      config: subagentConfig,
+      bladeConfig,
+      description: 'Lease-owned work',
+      prompt: 'inspect',
+    }));
+    await vi.waitFor(() => expect(runAgenticLoop).toHaveBeenCalled());
+
+    await expect(manager.sealCancelAndWait()).resolves.toEqual([agentId]);
+    expect(manager.getAgent(agentId)?.status).toBe('cancelled');
+    expect(manager.getActiveAgentIds()).toEqual([]);
+    expect(() =>
+      manager.startBackgroundAgent({
+        config: subagentConfig,
+        bladeConfig,
+        description: 'Rejected after ownership loss',
+        prompt: 'inspect',
+      }),
+    ).toThrow('Background agent admission is closed');
+  });
 });

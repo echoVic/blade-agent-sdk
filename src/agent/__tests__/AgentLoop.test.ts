@@ -207,6 +207,37 @@ async function collectEvents(
 
 describe('agentLoop', () => {
   describe('basic flow', () => {
+    it('checks the execution lease after persisting model start and before provider I/O', async () => {
+      const chatService = createMockChatService([{ content: 'must not run' }]);
+      const onModelRequestStarting = vi.fn(async () => ({
+        onCompleted: vi.fn(async () => {}),
+        onFailed: vi.fn(async () => {}),
+        onAborted: vi.fn(async () => {}),
+      }));
+      const assertExecutionLease = vi.fn(async () => {
+        throw new Error('execution lease lost');
+      });
+      const config = baseConfig({
+        modelExecutionLifecycle: { onModelRequestStarting },
+        turnState: {
+          chatService,
+          executionContext: {
+            sessionId: SessionId('fenced-model-session'),
+            userId: 'test-user',
+            assertExecutionLease,
+          },
+        },
+      });
+
+      await expect(collectEvents(agentLoop(config))).rejects.toThrow(
+        'execution lease lost',
+      );
+
+      expect(onModelRequestStarting).toHaveBeenCalledOnce();
+      expect(assertExecutionLease).toHaveBeenCalledOnce();
+      expect(chatService.chat).not.toHaveBeenCalled();
+    });
+
     it('settles the durable model lifecycle around a successful provider call', async () => {
       const onCompleted = vi.fn(async () => {});
       const onFailed = vi.fn(async () => {});

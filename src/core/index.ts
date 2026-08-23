@@ -46,8 +46,8 @@ export type {
   ToolEffectYield,
   ToolError,
   ToolExecution,
-  ToolExecutionStartedLifecycle,
   ToolExecutionLifecycle,
+  ToolExecutionStartedLifecycle,
   ToolExposureConfig,
   ToolExposureMode,
   ToolInvocationLifecycle,
@@ -71,6 +71,8 @@ export {
   CommandId,
   EventId,
   EventSequence,
+  ExecutionLeaseId,
+  FencingToken,
   InputId,
   ModelAttemptId,
   PermissionRequestId,
@@ -79,6 +81,7 @@ export {
   ToolAttemptId,
   ToolUseId,
   TurnId,
+  WorkerId,
 } from '../types/branded.js';
 export type {
   JsonObject,

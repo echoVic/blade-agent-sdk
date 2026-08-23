@@ -2,16 +2,21 @@ import { nanoid } from 'nanoid';
 import { Buffer } from 'node:buffer';
 import { mkdir, open, readFile, truncate } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
-import { EventId, EventSequence, type SessionId } from '../../types/branded.js';
+import writeFileAtomic from 'write-file-atomic';
+import { EventId, EventSequence, FencingToken, type SessionId } from '../../types/branded.js';
+import { syncParentDirectory, withAdvisoryFileLock } from '../../utils/advisoryFileLock.js';
+import { DurableEventSequenceConflictError, DurableEventStoreError } from './DurableEventStore.js';
 import {
-  syncParentDirectory,
-  withAdvisoryFileLock,
-} from '../../utils/advisoryFileLock.js';
-import {
-  DurableEventSequenceConflictError,
-  type DurableEventStore,
-  DurableEventStoreError,
-} from './DurableEventStore.js';
+  DURABLE_EXECUTION_LEASE_FORMAT,
+  DURABLE_EXECUTION_LEASE_FORMAT_VERSION,
+  type DurableExecutionFence,
+  type DurableExecutionLease,
+  type DurableExecutionLeaseAcquireOptions,
+  DurableExecutionLeaseError,
+  type DurableExecutionLeaseStore,
+  type PersistedDurableExecutionLeaseState,
+  parsePersistedDurableExecutionLeaseState,
+} from './DurableExecutionLeaseStore.js';
 import {
   DURABLE_EVENT_LOG_FORMAT,
   type PersistedDurableEventBatch,
@@ -33,6 +38,7 @@ const DEFAULT_PAGE_SIZE = 100;
 const MAX_PAGE_SIZE = 1000;
 const EVENT_DIRECTORY = 'durable-events';
 const DEFAULT_LOCK_TIMEOUT_MS = 10_000;
+const MAX_EXECUTION_LEASE_TTL_MS = 24 * 60 * 60 * 1000;
 
 export interface JsonlDurableEventStoreOptions {
   clock?: () => Date;
@@ -53,7 +59,7 @@ interface LoadedLog {
  * across Node.js processes sharing the same storage directory.
  * Distributed executors must still provide a Store with external CAS/fencing.
  */
-export class JsonlDurableEventStore implements DurableEventStore {
+export class JsonlDurableEventStore implements DurableExecutionLeaseStore {
   private readonly rootDirectory: string;
   private readonly clock: () => Date;
   private readonly eventIdFactory: () => EventId;
@@ -108,7 +114,9 @@ export class JsonlDurableEventStore implements DurableEventStore {
       this.assertExpectedSequence(options.expectedLastSequence, previousSequence);
 
       const eventIds = new Set<string>(loaded.events.map((event) => event.eventId));
-      const recordedAt = this.clock().toISOString();
+      const now = this.clock();
+      await this.assertExecutionFenceUnlocked(sessionId, options.executionFence, now);
+      const recordedAt = now.toISOString();
       const firstSequenceValue = Number(previousSequence ?? 0) + 1;
       const events = parsedDrafts.map((draft, index): DurableEventEnvelope => {
         const eventId = this.eventIdFactory();
@@ -221,6 +229,121 @@ export class JsonlDurableEventStore implements DurableEventStore {
     return join(this.rootDirectory, filename);
   }
 
+  getExecutionLeaseFilePath(sessionId: SessionId): string {
+    const filename = `${Buffer.from(sessionId).toString('base64url')}.lease.json`;
+    return join(this.rootDirectory, filename);
+  }
+
+  async requiresExecutionLease(sessionId: SessionId): Promise<boolean> {
+    return this.runWithExecutionLeaseLock(sessionId, 'read', async () => {
+      return (await this.loadExecutionLeaseState(sessionId)) !== null;
+    });
+  }
+
+  async acquireExecutionLease(
+    sessionId: SessionId,
+    options: DurableExecutionLeaseAcquireOptions,
+  ): Promise<DurableExecutionLease> {
+    this.assertLeaseIdentity(sessionId, options);
+    this.assertLeaseTtl(options.ttlMs);
+    return this.runWithExecutionLeaseLock(sessionId, 'write', async () => {
+      const current = await this.loadExecutionLeaseState(sessionId);
+      const now = this.clock();
+      if (current && this.isLeaseActive(current, now)) {
+        if (current.leaseId !== options.leaseId || current.ownerId !== options.ownerId) {
+          throw new DurableExecutionLeaseError(
+            'DURABLE_EXECUTION_LEASE_CONFLICT',
+            `Session ${sessionId} is leased by worker ${current.ownerId}`,
+            {
+              sessionId,
+              leaseId: options.leaseId,
+              fencingToken: current.fencingToken,
+              activeLease: this.toExecutionLease(current),
+            },
+          );
+        }
+      }
+
+      const reusesActiveLease =
+        current !== null &&
+        this.isLeaseActive(current, now) &&
+        current.leaseId === options.leaseId &&
+        current.ownerId === options.ownerId;
+      const fencingToken = reusesActiveLease
+        ? current.fencingToken
+        : this.nextFencingToken(sessionId, current?.fencingToken);
+      const timestamp = now.toISOString();
+      const state: PersistedDurableExecutionLeaseState = {
+        format: DURABLE_EXECUTION_LEASE_FORMAT,
+        version: DURABLE_EXECUTION_LEASE_FORMAT_VERSION,
+        sessionId,
+        fencingToken,
+        leaseId: options.leaseId,
+        ownerId: options.ownerId,
+        acquiredAt: reusesActiveLease ? current.acquiredAt : timestamp,
+        renewedAt: timestamp,
+        expiresAt: this.expiresAt(sessionId, now, options.ttlMs),
+      };
+      await this.writeExecutionLeaseState(state);
+      return this.toExecutionLease(state);
+    });
+  }
+
+  async renewExecutionLease(
+    lease: DurableExecutionLease,
+    ttlMs: number,
+  ): Promise<DurableExecutionLease> {
+    this.assertLeaseIdentity(lease.sessionId, lease);
+    this.assertLeaseTtl(ttlMs);
+    return this.runWithExecutionLeaseLock(lease.sessionId, 'write', async () => {
+      const current = await this.loadExecutionLeaseState(lease.sessionId);
+      const now = this.clock();
+      this.assertLeaseMatches(lease, current, now);
+      if (!current) {
+        throw this.createLeaseLostError(lease, 'no lease state exists');
+      }
+      const timestamp = now.toISOString();
+      const renewed: PersistedDurableExecutionLeaseState = {
+        ...current,
+        renewedAt: timestamp,
+        expiresAt: this.expiresAt(lease.sessionId, now, ttlMs),
+      };
+      await this.writeExecutionLeaseState(renewed);
+      return this.toExecutionLease(renewed);
+    });
+  }
+
+  async assertExecutionLease(lease: DurableExecutionLease): Promise<void> {
+    this.assertLeaseIdentity(lease.sessionId, lease);
+    await this.runWithExecutionLeaseLock(lease.sessionId, 'read', async () => {
+      const current = await this.loadExecutionLeaseState(lease.sessionId);
+      this.assertLeaseMatches(lease, current, this.clock());
+    });
+  }
+
+  async releaseExecutionLease(lease: DurableExecutionLease): Promise<void> {
+    this.assertLeaseIdentity(lease.sessionId, lease);
+    await this.runWithExecutionLeaseLock(lease.sessionId, 'write', async () => {
+      const current = await this.loadExecutionLeaseState(lease.sessionId);
+      const now = this.clock();
+      if (
+        current?.releasedAt &&
+        current.leaseId === lease.leaseId &&
+        current.fencingToken === lease.fencingToken
+      ) {
+        return;
+      }
+      this.assertLeaseMatches(lease, current, now, false);
+      if (!current) {
+        throw this.createLeaseLostError(lease, 'no lease state exists');
+      }
+      await this.writeExecutionLeaseState({
+        ...current,
+        releasedAt: now.toISOString(),
+      });
+    });
+  }
+
   private async runWithSessionLock<T>(
     sessionId: SessionId,
     operation: 'read' | 'write',
@@ -278,6 +401,273 @@ export class JsonlDurableEventStore implements DurableEventStore {
     if (expected !== undefined && expected !== actual) {
       throw new DurableEventSequenceConflictError(expected, actual);
     }
+  }
+
+  private async runWithExecutionLeaseLock<T>(
+    sessionId: SessionId,
+    operation: 'read' | 'write',
+    callback: () => Promise<T>,
+  ): Promise<T> {
+    return withAdvisoryFileLock(
+      this.getFilePath(sessionId),
+      {
+        timeoutMs: this.lockTimeoutMs,
+        errors: {
+          prepare: (cause) => this.createLeaseStorageError(sessionId, operation, cause),
+          initialize: (cause) => this.createLeaseStorageError(sessionId, operation, cause),
+          acquire: (cause) => this.createLeaseStorageError(sessionId, operation, cause),
+          timeout: () =>
+            new DurableExecutionLeaseError(
+              'DURABLE_EXECUTION_LEASE_WRITE_FAILED',
+              `Timed out acquiring the execution lease lock for Session ${sessionId}`,
+              { sessionId },
+            ),
+          release: (cause) => this.createLeaseStorageError(sessionId, operation, cause),
+        },
+      },
+      callback,
+    );
+  }
+
+  private createLeaseStorageError(
+    sessionId: SessionId,
+    operation: 'read' | 'write',
+    cause: unknown,
+  ): DurableExecutionLeaseError {
+    return new DurableExecutionLeaseError(
+      operation === 'write'
+        ? 'DURABLE_EXECUTION_LEASE_WRITE_FAILED'
+        : 'DURABLE_EXECUTION_LEASE_CORRUPT',
+      `Failed to ${operation} the execution lease for Session ${sessionId}`,
+      { sessionId, cause },
+    );
+  }
+
+  private async loadExecutionLeaseState(
+    sessionId: SessionId,
+  ): Promise<PersistedDurableExecutionLeaseState | null> {
+    const filePath = this.getExecutionLeaseFilePath(sessionId);
+    let content: string;
+    try {
+      content = await readFile(filePath, 'utf8');
+    } catch (error) {
+      if (error instanceof Error && 'code' in error && error.code === 'ENOENT') {
+        return null;
+      }
+      throw this.createLeaseStorageError(sessionId, 'read', error);
+    }
+    try {
+      const state = parsePersistedDurableExecutionLeaseState(JSON.parse(content));
+      if (state.sessionId !== sessionId) {
+        throw new Error(`Lease state belongs to Session ${state.sessionId}`);
+      }
+      return state;
+    } catch (error) {
+      if (error instanceof DurableExecutionLeaseError) {
+        throw error;
+      }
+      throw new DurableExecutionLeaseError(
+        'DURABLE_EXECUTION_LEASE_CORRUPT',
+        `Invalid execution lease state for Session ${sessionId}`,
+        { sessionId, cause: error },
+      );
+    }
+  }
+
+  private async writeExecutionLeaseState(
+    state: PersistedDurableExecutionLeaseState,
+  ): Promise<void> {
+    const filePath = this.getExecutionLeaseFilePath(state.sessionId);
+    try {
+      const validated = parsePersistedDurableExecutionLeaseState(state);
+      await mkdir(this.rootDirectory, { recursive: true, mode: 0o700 });
+      await writeFileAtomic(filePath, `${JSON.stringify(validated)}\n`, {
+        encoding: 'utf8',
+        fsync: true,
+        mode: 0o600,
+      });
+      await syncParentDirectory(filePath);
+    } catch (error) {
+      throw new DurableExecutionLeaseError(
+        'DURABLE_EXECUTION_LEASE_WRITE_FAILED',
+        `Failed to persist the execution lease for Session ${state.sessionId}`,
+        { sessionId: state.sessionId, cause: error },
+      );
+    }
+  }
+
+  private async assertExecutionFenceUnlocked(
+    sessionId: SessionId,
+    fence: DurableExecutionFence | undefined,
+    now: Date,
+  ): Promise<void> {
+    const current = await this.loadExecutionLeaseState(sessionId);
+    if (!current) {
+      if (fence) {
+        throw new DurableExecutionLeaseError(
+          'DURABLE_EXECUTION_LEASE_LOST',
+          `Execution lease ${fence.leaseId} does not exist for Session ${sessionId}`,
+          {
+            sessionId,
+            leaseId: fence.leaseId,
+            fencingToken: fence.fencingToken,
+          },
+        );
+      }
+      return;
+    }
+    if (!fence) {
+      throw new DurableExecutionLeaseError(
+        'DURABLE_EXECUTION_LEASE_REQUIRED',
+        `Session ${sessionId} requires an execution lease`,
+        {
+          sessionId,
+          ...(this.isLeaseActive(current, now)
+            ? { activeLease: this.toExecutionLease(current) }
+            : {}),
+        },
+      );
+    }
+    if (!this.isLeaseActive(current, now)) {
+      throw new DurableExecutionLeaseError(
+        'DURABLE_EXECUTION_LEASE_LOST',
+        `Execution lease ${fence.leaseId} is not active for Session ${sessionId}`,
+        {
+          sessionId,
+          leaseId: fence.leaseId,
+          fencingToken: fence.fencingToken,
+        },
+      );
+    }
+    if (current.leaseId !== fence.leaseId || current.fencingToken !== fence.fencingToken) {
+      throw new DurableExecutionLeaseError(
+        'DURABLE_EXECUTION_LEASE_LOST',
+        `Execution lease ${fence.leaseId} is stale for Session ${sessionId}`,
+        {
+          sessionId,
+          leaseId: fence.leaseId,
+          fencingToken: fence.fencingToken,
+          activeLease: this.toExecutionLease(current),
+        },
+      );
+    }
+  }
+
+  private assertLeaseMatches(
+    lease: DurableExecutionLease,
+    current: PersistedDurableExecutionLeaseState | null,
+    now: Date,
+    requireUnexpired = true,
+  ): void {
+    if (
+      !current ||
+      current.releasedAt ||
+      current.leaseId !== lease.leaseId ||
+      current.ownerId !== lease.ownerId ||
+      current.fencingToken !== lease.fencingToken ||
+      (requireUnexpired && !this.isLeaseActive(current, now))
+    ) {
+      throw this.createLeaseLostError(
+        lease,
+        current?.releasedAt
+          ? 'it was released'
+          : current && !this.isLeaseActive(current, now)
+            ? 'it expired'
+            : 'another owner holds the lease',
+        current && this.isLeaseActive(current, now) ? this.toExecutionLease(current) : undefined,
+      );
+    }
+  }
+
+  private createLeaseLostError(
+    lease: DurableExecutionLease,
+    detail: string,
+    activeLease?: DurableExecutionLease,
+  ): DurableExecutionLeaseError {
+    return new DurableExecutionLeaseError(
+      'DURABLE_EXECUTION_LEASE_LOST',
+      `Execution lease ${lease.leaseId} for Session ${lease.sessionId} is no longer valid: ${detail}`,
+      {
+        sessionId: lease.sessionId,
+        leaseId: lease.leaseId,
+        fencingToken: lease.fencingToken,
+        ...(activeLease ? { activeLease } : {}),
+      },
+    );
+  }
+
+  private assertLeaseIdentity(
+    sessionId: SessionId,
+    lease: {
+      readonly sessionId?: SessionId;
+      readonly leaseId: DurableExecutionLease['leaseId'];
+      readonly ownerId: DurableExecutionLease['ownerId'];
+    },
+  ): void {
+    if (
+      sessionId.trim() === '' ||
+      lease.leaseId.trim() === '' ||
+      lease.ownerId.trim() === '' ||
+      ('sessionId' in lease && lease.sessionId !== sessionId)
+    ) {
+      throw new DurableExecutionLeaseError(
+        'DURABLE_EXECUTION_LEASE_INVALID',
+        `Invalid execution lease identity for Session ${sessionId}`,
+        {
+          sessionId,
+          leaseId: lease.leaseId,
+        },
+      );
+    }
+  }
+
+  private assertLeaseTtl(ttlMs: number): void {
+    if (!Number.isSafeInteger(ttlMs) || ttlMs <= 0 || ttlMs > MAX_EXECUTION_LEASE_TTL_MS) {
+      throw new DurableExecutionLeaseError(
+        'DURABLE_EXECUTION_LEASE_INVALID',
+        `Execution lease ttlMs must be between 1 and ${MAX_EXECUTION_LEASE_TTL_MS}`,
+      );
+    }
+  }
+
+  private nextFencingToken(sessionId: SessionId, current: FencingToken | undefined): FencingToken {
+    const next = Number(current ?? 0) + 1;
+    if (!Number.isSafeInteger(next)) {
+      throw new DurableExecutionLeaseError(
+        'DURABLE_EXECUTION_LEASE_INVALID',
+        `Execution lease fencing token is exhausted for Session ${sessionId}`,
+        { sessionId },
+      );
+    }
+    return FencingToken(next);
+  }
+
+  private expiresAt(sessionId: SessionId, now: Date, ttlMs: number): string {
+    const expiresAt = new Date(now.getTime() + ttlMs);
+    if (!Number.isFinite(expiresAt.getTime())) {
+      throw new DurableExecutionLeaseError(
+        'DURABLE_EXECUTION_LEASE_INVALID',
+        `Execution lease expiry is outside the supported date range for Session ${sessionId}`,
+        { sessionId },
+      );
+    }
+    return expiresAt.toISOString();
+  }
+
+  private isLeaseActive(state: PersistedDurableExecutionLeaseState, now: Date): boolean {
+    return state.releasedAt === undefined && Date.parse(state.expiresAt) > now.getTime();
+  }
+
+  private toExecutionLease(state: PersistedDurableExecutionLeaseState): DurableExecutionLease {
+    return {
+      sessionId: state.sessionId,
+      leaseId: state.leaseId,
+      ownerId: state.ownerId,
+      fencingToken: state.fencingToken,
+      acquiredAt: state.acquiredAt,
+      renewedAt: state.renewedAt,
+      expiresAt: state.expiresAt,
+    };
   }
 
   private async writeBatch(

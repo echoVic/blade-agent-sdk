@@ -4,6 +4,7 @@
 
 import type { ContextSnapshot } from '../runtime/index.js';
 import type { ContentPart, Message } from '../services/ChatServiceInterface.js';
+import type { DurableExecutionFence } from '../session/events/DurableExecutionLeaseStore.js';
 import type { ToolCatalogSourcePolicy } from '../tools/catalog/index.js';
 import type { ConfirmationHandler, ToolExecutionLifecycle } from '../tools/types/ExecutionTypes.js';
 import type { AgentId, InputId, RequestId, SessionId } from '../types/branded.js';
@@ -95,6 +96,9 @@ export interface ChatContext {
   subagentInfo?: SubagentInfoForContext; // 子代理信息（用于 JSONL 写入）
   omitEnvironment?: boolean;
   backgroundAgentManager?: IBackgroundAgentManager;
+  executionFence?: DurableExecutionFence;
+  /** @internal Validates execution ownership immediately before a model or tool side effect. */
+  assertExecutionLease?: () => Promise<void>;
 }
 
 /**

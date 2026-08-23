@@ -34,6 +34,7 @@ describe('CompactionService', () => {
 
   it('uses the native openai provider for official OpenAI compaction requests', async () => {
     const messages: Message[] = [{ role: 'user', content: 'hello' }];
+    const controller = new AbortController();
 
     await compact(messages, {
       trigger: 'manual',
@@ -41,6 +42,7 @@ describe('CompactionService', () => {
       maxContextTokens: 128000,
       apiKey: 'test-key',
       baseURL: 'https://api.openai.com/v1',
+      signal: controller.signal,
     });
 
     expect(mockCreateChatServiceAsync).toHaveBeenCalledWith(
@@ -51,7 +53,10 @@ describe('CompactionService', () => {
       }),
       expect.anything(),
     );
-    expect(mockSideQuery).toHaveBeenCalledTimes(1);
+    expect(mockSideQuery).toHaveBeenCalledWith(
+      expect.anything(),
+      controller.signal,
+    );
     expect(mockChat).not.toHaveBeenCalled();
   });
 

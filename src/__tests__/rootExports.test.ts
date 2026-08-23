@@ -9,11 +9,15 @@ import type {
   DurableEventStore,
   DurableEventSubscriptionMessage,
   DurableEventSubscriptionOptions,
+  DurableExecutionFence,
+  DurableExecutionLeaseOptions,
+  DurableExecutionLeaseSnapshot,
+  DurableExecutionLeaseStore,
   DurableModelAttemptProjection,
   DurableModelOutcomeReconciliationCommand,
-  DurableRequestRecoveryOrigin,
-  DurableRequestRecoveryKind,
   DurableRequestOutcomeReconciliationCommand,
+  DurableRequestRecoveryKind,
+  DurableRequestRecoveryOrigin,
   DurableRequestRolloverCommand,
   DurableRequestRolloverResult,
   DurableSessionCommand,
@@ -24,6 +28,7 @@ import type {
   DurableToolStartCommand,
   DurableTurnRecoveryCommand,
   DurableTurnRecoveryResult,
+  ExecutionContext,
   InputSubmission,
   ISession,
   PendingSessionInput,
@@ -56,11 +61,14 @@ import {
   createMemoryWriteTool,
   DURABLE_EVENT_CURSOR_VERSION,
   DURABLE_EVENT_SCHEMA_VERSION,
+  DURABLE_EXECUTION_LEASE_FORMAT,
   DurableCommandConflictError,
   DurableCommandOutcomeUnknownError,
   DurableEventSubscription,
   DurableEventSubscriptionError,
   DurableEventType,
+  DurableExecutionLease,
+  DurableExecutionLeaseError,
   DurableSessionJournal,
   DurableSessionProjector,
   DurableSessionRecoveryCoordinator,
@@ -69,17 +77,19 @@ import {
   durableEventCursor,
   EventId,
   EventSequence,
+  ExecutionLeaseId,
+  FencingToken,
   FileSystemMemoryStore,
   InputId,
   InputPriority,
   JsonlDurableEventStore,
   MemoryManager,
   ModelAttemptId,
-  SessionHandoffError,
   PermissionRequestId,
   projectDurableSession,
   RequestId,
   SessionDurableRecorderError,
+  SessionHandoffError,
   SessionInputError,
   SubagentExecutor,
   SubagentRegistry,
@@ -88,6 +98,7 @@ import {
   ToolErrorType,
   ToolSideEffect,
   TurnId,
+  WorkerId,
 } from '../index.js';
 
 describe('root exports', () => {
@@ -124,6 +135,12 @@ describe('root exports', () => {
     expect(PermissionRequestId('permission-1')).toBe('permission-1');
     expect(DurableCommandConflictError).toBeDefined();
     expect(DurableCommandOutcomeUnknownError).toBeDefined();
+    expect(DurableExecutionLease.acquire).toBeTypeOf('function');
+    expect(DurableExecutionLeaseError).toBeDefined();
+    expect(DURABLE_EXECUTION_LEASE_FORMAT).toBe('blade.durable-execution-lease');
+    expect(ExecutionLeaseId('lease-1')).toBe('lease-1');
+    expect(FencingToken(1)).toBe(1);
+    expect(WorkerId('worker-1')).toBe('worker-1');
     expect(DurableSessionJournal.open).toBeTypeOf('function');
     expect(DurableSessionProjector).toBeDefined();
     expect(DurableSessionRecoveryCoordinator.open).toBeTypeOf('function');
@@ -189,15 +206,15 @@ describe('root exports', () => {
     expectTypeOf<DurableModelAttemptProjection['modelAttemptId']>().toEqualTypeOf<
       ReturnType<typeof ModelAttemptId>
     >();
-    expectTypeOf<
-      DurableModelOutcomeReconciliationCommand['modelAttemptId']
-    >().toEqualTypeOf<ReturnType<typeof ModelAttemptId>>();
+    expectTypeOf<DurableModelOutcomeReconciliationCommand['modelAttemptId']>().toEqualTypeOf<
+      ReturnType<typeof ModelAttemptId>
+    >();
     expectTypeOf<DurableRequestRolloverCommand['inputId']>().toEqualTypeOf<InputId>();
     expectTypeOf<DurableRequestRolloverCommand['sourceLastTurn']>().toEqualTypeOf<number>();
     expectTypeOf<DurableRequestRolloverCommand['recoveryTurnId']>().toEqualTypeOf<TurnId>();
-    expectTypeOf<
-      DurableRequestRolloverCommand['preparation']['appliedInputIds']
-    >().toEqualTypeOf<readonly InputId[]>();
+    expectTypeOf<DurableRequestRolloverCommand['preparation']['appliedInputIds']>().toEqualTypeOf<
+      readonly InputId[]
+    >();
     expectTypeOf<DurableRequestRolloverResult['recoveryRequestId']>().toEqualTypeOf<RequestId>();
     expectTypeOf<DurableSessionProjection['reconciledInputIds']>().toEqualTypeOf<
       readonly InputId[] | undefined
@@ -219,9 +236,28 @@ describe('root exports', () => {
       EventSequence | null | undefined
     >();
     expectTypeOf<DurableEventStore['append']>().toBeFunction();
+    expectTypeOf<DurableExecutionLeaseStore['acquireExecutionLease']>().toBeFunction();
+    expectTypeOf<DurableExecutionFence['fencingToken']>().toEqualTypeOf<
+      ReturnType<typeof FencingToken>
+    >();
+    expectTypeOf<DurableExecutionLeaseSnapshot['ownerId']>().toEqualTypeOf<
+      ReturnType<typeof WorkerId>
+    >();
+    expectTypeOf<DurableExecutionLeaseOptions['leaseId']>().toEqualTypeOf<
+      ReturnType<typeof ExecutionLeaseId> | undefined
+    >();
     expectTypeOf<SessionOptions['durableEventStore']>().toEqualTypeOf<
       DurableEventStore | undefined
     >();
+    expectTypeOf<SessionOptions['executionLease']>().toEqualTypeOf<
+      DurableExecutionLeaseOptions | undefined
+    >();
+    expectTypeOf<ExecutionContext['executionFence']>().toEqualTypeOf<
+      DurableExecutionFence | undefined
+    >();
+    expectTypeOf<
+      ReturnType<ISession['getExecutionLease']>
+    >().toEqualTypeOf<DurableExecutionLeaseSnapshot | null>();
     expectTypeOf<ReturnType<ISession['abort']>>().toEqualTypeOf<Promise<void>>();
     expectTypeOf<ReturnType<ISession['suspendForHandoff']>>().toEqualTypeOf<
       Promise<SessionHandoffResult>

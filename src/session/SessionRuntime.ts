@@ -17,6 +17,7 @@ import {
 } from '../runtime/index.js';
 import { getSandboxExecutor } from '../sandbox/SandboxExecutor.js';
 import { getSandboxService } from '../sandbox/SandboxService.js';
+import type { DurableExecutionFence } from './events/DurableExecutionLeaseStore.js';
 import { getBuiltinTools } from '../tools/builtin/index.js';
 import { BackgroundShellManager } from '../tools/builtin/shell/BackgroundShellManager.js';
 import { ToolCatalog } from '../tools/catalog/ToolCatalog.js';
@@ -186,18 +187,33 @@ export class SessionRuntime {
     return this.backgroundAgentManager;
   }
 
-  sealBackgroundWorkForHandoff(): {
+  sealBackgroundWorkForHandoff(executionFence?: DurableExecutionFence): {
     activeSubagentIds: readonly AgentId[];
     activeShellIds: readonly string[];
   } {
     const activeSubagentIds = this.backgroundAgentManager.getActiveAgentIds();
     const shellManager = BackgroundShellManager.getInstance();
-    const activeShellIds = shellManager.getActiveProcessIds(this.sessionId);
+    const activeShellIds = shellManager.getActiveProcessIds(
+      this.sessionId,
+      executionFence,
+    );
     if (activeSubagentIds.length === 0 && activeShellIds.length === 0) {
       this.backgroundAgentManager.sealForHandoff();
-      shellManager.sealSessionForHandoff(this.sessionId);
+      if (executionFence) {
+        shellManager.sealExecutionFence(this.sessionId, executionFence);
+      } else {
+        shellManager.sealSessionForHandoff(this.sessionId);
+      }
     }
     return { activeSubagentIds, activeShellIds };
+  }
+
+  stopBackgroundWorkAfterLeaseLoss(executionFence: DurableExecutionFence): void {
+    this.backgroundAgentManager.sealAndCancelAll();
+    BackgroundShellManager.getInstance().killExecutionFence(
+      this.sessionId,
+      executionFence,
+    );
   }
 
   getContextManager(): ContextManager {
@@ -244,8 +260,28 @@ export class SessionRuntime {
     });
   }
 
-  async close(): Promise<void> {
-    await this.mcpRegistry.disconnectAll();
+  async close(executionFence?: DurableExecutionFence): Promise<void> {
+    const shellManager = BackgroundShellManager.getInstance();
+    const shutdownResults = await Promise.allSettled([
+      this.backgroundAgentManager.sealCancelAndWait(),
+      executionFence
+        ? shellManager.terminateExecutionFence(this.sessionId, executionFence)
+        : shellManager.terminateSession(this.sessionId),
+    ]);
+    const errors = shutdownResults.flatMap((result) =>
+      result.status === 'rejected' ? [result.reason] : [],
+    );
+    try {
+      await this.mcpRegistry.disconnectAll();
+    } catch (error) {
+      errors.push(error);
+    }
+    if (errors.length === 1) {
+      throw errors[0];
+    }
+    if (errors.length > 1) {
+      throw new AggregateError(errors, `Session runtime ${this.sessionId} close failed`);
+    }
   }
 
   async mcpServerStatus(): Promise<McpServerStatus[]> {

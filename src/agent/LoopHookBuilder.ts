@@ -133,6 +133,8 @@ export function buildLoopConfig(deps: LoopHookBuilderDeps): AgentLoopConfig {
         const runtimeCtx: CompactionRuntimeContext = {
           sessionId: context.sessionId,
           projectDir: context.snapshot?.cwd ?? defaultProjectPath,
+          signal: context.signal,
+          assertExecutionLease: context.assertExecutionLease,
         };
         const compactionStream = compactionHandler.checkAndCompactInLoop(
           loopState.conversationState, runtimeCtx, ctx.turn, ctx.lastPromptTokens,
@@ -143,6 +145,7 @@ export function buildLoopConfig(deps: LoopHookBuilderDeps): AgentLoopConfig {
       onTurnLimitReached: options?.onTurnLimitReached,
 
       async onTurnLimitCompact(_ctx) {
+        await context.assertExecutionLease?.();
         try {
           const cs = loopState.getChatService().getConfig();
           const compactResult = await CompactionService.compact(
@@ -156,6 +159,7 @@ export function buildLoopConfig(deps: LoopHookBuilderDeps): AgentLoopConfig {
               baseURL: cs.baseUrl,
               customHeaders: cs.customHeaders,
               projectDir: context.snapshot?.cwd ?? defaultProjectPath,
+              signal: context.signal,
             },
           );
           const continueMessage: Message = {
@@ -329,6 +333,8 @@ export function buildLoopConfig(deps: LoopHookBuilderDeps): AgentLoopConfig {
             const runtimeCtx: CompactionRuntimeContext = {
               sessionId: context.sessionId,
               projectDir: context.snapshot?.cwd ?? defaultProjectPath,
+              signal: context.signal,
+              assertExecutionLease: context.assertExecutionLease,
             };
             const compactStream = compactionHandler?.reactiveCompact(loopState.conversationState, runtimeCtx);
             if (!compactStream) return false;
