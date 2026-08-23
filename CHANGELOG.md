@@ -2,6 +2,12 @@
 
 All notable changes to `@blade-ai/agent-sdk` are documented here.
 
+## [5.3.1] - 2026-08-23
+
+### Fixes
+
+- Bound stalled model calls with configurable request and stream-idle timeouts that abort the provider and preserve typed failure semantics.
+
 ## [5.3.0] - 2026-08-23
 
 ### Features
