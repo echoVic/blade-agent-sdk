@@ -1339,6 +1339,102 @@ describe('Session durable events', () => {
     await session.close();
   });
 
+  it('durably interrupts a running request before abort resolves without stream drain', async () => {
+    const { store } = createStore();
+    let innerClosed = false;
+    let cleanupStarted = false;
+    let releaseCleanup!: () => void;
+    const cleanupGate = new Promise<void>((resolve) => {
+      releaseCleanup = resolve;
+    });
+    streamChat = async function* interruptedByAbort(_message, _context, loopOptions) {
+      let modelRequest: ModelRequestLifecycle | undefined;
+      try {
+        yield { type: 'turn_start', turn: 1, maxTurns: 10 };
+        modelRequest = await loopOptions?.modelExecutionLifecycle?.onModelRequestStarting({
+          turn: 1,
+          model: 'test-model',
+          streaming: true,
+        });
+        yield { type: 'content_delta', delta: 'partial' };
+        return {
+          success: true,
+          finalMessage: 'unexpected',
+          metadata: { turnsCount: 1, toolCallsCount: 0, duration: 1 },
+        };
+      } finally {
+        await modelRequest?.onAborted('request_interrupted');
+        cleanupStarted = true;
+        await cleanupGate;
+        innerClosed = true;
+      }
+    };
+    const session = await createSession(options(store));
+    await session.send('abort while running');
+    const output = session.stream();
+    await output.next();
+    await output.next();
+
+    let abortResolved = false;
+    const abortPromise = session.abort().then(() => {
+      abortResolved = true;
+    });
+    await vi.waitFor(() => expect(cleanupStarted).toBe(true));
+    expect(abortResolved).toBe(false);
+    releaseCleanup();
+    await abortPromise;
+
+    expect(innerClosed).toBe(true);
+    expect(session.getDurableRecoveryPlan()?.action).toBe('none');
+    expect(
+      (await store.read(session.sessionId)).events.map((event) => event.type).slice(-3),
+    ).toEqual([
+      DurableEventType.MODEL_REQUEST_ABORTED,
+      DurableEventType.TURN_ABORTED,
+      DurableEventType.REQUEST_INTERRUPTED,
+    ]);
+    await expect(output.next()).resolves.toEqual({ value: undefined, done: true });
+    await session.close();
+  });
+
+  it('rejects abort when running-request terminal persistence fails', async () => {
+    const { store } = createStore();
+    const failingStore = new FailOnEventTypeStore(
+      store,
+      DurableEventType.REQUEST_INTERRUPTED,
+    );
+    streamChat = async function* interruptedByAbort(_message, context) {
+      yield { type: 'turn_start', turn: 1, maxTurns: 10 };
+      const signal = (context as { signal?: AbortSignal }).signal;
+      await new Promise<void>((resolve) => {
+        if (signal?.aborted) {
+          resolve();
+          return;
+        }
+        signal?.addEventListener('abort', () => resolve(), { once: true });
+      });
+      return {
+        success: false,
+        error: { type: 'aborted', message: 'aborted' },
+        metadata: { turnsCount: 1, toolCallsCount: 0, duration: 1 },
+      };
+    };
+    const session = await createSession(options(failingStore));
+    await session.send('abort with failed persistence');
+    const output = session.stream();
+    await output.next();
+
+    await expect(session.abort()).rejects.toBeInstanceOf(
+      DurableCommandOutcomeUnknownError,
+    );
+
+    expect(session.getDurableRecoveryPlan()?.action).toBe('reconcile_request_outcome');
+    await expect(output.next()).rejects.toBeInstanceOf(
+      DurableCommandOutcomeUnknownError,
+    );
+    await expect(session.close()).resolves.toBeUndefined();
+  });
+
   it('durably interrupts a pending request before cancelling its input', async () => {
     const { store } = createStore();
     const session = await createSession(options(store));
@@ -1416,7 +1512,10 @@ describe('Session durable events', () => {
     const { store } = createStore();
     const session = await createSession(options(store));
 
-    await Promise.all([session.close(), session.close()]);
+    const firstClose = session.close();
+    const secondClose = session.close();
+    expect(firstClose).toBe(secondClose);
+    await Promise.all([firstClose, secondClose]);
 
     expect(
       (await store.read(session.sessionId)).events.filter(
@@ -1427,24 +1526,34 @@ describe('Session durable events', () => {
 
   it('preserves the session-close reason when closing a running request', async () => {
     const { store } = createStore();
+    let cleanupStarted = false;
+    let releaseCleanup!: () => void;
+    const cleanupGate = new Promise<void>((resolve) => {
+      releaseCleanup = resolve;
+    });
     streamChat = async function* interruptedByClose(_message, context) {
-      yield { type: 'turn_start', turn: 1, maxTurns: 10 };
-      const signal = (context as { signal?: AbortSignal }).signal;
-      if (!signal) {
-        throw new Error('Missing request signal');
-      }
-      await new Promise<void>((resolve) => {
-        if (signal.aborted) {
-          resolve();
-          return;
+      try {
+        yield { type: 'turn_start', turn: 1, maxTurns: 10 };
+        const signal = (context as { signal?: AbortSignal }).signal;
+        if (!signal) {
+          throw new Error('Missing request signal');
         }
-        signal.addEventListener('abort', () => resolve(), { once: true });
-      });
-      return {
-        success: false,
-        error: { type: 'aborted', message: 'closed' },
-        metadata: { turnsCount: 1, toolCallsCount: 0, duration: 1 },
-      };
+        await new Promise<void>((resolve) => {
+          if (signal.aborted) {
+            resolve();
+            return;
+          }
+          signal.addEventListener('abort', () => resolve(), { once: true });
+        });
+        return {
+          success: false,
+          error: { type: 'aborted', message: 'closed' },
+          metadata: { turnsCount: 1, toolCallsCount: 0, duration: 1 },
+        };
+      } finally {
+        cleanupStarted = true;
+        await cleanupGate;
+      }
     };
     const session = await createSession(options(store));
     await session.send('close while running');
@@ -1454,16 +1563,23 @@ describe('Session durable events', () => {
       done: false,
     });
 
-    await session.close();
-    for await (const _event of output) {
-      // Drain cleanup after close.
-    }
+    let closeResolved = false;
+    const closePromise = session.close().then(() => {
+      closeResolved = true;
+    });
+    await vi.waitFor(() => expect(cleanupStarted).toBe(true));
+    expect(closeResolved).toBe(false);
+    releaseCleanup();
+    await closePromise;
 
     const events = (await store.read(session.sessionId)).events;
     expect(
       events.find((event) => event.type === DurableEventType.REQUEST_INTERRUPTED)?.data,
     ).toMatchObject({ reason: 'session_close' });
     expect(events.at(-1)?.type).toBe(DurableEventType.SESSION_CLOSED);
+    for await (const _event of output) {
+      // Drain any buffered output after close has completed durably.
+    }
   });
 
   it('accepts a queued later input durably when it becomes the next request', async () => {

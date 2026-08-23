@@ -78,6 +78,7 @@ import {
     type SessionState,
     type SessionStore,
 } from './SessionStore.js';
+import { SessionStreamChannel } from './SessionStreamChannel.js';
 import type {
     ForkSessionOptions,
     InputSubmission,
@@ -101,6 +102,12 @@ export interface ResumeOptions extends SessionOptions {
   sessionId: SessionId;
 }
 
+interface SessionStreamExecution {
+  readonly completion: Promise<void>;
+  releaseBackpressure(): void;
+  isSettled(): boolean;
+}
+
 type SessionExecutionState =
   | { phase: 'idle' }
   | {
@@ -119,14 +126,19 @@ type SessionExecutionState =
       requestId: RequestId;
       controller: ActiveRequestController;
       durableRecorder: SessionDurableRecorder | null;
+      execution: SessionStreamExecution;
     }
   | {
       phase: 'stopping';
       requestId: RequestId;
       controller: ActiveRequestController;
       durableRecorder: SessionDurableRecorder | null;
+      execution: SessionStreamExecution;
     }
-  | { phase: 'closed' };
+  | {
+      phase: 'closed';
+      execution?: SessionStreamExecution;
+    };
 
 class Session implements ISession {
   readonly sessionId: SessionId;
@@ -150,6 +162,7 @@ class Session implements ISession {
   private durableJournal: DurableSessionJournal | null = null;
   private durableAcceptedRequest: DurableRequestProjection | null = null;
   private durableClosePromise: Promise<void> | null = null;
+  private closePromise: Promise<void> | null = null;
 
   /**
    * 请求阶段状态机：
@@ -624,7 +637,65 @@ class Session implements ISession {
     });
   }
 
-  async *stream(options?: StreamOptions): AsyncGenerator<StreamMessage> {
+  stream(options?: StreamOptions): AsyncGenerator<StreamMessage> {
+    return this.consumeRequestStream(options);
+  }
+
+  private async *consumeRequestStream(
+    options?: StreamOptions,
+  ): AsyncGenerator<StreamMessage> {
+    const channel = new SessionStreamChannel<StreamMessage>(1);
+    let settled = false;
+    let resolveCompletion!: () => void;
+    let rejectCompletion!: (error: unknown) => void;
+    const completion = new Promise<void>((resolve, reject) => {
+      resolveCompletion = resolve;
+      rejectCompletion = reject;
+    });
+    // A consumer may abandon the stream after starting it. Keep the original
+    // completion Promise awaitable by abort()/close() without an unhandled
+    // rejection before either path observes it.
+    void completion.catch(() => undefined);
+    const execution: SessionStreamExecution = {
+      completion,
+      releaseBackpressure: () => channel.releaseBackpressure(),
+      isSettled: () => settled,
+    };
+    const source = this.executeStream(options, execution);
+
+    void (async () => {
+      try {
+        for await (const event of source) {
+          await channel.publish(event);
+        }
+        settled = true;
+        resolveCompletion();
+        channel.close();
+      } catch (error) {
+        settled = true;
+        rejectCompletion(error);
+        channel.fail(error);
+      }
+    })();
+
+    let consumedToEnd = false;
+    try {
+      for await (const event of channel) {
+        yield event;
+      }
+      consumedToEnd = true;
+    } finally {
+      if (!consumedToEnd && !execution.isSettled()) {
+        execution.releaseBackpressure();
+        await this.abort();
+      }
+    }
+  }
+
+  private async *executeStream(
+    options: StreamOptions | undefined,
+    execution: SessionStreamExecution,
+  ): AsyncGenerator<StreamMessage> {
     await this.ensureInitialized();
     const runtime = this.getRuntime();
 
@@ -674,6 +745,7 @@ class Session implements ISession {
         requestId,
         controller: requestController,
         durableRecorder,
+        execution,
       };
       // 提交执行后立即将初始输入移出收件箱：它已被应用，不再是待处理输入，
       // 且已通过 initialInputId 从 steering 领取中排除。若延后移除，一旦流在
@@ -734,6 +806,13 @@ class Session implements ISession {
       this.rememberTrace(trace);
       await this.notifyTraceSink(trace);
     };
+    const signal = requestController.requestSignal;
+    const releaseBackpressureOnAbort = () => execution.releaseBackpressure();
+    if (signal.aborted) {
+      releaseBackpressureOnAbort();
+    } else {
+      signal.addEventListener('abort', releaseBackpressureOnAbort, { once: true });
+    }
 
     runtime.getHookRuntime().setTraceCollector(traceRecorder);
     try {
@@ -753,15 +832,19 @@ class Session implements ISession {
       const errorMessage =
         terminalError instanceof Error ? terminalError.message : String(terminalError);
       await finishTrace('error', { error: errorMessage });
-      runtime.getHookRuntime().setTraceCollector(undefined);
-      // 初始输入已在进入 running 时移出收件箱；hook 失败时仍需与正常路径一样
-      // 释放请求资源，否则会话会永久停留在 running 且外部 AbortSignal 监听器泄漏。
-      requestController.dispose();
-      await this.finishRequest(requestId);
-      if (durableRecorder && !durableFinishCommitted) {
-        throw terminalError;
+      try {
+        if (durableRecorder && !durableFinishCommitted) {
+          throw terminalError;
+        }
+        yield { type: 'error', message: errorMessage, sessionId: this.sessionId };
+      } finally {
+        runtime.getHookRuntime().setTraceCollector(undefined);
+        signal.removeEventListener('abort', releaseBackpressureOnAbort);
+        // Keep execution ownership until the terminal event is consumed or
+        // cancellation releases output backpressure.
+        requestController.dispose();
+        await this.finishRequest(requestId);
       }
-      yield { type: 'error', message: errorMessage, sessionId: this.sessionId };
       return;
     }
 
@@ -772,8 +855,6 @@ class Session implements ISession {
       totalTokens: 0,
       maxContextTokens: 0,
     };
-
-    const signal = requestController.requestSignal;
 
     const snapshot =
       pendingSnapshot ??
@@ -814,7 +895,14 @@ class Session implements ISession {
       const toolSpans = new Map<string, string>();
 
       while (true) {
-        const { value, done } = await stream.next();
+        const next = await stream.next();
+        if (
+          signal.aborted
+          && (!next.done || next.value.error?.type !== 'aborted')
+        ) {
+          return;
+        }
+        const { value, done } = next;
         if (done) {
           loopResult = value;
           agentStreamCompleted = true;
@@ -1141,10 +1229,22 @@ class Session implements ISession {
           cleanupError = error;
         }
         try {
+          await finishTrace('aborted', {
+            reason: this.getDurableInterruptReason(requestController),
+          });
+        } catch (error) {
+          cleanupError = cleanupError
+            ? new AggregateError(
+                [cleanupError, error],
+                'Agent stream cleanup and trace finalization both failed',
+              )
+            : error;
+        }
+        try {
           if (!durableFinishAttempted) {
             await finishDurableRequest({
               status: 'interrupted',
-              reason: 'user_abort',
+              reason: this.getDurableInterruptReason(requestController),
             });
           }
         } catch (error) {
@@ -1157,6 +1257,7 @@ class Session implements ISession {
         }
       }
       runtime.getHookRuntime().setTraceCollector(undefined);
+      signal.removeEventListener('abort', releaseBackpressureOnAbort);
       requestController.dispose();
       await this.finishRequest(requestId);
       if (this.executionState.phase === 'closed') {
@@ -1168,8 +1269,18 @@ class Session implements ISession {
     }
   }
 
-  async close(): Promise<void> {
-    await this.closeInternal(true);
+  close(): Promise<void> {
+    if (this.closePromise) {
+      return this.closePromise;
+    }
+    const closePromise = this.closeInternal(true);
+    this.closePromise = closePromise;
+    void closePromise.catch(() => {
+      if (this.closePromise === closePromise) {
+        this.closePromise = null;
+      }
+    });
+    return closePromise;
   }
 
   async disposeAfterFork(): Promise<void> {
@@ -1179,13 +1290,17 @@ class Session implements ISession {
   private async closeInternal(recordDurableClose: boolean): Promise<void> {
     // 关闭时对 executionState 的读写走 inputMutex，避免与并发 send()/stream()
     // 交错（例如 send() 在 await 处让出后用 pending 覆盖 closed）。
-    const alreadyClosed = await this.inputMutex.runExclusive(async () => {
+    const closeState = await this.inputMutex.runExclusive(async () => {
       if (this.executionState.phase === 'closed') {
-        return true;
+        this.executionState.execution?.releaseBackpressure();
+        return {
+          alreadyClosed: true,
+          completion: this.executionState.execution?.completion ?? null,
+        };
       }
+      let execution: SessionStreamExecution | undefined;
       if (this.executionState.phase === 'pending') {
         const { controller, input } = this.executionState;
-        controller.abortRequest({ kind: 'session_close' });
         if (recordDurableClose) {
           const durableRecorder = await this.ensureDurableRecorder(this.executionState);
           this.executionState.durableRecorder = durableRecorder;
@@ -1194,6 +1309,7 @@ class Session implements ISession {
             reason: 'session_close',
           });
         }
+        controller.abortRequest({ kind: 'session_close' });
         controller.dispose();
         this.inputInbox.remove(input.inputId);
       } else if (
@@ -1201,15 +1317,35 @@ class Session implements ISession {
         || this.executionState.phase === 'stopping'
       ) {
         this.executionState.controller.abortRequest({ kind: 'session_close' });
+        execution = this.executionState.execution;
+        execution.releaseBackpressure();
       }
-      this.executionState = { phase: 'closed' };
-      return false;
+      this.executionState = {
+        phase: 'closed',
+        ...(execution ? { execution } : {}),
+      };
+      return {
+        alreadyClosed: false,
+        completion: execution?.completion ?? null,
+      };
     });
-    if (alreadyClosed) {
+    if (closeState.alreadyClosed) {
+      if (closeState.completion) {
+        await closeState.completion;
+      }
       if (recordDurableClose) {
         await this.closeDurableSession();
       }
       return;
+    }
+
+    const closeErrors: unknown[] = [];
+    if (closeState.completion) {
+      try {
+        await closeState.completion;
+      } catch (error) {
+        closeErrors.push(error);
+      }
     }
     this.cleanupHandle?.unregister();
     this.cleanupHandle = null;
@@ -1220,48 +1356,72 @@ class Session implements ISession {
     if (runtime) {
       try {
         await runtime.getHookRuntime().runSessionEnd({ reason: 'other' });
-      } finally {
+      } catch (error) {
+        closeErrors.push(error);
+      }
+      try {
         await runtime.close();
+      } catch (error) {
+        closeErrors.push(error);
       }
     }
     if (recordDurableClose) {
-      await this.closeDurableSession();
+      try {
+        await this.closeDurableSession();
+      } catch (error) {
+        closeErrors.push(error);
+      }
     }
     this.logger.debug(`[Session] Closed session ${this.sessionId}`);
+    if (closeErrors.length === 1) {
+      throw closeErrors[0];
+    }
+    if (closeErrors.length > 1) {
+      throw new AggregateError(closeErrors, 'Session close failed in multiple phases');
+    }
   }
 
   async abort(): Promise<void> {
-    if (this.executionState.phase === 'running') {
-      const { requestId, controller, durableRecorder } = this.executionState;
-      controller.abortRequest({ kind: 'user_abort' });
-      this.executionState = {
-        phase: 'stopping',
-        requestId,
-        controller,
-        durableRecorder,
-      };
-    } else if (this.executionState.phase === 'pending') {
-      const pendingState = this.executionState;
-      pendingState.controller.abortRequest({ kind: 'user_abort' });
-      await this.inputMutex.runExclusive(async () => {
-        if (
-          this.executionState.phase !== 'pending'
-          || this.executionState.requestId !== pendingState.requestId
-        ) {
-          return;
-        }
+    const result = await this.inputMutex.runExclusive(async () => {
+      if (this.executionState.phase === 'running') {
+        const {
+          requestId,
+          controller,
+          durableRecorder,
+          execution,
+        } = this.executionState;
+        controller.abortRequest({ kind: 'user_abort' });
+        execution.releaseBackpressure();
+        this.executionState = {
+          phase: 'stopping',
+          requestId,
+          controller,
+          durableRecorder,
+          execution,
+        };
+        return { completion: execution.completion };
+      } else if (this.executionState.phase === 'stopping') {
+        this.executionState.execution.releaseBackpressure();
+        return { completion: this.executionState.execution.completion };
+      } else if (this.executionState.phase === 'pending') {
+        const pendingState = this.executionState;
         const durableRecorder = await this.ensureDurableRecorder(pendingState);
         pendingState.durableRecorder = durableRecorder;
         await durableRecorder?.finish({
           status: 'interrupted',
           reason: 'user_abort',
         });
+        pendingState.controller.abortRequest({ kind: 'user_abort' });
         const { controller, input } = pendingState;
         controller.dispose();
         this.inputInbox.remove(input.inputId);
         this.executionState = { phase: 'idle' };
         this.scheduleNextQueuedInput();
-      });
+      }
+      return { completion: null };
+    });
+    if (result.completion) {
+      await result.completion;
     }
   }
 

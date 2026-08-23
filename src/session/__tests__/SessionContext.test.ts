@@ -5,9 +5,9 @@ import { describe, expect, it, vi } from 'vitest';
 import { PersistentStore } from '../../context/storage/PersistentStore.js';
 import type { ContentPart } from '../../services/ChatServiceInterface.js';
 import {
-  InputId,
-  RequestId,
-  SessionId,
+    InputId,
+    RequestId,
+    SessionId,
 } from '../../types/branded.js';
 import { HookEvent } from '../../types/constants.js';
 
@@ -418,7 +418,7 @@ describe('Session runtime context', () => {
     await session.close();
   });
 
-  it('keeps a queued request when an aborted stream finishes cleanup', async () => {
+  it('allows a new request after awaited abort finishes stream cleanup', async () => {
     let requestCount = 0;
     createAgent.mockResolvedValueOnce({
       async *streamChat(
@@ -471,16 +471,93 @@ describe('Session runtime context', () => {
 
     await session.abort();
     await expect(session.send('second')).resolves.toMatchObject({
-      status: 'queued',
-      priority: 'later',
+      status: 'started',
     });
 
     while (!(await stream.next()).done) {
-      // Drain the aborted request so its cleanup can complete.
+      // Drain buffered terminal events from the aborted request.
     }
 
     for await (const _event of session.stream()) {
-      // The queued request must survive cleanup of the aborted stream.
+      // The next request can execute independently of the buffered first stream.
+    }
+    await session.close();
+  });
+
+  it('can await abort from inside stream consumption without deadlocking', async () => {
+    let innerClosed = false;
+    createAgent.mockResolvedValueOnce({
+      async *streamChat(): AsyncGenerator<unknown, unknown, unknown> {
+        try {
+          yield { type: 'turn_start', turn: 1 };
+          return {
+            success: true,
+            finalMessage: 'unexpected',
+            metadata: { turnsCount: 1, toolCallsCount: 0, duration: 0 },
+          };
+        } finally {
+          innerClosed = true;
+        }
+      },
+      async setModel() {},
+    } as never);
+
+    const session = await createSession({
+      provider: { type: 'openai-compatible', apiKey: 'test-key' },
+      model: 'gpt-4o-mini',
+      persistSession: false,
+    });
+    await session.send('abort from consumer');
+
+    for await (const event of session.stream()) {
+      if (event.type === 'turn_start') {
+        await session.abort();
+      }
+    }
+
+    expect(innerClosed).toBe(true);
+    await session.close();
+  });
+
+  it('releases stream backpressure when an external AbortSignal fires', async () => {
+    let innerClosed = false;
+    createAgent.mockResolvedValueOnce({
+      async *streamChat(): AsyncGenerator<unknown, unknown, unknown> {
+        try {
+          yield { type: 'turn_start', turn: 1 };
+          return {
+            success: true,
+            finalMessage: 'unexpected',
+            metadata: { turnsCount: 1, toolCallsCount: 0, duration: 0 },
+          };
+        } finally {
+          innerClosed = true;
+        }
+      },
+      async setModel() {},
+    } as never);
+
+    const session = await createSession({
+      provider: { type: 'openai-compatible', apiKey: 'test-key' },
+      model: 'gpt-4o-mini',
+      persistSession: false,
+    });
+    const controller = new AbortController();
+    await session.send('external abort', { signal: controller.signal });
+    const stream = session.stream();
+    await stream.next();
+
+    controller.abort();
+
+    await vi.waitFor(() => expect(innerClosed).toBe(true));
+    await expect(session.send('after external abort')).resolves.toMatchObject({
+      status: 'started',
+    });
+    for await (const _event of stream) {
+      // Drain buffered terminal output from the aborted request.
+    }
+    for await (const _event of session.stream()) {
+      // Drain the next request.
     }
     await session.close();
   });
