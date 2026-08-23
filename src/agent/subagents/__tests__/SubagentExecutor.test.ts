@@ -134,4 +134,50 @@ describe('SubagentExecutor', () => {
       }),
     );
   });
+
+  it('inherits model and tool middleware from the parent Session runtime', async () => {
+    const modelMiddleware = {};
+    const toolMiddleware = vi.fn();
+    const backgroundAgentManager = {
+      getMiddleware: () => ({
+        model: [modelMiddleware],
+        tool: [toolMiddleware],
+      }),
+    };
+    const executor = new SubagentExecutor(
+      {
+        name: 'research',
+        description: 'Research subagent',
+      },
+      {
+        models: [
+          {
+            id: 'default',
+            name: 'gpt-4o-mini',
+            provider: 'openai-compatible',
+            model: 'gpt-4o-mini',
+            apiKey: 'test-key',
+            baseUrl: 'https://example.com',
+          },
+        ],
+        currentModelId: 'default',
+      },
+      undefined,
+      backgroundAgentManager as never,
+    );
+
+    await executor.execute({
+      prompt: 'inspect',
+      parentSessionId: 'parent-session',
+    });
+
+    expect(createAgent).toHaveBeenLastCalledWith(
+      expect.anything(),
+      expect.anything(),
+      expect.objectContaining({
+        modelMiddleware: [modelMiddleware],
+        toolMiddleware: [toolMiddleware],
+      }),
+    );
+  });
 });

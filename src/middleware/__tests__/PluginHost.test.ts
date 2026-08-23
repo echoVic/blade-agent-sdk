@@ -73,15 +73,32 @@ describe('PluginHost', () => {
     expect(calls).toEqual(['session', 'plugin']);
   });
 
-  it('rejects empty and duplicate plugin names', () => {
-    expect(() => new PluginHost({ plugins: [{ name: '' }] })).toThrow(
-      'must not be empty',
-    );
+  it('requires canonical plugin names and rejects duplicates', () => {
+    for (const name of [
+      undefined,
+      null,
+      '',
+      'Audit',
+      'audit/plugin',
+      ' audit',
+      `${'a'.repeat(65)}`,
+    ]) {
+      expect(() => new PluginHost({
+        plugins: [{ name } as unknown as AgentPlugin],
+      })).toThrow(
+        'must be 1-64 lowercase letters',
+      );
+    }
     expect(
       () =>
         new PluginHost({
           plugins: [{ name: 'audit' }, { name: 'audit' }],
         }),
     ).toThrow('registered more than once');
+    expect(() =>
+      new PluginHost({
+        plugins: [{ name: 'audit.v2_workspace-plugin' }],
+      })
+    ).not.toThrow();
   });
 });

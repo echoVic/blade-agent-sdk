@@ -42,6 +42,7 @@ import {
   resolveToolBehaviorSafely,
   type ToolBehavior,
   ToolKind,
+  ToolSideEffect,
 } from '../types/ToolKind.js';
 import {
   ToolErrorType,
@@ -81,6 +82,13 @@ interface PipelineExecutionState {
   permissionSignature?: string;
   hookToolUseId?: ToolUseId;
   interrupted: boolean;
+}
+
+class ToolCoreExecutionError extends Error {
+  constructor(readonly cause: unknown) {
+    super('Tool core execution failed', { cause });
+    this.name = 'ToolCoreExecutionError';
+  }
 }
 
 /**
@@ -173,42 +181,82 @@ export class ExecutionPipeline {
       input: { ...params },
       context: protectedContext,
     };
+    const initialBehavior = resolveToolBehaviorSafely(
+      this.registry.get(toolName),
+      initialRequest.input,
+    );
     let effectiveRequest = initialRequest;
+    let delegatedExecution: ToolExecution | undefined;
+    let coreStarted = false;
+    let coreCompleted = false;
+    let coreResult: ToolResult | undefined;
+    let coreFailure: ToolCoreExecutionError | undefined;
     let result: ToolResult | undefined;
     let completed = false;
 
+    const captureRequest = (
+      request: ToolMiddlewareRequest,
+    ): ToolMiddlewareRequest => {
+      if (request.toolName !== toolName) {
+        throw new Error('Tool middleware cannot change the tool name');
+      }
+      if (request.context !== protectedContext) {
+        throw new Error('Tool middleware cannot replace the execution context');
+      }
+      const effectiveBehavior = resolveToolBehaviorSafely(
+        this.registry.get(toolName),
+        request.input,
+      );
+      if (
+        initialBehavior &&
+        effectiveBehavior &&
+        initialBehavior.interruptBehavior !== effectiveBehavior.interruptBehavior
+      ) {
+        throw new Error(
+          'Tool middleware cannot change the tool interrupt behavior',
+        );
+      }
+      effectiveRequest = Object.freeze({
+        toolName: request.toolName,
+        input: { ...request.input },
+        context: request.context,
+      });
+      return effectiveRequest;
+    };
+    const guardedMiddleware = this.middleware.map<ToolMiddleware>(
+      (middleware) => (request, next) => {
+        const capturedRequest = captureRequest(request);
+        return middleware(
+          capturedRequest,
+          (nextRequest = capturedRequest) => next(nextRequest),
+        );
+      },
+    );
     const execute = composeMiddleware(
-      this.middleware,
+      guardedMiddleware,
       (request: ToolMiddlewareRequest): ToolExecution => {
-        if (request.toolName !== toolName) {
-          throw new Error('Tool middleware cannot change the tool name');
-        }
-        if (request.context !== protectedContext) {
-          throw new Error('Tool middleware cannot replace the execution context');
-        }
-        effectiveRequest = {
-          ...request,
-          input: { ...request.input },
-        };
-        return this.executeCore(effectiveRequest, executionId);
+        const coreRequest = captureRequest(request);
+        delegatedExecution = this.executeCoreBoundary(
+          coreRequest,
+          executionId,
+          () => {
+            coreStarted = true;
+          },
+          (completedResult) => {
+            coreCompleted = true;
+            coreResult = completedResult;
+          },
+          (failure) => {
+            coreFailure = failure;
+          },
+        );
+        return delegatedExecution;
       },
     );
 
+    await protectedContext.assertExecutionLease?.();
+
     try {
-      protectedContext.signal?.throwIfAborted();
-      await protectedContext.assertExecutionLease?.();
-      result = yield* execute(initialRequest);
-      protectedContext.signal?.throwIfAborted();
-      await protectedContext.assertExecutionLease?.();
-      completed = true;
-      return result;
-    } catch (error) {
-      if (isExecutionLeaseFailure(error)) {
-        throw error;
-      }
-      if (isExecutionLeaseFailure(protectedContext.signal?.reason)) {
-        throw protectedContext.signal.reason;
-      }
       if (protectedContext.signal?.aborted) {
         const isInterrupt = isSteeringInterruptSignal(protectedContext.signal);
         result = this.createAbortedResult(
@@ -219,12 +267,76 @@ export class ExecutionPipeline {
               : ToolErrorType.EXECUTION_ERROR,
           },
         );
-        completed = true;
-        return result;
+      } else {
+        try {
+          result = yield* execute(initialRequest);
+          if (coreFailure) {
+            throw coreFailure;
+          }
+          if (coreStarted && !coreCompleted && delegatedExecution) {
+            this.logger.warn(
+              `Tool middleware returned before delegated ${toolName} execution completed; draining the core execution`,
+            );
+            result = yield* delegatedExecution;
+          }
+          if (coreResult?.status === 'error' && result.status === 'success') {
+            this.logger.warn(
+              `Tool middleware attempted to replace failed ${toolName} core execution with success; preserving the core failure`,
+            );
+            result = coreResult;
+          }
+        } catch (error) {
+          if (coreFailure) {
+            throw coreFailure.cause;
+          }
+          if (error instanceof ToolCoreExecutionError) {
+            throw error.cause;
+          }
+          if (isExecutionLeaseFailure(error)) {
+            throw error;
+          }
+          if (isExecutionLeaseFailure(protectedContext.signal?.reason)) {
+            throw protectedContext.signal.reason;
+          }
+          if (protectedContext.signal?.aborted) {
+            const isInterrupt = isSteeringInterruptSignal(protectedContext.signal);
+            result = this.createAbortedResult(
+              isInterrupt ? '工具执行被新的用户输入中断' : '任务已被用户中止',
+              {
+                errorType: isInterrupt
+                  ? ToolErrorType.INTERRUPTED
+                  : ToolErrorType.EXECUTION_ERROR,
+              },
+            );
+          } else {
+            result = this.createExecutionFailureResult(
+              `Tool middleware failed: ${getErrorMessage(error)}`,
+            );
+          }
+        }
       }
-      result = this.createExecutionFailureResult(
-        `Tool middleware failed: ${getErrorMessage(error)}`,
-      );
+      if (protectedContext.signal?.aborted) {
+        if (coreResult?.status === 'error') {
+          result = coreResult;
+        } else {
+          const isInterrupt = isSteeringInterruptSignal(protectedContext.signal);
+          result = this.createAbortedResult(
+            isInterrupt ? '工具执行被新的用户输入中断' : '任务已被用户中止',
+            {
+              errorType: isInterrupt
+                ? ToolErrorType.INTERRUPTED
+                : ToolErrorType.EXECUTION_ERROR,
+            },
+          );
+        }
+      }
+      if (!coreStarted && result.status === 'success') {
+        effectiveRequest = captureRequest(effectiveRequest);
+        await this.recordMiddlewareShortCircuit(
+          effectiveRequest,
+        );
+      }
+      await protectedContext.assertExecutionLease?.();
       completed = true;
       return result;
     } finally {
@@ -239,6 +351,40 @@ export class ExecutionPipeline {
           context: protectedContext,
         });
       }
+    }
+  }
+
+  private async recordMiddlewareShortCircuit(
+    request: ToolMiddlewareRequest,
+  ): Promise<void> {
+    const tool = this.registry.get(request.toolName);
+    const sideEffect =
+      resolveToolBehaviorSafely(tool, request.input)?.sideEffect ??
+      tool?.sideEffect ??
+      ToolSideEffect.NON_IDEMPOTENT;
+    await request.context.assertExecutionLease?.();
+    await request.context.toolInvocationLifecycle?.onExecutionStarted?.({
+      input: structuredClone(request.input),
+      sideEffect,
+    });
+  }
+
+  private async *executeCoreBoundary(
+    request: ToolMiddlewareRequest,
+    executionId: string,
+    onStart: () => void,
+    onCompleted: (result: ToolResult) => void,
+    onFailure: (failure: ToolCoreExecutionError) => void,
+  ): ToolExecution {
+    onStart();
+    try {
+      const result = yield* this.executeCore(request, executionId);
+      onCompleted(result);
+      return result;
+    } catch (error) {
+      const failure = new ToolCoreExecutionError(error);
+      onFailure(failure);
+      throw failure;
     }
   }
 

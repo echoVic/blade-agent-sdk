@@ -241,6 +241,9 @@ describe('SessionRuntime', () => {
         sourceId: 'plugin:audit',
       },
     });
+    expect(
+      runtime.getBackgroundAgentManager().getMiddleware().tool,
+    ).toHaveLength(1);
     const executionPipeline = runtime.getAgentRuntimeDeps().executionPipeline;
     assertDefined(executionPipeline);
     const result = await collectToolExecution(
@@ -252,6 +255,45 @@ describe('SessionRuntime', () => {
       model: 'from-plugin',
     });
     expect(calls).toEqual(['before:PluginTool', 'after:PluginTool']);
+
+    await runtime.close();
+  });
+
+  it('should activate and execute hooks contributed only by a plugin', async () => {
+    const enableHooks = vi.spyOn(HookManager.getInstance(), 'enable');
+    const pluginHook = vi.fn(async () => ({
+      action: 'continue' as const,
+      modifiedInput: {
+        userPrompt: 'modified by plugin',
+      },
+    }));
+    const runtime = new SessionRuntime(
+      SessionId('session-plugin-hooks'),
+      createOptions({
+        plugins: [
+          {
+            name: 'prompt-hooks',
+            hooks: {
+              [HookEvent.UserPromptSubmit]: [pluginHook],
+            },
+          },
+        ],
+      }),
+      {
+        models: [],
+      },
+      PermissionMode.DEFAULT,
+      createFilesystemContext(workspaceRoot),
+      NOOP_LOGGER,
+    );
+
+    await runtime.initialize();
+
+    await expect(
+      runtime.getHookRuntime().applyUserPromptSubmit('original'),
+    ).resolves.toBe('modified by plugin');
+    expect(enableHooks).toHaveBeenCalled();
+    expect(pluginHook).toHaveBeenCalledOnce();
 
     await runtime.close();
   });

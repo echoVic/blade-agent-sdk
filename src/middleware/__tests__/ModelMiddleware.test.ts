@@ -87,6 +87,36 @@ describe('wrapChatService', () => {
     ]);
   });
 
+  it('rejects AbortSignal replacement before nested middleware short-circuits', async () => {
+    const calls: string[] = [];
+    const original = new AbortController();
+    const replacement = new AbortController();
+    const wrapped = wrapChatService(createService(calls), [
+      {
+        wrapChat(request, next) {
+          return next({
+            ...request,
+            signal: replacement.signal,
+          });
+        },
+      },
+      {
+        async wrapChat() {
+          return { content: 'short-circuit' };
+        },
+      },
+    ]);
+
+    await expect(
+      wrapped.chat(
+        [{ role: 'user', content: 'input' }],
+        undefined,
+        original.signal,
+      ),
+    ).rejects.toThrow('Model middleware cannot replace the AbortSignal');
+    expect(calls).toEqual([]);
+  });
+
   it('wraps streaming and retry-aware model calls without buffering', async () => {
     const calls: string[] = [];
     const middleware: ModelMiddleware = {
@@ -152,5 +182,50 @@ describe('wrapChatService', () => {
 
     expect(wrapped.getConfig().model).toBe('next-model');
     expect(wrapped.chatWithRetryEvents).toBeTypeOf('function');
+  });
+
+  it('does not invent retry capability when the provider does not expose it', () => {
+    const calls: string[] = [];
+    const service = createService(calls);
+    service.chatWithRetryEvents = undefined;
+
+    const wrapped = wrapChatService(service, [{}]);
+
+    expect(wrapped.chatWithRetryEvents).toBeUndefined();
+  });
+
+  it('closes middleware and provider streams when the consumer stops early', async () => {
+    let providerClosed = false;
+    let middlewareClosed = false;
+    const base = createService([]);
+    base.streamChat = async function* () {
+      try {
+        yield { content: 'first' };
+        yield { content: 'second' };
+      } finally {
+        providerClosed = true;
+      }
+    };
+    const wrapped = wrapChatService(base, [
+      {
+        async *wrapStream(request, next) {
+          try {
+            yield* next(request);
+          } finally {
+            middlewareClosed = true;
+          }
+        },
+      },
+    ]);
+    const stream = wrapped.streamChat([{ role: 'user', content: 'input' }]);
+
+    await expect(stream.next()).resolves.toEqual({
+      done: false,
+      value: { content: 'first' },
+    });
+    await stream.return(undefined);
+
+    expect(middlewareClosed).toBe(true);
+    expect(providerClosed).toBe(true);
   });
 });

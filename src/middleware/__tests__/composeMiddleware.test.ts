@@ -64,4 +64,24 @@ describe('composeMiddleware', () => {
 
     await expect(execute(1)).resolves.toBe(42);
   });
+
+  it('keeps dispatch state isolated across concurrent executions', async () => {
+    const execute = composeMiddleware<number, Promise<number>>(
+      [
+        async (request, next) => {
+          await Promise.resolve();
+          return next(request + 1);
+        },
+        async (request, next) => {
+          await Promise.resolve();
+          return next(request * 2);
+        },
+      ],
+      async (request) => request,
+    );
+
+    await expect(
+      Promise.all([execute(1), execute(10), execute(100)]),
+    ).resolves.toEqual([4, 22, 202]);
+  });
 });

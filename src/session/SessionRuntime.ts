@@ -125,11 +125,19 @@ export class SessionRuntime {
     this.storageRoot = bladeConfig.storageRoot ?? resolveStorageRoot(options.storagePath);
     this.mcpRegistry = new McpRegistry(this.storageRoot);
     this.subagentRegistry = new SubagentRegistry(this.rootLogger, getContextCwd(defaultContext));
+    this.pluginHost = new PluginHost({
+      middleware: options.middleware,
+      plugins: options.plugins,
+    });
     const sessionStore = AgentSessionStore.create(this.storageRoot, this.rootLogger);
     this.backgroundAgentManager = BackgroundAgentManager.create(
       this.rootLogger,
       sessionStore,
       this.sessionId,
+      {
+        model: this.pluginHost.getModelMiddleware(),
+        tool: this.pluginHost.getToolMiddleware(),
+      },
     );
     this.contextManager = new ContextManager({
       storage: {
@@ -140,10 +148,6 @@ export class SessionRuntime {
         compressionEnabled: true,
       },
       projectPath: getContextCwd(defaultContext),
-    });
-    this.pluginHost = new PluginHost({
-      middleware: options.middleware,
-      plugins: options.plugins,
     });
     this.hookCallbacks = this.pluginHost.mergeHooks(options.hooks);
     this.hookRuntime = new HookRuntime({
@@ -165,6 +169,7 @@ export class SessionRuntime {
       backgroundAgentManager: this.backgroundAgentManager,
       hookRuntime: this.hookRuntime,
       modelMiddleware: this.pluginHost.getModelMiddleware(),
+      toolMiddleware: this.pluginHost.getToolMiddleware(),
       runtimeManaged: true,
       logger: this.rootLogger,
     };
@@ -356,7 +361,7 @@ export class SessionRuntime {
 
   private initializeHooks(): void {
     const hookManager = HookManager.getInstance();
-    if (this.options.hooks && Object.keys(this.options.hooks).length > 0) {
+    if (Object.keys(this.hookCallbacks).length > 0) {
       hookManager.enable();
     }
   }

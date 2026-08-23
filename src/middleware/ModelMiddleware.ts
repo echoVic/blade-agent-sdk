@@ -77,9 +77,56 @@ function select<T>(
     .filter((entry): entry is T => entry !== undefined);
 }
 
+type ModelOperationRequest = ModelRequestBase & {
+  readonly operation: string;
+};
+
+function composeModelMiddleware<
+  TRequest extends ModelOperationRequest,
+  TResult,
+>(
+  middleware: readonly Middleware<TRequest, TResult>[],
+  terminal: (request: TRequest) => TResult,
+): (request: TRequest) => TResult {
+  const stack = [...middleware];
+
+  return (initialRequest: TRequest): TResult => {
+    const operation = initialRequest.operation;
+    const model = initialRequest.model;
+    const signal = initialRequest.signal;
+    const guardRequest = (request: TRequest): TRequest => {
+      if (request.operation !== operation) {
+        throw new Error('Model middleware cannot change the model operation');
+      }
+      if (request.model !== model) {
+        throw new Error('Model middleware cannot change the active model');
+      }
+      if (request.signal !== signal) {
+        throw new Error('Model middleware cannot replace the AbortSignal');
+      }
+      return Object.freeze({ ...request });
+    };
+    const guardedStack = stack.map<Middleware<TRequest, TResult>>(
+      (entry) => (request, next) => {
+        const guardedRequest = guardRequest(request);
+        return entry(
+          guardedRequest,
+          (nextRequest = guardedRequest) => next(nextRequest),
+        );
+      },
+    );
+
+    return composeMiddleware(
+      guardedStack,
+      (request) => terminal(guardRequest(request)),
+    )(guardRequest(initialRequest));
+  };
+}
+
 /**
  * Wrap an IChatService without changing its provider-facing contract.
  * Middleware order is stable: the first registered middleware is outermost.
+ * Request transforms should be deterministic and must preserve cancellation.
  */
 export function wrapChatService(
   service: IChatService,
@@ -89,7 +136,7 @@ export function wrapChatService(
     return service;
   }
 
-  const wrapChat = composeMiddleware(
+  const wrapChat = composeModelMiddleware(
     select(middleware, (entry) => entry.wrapChat),
     (request: ModelChatRequest) =>
       service.chat(
@@ -98,12 +145,12 @@ export function wrapChatService(
         request.signal,
       ),
   );
-  const wrapSideQuery = composeMiddleware(
+  const wrapSideQuery = composeModelMiddleware(
     select(middleware, (entry) => entry.wrapSideQuery),
     (request: ModelSideQueryRequest) =>
       service.sideQuery(request.messages, request.signal, request.options),
   );
-  const wrapStream = composeMiddleware(
+  const wrapStream = composeModelMiddleware(
     select(middleware, (entry) => entry.wrapStream),
     (request: ModelStreamRequest) =>
       service.streamChat(
@@ -114,8 +161,8 @@ export function wrapChatService(
   );
 
   const wrapped: IChatService = {
-    chat(messages, tools, signal) {
-      return wrapChat({
+    async chat(messages, tools, signal) {
+      return await wrapChat({
         operation: 'chat',
         model: service.getConfig().model,
         messages,
@@ -123,8 +170,8 @@ export function wrapChatService(
         signal,
       });
     },
-    sideQuery(messages, signal, options) {
-      return wrapSideQuery({
+    async sideQuery(messages, signal, options) {
+      return await wrapSideQuery({
         operation: 'sideQuery',
         model: service.getConfig().model,
         messages,
@@ -132,8 +179,8 @@ export function wrapChatService(
         options,
       });
     },
-    streamChat(messages, tools, signal) {
-      return wrapStream({
+    async *streamChat(messages, tools, signal) {
+      yield* wrapStream({
         operation: 'streamChat',
         model: service.getConfig().model,
         messages,
@@ -150,7 +197,7 @@ export function wrapChatService(
   };
 
   if (service.chatWithRetryEvents) {
-    const wrapRetry = composeMiddleware(
+    const wrapRetry = composeModelMiddleware(
       select(middleware, (entry) => entry.wrapChatWithRetryEvents),
       (request: ModelRetryRequest) =>
         service.chatWithRetryEvents?.(
@@ -159,14 +206,15 @@ export function wrapChatService(
           request.signal,
         ) as AsyncGenerator<RetryEvent, ChatResponse>,
     );
-    wrapped.chatWithRetryEvents = (messages, tools, signal) =>
-      wrapRetry({
+    wrapped.chatWithRetryEvents = async function* (messages, tools, signal) {
+      return yield* wrapRetry({
         operation: 'chatWithRetryEvents',
         model: service.getConfig().model,
         messages,
         tools,
         signal,
       });
+    };
   }
 
   return wrapped;

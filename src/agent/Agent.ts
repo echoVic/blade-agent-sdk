@@ -18,8 +18,9 @@ import {
     LogCategory,
     NOOP_LOGGER,
 } from '../logging/Logger.js';
-import type { ModelMiddleware } from '../middleware/ModelMiddleware.js';
 import { McpRegistry } from '../mcp/McpRegistry.js';
+import type { ModelMiddleware } from '../middleware/ModelMiddleware.js';
+import type { ToolMiddleware } from '../middleware/ToolMiddleware.js';
 import { buildSystemPrompt } from '../prompts/index.js';
 import {
     getContextCwd,
@@ -78,6 +79,7 @@ export interface AgentRuntimeDeps {
   backgroundAgentManager?: BackgroundAgentManager;
   hookRuntime?: HookRuntime;
   modelMiddleware?: readonly ModelMiddleware[];
+  toolMiddleware?: readonly ToolMiddleware[];
   runtimeManaged?: boolean;
   logger?: InternalLogger;
 }
@@ -126,7 +128,8 @@ export class Agent {
     this.runtimeOptions = runtimeOptions;
     this.rootLogger = deps.logger ?? NOOP_LOGGER;
     this.logger = this.rootLogger.child(LogCategory.AGENT);
-    this.executionPipeline = deps.executionPipeline || this.createDefaultPipeline();
+    this.executionPipeline =
+      deps.executionPipeline || this.createDefaultPipeline(deps.toolMiddleware);
     this.toolCatalog = this.executionPipeline.getCatalog() ?? new ToolCatalog(this.executionPipeline.getRegistry());
     this.defaultContext = deps.defaultContext ?? {};
     this.runtimeManaged = deps.runtimeManaged ?? false;
@@ -135,7 +138,16 @@ export class Agent {
     this.subagentRegistry =
       deps.subagentRegistry ?? new SubagentRegistry(this.rootLogger, getContextCwd(this.defaultContext));
     this.backgroundAgentManager =
-      deps.backgroundAgentManager ?? BackgroundAgentManager.create(this.rootLogger, AgentSessionStore.create());
+      deps.backgroundAgentManager ??
+      BackgroundAgentManager.create(
+        this.rootLogger,
+        AgentSessionStore.create(),
+        undefined,
+        {
+          model: deps.modelMiddleware,
+          tool: deps.toolMiddleware,
+        },
+      );
     this.hookRuntime = deps.hookRuntime;
     this.modelManager = new ModelManager(
       config,
@@ -370,7 +382,9 @@ export class Agent {
 
   // ===== Private Helpers =====
 
-  private createDefaultPipeline(): ExecutionPipeline {
+  private createDefaultPipeline(
+    middleware: readonly ToolMiddleware[] = [],
+  ): ExecutionPipeline {
     const registry = new ToolRegistry();
     const permissions: PermissionsConfig = {
       ...this.config.permissions,
@@ -386,6 +400,7 @@ export class Agent {
       permissionMode,
       maxHistorySize: 1000,
       permissionHandler,
+      middleware,
       toolCatalog: new ToolCatalog(registry),
     });
   }

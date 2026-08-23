@@ -11,6 +11,8 @@ import type {
 import type { ModelMiddleware } from './ModelMiddleware.js';
 import type { ToolMiddleware } from './ToolMiddleware.js';
 
+const PLUGIN_NAME_PATTERN = /^[a-z0-9](?:[a-z0-9._-]{0,62}[a-z0-9])?$/;
+
 export interface PluginToolRegistration {
   readonly pluginName: string;
   readonly tool: SessionTool;
@@ -81,8 +83,13 @@ export class PluginHost {
   private assertPluginNames(): void {
     const names = new Set<string>();
     for (const plugin of this.plugins) {
-      if (plugin.name.trim() === '') {
-        throw new Error('Agent plugin name must not be empty');
+      if (
+        typeof plugin.name !== 'string'
+        || !PLUGIN_NAME_PATTERN.test(plugin.name)
+      ) {
+        throw new Error(
+          `Agent plugin name "${plugin.name}" must be 1-64 lowercase letters, numbers, dots, underscores, or hyphens`,
+        );
       }
       if (names.has(plugin.name)) {
         throw new Error(`Agent plugin "${plugin.name}" is registered more than once`);

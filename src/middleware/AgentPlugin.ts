@@ -20,8 +20,9 @@ export interface AgentMiddlewareConfig {
 /**
  * Declarative extension bundle for one Session runtime.
  *
- * Plugins are resolved once during Session initialization. Runtime side
- * effects belong in model/tool middleware, not in plugin construction.
+ * Plugins are resolved once during Session initialization. Middleware may
+ * observe or transform live execution. Committed external effects must remain
+ * declared tools so durable lifecycle and recovery rules still apply.
  */
 export interface AgentPlugin {
   readonly name: string;
