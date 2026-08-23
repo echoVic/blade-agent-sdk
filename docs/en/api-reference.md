@@ -436,6 +436,7 @@ Classes:
 - `SdkError`
 - `AbortError`
 - `ConfigError`
+- `ModelTimeoutError`
 - `PermissionDeniedError`
 - `SessionInputError`
 - `ToolExecutionError`
@@ -443,6 +444,7 @@ Classes:
 Types and helpers:
 
 - `SdkErrorOptions`
+- `ModelTimeoutErrorCode`
 - `SessionInputErrorCode`
 - `getErrorCode`
 - `getErrorMessage`
