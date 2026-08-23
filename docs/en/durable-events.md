@@ -111,6 +111,10 @@ persistent recovery object.
 
 ```ts
 const store = new JsonlDurableEventStore('/var/lib/my-agent');
+// Optional: wait at most 15 seconds in the local queue or on another process.
+const boundedWaitStore = new JsonlDurableEventStore('/var/lib/my-agent', {
+  lockTimeoutMs: 15_000,
+});
 const sessionId = SessionId('session-123');
 const requestId = RequestId('request-123');
 const commandId = CommandId('command-123');
@@ -627,10 +631,32 @@ newline, so a partial transaction is never accepted.
 
 Each append:
 
-1. rereads and validates the current head under a process-wide mutex;
+1. queues under the process-wide mutex, then acquires a Session-scoped
+   inter-process file lock and rereads and validates the current head;
 2. checks the compare-and-append precondition;
 3. assigns contiguous sequences and writes one batch;
 4. calls file `fsync` before reporting success.
+
+`read()` and `getHeadSequence()` acquire the same lock, so they cannot observe
+another process between tail truncation and append. Local mutex queuing and
+cross-process acquisition share a total 10-second budget by default. The
+cross-process lock is an operating-system advisory lock: the kernel releases it
+when a process exits or crashes, while a paused live process retains ownership
+instead of being displaced after a wall-clock timeout. `lockTimeoutMs: 0`
+performs exactly one immediate attempt without queuing or retrying when the lock
+is held.
+
+Each event log has a persistent `*.jsonl.lock` sidecar. Its presence does not
+mean that the lock is currently held; ownership belongs to an open file
+descriptor. Do not delete, replace, or move event logs or their lock sidecars
+while any process is using the Store.
+
+The native lock addon is loaded only on the first Store operation, so other SDK
+APIs remain importable without it. If the addon cannot load or the platform
+does not support advisory locking, the Store fails closed with
+`DURABLE_EVENT_LOCK_FAILED`. Prebuilt support currently covers macOS, glibc
+Linux, and Windows on x64/arm64. `JsonlDurableEventStore` does not support
+Alpine/musl or other targets.
 
 Event files use mode `0600`. Session IDs are base64url encoded and cannot
 become filesystem paths.
@@ -640,15 +666,19 @@ encryption, retention, and access control at the deployment boundary.
 
 ## Consistency boundary
 
-`JsonlDurableEventStore` serializes multiple Store instances within one Node.js
-process. It does not provide cross-process fencing. Multi-process or replicated
-services must implement `DurableEventStore` with database transactions, CAS,
-or an execution lease.
+`JsonlDurableEventStore` provides mutually exclusive reads and atomic
+compare-and-append across Node.js processes on the same host. This guarantee
+requires a local filesystem with working advisory locks; it does not apply to
+shared network filesystems such as NFS and does not provide a cross-host
+execution lease. Replicated services must still implement `DurableEventStore`
+with database transactions, CAS, or a lease carrying a fencing token. An
+unfenced timeout-based lease is not sufficient.
 
-`DURABLE_EVENT_WRITE_FAILED` does not prove that a batch was not written. A
-write can reach the file before `fsync` reports failure. Before retrying, read
-the head and correlate events through `commandId` or another domain identifier.
-The current Store does not provide automatic command deduplication.
+`DURABLE_EVENT_WRITE_FAILED` does not prove that a batch was not written. The
+outcome can be unknown when `fsync`, unlocking, or closing the lock file fails
+after bytes reach the event log. Before retrying, read the head and correlate
+events through `commandId` or another domain identifier. The current Store does
+not provide automatic command deduplication.
 
 The Store does not persist token deltas or high-frequency tool progress.
 Only domain events that affect recovery decisions belong in the durable
@@ -666,6 +696,8 @@ journal.
 | `SessionDurableRecorderError` | Session runtime observed an invalid durable lifecycle state. |
 | `DurableEventProjectionError` | Schema, ordering, or correlation violates lifecycle invariants. |
 | `DurableEventSequenceConflictError` | Compare-and-append precondition failed. |
+| `DURABLE_EVENT_LOCK_FAILED` | Session file-lock setup or acquisition failed. |
+| `DURABLE_EVENT_LOCK_TIMEOUT` | The Session file lock was not acquired within `lockTimeoutMs`. |
 | `DurableEventStoreError` | Invalid input, cursor, I/O, or log integrity failure. |
 
 A complete newline-terminated record with an invalid schema, duplicate ID, or

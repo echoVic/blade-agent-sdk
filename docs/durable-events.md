@@ -106,6 +106,10 @@ interface DurableEventEnvelope<TType extends DurableEventType> {
 
 ```ts
 const store = new JsonlDurableEventStore('/var/lib/my-agent');
+// 可选：本进程队列或另一个进程占锁时最多等待 15 秒。
+const boundedWaitStore = new JsonlDurableEventStore('/var/lib/my-agent', {
+  lockTimeoutMs: 15_000,
+});
 const sessionId = SessionId('session-123');
 const requestId = RequestId('request-123');
 const commandId = CommandId('command-123');
@@ -584,10 +588,26 @@ runtime 恢复。
 
 每次提交：
 
-1. 在进程级 mutex 内重新读取并校验当前 head。
+1. 在进程级 mutex 内排队，再获取 Session 级跨进程文件锁并重新读取、校验当前 head。
 2. 验证 compare-and-append 前置条件。
 3. 以一次 batch 写入分配连续 sequence。
 4. 调用文件 `fsync` 后才返回成功。
+
+`read()` 和 `getHeadSequence()` 使用同一把锁，因此不会读取另一进程正在截断或
+追加的中间状态。本进程 mutex 排队与跨进程锁获取共用默认 10 秒总预算。跨进程
+锁使用操作系统 advisory lock：进程退出或崩溃时由内核立即释放，暂停但仍存活的
+进程会继续持锁，不会因 wall-clock 超时被另一个进程夺取。`lockTimeoutMs: 0`
+表示只立即尝试一次；锁已被占用时不会排队或重试。
+
+每个事件文件旁会保留一个 `*.jsonl.lock` sidecar。它的存在不表示锁当前被占用；
+锁状态属于打开的文件描述符。只要仍有进程使用该 Store，就不能手动删除、替换或
+移动事件文件及其 lock sidecar。
+
+Native lock addon 仅在首次 Store 操作时加载，不影响其他 SDK API 的导入。在
+addon 无法加载或平台不支持 advisory lock 时，Store 以
+`DURABLE_EVENT_LOCK_FAILED` fail closed。当前预构建支持 macOS、glibc Linux 和
+Windows 的 x64/arm64；Alpine/musl 及其他目标不受 `JsonlDurableEventStore`
+支持。
 
 事件文件使用 `0600` 权限，Session ID 经过 base64url 编码，不会成为文件路径。
 事件会保存原始请求输入、完整模型响应、工具输入和模型侧工具结果；调用方必须将
@@ -595,13 +615,16 @@ Store 视为敏感数据存储，并自行配置加密、保留期限和访问�
 
 ## 一致性边界
 
-`JsonlDurableEventStore` 保证单个 Node.js 进程内多个 Store 实例的串行追加。
-它不提供跨进程 fencing。多个进程或多副本服务必须实现
-`DurableEventStore` 接口，并使用数据库事务、CAS 或 lease 保证单写者。
+`JsonlDurableEventStore` 保证同一主机上多个 Node.js 进程针对同一 Session 的
+互斥读写和原子 compare-and-append。该保证要求本地文件系统正确实现 advisory
+lock；它不适用于 NFS 等共享网络文件系统，也不提供跨主机 execution lease。
+多副本服务仍应实现 `DurableEventStore` 接口，并使用数据库事务、CAS 或带
+fencing token 的 lease 保证单写者；不能依赖未提供 fencing 的超时 lease。
 
-`DURABLE_EVENT_WRITE_FAILED` 不代表 batch 一定没有写入：底层写入成功但
-`fsync` 失败时，提交结果可能未知。调用方重试前必须重新读取 head，并通过
-`commandId` 等关联字段核对结果。当前 Store 尚不提供 command 自动去重。
+`DURABLE_EVENT_WRITE_FAILED` 不代表 batch 一定没有写入：底层写入成功后
+`fsync`、解锁或关闭锁文件失败时，提交结果都可能未知。调用方重试前必须重新
+读取 head，并通过 `commandId` 等关联字段核对结果。当前 Store 尚不提供
+command 自动去重。
 
 Store 不持久化 token delta、工具 progress 等高频 UI 事件。只有会影响恢复
 决策的 domain event 应进入 durable journal。
@@ -618,6 +641,8 @@ Store 不持久化 token delta、工具 progress 等高频 UI 事件。只有会
 | `SessionDurableRecorderError` | Session runtime 观察到非法 durable 生命周期状态 |
 | `DurableEventProjectionError` | schema、事件顺序或关联关系不满足生命周期约束 |
 | `DurableEventSequenceConflictError` | compare-and-append 前置条件失败 |
+| `DURABLE_EVENT_LOCK_FAILED` | Session 文件锁初始化或获取失败 |
+| `DURABLE_EVENT_LOCK_TIMEOUT` | 在 `lockTimeoutMs` 内未能获得 Session 文件锁 |
 | `DurableEventStoreError` | 参数、cursor、读写或日志完整性错误 |
 
 完整、已换行但 schema 错误或 sequence 不连续的记录被视为损坏日志；Store
