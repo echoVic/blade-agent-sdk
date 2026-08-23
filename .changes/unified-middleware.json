@@ -1,5 +1,5 @@
 {
   "type": "feature",
-  "en": "Add onion-style model and tool middleware with declarative plugins while preserving durable lifecycle boundaries around committed side effects.",
-  "zh-CN": "新增洋葱式模型与工具 middleware 及声明式插件，并保持提交型副作用外层的 durable 生命周期边界。"
+  "en": "Add lease-aware onion model and tool middleware with declarative plugins, durable short-circuit settlement, and subagent propagation.",
+  "zh-CN": "新增 lease-aware 洋葱式模型与工具 middleware、声明式插件、durable 短路结算及子 Agent 传播。"
 }

@@ -47,6 +47,10 @@ const session = await createSession({
 
 `SessionOptions.middleware` 始终位于插件 middleware 外层。多个插件按
 `SessionOptions.plugins` 中的顺序组合，插件内部按数组顺序组合。
+同一组 model/tool middleware 会传递给该 Session 启动的前台和后台子 Agent。
+插件中的 hooks 与 tools 则注册在根 Session；子 Agent 仍使用自己的工具白名单
+与系统提示。根 Agent 与多个子 Agent 可能并发调用同一个 middleware 实例；
+middleware 必须并发安全，并把请求级状态保存在局部变量中。
 
 ## 通用组合器
 
@@ -90,7 +94,7 @@ const normalizeInput: ToolMiddleware = async function* (request, next) {
 它可以：
 
 - 在 `next()` 前变换 `input`；
-- 不调用 `next()`，返回自己的 `ToolExecution` 以短路执行；
+- 不调用 `next()`，返回自己的 `ToolExecution` 以纯计算方式短路执行；
 - 原样转发或变换流式 `ToolYield`；
 - 在回卷阶段变换最终 `ToolResult`。
 
@@ -98,10 +102,20 @@ const normalizeInput: ToolMiddleware = async function* (request, next) {
 
 - 改写 `toolName`；
 - 替换 `ExecutionContext`；
+- 把输入变换到不同的 `interruptBehavior`；
 - 调用多次 `next()`。
+- 在 middleware 中直接执行提交型外部副作用。
+- 把 core 的失败结果改写为成功，或覆盖 core 的取消结果。
 
 这些限制保护权限、取消信号和 durable lifecycle 的绑定关系。middleware
 返回的最终结果会进入执行历史，并由外层 `onToolSettled` 持久化后再发布。
+调用 `next()` 后必须用 `yield*` 完整转发 delegated execution；若 middleware
+已启动 core 却提前返回，SDK 会自动排空 core，并以真实 core 结果为准。
+SDK 会在进入和离开 middleware 链时校验 execution lease；lease failure 不会
+被转换为普通工具错误。短路成功会在 settlement 前持久化一个合成
+`tool_started`，使 durable 投影保持合法；因此短路逻辑必须是无提交副作用的
+缓存命中或纯计算。短路不会进入 `PreToolUse`、权限处理器或 `PostToolUse`；
+它表示受信任 middleware 已完整处理该工具调用。
 
 ## 模型 middleware
 
@@ -134,6 +148,10 @@ const modelMiddleware = {
 | `wrapChatWithRetryEvents` | 带重试事件的非流式请求 |
 
 模型切换后，新建的 provider service 会自动套用同一组 middleware。
+流被调用方提前关闭时，middleware 与 provider generator 都会关闭。模型请求
+变换应保持确定性；middleware 接收并必须向下传递当前 `AbortSignal`。SDK
+会在每层 middleware 边界校验 `operation`、`model` 与 `signal` 未被替换，
+包括内层 middleware 短路之前。
 
 ## 声明式插件
 
@@ -160,7 +178,8 @@ const reviewPlugin = definePlugin({
 });
 ```
 
-插件名必须非空且在一个 Session 中唯一。插件工具以
+插件名必须是 1–64 位小写字母、数字、点、下划线或连字符，首尾必须是
+字母或数字，并且在一个 Session 中唯一。插件工具以
 `sourceId: "plugin:<name>"`、`trustLevel: "workspace"` 注册，仍受
 `allowedTools`、`disallowedTools`、权限规则和 sandbox 约束。
 
@@ -179,16 +198,21 @@ Middleware 只在**实时执行**时运行；恢复流程通过 durable journal 
 
 ```text
 onToolScheduled
-  → middleware / permissions
+  → ownership check
+  → middleware
+  → scheduler / file lock / hooks / permissions
   → onExecutionStarted
   → tool side effect
   → middleware unwind
+  → ownership check
   → onToolSettled
 ```
 
 这条路径是当前的 journal 出口。它保证最终输入在副作用开始前被持久化，
 最终结果在发布前被持久化。SDK 暂不向普通插件暴露任意
 `ctx.emit(command)`，避免插件绕开 durable event schema 和恢复对账规则。
+短路成功不执行真实工具，但仍在结果发布前写入合成 `tool_started`。恢复流程
+不会重放 middleware；失租或 abort 会直接终止 middleware 链。
 
 ## Middleware 与 Hooks 的选择
 
