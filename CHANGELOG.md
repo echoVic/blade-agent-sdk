@@ -2,6 +2,12 @@
 
 All notable changes to `@blade-ai/agent-sdk` are documented here.
 
+## [5.3.0] - 2026-08-23
+
+### Features
+
+- Add lease-aware onion model and tool middleware with declarative plugins, durable short-circuit settlement, and subagent propagation.
+
 ## [5.2.0] - 2026-08-23
 
 ### Features

@@ -1,5 +1,0 @@
-{
-  "type": "feature",
-  "en": "Add lease-aware onion model and tool middleware with declarative plugins, durable short-circuit settlement, and subagent propagation.",
-  "zh-CN": "新增 lease-aware 洋葱式模型与工具 middleware、声明式插件、durable 短路结算及子 Agent 传播。"
-}
