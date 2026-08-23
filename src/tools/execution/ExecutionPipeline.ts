@@ -864,7 +864,11 @@ export class ExecutionPipeline {
 
     return new Promise<IteratorResult<ToolYield, ToolResult>>((resolve, reject) => {
       let settled = false;
+      let abortTimer: ReturnType<typeof setTimeout> | undefined;
       const cleanup = (): void => {
+        if (abortTimer !== undefined) {
+          clearTimeout(abortTimer);
+        }
         signal.removeEventListener('abort', onAbort);
       };
       const resolveOnce = (step: IteratorResult<ToolYield, ToolResult>): void => {
@@ -880,7 +884,8 @@ export class ExecutionPipeline {
         reject(error);
       };
       const onAbort = (): void => {
-        rejectOnce(signal.reason);
+        // Preserve a terminal result produced in the same turn as cancellation.
+        abortTimer = setTimeout(() => rejectOnce(signal.reason), 0);
       };
 
       signal.addEventListener('abort', onAbort, { once: true });
