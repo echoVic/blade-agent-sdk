@@ -154,6 +154,8 @@ export class SessionRuntime {
       sessionId,
       permissionMode,
       callbacks: this.hookCallbacks,
+      hookTimeoutMs: options.hookTimeoutMs,
+      sessionEndHookTimeoutMs: options.sessionEndHookTimeoutMs,
       resolveProjectDir: () => getContextCwd(this.defaultContext),
     });
     this.executionPipeline = this.createExecutionPipeline();
@@ -293,6 +295,13 @@ export class SessionRuntime {
       errors.push(
         new Error(
           `Session runtime ${this.sessionId} still has a tool execution cleaning up`,
+        ),
+      );
+    }
+    if (this.hookRuntime.hasPendingCallbackCleanup()) {
+      errors.push(
+        new Error(
+          `Session runtime ${this.sessionId} still has an inline hook callback cleaning up`,
         ),
       );
     }

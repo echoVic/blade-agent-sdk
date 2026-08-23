@@ -1,4 +1,6 @@
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { ConfigError } from '../../errors/ConfigError.js';
+import { HookTimeoutError } from '../../errors/HookTimeoutError.js';
 import type { ContentPart } from '../../services/ChatServiceInterface.js';
 import type { ToolResult } from '../../tools/types/index.js';
 import { SessionId, ToolUseId } from '../../types/branded.js';
@@ -6,7 +8,197 @@ import { PermissionMode } from '../../types/common.js';
 import { HookEvent } from '../../types/constants.js';
 import { HookRuntime } from '../HookRuntime.js';
 
+function deferred(): { promise: Promise<void>; resolve: () => void } {
+  let resolve!: () => void;
+  const promise = new Promise<void>((done) => {
+    resolve = done;
+  });
+  return { promise, resolve };
+}
+
 describe('HookRuntime', () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('bounds inline hooks, propagates abort, and blocks while cleanup is pending', async () => {
+    vi.useFakeTimers();
+    const started = deferred();
+    const release = deferred();
+    let callbackSignal: AbortSignal | undefined;
+    const runtime = new HookRuntime({
+      sessionId: SessionId('session-timeout'),
+      permissionMode: PermissionMode.DEFAULT,
+      hookTimeoutMs: 50,
+      callbacks: {
+        [HookEvent.UserPromptSubmit]: [
+          async (input) => {
+            callbackSignal = input.abortSignal;
+            started.resolve();
+            await release.promise;
+            return { action: 'continue' };
+          },
+        ],
+      },
+      resolveProjectDir: () => undefined,
+    });
+
+    const dispatch = runtime.applyUserPromptSubmit('prompt');
+    const timeoutResult = expect(dispatch).rejects.toMatchObject({
+      code: 'HOOK_TIMEOUT',
+      event: HookEvent.UserPromptSubmit,
+      timeoutMs: 50,
+    });
+    await started.promise;
+    await vi.advanceTimersByTimeAsync(50);
+
+    await timeoutResult;
+    expect(callbackSignal?.aborted).toBe(true);
+    expect(runtime.hasPendingCallbackCleanup()).toBe(true);
+    await expect(runtime.applyUserPromptSubmit('blocked')).rejects.toThrow('still cleaning up');
+
+    release.resolve();
+    await vi.waitFor(() => {
+      expect(runtime.hasPendingCallbackCleanup()).toBe(false);
+    });
+  });
+
+  it('uses the dedicated SessionEnd hook timeout', async () => {
+    vi.useFakeTimers();
+    const started = deferred();
+    const runtime = new HookRuntime({
+      sessionId: SessionId('session-end-timeout'),
+      permissionMode: PermissionMode.DEFAULT,
+      hookTimeoutMs: 10_000,
+      sessionEndHookTimeoutMs: 50,
+      callbacks: {
+        [HookEvent.SessionEnd]: [
+          async (input) => {
+            started.resolve();
+            await new Promise<void>((_resolve, reject) => {
+              input.abortSignal?.addEventListener(
+                'abort',
+                () => reject(input.abortSignal?.reason),
+                { once: true },
+              );
+            });
+            return { action: 'continue' };
+          },
+        ],
+      },
+      resolveProjectDir: () => undefined,
+    });
+
+    const dispatch = runtime.runSessionEnd({ reason: 'other' });
+    const timeoutResult = expect(dispatch).rejects.toBeInstanceOf(HookTimeoutError);
+    await started.promise;
+    await vi.advanceTimersByTimeAsync(50);
+
+    await timeoutResult;
+    expect(runtime.hasPendingCallbackCleanup()).toBe(false);
+  });
+
+  it('shares one timeout budget across callbacks in an event', async () => {
+    vi.useFakeTimers();
+    const secondStarted = deferred();
+    const runtime = new HookRuntime({
+      sessionId: SessionId('session-shared-hook-budget'),
+      permissionMode: PermissionMode.DEFAULT,
+      hookTimeoutMs: 50,
+      callbacks: {
+        [HookEvent.UserPromptSubmit]: [
+          async () => {
+            await new Promise((resolve) => setTimeout(resolve, 30));
+            return { action: 'continue' };
+          },
+          async (input) => {
+            secondStarted.resolve();
+            await new Promise<void>((_resolve, reject) => {
+              input.abortSignal?.addEventListener(
+                'abort',
+                () => reject(input.abortSignal?.reason),
+                { once: true },
+              );
+            });
+            return { action: 'continue' };
+          },
+        ],
+      },
+      resolveProjectDir: () => undefined,
+    });
+
+    const dispatch = runtime.applyUserPromptSubmit('prompt');
+    const timeoutResult = expect(dispatch).rejects.toMatchObject({
+      code: 'HOOK_TIMEOUT',
+      timeoutMs: 50,
+    });
+    await vi.advanceTimersByTimeAsync(30);
+    await secondStarted.promise;
+    await vi.advanceTimersByTimeAsync(19);
+    expect(runtime.hasPendingCallbackCleanup()).toBe(false);
+    await vi.advanceTimersByTimeAsync(1);
+
+    await timeoutResult;
+  });
+
+  it('propagates caller cancellation into an inline callback', async () => {
+    const controller = new AbortController();
+    const started = deferred();
+    const cancellation = new Error('request cancelled');
+    let callbackSignal: AbortSignal | undefined;
+    const runtime = new HookRuntime({
+      sessionId: SessionId('session-hook-cancel'),
+      permissionMode: PermissionMode.DEFAULT,
+      callbacks: {
+        [HookEvent.UserPromptSubmit]: [
+          async (input) => {
+            callbackSignal = input.abortSignal;
+            started.resolve();
+            await new Promise<void>((_resolve, reject) => {
+              input.abortSignal?.addEventListener(
+                'abort',
+                () => reject(input.abortSignal?.reason),
+                { once: true },
+              );
+            });
+            return { action: 'continue' };
+          },
+        ],
+      },
+      resolveProjectDir: () => undefined,
+    });
+
+    const dispatch = runtime.applyUserPromptSubmit('prompt', {
+      abortSignal: controller.signal,
+    });
+    const cancellationResult = expect(dispatch).rejects.toBe(cancellation);
+    await started.promise;
+    controller.abort(cancellation);
+
+    await cancellationResult;
+    expect(callbackSignal?.aborted).toBe(true);
+    expect(runtime.hasPendingCallbackCleanup()).toBe(false);
+  });
+
+  it('rejects invalid inline hook timeout configuration', () => {
+    for (const [name, value] of [
+      ['hookTimeoutMs', 0],
+      ['hookTimeoutMs', Number.NaN],
+      ['sessionEndHookTimeoutMs', -1],
+      ['sessionEndHookTimeoutMs', 2_147_483_648],
+    ] as const) {
+      expect(
+        () =>
+          new HookRuntime({
+            sessionId: SessionId('session-invalid-timeout'),
+            permissionMode: PermissionMode.DEFAULT,
+            [name]: value,
+            resolveProjectDir: () => undefined,
+          }),
+      ).toThrow(ConfigError);
+    }
+  });
+
   it('computes image metadata once per applyUserPromptSubmit stage', async () => {
     const hookManager = {
       executeUserPromptSubmitHooks: vi.fn(async () => ({ proceed: true })),

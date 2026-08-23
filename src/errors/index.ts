@@ -1,5 +1,7 @@
 export { AbortError } from './AbortError.js';
 export { ConfigError } from './ConfigError.js';
+export { HookTimeoutError } from './HookTimeoutError.js';
+export type { HookTimeoutErrorCode } from './HookTimeoutError.js';
 export { ModelTimeoutError } from './ModelTimeoutError.js';
 export type { ModelTimeoutErrorCode } from './ModelTimeoutError.js';
 export { PermissionDeniedError } from './PermissionDeniedError.js';
