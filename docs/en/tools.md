@@ -200,6 +200,8 @@ const tool = createTool({
 ```
 
 Explicit `session.abort()` and `session.close()` are request-level cancellation and are not blocked by `interruptBehavior: 'block'`.
+Both methods wait for active tool cleanup, so custom tools must honor the
+request `AbortSignal` even when they block `now`-priority steering.
 
 `interruptBehavior` belongs to the `ToolConfig` accepted by `createTool()`;
 `defineTool()` / `ToolDefinition` does not expose it. Use `createTool()` with

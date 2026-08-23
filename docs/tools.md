@@ -420,6 +420,8 @@ const tool = createTool({
 - `block` 是默认值。工具继续完成，结果落盘后再应用 steering，适合写文件、状态变更和不可撤销的外部调用。
 - `cancel` 仅用于真正监听 `context.signal`、能安全停止并在 `finally` 中释放资源的工具。
 - Session 的显式 `abort()` 和 `close()` 属于请求级终止，不受 `block` 限制。
+  两者都会等待活动工具完成清理，因此自定义工具即使阻止 `now` 转向，也必须监听
+  request `AbortSignal`。
 
 `interruptBehavior` 属于 `createTool()` 的 `ToolConfig`，轻量
 `defineTool()` / `ToolDefinition` 不暴露该字段。需要让 Session 中的自定义

@@ -61,7 +61,9 @@ type InputSubmission =
     };
 ```
 
-Call `stream()` once for each pending request and drain it through completion.
+Call `stream()` once for each pending request and normally drain it through
+completion. `abort()` and `close()` own cancellation cleanup if consumption is
+paused or stopped early.
 
 ## Steer an active request
 
@@ -176,15 +178,26 @@ Partial model output produced before `turn_interrupted` can be displayed, but it
 ## Abort a request
 
 ```ts
-const stream = session.stream();
-await session.abort();
-
-for await (const event of stream) {
-  // Drain cleanup and terminal events.
+for await (const event of session.stream()) {
+  if (event.type === 'content' && event.delta.includes('stop now')) {
+    await session.abort();
+  }
 }
 ```
 
-`abort()` terminates the whole active request and does not close the Session. It differs from `priority: 'now'`, which steers the same request at a safe point.
+`abort()` terminates the whole active request and does not close the Session. It
+can be awaited from inside stream consumption without deadlocking. The Promise
+resolves only after the inner Agent stream has closed, model and tool lifecycle
+cleanup has settled, the durable Request terminal event has committed, and
+request ownership has been released. Any already buffered stream events remain
+readable afterward, but draining them is not required for cleanup.
+
+If durable terminal persistence fails or has an unknown outcome, `abort()`
+rejects and recovery fencing prevents another Request from starting. This
+differs from `priority: 'now'`, which steers the same request at a safe point.
+Cancellation is cooperative at the JavaScript boundary: custom providers and
+tools must honor their `AbortSignal` and release resources in `finally`;
+otherwise the Promise remains pending until that operation settles.
 
 An external `AbortSignal` can also cancel a request:
 
@@ -303,8 +316,9 @@ Permission, and input-application events with these ordering guarantees:
 - A standalone Request terminal event links to the latest persisted Request
   boundary through `causationEventId`.
 - Terminal events commit before `tool_result`, `result`, or `error` is published.
-- A pending request commits `request_interrupted` before
-  `await session.abort()` resolves.
+- Pending and running requests commit `request_interrupted` before
+  `await session.abort()` resolves. A running abort also waits for the inner
+  execution and model/tool lifecycle cleanup.
 
 If a durable boundary cannot be committed, Session fences the current Recorder
 and rejects the stream instead of fabricating a normal terminal event after the
@@ -499,7 +513,10 @@ await session.close();
 console.log(session.isClosed);
 ```
 
-`close()` aborts active work, closes MCP connections, runs the `SessionEnd` hook, and permanently closes the object. A closed Session cannot be reinitialized.
+`close()` aborts active work and waits for the same request-completion barrier
+as `abort()` before closing MCP connections, running the `SessionEnd` hook, and
+committing `session_closed`. Concurrent calls share one close Promise. A closed
+Session cannot be reinitialized.
 
 Use explicit resource management when available:
 
