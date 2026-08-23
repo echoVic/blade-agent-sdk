@@ -2,6 +2,12 @@
 
 All notable changes to `@blade-ai/agent-sdk` are documented here.
 
+## [5.3.4] - 2026-08-23
+
+### Fixes
+
+- Cancel permission and confirmation waits with the active Request signal, and retain Session ownership until uncooperative callbacks finish cleaning up.
+
 ## [5.3.3] - 2026-08-23
 
 ### Fixes
