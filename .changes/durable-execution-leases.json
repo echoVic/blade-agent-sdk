@@ -1,5 +1,5 @@
 {
   "type": "feature",
-  "en": "Add Store-backed Session execution leases with automatic heartbeats, sticky monotonic fencing, atomic Journal append validation, descendant cancellation, and controlled close or handoff release.",
-  "zh-CN": "新增 Store-backed Session 执行租约：支持自动 heartbeat、粘性单调 fencing、Journal append 原子校验、子执行取消及 close/handoff 受控释放。"
+  "en": "Add Store-backed Session execution leases with automatic heartbeats, sticky monotonic fencing, atomic Journal, transcript, and subagent-state guards, process-tree cancellation, and controlled close or handoff release.",
+  "zh-CN": "新增 Store-backed Session 执行租约：支持自动 heartbeat、粘性单调 fencing、Journal、transcript 与 subagent 状态原子保护、进程树取消及 close/handoff 受控释放。"
 }

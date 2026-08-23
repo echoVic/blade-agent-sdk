@@ -106,7 +106,7 @@ Node-local 能力外，这些函数都从根入口导出；实际 subpath 以“
 | 导出 | 说明 |
 |------|------|
 | `DurableEventStore` | append/read/head 的持久化接口 |
-| `DurableExecutionLeaseStore` | 粘性 `requiresExecutionLease`、原子 acquire/renew/release/assert 与 fenced append 接口 |
+| `DurableExecutionLeaseStore` | 粘性 `requiresExecutionLease`、原子 acquire/renew/release/assert、`withExecutionLease` 与 fenced append 接口 |
 | `DurableExecutionLeaseOptions` | Session lease 的 owner、TTL、heartbeat 和可选 lease ID |
 | `DurableExecutionLeaseSnapshot` / `DurableExecutionFence` | 当前租约快照及传递给 Store/工具的 fence |
 | `DurableExecutionLeaseErrorCode` | lease 配置、冲突、缺少 fence、失租、损坏与写入错误码 |

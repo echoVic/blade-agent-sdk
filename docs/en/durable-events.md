@@ -641,17 +641,24 @@ once a Store creates lease state for a Session, every later append and
 Journal/Recovery Coordinator open requires a new active lease even after the
 previous lease expires or is released. `requiresExecutionLease()` provides an
 early entry-point check; the transactional append check remains authoritative.
+Short internal persistence operations can use `withExecutionLease()` to run
+under the same ownership lock and avoid racing transcript writes with takeover.
+Do not hold this boundary around long-running model or tool I/O.
 
 The process-local lease handle heartbeats automatically. Any renewal or
 validation failure aborts `lease.signal` and remains fail-closed. Session
 integrates this handle when `SessionOptions.executionLease` is configured:
 model calls and tool side effects validate ownership immediately before I/O,
-Journal commits carry the fence, and lease loss closes local execution without
-writing a false durable terminal event.
+Journal commits carry the fence, and subagent state and output writes run under
+the same ownership boundary. Lease loss closes local execution without writing
+a false durable terminal event.
 
 The fence protects SDK lifecycle commits. External resources modified by a tool
 must also compare `ExecutionContext.executionFence.fencingToken`; otherwise an
 already-started operation cannot be forcibly fenced by a generic SDK.
+Within the current worker, the SDK terminates a managed shell's complete process
+group and waits for it to exit. It is not a cross-process supervisor or a
+substitute for downstream token validation.
 
 ### Controlled worker handoff
 

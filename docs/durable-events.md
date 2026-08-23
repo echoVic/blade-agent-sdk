@@ -597,16 +597,21 @@ const journal = await DurableSessionJournal.open(store, sessionId, {
 要求是粘性的：Store 一旦为 Session 创建过 lease 状态，即使当前 lease 已过期或
 释放，后续 append 和 Journal/Recovery Coordinator open 仍必须携带新的活动
 lease。`requiresExecutionLease()` 用于入口处提前检测；append 内的事务校验才是
-最终权威边界。
+最终权威边界。短时内部持久化可通过 `withExecutionLease()` 在同一所有权锁内
+执行，避免 transcript 写入与 lease 接管交错；不要用它包裹模型或工具等长耗时
+外部 I/O。
 
 进程内 lease handle 会自动 heartbeat。任何续租或校验失败都会中止
 `lease.signal` 并保持 fail-closed。配置 `SessionOptions.executionLease` 后，
 Session 会集成该 handle：模型调用与工具副作用在 I/O 前立即校验所有权，Journal
-commit 携带 fence；失租时本地执行关闭，但不会写入伪造的 durable 终态。
+commit 携带 fence，subagent 状态与 output 写入也在同一所有权边界内执行；失租
+时本地执行关闭，但不会写入伪造的 durable 终态。
 
 fence 保护 SDK 生命周期提交。工具修改其他共享资源时，还必须让下游比较
 `ExecutionContext.executionFence.fencingToken`；通用 SDK 无法强制 fence
-已经启动且下游不校验 token 的操作。
+已经启动且下游不校验 token 的操作。SDK 会在当前 worker 内终止受管 shell 的
+完整进程组并等待退出，但它不是跨进程 supervisor，不能替代共享资源上的 token
+校验。
 
 ### 受控 worker handoff
 

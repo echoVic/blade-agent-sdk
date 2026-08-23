@@ -288,16 +288,24 @@ const session = await createSession({
 Session acquisition is fail-closed. A second live worker receives
 `DURABLE_EXECUTION_LEASE_CONFLICT`. Each successful takeover increments a
 monotonic `FencingToken`; every Journal commit validates the active lease in
-the same Store transaction as its append. The Session heartbeat stops admitting
-new work and aborts the root execution, foreground/background subagents, and
-Session-owned shells when ownership cannot be renewed.
+the same Store transaction as its append. Short SDK-owned transcript writes are
+serialized against takeover through `withExecutionLease()`. Background-subagent
+state and output writes carry and validate the same fence. The Session heartbeat
+stops admitting new work and aborts the root execution, foreground/background
+subagents, and complete process groups for Session-owned shells when ownership
+cannot be renewed.
 
 Once a Session enables an execution lease, its fencing requirement is
 permanent. After the old lease expires or is released, `resumeSession()` without
 `executionLease` still fails with `DURABLE_EXECUTION_LEASE_REQUIRED`; the
 successor must first acquire a lease with a higher token. Normal `close()` waits
 for background agents and Session-owned shells to stop before it commits the
-durable close and releases the lease.
+durable close and releases the lease. If runtime cleanup fails, it retains the
+lease and allows the caller to retry `close()`.
+
+Normally omit `leaseId` so the SDK generates a random ID for each worker
+execution. Reusing the same `ownerId + leaseId` is treated as an idempotent
+retry of one acquisition; concurrent workers must never share that identity.
 
 `session.getExecutionLease()` returns the current lease snapshot. Tools receive
 the immutable `{ leaseId, fencingToken }` as

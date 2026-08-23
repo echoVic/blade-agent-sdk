@@ -1488,14 +1488,21 @@ const session = await createSession({
 Session 获取租约时保持 fail-closed。第二个存活 worker 会收到
 `DURABLE_EXECUTION_LEASE_CONFLICT`。每次成功接管都会递增单调
 `FencingToken`；Journal 的每次 commit 都在 Store 的同一事务中校验活动租约和
-event append。heartbeat 无法续租时，Session 会停止接收新工作，并取消根执行、
-前台/后台子 Agent 及归属该 Session 的后台 shell。
+event append；SDK 自身的短时 transcript 写入通过 `withExecutionLease()` 与接管
+串行化，后台子 Agent 的状态与 output 写入也会携带并校验 fence。heartbeat
+无法续租时，Session 会停止接收新工作，并取消根执行、前台/后台子 Agent 及归属
+该 Session 的后台 shell 完整进程组。
 
 Session 一旦启用过 execution lease，fencing 要求会永久保留。旧租约过期或释放
 后，未配置 `executionLease` 的 `resumeSession()` 仍会收到
 `DURABLE_EXECUTION_LEASE_REQUIRED`；继任 worker 必须先获取更高 token 的 lease。
 正常 `close()` 会先取消并等待后台 Agent、终止 Session shell，再提交 durable
-关闭并释放 lease。
+关闭并释放 lease；如果 Runtime 清理失败，则保留 lease，并允许调用方重试
+`close()`。
+
+通常应省略 `leaseId` 让 SDK 为每次 worker 执行生成随机 ID。显式复用同一
+`ownerId + leaseId` 被视为同一次 acquire 的幂等重试；不得由两个并发 worker
+共享这组身份。
 
 `session.getExecutionLease()` 返回当前租约快照。工具会通过
 `ExecutionContext.executionFence` 收到不可变的 `{ leaseId, fencingToken }`。
