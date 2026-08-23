@@ -18,6 +18,15 @@ import {
 
 const DEFAULT_HOOK_PROCESS_TERMINATION_GRACE_MS = 1_000;
 
+function isBrokenPipeError(error: unknown): boolean {
+  return (
+    typeof error === 'object'
+    && error !== null
+    && 'code' in error
+    && error.code === 'EPIPE'
+  );
+}
+
 /**
  * 流量限制器
  */
@@ -192,6 +201,11 @@ export class SecureProcessExecutor {
         rejectOnce(error);
       });
       child.stdin.on('error', (error) => {
+        if (isBrokenPipeError(error)) {
+          // Fast hooks may close stdin before the write completes. Their exit
+          // status remains authoritative.
+          return;
+        }
         stop('input-error', error);
       });
 
@@ -210,6 +224,9 @@ export class SecureProcessExecutor {
           child.stdin.write(inputJson);
           child.stdin.end();
         } catch (error) {
+          if (isBrokenPipeError(error)) {
+            return;
+          }
           stop('input-error', error);
         }
       }

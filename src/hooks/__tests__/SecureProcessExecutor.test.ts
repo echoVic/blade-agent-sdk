@@ -32,7 +32,7 @@ function quoteShellArgument(value: string): string {
   return `'${value.replaceAll("'", "'\\''")}'`;
 }
 
-function createInput(projectDir: string): HookInput {
+function createInput(projectDir: string, payloadSize = 0): HookInput {
   return {
     hook_event_name: HookEvent.PreToolUse,
     hook_execution_id: 'hook-execution-1',
@@ -42,7 +42,9 @@ function createInput(projectDir: string): HookInput {
     permission_mode: PermissionMode.DEFAULT,
     tool_name: 'TestTool',
     tool_use_id: 'tool-use-1',
-    tool_input: {},
+    tool_input: payloadSize > 0
+      ? { payload: 'x'.repeat(payloadSize) }
+      : {},
   };
 }
 
@@ -156,6 +158,30 @@ describe('SecureProcessExecutor', () => {
       'abort',
       expect.any(Function),
     );
+  });
+
+  it('preserves a successful exit when the hook closes stdin early', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'hook-stdin-close-'));
+    roots.push(root);
+    const executor = new SecureProcessExecutor(50);
+
+    const result = await executor.execute(
+      `${quoteShellArgument(process.execPath)} -e ${
+        quoteShellArgument(
+          "require('node:fs').closeSync(0); process.stdout.write('ok'); setTimeout(() => process.exit(0), 50)",
+        )
+      }`,
+      createInput(root, 96 * 1024),
+      createContext(root),
+      5_000,
+    );
+
+    expect(result).toEqual({
+      stdout: 'ok',
+      stderr: '',
+      exitCode: 0,
+      timedOut: false,
+    });
   });
 
   it('does not spawn a command for an already-aborted hook', async () => {

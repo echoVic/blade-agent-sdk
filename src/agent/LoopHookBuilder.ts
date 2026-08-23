@@ -100,6 +100,7 @@ export function buildLoopConfig(deps: LoopHookBuilderDeps): AgentLoopConfig {
   let pendingInjectedMessages: Message[] = [];
   let currentAssistantMessageId: string | null = null;
   const inputApplicationLifecycle = options?.inputApplicationLifecycle;
+  const requestSignal = options?.signal ?? context.signal;
 
   const hooks: AgentLoopHooks = {
     input: {
@@ -430,14 +431,18 @@ export function buildLoopConfig(deps: LoopHookBuilderDeps): AgentLoopConfig {
           }
           const stopResult = await hookRuntime.executeStopCheck({
             reason: ctx.content,
-            abortSignal: options?.signal,
+            abortSignal: requestSignal,
           });
           return {
             shouldStop: stopResult.shouldStop,
             continueReason: stopResult.continueReason,
             warning: stopResult.warning,
           };
-        } catch {
+        } catch (error) {
+          requestSignal?.throwIfAborted();
+          if (isExecutionLeaseFailure(error)) {
+            throw error;
+          }
           return { shouldStop: true };
         }
       },
@@ -452,7 +457,7 @@ export function buildLoopConfig(deps: LoopHookBuilderDeps): AgentLoopConfig {
     conversationState: loopState.conversationState,
     maxTurns,
     isYoloMode,
-    signal: options?.signal,
+    signal: requestSignal,
     tokenBudget,
     modelExecutionLifecycle: options?.modelExecutionLifecycle,
     initialInputPreparation: options?.initialInputPreparation,
